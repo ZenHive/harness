@@ -1,0 +1,11 @@
+# Project-scoped MCP configuration for Grok
+#
+# This complements .mcp.json (used by Claude Code / Tidewave).
+# Only the [mcp_servers] section is supported in project-level files.
+
+[mcp_servers.tidewave]
+# Local Tidewave dev server (Elixir tools + MCP surface)
+# Started via: iex -S mix tidewave
+url = "http://localhost:4016/tidewave/mcp"
+enabled = true
+startup_timeout_sec = 15

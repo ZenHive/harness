@@ -1,0 +1,43 @@
+# The directory Mix will write compiled artifacts to.
+/_build/
+
+# If you run "mix test --cover", coverage assets end up here.
+/cover/
+
+# The directory Mix downloads your dependencies sources to.
+/deps/
+
+# Where third-party dependencies like ExDoc output generated docs.
+/doc/
+
+# If the VM crashes, it generates a dump, let's ignore it too.
+erl_crash.dump
+
+# Also ignore archive artifacts (built via "mix archive.build").
+*.ez
+
+# Ignore package tarball (built via "mix hex.build").
+harness-*.tar
+
+# Temporary files, for example, from tests.
+/tmp/
+
+# Dialyzer PLTs live outside _build/ so they survive `mix clean` and can be cached by CI
+/priv/plts/
+
+# Sobelow baseline (auto-managed by audit-review on drift)
+/.sobelow-skips
+
+# Grok (xAI Grok Build TUI / agent)
+# Project-local config that is *meant* to be shared lives under .grok/
+# (config.toml for MCP, skills/, hooks/, agents/, plugins/, lsp.json, sandbox.toml).
+# Everything else under .grok/ is runtime state / local overrides and should stay out of git.
+.grok/*
+# Explicitly allow the documented shareable project-level pieces
+!.grok/config.toml
+!.grok/skills/
+!.grok/hooks/
+!.grok/agents/
+!.grok/plugins/
+!.grok/lsp.json
+!.grok/sandbox.toml

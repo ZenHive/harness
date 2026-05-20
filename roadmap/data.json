@@ -10,7 +10,7 @@
     "1": {
       "name": "Foundation",
       "order": 1,
-      "status": "pending"
+      "status": "in_progress"
     },
     "2": {
       "name": "Core Loop & Contract Proof",
@@ -121,7 +121,7 @@
       "phase": 1,
       "bundle": "scaffold",
       "milestone": "v0_1",
-      "status": "pending",
+      "status": "done",
       "title": "Scaffold the OTP application + standard dep stack",
       "scores": {
         "d": 2,
@@ -139,7 +139,9 @@
       ],
       "body": "Scaffold `harness` as an Elixir OTP application with a supervision tree — it orchestrates long-lived agent runs, so it needs one. Add the standard project dep stack and tooling per the global Elixir setup conventions (Styler, Credo, Dialyxir, Doctor, ex_unit_json, dialyzer_json, descripex, Sobelow, and Reach as a dev/test analysis dep), wired into `mix.exs`, `.formatter.exs`, and `cli/0` preferred_envs. Generate the baseline `.gitignore`, `README.md`, and `CHANGELOG.md`.\n",
       "created_at": "2026-05-20",
+      "done_at": "2026-05-20",
       "scored_at": "2026-05-20",
+      "implemented": "Scaffolded OTP application with supervision tree, full standard dep stack (styler first, credo, dialyxir, doctor, sobelow, reach + boxart, ex_dna/ex_ast, descripex, tidewave+bandit), cli/0, dialyzer :apps_direct + priv/plts, all quality gates green (compile, test, format, credo --strict, doctor, sobelow, dialyzer 0 warnings).",
       "cross_repo": []
     },
     {
