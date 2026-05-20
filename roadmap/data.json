@@ -149,7 +149,7 @@
       "phase": 1,
       "bundle": "contract",
       "milestone": "v0_1",
-      "status": "in_progress",
+      "status": "done",
       "title": "Evaluate orchestration libraries — confirm thin-core",
       "scores": {
         "d": 3,
@@ -172,7 +172,9 @@
       "body": "Skim the source and docs of the candidate Elixir orchestration libraries — `opal`, `gen_agent` + `gen_agent_ensemble`, `altar_ai`, `ex_mcp`. The harness core is deliberately thin — a Port per run, a `gen_statem` per run, a `DynamicSupervisor` for batches, all stock OTP — and harness no longer needs a normalized event model, so the expected outcome is build-thin-core rather than adopt. Confirm that, and record any design ideas worth borrowing. Also settle the per-agent SDK question: determine whether `claude_code` and `codex_sdk` are CLI wrappers around the headless binary or native reimplementations. If they are wrappers, harness gains nothing from them — its raw-passthrough design discards an SDK's normalized event model, and OTP Ports already spawn the binary with better termination signals — so every adapter uses uniform Ports; only a native reimplementation that removes the external-binary dependency would justify the dep. Record both decisions in a concept doc.\n",
       "created_at": "2026-05-20",
       "started_at": "2026-05-20",
+      "done_at": "2026-05-20",
       "scored_at": "2026-05-20",
+      "implemented": "Evaluated opal, gen_agent, gen_agent_ensemble, altar_ai, ex_mcp + the claude_code/codex_sdk SDKs. Outcome: build thin core, adopt none, uniform Ports for all adapters. claude_code and codex_sdk confirmed CLI wrappers (not native reimpls). Decision + borrowed design ideas recorded in docs/orchestration-library-evaluation.md.",
       "cross_repo": []
     },
     {
