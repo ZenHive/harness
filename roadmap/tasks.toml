@@ -16,7 +16,7 @@ order = 1
 status = "pending"
 
 [phases.2]
-name = "Single-Agent Core Loop"
+name = "Core Loop & Contract Proof"
 order = 2
 status = "pending"
 
@@ -64,13 +64,18 @@ description = "Worktree lifecycle, rmap ingestion, verification runner, supervis
 order = 2
 phase = 2
 
+[bundles.contract-proof]
+description = "Conformance suite + a second adapter (Codex) — prove the AgentAdapter contract holds for two implementors before resilience builds on it"
+order = 3
+phase = 2
+
 [bundles.resilience]
 description = "Batch fan-out, failure-classified retry, autonomous repair loop"
 order = 1
 phase = 3
 
 [bundles.multi-agent]
-description = "Conformance suite, Cursor/Codex/Grok adapters, capability + availability registry"
+description = "Cursor and Grok adapters, capability + availability registry with quota fail-over"
 order = 1
 phase = 4
 
@@ -89,8 +94,8 @@ phase = 6
 # ----------------------------------------------------------------------------
 
 [milestones.v0_1]
-name = "Single-agent core loop"
-description = "One rmap task driven end to end — Claude headless, isolated worktree, verified result"
+name = "Core loop & contract proof"
+description = "One rmap task driven end to end (Claude headless, isolated worktree, verified result), plus a second adapter (Codex) proving the AgentAdapter contract holds for two implementors"
 order = 1
 status = "active"
 target_version = "0.1.0"
@@ -104,7 +109,7 @@ target_version = "0.2.0"
 
 [milestones.v0_3]
 name = "Multi-agent & quota fail-over"
-description = "Cursor, Codex, Grok adapters behind one contract; quota-aware routing"
+description = "Cursor and Grok adapters behind the proven contract; quota-aware routing"
 order = 3
 status = "pending"
 target_version = "0.3.0"
@@ -151,12 +156,13 @@ scores = { d = 3, b = 5, u = 5 }
 scored_at = "2026-05-20"
 created_at = "2026-05-20"
 body = """
-Skim the source and docs of the candidate Elixir orchestration libraries — `opal`, `gen_agent` + `gen_agent_ensemble`, `altar_ai`, `ex_mcp`. The harness core is deliberately thin — a Port per run, a `gen_statem` per run, a `DynamicSupervisor` for batches, all stock OTP — and harness no longer needs a normalized event model, so the expected outcome is build-thin-core rather than adopt. Confirm that, and record any design ideas worth borrowing. Record the decision in a concept doc.
+Skim the source and docs of the candidate Elixir orchestration libraries — `opal`, `gen_agent` + `gen_agent_ensemble`, `altar_ai`, `ex_mcp`. The harness core is deliberately thin — a Port per run, a `gen_statem` per run, a `DynamicSupervisor` for batches, all stock OTP — and harness no longer needs a normalized event model, so the expected outcome is build-thin-core rather than adopt. Confirm that, and record any design ideas worth borrowing. Also settle the per-agent SDK question: determine whether `claude_code` and `codex_sdk` are CLI wrappers around the headless binary or native reimplementations. If they are wrappers, harness gains nothing from them — its raw-passthrough design discards an SDK's normalized event model, and OTP Ports already spawn the binary with better termination signals — so every adapter uses uniform Ports; only a native reimplementation that removes the external-binary dependency would justify the dep. Record both decisions in a concept doc.
 """
 acceptance_criteria = [
   "Each candidate skimmed for whether it offers anything the thin OTP core doesn't",
   "A written build-vs-adopt decision with rationale",
   "Any borrowed design ideas are recorded with their source",
+  "A determination on whether `claude_code` / `codex_sdk` are CLI wrappers or native reimplementations, with a uniform-Ports-vs-SDK recommendation",
 ]
 out_of_scope = [
   "Writing any adapter or orchestration code — this task is evaluation only",
@@ -200,7 +206,7 @@ scores = { d = 6, b = 9, u = 9 }
 scored_at = "2026-05-20"
 created_at = "2026-05-20"
 body = """
-Implement the first concrete adapter — driving Claude Code headlessly via `claude -p` over Ports (or the `claude_code` hex SDK if the Phase-1 evaluation favors it). Capture the raw output stream and hand it back unparsed. Wire working directory, permission mode, and session resume/continue. Detect termination from the process/Port closing plus two timeout guards — a total-run budget, and an idle timeout that kills a run emitting no output for a configurable window — never from the exit code, which is known to be unreliable.
+Implement the first concrete adapter — driving Claude Code headlessly via `claude -p` over Ports. Capture the raw output stream and hand it back unparsed. Wire working directory, permission mode, and session resume/continue. Detect termination from the process/Port closing plus two timeout guards — a total-run budget, and an idle timeout that kills a run emitting no output for a configurable window — never from the exit code, which is known to be unreliable.
 """
 acceptance_criteria = [
   "A headless prompt run captures raw output and reports termination",
@@ -287,7 +293,7 @@ scores = { d = 5, b = 9, u = 9 }
 scored_at = "2026-05-20"
 created_at = "2026-05-20"
 body = """
-Implement the supervised process that owns one job end to end — model it as a `gen_statem` moving through `dispatched → running → verifying → {done | failed}`. It creates the worktree, spawns the adapter, waits for termination, runs the verification stack, and settles on a verdict. Crash isolation (a failed run never touches siblings), a per-run timeout, and external cancellation. The run state must be observable. Completing this task is the v0.1 core loop working end to end for a single task.
+Implement the supervised process that owns one job end to end — model it as a `gen_statem` moving through `dispatched → running → verifying → {done | failed}`. It creates the worktree, spawns the adapter, waits for termination, runs the verification stack, and settles on a verdict. Crash isolation (a failed run never touches siblings), a per-run timeout, and external cancellation. The run state must be observable. Completing this task is the single-agent core loop working end to end for one task; the contract-proof bundle (conformance suite + Codex adapter) then proves the adapter contract holds on a second agent.
 """
 acceptance_criteria = [
   "One job = one supervised `gen_statem` with observable state",
@@ -363,9 +369,9 @@ acceptance_criteria = [
 
 [[task]]
 id = "12"
-phase = 4
-bundle = "multi-agent"
-milestone = "v0_3"
+phase = 2
+bundle = "contract-proof"
+milestone = "v0_1"
 status = "pending"
 depends_on = ["4"]
 title = "Reusable adapter conformance test suite"
@@ -373,12 +379,12 @@ scores = { d = 4, b = 7, u = 7 }
 scored_at = "2026-05-20"
 created_at = "2026-05-20"
 body = """
-Build a reusable test module every `AgentAdapter` implementation must pass — exercising invocation, raw-output capture, termination detection, timeout, and cancellation. Run the Claude adapter against it. This suite is the gate every later adapter (Cursor, Codex, Grok, ACP) is held to: a leak gets fixed in the behaviour, not patched around in the adapter.
+Build a reusable test module every `AgentAdapter` implementation must pass — exercising invocation, raw-output capture, termination detection, timeout, and adapter-level cancellation (the behaviour's `terminate` callback killing an in-flight run and releasing its Port/process). This is adapter-scope only: external cancellation *orchestration* — a caller telling the running system to cancel a job — is the supervised lifecycle's concern (Task 8) and is out of scope here. Run the Claude adapter against the suite. This suite is the gate Codex and every later adapter (Cursor, Grok, ACP) are held to: a leak gets fixed in the behaviour, not patched around in the adapter.
 """
 acceptance_criteria = [
   "A shared conformance module parameterized by adapter",
   "The Claude adapter passes the full suite",
-  "Invocation, capture, termination, timeout, and cancellation are all covered",
+  "Invocation, capture, termination, timeout, and adapter-level cancellation (`terminate` kills an in-flight run) are all covered",
 ]
 
 [[task]]
@@ -394,7 +400,7 @@ scores = { d = 6, b = 6, u = 6 }
 scored_at = "2026-05-20"
 created_at = "2026-05-20"
 body = """
-Implement the Cursor adapter — drive `cursor-agent` in headless/print mode over Ports (no Elixir SDK exists), capture raw output, declare its capabilities. This adapter is the proof that the `AgentAdapter` behaviour holds for an agent it was not first designed against — it must pass the conformance suite unchanged.
+Implement the Cursor adapter — drive `cursor-agent` in headless/print mode over Ports (no Elixir SDK exists), capture raw output, declare its capabilities. It extends the contract — already proven in Phase 2 against Claude and Codex — to a third agent, and must pass the conformance suite unchanged.
 """
 acceptance_criteria = [
   "A Cursor run captures raw output and reports termination",
@@ -404,22 +410,22 @@ acceptance_criteria = [
 
 [[task]]
 id = "14"
-phase = 4
-bundle = "multi-agent"
-milestone = "v0_3"
+phase = 2
+bundle = "contract-proof"
+milestone = "v0_1"
 status = "pending"
 depends_on = ["12"]
-markers = ["parallel"]
 title = "Codex headless adapter"
 scores = { d = 5, b = 5, u = 5 }
 scored_at = "2026-05-20"
 created_at = "2026-05-20"
 body = """
-Implement the Codex adapter — drive `codex exec` over Ports (or the `codex_sdk` hex package if it proves a clean fit), capture raw output, declare capabilities. Must pass the conformance suite.
+Implement the Codex adapter — drive `codex exec` over Ports, capture raw output, declare capabilities. This is harness's second adapter and the first real test of the `AgentAdapter` contract: Codex's invocation (`codex exec --json`) is the most different from Claude's, so building it now — while only the Claude adapter depends on the behaviour — shakes out any Claude-specific leak before Phase 3's resilience layer couples to the contract. Must pass the conformance suite unchanged — a leak is fixed in the behaviour, not patched around in the adapter.
 """
 acceptance_criteria = [
   "A Codex run captures raw output and reports termination",
   "The adapter passes the conformance suite unchanged",
+  "Any abstraction leak surfaced is fixed in the behaviour, not the adapter",
 ]
 
 [[task]]

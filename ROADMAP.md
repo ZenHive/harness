@@ -32,9 +32,9 @@
 
 ---
 
-## Phase 2: Single-Agent Core Loop
+## Phase 2: Core Loop & Contract Proof
 
-> The loop working end to end for one task, one agent: the Claude headless adapter, a worktree per job, rmap task ingestion, the verification runner, and the supervised `gen_statem` that drives them to a verdict.
+> The loop working end to end, then proven against a second agent. The Claude headless adapter, a worktree per job, rmap task ingestion, the verification runner, and the supervised `gen_statem` that drives them to a verdict — then the conformance suite and the Codex adapter, a second implementor that shakes out any Claude-specific leak in the `AgentAdapter` contract before Phase 3's resilience layer couples to it.
 
 <!-- TASKS:BEGIN phase=2 -->
 | Task | Status | Notes |
@@ -44,6 +44,8 @@
 | Task 6 `[P]` | ⬜ | 🎁 **core-loop** · 🚀 **v0_1** · rmap task ingestion [D:3/B:7/U:7 → Eff:2.33] 🎯 |
 | Task 7 `[P]` | ⬜ | 🎁 **core-loop** · 🚀 **v0_1** · Verification runner — run the target project's check stack [D:5/B:9/U:8 → Eff:1.7] 🚀 |
 | Task 8 | ⬜ | 🎁 **core-loop** · 🚀 **v0_1** · Supervised run lifecycle process [D:5/B:9/U:9 → Eff:1.8] 🚀 |
+| Task 12 | ⬜ | 🎁 **contract-proof** · 🚀 **v0_1** · Reusable adapter conformance test suite [D:4/B:7/U:7 → Eff:1.75] 🚀 |
+| Task 14 | ⬜ | 🎁 **contract-proof** · 🚀 **v0_1** · Codex headless adapter [D:5/B:5/U:5 → Eff:1.0] 📋 |
 <!-- TASKS:END -->
 
 ---
@@ -64,14 +66,12 @@
 
 ## Phase 4: Multi-Agent & Quota Fail-over
 
-> Prove the abstraction holds — Cursor, Codex, and Grok adapters behind the same behaviour, gated by the conformance suite — and a capability + availability registry that fails a job over to another agent when one hits its subscription quota.
+> Breadth on the proven contract — the Cursor and Grok adapters behind the same behaviour, held to the conformance suite — and a capability + availability registry that fails a job over to another agent when one hits its subscription quota.
 
 <!-- TASKS:BEGIN phase=4 -->
 | Task | Status | Notes |
 |------|--------|-------|
-| Task 12 | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Reusable adapter conformance test suite [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 | Task 13 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Cursor headless adapter [D:6/B:6/U:6 → Eff:1.0] 📋 |
-| Task 14 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Codex headless adapter [D:5/B:5/U:5 → Eff:1.0] 📋 |
 | Task 15 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Grok headless adapter [D:4/B:5/U:5 → Eff:1.25] 📋 |
 | Task 16 | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Capability + availability registry with quota fail-over [D:5/B:7/U:6 → Eff:1.3] 📋 |
 <!-- TASKS:END -->

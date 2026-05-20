@@ -29,7 +29,7 @@ It is not a wrapper around one agent. The `AgentAdapter` behaviour (Phase 1, Tas
 
 - **Elixir / OTP, not TypeScript.** The harness *is* N concurrent supervised agent runs that need crash isolation, timeouts, retries, and observable state — exactly what OTP provides. One run = one supervised `gen_statem`; one batch = a `DynamicSupervisor`. Building in TS would mean re-implementing supervision by hand.
 - **The core loop.** rmap task in → dispatch to a headless agent in an isolated worktree → run the target project's check stack against the result → green ⇒ done, red ⇒ report (later: feed failures back and repair). The verification stack — not the agent — is the grader, which keeps implementer and evaluator separate (global `CLAUDE.md` § Evaluator Separation).
-- **Thin adapter pattern.** One adapter per agent — invocation + raw capture + a capability declaration, nothing else. Adapters shell out to each agent's headless mode via Ports (or a hex SDK where a solid one exists). Every adapter must pass the shared conformance suite (Task 12) *unchanged* — a leak gets fixed in the behaviour, not patched around in the adapter.
+- **Thin adapter pattern.** One adapter per agent — invocation + raw capture + a capability declaration, nothing else. Adapters shell out to each agent's headless mode over uniform OTP Ports — no per-agent SDK (see § "Orchestration Library" for why). Every adapter must pass the shared conformance suite (Task 12) *unchanged* — a leak gets fixed in the behaviour, not patched around in the adapter.
 - **No agent-output parsing.** Raw passthrough is simpler *and* more robust: each agent ships 40+ releases, so a JSON-format change is absorbed by the AI reading the transcript, not by breaking a harness normalization layer.
 - **Path discipline** (see global `CLAUDE.md` § Architecture Drives Design): raw-output capture is hot-path-adjacent — keep it allocation-light; run/batch lifecycle is warm-path OTP state; the MCP/CLI surface is cold-path.
 
@@ -37,16 +37,20 @@ It is not a wrapper around one agent. The `AgentAdapter` behaviour (Phase 1, Tas
 
 With the normalized event model cut, the harness core is textbook OTP — a Port per run, a `gen_statem` per run, a `DynamicSupervisor` for batches. Adopting a niche orchestration library to provide that adds risk, not leverage. Task 2 is now a quick confirmation skim of the candidates (`opal`, `gen_agent` + `gen_agent_ensemble`, `altar_ai`, `ex_mcp`) — expected outcome **build thin core**, borrowing design ideas only.
 
-Per global `CLAUDE.md` § "Verify External Code Reviews for Correctness" — these are niche, low-download packages: **do not add any of them as a dependency.** The per-agent SDKs `claude_code` and `codex_sdk` are more mature (40+ releases each) and may be safe to depend on directly for the Claude / Codex adapters.
+Per global `CLAUDE.md` § "Verify External Code Reviews for Correctness" — these are niche, low-download packages: **do not add any of them as a dependency.**
+
+The per-agent SDKs `claude_code` and `codex_sdk` are more mature (40+ releases each) — but maturity addresses dependency *risk*, not *value*. An SDK's headline contribution is a normalized event model over the agent's output; harness's raw-passthrough design (§ "No agent-output parsing") deliberately discards exactly that, and OTP Ports already spawn the binary with the termination + idle-stream signals harness needs. Cursor and Grok have no Elixir SDK regardless. So **default to uniform Ports for every adapter** — one invocation strategy behind the behaviour, not two. Task 2 confirms whether `claude_code` / `codex_sdk` are CLI wrappers (skip them) or native reimplementations that drop the external-binary dependency (the only case that would justify the dep).
 
 ## Agent Headless Entry Points (domain reference)
 
 | Agent | Headless invocation | Raw output format |
 |---|---|---|
-| Claude Code | `claude -p` (or the `claude_code` hex SDK) | `--output-format stream-json` |
+| Claude Code | `claude -p` | `--output-format stream-json` |
 | Cursor | `cursor-agent -p` | `--output-format stream-json` |
-| Codex | `codex exec` (or the `codex_sdk` hex SDK) | `--json` |
+| Codex | `codex exec` | `--json` |
 | Grok | `grok -p` / the `agent` subcommand | `--output-format streaming-json` |
+
+All four are driven over OTP Ports — uniform invocation strategy, no per-agent SDK (see § "Orchestration Library").
 
 harness captures these **raw** and passes them through — it does not parse or normalize them. Known gotcha: the headless **exit code is unreliable**. Derive *termination* from the process / Port closing plus a timeout guard; derive *success* from harness's own verification stack — never from `$?`, never from the agent's self-reported result.
 
