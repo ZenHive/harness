@@ -1,0 +1,709 @@
+{
+  "schema_version": 2,
+  "project": "harness",
+  "default_branch": "development",
+  "vision": "An OTP-native task-execution engine an AI orchestrator drives end to end: it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent running in an isolated worktree, runs the target project's own check stack against the result, and reports verified outcomes back over an agent-shaped surface (MCP tools / JSON CLI).",
+  "focus": {
+    "phase": 1
+  },
+  "phases": {
+    "1": {
+      "name": "Foundation",
+      "order": 1,
+      "status": "pending"
+    },
+    "2": {
+      "name": "Single-Agent Core Loop",
+      "order": 2,
+      "status": "pending"
+    },
+    "3": {
+      "name": "Batch & Resilience",
+      "order": 3,
+      "status": "pending"
+    },
+    "4": {
+      "name": "Multi-Agent & Quota Fail-over",
+      "order": 4,
+      "status": "pending"
+    },
+    "5": {
+      "name": "Surface & Observability",
+      "order": 5,
+      "status": "pending"
+    },
+    "6": {
+      "name": "Deferred",
+      "order": 6,
+      "status": "pending"
+    }
+  },
+  "bundles": {
+    "claude-adapter": {
+      "phase": 2,
+      "order": 1,
+      "description": "Claude Code headless adapter"
+    },
+    "contract": {
+      "phase": 1,
+      "order": 2,
+      "description": "Orchestration-library evaluation; the AgentAdapter behaviour"
+    },
+    "core-loop": {
+      "phase": 2,
+      "order": 2,
+      "description": "Worktree lifecycle, rmap ingestion, verification runner, supervised run lifecycle"
+    },
+    "deferred": {
+      "phase": 6,
+      "order": 1,
+      "description": "Parked work — revisit after the core milestones ship"
+    },
+    "multi-agent": {
+      "phase": 4,
+      "order": 1,
+      "description": "Conformance suite, Cursor/Codex/Grok adapters, capability + availability registry"
+    },
+    "resilience": {
+      "phase": 3,
+      "order": 1,
+      "description": "Batch fan-out, failure-classified retry, autonomous repair loop"
+    },
+    "scaffold": {
+      "phase": 1,
+      "order": 1,
+      "description": "mix project scaffold + standard dep stack"
+    },
+    "surface": {
+      "phase": 5,
+      "order": 1,
+      "description": "Agent-shaped MCP/CLI surface, human status view, run logging"
+    }
+  },
+  "milestones": {
+    "v0_1": {
+      "name": "Single-agent core loop",
+      "description": "One rmap task driven end to end — Claude headless, isolated worktree, verified result",
+      "order": 1,
+      "status": "active",
+      "target_version": "0.1.0"
+    },
+    "v0_2": {
+      "name": "Batch & resilience",
+      "description": "Concurrent batch fan-out, failure-classified retry, autonomous repair",
+      "order": 2,
+      "status": "pending",
+      "target_version": "0.2.0"
+    },
+    "v0_3": {
+      "name": "Multi-agent & quota fail-over",
+      "description": "Cursor, Codex, Grok adapters behind one contract; quota-aware routing",
+      "order": 3,
+      "status": "pending",
+      "target_version": "0.3.0"
+    },
+    "v0_4": {
+      "name": "Agent-facing surface",
+      "description": "MCP tools + JSON CLI, status view, run logging",
+      "order": 4,
+      "status": "pending",
+      "target_version": "0.4.0"
+    }
+  },
+  "task": [
+    {
+      "id": "1",
+      "phase": 1,
+      "bundle": "scaffold",
+      "milestone": "v0_1",
+      "status": "pending",
+      "title": "Scaffold the OTP application + standard dep stack",
+      "scores": {
+        "d": 2,
+        "b": 5,
+        "u": 7
+      },
+      "eff": 3.0,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "`mix compile` is clean",
+        "`mix test` runs the default suite green",
+        "Styler is first in the `.formatter.exs` plugins list",
+        "The supervision tree starts under `Application`"
+      ],
+      "body": "Scaffold `harness` as an Elixir OTP application with a supervision tree — it orchestrates long-lived agent runs, so it needs one. Add the standard project dep stack and tooling per the global Elixir setup conventions (Styler, Credo, Dialyxir, Doctor, ex_unit_json, dialyzer_json, descripex, Sobelow, and Reach as a dev/test analysis dep), wired into `mix.exs`, `.formatter.exs`, and `cli/0` preferred_envs. Generate the baseline `.gitignore`, `README.md`, and `CHANGELOG.md`.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "2",
+      "phase": 1,
+      "bundle": "contract",
+      "milestone": "v0_1",
+      "status": "pending",
+      "title": "Evaluate orchestration libraries — confirm thin-core",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.67,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Each candidate skimmed for whether it offers anything the thin OTP core doesn't",
+        "A written build-vs-adopt decision with rationale",
+        "Any borrowed design ideas are recorded with their source"
+      ],
+      "out_of_scope": [
+        "Writing any adapter or orchestration code — this task is evaluation only",
+        "Adding any candidate library as a dependency"
+      ],
+      "body": "Skim the source and docs of the candidate Elixir orchestration libraries — `opal`, `gen_agent` + `gen_agent_ensemble`, `altar_ai`, `ex_mcp`. The harness core is deliberately thin — a Port per run, a `gen_statem` per run, a `DynamicSupervisor` for batches, all stock OTP — and harness no longer needs a normalized event model, so the expected outcome is build-thin-core rather than adopt. Confirm that, and record any design ideas worth borrowing. Record the decision in a concept doc.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "3",
+      "phase": 1,
+      "bundle": "contract",
+      "milestone": "v0_1",
+      "status": "pending",
+      "title": "Define the AgentAdapter behaviour — invocation + capture",
+      "scores": {
+        "d": 3,
+        "b": 9,
+        "u": 9
+      },
+      "eff": 3.0,
+      "markers": [],
+      "depends_on": [
+        "2"
+      ],
+      "acceptance_criteria": [
+        "An `AgentAdapter` behaviour with documented callbacks for invoke / capture / terminate",
+        "Raw agent output is passed through untouched — no per-agent event normalization",
+        "A capability declaration each adapter fills in",
+        "Nothing Claude-specific leaks into the contract"
+      ],
+      "out_of_scope": [
+        "Building any concrete adapter",
+        "Any normalized or typed event model — explicitly cut"
+      ],
+      "body": "Define the core contract every agent adapter implements — a `behaviour` that, given a task spec plus run options, builds the agent's headless command line, spawns it, detects termination, and hands back the raw captured output plus wall-clock duration. Deliberately no normalized event model: harness does not parse or remap each agent's JSON — the consumer is an AI that reads raw transcripts natively, and harness derives run success from its own verification stack, not the agent's self-reported result. The behaviour also declares per-adapter capabilities (session resume, permission modes, and so on). Contract only — no concrete adapter.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "4",
+      "phase": 2,
+      "bundle": "claude-adapter",
+      "milestone": "v0_1",
+      "status": "pending",
+      "title": "Build the Claude Code headless adapter",
+      "scores": {
+        "d": 6,
+        "b": 9,
+        "u": 9
+      },
+      "eff": 1.5,
+      "markers": [],
+      "depends_on": [
+        "3"
+      ],
+      "acceptance_criteria": [
+        "A headless prompt run captures raw output and reports termination",
+        "Working directory and permission mode are wired",
+        "Session resume works across two runs",
+        "Termination is derived from process exit + timeout, not `$?`"
+      ],
+      "body": "Implement the first concrete adapter — driving Claude Code headlessly via `claude -p` over Ports (or the `claude_code` hex SDK if the Phase-1 evaluation favors it). Capture the raw output stream and hand it back unparsed. Wire working directory, permission mode, and session resume/continue. Detect termination from the process/Port closing plus a timeout guard — never from the exit code, which is known to be unreliable.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "5",
+      "phase": 2,
+      "bundle": "core-loop",
+      "milestone": "v0_1",
+      "status": "pending",
+      "title": "Worktree-per-job lifecycle",
+      "scores": {
+        "d": 4,
+        "b": 7,
+        "u": 8
+      },
+      "eff": 1.88,
+      "markers": [
+        "parallel"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Each run gets its own isolated git worktree",
+        "Concurrent runs do not collide on the working tree",
+        "Worktrees are cleaned up on success and retained on failure (configurable)",
+        "A crashed run does not leak an orphan worktree"
+      ],
+      "body": "harness runs every job in an isolated git worktree so concurrent agent runs never collide and the verification stack has a clean checkout to grade. Implement worktree creation per run, dispatch of the agent into it, and a keep-or-tear-down decision on completion (retain on failure for inspection; configurable). This is the automation of the repo's existing worktree-per-branch convention.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "6",
+      "phase": 2,
+      "bundle": "core-loop",
+      "milestone": "v0_1",
+      "status": "pending",
+      "title": "rmap task ingestion",
+      "scores": {
+        "d": 3,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 2.33,
+      "markers": [
+        "parallel"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "harness fetches a task — by id, or the next pending one — from the rmap roadmap",
+        "The task renders to an agent-ready prompt suitable for the adapter",
+        "Ingestion reads the rmap source — it does not duplicate the roadmap"
+      ],
+      "body": "Let harness pull a task straight from the rmap roadmap — read `roadmap/tasks.toml` / `roadmap/data.json` (or shell out to `rmap`) and render the task as a ready-to-run agent prompt. `rmap delegate <id> --to <agent>` already emits a paste-ready prompt; harness consumes that instead of a human copy-pasting it. This is the input half of the loop — the roadmap becomes the job queue.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "7",
+      "phase": 2,
+      "bundle": "core-loop",
+      "milestone": "v0_1",
+      "status": "pending",
+      "title": "Verification runner — run the target project's check stack",
+      "scores": {
+        "d": 5,
+        "b": 9,
+        "u": 8
+      },
+      "eff": 1.7,
+      "markers": [
+        "parallel"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A configurable list of check commands runs against a given worktree",
+        "An Elixir preset is provided as the default check set",
+        "Each check's pass/fail and output are captured into a structured verdict",
+        "Any red check makes the overall verdict red"
+      ],
+      "out_of_scope": [
+        "Feeding failures back to the agent — that is the autonomous repair loop task"
+      ],
+      "body": "After an agent finishes, harness runs the target project's own check stack against its worktree and produces a structured pass/fail — this is what makes \"did the job succeed?\" objective and agent-agnostic, instead of trusting the agent's self-report. The check set is a configurable list of commands; ship an Elixir preset (`mix test.json`, `mix dialyzer.json`, doctor, sobelow, credo). Aggregate each check's result into one verdict the run lifecycle can gate on.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "8",
+      "phase": 2,
+      "bundle": "core-loop",
+      "milestone": "v0_1",
+      "status": "pending",
+      "title": "Supervised run lifecycle process",
+      "scores": {
+        "d": 5,
+        "b": 9,
+        "u": 9
+      },
+      "eff": 1.8,
+      "markers": [],
+      "depends_on": [
+        "4",
+        "5",
+        "7"
+      ],
+      "acceptance_criteria": [
+        "One job = one supervised `gen_statem` with observable state",
+        "It drives worktree → adapter → verification and settles on a verdict",
+        "A crashing run is isolated from siblings",
+        "Per-run timeout and external cancellation both work"
+      ],
+      "body": "Implement the supervised process that owns one job end to end — model it as a `gen_statem` moving through `dispatched → running → verifying → {done | failed}`. It creates the worktree, spawns the adapter, waits for termination, runs the verification stack, and settles on a verdict. Crash isolation (a failed run never touches siblings), a per-run timeout, and external cancellation. The run state must be observable. Completing this task is the v0.1 core loop working end to end for a single task.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "9",
+      "phase": 3,
+      "bundle": "resilience",
+      "milestone": "v0_2",
+      "status": "pending",
+      "title": "Batch orchestrator with concurrency cap",
+      "scores": {
+        "d": 5,
+        "b": 9,
+        "u": 8
+      },
+      "eff": 1.7,
+      "markers": [],
+      "depends_on": [
+        "8"
+      ],
+      "acceptance_criteria": [
+        "A batch of N tasks runs under a concurrency cap of M",
+        "Partial failure is tolerated — the batch completes and reports per-task status",
+        "Per-task verdicts are collected into one batch result"
+      ],
+      "body": "Implement the batch layer — fan a set of tasks out across run-lifecycle processes under a `DynamicSupervisor`, with a configurable concurrency cap, and collect the per-task verdicts. Tolerate partial failure: one failed or red run must not abort the batch; the batch result reports every task's outcome. A batch is typically an rmap bundle or an `rmap next-bundle` result.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "10",
+      "phase": 3,
+      "bundle": "resilience",
+      "milestone": "v0_2",
+      "status": "pending",
+      "title": "Retry policy with failure classification",
+      "scores": {
+        "d": 4,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 1.63,
+      "markers": [
+        "parallel"
+      ],
+      "depends_on": [
+        "8"
+      ],
+      "acceptance_criteria": [
+        "Failures are classified as transient, quota-exhausted, or terminal",
+        "Transient failures retry with capped exponential backoff",
+        "Quota exhaustion stops retrying that agent at once — no backoff loop against a multi-hour wall",
+        "Terminal failures are not retried",
+        "The policy is configurable per batch or per run"
+      ],
+      "body": "Add a per-run retry policy that first classifies the failure. Transient failures (a process crash, a flaky check) retry with capped exponential backoff. Quota exhaustion — a subscription agent hitting its cap — is NOT retryable on a useful timescale (the reset window is hours); it must stop retrying that agent immediately, marked for fail-over rather than backoff. Genuine terminal task failures are never retried. Make the policy injectable per batch or per run.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "11",
+      "phase": 3,
+      "bundle": "resilience",
+      "milestone": "v0_2",
+      "status": "pending",
+      "title": "Autonomous repair loop",
+      "scores": {
+        "d": 5,
+        "b": 8,
+        "u": 7
+      },
+      "eff": 1.5,
+      "markers": [
+        "parallel"
+      ],
+      "depends_on": [
+        "7",
+        "8"
+      ],
+      "acceptance_criteria": [
+        "A red verdict triggers a repair attempt — failures fed back via session resume",
+        "The loop stops on green or at the attempt cap",
+        "A quota or terminal failure ends the loop instead of burning attempts",
+        "The number of repair attempts is configurable"
+      ],
+      "body": "Close the verify loop. When verification comes back red, feed the failing checks' output back to the same agent via session resume and re-run, up to a configurable attempt cap. The objective check stack is the grader, so an agent iterating against it is not self-grading. Stop on green, on the attempt cap, or on a non-repairable failure class (e.g. quota exhaustion — hand to fail-over instead).\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "12",
+      "phase": 4,
+      "bundle": "multi-agent",
+      "milestone": "v0_3",
+      "status": "pending",
+      "title": "Reusable adapter conformance test suite",
+      "scores": {
+        "d": 4,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 1.75,
+      "markers": [],
+      "depends_on": [
+        "4"
+      ],
+      "acceptance_criteria": [
+        "A shared conformance module parameterized by adapter",
+        "The Claude adapter passes the full suite",
+        "Invocation, capture, termination, timeout, and cancellation are all covered"
+      ],
+      "body": "Build a reusable test module every `AgentAdapter` implementation must pass — exercising invocation, raw-output capture, termination detection, timeout, and cancellation. Run the Claude adapter against it. This suite is the gate every later adapter (Cursor, Codex, Grok, ACP) is held to: a leak gets fixed in the behaviour, not patched around in the adapter.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "13",
+      "phase": 4,
+      "bundle": "multi-agent",
+      "milestone": "v0_3",
+      "status": "pending",
+      "title": "Cursor headless adapter",
+      "scores": {
+        "d": 6,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 1.0,
+      "markers": [
+        "parallel"
+      ],
+      "depends_on": [
+        "12"
+      ],
+      "acceptance_criteria": [
+        "A Cursor run captures raw output and reports termination",
+        "The adapter passes the conformance suite with no changes to the suite",
+        "Any abstraction leak is fixed in the behaviour, not patched around"
+      ],
+      "body": "Implement the Cursor adapter — drive `cursor-agent` in headless/print mode over Ports (no Elixir SDK exists), capture raw output, declare its capabilities. This adapter is the proof that the `AgentAdapter` behaviour holds for an agent it was not first designed against — it must pass the conformance suite unchanged.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "14",
+      "phase": 4,
+      "bundle": "multi-agent",
+      "milestone": "v0_3",
+      "status": "pending",
+      "title": "Codex headless adapter",
+      "scores": {
+        "d": 5,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.0,
+      "markers": [
+        "parallel"
+      ],
+      "depends_on": [
+        "12"
+      ],
+      "acceptance_criteria": [
+        "A Codex run captures raw output and reports termination",
+        "The adapter passes the conformance suite unchanged"
+      ],
+      "body": "Implement the Codex adapter — drive `codex exec` over Ports (or the `codex_sdk` hex package if it proves a clean fit), capture raw output, declare capabilities. Must pass the conformance suite.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "15",
+      "phase": 4,
+      "bundle": "multi-agent",
+      "milestone": "v0_3",
+      "status": "pending",
+      "title": "Grok headless adapter",
+      "scores": {
+        "d": 4,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.25,
+      "markers": [
+        "parallel"
+      ],
+      "depends_on": [
+        "12"
+      ],
+      "acceptance_criteria": [
+        "A Grok run captures raw output and reports termination",
+        "The adapter passes the conformance suite with no changes to the suite",
+        "Working directory, permission mode, and session resume are wired"
+      ],
+      "body": "Implement the Grok adapter — drive Grok Build headlessly (`grok -p`, or the `agent` subcommand) over Ports (no Elixir SDK exists), capture raw output. Wire working directory, permission mode, and session resume. Must pass the conformance suite unchanged. Grok-specific extras (`--best-of-n`, `--check`, worktree flags) are surfaced through the capability registry, not the core behaviour.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "16",
+      "phase": 4,
+      "bundle": "multi-agent",
+      "milestone": "v0_3",
+      "status": "pending",
+      "title": "Capability + availability registry with quota fail-over",
+      "scores": {
+        "d": 5,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 1.3,
+      "markers": [],
+      "depends_on": [
+        "13",
+        "14",
+        "15"
+      ],
+      "acceptance_criteria": [
+        "Each adapter declares its capabilities",
+        "A run requesting an unsupported capability is rejected up front, not mid-run",
+        "A quota-exhausted agent is marked unavailable and the job fails over to a capable agent with headroom",
+        "Fail-over routing is observable"
+      ],
+      "body": "Add a registry the orchestrator queries before dispatch. Each adapter declares its capabilities (session resume, permission granularity, MCP/tool config, and so on) so a run requesting an unsupported capability is rejected up front with a clear error. The registry also tracks availability — when an agent hits its subscription quota, the orchestrator routes the job to another agent with headroom instead of failing it. This is the concrete payoff of running multiple adapters.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "17",
+      "phase": 5,
+      "bundle": "surface",
+      "milestone": "v0_4",
+      "status": "pending",
+      "title": "Agent-shaped surface — MCP tools + JSON CLI",
+      "scores": {
+        "d": 6,
+        "b": 8,
+        "u": 8
+      },
+      "eff": 1.33,
+      "markers": [],
+      "depends_on": [
+        "9"
+      ],
+      "acceptance_criteria": [
+        "harness exposes typed MCP tools and a JSON-clean CLI from one `api()` definition",
+        "A caller can dispatch a single task or a batch and choose the target agent",
+        "Switching the target agent requires no code change",
+        "Progressive `describe()` disclosure (L1/L2/L3) works"
+      ],
+      "body": "Build harness's own entry point, shaped for an AI orchestrator as the primary consumer. Annotate harness's public functions with descripex `api()`, build a `Harness.Manifest`, and generate MCP tools via `Descripex.MCP.tools/1` served from harness's own MCP server (over Bandit), with progressive `describe()` disclosure. Provide a JSON-clean CLI from the same `api()` definitions. The target agent is a parameter, not a code change.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "18",
+      "phase": 5,
+      "bundle": "surface",
+      "milestone": "v0_4",
+      "status": "pending",
+      "title": "Human status view",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.67,
+      "markers": [
+        "parallel"
+      ],
+      "depends_on": [
+        "9"
+      ],
+      "acceptance_criteria": [
+        "A human-readable view shows in-flight, green, red, and repairing runs",
+        "It surfaces why a run went red or an agent went unavailable",
+        "It does not require the human to parse raw JSON"
+      ],
+      "body": "A glanceable, human-readable view of harness state — what runs are in flight, what's green, what's red, what's repairing — so the human orchestrator has a window into the fleet without parsing JSON. The primary user is an agent, but the human still orchestrates; this is their dashboard. Keep it simple — a CLI status command or terminal view is enough.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "19",
+      "phase": 5,
+      "bundle": "surface",
+      "milestone": "v0_4",
+      "status": "pending",
+      "title": "Structured run logging + result persistence",
+      "scores": {
+        "d": 5,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.0,
+      "markers": [
+        "parallel"
+      ],
+      "depends_on": [
+        "9"
+      ],
+      "acceptance_criteria": [
+        "Each run emits a structured, queryable log record",
+        "Batch results are persisted and reloadable after the process exits",
+        "A run's failure cause is reconstructable from its record",
+        "The store is pluggable, file-backed by default"
+      ],
+      "body": "Add structured per-run logging (queryable records — agent, task, verdict, duration, repair attempts) and a result store so a finished batch's outcomes survive the process. Records must support the \"understand why something happened\" need — a red verdict, a fail-over, a quota block should all be reconstructable. Keep the store pluggable, file-backed by default; do not couple the core to a database.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "20",
+      "phase": 6,
+      "bundle": "deferred",
+      "status": "pending",
+      "title": "Run telemetry + quota/cost accounting",
+      "scores": {
+        "d": 5,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 0.6,
+      "markers": [],
+      "depends_on": [],
+      "out_of_scope": [
+        "Per-token dollar cost accounting — agents run on flat subscriptions, there is nothing to bill"
+      ],
+      "body": "DEFERRED — out of scope until the core, batch, and multi-agent milestones ship. Subscription agents have no per-token marginal cost, so dollar accounting is meaningless. If this is ever picked up, it is quota-burn telemetry — how close each agent is to its cap, when the window resets — to make fail-over predictive rather than reactive. Revisit only if reactive fail-over (Task 16) proves insufficient.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "21",
+      "phase": 6,
+      "bundle": "deferred",
+      "status": "pending",
+      "title": "ACP transport adapter",
+      "scores": {
+        "d": 7,
+        "b": 5,
+        "u": 3
+      },
+      "eff": 0.57,
+      "markers": [],
+      "depends_on": [],
+      "out_of_scope": [
+        "Any work until ACP has meaningful cross-agent adoption"
+      ],
+      "body": "DEFERRED — speculative. Implement an adapter that speaks the Agent Client Protocol (ACP) via `ex_mcp` as an alternative transport to per-agent shell-outs. Its value depends on ACP adoption across agents; revisit once ACP is broadly supported. If picked up, it ships behind the same `AgentAdapter` behaviour and is held to the conformance suite like any other adapter.\n",
+      "created_at": "2026-05-20",
+      "scored_at": "2026-05-20",
+      "cross_repo": []
+    }
+  ]
+}

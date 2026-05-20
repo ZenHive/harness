@@ -1,0 +1,59 @@
+# harness — CLAUDE.md
+
+@~/.claude/includes/across-instances.md
+@~/.claude/includes/critical-rules.md
+@~/.claude/includes/worktree-workflow.md
+@~/.claude/includes/task-prioritization.md
+@~/.claude/includes/task-writing.md
+@~/.claude/includes/rmap.md
+@~/.claude/includes/workflow-philosophy.md
+@~/.claude/includes/web-command.md
+@~/.claude/includes/elixir-setup.md
+@~/.claude/includes/ex-unit-json.md
+@~/.claude/includes/dialyzer-json.md
+@~/.claude/includes/code-style.md
+@~/.claude/includes/development-commands.md
+@~/.claude/includes/development-philosophy.md
+@~/.claude/includes/agent-economy.md
+@~/.claude/includes/reach.md
+
+## What This Is
+
+`harness` is an OTP-native Elixir engine an **AI orchestrator drives end to end**: it pulls a task from the rmap roadmap, dispatches it to a **headless coding agent** — Claude Code, Cursor, Codex, Grok — running in an isolated git worktree, runs the target project's own check stack against the result, and reports a *verified* outcome back over an agent-shaped surface (MCP tools / JSON CLI).
+
+The primary user is an AI agent, not a human — harness is the OTP-native automation of the delegate → verify → repair loop this repo already runs by hand via the `cloud-delegation` skills.
+
+It is not a wrapper around one agent. The `AgentAdapter` behaviour (Phase 1, Task 3) is the contract, but a deliberately thin one — it *invokes* an agent and *captures its raw output*, nothing more. There is **no normalized event model**: the consumer is an AI that reads each agent's raw JSON natively, and harness decides "did the job succeed?" from its **own verification stack**, never from the agent's self-reported result.
+
+## Architecture
+
+- **Elixir / OTP, not TypeScript.** The harness *is* N concurrent supervised agent runs that need crash isolation, timeouts, retries, and observable state — exactly what OTP provides. One run = one supervised `gen_statem`; one batch = a `DynamicSupervisor`. Building in TS would mean re-implementing supervision by hand.
+- **The core loop.** rmap task in → dispatch to a headless agent in an isolated worktree → run the target project's check stack against the result → green ⇒ done, red ⇒ report (later: feed failures back and repair). The verification stack — not the agent — is the grader, which keeps implementer and evaluator separate (global `CLAUDE.md` § Evaluator Separation).
+- **Thin adapter pattern.** One adapter per agent — invocation + raw capture + a capability declaration, nothing else. Adapters shell out to each agent's headless mode via Ports (or a hex SDK where a solid one exists). Every adapter must pass the shared conformance suite (Task 12) *unchanged* — a leak gets fixed in the behaviour, not patched around in the adapter.
+- **No agent-output parsing.** Raw passthrough is simpler *and* more robust: each agent ships 40+ releases, so a JSON-format change is absorbed by the AI reading the transcript, not by breaking a harness normalization layer.
+- **Path discipline** (see global `CLAUDE.md` § Architecture Drives Design): raw-output capture is hot-path-adjacent — keep it allocation-light; run/batch lifecycle is warm-path OTP state; the MCP/CLI surface is cold-path.
+
+## Orchestration Library — Build a Thin Core (Phase 1, Task 2)
+
+With the normalized event model cut, the harness core is textbook OTP — a Port per run, a `gen_statem` per run, a `DynamicSupervisor` for batches. Adopting a niche orchestration library to provide that adds risk, not leverage. Task 2 is now a quick confirmation skim of the candidates (`opal`, `gen_agent` + `gen_agent_ensemble`, `altar_ai`, `ex_mcp`) — expected outcome **build thin core**, borrowing design ideas only.
+
+Per global `CLAUDE.md` § "Verify External Code Reviews for Correctness" — these are niche, low-download packages: **do not add any of them as a dependency.** The per-agent SDKs `claude_code` and `codex_sdk` are more mature (40+ releases each) and may be safe to depend on directly for the Claude / Codex adapters.
+
+## Agent Headless Entry Points (domain reference)
+
+| Agent | Headless invocation | Raw output format |
+|---|---|---|
+| Claude Code | `claude -p` (or the `claude_code` hex SDK) | `--output-format stream-json` |
+| Cursor | `cursor-agent -p` | `--output-format stream-json` |
+| Codex | `codex exec` (or the `codex_sdk` hex SDK) | `--json` |
+| Grok | `grok -p` / the `agent` subcommand | `--output-format streaming-json` |
+
+harness captures these **raw** and passes them through — it does not parse or normalize them. Known gotcha: the headless **exit code is unreliable**. Derive *termination* from the process / Port closing plus a timeout guard; derive *success* from harness's own verification stack — never from `$?`, never from the agent's self-reported result.
+
+## Why `reach.md` Is Imported
+
+The harness core is unusually OTP-dense: supervision trees, a per-run `gen_statem`/GenServer, a `DynamicSupervisor` batch layer, and independence reasoning when deriving batches. `mix reach.otp` (state-machine analysis, dead replies, missing handlers, supervision topology) and `Reach.independent?` are directly on-point. Reach is a dev/test analysis dependency — `runtime: false`, not shipped.
+
+## Status
+
+Greenfield. No `mix` project exists yet — Phase 1, Task 1 runs `mix new` and scaffolds the dep stack. `ROADMAP.md` (rendered from `roadmap/tasks.toml` by `rmap`) is the source of truth for what to build next: start with `rmap next`.
