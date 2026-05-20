@@ -39,6 +39,7 @@ With the normalized event model cut, the harness core is textbook OTP — a Port
 
 - **None of the four orchestration libraries spawns or supervises an external OS process** — there is no Port in any of them. They *implement* or *coordinate* in-process LLM agents; harness *orchestrates external* headless CLIs. Orthogonal problem. Three of the five candidates are single-release, 0–4-star packages — niche, low-download, **do not add any as a dependency** (global `CLAUDE.md` § "Verify External Code Reviews for Correctness").
 - **`claude_code` and `codex_sdk` are both CLI wrappers**, not native reimplementations — they still require (`codex`) or auto-install + spawn (`claude`) the external binary. An SDK's headline contribution is a normalized event model over the agent's output; harness's raw-passthrough design (§ "No agent-output parsing") deliberately discards exactly that, and OTP Ports already spawn the binary with the termination + idle-stream signals harness needs. So **uniform Ports for every adapter** — one invocation strategy behind the behaviour, not two.
+- **Cold-path MCP surface: hand-roll the JSON-RPC endpoint, not `ex_mcp`.** `descripex` (already in the dep stack) generates the tool list via `Descripex.MCP.tools/1`; what remains is only the transport/handshake half — a bounded JSON-RPC-over-stdio-or-Plug endpoint, cheaper to own than to version-track a dep on a consumer-facing surface.
 
 ## Agent Headless Entry Points (domain reference)
 
