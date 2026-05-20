@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 1 — Scaffold the OTP application + standard dep stack, Task 2 — Evaluate orchestration libraries — confirm thin-core, Task 3 — Define the AgentAdapter behaviour — invocation + capture on 2026-05-20
 
-**Up next:** Task 6 — rmap task ingestion [D:3/B:7/U:7 → Eff:2.33] 🎯
+**Up next:** Task 7 — Verification runner — run the target project's check stack [D:5/B:9/U:8 → Eff:1.7] 🚀
 <!-- FOCUS:END -->
 
 ---
@@ -40,8 +40,8 @@
 | Task | Status | Notes |
 |------|--------|-------|
 | Task 4 | ⬜ | 🎁 **claude-adapter** · 🚀 **v0_1** · Build the Claude Code headless adapter [D:6/B:9/U:9 → Eff:1.5] 🚀 |
-| Task 5 `[P]` | ⬜ | 🎁 **core-loop** · 🚀 **v0_1** · Worktree-per-job lifecycle [D:4/B:7/U:8 → Eff:1.88] 🚀 |
-| Task 6 `[P]` | ⬜ | 🎁 **core-loop** · 🚀 **v0_1** · rmap task ingestion [D:3/B:7/U:7 → Eff:2.33] 🎯 |
+| Task 5 `[P]` | ✅ | 🎁 **core-loop** · 🚀 **v0_1** · Worktree-per-job lifecycle [D:4/B:7/U:8 → Eff:1.88] 🚀 |
+| Task 6 `[P]` | ✅ | 🎁 **core-loop** · 🚀 **v0_1** · rmap task ingestion [D:3/B:7/U:7 → Eff:2.33] 🎯 |
 | Task 7 `[P]` | ⬜ | 🎁 **core-loop** · 🚀 **v0_1** · Verification runner — run the target project's check stack [D:5/B:9/U:8 → Eff:1.7] 🚀 |
 | Task 8 | ⬜ | 🎁 **core-loop** · 🚀 **v0_1** · Supervised run lifecycle process [D:5/B:9/U:9 → Eff:1.8] 🚀 |
 | Task 12 | ⬜ | 🎁 **contract-proof** · 🚀 **v0_1** · Reusable adapter conformance test suite [D:4/B:7/U:7 → Eff:1.75] 🚀 |
@@ -74,6 +74,7 @@
 | Task 13 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Cursor headless adapter [D:6/B:6/U:6 → Eff:1.0] 📋 |
 | Task 15 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Grok headless adapter [D:4/B:5/U:5 → Eff:1.25] 📋 |
 | Task 16 | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Capability + availability registry with quota fail-over [D:5/B:7/U:6 → Eff:1.3] 📋 |
+| Task 22 | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Inject a harness-owned rule set into agent invocations [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 <!-- TASKS:END -->
 
 ---

@@ -5,16 +5,23 @@ defmodule Harness.Application do
 
   use Application
 
+  @spec start(Application.start_type(), term()) :: {:ok, pid()} | {:error, term()}
   @impl true
   def start(_type, _args) do
-    children = [
-      # Starts a worker by calling: Harness.Worker.start_link(arg)
-      # {Harness.Worker, arg}
-    ]
-
-    # See https://hexdocs.pm/elixir/Supervisor.html
-    # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Harness.Supervisor]
-    Supervisor.start_link(children, opts)
+    Supervisor.start_link(children(), opts)
+  end
+
+  # The boot-time worktree orphan sweep runs as a transient child: it does its
+  # job once and exits. Disabled in the test env (see config/config.exs).
+  @spec children() :: [module()]
+  defp children do
+    worktree = Application.get_env(:harness, :worktree, [])
+
+    if Keyword.get(worktree, :sweep_on_boot, true) do
+      [Harness.Worktree.Sweeper]
+    else
+      []
+    end
   end
 end

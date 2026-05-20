@@ -1,0 +1,38 @@
+schema_version = 2
+project = "sample"
+default_branch = "main"
+vision = "A fixture roadmap exercising Harness.Roadmap ingestion."
+
+[phases.1]
+name = "Fixture Phase"
+order = 1
+status = "in_progress"
+
+[bundles.fixture]
+description = "Fixture bundle"
+order = 1
+phase = 1
+
+[[task]]
+id = "1"
+phase = 1
+bundle = "fixture"
+status = "done"
+title = "A finished fixture task"
+scores = { d = 2, b = 5, u = 5 }
+acceptance_criteria = ["The finished task is fetchable by id"]
+body = "A fixture task that has already shipped. Used to prove ingestion fetches a task by id and renders its prompt."
+implemented = "as specified in body"
+created_at = "2026-05-20"
+done_at = "2026-05-20"
+
+[[task]]
+id = "2"
+phase = 1
+bundle = "fixture"
+status = "pending"
+title = "The next pending fixture task"
+scores = { d = 3, b = 7, u = 7 }
+acceptance_criteria = ["The pending task is the one rmap next returns"]
+body = "The single pending fixture task. Used to prove ingestion fetches the next pending task and renders its prompt."
+created_at = "2026-05-20"

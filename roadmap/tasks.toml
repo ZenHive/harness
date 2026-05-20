@@ -229,41 +229,47 @@ id = "5"
 phase = 2
 bundle = "core-loop"
 milestone = "v0_1"
-status = "pending"
-markers = ["parallel"]
+status = "done"
 title = "Worktree-per-job lifecycle"
 scores = { d = 4, b = 7, u = 8 }
-scored_at = "2026-05-20"
-created_at = "2026-05-20"
-body = """
-harness runs every job in an isolated git worktree so concurrent agent runs never collide and the verification stack has a clean checkout to grade. Implement worktree creation per run, dispatch of the agent into it, and a keep-or-tear-down decision on completion (retain on failure for inspection; configurable). This is the automation of the repo's existing worktree-per-branch convention.
-"""
+markers = ["parallel"]
 acceptance_criteria = [
   "Each run gets its own isolated git worktree",
   "Concurrent runs do not collide on the working tree",
   "Worktrees are cleaned up on success and retained on failure (configurable)",
   "A crashed run does not leak an orphan worktree",
 ]
+body = """
+harness runs every job in an isolated git worktree so concurrent agent runs never collide and the verification stack has a clean checkout to grade. Implement worktree creation per run, dispatch of the agent into it, and a keep-or-tear-down decision on completion (retain on failure for inspection; configurable). This is the automation of the repo's existing worktree-per-branch convention.
+"""
+implemented = "Harness.Worktree (create/2, finish/3, remove/1, retained?/1, base_dir/1) for per-run isolated git worktrees + Harness.Worktree.Sweeper boot-time orphan reaper. Harness.Git subprocess wrapper. Configurable via :harness, :worktree app env + HARNESS_WORKTREE_ROOT. 48 tests, coverage 100/93.6/85.2%."
+created_at = "2026-05-20"
+started_at = "2026-05-20"
+scored_at = "2026-05-20"
+done_at = "2026-05-20"
 
 [[task]]
 id = "6"
 phase = 2
 bundle = "core-loop"
 milestone = "v0_1"
-status = "pending"
-markers = ["parallel"]
+status = "done"
 title = "rmap task ingestion"
 scores = { d = 3, b = 7, u = 7 }
-scored_at = "2026-05-20"
-created_at = "2026-05-20"
-body = """
-Let harness pull a task straight from the rmap roadmap — read `roadmap/tasks.toml` / `roadmap/data.json` (or shell out to `rmap`) and render the task as a ready-to-run agent prompt. `rmap delegate <id> --to <agent>` already emits a paste-ready prompt; harness consumes that instead of a human copy-pasting it. This is the input half of the loop — the roadmap becomes the job queue.
-"""
+markers = ["parallel"]
 acceptance_criteria = [
   "harness fetches a task — by id, or the next pending one — from the rmap roadmap",
   "The task renders to an agent-ready prompt suitable for the adapter",
   "Ingestion reads the rmap source — it does not duplicate the roadmap",
 ]
+body = """
+Let harness pull a task straight from the rmap roadmap — read `roadmap/tasks.toml` / `roadmap/data.json` (or shell out to `rmap`) and render the task as a ready-to-run agent prompt. `rmap delegate <id> --to <agent>` already emits a paste-ready prompt; harness consumes that instead of a human copy-pasting it. This is the input half of the loop — the roadmap becomes the job queue.
+"""
+implemented = "Added Harness.Roadmap.ingest/2 + Harness.Roadmap.Item. Shells out to rmap (show/next/delegate) with explicit --tasks-path; fetches a task by id or next-pending and renders the rmap delegate prompt verbatim. Error taxonomy: invalid_agent/invalid_selector/rmap_not_found/no_pending_task/task_not_found/roadmap_not_found/rmap_failed/rmap_bad_output. Covered by a unit suite with fixture roadmaps under test/fixtures/."
+created_at = "2026-05-20"
+started_at = "2026-05-20"
+scored_at = "2026-05-20"
+done_at = "2026-05-20"
 
 [[task]]
 id = "7"
@@ -573,3 +579,33 @@ DEFERRED — speculative. Implement an adapter that speaks the Agent Client Prot
 out_of_scope = [
   "Any work until ACP has meaningful cross-agent adoption",
 ]
+
+[[task]]
+id = "22"
+phase = 4
+bundle = "multi-agent"
+milestone = "v0_3"
+status = "pending"
+depends_on = ["4"]
+title = "Inject a harness-owned rule set into agent invocations"
+scores = { d = 4, b = 7, u = 7 }
+acceptance_criteria = [
+  "The harness holds one canonical rule set; no rule content is hand-maintained per repo or per agent",
+  "Each adapter injects the rule set through its best available channel — a dedicated system-prompt flag where the CLI offers one (Claude's --append-system-prompt-file), else prompt-prepend or a generated ephemeral rule file in the worktree",
+  "The injected set is a curated, filterable subset — verification gates are excluded, since the verification runner enforces them",
+  "Two different agents dispatched by harness receive the same canonical rules without a hand-maintained rule file per repo",
+]
+out_of_scope = [
+  "Verification-gate enforcement — coverage, dialyzer, and credo thresholds are the verification runner's job (Task 7), checked not injected",
+  "Editing or deleting the user's own ~/.claude/includes/ files — what the harness injects is a harness-side decision, independent of the user's personal Claude Code config",
+  "Hand-maintained, committed per-repo rule files (a CLAUDE.md / AGENTS.md / Cursor rules file checked into every target repo) — that maintenance burden is what this task replaces; a harness-generated ephemeral rule file, rendered from the canonical source into a throwaway worktree and never committed, is in scope as a delivery channel for CLIs with no system-prompt flag (Codex, Cursor)",
+]
+body = """
+The harness owns one canonical set of working rules — the methodology and behavioral guidance currently scattered across a project's CLAUDE.md and its includes (minimalism, no-evasion, the pushback mandate, code-style KPIs, the implementer/reviewer handoff, niche tool references). Instead of every target repo carrying and hand-syncing a CLAUDE.md plus an AGENTS.md plus a Cursor rules file, the harness injects its rule set directly into each agent's headless invocation at dispatch time.
+
+Injection is a per-adapter `build_command/1` concern: use the agent's dedicated system-prompt channel where it has one (Claude Code's `--append-system-prompt-file`), and where it does not, either prepend the rules to the task prompt or render them into a harness-generated ephemeral rule file in the throwaway worktree (Codex and Cursor read a native rule file; Grok has neither, so prompt-prepend). Every delivery is rendered from the one canonical source — what this task rules out is a hand-maintained rule file committed to each target repo, not a generated ephemeral one. The verified per-agent CLI surface is recorded in `docs/agent-cli-reference.md`.
+
+The injected set is a curated, filterable subset, not a token dump: it carries methodology plus the harness's own operational instructions to a dispatched agent (you are being driven by harness; the verification stack is the grader; stage, don't self-grade). It deliberately excludes the verification gates — coverage thresholds, dialyzer-zero, credo-strict — because those are enforced by the verification runner (Task 7), not prose the agent is trusted to honor. A target repo's own CLAUDE.md still auto-loads for Claude; harness injection adds its operational layer and gives the other three agents the same rules without a hand-maintained per-agent file.
+"""
+created_at = "2026-05-20"
+scored_at = "2026-05-20"

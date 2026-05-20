@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Harness.Worktree` — per-run git worktree lifecycle: `create/2` carves an
+  isolated working directory and `harness/<id>` branch out of a target repo so
+  concurrent runs never collide; `finish/3` makes the keep-or-teardown decision
+  (tear down on success, retain on failure for inspection — configurable);
+  `remove/1` is the unconditional teardown. Branch lifecycle is left alone — the
+  verified commits are the run's deliverable.
+- `Harness.Worktree.Sweeper` — boot-time orphan reaper. A run that crashes
+  before `finish/3` leaves its worktree behind; the sweeper runs once at
+  application start, self-discovers parent repos from leftover worktrees, and
+  reaps every orphan that is not a deliberately-retained failure.
+- Worktree root is configurable via `:harness, :worktree` (`base_dir`,
+  `retain_on_failure`, `sweep_on_boot`) and the `HARNESS_WORKTREE_ROOT` env var.
+- `Harness.Roadmap` — ingests a task from an rmap roadmap (by id or the next
+  pending one) and renders it as a ready-to-run agent prompt. Shells out to the
+  `rmap` CLI (`show` / `next` / `delegate`) rather than parsing the roadmap
+  itself, keeping rmap the single source of truth. The input half of the loop.
 - `Harness.AgentAdapter` behaviour — the contract every headless coding-agent
   adapter implements: a capability declaration, headless-command construction,
   raw-output capture with termination detection, and cancellation. Raw
