@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Harness.AgentAdapter` behaviour — the contract every headless coding-agent
+  adapter implements: a capability declaration, headless-command construction,
+  raw-output capture with termination detection, and cancellation. Raw
+  passthrough only — no normalized event model.
 - Initial OTP application scaffold with a supervision tree (`Harness.Application`).
 - Standard Elixir dev/test tooling stack: Styler (formatter plugin), Credo,
   Dialyxir, Doctor, Sobelow, `ex_unit_json`, `dialyzer_json`, `ex_dna`, `ex_ast`,

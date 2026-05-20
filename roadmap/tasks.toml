@@ -179,15 +179,10 @@ id = "3"
 phase = 1
 bundle = "contract"
 milestone = "v0_1"
-status = "pending"
-depends_on = ["2"]
+status = "done"
 title = "Define the AgentAdapter behaviour — invocation + capture"
 scores = { d = 3, b = 9, u = 9 }
-scored_at = "2026-05-20"
-created_at = "2026-05-20"
-body = """
-Define the core contract every agent adapter implements — a `behaviour` that, given a task spec plus run options, builds the agent's headless command line, spawns it, detects termination, and hands back the raw captured output plus wall-clock duration. Deliberately no normalized event model: harness does not parse or remap each agent's JSON — the consumer is an AI that reads raw transcripts natively, and harness derives run success from its own verification stack, not the agent's self-reported result. The behaviour also declares per-adapter capabilities (session resume, permission modes, and so on). Contract only — no concrete adapter.
-"""
+depends_on = ["2"]
 acceptance_criteria = [
   "An `AgentAdapter` behaviour with documented callbacks for invoke / capture / terminate",
   "Raw agent output is passed through untouched — no per-agent event normalization",
@@ -198,6 +193,14 @@ out_of_scope = [
   "Building any concrete adapter",
   "Any normalized or typed event model — explicitly cut",
 ]
+body = """
+Define the core contract every agent adapter implements — a `behaviour` that, given a task spec plus run options, builds the agent's headless command line, spawns it, detects termination, and hands back the raw captured output plus wall-clock duration. Deliberately no normalized event model: harness does not parse or remap each agent's JSON — the consumer is an AI that reads raw transcripts natively, and harness derives run success from its own verification stack, not the agent's self-reported result. The behaviour also declares per-adapter capabilities (session resume, permission modes, and so on). Contract only — no concrete adapter.
+"""
+implemented = "Defined the Harness.AgentAdapter behaviour: 4 callbacks (capabilities/0, build_command/1, classify_message/2, terminate/1) plus generic AgentAdapter.invoke/2 (Port spawn) and supports?/2. Structs: Invocation, Run, Capabilities. Raw passthrough, no event model; :error vs :terminated split for retry classification; session-token extraction and version/0 probe deferred. No concrete adapter. The use-macro from the plan was dropped — Doctor's 100% spec gate does not pair @spec to a defmacro; adapters declare @behaviour directly."
+created_at = "2026-05-20"
+started_at = "2026-05-20"
+scored_at = "2026-05-20"
+done_at = "2026-05-20"
 
 [[task]]
 id = "4"

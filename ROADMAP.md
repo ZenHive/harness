@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 1 — Foundation (2 of 3 done · 0 in progress)
+**Focus phase:** 1 — Foundation (3 of 3 done · 0 in progress)
 
-**Last shipped:** Task 1 — Scaffold the OTP application + standard dep stack, Task 2 — Evaluate orchestration libraries — confirm thin-core on 2026-05-20
+**Last shipped:** Task 1 — Scaffold the OTP application + standard dep stack, Task 2 — Evaluate orchestration libraries — confirm thin-core, Task 3 — Define the AgentAdapter behaviour — invocation + capture on 2026-05-20
 
-**Up next:** Task 3 — Define the AgentAdapter behaviour — invocation + capture [D:3/B:9/U:9 → Eff:3.0] 🎯
+**Up next:** Task 6 — rmap task ingestion [D:3/B:7/U:7 → Eff:2.33] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -27,7 +27,7 @@
 |------|--------|-------|
 | Task 1 | ✅ | 🎁 **scaffold** · 🚀 **v0_1** · Scaffold the OTP application + standard dep stack [D:2/B:5/U:7 → Eff:3.0] 🎯 |
 | Task 2 | ✅ | 🎁 **contract** · 🚀 **v0_1** · Evaluate orchestration libraries — confirm thin-core [D:3/B:5/U:5 → Eff:1.67] 🚀 |
-| Task 3 | ⬜ | 🎁 **contract** · 🚀 **v0_1** · Define the AgentAdapter behaviour — invocation + capture [D:3/B:9/U:9 → Eff:3.0] 🎯 |
+| Task 3 | ✅ | 🎁 **contract** · 🚀 **v0_1** · Define the AgentAdapter behaviour — invocation + capture [D:3/B:9/U:9 → Eff:3.0] 🎯 |
 <!-- TASKS:END -->
 
 ---
