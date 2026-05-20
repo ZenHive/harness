@@ -219,9 +219,10 @@
         "A headless prompt run captures raw output and reports termination",
         "Working directory and permission mode are wired",
         "Session resume works across two runs",
-        "Termination is derived from process exit + timeout, not `$?`"
+        "Termination is derived from process exit + timeout, not `$?`",
+        "An idle timeout kills a run that emits no output for a configurable window, separate from the total-run budget"
       ],
-      "body": "Implement the first concrete adapter — driving Claude Code headlessly via `claude -p` over Ports (or the `claude_code` hex SDK if the Phase-1 evaluation favors it). Capture the raw output stream and hand it back unparsed. Wire working directory, permission mode, and session resume/continue. Detect termination from the process/Port closing plus a timeout guard — never from the exit code, which is known to be unreliable.\n",
+      "body": "Implement the first concrete adapter — driving Claude Code headlessly via `claude -p` over Ports (or the `claude_code` hex SDK if the Phase-1 evaluation favors it). Capture the raw output stream and hand it back unparsed. Wire working directory, permission mode, and session resume/continue. Detect termination from the process/Port closing plus two timeout guards — a total-run budget, and an idle timeout that kills a run emitting no output for a configurable window — never from the exit code, which is known to be unreliable.\n",
       "created_at": "2026-05-20",
       "scored_at": "2026-05-20",
       "cross_repo": []
