@@ -207,15 +207,10 @@ id = "4"
 phase = 2
 bundle = "claude-adapter"
 milestone = "v0_1"
-status = "pending"
-depends_on = ["3"]
+status = "done"
 title = "Build the Claude Code headless adapter"
 scores = { d = 6, b = 9, u = 9 }
-scored_at = "2026-05-20"
-created_at = "2026-05-20"
-body = """
-Implement the first concrete adapter — driving Claude Code headlessly via `claude -p` over Ports. Capture the raw output stream and hand it back unparsed. Wire working directory, permission mode, and session resume/continue. Detect termination from the process/Port closing plus two timeout guards — a total-run budget, and an idle timeout that kills a run emitting no output for a configurable window — never from the exit code, which is known to be unreliable.
-"""
+depends_on = ["3"]
 acceptance_criteria = [
   "A headless prompt run captures raw output and reports termination",
   "Working directory and permission mode are wired",
@@ -223,6 +218,14 @@ acceptance_criteria = [
   "Termination is derived from process exit + timeout, not `$?`",
   "An idle timeout kills a run that emits no output for a configurable window, separate from the total-run budget",
 ]
+body = """
+Implement the first concrete adapter — driving Claude Code headlessly via `claude -p` over Ports. Capture the raw output stream and hand it back unparsed. Wire working directory, permission mode, and session resume/continue. Detect termination from the process/Port closing plus two timeout guards — a total-run budget, and an idle timeout that kills a run emitting no output for a configurable window — never from the exit code, which is known to be unreliable.
+"""
+implemented = "Built Harness.AgentAdapter.Claude (claude -p, stream-json, --permission-mode bypassPermissions, --continue resume), the generic Harness.AgentAdapter.Driver enforcing total + idle timeout guards, the Outcome result struct, and the shared OSProcess port-lifecycle helper. Resume resolves the behaviour's session-token deferral via --continue (no new callback). 100% test + doc coverage; integration test green against real claude."
+created_at = "2026-05-20"
+started_at = "2026-05-21"
+scored_at = "2026-05-20"
+done_at = "2026-05-21"
 
 [[task]]
 id = "5"
@@ -612,3 +615,20 @@ The injected set is a curated, filterable subset, not a token dump: it carries m
 """
 created_at = "2026-05-20"
 scored_at = "2026-05-20"
+
+[[task]]
+id = "23"
+phase = 4
+bundle = "multi-agent"
+status = "pending"
+depends_on = ["4"]
+title = "Give Port-spawned agents an immediate-EOF stdin"
+scores = { d = 3, b = 3, u = 3 }
+acceptance_criteria = ["A Port-spawned agent does not stall waiting on stdin", "The prompt and argv are passed without shell-quoting hazards", "The executable-not-found error path stays clear"]
+body = """
+Headless agent CLIs spawned over an OTP port inherit an open-but-empty stdin pipe. An agent that peeks stdin to support `cat file | agent -p` then stalls waiting for input that never comes: the Claude Code adapter's integration test shows `claude` printing `no stdin data received in 3s, proceeding without it` and eating a flat 3s per run. Other agents (Cursor, Codex, Grok) likely behave the same.
+
+Give every Port-spawned agent process a stdin that is immediately at EOF, so it proceeds without the stall. The clean, shell-quoting-safe approach is the `sh -c '...' "$@"` argv trick — spawn `/bin/sh` with script `exec <agent> "$@" </dev/null` and pass the real agent argv as positional parameters, so no prompt escaping is needed. Decide whether this belongs in the generic `Harness.AgentAdapter.invoke/2` spawn or per-adapter `build_command/1`; if it moves into the generic spawn, preserve the clean `{:error, {:executable_not_found, _}}` signal that the current direct `System.find_executable/1` provides.
+"""
+created_at = "2026-05-21"
+scored_at = "2026-05-21"

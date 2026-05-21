@@ -8,13 +8,13 @@ The primary user is an AI orchestrator, not a human. The verification stack — 
 
 ## Status
 
-Greenfield. Phase 1 (Foundation) in progress.
+Early development. The core loop is taking shape — rmap task ingestion, the
+per-run worktree lifecycle, the verification runner, the `AgentAdapter`
+behaviour, and the first concrete adapter (Claude Code, with a generic
+timeout-enforcing run driver) are in place.
 
-- ✅ Task 1 — Scaffold the OTP application + standard dep stack
-- ⬜ Task 2 — Evaluate orchestration libraries — confirm thin-core
-- ⬜ Task 3 — Define the `AgentAdapter` behaviour
-
-See [ROADMAP.md](ROADMAP.md) for the full plan (rendered from `roadmap/tasks.toml` by `rmap`).
+See [ROADMAP.md](ROADMAP.md) for the full plan and current task status
+(rendered from `roadmap/tasks.toml` by `rmap`).
 
 ## Development
 

@@ -14,8 +14,11 @@ defmodule Harness.AgentAdapter.Invocation do
     * `prompt` — the task rendered as a prompt for the agent.
     * `cwd` — absolute path of the isolated working directory (a git worktree).
     * `task_id` — the rmap task id this run serves; used for logging.
-    * `session` — an opaque resume token from a prior run, or `nil` for a fresh
-      run. Harness round-trips it without interpreting it.
+    * `session` — an opaque resume signal, or `nil` for a fresh run. Harness
+      round-trips it without interpreting it; each adapter decides what a
+      non-`nil` value means. An adapter that resumes the most recent
+      conversation in `cwd` (the Claude Code adapter) takes the `:resume`
+      sentinel rather than a literal token.
     * `permission_mode` — the autonomy level. `:autonomous` (the default) is the
       universal baseline every adapter must support; any other value must be
       listed in the adapter's `Harness.AgentAdapter.Capabilities`.

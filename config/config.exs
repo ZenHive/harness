@@ -14,6 +14,14 @@ config :harness, :worktree,
 #   checks: [...],
 #   timeout: 600_000
 
+# Agent run timeouts — see Harness.AgentAdapter.Driver.
+# Both keys are optional; defaults live in code.
+#   :total_timeout — total-run budget in ms; defaults to 1_800_000 (30 min).
+#   :idle_timeout  — kill after this many ms with no output; defaults to 300_000 (5 min).
+# config :harness, :run,
+#   total_timeout: 1_800_000,
+#   idle_timeout: 300_000
+
 # Tests create their own isolated per-test worktree roots and pass them
 # explicitly, so the configured base_dir is only a fallback. A boot-time sweep
 # would race the async suite, and the default base_dir points at real

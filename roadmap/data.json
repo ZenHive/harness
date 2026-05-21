@@ -217,7 +217,7 @@
       "phase": 2,
       "bundle": "claude-adapter",
       "milestone": "v0_1",
-      "status": "pending",
+      "status": "done",
       "title": "Build the Claude Code headless adapter",
       "scores": {
         "d": 6,
@@ -238,7 +238,10 @@
       ],
       "body": "Implement the first concrete adapter — driving Claude Code headlessly via `claude -p` over Ports. Capture the raw output stream and hand it back unparsed. Wire working directory, permission mode, and session resume/continue. Detect termination from the process/Port closing plus two timeout guards — a total-run budget, and an idle timeout that kills a run emitting no output for a configurable window — never from the exit code, which is known to be unreliable.\n",
       "created_at": "2026-05-20",
+      "started_at": "2026-05-21",
+      "done_at": "2026-05-21",
       "scored_at": "2026-05-20",
+      "implemented": "Built Harness.AgentAdapter.Claude (claude -p, stream-json, --permission-mode bypassPermissions, --continue resume), the generic Harness.AgentAdapter.Driver enforcing total + idle timeout guards, the Outcome result struct, and the shared OSProcess port-lifecycle helper. Resume resolves the behaviour's session-token deferral via --continue (no new callback). 100% test + doc coverage; integration test green against real claude.",
       "cross_repo": []
     },
     {
@@ -759,6 +762,32 @@
       "body": "The harness owns one canonical set of working rules — the methodology and behavioral guidance currently scattered across a project's CLAUDE.md and its includes (minimalism, no-evasion, the pushback mandate, code-style KPIs, the implementer/reviewer handoff, niche tool references). Instead of every target repo carrying and hand-syncing a CLAUDE.md plus an AGENTS.md plus a Cursor rules file, the harness injects its rule set directly into each agent's headless invocation at dispatch time.\n\nInjection is a per-adapter `build_command/1` concern: use the agent's dedicated system-prompt channel where it has one (Claude Code's `--append-system-prompt-file`), and where it does not, either prepend the rules to the task prompt or render them into a harness-generated ephemeral rule file in the throwaway worktree (Codex and Cursor read a native rule file; Grok has neither, so prompt-prepend). Every delivery is rendered from the one canonical source — what this task rules out is a hand-maintained rule file committed to each target repo, not a generated ephemeral one. The verified per-agent CLI surface is recorded in `docs/agent-cli-reference.md`.\n\nThe injected set is a curated, filterable subset, not a token dump: it carries methodology plus the harness's own operational instructions to a dispatched agent (you are being driven by harness; the verification stack is the grader; stage, don't self-grade). It deliberately excludes the verification gates — coverage thresholds, dialyzer-zero, credo-strict — because those are enforced by the verification runner (Task 7), not prose the agent is trusted to honor. A target repo's own CLAUDE.md still auto-loads for Claude; harness injection adds its operational layer and gives the other three agents the same rules without a hand-maintained per-agent file.\n",
       "created_at": "2026-05-20",
       "scored_at": "2026-05-20",
+      "cross_repo": []
+    },
+    {
+      "id": "23",
+      "phase": 4,
+      "bundle": "multi-agent",
+      "status": "pending",
+      "title": "Give Port-spawned agents an immediate-EOF stdin",
+      "scores": {
+        "d": 3,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 1.0,
+      "markers": [],
+      "depends_on": [
+        "4"
+      ],
+      "acceptance_criteria": [
+        "A Port-spawned agent does not stall waiting on stdin",
+        "The prompt and argv are passed without shell-quoting hazards",
+        "The executable-not-found error path stays clear"
+      ],
+      "body": "Headless agent CLIs spawned over an OTP port inherit an open-but-empty stdin pipe. An agent that peeks stdin to support `cat file | agent -p` then stalls waiting for input that never comes: the Claude Code adapter's integration test shows `claude` printing `no stdin data received in 3s, proceeding without it` and eating a flat 3s per run. Other agents (Cursor, Codex, Grok) likely behave the same.\n\nGive every Port-spawned agent process a stdin that is immediately at EOF, so it proceeds without the stall. The clean, shell-quoting-safe approach is the `sh -c '...' \"$@\"` argv trick — spawn `/bin/sh` with script `exec <agent> \"$@\" </dev/null` and pass the real agent argv as positional parameters, so no prompt escaping is needed. Decide whether this belongs in the generic `Harness.AgentAdapter.invoke/2` spawn or per-adapter `build_command/1`; if it moves into the generic spawn, preserve the clean `{:error, {:executable_not_found, _}}` signal that the current direct `System.find_executable/1` provides.\n",
+      "created_at": "2026-05-21",
+      "scored_at": "2026-05-21",
       "cross_repo": []
     }
   ]

@@ -5,53 +5,8 @@ defmodule Harness.AgentAdapterTest do
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Run
-
-  # A minimal in-test adapter — doubles as live proof the contract is
-  # implementable in a handful of lines.
-  defmodule EchoAdapter do
-    @moduledoc false
-    @behaviour AgentAdapter
-
-    @impl AgentAdapter
-    def capabilities do
-      %Capabilities{session_resume: true, permission_modes: [:autonomous, :plan]}
-    end
-
-    @impl AgentAdapter
-    def build_command(%Invocation{adapter_opts: opts}) do
-      case Keyword.get(opts, :command, :echo) do
-        :echo -> {:ok, {"/bin/echo", ["harness-test"], []}}
-        :sleep -> {:ok, {"/bin/sleep", ["30"], []}}
-        :missing -> {:ok, {"definitely-not-a-real-binary-xyz", [], []}}
-      end
-    end
-
-    @impl AgentAdapter
-    def classify_message({port, {:data, data}}, %Run{port: port} = run), do: {:output, data, run}
-
-    def classify_message({port, {:exit_status, status}}, %Run{port: port} = run), do: {:terminated, run, status}
-
-    def classify_message(_message, _run), do: :ignore
-
-    @impl AgentAdapter
-    def terminate(%Run{port: port, os_pid: os_pid}) do
-      if os_pid do
-        System.cmd("kill", ["-KILL", Integer.to_string(os_pid)], stderr_to_stdout: true)
-      end
-
-      close_port(port)
-    end
-
-    # Port.close/1 raises if the port has already closed — which races with the
-    # killed OS process closing it first. Tolerate that so terminate/1 stays
-    # idempotent.
-    defp close_port(port) do
-      Port.close(port)
-      :ok
-    rescue
-      ArgumentError -> :ok
-    end
-  end
+  alias Harness.FakeAdapter
+  alias Harness.ProcessFixture
 
   # Carries only a capability declaration — exercises the false branches of
   # supports?/2 and the build_command error path of invoke/2.
@@ -89,20 +44,6 @@ defmodule Harness.AgentAdapterTest do
         end
     after
       5_000 -> flunk("run did not terminate within 5s")
-    end
-  end
-
-  defp await_dead(os_pid, tries \\ 40)
-  defp await_dead(_os_pid, 0), do: flunk("OS process was not killed")
-
-  defp await_dead(os_pid, tries) do
-    {_output, code} = System.cmd("kill", ["-0", Integer.to_string(os_pid)], stderr_to_stdout: true)
-
-    if code == 0 do
-      Process.sleep(25)
-      await_dead(os_pid, tries - 1)
-    else
-      :ok
     end
   end
 
@@ -153,12 +94,12 @@ defmodule Harness.AgentAdapterTest do
 
   describe "supports?/2" do
     test "reflects the adapter's capability declaration" do
-      assert AgentAdapter.supports?(EchoAdapter, :session_resume)
-      assert AgentAdapter.supports?(EchoAdapter, :streaming_output)
-      assert AgentAdapter.supports?(EchoAdapter, {:permission_mode, :autonomous})
-      assert AgentAdapter.supports?(EchoAdapter, {:permission_mode, :plan})
+      assert AgentAdapter.supports?(FakeAdapter, :session_resume)
+      assert AgentAdapter.supports?(FakeAdapter, :streaming_output)
+      assert AgentAdapter.supports?(FakeAdapter, {:permission_mode, :autonomous})
+      assert AgentAdapter.supports?(FakeAdapter, {:permission_mode, :plan})
 
-      refute AgentAdapter.supports?(EchoAdapter, {:permission_mode, :unknown})
+      refute AgentAdapter.supports?(FakeAdapter, {:permission_mode, :unknown})
       refute AgentAdapter.supports?(MinimalAdapter, :session_resume)
       refute AgentAdapter.supports?(MinimalAdapter, :streaming_output)
       assert AgentAdapter.supports?(MinimalAdapter, {:permission_mode, :autonomous})
@@ -167,20 +108,20 @@ defmodule Harness.AgentAdapterTest do
 
   describe "build_command/1" do
     test "is pure and returns the spawn recipe without spawning" do
-      assert {:ok, {"/bin/echo", ["harness-test"], []}} = EchoAdapter.build_command(invocation())
+      assert {:ok, {"/bin/echo", ["harness-test"], []}} = FakeAdapter.build_command(invocation())
     end
   end
 
   describe "invoke/2" do
     test "spawns the agent and captures raw output through to termination" do
-      assert {:ok, %Run{} = run} = AgentAdapter.invoke(EchoAdapter, invocation())
-      assert run.adapter == EchoAdapter
+      assert {:ok, %Run{} = run} = AgentAdapter.invoke(FakeAdapter, invocation())
+      assert run.adapter == FakeAdapter
       assert is_reference(run.ref)
       assert is_port(run.port)
       assert is_integer(run.started_at)
       assert run.adapter_state == nil
 
-      assert {"harness-test\n", 0} = drive(EchoAdapter, run)
+      assert {"harness-test\n", 0} = drive(FakeAdapter, run)
     end
 
     test "returns the adapter's build_command error without spawning" do
@@ -189,21 +130,21 @@ defmodule Harness.AgentAdapterTest do
 
     test "returns an error when the executable is not on PATH" do
       assert {:error, {:executable_not_found, "definitely-not-a-real-binary-xyz"}} =
-               AgentAdapter.invoke(EchoAdapter, invocation(command: :missing))
+               AgentAdapter.invoke(FakeAdapter, invocation(command: :missing))
     end
   end
 
   describe "terminate/1" do
     test "kills an in-flight run and releases its port" do
-      assert {:ok, run} = AgentAdapter.invoke(EchoAdapter, invocation(command: :sleep))
+      assert {:ok, run} = AgentAdapter.invoke(FakeAdapter, invocation(command: :sleep))
       assert is_integer(run.os_pid)
 
-      assert :ok = EchoAdapter.terminate(run)
+      assert :ok = FakeAdapter.terminate(run)
       refute Port.info(run.port)
-      assert await_dead(run.os_pid) == :ok
+      assert ProcessFixture.await_dead(run.os_pid) == :ok
 
       # Idempotent — safe to call on a run that has already ended.
-      assert :ok = EchoAdapter.terminate(run)
+      assert :ok = FakeAdapter.terminate(run)
     end
   end
 end

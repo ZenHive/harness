@@ -52,14 +52,18 @@ defmodule Harness.AgentAdapter do
   adapter's `c:classify_message/2`, which is how raw output is captured and
   termination detected. A run ends when `classify_message/2` returns
   `:terminated` (the agent process closed) or `:error` (the port itself failed).
+  `Harness.AgentAdapter.Driver` is the generic implementation of that drive
+  loop — it adds raw-output accumulation and the total-run / idle timeout
+  guards on top of `invoke/2` + `c:classify_message/2`.
 
   ## Deliberate deferrals
 
-    * **Session-token extraction.** `Harness.AgentAdapter.Invocation` carries
-      `session` as an opaque pass-through token. Whether resume needs a
-      dedicated token-extraction callback — versus resuming the latest session
-      in `cwd`, which needs none — is resolved when the first concrete adapter
-      (the Claude Code adapter) lands.
+    * **Session-token extraction (resolved).** Resuming needs no dedicated
+      token-extraction callback. The Claude Code adapter resumes the most recent
+      conversation in `cwd` via `--continue`; because each harness job owns one
+      worktree, "the latest session in `cwd`" is unambiguous. The
+      `Harness.AgentAdapter.Invocation` `session` field stays an opaque
+      pass-through value each adapter interprets as it needs.
     * **Availability probe.** A `version/0` / "is the binary installed" callback
       is anticipated for the capability + availability registry and will be
       added then as an optional callback.
@@ -67,6 +71,7 @@ defmodule Harness.AgentAdapter do
 
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
+  alias Harness.AgentAdapter.OSProcess
   alias Harness.AgentAdapter.Run
 
   @typedoc """
@@ -170,7 +175,7 @@ defmodule Harness.AgentAdapter do
            ref: make_ref(),
            adapter: adapter,
            port: port,
-           os_pid: port_os_pid(port),
+           os_pid: OSProcess.os_pid(port),
            started_at: System.monotonic_time()
          }}
     end
@@ -179,14 +184,6 @@ defmodule Harness.AgentAdapter do
   @spec port_env([{String.t(), String.t()}]) :: [{charlist(), charlist()}]
   defp port_env(env) do
     Enum.map(env, fn {key, value} -> {String.to_charlist(key), String.to_charlist(value)} end)
-  end
-
-  @spec port_os_pid(port()) :: non_neg_integer() | nil
-  defp port_os_pid(port) do
-    case Port.info(port, :os_pid) do
-      {:os_pid, os_pid} -> os_pid
-      nil -> nil
-    end
   end
 
   @spec capability_supported?(Capabilities.t(), capability()) :: boolean()

@@ -29,6 +29,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   adapter implements: a capability declaration, headless-command construction,
   raw-output capture with termination detection, and cancellation. Raw
   passthrough only — no normalized event model.
+- `Harness.AgentAdapter.Claude` — the first concrete adapter: drives Claude Code
+  headlessly (`claude -p`, raw `stream-json` output, `--permission-mode
+  bypassPermissions` for unattended runs, `--continue` session resume against
+  the per-job worktree).
+- `Harness.AgentAdapter.Driver` — the generic run driver: spawns any adapter,
+  captures raw output, and enforces two timeout guards — a total-run budget and
+  an idle window reset on every output chunk — so a runaway or wedged run is
+  killed. Termination is derived from the process closing or a deadline, never
+  the exit code. Returns a `Harness.AgentAdapter.Outcome`; timeouts configurable
+  via `:harness, :run`.
+- `Harness.AgentAdapter.OSProcess` — shared port / OS-process lifecycle helper
+  (os-pid lookup, idempotent close, mailbox drain, kill) every adapter reuses.
 - `Harness.Verification` — the run grader: runs a target project's check stack
   against a worktree and aggregates the results into a `Verdict`. This is how
   harness decides "did the job succeed?" objectively, never from the agent's
