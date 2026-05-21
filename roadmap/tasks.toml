@@ -276,15 +276,10 @@ id = "7"
 phase = 2
 bundle = "core-loop"
 milestone = "v0_1"
-status = "pending"
-markers = ["parallel"]
+status = "done"
 title = "Verification runner — run the target project's check stack"
 scores = { d = 5, b = 9, u = 8 }
-scored_at = "2026-05-20"
-created_at = "2026-05-20"
-body = """
-After an agent finishes, harness runs the target project's own check stack against its worktree and produces a structured pass/fail — this is what makes "did the job succeed?" objective and agent-agnostic, instead of trusting the agent's self-report. The check set is a configurable list of commands; ship an Elixir preset (`mix test.json`, `mix dialyzer.json`, doctor, sobelow, credo). Aggregate each check's result into one verdict the run lifecycle can gate on.
-"""
+markers = ["parallel"]
 acceptance_criteria = [
   "A configurable list of check commands runs against a given worktree",
   "An Elixir preset is provided as the default check set",
@@ -294,6 +289,14 @@ acceptance_criteria = [
 out_of_scope = [
   "Feeding failures back to the agent — that is the autonomous repair loop task",
 ]
+body = """
+After an agent finishes, harness runs the target project's own check stack against its worktree and produces a structured pass/fail — this is what makes "did the job succeed?" objective and agent-agnostic, instead of trusting the agent's self-report. The check set is a configurable list of commands; ship an Elixir preset (`mix test.json`, `mix dialyzer.json`, doctor, sobelow, credo). Aggregate each check's result into one verdict the run lifecycle can gate on.
+"""
+implemented = "Harness.Verification grades a worktree by running a configurable check stack and aggregating per-check Results into a Verdict (any red => red). Ships elixir_preset/0: mix test.json, dialyzer.json, credo --strict, doctor, sobelow --exit. Each check is spawned over an OTP port with a per-check timeout (default 600_000 ms) so a hung check is killed rather than wedging the run — System.cmd was rejected as uninterruptible and subprocess-orphaning. Check/Result/Verdict structs + config under :harness, :verification. 17 tests, 93% coverage."
+created_at = "2026-05-20"
+started_at = "2026-05-20"
+scored_at = "2026-05-20"
+done_at = "2026-05-20"
 
 [[task]]
 id = "8"

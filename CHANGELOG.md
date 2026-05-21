@@ -29,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   adapter implements: a capability declaration, headless-command construction,
   raw-output capture with termination detection, and cancellation. Raw
   passthrough only — no normalized event model.
+- `Harness.Verification` — the run grader: runs a target project's check stack
+  against a worktree and aggregates the results into a `Verdict`. This is how
+  harness decides "did the job succeed?" objectively, never from the agent's
+  self-reported exit code. Ships an Elixir preset (`mix test.json`,
+  `mix dialyzer.json`, credo, doctor, sobelow); the stack is configurable via
+  `:harness, :verification`. Each check is spawned over an OTP port with a
+  per-check timeout, so a hung check is killed rather than wedging the run. The
+  verification half of the loop.
 - Initial OTP application scaffold with a supervision tree (`Harness.Application`).
 - Standard Elixir dev/test tooling stack: Styler (formatter plugin), Credo,
   Dialyxir, Doctor, Sobelow, `ex_unit_json`, `dialyzer_json`, `ex_dna`, `ex_ast`,

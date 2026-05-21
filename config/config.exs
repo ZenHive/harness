@@ -6,6 +6,14 @@ config :harness, :worktree,
   retain_on_failure: true,
   sweep_on_boot: true
 
+# Verification check stack — see Harness.Verification.
+# Both keys are optional; defaults live in code (elixir_preset/0, 600_000 ms).
+#   :checks  — list of %Harness.Verification.Check{}; defaults to elixir_preset/0.
+#   :timeout — per-check timeout in ms; defaults to 600_000 (10 min).
+# config :harness, :verification,
+#   checks: [...],
+#   timeout: 600_000
+
 # Tests create their own isolated per-test worktree roots and pass them
 # explicitly, so the configured base_dir is only a fallback. A boot-time sweep
 # would race the async suite, and the default base_dir points at real
