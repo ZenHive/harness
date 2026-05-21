@@ -78,6 +78,8 @@ lifetime_timeout = 3_600_000
 # (Harness.AgentAdapter.spawn_run/5 — no caller scrub hook yet), so scrubbing the
 # key here is the only lever. Nothing in this throwaway BEAM needs it — harness
 # shells out to `claude`, never the Anthropic API. See § "nested claude" below.
+# TODO(Task 25): drop this scrub once the AgentAdapter contract carries a
+# caller-controlled agent environment — then harness scrubs/sets env per run.
 System.delete_env("ANTHROPIC_API_KEY")
 
 log = fn msg -> IO.puts("[dogfood] #{DateTime.to_iso8601(DateTime.utc_now())} #{msg}") end

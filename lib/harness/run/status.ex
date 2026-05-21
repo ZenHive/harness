@@ -21,8 +21,10 @@ defmodule Harness.Run.Status do
     * `task_id` — the rmap task id the run serves.
     * `state` — the current lifecycle state (see `t:state/0`).
     * `worktree_path` — the isolated worktree's path, or `nil` before it exists.
-    * `agent_os_pid` — the OS pid of the running agent, or `nil` before the agent
-      has spawned or after it has terminated.
+    * `agent_os_pid` — the agent's OS pid, captured once at spawn. `nil` before
+      the agent has spawned and after a cancellation or failure clears the run
+      handle; otherwise it stays the spawn-time pid through `verifying` and the
+      terminal states, even though the agent process has already exited.
     * `agent_kind` — how the agent run ended (`t:Harness.AgentAdapter.Outcome.kind/0`),
       or `nil` before the agent has finished.
     * `verdict_status` — the verification verdict (`:pass` / `:fail`), or `nil`

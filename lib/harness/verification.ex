@@ -72,7 +72,8 @@ defmodule Harness.Verification do
 
     * `:checks` — override the check stack with a list of
       `Harness.Verification.Check`.
-    * `:timeout` — override the per-check timeout, in milliseconds.
+    * `:timeout` — override the per-check timeout, in milliseconds, or
+      `:infinity` for an unbounded check.
 
   Returns `{:ok, %Harness.Verification.Verdict{}}`, or `{:error, reason}` —
   `:no_checks` when the stack is empty, `{:worktree_not_found, path}` when
@@ -156,38 +157,56 @@ defmodule Harness.Verification do
 
   # Drains the port until the check exits or its deadline passes. The deadline
   # is absolute: unlike a `receive`-local timeout, a check that keeps emitting
-  # output cannot push it back. A passed deadline kills the check and grades it
-  # red — a hung check, idle or not, must never wedge the run.
+  # output cannot push it back. The pre-`receive` guard closes the starvation
+  # gap — a check flooding stdout fast enough to keep the mailbox non-empty
+  # would otherwise let `receive` always match a `{:data, _}` and never reach
+  # the `after` clause. A passed deadline kills the check and grades it red — a
+  # hung check, idle or flooding, must never wedge the run.
   @spec collect(port(), Check.t(), timeout(), integer() | :infinity, iodata()) :: Result.t()
   defp collect(port, check, timeout, deadline, acc) do
-    receive do
-      {^port, {:data, data}} ->
-        collect(port, check, timeout, deadline, [acc, data])
+    if deadline_passed?(deadline) do
+      timed_out_result(port, check, timeout, acc)
+    else
+      receive do
+        {^port, {:data, data}} ->
+          collect(port, check, timeout, deadline, [acc, data])
 
-      {^port, {:exit_status, status}} ->
-        %Result{
-          name: check.name,
-          command: check.command,
-          status: if(status == 0, do: :pass, else: :fail),
-          kind: :exited,
-          exit_status: status,
-          output: IO.iodata_to_binary(acc)
-        }
-    after
-      remaining(deadline) ->
-        kill_port(port)
-        output = IO.iodata_to_binary(acc) <> "\n[harness] check timed out after #{timeout}ms"
-
-        %Result{
-          name: check.name,
-          command: check.command,
-          status: :fail,
-          kind: :timed_out,
-          exit_status: nil,
-          output: output
-        }
+        {^port, {:exit_status, status}} ->
+          %Result{
+            name: check.name,
+            command: check.command,
+            status: if(status == 0, do: :pass, else: :fail),
+            kind: :exited,
+            exit_status: status,
+            output: IO.iodata_to_binary(acc)
+          }
+      after
+        remaining(deadline) ->
+          timed_out_result(port, check, timeout, acc)
+      end
     end
   end
+
+  # Kills a check that hit its deadline and grades it red.
+  @spec timed_out_result(port(), Check.t(), timeout(), iodata()) :: Result.t()
+  defp timed_out_result(port, check, timeout, acc) do
+    kill_port(port)
+    output = IO.iodata_to_binary(acc) <> "\n[harness] check timed out after #{timeout}ms"
+
+    %Result{
+      name: check.name,
+      command: check.command,
+      status: :fail,
+      kind: :timed_out,
+      exit_status: nil,
+      output: output
+    }
+  end
+
+  # Whether an absolute deadline has already elapsed; `:infinity` never has.
+  @spec deadline_passed?(integer() | :infinity) :: boolean()
+  defp deadline_passed?(:infinity), do: false
+  defp deadline_passed?(deadline), do: System.monotonic_time(:millisecond) >= deadline
 
   # Absolute monotonic-time deadline (ms) for a check, or :infinity when the
   # configured timeout is unbounded.

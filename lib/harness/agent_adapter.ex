@@ -174,6 +174,11 @@ defmodule Harness.AgentAdapter do
   # the agent prompt can carry any bytes. `System.find_executable/1` still runs
   # first: it keeps the clean `{:error, {:executable_not_found, _}}` signal and
   # resolves the absolute path `exec` runs regardless of the shell's own PATH.
+  #
+  # `:stderr_to_stdout` folds the agent's stderr into the captured stream —
+  # diagnostics, auth errors, and partial-failure context all reach the consumer
+  # rather than leaking to the BEAM's own stderr. Raw passthrough means the AI
+  # reading the transcript tolerates interleaved stderr; losing it would not.
   @spec spawn_run(module(), Invocation.t(), String.t(), [String.t()], [{String.t(), String.t()}]) ::
           {:ok, Run.t()} | {:error, term()}
   defp spawn_run(adapter, invocation, executable, argv, env) do
@@ -187,6 +192,7 @@ defmodule Harness.AgentAdapter do
             :binary,
             :exit_status,
             :hide,
+            :stderr_to_stdout,
             {:args, ["-c", @stdin_eof_script, path | argv]},
             {:cd, invocation.cwd},
             {:env, port_env(env)}

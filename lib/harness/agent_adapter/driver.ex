@@ -113,31 +113,44 @@ defmodule Harness.AgentAdapter.Driver do
 
   # Drains the port until the run terminates or a deadline passes. `after` waits
   # only until the nearer deadline; an output chunk resets the idle deadline.
+  # The pre-`receive` guard closes the starvation gap — a flooding agent that
+  # keeps the mailbox non-empty would otherwise let `receive` always match a
+  # message and never reach the `after` clause, evading both deadlines.
   @spec loop(module(), Run.t(), integer(), non_neg_integer(), integer(), iodata()) :: Outcome.t()
   defp loop(adapter, run, total_deadline, idle, idle_deadline, acc) do
     wait = min(remaining(total_deadline), remaining(idle_deadline))
 
-    receive do
-      message ->
-        case adapter.classify_message(message, run) do
-          {:output, data, next_run} ->
-            loop(adapter, next_run, total_deadline, idle, idle_deadline(idle), [acc, data])
+    if wait == 0 do
+      expire(adapter, run, acc, total_deadline)
+    else
+      receive do
+        message ->
+          case adapter.classify_message(message, run) do
+            {:output, data, next_run} ->
+              loop(adapter, next_run, total_deadline, idle, idle_deadline(idle), [acc, data])
 
-          {:terminated, next_run, status} ->
-            outcome(next_run, acc, status, :exited)
+            {:terminated, next_run, status} ->
+              outcome(next_run, acc, status, :exited)
 
-          {:error, reason, next_run} ->
-            adapter.terminate(next_run)
-            outcome(next_run, acc, nil, {:error, reason})
+            {:error, reason, next_run} ->
+              adapter.terminate(next_run)
+              outcome(next_run, acc, nil, {:error, reason})
 
-          :ignore ->
-            loop(adapter, run, total_deadline, idle, idle_deadline, acc)
-        end
-    after
-      wait ->
-        adapter.terminate(run)
-        outcome(run, acc, nil, timed_out_kind(total_deadline))
+            :ignore ->
+              loop(adapter, run, total_deadline, idle, idle_deadline, acc)
+          end
+      after
+        wait ->
+          expire(adapter, run, acc, total_deadline)
+      end
     end
+  end
+
+  # Kills a run that hit a deadline and reports which deadline fired.
+  @spec expire(module(), Run.t(), iodata(), integer()) :: Outcome.t()
+  defp expire(adapter, run, acc, total_deadline) do
+    adapter.terminate(run)
+    outcome(run, acc, nil, timed_out_kind(total_deadline))
   end
 
   # A fresh idle deadline, `idle` ms from now.

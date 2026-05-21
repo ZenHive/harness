@@ -74,9 +74,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   adapter-level cancellation. The contract checks are agent-free (synthesized
   port messages, a `/bin/sleep` stand-in); one `:integration`-tagged test drives
   the real agent end to end. The gate Codex and every later adapter (Cursor,
-  Grok) are held to — a leak it catches is fixed in the behaviour, never patched
-  around in the adapter. Run against `Harness.AgentAdapter.Claude` and
-  `Harness.FakeAdapter`.
+  Grok, Antigravity) are held to — a leak it catches is fixed in the behaviour,
+  never patched around in the adapter. Run against every adapter — Claude,
+  Codex, Cursor, Grok, Antigravity — and `Harness.FakeAdapter`.
 - `Harness.Verification` — the run grader: runs a target project's check stack
   against a worktree and aggregates the results into a `Verdict`. This is how
   harness decides "did the job succeed?" objectively, never from the agent's

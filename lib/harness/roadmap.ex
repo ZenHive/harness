@@ -30,7 +30,12 @@ defmodule Harness.Roadmap do
 
   alias Harness.Roadmap.Item
 
-  @valid_agents [:claude, :codex, :cursor, :antigravity]
+  # Mirrors `rmap delegate --to`'s accepted values exactly — ingestion shells
+  # out to `rmap delegate` to render the prompt, so an agent rmap cannot
+  # delegate to (e.g. :grok, :antigravity) is rejected here rather than failing
+  # downstream with an opaque `{:rmap_failed, _}`. Those agents still run as
+  # adapters; their prompt is rendered for one of these and dispatched directly.
+  @valid_agents [:claude, :codex, :cursor]
 
   @typedoc "Which task to ingest: the next pending one, or one named by id."
   @type selector :: :next | {:id, String.t()}
@@ -59,7 +64,8 @@ defmodule Harness.Roadmap do
     * `:project_root` — directory holding `roadmap/tasks.toml`; defaults to the
       current working directory.
     * `:agent` — which agent to render the prompt for; one of `:claude`,
-      `:codex`, `:cursor`, `:antigravity`. Defaults to `:claude`.
+      `:codex`, `:cursor` (the agents `rmap delegate --to` supports).
+      Defaults to `:claude`.
     * `:rmap_bin` — the `rmap` executable name or path. Defaults to `"rmap"`.
 
   Returns `{:ok, %Harness.Roadmap.Item{}}` or `{:error, reason}` — see `t:error/0`.

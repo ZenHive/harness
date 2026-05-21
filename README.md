@@ -2,7 +2,7 @@
 
 **OTP-native task-execution engine an AI orchestrator drives end to end.**
 
-Harness pulls tasks from an `rmap` roadmap, dispatches each to a headless coding agent (Claude Code, Cursor, Codex, Grok) running in an isolated git worktree, runs the target project's own check stack against the result, and reports a *verified* outcome back over an agent-shaped surface (MCP tools + JSON CLI).
+Harness pulls tasks from an `rmap` roadmap, dispatches each to a headless coding agent (Claude Code, Cursor, Codex, Grok, Antigravity) running in an isolated git worktree, runs the target project's own check stack against the result, and reports a *verified* outcome back over an agent-shaped surface (MCP tools + JSON CLI).
 
 The primary user is an AI orchestrator, not a human. The verification stack — not the agent's self-report — is the source of truth for success/failure. Every adapter is held to the same `AgentAdapter` behaviour and a reusable conformance suite.
 
@@ -29,7 +29,7 @@ mix test
 mix credo --strict
 mix dialyzer
 mix doctor
-mix sobelow --exit Low
+mix sobelow --exit --skip
 
 # With AI-friendly output
 mix test.json

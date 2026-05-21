@@ -65,6 +65,11 @@ defmodule Harness.RoadmapTest do
                Roadmap.ingest({:id, "1"}, project_root: @sample, agent: :grok)
     end
 
+    test "rejects :antigravity — rmap delegate cannot render for it" do
+      assert {:error, {:invalid_agent, :antigravity}} =
+               Roadmap.ingest({:id, "1"}, project_root: @sample, agent: :antigravity)
+    end
+
     test "rejects a malformed selector" do
       assert {:error, {:invalid_selector, {:id, 6}}} =
                Roadmap.ingest({:id, 6}, project_root: @sample)
