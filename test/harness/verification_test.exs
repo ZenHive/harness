@@ -121,9 +121,7 @@ defmodule Harness.VerificationTest do
       # absolute deadline exists for. The check must still die at the deadline.
       # The 1s budget leaves room for perl's interpreter start under suite load.
       stub =
-        stub_script(
-          ~S[exec perl -e '$| = 1; while (1) { print "tick\n"; select(undef, undef, undef, 0.05); }']
-        )
+        stub_script(~S[exec perl -e '$| = 1; while (1) { print "tick\n"; select(undef, undef, undef, 0.05); }'])
 
       began = System.monotonic_time(:millisecond)
 
