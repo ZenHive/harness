@@ -55,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   worktree). Grok's headless-only extras (`--best-of-n`, `--check`, worktree
   flags) are deferred to the capability registry, not the core behaviour.
   Passes the conformance suite unchanged.
+- `Harness.AgentAdapter.Antigravity` — the Antigravity CLI adapter: drives `agy`
+  headlessly (`agy -p`, raw output captured verbatim,
+  `--dangerously-skip-permissions` for unattended runs, `--continue` session
+  resume). Passes the conformance suite unchanged.
 - `Harness.AgentAdapter.Driver` — the generic run driver: spawns any adapter,
   captures raw output, and enforces two timeout guards — a total-run budget and
   an idle window reset on every output chunk — so a runaway or wedged run is

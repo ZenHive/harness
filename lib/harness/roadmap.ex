@@ -30,7 +30,7 @@ defmodule Harness.Roadmap do
 
   alias Harness.Roadmap.Item
 
-  @valid_agents [:claude, :codex, :cursor]
+  @valid_agents [:claude, :codex, :cursor, :antigravity]
 
   @typedoc "Which task to ingest: the next pending one, or one named by id."
   @type selector :: :next | {:id, String.t()}
@@ -59,7 +59,7 @@ defmodule Harness.Roadmap do
     * `:project_root` — directory holding `roadmap/tasks.toml`; defaults to the
       current working directory.
     * `:agent` — which agent to render the prompt for; one of `:claude`,
-      `:codex`, `:cursor`. Defaults to `:claude`.
+      `:codex`, `:cursor`, `:antigravity`. Defaults to `:claude`.
     * `:rmap_bin` — the `rmap` executable name or path. Defaults to `"rmap"`.
 
   Returns `{:ok, %Harness.Roadmap.Item{}}` or `{:error, reason}` — see `t:error/0`.

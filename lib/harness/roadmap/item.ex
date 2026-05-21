@@ -24,7 +24,7 @@ defmodule Harness.Roadmap.Item do
           id: String.t(),
           title: String.t(),
           prompt: String.t(),
-          agent: :claude | :codex | :cursor
+          agent: :claude | :codex | :cursor | :antigravity
         }
 
   @enforce_keys [:id, :title, :prompt, :agent]
