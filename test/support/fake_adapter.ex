@@ -21,8 +21,14 @@ defmodule Harness.FakeAdapter do
   end
 
   @impl Harness.AgentAdapter
-  def build_command(%Invocation{adapter_opts: opts}) do
-    {:ok, command(Keyword.get(opts, :command, :echo))}
+  def build_command(%Invocation{permission_mode: mode, adapter_opts: opts}) do
+    # Mirror a real adapter: a permission mode outside capabilities/0 is a
+    # build_command error, never a silent fallback (the conformance contract).
+    if mode in capabilities().permission_modes do
+      {:ok, command(Keyword.get(opts, :command, :echo))}
+    else
+      {:error, {:unsupported_permission_mode, mode}}
+    end
   end
 
   @impl Harness.AgentAdapter

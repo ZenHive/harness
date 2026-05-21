@@ -395,7 +395,7 @@ id = "12"
 phase = 2
 bundle = "contract-proof"
 milestone = "v0_1"
-status = "in_progress"
+status = "done"
 title = "Reusable adapter conformance test suite"
 scores = { d = 4, b = 7, u = 7 }
 depends_on = ["4"]
@@ -407,9 +407,11 @@ acceptance_criteria = [
 body = """
 Build a reusable test module every `AgentAdapter` implementation must pass — exercising invocation, raw-output capture, termination detection, timeout, and adapter-level cancellation (the behaviour's `terminate` callback killing an in-flight run and releasing its Port/process). This is adapter-scope only: external cancellation *orchestration* — a caller telling the running system to cancel a job — is the supervised lifecycle's concern (Task 8) and is out of scope here. Run the Claude adapter against the suite. This suite is the gate Codex and every later adapter (Cursor, Grok, ACP) are held to: a leak gets fixed in the behaviour, not patched around in the adapter.
 """
+implemented = "Built Harness.AgentAdapter.ConformanceCase — a reusable, adapter-parameterized conformance suite (use ConformanceCase, adapter: M) covering invocation, verbatim raw-output capture, termination detection, timeout (terminate/1 as the driver's timeout-branch handler), and adapter-level cancellation. Contract checks are agent-free (synthesized port messages + /bin/sleep stand-in); one :integration test drives the real agent through Driver.run/3. Run against the Claude adapter (ClaudeConformanceTest) and Harness.FakeAdapter (FakeAdapterConformanceTest, proving reusability). Made FakeAdapter contract-faithful (build_command/1 now rejects undeclared permission modes). Trimmed ClaudeTest to Claude-specific assertions. Delivered by harness's first fully-green dogfood run (run-1779367169148-29cf0bea)."
 created_at = "2026-05-20"
 started_at = "2026-05-21"
 scored_at = "2026-05-20"
+done_at = "2026-05-21"
 
 [[task]]
 id = "13"
@@ -660,3 +662,22 @@ created_at = "2026-05-21"
 started_at = "2026-05-21"
 scored_at = "2026-05-21"
 done_at = "2026-05-21"
+
+[[task]]
+id = "25"
+phase = 4
+bundle = "multi-agent"
+milestone = "v0_3"
+status = "pending"
+title = "Caller-controlled agent environment in the AgentAdapter contract"
+scores = { d = 4, b = 5, u = 5 }
+acceptance_criteria = ["A caller can add environment variables for a dispatched agent via `Invocation`, without mutating the orchestrator BEAM's own environment", 'A caller can remove an inherited environment variable for a dispatched agent — the dogfood `System.delete_env("ANTHROPIC_API_KEY")` workaround becomes unnecessary', "The adapter conformance suite verifies both env injection and env scrubbing, and every adapter passes it"]
+out_of_scope = ["Quota/billing detection or fail-over routing — marking a quota-exhausted agent unavailable is Task 16", "Secret management or credential vaulting — harness passes through whatever env the caller specifies; it does not store credentials"]
+body = """
+Harness Port-spawns every headless agent inheriting the orchestrator BEAM's environment wholesale — `Harness.AgentAdapter.spawn_run/5` opens the port layering only the adapter's `build_command/1` env additions on top, and `Harness.AgentAdapter.Invocation` carries no environment field at all. The operator has no lever to shape what a dispatched agent sees: they cannot add a per-run variable, and they cannot scrub an inherited one — e.g. remove an inherited `ANTHROPIC_API_KEY` so `claude` falls back to its subscription OAuth credentials instead of a (possibly unfunded) API key. That exact gap forced the dogfood driver to call `System.delete_env/1` on the whole BEAM as a workaround.
+
+Give the caller a first-class mechanism, carried on `Invocation`, to both set and unset environment variables for the spawned agent — threaded through every adapter's `build_command/1` and the port spawn (note `port_env/1` currently cannot express a removal: `{key, false}` would crash `String.to_charlist/1`). Cover it in the adapter conformance suite so every adapter honors it identically.
+"""
+created_at = "2026-05-21"
+scored_at = "2026-05-21"
+depends_on = ["12"]

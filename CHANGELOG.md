@@ -45,6 +45,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the moment the agent spawns, so a wrapping process can cancel it mid-run.
 - `Harness.AgentAdapter.OSProcess` — shared port / OS-process lifecycle helper
   (os-pid lookup, idempotent close, mailbox drain, kill) every adapter reuses.
+- `Harness.AgentAdapter.ConformanceCase` — the reusable conformance suite every
+  adapter must pass, parameterized by adapter module: it pins the contract for
+  invocation, verbatim raw-output capture, termination detection, timeout, and
+  adapter-level cancellation. The contract checks are agent-free (synthesized
+  port messages, a `/bin/sleep` stand-in); one `:integration`-tagged test drives
+  the real agent end to end. The gate Codex and every later adapter (Cursor,
+  Grok) are held to — a leak it catches is fixed in the behaviour, never patched
+  around in the adapter. Run against `Harness.AgentAdapter.Claude` and
+  `Harness.FakeAdapter`.
 - `Harness.Verification` — the run grader: runs a target project's check stack
   against a worktree and aggregates the results into a `Verdict`. This is how
   harness decides "did the job succeed?" objectively, never from the agent's
