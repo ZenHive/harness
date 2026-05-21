@@ -19,13 +19,14 @@ defmodule Harness.Verification do
 
   ## Execution model
 
-  Each check is spawned over an OTP port, bounded by a per-check timeout: a hung
-  check (a cold `mix dialyzer` PLT build, a check blocked on a TTY) is killed
-  rather than wedging the run. Checks run sequentially — the preset checks all
-  touch the target's shared `_build`, so concurrent `mix` runs would race the
-  compile lock. A failing check is a red result, not a crash; `run/2` returns
-  `{:error, _}` only when verification cannot run at all (no checks, or the
-  worktree path is missing).
+  Each check is spawned over an OTP port, bounded by a per-check timeout
+  enforced as an absolute deadline: any check still running when the
+  deadline passes — idle (a cold `mix dialyzer` PLT build, a block on a TTY) or
+  still streaming output — is killed rather than wedging the run. Checks run
+  sequentially — the preset checks all touch the target's shared `_build`, so
+  concurrent `mix` runs would race the compile lock. A failing check is a red
+  result, not a crash; `run/2` returns `{:error, _}` only when verification
+  cannot run at all (no checks, or the worktree path is missing).
 
   ## Configuration
 
@@ -147,33 +148,56 @@ defmodule Harness.Verification do
             {:cd, worktree_path}
           ])
 
-        collect(port, check, timeout, [])
+        collect(port, check, timeout, deadline(timeout), [])
     end
   end
 
-  # Drains the port until the check exits or the timeout fires. A timeout kills
-  # the check and grades it red — a hung check must never wedge the run.
-  @spec collect(port(), Check.t(), timeout(), iodata()) :: Result.t()
-  defp collect(port, check, timeout, acc) do
+  # Drains the port until the check exits or its deadline passes. The deadline
+  # is absolute: unlike a `receive`-local timeout, a check that keeps emitting
+  # output cannot push it back. A passed deadline kills the check and grades it
+  # red — a hung check, idle or not, must never wedge the run.
+  @spec collect(port(), Check.t(), timeout(), integer() | :infinity, iodata()) :: Result.t()
+  defp collect(port, check, timeout, deadline, acc) do
     receive do
       {^port, {:data, data}} ->
-        collect(port, check, timeout, [acc, data])
+        collect(port, check, timeout, deadline, [acc, data])
 
       {^port, {:exit_status, status}} ->
         %Result{
           name: check.name,
           command: check.command,
           status: if(status == 0, do: :pass, else: :fail),
+          kind: :exited,
           exit_status: status,
           output: IO.iodata_to_binary(acc)
         }
     after
-      timeout ->
+      remaining(deadline) ->
         kill_port(port)
         output = IO.iodata_to_binary(acc) <> "\n[harness] check timed out after #{timeout}ms"
-        %Result{name: check.name, command: check.command, status: :fail, exit_status: nil, output: output}
+
+        %Result{
+          name: check.name,
+          command: check.command,
+          status: :fail,
+          kind: :timed_out,
+          exit_status: nil,
+          output: output
+        }
     end
   end
+
+  # Absolute monotonic-time deadline (ms) for a check, or :infinity when the
+  # configured timeout is unbounded.
+  @spec deadline(timeout()) :: integer() | :infinity
+  defp deadline(:infinity), do: :infinity
+  defp deadline(timeout), do: System.monotonic_time(:millisecond) + timeout
+
+  # Milliseconds left until the deadline, floored at 0 so `receive`'s `after`
+  # never sees a negative value; :infinity passes through unchanged.
+  @spec remaining(integer() | :infinity) :: timeout()
+  defp remaining(:infinity), do: :infinity
+  defp remaining(deadline), do: max(0, deadline - System.monotonic_time(:millisecond))
 
   # Best-effort kill of a timed-out check: close the port and SIGKILL the OS
   # process. SIGKILL of the immediate pid can orphan grandchildren — the same
@@ -220,6 +244,7 @@ defmodule Harness.Verification do
       name: check.name,
       command: check.command,
       status: :fail,
+      kind: :not_launched,
       exit_status: nil,
       output: "[harness] " <> message
     }

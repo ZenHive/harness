@@ -16,6 +16,7 @@ defmodule Harness.VerificationTest do
 
       assert length(results) == 2
       assert Enum.all?(results, &(&1.status == :pass))
+      assert Enum.all?(results, &(&1.kind == :exited))
       assert Enum.all?(results, &(&1.exit_status == 0))
     end
 
@@ -79,6 +80,7 @@ defmodule Harness.VerificationTest do
                Verification.run(dir, checks: [check("exits-7", stub_script("exit 7"))])
 
       assert result.status == :fail
+      assert result.kind == :exited
       assert result.exit_status == 7
     end
 
@@ -94,7 +96,7 @@ defmodule Harness.VerificationTest do
   end
 
   describe "run/2 timeout" do
-    test "kills a check that exceeds the timeout and grades it red" do
+    test "kills an idle check that exceeds the timeout and grades it red" do
       dir = worktree_dir()
       stub = stub_script("echo started; sleep 30; echo finished")
       began = System.monotonic_time(:millisecond)
@@ -105,9 +107,43 @@ defmodule Harness.VerificationTest do
       elapsed = System.monotonic_time(:millisecond) - began
       assert elapsed < 5_000
       assert result.status == :fail
+      assert result.kind == :timed_out
       assert result.exit_status == nil
       assert result.output =~ "timed out after 300ms"
       refute result.output =~ "finished"
+    end
+
+    test "kills a check still streaming output, not just an idle one" do
+      dir = worktree_dir()
+      # Emits unbuffered output every 50ms forever (perl autoflush — a plain
+      # shell loop block-buffers stdout to a pipe). A per-receive idle timeout
+      # would never fire, since every chunk resets it; this is the case the
+      # absolute deadline exists for. The check must still die at the deadline.
+      # The 1s budget leaves room for perl's interpreter start under suite load.
+      stub =
+        stub_script(
+          ~S[exec perl -e '$| = 1; while (1) { print "tick\n"; select(undef, undef, undef, 0.05); }']
+        )
+
+      began = System.monotonic_time(:millisecond)
+
+      assert {:ok, %Verdict{status: :fail, results: [result]}} =
+               Verification.run(dir, checks: [check("streams", stub)], timeout: 1_000)
+
+      elapsed = System.monotonic_time(:millisecond) - began
+      assert elapsed < 5_000
+      assert result.kind == :timed_out
+      assert result.output =~ "tick"
+      assert result.output =~ "timed out after 1000ms"
+    end
+
+    test "an :infinity timeout leaves the check unbounded" do
+      dir = worktree_dir()
+
+      assert {:ok, %Verdict{status: :pass, results: [result]}} =
+               Verification.run(dir, checks: [check("quick", "true")], timeout: :infinity)
+
+      assert result.kind == :exited
     end
   end
 
@@ -133,9 +169,11 @@ defmodule Harness.VerificationTest do
                Verification.run(dir, checks: checks)
 
       assert ghost.status == :fail
+      assert ghost.kind == :not_launched
       assert ghost.exit_status == nil
       assert ghost.output =~ "definitely-not-a-real-binary-xyz"
       assert real.status == :pass
+      assert real.kind == :exited
     end
   end
 

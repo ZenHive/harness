@@ -15,8 +15,13 @@ defmodule Harness.Verification.Result do
     * `command` — the executable that ran, kept for readable failure dumps.
     * `status` — `:pass` (process exited `0`) or `:fail` (any other exit, a
       timeout, or the executable could not be launched).
-    * `exit_status` — the process exit code, or `nil` when the check never
-      exited normally: not found on `PATH`, or killed after timing out.
+    * `kind` — *how* the check ended, orthogonal to `status`: `:exited` (ran to
+      completion — `status` then carries the pass/fail verdict), `:timed_out`
+      (killed at the per-check deadline), or `:not_launched` (the executable
+      was not found on `PATH`). Lets a consumer tell a retryable timeout from a
+      genuine red check without parsing `output`.
+    * `exit_status` — the process exit code, or `nil` when `kind` is not
+      `:exited` (the check timed out or never launched).
     * `output` — the combined stdout + stderr captured from the check. On a
       timeout or a launch failure it ends with a `[harness]` explanation line.
   """
@@ -24,10 +29,11 @@ defmodule Harness.Verification.Result do
           name: String.t(),
           command: String.t(),
           status: :pass | :fail,
+          kind: :exited | :timed_out | :not_launched,
           exit_status: integer() | nil,
           output: String.t()
         }
 
-  @enforce_keys [:name, :command, :status, :exit_status, :output]
-  defstruct [:name, :command, :status, :exit_status, :output]
+  @enforce_keys [:name, :command, :status, :kind, :exit_status, :output]
+  defstruct [:name, :command, :status, :kind, :exit_status, :output]
 end
