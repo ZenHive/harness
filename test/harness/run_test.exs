@@ -1,0 +1,303 @@
+defmodule Harness.RunTest do
+  use ExUnit.Case, async: true
+
+  alias Harness.AgentAdapter.Outcome
+  alias Harness.FakeAdapter
+  alias Harness.GitFixture
+  alias Harness.ProcessFixture
+  alias Harness.Roadmap.Item
+  alias Harness.Run
+  alias Harness.Run.Result
+  alias Harness.Run.Status
+  alias Harness.Verification.Check
+  alias Harness.Verification.Verdict
+  alias Harness.Worktree
+
+  # An adapter whose build_command/1 raises — drives the run's driver-task-crash
+  # path (the gen_statem must survive a crashing step task).
+  defmodule CrashingAdapter do
+    @moduledoc false
+    @behaviour Harness.AgentAdapter
+
+    alias Harness.AgentAdapter.Capabilities
+
+    @impl Harness.AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl Harness.AgentAdapter
+    def build_command(_invocation), do: raise("boom in build_command")
+
+    @impl Harness.AgentAdapter
+    def classify_message(_message, _run), do: :ignore
+
+    @impl Harness.AgentAdapter
+    def terminate(_run), do: :ok
+  end
+
+  # An adapter that spawns a real, long-lived agent, then crashes the driver
+  # task on the agent's first output — a driver crash *after* the agent's OS
+  # process exists, which the run must SIGKILL rather than orphan.
+  defmodule DriverCrashAdapter do
+    @moduledoc false
+    @behaviour Harness.AgentAdapter
+
+    alias Harness.AgentAdapter.Capabilities
+    alias Harness.AgentAdapter.OSProcess
+
+    @impl Harness.AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl Harness.AgentAdapter
+    def build_command(%{adapter_opts: opts}) do
+      pid_file = Keyword.fetch!(opts, :pid_file)
+      # Record the agent's own pid, emit a line so the driver calls
+      # classify_message, then stay alive long enough to be orphaned.
+      {:ok, {"/bin/sh", ["-c", "echo $$ > #{pid_file}; echo go; exec sleep 30"], []}}
+    end
+
+    @impl Harness.AgentAdapter
+    def classify_message({_port, {:data, _data}}, _run), do: raise("crash the driver after the agent spawned")
+
+    def classify_message(_message, _run), do: :ignore
+
+    @impl Harness.AgentAdapter
+    def terminate(run), do: OSProcess.kill(run)
+  end
+
+  describe "lifecycle — settling on a verdict" do
+    test "settles :done and removes the worktree when verification passes" do
+      result = run(checks: [check("ok", "true")])
+
+      assert %Result{state: :done, reason: :passed} = result
+      assert %Verdict{status: :pass} = result.verdict
+      assert %Outcome{kind: :exited} = result.agent_outcome
+      assert is_binary(result.worktree_path)
+      refute File.dir?(result.worktree_path)
+    end
+
+    test "settles :failed and retains the worktree when verification fails" do
+      result = run(checks: [check("ok", "true"), check("no", "false")])
+
+      assert %Result{state: :failed, reason: :verification_red} = result
+      assert %Verdict{status: :fail} = result.verdict
+      assert File.dir?(result.worktree_path)
+      assert Worktree.retained?(result.worktree_path)
+    end
+
+    test "verifies the worktree even when the agent times out" do
+      result = run(adapter_opts: [command: :sleep], idle_timeout: 150, checks: [check("ok", "true")])
+
+      assert %Result{state: :done, reason: :passed} = result
+      assert %Outcome{kind: {:timed_out, :idle}} = result.agent_outcome
+    end
+
+    test "carries the rmap task id and run id onto the result" do
+      {run_id, pid} = start([])
+      result = await_result(run_id, pid)
+
+      assert result.run_id == run_id
+      assert result.task_id == "8"
+    end
+  end
+
+  describe "failure isolation" do
+    @tag :capture_log
+    test "a crashing agent-driver task settles :failed without crashing the run" do
+      {run_id, pid} = start(adapter: CrashingAdapter)
+      result = await_result(run_id, pid)
+
+      assert %Result{state: :failed, reason: {:driver_crashed, _reason}} = result
+    end
+
+    @tag :capture_log
+    test "a driver crash after the agent spawned still kills the agent" do
+      pid_file = Path.join(System.tmp_dir!(), "harness-run-#{System.unique_integer([:positive])}.pid")
+      on_exit(fn -> File.rm(pid_file) end)
+
+      result = run(adapter: DriverCrashAdapter, adapter_opts: [pid_file: pid_file])
+
+      assert %Result{state: :failed, reason: {:driver_crashed, _reason}} = result
+      assert ProcessFixture.await_dead(await_pid_file(pid_file)) == :ok
+    end
+
+    test "settles :failed when the worktree cannot be created" do
+      base = GitFixture.tmp_base()
+      opts = Keyword.put(default_opts(base), :terminal_linger, 100)
+      {:ok, run_id, pid} = Run.Supervisor.start_run(item(), "/no/such/repo", FakeAdapter, opts)
+
+      result = await_result(run_id, pid)
+      assert %Result{state: :failed, reason: {:worktree_failed, _reason}} = result
+    end
+
+    test "settles :failed when the agent cannot spawn" do
+      result = run(adapter_opts: [command: :missing])
+
+      assert %Result{state: :failed, reason: {:agent_spawn_failed, _reason}} = result
+      assert result.agent_outcome == nil
+    end
+
+    test "settles :failed when verification cannot run" do
+      result = run(checks: [])
+
+      assert %Result{state: :failed, reason: {:verification_failed, :no_checks}} = result
+    end
+  end
+
+  describe "external cancellation" do
+    test "cancel/1 kills the agent and settles :failed" do
+      {run_id, pid} = start(adapter_opts: [command: :sleep])
+      os_pid = await_agent_os_pid(run_id)
+
+      assert :ok = Run.cancel(run_id)
+
+      result = await_result(run_id, pid)
+      assert %Result{state: :failed, reason: :cancelled} = result
+      assert ProcessFixture.await_dead(os_pid) == :ok
+    end
+
+    test "an immediate cancel still settles :cancelled" do
+      {run_id, pid} = start(adapter_opts: [command: :sleep])
+      assert :ok = Run.cancel(run_id)
+
+      result = await_result(run_id, pid)
+      assert %Result{state: :failed, reason: :cancelled} = result
+    end
+
+    test "cancelling an unknown run is a no-op" do
+      assert :ok = Run.cancel("definitely-not-a-run")
+    end
+  end
+
+  describe "per-run timeout" do
+    test "the lifetime budget settles :failed when it elapses" do
+      {run_id, pid} = start(adapter_opts: [command: :sleep], lifetime_timeout: 200)
+
+      result = await_result(run_id, pid)
+      assert %Result{state: :failed, reason: :timed_out} = result
+    end
+  end
+
+  describe "observable state" do
+    test "status/1 reports the running state and resolves an unknown id" do
+      assert {:error, :not_found} = Run.status("definitely-not-a-run")
+
+      {run_id, pid} = start(adapter_opts: [command: :sleep])
+      os_pid = await_agent_os_pid(run_id)
+
+      assert {:ok, %Status{state: :running, run_id: ^run_id, task_id: "8"}} = Run.status(run_id)
+
+      assert :ok = Run.cancel(run_id)
+      await_result(run_id, pid)
+
+      assert {:error, :not_found} = Run.status(run_id)
+      assert ProcessFixture.await_dead(os_pid) == :ok
+    end
+
+    test "status/1 and cancel/1 accept a pid as well as a run id" do
+      {run_id, pid} = start(adapter_opts: [command: :sleep])
+      await_agent_os_pid(run_id)
+
+      assert {:ok, %Status{state: :running}} = Run.status(pid)
+      assert :ok = Run.cancel(pid)
+
+      result = await_result(run_id, pid)
+      assert %Result{state: :failed, reason: :cancelled} = result
+    end
+
+    test "a settled run stays observable during the terminal linger window" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+
+      # Omit :lifetime_timeout and :terminal_linger to exercise the config
+      # defaults; the default linger keeps the run observable after it settles.
+      opts = [
+        base_dir: base,
+        adapter_opts: [command: :echo],
+        checks: [check("ok", "true")],
+        total_timeout: 30_000,
+        idle_timeout: 10_000,
+        verification_timeout: 10_000
+      ]
+
+      {:ok, run_id, _pid} = Run.Supervisor.start_run(item(), repo, FakeAdapter, opts)
+
+      assert_receive {:harness_run, ^run_id, %Result{state: :done}}, 5_000
+      assert {:ok, %Status{state: :done}} = Run.status(run_id)
+      assert :ok = Run.cancel(run_id)
+      assert {:ok, %Status{state: :done}} = Run.status(run_id)
+    end
+  end
+
+  # ── helpers ─────────────────────────────────────────────────────────────
+
+  defp run(overrides) do
+    {run_id, pid} = start(overrides)
+    await_result(run_id, pid)
+  end
+
+  defp start(overrides) do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+    {adapter, overrides} = Keyword.pop(overrides, :adapter, FakeAdapter)
+    opts = Keyword.merge(default_opts(base), overrides)
+
+    {:ok, run_id, pid} = Run.Supervisor.start_run(item(), repo, adapter, opts)
+    {run_id, pid}
+  end
+
+  defp default_opts(base) do
+    [
+      base_dir: base,
+      adapter_opts: [command: :echo],
+      checks: [check("ok", "true")],
+      total_timeout: 30_000,
+      idle_timeout: 10_000,
+      lifetime_timeout: 30_000,
+      verification_timeout: 10_000,
+      terminal_linger: 100
+    ]
+  end
+
+  defp item do
+    %Item{id: "8", title: "Supervised run lifecycle", prompt: "do the thing", agent: :claude}
+  end
+
+  defp check(name, command), do: %Check{name: name, command: command, args: []}
+
+  defp await_result(run_id, pid, timeout \\ 5_000) do
+    ref = Process.monitor(pid)
+    assert_receive {:harness_run, ^run_id, %Result{} = result}, timeout
+    assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, timeout
+    result
+  end
+
+  defp await_agent_os_pid(run_id, tries \\ 150)
+
+  defp await_agent_os_pid(_run_id, 0), do: flunk("run never reported an agent os_pid")
+
+  defp await_agent_os_pid(run_id, tries) do
+    case Run.status(run_id) do
+      {:ok, %Status{state: :running, agent_os_pid: os_pid}} when is_integer(os_pid) ->
+        os_pid
+
+      _other ->
+        Process.sleep(20)
+        await_agent_os_pid(run_id, tries - 1)
+    end
+  end
+
+  defp await_pid_file(path, tries \\ 200)
+
+  defp await_pid_file(_path, 0), do: flunk("agent never wrote its pid file")
+
+  defp await_pid_file(path, tries) do
+    with {:ok, content} <- File.read(path),
+         {os_pid, _rest} <- Integer.parse(String.trim(content)) do
+      os_pid
+    else
+      _ ->
+        Process.sleep(20)
+        await_pid_file(path, tries - 1)
+    end
+  end
+end

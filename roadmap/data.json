@@ -344,7 +344,7 @@
       "phase": 2,
       "bundle": "core-loop",
       "milestone": "v0_1",
-      "status": "pending",
+      "status": "done",
       "title": "Supervised run lifecycle process",
       "scores": {
         "d": 5,
@@ -366,7 +366,10 @@
       ],
       "body": "Implement the supervised process that owns one job end to end — model it as a `gen_statem` moving through `dispatched → running → verifying → {done | failed}`. It creates the worktree, spawns the adapter, waits for termination, runs the verification stack, and settles on a verdict. Crash isolation (a failed run never touches siblings), a per-run timeout, and external cancellation. The run state must be observable. Completing this task is the single-agent core loop working end to end for one task; the contract-proof bundle (conformance suite + Codex adapter) then proves the adapter contract holds on a second agent.\n",
       "created_at": "2026-05-20",
+      "started_at": "2026-05-21",
+      "done_at": "2026-05-21",
       "scored_at": "2026-05-20",
+      "implemented": "Harness.Run :gen_statem owns one job end to end (dispatched → running → verifying → done/failed): carves the isolated worktree, dispatches the agent via AgentAdapter.Driver, runs the verification stack, settles a verdict. Harness.Run.Supervisor (one_for_one DynamicSupervisor, :temporary children) gives crash isolation between concurrent runs; a Registry maps run-id → pid; a Task.Supervisor parents every per-step async task so a crashing step is an event, not a crash. cancel/1 and a per-run lifetime-budget timeout both abort cleanly and SIGKILL the agent; status/1 exposes live state. AgentAdapter.Driver gained an :on_spawn hook so the lifecycle process can capture the run handle for cancellation. Verification is the sole grader — a timed-out agent is still verified. 23 new tests; suite green; dialyzer/credo/doctor clean.",
       "cross_repo": []
     },
     {

@@ -106,6 +106,50 @@ defmodule Harness.AgentAdapter.DriverTest do
     end
   end
 
+  describe "run/3 — :on_spawn hook" do
+    test "invokes the hook exactly once with the run handle" do
+      # The hook captures into an Agent, not the caller's mailbox — the driver's
+      # own receive loop runs in the caller and would consume a sent message.
+      {:ok, agent} = Agent.start_link(fn -> [] end)
+
+      assert {:ok, %Outcome{kind: :exited}} =
+               Driver.run(FakeAdapter, invocation(:echo),
+                 total_timeout: 10_000,
+                 idle_timeout: 5_000,
+                 on_spawn: fn run -> Agent.update(agent, &[run | &1]) end
+               )
+
+      assert [%Run{}] = Agent.get(agent, & &1)
+    end
+
+    test "a raising hook does not abort the run" do
+      assert {:ok, %Outcome{kind: :exited, exit_status: 0}} =
+               Driver.run(FakeAdapter, invocation(:echo),
+                 total_timeout: 10_000,
+                 idle_timeout: 5_000,
+                 on_spawn: fn _run -> raise "boom" end
+               )
+    end
+
+    test "a throwing hook does not abort the run" do
+      assert {:ok, %Outcome{kind: :exited, exit_status: 0}} =
+               Driver.run(FakeAdapter, invocation(:echo),
+                 total_timeout: 10_000,
+                 idle_timeout: 5_000,
+                 on_spawn: fn _run -> throw(:boom) end
+               )
+    end
+
+    test "is not invoked when the agent fails to spawn" do
+      parent = self()
+
+      assert {:error, {:executable_not_found, _}} =
+               Driver.run(FakeAdapter, invocation(:missing), on_spawn: fn run -> send(parent, {:spawned, run}) end)
+
+      refute_received {:spawned, _}
+    end
+  end
+
   describe "run/3 — configuration" do
     test "falls back to :harness, :run config when no options are given" do
       Application.put_env(:harness, :run, total_timeout: 10_000, idle_timeout: 150)

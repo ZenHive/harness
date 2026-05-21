@@ -39,7 +39,10 @@ defmodule Harness.AgentAdapter.Driver do
   `run/3` is a plain blocking function — it traps no exits, links and monitors
   nothing, and its only inputs are the port messages delivered to the calling
   process. The supervised run lifecycle (a `gen_statem`) wraps it, e.g. in a
-  linked `Task`; the driver itself stays a pure receive loop.
+  monitored `Task`; the driver itself stays a pure receive loop. Because `run/3`
+  blocks until the run ends, a wrapping process that needs to cancel the agent
+  cannot otherwise reach the `Harness.AgentAdapter.Run` handle — the `:on_spawn`
+  option hands it that handle the moment the agent spawns.
   """
 
   alias Harness.AgentAdapter
@@ -62,6 +65,11 @@ defmodule Harness.AgentAdapter.Driver do
 
     * `:total_timeout` — override the total-run budget, in milliseconds.
     * `:idle_timeout` — override the idle window, in milliseconds.
+    * `:on_spawn` — an optional 1-arity function invoked once with the
+      `Harness.AgentAdapter.Run` handle the moment the agent spawns, before the
+      drive loop blocks. The run-lifecycle process uses it to capture the handle
+      so it can cancel the agent later. Exceptions raised by the hook are
+      swallowed — a faulty hook never aborts the run.
   """
   @spec run(module(), Invocation.t(), keyword()) :: {:ok, Outcome.t()} | {:error, term()}
   def run(adapter, %Invocation{} = invocation, opts \\ []) do
@@ -69,9 +77,30 @@ defmodule Harness.AgentAdapter.Driver do
     idle = Keyword.get(opts, :idle_timeout) || configured_idle_timeout()
 
     case AgentAdapter.invoke(adapter, invocation) do
-      {:ok, %Run{} = run} -> {:ok, drive(adapter, run, total, idle)}
-      {:error, _reason} = error -> error
+      {:ok, %Run{} = run} ->
+        notify_spawn(Keyword.get(opts, :on_spawn), run)
+        {:ok, drive(adapter, run, total, idle)}
+
+      {:error, _reason} = error ->
+        error
     end
+  end
+
+  # Runs the optional :on_spawn hook with the freshly spawned run handle. The
+  # hook is the only way a caller in another process — the run-lifecycle
+  # gen_statem — can capture the Run before drive/4 blocks, and so the only way
+  # it can later cancel the agent. Wrapped so a throwing hook cannot abort the
+  # run and orphan the just-spawned OS process.
+  @spec notify_spawn((Run.t() -> any()) | nil, Run.t()) :: :ok
+  defp notify_spawn(nil, _run), do: :ok
+
+  defp notify_spawn(hook, run) when is_function(hook, 1) do
+    hook.(run)
+    :ok
+  rescue
+    _error -> :ok
+  catch
+    _kind, _value -> :ok
   end
 
   # Seeds both deadlines and enters the receive loop. The total deadline is

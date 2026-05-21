@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 1 — Scaffold the OTP application + standard dep stack, Task 2 — Evaluate orchestration libraries — confirm thin-core, Task 3 — Define the AgentAdapter behaviour — invocation + capture on 2026-05-20
 
-**Up next:** Task 8 — Supervised run lifecycle process [D:5/B:9/U:9 → Eff:1.8] 🚀
+**Up next:** Task 12 — Reusable adapter conformance test suite [D:4/B:7/U:7 → Eff:1.75] 🚀
 <!-- FOCUS:END -->
 
 ---
@@ -43,7 +43,7 @@
 | Task 5 `[P]` | ✅ | 🎁 **core-loop** · 🚀 **v0_1** · Worktree-per-job lifecycle [D:4/B:7/U:8 → Eff:1.88] 🚀 |
 | Task 6 `[P]` | ✅ | 🎁 **core-loop** · 🚀 **v0_1** · rmap task ingestion [D:3/B:7/U:7 → Eff:2.33] 🎯 |
 | Task 7 `[P]` | ✅ | 🎁 **core-loop** · 🚀 **v0_1** · Verification runner — run the target project's check stack [D:5/B:9/U:8 → Eff:1.7] 🚀 |
-| Task 8 | ⬜ | 🎁 **core-loop** · 🚀 **v0_1** · Supervised run lifecycle process [D:5/B:9/U:9 → Eff:1.8] 🚀 |
+| Task 8 | ✅ | 🎁 **core-loop** · 🚀 **v0_1** · Supervised run lifecycle process [D:5/B:9/U:9 → Eff:1.8] 🚀 |
 | Task 12 | ⬜ | 🎁 **contract-proof** · 🚀 **v0_1** · Reusable adapter conformance test suite [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 | Task 14 | ⬜ | 🎁 **contract-proof** · 🚀 **v0_1** · Codex headless adapter [D:5/B:5/U:5 → Eff:1.0] 📋 |
 <!-- TASKS:END -->

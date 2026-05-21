@@ -38,7 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an idle window reset on every output chunk — so a runaway or wedged run is
   killed. Termination is derived from the process closing or a deadline, never
   the exit code. Returns a `Harness.AgentAdapter.Outcome`; timeouts configurable
-  via `:harness, :run`.
+  via `:harness, :run`. An `:on_spawn` hook hands the run handle to the caller
+  the moment the agent spawns, so a wrapping process can cancel it mid-run.
 - `Harness.AgentAdapter.OSProcess` — shared port / OS-process lifecycle helper
   (os-pid lookup, idempotent close, mailbox drain, kill) every adapter reuses.
 - `Harness.Verification` — the run grader: runs a target project's check stack
@@ -49,6 +50,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `:harness, :verification`. Each check is spawned over an OTP port with a
   per-check timeout, so a hung check is killed rather than wedging the run. The
   verification half of the loop.
+- `Harness.Run` — the supervised run lifecycle: a `:gen_statem` that owns one
+  job end to end, moving through `dispatched → running → verifying →
+  {done | failed}`. It carves the isolated worktree, dispatches the agent,
+  waits for termination, runs the verification stack, and settles on a verdict
+  — the single-agent core loop working end to end. Each step runs in a
+  monitored task so a crashing step never crashes the run; a per-run lifetime
+  budget and `cancel/1` both abort cleanly, SIGKILLing the agent; `status/1`
+  exposes live state. A run is graded by the verification stack alone, never by
+  the agent's exit code — a run whose agent timed out is still verified.
+- `Harness.Run.Supervisor` — the `:one_for_one` `DynamicSupervisor` each
+  `Harness.Run` starts under as a `:temporary` child, so one run crashing is
+  isolated from its siblings and a failed run is never restarted. `start_run/4`
+  is the entry point; runs are looked up by id through a `Registry`.
+- Run lifecycle timeouts are configurable via `:harness, :run`
+  (`lifetime_timeout`, `terminal_linger`) alongside the existing agent
+  `total_timeout` / `idle_timeout`.
 - Initial OTP application scaffold with a supervision tree (`Harness.Application`).
 - Standard Elixir dev/test tooling stack: Styler (formatter plugin), Credo,
   Dialyxir, Doctor, Sobelow, `ex_unit_json`, `dialyzer_json`, `ex_dna`, `ex_ast`,
