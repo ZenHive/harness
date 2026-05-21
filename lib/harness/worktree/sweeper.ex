@@ -67,6 +67,9 @@ defmodule Harness.Worktree.Sweeper do
   end
 
   @spec parent_repo(String.t()) :: String.t() | nil
+  # `dir` is a Path.wildcard result under the sweep base, not external input;
+  # reading each worktree's .git marker is the sweeper's purpose.
+  # sobelow_skip ["Traversal.FileModule"]
   defp parent_repo(dir) do
     with {:ok, contents} <- File.read(Path.join(dir, ".git")),
          "gitdir: " <> gitdir <- String.trim(contents),

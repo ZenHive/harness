@@ -39,7 +39,10 @@ defmodule Harness.MixProject do
   defp docs do
     [
       main: "Harness",
-      extras: ["README.md", "CHANGELOG.md", "ROADMAP.md"]
+      extras: ["README.md", "CHANGELOG.md", "ROADMAP.md"],
+      # Internal modules (@moduledoc false) named in CHANGELOG/doc prose —
+      # legitimate mentions, but ExDoc warns on autolinks to hidden modules.
+      skip_code_autolink_to: ["Harness.Application", "Harness.Worktree.Sweeper"]
     ]
   end
 

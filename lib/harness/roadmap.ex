@@ -130,6 +130,9 @@ defmodule Harness.Roadmap do
   # Every rmap call targets the roadmap with an explicit --tasks-path so it
   # never ancestor-walks into a different roadmap; `cd:` is belt-and-suspenders.
   @spec run_rmap([String.t()], ctx()) :: {:ok, String.t()} | {:error, failure()}
+  # System.cmd/3 with an argv list spawns directly — no shell, no interpolation.
+  # rmap_bin and args are harness-constructed, not external input.
+  # sobelow_skip ["CI.System"]
   defp run_rmap(argv, ctx) do
     args = argv ++ ["--tasks-path", ctx.tasks_path]
     base_opts = [stderr_to_stdout: true]

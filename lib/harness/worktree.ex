@@ -64,7 +64,9 @@ defmodule Harness.Worktree do
           {:repo_not_found, String.t()}
           | {:not_a_git_repo, String.t()}
           | {:marker_write_failed, String.t(), File.posix()}
-          | Git.error()
+          # Inlined from the internal Harness.Git.error/0 — keeps this public
+          # type self-describing without autolinking to a hidden module.
+          | {:git_failed, args :: [String.t()], status :: integer(), output :: String.t()}
 
   @doc """
   Creates an isolated worktree for a run against `repo`.
@@ -179,6 +181,9 @@ defmodule Harness.Worktree do
   end
 
   @spec retain(t()) :: :ok | {:error, error()}
+  # `marker` is a fixed filename under the worktree's own harness-created path,
+  # not external input.
+  # sobelow_skip ["Traversal.FileModule"]
   defp retain(%__MODULE__{path: path, branch: branch}) do
     marker = Path.join(path, @retained_marker)
     body = "retained_at=#{DateTime.to_iso8601(DateTime.utc_now())}\nbranch=#{branch}\n"
