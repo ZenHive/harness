@@ -60,4 +60,13 @@ The harness core is unusually OTP-dense: supervision trees, a per-run `gen_state
 
 ## Status
 
-Greenfield. No `mix` project exists yet — Phase 1, Task 1 runs `mix new` and scaffolds the dep stack. `ROADMAP.md` (rendered from `roadmap/tasks.toml` by `rmap`) is the source of truth for what to build next: start with `rmap next`.
+Tasks 1–7 are done — OTP scaffold, the `AgentAdapter` behaviour, the Claude Code adapter, worktree-per-job lifecycle, rmap task ingestion, and the verification runner. Task 8 — the supervised single-task run lifecycle — is in progress; it is the **last hand-built task** (see § Dogfooding below). `ROADMAP.md` (rendered from `roadmap/tasks.toml` by `rmap`) is the source of truth for what to build next: start with `rmap next`.
+
+## Dogfooding — harness Builds harness
+
+From the core loop onward, harness is developed *by* harness. Task 8 (the supervised single-task run lifecycle) is the bootstrap; it and everything before it are hand-built in a Claude Code session. **Once Task 8 is `done`, every remaining pending task is delivered by dispatching it through harness itself** — harness ingests the rmap task, runs a headless agent in an isolated worktree, and grades the result against the verification stack. Do not hand-build a post-Task-8 task in a Claude Code session; hand-build only what harness cannot yet do for itself.
+
+- **Cutover is Task 8, derivable from rmap.** If `rmap show 8` is `done`, the next `rmap next` task is a dogfood candidate — drive it via harness, don't implement it directly.
+- **Supervised until Task 11.** Before the autonomous repair loop (Task 11) lands, dogfooding is supervised: harness dispatches and verifies, a human reads any red verdict and re-dispatches. After Task 11, point harness at an `rmap next-bundle` and let it run unattended.
+- **The roadmap is harness's own test corpus.** Every dogfooded task doubles as a live integration test — a task harness fails to deliver is a harness bug, filed via `rmap new`, not worked around by falling back to hand-building.
+- **Verification stays separate.** The dispatched agent is the implementer; harness's own check stack is the grader (global `CLAUDE.md` § Evaluator Separation). A dogfooded task is done when the verification stack is green — never on the agent's self-reported result.

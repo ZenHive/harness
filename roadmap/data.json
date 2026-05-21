@@ -2,7 +2,7 @@
   "schema_version": 2,
   "project": "harness",
   "default_branch": "development",
-  "vision": "An OTP-native task-execution engine an AI orchestrator drives end to end: it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent running in an isolated worktree, runs the target project's own check stack against the result, and reports verified outcomes back over an agent-shaped surface (MCP tools / JSON CLI).",
+  "vision": "An OTP-native task-execution engine an AI orchestrator drives end to end: it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent running in an isolated worktree, runs the target project's own check stack against the result, and reports verified outcomes back over an agent-shaped surface (MCP tools / JSON CLI). harness is itself developed by dogfooding — from the core loop (Task 8) onward, every pending roadmap task is delivered by dispatching it through harness rather than hand-building it.",
   "focus": {
     "phase": 1
   },
