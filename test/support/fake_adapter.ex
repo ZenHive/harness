@@ -36,6 +36,11 @@ defmodule Harness.FakeAdapter do
   def terminate(%Run{} = run), do: OSProcess.kill(run)
 
   # :echo            — emits one line, exits 0.
+  # {:echo, text}    — emits `text` as one argv element (argv-verbatim fixture,
+  #                    Task 23): proves an argument reaches the agent free of
+  #                    shell word-splitting, globbing, or expansion.
+  # :stdin_eof       — reads stdin, then emits a marker (stdin-EOF fixture,
+  #                    Task 23): a raw OTP-port stdin would stall it forever.
   # :write           — writes a file into cwd (the worktree), exits 0 — a run
   #                    that produced a real diff to commit.
   # :write_then_hang — writes a file into cwd, then idles emitting nothing — a
@@ -49,6 +54,10 @@ defmodule Harness.FakeAdapter do
   # :flood           — emits forever (total-timeout fixture; idle keeps resetting).
   # :missing         — an executable not on PATH (invoke-failure fixture).
   defp command(:echo), do: {"/bin/echo", ["harness-test"], []}
+
+  defp command({:echo, text}) when is_binary(text), do: {"/bin/echo", [text], []}
+
+  defp command(:stdin_eof), do: {"/bin/sh", ["-c", "cat; echo stdin-eof-ok"], []}
 
   defp command(:write), do: {"/bin/sh", ["-c", "echo agent-output > agent_output.txt"], []}
 

@@ -50,7 +50,9 @@ defmodule Harness.Verification do
     %Check{name: "dialyzer", command: "mix", args: ["dialyzer.json"]},
     %Check{name: "credo", command: "mix", args: ["credo", "--strict"]},
     %Check{name: "doctor", command: "mix", args: ["doctor"]},
-    %Check{name: "sobelow", command: "mix", args: ["sobelow", "--exit"]}
+    # `--skip` honors the repo's inline `# sobelow_skip` annotations; without it
+    # sobelow re-reports every annotated finding and `--exit` reds the check.
+    %Check{name: "sobelow", command: "mix", args: ["sobelow", "--exit", "--skip"]}
   ]
 
   @typedoc "A reason a verification run cannot execute at all."

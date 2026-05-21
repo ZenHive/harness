@@ -197,9 +197,13 @@ defmodule Harness.VerificationTest do
       assert Enum.map(preset, & &1.name) == ~w(test dialyzer credo doctor sobelow)
     end
 
-    test "the sobelow check carries the exit-gating flag" do
+    test "the sobelow check carries the exit-gating and inline-skip flags" do
       sobelow = Enum.find(Verification.elixir_preset(), &(&1.name == "sobelow"))
+      # `--exit` makes sobelow's exit status the pass/fail signal; `--skip` makes
+      # it honor the repo's `# sobelow_skip` annotations — without `--skip` the
+      # check reds every run on already-triaged low-confidence findings.
       assert "--exit" in sobelow.args
+      assert "--skip" in sobelow.args
     end
   end
 

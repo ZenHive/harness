@@ -134,6 +134,27 @@ defmodule Harness.AgentAdapterTest do
     end
   end
 
+  describe "invoke/2 — Port-spawned agent stdin (Task 23)" do
+    test "a stdin-reading agent gets an immediate EOF, never a stall" do
+      # An OTP port leaves the child's stdin an open, empty pipe; an agent that
+      # reads stdin (here `cat`) blocks on it forever. The harness spawn wrapper
+      # redirects stdin from /dev/null, so `cat` hits EOF at once and the script
+      # runs on to its marker — termination itself is the proof.
+      assert {:ok, %Run{} = run} = AgentAdapter.invoke(FakeAdapter, invocation(command: :stdin_eof))
+      assert {"stdin-eof-ok\n", 0} = drive(FakeAdapter, run)
+    end
+
+    test "argv reaches the agent verbatim — no shell word-splitting or expansion" do
+      hazard = ~S[a b; echo INJECTED && $(echo X) `echo Y` * "q" 'r' ~]
+
+      assert {:ok, %Run{} = run} =
+               AgentAdapter.invoke(FakeAdapter, invocation(command: {:echo, hazard}))
+
+      assert {output, 0} = drive(FakeAdapter, run)
+      assert output == hazard <> "\n"
+    end
+  end
+
   describe "terminate/1" do
     test "kills an in-flight run and releases its port" do
       assert {:ok, run} = AgentAdapter.invoke(FakeAdapter, invocation(command: :sleep))

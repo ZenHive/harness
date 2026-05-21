@@ -466,7 +466,7 @@
       "phase": 2,
       "bundle": "contract-proof",
       "milestone": "v0_1",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Reusable adapter conformance test suite",
       "scores": {
         "d": 4,
@@ -485,6 +485,7 @@
       ],
       "body": "Build a reusable test module every `AgentAdapter` implementation must pass — exercising invocation, raw-output capture, termination detection, timeout, and adapter-level cancellation (the behaviour's `terminate` callback killing an in-flight run and releasing its Port/process). This is adapter-scope only: external cancellation *orchestration* — a caller telling the running system to cancel a job — is the supervised lifecycle's concern (Task 8) and is out of scope here. Run the Claude adapter against the suite. This suite is the gate Codex and every later adapter (Cursor, Grok, ACP) are held to: a leak gets fixed in the behaviour, not patched around in the adapter.\n",
       "created_at": "2026-05-20",
+      "started_at": "2026-05-21",
       "scored_at": "2026-05-20",
       "cross_repo": []
     },
@@ -771,7 +772,7 @@
       "id": "23",
       "phase": 4,
       "bundle": "multi-agent",
-      "status": "pending",
+      "status": "done",
       "title": "Give Port-spawned agents an immediate-EOF stdin",
       "scores": {
         "d": 3,
@@ -779,7 +780,9 @@
         "u": 3
       },
       "eff": 1.0,
-      "markers": [],
+      "markers": [
+        "bug"
+      ],
       "depends_on": [
         "4"
       ],
@@ -790,7 +793,10 @@
       ],
       "body": "Headless agent CLIs spawned over an OTP port inherit an open-but-empty stdin pipe. An agent that peeks stdin to support `cat file | agent -p` then stalls waiting for input that never comes: the Claude Code adapter's integration test shows `claude` printing `no stdin data received in 3s, proceeding without it` and eating a flat 3s per run. Other agents (Cursor, Codex, Grok) likely behave the same.\n\nGive every Port-spawned agent process a stdin that is immediately at EOF, so it proceeds without the stall. The clean, shell-quoting-safe approach is the `sh -c '...' \"$@\"` argv trick — spawn `/bin/sh` with script `exec <agent> \"$@\" </dev/null` and pass the real agent argv as positional parameters, so no prompt escaping is needed. Decide whether this belongs in the generic `Harness.AgentAdapter.invoke/2` spawn or per-adapter `build_command/1`; if it moves into the generic spawn, preserve the clean `{:error, {:executable_not_found, _}}` signal that the current direct `System.find_executable/1` provides.\n",
       "created_at": "2026-05-21",
+      "started_at": "2026-05-21",
+      "done_at": "2026-05-21",
       "scored_at": "2026-05-21",
+      "implemented": "Spawn every agent through /bin/sh with an exec wrapper redirecting stdin from /dev/null, so a Port-spawned headless CLI gets an immediate EOF instead of stalling and exiting doing nothing. Fix lives in the generic AgentAdapter Port spawn (not per-adapter); exec keeps the port os_pid the agent itself so terminate/1 still reaches it; executable+argv ride as sh positional parameters so the prompt needs no shell quoting; System.find_executable/1 still gates the executable-not-found path. FakeAdapter gained stdin_eof and echo-text fixtures; new agent_adapter tests cover stdin-EOF and argv-verbatim. Surfaced by the first dogfood run, which exited :no_changes. Suite green (126 incl. integration); dialyzer/credo/doctor/sobelow clean.",
       "cross_repo": []
     },
     {

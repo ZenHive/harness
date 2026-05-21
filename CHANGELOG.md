@@ -29,7 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Harness.AgentAdapter` behaviour — the contract every headless coding-agent
   adapter implements: a capability declaration, headless-command construction,
   raw-output capture with termination detection, and cancellation. Raw
-  passthrough only — no normalized event model.
+  passthrough only — no normalized event model. Agents are spawned over an OTP
+  port through a `/bin/sh` wrapper that hands them a stdin already at EOF, so a
+  headless CLI never stalls peeking for piped input.
 - `Harness.AgentAdapter.Claude` — the first concrete adapter: drives Claude Code
   headlessly (`claude -p`, raw `stream-json` output, `--permission-mode
   bypassPermissions` for unattended runs, `--continue` session resume against

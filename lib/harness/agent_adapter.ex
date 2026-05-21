@@ -74,6 +74,11 @@ defmodule Harness.AgentAdapter do
   alias Harness.AgentAdapter.OSProcess
   alias Harness.AgentAdapter.Run
 
+  # The shell and script every agent is spawned through — see spawn_run/5 for
+  # why a headless agent CLI cannot be handed a raw OTP-port stdin.
+  @sh "/bin/sh"
+  @stdin_eof_script ~S(exec "$0" "$@" </dev/null)
+
   @typedoc """
   A built headless command: the executable, its argv, and environment pairs.
   """
@@ -152,6 +157,23 @@ defmodule Harness.AgentAdapter do
   @spec supports?(module(), capability()) :: boolean()
   def supports?(adapter, capability), do: capability_supported?(adapter.capabilities(), capability)
 
+  # Spawns the agent over an OTP port and returns its run handle.
+  #
+  # The agent is not spawned directly. It goes through
+  # `/bin/sh -c 'exec "$0" "$@" </dev/null' <agent> <argv…>`. An OTP port leaves
+  # the spawned process's stdin an open, empty pipe, and a headless agent CLI
+  # that peeks stdin — to support `cat prompt.txt | agent -p` — stalls on input
+  # that never arrives (`claude` prints "no stdin data received in 3s" and then
+  # bails without doing the task). Redirecting the exec'd process's stdin from
+  # `/dev/null` hands it an immediate EOF, so it proceeds at once.
+  #
+  # `exec` replaces the shell in place — the port's OS pid is the agent itself,
+  # never a surviving `sh` parent, so `os_pid` and `terminate/1` still reach it.
+  # The real executable and argv ride as positional parameters (`$0`, `$@`), so
+  # no argument is ever exposed to shell word-splitting, globbing, or expansion —
+  # the agent prompt can carry any bytes. `System.find_executable/1` still runs
+  # first: it keeps the clean `{:error, {:executable_not_found, _}}` signal and
+  # resolves the absolute path `exec` runs regardless of the shell's own PATH.
   @spec spawn_run(module(), Invocation.t(), String.t(), [String.t()], [{String.t(), String.t()}]) ::
           {:ok, Run.t()} | {:error, term()}
   defp spawn_run(adapter, invocation, executable, argv, env) do
@@ -161,11 +183,11 @@ defmodule Harness.AgentAdapter do
 
       path ->
         port =
-          Port.open({:spawn_executable, path}, [
+          Port.open({:spawn_executable, @sh}, [
             :binary,
             :exit_status,
             :hide,
-            {:args, argv},
+            {:args, ["-c", @stdin_eof_script, path | argv]},
             {:cd, invocation.cwd},
             {:env, port_env(env)}
           ])
