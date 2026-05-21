@@ -24,22 +24,28 @@ defmodule Harness.Run.Result do
 
     * `:passed` — the verification stack graded the worktree green (`:done`).
     * `:verification_red` — a check in the stack failed.
+    * `:no_changes` — the agent terminated without changing the worktree, so
+      there was nothing to commit; the run delivered nothing.
     * `:cancelled` — the run was cancelled via `Harness.Run.cancel/1`.
     * `:timed_out` — the whole-job lifetime budget elapsed.
     * `{:worktree_failed, r}` — the isolated worktree could not be created.
     * `{:agent_spawn_failed, r}` — the agent never spawned (e.g. not on `PATH`).
     * `{:driver_crashed, r}` — the agent-driver task crashed.
+    * `{:commit_failed, r}` — the agent's work could not be committed to the
+      run branch.
     * `{:verification_failed, r}` — verification could not run at all.
     * `{:verifier_crashed, r}` — the verification task crashed.
   """
   @type reason ::
           :passed
           | :verification_red
+          | :no_changes
           | :cancelled
           | :timed_out
           | {:worktree_failed, term()}
           | {:agent_spawn_failed, term()}
           | {:driver_crashed, term()}
+          | {:commit_failed, term()}
           | {:verification_failed, term()}
           | {:verifier_crashed, term()}
 

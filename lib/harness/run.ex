@@ -12,6 +12,7 @@ defmodule Harness.Run do
 
       dispatched  — creating the isolated worktree
       running     — the agent is working in the worktree
+      committing  — committing the agent's work to the run branch
       verifying   — the verification stack is grading the worktree
       done        — verification graded the worktree green (terminal)
       failed      — anything else (terminal)
@@ -66,7 +67,7 @@ defmodule Harness.Run do
   @default_terminal_linger 5_000
 
   @typedoc "A lifecycle state."
-  @type state :: :dispatched | :running | :verifying | :done | :failed
+  @type state :: :dispatched | :running | :committing | :verifying | :done | :failed
 
   @typedoc "A run handle: a run id, or the gen_statem pid directly."
   @type run :: String.t() | pid()
@@ -260,7 +261,7 @@ defmodule Harness.Run do
     data = %{data | task: nil, agent_outcome: outcome}
 
     case data.cancel_requested do
-      nil -> {:next_state, :verifying, data}
+      nil -> {:next_state, :committing, data}
       {reason, from} -> do_cancel(data, reason, from)
     end
   end
@@ -276,6 +277,40 @@ defmodule Harness.Run do
 
   def running(event_type, event_content, data) do
     handle_common(event_type, event_content, :running, data)
+  end
+
+  # ── State: committing — capture the agent's work on the run branch ────────
+
+  @doc false
+  @spec committing(event(), term(), data()) :: handler_result()
+  def committing(:enter, _old_state, data) do
+    worktree = data.worktree
+    message = commit_message(data)
+    task = start_task(fn -> Worktree.commit(worktree, message) end)
+    {:keep_state, %{data | task: task}}
+  end
+
+  def committing(:info, {ref, {:ok, :committed}}, %{task: %Task{ref: ref}} = data) do
+    Process.demonitor(ref, [:flush])
+    {:next_state, :verifying, %{data | task: nil}}
+  end
+
+  def committing(:info, {ref, {:ok, :no_changes}}, %{task: %Task{ref: ref}} = data) do
+    Process.demonitor(ref, [:flush])
+    fail(%{data | task: nil}, :no_changes)
+  end
+
+  def committing(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
+    Process.demonitor(ref, [:flush])
+    fail(%{data | task: nil}, {:commit_failed, reason})
+  end
+
+  def committing(:info, {:DOWN, ref, :process, _pid, reason}, %{task: %Task{ref: ref}} = data) when reason != :normal do
+    fail(%{data | task: nil}, {:commit_failed, reason})
+  end
+
+  def committing(event_type, event_content, data) do
+    handle_common(event_type, event_content, :committing, data)
   end
 
   # ── State: verifying — grade the worktree ─────────────────────────────────
@@ -519,6 +554,14 @@ defmodule Harness.Run do
       permission_mode: :autonomous,
       adapter_opts: data.adapter_opts
     }
+  end
+
+  # The message stamped on the agent's delivery commit — identifies the run and
+  # the rmap task it served, so the commit is legible in `git log` after the
+  # worktree it came from is gone.
+  @spec commit_message(data()) :: String.t()
+  defp commit_message(data) do
+    "harness: agent delivery — task #{data.item.id} #{data.item.title} (run #{data.run_id})"
   end
 
   @spec worktree_opts(data()) :: keyword()

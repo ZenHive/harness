@@ -11,19 +11,23 @@ defmodule Harness.Worktree do
 
       {:ok, wt} = Harness.Worktree.create("/path/to/target/repo")
       # ... dispatch an agent with Invocation cwd: wt.path, let it work ...
+      Harness.Worktree.commit(wt, "agent delivery")  # capture the work onto wt.branch
       Harness.Worktree.finish(wt, :success)   # verified green -> torn down
       Harness.Worktree.finish(wt, :failure)   # verified red  -> retained for inspection
 
-  `create/2` carves the worktree, `finish/3` makes the keep-or-teardown
+  `create/2` carves the worktree, `commit/2` captures the agent's work as a
+  commit on the worktree's branch, `finish/3` makes the keep-or-teardown
   decision, `remove/1` is the unconditional teardown. The worktree's `path` is
   what callers put in `Harness.AgentAdapter.Invocation`'s `cwd`.
 
   ## What it does not own
 
-  Branch lifecycle. The verified commits on the `harness/<id>` branch are the
-  run's deliverable, so teardown removes only the working directory — never the
-  branch. A crashed run that never reaches `finish/3` is reaped by the
-  boot-time sweep in `Harness.Worktree.Sweeper`.
+  Branch deletion and merge. `create/2` carves the `harness/<id>` branch and
+  `commit/2` captures the agent's work onto it — those commits are the run's
+  deliverable, so teardown removes only the working directory, never the branch.
+  Deleting the branch or merging it back is the orchestrator's call. A crashed
+  run that never reaches `finish/3` is reaped by the boot-time sweep in
+  `Harness.Worktree.Sweeper`.
 
   ## Configuration
 
@@ -44,6 +48,12 @@ defmodule Harness.Worktree do
   @branch_prefix "harness/"
   @retained_marker ".harness-retained"
   @default_base_dir "~/_DATA/worktrees/.harness"
+
+  # Identity stamped on commit/2's commits — set explicitly so a commit never
+  # fails on a repo with no user.name/user.email configured, and so harness-made
+  # deliveries stay attributable (`git log --author=harness`).
+  @committer_name "harness"
+  @committer_email "harness@localhost"
 
   @enforce_keys [:id, :path, :branch, :repo]
   defstruct [:id, :path, :branch, :repo]
@@ -94,6 +104,38 @@ defmodule Harness.Worktree do
     with :ok <- validate_repo(repo),
          {:ok, _output} <- Git.run(["worktree", "add", "-b", branch, path, base_ref], repo) do
       {:ok, %__MODULE__{id: id, path: path, branch: branch, repo: repo}}
+    end
+  end
+
+  @doc """
+  Captures the agent's work as a commit on the worktree's branch.
+
+  Stages every change in the worktree (`git add -A` — the repo's `.gitignore`
+  still excludes `_build`, `deps`, and friends) and commits it to the
+  `harness/<id>` branch. That commit is the run's deliverable: it is what
+  survives `finish/3` teardown, since `remove/1` deletes only the working
+  directory.
+
+  The commit carries an explicit committer identity (`#{@committer_name}
+  <#{@committer_email}>`), so it never fails on a repo with no `user.name` /
+  `user.email` configured.
+
+  Returns:
+
+    * `{:ok, :committed}` — the agent's work was committed.
+    * `{:ok, :no_changes}` — the agent left the worktree unchanged; there was
+      nothing to commit.
+    * `{:error, reason}` — a git invocation failed (see `t:error/0`).
+  """
+  @spec commit(t(), String.t()) :: {:ok, :committed | :no_changes} | {:error, error()}
+  def commit(%__MODULE__{path: path}, message) when is_binary(message) do
+    with {:ok, _added} <- Git.run(["add", "-A"], path),
+         {:ok, status} <- Git.run(["status", "--porcelain"], path) do
+      if String.trim(status) == "" do
+        {:ok, :no_changes}
+      else
+        commit_staged(path, message)
+      end
     end
   end
 
@@ -155,6 +197,25 @@ defmodule Harness.Worktree do
   @spec base_dir(keyword()) :: String.t()
   def base_dir(opts \\ []) do
     Keyword.get(opts, :base_dir) || config(:base_dir) || Path.expand(@default_base_dir)
+  end
+
+  @spec commit_staged(String.t(), String.t()) :: {:ok, :committed} | {:error, error()}
+  defp commit_staged(path, message) do
+    args = [
+      "-c",
+      "user.name=#{@committer_name}",
+      "-c",
+      "user.email=#{@committer_email}",
+      "commit",
+      "-q",
+      "-m",
+      message
+    ]
+
+    case Git.run(args, path) do
+      {:ok, _output} -> {:ok, :committed}
+      {:error, _reason} = error -> error
+    end
   end
 
   @spec generate_id() :: String.t()

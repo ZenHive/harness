@@ -85,7 +85,7 @@ defmodule Harness.RunTest do
     end
 
     test "verifies the worktree even when the agent times out" do
-      result = run(adapter_opts: [command: :sleep], idle_timeout: 150, checks: [check("ok", "true")])
+      result = run(adapter_opts: [command: :write_then_hang], idle_timeout: 150, checks: [check("ok", "true")])
 
       assert %Result{state: :done, reason: :passed} = result
       assert %Outcome{kind: {:timed_out, :idle}} = result.agent_outcome
@@ -97,6 +97,26 @@ defmodule Harness.RunTest do
 
       assert result.run_id == run_id
       assert result.task_id == "8"
+    end
+
+    test "the agent's work survives teardown as a commit on the run branch" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+
+      {:ok, run_id, pid} = Run.Supervisor.start_run(item(), repo, FakeAdapter, default_opts(base))
+      result = await_result(run_id, pid)
+
+      assert %Result{state: :done, reason: :passed} = result
+      # The worktree is gone, but the commit it produced lives on the branch.
+      refute File.dir?(result.worktree_path)
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_output.txt"]) =~ "agent-output"
+    end
+
+    test "settles :no_changes when the agent produces no diff" do
+      result = run(adapter_opts: [command: :echo])
+
+      assert %Result{state: :failed, reason: :no_changes} = result
+      assert result.verdict == nil
     end
   end
 
@@ -140,6 +160,13 @@ defmodule Harness.RunTest do
       result = run(checks: [])
 
       assert %Result{state: :failed, reason: {:verification_failed, :no_checks}} = result
+    end
+
+    test "settles :failed when the agent's work cannot be committed" do
+      result = run(adapter_opts: [command: :break_git])
+
+      assert %Result{state: :failed, reason: {:commit_failed, _reason}} = result
+      assert result.verdict == nil
     end
   end
 
@@ -212,7 +239,7 @@ defmodule Harness.RunTest do
       # defaults; the default linger keeps the run observable after it settles.
       opts = [
         base_dir: base,
-        adapter_opts: [command: :echo],
+        adapter_opts: [command: :write],
         checks: [check("ok", "true")],
         total_timeout: 30_000,
         idle_timeout: 10_000,
@@ -248,7 +275,7 @@ defmodule Harness.RunTest do
   defp default_opts(base) do
     [
       base_dir: base,
-      adapter_opts: [command: :echo],
+      adapter_opts: [command: :write],
       checks: [check("ok", "true")],
       total_timeout: 30_000,
       idle_timeout: 10_000,

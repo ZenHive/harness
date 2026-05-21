@@ -80,6 +80,46 @@ defmodule Harness.WorktreeTest do
     end
   end
 
+  describe "commit/2" do
+    test "commits the worktree's changes onto its branch" do
+      {repo, wt} = create_worktree()
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
+
+      assert GitFixture.git!(repo, ["show", "#{wt.branch}:delivery.txt"]) == "agent work\n"
+      assert GitFixture.git!(repo, ["log", "-1", "--format=%s", wt.branch]) =~ "agent delivery"
+    end
+
+    test "stamps an explicit harness committer identity" do
+      {repo, wt} = create_worktree()
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
+
+      assert GitFixture.git!(repo, ["log", "-1", "--format=%an <%ae>", wt.branch]) =~
+               "harness <harness@localhost>"
+    end
+
+    test "reports :no_changes and commits nothing on a clean worktree" do
+      {repo, wt} = create_worktree()
+      sha_before = GitFixture.git!(repo, ["rev-parse", wt.branch])
+
+      assert {:ok, :no_changes} = Worktree.commit(wt, "agent delivery")
+
+      assert GitFixture.git!(repo, ["rev-parse", wt.branch]) == sha_before
+    end
+
+    test "surfaces a git failure on a path that is not a git repository" do
+      plain = GitFixture.tmp_base(name: "plain")
+      File.mkdir_p!(plain)
+      bogus = %Worktree{id: "run-x", path: plain, branch: "harness/run-x", repo: plain}
+
+      assert {:error, {:git_failed, _args, status, _output}} = Worktree.commit(bogus, "agent delivery")
+      assert status != 0
+    end
+  end
+
   describe "finish/3" do
     test "tears the worktree down on :success, keeping the branch" do
       {repo, wt} = create_worktree()

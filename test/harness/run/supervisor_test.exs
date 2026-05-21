@@ -34,7 +34,7 @@ defmodule Harness.Run.SupervisorTest do
     {:ok, id_b, _pid_b} =
       Run.Supervisor.start_run(item(), repo_b, FakeAdapter,
         base_dir: base,
-        adapter_opts: [command: :echo],
+        adapter_opts: [command: :write],
         checks: [check("ok", "true")],
         total_timeout: 30_000,
         idle_timeout: 10_000,

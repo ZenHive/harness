@@ -635,3 +635,23 @@ Give every Port-spawned agent process a stdin that is immediately at EOF, so it 
 """
 created_at = "2026-05-21"
 scored_at = "2026-05-21"
+
+[[task]]
+id = "24"
+phase = 2
+bundle = "core-loop"
+status = "done"
+title = "Commit the agent's work to the run branch before worktree teardown"
+scores = { d = 3, b = 9, u = 9 }
+markers = ["bug"]
+acceptance_criteria = ["A :committing state runs between running and verifying; the agent's diff is committed to the harness/<id> branch", "On a green run the worktree is torn down but the branch commit survives and carries the agent's files", "An agent that produced no diff settles :failed with reason :no_changes (verification skipped)", "A commit failure settles :failed with reason {:commit_failed, _}", "Full suite green incl. new run/worktree tests; dialyzer/credo/doctor clean"]
+body = """
+The dogfood path destroys the deliverable. A run carves a worktree + harness/<id> branch (Harness.Worktree.create), dispatches an agent that edits files in the worktree, runs verification against the working tree, and on a green verdict calls Worktree.finish(:success) -> git worktree remove --force -- which wipes the agent's uncommitted edits. Nothing in Harness.Run or the driver ever commits, so the harness/<id> branch stays at base ref with zero commits. Harness.Worktree's moduledoc claims the verified commits on the branch are the run's deliverable, but no commit is ever made. Existing run tests never caught this: FakeAdapter's :echo/:sleep commands write no files.
+
+Fix: add a :committing lifecycle state to Harness.Run between running and verifying. When the agent terminates, commit the worktree's full diff to the harness/<id> branch via a new Harness.Worktree.commit/2, then verification grades the committed tree. Commit before verify, always. An agent that produced no diff settles :failed with reason :no_changes (verification skipped). This blocks all dogfooding and is the hand-built bootstrap that lets Task 12 onward be dispatched through harness itself. Discovered during Task 8 follow-up.
+"""
+implemented = "Added a :committing lifecycle state to Harness.Run between running and verifying, plus Harness.Worktree.commit/2. When the agent terminates, harness stages and commits the worktree's diff to the harness/<id> branch (explicit harness committer identity, set via git -c so it never fails on missing config) before verification grades it. An agent that produced no diff settles :failed/:no_changes (verification skipped); a commit error settles :failed/{:commit_failed, _}. The branch commit now survives finish/3 teardown — the deliverable is no longer destroyed. New reasons :no_changes and {:commit_failed,_} on Run.Result; :committing added to Run/Status state types. FakeAdapter gained :write/:write_then_hang/:break_git fixtures; new run + worktree tests cover commit, no-changes, commit-failure, and work-survives-teardown. Suite green (124 tests), dialyzer/credo/doctor clean."
+created_at = "2026-05-21"
+started_at = "2026-05-21"
+scored_at = "2026-05-21"
+done_at = "2026-05-21"

@@ -11,10 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Harness.Worktree` — per-run git worktree lifecycle: `create/2` carves an
   isolated working directory and `harness/<id>` branch out of a target repo so
-  concurrent runs never collide; `finish/3` makes the keep-or-teardown decision
+  concurrent runs never collide; `commit/2` captures the agent's work as a
+  commit on that branch; `finish/3` makes the keep-or-teardown decision
   (tear down on success, retain on failure for inspection — configurable);
-  `remove/1` is the unconditional teardown. Branch lifecycle is left alone — the
-  verified commits are the run's deliverable.
+  `remove/1` is the unconditional teardown. Teardown removes only the working
+  directory — the branch and its commits are the run's deliverable.
 - `Harness.Worktree.Sweeper` — boot-time orphan reaper. A run that crashes
   before `finish/3` leaves its worktree behind; the sweeper runs once at
   application start, self-discovers parent repos from leftover worktrees, and
@@ -51,14 +52,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per-check timeout, so a hung check is killed rather than wedging the run. The
   verification half of the loop.
 - `Harness.Run` — the supervised run lifecycle: a `:gen_statem` that owns one
-  job end to end, moving through `dispatched → running → verifying →
-  {done | failed}`. It carves the isolated worktree, dispatches the agent,
-  waits for termination, runs the verification stack, and settles on a verdict
-  — the single-agent core loop working end to end. Each step runs in a
-  monitored task so a crashing step never crashes the run; a per-run lifetime
-  budget and `cancel/1` both abort cleanly, SIGKILLing the agent; `status/1`
-  exposes live state. A run is graded by the verification stack alone, never by
-  the agent's exit code — a run whose agent timed out is still verified.
+  job end to end, moving through `dispatched → running → committing → verifying
+  → {done | failed}`. It carves the isolated worktree, dispatches the agent,
+  waits for termination, commits the agent's work to the run branch, runs the
+  verification stack, and settles on a verdict — the single-agent core loop
+  working end to end. A run that produced no diff settles `:no_changes`. Each
+  step runs in a monitored task so a crashing step never crashes the run; a
+  per-run lifetime budget and `cancel/1` both abort cleanly, SIGKILLing the
+  agent; `status/1` exposes live state. A run is graded by the verification
+  stack alone, never by the agent's exit code — a run whose agent timed out is
+  still verified.
 - `Harness.Run.Supervisor` — the `:one_for_one` `DynamicSupervisor` each
   `Harness.Run` starts under as a `:temporary` child, so one run crashing is
   isolated from its siblings and a failed run is never restarted. `start_run/4`

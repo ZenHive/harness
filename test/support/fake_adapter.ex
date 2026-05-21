@@ -35,14 +35,27 @@ defmodule Harness.FakeAdapter do
   @impl Harness.AgentAdapter
   def terminate(%Run{} = run), do: OSProcess.kill(run)
 
-  # :echo      — emits one line, exits 0.
-  # :sleep     — stays alive emitting nothing (idle-timeout fixture).
-  # :exit_code — exits 3 with no output (advisory exit-status fixture).
-  # :burst     — emits across pauses each shorter than a test idle window
-  #              (idle-reset fixture); the whole run outlasts that window.
-  # :flood     — emits forever (total-timeout fixture; idle keeps resetting).
-  # :missing   — an executable not on PATH (invoke-failure fixture).
+  # :echo            — emits one line, exits 0.
+  # :write           — writes a file into cwd (the worktree), exits 0 — a run
+  #                    that produced a real diff to commit.
+  # :write_then_hang — writes a file into cwd, then idles emitting nothing — a
+  #                    timed-out agent that still left work to commit + grade.
+  # :break_git       — overwrites the worktree's .git pointer, so the harness
+  #                    commit step fails (the commit-failure fixture).
+  # :sleep           — stays alive emitting nothing (idle-timeout fixture).
+  # :exit_code       — exits 3 with no output (advisory exit-status fixture).
+  # :burst           — emits across pauses each shorter than a test idle window
+  #                    (idle-reset fixture); the whole run outlasts that window.
+  # :flood           — emits forever (total-timeout fixture; idle keeps resetting).
+  # :missing         — an executable not on PATH (invoke-failure fixture).
   defp command(:echo), do: {"/bin/echo", ["harness-test"], []}
+
+  defp command(:write), do: {"/bin/sh", ["-c", "echo agent-output > agent_output.txt"], []}
+
+  defp command(:write_then_hang), do: {"/bin/sh", ["-c", "echo agent-output > agent_output.txt; sleep 30"], []}
+
+  defp command(:break_git), do: {"/bin/sh", ["-c", "echo broken > .git"], []}
+
   defp command(:sleep), do: {"/bin/sleep", ["30"], []}
   defp command(:exit_code), do: {"/bin/sh", ["-c", "exit 3"], []}
 

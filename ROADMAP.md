@@ -46,6 +46,7 @@
 | Task 8 | ✅ | 🎁 **core-loop** · 🚀 **v0_1** · Supervised run lifecycle process [D:5/B:9/U:9 → Eff:1.8] 🚀 |
 | Task 12 | ⬜ | 🎁 **contract-proof** · 🚀 **v0_1** · Reusable adapter conformance test suite [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 | Task 14 | ⬜ | 🎁 **contract-proof** · 🚀 **v0_1** · Codex headless adapter [D:5/B:5/U:5 → Eff:1.0] 📋 |
+| Task 24 | ✅ | 🎁 **core-loop** · 🐛 Commit the agent's work to the run branch before worktree teardown [D:3/B:9/U:9 → Eff:3.0] 🎯 |
 <!-- TASKS:END -->
 
 ---
