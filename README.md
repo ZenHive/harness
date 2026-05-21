@@ -10,8 +10,9 @@ The primary user is an AI orchestrator, not a human. The verification stack — 
 
 Early development. The core loop is taking shape — rmap task ingestion, the
 per-run worktree lifecycle, the verification runner, the `AgentAdapter`
-behaviour, and the first concrete adapter (Claude Code, with a generic
-timeout-enforcing run driver) are in place.
+behaviour with its reusable conformance suite, and four concrete adapters
+(Claude Code, Codex, Cursor, and Grok, with a generic timeout-enforcing run
+driver) are in place.
 
 See [ROADMAP.md](ROADMAP.md) for the full plan and current task status
 (rendered from `roadmap/tasks.toml` by `rmap`).

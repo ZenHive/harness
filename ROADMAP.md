@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 1 — Scaffold the OTP application + standard dep stack, Task 2 — Evaluate orchestration libraries — confirm thin-core, Task 3 — Define the AgentAdapter behaviour — invocation + capture on 2026-05-20
 
-**Up next:** Task 14 — Codex headless adapter [D:5/B:5/U:5 → Eff:1.0] 📋
+**Up next:** Task 22 — Inject a harness-owned rule set into agent invocations [D:4/B:7/U:7 → Eff:1.75] 🚀
 <!-- FOCUS:END -->
 
 ---
@@ -45,8 +45,9 @@
 | Task 7 `[P]` | ✅ | 🎁 **core-loop** · 🚀 **v0_1** · Verification runner — run the target project's check stack [D:5/B:9/U:8 → Eff:1.7] 🚀 |
 | Task 8 | ✅ | 🎁 **core-loop** · 🚀 **v0_1** · Supervised run lifecycle process [D:5/B:9/U:9 → Eff:1.8] 🚀 |
 | Task 12 | ✅ | 🎁 **contract-proof** · 🚀 **v0_1** · Reusable adapter conformance test suite [D:4/B:7/U:7 → Eff:1.75] 🚀 |
-| Task 14 | ⬜ | 🎁 **contract-proof** · 🚀 **v0_1** · Codex headless adapter [D:5/B:5/U:5 → Eff:1.0] 📋 |
+| Task 14 | ✅ | 🎁 **contract-proof** · 🚀 **v0_1** · Codex headless adapter [D:5/B:5/U:5 → Eff:1.0] 📋 |
 | Task 24 | ✅ | 🎁 **core-loop** · 🐛 Commit the agent's work to the run branch before worktree teardown [D:3/B:9/U:9 → Eff:3.0] 🎯 |
+| Task 1 | ⬜ | 🎁 **contract-proof** · Hoist universal adapter callbacks into the AgentAdapter behaviour [D:3/B:3/U:6 → Eff:1.5] 🚀 |
 <!-- TASKS:END -->
 
 ---
@@ -72,12 +73,13 @@
 <!-- TASKS:BEGIN phase=4 -->
 | Task | Status | Notes |
 |------|--------|-------|
-| Task 13 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Cursor headless adapter [D:6/B:6/U:6 → Eff:1.0] 📋 |
-| Task 15 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Grok headless adapter [D:4/B:5/U:5 → Eff:1.25] 📋 |
+| Task 13 `[P]` | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Cursor headless adapter [D:6/B:6/U:6 → Eff:1.0] 📋 |
+| Task 15 `[P]` | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Grok headless adapter [D:4/B:5/U:5 → Eff:1.25] 📋 |
 | Task 16 | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Capability + availability registry with quota fail-over [D:5/B:7/U:6 → Eff:1.3] 📋 |
 | Task 22 | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Inject a harness-owned rule set into agent invocations [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 | Task 23 | ✅ | 🎁 **multi-agent** · 🐛 Give Port-spawned agents an immediate-EOF stdin [D:3/B:3/U:3 → Eff:1.0] 📋 |
 | Task 25 | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Caller-controlled agent environment in the AgentAdapter contract [D:4/B:5/U:5 → Eff:1.25] 📋 |
+| Task 26 | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Antigravity headless adapter [D:3/B:4/U:4 → Eff:1.33] 📋 |
 <!-- TASKS:END -->
 
 ---

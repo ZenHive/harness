@@ -36,6 +36,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   headlessly (`claude -p`, raw `stream-json` output, `--permission-mode
   bypassPermissions` for unattended runs, `--continue` session resume against
   the per-job worktree).
+- `Harness.AgentAdapter.Codex` — the second concrete adapter, and the first
+  proof the `AgentAdapter` contract is not Claude-shaped: drives Codex
+  headlessly (`codex exec` raw `--json` JSONL,
+  `--dangerously-bypass-approvals-and-sandbox` for unattended runs,
+  `exec resume --last` session resume against the per-job worktree). Codex's
+  invocation is structurally unlike Claude's — `exec` is a subcommand and
+  resuming swaps in `exec resume` rather than adding a flag — yet it was built
+  against the unchanged behaviour and passes the conformance suite unchanged,
+  so no abstraction leak was surfaced.
+- `Harness.AgentAdapter.Cursor` — the Cursor adapter: drives `cursor-agent -p`
+  headlessly (raw `stream-json` output, `--force --trust` for unattended runs on
+  a fresh worktree, `--continue` session resume). Passes the conformance suite
+  unchanged — the contract held against a third agent with no behaviour leak.
+- `Harness.AgentAdapter.Grok` — the Grok Build adapter: drives Grok headlessly
+  (`grok -p`, raw `streaming-json` output, `--permission-mode bypassPermissions`
+  for unattended runs, `--continue` session resume against the per-job
+  worktree). Grok's headless-only extras (`--best-of-n`, `--check`, worktree
+  flags) are deferred to the capability registry, not the core behaviour.
+  Passes the conformance suite unchanged.
 - `Harness.AgentAdapter.Driver` — the generic run driver: spawns any adapter,
   captures raw output, and enforces two timeout guards — a total-run budget and
   an idle window reset on every output chunk — so a runaway or wedged run is

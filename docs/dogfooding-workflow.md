@@ -200,6 +200,22 @@ worktree directory itself is *retained* on a red run (`retain_on_failure` defaul
 inspection at `result.worktree_path`. Clean up a no-longer-needed retained worktree with
 `git worktree remove --force <path> && git worktree prune && git branch -D <branch>`.
 
+## Parallel dogfooding
+
+`Harness.Run.Supervisor` is a `DynamicSupervisor` — N runs are crash-isolated
+siblings, each forking its own worktree off `HEAD`. Disjoint-file tasks dogfood
+in parallel **today**, with no batch orchestrator (that is Task 9, which adds
+only the concurrency *cap* — not the raw concurrency). Fan them out from one
+driver BEAM: ingest + `start_run` each task with `subscriber: self()`, then
+collect one `{:harness_run, run_id, result}` per run in a single receive loop.
+The first parallel batch dogfooded Tasks 14, 13 and 15 (the Codex / Cursor /
+Grok adapters) this way — see the run log.
+
+**Only batch genuinely disjoint tasks.** Parallel runs never collide *in the
+worktree* — but their deliverable branches all merge back onto `development`.
+Batch tasks whose files are disjoint (three new adapter modules); do **not**
+batch tasks that edit a shared file or the `AgentAdapter` behaviour itself.
+
 ## Known sharp edges
 
 - **deps in the worktree.** A fresh git worktree has no `deps/` or `_build/` (both
@@ -234,3 +250,6 @@ inspection at `result.worktree_path`. Clean up a no-longer-needed retained workt
 | 2026-05-21 | 12 — adapter conformance suite | run-1779365396207-52a8c0d0 | `failed` / `:no_changes` | First dogfood run. `claude -p` over a raw OTP-port stdin stalled and exited with no diff — surfaced **Task 23** and a **verification-preset sobelow bug** (`--skip` missing). Both hand-fixed; re-dogfood pending a commit of those fixes. |
 | 2026-05-21 | 12 — adapter conformance suite | run-1779366789040-d92ba741 | `failed` / `:no_changes` | Re-run after the Task 23 commit. Agent spawned cleanly (Task 23 fix verified — no stall) and reached the API, which rejected on `billing_error` (HTTP 400, "Credit balance is too low") — the inherited `ANTHROPIC_API_KEY` shadowed the subscription. Not a harness bug; the driver now scrubs the key. |
 | 2026-05-21 | 12 — adapter conformance suite | run-1779367169148-29cf0bea | `done` / `:passed` | **First fully-green dogfood run.** Driver scrubs `ANTHROPIC_API_KEY` → subscription auth. Agent (~14 min) built `Harness.AgentAdapter.ConformanceCase` (253-line reusable suite) and ran it against the Claude adapter + `FakeAdapter`; all 5 verification checks green. Deliverable committed to branch `harness/run-1779367169148-29cf0bea`. The dogfood loop working end to end. |
+| 2026-05-21 | 14 — Codex adapter | run-1779369258524-7c1a28d5 | `done` / `:passed` | **First parallel dogfood batch** — Tasks 14, 13, 15 dispatched concurrently from one driver BEAM (`/tmp/dogfood_parallel.exs`). `Harness.AgentAdapter.Codex` built against the unchanged behaviour; all 5 checks green, no abstraction leak — the contract is not Claude-shaped. Surfaced a duplication discovery (`classify_message/2` / `terminate/1` / `--model` helper copied across every adapter), filed via `rmap new`. |
+| 2026-05-21 | 13 — Cursor adapter | run-1779369258533-24f56b83 | `done` / `:passed` | Parallel batch. `Harness.AgentAdapter.Cursor` (`cursor-agent -p`); all 5 checks green. Conformance suite passed unchanged. |
+| 2026-05-21 | 15 — Grok adapter | run-1779369258542-cc4a6123 | `done` / `:passed` | Parallel batch. `Harness.AgentAdapter.Grok` (`grok -p`); all 5 checks green. Conformance suite passed unchanged. |

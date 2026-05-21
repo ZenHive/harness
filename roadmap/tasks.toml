@@ -418,62 +418,71 @@ id = "13"
 phase = 4
 bundle = "multi-agent"
 milestone = "v0_3"
-status = "pending"
-depends_on = ["12"]
-markers = ["parallel"]
+status = "done"
 title = "Cursor headless adapter"
 scores = { d = 6, b = 6, u = 6 }
-scored_at = "2026-05-20"
-created_at = "2026-05-20"
-body = """
-Implement the Cursor adapter — drive `cursor-agent` in headless/print mode over Ports (no Elixir SDK exists), capture raw output, declare its capabilities. It extends the contract — already proven in Phase 2 against Claude and Codex — to a third agent, and must pass the conformance suite unchanged.
-"""
+markers = ["parallel"]
+depends_on = ["12"]
 acceptance_criteria = [
   "A Cursor run captures raw output and reports termination",
   "The adapter passes the conformance suite with no changes to the suite",
   "Any abstraction leak is fixed in the behaviour, not patched around",
 ]
+body = """
+Implement the Cursor adapter — drive `cursor-agent` in headless/print mode over Ports (no Elixir SDK exists), capture raw output, declare its capabilities. It extends the contract — already proven in Phase 2 against Claude and Codex — to a third agent, and must pass the conformance suite unchanged.
+"""
+implemented = "Harness.AgentAdapter.Cursor — drives cursor-agent -p over Ports; --force --trust for unattended runs, --continue resume. Delivered via parallel dogfood run run-1779369258533-24f56b83; 5/5 verification checks green, conformance suite passed unchanged."
+created_at = "2026-05-20"
+started_at = "2026-05-21"
+scored_at = "2026-05-20"
+done_at = "2026-05-21"
 
 [[task]]
 id = "14"
 phase = 2
 bundle = "contract-proof"
 milestone = "v0_1"
-status = "pending"
-depends_on = ["12"]
+status = "done"
 title = "Codex headless adapter"
 scores = { d = 5, b = 5, u = 5 }
-scored_at = "2026-05-20"
-created_at = "2026-05-20"
-body = """
-Implement the Codex adapter — drive `codex exec` over Ports, capture raw output, declare capabilities. This is harness's second adapter and the first real test of the `AgentAdapter` contract: Codex's invocation (`codex exec --json`) is the most different from Claude's, so building it now — while only the Claude adapter depends on the behaviour — shakes out any Claude-specific leak before Phase 3's resilience layer couples to the contract. Must pass the conformance suite unchanged — a leak is fixed in the behaviour, not patched around in the adapter.
-"""
+depends_on = ["12"]
 acceptance_criteria = [
   "A Codex run captures raw output and reports termination",
   "The adapter passes the conformance suite unchanged",
   "Any abstraction leak surfaced is fixed in the behaviour, not the adapter",
 ]
+body = """
+Implement the Codex adapter — drive `codex exec` over Ports, capture raw output, declare capabilities. This is harness's second adapter and the first real test of the `AgentAdapter` contract: Codex's invocation (`codex exec --json`) is the most different from Claude's, so building it now — while only the Claude adapter depends on the behaviour — shakes out any Claude-specific leak before Phase 3's resilience layer couples to the contract. Must pass the conformance suite unchanged — a leak is fixed in the behaviour, not patched around in the adapter.
+"""
+implemented = "Harness.AgentAdapter.Codex — drives codex exec --json over Ports; resume swaps in 'exec resume --last'. Delivered via parallel dogfood run run-1779369258524-7c1a28d5; 5/5 verification checks green, conformance suite passed unchanged, no abstraction leak."
+created_at = "2026-05-20"
+started_at = "2026-05-21"
+scored_at = "2026-05-20"
+done_at = "2026-05-21"
 
 [[task]]
 id = "15"
 phase = 4
 bundle = "multi-agent"
 milestone = "v0_3"
-status = "pending"
-depends_on = ["12"]
-markers = ["parallel"]
+status = "done"
 title = "Grok headless adapter"
 scores = { d = 4, b = 5, u = 5 }
-scored_at = "2026-05-20"
-created_at = "2026-05-20"
-body = """
-Implement the Grok adapter — drive Grok Build headlessly (`grok -p`, or the `agent` subcommand) over Ports (no Elixir SDK exists), capture raw output. Wire working directory, permission mode, and session resume. Must pass the conformance suite unchanged. Grok-specific extras (`--best-of-n`, `--check`, worktree flags) are surfaced through the capability registry, not the core behaviour.
-"""
+markers = ["parallel"]
+depends_on = ["12"]
 acceptance_criteria = [
   "A Grok run captures raw output and reports termination",
   "The adapter passes the conformance suite with no changes to the suite",
   "Working directory, permission mode, and session resume are wired",
 ]
+body = """
+Implement the Grok adapter — drive Grok Build headlessly (`grok -p`, or the `agent` subcommand) over Ports (no Elixir SDK exists), capture raw output. Wire working directory, permission mode, and session resume. Must pass the conformance suite unchanged. Grok-specific extras (`--best-of-n`, `--check`, worktree flags) are surfaced through the capability registry, not the core behaviour.
+"""
+implemented = "Harness.AgentAdapter.Grok — drives grok -p --output-format streaming-json over Ports; --permission-mode bypassPermissions, --continue resume. Delivered via parallel dogfood run run-1779369258542-cc4a6123; 5/5 verification checks green, conformance suite passed unchanged."
+created_at = "2026-05-20"
+started_at = "2026-05-21"
+scored_at = "2026-05-20"
+done_at = "2026-05-21"
 
 [[task]]
 id = "16"
@@ -681,3 +690,45 @@ Give the caller a first-class mechanism, carried on `Invocation`, to both set an
 created_at = "2026-05-21"
 scored_at = "2026-05-21"
 depends_on = ["12"]
+
+[[task]]
+id = "26"
+phase = 4
+bundle = "multi-agent"
+milestone = "v0_3"
+status = "done"
+title = "Antigravity headless adapter"
+scores = { d = 3, b = 4, u = 4 }
+depends_on = ["12"]
+acceptance_criteria = [
+  "Create Harness.AgentAdapter.Antigravity module implementing Harness.AgentAdapter behaviour",
+  "Implement capabilities/0 declaring support for :session_resume, :streaming_output, and :autonomous permission modes",
+  "Implement build_command/1 for Antigravity invocation, handling -p, --dangerously-skip-permissions, and --continue flags",
+  "Reject unsupported models with {:error, {:unsupported_model, model}}",
+  "Unit tests cover all capabilities, build_command/1 scenarios, and message classification",
+  "Integrate :antigravity into Harness.Roadmap and Harness.Roadmap.Item valid agents lists"
+]
+body = """
+Support Antigravity CLI (`agy`) as a headless coding agent adapter in Harness.
+
+The adapter will invoke the `agy` CLI using the `--print` (`-p`) flag for headless execution, `--dangerously-skip-permissions` for autonomous execution, and `--continue` (`-c`) for session resumption. The `agy` CLI does not support a custom model flag, so it will return `{:error, {:unsupported_model, model}}` if a model is specified.
+
+The integration includes registering the `:antigravity` agent in `Harness.Roadmap` and `Harness.Roadmap.Item`, and verifying compliance via an adapter-specific unit test suite.
+"""
+implemented = "Created Harness.AgentAdapter.Antigravity module implementing the Harness.AgentAdapter behaviour, mapping autonomous permission mode to --dangerously-skip-permissions, supporting session resumption with --continue, and rejecting model overrides with {:error, {:unsupported_model, model}}. Integrated :antigravity into Harness.Roadmap and Harness.Roadmap.Item. Added unit tests and conformance tests under test/harness/agent_adapter/ verifying capabilities, build_command, and integration."
+created_at = "2026-05-21"
+started_at = "2026-05-21"
+scored_at = "2026-05-21"
+done_at = "2026-05-21"
+
+[[task]]
+id = 1
+phase = 2
+bundle = "contract-proof"
+status = "pending"
+title = "Hoist universal adapter callbacks into the AgentAdapter behaviour"
+scores = { d = 3, b = 3, u = 6 }
+acceptance_criteria = ["A new adapter implementing only build_command/1 + capabilities/0 compiles and passes the conformance suite", "All existing adapters keep passing the conformance suite unchanged", "Duplicated classify_message/2 and terminate/1 bodies are removed from the adapter modules"]
+body = "Building the Codex, Cursor, Grok and Antigravity adapters surfaced that classify_message/2, terminate/1, and the --model argv helper are byte-identical across every adapter (Claude, Codex, Cursor, Grok, Antigravity, FakeAdapter). Hoist them into the behaviour via `use Harness.AgentAdapter` + defoverridable, so a new adapter declares only what is genuinely agent-specific (build_command/1, capabilities/0). Not an abstraction leak — the contract held — but pure duplication every new adapter re-copies. Surfaced by the first parallel dogfood batch (Tasks 13-15)."
+created_at = "2026-05-21"
+scored_at = "2026-05-21"

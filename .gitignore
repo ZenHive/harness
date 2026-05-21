@@ -44,3 +44,6 @@ harness-*.tar
 !.grok/plugins/
 !.grok/lsp.json
 !.grok/sandbox.toml
+
+# Antigravity (Google Antigravity IDE) — local project config / IDE state
+.antigravitycli/
