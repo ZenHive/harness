@@ -970,6 +970,97 @@
       "created_at": "2026-05-22",
       "scored_at": "2026-05-22",
       "cross_repo": []
+    },
+    {
+      "id": "29",
+      "phase": 3,
+      "bundle": "resilience",
+      "milestone": "v0_2",
+      "status": "pending",
+      "title": "Force-settle the Run lifetime timeout when the agent handle never arrives",
+      "scores": {
+        "d": 3,
+        "b": 6,
+        "u": 4
+      },
+      "eff": 1.67,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A run whose `{:run_handle}` message never arrives still settles within `lifetime_timeout`",
+        "The settled `Result`/`Status` carries a failure reason identifying the never-spawned cause",
+        "An agent that spawned just before the lifetime timeout is still cleaned up (SIGKILL or handed to the sweeper)",
+        "A regression test drives the never-arrives path and asserts the run force-settles"
+      ],
+      "out_of_scope": [
+        "Changing the agent `total_timeout` / `idle_timeout` semantics",
+        "The repair-loop attempt cap"
+      ],
+      "files_to_modify": [
+        "lib/harness/run.ex"
+      ],
+      "body": "`Harness.Run`'s last-resort lifetime budget (`lifetime_timeout`) currently only force-settles a run once the agent run handle has arrived. If the `{:run_handle}` message never arrives — a hung `build_command`/`invoke` before the agent spawns — the lifetime timeout defers instead of settling, so a wedged run can sit forever and the budget is not actually enforced.\n\nMake the lifetime timeout the genuine last-resort guarantee: when it fires, the run settles (`:failed`, with a reason naming the never-spawned cause) regardless of whether a run handle exists yet. Decide and document the trade-off — force-settling may orphan a just-spawned agent to the `Worktree.Sweeper`, which is acceptable for a last-resort budget.\n\nSurfaced by the post-merge audit of 53cc3ef — see `.audit/53cc3ef-supervised-run-lifecycle.md` finding 3 (a `discuss-design` divergence: Codex rated it pri 8, Claude assessed it latent for the shipped adapters).\n",
+      "created_at": "2026-05-22",
+      "scored_at": "2026-05-22",
+      "cross_repo": []
+    },
+    {
+      "id": "30",
+      "phase": 2,
+      "bundle": "core-loop",
+      "status": "pending",
+      "title": "Pin Worktree.commit/2 to the run's harness/<id> branch",
+      "scores": {
+        "d": 3,
+        "b": 6,
+        "u": 4
+      },
+      "eff": 1.67,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "`commit/2` lands the commit on the run's `harness/<id>` branch even if the agent moved or detached HEAD, OR fails with a dedicated error rather than committing off-branch",
+        "The failure path returns a typed `Harness.Worktree` error and `Harness.Run` settles the run cleanly on it",
+        "A test simulates an agent moving HEAD and asserts the deliverable is not stranded"
+      ],
+      "out_of_scope": [
+        "Restricting which git operations the agent may run inside the worktree"
+      ],
+      "files_to_modify": [
+        "lib/harness/worktree.ex",
+        "lib/harness/run.ex"
+      ],
+      "body": "`Harness.Worktree.commit/2` captures the agent's work by committing whatever the worktree's HEAD currently points at. The whole deliverable model assumes the work lands on the run's `harness/<id>` branch — but an agent that runs `git switch` or detaches HEAD makes `commit/2` land the commit off-branch, and worktree teardown then loses the run's deliverable.\n\nMake `commit/2` pin its commit to the worktree's own `harness/<id>` branch, or fail loudly if HEAD has moved. The audit noted three options — assert HEAD is on the expected branch and fail with a dedicated error, force-checkout the branch before committing, or commit against an explicit branch ref. Pick one and carry the ripple: a new `Harness.Worktree` error variant and the matching `committing`-state handling in `Harness.Run`.\n\nSurfaced by the post-merge audit of f53b50c — see `.audit/f53b50c-commit-agent-delivery.md` (a `discuss-design` divergence; uncommon trigger but a real deliverable-loss gap).\n",
+      "created_at": "2026-05-22",
+      "scored_at": "2026-05-22",
+      "cross_repo": []
+    },
+    {
+      "id": "31",
+      "phase": 4,
+      "bundle": "multi-agent",
+      "status": "pending",
+      "title": "Resolve the rmap-delegate ingest gap for the Grok and Antigravity adapters",
+      "scores": {
+        "d": 2,
+        "b": 3,
+        "u": 4
+      },
+      "eff": 1.75,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A decision is recorded: extend `rmap delegate` to all adapters, or formalize the claude/codex/cursor-rendered-prompt contract for non-delegatable ones",
+        "If formalizing: `Harness.Roadmap`, the `@valid_agents` comment, and the agent-facing docs state the contract explicitly",
+        "If extending rmap: every harness adapter is a valid `ingest/2` agent, with a regression test per adapter"
+      ],
+      "out_of_scope": [
+        "Implementing new agent adapters"
+      ],
+      "body": "`rmap delegate --to` accepts only `claude` / `codex` / `cursor`, and `Harness.Roadmap` deliberately shells out to `rmap delegate` to render task prompts — so `@valid_agents` on the ingest surface mirrors that set. harness now also ships Grok and Antigravity adapters, which have no ingest path: `ingest(agent: :grok)` / `ingest(agent: :antigravity)` are rejected by design, and those adapters run only with a claude/codex/cursor-rendered prompt dispatched directly via `Harness.Run.start_run/4`. This gap already produced one bug — the `:antigravity` value wrongly admitted to `@valid_agents`, fixed in the 25ed795 audit.\n\nResolve it deliberately: either extend rmap's `delegate --to` surface to cover every harness adapter, or formally accept that non-delegatable adapters run with a claude/codex/cursor-rendered prompt and document that contract clearly (in `Harness.Roadmap`, the `@valid_agents` rationale comment, and the dogfooding / agent-reference docs).\n\nSurfaced by the post-merge audit of 25ed795 — see `.audit/25ed795-antigravity-headless-adapter.md`.\n",
+      "created_at": "2026-05-22",
+      "scored_at": "2026-05-22",
+      "cross_repo": []
     }
   ]
 }
