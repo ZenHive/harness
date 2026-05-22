@@ -10,13 +10,19 @@ that adapter — treat this file as a starting point, not a frozen contract.
 
 ## Five-fact summary
 
-| Fact | Claude Code | Codex | Cursor | Grok |
-|---|---|---|---|---|
-| Headless invocation | `claude -p` / `--print` | `codex exec` (`codex e`) | `cursor-agent -p` / `--print` | `grok -p` / `--single` |
-| Raw output format | `--output-format text\|json\|stream-json` | `--json` / `--experimental-json` (NDJSON) | `--output-format text\|json\|stream-json` | `--output-format plain\|json\|streaming-json` |
-| System-prompt channel | **`--append-system-prompt[-file]`** (append) · `--system-prompt[-file]` (replace) | **none** — `AGENTS.md` file is the native mechanism | **none** — no inline flag | **none** documented |
-| Session resume | `--resume`/`-r <id\|name>` · `--continue`/`-c` · `--fork-session` | `codex exec resume [ID]` · `--last` · `--all` | `--resume [chatId]` · `--continue` | `-s`/`--session-id` · `-r`/`--resume` · `-c`/`--continue` |
-| Working dir / approval | `--add-dir` · `--permission-mode default\|acceptEdits\|plan\|auto\|dontAsk\|bypassPermissions` | `--cd`/`-C` · `--sandbox read-only\|workspace-write\|danger-full-access` · `--ask-for-approval untrusted\|on-request\|never` | `--workspace` · `-f`/`--force` · `--yolo` · `--trust` (headless) | `--cwd` · `--always-approve` |
+| Fact | Claude Code | Codex | Cursor | Grok | Antigravity |
+|---|---|---|---|---|---|
+| Headless invocation | `claude -p` / `--print` | `codex exec` (`codex e`) | `cursor-agent -p` / `--print` | `grok -p` / `--single` | `agy -p` |
+| Raw output format | `--output-format text\|json\|stream-json` | `--json` / `--experimental-json` (NDJSON) | `--output-format text\|json\|stream-json` | `--output-format plain\|json\|streaming-json` | none (plain text) |
+| System-prompt channel | **`--append-system-prompt[-file]`** (append) · `--system-prompt[-file]` (replace) | **none** — `AGENTS.md` file is the native mechanism | **none** — no inline flag | **none** documented | **none** |
+| Session resume | `--resume`/`-r <id\|name>` · `--continue`/`-c` · `--fork-session` | `codex exec resume [ID]` · `--last` · `--all` | `--resume [chatId]` · `--continue` | `-s`/`--session-id` · `-r`/`--resume` · `-c`/`--continue` | `--continue` |
+| Working dir / approval | `--add-dir` · `--permission-mode default\|acceptEdits\|plan\|auto\|dontAsk\|bypassPermissions` | `--cd`/`-C` · `--sandbox read-only\|workspace-write\|danger-full-access` · `--ask-for-approval untrusted\|on-request\|never` | `--workspace` · `-f`/`--force` · `--yolo` · `--trust` (headless) | `--cwd` · `--always-approve` | `--dangerously-skip-permissions` |
+
+## Ingestion and Prompt Rendering Contract for Non-Delegatable Adapters
+
+Only a subset of adapters (`Claude Code`, `Codex`, and `Cursor`) are delegatable targets natively supported by the `rmap` CLI (`rmap delegate --to` accepts only these options). Consequently, the harness ingestion surface (`Harness.Roadmap.ingest/2`) restricts its valid agents to `:claude`, `:codex`, and `:cursor`.
+
+The non-delegatable adapters (`Grok` and `Antigravity`) run using prompts rendered for one of the delegatable agents. They are executed by ingesting the task prompt under a delegatable agent configuration, and then passing the resulting `%Harness.Roadmap.Item{}` directly to their adapter module (`Harness.AgentAdapter.Grok` or `Harness.AgentAdapter.Antigravity`) when invoking `Harness.Run.Supervisor.start_run/4` (or via `Harness.Batch`).
 
 ## Per-agent detail
 
@@ -64,6 +70,13 @@ that adapter — treat this file as a starting point, not a frozen contract.
 - `grok agent stdio` runs Grok as a JSON-RPC (ACP) agent over stdin/stdout — an
   alternative transport, relevant to the deferred ACP adapter (Task 21).
 
+### Antigravity
+- Headless: `-p`.
+- Output: Standard output (plain text).
+- **No system-prompt flag.**
+- Resume: `--continue`.
+- `--dangerously-skip-permissions` auto-approves operations and skips permission prompts.
+
 ## System-prompt injection verdict (for Task 22)
 
 The research **confirms** Task 22's central assumption: only Claude Code has a dedicated
@@ -91,7 +104,7 @@ be a curated subset, not the full includes corpus.
 
 ## Known cross-agent gotcha
 
-Headless **exit codes are unreliable** across all four (already noted in `CLAUDE.md`).
+Headless **exit codes are unreliable** across all five (already noted in `CLAUDE.md`).
 Derive *termination* from the process/Port closing plus a timeout guard; derive *success*
 from the harness verification stack — never from `$?`.
 
@@ -101,3 +114,4 @@ from the harness verification stack — never from `$?`.
 - Claude Code — https://code.claude.com/docs/en/cli-reference
 - Codex — https://developers.openai.com/codex/cli/reference
 - Cursor — https://cursor.com/docs/cli/reference/parameters , https://cursor.com/docs/cli/headless
+- Antigravity — https://docs.antigravity.ai/cli/headless

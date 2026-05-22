@@ -55,6 +55,10 @@ via `mix run`.
    settle, the agent transcript + verdict + the tail of every failed check.
 6. **Read the verdict** (see below).
 
+### Non-delegatable adapters contract
+
+Non-delegatable adapters (`Grok` and `Antigravity`) are not valid options on the ingestion surface because `rmap delegate --to` does not support them (so `ingest(agent: :grok)` and `ingest(agent: :antigravity)` are rejected). Instead, task prompts are ingested using a delegatable agent (e.g. `:claude`, `:codex`, or `:cursor`), and then the ingested `Item` is passed directly to the non-delegatable adapter's module (e.g. `Harness.AgentAdapter.Grok` or `Harness.AgentAdapter.Antigravity`) when calling `Harness.Run.Supervisor.start_run/4` in the driver script.
+
 ### Driver script template
 
 Save as `/tmp/dogfood_task<id>.exs`, change `task_id`, run with `mix run`:

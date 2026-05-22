@@ -26,6 +26,20 @@ defmodule Harness.Roadmap do
 
   Ingestion is read-only: it never writes the roadmap back (claiming a task is
   the run-lifecycle's concern).
+
+  ## Non-delegatable Adapters Contract
+
+  Non-delegatable adapters (such as `Grok` and `Antigravity`) are not valid targets
+  for rmap delegation (`rmap delegate --to` accepts only `claude`, `codex`, or `cursor`).
+  Therefore, passing `:grok` or `:antigravity` as the `:agent` option to `ingest/2` is
+  rejected by design.
+
+  To run a task using a non-delegatable adapter:
+  1. Ingest the task using a delegatable agent (e.g. `:claude`, `:codex`, or `:cursor`),
+     which produces a `Harness.Roadmap.Item` with the corresponding rendered prompt.
+  2. Dispatch that item directly to the non-delegatable adapter module (e.g.
+     `Harness.AgentAdapter.Grok` or `Harness.AgentAdapter.Antigravity`) via
+     `Harness.Run.Supervisor.start_run/4` (or via `Harness.Batch` using the adapter module).
   """
 
   alias Harness.Roadmap.Item
@@ -33,8 +47,12 @@ defmodule Harness.Roadmap do
   # Mirrors `rmap delegate --to`'s accepted values exactly — ingestion shells
   # out to `rmap delegate` to render the prompt, so an agent rmap cannot
   # delegate to (e.g. :grok, :antigravity) is rejected here rather than failing
-  # downstream with an opaque `{:rmap_failed, _}`. Those agents still run as
-  # adapters; their prompt is rendered for one of these and dispatched directly.
+  # downstream with an opaque `{:rmap_failed, _}`.
+  #
+  # Contract for non-delegatable adapters: Grok and Antigravity run with a
+  # claude/codex/cursor-rendered prompt. Ingestion rejects them on the ingest
+  # surface, but they can be run by dispatching the ingested item directly to their
+  # adapter module via `Harness.Run.Supervisor.start_run/4`.
   @valid_agents [:claude, :codex, :cursor]
 
   @typedoc "Which task to ingest: the next pending one, or one named by id."

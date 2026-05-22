@@ -19,7 +19,7 @@
 
 ## What This Is
 
-`harness` is an OTP-native Elixir engine an **AI orchestrator drives end to end**: it pulls a task from the rmap roadmap, dispatches it to a **headless coding agent** — Claude Code, Cursor, Codex, Grok — running in an isolated git worktree, runs the target project's own check stack against the result, and reports a *verified* outcome back over an agent-shaped surface (MCP tools / JSON CLI).
+`harness` is an OTP-native Elixir engine an **AI orchestrator drives end to end**: it pulls a task from the rmap roadmap, dispatches it to a **headless coding agent** — Claude Code, Cursor, Codex, Grok, Antigravity — running in an isolated git worktree, runs the target project's own check stack against the result, and reports a *verified* outcome back over an agent-shaped surface (MCP tools / JSON CLI).
 
 The primary user is an AI agent, not a human — harness is the OTP-native automation of the delegate → verify → repair loop this repo already runs by hand via the `cloud-delegation` skills.
 
@@ -49,8 +49,11 @@ With the normalized event model cut, the harness core is textbook OTP — a Port
 | Cursor | `cursor-agent -p` | `--output-format stream-json` |
 | Codex | `codex exec` | `--json` |
 | Grok | `grok -p` / the `agent` subcommand | `--output-format streaming-json` |
+| Antigravity | `agy -p` | none (plain text) |
 
-All four are driven over OTP Ports — uniform invocation strategy, no per-agent SDK (see § "Orchestration Library").
+All five are driven over OTP Ports — uniform invocation strategy, no per-agent SDK (see § "Orchestration Library").
+
+Non-delegatable adapters (such as `Grok` and `Antigravity`) run with a `claude`, `codex`, or `cursor`-rendered prompt. They cannot be target arguments to `Harness.Roadmap.ingest/2` since `rmap delegate --to` does not support them. Instead, ingest the task with one of the delegatable agents, and pass the resulting `%Harness.Roadmap.Item{}` directly to the non-delegatable adapter's module via `Harness.Run.Supervisor.start_run/4` (or via `Harness.Batch` using the adapter module).
 
 harness captures these **raw** and passes them through — it does not parse or normalize them. Known gotcha: the headless **exit code is unreliable**. Derive *termination* from the process / Port closing plus a timeout guard; derive *success* from harness's own verification stack — never from `$?`, never from the agent's self-reported result.
 

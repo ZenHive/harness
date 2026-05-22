@@ -855,7 +855,7 @@
       "phase": 4,
       "bundle": "multi-agent",
       "milestone": "v0_3",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Caller-controlled agent environment in the AgentAdapter contract",
       "scores": {
         "d": 4,
@@ -878,6 +878,7 @@
       ],
       "body": "Harness Port-spawns every headless agent inheriting the orchestrator BEAM's environment wholesale — `Harness.AgentAdapter.spawn_run/5` opens the port layering only the adapter's `build_command/1` env additions on top, and `Harness.AgentAdapter.Invocation` carries no environment field at all. The operator has no lever to shape what a dispatched agent sees: they cannot add a per-run variable, and they cannot scrub an inherited one — e.g. remove an inherited `ANTHROPIC_API_KEY` so `claude` falls back to its subscription OAuth credentials instead of a (possibly unfunded) API key. That exact gap forced the dogfood driver to call `System.delete_env/1` on the whole BEAM as a workaround.\n\nGive the caller a first-class mechanism, carried on `Invocation`, to both set and unset environment variables for the spawned agent — threaded through every adapter's `build_command/1` and the port spawn (note `port_env/1` currently cannot express a removal: `{key, false}` would crash `String.to_charlist/1`). Cover it in the adapter conformance suite so every adapter honors it identically.\n",
       "created_at": "2026-05-21",
+      "started_at": "2026-05-22",
       "scored_at": "2026-05-21",
       "cross_repo": []
     },
@@ -1039,7 +1040,7 @@
       "id": "31",
       "phase": 4,
       "bundle": "multi-agent",
-      "status": "pending",
+      "status": "done",
       "title": "Resolve the rmap-delegate ingest gap for the Grok and Antigravity adapters",
       "scores": {
         "d": 2,
@@ -1058,6 +1059,40 @@
         "Implementing new agent adapters"
       ],
       "body": "`rmap delegate --to` accepts only `claude` / `codex` / `cursor`, and `Harness.Roadmap` deliberately shells out to `rmap delegate` to render task prompts — so `@valid_agents` on the ingest surface mirrors that set. harness now also ships Grok and Antigravity adapters, which have no ingest path: `ingest(agent: :grok)` / `ingest(agent: :antigravity)` are rejected by design, and those adapters run only with a claude/codex/cursor-rendered prompt dispatched directly via `Harness.Run.start_run/4`. This gap already produced one bug — the `:antigravity` value wrongly admitted to `@valid_agents`, fixed in the 25ed795 audit.\n\nResolve it deliberately: either extend rmap's `delegate --to` surface to cover every harness adapter, or formally accept that non-delegatable adapters run with a claude/codex/cursor-rendered prompt and document that contract clearly (in `Harness.Roadmap`, the `@valid_agents` rationale comment, and the dogfooding / agent-reference docs).\n\nSurfaced by the post-merge audit of 25ed795 — see `.audit/25ed795-antigravity-headless-adapter.md`.\n",
+      "created_at": "2026-05-22",
+      "started_at": "2026-05-22",
+      "done_at": "2026-05-22",
+      "scored_at": "2026-05-22",
+      "implemented": "Formalized the non-delegatable-adapter contract: Grok/Antigravity run via a claude/codex/cursor-rendered prompt dispatched directly to their adapter module (not extending rmap — keeps the rmap Rust CLI decoupled). Documented in Harness.Roadmap moduledoc + @valid_agents comment, CLAUDE.md, docs/dogfooding-workflow.md, docs/agent-cli-reference.md. Delivered by Antigravity in the Round-1 dogfood batch; agy's worktree-isolation bug (Task 32) leaked the work into the main checkout — verified green by a separate evaluator pass (test 245 pass / credo 0 / doctor 100%).",
+      "cross_repo": []
+    },
+    {
+      "id": "32",
+      "phase": 4,
+      "bundle": "multi-agent",
+      "status": "pending",
+      "title": "Antigravity adapter does not isolate to its run worktree",
+      "scores": {
+        "d": 4,
+        "b": 6,
+        "u": 5
+      },
+      "eff": 1.38,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "An Antigravity-driven harness run edits files only inside its run worktree; the main checkout stays clean",
+        "The Antigravity adapter moduledoc accurately describes how `agy` resolves its working directory",
+        "If `agy` cannot be headlessly constrained to one directory, that limitation is documented and Antigravity dispatch fails fast with a clear error instead of polluting the main checkout",
+        "A regression guard catches a future adapter that writes outside its run worktree"
+      ],
+      "out_of_scope": [
+        "Fixing the agy CLI upstream — harness works with the CLI as shipped",
+        "Grok / Claude / Codex / Cursor adapters — they isolate correctly"
+      ],
+      "body": "During the Round-1 multi-agent dogfood batch (2026-05-22), Task 31 was driven by the Antigravity adapter. harness Port-spawned `agy` with the port `:cd` set to the run's isolated worktree, but `agy` edited files in the *main checkout* (`~/_DATA/code/harness/`) instead — the run settled `:no_changes` because the worktree had no diff, and the agent's actual work landed, ungraded, in the canonical checkout.\n\nThe Antigravity adapter moduledoc claims `agy` \"inherits its working directory from the spawned process's cwd\" — that is false. `agy --help` exposes no `--cwd` / `--workspace` / `--project` flag; the only directory control is `--add-dir` (repeatable, *additive* — it widens the workspace rather than replacing it). The Grok adapter also relies on Port cwd and isolated correctly in the same batch, so harness's worktree + `:cd` mechanism is sound — this is specific to `agy`'s workspace resolution (a configured/last-used workspace, or git-common-dir resolution following the worktree's `.git` file pointer back to the main checkout). Depends on Task 26 (the Antigravity adapter).\n\nInvestigate how `agy` actually resolves its working directory/workspace and make the Antigravity adapter guarantee the agent edits ONLY its run worktree. If `agy` cannot be headlessly constrained to a single directory, that is itself the finding — record it and gate Antigravity out of worktree-isolated dispatch with a clear up-front error, never silent main-checkout pollution. No dogfood run may write outside its worktree.\n",
       "created_at": "2026-05-22",
       "scored_at": "2026-05-22",
       "cross_repo": []
