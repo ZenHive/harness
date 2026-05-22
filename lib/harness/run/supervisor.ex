@@ -58,6 +58,9 @@ defmodule Harness.Run.Supervisor do
     * `:base_dir` / `:base_ref` — worktree root and the commit-ish to branch
       from, passed through to `Harness.Worktree.create/2`.
     * `:adapter_opts` — per-agent knobs, passed through to the invocation.
+    * `:retry_policy` — `%Harness.Run.RetryPolicy{}` or keyword list for
+      `Harness.Run.RetryPolicy.from_opts/1` when a caller wraps runs with
+      `RetryPolicy.run/2` (batch or per-run scope).
   """
   @spec start_run(Item.t(), String.t(), module(), keyword()) ::
           {:ok, String.t(), pid()} | {:error, term()}

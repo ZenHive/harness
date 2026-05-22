@@ -255,6 +255,68 @@ defmodule Harness.RunTest do
     end
   end
 
+  describe "autonomous repair loop" do
+    test "a red verdict resumes the agent, and the loop settles :done once repair fixes it" do
+      {run_id, pid, repo} =
+        start_repair(adapter_opts: [command: :repair], checks: marker_checks(), max_repair_attempts: 2)
+
+      result = await_result(run_id, pid)
+
+      assert %Result{state: :done, reason: :passed, repair_attempts: 1} = result
+      assert %Verdict{status: :pass} = result.verdict
+
+      # repair_marker exists only because the resumed run saw session: :resume —
+      # proof the agent was resumed. Its content is the repair prompt the agent
+      # was handed: proof the failing checks were fed back.
+      marker = GitFixture.git!(repo, ["show", "harness/#{run_id}:repair_marker"])
+      assert marker =~ "repair attempt 1 of 2"
+      assert marker =~ "check: marker"
+    end
+
+    test "the loop stops at the configured attempt cap" do
+      {run_id, pid, _repo} =
+        start_repair(adapter_opts: [command: :repair_noop], checks: marker_checks(), max_repair_attempts: 2)
+
+      result = await_result(run_id, pid)
+
+      assert %Result{state: :failed, reason: :verification_red, repair_attempts: 2} = result
+      assert %Verdict{status: :fail} = result.verdict
+    end
+
+    test "the attempt cap is configurable — 0 disables repair" do
+      {run_id, pid, _repo} =
+        start_repair(adapter_opts: [command: :repair_noop], checks: marker_checks(), max_repair_attempts: 0)
+
+      result = await_result(run_id, pid)
+
+      assert %Result{state: :failed, reason: :verification_red, repair_attempts: 0} = result
+    end
+
+    test "a non-repairable failure ends the loop without burning the attempt budget" do
+      # The resumed agent produces no diff (a quota-starved agent): the run
+      # settles :no_changes at one attempt — it does not burn all five.
+      {run_id, pid, _repo} =
+        start_repair(adapter_opts: [command: :repair_quota], checks: marker_checks(), max_repair_attempts: 5)
+
+      result = await_result(run_id, pid)
+
+      assert %Result{state: :failed, reason: :no_changes, repair_attempts: 1} = result
+    end
+
+    test "the settled run's status snapshot carries the repair attempt count" do
+      {run_id, _pid, _repo} =
+        start_repair(
+          adapter_opts: [command: :repair_noop],
+          checks: marker_checks(),
+          max_repair_attempts: 1,
+          terminal_linger: 2_000
+        )
+
+      assert_receive {:harness_run, ^run_id, %Result{repair_attempts: 1}}, 10_000
+      assert {:ok, %Status{state: :failed, repair_attempts: 1}} = Run.status(run_id)
+    end
+  end
+
   # ── helpers ─────────────────────────────────────────────────────────────
 
   defp run(overrides) do
@@ -272,6 +334,33 @@ defmodule Harness.RunTest do
     {run_id, pid}
   end
 
+  # Like start/1 but returns the repo too (so a test can `git show` the run
+  # branch) and never forces max_repair_attempts — repair-loop tests set it.
+  defp start_repair(overrides) do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+
+    opts =
+      Keyword.merge(
+        [
+          base_dir: base,
+          total_timeout: 30_000,
+          idle_timeout: 10_000,
+          lifetime_timeout: 30_000,
+          verification_timeout: 10_000,
+          terminal_linger: 100
+        ],
+        overrides
+      )
+
+    {:ok, run_id, pid} = Run.Supervisor.start_run(item(), repo, FakeAdapter, opts)
+    {run_id, pid, repo}
+  end
+
+  # A check stack the :repair fixtures grade against: red until the resumed
+  # agent writes repair_marker into the worktree.
+  defp marker_checks, do: [check("ok", "true"), check("marker", "test", ["-f", "repair_marker"])]
+
   defp default_opts(base) do
     [
       base_dir: base,
@@ -281,7 +370,10 @@ defmodule Harness.RunTest do
       idle_timeout: 10_000,
       lifetime_timeout: 30_000,
       verification_timeout: 10_000,
-      terminal_linger: 100
+      terminal_linger: 100,
+      # The repair loop has its own describe block; keep the base helpers
+      # single-attempt so a red verdict settles straight to :failed.
+      max_repair_attempts: 0
     ]
   end
 
@@ -289,7 +381,7 @@ defmodule Harness.RunTest do
     %Item{id: "8", title: "Supervised run lifecycle", prompt: "do the thing", agent: :claude}
   end
 
-  defp check(name, command), do: %Check{name: name, command: command, args: []}
+  defp check(name, command, args \\ []), do: %Check{name: name, command: command, args: args}
 
   defp await_result(run_id, pid, timeout \\ 5_000) do
     ref = Process.monitor(pid)

@@ -21,11 +21,11 @@ defmodule Harness.FakeAdapter do
   end
 
   @impl Harness.AgentAdapter
-  def build_command(%Invocation{permission_mode: mode, adapter_opts: opts}) do
+  def build_command(%Invocation{permission_mode: mode, adapter_opts: opts} = invocation) do
     # Mirror a real adapter: a permission mode outside capabilities/0 is a
     # build_command error, never a silent fallback (the conformance contract).
     if mode in capabilities().permission_modes do
-      {:ok, command(Keyword.get(opts, :command, :echo))}
+      {:ok, command(Keyword.get(opts, :command, :echo), invocation)}
     else
       {:error, {:unsupported_permission_mode, mode}}
     end
@@ -53,30 +53,76 @@ defmodule Harness.FakeAdapter do
   #                    timed-out agent that still left work to commit + grade.
   # :break_git       — overwrites the worktree's .git pointer, so the harness
   #                    commit step fails (the commit-failure fixture).
+  # {:write_then_wait_for_file, path}
+  #                  — writes a file, then waits until path exists (batch cap fixture).
+  # {:write_status_by_task, red_ids}
+  #                  — writes a status file that fails checks for listed task ids.
   # :sleep           — stays alive emitting nothing (idle-timeout fixture).
   # :exit_code       — exits 3 with no output (advisory exit-status fixture).
   # :burst           — emits across pauses each shorter than a test idle window
   #                    (idle-reset fixture); the whole run outlasts that window.
   # :flood           — emits forever (total-timeout fixture; idle keeps resetting).
   # :missing         — an executable not on PATH (invoke-failure fixture).
-  defp command(:echo), do: {"/bin/echo", ["harness-test"], []}
+  # :repair          — repair-loop happy path: the first run (session nil)
+  #                    writes attempt.txt and no repair_marker, so a check that
+  #                    requires repair_marker grades red; the resumed run
+  #                    (session :resume) writes repair_marker, filling it with
+  #                    the repair prompt it was handed so a test can assert the
+  #                    failing checks were fed back.
+  # :repair_noop     — every run churns a committable file but never writes
+  #                    repair_marker, so verification stays red — drives the
+  #                    repair loop to its attempt cap.
+  # :repair_quota    — the first run writes a diff; the resumed run does nothing,
+  #                    settling :no_changes — a non-repairable failure (a
+  #                    quota-starved agent) that must end the loop, not burn
+  #                    every remaining attempt.
+  defp command(:echo, _invocation), do: {"/bin/echo", ["harness-test"], []}
 
-  defp command({:echo, text}) when is_binary(text), do: {"/bin/echo", [text], []}
+  defp command({:echo, text}, _invocation) when is_binary(text), do: {"/bin/echo", [text], []}
 
-  defp command(:stdin_eof), do: {"/bin/sh", ["-c", "cat; echo stdin-eof-ok"], []}
+  defp command(:stdin_eof, _invocation), do: {"/bin/sh", ["-c", "cat; echo stdin-eof-ok"], []}
 
-  defp command(:write), do: {"/bin/sh", ["-c", "echo agent-output > agent_output.txt"], []}
+  defp command(:write, _invocation), do: {"/bin/sh", ["-c", "echo agent-output > agent_output.txt"], []}
 
-  defp command(:write_then_hang), do: {"/bin/sh", ["-c", "echo agent-output > agent_output.txt; sleep 30"], []}
+  defp command(:write_then_hang, _invocation),
+    do: {"/bin/sh", ["-c", "echo agent-output > agent_output.txt; sleep 30"], []}
 
-  defp command(:break_git), do: {"/bin/sh", ["-c", "echo broken > .git"], []}
+  defp command(:break_git, _invocation), do: {"/bin/sh", ["-c", "echo broken > .git"], []}
 
-  defp command(:sleep), do: {"/bin/sleep", ["30"], []}
-  defp command(:exit_code), do: {"/bin/sh", ["-c", "exit 3"], []}
+  defp command({:write_then_wait_for_file, path}, _invocation) when is_binary(path) do
+    script = "echo agent-output > agent_output.txt; while [ ! -f #{shell_arg(path)} ]; do sleep 0.05; done"
+    {"/bin/sh", ["-c", script], []}
+  end
 
-  defp command(:burst), do: {"/bin/sh", ["-c", "echo one; sleep 0.2; echo two; sleep 0.2; echo three"], []}
+  defp command({:write_status_by_task, red_ids}, %Invocation{task_id: task_id}) when is_list(red_ids) do
+    status = if task_id in red_ids, do: "fail", else: "pass"
+    {"/bin/sh", ["-c", "echo agent-output > agent_output.txt; echo #{status} > status.txt"], []}
+  end
 
-  defp command(:flood), do: {"/bin/sh", ["-c", "while true; do echo tick; sleep 0.05; done"], []}
+  defp command(:sleep, _invocation), do: {"/bin/sleep", ["30"], []}
 
-  defp command(:missing), do: {"definitely-not-a-real-binary-xyz", [], []}
+  defp command(:exit_code, _invocation), do: {"/bin/sh", ["-c", "exit 3"], []}
+
+  defp command(:burst, _invocation), do: {"/bin/sh", ["-c", "echo one; sleep 0.2; echo two; sleep 0.2; echo three"], []}
+
+  defp command(:flood, _invocation), do: {"/bin/sh", ["-c", "while true; do echo tick; sleep 0.05; done"], []}
+
+  defp command(:missing, _invocation), do: {"definitely-not-a-real-binary-xyz", [], []}
+
+  # The prompt rides as a positional parameter ($1), never interpolated into the
+  # script, so a repair prompt of any bytes reaches repair_marker unmangled.
+  defp command(:repair, %Invocation{session: :resume, prompt: prompt}),
+    do: {"/bin/sh", ["-c", ~S(printf '%s' "$1" > repair_marker), "harness-fake", prompt], []}
+
+  defp command(:repair, %Invocation{session: nil}), do: {"/bin/sh", ["-c", "echo first-attempt > attempt.txt"], []}
+
+  defp command(:repair_noop, _invocation), do: {"/bin/sh", ["-c", "echo churn >> churn.txt"], []}
+
+  defp command(:repair_quota, %Invocation{session: :resume}), do: {"/bin/echo", ["repair-did-nothing"], []}
+
+  defp command(:repair_quota, %Invocation{session: nil}), do: {"/bin/sh", ["-c", "echo first-attempt > attempt.txt"], []}
+
+  defp shell_arg(value) do
+    "'" <> String.replace(value, "'", "'\"'\"'") <> "'"
+  end
 end

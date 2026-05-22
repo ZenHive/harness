@@ -59,9 +59,10 @@
 <!-- TASKS:BEGIN phase=3 -->
 | Task | Status | Notes |
 |------|--------|-------|
-| Task 9 | ⬜ | 🎁 **resilience** · 🚀 **v0_2** · Batch orchestrator with concurrency cap [D:5/B:9/U:8 → Eff:1.7] 🚀 |
-| Task 10 `[P]` | ⬜ | 🎁 **resilience** · 🚀 **v0_2** · Retry policy with failure classification [D:4/B:7/U:6 → Eff:1.62] 🚀 |
-| Task 11 `[P]` | ⬜ | 🎁 **resilience** · 🚀 **v0_2** · Autonomous repair loop [D:5/B:8/U:7 → Eff:1.5] 🚀 |
+| Task 9 | ✅ | 🎁 **resilience** · 🚀 **v0_2** · Batch orchestrator with concurrency cap [D:5/B:9/U:8 → Eff:1.7] 🚀 |
+| Task 10 `[P]` | ✅ | 🎁 **resilience** · 🚀 **v0_2** · Retry policy with failure classification [D:4/B:7/U:6 → Eff:1.62] 🚀 |
+| Task 11 `[P]` | ✅ | 🎁 **resilience** · 🚀 **v0_2** · Autonomous repair loop [D:5/B:8/U:7 → Eff:1.5] 🚀 |
+| Task 28 | ⬜ | 🎁 **resilience** · 🚀 **v0_2** · Wire the retry policy into the batch orchestrator [D:4/B:6/U:6 → Eff:1.5] 🚀 |
 <!-- TASKS:END -->
 
 ---

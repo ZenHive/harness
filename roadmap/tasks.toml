@@ -23,7 +23,7 @@ status = "pending"
 [phases.3]
 name = "Batch & Resilience"
 order = 3
-status = "pending"
+status = "in_progress"
 
 [phases.4]
 name = "Multi-Agent & Quota Fail-over"
@@ -330,36 +330,34 @@ id = "9"
 phase = 3
 bundle = "resilience"
 milestone = "v0_2"
-status = "pending"
-depends_on = ["8"]
+status = "done"
 title = "Batch orchestrator with concurrency cap"
 scores = { d = 5, b = 9, u = 8 }
-scored_at = "2026-05-20"
-created_at = "2026-05-20"
-body = """
-Implement the batch layer — fan a set of tasks out across run-lifecycle processes under a `DynamicSupervisor`, with a configurable concurrency cap, and collect the per-task verdicts. Tolerate partial failure: one failed or red run must not abort the batch; the batch result reports every task's outcome. A batch is typically an rmap bundle or an `rmap next-bundle` result.
-"""
+depends_on = ["8"]
 acceptance_criteria = [
   "A batch of N tasks runs under a concurrency cap of M",
   "Partial failure is tolerated — the batch completes and reports per-task status",
   "Per-task verdicts are collected into one batch result",
 ]
+body = """
+Implement the batch layer — fan a set of tasks out across run-lifecycle processes under a `DynamicSupervisor`, with a configurable concurrency cap, and collect the per-task verdicts. Tolerate partial failure: one failed or red run must not abort the batch; the batch result reports every task's outcome. A batch is typically an rmap bundle or an `rmap next-bundle` result.
+"""
+implemented = "Harness.Batch.run/4 + Harness.Batch.Result — fans tasks out across supervised Harness.Run children under a concurrency cap, tolerates partial failure (red/crashed run never aborts the batch), collects one Run.Result per task in input order. Delivered via parallel multi-agent dogfood, driven by Codex; commit on harness/run-1779373868703-29f9a9b0."
+created_at = "2026-05-20"
+started_at = "2026-05-21"
+scored_at = "2026-05-20"
+done_at = "2026-05-22"
 
 [[task]]
 id = "10"
 phase = 3
 bundle = "resilience"
 milestone = "v0_2"
-status = "pending"
-depends_on = ["8"]
-markers = ["parallel"]
+status = "done"
 title = "Retry policy with failure classification"
 scores = { d = 4, b = 7, u = 6 }
-scored_at = "2026-05-20"
-created_at = "2026-05-20"
-body = """
-Add a per-run retry policy that first classifies the failure. Transient failures (a process crash, a flaky check) retry with capped exponential backoff. Quota exhaustion — a subscription agent hitting its cap — is NOT retryable on a useful timescale (the reset window is hours); it must stop retrying that agent immediately, marked for fail-over rather than backoff. Genuine terminal task failures are never retried. Make the policy injectable per batch or per run.
-"""
+markers = ["parallel"]
+depends_on = ["8"]
 acceptance_criteria = [
   "Failures are classified as transient, quota-exhausted, or terminal",
   "Transient failures retry with capped exponential backoff",
@@ -367,28 +365,39 @@ acceptance_criteria = [
   "Terminal failures are not retried",
   "The policy is configurable per batch or per run",
 ]
+body = """
+Add a per-run retry policy that first classifies the failure. Transient failures (a process crash, a flaky check) retry with capped exponential backoff. Quota exhaustion — a subscription agent hitting its cap — is NOT retryable on a useful timescale (the reset window is hours); it must stop retrying that agent immediately, marked for fail-over rather than backoff. Genuine terminal task failures are never retried. Make the policy injectable per batch or per run.
+"""
+implemented = "Harness.Run.RetryPolicy + Harness.Run.FailureClass — classifies a failed run transient/quota_exhausted/terminal; transient retries with capped exponential backoff, quota stops at once for fail-over, terminal never retried; policy injectable per run/batch via :harness, :retry_policy. Delivered via parallel multi-agent dogfood, driven by Cursor; commit on harness/run-1779373868714-f42cdd07."
+created_at = "2026-05-20"
+started_at = "2026-05-21"
+scored_at = "2026-05-20"
+done_at = "2026-05-22"
 
 [[task]]
 id = "11"
 phase = 3
 bundle = "resilience"
 milestone = "v0_2"
-status = "pending"
-depends_on = ["7", "8"]
-markers = ["parallel"]
+status = "done"
 title = "Autonomous repair loop"
 scores = { d = 5, b = 8, u = 7 }
-scored_at = "2026-05-20"
-created_at = "2026-05-20"
-body = """
-Close the verify loop. When verification comes back red, feed the failing checks' output back to the same agent via session resume and re-run, up to a configurable attempt cap. The objective check stack is the grader, so an agent iterating against it is not self-grading. Stop on green, on the attempt cap, or on a non-repairable failure class (e.g. quota exhaustion — hand to fail-over instead).
-"""
+markers = ["parallel"]
+depends_on = ["7", "8"]
 acceptance_criteria = [
   "A red verdict triggers a repair attempt — failures fed back via session resume",
   "The loop stops on green or at the attempt cap",
   "A quota or terminal failure ends the loop instead of burning attempts",
   "The number of repair attempts is configurable",
 ]
+body = """
+Close the verify loop. When verification comes back red, feed the failing checks' output back to the same agent via session resume and re-run, up to a configurable attempt cap. The objective check stack is the grader, so an agent iterating against it is not self-grading. Stop on green, on the attempt cap, or on a non-repairable failure class (e.g. quota exhaustion — hand to fail-over instead).
+"""
+implemented = "Harness.Run repair loop + Harness.Run.RepairPrompt — a red verdict resumes the same agent with the failing checks fed back, re-commits and re-grades up to :max_repair_attempts (default 2); stops on green, the cap, or a non-repairable failure. Delivered via parallel multi-agent dogfood, driven by Claude; commit on harness/run-1779373868724-a4ceeede."
+created_at = "2026-05-20"
+started_at = "2026-05-21"
+scored_at = "2026-05-20"
+done_at = "2026-05-22"
 
 [[task]]
 id = "12"
@@ -732,3 +741,18 @@ acceptance_criteria = ["A new adapter implementing only build_command/1 + capabi
 body = "Building the Codex, Cursor, Grok and Antigravity adapters surfaced that classify_message/2, terminate/1, and the --model argv helper are byte-identical across every adapter (Claude, Codex, Cursor, Grok, Antigravity, FakeAdapter). Hoist them into the behaviour via `use Harness.AgentAdapter` + defoverridable, so a new adapter declares only what is genuinely agent-specific (build_command/1, capabilities/0). Not an abstraction leak — the contract held — but pure duplication every new adapter re-copies. Surfaced by the first parallel dogfood batch (Tasks 13-15)."
 created_at = "2026-05-21"
 scored_at = "2026-05-21"
+
+[[task]]
+id = "28"
+phase = 3
+bundle = "resilience"
+milestone = "v0_2"
+status = "pending"
+title = "Wire the retry policy into the batch orchestrator"
+scores = { d = 4, b = 6, u = 6 }
+depends_on = ["9", "10"]
+acceptance_criteria = ["A transient failure in a batch run is retried per the injected RetryPolicy before its result lands in the batch result", "A quota-exhausted or terminal failure is not retried — it settles into the batch result immediately", "The concurrency cap is respected while retries are in flight", "The retry policy is injectable per batch and defaults from :harness, :retry_policy"]
+out_of_scope = ["Quota fail-over to a different agent — that is the capability registry's job (Task 16)", "The repair loop — Task 11's :verification_red feedback is distinct from transient-failure retry"]
+body = "Harness.Run.RetryPolicy (Task 10) ships as an injectable helper — RetryPolicy.run/2 wraps a `fn -> Result.t()` loop — but nothing calls it. Harness.Batch (Task 9) was built in the same parallel dogfood batch off the same HEAD, so it fans runs out but never applies the retry policy: a transient failure (a process crash, a flaky check) in a batch run is reported, not retried. Wire the retry policy into the batch orchestrator so each run's lifecycle is wrapped by RetryPolicy.run/2, with the policy injectable per batch via the :retry_policy opt already documented on Harness.Run.Supervisor.start_run/4. Transient failures retry with capped backoff; quota-exhausted and terminal failures are not retried — they settle into the batch result as-is. The concurrency cap must still hold while retries are in flight. Surfaced by the parallel multi-agent dogfood batch that delivered Tasks 9-11."
+created_at = "2026-05-22"
+scored_at = "2026-05-22"

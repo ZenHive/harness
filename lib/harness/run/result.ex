@@ -23,7 +23,8 @@ defmodule Harness.Run.Result do
   Why a run settled the way it did.
 
     * `:passed` — the verification stack graded the worktree green (`:done`).
-    * `:verification_red` — a check in the stack failed.
+    * `:verification_red` — a check in the stack failed; any configured repair
+      attempts were exhausted without going green (see `repair_attempts`).
     * `:no_changes` — the agent terminated without changing the worktree, so
       there was nothing to commit; the run delivered nothing.
     * `:cancelled` — the run was cancelled via `Harness.Run.cancel/1`.
@@ -35,6 +36,7 @@ defmodule Harness.Run.Result do
       run branch.
     * `{:verification_failed, r}` — verification could not run at all.
     * `{:verifier_crashed, r}` — the verification task crashed.
+    * `{:run_crashed, r}` — the run process exited before delivering a result.
   """
   @type reason ::
           :passed
@@ -48,6 +50,7 @@ defmodule Harness.Run.Result do
           | {:commit_failed, term()}
           | {:verification_failed, term()}
           | {:verifier_crashed, term()}
+          | {:run_crashed, term()}
 
   @typedoc """
   A settled run.
@@ -63,6 +66,11 @@ defmodule Harness.Run.Result do
     * `worktree_path` — the isolated worktree's path, or `nil` if it was never
       created. On a `:failed` run the directory may have been retained for
       inspection.
+    * `repair_attempts` — how many repair attempts the run made before settling.
+      `0` when the first verification settled the run; up to the configured
+      `:max_repair_attempts` when a red verdict drove the autonomous repair loop
+      (see `Harness.Run`). `agent_outcome` and `verdict` then reflect the final
+      attempt.
   """
   @type t :: %__MODULE__{
           run_id: String.t(),
@@ -71,7 +79,8 @@ defmodule Harness.Run.Result do
           reason: reason(),
           agent_outcome: Outcome.t() | nil,
           verdict: Verdict.t() | nil,
-          worktree_path: String.t() | nil
+          worktree_path: String.t() | nil,
+          repair_attempts: non_neg_integer()
         }
 
   @enforce_keys [:run_id, :task_id, :state, :reason]
@@ -82,6 +91,7 @@ defmodule Harness.Run.Result do
     :reason,
     :agent_outcome,
     :verdict,
-    :worktree_path
+    :worktree_path,
+    repair_attempts: 0
   ]
 end

@@ -30,6 +30,20 @@ defmodule Harness.Run do
   is recorded for diagnostics, but a run whose agent timed out is still
   verified: the worktree it left behind is what gets graded.
 
+  ## Repair loop
+
+  A red verdict is not necessarily terminal. While repair attempts remain
+  (`:max_repair_attempts`, default `2`) and the adapter can resume its session,
+  `verifying` loops back to `running` instead of settling: the same agent is
+  resumed with a prompt carrying the failing checks' output (see
+  `Harness.Run.RepairPrompt`), re-commits, and is re-graded. The objective check
+  stack stays the grader, so an agent iterating against it is repairing its
+  work, not self-grading. The loop stops on green, on the attempt cap (settling
+  `:failed` / `:verification_red`), or on any non-red terminal failure of a
+  repair attempt — a quota-starved agent that produces no diff settles
+  `:no_changes` rather than burning the remaining attempts. `repair_attempts` on
+  both the result and the status snapshot reports how many attempts were made.
+
   ## Cancellation & timeout
 
   `cancel/1` aborts an in-flight run; a per-run lifetime budget does the same
@@ -46,11 +60,13 @@ defmodule Harness.Run do
 
   @behaviour :gen_statem
 
+  alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Driver
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Run, as: AgentRun
   alias Harness.Roadmap.Item
+  alias Harness.Run.RepairPrompt
   alias Harness.Run.Result
   alias Harness.Run.Status
   alias Harness.Verification
@@ -65,6 +81,7 @@ defmodule Harness.Run do
 
   @default_lifetime_timeout 5_400_000
   @default_terminal_linger 5_000
+  @default_max_repair_attempts 2
 
   @typedoc "A lifecycle state."
   @type state :: :dispatched | :running | :committing | :verifying | :done | :failed
@@ -85,6 +102,8 @@ defmodule Harness.Run do
            idle_timeout: timeout() | nil,
            lifetime_timeout: pos_integer(),
            terminal_linger: non_neg_integer(),
+           max_repair_attempts: non_neg_integer(),
+           repair_attempts: non_neg_integer(),
            checks: [Check.t()] | nil,
            verification_timeout: timeout() | nil,
            base_dir: String.t() | nil,
@@ -191,6 +210,10 @@ defmodule Harness.Run do
       idle_timeout: Keyword.get(opts, :idle_timeout),
       lifetime_timeout: Keyword.get(opts, :lifetime_timeout) || configured(:lifetime_timeout, @default_lifetime_timeout),
       terminal_linger: Keyword.get(opts, :terminal_linger) || configured(:terminal_linger, @default_terminal_linger),
+      max_repair_attempts:
+        Keyword.get(opts, :max_repair_attempts) ||
+          configured(:max_repair_attempts, @default_max_repair_attempts),
+      repair_attempts: 0,
       checks: Keyword.get(opts, :checks),
       verification_timeout: Keyword.get(opts, :verification_timeout),
       base_dir: Keyword.get(opts, :base_dir),
@@ -240,11 +263,15 @@ defmodule Harness.Run do
 
   @doc false
   @spec running(event(), term(), data()) :: handler_result()
+  # Entering `running` always means a fresh agent is about to spawn — the first
+  # dispatch, or a repair attempt. `agent_run` / `agent_outcome` are reset so a
+  # stale handle from a prior attempt never misleads the cancel-defer logic or a
+  # `status/1` snapshot.
   def running(:enter, _old_state, data) do
     parent = self()
     invocation = build_invocation(data)
     task = start_task(fn -> Driver.run(data.adapter, invocation, driver_opts(data, parent)) end)
-    {:keep_state, %{data | task: task}}
+    {:keep_state, %{data | task: task, agent_run: nil, agent_outcome: nil}}
   end
 
   def running(:info, {:run_handle, %AgentRun{} = run}, data) do
@@ -327,10 +354,17 @@ defmodule Harness.Run do
     Process.demonitor(ref, [:flush])
     data = %{data | task: nil, verdict: verdict}
 
-    if Verdict.passed?(verdict) do
-      {:next_state, :done, %{data | reason: :passed}}
-    else
-      {:next_state, :failed, %{data | reason: :verification_red}}
+    cond do
+      Verdict.passed?(verdict) ->
+        {:next_state, :done, %{data | reason: :passed}}
+
+      repairable?(data) ->
+        # Loop back to `running`: the same agent is resumed with the failing
+        # checks fed back. `build_invocation/1` reads the incremented count.
+        {:next_state, :running, %{data | repair_attempts: data.repair_attempts + 1}}
+
+      true ->
+        {:next_state, :failed, %{data | reason: :verification_red}}
     end
   end
 
@@ -497,7 +531,8 @@ defmodule Harness.Run do
       reason: data.reason,
       agent_outcome: data.agent_outcome,
       verdict: data.verdict,
-      worktree_path: data.worktree && data.worktree.path
+      worktree_path: data.worktree && data.worktree.path,
+      repair_attempts: data.repair_attempts
     }
   end
 
@@ -536,7 +571,8 @@ defmodule Harness.Run do
       worktree_path: data.worktree && data.worktree.path,
       agent_os_pid: data.agent_run && data.agent_run.os_pid,
       agent_kind: data.agent_outcome && data.agent_outcome.kind,
-      verdict_status: data.verdict && data.verdict.status
+      verdict_status: data.verdict && data.verdict.status,
+      repair_attempts: data.repair_attempts
     }
   end
 
@@ -545,23 +581,50 @@ defmodule Harness.Run do
     Task.Supervisor.async_nolink(@task_supervisor, fun)
   end
 
+  # The first dispatch runs the task prompt fresh; a repair attempt resumes the
+  # agent's session with a prompt carrying the failing checks (RepairPrompt).
   @spec build_invocation(data()) :: Invocation.t()
-  defp build_invocation(data) do
+  defp build_invocation(%{repair_attempts: 0} = data) do
+    invocation(data, data.item.prompt, nil)
+  end
+
+  defp build_invocation(%{verdict: %Verdict{} = verdict} = data) do
+    prompt = RepairPrompt.build(data.item, verdict, data.repair_attempts, data.max_repair_attempts)
+    invocation(data, prompt, :resume)
+  end
+
+  @spec invocation(data(), String.t(), :resume | nil) :: Invocation.t()
+  defp invocation(data, prompt, session) do
     %Invocation{
-      prompt: data.item.prompt,
+      prompt: prompt,
       cwd: data.worktree.path,
       task_id: data.item.id,
+      session: session,
       permission_mode: :autonomous,
       adapter_opts: data.adapter_opts
     }
   end
 
+  # Whether a red verdict should trigger another repair attempt: the cap is not
+  # yet spent, and the adapter can resume its session — the channel the failing
+  # checks are fed back through.
+  @spec repairable?(data()) :: boolean()
+  defp repairable?(data) do
+    data.repair_attempts < data.max_repair_attempts and
+      AgentAdapter.supports?(data.adapter, :session_resume)
+  end
+
   # The message stamped on the agent's delivery commit — identifies the run and
   # the rmap task it served, so the commit is legible in `git log` after the
-  # worktree it came from is gone.
+  # worktree it came from is gone. Each repair attempt commits separately, so
+  # the branch history reads as a sequence of attempts.
   @spec commit_message(data()) :: String.t()
-  defp commit_message(data) do
+  defp commit_message(%{repair_attempts: 0} = data) do
     "harness: agent delivery — task #{data.item.id} #{data.item.title} (run #{data.run_id})"
+  end
+
+  defp commit_message(data) do
+    "harness: repair attempt #{data.repair_attempts} — task #{data.item.id} #{data.item.title} (run #{data.run_id})"
   end
 
   @spec worktree_opts(data()) :: keyword()

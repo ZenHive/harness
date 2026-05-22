@@ -29,6 +29,10 @@ defmodule Harness.Run.Status do
       or `nil` before the agent has finished.
     * `verdict_status` — the verification verdict (`:pass` / `:fail`), or `nil`
       before verification has finished.
+    * `repair_attempts` — how many repair attempts the run has made so far. `0`
+      until a red verdict drives the autonomous repair loop (see `Harness.Run`);
+      a snapshot with `state: :running` and `repair_attempts > 0` is a repair
+      attempt in flight.
   """
   @type t :: %__MODULE__{
           run_id: String.t(),
@@ -37,9 +41,19 @@ defmodule Harness.Run.Status do
           worktree_path: String.t() | nil,
           agent_os_pid: non_neg_integer() | nil,
           agent_kind: Outcome.kind() | nil,
-          verdict_status: :pass | :fail | nil
+          verdict_status: :pass | :fail | nil,
+          repair_attempts: non_neg_integer()
         }
 
   @enforce_keys [:run_id, :task_id, :state]
-  defstruct [:run_id, :task_id, :state, :worktree_path, :agent_os_pid, :agent_kind, :verdict_status]
+  defstruct [
+    :run_id,
+    :task_id,
+    :state,
+    :worktree_path,
+    :agent_os_pid,
+    :agent_kind,
+    :verdict_status,
+    repair_attempts: 0
+  ]
 end

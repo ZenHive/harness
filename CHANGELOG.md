@@ -100,9 +100,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Harness.Run` starts under as a `:temporary` child, so one run crashing is
   isolated from its siblings and a failed run is never restarted. `start_run/4`
   is the entry point; runs are looked up by id through a `Registry`.
-- Run lifecycle timeouts are configurable via `:harness, :run`
-  (`lifetime_timeout`, `terminal_linger`) alongside the existing agent
-  `total_timeout` / `idle_timeout`.
+- Autonomous repair loop — a red verification verdict is no longer terminal.
+  While repair attempts remain, `Harness.Run` resumes the **same** agent with a
+  prompt (`Harness.Run.RepairPrompt`) carrying the failing checks' output,
+  re-commits, and re-grades. The objective check stack stays the grader, so the
+  agent is repairing rather than self-grading. The loop stops on green, at the
+  attempt cap, or on a non-red terminal failure of an attempt — a quota-starved
+  agent that produces no diff settles `:no_changes` instead of burning the
+  remaining attempts. `repair_attempts` on `Harness.Run.Result` and
+  `Harness.Run.Status` reports how many attempts a run made.
+- `Harness.Batch` — the batch layer: fans a set of tasks out across supervised
+  `Harness.Run` children under a configurable concurrency cap, tolerates partial
+  failure (one red or crashed run never aborts the batch), and collects one
+  `Harness.Run.Result` per task — in input order — into a `Harness.Batch.Result`.
+  A batch is typically an `rmap` bundle or `rmap next-bundle` result.
+- `Harness.Run.RetryPolicy` + `Harness.Run.FailureClass` — failure-classified
+  retry: a failed run is classified `:transient` (a process crash or flaky
+  check — retried with capped exponential backoff), `:quota_exhausted` (a
+  subscription agent at its cap — stops retrying that agent at once and marks it
+  for fail-over, since the reset window is hours, not a backoff timescale), or
+  `:terminal` (a genuine red verdict — never retried). The policy is injectable
+  per run or per batch and configurable via `:harness, :retry_policy`.
+- Run lifecycle timeouts and the repair-attempt cap are configurable via
+  `:harness, :run` (`lifetime_timeout`, `terminal_linger`,
+  `max_repair_attempts`) alongside the existing agent `total_timeout` /
+  `idle_timeout`.
 - Initial OTP application scaffold with a supervision tree (`Harness.Application`).
 - Standard Elixir dev/test tooling stack: Styler (formatter plugin), Credo,
   Dialyxir, Doctor, Sobelow, `ex_unit_json`, `dialyzer_json`, `ex_dna`, `ex_ast`,
