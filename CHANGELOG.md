@@ -125,6 +125,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `:harness, :run` (`lifetime_timeout`, `terminal_linger`,
   `max_repair_attempts`) alongside the existing agent `total_timeout` /
   `idle_timeout`.
+- Caller-controlled agent environment — `Harness.AgentAdapter.Invocation` carries
+  an `env` map threaded through every adapter's `build_command/1` into the port
+  spawn: `%{"KEY" => "value"}` sets a variable, `%{"KEY" => false}` scrubs an
+  inherited one (e.g. removing `ANTHROPIC_API_KEY` so `claude` falls back to its
+  subscription OAuth). Passed per run via the `:env` opt to `start_run/4`; the
+  orchestrator BEAM's own environment is never mutated. The conformance suite
+  gates both injection and scrubbing on every adapter.
 - Initial OTP application scaffold with a supervision tree (`Harness.Application`).
 - Standard Elixir dev/test tooling stack: Styler (formatter plugin), Credo,
   Dialyxir, Doctor, Sobelow, `ex_unit_json`, `dialyzer_json`, `ex_dna`, `ex_ast`,
