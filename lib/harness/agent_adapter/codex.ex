@@ -84,7 +84,8 @@ defmodule Harness.AgentAdapter.Codex do
           resume ++
           [invocation.prompt]
 
-      {:ok, {"codex", argv, []}}
+      env = Map.to_list(invocation.env)
+      {:ok, {"codex", argv, env}}
     end
   end
 

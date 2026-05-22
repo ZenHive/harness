@@ -80,7 +80,8 @@ defmodule Harness.AgentAdapter.Cursor do
           resume ++
           [invocation.prompt]
 
-      {:ok, {"cursor-agent", argv, []}}
+      env = Map.to_list(invocation.env)
+      {:ok, {"cursor-agent", argv, env}}
     end
   end
 

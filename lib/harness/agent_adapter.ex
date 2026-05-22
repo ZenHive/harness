@@ -81,9 +81,11 @@ defmodule Harness.AgentAdapter do
 
   @typedoc """
   A built headless command: the executable, its argv, and environment pairs.
+  The env list carries caller (and adapter) overrides: `{key, value}` sets,
+  `{key, false}` unsets an inherited variable.
   """
   @type command ::
-          {executable :: String.t(), argv :: [String.t()], env :: [{String.t(), String.t()}]}
+          {executable :: String.t(), argv :: [String.t()], env :: [{String.t(), String.t() | false}]}
 
   @typedoc """
   The result of classifying one process message against a run.
@@ -179,7 +181,7 @@ defmodule Harness.AgentAdapter do
   # diagnostics, auth errors, and partial-failure context all reach the consumer
   # rather than leaking to the BEAM's own stderr. Raw passthrough means the AI
   # reading the transcript tolerates interleaved stderr; losing it would not.
-  @spec spawn_run(module(), Invocation.t(), String.t(), [String.t()], [{String.t(), String.t()}]) ::
+  @spec spawn_run(module(), Invocation.t(), String.t(), [String.t()], [{String.t(), String.t() | false}]) ::
           {:ok, Run.t()} | {:error, term()}
   defp spawn_run(adapter, invocation, executable, argv, env) do
     case System.find_executable(executable) do
@@ -209,9 +211,12 @@ defmodule Harness.AgentAdapter do
     end
   end
 
-  @spec port_env([{String.t(), String.t()}]) :: [{charlist(), charlist()}]
+  @spec port_env([{String.t(), String.t() | false}]) :: [{charlist(), charlist() | false}]
   defp port_env(env) do
-    Enum.map(env, fn {key, value} -> {String.to_charlist(key), String.to_charlist(value)} end)
+    Enum.map(env, fn
+      {key, false} -> {String.to_charlist(key), false}
+      {key, value} -> {String.to_charlist(key), String.to_charlist(value)}
+    end)
   end
 
   @spec capability_supported?(Capabilities.t(), capability()) :: boolean()

@@ -686,7 +686,7 @@ id = "25"
 phase = 4
 bundle = "multi-agent"
 milestone = "v0_3"
-status = "in_progress"
+status = "done"
 title = "Caller-controlled agent environment in the AgentAdapter contract"
 scores = { d = 4, b = 5, u = 5 }
 depends_on = ["12"]
@@ -697,9 +697,11 @@ Harness Port-spawns every headless agent inheriting the orchestrator BEAM's envi
 
 Give the caller a first-class mechanism, carried on `Invocation`, to both set and unset environment variables for the spawned agent — threaded through every adapter's `build_command/1` and the port spawn (note `port_env/1` currently cannot express a removal: `{key, false}` would crash `String.to_charlist/1`). Cover it in the adapter conformance suite so every adapter honors it identically.
 """
+implemented = "Added a caller-controlled env field to Harness.AgentAdapter.Invocation (map of name => string to set, name => false to scrub an inherited var). Threaded through every adapter's build_command/1 and into the port spawn via port_env/1 ({key, false} -> Erlang Port :env removal, fixing the String.to_charlist crash flagged in the task body). Plumbed as the :env opt on Harness.Run.Supervisor.start_run/4. Conformance suite gains a shared env injection+scrubbing test every adapter passes. Dogfood driver template updated to use env: %{ANTHROPIC_API_KEY => false} instead of System.delete_env. Delivered by Grok in the Round-1 dogfood batch — all 5 verification checks green."
 created_at = "2026-05-21"
 started_at = "2026-05-22"
 scored_at = "2026-05-21"
+done_at = "2026-05-22"
 
 [[task]]
 id = "26"

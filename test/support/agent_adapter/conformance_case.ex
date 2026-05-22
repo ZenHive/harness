@@ -119,7 +119,7 @@ defmodule Harness.AgentAdapter.ConformanceCase do
           assert is_list(argv) and Enum.all?(argv, &is_binary/1)
 
           assert Enum.all?(env, fn
-                   {key, value} -> is_binary(key) and is_binary(value)
+                   {key, value} when is_binary(key) -> is_binary(value) or value === false
                    _other -> false
                  end)
         end
@@ -137,6 +137,16 @@ defmodule Harness.AgentAdapter.ConformanceCase do
           refute undeclared in @adapter.capabilities().permission_modes
 
           assert {:error, _reason} = @adapter.build_command(invocation(permission_mode: undeclared))
+        end
+
+        test "threads caller env additions and removals (injection + scrubbing) into the returned env" do
+          inv =
+            invocation(env: %{"HARNESS_TEST_SET" => "injected", "HARNESS_TEST_SCRUB" => false})
+
+          assert {:ok, {_executable, _argv, env}} = @adapter.build_command(inv)
+
+          assert {"HARNESS_TEST_SET", "injected"} in env
+          assert {"HARNESS_TEST_SCRUB", false} in env
         end
       end
 

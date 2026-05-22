@@ -74,17 +74,13 @@ task_id = "12"
 repo = File.cwd!()
 lifetime_timeout = 3_600_000
 
-# The dogfood agent must authenticate as the parent session's Claude subscription.
-# `claude` resolves auth from ANTHROPIC_API_KEY *before* its stored OAuth
-# credentials, so an inherited key shadows the subscription — and if that key's
-# account has no credit, every run dies with a billing error before doing any
-# work. Harness Port-spawns the agent with the BEAM's env inherited wholesale
-# (Harness.AgentAdapter.spawn_run/5 — no caller scrub hook yet), so scrubbing the
-# key here is the only lever. Nothing in this throwaway BEAM needs it — harness
-# shells out to `claude`, never the Anthropic API. See § "nested claude" below.
-# TODO(Task 25): drop this scrub once the AgentAdapter contract carries a
-# caller-controlled agent environment — then harness scrubs/sets env per run.
-System.delete_env("ANTHROPIC_API_KEY")
+# The dogfood agent must authenticate as the parent session's Claude
+# subscription. `claude` resolves auth from ANTHROPIC_API_KEY *before* its
+# stored OAuth credentials, so an inherited key shadows the subscription — and
+# if that key's account has no credit, every run dies with a billing error
+# before doing any work. The run scrubs the key per-agent via the `:env` opt
+# passed to `start_run` below (Task 25 — caller-controlled agent environment);
+# the orchestrator BEAM's own env is left untouched. See § "nested claude".
 
 log = fn msg -> IO.puts("[dogfood] #{DateTime.to_iso8601(DateTime.utc_now())} #{msg}") end
 
@@ -107,7 +103,8 @@ case Harness.Roadmap.ingest({:id, task_id}, project_root: repo) do
 
     case Harness.Run.Supervisor.start_run(item, repo, Harness.AgentAdapter.Claude,
            subscriber: self(),
-           lifetime_timeout: lifetime_timeout
+           lifetime_timeout: lifetime_timeout,
+           env: %{"ANTHROPIC_API_KEY" => false}
          ) do
       {:ok, run_id, pid} ->
         log.("run started #{run_id} (pid #{inspect(pid)}, lifetime budget #{div(lifetime_timeout, 60_000)}m)")
@@ -237,11 +234,11 @@ batch tasks that edit a shared file or the `AgentAdapter` behaviour itself.
 - **nested claude.** The dogfood agent is `claude -p` spawned from inside a Claude Code
   session — nesting itself is fine. Auth is **not** automatically shared, though:
   `claude` checks `ANTHROPIC_API_KEY` *before* its stored OAuth credentials, so an
-  inherited key shadows the parent's subscription. Harness Port-spawns the agent
-  inheriting the BEAM's env wholesale, so the driver scrubs `ANTHROPIC_API_KEY`
-  (`System.delete_env/1`) to force the subscription fallback — without that, a run
-  whose key account is out of credit dies with a `billing_error` (HTTP 400,
-  `"Credit balance is too low"`) before doing any work, and settles `:no_changes`.
+  inherited key shadows the parent's subscription. The run scrubs `ANTHROPIC_API_KEY`
+  per-agent via the `:env` opt to `start_run` (`env: %{"ANTHROPIC_API_KEY" => false}`)
+  to force the subscription fallback — without that, a run whose key account is out
+  of credit dies with a `billing_error` (HTTP 400, `"Credit balance is too low"`)
+  before doing any work, and settles `:no_changes`.
 - **timeouts.** The driver sets a 60-min `:lifetime_timeout`. Agent + cold verification
   can be tight; raise it if a run settles `:timed_out` mid-verification.
 - **run results are not persisted.** A settled run delivers its `Harness.Run.Result` to

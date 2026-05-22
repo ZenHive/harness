@@ -66,7 +66,8 @@ defmodule Harness.AgentAdapter.Antigravity do
          {:ok, permission} <- permission_flag(invocation.permission_mode),
          {:ok, resume} <- resume_args(invocation.session) do
       argv = ["-p", invocation.prompt, permission] ++ resume
-      {:ok, {"agy", argv, []}}
+      env = Map.to_list(invocation.env)
+      {:ok, {"agy", argv, env}}
     end
   end
 

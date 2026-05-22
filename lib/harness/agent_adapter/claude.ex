@@ -71,7 +71,8 @@ defmodule Harness.AgentAdapter.Claude do
           resume ++
           [invocation.prompt]
 
-      {:ok, {"claude", argv, []}}
+      env = Map.to_list(invocation.env)
+      {:ok, {"claude", argv, env}}
     end
   end
 

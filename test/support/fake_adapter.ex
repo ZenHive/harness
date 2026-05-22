@@ -25,7 +25,8 @@ defmodule Harness.FakeAdapter do
     # Mirror a real adapter: a permission mode outside capabilities/0 is a
     # build_command error, never a silent fallback (the conformance contract).
     if mode in capabilities().permission_modes do
-      {:ok, command(Keyword.get(opts, :command, :echo), invocation)}
+      {exe, argv, _} = command(Keyword.get(opts, :command, :echo), invocation)
+      {:ok, {exe, argv, Map.to_list(invocation.env)}}
     else
       {:error, {:unsupported_permission_mode, mode}}
     end

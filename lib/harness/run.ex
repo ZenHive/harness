@@ -109,6 +109,7 @@ defmodule Harness.Run do
            base_dir: String.t() | nil,
            base_ref: String.t() | nil,
            adapter_opts: keyword(),
+           env: %{optional(String.t()) => String.t() | false},
            worktree: Worktree.t() | nil,
            agent_run: AgentRun.t() | nil,
            agent_outcome: Outcome.t() | nil,
@@ -219,6 +220,7 @@ defmodule Harness.Run do
       base_dir: Keyword.get(opts, :base_dir),
       base_ref: Keyword.get(opts, :base_ref),
       adapter_opts: Keyword.get(opts, :adapter_opts, []),
+      env: Keyword.get(opts, :env, %{}),
       worktree: nil,
       agent_run: nil,
       agent_outcome: nil,
@@ -601,7 +603,8 @@ defmodule Harness.Run do
       task_id: data.item.id,
       session: session,
       permission_mode: :autonomous,
-      adapter_opts: data.adapter_opts
+      adapter_opts: data.adapter_opts,
+      env: data.env
     }
   end
 

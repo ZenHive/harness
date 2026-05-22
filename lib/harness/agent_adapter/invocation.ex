@@ -25,6 +25,11 @@ defmodule Harness.AgentAdapter.Invocation do
     * `model` — an optional model id, passed through to the agent.
     * `adapter_opts` — an escape hatch for per-agent knobs the uniform fields do
       not cover.
+    * `env` — caller-controlled environment for the spawned agent. Map of
+      variable name to either a string value (set/override) or `false` (unset/scrub
+      so the agent does not inherit it from the orchestrator). The adapter's
+      `build_command/1` threads these into the env list returned to the port
+      spawn. Defaults to `%{}`.
   """
   @type t :: %__MODULE__{
           prompt: String.t(),
@@ -33,7 +38,8 @@ defmodule Harness.AgentAdapter.Invocation do
           session: term() | nil,
           permission_mode: atom(),
           model: String.t() | nil,
-          adapter_opts: keyword()
+          adapter_opts: keyword(),
+          env: %{optional(String.t()) => String.t() | false}
         }
 
   @enforce_keys [:prompt, :cwd, :task_id]
@@ -44,6 +50,7 @@ defmodule Harness.AgentAdapter.Invocation do
     session: nil,
     permission_mode: :autonomous,
     model: nil,
-    adapter_opts: []
+    adapter_opts: [],
+    env: %{}
   ]
 end

@@ -68,6 +68,7 @@ defmodule Harness.AgentAdapterTest do
       assert invocation.permission_mode == :autonomous
       assert invocation.model == nil
       assert invocation.adapter_opts == []
+      assert invocation.env == %{}
     end
   end
 

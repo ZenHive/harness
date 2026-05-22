@@ -87,7 +87,8 @@ defmodule Harness.AgentAdapter.Grok do
           resume ++
           ["-p", invocation.prompt]
 
-      {:ok, {"grok", argv, []}}
+      env = Map.to_list(invocation.env)
+      {:ok, {"grok", argv, env}}
     end
   end
 
