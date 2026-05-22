@@ -702,11 +702,12 @@
       ],
       "acceptance_criteria": [
         "Each run emits a structured, queryable log record",
+        "The record carries the per-run quality metrics an agent comparison needs — first-attempt failed-check count and agent diff size, alongside verdict, duration, and repair attempts",
         "Batch results are persisted and reloadable after the process exits",
         "A run's failure cause is reconstructable from its record",
         "The store is pluggable, file-backed by default"
       ],
-      "body": "Add structured per-run logging (queryable records — agent, task, verdict, duration, repair attempts) and a result store so a finished batch's outcomes survive the process. Records must support the \"understand why something happened\" need — a red verdict, a fail-over, a quota block should all be reconstructable. Keep the store pluggable, file-backed by default; do not couple the core to a database.\n",
+      "body": "Add structured per-run logging (queryable records — agent, task, verdict, duration, repair attempts, first-attempt failed-check count, and agent diff size) and a result store so a finished batch's outcomes survive the process. Records must support the \"understand why something happened\" need — a red verdict, a fail-over, a quota block should all be reconstructable. Keep the store pluggable, file-backed by default; do not couple the core to a database.\n",
       "created_at": "2026-05-20",
       "scored_at": "2026-05-20",
       "cross_repo": []
@@ -1095,6 +1096,39 @@
         "Grok / Claude / Codex / Cursor adapters — they isolate correctly"
       ],
       "body": "During the Round-1 multi-agent dogfood batch (2026-05-22), Task 31 was driven by the Antigravity adapter. harness Port-spawned `agy` with the port `:cd` set to the run's isolated worktree, but `agy` edited files in the *main checkout* (`~/_DATA/code/harness/`) instead — the run settled `:no_changes` because the worktree had no diff, and the agent's actual work landed, ungraded, in the canonical checkout.\n\nThe Antigravity adapter moduledoc claims `agy` \"inherits its working directory from the spawned process's cwd\" — that is false. `agy --help` exposes no `--cwd` / `--workspace` / `--project` flag; the only directory control is `--add-dir` (repeatable, *additive* — it widens the workspace rather than replacing it). The Grok adapter also relies on Port cwd and isolated correctly in the same batch, so harness's worktree + `:cd` mechanism is sound — this is specific to `agy`'s workspace resolution (a configured/last-used workspace, or git-common-dir resolution following the worktree's `.git` file pointer back to the main checkout). Depends on Task 26 (the Antigravity adapter).\n\nInvestigate how `agy` actually resolves its working directory/workspace and make the Antigravity adapter guarantee the agent edits ONLY its run worktree. If `agy` cannot be headlessly constrained to a single directory, that is itself the finding — record it and gate Antigravity out of worktree-isolated dispatch with a clear up-front error, never silent main-checkout pollution. No dogfood run may write outside its worktree.\n",
+      "created_at": "2026-05-22",
+      "scored_at": "2026-05-22",
+      "cross_repo": []
+    },
+    {
+      "id": "33",
+      "phase": 5,
+      "bundle": "surface",
+      "status": "pending",
+      "title": "Same-task A/B agent-evaluation mode",
+      "scores": {
+        "d": 4,
+        "b": 6,
+        "u": 5
+      },
+      "eff": 1.38,
+      "markers": [],
+      "depends_on": [
+        "9",
+        "19"
+      ],
+      "acceptance_criteria": [
+        "A caller dispatches one rmap task to N agents at once — each in its own isolated worktree — and gets back one result per agent",
+        "The comparison collects per-agent quality metrics (verdict, repair attempts, wall-clock, first-attempt failed-check count, agent diff size) side by side",
+        "The verification verdict stays a binary pass/fail — evaluation metrics are an additive layer, never folded into the verdict",
+        "Partial failure is tolerated — one agent's crashed or red run never aborts the comparison"
+      ],
+      "out_of_scope": [
+        "A weighted composite 'agent score' or leaderboard — surface the raw per-agent metrics; ranking stays the consumer's judgement",
+        "Evaluating planning / brainstorm / review roles — harness only exercises the implement-and-verify role; the other roles need a different instrument",
+        "Persisting the comparison — run-record persistence is Task 19; this task consumes those records"
+      ],
+      "body": "harness's dogfood loop produces a binary pass/fail verdict per run — it verifies that a task was delivered, but never measures or compares how well different agents perform. Every dogfood task to date has gone green without the repair loop firing, and each was dispatched on a different task to a single agent, so the accumulated runs cannot rank the agents: the only signal captured is did-it-pass. The missing piece that turns harness from a verifier into an evaluation instrument is a same-task A/B mode.\n\nAdd a mode that dispatches one rmap task to several agents concurrently — each driven in its own isolated worktree, exactly as a normal batch run — and collects the results into a side-by-side comparison rather than an ordered per-task list. The comparison surfaces the per-agent quality metrics harness already captures or can cheaply derive: the verification verdict, repair attempts, wall-clock duration, how many checks were red on the first verification attempt, and the size of the agent's diff. This is a variant of the existing batch fan-out (Task 9) — same fan-out and crash-isolation, but one task across N adapters instead of N tasks each on one adapter, with a comparison aggregator in place of the ordered result list. Reuse the batch machinery; do not build a second orchestrator.\n\nThe load-bearing design constraint: the verification stack stays the binary pass/fail grader. Evaluator separation means the agent never grades itself — and harness must not start grading on a fuzzy composite score either. Evaluation metrics are a separate, additive layer read off the run records; they inform the human's judgement, they do not become the verdict. The run-record fields the comparison reads (first-attempt failed-check count, agent diff size) are captured by Task 19; this task consumes them.\n",
       "created_at": "2026-05-22",
       "scored_at": "2026-05-22",
       "cross_repo": []
