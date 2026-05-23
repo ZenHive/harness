@@ -11,9 +11,13 @@ defmodule Harness.Batch do
 
   alias Harness.AgentRegistry
   alias Harness.Batch.Result, as: BatchResult
+  alias Harness.ResultStore
   alias Harness.Roadmap.Item
+  alias Harness.Run.LogRecord
   alias Harness.Run.Result, as: RunResult
   alias Harness.Run.Supervisor, as: RunSupervisor
+
+  require Logger
 
   @default_max_concurrency 1
 
@@ -26,12 +30,15 @@ defmodule Harness.Batch do
            item: Item.t(),
            adapter: module(),
            monitor_ref: reference(),
+           started_at_ms: integer(),
            result: RunResult.t() | nil
          }
   @typep loop_context :: %{
+           batch_id: String.t(),
            repo: String.t(),
            adapters: [module()],
            run_opts: keyword(),
+           result_store: ResultStore.store(),
            max_concurrency: pos_integer(),
            total: non_neg_integer()
          }
@@ -60,19 +67,31 @@ defmodule Harness.Batch do
 
     with {:ok, max_concurrency} <- max_concurrency(opts),
          :ok <- ensure_dispatchable(items, adapters, opts) do
-      run_opts = opts |> Keyword.delete(:max_concurrency) |> Keyword.put(:subscriber, self())
+      batch_id = Keyword.get(opts, :batch_id) || generate_batch_id()
+      result_store = Keyword.get(opts, :result_store, ResultStore.configured())
+
+      run_opts =
+        opts
+        |> Keyword.delete(:max_concurrency)
+        |> Keyword.put(:batch_id, batch_id)
+        |> Keyword.put(:result_store, result_store)
+        |> Keyword.put(:subscriber, self())
+
       indexed_items = Enum.with_index(items)
-      context = loop_context(repo, adapters, run_opts, max_concurrency, length(indexed_items))
+      context = loop_context(batch_id, repo, adapters, run_opts, result_store, max_concurrency, length(indexed_items))
 
       {results, events} = loop(indexed_items, %{}, %{}, [], context)
 
-      {:ok,
-       %BatchResult{
-         total: length(indexed_items),
-         max_concurrency: max_concurrency,
-         results: ordered_results(results, length(indexed_items)),
-         events: Enum.reverse(events)
-       }}
+      result = %BatchResult{
+        batch_id: batch_id,
+        total: length(indexed_items),
+        max_concurrency: max_concurrency,
+        results: ordered_results(results, length(indexed_items)),
+        events: Enum.reverse(events)
+      }
+
+      persist_batch(result, result_store)
+      {:ok, result}
     end
   end
 
@@ -131,20 +150,22 @@ defmodule Harness.Batch do
 
         {:DOWN, ref, :process, _pid, reason} ->
           {active, results, queue, events} =
-            settle_down(active, results, queue, events, context.adapters, context.run_opts, ref, reason)
+            settle_down(active, results, queue, events, context, ref, reason)
 
           loop(queue, active, results, events, context)
       end
     end
   end
 
-  @spec loop_context(String.t(), [module()], keyword(), pos_integer(), non_neg_integer()) ::
+  @spec loop_context(String.t(), String.t(), [module()], keyword(), ResultStore.store(), pos_integer(), non_neg_integer()) ::
           loop_context()
-  defp loop_context(repo, adapters, run_opts, max_concurrency, total) do
+  defp loop_context(batch_id, repo, adapters, run_opts, result_store, max_concurrency, total) do
     %{
+      batch_id: batch_id,
       repo: repo,
       adapters: adapters,
       run_opts: run_opts,
+      result_store: result_store,
       max_concurrency: max_concurrency,
       total: total
     }
@@ -184,7 +205,17 @@ defmodule Harness.Batch do
       {:ok, adapter} ->
         {:ok, run_id, pid} = RunSupervisor.start_run(item, repo, adapter, run_opts)
         ref = Process.monitor(pid)
-        active = Map.put(active, run_id, %{index: index, item: item, adapter: adapter, monitor_ref: ref, result: nil})
+
+        active =
+          Map.put(active, run_id, %{
+            index: index,
+            item: item,
+            adapter: adapter,
+            monitor_ref: ref,
+            started_at_ms: System.monotonic_time(:millisecond),
+            result: nil
+          })
+
         fill_slots(rest, active, results, events, repo, adapters, run_opts, max_concurrency)
 
       {:error, reason} ->
@@ -232,23 +263,22 @@ defmodule Harness.Batch do
           %{non_neg_integer() => RunResult.t()},
           [indexed_item()],
           [term()],
-          [module()],
-          keyword(),
+          loop_context(),
           reference(),
           term()
         ) ::
           {%{String.t() => active_run()}, %{non_neg_integer() => RunResult.t()}, [indexed_item()], [term()]}
-  defp settle_down(active, results, queue, events, adapters, run_opts, ref, reason) do
+  defp settle_down(active, results, queue, events, context, ref, reason) do
     case find_by_monitor(active, ref) do
       nil ->
         {active, results, queue, events}
 
       {run_id, run} ->
-        result = run.result || crashed_result(run_id, run, reason)
+        result = run.result || persist_crashed_result(crashed_result(run_id, run, reason), run, context)
         active = Map.delete(active, run_id)
 
         if quota_exhausted_result?(result) do
-          fail_over(active, results, queue, events, adapters, run_opts, run, result)
+          fail_over(active, results, queue, events, context.adapters, context.run_opts, run, result)
         else
           {active, Map.put(results, run.index, result), queue, events}
         end
@@ -300,6 +330,47 @@ defmodule Harness.Batch do
       state: :failed,
       reason: {:run_crashed, reason}
     }
+  end
+
+  @spec persist_crashed_result(RunResult.t(), active_run(), loop_context()) :: RunResult.t()
+  defp persist_crashed_result(%RunResult{} = result, run, context) do
+    result
+    |> LogRecord.from_result(
+      batch_id: context.batch_id,
+      agent: run.item.agent,
+      adapter: run.adapter,
+      duration_ms: run_duration_ms(run)
+    )
+    |> ResultStore.record_run(context.result_store)
+    |> log_store_error("run record", result.run_id)
+
+    result
+  end
+
+  @spec persist_batch(BatchResult.t(), ResultStore.store()) :: :ok
+  defp persist_batch(%BatchResult{} = result, result_store) do
+    result
+    |> ResultStore.save_batch(result_store)
+    |> log_store_error("batch result", result.batch_id)
+  end
+
+  @spec log_store_error(:ok | {:error, term()}, String.t(), String.t()) :: :ok
+  defp log_store_error(:ok, _kind, _id), do: :ok
+
+  defp log_store_error({:error, reason}, kind, id) do
+    Logger.warning("harness batch: failed to persist #{kind} #{id}: #{inspect(reason)}")
+    :ok
+  end
+
+  @spec run_duration_ms(active_run()) :: non_neg_integer()
+  defp run_duration_ms(run) do
+    max(0, System.monotonic_time(:millisecond) - run.started_at_ms)
+  end
+
+  @spec generate_batch_id() :: String.t()
+  defp generate_batch_id do
+    rand = 4 |> :crypto.strong_rand_bytes() |> Base.encode16(case: :lower)
+    "batch-#{System.system_time(:millisecond)}-#{rand}"
   end
 
   @spec ordered_results(%{non_neg_integer() => RunResult.t()}, non_neg_integer()) :: [RunResult.t()]

@@ -10,6 +10,7 @@ defmodule Harness.BatchTest do
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.FakeAdapter
   alias Harness.GitFixture
+  alias Harness.ResultStore
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.Result
@@ -159,6 +160,54 @@ defmodule Harness.BatchTest do
     refute AgentRegistry.available?(QuotaAdapter)
   end
 
+  test "persists a batch result and queryable per-run records" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+    store = file_store()
+    batch_id = batch_id()
+
+    assert {:ok, %BatchResult{batch_id: ^batch_id, results: results}} =
+             Batch.run(
+               items(~w(green red)),
+               repo,
+               FakeAdapter,
+               batch_opts(base,
+                 batch_id: batch_id,
+                 result_store: store,
+                 max_concurrency: 2,
+                 adapter_opts: [command: {:write_status_by_task, ["red"]}],
+                 checks: [check("status", "grep", ["pass", "status.txt"])]
+               )
+             )
+
+    assert Enum.map(results, &{&1.task_id, &1.state, &1.reason}) == [
+             {"green", :done, :passed},
+             {"red", :failed, :verification_red}
+           ]
+
+    assert {:ok, %BatchResult{batch_id: ^batch_id, results: reloaded}} = ResultStore.load_batch(batch_id, store)
+
+    assert Enum.map(reloaded, &{&1.task_id, &1.state, &1.reason}) == [
+             {"green", :done, :passed},
+             {"red", :failed, :verification_red}
+           ]
+
+    assert {:ok, [red_record]} = ResultStore.list_run_records(store, task_id: "red")
+    assert red_record.agent == :claude
+    assert red_record.adapter == FakeAdapter
+    assert red_record.verdict == :fail
+    assert red_record.reason == :verification_red
+    assert red_record.repair_attempts == 0
+    assert red_record.first_attempt_failed_check_count == 1
+    assert red_record.agent_diff_size > 0
+    assert red_record.duration_ms >= 0
+
+    assert red_record.failure_cause == %{
+             reason: :verification_red,
+             failed_checks: [%{name: "status", kind: :exited, exit_status: 1}]
+           }
+  end
+
   test "fails over from a quota-exhausted adapter to a capable adapter with headroom" do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()
@@ -181,6 +230,46 @@ defmodule Harness.BatchTest do
 
     assert {:adapter_unavailable, QuotaAdapter, {:quota_exhausted, "quota-task"}} in events
     assert {:failover, "quota-task", QuotaAdapter, HeadroomAdapter} in events
+  end
+
+  test "persists quota-blocked attempts and the fail-over event chain" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+    store = file_store()
+    batch_id = batch_id()
+
+    assert {:ok, %BatchResult{events: events}} =
+             Batch.run(
+               items(["quota-task"]),
+               repo,
+               [QuotaAdapter, HeadroomAdapter],
+               batch_opts(base,
+                 batch_id: batch_id,
+                 result_store: store,
+                 max_concurrency: 1,
+                 checks: [check("ok", "true", [])]
+               )
+             )
+
+    assert {:adapter_unavailable, QuotaAdapter, {:quota_exhausted, "quota-task"}} in events
+    assert {:failover, "quota-task", QuotaAdapter, HeadroomAdapter} in events
+
+    assert {:ok, %BatchResult{events: reloaded_events}} = ResultStore.load_batch(batch_id, store)
+    assert {:failover, "quota-task", QuotaAdapter, HeadroomAdapter} in reloaded_events
+
+    assert {:ok, records} = ResultStore.list_run_records(store, task_id: "quota-task")
+    assert length(records) == 2
+
+    quota_record = Enum.find(records, &(&1.adapter == QuotaAdapter))
+    headroom_record = Enum.find(records, &(&1.adapter == HeadroomAdapter))
+
+    assert quota_record.state == :failed
+    assert quota_record.reason == :no_changes
+    assert quota_record.failure_cause == %{reason: :no_changes, failed_checks: []}
+    assert quota_record.agent_output =~ "quota exhausted"
+
+    assert headroom_record.state == :done
+    assert headroom_record.reason == :passed
   end
 
   defp batch_opts(base, overrides) do
@@ -214,6 +303,13 @@ defmodule Harness.BatchTest do
 
   defp gate_path do
     Path.join(System.tmp_dir!(), "harness-batch-gate-#{System.unique_integer([:positive])}")
+  end
+
+  defp batch_id, do: "batch-#{System.unique_integer([:positive])}"
+
+  defp file_store do
+    {Harness.ResultStore.File,
+     root: Path.join(System.tmp_dir!(), "harness-result-store-#{System.unique_integer([:positive])}")}
   end
 
   defp active_batch_task_ids(batch_ids) do

@@ -65,7 +65,9 @@ defmodule Harness.Run do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Run, as: AgentRun
+  alias Harness.ResultStore
   alias Harness.Roadmap.Item
+  alias Harness.Run.LogRecord
   alias Harness.Run.RepairPrompt
   alias Harness.Run.Result
   alias Harness.Run.Status
@@ -98,6 +100,9 @@ defmodule Harness.Run do
            repo: String.t(),
            adapter: module(),
            subscriber: pid() | nil,
+           result_store: ResultStore.store(),
+           batch_id: String.t(),
+           started_at_ms: integer(),
            total_timeout: timeout() | nil,
            idle_timeout: timeout() | nil,
            lifetime_timeout: pos_integer(),
@@ -114,6 +119,8 @@ defmodule Harness.Run do
            agent_run: AgentRun.t() | nil,
            agent_outcome: Outcome.t() | nil,
            verdict: Verdict.t() | nil,
+           first_attempt_failed_check_count: non_neg_integer(),
+           agent_diff_size: non_neg_integer() | nil,
            task: Task.t() | nil,
            cancel_requested: {Result.reason(), :gen_statem.from() | nil} | nil,
            reason: Result.reason() | nil,
@@ -201,12 +208,17 @@ defmodule Harness.Run do
   @impl :gen_statem
   @spec init(init_arg()) :: {:ok, :dispatched, data(), [:gen_statem.action()]}
   def init({item, repo, adapter, opts}) do
+    run_id = Keyword.fetch!(opts, :run_id)
+
     data = %{
-      run_id: Keyword.fetch!(opts, :run_id),
+      run_id: run_id,
       item: item,
       repo: repo,
       adapter: adapter,
       subscriber: Keyword.get(opts, :subscriber),
+      result_store: Keyword.get(opts, :result_store, ResultStore.configured()),
+      batch_id: Keyword.get(opts, :batch_id) || run_id,
+      started_at_ms: System.monotonic_time(:millisecond),
       total_timeout: Keyword.get(opts, :total_timeout),
       idle_timeout: Keyword.get(opts, :idle_timeout),
       lifetime_timeout: Keyword.get(opts, :lifetime_timeout) || configured(:lifetime_timeout, @default_lifetime_timeout),
@@ -225,6 +237,8 @@ defmodule Harness.Run do
       agent_run: nil,
       agent_outcome: nil,
       verdict: nil,
+      first_attempt_failed_check_count: 0,
+      agent_diff_size: nil,
       task: nil,
       cancel_requested: nil,
       reason: nil,
@@ -315,18 +329,18 @@ defmodule Harness.Run do
   def committing(:enter, _old_state, data) do
     worktree = data.worktree
     message = commit_message(data)
-    task = start_task(fn -> Worktree.commit(worktree, message) end)
+    task = start_task(fn -> commit_worktree(worktree, message) end)
     {:keep_state, %{data | task: task}}
   end
 
-  def committing(:info, {ref, {:ok, :committed}}, %{task: %Task{ref: ref}} = data) do
+  def committing(:info, {ref, {:ok, :committed, diff_size}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
-    {:next_state, :verifying, %{data | task: nil}}
+    {:next_state, :verifying, %{data | task: nil, agent_diff_size: diff_size}}
   end
 
-  def committing(:info, {ref, {:ok, :no_changes}}, %{task: %Task{ref: ref}} = data) do
+  def committing(:info, {ref, {:ok, :no_changes, diff_size}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
-    fail(%{data | task: nil}, :no_changes)
+    fail(%{data | task: nil, agent_diff_size: diff_size}, :no_changes)
   end
 
   def committing(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
@@ -354,7 +368,13 @@ defmodule Harness.Run do
 
   def verifying(:info, {ref, {:ok, %Verdict{} = verdict}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
-    data = %{data | task: nil, verdict: verdict}
+
+    data = %{
+      data
+      | task: nil,
+        verdict: verdict,
+        first_attempt_failed_check_count: first_attempt_failed_check_count(data, verdict)
+    }
 
     cond do
       Verdict.passed?(verdict) ->
@@ -519,6 +539,7 @@ defmodule Harness.Run do
   @spec settle(data(), Result.state()) :: data()
   defp settle(data, terminal_state) do
     result = build_result(data, terminal_state)
+    persist_run_record(data, result)
     notify_subscriber(data.subscriber, data.run_id, result)
     finish_worktree(data.worktree, terminal_state)
     %{data | result: result}
@@ -534,8 +555,36 @@ defmodule Harness.Run do
       agent_outcome: data.agent_outcome,
       verdict: data.verdict,
       worktree_path: data.worktree && data.worktree.path,
-      repair_attempts: data.repair_attempts
+      repair_attempts: data.repair_attempts,
+      first_attempt_failed_check_count: data.first_attempt_failed_check_count,
+      agent_diff_size: data.agent_diff_size
     }
+  end
+
+  @spec persist_run_record(data(), Result.t()) :: :ok
+  defp persist_run_record(data, %Result{} = result) do
+    result
+    |> LogRecord.from_result(
+      batch_id: data.batch_id,
+      agent: data.item.agent,
+      adapter: data.adapter,
+      duration_ms: run_duration_ms(data)
+    )
+    |> ResultStore.record_run(data.result_store)
+    |> log_store_error(result.run_id)
+  end
+
+  @spec log_store_error(:ok | {:error, term()}, String.t()) :: :ok
+  defp log_store_error(:ok, _run_id), do: :ok
+
+  defp log_store_error({:error, reason}, run_id) do
+    Logger.warning("harness run: failed to persist run record #{run_id}: #{inspect(reason)}")
+    :ok
+  end
+
+  @spec run_duration_ms(data()) :: non_neg_integer()
+  defp run_duration_ms(data) do
+    max(0, System.monotonic_time(:millisecond) - data.started_at_ms)
   end
 
   @spec notify_subscriber(pid() | nil, String.t(), Result.t()) :: :ok
@@ -651,6 +700,22 @@ defmodule Harness.Run do
     |> put_opt(:checks, data.checks)
     |> put_opt(:timeout, data.verification_timeout)
   end
+
+  @spec commit_worktree(Worktree.t(), String.t()) ::
+          {:ok, :committed | :no_changes, non_neg_integer()} | {:error, Worktree.error()}
+  defp commit_worktree(%Worktree{} = worktree, message) do
+    with {:ok, diff_size} <- Worktree.diff_size(worktree),
+         {:ok, status} <- Worktree.commit(worktree, message) do
+      {:ok, status, diff_size}
+    end
+  end
+
+  @spec first_attempt_failed_check_count(data(), Verdict.t()) :: non_neg_integer()
+  defp first_attempt_failed_check_count(%{repair_attempts: 0}, %Verdict{results: results}) do
+    Enum.count(results, &(&1.status == :fail))
+  end
+
+  defp first_attempt_failed_check_count(data, _verdict), do: data.first_attempt_failed_check_count
 
   @spec put_opt(keyword(), atom(), term()) :: keyword()
   defp put_opt(opts, _key, nil), do: opts

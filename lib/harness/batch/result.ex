@@ -13,17 +13,19 @@ defmodule Harness.Batch.Result do
   A settled batch.
 
     * `total` — number of input tasks.
+    * `batch_id` — stable id used to reload persisted results.
     * `max_concurrency` — cap used while fanning tasks out.
     * `results` — one terminal run result per input task, in input order.
     * `events` — observable routing events emitted by the batch orchestrator.
   """
   @type t :: %__MODULE__{
+          batch_id: String.t(),
           total: non_neg_integer(),
           max_concurrency: pos_integer(),
           results: [RunResult.t()],
           events: [term()]
         }
 
-  @enforce_keys [:total, :max_concurrency, :results]
-  defstruct [:total, :max_concurrency, :results, events: []]
+  @enforce_keys [:batch_id, :total, :max_concurrency, :results]
+  defstruct [:batch_id, :total, :max_concurrency, :results, events: []]
 end

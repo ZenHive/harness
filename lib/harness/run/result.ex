@@ -76,6 +76,10 @@ defmodule Harness.Run.Result do
       `:max_repair_attempts` when a red verdict drove the autonomous repair loop
       (see `Harness.Run`). `agent_outcome` and `verdict` then reflect the final
       attempt.
+    * `first_attempt_failed_check_count` — number of failed checks in the first
+      verification verdict, before any repair attempt.
+    * `agent_diff_size` — changed-line count for the agent's first committed
+      diff, or `nil` when no diff could be measured.
   """
   @type t :: %__MODULE__{
           run_id: String.t(),
@@ -85,7 +89,9 @@ defmodule Harness.Run.Result do
           agent_outcome: Outcome.t() | nil,
           verdict: Verdict.t() | nil,
           worktree_path: String.t() | nil,
-          repair_attempts: non_neg_integer()
+          repair_attempts: non_neg_integer(),
+          first_attempt_failed_check_count: non_neg_integer(),
+          agent_diff_size: non_neg_integer() | nil
         }
 
   @enforce_keys [:run_id, :task_id, :state, :reason]
@@ -97,6 +103,8 @@ defmodule Harness.Run.Result do
     :agent_outcome,
     :verdict,
     :worktree_path,
-    repair_attempts: 0
+    repair_attempts: 0,
+    first_attempt_failed_check_count: 0,
+    agent_diff_size: nil
   ]
 end

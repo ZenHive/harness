@@ -140,6 +140,20 @@ defmodule Harness.Worktree do
   end
 
   @doc """
+  Returns the changed-line size of the agent diff currently in the worktree.
+
+  The worktree is staged before measurement so untracked files are included,
+  matching the diff that `commit/2` will capture.
+  """
+  @spec diff_size(t()) :: {:ok, non_neg_integer()} | {:error, error()}
+  def diff_size(%__MODULE__{path: path}) do
+    with {:ok, _added} <- Git.run(["add", "-A"], path),
+         {:ok, numstat} <- Git.run(["diff", "--cached", "--numstat", "HEAD", "--"], path) do
+      {:ok, parse_numstat_size(numstat)}
+    end
+  end
+
+  @doc """
   Makes the keep-or-teardown decision when a run completes.
 
   On `:success` the worktree is torn down (`remove/1`). On `:failure` it is
@@ -216,6 +230,24 @@ defmodule Harness.Worktree do
       {:ok, _output} -> {:ok, :committed}
       {:error, _reason} = error -> error
     end
+  end
+
+  @spec parse_numstat_size(String.t()) :: non_neg_integer()
+  defp parse_numstat_size(numstat) do
+    numstat
+    |> String.split("\n", trim: true)
+    |> Enum.reduce(0, fn line, acc ->
+      [added, deleted | _path] = String.split(line, "\t")
+      acc + parse_numstat_count(added) + parse_numstat_count(deleted)
+    end)
+  end
+
+  @spec parse_numstat_count(String.t()) :: non_neg_integer()
+  defp parse_numstat_count("-"), do: 0
+
+  defp parse_numstat_count(value) do
+    {count, ""} = Integer.parse(value)
+    count
   end
 
   @spec generate_id() :: String.t()

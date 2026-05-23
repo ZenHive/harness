@@ -5,6 +5,7 @@ defmodule Harness.RunTest do
   alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProcessFixture
+  alias Harness.ResultStore
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.Result
@@ -97,6 +98,24 @@ defmodule Harness.RunTest do
 
       assert result.run_id == run_id
       assert result.task_id == "8"
+    end
+
+    test "emits a structured run record to the configured store" do
+      store = file_store()
+      batch_id = "batch-#{System.unique_integer([:positive])}"
+      {run_id, pid} = start(batch_id: batch_id, result_store: store)
+
+      assert %Result{state: :done, reason: :passed} = await_result(run_id, pid)
+      assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: run_id)
+
+      assert record.batch_id == batch_id
+      assert record.task_id == "8"
+      assert record.agent == :claude
+      assert record.adapter == FakeAdapter
+      assert record.verdict == :pass
+      assert record.first_attempt_failed_check_count == 0
+      assert record.agent_diff_size > 0
+      assert record.failure_cause == %{reason: :passed, failed_checks: []}
     end
 
     test "the agent's work survives teardown as a commit on the run branch" do
@@ -418,5 +437,10 @@ defmodule Harness.RunTest do
         Process.sleep(20)
         await_pid_file(path, tries - 1)
     end
+  end
+
+  defp file_store do
+    {Harness.ResultStore.File,
+     root: Path.join(System.tmp_dir!(), "harness-result-store-#{System.unique_integer([:positive])}")}
   end
 end
