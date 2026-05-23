@@ -3,9 +3,9 @@ defmodule Harness.AgentAdapter.Invocation do
   A single run request handed to `Harness.AgentAdapter.invoke/2`.
 
   Carries both *what* the agent should do (`prompt`, `cwd`) and *how* to run it
-  (`session`, `permission_mode`, `model`, `adapter_opts`). The two halves are
-  always constructed together by the run-lifecycle process, so they share one
-  struct rather than a separate spec/options pair.
+  (`session`, `permission_mode`, `model`, `adapter_opts`, `env`). The two halves
+  are always constructed together by the run-lifecycle process, so they share
+  one struct rather than a separate spec/options pair.
   """
 
   @typedoc """

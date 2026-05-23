@@ -25,7 +25,7 @@ defmodule Harness.AgentAdapter do
 
         @impl true
         def build_command(invocation),
-          do: {:ok, {"my-agent", ["-p", invocation.prompt], []}}
+          do: {:ok, {"my-agent", ["-p", invocation.prompt], Map.to_list(invocation.env)}}
 
         @impl true
         def classify_message({port, {:data, data}}, %{port: port} = run),

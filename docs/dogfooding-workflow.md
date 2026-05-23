@@ -59,6 +59,8 @@ via `mix run`.
 
 Non-delegatable adapters (`Grok` and `Antigravity`) are not valid options on the ingestion surface because `rmap delegate --to` does not support them (so `ingest(agent: :grok)` and `ingest(agent: :antigravity)` are rejected). Instead, task prompts are ingested using a delegatable agent (e.g. `:claude`, `:codex`, or `:cursor`), and then the ingested `Item` is passed directly to the non-delegatable adapter's module (e.g. `Harness.AgentAdapter.Grok` or `Harness.AgentAdapter.Antigravity`) when calling `Harness.Run.Supervisor.start_run/4` in the driver script.
 
+> ⚠️ **Antigravity caveat (Task 32):** `agy` currently ignores its Port `cwd` and writes to the main checkout rather than its run worktree, so an Antigravity dogfood run will mutate the live repo instead of its isolated worktree. Do not dogfood with `Harness.AgentAdapter.Antigravity` until Task 32 is resolved.
+
 ### Driver script template
 
 Save as `/tmp/dogfood_task<id>.exs`, change `task_id`, run with `mix run`:

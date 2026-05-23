@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 1 — Scaffold the OTP application + standard dep stack, Task 2 — Evaluate orchestration libraries — confirm thin-core, Task 3 — Define the AgentAdapter behaviour — invocation + capture on 2026-05-20
 
-**Up next:** Task 18 — Human status view [D:3/B:5/U:5 → Eff:1.67] 🚀
+**Up next:** Task 34 — Audit-surfaced: Batch.fill_slots crashes after AgentRegistry exhaustion [D:3/B:7/U:6 → Eff:2.17] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -65,6 +65,10 @@
 | Task 11 `[P]` | ✅ | 🎁 **resilience** · 🚀 **v0_2** · Autonomous repair loop [D:5/B:8/U:7 → Eff:1.5] 🚀 |
 | Task 28 | ⬜ | 🎁 **resilience** · 🚀 **v0_2** · Wire the retry policy into the batch orchestrator [D:4/B:6/U:6 → Eff:1.5] 🚀 |
 | Task 29 | ⬜ | 🎁 **resilience** · 🚀 **v0_2** · Force-settle the Run lifetime timeout when the agent handle never arrives [D:3/B:6/U:4 → Eff:1.67] 🚀 |
+| Task 34 | ⬜ | 🎁 **resilience** · Audit-surfaced: Batch.fill_slots crashes after AgentRegistry exhaustion [D:3/B:7/U:6 → Eff:2.17] 🎯 |
+| Task 35 | ⬜ | 🎁 **resilience** · Audit-surfaced: Batch.fill_slots race — start_run errors crash the batch [D:3/B:5/U:5 → Eff:1.67] 🚀 |
+| Task 37 | ⬜ | 🎁 **resilience** · Audit-surfaced: Repair loop ignores quota classification before resuming [D:3/B:6/U:5 → Eff:1.83] 🚀 |
+| Task 38 | ⬜ | 🎁 **resilience** · Audit-surfaced: Batch slot held until terminal_linger expires [D:3/B:3/U:4 → Eff:1.17] 📋 |
 <!-- TASKS:END -->
 
 ---
@@ -85,6 +89,9 @@
 | Task 26 | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Antigravity headless adapter [D:3/B:4/U:4 → Eff:1.33] 📋 |
 | Task 31 | ✅ | 🎁 **multi-agent** · Resolve the rmap-delegate ingest gap for the Grok and Antigravity adapters [D:2/B:3/U:4 → Eff:1.75] 🚀 |
 | Task 32 | ⬜ | 🎁 **multi-agent** · 🐛 Antigravity adapter does not isolate to its run worktree [D:4/B:6/U:5 → Eff:1.38] 📋 |
+| Task 36 | ⬜ | 🎁 **multi-agent** · Audit-surfaced: Harness-injected rule files get committed by Worktree.commit [D:4/B:7/U:6 → Eff:1.62] 🚀 |
+| Task 39 | ⬜ | 🎁 **multi-agent** · Audit-surfaced: Hoist rule injection into the AgentAdapter behaviour [D:4/B:5/U:5 → Eff:1.25] 📋 |
+| Task 40 | ⬜ | 🎁 **multi-agent** · Audit-surfaced: AgentRegistry availability lost on GenServer restart [D:3/B:4/U:4 → Eff:1.33] 📋 |
 <!-- TASKS:END -->
 
 ---

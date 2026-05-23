@@ -119,8 +119,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   check — retried with capped exponential backoff), `:quota_exhausted` (a
   subscription agent at its cap — stops retrying that agent at once and marks it
   for fail-over, since the reset window is hours, not a backoff timescale), or
-  `:terminal` (a genuine red verdict — never retried). The policy is injectable
-  per run or per batch and configurable via `:harness, :retry_policy`.
+  `:terminal` (a genuine red verdict — never retried). The policy is available
+  as a standalone helper (`RetryPolicy.run/2`) and configurable via
+  `:harness, :retry_policy`; wiring it into `Harness.Batch` is pending Task 28.
 - Run lifecycle timeouts and the repair-attempt cap are configurable via
   `:harness, :run` (`lifetime_timeout`, `terminal_linger`,
   `max_repair_attempts`) alongside the existing agent `total_timeout` /

@@ -822,7 +822,7 @@ scores = { d = 2, b = 3, u = 4 }
 acceptance_criteria = ["A decision is recorded: extend `rmap delegate` to all adapters, or formalize the claude/codex/cursor-rendered-prompt contract for non-delegatable ones", "If formalizing: `Harness.Roadmap`, the `@valid_agents` comment, and the agent-facing docs state the contract explicitly", "If extending rmap: every harness adapter is a valid `ingest/2` agent, with a regression test per adapter"]
 out_of_scope = ["Implementing new agent adapters"]
 body = """
-`rmap delegate --to` accepts only `claude` / `codex` / `cursor`, and `Harness.Roadmap` deliberately shells out to `rmap delegate` to render task prompts — so `@valid_agents` on the ingest surface mirrors that set. harness now also ships Grok and Antigravity adapters, which have no ingest path: `ingest(agent: :grok)` / `ingest(agent: :antigravity)` are rejected by design, and those adapters run only with a claude/codex/cursor-rendered prompt dispatched directly via `Harness.Run.start_run/4`. This gap already produced one bug — the `:antigravity` value wrongly admitted to `@valid_agents`, fixed in the 25ed795 audit.
+`rmap delegate --to` accepts only `claude` / `codex` / `cursor`, and `Harness.Roadmap` deliberately shells out to `rmap delegate` to render task prompts — so `@valid_agents` on the ingest surface mirrors that set. harness now also ships Grok and Antigravity adapters, which have no ingest path: `ingest(agent: :grok)` / `ingest(agent: :antigravity)` are rejected by design, and those adapters run only with a claude/codex/cursor-rendered prompt dispatched directly via `Harness.Run.Supervisor.start_run/4`. This gap already produced one bug — the `:antigravity` value wrongly admitted to `@valid_agents`, fixed in the 25ed795 audit.
 
 Resolve it deliberately: either extend rmap's `delegate --to` surface to cover every harness adapter, or formally accept that non-delegatable adapters run with a claude/codex/cursor-rendered prompt and document that contract clearly (in `Harness.Roadmap`, the `@valid_agents` rationale comment, and the dogfooding / agent-reference docs).
 
@@ -882,3 +882,146 @@ The load-bearing design constraint: the verification stack stays the binary pass
 """
 created_at = "2026-05-22"
 scored_at = "2026-05-22"
+
+[[task]]
+id = "34"
+phase = 3
+bundle = "resilience"
+status = "pending"
+title = "Audit-surfaced: Batch.fill_slots crashes after AgentRegistry exhaustion"
+scores = { d = 3, b = 7, u = 6 }
+acceptance_criteria = ["A batch where all capable adapters are quota-exhausted mid-flight settles every queued item as a failed result and returns a Harness.Batch.Result", "Regression test in test/harness/batch_test.exs covers the exhausted-mid-flight path"]
+out_of_scope = ["Persistent registry availability across crashes (separate audit follow-up)"]
+body = """
+`Harness.Batch.fill_slots/6` (after the Task 16 fail-over wiring) calls `AgentRegistry.select/2` and unconditionally pattern-matches `{:ok, adapter} = AgentRegistry.select(...)`. After every capable adapter has been marked unavailable by quota fail-over, `select/2` returns `{:error, {:no_available_agent, _}}` and the unmatched `:error` tuple crashes the batch process with a `MatchError`. Active runs become orphaned and the batch's caller never receives a `Harness.Batch.Result`.
+
+Reproduction sketch: dispatch a 3-item batch with 1 capable adapter; have the first item exhaust quota so it fails-over but no adapter is available; the loop crashes when fill_slots tries to dispatch item 2.
+
+Resolution candidates: (a) handle the `{:error, _}` from `select/2` by settling the queued items as failed `Run.Result`s with reason `{:no_available_agent, _}` and continuing the loop; (b) make selection + dispatch atomic via a registry-reservation API (also fixes the sibling race below). Add a regression test: 2+ items, 1 quota-exhausted adapter, no further capable adapters.
+
+Filed by audit-review against commit 9b686a9b on 2026-05-23; see `.audit/9b686a9-agent-registry.md` (Claude+Codex agreed; bug exists in committed code). Companion to the next task ("Batch.fill_slots race on start_run").
+"""
+created_at = "2026-05-23"
+scored_at = "2026-05-23"
+
+[[task]]
+id = "35"
+phase = 3
+bundle = "resilience"
+status = "pending"
+title = "Audit-surfaced: Batch.fill_slots race — start_run errors crash the batch"
+scores = { d = 3, b = 5, u = 5 }
+acceptance_criteria = ["start_run/4 errors in Batch.fill_slots are handled without crashing the orchestrator", "Concurrent-batch race regression test (or a test that simulates the start_run error path)"]
+body = """
+`Harness.Batch.fill_slots/6` pattern-matches `{:ok, run_id, pid} = RunSupervisor.start_run(item, repo, adapter, run_opts)`. After Task 16, `Run.Supervisor.start_run/4` re-checks `AgentRegistry.select/2` and can return `{:error, {:no_available_agent, _}}` if another concurrent batch marked the adapter unavailable between `Batch`'s select and the supervisor's re-check. The unmatched `:error` tuple crashes the batch process.
+
+Resolution candidates: (a) treat `start_run/4` errors as a dispatch failure and re-attempt selection within the same `fill_slots/6` recursion before failing the queued item; (b) make selection and dispatch atomic via a `reserve_then_start` registry API. Currently the race window is narrow (sub-millisecond) but real under concurrent batches sharing adapters.
+
+Filed by audit-review against commit 9b686a9b on 2026-05-23; see `.audit/9b686a9-agent-registry.md`. Companion to the previous task ("Batch.fill_slots crashes after AgentRegistry exhaustion").
+"""
+created_at = "2026-05-23"
+scored_at = "2026-05-23"
+
+[[task]]
+id = "36"
+phase = 4
+bundle = "multi-agent"
+status = "pending"
+title = "Audit-surfaced: Harness-injected rule files get committed by Worktree.commit"
+scores = { d = 4, b = 7, u = 6 }
+acceptance_criteria = ["A no-op agent run for Claude/Codex/Cursor settles :no_changes (harness-injected rule files do not turn into a delivery commit)", "Regression test per affected adapter covering the no-op path", "Existing AGENTS.md in the target repo (if any) is not modified by the harness-injected block ending up in the run's delivery commit"]
+body = """
+After Task 22, `Harness.AgentAdapter.RulesInjection` writes rule files into the run worktree at `build_command/1` time: `.harness/agent-rules.md` (Claude), `AGENTS.md` (Codex), `.cursor/rules/harness-operational.mdc` (Cursor). `Harness.Worktree.commit/2` stages every change with `git add -A` before committing, so these harness-owned files end up in the agent-delivery commit:
+
+  - An agent that makes **zero** edits still has rules files in the worktree -> `git status --porcelain` is non-empty -> `commit/2` returns `{:ok, :committed}` instead of `{:ok, :no_changes}`, and the deliverable is the harness-injected rule files alone.
+  - Target repos that had no `AGENTS.md` get a harness-prepended one in `harness/<id>`'s tree; target repos that had one get the harness block prepended (then committed).
+  - Cursor's `.cursor/rules/` file lands in the deliverable similarly.
+
+Resolution candidates: (a) write rules outside the worktree where the adapter allows (Claude's `--append-system-prompt-file` accepts an absolute path, so a `tmp_dir`-based file works); (b) add a pathspec exclusion to `Worktree.commit/2`'s `git add` (e.g. `git add -A -- ':!:.harness' ':!:.cursor/rules/harness-operational.mdc' ':!:AGENTS.md'`) — but `AGENTS.md` exclusion would also drop legitimate agent edits to that file; (c) clean up the harness-owned files between agent termination and commit; (d) write to a worktree-local untracked path and configure `.git/info/exclude` per run.
+
+Regression test: an adapter `build_command/1` for each of Claude/Codex/Cursor + `Worktree.commit/2` over a no-op agent run settles `:no_changes` (not `:committed`).
+
+Filed by audit-review against commit 826aaff3 on 2026-05-23; see `.audit/826aaff-harness-owned-rule-set.md` (Codex Pri 9, Claude verified Worktree.commit uses `git add -A`).
+"""
+created_at = "2026-05-23"
+scored_at = "2026-05-23"
+
+[[task]]
+id = "37"
+phase = 3
+bundle = "resilience"
+status = "pending"
+title = "Audit-surfaced: Repair loop ignores quota classification before resuming"
+scores = { d = 3, b = 6, u = 5 }
+acceptance_criteria = ["A repair-loop test where the resumed agent's output matches the quota patterns settles the run as failed without burning all configured attempts", "Repair-loop quota detection uses the same RetryPolicy / FailureClass surface the batch fail-over relies on"]
+body = """
+`Harness.Run.repairable?/1` checks only `data.repair_attempts < data.max_repair_attempts` and the adapter's `:session_resume` capability. It does not consult `Harness.Run.FailureClass`/`Harness.Run.RetryPolicy` quota patterns on the agent's outcome before deciding to resume. A quota-starved agent whose output triggers the quota patterns will still be resumed up to `max_repair_attempts` times — wasted attempts that may also bill against the same quota.
+
+The `:no_changes` fast-path partially mitigates this (a quota-starved agent that produces no diff settles `:no_changes` at attempt 1, per the existing test `a non-repairable failure ends the loop without burning the attempt budget`). But an agent that produces some output before the quota cap is hit (e.g., a partial transcript with a quota error inline) still drives the repair loop pointlessly.
+
+Resolution candidates: (a) classify the failed `verdict`+`agent_outcome` with `FailureClass.classify/2` inside `repairable?/1` and treat `:quota_exhausted` as non-repairable; (b) tighten the `:no_changes` short-circuit to also fire on output-but-no-diff quota errors.
+
+Filed by audit-review against commit 348acb1b on 2026-05-23; see `.audit/348acb1-batch-orchestrator.md`.
+"""
+created_at = "2026-05-23"
+scored_at = "2026-05-23"
+
+[[task]]
+id = "38"
+phase = 3
+bundle = "resilience"
+status = "pending"
+title = "Audit-surfaced: Batch slot held until terminal_linger expires"
+scores = { d = 3, b = 3, u = 4 }
+acceptance_criteria = ["A two-item, max_concurrency=1 batch completes within materially less than 2 * terminal_linger of the runs' true settle time", "Crash handling still produces a Run.Result with reason {:run_crashed, _}"]
+body = """
+`Harness.Batch.loop/5` waits for the run's `:DOWN` message before freeing a slot — it stores the `Harness.Run.Result` on the active run (via `put_result/3`) when the `{:harness_run, run_id, result}` message arrives but only calls `settle_down/8` (which deletes the active entry and frees the slot) on `:DOWN`. Because `Harness.Run` lingers `:terminal_linger` ms (default 5_000) after settling before exiting, the slot stays occupied for that linger window even though the result is already known.
+
+For a max-concurrency-of-1 batch this means up to 5s of idle wall-time between every two runs.
+
+Resolution: treat `{:harness_run, run_id, result}` as the slot-settling event — demonitor and remove from active there — and reserve `:DOWN` handling for crashes without a result (the current `crashed_result/3` path).
+
+Filed by audit-review against commit 348acb1b on 2026-05-23; see `.audit/348acb1-batch-orchestrator.md`.
+"""
+created_at = "2026-05-23"
+scored_at = "2026-05-23"
+
+[[task]]
+id = "39"
+phase = 4
+bundle = "multi-agent"
+status = "pending"
+title = "Audit-surfaced: Hoist rule injection into the AgentAdapter behaviour"
+scores = { d = 4, b = 5, u = 5 }
+acceptance_criteria = ["A new adapter that omits rule injection from build_command/1 fails the ConformanceCase suite", "Either the behaviour callback set or ConformanceCase encodes the rule-injection contract"]
+body = """
+After Task 22, every adapter's `build_command/1` calls into `Harness.AgentAdapter.RulesInjection` (one of `claude_flags/1`, `install_codex_rules/1`, `install_cursor_rules/1`, or `prepend_prompt/1`). The wiring is hand-replicated across all five adapters; nothing in the `Harness.AgentAdapter` behaviour callbacks or the `Harness.AgentAdapter.ConformanceCase` suite requires it. The next adapter implementor can omit the rules injection silently, and no test will catch it.
+
+Resolution candidates: (a) add a behaviour-level optional callback for rule delivery (e.g. `c:rule_channel/0` returning `:system_prompt_file | :ephemeral_file | :prompt_preamble`) so `AgentAdapter.invoke/2` handles injection generically; (b) extend `ConformanceCase` with a test that gates `build_command/1` output for the presence of injected rules in the argv/env/cwd file system (a clone-backed `mix reach.check --smells` rule may also help). Companion to Task 27 (hoist universal adapter callbacks into the behaviour).
+
+Filed by audit-review against commit 826aaff3 on 2026-05-23; see `.audit/826aaff-harness-owned-rule-set.md`.
+"""
+created_at = "2026-05-23"
+scored_at = "2026-05-23"
+
+[[task]]
+id = "40"
+phase = 4
+bundle = "multi-agent"
+status = "pending"
+title = "Audit-surfaced: AgentRegistry availability lost on GenServer restart"
+scores = { d = 3, b = 4, u = 4 }
+acceptance_criteria = ["A decision is recorded on which of (a)/(b)/(c) is the contract", "If (a): persistent state survives a forced restart of AgentRegistry, validated by a regression test", "If (b): @moduledoc and CLAUDE.md state explicitly that registry restarts clear quota state, and orchestrator-side retries cover misdirected dispatches"]
+body = """
+`Harness.AgentRegistry` keeps unavailability (quota-exhausted, manually marked unavailable) in `GenServer` state only — `init/1` boots with `unavailable: %{}`. A supervised restart (the registry is started as a child of `Harness.Application` with default restart strategy) resets the table and a known-quota-exhausted adapter becomes available again on the next `select/2`. There is no persistence and no TTL on quota state.
+
+Resolution requires a deliberate contract decision (this is `discuss-design`):
+
+  - (a) Persist unavailability across restarts (e.g., DETS, persistent_term, or :ets owned by a different process). Survives crashes but complicates testing and adds startup ordering.
+  - (b) Document the reset semantics explicitly and rely on the registry being treated as fail-stop infrastructure (an orchestrator-level retry catches misdirected dispatches).
+  - (c) TTL-based "soft" unavailability (auto-reset after the typical quota-window).
+
+Filed by audit-review against commit 9b686a9b on 2026-05-23; see `.audit/9b686a9-agent-registry.md`. Codex flagged this as `discuss-design`; Claude agrees the design decision belongs to the user.
+"""
+created_at = "2026-05-23"
+scored_at = "2026-05-23"

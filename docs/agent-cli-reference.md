@@ -95,8 +95,8 @@ channel where it exists, prompt-prepend otherwise") holds — with two refinemen
    committed, discarded with the worktree — is a third option alongside prompt-prepend.
    That is *not* "bloating committed `AGENTS.md`s" (the maintenance cost Task 22 targets);
    it is the same render-from-canonical-source pattern, file-delivered because the CLI
-   offers no flag. Grok has neither a flag nor a documented rule file → prompt-prepend is
-   the only channel.
+   offers no flag. Grok and Antigravity have neither a flag nor a documented rule file →
+   prompt-prepend is the only channel.
 
 Cost note: for any prompt-prepended agent the rule preamble is re-sent (and re-paid) on
 every invocation — a repair loop pays it N times. This is why Task 22's injected set must
