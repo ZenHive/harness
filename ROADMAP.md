@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 1 — Scaffold the OTP application + standard dep stack, Task 2 — Evaluate orchestration libraries — confirm thin-core, Task 3 — Define the AgentAdapter behaviour — invocation + capture on 2026-05-20
 
-**Up next:** Task 37 — Audit-surfaced: Repair loop ignores quota classification before resuming [D:3/B:6/U:5 → Eff:1.83] 🚀
+**Up next:** Task 42 — Audit-surfaced: Refresh roadmap focus phase pin after Phase 1 closeout [D:1/B:3/U:4 → Eff:3.5] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -23,11 +23,7 @@
 > The contract before the code. Scaffold the OTP app, confirm a thin OTP core beats adopting an orchestration library, and pin the `AgentAdapter` behaviour — invocation and raw-output capture, no normalized event model.
 
 <!-- TASKS:BEGIN phase=1 -->
-| Task | Status | Notes |
-|------|--------|-------|
-| Task 1 | ✅ | 🎁 **scaffold** · 🚀 **v0_1** · Scaffold the OTP application + standard dep stack [D:2/B:5/U:7 → Eff:3.0] 🎯 |
-| Task 2 | ✅ | 🎁 **contract** · 🚀 **v0_1** · Evaluate orchestration libraries — confirm thin-core [D:3/B:5/U:5 → Eff:1.67] 🚀 |
-| Task 3 | ✅ | 🎁 **contract** · 🚀 **v0_1** · Define the AgentAdapter behaviour — invocation + capture [D:3/B:9/U:9 → Eff:3.0] 🎯 |
+> 3 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-1-foundation).
 <!-- TASKS:END -->
 
 ---
@@ -108,6 +104,7 @@
 | Task 18 `[P]` | ✅ | 🎁 **surface** · 🚀 **v0_4** · Human status view [D:3/B:5/U:5 → Eff:1.67] 🚀 |
 | Task 19 `[P]` | ✅ | 🎁 **surface** · 🚀 **v0_4** · Structured run logging + result persistence [D:5/B:5/U:5 → Eff:1.0] 📋 |
 | Task 33 | ⬜ | 🎁 **surface** · Same-task A/B agent-evaluation mode [D:4/B:6/U:5 → Eff:1.38] 📋 |
+| Task 42 | ⬜ | 🎁 **surface** · Audit-surfaced: Refresh roadmap focus phase pin after Phase 1 closeout [D:1/B:3/U:4 → Eff:3.5] 🎯 |
 <!-- TASKS:END -->
 
 ---

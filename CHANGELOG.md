@@ -152,6 +152,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   marked unavailable and the batch routes its task to another capable
   adapter with headroom; fail-over routing is observable via
   `Harness.Batch.Result` events.
+- `Harness.StatusView` + `mix harness.status` — a human-readable fleet view
+  (`Harness.StatusView`) that aggregates live `Harness.Run.Status` snapshots
+  from `Harness.Run.Supervisor` and unavailable agents from
+  `Harness.AgentRegistry`, classifying runs into `IN FLIGHT` / `REPAIRING` /
+  `GREEN` / `RED` with the failure reason for red runs and the attempt count
+  for runs in repair. `Harness.AgentRegistry.list_unavailable/0` exposes the
+  unavailable adapter list, and `Harness.Run.Status` gains a `:reason` field
+  so the view can surface why a run settled. The Mix task is a thin
+  IO.puts wrapper around `StatusView.snapshot/0` and `StatusView.render/1`.
+- `Harness.ResultStore` + `Harness.ResultStore.File` — pluggable result-store
+  boundary. `Harness.ResultStore` declares the `record_run/2`, `save_batch/2`,
+  `load_batch/2`, `list_run_records/2` callbacks; `Harness.ResultStore.File`
+  is the file-backed default, persisting Erlang external terms under a
+  configurable root (`~/.harness/results` by default). Persistence is
+  best-effort: store errors are logged via `Logger.warning/1` and never crash
+  a run or a batch. Configured via `config :harness, :result_store` as
+  `module()`, `{module(), keyword()}`, `nil`, or `false` (the last two
+  disable persistence).
+- `Harness.Run.LogRecord` — structured, queryable per-run-attempt record
+  (`agent`, `adapter`, `verdict`, `reason`, `duration_ms`, `repair_attempts`,
+  `first_attempt_failed_check_count`, `agent_diff_size`, `failure_cause`,
+  `agent_outcome_kind`, `agent_exit_status`, `agent_output`). Emitted by
+  `Harness.Run` when a run settles and by `Harness.Batch` when a run crashes
+  before delivering a result. Failure causes — including the failing-check
+  summary — are reconstructable from the record alone, no live run process
+  needed.
+- `Harness.Batch.Result` gains a `:batch_id` field. `Harness.Batch.run/4`
+  generates one when the caller does not supply it, threads it through
+  `Harness.Run`'s state, and persists the aggregate `BatchResult` via
+  `ResultStore.save_batch/2` so batches survive process exit. Reloadable
+  via `Harness.ResultStore.load_batch/2`.
+- `Harness.Run.Result` gains `:first_attempt_failed_check_count` and
+  `:agent_diff_size`. The diff size is measured by `Harness.Worktree.diff_size/1`
+  (a `git add -A` + `git diff --cached --numstat HEAD` pair) before commit,
+  so the count matches what `commit/2` captures.
+
+### Fixed
+
+- `Harness.Batch` no longer crashes with a `MatchError` when every capable
+  adapter has been marked unavailable (typically by quota fail-over) mid-batch.
+  Queued items that have not yet been dispatched now settle as `:failed`
+  `Harness.Run.Result`s with reason `{:no_available_agent, reason}` and emit
+  a per-item `{:no_available_agent, task_id, reason}` event on the batch's
+  event log instead of orphaning active runs. The reason type on
+  `Harness.Run.Result` widens to include `{:no_available_agent, term()}` for
+  this terminal state.
 - Initial OTP application scaffold with a supervision tree (`Harness.Application`).
 - Standard Elixir dev/test tooling stack: Styler (formatter plugin), Credo,
   Dialyxir, Doctor, Sobelow, `ex_unit_json`, `dialyzer_json`, `ex_dna`, `ex_ast`,

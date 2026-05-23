@@ -13,12 +13,12 @@ phase = 1
 [phases.1]
 name = "Foundation"
 order = 1
-status = "in_progress"
+status = "done"
 
 [phases.2]
 name = "Core Loop & Contract Proof"
 order = 2
-status = "pending"
+status = "in_progress"
 
 [phases.3]
 name = "Batch & Resilience"
@@ -28,12 +28,12 @@ status = "in_progress"
 [phases.4]
 name = "Multi-Agent & Quota Fail-over"
 order = 4
-status = "pending"
+status = "in_progress"
 
 [phases.5]
 name = "Surface & Observability"
 order = 5
-status = "pending"
+status = "in_progress"
 
 [phases.6]
 name = "Deferred"
@@ -1062,6 +1062,30 @@ Two intertwined questions to investigate:
 Per Task 32's precedent: if Codex cannot be headlessly constrained to a single directory under all conditions, gate Codex dispatch behind a startup check that detects the failure and fails fast with a clear error rather than silently polluting the main checkout. A regression guard (test or runtime check) catches future adapters that write outside their run worktree.
 
 Mirrors Task 32 (Antigravity worktree-isolation bug) — same failure surface, different agent. Resolution shape should generalize.
+"""
+created_at = "2026-05-23"
+scored_at = "2026-05-23"
+
+[[task]]
+id = "42"
+phase = 5
+bundle = "surface"
+status = "pending"
+title = "Audit-surfaced: Refresh roadmap focus phase pin after Phase 1 closeout"
+scores = { d = 1, b = 3, u = 4 }
+acceptance_criteria = ["[focus] phase in roadmap/tasks.toml points at an active phase (one with pending tasks the user actively intends to ship next)", "ROADMAP.md's rendered focus block surfaces the right Up next / Last shipped for the chosen focus phase", "rmap doctor surfaces no FocusPhaseDone advisory"]
+out_of_scope = ["Reorganizing existing phases", "Changing milestone pins"]
+body = """
+[focus] phase = 1 in roadmap/tasks.toml (Foundation) — but Phase 1 is complete (3 of 3 done). After Round-3a closeout (39c96db), phase 1 was flipped to status = "done" in this audit; the focus pin still references it. Net effect on rmap render: the focus block shows "Focus phase: 1 — Foundation (3 of 3 done · 0 in progress)" with "Last shipped: Tasks 1-3 on 2026-05-20" — stale narrative even though the up-next pick (Task 37) is correct via global highest-Eff fall-through.
+
+Choose a current focus phase. Candidates by pending-task weight:
+- Phase 3 (Batch & Resilience) — Tasks 28, 29, 35, 37, 38 pending; up-next Task 37 (Eff 1.83 🚀)
+- Phase 4 (Multi-Agent) — Tasks 32, 36, 39, 40, 41 pending; up-next Task 36 (Eff 1.62 🚀)
+- Phase 5 (Surface) — Tasks 17, 33 pending; up-next Task 17 (Eff 1.33 📋)
+
+Judgment call belongs to the user; not auto-applied by audit-review because focus drives Up next selection across all subsequent dispatches.
+
+Filed by audit-review against commit 39c96db on 2026-05-23; see .audit/39c96db-docs-close-out-round-3a-do.md.
 """
 created_at = "2026-05-23"
 scored_at = "2026-05-23"

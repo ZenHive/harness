@@ -60,7 +60,11 @@ defmodule Harness.Run.Result do
   @typedoc """
   A settled run.
 
-    * `run_id` — the run's unique id (also its worktree id and branch suffix).
+    * `run_id` — the run's unique id. For runs that reached the agent it is
+      also the run's worktree id and `harness/<id>` branch suffix. Items that
+      settled as `{:no_available_agent, _}` never produced a run and carry a
+      synthetic `undispatched-<task-id>-<n>` id instead — no worktree, no
+      branch.
     * `task_id` — the rmap task id the run served.
     * `state` — `:done` or `:failed`.
     * `reason` — the precise cause (see `t:reason/0`).

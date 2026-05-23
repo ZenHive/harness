@@ -203,6 +203,9 @@ defmodule Harness.Batch do
        ) do
     case AgentRegistry.select(adapters, required_capabilities: Keyword.get(run_opts, :required_capabilities, [])) do
       {:ok, adapter} ->
+        # TODO(Task 35): start_run/4 can also return {:error, _} (e.g. DynamicSupervisor
+        # capacity, agent driver init crash) — this unconditional pattern match crashes
+        # the batch in that case, the sibling of the {:no_available_agent, _} path below.
         {:ok, run_id, pid} = RunSupervisor.start_run(item, repo, adapter, run_opts)
         ref = Process.monitor(pid)
 

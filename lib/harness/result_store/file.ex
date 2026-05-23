@@ -29,7 +29,13 @@ defmodule Harness.ResultStore.File do
   @impl Harness.ResultStore
   @spec load_batch(String.t(), keyword()) :: {:ok, BatchResult.t()} | {:error, term()}
   def load_batch(batch_id, opts) when is_binary(batch_id) and is_list(opts) do
-    batch_id |> batch_path(opts) |> read_term()
+    path = batch_path(batch_id, opts)
+
+    case read_term(path) do
+      {:ok, %BatchResult{} = result} -> {:ok, result}
+      {:ok, _other} -> {:error, {:invalid_term_file, path}}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @impl Harness.ResultStore
@@ -63,6 +69,11 @@ defmodule Harness.ResultStore.File do
         else
           {:cont, {:ok, acc}}
         end
+
+      {:ok, _other}, {:ok, acc} ->
+        # Skip term files in runs/ that didn't decode to a LogRecord — stale or
+        # cross-typed entries shouldn't crash list_run_records with a FunctionClauseError.
+        {:cont, {:ok, acc}}
 
       {:error, reason}, _acc ->
         {:halt, {:error, reason}}

@@ -5,6 +5,20 @@ defmodule Harness.ResultStore do
   The core orchestrator talks only to this behaviour. The default implementation
   is `Harness.ResultStore.File`, keeping persistence file-backed unless callers
   explicitly configure another module.
+
+  ## Best-effort persistence
+
+  Persistence is **best-effort**: `Harness.Run` and `Harness.Batch` invoke
+  `record_run/2` and `save_batch/2` on the configured store at settle time,
+  log any `{:error, _}` via `Logger.warning/1`, and continue. Neither a
+  failed `record_run` nor a failed `save_batch` crashes the run or flips
+  `Harness.Batch.run/4`'s `{:ok, result}` to `{:error, _}`. Treat a missing
+  record as a degraded observability surface, not a missing verification
+  verdict — verdicts come from `Harness.Verification`, not the store.
+
+  Set `config :harness, :result_store, false` (or `nil`) to disable
+  persistence entirely; both values short-circuit `record_run`, `save_batch`,
+  `load_batch`, and `list_run_records` without dispatching to a backend.
   """
 
   alias Harness.Batch.Result, as: BatchResult
@@ -82,7 +96,7 @@ defmodule Harness.ResultStore do
     Application.get_env(:harness, :result_store, {Harness.ResultStore.File, []})
   end
 
-  @spec dispatch(store(), atom(), [term()]) :: term()
+  @spec dispatch(module() | {module(), keyword()}, atom(), [term()]) :: term()
   defp dispatch({module, opts}, function, args) when is_atom(module) and is_list(opts) do
     apply(module, function, args ++ [opts])
   end

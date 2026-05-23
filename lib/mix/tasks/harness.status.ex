@@ -6,6 +6,16 @@ defmodule Mix.Tasks.Harness.Status do
   plus any agents marked unavailable.
 
       mix harness.status
+
+  ## Same-BEAM only
+
+  This task reads `Harness.Run.Supervisor` and `Harness.AgentRegistry` directly,
+  so it only sees runs and adapters registered in the current BEAM. A separate
+  `mix harness.status` invocation in another terminal starts its own
+  application and sees an empty fleet. Run it from inside the
+  `iex -S mix`/`iex -S mix tidewave` session that owns the dispatch loop, or
+  invoke `Harness.StatusView.snapshot/0` and `render/1` directly from a remote
+  shell attached to the running node.
   """
 
   use Mix.Task
