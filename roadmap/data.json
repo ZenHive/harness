@@ -662,7 +662,7 @@
       "phase": 5,
       "bundle": "surface",
       "milestone": "v0_4",
-      "status": "pending",
+      "status": "done",
       "title": "Human status view",
       "scores": {
         "d": 3,
@@ -683,7 +683,11 @@
       ],
       "body": "A glanceable, human-readable view of harness state — what runs are in flight, what's green, what's red, what's repairing — so the human orchestrator has a window into the fleet without parsing JSON. The primary user is an agent, but the human still orchestrates; this is their dashboard. Keep it simple — a CLI status command or terminal view is enough.\n",
       "created_at": "2026-05-20",
+      "done_at": "2026-05-23",
       "scored_at": "2026-05-20",
+      "implemented": "Added Harness.StatusView (aggregates Run.Supervisor.list_runs/0 + AgentRegistry.list_unavailable/0, classifies runs into IN FLIGHT / REPAIRING / GREEN / RED with failure reasons) and mix harness.status Mix task. Extended Harness.Run.Status with :reason field and added AgentRegistry.list_unavailable/0. Tests cover all four buckets plus the empty-fleet case (121 LOC of test, 275 tests green). Verified by harness verification stack in worktree run-1779522372230-4b2753a6: test/dialyzer/credo/doctor/sobelow all green; re-verified post-integration on development.",
+      "delivered_by": "Cursor",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -691,7 +695,7 @@
       "phase": 5,
       "bundle": "surface",
       "milestone": "v0_4",
-      "status": "pending",
+      "status": "done",
       "title": "Structured run logging + result persistence",
       "scores": {
         "d": 5,
@@ -714,7 +718,11 @@
       ],
       "body": "Add structured per-run logging (queryable records — agent, task, verdict, duration, repair attempts, first-attempt failed-check count, and agent diff size) and a result store so a finished batch's outcomes survive the process. Records must support the \"understand why something happened\" need — a red verdict, a fail-over, a quota block should all be reconstructable. Keep the store pluggable, file-backed by default; do not couple the core to a database.\n",
       "created_at": "2026-05-20",
+      "done_at": "2026-05-23",
       "scored_at": "2026-05-20",
+      "implemented": "Added Harness.Run.LogRecord (structured per-run record: agent, task_id, verdict, reason, duration_ms, repair_attempts, first_attempt_failed_check_count, agent_diff_size, failure_cause) and Harness.ResultStore facade with file-backed default (lib/harness/result_store/file.ex). Batch results now carry a :batch_id and are persisted+reloadable across process restarts via ResultStore.load_batch/2. Failure causes (including failed_checks) are reconstructable from a run's record. Tests cover direct run emission, batch persist+reload, red verdict records, and quota fail-over reconstruction (280 tests green). Codex delivered via worktree-isolation leak (cwd not honored — see follow-up bug task); diff was hand-integrated onto development with conflicts in batch.ex / batch_test.exs (34 ⨯ 19) resolved by combining Task 34's settle_undispatchable handling with Task 19's started_at_ms metric. Re-verified post-integration: test (279/279 offline pass, 6 :integration excluded), dialyzer (0), credo (0), doctor (100/100/100), sobelow (clean).",
+      "delivered_by": "Codex",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -1147,7 +1155,7 @@
       "id": "34",
       "phase": 3,
       "bundle": "resilience",
-      "status": "pending",
+      "status": "done",
       "title": "Audit-surfaced: Batch.fill_slots crashes after AgentRegistry exhaustion",
       "scores": {
         "d": 3,
@@ -1166,7 +1174,11 @@
       ],
       "body": "`Harness.Batch.fill_slots/6` (after the Task 16 fail-over wiring) calls `AgentRegistry.select/2` and unconditionally pattern-matches `{:ok, adapter} = AgentRegistry.select(...)`. After every capable adapter has been marked unavailable by quota fail-over, `select/2` returns `{:error, {:no_available_agent, _}}` and the unmatched `:error` tuple crashes the batch process with a `MatchError`. Active runs become orphaned and the batch's caller never receives a `Harness.Batch.Result`.\n\nReproduction sketch: dispatch a 3-item batch with 1 capable adapter; have the first item exhaust quota so it fails-over but no adapter is available; the loop crashes when fill_slots tries to dispatch item 2.\n\nResolution candidates: (a) handle the `{:error, _}` from `select/2` by settling the queued items as failed `Run.Result`s with reason `{:no_available_agent, _}` and continuing the loop; (b) make selection + dispatch atomic via a registry-reservation API (also fixes the sibling race below). Add a regression test: 2+ items, 1 quota-exhausted adapter, no further capable adapters.\n\nFiled by audit-review against commit 9b686a9b on 2026-05-23; see `.audit/9b686a9-agent-registry.md` (Claude+Codex agreed; bug exists in committed code). Companion to the next task (\"Batch.fill_slots race on start_run\").\n",
       "created_at": "2026-05-23",
+      "done_at": "2026-05-23",
       "scored_at": "2026-05-23",
+      "implemented": "Refactored Batch.fill_slots (/6 → /8) to thread results+events accumulators and case-match AgentRegistry.select/2. On {:error, reason}, calls settle_undispatchable to fold the remaining queue into failed Run.Results with reason: {:no_available_agent, reason} and emits per-item :no_available_agent events instead of crashing with MatchError. Added regression test 'settles queued items when every capable adapter is quota-exhausted mid-flight'. Verified by harness verification stack in worktree run-1779522372220-6be0341b: test/dialyzer/credo/doctor/sobelow all green; re-verified post-integration on development.",
+      "delivered_by": "Claude",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -1305,6 +1317,39 @@
         "If (b): @moduledoc and CLAUDE.md state explicitly that registry restarts clear quota state, and orchestrator-side retries cover misdirected dispatches"
       ],
       "body": "`Harness.AgentRegistry` keeps unavailability (quota-exhausted, manually marked unavailable) in `GenServer` state only — `init/1` boots with `unavailable: %{}`. A supervised restart (the registry is started as a child of `Harness.Application` with default restart strategy) resets the table and a known-quota-exhausted adapter becomes available again on the next `select/2`. There is no persistence and no TTL on quota state.\n\nResolution requires a deliberate contract decision (this is `discuss-design`):\n\n  - (a) Persist unavailability across restarts (e.g., DETS, persistent_term, or :ets owned by a different process). Survives crashes but complicates testing and adds startup ordering.\n  - (b) Document the reset semantics explicitly and rely on the registry being treated as fail-stop infrastructure (an orchestrator-level retry catches misdirected dispatches).\n  - (c) TTL-based \"soft\" unavailability (auto-reset after the typical quota-window).\n\nFiled by audit-review against commit 9b686a9b on 2026-05-23; see `.audit/9b686a9-agent-registry.md`. Codex flagged this as `discuss-design`; Claude agrees the design decision belongs to the user.\n",
+      "created_at": "2026-05-23",
+      "scored_at": "2026-05-23",
+      "cross_repo": []
+    },
+    {
+      "id": "41",
+      "phase": 4,
+      "bundle": "multi-agent",
+      "status": "pending",
+      "title": "Codex adapter — worktree isolation breaks intermittently (cwd ignored, agent edits main checkout)",
+      "scores": {
+        "d": 5,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 1.4,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A Codex-driven harness run edits files only inside its run worktree across all run shapes (single, batched, parallel multi-driver)",
+        "The mechanism behind the empty-worktree-at-startup observation is identified and documented (race condition, fallback heuristic, or both)",
+        "The mechanism behind the disappearing-worktree-at-finalize observation is identified and fixed",
+        "A regression test exercises Codex in a parallel batch and asserts the main checkout is unchanged after settle",
+        "If Codex cannot be reliably constrained, dispatch fails fast with a clear error and the main-checkout-pollution failure mode is impossible"
+      ],
+      "out_of_scope": [
+        "Fixing the codex CLI upstream — harness works with the CLI as shipped",
+        "Antigravity adapter — already tracked under Task 32",
+        "Other adapters (Claude, Cursor, Grok) — they isolated correctly in Round-3a and prior batches"
+      ],
+      "body": "During Round-3a (2026-05-23), Task 19 was driven by the Codex adapter. harness Port-spawned `codex exec --json --dangerously-bypass-approvals-and-sandbox` with the port `:cd` set to the run's isolated worktree, but Codex edited files in the *main checkout* (`~/_DATA/code/harness/`) instead — the run settled `{:commit_failed, {:git_failed, [\"add\", \"-A\"], 128, \"fatal: cannot change to '...run-1779522372240-55f9e5f3': No such file or directory\"}}` because by the time harness ran its commit step, the worktree directory was gone. Codex's transcript made the failure mode explicit: *\"the assigned run worktree path was empty, so I used the actual harness checkout I found.\"*\n\nCodex's Task 19 implementation was real and self-graded green — 280 tests, format / credo / doctor / sobelow / dialyzer all clean — but the diff (~701 lines across 11 files) landed in the canonical checkout, ungraded by the harness verification stack. It was hand-integrated onto `development` post-hoc, with conflicts in `batch.ex` and `batch_test.exs` against Task 34 resolved manually.\n\n**Key signal: this is a regression, not a stable trait of the adapter.** Codex worked cleanly in Round-2 (Task 16, 2026-05-22) — same adapter, same worktree mechanism, no main-checkout leak. So either (a) something in the Round-3a run shape triggered a code path Round-2 missed, or (b) there's a race in worktree provisioning that fires only under certain conditions (parallel runs? specific dispatch ordering?).\n\nTwo intertwined questions to investigate:\n1. **Why did Codex see an empty worktree at startup?** The Port's `:cd` was set; if the dir existed but was empty (no files yet), Codex's fallback heuristic kicked in. If the dir was missing, the Port spawn should have failed.\n2. **Why was the worktree gone at finalize time?** harness emitted `worktree finish failed for ...run-1779522372240-55f9e5f3: {:marker_write_failed, \"...\": :enoent}` — confirming the dir was missing when the run tried to clean up. Did harness's own `Worktree.create` race against `Worktree.sweep` / boot-sweep? Did another sibling run's teardown stomp on it? Did `git worktree add` succeed but never actually persist files?\n\nPer Task 32's precedent: if Codex cannot be headlessly constrained to a single directory under all conditions, gate Codex dispatch behind a startup check that detects the failure and fails fast with a clear error rather than silently polluting the main checkout. A regression guard (test or runtime check) catches future adapters that write outside their run worktree.\n\nMirrors Task 32 (Antigravity worktree-isolation bug) — same failure surface, different agent. Resolution shape should generalize.\n",
       "created_at": "2026-05-23",
       "scored_at": "2026-05-23",
       "cross_repo": []
