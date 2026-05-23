@@ -208,18 +208,35 @@ inspection at `result.worktree_path`. Clean up a no-longer-needed retained workt
 ## Parallel dogfooding
 
 `Harness.Run.Supervisor` is a `DynamicSupervisor` — N runs are crash-isolated
-siblings, each forking its own worktree off `HEAD`. Disjoint-file tasks dogfood
-in parallel **today**, with no batch orchestrator (that is Task 9, which adds
-only the concurrency *cap* — not the raw concurrency). Fan them out from one
+siblings, each forking its own worktree off `HEAD`. Fan them out from one
 driver BEAM: ingest + `start_run` each task with `subscriber: self()`, then
 collect one `{:harness_run, run_id, result}` per run in a single receive loop.
 The first parallel batch dogfooded Tasks 14, 13 and 15 (the Codex / Cursor /
-Grok adapters) this way — see the run log.
+Grok adapters) this way; the multi-agent batch (Tasks 9, 10, 11) drove three
+*different* agents concurrently — see the run log.
 
-**Only batch genuinely disjoint tasks.** Parallel runs never collide *in the
-worktree* — but their deliverable branches all merge back onto `development`.
-Batch tasks whose files are disjoint (three new adapter modules); do **not**
-batch tasks that edit a shared file or the `AgentAdapter` behaviour itself.
+**Batch as widely as the dependency graph allows.** Each rmap task is sized
+for ~one session, and harness exists to fan those sessions out. The
+dispatchable set is **every pending task whose `depends_on` is satisfied
+(all deps `status=done`)** — pick from that set, mixing drivers across Claude
+/ Codex / Cursor / Grok for multi-agent coverage. Do not refuse to batch on
+"these tasks touch the same file" grounds: Round-2 batched 9 / 10 / 11 (all
+touching `Harness.Run`) and integration handled it cleanly. Concurrency is
+gated by `:concurrency` on a `Harness.Batch` (Task 9) when you want a cap;
+the dogfood driver uses raw `start_run` calls and lets the supervisor settle
+them all in parallel.
+
+**The one hard limit: never batch two tasks that edit the same function.**
+That's a guaranteed un-auto-mergable collision (e.g. Tasks 34 + 35 both
+rewriting `Batch.fill_slots/6`). Same-file is fine — same-function is not.
+Either dispatch such siblings sequentially, or fold them into one rmap task
+during refinement (see `task-prioritization.md` § "Refine, Don't Duplicate").
+
+**Integration order.** Deliverable branches `harness/<run-id>` come back onto
+`development` one at a time. Bring in the smallest / most-isolated diff first,
+let the rest rebase against it, resolve any same-file merges by hand. The
+verification stack re-runs on `development` after the last merge — if it
+goes red post-merge that's an integration failure, not a per-run failure.
 
 ## Known sharp edges
 
