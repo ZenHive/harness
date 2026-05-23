@@ -128,6 +128,37 @@ defmodule Harness.BatchTest do
     assert red.verdict.status == :fail
   end
 
+  test "settles queued items when every capable adapter is quota-exhausted mid-flight" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+
+    assert {:ok, %BatchResult{results: results, events: events}} =
+             Batch.run(
+               items(~w(first second third)),
+               repo,
+               [QuotaAdapter],
+               batch_opts(base,
+                 max_concurrency: 1,
+                 checks: [check("ok", "true", [])]
+               )
+             )
+
+    assert Enum.map(results, & &1.task_id) == ~w(first second third)
+
+    [first | undispatched] = results
+
+    assert first.state == :failed
+    assert AgentRegistry.quota_exhausted?(first.agent_outcome)
+
+    assert Enum.all?(undispatched, &match?(%Result{state: :failed, reason: {:no_available_agent, _}}, &1))
+
+    assert {:adapter_unavailable, QuotaAdapter, {:quota_exhausted, "first"}} in events
+    assert {:no_available_agent, "second", {:no_available_agent, [QuotaAdapter]}} in events
+    assert {:no_available_agent, "third", {:no_available_agent, [QuotaAdapter]}} in events
+
+    refute AgentRegistry.available?(QuotaAdapter)
+  end
+
   test "fails over from a quota-exhausted adapter to a capable adapter with headroom" do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()

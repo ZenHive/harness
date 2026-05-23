@@ -48,7 +48,10 @@ defmodule Harness.Batch do
   When `adapter` is a list, the first available adapter whose capabilities
   satisfy `:required_capabilities` is selected for each dispatch. If a run's
   transcript indicates quota exhaustion, that adapter is marked unavailable and
-  the same item is retried with the next capable adapter.
+  the same item is retried with the next capable adapter. If every capable
+  adapter has been marked unavailable, queued items that have not yet been
+  dispatched settle as `:failed` with reason `{:no_available_agent, _}` instead
+  of crashing the batch.
   """
   @spec run([Item.t()], String.t(), module() | [module()], keyword()) ::
           {:ok, BatchResult.t()} | {:error, error()}
@@ -106,8 +109,17 @@ defmodule Harness.Batch do
         ) ::
           {%{non_neg_integer() => RunResult.t()}, [term()]}
   defp loop(queue, active, results, events, context) do
-    {queue, active} =
-      fill_slots(queue, active, context.repo, context.adapters, context.run_opts, context.max_concurrency)
+    {queue, active, results, events} =
+      fill_slots(
+        queue,
+        active,
+        results,
+        events,
+        context.repo,
+        context.adapters,
+        context.run_opts,
+        context.max_concurrency
+      )
 
     if map_size(results) == context.total do
       {results, events}
@@ -138,22 +150,73 @@ defmodule Harness.Batch do
     }
   end
 
-  @spec fill_slots([indexed_item()], %{String.t() => active_run()}, String.t(), [module()], keyword(), pos_integer()) ::
-          {[indexed_item()], %{String.t() => active_run()}}
-  defp fill_slots(queue, active, _repo, _adapters, _run_opts, max_concurrency) when map_size(active) >= max_concurrency do
-    {queue, active}
+  @spec fill_slots(
+          [indexed_item()],
+          %{String.t() => active_run()},
+          %{non_neg_integer() => RunResult.t()},
+          [term()],
+          String.t(),
+          [module()],
+          keyword(),
+          pos_integer()
+        ) ::
+          {[indexed_item()], %{String.t() => active_run()}, %{non_neg_integer() => RunResult.t()}, [term()]}
+  defp fill_slots(queue, active, results, events, _repo, _adapters, _run_opts, max_concurrency)
+       when map_size(active) >= max_concurrency do
+    {queue, active, results, events}
   end
 
-  defp fill_slots([], active, _repo, _adapters, _run_opts, _max_concurrency), do: {[], active}
+  defp fill_slots([], active, results, events, _repo, _adapters, _run_opts, _max_concurrency) do
+    {[], active, results, events}
+  end
 
-  defp fill_slots([{%Item{} = item, index} | rest], active, repo, adapters, run_opts, max_concurrency) do
-    {:ok, adapter} =
-      AgentRegistry.select(adapters, required_capabilities: Keyword.get(run_opts, :required_capabilities, []))
+  defp fill_slots(
+         [{%Item{} = item, index} = head | rest],
+         active,
+         results,
+         events,
+         repo,
+         adapters,
+         run_opts,
+         max_concurrency
+       ) do
+    case AgentRegistry.select(adapters, required_capabilities: Keyword.get(run_opts, :required_capabilities, [])) do
+      {:ok, adapter} ->
+        {:ok, run_id, pid} = RunSupervisor.start_run(item, repo, adapter, run_opts)
+        ref = Process.monitor(pid)
+        active = Map.put(active, run_id, %{index: index, item: item, adapter: adapter, monitor_ref: ref, result: nil})
+        fill_slots(rest, active, results, events, repo, adapters, run_opts, max_concurrency)
 
-    {:ok, run_id, pid} = RunSupervisor.start_run(item, repo, adapter, run_opts)
-    ref = Process.monitor(pid)
-    active = Map.put(active, run_id, %{index: index, item: item, adapter: adapter, monitor_ref: ref, result: nil})
-    fill_slots(rest, active, repo, adapters, run_opts, max_concurrency)
+      {:error, reason} ->
+        {results, events} = settle_undispatchable([head | rest], results, events, reason)
+        {[], active, results, events}
+    end
+  end
+
+  @spec settle_undispatchable(
+          [indexed_item()],
+          %{non_neg_integer() => RunResult.t()},
+          [term()],
+          AgentRegistry.select_error()
+        ) ::
+          {%{non_neg_integer() => RunResult.t()}, [term()]}
+  defp settle_undispatchable(queue, results, events, reason) do
+    Enum.reduce(queue, {results, events}, fn {%Item{} = item, index}, {results, events} ->
+      result = %RunResult{
+        run_id: undispatched_run_id(item),
+        task_id: item.id,
+        state: :failed,
+        reason: {:no_available_agent, reason}
+      }
+
+      events = [{:no_available_agent, item.id, reason} | events]
+      {Map.put(results, index, result), events}
+    end)
+  end
+
+  @spec undispatched_run_id(Item.t()) :: String.t()
+  defp undispatched_run_id(%Item{id: id}) do
+    "undispatched-#{id}-#{System.unique_integer([:positive, :monotonic])}"
   end
 
   @spec put_result(%{String.t() => active_run()}, String.t(), RunResult.t()) :: %{String.t() => active_run()}

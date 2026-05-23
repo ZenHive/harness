@@ -37,6 +37,10 @@ defmodule Harness.Run.Result do
     * `{:verification_failed, r}` — verification could not run at all.
     * `{:verifier_crashed, r}` — the verification task crashed.
     * `{:run_crashed, r}` — the run process exited before delivering a result.
+    * `{:no_available_agent, r}` — the batch could not pick an adapter for the
+      item; the item never produced a run. Used when every capable adapter has
+      been marked unavailable (typically by quota fail-over) before the item
+      reached `start_run`.
   """
   @type reason ::
           :passed
@@ -51,6 +55,7 @@ defmodule Harness.Run.Result do
           | {:verification_failed, term()}
           | {:verifier_crashed, term()}
           | {:run_crashed, term()}
+          | {:no_available_agent, term()}
 
   @typedoc """
   A settled run.
