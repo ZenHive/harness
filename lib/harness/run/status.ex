@@ -10,6 +10,7 @@ defmodule Harness.Run.Status do
   """
 
   alias Harness.AgentAdapter.Outcome
+  alias Harness.Run.Result
 
   @typedoc "The lifecycle state a run is currently in."
   @type state :: :dispatched | :running | :committing | :verifying | :done | :failed
@@ -33,6 +34,8 @@ defmodule Harness.Run.Status do
       until a red verdict drives the autonomous repair loop (see `Harness.Run`);
       a snapshot with `state: :running` and `repair_attempts > 0` is a repair
       attempt in flight.
+    * `reason` — why the run settled or is failing, once known (see
+      `t:Harness.Run.Result.reason/0`); `nil` while the run is still in flight.
   """
   @type t :: %__MODULE__{
           run_id: String.t(),
@@ -42,7 +45,8 @@ defmodule Harness.Run.Status do
           agent_os_pid: non_neg_integer() | nil,
           agent_kind: Outcome.kind() | nil,
           verdict_status: :pass | :fail | nil,
-          repair_attempts: non_neg_integer()
+          repair_attempts: non_neg_integer(),
+          reason: Result.reason() | nil
         }
 
   @enforce_keys [:run_id, :task_id, :state]
@@ -54,6 +58,7 @@ defmodule Harness.Run.Status do
     :agent_os_pid,
     :agent_kind,
     :verdict_status,
+    :reason,
     repair_attempts: 0
   ]
 end

@@ -42,5 +42,6 @@ defmodule Harness.AgentRegistryTest do
     assert AgentRegistry.quota_exhausted?(outcome)
     assert :ok = AgentRegistry.mark_quota_exhausted(ResumeAdapter, outcome)
     refute AgentRegistry.available?(ResumeAdapter)
+    assert [{ResumeAdapter, {:quota_exhausted, :exited}}] = AgentRegistry.list_unavailable()
   end
 end

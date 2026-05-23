@@ -574,7 +574,8 @@ defmodule Harness.Run do
       agent_os_pid: data.agent_run && data.agent_run.os_pid,
       agent_kind: data.agent_outcome && data.agent_outcome.kind,
       verdict_status: data.verdict && data.verdict.status,
-      repair_attempts: data.repair_attempts
+      repair_attempts: data.repair_attempts,
+      reason: data.reason
     }
   end
 

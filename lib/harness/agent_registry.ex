@@ -86,6 +86,14 @@ defmodule Harness.AgentRegistry do
     GenServer.call(__MODULE__, {:mark_available, adapter})
   end
 
+  @doc """
+  Lists adapters currently marked unavailable with their reasons.
+  """
+  @spec list_unavailable() :: [{module(), term()}]
+  def list_unavailable do
+    GenServer.call(__MODULE__, :list_unavailable)
+  end
+
   @doc false
   @spec reset() :: :ok
   def reset do
@@ -114,6 +122,10 @@ defmodule Harness.AgentRegistry do
 
   def handle_call({:mark_available, adapter}, _from, state) do
     {:reply, :ok, update_in(state.unavailable, &Map.delete(&1, adapter))}
+  end
+
+  def handle_call(:list_unavailable, _from, state) do
+    {:reply, Map.to_list(state.unavailable), state}
   end
 
   def handle_call(:reset, _from, _state) do

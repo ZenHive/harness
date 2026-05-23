@@ -1,0 +1,144 @@
+defmodule Harness.StatusView do
+  @moduledoc """
+  Human-readable fleet status for in-flight, repairing, green, and red runs.
+
+  Aggregates live `Harness.Run.Status` snapshots and agent availability from
+  `Harness.AgentRegistry`. Intended for `mix harness.status`, not JSON parsing.
+  """
+
+  alias Harness.AgentRegistry
+  alias Harness.Run
+  alias Harness.Run.Result
+  alias Harness.Run.Status
+  alias Harness.Run.Supervisor, as: RunSupervisor
+
+  @type bucket :: :in_flight | :repairing | :green | :red
+
+  @type run_entry :: %{
+          status: Status.t(),
+          bucket: bucket(),
+          detail: String.t() | nil
+        }
+
+  @type t :: %{
+          runs: [run_entry()],
+          unavailable_agents: [{module(), term()}]
+        }
+
+  @bucket_order [:in_flight, :repairing, :green, :red]
+
+  @bucket_labels %{
+    in_flight: "IN FLIGHT",
+    repairing: "REPAIRING",
+    green: "GREEN",
+    red: "RED"
+  }
+
+  @doc "Collects the current fleet snapshot from registered runs and the agent registry."
+  @spec snapshot() :: t()
+  def snapshot do
+    runs = Enum.flat_map(RunSupervisor.list_runs(), &run_entry/1)
+
+    %{runs: runs, unavailable_agents: AgentRegistry.list_unavailable()}
+  end
+
+  @doc "Renders `snapshot/0` output for terminal display."
+  @spec render(t()) :: String.t()
+  def render(%{runs: runs, unavailable_agents: unavailable}) do
+    sections =
+      @bucket_order
+      |> Enum.map(&render_bucket(&1, runs))
+      |> Enum.reject(&(&1 == ""))
+
+    body =
+      case Enum.reject(sections ++ [render_unavailable(unavailable)], &(&1 == "")) do
+        [] -> "  (no runs in flight or lingering)\n"
+        lines -> Enum.join(lines, "\n\n") <> "\n"
+      end
+
+    "Harness fleet status\n\n" <> body
+  end
+
+  @doc "Classifies a run status into a human-facing bucket."
+  @spec classify(Status.t()) :: bucket()
+  def classify(%Status{state: :done}), do: :green
+  def classify(%Status{state: :failed}), do: :red
+
+  def classify(%Status{state: state, repair_attempts: attempts})
+      when state in [:dispatched, :running, :committing, :verifying] and attempts > 0,
+      do: :repairing
+
+  def classify(%Status{state: state}) when state in [:dispatched, :running, :committing, :verifying], do: :in_flight
+
+  @spec run_entry(String.t()) :: [run_entry()]
+  defp run_entry(run_id) do
+    case Run.status(run_id) do
+      {:ok, status} ->
+        [%{status: status, bucket: classify(status), detail: detail(status)}]
+
+      {:error, :not_found} ->
+        []
+    end
+  end
+
+  @spec detail(Status.t()) :: String.t() | nil
+  defp detail(%Status{state: :failed, reason: reason}) when not is_nil(reason), do: describe_reason(reason)
+
+  defp detail(%Status{state: state, repair_attempts: attempts}) when state not in [:done, :failed] and attempts > 0,
+    do: "attempt #{attempts}"
+
+  defp detail(_), do: nil
+
+  @spec describe_reason(Result.reason()) :: String.t()
+  defp describe_reason(reason) when is_atom(reason), do: Atom.to_string(reason)
+
+  defp describe_reason({tag, inner}), do: "#{tag} #{inspect(inner)}"
+
+  @spec render_bucket(bucket(), [run_entry()]) :: String.t()
+  defp render_bucket(bucket, runs) do
+    entries = Enum.filter(runs, &(&1.bucket == bucket))
+
+    case entries do
+      [] ->
+        ""
+
+      _ ->
+        header = Map.fetch!(@bucket_labels, bucket) <> " (#{length(entries)})"
+        lines = Enum.map(entries, &render_run/1)
+        header <> "\n" <> Enum.join(lines, "\n")
+    end
+  end
+
+  @spec render_run(run_entry()) :: String.t()
+  defp render_run(%{status: status, detail: detail}) do
+    base = "  task #{status.task_id}  #{status.run_id}  #{status.state}"
+
+    if detail do
+      base <> "  #{detail}"
+    else
+      base
+    end
+  end
+
+  @spec render_unavailable([{module(), term()}]) :: String.t()
+  defp render_unavailable([]), do: ""
+
+  defp render_unavailable(agents) do
+    lines =
+      Enum.map(agents, fn {adapter, reason} ->
+        "  #{adapter_label(adapter)}  #{describe_unavailable(reason)}"
+      end)
+
+    "UNAVAILABLE AGENTS (#{length(agents)})\n" <> Enum.join(lines, "\n")
+  end
+
+  @spec adapter_label(module()) :: String.t()
+  defp adapter_label(module) do
+    module |> Module.split() |> List.last()
+  end
+
+  @spec describe_unavailable(term()) :: String.t()
+  defp describe_unavailable({:quota_exhausted, kind}), do: "quota exhausted (#{kind})"
+
+  defp describe_unavailable(reason), do: inspect(reason)
+end
