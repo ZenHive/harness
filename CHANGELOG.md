@@ -132,6 +132,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   subscription OAuth). Passed per run via the `:env` opt to `start_run/4`; the
   orchestrator BEAM's own environment is never mutated. The conformance suite
   gates both injection and scrubbing on every adapter.
+- `Harness.AgentRules` + `priv/agent_rules/canonical.md` — the canonical,
+  harness-owned rule set every dispatched agent receives. A curated filterable
+  subset: verification gates (coverage thresholds, dialyzer-zero,
+  credo-strict) are deliberately excluded because the verification runner
+  enforces them, not prose the agent is trusted to honour.
+- `Harness.AgentAdapter.RulesInjection` — per-adapter rule-set injection
+  threaded through every adapter's `build_command/1`. Claude uses
+  `--append-system-prompt-file`; Codex and Cursor render an ephemeral rule
+  file into the run worktree; Grok and Antigravity prompt-prepend (neither
+  exposes a system-prompt flag or a native rule file). Two different agents
+  dispatched by harness now receive the same canonical rules without any
+  hand-maintained per-repo file.
+- `Harness.AgentRegistry` — declarative per-adapter capability listing plus
+  availability state. `Harness.Batch` and `Harness.Run.Supervisor` gain a
+  capability check before dispatch: a run requesting an unsupported
+  capability is rejected up front, never mid-run. A quota-exhausted agent is
+  marked unavailable and the batch routes its task to another capable
+  adapter with headroom; fail-over routing is observable via
+  `Harness.Batch.Result` events.
 - Initial OTP application scaffold with a supervision tree (`Harness.Application`).
 - Standard Elixir dev/test tooling stack: Styler (formatter plugin), Credo,
   Dialyxir, Doctor, Sobelow, `ex_unit_json`, `dialyzer_json`, `ex_dna`, `ex_ast`,

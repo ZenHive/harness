@@ -498,21 +498,26 @@ id = "16"
 phase = 4
 bundle = "multi-agent"
 milestone = "v0_3"
-status = "pending"
-depends_on = ["13", "14", "15"]
+status = "done"
 title = "Capability + availability registry with quota fail-over"
 scores = { d = 5, b = 7, u = 6 }
-scored_at = "2026-05-20"
-created_at = "2026-05-20"
-body = """
-Add a registry the orchestrator queries before dispatch. Each adapter declares its capabilities (session resume, permission granularity, MCP/tool config, and so on) so a run requesting an unsupported capability is rejected up front with a clear error. The registry also tracks availability — when an agent hits its subscription quota, the orchestrator routes the job to another agent with headroom instead of failing it. This is the concrete payoff of running multiple adapters.
-"""
+depends_on = ["13", "14", "15"]
 acceptance_criteria = [
   "Each adapter declares its capabilities",
   "A run requesting an unsupported capability is rejected up front, not mid-run",
   "A quota-exhausted agent is marked unavailable and the job fails over to a capable agent with headroom",
   "Fail-over routing is observable",
 ]
+body = """
+Add a registry the orchestrator queries before dispatch. Each adapter declares its capabilities (session resume, permission granularity, MCP/tool config, and so on) so a run requesting an unsupported capability is rejected up front with a clear error. The registry also tracks availability — when an agent hits its subscription quota, the orchestrator routes the job to another agent with headroom instead of failing it. This is the concrete payoff of running multiple adapters.
+"""
+implemented = "Harness.AgentRegistry — declarative per-adapter capability listing + availability state. Harness.Batch and Harness.Run.Supervisor gain a capability check before dispatch: a run requesting an unsupported capability is rejected up front, never mid-run. A quota-exhausted agent is marked unavailable and the batch routes its task to another capable adapter with headroom; fail-over routing is observable via Batch.Result events. Delivered by Codex in the Round-2 dogfood batch (run-1779511173217-4909d4fd); repair loop fired once (credo 120-char line-length) before 5/5 verification green. Shipped in 9b686a9."
+delivered_by = "codex"
+verified = true
+created_at = "2026-05-20"
+started_at = "2026-05-23"
+scored_at = "2026-05-20"
+done_at = "2026-05-23"
 
 [[task]]
 id = "17"
@@ -616,10 +621,10 @@ id = "22"
 phase = 4
 bundle = "multi-agent"
 milestone = "v0_3"
-status = "pending"
-depends_on = ["4"]
+status = "done"
 title = "Inject a harness-owned rule set into agent invocations"
 scores = { d = 4, b = 7, u = 7 }
+depends_on = ["4"]
 acceptance_criteria = [
   "The harness holds one canonical rule set; no rule content is hand-maintained per repo or per agent",
   "Each adapter injects the rule set through its best available channel — a dedicated system-prompt flag where the CLI offers one (Claude's --append-system-prompt-file), else prompt-prepend or a generated ephemeral rule file in the worktree",
@@ -638,8 +643,13 @@ Injection is a per-adapter `build_command/1` concern: use the agent's dedicated 
 
 The injected set is a curated, filterable subset, not a token dump: it carries methodology plus the harness's own operational instructions to a dispatched agent (you are being driven by harness; the verification stack is the grader; stage, don't self-grade). It deliberately excludes the verification gates — coverage thresholds, dialyzer-zero, credo-strict — because those are enforced by the verification runner (Task 7), not prose the agent is trusted to honor. A target repo's own CLAUDE.md still auto-loads for Claude; harness injection adds its operational layer and gives the other three agents the same rules without a hand-maintained per-agent file.
 """
+implemented = "Added Harness.AgentRules (canonical rule set rendered from priv/agent_rules/canonical.md, curated-subset filtering — verification gates excluded since the verification runner enforces them) and Harness.AgentAdapter.RulesInjection (per-adapter injection helper). Every adapter build_command/1 wires the rule set through its best channel: Claude --append-system-prompt-file; Codex and Cursor render an ephemeral rule file into the worktree; Grok and Antigravity prompt-prepend. Delivered by Cursor in the Round-2 dogfood batch (run-1779511173207-ec889d74); repair loop fired once (sobelow directory-traversal findings) before 5/5 verification green. Shipped in 826aaff."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-05-20"
+started_at = "2026-05-23"
 scored_at = "2026-05-20"
+done_at = "2026-05-23"
 
 [[task]]
 id = "23"

@@ -599,7 +599,7 @@
       "phase": 4,
       "bundle": "multi-agent",
       "milestone": "v0_3",
-      "status": "pending",
+      "status": "done",
       "title": "Capability + availability registry with quota fail-over",
       "scores": {
         "d": 5,
@@ -621,7 +621,12 @@
       ],
       "body": "Add a registry the orchestrator queries before dispatch. Each adapter declares its capabilities (session resume, permission granularity, MCP/tool config, and so on) so a run requesting an unsupported capability is rejected up front with a clear error. The registry also tracks availability — when an agent hits its subscription quota, the orchestrator routes the job to another agent with headroom instead of failing it. This is the concrete payoff of running multiple adapters.\n",
       "created_at": "2026-05-20",
+      "started_at": "2026-05-23",
+      "done_at": "2026-05-23",
       "scored_at": "2026-05-20",
+      "implemented": "Harness.AgentRegistry — declarative per-adapter capability listing + availability state. Harness.Batch and Harness.Run.Supervisor gain a capability check before dispatch: a run requesting an unsupported capability is rejected up front, never mid-run. A quota-exhausted agent is marked unavailable and the batch routes its task to another capable adapter with headroom; fail-over routing is observable via Batch.Result events. Delivered by Codex in the Round-2 dogfood batch (run-1779511173217-4909d4fd); repair loop fired once (credo 120-char line-length) before 5/5 verification green. Shipped in 9b686a9.",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -761,7 +766,7 @@
       "phase": 4,
       "bundle": "multi-agent",
       "milestone": "v0_3",
-      "status": "pending",
+      "status": "done",
       "title": "Inject a harness-owned rule set into agent invocations",
       "scores": {
         "d": 4,
@@ -786,7 +791,12 @@
       ],
       "body": "The harness owns one canonical set of working rules — the methodology and behavioral guidance currently scattered across a project's CLAUDE.md and its includes (minimalism, no-evasion, the pushback mandate, code-style KPIs, the implementer/reviewer handoff, niche tool references). Instead of every target repo carrying and hand-syncing a CLAUDE.md plus an AGENTS.md plus a Cursor rules file, the harness injects its rule set directly into each agent's headless invocation at dispatch time.\n\nInjection is a per-adapter `build_command/1` concern: use the agent's dedicated system-prompt channel where it has one (Claude Code's `--append-system-prompt-file`), and where it does not, either prepend the rules to the task prompt or render them into a harness-generated ephemeral rule file in the throwaway worktree (Codex and Cursor read a native rule file; Grok has neither, so prompt-prepend). Every delivery is rendered from the one canonical source — what this task rules out is a hand-maintained rule file committed to each target repo, not a generated ephemeral one. The verified per-agent CLI surface is recorded in `docs/agent-cli-reference.md`.\n\nThe injected set is a curated, filterable subset, not a token dump: it carries methodology plus the harness's own operational instructions to a dispatched agent (you are being driven by harness; the verification stack is the grader; stage, don't self-grade). It deliberately excludes the verification gates — coverage thresholds, dialyzer-zero, credo-strict — because those are enforced by the verification runner (Task 7), not prose the agent is trusted to honor. A target repo's own CLAUDE.md still auto-loads for Claude; harness injection adds its operational layer and gives the other three agents the same rules without a hand-maintained per-agent file.\n",
       "created_at": "2026-05-20",
+      "started_at": "2026-05-23",
+      "done_at": "2026-05-23",
       "scored_at": "2026-05-20",
+      "implemented": "Added Harness.AgentRules (canonical rule set rendered from priv/agent_rules/canonical.md, curated-subset filtering — verification gates excluded since the verification runner enforces them) and Harness.AgentAdapter.RulesInjection (per-adapter injection helper). Every adapter build_command/1 wires the rule set through its best channel: Claude --append-system-prompt-file; Codex and Cursor render an ephemeral rule file into the worktree; Grok and Antigravity prompt-prepend. Delivered by Cursor in the Round-2 dogfood batch (run-1779511173207-ec889d74); repair loop fired once (sobelow directory-traversal findings) before 5/5 verification green. Shipped in 826aaff.",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     },
     {
