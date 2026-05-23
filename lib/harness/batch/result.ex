@@ -15,13 +15,15 @@ defmodule Harness.Batch.Result do
     * `total` — number of input tasks.
     * `max_concurrency` — cap used while fanning tasks out.
     * `results` — one terminal run result per input task, in input order.
+    * `events` — observable routing events emitted by the batch orchestrator.
   """
   @type t :: %__MODULE__{
           total: non_neg_integer(),
           max_concurrency: pos_integer(),
-          results: [RunResult.t()]
+          results: [RunResult.t()],
+          events: [term()]
         }
 
   @enforce_keys [:total, :max_concurrency, :results]
-  defstruct [:total, :max_concurrency, :results]
+  defstruct [:total, :max_concurrency, :results, events: []]
 end

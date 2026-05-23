@@ -1,6 +1,11 @@
 defmodule Harness.BatchTest do
   use ExUnit.Case, async: false
 
+  alias Harness.AgentAdapter.Capabilities
+  alias Harness.AgentAdapter.Invocation
+  alias Harness.AgentAdapter.OSProcess
+  alias Harness.AgentAdapter.Run, as: AgentRun
+  alias Harness.AgentRegistry
   alias Harness.Batch
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.FakeAdapter
@@ -14,6 +19,57 @@ defmodule Harness.BatchTest do
   @eventually_delay_ms 20
   @run_timeout_ms 30_000
   @terminal_linger_ms 100
+
+  defmodule QuotaAdapter do
+    @moduledoc false
+    @behaviour Harness.AgentAdapter
+
+    @impl Harness.AgentAdapter
+    def capabilities, do: %Capabilities{session_resume: true}
+
+    @impl Harness.AgentAdapter
+    def build_command(%Invocation{} = invocation) do
+      {:ok, {"/bin/echo", ["subscription quota exhausted for #{invocation.task_id}"], []}}
+    end
+
+    @impl Harness.AgentAdapter
+    def classify_message({port, {:data, data}}, %AgentRun{port: port} = run), do: {:output, data, run}
+
+    def classify_message({port, {:exit_status, status}}, %AgentRun{port: port} = run), do: {:terminated, run, status}
+
+    def classify_message(_message, _run), do: :ignore
+
+    @impl Harness.AgentAdapter
+    def terminate(%AgentRun{} = run), do: OSProcess.kill(run)
+  end
+
+  defmodule HeadroomAdapter do
+    @moduledoc false
+    @behaviour Harness.AgentAdapter
+
+    @impl Harness.AgentAdapter
+    def capabilities, do: %Capabilities{session_resume: true}
+
+    @impl Harness.AgentAdapter
+    def build_command(%Invocation{} = invocation) do
+      {:ok, {"/bin/sh", ["-c", "echo agent-output > agent_output.txt"], Map.to_list(invocation.env)}}
+    end
+
+    @impl Harness.AgentAdapter
+    def classify_message({port, {:data, data}}, %AgentRun{port: port} = run), do: {:output, data, run}
+
+    def classify_message({port, {:exit_status, status}}, %AgentRun{port: port} = run), do: {:terminated, run, status}
+
+    def classify_message(_message, _run), do: :ignore
+
+    @impl Harness.AgentAdapter
+    def terminate(%AgentRun{} = run), do: OSProcess.kill(run)
+  end
+
+  setup do
+    AgentRegistry.reset()
+    :ok
+  end
 
   test "runs a batch of tasks under the configured concurrency cap" do
     repo = GitFixture.init_repo()
@@ -70,6 +126,30 @@ defmodule Harness.BatchTest do
 
     red = Enum.find(results, &(&1.task_id == "red"))
     assert red.verdict.status == :fail
+  end
+
+  test "fails over from a quota-exhausted adapter to a capable adapter with headroom" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+
+    assert {:ok, %BatchResult{results: [%Result{} = result], events: events}} =
+             Batch.run(
+               items(["quota-task"]),
+               repo,
+               [QuotaAdapter, HeadroomAdapter],
+               batch_opts(base,
+                 max_concurrency: 1,
+                 checks: [check("ok", "true", [])]
+               )
+             )
+
+    assert result.state == :done
+    assert result.reason == :passed
+    refute AgentRegistry.available?(QuotaAdapter)
+    assert AgentRegistry.available?(HeadroomAdapter)
+
+    assert {:adapter_unavailable, QuotaAdapter, {:quota_exhausted, "quota-task"}} in events
+    assert {:failover, "quota-task", QuotaAdapter, HeadroomAdapter} in events
   end
 
   defp batch_opts(base, overrides) do

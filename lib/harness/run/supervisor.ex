@@ -15,6 +15,7 @@ defmodule Harness.Run.Supervisor do
 
   use DynamicSupervisor
 
+  alias Harness.AgentRegistry
   alias Harness.Roadmap.Item
   alias Harness.Run
 
@@ -61,6 +62,8 @@ defmodule Harness.Run.Supervisor do
     * `:env` — map of env vars for the dispatched agent (`%{"KEY" => "val"}` to
       set, `%{"KEY" => false}` to scrub/unset); threaded to `Invocation` and
       every adapter's `build_command/1`.
+    * `:required_capabilities` — adapter capabilities that must be supported
+      before the run is allowed to start.
     * `:retry_policy` — `%Harness.Run.RetryPolicy{}` or keyword list for
       `Harness.Run.RetryPolicy.from_opts/1` when a caller wraps runs with
       `RetryPolicy.run/2` (batch or per-run scope).
@@ -68,12 +71,15 @@ defmodule Harness.Run.Supervisor do
   @spec start_run(Item.t(), String.t(), module(), keyword()) ::
           {:ok, String.t(), pid()} | {:error, term()}
   def start_run(%Item{} = item, repo, adapter, opts \\ []) when is_binary(repo) and is_atom(adapter) and is_list(opts) do
-    run_id = Keyword.get(opts, :run_id) || generate_run_id()
-    opts = opts |> Keyword.put(:run_id, run_id) |> Keyword.put_new(:subscriber, self())
+    with {:ok, ^adapter} <-
+           AgentRegistry.select(adapter, required_capabilities: Keyword.get(opts, :required_capabilities, [])) do
+      run_id = Keyword.get(opts, :run_id) || generate_run_id()
+      opts = opts |> Keyword.put(:run_id, run_id) |> Keyword.put_new(:subscriber, self())
 
-    case DynamicSupervisor.start_child(__MODULE__, {Run, {item, repo, adapter, opts}}) do
-      {:ok, pid} -> {:ok, run_id, pid}
-      {:error, _reason} = error -> error
+      case DynamicSupervisor.start_child(__MODULE__, {Run, {item, repo, adapter, opts}}) do
+        {:ok, pid} -> {:ok, run_id, pid}
+        {:error, _reason} = error -> error
+      end
     end
   end
 

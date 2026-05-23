@@ -1,12 +1,30 @@
 defmodule Harness.Run.SupervisorTest do
   use ExUnit.Case, async: true
 
+  alias Harness.AgentAdapter.Capabilities
   alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.Result
   alias Harness.Verification.Check
+
+  defmodule NoResumeAdapter do
+    @moduledoc false
+    @behaviour Harness.AgentAdapter
+
+    @impl Harness.AgentAdapter
+    def capabilities, do: %Capabilities{session_resume: false}
+
+    @impl Harness.AgentAdapter
+    def build_command(_invocation), do: raise("unsupported adapter should be rejected before build_command/1")
+
+    @impl Harness.AgentAdapter
+    def classify_message(_message, _run), do: :ignore
+
+    @impl Harness.AgentAdapter
+    def terminate(_run), do: :ok
+  end
 
   test "child_spec marks runs :temporary so a failed run is never restarted" do
     arg = {item(), "/repo", FakeAdapter, [run_id: "x"]}
@@ -67,6 +85,13 @@ defmodule Harness.Run.SupervisorTest do
     ref = Process.monitor(pid)
     Run.cancel(run_id)
     assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 5_000
+  end
+
+  test "rejects unsupported required capabilities before starting a run" do
+    repo = GitFixture.init_repo()
+
+    assert {:error, {:unsupported_capability, :session_resume, [NoResumeAdapter]}} =
+             Run.Supervisor.start_run(item(), repo, NoResumeAdapter, required_capabilities: [:session_resume])
   end
 
   defp item do
