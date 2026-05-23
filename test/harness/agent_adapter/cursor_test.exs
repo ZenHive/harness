@@ -5,23 +5,15 @@ defmodule Harness.AgentAdapter.CursorTest do
   alias Harness.AgentAdapter.Cursor
   alias Harness.AgentAdapter.Invocation
 
-  # Cursor-specific adapter behaviour. The agent-agnostic contract — invocation,
-  # raw-output capture, termination detection, timeout, adapter-level
-  # cancellation, and the live end-to-end run — is exercised by the shared
-  # conformance suite (`Harness.AgentAdapter.CursorConformanceTest`). What stays
-  # here is what only Cursor does: argv composition, the `--force --trust`
-  # autonomous mapping, and the `:resume` session sentinel.
+  setup do
+    cwd = Path.join(System.tmp_dir!(), "harness-cursor-#{System.unique_integer()}")
+    File.mkdir_p!(cwd)
+    on_exit(fn -> File.rm_rf!(cwd) end)
+    {:ok, cwd: cwd}
+  end
 
-  @baseline_argv [
-    "-p",
-    "--output-format",
-    "stream-json",
-    "--force",
-    "--trust"
-  ]
-
-  defp invocation(attrs \\ []) do
-    struct!(%Invocation{prompt: "do the task", cwd: "/tmp", task_id: "13"}, attrs)
+  defp invocation(cwd, attrs \\ []) do
+    struct!(%Invocation{prompt: "do the task", cwd: cwd, task_id: "13"}, attrs)
   end
 
   describe "capabilities/0" do
@@ -35,47 +27,64 @@ defmodule Harness.AgentAdapter.CursorTest do
   end
 
   describe "build_command/1" do
-    test "builds a headless stream-json run for the autonomous baseline" do
-      assert {:ok, {"cursor-agent", argv, []}} = Cursor.build_command(invocation())
-      assert argv == @baseline_argv ++ ["do the task"]
+    test "builds a headless stream-json run for the autonomous baseline", %{cwd: cwd} do
+      assert {:ok, {"cursor-agent", argv, []}} = Cursor.build_command(invocation(cwd))
+
+      assert argv == [
+               "-p",
+               "--output-format",
+               "stream-json",
+               "--force",
+               "--trust",
+               "do the task"
+             ]
+
+      assert File.exists?(Path.join(cwd, ".cursor/rules/harness-operational.mdc"))
     end
 
-    test "maps :autonomous to --force --trust" do
-      assert {:ok, {"cursor-agent", argv, []}} = Cursor.build_command(invocation())
+    test "maps :autonomous to --force --trust", %{cwd: cwd} do
+      assert {:ok, {"cursor-agent", argv, []}} = Cursor.build_command(invocation(cwd))
       assert "--force" in argv
       assert "--trust" in argv
     end
 
-    test "passes the model through as --model" do
-      assert {:ok, {"cursor-agent", argv, []}} = Cursor.build_command(invocation(model: "sonnet-4"))
-      assert argv == @baseline_argv ++ ["--model", "sonnet-4", "do the task"]
+    test "passes the model through as --model", %{cwd: cwd} do
+      assert {:ok, {"cursor-agent", argv, []}} =
+               Cursor.build_command(invocation(cwd, model: "sonnet-4"))
+
+      assert Enum.at(argv, -3) == "--model"
+      assert Enum.at(argv, -2) == "sonnet-4"
+      assert List.last(argv) == "do the task"
     end
 
-    test "appends --continue for a :resume session" do
-      assert {:ok, {"cursor-agent", argv, []}} = Cursor.build_command(invocation(session: :resume))
-      assert argv == @baseline_argv ++ ["--continue", "do the task"]
+    test "appends --continue for a :resume session", %{cwd: cwd} do
+      assert {:ok, {"cursor-agent", argv, []}} =
+               Cursor.build_command(invocation(cwd, session: :resume))
+
+      assert Enum.at(argv, -2) == "--continue"
+      assert List.last(argv) == "do the task"
     end
 
-    test "omits the resume flag for a fresh run" do
-      assert {:ok, {"cursor-agent", argv, []}} = Cursor.build_command(invocation())
+    test "omits the resume flag for a fresh run", %{cwd: cwd} do
+      assert {:ok, {"cursor-agent", argv, []}} = Cursor.build_command(invocation(cwd))
       refute "--continue" in argv
     end
 
-    test "orders model then resume, with the prompt last" do
+    test "orders model then resume, with the prompt last", %{cwd: cwd} do
       assert {:ok, {"cursor-agent", argv, []}} =
-               Cursor.build_command(invocation(model: "sonnet-4", session: :resume))
+               Cursor.build_command(invocation(cwd, model: "sonnet-4", session: :resume))
 
-      assert argv == @baseline_argv ++ ["--model", "sonnet-4", "--continue", "do the task"]
+      assert Enum.slice(argv, -4..-1//1) == ["--model", "sonnet-4", "--continue", "do the task"]
     end
 
-    test "rejects a permission mode outside its capabilities" do
+    test "rejects a permission mode outside its capabilities", %{cwd: cwd} do
       assert {:error, {:unsupported_permission_mode, :plan}} =
-               Cursor.build_command(invocation(permission_mode: :plan))
+               Cursor.build_command(invocation(cwd, permission_mode: :plan))
     end
 
-    test "rejects a session value that is not the :resume sentinel" do
+    test "rejects a session value that is not the :resume sentinel", %{cwd: cwd} do
       assert {:error, {:unsupported_session_token, "abc-123"}} =
-               Cursor.build_command(invocation(session: "abc-123"))
+               Cursor.build_command(invocation(cwd, session: "abc-123"))
     end
   end
 end

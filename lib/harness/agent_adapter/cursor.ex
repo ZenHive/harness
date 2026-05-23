@@ -45,6 +45,7 @@ defmodule Harness.AgentAdapter.Cursor do
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.OSProcess
+  alias Harness.AgentAdapter.RulesInjection
   alias Harness.AgentAdapter.Run
 
   # Harness permission-mode vocabulary -> the cursor-agent autonomy flags it
@@ -72,6 +73,7 @@ defmodule Harness.AgentAdapter.Cursor do
   @spec build_command(Invocation.t()) :: {:ok, Harness.AgentAdapter.command()} | {:error, term()}
   def build_command(%Invocation{} = invocation) do
     with {:ok, permission} <- permission_flags(invocation.permission_mode),
+         :ok <- RulesInjection.install_cursor_rules(invocation),
          {:ok, resume} <- resume_args(invocation.session) do
       argv =
         ["-p", "--output-format", "stream-json"] ++

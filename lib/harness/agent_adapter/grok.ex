@@ -55,6 +55,7 @@ defmodule Harness.AgentAdapter.Grok do
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.OSProcess
+  alias Harness.AgentAdapter.RulesInjection
   alias Harness.AgentAdapter.Run
 
   # Harness permission-mode vocabulary -> Grok --permission-mode value.
@@ -85,7 +86,7 @@ defmodule Harness.AgentAdapter.Grok do
         ["--output-format", "streaming-json", "--permission-mode", permission] ++
           model_args(invocation.model) ++
           resume ++
-          ["-p", invocation.prompt]
+          ["-p", RulesInjection.prepend_prompt(invocation.prompt)]
 
       env = Map.to_list(invocation.env)
       {:ok, {"grok", argv, env}}

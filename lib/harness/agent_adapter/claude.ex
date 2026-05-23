@@ -39,6 +39,7 @@ defmodule Harness.AgentAdapter.Claude do
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.OSProcess
+  alias Harness.AgentAdapter.RulesInjection
   alias Harness.AgentAdapter.Run
 
   # Harness permission-mode vocabulary -> Claude --permission-mode value.
@@ -64,9 +65,11 @@ defmodule Harness.AgentAdapter.Claude do
   @spec build_command(Invocation.t()) :: {:ok, Harness.AgentAdapter.command()} | {:error, term()}
   def build_command(%Invocation{} = invocation) do
     with {:ok, permission} <- permission_flag(invocation.permission_mode),
-         {:ok, resume} <- resume_args(invocation.session) do
+         {:ok, resume} <- resume_args(invocation.session),
+         {:ok, rules} <- RulesInjection.claude_flags(invocation) do
       argv =
         ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", permission] ++
+          rules ++
           model_args(invocation.model) ++
           resume ++
           [invocation.prompt]

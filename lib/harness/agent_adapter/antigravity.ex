@@ -34,6 +34,7 @@ defmodule Harness.AgentAdapter.Antigravity do
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.OSProcess
+  alias Harness.AgentAdapter.RulesInjection
   alias Harness.AgentAdapter.Run
 
   @permission_modes %{autonomous: "--dangerously-skip-permissions"}
@@ -65,7 +66,7 @@ defmodule Harness.AgentAdapter.Antigravity do
     with :ok <- validate_model(invocation.model),
          {:ok, permission} <- permission_flag(invocation.permission_mode),
          {:ok, resume} <- resume_args(invocation.session) do
-      argv = ["-p", invocation.prompt, permission] ++ resume
+      argv = ["-p", RulesInjection.prepend_prompt(invocation.prompt), permission] ++ resume
       env = Map.to_list(invocation.env)
       {:ok, {"agy", argv, env}}
     end

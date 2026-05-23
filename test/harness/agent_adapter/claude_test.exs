@@ -4,25 +4,17 @@ defmodule Harness.AgentAdapter.ClaudeTest do
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Invocation
+  alias Harness.AgentRules
 
-  # Claude-specific adapter behaviour. The agent-agnostic contract — invocation,
-  # raw-output capture, termination detection, timeout, adapter-level
-  # cancellation, and the live end-to-end run — is exercised by the shared
-  # conformance suite (`Harness.AgentAdapter.ClaudeConformanceTest`). What stays
-  # here is what only Claude does: argv composition, permission-mode mapping,
-  # and the `:resume` session sentinel.
+  setup do
+    cwd = Path.join(System.tmp_dir!(), "harness-claude-#{System.unique_integer()}")
+    File.mkdir_p!(cwd)
+    on_exit(fn -> File.rm_rf!(cwd) end)
+    {:ok, cwd: cwd}
+  end
 
-  @baseline_argv [
-    "-p",
-    "--output-format",
-    "stream-json",
-    "--verbose",
-    "--permission-mode",
-    "bypassPermissions"
-  ]
-
-  defp invocation(attrs \\ []) do
-    struct!(%Invocation{prompt: "do the task", cwd: "/tmp", task_id: "7"}, attrs)
+  defp invocation(cwd, attrs \\ []) do
+    struct!(%Invocation{prompt: "do the task", cwd: cwd, task_id: "7"}, attrs)
   end
 
   describe "capabilities/0" do
@@ -36,41 +28,59 @@ defmodule Harness.AgentAdapter.ClaudeTest do
   end
 
   describe "build_command/1" do
-    test "builds a headless stream-json run for the autonomous baseline" do
-      assert {:ok, {"claude", argv, []}} = Claude.build_command(invocation())
-      assert argv == @baseline_argv ++ ["do the task"]
+    test "builds a headless stream-json run for the autonomous baseline", %{cwd: cwd} do
+      assert {:ok, {"claude", argv, []}} = Claude.build_command(invocation(cwd))
+
+      assert argv == [
+               "-p",
+               "--output-format",
+               "stream-json",
+               "--verbose",
+               "--permission-mode",
+               "bypassPermissions",
+               "--append-system-prompt-file",
+               Path.join(cwd, AgentRules.system_prompt_rel_path()),
+               "--exclude-dynamic-system-prompt-sections",
+               "do the task"
+             ]
+
+      assert File.exists?(Path.join(cwd, AgentRules.system_prompt_rel_path()))
     end
 
-    test "passes the model through as --model" do
-      assert {:ok, {"claude", argv, []}} = Claude.build_command(invocation(model: "opus"))
-      assert argv == @baseline_argv ++ ["--model", "opus", "do the task"]
+    test "passes the model through as --model", %{cwd: cwd} do
+      assert {:ok, {"claude", argv, []}} = Claude.build_command(invocation(cwd, model: "opus"))
+
+      assert Enum.at(argv, -3) == "--model"
+      assert Enum.at(argv, -2) == "opus"
+      assert List.last(argv) == "do the task"
     end
 
-    test "appends --continue for a :resume session" do
-      assert {:ok, {"claude", argv, []}} = Claude.build_command(invocation(session: :resume))
-      assert argv == @baseline_argv ++ ["--continue", "do the task"]
+    test "appends --continue for a :resume session", %{cwd: cwd} do
+      assert {:ok, {"claude", argv, []}} = Claude.build_command(invocation(cwd, session: :resume))
+      assert Enum.at(argv, -2) == "--continue"
+      assert List.last(argv) == "do the task"
     end
 
-    test "omits the resume flag for a fresh run" do
-      assert {:ok, {"claude", argv, []}} = Claude.build_command(invocation())
+    test "omits the resume flag for a fresh run", %{cwd: cwd} do
+      assert {:ok, {"claude", argv, []}} = Claude.build_command(invocation(cwd))
       refute "--continue" in argv
     end
 
-    test "orders model then resume, with the prompt last" do
+    test "orders model then resume, with the prompt last", %{cwd: cwd} do
       assert {:ok, {"claude", argv, []}} =
-               Claude.build_command(invocation(model: "opus", session: :resume))
+               Claude.build_command(invocation(cwd, model: "opus", session: :resume))
 
-      assert argv == @baseline_argv ++ ["--model", "opus", "--continue", "do the task"]
+      assert Enum.slice(argv, -4..-1//1) == ["--model", "opus", "--continue", "do the task"]
     end
 
-    test "rejects a permission mode outside its capabilities" do
+    test "rejects a permission mode outside its capabilities", %{cwd: cwd} do
       assert {:error, {:unsupported_permission_mode, :plan}} =
-               Claude.build_command(invocation(permission_mode: :plan))
+               Claude.build_command(invocation(cwd, permission_mode: :plan))
     end
 
-    test "rejects a session value that is not the :resume sentinel" do
+    test "rejects a session value that is not the :resume sentinel", %{cwd: cwd} do
       assert {:error, {:unsupported_session_token, "abc-123"}} =
-               Claude.build_command(invocation(session: "abc-123"))
+               Claude.build_command(invocation(cwd, session: "abc-123"))
     end
   end
 end

@@ -50,6 +50,7 @@ defmodule Harness.AgentAdapter.Codex do
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.OSProcess
+  alias Harness.AgentAdapter.RulesInjection
   alias Harness.AgentAdapter.Run
 
   # The permission modes Codex's headless mode supports. :autonomous is the
@@ -76,6 +77,7 @@ defmodule Harness.AgentAdapter.Codex do
   @spec build_command(Invocation.t()) :: {:ok, Harness.AgentAdapter.command()} | {:error, term()}
   def build_command(%Invocation{} = invocation) do
     with :ok <- check_permission_mode(invocation.permission_mode),
+         :ok <- RulesInjection.install_codex_rules(invocation),
          {:ok, subcommand, resume} <- session_args(invocation.session) do
       argv =
         subcommand ++
