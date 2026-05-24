@@ -1888,7 +1888,7 @@
       "id": "55",
       "phase": 4,
       "bundle": "multi-agent",
-      "status": "pending",
+      "status": "done",
       "title": "Audit-surfaced: BaselineFilter.Credo content-blind matching causes false-pass / false-red",
       "scores": {
         "d": 3,
@@ -1915,14 +1915,18 @@
       ],
       "body": "Codex audit of commit `d4344e7` (Task 43 WIP) and `5291698` (Task 43 dogfood) flagged two correctness gaps in `lib/harness/verification/baseline_filter/credo.ex`:\n\n1. **Same-line rewrite false-pass.** The baseline is keyed on `{file, line_no}` (`baseline_tagtodo?/3`, `parse_grep_line/1` discards the trigger text as `_content`). If a dispatched agent rewrites an existing TODO on the same line — keeping the line number but changing the trigger — the new TODO is silently filtered as inherited debt. Verification then false-greens an agent that introduced fresh debt.\n\n2. **Line-shift false-red.** Conversely, if the agent inserts or deletes a line above an inherited TODO, the line_no shifts. The baseline doesn't move with diff context, so the un-mutated inherited TODO is flagged as a new finding. Verification then false-reds an agent that didn't touch the TODO at all.\n\nBoth gaps reduce the baseline filter's reliability — the whole point of Task 43 was diff-aware credo.\n\nFix shape: include line content in baseline pairs and match credo issues by `{file, normalized_content}` rather than `{file, line_no}` — the trigger text IS already extracted by `parse_grep_line/1` (currently discarded as `_content`). Modest structural change; tests cover both false-pass and false-red scenarios.\n",
       "created_at": "2026-05-24",
+      "done_at": "2026-05-24",
       "scored_at": "2026-05-24",
+      "implemented": "Shipped in commit 334ccc5 (audit-review pass on 6a01b58..73f3778). Baseline now keys on {file, normalized_content} not {file, line_no} — kills same-line-rewrite false-pass and line-shift false-red. Regression tests added. Verified in-session via file read of lib/harness/verification/baseline_filter/credo.ex.",
+      "delivered_by": "audit-claude",
+      "verified": true,
       "cross_repo": []
     },
     {
       "id": "56",
       "phase": 3,
       "bundle": "resilience",
-      "status": "pending",
+      "status": "done",
       "title": "Audit-surfaced: cover cancel-before-handle path in Run lifetime force-settle",
       "scores": {
         "d": 2,
@@ -1946,14 +1950,18 @@
       ],
       "body": "Codex audit of commit `f4d8cb6` (Task 29 delivery) ran a target-SHA probe and reported: state had `cancel_requested: {:cancelled, from}`, the run settled `:timed_out` via `force_settle_lifetime/1`, but `Task.yield(cancel_task, 500)` returned `nil` — i.e. the deferred cancel caller never received `:ok`.\n\nStatic read of the current code (`lib/harness/run.ex:506-512`) shows `force_settle_lifetime/1` calls `pending_cancel_reply(data)` before clearing `cancel_requested`, and `pending_cancel_reply/1` returns `[{:reply, from, :ok}]` for `{_reason, from}` with `is_tuple(from)`. The reply path appears correct on inspection.\n\nThe gap is that the existing test (`test \"the lifetime budget force-settles even when the agent run handle never arrives\"`) exercises force-settle alone — not the *cancel-before-handle + force-settle* composition Codex probed. If a regression slips in (someone reshapes `pending_cancel_reply/1`, the timer firing order, or the data-update ordering), there is no test to catch it.\n\nThis task adds the deterministic regression test for the composed scenario. If the test reveals the bug Codex observed, fix it (route the deferred reply through `pending_cancel_reply/1` from every path that can settle while `cancel_requested` is set). If the test passes against current code, the gap was always test coverage, not behavior — close the task with the test in place.\n",
       "created_at": "2026-05-24",
+      "done_at": "2026-05-24",
       "scored_at": "2026-05-24",
+      "implemented": "Shipped in commit 334ccc5 (audit-review pass on 6a01b58..73f3778). Composed cancel-before-handle regression test pinned in test/harness/run_test.exs; Codex's deferred-reply force-settle claim did not reproduce — the gap was test coverage, not behavior. force_settle_lifetime/1 at lib/harness/run.ex:505 routes through pending_cancel_reply/1 correctly.",
+      "delivered_by": "audit-claude",
+      "verified": true,
       "cross_repo": []
     },
     {
       "id": "57",
       "phase": 3,
       "bundle": "resilience",
-      "status": "pending",
+      "status": "done",
       "title": "Audit-surfaced: route Batch dispatch_spin_exhausted through :no_available_agent settlement",
       "scores": {
         "d": 2,
@@ -1979,7 +1987,11 @@
       ],
       "body": "Codex audit of commit `63b711d` (Task 28) flagged that `Harness.Batch.run_once_dispatch/5` busy-spins up to 100 times when `AgentRegistry.select/2` returns `{:no_available_agent, _}`, then crashes the worker with `{:run_crashed, :dispatch_spin_exhausted}` at `lib/harness/batch.ex:291-298`.\n\nThe parent path (`fill_slots/6` at line 217) already settles `{:no_available_agent, reason}` cleanly via `settle_undispatchable/4` — emitting the documented `:undispatchable` event with reason `{:no_available_agent, reason}`. The worker-spin-exhausted path bypasses that: it returns a `{:run_crashed, ...}` reason that's semantically wrong (no crash happened — the agent pool was just exhausted under contention), and it loses the consistent event-log shape.\n\nFix shape: change line 296 from `reason: {:run_crashed, :dispatch_spin_exhausted}` to `reason: {:no_available_agent, :spin_exhausted}` (or thread back through `settle_undispatchable/4` if the event log can be reached from the worker context). Add a deterministic test that exercises the spin-exhaustion path — `MockAdapter` declaring no available agents for `spin_count_limit + N` selects in a row, then asserting the resulting RunResult carries the `:no_available_agent` reason.\n\nCodex also flagged that `:start_run_failed` events are no longer emitted on the batch event log when `RunSupervisor.start_run/4` errors (line 281-287). That's an observability regression rather than a result-loss bug — out of scope here unless the spin-exhaustion fix opens it up naturally.\n",
       "created_at": "2026-05-24",
+      "done_at": "2026-05-24",
       "scored_at": "2026-05-24",
+      "implemented": "Shipped in commit 334ccc5 (audit-review pass on 6a01b58..73f3778). lib/harness/batch.ex now settles {:no_available_agent, :spin_exhausted} (line 312) instead of {:run_crashed, :dispatch_spin_exhausted}; spin limit promoted to @spin_count_limit (line 273); run_once_dispatch/5 exposed @doc false for the regression test. :start_run_failed event observability is explicitly out of scope here (see Task 57.out_of_scope).",
+      "delivered_by": "audit-claude",
+      "verified": true,
       "cross_repo": []
     }
   ]
