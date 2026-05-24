@@ -36,6 +36,17 @@ defmodule Harness.WorktreeTest do
       assert {:ok, wt} = Worktree.create(repo, base_dir: base, base_ref: "feature")
 
       assert String.trim(GitFixture.git!(wt.path, ["rev-parse", "HEAD"])) == feature_sha
+      assert wt.base_sha == feature_sha
+    end
+
+    test "captures the resolved base SHA on the worktree handle" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+      head_sha = String.trim(GitFixture.git!(repo, ["rev-parse", "HEAD"]))
+
+      assert {:ok, wt} = Worktree.create(repo, base_dir: base)
+
+      assert wt.base_sha == head_sha
     end
 
     test "honors the :id option" do
@@ -175,7 +186,14 @@ defmodule Harness.WorktreeTest do
     test "surfaces a git failure on a path that is not a git repository" do
       plain = GitFixture.tmp_base(name: "plain")
       File.mkdir_p!(plain)
-      bogus = %Worktree{id: "run-x", path: plain, branch: "harness/run-x", repo: plain}
+
+      bogus = %Worktree{
+        id: "run-x",
+        path: plain,
+        branch: "harness/run-x",
+        repo: plain,
+        base_sha: "0000000000000000000000000000000000000000"
+      }
 
       assert {:error, {:git_failed, _args, status, _output}} = Worktree.commit(bogus, "agent delivery")
       assert status != 0

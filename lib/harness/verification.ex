@@ -48,7 +48,16 @@ defmodule Harness.Verification do
   @elixir_preset [
     %Check{name: "test", command: "mix", args: ["test.json"]},
     %Check{name: "dialyzer", command: "mix", args: ["dialyzer.json"]},
-    %Check{name: "credo", command: "mix", args: ["credo", "--strict"]},
+    # `post_process` is the diff-aware TagTODO baseline filter: when verification
+    # is given a `:base_ref`, credo findings on TODOs that already existed in the
+    # dispatch base are re-graded away so a dispatched agent is only red on
+    # TODOs *they* introduced.
+    %Check{
+      name: "credo",
+      command: "mix",
+      args: ["credo", "--strict"],
+      post_process: {Harness.Verification.BaselineFilter.Credo, :apply}
+    },
     %Check{name: "doctor", command: "mix", args: ["doctor"]},
     # `--skip` honors the repo's inline `# sobelow_skip` annotations; without it
     # sobelow re-reports every annotated finding and `--exit` reds the check.
@@ -74,6 +83,12 @@ defmodule Harness.Verification do
       `Harness.Verification.Check`.
     * `:timeout` — override the per-check timeout, in milliseconds, or
       `:infinity` for an unbounded check.
+    * `:base_ref` — the dispatch-base commit SHA the worktree branch was
+      forked from. When set, diff-aware post-processors (see
+      `Harness.Verification.Check.post_process/0`) re-grade their checks
+      against the baseline — e.g. the credo TagTODO filter drops findings on
+      pre-existing TODOs. `nil` (the default) leaves every check's exit
+      status as the sole grader.
 
   Returns `{:ok, %Harness.Verification.Verdict{}}`, or `{:error, reason}` —
   `:no_checks` when the stack is empty, `{:worktree_not_found, path}` when
@@ -84,10 +99,11 @@ defmodule Harness.Verification do
     path = Path.expand(worktree_path)
     checks = Keyword.get(opts, :checks) || configured_checks()
     timeout = Keyword.get(opts, :timeout) || configured_timeout()
+    post_process_opts = post_process_opts(path, opts)
 
     with :ok <- validate_checks(checks),
          :ok <- validate_worktree(path) do
-      results = Enum.map(checks, &run_check(&1, path, timeout))
+      results = Enum.map(checks, &run_check(&1, path, timeout, post_process_opts))
       {:ok, build_verdict(results)}
     end
   end
@@ -133,9 +149,17 @@ defmodule Harness.Verification do
 
   # Spawns one check over an OTP port and collects its result. A check whose
   # executable is not on PATH never launches — that is a red result, not a
-  # crash, so the verdict still reports every sibling check.
-  @spec run_check(Check.t(), String.t(), timeout()) :: Result.t()
-  defp run_check(%Check{} = check, worktree_path, timeout) do
+  # crash, so the verdict still reports every sibling check. Any
+  # `post_process` hook on the check runs after the port exits (or times out),
+  # so it sees the same `Result` shape the verdict will carry.
+  @spec run_check(Check.t(), String.t(), timeout(), keyword()) :: Result.t()
+  defp run_check(%Check{} = check, worktree_path, timeout, post_process_opts) do
+    raw_result = collect_check(check, worktree_path, timeout)
+    Check.apply_post_process(check, raw_result, post_process_opts)
+  end
+
+  @spec collect_check(Check.t(), String.t(), timeout()) :: Result.t()
+  defp collect_check(%Check{} = check, worktree_path, timeout) do
     case System.find_executable(check.command) do
       nil ->
         fail_result(check, "could not launch #{inspect(check.command)}: not found on PATH")
@@ -154,6 +178,17 @@ defmodule Harness.Verification do
         collect(port, check, timeout, deadline(timeout), [])
     end
   end
+
+  # The opts each `post_process` hook receives: the absolute worktree path
+  # plus any caller-supplied diff-aware context (currently `:base_ref`).
+  @spec post_process_opts(String.t(), keyword()) :: keyword()
+  defp post_process_opts(worktree_path, opts) do
+    maybe_put([worktree_path: worktree_path], :base_ref, Keyword.get(opts, :base_ref))
+  end
+
+  @spec maybe_put(keyword(), atom(), term()) :: keyword()
+  defp maybe_put(opts, _key, nil), do: opts
+  defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
 
   # Drains the port until the check exits or its deadline passes. The deadline
   # is absolute: unlike a `receive`-local timeout, a check that keeps emitting

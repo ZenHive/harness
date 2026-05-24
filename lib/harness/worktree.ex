@@ -56,15 +56,28 @@ defmodule Harness.Worktree do
   @committer_name "harness"
   @committer_email "harness@localhost"
 
-  @enforce_keys [:id, :path, :branch, :repo]
-  defstruct [:id, :path, :branch, :repo]
+  @enforce_keys [:id, :path, :branch, :repo, :base_sha]
+  defstruct [:id, :path, :branch, :repo, :base_sha]
 
-  @typedoc "A live worktree handle."
+  @typedoc """
+  A live worktree handle.
+
+    * `id` — the worktree's unique id.
+    * `path` — the worktree's working directory.
+    * `branch` — the `harness/<id>` branch carved at creation.
+    * `repo` — the parent repository the worktree was carved out of.
+    * `base_sha` — the commit SHA the `harness/<id>` branch was forked from
+      (the resolved `:base_ref`). Stable for the worktree's lifetime; later
+      commits on the branch never shift it. Diff-aware tooling (e.g. the
+      verification stack's baseline-TODO filter) uses it to tell agent-added
+      content from inherited debt.
+  """
   @type t :: %__MODULE__{
           id: String.t(),
           path: String.t(),
           branch: String.t(),
-          repo: String.t()
+          repo: String.t(),
+          base_sha: String.t()
         }
 
   @typedoc "The verified outcome of a run, driving the keep-or-teardown decision."
@@ -114,8 +127,19 @@ defmodule Harness.Worktree do
     base_ref = Keyword.get(opts, :base_ref, "HEAD")
 
     with :ok <- validate_repo(repo),
-         {:ok, _output} <- Git.run(["worktree", "add", "-b", branch, path, base_ref], repo) do
-      {:ok, %__MODULE__{id: id, path: path, branch: branch, repo: repo}}
+         {:ok, _output} <- Git.run(["worktree", "add", "-b", branch, path, base_ref], repo),
+         {:ok, base_sha} <- resolve_base_sha(path) do
+      {:ok, %__MODULE__{id: id, path: path, branch: branch, repo: repo, base_sha: base_sha}}
+    end
+  end
+
+  # The new branch's HEAD points at the resolved base_ref's commit right after
+  # `git worktree add -b`; capture it as the worktree's stable base SHA before
+  # any further commits land on the branch.
+  @spec resolve_base_sha(String.t()) :: {:ok, String.t()} | {:error, error()}
+  defp resolve_base_sha(path) do
+    with {:ok, output} <- Git.run(["rev-parse", "HEAD"], path) do
+      {:ok, String.trim(output)}
     end
   end
 

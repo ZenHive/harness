@@ -724,6 +724,7 @@ defmodule Harness.Run do
     []
     |> put_opt(:checks, data.checks)
     |> put_opt(:timeout, data.verification_timeout)
+    |> put_opt(:base_ref, data.worktree && data.worktree.base_sha)
   end
 
   @spec commit_worktree(Worktree.t(), String.t()) ::
