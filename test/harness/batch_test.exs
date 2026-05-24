@@ -68,8 +68,48 @@ defmodule Harness.BatchTest do
     def terminate(%AgentRun{} = run), do: OSProcess.kill(run)
   end
 
+  defmodule TransientFirstAdapter do
+    @moduledoc false
+    @behaviour Harness.AgentAdapter
+
+    @table :harness_batch_transient_attempts
+
+    @impl Harness.AgentAdapter
+    def capabilities, do: %Capabilities{session_resume: true}
+
+    @impl Harness.AgentAdapter
+    def build_command(%Invocation{task_id: task_id}) do
+      attempt = :ets.update_counter(@table, task_id, {2, 1}, {task_id, 0})
+
+      script =
+        if attempt == 1 do
+          "echo broken > .git"
+        else
+          "echo agent-output > agent_output.txt"
+        end
+
+      {:ok, {"/bin/sh", ["-c", script], []}}
+    end
+
+    @impl Harness.AgentAdapter
+    def classify_message({port, {:data, data}}, %AgentRun{port: port} = run), do: {:output, data, run}
+
+    def classify_message({port, {:exit_status, status}}, %AgentRun{port: port} = run), do: {:terminated, run, status}
+
+    def classify_message(_message, _run), do: :ignore
+
+    @impl Harness.AgentAdapter
+    def terminate(%AgentRun{} = run), do: OSProcess.kill(run)
+  end
+
   setup do
     AgentRegistry.reset()
+
+    case :ets.info(:harness_batch_transient_attempts) do
+      :undefined -> :ets.new(:harness_batch_transient_attempts, [:named_table, :set, :public])
+      _ -> :ets.delete_all_objects(:harness_batch_transient_attempts)
+    end
+
     :ok
   end
 
@@ -364,6 +404,97 @@ defmodule Harness.BatchTest do
     assert result.reason == :passed
     refute AgentRegistry.available?(QuotaAdapter)
     assert AgentRegistry.available?(HeadroomAdapter)
+  end
+
+  test "retries a transient failure before settling the batch result" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+
+    assert {:ok, %BatchResult{results: [%Result{} = result]}} =
+             Batch.run(
+               items(["transient-task"]),
+               repo,
+               TransientFirstAdapter,
+               batch_opts(base,
+                 max_concurrency: 1,
+                 retry_policy: [max_retries: 2, base_delay_ms: 1, max_delay_ms: 5]
+               )
+             )
+
+    assert result.state == :done
+    assert result.reason == :passed
+    assert :ets.lookup(:harness_batch_transient_attempts, "transient-task") == [{"transient-task", 2}]
+  end
+
+  test "does not retry terminal verification_red failures" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+
+    assert {:ok, %BatchResult{results: [%Result{} = result]}} =
+             Batch.run(
+               items(["red"]),
+               repo,
+               FakeAdapter,
+               batch_opts(base,
+                 max_concurrency: 1,
+                 retry_policy: [max_retries: 3, base_delay_ms: 1],
+                 adapter_opts: [command: {:write_status_by_task, ["red"]}],
+                 checks: [check("status", "grep", ["pass", "status.txt"])]
+               )
+             )
+
+    assert {result.state, result.reason} == {:failed, :verification_red}
+  end
+
+  test "honours max_retries: 0 and skips transient retry" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+
+    assert {:ok, %BatchResult{results: [%Result{} = result]}} =
+             Batch.run(
+               items(["transient-task"]),
+               repo,
+               TransientFirstAdapter,
+               batch_opts(base,
+                 max_concurrency: 1,
+                 retry_policy: [max_retries: 0, base_delay_ms: 1]
+               )
+             )
+
+    assert result.state == :failed
+    assert match?({:commit_failed, _}, result.reason)
+    assert :ets.lookup(:harness_batch_transient_attempts, "transient-task") == [{"transient-task", 1}]
+  end
+
+  test "holds the concurrency slot while a transient retry is in flight" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+
+    batch_task =
+      Task.async(fn ->
+        Batch.run(
+          items(~w(retry-first quick-second)),
+          repo,
+          TransientFirstAdapter,
+          batch_opts(base,
+            max_concurrency: 1,
+            retry_policy: [max_retries: 2, base_delay_ms: 50, max_delay_ms: 100]
+          )
+        )
+      end)
+
+    assert_eventually(fn ->
+      assert :ets.lookup(:harness_batch_transient_attempts, "retry-first") == [{"retry-first", 1}]
+    end)
+
+    refute "quick-second" in active_batch_task_ids(~w(retry-first quick-second))
+
+    assert {:ok, %BatchResult{results: results}} = Task.await(batch_task, @run_timeout_ms)
+
+    assert Enum.map(results, &{&1.task_id, &1.state, &1.reason}) == [
+             {"retry-first", :done, :passed},
+             {"quick-second", :done, :passed}
+           ]
   end
 
   test "concurrent batches survive adapter unavailability during dispatch" do

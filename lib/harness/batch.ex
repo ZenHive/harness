@@ -15,6 +15,7 @@ defmodule Harness.Batch do
   alias Harness.Roadmap.Item
   alias Harness.Run.LogRecord
   alias Harness.Run.Result, as: RunResult
+  alias Harness.Run.RetryPolicy
   alias Harness.Run.Supervisor, as: RunSupervisor
 
   require Logger
@@ -25,10 +26,11 @@ defmodule Harness.Batch do
   @type error :: {:invalid_max_concurrency, term()} | AgentRegistry.select_error()
 
   @typep indexed_item :: {Item.t(), non_neg_integer()}
-  @typep active_run :: %{
+  @typep active_worker :: %{
            index: non_neg_integer(),
            item: Item.t(),
-           adapter: module(),
+           adapter: module() | nil,
+           worker_pid: pid(),
            monitor_ref: reference(),
            started_at_ms: integer()
          }
@@ -37,6 +39,7 @@ defmodule Harness.Batch do
            repo: String.t(),
            adapters: [module()],
            run_opts: keyword(),
+           retry_policy: RetryPolicy.t(),
            result_store: ResultStore.store(),
            max_concurrency: pos_integer(),
            total: non_neg_integer()
@@ -47,9 +50,11 @@ defmodule Harness.Batch do
   respecting `:max_concurrency`.
 
   Options are passed through to `Harness.Run.Supervisor.start_run/4`, except
-  `:max_concurrency`, which defaults to `1`. The batch owns the per-run
-  subscriber so it can collect each `{:harness_run, run_id, result}` message and
-  return one `Harness.Batch.Result`.
+  `:max_concurrency`, which defaults to `1`. Each item's lifecycle is wrapped by
+  `Harness.Run.RetryPolicy.run/2` (transient failures retry with capped backoff;
+  quota-exhausted and terminal failures settle immediately). The retry policy
+  is injectable via `:retry_policy` and defaults from `:harness, :retry_policy`.
+  A concurrency slot is held for the full retry cycle, including backoff delays.
 
   When `adapter` is a list, the first available adapter whose capabilities
   satisfy `:required_capabilities` is selected for each dispatch. If a run's
@@ -75,10 +80,21 @@ defmodule Harness.Batch do
         |> Keyword.delete(:max_concurrency)
         |> Keyword.put(:batch_id, batch_id)
         |> Keyword.put(:result_store, result_store)
-        |> Keyword.put(:subscriber, self())
 
+      retry_policy = RetryPolicy.from_opts(opts)
       indexed_items = Enum.with_index(items)
-      context = loop_context(batch_id, repo, adapters, run_opts, result_store, max_concurrency, length(indexed_items))
+
+      context =
+        loop_context(
+          batch_id,
+          repo,
+          adapters,
+          run_opts,
+          retry_policy,
+          result_store,
+          max_concurrency,
+          length(indexed_items)
+        )
 
       {results, events} = loop(indexed_items, %{}, %{}, [], context)
 
@@ -121,7 +137,7 @@ defmodule Harness.Batch do
 
   @spec loop(
           [indexed_item()],
-          %{String.t() => active_run()},
+          %{reference() => active_worker()},
           %{non_neg_integer() => RunResult.t()},
           [term()],
           loop_context()
@@ -129,44 +145,44 @@ defmodule Harness.Batch do
           {%{non_neg_integer() => RunResult.t()}, [term()]}
   defp loop(queue, active, results, events, context) do
     {queue, active, results, events} =
-      fill_slots(
-        queue,
-        active,
-        results,
-        events,
-        context.repo,
-        context.adapters,
-        context.run_opts,
-        context.max_concurrency
-      )
+      fill_slots(queue, active, results, events, context, context.max_concurrency)
 
     if map_size(results) == context.total do
       {results, events}
     else
       receive do
-        {:harness_run, run_id, %RunResult{} = result} ->
+        {:batch_worker_done, worker_pid, outcome, _started_at_ms} ->
           {active, results, queue, events} =
-            settle_result(active, results, queue, events, context, run_id, result)
+            settle_worker_done(active, results, queue, events, context, worker_pid, outcome)
 
           loop(queue, active, results, events, context)
 
         {:DOWN, ref, :process, _pid, reason} ->
           {active, results, queue, events} =
-            settle_down(active, results, queue, events, context, ref, reason)
+            settle_worker_down(active, results, queue, events, context, ref, reason)
 
           loop(queue, active, results, events, context)
       end
     end
   end
 
-  @spec loop_context(String.t(), String.t(), [module()], keyword(), ResultStore.store(), pos_integer(), non_neg_integer()) ::
-          loop_context()
-  defp loop_context(batch_id, repo, adapters, run_opts, result_store, max_concurrency, total) do
+  @spec loop_context(
+          String.t(),
+          String.t(),
+          [module()],
+          keyword(),
+          RetryPolicy.t(),
+          ResultStore.store(),
+          pos_integer(),
+          non_neg_integer()
+        ) :: loop_context()
+  defp loop_context(batch_id, repo, adapters, run_opts, retry_policy, result_store, max_concurrency, total) do
     %{
       batch_id: batch_id,
       repo: repo,
       adapters: adapters,
       run_opts: run_opts,
+      retry_policy: retry_policy,
       result_store: result_store,
       max_concurrency: max_concurrency,
       total: total
@@ -175,58 +191,32 @@ defmodule Harness.Batch do
 
   @spec fill_slots(
           [indexed_item()],
-          %{String.t() => active_run()},
+          %{reference() => active_worker()},
           %{non_neg_integer() => RunResult.t()},
           [term()],
-          String.t(),
-          [module()],
-          keyword(),
+          loop_context(),
           pos_integer()
         ) ::
-          {[indexed_item()], %{String.t() => active_run()}, %{non_neg_integer() => RunResult.t()}, [term()]}
-  defp fill_slots(queue, active, results, events, _repo, _adapters, _run_opts, max_concurrency)
-       when map_size(active) >= max_concurrency do
+          {[indexed_item()], %{reference() => active_worker()}, %{non_neg_integer() => RunResult.t()}, [term()]}
+  defp fill_slots(queue, active, results, events, _context, max_concurrency) when map_size(active) >= max_concurrency do
     {queue, active, results, events}
   end
 
-  defp fill_slots([], active, results, events, _repo, _adapters, _run_opts, _max_concurrency) do
+  defp fill_slots([], active, results, events, _context, _max_concurrency) do
     {[], active, results, events}
   end
 
-  defp fill_slots(
-         [{%Item{} = item, index} = head | rest],
-         active,
-         results,
-         events,
-         repo,
-         adapters,
-         run_opts,
-         max_concurrency
-       ) do
-    case AgentRegistry.select(adapters, required_capabilities: Keyword.get(run_opts, :required_capabilities, [])) do
-      {:ok, adapter} ->
-        case RunSupervisor.start_run(item, repo, adapter, run_opts) do
-          {:ok, run_id, pid} ->
-            ref = Process.monitor(pid)
+  defp fill_slots([{%Item{} = item, index} = head | rest], active, results, events, context, max_concurrency) do
+    case AgentRegistry.select(context.adapters,
+           required_capabilities: Keyword.get(context.run_opts, :required_capabilities, [])
+         ) do
+      {:ok, _adapter} ->
+        {active, events} = start_worker(active, index, item, events, context)
+        fill_slots(rest, active, results, events, context, max_concurrency)
 
-            active =
-              Map.put(active, run_id, %{
-                index: index,
-                item: item,
-                adapter: adapter,
-                monitor_ref: ref,
-                started_at_ms: System.monotonic_time(:millisecond)
-              })
-
-            fill_slots(rest, active, results, events, repo, adapters, run_opts, max_concurrency)
-
-          {:error, {:no_available_agent, _reason}} ->
-            fill_slots([head | rest], active, results, events, repo, adapters, run_opts, max_concurrency)
-
-          {:error, reason} ->
-            {results, events} = settle_start_run_failure(head, results, events, reason)
-            fill_slots(rest, active, results, events, repo, adapters, run_opts, max_concurrency)
-        end
+      {:error, {:no_available_agent, reason}} ->
+        {results, events} = settle_undispatchable([head | rest], results, events, {:no_available_agent, reason})
+        {[], active, results, events}
 
       {:error, reason} ->
         {results, events} = settle_undispatchable([head | rest], results, events, reason)
@@ -234,23 +224,156 @@ defmodule Harness.Batch do
     end
   end
 
-  @spec settle_start_run_failure(
-          indexed_item(),
-          %{non_neg_integer() => RunResult.t()},
+  @spec start_worker(
+          %{reference() => active_worker()},
+          non_neg_integer(),
+          Item.t(),
           [term()],
-          term()
-        ) ::
-          {%{non_neg_integer() => RunResult.t()}, [term()]}
-  defp settle_start_run_failure({%Item{} = item, index}, results, events, reason) do
-    result = %RunResult{
+          loop_context()
+        ) :: {%{reference() => active_worker()}, [term()]}
+  defp start_worker(active, index, item, events, context) do
+    parent = self()
+    started_at_ms = System.monotonic_time(:millisecond)
+
+    worker_pid =
+      spawn(fn ->
+        outcome =
+          RetryPolicy.run(
+            fn -> run_once(item, context.repo, context.adapters, context.run_opts) end,
+            context.retry_policy
+          )
+
+        send(parent, {:batch_worker_done, self(), outcome, started_at_ms})
+      end)
+
+    ref = Process.monitor(worker_pid)
+
+    worker = %{
+      index: index,
+      item: item,
+      adapter: nil,
+      worker_pid: worker_pid,
+      monitor_ref: ref,
+      started_at_ms: started_at_ms
+    }
+
+    {Map.put(active, ref, worker), events}
+  end
+
+  @spec run_once(Item.t(), String.t(), [module()], keyword()) :: RunResult.t()
+  defp run_once(%Item{} = item, repo, adapters, run_opts) do
+    run_once_dispatch(item, repo, adapters, run_opts, 0)
+  end
+
+  @spec run_once_dispatch(Item.t(), String.t(), [module()], keyword(), non_neg_integer()) :: RunResult.t()
+  defp run_once_dispatch(item, repo, adapters, run_opts, spin_count) when spin_count < 100 do
+    run_opts = Keyword.put(run_opts, :subscriber, self())
+    required = Keyword.get(run_opts, :required_capabilities, [])
+
+    with {:ok, adapter} <- AgentRegistry.select(adapters, required_capabilities: required),
+         {:ok, run_id, pid} <- RunSupervisor.start_run(item, repo, adapter, run_opts) do
+      ref = Process.monitor(pid)
+      await_run(run_id, ref, item, adapter)
+    else
+      {:error, {:no_available_agent, _reason}} ->
+        run_once_dispatch(item, repo, adapters, run_opts, spin_count + 1)
+
+      {:error, reason} ->
+        %RunResult{
+          run_id: undispatched_run_id(item),
+          task_id: item.id,
+          state: :failed,
+          reason: {:run_crashed, {:start_run_failed, reason}}
+        }
+    end
+  end
+
+  defp run_once_dispatch(item, _repo, _adapters, _run_opts, _spin_count) do
+    %RunResult{
       run_id: undispatched_run_id(item),
       task_id: item.id,
       state: :failed,
-      reason: {:run_crashed, {:start_run_failed, reason}}
+      reason: {:run_crashed, :dispatch_spin_exhausted}
     }
+  end
 
-    events = [{:start_run_failed, item.id, reason} | events]
-    {Map.put(results, index, result), events}
+  @spec await_run(String.t(), reference(), Item.t(), module()) :: RunResult.t()
+  defp await_run(run_id, ref, item, _adapter) do
+    receive do
+      {:harness_run, ^run_id, %RunResult{} = result} ->
+        Process.demonitor(ref, [:flush])
+        result
+
+      {:DOWN, ^ref, :process, _pid, reason} ->
+        %RunResult{
+          run_id: run_id,
+          task_id: item.id,
+          state: :failed,
+          reason: {:run_crashed, reason}
+        }
+    end
+  end
+
+  @spec settle_worker_done(
+          %{reference() => active_worker()},
+          %{non_neg_integer() => RunResult.t()},
+          [indexed_item()],
+          [term()],
+          loop_context(),
+          pid(),
+          term()
+        ) ::
+          {%{reference() => active_worker()}, %{non_neg_integer() => RunResult.t()}, [indexed_item()], [term()]}
+  defp settle_worker_done(active, results, queue, events, context, worker_pid, outcome) do
+    case find_by_worker_pid(active, worker_pid) do
+      {ref, worker} ->
+        Process.demonitor(ref, [:flush])
+        active = Map.delete(active, ref)
+
+        case outcome do
+          {:ok, %RunResult{} = result, _attempts} ->
+            {active, Map.put(results, worker.index, result), queue, events}
+
+          {:failover, %RunResult{} = result, :quota_exhausted} ->
+            fail_over(active, results, queue, events, context, worker, result)
+
+          {:error, %RunResult{} = result, _reason} ->
+            {active, Map.put(results, worker.index, result), queue, events}
+        end
+
+      :error ->
+        {active, results, queue, events}
+    end
+  end
+
+  @spec settle_worker_down(
+          %{reference() => active_worker()},
+          %{non_neg_integer() => RunResult.t()},
+          [indexed_item()],
+          [term()],
+          loop_context(),
+          reference(),
+          term()
+        ) ::
+          {%{reference() => active_worker()}, %{non_neg_integer() => RunResult.t()}, [indexed_item()], [term()]}
+  defp settle_worker_down(active, results, queue, events, context, ref, reason) do
+    case Map.fetch(active, ref) do
+      {:ok, worker} ->
+        run_id = "worker-crashed-#{worker.item.id}-#{System.unique_integer([:positive, :monotonic])}"
+
+        result =
+          persist_crashed_result(
+            crashed_result(run_id, worker, reason),
+            worker,
+            context
+          )
+
+        active = Map.delete(active, ref)
+        {active, Map.put(results, worker.index, result), queue, events}
+
+      :error ->
+        {active, results, queue, events}
+    end
   end
 
   @spec settle_undispatchable(
@@ -279,115 +402,84 @@ defmodule Harness.Batch do
     "undispatched-#{id}-#{System.unique_integer([:positive, :monotonic])}"
   end
 
-  @spec settle_result(
-          %{String.t() => active_run()},
-          %{non_neg_integer() => RunResult.t()},
-          [indexed_item()],
-          [term()],
-          loop_context(),
-          String.t(),
-          RunResult.t()
-        ) ::
-          {%{String.t() => active_run()}, %{non_neg_integer() => RunResult.t()}, [indexed_item()], [term()]}
-  defp settle_result(active, results, queue, events, context, run_id, result) do
-    case Map.fetch(active, run_id) do
-      {:ok, run} ->
-        Process.demonitor(run.monitor_ref, [:flush])
-        active = Map.delete(active, run_id)
-
-        if quota_exhausted_result?(result) do
-          fail_over(active, results, queue, events, context.adapters, context.run_opts, run, result)
-        else
-          {active, Map.put(results, run.index, result), queue, events}
-        end
-
-      :error ->
-        {active, results, queue, events}
-    end
-  end
-
-  @spec settle_down(
-          %{String.t() => active_run()},
-          %{non_neg_integer() => RunResult.t()},
-          [indexed_item()],
-          [term()],
-          loop_context(),
-          reference(),
-          term()
-        ) ::
-          {%{String.t() => active_run()}, %{non_neg_integer() => RunResult.t()}, [indexed_item()], [term()]}
-  defp settle_down(active, results, queue, events, context, ref, reason) do
-    case find_by_monitor(active, ref) do
-      nil ->
-        {active, results, queue, events}
-
-      {run_id, run} ->
-        result = persist_crashed_result(crashed_result(run_id, run, reason), run, context)
-        active = Map.delete(active, run_id)
-
-        if quota_exhausted_result?(result) do
-          fail_over(active, results, queue, events, context.adapters, context.run_opts, run, result)
-        else
-          {active, Map.put(results, run.index, result), queue, events}
-        end
-    end
-  end
-
   @spec fail_over(
-          %{String.t() => active_run()},
+          %{reference() => active_worker()},
           %{non_neg_integer() => RunResult.t()},
           [indexed_item()],
           [term()],
-          [module()],
-          keyword(),
-          active_run(),
+          loop_context(),
+          active_worker(),
           RunResult.t()
         ) ::
-          {%{String.t() => active_run()}, %{non_neg_integer() => RunResult.t()}, [indexed_item()], [term()]}
-  defp fail_over(active, results, queue, events, adapters, run_opts, run, result) do
-    :ok = AgentRegistry.mark_unavailable(run.adapter, {:quota_exhausted, run.item.id})
-    events = [{:adapter_unavailable, run.adapter, {:quota_exhausted, run.item.id}} | events]
+          {%{reference() => active_worker()}, %{non_neg_integer() => RunResult.t()}, [indexed_item()], [term()]}
+  defp fail_over(active, results, queue, events, context, worker, result) do
+    adapter = adapter_from_result(result)
 
-    case AgentRegistry.select(adapters, required_capabilities: Keyword.get(run_opts, :required_capabilities, [])) do
+    if adapter do
+      :ok = AgentRegistry.mark_unavailable(adapter, {:quota_exhausted, worker.item.id})
+      events = [{:adapter_unavailable, adapter, {:quota_exhausted, worker.item.id}} | events]
+      maybe_requeue_after_failover(active, results, queue, events, context, worker, result, adapter)
+    else
+      {active, Map.put(results, worker.index, result), queue, events}
+    end
+  end
+
+  @spec maybe_requeue_after_failover(
+          %{reference() => active_worker()},
+          %{non_neg_integer() => RunResult.t()},
+          [indexed_item()],
+          [term()],
+          loop_context(),
+          active_worker(),
+          RunResult.t(),
+          module()
+        ) ::
+          {%{reference() => active_worker()}, %{non_neg_integer() => RunResult.t()}, [indexed_item()], [term()]}
+  defp maybe_requeue_after_failover(active, results, queue, events, context, worker, result, failed_adapter) do
+    case AgentRegistry.select(context.adapters,
+           required_capabilities: Keyword.get(context.run_opts, :required_capabilities, [])
+         ) do
       {:ok, next_adapter} ->
-        events = [{:failover, run.item.id, run.adapter, next_adapter} | events]
-        {active, results, [{run.item, run.index} | queue], events}
+        events = [{:failover, worker.item.id, failed_adapter, next_adapter} | events]
+        {active, results, [{worker.item, worker.index} | queue], events}
 
       {:error, _reason} ->
-        {active, Map.put(results, run.index, result), queue, events}
+        {active, Map.put(results, worker.index, result), queue, events}
     end
   end
 
-  @spec quota_exhausted_result?(RunResult.t()) :: boolean()
-  defp quota_exhausted_result?(%RunResult{state: :failed, agent_outcome: outcome}) do
-    AgentRegistry.quota_exhausted?(outcome)
+  @spec adapter_from_result(RunResult.t()) :: module() | nil
+  defp adapter_from_result(%RunResult{agent_outcome: %{run: %{adapter: adapter}}}) when is_atom(adapter), do: adapter
+
+  defp adapter_from_result(_), do: nil
+
+  @spec find_by_worker_pid(%{reference() => active_worker()}, pid()) ::
+          {reference(), active_worker()} | :error
+  defp find_by_worker_pid(active, worker_pid) do
+    case Enum.find(active, fn {_ref, worker} -> worker.worker_pid == worker_pid end) do
+      {ref, worker} -> {ref, worker}
+      nil -> :error
+    end
   end
 
-  defp quota_exhausted_result?(%RunResult{}), do: false
-
-  @spec find_by_monitor(%{String.t() => active_run()}, reference()) :: {String.t(), active_run()} | nil
-  defp find_by_monitor(active, ref) do
-    Enum.find(active, fn {_run_id, run} -> run.monitor_ref == ref end)
-  end
-
-  @spec crashed_result(String.t(), active_run(), term()) :: RunResult.t()
-  defp crashed_result(run_id, run, reason) do
+  @spec crashed_result(String.t(), active_worker(), term()) :: RunResult.t()
+  defp crashed_result(run_id, worker, reason) do
     %RunResult{
       run_id: run_id,
-      task_id: run.item.id,
+      task_id: worker.item.id,
       state: :failed,
       reason: {:run_crashed, reason}
     }
   end
 
-  @spec persist_crashed_result(RunResult.t(), active_run(), loop_context()) :: RunResult.t()
-  defp persist_crashed_result(%RunResult{} = result, run, context) do
+  @spec persist_crashed_result(RunResult.t(), active_worker(), loop_context()) :: RunResult.t()
+  defp persist_crashed_result(%RunResult{} = result, worker, context) do
     result
     |> LogRecord.from_result(
       batch_id: context.batch_id,
-      agent: run.item.agent,
-      adapter: run.adapter,
-      duration_ms: run_duration_ms(run)
+      agent: worker.item.agent,
+      adapter: adapter_from_result(result) || List.first(context.adapters),
+      duration_ms: run_duration_ms(worker)
     )
     |> ResultStore.record_run(context.result_store)
     |> log_store_error("run record", result.run_id)
@@ -410,9 +502,9 @@ defmodule Harness.Batch do
     :ok
   end
 
-  @spec run_duration_ms(active_run()) :: non_neg_integer()
-  defp run_duration_ms(run) do
-    max(0, System.monotonic_time(:millisecond) - run.started_at_ms)
+  @spec run_duration_ms(active_worker()) :: non_neg_integer()
+  defp run_duration_ms(worker) do
+    max(0, System.monotonic_time(:millisecond) - worker.started_at_ms)
   end
 
   @spec generate_batch_id() :: String.t()
