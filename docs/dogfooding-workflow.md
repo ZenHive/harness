@@ -226,6 +226,14 @@ gated by `:concurrency` on a `Harness.Batch` (Task 9) when you want a cap;
 the dogfood driver uses raw `start_run` calls and lets the supervisor settle
 them all in parallel.
 
+**Rotate non-delegatable adapters in deliberately.** `Grok` (and `Antigravity`
+once Task 32 resolves) are accepted dogfood drivers via the two-step
+ingest-as-delegatable + `start_run/4` with the non-delegatable adapter module
+pattern (see CLAUDE.md § "Agent Headless Entry Points"). The extra step is not
+a reason to silently exclude them from a batch — that's training-comfort bias,
+not a real constraint. Round-1 Task 25 (Grok-driven) settled `:passed`; the
+dispatch is documented and works.
+
 **The one hard limit: never batch two tasks that edit the same function.**
 That's a guaranteed un-auto-mergable collision (e.g. Tasks 34 + 35 both
 rewriting `Batch.fill_slots/6`). Same-file is fine — same-function is not.
