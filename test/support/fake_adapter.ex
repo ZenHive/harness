@@ -8,12 +8,10 @@ defmodule Harness.FakeAdapter do
   # deterministically without a real coding agent. Select a branch with
   # `adapter_opts: [command: ...]`; the default is `:echo`.
 
-  @behaviour Harness.AgentAdapter
+  use Harness.AgentAdapter
 
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
-  alias Harness.AgentAdapter.OSProcess
-  alias Harness.AgentAdapter.Run
 
   @impl Harness.AgentAdapter
   def capabilities do
@@ -31,16 +29,6 @@ defmodule Harness.FakeAdapter do
       {:error, {:unsupported_permission_mode, mode}}
     end
   end
-
-  @impl Harness.AgentAdapter
-  def classify_message({port, {:data, data}}, %Run{port: port} = run), do: {:output, data, run}
-
-  def classify_message({port, {:exit_status, status}}, %Run{port: port} = run), do: {:terminated, run, status}
-
-  def classify_message(_message, _run), do: :ignore
-
-  @impl Harness.AgentAdapter
-  def terminate(%Run{} = run), do: OSProcess.kill(run)
 
   # :echo            — emits one line, exits 0.
   # {:echo, text}    — emits `text` as one argv element (argv-verbatim fixture,

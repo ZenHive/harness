@@ -6,9 +6,7 @@ defmodule Harness.AgentAdapter.Cursor do
   process-spawning fake. Like every adapter it is thin: all the real logic is
   `build_command/1` assembling the headless command line. Raw output is captured
   and passed through unparsed; termination is detected from the port closing,
-  never from the exit code. `classify_message/2` and `terminate/1` are the
-  agent-agnostic shapes the behaviour proved against Claude — Cursor reuses them
-  unchanged, which is the conformance suite's point.
+  never from the exit code.
 
   ## Invocation
 
@@ -40,13 +38,11 @@ defmodule Harness.AgentAdapter.Cursor do
   other non-`nil` value is an error.
   """
 
-  @behaviour Harness.AgentAdapter
+  use Harness.AgentAdapter
 
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
-  alias Harness.AgentAdapter.OSProcess
   alias Harness.AgentAdapter.RulesInjection
-  alias Harness.AgentAdapter.Run
 
   # Harness permission-mode vocabulary -> the cursor-agent autonomy flags it
   # selects. :autonomous needs both --force (run commands without approval) and
@@ -78,7 +74,7 @@ defmodule Harness.AgentAdapter.Cursor do
       argv =
         ["-p", "--output-format", "stream-json"] ++
           permission ++
-          model_args(invocation.model) ++
+          Harness.AgentAdapter.model_args(invocation.model) ++
           resume ++
           [invocation.prompt]
 
@@ -86,25 +82,6 @@ defmodule Harness.AgentAdapter.Cursor do
       {:ok, {"cursor-agent", argv, env}}
     end
   end
-
-  @doc """
-  Classifies one port message: a data chunk is raw output, an exit status is
-  termination, anything else is ignored.
-  """
-  @impl Harness.AgentAdapter
-  @spec classify_message(term(), Run.t()) :: Harness.AgentAdapter.classification()
-  def classify_message({port, {:data, data}}, %Run{port: port} = run), do: {:output, data, run}
-
-  def classify_message({port, {:exit_status, status}}, %Run{port: port} = run), do: {:terminated, run, status}
-
-  def classify_message(_message, _run), do: :ignore
-
-  @doc """
-  Kills an in-flight run, delegating to the shared `Harness.AgentAdapter.OSProcess.kill/1`.
-  """
-  @impl Harness.AgentAdapter
-  @spec terminate(Run.t()) :: :ok
-  def terminate(%Run{} = run), do: OSProcess.kill(run)
 
   @spec permission_flags(atom()) ::
           {:ok, [String.t()]} | {:error, {:unsupported_permission_mode, atom()}}
@@ -120,8 +97,4 @@ defmodule Harness.AgentAdapter.Cursor do
   defp resume_args(nil), do: {:ok, []}
   defp resume_args(:resume), do: {:ok, ["--continue"]}
   defp resume_args(other), do: {:error, {:unsupported_session_token, other}}
-
-  @spec model_args(String.t() | nil) :: [String.t()]
-  defp model_args(nil), do: []
-  defp model_args(model) when is_binary(model), do: ["--model", model]
 end

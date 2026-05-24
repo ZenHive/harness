@@ -45,13 +45,11 @@ defmodule Harness.AgentAdapter.Codex do
   error.
   """
 
-  @behaviour Harness.AgentAdapter
+  use Harness.AgentAdapter
 
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
-  alias Harness.AgentAdapter.OSProcess
   alias Harness.AgentAdapter.RulesInjection
-  alias Harness.AgentAdapter.Run
 
   # The permission modes Codex's headless mode supports. :autonomous is the
   # universal baseline; it maps to running with every confirmation skipped.
@@ -82,7 +80,7 @@ defmodule Harness.AgentAdapter.Codex do
       argv =
         subcommand ++
           ["--json", "--dangerously-bypass-approvals-and-sandbox"] ++
-          model_args(invocation.model) ++
+          Harness.AgentAdapter.model_args(invocation.model) ++
           resume ++
           [invocation.prompt]
 
@@ -90,25 +88,6 @@ defmodule Harness.AgentAdapter.Codex do
       {:ok, {"codex", argv, env}}
     end
   end
-
-  @doc """
-  Classifies one port message: a data chunk is raw output, an exit status is
-  termination, anything else is ignored.
-  """
-  @impl Harness.AgentAdapter
-  @spec classify_message(term(), Run.t()) :: Harness.AgentAdapter.classification()
-  def classify_message({port, {:data, data}}, %Run{port: port} = run), do: {:output, data, run}
-
-  def classify_message({port, {:exit_status, status}}, %Run{port: port} = run), do: {:terminated, run, status}
-
-  def classify_message(_message, _run), do: :ignore
-
-  @doc """
-  Kills an in-flight run, delegating to the shared `Harness.AgentAdapter.OSProcess.kill/1`.
-  """
-  @impl Harness.AgentAdapter
-  @spec terminate(Run.t()) :: :ok
-  def terminate(%Run{} = run), do: OSProcess.kill(run)
 
   @spec check_permission_mode(atom()) ::
           :ok | {:error, {:unsupported_permission_mode, atom()}}
@@ -124,8 +103,4 @@ defmodule Harness.AgentAdapter.Codex do
   defp session_args(nil), do: {:ok, ["exec"], []}
   defp session_args(:resume), do: {:ok, ["exec", "resume"], ["--last"]}
   defp session_args(other), do: {:error, {:unsupported_session_token, other}}
-
-  @spec model_args(String.t() | nil) :: [String.t()]
-  defp model_args(nil), do: []
-  defp model_args(model) when is_binary(model), do: ["--model", model]
 end

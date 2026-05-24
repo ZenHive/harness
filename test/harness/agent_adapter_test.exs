@@ -8,23 +8,19 @@ defmodule Harness.AgentAdapterTest do
   alias Harness.FakeAdapter
   alias Harness.ProcessFixture
 
-  # Carries only a capability declaration — exercises the false branches of
-  # supports?/2 and the build_command error path of invoke/2.
+  # Minimal adapter implementing *only* the two required callbacks
+  # (capabilities/0 + build_command/1). Proves defaults for classify_message/2
+  # and terminate/1 satisfy the contract; exercises supports?/2 false branches
+  # and the build_command error path of invoke/2.
   defmodule MinimalAdapter do
     @moduledoc false
-    @behaviour AgentAdapter
+    use AgentAdapter
 
     @impl AgentAdapter
     def capabilities, do: %Capabilities{streaming_output: false}
 
     @impl AgentAdapter
     def build_command(_invocation), do: {:error, :not_implemented}
-
-    @impl AgentAdapter
-    def classify_message(_message, _run), do: :ignore
-
-    @impl AgentAdapter
-    def terminate(_run), do: :ok
   end
 
   defp invocation(adapter_opts \\ []) do
@@ -90,6 +86,14 @@ defmodule Harness.AgentAdapterTest do
           ] do
         assert callback in callbacks
       end
+    end
+
+    test "a minimal adapter (only capabilities/0 + build_command/1) gets classify/terminate from defaults" do
+      assert function_exported?(MinimalAdapter, :classify_message, 2)
+      assert function_exported?(MinimalAdapter, :terminate, 1)
+      # defaults behave correctly for non-matching messages
+      dummy_run = %Run{ref: make_ref(), adapter: MinimalAdapter, port: nil, os_pid: nil, started_at: 0}
+      assert :ignore = MinimalAdapter.classify_message(:unrelated, dummy_run)
     end
   end
 

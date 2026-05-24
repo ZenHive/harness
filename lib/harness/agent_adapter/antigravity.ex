@@ -29,13 +29,11 @@ defmodule Harness.AgentAdapter.Antigravity do
   is specified in the invocation, the adapter will return `{:error, {:unsupported_model, model}}`.
   """
 
-  @behaviour Harness.AgentAdapter
+  use Harness.AgentAdapter
 
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
-  alias Harness.AgentAdapter.OSProcess
   alias Harness.AgentAdapter.RulesInjection
-  alias Harness.AgentAdapter.Run
 
   @permission_modes %{autonomous: "--dangerously-skip-permissions"}
 
@@ -71,23 +69,6 @@ defmodule Harness.AgentAdapter.Antigravity do
       {:ok, {"agy", argv, env}}
     end
   end
-
-  @doc """
-  Classifies one port message: a data chunk is raw output, an exit status is
-  termination, anything else is ignored.
-  """
-  @impl Harness.AgentAdapter
-  @spec classify_message(term(), Run.t()) :: Harness.AgentAdapter.classification()
-  def classify_message({port, {:data, data}}, %Run{port: port} = run), do: {:output, data, run}
-  def classify_message({port, {:exit_status, status}}, %Run{port: port} = run), do: {:terminated, run, status}
-  def classify_message(_message, _run), do: :ignore
-
-  @doc """
-  Kills an in-flight run, delegating to the shared `Harness.AgentAdapter.OSProcess.kill/1`.
-  """
-  @impl Harness.AgentAdapter
-  @spec terminate(Run.t()) :: :ok
-  def terminate(%Run{} = run), do: OSProcess.kill(run)
 
   @spec validate_model(String.t() | nil) :: :ok | {:error, {:unsupported_model, String.t()}}
   defp validate_model(nil), do: :ok

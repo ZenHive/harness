@@ -12,32 +12,22 @@ defmodule Harness.AgentAdapter do
 
   ## Implementing an adapter
 
-  An adapter declares `@behaviour Harness.AgentAdapter` and implements four
-  callbacks — `c:capabilities/0`, `c:build_command/1`, `c:classify_message/2`,
-  `c:terminate/1`:
+  An adapter `use`s `Harness.AgentAdapter` (which declares the `@behaviour`) and
+  implements the two required callbacks; `classify_message/2` and `terminate/1`
+  have defaults (universal port classification and kill) and need only be
+  overridden for agent-specific logic:
 
       defmodule MyAgent.Adapter do
-        @behaviour Harness.AgentAdapter
+        use Harness.AgentAdapter
         alias Harness.AgentAdapter.Capabilities
+        alias Harness.AgentAdapter.Invocation
 
         @impl true
         def capabilities, do: %Capabilities{session_resume: true}
 
         @impl true
-        def build_command(invocation),
+        def build_command(%Invocation{} = invocation),
           do: {:ok, {"my-agent", ["-p", invocation.prompt], Map.to_list(invocation.env)}}
-
-        @impl true
-        def classify_message({port, {:data, data}}, %{port: port} = run),
-          do: {:output, data, run}
-
-        def classify_message({port, {:exit_status, status}}, %{port: port} = run),
-          do: {:terminated, run, status}
-
-        def classify_message(_other, _run), do: :ignore
-
-        @impl true
-        def terminate(_run), do: :ok
       end
 
   Harness spawns the adapter with `invoke/2` — there is no per-adapter
@@ -78,6 +68,21 @@ defmodule Harness.AgentAdapter do
   # why a headless agent CLI cannot be handed a raw OTP-port stdin.
   @sh "/bin/sh"
   @stdin_eof_script ~S(exec "$0" "$@" </dev/null)
+
+  @doc false
+  defmacro __using__(_opts \\ []) do
+    quote do
+      @behaviour Harness.AgentAdapter
+
+      @impl true
+      def classify_message(message, run), do: Harness.AgentAdapter.classify_message(message, run)
+
+      @impl true
+      def terminate(run), do: Harness.AgentAdapter.terminate(run)
+
+      defoverridable classify_message: 2, terminate: 1
+    end
+  end
 
   @typedoc """
   A built headless command: the executable, its argv, and environment pairs.
@@ -136,6 +141,20 @@ defmodule Harness.AgentAdapter do
   """
   @callback terminate(Run.t()) :: :ok
 
+  # Default implementations for the two universal callbacks. Adapters `use
+  # Harness.AgentAdapter` inherit these via the forwarding def + defoverridable;
+  # they only implement capabilities/0 and build_command/1 unless they need custom
+  # classification or termination logic.
+  @doc "Default implementation (port data → raw output, exit_status → terminated)."
+  @spec classify_message(term(), Run.t()) :: classification()
+  def classify_message({port, {:data, data}}, %Run{port: port} = run), do: {:output, data, run}
+  def classify_message({port, {:exit_status, status}}, %Run{port: port} = run), do: {:terminated, run, status}
+  def classify_message(_message, _run), do: :ignore
+
+  @doc "Default implementation: delegates to `OSProcess.kill/1` (idempotent)."
+  @spec terminate(Run.t()) :: :ok
+  def terminate(%Run{} = run), do: OSProcess.kill(run)
+
   @doc """
   Spawns `adapter` for an invocation and returns a run handle.
 
@@ -158,6 +177,15 @@ defmodule Harness.AgentAdapter do
   """
   @spec supports?(module(), capability()) :: boolean()
   def supports?(adapter, capability), do: capability_supported?(adapter.capabilities(), capability)
+
+  @doc """
+  Returns `["--model", model]` when `model` is a binary, `[]` otherwise.
+
+  Shared argv helper for any adapter whose headless CLI accepts `--model`.
+  """
+  @spec model_args(String.t() | nil) :: [String.t()]
+  def model_args(nil), do: []
+  def model_args(model) when is_binary(model), do: ["--model", model]
 
   # Spawns the agent over an OTP port and returns its run handle.
   #

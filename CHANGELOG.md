@@ -207,4 +207,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `cli/0` preferred-env wiring for `mix test.json` / `mix dialyzer.json`.
 - Dialyzer configured with `plt_add_deps: :apps_direct`; PLTs under `priv/plts/`.
 - Project configs: `.doctor.exs`, `.dialyzer_ignore.exs`, `.reach.exs`, `.mcp.json`.
+- `Harness.AgentAdapter` — hoisted the byte-identical `classify_message/2`, `terminate/1`, and `--model` argv helper into the behaviour via `use Harness.AgentAdapter` + `defoverridable` (with top-level default providers). A new adapter now implements only `capabilities/0` + `build_command/1` and passes the conformance suite; all 6 existing adapters were updated (duplication removed) and continue to pass unchanged. Added `model_args/1` public helper. (Task 27)
 - Baseline `.gitignore`, `README.md`, and this changelog.
