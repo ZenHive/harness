@@ -4,7 +4,7 @@ default_branch = "development"
 vision = "An OTP-native task-execution engine an AI orchestrator drives end to end: it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent running in an isolated worktree, runs the target project's own check stack against the result, and reports verified outcomes back over an agent-shaped surface (MCP tools / JSON CLI). harness is itself developed by dogfooding — from the core loop (Task 8) onward, every pending roadmap task is delivered by dispatching it through harness rather than hand-building it."
 
 [focus]
-phase = 1
+phase = 3
 
 # ----------------------------------------------------------------------------
 # Phases
@@ -784,7 +784,7 @@ id = "29"
 phase = 3
 bundle = "resilience"
 milestone = "v0_2"
-status = "pending"
+status = "done"
 title = "Force-settle the Run lifetime timeout when the agent handle never arrives"
 scores = { d = 3, b = 6, u = 4 }
 acceptance_criteria = ["A run whose `{:run_handle}` message never arrives still settles within `lifetime_timeout`", "The settled `Result`/`Status` carries a failure reason identifying the never-spawned cause", "An agent that spawned just before the lifetime timeout is still cleaned up (SIGKILL or handed to the sweeper)", "A regression test drives the never-arrives path and asserts the run force-settles"]
@@ -797,14 +797,19 @@ Make the lifetime timeout the genuine last-resort guarantee: when it fires, the 
 
 Surfaced by the post-merge audit of 53cc3ef — see `.audit/53cc3ef-supervised-run-lifecycle.md` finding 3 (a `discuss-design` divergence: Codex rated it pri 8, Claude assessed it latent for the shipped adapters).
 """
+implemented = "lib/harness/run.ex lifetime-timeout handler force-settles the Run when the agent handle never arrives, covering the never-spawned race window; regression tests (run-1779588540043-7f1a6138)"
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-22"
+started_at = "2026-05-24"
 scored_at = "2026-05-22"
+done_at = "2026-05-24"
 
 [[task]]
 id = "30"
 phase = 2
 bundle = "core-loop"
-status = "pending"
+status = "done"
 title = "Pin Worktree.commit/2 to the run's harness/<id> branch"
 scores = { d = 3, b = 6, u = 4 }
 acceptance_criteria = ["`commit/2` lands the commit on the run's `harness/<id>` branch even if the agent moved or detached HEAD, OR fails with a dedicated error rather than committing off-branch", "The failure path returns a typed `Harness.Worktree` error and `Harness.Run` settles the run cleanly on it", "A test simulates an agent moving HEAD and asserts the deliverable is not stranded"]
@@ -817,8 +822,13 @@ Make `commit/2` pin its commit to the worktree's own `harness/<id>` branch, or f
 
 Surfaced by the post-merge audit of f53b50c — see `.audit/f53b50c-commit-agent-delivery.md` (a `discuss-design` divergence; uncommon trigger but a real deliverable-loss gap).
 """
+implemented = "lib/harness/worktree.ex Worktree.commit/2 now pins to the run's harness/<id> branch via explicit refspec; adds Worktree tests + run integration test (run-1779588540053-949e2796)"
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-22"
+started_at = "2026-05-24"
 scored_at = "2026-05-22"
+done_at = "2026-05-24"
 
 [[task]]
 id = "31"
@@ -920,7 +930,7 @@ done_at = "2026-05-23"
 id = "35"
 phase = 3
 bundle = "resilience"
-status = "pending"
+status = "done"
 title = "Audit-surfaced: Batch.fill_slots race — start_run errors crash the batch"
 scores = { d = 3, b = 5, u = 5 }
 acceptance_criteria = ["start_run/4 errors in Batch.fill_slots are handled without crashing the orchestrator", "Concurrent-batch race regression test (or a test that simulates the start_run error path)"]
@@ -931,8 +941,13 @@ Resolution candidates: (a) treat `start_run/4` errors as a dispatch failure and 
 
 Filed by audit-review against commit 9b686a9b on 2026-05-23; see `.audit/9b686a9-agent-registry.md`. Companion to the previous task ("Batch.fill_slots crashes after AgentRegistry exhaustion").
 """
+implemented = "lib/harness/batch.ex fill_slots/6 wraps start_run/4 in a case with {:no_available_agent, _} (retry) and {:error, reason} (settle_start_run_failure) branches; regression test (run-1779588540022-c798e382)"
+delivered_by = "cursor"
+verified = true
 created_at = "2026-05-23"
+started_at = "2026-05-24"
 scored_at = "2026-05-23"
+done_at = "2026-05-24"
 
 [[task]]
 id = "36"
@@ -962,7 +977,7 @@ scored_at = "2026-05-23"
 id = "37"
 phase = 3
 bundle = "resilience"
-status = "pending"
+status = "done"
 title = "Audit-surfaced: Repair loop ignores quota classification before resuming"
 scores = { d = 3, b = 6, u = 5 }
 acceptance_criteria = ["A repair-loop test where the resumed agent's output matches the quota patterns settles the run as failed without burning all configured attempts", "Repair-loop quota detection uses the same RetryPolicy / FailureClass surface the batch fail-over relies on"]
@@ -975,14 +990,19 @@ Resolution candidates: (a) classify the failed `verdict`+`agent_outcome` with `F
 
 Filed by audit-review against commit 348acb1b on 2026-05-23; see `.audit/348acb1-batch-orchestrator.md`.
 """
+implemented = "lib/harness/run.ex repairable?/1 + lib/harness/run/supervisor.ex now classify FailureClass before resuming the repair loop so quota-exhaustion verdicts skip repair; regression test + fake_adapter support (run-1779588540033-8df8da06)"
+delivered_by = "codex"
+verified = true
 created_at = "2026-05-23"
+started_at = "2026-05-24"
 scored_at = "2026-05-23"
+done_at = "2026-05-24"
 
 [[task]]
 id = "38"
 phase = 3
 bundle = "resilience"
-status = "pending"
+status = "done"
 title = "Audit-surfaced: Batch slot held until terminal_linger expires"
 scores = { d = 3, b = 3, u = 4 }
 acceptance_criteria = ["A two-item, max_concurrency=1 batch completes within materially less than 2 * terminal_linger of the runs' true settle time", "Crash handling still produces a Run.Result with reason {:run_crashed, _}"]
@@ -995,8 +1015,13 @@ Resolution: treat `{:harness_run, run_id, result}` as the slot-settling event �
 
 Filed by audit-review against commit 348acb1b on 2026-05-23; see `.audit/348acb1-batch-orchestrator.md`.
 """
+implemented = "lib/harness/batch.ex receive loop treats {:harness_run, run_id, result} as a settle event (settle_result/7 demonitors + Map.delete on the active slot), reverting the broken put_result that held the slot until terminal_linger; result field dropped from active_run typep; regression test (run-1779588540011-f4b6e4a3)"
+delivered_by = "codex"
+verified = true
 created_at = "2026-05-23"
+started_at = "2026-05-24"
 scored_at = "2026-05-23"
+done_at = "2026-05-24"
 
 [[task]]
 id = "39"
@@ -1070,7 +1095,7 @@ scored_at = "2026-05-23"
 id = "42"
 phase = 5
 bundle = "surface"
-status = "pending"
+status = "done"
 title = "Audit-surfaced: Refresh roadmap focus phase pin after Phase 1 closeout"
 scores = { d = 1, b = 3, u = 4 }
 acceptance_criteria = ["[focus] phase in roadmap/tasks.toml points at an active phase (one with pending tasks the user actively intends to ship next)", "ROADMAP.md's rendered focus block surfaces the right Up next / Last shipped for the chosen focus phase", "rmap doctor surfaces no FocusPhaseDone advisory"]
@@ -1087,5 +1112,31 @@ Judgment call belongs to the user; not auto-applied by audit-review because focu
 
 Filed by audit-review against commit 39c96db on 2026-05-23; see .audit/39c96db-docs-close-out-round-3a-do.md.
 """
+implemented = "Updated [focus] phase = 3 in roadmap/tasks.toml. Phase 3 (Batch & Resilience) has 5 in-progress tasks (29, 30, 35, 37, 38) — actively shipping. Phase 1 was done at the time of the audit; focus pin trivially follows in-progress work."
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-23"
 scored_at = "2026-05-23"
+done_at = "2026-05-24"
+
+[[task]]
+id = "43"
+phase = 4
+bundle = "multi-agent"
+status = "pending"
+title = "Dogfood verification reds on pre-existing TODO comments in dispatch base"
+scores = { d = 3, b = 6, u = 7 }
+markers = ["bug"]
+acceptance_criteria = ["Dispatched run does NOT red on TagTODO when the only TODO is in the dispatch base (not introduced by the agent)", "Regression test: dispatch base contains a `# TODO(...):` comment, agent's diff adds no TODOs, verification passes", "Dispatched run STILL reds on TagTODO when the agent ADDS a new TODO that was not in the dispatch base"]
+out_of_scope = ["Changing audit-review's TODO format (this fix is harness-side, not staged-review-side)", "Stripping TODOs from the dispatch base"]
+body = """
+When `staged-review:audit-review` runs on the default branch, it sometimes records a follow-up by inserting a literal `# TODO(Task NN): ...` comment into the source (e.g. audit commit 6a01b58 added `TODO(Task 35)` to `lib/harness/batch.ex`). Dispatched dogfood worktrees fork off HEAD on `development`, so they inherit those TODOs. The verification stack runs `mix credo --strict`, which fails the run on TagTODO — penalizing the dispatched agent for pre-existing debt unrelated to their task.
+
+Concrete impact, Round-3b: 4 of 5 dispatched tasks (29, 30, 37, 38) reded on their first verification pass solely because of the inherited `TODO(Task 35)` comment, then spent their repair cycle removing the comment instead of doing real task work. Task 35 (Cursor) absorbed it naturally because its implementation removed those exact lines.
+
+Resolution candidates: (a) harness's verification stack tolerates TODOs that pre-exist in the dispatch base (diff-aware credo: only fail on TODOs introduced by the agent); (b) harness dispatches off a "clean" ref (last commit before any audit) rather than HEAD; (c) audit-review records follow-ups in a format that doesn't trip TagTODO strict (e.g. `# AUDIT-FOLLOWUP(Task NN):` instead of `# TODO:`).
+
+(a) is the cleanest — preserves audit-review's existing UX and doesn't require dispatchers to maneuver around recent audits.
+"""
+created_at = "2026-05-24"
+scored_at = "2026-05-24"
