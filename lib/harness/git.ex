@@ -1,9 +1,10 @@
 defmodule Harness.Git do
-  @moduledoc false
+  @moduledoc """
+  Internal: thin git subprocess wrapper shared by `Harness.Worktree` and its sweeper.
 
-  # Thin git subprocess wrapper shared by Harness.Worktree and its sweeper.
-  # git is always invoked with an argument list (never a shell string) and an
-  # explicit `-C <repo>`, so no path is ever interpolated into a shell.
+  git is always invoked with an argument list (never a shell string) and an
+  explicit `-C <repo>`, so no path is ever interpolated into a shell.
+  """
 
   @typedoc "A failed git invocation: the argv, the exit status, the combined output."
   @type error :: {:git_failed, args :: [String.t()], status :: integer(), output :: String.t()}

@@ -26,9 +26,9 @@ defmodule Harness.AgentAdapter.Pi do
 
   pi auto-discovers `AGENTS.md` from cwd (walking up parent directories and
   reading `~/.pi/agent/AGENTS.md` for global preferences), the same mechanism
-  Codex uses. The canonical harness rule set rides in via that channel —
-  written into the run worktree by
-  `Harness.AgentAdapter.RulesInjection.install_codex_rules/1` and cleaned up by
+  Codex uses. `rule_channel/0` therefore returns `:codex_ephemeral_file`: the
+  canonical harness rule set is written into the run worktree by
+  `Harness.AgentAdapter.attach_rules/2` and cleaned up by
   `Harness.AgentRules.cleanup_injected_rules/1` before delivery.
 
   ## Session resume
@@ -54,9 +54,9 @@ defmodule Harness.AgentAdapter.Pi do
 
   use Harness.AgentAdapter
 
+  alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
-  alias Harness.AgentAdapter.RulesInjection
 
   # pi.dev exposes no permission-bypass flag — `:autonomous` is the default
   # behaviour of the binary, so the mode is accepted without adding anything
@@ -67,9 +67,13 @@ defmodule Harness.AgentAdapter.Pi do
   Declares pi.dev's headless capabilities: session resume and streaming output,
   with `:autonomous` the only permission mode.
   """
-  @impl Harness.AgentAdapter
+  @impl AgentAdapter
   @spec capabilities() :: Capabilities.t()
   def capabilities, do: %Capabilities{session_resume: true}
+
+  @impl AgentAdapter
+  @spec rule_channel() :: AgentAdapter.rule_channel()
+  def rule_channel, do: :codex_ephemeral_file
 
   @doc """
   Builds the `pi -p --mode json` headless command line for `invocation`.
@@ -79,17 +83,17 @@ defmodule Harness.AgentAdapter.Pi do
   when `session` is neither `nil` nor `:resume` (see the module doc — pi
   resumes the latest session via `--continue`, not a token).
   """
-  @impl Harness.AgentAdapter
-  @spec build_command(Invocation.t()) :: {:ok, Harness.AgentAdapter.command()} | {:error, term()}
+  @impl AgentAdapter
+  @spec build_command(Invocation.t()) :: {:ok, AgentAdapter.command()} | {:error, term()}
   def build_command(%Invocation{} = invocation) do
-    with :ok <- check_permission_mode(invocation.permission_mode),
-         :ok <- RulesInjection.install_codex_rules(invocation),
+    with {:ok, invocation} <- AgentAdapter.attach_rules(__MODULE__, invocation),
+         :ok <- check_permission_mode(invocation.permission_mode),
          {:ok, resume} <- resume_args(invocation.session) do
       argv =
         ["-p", "--mode", "json"] ++
-          Harness.AgentAdapter.model_args(invocation.model) ++
+          AgentAdapter.model_args(invocation.model) ++
           resume ++
-          [invocation.prompt]
+          [AgentAdapter.task_prompt(invocation)]
 
       env = Map.to_list(invocation.env)
       {:ok, {"pi", argv, env}}
