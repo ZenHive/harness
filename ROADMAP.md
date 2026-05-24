@@ -92,6 +92,7 @@
 | Task 43 | ✅ | 🎁 **multi-agent** · 🐛 Dogfood verification reds on pre-existing TODO comments in dispatch base [D:3/B:6/U:7 → Eff:2.17] 🎯 |
 | Task 52 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Add pi.dev headless adapter [D:5/B:8/U:7 → Eff:1.5] 🚀 |
 | Task 53 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Smoke-test pi-via-local-LLM on a low-D rmap task [D:2/B:4/U:4 → Eff:2.0] 🎯 |
+| Task 54 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Cost-aware agent capability declaration (:free vs :metered) [D:3/B:5/U:5 → Eff:1.67] 🚀 |
 <!-- TASKS:END -->
 
 ---

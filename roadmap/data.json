@@ -1842,6 +1842,44 @@
       "created_at": "2026-05-24",
       "scored_at": "2026-05-24",
       "cross_repo": []
+    },
+    {
+      "id": "54",
+      "phase": 4,
+      "bundle": "multi-agent",
+      "milestone": "v0_3",
+      "status": "pending",
+      "title": "Cost-aware agent capability declaration (:free vs :metered)",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.67,
+      "markers": [
+        "parallel"
+      ],
+      "depends_on": [
+        52,
+        53
+      ],
+      "acceptance_criteria": [
+        "Harness.AgentAdapter capabilities/0 includes a :cost_tier field (default :metered for backwards compat with existing adapters)",
+        "Pi adapter (Task 52) declares :cost_tier = :free",
+        "Existing adapters keep working unchanged (default :metered preserves their behavior)",
+        "AgentRegistry exposes a filter or query for `agents with :cost_tier == :free` — used by future selection-policy work",
+        "Shared conformance suite stays green — :cost_tier becomes part of the contract"
+      ],
+      "out_of_scope": [
+        "Cheapest-first selection policy in AgentRegistry (separate task, post-Task 53)",
+        "Cost-budget tracking / per-batch cost caps",
+        "Rmap-side cost-aware task selection (rmap upstream change, separate task)",
+        "Multi-tier cost ladders (just :free | :metered for MVP)"
+      ],
+      "body": "Add a :cost_tier axis (e.g. :free | :metered) to the Harness.AgentAdapter capability\ndeclaration, and a registry filter that exposes \"list available free-tier adapters\" as\na first-class query. This is the MINIMUM cost-aware dispatch primitive — it makes cost\nvisible to the orchestrator without yet baking in any selection policy. The policy\n(\"cheapest-first,\" \"free-then-paid-fallback,\" cost-budget caps, rmap-side cost-aware\ntask selection) emerges as a SEPARATE follow-up task once Task 53's smoke test tells\nus whether pi+local-LLM actually delivers useful work — designing the policy before\nthat data is premature optimization. Pi (Task 52) is the first :free adapter; existing\nmetered adapters (Claude/Cursor/Codex/Grok/Antigravity) get :metered explicitly.\n",
+      "created_at": "2026-05-24",
+      "scored_at": "2026-05-24",
+      "cross_repo": []
     }
   ]
 }
