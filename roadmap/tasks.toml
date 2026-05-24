@@ -762,6 +762,8 @@ scores = { d = 3, b = 3, u = 6 }
 acceptance_criteria = ["A new adapter implementing only build_command/1 + capabilities/0 compiles and passes the conformance suite", "All existing adapters keep passing the conformance suite unchanged", "Duplicated classify_message/2 and terminate/1 bodies are removed from the adapter modules"]
 body = "Building the Codex, Cursor, Grok and Antigravity adapters surfaced that classify_message/2, terminate/1, and the --model argv helper are byte-identical across every adapter (Claude, Codex, Cursor, Grok, Antigravity, FakeAdapter). Hoist them into the behaviour via `use Harness.AgentAdapter` + defoverridable, so a new adapter declares only what is genuinely agent-specific (build_command/1, capabilities/0). Not an abstraction leak — the contract held — but pure duplication every new adapter re-copies. Surfaced by the first parallel dogfood batch (Tasks 13-15)."
 implemented = "Introduced `use Harness.AgentAdapter` + defoverridable defaults (top-level provider fns for classify/terminate + public model_args/1 helper). Switched all 6 adapters to `use` and removed duplicated bodies + unused aliases/helpers. Updated test MinimalAdapter + added coverage test. Full stack (295 tests 0 failures incl. all conformances, credo/dialyzer/doctor/sobelow clean) passes."
+delivered_by = "Grok"
+verified = true
 created_at = "2026-05-21"
 started_at = "2026-05-24"
 scored_at = "2026-05-21"
@@ -772,16 +774,20 @@ id = "28"
 phase = 3
 bundle = "resilience"
 milestone = "v0_2"
-status = "in_progress"
+status = "done"
 title = "Wire the retry policy into the batch orchestrator"
 scores = { d = 4, b = 6, u = 6 }
 depends_on = ["9", "10"]
 acceptance_criteria = ["A transient failure in a batch run is retried per the injected RetryPolicy before its result lands in the batch result", "A quota-exhausted or terminal failure is not retried — it settles into the batch result immediately", "The concurrency cap is respected while retries are in flight", "The retry policy is injectable per batch and defaults from :harness, :retry_policy"]
 out_of_scope = ["Quota fail-over to a different agent — that is the capability registry's job (Task 16)", "The repair loop — Task 11's :verification_red feedback is distinct from transient-failure retry"]
 body = "Harness.Run.RetryPolicy (Task 10) ships as an injectable helper — RetryPolicy.run/2 wraps a `fn -> Result.t()` loop — but nothing calls it. Harness.Batch (Task 9) was built in the same parallel dogfood batch off the same HEAD, so it fans runs out but never applies the retry policy: a transient failure (a process crash, a flaky check) in a batch run is reported, not retried. Wire the retry policy into the batch orchestrator so each run's lifecycle is wrapped by RetryPolicy.run/2, with the policy injectable per batch via the :retry_policy opt already documented on Harness.Run.Supervisor.start_run/4. Transient failures retry with capped backoff; quota-exhausted and terminal failures are not retried — they settle into the batch result as-is. The concurrency cap must still hold while retries are in flight. Surfaced by the parallel multi-agent dogfood batch that delivered Tasks 9-11."
+implemented = "Rewrote Batch.fill_slots and follow-up dispatch hooks to delegate every Run start through RetryPolicy.run/2 — the orchestrator now consumes retry classifications natively, propagates max-attempts surrender as :failed, and exposes the wired-in policy via Batch.start_link opts. Added test coverage for the retry-then-succeed and retry-then-give-up paths, including transient (worktree) and quota classifications."
+delivered_by = "Cursor"
+verified = true
 created_at = "2026-05-22"
 started_at = "2026-05-24"
 scored_at = "2026-05-22"
+done_at = "2026-05-24"
 
 [[task]]
 id = "29"
@@ -957,7 +963,7 @@ done_at = "2026-05-24"
 id = "36"
 phase = 4
 bundle = "multi-agent"
-status = "in_progress"
+status = "done"
 title = "Audit-surfaced: Harness-injected rule files get committed by Worktree.commit"
 scores = { d = 4, b = 7, u = 6 }
 acceptance_criteria = ["A no-op agent run for Claude/Codex/Cursor settles :no_changes (harness-injected rule files do not turn into a delivery commit)", "Regression test per affected adapter covering the no-op path", "Existing AGENTS.md in the target repo (if any) is not modified by the harness-injected block ending up in the run's delivery commit"]
@@ -974,9 +980,13 @@ Regression test: an adapter `build_command/1` for each of Claude/Codex/Cursor + 
 
 Filed by audit-review against commit 826aaff3 on 2026-05-23; see `.audit/826aaff-harness-owned-rule-set.md` (Codex Pri 9, Claude verified Worktree.commit uses `git add -A`).
 """
+implemented = "Added Harness.AgentRules.cleanup_injected_rules/1 (deletes Claude/Cursor rule files; strips harness block from AGENTS.md while preserving legitimate Codex content). Worktree.commit/2 and Worktree.diff_size/1 call it before staging so injected rules never reach the agent's branch. Closeout: also added sobelow_skip annotations on three new helpers (paths built via worktree_file!/2 — false-positive class)."
+delivered_by = "Codex"
+verified = true
 created_at = "2026-05-23"
 started_at = "2026-05-24"
 scored_at = "2026-05-23"
+done_at = "2026-05-24"
 
 [[task]]
 id = "37"
@@ -1128,7 +1138,7 @@ done_at = "2026-05-24"
 id = "43"
 phase = 4
 bundle = "multi-agent"
-status = "in_progress"
+status = "done"
 title = "Dogfood verification reds on pre-existing TODO comments in dispatch base"
 scores = { d = 3, b = 6, u = 7 }
 markers = ["bug"]
@@ -1143,6 +1153,10 @@ Resolution candidates: (a) harness's verification stack tolerates TODOs that pre
 
 (a) is the cleanest — preserves audit-review's existing UX and doesn't require dispatchers to maneuver around recent audits.
 """
+implemented = "Worktree handle now captures :base_sha at carve-out (used as the diff baseline). Verification.Check gains an optional post_process hook; new Harness.Verification.BaselineFilter.Credo invokes 'git diff --name-only base..HEAD' to get changed files, parses credo's JSON, and drops TagTODO findings outside those files (i.e. inherited debt). Verification.run/2 threads :base_ref through post_process_opts. Closeout: added :jason to dialyzer plt_add_apps (new lib/ caller); fixed t:post_process/0 doc-ref shape."
+delivered_by = "Claude"
+verified = true
 created_at = "2026-05-24"
 started_at = "2026-05-24"
 scored_at = "2026-05-24"
+done_at = "2026-05-24"
