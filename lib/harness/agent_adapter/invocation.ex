@@ -39,7 +39,8 @@ defmodule Harness.AgentAdapter.Invocation do
           permission_mode: atom(),
           model: String.t() | nil,
           adapter_opts: keyword(),
-          env: %{optional(String.t()) => String.t() | false}
+          env: %{optional(String.t()) => String.t() | false},
+          rules: Harness.AgentAdapter.RuleDelivery.t() | nil
         }
 
   @enforce_keys [:prompt, :cwd, :task_id]
@@ -51,6 +52,7 @@ defmodule Harness.AgentAdapter.Invocation do
     permission_mode: :autonomous,
     model: nil,
     adapter_opts: [],
-    env: %{}
+    env: %{},
+    rules: nil
   ]
 end

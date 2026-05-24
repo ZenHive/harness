@@ -13,13 +13,18 @@ defmodule Harness.AgentAdapter.ConformanceCase do
 
   An adapter contributes four callbacks to the otherwise-generic run machinery
   (`Harness.AgentAdapter.invoke/2`, `Harness.AgentAdapter.Driver`). This suite
-  pins the contract those callbacks must satisfy, across the five concerns the
+  pins the contract those callbacks must satisfy, across the six concerns the
   machinery depends on:
 
     * **Invocation** — `c:Harness.AgentAdapter.build_command/1` returns a
       spawnable `{executable, argv, env}` for the autonomous baseline and for
       every permission mode the adapter declares, and rejects an undeclared mode
       rather than falling back silently.
+    * **Rule injection** — `c:Harness.AgentAdapter.rule_channel/0` declares how
+      harness-owned rules reach the agent; `build_command/1` output (argv and/or
+      worktree files) reflects that channel. Adapters with `rule_channel/0` other
+      than `:none` must call `Harness.AgentAdapter.attach_rules/2` so direct unit
+      tests and `invoke/2` share the same delivery path.
     * **Raw-output capture** — `c:Harness.AgentAdapter.classify_message/2` maps a
       port data chunk to `{:output, bytes, run}` with the bytes **verbatim**:
       harness passes agent output through unparsed.
@@ -68,7 +73,9 @@ defmodule Harness.AgentAdapter.ConformanceCase do
       alias Harness.AgentAdapter.Driver
       alias Harness.AgentAdapter.Invocation
       alias Harness.AgentAdapter.Outcome
+      alias Harness.AgentAdapter.RulesInjection
       alias Harness.AgentAdapter.Run
+      alias Harness.AgentRules
       alias Harness.GitFixture
       alias Harness.ProcessFixture
 
@@ -108,6 +115,70 @@ defmodule Harness.AgentAdapter.ConformanceCase do
 
           assert is_boolean(caps.session_resume)
           assert is_boolean(caps.streaming_output)
+        end
+      end
+
+      describe "rule_channel/0 — harness-owned rule injection" do
+        setup do
+          cwd = Path.join(System.tmp_dir!(), "harness-rules-#{System.unique_integer()}")
+          File.mkdir_p!(cwd)
+          on_exit(fn -> File.rm_rf!(cwd) end)
+          {:ok, cwd: cwd}
+        end
+
+        test "declares a supported rule delivery channel", %{cwd: _cwd} do
+          channel = @adapter.rule_channel()
+
+          assert channel in [
+                   :system_prompt_file,
+                   :codex_ephemeral_file,
+                   :cursor_ephemeral_file,
+                   :prompt_preamble,
+                   :none
+                 ]
+        end
+
+        @tag :requires_rule_injection
+        test "delivers harness-owned rules through build_command/1 output", %{cwd: cwd} do
+          channel = @adapter.rule_channel()
+
+          if channel == :none do
+            :ok
+          else
+            inv =
+              invocation(
+                cwd: cwd,
+                prompt: "conformance rules probe"
+              )
+
+            assert {:ok, {_executable, argv, _env}} = @adapter.build_command(inv)
+            assert_rules_delivered(channel, cwd, argv, "conformance rules probe")
+          end
+        end
+
+        defp assert_rules_delivered(:system_prompt_file, cwd, argv, _prompt) do
+          rules_path = Path.join(cwd, AgentRules.system_prompt_rel_path())
+          assert File.exists?(rules_path)
+          assert "--append-system-prompt-file" in argv
+          assert rules_path in argv
+          assert File.read!(rules_path) == AgentRules.render()
+        end
+
+        defp assert_rules_delivered(:codex_ephemeral_file, cwd, _argv, _prompt) do
+          agents_path = Path.join(cwd, "AGENTS.md")
+          assert File.exists?(agents_path)
+          assert File.read!(agents_path) =~ AgentRules.render()
+        end
+
+        defp assert_rules_delivered(:cursor_ephemeral_file, cwd, _argv, _prompt) do
+          cursor_path = Path.join(cwd, ".cursor/rules/harness-operational.mdc")
+          assert File.exists?(cursor_path)
+          assert File.read!(cursor_path) =~ AgentRules.render()
+        end
+
+        defp assert_rules_delivered(:prompt_preamble, _cwd, argv, prompt) do
+          expected = RulesInjection.prepend_prompt(prompt)
+          assert expected in argv
         end
       end
 

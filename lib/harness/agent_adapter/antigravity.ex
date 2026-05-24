@@ -31,9 +31,9 @@ defmodule Harness.AgentAdapter.Antigravity do
 
   use Harness.AgentAdapter
 
+  alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
-  alias Harness.AgentAdapter.RulesInjection
 
   @permission_modes %{autonomous: "--dangerously-skip-permissions"}
 
@@ -41,7 +41,7 @@ defmodule Harness.AgentAdapter.Antigravity do
   Declares Antigravity's capabilities: session resume and streaming output,
   with `:autonomous` the only permission mode.
   """
-  @impl Harness.AgentAdapter
+  @impl AgentAdapter
   @spec capabilities() :: Capabilities.t()
   def capabilities do
     %Capabilities{
@@ -51,6 +51,10 @@ defmodule Harness.AgentAdapter.Antigravity do
     }
   end
 
+  @impl AgentAdapter
+  @spec rule_channel() :: AgentAdapter.rule_channel()
+  def rule_channel, do: :prompt_preamble
+
   @doc """
   Builds the `agy` headless command line for `invocation`.
 
@@ -58,13 +62,14 @@ defmodule Harness.AgentAdapter.Antigravity do
   `{:error, {:unsupported_permission_mode, mode}}` for a permission mode outside `capabilities/0`,
   and `{:error, {:unsupported_session_token, value}}` when `session` is neither `nil` nor `:resume`.
   """
-  @impl Harness.AgentAdapter
-  @spec build_command(Invocation.t()) :: {:ok, Harness.AgentAdapter.command()} | {:error, term()}
+  @impl AgentAdapter
+  @spec build_command(Invocation.t()) :: {:ok, AgentAdapter.command()} | {:error, term()}
   def build_command(%Invocation{} = invocation) do
-    with :ok <- validate_model(invocation.model),
+    with {:ok, invocation} <- AgentAdapter.attach_rules(__MODULE__, invocation),
+         :ok <- validate_model(invocation.model),
          {:ok, permission} <- permission_flag(invocation.permission_mode),
          {:ok, resume} <- resume_args(invocation.session) do
-      argv = ["-p", RulesInjection.prepend_prompt(invocation.prompt), permission] ++ resume
+      argv = ["-p", AgentAdapter.task_prompt(invocation), permission] ++ resume
       env = Map.to_list(invocation.env)
       {:ok, {"agy", argv, env}}
     end

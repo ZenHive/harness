@@ -8,16 +8,19 @@ defmodule Harness.AgentAdapterTest do
   alias Harness.FakeAdapter
   alias Harness.ProcessFixture
 
-  # Minimal adapter implementing *only* the two required callbacks
-  # (capabilities/0 + build_command/1). Proves defaults for classify_message/2
-  # and terminate/1 satisfy the contract; exercises supports?/2 false branches
-  # and the build_command error path of invoke/2.
+  # Minimal adapter implementing the three required callbacks
+  # (capabilities/0, rule_channel/0, build_command/1). Proves defaults for
+  # classify_message/2 and terminate/1 satisfy the contract; exercises
+  # supports?/2 false branches and the build_command error path of invoke/2.
   defmodule MinimalAdapter do
     @moduledoc false
     use AgentAdapter
 
     @impl AgentAdapter
     def capabilities, do: %Capabilities{streaming_output: false}
+
+    @impl AgentAdapter
+    def rule_channel, do: :none
 
     @impl AgentAdapter
     def build_command(_invocation), do: {:error, :not_implemented}

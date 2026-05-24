@@ -21,6 +21,9 @@ defmodule Harness.AgentAdapter.DriverTest do
     def capabilities, do: %Capabilities{}
 
     @impl Harness.AgentAdapter
+    def rule_channel, do: :none
+
+    @impl Harness.AgentAdapter
     def build_command(_invocation), do: {:ok, {"/bin/echo", ["x"], []}}
 
     @impl Harness.AgentAdapter

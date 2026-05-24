@@ -30,6 +30,9 @@ defmodule Harness.BatchTest do
     def capabilities, do: %Capabilities{session_resume: true}
 
     @impl Harness.AgentAdapter
+    def rule_channel, do: :none
+
+    @impl Harness.AgentAdapter
     def build_command(%Invocation{} = invocation) do
       {:ok, {"/bin/echo", ["subscription quota exhausted for #{invocation.task_id}"], []}}
     end
@@ -51,6 +54,9 @@ defmodule Harness.BatchTest do
 
     @impl Harness.AgentAdapter
     def capabilities, do: %Capabilities{session_resume: true}
+
+    @impl Harness.AgentAdapter
+    def rule_channel, do: :none
 
     @impl Harness.AgentAdapter
     def build_command(%Invocation{} = invocation) do
@@ -76,6 +82,9 @@ defmodule Harness.BatchTest do
 
     @impl Harness.AgentAdapter
     def capabilities, do: %Capabilities{session_resume: true}
+
+    @impl Harness.AgentAdapter
+    def rule_channel, do: :none
 
     @impl Harness.AgentAdapter
     def build_command(%Invocation{task_id: task_id}) do
@@ -388,6 +397,9 @@ defmodule Harness.BatchTest do
 
     @impl Harness.AgentAdapter
     def capabilities, do: %Capabilities{session_resume: true}
+
+    @impl Harness.AgentAdapter
+    def rule_channel, do: :none
 
     @impl Harness.AgentAdapter
     def build_command(_invocation), do: {:ok, {"/bin/true", [], []}}

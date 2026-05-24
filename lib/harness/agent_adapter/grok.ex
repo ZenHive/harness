@@ -52,9 +52,9 @@ defmodule Harness.AgentAdapter.Grok do
 
   use Harness.AgentAdapter
 
+  alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
-  alias Harness.AgentAdapter.RulesInjection
 
   # Harness permission-mode vocabulary -> Grok --permission-mode value.
   @permission_modes %{autonomous: "bypassPermissions"}
@@ -63,9 +63,13 @@ defmodule Harness.AgentAdapter.Grok do
   Declares Grok's headless capabilities: session resume and streaming output,
   with `:autonomous` the only permission mode.
   """
-  @impl Harness.AgentAdapter
+  @impl AgentAdapter
   @spec capabilities() :: Capabilities.t()
   def capabilities, do: %Capabilities{session_resume: true}
+
+  @impl AgentAdapter
+  @spec rule_channel() :: AgentAdapter.rule_channel()
+  def rule_channel, do: :prompt_preamble
 
   @doc """
   Builds the `grok -p` headless command line for `invocation`.
@@ -75,16 +79,17 @@ defmodule Harness.AgentAdapter.Grok do
   when `session` is neither `nil` nor `:resume` (see the module doc — Grok
   resumes the latest session in `cwd`, not a token).
   """
-  @impl Harness.AgentAdapter
-  @spec build_command(Invocation.t()) :: {:ok, Harness.AgentAdapter.command()} | {:error, term()}
+  @impl AgentAdapter
+  @spec build_command(Invocation.t()) :: {:ok, AgentAdapter.command()} | {:error, term()}
   def build_command(%Invocation{} = invocation) do
-    with {:ok, permission} <- permission_flag(invocation.permission_mode),
+    with {:ok, invocation} <- AgentAdapter.attach_rules(__MODULE__, invocation),
+         {:ok, permission} <- permission_flag(invocation.permission_mode),
          {:ok, resume} <- resume_args(invocation.session) do
       argv =
         ["--output-format", "streaming-json", "--permission-mode", permission] ++
-          Harness.AgentAdapter.model_args(invocation.model) ++
+          AgentAdapter.model_args(invocation.model) ++
           resume ++
-          ["-p", RulesInjection.prepend_prompt(invocation.prompt)]
+          ["-p", AgentAdapter.task_prompt(invocation)]
 
       env = Map.to_list(invocation.env)
       {:ok, {"grok", argv, env}}

@@ -10,21 +10,27 @@ defmodule Harness.FakeAdapter do
 
   use Harness.AgentAdapter
 
+  alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
 
-  @impl Harness.AgentAdapter
+  @impl AgentAdapter
   def capabilities do
     %Capabilities{session_resume: true, permission_modes: [:autonomous, :plan]}
   end
 
-  @impl Harness.AgentAdapter
+  @impl AgentAdapter
+  def rule_channel, do: :none
+
+  @impl AgentAdapter
   def build_command(%Invocation{permission_mode: mode, adapter_opts: opts} = invocation) do
     # Mirror a real adapter: a permission mode outside capabilities/0 is a
     # build_command error, never a silent fallback (the conformance contract).
     if mode in capabilities().permission_modes do
-      {exe, argv, _} = command(Keyword.get(opts, :command, :echo), invocation)
-      {:ok, {exe, argv, Map.to_list(invocation.env)}}
+      with {:ok, invocation} <- AgentAdapter.attach_rules(__MODULE__, invocation) do
+        {exe, argv, _} = command(Keyword.get(opts, :command, :echo), invocation)
+        {:ok, {exe, argv, Map.to_list(invocation.env)}}
+      end
     else
       {:error, {:unsupported_permission_mode, mode}}
     end

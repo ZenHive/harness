@@ -47,9 +47,9 @@ defmodule Harness.AgentAdapter.Codex do
 
   use Harness.AgentAdapter
 
+  alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
-  alias Harness.AgentAdapter.RulesInjection
 
   # The permission modes Codex's headless mode supports. :autonomous is the
   # universal baseline; it maps to running with every confirmation skipped.
@@ -59,9 +59,13 @@ defmodule Harness.AgentAdapter.Codex do
   Declares Codex's headless capabilities: session resume and streaming output,
   with `:autonomous` the only permission mode.
   """
-  @impl Harness.AgentAdapter
+  @impl AgentAdapter
   @spec capabilities() :: Capabilities.t()
   def capabilities, do: %Capabilities{session_resume: true}
+
+  @impl AgentAdapter
+  @spec rule_channel() :: AgentAdapter.rule_channel()
+  def rule_channel, do: :codex_ephemeral_file
 
   @doc """
   Builds the `codex exec` headless command line for `invocation`.
@@ -71,18 +75,18 @@ defmodule Harness.AgentAdapter.Codex do
   when `session` is neither `nil` nor `:resume` (see the module doc — Codex
   resumes the latest session in `cwd` via `resume --last`, not a token).
   """
-  @impl Harness.AgentAdapter
-  @spec build_command(Invocation.t()) :: {:ok, Harness.AgentAdapter.command()} | {:error, term()}
+  @impl AgentAdapter
+  @spec build_command(Invocation.t()) :: {:ok, AgentAdapter.command()} | {:error, term()}
   def build_command(%Invocation{} = invocation) do
-    with :ok <- check_permission_mode(invocation.permission_mode),
-         :ok <- RulesInjection.install_codex_rules(invocation),
+    with {:ok, invocation} <- AgentAdapter.attach_rules(__MODULE__, invocation),
+         :ok <- check_permission_mode(invocation.permission_mode),
          {:ok, subcommand, resume} <- session_args(invocation.session) do
       argv =
         subcommand ++
           ["--json", "--dangerously-bypass-approvals-and-sandbox"] ++
-          Harness.AgentAdapter.model_args(invocation.model) ++
+          AgentAdapter.model_args(invocation.model) ++
           resume ++
-          [invocation.prompt]
+          [AgentAdapter.task_prompt(invocation)]
 
       env = Map.to_list(invocation.env)
       {:ok, {"codex", argv, env}}

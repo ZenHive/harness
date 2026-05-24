@@ -13,7 +13,7 @@ defmodule Harness.AgentAdapter do
   ## Implementing an adapter
 
   An adapter `use`s `Harness.AgentAdapter` (which declares the `@behaviour`) and
-  implements the two required callbacks; `classify_message/2` and `terminate/1`
+  implements the three required callbacks; `classify_message/2` and `terminate/1`
   have defaults (universal port classification and kill) and need only be
   overridden for agent-specific logic:
 
@@ -26,17 +26,24 @@ defmodule Harness.AgentAdapter do
         def capabilities, do: %Capabilities{session_resume: true}
 
         @impl true
-        def build_command(%Invocation{} = invocation),
-          do: {:ok, {"my-agent", ["-p", invocation.prompt], Map.to_list(invocation.env)}}
+        def rule_channel, do: :prompt_preamble
+
+        @impl true
+        def build_command(%Invocation{rules: rules} = invocation) do
+          prompt = rules.prompt || invocation.prompt
+          {:ok, {"my-agent", ["-p", prompt], Map.to_list(invocation.env)}}
+        end
       end
 
   Harness spawns the adapter with `invoke/2` — there is no per-adapter
-  invocation boilerplate.
+  invocation boilerplate. `invoke/2` attaches harness-owned rules (via
+  `c:rule_channel/0`) before calling `c:build_command/1`.
 
   ## Run lifecycle
 
-  `invoke/2` builds the command via the adapter's `c:build_command/1` and spawns
-  the agent, returning a `Harness.AgentAdapter.Run`. The process that calls
+  `invoke/2` attaches harness-owned rules (via `c:rule_channel/0`), builds the
+  command via the adapter's `c:build_command/1`, and spawns the agent, returning
+  a `Harness.AgentAdapter.Run`. The process that calls
   `invoke/2` becomes the port's connected process, so every subsequent port
   message is delivered to *it* — that process feeds each message through the
   adapter's `c:classify_message/2`, which is how raw output is captured and
@@ -62,6 +69,8 @@ defmodule Harness.AgentAdapter do
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.OSProcess
+  alias Harness.AgentAdapter.RuleDelivery
+  alias Harness.AgentAdapter.RulesInjection
   alias Harness.AgentAdapter.Run
 
   # The shell and script every agent is spawned through — see spawn_run/5 for
@@ -118,6 +127,27 @@ defmodule Harness.AgentAdapter do
   """
   @callback capabilities() :: Capabilities.t()
 
+  @typedoc """
+  How harness-owned rules reach the agent at dispatch time.
+
+    * `:system_prompt_file` — ephemeral file plus argv flags (Claude).
+    * `:codex_ephemeral_file` — ephemeral `AGENTS.md` in the worktree.
+    * `:cursor_ephemeral_file` — ephemeral `.cursor/rules/` file in the worktree.
+    * `:prompt_preamble` — rules prepended to the task prompt (Grok, Antigravity).
+    * `:none` — test doubles only; no rule injection.
+  """
+  @type rule_channel() ::
+          :system_prompt_file
+          | :codex_ephemeral_file
+          | :cursor_ephemeral_file
+          | :prompt_preamble
+          | :none
+
+  @doc """
+  Declares how harness-owned rules are delivered for this agent.
+  """
+  @callback rule_channel() :: rule_channel()
+
   @doc """
   Builds the headless command line for invoking the agent.
 
@@ -143,8 +173,8 @@ defmodule Harness.AgentAdapter do
 
   # Default implementations for the two universal callbacks. Adapters `use
   # Harness.AgentAdapter` inherit these via the forwarding def + defoverridable;
-  # they only implement capabilities/0 and build_command/1 unless they need custom
-  # classification or termination logic.
+  # they only implement capabilities/0, rule_channel/0, and build_command/1 unless
+  # they need custom classification or termination logic.
   @doc "Default implementation (port data → raw output, exit_status → terminated)."
   @spec classify_message(term(), Run.t()) :: classification()
   def classify_message({port, {:data, data}}, %Run{port: port} = run), do: {:output, data, run}
@@ -156,6 +186,33 @@ defmodule Harness.AgentAdapter do
   def terminate(%Run{} = run), do: OSProcess.kill(run)
 
   @doc """
+  Attaches harness-owned rules to `invocation` per the adapter's `c:rule_channel/0`.
+
+  Idempotent — a second call on an invocation that already carries `%RuleDelivery{}`
+  is a no-op. Called by `invoke/2` before `c:build_command/1`; adapters may also
+  call it at the top of `build_command/1` so direct unit tests exercise the same
+  path as a live run.
+  """
+  @spec attach_rules(module(), Invocation.t()) :: {:ok, Invocation.t()} | {:error, term()}
+  def attach_rules(_adapter, %Invocation{rules: %RuleDelivery{}} = invocation), do: {:ok, invocation}
+
+  def attach_rules(adapter, %Invocation{} = invocation) do
+    case prepare_rule_delivery(adapter.rule_channel(), invocation) do
+      {:ok, delivery} -> {:ok, %{invocation | rules: delivery}}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @doc """
+  Returns the task prompt after rule delivery — `rules.prompt` when the channel
+  prepends a preamble, otherwise the original `invocation.prompt`.
+  """
+  @spec task_prompt(Invocation.t()) :: String.t()
+  def task_prompt(%Invocation{rules: %RuleDelivery{prompt: prompt}}) when is_binary(prompt), do: prompt
+
+  def task_prompt(%Invocation{prompt: prompt}), do: prompt
+
+  @doc """
   Spawns `adapter` for an invocation and returns a run handle.
 
   Builds the command with the adapter's `c:build_command/1`, spawns it over a
@@ -165,9 +222,9 @@ defmodule Harness.AgentAdapter do
   """
   @spec invoke(module(), Invocation.t()) :: {:ok, Run.t()} | {:error, term()}
   def invoke(adapter, %Invocation{} = invocation) do
-    case adapter.build_command(invocation) do
-      {:ok, {executable, argv, env}} -> spawn_run(adapter, invocation, executable, argv, env)
-      {:error, _reason} = error -> error
+    with {:ok, invocation} <- attach_rules(adapter, invocation),
+         {:ok, {executable, argv, env}} <- adapter.build_command(invocation) do
+      spawn_run(adapter, invocation, executable, argv, env)
     end
   end
 
@@ -252,4 +309,33 @@ defmodule Harness.AgentAdapter do
   defp capability_supported?(%Capabilities{streaming_output: value}, :streaming_output), do: value
 
   defp capability_supported?(%Capabilities{permission_modes: modes}, {:permission_mode, mode}), do: mode in modes
+
+  @spec prepare_rule_delivery(rule_channel(), Invocation.t()) ::
+          {:ok, RuleDelivery.t()} | {:error, term()}
+  defp prepare_rule_delivery(:none, _invocation), do: {:ok, %RuleDelivery{}}
+
+  defp prepare_rule_delivery(:system_prompt_file, invocation) do
+    case RulesInjection.claude_flags(invocation) do
+      {:ok, flags} -> {:ok, %RuleDelivery{argv_flags: flags}}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp prepare_rule_delivery(:codex_ephemeral_file, invocation) do
+    case RulesInjection.install_codex_rules(invocation) do
+      :ok -> {:ok, %RuleDelivery{}}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp prepare_rule_delivery(:cursor_ephemeral_file, invocation) do
+    case RulesInjection.install_cursor_rules(invocation) do
+      :ok -> {:ok, %RuleDelivery{}}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp prepare_rule_delivery(:prompt_preamble, invocation) do
+    {:ok, %RuleDelivery{prompt: RulesInjection.prepend_prompt(invocation.prompt)}}
+  end
 end

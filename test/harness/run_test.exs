@@ -26,6 +26,9 @@ defmodule Harness.RunTest do
     def capabilities, do: %Capabilities{}
 
     @impl Harness.AgentAdapter
+    def rule_channel, do: :none
+
+    @impl Harness.AgentAdapter
     def build_command(_invocation), do: raise("boom in build_command")
 
     @impl Harness.AgentAdapter
@@ -46,6 +49,9 @@ defmodule Harness.RunTest do
 
     @impl Harness.AgentAdapter
     def capabilities, do: %Capabilities{}
+
+    @impl Harness.AgentAdapter
+    def rule_channel, do: :none
 
     @impl Harness.AgentAdapter
     def build_command(_invocation) do
@@ -72,6 +78,9 @@ defmodule Harness.RunTest do
 
     @impl Harness.AgentAdapter
     def capabilities, do: %Capabilities{}
+
+    @impl Harness.AgentAdapter
+    def rule_channel, do: :none
 
     @impl Harness.AgentAdapter
     def build_command(%{adapter_opts: opts}) do

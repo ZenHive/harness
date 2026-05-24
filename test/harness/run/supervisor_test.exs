@@ -17,6 +17,9 @@ defmodule Harness.Run.SupervisorTest do
     def capabilities, do: %Capabilities{session_resume: false}
 
     @impl Harness.AgentAdapter
+    def rule_channel, do: :none
+
+    @impl Harness.AgentAdapter
     def build_command(_invocation), do: raise("unsupported adapter should be rejected before build_command/1")
 
     @impl Harness.AgentAdapter
