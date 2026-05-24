@@ -48,9 +48,14 @@ defmodule Harness.Run do
 
   `cancel/1` aborts an in-flight run; a per-run lifetime budget does the same
   when it elapses. Both kill the in-flight step task and SIGKILL the agent if
-  one is running, then settle `failed`. Crash isolation is structural — each run
-  is a `:temporary` child of `Harness.Run.Supervisor` (a `:one_for_one`
-  DynamicSupervisor), so one run crashing never touches a sibling.
+  one is running, then settle `failed`. The lifetime budget is a last-resort
+  deadline — it force-settles even when the agent run handle never arrived (a
+  hung adapter `build_command`/`invoke`). In that race a just-spawned OS
+  process whose pid was never received may leak; the boot-time
+  `Harness.Worktree.Sweeper` reaps its working directory across restarts.
+  Crash isolation is structural — each run is a `:temporary` child of
+  `Harness.Run.Supervisor` (a `:one_for_one` DynamicSupervisor), so one run
+  crashing never touches a sibling.
 
   ## Observability
 
@@ -459,19 +464,8 @@ defmodule Harness.Run do
     :keep_state_and_data
   end
 
-  defp handle_common({:timeout, :lifetime}, :lifetime, :running, %{agent_run: nil, cancel_requested: nil} = data) do
-    {:keep_state, %{data | cancel_requested: {:timed_out, nil}}}
-  end
-
-  defp handle_common({:timeout, :lifetime}, :lifetime, :running, %{agent_run: nil}) do
-    # A cancel is already deferred and will settle the run once the agent
-    # handle arrives — don't clobber its pending reply target with the
-    # timeout's.
-    :keep_state_and_data
-  end
-
   defp handle_common({:timeout, :lifetime}, :lifetime, _state, data) do
-    do_cancel(data, :timed_out, nil)
+    force_settle_lifetime(data)
   end
 
   # Stale task messages (a result or DOWN from a task already consumed or
@@ -492,6 +486,24 @@ defmodule Harness.Run do
     terminate_agent(data)
     data = %{data | task: nil, agent_run: nil, cancel_requested: nil, reason: reason}
     actions = if from, do: [{:reply, from, :ok}], else: []
+    {:next_state, :failed, data, actions}
+  end
+
+  # Force-settles `:failed` with `:timed_out` when the lifetime budget elapses.
+  # The lifetime timer is the last-resort deadline: it fires regardless of
+  # whether `{:run_handle, _}` has arrived, so a hung adapter
+  # `build_command`/`invoke` cannot wedge the run forever. Trade-off: with
+  # `agent_run: nil` there is nothing to SIGKILL directly — killing the driver
+  # task closes its port and a just-spawned OS process whose pid we never
+  # received may leak. The boot-time `Harness.Worktree.Sweeper` reaps its
+  # working directory across restarts. A deferred cancel caller (a real
+  # `cancel/1` that arrived before the agent handle) still gets `:ok`.
+  @spec force_settle_lifetime(data()) :: handler_result()
+  defp force_settle_lifetime(data) do
+    cancel_task(data.task)
+    terminate_agent(data)
+    actions = pending_cancel_reply(data)
+    data = %{data | task: nil, agent_run: nil, cancel_requested: nil, reason: :timed_out}
     {:next_state, :failed, data, actions}
   end
 

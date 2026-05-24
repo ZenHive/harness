@@ -35,6 +35,31 @@ defmodule Harness.RunTest do
     def terminate(_run), do: :ok
   end
 
+  # An adapter whose build_command/1 blocks forever — the agent never spawns,
+  # so {:run_handle, _} never arrives. Drives the lifetime-timeout
+  # force-settle path: the budget must still fire even with `agent_run: nil`.
+  defmodule HangingAdapter do
+    @moduledoc false
+    @behaviour Harness.AgentAdapter
+
+    alias Harness.AgentAdapter.Capabilities
+
+    @impl Harness.AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl Harness.AgentAdapter
+    def build_command(_invocation) do
+      Process.sleep(:infinity)
+      {:ok, {"/bin/true", [], []}}
+    end
+
+    @impl Harness.AgentAdapter
+    def classify_message(_message, _run), do: :ignore
+
+    @impl Harness.AgentAdapter
+    def terminate(_run), do: :ok
+  end
+
   # An adapter that spawns a real, long-lived agent, then crashes the driver
   # task on the agent's first output — a driver crash *after* the agent's OS
   # process exists, which the run must SIGKILL rather than orphan.
@@ -238,6 +263,18 @@ defmodule Harness.RunTest do
 
       result = await_result(run_id, pid)
       assert %Result{state: :failed, reason: :timed_out} = result
+    end
+
+    @tag :capture_log
+    test "the lifetime budget force-settles even when the agent run handle never arrives" do
+      # HangingAdapter blocks forever in build_command/1, so the driver never
+      # calls its :on_spawn hook and {:run_handle, _} never lands in the run's
+      # mailbox. Without the force-settle, the run would wedge here forever.
+      {run_id, pid} = start(adapter: HangingAdapter, lifetime_timeout: 200)
+
+      result = await_result(run_id, pid)
+      assert %Result{state: :failed, reason: :timed_out} = result
+      assert result.agent_outcome == nil
     end
   end
 
