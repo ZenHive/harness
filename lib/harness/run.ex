@@ -82,6 +82,7 @@ defmodule Harness.Run do
   alias Harness.Verification.Check
   alias Harness.Verification.Verdict
   alias Harness.Worktree
+  alias Harness.Worktree.Isolation
 
   require Logger
 
@@ -124,6 +125,7 @@ defmodule Harness.Run do
            adapter_opts: keyword(),
            env: %{optional(String.t()) => String.t() | false},
            worktree: Worktree.t() | nil,
+           checkout_snapshot: String.t() | nil,
            agent_run: AgentRun.t() | nil,
            agent_outcome: Outcome.t() | nil,
            verdict: Verdict.t() | nil,
@@ -243,6 +245,7 @@ defmodule Harness.Run do
       adapter_opts: Keyword.get(opts, :adapter_opts, []),
       env: Keyword.get(opts, :env, %{}),
       worktree: nil,
+      checkout_snapshot: nil,
       agent_run: nil,
       agent_outcome: nil,
       verdict: nil,
@@ -268,7 +271,12 @@ defmodule Harness.Run do
 
   def dispatched(:info, {ref, {:ok, %Worktree{} = worktree}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
-    {:next_state, :running, %{data | task: nil, worktree: worktree}}
+    data = %{data | task: nil, worktree: worktree}
+
+    case Isolation.validate(data.adapter) do
+      :ok -> {:next_state, :running, data}
+      {:error, reason} -> fail(data, {:agent_spawn_failed, reason})
+    end
   end
 
   def dispatched(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
@@ -295,8 +303,17 @@ defmodule Harness.Run do
   def running(:enter, _old_state, data) do
     parent = self()
     invocation = build_invocation(data)
+    checkout_snapshot = checkout_snapshot(data.repo)
     task = start_task(fn -> Driver.run(data.adapter, invocation, driver_opts(data, parent)) end)
-    {:keep_state, %{data | task: task, agent_run: nil, agent_outcome: nil}}
+
+    {:keep_state,
+     %{
+       data
+       | task: task,
+         checkout_snapshot: checkout_snapshot,
+         agent_run: nil,
+         agent_outcome: nil
+     }}
   end
 
   def running(:info, {:run_handle, %AgentRun{} = run}, data) do
@@ -312,9 +329,15 @@ defmodule Harness.Run do
     Process.demonitor(ref, [:flush])
     data = %{data | task: nil, agent_outcome: outcome}
 
-    case data.cancel_requested do
-      nil -> {:next_state, :committing, data}
-      {reason, from} -> do_cancel(data, reason, from)
+    case {data.cancel_requested, checkout_pollution_reason(data)} do
+      {nil, nil} ->
+        {:next_state, :committing, data}
+
+      {{reason, from}, nil} ->
+        do_cancel(data, reason, from)
+
+      {_, pollution_reason} ->
+        fail(data, pollution_reason)
     end
   end
 
@@ -488,6 +511,7 @@ defmodule Harness.Run do
   defp do_cancel(data, reason, from) do
     cancel_task(data.task)
     terminate_agent(data)
+    reason = checkout_pollution_reason(data) || reason
     data = %{data | task: nil, agent_run: nil, cancel_requested: nil, reason: reason}
     actions = if from, do: [{:reply, from, :ok}], else: []
     {:next_state, :failed, data, actions}
@@ -507,7 +531,8 @@ defmodule Harness.Run do
     cancel_task(data.task)
     terminate_agent(data)
     actions = pending_cancel_reply(data)
-    data = %{data | task: nil, agent_run: nil, cancel_requested: nil, reason: :timed_out}
+    reason = checkout_pollution_reason(data) || :timed_out
+    data = %{data | task: nil, agent_run: nil, cancel_requested: nil, reason: reason}
     {:next_state, :failed, data, actions}
   end
 
@@ -746,6 +771,26 @@ defmodule Harness.Run do
   @spec put_opt(keyword(), atom(), term()) :: keyword()
   defp put_opt(opts, _key, nil), do: opts
   defp put_opt(opts, key, value), do: Keyword.put(opts, key, value)
+
+  @spec checkout_snapshot(String.t()) :: String.t() | nil
+  defp checkout_snapshot(repo) do
+    case Isolation.snapshot(repo) do
+      {:ok, snapshot} ->
+        snapshot
+
+      {:error, reason} ->
+        Logger.warning("harness run: checkout snapshot failed for #{repo}: #{inspect(reason)}")
+        nil
+    end
+  end
+
+  @spec checkout_pollution_reason(data()) :: Result.reason() | nil
+  defp checkout_pollution_reason(data) do
+    case Isolation.check_pollution(data.repo, data.checkout_snapshot) do
+      :ok -> nil
+      {:error, reason} -> reason
+    end
+  end
 
   @spec configured(atom(), term()) :: term()
   defp configured(key, default) do

@@ -1,6 +1,7 @@
 defmodule Harness.RunTest do
   use ExUnit.Case, async: true
 
+  alias Harness.AgentAdapter.Antigravity
   alias Harness.AgentAdapter.Outcome
   alias Harness.FakeAdapter
   alias Harness.GitFixture
@@ -170,6 +171,45 @@ defmodule Harness.RunTest do
 
       assert %Result{state: :failed, reason: :no_changes} = result
       assert result.verdict == nil
+    end
+  end
+
+  describe "worktree isolation" do
+    test "Antigravity dispatch fails fast without polluting the main checkout" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+
+      {:ok, run_id, pid} =
+        Run.Supervisor.start_run(item(), repo, Antigravity, default_opts(base))
+
+      result = await_result(run_id, pid)
+
+      assert %Result{
+               state: :failed,
+               reason: {:agent_spawn_failed, {:worktree_isolation_unsupported, Antigravity, _message}}
+             } = result
+
+      assert GitFixture.git!(repo, ["status", "--porcelain"]) == ""
+    end
+
+    test "settles :failed when the agent pollutes the main checkout" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+
+      {:ok, run_id, pid} =
+        Run.Supervisor.start_run(
+          item(),
+          repo,
+          FakeAdapter,
+          base
+          |> default_opts()
+          |> Keyword.put(:adapter_opts, command: {:pollute_checkout, repo})
+        )
+
+      result = await_result(run_id, pid)
+
+      assert %Result{state: :failed, reason: {:checkout_polluted, diff}} = result
+      assert diff =~ "leaked.txt"
     end
   end
 

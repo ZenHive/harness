@@ -8,8 +8,21 @@ defmodule Harness.AgentAdapter.Antigravity do
 
   ## Invocation
 
-  Runs `agy -p "<prompt>"` for headless execution. The working directory is wired
-  by `Harness.AgentAdapter.invoke/2` (the port's `:cd`), not here.
+  Runs `agy -p "<prompt>"` for headless execution.
+
+  ## Working directory / workspace
+
+  **Does not honor the port `cwd`.** `Harness.AgentAdapter.invoke/2` sets the
+  port's `:cd` to the run worktree, but `agy` ignores it for workspace
+  resolution. The CLI exposes no `--cwd`, `--workspace`, or `--project` flag;
+  `--add-dir` is the only directory control and it is *additive* — it widens
+  the workspace rather than replacing it.
+
+  `agy` resolves its workspace from git metadata (following a linked worktree's
+  `.git` file back to the main checkout's common git dir) or from a configured /
+  last-used workspace. During dogfooding it edited the *main checkout* while
+  the run worktree stayed clean. Harness therefore declares
+  `worktree_isolation: false` and rejects Antigravity dispatch before spawn.
 
   ## Permission mode
 
@@ -37,9 +50,16 @@ defmodule Harness.AgentAdapter.Antigravity do
 
   @permission_modes %{autonomous: "--dangerously-skip-permissions"}
 
+  @doc false
+  @spec worktree_isolation_limitation() :: String.t()
+  def worktree_isolation_limitation do
+    "agy ignores the port cwd and resolves workspace via git-common-dir to the main checkout; " <>
+      "harness cannot headlessly constrain it to a run worktree"
+  end
+
   @doc """
   Declares Antigravity's capabilities: session resume and streaming output,
-  with `:autonomous` the only permission mode.
+  with `:autonomous` the only permission mode. Worktree isolation is unsupported.
   """
   @impl AgentAdapter
   @spec capabilities() :: Capabilities.t()
@@ -47,7 +67,8 @@ defmodule Harness.AgentAdapter.Antigravity do
     %Capabilities{
       session_resume: true,
       permission_modes: [:autonomous],
-      streaming_output: true
+      streaming_output: true,
+      worktree_isolation: false
     }
   end
 

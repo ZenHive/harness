@@ -20,14 +20,19 @@ defmodule Harness.AgentAdapter.Capabilities do
       is the mandatory universal baseline; harness always runs unattended.
     * `streaming_output` — the agent emits output incrementally while it works,
       rather than a single blob at the end.
+    * `worktree_isolation` — the agent's headless mode edits only the port
+      `cwd` (the run worktree), never the main checkout the worktree was carved
+      from. When `false`, `Harness.Run` rejects dispatch up front.
   """
   @type t :: %__MODULE__{
           session_resume: boolean(),
           permission_modes: [atom()],
-          streaming_output: boolean()
+          streaming_output: boolean(),
+          worktree_isolation: boolean()
         }
 
   defstruct session_resume: false,
             permission_modes: [:autonomous],
-            streaming_output: true
+            streaming_output: true,
+            worktree_isolation: true
 end

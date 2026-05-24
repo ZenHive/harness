@@ -80,6 +80,13 @@ defmodule Harness.FakeAdapter do
   #                    different diff while emitting quota text, so the repair
   #                    loop must classify the transcript instead of relying on
   #                    the no-diff short-circuit.
+  # :pollute_checkout  — writes into the main checkout (repo path in
+  #                    adapter_opts), not cwd — the checkout-pollution fixture.
+  defp command({:pollute_checkout, repo}, _invocation) when is_binary(repo) do
+    path = shell_arg(Path.join(repo, "leaked.txt"))
+    {"/bin/sh", ["-c", "echo leaked > #{path}"], []}
+  end
+
   defp command(:echo, _invocation), do: {"/bin/echo", ["harness-test"], []}
 
   defp command({:echo, text}, _invocation) when is_binary(text), do: {"/bin/echo", [text], []}

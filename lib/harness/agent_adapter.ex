@@ -119,7 +119,7 @@ defmodule Harness.AgentAdapter do
           | :ignore
 
   @typedoc "A capability that `supports?/2` can be queried for."
-  @type capability :: :session_resume | :streaming_output | {:permission_mode, atom()}
+  @type capability :: :session_resume | :streaming_output | :worktree_isolation | {:permission_mode, atom()}
 
   @doc """
   Declares what the agent's headless mode can do. Static — independent of any
@@ -307,6 +307,8 @@ defmodule Harness.AgentAdapter do
   @spec capability_supported?(Capabilities.t(), capability()) :: boolean()
   defp capability_supported?(%Capabilities{session_resume: value}, :session_resume), do: value
   defp capability_supported?(%Capabilities{streaming_output: value}, :streaming_output), do: value
+
+  defp capability_supported?(%Capabilities{worktree_isolation: value}, :worktree_isolation), do: value
 
   defp capability_supported?(%Capabilities{permission_modes: modes}, {:permission_mode, mode}), do: mode in modes
 
