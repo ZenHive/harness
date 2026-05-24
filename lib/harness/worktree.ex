@@ -74,9 +74,19 @@ defmodule Harness.Worktree do
           {:repo_not_found, String.t()}
           | {:not_a_git_repo, String.t()}
           | {:marker_write_failed, String.t(), File.posix()}
+          | {:head_moved, expected :: String.t(), actual :: head_label()}
           # Inlined from the internal Harness.Git.error/0 — keeps this public
           # type self-describing without autolinking to a hidden module.
           | {:git_failed, args :: [String.t()], status :: integer(), output :: String.t()}
+
+  @typedoc """
+  Where the worktree's HEAD was actually pointing when `commit/2` rejected it.
+
+  `{:branch, name}` — the agent ran `git switch`/`git checkout` to a different
+  branch. `{:detached, sha}` — the agent detached HEAD (e.g. `git checkout
+  --detach` or `git checkout <sha>`).
+  """
+  @type head_label :: {:branch, String.t()} | {:detached, String.t()}
 
   @doc """
   Creates an isolated worktree for a run against `repo`.
@@ -120,16 +130,26 @@ defmodule Harness.Worktree do
   <#{@committer_email}>`), so it never fails on a repo with no `user.name` /
   `user.email` configured.
 
+  Before staging, asserts the worktree's HEAD still points at its own
+  `harness/<id>` branch. An agent that ran `git switch`/`git checkout` (or
+  detached HEAD) inside the worktree would otherwise land the commit
+  off-branch, where teardown then loses it. If HEAD has moved, no commit is
+  made and `{:error, {:head_moved, expected, actual}}` is returned — the
+  agent's work stays in the working tree for the retained-on-failure path to
+  preserve.
+
   Returns:
 
     * `{:ok, :committed}` — the agent's work was committed.
     * `{:ok, :no_changes}` — the agent left the worktree unchanged; there was
       nothing to commit.
-    * `{:error, reason}` — a git invocation failed (see `t:error/0`).
+    * `{:error, reason}` — HEAD moved off the run branch, or a git invocation
+      failed (see `t:error/0`).
   """
   @spec commit(t(), String.t()) :: {:ok, :committed | :no_changes} | {:error, error()}
-  def commit(%__MODULE__{path: path}, message) when is_binary(message) do
-    with {:ok, _added} <- Git.run(["add", "-A"], path),
+  def commit(%__MODULE__{path: path, branch: branch}, message) when is_binary(message) do
+    with :ok <- assert_head_on_branch(path, branch),
+         {:ok, _added} <- Git.run(["add", "-A"], path),
          {:ok, status} <- Git.run(["status", "--porcelain"], path) do
       if String.trim(status) == "" do
         {:ok, :no_changes}
@@ -211,6 +231,32 @@ defmodule Harness.Worktree do
   @spec base_dir(keyword()) :: String.t()
   def base_dir(opts \\ []) do
     Keyword.get(opts, :base_dir) || config(:base_dir) || Path.expand(@default_base_dir)
+  end
+
+  # Verifies the worktree's HEAD still points at its own `harness/<id>` branch.
+  # An agent that ran `git switch`/`git checkout` (or detached HEAD) would
+  # otherwise have its work commit land off-branch, where worktree teardown
+  # would then lose it. `git branch --show-current` exits 0 either way, emitting
+  # the branch name when on a branch or an empty string when detached.
+  @spec assert_head_on_branch(String.t(), String.t()) :: :ok | {:error, error()}
+  defp assert_head_on_branch(path, expected_branch) do
+    with {:ok, output} <- Git.run(["branch", "--show-current"], path) do
+      actual = String.trim(output)
+
+      cond do
+        actual == expected_branch -> :ok
+        actual == "" -> {:error, {:head_moved, expected_branch, {:detached, current_head_sha(path)}}}
+        true -> {:error, {:head_moved, expected_branch, {:branch, actual}}}
+      end
+    end
+  end
+
+  @spec current_head_sha(String.t()) :: String.t()
+  defp current_head_sha(path) do
+    case Git.run(["rev-parse", "HEAD"], path) do
+      {:ok, output} -> String.trim(output)
+      {:error, _reason} -> "unknown"
+    end
   end
 
   @spec commit_staged(String.t(), String.t()) :: {:ok, :committed} | {:error, error()}

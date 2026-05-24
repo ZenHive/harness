@@ -54,6 +54,10 @@ defmodule Harness.FakeAdapter do
   #                    timed-out agent that still left work to commit + grade.
   # :break_git       — overwrites the worktree's .git pointer, so the harness
   #                    commit step fails (the commit-failure fixture).
+  # :detach_head     — writes a file into cwd then detaches HEAD off the run
+  #                    branch (HEAD-moved fixture for Task 30): proves the
+  #                    commit step refuses to land work on a moved HEAD rather
+  #                    than stranding the deliverable.
   # {:write_then_wait_for_file, path}
   #                  — writes a file, then waits until path exists (batch cap fixture).
   # {:write_status_by_task, red_ids}
@@ -89,6 +93,9 @@ defmodule Harness.FakeAdapter do
     do: {"/bin/sh", ["-c", "echo agent-output > agent_output.txt; sleep 30"], []}
 
   defp command(:break_git, _invocation), do: {"/bin/sh", ["-c", "echo broken > .git"], []}
+
+  defp command(:detach_head, _invocation),
+    do: {"/bin/sh", ["-c", "echo agent-output > agent_output.txt; git checkout -q --detach"], []}
 
   defp command({:write_then_wait_for_file, path}, _invocation) when is_binary(path) do
     script = "echo agent-output > agent_output.txt; while [ ! -f #{shell_arg(path)} ]; do sleep 0.05; done"

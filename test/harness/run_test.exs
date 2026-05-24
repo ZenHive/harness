@@ -187,6 +187,24 @@ defmodule Harness.RunTest do
       assert %Result{state: :failed, reason: {:commit_failed, _reason}} = result
       assert result.verdict == nil
     end
+
+    test "settles :failed without stranding the deliverable when the agent moves HEAD" do
+      result = run(adapter_opts: [command: :detach_head])
+
+      assert %Result{
+               state: :failed,
+               reason: {:commit_failed, {:head_moved, expected_branch, {:detached, sha}}}
+             } = result
+
+      assert expected_branch =~ ~r"\Aharness/"
+      assert String.match?(sha, ~r/\A[0-9a-f]{40}\z/)
+      assert result.verdict == nil
+      # The worktree is retained on failure — the agent's work is still
+      # inspectable in the working tree rather than lost to a teardown that
+      # would have followed an off-branch commit.
+      assert Worktree.retained?(result.worktree_path)
+      assert File.read!(Path.join(result.worktree_path, "agent_output.txt")) =~ "agent-output"
+    end
   end
 
   describe "external cancellation" do

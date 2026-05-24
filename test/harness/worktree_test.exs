@@ -118,6 +118,37 @@ defmodule Harness.WorktreeTest do
       assert {:error, {:git_failed, _args, status, _output}} = Worktree.commit(bogus, "agent delivery")
       assert status != 0
     end
+
+    test "refuses to commit when the agent detached HEAD off the run branch" do
+      {repo, wt} = create_worktree()
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+      branch_sha_before = String.trim(GitFixture.git!(repo, ["rev-parse", wt.branch]))
+      GitFixture.git!(wt.path, ["checkout", "-q", "--detach"])
+      head_sha = String.trim(GitFixture.git!(wt.path, ["rev-parse", "HEAD"]))
+
+      assert {:error, {:head_moved, expected, {:detached, ^head_sha}}} =
+               Worktree.commit(wt, "agent delivery")
+
+      assert expected == wt.branch
+      # Deliverable is not stranded: the run branch is unchanged, and the
+      # agent's work still lives in the worktree's working tree.
+      assert String.trim(GitFixture.git!(repo, ["rev-parse", wt.branch])) == branch_sha_before
+      assert File.read!(Path.join(wt.path, "delivery.txt")) == "agent work\n"
+    end
+
+    test "refuses to commit when the agent switched HEAD to a different branch" do
+      {repo, wt} = create_worktree()
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+      branch_sha_before = String.trim(GitFixture.git!(repo, ["rev-parse", wt.branch]))
+      GitFixture.git!(wt.path, ["checkout", "-q", "-b", "agent-detour"])
+
+      assert {:error, {:head_moved, expected, {:branch, "agent-detour"}}} =
+               Worktree.commit(wt, "agent delivery")
+
+      assert expected == wt.branch
+      assert String.trim(GitFixture.git!(repo, ["rev-parse", wt.branch])) == branch_sha_before
+      assert File.read!(Path.join(wt.path, "delivery.txt")) == "agent work\n"
+    end
   end
 
   describe "finish/3" do
