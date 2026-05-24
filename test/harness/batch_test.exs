@@ -272,6 +272,65 @@ defmodule Harness.BatchTest do
     assert headroom_record.reason == :passed
   end
 
+  test "retries adapter selection when start_run loses a concurrent availability race" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+
+    :ok = AgentRegistry.mark_unavailable(QuotaAdapter, :concurrent_batch)
+
+    assert {:error, {:no_available_agent, [QuotaAdapter]}} =
+             Run.Supervisor.start_run(
+               hd(items(["precheck"])),
+               repo,
+               QuotaAdapter,
+               batch_opts(base, [])
+             )
+
+    AgentRegistry.reset()
+
+    batch =
+      Task.async(fn ->
+        Batch.run(
+          items(["race-task"]),
+          repo,
+          [QuotaAdapter, HeadroomAdapter],
+          batch_opts(base, max_concurrency: 1)
+        )
+      end)
+
+    for _ <- 1..100 do
+      :ok = AgentRegistry.mark_unavailable(QuotaAdapter, :concurrent_batch)
+      Process.sleep(0)
+    end
+
+    assert {:ok, %BatchResult{results: [%Result{} = result]}} = Task.await(batch, @run_timeout_ms)
+    assert result.state == :done
+    assert result.reason == :passed
+    refute AgentRegistry.available?(QuotaAdapter)
+    assert AgentRegistry.available?(HeadroomAdapter)
+  end
+
+  test "concurrent batches survive adapter unavailability during dispatch" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+
+    tasks =
+      for id <- ~w(race-a race-b race-c) do
+        Task.async(fn ->
+          Batch.run(
+            items([id]),
+            repo,
+            QuotaAdapter,
+            batch_opts(base, max_concurrency: 1)
+          )
+        end)
+      end
+
+    assert Enum.all?(tasks, fn task ->
+             match?({:ok, %BatchResult{results: [_]}}, Task.await(task, @run_timeout_ms))
+           end)
+  end
+
   defp batch_opts(base, overrides) do
     Keyword.merge(
       [

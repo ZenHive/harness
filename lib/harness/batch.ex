@@ -58,7 +58,8 @@ defmodule Harness.Batch do
   the same item is retried with the next capable adapter. If every capable
   adapter has been marked unavailable, queued items that have not yet been
   dispatched settle as `:failed` with reason `{:no_available_agent, _}` instead
-  of crashing the batch.
+  of crashing the batch. When `start_run/4` loses a concurrent availability race,
+  selection is retried for the same item before the queue is settled.
   """
   @spec run([Item.t()], String.t(), module() | [module()], keyword()) ::
           {:ok, BatchResult.t()} | {:error, error()}
@@ -203,25 +204,53 @@ defmodule Harness.Batch do
        ) do
     case AgentRegistry.select(adapters, required_capabilities: Keyword.get(run_opts, :required_capabilities, [])) do
       {:ok, adapter} ->
-        {:ok, run_id, pid} = RunSupervisor.start_run(item, repo, adapter, run_opts)
-        ref = Process.monitor(pid)
+        case RunSupervisor.start_run(item, repo, adapter, run_opts) do
+          {:ok, run_id, pid} ->
+            ref = Process.monitor(pid)
 
-        active =
-          Map.put(active, run_id, %{
-            index: index,
-            item: item,
-            adapter: adapter,
-            monitor_ref: ref,
-            started_at_ms: System.monotonic_time(:millisecond),
-            result: nil
-          })
+            active =
+              Map.put(active, run_id, %{
+                index: index,
+                item: item,
+                adapter: adapter,
+                monitor_ref: ref,
+                started_at_ms: System.monotonic_time(:millisecond),
+                result: nil
+              })
 
-        fill_slots(rest, active, results, events, repo, adapters, run_opts, max_concurrency)
+            fill_slots(rest, active, results, events, repo, adapters, run_opts, max_concurrency)
+
+          {:error, {:no_available_agent, _reason}} ->
+            fill_slots([head | rest], active, results, events, repo, adapters, run_opts, max_concurrency)
+
+          {:error, reason} ->
+            {results, events} = settle_start_run_failure(head, results, events, reason)
+            fill_slots(rest, active, results, events, repo, adapters, run_opts, max_concurrency)
+        end
 
       {:error, reason} ->
         {results, events} = settle_undispatchable([head | rest], results, events, reason)
         {[], active, results, events}
     end
+  end
+
+  @spec settle_start_run_failure(
+          indexed_item(),
+          %{non_neg_integer() => RunResult.t()},
+          [term()],
+          term()
+        ) ::
+          {%{non_neg_integer() => RunResult.t()}, [term()]}
+  defp settle_start_run_failure({%Item{} = item, index}, results, events, reason) do
+    result = %RunResult{
+      run_id: undispatched_run_id(item),
+      task_id: item.id,
+      state: :failed,
+      reason: {:run_crashed, {:start_run_failed, reason}}
+    }
+
+    events = [{:start_run_failed, item.id, reason} | events]
+    {Map.put(results, index, result), events}
   end
 
   @spec settle_undispatchable(
