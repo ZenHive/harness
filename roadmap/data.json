@@ -1775,6 +1775,73 @@
       "created_at": "2026-05-24",
       "scored_at": "2026-05-24",
       "cross_repo": []
+    },
+    {
+      "id": "52",
+      "phase": 4,
+      "bundle": "multi-agent",
+      "milestone": "v0_3",
+      "status": "pending",
+      "title": "Add pi.dev headless adapter",
+      "scores": {
+        "d": 5,
+        "b": 8,
+        "u": 7
+      },
+      "eff": 1.5,
+      "markers": [
+        "parallel"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Harness.AgentAdapter.Pi implements capabilities/0 and build_command/1; defaults from `use Harness.AgentAdapter` cover the rest",
+        "Shared conformance suite passes unchanged",
+        "Adapter spawns pi over a uniform OTP Port; threads caller-controlled env (Task 25) and harness-owned rule set (Task 22)",
+        "CLAUDE.md § \"Agent Headless Entry Points\" gains a pi row; § non-delegatable list adds Pi"
+      ],
+      "out_of_scope": [
+        "Parsing pi.dev's JSON event stream",
+        "Extending rmap delegate --to to include pi",
+        "Local-LLM provider configuration (Task 53 covers the first probe)"
+      ],
+      "body": "Implement a Harness.AgentAdapter for pi.dev (pi binary, --print --output-format json\nor RPC over stdin/stdout per https://pi.dev). Parallels Tasks 13/14/15. Non-delegatable\nin the rmap sense — rmap delegate --to stays claude|codex|cursor; pi is dispatched via\nthe Task-31 non-delegatable pattern (ingest with claude/codex/cursor, then dispatch via\nthe pi adapter module through Harness.Run.Supervisor.start_run/4). Must pass the shared\nHarness.AgentAdapter.ConformanceCase unchanged. Capture raw output verbatim; do not\nparse pi.dev's event stream — the verification stack is the grader.\n",
+      "created_at": "2026-05-24",
+      "scored_at": "2026-05-24",
+      "cross_repo": []
+    },
+    {
+      "id": "53",
+      "phase": 4,
+      "bundle": "multi-agent",
+      "milestone": "v0_3",
+      "status": "pending",
+      "title": "Smoke-test pi-via-local-LLM on a low-D rmap task",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 2.0,
+      "markers": [
+        "parallel"
+      ],
+      "depends_on": [
+        52
+      ],
+      "acceptance_criteria": [
+        "One harness run dispatched through the Task 52 pi adapter, Qwen3-Coder-30B-A3B (or llmfit-recommended successor) on this host's MLX/GGUF runtime",
+        "Outcome recorded in docs/dogfooding-runs.md (model + quantisation + runtime, task, attempts, terminal state, verdict, transcript shape, observed tokens/sec)",
+        "Recommendation written: pursue (file follow-ups) / park (adapter idle) / escalate (file local-llm bundle)"
+      ],
+      "out_of_scope": [
+        "Benchmarking across multiple local models",
+        "Tuning sampling/temperature/system-prompt for the model",
+        "Productionising local-LLM dogfooding"
+      ],
+      "body": "One-off dogfood run on this Apple M4 Pro / 48GB host: dispatch a single low-D rmap\ntask through harness with the pi adapter (Task 52) pointed at Qwen3-Coder-30B-A3B-Instruct\n(MLX 8-bit, already installed — llmfit-confirmed fit_level=Perfect, score 96, ~39 tok/s,\ntool-use trained) served via an OpenAI-compatible local endpoint. Preferred runtime is\nLM Studio's MLX server at localhost:1234/v1; fallback is Ollama GGUF at localhost:11434/v1.\nGoal is decision-grade information, not productive code delivery — does a credible,\ntool-use-trained MoE coder model produce a usable signal under the existing verification\n+ repair-loop stack, or does the repair loop just churn until :failed? Record the outcome\nin docs/dogfooding-runs.md (model + quantisation + runtime, task picked, attempts,\nterminal state, verification verdict, repair-loop transcript shape, observed tokens/sec).\nWhether :passed or :failed, the data informs whether to keep building local-LLM coverage.\n",
+      "created_at": "2026-05-24",
+      "scored_at": "2026-05-24",
+      "cross_repo": []
     }
   ]
 }
