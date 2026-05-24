@@ -889,7 +889,7 @@ done_at = "2026-05-22"
 id = "32"
 phase = 4
 bundle = "multi-agent"
-status = "pending"
+status = "done"
 title = "Antigravity adapter does not isolate to its run worktree"
 scores = { d = 4, b = 6, u = 5 }
 markers = ["bug"]
@@ -902,8 +902,13 @@ The Antigravity adapter moduledoc claims `agy` "inherits its working directory f
 
 Investigate how `agy` actually resolves its working directory/workspace and make the Antigravity adapter guarantee the agent edits ONLY its run worktree. If `agy` cannot be headlessly constrained to a single directory, that is itself the finding — record it and gate Antigravity out of worktree-isolated dispatch with a clear up-front error, never silent main-checkout pollution. No dogfood run may write outside its worktree.
 """
+implemented = "Added `worktree_isolation` capability to `%Harness.AgentAdapter.Capabilities{}` (defaults true). New `Harness.Worktree.Isolation` module exposes `validate/1` (rejects dispatch when adapter declares `false`) and `snapshot/1` + `check_pollution/2` (compares main-checkout porcelain status before/after — settles `:failed` / `:checkout_polluted` if the main checkout changed during the run). `Harness.Run` wired to validate at dispatch and check pollution post-agent. `Harness.AgentAdapter.Antigravity` declares `worktree_isolation: false` and exposes `worktree_isolation_limitation/0` documenting the agy cwd-resolution behavior. docs/dogfooding-workflow.md updated to reflect that Antigravity is now harness-rejected before spawn."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-05-22"
+started_at = "2026-05-24"
 scored_at = "2026-05-22"
+done_at = "2026-05-24"
 
 [[task]]
 id = "33"
@@ -932,6 +937,7 @@ Add a mode that dispatches one rmap task to several agents concurrently — each
 The load-bearing design constraint: the verification stack stays the binary pass/fail grader. Evaluator separation means the agent never grades itself — and harness must not start grading on a fuzzy composite score either. Evaluation metrics are a separate, additive layer read off the run records; they inform the human's judgement, they do not become the verdict. The run-record fields the comparison reads (first-attempt failed-check count, agent diff size) are captured by Task 19; this task consumes them.
 """
 created_at = "2026-05-22"
+started_at = "2026-05-24"
 scored_at = "2026-05-22"
 
 [[task]]
@@ -1065,7 +1071,7 @@ done_at = "2026-05-24"
 id = "39"
 phase = 4
 bundle = "multi-agent"
-status = "pending"
+status = "done"
 title = "Audit-surfaced: Hoist rule injection into the AgentAdapter behaviour"
 scores = { d = 4, b = 5, u = 5 }
 acceptance_criteria = ["A new adapter that omits rule injection from build_command/1 fails the ConformanceCase suite", "Either the behaviour callback set or ConformanceCase encodes the rule-injection contract"]
@@ -1076,8 +1082,13 @@ Resolution candidates: (a) add a behaviour-level optional callback for rule deli
 
 Filed by audit-review against commit 826aaff3 on 2026-05-23; see `.audit/826aaff-harness-owned-rule-set.md`.
 """
+implemented = "Hoisted rule injection into the AgentAdapter behaviour. New required `rule_channel/0` callback enumerates 5 delivery channels (`:system_prompt_file` / `:codex_ephemeral_file` / `:cursor_ephemeral_file` / `:prompt_preamble` / `:none`). Added `AgentAdapter.attach_rules/2` (idempotent — no-op when invocation already carries `%RuleDelivery{}`) and `AgentAdapter.task_prompt/1` helpers; `invoke/2` now threads attach_rules before build_command/1. New `Harness.AgentAdapter.RuleDelivery` struct carries argv_flags + prompt. All 5 adapters refactored to declare rule_channel/0 and use the helpers; conformance suite enforces the new contract via probe-based assertion."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-05-23"
+started_at = "2026-05-24"
 scored_at = "2026-05-23"
+done_at = "2026-05-24"
 
 [[task]]
 id = "40"
@@ -1127,6 +1138,7 @@ Per Task 32's precedent: if Codex cannot be headlessly constrained to a single d
 Mirrors Task 32 (Antigravity worktree-isolation bug) — same failure surface, different agent. Resolution shape should generalize.
 """
 created_at = "2026-05-23"
+started_at = "2026-05-24"
 scored_at = "2026-05-23"
 
 [[task]]
@@ -1373,7 +1385,7 @@ id = "52"
 phase = 4
 bundle = "multi-agent"
 milestone = "v0_3"
-status = "pending"
+status = "done"
 title = "Add pi.dev headless adapter"
 scores = { d = 5, b = 8, u = 7 }
 markers = ["parallel"]
@@ -1389,8 +1401,13 @@ the pi adapter module through Harness.Run.Supervisor.start_run/4). Must pass the
 Harness.AgentAdapter.ConformanceCase unchanged. Capture raw output verbatim; do not
 parse pi.dev's event stream — the verification stack is the grader.
 """
+implemented = "Added `Harness.AgentAdapter.Pi` headless adapter — `pi -p --mode json <prompt>` over an OTP port, with `--continue` for session resume. Declares `session_resume: true`, `:autonomous` as the only permission mode, and (post-integration) `rule_channel: :codex_ephemeral_file` since pi auto-discovers AGENTS.md from cwd. pi-specific flags (`--provider`, `--thinking`, `--tools`, `--skill`, etc.) deliberately omitted from the four-callback contract per agent-economy.md guidance. Full unit + conformance test coverage."
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-24"
+started_at = "2026-05-24"
 scored_at = "2026-05-24"
+done_at = "2026-05-24"
 
 [[task]]
 id = "53"

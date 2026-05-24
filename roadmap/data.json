@@ -1132,7 +1132,7 @@
       "id": "32",
       "phase": 4,
       "bundle": "multi-agent",
-      "status": "pending",
+      "status": "done",
       "title": "Antigravity adapter does not isolate to its run worktree",
       "scores": {
         "d": 4,
@@ -1156,7 +1156,12 @@
       ],
       "body": "During the Round-1 multi-agent dogfood batch (2026-05-22), Task 31 was driven by the Antigravity adapter. harness Port-spawned `agy` with the port `:cd` set to the run's isolated worktree, but `agy` edited files in the *main checkout* (`~/_DATA/code/harness/`) instead — the run settled `:no_changes` because the worktree had no diff, and the agent's actual work landed, ungraded, in the canonical checkout.\n\nThe Antigravity adapter moduledoc claims `agy` \"inherits its working directory from the spawned process's cwd\" — that is false. `agy --help` exposes no `--cwd` / `--workspace` / `--project` flag; the only directory control is `--add-dir` (repeatable, *additive* — it widens the workspace rather than replacing it). The Grok adapter also relies on Port cwd and isolated correctly in the same batch, so harness's worktree + `:cd` mechanism is sound — this is specific to `agy`'s workspace resolution (a configured/last-used workspace, or git-common-dir resolution following the worktree's `.git` file pointer back to the main checkout). Depends on Task 26 (the Antigravity adapter).\n\nInvestigate how `agy` actually resolves its working directory/workspace and make the Antigravity adapter guarantee the agent edits ONLY its run worktree. If `agy` cannot be headlessly constrained to a single directory, that is itself the finding — record it and gate Antigravity out of worktree-isolated dispatch with a clear up-front error, never silent main-checkout pollution. No dogfood run may write outside its worktree.\n",
       "created_at": "2026-05-22",
+      "started_at": "2026-05-24",
+      "done_at": "2026-05-24",
       "scored_at": "2026-05-22",
+      "implemented": "Added `worktree_isolation` capability to `%Harness.AgentAdapter.Capabilities{}` (defaults true). New `Harness.Worktree.Isolation` module exposes `validate/1` (rejects dispatch when adapter declares `false`) and `snapshot/1` + `check_pollution/2` (compares main-checkout porcelain status before/after — settles `:failed` / `:checkout_polluted` if the main checkout changed during the run). `Harness.Run` wired to validate at dispatch and check pollution post-agent. `Harness.AgentAdapter.Antigravity` declares `worktree_isolation: false` and exposes `worktree_isolation_limitation/0` documenting the agy cwd-resolution behavior. docs/dogfooding-workflow.md updated to reflect that Antigravity is now harness-rejected before spawn.",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -1189,6 +1194,7 @@
       ],
       "body": "harness's dogfood loop produces a binary pass/fail verdict per run — it verifies that a task was delivered, but never measures or compares how well different agents perform. Every dogfood task to date has gone green without the repair loop firing, and each was dispatched on a different task to a single agent, so the accumulated runs cannot rank the agents: the only signal captured is did-it-pass. The missing piece that turns harness from a verifier into an evaluation instrument is a same-task A/B mode.\n\nAdd a mode that dispatches one rmap task to several agents concurrently — each driven in its own isolated worktree, exactly as a normal batch run — and collects the results into a side-by-side comparison rather than an ordered per-task list. The comparison surfaces the per-agent quality metrics harness already captures or can cheaply derive: the verification verdict, repair attempts, wall-clock duration, how many checks were red on the first verification attempt, and the size of the agent's diff. This is a variant of the existing batch fan-out (Task 9) — same fan-out and crash-isolation, but one task across N adapters instead of N tasks each on one adapter, with a comparison aggregator in place of the ordered result list. Reuse the batch machinery; do not build a second orchestrator.\n\nThe load-bearing design constraint: the verification stack stays the binary pass/fail grader. Evaluator separation means the agent never grades itself — and harness must not start grading on a fuzzy composite score either. Evaluation metrics are a separate, additive layer read off the run records; they inform the human's judgement, they do not become the verdict. The run-record fields the comparison reads (first-attempt failed-check count, agent diff size) are captured by Task 19; this task consumes them.\n",
       "created_at": "2026-05-22",
+      "started_at": "2026-05-24",
       "scored_at": "2026-05-22",
       "cross_repo": []
     },
@@ -1339,7 +1345,7 @@
       "id": "39",
       "phase": 4,
       "bundle": "multi-agent",
-      "status": "pending",
+      "status": "done",
       "title": "Audit-surfaced: Hoist rule injection into the AgentAdapter behaviour",
       "scores": {
         "d": 4,
@@ -1355,7 +1361,12 @@
       ],
       "body": "After Task 22, every adapter's `build_command/1` calls into `Harness.AgentAdapter.RulesInjection` (one of `claude_flags/1`, `install_codex_rules/1`, `install_cursor_rules/1`, or `prepend_prompt/1`). The wiring is hand-replicated across all five adapters; nothing in the `Harness.AgentAdapter` behaviour callbacks or the `Harness.AgentAdapter.ConformanceCase` suite requires it. The next adapter implementor can omit the rules injection silently, and no test will catch it.\n\nResolution candidates: (a) add a behaviour-level optional callback for rule delivery (e.g. `c:rule_channel/0` returning `:system_prompt_file | :ephemeral_file | :prompt_preamble`) so `AgentAdapter.invoke/2` handles injection generically; (b) extend `ConformanceCase` with a test that gates `build_command/1` output for the presence of injected rules in the argv/env/cwd file system (a clone-backed `mix reach.check --smells` rule may also help). Companion to Task 27 (hoist universal adapter callbacks into the behaviour).\n\nFiled by audit-review against commit 826aaff3 on 2026-05-23; see `.audit/826aaff-harness-owned-rule-set.md`.\n",
       "created_at": "2026-05-23",
+      "started_at": "2026-05-24",
+      "done_at": "2026-05-24",
       "scored_at": "2026-05-23",
+      "implemented": "Hoisted rule injection into the AgentAdapter behaviour. New required `rule_channel/0` callback enumerates 5 delivery channels (`:system_prompt_file` / `:codex_ephemeral_file` / `:cursor_ephemeral_file` / `:prompt_preamble` / `:none`). Added `AgentAdapter.attach_rules/2` (idempotent — no-op when invocation already carries `%RuleDelivery{}`) and `AgentAdapter.task_prompt/1` helpers; `invoke/2` now threads attach_rules before build_command/1. New `Harness.AgentAdapter.RuleDelivery` struct carries argv_flags + prompt. All 5 adapters refactored to declare rule_channel/0 and use the helpers; conformance suite enforces the new contract via probe-based assertion.",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -1412,6 +1423,7 @@
       ],
       "body": "During Round-3a (2026-05-23), Task 19 was driven by the Codex adapter. harness Port-spawned `codex exec --json --dangerously-bypass-approvals-and-sandbox` with the port `:cd` set to the run's isolated worktree, but Codex edited files in the *main checkout* (`~/_DATA/code/harness/`) instead — the run settled `{:commit_failed, {:git_failed, [\"add\", \"-A\"], 128, \"fatal: cannot change to '...run-1779522372240-55f9e5f3': No such file or directory\"}}` because by the time harness ran its commit step, the worktree directory was gone. Codex's transcript made the failure mode explicit: *\"the assigned run worktree path was empty, so I used the actual harness checkout I found.\"*\n\nCodex's Task 19 implementation was real and self-graded green — 280 tests, format / credo / doctor / sobelow / dialyzer all clean — but the diff (~701 lines across 11 files) landed in the canonical checkout, ungraded by the harness verification stack. It was hand-integrated onto `development` post-hoc, with conflicts in `batch.ex` and `batch_test.exs` against Task 34 resolved manually.\n\n**Key signal: this is a regression, not a stable trait of the adapter.** Codex worked cleanly in Round-2 (Task 16, 2026-05-22) — same adapter, same worktree mechanism, no main-checkout leak. So either (a) something in the Round-3a run shape triggered a code path Round-2 missed, or (b) there's a race in worktree provisioning that fires only under certain conditions (parallel runs? specific dispatch ordering?).\n\nTwo intertwined questions to investigate:\n1. **Why did Codex see an empty worktree at startup?** The Port's `:cd` was set; if the dir existed but was empty (no files yet), Codex's fallback heuristic kicked in. If the dir was missing, the Port spawn should have failed.\n2. **Why was the worktree gone at finalize time?** harness emitted `worktree finish failed for ...run-1779522372240-55f9e5f3: {:marker_write_failed, \"...\": :enoent}` — confirming the dir was missing when the run tried to clean up. Did harness's own `Worktree.create` race against `Worktree.sweep` / boot-sweep? Did another sibling run's teardown stomp on it? Did `git worktree add` succeed but never actually persist files?\n\nPer Task 32's precedent: if Codex cannot be headlessly constrained to a single directory under all conditions, gate Codex dispatch behind a startup check that detects the failure and fails fast with a clear error rather than silently polluting the main checkout. A regression guard (test or runtime check) catches future adapters that write outside their run worktree.\n\nMirrors Task 32 (Antigravity worktree-isolation bug) — same failure surface, different agent. Resolution shape should generalize.\n",
       "created_at": "2026-05-23",
+      "started_at": "2026-05-24",
       "scored_at": "2026-05-23",
       "cross_repo": []
     },
@@ -1782,7 +1794,7 @@
       "phase": 4,
       "bundle": "multi-agent",
       "milestone": "v0_3",
-      "status": "pending",
+      "status": "done",
       "title": "Add pi.dev headless adapter",
       "scores": {
         "d": 5,
@@ -1809,7 +1821,12 @@
       ],
       "body": "Implement a Harness.AgentAdapter for pi.dev (pi binary, --print --output-format json\nor RPC over stdin/stdout per https://pi.dev). Parallels Tasks 13/14/15. Non-delegatable\nin the rmap sense — rmap delegate --to stays claude|codex|cursor; pi is dispatched via\nthe Task-31 non-delegatable pattern (ingest with claude/codex/cursor, then dispatch via\nthe pi adapter module through Harness.Run.Supervisor.start_run/4). Must pass the shared\nHarness.AgentAdapter.ConformanceCase unchanged. Capture raw output verbatim; do not\nparse pi.dev's event stream — the verification stack is the grader.\n",
       "created_at": "2026-05-24",
+      "started_at": "2026-05-24",
+      "done_at": "2026-05-24",
       "scored_at": "2026-05-24",
+      "implemented": "Added `Harness.AgentAdapter.Pi` headless adapter — `pi -p --mode json <prompt>` over an OTP port, with `--continue` for session resume. Declares `session_resume: true`, `:autonomous` as the only permission mode, and (post-integration) `rule_channel: :codex_ephemeral_file` since pi auto-discovers AGENTS.md from cwd. pi-specific flags (`--provider`, `--thinking`, `--tools`, `--skill`, etc.) deliberately omitted from the four-callback contract per agent-economy.md guidance. Full unit + conformance test coverage.",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     },
     {
