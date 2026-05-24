@@ -377,6 +377,20 @@ defmodule Harness.RunTest do
       assert %Result{state: :failed, reason: :no_changes, repair_attempts: 1} = result
     end
 
+    test "quota output during repair ends the loop without burning the attempt budget" do
+      {run_id, pid, _repo} =
+        start_repair(
+          adapter_opts: [command: :repair_quota_with_output],
+          checks: marker_checks(),
+          max_repair_attempts: 5
+        )
+
+      result = await_result(run_id, pid)
+
+      assert %Result{state: :failed, reason: :verification_red, repair_attempts: 1} = result
+      assert result.agent_outcome.output =~ "subscription quota exhausted"
+    end
+
     test "the settled run's status snapshot carries the repair attempt count" do
       {run_id, _pid, _repo} =
         start_repair(

@@ -65,8 +65,8 @@ defmodule Harness.Run.Supervisor do
     * `:required_capabilities` — adapter capabilities that must be supported
       before the run is allowed to start.
     * `:retry_policy` — `%Harness.Run.RetryPolicy{}` or keyword list for
-      `Harness.Run.RetryPolicy.from_opts/1` when a caller wraps runs with
-      `RetryPolicy.run/2` (batch or per-run scope).
+      `Harness.Run.RetryPolicy.from_opts/1`; used by repair-loop quota
+      classification and callers wrapping runs with `RetryPolicy.run/2`.
   """
   @spec start_run(Item.t(), String.t(), module(), keyword()) ::
           {:ok, String.t(), pid()} | {:error, term()}

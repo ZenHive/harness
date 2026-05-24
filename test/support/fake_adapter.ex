@@ -81,6 +81,11 @@ defmodule Harness.FakeAdapter do
   #                    settling :no_changes — a non-repairable failure (a
   #                    quota-starved agent) that must end the loop, not burn
   #                    every remaining attempt.
+  # :repair_quota_with_output
+  #                  — the first run writes a diff; the resumed run writes a
+  #                    different diff while emitting quota text, so the repair
+  #                    loop must classify the transcript instead of relying on
+  #                    the no-diff short-circuit.
   defp command(:echo, _invocation), do: {"/bin/echo", ["harness-test"], []}
 
   defp command({:echo, text}, _invocation) when is_binary(text), do: {"/bin/echo", [text], []}
@@ -129,6 +134,12 @@ defmodule Harness.FakeAdapter do
   defp command(:repair_quota, %Invocation{session: :resume}), do: {"/bin/echo", ["repair-did-nothing"], []}
 
   defp command(:repair_quota, %Invocation{session: nil}), do: {"/bin/sh", ["-c", "echo first-attempt > attempt.txt"], []}
+
+  defp command(:repair_quota_with_output, %Invocation{session: :resume}),
+    do: {"/bin/sh", ["-c", "echo churn >> churn.txt; echo subscription quota exhausted"], []}
+
+  defp command(:repair_quota_with_output, %Invocation{session: nil}),
+    do: {"/bin/sh", ["-c", "echo first-attempt > attempt.txt"], []}
 
   defp shell_arg(value) do
     "'" <> String.replace(value, "'", "'\"'\"'") <> "'"

@@ -72,9 +72,11 @@ defmodule Harness.Run do
   alias Harness.AgentAdapter.Run, as: AgentRun
   alias Harness.ResultStore
   alias Harness.Roadmap.Item
+  alias Harness.Run.FailureClass
   alias Harness.Run.LogRecord
   alias Harness.Run.RepairPrompt
   alias Harness.Run.Result
+  alias Harness.Run.RetryPolicy
   alias Harness.Run.Status
   alias Harness.Verification
   alias Harness.Verification.Check
@@ -113,6 +115,7 @@ defmodule Harness.Run do
            lifetime_timeout: pos_integer(),
            terminal_linger: non_neg_integer(),
            max_repair_attempts: non_neg_integer(),
+           retry_policy: RetryPolicy.t(),
            repair_attempts: non_neg_integer(),
            checks: [Check.t()] | nil,
            verification_timeout: timeout() | nil,
@@ -231,6 +234,7 @@ defmodule Harness.Run do
       max_repair_attempts:
         Keyword.get(opts, :max_repair_attempts) ||
           configured(:max_repair_attempts, @default_max_repair_attempts),
+      retry_policy: RetryPolicy.from_opts(opts),
       repair_attempts: 0,
       checks: Keyword.get(opts, :checks),
       verification_timeout: Keyword.get(opts, :verification_timeout),
@@ -671,12 +675,21 @@ defmodule Harness.Run do
   end
 
   # Whether a red verdict should trigger another repair attempt: the cap is not
-  # yet spent, and the adapter can resume its session — the channel the failing
-  # checks are fed back through.
+  # yet spent, the adapter can resume its session, and the failed attempt did
+  # not already classify as quota exhaustion.
   @spec repairable?(data()) :: boolean()
   defp repairable?(data) do
     data.repair_attempts < data.max_repair_attempts and
-      AgentAdapter.supports?(data.adapter, :session_resume)
+      AgentAdapter.supports?(data.adapter, :session_resume) and
+      failure_class(data) != :quota_exhausted
+  end
+
+  @spec failure_class(data()) :: FailureClass.t()
+  defp failure_class(data) do
+    data
+    |> Map.put(:reason, :verification_red)
+    |> build_result(:failed)
+    |> FailureClass.classify(data.retry_policy)
   end
 
   # The message stamped on the agent's delivery commit — identifies the run and
