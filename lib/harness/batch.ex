@@ -30,8 +30,7 @@ defmodule Harness.Batch do
            item: Item.t(),
            adapter: module(),
            monitor_ref: reference(),
-           started_at_ms: integer(),
-           result: RunResult.t() | nil
+           started_at_ms: integer()
          }
   @typep loop_context :: %{
            batch_id: String.t(),
@@ -146,7 +145,9 @@ defmodule Harness.Batch do
     else
       receive do
         {:harness_run, run_id, %RunResult{} = result} ->
-          active = put_result(active, run_id, result)
+          {active, results, queue, events} =
+            settle_result(active, results, queue, events, context, run_id, result)
+
           loop(queue, active, results, events, context)
 
         {:DOWN, ref, :process, _pid, reason} ->
@@ -214,8 +215,7 @@ defmodule Harness.Batch do
                 item: item,
                 adapter: adapter,
                 monitor_ref: ref,
-                started_at_ms: System.monotonic_time(:millisecond),
-                result: nil
+                started_at_ms: System.monotonic_time(:millisecond)
               })
 
             fill_slots(rest, active, results, events, repo, adapters, run_opts, max_concurrency)
@@ -279,11 +279,30 @@ defmodule Harness.Batch do
     "undispatched-#{id}-#{System.unique_integer([:positive, :monotonic])}"
   end
 
-  @spec put_result(%{String.t() => active_run()}, String.t(), RunResult.t()) :: %{String.t() => active_run()}
-  defp put_result(active, run_id, result) do
+  @spec settle_result(
+          %{String.t() => active_run()},
+          %{non_neg_integer() => RunResult.t()},
+          [indexed_item()],
+          [term()],
+          loop_context(),
+          String.t(),
+          RunResult.t()
+        ) ::
+          {%{String.t() => active_run()}, %{non_neg_integer() => RunResult.t()}, [indexed_item()], [term()]}
+  defp settle_result(active, results, queue, events, context, run_id, result) do
     case Map.fetch(active, run_id) do
-      {:ok, run} -> Map.put(active, run_id, %{run | result: result})
-      :error -> active
+      {:ok, run} ->
+        Process.demonitor(run.monitor_ref, [:flush])
+        active = Map.delete(active, run_id)
+
+        if quota_exhausted_result?(result) do
+          fail_over(active, results, queue, events, context.adapters, context.run_opts, run, result)
+        else
+          {active, Map.put(results, run.index, result), queue, events}
+        end
+
+      :error ->
+        {active, results, queue, events}
     end
   end
 
@@ -303,7 +322,7 @@ defmodule Harness.Batch do
         {active, results, queue, events}
 
       {run_id, run} ->
-        result = run.result || persist_crashed_result(crashed_result(run_id, run, reason), run, context)
+        result = persist_crashed_result(crashed_result(run_id, run, reason), run, context)
         active = Map.delete(active, run_id)
 
         if quota_exhausted_result?(result) do

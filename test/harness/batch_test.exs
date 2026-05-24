@@ -20,6 +20,7 @@ defmodule Harness.BatchTest do
   @eventually_delay_ms 20
   @run_timeout_ms 30_000
   @terminal_linger_ms 100
+  @long_terminal_linger_ms 2_000
 
   defmodule QuotaAdapter do
     @moduledoc false
@@ -100,6 +101,61 @@ defmodule Harness.BatchTest do
     assert {:ok, %BatchResult{results: results}} = Task.await(batch_task, @run_timeout_ms)
     assert Enum.map(results, & &1.task_id) == ~w(1 2 3)
     assert Enum.all?(results, &match?(%Result{state: :done, reason: :passed}, &1))
+  end
+
+  test "frees a max-concurrency slot when a run reports its result before terminal linger exits" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+    started_at_ms = System.monotonic_time(:millisecond)
+
+    assert {:ok, %BatchResult{results: results}} =
+             Batch.run(
+               items(~w(first second)),
+               repo,
+               FakeAdapter,
+               batch_opts(base,
+                 max_concurrency: 1,
+                 terminal_linger: @long_terminal_linger_ms
+               )
+             )
+
+    elapsed_ms = System.monotonic_time(:millisecond) - started_at_ms
+
+    assert Enum.map(results, &{&1.task_id, &1.state, &1.reason}) == [
+             {"first", :done, :passed},
+             {"second", :done, :passed}
+           ]
+
+    assert elapsed_ms < @long_terminal_linger_ms
+  end
+
+  @tag :capture_log
+  test "a crashed active run still settles as run_crashed" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+    [item] = items(["crash"])
+
+    batch_task =
+      Task.async(fn ->
+        Batch.run(
+          [item],
+          repo,
+          FakeAdapter,
+          batch_opts(base,
+            max_concurrency: 1,
+            adapter_opts: [command: :sleep],
+            idle_timeout: @run_timeout_ms,
+            total_timeout: @run_timeout_ms
+          )
+        )
+      end)
+
+    "crash"
+    |> await_batch_run_pid()
+    |> Process.exit(:kill)
+
+    assert {:ok, %BatchResult{results: [%Result{state: :failed, reason: {:run_crashed, _reason}}]}} =
+             Task.await(batch_task, @run_timeout_ms)
   end
 
   test "keeps running after a red task and reports every task result" do
@@ -383,6 +439,42 @@ defmodule Harness.BatchTest do
     end)
     |> Enum.filter(&MapSet.member?(batch_ids, &1))
     |> Enum.sort()
+  end
+
+  defp await_batch_run_pid(task_id, tries \\ @eventually_tries)
+
+  defp await_batch_run_pid(task_id, tries) when tries > 1 do
+    case batch_run_pid(task_id) do
+      {:ok, pid} ->
+        pid
+
+      :error ->
+        Process.sleep(@eventually_delay_ms)
+        await_batch_run_pid(task_id, tries - 1)
+    end
+  end
+
+  defp await_batch_run_pid(task_id, 1) do
+    case batch_run_pid(task_id) do
+      {:ok, pid} -> pid
+      :error -> flunk("run for task #{task_id} never became active")
+    end
+  end
+
+  defp batch_run_pid(task_id) do
+    Run.Supervisor.list_runs()
+    |> Enum.find_value(fn run_id ->
+      with {:ok, %{task_id: ^task_id}} <- Run.status(run_id),
+           [{pid, _value}] <- Registry.lookup(Harness.Run.Registry, run_id) do
+        {:ok, pid}
+      else
+        _other -> nil
+      end
+    end)
+    |> case do
+      nil -> :error
+      {:ok, pid} -> {:ok, pid}
+    end
   end
 
   defp assert_eventually(fun, tries \\ @eventually_tries)
