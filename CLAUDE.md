@@ -1,5 +1,7 @@
 # harness — CLAUDE.md
 
+**Repo:** [github.com/ZenHive/harness](https://github.com/ZenHive/harness) (public, default branch `development`).
+
 @~/.claude/includes/across-instances.md
 @~/.claude/includes/critical-rules.md
 @~/.claude/includes/worktree-workflow.md
