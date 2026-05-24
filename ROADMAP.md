@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 28 — Wire the retry policy into the batch orchestrator, Task 29 — Force-settle the Run lifetime timeout when the agent handle never arrives, Task 35 — Audit-surfaced: Batch.fill_slots race — start_run errors crash the batch, Task 37 — Audit-surfaced: Repair loop ignores quota classification before resuming, Task 38 — Audit-surfaced: Batch slot held until terminal_linger expires on 2026-05-24
 
-**Up next:** Task 41 — Codex adapter — worktree isolation breaks intermittently (cwd ignored, agent edits main checkout) [D:5/B:7/U:7 → Eff:1.4] 📋
+**Up next:** Task 44 — Promote check stack to a first-class %Harness.CheckStack{} with a preset library [D:4/B:7/U:8 → Eff:1.88] 🚀
 <!-- FOCUS:END -->
 
 ---
@@ -101,7 +101,6 @@
 <!-- TASKS:BEGIN phase=5 -->
 | Task | Status | Notes |
 |------|--------|-------|
-| Task 17 | ⬜ | 🎁 **surface** · 🚀 **v0_4** · Agent-shaped surface — MCP tools + JSON CLI [D:6/B:8/U:8 → Eff:1.33] 📋 |
 | Task 18 `[P]` | ✅ | 🎁 **surface** · 🚀 **v0_4** · Human status view [D:3/B:5/U:5 → Eff:1.67] 🚀 |
 | Task 19 `[P]` | ✅ | 🎁 **surface** · 🚀 **v0_4** · Structured run logging + result persistence [D:5/B:5/U:5 → Eff:1.0] 📋 |
 | Task 33 | ⬜ | 🎁 **surface** · Same-task A/B agent-evaluation mode [D:4/B:6/U:5 → Eff:1.38] 📋 |
@@ -117,6 +116,7 @@
 <!-- TASKS:BEGIN phase=6 -->
 | Task | Status | Notes |
 |------|--------|-------|
+| Task 17 | ⬜ | 🎁 **deferred** · Agent-shaped surface — MCP tools + JSON CLI [D:6/B:8/U:8 → Eff:1.33] 📋 |
 | Task 20 | ⬜ | 🎁 **deferred** · Run telemetry + quota/cost accounting [D:5/B:3/U:3 → Eff:0.6] ⚠️ |
 | Task 21 | ⬜ | 🎁 **deferred** · ACP transport adapter [D:7/B:5/U:3 → Eff:0.57] ⚠️ |
 <!-- TASKS:END -->

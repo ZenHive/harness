@@ -40,6 +40,11 @@ name = "Deferred"
 order = 6
 status = "pending"
 
+[phases.7]
+name = "Multi-Project Federation"
+order = 7
+status = "pending"
+
 # ----------------------------------------------------------------------------
 # Bundles
 # ----------------------------------------------------------------------------
@@ -89,6 +94,16 @@ description = "Parked work — revisit after the core milestones ship"
 order = 1
 phase = 6
 
+[bundles.multi-project]
+description = "First-class %Harness.Project{} + check-stack abstraction + Rust preset + GitHub source + Oban-backed dispatch with restart persistence + cron-driven autonomous polling + in-repo subdir recipe"
+order = 1
+phase = 7
+
+[bundles.dashboard]
+description = "Phoenix LiveView operational surface (project switcher, live multi-project status, per-run drill-down with stream-json transcript) + embedded Oban Web at /harness/oban for queue introspection"
+order = 2
+phase = 7
+
 # ----------------------------------------------------------------------------
 # Milestones
 # ----------------------------------------------------------------------------
@@ -97,7 +112,7 @@ phase = 6
 name = "Core loop & contract proof"
 description = "One rmap task driven end to end (Claude headless, isolated worktree, verified result), plus a second adapter (Codex) proving the AgentAdapter contract holds for two implementors"
 order = 1
-status = "active"
+status = "done"
 target_version = "0.1.0"
 
 [milestones.v0_2]
@@ -120,6 +135,13 @@ description = "MCP tools + JSON CLI, status view, run logging"
 order = 4
 status = "pending"
 target_version = "0.4.0"
+
+[milestones.v0_5]
+name = "Multi-Project & Dashboard"
+description = "Long-running OTP node orchestrates N registered projects (Elixir, Rust, ...) concurrently via Oban queues with restart persistence; Phoenix LiveView dashboard + embedded Oban Web at /harness/oban; cron-driven autonomous roadmap polling. Pivots harness from 'single-repo Elixir-only CLI' to 'library + always-on dashboard orchestrating N projects'."
+order = 5
+status = "active"
+target_version = "0.5.0"
 
 # ----------------------------------------------------------------------------
 # Tasks
@@ -521,9 +543,8 @@ done_at = "2026-05-23"
 
 [[task]]
 id = "17"
-phase = 5
-bundle = "surface"
-milestone = "v0_4"
+phase = 6
+bundle = "deferred"
 status = "pending"
 depends_on = ["9"]
 title = "Agent-shaped surface — MCP tools + JSON CLI"
@@ -531,6 +552,8 @@ scores = { d = 6, b = 8, u = 8 }
 scored_at = "2026-05-20"
 created_at = "2026-05-20"
 body = """
+**Deferred** (as of the multi-project + dashboard pivot, milestone v0_5). The primary "agent-facing surface" use case is served by the Phoenix LiveView dashboard (Task 50) because Claude Code drives harness directly via tidewave + IEx + `Harness.Run.Supervisor` calls — no JSON-RPC transport is needed for the Elixir-native consumer. This task remains relevant if a non-Elixir consumer (Python, TypeScript) ever needs to drive harness from outside the BEAM. Revisit when that consumer exists.
+
 Build harness's own entry point, shaped for an AI orchestrator as the primary consumer. Annotate harness's public functions with descripex `api()`, build a `Harness.Manifest`, and generate MCP tools via `Descripex.MCP.tools/1` served from harness's own MCP server (over Bandit), with progressive `describe()` disclosure. Provide a JSON-clean CLI from the same `api()` definitions. The target agent is a parameter, not a code change.
 """
 acceptance_criteria = [
@@ -1160,3 +1183,187 @@ created_at = "2026-05-24"
 started_at = "2026-05-24"
 scored_at = "2026-05-24"
 done_at = "2026-05-24"
+
+[[task]]
+id = "44"
+phase = 7
+bundle = "multi-project"
+milestone = "v0_5"
+status = "pending"
+title = "Promote check stack to a first-class %Harness.CheckStack{} with a preset library"
+scores = { d = 4, b = 7, u = 8 }
+acceptance_criteria = ["%Harness.CheckStack{} struct defined with name, checks, optional parser, optional timeout_per_check", "Harness.CheckStack.Preset.Elixir submodule exposes the current 5-check stack via preset/0 returning a %CheckStack{}", "Harness.CheckStack.Preset registry module defines fetch/1 which dispatches to the per-language submodule (fetch(:elixir) → Preset.Elixir.preset/0); both must exist and be wired together", "Harness.Verification.run/2 accepts a %CheckStack{} and produces the same %Verdict{} shape as today", "Existing callers passing :checks opt continue to work (back-compat preserved during this task)", "Dogfood-grade tests covering preset fetch, custom-stack run, and back-compat path"]
+out_of_scope = ["Rust preset (Task 45)", "Per-project check-stack storage (Task 46)", "Dashboard rendering (Task 50)"]
+body = """
+The verification stack today is `@elixir_preset` — five hard-coded `mix` commands inside `Harness.Verification`. Custom checks can be passed via the `:checks` opt, but there's no first-class "this is a Rust check stack" or "this is the Elixir preset" concept. That makes per-project verification configuration awkward and blocks the Rust preset (Task 45) and the project registry (Task 46) from carrying verification declaratively.
+
+Introduce `%Harness.CheckStack{name, checks, parser, timeout_per_check}` as a first-class struct. Extract the current `@elixir_preset` into a `Harness.CheckStack.Preset.Elixir` module. Create a `Harness.CheckStack.Preset` registry so callers can fetch `CheckStack.Preset.fetch(:elixir)` and pass the resulting `%CheckStack{}` to `Verification.run/2`. Verification continues to accept either a `%CheckStack{}` or a raw `:checks` list (back-compat for existing callers in this task; eventually `%CheckStack{}` becomes the canonical input).
+
+This is the foundation Tasks 45 (Rust preset), 46 (Project carries `:check_stack`), and 50 (dashboard renders per-project verdicts) all build on.
+"""
+created_at = "2026-05-24"
+scored_at = "2026-05-24"
+
+[[task]]
+id = "45"
+phase = 7
+bundle = "multi-project"
+milestone = "v0_5"
+status = "pending"
+title = "First non-Elixir preset: Rust check stack"
+scores = { d = 3, b = 6, u = 6 }
+depends_on = [44]
+acceptance_criteria = ["Harness.CheckStack.Preset.Rust.preset/0 returns a %CheckStack{} with at minimum: cargo fmt --check (role: format), cargo clippy -- -D warnings (role: lint), cargo test --message-format=json (role: test), cargo build --release (role: build)", "Harness.CheckStack.Preset.fetch(:rust) returns it", "An integration test runs the Rust preset against a minimal Rust fixture (created under test/support/fixtures/rust_project/ or similar) and produces a %Verdict{} whose pass/fail reflects the fixture's state", "Test covers both green (passing fixture) and red (intentionally-broken fixture) paths", "No Elixir-specific assumptions remain in Harness.Verification after this task"]
+out_of_scope = ["Per-check JSON parser for cargo output (file as follow-up if useful)", "Python, TypeScript, or other presets (file separately when demand exists)", "Project struct (Task 46)"]
+body = """
+Validate the `%Harness.CheckStack{}` abstraction by adding the Rust preset as the first non-Elixir verification target. The Rust preset should run the canonical Cargo check stack: format check, clippy with warnings-as-errors, tests with structured output, release build.
+
+The point of this task is not "support Rust comprehensively" — it's to prove the check-stack abstraction holds up under a real second target. If anything in `Harness.Verification` or `%CheckStack{}` had a latent Elixir assumption, the Rust preset surfaces it.
+
+Use `cargo test --message-format=json` so that future per-check parsers (e.g. extracting failed test names from cargo's JSON output) have something structured to work with. Don't write the parser in this task — just emit and capture the raw output, same as the Elixir preset does today.
+"""
+created_at = "2026-05-24"
+scored_at = "2026-05-24"
+
+[[task]]
+id = "46"
+phase = 7
+bundle = "multi-project"
+milestone = "v0_5"
+status = "pending"
+title = "%Harness.Project{} struct + in-memory ProjectRegistry; Run takes Project"
+scores = { d = 6, b = 8, u = 9 }
+depends_on = [44]
+acceptance_criteria = ["%Harness.Project{} struct with name, source, check_stack, roadmap_path, concurrency_cap fields", "Harness.ProjectRegistry GenServer with register/1, lookup/1, list/0, unregister/1", "Harness.Application starts ProjectRegistry as a supervised child", "Harness.Run.start_link/1 accepts {%Item{}, %Project{}, adapter, opts} (old repo-string form no longer works)", "Harness.Batch.run/4 accepts a %Project{} or a registered project name", "Harness.Worktree.create/2 derives base path from project name", "Harness.Roadmap.ingest/2 honors project.roadmap_path when given a project", "All existing tests pass after migration", "A test demonstrates two %Project{}s registered with different check_stacks running concurrently in the same node, each producing the verdict its own check_stack dictates"]
+out_of_scope = ["GitHub-URL source (Task 47)", "Two-tier concurrency enforcement (Task 48 builds on the per-project cap field added here)", "Persistence of registered projects across node restarts (in-memory only; persistence can be filed as a follow-up if needed)"]
+body = """
+Today every layer of harness implicitly assumes one project: `Harness.Run.start_link/1` takes `{%Item{}, repo, adapter, opts}` where `repo` is a bare path string, `Harness.Batch.run/4` takes one `repo` per batch, and the worktree base is rooted under `~/_DATA/worktrees/.harness/<repo-basename>/`. To orchestrate N projects concurrently, the project must be a first-class concept.
+
+Introduce `%Harness.Project{}` with fields: `name` (unique slug), `source` (initially just `{:local, path}`; `{:github, url}` lands in Task 47), `check_stack` (`%Harness.CheckStack{}` from Task 44), `roadmap_path` (per-project rmap roadmap location), `concurrency_cap` (per-project cap; default nil = inherit global). Plus `Harness.ProjectRegistry` — a GenServer holding registered projects in-memory (registered at app start from config, or via `Harness.ProjectRegistry.register/1` for dynamic registration).
+
+Migrate `Harness.Run.start_link/1` to take a `%Project{}` instead of a bare repo string. Update `Harness.Batch.run/4` to accept either a `%Project{}` or a project name resolved against the registry. Update `Harness.Worktree.create/2` callers to derive base from project name (`Path.basename(project.source.path)` continues to work for local sources). Update `Harness.Roadmap.ingest/2` to consume `project.roadmap_path` when called per-project.
+
+Don't add a backwards-compat shim accepting both the old `repo` string and a `%Project{}` — do the migration cleanly. Update every callsite, every test. The Round-4 in-flight tasks (27, 28, 36, 43) are on existing surfaces and won't conflict with this migration since they predate it.
+
+Concurrency note: at Task 46-time the per-project `concurrency_cap` field is wired into the existing `Harness.Batch.run/4` coordinator (in-memory, in-node). Task 48 replaces that coordinator with Oban queue-per-project, where the same `concurrency_cap` becomes the queue's concurrency setting. The field's shape doesn't change between 46 and 48; only the enforcement mechanism does.
+"""
+created_at = "2026-05-24"
+scored_at = "2026-05-24"
+
+[[task]]
+id = "47"
+phase = 7
+bundle = "multi-project"
+milestone = "v0_5"
+status = "pending"
+title = "Harness.Project.Source.Github: clone-and-cache + fetch-before-run"
+scores = { d = 5, b = 6, u = 6 }
+depends_on = [46]
+acceptance_criteria = ["Harness.Project.Source.Local and Harness.Project.Source.Github exist as variants of the source field", "Harness.Project.Source.Github.url/1 and local_path/1 (or similar) resolve a GitHub source to its local cache path", "First-run of a GitHub-source project clones to ~/_DATA/harness/projects/<name>/ (path configurable)", "Subsequent runs git fetch before worktree creation", "Recovery path: if the cache dir is missing, re-clone transparently rather than failing", "Test using a real public GitHub URL (small fixture repo) covers clone, fetch, and recovery paths", "Test verifies that worktree creation against a GitHub-source project succeeds end-to-end"]
+out_of_scope = ["Credential management beyond what gh/SSH already provides", "Non-default branches (main/master only)", "Submodules, LFS, shallow clones", "Cache eviction / cleanup policy (manual for now)"]
+body = """
+Once `%Harness.Project{}` exists (Task 46), extend its `source` field to also accept `{:github, url}`. The first time a GitHub-source project is registered or run, harness clones it to a known cache path (e.g. `~/_DATA/harness/projects/<project_name>/`). Before every run, harness `git fetch`es to avoid running an agent against stale `main`.
+
+Credentials piggyback on the host's existing `gh` CLI and SSH config — do not invent an auth layer inside harness. If `gh auth status` is green and the user can `git clone` the URL from a shell, harness can too via the same shell-out path it uses for everything else.
+
+The clone-and-cache flow needs to handle: first-time clone (target dir doesn't exist), subsequent fetch (target dir exists, refresh `main`), and the "user nuked the cache" recovery (target dir missing on a project that was previously cloned — re-clone transparently). It does NOT need to handle: branch tracking other than `main`/default, submodules, LFS, or shallow clones (those can be follow-ups when a real need surfaces).
+"""
+created_at = "2026-05-24"
+scored_at = "2026-05-24"
+
+[[task]]
+id = "48"
+phase = 7
+bundle = "multi-project"
+milestone = "v0_5"
+status = "pending"
+title = "Oban-backed dispatch: queue-per-project + run-state persistence across restart"
+scores = { d = 7, b = 9, u = 8 }
+depends_on = [46]
+acceptance_criteria = ["Oban, Ecto, Postgrex added as runtime deps in mix.exs", "Harness.Repo Ecto repo defined; Postgres config in config/runtime.exs", "Oban migration generated, runnable via mix ecto.migrate", "Harness.Oban supervised by Harness.Application; queues bootstrapped from ProjectRegistry.list/0 at boot, dynamically added when ProjectRegistry.register/1 is called", "Harness.Run.Worker (Oban worker) spawns the existing Harness.Run gen_statem and threads its terminal state into Oban's return contract (:ok / {:snooze, _} / {:cancel, _})", "Harness.Batch.dispatch/2 enqueues jobs into the project's queue and returns immediately (async)", "Per-project concurrency enforced via Oban queue concurrency = project.concurrency_cap", "Restart test: dispatch 5 jobs, hard-kill the BEAM node mid-run, restart, confirm pending/in-flight jobs resume without manual intervention", "All existing Run / Batch tests pass after migration", "Doc note in CLAUDE.md clarifying the dispatch-vs-in-run retry layering"]
+out_of_scope = ["Oban Pro's Smart Engine (cross-queue global cap) — note as optional upgrade; current design accepts that global cap = sum of per-queue caps", "Web-based job introspection — Oban Web embed is in Task 50", "Cron-driven autonomous polling — Task 51", "Replacing the custom Task-10 retry policy with Oban's retry (intentionally kept separate)"]
+body = """
+Today `Harness.Batch.run/4` is a synchronous in-memory coordinator: spawn up to `:max_concurrency` Run GenServers, wait for results, exit. Two weaknesses surface as soon as harness orchestrates N projects: (1) fairness across projects requires a custom coordinator (originally drafted as a two-tier cap); (2) BEAM node death loses every in-flight run because state is purely in-memory. Both problems are exactly what Oban is built for, and Postgres is already running on the dev laptop.
+
+Add Oban + Ecto + Postgrex as runtime deps. Create `Harness.Repo` (Postgres). Generate Oban's migrations and run them. Add `Harness.Oban` as a supervised child of `Harness.Application`. Define `Harness.Run.Worker` (an `Oban.Worker`) that takes a `{project_name, item_id, adapter_module}` payload and spawns the existing `Harness.Run` `gen_statem`, blocking until terminal state. On terminal `:passed` return `:ok`; on `:failed` with quota/transient classification return `{:snooze, seconds}` so Oban retries after delay; on `:failed` with permanent classification return `{:cancel, reason}`.
+
+Replace `Harness.Batch.run/4` with `Harness.Batch.dispatch/2` which enqueues N Oban jobs (one per item) into the project's queue. Each registered project gets its own Oban queue: queue name = `"project_#{project.name}"`, queue concurrency = `project.concurrency_cap`. Global concurrency: with open-source Oban, the sum of per-queue caps is the effective ceiling — document this and let the user pick per-project caps that sum to laptop capacity. (Oban Pro's Smart Engine gives a true global cap across queues; flag as optional upgrade in the task body, do not require it.)
+
+Persistence: because each run is now an Oban job, an in-flight run's job row survives BEAM restart. On restart, Oban automatically re-enqueues unfinished jobs and the worker re-spawns the Run gen_statem. The existing `Harness.ResultStore` (Task 19, done) writes final verdicts; this task adds a sidecar checkpoint table (or uses Oban's `meta` column) so a resumed worker knows what stage the previous attempt reached. Minimum acceptance: restarted runs do not silently lose progress — at worst they restart from the dispatch step, never silently disappear.
+
+Custom retry policy (Task 10, done): keep it inside `Harness.Run` gen_statem. Oban's retry handles dispatch-level transient failures (quota); harness's retry handles in-run repair-loop attempts. Two layers, distinct concerns.
+"""
+created_at = "2026-05-24"
+scored_at = "2026-05-24"
+
+[[task]]
+id = "49"
+phase = 7
+bundle = "multi-project"
+milestone = "v0_5"
+status = "pending"
+title = "In-repo <repo>/harness/ subdirectory recipe + template"
+scores = { d = 2, b = 4, u = 4 }
+depends_on = [46]
+acceptance_criteria = ["docs/in-repo-subdir-recipe.md documents the layout, when to choose it vs out-of-repo, gitignore rules, and update path", "priv/templates/in_repo_harness/ contains the canonical mix.exs, config/runtime.exs, lib/<project>_harness.ex, and .gitignore", "Doc walks through wiring it into a new Rust project end-to-end including the Postgres + Oban setup the harness library requires", "The template, copied verbatim into a fixture repo, boots Harness.Application and successfully registers one local-source project"]
+out_of_scope = ["mix harness.init task to automate template copy (follow-up)", "Multi-project configurations from within an in-repo harness (the in-repo recipe is single-project by convention)"]
+body = """
+For team-distributed projects (open-source Rust repo where contributors want to use harness without setting up a separate checkout), document the in-repo subdirectory layout: `<repo>/harness/` containing a tiny `mix.exs` (≈30 lines, just the `{:harness, "~> 0.x"}` dep + tidewave + bandit), `config/runtime.exs` declaring the check stack + `target_root: ".."`, `roadmap/tasks.toml` for that project, and a 3-line app module starting `Harness.Application`.
+
+This is the *contributor convenience* recipe. The primary model is still the long-running app with registered projects (the user's solo workflow), but the in-repo subdir lets a project ship with harness self-contained.
+
+Deliverable: `docs/in-repo-subdir-recipe.md` documenting the layout + `priv/templates/in_repo_harness/` containing the actual files a `mix harness.init --in-repo` task would copy in (the mix task itself can be a follow-up; for now just having the template scaffolded is enough).
+"""
+created_at = "2026-05-24"
+scored_at = "2026-05-24"
+
+[[task]]
+id = "50"
+phase = 7
+bundle = "dashboard"
+milestone = "v0_5"
+status = "pending"
+title = "Phoenix LiveView dashboard + embedded Oban Web (mountable + standalone)"
+scores = { d = 7, b = 9, u = 8 }
+depends_on = [46, 48]
+acceptance_criteria = ["Phoenix + LiveView + oban_web added as runtime deps", "Bandit declared with optional: true (not forced on mountable consumers who already have an HTTP server)", "Harness.Dashboard.Endpoint guarded by Code.ensure_loaded?(Bandit) and supervised only when standalone mode is enabled AND Bandit is on the consumer's path", "Harness.Dashboard.Live LiveView mountable into a consumer Phoenix router", 'Oban Web mounted at /harness/oban (standalone) and via oban_dashboard "/harness/oban" macro in mountable shape', "Project switcher renders all registered projects (sourced from Harness.ProjectRegistry)", "Active-runs view shows live state across all projects (updates without page refresh)", "Per-run drill-down shows current state, repair attempt count, verdict", "Live stream-json transcript pane updates as the agent produces output (PubSub from the run's port output stream)", "Dashboard verified end-to-end in browser: dispatch a real batch, watch state transitions on the custom view, drill into queue state via Oban Web at /oban, see transcript update live", "Mounting test: a fixture consumer Phoenix app mounts Harness.Dashboard.Live + Oban Web and successfully renders both"]
+out_of_scope = ["Authentication / authorization (dashboard is dev-mode-only initially; Oban Web's own auth hook is available but not required for dev)", "Historical run archive view (live state only for now; persistence is in Harness.ResultStore + Oban tables if needed)", "Dispatch controls from the custom LiveView (kick off a run from the UI is a follow-up; Oban Web's retry-now / cancel controls cover the queue-level case from day one)", "Theming / customization beyond default LiveView + Oban Web styling"]
+body = """
+Harness's natural operational surface is a live dashboard, not a CLI snapshot. The state is already structured (`Harness.StatusView.snapshot/0` returns a structured payload; `classify/1` buckets runs into IN FLIGHT / REPAIRING / GREEN / RED). With Oban handling dispatch (Task 48), there's now also a rich job-queue view available via Oban Web. Best-of-both: custom LiveView for the harness-native concerns (project switcher, live transcript, multi-project view), embed Oban Web for raw job-queue introspection.
+
+Add Phoenix + LiveView as runtime deps. Add `oban_web` as a runtime dep. Build a `Harness.Dashboard.Live` LiveView that lists all registered projects (project switcher), shows per-project pending/in-flight/done counts (from `Harness.StatusView` + Oban queue stats), shows a live "active runs across all projects" view, and supports per-run drill-down (current state, repair-loop iteration count, verification verdict, live stream-json transcript pane driven by PubSub from the run's port output).
+
+Mount Oban Web at `/harness/oban` for queue-centric introspection (job rows, queue depth, scheduled/retrying/discarded states, retry-now controls). The custom LiveView owns the project-centric and live-transcript views; Oban Web owns the queue-centric view. Each does what it does best; the dashboard is the union.
+
+Two consumption shapes: standalone (harness brings up its own minimal Bandit + Phoenix endpoint at localhost:4016/harness, config-gated, default-on in dev; reuses the tidewave port if it's already there); mountable (consumers with their own Phoenix endpoint add `live "/harness/*path", Harness.Dashboard.Live` and `oban_dashboard "/harness/oban"` to their router). Pattern reference: Oban Web, LiveDashboard, Tidewave itself — they all ship as mountable LiveViews with optional standalone runners.
+
+Bandit dep shape: declare `{:bandit, "~> 1.x", optional: true}` so mountable consumers who already have their own Phoenix endpoint (typical Phoenix app) don't get a second HTTP server dragged in. The standalone Endpoint wraps its Bandit reference in `Code.ensure_loaded?(Bandit)`; if the consumer didn't add Bandit themselves, standalone mode logs a clear "add :bandit to your deps to use the standalone dashboard" message and the LiveView mountable path still works. Phoenix + LiveView + oban_web stay required runtime deps — the dashboard is a core deliverable of Phase 7, not an opt-in extra.
+
+This task is intentionally one task even though it has multiple deliverables (custom views + Oban Web embed). The first slice that ships is a minimal dashboard (project list + run list + Oban Web at /oban); transcript pane and stream-json plumbing can be the second pass within the same task.
+"""
+created_at = "2026-05-24"
+scored_at = "2026-05-24"
+
+[[task]]
+id = "51"
+phase = 7
+bundle = "multi-project"
+milestone = "v0_5"
+status = "pending"
+title = "Cron-driven autonomous roadmap polling via Oban.Plugins.Cron"
+scores = { d = 3, b = 6, u = 5 }
+markers = ["parallel"]
+depends_on = [48]
+acceptance_criteria = ["Oban.Plugins.Cron configured in Harness.Oban supervisor", "Harness.Cron.RoadmapPoller Oban worker defined; tick frequency configurable", "Config-gated: config :harness, :cron_polling, enabled: false by default; turning it on enables the cron tick", "Per-tick logic: iterate ProjectRegistry.list/0, call Harness.Roadmap.ingest(:next, ...) per project, enqueue Run.Worker jobs respecting headroom + adapter availability", "Test: with cron enabled in test mode, advance the clock past a tick boundary and assert that pending items in a fixture project get enqueued", "Test: with cron disabled (default), no autonomous dispatch happens even with pending items", "Dashboard (Task 50) shows next scheduled cron tick in the global status header"]
+out_of_scope = ["Per-project cron schedules (single global tick for now; per-project can be a follow-up)", "Dispatch policy beyond next eligible task (e.g. priority-weighted picking across projects)", "Manual trigger-the-cron-now button in dashboard (follow-up; for now, restart the cron plugin to force a tick)"]
+body = """
+Once Oban is in (Task 48), cron is essentially free — `Oban.Plugins.Cron` is open-source and ships with Oban core. This unlocks autonomous operation: "every N hours, poll each registered project's roadmap; if there's a pending task that fits the available adapters and the project's concurrency cap has headroom, dispatch it."
+
+Define `Harness.Cron.RoadmapPoller` as an Oban worker scheduled via the cron plugin. On each tick: for each `%Project{}` in `ProjectRegistry.list/0`, call `Harness.Roadmap.ingest(:next, project_root: project.roadmap_path)`; if an item is returned AND the project's queue has headroom AND a capable adapter is available, enqueue a Run.Worker job. Tick frequency is configurable (default `0 */2 * * *` = every 2 hours; user can dial up/down per their preference for how autonomous they want this to be).
+
+This task is intentionally low-stakes: the cron is opt-in via config (`config :harness, :cron_polling, enabled: false` by default). With it on, harness becomes a "while I sleep" worker — wakes up, picks the next task across all projects, dispatches it, the agent runs, the verification stack grades, the dashboard reflects it. Turn it off and harness reverts to manual-dispatch only.
+
+parallel marker: this can be done independently of Tasks 49, 50 — they share no files.
+"""
+created_at = "2026-05-24"
+scored_at = "2026-05-24"
