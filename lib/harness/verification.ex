@@ -85,7 +85,7 @@ defmodule Harness.Verification do
       `:infinity` for an unbounded check.
     * `:base_ref` — the dispatch-base commit SHA the worktree branch was
       forked from. When set, diff-aware post-processors (see
-      `Harness.Verification.Check.post_process/0`) re-grade their checks
+      `t:Harness.Verification.Check.post_process/0`) re-grade their checks
       against the baseline — e.g. the credo TagTODO filter drops findings on
       pre-existing TODOs. `nil` (the default) leaves every check's exit
       status as the sole grader.

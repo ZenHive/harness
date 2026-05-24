@@ -52,7 +52,11 @@ defmodule Harness.MixProject do
       # Tidewave/bandit's HTTP stack (plug, finch, mint, gun, cowlib, etc.)
       # is not in lib/ call graph and bloats PLT.
       plt_add_deps: :apps_direct,
-      plt_add_apps: [:mix],
+      # `:jason` is transitive via dev/test-only tooling (`credo`, `dialyzer_json`,
+      # `ex_unit_json`); `:apps_direct` excludes it, so direct runtime use of
+      # `Jason.*` in `lib/` (Task 43: verification baseline filter) needs an
+      # explicit add to keep dialyzer aware of the function signatures.
+      plt_add_apps: [:mix, :jason],
       plt_local_path: "priv/plts",
       plt_core_path: "priv/plts",
       ignore_warnings: ".dialyzer_ignore.exs"

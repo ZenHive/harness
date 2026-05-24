@@ -170,6 +170,9 @@ defmodule Harness.AgentRules do
 
   @spec cleanup_codex_agents(String.t()) ::
           :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  # `@codex_agents_filename` is a fixed harness-owned path; `cwd` is the run
+  # worktree root validated by `worktree_file!/2`.
+  # sobelow_skip ["Traversal.FileModule"]
   defp cleanup_codex_agents(cwd) do
     path = worktree_file!(cwd, @codex_agents_filename)
 
@@ -245,6 +248,9 @@ defmodule Harness.AgentRules do
   end
 
   @spec remove_path(String.t()) :: :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  # `path` is always constructed via `worktree_file!/2`, which validates the
+  # path stays under the run worktree root.
+  # sobelow_skip ["Traversal.FileModule"]
   defp remove_path(path) do
     case File.rm(path) do
       :ok -> :ok
@@ -255,6 +261,9 @@ defmodule Harness.AgentRules do
 
   @spec write_path(String.t(), String.t()) ::
           :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  # `path` is always constructed via `worktree_file!/2`, which validates the
+  # path stays under the run worktree root.
+  # sobelow_skip ["Traversal.FileModule"]
   defp write_path(path, body) do
     case File.write(path, body) do
       :ok -> :ok
