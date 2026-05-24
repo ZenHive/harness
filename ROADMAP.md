@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 3 — Batch & Resilience (8 of 9 done · 0 in progress)
+**Focus phase:** 3 — Batch & Resilience (8 of 9 done · 1 in progress)
 
 **Last shipped:** Task 29 — Force-settle the Run lifetime timeout when the agent handle never arrives, Task 35 — Audit-surfaced: Batch.fill_slots race — start_run errors crash the batch, Task 37 — Audit-surfaced: Repair loop ignores quota classification before resuming, Task 38 — Audit-surfaced: Batch slot held until terminal_linger expires on 2026-05-24
 
-**Up next:** Task 28 — Wire the retry policy into the batch orchestrator [D:4/B:6/U:6 → Eff:1.5] 🚀
+**Up next:** Task 41 — Codex adapter — worktree isolation breaks intermittently (cwd ignored, agent edits main checkout) [D:5/B:7/U:7 → Eff:1.4] 📋
 <!-- FOCUS:END -->
 
 ---
@@ -43,7 +43,7 @@
 | Task 12 | ✅ | 🎁 **contract-proof** · 🚀 **v0_1** · Reusable adapter conformance test suite [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 | Task 14 | ✅ | 🎁 **contract-proof** · 🚀 **v0_1** · Codex headless adapter [D:5/B:5/U:5 → Eff:1.0] 📋 |
 | Task 24 | ✅ | 🎁 **core-loop** · 🐛 Commit the agent's work to the run branch before worktree teardown [D:3/B:9/U:9 → Eff:3.0] 🎯 |
-| Task 27 | ⬜ | 🎁 **contract-proof** · Hoist universal adapter callbacks into the AgentAdapter behaviour [D:3/B:3/U:6 → Eff:1.5] 🚀 |
+| Task 27 | 🔄 | 🎁 **contract-proof** · Hoist universal adapter callbacks into the AgentAdapter behaviour [D:3/B:3/U:6 → Eff:1.5] 🚀 |
 | Task 30 | ✅ | 🎁 **core-loop** · Pin Worktree.commit/2 to the run's harness/<id> branch [D:3/B:6/U:4 → Eff:1.67] 🚀 |
 <!-- TASKS:END -->
 
@@ -59,7 +59,7 @@
 | Task 9 | ✅ | 🎁 **resilience** · 🚀 **v0_2** · Batch orchestrator with concurrency cap [D:5/B:9/U:8 → Eff:1.7] 🚀 |
 | Task 10 `[P]` | ✅ | 🎁 **resilience** · 🚀 **v0_2** · Retry policy with failure classification [D:4/B:7/U:6 → Eff:1.62] 🚀 |
 | Task 11 `[P]` | ✅ | 🎁 **resilience** · 🚀 **v0_2** · Autonomous repair loop [D:5/B:8/U:7 → Eff:1.5] 🚀 |
-| Task 28 | ⬜ | 🎁 **resilience** · 🚀 **v0_2** · Wire the retry policy into the batch orchestrator [D:4/B:6/U:6 → Eff:1.5] 🚀 |
+| Task 28 | 🔄 | 🎁 **resilience** · 🚀 **v0_2** · Wire the retry policy into the batch orchestrator [D:4/B:6/U:6 → Eff:1.5] 🚀 |
 | Task 29 | ✅ | 🎁 **resilience** · 🚀 **v0_2** · Force-settle the Run lifetime timeout when the agent handle never arrives [D:3/B:6/U:4 → Eff:1.67] 🚀 |
 | Task 34 | ✅ | 🎁 **resilience** · Audit-surfaced: Batch.fill_slots crashes after AgentRegistry exhaustion [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 | Task 35 | ✅ | 🎁 **resilience** · Audit-surfaced: Batch.fill_slots race — start_run errors crash the batch [D:3/B:5/U:5 → Eff:1.67] 🚀 |
@@ -85,11 +85,11 @@
 | Task 26 | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Antigravity headless adapter [D:3/B:4/U:4 → Eff:1.33] 📋 |
 | Task 31 | ✅ | 🎁 **multi-agent** · Resolve the rmap-delegate ingest gap for the Grok and Antigravity adapters [D:2/B:3/U:4 → Eff:1.75] 🚀 |
 | Task 32 | ⬜ | 🎁 **multi-agent** · 🐛 Antigravity adapter does not isolate to its run worktree [D:4/B:6/U:5 → Eff:1.38] 📋 |
-| Task 36 | ⬜ | 🎁 **multi-agent** · Audit-surfaced: Harness-injected rule files get committed by Worktree.commit [D:4/B:7/U:6 → Eff:1.62] 🚀 |
+| Task 36 | 🔄 | 🎁 **multi-agent** · Audit-surfaced: Harness-injected rule files get committed by Worktree.commit [D:4/B:7/U:6 → Eff:1.62] 🚀 |
 | Task 39 | ⬜ | 🎁 **multi-agent** · Audit-surfaced: Hoist rule injection into the AgentAdapter behaviour [D:4/B:5/U:5 → Eff:1.25] 📋 |
 | Task 40 | ⬜ | 🎁 **multi-agent** · Audit-surfaced: AgentRegistry availability lost on GenServer restart [D:3/B:4/U:4 → Eff:1.33] 📋 |
 | Task 41 | ⬜ | 🎁 **multi-agent** · 🐛 Codex adapter — worktree isolation breaks intermittently (cwd ignored, agent edits main checkout) [D:5/B:7/U:7 → Eff:1.4] 📋 |
-| Task 43 | ⬜ | 🎁 **multi-agent** · 🐛 Dogfood verification reds on pre-existing TODO comments in dispatch base [D:3/B:6/U:7 → Eff:2.17] 🎯 |
+| Task 43 | 🔄 | 🎁 **multi-agent** · 🐛 Dogfood verification reds on pre-existing TODO comments in dispatch base [D:3/B:6/U:7 → Eff:2.17] 🎯 |
 <!-- TASKS:END -->
 
 ---

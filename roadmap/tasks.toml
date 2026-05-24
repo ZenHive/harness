@@ -756,12 +756,13 @@ done_at = "2026-05-21"
 id = "27"
 phase = 2
 bundle = "contract-proof"
-status = "pending"
+status = "in_progress"
 title = "Hoist universal adapter callbacks into the AgentAdapter behaviour"
 scores = { d = 3, b = 3, u = 6 }
 acceptance_criteria = ["A new adapter implementing only build_command/1 + capabilities/0 compiles and passes the conformance suite", "All existing adapters keep passing the conformance suite unchanged", "Duplicated classify_message/2 and terminate/1 bodies are removed from the adapter modules"]
 body = "Building the Codex, Cursor, Grok and Antigravity adapters surfaced that classify_message/2, terminate/1, and the --model argv helper are byte-identical across every adapter (Claude, Codex, Cursor, Grok, Antigravity, FakeAdapter). Hoist them into the behaviour via `use Harness.AgentAdapter` + defoverridable, so a new adapter declares only what is genuinely agent-specific (build_command/1, capabilities/0). Not an abstraction leak — the contract held — but pure duplication every new adapter re-copies. Surfaced by the first parallel dogfood batch (Tasks 13-15)."
 created_at = "2026-05-21"
+started_at = "2026-05-24"
 scored_at = "2026-05-21"
 
 [[task]]
@@ -769,7 +770,7 @@ id = "28"
 phase = 3
 bundle = "resilience"
 milestone = "v0_2"
-status = "pending"
+status = "in_progress"
 title = "Wire the retry policy into the batch orchestrator"
 scores = { d = 4, b = 6, u = 6 }
 depends_on = ["9", "10"]
@@ -777,6 +778,7 @@ acceptance_criteria = ["A transient failure in a batch run is retried per the in
 out_of_scope = ["Quota fail-over to a different agent — that is the capability registry's job (Task 16)", "The repair loop — Task 11's :verification_red feedback is distinct from transient-failure retry"]
 body = "Harness.Run.RetryPolicy (Task 10) ships as an injectable helper — RetryPolicy.run/2 wraps a `fn -> Result.t()` loop — but nothing calls it. Harness.Batch (Task 9) was built in the same parallel dogfood batch off the same HEAD, so it fans runs out but never applies the retry policy: a transient failure (a process crash, a flaky check) in a batch run is reported, not retried. Wire the retry policy into the batch orchestrator so each run's lifecycle is wrapped by RetryPolicy.run/2, with the policy injectable per batch via the :retry_policy opt already documented on Harness.Run.Supervisor.start_run/4. Transient failures retry with capped backoff; quota-exhausted and terminal failures are not retried — they settle into the batch result as-is. The concurrency cap must still hold while retries are in flight. Surfaced by the parallel multi-agent dogfood batch that delivered Tasks 9-11."
 created_at = "2026-05-22"
+started_at = "2026-05-24"
 scored_at = "2026-05-22"
 
 [[task]]
@@ -953,7 +955,7 @@ done_at = "2026-05-24"
 id = "36"
 phase = 4
 bundle = "multi-agent"
-status = "pending"
+status = "in_progress"
 title = "Audit-surfaced: Harness-injected rule files get committed by Worktree.commit"
 scores = { d = 4, b = 7, u = 6 }
 acceptance_criteria = ["A no-op agent run for Claude/Codex/Cursor settles :no_changes (harness-injected rule files do not turn into a delivery commit)", "Regression test per affected adapter covering the no-op path", "Existing AGENTS.md in the target repo (if any) is not modified by the harness-injected block ending up in the run's delivery commit"]
@@ -971,6 +973,7 @@ Regression test: an adapter `build_command/1` for each of Claude/Codex/Cursor + 
 Filed by audit-review against commit 826aaff3 on 2026-05-23; see `.audit/826aaff-harness-owned-rule-set.md` (Codex Pri 9, Claude verified Worktree.commit uses `git add -A`).
 """
 created_at = "2026-05-23"
+started_at = "2026-05-24"
 scored_at = "2026-05-23"
 
 [[task]]
@@ -1123,7 +1126,7 @@ done_at = "2026-05-24"
 id = "43"
 phase = 4
 bundle = "multi-agent"
-status = "pending"
+status = "in_progress"
 title = "Dogfood verification reds on pre-existing TODO comments in dispatch base"
 scores = { d = 3, b = 6, u = 7 }
 markers = ["bug"]
@@ -1139,4 +1142,5 @@ Resolution candidates: (a) harness's verification stack tolerates TODOs that pre
 (a) is the cleanest — preserves audit-review's existing UX and doesn't require dispatchers to maneuver around recent audits.
 """
 created_at = "2026-05-24"
+started_at = "2026-05-24"
 scored_at = "2026-05-24"
