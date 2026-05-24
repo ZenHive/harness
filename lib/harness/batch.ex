@@ -260,13 +260,29 @@ defmodule Harness.Batch do
     {Map.put(active, ref, worker), events}
   end
 
+  # The worker's adapter-selection spin loop. `fill_slots/6` (the parent
+  # process) gates on `AgentRegistry.select/2` before spawning a worker, but
+  # the adapter list can flip unavailable between the parent's check and the
+  # worker's own select — typically when another batch racing on the same
+  # registry exhausts quota first. The worker retries up to this cap; if the
+  # adapter is still unavailable on the last attempt the worker settles
+  # `{:no_available_agent, :spin_exhausted}` so the result reason and event
+  # log stay consistent with the parent's undispatchable settlement path
+  # (`fill_slots/6` → `settle_undispatchable/4`) — never `:run_crashed`,
+  # which would falsely imply a worker crash. See Task 57 (Round-4 audit).
+  @spin_count_limit 100
+
   @spec run_once(Item.t(), String.t(), [module()], keyword()) :: RunResult.t()
   defp run_once(%Item{} = item, repo, adapters, run_opts) do
     run_once_dispatch(item, repo, adapters, run_opts, 0)
   end
 
+  @doc false
+  # Public for unit testing the spin-exhausted settlement path without
+  # engineering a parent/worker race against `AgentRegistry`. Production
+  # callers always enter through `run_once/4`.
   @spec run_once_dispatch(Item.t(), String.t(), [module()], keyword(), non_neg_integer()) :: RunResult.t()
-  defp run_once_dispatch(item, repo, adapters, run_opts, spin_count) when spin_count < 100 do
+  def run_once_dispatch(item, repo, adapters, run_opts, spin_count) when spin_count < @spin_count_limit do
     run_opts = Keyword.put(run_opts, :subscriber, self())
     required = Keyword.get(run_opts, :required_capabilities, [])
 
@@ -288,12 +304,12 @@ defmodule Harness.Batch do
     end
   end
 
-  defp run_once_dispatch(item, _repo, _adapters, _run_opts, _spin_count) do
+  def run_once_dispatch(item, _repo, _adapters, _run_opts, _spin_count) do
     %RunResult{
       run_id: undispatched_run_id(item),
       task_id: item.id,
       state: :failed,
-      reason: {:run_crashed, :dispatch_spin_exhausted}
+      reason: {:no_available_agent, :spin_exhausted}
     }
   end
 

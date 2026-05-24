@@ -368,6 +368,62 @@ defmodule Harness.BatchTest do
     assert headroom_record.reason == :passed
   end
 
+  # ---------------------------------------------------------------------------
+  # REGRESSION (Task 57): worker spin loop settles via :no_available_agent,
+  # not :run_crashed.
+  #
+  # `Batch.run_once_dispatch/5` is the worker's per-task entry point. The
+  # parent `fill_slots/6` already gates on adapter availability — if every
+  # adapter is unavailable at that moment, parent-side `settle_undispatchable/4`
+  # fires and the worker never runs. The spin path is hit only under a race:
+  # parent saw availability, spawned the worker, and the adapter flipped
+  # unavailable before the worker's own `AgentRegistry.select/2`. Engineering
+  # that race deterministically from a test is fragile, so this test calls
+  # `run_once_dispatch/5` directly (it's `@doc false` but `def` for exactly
+  # this reason) with an adapter that's been marked unavailable up front.
+  # ---------------------------------------------------------------------------
+  defmodule SpinExhaustedAdapter do
+    @moduledoc false
+    @behaviour Harness.AgentAdapter
+
+    @impl Harness.AgentAdapter
+    def capabilities, do: %Capabilities{session_resume: true}
+
+    @impl Harness.AgentAdapter
+    def build_command(_invocation), do: {:ok, {"/bin/true", [], []}}
+
+    @impl Harness.AgentAdapter
+    def classify_message(_message, _run), do: :ignore
+
+    @impl Harness.AgentAdapter
+    def terminate(_run), do: :ok
+  end
+
+  test "REGRESSION (Task 57): spin exhaustion settles {:no_available_agent, :spin_exhausted}, not {:run_crashed, _}" do
+    AgentRegistry.mark_unavailable(SpinExhaustedAdapter, {:test_setup, :unavailable})
+    on_exit(fn -> AgentRegistry.mark_available(SpinExhaustedAdapter) end)
+
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+    [item] = items(["spin"])
+
+    result =
+      Batch.run_once_dispatch(
+        item,
+        repo,
+        [SpinExhaustedAdapter],
+        batch_opts(base, []),
+        0
+      )
+
+    # Audit (Task 57): before the fix this returned
+    # `{:run_crashed, :dispatch_spin_exhausted}`, which falsely implied a
+    # worker crash. The settled reason now matches the parent's
+    # `fill_slots/6 → settle_undispatchable/4` undispatchable shape.
+    assert %Result{state: :failed, reason: {:no_available_agent, :spin_exhausted}} = result
+    assert result.task_id == "spin"
+  end
+
   test "retries adapter selection when start_run loses a concurrent availability race" do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()

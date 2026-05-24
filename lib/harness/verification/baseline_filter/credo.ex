@@ -40,8 +40,15 @@ defmodule Harness.Verification.BaselineFilter.Credo do
   # git, which lacks PCRE — `\s` then silently fails to match).
   @todo_pattern ~S/#[[:space:]]*TODO/
 
-  @typedoc "A `{relative_path, line_no}` pair carrying a todo tag in the dispatch base."
-  @type baseline :: MapSet.t({String.t(), pos_integer()})
+  @typedoc """
+  A `{relative_path, normalized_comment}` pair identifying a todo tag in the
+  dispatch base. The comment is normalized (stripped of leading code/indent and
+  trailing whitespace, starting at the first `#`) so credo's `trigger` field
+  matches git-grep's full-line capture deterministically. Content-keyed — not
+  line-keyed — so a diff that shifts the line number does not break the match,
+  and a same-line rewrite of the TODO content is correctly flagged as new debt.
+  """
+  @type baseline :: MapSet.t({String.t(), String.t()})
 
   @doc """
   Re-grades a credo `Harness.Verification.Result` against the baseline ref.
@@ -113,13 +120,17 @@ defmodule Harness.Verification.BaselineFilter.Credo do
   def regrade(%Result{} = result, _issues, _filtered), do: result
 
   @doc """
-  Builds the set of `{relative_path, line_no}` pairs where the file at
-  `base_ref` carries a todo tag (a line matching `#[[:space:]]*TODO`).
+  Builds the set of `{relative_path, normalized_comment}` pairs where the file
+  at `base_ref` carries a todo tag (a line matching `#[[:space:]]*TODO`).
 
   `git grep` with a tree-ish argument walks the index of that ref, so the
   working tree's current content is irrelevant — exactly the "what already
   existed?" question we need to ask. Returns `:error` on any git failure
   except "no matches" (which is a legitimate empty baseline).
+
+  Matching is content-keyed, not line-keyed: a diff that shifts the inherited
+  TODO's line number still matches the baseline (no false-red), and rewriting
+  the TODO content on the same line breaks the match (no false-pass).
   """
   @spec baseline_tagtodo_lines(String.t(), String.t()) :: {:ok, baseline()} | :error
   def baseline_tagtodo_lines(worktree_path, base_ref) do
@@ -182,7 +193,9 @@ defmodule Harness.Verification.BaselineFilter.Credo do
 
   # `git grep <ref>` emits `<ref>:<path>:<line>:<content>` per match. The
   # `<ref>:` prefix is constant for one invocation — split each line on the
-  # first three colons, take the file and line.
+  # first three colons, take the file and content. Line number is parsed only
+  # to validate the row shape; the baseline key is `{file, normalize(content)}`
+  # so diffs can shift the line without invalidating the baseline.
   @spec parse_git_grep(String.t()) :: baseline()
   defp parse_git_grep(output) do
     output
@@ -191,11 +204,12 @@ defmodule Harness.Verification.BaselineFilter.Credo do
     |> MapSet.new()
   end
 
-  @spec parse_grep_line(String.t()) :: [{String.t(), pos_integer()}]
+  @spec parse_grep_line(String.t()) :: [{String.t(), String.t()}]
   defp parse_grep_line(line) do
-    with [_ref, file, line_no, _content] <- String.split(line, ":", parts: 4),
-         {n, ""} when n > 0 <- Integer.parse(line_no) do
-      [{file, n}]
+    with [_ref, file, line_no, content] <- String.split(line, ":", parts: 4),
+         {n, ""} when n > 0 <- Integer.parse(line_no),
+         normalized when normalized != "" <- normalize(content) do
+      [{file, normalized}]
     else
       _ -> []
     end
@@ -203,16 +217,38 @@ defmodule Harness.Verification.BaselineFilter.Credo do
 
   @spec baseline_tagtodo?(map(), baseline(), String.t()) :: boolean()
   defp baseline_tagtodo?(
-         %{"check" => @tagtodo_check, "filename" => filename, "line_no" => line_no},
+         %{"check" => @tagtodo_check, "filename" => filename, "trigger" => trigger},
          baseline,
          worktree_path
        )
-       when is_binary(filename) and is_integer(line_no) do
+       when is_binary(filename) and is_binary(trigger) do
     relative = relativize(filename, worktree_path)
-    MapSet.member?(baseline, {relative, line_no})
+
+    case normalize(trigger) do
+      "" -> false
+      normalized -> MapSet.member?(baseline, {relative, normalized})
+    end
   end
 
   defp baseline_tagtodo?(_issue, _baseline, _worktree_path), do: false
+
+  # Credo's `trigger` carries the matched comment (typically starting at `#`);
+  # git-grep returns the full line including any preceding code/indent. To
+  # match deterministically, anchor at the first `#` in both and strip
+  # surrounding whitespace. Returns "" when no `#` is present so the caller
+  # can fail open (don't filter ambiguous shapes).
+  @spec normalize(String.t()) :: String.t()
+  defp normalize(text) do
+    case :binary.match(text, "#") do
+      :nomatch ->
+        ""
+
+      {pos, _len} ->
+        text
+        |> binary_part(pos, byte_size(text) - pos)
+        |> String.trim()
+    end
+  end
 
   # Credo emits absolute file paths (`/abs/path/to/worktree/lib/foo.ex`);
   # `git grep` emits paths relative to the repo root (`lib/foo.ex`). Strip

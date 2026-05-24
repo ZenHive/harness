@@ -276,6 +276,40 @@ defmodule Harness.RunTest do
       assert %Result{state: :failed, reason: :timed_out} = result
       assert result.agent_outcome == nil
     end
+
+    @tag :capture_log
+    test "REGRESSION (Task 56): a deferred cancel reply lands when lifetime force-settles before the agent handle arrives" do
+      # Codex (audit of f4d8cb6) flagged a Pri-8 claim: state had
+      # `cancel_requested: {:cancelled, from}`, result settled `:timed_out`,
+      # but the cancel caller's `Task.yield` returned `nil`. This deterministic
+      # regression pins the composed scenario: HangingAdapter never delivers
+      # `{:run_handle, _}` → the run enters :running with agent_run=nil →
+      # cancel arrives and is deferred → lifetime timer fires →
+      # `force_settle_lifetime/1` must reply to the deferred caller AND settle
+      # the result with `:timed_out`. If `pending_cancel_reply/1` ever stops
+      # being threaded into the force-settle actions, this test breaks.
+      {run_id, pid} = start(adapter: HangingAdapter, lifetime_timeout: 300)
+
+      # Wait until the run is in :running with the cancel-defer path live —
+      # status sees :running once the worktree is ready, before HangingAdapter
+      # would have produced any `{:run_handle, _}` message.
+      wait_until_running(run_id, 50, 5_000)
+
+      # Issue the cancel from a separate Task so we can observe whether the
+      # reply ever lands. The Task blocks in :gen_statem.call until either
+      # the deferred reply arrives or the gen_statem dies.
+      cancel_task = Task.async(fn -> Run.cancel(run_id) end)
+
+      # The cancel reply only lands once the lifetime timer fires and
+      # `force_settle_lifetime/1` returns its `[{:reply, from, :ok}]` action.
+      # Yield generously (the timer is 300 ms) so a slow CI box doesn't
+      # spuriously fail by under-waiting.
+      assert :ok = Task.await(cancel_task, 5_000)
+
+      result = await_result(run_id, pid)
+      assert %Result{state: :failed, reason: :timed_out} = result
+      assert result.agent_outcome == nil
+    end
   end
 
   describe "observable state" do
@@ -492,6 +526,23 @@ defmodule Harness.RunTest do
         await_agent_os_pid(run_id, tries - 1)
     end
   end
+
+  # Polls `Run.status/1` until the run reports `state: :running` (worktree
+  # carved, agent task spawned), regardless of whether an agent has yet been
+  # observed. Used by the cancel-before-handle regression to anchor the cancel
+  # at a point where `agent_run` is still nil so the cancel must be deferred.
+  defp wait_until_running(run_id, interval_ms, total_ms) when total_ms > 0 do
+    case Run.status(run_id) do
+      {:ok, %Status{state: :running}} ->
+        :ok
+
+      _other ->
+        Process.sleep(interval_ms)
+        wait_until_running(run_id, interval_ms, total_ms - interval_ms)
+    end
+  end
+
+  defp wait_until_running(_run_id, _interval_ms, _total_ms), do: flunk("run never reached state: :running")
 
   defp await_pid_file(path, tries \\ 200)
 

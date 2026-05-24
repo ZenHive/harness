@@ -26,6 +26,22 @@ All `done`. From here on, **every task `rmap next` returns is a dogfood candidat
 dispatch it through harness, do not implement it directly. Hand-build only what harness
 cannot yet do for itself, and only after filing the gap via `rmap new`.
 
+### Phase 7 exception (hand-built window, v0_5 milestone)
+
+Tasks 44–51 (`%Harness.CheckStack{}` abstraction, `%Harness.Project{}` registry, Oban +
+Postgres setup, `mix phx.new`-style Phoenix integration, GitHub clone-and-cache,
+LiveView dashboard + embedded Oban Web, `Oban.Plugins.Cron`) are **hand-built in a
+Claude Code session, not dispatched through harness.** Rationale lives in `CLAUDE.md`
+§ Dogfooding — short version: (a) most of these change the shape of harness's own
+runtime (Application supervision tree, dep stack, Endpoint), exactly the territory a
+headless agent has the least leverage on; (b) the verification stack itself is being
+reshaped by Task 44, so dogfooding while the grader changes shape is more friction
+than signal; (c) `mix phx.new` is the canonical bootstrap and is faster to invoke
+directly than to coach an agent through.
+
+Dogfooding resumes as the default once Phase 7 lands. Treat this section as the
+explicit pivot-window exception, not a precedent.
+
 ## The loop, end to end
 
 ```

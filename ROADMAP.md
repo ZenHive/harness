@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 3 — Batch & Resilience (9 of 9 done · 0 in progress)
+**Focus phase:** 3 — Batch & Resilience (9 of 11 done · 0 in progress)
 
 **Last shipped:** Task 28 — Wire the retry policy into the batch orchestrator, Task 29 — Force-settle the Run lifetime timeout when the agent handle never arrives, Task 35 — Audit-surfaced: Batch.fill_slots race — start_run errors crash the batch, Task 37 — Audit-surfaced: Repair loop ignores quota classification before resuming, Task 38 — Audit-surfaced: Batch slot held until terminal_linger expires on 2026-05-24
 
-**Up next:** Task 44 — Promote check stack to a first-class %Harness.CheckStack{} with a preset library [D:4/B:7/U:8 → Eff:1.88] 🚀
+**Up next:** Task 57 — Audit-surfaced: route Batch dispatch_spin_exhausted through :no_available_agent settlement [D:2/B:6/U:6 → Eff:3.0] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -65,6 +65,8 @@
 | Task 35 | ✅ | 🎁 **resilience** · Audit-surfaced: Batch.fill_slots race — start_run errors crash the batch [D:3/B:5/U:5 → Eff:1.67] 🚀 |
 | Task 37 | ✅ | 🎁 **resilience** · Audit-surfaced: Repair loop ignores quota classification before resuming [D:3/B:6/U:5 → Eff:1.83] 🚀 |
 | Task 38 | ✅ | 🎁 **resilience** · Audit-surfaced: Batch slot held until terminal_linger expires [D:3/B:3/U:4 → Eff:1.17] 📋 |
+| Task 56 | ⬜ | 🎁 **resilience** · 🐛 Audit-surfaced: cover cancel-before-handle path in Run lifetime force-settle [D:2/B:5/U:5 → Eff:2.5] 🎯 |
+| Task 57 | ⬜ | 🎁 **resilience** · 🐛 Audit-surfaced: route Batch dispatch_spin_exhausted through :no_available_agent settlement [D:2/B:6/U:6 → Eff:3.0] 🎯 |
 <!-- TASKS:END -->
 
 ---
@@ -93,6 +95,7 @@
 | Task 52 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Add pi.dev headless adapter [D:5/B:8/U:7 → Eff:1.5] 🚀 |
 | Task 53 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Smoke-test pi-via-local-LLM on a low-D rmap task [D:2/B:4/U:4 → Eff:2.0] 🎯 |
 | Task 54 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Cost-aware agent capability declaration (:free vs :metered) [D:3/B:5/U:5 → Eff:1.67] 🚀 |
+| Task 55 | ⬜ | 🎁 **multi-agent** · 🐛 Audit-surfaced: BaselineFilter.Credo content-blind matching causes false-pass / false-red [D:3/B:7/U:7 → Eff:2.33] 🎯 |
 <!-- TASKS:END -->
 
 ---
@@ -114,7 +117,7 @@
 
 ## Phase 6: Deferred
 
-> Parked work — out of scope until the core milestones ship. Quota-burn telemetry and an ACP transport adapter; both speculative, revisited only when there's a concrete reason.
+> Parked work — out of scope until the core milestones ship. MCP/JSON-CLI surface (Task 17, reclassified from Phase 5: the Phase 7 dashboard supersedes its Elixir-native use case; revisit only if a non-Elixir consumer needs to drive harness from outside the BEAM), quota-burn telemetry, and an ACP transport adapter. All three speculative, revisited only when there's a concrete reason.
 
 <!-- TASKS:BEGIN phase=6 -->
 | Task | Status | Notes |
@@ -122,4 +125,23 @@
 | Task 17 | ⬜ | 🎁 **deferred** · Agent-shaped surface — MCP tools + JSON CLI [D:6/B:8/U:8 → Eff:1.33] 📋 |
 | Task 20 | ⬜ | 🎁 **deferred** · Run telemetry + quota/cost accounting [D:5/B:3/U:3 → Eff:0.6] ⚠️ |
 | Task 21 | ⬜ | 🎁 **deferred** · ACP transport adapter [D:7/B:5/U:3 → Eff:0.57] ⚠️ |
+<!-- TASKS:END -->
+
+---
+
+## Phase 7: Multi-Project Federation
+
+> Scoped pivot (milestone v0_5): harness extends from "harness-on-harness" to N registered target projects (Elixir, Rust, anything with a shell-driven check stack). First-class `%Harness.Project{}` registry; declarative `%Harness.CheckStack{}` with per-language presets; Oban-backed dispatch (queue-per-project, restart-resilient); GitHub source cloning; Phoenix LiveView dashboard + embedded Oban Web as the primary cold-path surface; cron-driven autonomous roadmap polling. Hand-built (not dogfooded) for the pivot window — see CLAUDE.md § Dogfooding.
+
+<!-- TASKS:BEGIN phase=7 -->
+| Task | Status | Notes |
+|------|--------|-------|
+| Task 44 | ⬜ | 🎁 **multi-project** · 🚀 **v0_5** · Promote check stack to a first-class %Harness.CheckStack{} with a preset library [D:4/B:7/U:8 → Eff:1.88] 🚀 |
+| Task 45 | ⬜ | 🎁 **multi-project** · 🚀 **v0_5** · First non-Elixir preset: Rust check stack [D:3/B:6/U:6 → Eff:2.0] 🎯 |
+| Task 46 | ⬜ | 🎁 **multi-project** · 🚀 **v0_5** · %Harness.Project{} struct + in-memory ProjectRegistry; Run takes Project [D:6/B:8/U:9 → Eff:1.42] 📋 |
+| Task 47 | ⬜ | 🎁 **multi-project** · 🚀 **v0_5** · Harness.Project.Source.Github: clone-and-cache + fetch-before-run [D:5/B:6/U:6 → Eff:1.2] 📋 |
+| Task 48 | ⬜ | 🎁 **multi-project** · 🚀 **v0_5** · Oban-backed dispatch: queue-per-project + run-state persistence across restart [D:7/B:9/U:8 → Eff:1.21] 📋 |
+| Task 49 | ⬜ | 🎁 **multi-project** · 🚀 **v0_5** · In-repo <repo>/harness/ subdirectory recipe + template [D:2/B:4/U:4 → Eff:2.0] 🎯 |
+| Task 50 | ⬜ | 🎁 **dashboard** · 🚀 **v0_5** · Phoenix LiveView dashboard + embedded Oban Web (mountable + standalone) [D:7/B:9/U:8 → Eff:1.21] 📋 |
+| Task 51 `[P]` | ⬜ | 🎁 **multi-project** · 🚀 **v0_5** · Cron-driven autonomous roadmap polling via Oban.Plugins.Cron [D:3/B:6/U:5 → Eff:1.83] 🚀 |
 <!-- TASKS:END -->

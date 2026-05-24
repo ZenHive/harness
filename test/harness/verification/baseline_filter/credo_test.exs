@@ -63,27 +63,79 @@ defmodule Harness.Verification.BaselineFilter.CredoTest do
   end
 
   describe "filter_issues/3 (pure)" do
-    test "drops TagTODO findings whose (file, line) is in the baseline" do
-      baseline = MapSet.new([{"lib/inherited.ex", 3}])
+    test "drops TagTODO findings whose (file, normalized trigger) is in the baseline" do
+      baseline = MapSet.new([{"lib/inherited.ex", "# TODO(Task 35): inherited"}])
 
       issues = [
-        tagtodo_issue("/wt/lib/inherited.ex", 3),
-        tagtodo_issue("/wt/lib/inherited.ex", 7),
+        tagtodo_issue("/wt/lib/inherited.ex", 3, trigger: "# TODO(Task 35): inherited"),
+        tagtodo_issue("/wt/lib/inherited.ex", 7, trigger: "# TODO(Task 99): brand-new"),
         non_tagtodo_issue("/wt/lib/inherited.ex", 1)
       ]
 
       kept = BaselineCredo.filter_issues(issues, baseline, "/wt")
 
-      # The baseline TODO at line 3 was dropped; the agent's new TODO at
-      # line 7 and any non-TagTODO finding stay so the verdict stays red.
-      kept_lines = Enum.map(kept, &{&1["filename"], &1["line_no"]})
-      assert {"/wt/lib/inherited.ex", 7} in kept_lines
-      assert {"/wt/lib/inherited.ex", 1} in kept_lines
-      refute {"/wt/lib/inherited.ex", 3} in kept_lines
+      # The baseline tag (matched by content) was dropped; the agent's
+      # fresh tag at a different content and any non-TagTODO finding stay
+      # so the verdict stays red.
+      kept_triggers = Enum.map(kept, & &1["trigger"])
+      assert "# TODO(Task 99): brand-new" in kept_triggers
+      assert nil in kept_triggers
+      refute "# TODO(Task 35): inherited" in kept_triggers
+    end
+
+    test "normalizes whitespace and leading code so git-grep and credo line up" do
+      # git-grep returns the full source line (with any leading indent),
+      # while credo's `trigger` field is anchored at the first `#`. Both
+      # must normalize to the same key so a baseline carved from git-grep
+      # matches credo's later issue output.
+      baseline = MapSet.new([{"lib/x.ex", "# TODO: x"}])
+
+      issue = tagtodo_issue("/wt/lib/x.ex", 1, trigger: "  # TODO: x  ")
+
+      assert BaselineCredo.filter_issues([issue], baseline, "/wt") == []
+    end
+
+    test "REGRESSION (Task 55, same-line rewrite false-pass): rewriting an inherited TODO on its line reds correctly" do
+      # Bug: previously the baseline keyed on {file, line_no}, so an agent
+      # who edited the TODO content on the same line was silently filtered
+      # as inherited debt. Content-keyed matching catches this.
+      baseline = MapSet.new([{"lib/x.ex", "# TODO(Task 35): original wording"}])
+
+      rewritten =
+        tagtodo_issue("/wt/lib/x.ex", 3, trigger: "# TODO(Task 99): freshly added by the agent")
+
+      assert [^rewritten] = BaselineCredo.filter_issues([rewritten], baseline, "/wt")
+    end
+
+    test "REGRESSION (Task 55, line-shift false-red): an inherited TODO whose line moved is still filtered" do
+      # Bug: previously the baseline keyed on {file, line_no}, so any insert
+      # or delete above an inherited TODO shifted its line_no and the
+      # un-mutated TODO was flagged as new debt. Content-keyed matching
+      # ignores the line shift.
+      baseline = MapSet.new([{"lib/x.ex", "# TODO(Task 35): inherited"}])
+
+      shifted =
+        tagtodo_issue("/wt/lib/x.ex", 17, trigger: "# TODO(Task 35): inherited")
+
+      assert BaselineCredo.filter_issues([shifted], baseline, "/wt") == []
+    end
+
+    test "falls open (does not filter) when the credo issue lacks a trigger field" do
+      # Older credo or upstream churn could drop `trigger`. Failing open
+      # preserves the red verdict — better a false-red than a false-pass.
+      baseline = MapSet.new([{"lib/x.ex", "# TODO: x"}])
+
+      issue =
+        :tagtodo
+        |> issue_fixture()
+        |> Map.delete("trigger")
+        |> Map.put("filename", "/wt/lib/x.ex")
+
+      assert [^issue] = BaselineCredo.filter_issues([issue], baseline, "/wt")
     end
 
     test "is a no-op for issues whose check is not TagTODO" do
-      baseline = MapSet.new([{"lib/inherited.ex", 1}])
+      baseline = MapSet.new([{"lib/inherited.ex", "# TODO: x"}])
       moduledoc = non_tagtodo_issue("/wt/lib/inherited.ex", 1)
 
       assert [^moduledoc] = BaselineCredo.filter_issues([moduledoc], baseline, "/wt")
@@ -97,11 +149,14 @@ defmodule Harness.Verification.BaselineFilter.CredoTest do
   end
 
   describe "baseline_tagtodo_lines/2 (git-grep against a real repo)" do
-    test "returns the set of pre-existing TODO (file, line) pairs at the base ref" do
+    test "returns the set of pre-existing TODO (file, normalized content) pairs at the base ref" do
       {wt, _repo} = worktree_with_baseline_todo()
       assert {:ok, baseline} = BaselineCredo.baseline_tagtodo_lines(wt.path, wt.base_sha)
 
-      assert MapSet.member?(baseline, {"lib/inherited.ex", 3})
+      assert MapSet.member?(
+               baseline,
+               {"lib/inherited.ex", "# TODO(Task 35): inherited from an audit follow-up"}
+             )
     end
 
     test "returns an empty set when the dispatch base has no TODOs" do
@@ -126,14 +181,20 @@ defmodule Harness.Verification.BaselineFilter.CredoTest do
     # produce — the baseline-collection + filter + re-grade logic runs
     # exactly as it would from `apply/2`.
 
+    @inherited_trigger "# TODO(Task 35): inherited from an audit follow-up"
+
     test "no TagTODOs introduced by the agent → re-grades :pass" do
       {wt, _repo} = worktree_with_baseline_todo()
 
       {:ok, baseline} = BaselineCredo.baseline_tagtodo_lines(wt.path, wt.base_sha)
 
       # Simulate credo running on the worktree and only finding the
-      # inherited TODO at lib/inherited.ex:3.
-      issues = [tagtodo_issue(Path.join(wt.path, "lib/inherited.ex"), 3)]
+      # inherited TODO at lib/inherited.ex (line shifted is irrelevant —
+      # content-keyed matching).
+      issues = [
+        tagtodo_issue(Path.join(wt.path, "lib/inherited.ex"), 3, trigger: @inherited_trigger)
+      ]
+
       filtered = BaselineCredo.filter_issues(issues, baseline, wt.path)
       regraded = BaselineCredo.regrade(result(:fail, 2, "credo: 1 issue"), issues, filtered)
 
@@ -145,11 +206,11 @@ defmodule Harness.Verification.BaselineFilter.CredoTest do
 
       {:ok, baseline} = BaselineCredo.baseline_tagtodo_lines(wt.path, wt.base_sha)
 
-      # The inherited TODO at line 3 plus a brand-new TODO the agent added
-      # at lib/new.ex line 4 (not in baseline).
+      # The inherited TODO plus a brand-new TODO the agent added at lib/new.ex
+      # with content that's not in baseline.
       issues = [
-        tagtodo_issue(Path.join(wt.path, "lib/inherited.ex"), 3),
-        tagtodo_issue(Path.join(wt.path, "lib/new.ex"), 4)
+        tagtodo_issue(Path.join(wt.path, "lib/inherited.ex"), 3, trigger: @inherited_trigger),
+        tagtodo_issue(Path.join(wt.path, "lib/new.ex"), 4, trigger: "# TODO: brand-new addition")
       ]
 
       filtered = BaselineCredo.filter_issues(issues, baseline, wt.path)
@@ -166,7 +227,7 @@ defmodule Harness.Verification.BaselineFilter.CredoTest do
       {:ok, baseline} = BaselineCredo.baseline_tagtodo_lines(wt.path, wt.base_sha)
 
       issues = [
-        tagtodo_issue(Path.join(wt.path, "lib/inherited.ex"), 3),
+        tagtodo_issue(Path.join(wt.path, "lib/inherited.ex"), 3, trigger: @inherited_trigger),
         non_tagtodo_issue(Path.join(wt.path, "lib/undocumented.ex"), 1)
       ]
 
@@ -191,13 +252,14 @@ defmodule Harness.Verification.BaselineFilter.CredoTest do
   defp issue_fixture(:tagtodo), do: tagtodo_issue("/wt/lib/x.ex", 1)
   defp issue_fixture(:moduledoc), do: non_tagtodo_issue("/wt/lib/x.ex", 1)
 
-  defp tagtodo_issue(filename, line_no) do
+  defp tagtodo_issue(filename, line_no, opts \\ []) do
     %{
       "check" => "Credo.Check.Design.TagTODO",
       "filename" => filename,
       "line_no" => line_no,
       "category" => "design",
-      "message" => "Found a TODO tag in a comment"
+      "message" => "Found a TODO tag in a comment",
+      "trigger" => Keyword.get(opts, :trigger, "# TODO: stub-#{line_no}")
     }
   end
 

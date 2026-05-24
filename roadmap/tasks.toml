@@ -1,7 +1,7 @@
 schema_version = 2
 project = "harness"
 default_branch = "development"
-vision = "An OTP-native task-execution engine an AI orchestrator drives end to end: it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent running in an isolated worktree, runs the target project's own check stack against the result, and reports verified outcomes back over an agent-shaped surface (MCP tools / JSON CLI). harness is itself developed by dogfooding — from the core loop (Task 8) onward, every pending roadmap task is delivered by dispatching it through harness rather than hand-building it."
+vision = "An OTP-native task-execution engine an AI orchestrator drives end to end: it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent running in an isolated worktree, runs the target project's own check stack against the result, and reports verified outcomes back to its consumer. Today the consumer surface is the BEAM-native Elixir API (called from IEx, tidewave, or another process); the Phase 7 multi-project pivot (milestone v0_5) makes it a long-running OTP node with a Phoenix LiveView dashboard orchestrating N registered target projects (Elixir, Rust, anything with a shell-driven check stack) concurrently. MCP/JSON-CLI is deferred (Phase 6) — it earns complexity only if a non-Elixir consumer ever needs to drive harness from outside the BEAM. harness is itself developed by dogfooding — from the core loop (Task 8) onward, every pending roadmap task is delivered by dispatching it through harness rather than hand-building it (Phase 7's load-bearing scaffolding is the documented exception)."
 
 [focus]
 phase = 3
@@ -855,7 +855,7 @@ Make `commit/2` pin its commit to the worktree's own `harness/<id>` branch, or f
 
 Surfaced by the post-merge audit of f53b50c — see `.audit/f53b50c-commit-agent-delivery.md` (a `discuss-design` divergence; uncommon trigger but a real deliverable-loss gap).
 """
-implemented = "lib/harness/worktree.ex Worktree.commit/2 now pins to the run's harness/<id> branch via explicit refspec; adds Worktree tests + run integration test (run-1779588540053-949e2796)"
+implemented = "lib/harness/worktree.ex Worktree.commit/2 now asserts HEAD-on-branch (rev-parse + symbolic-ref check) before staging via plain `git add -A` + commit; on mismatch returns a typed `{:head_moved, where}` Worktree error and Harness.Run settles `:commit_failed`. Adds Worktree tests + run integration test (run-1779588540053-949e2796)."
 delivered_by = "claude"
 verified = true
 created_at = "2026-05-22"
@@ -1150,7 +1150,7 @@ Judgment call belongs to the user; not auto-applied by audit-review because focu
 
 Filed by audit-review against commit 39c96db on 2026-05-23; see .audit/39c96db-docs-close-out-round-3a-do.md.
 """
-implemented = "Updated [focus] phase = 3 in roadmap/tasks.toml. Phase 3 (Batch & Resilience) has 5 in-progress tasks (29, 30, 35, 37, 38) — actively shipping. Phase 1 was done at the time of the audit; focus pin trivially follows in-progress work."
+implemented = "Updated [focus] phase = 3 in roadmap/tasks.toml. At audit time Phase 3 (Batch & Resilience) was the actively-shipping phase with the largest pending pool (5 pending Round-3b deliveries — 29, 35, 37, 38, plus Task 30 in Phase 2 \"core-loop\" being shipped in the same batch). Phase 1 was done at the time of the audit; focus pin trivially follows in-progress work."
 delivered_by = "claude"
 verified = true
 created_at = "2026-05-23"
@@ -1304,7 +1304,7 @@ milestone = "v0_5"
 status = "pending"
 title = "In-repo <repo>/harness/ subdirectory recipe + template"
 scores = { d = 2, b = 4, u = 4 }
-depends_on = [46]
+depends_on = [46, 48]
 acceptance_criteria = ["docs/in-repo-subdir-recipe.md documents the layout, when to choose it vs out-of-repo, gitignore rules, and update path", "priv/templates/in_repo_harness/ contains the canonical mix.exs, config/runtime.exs, lib/<project>_harness.ex, and .gitignore", "Doc walks through wiring it into a new Rust project end-to-end including the Postgres + Oban setup the harness library requires", "The template, copied verbatim into a fixture repo, boots Harness.Application and successfully registers one local-source project"]
 out_of_scope = ["mix harness.init task to automate template copy (follow-up)", "Multi-project configurations from within an in-repo harness (the in-repo recipe is single-project by convention)"]
 body = """
@@ -1377,6 +1377,7 @@ status = "pending"
 title = "Add pi.dev headless adapter"
 scores = { d = 5, b = 8, u = 7 }
 markers = ["parallel"]
+depends_on = [12]
 acceptance_criteria = ["Harness.AgentAdapter.Pi implements capabilities/0 and build_command/1; defaults from `use Harness.AgentAdapter` cover the rest", "Shared conformance suite passes unchanged", "Adapter spawns pi over a uniform OTP Port; threads caller-controlled env (Task 25) and harness-owned rule set (Task 22)", 'CLAUDE.md § "Agent Headless Entry Points" gains a pi row; § non-delegatable list adds Pi']
 out_of_scope = ["Parsing pi.dev's JSON event stream", "Extending rmap delegate --to to include pi", "Local-LLM provider configuration (Task 53 covers the first probe)"]
 body = """
@@ -1441,6 +1442,77 @@ task selection) emerges as a SEPARATE follow-up task once Task 53's smoke test t
 us whether pi+local-LLM actually delivers useful work — designing the policy before
 that data is premature optimization. Pi (Task 52) is the first :free adapter; existing
 metered adapters (Claude/Cursor/Codex/Grok/Antigravity) get :metered explicitly.
+"""
+created_at = "2026-05-24"
+scored_at = "2026-05-24"
+
+[[task]]
+id = "55"
+phase = 4
+bundle = "multi-agent"
+status = "pending"
+title = "Audit-surfaced: BaselineFilter.Credo content-blind matching causes false-pass / false-red"
+scores = { d = 3, b = 7, u = 7 }
+markers = ["bug"]
+depends_on = [43]
+acceptance_criteria = ["Baseline carries `{file, content}` (or equivalent content-based key), not `{file, line_no}` only", "Regression test: agent rewrites an existing TODO line — verification correctly reds (no false-pass)", "Regression test: agent inserts/deletes a line above an inherited TODO — verification still filters it (no false-red)", "Existing happy-path test (inherited TODO unchanged + no new debt → pass) still passes", "Normalization handles whitespace differences between git-grep output and credo's line-content capture"]
+out_of_scope = ["Switching from credo-based filtering to a different lint backend", "Filtering non-TagTODO credo checks"]
+body = """
+Codex audit of commit `d4344e7` (Task 43 WIP) and `5291698` (Task 43 dogfood) flagged two correctness gaps in `lib/harness/verification/baseline_filter/credo.ex`:
+
+1. **Same-line rewrite false-pass.** The baseline is keyed on `{file, line_no}` (`baseline_tagtodo?/3`, `parse_grep_line/1` discards the trigger text as `_content`). If a dispatched agent rewrites an existing TODO on the same line — keeping the line number but changing the trigger — the new TODO is silently filtered as inherited debt. Verification then false-greens an agent that introduced fresh debt.
+
+2. **Line-shift false-red.** Conversely, if the agent inserts or deletes a line above an inherited TODO, the line_no shifts. The baseline doesn't move with diff context, so the un-mutated inherited TODO is flagged as a new finding. Verification then false-reds an agent that didn't touch the TODO at all.
+
+Both gaps reduce the baseline filter's reliability — the whole point of Task 43 was diff-aware credo.
+
+Fix shape: include line content in baseline pairs and match credo issues by `{file, normalized_content}` rather than `{file, line_no}` — the trigger text IS already extracted by `parse_grep_line/1` (currently discarded as `_content`). Modest structural change; tests cover both false-pass and false-red scenarios.
+"""
+created_at = "2026-05-24"
+scored_at = "2026-05-24"
+
+[[task]]
+id = "56"
+phase = 3
+bundle = "resilience"
+status = "pending"
+title = "Audit-surfaced: cover cancel-before-handle path in Run lifetime force-settle"
+scores = { d = 2, b = 5, u = 5 }
+markers = ["bug"]
+depends_on = [29]
+acceptance_criteria = ["New test in `test/harness/run_test.exs` (describe block `cancellation` or similar): start with `HangingAdapter` (no agent handle ever arrives) + low `lifetime_timeout`; issue `Run.cancel/1` from a Task while in :running with agent_run=nil; assert the cancel Task receives `:ok` AND the result settles `:timed_out` reason", "Test is deterministic — no race-dependent timing; uses explicit synchronization (e.g. wait until cancel_requested is observable via status snapshot) before letting the lifetime timer fire", "If Codex's claim reproduces: code fix lands in same commit and the test fails against the pre-fix code"]
+out_of_scope = ["Refactoring the cancel/lifetime state machine beyond this regression path"]
+body = """
+Codex audit of commit `f4d8cb6` (Task 29 delivery) ran a target-SHA probe and reported: state had `cancel_requested: {:cancelled, from}`, the run settled `:timed_out` via `force_settle_lifetime/1`, but `Task.yield(cancel_task, 500)` returned `nil` — i.e. the deferred cancel caller never received `:ok`.
+
+Static read of the current code (`lib/harness/run.ex:506-512`) shows `force_settle_lifetime/1` calls `pending_cancel_reply(data)` before clearing `cancel_requested`, and `pending_cancel_reply/1` returns `[{:reply, from, :ok}]` for `{_reason, from}` with `is_tuple(from)`. The reply path appears correct on inspection.
+
+The gap is that the existing test (`test "the lifetime budget force-settles even when the agent run handle never arrives"`) exercises force-settle alone — not the *cancel-before-handle + force-settle* composition Codex probed. If a regression slips in (someone reshapes `pending_cancel_reply/1`, the timer firing order, or the data-update ordering), there is no test to catch it.
+
+This task adds the deterministic regression test for the composed scenario. If the test reveals the bug Codex observed, fix it (route the deferred reply through `pending_cancel_reply/1` from every path that can settle while `cancel_requested` is set). If the test passes against current code, the gap was always test coverage, not behavior — close the task with the test in place.
+"""
+created_at = "2026-05-24"
+scored_at = "2026-05-24"
+
+[[task]]
+id = "57"
+phase = 3
+bundle = "resilience"
+status = "pending"
+title = "Audit-surfaced: route Batch dispatch_spin_exhausted through :no_available_agent settlement"
+scores = { d = 2, b = 6, u = 6 }
+markers = ["bug"]
+depends_on = [28, 35]
+acceptance_criteria = ["`run_once_dispatch/5` spin-exhaustion fallback settles with `{:no_available_agent, :spin_exhausted}` (or equivalent shape under that family), not `{:run_crashed, :dispatch_spin_exhausted}`", "Regression test: an adapter that always returns `{:error, {:no_available_agent, _}}` from `select/2` produces a `RunResult` with the new reason after spin exhaustion", "Existing Batch tests still pass; event-log shape stays consistent with the parent `fill_slots` undispatchable settlement"]
+out_of_scope = ["Restoring the `:start_run_failed` event observability regression (separate concern; file as follow-up if it lingers)", "Reducing the 100-spin upper bound (tuning is independent)"]
+body = """
+Codex audit of commit `63b711d` (Task 28) flagged that `Harness.Batch.run_once_dispatch/5` busy-spins up to 100 times when `AgentRegistry.select/2` returns `{:no_available_agent, _}`, then crashes the worker with `{:run_crashed, :dispatch_spin_exhausted}` at `lib/harness/batch.ex:291-298`.
+
+The parent path (`fill_slots/6` at line 217) already settles `{:no_available_agent, reason}` cleanly via `settle_undispatchable/4` — emitting the documented `:undispatchable` event with reason `{:no_available_agent, reason}`. The worker-spin-exhausted path bypasses that: it returns a `{:run_crashed, ...}` reason that's semantically wrong (no crash happened — the agent pool was just exhausted under contention), and it loses the consistent event-log shape.
+
+Fix shape: change line 296 from `reason: {:run_crashed, :dispatch_spin_exhausted}` to `reason: {:no_available_agent, :spin_exhausted}` (or thread back through `settle_undispatchable/4` if the event log can be reached from the worker context). Add a deterministic test that exercises the spin-exhaustion path — `MockAdapter` declaring no available agents for `spin_count_limit + N` selects in a row, then asserting the resulting RunResult carries the `:no_available_agent` reason.
+
+Codex also flagged that `:start_run_failed` events are no longer emitted on the batch event log when `RunSupervisor.start_run/4` errors (line 281-287). That's an observability regression rather than a result-loss bug — out of scope here unless the spin-exhaustion fix opens it up naturally.
 """
 created_at = "2026-05-24"
 scored_at = "2026-05-24"
