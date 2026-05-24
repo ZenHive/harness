@@ -1,6 +1,10 @@
 defmodule Harness.WorktreeTest do
   use ExUnit.Case, async: true
 
+  alias Harness.AgentAdapter.Claude
+  alias Harness.AgentAdapter.Codex
+  alias Harness.AgentAdapter.Cursor
+  alias Harness.AgentAdapter.Invocation
   alias Harness.GitFixture
   alias Harness.Worktree
 
@@ -108,6 +112,64 @@ defmodule Harness.WorktreeTest do
       assert {:ok, :no_changes} = Worktree.commit(wt, "agent delivery")
 
       assert GitFixture.git!(repo, ["rev-parse", wt.branch]) == sha_before
+    end
+
+    test "reports :no_changes after Claude injects rules into a no-op run" do
+      {repo, wt} = create_worktree()
+      sha_before = GitFixture.git!(repo, ["rev-parse", wt.branch])
+
+      assert {:ok, {"claude", _argv, _env}} = Claude.build_command(invocation(wt.path))
+      assert {:ok, :no_changes} = Worktree.commit(wt, "agent delivery")
+
+      assert GitFixture.git!(repo, ["rev-parse", wt.branch]) == sha_before
+    end
+
+    test "reports :no_changes after Codex injects rules into a no-op run" do
+      {repo, wt} = create_worktree()
+      sha_before = GitFixture.git!(repo, ["rev-parse", wt.branch])
+
+      assert {:ok, {"codex", _argv, _env}} = Codex.build_command(invocation(wt.path))
+      assert {:ok, :no_changes} = Worktree.commit(wt, "agent delivery")
+
+      assert GitFixture.git!(repo, ["rev-parse", wt.branch]) == sha_before
+    end
+
+    test "reports :no_changes after Cursor injects rules into a no-op run" do
+      {repo, wt} = create_worktree()
+      sha_before = GitFixture.git!(repo, ["rev-parse", wt.branch])
+
+      assert {:ok, {"cursor-agent", _argv, _env}} = Cursor.build_command(invocation(wt.path))
+      assert {:ok, :no_changes} = Worktree.commit(wt, "agent delivery")
+
+      assert GitFixture.git!(repo, ["rev-parse", wt.branch]) == sha_before
+    end
+
+    test "does not commit Codex's harness block into an existing AGENTS.md" do
+      repo = GitFixture.init_repo()
+      File.write!(Path.join(repo, "AGENTS.md"), "target repo instructions\n")
+      GitFixture.git!(repo, ["add", "AGENTS.md"])
+      GitFixture.git!(repo, ["commit", "-q", "-m", "add agents"])
+      base = GitFixture.tmp_base()
+      {:ok, wt} = Worktree.create(repo, base_dir: base)
+      sha_before = GitFixture.git!(repo, ["rev-parse", wt.branch])
+
+      assert {:ok, {"codex", _argv, _env}} = Codex.build_command(invocation(wt.path))
+      assert {:ok, :no_changes} = Worktree.commit(wt, "agent delivery")
+
+      assert GitFixture.git!(repo, ["rev-parse", wt.branch]) == sha_before
+      assert File.read!(Path.join(wt.path, "AGENTS.md")) == "target repo instructions\n"
+    end
+
+    test "commits legitimate Codex edits to AGENTS.md without the harness block" do
+      {repo, wt} = create_worktree()
+
+      assert {:ok, {"codex", _argv, _env}} = Codex.build_command(invocation(wt.path))
+      agents = Path.join(wt.path, "AGENTS.md")
+      File.write!(agents, File.read!(agents) <> "\nproject rules\n")
+
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
+
+      assert GitFixture.git!(repo, ["show", "#{wt.branch}:AGENTS.md"]) == "project rules\n"
     end
 
     test "surfaces a git failure on a path that is not a git repository" do
@@ -233,5 +295,9 @@ defmodule Harness.WorktreeTest do
     base = GitFixture.tmp_base()
     {:ok, wt} = Worktree.create(repo, base_dir: base)
     {repo, wt}
+  end
+
+  defp invocation(cwd) do
+    %Invocation{prompt: "do nothing", cwd: cwd, task_id: "36"}
   end
 end

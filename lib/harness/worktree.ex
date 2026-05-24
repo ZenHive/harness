@@ -43,6 +43,7 @@ defmodule Harness.Worktree do
       Default `true`.
   """
 
+  alias Harness.AgentRules
   alias Harness.Git
 
   @branch_prefix "harness/"
@@ -74,6 +75,7 @@ defmodule Harness.Worktree do
           {:repo_not_found, String.t()}
           | {:not_a_git_repo, String.t()}
           | {:marker_write_failed, String.t(), File.posix()}
+          | {:rule_cleanup_failed, String.t(), File.posix()}
           | {:head_moved, expected :: String.t(), actual :: head_label()}
           # Inlined from the internal Harness.Git.error/0 — keeps this public
           # type self-describing without autolinking to a hidden module.
@@ -120,11 +122,11 @@ defmodule Harness.Worktree do
   @doc """
   Captures the agent's work as a commit on the worktree's branch.
 
-  Stages every change in the worktree (`git add -A` — the repo's `.gitignore`
-  still excludes `_build`, `deps`, and friends) and commits it to the
-  `harness/<id>` branch. That commit is the run's deliverable: it is what
-  survives `finish/3` teardown, since `remove/1` deletes only the working
-  directory.
+  Discards harness-injected rule files, then stages every remaining change in
+  the worktree (`git add -A` — the repo's `.gitignore` still excludes `_build`,
+  `deps`, and friends) and commits it to the `harness/<id>` branch. That commit
+  is the run's deliverable: it is what survives `finish/3` teardown, since
+  `remove/1` deletes only the working directory.
 
   The commit carries an explicit committer identity (`#{@committer_name}
   <#{@committer_email}>`), so it never fails on a repo with no `user.name` /
@@ -149,6 +151,7 @@ defmodule Harness.Worktree do
   @spec commit(t(), String.t()) :: {:ok, :committed | :no_changes} | {:error, error()}
   def commit(%__MODULE__{path: path, branch: branch}, message) when is_binary(message) do
     with :ok <- assert_head_on_branch(path, branch),
+         :ok <- AgentRules.cleanup_injected_rules(path),
          {:ok, _added} <- Git.run(["add", "-A"], path),
          {:ok, status} <- Git.run(["status", "--porcelain"], path) do
       if String.trim(status) == "" do
@@ -162,12 +165,14 @@ defmodule Harness.Worktree do
   @doc """
   Returns the changed-line size of the agent diff currently in the worktree.
 
-  The worktree is staged before measurement so untracked files are included,
-  matching the diff that `commit/2` will capture.
+  Harness-injected rule files are discarded, then the worktree is staged before
+  measurement so untracked files are included, matching the diff that `commit/2`
+  will capture.
   """
   @spec diff_size(t()) :: {:ok, non_neg_integer()} | {:error, error()}
   def diff_size(%__MODULE__{path: path}) do
-    with {:ok, _added} <- Git.run(["add", "-A"], path),
+    with :ok <- AgentRules.cleanup_injected_rules(path),
+         {:ok, _added} <- Git.run(["add", "-A"], path),
          {:ok, numstat} <- Git.run(["diff", "--cached", "--numstat", "HEAD", "--"], path) do
       {:ok, parse_numstat_size(numstat)}
     end

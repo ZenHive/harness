@@ -19,6 +19,7 @@ defmodule Harness.AgentRules do
   @system_prompt_rel ".harness/agent-rules.md"
   @cursor_rules_rel ".cursor/rules/harness-operational.mdc"
   @codex_agents_filename "AGENTS.md"
+  @codex_agents_separator "\n\n---\n\n"
 
   @section_body ~r/<!-- @section (\w+) -->\s*(.*?)(?=<!-- @section |\z)/s
 
@@ -89,6 +90,17 @@ defmodule Harness.AgentRules do
     :ok
   end
 
+  @doc "Removes harness-injected rule files from a run worktree before delivery."
+  @spec cleanup_injected_rules(String.t()) :: :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  def cleanup_injected_rules(cwd) when is_binary(cwd) do
+    root = worktree_root!(cwd)
+
+    with :ok <- remove_file(root, @system_prompt_rel),
+         :ok <- remove_file(root, @cursor_rules_rel) do
+      cleanup_codex_agents(root)
+    end
+  end
+
   @doc "Section ids present in the canonical source."
   @spec section_ids() :: [section_id()]
   def section_ids do
@@ -152,9 +164,49 @@ defmodule Harness.AgentRules do
     if String.contains?(existing, "harness-injected: canonical agent rules") do
       existing
     else
-      harness_block <> "\n\n---\n\n" <> String.trim(existing)
+      harness_block <> @codex_agents_separator <> existing
     end
   end
+
+  @spec cleanup_codex_agents(String.t()) ::
+          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  defp cleanup_codex_agents(cwd) do
+    path = worktree_file!(cwd, @codex_agents_filename)
+
+    case File.read(path) do
+      {:ok, body} -> cleanup_codex_agents_body(path, body)
+      {:error, :enoent} -> :ok
+      {:error, reason} -> {:error, {:rule_cleanup_failed, path, reason}}
+    end
+  end
+
+  @spec cleanup_codex_agents_body(String.t(), String.t()) ::
+          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  defp cleanup_codex_agents_body(path, body) do
+    harness_block = codex_agents_block(render())
+
+    cond do
+      body == harness_block ->
+        remove_path(path)
+
+      String.starts_with?(body, harness_block <> @codex_agents_separator) ->
+        write_path(path, String.replace_prefix(body, harness_block <> @codex_agents_separator, ""))
+
+      String.starts_with?(body, harness_block) ->
+        body
+        |> String.replace_prefix(harness_block, "")
+        |> String.trim_leading()
+        |> write_codex_agents_remainder(path)
+
+      true ->
+        :ok
+    end
+  end
+
+  @spec write_codex_agents_remainder(String.t(), String.t()) ::
+          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  defp write_codex_agents_remainder("", path), do: remove_path(path)
+  defp write_codex_agents_remainder(body, path), do: write_path(path, body)
 
   @spec read_optional(String.t(), String.t()) :: String.t() | nil
   # `rel` is one of this module's fixed harness-owned paths; `cwd` is the run
@@ -181,6 +233,32 @@ defmodule Harness.AgentRules do
     case File.write(path, body) do
       :ok -> :ok
       {:error, reason} -> raise File.Error, reason: reason, action: "write", path: path
+    end
+  end
+
+  @spec remove_file(String.t(), String.t()) ::
+          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  defp remove_file(cwd, rel) do
+    cwd
+    |> worktree_file!(rel)
+    |> remove_path()
+  end
+
+  @spec remove_path(String.t()) :: :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  defp remove_path(path) do
+    case File.rm(path) do
+      :ok -> :ok
+      {:error, :enoent} -> :ok
+      {:error, reason} -> {:error, {:rule_cleanup_failed, path, reason}}
+    end
+  end
+
+  @spec write_path(String.t(), String.t()) ::
+          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  defp write_path(path, body) do
+    case File.write(path, body) do
+      :ok -> :ok
+      {:error, reason} -> {:error, {:rule_cleanup_failed, path, reason}}
     end
   end
 
