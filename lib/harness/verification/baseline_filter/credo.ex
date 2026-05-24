@@ -4,11 +4,11 @@ defmodule Harness.Verification.BaselineFilter.Credo do
 
   When the verification stack runs against a worktree dispatched from a
   `:base_ref` (the resolved `Harness.Worktree.base_sha`), this filter
-  re-grades the credo result: TagTODO findings whose `# TODO` already existed
-  in the dispatch base are dropped as inherited debt, not failures. A
-  dispatched agent is then only graded on TODOs *they* introduced — debt
-  carried over by, e.g., an `audit(...)` follow-up marker the dispatch base
-  inherited does not red the run.
+  re-grades the credo result: TagTODO findings on lines where a todo-tag
+  comment already existed in the dispatch base are dropped as inherited
+  debt, not failures. A dispatched agent is then only graded on the todo
+  tags *they* introduced — debt carried over by, e.g., an `audit(...)`
+  follow-up marker the dispatch base inherited does not red the run.
 
   The filter:
 
@@ -36,9 +36,11 @@ defmodule Harness.Verification.BaselineFilter.Credo do
   alias Harness.Verification.Result
 
   @tagtodo_check "Credo.Check.Design.TagTODO"
-  @todo_pattern ~r/#\s*TODO/
+  # POSIX ERE syntax for portability across git builds (notably stock macOS
+  # git, which lacks PCRE — `\s` then silently fails to match).
+  @todo_pattern ~S/#[[:space:]]*TODO/
 
-  @typedoc "A `{relative_path, line_no}` pair flagged as a TODO in the dispatch base."
+  @typedoc "A `{relative_path, line_no}` pair carrying a todo tag in the dispatch base."
   @type baseline :: MapSet.t({String.t(), pos_integer()})
 
   @doc """
@@ -112,7 +114,7 @@ defmodule Harness.Verification.BaselineFilter.Credo do
 
   @doc """
   Builds the set of `{relative_path, line_no}` pairs where the file at
-  `base_ref` has a `# TODO` comment.
+  `base_ref` carries a todo tag (a line matching `#[[:space:]]*TODO`).
 
   `git grep` with a tree-ish argument walks the index of that ref, so the
   working tree's current content is irrelevant — exactly the "what already
@@ -121,12 +123,12 @@ defmodule Harness.Verification.BaselineFilter.Credo do
   """
   @spec baseline_tagtodo_lines(String.t(), String.t()) :: {:ok, baseline()} | :error
   def baseline_tagtodo_lines(worktree_path, base_ref) do
-    case Git.run(["grep", "-n", "-I", "-E", Regex.source(@todo_pattern), base_ref], worktree_path) do
+    case Git.run(["grep", "-n", "-I", "-E", @todo_pattern, base_ref], worktree_path) do
       {:ok, output} ->
         {:ok, parse_git_grep(output)}
 
-      # `git grep` exits 1 when there are no matches — the baseline has no
-      # TODOs, so the filter has nothing to drop. Empty set, not an error.
+      # `git grep` exits 1 when there are no matches — the baseline carries
+      # no todo tags, so the filter has nothing to drop; empty set, not error.
       {:error, {:git_failed, _args, 1, ""}} ->
         {:ok, MapSet.new()}
 

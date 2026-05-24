@@ -49,9 +49,9 @@ defmodule Harness.Verification do
     %Check{name: "test", command: "mix", args: ["test.json"]},
     %Check{name: "dialyzer", command: "mix", args: ["dialyzer.json"]},
     # `post_process` is the diff-aware TagTODO baseline filter: when verification
-    # is given a `:base_ref`, credo findings on TODOs that already existed in the
-    # dispatch base are re-graded away so a dispatched agent is only red on
-    # TODOs *they* introduced.
+    # is given a `:base_ref`, credo findings on todo tags that already existed
+    # in the dispatch base are re-graded away so a dispatched agent is only red
+    # on the ones they introduced.
     %Check{
       name: "credo",
       command: "mix",
