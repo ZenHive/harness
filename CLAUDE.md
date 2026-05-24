@@ -54,10 +54,11 @@ With the normalized event model cut, the harness core is textbook OTP — a Port
 | Codex | `codex exec` | `--json` |
 | Grok | `grok -p` / the `agent` subcommand | `--output-format streaming-json` |
 | Antigravity | `agy -p` | none (plain text) |
+| Pi (pi.dev) | `pi -p` | `--mode json` |
 
-All five are driven over OTP Ports — uniform invocation strategy, no per-agent SDK (see § "Orchestration Library").
+All six are driven over OTP Ports — uniform invocation strategy, no per-agent SDK (see § "Orchestration Library").
 
-Non-delegatable adapters (such as `Grok` and `Antigravity`) run with a `claude`, `codex`, or `cursor`-rendered prompt. They cannot be target arguments to `Harness.Roadmap.ingest/2` since `rmap delegate --to` does not support them. Instead, ingest the task with one of the delegatable agents, and pass the resulting `%Harness.Roadmap.Item{}` directly to the non-delegatable adapter's module via `Harness.Run.Supervisor.start_run/4` (or via `Harness.Batch` using the adapter module).
+Non-delegatable adapters (such as `Grok`, `Antigravity`, and `Pi`) run with a `claude`, `codex`, or `cursor`-rendered prompt. They cannot be target arguments to `Harness.Roadmap.ingest/2` since `rmap delegate --to` does not support them. Instead, ingest the task with one of the delegatable agents, and pass the resulting `%Harness.Roadmap.Item{}` directly to the non-delegatable adapter's module via `Harness.Run.Supervisor.start_run/4` (or via `Harness.Batch` using the adapter module).
 
 **Accepted as dogfood drivers** via the two-step ingest-then-adapter pattern above: `Grok` is accepted now (Round-1 Task 25 was Grok-driven, settled `:passed`); `Antigravity` will be accepted once Task 32 resolves (`agy` currently ignores its Port `cwd` and edits the main checkout instead of its run worktree, so an Antigravity dogfood run mutates the live repo). Dispatch friction (two steps instead of one) is not a reason to silently exclude them from a parallel batch — rotate them in deliberately for adapter coverage.
 
