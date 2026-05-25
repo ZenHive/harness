@@ -347,7 +347,11 @@ defmodule Harness.Run do
   end
 
   def running(:info, {:DOWN, ref, :process, _pid, reason}, %{task: %Task{ref: ref}} = data) when reason != :normal do
-    fail(%{data | task: nil}, {:driver_crashed, reason})
+    # Mirrors the do_cancel / timeout paths: if the agent polluted the main
+    # checkout AND then crashed the driver, surface the pollution (the agent
+    # bug) ahead of the driver crash (the downstream effect).
+    pollution_reason = checkout_pollution_reason(data)
+    fail(%{data | task: nil}, pollution_reason || {:driver_crashed, reason})
   end
 
   def running(event_type, event_content, data) do

@@ -42,10 +42,16 @@ defmodule Harness.Worktree.Isolation do
   @doc """
   Compares the checkout against `before_snapshot`.
 
-  Returns `:ok` when unchanged or when no snapshot was taken; otherwise
-  `{:error, {:checkout_polluted, diff}}`.
+  Returns `:ok` when unchanged or when no snapshot was taken; `{:error,
+  {:checkout_polluted, diff}}` when the porcelain changed; or `{:error,
+  {:checkout_pollution_check_failed, git_error}}` when the post-run snapshot
+  itself failed (treated conservatively as failure — unknown state is not
+  assumed clean).
   """
-  @spec check_pollution(String.t(), String.t() | nil) :: :ok | {:error, {:checkout_polluted, String.t()}}
+  @spec check_pollution(String.t(), String.t() | nil) ::
+          :ok
+          | {:error, {:checkout_polluted, String.t()}}
+          | {:error, {:checkout_pollution_check_failed, Git.error()}}
   def check_pollution(_repo, nil), do: :ok
 
   def check_pollution(repo, before) when is_binary(before) do
