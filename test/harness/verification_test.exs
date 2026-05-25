@@ -1,6 +1,7 @@
 defmodule Harness.VerificationTest do
   use ExUnit.Case, async: true
 
+  alias Harness.CheckStack
   alias Harness.GitFixture
   alias Harness.Verification
   alias Harness.Verification.Check
@@ -185,6 +186,71 @@ defmodule Harness.VerificationTest do
 
       assert {:ok, %Verdict{status: :pass, results: [result]}} = Verification.run(dir)
       assert result.name == "from-config"
+    end
+  end
+
+  describe "run/2 with :check_stack" do
+    test "runs the stack's checks and produces the same Verdict shape" do
+      dir = worktree_dir()
+
+      stack = %CheckStack{
+        name: :tiny,
+        checks: [check("a", "true"), check("b", "true")]
+      }
+
+      assert {:ok, %Verdict{status: :pass, results: [a, b]}} =
+               Verification.run(dir, check_stack: stack)
+
+      assert a.name == "a"
+      assert b.name == "b"
+      assert Enum.all?([a, b], &match?(%Result{kind: :exited, status: :pass}, &1))
+    end
+
+    test "applies the stack's timeout_per_check when no explicit :timeout is given" do
+      dir = worktree_dir()
+      stub = stub_script("sleep 30; echo done")
+
+      stack = %CheckStack{
+        name: :tight,
+        checks: [check("hangs", stub)],
+        timeout_per_check: 200
+      }
+
+      assert {:ok, %Verdict{status: :fail, results: [result]}} =
+               Verification.run(dir, check_stack: stack)
+
+      assert result.kind == :timed_out
+      assert result.output =~ "timed out after 200ms"
+    end
+
+    test "an explicit :timeout wins over the stack's timeout_per_check" do
+      dir = worktree_dir()
+      stub = stub_script("sleep 30; echo done")
+
+      stack = %CheckStack{
+        name: :loose,
+        checks: [check("hangs", stub)],
+        # If this 60_000 leaked through, the test would block for 30 s.
+        timeout_per_check: 60_000
+      }
+
+      assert {:ok, %Verdict{status: :fail, results: [result]}} =
+               Verification.run(dir, check_stack: stack, timeout: 200)
+
+      assert result.kind == :timed_out
+      assert result.output =~ "timed out after 200ms"
+    end
+
+    test "wins over a raw :checks option" do
+      dir = worktree_dir()
+
+      stack = %CheckStack{name: :winner, checks: [check("from-stack", "true")]}
+
+      assert {:ok, %Verdict{results: [result]}} =
+               Verification.run(dir, check_stack: stack, checks: [check("ignored", "false")])
+
+      assert result.name == "from-stack"
+      assert result.status == :pass
     end
   end
 

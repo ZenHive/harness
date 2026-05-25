@@ -15,7 +15,8 @@ defmodule Harness.Verification do
       Harness.Verification.Verdict.passed?(verdict)
 
   `run/2` grades with `elixir_preset/0` — the standard `mix` quality stack —
-  unless given a `:checks` option or a `:harness, :verification` config override.
+  unless given a `:check_stack` option (a `Harness.CheckStack`), a raw
+  `:checks` list, or a `:harness, :verification` config override.
 
   ## Execution model
 
@@ -39,30 +40,13 @@ defmodule Harness.Verification do
       (10 minutes).
   """
 
+  alias Harness.CheckStack
+  alias Harness.CheckStack.Preset.Elixir, as: ElixirPreset
   alias Harness.Verification.Check
   alias Harness.Verification.Result
   alias Harness.Verification.Verdict
 
   @default_timeout 600_000
-
-  @elixir_preset [
-    %Check{name: "test", command: "mix", args: ["test.json"]},
-    %Check{name: "dialyzer", command: "mix", args: ["dialyzer.json"]},
-    # `post_process` is the diff-aware TagTODO baseline filter: when verification
-    # is given a `:base_ref`, credo findings on todo tags that already existed
-    # in the dispatch base are re-graded away so a dispatched agent is only red
-    # on the ones they introduced.
-    %Check{
-      name: "credo",
-      command: "mix",
-      args: ["credo", "--strict"],
-      post_process: {Harness.Verification.BaselineFilter.Credo, :apply}
-    },
-    %Check{name: "doctor", command: "mix", args: ["doctor"]},
-    # `--skip` honors the repo's inline `# sobelow_skip` annotations; without it
-    # sobelow re-reports every annotated finding and `--exit` reds the check.
-    %Check{name: "sobelow", command: "mix", args: ["sobelow", "--exit", "--skip"]}
-  ]
 
   @typedoc "A reason a verification run cannot execute at all."
   @type error :: :no_checks | {:worktree_not_found, String.t()}
@@ -79,8 +63,13 @@ defmodule Harness.Verification do
 
   Options:
 
-    * `:checks` — override the check stack with a list of
-      `Harness.Verification.Check`.
+    * `:check_stack` — a `Harness.CheckStack` whose `checks` and (when set)
+      `timeout_per_check` drive the run. Wins over `:checks` and over the
+      configured fallback. An explicit `:timeout` still wins over the stack's
+      `timeout_per_check`.
+    * `:checks` — override the check stack with a raw list of
+      `Harness.Verification.Check`. Back-compat path; new callers should
+      prefer `:check_stack`.
     * `:timeout` — override the per-check timeout, in milliseconds, or
       `:infinity` for an unbounded check.
     * `:base_ref` — the dispatch-base commit SHA the worktree branch was
@@ -97,8 +86,8 @@ defmodule Harness.Verification do
   @spec run(String.t(), keyword()) :: {:ok, Verdict.t()} | {:error, error()}
   def run(worktree_path, opts \\ []) when is_binary(worktree_path) do
     path = Path.expand(worktree_path)
-    checks = Keyword.get(opts, :checks) || configured_checks()
-    timeout = Keyword.get(opts, :timeout) || configured_timeout()
+    {checks, stack_timeout} = resolve_checks(opts)
+    timeout = Keyword.get(opts, :timeout) || stack_timeout || configured_timeout()
     post_process_opts = post_process_opts(path, opts)
 
     with :ok <- validate_checks(checks),
@@ -114,15 +103,34 @@ defmodule Harness.Verification do
   Each check is configured with flags that make the tool exit non-zero on
   failure, so the process exit status is a reliable pass/fail signal. The order
   runs `test` first so the later checks reuse the `_build` it produces.
+
+  Delegates to `Harness.CheckStack.Preset.Elixir.preset/0` — that module owns
+  the canonical Elixir check list; this function preserves the historical
+  call shape `[Check.t()]`.
   """
   @spec elixir_preset() :: [Check.t()]
-  def elixir_preset, do: @elixir_preset
+  def elixir_preset, do: ElixirPreset.preset().checks
+
+  # Resolves the check list and the optional stack-supplied default timeout
+  # from `opts`. `:check_stack` wins over a raw `:checks` list; both win over
+  # the `:harness, :verification` config; the Elixir preset is the final
+  # fallback. Returns `{checks, stack_timeout_or_nil}`.
+  @spec resolve_checks(keyword()) :: {[Check.t()], timeout() | nil}
+  defp resolve_checks(opts) do
+    case Keyword.get(opts, :check_stack) do
+      %CheckStack{checks: checks, timeout_per_check: t} ->
+        {checks, t}
+
+      nil ->
+        {Keyword.get(opts, :checks) || configured_checks(), nil}
+    end
+  end
 
   @spec configured_checks() :: [Check.t()]
   defp configured_checks do
     :harness
     |> Application.get_env(:verification, [])
-    |> Keyword.get(:checks, @elixir_preset)
+    |> Keyword.get(:checks, elixir_preset())
   end
 
   @spec configured_timeout() :: timeout()
