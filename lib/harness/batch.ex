@@ -190,7 +190,7 @@ defmodule Harness.Batch do
 
   @spec loop_context(
           String.t(),
-          String.t(),
+          Project.t(),
           [module()],
           keyword(),
           RetryPolicy.t(),
