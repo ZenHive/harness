@@ -264,6 +264,49 @@ let the rest rebase against it, resolve any same-file merges by hand. The
 verification stack re-runs on `development` after the last merge — if it
 goes red post-merge that's an integration failure, not a per-run failure.
 
+## HIGH-tier audit grader dispatch (`Harness.AuditReview`)
+
+Distinct from the roadmap-task dispatch above. The codified `staged-review:audit-review`
+skill ("Stake-gated fix verification") sends HIGH-tier fixes to a *different* agent
+for a second-grader read — Codex grades Claude, Claude grades Codex. The grading run
+produces a *text verdict*, not a green/red verification verdict, so it **bypasses
+`Harness.Run` and the verification stack on purpose**: routing through them would
+require a fake passthrough check and pollute the result store with non-task runs.
+
+`Harness.AuditReview.grade_fix/1` is the one-call wrapper. It synchronously dispatches
+the opposite-agent grader via `Harness.AgentAdapter.Driver.run/3` directly, parses the
+grader's raw transcript for a sentinel, and returns the verdict.
+
+```elixir
+{:ok, %{verdict: verdict, outcome: outcome, grader: grader_module}} =
+  Harness.AuditReview.grade_fix(
+    implementer: :claude,         # who built the fix; grader auto-derives to :codex
+    sha: "abc1234",               # commit being audited
+    prompt: focused_review_prompt # caller-built; MUST instruct grader to emit sentinel
+  )
+
+# verdict ∈ {:approve, :reject, :unclear}
+# outcome is the full %Harness.AgentAdapter.Outcome{} (raw transcript + timeout info)
+# grader_module is the adapter that ran (Harness.AgentAdapter.Codex in this example)
+```
+
+**Verdict contract.** The caller's prompt MUST instruct the grader to emit
+`<<<VERDICT:APPROVE>>>` or `<<<VERDICT:REJECT>>>` on a line by itself at the end of
+its response. Substring-matched across every adapter output format (stream-json,
+`--json`, streaming-json, plain text); last-match-wins (handles graders that reason
+through both options before committing). Absent → `:unclear`.
+
+**Default pairing.** Auto-pairs `:claude ↔ :codex` only — those are the two adapters
+`audit-review` HIGH-tier explicitly names. Other implementers (`:grok`, `:cursor`,
+`:antigravity`, `:pi`) require an explicit `:grader` opt. The opt accepts either a
+known-agent atom or a module implementing `Harness.AgentAdapter` (test stubs
+without expanding the known-agents table).
+
+**What the wrapper does NOT do.** The audit-review skill owns focused-review prompt
+construction, `.audit/<sha>.md` write-back, and revert-on-reject. `Harness.AuditReview`
+is dispatch + verdict extraction only. Multi-project sweeps and cron-driven audit
+scheduling are out of scope (post-Phase-7).
+
 ## Known sharp edges
 
 - **deps in the worktree.** A fresh git worktree has no `deps/` or `_build/` (both

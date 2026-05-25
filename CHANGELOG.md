@@ -187,6 +187,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `:agent_diff_size`. The diff size is measured by `Harness.Worktree.diff_size/1`
   (a `git add -A` + `git diff --cached --numstat HEAD` pair) before commit,
   so the count matches what `commit/2` captures.
+- `Harness.AuditReview` — HIGH-tier second-grader dispatch wrapper for the
+  codified `staged-review:audit-review` skill. `grade_fix/1` dispatches the
+  opposite-agent grader (`:claude ↔ :codex` auto-pair; explicit `:grader`
+  overrides) via `Harness.AgentAdapter.Driver.run/3` directly — bypassing
+  `Harness.Run` and the verification stack on purpose (the grader's *text* IS
+  the verdict, not a green/red check). Parses a `<<<VERDICT:APPROVE|REJECT>>>`
+  sentinel from the raw transcript with last-match-wins, returning
+  `{:ok, %{verdict, outcome, grader}}` for any dispatch that spawned. Synchronous;
+  one-shot and read-only. (Task 58)
 
 ### Fixed
 

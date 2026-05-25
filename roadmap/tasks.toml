@@ -1545,3 +1545,36 @@ verified = true
 created_at = "2026-05-24"
 scored_at = "2026-05-24"
 done_at = "2026-05-24"
+
+[[task]]
+id = "58"
+phase = 5
+bundle = "surface"
+milestone = "v0_4"
+status = "done"
+title = "Harness.AuditReview — HIGH-tier audit grader dispatch"
+scores = { d = 3, b = 7, u = 7 }
+acceptance_criteria = ["`Harness.AuditReview.grade_fix(implementer: :claude, sha: ..., prompt: ...)` returns `{:ok, %{verdict:, outcome:, grader:}}` with verdict ∈ {:approve, :reject, :unclear}", "Grader is auto-derived as the opposite agent of :implementer (:claude → :codex, :codex → :claude); :grader opt overrides (atom or module)", "Dispatches via Harness.AgentAdapter.Driver.run/3 directly; no Harness.Run gen_statem / verification stack involvement (the grader's text IS the verdict, not a green/red check)", "Verdict extracted by sentinel: last occurrence of <<<VERDICT:APPROVE>>> or <<<VERDICT:REJECT>>> wins; absence → :unclear", "Synchronous: blocks the caller until the dispatched Driver run settles or :timeout fires", "Full test suite green: dialyzer 0 warnings, credo --strict 0 issues, doctor 100% coverage on the new module"]
+out_of_scope = [".audit/<sha>.md write (skill's job)", "Revert-on-reject (skill's job)", "Grader-prompt construction (skill's job)", "Multi-project sweep (needs Phase 7 ProjectRegistry, Task 46)", "Scheduling / cron (needs Phase 7 Oban.Plugins.Cron, Task 51)", "Tier 1/2 handling (mechanical / self-reread, no module needed)", "End-to-end integration smoke against a real harness commit (deferred to a separate session)"]
+model = "claude-opus-4-7"
+body = """
+Build `Harness.AuditReview.grade_fix/1` as the v0 wrapper around the
+staged-review:audit-review skill's HIGH-tier second-grader dispatch contract.
+
+The skill specifies: "one Harness.Run (target=grader-agent,
+prompt=focused-code-review-of-fix, expecting approve/reject)". Today this
+requires hand-rolling a synthetic Item, picking the opposite-agent adapter,
+working around the always-runs verification stack, and parsing the raw
+transcript. v0 captures the pattern as one synchronous call returning
+`{:ok, %{verdict: :approve | :reject | :unclear, outcome: %Outcome{}, grader: module}}`.
+
+The caller (audit-review skill, or a test) builds the focused-review prompt;
+`Harness.AuditReview` is dispatch + verdict extraction only. No filesystem
+side-effects beyond the harness Run's normal worktree usage. Multi-project
+sweeps and scheduling are out of scope (post-Phase-7).
+"""
+implemented = "Harness.AuditReview module + tests landed: lib/harness/audit_review.ex (~190 LOC) + test/harness/audit_review_test.exs (23 tests). Public grade_fix/1 + extract_verdict/1. Dispatches via Harness.AgentAdapter.Driver.run/3 directly (no Harness.Run gen_statem, no verification stack — grader's text IS the verdict). Sentinel <<<VERDICT:APPROVE>>> / <<<VERDICT:REJECT>>> with last-match-wins; returns {:ok, %{verdict, outcome, grader}} for any dispatch that spawned, {:error, _} only when dispatch could not start. Auto-pairs :claude<->:codex; :grader opt overrides with atom or module (test-stub friendly). All quality gates green: 23/23 tests, 388/388 offline suite, credo --strict 0, dialyzer 0, doctor 100% coverage."
+delivered_by = "claude-opus-4-7"
+created_at = "2026-05-25"
+scored_at = "2026-05-25"
+done_at = "2026-05-25"

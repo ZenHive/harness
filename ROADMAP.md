@@ -111,6 +111,7 @@
 | Task 19 `[P]` | ✅ | 🎁 **surface** · 🚀 **v0_4** · Structured run logging + result persistence [D:5/B:5/U:5 → Eff:1.0] 📋 |
 | Task 33 | ⬜ | 🎁 **surface** · Same-task A/B agent-evaluation mode [D:4/B:6/U:5 → Eff:1.38] 📋 |
 | Task 42 | ✅ | 🎁 **surface** · Audit-surfaced: Refresh roadmap focus phase pin after Phase 1 closeout [D:1/B:3/U:4 → Eff:3.5] 🎯 |
+| Task 58 | ✅ | 🎁 **surface** · 🚀 **v0_4** · Harness.AuditReview — HIGH-tier audit grader dispatch [D:3/B:7/U:7 → Eff:2.33] 🎯 |
 <!-- TASKS:END -->
 
 ---
