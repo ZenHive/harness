@@ -6,6 +6,7 @@ defmodule Harness.RunTest do
   alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProcessFixture
+  alias Harness.ProjectFixture
   alias Harness.ResultStore
   alias Harness.Roadmap.Item
   alias Harness.Run
@@ -157,7 +158,9 @@ defmodule Harness.RunTest do
       repo = GitFixture.init_repo()
       base = GitFixture.tmp_base()
 
-      {:ok, run_id, pid} = Run.Supervisor.start_run(item(), repo, FakeAdapter, default_opts(base))
+      {:ok, run_id, pid} =
+        Run.Supervisor.start_run(item(), ProjectFixture.from_repo(repo), FakeAdapter, default_opts(base))
+
       result = await_result(run_id, pid)
 
       assert %Result{state: :done, reason: :passed} = result
@@ -180,7 +183,7 @@ defmodule Harness.RunTest do
       base = GitFixture.tmp_base()
 
       {:ok, run_id, pid} =
-        Run.Supervisor.start_run(item(), repo, Antigravity, default_opts(base))
+        Run.Supervisor.start_run(item(), ProjectFixture.from_repo(repo), Antigravity, default_opts(base))
 
       result = await_result(run_id, pid)
 
@@ -199,7 +202,7 @@ defmodule Harness.RunTest do
       {:ok, run_id, pid} =
         Run.Supervisor.start_run(
           item(),
-          repo,
+          ProjectFixture.from_repo(repo),
           FakeAdapter,
           base
           |> default_opts()
@@ -236,7 +239,7 @@ defmodule Harness.RunTest do
     test "settles :failed when the worktree cannot be created" do
       base = GitFixture.tmp_base()
       opts = Keyword.put(default_opts(base), :terminal_linger, 100)
-      {:ok, run_id, pid} = Run.Supervisor.start_run(item(), "/no/such/repo", FakeAdapter, opts)
+      {:ok, run_id, pid} = Run.Supervisor.start_run(item(), ProjectFixture.from_repo("/no/such/repo"), FakeAdapter, opts)
 
       result = await_result(run_id, pid)
       assert %Result{state: :failed, reason: {:worktree_failed, _reason}} = result
@@ -403,7 +406,7 @@ defmodule Harness.RunTest do
         verification_timeout: 10_000
       ]
 
-      {:ok, run_id, _pid} = Run.Supervisor.start_run(item(), repo, FakeAdapter, opts)
+      {:ok, run_id, _pid} = Run.Supervisor.start_run(item(), ProjectFixture.from_repo(repo), FakeAdapter, opts)
 
       assert_receive {:harness_run, ^run_id, %Result{state: :done}}, 5_000
       assert {:ok, %Status{state: :done}} = Run.status(run_id)
@@ -497,11 +500,12 @@ defmodule Harness.RunTest do
 
   defp start(overrides) do
     repo = GitFixture.init_repo()
+    project = ProjectFixture.from_repo(repo)
     base = GitFixture.tmp_base()
     {adapter, overrides} = Keyword.pop(overrides, :adapter, FakeAdapter)
     opts = Keyword.merge(default_opts(base), overrides)
 
-    {:ok, run_id, pid} = Run.Supervisor.start_run(item(), repo, adapter, opts)
+    {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, adapter, opts)
     {run_id, pid}
   end
 
@@ -509,6 +513,7 @@ defmodule Harness.RunTest do
   # branch) and never forces max_repair_attempts — repair-loop tests set it.
   defp start_repair(overrides) do
     repo = GitFixture.init_repo()
+    project = ProjectFixture.from_repo(repo)
     base = GitFixture.tmp_base()
 
     opts =
@@ -524,7 +529,7 @@ defmodule Harness.RunTest do
         overrides
       )
 
-    {:ok, run_id, pid} = Run.Supervisor.start_run(item(), repo, FakeAdapter, opts)
+    {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, FakeAdapter, opts)
     {run_id, pid, repo}
   end
 

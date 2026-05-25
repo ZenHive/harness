@@ -4,6 +4,7 @@ defmodule Harness.CheckStack.PresetTest do
   alias Harness.CheckStack
   alias Harness.CheckStack.Preset
   alias Harness.CheckStack.Preset.Elixir, as: ElixirPreset
+  alias Harness.CheckStack.Preset.Rust, as: RustPreset
 
   describe "fetch/1" do
     test "fetch(:elixir) returns the Elixir preset wired through Preset.Elixir" do
@@ -11,6 +12,11 @@ defmodule Harness.CheckStack.PresetTest do
       # The registry must return the same value the per-language submodule
       # exposes — i.e. they must be wired, not two parallel definitions.
       assert stack == ElixirPreset.preset()
+    end
+
+    test "fetch(:rust) returns the Rust preset wired through Preset.Rust" do
+      assert {:ok, %CheckStack{name: :rust} = stack} = Preset.fetch(:rust)
+      assert stack == RustPreset.preset()
     end
 
     test "unknown presets return {:error, {:unknown_preset, name}}" do

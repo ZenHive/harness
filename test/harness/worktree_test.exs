@@ -6,19 +6,21 @@ defmodule Harness.WorktreeTest do
   alias Harness.AgentAdapter.Cursor
   alias Harness.AgentAdapter.Invocation
   alias Harness.GitFixture
+  alias Harness.ProjectFixture
   alias Harness.Worktree
 
   describe "create/2" do
     test "carves an isolated worktree and branch off HEAD" do
       repo = GitFixture.init_repo()
       base = GitFixture.tmp_base()
+      project = ProjectFixture.from_repo(repo)
 
-      assert {:ok, %Worktree{} = wt} = Worktree.create(repo, base_dir: base)
+      assert {:ok, %Worktree{} = wt} = Worktree.create(project, base_dir: base)
 
       assert String.starts_with?(wt.id, "run-")
       assert wt.branch == "harness/" <> wt.id
       assert wt.repo == Path.expand(repo)
-      assert wt.path == Path.join([base, Path.basename(repo), wt.id])
+      assert wt.path == Path.join([base, project.name, wt.id])
       assert File.dir?(wt.path)
       assert File.exists?(Path.join(wt.path, ".git"))
       assert GitFixture.git!(repo, ["branch", "--list", wt.branch]) =~ wt.branch
@@ -33,7 +35,7 @@ defmodule Harness.WorktreeTest do
       GitFixture.git!(repo, ["checkout", "-q", "main"])
       feature_sha = String.trim(GitFixture.git!(repo, ["rev-parse", "feature"]))
 
-      assert {:ok, wt} = Worktree.create(repo, base_dir: base, base_ref: "feature")
+      assert {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base, base_ref: "feature")
 
       assert String.trim(GitFixture.git!(wt.path, ["rev-parse", "HEAD"])) == feature_sha
       assert wt.base_sha == feature_sha
@@ -44,7 +46,7 @@ defmodule Harness.WorktreeTest do
       base = GitFixture.tmp_base()
       head_sha = String.trim(GitFixture.git!(repo, ["rev-parse", "HEAD"]))
 
-      assert {:ok, wt} = Worktree.create(repo, base_dir: base)
+      assert {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base)
 
       assert wt.base_sha == head_sha
     end
@@ -53,7 +55,7 @@ defmodule Harness.WorktreeTest do
       repo = GitFixture.init_repo()
       base = GitFixture.tmp_base()
 
-      assert {:ok, wt} = Worktree.create(repo, base_dir: base, id: "run-fixed-id")
+      assert {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base, id: "run-fixed-id")
 
       assert wt.id == "run-fixed-id"
       assert wt.branch == "harness/run-fixed-id"
@@ -64,14 +66,14 @@ defmodule Harness.WorktreeTest do
       plain = GitFixture.tmp_base(name: "plain")
       File.mkdir_p!(plain)
 
-      assert {:error, {:not_a_git_repo, ^plain}} = Worktree.create(plain, base_dir: base)
+      assert {:error, {:not_a_git_repo, ^plain}} = Worktree.create(ProjectFixture.from_repo(plain), base_dir: base)
     end
 
     test "rejects a path that does not exist" do
       base = GitFixture.tmp_base()
       missing = Path.join(System.tmp_dir!(), "harness-missing-#{System.unique_integer([:positive])}")
 
-      assert {:error, {:repo_not_found, expanded}} = Worktree.create(missing, base_dir: base)
+      assert {:error, {:repo_not_found, expanded}} = Worktree.create(ProjectFixture.from_repo(missing), base_dir: base)
       assert expanded == Path.expand(missing)
     end
 
@@ -81,7 +83,7 @@ defmodule Harness.WorktreeTest do
 
       worktrees =
         1..8
-        |> Task.async_stream(fn _ -> Worktree.create(repo, base_dir: base) end,
+        |> Task.async_stream(fn _ -> Worktree.create(ProjectFixture.from_repo(repo), base_dir: base) end,
           max_concurrency: 8,
           timeout: 30_000
         )
@@ -161,7 +163,7 @@ defmodule Harness.WorktreeTest do
       GitFixture.git!(repo, ["add", "AGENTS.md"])
       GitFixture.git!(repo, ["commit", "-q", "-m", "add agents"])
       base = GitFixture.tmp_base()
-      {:ok, wt} = Worktree.create(repo, base_dir: base)
+      {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base)
       sha_before = GitFixture.git!(repo, ["rev-parse", wt.branch])
 
       assert {:ok, {"codex", _argv, _env}} = Codex.build_command(invocation(wt.path))
@@ -311,7 +313,7 @@ defmodule Harness.WorktreeTest do
   defp create_worktree do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()
-    {:ok, wt} = Worktree.create(repo, base_dir: base)
+    {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base)
     {repo, wt}
   end
 

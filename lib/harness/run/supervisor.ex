@@ -16,6 +16,7 @@ defmodule Harness.Run.Supervisor do
   use DynamicSupervisor
 
   alias Harness.AgentRegistry
+  alias Harness.Project
   alias Harness.Roadmap.Item
   alias Harness.Run
 
@@ -36,11 +37,11 @@ defmodule Harness.Run.Supervisor do
   end
 
   @doc """
-  Starts a supervised `Harness.Run` for `item` against `repo`, driven by `adapter`.
+  Starts a supervised `Harness.Run` for `item` against `project`, driven by `adapter`.
 
-  `item` is the ingested rmap task, `repo` the target repository the run carves
-  its isolated worktree from, and `adapter` the `Harness.AgentAdapter` module
-  that dispatches the headless agent.
+  `item` is the ingested rmap task, `project` the target the run carves its
+  isolated worktree from, and `adapter` the `Harness.AgentAdapter` module that
+  dispatches the headless agent.
 
   Returns `{:ok, run_id, pid}` — the `run_id` is the stable handle for
   `Harness.Run.status/1` and `Harness.Run.cancel/1`.
@@ -68,15 +69,15 @@ defmodule Harness.Run.Supervisor do
       `Harness.Run.RetryPolicy.from_opts/1`; used by repair-loop quota
       classification and callers wrapping runs with `RetryPolicy.run/2`.
   """
-  @spec start_run(Item.t(), String.t(), module(), keyword()) ::
+  @spec start_run(Item.t(), Project.t(), module(), keyword()) ::
           {:ok, String.t(), pid()} | {:error, term()}
-  def start_run(%Item{} = item, repo, adapter, opts \\ []) when is_binary(repo) and is_atom(adapter) and is_list(opts) do
+  def start_run(%Item{} = item, %Project{} = project, adapter, opts \\ []) when is_atom(adapter) and is_list(opts) do
     with {:ok, ^adapter} <-
            AgentRegistry.select(adapter, required_capabilities: Keyword.get(opts, :required_capabilities, [])) do
       run_id = Keyword.get(opts, :run_id) || generate_run_id()
       opts = opts |> Keyword.put(:run_id, run_id) |> Keyword.put_new(:subscriber, self())
 
-      case DynamicSupervisor.start_child(__MODULE__, {Run, {item, repo, adapter, opts}}) do
+      case DynamicSupervisor.start_child(__MODULE__, {Run, {item, project, adapter, opts}}) do
         {:ok, pid} -> {:ok, run_id, pid}
         {:error, _reason} = error -> error
       end

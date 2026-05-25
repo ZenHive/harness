@@ -11,6 +11,8 @@ defmodule Harness.Batch do
 
   alias Harness.AgentRegistry
   alias Harness.Batch.Result, as: BatchResult
+  alias Harness.Project
+  alias Harness.ProjectRegistry
   alias Harness.ResultStore
   alias Harness.Roadmap.Item
   alias Harness.Run.LogRecord
@@ -23,7 +25,10 @@ defmodule Harness.Batch do
   @default_max_concurrency 1
 
   @typedoc "A reason `run/4` can fail before a batch starts."
-  @type error :: {:invalid_max_concurrency, term()} | AgentRegistry.select_error()
+  @type error ::
+          {:invalid_max_concurrency, term()}
+          | {:unknown_project, String.t()}
+          | AgentRegistry.select_error()
 
   @typep indexed_item :: {Item.t(), non_neg_integer()}
   @typep active_worker :: %{
@@ -36,7 +41,7 @@ defmodule Harness.Batch do
          }
   @typep loop_context :: %{
            batch_id: String.t(),
-           repo: String.t(),
+           project: Project.t(),
            adapters: [module()],
            run_opts: keyword(),
            retry_policy: RetryPolicy.t(),
@@ -46,8 +51,11 @@ defmodule Harness.Batch do
          }
 
   @doc """
-  Runs `items` against `repo` with one adapter, or an ordered adapter list,
-  respecting `:max_concurrency`.
+  Runs `items` against `project` (or a registered project name) with one
+  adapter, or an ordered adapter list, respecting `:max_concurrency`.
+
+  When `:max_concurrency` is omitted, the project's `concurrency_cap` is used
+  when set; otherwise the global default applies.
 
   Options are passed through to `Harness.Run.Supervisor.start_run/4`, except
   `:max_concurrency`, which defaults to `1`. Each item's lifecycle is wrapped by
@@ -65,12 +73,13 @@ defmodule Harness.Batch do
   of crashing the batch. When `start_run/4` loses a concurrent availability race,
   selection is retried for the same item before the queue is settled.
   """
-  @spec run([Item.t()], String.t(), module() | [module()], keyword()) ::
+  @spec run([Item.t()], Project.t() | String.t(), module() | [module()], keyword()) ::
           {:ok, BatchResult.t()} | {:error, error()}
-  def run(items, repo, adapter, opts \\ []) when is_list(items) and is_binary(repo) and is_list(opts) do
+  def run(items, project, adapter, opts \\ []) when is_list(items) and is_list(opts) do
     adapters = List.wrap(adapter)
 
-    with {:ok, max_concurrency} <- max_concurrency(opts),
+    with {:ok, project} <- resolve_project(project),
+         {:ok, max_concurrency} <- max_concurrency(project, opts),
          :ok <- ensure_dispatchable(items, adapters, opts) do
       batch_id = Keyword.get(opts, :batch_id) || generate_batch_id()
       result_store = Keyword.get(opts, :result_store, ResultStore.configured())
@@ -87,7 +96,7 @@ defmodule Harness.Batch do
       context =
         loop_context(
           batch_id,
-          repo,
+          project,
           adapters,
           run_opts,
           retry_policy,
@@ -124,9 +133,22 @@ defmodule Harness.Batch do
     end
   end
 
-  @spec max_concurrency(keyword()) :: {:ok, pos_integer()} | {:error, error()}
-  defp max_concurrency(opts) do
-    cap = Keyword.get(opts, :max_concurrency) || configured(:max_concurrency, @default_max_concurrency)
+  @spec resolve_project(Project.t() | String.t()) :: {:ok, Project.t()} | {:error, error()}
+  defp resolve_project(%Project{} = project), do: {:ok, project}
+
+  defp resolve_project(name) when is_binary(name) do
+    case ProjectRegistry.lookup(name) do
+      {:ok, project} -> {:ok, project}
+      {:error, {:unknown_project, name}} -> {:error, {:unknown_project, name}}
+    end
+  end
+
+  @spec max_concurrency(Project.t(), keyword()) :: {:ok, pos_integer()} | {:error, error()}
+  defp max_concurrency(%Project{} = project, opts) do
+    cap =
+      Keyword.get(opts, :max_concurrency) ||
+        project.concurrency_cap ||
+        configured(:max_concurrency, @default_max_concurrency)
 
     if is_integer(cap) and cap > 0 do
       {:ok, cap}
@@ -176,10 +198,10 @@ defmodule Harness.Batch do
           pos_integer(),
           non_neg_integer()
         ) :: loop_context()
-  defp loop_context(batch_id, repo, adapters, run_opts, retry_policy, result_store, max_concurrency, total) do
+  defp loop_context(batch_id, project, adapters, run_opts, retry_policy, result_store, max_concurrency, total) do
     %{
       batch_id: batch_id,
-      repo: repo,
+      project: project,
       adapters: adapters,
       run_opts: run_opts,
       retry_policy: retry_policy,
@@ -239,7 +261,7 @@ defmodule Harness.Batch do
       spawn(fn ->
         outcome =
           RetryPolicy.run(
-            fn -> run_once(item, context.repo, context.adapters, context.run_opts) end,
+            fn -> run_once(item, context.project, context.adapters, context.run_opts) end,
             context.retry_policy
           )
 
@@ -272,27 +294,27 @@ defmodule Harness.Batch do
   # which would falsely imply a worker crash. See Task 57 (Round-4 audit).
   @spin_count_limit 100
 
-  @spec run_once(Item.t(), String.t(), [module()], keyword()) :: RunResult.t()
-  defp run_once(%Item{} = item, repo, adapters, run_opts) do
-    run_once_dispatch(item, repo, adapters, run_opts, 0)
+  @spec run_once(Item.t(), Project.t(), [module()], keyword()) :: RunResult.t()
+  defp run_once(%Item{} = item, project, adapters, run_opts) do
+    run_once_dispatch(item, project, adapters, run_opts, 0)
   end
 
   @doc false
   # Public for unit testing the spin-exhausted settlement path without
   # engineering a parent/worker race against `AgentRegistry`. Production
   # callers always enter through `run_once/4`.
-  @spec run_once_dispatch(Item.t(), String.t(), [module()], keyword(), non_neg_integer()) :: RunResult.t()
-  def run_once_dispatch(item, repo, adapters, run_opts, spin_count) when spin_count < @spin_count_limit do
+  @spec run_once_dispatch(Item.t(), Project.t(), [module()], keyword(), non_neg_integer()) :: RunResult.t()
+  def run_once_dispatch(item, project, adapters, run_opts, spin_count) when spin_count < @spin_count_limit do
     run_opts = Keyword.put(run_opts, :subscriber, self())
     required = Keyword.get(run_opts, :required_capabilities, [])
 
     with {:ok, adapter} <- AgentRegistry.select(adapters, required_capabilities: required),
-         {:ok, run_id, pid} <- RunSupervisor.start_run(item, repo, adapter, run_opts) do
+         {:ok, run_id, pid} <- RunSupervisor.start_run(item, project, adapter, run_opts) do
       ref = Process.monitor(pid)
       await_run(run_id, ref, item, adapter)
     else
       {:error, {:no_available_agent, _reason}} ->
-        run_once_dispatch(item, repo, adapters, run_opts, spin_count + 1)
+        run_once_dispatch(item, project, adapters, run_opts, spin_count + 1)
 
       {:error, reason} ->
         %RunResult{
@@ -304,7 +326,7 @@ defmodule Harness.Batch do
     end
   end
 
-  def run_once_dispatch(item, _repo, _adapters, _run_opts, _spin_count) do
+  def run_once_dispatch(item, _project, _adapters, _run_opts, _spin_count) do
     %RunResult{
       run_id: undispatched_run_id(item),
       task_id: item.id,

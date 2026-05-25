@@ -1,6 +1,7 @@
 defmodule Harness.RoadmapTest do
   use ExUnit.Case, async: true
 
+  alias Harness.ProjectFixture
   alias Harness.Roadmap
   alias Harness.Roadmap.Item
 
@@ -111,6 +112,14 @@ defmodule Harness.RoadmapTest do
 
       assert {:error, {:rmap_failed, _args, 3, ""}} =
                Roadmap.ingest({:id, "1"}, project_root: @sample, rmap_bin: stub)
+    end
+
+    test "honors project.roadmap_path when given a project" do
+      project = ProjectFixture.from_repo(@sample, roadmap_path: @sample)
+
+      assert {:ok, %Item{id: "1"} = item} = Roadmap.ingest({:id, "1"}, project: project)
+      assert is_binary(item.prompt)
+      assert item.prompt != ""
     end
   end
 

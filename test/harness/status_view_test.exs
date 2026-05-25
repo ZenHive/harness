@@ -4,6 +4,7 @@ defmodule Harness.StatusViewTest do
   alias Harness.AgentRegistry
   alias Harness.FakeAdapter
   alias Harness.GitFixture
+  alias Harness.ProjectFixture
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.Status
@@ -82,6 +83,8 @@ defmodule Harness.StatusViewTest do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()
 
+    project = ProjectFixture.from_repo(repo)
+
     opts =
       Keyword.merge(
         [
@@ -96,7 +99,7 @@ defmodule Harness.StatusViewTest do
         overrides
       )
 
-    {:ok, run_id, _pid} = RunSupervisor.start_run(item(item_id), repo, FakeAdapter, opts)
+    {:ok, run_id, _pid} = RunSupervisor.start_run(item(item_id), project, FakeAdapter, opts)
     run_id
   end
 

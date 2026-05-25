@@ -34,6 +34,8 @@ defmodule Harness.Verification.Check do
 
     * `name` — a short human label, surfaced in the verdict and logs
       (e.g. `"test"`).
+    * `role` — optional semantic category for consumers that need to reason
+      across languages (`:format`, `:lint`, `:test`, `:build`, etc.).
     * `command` — the executable to run, resolved on `PATH` (e.g. `"mix"`).
     * `args` — the argument vector, always a list, never a shell string
       (e.g. `["test.json"]`).
@@ -43,13 +45,14 @@ defmodule Harness.Verification.Check do
   """
   @type t :: %__MODULE__{
           name: String.t(),
+          role: atom() | nil,
           command: String.t(),
           args: [String.t()],
           post_process: post_process() | nil
         }
 
   @enforce_keys [:name, :command, :args]
-  defstruct [:name, :command, :args, post_process: nil]
+  defstruct [:name, :command, :args, role: nil, post_process: nil]
 
   @doc """
   Invokes a `post_process` hook on `result`, returning the (possibly re-graded)

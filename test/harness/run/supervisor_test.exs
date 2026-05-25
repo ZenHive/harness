@@ -4,6 +4,7 @@ defmodule Harness.Run.SupervisorTest do
   alias Harness.AgentAdapter.Capabilities
   alias Harness.FakeAdapter
   alias Harness.GitFixture
+  alias Harness.ProjectFixture
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.Result
@@ -30,7 +31,7 @@ defmodule Harness.Run.SupervisorTest do
   end
 
   test "child_spec marks runs :temporary so a failed run is never restarted" do
-    arg = {item(), "/repo", FakeAdapter, [run_id: "x"]}
+    arg = {item(), ProjectFixture.from_repo("/repo"), FakeAdapter, [run_id: "x"]}
     assert %{restart: :temporary} = Run.child_spec(arg)
   end
 
@@ -40,9 +41,12 @@ defmodule Harness.Run.SupervisorTest do
     repo_a = GitFixture.init_repo(name: "repo-a")
     repo_b = GitFixture.init_repo(name: "repo-b")
 
+    project_a = ProjectFixture.from_repo(repo_a, name: "repo-a")
+    project_b = ProjectFixture.from_repo(repo_b, name: "repo-b")
+
     # Run A holds in :running on a sleeping agent until it is crashed.
     {:ok, _id_a, pid_a} =
-      Run.Supervisor.start_run(item(), repo_a, FakeAdapter,
+      Run.Supervisor.start_run(item(), project_a, FakeAdapter,
         base_dir: base,
         adapter_opts: [command: :sleep],
         idle_timeout: 2_000,
@@ -53,7 +57,7 @@ defmodule Harness.Run.SupervisorTest do
 
     # Run B is an ordinary run that should complete unaffected.
     {:ok, id_b, _pid_b} =
-      Run.Supervisor.start_run(item(), repo_b, FakeAdapter,
+      Run.Supervisor.start_run(item(), project_b, FakeAdapter,
         base_dir: base,
         adapter_opts: [command: :write],
         checks: [check("ok", "true")],
@@ -73,8 +77,10 @@ defmodule Harness.Run.SupervisorTest do
     base = GitFixture.tmp_base()
     repo = GitFixture.init_repo()
 
+    project = ProjectFixture.from_repo(repo)
+
     {:ok, run_id, pid} =
-      Run.Supervisor.start_run(item(), repo, FakeAdapter,
+      Run.Supervisor.start_run(item(), project, FakeAdapter,
         base_dir: base,
         adapter_opts: [command: :sleep],
         idle_timeout: 5_000,
@@ -94,7 +100,9 @@ defmodule Harness.Run.SupervisorTest do
     repo = GitFixture.init_repo()
 
     assert {:error, {:unsupported_capability, :session_resume, [NoResumeAdapter]}} =
-             Run.Supervisor.start_run(item(), repo, NoResumeAdapter, required_capabilities: [:session_resume])
+             Run.Supervisor.start_run(item(), ProjectFixture.from_repo(repo), NoResumeAdapter,
+               required_capabilities: [:session_resume]
+             )
   end
 
   defp item do

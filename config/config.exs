@@ -5,6 +5,16 @@ import Config
 # reloadable batch results under this root.
 config :harness, :result_store, {Harness.ResultStore.File, root: Path.expand("~/.harness/results")}
 
+# Registered orchestration targets — see Harness.Project and Harness.ProjectRegistry.
+# Each entry is a keyword list: name, source ({:local, path}), preset or
+# check_stack, roadmap_path, and optional concurrency_cap.
+# config :harness, :projects, [
+#   name: "harness",
+#   source: {:local, Path.expand(".")},
+#   preset: :elixir,
+#   roadmap_path: Path.expand(".")
+# ]
+
 # Per-run git worktree lifecycle — see Harness.Worktree.
 config :harness, :worktree,
   base_dir: Path.expand("~/_DATA/worktrees/.harness"),

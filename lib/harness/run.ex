@@ -70,6 +70,7 @@ defmodule Harness.Run do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Run, as: AgentRun
+  alias Harness.Project
   alias Harness.ResultStore
   alias Harness.Roadmap.Item
   alias Harness.Run.FailureClass
@@ -100,12 +101,12 @@ defmodule Harness.Run do
   @type run :: String.t() | pid()
 
   @typedoc false
-  @type init_arg :: {Item.t(), String.t(), module(), keyword()}
+  @type init_arg :: {Item.t(), Project.t(), module(), keyword()}
 
   @typep data :: %{
            run_id: String.t(),
            item: Item.t(),
-           repo: String.t(),
+           project: Project.t(),
            adapter: module(),
            subscriber: pid() | nil,
            result_store: ResultStore.store(),
@@ -156,14 +157,14 @@ defmodule Harness.Run do
   end
 
   @doc """
-  Starts a run lifecycle for `item` against `repo`, driven by `adapter`.
+  Starts a run lifecycle for `item` against `project`, driven by `adapter`.
 
   Normally started through `Harness.Run.Supervisor.start_run/4`, which generates
   the run id and supervises the process. `opts` must carry `:run_id`; see that
   function for the full option set.
   """
   @spec start_link(init_arg()) :: :gen_statem.start_ret()
-  def start_link({%Item{}, repo, adapter, opts} = arg) when is_binary(repo) and is_atom(adapter) and is_list(opts) do
+  def start_link({%Item{}, %Project{} = _project, adapter, opts} = arg) when is_atom(adapter) and is_list(opts) do
     run_id = Keyword.fetch!(opts, :run_id)
     :gen_statem.start_link({:via, Registry, {@registry, run_id}}, __MODULE__, arg, [])
   end
@@ -217,13 +218,13 @@ defmodule Harness.Run do
 
   @impl :gen_statem
   @spec init(init_arg()) :: {:ok, :dispatched, data(), [:gen_statem.action()]}
-  def init({item, repo, adapter, opts}) do
+  def init({item, %Project{} = project, adapter, opts}) do
     run_id = Keyword.fetch!(opts, :run_id)
 
     data = %{
       run_id: run_id,
       item: item,
-      repo: repo,
+      project: project,
       adapter: adapter,
       subscriber: Keyword.get(opts, :subscriber),
       result_store: Keyword.get(opts, :result_store, ResultStore.configured()),
@@ -265,7 +266,7 @@ defmodule Harness.Run do
   @doc false
   @spec dispatched(event(), term(), data()) :: handler_result()
   def dispatched(:enter, _old_state, data) do
-    task = start_task(fn -> Worktree.create(data.repo, worktree_opts(data)) end)
+    task = start_task(fn -> Worktree.create(data.project, worktree_opts(data)) end)
     {:keep_state, %{data | task: task}}
   end
 
@@ -303,7 +304,7 @@ defmodule Harness.Run do
   def running(:enter, _old_state, data) do
     parent = self()
     invocation = build_invocation(data)
-    checkout_snapshot = checkout_snapshot(data.repo)
+    checkout_snapshot = checkout_snapshot(Project.repo_path(data.project))
     task = start_task(fn -> Driver.run(data.adapter, invocation, driver_opts(data, parent)) end)
 
     {:keep_state,
@@ -750,8 +751,14 @@ defmodule Harness.Run do
 
   @spec verification_opts(data()) :: keyword()
   defp verification_opts(data) do
-    []
-    |> put_opt(:checks, data.checks)
+    opts =
+      if data.checks do
+        [checks: data.checks]
+      else
+        [check_stack: data.project.check_stack]
+      end
+
+    opts
     |> put_opt(:timeout, data.verification_timeout)
     |> put_opt(:base_ref, data.worktree && data.worktree.base_sha)
   end
@@ -790,7 +797,7 @@ defmodule Harness.Run do
 
   @spec checkout_pollution_reason(data()) :: Result.reason() | nil
   defp checkout_pollution_reason(data) do
-    case Isolation.check_pollution(data.repo, data.checkout_snapshot) do
+    case Isolation.check_pollution(Project.repo_path(data.project), data.checkout_snapshot) do
       :ok -> nil
       {:error, reason} -> reason
     end

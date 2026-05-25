@@ -10,6 +10,8 @@ defmodule Harness.BatchTest do
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.FakeAdapter
   alias Harness.GitFixture
+  alias Harness.ProjectFixture
+  alias Harness.ProjectRegistry
   alias Harness.ResultStore
   alias Harness.Roadmap.Item
   alias Harness.Run
@@ -113,6 +115,7 @@ defmodule Harness.BatchTest do
 
   setup do
     AgentRegistry.reset()
+    ProjectRegistry.reset()
 
     case :ets.info(:harness_batch_transient_attempts) do
       :undefined -> :ets.new(:harness_batch_transient_attempts, [:named_table, :set, :public])
@@ -132,7 +135,7 @@ defmodule Harness.BatchTest do
       Task.async(fn ->
         Batch.run(
           items,
-          repo,
+          ProjectFixture.from_repo(repo),
           FakeAdapter,
           batch_opts(base,
             max_concurrency: 2,
@@ -160,7 +163,7 @@ defmodule Harness.BatchTest do
     assert {:ok, %BatchResult{results: results}} =
              Batch.run(
                items(~w(first second)),
-               repo,
+               ProjectFixture.from_repo(repo),
                FakeAdapter,
                batch_opts(base,
                  max_concurrency: 1,
@@ -188,7 +191,7 @@ defmodule Harness.BatchTest do
       Task.async(fn ->
         Batch.run(
           [item],
-          repo,
+          ProjectFixture.from_repo(repo),
           FakeAdapter,
           batch_opts(base,
             max_concurrency: 1,
@@ -215,7 +218,7 @@ defmodule Harness.BatchTest do
     assert {:ok, %BatchResult{results: results}} =
              Batch.run(
                items,
-               repo,
+               ProjectFixture.from_repo(repo),
                FakeAdapter,
                batch_opts(base,
                  max_concurrency: 2,
@@ -241,7 +244,7 @@ defmodule Harness.BatchTest do
     assert {:ok, %BatchResult{results: results, events: events}} =
              Batch.run(
                items(~w(first second third)),
-               repo,
+               ProjectFixture.from_repo(repo),
                [QuotaAdapter],
                batch_opts(base,
                  max_concurrency: 1,
@@ -274,7 +277,7 @@ defmodule Harness.BatchTest do
     assert {:ok, %BatchResult{batch_id: ^batch_id, results: results}} =
              Batch.run(
                items(~w(green red)),
-               repo,
+               ProjectFixture.from_repo(repo),
                FakeAdapter,
                batch_opts(base,
                  batch_id: batch_id,
@@ -320,7 +323,7 @@ defmodule Harness.BatchTest do
     assert {:ok, %BatchResult{results: [%Result{} = result], events: events}} =
              Batch.run(
                items(["quota-task"]),
-               repo,
+               ProjectFixture.from_repo(repo),
                [QuotaAdapter, HeadroomAdapter],
                batch_opts(base,
                  max_concurrency: 1,
@@ -346,7 +349,7 @@ defmodule Harness.BatchTest do
     assert {:ok, %BatchResult{events: events}} =
              Batch.run(
                items(["quota-task"]),
-               repo,
+               ProjectFixture.from_repo(repo),
                [QuotaAdapter, HeadroomAdapter],
                batch_opts(base,
                  batch_id: batch_id,
@@ -422,7 +425,7 @@ defmodule Harness.BatchTest do
     result =
       Batch.run_once_dispatch(
         item,
-        repo,
+        ProjectFixture.from_repo(repo),
         [SpinExhaustedAdapter],
         batch_opts(base, []),
         0
@@ -445,7 +448,7 @@ defmodule Harness.BatchTest do
     assert {:error, {:no_available_agent, [QuotaAdapter]}} =
              Run.Supervisor.start_run(
                hd(items(["precheck"])),
-               repo,
+               ProjectFixture.from_repo(repo),
                QuotaAdapter,
                batch_opts(base, [])
              )
@@ -456,7 +459,7 @@ defmodule Harness.BatchTest do
       Task.async(fn ->
         Batch.run(
           items(["race-task"]),
-          repo,
+          ProjectFixture.from_repo(repo),
           [QuotaAdapter, HeadroomAdapter],
           batch_opts(base, max_concurrency: 1)
         )
@@ -481,7 +484,7 @@ defmodule Harness.BatchTest do
     assert {:ok, %BatchResult{results: [%Result{} = result]}} =
              Batch.run(
                items(["transient-task"]),
-               repo,
+               ProjectFixture.from_repo(repo),
                TransientFirstAdapter,
                batch_opts(base,
                  max_concurrency: 1,
@@ -501,7 +504,7 @@ defmodule Harness.BatchTest do
     assert {:ok, %BatchResult{results: [%Result{} = result]}} =
              Batch.run(
                items(["red"]),
-               repo,
+               ProjectFixture.from_repo(repo),
                FakeAdapter,
                batch_opts(base,
                  max_concurrency: 1,
@@ -521,7 +524,7 @@ defmodule Harness.BatchTest do
     assert {:ok, %BatchResult{results: [%Result{} = result]}} =
              Batch.run(
                items(["transient-task"]),
-               repo,
+               ProjectFixture.from_repo(repo),
                TransientFirstAdapter,
                batch_opts(base,
                  max_concurrency: 1,
@@ -542,7 +545,7 @@ defmodule Harness.BatchTest do
       Task.async(fn ->
         Batch.run(
           items(~w(retry-first quick-second)),
-          repo,
+          ProjectFixture.from_repo(repo),
           TransientFirstAdapter,
           batch_opts(base,
             max_concurrency: 1,
@@ -574,7 +577,7 @@ defmodule Harness.BatchTest do
         Task.async(fn ->
           Batch.run(
             items([id]),
-            repo,
+            ProjectFixture.from_repo(repo),
             QuotaAdapter,
             batch_opts(base, max_concurrency: 1)
           )
@@ -584,6 +587,49 @@ defmodule Harness.BatchTest do
     assert Enum.all?(tasks, fn task ->
              match?({:ok, %BatchResult{results: [_]}}, Task.await(task, @run_timeout_ms))
            end)
+  end
+
+  test "resolves a registered project name" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+    project = ProjectFixture.from_repo(repo, name: "registered-batch")
+
+    assert :ok = ProjectRegistry.register(project)
+
+    assert {:ok, %BatchResult{results: [result]}} =
+             Batch.run(
+               items(["by-name"]),
+               "registered-batch",
+               FakeAdapter,
+               batch_opts(base, max_concurrency: 1)
+             )
+
+    assert result.state == :done
+  end
+
+  test "uses project.concurrency_cap when max_concurrency is omitted" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+    gate = gate_path()
+    project = ProjectFixture.from_repo(repo, name: "capped", concurrency_cap: 1)
+
+    batch_task =
+      Task.async(fn ->
+        Batch.run(
+          items(~w(1 2)),
+          project,
+          FakeAdapter,
+          batch_opts(base, adapter_opts: [command: {:write_then_wait_for_file, gate}])
+        )
+      end)
+
+    assert_eventually(fn ->
+      assert length(active_batch_task_ids(~w(1 2))) == 1
+    end)
+
+    File.write!(gate, "go")
+    assert {:ok, %BatchResult{max_concurrency: 1, results: results}} = Task.await(batch_task, @run_timeout_ms)
+    assert length(results) == 2
   end
 
   defp batch_opts(base, overrides) do

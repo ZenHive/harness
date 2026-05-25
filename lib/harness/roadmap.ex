@@ -21,6 +21,7 @@ defmodule Harness.Roadmap do
   ## Usage
 
       Harness.Roadmap.ingest(:next)
+      Harness.Roadmap.ingest({:id, "6"}, project: project)
       Harness.Roadmap.ingest({:id, "6"}, project_root: "/path/to/project")
       Harness.Roadmap.ingest({:id, "6"}, agent: :codex)
 
@@ -42,6 +43,7 @@ defmodule Harness.Roadmap do
      `Harness.Run.Supervisor.start_run/4` (or via `Harness.Batch` using the adapter module).
   """
 
+  alias Harness.Project
   alias Harness.Roadmap.Item
 
   # Mirrors `rmap delegate --to`'s accepted values exactly — ingestion shells
@@ -79,8 +81,10 @@ defmodule Harness.Roadmap do
 
   Options:
 
+    * `:project` — a `%Harness.Project{}`; uses `project.roadmap_path` as the
+      project root (overrides `:project_root` when both are given).
     * `:project_root` — directory holding `roadmap/tasks.toml`; defaults to the
-      current working directory.
+      current working directory when `:project` is omitted.
     * `:agent` — which agent to render the prompt for; one of `:claude`,
       `:codex`, `:cursor` (the agents `rmap delegate --to` supports).
       Defaults to `:claude`.
@@ -92,15 +96,30 @@ defmodule Harness.Roadmap do
   def ingest(selector, opts \\ []) do
     agent = Keyword.get(opts, :agent, :claude)
     rmap_bin = Keyword.get(opts, :rmap_bin, "rmap")
-    root = opts |> Keyword.get(:project_root, File.cwd!()) |> Path.expand()
-    ctx = %{root: root, tasks_path: Path.join(root, "roadmap/tasks.toml"), rmap_bin: rmap_bin}
 
-    with :ok <- validate_agent(agent),
+    with {:ok, ctx} <- build_ctx(opts),
+         :ok <- validate_agent(agent),
          :ok <- ensure_rmap(rmap_bin),
          {:ok, task} <- fetch_task(selector, ctx),
          {:ok, prompt} <- render_prompt(task["id"], agent, ctx) do
       {:ok, %Item{id: task["id"], title: task["title"], prompt: prompt, agent: agent}}
     end
+  end
+
+  @spec build_ctx(keyword()) :: {:ok, ctx()} | {:error, error()}
+  defp build_ctx(opts) do
+    root =
+      case Keyword.get(opts, :project) do
+        %Project{roadmap_path: path} -> Path.expand(path)
+        _ -> opts |> Keyword.get(:project_root, File.cwd!()) |> Path.expand()
+      end
+
+    {:ok,
+     %{
+       root: root,
+       tasks_path: Path.join(root, "roadmap/tasks.toml"),
+       rmap_bin: Keyword.get(opts, :rmap_bin, "rmap")
+     }}
   end
 
   @spec validate_agent(term()) :: :ok | {:error, {:invalid_agent, term()}}

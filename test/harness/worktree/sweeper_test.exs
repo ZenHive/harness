@@ -2,6 +2,7 @@ defmodule Harness.Worktree.SweeperTest do
   use ExUnit.Case, async: true
 
   alias Harness.GitFixture
+  alias Harness.ProjectFixture
   alias Harness.Worktree
   alias Harness.Worktree.Sweeper
 
@@ -9,7 +10,7 @@ defmodule Harness.Worktree.SweeperTest do
     test "reaps an unmarked orphan, self-discovering its parent repo" do
       repo = GitFixture.init_repo()
       base = GitFixture.tmp_base()
-      {:ok, wt} = Worktree.create(repo, base_dir: base)
+      {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base)
 
       assert {:ok, summary} = Sweeper.sweep(base)
 
@@ -22,7 +23,7 @@ defmodule Harness.Worktree.SweeperTest do
     test "keeps a worktree carrying the retained marker" do
       repo = GitFixture.init_repo()
       base = GitFixture.tmp_base()
-      {:ok, wt} = Worktree.create(repo, base_dir: base)
+      {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base)
       :ok = Worktree.finish(wt, :failure, retain_on_failure: true)
 
       assert {:ok, summary} = Sweeper.sweep(base)
@@ -55,7 +56,7 @@ defmodule Harness.Worktree.SweeperTest do
       repo = GitFixture.init_repo()
       outside = GitFixture.tmp_base(name: "outside")
       empty_base = GitFixture.tmp_base()
-      {:ok, wt} = Worktree.create(repo, base_dir: outside)
+      {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: outside)
 
       assert {:ok, %{removed: [], kept: []}} = Sweeper.sweep(empty_base)
       assert File.dir?(wt.path)

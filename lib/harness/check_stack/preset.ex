@@ -2,9 +2,9 @@ defmodule Harness.CheckStack.Preset do
   @moduledoc """
   Registry that fetches a built-in `Harness.CheckStack` by language key.
 
-  Today only `:elixir` is registered. New per-language presets — `:rust`
-  (Task 45) and beyond — add a clause here that returns the preset module's
-  `preset/0` call, so callers never reach across to a specific submodule.
+  Built-in per-language presets add a clause here that returns the preset
+  module's `preset/0` call, so callers never reach across to a specific
+  submodule.
 
       iex> {:ok, stack} = Harness.CheckStack.Preset.fetch(:elixir)
       iex> stack.name
@@ -16,6 +16,7 @@ defmodule Harness.CheckStack.Preset do
 
   alias Harness.CheckStack
   alias Harness.CheckStack.Preset.Elixir, as: ElixirPreset
+  alias Harness.CheckStack.Preset.Rust, as: RustPreset
 
   @typedoc "Reason fetching a preset failed."
   @type error :: {:unknown_preset, atom()}
@@ -28,5 +29,6 @@ defmodule Harness.CheckStack.Preset do
   """
   @spec fetch(atom()) :: {:ok, CheckStack.t()} | {:error, error()}
   def fetch(:elixir), do: {:ok, ElixirPreset.preset()}
+  def fetch(:rust), do: {:ok, RustPreset.preset()}
   def fetch(name) when is_atom(name), do: {:error, {:unknown_preset, name}}
 end

@@ -9,7 +9,7 @@ defmodule Harness.Worktree do
 
   ## Lifecycle
 
-      {:ok, wt} = Harness.Worktree.create("/path/to/target/repo")
+      {:ok, wt} = Harness.Worktree.create(project)
       # ... dispatch an agent with Invocation cwd: wt.path, let it work ...
       Harness.Worktree.commit(wt, "agent delivery")  # capture the work onto wt.branch
       Harness.Worktree.finish(wt, :success)   # verified green -> torn down
@@ -45,6 +45,7 @@ defmodule Harness.Worktree do
 
   alias Harness.AgentRules
   alias Harness.Git
+  alias Harness.Project
 
   @branch_prefix "harness/"
   @retained_marker ".harness-retained"
@@ -104,11 +105,11 @@ defmodule Harness.Worktree do
   @type head_label :: {:branch, String.t()} | {:detached, String.t()}
 
   @doc """
-  Creates an isolated worktree for a run against `repo`.
+  Creates an isolated worktree for a run against `project`.
 
-  Carves a fresh working directory at `<base_dir>/<repo-name>/<id>` and a new
+  Carves a fresh working directory at `<base_dir>/<project.name>/<id>` and a new
   branch `harness/<id>` off the repo's current `HEAD`. The `id` is unique per
-  call, so concurrent `create/2` invocations on the same repo never collide.
+  call, so concurrent `create/2` invocations on the same project never collide.
 
   Options:
 
@@ -118,12 +119,12 @@ defmodule Harness.Worktree do
 
   Returns `{:ok, %Harness.Worktree{}}` or `{:error, reason}` — see `t:error/0`.
   """
-  @spec create(String.t(), keyword()) :: {:ok, t()} | {:error, error()}
-  def create(repo, opts \\ []) when is_binary(repo) do
-    repo = Path.expand(repo)
+  @spec create(Project.t(), keyword()) :: {:ok, t()} | {:error, error()}
+  def create(%Project{} = project, opts \\ []) do
+    repo = Project.repo_path(project)
     id = Keyword.get(opts, :id) || generate_id()
     branch = @branch_prefix <> id
-    path = Path.join([base_dir(opts), Path.basename(repo), id])
+    path = Path.join([base_dir(opts), project.name, id])
     base_ref = Keyword.get(opts, :base_ref, "HEAD")
 
     with :ok <- validate_repo(repo),
@@ -252,7 +253,7 @@ defmodule Harness.Worktree do
   end
 
   @doc """
-  The configured worktree root — `<base_dir>/<repo-name>/<id>` is created under it.
+  The configured worktree root — `<base_dir>/<project-name>/<id>` is created under it.
 
   The `:base_dir` option overrides; otherwise the `:harness, :worktree`
   application config is consulted, falling back to `~/_DATA/worktrees/.harness`.

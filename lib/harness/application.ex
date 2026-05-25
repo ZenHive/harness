@@ -22,6 +22,7 @@ defmodule Harness.Application do
   defp children do
     [
       {Registry, keys: :unique, name: Harness.Run.Registry},
+      Harness.ProjectRegistry,
       Harness.AgentRegistry,
       {Task.Supervisor, name: Harness.Run.TaskSupervisor},
       Harness.Run.Supervisor

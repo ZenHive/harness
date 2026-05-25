@@ -3,6 +3,7 @@ defmodule Harness.Verification.BaselineFilter.CredoTest do
   use ExUnit.Case, async: true
 
   alias Harness.GitFixture
+  alias Harness.ProjectFixture
   alias Harness.Verification.BaselineFilter.Credo, as: BaselineCredo
   alias Harness.Verification.Result
   alias Harness.Worktree
@@ -291,13 +292,13 @@ defmodule Harness.Verification.BaselineFilter.CredoTest do
     GitFixture.git!(repo, ["add", "lib/inherited.ex"])
     GitFixture.git!(repo, ["commit", "-q", "-m", "seed: inherited TODO"])
 
-    {:ok, wt} = Worktree.create(repo, base_dir: GitFixture.tmp_base())
+    {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: GitFixture.tmp_base())
     {wt, repo}
   end
 
   defp worktree_without_todos do
     repo = GitFixture.init_repo()
-    {:ok, wt} = Worktree.create(repo, base_dir: GitFixture.tmp_base())
+    {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: GitFixture.tmp_base())
     {wt, repo}
   end
 end
