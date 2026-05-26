@@ -1655,7 +1655,7 @@
       "phase": 7,
       "bundle": "multi-project",
       "milestone": "v0_5",
-      "status": "pending",
+      "status": "done",
       "title": "Oban-backed dispatch: queue-per-project + run-state persistence across restart",
       "scores": {
         "d": 7,
@@ -1687,7 +1687,11 @@
       ],
       "body": "Today `Harness.Batch.run/4` is a synchronous in-memory coordinator: spawn up to `:max_concurrency` Run GenServers, wait for results, exit. Two weaknesses surface as soon as harness orchestrates N projects: (1) fairness across projects requires a custom coordinator (originally drafted as a two-tier cap); (2) BEAM node death loses every in-flight run because state is purely in-memory. Both problems are exactly what Oban is built for, and Postgres is already running on the dev laptop.\n\nAdd Oban + Ecto + Postgrex as runtime deps. Create `Harness.Repo` (Postgres). Generate Oban's migrations and run them. Add `Harness.Oban` as a supervised child of `Harness.Application`. Define `Harness.Run.Worker` (an `Oban.Worker`) that takes a `{project_name, item_id, adapter_module}` payload and spawns the existing `Harness.Run` `gen_statem`, blocking until terminal state. On terminal `:passed` return `:ok`; on `:failed` with quota/transient classification return `{:snooze, seconds}` so Oban retries after delay; on `:failed` with permanent classification return `{:cancel, reason}`.\n\nReplace `Harness.Batch.run/4` with `Harness.Batch.dispatch/2` which enqueues N Oban jobs (one per item) into the project's queue. Each registered project gets its own Oban queue: queue name = `\"project_#{project.name}\"`, queue concurrency = `project.concurrency_cap`. Global concurrency: with open-source Oban, the sum of per-queue caps is the effective ceiling — document this and let the user pick per-project caps that sum to laptop capacity. (Oban Pro's Smart Engine gives a true global cap across queues; flag as optional upgrade in the task body, do not require it.)\n\nPersistence: because each run is now an Oban job, an in-flight run's job row survives BEAM restart. On restart, Oban automatically re-enqueues unfinished jobs and the worker re-spawns the Run gen_statem. The existing `Harness.ResultStore` (Task 19, done) writes final verdicts; this task adds a sidecar checkpoint table (or uses Oban's `meta` column) so a resumed worker knows what stage the previous attempt reached. Minimum acceptance: restarted runs do not silently lose progress — at worst they restart from the dispatch step, never silently disappear.\n\nCustom retry policy (Task 10, done): keep it inside `Harness.Run` gen_statem. Oban's retry handles dispatch-level transient failures (quota); harness's retry handles in-run repair-loop attempts. Two layers, distinct concerns.\n",
       "created_at": "2026-05-24",
+      "done_at": "2026-05-26",
       "scored_at": "2026-05-24",
+      "implemented": "Codex delivered the Oban worker layer in run-1779835325405-405570b9: Postgres-backed job persistence, queue-per-project (dynamic registration), Harness.Run.Worker wrapping the run gen_statem. Integration cleanups: plt_add_apps :ecto/:db_connection; to_oban_result/1 refactored to drop partial %Oban.Job{} construction; CHANGELOG IAL avoidance; .tool-versions committed + variants gitignored. Verified green: 425/425 offline tests, 0 dialyzer warnings. Dogfood run settled :checkout_polluted (Task 32 false-positive on user-authored .tool-versions workflow files); the diff itself was clean inside the worktree.",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
