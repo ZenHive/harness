@@ -47,3 +47,8 @@ harness-*.tar
 
 # Antigravity (Google Antigravity IDE) — local project config / IDE state
 .antigravitycli/
+
+# Claude Code — local runtime state / per-user settings.
+# Shareable project config (e.g. .claude/settings.json) stays trackable.
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
