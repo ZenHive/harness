@@ -99,6 +99,28 @@ defmodule Harness.MixProject do
     [
       tidewave: [
         "run --no-halt -e 'Agent.start(fn -> Bandit.start_link(plug: Tidewave, port: 4016) end)'"
+      ],
+      # Mirrors .github/workflows/harness.yml gate (see ~/.claude/includes/elixir-setup.md).
+      # TagTODO/TagFIXME stay on in .credo.exs for visibility (`mix credo` shows them);
+      # gate excludes them so the alias fails only on real regressions, not tracked debt.
+      "check.fast": [
+        "format --check-formatted",
+        "compile --warnings-as-errors",
+        "credo --strict --ignore TagTODO,TagFIXME"
+      ],
+      precommit: [
+        "format --check-formatted",
+        "compile --warnings-as-errors",
+        "credo --strict --ignore TagTODO,TagFIXME",
+        "doctor --raise",
+        # preferred_envs (cli/0) is ignored for alias steps — set MIX_ENV explicitly.
+        # Threshold 80 (vs the 85 project default) reflects the offline-only suite:
+        # the Phase 7 Postgres/Oban layer (Repo, QueueBootstrap, Run.Worker, Oban)
+        # is exercised by :integration tests that require a live DB — re-include
+        # them and re-raise the threshold once those tests run in CI.
+        "cmd MIX_ENV=test mix test.json --quiet --cover --cover-threshold 80 --summary-only --exclude integration",
+        "sobelow",
+        "dialyzer.json --quiet"
       ]
     ]
   end

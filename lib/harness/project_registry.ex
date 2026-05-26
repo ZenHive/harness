@@ -168,7 +168,9 @@ defmodule Harness.ProjectRegistry do
       match?(%CheckStack{}, Map.get(entry, :check_stack)) ->
         {:ok, Map.fetch!(entry, :check_stack)}
 
-      is_atom(Map.get(entry, :preset)) ->
+      # `is_atom(nil)` is true, so the previous `is_atom(Map.get(...))` form
+      # falsely matched when :preset was missing. Match an explicit non-nil atom.
+      is_atom(Map.get(entry, :preset)) and not is_nil(Map.get(entry, :preset)) ->
         Preset.fetch(Map.fetch!(entry, :preset))
 
       true ->
@@ -180,6 +182,7 @@ defmodule Harness.ProjectRegistry do
   defp fetch_roadmap_path(entry) do
     case Map.fetch(entry, :roadmap_path) do
       {:ok, path} when is_binary(path) -> {:ok, Path.expand(path)}
+      {:ok, other} -> {:error, {:invalid_project, {:invalid_roadmap_path, other}}}
       :error -> {:error, {:invalid_project, {:missing, :roadmap_path}}}
     end
   end

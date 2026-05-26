@@ -1,3 +1,52 @@
+defmodule Harness.AgentAdapter.ConformanceCase.RuleDelivery do
+  @moduledoc false
+  # Per-channel assertions for the conformance suite's rule-injection test.
+  #
+  # Lives outside the `__using__/1` macro on purpose: each adapter's
+  # `rule_channel/0` narrows the input type to one specific atom, so if these
+  # clauses were injected per-expansion, the four non-matching clauses would
+  # compile as statically unreachable code (Elixir 1.18 warning). Compiling
+  # them once in this module sidesteps that — every clause is reachable from
+  # *some* adapter, just not from any single one.
+
+  import ExUnit.Assertions
+
+  alias Harness.AgentAdapter.RulesInjection
+  alias Harness.AgentRules
+
+  @spec assert_delivered(Harness.AgentAdapter.rule_channel(), Path.t(), [String.t()], String.t()) :: :ok
+  def assert_delivered(:none, _cwd, _argv, _prompt), do: :ok
+
+  def assert_delivered(:system_prompt_file, cwd, argv, _prompt) do
+    rules_path = Path.join(cwd, AgentRules.system_prompt_rel_path())
+    assert File.exists?(rules_path)
+    assert "--append-system-prompt-file" in argv
+    assert rules_path in argv
+    assert File.read!(rules_path) == AgentRules.render()
+    :ok
+  end
+
+  def assert_delivered(:codex_ephemeral_file, cwd, _argv, _prompt) do
+    agents_path = Path.join(cwd, "AGENTS.md")
+    assert File.exists?(agents_path)
+    assert File.read!(agents_path) =~ AgentRules.render()
+    :ok
+  end
+
+  def assert_delivered(:cursor_ephemeral_file, cwd, _argv, _prompt) do
+    cursor_path = Path.join(cwd, ".cursor/rules/harness-operational.mdc")
+    assert File.exists?(cursor_path)
+    assert File.read!(cursor_path) =~ AgentRules.render()
+    :ok
+  end
+
+  def assert_delivered(:prompt_preamble, _cwd, argv, prompt) do
+    expected = RulesInjection.prepend_prompt(prompt)
+    assert expected in argv
+    :ok
+  end
+end
+
 defmodule Harness.AgentAdapter.ConformanceCase do
   @moduledoc """
   The reusable conformance suite every `Harness.AgentAdapter` must pass.
@@ -70,12 +119,11 @@ defmodule Harness.AgentAdapter.ConformanceCase do
       use ExUnit.Case, async: true
 
       alias Harness.AgentAdapter.Capabilities
+      alias Harness.AgentAdapter.ConformanceCase.RuleDelivery
       alias Harness.AgentAdapter.Driver
       alias Harness.AgentAdapter.Invocation
       alias Harness.AgentAdapter.Outcome
-      alias Harness.AgentAdapter.RulesInjection
       alias Harness.AgentAdapter.Run
-      alias Harness.AgentRules
       alias Harness.GitFixture
       alias Harness.ProcessFixture
 
@@ -140,45 +188,16 @@ defmodule Harness.AgentAdapter.ConformanceCase do
 
         @tag :requires_rule_injection
         test "delivers harness-owned rules through build_command/1 output", %{cwd: cwd} do
-          channel = @adapter.rule_channel()
+          inv = invocation(cwd: cwd, prompt: "conformance rules probe")
 
-          if channel == :none do
-            :ok
-          else
-            inv =
-              invocation(
-                cwd: cwd,
-                prompt: "conformance rules probe"
-              )
+          assert {:ok, {_executable, argv, _env}} = @adapter.build_command(inv)
 
-            assert {:ok, {_executable, argv, _env}} = @adapter.build_command(inv)
-            assert_rules_delivered(channel, cwd, argv, "conformance rules probe")
-          end
-        end
-
-        defp assert_rules_delivered(:system_prompt_file, cwd, argv, _prompt) do
-          rules_path = Path.join(cwd, AgentRules.system_prompt_rel_path())
-          assert File.exists?(rules_path)
-          assert "--append-system-prompt-file" in argv
-          assert rules_path in argv
-          assert File.read!(rules_path) == AgentRules.render()
-        end
-
-        defp assert_rules_delivered(:codex_ephemeral_file, cwd, _argv, _prompt) do
-          agents_path = Path.join(cwd, "AGENTS.md")
-          assert File.exists?(agents_path)
-          assert File.read!(agents_path) =~ AgentRules.render()
-        end
-
-        defp assert_rules_delivered(:cursor_ephemeral_file, cwd, _argv, _prompt) do
-          cursor_path = Path.join(cwd, ".cursor/rules/harness-operational.mdc")
-          assert File.exists?(cursor_path)
-          assert File.read!(cursor_path) =~ AgentRules.render()
-        end
-
-        defp assert_rules_delivered(:prompt_preamble, _cwd, argv, prompt) do
-          expected = RulesInjection.prepend_prompt(prompt)
-          assert expected in argv
+          RuleDelivery.assert_delivered(
+            @adapter.rule_channel(),
+            cwd,
+            argv,
+            "conformance rules probe"
+          )
         end
       end
 

@@ -34,6 +34,125 @@ defmodule Harness.ProjectRegistryTest do
       assert :ok = ProjectRegistry.unregister("alpha")
       assert {:error, {:unknown_project, "alpha"}} = ProjectRegistry.lookup("alpha")
     end
+
+    test "unregister/1 errors on an unknown name" do
+      assert {:error, {:unknown_project, "missing"}} = ProjectRegistry.unregister("missing")
+    end
+
+    test "lookup/1 errors on an unknown name" do
+      assert {:error, {:unknown_project, "missing"}} = ProjectRegistry.lookup("missing")
+    end
+  end
+
+  describe "init/1 — config-driven project loading" do
+    # init/1 is called by the supervisor at boot. Exercising it directly
+    # against a temporary :projects config covers build_project/1 and its
+    # fetch_* helpers without touching the running registry — restarting
+    # a supervised GenServer mid-suite races with subsequent setups.
+
+    setup do
+      prior = Application.get_env(:harness, :projects)
+
+      on_exit(fn ->
+        case prior do
+          nil -> Application.delete_env(:harness, :projects)
+          value -> Application.put_env(:harness, :projects, value)
+        end
+      end)
+    end
+
+    test "loads a valid project from keyword-list config" do
+      entry = [
+        name: "configured",
+        source: {:local, "/tmp/harness-configured"},
+        preset: :elixir,
+        roadmap_path: "/tmp/harness-configured/roadmap/tasks.toml"
+      ]
+
+      Application.put_env(:harness, :projects, [entry])
+
+      assert {:ok, %{projects: %{"configured" => %Harness.Project{name: "configured"}}}} =
+               ProjectRegistry.init(:noargs)
+    end
+
+    test "loads a valid project from a map config" do
+      entry = %{
+        name: "configured-map",
+        source: {:local, "/tmp/harness-cm"},
+        check_stack: %CheckStack{name: :smoke, checks: []},
+        roadmap_path: "/tmp/harness-cm/roadmap/tasks.toml"
+      }
+
+      Application.put_env(:harness, :projects, [entry])
+
+      assert {:ok, %{projects: %{"configured-map" => %Harness.Project{check_stack: %CheckStack{name: :smoke}}}}} =
+               ProjectRegistry.init(:noargs)
+    end
+
+    test "skips an invalid entry (missing :name) and logs a warning" do
+      invalid = [source: {:local, "/tmp/x"}, preset: :elixir, roadmap_path: "/tmp/x/tasks.toml"]
+      Application.put_env(:harness, :projects, [invalid])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, %{projects: %{}}} = ProjectRegistry.init(:noargs)
+        end)
+
+      assert log =~ "skipping invalid config entry"
+    end
+
+    test "rejects a non-binary roadmap_path" do
+      bad = [
+        name: "bad-roadmap",
+        source: {:local, "/tmp/x"},
+        preset: :elixir,
+        roadmap_path: :not_a_path
+      ]
+
+      Application.put_env(:harness, :projects, [bad])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, %{projects: %{}}} = ProjectRegistry.init(:noargs)
+        end)
+
+      assert log =~ "skipping invalid config entry"
+    end
+
+    test "rejects an unsupported source shape" do
+      bad = [
+        name: "bad-source",
+        source: {:remote, "https://example.com/repo"},
+        preset: :elixir,
+        roadmap_path: "/tmp/x/tasks.toml"
+      ]
+
+      Application.put_env(:harness, :projects, [bad])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, %{projects: %{}}} = ProjectRegistry.init(:noargs)
+        end)
+
+      assert log =~ "skipping invalid config entry"
+    end
+
+    test "rejects an entry missing check_stack/preset" do
+      bad = [
+        name: "no-stack",
+        source: {:local, "/tmp/x"},
+        roadmap_path: "/tmp/x/tasks.toml"
+      ]
+
+      Application.put_env(:harness, :projects, [bad])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, %{projects: %{}}} = ProjectRegistry.init(:noargs)
+        end)
+
+      assert log =~ "skipping invalid config entry"
+    end
   end
 
   describe "concurrent runs per project check stack" do
