@@ -4,7 +4,7 @@ default_branch = "development"
 vision = "An OTP-native task-execution engine an AI orchestrator drives end to end: it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent running in an isolated worktree, runs the target project's own check stack against the result, and reports verified outcomes back to its consumer. Today the consumer surface is the BEAM-native Elixir API (called from IEx, tidewave, or another process); the Phase 7 multi-project pivot (milestone v0_5) makes it a long-running OTP node with a Phoenix LiveView dashboard orchestrating N registered target projects (Elixir, Rust, anything with a shell-driven check stack) concurrently. MCP/JSON-CLI is deferred (Phase 6) — it earns complexity only if a non-Elixir consumer ever needs to drive harness from outside the BEAM. harness is itself developed by dogfooding — from the core loop (Task 8) onward, every pending roadmap task is delivered by dispatching it through harness rather than hand-building it (Phase 7's load-bearing scaffolding is the documented exception)."
 
 [focus]
-phase = 3
+phase = 4
 
 # ----------------------------------------------------------------------------
 # Phases
@@ -18,12 +18,12 @@ status = "done"
 [phases.2]
 name = "Core Loop & Contract Proof"
 order = 2
-status = "in_progress"
+status = "done"
 
 [phases.3]
 name = "Batch & Resilience"
 order = 3
-status = "in_progress"
+status = "done"
 
 [phases.4]
 name = "Multi-Agent & Quota Fail-over"
@@ -43,7 +43,7 @@ status = "pending"
 [phases.7]
 name = "Multi-Project Federation"
 order = 7
-status = "pending"
+status = "in_progress"
 
 # ----------------------------------------------------------------------------
 # Bundles
@@ -1201,7 +1201,7 @@ id = "44"
 phase = 7
 bundle = "multi-project"
 milestone = "v0_5"
-status = "pending"
+status = "done"
 title = "Promote check stack to a first-class %Harness.CheckStack{} with a preset library"
 scores = { d = 4, b = 7, u = 8 }
 acceptance_criteria = ["%Harness.CheckStack{} struct defined with name, checks, optional parser, optional timeout_per_check", "Harness.CheckStack.Preset.Elixir submodule exposes the current 5-check stack via preset/0 returning a %CheckStack{}", "Harness.CheckStack.Preset registry module defines fetch/1 which dispatches to the per-language submodule (fetch(:elixir) → Preset.Elixir.preset/0); both must exist and be wired together", "Harness.Verification.run/2 accepts a %CheckStack{} and produces the same %Verdict{} shape as today", "Existing callers passing :checks opt continue to work (back-compat preserved during this task)", "Dogfood-grade tests covering preset fetch, custom-stack run, and back-compat path"]
@@ -1213,15 +1213,20 @@ Introduce `%Harness.CheckStack{name, checks, parser, timeout_per_check}` as a fi
 
 This is the foundation Tasks 45 (Rust preset), 46 (Project carries `:check_stack`), and 50 (dashboard renders per-project verdicts) all build on.
 """
+implemented = "%Harness.CheckStack{} struct + Preset registry + Elixir preset extracted from Verification.elixir_preset/0. Verification.run/2 gains :check_stack option (precedence: :check_stack > raw :checks > config > elixir_preset). Back-compat preserved — Run/batch tests/config keys still pass :checks/:timeout. 14 new tests; 407/407 offline pass; credo strict, doctor 100%, dialyzer 0, sobelow clean. Shipped in 783cd50."
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-24"
+started_at = "2026-05-25"
 scored_at = "2026-05-24"
+done_at = "2026-05-25"
 
 [[task]]
 id = "45"
 phase = 7
 bundle = "multi-project"
 milestone = "v0_5"
-status = "pending"
+status = "done"
 title = "First non-Elixir preset: Rust check stack"
 scores = { d = 3, b = 6, u = 6 }
 depends_on = [44]
@@ -1234,15 +1239,19 @@ The point of this task is not "support Rust comprehensively" — it's to prove t
 
 Use `cargo test --message-format=json` so that future per-check parsers (e.g. extracting failed test names from cargo's JSON output) have something structured to work with. Don't write the parser in this task — just emit and capture the raw output, same as the Elixir preset does today.
 """
+implemented = "Harness.CheckStack.Preset.Rust — 4-check Rust stack (cargo fmt --check, cargo clippy -D warnings, cargo test --message-format=json, cargo build --release) plus a green/red Rust-project test fixture pair. Adds an optional :role field on Harness.Verification.Check. Codex's run settled :commit_failed (worktree directory vanished mid-run); the Rust files were cross-written into Cursor's worktree (Task 45a bug filed) and shipped in 2bce2a2 alongside Task 46."
+delivered_by = "codex"
 created_at = "2026-05-24"
+started_at = "2026-05-25"
 scored_at = "2026-05-24"
+done_at = "2026-05-25"
 
 [[task]]
 id = "46"
 phase = 7
 bundle = "multi-project"
 milestone = "v0_5"
-status = "pending"
+status = "done"
 title = "%Harness.Project{} struct + in-memory ProjectRegistry; Run takes Project"
 scores = { d = 6, b = 8, u = 9 }
 depends_on = [44]
@@ -1259,8 +1268,13 @@ Don't add a backwards-compat shim accepting both the old `repo` string and a `%P
 
 Concurrency note: at Task 46-time the per-project `concurrency_cap` field is wired into the existing `Harness.Batch.run/4` coordinator (in-memory, in-node). Task 48 replaces that coordinator with Oban queue-per-project, where the same `concurrency_cap` becomes the queue's concurrency setting. The field's shape doesn't change between 46 and 48; only the enforcement mechanism does.
 """
+implemented = "%Harness.Project{} struct (name, source={:local,path}, check_stack, roadmap_path, concurrency_cap) + in-memory Harness.ProjectRegistry GenServer (register/lookup/list/unregister, boot-time loading from :harness :projects config). Harness.Run/Run.Supervisor/Batch/Worktree/Roadmap all take Project; Verification uses project.check_stack unless :checks overrides. Tests via ProjectFixture.from_repo/2. Settled :verification_red on 19 dialyzer warnings (1 invalid_contract + 1 cascade call + 17 cascade unused_fun, all on lib/harness/batch.ex from a stale @spec on loop_context/8); fixed by f5bc4a1."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-05-24"
+started_at = "2026-05-25"
 scored_at = "2026-05-24"
+done_at = "2026-05-25"
 
 [[task]]
 id = "47"
@@ -1578,3 +1592,102 @@ delivered_by = "claude-opus-4-7"
 created_at = "2026-05-25"
 scored_at = "2026-05-25"
 done_at = "2026-05-25"
+
+[[task]]
+id = "59"
+phase = 4
+bundle = "multi-agent"
+status = "pending"
+title = "Cross-agent grader as a repair-loop move (gated, asymmetric, budgeted)"
+scores = { d = 5, b = 5, u = 4 }
+depends_on = [11, 16]
+acceptance_criteria = ["Triggered ONLY when a check fails twice with the same error signature within one run — never on perceived ambiguity, never on any red verdict", "Each consultation consumes one slot from :max_repair_attempts (same budget as same-agent repair; no separate budget)", "Asker emits a structured payload: proposed approach + cost-of-guessing-wrong sentence + the failing check evidence (mirrors the response-conventions.md `Derive Before You Ask` gate)", "Consultee is the opposite-agent grader via the same :claude ↔ :codex auto-pair as Harness.AuditReview — asymmetric grader, not dialogic", "Consultee returns approve/reject + one-line rationale on the proposed approach (verdict shape, not free-form back-and-forth) — parse via the existing <<<VERDICT:APPROVE|REJECT>>> sentinel", "No back-and-forth: one consultation = one grading round + one follow-up implementation pass by the asker; if that pass still goes red, the loop settles :failed", "Opt-in via config :harness, :cross_agent_repair, enabled: false by default", "Test: a run where the same check fails twice with the same signature dispatches the opposite-agent grader exactly once, charged against :max_repair_attempts", "Test: with cross_agent_repair disabled, the repair loop behaves identically to today (no consultation move)"]
+out_of_scope = ["Multi-round dialogue between agents — one grading round only", "Asker-initiated consultations on perceived ambiguity — only same-error-twice trigger", "A separate cost budget — consultations charge against :max_repair_attempts", "Dynamic consultee selection — fixed :claude ↔ :codex pair like AuditReview", "Mid-run human consultation — agents only, no human-in-the-loop interjection"]
+body = """
+Extend Harness.Run's repair loop with one additional move: when a verification check fails twice in a row with the same error signature within a single run, dispatch the opposite-agent grader (the same :claude ↔ :codex pair Harness.AuditReview uses) for a one-shot grade of the asker's proposed approach before the asker's next attempt.
+
+The motivating failure mode: the same-agent repair loop (Task 11) dead-ends when an agent's blind spot causes it to make the same wrong move twice. A bounded second-agent grader catches that class before the run settles :failed, without opening the floodgates to free-rider consultation.
+
+Two design constraints make this safe — they are the whole point of the task:
+
+1. **The trigger is evidence, not ambiguity.** Same-error-twice within one run, machine-detectable from the verification stack's per-check Result kind + error signature. No asker-initiated "I'm unsure, let me ask" path — that's exactly the failure mode response-conventions.md § "Derive Before You Ask" exists to prevent (questions become cheaper than reasoning). If the agent never sees the same error twice, no consultation happens.
+
+2. **The shape is asymmetric grading, not dialogue.** Asker emits a structured payload — proposed approach, cost-of-guessing-wrong sentence, failing check evidence. Consultee returns approve/reject + one-line rationale via the existing <<<VERDICT:APPROVE|REJECT>>> sentinel (parse with Harness.AuditReview's existing extractor). One round. Asker then commits to their approach (approved) or pivots (rejected). No back-and-forth — that's the ping-pong failure mode.
+
+Cost is borne by the same :max_repair_attempts budget. A consultation move counts as one repair attempt. This prevents the consultation surface from being a free interjection and keeps the run's wall-clock bounded.
+
+Opt-in via config (`:cross_agent_repair, enabled: false` by default) so the baseline behavior of Task 11 is preserved and the new move only kicks in for users who explicitly opt into the autonomy lift.
+
+The implementation reuses Harness.AuditReview.grade_fix/1 (Task 58) for dispatch and verdict parsing — that wrapper already handles the :claude ↔ :codex auto-pair, the Driver.run/3 dispatch path, and the sentinel extraction. The work is in Harness.Run: same-error-signature detection across attempts within a run, the structured-payload builder for the grader prompt, and the gen_statem state transition that consumes the verdict before the next implementation attempt.
+"""
+created_at = "2026-05-25"
+scored_at = "2026-05-25"
+
+[[task]]
+id = "60"
+phase = 7
+bundle = "multi-project"
+status = "pending"
+title = "Harness.Worktree.Isolation false-positive on incidental .claude/ writes during dogfood"
+scores = { d = 2, b = 6, u = 7 }
+markers = ["bug"]
+acceptance_criteria = ["Harness.Worktree.Isolation does NOT settle :checkout_polluted on incidental `.claude/` or editor-lockfile changes during a run", "Dispatched agent writing outside its worktree (e.g., to lib/ in main checkout) still settles :checkout_polluted as before — the Antigravity case Task 32 was built for remains caught", "Test coverage: an isolation test that mutates .claude/ between snapshot and check stays :ok; one that mutates lib/foo.ex still surfaces :checkout_polluted", "Configurable allowlist (per-project or per-run) for the patterns the diff ignores; documented default covers Claude Code session state"]
+out_of_scope = ["Replacing the snapshot/diff approach with a stronger filesystem-watch mechanism (out of scope; defer)", "Per-project guarded_paths wiring through %Harness.Project{} — that lands once Task 46 is in"]
+body = """
+The `Harness.Worktree.Isolation` snapshot/diff check (Task 32, for the Antigravity worktree-isolation bug) compares the full `git status --porcelain` byte-for-byte between run start and finalize. Anything that mutates the porcelain mid-run — even orchestration overhead unrelated to the dispatched agent — settles the run `:checkout_polluted` and aborts pre-commit.
+
+Surfaced during Task 44 dogfood (run `run-1779750588594-7270b0dc`): the dispatching Claude Code session created `.claude/scheduled_tasks.lock` via its own ScheduleWakeup tool while the dogfood agent ran. The dispatched agent did its work cleanly in its run worktree — verification stack green (407/407 tests, credo strict, doctor 100%, dialyzer 0, sobelow clean) — but the run settled `:failed` because the porcelain at finalize contained `?? .claude/` and the snapshot didn't. Diff had to be hand-integrated.
+
+The check should be tolerant of pollution that demonstrably isn't the dispatched agent's doing. Concretely: an allowlist of paths/patterns that the isolation diff ignores (claude session state, common editor lockfiles, `.DS_Store`, etc.), configurable per-project. The strict comparison stays as the default backstop — the allowlist just keeps benign noise from cratering a green run.
+
+Alternative shape (cheaper): rather than a path allowlist, scope the diff to `lib/`, `test/`, `mix.exs`, `mix.lock`, `config/`, `priv/`, `roadmap/`, `docs/` — the surfaces an agent CAN legitimately pollute. Anything outside is by definition not a worktree-isolation violation. The list itself can come from a `%Harness.Project{}.guarded_paths` declaration once Task 46 lands.
+"""
+created_at = "2026-05-25"
+scored_at = "2026-05-25"
+
+[[task]]
+id = "61"
+phase = 7
+bundle = "multi-project"
+status = "pending"
+title = "Codex run worktree disappeared mid-run + cross-wrote into a sibling worktree (Wave 1)"
+scores = { d = 5, b = 8, u = 8 }
+markers = ["bug"]
+acceptance_criteria = ["Root-cause identified — agent-side cwd resolution vs. harness-side sweeper race", "Run worktree directory cannot be removed while the run's adapter Port is still active", "If the worktree does disappear, Run.commit_worktree/2 settles with a distinct reason instead of crashing", "Repro test exercises a sibling-run write into another run's worktree and detects/rejects it"]
+out_of_scope = ["Replacing the worktree-per-run lifecycle"]
+body = """
+Wave 1 of Phase 7 dispatched Task 45 (Codex) and Task 46 (Cursor) in parallel from the same `development` HEAD (783cd50). Codex's run settled `:commit_failed` with `{:enoent}` on its worktree's `.harness-retained` marker followed by `ArgumentError: worktree cwd is not a directory` from `Harness.AgentRules.worktree_root!/1` — Codex's run worktree (`run-1779751918402-46fbe061`) was gone before `Harness.Run.commit_worktree/2` ran. Independently of that, Codex's Rust preset files (`lib/harness/check_stack/preset/rust.ex`, `test/harness/check_stack/preset/rust_test.exs`, `test/support/fixtures/rust_project*`) ended up inside Cursor's worktree directory (`run-1779751920208-d0604434`) and were swept into Cursor's `git add` and committed as part of f3222c3 ("agent delivery — task 46").
+
+Two failures together suggest either (a) `agy`/Codex-style worktree-cwd ignore (mirrors Task 32 / Task 41) where Codex resolved its cwd to Cursor's worktree once its own went :enoent, or (b) a harness-side cleanup race that pulled Codex's worktree out from under the still-running adapter.
+
+Investigation directions:
+- Is there a harness boot/periodic sweeper that removed Codex's worktree while still running? (The Task 44 log shows a boot sweep at startup that "pruned: 1" — what triggered it.)
+- Did Codex's Port-spawned `codex exec` survive past its worktree deletion and then resolve some operations to a sibling cwd via Port `cwd:` defaulting? (Compare to Task 41's `:worktree_isolation` field.)
+- Add a guard inside `Run.commit_worktree/2` that fails fast and loud with a distinct reason when the worktree directory has gone :enoent, rather than crashing inside `AgentRules.worktree_root!/1`.
+
+Wave 1 closeout integrated f3222c3 (carrying both agents' work) into `development` as 2bce2a2 + `f5bc4a1` spec fix-up; both Tasks 45 and 46 settled `done` against the same `shipped_in`. This task tracks the underlying isolation/race so it doesn't recur in Waves 2/3.
+"""
+created_at = "2026-05-25"
+scored_at = "2026-05-25"
+
+[[task]]
+id = "62"
+phase = 7
+bundle = "multi-project"
+status = "pending"
+title = "Stale @spec on Harness.Batch.loop_context/8 hid 17 cascade dialyzer warnings (Wave 1)"
+scores = { d = 2, b = 4, u = 5 }
+markers = ["bug"]
+acceptance_criteria = ["Rule-injection channel surfaces 'dialyzer warning count > baseline of any type ⇒ self-grade red' to every adapter", "Or harness preset annotates invalid_contract findings as likely root-cause of cascade unused_fun warnings"]
+out_of_scope = ["Replacing dialyxir as the type-check driver"]
+body = """
+Wave 1's Task 46 (Cursor, %Harness.Project{} refactor) changed the 2nd arg of `Harness.Batch.loop_context/8` from a `String.t()` (legacy `repo_path`) to a `%Project{}` but left the `@spec` unchanged. Dialyzer flagged a single `invalid_contract`, but the broken contract poisoned the call-graph: dialyzer abandoned every helper reachable through `loop_context/8` and produced 17 cascade `unused_fun` warnings against `loop/5`, `fill_slots/6`, `start_worker/5`, `settle_worker_done/7`, `settle_worker_down/7`, `settle_undispatchable/4`, `fail_over/7`, `maybe_requeue_after_failover/8`, `adapter_from_result/1`, `find_by_worker_pid/2`, `crashed_result/3`, `persist_crashed_result/3`, `persist_batch/2`, `log_store_error/3`, `run_duration_ms/1`, `ordered_results/2`, plus `run_once/4` — all real, all called. The one-line spec fix in f5bc4a1 (`String.t()` → `Project.t()`) returned dialyzer to 0.
+
+Cursor's own self-test claimed "pre-existing batch.ex unused_fun warnings only; no new project-related issues" — but the Task 44 closeout baseline (783cd50) was 0 dialyzer warnings, so the framing was wrong. This is a class of issue: **a refactor that introduces or moves a struct through a private contract surface needs `mix dialyzer` re-run cleanly, not a glanced-over "unused_fun only".** The dogfood loop's grader (the verification stack) caught it; the agent's self-report glossed it.
+
+Mitigation hooks worth considering:
+- Make the AGENTS-side rule injection (Task 39 channel) explicitly call out: a non-zero dialyzer warning count, **of any kind**, is a self-grade red — never paper over `unused_fun` cascades.
+- Or extend the harness verification preset to surface "invalid_contract → likely-cascade" diagnostics so the next dogfood batch's red verdict is easier to triage from the result-store entry.
+"""
+created_at = "2026-05-25"
+scored_at = "2026-05-25"

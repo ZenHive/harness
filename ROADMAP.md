@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 3 — Batch & Resilience (11 of 11 done · 0 in progress)
+**Focus phase:** 4 — Multi-Agent & Quota Fail-over (14 of 19 done · 0 in progress)
 
-**Last shipped:** Task 28 — Wire the retry policy into the batch orchestrator, Task 29 — Force-settle the Run lifetime timeout when the agent handle never arrives, Task 35 — Audit-surfaced: Batch.fill_slots race — start_run errors crash the batch, Task 37 — Audit-surfaced: Repair loop ignores quota classification before resuming, Task 38 — Audit-surfaced: Batch slot held until terminal_linger expires, Task 56 — Audit-surfaced: cover cancel-before-handle path in Run lifetime force-settle, Task 57 — Audit-surfaced: route Batch dispatch_spin_exhausted through :no_available_agent settlement on 2026-05-24
+**Last shipped:** Task 32 — Antigravity adapter does not isolate to its run worktree, Task 36 — Audit-surfaced: Harness-injected rule files get committed by Worktree.commit, Task 39 — Audit-surfaced: Hoist rule injection into the AgentAdapter behaviour, Task 43 — Dogfood verification reds on pre-existing TODO comments in dispatch base, Task 52 — Add pi.dev headless adapter, Task 55 — Audit-surfaced: BaselineFilter.Credo content-blind matching causes false-pass / false-red on 2026-05-24
 
-**Up next:** Task 44 — Promote check stack to a first-class %Harness.CheckStack{} with a preset library [D:4/B:7/U:8 → Eff:1.88] 🚀
+**Up next:** Task 53 — Smoke-test pi-via-local-LLM on a low-D rmap task [D:2/B:4/U:4 → Eff:2.0] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -33,18 +33,7 @@
 > The loop working end to end, then proven against a second agent. The Claude headless adapter, a worktree per job, rmap task ingestion, the verification runner, and the supervised `gen_statem` that drives them to a verdict — then the conformance suite and the Codex adapter, a second implementor that shakes out any Claude-specific leak in the `AgentAdapter` contract before Phase 3's resilience layer couples to it.
 
 <!-- TASKS:BEGIN phase=2 -->
-| Task | Status | Notes |
-|------|--------|-------|
-| Task 4 | ✅ | 🎁 **claude-adapter** · 🚀 **v0_1** · Build the Claude Code headless adapter [D:6/B:9/U:9 → Eff:1.5] 🚀 |
-| Task 5 `[P]` | ✅ | 🎁 **core-loop** · 🚀 **v0_1** · Worktree-per-job lifecycle [D:4/B:7/U:8 → Eff:1.88] 🚀 |
-| Task 6 `[P]` | ✅ | 🎁 **core-loop** · 🚀 **v0_1** · rmap task ingestion [D:3/B:7/U:7 → Eff:2.33] 🎯 |
-| Task 7 `[P]` | ✅ | 🎁 **core-loop** · 🚀 **v0_1** · Verification runner — run the target project's check stack [D:5/B:9/U:8 → Eff:1.7] 🚀 |
-| Task 8 | ✅ | 🎁 **core-loop** · 🚀 **v0_1** · Supervised run lifecycle process [D:5/B:9/U:9 → Eff:1.8] 🚀 |
-| Task 12 | ✅ | 🎁 **contract-proof** · 🚀 **v0_1** · Reusable adapter conformance test suite [D:4/B:7/U:7 → Eff:1.75] 🚀 |
-| Task 14 | ✅ | 🎁 **contract-proof** · 🚀 **v0_1** · Codex headless adapter [D:5/B:5/U:5 → Eff:1.0] 📋 |
-| Task 24 | ✅ | 🎁 **core-loop** · 🐛 Commit the agent's work to the run branch before worktree teardown [D:3/B:9/U:9 → Eff:3.0] 🎯 |
-| Task 27 | ✅ | 🎁 **contract-proof** · Hoist universal adapter callbacks into the AgentAdapter behaviour [D:3/B:3/U:6 → Eff:1.5] 🚀 |
-| Task 30 | ✅ | 🎁 **core-loop** · Pin Worktree.commit/2 to the run's harness/<id> branch [D:3/B:6/U:4 → Eff:1.67] 🚀 |
+> 10 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-2-core-loop-contract-proof).
 <!-- TASKS:END -->
 
 ---
@@ -54,19 +43,7 @@
 > Concurrent batch fan-out under a `DynamicSupervisor`, a retry policy that classifies transient vs. quota vs. terminal failure, and the autonomous repair loop that feeds red verdicts back to the agent.
 
 <!-- TASKS:BEGIN phase=3 -->
-| Task | Status | Notes |
-|------|--------|-------|
-| Task 9 | ✅ | 🎁 **resilience** · 🚀 **v0_2** · Batch orchestrator with concurrency cap [D:5/B:9/U:8 → Eff:1.7] 🚀 |
-| Task 10 `[P]` | ✅ | 🎁 **resilience** · 🚀 **v0_2** · Retry policy with failure classification [D:4/B:7/U:6 → Eff:1.62] 🚀 |
-| Task 11 `[P]` | ✅ | 🎁 **resilience** · 🚀 **v0_2** · Autonomous repair loop [D:5/B:8/U:7 → Eff:1.5] 🚀 |
-| Task 28 | ✅ | 🎁 **resilience** · 🚀 **v0_2** · Wire the retry policy into the batch orchestrator [D:4/B:6/U:6 → Eff:1.5] 🚀 |
-| Task 29 | ✅ | 🎁 **resilience** · 🚀 **v0_2** · Force-settle the Run lifetime timeout when the agent handle never arrives [D:3/B:6/U:4 → Eff:1.67] 🚀 |
-| Task 34 | ✅ | 🎁 **resilience** · Audit-surfaced: Batch.fill_slots crashes after AgentRegistry exhaustion [D:3/B:7/U:6 → Eff:2.17] 🎯 |
-| Task 35 | ✅ | 🎁 **resilience** · Audit-surfaced: Batch.fill_slots race — start_run errors crash the batch [D:3/B:5/U:5 → Eff:1.67] 🚀 |
-| Task 37 | ✅ | 🎁 **resilience** · Audit-surfaced: Repair loop ignores quota classification before resuming [D:3/B:6/U:5 → Eff:1.83] 🚀 |
-| Task 38 | ✅ | 🎁 **resilience** · Audit-surfaced: Batch slot held until terminal_linger expires [D:3/B:3/U:4 → Eff:1.17] 📋 |
-| Task 56 | ✅ | 🎁 **resilience** · 🐛 Audit-surfaced: cover cancel-before-handle path in Run lifetime force-settle [D:2/B:5/U:5 → Eff:2.5] 🎯 |
-| Task 57 | ✅ | 🎁 **resilience** · 🐛 Audit-surfaced: route Batch dispatch_spin_exhausted through :no_available_agent settlement [D:2/B:6/U:6 → Eff:3.0] 🎯 |
+> 11 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-3-batch-resilience).
 <!-- TASKS:END -->
 
 ---
@@ -96,6 +73,7 @@
 | Task 53 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Smoke-test pi-via-local-LLM on a low-D rmap task [D:2/B:4/U:4 → Eff:2.0] 🎯 |
 | Task 54 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Cost-aware agent capability declaration (:free vs :metered) [D:3/B:5/U:5 → Eff:1.67] 🚀 |
 | Task 55 | ✅ | 🎁 **multi-agent** · 🐛 Audit-surfaced: BaselineFilter.Credo content-blind matching causes false-pass / false-red [D:3/B:7/U:7 → Eff:2.33] 🎯 |
+| Task 59 | ⬜ | 🎁 **multi-agent** · Cross-agent grader as a repair-loop move (gated, asymmetric, budgeted) [D:5/B:5/U:4 → Eff:0.9] ⚠️ |
 <!-- TASKS:END -->
 
 ---
@@ -137,12 +115,15 @@
 <!-- TASKS:BEGIN phase=7 -->
 | Task | Status | Notes |
 |------|--------|-------|
-| Task 44 | ⬜ | 🎁 **multi-project** · 🚀 **v0_5** · Promote check stack to a first-class %Harness.CheckStack{} with a preset library [D:4/B:7/U:8 → Eff:1.88] 🚀 |
-| Task 45 | ⬜ | 🎁 **multi-project** · 🚀 **v0_5** · First non-Elixir preset: Rust check stack [D:3/B:6/U:6 → Eff:2.0] 🎯 |
-| Task 46 | ⬜ | 🎁 **multi-project** · 🚀 **v0_5** · %Harness.Project{} struct + in-memory ProjectRegistry; Run takes Project [D:6/B:8/U:9 → Eff:1.42] 📋 |
+| Task 44 | ✅ | 🎁 **multi-project** · 🚀 **v0_5** · Promote check stack to a first-class %Harness.CheckStack{} with a preset library [D:4/B:7/U:8 → Eff:1.88] 🚀 |
+| Task 45 | ✅ | 🎁 **multi-project** · 🚀 **v0_5** · First non-Elixir preset: Rust check stack [D:3/B:6/U:6 → Eff:2.0] 🎯 |
+| Task 46 | ✅ | 🎁 **multi-project** · 🚀 **v0_5** · %Harness.Project{} struct + in-memory ProjectRegistry; Run takes Project [D:6/B:8/U:9 → Eff:1.42] 📋 |
 | Task 47 | ⬜ | 🎁 **multi-project** · 🚀 **v0_5** · Harness.Project.Source.Github: clone-and-cache + fetch-before-run [D:5/B:6/U:6 → Eff:1.2] 📋 |
 | Task 48 | ⬜ | 🎁 **multi-project** · 🚀 **v0_5** · Oban-backed dispatch: queue-per-project + run-state persistence across restart [D:7/B:9/U:8 → Eff:1.21] 📋 |
 | Task 49 | ⬜ | 🎁 **multi-project** · 🚀 **v0_5** · In-repo <repo>/harness/ subdirectory recipe + template [D:2/B:4/U:4 → Eff:2.0] 🎯 |
 | Task 50 | ⬜ | 🎁 **dashboard** · 🚀 **v0_5** · Phoenix LiveView dashboard + embedded Oban Web (mountable + standalone) [D:7/B:9/U:8 → Eff:1.21] 📋 |
 | Task 51 `[P]` | ⬜ | 🎁 **multi-project** · 🚀 **v0_5** · Cron-driven autonomous roadmap polling via Oban.Plugins.Cron [D:3/B:6/U:5 → Eff:1.83] 🚀 |
+| Task 60 | ⬜ | 🎁 **multi-project** · 🐛 Harness.Worktree.Isolation false-positive on incidental .claude/ writes during dogfood [D:2/B:6/U:7 → Eff:3.25] 🎯 |
+| Task 61 | ⬜ | 🎁 **multi-project** · 🐛 Codex run worktree disappeared mid-run + cross-wrote into a sibling worktree (Wave 1) [D:5/B:8/U:8 → Eff:1.6] 🚀 |
+| Task 62 | ⬜ | 🎁 **multi-project** · 🐛 Stale @spec on Harness.Batch.loop_context/8 hid 17 cascade dialyzer warnings (Wave 1) [D:2/B:4/U:5 → Eff:2.25] 🎯 |
 <!-- TASKS:END -->
