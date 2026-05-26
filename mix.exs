@@ -56,7 +56,10 @@ defmodule Harness.MixProject do
       # `ex_unit_json`); `:apps_direct` excludes it, so direct runtime use of
       # `Jason.*` in `lib/` (Task 43: verification baseline filter) needs an
       # explicit add to keep dialyzer aware of the function signatures.
-      plt_add_apps: [:mix, :jason],
+      # `:ecto` / `:db_connection` are transitive via `ecto_sql` / `postgrex`
+      # (Task 48: Oban-backed dispatch); `:apps_direct` excludes them, so
+      # `use Ecto.Repo` in `lib/harness/repo.ex` needs them explicitly added.
+      plt_add_apps: [:mix, :jason, :ecto, :db_connection],
       plt_local_path: "priv/plts",
       plt_core_path: "priv/plts",
       ignore_warnings: ".dialyzer_ignore.exs"
@@ -68,6 +71,9 @@ defmodule Harness.MixProject do
     [
       # Core
       {:descripex, "~> 0.6"},
+      {:ecto_sql, "~> 3.13"},
+      {:postgrex, ">= 0.0.0"},
+      {:oban, "~> 2.22"},
 
       # Dev/test tooling — standard harness stack per global conventions
       {:ex_unit_json, "~> 0.4.3", only: [:dev, :test], runtime: false},

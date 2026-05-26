@@ -23,10 +23,31 @@ defmodule Harness.Application do
     [
       {Registry, keys: :unique, name: Harness.Run.Registry},
       Harness.ProjectRegistry,
-      Harness.AgentRegistry,
-      {Task.Supervisor, name: Harness.Run.TaskSupervisor},
-      Harness.Run.Supervisor
-    ] ++ sweeper()
+      Harness.AgentRegistry
+    ] ++
+      repo() ++
+      [
+        {Task.Supervisor, name: Harness.Run.TaskSupervisor},
+        Harness.Run.Supervisor
+      ] ++ oban() ++ sweeper()
+  end
+
+  @spec repo() :: [module()]
+  defp repo do
+    if Application.get_env(:harness, :repo_enabled, true) do
+      [Harness.Repo]
+    else
+      []
+    end
+  end
+
+  @spec oban() :: [module()]
+  defp oban do
+    if Application.get_env(:harness, :oban_enabled, true) do
+      [Harness.Oban]
+    else
+      []
+    end
   end
 
   @spec sweeper() :: [module()]

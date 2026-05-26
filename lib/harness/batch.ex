@@ -19,6 +19,7 @@ defmodule Harness.Batch do
   alias Harness.Run.Result, as: RunResult
   alias Harness.Run.RetryPolicy
   alias Harness.Run.Supervisor, as: RunSupervisor
+  alias Harness.Run.Worker, as: RunWorker
 
   require Logger
 
@@ -49,6 +50,29 @@ defmodule Harness.Batch do
            max_concurrency: pos_integer(),
            total: non_neg_integer()
          }
+
+  @typedoc "A reason `dispatch/2` can fail before jobs are enqueued."
+  @type dispatch_error ::
+          {:unknown_project, String.t()}
+          | {:invalid_item_agent, term()}
+          | {:project_register_failed, term()}
+          | term()
+
+  @doc """
+  Enqueues one Oban-backed run job per item and returns immediately.
+
+  The queue is project-scoped (`project_<name>`) and its local concurrency is
+  controlled by the registered project's `concurrency_cap`.
+  """
+  @spec dispatch(Project.t() | String.t(), [Item.t()]) :: {:ok, [Oban.Job.t()]} | {:error, dispatch_error()}
+  def dispatch(project, items) when is_list(items) do
+    with {:ok, project} <- resolve_and_register_project(project) do
+      enqueue_items(project, items)
+    end
+  end
+
+  @spec dispatch([Item.t()], Project.t() | String.t()) :: {:ok, [Oban.Job.t()]} | {:error, dispatch_error()}
+  def dispatch(items, project) when is_list(items), do: dispatch(project, items)
 
   @doc """
   Runs `items` against `project` (or a registered project name) with one
@@ -119,6 +143,58 @@ defmodule Harness.Batch do
       {:ok, result}
     end
   end
+
+  @spec resolve_and_register_project(Project.t() | String.t()) :: {:ok, Project.t()} | {:error, dispatch_error()}
+  defp resolve_and_register_project(%Project{name: name} = project) do
+    case ProjectRegistry.lookup(name) do
+      {:ok, registered} ->
+        {:ok, registered}
+
+      {:error, {:unknown_project, ^name}} ->
+        case ProjectRegistry.register(project) do
+          :ok -> {:ok, project}
+          {:error, reason} -> {:error, {:project_register_failed, reason}}
+        end
+    end
+  end
+
+  defp resolve_and_register_project(name) when is_binary(name), do: resolve_project(name)
+
+  @spec enqueue_items(Project.t(), [Item.t()]) :: {:ok, [Oban.Job.t()]} | {:error, dispatch_error()}
+  defp enqueue_items(%Project{} = project, items) do
+    items
+    |> Enum.reduce_while({:ok, []}, fn item, {:ok, jobs} ->
+      case enqueue_item(project, item) do
+        {:ok, job} -> {:cont, {:ok, [job | jobs]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, jobs} -> {:ok, Enum.reverse(jobs)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @spec enqueue_item(Project.t(), Item.t()) :: {:ok, Oban.Job.t()} | {:error, dispatch_error()}
+  defp enqueue_item(%Project{} = project, %Item{} = item) do
+    with {:ok, adapter} <- adapter_for_agent(item.agent) do
+      args = %{
+        project_name: project.name,
+        item_id: item.id,
+        adapter_module: Atom.to_string(adapter)
+      }
+
+      args
+      |> RunWorker.new(queue: Harness.Oban.queue_name(project), meta: %{harness_stage: "dispatch"})
+      |> Harness.Oban.insert()
+    end
+  end
+
+  @spec adapter_for_agent(term()) :: {:ok, module()} | {:error, {:invalid_item_agent, term()}}
+  defp adapter_for_agent(:claude), do: {:ok, Harness.AgentAdapter.Claude}
+  defp adapter_for_agent(:codex), do: {:ok, Harness.AgentAdapter.Codex}
+  defp adapter_for_agent(:cursor), do: {:ok, Harness.AgentAdapter.Cursor}
+  defp adapter_for_agent(agent), do: {:error, {:invalid_item_agent, agent}}
 
   @spec ensure_dispatchable([Item.t()], [module()], keyword()) ::
           :ok | {:error, AgentRegistry.select_error()}

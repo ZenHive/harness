@@ -1,5 +1,10 @@
 import Config
 
+config :harness, Oban,
+  repo: Harness.Repo,
+  queues: [],
+  plugins: [Oban.Plugins.Pruner]
+
 # Result persistence — see Harness.ResultStore.
 # The default store is file-backed and keeps structured run records plus
 # reloadable batch results under this root.
@@ -20,6 +25,8 @@ config :harness, :worktree,
   base_dir: Path.expand("~/_DATA/worktrees/.harness"),
   retain_on_failure: true,
   sweep_on_boot: true
+
+config :harness, ecto_repos: [Harness.Repo]
 
 # Verification check stack — see Harness.Verification.
 # Both keys are optional; defaults live in code (elixir_preset/0, 600_000 ms).
@@ -65,6 +72,13 @@ config :harness, :worktree,
 # would race the async suite, and the default base_dir points at real
 # worktrees — disable it and redirect the fallback to a tmp path.
 if config_env() == :test do
+  config :harness, Harness.Repo,
+    pool: Ecto.Adapters.SQL.Sandbox,
+    pool_size: 10
+
+  config :harness, Oban, testing: :inline
+  config :harness, :oban_enabled, false
+  config :harness, :repo_enabled, false
   config :harness, :result_store, {Harness.ResultStore.File, root: Path.join(System.tmp_dir!(), "harness_results_test")}
 
   config :harness, :worktree,

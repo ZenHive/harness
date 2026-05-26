@@ -1674,7 +1674,7 @@ scored_at = "2026-05-25"
 id = "62"
 phase = 7
 bundle = "multi-project"
-status = "pending"
+status = "superseded"
 title = "Stale @spec on Harness.Batch.loop_context/8 hid 17 cascade dialyzer warnings (Wave 1)"
 scores = { d = 2, b = 4, u = 5 }
 markers = ["bug"]

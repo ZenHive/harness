@@ -669,7 +669,11 @@ defmodule Harness.BatchTest do
 
   defp file_store do
     {Harness.ResultStore.File,
-     root: Path.join(System.tmp_dir!(), "harness-result-store-#{System.unique_integer([:positive])}")}
+     root:
+       Path.join(
+         System.tmp_dir!(),
+         "harness-result-store-#{System.system_time(:nanosecond)}-#{System.unique_integer([:positive])}"
+       )}
   end
 
   defp active_batch_task_ids(batch_ids) do

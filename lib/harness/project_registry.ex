@@ -86,6 +86,7 @@ defmodule Harness.ProjectRegistry do
     if Map.has_key?(state.projects, name) do
       {:reply, {:error, {:duplicate, name}}, state}
     else
+      :ok = ensure_project_queue(project)
       {:reply, :ok, put_in(state.projects[name], project)}
     end
   end
@@ -129,6 +130,18 @@ defmodule Harness.ProjectRegistry do
          roadmap_path: roadmap_path,
          concurrency_cap: Map.get(entry, :concurrency_cap)
        }}
+    end
+  end
+
+  @spec ensure_project_queue(Project.t()) :: :ok
+  defp ensure_project_queue(%Project{} = project) do
+    case Harness.Oban.ensure_project_queue(project) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("harness project registry: failed to start Oban queue for #{project.name}: #{inspect(reason)}")
+        :ok
     end
   end
 

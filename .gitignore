@@ -52,3 +52,9 @@ harness-*.tar
 # Shareable project config (e.g. .claude/settings.json) stays trackable.
 .claude/scheduled_tasks.lock
 .claude/settings.local.json
+
+# mise / asdf — `.tool-versions` (canonical) IS committed to pin the
+# project's Erlang/Elixir for any contributor. Variant suffixes
+# (.1.18, .rc-1.20, etc.) stay local — they're per-developer scratch files
+# for testing across Elixir versions.
+.tool-versions.*

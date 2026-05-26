@@ -2171,7 +2171,7 @@
       "id": "62",
       "phase": 7,
       "bundle": "multi-project",
-      "status": "pending",
+      "status": "superseded",
       "title": "Stale @spec on Harness.Batch.loop_context/8 hid 17 cascade dialyzer warnings (Wave 1)",
       "scores": {
         "d": 2,

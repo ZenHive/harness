@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Oban-backed dispatch for registered projects: runtime deps now include Oban,
+  Ecto SQL, and Postgrex; `Harness.Repo` owns the Postgres connection; Oban
+  jobs persist one run per roadmap item in per-project queues named
+  `project_<name>`; `Harness.Run.Worker` spawns the existing run gen_statem and
+  maps terminal results onto Oban's `:ok` / `:snooze` / `:cancel` worker
+  return contract. (Task 48)
 - `Harness.Worktree` — per-run git worktree lifecycle: `create/2` carves an
   isolated working directory and `harness/<id>` branch out of a target repo so
   concurrent runs never collide; `commit/2` captures the agent's work as a
