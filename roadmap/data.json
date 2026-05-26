@@ -110,28 +110,28 @@
     },
     "v0_2": {
       "name": "Batch & resilience",
-      "description": "Concurrent batch fan-out, failure-classified retry, autonomous repair",
+      "description": "Proves an unattended multi-task dogfood batch survives partial failure without human babysitting — failure-classified retry filters transient from terminal, the repair loop turns at least some red verdicts green via session resume, and a single red run never craters the batch.",
       "order": 2,
-      "status": "pending",
+      "status": "done",
       "target_version": "0.2.0"
     },
     "v0_3": {
       "name": "Multi-agent & quota fail-over",
-      "description": "Cursor and Grok adapters behind the proven contract; quota-aware routing",
+      "description": "Proves the AgentAdapter contract holds across N>2 implementors — adding Cursor, Grok, Antigravity, and Pi behind the same behaviour requires no Claude-/Codex-specific leak — and quota fail-over routes a batch around a capped subscription rather than failing it.",
       "order": 3,
       "status": "pending",
       "target_version": "0.3.0"
     },
     "v0_4": {
       "name": "Agent-facing surface",
-      "description": "MCP tools + JSON CLI, status view, run logging",
+      "description": "Proves harness is observable enough that a fresh session can pick up where the dispatching session left off — structured run records survive process exit, mix harness.status shows fleet state without raw JSON parsing, and Harness.AuditReview gives the audit-review skill an objective second-grader dispatch without routing through verification.",
       "order": 4,
-      "status": "pending",
+      "status": "done",
       "target_version": "0.4.0"
     },
     "v0_5": {
       "name": "Multi-Project & Dashboard",
-      "description": "Long-running OTP node orchestrates N registered projects (Elixir, Rust, ...) concurrently via Oban queues with restart persistence; Phoenix LiveView dashboard + embedded Oban Web at /harness/oban; cron-driven autonomous roadmap polling. Pivots harness from 'single-repo Elixir-only CLI' to 'library + always-on dashboard orchestrating N projects'.",
+      "description": "Proves harness scales beyond harness-on-harness — N registered projects (Elixir + Rust + ...) dispatched concurrently with restart-resilient Oban queues and a single LiveView dashboard is a workable shape, and the Postgres+Oban+Phoenix substrate doesn't crater the BEAM-native simplicity that made the single-project version work.",
       "order": 5,
       "status": "active",
       "target_version": "0.5.0"
