@@ -1387,7 +1387,7 @@ id = "50"
 phase = 7
 bundle = "dashboard"
 milestone = "v0_5"
-status = "in_progress"
+status = "done"
 title = "Phoenix LiveView dashboard + embedded Oban Web (mountable + standalone)"
 scores = { d = 7, b = 9, u = 8 }
 depends_on = [46, 48]
@@ -1406,9 +1406,13 @@ Bandit dep shape: declare `{:bandit, "~> 1.x", optional: true}` so mountable con
 
 This task is intentionally one task even though it has multiple deliverables (custom views + Oban Web embed). The first slice that ships is a minimal dashboard (project list + run list + Oban Web at /oban); transcript pane and stream-json plumbing can be the second pass within the same task.
 """
+implemented = 'Phoenix LiveView dashboard (Harness.Dashboard.Endpoint standalone Bandit on 4018 + conditional supervision behind :dashboard, :enabled + Code.ensure_loaded?(Bandit) so mountable consumers are not forced into a second HTTP server) with Harness.Dashboard.Router mounting oban_dashboard("/harness/oban", oban_name: Harness.Oban) plus live("/harness", ..., as: :dashboard) and live("/harness/runs/:run_id", ..., as: :dashboard); Harness.Dashboard.Live renders project switcher off ProjectRegistry.list/0, per-bucket counts off StatusView.snapshot/0 + classify/1, 1s :tick poll, and per-run drill-down off Harness.Run.status/1. Pass 2 wires a live transcript pane via Harness.Dashboard.Transcript.broadcast/2 over Phoenix.PubSub topic harness:run:<id>:transcript, fed by a new :on_output callback on Harness.AgentAdapter.Driver.run/3 (every {:output, data, next_run} chunk in loop/7), with the LiveView holding a 200 KiB bounded transcript buffer. Bandit flipped optional: true. Browser-verified end-to-end (HTTP 200 on /harness + /harness/oban, Oban Web full UI mounted).'
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-24"
 started_at = "2026-05-27"
 scored_at = "2026-05-24"
+done_at = "2026-05-27"
 
 [[task]]
 id = "51"
