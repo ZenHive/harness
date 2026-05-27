@@ -1,8 +1,9 @@
 # Dogfooding Workflow — Operational Runbook
 
-**Policy** lives in `CLAUDE.md` § "Dogfooding — harness Builds harness". This file is
-the **how**: the concrete steps a fresh Claude Code session runs to dispatch the next
-roadmap task *through harness itself* instead of hand-building it.
+**Policy** lives in `CLAUDE.md` § "Dogfooding — harness Builds harness".
+**AI driver contract** (for orchestrators): `skills/harness-driver/SKILL.md` — load this first when driving harness as the primary consumer.
+
+This file is the **detailed operational runbook** (driver script template, verdict table, sharp edges). The skill is the terse, AI-optimized version of the current surfaces and patterns.
 
 If you are a fresh session: read `CLAUDE.md` § Dogfooding first, then this.
 
