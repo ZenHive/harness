@@ -128,7 +128,18 @@ defmodule Harness.FakeAdapter do
        ], []}
 
   defp command({:write_then_wait_for_file, path}, _invocation) when is_binary(path) do
-    script = "echo agent-output > agent_output.txt; while [ ! -f #{shell_arg(path)} ]; do sleep 0.05; done"
+    # Task 70: self-terminate if reparented to init (PPID=1). Without this,
+    # a test crash or Ctrl-C before the gate file is written leaves this
+    # shell polling the gate forever (Port owner death does not always
+    # SIGTERM a child that neither reads nor writes its pipes).
+    arg = shell_arg(path)
+
+    script =
+      "echo agent-output > agent_output.txt; " <>
+        "while [ ! -f #{arg} ]; do " <>
+        ~s{if [ "$(ps -o ppid= -p $$ | tr -d ' ')" = "1" ]; then exit 1; fi; } <>
+        "sleep 0.05; done"
+
     {"/bin/sh", ["-c", script], []}
   end
 

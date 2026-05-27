@@ -682,7 +682,18 @@ defmodule Harness.BatchTest do
   defp check(name, command, args), do: %Check{name: name, command: command, args: args}
 
   defp gate_path do
-    Path.join(System.tmp_dir!(), "harness-batch-gate-#{System.unique_integer([:positive])}")
+    path = Path.join(System.tmp_dir!(), "harness-batch-gate-#{System.unique_integer([:positive])}")
+    on_exit(fn -> cleanup_gate(path) end)
+    path
+  end
+
+  # Task 70: gate-file hygiene. On normal completion the gate file is left
+  # behind; on a test crash before the gate is written the spawned `/bin/sh`
+  # shells survive Port owner death and spin forever. Best-effort: kill any
+  # polling shell by command-line match, then delete the gate file.
+  defp cleanup_gate(path) do
+    _ = System.cmd("pkill", ["-f", Path.basename(path)], stderr_to_stdout: true)
+    File.rm(path)
   end
 
   defp batch_id, do: "batch-#{System.unique_integer([:positive])}"
