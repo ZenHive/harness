@@ -140,7 +140,7 @@ target_version = "0.4.0"
 name = "Multi-Project & Dashboard"
 description = "Proves harness scales beyond harness-on-harness — N registered projects (Elixir + Rust + ...) dispatched concurrently with restart-resilient Oban queues and a single LiveView dashboard is a workable shape, and the Postgres+Oban+Phoenix substrate doesn't crater the BEAM-native simplicity that made the single-project version work."
 order = 5
-status = "active"
+status = "done"
 target_version = "0.5.0"
 
 # ----------------------------------------------------------------------------
