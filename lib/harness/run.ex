@@ -321,9 +321,15 @@ defmodule Harness.Run do
     Process.demonitor(ref, [:flush])
     data = %{data | task: nil, worktree: worktree}
 
-    case Isolation.validate(data.adapter) do
-      :ok -> {:next_state, :running, data}
-      {:error, reason} -> fail(data, {:agent_spawn_failed, reason})
+    with :ok <- Worktree.activate(worktree),
+         :ok <- Isolation.validate(data.adapter) do
+      {:next_state, :running, data}
+    else
+      {:error, {:worktree_isolation_unsupported, _adapter, _message} = reason} ->
+        fail(data, {:agent_spawn_failed, reason})
+
+      {:error, reason} ->
+        fail(data, {:worktree_failed, reason})
     end
   end
 

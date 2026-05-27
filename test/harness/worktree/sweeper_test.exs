@@ -33,6 +33,19 @@ defmodule Harness.Worktree.SweeperTest do
       assert File.dir?(wt.path)
     end
 
+    test "keeps a worktree marked active by a live harness process" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+      {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base)
+      assert :ok = Worktree.activate(wt)
+
+      assert {:ok, summary} = Sweeper.sweep(base)
+
+      assert wt.path in summary.kept
+      assert summary.removed == []
+      assert File.dir?(wt.path)
+    end
+
     test "leaves a directory with no parent repo in place" do
       base = GitFixture.tmp_base()
       partial = Path.join([base, "some-repo", "run-partial-create"])

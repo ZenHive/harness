@@ -18,7 +18,7 @@ defmodule Harness.Worktree.Sweeper do
 
   require Logger
 
-  @typedoc "What a sweep did: repos pruned, orphan dirs removed, retained dirs kept."
+  @typedoc "What a sweep did: repos pruned, orphan dirs removed, retained or active dirs kept."
   @type summary :: %{
           pruned: non_neg_integer(),
           removed: [String.t()],
@@ -47,8 +47,10 @@ defmodule Harness.Worktree.Sweeper do
   Reaps crash-orphaned worktrees under `base_dir`.
 
   Prunes stale git metadata for every parent repo discovered, then removes each
-  orphan worktree directory that lacks the retained-on-failure marker. Retained
-  worktrees (a human kept one to inspect a failure) are left untouched.
+  orphan worktree directory that lacks the retained-on-failure marker and a live
+  active-run marker. Retained worktrees (a human kept one to inspect a failure)
+  and active worktrees (a still-running harness process owns them) are left
+  untouched.
 
   Best-effort: a git failure on one repo or directory is logged and skipped, it
   never aborts the sweep. Always returns `{:ok, summary}`.
@@ -99,6 +101,7 @@ defmodule Harness.Worktree.Sweeper do
     Enum.reduce(entries, {[], []}, fn {dir, repo}, {removed, kept} ->
       cond do
         Worktree.retained?(dir) -> {removed, [dir | kept]}
+        Worktree.active?(dir) -> {removed, [dir | kept]}
         reap_one(dir, repo) -> {[dir | removed], kept}
         true -> {removed, kept}
       end

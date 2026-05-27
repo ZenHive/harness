@@ -266,6 +266,38 @@ defmodule Harness.RunTest do
       assert result.verdict == nil
     end
 
+    test "settles with a distinct reason when the worktree disappears before commit" do
+      result = run(adapter_opts: [command: :move_cwd_aside])
+
+      assert %Result{state: :failed, reason: {:commit_failed, {:worktree_missing, path}}} = result
+      assert path == result.worktree_path
+      assert result.verdict == nil
+    end
+
+    test "rejects a run whose cwd vanished after it wrote into a sibling worktree" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+      project = ProjectFixture.from_repo(repo)
+      {:ok, sibling} = Worktree.create(project, base_dir: base, id: "sibling-run")
+
+      {:ok, run_id, pid} =
+        Run.Supervisor.start_run(
+          item(),
+          project,
+          FakeAdapter,
+          base
+          |> default_opts()
+          |> Keyword.put(:adapter_opts, command: {:write_sibling_and_move_cwd, sibling.path})
+        )
+
+      result = await_result(run_id, pid)
+
+      assert %Result{state: :failed, reason: {:commit_failed, {:worktree_missing, path}}} = result
+      assert path == result.worktree_path
+      assert File.read!(Path.join(sibling.path, "foreign.txt")) =~ "foreign"
+      assert_raise RuntimeError, fn -> GitFixture.git!(repo, ["show", "harness/#{run_id}:foreign.txt"]) end
+    end
+
     test "settles :failed without stranding the deliverable when the agent moves HEAD" do
       result = run(adapter_opts: [command: :detach_head])
 

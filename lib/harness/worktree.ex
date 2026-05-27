@@ -48,6 +48,7 @@ defmodule Harness.Worktree do
   alias Harness.Project
 
   @branch_prefix "harness/"
+  @active_marker ".harness-active"
   @retained_marker ".harness-retained"
   @default_base_dir "~/_DATA/worktrees/.harness"
 
@@ -88,6 +89,7 @@ defmodule Harness.Worktree do
   @type error ::
           {:repo_not_found, String.t()}
           | {:not_a_git_repo, String.t()}
+          | {:worktree_missing, String.t()}
           | {:marker_write_failed, String.t(), File.posix()}
           | {:rule_cleanup_failed, String.t(), File.posix()}
           | {:head_moved, expected :: String.t(), actual :: head_label()}
@@ -191,8 +193,8 @@ defmodule Harness.Worktree do
   """
   @spec commit(t(), String.t()) :: {:ok, :committed | :no_changes} | {:error, error()}
   def commit(%__MODULE__{path: path, branch: branch}, message) when is_binary(message) do
-    with :ok <- assert_head_on_branch(path, branch),
-         :ok <- AgentRules.cleanup_injected_rules(path),
+    with :ok <- prepare_for_staging(path),
+         :ok <- assert_head_on_branch(path, branch),
          {:ok, _added} <- Git.run(["add", "-A"], path),
          {:ok, status} <- Git.run(["status", "--porcelain"], path) do
       if String.trim(status) == "" do
@@ -212,7 +214,7 @@ defmodule Harness.Worktree do
   """
   @spec diff_size(t()) :: {:ok, non_neg_integer()} | {:error, error()}
   def diff_size(%__MODULE__{path: path}) do
-    with :ok <- AgentRules.cleanup_injected_rules(path),
+    with :ok <- prepare_for_staging(path),
          {:ok, _added} <- Git.run(["add", "-A"], path),
          {:ok, numstat} <- Git.run(["diff", "--cached", "--numstat", "HEAD", "--"], path) do
       {:ok, parse_numstat_size(numstat)}
@@ -235,10 +237,41 @@ defmodule Harness.Worktree do
   @spec finish(t(), outcome(), keyword()) :: :ok | {:error, error()}
   def finish(worktree, outcome, opts \\ [])
 
-  def finish(%__MODULE__{} = worktree, :success, _opts), do: remove(worktree)
+  def finish(%__MODULE__{} = worktree, :success, _opts) do
+    with :ok <- deactivate(worktree) do
+      remove(worktree)
+    end
+  end
 
   def finish(%__MODULE__{} = worktree, :failure, opts) do
-    if retain_on_failure?(opts), do: retain(worktree), else: remove(worktree)
+    with :ok <- deactivate(worktree) do
+      if retain_on_failure?(opts), do: retain(worktree), else: remove(worktree)
+    end
+  end
+
+  @doc """
+  Marks a worktree as owned by a live harness process.
+
+  The boot sweeper preserves active worktrees so a second harness process cannot
+  reap a run directory while its adapter port is still running. The marker is
+  removed before staging, so it never becomes part of a delivery commit.
+  """
+  @spec activate(t()) :: :ok | {:error, error()}
+  def activate(%__MODULE__{path: path, id: id, branch: branch}) do
+    with :ok <- assert_worktree_dir(path) do
+      marker = Path.join(path, @active_marker)
+
+      body =
+        "active_at=#{DateTime.to_iso8601(DateTime.utc_now())}\n" <>
+          "owner_os_pid=#{System.pid()}\n" <>
+          "id=#{id}\n" <>
+          "branch=#{branch}\n"
+
+      case File.write(marker, body) do
+        :ok -> :ok
+        {:error, reason} -> {:error, {:marker_write_failed, marker, reason}}
+      end
+    end
   end
 
   @doc """
@@ -266,6 +299,18 @@ defmodule Harness.Worktree do
   @spec retained?(String.t()) :: boolean()
   def retained?(path) do
     path |> Path.join(@retained_marker) |> File.exists?()
+  end
+
+  @doc """
+  Whether the worktree directory at `path` carries an active marker for a live
+  harness process.
+  """
+  @spec active?(String.t()) :: boolean()
+  def active?(path) do
+    path
+    |> Path.join(@active_marker)
+    |> read_active_owner_pid()
+    |> live_owner_pid?()
   end
 
   @doc """
@@ -303,6 +348,27 @@ defmodule Harness.Worktree do
       {:ok, output} -> String.trim(output)
       {:error, _reason} -> "unknown"
     end
+  end
+
+  @spec prepare_for_staging(String.t()) :: :ok | {:error, error()}
+  defp prepare_for_staging(path) do
+    with :ok <- assert_worktree_dir(path),
+         :ok <- remove_marker(Path.join(path, @active_marker)) do
+      cleanup_injected_rules(path)
+    end
+  end
+
+  @spec assert_worktree_dir(String.t()) :: :ok | {:error, {:worktree_missing, String.t()}}
+  defp assert_worktree_dir(path) do
+    if File.dir?(path), do: :ok, else: {:error, {:worktree_missing, path}}
+  end
+
+  @spec cleanup_injected_rules(String.t()) :: :ok | {:error, error()}
+  defp cleanup_injected_rules(path) do
+    AgentRules.cleanup_injected_rules(path)
+  rescue
+    error in ArgumentError ->
+      if File.dir?(path), do: reraise(error, __STACKTRACE__), else: {:error, {:worktree_missing, path}}
   end
 
   @spec commit_staged(String.t(), String.t()) :: {:ok, :committed} | {:error, error()}
@@ -376,6 +442,40 @@ defmodule Harness.Worktree do
     case File.write(marker, body) do
       :ok -> :ok
       {:error, reason} -> {:error, {:marker_write_failed, marker, reason}}
+    end
+  end
+
+  @spec deactivate(t()) :: :ok | {:error, error()}
+  defp deactivate(%__MODULE__{path: path}) do
+    remove_marker(Path.join(path, @active_marker))
+  end
+
+  @spec remove_marker(String.t()) :: :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  defp remove_marker(path) do
+    case File.rm(path) do
+      :ok -> :ok
+      {:error, :enoent} -> :ok
+      {:error, reason} -> {:error, {:rule_cleanup_failed, path, reason}}
+    end
+  end
+
+  @spec read_active_owner_pid(String.t()) :: String.t() | nil
+  defp read_active_owner_pid(marker) do
+    with {:ok, body} <- File.read(marker),
+         [_line, pid] <- Regex.run(~r/^owner_os_pid=(\d+)$/m, body) do
+      pid
+    else
+      _other -> nil
+    end
+  end
+
+  @spec live_owner_pid?(String.t() | nil) :: boolean()
+  defp live_owner_pid?(nil), do: false
+
+  defp live_owner_pid?(pid) do
+    case System.cmd("kill", ["-0", pid], stderr_to_stdout: true) do
+      {_output, 0} -> true
+      {_output, _status} -> false
     end
   end
 

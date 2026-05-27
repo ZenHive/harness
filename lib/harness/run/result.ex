@@ -40,7 +40,8 @@ defmodule Harness.Run.Result do
     * `{:agent_spawn_failed, r}` — the agent never spawned (e.g. not on `PATH`).
     * `{:driver_crashed, r}` — the agent-driver task crashed.
     * `{:commit_failed, r}` — the agent's work could not be committed to the
-      run branch.
+      run branch. `{:worktree_missing, path}` means the run worktree directory
+      disappeared before commit.
     * `{:verification_failed, r}` — verification could not run at all.
     * `{:verifier_crashed, r}` — the verification task crashed.
     * `{:run_crashed, r}` — the run process exited before delivering a result.

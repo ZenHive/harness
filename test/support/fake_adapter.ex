@@ -82,9 +82,24 @@ defmodule Harness.FakeAdapter do
   #                    the no-diff short-circuit.
   # :pollute_checkout  — writes into the main checkout (repo path in
   #                    adapter_opts), not cwd — the checkout-pollution fixture.
+  # :move_cwd_aside    — writes a file, then moves cwd out of the way before
+  #                    commit (missing-worktree fixture).
+  # {:write_sibling_and_move_cwd, path}
+  #                  — writes into a sibling worktree, then makes cwd disappear
+  #                    (cross-worktree write regression fixture).
   defp command({:pollute_checkout, repo}, _invocation) when is_binary(repo) do
     path = shell_arg(Path.join(repo, "leaked.txt"))
     {"/bin/sh", ["-c", "echo leaked > #{path}"], []}
+  end
+
+  defp command({:write_sibling_and_move_cwd, sibling}, _invocation) when is_binary(sibling) do
+    target = shell_arg(Path.join(sibling, "foreign.txt"))
+
+    {"/bin/sh",
+     [
+       "-c",
+       "echo foreign > #{target}; echo agent-output > agent_output.txt; parent=$(dirname \"$PWD\"); base=$(basename \"$PWD\"); cd \"$parent\"; mv \"$base\" \"$base-gone\""
+     ], []}
   end
 
   defp command(:echo, _invocation), do: {"/bin/echo", ["harness-test"], []}
@@ -102,6 +117,14 @@ defmodule Harness.FakeAdapter do
 
   defp command(:detach_head, _invocation),
     do: {"/bin/sh", ["-c", "echo agent-output > agent_output.txt; git checkout -q --detach"], []}
+
+  defp command(:move_cwd_aside, _invocation),
+    do:
+      {"/bin/sh",
+       [
+         "-c",
+         ~s{echo agent-output > agent_output.txt; parent=$(dirname "$PWD"); base=$(basename "$PWD"); cd "$parent"; mv "$base" "$base-gone"}
+       ], []}
 
   defp command({:write_then_wait_for_file, path}, _invocation) when is_binary(path) do
     script = "echo agent-output > agent_output.txt; while [ ! -f #{shell_arg(path)} ]; do sleep 0.05; done"
