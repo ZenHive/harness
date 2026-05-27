@@ -1414,7 +1414,7 @@ id = "51"
 phase = 7
 bundle = "multi-project"
 milestone = "v0_5"
-status = "pending"
+status = "done"
 title = "Cron-driven autonomous roadmap polling via Oban.Plugins.Cron"
 scores = { d = 3, b = 6, u = 5 }
 markers = ["parallel"]
@@ -1430,8 +1430,12 @@ This task is intentionally low-stakes: the cron is opt-in via config (`config :h
 
 parallel marker: this can be done independently of Tasks 49, 50 — they share no files.
 """
+implemented = """Cron-driven autonomous roadmap polling via Oban.Plugins.Cron. Harness.Cron.RoadmapPoller (Oban.Worker, queue: :cron, max_attempts: 1) polls registered projects on a configurable cron schedule (default '0 */2 * * *'), ingests next pending task per project via Roadmap.ingest/2, gates dispatch through queue-headroom + AgentRegistry availability, and enqueues run jobs onto each project's queue. cron_plugin/0 + cron_queue_config/0 wire into Harness.Oban supervisor; next_tick/0 + status/0 surface live cron state for the dashboard. Disabled by default; enable via config :harness, :cron_polling, enabled: true, schedule: "<cron>"."""
+delivered_by = "codex"
+verified = true
 created_at = "2026-05-24"
 scored_at = "2026-05-24"
+done_at = "2026-05-27"
 
 [[task]]
 id = "52"
