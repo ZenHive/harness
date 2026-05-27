@@ -91,6 +91,7 @@ defmodule Harness.Worktree do
           | {:marker_write_failed, String.t(), File.posix()}
           | {:rule_cleanup_failed, String.t(), File.posix()}
           | {:head_moved, expected :: String.t(), actual :: head_label()}
+          | {:source_unavailable, term()}
           # Inlined from the internal Harness.Git.error/0 — keeps this public
           # type self-describing without autolinking to a hidden module.
           | {:git_failed, args :: [String.t()], status :: integer(), output :: String.t()}
@@ -111,26 +112,41 @@ defmodule Harness.Worktree do
   branch `harness/<id>` off the repo's current `HEAD`. The `id` is unique per
   call, so concurrent `create/2` invocations on the same project never collide.
 
+  For `{:github, _}` sources, this also clones the upstream into the project's
+  cache (`<cache_root>/<project.name>`) on first call, and `git fetch`es +
+  fast-forwards the default branch on every subsequent call — so a worktree is
+  never carved off a stale `main`. See `Harness.Project.Source.Github`.
+
   Options:
 
     * `:base_dir` — override the configured worktree root.
     * `:base_ref` — the commit-ish the new branch forks from. Default `"HEAD"`.
     * `:id` — override the generated run id (intended for tests).
+    * `:cache_root` — override the GitHub-source cache root (intended for tests).
 
   Returns `{:ok, %Harness.Worktree{}}` or `{:error, reason}` — see `t:error/0`.
   """
   @spec create(Project.t(), keyword()) :: {:ok, t()} | {:error, error()}
   def create(%Project{} = project, opts \\ []) do
-    repo = Project.repo_path(project)
     id = Keyword.get(opts, :id) || generate_id()
     branch = @branch_prefix <> id
     path = Path.join([base_dir(opts), project.name, id])
     base_ref = Keyword.get(opts, :base_ref, "HEAD")
+    ensure_opts = Keyword.take(opts, [:cache_root])
 
-    with :ok <- validate_repo(repo),
+    with {:ok, repo} <- ensure_repo(project, ensure_opts),
+         :ok <- validate_repo(repo),
          {:ok, _output} <- Git.run(["worktree", "add", "-b", branch, path, base_ref], repo),
          {:ok, base_sha} <- resolve_base_sha(path) do
       {:ok, %__MODULE__{id: id, path: path, branch: branch, repo: repo, base_sha: base_sha}}
+    end
+  end
+
+  @spec ensure_repo(Project.t(), keyword()) :: {:ok, String.t()} | {:error, error()}
+  defp ensure_repo(%Project{} = project, opts) do
+    case Project.ensure_local_repo(project, opts) do
+      {:ok, path} -> {:ok, path}
+      {:error, reason} -> {:error, {:source_unavailable, reason}}
     end
   end
 

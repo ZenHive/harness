@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- GitHub project sources: `%Harness.Project{}` now accepts `source: {:github, url}`
+  alongside the existing `{:local, path}`. On first run, harness clones the URL
+  into a per-project cache directory under `:harness, :project, :cache_root`
+  (default `~/_DATA/harness/projects`); on every subsequent run, harness
+  `git fetch`es and fast-forwards the default branch, so a run never grades
+  against a stale `main`. Cache-recovery is transparent: if the cache directory
+  was removed between runs, the next call re-clones. New modules
+  `Harness.Project.Source.Local` and `Harness.Project.Source.Github` carry the
+  per-variant surface (`url/1`, `local_path/2`, `ensure_local/2`).
+  `Harness.Worktree.create/2` now calls `Project.ensure_local_repo/2` before
+  branching, so a `{:github, _}` project transparently boots from a fresh clone
+  or a fetched cache. (Task 47)
 - Precommit gate now fails on Sobelow findings (`sobelow --exit --skip`) and
   ships a `mix sobelow.baseline` alias for deliberately marking the current
   findings as skippable.

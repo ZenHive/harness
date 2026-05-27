@@ -42,6 +42,18 @@ defmodule Harness.ProjectRegistryTest do
     test "lookup/1 errors on an unknown name" do
       assert {:error, {:unknown_project, "missing"}} = ProjectRegistry.lookup("missing")
     end
+
+    test "accepts a {:github, url} source" do
+      project = %Harness.Project{
+        name: "gh",
+        source: {:github, "https://github.com/example/demo.git"},
+        check_stack: %CheckStack{name: :tiny, checks: []},
+        roadmap_path: "/tmp/gh"
+      }
+
+      assert :ok = ProjectRegistry.register(project)
+      assert {:ok, ^project} = ProjectRegistry.lookup("gh")
+    end
   end
 
   describe "init/1 — config-driven project loading" do

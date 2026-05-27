@@ -157,6 +157,7 @@ defmodule Harness.ProjectRegistry do
   defp fetch_source(entry) do
     case Map.fetch(entry, :source) do
       {:ok, {:local, path}} when is_binary(path) -> {:ok, {:local, Path.expand(path)}}
+      {:ok, {:github, url}} when is_binary(url) -> {:ok, {:github, url}}
       {:ok, other} -> {:error, {:invalid_project, {:unsupported_source, other}}}
       :error -> {:error, {:invalid_project, {:missing, :source}}}
     end

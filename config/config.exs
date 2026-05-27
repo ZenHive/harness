@@ -5,6 +5,11 @@ config :harness, Oban,
   queues: [],
   plugins: [Oban.Plugins.Pruner]
 
+# Project source cache — see Harness.Project.Source.Github.
+# `cache_root` is where harness clones GitHub-source projects on first run
+# and `git fetch`es before every subsequent run.
+config :harness, :project, cache_root: Path.expand("~/_DATA/harness/projects")
+
 # Result persistence — see Harness.ResultStore.
 # The default store is file-backed and keeps structured run records plus
 # reloadable batch results under this root.
