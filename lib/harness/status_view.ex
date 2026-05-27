@@ -7,6 +7,7 @@ defmodule Harness.StatusView do
   """
 
   alias Harness.AgentRegistry
+  alias Harness.Cron.RoadmapPoller
   alias Harness.Run
   alias Harness.Run.Result
   alias Harness.Run.Status
@@ -21,8 +22,9 @@ defmodule Harness.StatusView do
         }
 
   @type t :: %{
-          runs: [run_entry()],
-          unavailable_agents: [{module(), term()}]
+          required(:runs) => [run_entry()],
+          required(:unavailable_agents) => [{module(), term()}],
+          optional(:cron_polling) => RoadmapPoller.cron_status()
         }
 
   @bucket_order [:in_flight, :repairing, :green, :red]
@@ -39,12 +41,14 @@ defmodule Harness.StatusView do
   def snapshot do
     runs = Enum.flat_map(RunSupervisor.list_runs(), &run_entry/1)
 
-    %{runs: runs, unavailable_agents: AgentRegistry.list_unavailable()}
+    %{runs: runs, unavailable_agents: AgentRegistry.list_unavailable(), cron_polling: RoadmapPoller.status()}
   end
 
   @doc "Renders `snapshot/0` output for terminal display."
   @spec render(t()) :: String.t()
-  def render(%{runs: runs, unavailable_agents: unavailable}) do
+  def render(%{runs: runs, unavailable_agents: unavailable} = snapshot) do
+    cron_status = Map.get(snapshot, :cron_polling, RoadmapPoller.status())
+
     sections =
       @bucket_order
       |> Enum.map(&render_bucket(&1, runs))
@@ -56,7 +60,7 @@ defmodule Harness.StatusView do
         lines -> Enum.join(lines, "\n\n") <> "\n"
       end
 
-    "Harness fleet status\n\n" <> body
+    "Harness fleet status\n" <> render_cron_status(cron_status) <> "\n\n" <> body
   end
 
   @doc "Classifies a run status into a human-facing bucket."
@@ -141,4 +145,26 @@ defmodule Harness.StatusView do
   defp describe_unavailable({:quota_exhausted, kind}), do: "quota exhausted (#{kind})"
 
   defp describe_unavailable(reason), do: inspect(reason)
+
+  @spec render_cron_status(RoadmapPoller.cron_status()) :: String.t()
+  defp render_cron_status(:disabled), do: "Cron polling: disabled"
+
+  defp render_cron_status({:enabled, schedule, %DateTime{} = tick}) do
+    "Cron polling: next tick #{format_tick(tick)} (#{schedule})"
+  end
+
+  defp render_cron_status({:enabled, schedule, :unknown}) do
+    "Cron polling: next tick unknown (#{schedule})"
+  end
+
+  defp render_cron_status({:invalid, schedule, reason}) do
+    "Cron polling: invalid schedule #{inspect(schedule)} #{inspect(reason)}"
+  end
+
+  @spec format_tick(DateTime.t()) :: String.t()
+  defp format_tick(%DateTime{} = tick) do
+    tick
+    |> DateTime.to_iso8601()
+    |> String.replace("T", " ")
+  end
 end

@@ -17,10 +17,22 @@ defmodule Harness.StatusViewTest do
   end
 
   test "render/1 shows an empty fleet message when nothing is registered" do
-    output = StatusView.render(%{runs: [], unavailable_agents: []})
+    output = StatusView.render(%{runs: [], unavailable_agents: [], cron_polling: :disabled})
 
     assert output =~ "Harness fleet status"
+    assert output =~ "Cron polling: disabled"
     assert output =~ "(no runs in flight or lingering)"
+  end
+
+  test "render/1 shows the next scheduled cron tick in the header" do
+    output =
+      StatusView.render(%{
+        runs: [],
+        unavailable_agents: [],
+        cron_polling: {:enabled, "0 */2 * * *", ~U[2026-05-27 02:00:00Z]}
+      })
+
+    assert output =~ "Cron polling: next tick 2026-05-27 02:00:00Z (0 */2 * * *)"
   end
 
   test "classify/1 maps lifecycle states into the four buckets" do
@@ -49,7 +61,8 @@ defmodule Harness.StatusViewTest do
           detail: "verification_red"
         }
       ],
-      unavailable_agents: [{FakeAdapter, {:quota_exhausted, :exited}}]
+      unavailable_agents: [{FakeAdapter, {:quota_exhausted, :exited}}],
+      cron_polling: :disabled
     }
 
     output = StatusView.render(snapshot)

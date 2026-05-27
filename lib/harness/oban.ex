@@ -9,10 +9,14 @@ defmodule Harness.Oban do
 
   use Supervisor
 
+  import Ecto.Query, only: [from: 2]
+
+  alias Harness.Cron.RoadmapPoller
   alias Harness.Project
   alias Harness.ProjectRegistry
 
   @default_queue_limit 1
+  @headroom_states ~w(available scheduled executing retryable)
 
   @doc false
   @spec start_link(term()) :: Supervisor.on_start()
@@ -71,8 +75,9 @@ defmodule Harness.Oban do
     Enum.each(ProjectRegistry.list(), &ensure_project_queue/1)
   end
 
+  @doc false
   @spec oban_opts() :: keyword()
-  defp oban_opts do
+  def oban_opts do
     base =
       :harness
       |> Application.get_env(Oban, [])
@@ -80,7 +85,20 @@ defmodule Harness.Oban do
       |> Keyword.put_new(:repo, Harness.Repo)
       |> Keyword.put_new(:queues, [])
 
-    Keyword.put(base, :name, __MODULE__)
+    base
+    |> maybe_enable_cron_queue()
+    |> maybe_enable_cron_plugin()
+    |> Keyword.put(:name, __MODULE__)
+  end
+
+  @doc false
+  @spec queue_headroom?(Project.t()) :: boolean()
+  def queue_headroom?(%Project{} = project) do
+    if queues_enabled?() and Process.whereis(__MODULE__) do
+      queued_job_count(project) < queue_limit(project)
+    else
+      true
+    end
   end
 
   @spec queues_enabled?() :: boolean()
@@ -94,4 +112,42 @@ defmodule Harness.Oban do
   @spec queue_limit(Project.t()) :: pos_integer()
   defp queue_limit(%Project{concurrency_cap: cap}) when is_integer(cap) and cap > 0, do: cap
   defp queue_limit(%Project{}), do: @default_queue_limit
+
+  @spec queued_job_count(Project.t()) :: non_neg_integer()
+  defp queued_job_count(%Project{} = project) do
+    queue = queue_name(project)
+
+    query =
+      from(job in Oban.Job,
+        where: job.queue == ^queue and job.state in ^@headroom_states
+      )
+
+    Harness.Repo.aggregate(query, :count, :id)
+  end
+
+  @spec maybe_enable_cron_queue(keyword()) :: keyword()
+  defp maybe_enable_cron_queue(opts) do
+    if RoadmapPoller.enabled?() do
+      {queue, limit} = RoadmapPoller.cron_queue_config()
+
+      Keyword.update(opts, :queues, [{queue, limit}], fn
+        queues when is_list(queues) -> Keyword.put_new(queues, queue, limit)
+        _other -> [{queue, limit}]
+      end)
+    else
+      opts
+    end
+  end
+
+  @spec maybe_enable_cron_plugin(keyword()) :: keyword()
+  defp maybe_enable_cron_plugin(opts) do
+    if RoadmapPoller.enabled?() do
+      Keyword.update(opts, :plugins, [RoadmapPoller.cron_plugin()], fn
+        plugins when is_list(plugins) -> plugins ++ [RoadmapPoller.cron_plugin()]
+        _other -> [RoadmapPoller.cron_plugin()]
+      end)
+    else
+      opts
+    end
+  end
 end

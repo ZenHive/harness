@@ -5,6 +5,12 @@ config :harness, Oban,
   queues: [],
   plugins: [Oban.Plugins.Pruner]
 
+# Autonomous roadmap polling is opt-in. When enabled, Harness.Oban appends an
+# Oban.Plugins.Cron entry that runs Harness.Cron.RoadmapPoller on this schedule.
+config :harness, :cron_polling,
+  enabled: false,
+  schedule: "0 */2 * * *"
+
 # Project source cache — see Harness.Project.Source.Github.
 # `cache_root` is where harness clones GitHub-source projects on first run
 # and `git fetch`es before every subsequent run.
