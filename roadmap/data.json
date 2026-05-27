@@ -1168,7 +1168,7 @@
       "id": "33",
       "phase": 5,
       "bundle": "surface",
-      "status": "in_progress",
+      "status": "done",
       "title": "Same-task A/B agent-evaluation mode",
       "scores": {
         "d": 4,
@@ -1195,7 +1195,10 @@
       "body": "harness's dogfood loop produces a binary pass/fail verdict per run — it verifies that a task was delivered, but never measures or compares how well different agents perform. Every dogfood task to date has gone green without the repair loop firing, and each was dispatched on a different task to a single agent, so the accumulated runs cannot rank the agents: the only signal captured is did-it-pass. The missing piece that turns harness from a verifier into an evaluation instrument is a same-task A/B mode.\n\nAdd a mode that dispatches one rmap task to several agents concurrently — each driven in its own isolated worktree, exactly as a normal batch run — and collects the results into a side-by-side comparison rather than an ordered per-task list. The comparison surfaces the per-agent quality metrics harness already captures or can cheaply derive: the verification verdict, repair attempts, wall-clock duration, how many checks were red on the first verification attempt, and the size of the agent's diff. This is a variant of the existing batch fan-out (Task 9) — same fan-out and crash-isolation, but one task across N adapters instead of N tasks each on one adapter, with a comparison aggregator in place of the ordered result list. Reuse the batch machinery; do not build a second orchestrator.\n\nThe load-bearing design constraint: the verification stack stays the binary pass/fail grader. Evaluator separation means the agent never grades itself — and harness must not start grading on a fuzzy composite score either. Evaluation metrics are a separate, additive layer read off the run records; they inform the human's judgement, they do not become the verdict. The run-record fields the comparison reads (first-attempt failed-check count, agent diff size) are captured by Task 19; this task consumes them.\n",
       "created_at": "2026-05-22",
       "started_at": "2026-05-24",
+      "done_at": "2026-05-27",
       "scored_at": "2026-05-22",
+      "implemented": "Cursor delivered 461 LOC: new lib/harness/batch/agent_evaluation.ex (159) + new test/harness/batch/agent_evaluation_test.exs (243) + lib/harness/batch.ex (+36) + skills/harness-driver/SKILL.md (+29). Dispatch one task to N adapters concurrently, collect per-agent metrics (verdict, repair_attempts, wall-clock, first_attempt_failed_check_count, agent_diff_size) without folding into the verdict. Cherry-picked as 5241f9e — original run settled :verification_red on Task 64's quota false-positive (now fixed). Verification post-cherry-pick: 4 new tests pass 4/4 in isolation; full suite has 2 load-flakiness failures unrelated to this diff.",
+      "delivered_by": "cursor",
       "cross_repo": []
     },
     {
@@ -2177,7 +2180,7 @@
       "id": "61",
       "phase": 7,
       "bundle": "multi-project",
-      "status": "in_progress",
+      "status": "done",
       "title": "Codex run worktree disappeared mid-run + cross-wrote into a sibling worktree (Wave 1)",
       "scores": {
         "d": 5,
@@ -2201,7 +2204,10 @@
       "body": "Wave 1 of Phase 7 dispatched Task 45 (Codex) and Task 46 (Cursor) in parallel from the same `development` HEAD (783cd50). Codex's run settled `:commit_failed` with `{:enoent}` on its worktree's `.harness-retained` marker followed by `ArgumentError: worktree cwd is not a directory` from `Harness.AgentRules.worktree_root!/1` — Codex's run worktree (`run-1779751918402-46fbe061`) was gone before `Harness.Run.commit_worktree/2` ran. Independently of that, Codex's Rust preset files (`lib/harness/check_stack/preset/rust.ex`, `test/harness/check_stack/preset/rust_test.exs`, `test/support/fixtures/rust_project*`) ended up inside Cursor's worktree directory (`run-1779751920208-d0604434`) and were swept into Cursor's `git add` and committed as part of f3222c3 (\"agent delivery — task 46\").\n\nTwo failures together suggest either (a) `agy`/Codex-style worktree-cwd ignore (mirrors Task 32 / Task 41) where Codex resolved its cwd to Cursor's worktree once its own went :enoent, or (b) a harness-side cleanup race that pulled Codex's worktree out from under the still-running adapter.\n\nInvestigation directions:\n- Is there a harness boot/periodic sweeper that removed Codex's worktree while still running? (The Task 44 log shows a boot sweep at startup that \"pruned: 1\" — what triggered it.)\n- Did Codex's Port-spawned `codex exec` survive past its worktree deletion and then resolve some operations to a sibling cwd via Port `cwd:` defaulting? (Compare to Task 41's `:worktree_isolation` field.)\n- Add a guard inside `Run.commit_worktree/2` that fails fast and loud with a distinct reason when the worktree directory has gone :enoent, rather than crashing inside `AgentRules.worktree_root!/1`.\n\nWave 1 closeout integrated f3222c3 (carrying both agents' work) into `development` as 2bce2a2 + `f5bc4a1` spec fix-up; both Tasks 45 and 46 settled `done` against the same `shipped_in`. This task tracks the underlying isolation/race so it doesn't recur in Waves 2/3.\n",
       "created_at": "2026-05-25",
       "started_at": "2026-05-27",
+      "done_at": "2026-05-27",
       "scored_at": "2026-05-25",
+      "implemented": "Codex delivered 190 LOC: lib/harness/worktree.ex (+110, active-worktree guard + missing-path failure handling) + lib/harness/worktree/sweeper.ex (+9) + lib/harness/run.ex (+12) + lib/harness/run/result.ex (+3, new :worktree_missing reason) + test/harness/run_test.exs (+32) + test/harness/worktree/sweeper_test.exs (+13) + test/support/fake_adapter.ex (+23). Resolves Wave 1 worktree race: cleanup pinned by .harness-retained marker; Run.commit_worktree settles {:commit_failed, {:worktree_missing, path}} instead of crashing; regression test rejects sibling-worktree cross-writes. Cherry-picked as 30a0208. Verification: tests pass in isolation; full suite has 2 load-flakiness failures unrelated to this diff.",
+      "delivered_by": "codex",
       "cross_repo": []
     },
     {
@@ -2268,6 +2274,74 @@
       "scored_at": "2026-05-27",
       "implemented": "Dashboard transcript pane backfills on mount via new Harness.Run.transcript/1 snapshot (buffer + monotonic seq); LiveView subscribes-then-fetches and drops PubSub broadcasts with seq <= last_seq to dedup the race window. Driver on_output now sends to the gen_statem (which owns the bounded 200 KiB buffer + seq counter), and re-broadcasts as {:harness_transcript, run_id, seq, chunk}. Shared Transcript.append/3 trim helper replaces the duplicated live.ex copy. Tests: append/3 cap + iodata, broadcast/3 seq tuple, Run.transcript/1 snapshot + race-safety dedup + 200 KiB trim. mix compile / credo / dialyzer / mix test.json all green (one pre-existing flake unrelated).",
       "delivered_by": "claude",
+      "cross_repo": []
+    },
+    {
+      "id": "64",
+      "phase": 5,
+      "bundle": "surface",
+      "status": "done",
+      "title": "FailureClass quota classification false-positive on full agent transcript",
+      "scores": {
+        "d": 2,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 2.5,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "FailureClass.collect_text/1 limits Outcome.output contribution to the trailing 4 KiB (or similar bounded constant)",
+        "Existing FailureClass tests still pass — terminal API quota errors (`billing_error`, `usage limit`, `quota exceeded`) are still detected when they appear in the tail",
+        "New regression test: a 100 KiB transcript that contains `quota` in the middle but a benign tail does NOT classify as :quota_exhausted",
+        "New regression test: a transcript with `Credit balance is too low` in the tail DOES classify as :quota_exhausted (Claude billing-error precedent from earlier in this batch)"
+      ],
+      "out_of_scope": [
+        "Refactoring quota detection to use a structured error channel — the byte-tail limit is the minimum correctness fix",
+        "Touching the AgentRegistry's separate @quota_patterns list (already correctly scoped to Outcome.output only)",
+        "Adapter-specific quota detection (Claude billing_error, OpenAI rate_limit_exceeded) — same regex set covers them; the bug is matching scope, not the patterns"
+      ],
+      "body": "`Harness.Run.FailureClass.collect_text/1` returns the full agent stream-json\ntranscript (`Outcome.output`, often >1 MB), which is then regex-matched against\n`RetryPolicy.default_quota_patterns` to detect quota exhaustion. Agents\nroutinely read source code and docs that contain the trigger words — e.g. a\nTask 33 dogfood run hit 341 `/quota/i` matches, all benign (the agent reading\nTask 40's freshly-merged moduledoc that literally writes \"subscription quota\nexhausted\"). Result: a transient flaky-test verification failure was\nmisclassified as `:quota_exhausted`, the repair loop short-circuited\n(`repairable?/1` returns false on quota classification), and a recoverable run\nsettled `:failed` with `repair_attempts: 0`.\n\nTighten the classifier: quota signals appear in the tail of an agent\ntranscript (final error envelope / last assistant message), never in the\nmiddle. Limit `outcome_text/1` to the trailing N bytes (e.g. last 4 KiB) so\nthe regex only sees the agent's terminal output, not its mid-run source reads.\n\nReal-world consequence: as soon as harness reads its own source containing\nquota-related strings (which it does constantly post-Task-40), every red\nverdict on a long-running agent gets misclassified, the repair loop never\nfires, and harness loses its load-bearing recovery mechanism.\n",
+      "created_at": "2026-05-27",
+      "started_at": "2026-05-27",
+      "done_at": "2026-05-27",
+      "scored_at": "2026-05-27",
+      "implemented": "Clipped Outcome.output and per-CheckResult.output to trailing 4 KiB (new @text_tail_bytes constant + private tail/1 helper) before quota-pattern regex matching in Harness.Run.FailureClass. Quota signals only appear in an agent's terminal envelope (final result message + API error JSON), never mid-run, so the byte-tail limit preserves real detection (billing_error, rate limit, 429, etc.) while eliminating the false positives from agents displaying source/docs that contain those words. Two regression tests added to RetryPolicyTest.",
+      "delivered_by": "claude",
+      "cross_repo": []
+    },
+    {
+      "id": "65",
+      "phase": 7,
+      "bundle": "multi-project",
+      "status": "superseded",
+      "title": "Salvage red-but-real runs — discoverable + executable integration of harness/<run-id> branches",
+      "scores": {
+        "d": 4,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 1.75,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Result struct exposes a stable `salvage_branch` and a `Result.salvageable?/1` predicate",
+        "Harness.salvage/2 (or /3) integrates a salvageable run's branch onto a target ref and returns a structured outcome — this is the primary surface for AI orchestrators (Tidewave/IEx)",
+        "Re-verification on the integrated head is at least optional (re_verify: true | false), defaulting to the safer choice",
+        "Cherry-pick conflict is reported as a structured outcome, not a crash",
+        "ResultStore.list_run_records exposes salvageable filtering (or a Result.salvageable?/1 caller is documented) so an orchestrator can batch-triage red-but-real runs"
+      ],
+      "out_of_scope": [
+        "Auto-salvage on every red run — manual gate stays the rule (matches Evaluator Separation)",
+        "Salvaging uncommitted worktree state — Task 30 already commits before teardown; preserving uncommitted state would require a separate stash protocol",
+        "Replaying the dispatched task — salvage is integration of the agent's existing diff, not a redo",
+        "Dashboard banner / button — secondary, human-operator-facing only; AI orchestrators use the Elixir API directly. File a separate small task if/when a human-driving-the-dashboard workflow matters"
+      ],
+      "body": "When a run settles :failed but the agent's diff is real (`agent_diff_size > 0`),\nharness already preserves the work: Task 30 commits the agent's changes to\n`harness/<run-id>` before worktree teardown, so the branch survives even after\nthe worktree directory is cleaned up. What's missing is discoverability and an\nexecutable integration path — today an operator (or AI orchestrator) has to\nmanually scan git branches, run a cherry-pick, and re-verify by hand.\n\nTask 33's Cursor run is the precedent: a 461-LOC diff with self-graded 504/504\ntests, settled :failed on a load-induced verification flake compounded by the\nTask 64 quota false-positive. Without explicit salvage support, the diff is\nlost-by-default friction.\n\n## Layer 1 — discoverable\n- Add a `salvage_branch` field (e.g. `\"harness/run-1779853579933-6fa47408\"`) on\n  `Harness.Run.Result`; populate from `worktree.branch` at terminal-state entry.\n- Add a `Result.salvageable?/1` predicate — true when `state == :failed and\n  agent_diff_size > 0`.\n- Dashboard run-detail page surfaces a \"Salvage available\" banner with the\n  branch name and a copy-pasteable cherry-pick snippet.\n\n## Layer 2 — executable\n- `Harness.salvage(run_id, target_ref \\\\ \"development\", opts \\\\ [])` —\n  verifies the branch exists, performs the cherry-pick/merge onto target_ref,\n  optionally re-runs the verification stack against the integrated head, and\n  returns a structured outcome (clean / conflict / verification result).\n- Optional: dashboard \"Salvage\" action button next to the banner.\n- Optional: `mix harness.status --salvageable` lists every red-but-real run\n  with its branch + diff size + verdict for batch triage.\n\nEither layer can ship independently; bundle if one session is enough.\n",
+      "created_at": "2026-05-27",
+      "scored_at": "2026-05-27",
       "cross_repo": []
     }
   ]

@@ -87,9 +87,10 @@
 |------|--------|-------|
 | Task 18 `[P]` | ✅ | 🎁 **surface** · 🚀 **v0_4** · Human status view [D:3/B:5/U:5 → Eff:1.67] 🚀 |
 | Task 19 `[P]` | ✅ | 🎁 **surface** · 🚀 **v0_4** · Structured run logging + result persistence [D:5/B:5/U:5 → Eff:1.0] 📋 |
-| Task 33 | 🔄 | 🎁 **surface** · Same-task A/B agent-evaluation mode [D:4/B:6/U:5 → Eff:1.38] 📋 |
+| Task 33 | ✅ | 🎁 **surface** · Same-task A/B agent-evaluation mode [D:4/B:6/U:5 → Eff:1.38] 📋 |
 | Task 42 | ✅ | 🎁 **surface** · Audit-surfaced: Refresh roadmap focus phase pin after Phase 1 closeout [D:1/B:3/U:4 → Eff:3.5] 🎯 |
 | Task 58 | ✅ | 🎁 **surface** · 🚀 **v0_4** · Harness.AuditReview — HIGH-tier audit grader dispatch [D:3/B:7/U:7 → Eff:2.33] 🎯 |
+| Task 64 | ✅ | 🎁 **surface** · 🐛 FailureClass quota classification false-positive on full agent transcript [D:2/B:5/U:5 → Eff:2.5] 🎯 |
 <!-- TASKS:END -->
 
 ---
@@ -124,7 +125,8 @@
 | Task 50 | ✅ | 🎁 **dashboard** · 🚀 **v0_5** · Phoenix LiveView dashboard + embedded Oban Web (mountable + standalone) [D:7/B:9/U:8 → Eff:1.21] 📋 |
 | Task 51 `[P]` | ✅ | 🎁 **multi-project** · 🚀 **v0_5** · Cron-driven autonomous roadmap polling via Oban.Plugins.Cron [D:3/B:6/U:5 → Eff:1.83] 🚀 |
 | Task 60 | ✅ | 🎁 **multi-project** · 🐛 Harness.Worktree.Isolation false-positive on incidental .claude/ writes during dogfood [D:2/B:6/U:7 → Eff:3.25] 🎯 |
-| Task 61 | 🔄 | 🎁 **multi-project** · 🐛 Codex run worktree disappeared mid-run + cross-wrote into a sibling worktree (Wave 1) [D:5/B:8/U:8 → Eff:1.6] 🚀 |
+| Task 61 | ✅ | 🎁 **multi-project** · 🐛 Codex run worktree disappeared mid-run + cross-wrote into a sibling worktree (Wave 1) [D:5/B:8/U:8 → Eff:1.6] 🚀 |
 | Task 62 | ⛔ | 🎁 **multi-project** · 🐛 Stale @spec on Harness.Batch.loop_context/8 hid 17 cascade dialyzer warnings (Wave 1) [D:2/B:4/U:5 → Eff:2.25] 🎯 |
 | Task 63 | ✅ | 🎁 **dashboard** · 🐛 Dashboard transcript backfill — late subscribers see prior chunks [D:3/B:7/U:8 → Eff:2.5] 🎯 |
+| Task 65 | ⛔ | 🎁 **multi-project** · Salvage red-but-real runs — discoverable + executable integration of harness/<run-id> branches [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 <!-- TASKS:END -->
