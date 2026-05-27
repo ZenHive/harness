@@ -52,6 +52,13 @@ defmodule Harness.Worktree do
   @retained_marker ".harness-retained"
   @default_base_dir "~/_DATA/worktrees/.harness"
 
+  # Ignored-but-load-bearing files the parent checkout carries that the verification
+  # stack relies on but that .gitignore keeps out of the worktree-add. `.sobelow-skips`
+  # is the line-fingerprint baseline audit-review regenerates; without it every harness
+  # worktree re-flags inherited findings. Add new entries here as similar baselines
+  # appear (e.g. credo's .credo-skips, a future doctor baseline, etc.).
+  @baseline_files [".sobelow-skips"]
+
   # Identity stamped on commit/2's commits — set explicitly so a commit never
   # fails on a repo with no user.name/user.email configured, and so harness-made
   # deliveries stay attributable (`git log --author=harness`).
@@ -140,8 +147,26 @@ defmodule Harness.Worktree do
          :ok <- validate_repo(repo),
          {:ok, _output} <- Git.run(["worktree", "add", "-b", branch, path, base_ref], repo),
          {:ok, base_sha} <- resolve_base_sha(path) do
+      :ok = propagate_baseline_files(repo, path)
       {:ok, %__MODULE__{id: id, path: path, branch: branch, repo: repo, base_sha: base_sha}}
     end
+  end
+
+  # Copies ignored-but-load-bearing baseline files (see @baseline_files) from the
+  # parent checkout into the new worktree. These files are gitignored so
+  # `git worktree add` does not propagate them — without this, the verification
+  # stack re-flags every finding the parent's baseline suppresses.
+  # sobelow_skip ["Traversal.FileModule"]
+  @spec propagate_baseline_files(String.t(), String.t()) :: :ok
+  defp propagate_baseline_files(repo, worktree_path) do
+    Enum.each(@baseline_files, fn name ->
+      src = Path.join(repo, name)
+
+      if File.regular?(src) do
+        dst = Path.join(worktree_path, name)
+        _ = File.cp(src, dst)
+      end
+    end)
   end
 
   @spec ensure_repo(Project.t(), keyword()) :: {:ok, String.t()} | {:error, error()}

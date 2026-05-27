@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 4 — Multi-Agent & Quota Fail-over (19 of 20 done · 0 in progress)
+**Focus phase:** 4 — Multi-Agent & Quota Fail-over (20 of 20 done · 0 in progress)
 
-**Last shipped:** Task 40 — Audit-surfaced: AgentRegistry availability lost on GenServer restart, Task 41 — Codex adapter — worktree isolation breaks intermittently (cwd ignored, agent edits main checkout), Task 53 — Smoke-test pi-via-local-LLM on a low-D rmap task, Task 59 — Cross-agent grader as a repair-loop move (gated, asymmetric, budgeted), Task 67 — Audit-surfaced: Batch.run_pinned settles entire pinned queue on one adapter's pre-dispatch unavailability on 2026-05-27
+**Last shipped:** Task 40 — Audit-surfaced: AgentRegistry availability lost on GenServer restart, Task 41 — Codex adapter — worktree isolation breaks intermittently (cwd ignored, agent edits main checkout), Task 53 — Smoke-test pi-via-local-LLM on a low-D rmap task, Task 54 — Cost-aware agent capability declaration (:free vs :metered), Task 59 — Cross-agent grader as a repair-loop move (gated, asymmetric, budgeted), Task 67 — Audit-surfaced: Batch.run_pinned settles entire pinned queue on one adapter's pre-dispatch unavailability on 2026-05-27
 
-**Up next:** Task 54 — Cost-aware agent capability declaration (:free vs :metered) [D:3/B:5/U:5 → Eff:1.67] 🚀
+**Up next:** Task 66 — Skip pollution detection for adapters declaring worktree_isolation: true [D:3/B:5/U:7 → Eff:2.0] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -71,7 +71,7 @@
 | Task 43 | ✅ | 🎁 **multi-agent** · 🐛 Dogfood verification reds on pre-existing TODO comments in dispatch base [D:3/B:6/U:7 → Eff:2.17] 🎯 |
 | Task 52 `[P]` | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Add pi.dev headless adapter [D:5/B:8/U:7 → Eff:1.5] 🚀 |
 | Task 53 `[P]` | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Smoke-test pi-via-local-LLM on a low-D rmap task [D:2/B:4/U:4 → Eff:2.0] 🎯 |
-| Task 54 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Cost-aware agent capability declaration (:free vs :metered) [D:3/B:5/U:5 → Eff:1.67] 🚀 |
+| Task 54 `[P]` | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Cost-aware agent capability declaration (:free vs :metered) [D:3/B:5/U:5 → Eff:1.67] 🚀 |
 | Task 55 | ✅ | 🎁 **multi-agent** · 🐛 Audit-surfaced: BaselineFilter.Credo content-blind matching causes false-pass / false-red [D:3/B:7/U:7 → Eff:2.33] 🎯 |
 | Task 59 | ✅ | 🎁 **multi-agent** · Cross-agent grader as a repair-loop move (gated, asymmetric, budgeted) [D:5/B:5/U:4 → Eff:0.9] ⚠️ |
 | Task 67 | ✅ | 🎁 **multi-agent** · 🐛 Audit-surfaced: Batch.run_pinned settles entire pinned queue on one adapter's pre-dispatch unavailability [D:3/B:5/U:5 → Eff:1.67] 🚀 |
@@ -133,5 +133,4 @@
 | Task 65 | ⛔ | 🎁 **multi-project** · Salvage red-but-real runs — discoverable + executable integration of harness/<run-id> branches [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 | Task 66 | ⬜ | 🎁 **multi-project** · 🐛 Skip pollution detection for adapters declaring worktree_isolation: true [D:3/B:5/U:7 → Eff:2.0] 🎯 |
 | Task 69 | ✅ | 🎁 **multi-project** · 🐛 Audit-surfaced: Worktree.Isolation porcelain parser ignores rename source path + .DS_Store only matches at repo root [D:2/B:4/U:4 → Eff:2.0] 🎯 |
-| Task 70 | ⬜ | 🎁 **multi-project** · 🐛 Propagate sobelow baseline into harness worktrees [D:2/B:4/U:6 → Eff:2.5] 🎯 |
 <!-- TASKS:END -->

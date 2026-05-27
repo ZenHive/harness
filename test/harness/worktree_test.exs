@@ -98,6 +98,25 @@ defmodule Harness.WorktreeTest do
       assert worktrees |> Enum.map(& &1.branch) |> Enum.uniq() |> length() == 8
       assert Enum.all?(worktrees, &File.dir?(&1.path))
     end
+
+    test "propagates the .sobelow-skips baseline from the parent repo into the worktree" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+      File.write!(Path.join(repo, ".sobelow-skips"), "Traversal.FileModule: fake,foo.ex:1,DEADBEEF\n")
+
+      assert {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base)
+
+      assert File.read!(Path.join(wt.path, ".sobelow-skips")) =~ "DEADBEEF"
+    end
+
+    test "silently skips propagation when the parent repo has no .sobelow-skips" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+
+      assert {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base)
+
+      refute File.exists?(Path.join(wt.path, ".sobelow-skips"))
+    end
   end
 
   describe "create/2 — github source" do

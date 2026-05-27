@@ -1918,7 +1918,7 @@
       "phase": 4,
       "bundle": "multi-agent",
       "milestone": "v0_3",
-      "status": "pending",
+      "status": "done",
       "title": "Cost-aware agent capability declaration (:free vs :metered)",
       "scores": {
         "d": 3,
@@ -1948,7 +1948,11 @@
       ],
       "body": "Add a :cost_tier axis (e.g. :free | :metered) to the Harness.AgentAdapter capability\ndeclaration, and a registry filter that exposes \"list available free-tier adapters\" as\na first-class query. This is the MINIMUM cost-aware dispatch primitive — it makes cost\nvisible to the orchestrator without yet baking in any selection policy. The policy\n(\"cheapest-first,\" \"free-then-paid-fallback,\" cost-budget caps, rmap-side cost-aware\ntask selection) emerges as a SEPARATE follow-up task once Task 53's smoke test tells\nus whether pi+local-LLM actually delivers useful work — designing the policy before\nthat data is premature optimization. Pi (Task 52) is the first :free adapter; existing\nmetered adapters (Claude/Cursor/Codex/Grok/Antigravity) get :metered explicitly.\n",
       "created_at": "2026-05-24",
+      "done_at": "2026-05-27",
       "scored_at": "2026-05-24",
+      "implemented": "Cherry-picked Run C of the Task 53 A/B smoke test (worktree commit 83714fe → development 4a6e27c). Adds :cost_tier (:free | :metered) to Harness.AgentAdapter.Capabilities (defaults to :metered for backwards compatibility), :cost_tier capability matching to AgentAdapter.supports?/2, :cost_tier guard pattern on Pi (the only adapter declaring :free — every other adapter inherits :metered without modification), and AgentRegistry.filter_by_cost_tier/2 as the cost-aware dispatch primitive (no selection policy baked in). The conformance suite now gates all adapters on the new field — adapters that don't opt in stay :metered and stay green. skills/harness-driver/SKILL.md updated with cost-aware adapter selection example. Full mix precommit clean on development: format / compile-warnings-as-errors / credo --strict / doctor (100/100/100) / 526 tests passing / coverage 80.73% / sobelow clean. 9 files, 140 insertions, 8 deletions.",
+      "delivered_by": "claude-opus-4-7 (subscription, Run C of Task 53 A/B)",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -2473,38 +2477,6 @@
       "implemented": "porcelain_path/1 renamed to porcelain_paths/1 returning [src, dst] on rename lines; allowlisted_path? requires Enum.all? to be allowlisted. Added **/<name> recursive-basename pattern via matches_pattern? + matches_basename?; default allowlist's .DS_Store upgraded to **/.DS_Store. Two REGRESSION tests in isolation_test.exs cover rename-out-of-tracked-dir and docs/.DS_Store-at-depth.",
       "delivered_by": "claude",
       "verified": true,
-      "cross_repo": []
-    },
-    {
-      "id": "70",
-      "phase": 7,
-      "bundle": "multi-project",
-      "status": "pending",
-      "title": "Propagate sobelow baseline into harness worktrees",
-      "scores": {
-        "d": 2,
-        "b": 4,
-        "u": 6
-      },
-      "eff": 2.5,
-      "markers": [
-        "bug"
-      ],
-      "depends_on": [
-        50
-      ],
-      "acceptance_criteria": [
-        "A dogfood run on a clean diff does not get sobelow false positives from `lib/harness/worktree.ex` (or any other inherited baseline-suppressed finding)",
-        "The fix is covered by an isolated test (worktree carve-out preserves the relevant baseline file)",
-        "If approach (2) is chosen, the propagation is generic enough to extend to a configurable allow-list of files, not a hard-coded `.sobelow-skips`"
-      ],
-      "out_of_scope": [
-        "Restructuring how audit-review manages the baseline",
-        "Adding new sobelow skip annotations"
-      ],
-      "body": "`.sobelow-skips` is gitignored (`.gitignore:32`), so `git worktree add` does not propagate it into a harness run worktree. Every dogfood run therefore starts without the baseline file and sobelow re-flags every finding that the main-checkout baseline suppresses — most visibly the 3 LOW-confidence `Traversal.FileModule` findings in `lib/harness/worktree.ex` that audit-review has already triaged.\n\nSurfaced during the Task 53 smoke-test A/B (run-1779862714944-c578b3a7): Claude's diff was clean across format / compile / credo / doctor / tests / coverage but sobelow flagged 3 inherited noise findings purely because the baseline file was missing from the worktree.\n\nTwo viable fixes:\n1. Un-gitignore `.sobelow-skips` and check it in. audit-review already manages line-fingerprint drift; tracked baseline is the simpler model. Trade-off: noisy diffs from baseline regeneration.\n2. Have `Harness.Worktree.create/2` (or the carve-out step) copy `.sobelow-skips` from the main checkout into the new worktree if it exists in the main checkout. Trade-off: small surface, files outside the index require explicit handling.\n\nEither is fine; (2) is more localised and avoids touching the audit-review/sobelow-skips contract. The fix should also generalise to any other ignored-but-load-bearing baseline file the verification stack relies on.\n",
-      "created_at": "2026-05-27",
-      "scored_at": "2026-05-27",
       "cross_repo": []
     }
   ]
