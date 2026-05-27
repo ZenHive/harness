@@ -1618,7 +1618,7 @@
       "phase": 7,
       "bundle": "multi-project",
       "milestone": "v0_5",
-      "status": "pending",
+      "status": "done",
       "title": "Harness.Project.Source.Github: clone-and-cache + fetch-before-run",
       "scores": {
         "d": 5,
@@ -1647,7 +1647,11 @@
       ],
       "body": "Once `%Harness.Project{}` exists (Task 46), extend its `source` field to also accept `{:github, url}`. The first time a GitHub-source project is registered or run, harness clones it to a known cache path (e.g. `~/_DATA/harness/projects/<project_name>/`). Before every run, harness `git fetch`es to avoid running an agent against stale `main`.\n\nCredentials piggyback on the host's existing `gh` CLI and SSH config — do not invent an auth layer inside harness. If `gh auth status` is green and the user can `git clone` the URL from a shell, harness can too via the same shell-out path it uses for everything else.\n\nThe clone-and-cache flow needs to handle: first-time clone (target dir doesn't exist), subsequent fetch (target dir exists, refresh `main`), and the \"user nuked the cache\" recovery (target dir missing on a project that was previously cloned — re-clone transparently). It does NOT need to handle: branch tracking other than `main`/default, submodules, LFS, or shallow clones (those can be follow-ups when a real need surfaces).\n",
       "created_at": "2026-05-24",
+      "done_at": "2026-05-27",
       "scored_at": "2026-05-24",
+      "implemented": "Hand-integrated from worktree run-1779837326094-69cfa9f6 — Claude built\nHarness.Project.Source.{Local,Github} with the clone-and-cache + fetch+ff\n+ cache-recovery contract; Worktree.create/2 now calls Project.ensure_local_repo/2\nahead of branching so {:github, _} projects boot transparently from cache.\nconfig/config.exs adds :harness, :project, :cache_root (default\n~/_DATA/harness/projects). Test surface: 10 unit tests via a local bare-repo\nupstream + 2 :integration tests against github.com/octocat/Hello-World.\n\nRun settled :checkout_polluted on a Task 32 false-positive (the just-committed\nprecommit alias from 25d6102 was staged in the main checkout when Isolation\ntook its baseline snapshot; same pattern as Task 48). Verification stack\npost-integration: 457/457 offline + 9/9 integration + 0 dialyzer warnings.",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     },
     {

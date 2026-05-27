@@ -118,7 +118,7 @@
 | Task 44 | ✅ | 🎁 **multi-project** · 🚀 **v0_5** · Promote check stack to a first-class %Harness.CheckStack{} with a preset library [D:4/B:7/U:8 → Eff:1.88] 🚀 |
 | Task 45 | ✅ | 🎁 **multi-project** · 🚀 **v0_5** · First non-Elixir preset: Rust check stack [D:3/B:6/U:6 → Eff:2.0] 🎯 |
 | Task 46 | ✅ | 🎁 **multi-project** · 🚀 **v0_5** · %Harness.Project{} struct + in-memory ProjectRegistry; Run takes Project [D:6/B:8/U:9 → Eff:1.42] 📋 |
-| Task 47 | ⬜ | 🎁 **multi-project** · 🚀 **v0_5** · Harness.Project.Source.Github: clone-and-cache + fetch-before-run [D:5/B:6/U:6 → Eff:1.2] 📋 |
+| Task 47 | ✅ | 🎁 **multi-project** · 🚀 **v0_5** · Harness.Project.Source.Github: clone-and-cache + fetch-before-run [D:5/B:6/U:6 → Eff:1.2] 📋 |
 | Task 48 | ✅ | 🎁 **multi-project** · 🚀 **v0_5** · Oban-backed dispatch: queue-per-project + run-state persistence across restart [D:7/B:9/U:8 → Eff:1.21] 📋 |
 | Task 49 | ⬜ | 🎁 **multi-project** · 🚀 **v0_5** · In-repo <repo>/harness/ subdirectory recipe + template [D:2/B:4/U:4 → Eff:2.0] 🎯 |
 | Task 50 | ⬜ | 🎁 **dashboard** · 🚀 **v0_5** · Phoenix LiveView dashboard + embedded Oban Web (mountable + standalone) [D:7/B:9/U:8 → Eff:1.21] 📋 |

@@ -1281,7 +1281,7 @@ id = "47"
 phase = 7
 bundle = "multi-project"
 milestone = "v0_5"
-status = "pending"
+status = "done"
 title = "Harness.Project.Source.Github: clone-and-cache + fetch-before-run"
 scores = { d = 5, b = 6, u = 6 }
 depends_on = [46]
@@ -1294,8 +1294,24 @@ Credentials piggyback on the host's existing `gh` CLI and SSH config — do not 
 
 The clone-and-cache flow needs to handle: first-time clone (target dir doesn't exist), subsequent fetch (target dir exists, refresh `main`), and the "user nuked the cache" recovery (target dir missing on a project that was previously cloned — re-clone transparently). It does NOT need to handle: branch tracking other than `main`/default, submodules, LFS, or shallow clones (those can be follow-ups when a real need surfaces).
 """
+implemented = """
+Hand-integrated from worktree run-1779837326094-69cfa9f6 — Claude built
+Harness.Project.Source.{Local,Github} with the clone-and-cache + fetch+ff
++ cache-recovery contract; Worktree.create/2 now calls Project.ensure_local_repo/2
+ahead of branching so {:github, _} projects boot transparently from cache.
+config/config.exs adds :harness, :project, :cache_root (default
+~/_DATA/harness/projects). Test surface: 10 unit tests via a local bare-repo
+upstream + 2 :integration tests against github.com/octocat/Hello-World.
+
+Run settled :checkout_polluted on a Task 32 false-positive (the just-committed
+precommit alias from 25d6102 was staged in the main checkout when Isolation
+took its baseline snapshot; same pattern as Task 48). Verification stack
+post-integration: 457/457 offline + 9/9 integration + 0 dialyzer warnings."""
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-24"
 scored_at = "2026-05-24"
+done_at = "2026-05-27"
 
 [[task]]
 id = "48"
