@@ -27,13 +27,17 @@ defmodule Harness.Run.Result do
       attempts were exhausted without going green (see `repair_attempts`).
     * `:no_changes` — the agent terminated without changing the worktree, so
       there was nothing to commit; the run delivered nothing.
-    * `{:checkout_polluted, status}` — the agent changed the main checkout
-      outside its run worktree; `status` is the post-run `git status
-      --porcelain` capture (see `Harness.Worktree.Isolation`).
-    * `{:checkout_pollution_check_failed, r}` — the post-run pollution
-      `git status --porcelain` itself failed; the checkout's pollution state
-      is unknown and the run settles `:failed` rather than silently assume
-      clean (see `Harness.Worktree.Isolation`).
+    * `{:checkout_polluted, status}` — reserved. Since Task 66 the run
+      lifecycle no longer snapshots or diffs the main checkout for adapters
+      declaring `worktree_isolation: true` (every shipped adapter today;
+      adapters declaring `false` fail earlier with
+      `{:agent_spawn_failed, {:worktree_isolation_unsupported, _, _}}`), so
+      `Harness.Run` does not currently surface this reason. Preserved in the
+      type for callers using `Harness.Worktree.Isolation.check_pollution/3`
+      directly and for a future correlation-based detector.
+    * `{:checkout_pollution_check_failed, r}` — reserved. Same lineage as
+      `:checkout_polluted`: would surface only from a runtime pollution check,
+      which `Harness.Run` no longer performs.
     * `:cancelled` — the run was cancelled via `Harness.Run.cancel/1`.
     * `:timed_out` — the whole-job lifetime budget elapsed.
     * `{:worktree_failed, r}` — the isolated worktree could not be created.

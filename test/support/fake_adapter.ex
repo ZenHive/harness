@@ -80,16 +80,17 @@ defmodule Harness.FakeAdapter do
   #                    different diff while emitting quota text, so the repair
   #                    loop must classify the transcript instead of relying on
   #                    the no-diff short-circuit.
-  # :pollute_checkout  — writes into the main checkout (repo path in
-  #                    adapter_opts), not cwd — the checkout-pollution fixture.
+  # :write_and_pollute_checkout
+  #                  — writes into cwd and the main checkout, so pollution-skip
+  #                    tests still have worktree changes to commit.
   # :move_cwd_aside    — writes a file, then moves cwd out of the way before
   #                    commit (missing-worktree fixture).
   # {:write_sibling_and_move_cwd, path}
   #                  — writes into a sibling worktree, then makes cwd disappear
   #                    (cross-worktree write regression fixture).
-  defp command({:pollute_checkout, repo}, _invocation) when is_binary(repo) do
+  defp command({:write_and_pollute_checkout, repo}, _invocation) when is_binary(repo) do
     path = shell_arg(Path.join(repo, "leaked.txt"))
-    {"/bin/sh", ["-c", "echo leaked > #{path}"], []}
+    {"/bin/sh", ["-c", "echo agent-output > agent_output.txt; echo leaked > #{path}"], []}
   end
 
   defp command({:write_sibling_and_move_cwd, sibling}, _invocation) when is_binary(sibling) do

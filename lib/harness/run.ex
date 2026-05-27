@@ -357,7 +357,7 @@ defmodule Harness.Run do
   def running(:enter, _old_state, data) do
     parent = self()
     invocation = build_invocation(data)
-    checkout_snapshot = checkout_snapshot(Project.repo_path(data.project))
+    checkout_snapshot = checkout_snapshot_for_run(data)
     task = start_task(fn -> Driver.run(data.adapter, invocation, driver_opts(data, parent)) end)
 
     {:keep_state,
@@ -1099,8 +1099,17 @@ defmodule Harness.Run do
   defp normalize_cross_agent_repair_opts(opts) when is_list(opts), do: opts
   defp normalize_cross_agent_repair_opts(opts) when is_map(opts), do: Map.to_list(opts)
 
+  @spec checkout_snapshot_for_run(data()) :: String.t() | nil
+  defp checkout_snapshot_for_run(data) do
+    if AgentAdapter.supports?(data.adapter, :worktree_isolation) do
+      nil
+    else
+      checkout_snapshot(Project.repo_path(data.project))
+    end
+  end
+
   @spec checkout_snapshot(String.t()) :: String.t() | nil
-  defp checkout_snapshot(repo) do
+  defp checkout_snapshot(repo) when is_binary(repo) do
     case Isolation.snapshot(repo) do
       {:ok, snapshot} ->
         snapshot

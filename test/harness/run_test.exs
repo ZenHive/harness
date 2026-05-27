@@ -196,7 +196,7 @@ defmodule Harness.RunTest do
       assert GitFixture.git!(repo, ["status", "--porcelain"]) == ""
     end
 
-    test "settles :failed when the agent pollutes the main checkout" do
+    test "REGRESSION (Task 66): skips pollution detection for adapters declaring worktree isolation" do
       repo = GitFixture.init_repo()
       base = GitFixture.tmp_base()
 
@@ -207,13 +207,13 @@ defmodule Harness.RunTest do
           FakeAdapter,
           base
           |> default_opts()
-          |> Keyword.put(:adapter_opts, command: {:pollute_checkout, repo})
+          |> Keyword.put(:adapter_opts, command: {:write_and_pollute_checkout, repo})
         )
 
       result = await_result(run_id, pid)
 
-      assert %Result{state: :failed, reason: {:checkout_polluted, diff}} = result
-      assert diff =~ "leaked.txt"
+      assert %Result{state: :done, reason: :passed} = result
+      assert GitFixture.git!(repo, ["status", "--porcelain"]) =~ "leaked.txt"
     end
   end
 

@@ -4,16 +4,17 @@ defmodule Harness.Worktree.Isolation do
 
   Adapters declare `worktree_isolation` in `Harness.AgentAdapter.Capabilities`.
   When `false`, `Harness.Run` fails before spawn. When `true` (the default),
-  the run snapshots the main checkout's `git status --porcelain` before the
-  agent runs and settles `:failed` / `:checkout_polluted` if non-allowlisted
-  paths changed after.
+  `Harness.Run` trusts the capability and skips main-checkout pollution
+  detection, so unrelated operator activity in the source checkout cannot
+  settle an otherwise valid run as `:checkout_polluted`.
 
   ## Pollution allowlist
 
   Orchestration overhead (Claude Code session state under `.claude/`, editor
   lockfiles, `.DS_Store`, etc.) can mutate the main checkout without the
-  dispatched agent leaving its worktree. `check_pollution/3` filters porcelain
-  lines whose paths match the allowlist before diffing.
+  dispatched agent leaving its worktree. For callers that run a pollution diff
+  explicitly, `check_pollution/3` filters porcelain lines whose paths match the
+  allowlist before diffing.
 
   Defaults come from `default_pollution_allowlist/0`. Override globally via
   `config :harness, :run, pollution_allowlist: [...]`, per project on

@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Harness.Run` now skips main-checkout pollution detection for adapters that
+  declare `worktree_isolation: true` (Task 66). The capability is treated as the
+  trust boundary: verified-isolation adapters no longer fail with
+  `:checkout_polluted` because an operator or parallel session changed the
+  source checkout while the agent worked in its run worktree. Adapters declaring
+  `worktree_isolation: false` are still rejected before spawn.
 - `Harness.Batch.fill_slots` no longer settles the entire pinned queue when one
   pinned adapter is unavailable (Task 67). In non-pinned mode every queued item
   shares the same adapter list, so one select failure still settles the whole
