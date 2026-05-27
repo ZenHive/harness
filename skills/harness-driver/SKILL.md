@@ -44,15 +44,18 @@ Use when you want the complete harness guarantees:
 **Entry points (Elixir, callable via Tidewave `project_eval` or IEx):**
 
 ```elixir
+# Fetch the registered project (a %Harness.Project{}, NOT a string).
+{:ok, project} = Harness.ProjectRegistry.lookup("my_project")
+
 # Single task (most common)
-{:ok, item} = Harness.Roadmap.ingest({:id, "123"}, project: "my_project")
+{:ok, item} = Harness.Roadmap.ingest({:id, "123"}, project: project)
 {:ok, run_id, pid} = Harness.Run.Supervisor.start_run(
   item,
-  project,
-  Harness.AgentAdapter.Grok,     # or .Claude, .Codex, .Cursor, etc.
+  project,                          # must be %Harness.Project{} — guarded
+  Harness.AgentAdapter.Grok,        # or .Claude, .Codex, .Cursor, etc.
   subscriber: self(),
   lifetime_timeout: 3_600_000,
-  env: %{"SOME_KEY" => false}    # scrub inherited secrets
+  env: %{"SOME_KEY" => false}       # scrub inherited secrets
 )
 
 # Wait for result
@@ -61,23 +64,49 @@ receive do
 end
 ```
 
+`Roadmap.ingest/2` options worth knowing:
+- `:project` — `%Harness.Project{}`; supplies `roadmap_path`. Use this for registered projects.
+- `:project_root` — string path; fallback when `:project` is omitted. Defaults to `File.cwd!/0`.
+- `:agent` — `:claude | :codex | :cursor` (the agents `rmap delegate --to` supports). Defaults to `:claude`. The ingested prompt is rendered for *this* agent — see "Non-delegatable adapters" below for what to do when the executing adapter differs.
+- `:rmap_bin` — override the `rmap` binary name/path.
+
+`Run.Supervisor.start_run/4` options worth knowing (full list in moduledoc):
+- `:subscriber` — pid that receives `{:harness_run, run_id, result}`. Defaults to caller.
+- `:total_timeout` / `:idle_timeout` — agent run timeouts (forwarded to `Driver`).
+- `:lifetime_timeout` — whole-job wall budget in ms.
+- `:adapter_opts` — per-adapter knobs forwarded to `Invocation`.
+- `:required_capabilities` — gated at dispatch; the run won't start if the selected adapter lacks them.
+- `:retry_policy` — `%Harness.Run.RetryPolicy{}` or keyword list; controls repair-loop quota handling.
+- `:env` — `%{"KEY" => "val"}` to set, `%{"KEY" => false}` to scrub.
+
 For Oban-backed dispatch (preferred for persistence + restart resilience):
 
 ```elixir
 {:ok, jobs} = Harness.Batch.dispatch(project, [item1, item2])
-# or per-project: Harness.dispatch(project, items)
 ```
 
-**Non-delegatable adapters (Grok, Antigravity, Pi):**
+`Batch.dispatch/2` is fire-and-forget — per-project concurrency is governed by the registered `concurrency_cap`, not a keyword. When you need an in-process batch with an explicit cap and the failure-classified retry policy, use `Batch.run/4` instead:
 
-These cannot be passed to `Harness.Roadmap.ingest(agent: :grok)`.
+```elixir
+{:ok, results} = Harness.Batch.run(items, project, Harness.AgentAdapter.Claude,
+  max_concurrency: 3,
+  required_capabilities: [...],
+  retry_policy: [...]
+)
+```
+
+`Batch.run/4` also accepts an ordered adapter list (quota fail-over) and a registered-project *name* in place of the struct.
+
+**Non-delegatable adapters (`rmap delegate --to` blocklist: Grok, Antigravity, Pi):**
+
+This is a separate axis from `worktree_isolation`. *Non-delegatable* means `ingest(agent: :grok | :antigravity | :pi)` is rejected because `rmap delegate --to` doesn't render prompts for those agents — not that they can't run worktree-isolated.
 
 Two-step pattern (do not skip):
 
-1. Ingest using a delegatable agent (`:claude`, `:codex`, or `:cursor`).
+1. Ingest using a delegatable agent (`:claude`, `:codex`, or `:cursor`) — the rendered prompt is agent-agnostic enough to drive any executor.
 2. Pass the resulting `%Harness.Roadmap.Item{}` directly to `Harness.Run.Supervisor.start_run(item, project, Harness.AgentAdapter.Grok, ...)`.
 
-The skill explicitly calls this out so you don't make the common mistake.
+> **Worktree isolation is the other axis.** Of the six adapters, only `Harness.AgentAdapter.Antigravity` declares `worktree_isolation: false` (Task 32 — `agy` resolves workspace via git-common-dir, ignoring port `cwd`). Claude, Codex, Cursor, **Grok, and Pi** all declare `worktree_isolation: true`. The dispatch guard (`Harness.Worktree.Isolation`) refuses to start a worktree-isolated run on an adapter that declares `false`.
 
 ### 2. Cheap / Direct Driver Path (`Harness.AgentAdapter.Driver.run/3`)
 
@@ -89,9 +118,9 @@ Use for:
 ```elixir
 invocation = %Harness.AgentAdapter.Invocation{
   prompt: "...",
-  cwd: "/tmp/some-worktree-or-temp-dir",
+  cwd: "/abs/path/to/probe/worktree",   # see cwd guidance below
   task_id: "probe-42",
-  # permission_mode, session, env, model, etc.
+  # permission_mode, session, env, model, adapter_opts, rules, etc.
 }
 
 {:ok, %Harness.AgentAdapter.Outcome{} = outcome} =
@@ -101,7 +130,15 @@ invocation = %Harness.AgentAdapter.Invocation{
   )
 ```
 
-`AuditReview.grade_fix/1` is the packaged version of this for HIGH-tier reviews.
+**`cwd` guidance.** The Driver does not manage `cwd` — it's whatever you put on the `Invocation`. The right value depends on the call shape:
+- **Grading via `AuditReview.grade_fix/1`** — leave it; the wrapper defaults `cwd` to `File.cwd!/0`, which is the right answer for read-only diff review.
+- **Ad-hoc probes / A/B experiments** — pass a real worktree path you control (typically one you constructed with `Harness.Worktree.create/2` and will clean up yourself). A throwaway `/tmp` path is fine for read-only probes; for anything that may write, it must be a git worktree the adapter can commit into.
+
+`AuditReview.grade_fix/1` is the packaged version of this for HIGH-tier reviews. Worth knowing its optional knobs:
+- `:grader` — defaults to the opposite of `:implementer` for `:claude`/`:codex`; other implementers require explicit `:grader`.
+- `:cwd` — defaults to `File.cwd!/0`.
+- `:model` — pin a specific model id (e.g. `"claude-opus-4-7"` when grading higher-stakes fixes).
+- `:total_timeout` / `:idle_timeout` — forwarded to `Driver`.
 
 ---
 
@@ -109,12 +146,13 @@ invocation = %Harness.AgentAdapter.Invocation{
 
 Always read `Harness.Run.Result` (or the `Outcome` from the cheap path). The verdict table in `docs/dogfooding-workflow.md` is still the best reference for what the various states + reasons mean and what action you should take.
 
-Key fields you care about as orchestrator:
+Key fields you care about as orchestrator (full struct: `lib/harness/run/result.ex`):
 - `state` + `reason`
 - `verdict` (the structured check results)
 - `agent_outcome` (raw transcript + kind + exit_status)
-- `worktree_path` and `branch` (for the deliverable)
+- `worktree_path` (the deliverable; the branch name is conventionally `"harness/" <> run_id` — not stored on `Result`)
 - `repair_attempts`
+- `first_attempt_failed_check_count`, `agent_diff_size` (diagnostics)
 
 Never trust `agent_outcome.exit_status` or the agent's self-reported success.
 
@@ -125,8 +163,9 @@ Never trust `agent_outcome.exit_status` or the agent's self-reported success.
 **Single delegation with explicit adapter choice:**
 
 ```elixir
-{:ok, item} = Harness.Roadmap.ingest(:next, project: project)
-adapter = pick_adapter_for_task(item)   # your logic (cost, capability, A/B, etc.)
+{:ok, project} = Harness.ProjectRegistry.lookup("my_project")
+{:ok, item}    = Harness.Roadmap.ingest(:next, project: project)
+adapter        = pick_adapter_for_task(item)   # your logic (cost, capability, A/B, etc.)
 
 {:ok, run_id, _pid} = Harness.Run.Supervisor.start_run(
   item, project, adapter,
@@ -135,10 +174,21 @@ adapter = pick_adapter_for_task(item)   # your logic (cost, capability, A/B, etc
 )
 ```
 
-**Batch with concurrency cap (Oban path):**
+**Fire-and-forget batch (Oban-persisted, per-project queue):**
 
 ```elixir
-{:ok, jobs} = Harness.Batch.dispatch("my_project", items, max_concurrency: 3)
+{:ok, jobs} = Harness.Batch.dispatch(project, items)
+# concurrency = project.concurrency_cap (set when the project was registered)
+```
+
+**In-process batch with explicit cap + retry policy:**
+
+```elixir
+{:ok, results} = Harness.Batch.run(items, project, Harness.AgentAdapter.Claude,
+  max_concurrency: 3,
+  retry_policy: [],
+  required_capabilities: []
+)
 ```
 
 **Cross-agent audit grade (HIGH-tier):**
@@ -158,8 +208,8 @@ adapter = pick_adapter_for_task(item)   # your logic (cost, capability, A/B, etc
 
 - **No first-class MCP surface yet** (Task 17 deferred). You drive via `project_eval` (Tidewave) or IEx today. The library + dashboard is the current agent surface.
 - **AgentRegistry restart behavior** (Task 40 open): In-memory unavailable state is lost on GenServer restart. Quota failover can temporarily look broken after a BEAM restart.
-- **Worktree isolation is still enforced but has had regressions**: Some agents have ignored `cwd` in the past. The `Harness.Worktree.Isolation` guard + capability declaration exists for this reason.
-- **Non-delegatable two-step dance**: Easy to forget. The skill exists partly to make this impossible to miss.
+- **Worktree isolation is enforced via capability + guard.** Only `Harness.AgentAdapter.Antigravity` currently declares `worktree_isolation: false`; the dispatch guard (`Harness.Worktree.Isolation`) refuses to start a worktree-isolated run on a non-isolating adapter and snapshots the main checkout porcelain mid-run to trap pollution (Task 32). Past regressions (Codex Task 41 in flight) live on `:checkout_polluted` reason — see `docs/dogfooding-workflow.md` verdict table.
+- **Non-delegatable two-step dance**: Easy to forget. The skill exists partly to make this impossible to miss. Distinct from worktree isolation (see § "Non-delegatable adapters" above for both axes).
 - **Results are delivered to the subscriber** but not automatically persisted beyond Oban job rows (Task 19). Keep the transcript if you need it later.
 - **Cold verification** (especially dialyzer PLT) can be slow on first run in a fresh worktree.
 - **Secret scrubbing**: Use the `:env` map with `false` values. Do this explicitly for any key that might shadow a subscription (classic `ANTHROPIC_API_KEY` shadowing Claude's OAuth case).
@@ -189,14 +239,9 @@ Changes that require an update to this skill:
 - New result shapes or verdict semantics
 - Task 17 (MCP surface) when it lands
 
-**Marker for automation / human review:**
+**How this skill reaches the orchestrator's context.** The project `CLAUDE.md` imports this file via `@skills/harness-driver/SKILL.md`, so it loads at session start in this repo. In consumer projects that depend on harness, the skill is meant to be loaded the same way — `@`-import from their CLAUDE.md (or invoke explicitly via the Skill tool when triggered by the patterns in the `argument-hint`). It does not auto-load on its own.
 
-<!-- DRIVER-SURFACE:BEGIN -->
-The content between these markers is the canonical "how an AI drives harness" contract.
-Any task touching the surfaces above must update this section and the surrounding guidance.
-<!-- DRIVER-SURFACE:END -->
-
-When in doubt, read the current moduledocs for `Harness.AgentAdapter`, `Harness.Run`, `Harness.Batch`, and `Harness.Roadmap`, then make this skill match reality.
+When in doubt, read the current moduledocs for `Harness.AgentAdapter`, `Harness.Run`, `Harness.Batch`, and `Harness.Roadmap`, then make this skill match reality. Tidewave `project_eval` is the fastest verifier: `function_exported?/3`, `__info__(:functions)`, `Map.keys(Struct.__struct__())`, and `get_docs` will catch most drift in seconds.
 
 ---
 

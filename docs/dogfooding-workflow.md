@@ -97,6 +97,19 @@ task_id = "12"
 repo = File.cwd!()
 lifetime_timeout = 3_600_000
 
+# Build a %Harness.Project{} for the harness checkout itself. Post-v0_5,
+# `Run.Supervisor.start_run/4` and `Roadmap.ingest/2` both want a Project
+# struct — not a path string. (Pre-v0_5 drivers passed `File.cwd!()` and
+# would now FunctionClauseError on the `%Project{} = project` guard.)
+{:ok, check_stack} = Harness.CheckStack.Preset.fetch(:elixir)
+
+project = %Harness.Project{
+  name: "harness",
+  source: {:local, repo},
+  check_stack: check_stack,
+  roadmap_path: repo
+}
+
 # The dogfood agent must authenticate as the parent session's Claude
 # subscription. `claude` resolves auth from ANTHROPIC_API_KEY *before* its
 # stored OAuth credentials, so an inherited key shadows the subscription — and
@@ -120,11 +133,11 @@ end
 
 log.("ingesting rmap task #{task_id}")
 
-case Harness.Roadmap.ingest({:id, task_id}, project_root: repo) do
+case Harness.Roadmap.ingest({:id, task_id}, project: project) do
   {:ok, item} ->
     log.("ingested ##{item.id} #{item.title} — prompt #{byte_size(item.prompt)} bytes, agent #{item.agent}")
 
-    case Harness.Run.Supervisor.start_run(item, repo, Harness.AgentAdapter.Claude,
+    case Harness.Run.Supervisor.start_run(item, project, Harness.AgentAdapter.Claude,
            subscriber: self(),
            lifetime_timeout: lifetime_timeout,
            env: %{"ANTHROPIC_API_KEY" => false}

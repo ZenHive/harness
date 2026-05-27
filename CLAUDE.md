@@ -15,7 +15,7 @@
 @~/.claude/includes/development-commands.md
 @~/.claude/includes/development-philosophy.md
 
-Situational topics covered by auto-loading skills (no `@`-import — invoke via Skill when the trigger phrasing matches): `elixir:reach` (PDG/SDG, `mix reach.otp` OTP introspection), `elixir:web-command` (browser interaction, dashboard work post-Task-50), `elixir:agent-economy` (descripex consumer surface, if/when harness adopts it), `elixir:elixir-setup` (dep stack changes, alias edits).
+Situational topics covered by trigger-loading skills (no `@`-import — invoke via the Skill tool when the trigger phrasing matches; they do not auto-load at session start): `elixir:reach` (PDG/SDG, `mix reach.otp` OTP introspection), `elixir:web-command` (browser interaction, dashboard work post-Task-50), `elixir:agent-economy` (descripex consumer surface, if/when harness adopts it), `elixir:elixir-setup` (dep stack changes, alias edits).
 
 **AI driver surface (canonical for orchestrators):** @skills/harness-driver/SKILL.md — load this when you are the consumer driving harness (the primary user). It is the stable contract for delegation patterns, non-delegatable handling, result interpretation, and sharp edges. Any change to the public driver surfaces must update it.
 
