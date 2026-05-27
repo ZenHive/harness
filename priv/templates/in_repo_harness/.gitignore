@@ -1,0 +1,13 @@
+# Mix/Elixir build artifacts
+/_build/
+/deps/
+/.fetch
+erl_crash.dump
+*.ez
+
+# Harness runtime state (result store root configured in config/config.exs)
+/.harness/
+
+# Local secrets
+.env
+.env.*
