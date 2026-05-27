@@ -1703,7 +1703,7 @@
       "phase": 7,
       "bundle": "multi-project",
       "milestone": "v0_5",
-      "status": "pending",
+      "status": "done",
       "title": "In-repo <repo>/harness/ subdirectory recipe + template",
       "scores": {
         "d": 2,
@@ -1728,7 +1728,11 @@
       ],
       "body": "For team-distributed projects (open-source Rust repo where contributors want to use harness without setting up a separate checkout), document the in-repo subdirectory layout: `<repo>/harness/` containing a tiny `mix.exs` (≈30 lines, just the `{:harness, \"~> 0.x\"}` dep + tidewave + bandit), `config/runtime.exs` declaring the check stack + `target_root: \"..\"`, `roadmap/tasks.toml` for that project, and a 3-line app module starting `Harness.Application`.\n\nThis is the *contributor convenience* recipe. The primary model is still the long-running app with registered projects (the user's solo workflow), but the in-repo subdir lets a project ship with harness self-contained.\n\nDeliverable: `docs/in-repo-subdir-recipe.md` documenting the layout + `priv/templates/in_repo_harness/` containing the actual files a `mix harness.init --in-repo` task would copy in (the mix task itself can be a follow-up; for now just having the template scaffolded is enough).\n",
       "created_at": "2026-05-24",
+      "done_at": "2026-05-27",
       "scored_at": "2026-05-24",
+      "implemented": "Cherry-picked from worktree commit 956f509 (Cursor delivery, run\nrun-1779840930141-fad949e2). Settled :verification_red on doctor (99.4% —\nmissing @doc on dir/0) and sobelow (2 Low-Confidence Traversal.FileModule\nfindings on File.cp_r! in copy!/1, both false-positives — copy!/1 IS supposed\nto take a caller-provided destination). Integration fix-up commit 7805edd\nadded the @doc + comment-form sobelow_skip, matching the convention used\nelsewhere in lib/harness/.\n\nDeliverable: docs/in-repo-subdir-recipe.md (layout + when-to-use + Postgres +\nOban setup walkthrough) + priv/templates/in_repo_harness/ (mix.exs,\nconfig/{config,runtime}.exs, lib/project_harness.ex, roadmap/tasks.toml,\n.gitignore) + lib/harness/in_repo_template.ex (dir/0 + copy!/1 helpers used\nby the in-repo recipe and by the test that boots the template into a fixture\nrepo). Post-integration verification: 459/459 offline ✓, dialyzer 0\nwarnings ✓, doctor 100% ✓, sobelow clean ✓.",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     },
     {

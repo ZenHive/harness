@@ -1347,7 +1347,7 @@ id = "49"
 phase = 7
 bundle = "multi-project"
 milestone = "v0_5"
-status = "pending"
+status = "done"
 title = "In-repo <repo>/harness/ subdirectory recipe + template"
 scores = { d = 2, b = 4, u = 4 }
 depends_on = [46, 48]
@@ -1360,8 +1360,27 @@ This is the *contributor convenience* recipe. The primary model is still the lon
 
 Deliverable: `docs/in-repo-subdir-recipe.md` documenting the layout + `priv/templates/in_repo_harness/` containing the actual files a `mix harness.init --in-repo` task would copy in (the mix task itself can be a follow-up; for now just having the template scaffolded is enough).
 """
+implemented = """
+Cherry-picked from worktree commit 956f509 (Cursor delivery, run
+run-1779840930141-fad949e2). Settled :verification_red on doctor (99.4% —
+missing @doc on dir/0) and sobelow (2 Low-Confidence Traversal.FileModule
+findings on File.cp_r! in copy!/1, both false-positives — copy!/1 IS supposed
+to take a caller-provided destination). Integration fix-up commit 7805edd
+added the @doc + comment-form sobelow_skip, matching the convention used
+elsewhere in lib/harness/.
+
+Deliverable: docs/in-repo-subdir-recipe.md (layout + when-to-use + Postgres +
+Oban setup walkthrough) + priv/templates/in_repo_harness/ (mix.exs,
+config/{config,runtime}.exs, lib/project_harness.ex, roadmap/tasks.toml,
+.gitignore) + lib/harness/in_repo_template.ex (dir/0 + copy!/1 helpers used
+by the in-repo recipe and by the test that boots the template into a fixture
+repo). Post-integration verification: 459/459 offline ✓, dialyzer 0
+warnings ✓, doctor 100% ✓, sobelow clean ✓."""
+delivered_by = "cursor"
+verified = true
 created_at = "2026-05-24"
 scored_at = "2026-05-24"
+done_at = "2026-05-27"
 
 [[task]]
 id = "50"
