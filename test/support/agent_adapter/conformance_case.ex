@@ -168,7 +168,7 @@ defmodule Harness.AgentAdapter.ConformanceCase do
 
       describe "rule_channel/0 — harness-owned rule injection" do
         setup do
-          cwd = Path.join(System.tmp_dir!(), "harness-rules-#{System.unique_integer()}")
+          cwd = Path.join(System.tmp_dir!(), "harness-rules-#{System.unique_integer()}-#{System.os_time(:nanosecond)}")
           File.mkdir_p!(cwd)
           on_exit(fn -> File.rm_rf!(cwd) end)
           {:ok, cwd: cwd}

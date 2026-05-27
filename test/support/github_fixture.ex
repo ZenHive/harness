@@ -41,6 +41,10 @@ defmodule Harness.GithubFixture do
 
   @spec unique_tmp_dir(String.t()) :: String.t()
   defp unique_tmp_dir(name) do
-    Path.join(System.tmp_dir!(), "harness-#{name}-#{System.unique_integer([:positive])}")
+    # See `Harness.GitFixture.unique_tmp_dir/1` — the nanosecond suffix keeps
+    # the path unique across BEAM restarts, since `System.unique_integer/1`
+    # resets to 1 and would otherwise collide with leftovers in `/tmp`.
+    suffix = "#{System.unique_integer([:positive])}-#{System.os_time(:nanosecond)}"
+    Path.join(System.tmp_dir!(), "harness-#{name}-#{suffix}")
   end
 end

@@ -147,6 +147,12 @@ defmodule Harness.Run.CrossAgentRepairTest do
   end
 
   defp tmp_path(prefix) do
-    Path.join(System.tmp_dir!(), "#{prefix}-#{System.unique_integer([:positive])}")
+    # Wall-clock nanoseconds keep the path unique across BEAM restarts, where
+    # `System.unique_integer/1` resets to 1 and would otherwise reuse a count
+    # file left behind by a crashed previous run — the flaky-test failure mode
+    # ("hit\nhit\nhit\n" instead of "hit\n" because prior hits were never
+    # cleaned up).
+    suffix = "#{System.unique_integer([:positive])}-#{System.os_time(:nanosecond)}"
+    Path.join(System.tmp_dir!(), "#{prefix}-#{suffix}")
   end
 end
