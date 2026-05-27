@@ -2015,3 +2015,33 @@ created_at = "2026-05-27"
 scored_at = "2026-05-27"
 done_at = "2026-05-27"
 
+[[task]]
+id = "70"
+phase = 5
+bundle = "surface"
+status = "pending"
+title = "Batch test gate-file hygiene — clean up orphaned shells + stale tmp files"
+scores = { d = 2, b = 5, u = 6 }
+markers = ["bug"]
+acceptance_criteria = ["Running `mix test.json test/harness/batch_test.exs` does not leave any `harness-batch-gate-*` files in `System.tmp_dir!/0` after completion", "Killing the test process mid-run (Ctrl-C, timeout) does not leave orphaned `/bin/sh` shells polling on the gate file"]
+out_of_scope = ["Refactoring the FakeAdapter command interface beyond what's needed to fix the leak", "Production batch code — this is test-fixture-only hygiene"]
+files_to_modify = ["test/harness/batch_test.exs"]
+body = """
+The Batch test suite (`test/harness/batch_test.exs`) uses `gate_path/0` to coordinate concurrency in tests: it constructs a tmp filename `harness-batch-gate-<N>`, dispatches a FakeAdapter command `{:write_then_wait_for_file, gate}` that spawns `/bin/sh -c "... while [ ! -f gate ]; do sleep 0.05; done"`, then writes the gate to release the shells.
+
+Two hygiene gaps observed in practice (diagnosed 2026-05-27 — 352 stale files in `/var/folders/.../T/` going back to 2026-05-23, plus 2 orphaned `/bin/sh` shells reparented to init that had been polling 20Hz for 5+ days waiting for a gate file that would never be written):
+
+1. On normal success: the gate file is created via `File.write!(gate, "go")` but never deleted. Every batch_test run accumulates one gate file per gate-using test.
+
+2. On test crash/timeout BEFORE `File.write!`: the spawned `/bin/sh` polling shells survive the Port owner dying (they get reparented to PID 1) and spin forever consuming syscalls.
+
+Fix shape — pick whichever is cleanest:
+- `on_exit/1` in each gate-using test that deletes the gate file AND best-effort `kill` any shell still waiting on it (find via `pgrep -f "harness-batch-gate-<N>"`).
+- OR change the FakeAdapter `:write_then_wait_for_file` command to a pure-Elixir wait loop (no shell `sleep`) so the Port owner's death cleanly terminates the waiter.
+- OR a `setup_all` that rms `harness-batch-gate-*` from `System.tmp_dir!/0` before and after the suite.
+
+Either fix should generalize to other gate-style coordination if it exists.
+"""
+created_at = "2026-05-27"
+scored_at = "2026-05-27"
+

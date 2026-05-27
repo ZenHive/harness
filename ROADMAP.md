@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 40 — Audit-surfaced: AgentRegistry availability lost on GenServer restart, Task 41 — Codex adapter — worktree isolation breaks intermittently (cwd ignored, agent edits main checkout), Task 53 — Smoke-test pi-via-local-LLM on a low-D rmap task, Task 54 — Cost-aware agent capability declaration (:free vs :metered), Task 59 — Cross-agent grader as a repair-loop move (gated, asymmetric, budgeted), Task 67 — Audit-surfaced: Batch.run_pinned settles entire pinned queue on one adapter's pre-dispatch unavailability on 2026-05-27
 
-**Up next:** Task 66 — Skip pollution detection for adapters declaring worktree_isolation: true [D:3/B:5/U:7 → Eff:2.0] 🎯
+**Up next:** Task 70 — Batch test gate-file hygiene — clean up orphaned shells + stale tmp files [D:2/B:5/U:6 → Eff:2.75] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -93,6 +93,7 @@
 | Task 58 | ✅ | 🎁 **surface** · 🚀 **v0_4** · Harness.AuditReview — HIGH-tier audit grader dispatch [D:3/B:7/U:7 → Eff:2.33] 🎯 |
 | Task 64 | ✅ | 🎁 **surface** · 🐛 FailureClass quota classification false-positive on full agent transcript [D:2/B:5/U:5 → Eff:2.5] 🎯 |
 | Task 68 | ✅ | 🎁 **surface** · 🐛 Audit-surfaced: AgentEvaluation.from_batch silently drops/truncates results on adapter-list mismatch [D:1/B:3/U:3 → Eff:3.0] 🎯 |
+| Task 70 | ⬜ | 🎁 **surface** · 🐛 Batch test gate-file hygiene — clean up orphaned shells + stale tmp files [D:2/B:5/U:6 → Eff:2.75] 🎯 |
 <!-- TASKS:END -->
 
 ---
