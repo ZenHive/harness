@@ -23,7 +23,7 @@ defmodule Harness.Worktree.IsolationTest do
       allowlist = Isolation.default_pollution_allowlist()
 
       assert ".claude/" in allowlist
-      assert ".DS_Store" in allowlist
+      assert "**/.DS_Store" in allowlist
     end
   end
 
@@ -102,6 +102,40 @@ defmodule Harness.Worktree.IsolationTest do
 
       assert :ok =
                Isolation.check_pollution(repo, before, pollution_allowlist: ["scratch.txt"])
+    end
+
+    test "REGRESSION (Task 69): rename out of a tracked dir flags pollution on the source path" do
+      repo = GitFixture.init_repo()
+      lib_dir = Path.join(repo, "lib")
+      File.mkdir_p!(lib_dir)
+      tracked = Path.join(lib_dir, "foo.ex")
+      File.write!(tracked, "defmodule Foo, do: nil\n")
+      {_, 0} = System.cmd("git", ["add", "lib/foo.ex"], cd: repo)
+      {_, 0} = System.cmd("git", ["commit", "-m", "add lib/foo.ex"], cd: repo)
+
+      assert {:ok, before} = Isolation.snapshot(repo)
+
+      claude_dir = Path.join(repo, ".claude")
+      File.mkdir_p!(claude_dir)
+      File.rename!(tracked, Path.join(claude_dir, "foo.ex"))
+
+      assert {:error, {:checkout_polluted, diff}} = Isolation.check_pollution(repo, before)
+      assert diff =~ "lib/foo.ex"
+    end
+
+    test "REGRESSION (Task 69): default `.DS_Store` pattern matches at any depth" do
+      repo = GitFixture.init_repo()
+      docs_dir = Path.join(repo, "docs")
+      File.mkdir_p!(docs_dir)
+      File.write!(Path.join(docs_dir, "README.md"), "docs\n")
+      {_, 0} = System.cmd("git", ["add", "docs/README.md"], cd: repo)
+      {_, 0} = System.cmd("git", ["commit", "-m", "add docs/"], cd: repo)
+
+      assert {:ok, before} = Isolation.snapshot(repo)
+
+      File.write!(Path.join(docs_dir, ".DS_Store"), "")
+
+      assert :ok = Isolation.check_pollution(repo, before)
     end
   end
 end

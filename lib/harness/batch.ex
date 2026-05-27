@@ -329,12 +329,27 @@ defmodule Harness.Batch do
         fill_slots(rest, active, results, events, context, max_concurrency)
 
       {:error, {:no_available_agent, reason}} ->
-        {results, events} = settle_undispatchable([head | rest], results, events, {:no_available_agent, reason})
-        {[], active, results, events}
+        {undispatchable, remaining} = partition_undispatchable(context, head, rest)
+        {results, events} = settle_undispatchable(undispatchable, results, events, {:no_available_agent, reason})
+        fill_slots(remaining, active, results, events, context, max_concurrency)
 
       {:error, reason} ->
-        {results, events} = settle_undispatchable([head | rest], results, events, reason)
-        {[], active, results, events}
+        {undispatchable, remaining} = partition_undispatchable(context, head, rest)
+        {results, events} = settle_undispatchable(undispatchable, results, events, reason)
+        fill_slots(remaining, active, results, events, context, max_concurrency)
+    end
+  end
+
+  # In pinned mode, each slot owns its own adapter, so a select failure only
+  # settles the head and the tail is retried with its own pinned adapter. In
+  # non-pinned mode every queued item shares the same adapter list, so one
+  # select failure means the whole queue is undispatchable.
+  @spec partition_undispatchable(loop_context(), indexed_item(), [indexed_item()]) ::
+          {[indexed_item()], [indexed_item()]}
+  defp partition_undispatchable(%{run_opts: run_opts}, head, rest) do
+    case Keyword.get(run_opts, :pinned_adapters) do
+      pinned when is_list(pinned) -> {[head], rest}
+      _ -> {[head | rest], []}
     end
   end
 

@@ -1903,7 +1903,7 @@ scored_at = "2026-05-27"
 id = "67"
 phase = 4
 bundle = "multi-agent"
-status = "pending"
+status = "done"
 title = "Audit-surfaced: Batch.run_pinned settles entire pinned queue on one adapter's pre-dispatch unavailability"
 scores = { d = 3, b = 5, u = 5 }
 markers = ["bug"]
@@ -1933,14 +1933,18 @@ Add a test that pre-marks one pinned adapter unavailable and asserts the
 others still run. Filed by audit-review against commit 5241f9e on 2026-05-27;
 see .audit/5241f9e-task-33-ab-mode.md.
 """
+implemented = "Pinned-mode partial unavailability: fill_slots now settles only the head and recurses on the rest via new partition_undispatchable/3 keying on :pinned_adapters. Non-pinned semantics preserved (one select failure still settles whole queue). Test: REGRESSION (Task 67) in batch_test.exs — QuotaAdapter pre-marked unavailable + FakeAdapter pinned to slot 1; slot 0 settles {:no_available_agent, _} while slot 1 dispatches green."
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-27"
 scored_at = "2026-05-27"
+done_at = "2026-05-27"
 
 [[task]]
 id = "68"
 phase = 5
 bundle = "surface"
-status = "pending"
+status = "done"
 title = "Audit-surfaced: AgentEvaluation.from_batch silently drops/truncates results on adapter-list mismatch"
 scores = { d = 1, b = 3, u = 3 }
 markers = ["bug"]
@@ -1957,14 +1961,18 @@ Whichever path, document the contract on the `from_batch/3` docstring and
 mirror the choice in `compare/4`. Filed by audit-review against commit 5241f9e
 on 2026-05-27; see .audit/5241f9e-task-33-ab-mode.md.
 """
+implemented = "from_batch/3 raises ArgumentError on adapter/results length mismatch; @doc tightened to state the equal-length precondition. Test: REGRESSION (Task 68) in agent_evaluation_test.exs asserts assert_raise ArgumentError, ~r/equal length/."
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-27"
 scored_at = "2026-05-27"
+done_at = "2026-05-27"
 
 [[task]]
 id = "69"
 phase = 7
 bundle = "multi-project"
-status = "pending"
+status = "done"
 title = "Audit-surfaced: Worktree.Isolation porcelain parser ignores rename source path + .DS_Store only matches at repo root"
 scores = { d = 2, b = 4, u = 4 }
 markers = ["bug"]
@@ -1992,5 +2000,9 @@ macOS Finder navigation into subdirs during a long-running agent session.
 Filed by audit-review against commit 9f0f837 on 2026-05-27; see
 .audit/9f0f837-task-60-pollution-allowlist.md.
 """
+implemented = "porcelain_path/1 renamed to porcelain_paths/1 returning [src, dst] on rename lines; allowlisted_path? requires Enum.all? to be allowlisted. Added **/<name> recursive-basename pattern via matches_pattern? + matches_basename?; default allowlist's .DS_Store upgraded to **/.DS_Store. Two REGRESSION tests in isolation_test.exs cover rename-out-of-tracked-dir and docs/.DS_Store-at-depth."
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-27"
 scored_at = "2026-05-27"
+done_at = "2026-05-27"

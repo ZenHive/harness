@@ -24,6 +24,7 @@ defmodule Harness.Worktree.Isolation do
 
     * `"dir/"` — prefix match (e.g. `.claude/` ignores `.claude/scheduled_tasks.lock`)
     * `"*.swp"` — glob on the path basename
+    * `"**/.DS_Store"` — basename match at any depth (gitignore-style)
     * `"README.md"` — exact path match
   """
 
@@ -32,7 +33,7 @@ defmodule Harness.Worktree.Isolation do
 
   @default_pollution_allowlist [
     ".claude/",
-    ".DS_Store",
+    "**/.DS_Store",
     "*.swp",
     "*.swo",
     "*~",
@@ -147,20 +148,21 @@ defmodule Harness.Worktree.Isolation do
   @spec allowlisted_path?(String.t(), [String.t()]) :: boolean()
   defp allowlisted_path?(line, allowlist) do
     line
-    |> porcelain_path()
-    |> allowlisted?(allowlist)
+    |> porcelain_paths()
+    |> Enum.all?(&allowlisted?(&1, allowlist))
   end
 
-  @spec porcelain_path(String.t()) :: String.t()
-  defp porcelain_path(line) do
+  # Rename porcelain lines carry both source and destination ("R  old -> new").
+  # Both must clear the allowlist — otherwise an agent moving `lib/foo.ex` →
+  # `.claude/foo.ex` would mask the source-side deletion.
+  @spec porcelain_paths(String.t()) :: [String.t()]
+  defp porcelain_paths(line) do
     case line do
       <<_status::binary-size(2), " ", rest::binary>> ->
-        rest
-        |> String.split(" -> ", parts: 2)
-        |> List.last()
+        String.split(rest, " -> ", parts: 2)
 
       _ ->
-        line
+        [line]
     end
   end
 
@@ -172,6 +174,10 @@ defmodule Harness.Worktree.Isolation do
   @spec matches_pattern?(String.t(), String.t()) :: boolean()
   defp matches_pattern?(path, pattern) do
     cond do
+      String.starts_with?(pattern, "**/") ->
+        stripped = binary_part(pattern, 3, byte_size(pattern) - 3)
+        matches_basename?(Path.basename(path), stripped)
+
       String.ends_with?(pattern, "/") ->
         prefix = String.trim_trailing(pattern, "/")
         path == prefix or String.starts_with?(path, pattern)
@@ -181,6 +187,15 @@ defmodule Harness.Worktree.Isolation do
 
       true ->
         path == pattern
+    end
+  end
+
+  @spec matches_basename?(String.t(), String.t()) :: boolean()
+  defp matches_basename?(basename, pattern) do
+    if String.contains?(pattern, "*") do
+      glob_match?(basename, pattern)
+    else
+      basename == pattern
     end
   end
 

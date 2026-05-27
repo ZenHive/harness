@@ -2385,7 +2385,7 @@
       "id": "67",
       "phase": 4,
       "bundle": "multi-agent",
-      "status": "pending",
+      "status": "done",
       "title": "Audit-surfaced: Batch.run_pinned settles entire pinned queue on one adapter's pre-dispatch unavailability",
       "scores": {
         "d": 3,
@@ -2404,14 +2404,18 @@
       ],
       "body": "`Harness.Batch.fill_slots/6` calls `settle_undispatchable([head | rest], ...)`\nwhen `AgentRegistry.select/2` returns `{:error, _}` for the current slot.\nThat collapses ALL remaining slots in the queue into a single `:no_available_agent`\nsettlement. In pinned mode (`Batch.run_pinned/3` / `Batch.AgentEvaluation.compare/4`),\neach slot has its own dedicated adapter that may still be available — so when\nadapter A is marked unavailable pre-dispatch, adapter B's pinned slot is settled\ntoo without ever attempting B.\n\nRepro: `AgentRegistry.mark_unavailable(:claude, :test)`, then\n`AgentEvaluation.compare(item, project, [Harness.AgentAdapter.Claude, Harness.AgentAdapter.Codex], ...)`\n→ Comparison has two entries, both with `state: :failed, reason: {:no_available_agent, _}`.\n\nFix: in pinned mode, `fill_slots` should settle only the current slot and\ncontinue filling the next. The existing settle-the-whole-queue behavior is\nstill correct for non-pinned mode (the same adapter list applies to every slot,\nso if one fails, the rest will too). Two paths: either a new `settle_one`\nhelper used when `pinned_adapters` is set on `run_opts`, or pass a per-slot\nadapter selection that always succeeds in pinned mode and let dispatch fail\nnaturally inside `run_once`.\n\nAdd a test that pre-marks one pinned adapter unavailable and asserts the\nothers still run. Filed by audit-review against commit 5241f9e on 2026-05-27;\nsee .audit/5241f9e-task-33-ab-mode.md.\n",
       "created_at": "2026-05-27",
+      "done_at": "2026-05-27",
       "scored_at": "2026-05-27",
+      "implemented": "Pinned-mode partial unavailability: fill_slots now settles only the head and recurses on the rest via new partition_undispatchable/3 keying on :pinned_adapters. Non-pinned semantics preserved (one select failure still settles whole queue). Test: REGRESSION (Task 67) in batch_test.exs — QuotaAdapter pre-marked unavailable + FakeAdapter pinned to slot 1; slot 0 settles {:no_available_agent, _} while slot 1 dispatches green.",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     },
     {
       "id": "68",
       "phase": 5,
       "bundle": "surface",
-      "status": "pending",
+      "status": "done",
       "title": "Audit-surfaced: AgentEvaluation.from_batch silently drops/truncates results on adapter-list mismatch",
       "scores": {
         "d": 1,
@@ -2430,14 +2434,18 @@
       ],
       "body": "`Harness.Batch.AgentEvaluation.from_batch/3` uses `Enum.zip(batch.results, adapters)`\nto pair results with adapters. `Enum.zip` truncates to the shorter list, so a\nmismatch (e.g. `batch.results = [r1, r2]` but `adapters = [A]`) silently drops\nresults — the returned Comparison reports `total: 2` but `entries` has length 1.\n\nEither contract: enforce equal lengths and `raise ArgumentError` with a clear\nmessage, or relax (pad missing entries with a placeholder adapter atom).\nWhichever path, document the contract on the `from_batch/3` docstring and\nmirror the choice in `compare/4`. Filed by audit-review against commit 5241f9e\non 2026-05-27; see .audit/5241f9e-task-33-ab-mode.md.\n",
       "created_at": "2026-05-27",
+      "done_at": "2026-05-27",
       "scored_at": "2026-05-27",
+      "implemented": "from_batch/3 raises ArgumentError on adapter/results length mismatch; @doc tightened to state the equal-length precondition. Test: REGRESSION (Task 68) in agent_evaluation_test.exs asserts assert_raise ArgumentError, ~r/equal length/.",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     },
     {
       "id": "69",
       "phase": 7,
       "bundle": "multi-project",
-      "status": "pending",
+      "status": "done",
       "title": "Audit-surfaced: Worktree.Isolation porcelain parser ignores rename source path + .DS_Store only matches at repo root",
       "scores": {
         "d": 2,
@@ -2456,7 +2464,11 @@
       ],
       "body": "Two narrow rough edges in `Harness.Worktree.Isolation.porcelain_path/1` / pattern\nmatching surfaced by audit on Task 60 (commit 9f0f837):\n\n1. **Rename source path is masked.** `porcelain_path/1` parses\n   `R  old -> new` by taking `List.last(String.split(rest, \" -> \", parts: 2))`,\n   i.e. only the destination. If an agent renames `lib/foo.ex` to\n   `.claude/foo.ex`, the destination is allowlisted but the source-side\n   deletion of `lib/foo.ex` is lost — the rename silently passes pollution.\n   Track both paths (destination AND source) and apply the allowlist to the\n   intersection.\n\n2. **`.DS_Store` only matches the root entry.** The default allowlist's\n   `.DS_Store` is an exact-match pattern, so `docs/.DS_Store` or any nested\n   `.DS_Store` still trips pollution. Promote it (or any basename-only entry)\n   to a recursive match — either `**/.DS_Store` semantics or a separate\n   `:basename` pattern kind.\n\nBoth bugs are bounded: the rename case is rare; the .DS_Store case fires on\nmacOS Finder navigation into subdirs during a long-running agent session.\nFiled by audit-review against commit 9f0f837 on 2026-05-27; see\n.audit/9f0f837-task-60-pollution-allowlist.md.\n",
       "created_at": "2026-05-27",
+      "done_at": "2026-05-27",
       "scored_at": "2026-05-27",
+      "implemented": "porcelain_path/1 renamed to porcelain_paths/1 returning [src, dst] on rename lines; allowlisted_path? requires Enum.all? to be allowlisted. Added **/<name> recursive-basename pattern via matches_pattern? + matches_basename?; default allowlist's .DS_Store upgraded to **/.DS_Store. Two REGRESSION tests in isolation_test.exs cover rename-out-of-tracked-dir and docs/.DS_Store-at-depth.",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     }
   ]

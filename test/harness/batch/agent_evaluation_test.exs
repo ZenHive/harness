@@ -183,6 +183,27 @@ defmodule Harness.Batch.AgentEvaluationTest do
     assert Enum.at(batch.results, 1).state == :failed
   end
 
+  test "REGRESSION (Task 68): from_batch/3 raises on adapter/results length mismatch" do
+    batch = %Harness.Batch.Result{
+      batch_id: "mismatch-test",
+      total: 2,
+      max_concurrency: 2,
+      results: [
+        %Harness.Run.Result{
+          run_id: "r1",
+          task_id: "t",
+          state: :done,
+          reason: :passed
+        }
+      ],
+      events: []
+    }
+
+    assert_raise ArgumentError, ~r/equal length/, fn ->
+      AgentEvaluation.from_batch(batch, [GreenAdapter, RedAdapter], false)
+    end
+  end
+
   test "from_batch rebuilds a comparison from a persisted batch" do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()

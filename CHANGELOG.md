@@ -26,6 +26,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Harness.Batch.fill_slots` no longer settles the entire pinned queue when one
+  pinned adapter is unavailable (Task 67). In non-pinned mode every queued item
+  shares the same adapter list, so one select failure still settles the whole
+  queue (unchanged); in pinned mode (`run_pinned/3`, `AgentEvaluation.compare/4`)
+  each slot owns its own adapter, so only the head is settled and the rest
+  recurse with their own pinned adapters. Surfaced by the Round-5 audit of the
+  Task 33 A/B mode delivery.
+- `Harness.Batch.AgentEvaluation.from_batch/3` now raises `ArgumentError` on
+  adapter/results length mismatch (Task 68). The previous `Enum.zip` would
+  silently truncate to the shorter list, dropping entries from the comparison
+  without telling the caller.
+- `Harness.Worktree.Isolation` pollution allowlist now tracks both source and
+  destination of `R old -> new` porcelain lines (Task 69) — an agent moving
+  `lib/foo.ex` → `.claude/foo.ex` no longer evades pollution detection because
+  the destination is allowlisted. The default allowlist gained a `**/<name>`
+  recursive-basename pattern (gitignore-style); `.DS_Store` upgraded to
+  `**/.DS_Store` so `docs/.DS_Store` is also ignored, not just the repo-root
+  copy.
 - Codex adapter now pins its working root via exec-level `--cd <worktree>` in
   addition to the Port's `:cd` (Task 41). Without the flag, Codex's heuristic
   workspace resolution could follow a linked worktree's `.git` pointer back to

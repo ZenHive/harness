@@ -268,6 +268,26 @@ defmodule Harness.BatchTest do
     refute AgentRegistry.available?(QuotaAdapter)
   end
 
+  test "REGRESSION (Task 67): pinned mode tail-slot continues when head-slot adapter is unavailable" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+    [item_a, item_b] = items(~w(slot-a slot-b))
+
+    :ok = AgentRegistry.mark_unavailable(QuotaAdapter, {:test_setup, :pinned_partial})
+
+    assert {:ok, %BatchResult{results: [first, second], events: events}} =
+             Batch.run_pinned(
+               [{item_a, QuotaAdapter}, {item_b, FakeAdapter}],
+               ProjectFixture.from_repo(repo),
+               batch_opts(base, max_concurrency: 2)
+             )
+
+    assert %Result{task_id: "slot-a", state: :failed, reason: {:no_available_agent, _}} = first
+    assert %Result{task_id: "slot-b", state: :done, reason: :passed} = second
+
+    assert {:no_available_agent, "slot-a", {:no_available_agent, [QuotaAdapter]}} in events
+  end
+
   test "persists a batch result and queryable per-run records" do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()

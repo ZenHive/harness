@@ -101,9 +101,25 @@ defmodule Harness.Batch.AgentEvaluation do
     end
   end
 
-  @doc "Builds a comparison from a pinned batch result and the adapter list."
+  @doc """
+  Builds a comparison from a pinned batch result and the adapter list.
+
+  `adapters` must have the same length as `batch.results` — the i-th adapter is
+  attached to the i-th result, mirroring the order `Harness.Batch.run_pinned/3`
+  preserves. Raises `ArgumentError` on mismatch; silent truncation via `Enum.zip`
+  would drop entries from the comparison without telling the caller.
+  """
   @spec from_batch(BatchResult.t(), [module()], ResultStore.store()) :: Comparison.t()
   def from_batch(%BatchResult{} = batch, adapters, store) when is_list(adapters) do
+    results_count = length(batch.results)
+    adapters_count = length(adapters)
+
+    if results_count != adapters_count do
+      raise ArgumentError,
+            "AgentEvaluation.from_batch/3 requires batch.results and adapters to have equal length; " <>
+              "got #{results_count} results and #{adapters_count} adapters"
+    end
+
     records = records_by_run_id(batch.batch_id, store)
 
     entries =
