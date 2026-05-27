@@ -71,6 +71,19 @@ defmodule Harness.Run.FailureClass do
   defp port_error?(%Outcome{kind: {:error, _}}), do: true
   defp port_error?(_), do: false
 
+  # Quota signals appear in an agent transcript's tail (the final assistant
+  # message + result envelope, e.g. Claude's `"Credit balance is too low"` or
+  # an HTTP 429 error) — never in the middle. Matching the entire transcript
+  # against quota regexes is wildly false-positive-prone: agents routinely
+  # display source code and docs that contain words like `quota`, `rate limit`,
+  # and `subscription` (e.g. harness's own AgentRegistry moduledoc literally
+  # says "subscription quota exhausted"). Limiting the matched window to the
+  # trailing 4 KiB preserves real terminal error detection while skipping the
+  # mid-run source-read noise. Same logic applies to verification check output
+  # (e.g. `mix test.json` stdout can echo file paths and string literals from
+  # the codebase under test).
+  @text_tail_bytes 4 * 1024
+
   @spec collect_text(Result.t()) :: [String.t()]
   defp collect_text(%Result{} = result) do
     [
@@ -83,15 +96,26 @@ defmodule Harness.Run.FailureClass do
   end
 
   @spec outcome_text(Outcome.t() | nil) :: String.t()
-  defp outcome_text(%Outcome{output: output}) when is_binary(output), do: output
+  defp outcome_text(%Outcome{output: output}) when is_binary(output), do: tail(output)
   defp outcome_text(_), do: ""
 
   @spec verdict_text(Verdict.t() | nil) :: [String.t()]
   defp verdict_text(%Verdict{results: results}) do
-    Enum.map(results, & &1.output)
+    Enum.map(results, &tail(&1.output || ""))
   end
 
   defp verdict_text(_), do: []
+
+  @spec tail(String.t()) :: String.t()
+  defp tail(text) when is_binary(text) do
+    size = byte_size(text)
+
+    if size > @text_tail_bytes do
+      binary_part(text, size - @text_tail_bytes, @text_tail_bytes)
+    else
+      text
+    end
+  end
 
   @spec reason_text(Result.reason()) :: String.t()
   defp reason_text(reason) when is_atom(reason), do: Atom.to_string(reason)

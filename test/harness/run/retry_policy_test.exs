@@ -70,6 +70,62 @@ defmodule Harness.Run.RetryPolicyTest do
 
       assert FailureClass.classify(result, @policy) == :quota_exhausted
     end
+
+    test "ignores benign quota words in the middle of a long agent transcript" do
+      # An agent reading source code or docs that contain quota-related words
+      # is not a quota signal — quota errors only appear in the agent's
+      # terminal output envelope, never embedded in mid-run file reads.
+      filler = String.duplicate("a", 100_000)
+      transcript = "subscription quota exhausted in source code" <> filler <> "all good, agent done."
+
+      result =
+        failed(
+          reason: :verification_red,
+          verdict: %Verdict{
+            status: :fail,
+            results: [
+              %CheckResult{name: "t", command: "mix", status: :fail, kind: :exited, exit_status: 1, output: "fail"}
+            ]
+          },
+          agent_outcome: outcome(transcript)
+        )
+
+      assert FailureClass.classify(result, @policy) == :terminal
+    end
+
+    test "still detects quota signals in the agent transcript tail" do
+      # Real API error envelope at the tail (Claude billing-error precedent
+      # from Task 61's dogfood run) must still classify as quota even when the
+      # transcript is long.
+      filler = String.duplicate("normal agent output line\n", 5_000)
+      transcript = filler <> ~s({"type":"result","is_error":true,"error":"billing_error"})
+
+      result =
+        failed(
+          reason: {:driver_crashed, :boom},
+          agent_outcome: outcome(transcript)
+        )
+
+      assert FailureClass.classify(result, @policy) == :quota_exhausted
+    end
+
+    test "ignores benign quota words in a verification check's mid-output" do
+      # Verification stdout (e.g. mix test echoing source containing `quota`)
+      # is also clipped to its tail before quota-pattern matching.
+      filler = String.duplicate("z", 100_000)
+      stdout = "Compiling lib/quota_helper.ex" <> filler <> "0 failures, 504 passed"
+
+      verdict = %Verdict{
+        status: :fail,
+        results: [
+          %CheckResult{name: "test", command: "mix", status: :fail, kind: :exited, exit_status: 1, output: stdout}
+        ]
+      }
+
+      result = failed(reason: :verification_red, verdict: verdict)
+
+      assert FailureClass.classify(result, @policy) == :terminal
+    end
   end
 
   describe "RetryPolicy.decide/3" do
