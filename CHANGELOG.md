@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Batch test gate-file hygiene no longer leaks stale coordination files or
+  orphaned polling shells (Task 70). Gate paths now register per-test cleanup,
+  the fake adapter's shell waiter exits if it becomes reparented, and the batch
+  test module clears `harness-batch-gate-*` files before and after the suite.
 - `Harness.Run` now skips main-checkout pollution detection for adapters that
   declare `worktree_isolation: true` (Task 66). The capability is treated as the
   trust boundary: verified-isolation adapters no longer fail with

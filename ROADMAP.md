@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 4 — Multi-Agent & Quota Fail-over (20 of 20 done · 0 in progress)
+**Focus phase:** 8 — Closeout & Release Readiness (0 of 1 done · 0 in progress)
 
-**Last shipped:** Task 40 — Audit-surfaced: AgentRegistry availability lost on GenServer restart, Task 41 — Codex adapter — worktree isolation breaks intermittently (cwd ignored, agent edits main checkout), Task 53 — Smoke-test pi-via-local-LLM on a low-D rmap task, Task 54 — Cost-aware agent capability declaration (:free vs :metered), Task 59 — Cross-agent grader as a repair-loop move (gated, asymmetric, budgeted), Task 66 — Skip pollution detection for adapters declaring worktree_isolation: true, Task 67 — Audit-surfaced: Batch.run_pinned settles entire pinned queue on one adapter's pre-dispatch unavailability on 2026-05-27
+**Last shipped:** no recent shipments
 
-**Up next:** Task 70 — Batch test gate-file hygiene — clean up orphaned shells + stale tmp files [D:2/B:5/U:6 → Eff:2.75] 🎯
+**Up next:** Task 71 — v0.6 closeout: doc + skill refresh, rmap doctor cleanup, Tidewave smoke [D:3/B:8/U:9 → Eff:2.83] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -53,28 +53,7 @@
 > Breadth on the proven contract — the Cursor and Grok adapters behind the same behaviour, held to the conformance suite — and a capability + availability registry that fails a job over to another agent when one hits its subscription quota.
 
 <!-- TASKS:BEGIN phase=4 -->
-| Task | Status | Notes |
-|------|--------|-------|
-| Task 13 `[P]` | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Cursor headless adapter [D:6/B:6/U:6 → Eff:1.0] 📋 |
-| Task 15 `[P]` | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Grok headless adapter [D:4/B:5/U:5 → Eff:1.25] 📋 |
-| Task 16 | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Capability + availability registry with quota fail-over [D:5/B:7/U:6 → Eff:1.3] 📋 |
-| Task 22 | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Inject a harness-owned rule set into agent invocations [D:4/B:7/U:7 → Eff:1.75] 🚀 |
-| Task 23 | ✅ | 🎁 **multi-agent** · 🐛 Give Port-spawned agents an immediate-EOF stdin [D:3/B:3/U:3 → Eff:1.0] 📋 |
-| Task 25 | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Caller-controlled agent environment in the AgentAdapter contract [D:4/B:5/U:5 → Eff:1.25] 📋 |
-| Task 26 | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Antigravity headless adapter [D:3/B:4/U:4 → Eff:1.33] 📋 |
-| Task 31 | ✅ | 🎁 **multi-agent** · Resolve the rmap-delegate ingest gap for the Grok and Antigravity adapters [D:2/B:3/U:4 → Eff:1.75] 🚀 |
-| Task 32 | ✅ | 🎁 **multi-agent** · 🐛 Antigravity adapter does not isolate to its run worktree [D:4/B:6/U:5 → Eff:1.38] 📋 |
-| Task 36 | ✅ | 🎁 **multi-agent** · Audit-surfaced: Harness-injected rule files get committed by Worktree.commit [D:4/B:7/U:6 → Eff:1.62] 🚀 |
-| Task 39 | ✅ | 🎁 **multi-agent** · Audit-surfaced: Hoist rule injection into the AgentAdapter behaviour [D:4/B:5/U:5 → Eff:1.25] 📋 |
-| Task 40 | ✅ | 🎁 **multi-agent** · Audit-surfaced: AgentRegistry availability lost on GenServer restart [D:3/B:4/U:4 → Eff:1.33] 📋 |
-| Task 41 | ✅ | 🎁 **multi-agent** · 🐛 Codex adapter — worktree isolation breaks intermittently (cwd ignored, agent edits main checkout) [D:5/B:7/U:7 → Eff:1.4] 📋 |
-| Task 43 | ✅ | 🎁 **multi-agent** · 🐛 Dogfood verification reds on pre-existing TODO comments in dispatch base [D:3/B:6/U:7 → Eff:2.17] 🎯 |
-| Task 52 `[P]` | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Add pi.dev headless adapter [D:5/B:8/U:7 → Eff:1.5] 🚀 |
-| Task 53 `[P]` | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Smoke-test pi-via-local-LLM on a low-D rmap task [D:2/B:4/U:4 → Eff:2.0] 🎯 |
-| Task 54 `[P]` | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Cost-aware agent capability declaration (:free vs :metered) [D:3/B:5/U:5 → Eff:1.67] 🚀 |
-| Task 55 | ✅ | 🎁 **multi-agent** · 🐛 Audit-surfaced: BaselineFilter.Credo content-blind matching causes false-pass / false-red [D:3/B:7/U:7 → Eff:2.33] 🎯 |
-| Task 59 | ✅ | 🎁 **multi-agent** · Cross-agent grader as a repair-loop move (gated, asymmetric, budgeted) [D:5/B:5/U:4 → Eff:0.9] ⚠️ |
-| Task 67 | ✅ | 🎁 **multi-agent** · 🐛 Audit-surfaced: Batch.run_pinned settles entire pinned queue on one adapter's pre-dispatch unavailability [D:3/B:5/U:5 → Eff:1.67] 🚀 |
+> 20 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-4-multi-agent-quota-fail-over).
 <!-- TASKS:END -->
 
 ---
@@ -84,16 +63,7 @@
 > The agent-shaped entry point — descripex-generated MCP tools + a JSON CLI — plus a human status view and structured run logging, so both the AI orchestrator and the human can see what the fleet is doing.
 
 <!-- TASKS:BEGIN phase=5 -->
-| Task | Status | Notes |
-|------|--------|-------|
-| Task 18 `[P]` | ✅ | 🎁 **surface** · 🚀 **v0_4** · Human status view [D:3/B:5/U:5 → Eff:1.67] 🚀 |
-| Task 19 `[P]` | ✅ | 🎁 **surface** · 🚀 **v0_4** · Structured run logging + result persistence [D:5/B:5/U:5 → Eff:1.0] 📋 |
-| Task 33 | ✅ | 🎁 **surface** · Same-task A/B agent-evaluation mode [D:4/B:6/U:5 → Eff:1.38] 📋 |
-| Task 42 | ✅ | 🎁 **surface** · Audit-surfaced: Refresh roadmap focus phase pin after Phase 1 closeout [D:1/B:3/U:4 → Eff:3.5] 🎯 |
-| Task 58 | ✅ | 🎁 **surface** · 🚀 **v0_4** · Harness.AuditReview — HIGH-tier audit grader dispatch [D:3/B:7/U:7 → Eff:2.33] 🎯 |
-| Task 64 | ✅ | 🎁 **surface** · 🐛 FailureClass quota classification false-positive on full agent transcript [D:2/B:5/U:5 → Eff:2.5] 🎯 |
-| Task 68 | ✅ | 🎁 **surface** · 🐛 Audit-surfaced: AgentEvaluation.from_batch silently drops/truncates results on adapter-list mismatch [D:1/B:3/U:3 → Eff:3.0] 🎯 |
-| Task 70 | ⬜ | 🎁 **surface** · 🐛 Batch test gate-file hygiene — clean up orphaned shells + stale tmp files [D:2/B:5/U:6 → Eff:2.75] 🎯 |
+> 8 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-5-surface-observability).
 <!-- TASKS:END -->
 
 ---
@@ -117,21 +87,19 @@
 > Scoped pivot (milestone v0_5): harness extends from "harness-on-harness" to N registered target projects (Elixir, Rust, anything with a shell-driven check stack). First-class `%Harness.Project{}` registry; declarative `%Harness.CheckStack{}` with per-language presets; Oban-backed dispatch (queue-per-project, restart-resilient); GitHub source cloning; Phoenix LiveView dashboard + embedded Oban Web as the primary cold-path surface; cron-driven autonomous roadmap polling. Hand-built (not dogfooded) for the pivot window — see CLAUDE.md § Dogfooding.
 
 <!-- TASKS:BEGIN phase=7 -->
+> 15 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-7-multi-project-federation).
+<!-- TASKS:END -->
+
+---
+
+## Phase 8: Closeout & Release Readiness
+
+> v0.6 stabilization: align roadmap reality, refresh operator docs, prove the README
+> and `harness-driver` skill against the live Tidewave/dashboard surface, and keep
+> deferred transport ideas out of the normal closeout queue.
+
+<!-- TASKS:BEGIN phase=8 -->
 | Task | Status | Notes |
 |------|--------|-------|
-| Task 44 | ✅ | 🎁 **multi-project** · 🚀 **v0_5** · Promote check stack to a first-class %Harness.CheckStack{} with a preset library [D:4/B:7/U:8 → Eff:1.88] 🚀 |
-| Task 45 | ✅ | 🎁 **multi-project** · 🚀 **v0_5** · First non-Elixir preset: Rust check stack [D:3/B:6/U:6 → Eff:2.0] 🎯 |
-| Task 46 | ✅ | 🎁 **multi-project** · 🚀 **v0_5** · %Harness.Project{} struct + in-memory ProjectRegistry; Run takes Project [D:6/B:8/U:9 → Eff:1.42] 📋 |
-| Task 47 | ✅ | 🎁 **multi-project** · 🚀 **v0_5** · Harness.Project.Source.Github: clone-and-cache + fetch-before-run [D:5/B:6/U:6 → Eff:1.2] 📋 |
-| Task 48 | ✅ | 🎁 **multi-project** · 🚀 **v0_5** · Oban-backed dispatch: queue-per-project + run-state persistence across restart [D:7/B:9/U:8 → Eff:1.21] 📋 |
-| Task 49 | ✅ | 🎁 **multi-project** · 🚀 **v0_5** · In-repo <repo>/harness/ subdirectory recipe + template [D:2/B:4/U:4 → Eff:2.0] 🎯 |
-| Task 50 | ✅ | 🎁 **dashboard** · 🚀 **v0_5** · Phoenix LiveView dashboard + embedded Oban Web (mountable + standalone) [D:7/B:9/U:8 → Eff:1.21] 📋 |
-| Task 51 `[P]` | ✅ | 🎁 **multi-project** · 🚀 **v0_5** · Cron-driven autonomous roadmap polling via Oban.Plugins.Cron [D:3/B:6/U:5 → Eff:1.83] 🚀 |
-| Task 60 | ✅ | 🎁 **multi-project** · 🐛 Harness.Worktree.Isolation false-positive on incidental .claude/ writes during dogfood [D:2/B:6/U:7 → Eff:3.25] 🎯 |
-| Task 61 | ✅ | 🎁 **multi-project** · 🐛 Codex run worktree disappeared mid-run + cross-wrote into a sibling worktree (Wave 1) [D:5/B:8/U:8 → Eff:1.6] 🚀 |
-| Task 62 | ⛔ | 🎁 **multi-project** · 🐛 Stale @spec on Harness.Batch.loop_context/8 hid 17 cascade dialyzer warnings (Wave 1) [D:2/B:4/U:5 → Eff:2.25] 🎯 |
-| Task 63 | ✅ | 🎁 **dashboard** · 🐛 Dashboard transcript backfill — late subscribers see prior chunks [D:3/B:7/U:8 → Eff:2.5] 🎯 |
-| Task 65 | ⛔ | 🎁 **multi-project** · Salvage red-but-real runs — discoverable + executable integration of harness/<run-id> branches [D:4/B:7/U:7 → Eff:1.75] 🚀 |
-| Task 66 | ✅ | 🎁 **multi-project** · 🐛 Skip pollution detection for adapters declaring worktree_isolation: true [D:3/B:5/U:7 → Eff:2.0] 🎯 |
-| Task 69 | ✅ | 🎁 **multi-project** · 🐛 Audit-surfaced: Worktree.Isolation porcelain parser ignores rename source path + .DS_Store only matches at repo root [D:2/B:4/U:4 → Eff:2.0] 🎯 |
+| Task 71 | ⬜ | 🎁 **closeout** · 🚀 **v0_6** · v0.6 closeout: doc + skill refresh, rmap doctor cleanup, Tidewave smoke [D:3/B:8/U:9 → Eff:2.83] 🎯 |
 <!-- TASKS:END -->

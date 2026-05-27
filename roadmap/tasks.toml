@@ -4,7 +4,7 @@ default_branch = "development"
 vision = "An OTP-native task-execution engine an AI orchestrator drives end to end: it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent running in an isolated worktree, runs the target project's own check stack against the result, and reports verified outcomes back to its consumer. Today the consumer surface is the BEAM-native Elixir API (called from IEx, tidewave, or another process); the Phase 7 multi-project pivot (milestone v0_5) makes it a long-running OTP node with a Phoenix LiveView dashboard orchestrating N registered target projects (Elixir, Rust, anything with a shell-driven check stack) concurrently. MCP/JSON-CLI is deferred (Phase 6) — it earns complexity only if a non-Elixir consumer ever needs to drive harness from outside the BEAM. harness is itself developed by dogfooding — from the core loop (Task 8) onward, every pending roadmap task is delivered by dispatching it through harness rather than hand-building it (Phase 7's load-bearing scaffolding is the documented exception)."
 
 [focus]
-phase = 4
+phase = 8
 
 # ----------------------------------------------------------------------------
 # Phases
@@ -28,12 +28,12 @@ status = "done"
 [phases.4]
 name = "Multi-Agent & Quota Fail-over"
 order = 4
-status = "in_progress"
+status = "done"
 
 [phases.5]
 name = "Surface & Observability"
 order = 5
-status = "in_progress"
+status = "done"
 
 [phases.6]
 name = "Deferred"
@@ -43,6 +43,11 @@ status = "pending"
 [phases.7]
 name = "Multi-Project Federation"
 order = 7
+status = "done"
+
+[phases.8]
+name = "Closeout & Release Readiness"
+order = 8
 status = "in_progress"
 
 # ----------------------------------------------------------------------------
@@ -104,6 +109,11 @@ description = "Phoenix LiveView operational surface (project switcher, live mult
 order = 2
 phase = 7
 
+[bundles.closeout]
+description = "v0.6 stabilization: align roadmap reality, refresh operator docs, and prove the README + harness-driver skill against Tidewave"
+order = 1
+phase = 8
+
 # ----------------------------------------------------------------------------
 # Milestones
 # ----------------------------------------------------------------------------
@@ -126,7 +136,7 @@ target_version = "0.2.0"
 name = "Multi-agent & quota fail-over"
 description = "Proves the AgentAdapter contract holds across N>2 implementors — adding Cursor, Grok, Antigravity, and Pi behind the same behaviour requires no Claude-/Codex-specific leak — and quota fail-over routes a batch around a capped subscription rather than failing it."
 order = 3
-status = "pending"
+status = "done"
 target_version = "0.3.0"
 
 [milestones.v0_4]
@@ -142,6 +152,13 @@ description = "Proves harness scales beyond harness-on-harness — N registered 
 order = 5
 status = "done"
 target_version = "0.5.0"
+
+[milestones.v0_6]
+name = "Closeout & Release Readiness"
+description = "Proves the built system is coherent for a fresh AI orchestrator: roadmap state reflects reality, README and harness-driver instructions match the live Tidewave/dashboard surface, deferred work stays out of the normal queue, and the release smoke path is verified end to end."
+order = 6
+status = "pending"
+target_version = "0.6.0"
 
 # ----------------------------------------------------------------------------
 # Tasks
@@ -638,13 +655,22 @@ bundle = "deferred"
 status = "pending"
 title = "ACP transport adapter"
 scores = { d = 7, b = 5, u = 3 }
-scored_at = "2026-05-20"
+scored_at = "2026-05-27"
 created_at = "2026-05-20"
 body = """
-DEFERRED — speculative. Implement an adapter that speaks the Agent Client Protocol (ACP) via `ex_mcp` as an alternative transport to per-agent shell-outs. Its value depends on ACP adoption across agents; revisit once ACP is broadly supported. If picked up, it ships behind the same `AgentAdapter` behaviour and is held to the conformance suite like any other adapter.
+DEFERRED — original "speculative, awaiting ACP adoption" framing superseded 2026-05-27 by a sharper blocker. ACP adoption itself is no longer the issue: the ACP Registry went live 2026-01-28 with Claude Code, Codex CLI, Cursor, Gemini CLI, Copilot CLI, and Pi as registered backends; Zed 1.0 (2026-04-29) and JetBrains (late 2025) ship first-class ACP support; `openclaw/acpx` provides a headless ACP CLI client suitable as a Port target. The reason to stay deferred is **subscription auth incompatibility**.
+
+The reference Claude ACP adapter (`@zed-industries/claude-agent-acp`) calls the Anthropic API directly and **requires `ANTHROPIC_API_KEY`** — it explicitly rejects subscription OAuth tokens (`sk-ant-oat01-...`). Anthropic's Feb 2026 Authentication & Credential Use policy further restricts subscription OAuth to "Claude Code and claude.ai", making routing it through a different product (acpx) a Consumer ToS violation in addition to a technical one. harness's native `claude -p` adapter today preserves subscription auth by shelling out to the real `claude` binary, which reads its own credentials — harness never touches the token. This repo's whole dogfooding economy depends on that — see the `feedback_claude_subscription_not_api.md` memory and the standing practice of scrubbing `ANTHROPIC_API_KEY` on every Claude dispatch.
+
+Net: ACP for Claude converts free subscription dispatches into metered API calls. Across a dogfood batch that is real money, not academic.
+
+**Conditions to revisit:** (a) an ACP backend exists that preserves subscription OAuth for Claude — e.g. an ACP server that internally shells out to the native `claude` binary the way harness already does, OR (b) a specific agent ships ACP support with no native CLI alternative AND its auth model is acceptable, OR (c) API-billing dispatches become a deliberate cost the user wants to pay for some workload (high-stakes grading, off-quota burst capacity). Investigate Codex/Cursor ACP auth models at revisit time — the openclaw issue confirms the Claude case only; the other backends are unknown and would change the calculus if they preserve subscription.
+
+Sources: openclaw/openclaw#53456 (claude-agent-acp requires API key); Anthropic Authentication docs at https://code.claude.com/docs/en/authentication; ACP Registry launch 2026-01-28.
 """
 out_of_scope = [
-  "Any work until ACP has meaningful cross-agent adoption",
+  "Any work until the subscription-auth blocker resolves or API billing is deliberately accepted for a specific workload",
+  "Replacing or competing with the native adapters that already preserve subscription auth",
 ]
 
 [[task]]
@@ -2021,7 +2047,7 @@ done_at = "2026-05-27"
 id = "70"
 phase = 5
 bundle = "surface"
-status = "pending"
+status = "done"
 title = "Batch test gate-file hygiene — clean up orphaned shells + stale tmp files"
 scores = { d = 2, b = 5, u = 6 }
 markers = ["bug"]
@@ -2043,6 +2069,49 @@ Fix shape — pick whichever is cleanest:
 - OR a `setup_all` that rms `harness-batch-gate-*` from `System.tmp_dir!/0` before and after the suite.
 
 Either fix should generalize to other gate-style coordination if it exists.
+"""
+implemented = "Claude dogfood run run-1779873463088-e6516c34 delivered gate-file on_exit cleanup plus orphan-shell self-termination in FakeAdapter; verification stack passed with 0 repair attempts. Closeout review added suite-level setup_all cleanup so stale harness-batch-gate-* files are removed before and after batch_test runs. Focused verification: mix test.json test/harness/batch_test.exs passed 18/18; post-run temp-dir scan found zero harness-batch-gate-* files and pgrep found no gate polling shells."
+delivered_by = "claude+codex"
+verified = true
+created_at = "2026-05-27"
+scored_at = "2026-05-27"
+done_at = "2026-05-27"
+
+[[task]]
+id = "71"
+phase = 8
+bundle = "closeout"
+milestone = "v0_6"
+status = "pending"
+title = "v0.6 closeout: doc + skill refresh, rmap doctor cleanup, Tidewave smoke"
+scores = { d = 3, b = 8, u = 9 }
+acceptance_criteria = [
+  "README describes harness as a post-v0_5 multi-project OTP node (not early scaffolding), points operators to the real dashboard, Oban Web, and Tidewave endpoints on port 4018, explains that MCP/JSON CLI remains deferred and Tidewave/IEx plus the dashboard are the current agent surface, and the documented development commands match the current mix aliases",
+  "docs/dogfooding-workflow.md presents live-node Tidewave project_eval as the primary dispatch path (mix-run script retained only as a fallback), documents the subscriber/persistent-result pattern needed for long-running runs, and warns against starting a second driver BEAM while runs are active",
+  "skills/harness-driver/SKILL.md names Tidewave project_eval on the running node as the preferred orchestration surface, includes the long-running dispatch pattern that preserves the final Harness.Run.Result after the eval process exits, reflects post-v0_5 reality, and keeps Tasks 17/20/21 out of the v0.6 closeout path",
+  "rmap doctor reports no closeout-relevant drift (focus, phase status, milestone status, missing AC on deferred tasks, render consistency); deferred Tasks 17/20/21 stay deferred and out of the normal next-bundle queue; ROADMAP.md renders cleanly from roadmap/tasks.toml",
+  "Smoke: following the refreshed README + SKILL.md literally against the running node reaches /harness, /harness/oban, and /tidewave/mcp on the documented port; a small harness run can be dispatched and observed from the live node via Tidewave project_eval without starting a second driver BEAM; the exact commands/eval snippets and their outcomes are recorded; any smoke-discovered gap is filed as an explicit new task",
+]
+out_of_scope = [
+  "Changing runtime code or public Elixir APIs (Harness.Run, Tidewave plug, AgentAdapter surface)",
+  "Revisiting deferred Tasks 17 / 20 / 21 (MCP/JSON CLI transport)",
+  "Bulk-rewriting historical task records or the dogfooding run log",
+  "Publishing a Hex release, marketing site, or long tutorial",
+]
+body = """
+Single-session closeout for v0.6 release-readiness. Four surfaces refreshed against the post-v0_5 reality (multi-project OTP node, Oban-backed queues, dashboard + Oban Web + Tidewave all on port 4018, dogfooding as default), then verified by following the refreshed docs literally against the running node.
+
+Surfaces in scope:
+1. **README.md** — operational, terse, current. Remove stale "Oban is landing" / "core loop taking shape" language; point at the real endpoints.
+2. **docs/dogfooding-workflow.md** — Tidewave project_eval on the live node is the default dispatch path; the throwaway `mix run` script is fallback-only. Document the subscriber/persistent-result pattern for long-running runs (so the result survives the eval process exiting).
+3. **skills/harness-driver/SKILL.md** — same Tidewave-first orientation; long-running result-capture pattern; explicitly steer away from deferred MCP/JSON CLI work.
+4. **rmap doctor** — clean up only what matters for closeout (focus, phase/milestone status, AC on deferred tasks, render consistency). Do not bulk-rewrite history.
+
+Then the smoke: on the already-running dashboard/Tidewave node, follow the README + SKILL.md as executable operator docs — hit /harness, /harness/oban, /tidewave/mcp; via project_eval, look up the harness project, dispatch or dry-run a small task, observe by run id, confirm the live-node path works without spawning a second driver BEAM. The smoke IS the milestone hypothesis test ("system is coherent for a fresh AI orchestrator"); the four doc refreshes are its preconditions, which is why they ship as one task.
+
+Recommended execution: hand-build in one Claude Code session (the consumer of these docs is you reading them) rather than dispatching through harness — refreshing the skill that guides dispatch from inside a dispatched run is recursion without payoff.
+
+Supersedes the earlier 5-task split (71 README, 72 dogfooding-workflow, 73 SKILL.md, 74 rmap doctor, 75 smoke) which failed the "one session = one PR" Pre-Creation Gate: 75 declared depends_on = [71,72,73,74], which IS the one-PR signal.
 """
 created_at = "2026-05-27"
 scored_at = "2026-05-27"
