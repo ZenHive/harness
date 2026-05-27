@@ -64,18 +64,29 @@ defmodule Harness.Cron.RoadmapPoller do
   @doc "Returns the next scheduled poll tick from `now`."
   @spec next_tick(DateTime.t()) :: {:ok, DateTime.t() | :unknown} | {:error, term()}
   def next_tick(now \\ DateTime.utc_now()) do
-    if enabled?() do
-      with {:ok, expression} <- Cron.parse(schedule()) do
-        case apply(Oban.Cron.Expression, :next_at, [expression, now]) do
-          %DateTime{} = tick -> {:ok, tick}
-          :unknown -> {:ok, :unknown}
-          other -> {:error, {:unexpected_next_tick, other}}
-        end
-      end
-    else
-      {:error, :disabled}
+    if enabled?(), do: compute_next_tick(now), else: {:error, :disabled}
+  end
+
+  @spec compute_next_tick(DateTime.t()) :: {:ok, DateTime.t() | :unknown} | {:error, term()}
+  defp compute_next_tick(now) do
+    case Cron.parse(schedule()) do
+      {:ok, expression} -> handle_next_at(next_at(expression, now))
+      {:error, _} = err -> err
     end
   end
+
+  # `Oban.Cron.Expression` is internal to Oban and exposes an opaque
+  # `Oban.Plugins.Cron.expression()`; `apply/2` evades the opacity check
+  # without faking knowledge dialyzer can't reach through.
+  @spec next_at(term(), DateTime.t()) :: DateTime.t() | :unknown | term()
+  # credo:disable-for-next-line Credo.Check.Refactor.Apply
+  defp next_at(expression, now), do: apply(Oban.Cron.Expression, :next_at, [expression, now])
+
+  @spec handle_next_at(DateTime.t() | :unknown | term()) ::
+          {:ok, DateTime.t() | :unknown} | {:error, term()}
+  defp handle_next_at(%DateTime{} = tick), do: {:ok, tick}
+  defp handle_next_at(:unknown), do: {:ok, :unknown}
+  defp handle_next_at(other), do: {:error, {:unexpected_next_tick, other}}
 
   @doc "Returns the human-facing cron polling status."
   @spec status() :: cron_status()
@@ -138,11 +149,10 @@ defmodule Harness.Cron.RoadmapPoller do
     end
   end
 
-  @spec adapter_for_agent(term()) :: {:ok, module()} | {:error, {:invalid_item_agent, term()}}
+  @spec adapter_for_agent(:claude | :codex | :cursor) :: {:ok, module()}
   defp adapter_for_agent(:claude), do: {:ok, Harness.AgentAdapter.Claude}
   defp adapter_for_agent(:codex), do: {:ok, Harness.AgentAdapter.Codex}
   defp adapter_for_agent(:cursor), do: {:ok, Harness.AgentAdapter.Cursor}
-  defp adapter_for_agent(agent), do: {:error, {:invalid_item_agent, agent}}
 
   @spec log_ingest_error(Project.t(), term()) :: :ok
   defp log_ingest_error(%Project{} = project, reason) do
