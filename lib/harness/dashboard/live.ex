@@ -26,7 +26,6 @@ defmodule Harness.Dashboard.Live do
   alias Phoenix.LiveView.Socket
 
   @tick_interval_ms 1_000
-  @transcript_buffer_bytes 200 * 1024
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -39,6 +38,7 @@ defmodule Harness.Dashboard.Live do
      |> assign(:selected_project, nil)
      |> assign(:transcript, "")
      |> assign(:transcript_bytes, 0)
+     |> assign(:last_seq, 0)
      |> assign(:run_status, nil)
      |> assign(:run_id, nil)}
   end
@@ -66,6 +66,8 @@ defmodule Harness.Dashboard.Live do
     |> assign(:run_id, run_id)
     |> assign(:transcript, "")
     |> assign(:transcript_bytes, 0)
+    |> assign(:last_seq, 0)
+    |> backfill_transcript(run_id)
     |> refresh_run_status(run_id)
   end
 
@@ -87,16 +89,19 @@ defmodule Harness.Dashboard.Live do
     {:noreply, socket}
   end
 
-  def handle_info({:harness_transcript, _run_id, data}, socket) do
-    chunk = IO.iodata_to_binary(data)
-    new_bytes = socket.assigns.transcript_bytes + byte_size(chunk)
-    combined = socket.assigns.transcript <> chunk
-    {trimmed, trimmed_bytes} = trim_transcript(combined, new_bytes)
+  def handle_info({:harness_transcript, _run_id, seq, _chunk}, socket) when seq <= socket.assigns.last_seq do
+    {:noreply, socket}
+  end
+
+  def handle_info({:harness_transcript, _run_id, seq, data}, socket) do
+    {trimmed, trimmed_bytes} =
+      Transcript.append(socket.assigns.transcript, socket.assigns.transcript_bytes, data)
 
     {:noreply,
      socket
      |> assign(:transcript, trimmed)
-     |> assign(:transcript_bytes, trimmed_bytes)}
+     |> assign(:transcript_bytes, trimmed_bytes)
+     |> assign(:last_seq, seq)}
   end
 
   def handle_info(_other, socket), do: {:noreply, socket}
@@ -135,16 +140,23 @@ defmodule Harness.Dashboard.Live do
     socket
   end
 
-  @doc false
-  @spec trim_transcript(binary(), non_neg_integer()) :: {binary(), non_neg_integer()}
-  def trim_transcript(buffer, bytes) when bytes <= @transcript_buffer_bytes, do: {buffer, bytes}
+  # Fetches the buffered transcript + last seq from the run gen_statem and
+  # primes the LiveView so a late subscriber does not start from an empty pane.
+  # `subscribe_transcript/2` ran first, so any chunks broadcast between subscribe
+  # and this call are queued in our mailbox; `handle_info/2`'s seq guard drops
+  # the ones already in the snapshot.
+  @spec backfill_transcript(Socket.t(), String.t()) :: Socket.t()
+  defp backfill_transcript(socket, run_id) do
+    case Harness.Run.transcript(run_id) do
+      {:ok, %{buffer: buffer, seq: seq}} ->
+        socket
+        |> assign(:transcript, buffer)
+        |> assign(:transcript_bytes, byte_size(buffer))
+        |> assign(:last_seq, seq)
 
-  def trim_transcript(buffer, _bytes) do
-    target = @transcript_buffer_bytes
-    size = byte_size(buffer)
-    start = size - target
-    trimmed = binary_part(buffer, start, target)
-    {trimmed, byte_size(trimmed)}
+      {:error, :not_found} ->
+        socket
+    end
   end
 
   @impl Phoenix.LiveView

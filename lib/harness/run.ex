@@ -136,7 +136,10 @@ defmodule Harness.Run do
            task: Task.t() | nil,
            cancel_requested: {Result.reason(), :gen_statem.from() | nil} | nil,
            reason: Result.reason() | nil,
-           result: Result.t() | nil
+           result: Result.t() | nil,
+           transcript: binary(),
+           transcript_bytes: non_neg_integer(),
+           transcript_seq: non_neg_integer()
          }
 
   @typep event :: :enter | :gen_statem.event_type()
@@ -180,6 +183,30 @@ defmodule Harness.Run do
   def status(run) do
     with {:ok, pid} <- resolve(run) do
       {:ok, :gen_statem.call(pid, :status)}
+    end
+  catch
+    :exit, _reason -> {:error, :not_found}
+  end
+
+  @doc """
+  Returns the buffered transcript and last seq tag for the run, or
+  `{:error, :not_found}`.
+
+  The buffer is bounded at `Harness.Dashboard.Transcript.buffer_bytes/0`
+  (200 KiB) and contains the most recent agent output. `seq` is the monotonic
+  counter assigned to the last chunk in the buffer (`0` if no chunks yet) — the
+  dashboard subscribes to `Harness.Dashboard.Transcript` *before* fetching this
+  snapshot and then drops broadcasts where the broadcast seq is `<= seq`, which
+  collapses the race between subscribe and snapshot to an integer compare.
+
+  Accepts a run id or the gen_statem pid. A run that has already stopped is no
+  longer registered and reports `{:error, :not_found}`.
+  """
+  @spec transcript(run()) ::
+          {:ok, %{buffer: binary(), seq: non_neg_integer()}} | {:error, :not_found}
+  def transcript(run) do
+    with {:ok, pid} <- resolve(run) do
+      {:ok, :gen_statem.call(pid, :transcript)}
     end
   catch
     :exit, _reason -> {:error, :not_found}
@@ -256,7 +283,10 @@ defmodule Harness.Run do
       task: nil,
       cancel_requested: nil,
       reason: nil,
-      result: nil
+      result: nil,
+      transcript: <<>>,
+      transcript_bytes: 0,
+      transcript_seq: 0
     }
 
     {:ok, :dispatched, data, [{{:timeout, :lifetime}, data.lifetime_timeout, :lifetime}]}
@@ -477,6 +507,22 @@ defmodule Harness.Run do
   @spec handle_common(event(), term(), state(), data()) :: handler_result()
   defp handle_common({:call, from}, :status, state, data) do
     {:keep_state_and_data, [{:reply, from, status_snapshot(state, data)}]}
+  end
+
+  defp handle_common({:call, from}, :transcript, _state, data) do
+    snapshot = %{buffer: data.transcript, seq: data.transcript_seq}
+    {:keep_state_and_data, [{:reply, from, snapshot}]}
+  end
+
+  # State-agnostic so a chunk that lands during `:committing` / `:verifying` /
+  # `:terminal_linger` still appends — the agent's Port can flush after the
+  # gen_statem has already transitioned out of `:running`.
+  defp handle_common(:info, {:transcript_chunk, chunk}, _state, data) do
+    {trimmed, trimmed_bytes} = Transcript.append(data.transcript, data.transcript_bytes, chunk)
+    new_seq = data.transcript_seq + 1
+    Transcript.broadcast(data.run_id, new_seq, chunk)
+
+    {:keep_state, %{data | transcript: trimmed, transcript_bytes: trimmed_bytes, transcript_seq: new_seq}}
   end
 
   defp handle_common({:call, from}, :cancel, state, _data) when state in [:done, :failed] do
@@ -745,11 +791,9 @@ defmodule Harness.Run do
 
   @spec driver_opts(data(), pid()) :: keyword()
   defp driver_opts(data, parent) do
-    run_id = data.run_id
-
     [
       on_spawn: fn run -> send(parent, {:run_handle, run}) end,
-      on_output: fn chunk -> Transcript.broadcast(run_id, chunk) end
+      on_output: fn chunk -> send(parent, {:transcript_chunk, chunk}) end
     ]
     |> put_opt(:total_timeout, data.total_timeout)
     |> put_opt(:idle_timeout, data.idle_timeout)

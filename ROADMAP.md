@@ -126,4 +126,5 @@
 | Task 60 | ⬜ | 🎁 **multi-project** · 🐛 Harness.Worktree.Isolation false-positive on incidental .claude/ writes during dogfood [D:2/B:6/U:7 → Eff:3.25] 🎯 |
 | Task 61 | ⬜ | 🎁 **multi-project** · 🐛 Codex run worktree disappeared mid-run + cross-wrote into a sibling worktree (Wave 1) [D:5/B:8/U:8 → Eff:1.6] 🚀 |
 | Task 62 | ⛔ | 🎁 **multi-project** · 🐛 Stale @spec on Harness.Batch.loop_context/8 hid 17 cascade dialyzer warnings (Wave 1) [D:2/B:4/U:5 → Eff:2.25] 🎯 |
+| Task 63 | ✅ | 🎁 **dashboard** · 🐛 Dashboard transcript backfill — late subscribers see prior chunks [D:3/B:7/U:8 → Eff:2.5] 🎯 |
 <!-- TASKS:END -->

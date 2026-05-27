@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Dashboard transcript pane now backfills on mount instead of starting empty
+  (Task 63). The per-run transcript at `/harness/runs/:run_id` was fed by
+  fire-and-forget `Phoenix.PubSub` broadcasts, so opening the page mid-run
+  showed "Waiting for output…" until the next chunk arrived — often minutes
+  later for a quiet Claude session. The `Harness.Run` gen_statem now owns a
+  bounded 200 KiB transcript buffer + a monotonic seq counter; the driver's
+  `:on_output` callback sends each chunk to the gen_statem (which appends and
+  re-broadcasts with seq); the LiveView subscribes first, fetches the buffer
+  via the new `Harness.Run.transcript/1`, then drops PubSub messages whose
+  `seq <= last_seq` to dedup chunks that landed during the snapshot call.
+  Broadcast tuple is now `{:harness_transcript, run_id, seq, chunk}` (was
+  3-element). `Harness.Dashboard.Transcript.append/3` is the shared trim
+  helper so producer and consumer agree on the 200 KiB cap.
+
 ### Added
 
 - Phoenix LiveView dashboard with embedded Oban Web (Task 50, closes milestone
