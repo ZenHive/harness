@@ -1879,7 +1879,7 @@
       "phase": 4,
       "bundle": "multi-agent",
       "milestone": "v0_3",
-      "status": "in_progress",
+      "status": "done",
       "title": "Smoke-test pi-via-local-LLM on a low-D rmap task",
       "scores": {
         "d": 2,
@@ -1906,7 +1906,11 @@
       "body": "One-off dogfood run on this Apple M4 Pro / 48GB host: dispatch a single low-D rmap\ntask through harness with the pi adapter (Task 52) pointed at Qwen3-Coder-30B-A3B-Instruct\n(MLX 8-bit, already installed — llmfit-confirmed fit_level=Perfect, score 96, ~39 tok/s,\ntool-use trained) served via an OpenAI-compatible local endpoint. Preferred runtime is\nLM Studio's MLX server at localhost:1234/v1; fallback is Ollama GGUF at localhost:11434/v1.\nGoal is decision-grade information, not productive code delivery — does a credible,\ntool-use-trained MoE coder model produce a usable signal under the existing verification\n+ repair-loop stack, or does the repair loop just churn until :failed? Record the outcome\nin docs/dogfooding-runs.md (model + quantisation + runtime, task picked, attempts,\nterminal state, verification verdict, repair-loop transcript shape, observed tokens/sec).\nWhether :passed or :failed, the data informs whether to keep building local-LLM coverage.\n",
       "created_at": "2026-05-24",
       "started_at": "2026-05-27",
+      "done_at": "2026-05-27",
       "scored_at": "2026-05-24",
+      "implemented": "Dispatched Task 54 (cost_tier capability) through harness twice — Run A via Harness.AgentAdapter.Pi → ~/.pi/agent/settings.json → LM Studio (MLX, http://localhost:1234/v1) → Qwen3-Coder-30B-A3B-Instruct-MLX-5bit, and Run C via Claude on the Max OAuth subscription as A/B reference (Run B was a Claude/API false start before ANTHROPIC_API_KEY scrubbing was wired). All three runs logged in docs/dogfooding-runs.md with per-run wall-clock, repair attempts, terminal state, and manual offline-verification outcomes (since both A and C settled :checkout_polluted false-positives — see Task 66). Headline signal: Pi+Qwen drives the full dance (tool-use, transcript, repair, harness commit) but first-attempt output fails format and leaves probe scratch scripts in the diff; Claude on subscription produces a verification-clean diff on the same scope in ~1.6× less wall-clock. Recommendation: park Pi+Qwen with a watching brief for routine code-quality-sensitive roadmap work, revisit when a better tool-use-trained MoE lands. Pi remains attractive for private-data tasks (email categorization, personal-data reorg) where the realistic alternative is 'don't do it at all', not 'frontier model'. Side findings: filed Task 66 (skip pollution detection for adapters declaring worktree_isolation: true — both runs hit this false positive) and Task 70 (.sobelow-skips baseline not propagated into harness worktrees → inherited findings re-flag on every dogfood run).",
+      "delivered_by": "Pi+Qwen3-Coder-30B-A3B-Instruct-MLX-5bit (+ Claude/subscription A/B reference)",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -2469,6 +2473,38 @@
       "implemented": "porcelain_path/1 renamed to porcelain_paths/1 returning [src, dst] on rename lines; allowlisted_path? requires Enum.all? to be allowlisted. Added **/<name> recursive-basename pattern via matches_pattern? + matches_basename?; default allowlist's .DS_Store upgraded to **/.DS_Store. Two REGRESSION tests in isolation_test.exs cover rename-out-of-tracked-dir and docs/.DS_Store-at-depth.",
       "delivered_by": "claude",
       "verified": true,
+      "cross_repo": []
+    },
+    {
+      "id": "70",
+      "phase": 7,
+      "bundle": "multi-project",
+      "status": "pending",
+      "title": "Propagate sobelow baseline into harness worktrees",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 6
+      },
+      "eff": 2.5,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [
+        50
+      ],
+      "acceptance_criteria": [
+        "A dogfood run on a clean diff does not get sobelow false positives from `lib/harness/worktree.ex` (or any other inherited baseline-suppressed finding)",
+        "The fix is covered by an isolated test (worktree carve-out preserves the relevant baseline file)",
+        "If approach (2) is chosen, the propagation is generic enough to extend to a configurable allow-list of files, not a hard-coded `.sobelow-skips`"
+      ],
+      "out_of_scope": [
+        "Restructuring how audit-review manages the baseline",
+        "Adding new sobelow skip annotations"
+      ],
+      "body": "`.sobelow-skips` is gitignored (`.gitignore:32`), so `git worktree add` does not propagate it into a harness run worktree. Every dogfood run therefore starts without the baseline file and sobelow re-flags every finding that the main-checkout baseline suppresses — most visibly the 3 LOW-confidence `Traversal.FileModule` findings in `lib/harness/worktree.ex` that audit-review has already triaged.\n\nSurfaced during the Task 53 smoke-test A/B (run-1779862714944-c578b3a7): Claude's diff was clean across format / compile / credo / doctor / tests / coverage but sobelow flagged 3 inherited noise findings purely because the baseline file was missing from the worktree.\n\nTwo viable fixes:\n1. Un-gitignore `.sobelow-skips` and check it in. audit-review already manages line-fingerprint drift; tracked baseline is the simpler model. Trade-off: noisy diffs from baseline regeneration.\n2. Have `Harness.Worktree.create/2` (or the carve-out step) copy `.sobelow-skips` from the main checkout into the new worktree if it exists in the main checkout. Trade-off: small surface, files outside the index require explicit handling.\n\nEither is fine; (2) is more localised and avoids touching the audit-review/sobelow-skips contract. The fix should also generalise to any other ignored-but-load-bearing baseline file the verification stack relies on.\n",
+      "created_at": "2026-05-27",
+      "scored_at": "2026-05-27",
       "cross_repo": []
     }
   ]
