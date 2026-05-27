@@ -35,7 +35,7 @@ defmodule Harness.Batch do
   @typep active_worker :: %{
            index: non_neg_integer(),
            item: Item.t(),
-           adapter: module() | nil,
+           adapters: [module()],
            worker_pid: pid(),
            monitor_ref: reference(),
            started_at_ms: integer()
@@ -142,6 +142,22 @@ defmodule Harness.Batch do
       persist_batch(result, result_store)
       {:ok, result}
     end
+  end
+
+  @doc """
+  Runs one roadmap item once per pinned adapter, concurrently.
+
+  Each `{item, adapter}` pair gets its own isolated worktree. Adapter fail-over
+  never crosses pins — a quota-exhausted adapter settles that slot without
+  stealing another adapter's slot. Partial failure is tolerated.
+  """
+  @spec run_pinned([{Item.t(), module()}], Project.t() | String.t(), keyword()) ::
+          {:ok, BatchResult.t()} | {:error, error()}
+  def run_pinned(pairs, project, opts \\ []) when is_list(pairs) and is_list(opts) do
+    pinned_adapters = Enum.map(pairs, fn {_item, adapter} -> adapter end)
+    items = Enum.map(pairs, fn {item, _adapter} -> item end)
+
+    run(items, project, pinned_adapters, Keyword.put(opts, :pinned_adapters, pinned_adapters))
   end
 
   @spec resolve_and_register_project(Project.t() | String.t()) :: {:ok, Project.t()} | {:error, dispatch_error()}
@@ -305,7 +321,7 @@ defmodule Harness.Batch do
   end
 
   defp fill_slots([{%Item{} = item, index} = head | rest], active, results, events, context, max_concurrency) do
-    case AgentRegistry.select(context.adapters,
+    case AgentRegistry.select(adapters_for_index(context, index),
            required_capabilities: Keyword.get(context.run_opts, :required_capabilities, [])
          ) do
       {:ok, _adapter} ->
@@ -332,12 +348,13 @@ defmodule Harness.Batch do
   defp start_worker(active, index, item, events, context) do
     parent = self()
     started_at_ms = System.monotonic_time(:millisecond)
+    adapters = adapters_for_index(context, index)
 
     worker_pid =
       spawn(fn ->
         outcome =
           RetryPolicy.run(
-            fn -> run_once(item, context.project, context.adapters, context.run_opts) end,
+            fn -> run_once(item, context.project, adapters, context.run_opts) end,
             context.retry_policy
           )
 
@@ -349,13 +366,21 @@ defmodule Harness.Batch do
     worker = %{
       index: index,
       item: item,
-      adapter: nil,
+      adapters: adapters,
       worker_pid: worker_pid,
       monitor_ref: ref,
       started_at_ms: started_at_ms
     }
 
     {Map.put(active, ref, worker), events}
+  end
+
+  @spec adapters_for_index(loop_context(), non_neg_integer()) :: [module()]
+  defp adapters_for_index(%{run_opts: run_opts} = context, index) do
+    case Keyword.get(run_opts, :pinned_adapters) do
+      pinned when is_list(pinned) -> [Enum.at(pinned, index)]
+      _ -> context.adapters
+    end
   end
 
   # The worker's adapter-selection spin loop. `fill_slots/6` (the parent
@@ -372,6 +397,7 @@ defmodule Harness.Batch do
 
   @spec run_once(Item.t(), Project.t(), [module()], keyword()) :: RunResult.t()
   defp run_once(%Item{} = item, project, adapters, run_opts) do
+    run_opts = Keyword.delete(run_opts, :pinned_adapters)
     run_once_dispatch(item, project, adapters, run_opts, 0)
   end
 
@@ -550,7 +576,7 @@ defmodule Harness.Batch do
         ) ::
           {%{reference() => active_worker()}, %{non_neg_integer() => RunResult.t()}, [indexed_item()], [term()]}
   defp maybe_requeue_after_failover(active, results, queue, events, context, worker, result, failed_adapter) do
-    case AgentRegistry.select(context.adapters,
+    case AgentRegistry.select(worker.adapters,
            required_capabilities: Keyword.get(context.run_opts, :required_capabilities, [])
          ) do
       {:ok, next_adapter} ->

@@ -191,6 +191,33 @@ adapter        = pick_adapter_for_task(item)   # your logic (cost, capability, A
 )
 ```
 
+**Same-task A/B agent evaluation (one item, N adapters):**
+
+```elixir
+{:ok, item} = Harness.Roadmap.ingest({:id, "33"}, project: project)
+
+{:ok, comparison} = Harness.Batch.AgentEvaluation.compare(
+  item,
+  project,
+  [Harness.AgentAdapter.Claude, Harness.AgentAdapter.Codex, Harness.AgentAdapter.Cursor],
+  max_concurrency: 3
+)
+
+# comparison.entries — side-by-side per-adapter metrics (verdict, repair_attempts,
+# duration_ms, first_attempt_failed_check_count, agent_diff_size). Metrics are
+# additive; the verification verdict stays binary pass/fail.
+```
+
+Lower-level pinned batch (same machinery, no comparison wrapper):
+
+```elixir
+{:ok, batch} = Harness.Batch.run_pinned(
+  [{item, Harness.AgentAdapter.Claude}, {item, Harness.AgentAdapter.Codex}],
+  project,
+  max_concurrency: 2
+)
+```
+
 **Cross-agent audit grade (HIGH-tier):**
 
 ```elixir
@@ -233,7 +260,7 @@ A new phase that only adds features on stable surfaces does **not** earn a hand-
 Changes that require an update to this skill:
 - New or changed fields on `Harness.AgentAdapter.Invocation`
 - New `rule_channel` values or rule injection behavior
-- New public functions on `Harness.Run.Supervisor`, `Harness.Batch`, `Harness.Roadmap`, `Harness.AgentAdapter.Driver`
+- New public functions on `Harness.Run.Supervisor`, `Harness.Batch`, `Harness.Batch.AgentEvaluation`, `Harness.Roadmap`, `Harness.AgentAdapter.Driver`
 - New adapters or capability declarations
 - Changes to the non-delegatable contract or recommended dispatch paths
 - New result shapes or verdict semantics
