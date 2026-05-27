@@ -119,9 +119,10 @@ defmodule Harness.MixProject do
         # is exercised by :integration tests that require a live DB — re-include
         # them and re-raise the threshold once those tests run in CI.
         "cmd MIX_ENV=test mix test.json --quiet --cover --cover-threshold 80 --summary-only --exclude integration",
-        "sobelow",
+        "sobelow --exit --skip",
         "dialyzer.json --quiet"
-      ]
+      ],
+      "sobelow.baseline": ["sobelow --mark-skip-all"]
     ]
   end
 end

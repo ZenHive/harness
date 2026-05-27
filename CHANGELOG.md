@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Precommit gate now fails on Sobelow findings (`sobelow --exit --skip`) and
+  ships a `mix sobelow.baseline` alias for deliberately marking the current
+  findings as skippable.
 - Oban-backed dispatch for registered projects: runtime deps now include Oban,
   Ecto SQL, and Postgrex; `Harness.Repo` owns the Postgres connection; Oban
   jobs persist one run per roadmap item in per-project queues named

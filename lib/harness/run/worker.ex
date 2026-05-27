@@ -27,7 +27,7 @@ defmodule Harness.Run.Worker do
          {:ok, project} <- ProjectRegistry.lookup(project_name),
          {:ok, adapter} <- adapter_module(adapter_name),
          {:ok, agent} <- agent_for_adapter(adapter),
-         {:ok, %Item{} = item} <- Roadmap.ingest({:id, item_id}, project: project, agent: agent),
+         {:ok, %Item{} = item} <- ingest_roadmap({:id, item_id}, project: project, agent: agent),
          {:ok, result} <- run_once(job, item, project, adapter) do
       to_oban_result(result, job)
     else
@@ -66,7 +66,7 @@ defmodule Harness.Run.Worker do
   defp run_once(%Oban.Job{} = job, %Item{} = item, %Project{} = project, adapter) do
     checkpoint(job, "run_started")
 
-    case RunSupervisor.start_run(item, project, adapter, run_opts(job)) do
+    case start_run(item, project, adapter, run_opts(job)) do
       {:ok, run_id, pid} ->
         {:ok, await_run(run_id, Process.monitor(pid), item)}
 
@@ -114,6 +114,25 @@ defmodule Harness.Run.Worker do
   end
 
   defp checkpoint(%Oban.Job{}, _stage), do: :ok
+
+  # Test seam: `:roadmap_ingest` and `:run_starter` Application env keys let
+  # tests inject fakes without spinning up RunSupervisor / rmap. Never set
+  # either in production config.
+  @spec ingest_roadmap(Roadmap.selector(), keyword()) :: {:ok, Item.t()} | {:error, term()}
+  defp ingest_roadmap(selector, opts) do
+    case Application.get_env(:harness, :roadmap_ingest) do
+      fun when is_function(fun, 2) -> fun.(selector, opts)
+      _other -> Roadmap.ingest(selector, opts)
+    end
+  end
+
+  @spec start_run(Item.t(), Project.t(), module(), keyword()) :: {:ok, String.t(), pid()} | {:error, term()}
+  defp start_run(%Item{} = item, %Project{} = project, adapter, opts) do
+    case Application.get_env(:harness, :run_starter) do
+      fun when is_function(fun, 4) -> fun.(item, project, adapter, opts)
+      _other -> RunSupervisor.start_run(item, project, adapter, opts)
+    end
+  end
 
   @spec fetch_arg(args(), String.t()) :: {:ok, String.t()} | {:error, {:missing_arg, String.t()}}
   defp fetch_arg(args, key) do

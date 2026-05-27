@@ -579,15 +579,15 @@ defmodule Harness.Run do
     :ok
   end
 
-  # Builds the final result, delivers it to the subscriber, then tears the
-  # worktree down. The subscriber is notified *before* teardown so the result is
-  # delivered even if teardown fails.
+  # Builds and persists the final result, tears the worktree down, then delivers
+  # it to the subscriber. Teardown errors are logged and swallowed so the result
+  # is still delivered, but subscribers do not race test/driver fixture cleanup.
   @spec settle(data(), Result.state()) :: data()
   defp settle(data, terminal_state) do
     result = build_result(data, terminal_state)
     persist_run_record(data, result)
-    notify_subscriber(data.subscriber, data.run_id, result)
     finish_worktree(data.worktree, terminal_state)
+    notify_subscriber(data.subscriber, data.run_id, result)
     %{data | result: result}
   end
 

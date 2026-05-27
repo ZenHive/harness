@@ -9,19 +9,17 @@
 @~/.claude/includes/task-writing.md
 @~/.claude/includes/rmap.md
 @~/.claude/includes/workflow-philosophy.md
-@~/.claude/includes/web-command.md
-@~/.claude/includes/elixir-setup.md
 @~/.claude/includes/ex-unit-json.md
 @~/.claude/includes/dialyzer-json.md
 @~/.claude/includes/code-style.md
 @~/.claude/includes/development-commands.md
 @~/.claude/includes/development-philosophy.md
-@~/.claude/includes/agent-economy.md
-@~/.claude/includes/reach.md
+
+Situational topics covered by auto-loading skills (no `@`-import — invoke via Skill when the trigger phrasing matches): `elixir:reach` (PDG/SDG, `mix reach.otp` OTP introspection), `elixir:web-command` (browser interaction, dashboard work post-Task-50), `elixir:agent-economy` (descripex consumer surface, if/when harness adopts it), `elixir:elixir-setup` (dep stack changes, alias edits).
 
 ## What This Is
 
-`harness` is an OTP-native Elixir engine an **AI orchestrator drives end to end**: it pulls a task from the rmap roadmap, dispatches it to a **headless coding agent** — Claude Code, Cursor, Codex, Grok, Antigravity — running in an isolated git worktree, runs the target project's own check stack against the result, and reports a *verified* outcome back to its consumer. Today the consumer surface is an Elixir API (called from IEx, tidewave, or another BEAM process); the **Phase 7 multi-project pivot** (Tasks 44–51, milestone v0_5) reshapes it into a long-running OTP node with a **Phoenix LiveView dashboard** that orchestrates **N registered target projects** (Elixir, Rust, anything-with-a-shell-driven check stack) concurrently. MCP/JSON-CLI surface (Task 17) is **deferred** to Phase 6 — it earns its complexity only if a non-Elixir consumer (Python, TS) ever needs to drive harness from outside the BEAM, which isn't the current need.
+`harness` is an OTP-native Elixir engine an **AI orchestrator drives end to end**: it pulls a task from the rmap roadmap, dispatches it to a **headless coding agent** — Claude Code, Cursor, Codex, Grok, Antigravity, Pi — running in an isolated git worktree, runs the target project's own check stack against the result, and reports a *verified* outcome back to its consumer. Today the consumer surface is an Elixir API (called from IEx, tidewave, or another BEAM process); the **Phase 7 multi-project pivot** (Tasks 44–51, milestone v0_5) reshapes it into a long-running OTP node with a **Phoenix LiveView dashboard** that orchestrates **N registered target projects** (Elixir, Rust, anything-with-a-shell-driven check stack) concurrently. MCP/JSON-CLI surface (Task 17) is **deferred** to Phase 6 — it earns its complexity only if a non-Elixir consumer (Python, TS) ever needs to drive harness from outside the BEAM, which isn't the current need.
 
 The primary user is an AI agent, not a human — harness is the OTP-native automation of the delegate → verify → repair loop this repo already runs by hand via the `cloud-delegation` skills. For the Elixir-native consumer (Claude Code running in IEx / tidewave), the library + dashboard IS the agent surface; no JSON-RPC transport is needed.
 
@@ -65,9 +63,9 @@ Non-delegatable adapters (such as `Grok`, `Antigravity`, and `Pi`) run with a `c
 
 harness captures these **raw** and passes them through — it does not parse or normalize them. Known gotcha: the headless **exit code is unreliable**. Derive *termination* from the process / Port closing plus a timeout guard; derive *success* from harness's own verification stack — never from `$?`, never from the agent's self-reported result.
 
-## Why `reach.md` Is Imported
+## Reach Is in the Dep Stack
 
-The harness core is unusually OTP-dense: supervision trees, a per-run `gen_statem`/GenServer, a `DynamicSupervisor` batch layer, and independence reasoning when deriving batches. `mix reach.otp` (state-machine analysis, dead replies, missing handlers, supervision topology) and `Reach.independent?` are directly on-point. Reach is a dev/test analysis dependency — `runtime: false`, not shipped.
+The harness core is unusually OTP-dense — supervision trees, a per-run `gen_statem`/GenServer, a `DynamicSupervisor` batch layer, and independence reasoning when deriving batches. `mix reach.otp` (state-machine analysis, dead replies, missing handlers, supervision topology) and `Reach.independent?` are directly on-point. Reach is a dev/test analysis dependency (`runtime: false`, not shipped); invoke the `elixir:reach` skill when doing OTP introspection or static analysis here.
 
 ## Status
 
