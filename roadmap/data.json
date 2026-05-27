@@ -1168,7 +1168,7 @@
       "id": "33",
       "phase": 5,
       "bundle": "surface",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Same-task A/B agent-evaluation mode",
       "scores": {
         "d": 4,
@@ -1373,7 +1373,7 @@
       "id": "40",
       "phase": 4,
       "bundle": "multi-agent",
-      "status": "pending",
+      "status": "done",
       "title": "Audit-surfaced: AgentRegistry availability lost on GenServer restart",
       "scores": {
         "d": 3,
@@ -1390,7 +1390,10 @@
       ],
       "body": "`Harness.AgentRegistry` keeps unavailability (quota-exhausted, manually marked unavailable) in `GenServer` state only — `init/1` boots with `unavailable: %{}`. A supervised restart (the registry is started as a child of `Harness.Application` with default restart strategy) resets the table and a known-quota-exhausted adapter becomes available again on the next `select/2`. There is no persistence and no TTL on quota state.\n\nResolution requires a deliberate contract decision (this is `discuss-design`):\n\n  - (a) Persist unavailability across restarts (e.g., DETS, persistent_term, or :ets owned by a different process). Survives crashes but complicates testing and adds startup ordering.\n  - (b) Document the reset semantics explicitly and rely on the registry being treated as fail-stop infrastructure (an orchestrator-level retry catches misdirected dispatches).\n  - (c) TTL-based \"soft\" unavailability (auto-reset after the typical quota-window).\n\nFiled by audit-review against commit 9b686a9b on 2026-05-23; see `.audit/9b686a9-agent-registry.md`. Codex flagged this as `discuss-design`; Claude agrees the design decision belongs to the user.\n",
       "created_at": "2026-05-23",
+      "done_at": "2026-05-27",
       "scored_at": "2026-05-23",
+      "implemented": "Resolved as option (b) — \"document fail-stop semantics, rely on Oban retry\". AgentRegistry's @moduledoc rewritten with explicit § \"Availability is a soft hint, not a contract\" + § \"When to revisit\" naming option (c) TTL as the future-only path (never option (a) persistence without TTL, buggy by construction). CLAUDE.md § Architecture and skills/harness-driver/SKILL.md § \"Sharp Edges & Gotchas\" updated to reflect the contract decision. Rationale: AgentRegistry is a latency optimization (skip known-bad adapter at dispatch), correctness lives in Oban's snooze/retry (workers map quota → {:snooze, _}, persisted job rows survive both restarts and quota windows). Quota itself is transient (≈5h rolling), so persistence without TTL would be wrong by the time the BEAM comes back. Bounded cost: one wasted run-attempt per restart per previously-marked-unavailable adapter. No code change.",
+      "delivered_by": "claude",
       "cross_repo": []
     },
     {
@@ -2174,7 +2177,7 @@
       "id": "61",
       "phase": 7,
       "bundle": "multi-project",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Codex run worktree disappeared mid-run + cross-wrote into a sibling worktree (Wave 1)",
       "scores": {
         "d": 5,
@@ -2197,6 +2200,7 @@
       ],
       "body": "Wave 1 of Phase 7 dispatched Task 45 (Codex) and Task 46 (Cursor) in parallel from the same `development` HEAD (783cd50). Codex's run settled `:commit_failed` with `{:enoent}` on its worktree's `.harness-retained` marker followed by `ArgumentError: worktree cwd is not a directory` from `Harness.AgentRules.worktree_root!/1` — Codex's run worktree (`run-1779751918402-46fbe061`) was gone before `Harness.Run.commit_worktree/2` ran. Independently of that, Codex's Rust preset files (`lib/harness/check_stack/preset/rust.ex`, `test/harness/check_stack/preset/rust_test.exs`, `test/support/fixtures/rust_project*`) ended up inside Cursor's worktree directory (`run-1779751920208-d0604434`) and were swept into Cursor's `git add` and committed as part of f3222c3 (\"agent delivery — task 46\").\n\nTwo failures together suggest either (a) `agy`/Codex-style worktree-cwd ignore (mirrors Task 32 / Task 41) where Codex resolved its cwd to Cursor's worktree once its own went :enoent, or (b) a harness-side cleanup race that pulled Codex's worktree out from under the still-running adapter.\n\nInvestigation directions:\n- Is there a harness boot/periodic sweeper that removed Codex's worktree while still running? (The Task 44 log shows a boot sweep at startup that \"pruned: 1\" — what triggered it.)\n- Did Codex's Port-spawned `codex exec` survive past its worktree deletion and then resolve some operations to a sibling cwd via Port `cwd:` defaulting? (Compare to Task 41's `:worktree_isolation` field.)\n- Add a guard inside `Run.commit_worktree/2` that fails fast and loud with a distinct reason when the worktree directory has gone :enoent, rather than crashing inside `AgentRules.worktree_root!/1`.\n\nWave 1 closeout integrated f3222c3 (carrying both agents' work) into `development` as 2bce2a2 + `f5bc4a1` spec fix-up; both Tasks 45 and 46 settled `done` against the same `shipped_in`. This task tracks the underlying isolation/race so it doesn't recur in Waves 2/3.\n",
       "created_at": "2026-05-25",
+      "started_at": "2026-05-27",
       "scored_at": "2026-05-25",
       "cross_repo": []
     },
