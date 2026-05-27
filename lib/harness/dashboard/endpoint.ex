@@ -25,6 +25,24 @@ defmodule Harness.Dashboard.Endpoint do
     longpoll: [connect_info: [session: @session_options]]
   )
 
+  # Serve the Phoenix + LiveView JS bundles from their dep priv/static dirs so
+  # the layout can bootstrap a `LiveSocket` without any consumer-side asset
+  # pipeline. Mounted before the request-logging / parser plugs since these are
+  # plain static fetches.
+  plug(Plug.Static,
+    at: "/assets/phoenix",
+    from: :phoenix,
+    gzip: false,
+    only: ~w(phoenix.min.js phoenix.js)
+  )
+
+  plug(Plug.Static,
+    at: "/assets/phoenix_live_view",
+    from: :phoenix_live_view,
+    gzip: false,
+    only: ~w(phoenix_live_view.min.js phoenix_live_view.js)
+  )
+
   if Mix.env() == :dev do
     plug(Tidewave)
   end

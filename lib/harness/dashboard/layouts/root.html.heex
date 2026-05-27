@@ -29,5 +29,15 @@
   </head>
   <body>
     {@inner_content}
+    <script src="/assets/phoenix/phoenix.min.js">
+    </script>
+    <script src="/assets/phoenix_live_view/phoenix_live_view.min.js">
+    </script>
+    <script>
+      const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content");
+      const liveSocket = new LiveView.LiveSocket("/live", Phoenix.Socket, { params: { _csrf_token: csrfToken } });
+      liveSocket.connect();
+      window.liveSocket = liveSocket;
+    </script>
   </body>
 </html>
