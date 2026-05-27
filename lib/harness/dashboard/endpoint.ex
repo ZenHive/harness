@@ -25,6 +25,10 @@ defmodule Harness.Dashboard.Endpoint do
     longpoll: [connect_info: [session: @session_options]]
   )
 
+  if Mix.env() == :dev do
+    plug(Tidewave)
+  end
+
   plug(Plug.RequestId)
   plug(Plug.Telemetry, event_prefix: [:harness, :dashboard, :endpoint])
 

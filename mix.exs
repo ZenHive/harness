@@ -120,9 +120,6 @@ defmodule Harness.MixProject do
 
   defp aliases do
     [
-      tidewave: [
-        "run --no-halt -e 'Agent.start(fn -> Bandit.start_link(plug: Tidewave, port: 4016) end)'"
-      ],
       # Mirrors .github/workflows/harness.yml gate (see ~/.claude/includes/elixir-setup.md).
       # TagTODO/TagFIXME stay on in .credo.exs for visibility (`mix credo` shows them);
       # gate excludes them so the alias fails only on real regressions, not tracked debt.
