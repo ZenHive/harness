@@ -26,21 +26,25 @@ All `done`. From here on, **every task `rmap next` returns is a dogfood candidat
 dispatch it through harness, do not implement it directly. Hand-build only what harness
 cannot yet do for itself, and only after filing the gap via `rmap new`.
 
-### Phase 7 exception (hand-built window, v0_5 milestone)
+### Phase 7 exception (v0_5 milestone — shipped)
 
 Tasks 44–51 (`%Harness.CheckStack{}` abstraction, `%Harness.Project{}` registry, Oban +
 Postgres setup, `mix phx.new`-style Phoenix integration, GitHub clone-and-cache,
-LiveView dashboard + embedded Oban Web, `Oban.Plugins.Cron`) are **hand-built in a
-Claude Code session, not dispatched through harness.** Rationale lives in `CLAUDE.md`
-§ Dogfooding — short version: (a) most of these change the shape of harness's own
-runtime (Application supervision tree, dep stack, Endpoint), exactly the territory a
-headless agent has the least leverage on; (b) the verification stack itself is being
+LiveView dashboard + embedded Oban Web, `Oban.Plugins.Cron`) were **hand-built in
+Claude Code sessions, not dispatched through harness** — though five of the eight
+(44, 45, 47, 49, 51) ended up driven through harness anyway because the per-task
+diffs turned out to be small and self-contained after `mix phx.new` set the shape;
+the three truly architectural pieces (46 Project registry, 48 Oban dispatch, 50
+Phoenix LiveView dashboard) were hand-built. Rationale: (a) tasks that reshape the
+Application supervision tree, dep stack, or Endpoint are the territory a headless
+agent has the least leverage on; (b) the verification stack itself was being
 reshaped by Task 44, so dogfooding while the grader changes shape is more friction
 than signal; (c) `mix phx.new` is the canonical bootstrap and is faster to invoke
 directly than to coach an agent through.
 
-Dogfooding resumes as the default once Phase 7 lands. Treat this section as the
-explicit pivot-window exception, not a precedent.
+Dogfooding is the default again from here on. Treat the v0_5 pivot as the explicit
+exception, not a precedent: a new phase that reshapes runtime supervision earns the
+same hand-build window; a new phase that adds features on stable surfaces does not.
 
 ## The loop, end to end
 
@@ -257,6 +261,16 @@ That's a guaranteed un-auto-mergable collision (e.g. Tasks 34 + 35 both
 rewriting `Batch.fill_slots/6`). Same-file is fine — same-function is not.
 Either dispatch such siblings sequentially, or fold them into one rmap task
 during refinement (see `task-prioritization.md` § "Refine, Don't Duplicate").
+
+**Sequential dispatch only across BEAM lifetimes (Task 61, open).** A second
+harness BEAM starting while the first still has runs in flight runs a worktree
+sweep at boot that can prune a live sibling worktree out from under its running
+adapter — Wave 1 of Phase 7 surfaced this (Codex's worktree disappeared mid-run
+and `agy`-style cwd-resolution put its diff into Cursor's neighbouring worktree).
+Until Task 61 lands a guard on `Run.commit_worktree/2` and pins the sweeper to
+not touch directories whose run is still registered, **drive all parallel batches
+from one long-lived driver BEAM** — do not start a second `mix run /tmp/dogfood_taskN.exs`
+while another is in flight. Re-dispatch is fine; concurrent BEAMs are not.
 
 **Integration order.** Deliverable branches `harness/<run-id>` come back onto
 `development` one at a time. Bring in the smallest / most-isolated diff first,
