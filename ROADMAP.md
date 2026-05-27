@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 4 — Multi-Agent & Quota Fail-over (17 of 19 done · 0 in progress)
+**Focus phase:** 4 — Multi-Agent & Quota Fail-over (17 of 20 done · 1 in progress)
 
 **Last shipped:** Task 40 — Audit-surfaced: AgentRegistry availability lost on GenServer restart, Task 41 — Codex adapter — worktree isolation breaks intermittently (cwd ignored, agent edits main checkout), Task 59 — Cross-agent grader as a repair-loop move (gated, asymmetric, budgeted) on 2026-05-27
 
-**Up next:** Task 53 — Smoke-test pi-via-local-LLM on a low-D rmap task [D:2/B:4/U:4 → Eff:2.0] 🎯
+**Up next:** Task 67 — Audit-surfaced: Batch.run_pinned settles entire pinned queue on one adapter's pre-dispatch unavailability [D:3/B:5/U:5 → Eff:1.67] 🚀
 <!-- FOCUS:END -->
 
 ---
@@ -70,10 +70,11 @@
 | Task 41 | ✅ | 🎁 **multi-agent** · 🐛 Codex adapter — worktree isolation breaks intermittently (cwd ignored, agent edits main checkout) [D:5/B:7/U:7 → Eff:1.4] 📋 |
 | Task 43 | ✅ | 🎁 **multi-agent** · 🐛 Dogfood verification reds on pre-existing TODO comments in dispatch base [D:3/B:6/U:7 → Eff:2.17] 🎯 |
 | Task 52 `[P]` | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Add pi.dev headless adapter [D:5/B:8/U:7 → Eff:1.5] 🚀 |
-| Task 53 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Smoke-test pi-via-local-LLM on a low-D rmap task [D:2/B:4/U:4 → Eff:2.0] 🎯 |
+| Task 53 `[P]` | 🔄 | 🎁 **multi-agent** · 🚀 **v0_3** · Smoke-test pi-via-local-LLM on a low-D rmap task [D:2/B:4/U:4 → Eff:2.0] 🎯 |
 | Task 54 `[P]` | ⬜ | 🎁 **multi-agent** · 🚀 **v0_3** · Cost-aware agent capability declaration (:free vs :metered) [D:3/B:5/U:5 → Eff:1.67] 🚀 |
 | Task 55 | ✅ | 🎁 **multi-agent** · 🐛 Audit-surfaced: BaselineFilter.Credo content-blind matching causes false-pass / false-red [D:3/B:7/U:7 → Eff:2.33] 🎯 |
 | Task 59 | ✅ | 🎁 **multi-agent** · Cross-agent grader as a repair-loop move (gated, asymmetric, budgeted) [D:5/B:5/U:4 → Eff:0.9] ⚠️ |
+| Task 67 | ⬜ | 🎁 **multi-agent** · 🐛 Audit-surfaced: Batch.run_pinned settles entire pinned queue on one adapter's pre-dispatch unavailability [D:3/B:5/U:5 → Eff:1.67] 🚀 |
 <!-- TASKS:END -->
 
 ---
@@ -91,6 +92,7 @@
 | Task 42 | ✅ | 🎁 **surface** · Audit-surfaced: Refresh roadmap focus phase pin after Phase 1 closeout [D:1/B:3/U:4 → Eff:3.5] 🎯 |
 | Task 58 | ✅ | 🎁 **surface** · 🚀 **v0_4** · Harness.AuditReview — HIGH-tier audit grader dispatch [D:3/B:7/U:7 → Eff:2.33] 🎯 |
 | Task 64 | ✅ | 🎁 **surface** · 🐛 FailureClass quota classification false-positive on full agent transcript [D:2/B:5/U:5 → Eff:2.5] 🎯 |
+| Task 68 | ⬜ | 🎁 **surface** · 🐛 Audit-surfaced: AgentEvaluation.from_batch silently drops/truncates results on adapter-list mismatch [D:1/B:3/U:3 → Eff:3.0] 🎯 |
 <!-- TASKS:END -->
 
 ---
@@ -129,4 +131,6 @@
 | Task 62 | ⛔ | 🎁 **multi-project** · 🐛 Stale @spec on Harness.Batch.loop_context/8 hid 17 cascade dialyzer warnings (Wave 1) [D:2/B:4/U:5 → Eff:2.25] 🎯 |
 | Task 63 | ✅ | 🎁 **dashboard** · 🐛 Dashboard transcript backfill — late subscribers see prior chunks [D:3/B:7/U:8 → Eff:2.5] 🎯 |
 | Task 65 | ⛔ | 🎁 **multi-project** · Salvage red-but-real runs — discoverable + executable integration of harness/<run-id> branches [D:4/B:7/U:7 → Eff:1.75] 🚀 |
+| Task 66 | ⬜ | 🎁 **multi-project** · 🐛 Skip pollution detection for adapters declaring worktree_isolation: true [D:3/B:5/U:7 → Eff:2.0] 🎯 |
+| Task 69 | ⬜ | 🎁 **multi-project** · 🐛 Audit-surfaced: Worktree.Isolation porcelain parser ignores rename source path + .DS_Store only matches at repo root [D:2/B:4/U:4 → Eff:2.0] 🎯 |
 <!-- TASKS:END -->

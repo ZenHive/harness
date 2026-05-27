@@ -1879,7 +1879,7 @@
       "phase": 4,
       "bundle": "multi-agent",
       "milestone": "v0_3",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Smoke-test pi-via-local-LLM on a low-D rmap task",
       "scores": {
         "d": 2,
@@ -1905,6 +1905,7 @@
       ],
       "body": "One-off dogfood run on this Apple M4 Pro / 48GB host: dispatch a single low-D rmap\ntask through harness with the pi adapter (Task 52) pointed at Qwen3-Coder-30B-A3B-Instruct\n(MLX 8-bit, already installed — llmfit-confirmed fit_level=Perfect, score 96, ~39 tok/s,\ntool-use trained) served via an OpenAI-compatible local endpoint. Preferred runtime is\nLM Studio's MLX server at localhost:1234/v1; fallback is Ollama GGUF at localhost:11434/v1.\nGoal is decision-grade information, not productive code delivery — does a credible,\ntool-use-trained MoE coder model produce a usable signal under the existing verification\n+ repair-loop stack, or does the repair loop just churn until :failed? Record the outcome\nin docs/dogfooding-runs.md (model + quantisation + runtime, task picked, attempts,\nterminal state, verification verdict, repair-loop transcript shape, observed tokens/sec).\nWhether :passed or :failed, the data informs whether to keep building local-LLM coverage.\n",
       "created_at": "2026-05-24",
+      "started_at": "2026-05-27",
       "scored_at": "2026-05-24",
       "cross_repo": []
     },
@@ -2340,6 +2341,120 @@
         "Dashboard banner / button — secondary, human-operator-facing only; AI orchestrators use the Elixir API directly. File a separate small task if/when a human-driving-the-dashboard workflow matters"
       ],
       "body": "When a run settles :failed but the agent's diff is real (`agent_diff_size > 0`),\nharness already preserves the work: Task 30 commits the agent's changes to\n`harness/<run-id>` before worktree teardown, so the branch survives even after\nthe worktree directory is cleaned up. What's missing is discoverability and an\nexecutable integration path — today an operator (or AI orchestrator) has to\nmanually scan git branches, run a cherry-pick, and re-verify by hand.\n\nTask 33's Cursor run is the precedent: a 461-LOC diff with self-graded 504/504\ntests, settled :failed on a load-induced verification flake compounded by the\nTask 64 quota false-positive. Without explicit salvage support, the diff is\nlost-by-default friction.\n\n## Layer 1 — discoverable\n- Add a `salvage_branch` field (e.g. `\"harness/run-1779853579933-6fa47408\"`) on\n  `Harness.Run.Result`; populate from `worktree.branch` at terminal-state entry.\n- Add a `Result.salvageable?/1` predicate — true when `state == :failed and\n  agent_diff_size > 0`.\n- Dashboard run-detail page surfaces a \"Salvage available\" banner with the\n  branch name and a copy-pasteable cherry-pick snippet.\n\n## Layer 2 — executable\n- `Harness.salvage(run_id, target_ref \\\\ \"development\", opts \\\\ [])` —\n  verifies the branch exists, performs the cherry-pick/merge onto target_ref,\n  optionally re-runs the verification stack against the integrated head, and\n  returns a structured outcome (clean / conflict / verification result).\n- Optional: dashboard \"Salvage\" action button next to the banner.\n- Optional: `mix harness.status --salvageable` lists every red-but-real run\n  with its branch + diff size + verdict for batch triage.\n\nEither layer can ship independently; bundle if one session is enough.\n",
+      "created_at": "2026-05-27",
+      "scored_at": "2026-05-27",
+      "cross_repo": []
+    },
+    {
+      "id": "66",
+      "phase": 7,
+      "bundle": "multi-project",
+      "status": "pending",
+      "title": "Skip pollution detection for adapters declaring worktree_isolation: true",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 7
+      },
+      "eff": 2.0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [
+        32,
+        41,
+        60
+      ],
+      "acceptance_criteria": [
+        "A run dispatched on an adapter with `worktree_isolation: true` does not invoke the snapshot/diff check and cannot settle `:checkout_polluted` from operator activity in the main checkout",
+        "A run dispatched on an adapter with `worktree_isolation: false` is still blocked at dispatch by the existing `check_dispatch/1` gate (Antigravity case)",
+        "Test: a run on a verified-isolation adapter where the main checkout is mutated mid-run (simulated parallel `rmap`/`git commit` activity) settles by the normal verification verdict, never `:checkout_polluted`",
+        "Documentation in `lib/harness/worktree/isolation.ex` `@moduledoc` updated to explain the skip and the policy"
+      ],
+      "out_of_scope": [
+        "Correlation-based detector (compare agent diff vs main porcelain) — separately worthwhile if an unverified-isolation adapter ever ships",
+        "Removing `Harness.Worktree.Isolation` outright — the dispatch-time `check_dispatch/1` gate stays for the Antigravity case",
+        "Changes to the pollution_allowlist mechanism from Task 60 — orthogonal; this skips the check entirely for trusted adapters, allowlist is for the residual case"
+      ],
+      "body": "`Harness.Worktree.Isolation` runs its snapshot/diff check on every dispatched run, including for adapters that declare `worktree_isolation: true` in their `capabilities/0`. The check exists to catch agents that ignore their port `cwd` and write into the main checkout (the original Antigravity / Codex-pre-Task-41 case). For an adapter whose isolation is *verified* — Claude, Codex (post-Task-41), Cursor, Grok, Pi — the check produces only false positives: it cannot distinguish \"agent wrote outside its worktree\" from \"operator (or a parallel session) ran `rmap status` / `audit-review` / any other commit-producing tool in the main checkout while the run was in flight.\"\n\nRepeatedly biting now (2026-05-27): a Task 54 Claude smoke-test settled `:checkout_polluted` while the dispatching session was running audit-review in parallel — the agent's 119-LOC diff in its own worktree was correct and ungraded, the run wasted.\n\nFix: when the selected adapter declares `worktree_isolation: true`, skip the snapshot/diff check entirely. The capability is the trust contract — if we trusted it enough to dispatch the run, we trust it enough to not paranoia-check the result. Adapters declaring `worktree_isolation: false` (Antigravity today) stay blocked at dispatch via `Harness.Worktree.Isolation.check_dispatch/1`; that gate is unchanged.\n\nOut of scope: the more ambitious correlation-based detector (compare agent's worktree diff against main-checkout porcelain to distinguish operator churn from agent escape). That's a fallback option if a future unverified-isolation adapter needs the runtime check. For now, every adapter we ship is verified, so the simpler \"trust the capability\" path is right.\n",
+      "created_at": "2026-05-27",
+      "scored_at": "2026-05-27",
+      "cross_repo": []
+    },
+    {
+      "id": "67",
+      "phase": 4,
+      "bundle": "multi-agent",
+      "status": "pending",
+      "title": "Audit-surfaced: Batch.run_pinned settles entire pinned queue on one adapter's pre-dispatch unavailability",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.67,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Pre-marking one pinned adapter unavailable does not settle the other pinned slots",
+        "Non-pinned mode keeps existing settle-whole-queue semantics on `:no_available_agent`",
+        "Regression test covers the pinned-with-unavailable-first case"
+      ],
+      "body": "`Harness.Batch.fill_slots/6` calls `settle_undispatchable([head | rest], ...)`\nwhen `AgentRegistry.select/2` returns `{:error, _}` for the current slot.\nThat collapses ALL remaining slots in the queue into a single `:no_available_agent`\nsettlement. In pinned mode (`Batch.run_pinned/3` / `Batch.AgentEvaluation.compare/4`),\neach slot has its own dedicated adapter that may still be available — so when\nadapter A is marked unavailable pre-dispatch, adapter B's pinned slot is settled\ntoo without ever attempting B.\n\nRepro: `AgentRegistry.mark_unavailable(:claude, :test)`, then\n`AgentEvaluation.compare(item, project, [Harness.AgentAdapter.Claude, Harness.AgentAdapter.Codex], ...)`\n→ Comparison has two entries, both with `state: :failed, reason: {:no_available_agent, _}`.\n\nFix: in pinned mode, `fill_slots` should settle only the current slot and\ncontinue filling the next. The existing settle-the-whole-queue behavior is\nstill correct for non-pinned mode (the same adapter list applies to every slot,\nso if one fails, the rest will too). Two paths: either a new `settle_one`\nhelper used when `pinned_adapters` is set on `run_opts`, or pass a per-slot\nadapter selection that always succeeds in pinned mode and let dispatch fail\nnaturally inside `run_once`.\n\nAdd a test that pre-marks one pinned adapter unavailable and asserts the\nothers still run. Filed by audit-review against commit 5241f9e on 2026-05-27;\nsee .audit/5241f9e-task-33-ab-mode.md.\n",
+      "created_at": "2026-05-27",
+      "scored_at": "2026-05-27",
+      "cross_repo": []
+    },
+    {
+      "id": "68",
+      "phase": 5,
+      "bundle": "surface",
+      "status": "pending",
+      "title": "Audit-surfaced: AgentEvaluation.from_batch silently drops/truncates results on adapter-list mismatch",
+      "scores": {
+        "d": 1,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 3.0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "from_batch raises (or pads) when adapters length != batch.results length",
+        "Docstring documents the contract",
+        "Regression test exercises the mismatch"
+      ],
+      "body": "`Harness.Batch.AgentEvaluation.from_batch/3` uses `Enum.zip(batch.results, adapters)`\nto pair results with adapters. `Enum.zip` truncates to the shorter list, so a\nmismatch (e.g. `batch.results = [r1, r2]` but `adapters = [A]`) silently drops\nresults — the returned Comparison reports `total: 2` but `entries` has length 1.\n\nEither contract: enforce equal lengths and `raise ArgumentError` with a clear\nmessage, or relax (pad missing entries with a placeholder adapter atom).\nWhichever path, document the contract on the `from_batch/3` docstring and\nmirror the choice in `compare/4`. Filed by audit-review against commit 5241f9e\non 2026-05-27; see .audit/5241f9e-task-33-ab-mode.md.\n",
+      "created_at": "2026-05-27",
+      "scored_at": "2026-05-27",
+      "cross_repo": []
+    },
+    {
+      "id": "69",
+      "phase": 7,
+      "bundle": "multi-project",
+      "status": "pending",
+      "title": "Audit-surfaced: Worktree.Isolation porcelain parser ignores rename source path + .DS_Store only matches at repo root",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 2.0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Rename porcelain lines apply the allowlist to both source and destination paths",
+        ".DS_Store (or equivalent basename-only patterns) matches at any depth",
+        "Regression tests cover both cases"
+      ],
+      "body": "Two narrow rough edges in `Harness.Worktree.Isolation.porcelain_path/1` / pattern\nmatching surfaced by audit on Task 60 (commit 9f0f837):\n\n1. **Rename source path is masked.** `porcelain_path/1` parses\n   `R  old -> new` by taking `List.last(String.split(rest, \" -> \", parts: 2))`,\n   i.e. only the destination. If an agent renames `lib/foo.ex` to\n   `.claude/foo.ex`, the destination is allowlisted but the source-side\n   deletion of `lib/foo.ex` is lost — the rename silently passes pollution.\n   Track both paths (destination AND source) and apply the allowlist to the\n   intersection.\n\n2. **`.DS_Store` only matches the root entry.** The default allowlist's\n   `.DS_Store` is an exact-match pattern, so `docs/.DS_Store` or any nested\n   `.DS_Store` still trips pollution. Promote it (or any basename-only entry)\n   to a recursive match — either `**/.DS_Store` semantics or a separate\n   `:basename` pattern kind.\n\nBoth bugs are bounded: the rename case is rare; the .DS_Store case fires on\nmacOS Finder navigation into subdirs during a long-running agent session.\nFiled by audit-review against commit 9f0f837 on 2026-05-27; see\n.audit/9f0f837-task-60-pollution-allowlist.md.\n",
       "created_at": "2026-05-27",
       "scored_at": "2026-05-27",
       "cross_repo": []

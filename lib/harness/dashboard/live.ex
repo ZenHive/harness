@@ -89,6 +89,15 @@ defmodule Harness.Dashboard.Live do
     {:noreply, socket}
   end
 
+  # Guard against cross-run bleed: a previously viewed run can still have
+  # queued PubSub messages in this LiveView's mailbox after the operator
+  # navigates to a different run. Without this guard, those stale chunks
+  # append to the newly selected run's transcript pane.
+  def handle_info({:harness_transcript, broadcast_run_id, _seq, _chunk}, socket)
+      when broadcast_run_id != socket.assigns.run_id do
+    {:noreply, socket}
+  end
+
   def handle_info({:harness_transcript, _run_id, seq, _chunk}, socket) when seq <= socket.assigns.last_seq do
     {:noreply, socket}
   end

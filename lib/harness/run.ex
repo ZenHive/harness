@@ -839,9 +839,30 @@ defmodule Harness.Run do
   @spec cross_agent_repairable?(data(), MapSet.t(term())) :: boolean()
   defp cross_agent_repairable?(data, failed_signatures) do
     cross_agent_repair_enabled?(data) and
+      cross_agent_grader_available?(data) and
       not data.cross_agent_consulted and
       repeated_failure?(data.last_failed_check_signatures, failed_signatures) and
       repairable?(data)
+  end
+
+  # AuditReview only auto-pairs `:claude ↔ :codex`; other implementers
+  # (`:grok`, `:cursor`, `:antigravity`, `:pi`) need an explicit `:grader`
+  # in :cross_agent_repair opts. Without one, `AuditReview.grade_fix/1`
+  # returns `{:no_default_grader, _}` and the consulting transition would
+  # short-circuit the same-agent repair loop. Guard here so dispatch falls
+  # back to the normal repair path instead.
+  @spec cross_agent_grader_available?(data()) :: boolean()
+  defp cross_agent_grader_available?(data) do
+    case Keyword.get(data.cross_agent_repair, :grader) do
+      nil ->
+        case AuditReview.default_grader(data.item.agent) do
+          {:ok, _module} -> true
+          {:error, _reason} -> false
+        end
+
+      _explicit_grader ->
+        true
+    end
   end
 
   @spec failure_class(data()) :: FailureClass.t()

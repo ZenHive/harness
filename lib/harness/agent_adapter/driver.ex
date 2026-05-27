@@ -71,10 +71,13 @@ defmodule Harness.AgentAdapter.Driver do
       so it can cancel the agent later. Exceptions raised by the hook are
       swallowed — a faulty hook never aborts the run.
     * `:on_output` — an optional 1-arity function invoked with each output
-      chunk (iodata) as the agent emits it. Used by the dashboard transcript
-      stream (`Harness.Dashboard.Transcript.broadcast/2`) to fan chunks onto
-      Phoenix.PubSub for the live transcript pane. Exceptions raised by the
-      hook are swallowed.
+      chunk (iodata) as the agent emits it. The current `Harness.Run`
+      consumer threads chunks into the gen_statem via `{:transcript_chunk,
+      chunk}`, which owns the bounded 200 KiB buffer + monotonic seq counter
+      and re-broadcasts via `Harness.Dashboard.Transcript.broadcast/3` for
+      the dashboard's live transcript pane. The driver itself does not
+      assume any particular consumer shape. Exceptions raised by the hook
+      are swallowed.
   """
   @spec run(module(), Invocation.t(), keyword()) :: {:ok, Outcome.t()} | {:error, term()}
   def run(adapter, %Invocation{} = invocation, opts \\ []) do

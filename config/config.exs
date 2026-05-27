@@ -62,7 +62,13 @@ config :harness, :cron_polling,
 
 # Cross-agent repair is opt-in. When enabled, a repeated verification failure
 # can spend one repair move on a one-shot opposite-agent grade before the next
-# same-agent repair pass.
+# same-agent repair pass. Supported keys:
+#   :enabled — bool, default false.
+#   :grader — adapter module override; required when the implementer is not
+#             `:claude` or `:codex` (AuditReview only auto-pairs those two).
+#             Run falls back to normal same-agent repair when missing.
+#   :model / :adapter_opts / :total_timeout / :idle_timeout — pass-throughs
+#             forwarded to `Harness.AuditReview.grade_fix/1`.
 config :harness, :cross_agent_repair, enabled: false
 
 # Phoenix LiveView dashboard (Task 50) — Harness.Dashboard.Endpoint + Live.

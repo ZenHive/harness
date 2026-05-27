@@ -7,8 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Same-task A/B agent evaluation (Task 33). `Harness.Batch.AgentEvaluation.compare/4`
+  fans one roadmap item to N adapters in parallel under the existing batch fan-out;
+  `Harness.Batch.run_pinned/3` is the lower-level entry that pairs each item with a
+  specific adapter. Per-agent metrics (verdict, repair_attempts, duration_ms,
+  first_attempt_failed_check_count, agent_diff_size) collect into a `Comparison`
+  struct as an additive layer — the verification stack stays the binary pass/fail
+  grader. Adapter fail-over never crosses pins.
+- Cross-agent grader as an opt-in repair-loop move (Task 59). When the same
+  verification check fails twice in a row, the `Harness.Run` gen_statem can spend
+  one repair attempt routing the failing diff through `Harness.AuditReview` for an
+  opposite-agent verdict (Codex grading Claude, Claude grading Codex), then thread
+  the rationale into the same-agent's next repair prompt. Disabled by default
+  (`config :harness, :cross_agent_repair, enabled: false`); `:grader` required for
+  implementers outside the `:claude ↔ :codex` auto-pair.
+
 ### Fixed
 
+- Codex adapter now pins its working root via exec-level `--cd <worktree>` in
+  addition to the Port's `:cd` (Task 41). Without the flag, Codex's heuristic
+  workspace resolution could follow a linked worktree's `.git` pointer back to
+  the main checkout's common git-dir and silently edit the parent repo — same
+  shape as Task 32's Antigravity bug.
+- `Harness.Worktree.Isolation` checkout-pollution diff now filters porcelain
+  lines against an allowlist (Task 60). Defaults cover `.claude/`, `.DS_Store`,
+  and common editor lock/temp files; overridable per project
+  (`%Harness.Project{}.pollution_allowlist`), per run
+  (`Harness.Run.Supervisor.start_run/4`'s `:pollution_allowlist`), or via
+  app config. Roadmap files are deliberately NOT allowlisted — a genuine
+  agent mutation to roadmap state is still a bug worth catching.
+- Failure classification (Task 64) now clips `Outcome.output` and each
+  `CheckResult.output` to its trailing 4 KiB before quota-pattern matching.
+  Agents constantly read source and docs containing the trigger words
+  (`quota`, `rate limit`, `subscription`), so matching the full stream-json
+  transcript was wildly false-positive-prone — a benign mid-run source read
+  could short-circuit the repair loop with a false `:quota_exhausted`
+  classification. Terminal API errors (`billing_error`, HTTP 429, etc.)
+  still detect correctly when they appear in the agent's terminal envelope.
 - Dashboard transcript pane now backfills on mount instead of starting empty
   (Task 63). The per-run transcript at `/harness/runs/:run_id` was fed by
   fire-and-forget `Phoenix.PubSub` broadcasts, so opening the page mid-run
