@@ -128,7 +128,8 @@ defmodule Harness.ProjectRegistry do
          source: source,
          check_stack: check_stack,
          roadmap_path: roadmap_path,
-         concurrency_cap: Map.get(entry, :concurrency_cap)
+         concurrency_cap: Map.get(entry, :concurrency_cap),
+         pollution_allowlist: Map.get(entry, :pollution_allowlist)
        }}
     end
   end

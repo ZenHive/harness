@@ -87,6 +87,9 @@ config :phoenix, :json_library, Jason
 #   :max_repair_attempts — how many times a red verdict is fed back to the agent (via
 #                          session resume) before the run settles :failed; defaults
 #                          to 2. 0 disables the autonomous repair loop.
+#   :pollution_allowlist — path patterns ignored by the main-checkout pollution diff
+#                          (see `Harness.Worktree.Isolation.default_pollution_allowlist/0`);
+#                          defaults to that list when unset.
 # config :harness, :run,
 #   total_timeout: 1_800_000,
 #   idle_timeout: 300_000,

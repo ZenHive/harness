@@ -68,6 +68,9 @@ defmodule Harness.Run.Supervisor do
     * `:retry_policy` — `%Harness.Run.RetryPolicy{}` or keyword list for
       `Harness.Run.RetryPolicy.from_opts/1`; used by repair-loop quota
       classification and callers wrapping runs with `RetryPolicy.run/2`.
+    * `:pollution_allowlist` — path patterns ignored by the main-checkout
+      pollution diff; overrides `%Harness.Project{}.pollution_allowlist` and
+      app config when set.
   """
   @spec start_run(Item.t(), Project.t(), module(), keyword()) ::
           {:ok, String.t(), pid()} | {:error, term()}

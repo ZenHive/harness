@@ -12,6 +12,8 @@ defmodule Harness.Project do
   - `check_stack` — the `%Harness.CheckStack{}` grading runs against.
   - `roadmap_path` — project root holding `roadmap/tasks.toml` for rmap ingestion.
   - `concurrency_cap` — per-project batch cap; `nil` inherits the global default.
+  - `pollution_allowlist` — optional path patterns ignored by the main-checkout
+    pollution diff (`Harness.Worktree.Isolation`); `nil` inherits app defaults.
   """
 
   alias Harness.CheckStack
@@ -19,7 +21,7 @@ defmodule Harness.Project do
   alias Harness.Project.Source.Local
 
   @enforce_keys [:name, :source, :check_stack, :roadmap_path]
-  defstruct [:name, :source, :check_stack, :roadmap_path, concurrency_cap: nil]
+  defstruct [:name, :source, :check_stack, :roadmap_path, concurrency_cap: nil, pollution_allowlist: nil]
 
   @typedoc "Where harness finds the target repository."
   @type source :: Local.t() | Github.t()
@@ -30,7 +32,8 @@ defmodule Harness.Project do
           source: source(),
           check_stack: CheckStack.t(),
           roadmap_path: String.t(),
-          concurrency_cap: pos_integer() | nil
+          concurrency_cap: pos_integer() | nil,
+          pollution_allowlist: [String.t()] | nil
         }
 
   @doc """

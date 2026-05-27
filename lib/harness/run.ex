@@ -128,6 +128,7 @@ defmodule Harness.Run do
            env: %{optional(String.t()) => String.t() | false},
            worktree: Worktree.t() | nil,
            checkout_snapshot: String.t() | nil,
+           pollution_allowlist: [String.t()],
            agent_run: AgentRun.t() | nil,
            agent_outcome: Outcome.t() | nil,
            verdict: Verdict.t() | nil,
@@ -248,6 +249,7 @@ defmodule Harness.Run do
       env: Keyword.get(opts, :env, %{}),
       worktree: nil,
       checkout_snapshot: nil,
+      pollution_allowlist: resolve_pollution_allowlist(project, opts),
       agent_run: nil,
       agent_outcome: nil,
       verdict: nil,
@@ -803,9 +805,25 @@ defmodule Harness.Run do
 
   @spec checkout_pollution_reason(data()) :: Result.reason() | nil
   defp checkout_pollution_reason(data) do
-    case Isolation.check_pollution(Project.repo_path(data.project), data.checkout_snapshot) do
+    opts = [pollution_allowlist: data.pollution_allowlist]
+
+    case Isolation.check_pollution(Project.repo_path(data.project), data.checkout_snapshot, opts) do
       :ok -> nil
       {:error, reason} -> reason
+    end
+  end
+
+  @spec resolve_pollution_allowlist(Project.t(), keyword()) :: [String.t()]
+  defp resolve_pollution_allowlist(project, opts) do
+    case Keyword.get(opts, :pollution_allowlist) do
+      allowlist when is_list(allowlist) ->
+        allowlist
+
+      _ ->
+        case project do
+          %Project{pollution_allowlist: allowlist} when is_list(allowlist) -> allowlist
+          _ -> Isolation.pollution_allowlist([])
+        end
     end
   end
 
