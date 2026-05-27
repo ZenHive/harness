@@ -17,11 +17,12 @@ defmodule Harness.AgentAdapter.PiTest do
   end
 
   describe "capabilities/0" do
-    test "declares resume + streaming output, autonomous-only permission mode" do
+    test "declares resume + streaming output, autonomous-only permission mode, :free cost tier" do
       assert %Capabilities{
                session_resume: true,
                streaming_output: true,
-               permission_modes: [:autonomous]
+               permission_modes: [:autonomous],
+               cost_tier: :free
              } = Pi.capabilities()
     end
   end

@@ -49,6 +49,7 @@ defmodule Harness.AgentRegistry do
   use GenServer
 
   alias Harness.AgentAdapter
+  alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Outcome
 
   @quota_patterns [
@@ -131,6 +132,30 @@ defmodule Harness.AgentRegistry do
   @spec list_unavailable() :: [{module(), term()}]
   def list_unavailable do
     GenServer.call(__MODULE__, :list_unavailable)
+  end
+
+  @doc """
+  Filters `adapters` to those whose `c:Harness.AgentAdapter.capabilities/0`
+  declares the given `cost_tier`.
+
+  The first cost-aware dispatch primitive — exposes "list available free-tier
+  adapters" as a first-class query without baking in a selection policy. Pass
+  `:free` to surface adapters whose dispatch consumes no metered quota; pass
+  `:metered` for the paid-quota baseline.
+
+  Pure — reads each adapter's static capability declaration. Does not consult
+  the runtime unavailability map; compose with `available?/1` when you want to
+  drop quota-exhausted adapters too.
+
+      iex> Harness.AgentRegistry.filter_by_cost_tier(
+      ...>   [Harness.AgentAdapter.Pi, Harness.AgentAdapter.Claude],
+      ...>   :free
+      ...> )
+      [Harness.AgentAdapter.Pi]
+  """
+  @spec filter_by_cost_tier([module()], Capabilities.cost_tier()) :: [module()]
+  def filter_by_cost_tier(adapters, cost_tier) when cost_tier in [:free, :metered] do
+    Enum.filter(adapters, &AgentAdapter.supports?(&1, {:cost_tier, cost_tier}))
   end
 
   @doc false

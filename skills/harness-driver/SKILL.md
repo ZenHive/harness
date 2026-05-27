@@ -229,6 +229,22 @@ Lower-level pinned batch (same machinery, no comparison wrapper):
   )
 ```
 
+**Cost-aware adapter selection (free-tier query, Task 54):**
+
+```elixir
+# Surface adapters whose dispatch consumes no metered quota (e.g. pi.dev with
+# a local LLM). :metered is the conservative default for every other adapter.
+adapters = [Harness.AgentAdapter.Pi, Harness.AgentAdapter.Claude]
+[Harness.AgentAdapter.Pi] = Harness.AgentRegistry.filter_by_cost_tier(adapters, :free)
+
+# Or via the generic capability surface:
+true = Harness.AgentAdapter.supports?(Harness.AgentAdapter.Pi, {:cost_tier, :free})
+```
+
+`Harness.AgentRegistry.filter_by_cost_tier/2` is the cost-aware dispatch
+primitive — no selection policy is baked in. Compose with `available?/1` to
+also drop quota-exhausted adapters.
+
 ---
 
 ## Sharp Edges & Gotchas (2026-05 post-v0_5)

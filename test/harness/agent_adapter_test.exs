@@ -51,7 +51,9 @@ defmodule Harness.AgentAdapterTest do
       assert %Capabilities{
                session_resume: false,
                permission_modes: [:autonomous],
-               streaming_output: true
+               streaming_output: true,
+               worktree_isolation: true,
+               cost_tier: :metered
              } = %Capabilities{}
     end
   end
@@ -111,6 +113,14 @@ defmodule Harness.AgentAdapterTest do
       refute AgentAdapter.supports?(MinimalAdapter, :session_resume)
       refute AgentAdapter.supports?(MinimalAdapter, :streaming_output)
       assert AgentAdapter.supports?(MinimalAdapter, {:permission_mode, :autonomous})
+    end
+
+    test "queries {:cost_tier, tier} against the adapter's declared tier" do
+      # FakeAdapter and MinimalAdapter both inherit the :metered default.
+      assert AgentAdapter.supports?(FakeAdapter, {:cost_tier, :metered})
+      refute AgentAdapter.supports?(FakeAdapter, {:cost_tier, :free})
+      assert AgentAdapter.supports?(MinimalAdapter, {:cost_tier, :metered})
+      refute AgentAdapter.supports?(MinimalAdapter, {:cost_tier, :free})
     end
   end
 

@@ -164,6 +164,25 @@ defmodule Harness.AgentAdapter.ConformanceCase do
           assert is_boolean(caps.session_resume)
           assert is_boolean(caps.streaming_output)
         end
+
+        test "declares a known :cost_tier (defaults to :metered, never silently omitted)" do
+          # Probe through supports?/2 — its boolean() @spec opaques the adapter's
+          # statically-known cost tier so Elixir 1.18's type inference does not
+          # constant-fold the membership check into an "always true/false"
+          # warning (it would if we read caps.cost_tier directly).
+          #
+          # :metered is the conservative default; :free opts adapters whose
+          # dispatch consumes no metered quota (e.g. pi.dev with a local LLM)
+          # into Harness.AgentRegistry.filter_by_cost_tier/2.
+          free? = Harness.AgentAdapter.supports?(@adapter, {:cost_tier, :free})
+          metered? = Harness.AgentAdapter.supports?(@adapter, {:cost_tier, :metered})
+
+          assert free? or metered?,
+                 ":cost_tier must be :free or :metered — :metered is the conservative default"
+
+          refute free? and metered?,
+                 "exactly one :cost_tier value should match — the declaration must be unambiguous"
+        end
       end
 
       describe "rule_channel/0 — harness-owned rule injection" do

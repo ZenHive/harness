@@ -65,11 +65,13 @@ defmodule Harness.AgentAdapter.Pi do
 
   @doc """
   Declares pi.dev's headless capabilities: session resume and streaming output,
-  with `:autonomous` the only permission mode.
+  `:autonomous` as the only permission mode, and `:cost_tier` of `:free`
+  because pi.dev runs against a local (self-hosted) LLM with no metered
+  per-call cost — the first adapter to opt out of the `:metered` default.
   """
   @impl AgentAdapter
   @spec capabilities() :: Capabilities.t()
-  def capabilities, do: %Capabilities{session_resume: true}
+  def capabilities, do: %Capabilities{session_resume: true, cost_tier: :free}
 
   @impl AgentAdapter
   @spec rule_channel() :: AgentAdapter.rule_channel()
