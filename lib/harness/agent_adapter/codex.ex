@@ -16,10 +16,17 @@ defmodule Harness.AgentAdapter.Codex do
 
   ## Invocation
 
-  Runs `codex exec --json` so the full agent transcript streams out as raw
-  JSONL events, captured verbatim. The working directory is wired by
-  `Harness.AgentAdapter.invoke/2` (the port's `:cd`), not by Codex's own `--cd`
-  flag.
+  Runs `codex exec --cd <worktree> --json` so the full agent transcript streams
+  out as raw JSONL events, captured verbatim. The working directory is pinned
+  on two channels: the port's `:cd` (the spawned process's actual cwd) **and**
+  Codex's own `-C, --cd <DIR>` flag (the agent's "working root"). The flag is
+  the load-bearing one — without it, Codex resolves its workspace from git
+  plumbing and can follow a linked worktree's `.git` file (`gitdir:
+  <repo>/.git/worktrees/<id>`) back to the main checkout's common git-dir,
+  silently editing the parent repo instead of the run worktree (Task 41 —
+  same shape as the `agy`/Antigravity bug in Task 32). `--cd` is exec-level —
+  it must precede the `resume` subcommand on a session-resume run (`exec
+  resume --cd …` is a parse error in Codex's clap-based CLI).
 
   ## Permission mode
 
@@ -80,12 +87,13 @@ defmodule Harness.AgentAdapter.Codex do
   def build_command(%Invocation{} = invocation) do
     with {:ok, invocation} <- AgentAdapter.attach_rules(__MODULE__, invocation),
          :ok <- check_permission_mode(invocation.permission_mode),
-         {:ok, subcommand, resume} <- session_args(invocation.session) do
+         {:ok, resume_subcommand, resume_flag} <- session_args(invocation.session) do
       argv =
-        subcommand ++
+        ["exec", "--cd", invocation.cwd] ++
+          resume_subcommand ++
           ["--json", "--dangerously-bypass-approvals-and-sandbox"] ++
           AgentAdapter.model_args(invocation.model) ++
-          resume ++
+          resume_flag ++
           [AgentAdapter.task_prompt(invocation)]
 
       env = Map.to_list(invocation.env)
@@ -98,13 +106,16 @@ defmodule Harness.AgentAdapter.Codex do
   defp check_permission_mode(mode) when mode in @permission_modes, do: :ok
   defp check_permission_mode(mode), do: {:error, {:unsupported_permission_mode, mode}}
 
-  # The session value selects the `exec` subcommand and any resume flag:
-  # `nil` is a fresh `exec`, `:resume` is `exec resume … --last`. The `--last`
-  # flag must sit immediately before the prompt — with it set, Codex's first
-  # positional binds to the prompt rather than to an (omitted) session id.
+  # The session value selects the resume subcommand and `--last` flag:
+  # `nil` is a fresh run (no subcommand under `exec`), `:resume` reloads the
+  # most recent session in `cwd` via `resume … --last`. The `--last` flag must
+  # sit immediately before the prompt — with it set, Codex's first positional
+  # binds to the prompt rather than to an (omitted) session id. The
+  # exec-level `--cd <cwd>` flag is unconditional and sits before this
+  # subcommand because clap rejects exec-level options after `resume`.
   @spec session_args(term()) ::
           {:ok, [String.t()], [String.t()]} | {:error, {:unsupported_session_token, term()}}
-  defp session_args(nil), do: {:ok, ["exec"], []}
-  defp session_args(:resume), do: {:ok, ["exec", "resume"], ["--last"]}
+  defp session_args(nil), do: {:ok, [], []}
+  defp session_args(:resume), do: {:ok, ["resume"], ["--last"]}
   defp session_args(other), do: {:error, {:unsupported_session_token, other}}
 end
