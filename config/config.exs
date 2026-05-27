@@ -1,5 +1,24 @@
 import Config
 
+alias Harness.Dashboard.Endpoint
+alias Harness.Dashboard.ErrorHTML
+
+config :harness, Endpoint,
+  adapter: Bandit.PhoenixAdapter,
+  url: [host: "localhost"],
+  http: [ip: {127, 0, 0, 1}, port: 4018],
+  server: true,
+  pubsub_server: Harness.PubSub,
+  live_view: [signing_salt: "harness-dashboard-live-view-salt"],
+  # Static secret_key_base is acceptable for the local dashboard which only
+  # binds 127.0.0.1; runtime.exs replaces it with HARNESS_SECRET_KEY_BASE in
+  # prod-like deployments.
+  secret_key_base: "harness-dashboard-default-secret-key-base-64-chars-min-or-phoenix-rejects-it",
+  render_errors: [
+    formats: [html: ErrorHTML],
+    layout: false
+  ]
+
 config :harness, Oban,
   repo: Harness.Repo,
   queues: [],
@@ -10,6 +29,13 @@ config :harness, Oban,
 config :harness, :cron_polling,
   enabled: false,
   schedule: "0 */2 * * *"
+
+# Phoenix LiveView dashboard (Task 50) — Harness.Dashboard.Endpoint + Live.
+# `enabled` toggles the supervised standalone Endpoint; mountable consumers
+# leave it `false` and route `live "/harness/*path", Harness.Dashboard.Live`
+# from their own Phoenix endpoint. `port` only applies to the standalone
+# Endpoint; runtime.exs honours HARNESS_DASHBOARD_PORT when set.
+config :harness, :dashboard, enabled: true, port: 4018
 
 # Project source cache — see Harness.Project.Source.Github.
 # `cache_root` is where harness clones GitHub-source projects on first run
@@ -38,6 +64,8 @@ config :harness, :worktree,
   sweep_on_boot: true
 
 config :harness, ecto_repos: [Harness.Repo]
+
+config :phoenix, :json_library, Jason
 
 # Verification check stack — see Harness.Verification.
 # Both keys are optional; defaults live in code (elixir_preset/0, 600_000 ms).
@@ -83,11 +111,21 @@ config :harness, ecto_repos: [Harness.Repo]
 # would race the async suite, and the default base_dir points at real
 # worktrees — disable it and redirect the fallback to a tmp path.
 if config_env() == :test do
+  config :harness, Endpoint,
+    adapter: Bandit.PhoenixAdapter,
+    http: [ip: {127, 0, 0, 1}, port: 4099],
+    server: false,
+    pubsub_server: Harness.PubSub,
+    live_view: [signing_salt: "harness-dashboard-test-salt"],
+    secret_key_base: "harness-dashboard-test-secret-key-base-64-chars-min-or-phoenix-rejects-it",
+    render_errors: [formats: [html: ErrorHTML], layout: false]
+
   config :harness, Harness.Repo,
     pool: Ecto.Adapters.SQL.Sandbox,
     pool_size: 10
 
   config :harness, Oban, testing: :inline
+  config :harness, :dashboard, enabled: false, port: 4018
   config :harness, :oban_enabled, false
   config :harness, :repo_enabled, false
   config :harness, :result_store, {Harness.ResultStore.File, root: Path.join(System.tmp_dir!(), "harness_results_test")}

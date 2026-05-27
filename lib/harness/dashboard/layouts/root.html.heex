@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={Phoenix.Controller.get_csrf_token()} />
+    <title>Harness Dashboard</title>
+    <style>
+      :root { font-family: ui-sans-serif, system-ui, sans-serif; color-scheme: light dark; }
+      body { margin: 0; padding: 1.5rem; max-width: 1200px; margin-inline: auto; }
+      h1, h2, h3 { margin-block: 0.5rem; }
+      a { color: inherit; }
+      table { border-collapse: collapse; width: 100%; margin-block: 0.5rem; }
+      th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #8884; }
+      th { font-weight: 600; }
+      .bucket { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 0.25rem; font-size: 0.8rem; font-weight: 600; }
+      .bucket-in_flight { background: #1e6fbf22; color: #1e6fbf; }
+      .bucket-repairing { background: #b8770022; color: #b87700; }
+      .bucket-green { background: #1e8e3e22; color: #1e8e3e; }
+      .bucket-red { background: #c5221f22; color: #c5221f; }
+      .topbar { display: flex; gap: 1rem; align-items: baseline; margin-bottom: 1rem; }
+      .topbar a { text-decoration: none; padding: 0.25rem 0.75rem; border: 1px solid #8884; border-radius: 0.25rem; }
+      .count { font-size: 0.85rem; opacity: 0.75; }
+      pre.transcript { background: #0001; padding: 0.75rem; border-radius: 0.5rem; max-height: 32rem; overflow: auto; font-size: 0.85rem; }
+      .field { display: grid; grid-template-columns: 12rem 1fr; gap: 0.25rem 1rem; margin-block: 0.25rem; font-size: 0.9rem; }
+      .field dt { opacity: 0.7; }
+      .field dd { margin: 0; font-family: ui-monospace, monospace; }
+    </style>
+  </head>
+  <body>
+    {@inner_content}
+  </body>
+</html>

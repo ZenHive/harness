@@ -59,7 +59,19 @@ defmodule Harness.MixProject do
       # `:ecto` / `:db_connection` are transitive via `ecto_sql` / `postgrex`
       # (Task 48: Oban-backed dispatch); `:apps_direct` excludes them, so
       # `use Ecto.Repo` in `lib/harness/repo.ex` needs them explicitly added.
-      plt_add_apps: [:mix, :jason, :ecto, :db_connection],
+      plt_add_apps: [
+        :mix,
+        :jason,
+        :ecto,
+        :db_connection,
+        :phoenix,
+        :phoenix_live_view,
+        :phoenix_pubsub,
+        :phoenix_template,
+        :phoenix_html,
+        :oban_web,
+        :plug
+      ],
       plt_local_path: "priv/plts",
       plt_core_path: "priv/plts",
       ignore_warnings: ".dialyzer_ignore.exs"
@@ -74,6 +86,18 @@ defmodule Harness.MixProject do
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
       {:oban, "~> 2.22"},
+
+      # Dashboard (Task 50) — Phoenix LiveView + embedded Oban Web. Bandit is
+      # optional so mountable consumers with their own Phoenix endpoint do not
+      # get a second HTTP server forced into their supervision tree; the
+      # standalone Harness.Dashboard.Endpoint guards its Bandit reference with
+      # `Code.ensure_loaded?(Bandit)` and falls back with a clear log message.
+      {:phoenix, "~> 1.8"},
+      {:phoenix_live_view, "~> 1.1"},
+      {:phoenix_pubsub, "~> 2.2"},
+      {:phoenix_html, "~> 4.2"},
+      {:oban_web, "~> 2.12"},
+      {:bandit, "~> 1.11", optional: true},
 
       # Dev/test tooling — standard harness stack per global conventions
       {:ex_unit_json, "~> 0.4.3", only: [:dev, :test], runtime: false},
@@ -90,8 +114,7 @@ defmodule Harness.MixProject do
       {:boxart, "~> 0.3.3", only: [:dev, :test], runtime: false},
 
       # Tidewave (dev MCP + HTTP server for agent interface)
-      {:tidewave, "~> 0.5", only: :dev},
-      {:bandit, "~> 1.11", only: :dev}
+      {:tidewave, "~> 0.5", only: :dev}
     ]
   end
 

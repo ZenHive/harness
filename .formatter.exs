@@ -1,5 +1,9 @@
 # Used by "mix format"
 [
-  inputs: ["{mix,.formatter,.credo,.doctor,.dialyzer_ignore,.reach}.exs", "{config,lib,test}/**/*.{ex,exs}"],
-  plugins: [Styler]
+  import_deps: [:ecto, :ecto_sql, :phoenix, :phoenix_live_view],
+  inputs: [
+    "{mix,.formatter,.credo,.doctor,.dialyzer_ignore,.reach}.exs",
+    "{config,lib,test}/**/*.{ex,exs,heex}"
+  ],
+  plugins: [Styler, Phoenix.LiveView.HTMLFormatter]
 ]

@@ -70,16 +70,22 @@ defmodule Harness.AgentAdapter.Driver do
       drive loop blocks. The run-lifecycle process uses it to capture the handle
       so it can cancel the agent later. Exceptions raised by the hook are
       swallowed — a faulty hook never aborts the run.
+    * `:on_output` — an optional 1-arity function invoked with each output
+      chunk (iodata) as the agent emits it. Used by the dashboard transcript
+      stream (`Harness.Dashboard.Transcript.broadcast/2`) to fan chunks onto
+      Phoenix.PubSub for the live transcript pane. Exceptions raised by the
+      hook are swallowed.
   """
   @spec run(module(), Invocation.t(), keyword()) :: {:ok, Outcome.t()} | {:error, term()}
   def run(adapter, %Invocation{} = invocation, opts \\ []) do
     total = Keyword.get(opts, :total_timeout) || configured_total_timeout()
     idle = Keyword.get(opts, :idle_timeout) || configured_idle_timeout()
+    on_output = Keyword.get(opts, :on_output)
 
     case AgentAdapter.invoke(adapter, invocation) do
       {:ok, %Run{} = run} ->
         notify_spawn(Keyword.get(opts, :on_spawn), run)
-        {:ok, drive(adapter, run, total, idle)}
+        {:ok, drive(adapter, run, total, idle, on_output)}
 
       {:error, _reason} = error ->
         error
@@ -105,19 +111,23 @@ defmodule Harness.AgentAdapter.Driver do
 
   # Seeds both deadlines and enters the receive loop. The total deadline is
   # anchored to the run's spawn time so the budget covers the whole run.
-  @spec drive(module(), Run.t(), non_neg_integer(), non_neg_integer()) :: Outcome.t()
-  defp drive(adapter, run, total, idle) do
+  @spec drive(module(), Run.t(), non_neg_integer(), non_neg_integer(), (iodata() -> any()) | nil) :: Outcome.t()
+  defp drive(adapter, run, total, idle, on_output) do
     started_ms = System.convert_time_unit(run.started_at, :native, :millisecond)
-    loop(adapter, run, started_ms + total, idle, idle_deadline(idle), [])
+    loop(adapter, run, started_ms + total, idle, idle_deadline(idle), [], on_output)
   end
 
   # Drains the port until the run terminates or a deadline passes. `after` waits
   # only until the nearer deadline; an output chunk resets the idle deadline.
   # The pre-`receive` guard closes the starvation gap — a flooding agent that
   # keeps the mailbox non-empty would otherwise let `receive` always match a
-  # message and never reach the `after` clause, evading both deadlines.
-  @spec loop(module(), Run.t(), integer(), non_neg_integer(), integer(), iodata()) :: Outcome.t()
-  defp loop(adapter, run, total_deadline, idle, idle_deadline, acc) do
+  # message and never reach the `after` clause, evading both deadlines. The
+  # `on_output` hook (when set) fans each chunk to the dashboard transcript
+  # stream — invoked inline so a subscriber sees output at the same cadence the
+  # accumulator does.
+  @spec loop(module(), Run.t(), integer(), non_neg_integer(), integer(), iodata(), (iodata() -> any()) | nil) ::
+          Outcome.t()
+  defp loop(adapter, run, total_deadline, idle, idle_deadline, acc, on_output) do
     wait = min(remaining(total_deadline), remaining(idle_deadline))
 
     if wait == 0 do
@@ -127,7 +137,8 @@ defmodule Harness.AgentAdapter.Driver do
         message ->
           case adapter.classify_message(message, run) do
             {:output, data, next_run} ->
-              loop(adapter, next_run, total_deadline, idle, idle_deadline(idle), [acc, data])
+              notify_output(on_output, data)
+              loop(adapter, next_run, total_deadline, idle, idle_deadline(idle), [acc, data], on_output)
 
             {:terminated, next_run, status} ->
               outcome(next_run, acc, status, :exited)
@@ -137,13 +148,28 @@ defmodule Harness.AgentAdapter.Driver do
               outcome(next_run, acc, nil, {:error, reason})
 
             :ignore ->
-              loop(adapter, run, total_deadline, idle, idle_deadline, acc)
+              loop(adapter, run, total_deadline, idle, idle_deadline, acc, on_output)
           end
       after
         wait ->
           expire(adapter, run, acc, total_deadline)
       end
     end
+  end
+
+  # Fans one output chunk to the optional :on_output hook. Wrapped so a
+  # throwing or exiting hook never aborts the driver loop — the agent run must
+  # finish even if the transcript pane is misconfigured.
+  @spec notify_output((iodata() -> any()) | nil, iodata()) :: :ok
+  defp notify_output(nil, _data), do: :ok
+
+  defp notify_output(hook, data) when is_function(hook, 1) do
+    hook.(data)
+    :ok
+  rescue
+    _error -> :ok
+  catch
+    _kind, _value -> :ok
   end
 
   # Kills a run that hit a deadline and reports which deadline fired.

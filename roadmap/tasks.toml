@@ -1387,7 +1387,7 @@ id = "50"
 phase = 7
 bundle = "dashboard"
 milestone = "v0_5"
-status = "pending"
+status = "in_progress"
 title = "Phoenix LiveView dashboard + embedded Oban Web (mountable + standalone)"
 scores = { d = 7, b = 9, u = 8 }
 depends_on = [46, 48]
@@ -1407,6 +1407,7 @@ Bandit dep shape: declare `{:bandit, "~> 1.x", optional: true}` so mountable con
 This task is intentionally one task even though it has multiple deliverables (custom views + Oban Web embed). The first slice that ships is a minimal dashboard (project list + run list + Oban Web at /oban); transcript pane and stream-json plumbing can be the second pass within the same task.
 """
 created_at = "2026-05-24"
+started_at = "2026-05-27"
 scored_at = "2026-05-24"
 
 [[task]]

@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Phoenix LiveView dashboard with embedded Oban Web (Task 50, closes milestone
+  v0_5). `Harness.Dashboard.Endpoint` boots a standalone Bandit listener on
+  port 4018 (configurable via `:harness, :dashboard, port:` or
+  `HARNESS_DASHBOARD_PORT`), gated by `:dashboard, :enabled` plus a
+  `Code.ensure_loaded?(Bandit)` check so mountable consumers can route the
+  LiveView into their own endpoint instead. `Harness.Dashboard.Router` mounts
+  `oban_dashboard("/harness/oban", oban_name: Harness.Oban)` for queue-centric
+  introspection, then `live("/harness", ..., as: :dashboard)` and
+  `live("/harness/runs/:run_id", ..., as: :dashboard)` for the harness-native
+  view. `Harness.Dashboard.Live` renders a project switcher off
+  `Harness.ProjectRegistry.list/0`, per-bucket counts and an active-run table
+  off `Harness.StatusView.snapshot/0` + `classify/1`, and a per-run drill-down
+  off `Harness.Run.status/1` — kept fresh by a 1s `:tick`. A live transcript
+  pane subscribes to `Phoenix.PubSub` topic `harness:run:<id>:transcript`,
+  fed by a new `:on_output` callback on `Harness.AgentAdapter.Driver.run/3`
+  via `Harness.Dashboard.Transcript.broadcast/2` — every output chunk the
+  agent emits is published to the topic, the LiveView keeps the last 200 KiB
+  in a bounded buffer. Bandit flipped `optional: true` so a mountable
+  consumer is not forced into a second HTTP server.
 - GitHub project sources: `%Harness.Project{}` now accepts `source: {:github, url}`
   alongside the existing `{:local, path}`. On first run, harness clones the URL
   into a per-project cache directory under `:harness, :project, :cache_root`

@@ -70,6 +70,7 @@ defmodule Harness.Run do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Run, as: AgentRun
+  alias Harness.Dashboard.Transcript
   alias Harness.Project
   alias Harness.ResultStore
   alias Harness.Roadmap.Item
@@ -744,7 +745,12 @@ defmodule Harness.Run do
 
   @spec driver_opts(data(), pid()) :: keyword()
   defp driver_opts(data, parent) do
-    [on_spawn: fn run -> send(parent, {:run_handle, run}) end]
+    run_id = data.run_id
+
+    [
+      on_spawn: fn run -> send(parent, {:run_handle, run}) end,
+      on_output: fn chunk -> Transcript.broadcast(run_id, chunk) end
+    ]
     |> put_opt(:total_timeout, data.total_timeout)
     |> put_opt(:idle_timeout, data.idle_timeout)
   end
