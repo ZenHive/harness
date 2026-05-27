@@ -14,6 +14,7 @@ defmodule Harness.Run do
       running     — the agent is working in the worktree
       committing  — committing the agent's work to the run branch
       verifying   — the verification stack is grading the worktree
+      consulting  — the opposite-agent grader is reviewing a repeated failure
       done        — verification graded the worktree green (terminal)
       failed      — anything else (terminal)
 
@@ -70,7 +71,9 @@ defmodule Harness.Run do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Run, as: AgentRun
+  alias Harness.AuditReview
   alias Harness.Dashboard.Transcript
+  alias Harness.Git
   alias Harness.Project
   alias Harness.ResultStore
   alias Harness.Roadmap.Item
@@ -82,6 +85,7 @@ defmodule Harness.Run do
   alias Harness.Run.Status
   alias Harness.Verification
   alias Harness.Verification.Check
+  alias Harness.Verification.Result, as: CheckResult
   alias Harness.Verification.Verdict
   alias Harness.Worktree
   alias Harness.Worktree.Isolation
@@ -96,7 +100,7 @@ defmodule Harness.Run do
   @default_max_repair_attempts 2
 
   @typedoc "A lifecycle state."
-  @type state :: :dispatched | :running | :committing | :verifying | :done | :failed
+  @type state :: :dispatched | :running | :committing | :verifying | :consulting | :done | :failed
 
   @typedoc "A run handle: a run id, or the gen_statem pid directly."
   @type run :: String.t() | pid()
@@ -120,6 +124,11 @@ defmodule Harness.Run do
            max_repair_attempts: non_neg_integer(),
            retry_policy: RetryPolicy.t(),
            repair_attempts: non_neg_integer(),
+           cross_agent_repair: keyword(),
+           last_failed_check_signatures: MapSet.t(term()),
+           cross_agent_consulted: boolean(),
+           cross_agent_follow_up: boolean(),
+           cross_agent_feedback: %{verdict: AuditReview.verdict(), rationale: String.t()} | nil,
            checks: [Check.t()] | nil,
            verification_timeout: timeout() | nil,
            base_dir: String.t() | nil,
@@ -241,6 +250,11 @@ defmodule Harness.Run do
           configured(:max_repair_attempts, @default_max_repair_attempts),
       retry_policy: RetryPolicy.from_opts(opts),
       repair_attempts: 0,
+      cross_agent_repair: cross_agent_repair_opts(opts),
+      last_failed_check_signatures: MapSet.new(),
+      cross_agent_consulted: false,
+      cross_agent_follow_up: false,
+      cross_agent_feedback: nil,
       checks: Keyword.get(opts, :checks),
       verification_timeout: Keyword.get(opts, :verification_timeout),
       base_dir: Keyword.get(opts, :base_dir),
@@ -416,17 +430,33 @@ defmodule Harness.Run do
         first_attempt_failed_check_count: first_attempt_failed_check_count(data, verdict)
     }
 
+    failed_signatures = failed_check_signatures(verdict)
+
     cond do
       Verdict.passed?(verdict) ->
         {:next_state, :done, %{data | reason: :passed}}
 
+      data.cross_agent_follow_up ->
+        {:next_state, :failed, %{data | reason: :verification_red, last_failed_check_signatures: failed_signatures}}
+
+      cross_agent_repairable?(data, failed_signatures) ->
+        data = %{
+          data
+          | repair_attempts: data.repair_attempts + 1,
+            last_failed_check_signatures: failed_signatures,
+            cross_agent_consulted: true
+        }
+
+        {:next_state, :consulting, data}
+
       repairable?(data) ->
         # Loop back to `running`: the same agent is resumed with the failing
         # checks fed back. `build_invocation/1` reads the incremented count.
-        {:next_state, :running, %{data | repair_attempts: data.repair_attempts + 1}}
+        data = %{data | repair_attempts: data.repair_attempts + 1, last_failed_check_signatures: failed_signatures}
+        {:next_state, :running, data}
 
       true ->
-        {:next_state, :failed, %{data | reason: :verification_red}}
+        {:next_state, :failed, %{data | reason: :verification_red, last_failed_check_signatures: failed_signatures}}
     end
   end
 
@@ -441,6 +471,42 @@ defmodule Harness.Run do
 
   def verifying(event_type, event_content, data) do
     handle_common(event_type, event_content, :verifying, data)
+  end
+
+  # ── State: consulting — one-shot opposite-agent grader ───────────────────
+
+  @doc false
+  @spec consulting(event(), term(), data()) :: handler_result()
+  def consulting(:enter, _old_state, data) do
+    task = start_task(fn -> grade_repair_approach(data) end)
+    {:keep_state, %{data | task: task}}
+  end
+
+  def consulting(:info, {ref, {:ok, %{verdict: verdict, outcome: %Outcome{} = outcome}}}, %{task: %Task{ref: ref}} = data) do
+    Process.demonitor(ref, [:flush])
+
+    feedback = %{
+      verdict: verdict,
+      rationale: cross_agent_rationale(outcome.output)
+    }
+
+    data = %{data | task: nil, cross_agent_feedback: feedback, cross_agent_follow_up: true}
+    {:next_state, :running, data}
+  end
+
+  def consulting(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
+    Process.demonitor(ref, [:flush])
+    Logger.warning("harness run: cross-agent repair grader failed for #{data.run_id}: #{inspect(reason)}")
+    {:next_state, :failed, %{data | task: nil, reason: :verification_red}}
+  end
+
+  def consulting(:info, {:DOWN, ref, :process, _pid, reason}, %{task: %Task{ref: ref}} = data) when reason != :normal do
+    Logger.warning("harness run: cross-agent repair grader crashed for #{data.run_id}: #{inspect(reason)}")
+    {:next_state, :failed, %{data | task: nil, reason: :verification_red}}
+  end
+
+  def consulting(event_type, event_content, data) do
+    handle_common(event_type, event_content, :consulting, data)
   end
 
   # ── States: done / failed — terminal ──────────────────────────────────────
@@ -691,6 +757,7 @@ defmodule Harness.Run do
 
   defp build_invocation(%{verdict: %Verdict{} = verdict} = data) do
     prompt = RepairPrompt.build(data.item, verdict, data.repair_attempts, data.max_repair_attempts)
+    prompt = add_cross_agent_feedback(prompt, data.cross_agent_feedback)
     invocation(data, prompt, :resume)
   end
 
@@ -717,6 +784,14 @@ defmodule Harness.Run do
       failure_class(data) != :quota_exhausted
   end
 
+  @spec cross_agent_repairable?(data(), MapSet.t(term())) :: boolean()
+  defp cross_agent_repairable?(data, failed_signatures) do
+    cross_agent_repair_enabled?(data) and
+      not data.cross_agent_consulted and
+      repeated_failure?(data.last_failed_check_signatures, failed_signatures) and
+      repairable?(data)
+  end
+
   @spec failure_class(data()) :: FailureClass.t()
   defp failure_class(data) do
     data
@@ -724,6 +799,156 @@ defmodule Harness.Run do
     |> build_result(:failed)
     |> FailureClass.classify(data.retry_policy)
   end
+
+  @spec grade_repair_approach(data()) :: {:ok, AuditReview.result()} | {:error, term()}
+  defp grade_repair_approach(data) do
+    opts = data.cross_agent_repair
+
+    [
+      implementer: data.item.agent,
+      sha: current_sha(data),
+      prompt: cross_agent_prompt(data),
+      cwd: data.worktree.path
+    ]
+    |> put_opt(:grader, Keyword.get(opts, :grader))
+    |> put_opt(:model, Keyword.get(opts, :model))
+    |> put_opt(:adapter_opts, Keyword.get(opts, :adapter_opts))
+    |> put_opt(:total_timeout, Keyword.get(opts, :total_timeout))
+    |> put_opt(:idle_timeout, Keyword.get(opts, :idle_timeout))
+    |> AuditReview.grade_fix()
+  end
+
+  @spec cross_agent_prompt(data()) :: String.t()
+  defp cross_agent_prompt(data) do
+    repair_prompt = RepairPrompt.build(data.item, data.verdict, data.repair_attempts, data.max_repair_attempts)
+
+    """
+    You are the one-shot opposite-agent grader for a harness repair loop.
+
+    Grade the asker's proposed approach before the asker spends the next repair attempt.
+    This is asymmetric grading, not dialogue. Do not ask questions and do not propose a back-and-forth.
+
+    Structured payload:
+
+    Proposed approach:
+    Resume the asker with the focused repair prompt below, then make exactly one follow-up implementation pass.
+
+    Cost of guessing wrong:
+    If the asker repeats the same blind spot, this repair move is spent and the run settles failed when verification stays red.
+
+    Failing check evidence:
+    #{failing_check_evidence(data.verdict)}
+
+    Focused repair prompt the asker will receive:
+    #{repair_prompt}
+
+    Return one concise rationale line, then a final sentinel on its own line:
+    <<<VERDICT:APPROVE>>>
+    or
+    <<<VERDICT:REJECT>>>
+    """
+  end
+
+  @spec add_cross_agent_feedback(String.t(), %{verdict: AuditReview.verdict(), rationale: String.t()} | nil) ::
+          String.t()
+  defp add_cross_agent_feedback(prompt, nil), do: prompt
+
+  defp add_cross_agent_feedback(prompt, %{verdict: verdict, rationale: rationale}) do
+    action =
+      case verdict do
+        :approve -> "Commit to the proposed approach."
+        :reject -> "Pivot away from the proposed approach and address the repeated failure from a different angle."
+        :unclear -> "Treat the missing approval as a rejection and pivot before editing."
+      end
+
+    """
+    Cross-agent grader verdict before this repair attempt: #{verdict |> Atom.to_string() |> String.upcase()}.
+    Rationale: #{rationale}
+    #{action}
+
+    #{prompt}
+    """
+  end
+
+  @spec cross_agent_rationale(String.t()) :: String.t()
+  defp cross_agent_rationale(output) when is_binary(output) do
+    rationale =
+      output
+      |> String.split("\n")
+      |> Enum.reject(&String.contains?(&1, "<<<VERDICT:"))
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> List.last()
+
+    case rationale do
+      nil -> "No rationale provided."
+      rationale -> rationale
+    end
+  end
+
+  @spec failing_check_evidence(Verdict.t()) :: String.t()
+  defp failing_check_evidence(%Verdict{results: results}) do
+    results
+    |> Enum.filter(&(&1.status == :fail))
+    |> Enum.map_join("\n\n", &format_check_evidence/1)
+  end
+
+  @spec format_check_evidence(CheckResult.t()) :: String.t()
+  defp format_check_evidence(%CheckResult{} = result) do
+    """
+    check: #{result.name}
+    status: #{check_status_line(result)}
+    command: #{result.command}
+    output:
+    #{String.trim(result.output)}
+    """
+  end
+
+  @spec check_status_line(CheckResult.t()) :: String.t()
+  defp check_status_line(%CheckResult{kind: :exited, exit_status: status}), do: "exited #{status}"
+  defp check_status_line(%CheckResult{kind: :timed_out}), do: "timed out"
+  defp check_status_line(%CheckResult{kind: :not_launched}), do: "could not launch"
+
+  @spec failed_check_signatures(Verdict.t()) :: MapSet.t(term())
+  defp failed_check_signatures(%Verdict{results: results}) do
+    results
+    |> Enum.filter(&(&1.status == :fail))
+    |> MapSet.new(&failed_check_signature/1)
+  end
+
+  @spec failed_check_signature(CheckResult.t()) :: term()
+  defp failed_check_signature(%CheckResult{} = result) do
+    {result.name, result.kind, result.exit_status, error_signature(result)}
+  end
+
+  @spec error_signature(CheckResult.t()) :: String.t()
+  defp error_signature(%CheckResult{output: output}) do
+    :sha256
+    |> :crypto.hash(String.trim(output))
+    |> Base.encode16(case: :lower)
+  end
+
+  @spec repeated_failure?(MapSet.t(term()), MapSet.t(term())) :: boolean()
+  defp repeated_failure?(previous, current) do
+    not MapSet.disjoint?(previous, current)
+  end
+
+  @spec cross_agent_repair_enabled?(data()) :: boolean()
+  defp cross_agent_repair_enabled?(data) do
+    Keyword.get(data.cross_agent_repair, :enabled, false)
+  end
+
+  @spec current_sha(data()) :: String.t()
+  defp current_sha(%{worktree: %Worktree{path: path, base_sha: fallback}}) do
+    case Git.run(["rev-parse", "HEAD"], path) do
+      {:ok, sha} -> non_empty_sha(String.trim(sha), fallback)
+      {:error, _reason} -> fallback
+    end
+  end
+
+  @spec non_empty_sha(String.t(), String.t()) :: String.t()
+  defp non_empty_sha("", fallback), do: fallback
+  defp non_empty_sha(sha, _fallback), do: sha
 
   # The message stamped on the agent's delivery commit — identifies the run and
   # the rmap task it served, so the commit is legible in `git log` after the
@@ -790,6 +1015,18 @@ defmodule Harness.Run do
   @spec put_opt(keyword(), atom(), term()) :: keyword()
   defp put_opt(opts, _key, nil), do: opts
   defp put_opt(opts, key, value), do: Keyword.put(opts, key, value)
+
+  @spec cross_agent_repair_opts(keyword()) :: keyword()
+  defp cross_agent_repair_opts(opts) do
+    opts
+    |> Keyword.get(:cross_agent_repair, Application.get_env(:harness, :cross_agent_repair, []))
+    |> normalize_cross_agent_repair_opts()
+  end
+
+  @spec normalize_cross_agent_repair_opts(nil | keyword() | map()) :: keyword()
+  defp normalize_cross_agent_repair_opts(nil), do: []
+  defp normalize_cross_agent_repair_opts(opts) when is_list(opts), do: opts
+  defp normalize_cross_agent_repair_opts(opts) when is_map(opts), do: Map.to_list(opts)
 
   @spec checkout_snapshot(String.t()) :: String.t() | nil
   defp checkout_snapshot(repo) do
