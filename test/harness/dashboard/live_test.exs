@@ -73,25 +73,6 @@ defmodule Harness.Dashboard.LiveTest do
     end
   end
 
-  describe "trim_transcript/2 (bounded buffer)" do
-    test "passes the buffer through untouched when under the cap" do
-      buf = String.duplicate("x", 1_024)
-      assert Live.trim_transcript(buf, 1_024) == {buf, 1_024}
-    end
-
-    test "trims to the configured 200 KiB tail when the buffer overflows" do
-      cap = 200 * 1024
-      buf = String.duplicate("a", cap) <> String.duplicate("b", 8 * 1024)
-      bytes = byte_size(buf)
-
-      {trimmed, trimmed_bytes} = Live.trim_transcript(buf, bytes)
-
-      assert trimmed_bytes == cap
-      assert byte_size(trimmed) == cap
-      assert String.ends_with?(trimmed, String.duplicate("b", 8 * 1024))
-    end
-  end
-
   describe "verdict_label/1" do
     test "maps the three verdict values onto human strings" do
       assert Live.verdict_label(:pass) == "pass"

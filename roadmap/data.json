@@ -2227,6 +2227,44 @@
       "created_at": "2026-05-25",
       "scored_at": "2026-05-25",
       "cross_repo": []
+    },
+    {
+      "id": "63",
+      "phase": 7,
+      "bundle": "dashboard",
+      "status": "done",
+      "title": "Dashboard transcript backfill — late subscribers see prior chunks",
+      "scores": {
+        "d": 3,
+        "b": 7,
+        "u": 8
+      },
+      "eff": 2.5,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Opening /harness/runs/:run_id mid-run shows existing transcript immediately, no Waiting for output stall",
+        "Live chunks continue to append in order after backfill",
+        "Hard-refresh of the run detail page re-populates from the buffer with no duplicates",
+        "Settled runs show final buffer until terminal_linger expires (same lifecycle as Run.status/1)",
+        "Harness.Run.transcript/1 returns {:ok, %{buffer, seq}} or {:error, :not_found}",
+        "Transcript.broadcast carries seq; LiveView drops broadcasts where seq <= last_seq"
+      ],
+      "out_of_scope": [
+        "Persisting transcript across BEAM restarts",
+        "Buffer sizes beyond the existing 200 KiB cap",
+        "Cross-project transcript correlation in Oban Web"
+      ],
+      "body": "The per-run transcript pane at /harness/runs/:run_id is fed by fire-and-forget\nPubSub broadcasts. If the operator opens the page mid-run, every chunk emitted\nbefore subscribe is lost — the pane shows \"Waiting for output…\" until the next\nchunk lands, which can be minutes for a quiet Claude session.\n\nFix: buffer recent transcript output (200 KiB) in the Run gen_statem alongside\nstatus, expose via Harness.Run.transcript/1, and have the LiveView fetch on\nmount after subscribing. Use monotonic sequence numbers tagged on each chunk\nso the LiveView can dedup broadcasts that overlap the snapshot.\n\nDesign pre-approved in plan /Users/efries/.claude/plans/quizzical-mapping-sparrow.md.\n",
+      "created_at": "2026-05-27",
+      "started_at": "2026-05-27",
+      "done_at": "2026-05-27",
+      "scored_at": "2026-05-27",
+      "implemented": "Dashboard transcript pane backfills on mount via new Harness.Run.transcript/1 snapshot (buffer + monotonic seq); LiveView subscribes-then-fetches and drops PubSub broadcasts with seq <= last_seq to dedup the race window. Driver on_output now sends to the gen_statem (which owns the bounded 200 KiB buffer + seq counter), and re-broadcasts as {:harness_transcript, run_id, seq, chunk}. Shared Transcript.append/3 trim helper replaces the duplicated live.ex copy. Tests: append/3 cap + iodata, broadcast/3 seq tuple, Run.transcript/1 snapshot + race-safety dedup + 200 KiB trim. mix compile / credo / dialyzer / mix test.json all green (one pre-existing flake unrelated).",
+      "delivered_by": "claude",
+      "cross_repo": []
     }
   ]
 }
