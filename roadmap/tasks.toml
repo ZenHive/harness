@@ -1116,7 +1116,7 @@ scored_at = "2026-05-23"
 id = "41"
 phase = 4
 bundle = "multi-agent"
-status = "pending"
+status = "done"
 title = "Codex adapter — worktree isolation breaks intermittently (cwd ignored, agent edits main checkout)"
 scores = { d = 5, b = 7, u = 7 }
 markers = ["bug"]
@@ -1137,9 +1137,13 @@ Per Task 32's precedent: if Codex cannot be headlessly constrained to a single d
 
 Mirrors Task 32 (Antigravity worktree-isolation bug) — same failure surface, different agent. Resolution shape should generalize.
 """
+implemented = "Codex adapter now passes `--cd <invocation.cwd>` at the exec level (before any subcommand) — fixes the worktree-isolation regression where Codex's git-plumbing-based workspace resolution walked the linked worktree's .git pointer back to the main checkout. Mirrors the Task 32 fix shape (agy/Antigravity). Three new regression tests: --cd present on baseline run, --cd precedes resume (clap rejects exec-level options after subcommand), and parallel two-invocation safety (concurrent build_command/1 invocations carry distinct --cd paths)."
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-23"
 started_at = "2026-05-24"
 scored_at = "2026-05-23"
+done_at = "2026-05-27"
 
 [[task]]
 id = "42"
@@ -1645,7 +1649,7 @@ done_at = "2026-05-25"
 id = "59"
 phase = 4
 bundle = "multi-agent"
-status = "pending"
+status = "done"
 title = "Cross-agent grader as a repair-loop move (gated, asymmetric, budgeted)"
 scores = { d = 5, b = 5, u = 4 }
 depends_on = [11, 16]
@@ -1668,14 +1672,18 @@ Opt-in via config (`:cross_agent_repair, enabled: false` by default) so the base
 
 The implementation reuses Harness.AuditReview.grade_fix/1 (Task 58) for dispatch and verdict parsing — that wrapper already handles the :claude ↔ :codex auto-pair, the Driver.run/3 dispatch path, and the sentinel extraction. The work is in Harness.Run: same-error-signature detection across attempts within a run, the structured-payload builder for the grader prompt, and the gen_statem state transition that consumes the verdict before the next implementation attempt.
 """
+implemented = "Adds an opt-in cross-agent grader move to the repair loop. Gated by `config :harness, :cross_agent_repair, enabled: false`. New `:consulting` gen_statem state in Harness.Run; same-error-signature detection across repair attempts within one run; on the second observation of the same failure signature, harness spends one repair budget slot dispatching the opposite agent as a grader via Harness.AuditReview shape. Asymmetric (no dialogue) and budgeted (charges :max_repair_attempts). Test file: test/harness/run/cross_agent_repair_test.exs. 3-way merge against Task 60 resolved by relocating :pollution_allowlist doc into the moved :run config block."
+delivered_by = "codex"
+verified = true
 created_at = "2026-05-25"
 scored_at = "2026-05-25"
+done_at = "2026-05-27"
 
 [[task]]
 id = "60"
 phase = 7
 bundle = "multi-project"
-status = "pending"
+status = "done"
 title = "Harness.Worktree.Isolation false-positive on incidental .claude/ writes during dogfood"
 scores = { d = 2, b = 6, u = 7 }
 markers = ["bug"]
@@ -1690,8 +1698,12 @@ The check should be tolerant of pollution that demonstrably isn't the dispatched
 
 Alternative shape (cheaper): rather than a path allowlist, scope the diff to `lib/`, `test/`, `mix.exs`, `mix.lock`, `config/`, `priv/`, `roadmap/`, `docs/` — the surfaces an agent CAN legitimately pollute. Anything outside is by definition not a worktree-isolation violation. The list itself can come from a `%Harness.Project{}.guarded_paths` declaration once Task 46 lands.
 """
+implemented = "Adds a four-tier pollution allowlist for Harness.Worktree.Isolation. `default_pollution_allowlist/0` covers .claude/, .DS_Store, editor lock/temp globs. Precedence (highest first): run opts `:pollution_allowlist` → `%Harness.Project{}.pollution_allowlist` → app config `config :harness, :run, pollution_allowlist: [...]` → defaults. Wired through `Harness.Run.Supervisor.start_run/4` and `Harness.Run` gen_statem. New `pollution_allowlist` field on %Harness.Project{}. Glob matching against `git status --porcelain` paths. 10 isolation tests pass."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-05-25"
 scored_at = "2026-05-25"
+done_at = "2026-05-27"
 
 [[task]]
 id = "61"

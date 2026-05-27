@@ -361,6 +361,15 @@ scheduling are out of scope (post-Phase-7).
   the subscriber and then stops — nothing writes it to disk (Task 19). The dogfood
   driver prints the agent transcript + verdict; if you need them later, keep the run
   log. Re-running is the only way to recover a lost result.
+- **parallel-session rmap mutations during a run.** A second Claude Code session running
+  `rmap status` / `rmap mark` / `rmap new` against the same checkout mid-run will mutate
+  `ROADMAP.md`, `roadmap/data.json`, `roadmap/tasks.toml` on the main checkout. The
+  pollution guard (`Harness.Worktree.Isolation`) detects this as `:checkout_polluted`
+  and aborts the run — a false-positive caused by the operator, not the agent. The
+  allowlist (Task 60) deliberately does NOT cover roadmap files: a genuine agent
+  mutation to them during a dogfood run IS a bug worth catching. The workflow rule:
+  while a dogfood wave is in flight, do not run rmap mutations in parallel sessions
+  against the same repo. Use a separate worktree (e.g. `feat/task-N-*`) or wait.
 
 ## Run log
 
