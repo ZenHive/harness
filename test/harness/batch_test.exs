@@ -113,6 +113,12 @@ defmodule Harness.BatchTest do
     def terminate(%AgentRun{} = run), do: OSProcess.kill(run)
   end
 
+  setup_all do
+    cleanup_gate_files()
+    on_exit(&cleanup_gate_files/0)
+    :ok
+  end
+
   setup do
     AgentRegistry.reset()
     ProjectRegistry.reset()
@@ -685,6 +691,13 @@ defmodule Harness.BatchTest do
     path = Path.join(System.tmp_dir!(), "harness-batch-gate-#{System.unique_integer([:positive])}")
     on_exit(fn -> cleanup_gate(path) end)
     path
+  end
+
+  defp cleanup_gate_files do
+    System.tmp_dir!()
+    |> Path.join("harness-batch-gate-*")
+    |> Path.wildcard()
+    |> Enum.each(&File.rm/1)
   end
 
   # Task 70: gate-file hygiene. On normal completion the gate file is left
