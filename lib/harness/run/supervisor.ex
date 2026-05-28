@@ -23,6 +23,12 @@ defmodule Harness.Run.Supervisor do
 
   @registry Harness.Run.Registry
 
+  @doc false
+  @spec child_spec(term()) :: Supervisor.child_spec()
+  def child_spec(init_arg) do
+    %{id: __MODULE__, start: {__MODULE__, :start_link, [init_arg]}, type: :supervisor}
+  end
+
   api(:start_link, "Start the Harness.Run DynamicSupervisor (one per node, registered as Harness.Run.Supervisor).",
     params: [
       init_arg: [

@@ -35,10 +35,9 @@ defmodule Harness.AgentEconomyTest do
         # what an external AI consumer will see; each MUST carry hints.
         missing =
           function_entries
-          |> Enum.reject(fn {_id, _ann, _sig, doc, _meta} -> doc == :hidden end)
-          |> Enum.reject(fn {{:function, name, arity}, _ann, _sig, _doc, meta} ->
-            Map.has_key?(meta, :hints) and
-              describes_function?(meta[:hints], name, arity)
+          |> Enum.reject(fn {{:function, name, arity}, _ann, _sig, doc, meta} ->
+            doc == :hidden or
+              (Map.has_key?(meta, :hints) and describes_function?(meta[:hints], name, arity))
           end)
           |> Enum.map(fn {{:function, name, arity}, _, _, _, _} -> "#{name}/#{arity}" end)
 

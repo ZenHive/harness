@@ -18,6 +18,12 @@ defmodule Harness.ProjectRegistry do
   @type error :: {:duplicate, String.t()} | {:unknown_project, String.t()} | {:invalid_project, term()}
 
   @doc false
+  @spec child_spec(term()) :: Supervisor.child_spec()
+  def child_spec(init_arg) do
+    %{id: __MODULE__, start: {__MODULE__, :start_link, [init_arg]}}
+  end
+
+  @doc false
   @spec start_link(term()) :: GenServer.on_start()
   def start_link(init_arg \\ []) do
     GenServer.start_link(__MODULE__, init_arg, name: __MODULE__)
