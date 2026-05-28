@@ -12,6 +12,8 @@ defmodule Harness.Dashboard.Router do
   import Oban.Web.Router
   import Phoenix.LiveView.Router
 
+  alias Harness.Dashboard.MCP
+
   pipeline :browser do
     plug(:accepts, ["html"])
     plug(:fetch_session)
@@ -19,6 +21,11 @@ defmodule Harness.Dashboard.Router do
     plug(:put_root_layout, html: {Harness.Dashboard.Layouts, :root})
     plug(:protect_from_forgery)
     plug(:put_secure_browser_headers)
+  end
+
+  scope "/" do
+    get("/harness/mcp/tools", MCP, :tools)
+    post("/harness/mcp/call", MCP, :invoke)
   end
 
   # Oban Web's scope must precede the LiveView scope so `/harness/oban`
