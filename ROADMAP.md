@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 8 — Closeout & Release Readiness (4 of 4 done · 0 in progress)
+**Focus phase:** 9 — Chat Orchestrator (2 of 5 done · 0 in progress)
 
-**Last shipped:** Task 72 — Register the harness checkout as a project on boot (dev default), Task 73 — ResultStore.File.list_run_records skips undecodable term files instead of halting, Task 74 — Document cross-checkout consumer workflow (SKILL.md + README) on 2026-05-28
+**Last shipped:** Task 75 — Annotate harness driver surface with descripex api() macros, Task 77 — Harness.Chat.Anthropic backend — Req + streaming + prompt caching + tool-use on 2026-05-28
 
-**Up next:** Task 75 — Annotate harness driver surface with descripex api() macros [D:4/B:8/U:8 → Eff:2.0] 🎯
+**Up next:** Task 79 — Headless MCP endpoint — /harness/mcp/tools + /harness/mcp/call [D:2/B:7/U:8 → Eff:3.75] 🎯
 <!-- FOCUS:END -->
 
 ---

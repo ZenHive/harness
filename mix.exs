@@ -10,6 +10,7 @@ defmodule Harness.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),
+      listeners: [Phoenix.CodeReloader],
       name: "Harness",
       description:
         "OTP-native AI agent orchestrator: dispatches rmap tasks to headless coding agents in isolated worktrees, verifies with the target project's own check stack, and reports verified outcomes.",
@@ -59,6 +60,9 @@ defmodule Harness.MixProject do
       # `:ecto` / `:db_connection` are transitive via `ecto_sql` / `postgrex`
       # (Task 48: Oban-backed dispatch); `:apps_direct` excludes them, so
       # `use Ecto.Repo` in `lib/harness/repo.ex` needs them explicitly added.
+      # `:req` is a direct runtime dep (Task 77: Anthropic backend) — its
+      # `Req.Response.t/0` and `Req.TransportError.t/0` are referenced in
+      # `lib/harness/chat/anthropic.ex` typespecs.
       plt_add_apps: [
         :mix,
         :jason,
@@ -70,7 +74,8 @@ defmodule Harness.MixProject do
         :phoenix_template,
         :phoenix_html,
         :oban_web,
-        :plug
+        :plug,
+        :req
       ],
       plt_local_path: "priv/plts",
       plt_core_path: "priv/plts",

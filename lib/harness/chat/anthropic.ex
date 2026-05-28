@@ -25,6 +25,7 @@ defmodule Harness.Chat.Anthropic do
   @type response :: %{
           required(:role) => String.t(),
           required(:content) => [map()],
+          optional(:type) => String.t(),
           optional(:id) => String.t(),
           optional(:model) => String.t(),
           optional(:stop_reason) => String.t() | nil,
@@ -464,7 +465,10 @@ defmodule Harness.Chat.Anthropic do
   defp error_type(_status, "timeout_error"), do: :timeout
   defp error_type(_status, _type), do: :api_error
 
-  @spec transport_error(Req.TransportError.t()) :: Backend.error()
+  # Req.TransportError doesn't export an `@type t()` (it uses bare `defexception`,
+  # unlike Mint.TransportError which exports `t/0`). The function only ever calls
+  # `Exception.message/1` on it, so the broader `Exception.t()` is the right spec.
+  @spec transport_error(Exception.t()) :: Backend.error()
   defp transport_error(error) do
     %{type: :transport_error, message: Exception.message(error)}
   end

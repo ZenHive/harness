@@ -4,7 +4,7 @@ default_branch = "development"
 vision = "An OTP-native task-execution engine an AI orchestrator drives end to end: it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent running in an isolated worktree, runs the target project's own check stack against the result, and reports verified outcomes back to its consumer. Today the consumer surface is the BEAM-native Elixir API (called from IEx, tidewave, or another process); the Phase 7 multi-project pivot (milestone v0_5) makes it a long-running OTP node with a Phoenix LiveView dashboard orchestrating N registered target projects (Elixir, Rust, anything with a shell-driven check stack) concurrently. MCP/JSON-CLI is deferred (Phase 6) — it earns complexity only if a non-Elixir consumer ever needs to drive harness from outside the BEAM. harness is itself developed by dogfooding — from the core loop (Task 8) onward, every pending roadmap task is delivered by dispatching it through harness rather than hand-building it (Phase 7's load-bearing scaffolding is the documented exception)."
 
 [focus]
-phase = 8
+phase = 9
 
 # ----------------------------------------------------------------------------
 # Phases
@@ -174,7 +174,7 @@ target_version = "0.6.0"
 name = "Chat Orchestrator"
 description = "Proves a tool-equipped LLM driven over a descripex-annotated harness surface can orchestrate dispatch end-to-end via natural language — replacing the two-eval mcp__harness__project_eval pattern as the default driver UX — and that the same annotated surface serves external MCP consumers (Sprite, Cursor BG, other Claude instances) without a separate Chat.Tools wrapper layer."
 order = 7
-status = "pending"
+status = "active"
 target_version = "0.7.0"
 
 # ----------------------------------------------------------------------------
@@ -2224,7 +2224,7 @@ id = "75"
 phase = 9
 bundle = "chat-orchestrator"
 milestone = "v0_7"
-status = "pending"
+status = "done"
 title = "Annotate harness driver surface with descripex api() macros"
 scores = { d = 4, b = 8, u = 8 }
 depends_on = []
@@ -2242,8 +2242,6 @@ out_of_scope = [
   "Building the MCP HTTP endpoint or chat UI (Tasks 76-79)",
   "Migrating skills/harness-driver/SKILL.md prose into descripex annotations — the skill remains the operator-facing usage guide; descripex is the machine-readable contract layer alongside it",
 ]
-created_at = "2026-05-28"
-scored_at = "2026-05-28"
 body = """
 The harness driver surface (start_run, Batch.dispatch, Batch.run, Roadmap.ingest, ProjectRegistry, Run.status, ResultStore, AuditReview, AgentAdapter.Driver) is documented in skills/harness-driver/SKILL.md as prose for human readers. The v0_7 milestone needs the same surface as machine-readable contract: JSON Schema per function, param-kind distinction (:value vs :exchange_data so a chat agent knows which params to look up first), and an MCP tool-list generator that can be served to external consumers.
 
@@ -2257,6 +2255,12 @@ The payoff extends beyond the chat orchestrator: any external AI consumer (Sprit
 
 Block on this for Tasks 76 (Session reads tools from Manifest) and 79 (MCP endpoint serves Manifest); Task 77 can proceed in parallel.
 """
+implemented = "Annotated 9 driver modules (Run.Supervisor, Batch, Batch.AgentEvaluation, Roadmap, ProjectRegistry, Run, ResultStore, AuditReview, AgentAdapter.Driver) with descripex api() macros; added Harness.Manifest aggregator and test/harness/agent_economy_test.exs CI gate that walks every exported function and asserts :hints. Dispatched via harness, verified by check stack on repair attempt 1."
+delivered_by = "claude"
+verified = true
+created_at = "2026-05-28"
+scored_at = "2026-05-28"
+done_at = "2026-05-28"
 
 [[task]]
 id = "76"
@@ -2304,7 +2308,7 @@ id = "77"
 phase = 9
 bundle = "chat-orchestrator"
 milestone = "v0_7"
-status = "pending"
+status = "done"
 title = "Harness.Chat.Anthropic backend — Req + streaming + prompt caching + tool-use"
 scores = { d = 3, b = 6, u = 6 }
 depends_on = []
@@ -2323,8 +2327,6 @@ out_of_scope = [
   "Session loop or tool dispatch (Task 76)",
   "Token-usage tracking / cost dashboard (separate concern, future idea)",
 ]
-created_at = "2026-05-28"
-scored_at = "2026-05-28"
 body = """
 Implement a direct Anthropic API client for the chat orchestrator using Req. Unlike Harness.AgentAdapter.Claude (which spawns `claude -p` per invocation — appropriate for run dispatch where each task is a fresh process), the chat backend needs token-by-token streaming and explicit tool-use formatting for low-latency interactive UX.
 
@@ -2338,6 +2340,12 @@ Tests must mock Req — no live API calls in CI. Use Req's built-in test helpers
 
 Can be developed in parallel with Tasks 75 and 76 (no shared files); blocks Task 78 (UI needs streaming) only by virtue of the LiveView needing the Session-with-backend wired together.
 """
+implemented = "Harness.Chat.Backend behaviour + Harness.Chat.Anthropic impl (Req + SSE streaming + prompt caching + tool_use). Hand-integrated after :verification_red on two dialyzer findings: (a) response() type missing :type field — fixed by adding optional :type field; (b) Req.TransportError.t/0 unknown — fixed by swapping spec to Exception.t() since the function only calls Exception.message/1. Added :req to mix.exs plt_add_apps. Verification stack re-run green post-integration."
+delivered_by = "codex"
+verified = true
+created_at = "2026-05-28"
+scored_at = "2026-05-28"
+done_at = "2026-05-28"
 
 [[task]]
 id = "78"
