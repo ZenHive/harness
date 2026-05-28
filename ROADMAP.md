@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 9 — Chat Orchestrator (5 of 6 done · 0 in progress)
+**Focus phase:** 9 — Chat Orchestrator (4 of 6 done · 0 in progress)
 
-**Last shipped:** Task 75 — Annotate harness driver surface with descripex api() macros, Task 76 — Harness.Chat.Session GenServer with multi-turn tool-call loop, Task 77 — Harness.Chat.Anthropic backend — Req + streaming + prompt caching + tool-use, Task 78 — Harness.Dashboard.ChatLive — LiveView UI for chat orchestrator, Task 79 — Headless MCP endpoint — /harness/mcp/tools + /harness/mcp/call on 2026-05-28
+**Last shipped:** Task 75 — Annotate harness driver surface with descripex api() macros, Task 76 — Harness.Chat.Session GenServer with multi-turn tool-call loop, Task 78 — Harness.Dashboard.ChatLive — LiveView UI for chat orchestrator, Task 79 — Headless MCP endpoint — /harness/mcp/tools + /harness/mcp/call on 2026-05-28
 
-**Up next:** Task 82 — Harness.Chat.Claude headless subscription backend (default) [D:3/B:8/U:8 → Eff:2.67] 🎯
+**Up next:** Task 80 — Harness.Dashboard.RoadmapLive — multi-project rmap-next browser with 1-click dispatch [D:3/B:5/U:4 → Eff:1.5] 🚀
 <!-- FOCUS:END -->
 
 ---

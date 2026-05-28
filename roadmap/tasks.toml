@@ -2312,7 +2312,7 @@ id = "77"
 phase = 9
 bundle = "chat-orchestrator"
 milestone = "v0_7"
-status = "done"
+status = "superseded"
 title = "Harness.Chat.Anthropic backend — Req + streaming + prompt caching + tool-use"
 scores = { d = 3, b = 6, u = 6 }
 depends_on = []
@@ -2344,7 +2344,7 @@ Tests must mock Req — no live API calls in CI. Use Req's built-in test helpers
 
 Can be developed in parallel with Tasks 75 and 76 (no shared files); blocks Task 78 (UI needs streaming) only by virtue of the LiveView needing the Session-with-backend wired together.
 """
-implemented = "Harness.Chat.Backend behaviour + Harness.Chat.Anthropic impl (Req + SSE streaming + prompt caching + tool_use). Hand-integrated after :verification_red on two dialyzer findings: (a) response() type missing :type field — fixed by adding optional :type field; (b) Req.TransportError.t/0 unknown — fixed by swapping spec to Exception.t() since the function only calls Exception.message/1. Added :req to mix.exs plt_add_apps. Verification stack re-run green post-integration."
+implemented = "SUPERSEDED 2026-05-28 by Task 82 (Harness.Chat.Claude). Deleted in v0_7 CP1 cleanup: violated standing 'Claude subscription, not API' rule (hand-rolled Req + SSE client against api.anthropic.com/v1/messages with x-api-key) AND library-first heuristic (claudio, anthropix, claude_wrapper all existed on hex). Original delivery (Codex, verified-green) shipped Harness.Chat.Backend behaviour + Harness.Chat.Anthropic impl with prompt caching + tool_use round-trip. Backend behaviour retained; Harness.Chat.Anthropic module + test removed. Harness.Chat.Session :backend now required (Keyword.fetch!/2) — no implicit default. Future metered-API support, if ever needed, lands as an opt-in pluggable backend via claudio or anthropix (library-first), not a rebuild."
 delivered_by = "codex"
 verified = true
 created_at = "2026-05-28"

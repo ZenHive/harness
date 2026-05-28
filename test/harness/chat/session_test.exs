@@ -199,7 +199,11 @@ defmodule Harness.Chat.SessionTest do
 
   describe "supervision" do
     test "start_session registers a session under Harness.Chat.Registry" do
-      assert {:ok, session_id, pid} = Supervisor.start_session()
+      noop = fn _, _, _ -> {:ok, %{content: [], stop_reason: "end_turn"}} end
+
+      assert {:ok, session_id, pid} =
+               Supervisor.start_session(backend: FunBackend, backend_opts: [fun: noop])
+
       assert Process.alive?(pid)
       assert Supervisor.whereis(session_id) == pid
     end

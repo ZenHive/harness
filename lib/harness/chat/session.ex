@@ -71,7 +71,7 @@ defmodule Harness.Chat.Session do
     {:ok,
      %{
        session_id: session_id,
-       backend: Keyword.get(opts, :backend, Harness.Chat.Anthropic),
+       backend: Keyword.fetch!(opts, :backend),
        backend_opts: Keyword.get(opts, :backend_opts, []),
        tools: tools,
        tool_schemas: Tools.schemas(tools),
