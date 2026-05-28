@@ -103,12 +103,23 @@ defmodule Harness.Application do
   # Real MCP server (Task 79 rework) — JSON-RPC 2.0 over Streamable HTTP via
   # `anubis_mcp`. Gated on `:dashboard, :enabled` because the Streamable HTTP
   # transport is meaningless without a Phoenix endpoint forwarding to it.
+  #
+  # `start: true` is load-bearing (Task 83). Anubis's `should_start?/1` for the
+  # streamable_http transport falls through to `:phoenix, :serve_endpoints` when
+  # the opt is absent, which is `false` under `iex -S mix` (we are not a
+  # `phx.server` app — the dashboard is one opt-in surface among many, see the
+  # mountable-consumer story in CLAUDE.md). Without this, the supervisor
+  # returned `:ignore`, no `:persistent_term` was stored, and every MCP request
+  # crashed with `ArgumentError` on `:persistent_term.get/1` (logged as
+  # `:badarg`). The per-endpoint `server: true` in `config :harness, Endpoint`
+  # already starts the dashboard Bandit regardless of the global Phoenix flag;
+  # this opt keeps Anubis aligned with that reality.
   @spec mcp_server() :: [{module(), keyword()}]
   defp mcp_server do
     dashboard_config = Application.get_env(:harness, :dashboard, [])
 
     if Keyword.get(dashboard_config, :enabled, false) do
-      [{Harness.Dashboard.MCPServer, transport: :streamable_http}]
+      [{Harness.Dashboard.MCPServer, transport: {:streamable_http, start: true}}]
     else
       []
     end

@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 9 — Chat Orchestrator (6 of 8 done · 0 in progress)
+**Focus phase:** 9 — Chat Orchestrator (7 of 8 done · 0 in progress)
 
-**Last shipped:** Task 75 — Annotate harness driver surface with descripex api() macros, Task 76 — Harness.Chat.Session GenServer with multi-turn tool-call loop, Task 78 — Harness.Dashboard.ChatLive — LiveView UI for chat orchestrator, Task 79 — Headless MCP endpoint — /harness/mcp/tools + /harness/mcp/call, Task 84 — Add Harness.Dashboard.ErrorHTML so dashboard 500s don't cascade into Phoenix.Template crashes on 2026-05-28
+**Last shipped:** Task 75 — Annotate harness driver surface with descripex api() macros, Task 76 — Harness.Chat.Session GenServer with multi-turn tool-call loop, Task 78 — Harness.Dashboard.ChatLive — LiveView UI for chat orchestrator, Task 79 — Headless MCP endpoint — /harness/mcp/tools + /harness/mcp/call, Task 83 — Fix anubis StreamableHTTP transport — initialize crashes with :badarg, blocks all MCP tool exposure to claude -p, Task 84 — Add Harness.Dashboard.ErrorHTML so dashboard 500s don't cascade into Phoenix.Template crashes on 2026-05-28
 
-**Up next:** Task 83 — Fix anubis StreamableHTTP transport — initialize crashes with :badarg, blocks all MCP tool exposure to claude -p [D:4/B:8/U:8 → Eff:2.0] 🎯
+**Up next:** Task 80 — Harness.Dashboard.RoadmapLive — multi-project rmap-next browser with 1-click dispatch [D:3/B:5/U:4 → Eff:1.5] 🚀
 <!-- FOCUS:END -->
 
 ---
@@ -75,7 +75,7 @@
 <!-- TASKS:BEGIN phase=6 -->
 | Task | Status | Notes |
 |------|--------|-------|
-| Task 17 | ⬜ | 🎁 **deferred** · Agent-shaped surface — MCP tools + JSON CLI [D:6/B:8/U:8 → Eff:1.33] 📋 |
+| Task 17 | ⛔ | 🎁 **deferred** · Agent-shaped surface — MCP tools + JSON CLI [D:6/B:8/U:8 → Eff:1.33] 📋 |
 | Task 20 | ⬜ | 🎁 **deferred** · Run telemetry + quota/cost accounting [D:5/B:3/U:3 → Eff:0.6] ⚠️ |
 | Task 21 | ⬜ | 🎁 **deferred** · ACP transport adapter [D:7/B:5/U:3 → Eff:0.57] ⚠️ |
 | Task 80 | ⬜ | 🎁 **deferred** · Harness.Dashboard.RoadmapLive — multi-project rmap-next browser with 1-click dispatch [D:3/B:5/U:4 → Eff:1.5] 🚀 |

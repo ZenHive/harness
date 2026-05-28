@@ -22,11 +22,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to external orchestrators via standard `.mcp.json` HTTP transport;
   `Harness.Chat.Tools` is the single registry both the in-process loop
   and the external MCP surface dispatch through. Non-tool chat works
-  end-to-end via the dashboard chat panel. Known regression at ship: the
-  anubis Streamable HTTP transport crashes `:badarg` on `claude -p`'s
-  MCP `initialize`, so live tool-use from upstream Claude/Cursor/Sprite
-  sessions against `/harness/mcp` is not yet wired end-to-end — tracked
-  as Task 83.
+  end-to-end via the dashboard chat panel.
+- **Live MCP tool-use end-to-end (Tasks 83 + 84).** The anubis Streamable
+  HTTP transport now starts cleanly under `iex -S mix` — `claude -p`'s
+  `initialize` (protocol "2025-11-25") returns 200, `tools/list` surfaces
+  the harness manifest, and a tool-needing prompt drives a real
+  `tools/call` round-trip the model summarises back. Fix was a one-line
+  `transport: {:streamable_http, start: true}` on the `MCPServer` child
+  spec in `Harness.Application`: anubis's auto-detect for whether to
+  start the transport falls through to `:phoenix, :serve_endpoints`,
+  which is `false` for harness because it's not a `phx.server` app
+  (the dashboard is one opt-in surface, not the app's primary identity).
+  Task 84 added `Harness.Dashboard.ErrorHTML` so the formerly-cascading
+  500 — `Phoenix.Template` crashing on a missing template while trying
+  to render the underlying error — no longer hides real stack traces.
 - New dep `{:anubis_mcp, "~> 1.6"}` (Task 79 v1 audit rework). Direct
   runtime dep that supplies the MCP server behaviour and Streamable HTTP
   transport plug; transitively pulls in `peri` (validator) and `finch`

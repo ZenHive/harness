@@ -3,6 +3,7 @@ defmodule Harness.Dashboard.MCPServerTest do
 
   alias Anubis.MCP.Error
   alias Anubis.Server.Frame
+  alias Anubis.Server.Transport.StreamableHTTP.Plug, as: StreamableHTTPPlug
   alias Harness.Dashboard.MCPServer
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
@@ -112,6 +113,63 @@ defmodule Harness.Dashboard.MCPServerTest do
       # returns a tuple — exact response shape is owned by anubis. Catches
       # regressions if the @before_compile catch-all shape ever shifts.
       assert is_tuple(MCPServer.handle_request(request, frame))
+    end
+  end
+
+  # Task 83 regression. Bug: `transport: :streamable_http` alone made anubis
+  # fall through to `Application.get_env(:phoenix, :serve_endpoints)` to decide
+  # whether to actually start (see `should_start?/1` in
+  # `deps/anubis_mcp/lib/anubis/server/supervisor.ex`). That flag is `false`
+  # under `iex -S mix` (harness is not a `phx.server` app), so the supervisor
+  # returned `:ignore`, no `:persistent_term` was stored, and every MCP request
+  # crashed on `:persistent_term.get/1` with `:badarg`. Fixed in
+  # `lib/harness/application.ex` by passing `start: true` on the transport opts.
+  describe "supervised streamable_http transport (Task 83)" do
+    setup do
+      start_supervised!({MCPServer, transport: {:streamable_http, start: true}})
+      :ok
+    end
+
+    test "stores the session_config persistent_term so the Plug can resolve runtime config" do
+      assert %{server_module: MCPServer, registry_mod: _, transport: _} =
+               :persistent_term.get({Anubis.Server.Supervisor, MCPServer, :session_config})
+    end
+
+    test "initialize from claude-code 2.1.153 (protocol 2025-11-25) returns 200 with the harness tools capability" do
+      body =
+        Jason.encode!(%{
+          "jsonrpc" => "2.0",
+          "id" => 0,
+          "method" => "initialize",
+          "params" => %{
+            "protocolVersion" => "2025-11-25",
+            "capabilities" => %{},
+            "clientInfo" => %{"name" => "claude-code", "version" => "2.1.153"}
+          }
+        })
+
+      conn =
+        :post
+        |> Plug.Test.conn("/", body)
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+        |> Plug.Conn.put_req_header("accept", "application/json")
+
+      plug_opts = StreamableHTTPPlug.init(server: MCPServer)
+      result = StreamableHTTPPlug.call(conn, plug_opts)
+
+      assert result.status == 200
+      assert [session_id] = Plug.Conn.get_resp_header(result, "mcp-session-id")
+      assert is_binary(session_id) and session_id != ""
+
+      assert {:ok, response} = Jason.decode(result.resp_body)
+      assert response["jsonrpc"] == "2.0"
+      assert response["id"] == 0
+
+      assert %{
+               "protocolVersion" => "2025-11-25",
+               "serverInfo" => %{"name" => "harness", "version" => "0.1.0"},
+               "capabilities" => %{"tools" => _}
+             } = response["result"]
     end
   end
 
