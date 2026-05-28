@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 8 — Closeout & Release Readiness (0 of 1 done · 0 in progress)
+**Focus phase:** 8 — Closeout & Release Readiness (1 of 3 done · 0 in progress)
 
-**Last shipped:** no recent shipments
+**Last shipped:** Task 71 — v0.6 closeout: doc + skill refresh, rmap doctor cleanup, Tidewave smoke on 2026-05-27
 
-**Up next:** Task 71 — v0.6 closeout: doc + skill refresh, rmap doctor cleanup, Tidewave smoke [D:3/B:8/U:9 → Eff:2.83] 🎯
+**Up next:** Task 72 — Register the harness checkout as a project on boot (dev default) [D:2/B:6/U:8 → Eff:3.5] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -101,5 +101,7 @@
 <!-- TASKS:BEGIN phase=8 -->
 | Task | Status | Notes |
 |------|--------|-------|
-| Task 71 | ⬜ | 🎁 **closeout** · 🚀 **v0_6** · v0.6 closeout: doc + skill refresh, rmap doctor cleanup, Tidewave smoke [D:3/B:8/U:9 → Eff:2.83] 🎯 |
+| Task 71 | ✅ | 🎁 **closeout** · 🚀 **v0_6** · v0.6 closeout: doc + skill refresh, rmap doctor cleanup, Tidewave smoke [D:3/B:8/U:9 → Eff:2.83] 🎯 |
+| Task 72 | ⬜ | 🎁 **closeout** · 🚀 **v0_6** · Register the harness checkout as a project on boot (dev default) [D:2/B:6/U:8 → Eff:3.5] 🎯 |
+| Task 73 | ⬜ | 🎁 **closeout** · 🚀 **v0_6** · ResultStore.File.list_run_records skips undecodable term files instead of halting [D:2/B:5/U:7 → Eff:3.0] 🎯 |
 <!-- TASKS:END -->

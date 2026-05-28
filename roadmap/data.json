@@ -150,7 +150,7 @@
       "name": "Closeout & Release Readiness",
       "description": "Proves the built system is coherent for a fresh AI orchestrator: roadmap state reflects reality, README and harness-driver instructions match the live Tidewave/dashboard surface, deferred work stays out of the normal queue, and the release smoke path is verified end to end.",
       "order": 6,
-      "status": "pending",
+      "status": "active",
       "target_version": "0.6.0"
     }
   },
@@ -777,6 +777,9 @@
       "eff": 0.6,
       "markers": [],
       "depends_on": [],
+      "acceptance_criteria": [
+        "DEFERRED — no implementation work scheduled. Revisit only if reactive fail-over (Task 16) proves insufficient; at revisit time, define AC then."
+      ],
       "out_of_scope": [
         "Per-token dollar cost accounting — agents run on flat subscriptions, there is nothing to bill"
       ],
@@ -799,6 +802,9 @@
       "eff": 0.57,
       "markers": [],
       "depends_on": [],
+      "acceptance_criteria": [
+        "DEFERRED — no implementation work scheduled. Revisit only when an ACP backend preserves Claude subscription OAuth (per the conditions documented in body), or when API-billing dispatches are an accepted cost for a specific workload; at revisit time, define AC then."
+      ],
       "out_of_scope": [
         "Any work until the subscription-auth blocker resolves or API billing is deliberately accepted for a specific workload",
         "Replacing or competing with the native adapters that already preserve subscription auth"
@@ -2540,7 +2546,7 @@
       "phase": 8,
       "bundle": "closeout",
       "milestone": "v0_6",
-      "status": "pending",
+      "status": "done",
       "title": "v0.6 closeout: doc + skill refresh, rmap doctor cleanup, Tidewave smoke",
       "scores": {
         "d": 3,
@@ -2564,6 +2570,72 @@
         "Publishing a Hex release, marketing site, or long tutorial"
       ],
       "body": "Single-session closeout for v0.6 release-readiness. Four surfaces refreshed against the post-v0_5 reality (multi-project OTP node, Oban-backed queues, dashboard + Oban Web + Tidewave all on port 4018, dogfooding as default), then verified by following the refreshed docs literally against the running node.\n\nSurfaces in scope:\n1. **README.md** — operational, terse, current. Remove stale \"Oban is landing\" / \"core loop taking shape\" language; point at the real endpoints.\n2. **docs/dogfooding-workflow.md** — Tidewave project_eval on the live node is the default dispatch path; the throwaway `mix run` script is fallback-only. Document the subscriber/persistent-result pattern for long-running runs (so the result survives the eval process exiting).\n3. **skills/harness-driver/SKILL.md** — same Tidewave-first orientation; long-running result-capture pattern; explicitly steer away from deferred MCP/JSON CLI work.\n4. **rmap doctor** — clean up only what matters for closeout (focus, phase/milestone status, AC on deferred tasks, render consistency). Do not bulk-rewrite history.\n\nThen the smoke: on the already-running dashboard/Tidewave node, follow the README + SKILL.md as executable operator docs — hit /harness, /harness/oban, /tidewave/mcp; via project_eval, look up the harness project, dispatch or dry-run a small task, observe by run id, confirm the live-node path works without spawning a second driver BEAM. The smoke IS the milestone hypothesis test (\"system is coherent for a fresh AI orchestrator\"); the four doc refreshes are its preconditions, which is why they ship as one task.\n\nRecommended execution: hand-build in one Claude Code session (the consumer of these docs is you reading them) rather than dispatching through harness — refreshing the skill that guides dispatch from inside a dispatched run is recursion without payoff.\n\nSupersedes the earlier 5-task split (71 README, 72 dogfooding-workflow, 73 SKILL.md, 74 rmap doctor, 75 smoke) which failed the \"one session = one PR\" Pre-Creation Gate: 75 declared depends_on = [71,72,73,74], which IS the one-PR signal.\n",
+      "created_at": "2026-05-27",
+      "started_at": "2026-05-27",
+      "done_at": "2026-05-27",
+      "scored_at": "2026-05-27",
+      "implemented": "v0.6 closeout doc + skill refresh, rmap doctor cleanup, Tidewave smoke. Surfaces refreshed: README.md (Status + new Running-the-node section pointing at the real http://localhost:4018 endpoints + precommit.full alias; dropped retired :4016 reference), docs/dogfooding-workflow.md (Tidewave project_eval reordered as preferred dispatch path with two-eval Run.status/ResultStore observation pattern + LogRecord field-coverage caveat, mix-run script demoted to fallback for full per-check diagnostic dumps, no-second-BEAM warning hoisted to top), skills/harness-driver/SKILL.md (Tidewave-first preamble, long-running result-survives-eval-exit pattern, sharp-edges sentence on Task 17/20/21 intentionally deferred). Roadmap state: acceptance_criteria added to tasks 20 + 21 (deferred), milestone v0_6 status flipped pending → active so rmap next biases to it; rmap doctor closeout-relevant findings (missing AC on deferred tasks) cleared 34 → 32, remainder is out-of-scope ClaimedNotGraded on bootstrap tasks + degenerate-bundle advisories. Smoke against the live :4018 BEAM: endpoint round-trip 200/200/405-GET-400-POST ✓; Tidewave project_eval ingest path verified ({:ok, %Item{}} for task 71 after manual ProjectRegistry.register/1 workaround). Smoke surfaced two real gaps, filed per AC: Task 72 (ProjectRegistry boots empty — config :harness, :projects commented out at config/config.exs:94; doc-correct, config-default missing), Task 73 (ResultStore.File.list_run_records halts on first atom-stale .term file under ~/.harness/results/runs/ — should skip + warn matching the existing {:ok, _other} clause's spirit). mix check.fast clean. Not setting --verified: while the doc surfaces themselves describe the as-designed dispatch flow correctly, the end-to-end smoke needed runtime workaround for the ProjectRegistry gap and the persistent-result query path is broken by the ResultStore halt bug; flip --verified once 72 + 73 land and a clean smoke passes.",
+      "cross_repo": []
+    },
+    {
+      "id": "72",
+      "phase": 8,
+      "bundle": "closeout",
+      "milestone": "v0_6",
+      "status": "pending",
+      "title": "Register the harness checkout as a project on boot (dev default)",
+      "scores": {
+        "d": 2,
+        "b": 6,
+        "u": 8
+      },
+      "eff": 3.5,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "iex -S mix in dev boots with Harness.ProjectRegistry containing the harness project — Harness.ProjectRegistry.lookup(\"harness\") returns {:ok, %Project{}} without any runtime registration call",
+        ":test and :prod envs do not auto-register the harness project (config lives in config/dev.exs, not config/config.exs)",
+        "config/dev.exs is created and `import_config \"#{config_env()}.exs\"` is added to config/config.exs — neither exists today (config/config.exs has no env-split machinery; only config.exs and runtime.exs are present)",
+        "The two-eval Tidewave smoke from skills/harness-driver/SKILL.md succeeds without any manual Harness.ProjectRegistry.register/1 step",
+        "No change required to README, docs/dogfooding-workflow.md, or skills/harness-driver/SKILL.md — the docs are already correct; only config wires up the missing default"
+      ],
+      "out_of_scope": [
+        "Multi-project federation features (already shipped in Task 46)",
+        "Auto-discovery of other projects on the laptop — this is specifically about the harness checkout self-registering in dev",
+        "Adding any project to test or prod env configs"
+      ],
+      "body": "Smoke-discovered gap from Task 71 (v0.6 closeout). The refreshed README, dogfooding-workflow.md, and skills/harness-driver/SKILL.md all show `Harness.ProjectRegistry.lookup(\"harness\")` as the first call in the live-node dispatch path. Against the actually-running `iex -S mix` node, that returns `{:error, {:unknown_project, \"harness\"}}` — `Harness.ProjectRegistry.list/0` is empty because `config :harness, :projects` is commented out at `config/config.exs:94-99`.\n\nThe dogfooding-by-default policy (CLAUDE.md § Dogfooding) presumes the harness checkout is self-registered as the default \"harness\" project — there is no other reason for the example config block to specifically name the harness checkout. Uncommenting the block (in `config/dev.exs` rather than `config/config.exs` to keep test/prod un-opinionated) makes `iex -S mix` boot with the harness project pre-registered and makes the refreshed docs literally true against the live node.\n",
+      "created_at": "2026-05-27",
+      "scored_at": "2026-05-27",
+      "cross_repo": []
+    },
+    {
+      "id": "73",
+      "phase": 8,
+      "bundle": "closeout",
+      "milestone": "v0_6",
+      "status": "pending",
+      "title": "ResultStore.File.list_run_records skips undecodable term files instead of halting",
+      "scores": {
+        "d": 2,
+        "b": 5,
+        "u": 7
+      },
+      "eff": 3.0,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Harness.ResultStore.File.list_run_records/2 returns {:ok, [LogRecord.t()]} containing every healthy record, even when one or more sibling files fail safe-decode",
+        "Undecodable / atom-stale files are logged via Logger.warning with the path and the reason, then skipped (matching the existing {:ok, _other} skip clause's spirit)",
+        "An ExUnit test in test/harness/result_store/file_test.exs reproduces the scenario: a directory containing one valid LogRecord term + one file with arbitrary bytes; list_run_records returns the valid record and logs a warning for the corrupt one",
+        "The two-eval Tidewave smoke from SKILL.md returns a list of records (possibly empty after filtering) instead of {:error, {:invalid_term_file, _}}"
+      ],
+      "out_of_scope": [
+        "Rewriting the on-disk format or migrating to an Ecto-backed store",
+        "GC / TTL of old term files — that is a separate operational concern",
+        "Changing the public Harness.ResultStore behaviour or LogRecord shape"
+      ],
+      "body": "Smoke-discovered runtime bug from Task 71. `Harness.ResultStore.list_run_records/1` halts on the first file under `~/.harness/results/runs/` that fails `:erlang.binary_to_term/2` with the `:safe` flag — `read_term/1` (`lib/harness/result_store/file.ex:106-113`) returns `{:error, {:invalid_term_file, path}}`, and `collect_records/2` (lines 63-85) treats any `{:error, _}` as a halt. A single corrupt or atom-stale term file therefore prevents ANY records from being returned, including all the healthy ones.\n\nReproduced live on 2026-05-27 against the running dev BEAM: 32 healthy `.term` files in `~/.harness/results/runs/`, one earlier file that fails `:safe` decode (almost certainly atom-stale from a pre-restart LogRecord shape or removed atom). Every `Harness.ResultStore.list_run_records([])` call returns `{:error, {:invalid_term_file, ...}}` — the documented Tidewave dispatch-and-observe pattern in `skills/harness-driver/SKILL.md` and `docs/dogfooding-workflow.md` is consequently broken end-to-end.\n\nThe fix mirrors the already-present `{:ok, _other}` skip clause in `collect_records/2`: a `{:error, {:invalid_term_file, _}}` (and arguably any `{:error, _}` from per-file read) should be logged as a warning and skipped, not halt the entire query. The `{:ok, _other}` clause's reasoning (\"stale or cross-typed entries shouldn't crash list_run_records\") applies equally to atom-stale safe-decode failures.\n\nOut of scope for the fix: rewriting the on-disk format, GC of old term files, or migrating to an Ecto-backed store.\n",
       "created_at": "2026-05-27",
       "scored_at": "2026-05-27",
       "cross_repo": []

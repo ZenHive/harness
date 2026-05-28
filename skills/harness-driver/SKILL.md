@@ -14,7 +14,9 @@ argument-hint: "harness driver | delegate via harness | use harness for this tas
 
 **Primary user:** AI orchestrators (you). The human is secondary.
 
-**Post-v0_5 reality (milestone complete):** Harness is a multi-project OTP node with Oban dispatch, per-project queues, restart resilience, Phoenix LiveView dashboard + Oban Web, and `Oban.Plugins.Cron` for autonomous polling. Dogfooding is the default again.
+**Post-v0_5 reality (milestone complete; v0.6 closeout in flight):** Harness is a multi-project OTP node with Oban dispatch, per-project queues, restart resilience, Phoenix LiveView dashboard + Oban Web, Tidewave MCP all on one Bandit endpoint (`http://localhost:4018`), and `Oban.Plugins.Cron` for autonomous polling. Dogfooding is the default again.
+
+**Preferred orchestration surface: Tidewave `project_eval` against the live node.** Any IEx-style snippet you'd run inside the orchestrator's BEAM can be dispatched via `mcp__tidewave__project_eval` against the already-running `iex -S mix` node (which hosts the dashboard + Tidewave plug at port 4018). Do NOT spin up a second BEAM with `mix run /tmp/dogfood_task.exs` to dispatch a run — Task 61's open worktree-sweep-on-boot race can prune a live sibling worktree. The `mix run` script is the **fallback** for full-diagnostic dumps only (see `docs/dogfooding-workflow.md` § "Full-diagnostic dispatch via `mix run` (fallback)").
 
 ---
 
@@ -160,7 +162,52 @@ Never trust `agent_outcome.exit_status` or the agent's self-reported success.
 
 ## Recommended Patterns (copy these)
 
-**Single delegation with explicit adapter choice:**
+**Long-running dispatch from Tidewave eval (result-survives-eval-exit pattern):**
+
+The preferred dispatch surface (see § Two Main Surfaces preamble) is `mcp__tidewave__project_eval`
+against the live `iex -S mix` node. The eval process is ephemeral — it exits as soon as the
+snippet returns — so `subscriber: self()` is wrong here (the subscriber would be dead before
+the run settles). The Run process records a `%Harness.Run.LogRecord{}` to
+`Harness.ResultStore` on settle regardless, so use the two-eval pattern:
+
+```elixir
+# EVAL 1 — dispatch. Eval process exits immediately; the run keeps going.
+{:ok, project} = Harness.ProjectRegistry.lookup("harness")
+{:ok, item}    = Harness.Roadmap.ingest({:id, "<task-id>"}, project: project)
+
+{:ok, run_id, _pid} =
+  Harness.Run.Supervisor.start_run(
+    item, project, Harness.AgentAdapter.Claude,
+    subscriber: nil,                              # NOT self() — eval is ephemeral
+    lifetime_timeout: 3_600_000,
+    env: %{"ANTHROPIC_API_KEY" => false}          # force subscription OAuth
+  )
+
+run_id   # capture this — it's the only handle the next eval needs
+```
+
+```elixir
+# EVAL 2 — observe. Run as needed; durable after settle.
+case Harness.Run.status("<run-id>") do
+  {:ok, status}        -> status                    # while alive (+ 5s linger)
+  {:error, :not_found} ->
+    {:ok, [rec]} = Harness.ResultStore.list_run_records(run_id: "<run-id>")
+    rec                                             # %Harness.Run.LogRecord{}
+end
+```
+
+Live transcript: open `http://localhost:4018/harness/runs/<run_id>` in the browser.
+LiveView is subscribed to `Phoenix.PubSub` topic `harness:run:<id>:transcript`, fed by
+`Driver.run/3`'s `:on_output` callback.
+
+> **LogRecord field coverage caveat.** `%LogRecord{}` carries verdict **status**
+> (`:pass`/`:fail`), failed-check **names** (name + kind + exit_status), and the full
+> agent transcript — but NOT per-check stdout/stderr. When you need to triage a red
+> verdict by reading actual check output (a credo finding, a failing-test message),
+> the live `%Harness.Run.Result{}` via subscriber is the only path — drop to the
+> mix-run script in `docs/dogfooding-workflow.md` § "Full-diagnostic dispatch via `mix run` (fallback)".
+
+**Single delegation with explicit adapter choice (subscriber-IS-caller variant, mix-run / long-lived BEAM only):**
 
 ```elixir
 {:ok, project} = Harness.ProjectRegistry.lookup("my_project")
@@ -169,7 +216,7 @@ adapter        = pick_adapter_for_task(item)   # your logic (cost, capability, A
 
 {:ok, run_id, _pid} = Harness.Run.Supervisor.start_run(
   item, project, adapter,
-  subscriber: self(),
+  subscriber: self(),                          # only correct if `self()` outlives the run
   env: scrub_keys_for_agent(adapter)
 )
 ```
@@ -249,7 +296,7 @@ also drop quota-exhausted adapters.
 
 ## Sharp Edges & Gotchas (2026-05 post-v0_5)
 
-- **No first-class MCP surface yet** (Task 17 deferred). You drive via `project_eval` (Tidewave) or IEx today. The library + dashboard is the current agent surface.
+- **No first-class MCP surface yet** (Task 17 deferred — alongside Tasks 20 and 21, all three intentionally out of the v0.6 closeout path). You drive via `project_eval` (Tidewave) or IEx today. The library + dashboard is the current agent surface. Revisit Task 17 only when a non-Elixir consumer (Python, TypeScript) needs to drive harness from outside the BEAM; revisit Task 20 only if reactive fail-over proves insufficient; revisit Task 21 only when an ACP backend preserves Claude subscription OAuth.
 - **AgentRegistry is a soft hint, not a contract** (Task 40 resolved 2026-05-27 as option (b)). Unavailability state is in-memory only and clears on GenServer restart **by design** — the registry is a latency optimization to skip known-bad adapters at dispatch; correctness lives in Oban (workers map quota → `{:snooze, _}`, persisted job rows survive both restarts and quota windows). Bounded cost of a restart-clear: one wasted first-attempt per previously-marked-unavailable adapter. Don't trust quota state across BEAM restarts; do trust Oban retry. Also: Task 41 (Codex worktree-isolation regression) is **resolved as of 2026-05-27** — `codex exec --cd <cwd>` pins the working root at the exec level, mirroring the Task 32 fix shape. Full rationale: `Harness.AgentRegistry` `@moduledoc` § "Availability is a soft hint, not a contract".
 - **Worktree isolation is enforced via capability + guard.** Only `Harness.AgentAdapter.Antigravity` currently declares `worktree_isolation: false`; the dispatch guard (`Harness.Worktree.Isolation`) refuses to start a worktree-isolated run on a non-isolating adapter and snapshots the main checkout porcelain mid-run to trap pollution (Task 32). Past regressions all live on `:checkout_polluted` reason — see `docs/dogfooding-workflow.md` verdict table. Task 60 (2026-05-27) added a four-tier pollution allowlist (run opts → project → app config → `default_pollution_allowlist/0`) that ignores incidental `.claude/`, `.DS_Store`, and editor temp/lock writes; roadmap files are deliberately NOT allowlisted (a genuine agent mutation to them is a bug worth catching). Note: running `rmap` mutations in a parallel session against the same checkout will also trigger `:checkout_polluted` — a false positive caused by the operator, not the agent (see `docs/dogfooding-workflow.md` § "Known sharp edges").
 - **Non-delegatable two-step dance**: Easy to forget. The skill exists partly to make this impossible to miss. Distinct from worktree isolation (see § "Non-delegatable adapters" above for both axes).

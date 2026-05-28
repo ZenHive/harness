@@ -63,26 +63,114 @@ grader** — never the agent's self-reported result.
 
 ## Running a dogfood task
 
-There is no CLI/MCP surface yet (that is Task 17). Drive a run from a throwaway script
-via `mix run`.
+There are two dispatch paths. **The live-node Tidewave path is preferred** for most runs.
+The `mix run` script is the **fallback** for full diagnostic dumps — debugging a
+`:verification_red` run where you need per-failed-check stdout/stderr in your terminal.
 
-1. **Pick the task:** `rmap next`. Note the id.
-2. **Pre-flight:** `git status` clean — the run forks a worktree off `HEAD`, so every
-   fix the run depends on must already be committed; `claude`, `rmap`, `mix` on `PATH`.
-3. **Claim it:** `rmap status <id> in_progress`.
-4. **Write** `/tmp/dogfood_task<id>.exs` from the template below — change only `task_id`.
-5. **Run it backgrounded:** `mix run /tmp/dogfood_task<id>.exs`. It blocks until the run
-   settles (or the lifetime budget + 5m elapses), printing a 30s status ticker and, on
-   settle, the agent transcript + verdict + the tail of every failed check.
-6. **Read the verdict** (see below).
+> **⚠ Never start a second driver BEAM while runs are in flight.** A second harness BEAM
+> starting while the first still has runs in flight runs a worktree sweep at boot that
+> can prune a live sibling worktree out from under its running adapter (Task 61, open).
+> Drive everything from one long-lived node — the `iex -S mix` you started for the
+> dashboard. This applies to both paths below.
 
 ### Non-delegatable adapters contract
 
-Non-delegatable adapters (`Grok` and `Antigravity`) are not valid options on the ingestion surface because `rmap delegate --to` does not support them (so `ingest(agent: :grok)` and `ingest(agent: :antigravity)` are rejected). Instead, task prompts are ingested using a delegatable agent (e.g. `:claude`, `:codex`, or `:cursor`), and then the ingested `Item` is passed directly to the non-delegatable adapter's module (e.g. `Harness.AgentAdapter.Grok` or `Harness.AgentAdapter.Antigravity`) when calling `Harness.Run.Supervisor.start_run/4` in the driver script.
+Non-delegatable adapters (`Grok` and `Antigravity`) are not valid options on the ingestion
+surface because `rmap delegate --to` does not support them (so `ingest(agent: :grok)` and
+`ingest(agent: :antigravity)` are rejected). Instead, ingest with a delegatable agent
+(`:claude`, `:codex`, or `:cursor`) and pass the resulting `%Harness.Roadmap.Item{}`
+directly to the non-delegatable adapter's module (`Harness.AgentAdapter.Grok` /
+`Harness.AgentAdapter.Antigravity` / `Harness.AgentAdapter.Pi`) when calling
+`Harness.Run.Supervisor.start_run/4`. Applies to both dispatch paths.
 
 > **Antigravity caveat (Task 32):** `agy` ignores the port `cwd` and resolves workspace via git-common-dir to the main checkout. `Harness.AgentAdapter.Antigravity` declares `worktree_isolation: false`, so `Harness.Run` rejects dispatch before spawn — Antigravity cannot drive worktree-isolated runs until the CLI gains a headless workspace constraint.
 
-### Driver script template
+### Live-node dispatch via Tidewave `project_eval` (preferred)
+
+The dashboard endpoint runs the Tidewave plug in `:dev` (`Harness.Dashboard.Endpoint`,
+port 4018), so any IEx-style snippet you'd run inside the orchestrator's BEAM can be sent
+via `mcp__tidewave__project_eval` against the live node. The Run process records a
+`%Harness.Run.LogRecord{}` to `Harness.ResultStore` on settle regardless of subscriber
+state — so the eval process exiting between dispatch and observation is fine.
+
+1. **Pick the task:** `rmap next`. Note the id.
+2. **Pre-flight:** `git status` clean — the run forks a worktree off `HEAD`, so every fix
+   the run depends on must already be committed.
+3. **Claim it:** `rmap status <id> in_progress`.
+4. **Dispatch eval** (single `project_eval` — eval process exits immediately, that's fine):
+
+   ```elixir
+   {:ok, project} = Harness.ProjectRegistry.lookup("harness")
+   {:ok, item}    = Harness.Roadmap.ingest({:id, "<task-id>"}, project: project)
+
+   {:ok, run_id, _pid} =
+     Harness.Run.Supervisor.start_run(
+       item, project, Harness.AgentAdapter.Claude,
+       subscriber: nil,                              # eval exits — no live subscriber
+       lifetime_timeout: 3_600_000,
+       env: %{"ANTHROPIC_API_KEY" => false}          # scrub: force subscription OAuth
+     )
+
+   run_id
+   ```
+
+5. **Watch live:** open `http://localhost:4018/harness/runs/<run_id>` in a browser. The
+   dashboard subscribes to `Phoenix.PubSub` topic `harness:run:<id>:transcript`, which
+   `AgentAdapter.Driver.run/3` feeds via its `:on_output` callback. Bounded 200 KiB buffer.
+
+6. **Poll status (optional, while alive):**
+
+   ```elixir
+   Harness.Run.status("<run-id>")
+   #=> {:ok, %{state: :running, agent_os_pid: 12345, verdict_status: nil}}
+   #=> {:ok, %{state: :done, ...}}                    # +5s linger, then process exits
+   #=> {:error, :not_found}                           # after linger
+   ```
+
+7. **Observe after settle** (durable — the Run process has persisted before exiting):
+
+   ```elixir
+   {:ok, [%Harness.Run.LogRecord{} = rec]} =
+     Harness.ResultStore.list_run_records(run_id: "<run-id>")
+
+   rec.state           # :done | :failed
+   rec.reason          # nil | :verification_red | {:checkout_polluted, _} | ...
+   rec.verdict         # :pass | :fail | nil  (status only — see caveat below)
+   rec.agent_output    # full agent transcript (binary)
+   rec.failure_cause   # %{reason, failed_checks: [%{name, kind, exit_status}]}
+   ```
+
+   See § Reading the verdict for what the state/reason combinations mean and what action
+   each one warrants.
+
+> **⚠ LogRecord field coverage.** `%LogRecord{}` carries verdict **status** (`:pass`/`:fail`)
+> and **failed-check names** (name + kind + exit_status), but NOT per-check stdout/stderr.
+> When you need to triage a red verdict by reading the actual check output (a credo
+> finding, a failing test message, the sobelow trace), the live `%Harness.Run.Result{}`
+> via subscriber is the only path — drop to the **mix-run fallback** below.
+
+8. **Read the verdict** (see § Reading the verdict).
+
+### Full-diagnostic dispatch via `mix run` (fallback)
+
+Use when you need per-failed-check stdout/stderr dumped to your terminal — debugging
+`:verification_red` runs is the canonical case. The driver script blocks on a `receive`
+for `{:harness_run, run_id, result}` so the full `%Harness.Run.Result{}` (with
+`verdict.results[].output`) is in hand on settle.
+
+> Same 6-step intent as the Tidewave path (pick / pre-flight / claim / dispatch / watch /
+> read verdict), but **dispatched from a throwaway `mix run` script** instead of a
+> `project_eval`. The script template's `subscriber: self()` works because the script
+> process IS the subscriber and stays alive until the run settles.
+
+1. **Pick the task / pre-flight / claim** as above.
+2. **Write** `/tmp/dogfood_task<id>.exs` from the template below — change only `task_id`.
+3. **Run it backgrounded:** `mix run /tmp/dogfood_task<id>.exs`. It blocks until the run
+   settles (or the lifetime budget + 5m elapses), printing a 30s status ticker and, on
+   settle, the agent transcript + verdict + the tail of every failed check.
+4. **Read the verdict** (see § Reading the verdict).
+
+#### Driver script template
 
 Save as `/tmp/dogfood_task<id>.exs`, change `task_id`, run with `mix run`:
 
