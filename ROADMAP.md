@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 72 — Register the harness checkout as a project on boot (dev default), Task 73 — ResultStore.File.list_run_records skips undecodable term files instead of halting, Task 74 — Document cross-checkout consumer workflow (SKILL.md + README) on 2026-05-28
 
-**Up next:** Task 17 — Agent-shaped surface — MCP tools + JSON CLI [D:6/B:8/U:8 → Eff:1.33] 📋
+**Up next:** Task 75 — Annotate harness driver surface with descripex api() macros [D:4/B:8/U:8 → Eff:2.0] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -78,6 +78,8 @@
 | Task 17 | ⬜ | 🎁 **deferred** · Agent-shaped surface — MCP tools + JSON CLI [D:6/B:8/U:8 → Eff:1.33] 📋 |
 | Task 20 | ⬜ | 🎁 **deferred** · Run telemetry + quota/cost accounting [D:5/B:3/U:3 → Eff:0.6] ⚠️ |
 | Task 21 | ⬜ | 🎁 **deferred** · ACP transport adapter [D:7/B:5/U:3 → Eff:0.57] ⚠️ |
+| Task 80 | ⬜ | 🎁 **deferred** · Harness.Dashboard.RoadmapLive — multi-project rmap-next browser with 1-click dispatch [D:3/B:5/U:4 → Eff:1.5] 🚀 |
+| Task 81 | ⬜ | 🎁 **deferred** · Harness.Dashboard.CompareLive — A/B agent-evaluation view [D:3/B:4/U:3 → Eff:1.17] 📋 |
 <!-- TASKS:END -->
 
 ---

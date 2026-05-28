@@ -50,6 +50,11 @@ name = "Closeout & Release Readiness"
 order = 8
 status = "in_progress"
 
+[phases.9]
+name = "Chat Orchestrator"
+order = 9
+status = "pending"
+
 # ----------------------------------------------------------------------------
 # Bundles
 # ----------------------------------------------------------------------------
@@ -114,6 +119,11 @@ description = "v0.6 stabilization: align roadmap reality, refresh operator docs,
 order = 1
 phase = 8
 
+[bundles.chat-orchestrator]
+description = "Tool-equipped LLM chat surface for harness — descripex-annotated driver surface as the single source of truth for both the in-process Session tool dispatch and the external MCP endpoint; LiveView UI at /harness/chat composes on the same annotations"
+order = 1
+phase = 9
+
 # ----------------------------------------------------------------------------
 # Milestones
 # ----------------------------------------------------------------------------
@@ -159,6 +169,13 @@ description = "Proves the built system is coherent for a fresh AI orchestrator: 
 order = 6
 status = "done"
 target_version = "0.6.0"
+
+[milestones.v0_7]
+name = "Chat Orchestrator"
+description = "Proves a tool-equipped LLM driven over a descripex-annotated harness surface can orchestrate dispatch end-to-end via natural language — replacing the two-eval mcp__harness__project_eval pattern as the default driver UX — and that the same annotated surface serves external MCP consumers (Sprite, Cursor BG, other Claude instances) without a separate Chat.Tools wrapper layer."
+order = 7
+status = "pending"
+target_version = "0.7.0"
 
 # ----------------------------------------------------------------------------
 # Tasks
@@ -2201,3 +2218,264 @@ verified = true
 created_at = "2026-05-28"
 scored_at = "2026-05-28"
 done_at = "2026-05-28"
+
+[[task]]
+id = "75"
+phase = 9
+bundle = "chat-orchestrator"
+milestone = "v0_7"
+status = "pending"
+title = "Annotate harness driver surface with descripex api() macros"
+scores = { d = 4, b = 8, u = 8 }
+depends_on = []
+acceptance_criteria = [
+  "Every public function in Harness.Run.Supervisor, Harness.Batch, Harness.Batch.AgentEvaluation, Harness.Roadmap, Harness.ProjectRegistry, Harness.Run, Harness.ResultStore, Harness.AuditReview, and Harness.AgentAdapter.Driver carries an api() declaration with params + returns + description",
+  ":exchange_data param kinds carry source: hints pointing to the lookup tool (e.g. list_projects/0 for project refs, list_pending/0 for item refs)",
+  "Descripex.MCP.tools/1 over the curated annotated module list produces a valid MCP tool-list JSON (name, description, inputSchema)",
+  "test/harness/agent_economy_test.exs walks the annotated modules and asserts every exported function has :hints metadata (asserts the contract; without enforcement, hints rot)",
+  "Harness.Manifest module exists with build/0 wrapping Descripex.Manifest.build over the curated module list — single entry point downstream code uses",
+  "skills/harness-driver/SKILL.md anti-staleness contract updated to add: 'descripex annotations on the driver surface must stay in sync with the moduledoc / @spec'",
+]
+out_of_scope = [
+  "Annotating Harness.AgentAdapter behaviour callbacks (capabilities/0, build_command/1, rule_channel/0) — those are adapter-implementation contracts, not consumer-facing dispatch primitives",
+  "Annotating private modules (Run.Worker, Run.Telemetry, internal helpers)",
+  "Building the MCP HTTP endpoint or chat UI (Tasks 76-79)",
+  "Migrating skills/harness-driver/SKILL.md prose into descripex annotations — the skill remains the operator-facing usage guide; descripex is the machine-readable contract layer alongside it",
+]
+created_at = "2026-05-28"
+scored_at = "2026-05-28"
+body = """
+The harness driver surface (start_run, Batch.dispatch, Batch.run, Roadmap.ingest, ProjectRegistry, Run.status, ResultStore, AuditReview, AgentAdapter.Driver) is documented in skills/harness-driver/SKILL.md as prose for human readers. The v0_7 milestone needs the same surface as machine-readable contract: JSON Schema per function, param-kind distinction (:value vs :exchange_data so a chat agent knows which params to look up first), and an MCP tool-list generator that can be served to external consumers.
+
+Annotate each public driver function with descripex's api() macro. Use :exchange_data with explicit `source:` hints for params that should be looked up via another tool first (e.g. dispatch_run's project param sources from list_projects/0). Use :value for caller-supplied scalars (timeouts, env-scrub maps, capability requirements).
+
+Add a CI test (test/harness/agent_economy_test.exs) walking every exported function in the annotated modules and asserting :hints metadata is present — without enforcement, hints rot.
+
+Wrap the curated module list in a single Harness.Manifest module so downstream code (Tasks 76 and 79) has one entry point. The same manifest serves the in-process Chat.Session tool dispatch AND the external MCP endpoint — no separate Chat.Tools wrapper layer.
+
+The payoff extends beyond the chat orchestrator: any external AI consumer (Sprite, Cursor BG, other Claude instances via MCP) can introspect the driver surface progressively (Harness.describe(:run, :start) etc.) instead of reading skill prose.
+
+Block on this for Tasks 76 (Session reads tools from Manifest) and 79 (MCP endpoint serves Manifest); Task 77 can proceed in parallel.
+"""
+
+[[task]]
+id = "76"
+phase = 9
+bundle = "chat-orchestrator"
+milestone = "v0_7"
+status = "pending"
+title = "Harness.Chat.Session GenServer with multi-turn tool-call loop"
+scores = { d = 5, b = 8, u = 7 }
+depends_on = ["75"]
+acceptance_criteria = [
+  "Harness.Chat.Session GenServer accepts {:user_message, text} and drives a tool-call loop until the agent returns a non-tool-call response",
+  "Tool calls dispatch via apply/3 against descripex-discovered MFAs (from Harness.Manifest, Task 75) with JSON-Schema-validated arguments before invocation",
+  "Conversation history bounded by max_iterations (default 16) and max_history_bytes (default 256 KiB) — runaway agents abort cleanly with a structured terminal message",
+  "Streaming output broadcast over Phoenix.PubSub topic harness:chat:<session_id>:stream so the LiveView (Task 78) can subscribe",
+  "Repeated identical tool calls (same name + same arguments) within a session trigger an explicit loop-detection abort rather than burning quota",
+  "Tests cover: tool-result happy path (user msg → tool call → result → agent final response), max-iterations abort, unknown-tool-name error path, schema-validation failure path, loop-detection abort",
+  "Session supervised under Harness.Application; crash restart loses the in-flight conversation but does not affect other sessions",
+]
+out_of_scope = [
+  "LLM backend wiring (Task 77 — the Session calls a behaviour-shaped callback; the Anthropic implementation is separate)",
+  "LiveView UI (Task 78)",
+  "MCP HTTP endpoint (Task 79)",
+  "Multi-tenant auth / multi-user session isolation",
+  "Persistent chat history across BEAM restarts (in-memory GenServer state is sufficient for v0_7)",
+]
+created_at = "2026-05-28"
+scored_at = "2026-05-28"
+body = """
+Build the chat session state machine that drives the multi-turn tool-call loop. A user message arrives → the agent thinks → it may emit one or more tool calls → harness dispatches them via the descripex-annotated surface from Task 75 → results flow back as tool-result messages → the agent re-prompts → repeat until the agent returns a final non-tool-call response.
+
+The Session GenServer reads Harness.Manifest at startup to know which tools exist. Tool dispatch uses apply/3 against the MFA recorded in the descripex hints, with arguments JSON-Schema-validated before invocation — never call a function whose args don't match its declared schema.
+
+Bound the loop: max_iterations (default 16), max_history_bytes (default 256 KiB), and an explicit loop-detector that aborts on repeated-identical tool calls. A misbehaving agent must not burn quota in a runaway. Abort cleanly with a structured terminal message the UI can render.
+
+Stream output over Phoenix.PubSub topic harness:chat:<session_id>:stream — same pattern as Harness.Dashboard.Transcript for run transcripts. The LiveView (Task 78) subscribes; the MCP endpoint (Task 79) does not need PubSub.
+
+Abstract the LLM backend behind a callback the Session calls (Harness.Chat.Backend behaviour or similar). Task 77 implements the Anthropic backend; future backends (Bedrock, Vertex) can swap in without rewriting Session logic.
+
+Supervise under Harness.Application — session id as the registry key. A session crash should not affect other sessions; in-flight conversation state is in-memory and lost on restart (acceptable for v0_7).
+"""
+
+[[task]]
+id = "77"
+phase = 9
+bundle = "chat-orchestrator"
+milestone = "v0_7"
+status = "pending"
+title = "Harness.Chat.Anthropic backend — Req + streaming + prompt caching + tool-use"
+scores = { d = 3, b = 6, u = 6 }
+depends_on = []
+acceptance_criteria = [
+  "Harness.Chat.Anthropic streams /v1/messages responses chunk-by-chunk via a callback (per-token or per-event, however Anthropic's SSE delivers)",
+  "cache_control: ephemeral applied to the static system/tool portion of the prompt (system message + tool list never change within a session)",
+  "Tool-use turns formatted per the Anthropic tool-use API: tool_use blocks out, tool_result blocks back in",
+  "Rate-limit errors (429) honor Retry-After header with exponential backoff (capped); overload errors (529) similarly",
+  "ANTHROPIC_API_KEY sourced from env; model id configurable (default claude-opus-4-7)",
+  "Backend exposed as a behaviour (Harness.Chat.Backend) so the Session (Task 76) is decoupled from Anthropic specifics",
+  "Tests cover: streaming chunk parsing, tool-use round-trip, rate-limit retry, missing-API-key error path (all with mocked Req responses — no live API calls in the suite)",
+]
+out_of_scope = [
+  "Subprocess-based Claude invocation (Harness.AgentAdapter.Claude already covers headless run dispatch; this task is the interactive API path)",
+  "Non-Anthropic backends (Bedrock/Vertex/OpenAI/local — backend behaviour is the extension point; concrete implementations are later tasks if/when needed)",
+  "Session loop or tool dispatch (Task 76)",
+  "Token-usage tracking / cost dashboard (separate concern, future idea)",
+]
+created_at = "2026-05-28"
+scored_at = "2026-05-28"
+body = """
+Implement a direct Anthropic API client for the chat orchestrator using Req. Unlike Harness.AgentAdapter.Claude (which spawns `claude -p` per invocation — appropriate for run dispatch where each task is a fresh process), the chat backend needs token-by-token streaming and explicit tool-use formatting for low-latency interactive UX.
+
+Support: streaming responses (Server-Sent Events from /v1/messages), tool-use blocks (in/out), system prompt with prompt-cache control on the static portion (cache_control: ephemeral on the system message + tool list cuts repeat-prompt cost ~90% within a session), configurable model id (default claude-opus-4-7), and ANTHROPIC_API_KEY from env.
+
+The backend is a behaviour-style callback the Session GenServer (Task 76) calls — abstracting it allows future backends (Bedrock, Vertex, OpenAI, local) without rewriting Session logic.
+
+Handle Anthropic's documented error envelope: 429 with Retry-After, 529 overload, 401 missing-key. Return structured errors the Session can surface to the UI rather than crashing the GenServer.
+
+Tests must mock Req — no live API calls in CI. Use Req's built-in test helpers (Req.Test) for stubbing.
+
+Can be developed in parallel with Tasks 75 and 76 (no shared files); blocks Task 78 (UI needs streaming) only by virtue of the LiveView needing the Session-with-backend wired together.
+"""
+
+[[task]]
+id = "78"
+phase = 9
+bundle = "chat-orchestrator"
+milestone = "v0_7"
+status = "pending"
+title = "Harness.Dashboard.ChatLive — LiveView UI for chat orchestrator"
+scores = { d = 4, b = 8, u = 6 }
+depends_on = ["76", "77"]
+acceptance_criteria = [
+  "Harness.Dashboard.ChatLive mounted at /harness/chat and /harness/chat/:session_id on the existing Harness.Dashboard.Router",
+  "Sending a message dispatches to Harness.Chat.Session and renders streaming agent response in real time (subscribes to harness:chat:<session_id>:stream PubSub topic)",
+  "Tool calls render as collapsible JSON blocks visually distinguishable from agent prose (tool name + arguments + result, expandable)",
+  "URL session id allows reload without losing live session (LiveView reconnects to the same Session GenServer by id)",
+  "Browser smoke test: send 'list pending tasks in harness project' → see chat agent call list_projects + list_pending → see results rendered → see agent summarize in prose",
+  "New chat session button creates a fresh session id and navigates to /harness/chat/:new_id",
+  "Page renders inside the existing dashboard layout (sidebar with project switcher etc.)",
+]
+out_of_scope = [
+  "Multi-session UI (session switcher / chat history sidebar) — single active session per browser tab for v0_7",
+  "Auth / multi-user isolation",
+  "Persistent chat history beyond GenServer lifetime (lost on BEAM restart, acceptable for v0_7)",
+  "Markdown rendering of agent output (plain text + JSON-block collapsible is sufficient initially)",
+  "File-upload / attachment support",
+]
+created_at = "2026-05-28"
+scored_at = "2026-05-28"
+body = """
+Build the LiveView UI for the chat orchestrator. Page at /harness/chat (and /harness/chat/:session_id for reload-safe links) mounted on the existing Harness.Dashboard.Router. UI: message list scrolling to bottom, streaming render of agent tokens as they arrive, collapsible JSON view for tool calls/results, send-message input form.
+
+Subscribe to Phoenix.PubSub topic harness:chat:<session>:stream (broadcast by Harness.Chat.Session from Task 76) and append chunks to the active message in the LiveView assigns.
+
+Session id lives in the URL path so reload preserves the live session — when the LiveView mounts with a session_id, it reconnects to the existing GenServer; without one, it creates a fresh session.
+
+Use the existing per-run drill-down LiveView (Harness.Dashboard.Live for runs) as a structural template — same router, same endpoint, same PubSub pattern, same dashboard layout. The chat surface is one more LiveView on the existing :4018 Bandit endpoint.
+
+Browser smoke: a user types 'list pending tasks in harness project', the agent calls list_projects, then list_pending(project: "harness"), then summarizes. The UI shows the streaming tokens, the two tool calls as collapsible JSON, and the final summary — all rendered in real time without page reload.
+"""
+
+[[task]]
+id = "79"
+phase = 9
+bundle = "chat-orchestrator"
+milestone = "v0_7"
+status = "pending"
+title = "Headless MCP endpoint — /harness/mcp/tools + /harness/mcp/call"
+scores = { d = 2, b = 7, u = 8 }
+depends_on = ["75"]
+acceptance_criteria = [
+  "GET /harness/mcp/tools returns valid MCP tool-list JSON (name, description, inputSchema per tool) sourced from Harness.Manifest (Task 75) via Descripex.MCP.tools/1",
+  "POST /harness/mcp/call accepts {name: string, arguments: object}, validates against the descripex JSON Schema, dispatches via apply/3, returns the tool result as JSON",
+  "Schema-validation failure returns 422 with the specific schema violation in the body; unknown-tool-name returns 404",
+  "Mounted on the existing :4018 Bandit endpoint via Harness.Dashboard.Router; behind the same on-by-default-in-dev gate as Tidewave (no auth, single-user)",
+  "External MCP client smoke: stub MCP client lists tools (GET /harness/mcp/tools), dispatches list_projects (POST /harness/mcp/call), receives the project list — proves the headless surface is usable by an external AI consumer end to end",
+  "Anti-staleness contract in skills/harness-driver/SKILL.md updated: 'Headless MCP surface at /harness/mcp/tools + /harness/mcp/call is now the supported alternative to mcp__harness__project_eval for tool-equipped consumers'",
+]
+out_of_scope = [
+  "Auth / multi-tenant / rate limiting (single-user dev surface; production hardening is a later task if/when needed)",
+  "Tool versioning or schema evolution (add later when consumers actually need it)",
+  "Tools authored outside the descripex annotation (no special-case tools — everything goes through Task 75's Harness.Manifest)",
+  "Token-streaming over MCP (tool calls return whole results; streaming responses are a chat-UI concern, not an MCP surface concern for v0_7)",
+]
+created_at = "2026-05-28"
+scored_at = "2026-05-28"
+body = """
+Mount the headless MCP surface. Two endpoints on the existing Bandit (:4018):
+
+- GET /harness/mcp/tools — serves Descripex.MCP.tools/1 over Harness.Manifest (Task 75) as a valid MCP tool-list JSON.
+- POST /harness/mcp/call — accepts {name, arguments}, validates against the descripex JSON Schema, dispatches via apply/3, returns the result.
+
+This is the headless half of the chat orchestrator: the same descripex annotations power both the in-process Chat.Session tool dispatch (Task 76) and external MCP consumers (Sprite, Cursor BG, other Claude instances via Tidewave-compatible MCP). No separate "tool registry" layer.
+
+Mount on the existing dashboard router, gated to dev env by default (same posture as Tidewave). Production-readiness (auth, rate limiting, multi-tenancy) is explicitly out of scope — this is a single-user dev surface for now.
+
+Once this lands, the harness-driver SKILL.md's "two-eval pattern" stops being the only headless option. A tool-equipped external consumer can drive harness via a single MCP call instead of constructing Elixir snippets for project_eval. This is the v0_7 hypothesis's headless half (the chat UI is the in-process half).
+
+Cheap to build because Task 75 did the heavy lifting — this task is mostly Plug routing and JSON parsing. Schedule it in parallel with Task 76/77/78 once Task 75 lands.
+"""
+
+[[task]]
+id = "80"
+phase = 6
+bundle = "deferred"
+status = "pending"
+title = "Harness.Dashboard.RoadmapLive — multi-project rmap-next browser with 1-click dispatch"
+scores = { d = 3, b = 5, u = 4 }
+acceptance_criteria = [
+  "LiveView at /harness/roadmap/:project_name showing the project's pending tasks ranked the same way `rmap next` ranks them (Eff descending, milestone/focus biases applied)",
+  "Per-row click → adapter picker (Claude/Codex/Cursor/Grok/Antigravity/Pi, filtered by capability + availability) → Harness.Batch.dispatch (or Run.Supervisor.start_run) with optional env-scrub knobs",
+  "Live dispatch result surfaces in the existing per-run drill-down view (Harness.Dashboard.Live), no separate result panel",
+  "Project switcher reuses Harness.ProjectRegistry.list/0 — same source as the existing dashboard",
+  "Browser smoke: pick myapp → see next 3 ranked tasks → click top one → pick Codex → confirm → land on /harness/runs/<id> with the run live",
+]
+out_of_scope = [
+  "Bulk dispatch (multi-select + Batch.dispatch over N items at once) — single-task dispatch is sufficient v1",
+  "Status mutations via UI (rmap status, rmap mark) — keep mutations on the CLI for now",
+  "Authoring new tasks via UI — `rmap new` stays the canonical authoring path",
+]
+created_at = "2026-05-28"
+scored_at = "2026-05-28"
+body = """
+Future-idea task, filed unpinned (no milestone) — pick up after v0_7 ships if the chat orchestrator hasn't already absorbed this use case via natural-language tool calls (`list_pending` + `dispatch_run` over chat may obviate the need for a dedicated browser LiveView).
+
+Surface the `rmap next` ordering as a clickable UI per registered project. Today the dispatch flow is: open IEx or mcp__harness__project_eval → call Roadmap.ingest → call Run.Supervisor.start_run with the right adapter. A LiveView that lists ranked pending tasks and offers 1-click dispatch removes that friction for the human operator.
+
+Composition: reuses ProjectRegistry.list/0, the same ranking logic rmap uses internally (or shells out to `rmap next --json --count N`), the existing Dashboard.Router + LiveView layout, and the existing per-run drill-down view. No new infrastructure.
+
+Why deferred: the chat orchestrator (v0_7) may absorb this fully — "show me the next 3 pending tasks for harness and dispatch the top one to Codex" is a natural chat prompt. Wait for the chat UX to land before investing in a dedicated browser.
+"""
+
+[[task]]
+id = "81"
+phase = 6
+bundle = "deferred"
+status = "pending"
+title = "Harness.Dashboard.CompareLive — A/B agent-evaluation view"
+scores = { d = 3, b = 4, u = 3 }
+acceptance_criteria = [
+  "LiveView at /harness/compare/:comparison_id rendering the side-by-side per-adapter metrics produced by Harness.Batch.AgentEvaluation.compare/4 (verdict, repair_attempts, duration_ms, first_attempt_failed_check_count, agent_diff_size)",
+  "Per-adapter transcript tab — click the column header to switch the lower pane to that adapter's run transcript",
+  "Comparison-launch form: pick a task + N adapters → trigger AgentEvaluation.compare → redirect to /harness/compare/:id while the runs are in-flight",
+  "Live update as adapter runs settle (PubSub on Harness.Batch completion events or per-run terminal-state broadcast)",
+  "Browser smoke: launch a 2-adapter compare on a known-green task → see both columns populate → see metrics differ → click each transcript tab",
+]
+out_of_scope = [
+  "Persistent comparison archive across BEAM restarts (in-memory result is sufficient v1; results survive in Harness.ResultStore via LogRecord anyway)",
+  "Cross-comparison aggregation (which adapter wins most often over N comparisons) — separate concern, later",
+  "Comparison cancellation mid-flight",
+]
+created_at = "2026-05-28"
+scored_at = "2026-05-28"
+body = """
+Future-idea task, filed unpinned (no milestone) — pick up when same-task A/B agent evaluation becomes a frequent enough workflow to justify a UI. Currently Harness.Batch.AgentEvaluation.compare/4 exists as a backend (Task 33's deliverable) but has no operator-facing surface — comparison results are observable only via the returned struct or by drilling into each adapter's run record individually.
+
+Surface the comparison output side-by-side: N columns (one per adapter), one row per metric (verdict, repair_attempts, duration_ms, first_attempt_failed_check_count, agent_diff_size). Click a column header to switch the lower pane to that adapter's run transcript. Launch new comparisons from the same view.
+
+Composition: AgentEvaluation already exists; LiveView is the only new code. Mount on existing :4018 Bandit endpoint via Harness.Dashboard.Router; reuse the existing transcript rendering pattern from Harness.Dashboard.Live (per-run drill-down).
+
+Why deferred: A/B agent evaluation isn't yet a default workflow — it's the kind of thing run occasionally to validate adapter parity claims or pick a default agent for a given task class. Until that becomes a frequent operator activity, a CLI/iex result is sufficient and the UI overhead doesn't pay back.
+"""
