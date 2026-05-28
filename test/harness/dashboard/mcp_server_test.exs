@@ -73,13 +73,17 @@ defmodule Harness.Dashboard.MCPServerTest do
       assert data[:message] =~ "missing__tool"
     end
 
-    test "returns isError=true for schema validation failure", %{frame: frame} do
+    test "returns isError=true for schema validation failure with per-field path", %{frame: frame} do
       request = call_request("project_registry__lookup", %{})
 
       assert {:reply, %{"content" => [%{"text" => text}], "isError" => true}, ^frame} =
                MCPServer.handle_request(request, frame)
 
       assert text =~ "Schema validation failed"
+      # Now that Schema.validate handles atom-keyed schemas, the violation
+      # carries the per-field path instead of a generic "#" from the
+      # build_apply_args fallback.
+      assert text =~ "#/name"
     end
 
     test "treats a missing arguments key as an empty map", %{frame: frame} do
@@ -92,6 +96,22 @@ defmodule Harness.Dashboard.MCPServerTest do
 
       assert {:reply, %{"content" => _, "isError" => false}, ^frame} =
                MCPServer.handle_request(request, frame)
+    end
+  end
+
+  describe "non-tool methods (anubis catch-all fallthrough)" do
+    test "delegates `ping` to anubis's default handler without crashing", %{frame: frame} do
+      request = %{
+        "jsonrpc" => "2.0",
+        "id" => 99,
+        "method" => "ping",
+        "params" => %{}
+      }
+
+      # We only assert that the call reaches anubis's default handler and
+      # returns a tuple — exact response shape is owned by anubis. Catches
+      # regressions if the @before_compile catch-all shape ever shifts.
+      assert is_tuple(MCPServer.handle_request(request, frame))
     end
   end
 

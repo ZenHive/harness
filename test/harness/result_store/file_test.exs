@@ -111,19 +111,14 @@ defmodule Harness.ResultStore.FileTest do
   end
 
   describe "storage safety and configuration" do
-    test "configured_root _other clause via Application env", %{root: root} do
-      # Put a non-{File, _} value to hit the _other -> nil branch inside root/1 fallback
+    test "configured_root falls back when Application env is not {__MODULE__, opts}", %{root: root} do
       original = Application.get_env(:harness, :result_store)
-
       on_exit(fn -> Application.put_env(:harness, :result_store, original) end)
 
       Application.put_env(:harness, :result_store, :some_other_store)
 
-      # When configured_root returns nil, root/1 falls back to @default_root (expanded).
-      # We just exercise the code path; the actual write would go to default, which we don't want.
-      # Instead, call the private configured_root directly for the _other coverage.
-      # (Since it's private we hit it indirectly by using the public API with no :root override.)
-      # The key is that the _other clause in configured_root is now executed.
+      # Exercises the `_other -> nil` branch of configured_root/0 via the eager
+      # Keyword.get default in root/1. Explicit `root:` keeps the write sandboxed.
       assert :ok =
                Store.record_run(
                  %LogRecord{
@@ -140,9 +135,6 @@ defmodule Harness.ResultStore.FileTest do
                  },
                  root: root
                )
-
-      # Restore immediately to avoid polluting later tests
-      Application.put_env(:harness, :result_store, original)
     end
 
     test "safe_id produces url-safe encoding without padding", %{root: root} do

@@ -53,7 +53,7 @@ defmodule Harness.Chat.Tools do
   @spec dispatch(registry(), String.t(), map()) :: {:ok, term()} | {:error, term()}
   def dispatch(registry, tool_name, arguments) when is_map(registry) and is_binary(tool_name) and is_map(arguments) do
     with {:ok, entry} <- lookup(registry, tool_name),
-         :ok <- Schema.validate(arguments, entry.input_schema),
+         :ok <- validate_args(entry, arguments),
          {:ok, args} <- build_apply_args(entry, arguments) do
       safe_apply(entry, args)
     end
@@ -64,6 +64,18 @@ defmodule Harness.Chat.Tools do
     case Map.fetch(registry, tool_name) do
       {:ok, entry} -> {:ok, entry}
       :error -> {:error, {:unknown_tool, tool_name}}
+    end
+  end
+
+  # Wrap `Schema.validate/2`'s generic `{:error, [violations]}` into the
+  # `{:schema_validation_failed, ...}` shape every downstream surface (chat
+  # backend + MCP server) pattern-matches.
+  @spec validate_args(entry(), map()) ::
+          :ok | {:error, {:schema_validation_failed, [Schema.error()]}}
+  defp validate_args(entry, arguments) do
+    case Schema.validate(arguments, entry.input_schema) do
+      :ok -> :ok
+      {:error, violations} -> {:error, {:schema_validation_failed, violations}}
     end
   end
 

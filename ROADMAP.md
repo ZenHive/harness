@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 9 — Chat Orchestrator (4 of 6 done · 0 in progress)
+**Focus phase:** 9 — Chat Orchestrator (5 of 6 done · 0 in progress)
 
 **Last shipped:** Task 75 — Annotate harness driver surface with descripex api() macros, Task 76 — Harness.Chat.Session GenServer with multi-turn tool-call loop, Task 78 — Harness.Dashboard.ChatLive — LiveView UI for chat orchestrator, Task 79 — Headless MCP endpoint — /harness/mcp/tools + /harness/mcp/call on 2026-05-28
 

@@ -16,7 +16,9 @@ defmodule Harness.Dashboard.MCPServer do
   reuse `Harness.Chat.Tools` (the in-process chat orchestrator's registry +
   dispatcher) — one source of truth for both the chat backend (Task 76) and the
   external MCP surface (Task 79). Everything else (`initialize`, `ping`,
-  prompts/resources lists) falls through to anubis via `super/2`.
+  prompts/resources lists) falls through to anubis's default catch-all clause,
+  which is appended by `Anubis.Server`'s `@before_compile` after our two
+  `tools/*` clauses (see `deps/anubis_mcp/lib/anubis/server.ex:350-371`).
 
   [peri]: https://hexdocs.pm/peri
   """

@@ -156,7 +156,13 @@ defmodule Harness.Chat.Session do
 
     callback = fn event -> stream_event(state.session_id, event) end
 
-    case state.backend.stream(request, callback, state.backend_opts) do
+    # Inject `state.session_id` so backends that need a stable per-session
+    # workspace (e.g. `Harness.Chat.Claude`'s per-session cwd) can derive one
+    # deterministically. Backends that ignore the key (FunBackend in tests,
+    # any future provider) are unaffected.
+    backend_opts = Keyword.put(state.backend_opts, :session_id, state.session_id)
+
+    case state.backend.stream(request, callback, backend_opts) do
       {:ok, response} ->
         content = normalize_content(response)
         assistant = %{role: :assistant, content: content}

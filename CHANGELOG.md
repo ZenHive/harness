@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New dep `{:anubis_mcp, "~> 1.6"}` (Task 79 v1 audit rework). Direct
+  runtime dep that supplies the MCP server behaviour and Streamable HTTP
+  transport plug; transitively pulls in `peri` (validator) and `finch`
+  (HTTP client) — Bandit on 4018 forwards `/harness/mcp` to it.
 - Dev environment now self-registers the harness checkout as the default
   `"harness"` project on boot (Task 72). New `config/dev.exs` populates
   `config :harness, :projects`; `config/config.exs` conditionally imports it
@@ -35,6 +39,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- MCP surface reworked from a custom REST endpoint (`Harness.Dashboard.MCP`,
+  `GET /harness/mcp/tools` + `POST /harness/mcp/call`) to a spec-compliant
+  MCP server (`Harness.Dashboard.MCPServer`, JSON-RPC 2.0 over Streamable
+  HTTP via `anubis_mcp`) on the same `/harness/mcp` path (Task 79 v1 audit
+  rework). External consumers can now drive harness via standard
+  `.mcp.json` HTTP transport — a prerequisite for Task 82's `claude -p`
+  chat backend. `use Anubis.Server` provides `initialize`, `ping`, and
+  prompts/resources defaults via a catch-all clause appended by
+  `@before_compile`; harness overrides `tools/list` + `tools/call` to
+  reuse `Harness.Chat.Tools` (the in-process chat orchestrator's registry
+  + dispatcher), giving one source of truth for both surfaces. Supervised
+  process gated on `:dashboard, :enabled` because the Streamable HTTP
+  transport requires the Phoenix endpoint.
+- `Harness.Chat.Schema.validate/2` now accepts both string-keyed and
+  atom-keyed JSON-Schema maps via a single internal `fetch/3` helper.
+  Previously only string keys (`%{"type" => "object", ...}`) validated;
+  atom-keyed schemas (`%{type: "object", ...}` from
+  `Descripex.MCP.tools/1`) silently no-op'd and let downstream code
+  emit a generic `path: "#"` violation. Now the validator produces
+  precise per-field violations (`path: "#/name"`) regardless of key style.
 - `Harness.AgentAdapter` now exposes `permission_flag/2` and `resume_args/1`
   as shared public helpers, hoisted out of the Antigravity / Claude / Cursor
   / Grok / Pi adapters where they were byte-identical (same spirit as

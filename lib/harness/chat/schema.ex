@@ -19,25 +19,25 @@ defmodule Harness.Chat.Schema do
 
   @spec validate_value(term(), map(), String.t()) :: [error()]
   defp validate_value(data, schema, path) do
-    type = Map.get(schema, "type")
+    type = fetch(schema, "type")
 
     cond do
-      type == "object" ->
+      type in ["object", :object] ->
         validate_object(data, schema, path)
 
-      type == "array" ->
+      type in ["array", :array] ->
         validate_array(data, schema, path)
 
-      type == "string" ->
+      type in ["string", :string] ->
         validate_string(data, schema, path)
 
-      type == "integer" ->
+      type in ["integer", :integer] ->
         validate_integer(data, schema, path)
 
-      type == "number" ->
+      type in ["number", :number] ->
         validate_number(data, schema, path)
 
-      type == "boolean" ->
+      type in ["boolean", :boolean] ->
         validate_boolean(data, schema, path)
 
       type == nil ->
@@ -50,9 +50,9 @@ defmodule Harness.Chat.Schema do
 
   @spec validate_object(term(), map(), String.t()) :: [error()]
   defp validate_object(data, schema, path) when is_map(data) do
-    properties = Map.get(schema, "properties", %{})
-    required = Map.get(schema, "required", [])
-    additional = Map.get(schema, "additionalProperties", true)
+    properties = fetch(schema, "properties", %{})
+    required = fetch(schema, "required", [])
+    additional = fetch(schema, "additionalProperties", true)
 
     validate_required_fields(data, required, path) ++
       validate_known_properties(data, properties, additional, path)
@@ -96,7 +96,7 @@ defmodule Harness.Chat.Schema do
   @spec validate_array(term(), map(), String.t()) :: [error()]
   defp validate_array(data, schema, path) do
     if is_list(data) do
-      items = Map.get(schema, "items", %{})
+      items = fetch(schema, "items", %{})
 
       data
       |> Enum.with_index()
@@ -114,7 +114,7 @@ defmodule Harness.Chat.Schema do
       not is_binary(data) ->
         [error(path, "expected string")]
 
-      enum = Map.get(schema, "enum") ->
+      enum = fetch(schema, "enum") ->
         if data in enum, do: [], else: [error(path, "must be one of #{inspect(enum)}")]
 
       true ->
@@ -132,8 +132,19 @@ defmodule Harness.Chat.Schema do
       end
 
     errors
-    |> Kernel.++(min_error(data, Map.get(schema, "minimum"), path))
-    |> Kernel.++(max_error(data, Map.get(schema, "maximum"), path))
+    |> Kernel.++(min_error(data, fetch(schema, "minimum"), path))
+    |> Kernel.++(max_error(data, fetch(schema, "maximum"), path))
+  end
+
+  # Look up a JSON-Schema key supporting both string keys (`"type"`) and atom
+  # keys (`:type`). `Descripex.MCP.tools/1` emits atom-keyed inner schemas but
+  # `inputSchema` from a JSON-RPC client wire-decodes to string keys — both
+  # must validate identically.
+  @spec fetch(map(), String.t(), term()) :: term()
+  defp fetch(schema, key, default \\ nil) when is_binary(key) do
+    Map.get(schema, key, Map.get(schema, String.to_existing_atom(key), default))
+  rescue
+    ArgumentError -> Map.get(schema, key, default)
   end
 
   @spec min_error(integer(), term(), String.t()) :: [error()]
