@@ -8,6 +8,8 @@ defmodule Harness.Batch.AgentEvaluation do
   the binary pass/fail verification verdict; they never become the verdict.
   """
 
+  use Descripex, namespace: "/batch/agent_evaluation"
+
   alias Harness.Batch
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.Project
@@ -83,12 +85,38 @@ defmodule Harness.Batch.AgentEvaluation do
     defstruct [:batch_id, :task_id, :total, :max_concurrency, :entries, events: []]
   end
 
-  @doc """
-  Dispatches one roadmap item to `adapters` concurrently and returns a comparison.
+  api(
+    :compare,
+    "Same-task A/B agent evaluation — dispatch one roadmap item to N adapters concurrently and aggregate side-by-side metrics.",
+    params: [
+      item: [
+        kind: :exchange_data,
+        source: "Harness.Roadmap.ingest/2",
+        description: "Single %Harness.Roadmap.Item{} to evaluate across adapters."
+      ],
+      project: [
+        kind: :exchange_data,
+        source: "Harness.ProjectRegistry.lookup/1",
+        description: "%Harness.Project{} or registered project name string."
+      ],
+      adapters: [
+        kind: :value,
+        description: "Non-empty list of adapter modules (e.g. [Harness.AgentAdapter.Claude, Harness.AgentAdapter.Codex])."
+      ],
+      opts: [
+        kind: :value,
+        default: [],
+        description:
+          "Forwarded to Harness.Batch.run_pinned/3 (max_concurrency, retry_policy, required_capabilities, env)."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %Comparison{batch_id, task_id, total, max_concurrency, entries, events}} — entries holds per-adapter %Entry{} metrics (verdict, repair_attempts, duration_ms, first_attempt_failed_check_count, agent_diff_size). {:error, Batch.error()}."
+    }
+  )
 
-  Each adapter runs in its own isolated worktree via `Harness.Batch.run_pinned/3`.
-  One agent's red or crashed run never aborts the others.
-  """
   @spec compare(Item.t(), Project.t() | String.t(), [module()], keyword()) ::
           {:ok, Comparison.t()} | {:error, Batch.error()}
   def compare(%Item{} = item, project, adapters, opts \\ [])
@@ -101,14 +129,33 @@ defmodule Harness.Batch.AgentEvaluation do
     end
   end
 
-  @doc """
-  Builds a comparison from a pinned batch result and the adapter list.
+  api(
+    :from_batch,
+    "Build a Comparison from a previously-completed pinned batch result and the adapter list it was dispatched with.",
+    params: [
+      batch: [
+        kind: :value,
+        description:
+          "%Harness.Batch.Result{} returned by Harness.Batch.run_pinned/3. Caller-held; reconstruct from ResultStore.load_batch/1 if persisted."
+      ],
+      adapters: [
+        kind: :value,
+        description:
+          "List of adapter modules — MUST have the same length as batch.results (the i-th adapter is attached to the i-th result). Raises ArgumentError on length mismatch."
+      ],
+      store: [
+        kind: :value,
+        description:
+          "ResultStore reference (Harness.ResultStore.configured() or override). Used to look up per-run records for richer entry metrics."
+      ]
+    ],
+    returns: %{
+      type: :map,
+      description: "%Comparison{batch_id, task_id, total, max_concurrency, entries, events}."
+    },
+    errors: [argument_error: "Raised when length(adapters) != length(batch.results)."]
+  )
 
-  `adapters` must have the same length as `batch.results` — the i-th adapter is
-  attached to the i-th result, mirroring the order `Harness.Batch.run_pinned/3`
-  preserves. Raises `ArgumentError` on mismatch; silent truncation via `Enum.zip`
-  would drop entries from the comparison without telling the caller.
-  """
   @spec from_batch(BatchResult.t(), [module()], ResultStore.store()) :: Comparison.t()
   def from_batch(%BatchResult{} = batch, adapters, store) when is_list(adapters) do
     results_count = length(batch.results)

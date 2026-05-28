@@ -7,6 +7,7 @@ defmodule Harness.ProjectRegistry do
   """
 
   use GenServer
+  use Descripex, namespace: "/project_registry"
 
   alias Harness.CheckStack
   alias Harness.CheckStack.Preset
@@ -22,6 +23,7 @@ defmodule Harness.ProjectRegistry do
     GenServer.start_link(__MODULE__, init_arg, name: __MODULE__)
   end
 
+  @doc false
   @impl GenServer
   @spec init(term()) :: {:ok, %{projects: %{String.t() => Project.t()}}}
   def init(_init_arg) do
@@ -42,34 +44,68 @@ defmodule Harness.ProjectRegistry do
     {:ok, %{projects: projects}}
   end
 
-  @doc """
-  Registers `project` under its `name`. Returns `{:error, {:duplicate, name}}`
-  when the name is already taken.
-  """
+  api(
+    :register,
+    "Register a project struct under its name. Persists until BEAM restart (see config :harness, :projects for durable registration).",
+    params: [
+      project: [
+        kind: :value,
+        description:
+          "%Harness.Project{} the caller constructs (name, source, check_stack, roadmap_path, concurrency_cap, pollution_allowlist)."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description: ":ok on success. {:error, {:duplicate, name}} when the slug is already taken."
+    }
+  )
+
   @spec register(Project.t()) :: :ok | {:error, error()}
   def register(%Project{} = project) do
     GenServer.call(__MODULE__, {:register, project})
   end
 
-  @doc """
-  Looks up a project by slug `name`.
-  """
+  api(:lookup, "Look up a registered project by name slug.",
+    params: [
+      name: [
+        kind: :value,
+        description: ~s{Project slug string (e.g. "harness", "myapp").}
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description: "{:ok, %Harness.Project{}} or {:error, {:unknown_project, name}}."
+    }
+  )
+
   @spec lookup(String.t()) :: {:ok, Project.t()} | {:error, error()}
   def lookup(name) when is_binary(name) do
     GenServer.call(__MODULE__, {:lookup, name})
   end
 
-  @doc """
-  Lists every registered project, sorted by name.
-  """
+  api(:list, "List every registered project, sorted by name.",
+    returns: %{
+      type: :list,
+      description:
+        "List of %Harness.Project{} structs. Source-of-truth for the chat orchestrator's project switcher and dispatch lookups."
+    }
+  )
+
   @spec list() :: [Project.t()]
   def list do
     GenServer.call(__MODULE__, :list)
   end
 
-  @doc """
-  Removes `name` from the registry.
-  """
+  api(:unregister, "Remove a project from the registry by name.",
+    params: [
+      name: [kind: :value, description: "Project slug to remove."]
+    ],
+    returns: %{
+      type: :tuple,
+      description: ":ok on success. {:error, {:unknown_project, name}} when the slug was not registered."
+    }
+  )
+
   @spec unregister(String.t()) :: :ok | {:error, error()}
   def unregister(name) when is_binary(name) do
     GenServer.call(__MODULE__, {:unregister, name})
@@ -81,6 +117,7 @@ defmodule Harness.ProjectRegistry do
     GenServer.call(__MODULE__, :reset)
   end
 
+  @doc false
   @impl GenServer
   def handle_call({:register, %Project{name: name} = project}, _from, state) do
     if Map.has_key?(state.projects, name) do

@@ -66,6 +66,8 @@ defmodule Harness.Run do
 
   @behaviour :gen_statem
 
+  use Descripex, namespace: "/run"
+
   alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Driver
   alias Harness.AgentAdapter.Invocation
@@ -170,25 +172,29 @@ defmodule Harness.Run do
     %{id: __MODULE__, start: {__MODULE__, :start_link, [arg]}, restart: :temporary, type: :worker}
   end
 
-  @doc """
-  Starts a run lifecycle for `item` against `project`, driven by `adapter`.
-
-  Normally started through `Harness.Run.Supervisor.start_run/4`, which generates
-  the run id and supervises the process. `opts` must carry `:run_id`; see that
-  function for the full option set.
-  """
+  @doc false
   @spec start_link(init_arg()) :: :gen_statem.start_ret()
   def start_link({%Item{}, %Project{} = _project, adapter, opts} = arg) when is_atom(adapter) and is_list(opts) do
     run_id = Keyword.fetch!(opts, :run_id)
     :gen_statem.start_link({:via, Registry, {@registry, run_id}}, __MODULE__, arg, [])
   end
 
-  @doc """
-  Returns a `Harness.Run.Status` snapshot of the run, or `{:error, :not_found}`.
+  api(:status, "Return a Harness.Run.Status snapshot of one in-flight or lingering-terminal run.",
+    params: [
+      run: [
+        kind: :exchange_data,
+        source: "Harness.Run.Supervisor.list_runs/0",
+        description:
+          "A run handle: run id string (from list_runs/0 or start_run/4) or the gen_statem pid directly. A run that has stopped is unregistered and returns {:error, :not_found}."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %Harness.Run.Status{}} carrying state, worktree_path, agent_os_pid, agent_kind, verdict_status, repair_attempts, reason. {:error, :not_found} for stopped/unknown runs."
+    }
+  )
 
-  Accepts a run id or the gen_statem pid. A run that has already stopped is no
-  longer registered and reports `{:error, :not_found}`.
-  """
   @spec status(run()) :: {:ok, Status.t()} | {:error, :not_found}
   def status(run) do
     with {:ok, pid} <- resolve(run) do
@@ -198,20 +204,21 @@ defmodule Harness.Run do
     :exit, _reason -> {:error, :not_found}
   end
 
-  @doc """
-  Returns the buffered transcript and last seq tag for the run, or
-  `{:error, :not_found}`.
+  api(:transcript, "Return the buffered agent transcript and last seq tag for an in-flight or lingering run.",
+    params: [
+      run: [
+        kind: :exchange_data,
+        source: "Harness.Run.Supervisor.list_runs/0",
+        description: "Run id string or gen_statem pid."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{buffer: binary, seq: non_neg_integer}} — buffer is bounded at 200 KiB; seq is the monotonic counter for the last chunk (0 when nothing yet). {:error, :not_found} for stopped/unknown runs. Used by the dashboard transcript pane subscribe-then-snapshot pattern."
+    }
+  )
 
-  The buffer is bounded at `Harness.Dashboard.Transcript.buffer_bytes/0`
-  (200 KiB) and contains the most recent agent output. `seq` is the monotonic
-  counter assigned to the last chunk in the buffer (`0` if no chunks yet) — the
-  dashboard subscribes to `Harness.Dashboard.Transcript` *before* fetching this
-  snapshot and then drops broadcasts where the broadcast seq is `<= seq`, which
-  collapses the race between subscribe and snapshot to an integer compare.
-
-  Accepts a run id or the gen_statem pid. A run that has already stopped is no
-  longer registered and reports `{:error, :not_found}`.
-  """
   @spec transcript(run()) ::
           {:ok, %{buffer: binary(), seq: non_neg_integer()}} | {:error, :not_found}
   def transcript(run) do
@@ -222,12 +229,20 @@ defmodule Harness.Run do
     :exit, _reason -> {:error, :not_found}
   end
 
-  @doc """
-  Cancels an in-flight run: kills the agent and settles the run `failed`.
+  api(:cancel, "Cancel an in-flight Harness.Run: kills the agent and settles the run :failed.",
+    params: [
+      run: [
+        kind: :exchange_data,
+        source: "Harness.Run.Supervisor.list_runs/0",
+        description: "Run id string or gen_statem pid."
+      ]
+    ],
+    returns: %{
+      type: :atom,
+      description: ":ok — idempotent. Cancelling an already-settled or unknown run is a no-op."
+    }
+  )
 
-  Accepts a run id or pid. Idempotent — cancelling an already-settled or unknown
-  run is a no-op that still returns `:ok`.
-  """
   @spec cancel(run()) :: :ok
   def cancel(run) do
     case resolve(run) do
@@ -250,10 +265,12 @@ defmodule Harness.Run do
 
   # ── gen_statem setup ──────────────────────────────────────────────────────
 
+  @doc false
   @impl :gen_statem
   @spec callback_mode() :: [:state_functions | :state_enter]
   def callback_mode, do: [:state_functions, :state_enter]
 
+  @doc false
   @impl :gen_statem
   @spec init(init_arg()) :: {:ok, :dispatched, data(), [:gen_statem.action()]}
   def init({item, %Project{} = project, adapter, opts}) do

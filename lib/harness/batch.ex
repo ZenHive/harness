@@ -9,6 +9,8 @@ defmodule Harness.Batch do
   collected like any other result and never short-circuit the batch.
   """
 
+  use Descripex, namespace: "/batch"
+
   alias Harness.AgentRegistry
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.Project
@@ -58,12 +60,29 @@ defmodule Harness.Batch do
           | {:project_register_failed, term()}
           | term()
 
-  @doc """
-  Enqueues one Oban-backed run job per item and returns immediately.
+  api(
+    :dispatch,
+    "Enqueue one Oban-backed run job per item (project-scoped queue, fire-and-forget). Restart-resilient via Postgres-backed Oban.",
+    params: [
+      project: [
+        kind: :exchange_data,
+        source: "Harness.ProjectRegistry.lookup/1",
+        description:
+          "%Harness.Project{} (or the registered name string). Resolved via ProjectRegistry; auto-registered if a struct was passed but not yet known. Queue is project_<name>."
+      ],
+      items: [
+        kind: :exchange_data,
+        source: "Harness.Roadmap.ingest/2",
+        description: "List of %Harness.Roadmap.Item{} (ingest each via Harness.Roadmap.ingest/2)."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, [Oban.Job.t()]} — one job per item; concurrency is governed by the project's concurrency_cap. {:error, reason} (:unknown_project, :invalid_item_agent, :project_register_failed)."
+    }
+  )
 
-  The queue is project-scoped (`project_<name>`) and its local concurrency is
-  controlled by the registered project's `concurrency_cap`.
-  """
   @spec dispatch(Project.t() | String.t(), [Item.t()]) :: {:ok, [Oban.Job.t()]} | {:error, dispatch_error()}
   def dispatch(project, items) when is_list(items) do
     with {:ok, project} <- resolve_and_register_project(project) do
@@ -74,29 +93,37 @@ defmodule Harness.Batch do
   @spec dispatch([Item.t()], Project.t() | String.t()) :: {:ok, [Oban.Job.t()]} | {:error, dispatch_error()}
   def dispatch(items, project) when is_list(items), do: dispatch(project, items)
 
-  @doc """
-  Runs `items` against `project` (or a registered project name) with one
-  adapter, or an ordered adapter list, respecting `:max_concurrency`.
+  api(:run, "In-process batch — fan out N items concurrently against one or more adapters with retry-on-quota fail-over.",
+    params: [
+      items: [
+        kind: :exchange_data,
+        source: "Harness.Roadmap.ingest/2",
+        description: "List of %Harness.Roadmap.Item{}."
+      ],
+      project: [
+        kind: :exchange_data,
+        source: "Harness.ProjectRegistry.lookup/1",
+        description: "%Harness.Project{} or registered project name string."
+      ],
+      adapter: [
+        kind: :value,
+        description:
+          "Single adapter module or ordered list. When a list, the first available adapter satisfying :required_capabilities is selected per dispatch. Quota exhaustion fails over to the next capable adapter."
+      ],
+      opts: [
+        kind: :value,
+        default: [],
+        description:
+          "Forwarded to Harness.Run.Supervisor.start_run/4 except :max_concurrency (defaults to project.concurrency_cap or 1). :retry_policy (RetryPolicy.t or keyword) wraps each item's lifecycle. :required_capabilities, :env, etc."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %Harness.Batch.Result{}} carrying batch_id, total, max_concurrency, ordered results, events. {:error, error()} for invalid_max_concurrency / unknown_project / no_available_agent before the batch starts."
+    }
+  )
 
-  When `:max_concurrency` is omitted, the project's `concurrency_cap` is used
-  when set; otherwise the global default applies.
-
-  Options are passed through to `Harness.Run.Supervisor.start_run/4`, except
-  `:max_concurrency`, which defaults to `1`. Each item's lifecycle is wrapped by
-  `Harness.Run.RetryPolicy.run/2` (transient failures retry with capped backoff;
-  quota-exhausted and terminal failures settle immediately). The retry policy
-  is injectable via `:retry_policy` and defaults from `:harness, :retry_policy`.
-  A concurrency slot is held for the full retry cycle, including backoff delays.
-
-  When `adapter` is a list, the first available adapter whose capabilities
-  satisfy `:required_capabilities` is selected for each dispatch. If a run's
-  transcript indicates quota exhaustion, that adapter is marked unavailable and
-  the same item is retried with the next capable adapter. If every capable
-  adapter has been marked unavailable, queued items that have not yet been
-  dispatched settle as `:failed` with reason `{:no_available_agent, _}` instead
-  of crashing the batch. When `start_run/4` loses a concurrent availability race,
-  selection is retried for the same item before the queue is settled.
-  """
   @spec run([Item.t()], Project.t() | String.t(), module() | [module()], keyword()) ::
           {:ok, BatchResult.t()} | {:error, error()}
   def run(items, project, adapter, opts \\ []) when is_list(items) and is_list(opts) do
@@ -144,13 +171,30 @@ defmodule Harness.Batch do
     end
   end
 
-  @doc """
-  Runs one roadmap item once per pinned adapter, concurrently.
+  api(:run_pinned, "Pinned batch — each {item, adapter} pair gets its own slot. Adapter fail-over never crosses pins.",
+    params: [
+      pairs: [
+        kind: :value,
+        description:
+          "List of {%Harness.Roadmap.Item{}, adapter_module} tuples. The same item can appear N times with N adapters (same-task A/B). Each pair runs in its own isolated worktree."
+      ],
+      project: [
+        kind: :exchange_data,
+        source: "Harness.ProjectRegistry.lookup/1",
+        description: "%Harness.Project{} or registered project name string."
+      ],
+      opts: [
+        kind: :value,
+        default: [],
+        description: "Forwarded to Harness.Batch.run/4 (max_concurrency, retry_policy, required_capabilities, env)."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description: "{:ok, %Harness.Batch.Result{}} — results preserve the order of pairs. {:error, error()}."
+    }
+  )
 
-  Each `{item, adapter}` pair gets its own isolated worktree. Adapter fail-over
-  never crosses pins — a quota-exhausted adapter settles that slot without
-  stealing another adapter's slot. Partial failure is tolerated.
-  """
   @spec run_pinned([{Item.t(), module()}], Project.t() | String.t(), keyword()) ::
           {:ok, BatchResult.t()} | {:error, error()}
   def run_pinned(pairs, project, opts \\ []) when is_list(pairs) and is_list(opts) do

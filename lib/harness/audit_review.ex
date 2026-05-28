@@ -36,6 +36,8 @@ defmodule Harness.AuditReview do
   § "Stake-gated fix verification".
   """
 
+  use Descripex, namespace: "/audit_review"
+
   alias Harness.AgentAdapter.Driver
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
@@ -69,49 +71,27 @@ defmodule Harness.AuditReview do
           grader: module()
         }
 
-  @doc """
-  Dispatches a focused review of a fix to the grader and returns the verdict.
+  api(:grade_fix, "Dispatch a HIGH-tier cross-agent grader for one fix and return the verdict.",
+    params: [
+      opts: [
+        kind: :value,
+        description:
+          "Keyword list. Required: :implementer (atom — :claude/:codex/:cursor/:grok/:antigravity/:pi), :sha (commit SHA), :prompt (review prompt that MUST instruct the grader to emit <<<VERDICT:APPROVE>>> or <<<VERDICT:REJECT>>> on its own line). Optional: :grader (atom or module — defaults to opposite of :implementer for claude/codex; other implementers must pass explicitly), :cwd (defaults to File.cwd!/0 — pass explicitly when grading another repo), :model (pin a model id like claude-opus-4-7), :adapter_opts, :total_timeout, :idle_timeout."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{verdict:, outcome:, grader:}} for any spawned dispatch (verdict is :approve/:reject/:unclear). {:error, reason} only when dispatch could not start."
+    },
+    errors: [
+      missing_option: "A required :implementer / :sha / :prompt option was not provided.",
+      invalid_option: "An option value had the wrong shape (e.g. :grader was not an atom).",
+      unknown_agent: "The :grader atom did not match a known agent and is not a loaded adapter module.",
+      no_default_grader: "Implementer has no auto-paired grader and :grader was not supplied."
+    ]
+  )
 
-  ## Required options
-
-    * `:implementer` — atom (`:claude`, `:codex`, `:cursor`, `:grok`,
-      `:antigravity`, `:pi`) identifying which agent built the fix. Used to
-      auto-derive `:grader` when not explicitly set.
-    * `:sha` — the commit SHA being audited. Composed into the synthetic
-      `Invocation` `task_id` (`"audit-<sha>-grader"`); never read from disk.
-    * `:prompt` — the focused-review prompt body. The caller (audit-review
-      skill, or a test) builds this; this module does NOT generate prompt
-      content. The prompt MUST instruct the grader to emit one of
-      `<<<VERDICT:APPROVE>>>` or `<<<VERDICT:REJECT>>>` on a line by itself.
-
-  ## Optional options
-
-    * `:grader` — either a known-agent atom or a module implementing
-      `Harness.AgentAdapter`. Defaults to the opposite of `:implementer`
-      (`:claude → :codex`, `:codex → :claude`); other implementers require an
-      explicit `:grader`. A module value supports test stubs without expanding
-      the known-agents table.
-    * `:cwd` — working directory the grader spawns in. Defaults to
-      `File.cwd!/0`. The grader runs in `:autonomous` permission mode; the
-      prompt is responsible for instructing it to be read-only.
-    * `:model` — optional model id forwarded to the grader via
-      `Harness.AgentAdapter.Invocation.model`. Defaults to `nil`, leaving the
-      grader on its adapter-default model. Use to pin a specific model for
-      grading (e.g. `"claude-opus-4-7"` when grading higher-stakes fixes).
-    * `:adapter_opts` — pass-through escape hatch for per-adapter knobs.
-    * `:total_timeout` / `:idle_timeout` — forwarded to
-      `Harness.AgentAdapter.Driver`; both default to its application config.
-
-  ## Return values
-
-    * `{:ok, %{verdict:, outcome:, grader:}}` for any dispatch that *spawned*,
-      including timeouts and mid-run port errors (the verdict is `:unclear`
-      when no sentinel is present, and the caller can inspect `outcome.kind`
-      and `outcome.output` for context).
-    * `{:error, reason}` only when dispatch could not start: invalid options,
-      unknown agent, or the adapter's `build_command/1` / `System.find_executable/1`
-      failing.
-  """
   @spec grade_fix(keyword()) :: {:ok, result()} | {:error, term()}
   def grade_fix(opts) when is_list(opts) do
     with {:ok, implementer} <- fetch_implementer(opts),
@@ -130,15 +110,21 @@ defmodule Harness.AuditReview do
     end
   end
 
-  @doc """
-  Extracts a verdict from a raw grader transcript.
+  api(:extract_verdict, "Extract a verdict from a raw grader transcript without re-dispatching.",
+    params: [
+      output: [
+        kind: :value,
+        description:
+          "Raw grader transcript string. Searched for <<<VERDICT:APPROVE>>> / <<<VERDICT:REJECT>>> sentinels (last-match-wins)."
+      ]
+    ],
+    returns: %{
+      type: :atom,
+      description:
+        ":approve when only/last sentinel was APPROVE, :reject when only/last was REJECT, :unclear when neither appears."
+    }
+  )
 
-  Public so the audit-review skill (or tests) can re-parse a previously
-  captured transcript without re-dispatching. Returns `:approve`, `:reject`,
-  or `:unclear` per the sentinel rules in the moduledoc — last-match-wins
-  when both sentinels appear, so a grader that reasons through both options
-  before committing at the end still settles to its final answer.
-  """
   @spec extract_verdict(binary()) :: verdict()
   def extract_verdict(output) when is_binary(output) do
     approve_pos = last_match_position(output, @sentinel_approve)
@@ -153,13 +139,21 @@ defmodule Harness.AuditReview do
     end
   end
 
+  api(:default_grader, "Return the auto-paired grader adapter module for an implementer agent.",
+    params: [
+      implementer: [
+        kind: :value,
+        description:
+          "Implementer agent atom (:claude or :codex auto-pair; other agents return {:error, {:no_default_grader, implementer}})."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description: "{:ok, module()} for :claude ↔ :codex, otherwise {:error, {:no_default_grader, implementer}}."
+    }
+  )
+
   @doc """
-  Returns the default grader adapter module for an implementer.
-
-  Public so callers (the audit-review skill, tests) can introspect the
-  auto-pair mapping without dispatching. Pairs `:claude ↔ :codex`; other
-  implementers return `{:error, {:no_default_grader, implementer}}`.
-
   ## Examples
 
       iex> Harness.AuditReview.default_grader(:claude)

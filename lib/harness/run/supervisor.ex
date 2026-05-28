@@ -14,6 +14,7 @@ defmodule Harness.Run.Supervisor do
   """
 
   use DynamicSupervisor
+  use Descripex, namespace: "/run/supervisor"
 
   alias Harness.AgentRegistry
   alias Harness.Project
@@ -22,56 +23,62 @@ defmodule Harness.Run.Supervisor do
 
   @registry Harness.Run.Registry
 
-  @doc """
-  Starts the run supervisor. Named `Harness.Run.Supervisor`; one per node.
-  """
+  api(:start_link, "Start the Harness.Run DynamicSupervisor (one per node, registered as Harness.Run.Supervisor).",
+    params: [
+      init_arg: [
+        kind: :value,
+        default: [],
+        description: "DynamicSupervisor init term — typically [] from the Application supervision tree."
+      ]
+    ],
+    returns: %{type: :tuple, description: "{:ok, pid()} or DynamicSupervisor.on_start error."}
+  )
+
   @spec start_link(term()) :: Supervisor.on_start()
   def start_link(init_arg \\ []) do
     DynamicSupervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
   end
 
+  @doc false
   @impl DynamicSupervisor
   @spec init(term()) :: {:ok, DynamicSupervisor.sup_flags()}
   def init(_init_arg) do
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 
-  @doc """
-  Starts a supervised `Harness.Run` for `item` against `project`, driven by `adapter`.
+  api(
+    :start_run,
+    "Start a supervised Harness.Run lifecycle for one rmap task against a project, driven by an agent adapter.",
+    params: [
+      item: [
+        kind: :exchange_data,
+        source: "Harness.Roadmap.ingest/2",
+        description: "%Harness.Roadmap.Item{} — ingest first via Harness.Roadmap.ingest/2."
+      ],
+      project: [
+        kind: :exchange_data,
+        source: "Harness.ProjectRegistry.lookup/1",
+        description: "%Harness.Project{} — look up first via Harness.ProjectRegistry.lookup/1."
+      ],
+      adapter: [
+        kind: :value,
+        description:
+          "Adapter module (Harness.AgentAdapter.Claude / .Codex / .Cursor / .Grok / .Antigravity / .Pi). Caller picks the agent."
+      ],
+      opts: [
+        kind: :value,
+        default: [],
+        description:
+          ~s|Keyword list. :subscriber (pid receiving {:harness_run, run_id, result}; pass nil from ephemeral MCP eval). :run_id (override the generated id). :total_timeout / :idle_timeout (agent run budgets in ms). :lifetime_timeout (whole-job wall budget). :terminal_linger (how long a settled run stays observable). :checks / :verification_timeout (override verification stack). :base_dir / :base_ref (worktree root + commit-ish). :adapter_opts (per-agent knobs). :env (%{"KEY" => "val"} to set, %{"KEY" => false} to scrub — used to strip ANTHROPIC_API_KEY on Claude OAuth dispatches). :required_capabilities. :retry_policy. :pollution_allowlist.|
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, run_id, pid} — run_id is the stable handle for Harness.Run.status/1 and Harness.Run.cancel/1. {:error, reason} on dispatch failure."
+    }
+  )
 
-  `item` is the ingested rmap task, `project` the target the run carves its
-  isolated worktree from, and `adapter` the `Harness.AgentAdapter` module that
-  dispatches the headless agent.
-
-  Returns `{:ok, run_id, pid}` — the `run_id` is the stable handle for
-  `Harness.Run.status/1` and `Harness.Run.cancel/1`.
-
-  Options (all optional unless noted):
-
-    * `:subscriber` — pid that receives `{:harness_run, run_id, result}` when the
-      run settles. Defaults to the calling process.
-    * `:run_id` — override the generated run id (intended for tests).
-    * `:total_timeout` / `:idle_timeout` — agent run timeouts, passed through to
-      `Harness.AgentAdapter.Driver`.
-    * `:lifetime_timeout` — whole-job wall budget in ms.
-    * `:terminal_linger` — how long a settled run stays observable, in ms.
-    * `:checks` / `:verification_timeout` — override the verification stack and
-      its per-check timeout.
-    * `:base_dir` / `:base_ref` — worktree root and the commit-ish to branch
-      from, passed through to `Harness.Worktree.create/2`.
-    * `:adapter_opts` — per-agent knobs, passed through to the invocation.
-    * `:env` — map of env vars for the dispatched agent (`%{"KEY" => "val"}` to
-      set, `%{"KEY" => false}` to scrub/unset); threaded to `Invocation` and
-      every adapter's `build_command/1`.
-    * `:required_capabilities` — adapter capabilities that must be supported
-      before the run is allowed to start.
-    * `:retry_policy` — `%Harness.Run.RetryPolicy{}` or keyword list for
-      `Harness.Run.RetryPolicy.from_opts/1`; used by repair-loop quota
-      classification and callers wrapping runs with `RetryPolicy.run/2`.
-    * `:pollution_allowlist` — path patterns ignored by the main-checkout
-      pollution diff; overrides `%Harness.Project{}.pollution_allowlist` and
-      app config when set.
-  """
   @spec start_run(Item.t(), Project.t(), module(), keyword()) ::
           {:ok, String.t(), pid()} | {:error, term()}
   def start_run(%Item{} = item, %Project{} = project, adapter, opts \\ []) when is_atom(adapter) and is_list(opts) do
@@ -87,10 +94,14 @@ defmodule Harness.Run.Supervisor do
     end
   end
 
-  @doc """
-  Lists the ids of every run currently registered — in flight or lingering in a
-  terminal state.
-  """
+  api(:list_runs, "List the ids of every Harness.Run currently registered — in flight or lingering in a terminal state.",
+    returns: %{
+      type: :list,
+      description:
+        "List of run id strings. Source-of-truth for Harness.Run.status/1, Harness.Run.transcript/1, Harness.Run.cancel/1 inputs."
+    }
+  )
+
   @spec list_runs() :: [String.t()]
   def list_runs do
     Registry.select(@registry, [{{:"$1", :_, :_}, [], [:"$1"]}])

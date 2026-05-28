@@ -45,6 +45,8 @@ defmodule Harness.AgentAdapter.Driver do
   option hands it that handle the moment the agent spawns.
   """
 
+  use Descripex, namespace: "/agent_adapter/driver"
+
   alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
@@ -53,32 +55,32 @@ defmodule Harness.AgentAdapter.Driver do
   @default_total_timeout 1_800_000
   @default_idle_timeout 300_000
 
-  @doc """
-  Spawns `adapter` for `invocation` and drives it to completion.
+  api(:run, "Spawn the adapter for an invocation and drive it to completion under total + idle deadlines.",
+    params: [
+      adapter: [
+        kind: :value,
+        description:
+          "Adapter module implementing Harness.AgentAdapter (e.g. Harness.AgentAdapter.Claude). The caller supplies the module atom."
+      ],
+      invocation: [
+        kind: :value,
+        description:
+          "Harness.AgentAdapter.Invocation struct. Caller-constructed: cwd, prompt, task_id, env scrub map, adapter_opts, model."
+      ],
+      opts: [
+        kind: :value,
+        default: [],
+        description:
+          "Keyword list. :total_timeout / :idle_timeout (ms overrides). :on_spawn (1-arity hook called with the Run handle the moment the agent spawns — used by Harness.Run to capture the handle for cancellation). :on_output (1-arity hook called with each iodata chunk — used by Harness.Run to fan transcripts to the dashboard PubSub topic). Hook exceptions are swallowed."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %Harness.AgentAdapter.Outcome{}} for any spawned run (including timeouts / mid-run port errors — kind: :exited | {:timed_out, :idle | :total} | {:error, reason}). {:error, reason} only when nothing spawned (build_command/1 failed, executable missing)."
+    }
+  )
 
-  Returns `{:ok, %Harness.AgentAdapter.Outcome{}}` for any run that spawned —
-  whether it exited, timed out, or the port failed mid-run. Returns
-  `{:error, reason}` only when nothing spawned (the adapter's `build_command/1`
-  failed, or the executable is not on `PATH`).
-
-  Options:
-
-    * `:total_timeout` — override the total-run budget, in milliseconds.
-    * `:idle_timeout` — override the idle window, in milliseconds.
-    * `:on_spawn` — an optional 1-arity function invoked once with the
-      `Harness.AgentAdapter.Run` handle the moment the agent spawns, before the
-      drive loop blocks. The run-lifecycle process uses it to capture the handle
-      so it can cancel the agent later. Exceptions raised by the hook are
-      swallowed — a faulty hook never aborts the run.
-    * `:on_output` — an optional 1-arity function invoked with each output
-      chunk (iodata) as the agent emits it. The current `Harness.Run`
-      consumer threads chunks into the gen_statem via `{:transcript_chunk,
-      chunk}`, which owns the bounded 200 KiB buffer + monotonic seq counter
-      and re-broadcasts via `Harness.Dashboard.Transcript.broadcast/3` for
-      the dashboard's live transcript pane. The driver itself does not
-      assume any particular consumer shape. Exceptions raised by the hook
-      are swallowed.
-  """
   @spec run(module(), Invocation.t(), keyword()) :: {:ok, Outcome.t()} | {:error, term()}
   def run(adapter, %Invocation{} = invocation, opts \\ []) do
     total = Keyword.get(opts, :total_timeout) || configured_total_timeout()

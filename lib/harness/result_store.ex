@@ -21,6 +21,8 @@ defmodule Harness.ResultStore do
   `load_batch`, and `list_run_records` without dispatching to a backend.
   """
 
+  use Descripex, namespace: "/result_store"
+
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.Run.LogRecord
 
@@ -42,7 +44,24 @@ defmodule Harness.ResultStore do
   @doc "Lists persisted run records, optionally filtered by exact field values."
   @callback list_run_records(filters(), keyword()) :: {:ok, [LogRecord.t()]} | {:error, term()}
 
-  @doc "Persists one structured run record."
+  api(
+    :record_run,
+    "Persist one structured run record. Best-effort — failures log and return {:error, _} but never crash the run.",
+    params: [
+      record: [
+        kind: :value,
+        description: "%Harness.Run.LogRecord{} the caller built from a settled run's result."
+      ],
+      store: [
+        kind: :value,
+        default: nil,
+        description:
+          "Configured store from ResultStore.configured/0 (defaults), or {module, opts} override, or `false`/`nil` to short-circuit. Caller-supplied."
+      ]
+    ],
+    returns: %{type: :tuple, description: ":ok or {:error, reason} from the backing store."}
+  )
+
   @spec record_run(LogRecord.t(), store()) :: :ok | {:error, term()}
   def record_run(record, store \\ configured())
 
@@ -53,7 +72,21 @@ defmodule Harness.ResultStore do
     dispatch(store, :record_run, [record])
   end
 
-  @doc "Persists the aggregate result for a finished batch."
+  api(:save_batch, "Persist the aggregate result for a finished batch. Best-effort.",
+    params: [
+      result: [
+        kind: :value,
+        description: "%Harness.Batch.Result{} returned by Harness.Batch.run/4."
+      ],
+      store: [
+        kind: :value,
+        default: nil,
+        description: "Configured store from ResultStore.configured/0, or override; `false`/`nil` short-circuits."
+      ]
+    ],
+    returns: %{type: :tuple, description: ":ok or {:error, reason} from the backing store."}
+  )
+
   @spec save_batch(BatchResult.t(), store()) :: :ok | {:error, term()}
   def save_batch(result, store \\ configured())
 
@@ -64,7 +97,18 @@ defmodule Harness.ResultStore do
     dispatch(store, :save_batch, [result])
   end
 
-  @doc "Loads a previously persisted batch result by id."
+  api(:load_batch, "Load a previously persisted batch result by id.",
+    params: [
+      batch_id: [kind: :value, description: "Batch id string assigned at dispatch time."],
+      store: [
+        kind: :value,
+        default: nil,
+        description: "Configured store or override; `false`/`nil` returns {:error, :disabled}."
+      ]
+    ],
+    returns: %{type: :tuple, description: "{:ok, %Harness.Batch.Result{}} or {:error, reason}."}
+  )
+
   @spec load_batch(String.t(), store()) :: {:ok, BatchResult.t()} | {:error, term()}
   def load_batch(batch_id, store \\ configured())
 
@@ -75,13 +119,26 @@ defmodule Harness.ResultStore do
     dispatch(store, :load_batch, [batch_id])
   end
 
-  @doc "Lists persisted run records, optionally filtered by exact field values."
+  api(
+    :list_run_records,
+    "List persisted run records, optionally filtered by exact field values (run_id, batch_id, agent, adapter, verdict).",
+    params: [
+      filters: [
+        kind: :value,
+        default: [],
+        description:
+          "Keyword filter list — exact-match field values supported by the store backend. Common keys: run_id, batch_id, agent, adapter, verdict. The 2-arity overload list_run_records(store, filters) is an internal escape hatch — prefer the 1-arity form and configure the store via config :harness, :result_store."
+      ]
+    ],
+    returns: %{type: :tuple, description: "{:ok, [LogRecord.t()]} or {:error, reason}."}
+  )
+
   @spec list_run_records(filters()) :: {:ok, [LogRecord.t()]} | {:error, term()}
   def list_run_records(filters \\ []) when is_list(filters) do
     list_run_records(configured(), filters)
   end
 
-  @doc "Lists records from an explicit store, optionally filtered by exact field values."
+  @doc false
   @spec list_run_records(store(), filters()) :: {:ok, [LogRecord.t()]} | {:error, term()}
   def list_run_records(false, filters) when is_list(filters), do: {:ok, []}
   def list_run_records(nil, filters) when is_list(filters), do: {:ok, []}
@@ -90,7 +147,13 @@ defmodule Harness.ResultStore do
     dispatch(store, :list_run_records, [filters])
   end
 
-  @doc "Returns the configured result store, defaulting to the file-backed store."
+  api(:configured, "Return the configured result store, defaulting to the file-backed store.",
+    returns: %{
+      type: :term,
+      description: "store() — module() | {module(), keyword()} | nil | false. From config :harness, :result_store."
+    }
+  )
+
   @spec configured() :: store()
   def configured do
     Application.get_env(:harness, :result_store, {Harness.ResultStore.File, []})

@@ -43,6 +43,8 @@ defmodule Harness.Roadmap do
      `Harness.Run.Supervisor.start_run/4` (or via `Harness.Batch` using the adapter module).
   """
 
+  use Descripex, namespace: "/roadmap"
+
   alias Harness.Project
   alias Harness.Roadmap.Item
 
@@ -74,24 +76,27 @@ defmodule Harness.Roadmap do
   @typep ctx :: %{root: String.t(), tasks_path: String.t(), rmap_bin: String.t()}
   @typep failure :: {integer(), String.t(), [String.t()]}
 
-  @doc """
-  Fetches a roadmap task and renders it as an agent prompt.
+  api(:ingest, "Fetch a roadmap task via rmap and render it as a ready-to-dispatch agent prompt.",
+    params: [
+      selector: [
+        kind: :value,
+        description:
+          "Task selector. :next picks the next pending task by rmap's D/B/U scoring; {:id, id} fetches a specific task by id string."
+      ],
+      opts: [
+        kind: :value,
+        default: [],
+        description:
+          "Keyword list. :project (%Harness.Project{} — uses project.roadmap_path; SOURCE the project from Harness.ProjectRegistry.lookup/1). :project_root (directory holding roadmap/tasks.toml — fallback when :project omitted; defaults to File.cwd!/0). :agent (atom :claude/:codex/:cursor — which agent rmap delegate renders the prompt for; defaults to :claude). :rmap_bin (rmap executable path; defaults to \"rmap\")."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %Harness.Roadmap.Item{}} carrying id, title, prompt, agent. {:error, reason} per t:error/0 (invalid_agent, rmap_not_found, no_pending_task, task_not_found, roadmap_not_found, rmap_failed, rmap_bad_output)."
+    }
+  )
 
-  `selector` is `:next` (the next pending task) or `{:id, id}` (a task by id).
-
-  Options:
-
-    * `:project` — a `%Harness.Project{}`; uses `project.roadmap_path` as the
-      project root (overrides `:project_root` when both are given).
-    * `:project_root` — directory holding `roadmap/tasks.toml`; defaults to the
-      current working directory when `:project` is omitted.
-    * `:agent` — which agent to render the prompt for; one of `:claude`,
-      `:codex`, `:cursor` (the agents `rmap delegate --to` supports).
-      Defaults to `:claude`.
-    * `:rmap_bin` — the `rmap` executable name or path. Defaults to `"rmap"`.
-
-  Returns `{:ok, %Harness.Roadmap.Item{}}` or `{:error, reason}` — see `t:error/0`.
-  """
   @spec ingest(selector(), keyword()) :: {:ok, Item.t()} | {:error, error()}
   def ingest(selector, opts \\ []) do
     agent = Keyword.get(opts, :agent, :claude)
