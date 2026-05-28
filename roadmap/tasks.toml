@@ -2373,6 +2373,10 @@ acceptance_criteria = [
   "Color: dark-mode-first; a single signal accent is reserved for terminal-state cues; the accent does not appear on neutral controls",
   "Motion: streaming-token cursor, tool-call expand/collapse, and message-arrival transitions are CSS-only and respect prefers-reduced-motion",
   "Browser smoke: load the page with prefers-reduced-motion enabled and confirm decorative motion is suppressed while functional state transitions still occur",
+  "Message list is rendered via `stream/3` (not assigns list) with `phx-update=\"stream\"` and per-message DOM ids; token chunks update the active message via `stream_insert(:messages, ..., at: -1)` or a documented `phx-hook` client buffer — never by appending to an assigns list",
+  "Tool-call collapsible, message-role row, and any other reusable UI are `Phoenix.Component`s with `attr/3` declarations (typed, defaults where applicable) — no helper functions returning interpolated HTML strings",
+  "Templates use HEEx `:if` / `:for` special attrs, not `<%= if/for %>` wrappers around tags",
+  "Per-message and per-session text buffers are bounded server-side (e.g. configurable max-bytes per message, max-messages per session) — not just CSS `max-height` overflow",
 ]
 out_of_scope = [
   "Multi-session UI (session switcher / chat history sidebar) — single active session per browser tab for v0_7",
@@ -2386,11 +2390,11 @@ scored_at = "2026-05-28"
 body = """
 Build the LiveView UI for the chat orchestrator. Page at /harness/chat (and /harness/chat/:session_id for reload-safe links) mounted on the existing Harness.Dashboard.Router. UI: message list scrolling to bottom, streaming render of agent tokens as they arrive, collapsible JSON view for tool calls/results, send-message input form.
 
-Subscribe to Phoenix.PubSub topic harness:chat:<session>:stream (broadcast by Harness.Chat.Session from Task 76) and append chunks to the active message in the LiveView assigns.
+Subscribe to Phoenix.PubSub topic harness:chat:<session>:stream (broadcast by Harness.Chat.Session from Task 76) and update the message list via `stream_insert(socket, :messages, ..., at: -1)` so the active message is replaced in place on each chunk (DOM id stable across updates). Do NOT accumulate the message list in `socket.assigns` — that's the pre-streams pattern and breaks on long sessions. For very high token rates, a client-side `phx-hook` that buffers chunks into the DOM without a server roundtrip is the alternative; pick one explicitly and document which.
 
 Session id lives in the URL path so reload preserves the live session — when the LiveView mounts with a session_id, it reconnects to the existing GenServer; without one, it creates a fresh session.
 
-Use the existing per-run drill-down LiveView (Harness.Dashboard.Live for runs) as a structural template — same router, same endpoint, same PubSub pattern, same dashboard layout. The chat surface is one more LiveView on the existing :4018 Bandit endpoint.
+Use the existing per-run drill-down LiveView (Harness.Dashboard.Live for runs) as a structural template ONLY for the router-mount + PubSub-subscription + transcript-buffer-bounding patterns. Do NOT copy its collection assigns pattern (`assign(:projects, ...)`, `assign(:adapters, ...)`) — those predate the streams refactor and are not the model to follow for the new message list / tool-call list.
 
 Browser smoke: a user types 'list pending tasks in harness project', the agent calls list_projects, then list_pending(project: "harness"), then summarizes. The UI shows the streaming tokens, the two tool calls as collapsible JSON, and the final summary — all rendered in real time without page reload.
 
@@ -2410,6 +2414,20 @@ Design-token deliverable: define font imports, CSS custom-properties (color, typ
 The existing `lib/harness/dashboard/layouts/root.html.heex` is utilitarian bootstrap (system-ui + inline `<style>`) and should be upgraded as part of this work; refactor cost is part of this task, not a follow-up.
 
 Principle: intentional aesthetic point-of-view; avoid generic AI-generated patterns (cookie-cutter component grids, evenly-distributed timid palettes); match implementation complexity to the aesthetic — refined minimalism here needs *more* attention to spacing, typography, and motion timing, not less.
+
+## LiveView 1.x / Phoenix 1.8 idioms (non-negotiable)
+
+These constraints apply to all three v0_7+ LiveViews (78, 80, 81) and to any refactor of the existing operator views the design pass touches.
+
+- **Collections use `stream/3`, not assigns lists.** The messages list, the tool-call list, the ranked-task list (Task 80), the per-adapter transcripts (Task 81) — all are streams. Mount them with `stream(socket, :messages, [], dom_id: &"msg-#{&1.id}")` (or similar), render with `<div id="messages" phx-update="stream"><div :for={{dom_id, msg} <- @streams.messages} id={dom_id}>...</div></div>`. Token chunks arrive via PubSub → `stream_insert(socket, :messages, %{id: msg_id, content: accumulated}, at: -1)` which replaces in place by DOM id. Never `Map.update(assigns, :messages, &(&1 ++ [msg]))`.
+- **Templates use HEEx `:if` / `:for` special attrs**, not `<%= if/for %>` wrappers around tags. The 1.7+ idiom; 1.8 is unchanged.
+- **Reusable UI is function components.** The collapsible tool-call block, the message-role row, the adapter picker (Task 80), the verdict cell (Task 81) — each is a `Phoenix.Component` with `attr/3` declarations (typed, required where applicable, with defaults). No render-helpers-with-positional-args, no string-interpolation HTML.
+- **Layout tuple shape:** `use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}` — already the pattern in `dashboard/live.ex`, keep it.
+- **`prefers-reduced-motion` is a media query at the CSS layer**, not a server-side branch. Motion is gated in the tokens module's stylesheet, not in HEEx.
+- **No `Phoenix.HTML.raw/1` on user-or-LLM-supplied content.** Tool-call JSON is rendered via a function component that walks the parsed map, not by pretty-printing to a string and dumping into `<pre>` raw.
+- **Bounded buffers for streaming text** — the existing `Harness.Dashboard.Live` already enforces a 200 KiB transcript cap; the chat session message buffer must do the same (bound per-message and per-session), and the bound is enforced server-side, never just CSS `max-height: ...; overflow: auto`.
+
+These are idiom-floor requirements, independent of the visual design vocabulary. Both must hold.
 """
 
 [[task]]
@@ -2473,6 +2491,8 @@ acceptance_criteria = [
   "All design tokens (fonts, colors, type scale, spacing, motion) come from Task 78's tokens module — no new vocabulary introduced in this LiveView",
   "Eff score and tier are visually encoded (not merely text) in each row — a single glance distinguishes a 🎯 task from a ⚠️ task without reading the number",
   "The adapter picker is not a generic <select>; the six adapters' capability + availability state is visible at the moment of choice",
+  "Ranked task list is rendered via `stream/3` with `phx-update=\"stream\"` and stable per-task DOM ids — rmap-next refreshes use `stream_insert(:replace)`/`stream_delete` rather than reassigning the list",
+  "Adapter picker is a `Phoenix.Component` with `attr/3`-declared props (selected_task, adapters, on_pick callback); LiveView idioms (HEEx `:if`/`:for`, no `<%= %>` wrappers around tags) apply",
 ]
 out_of_scope = [
   "Bulk dispatch (multi-select + Batch.dispatch over N items at once) — single-task dispatch is sufficient v1",
@@ -2519,6 +2539,9 @@ acceptance_criteria = [
   "The verdict cell is the dominant visual element of each adapter column; pass and fail are visually asymmetric (not balanced for fairness)",
   "The metric grid uses a full-bleed CSS-grid layout (no centered 1200px max-width) — the side-by-side comparison earns the viewport width",
   "Transcript-tab switching has a deliberate active-state cue and a precise transition; default browser focus rings are restyled to match the design vocabulary",
+  "Each adapter's transcript is its own `stream/3` collection (e.g. `:transcript_<adapter>`) updated via `stream_insert(:replace)` on settle-events — never accumulated in assigns (transcripts grow to MB scale and break the assigns diff cost)",
+  "Verdict cell, metric row, and adapter-column-header are `Phoenix.Component`s with `attr/3`-declared props; tab switching uses a `:patch` link or `JS.patch/2`, not a `live_redirect`, so the streams survive the transition",
+  "Per-adapter transcript buffer is server-side bounded (reuse the existing 200 KiB cap from `Harness.Dashboard.Live` or expose a configurable equivalent)",
 ]
 out_of_scope = [
   "Persistent comparison archive across BEAM restarts (in-memory result is sufficient v1; results survive in Harness.ResultStore via LogRecord anyway)",
