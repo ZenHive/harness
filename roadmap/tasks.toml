@@ -2356,7 +2356,7 @@ id = "78"
 phase = 9
 bundle = "chat-orchestrator"
 milestone = "v0_7"
-status = "pending"
+status = "done"
 title = "Harness.Dashboard.ChatLive — LiveView UI for chat orchestrator"
 scores = { d = 4, b = 8, u = 6 }
 depends_on = ["76", "77"]
@@ -2385,8 +2385,6 @@ out_of_scope = [
   "Markdown rendering of agent output (plain text + JSON-block collapsible is sufficient initially)",
   "File-upload / attachment support",
 ]
-created_at = "2026-05-28"
-scored_at = "2026-05-28"
 body = """
 Build the LiveView UI for the chat orchestrator. Page at /harness/chat (and /harness/chat/:session_id for reload-safe links) mounted on the existing Harness.Dashboard.Router. UI: message list scrolling to bottom, streaming render of agent tokens as they arrive, collapsible JSON view for tool calls/results, send-message input form.
 
@@ -2429,6 +2427,12 @@ These constraints apply to all three v0_7+ LiveViews (78, 80, 81) and to any ref
 
 These are idiom-floor requirements, independent of the visual design vocabulary. Both must hold.
 """
+implemented = "Harness.Dashboard.ChatLive at /harness/chat + /harness/chat/:session_id mounted on the existing dashboard endpoint. Single stream(:messages) carries every turn; the actively-streaming assistant message stays at a stable DOM id and is replaced in place via stream_insert(at: -1) on each PubSub text_delta. Function components message_row, tool_call (native <details>), and json_tree (recursive walker — pattern-matches on value type; never raw/1 on LLM content) with full attr/3 declarations. HEEx :if / :for special attrs only. Bounded buffers server-side: 64 KiB per assistant turn (truncation sentinel) and 200 messages per session (stream_delete oldest-first). New Harness.Dashboard.Tokens module exposes a single <.stylesheet /> HEEx component — Fraunces (display) + JetBrains Mono (mono) committed in moduledoc, dark-mode-first neutrals + a single --accent reserved for terminal-state cues, motion gated at the CSS layer via prefers-reduced-motion media query. Tasks 80 + 81 inherit by calling the same component. root.html.heex stripped of inline <style>. New Harness.Chat.Session.snapshot/1 backfills the message stream on URL-reload via stream(reset: true). New Harness.Chat.TaskSupervisor wired into Harness.Application supervises the fire-and-forget Task that drives Session.user_message/3 so the LiveView stays responsive. 24 ChatLive unit tests cover: append_bounded clamping + truncation sentinel idempotence, set_tool_result by id, snapshot normalization (user, assistant text+tool_use, tool_result merging, multi-turn ordering), json_tree structural rendering (map/list/string/number/bool/nil/empty), HTML escaping on string leaves, tool_call <details> + status data-attr, message_row role-class + streaming data-attr + nested tool_calls. Browser-verified end-to-end on the UI pipeline via synthetic PubSub broadcast (text_delta + tool_call + tool_result + done — stable DOM id across chunks, json_tree renders args + result, stream_delete prunes overflow). The live LLM-driven smoke is gated on Task 82 — the active Harness.Chat.Anthropic backend (Task 77) returned 400 'credit balance too low' on the user's metered API account; Task 82 swaps the default backend to a headless-claude-via-MCP implementation that respects the standing Claude-subscription-not-API rule. 615/624 offline tests green (9 :integration excluded, none on touched code paths). Format/credo-strict/dialyzer/doctor/sobelow on touched files all clean. CLAUDE.md status section updated."
+delivered_by = "claude"
+created_at = "2026-05-28"
+started_at = "2026-05-28"
+scored_at = "2026-05-28"
+done_at = "2026-05-28"
 
 [[task]]
 id = "79"
@@ -2571,3 +2575,44 @@ Transcript-tab switching is the only meaningful interaction in this view. Treat 
 
 Forbidden: striped data tables, balanced "fairness" cell weighting (where pass and fail look equally weighted — the whole point is that they don't), default browser focus rings without restyling, Inter / Roboto / Arial / system-ui / Space Grotesk.
 """
+
+[[task]]
+id = "82"
+phase = 9
+bundle = "chat-orchestrator"
+milestone = "v0_7"
+status = "pending"
+title = "Harness.Chat.Claude headless subscription backend (default)"
+scores = { d = 3, b = 8, u = 8 }
+markers = ["bug"]
+depends_on = [77, 79]
+acceptance_criteria = ["New module `lib/harness/chat/claude.ex` implements `Harness.Chat.Backend`", "Default in `Harness.Chat.Session.init/1` changed from `Harness.Chat.Anthropic` to `Harness.Chat.Claude`", "`Harness.Chat.Claude` does NOT read `ANTHROPIC_API_KEY` anywhere; explicitly scrubbed on Port env", "Driver-double-backed tests cover: happy path (text-only response), tool_use parsing, error mapping, session continuity across two turns", "Existing `Harness.Chat.Anthropic` tests still pass (Anthropic stays opt-in)", "Browser smoke (manual, post-merge): dashboard chat session via `Harness.Chat.Claude` invokes one harness MCP tool and returns a coherent response"]
+out_of_scope = ["Removing or renaming `Harness.Chat.Anthropic` — stays as opt-in metered fallback", "Changing the `Harness.Chat.Backend` behaviour shape", "Adding a backend selector to `ChatLive` UI (sibling task if desired)", "Persistence of chat session ids across `iex -S mix` restarts"]
+body = """
+Add a `Harness.Chat.Backend` implementation that drives headless `claude -p` via
+`Harness.AgentAdapter.Driver` (Port spawn), replacing `Harness.Chat.Anthropic`
+as the *default* backend. Anthropic stays in the tree as opt-in metered fallback.
+
+**Why this exists.** Task 77 shipped `Harness.Chat.Anthropic` — a direct Req
+client against `https://api.anthropic.com/v1/messages` with `x-api-key`. That
+violates the standing policy "Claude subscription, not API" (memory:
+feedback_claude_subscription_not_api). Chat sessions should route through the
+host's Claude subscription OAuth, not the metered API.
+
+**Implementation shape:**
+
+- New `lib/harness/chat/claude.ex` implementing `Harness.Chat.Backend`.
+- Per-turn: spawn `claude -p <latest-user-message> --output-format stream-json --session-id <chat-session-id>` (or `--continue`, depending on resume-flag verification — see Sharp Edges) via `Harness.AgentAdapter.Driver.run/3` or equivalent Port spawn.
+- Configure `.mcp.json` in the spawn cwd pointing at Task 79's headless MCP endpoint (`http://localhost:4018/harness/mcp/...`) so harness manifest tools are surfaced to claude. Exact `.mcp.json` shape + cwd-relative loading semantics confirmed via Claude Code docs as a pre-implementation step.
+- Parse stream-json events into Backend callbacks: `text_delta` → `:text_delta`; `tool_use` blocks → `:tool_use`.
+- Return assembled assistant response matching `Backend.response()`.
+- Flip default in `Harness.Chat.Session.init/1` (line 74) from `Harness.Chat.Anthropic` to `Harness.Chat.Claude`. Anthropic remains opt-in (`backend: Harness.Chat.Anthropic`).
+
+**Sharp edges:**
+
+- `claude -p` manages its own conversation state via session id, not a caller-supplied message list. `Backend.stream/3` receives a full `messages` list; this backend extracts only the latest user message and relies on claude's session continuity for history. Document in the moduledoc.
+- `ANTHROPIC_API_KEY` must NOT be read by this backend at any layer; explicitly scrub it from the Port env to prevent shadowing of the host OAuth.
+- `claude -p` session-resume flag and `.mcp.json` cwd-relative loading both require verification against current Claude Code docs (Jan 2026 cutoff is past the relevant releases).
+"""
+created_at = "2026-05-28"
+scored_at = "2026-05-28"

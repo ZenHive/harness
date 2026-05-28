@@ -29,7 +29,8 @@ defmodule Harness.Application do
       Harness.ProjectRegistry,
       Harness.AgentRegistry,
       {Phoenix.PubSub, name: Harness.PubSub},
-      Harness.Chat.Supervisor
+      Harness.Chat.Supervisor,
+      {Task.Supervisor, name: Harness.Chat.TaskSupervisor}
     ] ++
       repo() ++
       [

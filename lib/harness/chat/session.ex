@@ -47,6 +47,21 @@ defmodule Harness.Chat.Session do
     GenServer.call(via(session_id), {:user_message, text}, timeout)
   end
 
+  @doc """
+  Returns the conversation history accumulated in the session's GenServer
+  state. Used by `Harness.Dashboard.ChatLive` to backfill the message stream
+  when an operator reloads a deep-link URL mid-session.
+
+  Returns `{:error, :not_found}` if no session is registered under `session_id`.
+  """
+  @spec snapshot(String.t()) :: {:ok, [map()]} | {:error, :not_found}
+  def snapshot(session_id) when is_binary(session_id) do
+    case Harness.Chat.Supervisor.whereis(session_id) do
+      nil -> {:error, :not_found}
+      _pid -> {:ok, GenServer.call(via(session_id), :snapshot)}
+    end
+  end
+
   @doc false
   @impl GenServer
   @spec init({String.t(), keyword()}) :: {:ok, map()}
@@ -81,6 +96,13 @@ defmodule Harness.Chat.Session do
     state = %{state | busy?: true, tool_call_history: MapSet.new()}
     {result, state} = run_turn(state, text)
     {:reply, result, %{state | busy?: false}}
+  end
+
+  @doc false
+  @impl GenServer
+  @spec handle_call(:snapshot, GenServer.from(), map()) :: {:reply, [map()], map()}
+  def handle_call(:snapshot, _from, state) do
+    {:reply, state.messages, state}
   end
 
   @spec run_turn(map(), String.t()) :: {{:ok, map()} | {:error, terminal()}, map()}
