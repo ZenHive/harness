@@ -38,12 +38,14 @@ Four setup steps the consuming repo needs:
 
 **1. Operator runs harness.** A `iex -S mix` session in `~/_DATA/code/harness/`. This boots the dashboard at `http://localhost:4018`, Tidewave MCP at `http://localhost:4018/tidewave/mcp`, Oban queues, the lot. Verify by opening `http://localhost:4018/harness` in a browser.
 
-**2. Register `myapp` with harness.** Two paths:
+**2. Register `myapp` with harness.** Three paths:
 
-- **Persistent (preferred):** add an entry to harness's `config/dev.exs`, alongside the self-registered `"harness"` project, then restart `iex -S mix`:
+- **Host-local (preferred for personal projects):** create `~/_DATA/code/harness/config/dev.local.exs` (gitignored — template at `config/dev.local.exs.example`), then restart `iex -S mix`. The local file REPLACES the default `:projects` list, so include the `"harness"` self-entry alongside your own:
 
   ```elixir
-  # ~/_DATA/code/harness/config/dev.exs
+  # ~/_DATA/code/harness/config/dev.local.exs
+  import Config
+
   config :harness, :projects, [
     [
       name: "harness",
@@ -60,6 +62,8 @@ Four setup steps the consuming repo needs:
     ]
   ]
   ```
+
+- **Shared / committed:** if the project belongs in the harness repo's tracked config (every contributor should see it), add the same entry to `config/dev.exs` instead and commit. Use this only when the registration is genuinely shared — host-specific paths belong in `dev.local.exs`.
 
 - **Ad-hoc (one-shot):** dispatch `Harness.ProjectRegistry.register/1` via `mcp__harness__project_eval`. Cleared on next BEAM restart — fine for experiments, not for ongoing work.
 
@@ -443,7 +447,7 @@ true = Harness.AgentAdapter.supports?(Harness.AgentAdapter.Pi, {:cost_tier, :fre
 - **Don't confuse the two MCP endpoints.** `mcp__tidewave__project_eval` runs inside *your repo's* BEAM (useful for inspecting your app's runtime state); `mcp__harness__project_eval` runs inside *harness's* `:4018` BEAM (this is the dispatch surface). Sending a `Harness.Run.Supervisor.start_run/4` call to your own Tidewave will fail with `undefined function` — harness modules aren't loaded there.
 - **`.mcp.json` changes need a Claude Code restart.** New MCP servers aren't hot-reloaded into the running session — restart after editing.
 - **`File.cwd!/0` is harness's cwd, not yours.** Inside an `mcp__harness__project_eval` snippet, any relative path resolves against `~/_DATA/code/harness/`, not `~/_DATA/code/myapp/`. Pass `:project` to `Roadmap.ingest/2` (carries `roadmap_path`), and pass explicit `cwd:` to `AuditReview.grade_fix/1` and ad-hoc `Driver.run/3` calls.
-- **Project registration persists across BEAM restarts only via `config/dev.exs`.** A runtime `ProjectRegistry.register/1` is gone on the next `iex -S mix` boot. For ongoing work, edit `config/dev.exs` and ask the operator to restart.
+- **Project registration persists across BEAM restarts only via `config/dev.exs` or `config/dev.local.exs`.** A runtime `ProjectRegistry.register/1` is gone on the next `iex -S mix` boot. For ongoing work, edit one of those files (host-local registrations belong in the gitignored `dev.local.exs`) and ask the operator to restart.
 
 **General (apply to both contexts):**
 

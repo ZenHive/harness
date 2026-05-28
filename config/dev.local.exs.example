@@ -1,0 +1,26 @@
+import Config
+
+# Per-host project registrations. Copy this file to `config/dev.local.exs`
+# (gitignored) and edit. Imported from `config/dev.exs` when present.
+#
+# This call REPLACES the default `:projects` list from `config/dev.exs`, so
+# the harness self-registration must be repeated if you want it to remain
+# available. Consumed by `Harness.ProjectRegistry.init/1`.
+
+config :harness, :projects, [
+  # Keep the harness checkout itself registered.
+  [
+    name: "harness",
+    source: {:local, Path.expand("..", __DIR__)},
+    preset: :elixir,
+    roadmap_path: Path.expand("..", __DIR__)
+  ],
+  # Example host-local project.
+  [
+    name: "myapp",
+    source: {:local, "/Users/me/_DATA/code/myapp"},
+    preset: :elixir,
+    roadmap_path: "/Users/me/_DATA/code/myapp",
+    concurrency_cap: 2
+  ]
+]

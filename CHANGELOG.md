@@ -48,7 +48,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `register/1` step, making the dispatch examples in
   `skills/harness-driver/SKILL.md` and `docs/dogfooding-workflow.md`
   literally true against the live node. `:test` and `:prod` are unchanged
-  (no auto-registration).
+  (no auto-registration). `config/dev.exs` now also conditionally imports a
+  gitignored `config/dev.local.exs` (template: `config/dev.local.exs.example`)
+  so operators can register host-local target projects without dirtying
+  tracked config — the local file's `config :harness, :projects` call
+  replaces the default list, so it must repeat the `"harness"` self-entry.
 - Same-task A/B agent evaluation (Task 33). `Harness.Batch.AgentEvaluation.compare/4`
   fans one roadmap item to N adapters in parallel under the existing batch fan-out;
   `Harness.Batch.run_pinned/3` is the lower-level entry that pairs each item with a

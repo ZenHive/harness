@@ -12,3 +12,11 @@ config :harness, :projects, [
     roadmap_path: Path.expand("..", __DIR__)
   ]
 ]
+
+# Per-host project registrations live in `config/dev.local.exs` (gitignored).
+# That file is free to call `config :harness, :projects, [...]` with its own
+# list — copy the harness entry above if you want to keep it available.
+# See `config/dev.local.exs.example` for the template.
+if File.exists?(Path.expand("dev.local.exs", __DIR__)) do
+  import_config "dev.local.exs"
+end
