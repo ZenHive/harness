@@ -86,6 +86,7 @@ defmodule Harness.MixProject do
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
       {:oban, "~> 2.22"},
+      {:req, "~> 0.5"},
 
       # Dashboard (Task 50) — Phoenix LiveView + embedded Oban Web. Bandit is
       # optional so mountable consumers with their own Phoenix endpoint do not
