@@ -18,6 +18,7 @@ defmodule Harness.Dashboard.Live do
 
   use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}
 
+  alias Harness.AgentRegistry
   alias Harness.Dashboard.Transcript
   alias Harness.ProjectRegistry
   alias Harness.Run.Status
@@ -35,6 +36,7 @@ defmodule Harness.Dashboard.Live do
      socket
      |> assign(:projects, ProjectRegistry.list())
      |> assign(:snapshot, StatusView.snapshot())
+     |> assign(:adapters, list_adapters())
      |> assign(:selected_project, nil)
      |> assign(:transcript, "")
      |> assign(:transcript_bytes, 0)
@@ -79,6 +81,7 @@ defmodule Harness.Dashboard.Live do
       socket
       |> assign(:projects, ProjectRegistry.list())
       |> assign(:snapshot, StatusView.snapshot())
+      |> assign(:adapters, list_adapters())
 
     socket =
       case socket.assigns[:run_id] do
@@ -117,6 +120,15 @@ defmodule Harness.Dashboard.Live do
 
   @spec schedule_tick() :: reference()
   defp schedule_tick, do: Process.send_after(self(), :tick, @tick_interval_ms)
+
+  @spec list_adapters() :: [%{agent: atom(), module: module(), installed: boolean()}]
+  defp list_adapters do
+    AgentRegistry.agents()
+    |> Enum.map(fn {agent, module} ->
+      %{agent: agent, module: module, installed: AgentRegistry.installed?(module)}
+    end)
+    |> Enum.sort_by(& &1.agent)
+  end
 
   @spec refresh_run_status(Socket.t(), String.t()) :: Socket.t()
   defp refresh_run_status(socket, run_id) do
@@ -223,6 +235,26 @@ defmodule Harness.Dashboard.Live do
         </tbody>
       </table>
     <% end %>
+
+    <h3>Adapters</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Agent</th>
+          <th>Module</th>
+          <th>Installed</th>
+        </tr>
+      </thead>
+      <tbody>
+        <%= for adapter <- @adapters do %>
+          <tr>
+            <td><code>{adapter.agent}</code></td>
+            <td><code>{inspect(adapter.module)}</code></td>
+            <td>{if adapter.installed, do: "yes", else: "no"}</td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
 
     <%= if @snapshot.unavailable_agents != [] do %>
       <h3>Unavailable agents</h3>
