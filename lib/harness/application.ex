@@ -25,9 +25,11 @@ defmodule Harness.Application do
   defp children do
     [
       {Registry, keys: :unique, name: Harness.Run.Registry},
+      {Registry, keys: :unique, name: Harness.Chat.Registry},
       Harness.ProjectRegistry,
       Harness.AgentRegistry,
-      {Phoenix.PubSub, name: Harness.PubSub}
+      {Phoenix.PubSub, name: Harness.PubSub},
+      Harness.Chat.Supervisor
     ] ++
       repo() ++
       [
