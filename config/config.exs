@@ -90,13 +90,8 @@ config :harness, :result_store, {Harness.ResultStore.File, root: Path.expand("~/
 
 # Registered orchestration targets — see Harness.Project and Harness.ProjectRegistry.
 # Each entry is a keyword list: name, source ({:local, path}), preset or
-# check_stack, roadmap_path, and optional concurrency_cap.
-# config :harness, :projects, [
-#   name: "harness",
-#   source: {:local, Path.expand(".")},
-#   preset: :elixir,
-#   roadmap_path: Path.expand(".")
-# ]
+# check_stack, roadmap_path, and optional concurrency_cap. Dev self-registers
+# the harness checkout via config/dev.exs; test/prod stay un-opinionated.
 
 # Per-run git worktree lifecycle — see Harness.Worktree.
 config :harness, :worktree,
@@ -119,6 +114,10 @@ config :phoenix, :json_library, Jason
 #   base_delay_ms: 1_000,
 #   max_delay_ms: 60_000,
 #   multiplier: 2.0
+
+if config_env() == :dev do
+  import_config "dev.exs"
+end
 
 # Tests create their own isolated per-test worktree roots and pass them
 # explicitly, so the configured base_dir is only a fallback. A boot-time sweep

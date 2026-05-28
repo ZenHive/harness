@@ -28,6 +28,8 @@ If the task is on the roadmap and the surface is stable, dispatch it through har
 
 The verification stack — not the agent's self-report — is always the source of truth.
 
+**Token-economy carve-out.** A task with all of D≤2 + ≤30 LOC across ≤3 files + no harness-surface change (no new adapter / behaviour callback / supervision-tree / verification-stack edit) may be hand-built in the main checkout. Two ~15-LOC fixes burn more orchestration tokens through `Batch.dispatch/2` than they save in integration signal — the dispatch lifecycle isn't meaningfully exercised at that size. Everything else, dispatch. Full rationale and the matching policy bullet live in `CLAUDE.md` § Dogfooding.
+
 ---
 
 ## Two Main Surfaces

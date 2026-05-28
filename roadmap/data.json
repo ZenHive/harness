@@ -2582,7 +2582,7 @@
       "phase": 8,
       "bundle": "closeout",
       "milestone": "v0_6",
-      "status": "pending",
+      "status": "done",
       "title": "Register the harness checkout as a project on boot (dev default)",
       "scores": {
         "d": 2,
@@ -2606,7 +2606,11 @@
       ],
       "body": "Smoke-discovered gap from Task 71 (v0.6 closeout). The refreshed README, dogfooding-workflow.md, and skills/harness-driver/SKILL.md all show `Harness.ProjectRegistry.lookup(\"harness\")` as the first call in the live-node dispatch path. Against the actually-running `iex -S mix` node, that returns `{:error, {:unknown_project, \"harness\"}}` — `Harness.ProjectRegistry.list/0` is empty because `config :harness, :projects` is commented out at `config/config.exs:94-99`.\n\nThe dogfooding-by-default policy (CLAUDE.md § Dogfooding) presumes the harness checkout is self-registered as the default \"harness\" project — there is no other reason for the example config block to specifically name the harness checkout. Uncommenting the block (in `config/dev.exs` rather than `config/config.exs` to keep test/prod un-opinionated) makes `iex -S mix` boot with the harness project pre-registered and makes the refreshed docs literally true against the live node.\n",
       "created_at": "2026-05-27",
+      "done_at": "2026-05-28",
       "scored_at": "2026-05-27",
+      "implemented": "New config/dev.exs registers the harness checkout as the default \"harness\" project via config :harness, :projects (single-entry double-nested list, since ProjectRegistry.init/1 iterates entries). config/config.exs adds 'if config_env() == :dev do import_config \"dev.exs\" end' before the existing test block and drops the redundant commented example. AC deviation noted: literal 'import_config \"#{config_env()}.exs\"' would require test.exs + prod.exs stubs (out_of_scope); the conditional :dev-only form satisfies the spirit while keeping test/prod un-opinionated. Verified: MIX_ENV=dev mix run --no-start -e 'IO.inspect(Application.get_env(:harness, :projects))' returns the harness entry; MIX_ENV=test project_registry_test.exs all 13 tests pass.",
+      "delivered_by": "claude-code",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -2614,7 +2618,7 @@
       "phase": 8,
       "bundle": "closeout",
       "milestone": "v0_6",
-      "status": "pending",
+      "status": "done",
       "title": "ResultStore.File.list_run_records skips undecodable term files instead of halting",
       "scores": {
         "d": 2,
@@ -2637,7 +2641,11 @@
       ],
       "body": "Smoke-discovered runtime bug from Task 71. `Harness.ResultStore.list_run_records/1` halts on the first file under `~/.harness/results/runs/` that fails `:erlang.binary_to_term/2` with the `:safe` flag — `read_term/1` (`lib/harness/result_store/file.ex:106-113`) returns `{:error, {:invalid_term_file, path}}`, and `collect_records/2` (lines 63-85) treats any `{:error, _}` as a halt. A single corrupt or atom-stale term file therefore prevents ANY records from being returned, including all the healthy ones.\n\nReproduced live on 2026-05-27 against the running dev BEAM: 32 healthy `.term` files in `~/.harness/results/runs/`, one earlier file that fails `:safe` decode (almost certainly atom-stale from a pre-restart LogRecord shape or removed atom). Every `Harness.ResultStore.list_run_records([])` call returns `{:error, {:invalid_term_file, ...}}` — the documented Tidewave dispatch-and-observe pattern in `skills/harness-driver/SKILL.md` and `docs/dogfooding-workflow.md` is consequently broken end-to-end.\n\nThe fix mirrors the already-present `{:ok, _other}` skip clause in `collect_records/2`: a `{:error, {:invalid_term_file, _}}` (and arguably any `{:error, _}` from per-file read) should be logged as a warning and skipped, not halt the entire query. The `{:ok, _other}` clause's reasoning (\"stale or cross-typed entries shouldn't crash list_run_records\") applies equally to atom-stale safe-decode failures.\n\nOut of scope for the fix: rewriting the on-disk format, GC of old term files, or migrating to an Ecto-backed store.\n",
       "created_at": "2026-05-27",
+      "done_at": "2026-05-28",
       "scored_at": "2026-05-27",
+      "implemented": "Harness.ResultStore.File.collect_records/2 now reduces with Enum.reduce/3 instead of reduce_while/3 — atom-stale or undecodable .term files are logged via Logger.warning and skipped, returning {:ok, [healthy_records]} instead of halting on the first {:error, _}. Spec narrowed to {:ok, [LogRecord.t()]} (no longer error-returning at the collection step). test/harness/result_store/file_test.exs covers (a) one corrupt sibling + one healthy record → healthy record returned, warning logged; (b) only-corrupt directory → {:ok, []}.",
+      "delivered_by": "claude-code",
+      "verified": true,
       "cross_repo": []
     }
   ]

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Dev environment now self-registers the harness checkout as the default
+  `"harness"` project on boot (Task 72). New `config/dev.exs` populates
+  `config :harness, :projects`; `config/config.exs` conditionally imports it
+  via `if config_env() == :dev`. `iex -S mix` therefore exposes
+  `Harness.ProjectRegistry.lookup("harness")` without a manual
+  `register/1` step, making the dispatch examples in
+  `skills/harness-driver/SKILL.md` and `docs/dogfooding-workflow.md`
+  literally true against the live node. `:test` and `:prod` are unchanged
+  (no auto-registration).
 - Same-task A/B agent evaluation (Task 33). `Harness.Batch.AgentEvaluation.compare/4`
   fans one roadmap item to N adapters in parallel under the existing batch fan-out;
   `Harness.Batch.run_pinned/3` is the lower-level entry that pairs each item with a
@@ -26,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Harness.ResultStore.File.list_run_records/2` now logs and skips undecodable
+  term files instead of halting on the first one (Task 73). Previously a single
+  atom-stale or corrupt file under `~/.harness/results/runs/` returned
+  `{:error, {:invalid_term_file, _}}` for the whole query, masking every
+  healthy sibling — breaking the Tidewave dispatch-and-observe pattern
+  documented in `skills/harness-driver/SKILL.md`. `collect_records/2` now
+  reduces with `Enum.reduce/3` (no short-circuit on `{:error, _}`),
+  `Logger.warning`s the reason, and returns `{:ok, [healthy_records]}`.
 - Batch test gate-file hygiene no longer leaks stale coordination files or
   orphaned polling shells (Task 70). Gate paths now register per-test cleanup,
   the fake adapter's shell waiter exits if it becomes reparented, and the batch

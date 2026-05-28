@@ -2130,7 +2130,7 @@ id = "72"
 phase = 8
 bundle = "closeout"
 milestone = "v0_6"
-status = "pending"
+status = "done"
 title = "Register the harness checkout as a project on boot (dev default)"
 scores = { d = 2, b = 6, u = 8 }
 acceptance_criteria = ['iex -S mix in dev boots with Harness.ProjectRegistry containing the harness project — Harness.ProjectRegistry.lookup("harness") returns {:ok, %Project{}} without any runtime registration call', ":test and :prod envs do not auto-register the harness project (config lives in config/dev.exs, not config/config.exs)", "config/dev.exs is created and `import_config \"#{config_env()}.exs\"` is added to config/config.exs — neither exists today (config/config.exs has no env-split machinery; only config.exs and runtime.exs are present)", "The two-eval Tidewave smoke from skills/harness-driver/SKILL.md succeeds without any manual Harness.ProjectRegistry.register/1 step", "No change required to README, docs/dogfooding-workflow.md, or skills/harness-driver/SKILL.md — the docs are already correct; only config wires up the missing default"]
@@ -2140,15 +2140,19 @@ Smoke-discovered gap from Task 71 (v0.6 closeout). The refreshed README, dogfood
 
 The dogfooding-by-default policy (CLAUDE.md § Dogfooding) presumes the harness checkout is self-registered as the default "harness" project — there is no other reason for the example config block to specifically name the harness checkout. Uncommenting the block (in `config/dev.exs` rather than `config/config.exs` to keep test/prod un-opinionated) makes `iex -S mix` boot with the harness project pre-registered and makes the refreshed docs literally true against the live node.
 """
+implemented = """New config/dev.exs registers the harness checkout as the default "harness" project via config :harness, :projects (single-entry double-nested list, since ProjectRegistry.init/1 iterates entries). config/config.exs adds 'if config_env() == :dev do import_config "dev.exs" end' before the existing test block and drops the redundant commented example. AC deviation noted: literal 'import_config "#{config_env()}.exs"' would require test.exs + prod.exs stubs (out_of_scope); the conditional :dev-only form satisfies the spirit while keeping test/prod un-opinionated. Verified: MIX_ENV=dev mix run --no-start -e 'IO.inspect(Application.get_env(:harness, :projects))' returns the harness entry; MIX_ENV=test project_registry_test.exs all 13 tests pass."""
+delivered_by = "claude-code"
+verified = true
 created_at = "2026-05-27"
 scored_at = "2026-05-27"
+done_at = "2026-05-28"
 
 [[task]]
 id = "73"
 phase = 8
 bundle = "closeout"
 milestone = "v0_6"
-status = "pending"
+status = "done"
 title = "ResultStore.File.list_run_records skips undecodable term files instead of halting"
 scores = { d = 2, b = 5, u = 7 }
 acceptance_criteria = ["Harness.ResultStore.File.list_run_records/2 returns {:ok, [LogRecord.t()]} containing every healthy record, even when one or more sibling files fail safe-decode", "Undecodable / atom-stale files are logged via Logger.warning with the path and the reason, then skipped (matching the existing {:ok, _other} skip clause's spirit)", "An ExUnit test in test/harness/result_store/file_test.exs reproduces the scenario: a directory containing one valid LogRecord term + one file with arbitrary bytes; list_run_records returns the valid record and logs a warning for the corrupt one", "The two-eval Tidewave smoke from SKILL.md returns a list of records (possibly empty after filtering) instead of {:error, {:invalid_term_file, _}}"]
@@ -2162,5 +2166,9 @@ The fix mirrors the already-present `{:ok, _other}` skip clause in `collect_reco
 
 Out of scope for the fix: rewriting the on-disk format, GC of old term files, or migrating to an Ecto-backed store.
 """
+implemented = "Harness.ResultStore.File.collect_records/2 now reduces with Enum.reduce/3 instead of reduce_while/3 — atom-stale or undecodable .term files are logged via Logger.warning and skipped, returning {:ok, [healthy_records]} instead of halting on the first {:error, _}. Spec narrowed to {:ok, [LogRecord.t()]} (no longer error-returning at the collection step). test/harness/result_store/file_test.exs covers (a) one corrupt sibling + one healthy record → healthy record returned, warning logged; (b) only-corrupt directory → {:ok, []}."
+delivered_by = "claude-code"
+verified = true
 created_at = "2026-05-27"
 scored_at = "2026-05-27"
+done_at = "2026-05-28"

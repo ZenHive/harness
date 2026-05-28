@@ -12,6 +12,8 @@ defmodule Harness.ResultStore.File do
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.Run.LogRecord
 
+  require Logger
+
   @default_root "~/.harness/results"
 
   @impl Harness.ResultStore
@@ -59,29 +61,26 @@ defmodule Harness.ResultStore.File do
   end
 
   @spec collect_records([{:ok, LogRecord.t()} | {:error, term()}], Harness.ResultStore.filters()) ::
-          {:ok, [LogRecord.t()]} | {:error, term()}
+          {:ok, [LogRecord.t()]}
   defp collect_records(records, filters) do
     records
-    |> Enum.reduce_while({:ok, []}, fn
-      {:ok, %LogRecord{} = record}, {:ok, acc} ->
-        if match_filters?(record, filters) do
-          {:cont, {:ok, [record | acc]}}
-        else
-          {:cont, {:ok, acc}}
-        end
+    |> Enum.reduce([], fn
+      {:ok, %LogRecord{} = record}, acc ->
+        if match_filters?(record, filters), do: [record | acc], else: acc
 
-      {:ok, _other}, {:ok, acc} ->
+      {:ok, _other}, acc ->
         # Skip term files in runs/ that didn't decode to a LogRecord — stale or
         # cross-typed entries shouldn't crash list_run_records with a FunctionClauseError.
-        {:cont, {:ok, acc}}
+        acc
 
-      {:error, reason}, _acc ->
-        {:halt, {:error, reason}}
+      {:error, reason}, acc ->
+        # An atom-stale or otherwise undecodable term file shouldn't mask every
+        # healthy record. Log and skip, mirroring the {:ok, _other} clause above.
+        Logger.warning("harness result store: skipping undecodable term file: #{inspect(reason)}")
+        acc
     end)
-    |> case do
-      {:ok, records} -> {:ok, Enum.reverse(records)}
-      {:error, reason} -> {:error, reason}
-    end
+    |> Enum.reverse()
+    |> then(&{:ok, &1})
   end
 
   @spec match_filters?(LogRecord.t(), Harness.ResultStore.filters()) :: boolean()
