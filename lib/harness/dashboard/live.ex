@@ -19,6 +19,7 @@ defmodule Harness.Dashboard.Live do
   use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}
 
   alias Harness.AgentRegistry
+  alias Harness.Dashboard.Components
   alias Harness.Dashboard.Transcript
   alias Harness.ProjectRegistry
   alias Harness.Run.Status
@@ -195,7 +196,6 @@ defmodule Harness.Dashboard.Live do
     assigns = assign(assigns, counts: counts, filtered_runs: filtered_runs)
 
     ~H"""
-    <h1>Harness Dashboard</h1>
     <div class="topbar">
       <strong>Project:</strong>
       <.project_switcher projects={@projects} selected={@selected_project} />
@@ -207,34 +207,31 @@ defmodule Harness.Dashboard.Live do
     </div>
 
     <h2>Active runs</h2>
-    <%= if @filtered_runs == [] do %>
-      <p>No runs in flight or lingering.</p>
-    <% else %>
-      <table>
-        <thead>
-          <tr>
-            <th>Task</th>
-            <th>Run</th>
-            <th>State</th>
-            <th>Attempts</th>
-            <th>Verdict</th>
-            <th>Detail</th>
-          </tr>
-        </thead>
-        <tbody>
-          <%= for entry <- @filtered_runs do %>
-            <tr>
-              <td>{entry.status.task_id}</td>
-              <td><.run_link run_id={entry.status.run_id} /></td>
-              <td><span class={"bucket bucket-#{entry.bucket}"}>{entry.status.state}</span></td>
-              <td>{entry.status.repair_attempts}</td>
-              <td>{verdict_label(entry.status.verdict_status)}</td>
-              <td>{entry.detail || ""}</td>
-            </tr>
-          <% end %>
-        </tbody>
-      </table>
-    <% end %>
+    <p :if={@filtered_runs == []}>No runs in flight or lingering.</p>
+    <table :if={@filtered_runs != []}>
+      <thead>
+        <tr>
+          <th>Task</th>
+          <th>Run</th>
+          <th>State</th>
+          <th>Attempts</th>
+          <th>Verdict</th>
+          <th>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr :for={entry <- @filtered_runs}>
+          <td>{entry.status.task_id}</td>
+          <td><.run_link run_id={entry.status.run_id} /></td>
+          <td>
+            <Components.bucket_badge bucket={entry.bucket} label={to_string(entry.status.state)} />
+          </td>
+          <td>{entry.status.repair_attempts}</td>
+          <td>{verdict_label(entry.status.verdict_status)}</td>
+          <td>{entry.detail || ""}</td>
+        </tr>
+      </tbody>
+    </table>
 
     <h3>Adapters</h3>
     <table>
@@ -246,24 +243,22 @@ defmodule Harness.Dashboard.Live do
         </tr>
       </thead>
       <tbody>
-        <%= for adapter <- @adapters do %>
-          <tr>
-            <td><code>{adapter.agent}</code></td>
-            <td><code>{inspect(adapter.module)}</code></td>
-            <td>{if adapter.installed, do: "yes", else: "no"}</td>
-          </tr>
-        <% end %>
+        <tr :for={adapter <- @adapters}>
+          <td><code>{adapter.agent}</code></td>
+          <td><code>{inspect(adapter.module)}</code></td>
+          <td>{if adapter.installed, do: "yes", else: "no"}</td>
+        </tr>
       </tbody>
     </table>
 
-    <%= if @snapshot.unavailable_agents != [] do %>
+    <div :if={@snapshot.unavailable_agents != []}>
       <h3>Unavailable agents</h3>
       <ul>
-        <%= for {adapter, reason} <- @snapshot.unavailable_agents do %>
-          <li><code>{inspect(adapter)}</code> — {inspect(reason)}</li>
-        <% end %>
+        <li :for={{adapter, reason} <- @snapshot.unavailable_agents}>
+          <code>{inspect(adapter)}</code> — {inspect(reason)}
+        </li>
       </ul>
-    <% end %>
+    </div>
     """
   end
 
@@ -273,35 +268,31 @@ defmodule Harness.Dashboard.Live do
     <h1>Run {@run_id}</h1>
     <p><a href="/harness">← All runs</a></p>
 
-    <%= if @run_status == nil do %>
-      <p>Run not found (already settled and unregistered, or never started in this BEAM).</p>
-    <% else %>
-      <dl class="field">
-        <dt>Task</dt>
-        <dd>{@run_status.task_id}</dd>
-        <dt>State</dt>
-        <dd>{@run_status.state}</dd>
-        <dt>Repair attempts</dt>
-        <dd>{@run_status.repair_attempts}</dd>
-        <dt>Verdict</dt>
-        <dd>{verdict_label(@run_status.verdict_status)}</dd>
-        <dt>Agent kind</dt>
-        <dd>{inspect(@run_status.agent_kind)}</dd>
-        <dt>Agent OS pid</dt>
-        <dd>{@run_status.agent_os_pid || "—"}</dd>
-        <dt>Reason</dt>
-        <dd>{inspect(@run_status.reason)}</dd>
-        <dt>Worktree path</dt>
-        <dd>{@run_status.worktree_path || "—"}</dd>
-      </dl>
-    <% end %>
+    <p :if={@run_status == nil}>
+      Run not found (already settled and unregistered, or never started in this BEAM).
+    </p>
+    <dl :if={@run_status != nil} class="field">
+      <dt>Task</dt>
+      <dd>{@run_status.task_id}</dd>
+      <dt>State</dt>
+      <dd>{@run_status.state}</dd>
+      <dt>Repair attempts</dt>
+      <dd>{@run_status.repair_attempts}</dd>
+      <dt>Verdict</dt>
+      <dd>{verdict_label(@run_status.verdict_status)}</dd>
+      <dt>Agent kind</dt>
+      <dd>{inspect(@run_status.agent_kind)}</dd>
+      <dt>Agent OS pid</dt>
+      <dd>{@run_status.agent_os_pid || "—"}</dd>
+      <dt>Reason</dt>
+      <dd>{inspect(@run_status.reason)}</dd>
+      <dt>Worktree path</dt>
+      <dd>{@run_status.worktree_path || "—"}</dd>
+    </dl>
 
     <h2>Transcript</h2>
-    <%= if @transcript == "" do %>
-      <p>Waiting for output…</p>
-    <% else %>
-      <pre class="transcript">{@transcript}</pre>
-    <% end %>
+    <p :if={@transcript == ""}>Waiting for output…</p>
+    <pre :if={@transcript != ""} class="transcript">{@transcript}</pre>
     """
   end
 
@@ -313,9 +304,9 @@ defmodule Harness.Dashboard.Live do
     ~H"""
     <select phx-change="select_project">
       <option value="">All projects</option>
-      <%= for project <- @projects do %>
-        <option value={project.name} selected={@selected == project.name}>{project.name}</option>
-      <% end %>
+      <option :for={project <- @projects} value={project.name} selected={@selected == project.name}>
+        {project.name}
+      </option>
     </select>
     """
   end

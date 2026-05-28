@@ -57,6 +57,7 @@ defmodule Harness.Dashboard.ChatLive do
   alias Harness.Chat.Session
   alias Harness.Chat.Stream
   alias Harness.Chat.Supervisor, as: ChatSupervisor
+  alias Harness.Dashboard.Components
   alias Phoenix.LiveView.Rendered
   alias Phoenix.LiveView.Socket
 
@@ -555,7 +556,7 @@ defmodule Harness.Dashboard.ChatLive do
       </:empty>
 
       <div id="messages" phx-update="stream" class="messages">
-        <.message_row
+        <Components.message_row
           :for={{dom_id, msg} <- @streams.messages}
           dom_id={dom_id}
           role={msg.role}
@@ -598,7 +599,6 @@ defmodule Harness.Dashboard.ChatLive do
           <span :if={@session_id} class="session-id">{@session_id}</span>
         </div>
         <div>
-          <a href="/harness">← Dashboard</a>
           <button type="button" phx-click="new_chat">New chat</button>
         </div>
       </header>
@@ -608,171 +608,4 @@ defmodule Harness.Dashboard.ChatLive do
     </div>
     """
   end
-
-  attr(:dom_id, :string, required: true)
-  attr(:role, :atom, values: [:user, :assistant, :tool, :terminal], required: true)
-  attr(:text, :string, default: "")
-  attr(:streaming?, :boolean, default: false)
-  attr(:tool_calls, :list, default: [])
-
-  @spec message_row(map()) :: Rendered.t()
-  def message_row(assigns) do
-    ~H"""
-    <article id={@dom_id} class={"msg msg-#{@role}"}>
-      <div class="msg-role">{role_label(@role)}</div>
-      <div class="msg-content">
-        <div class="msg-body" data-streaming={if @streaming?, do: "true", else: "false"}>{@text}</div>
-        <.tool_call
-          :for={tc <- @tool_calls}
-          id={tc.id}
-          name={tc.name}
-          args={tc.args}
-          result={tc.result}
-          status={tc.status}
-        />
-      </div>
-    </article>
-    """
-  end
-
-  attr(:id, :string, required: true)
-  attr(:name, :string, required: true)
-  attr(:args, :any, required: true)
-  attr(:result, :any, default: nil)
-  attr(:status, :atom, values: [:pending, :done], default: :pending)
-
-  @spec tool_call(map()) :: Rendered.t()
-  def tool_call(assigns) do
-    ~H"""
-    <details class="tool-call">
-      <summary>
-        <span class="tool-name">{@name}</span>
-        <span class="tool-status" data-status={@status}>{@status}</span>
-      </summary>
-      <div class="tool-body">
-        <div class="tool-section">
-          <div class="tool-section-label">arguments</div>
-          <.json_tree value={@args} />
-        </div>
-        <div :if={@result != nil} class="tool-section">
-          <div class="tool-section-label">result</div>
-          <.json_tree value={@result} />
-        </div>
-      </div>
-    </details>
-    """
-  end
-
-  attr(:value, :any, required: true)
-
-  @spec json_tree(map()) :: Rendered.t()
-  def json_tree(%{value: value} = assigns) do
-    assigns = assign(assigns, :kind, value_kind(value))
-
-    ~H"""
-    <div class="jtree">
-      <.json_node value={@value} kind={@kind} />
-    </div>
-    """
-  end
-
-  attr(:value, :any, required: true)
-  attr(:kind, :atom, required: true)
-
-  @spec json_node(map()) :: Rendered.t()
-  def json_node(%{kind: :map, value: value} = assigns) do
-    pairs =
-      value
-      |> Enum.map(fn {k, v} -> {to_string(k), v} end)
-      |> Enum.sort_by(fn {k, _} -> k end)
-
-    assigns = assign(assigns, :pairs, pairs)
-
-    ~H"""
-    <dl :if={@pairs != []}>
-      <div :for={{key, val} <- @pairs}>
-        <dt>{key}</dt>
-        <dd><.json_node value={val} kind={value_kind(val)} /></dd>
-      </div>
-    </dl>
-    <span :if={@pairs == []} class="empty">{"{}"}</span>
-    """
-  end
-
-  def json_node(%{kind: :list, value: value} = assigns) do
-    items = Enum.with_index(value)
-    assigns = assign(assigns, :items, items)
-
-    ~H"""
-    <ol :if={@items != []}>
-      <li :for={{item, _i} <- @items}>
-        <.json_node value={item} kind={value_kind(item)} />
-      </li>
-    </ol>
-    <span :if={@items == []} class="empty">{"[]"}</span>
-    """
-  end
-
-  def json_node(%{kind: :string, value: value} = assigns) do
-    assigns = assign(assigns, :text, value)
-
-    ~H"""
-    <span class="leaf-string">"{@text}"</span>
-    """
-  end
-
-  def json_node(%{kind: :number, value: value} = assigns) do
-    assigns = assign(assigns, :n, value)
-
-    ~H"""
-    <span class="leaf-number">{@n}</span>
-    """
-  end
-
-  def json_node(%{kind: :boolean, value: value} = assigns) do
-    assigns = assign(assigns, :b, value)
-
-    ~H"""
-    <span class="leaf-bool">{to_string(@b)}</span>
-    """
-  end
-
-  def json_node(%{kind: :atom, value: value} = assigns) do
-    assigns = assign(assigns, :a, value)
-
-    ~H"""
-    <span class="leaf-atom">:{@a}</span>
-    """
-  end
-
-  def json_node(%{kind: :nil_, value: _value} = assigns) do
-    ~H"""
-    <span class="leaf-nil">null</span>
-    """
-  end
-
-  def json_node(%{kind: :other, value: value} = assigns) do
-    assigns = assign(assigns, :inspected, inspect(value))
-
-    ~H"""
-    <span class="leaf-other">{@inspected}</span>
-    """
-  end
-
-  @spec value_kind(term()) :: :map | :list | :string | :number | :boolean | :atom | :nil_ | :other
-  defp value_kind(value) when is_map(value) and not is_struct(value), do: :map
-  defp value_kind(value) when is_list(value), do: :list
-  defp value_kind(value) when is_binary(value), do: :string
-  defp value_kind(value) when is_number(value), do: :number
-  defp value_kind(value) when is_boolean(value), do: :boolean
-  defp value_kind(nil), do: :nil_
-  defp value_kind(value) when is_atom(value), do: :atom
-  defp value_kind(_value), do: :other
-
-  @spec role_label(atom()) :: String.t()
-  defp role_label(:user), do: "you"
-  defp role_label(:assistant), do: "agent"
-  defp role_label(:tool), do: "tool"
-  defp role_label(:terminal), do: "terminal"
-  defp role_label(other), do: to_string(other)
 end

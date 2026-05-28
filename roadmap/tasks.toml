@@ -4,7 +4,7 @@ default_branch = "development"
 vision = "An OTP-native task-execution engine an AI orchestrator drives end to end: it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent running in an isolated worktree, runs the target project's own check stack against the result, and reports verified outcomes back to its consumer. Today the consumer surface is the BEAM-native Elixir API (called from IEx, tidewave, or another process); the Phase 7 multi-project pivot (milestone v0_5) makes it a long-running OTP node with a Phoenix LiveView dashboard orchestrating N registered target projects (Elixir, Rust, anything with a shell-driven check stack) concurrently. MCP/JSON-CLI is deferred (Phase 6) — it earns complexity only if a non-Elixir consumer ever needs to drive harness from outside the BEAM. harness is itself developed by dogfooding — from the core loop (Task 8) onward, every pending roadmap task is delivered by dispatching it through harness rather than hand-building it (Phase 7's load-bearing scaffolding is the documented exception)."
 
 [focus]
-phase = 9
+phase = 10
 
 # ----------------------------------------------------------------------------
 # Phases
@@ -53,6 +53,11 @@ status = "in_progress"
 [phases.9]
 name = "Chat Orchestrator"
 order = 9
+status = "pending"
+
+[phases.10]
+name = "Dashboard Operator UX"
+order = 10
 status = "pending"
 
 # ----------------------------------------------------------------------------
@@ -124,6 +129,11 @@ description = "Tool-equipped LLM chat surface for harness — descripex-annotate
 order = 1
 phase = 9
 
+[bundles.dashboard-chrome]
+description = "mpp.dev-inspired dashboard repaint: shared Components module (navbar, footer, page_shell, bucket_badge, transcript_view + extracted message_row/tool_call/json_tree), Tokens overhaul (Geist family, tightened type scale, sticky navbar/footer styles, glyph badges), and run-detail transcript rework from raw stream-json `<pre>` to parsed chat-style turns with per-agent parser dispatch"
+order = 1
+phase = 10
+
 # ----------------------------------------------------------------------------
 # Milestones
 # ----------------------------------------------------------------------------
@@ -176,6 +186,13 @@ description = "Proves a tool-equipped LLM driven over a descripex-annotated harn
 order = 7
 status = "done"
 target_version = "0.7.0"
+
+[milestones.v0_8]
+name = "Dashboard Operator UX"
+description = "Proves a unified, designed dashboard chrome (persistent navbar + footer + shared component vocabulary) plus chat-style parsed transcripts on the run-detail page make harness consumable by a human operator — not just an AI driver — without requiring the operator to read raw stream-json or context-switch between visually fragmented per-page headers."
+order = 8
+status = "active"
+target_version = "0.8.0"
 
 # ----------------------------------------------------------------------------
 # Tasks
@@ -2688,3 +2705,268 @@ verified = true
 created_at = "2026-05-28"
 scored_at = "2026-05-28"
 done_at = "2026-05-28"
+
+[[task]]
+id = "85"
+phase = 10
+bundle = "dashboard-chrome"
+status = "pending"
+milestone = "v0_8"
+title = "Harness.Dashboard.Components + Tokens overhaul + persistent navbar/footer chrome"
+scores = { d = 5, b = 8, u = 8 }
+depends_on = []
+acceptance_criteria = [
+  "New module lib/harness/dashboard/components.ex `use Phoenix.Component` exports navbar/1, footer/1, page_shell/1 (slot-based), bucket_badge/1, message_row/1, tool_call/1, json_tree/1, json_node/1, value_kind/1, role_label/1",
+  "message_row/1, tool_call/1, json_tree/1, json_node/1, value_kind/1, role_label/1 are extracted verbatim from lib/harness/dashboard/chat_live.ex (lines ~612–777) — ChatLive imports Components and the inline defs are deleted",
+  "All component functions declare arguments via `attr/3` and slots via `slot/3` (Phoenix 1.8 / LiveView 1.1 modern style); HEEx-only templating — no `~H` outside Phoenix.Component, no string interpolation into raw/1",
+  "lib/harness/dashboard/tokens.ex loads Geist + Geist Mono via Google Fonts <link> (or vendored woff2 if needed) and Geist Pixel Square via @font-face (Vercel Geist CDN if available; otherwise a vendored woff2 — pin the actual URL in the moduledoc)",
+  "Tightened type-scale variables in tokens.ex: --text-xs 0.75rem, --text-sm 0.8125rem, --text-base 0.875rem, --text-lg 1rem, --text-xl 1.25rem, --text-2xl 1.75rem, --text-display 2.5rem; --font-display points at Geist Pixel Square, --font-body Geist, --font-mono Geist Mono",
+  "New .navbar / .navbar-brand / .navbar-links / .navbar-meta / .footer / .page-shell rules in tokens.ex; sticky navbar uses backdrop-filter blur over rgba(11,12,16,0.72); body becomes a pure colour/font reset so navbar + footer render full-bleed",
+  "Bucket-badge glyph mapping in tokens.ex via ::before pseudo-elements: :in_flight ⟲, :repairing ▸, :green ✔︎, :red ✗",
+  "lib/harness/dashboard/layouts/root.html.heex wraps {@inner_content} in <Harness.Dashboard.Components.page_shell> so all four routes inherit the chrome",
+  "lib/harness/dashboard/live.ex :index drops the inline <h1>Harness Dashboard</h1> (navbar owns it); bucket counts in the topbar render via <.bucket_badge state={...} count={...} />",
+  "lib/harness/dashboard/chat_live.ex removes the per-page <header class=\"chat-header\">; per-session chip (\"session: <id>\") renders as a .page-sub line under the navbar",
+  "Footer renders: harness@<sha> (built <n>d ago) · github.com/ZenHive/harness — SHA from a compile-time captured git sha (Application.spec(:harness, :vsn) as fallback)",
+  "Browser-verified end-to-end on all four routes: http://localhost:4018/harness, /harness/runs/<id>, /harness/chat, /harness/chat/<session-id>; sticky navbar identical on each; wordmark uses Geist Pixel Square; reduced-motion guard at tokens.ex still silences .msg-arrive + .cursor-pulse when prefers-reduced-motion: reduce is set",
+  "components_test.exs covers navbar render-tree (wordmark present, link href list correct), footer (SHA + age string present), page_shell slot composition, bucket_badge glyph mapping (each state renders the expected ::before glyph class), and that message_row/tool_call/json_tree extraction is behaviour-preserving (ChatLive renders the same DOM after the swap)"
+]
+out_of_scope = [
+  "Light-mode flip — dark-mode-first stays; keep colours as var(--*) so a future ?theme=light is cheap",
+  "Mobile-first responsive layout — add min-width: 720px graceful fallback only (single-column collapse + nav hamburger optional)",
+  "Avatar / sign-in chrome (no multi-user surface yet)",
+  "Transcript parser rework (Task 86) and run-detail transcript_view wiring (Task 87) — Task 85 only delivers the shared chrome + extracted/renamed components",
+  "Removing Fraunces / JetBrains Mono Google-Fonts <link> until ALL callers cut over (do the swap, then a follow-up sweep)"
+]
+body = """
+Reskin the harness dashboard with mpp.dev-inspired chrome on the existing dark
+palette, and hoist every reusable component into a single
+`Harness.Dashboard.Components` module so the four routes
+(`/harness`, `/harness/runs/:run_id`, `/harness/chat`, `/harness/chat/:session_id`)
+share one vocabulary instead of inline per-page chrome.
+
+**Reference:** mpp.dev (Tempo × Stripe — Machine Payments Protocol site, built on
+Vocs). Top horizontal navbar (Docs · Services · Blog · IETF Specs · GitHub),
+terse editorial density, Geist / Geist Mono / Geist Pixel Square typography,
+warm gold accent already aligned with harness's `--accent: #e6a14b`. Glyph
+indicators (✔︎▸↑↓→), version-SHA-as-build-id footer.
+
+**Three layers (full design rationale in
+`~/.claude/plans/plan-updates-to-our-polymorphic-lightning.md`):**
+
+1. **`Harness.Dashboard.Components` (NEW)** — single `use Phoenix.Component`
+   module. Exports `navbar/1`, `footer/1`, `page_shell/1` (slot-based wrapper),
+   `bucket_badge/1`, and the existing `message_row/1` / `tool_call/1` /
+   `json_tree/1` / `json_node/1` / `value_kind/1` / `role_label/1` extracted
+   **verbatim** from `lib/harness/dashboard/chat_live.ex` (lines ~612–777).
+   ChatLive then `import`s them. `transcript_view/1` is added in Task 87.
+
+2. **Tokens overhaul** in `lib/harness/dashboard/tokens.ex`. Font swap to Geist
+   family (drop Fraunces + JetBrains Mono from the active surface). Tighter
+   type scale. New `.navbar` / `.footer` / `.page-shell` / `.eyebrow` rules.
+   Sticky navbar with `backdrop-filter: blur(8px)` over `rgba(11,12,16,0.72)`.
+   Bucket-badge glyph mapping via `::before` pseudo-elements. Body becomes
+   colour/font reset; max-width container moves to `.page-shell main` so the
+   navbar + footer can run full-bleed.
+
+3. **Root layout wiring** — `lib/harness/dashboard/layouts/root.html.heex`
+   wraps `{@inner_content}` in `<Harness.Dashboard.Components.page_shell>`.
+   `lib/harness/dashboard/live.ex` `:index` drops the inline `<h1>` and renders
+   bucket counts via `<.bucket_badge>`. `chat_live.ex` drops the per-page
+   `<header class="chat-header">` and surfaces the per-session chip as a
+   `.page-sub` line under the navbar.
+
+**Phoenix 1.8 / LiveView 1.1 modern-style mandates** (recorded so this task
+doesn't drift into 1.7 idioms):
+- Components live in a module with `use Phoenix.Component`; arguments declared
+  via `attr/3`, slots via `slot/3`. No bare function components without `attr`.
+- HEEx only — no `~H` outside `Phoenix.Component`. No `raw/1` on
+  string-interpolated structural markup. Use HEEx `:if` / `:for` special attrs
+  for conditionals / iteration.
+- Streams stay the rendering primitive for the message lists (Task 78's
+  `stream(:messages, ...)` pattern is the precedent — Task 85 doesn't touch it,
+  but the extracted `message_row/1` keeps `id` stable for stream DOM diffing).
+- Layout: keep the existing `Phoenix.LiveView.Router.live_session` shape;
+  the root layout is the only template that gains the `<.page_shell>` wrap.
+- No `Phoenix.View` references (1.7-era) — `Phoenix.Component` everywhere.
+
+**Geist Pixel Square sourcing.** Verify the Vercel Geist CDN URL hosts the
+pixel variant before committing the `@font-face`; if not (likely — pixel
+square is mpp.dev's brand variant), vendor a single `.woff2` from a
+permissive Chicago Kare clone OR drop the pixel-font wordmark to Geist Sans.
+Pin the actual decision in `tokens.ex` `@moduledoc` so the next session knows
+which path was taken.
+
+**Hand-built** per CLAUDE.md § "Hand-Build UI Tasks via Browser Tooling" — this
+is LiveView / HEEx / CSS / DOM-feedback work, exactly the territory headless
+dispatch fails on (Task 78 precedent). Run `iex -S mix` with Tidewave open and
+the four routes loaded in the browser; iterate live.
+"""
+created_at = "2026-05-29"
+scored_at = "2026-05-29"
+
+[[task]]
+id = "86"
+phase = 10
+bundle = "dashboard-chrome"
+status = "pending"
+milestone = "v0_8"
+title = "Transcript parser dispatch + per-agent parsers (Codex / Cursor / passthrough) with unified event vocabulary"
+scores = { d = 4, b = 7, u = 7 }
+depends_on = []
+acceptance_criteria = [
+  "New module lib/harness/dashboard/transcript/parser.ex exposes `append/4` of shape `(agent_kind, chunk, parser_state) :: {events, new_parser_state}` and `init_state/1 :: parser_state` — pure module, no GenServer, no side effects",
+  "Dispatch table covers :claude (delegates to Harness.Chat.Claude.StreamParser at lib/harness/chat/claude/stream_parser.ex), :codex (new lib/harness/dashboard/transcript/parser/codex.ex parsing `--json` NDJSON), :cursor (new lib/harness/dashboard/transcript/parser/cursor.ex parsing `--output-format stream-json` NDJSON), and :grok / :pi / :antigravity (passthrough at lib/harness/dashboard/transcript/parser/passthrough.ex — every chunk becomes one :plain_text event)",
+  "Unified event vocabulary all parsers emit: {:assistant_text, %{text}}, {:assistant_tool_use, %{id, name, input}}, {:tool_result, %{tool_use_id, content}}, {:system, %{...}}, {:plain_text, %{text}}, {:unknown, %{raw}}",
+  "Per-agent fixture-driven tests at test/fixtures/transcripts/{claude,codex,cursor,grok,pi}.ndjson — fixtures captured from real harness runs (use existing audit/log records or run a 1-task dispatch to capture); parser_test.exs asserts the emitted event sequence for each fixture",
+  "Partial-line buffering correctness: mid-line chunk boundaries produce no events until newline arrives (covered for codex and cursor in addition to the existing claude coverage in stream_parser_test.exs)",
+  "Unknown-event preservation: malformed lines emit {:unknown, %{raw: line}} (NOT a crash, NOT a silent drop) — fixture includes one corrupt line per structured agent to prove this",
+  "Passthrough emits exactly one :plain_text event per chunk for unstructured agents — no line splitting, no JSON parsing",
+  "Module-doc on parser.ex names each agent's wire format with citation (Claude: stream-json, one JSON-RPC-shaped object per line; Codex: `--json` mode, one event object per line; Cursor: `--output-format stream-json`, NDJSON; Grok/Pi/Antigravity: free-form text)",
+  "No new dependencies — all parsing is pure Elixir / Jason"
+]
+out_of_scope = [
+  "Wiring the parser into Harness.Run gen_statem and the dashboard render path (Task 87 owns the integration)",
+  "Replacing the existing Harness.Chat.Claude.StreamParser — it stays as the authoritative claude parser; this task adds a thin dispatch wrapper",
+  "Backwards-compat shims for prior event shapes — the unified vocabulary IS the new shape; consumers cut over in Task 87",
+  "Telemetry / metrics emission from the parser (could be added in a follow-up if useful)"
+]
+body = """
+Stand up per-agent transcript parsers so the run-detail page can render
+**parsed turns** instead of raw stream-json (Task 87 consumes this). Pure
+module, no runtime side effects — the dispatcher takes
+`(agent_kind, chunk, parser_state)` and emits a list of structured events.
+
+**Reuse:** `Harness.Chat.Claude.StreamParser` (lib/harness/chat/claude/stream_parser.ex)
+already emits exactly the event shape we want for claude. The new dispatch
+module wraps it and adds sibling parsers for the other adapters.
+
+**Per-agent wire formats** (also documented in
+`docs/agent-cli-reference.md`):
+- Claude: `claude -p --output-format stream-json` — NDJSON, one event object per line, well-defined block types (`text_delta`, `tool_use`, `tool_result`, `system_init`, `result`).
+- Codex: `codex exec --json` — NDJSON, one event object per line, codex-specific event names.
+- Cursor: `cursor-agent -p --output-format stream-json` — NDJSON, same general shape as Claude (verify against a captured fixture).
+- Grok / Antigravity / Pi: free-form text — no per-line JSON contract worth parsing. Passthrough: every chunk becomes one `:plain_text` event.
+
+**Unified event vocabulary** all parsers emit (consumer in Task 87 walks this
+list to render chat-style turns):
+
+```elixir
+{:assistant_text,     %{text: String.t()}}
+{:assistant_tool_use, %{id: String.t(), name: String.t(), input: map()}}
+{:tool_result,        %{tool_use_id: String.t(), content: term()}}
+{:system,             %{kind: atom(), data: map()}}    # banners, model id, turn count
+{:plain_text,         %{text: String.t()}}             # passthrough agents
+{:unknown,            %{raw: String.t()}}              # malformed line, preserved
+```
+
+**Tests.** Fixture-driven. `test/fixtures/transcripts/{claude,codex,cursor,grok,pi}.ndjson`
+hold captured wire output from real harness runs (capture by running a 1-task
+dispatch per adapter and writing `:on_output` chunks to disk, OR by reading
+existing `LogRecord` agent_output fields from `ResultStore`).
+`parser_test.exs` walks each fixture through `Parser.append/4` and asserts the
+emitted event sequence. Partial-line buffering tested by splitting one fixture
+mid-line and re-feeding.
+
+**No dependencies added.** Pure Elixir + Jason (already in the dep stack).
+
+Independent of Task 85 — both can land in parallel. Task 87 depends on both.
+"""
+created_at = "2026-05-29"
+scored_at = "2026-05-29"
+
+[[task]]
+id = "87"
+phase = 10
+bundle = "dashboard-chrome"
+status = "pending"
+milestone = "v0_8"
+title = "Run-detail transcript rework — parsed event list + <.transcript_view> component, ?raw=1 fallback"
+scores = { d = 5, b = 9, u = 9 }
+depends_on = [85, 86]
+acceptance_criteria = [
+  "lib/harness/dashboard/transcript.ex buffer changes from raw iodata binary to `{events :: [event()], parser_state :: term()}` per run; new `append_chunk/4` takes (chunks, agent_kind, parser_state, new_chunk) returning {new_chunks, new_parser_state}",
+  "Cap moves from byte-count to event-count: default 500 events (configurable via :dashboard, :transcript_max_events); oldest events drop first when cap exceeded (mirrors today's iodata head-drop)",
+  "Transcript.broadcast/2 broadcasts BOTH the new {:harness_transcript_events, run_id, seq, events} shape AND the legacy {:harness_transcript, run_id, seq, raw_chunk} for one release (so ?raw=1 still works)",
+  "Harness.Run carries parser_state in its gen_statem data; on each :transcript_chunk it invokes Harness.Dashboard.Transcript.Parser.append/4 and broadcasts the resulting events; backfill snapshot via new Harness.Run.transcript_events/1 reader (legacy transcript/1 stays as raw-binary reader, deprecated)",
+  "Harness.Dashboard.Components.transcript_view/1 (added on top of Task 85's module) walks the event list and renders: :assistant_text via <.message_row role={:assistant}>; consecutive :assistant_text events in one turn collapse into one message body (mirror ChatLive's text_delta accumulator); :assistant_tool_use + matching :tool_result grouped via <.tool_call>; :system as <.eyebrow>-styled metadata line; :plain_text as <pre class=\"plain-chunk\"> monospace card; :unknown as muted <details> with raw chunk inside (nothing lost)",
+  "Component is `use Phoenix.Component` style — declares `attr :events, :list, required: true` and `attr :agent, :atom, required: true`; uses HEEx `:if` / `:for` (no Enum.map + raw)",
+  "lib/harness/dashboard/live.ex :show action swaps `<pre class=\"transcript\">{@transcript}</pre>` for `<Components.transcript_view events={@transcript_events} agent={@agent_kind} />`; assigns updated from iodata to event list; subscribes to the new transcript-events topic on mount",
+  "?raw=1 query param on /harness/runs/<id> renders the original `<pre>` view from the legacy raw iodata buffer — proves the parser cutover is reversible at the URL level and gives operators a parser-bug escape hatch",
+  "Per-agent browser-verified coverage: dispatch one run per adapter (Claude, Codex, Cursor, Grok, Pi) via the two-eval Tidewave pattern; open /harness/runs/<id> mid-run; assert chat-style turns render for structured agents, monospace cards for passthrough agents, and zero :unknown events on a successful structured run",
+  "Backfill works: start a run, wait 30s after first output, then open /harness/runs/<id> — prior events present (not just future ones); equivalent to Task 63 behaviour but on event list, not raw binary",
+  "Tests: components_test.exs adds transcript_view render-tree assertions per event kind; run_test.exs covers parser-state threading through gen_statem; transcript_test.exs covers event-count cap eviction; integration test covers backfill via transcript_events/1"
+]
+out_of_scope = [
+  "Removing legacy Harness.Run.transcript/1 raw reader — one-release deprecation window per the plan's Out of Scope note",
+  "Replacing the PubSub topic scheme — keep harness:run:<id>:transcript; only the broadcast payload shape changes",
+  "Persistence of transcript events to disk (LogRecord still carries raw agent_output; events are dashboard-render-only)",
+  "Live-export of parsed transcript to JSON/markdown (could be a v0_9 follow-up)",
+  "Backfilling parsed events for runs that completed BEFORE this task ships — only new runs and in-flight runs get the parsed view"
+]
+body = """
+Replace the run-detail transcript pane's raw stream-json `<pre>` dump with
+a chat-style parsed view, using Task 86's Parser dispatcher to produce
+structured events and Task 85's `Harness.Dashboard.Components` to render them.
+
+**Today's flow:** `Driver.run/3` `:on_output` chunk → `Harness.Run` gen_statem
+→ `Transcript.broadcast/2` → LiveView appends raw binary to a 200 KiB iodata
+buffer → renders as `<pre class=\"transcript\">{@transcript}</pre>` at
+lib/harness/dashboard/live.ex:303. The operator sees the wire format the model
+emits — not the readable conversation.
+
+**New flow:**
+
+1. **Parser invocation moves into `Harness.Run`.** The gen_statem carries
+   parser state in its data; each `:transcript_chunk` calls
+   `Harness.Dashboard.Transcript.Parser.append/4` (Task 86) and broadcasts the
+   resulting events. The raw-binary broadcast stays alongside for one release
+   so `?raw=1` keeps working.
+
+2. **Transcript buffer becomes `[event()]`.** `Harness.Dashboard.Transcript`
+   replaces its iodata-binary buffer with an event list plus the parser-state
+   per run. Cap moves from byte-count to event-count (default 500, configurable).
+   `Harness.Run.transcript_events/1` is the new snapshot reader for late
+   subscribers (LiveView mounts during a long run and needs the back-fill).
+   Legacy `transcript/1` raw reader stays for one release.
+
+3. **`<.transcript_view>` component** (added to `Harness.Dashboard.Components`
+   from Task 85) walks the event list and renders:
+
+   - `:assistant_text` → `<.message_row role={:assistant}>` — consecutive
+     deltas in one turn collapse into a single message body (mirrors
+     ChatLive's `text_delta` stream pattern).
+   - `:assistant_tool_use` + matching `:tool_result` → grouped `<.tool_call>`
+     with the existing collapsible `<details>` + structured JSON tree from
+     Task 85's extracted components.
+   - `:system` → `<.eyebrow>`-styled metadata line (e.g. \"model:
+     claude-opus-4-7 · turn 3\").
+   - `:plain_text` → `<pre class=\"plain-chunk\">` monospace card (preserves
+     readability for unstructured agents — Grok / Pi / Antigravity).
+   - `:unknown` → muted `<details>` with the raw chunk inside — nothing is
+     lost, parser bugs are visible.
+
+4. **`?raw=1` fallback.** `/harness/runs/<id>?raw=1` renders the original
+   iodata buffer as `<pre>` for parity with today's behaviour. Useful for
+   triaging a parser bug or comparing wire output.
+
+**Phoenix 1.8 / LiveView 1.1 mandates** (same as Task 85):
+- `<.transcript_view>` declared with `attr :events, :list, required: true` +
+  `attr :agent, :atom, required: true`; HEEx-only template.
+- HEEx `:if` / `:for` for conditionals / iteration — no
+  `<%= Enum.map(...) %>` + `raw/1`.
+- No `Phoenix.View` references; pure `Phoenix.Component`.
+
+**Verification:** dispatch one run per adapter (Claude / Codex / Cursor / Grok
+/ Pi) via the two-eval Tidewave pattern from
+`skills/harness-driver/SKILL.md` § \"Long-running dispatch from MCP eval\".
+Open `/harness/runs/<id>` mid-run; cross-check `?raw=1` reverts to the
+original view. Backfill: start a run, wait 30s after first output, open the
+page, confirm prior events render.
+
+**Hand-built** per the same precedent as Task 85 (CLAUDE.md § \"Hand-Build UI
+Tasks via Browser Tooling\"). Driver+browser feedback loop is the only way
+to grade event-grouping correctness, scroll behaviour, and the
+parser-vs-raw visual delta.
+"""
+created_at = "2026-05-29"
+scored_at = "2026-05-29"

@@ -15,6 +15,7 @@ defmodule Harness.Dashboard.ChatLiveTest do
   alias Harness.Chat.Session
   alias Harness.Chat.Supervisor, as: ChatSupervisor
   alias Harness.Dashboard.ChatLive
+  alias Harness.Dashboard.Components
 
   setup do
     on_exit(fn ->
@@ -193,7 +194,7 @@ defmodule Harness.Dashboard.ChatLiveTest do
 
   describe "json_tree rendering" do
     test "renders a map as a <dl> with one row per key" do
-      html = render_component(&ChatLive.json_tree/1, value: %{"a" => 1, "b" => "x"})
+      html = render_component(&Components.json_tree/1, value: %{"a" => 1, "b" => "x"})
 
       assert html =~ ~s(<dl)
       assert html =~ ">a<"
@@ -203,7 +204,7 @@ defmodule Harness.Dashboard.ChatLiveTest do
     end
 
     test "renders a list as an <ol>" do
-      html = render_component(&ChatLive.json_tree/1, value: [1, "two", true])
+      html = render_component(&Components.json_tree/1, value: [1, "two", true])
 
       assert html =~ "<ol"
       assert html =~ "leaf-number"
@@ -212,14 +213,14 @@ defmodule Harness.Dashboard.ChatLiveTest do
     end
 
     test "renders nil as a typed leaf, not raw" do
-      html = render_component(&ChatLive.json_tree/1, value: nil)
+      html = render_component(&Components.json_tree/1, value: nil)
       assert html =~ "leaf-nil"
       assert html =~ "null"
     end
 
     test "renders an empty map / empty list with an explicit marker" do
-      empty_map = render_component(&ChatLive.json_tree/1, value: %{})
-      empty_list = render_component(&ChatLive.json_tree/1, value: [])
+      empty_map = render_component(&Components.json_tree/1, value: %{})
+      empty_list = render_component(&Components.json_tree/1, value: [])
 
       assert empty_map =~ "{}"
       assert empty_list =~ "[]"
@@ -227,7 +228,7 @@ defmodule Harness.Dashboard.ChatLiveTest do
 
     test "escapes HTML-meaningful characters in string leaves" do
       html =
-        render_component(&ChatLive.json_tree/1, value: %{"x" => "<script>alert(1)</script>"})
+        render_component(&Components.json_tree/1, value: %{"x" => "<script>alert(1)</script>"})
 
       refute html =~ "<script>alert(1)</script>"
       assert html =~ "&lt;script&gt;"
@@ -237,7 +238,7 @@ defmodule Harness.Dashboard.ChatLiveTest do
   describe "tool_call rendering" do
     test "renders the <details> wrapper with the tool name and pending status" do
       html =
-        render_component(&ChatLive.tool_call/1,
+        render_component(&Components.tool_call/1,
           id: "toolu_1",
           name: "list_projects",
           args: %{},
@@ -254,7 +255,7 @@ defmodule Harness.Dashboard.ChatLiveTest do
 
     test "renders the result section when present" do
       html =
-        render_component(&ChatLive.tool_call/1,
+        render_component(&Components.tool_call/1,
           id: "toolu_1",
           name: "list_projects",
           args: %{},
@@ -271,7 +272,7 @@ defmodule Harness.Dashboard.ChatLiveTest do
   describe "message_row rendering" do
     test "tags the article with the role class and renders the body text" do
       html =
-        render_component(&ChatLive.message_row/1,
+        render_component(&Components.message_row/1,
           dom_id: "msg-user-1",
           role: :user,
           text: "list pending tasks",
@@ -287,7 +288,7 @@ defmodule Harness.Dashboard.ChatLiveTest do
 
     test "exposes the streaming cursor signal on the body when streaming?" do
       html =
-        render_component(&ChatLive.message_row/1,
+        render_component(&Components.message_row/1,
           dom_id: "msg-a-1",
           role: :assistant,
           text: "partial",
@@ -302,7 +303,7 @@ defmodule Harness.Dashboard.ChatLiveTest do
       tool = %{id: "toolu_1", name: "list_projects", args: %{}, result: nil, status: :pending}
 
       html =
-        render_component(&ChatLive.message_row/1,
+        render_component(&Components.message_row/1,
           dom_id: "msg-a-1",
           role: :assistant,
           text: "",

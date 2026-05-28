@@ -1,13 +1,15 @@
 defmodule Harness.Dashboard.Tokens do
   @moduledoc """
-  Design-token surface for the harness dashboard (Task 78).
+  Design-token surface for the harness dashboard.
 
-  Typography commitment: **Fraunces** for display (headings, role labels,
-  summary text — a characterful serif with optical-size variants) paired with
-  **JetBrains Mono** for monospace (run-ids, tool-call JSON, code spans).
-  Both ship from Google Fonts with `font-display: swap`; the system-ui /
-  Inter / Roboto / Arial / Space Grotesk family is intentionally excluded
-  per Task 78's typography constraints.
+  Typography commitment: **Geist Sans** for display + body and **Geist Mono**
+  for code / run-ids / tool-call JSON. Both load via jsdelivr from the
+  upstream `geist` npm package (Vercel's OFL-licensed family) as variable
+  woff2 with `font-display: swap`. The mpp.dev pixel-square variant is
+  brand-custom and intentionally not adopted; `navbar/1`'s wordmark uses
+  Geist Sans with tracking + lowercase styling instead. See
+  `Harness.Dashboard.Components` `@moduledoc` § "Font sourcing" for the
+  decision history.
 
   Dark-mode-first colour: a dominant neutral plane (`--bg`, `--surface`,
   `--surface-2`, `--text`, `--text-subtle`, `--rule`) plus one sharp signal
@@ -20,11 +22,9 @@ defmodule Harness.Dashboard.Tokens do
   motion. Gating is at the CSS layer so the LiveView never branches on the
   motion preference.
 
-  Tasks 80 and 81 inherit this vocabulary unmodified by calling
-  `<Harness.Dashboard.Tokens.stylesheet />` in their root layout. The
-  legacy bucket / field / transcript classes used by the operator dashboard
-  (`Harness.Dashboard.Live`) rehome inside this stylesheet so the existing
-  views keep working without local edits.
+  All dashboard surfaces (`Harness.Dashboard.Live`, `Harness.Dashboard.ChatLive`,
+  and the shared chrome in `Harness.Dashboard.Components`) inherit this
+  vocabulary by virtue of `<.stylesheet />` mounting once in `root.html.heex`.
   """
 
   use Phoenix.Component
@@ -35,35 +35,44 @@ defmodule Harness.Dashboard.Tokens do
   Emits the dashboard's global font imports and design-token stylesheet.
 
   Call once at the top of the root layout — `<.stylesheet />` — and nowhere
-  else. Tasks 80 and 81 must call this exact component rather than declaring
-  their own tokens.
+  else.
   """
   @spec stylesheet(map()) :: Rendered.t()
   def stylesheet(assigns) do
     ~H"""
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500;700&display=swap"
-    />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin="anonymous" />
     <style>
+      @font-face {
+        font-family: "Geist";
+        src: url("https://cdn.jsdelivr.net/npm/geist@latest/dist/fonts/geist-sans/Geist-Variable.woff2") format("woff2-variations");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "Geist Mono";
+        src: url("https://cdn.jsdelivr.net/npm/geist@latest/dist/fonts/geist-mono/GeistMono-Variable.woff2") format("woff2-variations");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
+
       :root {
         color-scheme: dark;
 
         /* Typography */
-        --font-display: "Fraunces", ui-serif, Georgia, serif;
-        --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+        --font-display: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
         --font-body: var(--font-display);
 
-        /* Type scale */
-        --text-xs: 0.75rem;
-        --text-sm: 0.85rem;
-        --text-base: 0.95rem;
-        --text-md: 1.05rem;
-        --text-lg: 1.25rem;
-        --text-xl: 1.6rem;
-        --text-2xl: 2.1rem;
+        /* Type scale — tightened for higher info density (Task 85) */
+        --text-xs: 0.7rem;
+        --text-sm: 0.8rem;
+        --text-base: 0.9rem;
+        --text-md: 1.0rem;
+        --text-lg: 1.15rem;
+        --text-xl: 1.4rem;
+        --text-2xl: 1.8rem;
 
         /* Spacing scale */
         --space-1: 0.25rem;
@@ -73,6 +82,11 @@ defmodule Harness.Dashboard.Tokens do
         --space-5: 1.5rem;
         --space-6: 2.25rem;
         --space-7: 3.5rem;
+
+        /* Layout */
+        --page-max-width: 1240px;
+        --navbar-height: 3.25rem;
+        --footer-height: 2.5rem;
 
         /* Neutral plane (dark-mode-first) */
         --bg: #0b0c10;
@@ -108,13 +122,11 @@ defmodule Harness.Dashboard.Tokens do
 
       body {
         margin: 0;
-        padding: var(--space-5);
-        max-width: 1200px;
-        margin-inline: auto;
+        padding: 0;
         font-family: var(--font-body);
         font-size: var(--text-base);
         line-height: 1.55;
-        font-feature-settings: "ss01", "ss02";
+        font-feature-settings: "ss01", "ss03", "cv11";
         position: relative;
       }
 
@@ -133,10 +145,10 @@ defmodule Harness.Dashboard.Tokens do
         margin-block: var(--space-3);
         font-family: var(--font-display);
         font-weight: 500;
-        letter-spacing: -0.005em;
+        letter-spacing: -0.01em;
       }
 
-      h1 { font-size: var(--text-2xl); font-weight: 600; }
+      h1 { font-size: var(--text-2xl); font-weight: 600; letter-spacing: -0.02em; }
       h2 { font-size: var(--text-xl); }
       h3 { font-size: var(--text-lg); color: var(--text-subtle); }
 
@@ -147,20 +159,114 @@ defmodule Harness.Dashboard.Tokens do
 
       hr { border: 0; border-top: 1px solid var(--rule); margin-block: var(--space-4); }
 
+      /* === Page shell — persistent chrome (Task 85) === */
+
+      .page-shell {
+        display: grid;
+        grid-template-rows: var(--navbar-height) 1fr auto;
+        min-height: 100vh;
+      }
+
+      .page-main {
+        max-width: var(--page-max-width);
+        width: 100%;
+        margin-inline: auto;
+        padding: var(--space-5) var(--space-5) var(--space-6);
+        box-sizing: border-box;
+      }
+
+      /* Navbar */
+      .navbar {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: var(--navbar-height);
+        padding-inline: var(--space-5);
+        background: rgba(11, 12, 16, 0.85);
+        backdrop-filter: blur(12px) saturate(140%);
+        -webkit-backdrop-filter: blur(12px) saturate(140%);
+        border-bottom: 1px solid var(--rule);
+      }
+      .navbar-brand {
+        text-decoration: none;
+        display: inline-flex;
+        align-items: baseline;
+        gap: var(--space-2);
+      }
+      .navbar-brand:hover { text-decoration: none; }
+      .brand-mark {
+        font-family: var(--font-display);
+        font-weight: 600;
+        font-size: var(--text-md);
+        letter-spacing: 0.02em;
+        color: var(--text);
+      }
+      .navbar-links {
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+      }
+      .navbar-links a {
+        text-decoration: none;
+        padding: var(--space-1) var(--space-3);
+        border-radius: 0.3rem;
+        font-family: var(--font-display);
+        font-size: var(--text-sm);
+        color: var(--text-subtle);
+        transition: color var(--motion-fast) var(--ease-out), background-color var(--motion-fast) var(--ease-out);
+      }
+      .navbar-links a:hover {
+        color: var(--text);
+        background: var(--surface);
+      }
+      .navbar-links a[data-active="true"] {
+        color: var(--text);
+        background: var(--surface-2);
+        box-shadow: inset 0 -1px 0 var(--accent);
+      }
+
+      /* Footer */
+      .page-footer {
+        max-width: var(--page-max-width);
+        width: 100%;
+        margin-inline: auto;
+        padding: var(--space-3) var(--space-5);
+        box-sizing: border-box;
+        display: flex;
+        align-items: baseline;
+        gap: var(--space-3);
+        font-family: var(--font-display);
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        border-top: 1px solid var(--rule);
+        min-height: var(--footer-height);
+      }
+      .footer-mark { font-weight: 600; color: var(--text-subtle); }
+      .footer-tag { letter-spacing: 0.02em; }
+
       /* === Operator dashboard (Harness.Dashboard.Live) — rehome === */
 
       table { border-collapse: collapse; width: 100%; margin-block: var(--space-3); }
       th, td { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--rule); }
-      th { font-weight: 600; color: var(--text-subtle); font-family: var(--font-display); }
+      th { font-weight: 600; color: var(--text-subtle); font-family: var(--font-display); font-size: var(--text-sm); }
 
+      /* Bucket badges — glyph + label, classified per bucket */
       .bucket {
-        display: inline-block;
-        padding: 0.15rem 0.55rem;
-        border-radius: 0.25rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.15rem 0.5rem;
+        border-radius: 0.3rem;
         font-size: var(--text-xs);
         font-weight: 600;
         font-family: var(--font-mono);
+        letter-spacing: 0.02em;
       }
+      .bucket-glyph { font-size: 0.9em; line-height: 1; }
+      .bucket-label { text-transform: lowercase; }
       .bucket-in_flight  { background: rgba(74, 127, 168, 0.18);  color: var(--verdict-info); }
       .bucket-repairing  { background: rgba(184, 123, 53, 0.18);  color: var(--verdict-warn); }
       .bucket-green      { background: rgba(79, 155, 106, 0.18);  color: var(--verdict-pass); }
@@ -168,7 +274,8 @@ defmodule Harness.Dashboard.Tokens do
 
       .topbar {
         display: flex;
-        gap: var(--space-4);
+        flex-wrap: wrap;
+        gap: var(--space-3) var(--space-4);
         align-items: baseline;
         margin-bottom: var(--space-4);
         padding-bottom: var(--space-3);
@@ -188,6 +295,7 @@ defmodule Harness.Dashboard.Tokens do
         padding: var(--space-1) var(--space-2);
         font-family: var(--font-mono);
         font-size: var(--text-sm);
+        border-radius: 0.25rem;
       }
       .count { font-size: var(--text-sm); color: var(--text-subtle); }
 
@@ -218,7 +326,7 @@ defmodule Harness.Dashboard.Tokens do
         display: flex;
         flex-direction: column;
         gap: var(--space-4);
-        min-height: calc(100vh - 4rem);
+        min-height: calc(100vh - var(--navbar-height) - var(--footer-height) - var(--space-7));
       }
 
       .chat-header {
@@ -234,6 +342,7 @@ defmodule Harness.Dashboard.Tokens do
         font-family: var(--font-mono);
         font-size: var(--text-sm);
         color: var(--text-muted);
+        margin-left: var(--space-3);
       }
       .chat-header button {
         background: transparent;
@@ -256,7 +365,7 @@ defmodule Harness.Dashboard.Tokens do
 
       .msg {
         display: grid;
-        grid-template-columns: 8rem 1fr;
+        grid-template-columns: 7rem 1fr;
         gap: var(--space-4);
         padding-block: var(--space-3);
         border-top: 1px solid var(--rule);
@@ -266,11 +375,11 @@ defmodule Harness.Dashboard.Tokens do
 
       .msg-role {
         font-family: var(--font-display);
-        font-size: var(--text-sm);
+        font-size: var(--text-xs);
         color: var(--text-subtle);
-        letter-spacing: 0.04em;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
-        font-feature-settings: "smcp";
+        font-weight: 600;
       }
 
       .msg-body {
@@ -280,7 +389,7 @@ defmodule Harness.Dashboard.Tokens do
       }
 
       .msg-user      { background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent); }
-      .msg-user .msg-role { color: var(--text); font-weight: 600; }
+      .msg-user .msg-role { color: var(--text); font-weight: 700; }
 
       .msg-assistant .msg-body { line-height: 1.7; }
 

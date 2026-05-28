@@ -14,6 +14,7 @@
 @~/.claude/includes/code-style.md
 @~/.claude/includes/development-commands.md
 @~/.claude/includes/development-philosophy.md
+@~/.claude/includes/phoenix-setup.md
 
 Situational topics covered by trigger-loading skills (no `@`-import — invoke via the Skill tool when the trigger phrasing matches; they do not auto-load at session start): `elixir:reach` (PDG/SDG, `mix reach.otp` OTP introspection), `elixir:web-command` (browser interaction, dashboard work post-Task-50), `elixir:agent-economy` (descripex consumer surface, if/when harness adopts it), `elixir:elixir-setup` (dep stack changes, alias edits).
 
