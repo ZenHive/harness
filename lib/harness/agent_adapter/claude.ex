@@ -67,8 +67,8 @@ defmodule Harness.AgentAdapter.Claude do
   @spec build_command(Invocation.t()) :: {:ok, AgentAdapter.command()} | {:error, term()}
   def build_command(%Invocation{} = invocation) do
     with {:ok, invocation} <- AgentAdapter.attach_rules(__MODULE__, invocation),
-         {:ok, permission} <- permission_flag(invocation.permission_mode),
-         {:ok, resume} <- resume_args(invocation.session),
+         {:ok, permission} <- AgentAdapter.permission_flag(@permission_modes, invocation.permission_mode),
+         {:ok, resume} <- AgentAdapter.resume_args(invocation.session),
          %Invocation{rules: %{argv_flags: rules}} <- invocation do
       argv =
         ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", permission] ++
@@ -81,19 +81,4 @@ defmodule Harness.AgentAdapter.Claude do
       {:ok, {"claude", argv, env}}
     end
   end
-
-  @spec permission_flag(atom()) ::
-          {:ok, String.t()} | {:error, {:unsupported_permission_mode, atom()}}
-  defp permission_flag(mode) do
-    case Map.fetch(@permission_modes, mode) do
-      {:ok, flag} -> {:ok, flag}
-      :error -> {:error, {:unsupported_permission_mode, mode}}
-    end
-  end
-
-  @spec resume_args(term()) ::
-          {:ok, [String.t()]} | {:error, {:unsupported_session_token, term()}}
-  defp resume_args(nil), do: {:ok, []}
-  defp resume_args(:resume), do: {:ok, ["--continue"]}
-  defp resume_args(other), do: {:error, {:unsupported_session_token, other}}
 end

@@ -33,6 +33,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`config :harness, :cross_agent_repair, enabled: false`); `:grader` required for
   implementers outside the `:claude ↔ :codex` auto-pair.
 
+### Changed
+
+- `Harness.AgentAdapter` now exposes `permission_flag/2` and `resume_args/1`
+  as shared public helpers, hoisted out of the Antigravity / Claude / Cursor
+  / Grok / Pi adapters where they were byte-identical (same spirit as
+  Task 27's classify/terminate/model_args hoist and Task 39's rule-injection
+  hoist). `permission_flag/2` is term-agnostic — it returns the raw stored
+  value, so adapters with string-flag modes (Antigravity/Claude/Grok) and
+  Cursor's list-flag mode all flow through the same helper. Behavior
+  preserved; error tuples (`:unsupported_permission_mode`,
+  `:unsupported_session_token`) unchanged. Codex keeps its own
+  permission/session shape (id-based resume, list-of-atoms modes) and does
+  not adopt either helper.
+
 ### Fixed
 
 - `Harness.ResultStore.File.list_run_records/2` now logs and skips undecodable

@@ -249,6 +249,35 @@ defmodule Harness.AgentAdapter do
   def model_args(nil), do: []
   def model_args(model) when is_binary(model), do: ["--model", model]
 
+  @doc """
+  Looks up a permission `mode` in the adapter's `modes` map.
+
+  Returns the raw stored value — adapters keep their own argv shape (string
+  flag, list of flags) and the helper stays agnostic.
+  """
+  @spec permission_flag(map(), atom()) ::
+          {:ok, term()} | {:error, {:unsupported_permission_mode, atom()}}
+  def permission_flag(modes, mode) when is_map(modes) do
+    case Map.fetch(modes, mode) do
+      {:ok, flag} -> {:ok, flag}
+      :error -> {:error, {:unsupported_permission_mode, mode}}
+    end
+  end
+
+  @doc """
+  Resolves the session token into argv for adapters whose headless CLI uses
+  `--continue` to resume the most recent conversation in `cwd`.
+
+  Shared across every adapter whose resume semantics match Claude's (Claude,
+  Cursor, Grok, Antigravity, Pi). Codex resumes by session-id and has its own
+  shape.
+  """
+  @spec resume_args(term()) ::
+          {:ok, [String.t()]} | {:error, {:unsupported_session_token, term()}}
+  def resume_args(nil), do: {:ok, []}
+  def resume_args(:resume), do: {:ok, ["--continue"]}
+  def resume_args(other), do: {:error, {:unsupported_session_token, other}}
+
   # Spawns the agent over an OTP port and returns its run handle.
   #
   # The agent is not spawned directly. It goes through

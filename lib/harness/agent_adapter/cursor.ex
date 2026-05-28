@@ -73,8 +73,8 @@ defmodule Harness.AgentAdapter.Cursor do
   @spec build_command(Invocation.t()) :: {:ok, AgentAdapter.command()} | {:error, term()}
   def build_command(%Invocation{} = invocation) do
     with {:ok, invocation} <- AgentAdapter.attach_rules(__MODULE__, invocation),
-         {:ok, permission} <- permission_flags(invocation.permission_mode),
-         {:ok, resume} <- resume_args(invocation.session) do
+         {:ok, permission} <- AgentAdapter.permission_flag(@permission_modes, invocation.permission_mode),
+         {:ok, resume} <- AgentAdapter.resume_args(invocation.session) do
       argv =
         ["-p", "--output-format", "stream-json"] ++
           permission ++
@@ -86,19 +86,4 @@ defmodule Harness.AgentAdapter.Cursor do
       {:ok, {"cursor-agent", argv, env}}
     end
   end
-
-  @spec permission_flags(atom()) ::
-          {:ok, [String.t()]} | {:error, {:unsupported_permission_mode, atom()}}
-  defp permission_flags(mode) do
-    case Map.fetch(@permission_modes, mode) do
-      {:ok, flags} -> {:ok, flags}
-      :error -> {:error, {:unsupported_permission_mode, mode}}
-    end
-  end
-
-  @spec resume_args(term()) ::
-          {:ok, [String.t()]} | {:error, {:unsupported_session_token, term()}}
-  defp resume_args(nil), do: {:ok, []}
-  defp resume_args(:resume), do: {:ok, ["--continue"]}
-  defp resume_args(other), do: {:error, {:unsupported_session_token, other}}
 end

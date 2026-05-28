@@ -88,8 +88,8 @@ defmodule Harness.AgentAdapter.Antigravity do
   def build_command(%Invocation{} = invocation) do
     with {:ok, invocation} <- AgentAdapter.attach_rules(__MODULE__, invocation),
          :ok <- validate_model(invocation.model),
-         {:ok, permission} <- permission_flag(invocation.permission_mode),
-         {:ok, resume} <- resume_args(invocation.session) do
+         {:ok, permission} <- AgentAdapter.permission_flag(@permission_modes, invocation.permission_mode),
+         {:ok, resume} <- AgentAdapter.resume_args(invocation.session) do
       argv = ["-p", AgentAdapter.task_prompt(invocation), permission] ++ resume
       env = Map.to_list(invocation.env)
       {:ok, {"agy", argv, env}}
@@ -99,19 +99,4 @@ defmodule Harness.AgentAdapter.Antigravity do
   @spec validate_model(String.t() | nil) :: :ok | {:error, {:unsupported_model, String.t()}}
   defp validate_model(nil), do: :ok
   defp validate_model(model), do: {:error, {:unsupported_model, model}}
-
-  @spec permission_flag(atom()) ::
-          {:ok, String.t()} | {:error, {:unsupported_permission_mode, atom()}}
-  defp permission_flag(mode) do
-    case Map.fetch(@permission_modes, mode) do
-      {:ok, flag} -> {:ok, flag}
-      :error -> {:error, {:unsupported_permission_mode, mode}}
-    end
-  end
-
-  @spec resume_args(term()) ::
-          {:ok, [String.t()]} | {:error, {:unsupported_session_token, term()}}
-  defp resume_args(nil), do: {:ok, []}
-  defp resume_args(:resume), do: {:ok, ["--continue"]}
-  defp resume_args(other), do: {:error, {:unsupported_session_token, other}}
 end

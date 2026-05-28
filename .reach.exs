@@ -13,7 +13,7 @@
     ]
   ],
   boundaries: [
-    public: ["Harness", "Harness.Application"],
+    public: ["Harness", "Harness.Application", "Harness.StatusView"],
     internal: ["Harness.Adapters.*", "Harness.Core.*"]
   ],
   smells: [
