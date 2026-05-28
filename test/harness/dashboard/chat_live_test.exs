@@ -11,6 +11,7 @@ defmodule Harness.Dashboard.ChatLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias Harness.Chat.FunBackend
   alias Harness.Chat.Session
   alias Harness.Chat.Supervisor, as: ChatSupervisor
   alias Harness.Dashboard.ChatLive
@@ -175,7 +176,7 @@ defmodule Harness.Dashboard.ChatLiveTest do
 
       {:ok, session_id, _pid} =
         ChatSupervisor.start_session(
-          backend: Harness.Chat.FunBackend,
+          backend: FunBackend,
           backend_opts: [fun: single_text]
         )
 
@@ -311,6 +312,37 @@ defmodule Harness.Dashboard.ChatLiveTest do
 
       assert html =~ "list_projects"
       assert html =~ "tool-call"
+    end
+  end
+
+  describe "session_start_opts/1" do
+    # Regression: an earlier revision called ChatSupervisor.start_session(id: id)
+    # without :backend. Session.init/1 requires :backend via Keyword.fetch!/2, so
+    # every session failed at init — but the LiveView swallows {:error, _reason}
+    # silently, so the user just saw a chat panel that did nothing. Pin both the
+    # backend choice AND that this exact opts shape is accepted by the
+    # supervisor, so a future re-introduction of the bug fails loudly here.
+    test "names a backend so Session.init/1's Keyword.fetch!(:backend) succeeds" do
+      id = "test-#{System.unique_integer([:positive])}"
+      opts = ChatLive.session_start_opts(id)
+
+      assert Keyword.fetch!(opts, :backend) == Harness.Chat.Claude
+      assert Keyword.fetch!(opts, :id) == id
+    end
+
+    test "the opts shape ChatLive uses actually starts a session" do
+      id = "test-#{System.unique_integer([:positive])}"
+
+      # Drive the supervisor with exactly what ensure_session/2 would pass.
+      # Harness.Chat.Claude's init validates `claude` is on PATH; the FunBackend
+      # double is the only way to exercise the call shape offline. We rebuild
+      # the opts to swap the backend but keep the *contract* (presence of
+      # :backend) under test.
+      opts = Keyword.put(ChatLive.session_start_opts(id), :backend, FunBackend)
+
+      assert {:ok, ^id, pid} = ChatSupervisor.start_session(opts)
+      assert is_pid(pid)
+      assert ChatSupervisor.whereis(id) == pid
     end
   end
 end

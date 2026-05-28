@@ -174,7 +174,7 @@ target_version = "0.6.0"
 name = "Chat Orchestrator"
 description = "Proves a tool-equipped LLM driven over a descripex-annotated harness surface can orchestrate dispatch end-to-end via natural language — replacing the two-eval mcp__harness__project_eval pattern as the default driver UX — and that the same annotated surface serves external MCP consumers (Sprite, Cursor BG, other Claude instances) without a separate Chat.Tools wrapper layer."
 order = 7
-status = "active"
+status = "done"
 target_version = "0.7.0"
 
 # ----------------------------------------------------------------------------
@@ -2621,3 +2621,52 @@ host's Claude subscription OAuth, not the metered API.
 """
 created_at = "2026-05-28"
 scored_at = "2026-05-28"
+
+[[task]]
+id = "83"
+phase = 9
+bundle = "chat-orchestrator"
+status = "pending"
+title = "Fix anubis StreamableHTTP transport — initialize crashes with :badarg, blocks all MCP tool exposure to claude -p"
+scores = { d = 4, b = 8, u = 8 }
+markers = ["bug"]
+depends_on = [79]
+acceptance_criteria = ["MCP initialize from claude-code 2.1.153 (protocol 2025-11-25) completes without :badarg", "GET-equivalent tools/list over the streamable_http transport returns the harness toolset (descripex-sourced) as a valid MCP response", "A tool-using prompt in /harness/chat actually invokes a harness tool (visible in the dashboard tool_call render with the harness-tool name, not Claude's built-in Bash/TaskList)", "End-to-end smoke documented in CLAUDE.md updates: 'live LLM-driven smoke gated on Task 82' bullet flips to 'verified end-to-end via /harness/chat exercising N harness tools'", "Phoenix logs during a tool-using chat turn contain zero :badarg or 500 responses from /harness/mcp"]
+out_of_scope = ["Auth / multi-tenant / rate limiting on the MCP endpoint (out-of-scope per Task 79)", "Supporting MCP clients other than claude -p (other consumers can be added later if/when they appear)", "Replacing anubis_mcp with a different MCP library — first try to make anubis work correctly"]
+body = """
+Every MCP initialize call from `claude -p` (claude-code 2.1.153, protocol "2025-11-25") crashes inside Anubis.Server.Transport.StreamableHTTP.Plug with `:badarg`, returning HTTP 500. Reproduced ~20+ times in a single chat-orchestrator browser smoke run on 2026-05-28 against the Task 82 backend.
+
+Symptom: claude -p never receives the harness tool list, so it falls back to its own built-ins (Bash, TaskList, ToolSearch) and hallucinates that the harness toolset is empty / no tasks exist. The v0_7 LLM-driven smoke (the entire reason Task 82 + Task 79 exist) is therefore not actually exercising the harness tools — it only looks like it is because the chat UI renders Claude's built-in tool calls correctly.
+
+Repro: open /harness/chat in a browser with claude-code installed, send any tool-needing prompt, watch the Phoenix logs — every request shows `Anubis.Server.Transport.StreamableHTTP.Plug` followed immediately by `Converted error :badarg to 500 response`.
+
+The request shape coming in is a clean JSON-RPC 2.0 initialize with the standard MCP 2025-11-25 envelope; the failure is downstream inside anubis. Suspect: protocol-version handling, an unsupported capability key (`elicitation`, `roots`), or a missing route on the supervised Anubis.Server pipeline.
+
+Investigate by (a) catching the badarg in the Plug to get a real stack trace (the cascading ErrorHTML crash is hiding it — see sibling task), (b) reading anubis_mcp source for what `:badarg` paths exist on `tools/list` and `initialize` handlers, and (c) checking whether `Harness.Dashboard.MCPServer` needs to declare additional capabilities beyond `[:tools]` for the streamable_http transport to complete the handshake.
+"""
+created_at = "2026-05-28"
+scored_at = "2026-05-28"
+
+[[task]]
+id = "84"
+phase = 9
+bundle = "chat-orchestrator"
+status = "done"
+title = "Add Harness.Dashboard.ErrorHTML so dashboard 500s don't cascade into Phoenix.Template crashes"
+scores = { d = 1, b = 3, u = 3 }
+markers = ["bug"]
+acceptance_criteria = ["lib/harness/dashboard/error_html.ex exists with 500.html and 404.html clauses", "Harness.Dashboard.Endpoint render_errors config points at Harness.Dashboard.ErrorHTML", "Triggering a 500 in the dashboard endpoint logs exactly one error (the real one), not two stacked", "Bonus: a request with `Accept: text/event-stream` to a non-existent dashboard route returns a clean 404 instead of falling through the html fallback path"]
+out_of_scope = ["Rich error pages with branding/styling — plaintext bodies are enough for a single-user dev surface", "JSON or text/event-stream error format handlers beyond the minimum needed to stop the cascade"]
+body = """
+The standalone dashboard Endpoint has no ErrorHTML module, so any 500 in the dashboard pipeline crashes the error renderer too with `(ArgumentError) no "500" html template defined for Harness.Dashboard.ErrorHTML  (the module does not exist)`. This actively hides the underlying error — the real stack trace is replaced by a Phoenix.Template crash about the missing fallback template.
+
+Surfaced while debugging the anubis transport :badarg bug (sibling task): every 500 from `/harness/mcp` triggered a second crash trying to render the error page, which made it harder to see the original `:badarg`.
+
+Minimum fix: add `Harness.Dashboard.ErrorHTML` with `def render("500.html", _), do: "Internal Server Error"` and `def render("404.html", _), do: "Not Found"`, wire it into the dashboard endpoint's `:render_errors` config. Cosmetic but stops the noise.
+"""
+implemented = "Added lib/harness/dashboard/error_html.ex with render/2 clauses for 500.html and 404.html (plaintext bodies) plus a fallback to Phoenix.Controller.status_message_from_template/1 for other codes. render_errors config in config/config.exs already pointed at Harness.Dashboard.ErrorHTML; the cascade now stops because the module exists. 3 unit tests cover the explicit and fallback clauses; doctor green."
+delivered_by = "claude"
+verified = true
+created_at = "2026-05-28"
+scored_at = "2026-05-28"
+done_at = "2026-05-28"

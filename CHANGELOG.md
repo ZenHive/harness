@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v0_7 chat orchestrator (5 shipped, 1 superseded).** Harness now ships
+  a third consumer surface alongside the verified-run lifecycle and the
+  cheap driver path: a natural-language chat session backed by `claude -p`
+  on the Claude subscription tier, with the same harness toolset exposed
+  externally as a spec-compliant MCP server. `Harness.Chat.Session` runs
+  the multi-turn tool-call loop; `Harness.Chat.Claude` is the default
+  backend (raw-Port spawn of `claude -p --output-format stream-json`,
+  `ANTHROPIC_API_KEY` scrubbed to force OAuth/subscription, per-session
+  cwd for `--continue` resume); `Harness.Dashboard.MCPServer` (anubis_mcp,
+  JSON-RPC 2.0 over Streamable HTTP at `/harness/mcp`) exposes the toolset
+  to external orchestrators via standard `.mcp.json` HTTP transport;
+  `Harness.Chat.Tools` is the single registry both the in-process loop
+  and the external MCP surface dispatch through. Non-tool chat works
+  end-to-end via the dashboard chat panel. Known regression at ship: the
+  anubis Streamable HTTP transport crashes `:badarg` on `claude -p`'s
+  MCP `initialize`, so live tool-use from upstream Claude/Cursor/Sprite
+  sessions against `/harness/mcp` is not yet wired end-to-end — tracked
+  as Task 83.
 - New dep `{:anubis_mcp, "~> 1.6"}` (Task 79 v1 audit rework). Direct
   runtime dep that supplies the MCP server behaviour and Streamable HTTP
   transport plug; transitively pulls in `peri` (validator) and `finch`

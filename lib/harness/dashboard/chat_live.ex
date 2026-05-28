@@ -125,7 +125,7 @@ defmodule Harness.Dashboard.ChatLive do
   defp ensure_session(socket, id) do
     case ChatSupervisor.whereis(id) do
       nil ->
-        case ChatSupervisor.start_session(id: id) do
+        case ChatSupervisor.start_session(session_start_opts(id)) do
           {:ok, ^id, _pid} -> socket
           {:error, _reason} -> socket
         end
@@ -134,6 +134,15 @@ defmodule Harness.Dashboard.ChatLive do
         socket
     end
   end
+
+  # The keyword list ChatLive hands to ChatSupervisor.start_session/1. Extracted
+  # so a unit test can pin both the backend choice AND that this call shape is
+  # accepted — Session.init/1 requires :backend via Keyword.fetch!/2, and an
+  # earlier revision omitted it, causing every chat session to fail silently
+  # (the LiveView swallows {:error, _reason} below).
+  @doc false
+  @spec session_start_opts(String.t()) :: keyword()
+  def session_start_opts(id), do: [id: id, backend: Harness.Chat.Claude]
 
   @spec load_snapshot(Socket.t(), String.t()) :: Socket.t()
   defp load_snapshot(socket, id) do

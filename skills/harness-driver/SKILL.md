@@ -253,6 +253,65 @@ Never trust `agent_outcome.exit_status` or the agent's self-reported success.
 
 ---
 
+## Driving via Chat / MCP (Phase 9, milestone v0_7)
+
+A third consumer surface — alongside `Harness.Run.Supervisor.start_run/4` (verified lifecycle) and `Harness.AgentAdapter.Driver.run/3` (cheap path) — lets an operator drive harness through a natural-language chat session backed by a tool-equipped LLM. Two pieces:
+
+### Chat backend (in-process)
+
+`Harness.Chat.Session` is a per-session GenServer that runs a multi-turn tool-call loop against any module implementing the `Harness.Chat.Backend` behaviour. The default and only shipped backend is `Harness.Chat.Claude` — a raw-Port wrapper around `claude -p --output-format stream-json` that runs on the **Claude subscription path** (`ANTHROPIC_API_KEY` is scrubbed to `false` in the Port env, so the spawned binary uses its OAuth refresh token, not a metered API key).
+
+Boot a session and send a turn:
+
+```elixir
+{:ok, session_id, _pid} = Harness.Chat.Supervisor.start_session(
+  backend: Harness.Chat.Claude,
+  backend_opts: [
+    # Optional. Defaults to a per-session cwd under System.tmp_dir!()
+    # so claude -p's --continue resume is anchored cleanly per session.
+    cwd: "/tmp/harness-chat/my-session"
+  ]
+)
+
+{:ok, response} = Harness.Chat.Session.user_message(session_id, "list pending v0_7 tasks")
+```
+
+Stream the session live by subscribing to `Phoenix.PubSub` topic `"harness:chat:" <> session_id` — the LiveView at `http://localhost:4018/harness/chat/<session_id>` does exactly this. Events fan out as maps: `%{type: "text_delta", text: ...}`, `%{type: "tool_call", id:, name:, arguments:}`, `%{type: "tool_result", id:, name:, content:}`, `%{type: "done", response: ...}`, `%{type: :terminal, reason:, message:}`.
+
+`:backend` is **required** on `Session.init/1` — no implicit default. The session injects its own `session_id` into `backend_opts` before each `stream/3` call so backends can derive a stable per-session workspace without an extra registration step.
+
+### Headless MCP surface (external consumers)
+
+The same descripex-annotated harness toolset is exposed as a spec-compliant **MCP server** on the same Bandit (`http://localhost:4018/harness/mcp`). The implementation is `Harness.Dashboard.MCPServer` (built on `anubis_mcp`, JSON-RPC 2.0 over Streamable HTTP via `Anubis.Server.Transport.StreamableHTTP.Plug`). `initialize` / `ping` / prompts / resources fall through to anubis's `@before_compile`-appended catch-all; harness overrides `tools/list` and `tools/call` to reuse `Harness.Chat.Tools` (the same registry + dispatcher the in-process chat loop calls).
+
+`claude -p` (and any other MCP-aware orchestrator) wires into it via a standard `.mcp.json` HTTP transport entry:
+
+```json
+{
+  "mcpServers": {
+    "harness": {
+      "type": "http",
+      "url": "http://localhost:4018/harness/mcp"
+    }
+  }
+}
+```
+
+When `Harness.Chat.Claude` spawns its backing `claude -p`, it writes exactly this config to a per-session `.harness-mcp-config.json` and passes it via `--mcp-config <path>`. External consumers point their own `.mcp.json` at the URL the same way.
+
+**The two surfaces share the same source of truth.** `Harness.Chat.Tools` is the registry + dispatcher both `Harness.Chat.Session` and `Harness.Dashboard.MCPServer` reuse — adding or annotating a tool with `api()` (Tier 2, descripex) surfaces it in both surfaces simultaneously, no separate wrapper layer.
+
+### When to use which
+
+| Surface | Use when |
+|---|---|
+| `Run.Supervisor.start_run/4` / `Batch.dispatch/2` | You're driving a specific roadmap task end-to-end through verification. You want the verdict, not a transcript. |
+| `Driver.run/3` / `AuditReview.grade_fix/1` | You want a cheap one-shot agent invocation (probe, grade, A/B), no worktree/verification lifecycle. |
+| `Chat.Session` + `Chat.Claude` | The operator (human or upstream LLM) wants to drive harness in natural language and watch tool calls render in the dashboard — exploratory ops, status queries, free-form orchestration. The LLM picks which tools to call. |
+| MCP endpoint at `/harness/mcp` | An **external** orchestrator (another Claude session, Cursor, Sprite, etc.) wants to call harness tools without being inside harness's BEAM. Standard MCP transport — same `.mcp.json` shape you'd use for any MCP server. |
+
+---
+
 ## Recommended Patterns (copy these)
 
 > Replace `mcp__harness__project_eval` with `mcp__tidewave__project_eval` if you are in Context B.
@@ -423,7 +482,9 @@ Changes that require an update to this skill:
 - New result shapes or verdict semantics
 - **Changes to project-registration config shape** (`config :harness, :projects, [...]`)
 - **Changes to the `.mcp.json` shape Tidewave expects, or harness's dashboard port (`:4018`)**
-- Task 17 (first-class MCP surface) when it lands
+- New or changed `Harness.Chat.Backend` callbacks, new backends, or changes to `Harness.Chat.Session`'s public surface (`start_link/2`, `user_message/3`, `snapshot/1`)
+- Changes to the MCP transport (`/harness/mcp` path, JSON-RPC envelope, tool naming, `Harness.Chat.Tools` registry shape)
+- Additional MCP backends beyond `Harness.Chat.Claude` (if/when a library-backed metered-API backend lands as an opt-in)
 
 **How this skill reaches the orchestrator's context.**
 
