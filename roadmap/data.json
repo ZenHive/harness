@@ -2747,7 +2747,7 @@
       "phase": 9,
       "bundle": "chat-orchestrator",
       "milestone": "v0_7",
-      "status": "pending",
+      "status": "done",
       "title": "Harness.Chat.Session GenServer with multi-turn tool-call loop",
       "scores": {
         "d": 5,
@@ -2777,7 +2777,11 @@
       ],
       "body": "Build the chat session state machine that drives the multi-turn tool-call loop. A user message arrives → the agent thinks → it may emit one or more tool calls → harness dispatches them via the descripex-annotated surface from Task 75 → results flow back as tool-result messages → the agent re-prompts → repeat until the agent returns a final non-tool-call response.\n\nThe Session GenServer reads Harness.Manifest at startup to know which tools exist. Tool dispatch uses apply/3 against the MFA recorded in the descripex hints, with arguments JSON-Schema-validated before invocation — never call a function whose args don't match its declared schema.\n\nBound the loop: max_iterations (default 16), max_history_bytes (default 256 KiB), and an explicit loop-detector that aborts on repeated-identical tool calls. A misbehaving agent must not burn quota in a runaway. Abort cleanly with a structured terminal message the UI can render.\n\nStream output over Phoenix.PubSub topic harness:chat:<session_id>:stream — same pattern as Harness.Dashboard.Transcript for run transcripts. The LiveView (Task 78) subscribes; the MCP endpoint (Task 79) does not need PubSub.\n\nAbstract the LLM backend behind a callback the Session calls (Harness.Chat.Backend behaviour or similar). Task 77 implements the Anthropic backend; future backends (Bedrock, Vertex) can swap in without rewriting Session logic.\n\nSupervise under Harness.Application — session id as the registry key. A session crash should not affect other sessions; in-flight conversation state is in-memory and lost on restart (acceptable for v0_7).\n",
       "created_at": "2026-05-28",
+      "done_at": "2026-05-28",
       "scored_at": "2026-05-28",
+      "implemented": "Harness.Chat.Session GenServer + Harness.Chat.Schema (JSON Schema validation) + Harness.Chat.Supervisor (per-session) + Harness.Chat.Stream (PubSub topic harness:chat:<session_id>:stream) + Harness.Chat.Tools (descripex MFA resolution); supervised under Harness.Application via one new child spec. 11 files, +1163 LOC. Multi-turn tool-call loop with backend behaviour stub for tests.",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -2868,7 +2872,7 @@
       "phase": 9,
       "bundle": "chat-orchestrator",
       "milestone": "v0_7",
-      "status": "pending",
+      "status": "done",
       "title": "Headless MCP endpoint — /harness/mcp/tools + /harness/mcp/call",
       "scores": {
         "d": 2,
@@ -2896,7 +2900,11 @@
       ],
       "body": "Mount the headless MCP surface. Two endpoints on the existing Bandit (:4018):\n\n- GET /harness/mcp/tools — serves Descripex.MCP.tools/1 over Harness.Manifest (Task 75) as a valid MCP tool-list JSON.\n- POST /harness/mcp/call — accepts {name, arguments}, validates against the descripex JSON Schema, dispatches via apply/3, returns the result.\n\nThis is the headless half of the chat orchestrator: the same descripex annotations power both the in-process Chat.Session tool dispatch (Task 76) and external MCP consumers (Sprite, Cursor BG, other Claude instances via Tidewave-compatible MCP). No separate \"tool registry\" layer.\n\nMount on the existing dashboard router, gated to dev env by default (same posture as Tidewave). Production-readiness (auth, rate limiting, multi-tenancy) is explicitly out of scope — this is a single-user dev surface for now.\n\nOnce this lands, the harness-driver SKILL.md's \"two-eval pattern\" stops being the only headless option. A tool-equipped external consumer can drive harness via a single MCP call instead of constructing Elixir snippets for project_eval. This is the v0_7 hypothesis's headless half (the chat UI is the in-process half).\n\nCheap to build because Task 75 did the heavy lifting — this task is mostly Plug routing and JSON parsing. Schedule it in parallel with Task 76/77/78 once Task 75 lands.\n",
       "created_at": "2026-05-28",
+      "done_at": "2026-05-28",
       "scored_at": "2026-05-28",
+      "implemented": "Headless MCP endpoint: Harness.Dashboard.MCP Plug serving GET /harness/mcp/tools (descripex tool list from Harness.Manifest) + POST /harness/mcp/call (JSON-Schema validated dispatch with 422 on schema violation, 404 on unknown tool, dev-env gating mirroring Tidewave). Routes wired into Harness.Dashboard.Router. 4 files, +311 LOC. First-attempt verification green; Grok's prior delivery (b63a378) was rejected for missing Plug contract + unsafe String.to_atom + missing @doc/@spec coverage.",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
