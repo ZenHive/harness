@@ -252,4 +252,16 @@ defmodule Harness.Chat.SessionTest do
       step.(request, callback, opts)
     end
   end
+
+  describe "Harness.Chat.Supervisor (coverage for start_link/whereis/already_started paths)" do
+    test "start_session with explicit duplicate id returns the existing pid (already_started branch)" do
+      noop = fn _, _, _ -> {:ok, %{content: [], stop_reason: "end_turn"}} end
+
+      {:ok, _id, pid1} = Supervisor.start_session(id: "dup-cover-1", backend: FunBackend, backend_opts: [fun: noop])
+      {:ok, _id, pid2} = Supervisor.start_session(id: "dup-cover-1", backend: FunBackend, backend_opts: [fun: noop])
+
+      assert pid1 == pid2
+      assert Supervisor.whereis("dup-cover-1") == pid1
+    end
+  end
 end

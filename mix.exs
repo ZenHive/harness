@@ -60,9 +60,6 @@ defmodule Harness.MixProject do
       # `:ecto` / `:db_connection` are transitive via `ecto_sql` / `postgrex`
       # (Task 48: Oban-backed dispatch); `:apps_direct` excludes them, so
       # `use Ecto.Repo` in `lib/harness/repo.ex` needs them explicitly added.
-      # `:req` is a direct runtime dep (Task 77: Anthropic backend) — its
-      # `Req.Response.t/0` and `Req.TransportError.t/0` are referenced in
-      # `lib/harness/chat/anthropic.ex` typespecs.
       plt_add_apps: [
         :mix,
         :jason,
@@ -74,8 +71,7 @@ defmodule Harness.MixProject do
         :phoenix_template,
         :phoenix_html,
         :oban_web,
-        :plug,
-        :req
+        :plug
       ],
       plt_local_path: "priv/plts",
       plt_core_path: "priv/plts",
@@ -92,6 +88,7 @@ defmodule Harness.MixProject do
       {:postgrex, ">= 0.0.0"},
       {:oban, "~> 2.22"},
       {:req, "~> 0.5"},
+      {:anubis_mcp, "~> 1.6"},
 
       # Dashboard (Task 50) — Phoenix LiveView + embedded Oban Web. Bandit is
       # optional so mountable consumers with their own Phoenix endpoint do not

@@ -2471,8 +2471,8 @@ Once this lands, the harness-driver SKILL.md's "two-eval pattern" stops being th
 
 Cheap to build because Task 75 did the heavy lifting — this task is mostly Plug routing and JSON parsing. Schedule it in parallel with Task 76/77/78 once Task 75 lands.
 """
-implemented = "Headless MCP endpoint: Harness.Dashboard.MCP Plug serving GET /harness/mcp/tools (descripex tool list from Harness.Manifest) + POST /harness/mcp/call (JSON-Schema validated dispatch with 422 on schema violation, 404 on unknown tool, dev-env gating mirroring Tidewave). Routes wired into Harness.Dashboard.Router. 4 files, +311 LOC. First-attempt verification green; Grok's prior delivery (b63a378) was rejected for missing Plug contract + unsafe String.to_atom + missing @doc/@spec coverage."
-delivered_by = "codex"
+implemented = "Real MCP server via anubis_mcp (Round-2 v1 audit rework, 2026-05-28). Original Codex delivery shipped Harness.Dashboard.MCP — a custom REST surface (GET /harness/mcp/tools + POST /harness/mcp/call with flat {name, arguments} body) that did not implement MCP JSON-RPC 2.0, so `claude -p` could not consume it via standard .mcp.json HTTP transport. Reworked as Harness.Dashboard.MCPServer (use Anubis.Server, name=harness, version=0.1.0, capabilities=[:tools]) with handle_request/2 overridden for tools/list + tools/call — bypasses anubis's Peri-schema component pipeline so the existing JSON Schema from Descripex.MCP.tools/1 surfaces directly. Reuses Harness.Chat.Tools (Task 76) as the single source of truth for both in-process chat dispatch and the external MCP surface. Forwards /harness/mcp through Anubis.Server.Transport.StreamableHTTP.Plug on the existing Bandit endpoint. Application supervises {MCPServer, transport: :streamable_http} alongside the Dashboard.Endpoint. 6 unit tests against handle_request/2 cover tools/list + tools/call (success path, schema validation failure, unknown tool, missing-arguments-key shape)."
+delivered_by = "claude"
 verified = true
 created_at = "2026-05-28"
 scored_at = "2026-05-28"

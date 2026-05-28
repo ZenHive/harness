@@ -218,4 +218,22 @@ defmodule Harness.ObanDispatchTest do
   defp job(args) do
     %Oban.Job{id: 123, attempt: 1, args: args, meta: %{}}
   end
+
+  describe "Harness.Oban pure surface (queue naming, limits, headroom guards — coverage lift)" do
+    alias Harness.Oban
+    alias Harness.Project
+
+    test "queue_name public API and headroom guard (exercises enabled?/whereis/queued count paths)" do
+      p1 = ProjectFixture.from_repo("/tmp/harness-oban-qn1", name: "demo", concurrency_cap: 4)
+      p2 = ProjectFixture.from_repo("/tmp/harness-oban-qn2", name: "nocap")
+
+      assert Oban.queue_name(p1) == "project_demo"
+      assert Oban.queue_name("foo") == "project_foo"
+
+      # Headroom guard: when ! (enabled? and whereis), returns true without hitting Ecto agg or limit.
+      # This exercises the public queue_headroom? + private queues_enabled? + the else branch.
+      assert Oban.queue_headroom?(p1) == true
+      assert Oban.queue_headroom?(p2) == true
+    end
+  end
 end

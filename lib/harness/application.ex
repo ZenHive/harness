@@ -36,7 +36,7 @@ defmodule Harness.Application do
       [
         {Task.Supervisor, name: Harness.Run.TaskSupervisor},
         Harness.Run.Supervisor
-      ] ++ oban() ++ sweeper() ++ dashboard()
+      ] ++ oban() ++ sweeper() ++ dashboard() ++ mcp_server()
   end
 
   @spec repo() :: [module()]
@@ -97,6 +97,20 @@ defmodule Harness.Application do
 
       true ->
         [Harness.Dashboard.Endpoint]
+    end
+  end
+
+  # Real MCP server (Task 79 rework) — JSON-RPC 2.0 over Streamable HTTP via
+  # `anubis_mcp`. Gated on `:dashboard, :enabled` because the Streamable HTTP
+  # transport is meaningless without a Phoenix endpoint forwarding to it.
+  @spec mcp_server() :: [{module(), keyword()}]
+  defp mcp_server do
+    dashboard_config = Application.get_env(:harness, :dashboard, [])
+
+    if Keyword.get(dashboard_config, :enabled, false) do
+      [{Harness.Dashboard.MCPServer, transport: :streamable_http}]
+    else
+      []
     end
   end
 end
