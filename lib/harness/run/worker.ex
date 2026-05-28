@@ -5,6 +5,7 @@ defmodule Harness.Run.Worker do
 
   use Oban.Worker, queue: :default, max_attempts: 20
 
+  alias Harness.AgentRegistry
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.Roadmap
@@ -156,10 +157,12 @@ defmodule Harness.Run.Worker do
   end
 
   @spec agent_for_adapter(module()) :: {:ok, :claude | :codex | :cursor} | {:error, {:unsupported_adapter, module()}}
-  defp agent_for_adapter(Harness.AgentAdapter.Claude), do: {:ok, :claude}
-  defp agent_for_adapter(Harness.AgentAdapter.Codex), do: {:ok, :codex}
-  defp agent_for_adapter(Harness.AgentAdapter.Cursor), do: {:ok, :cursor}
-  defp agent_for_adapter(adapter), do: {:error, {:unsupported_adapter, adapter}}
+  defp agent_for_adapter(adapter) do
+    case AgentRegistry.agent_for_module(adapter) do
+      {:ok, agent} when agent in [:claude, :codex, :cursor] -> {:ok, agent}
+      _other -> {:error, {:unsupported_adapter, adapter}}
+    end
+  end
 
   @spec snooze_seconds(RetryPolicy.t(), pos_integer()) :: pos_integer()
   defp snooze_seconds(%RetryPolicy{} = policy, attempt) when is_integer(attempt) and attempt > 0 do

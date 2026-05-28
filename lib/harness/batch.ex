@@ -251,10 +251,12 @@ defmodule Harness.Batch do
   end
 
   @spec adapter_for_agent(term()) :: {:ok, module()} | {:error, {:invalid_item_agent, term()}}
-  defp adapter_for_agent(:claude), do: {:ok, Harness.AgentAdapter.Claude}
-  defp adapter_for_agent(:codex), do: {:ok, Harness.AgentAdapter.Codex}
-  defp adapter_for_agent(:cursor), do: {:ok, Harness.AgentAdapter.Cursor}
-  defp adapter_for_agent(agent), do: {:error, {:invalid_item_agent, agent}}
+  defp adapter_for_agent(agent) do
+    case AgentRegistry.delegatable_module_for_agent(agent) do
+      {:ok, module} -> {:ok, module}
+      {:error, _reason} -> {:error, {:invalid_item_agent, agent}}
+    end
+  end
 
   @spec ensure_dispatchable([Item.t()], [module()], keyword()) ::
           :ok | {:error, AgentRegistry.select_error()}

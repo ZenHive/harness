@@ -41,18 +41,10 @@ defmodule Harness.AuditReview do
   alias Harness.AgentAdapter.Driver
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
+  alias Harness.AgentRegistry
 
   @sentinel_approve "<<<VERDICT:APPROVE>>>"
   @sentinel_reject "<<<VERDICT:REJECT>>>"
-
-  @agents %{
-    claude: Harness.AgentAdapter.Claude,
-    codex: Harness.AgentAdapter.Codex,
-    cursor: Harness.AgentAdapter.Cursor,
-    grok: Harness.AgentAdapter.Grok,
-    antigravity: Harness.AgentAdapter.Antigravity,
-    pi: Harness.AgentAdapter.Pi
-  }
 
   # Auto-pairs only the two agents that audit-review's HIGH tier explicitly
   # names: Codex grades Claude, Claude grades Codex. Other implementers must
@@ -168,7 +160,7 @@ defmodule Harness.AuditReview do
   @spec default_grader(atom()) :: {:ok, module()} | {:error, {:no_default_grader, atom()}}
   def default_grader(implementer) when is_atom(implementer) do
     case Map.fetch(@grader_pairs, implementer) do
-      {:ok, grader_atom} -> {:ok, Map.fetch!(@agents, grader_atom)}
+      {:ok, grader_atom} -> AgentRegistry.module_for_agent(grader_atom)
       :error -> {:error, {:no_default_grader, implementer}}
     end
   end
@@ -211,15 +203,16 @@ defmodule Harness.AuditReview do
 
   @spec resolve_grader_atom(atom()) :: {:ok, module()} | {:error, term()}
   defp resolve_grader_atom(atom) do
-    cond do
-      Map.has_key?(@agents, atom) ->
-        {:ok, Map.fetch!(@agents, atom)}
+    case AgentRegistry.module_for_agent(atom) do
+      {:ok, _module} = ok ->
+        ok
 
-      Code.ensure_loaded?(atom) and function_exported?(atom, :build_command, 1) ->
-        {:ok, atom}
-
-      true ->
-        {:error, {:unknown_agent, atom}}
+      {:error, _} ->
+        if Code.ensure_loaded?(atom) and function_exported?(atom, :build_command, 1) do
+          {:ok, atom}
+        else
+          {:error, {:unknown_agent, atom}}
+        end
     end
   end
 

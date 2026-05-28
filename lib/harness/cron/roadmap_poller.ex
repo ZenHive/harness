@@ -110,7 +110,7 @@ defmodule Harness.Cron.RoadmapPoller do
   @spec maybe_enqueue(Project.t(), Item.t()) :: :ok
   defp maybe_enqueue(%Project{} = project, %Item{} = item) do
     with true <- queue_headroom?(project),
-         {:ok, adapter} <- adapter_for_agent(item.agent),
+         {:ok, adapter} <- AgentRegistry.delegatable_module_for_agent(item.agent),
          {:ok, adapter} <- AgentRegistry.select(adapter),
          {:ok, _job} <- enqueue_run(project, item, adapter) do
       :ok
@@ -148,11 +148,6 @@ defmodule Harness.Cron.RoadmapPoller do
       _other -> Harness.Oban.queue_headroom?(project)
     end
   end
-
-  @spec adapter_for_agent(:claude | :codex | :cursor) :: {:ok, module()}
-  defp adapter_for_agent(:claude), do: {:ok, Harness.AgentAdapter.Claude}
-  defp adapter_for_agent(:codex), do: {:ok, Harness.AgentAdapter.Codex}
-  defp adapter_for_agent(:cursor), do: {:ok, Harness.AgentAdapter.Cursor}
 
   @spec log_ingest_error(Project.t(), term()) :: :ok
   defp log_ingest_error(%Project{} = project, reason) do
