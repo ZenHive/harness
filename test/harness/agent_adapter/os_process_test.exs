@@ -62,7 +62,7 @@ defmodule Harness.AgentAdapter.OSProcessTest do
   end
 
   describe "kill/1" do
-    test "closes the port, SIGKILLs the OS process, and is idempotent" do
+    test "SIGKILLs the OS process, closes the port, and is idempotent" do
       {port, os_pid} = ProcessFixture.spawn_sleep()
       run = run_for(port, os_pid)
 

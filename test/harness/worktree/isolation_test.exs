@@ -104,6 +104,25 @@ defmodule Harness.Worktree.IsolationTest do
                Isolation.check_pollution(repo, before, pollution_allowlist: ["scratch.txt"])
     end
 
+    test "a path-anchored glob allowlist (`config/*.exs`) matches the full path, not just the basename" do
+      repo = GitFixture.init_repo()
+      # Track config/ first so git status reports the individual new file
+      # (`?? config/dev.local.exs`) rather than collapsing the whole new dir to
+      # `?? config/`.
+      config_dir = Path.join(repo, "config")
+      File.mkdir_p!(config_dir)
+      File.write!(Path.join(config_dir, "config.exs"), "import Config\n")
+      {_, 0} = System.cmd("git", ["add", "config/config.exs"], cd: repo)
+      {_, 0} = System.cmd("git", ["commit", "-m", "add config/"], cd: repo)
+
+      assert {:ok, before} = Isolation.snapshot(repo)
+
+      File.write!(Path.join(config_dir, "dev.local.exs"), "import Config\n")
+
+      assert :ok =
+               Isolation.check_pollution(repo, before, pollution_allowlist: ["config/*.exs"])
+    end
+
     test "REGRESSION (Task 69): rename out of a tracked dir flags pollution on the source path" do
       repo = GitFixture.init_repo()
       lib_dir = Path.join(repo, "lib")

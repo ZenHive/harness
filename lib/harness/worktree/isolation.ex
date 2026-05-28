@@ -183,6 +183,11 @@ defmodule Harness.Worktree.Isolation do
         prefix = String.trim_trailing(pattern, "/")
         path == prefix or String.starts_with?(path, pattern)
 
+      String.contains?(pattern, "*") and String.contains?(pattern, "/") ->
+        # A path-anchored glob (e.g. `config/*.exs`) matches the full path;
+        # only bare-name globs (`*.tmp`) fall back to the basename.
+        glob_match?(path, pattern)
+
       String.contains?(pattern, "*") ->
         glob_match?(Path.basename(path), pattern)
 

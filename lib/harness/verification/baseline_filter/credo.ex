@@ -35,6 +35,8 @@ defmodule Harness.Verification.BaselineFilter.Credo do
   alias Harness.Git
   alias Harness.Verification.Result
 
+  require Logger
+
   @tagtodo_check "Credo.Check.Design.TagTODO"
   # POSIX ERE syntax for portability across git builds (notably stock macOS
   # git, which lacks PCRE — `\s` then silently fails to match).
@@ -47,6 +49,11 @@ defmodule Harness.Verification.BaselineFilter.Credo do
   matches git-grep's full-line capture deterministically. Content-keyed — not
   line-keyed — so a diff that shifts the line number does not break the match,
   and a same-line rewrite of the TODO content is correctly flagged as new debt.
+
+  Caveat of content-keying: two todo tags with identical normalized text in the
+  same file collapse to one baseline entry, so a newly-introduced TODO whose
+  text exactly matches a pre-existing one (on any line) is treated as inherited
+  and suppressed. This is the deliberate trade-off for line-shift resilience.
   """
   @type baseline :: MapSet.t({String.t(), String.t()})
 
@@ -179,7 +186,13 @@ defmodule Harness.Verification.BaselineFilter.Credo do
          {:ok, %{"issues" => issues}} when is_list(issues) <- Jason.decode(json) do
       {:ok, issues}
     else
-      _ -> :error
+      _ ->
+        Logger.warning(
+          "harness credo baseline filter: could not locate/parse `mix credo --format json` output; " <>
+            "skipping baseline regrade (original verdict preserved)"
+        )
+
+        :error
     end
   end
 

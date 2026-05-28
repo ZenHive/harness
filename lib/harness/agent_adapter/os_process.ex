@@ -57,16 +57,21 @@ defmodule Harness.AgentAdapter.OSProcess do
   end
 
   @doc """
-  Kills an in-flight run: closes its port, SIGKILLs the OS process, and drains
+  Kills an in-flight run: SIGKILLs the OS process, closes its port, and drains
   any leftover port messages.
+
+  Signals **before** closing the port: closing a `:spawn_executable` port reaps
+  the OS process, after which the recorded `os_pid` may be recycled to an
+  unrelated process — a `kill` landing then would hit the wrong target. With the
+  port still open the pid is guaranteed to still name this run's process.
 
   Idempotent — safe to call on a run that has already ended. This is the default
   implementation an adapter's `c:Harness.AgentAdapter.terminate/1` delegates to.
   """
   @spec kill(Run.t()) :: :ok
   def kill(%Run{port: port, os_pid: os_pid}) do
-    close(port)
     if os_pid, do: System.cmd("kill", ["-KILL", Integer.to_string(os_pid)], stderr_to_stdout: true)
+    close(port)
     flush(port)
   end
 end

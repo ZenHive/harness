@@ -425,12 +425,17 @@ defmodule Harness.Worktree do
     end)
   end
 
+  # `git diff --numstat` emits `-` for binary files; any other non-integer token
+  # (an unexpected git output variant) counts as 0 rather than crashing the
+  # surrounding `diff_size/1`.
   @spec parse_numstat_count(String.t()) :: non_neg_integer()
   defp parse_numstat_count("-"), do: 0
 
   defp parse_numstat_count(value) do
-    {count, ""} = Integer.parse(value)
-    count
+    case Integer.parse(value) do
+      {count, ""} -> count
+      _ -> 0
+    end
   end
 
   @spec generate_id() :: String.t()
@@ -476,6 +481,9 @@ defmodule Harness.Worktree do
   end
 
   @spec remove_marker(String.t()) :: :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  # `path` is a fixed marker filename under a harness-created worktree path, not
+  # external input.
+  # sobelow_skip ["Traversal.FileModule"]
   defp remove_marker(path) do
     case File.rm(path) do
       :ok -> :ok
@@ -485,6 +493,9 @@ defmodule Harness.Worktree do
   end
 
   @spec read_active_owner_pid(String.t()) :: String.t() | nil
+  # `marker` is a fixed filename under a harness-created worktree path, not
+  # external input.
+  # sobelow_skip ["Traversal.FileModule"]
   defp read_active_owner_pid(marker) do
     with {:ok, body} <- File.read(marker),
          [_line, pid] <- Regex.run(~r/^owner_os_pid=(\d+)$/m, body) do
