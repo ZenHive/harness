@@ -150,7 +150,7 @@
       "name": "Closeout & Release Readiness",
       "description": "Proves the built system is coherent for a fresh AI orchestrator: roadmap state reflects reality, README and harness-driver instructions match the live Tidewave/dashboard surface, deferred work stays out of the normal queue, and the release smoke path is verified end to end.",
       "order": 6,
-      "status": "active",
+      "status": "done",
       "target_version": "0.6.0"
     }
   },
