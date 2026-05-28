@@ -2647,6 +2647,45 @@
       "delivered_by": "claude-code",
       "verified": true,
       "cross_repo": []
+    },
+    {
+      "id": "74",
+      "phase": 8,
+      "bundle": "closeout",
+      "milestone": "v0_6",
+      "status": "done",
+      "title": "Document cross-checkout consumer workflow (SKILL.md + README)",
+      "scores": {
+        "d": 2,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 3.5,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "skills/harness-driver/SKILL.md opens with explicit operator/driver/implementer role table",
+        "skills/harness-driver/SKILL.md has a 'Context A — Driving harness from another repo' section with the four-step setup (operator running, project registration, .mcp.json second entry naming convention, CLAUDE.md import)",
+        "skills/harness-driver/SKILL.md preserves Context B (dogfooding inside the harness checkout) and notes mcp__tidewave__ vs mcp__harness__ swap throughout patterns",
+        "skills/harness-driver/SKILL.md sharp-edges section calls out cross-checkout-specific gotchas (don't confuse the two endpoints, .mcp.json needs Claude Code restart, File.cwd!/0 is harness's cwd, runtime registration doesn't survive BEAM restart)",
+        "README.md has a 'Use harness from another repo' section between 'Running the node' and 'Development' with the three-step setup and copy-pasteable .mcp.json snippet",
+        "Anti-staleness contract in SKILL.md updated to track project-registration config shape, .mcp.json shape, and dashboard port changes",
+        "Token-economy carve-out clarified as dogfooding-only (does not apply in consuming-repo context)"
+      ],
+      "out_of_scope": [
+        "Updating consuming repos' actual CLAUDE.md or .mcp.json (those live outside this checkout)",
+        "Building a `mix harness.setup` task that scaffolds the consuming repo's setup (separate task if desired)",
+        "Migrating CLAUDE.md § Architecture into the skill (kept separate — CLAUDE.md is harness-repo-local context)",
+        "Task 17 (first-class MCP surface) — still deferred"
+      ],
+      "body": "The harness-driver skill and README were both written assuming the reader is an AI agent inside the harness checkout itself (dogfooding). They did not document the more common case: an AI agent in a different repo (`myapp`) driving harness as an always-on service running in `~/_DATA/code/harness/`.\n\nGap identified live during the v0.6 closeout conversation when a user asked \"explain how I can use this app to develop another repo,\" then probed \"so I let my agent read [skills/harness-driver/SKILL.md, docs/dogfooding-workflow.md, CLAUDE.md § Architecture] and it will understand how to use it?\" — answer was no: three real gaps remained (no `.mcp.json` setup for cross-checkout, CLAUDE.md framing local-only, skill body assumes dogfooding role).\n\nThree things to land:\n1. SKILL.md gets an explicit role split (operator/driver/implementer) and a \"Context A — driving harness from another repo\" section covering the four-step setup (operator runs harness, register myapp, add harness as second MCP server in myapp/.mcp.json, import skill from myapp/CLAUDE.md).\n2. SKILL.md keeps Context B (dogfooding) but reframes it as one of two contexts, not the default.\n3. README.md gets a \"Use harness from another repo\" section — copy-pasteable .mcp.json snippet, project registration example, link into SKILL.md for the agent-runtime contract.\n\nNaming convention this introduces: the consuming repo's .mcp.json names harness's MCP entry `harness` (not a second `tidewave`) so the tool surfaces as `mcp__harness__project_eval`, distinguishable from the consuming repo's own `mcp__tidewave__project_eval`. No port collision — two BEAMs at two ports.\n",
+      "created_at": "2026-05-28",
+      "done_at": "2026-05-28",
+      "scored_at": "2026-05-28",
+      "implemented": "skills/harness-driver/SKILL.md rewritten with explicit operator/driver/implementer role table, new 'Context A — Driving harness from another repo' four-step setup section (operator running, project registration in config/dev.exs, second MCP entry in consuming repo's .mcp.json named 'harness', skill import via @~/_DATA/code/harness/skills/harness-driver/SKILL.md), Context B (dogfooding) preserved as the other context, mcp__harness__ vs mcp__tidewave__ swap noted throughout patterns, cross-checkout sharp edges added (two-endpoint confusion, .mcp.json restart, File.cwd!/0 caveat, runtime registration doesn't survive BEAM restart), token-economy carve-out clarified as dogfooding-only. README.md gets a 'Use harness from another repo' section between 'Running the node' and 'Development' with three-step setup + copy-pasteable .mcp.json snippet. Anti-staleness contract updated to track project-registration config shape, .mcp.json shape, and dashboard port.",
+      "delivered_by": "claude-code",
+      "verified": true,
+      "cross_repo": []
     }
   ]
 }

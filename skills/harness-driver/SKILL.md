@@ -2,21 +2,108 @@
 name: harness-driver
 description: >
   How an AI orchestrator (Claude Code, Cursor, Grok, etc.) uses harness as its primary
-  delegation engine. The stable contract, recommended patterns, and sharp edges for
-  driving verified agent work through harness instead of hand-building or raw calls.
-when-to-use: "Use when you are the orchestrator and want to delegate work via harness (rmap tasks, verified runs, cross-agent grading, A/B evaluation, etc.). Read this before writing custom driver scripts."
-argument-hint: "harness driver | delegate via harness | use harness for this task"
+  delegation engine. Covers BOTH driving harness from inside the harness checkout
+  (dogfooding) AND from a different consuming repo (the more common case). The stable
+  contract, setup, recommended patterns, and sharp edges for getting verified agent
+  work through harness instead of hand-building or raw calls.
+when-to-use: "Use when you are the orchestrator and want to delegate work via harness (rmap tasks, verified runs, cross-agent grading, A/B evaluation, etc.) — whether you are inside the harness checkout itself or driving it from a different repo. Read this before writing custom driver scripts."
+argument-hint: "harness driver | delegate via harness | use harness for this task | drive harness from my repo"
 ---
 
 # Harness Driver Skill
 
 **Purpose:** Make harness the default, reliable way an AI gets work done with verification, isolation, and restart resilience — instead of raw agent calls or hand-building.
 
-**Primary user:** AI orchestrators (you). The human is secondary.
+**Three roles to keep straight:**
 
-**Post-v0_5 reality (milestone complete; v0.6 closeout in flight):** Harness is a multi-project OTP node with Oban dispatch, per-project queues, restart resilience, Phoenix LiveView dashboard + Oban Web, Tidewave MCP all on one Bandit endpoint (`http://localhost:4018`), and `Oban.Plugins.Cron` for autonomous polling. Dogfooding is the default again.
+| Role | Who | Where it lives |
+|---|---|---|
+| **Operator** | Human | Starts `iex -S mix` in `~/_DATA/code/harness/`, registers projects, watches the dashboard |
+| **Driver** | You — the AI orchestrator reading this | Dispatches via Tidewave MCP (`project_eval`) against harness's `:4018` BEAM, reads `%Harness.Run.Result{}` / `%LogRecord{}` |
+| **Implementer** | The headless agent harness spawns (Claude / Codex / Cursor / Grok / Antigravity / Pi) | Runs in an isolated git worktree harness manages, graded by the verification stack — **not you** |
 
-**Preferred orchestration surface: Tidewave `project_eval` against the live node.** Any IEx-style snippet you'd run inside the orchestrator's BEAM can be dispatched via `mcp__tidewave__project_eval` against the already-running `iex -S mix` node (which hosts the dashboard + Tidewave plug at port 4018). Do NOT spin up a second BEAM with `mix run /tmp/dogfood_task.exs` to dispatch a run — Task 61's open worktree-sweep-on-boot race can prune a live sibling worktree. The `mix run` script is the **fallback** for full-diagnostic dumps only (see `docs/dogfooding-workflow.md` § "Full-diagnostic dispatch via `mix run` (fallback)").
+You (driver) do not run the implementation work. You decide which task, which adapter, which env scrubbing — then dispatch and read the verified verdict.
+
+**Post-v0_5 reality:** Harness is a multi-project OTP node with Oban dispatch, per-project queues, restart resilience, Phoenix LiveView dashboard + Oban Web, Tidewave MCP all on one Bandit endpoint (`http://localhost:4018`), and `Oban.Plugins.Cron` for autonomous polling.
+
+---
+
+## Two Contexts (read the one that applies to you)
+
+### Context A — Driving harness from another repo (the common case)
+
+You are an AI agent in `~/_DATA/code/myapp/` (or wherever). You want harness — which is running as a long-lived `iex -S mix` BEAM in `~/_DATA/code/harness/` — to take a task from `myapp`'s roadmap, dispatch it to a headless agent in an isolated worktree of `myapp`, run `myapp`'s check stack against the result, and give you a verified verdict.
+
+Four setup steps the consuming repo needs:
+
+**1. Operator runs harness.** A `iex -S mix` session in `~/_DATA/code/harness/`. This boots the dashboard at `http://localhost:4018`, Tidewave MCP at `http://localhost:4018/tidewave/mcp`, Oban queues, the lot. Verify by opening `http://localhost:4018/harness` in a browser.
+
+**2. Register `myapp` with harness.** Two paths:
+
+- **Persistent (preferred):** add an entry to harness's `config/dev.exs`, alongside the self-registered `"harness"` project, then restart `iex -S mix`:
+
+  ```elixir
+  # ~/_DATA/code/harness/config/dev.exs
+  config :harness, :projects, [
+    [
+      name: "harness",
+      source: {:local, Path.expand("..", __DIR__)},
+      preset: :elixir,
+      roadmap_path: Path.expand("..", __DIR__)
+    ],
+    [
+      name: "myapp",
+      source: {:local, "/Users/efries/_DATA/code/myapp"},
+      preset: :elixir,                     # or :rust, or a fully-spec'd %Harness.CheckStack{}
+      roadmap_path: "/Users/efries/_DATA/code/myapp",
+      concurrency_cap: 2
+    ]
+  ]
+  ```
+
+- **Ad-hoc (one-shot):** dispatch `Harness.ProjectRegistry.register/1` via `mcp__harness__project_eval`. Cleared on next BEAM restart — fine for experiments, not for ongoing work.
+
+**3. Add harness's MCP endpoint to `myapp`'s `.mcp.json`.** This is the load-bearing step that lets the driver (you) reach harness's `project_eval` from inside `myapp`. Add a SECOND entry alongside `myapp`'s own Tidewave (if it has one):
+
+```json
+{
+  "mcpServers": {
+    "tidewave": {
+      "type": "http",
+      "url": "http://localhost:4001/tidewave/mcp"
+    },
+    "harness": {
+      "type": "http",
+      "url": "http://localhost:4018/tidewave/mcp"
+    }
+  }
+}
+```
+
+**Naming matters.** Call the entry `harness`, not a second `tidewave` — Claude Code surfaces the tool as `mcp__<server-name>__project_eval`, so this convention gives you two distinguishable tools:
+
+- `mcp__tidewave__project_eval` — runs Elixir snippets inside `myapp`'s BEAM (useful for inspecting `myapp` state).
+- `mcp__harness__project_eval` — runs Elixir snippets inside harness's `:4018` BEAM (this is where you dispatch runs).
+
+No port collision: two different BEAMs at two different ports. No curl needed — MCP-over-HTTP handles transport.
+
+**4. Import this skill from `myapp`'s `CLAUDE.md`.**
+
+```
+@~/_DATA/code/harness/skills/harness-driver/SKILL.md
+```
+
+`myapp`'s CLAUDE.md is otherwise the place to describe `myapp`'s domain, conventions, and verification stack — none of that gets dragged into harness. The skill carries the harness-side contract.
+
+**Then restart your Claude Code session** so the new `.mcp.json` entry is picked up. Verify by checking the tool list contains `mcp__harness__project_eval`.
+
+After these four steps, every dispatch pattern below uses `mcp__harness__project_eval` from `myapp`.
+
+### Context B — Dogfooding inside the harness checkout
+
+You are an AI agent in `~/_DATA/code/harness/` itself, building harness with harness. The skill is already imported via `@skills/harness-driver/SKILL.md` from harness's CLAUDE.md. Harness's own `.mcp.json` names its single MCP entry `tidewave`, so the dispatch tool is `mcp__tidewave__project_eval`.
+
+Everything else in this skill applies identically — wherever you see `mcp__harness__project_eval` in the patterns below, it's `mcp__tidewave__project_eval` in this context.
 
 ---
 
@@ -24,15 +111,18 @@ argument-hint: "harness driver | delegate via harness | use harness for this tas
 
 **Never hand-build what harness can dispatch.**
 
-If the task is on the roadmap and the surface is stable, dispatch it through harness (ingest → run → verified result). Hand-build only when harness genuinely cannot yet do it (rare, and only after filing via `rmap new`).
+- **Consuming-repo context (A):** dispatching is the default. You're not the implementer at all — you dispatch and read verified results. Hand-building from inside your own session defeats the whole role split.
+- **Dogfooding context (B):** dispatching is the default for anything that isn't trivial. Hand-build only when harness genuinely cannot yet do it (rare, and only after filing via `rmap new`).
 
 The verification stack — not the agent's self-report — is always the source of truth.
 
-**Token-economy carve-out.** A task with all of D≤2 + ≤30 LOC across ≤3 files + no harness-surface change (no new adapter / behaviour callback / supervision-tree / verification-stack edit) may be hand-built in the main checkout. Two ~15-LOC fixes burn more orchestration tokens through `Batch.dispatch/2` than they save in integration signal — the dispatch lifecycle isn't meaningfully exercised at that size. Everything else, dispatch. Full rationale and the matching policy bullet live in `CLAUDE.md` § Dogfooding.
+**Token-economy carve-out (dogfooding only).** Inside the harness checkout, a task with all of D≤2 + ≤30 LOC across ≤3 files + no harness-surface change (no new adapter / behaviour callback / supervision-tree / verification-stack edit) may be hand-built. Two ~15-LOC fixes burn more orchestration tokens through `Batch.dispatch/2` than they save in integration signal — the dispatch lifecycle isn't meaningfully exercised at that size. This carve-out does NOT apply in the consuming-repo context: there you have no in-checkout option, and the orchestration token cost is offset by the role split (you'd otherwise context-switch into the consuming repo's BEAM yourself). Full rationale and the matching policy bullet live in `CLAUDE.md` § Dogfooding.
 
 ---
 
 ## Two Main Surfaces
+
+> Throughout this section, replace `mcp__harness__project_eval` with `mcp__tidewave__project_eval` if you are in context B (dogfooding inside the harness checkout).
 
 ### 1. Full Verified Lifecycle (recommended default)
 
@@ -45,24 +135,25 @@ Use when you want the complete harness guarantees:
 - Autonomous repair loop (red → feed failures back → re-grade, up to `max_repair_attempts`)
 - Proper `Harness.Run.Result` with structured verdict
 
-**Entry points (Elixir, callable via Tidewave `project_eval` or IEx):**
+**Entry points (Elixir, callable via `mcp__harness__project_eval` or IEx):**
 
 ```elixir
 # Fetch the registered project (a %Harness.Project{}, NOT a string).
-{:ok, project} = Harness.ProjectRegistry.lookup("my_project")
+{:ok, project} = Harness.ProjectRegistry.lookup("myapp")
 
 # Single task (most common)
 {:ok, item} = Harness.Roadmap.ingest({:id, "123"}, project: project)
 {:ok, run_id, pid} = Harness.Run.Supervisor.start_run(
   item,
   project,                          # must be %Harness.Project{} — guarded
-  Harness.AgentAdapter.Grok,        # or .Claude, .Codex, .Cursor, etc.
+  Harness.AgentAdapter.Claude,      # or .Codex, .Cursor, .Grok, .Antigravity, .Pi
   subscriber: self(),
   lifetime_timeout: 3_600_000,
-  env: %{"SOME_KEY" => false}       # scrub inherited secrets
+  env: %{"ANTHROPIC_API_KEY" => false}  # scrub inherited secrets (Claude OAuth case)
 )
 
-# Wait for result
+# Wait for result (only valid if `self()` outlives the run — see the
+# two-eval pattern below for the Tidewave-from-driver case)
 receive do
   {:harness_run, ^run_id, %Harness.Run.Result{} = result} -> result
 end
@@ -70,12 +161,12 @@ end
 
 `Roadmap.ingest/2` options worth knowing:
 - `:project` — `%Harness.Project{}`; supplies `roadmap_path`. Use this for registered projects.
-- `:project_root` — string path; fallback when `:project` is omitted. Defaults to `File.cwd!/0`.
+- `:project_root` — string path; fallback when `:project` is omitted. Defaults to `File.cwd!/0` (which is harness's cwd when called via `project_eval` — almost never what you want; pass `:project` explicitly).
 - `:agent` — `:claude | :codex | :cursor` (the agents `rmap delegate --to` supports). Defaults to `:claude`. The ingested prompt is rendered for *this* agent — see "Non-delegatable adapters" below for what to do when the executing adapter differs.
 - `:rmap_bin` — override the `rmap` binary name/path.
 
 `Run.Supervisor.start_run/4` options worth knowing (full list in moduledoc):
-- `:subscriber` — pid that receives `{:harness_run, run_id, result}`. Defaults to caller.
+- `:subscriber` — pid that receives `{:harness_run, run_id, result}`. Defaults to caller. **Pass `nil` when dispatching from `mcp__harness__project_eval`** (eval process is ephemeral; see two-eval pattern).
 - `:total_timeout` / `:idle_timeout` — agent run timeouts (forwarded to `Driver`).
 - `:lifetime_timeout` — whole-job wall budget in ms.
 - `:adapter_opts` — per-adapter knobs forwarded to `Invocation`.
@@ -135,12 +226,12 @@ invocation = %Harness.AgentAdapter.Invocation{
 ```
 
 **`cwd` guidance.** The Driver does not manage `cwd` — it's whatever you put on the `Invocation`. The right value depends on the call shape:
-- **Grading via `AuditReview.grade_fix/1`** — leave it; the wrapper defaults `cwd` to `File.cwd!/0`, which is the right answer for read-only diff review.
+- **Grading via `AuditReview.grade_fix/1`** — leave it; the wrapper defaults `cwd` to `File.cwd!/0`. **In Context A (driver in another repo), `File.cwd!/0` is harness's own cwd**, which is rarely what you want for grading another repo's diff. Pass `cwd:` explicitly to the consuming repo's path.
 - **Ad-hoc probes / A/B experiments** — pass a real worktree path you control (typically one you constructed with `Harness.Worktree.create/2` and will clean up yourself). A throwaway `/tmp` path is fine for read-only probes; for anything that may write, it must be a git worktree the adapter can commit into.
 
 `AuditReview.grade_fix/1` is the packaged version of this for HIGH-tier reviews. Worth knowing its optional knobs:
 - `:grader` — defaults to the opposite of `:implementer` for `:claude`/`:codex`; other implementers require explicit `:grader`.
-- `:cwd` — defaults to `File.cwd!/0`.
+- `:cwd` — defaults to `File.cwd!/0` (see caveat above for Context A).
 - `:model` — pin a specific model id (e.g. `"claude-opus-4-7"` when grading higher-stakes fixes).
 - `:total_timeout` / `:idle_timeout` — forwarded to `Driver`.
 
@@ -150,7 +241,7 @@ invocation = %Harness.AgentAdapter.Invocation{
 
 Always read `Harness.Run.Result` (or the `Outcome` from the cheap path). The verdict table in `docs/dogfooding-workflow.md` is still the best reference for what the various states + reasons mean and what action you should take.
 
-Key fields you care about as orchestrator (full struct: `lib/harness/run/result.ex`):
+Key fields you care about as driver (full struct: `lib/harness/run/result.ex`):
 - `state` + `reason`
 - `verdict` (the structured check results)
 - `agent_outcome` (raw transcript + kind + exit_status)
@@ -164,17 +255,15 @@ Never trust `agent_outcome.exit_status` or the agent's self-reported success.
 
 ## Recommended Patterns (copy these)
 
-**Long-running dispatch from Tidewave eval (result-survives-eval-exit pattern):**
+> Replace `mcp__harness__project_eval` with `mcp__tidewave__project_eval` if you are in Context B.
 
-The preferred dispatch surface (see § Two Main Surfaces preamble) is `mcp__tidewave__project_eval`
-against the live `iex -S mix` node. The eval process is ephemeral — it exits as soon as the
-snippet returns — so `subscriber: self()` is wrong here (the subscriber would be dead before
-the run settles). The Run process records a `%Harness.Run.LogRecord{}` to
-`Harness.ResultStore` on settle regardless, so use the two-eval pattern:
+**Long-running dispatch from MCP eval (result-survives-eval-exit pattern):**
+
+`mcp__harness__project_eval` against the live `iex -S mix` node is the preferred dispatch surface. The eval process is ephemeral — it exits as soon as the snippet returns — so `subscriber: self()` is wrong here (the subscriber would be dead before the run settles). The Run process records a `%Harness.Run.LogRecord{}` to `Harness.ResultStore` on settle regardless, so use the two-eval pattern:
 
 ```elixir
 # EVAL 1 — dispatch. Eval process exits immediately; the run keeps going.
-{:ok, project} = Harness.ProjectRegistry.lookup("harness")
+{:ok, project} = Harness.ProjectRegistry.lookup("myapp")
 {:ok, item}    = Harness.Roadmap.ingest({:id, "<task-id>"}, project: project)
 
 {:ok, run_id, _pid} =
@@ -198,21 +287,14 @@ case Harness.Run.status("<run-id>") do
 end
 ```
 
-Live transcript: open `http://localhost:4018/harness/runs/<run_id>` in the browser.
-LiveView is subscribed to `Phoenix.PubSub` topic `harness:run:<id>:transcript`, fed by
-`Driver.run/3`'s `:on_output` callback.
+Live transcript: open `http://localhost:4018/harness/runs/<run_id>` in the browser. LiveView is subscribed to `Phoenix.PubSub` topic `harness:run:<id>:transcript`, fed by `Driver.run/3`'s `:on_output` callback. The operator (human) usually has this open; you (driver) usually don't need it unless you're triaging.
 
-> **LogRecord field coverage caveat.** `%LogRecord{}` carries verdict **status**
-> (`:pass`/`:fail`), failed-check **names** (name + kind + exit_status), and the full
-> agent transcript — but NOT per-check stdout/stderr. When you need to triage a red
-> verdict by reading actual check output (a credo finding, a failing-test message),
-> the live `%Harness.Run.Result{}` via subscriber is the only path — drop to the
-> mix-run script in `docs/dogfooding-workflow.md` § "Full-diagnostic dispatch via `mix run` (fallback)".
+> **LogRecord field coverage caveat.** `%LogRecord{}` carries verdict **status** (`:pass`/`:fail`), failed-check **names** (name + kind + exit_status), and the full agent transcript — but NOT per-check stdout/stderr. When you need to triage a red verdict by reading actual check output (a credo finding, a failing-test message), the live `%Harness.Run.Result{}` via subscriber is the only path — drop to the mix-run script in `docs/dogfooding-workflow.md` § "Full-diagnostic dispatch via `mix run` (fallback)".
 
 **Single delegation with explicit adapter choice (subscriber-IS-caller variant, mix-run / long-lived BEAM only):**
 
 ```elixir
-{:ok, project} = Harness.ProjectRegistry.lookup("my_project")
+{:ok, project} = Harness.ProjectRegistry.lookup("myapp")
 {:ok, item}    = Harness.Roadmap.ingest(:next, project: project)
 adapter        = pick_adapter_for_task(item)   # your logic (cost, capability, A/B, etc.)
 
@@ -274,6 +356,7 @@ Lower-level pinned batch (same machinery, no comparison wrapper):
   Harness.AuditReview.grade_fix(
     implementer: :claude,
     sha: "abc1234",
+    cwd: "/Users/efries/_DATA/code/myapp",          # explicit in Context A
     prompt: "Review the diff at the commit. Emit <<<VERDICT:APPROVE>>> or <<<VERDICT:REJECT>>> on its own line at the end."
   )
 ```
@@ -290,19 +373,26 @@ adapters = [Harness.AgentAdapter.Pi, Harness.AgentAdapter.Claude]
 true = Harness.AgentAdapter.supports?(Harness.AgentAdapter.Pi, {:cost_tier, :free})
 ```
 
-`Harness.AgentRegistry.filter_by_cost_tier/2` is the cost-aware dispatch
-primitive — no selection policy is baked in. Compose with `available?/1` to
-also drop quota-exhausted adapters.
+`Harness.AgentRegistry.filter_by_cost_tier/2` is the cost-aware dispatch primitive — no selection policy is baked in. Compose with `available?/1` to also drop quota-exhausted adapters.
 
 ---
 
 ## Sharp Edges & Gotchas (2026-05 post-v0_5)
 
-- **No first-class MCP surface yet** (Task 17 deferred — alongside Tasks 20 and 21, all three intentionally out of the v0.6 closeout path). You drive via `project_eval` (Tidewave) or IEx today. The library + dashboard is the current agent surface. Revisit Task 17 only when a non-Elixir consumer (Python, TypeScript) needs to drive harness from outside the BEAM; revisit Task 20 only if reactive fail-over proves insufficient; revisit Task 21 only when an ACP backend preserves Claude subscription OAuth.
+**Cross-checkout (Context A) specifics:**
+
+- **Don't confuse the two MCP endpoints.** `mcp__tidewave__project_eval` runs inside *your repo's* BEAM (useful for inspecting your app's runtime state); `mcp__harness__project_eval` runs inside *harness's* `:4018` BEAM (this is the dispatch surface). Sending a `Harness.Run.Supervisor.start_run/4` call to your own Tidewave will fail with `undefined function` — harness modules aren't loaded there.
+- **`.mcp.json` changes need a Claude Code restart.** New MCP servers aren't hot-reloaded into the running session — restart after editing.
+- **`File.cwd!/0` is harness's cwd, not yours.** Inside an `mcp__harness__project_eval` snippet, any relative path resolves against `~/_DATA/code/harness/`, not `~/_DATA/code/myapp/`. Pass `:project` to `Roadmap.ingest/2` (carries `roadmap_path`), and pass explicit `cwd:` to `AuditReview.grade_fix/1` and ad-hoc `Driver.run/3` calls.
+- **Project registration persists across BEAM restarts only via `config/dev.exs`.** A runtime `ProjectRegistry.register/1` is gone on the next `iex -S mix` boot. For ongoing work, edit `config/dev.exs` and ask the operator to restart.
+
+**General (apply to both contexts):**
+
+- **No first-class MCP surface yet** (Task 17 deferred — alongside Tasks 20 and 21, all three intentionally out of the v0.6 closeout path). You drive via Tidewave's MCP `project_eval` or IEx today. The library + dashboard is the current agent surface. Revisit Task 17 only when a non-Elixir consumer (Python, TypeScript) needs to drive harness from outside the BEAM; revisit Task 20 only if reactive fail-over proves insufficient; revisit Task 21 only when an ACP backend preserves Claude subscription OAuth.
 - **AgentRegistry is a soft hint, not a contract** (Task 40 resolved 2026-05-27 as option (b)). Unavailability state is in-memory only and clears on GenServer restart **by design** — the registry is a latency optimization to skip known-bad adapters at dispatch; correctness lives in Oban (workers map quota → `{:snooze, _}`, persisted job rows survive both restarts and quota windows). Bounded cost of a restart-clear: one wasted first-attempt per previously-marked-unavailable adapter. Don't trust quota state across BEAM restarts; do trust Oban retry. Also: Task 41 (Codex worktree-isolation regression) is **resolved as of 2026-05-27** — `codex exec --cd <cwd>` pins the working root at the exec level, mirroring the Task 32 fix shape. Full rationale: `Harness.AgentRegistry` `@moduledoc` § "Availability is a soft hint, not a contract".
 - **Worktree isolation is enforced via capability + guard.** Only `Harness.AgentAdapter.Antigravity` currently declares `worktree_isolation: false`; the dispatch guard (`Harness.Worktree.Isolation`) refuses to start a worktree-isolated run on a non-isolating adapter and snapshots the main checkout porcelain mid-run to trap pollution (Task 32). Past regressions all live on `:checkout_polluted` reason — see `docs/dogfooding-workflow.md` verdict table. Task 60 (2026-05-27) added a four-tier pollution allowlist (run opts → project → app config → `default_pollution_allowlist/0`) that ignores incidental `.claude/`, `.DS_Store`, and editor temp/lock writes; roadmap files are deliberately NOT allowlisted (a genuine agent mutation to them is a bug worth catching). Note: running `rmap` mutations in a parallel session against the same checkout will also trigger `:checkout_polluted` — a false positive caused by the operator, not the agent (see `docs/dogfooding-workflow.md` § "Known sharp edges").
 - **Non-delegatable two-step dance**: Easy to forget. The skill exists partly to make this impossible to miss. Distinct from worktree isolation (see § "Non-delegatable adapters" above for both axes).
-- **Results are delivered to the subscriber** but not automatically persisted beyond Oban job rows (Task 19). Keep the transcript if you need it later.
+- **Results are delivered to the subscriber** but not automatically persisted beyond Oban job rows + the file-backed `ResultStore` `LogRecord` (Task 19). Keep the transcript if you need it later; `LogRecord` carries the transcript but not per-check stdout/stderr.
 - **Cold verification** (especially dialyzer PLT) can be slow on first run in a fresh worktree.
 - **Secret scrubbing**: Use the `:env` map with `false` values. Do this explicitly for any key that might shadow a subscription (classic `ANTHROPIC_API_KEY` shadowing Claude's OAuth case).
 
@@ -311,16 +401,18 @@ also drop quota-exhausted adapters.
 ## When to Bypass Harness (rare)
 
 Only for:
-- Foundational scaffolding that changes the supervision tree, dep stack, or Endpoint while the verification stack itself is in flux (the v0_5 precedent).
+- Foundational scaffolding that changes harness's own supervision tree, dep stack, or Endpoint while the verification stack itself is in flux (the v0_5 precedent — dogfooding context only).
 - True emergencies where the harness path is broken and you have filed the gap.
 
 A new phase that only adds features on stable surfaces does **not** earn a hand-build window.
+
+In the consuming-repo context (A), you never have "in-checkout" as an option — your own session isn't holding the harness BEAM. The bypass case there is "hand-edit `myapp` files directly without going through harness" — only valid for emergencies where harness can't dispatch and you've filed the blocker.
 
 ---
 
 ## Anti-Staleness Contract (for future maintainers and rmap tasks)
 
-**This file must be updated when the driver surface changes.**
+**This file must be updated when the driver surface or consumer setup changes.**
 
 Changes that require an update to this skill:
 - New or changed fields on `Harness.AgentAdapter.Invocation`
@@ -329,16 +421,24 @@ Changes that require an update to this skill:
 - New adapters or capability declarations
 - Changes to the non-delegatable contract or recommended dispatch paths
 - New result shapes or verdict semantics
-- Task 17 (MCP surface) when it lands
+- **Changes to project-registration config shape** (`config :harness, :projects, [...]`)
+- **Changes to the `.mcp.json` shape Tidewave expects, or harness's dashboard port (`:4018`)**
+- Task 17 (first-class MCP surface) when it lands
 
-**How this skill reaches the orchestrator's context.** The project `CLAUDE.md` imports this file via `@skills/harness-driver/SKILL.md`, so it loads at session start in this repo. In consumer projects that depend on harness, the skill is meant to be loaded the same way — `@`-import from their CLAUDE.md (or invoke explicitly via the Skill tool when triggered by the patterns in the `argument-hint`). It does not auto-load on its own.
+**How this skill reaches the orchestrator's context.**
 
-When in doubt, read the current moduledocs for `Harness.AgentAdapter`, `Harness.Run`, `Harness.Batch`, and `Harness.Roadmap`, then make this skill match reality. Tidewave `project_eval` is the fastest verifier: `function_exported?/3`, `__info__(:functions)`, `Map.keys(Struct.__struct__())`, and `get_docs` will catch most drift in seconds.
+- **Context A** (consuming repo): the consuming repo's `CLAUDE.md` imports it via `@~/_DATA/code/harness/skills/harness-driver/SKILL.md`. The skill is shared from the harness checkout; consuming repos do not vendor it.
+- **Context B** (dogfooding): harness's own `CLAUDE.md` imports it via `@skills/harness-driver/SKILL.md` (relative).
+
+Either way it does not auto-load on its own — the CLAUDE.md import is what brings it into session context.
+
+When in doubt, read the current moduledocs for `Harness.AgentAdapter`, `Harness.Run`, `Harness.Batch`, `Harness.ProjectRegistry`, and `Harness.Roadmap`, then make this skill match reality. Tidewave `project_eval` is the fastest verifier: `function_exported?/3`, `__info__(:functions)`, `Map.keys(Struct.__struct__())`, and `get_docs` will catch most drift in seconds.
 
 ---
 
 ## Related Canonical Documents
 
+- `README.md` § "Use harness from another repo" (the human-facing onboarding for Context A)
 - `CLAUDE.md` § "Dogfooding — harness Builds harness" (policy)
 - `docs/dogfooding-workflow.md` (detailed operational runbook + verdict table + driver script template)
 - `docs/agent-cli-reference.md` (per-agent headless facts)
@@ -348,6 +448,6 @@ Load those in addition to this skill when doing deep harness orchestration work.
 
 ---
 
-**This skill is the thing an AI should load first when it finds itself in a context where harness is available as a delegation engine.**
+**This skill is the thing an AI should load first when it finds itself in a context where harness is available as a delegation engine** — whether that's because it's running inside the harness checkout itself (Context B) or because its consuming repo has been wired up to drive harness (Context A).
 
 Use it. Keep it accurate. Dispatch through harness.

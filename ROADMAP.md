@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 8 — Closeout & Release Readiness (3 of 3 done · 0 in progress)
+**Focus phase:** 8 — Closeout & Release Readiness (4 of 4 done · 0 in progress)
 
-**Last shipped:** Task 72 — Register the harness checkout as a project on boot (dev default), Task 73 — ResultStore.File.list_run_records skips undecodable term files instead of halting on 2026-05-28
+**Last shipped:** Task 72 — Register the harness checkout as a project on boot (dev default), Task 73 — ResultStore.File.list_run_records skips undecodable term files instead of halting, Task 74 — Document cross-checkout consumer workflow (SKILL.md + README) on 2026-05-28
 
 **Up next:** Task 17 — Agent-shaped surface — MCP tools + JSON CLI [D:6/B:8/U:8 → Eff:1.33] 📋
 <!-- FOCUS:END -->
@@ -104,4 +104,5 @@
 | Task 71 | ✅ | 🎁 **closeout** · 🚀 **v0_6** · v0.6 closeout: doc + skill refresh, rmap doctor cleanup, Tidewave smoke [D:3/B:8/U:9 → Eff:2.83] 🎯 |
 | Task 72 | ✅ | 🎁 **closeout** · 🚀 **v0_6** · Register the harness checkout as a project on boot (dev default) [D:2/B:6/U:8 → Eff:3.5] 🎯 |
 | Task 73 | ✅ | 🎁 **closeout** · 🚀 **v0_6** · ResultStore.File.list_run_records skips undecodable term files instead of halting [D:2/B:5/U:7 → Eff:3.0] 🎯 |
+| Task 74 | ✅ | 🎁 **closeout** · 🚀 **v0_6** · Document cross-checkout consumer workflow (SKILL.md + README) [D:2/B:7/U:7 → Eff:3.5] 🎯 |
 <!-- TASKS:END -->
