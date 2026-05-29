@@ -174,7 +174,7 @@ defmodule Harness.Chat.Session do
         end
 
       {:error, error} ->
-        {:error, terminal(:backend_error, error.message, %{error: error}), state}
+        {:error, emit_terminal(state.session_id, terminal(:backend_error, error.message, %{error: error})), state}
     end
   end
 
@@ -230,7 +230,7 @@ defmodule Harness.Chat.Session do
     fingerprint = {name, normalize_input(input)}
 
     if MapSet.member?(state.tool_call_history, fingerprint) do
-      {:error, terminal(:loop_detected, "Repeated identical tool call: #{name}")}
+      {:error, emit_terminal(state.session_id, terminal(:loop_detected, "Repeated identical tool call: #{name}"))}
     else
       :ok
     end
@@ -238,9 +238,18 @@ defmodule Harness.Chat.Session do
 
   @spec abort(map(), terminal_reason(), String.t(), map()) :: {:error, terminal(), map()}
   defp abort(state, reason, message, details \\ %{}) do
-    terminal = terminal(reason, message, details)
-    Stream.broadcast(state.session_id, terminal)
+    terminal = emit_terminal(state.session_id, terminal(reason, message, details))
     {:error, terminal, state}
+  end
+
+  # Broadcasts a terminal to the session stream and returns it unchanged, so a
+  # call site can both surface it to stream-only subscribers and thread it into
+  # the synchronous `{:error, terminal, state}` reply. Every terminal flows
+  # through here exactly once — never broadcast a terminal inline elsewhere.
+  @spec emit_terminal(String.t(), terminal()) :: terminal()
+  defp emit_terminal(session_id, terminal) do
+    Stream.broadcast(session_id, terminal)
+    terminal
   end
 
   @spec append_user_message(map(), String.t()) :: map()
@@ -251,7 +260,11 @@ defmodule Harness.Chat.Session do
   @spec ensure_history_limit(map()) :: {:ok, map()} | {:error, terminal(), map()}
   defp ensure_history_limit(state) do
     if history_bytes(state.messages) > state.max_history_bytes do
-      {:error, terminal(:max_history_bytes, "Conversation history exceeds #{state.max_history_bytes} bytes"), state}
+      {:error,
+       emit_terminal(
+         state.session_id,
+         terminal(:max_history_bytes, "Conversation history exceeds #{state.max_history_bytes} bytes")
+       ), state}
     else
       {:ok, state}
     end

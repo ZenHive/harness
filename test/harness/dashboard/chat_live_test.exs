@@ -47,6 +47,28 @@ defmodule Harness.Dashboard.ChatLiveTest do
       already = String.duplicate("x", 8) <> "\n[…truncated]"
       assert ChatLive.append_bounded(already, "more text") == already
     end
+
+    # Review fix #7: a streamed text_delta can land mid-codepoint. A raw
+    # `binary_part/3` byte slice at the cap would split a multi-byte UTF-8
+    # codepoint and yield an invalid binary LiveView refuses to render; the
+    # safe prefix must trim the partial codepoint to keep the result valid.
+    test "truncation never splits a multi-byte UTF-8 codepoint" do
+      cap = ChatLive.max_message_bytes()
+      # Leave 3 bytes of room, then append "é" (2 bytes) + "🎯" (4 bytes). A
+      # raw 3-byte slice keeps "é" plus the first byte of "🎯" (invalid); the
+      # safe prefix drops the partial codepoint, keeping the complete "é".
+      existing = String.duplicate("x", cap - 3)
+      addition = "é🎯zzzz"
+
+      result = ChatLive.append_bounded(existing, addition)
+
+      assert String.valid?(result)
+      assert String.ends_with?(result, "\n[…truncated]")
+
+      kept = String.replace_suffix(result, "\n[…truncated]", "")
+      assert String.valid?(kept)
+      assert kept == existing <> "é"
+    end
   end
 
   describe "set_tool_result/3" do

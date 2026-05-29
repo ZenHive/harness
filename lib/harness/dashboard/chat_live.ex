@@ -481,8 +481,7 @@ defmodule Harness.Dashboard.ChatLive do
 
       true ->
         room = max(@max_message_bytes - byte_size(existing), 0)
-        kept = binary_part(addition, 0, min(room, byte_size(addition)))
-        existing <> kept <> "\n[…truncated]"
+        existing <> safe_byte_prefix(addition, room) <> "\n[…truncated]"
     end
   end
 
@@ -490,7 +489,28 @@ defmodule Harness.Dashboard.ChatLive do
   defp truncate_bounded(text) when byte_size(text) <= @max_message_bytes, do: text
 
   defp truncate_bounded(text) do
-    binary_part(text, 0, @max_message_bytes) <> "\n[…truncated]"
+    safe_byte_prefix(text, @max_message_bytes) <> "\n[…truncated]"
+  end
+
+  # Takes the leading `max_bytes` of `bin`, then trims any trailing bytes that
+  # would leave a split multi-byte UTF-8 codepoint. A streamed `text_delta` can
+  # land mid-codepoint, and a raw `binary_part/3` byte slice would yield an
+  # invalid binary that LiveView refuses to render. A codepoint is ≤4 bytes, so
+  # the trim drops at most 3 bytes.
+  @spec safe_byte_prefix(binary(), non_neg_integer()) :: binary()
+  defp safe_byte_prefix(bin, max_bytes) do
+    bin
+    |> binary_part(0, min(max_bytes, byte_size(bin)))
+    |> trim_to_valid_utf8()
+  end
+
+  @spec trim_to_valid_utf8(binary()) :: binary()
+  defp trim_to_valid_utf8(bin) do
+    cond do
+      String.valid?(bin) -> bin
+      byte_size(bin) == 0 -> bin
+      true -> trim_to_valid_utf8(binary_part(bin, 0, byte_size(bin) - 1))
+    end
   end
 
   @doc false

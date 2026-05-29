@@ -197,6 +197,71 @@ defmodule Harness.Chat.SessionTest do
     end
   end
 
+  describe "terminal broadcasts to the session stream" do
+    # Review fix #6: loop_detected / backend_error / max_history_bytes used to
+    # build their terminals inline and return without broadcasting, so a
+    # stream-only subscriber never saw them. They now route through a single
+    # broadcast helper — assert each reaches the stream exactly once.
+    test "loop_detected is broadcast to subscribers, not only returned" do
+      {:ok, agent} =
+        Agent.start_link(fn ->
+          tool = fn _req, _cb, _opts ->
+            {:ok,
+             %{
+               content: [%{type: "tool_use", id: "t", name: "project_registry__list", input: %{}}],
+               stop_reason: "tool_use"
+             }}
+          end
+
+          [tool, tool]
+        end)
+
+      {:ok, session_id, _pid} =
+        Supervisor.start_session(backend: FunBackend, backend_opts: [fun: scripted_fun(agent)])
+
+      assert :ok = Stream.subscribe(session_id)
+
+      assert {:error, %{type: :terminal, reason: :loop_detected}} =
+               Session.user_message(session_id, "loop")
+
+      assert_received {:harness_chat_stream, ^session_id, %{type: :terminal, reason: :loop_detected}}
+    end
+
+    test "backend_error is broadcast to subscribers, not only returned" do
+      boom = fn _req, _cb, _opts -> {:error, %{message: "backend exploded"}} end
+
+      {:ok, session_id, _pid} =
+        Supervisor.start_session(backend: FunBackend, backend_opts: [fun: boom])
+
+      assert :ok = Stream.subscribe(session_id)
+
+      assert {:error, %{type: :terminal, reason: :backend_error}} =
+               Session.user_message(session_id, "trigger error")
+
+      assert_received {:harness_chat_stream, ^session_id, %{type: :terminal, reason: :backend_error}}
+    end
+
+    test "max_history_bytes is broadcast to subscribers, not only returned" do
+      done = fn _req, _cb, _opts ->
+        {:ok, %{content: [%{type: "text", text: "ok"}], stop_reason: "end_turn"}}
+      end
+
+      {:ok, session_id, _pid} =
+        Supervisor.start_session(
+          backend: FunBackend,
+          backend_opts: [fun: done],
+          max_history_bytes: 32
+        )
+
+      assert :ok = Stream.subscribe(session_id)
+
+      assert {:error, %{type: :terminal, reason: :max_history_bytes}} =
+               Session.user_message(session_id, String.duplicate("x", 128))
+
+      assert_received {:harness_chat_stream, ^session_id, %{type: :terminal, reason: :max_history_bytes}}
+    end
+  end
+
   describe "supervision" do
     test "start_session registers a session under Harness.Chat.Registry" do
       noop = fn _, _, _ -> {:ok, %{content: [], stop_reason: "end_turn"}} end

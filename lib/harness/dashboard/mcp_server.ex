@@ -73,6 +73,11 @@ defmodule Harness.Dashboard.MCPServer do
 
       {:error, {:dispatch_failed, message}} ->
         {:reply, error_payload("Dispatch failed: #{message}"), frame}
+
+      # A novel error shape from Tools.dispatch must not CaseClauseError-crash
+      # the anubis request handler; surface it as an MCP tool error instead.
+      {:error, other} ->
+        {:reply, error_payload("Dispatch failed: #{inspect(other)}"), frame}
     end
   end
 

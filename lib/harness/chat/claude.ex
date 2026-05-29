@@ -351,14 +351,15 @@ defmodule Harness.Chat.Claude do
     {:error, %{type: :claude_exit, message: "claude exited with status #{status}", status: status}}
   end
 
+  # Isolate the Port-draining loop from a callback that raises, but let exits
+  # (e.g. a supervision shutdown signal) and throws propagate rather than
+  # swallowing them — matching close_port/1's rescue-only convention below.
   @spec safe_callback(Backend.stream_callback(), Backend.event()) :: :ok
   defp safe_callback(callback, event) do
     callback.(event)
     :ok
   rescue
     _ -> :ok
-  catch
-    _, _ -> :ok
   end
 
   @spec close_port(port()) :: :ok

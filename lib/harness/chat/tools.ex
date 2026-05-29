@@ -144,16 +144,22 @@ defmodule Harness.Chat.Tools do
   @spec resolve_param(entry(), atom(), map()) :: term()
   defp resolve_param(%{params: params}, key, arguments) do
     key_str = Atom.to_string(key)
+    details = Map.get(params, key, %{})
+    present? = Map.has_key?(arguments, key_str) or Map.has_key?(arguments, key)
 
     case Map.get(arguments, key_str, Map.get(arguments, key)) do
       nil ->
-        case Map.get(params, key, %{}) do
+        # A param with a default takes it (LLM callers routinely emit null for
+        # unset optional params). Otherwise distinguish an explicit null —
+        # honored as nil — from a truly absent key, which is `:__missing__`.
+        case details do
           %{default: default} -> default
+          _ when present? -> nil
           _ -> :__missing__
         end
 
       value ->
-        decode_param(value, Map.get(params, key, %{}))
+        decode_param(value, details)
     end
   end
 
