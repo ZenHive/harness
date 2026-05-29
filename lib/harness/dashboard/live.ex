@@ -14,6 +14,11 @@ defmodule Harness.Dashboard.Live do
   buckets and `Harness.ProjectRegistry.list/0` for the project switcher. A 1s
   tick keeps the snapshot fresh; per-run transcript chunks arrive over
   `Phoenix.PubSub` and append to the LiveView's bounded transcript buffer.
+
+  An operator can kill an in-flight run from either view via a confirm-gated
+  "Kill run" button (`Task 94`); the `"kill_run"` event routes straight through
+  `Harness.Run.cancel/1` (idempotent — settles the run `:failed`), and the
+  next tick transitions the row/detail to its settled state.
   """
 
   use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}
@@ -286,6 +291,7 @@ defmodule Harness.Dashboard.Live do
           <th>Attempts</th>
           <th>Verdict</th>
           <th>Detail</th>
+          <th>Action</th>
         </tr>
       </thead>
       <tbody>
@@ -298,6 +304,9 @@ defmodule Harness.Dashboard.Live do
           <td>{entry.status.repair_attempts}</td>
           <td>{verdict_label(entry.status.verdict_status)}</td>
           <td>{entry.detail || ""}</td>
+          <td>
+            <.kill_button :if={killable?(entry.status)} run_id={entry.status.run_id} />
+          </td>
         </tr>
       </tbody>
     </table>
@@ -359,6 +368,10 @@ defmodule Harness.Dashboard.Live do
       <dd>{@run_status.worktree_path || "—"}</dd>
     </dl>
 
+    <p :if={killable?(@run_status)}>
+      <.kill_button run_id={@run_id} />
+    </p>
+
     <h2>Transcript</h2>
     <p class="transcript-toggle">
       <a :if={!@raw_view} href={"/harness/runs/#{@run_id}?raw=1"}>view raw stream</a>
@@ -398,6 +411,26 @@ defmodule Harness.Dashboard.Live do
     """
   end
 
+  attr(:run_id, :string, required: true)
+
+  # Confirm-gated kill affordance shared by the index row and the run-detail
+  # view. A misfire settles the run :failed, so the `data-confirm` prompt is
+  # mandatory; the click routes to the `"kill_run"` handle_event.
+  @spec kill_button(map()) :: Rendered.t()
+  defp kill_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      class="kill-btn"
+      phx-click="kill_run"
+      phx-value-run_id={@run_id}
+      data-confirm={"Kill run #{@run_id}? This settles it :failed."}
+    >
+      Kill run
+    </button>
+    """
+  end
+
   @impl Phoenix.LiveView
   def handle_event("select_project", %{"value" => project_name}, socket) do
     target =
@@ -407,6 +440,22 @@ defmodule Harness.Dashboard.Live do
       end
 
     {:noreply, push_patch(socket, to: target)}
+  end
+
+  def handle_event("kill_run", %{"run_id" => run_id}, socket) do
+    :ok = Harness.Run.cancel(run_id)
+
+    # The 1s tick already refreshes index rows; refresh the detail view here so
+    # its Kill button vanishes immediately when the cancelled run is the one
+    # currently being viewed.
+    socket =
+      if socket.assigns[:run_id] == run_id do
+        refresh_run_status(socket, run_id)
+      else
+        socket
+      end
+
+    {:noreply, socket}
   end
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
@@ -435,4 +484,10 @@ defmodule Harness.Dashboard.Live do
   def verdict_label(:pass), do: "pass"
   def verdict_label(:fail), do: "fail"
   def verdict_label(nil), do: "—"
+
+  @doc false
+  @spec killable?(Status.t() | nil) :: boolean()
+  def killable?(%Status{state: state}) when state in [:done, :failed], do: false
+  def killable?(%Status{}), do: true
+  def killable?(nil), do: false
 end

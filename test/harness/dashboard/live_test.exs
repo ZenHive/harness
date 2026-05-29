@@ -8,7 +8,14 @@ defmodule Harness.Dashboard.LiveTest do
   use ExUnit.Case, async: true
 
   alias Harness.Dashboard.Live
+  alias Harness.FakeAdapter
+  alias Harness.GitFixture
+  alias Harness.ProjectFixture
+  alias Harness.Roadmap.Item
+  alias Harness.Run
+  alias Harness.Run.Result
   alias Harness.Run.Status
+  alias Phoenix.LiveView.Socket
 
   defp run_entry(run_id, project_name \\ nil, bucket \\ :in_flight, opts \\ []) do
     status = %Status{
@@ -79,5 +86,63 @@ defmodule Harness.Dashboard.LiveTest do
       assert Live.verdict_label(:fail) == "fail"
       assert Live.verdict_label(nil) == "—"
     end
+  end
+
+  describe "killable?/1 (kill-button visibility guard)" do
+    test "in-flight states are killable" do
+      for state <- [:dispatched, :running, :committing, :verifying] do
+        assert Live.killable?(%Status{run_id: "r", task_id: "1", state: state}),
+               "expected #{state} to be killable"
+      end
+    end
+
+    test "settled states hide the kill control" do
+      refute Live.killable?(%Status{run_id: "r", task_id: "1", state: :done})
+      refute Live.killable?(%Status{run_id: "r", task_id: "1", state: :failed})
+    end
+
+    test "a missing run status (detail view, run not found) hides the kill control" do
+      refute Live.killable?(nil)
+    end
+  end
+
+  describe "handle_event(\"kill_run\", ...)" do
+    test "routes through Harness.Run.cancel/1 and the run settles :failed" do
+      base = GitFixture.tmp_base()
+      repo = GitFixture.init_repo()
+      project = ProjectFixture.from_repo(repo)
+
+      {:ok, run_id, pid} =
+        Run.Supervisor.start_run(item(), project, FakeAdapter,
+          base_dir: base,
+          adapter_opts: [command: :sleep],
+          idle_timeout: 5_000,
+          total_timeout: 10_000,
+          lifetime_timeout: 30_000,
+          terminal_linger: 100,
+          subscriber: self()
+        )
+
+      ref = Process.monitor(pid)
+      socket = socket_with_run(run_id)
+
+      assert {:noreply, %Socket{}} = Live.handle_event("kill_run", %{"run_id" => run_id}, socket)
+
+      assert_receive {:harness_run, ^run_id, %Result{state: :failed, reason: :cancelled}}, 5_000
+      assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 5_000
+    end
+
+    test "cancelling an unknown run is a no-op and returns the socket unchanged" do
+      socket = socket_with_run("definitely-not-a-run")
+      assert {:noreply, ^socket} = Live.handle_event("kill_run", %{"run_id" => "other-run"}, socket)
+    end
+  end
+
+  defp socket_with_run(run_id) do
+    %Socket{assigns: %{__changed__: %{}, run_id: run_id, run_status: nil}}
+  end
+
+  defp item do
+    %Item{id: "94", title: "Kill button", prompt: "do the thing", agent: :claude}
   end
 end
