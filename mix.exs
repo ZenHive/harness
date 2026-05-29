@@ -83,7 +83,7 @@ defmodule Harness.MixProject do
   defp deps do
     [
       # Core
-      {:descripex, "~> 0.6"},
+      {:descripex, "~> 0.7"},
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
       {:oban, "~> 2.22"},

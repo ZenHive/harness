@@ -169,6 +169,22 @@ end
 - `:agent` — `:claude | :codex | :cursor` (the agents `rmap delegate --to` supports). Defaults to `:claude`. The ingested prompt is rendered for *this* agent — see "Non-delegatable adapters" below for what to do when the executing adapter differs.
 - `:rmap_bin` — override the `rmap` binary name/path.
 
+**Browsing a roadmap before you ingest.** To see *what's there* — pick a task id, scope a session — use the structured browse functions instead of shelling `rmap` into the live checkout (which is wrong from harness's cwd, and breaks for `{:github, _}` sources):
+
+```elixir
+# All tasks (or filter by rmap status), resolved by registered project name.
+{:ok, tasks} = Harness.Roadmap.list("myapp")              # every task
+{:ok, pending} = Harness.Roadmap.list("myapp", "pending") # status filter
+
+# Next session-sized bundle of pending tasks + its bundle metadata.
+{:ok, %{bundle: bundle, tasks: tasks}} = Harness.Roadmap.next_bundle("myapp")
+```
+
+- Both take a **registered project name string** (resolved via `ProjectRegistry.lookup/1` → `roadmap_path`) — the flat, JSON-native shape the MCP/chat orchestrator calls as the `roadmap__list` / `roadmap__next_bundle` tools. SOURCE valid names from `project_registry__list`.
+- `list/2` returns `{:ok, [task_map]}` — each map carries `id`, `title`, `status`, `phase`, `bundle`, `eff`, `markers`, `milestone`. Finer filters (phase/marker/bundle/milestone) are client-side on the returned list; only `status` is pushed to rmap.
+- `next_bundle/1` returns `{:ok, %{bundle: meta | nil, tasks: [...]}}` (`bundle: nil` when nothing is pending).
+- Both error `{:error, {:unknown_project, name}}` for an unregistered name, plus the same `rmap_*` reasons as `ingest/2`.
+
 `Run.Supervisor.start_run/4` options worth knowing (full list in moduledoc):
 - `:subscriber` — pid that receives `{:harness_run, run_id, result}`. Defaults to caller. **Pass `nil` when dispatching from `mcp__harness__project_eval`** (eval process is ephemeral; see two-eval pattern).
 - `:total_timeout` / `:idle_timeout` — agent run timeouts (forwarded to `Driver`).
@@ -305,6 +321,15 @@ When `Harness.Chat.Claude` spawns its backing `claude -p`, it writes exactly thi
 
 **The two surfaces share the same source of truth.** `Harness.Chat.Tools` is the registry + dispatcher both `Harness.Chat.Session` and `Harness.Dashboard.MCPServer` reuse — adding or annotating a tool with `api()` (Tier 2, descripex) surfaces it in both surfaces simultaneously, no separate wrapper layer.
 
+### Playbooks — orchestration recipes as tools
+
+`Harness.Playbooks` exposes version-controlled markdown recipes — "dispatch a single task", "fan out a bundle", "A/B compare adapters", "audit-grade a fix" — as two tools on the same descripex/MCP surface:
+
+- `playbooks__list` (`Harness.Playbooks.list/0`) → `[%{name, title, summary}]`, the catalog.
+- `playbooks__get` (`Harness.Playbooks.get/1`) → `{:ok, %{name, title, summary, body}}` with the full markdown, or `{:error, {:unknown_playbook, name}}`.
+
+A playbook body names the exact tools to call, in order, with the gotchas inline (secret scrubbing, the non-delegatable two-step, reading the verdict). The orchestrator calls `playbooks__list` to discover what's available, `playbooks__get` to load a recipe, then executes it by calling the other harness tools. Bodies live in `priv/playbooks/<name>.md`, embedded at compile time — editing a recipe is a markdown edit + recompile, not a code change. The dashboard surfaces them as buttons that prefill the chat input (`run the <name> playbook for <project>`). Add a playbook: drop a `priv/playbooks/<slug>.md` file and add a `@catalog` entry in `Harness.Playbooks`.
+
 ### When to use which
 
 | Surface | Use when |
@@ -313,6 +338,7 @@ When `Harness.Chat.Claude` spawns its backing `claude -p`, it writes exactly thi
 | `Driver.run/3` / `AuditReview.grade_fix/1` | You want a cheap one-shot agent invocation (probe, grade, A/B), no worktree/verification lifecycle. |
 | `Chat.Session` + `Chat.Claude` | The operator (human or upstream LLM) wants to drive harness in natural language and watch tool calls render in the dashboard — exploratory ops, status queries, free-form orchestration. The LLM picks which tools to call. |
 | MCP endpoint at `/harness/mcp` | An **external** orchestrator (another Claude session, Cursor, Sprite, etc.) wants to call harness tools without being inside harness's BEAM. Standard MCP transport — same `.mcp.json` shape you'd use for any MCP server. |
+| `playbooks__list` / `playbooks__get` | You (the orchestrator) want a ready-made recipe for a common flow rather than assembling the tool sequence yourself. List the catalog, fetch the one that fits, follow it. |
 
 ---
 
@@ -489,6 +515,7 @@ Changes that require an update to this skill:
 - New or changed `Harness.Chat.Backend` callbacks, new backends, or changes to `Harness.Chat.Session`'s public surface (`start_link/2`, `user_message/3`, `snapshot/1`)
 - Changes to the MCP transport (`/harness/mcp` path, JSON-RPC envelope, tool naming, `Harness.Chat.Tools` registry shape)
 - Additional MCP backends beyond `Harness.Chat.Claude` (if/when a library-backed metered-API backend lands as an opt-in)
+- New or changed `Harness.Playbooks` (catalog entries, `priv/playbooks/*.md` recipes that drift from the actual tool surface, or the `list/0` / `get/1` shapes)
 
 **How this skill reaches the orchestrator's context.**
 

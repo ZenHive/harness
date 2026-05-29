@@ -67,6 +67,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the rationale into the same-agent's next repair prompt. Disabled by default
   (`config :harness, :cross_agent_repair, enabled: false`); `:grader` required for
   implementers outside the `:claude ↔ :codex` auto-pair.
+- Orchestration playbooks (`Harness.Playbooks`). Version-controlled markdown
+  recipes — dispatch-single-task, dispatch-bundle, ab-adapter-compare,
+  audit-grade-fix — embedded at compile time from `priv/playbooks/*.md` and
+  surfaced as `playbooks__list` / `playbooks__get` tools on the same chat/MCP
+  surface, so the orchestrator can fetch a ready-made tool sequence instead of
+  assembling one.
+- Structured roadmap browse (`Harness.Roadmap.list/2` + `next_bundle/1`,
+  tools `roadmap__list` / `roadmap__next_bundle`). Resolves a registered
+  project name to its roadmap and returns tasks/bundles as JSON-native maps, so
+  the orchestrator picks a task id through a harness tool rather than shelling
+  `rmap` from harness's own cwd (wrong root, and broken for `{:github, _}`
+  sources).
+- Run-detail transcript reworked from a raw stream-json `<pre>` dump to a
+  chat-style parsed-event view (`<.transcript_view>`), grouping assistant text,
+  tool-call/result pairs, system lines, and passthrough output; `?raw=1` on the
+  run URL falls back to the legacy raw buffer.
 
 ### Changed
 
@@ -104,6 +120,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Multi-required-param tools dispatched arguments to the wrong positions
+  (descripex 0.7 `param_order`). `Harness.Chat.Tools` ordered the positional
+  `apply/3` args by `Map.keys/1` (hash order), so a tool like `roadmap__list`
+  could receive its `status` value in the `project_name` slot. Now ordered by
+  declaration via descripex 0.7's `param_order`; bumped `{:descripex, "~> 0.7"}`.
 - Correctness + hardening pass from an independent multi-agent review of the two
   newest subsystems (chat/MCP, Oban dispatch) plus the OTP core. Notable fixes:
   the orphan-kill race in `AgentAdapter.OSProcess.kill/1` (the OS process could be

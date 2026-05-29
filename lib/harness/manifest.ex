@@ -6,7 +6,7 @@ defmodule Harness.Manifest do
   up the AI orchestrator dispatch contract — `Harness.Run.Supervisor`,
   `Harness.Batch`, `Harness.Batch.AgentEvaluation`, `Harness.Roadmap`,
   `Harness.ProjectRegistry`, `Harness.Run`, `Harness.ResultStore`,
-  `Harness.AuditReview`, and `Harness.AgentAdapter.Driver`.
+  `Harness.AuditReview`, `Harness.AgentAdapter.Driver`, and `Harness.Playbooks`.
 
   The same manifest powers the in-process chat orchestrator's tool dispatch
   (Task 76) and the external MCP endpoint (Task 79); both surfaces resolve the
@@ -27,7 +27,8 @@ defmodule Harness.Manifest do
     Harness.Run,
     Harness.ResultStore,
     Harness.AuditReview,
-    Harness.AgentAdapter.Driver
+    Harness.AgentAdapter.Driver,
+    Harness.Playbooks
   ]
 
   api(:build, "Build the harness driver-surface manifest (JSON-serializable).",

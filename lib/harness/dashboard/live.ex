@@ -41,7 +41,11 @@ defmodule Harness.Dashboard.Live do
      |> assign(:selected_project, nil)
      |> assign(:transcript, "")
      |> assign(:transcript_bytes, 0)
+     |> assign(:transcript_events, [])
+     |> assign(:agent_kind, nil)
+     |> assign(:raw_view, false)
      |> assign(:last_seq, 0)
+     |> assign(:events_last_seq, 0)
      |> assign(:run_status, nil)
      |> assign(:run_id, nil)}
   end
@@ -62,17 +66,26 @@ defmodule Harness.Dashboard.Live do
     |> assign(:run_status, nil)
   end
 
-  defp apply_action(socket, :show, %{"run_id" => run_id}) do
+  defp apply_action(socket, :show, %{"run_id" => run_id} = params) do
     socket
     |> maybe_unsubscribe(socket.assigns[:run_id])
     |> subscribe_transcript(run_id)
     |> assign(:run_id, run_id)
     |> assign(:transcript, "")
     |> assign(:transcript_bytes, 0)
+    |> assign(:transcript_events, [])
+    |> assign(:agent_kind, nil)
+    |> assign(:raw_view, raw_view_param?(params))
     |> assign(:last_seq, 0)
+    |> assign(:events_last_seq, 0)
     |> backfill_transcript(run_id)
+    |> backfill_transcript_events(run_id)
     |> refresh_run_status(run_id)
   end
+
+  @spec raw_view_param?(map()) :: boolean()
+  defp raw_view_param?(%{"raw" => value}) when value in ["1", "true"], do: true
+  defp raw_view_param?(_), do: false
 
   @impl Phoenix.LiveView
   def handle_info(:tick, socket) do
@@ -117,7 +130,41 @@ defmodule Harness.Dashboard.Live do
      |> assign(:last_seq, seq)}
   end
 
+  # Cross-run + seq-dedup guards mirror the raw transcript clauses above so a
+  # stale delta queued for a previously-viewed run never bleeds into the
+  # current pane.
+  def handle_info({:harness_transcript_events, broadcast_run_id, _seq, _events}, socket)
+      when broadcast_run_id != socket.assigns.run_id do
+    {:noreply, socket}
+  end
+
+  def handle_info({:harness_transcript_events, _run_id, seq, _events}, socket)
+      when seq <= socket.assigns.events_last_seq do
+    {:noreply, socket}
+  end
+
+  def handle_info({:harness_transcript_events, _run_id, _seq, []}, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_info({:harness_transcript_events, _run_id, seq, events}, socket) do
+    combined = socket.assigns.transcript_events ++ events
+    cap = Transcript.event_count_cap()
+    bounded = trim_events_to_cap(combined, cap)
+
+    {:noreply,
+     socket
+     |> assign(:transcript_events, bounded)
+     |> assign(:events_last_seq, seq)}
+  end
+
   def handle_info(_other, socket), do: {:noreply, socket}
+
+  @spec trim_events_to_cap(list(), pos_integer()) :: list()
+  defp trim_events_to_cap(events, cap) do
+    count = length(events)
+    if count <= cap, do: events, else: Enum.drop(events, count - cap)
+  end
 
   @spec schedule_tick() :: reference()
   defp schedule_tick, do: Process.send_after(self(), :tick, @tick_interval_ms)
@@ -175,6 +222,28 @@ defmodule Harness.Dashboard.Live do
         |> assign(:transcript, buffer)
         |> assign(:transcript_bytes, byte_size(buffer))
         |> assign(:last_seq, seq)
+
+      {:error, :not_found} ->
+        socket
+    end
+  end
+
+  # Sibling of backfill_transcript/2 for the parsed-event surface. Pulls the
+  # event-list snapshot + the executing adapter's agent_kind + last seq from the
+  # run gen_statem so the renderer has stable context across reconnects.
+  # `subscribe_transcript/2` ran first, so any event delta broadcast between
+  # subscribe and this call is queued in our mailbox AND already folded into the
+  # snapshot list; priming `events_last_seq` from the snapshot seq lets the
+  # handle_info seq guard drop those already-counted deltas (mirrors
+  # backfill_transcript/2's raw-path dedup).
+  @spec backfill_transcript_events(Socket.t(), String.t()) :: Socket.t()
+  defp backfill_transcript_events(socket, run_id) do
+    case Harness.Run.transcript_events(run_id) do
+      {:ok, %{events: events, agent_kind: agent_kind, seq: seq}} ->
+        socket
+        |> assign(:transcript_events, events)
+        |> assign(:agent_kind, agent_kind)
+        |> assign(:events_last_seq, seq)
 
       {:error, :not_found} ->
         socket
@@ -291,8 +360,17 @@ defmodule Harness.Dashboard.Live do
     </dl>
 
     <h2>Transcript</h2>
-    <p :if={@transcript == ""}>Waiting for output…</p>
-    <pre :if={@transcript != ""} class="transcript">{@transcript}</pre>
+    <p class="transcript-toggle">
+      <a :if={!@raw_view} href={"/harness/runs/#{@run_id}?raw=1"}>view raw stream</a>
+      <a :if={@raw_view} href={"/harness/runs/#{@run_id}"}>view parsed turns</a>
+    </p>
+    <div :if={!@raw_view}>
+      <Components.transcript_view events={@transcript_events} agent={@agent_kind} />
+    </div>
+    <div :if={@raw_view}>
+      <p :if={@transcript == ""}>Waiting for output…</p>
+      <pre :if={@transcript != ""} class="transcript">{@transcript}</pre>
+    </div>
     """
   end
 

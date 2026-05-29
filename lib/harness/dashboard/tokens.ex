@@ -536,6 +536,76 @@ defmodule Harness.Dashboard.Tokens do
         border-radius: 0.5rem;
       }
 
+      /* --- Run-detail transcript_view (Task 87) --------------------------- */
+
+      .transcript-view {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3);
+        margin-block: var(--space-3);
+      }
+      .transcript-empty {
+        color: var(--text-muted);
+        font-family: var(--font-display);
+        font-size: var(--text-sm);
+        padding-block: var(--space-4);
+      }
+      .transcript-toggle {
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        margin-block: var(--space-2);
+      }
+      .transcript-toggle a {
+        color: var(--text-muted);
+        text-decoration: underline dotted;
+        text-underline-offset: 0.2rem;
+      }
+      .transcript-toggle a:hover { color: var(--text); }
+
+      .eyebrow {
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        margin: 0;
+        padding-left: var(--space-2);
+        border-left: 2px solid var(--rule);
+      }
+      .eyebrow-kind { color: var(--text); }
+
+      .plain-chunk {
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        line-height: 1.5;
+        color: var(--text);
+        background: var(--bg);
+        border: 1px solid var(--rule);
+        border-radius: 0.35rem;
+        padding: var(--space-2) var(--space-3);
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-x: auto;
+      }
+
+      .transcript-unknown {
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        background: rgba(255,255,255,0.02);
+        border: 1px dashed var(--rule);
+        border-radius: 0.35rem;
+        padding: var(--space-2) var(--space-3);
+      }
+      .transcript-unknown > summary { cursor: pointer; }
+      .transcript-unknown[open] { color: var(--text); }
+      .transcript-unknown pre {
+        margin-block-start: var(--space-2);
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
       /* Motion keyframes — guarded by prefers-reduced-motion at the bottom */
       @keyframes msg-arrive {
         from { opacity: 0; transform: translateY(0.4rem); }

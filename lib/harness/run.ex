@@ -73,8 +73,10 @@ defmodule Harness.Run do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Run, as: AgentRun
+  alias Harness.AgentRegistry
   alias Harness.AuditReview
   alias Harness.Dashboard.Transcript
+  alias Harness.Dashboard.Transcript.Parser
   alias Harness.Git
   alias Harness.Project
   alias Harness.ResultStore
@@ -151,7 +153,10 @@ defmodule Harness.Run do
            result: Result.t() | nil,
            transcript: binary(),
            transcript_bytes: non_neg_integer(),
-           transcript_seq: non_neg_integer()
+           transcript_seq: non_neg_integer(),
+           agent_kind: Parser.agent_kind() | nil,
+           transcript_events: [Parser.event()],
+           transcript_parser_state: Parser.parser_state() | nil
          }
 
   @typep event :: :enter | :gen_statem.event_type()
@@ -224,6 +229,37 @@ defmodule Harness.Run do
   def transcript(run) do
     with {:ok, pid} <- resolve(run) do
       {:ok, :gen_statem.call(pid, :transcript)}
+    end
+  catch
+    :exit, _reason -> {:error, :not_found}
+  end
+
+  api(:transcript_events, "Return the parsed transcript event list + last seq tag for an in-flight or lingering run.",
+    params: [
+      run: [
+        kind: :exchange_data,
+        source: "Harness.Run.Supervisor.list_runs/0",
+        description: "Run id string or gen_statem pid."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{events: [Parser.event()], agent_kind: Parser.agent_kind() | nil, seq: non_neg_integer}} — events are the cumulative bounded list (default cap 500) parsed via Harness.Dashboard.Transcript.Parser; agent_kind is the executing adapter's atom (or nil for unregistered adapters / test doubles); seq mirrors transcript/1's counter. {:error, :not_found} for stopped/unknown runs."
+    }
+  )
+
+  @spec transcript_events(run()) ::
+          {:ok,
+           %{
+             events: [Parser.event()],
+             agent_kind: Parser.agent_kind() | nil,
+             seq: non_neg_integer()
+           }}
+          | {:error, :not_found}
+  def transcript_events(run) do
+    with {:ok, pid} <- resolve(run) do
+      {:ok, :gen_statem.call(pid, :transcript_events)}
     end
   catch
     :exit, _reason -> {:error, :not_found}
@@ -319,7 +355,10 @@ defmodule Harness.Run do
       result: nil,
       transcript: <<>>,
       transcript_bytes: 0,
-      transcript_seq: 0
+      transcript_seq: 0,
+      agent_kind: agent_kind_for(adapter),
+      transcript_events: [],
+      transcript_parser_state: init_parser_state(adapter)
     }
 
     {:ok, :dispatched, data, [{{:timeout, :lifetime}, data.lifetime_timeout, :lifetime}]}
@@ -398,7 +437,7 @@ defmodule Harness.Run do
 
   def running(:info, {ref, {:ok, %Outcome{} = outcome}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
-    data = %{data | task: nil, agent_outcome: outcome}
+    data = finalize_transcript(%{data | task: nil, agent_outcome: outcome})
 
     case {data.cancel_requested, checkout_pollution_reason(data)} do
       {nil, nil} ->
@@ -605,15 +644,42 @@ defmodule Harness.Run do
     {:keep_state_and_data, [{:reply, from, snapshot}]}
   end
 
+  defp handle_common({:call, from}, :transcript_events, _state, data) do
+    snapshot = %{
+      events: data.transcript_events,
+      agent_kind: data.agent_kind,
+      seq: data.transcript_seq
+    }
+
+    {:keep_state_and_data, [{:reply, from, snapshot}]}
+  end
+
   # State-agnostic so a chunk that lands during `:committing` / `:verifying` /
   # `:terminal_linger` still appends — the agent's Port can flush after the
   # gen_statem has already transitioned out of `:running`.
+  #
+  # Two parallel buffers + broadcasts per chunk: the legacy raw iodata path
+  # (Transcript.append/broadcast) keeps `?raw=1` on the run-detail URL alive
+  # for one release; the parsed-event path (Transcript.append_chunk/4 +
+  # broadcast_events/3) feeds the new `<.transcript_view>` renderer. Subscribers
+  # pattern-match whichever shape they want.
   defp handle_common(:info, {:transcript_chunk, chunk}, _state, data) do
     {trimmed, trimmed_bytes} = Transcript.append(data.transcript, data.transcript_bytes, chunk)
     new_seq = data.transcript_seq + 1
     Transcript.broadcast(data.run_id, new_seq, chunk)
 
-    {:keep_state, %{data | transcript: trimmed, transcript_bytes: trimmed_bytes, transcript_seq: new_seq}}
+    {new_events, delta, new_parser_state} = parse_chunk(data, chunk)
+    if delta != [], do: Transcript.broadcast_events(data.run_id, new_seq, delta)
+
+    {:keep_state,
+     %{
+       data
+       | transcript: trimmed,
+         transcript_bytes: trimmed_bytes,
+         transcript_seq: new_seq,
+         transcript_events: new_events,
+         transcript_parser_state: new_parser_state
+     }}
   end
 
   defp handle_common({:call, from}, :cancel, state, _data) when state in [:done, :failed] do
@@ -1164,5 +1230,67 @@ defmodule Harness.Run do
   @spec configured(atom(), term()) :: term()
   defp configured(key, default) do
     :harness |> Application.get_env(:run, []) |> Keyword.get(key, default)
+  end
+
+  # Resolves the adapter module back to its `Parser.agent_kind` atom for the
+  # transcript parser. Returns `nil` for unregistered adapters (test doubles,
+  # ad-hoc invocations) so the run still functions — the parsed-event surface
+  # stays empty in that case and only `?raw=1` shows anything in the dashboard.
+  @spec agent_kind_for(module()) :: Parser.agent_kind() | nil
+  defp agent_kind_for(adapter) do
+    case AgentRegistry.agent_for_module(adapter) do
+      {:ok, kind} -> kind
+      {:error, _} -> nil
+    end
+  end
+
+  @spec init_parser_state(module()) :: Parser.parser_state() | nil
+  defp init_parser_state(adapter) do
+    case agent_kind_for(adapter) do
+      nil -> nil
+      kind -> Parser.init_state(kind)
+    end
+  end
+
+  # Feeds a chunk through the parser when the executing adapter resolved to a
+  # known `agent_kind`; otherwise threads existing state untouched with an empty
+  # delta. The cap-and-evict trim AND the broadcast delta both come from
+  # `Transcript.append_chunk/4`'s three-tuple return so the producer never has
+  # to recompute either.
+  @spec parse_chunk(data(), iodata()) ::
+          {[Parser.event()], [Parser.event()], Parser.parser_state() | nil}
+  defp parse_chunk(%{agent_kind: nil} = data, _chunk) do
+    {data.transcript_events, [], data.transcript_parser_state}
+  end
+
+  defp parse_chunk(%{agent_kind: kind, transcript_events: events, transcript_parser_state: state}, chunk) do
+    Transcript.append_chunk(events, kind, state, chunk)
+  end
+
+  # Flushes any trailing partial-line bytes the per-agent parser buffered when
+  # the agent's Port closed (a complete JSON object/event without a final
+  # newline would otherwise never surface in the parsed-event view). Mirrors
+  # the per-chunk path: trim via the shared helper, and broadcast the drained
+  # delta on a fresh seq so a live subscriber sees the last event too.
+  # No-op for unregistered adapters (agent_kind: nil).
+  @spec finalize_transcript(data()) :: data()
+  defp finalize_transcript(%{agent_kind: nil} = data), do: data
+
+  defp finalize_transcript(%{agent_kind: kind, transcript_events: events, transcript_parser_state: state} = data) do
+    {new_events, delta, new_parser_state} = Transcript.finalize(events, kind, state)
+
+    if delta == [] do
+      %{data | transcript_events: new_events, transcript_parser_state: new_parser_state}
+    else
+      new_seq = data.transcript_seq + 1
+      Transcript.broadcast_events(data.run_id, new_seq, delta)
+
+      %{
+        data
+        | transcript_events: new_events,
+          transcript_parser_state: new_parser_state,
+          transcript_seq: new_seq
+      }
+    end
   end
 end

@@ -2710,8 +2710,8 @@ done_at = "2026-05-28"
 id = "85"
 phase = 10
 bundle = "dashboard-chrome"
-status = "pending"
 milestone = "v0_8"
+status = "done"
 title = "Harness.Dashboard.Components + Tokens overhaul + persistent navbar/footer chrome"
 scores = { d = 5, b = 8, u = 8 }
 depends_on = []
@@ -2801,8 +2801,10 @@ is LiveView / HEEx / CSS / DOM-feedback work, exactly the territory headless
 dispatch fails on (Task 78 precedent). Run `iex -S mix` with Tidewave open and
 the four routes loaded in the browser; iterate live.
 """
+implemented = "Shipped in 1a9d1df. lib/harness/dashboard/components.ex (new, 328 LOC) exports navbar/footer/page_shell/bucket_badge + extracted message_row/tool_call/json_tree/json_node/value_kind/role_label from chat_live.ex (which lost 171 LOC). lib/harness/dashboard/tokens.ex (+203) swapped Geist family in via Google Fonts/Vercel CDN, tightened type-scale variables (--text-xs..--text-display), added sticky navbar backdrop-blur + .navbar/.footer/.page-shell rules + bucket-badge ::before glyph mapping. root.html.heex wraps {@inner_content} in page_shell. live.ex / chat_live.ex shed inline chrome. components_test.exs (+79) covers the new surface."
 created_at = "2026-05-29"
 scored_at = "2026-05-29"
+done_at = "2026-05-29"
 
 [[task]]
 id = "86"
@@ -2893,8 +2895,8 @@ done_at = "2026-05-29"
 id = "87"
 phase = 10
 bundle = "dashboard-chrome"
-status = "pending"
 milestone = "v0_8"
+status = "done"
 title = "Run-detail transcript rework — parsed event list + <.transcript_view> component, ?raw=1 fallback"
 scores = { d = 5, b = 9, u = 9 }
 depends_on = [85, 86]
@@ -2983,5 +2985,7 @@ Tasks via Browser Tooling\"). Driver+browser feedback loop is the only way
 to grade event-grouping correctness, scroll behaviour, and the
 parser-vs-raw visual delta.
 """
+implemented = "Run-detail transcript pane swapped from raw <pre> dump to chat-style parsed view: Harness.Dashboard.Transcript carries an event list + parser_state per run via new append_chunk/4 (events, agent_kind, parser_state, chunk → {new_events, delta, new_parser_state}) + broadcast_events/3, capped at configurable event_count_cap/0 (default 500, :harness :dashboard :transcript_max_events). Harness.Run gen_statem threads parser_state through every :transcript_chunk and exposes transcript_events/1 alongside the legacy transcript/1; unregistered adapters degrade gracefully to agent_kind: nil + empty events. Harness.Dashboard.Components.transcript_view/1 + eyebrow/1 walk events into render blocks (consecutive :assistant_text collapse into one .msg-body, :assistant_tool_use + matching :tool_result pair into one <.tool_call>, :system as eyebrow, :plain_text as monospace card, :unknown preserved as muted <details>). Live :show subscribes to both transcript shapes, backfills via transcript_events/1, swaps render to <.transcript_view> with ?raw=1 fallback. CSS in tokens.ex for the new variants. Tests: 8 transcript_view component tests, 7 transcript event-cap + broadcast tests, 4 run gen_statem tests (incl. :sys.replace_state seam for parser-state threading through a registered agent_kind). Browser-verified end-to-end: all 6 event kinds render correctly via synthetic broadcast, ?raw=1 toggle swaps to legacy pre view, real Run gen_statem backfill populates events + agent_kind on mount, live updates after backfill append cleanly. Per-real-adapter visual coverage deferred to in-vivo dogfood dispatches — parser fixtures (Task 86) cover wire-format correctness."
 created_at = "2026-05-29"
 scored_at = "2026-05-29"
+done_at = "2026-05-29"

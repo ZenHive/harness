@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 10 — Dashboard Operator UX (1 of 3 done · 0 in progress)
+**Focus phase:** 10 — Dashboard Operator UX (3 of 3 done · 0 in progress)
 
-**Last shipped:** Task 86 — Transcript parser dispatch + per-agent parsers (5 structured + 1 passthrough) with unified event vocabulary on 2026-05-29
+**Last shipped:** Task 85 — Harness.Dashboard.Components + Tokens overhaul + persistent navbar/footer chrome, Task 86 — Transcript parser dispatch + per-agent parsers (5 structured + 1 passthrough) with unified event vocabulary, Task 87 — Run-detail transcript rework — parsed event list + <.transcript_view> component, ?raw=1 fallback on 2026-05-29
 
-**Up next:** Task 85 — Harness.Dashboard.Components + Tokens overhaul + persistent navbar/footer chrome [D:5/B:8/U:8 → Eff:1.6] 🚀
+**Up next:** Task 80 — Harness.Dashboard.RoadmapLive — multi-project rmap-next browser with 1-click dispatch [D:3/B:5/U:4 → Eff:1.5] 🚀
 <!-- FOCUS:END -->
 
 ---

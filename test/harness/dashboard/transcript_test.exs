@@ -2,6 +2,7 @@ defmodule Harness.Dashboard.TranscriptTest do
   use ExUnit.Case, async: true
 
   alias Harness.Dashboard.Transcript
+  alias Harness.Dashboard.Transcript.Parser
 
   test "topic/1 returns a stable per-run identifier" do
     assert Transcript.topic("run-abc") == "harness:run:run-abc:transcript"
@@ -84,6 +85,113 @@ defmodule Harness.Dashboard.TranscriptTest do
 
     test "buffer_bytes/0 reports the trim cap" do
       assert Transcript.buffer_bytes() == 200 * 1024
+    end
+  end
+
+  describe "broadcast_events/3 + topic isolation" do
+    test "delivers seq-tagged event lists to the subscriber on the shared topic" do
+      run_id = "run-#{System.unique_integer([:positive])}"
+      :ok = Transcript.subscribe(run_id)
+
+      events = [{:assistant_text, %{text: "hello"}}]
+      assert :ok = Transcript.broadcast_events(run_id, 1, events)
+      assert_receive {:harness_transcript_events, ^run_id, 1, ^events}, 500
+    end
+
+    test "shares the topic with broadcast/3 so both shapes reach one subscriber" do
+      run_id = "run-#{System.unique_integer([:positive])}"
+      :ok = Transcript.subscribe(run_id)
+
+      assert :ok = Transcript.broadcast(run_id, 1, "raw bytes")
+      assert :ok = Transcript.broadcast_events(run_id, 1, [{:plain_text, %{text: "rb"}}])
+
+      assert_receive {:harness_transcript, ^run_id, 1, "raw bytes"}, 500
+      assert_receive {:harness_transcript_events, ^run_id, 1, [{:plain_text, %{text: "rb"}}]}, 500
+    end
+  end
+
+  describe "append_chunk/4 (parsed-event helper)" do
+    test "returns {events, delta, parser_state} for a known agent_kind" do
+      state = Parser.init_state(:antigravity)
+      assert {events, delta, _new_state} = Transcript.append_chunk([], :antigravity, state, "hello")
+      assert events == [{:plain_text, %{text: "hello"}}]
+      assert delta == events
+    end
+
+    test "appends fresh events on top of an existing list" do
+      state = Parser.init_state(:antigravity)
+      seed = [{:plain_text, %{text: "first"}}]
+
+      {events, delta, _new_state} = Transcript.append_chunk(seed, :antigravity, state, "second")
+
+      assert events == seed ++ [{:plain_text, %{text: "second"}}]
+      assert delta == [{:plain_text, %{text: "second"}}]
+    end
+
+    test "FIFO-evicts oldest events when the combined list exceeds event_count_cap/0" do
+      Application.put_env(:harness, :dashboard, transcript_max_events: 3)
+      on_exit(fn -> Application.delete_env(:harness, :dashboard) end)
+
+      state = Parser.init_state(:antigravity)
+
+      {events, _delta, state} = Transcript.append_chunk([], :antigravity, state, "a")
+      {events, _delta, state} = Transcript.append_chunk(events, :antigravity, state, "b")
+      {events, _delta, state} = Transcript.append_chunk(events, :antigravity, state, "c")
+      {events, delta, _state} = Transcript.append_chunk(events, :antigravity, state, "d")
+
+      # Cap = 3 → oldest evicted, newest preserved
+      assert events == [
+               {:plain_text, %{text: "b"}},
+               {:plain_text, %{text: "c"}},
+               {:plain_text, %{text: "d"}}
+             ]
+
+      # Delta still reports the chunk's events (cap eviction is the producer's
+      # state-trim concern, not the consumer's "what just arrived" signal).
+      assert delta == [{:plain_text, %{text: "d"}}]
+    end
+
+    test "empty chunk returns the input list unchanged with an empty delta" do
+      state = Parser.init_state(:antigravity)
+      seed = [{:plain_text, %{text: "kept"}}]
+
+      assert {^seed, [], _new_state} = Transcript.append_chunk(seed, :antigravity, state, "")
+    end
+  end
+
+  describe "finalize/3 (parsed-event helper)" do
+    test "drains a buffered fragment past the parser at port close" do
+      state = Parser.init_state(:claude)
+      # Feed a complete JSON object WITHOUT a trailing newline — the parser
+      # holds it as a fragment until finalize flushes it.
+      fragment = ~s({"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}})
+
+      {events_after_append, [], state} = Transcript.append_chunk([], :claude, state, fragment)
+      assert events_after_append == []
+
+      {events, delta, _new_state} = Transcript.finalize(events_after_append, :claude, state)
+
+      assert [{:assistant_text, %{text: "hi"}}] = events
+      assert delta == events
+    end
+
+    test "empty buffer at finalize yields no events" do
+      state = Parser.init_state(:claude)
+      assert {[], [], _new_state} = Transcript.finalize([], :claude, state)
+    end
+  end
+
+  describe "event_count_cap/0" do
+    test "defaults to 500 when no config is set" do
+      Application.delete_env(:harness, :dashboard)
+      assert Transcript.event_count_cap() == 500
+    end
+
+    test "honors :transcript_max_events override" do
+      Application.put_env(:harness, :dashboard, transcript_max_events: 42)
+      on_exit(fn -> Application.delete_env(:harness, :dashboard) end)
+
+      assert Transcript.event_count_cap() == 42
     end
   end
 end

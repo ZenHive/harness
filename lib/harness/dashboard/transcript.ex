@@ -1,24 +1,32 @@
 defmodule Harness.Dashboard.Transcript do
   @moduledoc """
-  PubSub topic and buffer helper for the live stream-json transcript pane
-  (Task 50 Pass 2, extended in Task 63 with seq-tagged broadcasts and a shared
-  append helper).
+  PubSub topic and buffer helpers for the live transcript pane (Task 50 Pass 2,
+  extended in Task 63 with seq-tagged broadcasts and a shared append helper,
+  extended in Task 87 with a parsed-event surface).
 
   The agent's port output passes through `Harness.AgentAdapter.Driver.loop/7`
   one chunk at a time. The run-wrapping `Harness.Run` gen_statem ingests each
-  chunk into a bounded buffer alongside its `Status` snapshot, then publishes
-  it here as `{:harness_transcript, run_id, seq, data}`. Subscribers (the
-  `Harness.Dashboard.Live` LiveView) fetch the buffer + last `seq` on mount via
-  `Harness.Run.transcript/1`, then dedup any broadcasts with `seq <= last_seq`
-  that overlapped the snapshot call.
+  chunk twice:
 
-  ## Buffer cap
+    * Into the legacy raw iodata buffer (`append/3`, 200 KiB tail cap) and
+      broadcasts the raw bytes as `{:harness_transcript, run_id, seq, data}`.
+    * Through `Harness.Dashboard.Transcript.Parser.append/3` into the parsed
+      event list (`append_chunk/4`, event-count cap), broadcasting the new
+      events as `{:harness_transcript_events, run_id, seq, events}`.
 
-  The buffer is bounded at `@buffer_bytes` (200 KiB) on both ends of the wire:
-  the gen_statem keeps the most recent 200 KiB; the LiveView keeps the most
-  recent 200 KiB after appending live chunks. `append/3` is the shared trim
-  implementation so producer and consumer can never disagree on what "the last
-  200 KiB" means.
+  Both shapes ship on the same PubSub topic for one release so `?raw=1` on the
+  run-detail URL stays functional as a parser escape hatch. Subscribers
+  receive whichever messages they pattern-match.
+
+  ## Caps
+
+    * **Raw buffer** — `@buffer_bytes` (200 KiB), trimmed to the most recent
+      tail by `append/3`. Producer and consumer share the helper so they never
+      disagree on what "the last 200 KiB" means.
+    * **Event list** — `event_count_cap/0` (default 500, configurable via
+      `config :harness, :dashboard, transcript_max_events: <pos_integer>`).
+      Oldest events drop first when the cap is exceeded — mirrors the raw
+      buffer's "keep the recent tail" semantics, but at event granularity.
 
   ## PubSub guard
 
@@ -27,12 +35,29 @@ defmodule Harness.Dashboard.Transcript do
   subtree) never fails on a missing bus.
   """
 
+  alias Harness.Dashboard.Transcript.Parser
+
   @pubsub Harness.PubSub
   @buffer_bytes 200 * 1024
+  @default_event_count_cap 500
 
-  @doc "The buffer cap in bytes (200 KiB)."
+  @doc "The raw buffer cap in bytes (200 KiB)."
   @spec buffer_bytes() :: pos_integer()
   def buffer_bytes, do: @buffer_bytes
+
+  @doc """
+  The event-list cap (count, not bytes).
+
+  Reads `config :harness, :dashboard, transcript_max_events: <pos_integer>`;
+  falls back to `500`. Resolved per-call so an app-config change between
+  releases takes effect without restart.
+  """
+  @spec event_count_cap() :: pos_integer()
+  def event_count_cap do
+    :harness
+    |> Application.get_env(:dashboard, [])
+    |> Keyword.get(:transcript_max_events, @default_event_count_cap)
+  end
 
   @doc "Returns the PubSub topic for `run_id`'s transcript stream."
   @spec topic(String.t()) :: String.t()
@@ -59,17 +84,44 @@ defmodule Harness.Dashboard.Transcript do
   end
 
   @doc """
-  Broadcasts a transcript `chunk` for `run_id` tagged with `seq`.
+  Broadcasts a raw transcript `chunk` for `run_id` tagged with `seq`.
 
   Called by the `Harness.Run` gen_statem's `:transcript_chunk` handler, which
   owns the monotonic seq counter and the bounded buffer. Subscribers receive
   `{:harness_transcript, run_id, seq, data}`. Silent no-op when the PubSub
   server is not running.
+
+  Paired with `broadcast_events/3`: the gen_statem emits both per chunk so a
+  late subscriber can hold either shape (the new event list, the legacy raw
+  buffer, or both for `?raw=1` toggle).
   """
   @spec broadcast(String.t(), non_neg_integer(), iodata()) :: :ok
   def broadcast(run_id, seq, chunk) when is_binary(run_id) and is_integer(seq) and seq >= 0 do
     if Process.whereis(@pubsub) do
       Phoenix.PubSub.broadcast(@pubsub, topic(run_id), {:harness_transcript, run_id, seq, chunk})
+    end
+
+    :ok
+  end
+
+  @doc """
+  Broadcasts a parsed `events` list for `run_id` tagged with `seq`.
+
+  Sibling to `broadcast/3`: same topic, distinct envelope. Subscribers receive
+  `{:harness_transcript_events, run_id, seq, events}`. `events` is the
+  *delta* produced by the parser for the chunk just appended, not the running
+  list — the LiveView re-builds its own bounded list from `transcript_events/1`
+  on mount and appends each delta as it arrives. Silent no-op when the PubSub
+  server is not running.
+  """
+  @spec broadcast_events(String.t(), non_neg_integer(), [Parser.event()]) :: :ok
+  def broadcast_events(run_id, seq, events) when is_binary(run_id) and is_integer(seq) and seq >= 0 and is_list(events) do
+    if Process.whereis(@pubsub) do
+      Phoenix.PubSub.broadcast(
+        @pubsub,
+        topic(run_id),
+        {:harness_transcript_events, run_id, seq, events}
+      )
     end
 
     :ok
@@ -90,6 +142,67 @@ defmodule Harness.Dashboard.Transcript do
     combined = buffer <> chunk_bin
     combined_bytes = bytes + byte_size(chunk_bin)
     trim(combined, combined_bytes)
+  end
+
+  @doc """
+  Feeds `new_chunk` through the per-agent parser, appending fresh events to
+  `events` and FIFO-trimming the combined list to `event_count_cap/0`.
+
+  Returns `{new_events, delta, new_parser_state}` — `new_events` is the
+  bounded snapshot the producer holds; `delta` is the slice produced by this
+  chunk (what `broadcast_events/3` should ship). Splitting the two lets the
+  producer's broadcast match Phoenix LiveView's `stream_insert/4` consumer
+  model without recomputing the diff.
+
+  The agent-kind dispatch happens inside
+  `Harness.Dashboard.Transcript.Parser.append/3`; this helper only owns the
+  cap-and-evict policy so producer (`Harness.Run`) and consumer
+  (`Harness.Dashboard.Live`) share trim semantics — same shape as `append/3`,
+  but at event granularity rather than byte granularity.
+
+  Oldest events drop first when the combined list exceeds the cap, mirroring
+  the raw buffer's "keep the recent tail" intent.
+  """
+  @spec append_chunk(
+          [Parser.event()],
+          Parser.agent_kind(),
+          Parser.parser_state(),
+          iodata()
+        ) :: {[Parser.event()], [Parser.event()], Parser.parser_state()}
+  def append_chunk(events, agent_kind, parser_state, new_chunk) when is_list(events) and is_atom(agent_kind) do
+    {delta, new_parser_state} = Parser.append(agent_kind, new_chunk, parser_state)
+    {trim_events(events ++ delta), delta, new_parser_state}
+  end
+
+  @doc """
+  Flushes any trailing partial-line bytes through the parser at port close.
+
+  Wraps `Harness.Dashboard.Transcript.Parser.finalize/2` with the same
+  cap-and-evict trim as `append_chunk/4`. Same three-tuple return shape —
+  `{new_events, delta, new_parser_state}` — so a parser that buffered a
+  complete JSON object without a newline surfaces its drained events both in
+  the producer's snapshot and on the wire.
+  """
+  @spec finalize(
+          [Parser.event()],
+          Parser.agent_kind(),
+          Parser.parser_state()
+        ) :: {[Parser.event()], [Parser.event()], Parser.parser_state()}
+  def finalize(events, agent_kind, parser_state) when is_list(events) and is_atom(agent_kind) do
+    {delta, new_parser_state} = Parser.finalize(agent_kind, parser_state)
+    {trim_events(events ++ delta), delta, new_parser_state}
+  end
+
+  @spec trim_events([Parser.event()]) :: [Parser.event()]
+  defp trim_events(events) do
+    cap = event_count_cap()
+    count = length(events)
+
+    if count <= cap do
+      events
+    else
+      Enum.drop(events, count - cap)
+    end
   end
 
   @spec trim(binary(), non_neg_integer()) :: {binary(), non_neg_integer()}

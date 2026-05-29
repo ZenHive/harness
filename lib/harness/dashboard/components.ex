@@ -30,6 +30,7 @@ defmodule Harness.Dashboard.Components do
 
   use Phoenix.Component
 
+  alias Harness.Dashboard.Transcript.Parser
   alias Phoenix.LiveView.Rendered
 
   ## --- Chrome ---------------------------------------------------------------
@@ -296,6 +297,107 @@ defmodule Harness.Dashboard.Components do
     """
   end
 
+  ## --- Run transcript view (Task 87) ---------------------------------------
+
+  attr(:events, :list, required: true)
+  attr(:agent, :atom, required: true)
+
+  @doc """
+  Renders a parsed `Harness.Dashboard.Transcript.Parser.event/0` list as
+  chat-style turns on the run-detail page.
+
+  Walks the events in arrival order and groups them into render blocks:
+
+    * Consecutive `:assistant_text` events collapse into one
+      `<.message_row role={:assistant}>` body — the same accumulator the chat
+      session's text_delta loop uses, so a long streamed answer reads as one
+      paragraph rather than per-token shards.
+    * `:assistant_tool_use` + matching `:tool_result` pair (by
+      `tool_use_id == id`) render as a single `<.tool_call>` in the
+      tool_use's chronological position; an unmatched tool_use shows status
+      `:pending`.
+    * `:system` events render as `<.eyebrow>` metadata lines (init / result /
+      thread_started / turn_started / message_end …).
+    * `:plain_text` (antigravity passthrough) renders as `<pre
+      class="plain-chunk">` monospace cards — no JSON tree.
+    * `:unknown` renders as a muted `<details class="transcript-unknown">`
+      with the raw line inside so nothing is lost when a wire-format edge
+      case is hit.
+
+  Pure component — `attr/3` declarations only; HEEx `:if` / `:for`; never
+  `Phoenix.HTML.raw/1` on agent-supplied content.
+  """
+  @spec transcript_view(map()) :: Rendered.t()
+  def transcript_view(%{events: events, agent: agent} = assigns) do
+    assigns = assign(assigns, :blocks, group_events(events, agent))
+
+    ~H"""
+    <section class="transcript-view" data-agent={@agent}>
+      <p :if={@blocks == []} class="transcript-empty">Waiting for output…</p>
+      <.transcript_block :for={block <- @blocks} block={block} agent={@agent} />
+    </section>
+    """
+  end
+
+  attr(:block, :map, required: true)
+  attr(:agent, :atom, required: true)
+
+  @doc false
+  @spec transcript_block(map()) :: Rendered.t()
+  def transcript_block(%{block: %{kind: :assistant_message}} = assigns) do
+    ~H"""
+    <.message_row
+      dom_id={"event-#{@block.id}"}
+      role={:assistant}
+      text={@block.text}
+      tool_calls={@block.tool_calls}
+    />
+    """
+  end
+
+  def transcript_block(%{block: %{kind: :system}} = assigns) do
+    ~H"""
+    <.eyebrow kind={@block.system_kind} data={@block.data} />
+    """
+  end
+
+  def transcript_block(%{block: %{kind: :plain_text}} = assigns) do
+    ~H"""
+    <pre class="plain-chunk" id={"event-#{@block.id}"}>{@block.text}</pre>
+    """
+  end
+
+  def transcript_block(%{block: %{kind: :unknown}} = assigns) do
+    ~H"""
+    <details class="transcript-unknown" id={"event-#{@block.id}"}>
+      <summary>unknown chunk</summary>
+      <pre>{@block.raw}</pre>
+    </details>
+    """
+  end
+
+  attr(:kind, :atom, required: true)
+  attr(:data, :map, default: %{})
+
+  @doc """
+  Compact metadata line for a `:system` transcript event.
+
+  The agent's lifecycle events (init / turn_started / message_end /
+  rate_limit_event …) carry context that helps the reader follow the run but
+  is not the assistant's reply. Renders as a single subdued line showing the
+  kind label (also mirrored into `data-kind` for styling). The `data` payload
+  is accepted but not surfaced in the markup — kept on the assign so a future
+  expand-on-click can reveal it without a signature change.
+  """
+  @spec eyebrow(map()) :: Rendered.t()
+  def eyebrow(assigns) do
+    ~H"""
+    <p class="eyebrow" data-kind={@kind}>
+      <span class="eyebrow-kind">{to_string(@kind)}</span>
+    </p>
+    """
+  end
+
   ## --- Private helpers ------------------------------------------------------
 
   # Classifies a value for the `<.json_tree>` walker. Structs are deliberately
@@ -325,4 +427,104 @@ defmodule Harness.Dashboard.Components do
   defp bucket_glyph(:repairing), do: "⟳"
   defp bucket_glyph(:green), do: "●"
   defp bucket_glyph(:red), do: "✗"
+
+  # Walks the parser event list in arrival order and reduces it to the render
+  # block list `transcript_view/1` walks. Single pass, single pre-pass —
+  # neither `transcript_view/1` nor `transcript_block/1` look back; both
+  # render strictly forward off the produced list.
+  #
+  # Grouping rules:
+  #
+  #   * Consecutive `:assistant_text` events fold into one `:assistant_message`
+  #     block (the same single-message-body-per-turn pattern the chat session's
+  #     text_delta loop uses).
+  #   * `:assistant_tool_use` attaches a pending tool_call block onto the
+  #     currently-open assistant message (or opens a new empty one if there's
+  #     no text yet) and stamps the tool_call's `id`.
+  #   * `:tool_result` looks up the open assistant message's pending tool_call
+  #     by `tool_use_id` and fills its `result` + flips status to `:done`.
+  #     A tool_result without a matching tool_use (rare, malformed wire) is
+  #     dropped — we can't render it meaningfully without an argument tree.
+  #   * Any `:system` / `:plain_text` / `:unknown` event flushes the open
+  #     assistant message (closing the turn) and emits its own block.
+  #
+  # The opaque block id (counter) keeps DOM ids stable across re-renders of
+  # the same event list without depending on event content.
+  @spec group_events([Parser.event()], Parser.agent_kind()) :: [map()]
+  defp group_events(events, _agent) do
+    {blocks, open, _next_id} =
+      Enum.reduce(events, {[], nil, 0}, &reduce_event/2)
+
+    case open do
+      nil -> Enum.reverse(blocks)
+      msg -> Enum.reverse([msg | blocks])
+    end
+  end
+
+  # The reducer accumulator is `{closed_blocks_reversed, open_msg_or_nil, next_id}`.
+  # Open assistant messages stay outside the closed list until a non-text /
+  # non-tool event flushes them; this keeps the "consecutive text deltas
+  # collapse" + "tool_use attaches to current turn" rules in one place.
+
+  defp reduce_event({:assistant_text, %{text: text}}, {blocks, nil, id}) do
+    {blocks, %{kind: :assistant_message, id: id, text: text, tool_calls: []}, id + 1}
+  end
+
+  defp reduce_event({:assistant_text, %{text: text}}, {blocks, msg, id}) do
+    {blocks, %{msg | text: msg.text <> text}, id}
+  end
+
+  defp reduce_event({:assistant_tool_use, tool_use}, {blocks, nil, id}) do
+    msg = %{kind: :assistant_message, id: id, text: "", tool_calls: [build_tool_call(tool_use)]}
+    {blocks, msg, id + 1}
+  end
+
+  defp reduce_event({:assistant_tool_use, tool_use}, {blocks, msg, id}) do
+    msg = %{msg | tool_calls: msg.tool_calls ++ [build_tool_call(tool_use)]}
+    {blocks, msg, id}
+  end
+
+  defp reduce_event({:tool_result, %{tool_use_id: tool_use_id, content: content}}, {blocks, nil, id}) do
+    # Malformed: tool_result without a preceding open assistant_message. Drop
+    # silently — there is no rendering target.
+    _ = {tool_use_id, content}
+    {blocks, nil, id}
+  end
+
+  defp reduce_event({:tool_result, %{tool_use_id: tool_use_id, content: content}}, {blocks, msg, id}) do
+    {blocks, %{msg | tool_calls: fill_tool_result(msg.tool_calls, tool_use_id, content)}, id}
+  end
+
+  defp reduce_event({:system, %{kind: kind, data: data}}, acc) do
+    flush_and_emit(acc, fn id -> %{kind: :system, id: id, system_kind: kind, data: data} end)
+  end
+
+  defp reduce_event({:plain_text, %{text: text}}, acc) do
+    flush_and_emit(acc, fn id -> %{kind: :plain_text, id: id, text: text} end)
+  end
+
+  defp reduce_event({:unknown, %{raw: raw}}, acc) do
+    flush_and_emit(acc, fn id -> %{kind: :unknown, id: id, raw: raw} end)
+  end
+
+  # Flushes the open assistant message (if any) into the closed list before
+  # emitting a non-message block.
+  defp flush_and_emit({blocks, nil, id}, build_block) do
+    {[build_block.(id) | blocks], nil, id + 1}
+  end
+
+  defp flush_and_emit({blocks, msg, id}, build_block) do
+    {[build_block.(id) | [msg | blocks]], nil, id + 1}
+  end
+
+  defp build_tool_call(%{id: id, name: name, input: input}) do
+    %{id: id, name: name, args: input, result: nil, status: :pending}
+  end
+
+  defp fill_tool_result(tool_calls, tool_use_id, content) do
+    Enum.map(tool_calls, fn
+      %{id: ^tool_use_id} = tc -> %{tc | result: content, status: :done}
+      tc -> tc
+    end)
+  end
 end

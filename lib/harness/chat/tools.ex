@@ -100,7 +100,10 @@ defmodule Harness.Chat.Tools do
       arity: api_entry.arity,
       defaults: api_entry.defaults,
       input_schema: schema,
-      param_keys: Map.keys(params),
+      # `param_order` (descripex >= 0.7) preserves declaration order; `Map.keys`
+      # was hash-ordered, so multi-required-param tools dispatched arguments to
+      # the wrong positions (e.g. roadmap__list got status as project_name).
+      param_keys: api_entry.param_order,
       params: params
     }
   end

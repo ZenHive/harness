@@ -46,6 +46,7 @@ defmodule Harness.Roadmap do
   use Descripex, namespace: "/roadmap"
 
   alias Harness.Project
+  alias Harness.ProjectRegistry
   alias Harness.Roadmap.Item
 
   # Mirrors `rmap delegate --to`'s accepted values exactly — ingestion shells
@@ -66,6 +67,7 @@ defmodule Harness.Roadmap do
   @type error ::
           {:invalid_agent, term()}
           | {:invalid_selector, term()}
+          | {:unknown_project, String.t()}
           | {:rmap_not_found, String.t()}
           | :no_pending_task
           | {:task_not_found, String.t()}
@@ -111,20 +113,95 @@ defmodule Harness.Roadmap do
     end
   end
 
+  api(:list, "List a registered project's roadmap tasks as structured data (optionally by status) via rmap.",
+    params: [
+      project_name: [
+        kind: :value,
+        description:
+          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1 to its roadmap_path. SOURCE valid names from project_registry__list."
+      ],
+      status: [
+        kind: :value,
+        default: nil,
+        description:
+          "Optional rmap status filter: pending | in_progress | blocked | done | superseded. Omit for all tasks. Finer filtering (phase/marker/bundle/milestone) is client-side on the returned list — each task map carries those fields."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, [task_map]} — each map carries id, title, status, phase, bundle, eff, markers, milestone. {:error, reason}: unknown_project, rmap_not_found, roadmap_not_found, rmap_failed, rmap_bad_output."
+    }
+  )
+
+  @spec list(String.t(), String.t() | nil) :: {:ok, [map()]} | {:error, error()}
+  def list(project_name, status \\ nil) when is_binary(project_name) do
+    with {:ok, ctx} <- build_ctx(project_name: project_name),
+         :ok <- ensure_rmap(ctx.rmap_bin),
+         {:ok, output} <- run_list(status, ctx) do
+      decode_task_list(output)
+    end
+  end
+
+  api(
+    :next_bundle,
+    "Fetch the next session-sized bundle of pending tasks for a registered project as structured data via rmap.",
+    params: [
+      project_name: [
+        kind: :value,
+        description:
+          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1 to its roadmap_path. SOURCE valid names from project_registry__list."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{bundle: bundle_meta | nil, tasks: [task_map]}} — bundle_meta carries name/phase/description; tasks are the bundle's pending tasks (id, title, eff, ...). {:error, reason} per the same set as list/2."
+    }
+  )
+
+  @spec next_bundle(String.t()) :: {:ok, %{bundle: map() | nil, tasks: [map()]}} | {:error, error()}
+  def next_bundle(project_name) when is_binary(project_name) do
+    with {:ok, ctx} <- build_ctx(project_name: project_name),
+         :ok <- ensure_rmap(ctx.rmap_bin),
+         {:ok, output} <- run_bundle(ctx) do
+      decode_bundle(output)
+    end
+  end
+
   @spec build_ctx(keyword()) :: {:ok, ctx()} | {:error, error()}
   defp build_ctx(opts) do
-    root =
-      case Keyword.get(opts, :project) do
-        %Project{roadmap_path: path} -> Path.expand(path)
-        _ -> opts |> Keyword.get(:project_root, File.cwd!()) |> Path.expand()
-      end
+    with {:ok, root} <- resolve_root(opts) do
+      {:ok,
+       %{
+         root: root,
+         tasks_path: Path.join(root, "roadmap/tasks.toml"),
+         rmap_bin: Keyword.get(opts, :rmap_bin, "rmap")
+       }}
+    end
+  end
 
-    {:ok,
-     %{
-       root: root,
-       tasks_path: Path.join(root, "roadmap/tasks.toml"),
-       rmap_bin: Keyword.get(opts, :rmap_bin, "rmap")
-     }}
+  # Working-root precedence: an explicit %Project{} struct, then a registered
+  # project name (resolved via ProjectRegistry — the JSON-native path the MCP
+  # orchestrator uses), then a literal project_root, finally cwd.
+  @spec resolve_root(keyword()) :: {:ok, String.t()} | {:error, {:unknown_project, String.t()}}
+  defp resolve_root(opts) do
+    project = Keyword.get(opts, :project)
+    project_name = Keyword.get(opts, :project_name)
+
+    cond do
+      match?(%Project{}, project) ->
+        {:ok, Path.expand(project.roadmap_path)}
+
+      is_binary(project_name) ->
+        case ProjectRegistry.lookup(project_name) do
+          {:ok, %Project{roadmap_path: path}} -> {:ok, Path.expand(path)}
+          {:error, _} -> {:error, {:unknown_project, project_name}}
+        end
+
+      true ->
+        {:ok, opts |> Keyword.get(:project_root, File.cwd!()) |> Path.expand()}
+    end
   end
 
   @spec validate_agent(term()) :: :ok | {:error, {:invalid_agent, term()}}
@@ -172,6 +249,53 @@ defmodule Harness.Roadmap do
     case run_rmap(["delegate", id, "--to", Atom.to_string(agent)], ctx) do
       {:ok, output} -> {:ok, output}
       {:error, failure} -> {:error, classify_failure(failure, id)}
+    end
+  end
+
+  @spec run_list(String.t() | nil, ctx()) :: {:ok, String.t()} | {:error, error()}
+  defp run_list(status, ctx) do
+    case run_rmap(["list", "--json"] ++ status_argv(status), ctx) do
+      {:ok, output} -> {:ok, output}
+      {:error, failure} -> {:error, classify_failure(failure, nil)}
+    end
+  end
+
+  @spec status_argv(String.t() | nil) :: [String.t()]
+  defp status_argv(nil), do: []
+  defp status_argv(status), do: ["--status", to_string(status)]
+
+  # `rmap list --json` returns the full roadmap envelope; the task array lives
+  # under the singular "task" key. An empty roadmap yields an empty list.
+  @spec decode_task_list(String.t()) :: {:ok, [map()]} | {:error, error()}
+  defp decode_task_list(output) do
+    case JSON.decode(output) do
+      {:ok, %{"task" => tasks}} when is_list(tasks) -> {:ok, tasks}
+      {:ok, other} -> {:error, {:rmap_bad_output, {:unexpected_json, other}}}
+      {:error, reason} -> {:error, {:rmap_bad_output, reason}}
+    end
+  end
+
+  @spec run_bundle(ctx()) :: {:ok, String.t()} | {:error, error()}
+  defp run_bundle(ctx) do
+    case run_rmap(["next-bundle", "--json"], ctx) do
+      {:ok, output} -> {:ok, output}
+      {:error, failure} -> {:error, classify_failure(failure, nil)}
+    end
+  end
+
+  # `rmap next-bundle --json` carries the bundle metadata under "bundle" and the
+  # task array under "tasks" (a sibling key, not nested in the metadata).
+  @spec decode_bundle(String.t()) :: {:ok, %{bundle: map() | nil, tasks: [map()]}} | {:error, error()}
+  defp decode_bundle(output) do
+    case JSON.decode(output) do
+      {:ok, %{"tasks" => tasks} = envelope} when is_list(tasks) ->
+        {:ok, %{bundle: Map.get(envelope, "bundle"), tasks: tasks}}
+
+      {:ok, other} ->
+        {:error, {:rmap_bad_output, {:unexpected_json, other}}}
+
+      {:error, reason} ->
+        {:error, {:rmap_bad_output, reason}}
     end
   end
 
