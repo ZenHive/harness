@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v0_8 chat-orchestrator surface — roadmap browsing, playbooks, flat
+  dispatch.** Builds on the v0_7 chat/MCP foundation so an orchestrator can
+  pick *and* dispatch work end-to-end through tools, never by shelling `rmap`
+  into the live checkout. `Harness.Roadmap.list/2` + `next_bundle/1`
+  (`roadmap__list` / `roadmap__next_bundle`) expose a registered project's
+  roadmap as JSON-native maps. `Harness.Playbooks` (`playbooks__list` /
+  `playbooks__get`) serves version-controlled orchestration recipes from
+  `priv/playbooks/*.md`, surfaced in the dashboard chat as prefill chips.
+  `Harness.Dispatch.task/4` (`dispatch__task`) collapses the struct-passing
+  `ingest → start_run` flow into one flat call taking only JSON scalars
+  (project name, task selector, adapter, scrub-key) and returning a
+  `run_id` — with the Claude OAuth secret-scrub and the non-delegatable
+  ingest-then-dispatch two-step handled internally. The MCP `tools/list`
+  now excludes struct-arg tools a stateless JSON caller cannot drive
+  (`supervisor__start_run`, the `batch__*` / `agent_evaluation__*` tools);
+  they remain on the full in-process Elixir driver surface. Companion fixes:
+  keyword-typed params decode from JSON objects without crashing
+  `Keyword.get/3`, and integer-keyed `tasks.toml` ids coerce to strings on
+  ingest.
 - **v0_7 chat orchestrator (5 shipped, 1 superseded).** Harness now ships
   a third consumer surface alongside the verified-run lifecycle and the
   cheap driver path: a natural-language chat session backed by `claude -p`

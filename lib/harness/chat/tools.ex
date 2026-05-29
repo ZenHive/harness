@@ -167,6 +167,14 @@ defmodule Harness.Chat.Tools do
   end
 
   @spec decode_param(term(), map()) :: term()
+  # A keyword-list param (signalled by a list default, e.g. `opts: [default: []]`)
+  # arrives from JSON as an object/map. Decode it to a keyword list so the target
+  # function's `Keyword.get/3` does not crash with "no function clause matching".
+  # Top-level keys are atomized; this clause must precede the generic map clause.
+  defp decode_param(value, %{kind: :value, default: default}) when is_map(value) and is_list(default) do
+    value |> atomize_keys() |> Map.to_list()
+  end
+
   defp decode_param(value, %{kind: :value}) when is_binary(value) do
     if String.starts_with?(value, ":") do
       value |> String.slice(1..-1//1) |> String.to_existing_atom()

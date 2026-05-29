@@ -526,6 +526,37 @@ defmodule Harness.Dashboard.Tokens do
       }
       .composer button:disabled { opacity: 0.45; cursor: not-allowed; }
 
+      .playbook-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-2);
+        margin-bottom: var(--space-3);
+      }
+      .playbook-bar .label {
+        color: var(--text-muted);
+        font-family: var(--font-display);
+        font-size: var(--text-sm);
+        font-weight: 600;
+        margin-right: var(--space-1);
+      }
+      .playbook-chip {
+        background: var(--surface);
+        color: var(--text);
+        border: 1px solid var(--rule);
+        border-radius: 999px;
+        padding: var(--space-1) var(--space-3);
+        font-family: var(--font-display);
+        font-size: var(--text-sm);
+        cursor: pointer;
+        transition: border-color var(--motion-fast) var(--ease-out),
+          background-color var(--motion-fast) var(--ease-out);
+      }
+      .playbook-chip:hover {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+      }
+
       .empty-state {
         color: var(--text-muted);
         font-family: var(--font-display);

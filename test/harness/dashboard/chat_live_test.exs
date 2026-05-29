@@ -368,4 +368,32 @@ defmodule Harness.Dashboard.ChatLiveTest do
       assert ChatSupervisor.whereis(id) == pid
     end
   end
+
+  describe "playbook prefill" do
+    test "prefill_text/1 interpolates the slug and trails with the project cue" do
+      assert ChatLive.prefill_text("dispatch-single-task") ==
+               "run the dispatch-single-task playbook for "
+    end
+
+    test "playbook_bar/1 renders one prefill chip per catalogued playbook" do
+      html = render_component(&ChatLive.playbook_bar/1, playbooks: Harness.Playbooks.list())
+
+      for pb <- Harness.Playbooks.list() do
+        # Title is the visible label; slug rides phx-value-name so the click
+        # prefills with the name playbooks__get keys on.
+        assert html =~ pb.title
+        assert html =~ ~s(phx-value-name="#{pb.name}")
+      end
+
+      assert html =~ ~s(phx-click="prefill")
+      assert html =~ "playbook-chip"
+    end
+
+    test "playbook_bar/1 renders nothing when the catalog is empty" do
+      html = render_component(&ChatLive.playbook_bar/1, playbooks: [])
+
+      refute html =~ "playbook-bar"
+      refute html =~ "playbook-chip"
+    end
+  end
 end

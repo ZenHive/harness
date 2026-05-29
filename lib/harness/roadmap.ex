@@ -234,11 +234,16 @@ defmodule Harness.Roadmap do
 
   # The success gate for a --json call is JSON-decode success, not exit 0:
   # rmap can print an error to stdout and still exit 0 (e.g. a directory path).
+  # The id is normalized to a string: rmap faithfully emits whatever type the
+  # project's tasks.toml uses, so a project keyed on integer ids (`id = 25`)
+  # yields a JSON integer. Item.id is String.t() and the id flows into a
+  # `rmap delegate <id>` System.cmd arg (which must be a string), so coerce here.
   @spec decode_task(String.t()) :: {:ok, map()} | {:error, error()}
   defp decode_task(output) do
     case JSON.decode(output) do
       {:ok, nil} -> {:error, :no_pending_task}
       {:ok, %{"id" => id} = task} when is_binary(id) -> {:ok, task}
+      {:ok, %{"id" => id} = task} when is_integer(id) -> {:ok, %{task | "id" => Integer.to_string(id)}}
       {:ok, other} -> {:error, {:rmap_bad_output, {:unexpected_json, other}}}
       {:error, reason} -> {:error, {:rmap_bad_output, reason}}
     end

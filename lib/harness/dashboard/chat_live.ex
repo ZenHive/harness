@@ -83,7 +83,8 @@ defmodule Harness.Dashboard.ChatLive do
      |> assign(:active, nil)
      |> assign(:input, "")
      |> assign(:message_ids, [])
-     |> assign(:empty?, true)}
+     |> assign(:empty?, true)
+     |> assign(:playbooks, Harness.Playbooks.list())}
   end
 
   @impl Phoenix.LiveView
@@ -319,6 +320,14 @@ defmodule Harness.Dashboard.ChatLive do
   def handle_event("new_chat", _params, socket) do
     new_id = generate_session_id()
     {:noreply, push_navigate(socket, to: "/harness/chat/#{new_id}")}
+  end
+
+  # Playbook chip → prefill the composer with the recipe request, leaving the
+  # cursor after "for " for the operator to name the target project. The slug
+  # (not the title) is interpolated so the orchestrator calls playbooks__get
+  # with the name the catalog actually keys on.
+  def handle_event("prefill", %{"name" => name}, socket) do
+    {:noreply, assign(socket, :input, prefill_text(name))}
   end
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
@@ -561,6 +570,13 @@ defmodule Harness.Dashboard.ChatLive do
     "chat-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
   end
 
+  @doc false
+  # The composer prefill for a playbook chip. Slug (not title) so the
+  # orchestrator's playbooks__get call keys on the catalog name; trailing
+  # "for " leaves the cursor where the operator names the target project.
+  @spec prefill_text(String.t()) :: String.t()
+  def prefill_text(name) when is_binary(name), do: "run the #{name} playbook for "
+
   ## --- Render ---------------------------------------------------------------
 
   @impl Phoenix.LiveView
@@ -586,6 +602,8 @@ defmodule Harness.Dashboard.ChatLive do
         />
       </div>
 
+      <.playbook_bar playbooks={@playbooks} />
+
       <form phx-submit="send" phx-change="input_change" class="composer">
         <textarea
           name="text"
@@ -603,6 +621,28 @@ defmodule Harness.Dashboard.ChatLive do
   end
 
   ## --- Function components --------------------------------------------------
+
+  attr(:playbooks, :list, required: true, doc: "Catalog summary maps from Harness.Playbooks.list/0")
+
+  @doc "Chip row that prefills the composer with a playbook request on click."
+  @spec playbook_bar(map()) :: Rendered.t()
+  def playbook_bar(assigns) do
+    ~H"""
+    <div :if={@playbooks != []} class="playbook-bar">
+      <span class="label">Playbooks</span>
+      <button
+        :for={pb <- @playbooks}
+        type="button"
+        class="playbook-chip"
+        phx-click="prefill"
+        phx-value-name={pb.name}
+        title={pb.summary}
+      >
+        {pb.title}
+      </button>
+    </div>
+    """
+  end
 
   attr(:session_id, :string, default: nil)
   attr(:disabled?, :boolean, default: false)

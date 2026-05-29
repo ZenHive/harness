@@ -4,6 +4,7 @@ defmodule Harness.RunTest do
   alias Harness.AgentAdapter.Antigravity
   alias Harness.AgentAdapter.Outcome
   alias Harness.Dashboard.Transcript
+  alias Harness.Dashboard.Transcript.Parser
   alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProcessFixture
@@ -660,7 +661,7 @@ defmodule Harness.RunTest do
   defp install_agent_kind(pid, kind) do
     :sys.replace_state(pid, fn
       {state, data} when is_atom(state) and is_map(data) ->
-        {state, %{data | agent_kind: kind, transcript_parser_state: Harness.Dashboard.Transcript.Parser.init_state(kind)}}
+        {state, %{data | agent_kind: kind, transcript_parser_state: Parser.init_state(kind)}}
     end)
 
     _ = Antigravity

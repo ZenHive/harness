@@ -319,6 +319,10 @@ The same descripex-annotated harness toolset is exposed as a spec-compliant **MC
 
 When `Harness.Chat.Claude` spawns its backing `claude -p`, it writes exactly this config to a per-session `.harness-mcp-config.json` and passes it via `--mcp-config <path>`. External consumers point their own `.mcp.json` at the URL the same way.
 
+**Only JSON-driveable tools are on the MCP/chat surface.** `Harness.Manifest.mcp_tools/1` rejects any tool with an `:exchange_data` param — a stateless JSON caller cannot construct an Elixir struct — so `supervisor__start_run`, the `batch__*` tools (`batch__dispatch` / `batch__run` / `batch__run_pinned` / `batch__run_evaluation`), `agent_evaluation__compare`, and `audit_review__grade_fix_with` are **excluded** from `tools/list`. They stay on the full Elixir driver surface (`Harness.Manifest.build/0` / `modules/0`, `project_eval`, IEx). Exposed JSON tools: `dispatch__task`, `roadmap__ingest` / `roadmap__list` / `roadmap__next_bundle`, `project_registry__list` / `project_registry__lookup`, `playbooks__list` / `playbooks__get`, `audit_review__grade_fix`.
+
+**Flat dispatch — `dispatch__task`.** The struct-passing `roadmap__ingest` → `supervisor__start_run` two-step is not runnable over a stateless JSON boundary (the caller cannot hold the returned `%Harness.Roadmap.Item{}` between calls, and `start_run` takes `%Item{}` / `%Project{}` structs). `Harness.Dispatch.task/4` (tool `dispatch__task`) collapses the flow into one call taking only JSON scalars: `project_name` (registered project), `task` (id string or `"next"`), `adapter` (`claude` default / `codex` / `cursor` / `grok` / `antigravity` / `pi`), and `scrub_anthropic_key` (boolean, default `true` — strips `ANTHROPIC_API_KEY` so Claude dispatches use subscription OAuth). It resolves the project, ingests the task, applies the scrub, and starts the supervised run with `subscriber: nil`, returning `{:ok, %{run_id: ...}}` or a structured `{:error, reason}`. **Non-delegatable executors** (grok / antigravity / pi) are handled internally via the ingest-with-a-delegatable-render-agent (`:claude`) two-step — the orchestrator never has to know about it. Observe the run afterward by `run_id`. This is the chat/MCP replacement for the in-process Elixir two-step, which stays canonical for `project_eval`/IEx.
+
 **The two surfaces share the same source of truth.** `Harness.Chat.Tools` is the registry + dispatcher both `Harness.Chat.Session` and `Harness.Dashboard.MCPServer` reuse — adding or annotating a tool with `api()` (Tier 2, descripex) surfaces it in both surfaces simultaneously, no separate wrapper layer.
 
 ### Playbooks — orchestration recipes as tools
@@ -334,7 +338,8 @@ A playbook body names the exact tools to call, in order, with the gotchas inline
 
 | Surface | Use when |
 |---|---|
-| `Run.Supervisor.start_run/4` / `Batch.dispatch/2` | You're driving a specific roadmap task end-to-end through verification. You want the verdict, not a transcript. |
+| `dispatch__task` (chat / MCP) | You're a stateless JSON orchestrator dispatching one roadmap task. One flat call (scalars only), returns a `run_id`. The JSON-surface replacement for the struct two-step. |
+| `Run.Supervisor.start_run/4` / `Batch.dispatch/2` | You're driving a specific roadmap task end-to-end through verification from the in-process Elixir driver (`project_eval` / IEx). You want the verdict, not a transcript. |
 | `Driver.run/3` / `AuditReview.grade_fix/1` | You want a cheap one-shot agent invocation (probe, grade, A/B), no worktree/verification lifecycle. |
 | `Chat.Session` + `Chat.Claude` | The operator (human or upstream LLM) wants to drive harness in natural language and watch tool calls render in the dashboard — exploratory ops, status queries, free-form orchestration. The LLM picks which tools to call. |
 | MCP endpoint at `/harness/mcp` | An **external** orchestrator (another Claude session, Cursor, Sprite, etc.) wants to call harness tools without being inside harness's BEAM. Standard MCP transport — same `.mcp.json` shape you'd use for any MCP server. |
@@ -506,7 +511,7 @@ In the consuming-repo context (A), you never have "in-checkout" as an option —
 Changes that require an update to this skill:
 - New or changed fields on `Harness.AgentAdapter.Invocation`
 - New `rule_channel` values or rule injection behavior
-- New public functions on `Harness.Run.Supervisor`, `Harness.Batch`, `Harness.Batch.AgentEvaluation`, `Harness.Roadmap`, `Harness.AgentAdapter.Driver`
+- New public functions on `Harness.Run.Supervisor`, `Harness.Batch`, `Harness.Batch.AgentEvaluation`, `Harness.Roadmap`, `Harness.Dispatch`, `Harness.AgentAdapter.Driver`
 - New adapters or capability declarations
 - Changes to the non-delegatable contract or recommended dispatch paths
 - New result shapes or verdict semantics

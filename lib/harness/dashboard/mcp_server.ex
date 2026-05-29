@@ -58,6 +58,12 @@ defmodule Harness.Dashboard.MCPServer do
     dispatch_tool(name, arguments, frame)
   end
 
+  # `Tools.dispatch/3`'s success typing currently enumerates the exact error
+  # shapes, so dialyzer flags the defensive `{:error, other}` catch-all below
+  # as unreachable. Keep the clause — it guards the anubis request handler
+  # against a future Tools.dispatch error shape no one updated this case for —
+  # and suppress the now-redundant match warning.
+  @dialyzer {:no_match, dispatch_tool: 3}
   @spec dispatch_tool(String.t(), map(), Frame.t()) ::
           {:reply, map(), Frame.t()} | {:error, Error.t(), Frame.t()}
   defp dispatch_tool(name, arguments, frame) do

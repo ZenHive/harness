@@ -2936,7 +2936,7 @@
       "id": "80",
       "phase": 6,
       "bundle": "deferred",
-      "status": "pending",
+      "status": "superseded",
       "title": "Harness.Dashboard.RoadmapLive — multi-project rmap-next browser with 1-click dispatch",
       "scores": {
         "d": 3,
@@ -2965,7 +2965,7 @@
         "Status mutations via UI (rmap status, rmap mark) — keep mutations on the CLI for now",
         "Authoring new tasks via UI — `rmap new` stays the canonical authoring path"
       ],
-      "body": "Future-idea task, filed unpinned (no milestone) — pick up after v0_7 ships if the chat orchestrator hasn't already absorbed this use case via natural-language tool calls (`list_pending` + `dispatch_run` over chat may obviate the need for a dedicated browser LiveView).\n\nSurface the `rmap next` ordering as a clickable UI per registered project. Today the dispatch flow is: open IEx or mcp__harness__project_eval → call Roadmap.ingest → call Run.Supervisor.start_run with the right adapter. A LiveView that lists ranked pending tasks and offers 1-click dispatch removes that friction for the human operator.\n\nComposition: reuses ProjectRegistry.list/0, the same ranking logic rmap uses internally (or shells out to `rmap next --json --count N`), the existing Dashboard.Router + LiveView layout, and the existing per-run drill-down view. No new infrastructure.\n\nWhy deferred: the chat orchestrator (v0_7) may absorb this fully — \"show me the next 3 pending tasks for harness and dispatch the top one to Codex\" is a natural chat prompt. Wait for the chat UX to land before investing in a dedicated browser.\n\n## Visual design\n\nInherit the design tokens (fonts, color, type/spacing/motion scales) established in Task 78. Do not introduce a second vocabulary; if a needed token does not exist there yet, add it to Task 78's tokens module rather than forking.\n\nThis is a ranked list with high-information-density rows. Resist the default striped-table reflex. Score, Eff tier, and milestone are the actionable signals — encode them visually (density bar, weight, marginal sigil) instead of as one more text column.\n\nThe adapter picker is the moment of agency that makes 1-click dispatch feel different from typing the same call into IEx. Do not render it as a generic `<select>`. Consider an inline panel that reveals on row hover/click with the six adapters laid out so capability + availability state is immediately readable (greyed/disabled when unavailable, with the quota reason inline).\n\nForbidden: zebra-striped tables, generic select dropdowns, Inter / Roboto / Arial / system-ui / Space Grotesk, purple gradients, evenly-spaced color rainbows for bucket counts.\n",
+      "body": "SUPERSEDED 2026-05-29 — the v0_7 chat orchestrator absorbed this task's core use case, which is exactly the condition the original body named as its own supersede gate (\"if the chat orchestrator hasn't already absorbed this use case via natural-language tool calls\"). The absorbing surfaces all shipped: `roadmap__list` / `roadmap__next_bundle` (Task 88) = the speculated `list_pending`; the dispatch-single-task playbook (Task 89) + composer prefill chips (Task 90) = the speculated `dispatch_run`. The literal example below — \"show me the next 3 pending tasks for harness and dispatch the top one to Codex\" — is a working chat prompt today at /harness/chat. The only residual not covered by chat is the *visual* density-encoded ranked grid + inline adapter-capability picker; at B:5/U:4 that affordance is too thin to keep a deferred task alive, and a future visual browser would be freshly scoped against the then-current Components/Tokens vocabulary. Original body preserved below for provenance.\n\n---\n\nFuture-idea task, filed unpinned (no milestone) — pick up after v0_7 ships if the chat orchestrator hasn't already absorbed this use case via natural-language tool calls (`list_pending` + `dispatch_run` over chat may obviate the need for a dedicated browser LiveView).\n\nSurface the `rmap next` ordering as a clickable UI per registered project. Today the dispatch flow is: open IEx or mcp__harness__project_eval → call Roadmap.ingest → call Run.Supervisor.start_run with the right adapter. A LiveView that lists ranked pending tasks and offers 1-click dispatch removes that friction for the human operator.\n\nComposition: reuses ProjectRegistry.list/0, the same ranking logic rmap uses internally (or shells out to `rmap next --json --count N`), the existing Dashboard.Router + LiveView layout, and the existing per-run drill-down view. No new infrastructure.\n\nWhy deferred: the chat orchestrator (v0_7) may absorb this fully — \"show me the next 3 pending tasks for harness and dispatch the top one to Codex\" is a natural chat prompt. Wait for the chat UX to land before investing in a dedicated browser.\n\n## Visual design\n\nInherit the design tokens (fonts, color, type/spacing/motion scales) established in Task 78. Do not introduce a second vocabulary; if a needed token does not exist there yet, add it to Task 78's tokens module rather than forking.\n\nThis is a ranked list with high-information-density rows. Resist the default striped-table reflex. Score, Eff tier, and milestone are the actionable signals — encode them visually (density bar, weight, marginal sigil) instead of as one more text column.\n\nThe adapter picker is the moment of agency that makes 1-click dispatch feel different from typing the same call into IEx. Do not render it as a generic `<select>`. Consider an inline panel that reveals on row hover/click with the six adapters laid out so capability + availability state is immediately readable (greyed/disabled when unavailable, with the quota reason inline).\n\nForbidden: zebra-striped tables, generic select dropdowns, Inter / Roboto / Arial / system-ui / Space Grotesk, purple gradients, evenly-spaced color rainbows for bucket counts.\n",
       "created_at": "2026-05-28",
       "scored_at": "2026-05-28",
       "cross_repo": []
@@ -2992,7 +2992,7 @@
         "Comparison-launch form: pick a task + N adapters → trigger AgentEvaluation.compare → redirect to /harness/compare/:id while the runs are in-flight",
         "Live update as adapter runs settle (PubSub on Harness.Batch completion events or per-run terminal-state broadcast)",
         "Browser smoke: launch a 2-adapter compare on a known-green task → see both columns populate → see metrics differ → click each transcript tab",
-        "All design tokens (fonts, colors, type scale, spacing, motion) come from Task 78's tokens module — no new vocabulary introduced in this LiveView",
+        "All design tokens (fonts, colors, type scale, spacing, motion) come from `Harness.Dashboard.Tokens` (the Geist token set per Task 85) and the page is wrapped in `Harness.Dashboard.Components.page_shell/1` — no new vocabulary introduced in this LiveView",
         "The verdict cell is the dominant visual element of each adapter column; pass and fail are visually asymmetric (not balanced for fairness)",
         "The metric grid uses a full-bleed CSS-grid layout (no centered 1200px max-width) — the side-by-side comparison earns the viewport width",
         "Transcript-tab switching has a deliberate active-state cue and a precise transition; default browser focus rings are restyled to match the design vocabulary",
@@ -3005,7 +3005,7 @@
         "Cross-comparison aggregation (which adapter wins most often over N comparisons) — separate concern, later",
         "Comparison cancellation mid-flight"
       ],
-      "body": "Future-idea task, filed unpinned (no milestone) — pick up when same-task A/B agent evaluation becomes a frequent enough workflow to justify a UI. Currently Harness.Batch.AgentEvaluation.compare/4 exists as a backend (Task 33's deliverable) but has no operator-facing surface — comparison results are observable only via the returned struct or by drilling into each adapter's run record individually.\n\nSurface the comparison output side-by-side: N columns (one per adapter), one row per metric (verdict, repair_attempts, duration_ms, first_attempt_failed_check_count, agent_diff_size). Click a column header to switch the lower pane to that adapter's run transcript. Launch new comparisons from the same view.\n\nComposition: AgentEvaluation already exists; LiveView is the only new code. Mount on existing :4018 Bandit endpoint via Harness.Dashboard.Router; reuse the existing transcript rendering pattern from Harness.Dashboard.Live (per-run drill-down).\n\nWhy deferred: A/B agent evaluation isn't yet a default workflow — it's the kind of thing run occasionally to validate adapter parity claims or pick a default agent for a given task class. Until that becomes a frequent operator activity, a CLI/iex result is sufficient and the UI overhead doesn't pay back.\n\n## Visual design\n\nInherit Task 78's design tokens. Do not fork them.\n\nThe structural fact of this view is N-column symmetry — lean into it. The metric grid (rows × adapter columns) is a rare case where the data shape genuinely suggests an unconventional layout (full-bleed grid, no centered max-width). Resist the muscle-memory `<table>` rendering; consider a CSS-grid layout where each adapter is a vertical lane and the verdict cell is the dominant visual element of that lane (the only thing that matters at a glance).\n\nThe transcript pane is the slow-scan surface; the metric grid is the at-a-glance surface. Reflect that hierarchy in scale, weight, and color treatment — verdict cells should read across the room; transcript should read at desk distance.\n\nTranscript-tab switching is the only meaningful interaction in this view. Treat it like switching frequencies — a precise, immediate transition with a clear active-state cue — not like a generic tabbed-card swap.\n\nForbidden: striped data tables, balanced \"fairness\" cell weighting (where pass and fail look equally weighted — the whole point is that they don't), default browser focus rings without restyling, Inter / Roboto / Arial / system-ui / Space Grotesk.\n",
+      "body": "Future-idea task, filed unpinned (no milestone) — pick up when same-task A/B agent evaluation becomes a frequent enough workflow to justify a UI. Currently Harness.Batch.AgentEvaluation.compare/4 exists as a backend (Task 33's deliverable) but has no operator-facing surface — comparison results are observable only via the returned struct or by drilling into each adapter's run record individually.\n\nSurface the comparison output side-by-side: N columns (one per adapter), one row per metric (verdict, repair_attempts, duration_ms, first_attempt_failed_check_count, agent_diff_size). Click a column header to switch the lower pane to that adapter's run transcript. Launch new comparisons from the same view.\n\nComposition: AgentEvaluation already exists; LiveView is the only new code. Mount on existing :4018 Bandit endpoint via Harness.Dashboard.Router; reuse the transcript rendering surfaces that landed since this task was filed — `Harness.Dashboard.Transcript` + the run-detail transcript view (Task 87) and the shared `Harness.Dashboard.Components` (message_row / tool_call / json_tree) — rather than the older inline pattern in Harness.Dashboard.Live.\n\nWhy deferred: A/B agent evaluation isn't yet a default workflow — it's the kind of thing run occasionally to validate adapter parity claims or pick a default agent for a given task class. Until that becomes a frequent operator activity, a CLI/iex result is sufficient and the UI overhead doesn't pay back.\n\n## Visual design\n\nInherit `Harness.Dashboard.Tokens` (the Geist token set established by Task 85) and wrap the page in `Harness.Dashboard.Components.page_shell/1`. Do not fork the vocabulary; if a needed token is missing, add it to the Tokens module rather than introducing a second scale.\n\nThe structural fact of this view is N-column symmetry — lean into it. The metric grid (rows × adapter columns) is a rare case where the data shape genuinely suggests an unconventional layout (full-bleed grid, no centered max-width). Resist the muscle-memory `<table>` rendering; consider a CSS-grid layout where each adapter is a vertical lane and the verdict cell is the dominant visual element of that lane (the only thing that matters at a glance).\n\nThe transcript pane is the slow-scan surface; the metric grid is the at-a-glance surface. Reflect that hierarchy in scale, weight, and color treatment — verdict cells should read across the room; transcript should read at desk distance.\n\nTranscript-tab switching is the only meaningful interaction in this view. Treat it like switching frequencies — a precise, immediate transition with a clear active-state cue — not like a generic tabbed-card swap.\n\nForbidden: striped data tables, balanced \"fairness\" cell weighting (where pass and fail look equally weighted — the whole point is that they don't), default browser focus rings without restyling, Inter / Roboto / Arial / system-ui / Space Grotesk.\n",
       "created_at": "2026-05-28",
       "scored_at": "2026-05-28",
       "cross_repo": []
@@ -3253,6 +3253,249 @@
       "done_at": "2026-05-29",
       "scored_at": "2026-05-29",
       "implemented": "Run-detail transcript pane swapped from raw <pre> dump to chat-style parsed view: Harness.Dashboard.Transcript carries an event list + parser_state per run via new append_chunk/4 (events, agent_kind, parser_state, chunk → {new_events, delta, new_parser_state}) + broadcast_events/3, capped at configurable event_count_cap/0 (default 500, :harness :dashboard :transcript_max_events). Harness.Run gen_statem threads parser_state through every :transcript_chunk and exposes transcript_events/1 alongside the legacy transcript/1; unregistered adapters degrade gracefully to agent_kind: nil + empty events. Harness.Dashboard.Components.transcript_view/1 + eyebrow/1 walk events into render blocks (consecutive :assistant_text collapse into one .msg-body, :assistant_tool_use + matching :tool_result pair into one <.tool_call>, :system as eyebrow, :plain_text as monospace card, :unknown preserved as muted <details>). Live :show subscribes to both transcript shapes, backfills via transcript_events/1, swaps render to <.transcript_view> with ?raw=1 fallback. CSS in tokens.ex for the new variants. Tests: 8 transcript_view component tests, 7 transcript event-cap + broadcast tests, 4 run gen_statem tests (incl. :sys.replace_state seam for parser-state threading through a registered agent_kind). Browser-verified end-to-end: all 6 event kinds render correctly via synthetic broadcast, ?raw=1 toggle swaps to legacy pre view, real Run gen_statem backfill populates events + agent_kind on mount, live updates after backfill append cleanly. Per-real-adapter visual coverage deferred to in-vivo dogfood dispatches — parser fixtures (Task 86) cover wire-format correctness.",
+      "cross_repo": []
+    },
+    {
+      "id": "88",
+      "phase": 10,
+      "bundle": "chat-orchestrator",
+      "milestone": "v0_8",
+      "status": "done",
+      "title": "Harness.Roadmap browse tools (roadmap__list / roadmap__next_bundle) + descripex 0.7 param_order dispatch fix",
+      "scores": {
+        "d": 4,
+        "b": 7,
+        "u": 8
+      },
+      "eff": 1.88,
+      "markers": [],
+      "depends_on": [
+        75,
+        76
+      ],
+      "acceptance_criteria": [
+        "Harness.Roadmap.list/2 returns {:ok, [task_map]} resolving a project name via ProjectRegistry; status filter pushed to rmap, finer filters client-side",
+        "Harness.Roadmap.next_bundle/1 returns {:ok, %{bundle: meta | nil, tasks: [...]}}",
+        "Both error {:error, {:unknown_project, name}} for an unregistered name",
+        "Both surfaced as roadmap__list / roadmap__next_bundle via descripex api()",
+        "Multi-required-param tools dispatch positionally (descripex 0.7 param_order), not by hash-ordered Map.keys"
+      ],
+      "body": "The chat orchestrator must pick a task id by browsing a registered project's\nroadmap as structured data through a harness tool — NOT by shelling `rmap` into\nthe live (non-isolated) checkout, which is both wrong from harness's cwd and\nbroken for {:github, _} sources. Add Harness.Roadmap.list/2 and next_bundle/1,\nboth resolving a registered project *name* via ProjectRegistry, returning\nJSON-native flat maps, and annotated with descripex api() so they surface as\nthe roadmap__list / roadmap__next_bundle MCP+chat tools.\n",
+      "created_at": "2026-05-29",
+      "done_at": "2026-05-29",
+      "scored_at": "2026-05-29",
+      "implemented": "Added Harness.Roadmap.list/2 + next_bundle/1 (api()-annotated) resolving a registered project name through ProjectRegistry → roadmap_path, returning flat JSON-native maps (id/title/status/phase/bundle/eff/markers/milestone). Root precedence: %Project{} → project_name → project_root → cwd. Surfaced as roadmap__list / roadmap__next_bundle in both Harness.Chat.Tools and the /harness/mcp server. Companion fix: bumped descripex ~> 0.6 → ~> 0.7 (0.7.0 adds param_order — declaration-ordered atoms — to __api__) and changed Harness.Chat.Tools.resolve_tool!/2 to use api_entry.param_order instead of Map.keys(params); hash-ordered keys sent a 2-param tool's args to the wrong slots (roadmap__list got status in the project_name position → {:unknown_project, \"pending\"}). Regression test reproduces the exact failure through the chat tool registry. Verified live via tidewave: roadmap__list(\"harness\", \"pending\") returned pending tasks with no unknown_project error. Shipped in b035b5e.",
+      "delivered_by": "claude",
+      "cross_repo": []
+    },
+    {
+      "id": "89",
+      "phase": 10,
+      "bundle": "chat-orchestrator",
+      "milestone": "v0_8",
+      "status": "done",
+      "title": "Harness.Playbooks — orchestration recipe tools (playbooks__list / playbooks__get)",
+      "scores": {
+        "d": 3,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 2.33,
+      "markers": [],
+      "depends_on": [
+        75,
+        76
+      ],
+      "acceptance_criteria": [
+        "Harness.Playbooks.list/0 returns the catalog as JSON-native summary maps (name/title/summary)",
+        "Harness.Playbooks.get/1 returns {:ok, %{name,title,summary,body}} or {:error, {:unknown_playbook, name}}",
+        "Recipe bodies are priv/playbooks/*.md embedded via @external_resource at compile time",
+        "Surfaced as playbooks__list / playbooks__get in both Harness.Chat.Tools and the /harness/mcp server",
+        "Starter corpus present: dispatch-single-task, dispatch-bundle, ab-adapter-compare, audit-grade-fix"
+      ],
+      "out_of_scope": [
+        "Dashboard prefill buttons (the UI half — separate follow-up task)"
+      ],
+      "body": "Layer ready-made orchestration recipes on the chat/MCP tool surface so an\norchestrator can follow a vetted tool sequence instead of assembling it from\nscratch. Version-controlled markdown in priv/playbooks/*.md, embedded at\ncompile time, each naming the exact tool sequence + gotchas. Surface a catalog\n(playbooks__list) and a fetch-by-name (playbooks__get) via descripex api().\nStarter corpus: dispatch-single-task, dispatch-bundle, ab-adapter-compare,\naudit-grade-fix.\n",
+      "created_at": "2026-05-29",
+      "done_at": "2026-05-29",
+      "scored_at": "2026-05-29",
+      "implemented": "Harness.Playbooks: use Descripex, namespace /playbooks. @catalog of 4 string-keyed summary maps (dispatch-single-task, dispatch-bundle, ab-adapter-compare, audit-grade-fix); bodies embedded at compile time via @external_resource loop over priv/playbooks/*.md (__DIR__-relative). list/0 → catalog summaries; get/1 → {:ok, entry+body} | {:error, {:unknown_playbook, name}}, both api()-annotated. Surfaced as playbooks__list / playbooks__get in both Harness.Chat.Tools and /harness/mcp. Each recipe markdown names the exact harness tool sequence (verified against the live manifest) plus gotchas (ANTHROPIC_API_KEY scrub, non-delegatable two-step, subscriber: nil for ephemeral dispatch, verdict-is-the-stack). 7 tests (list/get/unknown + MCP integration). Verified live via tidewave: playbooks__list / playbooks__get present in the live manifest with the 4-entry catalog. Shipped in b035b5e. Dashboard prefill buttons are the deferred UI half (follow-up task).",
+      "delivered_by": "claude",
+      "cross_repo": []
+    },
+    {
+      "id": "90",
+      "phase": 10,
+      "bundle": "chat-orchestrator",
+      "milestone": "v0_8",
+      "status": "pending",
+      "title": "Dashboard playbook prefill buttons — chip row over the chat composer",
+      "scores": {
+        "d": 2,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 3.0,
+      "markers": [],
+      "depends_on": [
+        89
+      ],
+      "acceptance_criteria": [
+        "A chip row renders one button per Harness.Playbooks.list/0 entry above the composer",
+        "Clicking a chip sets the composer input to 'run the <slug> playbook for '",
+        "Chip label is the playbook title; the summary is the hover title; phx-value-name is the slug",
+        "Empty catalog renders no chip row",
+        "Styled with existing design tokens (pill chips, accent hover) and respects the reduced-motion guard",
+        "Browser smoke at /harness/chat: chips visible, click prefills the textarea, send drives a real orchestrator turn"
+      ],
+      "body": "Surface the Harness.Playbooks catalog in the chat dashboard as a row of\nprefill chips above the composer (the UI half deferred out of Task 89, and\nalready promised by CLAUDE.md / SKILL.md prose). Clicking a chip prefills the\ncomposer with `run the <slug> playbook for ` so the operator only types the\ntarget project, then sends. Slug (not title) rides the prefill so the\norchestrator's playbooks__get call keys on the catalog name.\n",
+      "created_at": "2026-05-29",
+      "scored_at": "2026-05-29",
+      "cross_repo": []
+    },
+    {
+      "id": "91",
+      "phase": 10,
+      "bundle": "chat-orchestrator",
+      "milestone": "v0_8",
+      "status": "done",
+      "title": "Flat MCP-native dispatch tool — make the chat orchestrator able to dispatch a task for any project",
+      "scores": {
+        "d": 4,
+        "b": 8,
+        "u": 8
+      },
+      "eff": 2.0,
+      "markers": [],
+      "depends_on": [
+        79,
+        88,
+        89
+      ],
+      "acceptance_criteria": [
+        "A single flat MCP tool dispatches one roadmap task for a registered project end to end, taking only JSON-passable scalars (project_name string, task id-or-next string, adapter string, scrub-key boolean) and returning a run_id (or a structured error) — verified by a dispatch call that targets a non-harness registered project and lands a real run_id",
+        "The Claude OAuth secret-scrub (ANTHROPIC_API_KEY => false) is applied by default on Claude dispatches through the flat tool, without the caller having to pass an opts map",
+        "Non-delegatable executors (grok/antigravity/pi) dispatch correctly through the flat tool — the ingest-with-delegatable-agent-then-dispatch-to-real-module dance is handled internally, not pushed onto the orchestrator",
+        "The stateless MCP tool surface no longer advertises struct-arg tools the orchestrator cannot drive (supervisor__start_run, batch__run, batch__run_pinned, agent_evaluation__compare, supervisor__start_link) — confirmed by inspecting the MCP tools/list output; the Elixir/Manifest driver surface (project_eval context) is unchanged",
+        "Harness.Chat.Tools no longer crashes when a keyword-typed param is passed as a JSON object — either it decodes to a keyword list or the param is absent from the JSON surface; a regression test covers the former opts-map Keyword.get/3 crash",
+        "priv/playbooks/dispatch-single-task.md is rewritten so steps 3-4 use the flat dispatch tool; the Elixir two-step is retained only where it applies (in-process driver) and labelled as such",
+        "skills/harness-driver/SKILL.md updated for the new flat tool + the trimmed MCP tool surface (Anti-Staleness Contract requires it)"
+      ],
+      "out_of_scope": [
+        "A flat batch/fan-out dispatch tool over the MCP surface (multi-item) — single-task dispatch is the v1 unblock; batch can follow if the orchestrator needs it",
+        "Removing the struct-arg functions themselves — they remain the canonical Elixir/IEx driver API; only their exposure on the stateless JSON MCP tool list changes",
+        "A flat compare/AgentEvaluation tool over MCP — separate concern (and Task 81 is the operator UI for that)"
+      ],
+      "body": "A chat orchestrator following the dispatch-single-task playbook against a non-harness project (rexex) got blocked at the ingest/dispatch step. Root cause is one architectural mismatch, not a usage error: the MCP/chat surface advertises struct-passing Elixir APIs that cannot be driven over a stateless JSON boundary.\n\nConfirmed defects on the chat MCP surface:\n1. `roadmap__ingest` takes `opts` as a keyword list; the JSON->Elixir bridge in `Harness.Chat.Tools.decode_param/2` turns a JSON object into an Elixir map, so `ingest(selector, %{})` crashes in `Keyword.get/3` (\"no function clause matching\"). Omitting `opts` is the only form that runs — which means `:project` / `:project_root` / the `ANTHROPIC_API_KEY => false` scrub / `subscriber: nil` cannot be passed.\n2. `roadmap__ingest` has no top-level `project_name` param (unlike `roadmap__list` / `roadmap__next_bundle`, which were built flat for Task 88). The orchestrator's `project_name` is silently dropped, so ingest always resolves `File.cwd!/0` = the harness project, never the target.\n3. The `{:id, \"<id>\"}` selector has no JSON encoding that round-trips to the Elixir tuple — only `:next` parses (via the `:`-prefixed-atom path in `decode_param`).\n4. Deeper: even with opts fixed, `supervisor__start_run` takes `%Item{}` + `%Project{}` structs (`kind: :exchange_data`) and `batch__dispatch` takes `[%Item{}]`. A stateless MCP orchestrator cannot hold the `%Item{}` ingest returned and pass it into start_run. So the playbook's two-step (ingest -> struct -> start_run) is structurally un-runnable over chat regardless of the opts fix. The bug reporter's suggested \"fix opts decoding\" is necessary but NOT sufficient.\n\nGoal: give the chat/MCP orchestrator a single flat tool that dispatches one roadmap task for a registered project end to end, mirroring how Task 88 added flat `list`/`next_bundle` for browsing. The orchestrator should be able to say \"dispatch task 25 of rexex to Claude\" in one tool call and get back a run_id, with subscription-OAuth secret-scrubbing applied by default — no struct threading, no keyword-list args.\n\nSketch of the contract (final shape is the implementer's call): a flat dispatch tool taking string `project_name`, a `task` selector that is either a task id string or \"next\", a string `adapter` (claude/codex/cursor/grok/antigravity/pi), and a boolean for the Claude OAuth scrub (default true). Internally: `ProjectRegistry.lookup` -> `Roadmap.ingest(selector, project: project)` -> `Run.Supervisor.start_run(item, project, adapter_module, subscriber: nil, env: scrub)`; return `%{run_id: ...}` or a structured error. Handle the non-delegatable executors (grok/antigravity/pi) via the documented ingest-with-a-delegatable-agent-then-dispatch-to-the-real-module two-step, internally — the orchestrator should not have to know about it.\n\nAlso stop the MCP surface from advertising tools it cannot run: the struct-arg dispatch tools (`supervisor__start_run`, `batch__run`, `batch__run_pinned`, `agent_evaluation__compare`, `supervisor__start_link`) are traps when surfaced as MCP tools — either exclude them from the MCP tool list (keep them on the Elixir/Manifest surface for the IEx/tidewave driver context) or otherwise prevent the orchestrator from calling un-driveable tools. The in-process Elixir driver (SKILL.md Context A/B via project_eval) keeps the full struct API; only the stateless JSON MCP surface needs the flat tool.\n\nSecondary, fix regardless: `Harness.Chat.Tools.decode_param/2` converting a JSON object into a bare map for a value-param whose target is a keyword list. At minimum a keyword-typed param should arrive as a keyword list, or such params should not be exposed on the JSON surface.\n\nThen rewrite `priv/playbooks/dispatch-single-task.md`: steps 3-4 currently document the Elixir two-step (ingest returns `%Item{}`, hand it to `supervisor__start_run`) as if the chat orchestrator could run it. Rewrite around the new flat dispatch tool. Keep the Elixir-API two-step documented where it belongs (SKILL.md Context A/B / IEx), clearly labelled as the in-process driver path, not the chat path.\n",
+      "created_at": "2026-05-29",
+      "started_at": "2026-05-29",
+      "done_at": "2026-05-29",
+      "scored_at": "2026-05-29",
+      "implemented": "Added Harness.Dispatch — a flat MCP-native dispatch tool (dispatch__task) taking JSON scalars (project_name, task selector, adapter, scrub-key bool); internally ProjectRegistry.lookup -> Roadmap.ingest(project:) -> Run.Supervisor.start_run with ANTHROPIC_API_KEY scrub default + the non-delegatable two-step handled internally. Trimmed struct-arg tools from the MCP tools/list (kept on Elixir/Manifest surface). Fixed Chat.Tools keyword-param JSON decode. Rewrote dispatch-single-task playbook + SKILL.md. Agent-delivered (Claude) in worktree; verification initially red on harness-side debt only (peri missing from PLT, pre-existing run_test credo nits, a type-narrowing-induced unreachable clause) — hand-integrated onto development with those 3 closeout fixes (mix.exs :peri, @dialyzer suppression keeping the defensive clause, run_test alias). 101/101 affected tests, credo clean bar 1 pre-existing baseline TODO, dialyzer 0.",
+      "delivered_by": "claude",
+      "verified": true,
+      "cross_repo": []
+    },
+    {
+      "id": "92",
+      "phase": 7,
+      "bundle": "multi-project",
+      "status": "pending",
+      "title": "Per-check working-directory offset — verify projects whose buildable root isn't the git/worktree root (rust-in-subdir, polyglot)",
+      "scores": {
+        "d": 4,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 1.75,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A project whose buildable manifest lives in a subdir of the git repo (rexex: rust/Cargo.toml) verifies green/red on its own merits — cargo runs from the subdir, not the worktree root",
+        "Manifest-at-root projects (harness, :elixir preset) are unaffected — check cwd defaults to the worktree root, no behavior change",
+        "A single worktree can run checks from multiple subdirs (cargo in rust/, mix in an elixir subdir) — polyglot support, not one-subdir-only",
+        "The Rust (and Elixir) preset can be built with a subdir offset without hand-writing each Check",
+        "rexex is re-registered so its cargo checks run in rust/, and a rexex dispatch reaches a real verification verdict",
+        "Tests cover: subdir check cwd, default-root behavior unchanged, and a polyglot two-subdir stack"
+      ],
+      "out_of_scope": [
+        "Auto-detecting the manifest subdir — explicit registration/preset arg is fine for v1",
+        "Running multiple independent CheckStacks per project — one stack with per-check cwd covers the polyglot case",
+        "The Elixir half of rexex itself (not yet on disk) — this task only makes the harness side capable of checking it when it lands"
+      ],
+      "body": "Surfaced by dogfooding: dispatching rexex task 25 (a Rust task) red'd all four cargo checks with `could not find Cargo.toml in <worktree-root>`. rexex keeps its Rust workspace in a `rust/` subdir (`rust/Cargo.toml` + `crates/`), with the roadmap and git root one level up. rexex was registered with `source: {:local, \".../rexex/rust\"}` — the documented intent being \"point cargo at the subdir\" — but git worktrees are repo-granular: `git worktree add` checks out the WHOLE rexex repo (its `.git` is at the repo root), so the worktree root is the repo root and `Cargo.toml` lands at `rust/Cargo.toml`, not the root. `Harness.Verification.collect_check/3` runs every check with `{:cd, worktree_path}` (the worktree root, verification.ex ~line 183), so cargo never finds the manifest and the run is structurally un-greenable. The repair loop is futile — the agent is handed an unactionable \"Cargo.toml missing\" prompt for code that's fine.\n\nrexex is also \"Rust AND Elixir\" going forward (Elixir half not yet on disk), so the fix must support a polyglot worktree: cargo checks running from `rust/`, mix checks running from some other subdir, all within one worktree rooted at the repo root (which is where the roadmap + git live and must stay).\n\nGive checks a working-directory offset relative to the worktree root. The natural shape (final call is the implementer's): an optional relative `cwd` (default \".\" = worktree root) on `%Harness.Verification.Check{}`, with `collect_check` running each check from `Path.join(worktree_path, check.cwd)`. A polyglot stack is then just cargo-checks(cwd: \"rust\") ++ mix-checks(cwd: \"<elixir-dir>\"). The Rust/Elixir presets should accept the subdir so a project can build a cwd-stamped stack without hand-writing checks (e.g. `Preset.Rust.preset(cwd: \"rust\")`), and `%Harness.Project{}` registration should be able to express it. Don't break the common case — manifest-at-root projects (harness itself) must render byte-identical check behavior (cwd defaults to root).\n\nRe-register rexex once the fix lands so its cargo checks run in `rust/`, and confirm a rexex dispatch can reach a real green/red verdict (the verification actually runs cargo, rather than failing on a missing manifest).\n",
+      "created_at": "2026-05-29",
+      "scored_at": "2026-05-29",
+      "cross_repo": []
+    },
+    {
+      "id": "93",
+      "phase": 9,
+      "bundle": "chat-orchestrator",
+      "status": "pending",
+      "title": "Chat session persistence + index page — survive restart, list & reopen past chats",
+      "scores": {
+        "d": 5,
+        "b": 6,
+        "u": 5
+      },
+      "eff": 1.1,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A chat session's messages survive a BEAM restart: start a session, send turns, restart iex -S mix, reopen /harness/chat/<session_id> and the prior turns render",
+        "Harness.Chat.Supervisor.list_sessions/0 returns currently-live session ids (over Harness.Chat.Registry)",
+        "/harness/chat renders an index of existing sessions (live + persisted) with a recognizable label, last-activity, and a link to each; a 'new chat' button mints a fresh session",
+        "Persisted state is bounded (mirrors the live 200-message / per-turn truncation caps) so the store does not grow unbounded",
+        "Index and detail compose on the existing Harness.Dashboard.Components / Tokens vocabulary — no new inline styles",
+        "Tests: list_sessions/0 enumerates live sessions; persistence round-trips a session's messages through the store (save -> rehydrate)"
+      ],
+      "out_of_scope": [
+        "Full-text search across chats",
+        "Deleting / archiving sessions from the UI",
+        "Cross-device / multi-user session ownership or auth",
+        "Streaming a persisted (non-live) session — reopening a dead session shows its saved transcript statically; only live sessions stream"
+      ],
+      "body": "Chat sessions are in-memory DynamicSupervisor children registered in Harness.Chat.Registry with no persistence and no list UI. Two gaps, shipped together because the index is near-useless without persistence (a BEAM restart wipes every session, which is exactly the pain that surfaced this):\n\n1. Persistence — a chat session's message history survives a BEAM restart. On Session start/init, rehydrate from the store if the session_id has saved state; persist on each completed turn (and on terminate). A store already exists to model after: Harness.ResultStore is the file-backed LogRecord precedent (Task 19); Postgres via Harness.Repo is also available (Oban). Pick whichever fits — file-backed is the lighter match for ephemeral-ish chat transcripts. Bound what's persisted the same way the live buffer is bounded (200 messages / per-turn truncation) so the store doesn't grow unbounded.\n\n2. Index page — a LiveView listing existing sessions (live + persisted), each showing enough to recognize it (first user message or a derived title, last-activity time, message count), clicking through to /harness/chat/<session_id>. Add Harness.Chat.Supervisor.list_sessions/0 (enumerate live via Harness.Chat.Registry) and merge with persisted-but-not-live sessions from the store. Reuse Harness.Chat.Session.snapshot/1 for live session detail. Route it at /harness/chat as the :index (the bare /harness/chat currently auto-redirects to a fresh session — move that \"new chat\" affordance to a button on the index). Compose on the existing Components/Tokens vocabulary (Tasks 85/87), do not introduce a new visual dialect.\n\nThis is LiveView + heex work — hand-build via browser tooling per the global rule, not headless dispatch.\n",
+      "created_at": "2026-05-29",
+      "scored_at": "2026-05-29",
+      "cross_repo": []
+    },
+    {
+      "id": "94",
+      "phase": 10,
+      "bundle": "dashboard-chrome",
+      "milestone": "v0_8",
+      "status": "pending",
+      "title": "Kill button for in-flight runs on the dashboard",
+      "scores": {
+        "d": 2,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 3.0,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Run-detail (/harness/runs/:run_id) shows a confirm-gated Kill button while the run is in-flight; clicking it cancels the run and it settles :failed",
+        "The index lists a kill control on each active/running run row",
+        "The kill control is absent for already-settled (:done/:failed) runs",
+        "Clicking kill routes through Harness.Run.cancel/1 (no new cancellation path)",
+        "After cancel, the view transitions to the settled state via the existing poll (button gone, verdict :failed)",
+        "Tests: handle_event for the kill action invokes cancel and the run settles; the button-visibility guard hides it for settled runs"
+      ],
+      "out_of_scope": [
+        "Bulk-kill / kill-all across a batch",
+        "A new cancellation primitive — reuse Harness.Run.cancel/1",
+        "Pause/resume (only cancel exists; cancel is terminal)",
+        "Confirming the agent OS process is reaped — that is Harness.Run.cancel/1's responsibility, already tested at the run layer"
+      ],
+      "body": "Add a kill/cancel control to the dashboard so an operator watching a run go bad (wrong cwd, agent thrashing, runaway repair loop) can stop it from the browser instead of dropping to project_eval. The primitive already exists: Harness.Run.cancel/1 (descripex-annotated, @spec cancel(run()) :: :ok) kills the agent and settles the run :failed, and is already guarded against :done/:failed states (calling it on a settled run is a no-op).\n\nWire it into Harness.Dashboard.Live (the module serving both /harness :index and /harness/runs/:run_id :show):\n\n- A \"Kill run\" button on the run-detail (:show) view, shown only while the run is in-flight (a live Harness.Run.status/1 lookup succeeds — i.e. not yet a settled LogRecord). A handle_event calls Harness.Run.cancel(run_id).\n- The same control inline on the index for each active/running row, so you don't have to drill in first.\n- Destructive-action confirm (phx-click with a data-confirm prompt) — a misfire settles the run :failed.\n- After cancel, the existing 1s :tick poll already refreshes status, so the row/detail transitions to :failed on its own; no extra broadcast needed, but verify the button disappears once settled.\n\nCompose on the existing Components/Tokens vocabulary (dashboard-chrome bundle) — reuse a button style, don't introduce a new one. Reserve the single --accent terminal-state cue for the kill affordance if it reads well.\n",
+      "created_at": "2026-05-29",
+      "scored_at": "2026-05-29",
       "cross_repo": []
     }
   ]

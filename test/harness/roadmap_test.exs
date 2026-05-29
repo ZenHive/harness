@@ -46,6 +46,25 @@ defmodule Harness.RoadmapTest do
       assert {:error, {:task_not_found, "999"}} =
                Roadmap.ingest({:id, "999"}, project_root: @sample)
     end
+
+    test "coerces an integer task id to a string" do
+      # A project whose tasks.toml keys tasks on integers (`id = 25`) makes rmap
+      # emit a JSON integer id. Item.id is String.t() and the id flows into a
+      # `rmap delegate <id>` arg, so ingest must normalize it. Regression: the
+      # decode guard was `is_binary(id)` only, rejecting integer-keyed roadmaps.
+      stub =
+        stub_script("""
+        case "$1" in
+          show) echo '{"id":25,"title":"Integer-keyed task"}' ;;
+          delegate) echo 'rendered prompt' ;;
+        esac
+        """)
+
+      assert {:ok, %Item{id: "25", title: "Integer-keyed task"} = item} =
+               Roadmap.ingest({:id, "25"}, project_root: @sample, rmap_bin: stub)
+
+      assert item.prompt =~ "rendered prompt"
+    end
   end
 
   describe "ingest/2 next" do

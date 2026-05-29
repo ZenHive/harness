@@ -60,9 +60,13 @@ defmodule Harness.MixProject do
       # `:ecto` / `:db_connection` are transitive via `ecto_sql` / `postgrex`
       # (Task 48: Oban-backed dispatch); `:apps_direct` excludes them, so
       # `use Ecto.Repo` in `lib/harness/repo.ex` needs them explicitly added.
+      # `:peri` is transitive via `anubis_mcp` (Task 79: MCP server); its
+      # `@spec`s reference `Peri.Error.t/0`, so `:apps_direct` excluding it
+      # surfaces `unknown_type` warnings on anubis's compiled code.
       plt_add_apps: [
         :mix,
         :jason,
+        :peri,
         :ecto,
         :db_connection,
         :phoenix,

@@ -23,6 +23,7 @@ defmodule Harness.Manifest do
     Harness.Batch,
     Harness.Batch.AgentEvaluation,
     Harness.Roadmap,
+    Harness.Dispatch,
     Harness.ProjectRegistry,
     Harness.Run,
     Harness.ResultStore,
@@ -30,6 +31,14 @@ defmodule Harness.Manifest do
     Harness.AgentAdapter.Driver,
     Harness.Playbooks
   ]
+
+  # Tool-name prefix (a module's last segment, snake_cased — the shape
+  # Descripex.MCP.tools/2 derives) → source module. Used to map a generated MCP
+  # tool name back to its module so mcp_tools/1 can inspect the function's
+  # param kinds.
+  @prefix_to_module Map.new(@driver_surface, fn module ->
+                      {module |> Module.split() |> List.last() |> Macro.underscore(), module}
+                    end)
 
   api(:build, "Build the harness driver-surface manifest (JSON-serializable).",
     returns: %{
@@ -53,7 +62,7 @@ defmodule Harness.Manifest do
   @spec modules() :: [module()]
   def modules, do: @driver_surface
 
-  api(:mcp_tools, "Render the driver surface as MCP tool definitions.",
+  api(:mcp_tools, "Render the JSON-driveable driver surface as MCP tool definitions.",
     params: [
       opts: [
         kind: :value,
@@ -68,6 +77,37 @@ defmodule Harness.Manifest do
     }
   )
 
+  # Only tools driveable over a stateless JSON boundary are returned: any tool
+  # with an :exchange_data param (a struct a JSON caller cannot construct — e.g.
+  # supervisor__start_run, the batch__* / agent_evaluation__* tools) is excluded
+  # from the MCP/chat surface. They stay on the full Elixir driver surface
+  # (build/0, modules/0) for in-process callers. The flat dispatch__task tool is
+  # the JSON-native replacement for the struct-passing ingest → start_run flow.
   @spec mcp_tools(keyword()) :: [map()]
-  def mcp_tools(opts \\ []), do: Descripex.MCP.tools(@driver_surface, opts)
+  def mcp_tools(opts \\ []) do
+    @driver_surface
+    |> Descripex.MCP.tools(opts)
+    |> Enum.reject(&struct_arg_tool?/1)
+  end
+
+  @spec struct_arg_tool?(map()) :: boolean()
+  defp struct_arg_tool?(%{name: name}) do
+    with [prefix, func] <- String.split(name, "__", parts: 2),
+         {:ok, module} <- Map.fetch(@prefix_to_module, prefix) do
+      exchange_data_params?(module, func)
+    else
+      _ -> false
+    end
+  end
+
+  # `func` is the name of an api()-annotated function on a curated driver module,
+  # so the atom already exists — not user-supplied free text.
+  # sobelow_skip ["DOS.StringToAtom"]
+  @spec exchange_data_params?(module(), String.t()) :: boolean()
+  defp exchange_data_params?(module, func) do
+    case module.__api__(String.to_existing_atom(func)) do
+      nil -> false
+      entry -> Enum.any?(entry.hints[:params] || %{}, fn {_key, details} -> details[:kind] == :exchange_data end)
+    end
+  end
 end

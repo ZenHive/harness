@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 10 — Dashboard Operator UX (3 of 3 done · 0 in progress)
+**Focus phase:** 10 — Dashboard Operator UX (6 of 8 done · 0 in progress)
 
-**Last shipped:** Task 85 — Harness.Dashboard.Components + Tokens overhaul + persistent navbar/footer chrome, Task 86 — Transcript parser dispatch + per-agent parsers (5 structured + 1 passthrough) with unified event vocabulary, Task 87 — Run-detail transcript rework — parsed event list + <.transcript_view> component, ?raw=1 fallback on 2026-05-29
+**Last shipped:** Task 85 — Harness.Dashboard.Components + Tokens overhaul + persistent navbar/footer chrome, Task 86 — Transcript parser dispatch + per-agent parsers (5 structured + 1 passthrough) with unified event vocabulary, Task 87 — Run-detail transcript rework — parsed event list + <.transcript_view> component, ?raw=1 fallback, Task 88 — Harness.Roadmap browse tools (roadmap__list / roadmap__next_bundle) + descripex 0.7 param_order dispatch fix, Task 89 — Harness.Playbooks — orchestration recipe tools (playbooks__list / playbooks__get), Task 91 — Flat MCP-native dispatch tool — make the chat orchestrator able to dispatch a task for any project on 2026-05-29
 
-**Up next:** Task 80 — Harness.Dashboard.RoadmapLive — multi-project rmap-next browser with 1-click dispatch [D:3/B:5/U:4 → Eff:1.5] 🚀
+**Up next:** Task 90 — Dashboard playbook prefill buttons — chip row over the chat composer [D:2/B:6/U:6 → Eff:3.0] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -78,7 +78,7 @@
 | Task 17 | ⛔ | 🎁 **deferred** · Agent-shaped surface — MCP tools + JSON CLI [D:6/B:8/U:8 → Eff:1.33] 📋 |
 | Task 20 | ⬜ | 🎁 **deferred** · Run telemetry + quota/cost accounting [D:5/B:3/U:3 → Eff:0.6] ⚠️ |
 | Task 21 | ⬜ | 🎁 **deferred** · ACP transport adapter [D:7/B:5/U:3 → Eff:0.57] ⚠️ |
-| Task 80 | ⬜ | 🎁 **deferred** · Harness.Dashboard.RoadmapLive — multi-project rmap-next browser with 1-click dispatch [D:3/B:5/U:4 → Eff:1.5] 🚀 |
+| Task 80 | ⛔ | 🎁 **deferred** · Harness.Dashboard.RoadmapLive — multi-project rmap-next browser with 1-click dispatch [D:3/B:5/U:4 → Eff:1.5] 🚀 |
 | Task 81 | ⬜ | 🎁 **deferred** · Harness.Dashboard.CompareLive — A/B agent-evaluation view [D:3/B:4/U:3 → Eff:1.17] 📋 |
 <!-- TASKS:END -->
 
@@ -89,7 +89,7 @@
 > Scoped pivot (milestone v0_5): harness extends from "harness-on-harness" to N registered target projects (Elixir, Rust, anything with a shell-driven check stack). First-class `%Harness.Project{}` registry; declarative `%Harness.CheckStack{}` with per-language presets; Oban-backed dispatch (queue-per-project, restart-resilient); GitHub source cloning; Phoenix LiveView dashboard + embedded Oban Web as the primary cold-path surface; cron-driven autonomous roadmap polling. Hand-built (not dogfooded) for the pivot window — see CLAUDE.md § Dogfooding.
 
 <!-- TASKS:BEGIN phase=7 -->
-> 15 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-7-multi-project-federation).
+> 16 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-7-multi-project-federation).
 <!-- TASKS:END -->
 
 ---
