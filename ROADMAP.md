@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 10 — Dashboard Operator UX (0 of 3 done · 0 in progress)
+**Focus phase:** 10 — Dashboard Operator UX (1 of 3 done · 0 in progress)
 
-**Last shipped:** no recent shipments
+**Last shipped:** Task 86 — Transcript parser dispatch + per-agent parsers (5 structured + 1 passthrough) with unified event vocabulary on 2026-05-29
 
-**Up next:** Task 86 — Transcript parser dispatch + per-agent parsers (Codex / Cursor / passthrough) with unified event vocabulary [D:4/B:7/U:7 → Eff:1.75] 🚀
+**Up next:** Task 85 — Harness.Dashboard.Components + Tokens overhaul + persistent navbar/footer chrome [D:5/B:8/U:8 → Eff:1.6] 🚀
 <!-- FOCUS:END -->
 
 ---

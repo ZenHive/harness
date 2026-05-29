@@ -104,6 +104,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Correctness + hardening pass from an independent multi-agent review of the two
+  newest subsystems (chat/MCP, Oban dispatch) plus the OTP core. Notable fixes:
+  the orphan-kill race in `AgentAdapter.OSProcess.kill/1` (the OS process could be
+  reaped and its pid recycled before the external `kill` landed, so the signal now
+  precedes the port close); a `MatchError` crash in `Worktree.diff_size/1` on
+  unexpected `git diff --numstat` output (binary files); `Worktree.Isolation`
+  allowlist patterns containing `/` (e.g. `config/*.exs`) now glob against the full
+  path instead of the basename, so they actually match; chat-session terminal
+  events (`loop_detected`, `backend_error`, `max_history_bytes`) now broadcast to
+  stream subscribers like the abort path already did; UTF-8-safe truncation in the
+  dashboard chat buffer (a byte-count prefix no longer splits a multi-byte
+  codepoint); a catch-all in `Dashboard.MCPServer` so a novel `Tools.dispatch`
+  error shape can't crash the request handler; `Chat.Tools` now distinguishes an
+  explicit `null` argument from an absent one; the Oban worker now snoozes
+  transient setup failures (boot-race project lookup, ingest/start-run hiccups)
+  instead of permanently cancelling them, preserving Oban's restart-resilience,
+  while genuinely malformed job data still cancels; `ResultStore.File` writes are
+  now atomic (sibling `.tmp` + `File.rename/2`) so a racing reader can't observe a
+  torn term file; and `Oban.QueueBootstrap` logs (rather than silently swallowing)
+  a Postgres-not-up-at-boot failure.
 - `Harness.ResultStore.File.list_run_records/2` now logs and skips undecodable
   term files instead of halting on the first one (Task 73). Previously a single
   atom-stale or corrupt file under `~/.harness/results/runs/` returned

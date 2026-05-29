@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"9bfb5d37-55b4-45db-a732-53a69ce9602e","model":"Composer 2.5 Fast","permissionMode":"default"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Updating test files to use `%Project{}`.\n"}]},"session_id":"9a61944a-4bcb-46a8-bcd6-7ee106c4b860","model_call_id":"e7402575-c80c-4fc3-b7df-0951e643d1ce-22-ndmy","timestamp_ms":1779752035396}
+{"type":"result","subtype":"success","duration_ms":4567,"is_error":false}
+{"type": "totally not json

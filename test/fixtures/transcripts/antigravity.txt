@@ -1,0 +1,2 @@
+The user asked me to fix the typo in lib/example.ex.
+I've made the change and verified it compiles.
