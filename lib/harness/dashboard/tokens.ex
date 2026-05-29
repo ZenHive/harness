@@ -299,6 +299,21 @@ defmodule Harness.Dashboard.Tokens do
       }
       .count { font-size: var(--text-sm); color: var(--text-subtle); }
 
+      /* Kill affordance — single --accent signal as a terminal-state cue */
+      .kill-btn {
+        background: transparent;
+        color: var(--accent);
+        border: 1px solid var(--accent);
+        border-radius: 0.25rem;
+        padding: var(--space-1) var(--space-3);
+        font-family: var(--font-display);
+        font-size: var(--text-sm);
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color var(--motion-fast) var(--ease-out);
+      }
+      .kill-btn:hover { background: var(--accent-soft); }
+
       pre.transcript {
         background: var(--surface);
         padding: var(--space-3);
