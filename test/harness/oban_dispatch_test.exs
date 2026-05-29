@@ -211,6 +211,27 @@ defmodule Harness.ObanDispatchTest do
              })
   end
 
+  # Review fix #12: a persisted job referencing a not-yet-registered project is
+  # a transient setup failure (boot race / pending registration), not bad data.
+  # It must snooze-and-retry so a BEAM restart can recover the work, rather than
+  # being permanently discarded with {:cancel, _}.
+  test "worker snoozes a transient setup failure instead of cancelling" do
+    # ProjectRegistry.reset/0 ran in setup — "ghost" is unregistered, so
+    # ProjectRegistry.lookup/1 returns {:error, {:unknown_project, _}}.
+    assert {:snooze, seconds} =
+             Worker.perform(%Oban.Job{
+               id: 7,
+               attempt: 1,
+               args: %{
+                 "project_name" => "ghost",
+                 "item_id" => "1",
+                 "adapter_module" => "Elixir.Harness.AgentAdapter.Claude"
+               }
+             })
+
+    assert is_integer(seconds) and seconds > 0
+  end
+
   defp item(id, agent) do
     %Item{id: id, title: "Task #{id}", prompt: "do #{id}", agent: agent}
   end
@@ -221,7 +242,6 @@ defmodule Harness.ObanDispatchTest do
 
   describe "Harness.Oban pure surface (queue naming, limits, headroom guards — coverage lift)" do
     alias Harness.Oban
-    alias Harness.Project
 
     test "queue_name public API and headroom guard (exercises enabled?/whereis/queued count paths)" do
       p1 = ProjectFixture.from_repo("/tmp/harness-oban-qn1", name: "demo", concurrency_cap: 4)

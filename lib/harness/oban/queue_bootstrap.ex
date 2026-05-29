@@ -3,6 +3,8 @@ defmodule Harness.Oban.QueueBootstrap do
 
   use Task
 
+  require Logger
+
   @doc false
   @spec start_link(term()) :: {:ok, pid()}
   def start_link(init_arg \\ []) do
@@ -14,5 +16,12 @@ defmodule Harness.Oban.QueueBootstrap do
   def run(_init_arg) do
     Harness.Oban.bootstrap_project_queues()
     :ok
+  rescue
+    # Postgres may not be up when this one-shot Task fires at boot; a raised
+    # bootstrap shouldn't vanish silently with the Task's exit. Log and let the
+    # supervisor restart it (or proceed without per-project queues).
+    error ->
+      Logger.warning("harness queue bootstrap failed: #{Exception.message(error)}")
+      :ok
   end
 end

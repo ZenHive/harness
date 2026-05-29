@@ -91,10 +91,19 @@ defmodule Harness.ResultStore.File do
   @spec write_term(String.t(), term()) :: :ok | {:error, term()}
   # Paths are built internally by storage_path/2 from an expanded root plus
   # base64url-encoded ids, then checked to stay under that root.
+  #
+  # Write to a sibling `.tmp` then atomically rename it into place: a concurrent
+  # reader (list_run_records reading the runs/ dir) never observes a half-written
+  # term file, and a crash mid-write leaves the old file intact rather than torn.
+  # rename/2 is atomic on POSIX within one filesystem; the tmp sibling shares the
+  # target's directory, so the rename stays same-filesystem.
   # sobelow_skip ["Traversal.FileModule"]
   defp write_term(path, term) do
-    with :ok <- File.mkdir_p(Path.dirname(path)) do
-      File.write(path, :erlang.term_to_binary(term))
+    tmp = path <> ".tmp"
+
+    with :ok <- File.mkdir_p(Path.dirname(path)),
+         :ok <- File.write(tmp, :erlang.term_to_binary(term)) do
+      File.rename(tmp, path)
     end
   end
 

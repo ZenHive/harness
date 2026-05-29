@@ -32,7 +32,23 @@ defmodule Harness.Run.Worker do
          {:ok, result} <- run_once(job, item, project, adapter) do
       to_oban_result(result, job)
     else
-      {:error, reason} -> {:cancel, reason}
+      {:error, reason} -> setup_failure_disposition(reason, max(job.attempt || 1, 1))
+    end
+  end
+
+  # A persisted job outlives the BEAM, so a setup failure that is merely
+  # transient at boot (ProjectRegistry not loaded yet, rmap unavailable, a
+  # supervisor hiccup) must snooze-and-retry rather than be discarded — that is
+  # the restart-resilience Oban is here to provide. Only genuinely malformed
+  # job data, which can never succeed on retry, is cancelled.
+  @spec setup_failure_disposition(term(), pos_integer()) ::
+          {:snooze, pos_integer()} | {:cancel, term()}
+  defp setup_failure_disposition(reason, attempt) do
+    case reason do
+      {:missing_arg, _} -> {:cancel, reason}
+      {:invalid_adapter_module, _} -> {:cancel, reason}
+      {:unsupported_adapter, _} -> {:cancel, reason}
+      _transient -> {:snooze, snooze_seconds(RetryPolicy.new([]), attempt)}
     end
   end
 

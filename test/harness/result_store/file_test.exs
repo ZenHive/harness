@@ -84,6 +84,32 @@ defmodule Harness.ResultStore.FileTest do
       assert {:ok, []} = Store.list_run_records([batch_id: "nope"], root: root)
     end
 
+    # Review fix #13: write_term/2 writes a sibling .tmp then atomically renames
+    # it into place. After a successful write the .term must exist and no .tmp
+    # sibling may linger (a leftover .tmp would mean the rename never happened).
+    test "record_run leaves the final .term and no .tmp sibling", %{root: root} do
+      record = %LogRecord{
+        batch_id: "b-atomic",
+        run_id: "r-atomic",
+        task_id: "t",
+        adapter: Claude,
+        state: :passed,
+        reason: nil,
+        duration_ms: 1,
+        repair_attempts: 0,
+        first_attempt_failed_check_count: 0,
+        failure_cause: %{reason: nil, failed_checks: []}
+      }
+
+      assert :ok = Store.record_run(record, root: root)
+
+      runs_dir = Path.join(root, "runs")
+      files = File.ls!(runs_dir)
+
+      assert Enum.any?(files, &String.ends_with?(&1, ".term"))
+      refute Enum.any?(files, &String.ends_with?(&1, ".tmp"))
+    end
+
     test "save_batch + load_batch happy path and invalid term type", %{root: root} do
       alias Result, as: BatchResult
 
