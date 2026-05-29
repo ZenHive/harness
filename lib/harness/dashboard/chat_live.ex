@@ -58,6 +58,7 @@ defmodule Harness.Dashboard.ChatLive do
   alias Harness.Chat.Stream
   alias Harness.Chat.Supervisor, as: ChatSupervisor
   alias Harness.Dashboard.Components
+  alias Phoenix.LiveView.JS
   alias Phoenix.LiveView.Rendered
   alias Phoenix.LiveView.Socket
 
@@ -634,7 +635,7 @@ defmodule Harness.Dashboard.ChatLive do
         :for={pb <- @playbooks}
         type="button"
         class="playbook-chip"
-        phx-click="prefill"
+        phx-click={JS.push("prefill") |> JS.focus(to: "textarea[name=text]")}
         phx-value-name={pb.name}
         title={pb.summary}
       >

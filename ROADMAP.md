@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 10 — Dashboard Operator UX (6 of 8 done · 0 in progress)
+**Focus phase:** 10 — Dashboard Operator UX (7 of 8 done · 0 in progress)
 
-**Last shipped:** Task 85 — Harness.Dashboard.Components + Tokens overhaul + persistent navbar/footer chrome, Task 86 — Transcript parser dispatch + per-agent parsers (5 structured + 1 passthrough) with unified event vocabulary, Task 87 — Run-detail transcript rework — parsed event list + <.transcript_view> component, ?raw=1 fallback, Task 88 — Harness.Roadmap browse tools (roadmap__list / roadmap__next_bundle) + descripex 0.7 param_order dispatch fix, Task 89 — Harness.Playbooks — orchestration recipe tools (playbooks__list / playbooks__get), Task 91 — Flat MCP-native dispatch tool — make the chat orchestrator able to dispatch a task for any project on 2026-05-29
+**Last shipped:** Task 85 — Harness.Dashboard.Components + Tokens overhaul + persistent navbar/footer chrome, Task 86 — Transcript parser dispatch + per-agent parsers (5 structured + 1 passthrough) with unified event vocabulary, Task 87 — Run-detail transcript rework — parsed event list + <.transcript_view> component, ?raw=1 fallback, Task 88 — Harness.Roadmap browse tools (roadmap__list / roadmap__next_bundle) + descripex 0.7 param_order dispatch fix, Task 89 — Harness.Playbooks — orchestration recipe tools (playbooks__list / playbooks__get), Task 90 — Dashboard playbook prefill buttons — chip row over the chat composer, Task 91 — Flat MCP-native dispatch tool — make the chat orchestrator able to dispatch a task for any project on 2026-05-29
 
-**Up next:** Task 90 — Dashboard playbook prefill buttons — chip row over the chat composer [D:2/B:6/U:6 → Eff:3.0] 🎯
+**Up next:** Task 94 — Kill button for in-flight runs on the dashboard [D:2/B:6/U:6 → Eff:3.0] 🎯
 <!-- FOCUS:END -->
 
 ---

@@ -3329,7 +3329,7 @@
       "phase": 10,
       "bundle": "chat-orchestrator",
       "milestone": "v0_8",
-      "status": "pending",
+      "status": "done",
       "title": "Dashboard playbook prefill buttons — chip row over the chat composer",
       "scores": {
         "d": 2,
@@ -3351,7 +3351,11 @@
       ],
       "body": "Surface the Harness.Playbooks catalog in the chat dashboard as a row of\nprefill chips above the composer (the UI half deferred out of Task 89, and\nalready promised by CLAUDE.md / SKILL.md prose). Clicking a chip prefills the\ncomposer with `run the <slug> playbook for ` so the operator only types the\ntarget project, then sends. Slug (not title) rides the prefill so the\norchestrator's playbooks__get call keys on the catalog name.\n",
       "created_at": "2026-05-29",
+      "done_at": "2026-05-29",
       "scored_at": "2026-05-29",
+      "implemented": "Playbook prefill chip row above the chat composer: <.playbook_bar> renders one pill button per Harness.Playbooks.list/0 entry (title as label, summary as hover title, slug as phx-value-name). phx-click=prefill sets the composer to 'run the <slug> playbook for ' (slug not title, so playbooks__get keys correctly). Empty catalog renders no row (:if guard). Styled via Tokens (.playbook-bar/.playbook-chip pills, accent hover), reduced-motion gated by the global CSS layer. Browser-verified end-to-end at /harness/chat: chips render, hover tooltip+accent, click prefills exact 42-char string with caret after 'for ', and a real send drove 4 tools/call round-trips (playbooks__get -> project_registry__list -> roadmap__next_bundle + structured clarifier).",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     },
     {

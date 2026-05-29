@@ -385,7 +385,11 @@ defmodule Harness.Dashboard.ChatLiveTest do
         assert html =~ ~s(phx-value-name="#{pb.name}")
       end
 
-      assert html =~ ~s(phx-click="prefill")
+      # Click is a JS command: push the "prefill" server event (carrying
+      # phx-value-name) and focus the composer so the operator can type
+      # immediately without a second click.
+      assert html =~ "&quot;push&quot;,{&quot;event&quot;:&quot;prefill&quot;}"
+      assert html =~ "&quot;focus&quot;,{&quot;to&quot;:&quot;textarea[name=text]&quot;}"
       assert html =~ "playbook-chip"
     end
 
