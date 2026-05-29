@@ -7,17 +7,18 @@ defmodule Harness.ProjectTest do
   alias Harness.Verification.Check
 
   describe "%Project{}" do
-    test "requires name, source, check_stack, and roadmap_path" do
+    test "requires name, source, check_stacks, and roadmap_path" do
       stack = %CheckStack{name: :tiny, checks: [%Check{name: "a", command: "true", args: []}]}
 
       project = %Project{
         name: "demo",
         source: {:local, "/tmp/demo"},
-        check_stack: stack,
+        check_stacks: [stack],
         roadmap_path: "/tmp/demo"
       }
 
       assert project.name == "demo"
+      assert project.check_stacks == [stack]
       assert project.concurrency_cap == nil
     end
 
@@ -25,7 +26,7 @@ defmodule Harness.ProjectTest do
       project = %Project{
         name: "demo",
         source: {:github, "https://github.com/example/demo.git"},
-        check_stack: %CheckStack{name: :tiny, checks: []},
+        check_stacks: [%CheckStack{name: :tiny, checks: []}],
         roadmap_path: "/tmp/demo"
       }
 
@@ -36,7 +37,7 @@ defmodule Harness.ProjectTest do
       project = %Project{
         name: "demo",
         source: {:local, "relative/repo"},
-        check_stack: %CheckStack{name: :tiny, checks: []},
+        check_stacks: [%CheckStack{name: :tiny, checks: []}],
         roadmap_path: "relative/repo"
       }
 
@@ -47,7 +48,7 @@ defmodule Harness.ProjectTest do
       project = %Project{
         name: "demo",
         source: {:github, "https://github.com/example/demo.git"},
-        check_stack: %CheckStack{name: :tiny, checks: []},
+        check_stacks: [%CheckStack{name: :tiny, checks: []}],
         roadmap_path: "/tmp/demo"
       }
 
@@ -59,7 +60,7 @@ defmodule Harness.ProjectTest do
       project = %Project{
         name: "demo",
         source: {:local, "/tmp/demo"},
-        check_stack: %CheckStack{name: :tiny, checks: []},
+        check_stacks: [%CheckStack{name: :tiny, checks: []}],
         roadmap_path: "/tmp/demo"
       }
 

@@ -411,7 +411,7 @@ defmodule Harness.WorktreeTest do
     %Project{
       name: name,
       source: {:github, url},
-      check_stack: %CheckStack{name: :tiny, checks: []},
+      check_stacks: [%CheckStack{name: :tiny, checks: []}],
       roadmap_path: "/tmp/#{name}"
     }
   end

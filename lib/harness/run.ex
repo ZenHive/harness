@@ -1142,7 +1142,7 @@ defmodule Harness.Run do
       if data.checks do
         [checks: data.checks]
       else
-        [check_stack: data.project.check_stack]
+        [check_stacks: data.project.check_stacks]
       end
 
     opts

@@ -59,6 +59,21 @@ Four setup steps the consuming repo needs:
       preset: :elixir,                     # or :rust, or a fully-spec'd %Harness.CheckStack{}
       roadmap_path: "/Users/efries/_DATA/code/myapp",
       concurrency_cap: 2
+    ],
+    # Multi-language monorepo — `source` is the repo ROOT (a git worktree is
+    # always repo-root-granular), and each language's checks run in their own
+    # subdir via a `stacks:` list. Each entry takes a `preset:`/`check_stack:`
+    # plus a `workdir:` (relative to the worktree root). The singular
+    # `preset:`/`check_stack:` above is the one-stack-at-the-root shortcut
+    # (equivalent to one stack with `workdir: ""`).
+    [
+      name: "polyrepo",
+      source: {:local, "/Users/efries/_DATA/code/polyrepo"},
+      roadmap_path: "/Users/efries/_DATA/code/polyrepo",
+      stacks: [
+        [preset: :rust, workdir: "rust"],
+        [preset: :elixir, workdir: "elixir"]
+      ]
     ]
   ]
   ```

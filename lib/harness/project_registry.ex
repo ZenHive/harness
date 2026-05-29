@@ -57,7 +57,7 @@ defmodule Harness.ProjectRegistry do
       project: [
         kind: :value,
         description:
-          "%Harness.Project{} the caller constructs (name, source, check_stack, roadmap_path, concurrency_cap, pollution_allowlist)."
+          "%Harness.Project{} the caller constructs (name, source, check_stacks, roadmap_path, concurrency_cap, pollution_allowlist)."
       ]
     ],
     returns: %{
@@ -163,13 +163,13 @@ defmodule Harness.ProjectRegistry do
   defp build_project(%{} = entry) do
     with {:ok, name} <- fetch_required(entry, :name),
          {:ok, source} <- fetch_source(entry),
-         {:ok, check_stack} <- fetch_check_stack(entry),
+         {:ok, check_stacks} <- fetch_check_stacks(entry),
          {:ok, roadmap_path} <- fetch_roadmap_path(entry) do
       {:ok,
        %Project{
          name: name,
          source: source,
-         check_stack: check_stack,
+         check_stacks: check_stacks,
          roadmap_path: roadmap_path,
          concurrency_cap: Map.get(entry, :concurrency_cap),
          pollution_allowlist: Map.get(entry, :pollution_allowlist)
@@ -207,14 +207,45 @@ defmodule Harness.ProjectRegistry do
     end
   end
 
-  @spec fetch_check_stack(map()) :: {:ok, CheckStack.t()} | {:error, {:invalid_project, term()}}
-  defp fetch_check_stack(entry) do
+  @spec fetch_check_stacks(map()) :: {:ok, [CheckStack.t()]} | {:error, {:invalid_project, term()}}
+  defp fetch_check_stacks(%{stacks: stacks}) when is_list(stacks) and stacks != [] do
+    stacks
+    |> Enum.reduce_while({:ok, []}, fn entry, {:ok, acc} ->
+      case resolve_stack(Map.new(List.wrap(entry))) do
+        {:ok, stack} -> {:cont, {:ok, [stack | acc]}}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, resolved} -> {:ok, Enum.reverse(resolved)}
+      {:error, _} = error -> error
+    end
+  end
+
+  # Back-compat: a singular top-level `check_stack:`/`preset:` (no `stacks:`)
+  # is one stack at the repo root (`workdir: ""`).
+  defp fetch_check_stacks(entry) do
+    case resolve_stack(entry) do
+      {:ok, stack} -> {:ok, [stack]}
+      {:error, _} = error -> error
+    end
+  end
+
+  @spec resolve_stack(map()) :: {:ok, CheckStack.t()} | {:error, {:invalid_project, term()}}
+  defp resolve_stack(entry) do
+    with {:ok, stack} <- resolve_stack_base(entry) do
+      {:ok, %{stack | workdir: Map.get(entry, :workdir, "")}}
+    end
+  end
+
+  @spec resolve_stack_base(map()) :: {:ok, CheckStack.t()} | {:error, {:invalid_project, term()}}
+  defp resolve_stack_base(entry) do
     cond do
       match?(%CheckStack{}, Map.get(entry, :check_stack)) ->
         {:ok, Map.fetch!(entry, :check_stack)}
 
-      # `is_atom(nil)` is true, so the previous `is_atom(Map.get(...))` form
-      # falsely matched when :preset was missing. Match an explicit non-nil atom.
+      # `is_atom(nil)` is true, so a bare `is_atom(Map.get(...))` form would
+      # falsely match when :preset is missing. Match an explicit non-nil atom.
       is_atom(Map.get(entry, :preset)) and not is_nil(Map.get(entry, :preset)) ->
         Preset.fetch(Map.fetch!(entry, :preset))
 

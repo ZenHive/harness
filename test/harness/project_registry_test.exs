@@ -47,7 +47,7 @@ defmodule Harness.ProjectRegistryTest do
       project = %Harness.Project{
         name: "gh",
         source: {:github, "https://github.com/example/demo.git"},
-        check_stack: %CheckStack{name: :tiny, checks: []},
+        check_stacks: [%CheckStack{name: :tiny, checks: []}],
         roadmap_path: "/tmp/gh"
       }
 
@@ -97,8 +97,43 @@ defmodule Harness.ProjectRegistryTest do
 
       Application.put_env(:harness, :projects, [entry])
 
-      assert {:ok, %{projects: %{"configured-map" => %Harness.Project{check_stack: %CheckStack{name: :smoke}}}}} =
+      assert {:ok, %{projects: %{"configured-map" => %Harness.Project{check_stacks: [%CheckStack{name: :smoke}]}}}} =
                ProjectRegistry.init(:noargs)
+    end
+
+    test "back-compat: a singular preset becomes a one-element stack at the repo root" do
+      entry = [
+        name: "single-preset",
+        source: {:local, "/tmp/harness-single"},
+        preset: :elixir,
+        roadmap_path: "/tmp/harness-single/roadmap/tasks.toml"
+      ]
+
+      Application.put_env(:harness, :projects, [entry])
+
+      assert {:ok, %{projects: %{"single-preset" => project}}} = ProjectRegistry.init(:noargs)
+      assert [%CheckStack{name: :elixir, workdir: ""}] = project.check_stacks
+    end
+
+    test "loads multiple stacks from a :stacks list, each with its own workdir" do
+      entry = [
+        name: "multi",
+        source: {:local, "/tmp/harness-multi"},
+        stacks: [
+          [preset: :rust, workdir: "rust"],
+          [check_stack: %CheckStack{name: :web, checks: []}, workdir: "elixir"]
+        ],
+        roadmap_path: "/tmp/harness-multi/roadmap/tasks.toml"
+      ]
+
+      Application.put_env(:harness, :projects, [entry])
+
+      assert {:ok, %{projects: %{"multi" => project}}} = ProjectRegistry.init(:noargs)
+
+      assert [
+               %CheckStack{name: :rust, workdir: "rust"},
+               %CheckStack{name: :web, workdir: "elixir"}
+             ] = project.check_stacks
     end
 
     test "skips an invalid entry (missing :name) and logs a warning" do

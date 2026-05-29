@@ -37,7 +37,7 @@ defmodule Harness.InRepoHarnessTemplateTest do
     assert %{
              name: "app",
              source: {:local, source},
-             check_stack: %{name: :rust}
+             check_stacks: [%{name: :rust}]
            } = dump_path |> File.read!() |> :erlang.binary_to_term()
 
     assert same_dir?(source, repo_root)
@@ -101,7 +101,7 @@ defmodule Harness.InRepoHarnessTemplateTest do
     data = %{
       name: project.name,
       source: project.source,
-      check_stack: %{name: project.check_stack.name}
+      check_stacks: Enum.map(project.check_stacks, &%{name: &1.name})
     }
     path = Path.join(System.tmp_dir!(), "in_repo_boot_#{System.unique_integer([:positive])}.term")
     :ok = File.write!(path, :erlang.term_to_binary(data))

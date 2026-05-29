@@ -89,9 +89,12 @@ config :harness, :project, cache_root: Path.expand("~/_DATA/harness/projects")
 config :harness, :result_store, {Harness.ResultStore.File, root: Path.expand("~/.harness/results")}
 
 # Registered orchestration targets — see Harness.Project and Harness.ProjectRegistry.
-# Each entry is a keyword list: name, source ({:local, path}), preset or
-# check_stack, roadmap_path, and optional concurrency_cap. Dev self-registers
-# the harness checkout via config/dev.exs; test/prod stay un-opinionated.
+# Each entry is a keyword list: name, source ({:local, path}), roadmap_path,
+# optional concurrency_cap, and a check-stack declaration — either a singular
+# `preset:`/`check_stack:` (one stack at the repo root) or `stacks:` (a list of
+# `[preset:/check_stack:, workdir:]` for multi-language monorepos, each run in
+# its own subdirectory). Dev self-registers the harness checkout via
+# config/dev.exs; test/prod stay un-opinionated.
 
 # Per-run git worktree lifecycle — see Harness.Worktree.
 config :harness, :worktree,

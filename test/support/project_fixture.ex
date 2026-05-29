@@ -11,9 +11,21 @@ defmodule Harness.ProjectFixture do
     %Project{
       name: name,
       source: {:local, repo},
-      check_stack: Keyword.get(opts, :check_stack, ElixirPreset.preset()),
+      check_stacks: check_stacks(opts),
       roadmap_path: Keyword.get(opts, :roadmap_path, repo),
       concurrency_cap: Keyword.get(opts, :concurrency_cap)
     }
+  end
+
+  # Accepts a `:check_stacks` list directly, or a singular `:check_stack`
+  # convenience that wraps into a one-element list; defaults to the Elixir
+  # preset at the repo root.
+  @spec check_stacks(keyword()) :: [Harness.CheckStack.t()]
+  defp check_stacks(opts) do
+    cond do
+      is_list(Keyword.get(opts, :check_stacks)) -> Keyword.fetch!(opts, :check_stacks)
+      Keyword.has_key?(opts, :check_stack) -> [Keyword.fetch!(opts, :check_stack)]
+      true -> [ElixirPreset.preset()]
+    end
   end
 end

@@ -69,7 +69,7 @@ defmodule Harness.Project.Source.GithubIntegrationTest do
     %Project{
       name: name,
       source: {:github, @public_url},
-      check_stack: %CheckStack{name: :tiny, checks: []},
+      check_stacks: [%CheckStack{name: :tiny, checks: []}],
       roadmap_path: "/tmp/#{name}"
     }
   end

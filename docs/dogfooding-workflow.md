@@ -194,7 +194,7 @@ lifetime_timeout = 3_600_000
 project = %Harness.Project{
   name: "harness",
   source: {:local, repo},
-  check_stack: check_stack,
+  check_stacks: [check_stack],
   roadmap_path: repo
 }
 

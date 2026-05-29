@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-stack working directories — multi-language monorepos.** A project now
+  holds a *list* of check stacks (`%Harness.Project{}.check_stacks`) instead of
+  one, and each `%Harness.CheckStack{}` carries a `workdir` (relative to the
+  worktree root). Because a git worktree is always repo-root-granular,
+  `Harness.Verification.run/2` runs each stack's checks in its own
+  subdirectory and flattens the results into a single verdict (green iff every
+  stack is green). This lets a polyglot repo — e.g. a Rust crate in `rust/`
+  next to a Phoenix app in `elixir/` — be graded correctly from one
+  repo-root worktree; previously checks always ran at the worktree root, so a
+  subdirectory build (rexex's `rust/Cargo.toml`) failed unrecoverably. Project
+  registration gains a `stacks: [[preset:/check_stack:, workdir:], …]` form;
+  singular `preset:`/`check_stack:` registration (and the `:check_stack` /
+  `:checks` run options) remain valid as the one-stack-at-the-repo-root case.
+  A misconfigured `workdir` now returns a clear `{:workdir_not_found, dir}`
+  instead of a cryptic per-tool "manifest missing" failure.
+
 - **v0_8 chat-orchestrator surface — roadmap browsing, playbooks, flat
   dispatch.** Builds on the v0_7 chat/MCP foundation so an orchestrator can
   pick *and* dispatch work end-to-end through tools, never by shelling `rmap`

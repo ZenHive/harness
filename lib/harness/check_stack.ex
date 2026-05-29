@@ -30,6 +30,13 @@ defmodule Harness.CheckStack do
       `Harness.Verification.run/2` unless the caller passes an explicit
       `:timeout`. `nil` means "use the verification runner's default
       (10 minutes)".
+    * `workdir` — the subdirectory, relative to the worktree root, this stack's
+      checks execute in. Defaults to `""` (the repo root — the only behavior
+      before multi-language projects). A multi-language monorepo registers one
+      stack per language, each pointing at its own subdirectory (e.g. a Rust
+      crate in `"rust"`, a Phoenix app in `"elixir"`). A git worktree is always
+      repo-root-granular, so `workdir` is how a stack's checks reach the right
+      buildable root within that worktree.
   """
 
   alias Harness.Verification.Check
@@ -41,9 +48,10 @@ defmodule Harness.CheckStack do
           name: atom(),
           checks: [Check.t()],
           parser: module() | nil,
-          timeout_per_check: timeout() | nil
+          timeout_per_check: timeout() | nil,
+          workdir: String.t()
         }
 
   @enforce_keys [:name, :checks]
-  defstruct [:name, :checks, parser: nil, timeout_per_check: nil]
+  defstruct [:name, :checks, parser: nil, timeout_per_check: nil, workdir: ""]
 end

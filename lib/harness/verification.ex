@@ -15,8 +15,20 @@ defmodule Harness.Verification do
       Harness.Verification.Verdict.passed?(verdict)
 
   `run/2` grades with `elixir_preset/0` — the standard `mix` quality stack —
-  unless given a `:check_stack` option (a `Harness.CheckStack`), a raw
-  `:checks` list, or a `:harness, :verification` config override.
+  unless given a `:check_stacks` option (a list of `Harness.CheckStack`s), a
+  singular `:check_stack`, a raw `:checks` list, or a `:harness, :verification`
+  config override.
+
+  ## Multi-stack, multi-directory projects
+
+  A project can carry **more than one** check stack — one per language or
+  component in a monorepo (a Rust crate in `rust/`, a Phoenix app in
+  `elixir/`). A git worktree is always repo-root-granular, so each stack
+  declares a `workdir` (relative to the worktree root) and its checks run with
+  that subdirectory as their cwd. Every stack's results are flattened into one
+  `Harness.Verification.Verdict`, green iff every check across every stack
+  passed. A single-language project is just a one-element list with
+  `workdir: ""` (the repo root) — identical to the pre-multi-stack behavior.
 
   ## Execution model
 
@@ -27,7 +39,8 @@ defmodule Harness.Verification do
   sequentially — the preset checks all touch the target's shared `_build`, so
   concurrent `mix` runs would race the compile lock. A failing check is a red
   result, not a crash; `run/2` returns `{:error, _}` only when verification
-  cannot run at all (no checks, or the worktree path is missing).
+  cannot run at all (no checks, the worktree path is missing, or a stack's
+  `workdir` does not exist).
 
   ## Configuration
 
@@ -49,50 +62,58 @@ defmodule Harness.Verification do
   @default_timeout 600_000
 
   @typedoc "A reason a verification run cannot execute at all."
-  @type error :: :no_checks | {:worktree_not_found, String.t()}
+  @type error ::
+          :no_checks
+          | {:worktree_not_found, String.t()}
+          | {:workdir_not_found, String.t()}
 
   @doc """
   Runs the check stack against the worktree at `worktree_path` and returns a verdict.
 
-  Resolves the check list from the `:checks` option, else the
-  `:harness, :verification` config, else `elixir_preset/0`. Each check runs in
-  `worktree_path` with a per-check timeout (`:timeout` option, else config, else
-  10 minutes). A failing check produces a red `Harness.Verification.Result`, not
-  an error — `run/2` returns `{:error, _}` only when verification cannot run at
-  all.
+  Resolves the stacks from the `:check_stacks` option (else `:check_stack`,
+  `:checks`, config, or `elixir_preset/0`). Each stack's checks run with its
+  `workdir` (relative to `worktree_path`) as their cwd, under a per-check
+  timeout (`:timeout` option, else the stack's `timeout_per_check`, else
+  config, else 10 minutes). All stacks' results are flattened into one verdict.
+  A failing check produces a red `Harness.Verification.Result`, not an error —
+  `run/2` returns `{:error, _}` only when verification cannot run at all.
 
   Options:
 
-    * `:check_stack` — a `Harness.CheckStack` whose `checks` and (when set)
-      `timeout_per_check` drive the run. Wins over `:checks` and over the
-      configured fallback. An explicit `:timeout` still wins over the stack's
-      `timeout_per_check`.
+    * `:check_stacks` — a list of `Harness.CheckStack`s, each run in its own
+      `workdir`. The canonical multi-language form. Wins over the singular
+      options below.
+    * `:check_stack` — a single `Harness.CheckStack` (treated as a one-element
+      `:check_stacks` list). Its `checks` and (when set) `timeout_per_check`
+      drive the run.
     * `:checks` — override the check stack with a raw list of
-      `Harness.Verification.Check`. Back-compat path; new callers should
-      prefer `:check_stack`.
+      `Harness.Verification.Check`, run at the repo root. Back-compat path; new
+      callers should prefer `:check_stacks`.
     * `:timeout` — override the per-check timeout, in milliseconds, or
-      `:infinity` for an unbounded check.
+      `:infinity` for an unbounded check. Applies to every stack.
     * `:base_ref` — the dispatch-base commit SHA the worktree branch was
       forked from. When set, diff-aware post-processors (see
       `t:Harness.Verification.Check.post_process/0`) re-grade their checks
       against the baseline — e.g. the credo TagTODO filter drops findings on
-      pre-existing TODOs. `nil` (the default) leaves every check's exit
-      status as the sole grader.
+      pre-existing TODOs. The post-process context stays at the worktree root
+      (the diff is whole-repo) even when a stack's checks run in a subdir.
+      `nil` (the default) leaves every check's exit status as the sole grader.
 
   Returns `{:ok, %Harness.Verification.Verdict{}}`, or `{:error, reason}` —
-  `:no_checks` when the stack is empty, `{:worktree_not_found, path}` when
-  `worktree_path` is not a directory.
+  `:no_checks` when no stack has checks, `{:worktree_not_found, path}` when
+  `worktree_path` is not a directory, `{:workdir_not_found, dir}` when a
+  stack's resolved `workdir` does not exist.
   """
   @spec run(String.t(), keyword()) :: {:ok, Verdict.t()} | {:error, error()}
   def run(worktree_path, opts \\ []) when is_binary(worktree_path) do
     path = Path.expand(worktree_path)
-    {checks, stack_timeout} = resolve_checks(opts)
-    timeout = Keyword.get(opts, :timeout) || stack_timeout || configured_timeout()
+    stacks = resolve_stacks(opts)
+    timeout_override = Keyword.get(opts, :timeout)
     post_process_opts = post_process_opts(path, opts)
 
-    with :ok <- validate_checks(checks),
-         :ok <- validate_worktree(path) do
-      results = Enum.map(checks, &run_check(&1, path, timeout, post_process_opts))
+    with :ok <- validate_stacks(stacks),
+         :ok <- validate_worktree(path),
+         {:ok, results} <- run_stacks(stacks, path, timeout_override, post_process_opts) do
       {:ok, build_verdict(results)}
     end
   end
@@ -111,20 +132,51 @@ defmodule Harness.Verification do
   @spec elixir_preset() :: [Check.t()]
   def elixir_preset, do: ElixirPreset.preset().checks
 
-  # Resolves the check list and the optional stack-supplied default timeout
-  # from `opts`. `:check_stack` wins over a raw `:checks` list; both win over
-  # the `:harness, :verification` config; the Elixir preset is the final
-  # fallback. Returns `{checks, stack_timeout_or_nil}`.
-  @spec resolve_checks(keyword()) :: {[Check.t()], timeout() | nil}
-  defp resolve_checks(opts) do
-    case Keyword.get(opts, :check_stack) do
-      %CheckStack{checks: checks, timeout_per_check: t} ->
-        {checks, t}
+  # Resolves the list of `%CheckStack{}`s to run from `opts`. `:check_stacks`
+  # (a list) wins; else a singular `:check_stack` becomes a one-element list;
+  # else a raw `:checks` list (or the configured/preset fallback) is wrapped in
+  # a synthetic root-level stack. All fallbacks run at the repo root
+  # (`workdir: ""`).
+  @spec resolve_stacks(keyword()) :: [CheckStack.t()]
+  defp resolve_stacks(opts) do
+    cond do
+      is_list(Keyword.get(opts, :check_stacks)) ->
+        Keyword.fetch!(opts, :check_stacks)
 
-      nil ->
-        {Keyword.get(opts, :checks) || configured_checks(), nil}
+      match?(%CheckStack{}, Keyword.get(opts, :check_stack)) ->
+        [Keyword.fetch!(opts, :check_stack)]
+
+      true ->
+        [%CheckStack{name: :default, checks: Keyword.get(opts, :checks) || configured_checks()}]
     end
   end
+
+  # Runs every stack in its own `workdir` (relative to the worktree root) and
+  # concatenates the results stack-by-stack. Bails with `{:workdir_not_found,
+  # dir}` the first time a stack's resolved directory is missing — a clear
+  # harness error instead of the cryptic per-tool "could not find <manifest>"
+  # a misconfigured workdir would otherwise produce.
+  @spec run_stacks([CheckStack.t()], String.t(), timeout() | nil, keyword()) ::
+          {:ok, [Result.t()]} | {:error, {:workdir_not_found, String.t()}}
+  defp run_stacks(stacks, path, timeout_override, post_process_opts) do
+    Enum.reduce_while(stacks, {:ok, []}, fn stack, {:ok, acc} ->
+      check_dir = stack_dir(path, stack.workdir)
+
+      if File.dir?(check_dir) do
+        timeout = timeout_override || stack.timeout_per_check || configured_timeout()
+        results = Enum.map(stack.checks, &run_check(&1, check_dir, timeout, post_process_opts))
+        {:cont, {:ok, acc ++ results}}
+      else
+        {:halt, {:error, {:workdir_not_found, check_dir}}}
+      end
+    end)
+  end
+
+  # The absolute cwd a stack's checks run in: the worktree root, offset by the
+  # stack's `workdir`. `nil`/`""` means the repo root itself.
+  @spec stack_dir(String.t(), String.t() | nil) :: String.t()
+  defp stack_dir(path, workdir) when workdir in [nil, ""], do: path
+  defp stack_dir(path, workdir), do: Path.join(path, workdir)
 
   @spec configured_checks() :: [Check.t()]
   defp configured_checks do
@@ -140,9 +192,12 @@ defmodule Harness.Verification do
     |> Keyword.get(:timeout, @default_timeout)
   end
 
-  @spec validate_checks([Check.t()]) :: :ok | {:error, :no_checks}
-  defp validate_checks([]), do: {:error, :no_checks}
-  defp validate_checks([_ | _]), do: :ok
+  # A run is executable iff at least one stack carries at least one check;
+  # otherwise there is nothing to grade.
+  @spec validate_stacks([CheckStack.t()]) :: :ok | {:error, :no_checks}
+  defp validate_stacks(stacks) do
+    if Enum.any?(stacks, &(&1.checks != [])), do: :ok, else: {:error, :no_checks}
+  end
 
   @spec validate_worktree(String.t()) :: :ok | {:error, {:worktree_not_found, String.t()}}
   defp validate_worktree(path) do

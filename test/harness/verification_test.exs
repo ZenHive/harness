@@ -254,6 +254,79 @@ defmodule Harness.VerificationTest do
     end
   end
 
+  describe "run/2 with :check_stacks (multi-stack / workdir)" do
+    test "runs a stack's checks in its workdir, relative to the worktree root" do
+      repo = worktree_dir()
+      File.mkdir_p!(Path.join(repo, "sub"))
+      File.write!(Path.join([repo, "sub", "marker"]), "")
+
+      # `test -f marker` passes only if the check ran with repo/sub as its cwd.
+      stack = %CheckStack{name: :sub, workdir: "sub", checks: [check("in-sub", "test", ["-f", "marker"])]}
+
+      assert {:ok, %Verdict{status: :pass, results: [result]}} =
+               Verification.run(repo, check_stacks: [stack])
+
+      assert result.name == "in-sub"
+      assert result.status == :pass
+    end
+
+    test "a workdir-scoped check fails when it would have passed only at the repo root" do
+      repo = worktree_dir()
+      File.mkdir_p!(Path.join(repo, "sub"))
+      File.write!(Path.join(repo, "marker"), "")
+
+      # marker is at the root, not in sub/, so the workdir-scoped check reds.
+      stack = %CheckStack{name: :sub, workdir: "sub", checks: [check("in-sub", "test", ["-f", "marker"])]}
+
+      assert {:ok, %Verdict{status: :fail, results: [result]}} =
+               Verification.run(repo, check_stacks: [stack])
+
+      assert result.status == :fail
+    end
+
+    test "errors with {:workdir_not_found, dir} when a stack's workdir is missing" do
+      repo = worktree_dir()
+      stack = %CheckStack{name: :gone, workdir: "nope", checks: [check("x", "true")]}
+
+      assert {:error, {:workdir_not_found, dir}} =
+               Verification.run(repo, check_stacks: [stack])
+
+      assert dir == Path.join(repo, "nope")
+    end
+
+    test "flattens results from all stacks and reds if any stack reds" do
+      repo = worktree_dir()
+      File.mkdir_p!(Path.join(repo, "a"))
+      File.mkdir_p!(Path.join(repo, "b"))
+
+      stacks = [
+        %CheckStack{name: :a, workdir: "a", checks: [check("a-ok", "true")]},
+        %CheckStack{name: :b, workdir: "b", checks: [check("b-bad", "false")]}
+      ]
+
+      assert {:ok, %Verdict{status: :fail, results: [a, b]}} =
+               Verification.run(repo, check_stacks: stacks)
+
+      assert a.name == "a-ok"
+      assert a.status == :pass
+      assert b.name == "b-bad"
+      assert b.status == :fail
+    end
+
+    test "is green when every stack is green" do
+      repo = worktree_dir()
+      File.mkdir_p!(Path.join(repo, "a"))
+
+      stacks = [
+        %CheckStack{name: :root, workdir: "", checks: [check("root-ok", "true")]},
+        %CheckStack{name: :a, workdir: "a", checks: [check("a-ok", "true")]}
+      ]
+
+      assert {:ok, %Verdict{status: :pass, results: [_, _]}} =
+               Verification.run(repo, check_stacks: stacks)
+    end
+  end
+
   describe "elixir_preset/0" do
     test "returns the five-tool mix quality stack" do
       preset = Verification.elixir_preset()

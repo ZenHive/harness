@@ -9,7 +9,11 @@ defmodule Harness.Project do
       - `{:github, url}` — a GitHub URL harness clones (and `git fetch`es
         before each run) into `<cache_root>/<name>`. See
         `Harness.Project.Source.Github`.
-  - `check_stack` — the `%Harness.CheckStack{}` grading runs against.
+  - `check_stacks` — the list of `%Harness.CheckStack{}`s grading runs against,
+    one per language/component. Verification runs every stack in its own
+    `workdir` (relative to the worktree root) and aggregates into a single
+    verdict (green iff every stack is green). A single-language project is a
+    one-element list with `workdir: ""`.
   - `roadmap_path` — project root holding `roadmap/tasks.toml` for rmap ingestion.
   - `concurrency_cap` — per-project batch cap; `nil` inherits the global default.
   - `pollution_allowlist` — optional path patterns ignored by the main-checkout
@@ -20,8 +24,8 @@ defmodule Harness.Project do
   alias Harness.Project.Source.Github
   alias Harness.Project.Source.Local
 
-  @enforce_keys [:name, :source, :check_stack, :roadmap_path]
-  defstruct [:name, :source, :check_stack, :roadmap_path, concurrency_cap: nil, pollution_allowlist: nil]
+  @enforce_keys [:name, :source, :check_stacks, :roadmap_path]
+  defstruct [:name, :source, :check_stacks, :roadmap_path, concurrency_cap: nil, pollution_allowlist: nil]
 
   @typedoc "Where harness finds the target repository."
   @type source :: Local.t() | Github.t()
@@ -30,7 +34,7 @@ defmodule Harness.Project do
   @type t :: %__MODULE__{
           name: String.t(),
           source: source(),
-          check_stack: CheckStack.t(),
+          check_stacks: [CheckStack.t()],
           roadmap_path: String.t(),
           concurrency_cap: pos_integer() | nil,
           pollution_allowlist: [String.t()] | nil

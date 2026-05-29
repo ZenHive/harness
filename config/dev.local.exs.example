@@ -15,12 +15,26 @@ config :harness, :projects, [
     preset: :elixir,
     roadmap_path: Path.expand("..", __DIR__)
   ],
-  # Example host-local project.
+  # Example host-local project — single language, one stack at the repo root.
   [
     name: "myapp",
     source: {:local, "/Users/me/_DATA/code/myapp"},
     preset: :elixir,
     roadmap_path: "/Users/me/_DATA/code/myapp",
     concurrency_cap: 2
+  ],
+  # Example multi-language monorepo — source is the repo root; each stack runs
+  # its checks in its own subdirectory via `workdir`. A git worktree is always
+  # repo-root-granular, so `workdir` is how each stack reaches its buildable
+  # root. Drop `stacks:` and use a singular `preset:`/`check_stack:` for the
+  # single-language case (equivalent to one stack with `workdir: ""`).
+  [
+    name: "polyrepo",
+    source: {:local, "/Users/me/_DATA/code/polyrepo"},
+    roadmap_path: "/Users/me/_DATA/code/polyrepo",
+    stacks: [
+      [preset: :rust, workdir: "rust"],
+      [preset: :elixir, workdir: "elixir"]
+    ]
   ]
 ]
