@@ -3608,7 +3608,7 @@
       "id": "97",
       "phase": 6,
       "bundle": "deferred",
-      "status": "pending",
+      "status": "done",
       "title": "Reconcile harness verification stack vs project mix precommit",
       "scores": {
         "d": 4,
@@ -3627,7 +3627,12 @@
       ],
       "body": "A dispatched run can grade green by Harness.CheckStack but be unmergeable under the project's own `mix precommit` — surfaced on Task 94 (coverage gate 80% vs measured 75.92%). The orchestrator misattributed the run's cause-of-death to this gap (it was actually a BEAM hot-reload cascade), but the gap is real. Decide: harness mirrors the project's precommit (or a declared subset), or the project trims precommit to what harness already covers. Either way, the policy should be visible on %Harness.Project{} so a consuming repo can opt in.",
       "created_at": "2026-05-29",
+      "started_at": "2026-05-30",
+      "done_at": "2026-05-30",
       "scored_at": "2026-05-29",
+      "implemented": "Added :elixir_precommit mergeable-bar check stack (format --check-formatted, compile --warnings-as-errors, coverage threshold, doctor --raise, :exclude for integration tags) alongside lighter :elixir preset; closes preset-green-but-unmergeable gap. Delivery 3dc26bc, precommit green.",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -3670,7 +3675,7 @@
       "phase": 11,
       "bundle": "autolanding",
       "milestone": "v0_9",
-      "status": "pending",
+      "status": "done",
       "title": "Cross-family adversarial semantic gate on green verdicts",
       "scores": {
         "d": 5,
@@ -3694,7 +3699,12 @@
       ],
       "body": "Once no human reads the diff, the check stack catches 'doesn't compile/lint/test' but not 'agent deleted the failing test', 'stubbed the hard case', or 'solved the adjacent problem'. Add a semantic gate: before a green verdict settles :done, dispatch a reviewer agent with (task body + acceptance_criteria + the committed diff) and require <<<VERDICT:APPROVE|REJECT>>>. REJECT routes into the existing repair loop (new reason :semantic_rejection); APPROVE settles :done. This reuses almost everything already built — the consulting state in Harness.Run, Harness.AuditReview.grade_fix/1, and the sentinel verdict extraction — only WHEN it fires changes (on green, not on repeated red). CRITICAL: the grader MUST be a different model family than the implementer (reuse AuditReview's :claude <-> :codex auto-pairing). Both peer reviewers flagged that a same-family reviewer shares the implementer's blind spots and will rubber-stamp evasions. Fail-safe: any gate dispatch failure or timeout is treated as REJECT — never silently APPROVE. Config: gate is ON when the project's landing policy would auto-land, OFF otherwise.\n",
       "created_at": "2026-05-30",
+      "started_at": "2026-05-30",
+      "done_at": "2026-05-30",
       "scored_at": "2026-05-30",
+      "implemented": "Cross-family adversarial semantic gate on green verdicts; codex delivery d687f04. Worktree-concurrency flake (run red cause) fixed by serializing git worktree add per repo (ebbb0af). Verification + precommit green.",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
