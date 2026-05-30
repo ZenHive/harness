@@ -1,6 +1,7 @@
 defmodule Harness.DispatchTest do
   use ExUnit.Case, async: true
 
+  alias Harness.Chat.Tools
   alias Harness.Dispatch
   alias Harness.Run.Result
   alias Harness.Verification.Result, as: CheckResult
@@ -174,7 +175,7 @@ defmodule Harness.DispatchTest do
     end
 
     test "the in-process chat tool registry resolves both dispatch tools to Harness.Dispatch" do
-      registry = Harness.Chat.Tools.build()
+      registry = Tools.build()
 
       assert %{module: Dispatch, function: :await} = registry["dispatch__await"]
       assert %{module: Dispatch, function: :task} = registry["dispatch__task"]
