@@ -405,7 +405,7 @@ end
 
 Live transcript: open `http://localhost:4018/harness/runs/<run_id>` in the browser. LiveView is subscribed to `Phoenix.PubSub` topic `harness:run:<id>:transcript`, fed by `Driver.run/3`'s `:on_output` callback. The operator (human) usually has this open; you (driver) usually don't need it unless you're triaging.
 
-> **LogRecord field coverage caveat.** `%LogRecord{}` carries verdict **status** (`:pass`/`:fail`), failed-check **names** (name + kind + exit_status), and the full agent transcript — but NOT per-check stdout/stderr. When you need to triage a red verdict by reading actual check output (a credo finding, a failing-test message), the live `%Harness.Run.Result{}` via subscriber is the only path — drop to the mix-run script in `docs/dogfooding-workflow.md` § "Full-diagnostic dispatch via `mix run` (fallback)".
+> **LogRecord field coverage caveat.** `%LogRecord{}` carries verdict **status** (`:pass`/`:fail`), failed-check **names** (name + kind + exit_status), per-run `token_usage` (`%Harness.TokenUsage{}`, parsed from the transcript and summed across repair attempts), and the full agent transcript — but NOT per-check stdout/stderr. When you need to triage a red verdict by reading actual check output (a credo finding, a failing-test message), the live `%Harness.Run.Result{}` via subscriber is the only path — drop to the mix-run script in `docs/dogfooding-workflow.md` § "Full-diagnostic dispatch via `mix run` (fallback)".
 
 **Single delegation with explicit adapter choice (subscriber-IS-caller variant, mix-run / long-lived BEAM only):**
 
@@ -451,8 +451,12 @@ adapter        = pick_adapter_for_task(item)   # your logic (cost, capability, A
 )
 
 # comparison.entries — side-by-side per-adapter metrics (verdict, repair_attempts,
-# duration_ms, first_attempt_failed_check_count, agent_diff_size). Metrics are
-# additive; the verification verdict stays binary pass/fail.
+# duration_ms, first_attempt_failed_check_count, agent_diff_size, token_usage).
+# token_usage (%Harness.TokenUsage{input, output, cache_read, cache_creation,
+# total}, summed across repair attempts) is the efficiency signal — did the
+# adapter solve the task in 50k tokens or 500k? Nil fields when the wire format
+# reported no usage. Metrics are additive; the verification verdict stays binary
+# pass/fail.
 ```
 
 Lower-level pinned batch (same machinery, no comparison wrapper):

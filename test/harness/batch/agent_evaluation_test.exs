@@ -10,6 +10,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
   alias Harness.Batch.AgentEvaluation
   alias Harness.Batch.AgentEvaluation.Comparison
   alias Harness.Batch.AgentEvaluation.Entry
+  alias Harness.Batch.Result
   alias Harness.GitFixture
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
@@ -184,7 +185,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
   end
 
   test "REGRESSION (Task 68): from_batch/3 raises on adapter/results length mismatch" do
-    batch = %Harness.Batch.Result{
+    batch = %Result{
       batch_id: "mismatch-test",
       total: 2,
       max_concurrency: 2,
@@ -227,6 +228,75 @@ defmodule Harness.Batch.AgentEvaluationTest do
     assert comparison.task_id == "reload"
     assert length(comparison.entries) == 2
     assert Enum.all?(comparison.entries, &(&1.state == :done and &1.verdict == :pass))
+  end
+
+  test "from_batch surfaces token usage, preferring the persisted record" do
+    store = file_store()
+    batch_id = batch_id()
+
+    result =
+      %Harness.Run.Result{
+        run_id: "run-tok",
+        task_id: "t",
+        state: :done,
+        reason: :passed,
+        token_usage: %Harness.TokenUsage{input: 5, output: 1, total: 6}
+      }
+
+    record =
+      %Harness.Run.LogRecord{
+        batch_id: batch_id,
+        run_id: "run-tok",
+        task_id: "t",
+        adapter: GreenAdapter,
+        state: :done,
+        reason: :passed,
+        duration_ms: 10,
+        repair_attempts: 0,
+        first_attempt_failed_check_count: 0,
+        failure_cause: %{reason: :passed, failed_checks: []},
+        token_usage: %Harness.TokenUsage{input: 500, output: 120, total: 620}
+      }
+
+    :ok = Harness.ResultStore.record_run(record, store)
+
+    batch = %Result{
+      batch_id: batch_id,
+      total: 1,
+      max_concurrency: 1,
+      results: [result],
+      events: []
+    }
+
+    comparison = AgentEvaluation.from_batch(batch, [GreenAdapter], store)
+    [%Entry{token_usage: usage}] = comparison.entries
+
+    # The persisted record's measured usage wins over the live result's.
+    assert usage == %Harness.TokenUsage{input: 500, output: 120, total: 620}
+  end
+
+  test "from_batch falls back to the result's token usage when no record is stored" do
+    result =
+      %Harness.Run.Result{
+        run_id: "run-fallback",
+        task_id: "t",
+        state: :done,
+        reason: :passed,
+        token_usage: %Harness.TokenUsage{input: 9, output: 3, total: 12}
+      }
+
+    batch = %Result{
+      batch_id: "no-store",
+      total: 1,
+      max_concurrency: 1,
+      results: [result],
+      events: []
+    }
+
+    comparison = AgentEvaluation.from_batch(batch, [GreenAdapter], false)
+    [%Entry{token_usage: usage}] = comparison.entries
+
+    assert usage == %Harness.TokenUsage{input: 9, output: 3, total: 12}
   end
 
   defp eval_opts(base, overrides) do

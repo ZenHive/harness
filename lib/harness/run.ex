@@ -87,6 +87,7 @@ defmodule Harness.Run do
   alias Harness.Run.Result
   alias Harness.Run.RetryPolicy
   alias Harness.Run.Status
+  alias Harness.TokenUsage
   alias Harness.Verification
   alias Harness.Verification.Check
   alias Harness.Verification.Result, as: CheckResult
@@ -145,6 +146,7 @@ defmodule Harness.Run do
            agent_run: AgentRun.t() | nil,
            agent_outcome: Outcome.t() | nil,
            verdict: Verdict.t() | nil,
+           token_usage: TokenUsage.t(),
            first_attempt_failed_check_count: non_neg_integer(),
            agent_diff_size: non_neg_integer() | nil,
            task: Task.t() | nil,
@@ -347,6 +349,7 @@ defmodule Harness.Run do
       agent_run: nil,
       agent_outcome: nil,
       verdict: nil,
+      token_usage: TokenUsage.empty(),
       first_attempt_failed_check_count: 0,
       agent_diff_size: nil,
       task: nil,
@@ -437,7 +440,11 @@ defmodule Harness.Run do
 
   def running(:info, {ref, {:ok, %Outcome{} = outcome}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
-    data = finalize_transcript(%{data | task: nil, agent_outcome: outcome})
+
+    data =
+      %{data | task: nil, agent_outcome: outcome}
+      |> finalize_transcript()
+      |> accumulate_token_usage(outcome)
 
     case {data.cancel_requested, checkout_pollution_reason(data)} do
       {nil, nil} ->
@@ -807,8 +814,19 @@ defmodule Harness.Run do
       worktree_path: data.worktree && data.worktree.path,
       repair_attempts: data.repair_attempts,
       first_attempt_failed_check_count: data.first_attempt_failed_check_count,
-      agent_diff_size: data.agent_diff_size
+      agent_diff_size: data.agent_diff_size,
+      token_usage: data.token_usage
     }
+  end
+
+  # Parses the just-settled attempt's transcript for token usage and sums it into
+  # the run's running total, so a multi-attempt repair loop's burn is attributable.
+  # `agent_kind: nil` (test doubles, unregistered adapters) parses to an empty
+  # usage, so the total stays an empty usage — never a crash.
+  @spec accumulate_token_usage(data(), Outcome.t()) :: data()
+  defp accumulate_token_usage(data, %Outcome{output: output}) do
+    attempt = TokenUsage.parse(data.agent_kind, output)
+    %{data | token_usage: TokenUsage.add(data.token_usage, attempt)}
   end
 
   @spec persist_run_record(data(), Result.t()) :: :ok

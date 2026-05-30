@@ -14,6 +14,7 @@ defmodule Harness.RunTest do
   alias Harness.Run
   alias Harness.Run.Result
   alias Harness.Run.Status
+  alias Harness.TokenUsage
   alias Harness.Verification.Check
   alias Harness.Verification.Verdict
   alias Harness.Worktree
@@ -154,6 +155,16 @@ defmodule Harness.RunTest do
       assert record.first_attempt_failed_check_count == 0
       assert record.agent_diff_size > 0
       assert record.failure_cause == %{reason: :passed, failed_checks: []}
+      # FakeAdapter is not registry-mapped, so its agent_kind is nil and token
+      # usage threads through as an empty usage end-to-end — never a crash.
+      assert record.token_usage == TokenUsage.empty()
+    end
+
+    test "threads an empty token usage onto the result for an unregistered adapter" do
+      result = run(checks: [check("ok", "true")])
+
+      assert %Result{token_usage: %TokenUsage{} = usage} = result
+      refute TokenUsage.measured?(usage)
     end
 
     test "the agent's work survives teardown as a commit on the run branch" do

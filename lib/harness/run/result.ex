@@ -14,6 +14,7 @@ defmodule Harness.Run.Result do
   """
 
   alias Harness.AgentAdapter.Outcome
+  alias Harness.TokenUsage
   alias Harness.Verification.Verdict
 
   @typedoc "The terminal state a run settled into."
@@ -98,6 +99,9 @@ defmodule Harness.Run.Result do
       verification verdict, before any repair attempt.
     * `agent_diff_size` — changed-line count for the agent's first committed
       diff, or `nil` when no diff could be measured.
+    * `token_usage` — `Harness.TokenUsage` parsed from the agent's raw
+      transcript and summed across every repair attempt, or an empty usage
+      (all-`nil`) when the adapter's wire format reports no token counts.
   """
   @type t :: %__MODULE__{
           run_id: String.t(),
@@ -109,7 +113,8 @@ defmodule Harness.Run.Result do
           worktree_path: String.t() | nil,
           repair_attempts: non_neg_integer(),
           first_attempt_failed_check_count: non_neg_integer(),
-          agent_diff_size: non_neg_integer() | nil
+          agent_diff_size: non_neg_integer() | nil,
+          token_usage: TokenUsage.t()
         }
 
   @enforce_keys [:run_id, :task_id, :state, :reason]
@@ -123,6 +128,7 @@ defmodule Harness.Run.Result do
     :worktree_path,
     repair_attempts: 0,
     first_attempt_failed_check_count: 0,
-    agent_diff_size: nil
+    agent_diff_size: nil,
+    token_usage: %TokenUsage{}
   ]
 end
