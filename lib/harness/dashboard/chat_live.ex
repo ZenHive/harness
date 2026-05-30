@@ -323,6 +323,14 @@ defmodule Harness.Dashboard.ChatLive do
     {:noreply, push_navigate(socket, to: "/harness/chat/#{new_id}")}
   end
 
+  # Stop button. Signals the backend to tear down the in-flight turn; the
+  # streaming indicator clears when the resulting `:cancelled` terminal arrives
+  # over PubSub (handled by apply_event/2), so there's no local state to mutate.
+  def handle_event("cancel", _params, socket) do
+    if sid = socket.assigns.session_id, do: Session.cancel(sid)
+    {:noreply, socket}
+  end
+
   # Playbook chip → prefill the composer with the recipe request, leaving the
   # cursor after "for " for the operator to name the target project. The slug
   # (not the title) is interpolated so the orchestrator calls playbooks__get
@@ -615,7 +623,8 @@ defmodule Harness.Dashboard.ChatLive do
           autofocus
           phx-debounce="150"
         ><%= @input %></textarea>
-        <button type="submit" disabled={@active != nil or @session_id == nil}>Send</button>
+        <button :if={@active == nil} type="submit" disabled={@session_id == nil}>Send</button>
+        <button :if={@active != nil} type="button" class="stop-btn" phx-click="cancel">Stop</button>
       </form>
     </.chat_shell>
     """

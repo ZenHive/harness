@@ -540,6 +540,11 @@ defmodule Harness.Dashboard.Tokens do
         transition: opacity var(--motion-fast) var(--ease-out);
       }
       .composer button:disabled { opacity: 0.45; cursor: not-allowed; }
+      /* Stop button — outlined --accent terminal-state cue (mirrors .kill-btn),
+         overriding the filled .composer button so Stop reads as an interrupt,
+         not a primary action. Occupies the same grid cell Send vacates. */
+      .composer .stop-btn { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+      .composer .stop-btn:hover { background: var(--accent-soft); }
 
       .playbook-bar {
         display: flex;

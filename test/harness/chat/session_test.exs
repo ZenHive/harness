@@ -262,6 +262,56 @@ defmodule Harness.Chat.SessionTest do
     end
   end
 
+  describe "cancel/1" do
+    test "interrupts an in-flight turn and broadcasts a :cancelled terminal" do
+      # Backend that streams one chunk then parks in the same `:harness_cancel`
+      # receive contract Harness.Chat.Claude's Port drive loop implements. It
+      # runs inside the session process, so Session.cancel/1's send/2 lands here.
+      parking = fn _req, cb, _opts ->
+        cb.({:text_delta, "thinking…"})
+
+        receive do
+          :harness_cancel -> {:error, %{type: :cancelled, message: "Turn cancelled by operator"}}
+        after
+          5_000 -> {:ok, %{content: [%{type: "text", text: "too late"}], stop_reason: "end_turn"}}
+        end
+      end
+
+      {:ok, session_id, _pid} =
+        Supervisor.start_session(backend: FunBackend, backend_opts: [fun: parking])
+
+      assert :ok = Stream.subscribe(session_id)
+
+      task = Task.async(fn -> Session.user_message(session_id, "hi", 10_000) end)
+
+      # Confirm the turn is streaming before we cancel.
+      assert_receive {:harness_chat_stream, ^session_id, %{type: "text_delta"}}, 2_000
+
+      assert :ok = Session.cancel(session_id)
+
+      assert_receive {:harness_chat_stream, ^session_id, %{type: :terminal, reason: :cancelled}}, 2_000
+      assert {:error, %{type: :terminal, reason: :cancelled}} = Task.await(task)
+
+      # History preserved: the session is still alive and the user turn remains.
+      assert {:ok, messages} = Session.snapshot(session_id)
+      assert Enum.any?(messages, &match?(%{role: :user, content: "hi"}, &1))
+    end
+
+    test "is a no-op on an idle session (leaves it alive)" do
+      noop = fn _, _, _ -> {:ok, %{content: [], stop_reason: "end_turn"}} end
+      {:ok, session_id, pid} = Supervisor.start_session(backend: FunBackend, backend_opts: [fun: noop])
+
+      assert :ok = Session.cancel(session_id)
+      assert Process.alive?(pid)
+      # Still usable after an idle cancel.
+      assert {:ok, _} = Session.user_message(session_id, "still here")
+    end
+
+    test "is a no-op on an unknown session id" do
+      assert :ok = Session.cancel("nonexistent-#{System.unique_integer([:positive])}")
+    end
+  end
+
   describe "supervision" do
     test "start_session registers a session under Harness.Chat.Registry" do
       noop = fn _, _, _ -> {:ok, %{content: [], stop_reason: "end_turn"}} end

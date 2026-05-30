@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 85 — Harness.Dashboard.Components + Tokens overhaul + persistent navbar/footer chrome, Task 86 — Transcript parser dispatch + per-agent parsers (5 structured + 1 passthrough) with unified event vocabulary, Task 87 — Run-detail transcript rework — parsed event list + <.transcript_view> component, ?raw=1 fallback, Task 88 — Harness.Roadmap browse tools (roadmap__list / roadmap__next_bundle) + descripex 0.7 param_order dispatch fix, Task 89 — Harness.Playbooks — orchestration recipe tools (playbooks__list / playbooks__get), Task 90 — Dashboard playbook prefill buttons — chip row over the chat composer, Task 91 — Flat MCP-native dispatch tool — make the chat orchestrator able to dispatch a task for any project, Task 94 — Kill button for in-flight runs on the dashboard on 2026-05-29
 
-**Up next:** Task 96 — Chat: clear streaming indicator on :terminal events, not only :done [D:1/B:4/U:5 → Eff:4.5] 🎯
+**Up next:** Task 97 — Reconcile harness verification stack vs project mix precommit [D:4/B:7/U:6 → Eff:1.62] 🚀
 <!-- FOCUS:END -->
 
 ---

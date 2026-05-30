@@ -3187,25 +3187,33 @@ done_at = "2026-05-29"
 id = "95"
 phase = 9
 bundle = "chat-orchestrator"
-status = "pending"
+status = "done"
 title = "Chat UI: add stop/cancel control to streaming session"
 scores = { d = 2, b = 6, u = 6 }
 acceptance_criteria = ["A visible stop button appears when streaming? is true", "Clicking it terminates the backend Port and clears the streaming indicator", "Session history is preserved"]
 body = "The /harness/chat LiveView has no in-UI affordance to terminate an in-flight session. Today a runaway orchestrator can only be killed via OS pid or a BEAM eval against Harness.Chat.Supervisor. Add a stop button visible when the session is actively streaming; it should close the backend Port cleanly and emit a :terminal event so the LiveView clears the streaming indicator."
+implemented = "Stop/cancel control: Session.cancel/1 sends :harness_cancel to the session pid (a turn runs synchronously in the GenServer, so cancel cannot be a cast); Claude.drive/3 gained a :harness_cancel receive clause that closes+flushes the Port and returns {:error, %{type: :cancelled}}, mapped to a :cancelled terminal in stream_once. ChatLive composer toggles Send→Stop (phx-click=cancel) while active; outlined --accent .stop-btn styling. Browser-verified: Stop killed a live claude Port mid-stream, indicator cleared, history preserved."
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-29"
 scored_at = "2026-05-29"
+done_at = "2026-05-30"
 
 [[task]]
 id = "96"
 phase = 9
 bundle = "chat-orchestrator"
-status = "pending"
+status = "done"
 title = "Chat: clear streaming indicator on :terminal events, not only :done"
 scores = { d = 1, b = 4, u = 5 }
 acceptance_criteria = ["Backend :terminal event clears the streaming-in-progress UI state", "Verified by killing the backend Claude OS process mid-turn"]
 body = "When the backend Port exits without a graceful :done (Claude self-exit on summary, OS kill, or crash), the LiveView's streaming indicator stays sticky until page refresh. Clear it on :terminal events too. Surfaced 2026-05-29 in the Task 94 salvage flow — orchestrator finished but the chat UI still showed streaming? true."
+implemented = "Pinned the terminal-clears-streaming-indicator contract: ChatLive's :terminal handler already flushed the active turn (streaming?: false) and cleared :active; added LiveViewTest mount coverage asserting data-streaming clears on :terminal (incl. the new :cancelled reason) as well as :done. Browser-verified by cancelling a live claude turn."
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-29"
 scored_at = "2026-05-29"
+done_at = "2026-05-30"
 
 [[task]]
 id = "97"

@@ -27,6 +27,7 @@ defmodule Harness.Chat.Session do
           | :backend_error
           | :dispatch_failed
           | :busy
+          | :cancelled
 
   @type terminal :: %{
           required(:type) => :terminal,
@@ -45,6 +46,34 @@ defmodule Harness.Chat.Session do
   @spec user_message(String.t(), String.t(), timeout()) :: {:ok, map()} | {:error, terminal()}
   def user_message(session_id, text, timeout \\ 60_000) when is_binary(session_id) and is_binary(text) do
     GenServer.call(via(session_id), {:user_message, text}, timeout)
+  end
+
+  @doc """
+  Requests cancellation of an in-flight turn.
+
+  The session GenServer is parked inside the backend's stream loop for the
+  duration of a turn (the whole `{:user_message, _}` call runs synchronously),
+  so cancellation cannot be a `GenServer.cast` — the mailbox would not be read
+  until the turn ended. Instead we `send/2` the bare `:harness_cancel` signal
+  to the session pid: a backend whose `stream/3` parks in a `receive` (e.g.
+  `Harness.Chat.Claude`'s Port drive loop) matches it, tears down its work, and
+  returns `{:error, %{type: :cancelled}}`, which surfaces as a `:cancelled`
+  terminal. When the session is idle the signal is a no-op (see `handle_info/2`).
+
+  Always returns `:ok` — cancelling an unknown or idle session is harmless. The
+  prior conversation history is preserved (only the cancelled turn's partial
+  assistant output is discarded).
+  """
+  @spec cancel(String.t()) :: :ok
+  def cancel(session_id) when is_binary(session_id) do
+    case Harness.Chat.Supervisor.whereis(session_id) do
+      nil ->
+        :ok
+
+      pid ->
+        send(pid, :harness_cancel)
+        :ok
+    end
   end
 
   @doc """
@@ -104,6 +133,16 @@ defmodule Harness.Chat.Session do
   def handle_call(:snapshot, _from, state) do
     {:reply, state.messages, state}
   end
+
+  @doc false
+  @impl GenServer
+  @spec handle_info(term(), map()) :: {:noreply, map()}
+  # `:harness_cancel` only reaches here when the session is idle — during a turn
+  # the backend's stream `receive` consumes it first (see `cancel/1`). Idle =
+  # nothing to cancel, so drop it. The catch-all also absorbs any late Port
+  # message left over after a mid-turn cancel teardown without log noise.
+  def handle_info(:harness_cancel, state), do: {:noreply, state}
+  def handle_info(_msg, state), do: {:noreply, state}
 
   @spec run_turn(map(), String.t()) :: {{:ok, map()} | {:error, terminal()}, map()}
   defp run_turn(state, text) do
@@ -174,7 +213,8 @@ defmodule Harness.Chat.Session do
         end
 
       {:error, error} ->
-        {:error, emit_terminal(state.session_id, terminal(:backend_error, error.message, %{error: error})), state}
+        {reason, message} = backend_error_terminal(error)
+        {:error, emit_terminal(state.session_id, terminal(reason, message, %{error: error})), state}
     end
   end
 
@@ -330,6 +370,16 @@ defmodule Harness.Chat.Session do
   defp terminal(reason, message, details \\ %{}) do
     Map.merge(%{type: :terminal, reason: reason, message: message}, details)
   end
+
+  # A backend that honors `:harness_cancel` returns `{:error, %{type: :cancelled}}`;
+  # surface that as a distinct `:cancelled` terminal (not a generic backend error)
+  # so the UI can show "Stopped" rather than an error. Everything else is a
+  # backend error.
+  @spec backend_error_terminal(map()) :: {terminal_reason(), String.t()}
+  defp backend_error_terminal(%{type: :cancelled} = error),
+    do: {:cancelled, Map.get(error, :message, "Turn cancelled by operator")}
+
+  defp backend_error_terminal(error), do: {:backend_error, error.message}
 
   @spec default_system_prompt() :: String.t()
   defp default_system_prompt do

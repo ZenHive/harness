@@ -313,6 +313,8 @@ Boot a session and send a turn:
 
 Stream the session live by subscribing to `Phoenix.PubSub` topic `"harness:chat:" <> session_id` — the LiveView at `http://localhost:4018/harness/chat/<session_id>` does exactly this. Events fan out as maps: `%{type: "text_delta", text: ...}`, `%{type: "tool_call", id:, name:, arguments:}`, `%{type: "tool_result", id:, name:, content:}`, `%{type: "done", response: ...}`, `%{type: :terminal, reason:, message:}`.
 
+`Harness.Chat.Session.cancel/1` interrupts an in-flight turn (the dashboard's Stop button calls it). Because a turn runs synchronously inside the session GenServer, cancel is a bare `send(pid, :harness_cancel)` — not a cast — which a backend parked in a `receive` (e.g. `Harness.Chat.Claude`'s Port drive loop) matches to tear down its work and return `{:error, %{type: :cancelled}}`, surfacing as a `:terminal` with `reason: :cancelled`. Always returns `:ok` (no-op on an unknown or idle session); prior conversation history is preserved. A backend opts into mid-turn cancellation by handling `:harness_cancel` in its stream `receive`.
+
 `:backend` is **required** on `Session.init/1` — no implicit default. The session injects its own `session_id` into `backend_opts` before each `stream/3` call so backends can derive a stable per-session workspace without an extra registration step.
 
 ### Headless MCP surface (external consumers)
@@ -532,7 +534,7 @@ Changes that require an update to this skill:
 - New result shapes or verdict semantics
 - **Changes to project-registration config shape** (`config :harness, :projects, [...]`)
 - **Changes to the `.mcp.json` shape Tidewave expects, or harness's dashboard port (`:4018`)**
-- New or changed `Harness.Chat.Backend` callbacks, new backends, or changes to `Harness.Chat.Session`'s public surface (`start_link/2`, `user_message/3`, `snapshot/1`)
+- New or changed `Harness.Chat.Backend` callbacks, new backends, or changes to `Harness.Chat.Session`'s public surface (`start_link/2`, `user_message/3`, `snapshot/1`, `cancel/1`)
 - Changes to the MCP transport (`/harness/mcp` path, JSON-RPC envelope, tool naming, `Harness.Chat.Tools` registry shape)
 - Additional MCP backends beyond `Harness.Chat.Claude` (if/when a library-backed metered-API backend lands as an opt-in)
 - New or changed `Harness.Playbooks` (catalog entries, `priv/playbooks/*.md` recipes that drift from the actual tool surface, or the `list/0` / `get/1` shapes)

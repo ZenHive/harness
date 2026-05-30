@@ -167,6 +167,74 @@ defmodule Harness.Dashboard.ChatLiveMountTest do
     end
   end
 
+  describe "streaming indicator lifecycle (Task 96)" do
+    setup %{conn: conn} do
+      sid = start_fun_session(fn _req, _cb, _opts -> {:ok, %{content: [], stop_reason: "end_turn"}} end)
+      {:ok, view, _html} = live(conn, "/harness/chat/#{sid}")
+      %{view: view, sid: sid}
+    end
+
+    test "a :terminal event clears the streaming indicator, not only :done", %{view: view, sid: sid} do
+      send(view.pid, {:harness_chat_stream, sid, %{type: "text_delta", text: "thinking…"}})
+      assert render(view) =~ ~s(data-streaming="true")
+
+      # The behaviour Task 96 pins: a terminal (here a cancellation) clears the
+      # cursor signal, the same as the :done path does.
+      send(
+        view.pid,
+        {:harness_chat_stream, sid, %{type: :terminal, reason: :cancelled, message: "Turn cancelled by operator"}}
+      )
+
+      html = render(view)
+      refute html =~ ~s(data-streaming="true")
+      assert html =~ "Turn cancelled by operator"
+    end
+
+    test "the :done event also clears the streaming indicator", %{view: view, sid: sid} do
+      send(view.pid, {:harness_chat_stream, sid, %{type: "text_delta", text: "partial"}})
+      assert render(view) =~ ~s(data-streaming="true")
+
+      send(view.pid, {:harness_chat_stream, sid, %{type: "done"}})
+      refute render(view) =~ ~s(data-streaming="true")
+    end
+  end
+
+  describe "stop/cancel control (Task 95)" do
+    setup %{conn: conn} do
+      sid = start_fun_session(fn _req, _cb, _opts -> {:ok, %{content: [], stop_reason: "end_turn"}} end)
+      {:ok, view, html} = live(conn, "/harness/chat/#{sid}")
+      %{view: view, sid: sid, html: html}
+    end
+
+    test "Send shows when idle; Stop replaces it once a turn is streaming", %{view: view, sid: sid, html: html} do
+      # Match the button, not the `.stop-btn` CSS rule that's always in the
+      # stylesheet — phx-click="cancel" appears only on the Stop button element.
+      assert html =~ ">Send<"
+      refute html =~ ~s(phx-click="cancel")
+
+      send(view.pid, {:harness_chat_stream, sid, %{type: "text_delta", text: "working"}})
+      streaming = render(view)
+      assert streaming =~ ~s(class="stop-btn")
+      assert streaming =~ ~s(phx-click="cancel")
+      refute streaming =~ ">Send<"
+    end
+
+    test "clicking Stop routes through handle_event(\"cancel\", …) without crashing", %{view: view, sid: sid} do
+      send(view.pid, {:harness_chat_stream, sid, %{type: "text_delta", text: "working"}})
+
+      # The FunBackend session is idle in-test (no live turn parked), so
+      # Session.cancel/1 is a no-op; assert the wiring fires and the view lives.
+      view |> element("button.stop-btn") |> render_click()
+      assert Process.alive?(view.pid)
+
+      # A subsequent terminal clears the cursor and retires Stop.
+      send(view.pid, {:harness_chat_stream, sid, %{type: :terminal, reason: :cancelled, message: "Stopped"}})
+      html = render(view)
+      refute html =~ ~s(phx-click="cancel")
+      refute html =~ ~s(data-streaming="true")
+    end
+  end
+
   @spec start_fun_session((map(), (term() -> any()), keyword() -> {:ok, map()})) :: String.t()
   defp start_fun_session(fun) do
     {:ok, sid, _pid} =

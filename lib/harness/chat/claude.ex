@@ -301,6 +301,15 @@ defmodule Harness.Chat.Claude do
         {events, _parser} = StreamParser.finalize(parser)
         {content_acc, stop_reason} = handle_events(events, callback, content_acc, stop_reason)
         finalize_outcome(status, content_acc, stop_reason)
+
+      # Operator clicked Stop. The session GenServer is parked in this receive
+      # for the whole turn, so `Session.cancel/1`'s `send(pid, :harness_cancel)`
+      # lands here. Tear down the `claude` Port and surface a cancelled outcome
+      # — `Session.stream_once/1` maps it to a `:cancelled` terminal.
+      :harness_cancel ->
+        close_port(port)
+        flush_port(port)
+        {:error, %{type: :cancelled, message: "Turn cancelled by operator"}}
     after
       wait ->
         close_port(port)
@@ -368,6 +377,18 @@ defmodule Harness.Chat.Claude do
     :ok
   rescue
     _ -> :ok
+  end
+
+  # Drains any Port messages already in the mailbox after a cancel teardown so a
+  # late `{port, {:data | :exit_status, _}}` doesn't reach the session GenServer's
+  # catch-all handle_info as noise. Non-blocking — `after 0` returns once drained.
+  @spec flush_port(port()) :: :ok
+  defp flush_port(port) do
+    receive do
+      {^port, _} -> flush_port(port)
+    after
+      0 -> :ok
+    end
   end
 
   @spec idle_deadline(non_neg_integer()) :: integer()
