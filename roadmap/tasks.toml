@@ -65,9 +65,19 @@ name = "Autonomous Landing"
 order = 11
 status = "pending"
 
+[phases.12]
+name = "Workflow Substrate"
+order = 12
+status = "pending"
+
 # ----------------------------------------------------------------------------
 # Bundles
 # ----------------------------------------------------------------------------
+
+[bundles.workflow-substrate]
+description = "Harness workflow as the source-of-truth operating contract all repos adopt, retiring the generic global includes"
+order = 1
+phase = 12
 
 [bundles.scaffold]
 description = "mix project scaffold + standard dep stack"
@@ -3367,3 +3377,25 @@ created_at = "2026-05-30"
 started_at = "2026-05-30"
 scored_at = "2026-05-30"
 done_at = "2026-05-30"
+
+[[task]]
+id = "104"
+phase = 12
+bundle = "workflow-substrate"
+status = "pending"
+title = "Promote docs/dogfooding-workflow.md to ~/.claude/includes/harness-workflow.md once stable"
+scores = { d = 6, b = 8, u = 7 }
+depends_on = [99]
+acceptance_criteria = ["docs/dogfooding-workflow.md (its generalizable slice) is published as ~/.claude/includes/harness-workflow.md", "Any repo adopts the harness workflow by importing it the normal way: @~/.claude/includes/harness-workflow.md", "The relationship between harness-workflow.md and the existing workflow includes (workflow-philosophy / task-prioritization / etc.) is resolved — absorbed, superseded, or layered — with no contradictions"]
+out_of_scope = ["Any work before harness is functionally complete and docs/dogfooding-workflow.md is stable", "Retiring or replacing the ~/.claude/includes/* mechanism — it stays; harness-workflow.md becomes one of the includes"]
+body = """
+docs/dogfooding-workflow.md is the INCUBATOR for the harness workflow — where it's developed and proven while harness itself is built. Once harness is functionally complete and that doc has stabilized, PROMOTE it into the global includes as a new include: ~/.claude/includes/harness-workflow.md.
+
+The includes mechanism is the delivery channel and it STAYS. harness-workflow.md simply becomes one of the global includes. Then every repo adopts the harness workflow exactly the way it adopts every other include today — `@~/.claude/includes/harness-workflow.md` in its CLAUDE.md. No new opt-in mechanism, no retiring the includes directory: the harness workflow graduates from in-repo incubation into the standard include set, and the whole repo portfolio picks it up through the existing import path.
+
+This is a forward capstone, NOT current work. Gated on (a) harness functionally complete (autonomous landing loop closed) and (b) docs/dogfooding-workflow.md stable enough to generalize from. Do not start until both hold; captured here so the intent survives across instances.
+
+Scope to define when picked up: which slice of dogfooding-workflow.md is generic enough to globalize vs what stays harness-repo-specific; how harness-workflow.md relates to the existing workflow includes (does it absorb workflow-philosophy / task-prioritization / the dogfooding rules, supersede them, or sit alongside?); where the scattered per-project memory facts (claude-does-not-commit, dogfood-batch-size, harness-human-is-sakshi) land in the promoted include; how it syncs back to the marketplace skills the way the other includes do.
+"""
+created_at = "2026-05-30"
+scored_at = "2026-05-30"
