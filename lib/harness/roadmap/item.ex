@@ -19,14 +19,22 @@ defmodule Harness.Roadmap.Item do
       of `rmap delegate`, passed through untouched.
     * `agent` — the agent the prompt was rendered for. A prompt rendered for one
       agent is not interchangeable with another, so the pairing is carried.
+    * `body` — the task's original `body` field (intent at scoping time), or
+      `nil` when the task carries none. The rendered `prompt` already embeds the
+      body, but it's carried structurally so the semantic gate and any triage
+      agent can read the task's contract without re-parsing the prompt.
+    * `acceptance_criteria` — the task's structured acceptance criteria as a list
+      of strings; an empty list when the task declares none.
   """
   @type t :: %__MODULE__{
           id: String.t(),
           title: String.t(),
           prompt: String.t(),
-          agent: :claude | :codex | :cursor
+          agent: :claude | :codex | :cursor,
+          body: String.t() | nil,
+          acceptance_criteria: [String.t()]
         }
 
   @enforce_keys [:id, :title, :prompt, :agent]
-  defstruct [:id, :title, :prompt, :agent]
+  defstruct [:id, :title, :prompt, :agent, :body, acceptance_criteria: []]
 end

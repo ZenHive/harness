@@ -35,6 +35,12 @@ defmodule Harness.RoadmapTest do
       assert item.prompt =~ "## Acceptance criteria"
     end
 
+    test "threads the structured body and acceptance_criteria onto the Item" do
+      assert {:ok, %Item{} = item} = Roadmap.ingest({:id, "1"}, project_root: @sample)
+      assert item.body =~ "A fixture task that has already shipped"
+      assert item.acceptance_criteria == ["The finished task is fetchable by id"]
+    end
+
     test "renders the prompt for the requested agent" do
       assert {:ok, %Item{agent: :codex} = item} =
                Roadmap.ingest({:id, "1"}, project_root: @sample, agent: :codex)
@@ -65,6 +71,34 @@ defmodule Harness.RoadmapTest do
 
       assert item.prompt =~ "rendered prompt"
     end
+
+    test "defaults acceptance_criteria to an empty list and body to nil when absent" do
+      # A task whose JSON carries neither key — ingestion must not crash and the
+      # Item must carry [] / nil rather than the missing-key value.
+      stub =
+        stub_script("""
+        case "$1" in
+          show) echo '{"id":"7","title":"Bare task"}' ;;
+          delegate) echo 'rendered prompt' ;;
+        esac
+        """)
+
+      assert {:ok, %Item{id: "7", body: nil, acceptance_criteria: []}} =
+               Roadmap.ingest({:id, "7"}, project_root: @sample, rmap_bin: stub)
+    end
+
+    test "defaults acceptance_criteria to an empty list when rmap emits null" do
+      stub =
+        stub_script("""
+        case "$1" in
+          show) echo '{"id":"7","title":"Null criteria","acceptance_criteria":null}' ;;
+          delegate) echo 'rendered prompt' ;;
+        esac
+        """)
+
+      assert {:ok, %Item{id: "7", acceptance_criteria: []}} =
+               Roadmap.ingest({:id, "7"}, project_root: @sample, rmap_bin: stub)
+    end
   end
 
   describe "ingest/2 next" do
@@ -72,6 +106,12 @@ defmodule Harness.RoadmapTest do
       assert {:ok, %Item{id: "2"} = item} = Roadmap.ingest(:next, project_root: @sample)
       assert item.title == "The next pending fixture task"
       assert item.prompt =~ "# Task 2"
+    end
+
+    test "threads body and acceptance_criteria for the next pending task" do
+      assert {:ok, %Item{id: "2"} = item} = Roadmap.ingest(:next, project_root: @sample)
+      assert item.body =~ "The single pending fixture task"
+      assert item.acceptance_criteria == ["The pending task is the one rmap next returns"]
     end
 
     test "returns no_pending_task when nothing is pending" do
