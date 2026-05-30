@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 85 — Harness.Dashboard.Components + Tokens overhaul + persistent navbar/footer chrome, Task 86 — Transcript parser dispatch + per-agent parsers (5 structured + 1 passthrough) with unified event vocabulary, Task 87 — Run-detail transcript rework — parsed event list + <.transcript_view> component, ?raw=1 fallback, Task 88 — Harness.Roadmap browse tools (roadmap__list / roadmap__next_bundle) + descripex 0.7 param_order dispatch fix, Task 89 — Harness.Playbooks — orchestration recipe tools (playbooks__list / playbooks__get), Task 90 — Dashboard playbook prefill buttons — chip row over the chat composer, Task 91 — Flat MCP-native dispatch tool — make the chat orchestrator able to dispatch a task for any project, Task 94 — Kill button for in-flight runs on the dashboard on 2026-05-29
 
-**Up next:** Task 97 — Reconcile harness verification stack vs project mix precommit [D:4/B:7/U:6 → Eff:1.62] 🚀
+**Up next:** Task 98 — Thread body + acceptance_criteria onto %Roadmap.Item{} through ingestion [D:3/B:6/U:8 → Eff:2.33] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -76,7 +76,6 @@
 | Task | Status | Notes |
 |------|--------|-------|
 | Task 17 | ⛔ | 🎁 **deferred** · Agent-shaped surface — MCP tools + JSON CLI [D:6/B:8/U:8 → Eff:1.33] 📋 |
-| Task 20 | ⬜ | 🎁 **deferred** · Run telemetry + quota/cost accounting [D:5/B:3/U:3 → Eff:0.6] ⚠️ |
 | Task 21 | ⬜ | 🎁 **deferred** · ACP transport adapter [D:7/B:5/U:3 → Eff:0.57] ⚠️ |
 | Task 80 | ⛔ | 🎁 **deferred** · Harness.Dashboard.RoadmapLive — multi-project rmap-next browser with 1-click dispatch [D:3/B:5/U:4 → Eff:1.5] 🚀 |
 | Task 81 | ⬜ | 🎁 **deferred** · Harness.Dashboard.CompareLive — A/B agent-evaluation view [D:3/B:4/U:3 → Eff:1.17] 📋 |

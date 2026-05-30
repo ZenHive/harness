@@ -17,6 +17,11 @@
       "order": 10,
       "status": "pending"
     },
+    "11": {
+      "name": "Autonomous Landing",
+      "order": 11,
+      "status": "pending"
+    },
     "2": {
       "name": "Core Loop & Contract Proof",
       "order": 2,
@@ -59,6 +64,11 @@
     }
   },
   "bundles": {
+    "autolanding": {
+      "phase": 11,
+      "order": 1,
+      "description": "Close the autonomous loop: a green run lands itself on the target branch with the human as pure witness. Acceptance-criteria visibility onto %Item{}, a cross-family adversarial semantic gate, a serialized merge-train (ff/rebase + integrated re-verify + rmap write-back), post-merge auto-repair and conflict re-dispatch with a blocked sink, a read-only witness notification channel, and a blocking dispatch__await MCP tool. Also carries per-run token capture (Task 20, milestone-unpinned) — a routing-efficiency signal that's topically adjacent but not a landing-loop gate."
+    },
     "chat-orchestrator": {
       "phase": 9,
       "order": 1,
@@ -184,8 +194,15 @@
       "name": "Dashboard Operator UX",
       "description": "Proves a unified, designed dashboard chrome (persistent navbar + footer + shared component vocabulary) plus chat-style parsed transcripts on the run-detail page make harness consumable by a human operator — not just an AI driver — without requiring the operator to read raw stream-json or context-switch between visually fragmented per-page headers.",
       "order": 8,
-      "status": "active",
+      "status": "done",
       "target_version": "0.8.0"
+    },
+    "v0_9": {
+      "name": "Autonomous Landing",
+      "description": "Proves harness can drive an rmap task from dispatch to a landed commit on the target branch with zero human gate — a cross-family adversarial grader approves the diff against its acceptance criteria, a serialized merge-train ff/rebase-merges and re-verifies the integrated state, post-merge reds and conflicts auto-repair via fresh re-dispatch, exhaustion routes to a blocked sink, and the human is a pure witness (notified, never asked). Tests the hypothesis that the autonomous loop's ceiling is set by acceptance-criteria visibility + grader adversariality, not by merge cleverness.",
+      "order": 9,
+      "status": "active",
+      "target_version": "0.9.0"
     }
   },
   "task": [
@@ -799,27 +816,31 @@
     },
     {
       "id": "20",
-      "phase": 6,
-      "bundle": "deferred",
+      "phase": 11,
+      "bundle": "autolanding",
       "status": "pending",
-      "title": "Run telemetry + quota/cost accounting",
+      "title": "Per-run token capture — efficiency signal + predictive quota fail-over",
       "scores": {
-        "d": 5,
-        "b": 3,
-        "u": 3
+        "d": 4,
+        "b": 6,
+        "u": 6
       },
-      "eff": 0.6,
+      "eff": 1.5,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
-        "DEFERRED — no implementation work scheduled. Revisit only if reactive fail-over (Task 16) proves insufficient; at revisit time, define AC then."
+        "input/output token counts parsed per adapter from the raw transcript and persisted on LogRecord",
+        "token counts surface in AgentEvaluation.Entry so A/B compares efficiency, not just verdict",
+        "an adapter format without usage records nil tokens, never crashes",
+        "repair-loop attempts are attributable (per-attempt or summed) so a multi-attempt run's burn is visible"
       ],
       "out_of_scope": [
-        "Per-token dollar cost accounting — agents run on flat subscriptions, there is nothing to bill"
+        "Per-token dollar cost accounting — flat subscriptions, nothing to bill",
+        "A history-based routing recommender (separate future task; this only provides its input signal)"
       ],
-      "body": "DEFERRED — out of scope until the core, batch, and multi-agent milestones ship. Subscription agents have no per-token marginal cost, so dollar accounting is meaningless. If this is ever picked up, it is quota-burn telemetry — how close each agent is to its cap, when the window resets — to make fail-over predictive rather than reactive. Revisit only if reactive fail-over (Task 16) proves insufficient.\n",
+      "body": "Reframed 2026-05-30 (was deferred quota/cost telemetry). The raw agent transcript is already fully retained in %Harness.Run.LogRecord{}.agent_output but never parsed — and every adapter's wire format carries token usage (Claude/Cursor stream-json `usage`, Codex --json, Grok streaming-json). Parse per-adapter input/output token counts, persist them on LogRecord, and surface them in %Harness.Batch.AgentEvaluation.Entry{}. NOT dollar accounting — agents run on flat subscriptions, so dollars are meaningless; the value is token EFFICIENCY as a routing signal. Today an A/B comparison cannot tell whether an adapter solved a task in 50k or 500k tokens, or how many tokens the repair loop burned — so 'rotate adapters for coverage' and any future history-based routing are blind. Token counts are also the quota-burn proxy this task originally named: knowing cumulative burn per adapter makes fail-over predictive (skip an adapter approaching its cap) rather than purely reactive after a quota error. Per-adapter parsing only; tolerate a format that lacks usage (record nil, never crash).\n",
       "created_at": "2026-05-20",
-      "scored_at": "2026-05-20",
+      "scored_at": "2026-05-30",
       "cross_repo": []
     },
     {
@@ -3588,6 +3609,193 @@
       "body": "A dispatched run can grade green by Harness.CheckStack but be unmergeable under the project's own `mix precommit` — surfaced on Task 94 (coverage gate 80% vs measured 75.92%). The orchestrator misattributed the run's cause-of-death to this gap (it was actually a BEAM hot-reload cascade), but the gap is real. Decide: harness mirrors the project's precommit (or a declared subset), or the project trims precommit to what harness already covers. Either way, the policy should be visible on %Harness.Project{} so a consuming repo can opt in.",
       "created_at": "2026-05-29",
       "scored_at": "2026-05-29",
+      "cross_repo": []
+    },
+    {
+      "id": "98",
+      "phase": 11,
+      "bundle": "autolanding",
+      "milestone": "v0_9",
+      "status": "pending",
+      "title": "Thread body + acceptance_criteria onto %Roadmap.Item{} through ingestion",
+      "scores": {
+        "d": 3,
+        "b": 6,
+        "u": 8
+      },
+      "eff": 2.33,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "%Roadmap.Item{} carries body and acceptance_criteria fields",
+        "ingest/2 populates them from rmap for both {:id, _} and :next",
+        "a task with no acceptance criteria ingests with an empty list, never crashes",
+        "existing Item consumers (prompt rendering) unaffected"
+      ],
+      "out_of_scope": [
+        "Acceptance-criteria quality linting (separate future idea)",
+        "Any change to the rmap schema"
+      ],
+      "body": "Foundational for the autonomous-landing milestone. %Harness.Roadmap.Item{} currently carries only id/title/prompt/agent — the rendered agent prompt, not the structured acceptance criteria. The semantic gate (next task) and any future triage agent are blind to the task's actual contract without them. Thread the task body and acceptance_criteria through Harness.Roadmap.ingest/2 into new Item fields, sourcing them from rmap's existing JSON surface (rmap show --json / the data the delegate prompt already renders). Reuse the rmap-shelling already in lib/harness/roadmap.ex. Works for both {:id, _} and :next ingestion. This is the signal the whole milestone amplifies — two peer LLMs independently ranked acceptance-criteria visibility as the #1 ceiling on autonomous correctness.\n",
+      "created_at": "2026-05-30",
+      "scored_at": "2026-05-30",
+      "cross_repo": []
+    },
+    {
+      "id": "99",
+      "phase": 11,
+      "bundle": "autolanding",
+      "milestone": "v0_9",
+      "status": "pending",
+      "title": "Cross-family adversarial semantic gate on green verdicts",
+      "scores": {
+        "d": 5,
+        "b": 8,
+        "u": 8
+      },
+      "eff": 1.6,
+      "markers": [],
+      "depends_on": [
+        "98"
+      ],
+      "acceptance_criteria": [
+        "green verdict with gate enabled dispatches an opposite-model-family grader",
+        "REJECT blocks settle and feeds the repair loop; APPROVE settles :done",
+        "grader dispatch failure or timeout is treated as REJECT (fail-safe)",
+        "gate is skippable by config and OFF by default unless auto-landing"
+      ],
+      "out_of_scope": [
+        "The merge-train itself (separate task)",
+        "Acceptance-criteria quality checks — the gate trusts the criteria as written"
+      ],
+      "body": "Once no human reads the diff, the check stack catches 'doesn't compile/lint/test' but not 'agent deleted the failing test', 'stubbed the hard case', or 'solved the adjacent problem'. Add a semantic gate: before a green verdict settles :done, dispatch a reviewer agent with (task body + acceptance_criteria + the committed diff) and require <<<VERDICT:APPROVE|REJECT>>>. REJECT routes into the existing repair loop (new reason :semantic_rejection); APPROVE settles :done. This reuses almost everything already built — the consulting state in Harness.Run, Harness.AuditReview.grade_fix/1, and the sentinel verdict extraction — only WHEN it fires changes (on green, not on repeated red). CRITICAL: the grader MUST be a different model family than the implementer (reuse AuditReview's :claude <-> :codex auto-pairing). Both peer reviewers flagged that a same-family reviewer shares the implementer's blind spots and will rubber-stamp evasions. Fail-safe: any gate dispatch failure or timeout is treated as REJECT — never silently APPROVE. Config: gate is ON when the project's landing policy would auto-land, OFF otherwise.\n",
+      "created_at": "2026-05-30",
+      "scored_at": "2026-05-30",
+      "cross_repo": []
+    },
+    {
+      "id": "100",
+      "phase": 11,
+      "bundle": "autolanding",
+      "milestone": "v0_9",
+      "status": "pending",
+      "title": "Autonomous merge-train — serialized lander (happy path)",
+      "scores": {
+        "d": 5,
+        "b": 8,
+        "u": 9
+      },
+      "eff": 1.7,
+      "markers": [],
+      "depends_on": [
+        "99"
+      ],
+      "acceptance_criteria": [
+        "an approved branch ff- or rebase-merges onto the project land target",
+        "the integrated state is re-verified before the merge is kept",
+        "on green, the rmap task advances with verified=true and shipped_in=<sha>, no manual commands",
+        "two concurrent green runs land one at a time without racing the target branch"
+      ],
+      "out_of_scope": [
+        "Post-merge-red auto-repair and conflict re-dispatch (resilience task)",
+        "Opening PRs or any human review gate"
+      ],
+      "body": "Close the loop: a green + gate-approved run currently leaves a harness/<id> branch that a human hand-integrates onto development (docs/dogfooding-workflow.md 'Integration order'). Replace that manual dance with a serialized autonomous lander. Single merge to the target at a time (N parallel ff-merges race). Per approved branch: git merge --ff-only onto the project's land target; if the target HEAD moved, rebase harness/<id> and RE-RUN the full verification stack on the integrated result; green => keep the merge and write the outcome back to rmap (status done --verified --delivered-by <agent> --implemented ... and shipped_in <sha>); red-post-merge or true-conflict => retain the branch + hand off to the resilience task. Direct merge to target, no PR, no human review — the verification stack is the grader (project philosophy). Build on Harness.Git.run/2 + Harness.Worktree; serialize via a GenServer or single-concurrency Oban queue. Add land-policy + target-branch fields to %Harness.Project{}. The --verified rmap flag is justified by the upstream semantic gate (a cross-family grader agreed) — exact semantic match for that field.\n",
+      "created_at": "2026-05-30",
+      "scored_at": "2026-05-30",
+      "cross_repo": []
+    },
+    {
+      "id": "101",
+      "phase": 11,
+      "bundle": "autolanding",
+      "milestone": "v0_9",
+      "status": "pending",
+      "title": "Merge-train resilience — post-merge repair, conflict re-dispatch, blocked sink",
+      "scores": {
+        "d": 5,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 1.4,
+      "markers": [],
+      "depends_on": [
+        "100"
+      ],
+      "acceptance_criteria": [
+        "a green-in-isolation, red-post-merge branch gets one fresh integrated-HEAD re-dispatch before being refused",
+        "a true conflict re-dispatches the loser against the winner HEAD, not a blind resolver",
+        "landing-attempt cap routes the task to blocked with a reason; rmap next skips it",
+        "no resolver/re-dispatch path can loop forever"
+      ],
+      "out_of_scope": [
+        "Auto-rescope triage agent for blocked tasks (future fast-follow)",
+        "Resolver-agent as the primary conflict strategy"
+      ],
+      "body": "The hard edges of autonomous landing, shaped by a two-peer LLM design consult. (1) Post-merge red: a branch green-in-isolation but red after integration is an INTEGRATION failure — the merge-train contract is 'target is always green after integration'. Handle it with a FRESH re-dispatch of the task against the integrated HEAD (NOT a session-resume with the stale diff — the in-run repair loop is the wrong tool here), re-verify, land if green. (2) True same-function conflict (rare; batch discipline mostly prevents it): re-dispatch the LOSER against the winner's HEAD (first-to-land = ground truth). A resolver agent that composes both diffs is explicitly NOT the default — both peers warned it produces plausible-but-wrong merges of two intents it can't reconcile. (3) Landing-attempt cap, distinct from the in-run repair cap: on exhaustion, flip the rmap task to blocked with a structured blocked_reason — the terminal sink ('without a sink you are lying about autonomy'). Reuse rmap's existing blocked + blocked_reason; no schema change. No path may loop unbounded.\n",
+      "created_at": "2026-05-30",
+      "scored_at": "2026-05-30",
+      "cross_repo": []
+    },
+    {
+      "id": "102",
+      "phase": 11,
+      "bundle": "autolanding",
+      "milestone": "v0_9",
+      "status": "pending",
+      "title": "Witness notification sink (read-only, hard to become a gate)",
+      "scores": {
+        "d": 2,
+        "b": 6,
+        "u": 7
+      },
+      "eff": 3.25,
+      "markers": [],
+      "depends_on": [
+        "101"
+      ],
+      "acceptance_criteria": [
+        "a configurable sink fires on land / blocked / red-post-merge with task id and outcome",
+        "no configured sink is a silent no-op",
+        "manually landing a train-tracked branch is guarded against, not just discouraged",
+        "one built-in command-exec sink ships; the hook is a behaviour for custom sinks"
+      ],
+      "out_of_scope": [
+        "A full notification UI in the dashboard",
+        "Per-event filtering rules (start with land/blocked/red only)"
+      ],
+      "body": "With the human as a pure witness, notifications are the primary interface — not QoL. Add a pluggable on-settle/on-land hook that fires 'landed #N / blocked #M / red-post-merge #K' with task id + outcome over a configurable sink (a built-in command/exec sink covers ntfy/desktop/Slack via the user's own command; webhook optional). Today only notify_subscriber/3 exists in Harness.Run. Design constraint from the peer consult: the channel is READ-ONLY, and it must be difficult — not merely unconventional — to manually land a branch the merge-train is tracking. If a witnessing human can casually hand-merge a tracked branch, they silently re-become a decision gate without the serialization + re-verification guarantees the train provides. Absent config is a no-op. Depends on 101: the `blocked` and `red-post-merge` events this sink fires on originate there; `land` comes from 100 (covered transitively).\n",
+      "created_at": "2026-05-30",
+      "scored_at": "2026-05-30",
+      "cross_repo": []
+    },
+    {
+      "id": "103",
+      "phase": 11,
+      "bundle": "autolanding",
+      "milestone": "v0_9",
+      "status": "pending",
+      "title": "dispatch__await — blocking dispatch tool for chat/MCP",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 6
+      },
+      "eff": 1.83,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "dispatch__await blocks until the run settles and returns the verdict as the tool result",
+        "a bounded timeout returns a structured timeout result, never wedges",
+        "the tool surfaces on both Chat.Tools and the MCP tools/list",
+        "dispatch__task (fire-and-forget) remains unchanged alongside it"
+      ],
+      "out_of_scope": [
+        "Streaming partial progress back through the tool result (separate concern)"
+      ],
+      "body": "dispatch__task returns a run_id the orchestrator must then poll. Add a blocking/awaiting variant (dispatch__await) that subscribes to the run and returns the settled verdict as the tool result, so a tool-equipped LLM driving harness over MCP gets the answer in one call instead of a poll loop. Tightens the orchestration loop for the primary AI consumer (future instances driving harness). Build on Harness.Dispatch + the existing subscriber path; surface via Harness.Chat.Tools + Harness.Manifest so it appears on both the in-process chat dispatcher and the external MCP surface. Must bound the wait (timeout) so a hung run returns a structured timeout result, not a wedged tool call.\n",
+      "created_at": "2026-05-30",
+      "scored_at": "2026-05-30",
       "cross_repo": []
     }
   ]
