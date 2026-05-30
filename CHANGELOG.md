@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Blocking dispatch — `dispatch__await` (Task 103).** A blocking companion to
+  `dispatch__task` for the chat/MCP surface. Where `dispatch__task` returns a
+  `run_id` the orchestrator must then poll, `Harness.Dispatch.await/5`
+  (`dispatch__await`) subscribes the calling process to the run and **blocks
+  until it settles**, returning a compact verdict summary (state, reason,
+  per-check results, repair attempts, diagnostics) as the tool result — a
+  tool-equipped LLM driving harness gets the answer in one call instead of a
+  poll loop. The wait is bounded by a `timeout_ms` argument (default 30 min);
+  on expiry it returns a structured `:timed_out` summary carrying the `run_id`
+  (the run keeps going and stays observable/cancelable) rather than wedging the
+  tool call. The bulky check output and raw agent transcript are dropped from
+  the summary; read the `%Run.Result{}` / `LogRecord` for those.
+  `dispatch__task` (fire-and-forget) is unchanged alongside it.
+
 - **Per-stack working directories — multi-language monorepos.** A project now
   holds a *list* of check stacks (`%Harness.Project{}.check_stacks`) instead of
   one, and each `%Harness.CheckStack{}` carries a `workdir` (relative to the
