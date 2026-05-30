@@ -100,6 +100,7 @@ defmodule Harness.Worktree do
           | {:marker_write_failed, String.t(), File.posix()}
           | {:rule_cleanup_failed, String.t(), File.posix()}
           | {:head_moved, expected :: String.t(), actual :: head_label()}
+          | {:worktree_lock_aborted, String.t()}
           | {:source_unavailable, term()}
           # Inlined from the internal Harness.Git.error/0 — keeps this public
           # type self-describing without autolinking to a hidden module.
@@ -145,10 +146,29 @@ defmodule Harness.Worktree do
 
     with {:ok, repo} <- ensure_repo(project, ensure_opts),
          :ok <- validate_repo(repo),
-         {:ok, _output} <- Git.run(["worktree", "add", "-b", branch, path, base_ref], repo),
+         {:ok, _output} <- add_worktree(repo, branch, path, base_ref),
          {:ok, base_sha} <- resolve_base_sha(path) do
       :ok = propagate_baseline_files(repo, path)
       {:ok, %__MODULE__{id: id, path: path, branch: branch, repo: repo, base_sha: base_sha}}
+    end
+  end
+
+  # Serializes `git worktree add` per parent repo. Concurrent adds against one
+  # repo contend on git's repo-level locks (the worktrees registry under
+  # `$GIT_DIR/worktrees/`, plus config/HEAD writes); under load one loser comes
+  # back `{:git_failed, …}`, which surfaces as a spurious create/2 collision.
+  # `:global.trans/2` (infinite retries) lets each add take the lock in turn —
+  # the id is `{ResourceId, LockRequesterId}`, so `self()` keys it per caller for
+  # mutual exclusion. The add is fast (~tens of ms) so the queue drains quickly.
+  @spec add_worktree(String.t(), String.t(), String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, error()}
+  defp add_worktree(repo, branch, path, base_ref) do
+    case :global.trans(
+           {{__MODULE__, :worktree_add, repo}, self()},
+           fn -> Git.run(["worktree", "add", "-b", branch, path, base_ref], repo) end
+         ) do
+      :aborted -> {:error, {:worktree_lock_aborted, repo}}
+      result -> result
     end
   end
 
