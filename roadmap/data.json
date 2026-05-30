@@ -818,7 +818,7 @@
       "id": "20",
       "phase": 11,
       "bundle": "autolanding",
-      "status": "pending",
+      "status": "done",
       "title": "Per-run token capture — efficiency signal + predictive quota fail-over",
       "scores": {
         "d": 4,
@@ -840,7 +840,12 @@
       ],
       "body": "Reframed 2026-05-30 (was deferred quota/cost telemetry). The raw agent transcript is already fully retained in %Harness.Run.LogRecord{}.agent_output but never parsed — and every adapter's wire format carries token usage (Claude/Cursor stream-json `usage`, Codex --json, Grok streaming-json). Parse per-adapter input/output token counts, persist them on LogRecord, and surface them in %Harness.Batch.AgentEvaluation.Entry{}. NOT dollar accounting — agents run on flat subscriptions, so dollars are meaningless; the value is token EFFICIENCY as a routing signal. Today an A/B comparison cannot tell whether an adapter solved a task in 50k or 500k tokens, or how many tokens the repair loop burned — so 'rotate adapters for coverage' and any future history-based routing are blind. Token counts are also the quota-burn proxy this task originally named: knowing cumulative burn per adapter makes fail-over predictive (skip an adapter approaching its cap) rather than purely reactive after a quota error. Per-adapter parsing only; tolerate a format that lacks usage (record nil, never crash).\n",
       "created_at": "2026-05-20",
+      "started_at": "2026-05-30",
+      "done_at": "2026-05-30",
       "scored_at": "2026-05-30",
+      "implemented": "Added Harness.TokenUsage (lib/harness/token_usage.ex +248) capturing per-run token usage onto LogRecord/Result + AgentEvaluation metrics, full test coverage. Dogfooded via harness MCP dispatch__task; verification green, 0 repairs (run-1780110697853-4dc57ab5).",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -3620,7 +3625,7 @@
       "phase": 11,
       "bundle": "autolanding",
       "milestone": "v0_9",
-      "status": "pending",
+      "status": "done",
       "title": "Thread body + acceptance_criteria onto %Roadmap.Item{} through ingestion",
       "scores": {
         "d": 3,
@@ -3642,7 +3647,12 @@
       ],
       "body": "Foundational for the autonomous-landing milestone. %Harness.Roadmap.Item{} currently carries only id/title/prompt/agent — the rendered agent prompt, not the structured acceptance criteria. The semantic gate (next task) and any future triage agent are blind to the task's actual contract without them. Thread the task body and acceptance_criteria through Harness.Roadmap.ingest/2 into new Item fields, sourcing them from rmap's existing JSON surface (rmap show --json / the data the delegate prompt already renders). Reuse the rmap-shelling already in lib/harness/roadmap.ex. Works for both {:id, _} and :next ingestion. This is the signal the whole milestone amplifies — two peer LLMs independently ranked acceptance-criteria visibility as the #1 ceiling on autonomous correctness.\n",
       "created_at": "2026-05-30",
+      "started_at": "2026-05-30",
+      "done_at": "2026-05-30",
       "scored_at": "2026-05-30",
+      "implemented": "Threaded body + acceptance_criteria from rmap through ingestion onto %Roadmap.Item{} (roadmap.ex, roadmap/item.ex + tests). Dogfooded via harness MCP dispatch__task; verification green, 0 repairs (run-1780110688419-bdb0102f).",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -3778,7 +3788,7 @@
       "phase": 11,
       "bundle": "autolanding",
       "milestone": "v0_9",
-      "status": "pending",
+      "status": "done",
       "title": "dispatch__await — blocking dispatch tool for chat/MCP",
       "scores": {
         "d": 3,
@@ -3799,7 +3809,12 @@
       ],
       "body": "dispatch__task returns a run_id the orchestrator must then poll. Add a blocking/awaiting variant (dispatch__await) that subscribes to the run and returns the settled verdict as the tool result, so a tool-equipped LLM driving harness over MCP gets the answer in one call instead of a poll loop. Tightens the orchestration loop for the primary AI consumer (future instances driving harness). Build on Harness.Dispatch + the existing subscriber path; surface via Harness.Chat.Tools + Harness.Manifest so it appears on both the in-process chat dispatcher and the external MCP surface. Must bound the wait (timeout) so a hung run returns a structured timeout result, not a wedged tool call.\n",
       "created_at": "2026-05-30",
+      "started_at": "2026-05-30",
+      "done_at": "2026-05-30",
       "scored_at": "2026-05-30",
+      "implemented": "Added blocking dispatch__await tool for chat/MCP (Harness.Dispatch +140, dispatch_test +150, playbook + SKILL.md). Dogfooded via harness MCP dispatch__task; verification green after 1 repair (run-1780110699800-981564e9).",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     }
   ]
