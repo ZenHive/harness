@@ -95,7 +95,7 @@ defmodule Harness.Roadmap do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %Harness.Roadmap.Item{}} carrying id, title, prompt, agent. {:error, reason} per t:error/0 (invalid_agent, rmap_not_found, no_pending_task, task_not_found, roadmap_not_found, rmap_failed, rmap_bad_output)."
+        "{:ok, %Harness.Roadmap.Item{}} carrying id, title, prompt, agent, body (or nil), and acceptance_criteria (a list, empty when the task declares none). {:error, reason} per t:error/0 (invalid_agent, rmap_not_found, no_pending_task, task_not_found, roadmap_not_found, rmap_failed, rmap_bad_output)."
     }
   )
 
@@ -109,9 +109,24 @@ defmodule Harness.Roadmap do
          :ok <- ensure_rmap(rmap_bin),
          {:ok, task} <- fetch_task(selector, ctx),
          {:ok, prompt} <- render_prompt(task["id"], agent, ctx) do
-      {:ok, %Item{id: task["id"], title: task["title"], prompt: prompt, agent: agent}}
+      {:ok,
+       %Item{
+         id: task["id"],
+         title: task["title"],
+         prompt: prompt,
+         agent: agent,
+         body: task["body"],
+         acceptance_criteria: acceptance_criteria(task)
+       }}
     end
   end
+
+  # rmap emits `acceptance_criteria` as a JSON array of strings; a task that
+  # declares none omits the key (or, defensively, emits null). Either way the
+  # Item must carry an empty list, never crash — the semantic gate iterates it.
+  @spec acceptance_criteria(map()) :: [String.t()]
+  defp acceptance_criteria(%{"acceptance_criteria" => criteria}) when is_list(criteria), do: criteria
+  defp acceptance_criteria(_task), do: []
 
   api(:list, "List a registered project's roadmap tasks as structured data (optionally by status) via rmap.",
     params: [
