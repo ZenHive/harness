@@ -1,9 +1,19 @@
 defmodule Harness.DispatchTest do
   use ExUnit.Case, async: true
 
+  alias Harness.AgentAdapter.Claude
+  alias Harness.Batch.AgentEvaluation
   alias Harness.Chat.Tools
   alias Harness.Dispatch
+  alias Harness.FakeAdapter
+  alias Harness.GitFixture
+  alias Harness.ProjectFixture
+  alias Harness.ResultStore
+  alias Harness.Roadmap.Item
+  alias Harness.Run
+  alias Harness.Run.LogRecord
   alias Harness.Run.Result
+  alias Harness.Verification.Check
   alias Harness.Verification.Result, as: CheckResult
   alias Harness.Verification.Verdict
 
@@ -96,6 +106,18 @@ defmodule Harness.DispatchTest do
       assert summary.verdict.failed_checks == ["credo"]
     end
 
+    test "summarizes a settled run that carries no verdict" do
+      run_id = "run-no-verdict"
+
+      send(self(), {:harness_run, run_id, %Result{run_id: run_id, task_id: "9", state: :done, reason: :passed}})
+
+      assert {:ok, summary} = Dispatch.await_result(run_id, 1_000)
+
+      # A nil verdict (verification never produced one) projects to nil, not a crash.
+      assert summary.verdict == nil
+      assert summary.state == :done
+    end
+
     test "ignores a result for a different run_id and times out" do
       send(self(), {:harness_run, "some-other-run", green_result("some-other-run")})
 
@@ -114,6 +136,219 @@ defmodule Harness.DispatchTest do
       refute summary.passed
       assert summary.timeout_ms == 20
       assert is_binary(summary.note)
+    end
+  end
+
+  describe "run observe/control — unknown run_id" do
+    # The macro-generated tools and hand-written cancel all take a run_id
+    # string. An unknown id exercises the delegate's {:error, :not_found} branch
+    # (and cancel's idempotent no-op) without spawning a run.
+    test "status passes {:error, :not_found} through for an unknown run_id" do
+      assert {:error, :not_found} = Dispatch.status("__no_such_run__")
+    end
+
+    test "transcript passes {:error, :not_found} through for an unknown run_id" do
+      assert {:error, :not_found} = Dispatch.transcript("__no_such_run__")
+    end
+
+    test "transcript_events passes {:error, :not_found} through for an unknown run_id" do
+      assert {:error, :not_found} = Dispatch.transcript_events("__no_such_run__")
+    end
+
+    test "cancel is idempotent and returns a cancelled map for an unknown run_id" do
+      assert {:ok, %{run_id: "__no_such_run__", cancelled: true}} =
+               Dispatch.cancel("__no_such_run__")
+    end
+  end
+
+  describe "run observe/control — live run summarizers" do
+    setup do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+
+      opts = [
+        base_dir: base,
+        adapter_opts: [command: :write],
+        checks: [%Check{name: "ok", command: "true", args: []}],
+        total_timeout: 30_000,
+        idle_timeout: 10_000,
+        lifetime_timeout: 30_000,
+        verification_timeout: 10_000,
+        # Generous linger so the settled run stays registered long enough to
+        # observe through the Dispatch summarizers across several calls.
+        terminal_linger: 5_000,
+        max_repair_attempts: 0
+      ]
+
+      item = %Item{id: "8", title: "t", prompt: "do the thing", agent: :claude}
+
+      {:ok, run_id, _pid} =
+        Run.Supervisor.start_run(item, ProjectFixture.from_repo(repo), FakeAdapter, opts)
+
+      assert_receive {:harness_run, ^run_id, %Result{state: :done}}, 5_000
+      {:ok, run_id: run_id}
+    end
+
+    test "status projects the Run.Status snapshot into a JSON-safe map", %{run_id: run_id} do
+      assert {:ok, summary} = Dispatch.status(run_id)
+
+      assert summary.run_id == run_id
+      assert summary.task_id == "8"
+      assert summary.state == :done
+      # The summarizer flattens the struct to a plain map of scalars.
+      refute is_struct(summary)
+      assert Map.has_key?(summary, :verdict_status)
+      assert Map.has_key?(summary, :repair_attempts)
+      assert Map.has_key?(summary, :worktree_path)
+    end
+
+    test "transcript projects buffer + seq", %{run_id: run_id} do
+      assert {:ok, %{transcript: transcript, seq: seq}} = Dispatch.transcript(run_id)
+      assert is_binary(transcript)
+      assert is_integer(seq)
+    end
+
+    test "transcript_events flattens events to JSON-safe maps", %{run_id: run_id} do
+      assert {:ok, %{events: events, seq: seq}} = Dispatch.transcript_events(run_id)
+      assert is_list(events)
+      assert is_integer(seq)
+      assert Enum.all?(events, &is_map/1)
+    end
+  end
+
+  describe "bundle/2 fan-out resolution" do
+    # Adapter resolution runs before project lookup and before rmap/Oban, so the
+    # three rejection shapes are provable without a registered project or a DB.
+    test "rejects an unknown adapter" do
+      assert {:error, {:unknown_adapter, "bogus"}} = Dispatch.bundle("any-project", "bogus")
+    end
+
+    test "rejects a non-delegatable adapter (Oban bundle path is delegatable-only)" do
+      assert {:error, {:non_delegatable_adapter, "grok"}} = Dispatch.bundle("any-project", "grok")
+    end
+
+    test "returns unknown_project for an unregistered project on a delegatable adapter" do
+      assert {:error, {:unknown_project, "__no_such_project__"}} =
+               Dispatch.bundle("__no_such_project__", "claude")
+    end
+
+    test "defaults the adapter to claude and reaches project lookup" do
+      assert {:error, {:unknown_project, "__no_such_project__"}} =
+               Dispatch.bundle("__no_such_project__")
+    end
+  end
+
+  describe "compare/4 A/B resolution" do
+    # compare resolves adapter names before project lookup and before rmap, so an
+    # empty/unknown adapter list and an unknown project all surface without a run.
+    test "rejects an empty adapter list" do
+      assert {:error, :no_adapters} = Dispatch.compare("any-project", "next", [])
+    end
+
+    test "rejects an unknown adapter in the list" do
+      assert {:error, {:unknown_adapter, "bogus"}} =
+               Dispatch.compare("any-project", "next", ["claude", "bogus"])
+    end
+
+    test "returns unknown_project for an unregistered project with valid adapters" do
+      assert {:error, {:unknown_project, "__no_such_project__"}} =
+               Dispatch.compare("__no_such_project__", "next", ["claude", "codex"])
+    end
+  end
+
+  describe "summarize_comparison/1 projection" do
+    # The projection seam (mirrors await_result/2) — tested with a hand-built
+    # Comparison so the struct→JSON-safe-map shaping is covered without a live
+    # A/B run. The crashed entry's tuple reason exercises the inspect fallback.
+    test "projects entries to JSON-safe maps (modules inspected, token usage flattened, tuple reasons stringified)" do
+      comparison = %AgentEvaluation.Comparison{
+        batch_id: "batch-ab",
+        task_id: "42",
+        total: 2,
+        max_concurrency: 2,
+        entries: [
+          %AgentEvaluation.Entry{
+            adapter: Claude,
+            run_id: "run-a",
+            state: :done,
+            reason: :passed,
+            verdict: :pass,
+            repair_attempts: 0,
+            duration_ms: 1234,
+            first_attempt_failed_check_count: 0,
+            agent_diff_size: 12,
+            token_usage: %Harness.TokenUsage{input: 5, output: 1, total: 6},
+            result: %Result{run_id: "run-a", task_id: "42", state: :done, reason: :passed}
+          },
+          %AgentEvaluation.Entry{
+            adapter: Harness.AgentAdapter.Codex,
+            run_id: "run-b",
+            state: :failed,
+            reason: {:run_crashed, :boom},
+            verdict: nil,
+            repair_attempts: 1,
+            duration_ms: nil,
+            first_attempt_failed_check_count: 2,
+            agent_diff_size: nil,
+            token_usage: %Harness.TokenUsage{},
+            result: %Result{run_id: "run-b", task_id: "42", state: :failed, reason: {:run_crashed, :boom}}
+          }
+        ]
+      }
+
+      assert %{batch_id: "batch-ab", task_id: "42", total: 2, max_concurrency: 2, entries: [a, b]} =
+               Dispatch.summarize_comparison(comparison)
+
+      # Module → readable string; token usage struct → plain map; scalar reason kept.
+      assert a.adapter == "Harness.AgentAdapter.Claude"
+      assert a.state == :done
+      assert a.reason == :passed
+      assert a.verdict == :pass
+      assert a.duration_ms == 1234
+      # Flattened to a plain map (extra TokenUsage fields like cache_* ride along).
+      assert %{input: 5, output: 1, total: 6} = a.token_usage
+      refute is_struct(a.token_usage)
+
+      # Tuple reason → inspect fallback so the whole map stays JSON-encodable.
+      assert b.adapter == "Harness.AgentAdapter.Codex"
+      assert b.reason == "{:run_crashed, :boom}"
+      assert b.verdict == nil
+    end
+  end
+
+  describe "verdict_detail/1 settled-run failure output" do
+    # summarize_verdict_detail/1 is the projection seam (mirrors
+    # summarize_comparison/1) — covered with a real LogRecord built by
+    # from_result/2 so the failed-check capture is exercised end to end. Unlike
+    # the await summary (which drops check output), verdict_detail SURFACES it.
+    test "surfaces the failing checks' captured output (the await summary drops it)" do
+      record = LogRecord.from_result(red_result("run-vd-1"), batch_id: "b", adapter: Claude, duration_ms: 1)
+
+      detail = Dispatch.summarize_verdict_detail(record)
+
+      assert detail.run_id == "run-vd-1"
+      assert detail.verdict == :fail
+      assert detail.failed_checks == ["credo"]
+      assert %{"credo" => %{output: output, truncated: false}} = detail.checks
+      assert output =~ "captured output"
+      # A passing check carries no entry — only failures are kept.
+      refute Map.has_key?(detail.checks, "tests")
+    end
+
+    test "returns :not_found for an unknown/unrecorded run_id" do
+      assert {:error, :not_found} = Dispatch.verdict_detail("__no_such_run__")
+    end
+
+    test "loads a persisted record from the result store and projects it" do
+      run_id = "run-vd-store-#{System.unique_integer([:positive])}"
+      record = LogRecord.from_result(red_result(run_id), batch_id: "b", adapter: Claude, duration_ms: 1)
+      :ok = ResultStore.record_run(record)
+
+      assert {:ok, detail} = Dispatch.verdict_detail(run_id)
+      assert detail.run_id == run_id
+      assert detail.verdict == :fail
+      assert detail.failed_checks == ["credo"]
+      assert %{"credo" => %{output: _, truncated: false}} = detail.checks
     end
   end
 
@@ -179,6 +414,73 @@ defmodule Harness.DispatchTest do
 
       assert %{module: Dispatch, function: :await} = registry["dispatch__await"]
       assert %{module: Dispatch, function: :task} = registry["dispatch__task"]
+    end
+
+    test "the run observe/control tools are on the MCP surface as run_id-string tools" do
+      tools = Harness.Manifest.mcp_tools()
+
+      for name <- ~w(dispatch__status dispatch__transcript dispatch__transcript_events dispatch__cancel) do
+        tool = Enum.find(tools, &(&1.name == name))
+        assert tool, "#{name} should be on the MCP tool surface"
+        assert Map.has_key?(tool.inputSchema.properties, :run_id)
+        assert tool.inputSchema.required == ["run_id"]
+      end
+    end
+
+    test "the chat tool registry resolves the run observe/control tools to Harness.Dispatch" do
+      registry = Tools.build()
+
+      assert %{module: Dispatch, function: :status} = registry["dispatch__status"]
+      assert %{module: Dispatch, function: :transcript} = registry["dispatch__transcript"]
+      assert %{module: Dispatch, function: :transcript_events} = registry["dispatch__transcript_events"]
+      assert %{module: Dispatch, function: :cancel} = registry["dispatch__cancel"]
+    end
+
+    test "dispatch__bundle is exposed as a flat, JSON-passable tool" do
+      tool = Enum.find(Harness.Manifest.mcp_tools(), &(&1.name == "dispatch__bundle"))
+      assert tool, "dispatch__bundle should be on the MCP tool surface"
+
+      props = tool.inputSchema.properties
+      assert Map.has_key?(props, :project_name)
+      assert Map.has_key?(props, :adapter)
+
+      # Only project_name is undefaulted; adapter defaults to "claude".
+      assert tool.inputSchema.required == ["project_name"]
+    end
+
+    test "dispatch__compare is exposed as a flat, JSON-passable tool" do
+      tool = Enum.find(Harness.Manifest.mcp_tools(), &(&1.name == "dispatch__compare"))
+      assert tool, "dispatch__compare should be on the MCP tool surface"
+
+      props = tool.inputSchema.properties
+      assert Map.has_key?(props, :project_name)
+      assert Map.has_key?(props, :task)
+      assert Map.has_key?(props, :adapters)
+      assert Map.has_key?(props, :scrub_anthropic_key)
+
+      # scrub_anthropic_key defaults; the other three are required.
+      assert Enum.sort(tool.inputSchema.required) == ["adapters", "project_name", "task"]
+    end
+
+    test "the chat tool registry resolves the fan-out tools to Harness.Dispatch" do
+      registry = Tools.build()
+
+      assert %{module: Dispatch, function: :bundle} = registry["dispatch__bundle"]
+      assert %{module: Dispatch, function: :compare} = registry["dispatch__compare"]
+    end
+
+    test "dispatch__verdict_detail is exposed as a run_id-string tool" do
+      tool = Enum.find(Harness.Manifest.mcp_tools(), &(&1.name == "dispatch__verdict_detail"))
+      assert tool, "dispatch__verdict_detail should be on the MCP tool surface"
+
+      assert Map.has_key?(tool.inputSchema.properties, :run_id)
+      assert tool.inputSchema.required == ["run_id"]
+    end
+
+    test "the chat tool registry resolves dispatch__verdict_detail to Harness.Dispatch" do
+      registry = Tools.build()
+
+      assert %{module: Dispatch, function: :verdict_detail} = registry["dispatch__verdict_detail"]
     end
   end
 

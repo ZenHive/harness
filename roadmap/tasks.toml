@@ -3464,3 +3464,21 @@ delivered_by = "claude"
 created_at = "2026-05-30"
 scored_at = "2026-05-30"
 done_at = "2026-05-30"
+
+[[task]]
+id = "108"
+phase = 11
+bundle = "autolanding"
+milestone = "v0_9"
+status = "pending"
+title = "Thread env scrubbing through Oban Run.Worker so dispatch__bundle honors scrub_anthropic_key"
+scores = { d = 2, b = 3, u = 3 }
+acceptance_criteria = ["Harness.Run.Worker threads an :env map from its Oban job args into Run.Supervisor.start_run/4", "dispatch__bundle accepts scrub_anthropic_key (default true) and the scrub reaches each enqueued run's start_run :env", "A Run.Worker test asserts the :env (with ANTHROPIC_API_KEY scrubbed) reaches start_run"]
+out_of_scope = ["Changing the dispatch__task / dispatch__await / dispatch__compare scrub paths (already correct)"]
+body = """
+dispatch__task / dispatch__await / dispatch__compare scrub ANTHROPIC_API_KEY via the :env opt to start_run (the subscription-OAuth path). dispatch__bundle dispatches through Harness.Batch.dispatch/2 -> Oban Run.Worker, whose run_opts/1 threads only [batch_id, subscriber] -- no :env. So a bundle of Claude tasks runs with the inherited ANTHROPIC_API_KEY (metered API, or a billing_error if that key's account is out of credit) instead of subscription OAuth, unlike the other dispatch tools.
+
+Fix: thread an :env map into the Oban job args (must stay term/JSON-serializable for Postgres-persisted jobs) and apply it in Run.Worker when starting the gen_statem; then add a scrub_anthropic_key param (default true) to dispatch__bundle. Discovered while building the JSON-native dispatch surface (dispatch__bundle/compare); deferred because it changes the Oban job-args contract.
+"""
+created_at = "2026-05-30"
+scored_at = "2026-05-30"

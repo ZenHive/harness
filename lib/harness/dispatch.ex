@@ -37,11 +37,20 @@ defmodule Harness.Dispatch do
 
   use Descripex, namespace: "/dispatch"
 
+  import Harness.Dispatch.RunTool
+
   alias Harness.AgentAdapter
+  alias Harness.Batch
+  alias Harness.Batch.AgentEvaluation
+  alias Harness.Batch.AgentEvaluation.Comparison
+  alias Harness.Batch.AgentEvaluation.Entry
   alias Harness.Project
   alias Harness.ProjectRegistry
+  alias Harness.ResultStore
   alias Harness.Roadmap
   alias Harness.Run
+  alias Harness.Run.LogRecord
+  alias Harness.Run.Status
   alias Harness.Verification.Verdict
 
   # Default await budget: 30 minutes. A run is minutes-to-hours of work, but a
@@ -62,11 +71,20 @@ defmodule Harness.Dispatch do
     "pi" => {AgentAdapter.Pi, :claude}
   }
 
-  @typedoc "A reason `task/4` can fail with (in addition to the ingest/start_run reasons it forwards)."
+  # The Oban fan-out path (`dispatch__bundle` → Harness.Batch.dispatch/2) keys
+  # each enqueued job's adapter off the ingested item's render agent, so it can
+  # only drive the three delegatable executors. Asking it to dispatch a bundle
+  # on grok/antigravity/pi would silently run claude instead — rejected up front.
+  @delegatable_adapters ~w(claude codex cursor)
+
+  @typedoc "A reason a dispatch tool can fail with (in addition to the ingest/start_run reasons it forwards)."
   @type error ::
           {:unknown_adapter, String.t()}
+          | {:non_delegatable_adapter, String.t()}
           | {:unknown_project, String.t()}
+          | :no_adapters
           | Roadmap.error()
+          | Batch.error()
           | term()
 
   api(
@@ -177,6 +195,184 @@ defmodule Harness.Dispatch do
     end
   end
 
+  # --- Run observation / control over JSON ---
+  #
+  # The live/in-flight complement to result_store__list_run_records (which covers
+  # SETTLED runs). status/transcript/transcript_events are macro-generated from
+  # the uniform `{:ok, _} | {:error, :not_found}` Harness.Run functions; cancel
+  # is hand-written because it returns a bare `:ok`. All take a run_id string —
+  # the JSON-driveable half of Harness.Run's `String.t() | pid()` handle.
+
+  defrun_tool(
+    name: :status,
+    summarize: :summarize_status,
+    description:
+      "Snapshot one in-flight or lingering-terminal run by run_id: lifecycle state, verdict status so far, repair attempts. The live counterpart to result_store__list_run_records (settled runs). Returns {:error, :not_found} once a run has stopped and unregistered.",
+    run_id_doc:
+      "Run id string returned by dispatch__task / dispatch__await (or supervisor__list_runs). A stopped/unknown run yields {:error, :not_found}.",
+    returns:
+      "{:ok, map} carrying run_id, task_id, project_name, state, worktree_path, agent_os_pid, agent_kind, verdict_status, repair_attempts, reason. {:error, :not_found} for stopped/unknown runs."
+  )
+
+  defrun_tool(
+    name: :transcript,
+    summarize: :summarize_transcript,
+    description:
+      "Return the buffered raw agent transcript and last seq tag for an in-flight or lingering run, by run_id. Poll with the prior seq to detect new output. For a settled run's full record use result_store__list_run_records.",
+    run_id_doc:
+      "Run id string returned by dispatch__task / dispatch__await. A stopped/unknown run yields {:error, :not_found}.",
+    returns:
+      "{:ok, %{transcript: binary (bounded ~200 KiB), seq: non_neg_integer}}. {:error, :not_found} for stopped/unknown runs."
+  )
+
+  defrun_tool(
+    name: :transcript_events,
+    summarize: :summarize_transcript_events,
+    description:
+      "Return the parsed transcript events (assistant text, tool calls, tool results, system events) + last seq tag for an in-flight or lingering run, by run_id. Events are flattened to JSON-safe maps tagged with a :type.",
+    run_id_doc:
+      "Run id string returned by dispatch__task / dispatch__await. A stopped/unknown run yields {:error, :not_found}.",
+    returns:
+      "{:ok, %{events: [%{type: atom, ...}], agent_kind: atom | nil, seq: non_neg_integer}}. {:error, :not_found} for stopped/unknown runs."
+  )
+
+  api(
+    :cancel,
+    "Cancel an in-flight run by run_id: kills the agent and settles the run :failed. Idempotent — cancelling a settled or unknown run is a no-op. The JSON-native counterpart to Harness.Run.cancel/1.",
+    params: [
+      run_id: [
+        kind: :value,
+        description:
+          "Run id string returned by dispatch__task / dispatch__await. Cancelling a stopped/unknown run is a harmless no-op."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description: "{:ok, %{run_id: run_id, cancelled: true}} — always; cancellation is idempotent."
+    }
+  )
+
+  @spec cancel(String.t()) :: {:ok, %{run_id: String.t(), cancelled: true}}
+  def cancel(run_id) when is_binary(run_id) do
+    :ok = Run.cancel(run_id)
+    {:ok, %{run_id: run_id, cancelled: true}}
+  end
+
+  # --- Fan-out over JSON: whole-bundle dispatch + same-task A/B compare ---
+
+  api(
+    :bundle,
+    "Fan out the next session-sized bundle of pending roadmap tasks for a registered project: ingest each task and enqueue one Oban-backed, restart-resilient run job per task on the chosen delegatable adapter (project-scoped queue, per-project concurrency cap). Fire-and-forget — returns the ingested task ids and Oban job ids; observe each run later via dispatch__status / result_store__list_run_records. The JSON-native counterpart to Harness.Roadmap.next_bundle/1 + Harness.Batch.dispatch/2.",
+    params: [
+      project_name: [
+        kind: :value,
+        description:
+          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1. SOURCE valid names from project_registry__list."
+      ],
+      adapter: [
+        kind: :value,
+        default: "claude",
+        description:
+          "Delegatable executor only: claude | codex | cursor. The Oban bundle path keys each job's adapter off the task's render agent, so non-delegatable executors (grok/antigravity/pi) are rejected — dispatch those one task at a time via dispatch__task. Bundle runs inherit the harness node's environment: the ANTHROPIC_API_KEY scrub applies to the in-process dispatch__task / dispatch__await / dispatch__compare paths, not the Oban worker."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{bundle: bundle_meta | nil, task_ids: [string], job_ids: [integer], dispatched: integer}}. {:error, reason}: unknown_adapter, non_delegatable_adapter, unknown_project, the rmap next_bundle reasons, or a Harness.Batch.dispatch failure."
+    }
+  )
+
+  @spec bundle(String.t(), String.t()) :: {:ok, map()} | {:error, error()}
+  def bundle(project_name, adapter \\ "claude") when is_binary(project_name) and is_binary(adapter) do
+    with {:ok, {_module, render_agent}} <- resolve_delegatable_adapter(adapter),
+         {:ok, project} <- lookup_project(project_name),
+         {:ok, %{bundle: bundle_meta, tasks: tasks}} <- Roadmap.next_bundle(project_name),
+         {:ok, items} <- ingest_bundle(tasks, project, render_agent),
+         {:ok, jobs} <- Batch.dispatch(project, items) do
+      {:ok,
+       %{
+         bundle: bundle_meta,
+         task_ids: Enum.map(items, & &1.id),
+         job_ids: Enum.map(jobs, & &1.id),
+         dispatched: length(jobs)
+       }}
+    end
+  end
+
+  api(
+    :compare,
+    "Same-task A/B agent evaluation over JSON: ingest one roadmap task once (rendered for claude) and run it concurrently across N adapters in isolated worktrees, returning side-by-side per-adapter metrics. Supports all six executors — each adapter runs the shared prompt directly (the two-step that lets non-delegatable executors run). In-process and blocking: returns once every adapter's run has settled. The JSON-native counterpart to Harness.Batch.AgentEvaluation.compare/4.",
+    params: [
+      project_name: [
+        kind: :value,
+        description:
+          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1. SOURCE valid names from project_registry__list."
+      ],
+      task: [
+        kind: :value,
+        description:
+          ~s{Task selector: a task id string (e.g. "25"), or "next" for the next pending task by rmap's D/B/U scoring.}
+      ],
+      adapters: [
+        kind: :value,
+        description:
+          ~s{Non-empty list of executor names to compare head-to-head, e.g. ["claude", "codex"]. Each runs the same task in its own isolated worktree. claude | codex | cursor | grok | antigravity | pi.}
+      ],
+      scrub_anthropic_key: [
+        kind: :value,
+        default: true,
+        description:
+          "When true (default), scrubs ANTHROPIC_API_KEY from every adapter's environment so Claude runs use subscription OAuth instead of the metered API. Harmless for non-Claude adapters."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{batch_id, task_id, total, max_concurrency, entries}} where entries is a list of per-adapter maps (adapter, run_id, state, reason, verdict, repair_attempts, duration_ms, first_attempt_failed_check_count, agent_diff_size, token_usage). {:error, reason}: no_adapters, unknown_adapter, unknown_project, the rmap ingest reasons, or a Harness.Batch failure."
+    }
+  )
+
+  @spec compare(String.t(), String.t(), [String.t()], boolean()) :: {:ok, map()} | {:error, error()}
+  def compare(project_name, task, adapters, scrub_anthropic_key \\ true)
+      when is_binary(project_name) and is_binary(task) and is_list(adapters) and is_boolean(scrub_anthropic_key) do
+    with {:ok, modules} <- resolve_adapter_modules(adapters),
+         {:ok, project} <- lookup_project(project_name),
+         {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: :claude),
+         {:ok, %Comparison{} = comparison} <-
+           AgentEvaluation.compare(item, project, modules, env: scrub_env(scrub_anthropic_key)) do
+      {:ok, summarize_comparison(comparison)}
+    end
+  end
+
+  # --- Settled-run failure detail over JSON ---
+
+  api(
+    :verdict_detail,
+    "Read the captured output of the failed checks for a SETTLED run by run_id: the actual test/credo/dialyzer/etc. stdout+stderr a JSON caller needs to see *why* a check failed. Loads the persisted run record (Harness.ResultStore.list_run_records/1), so it works after the run process is gone — the settled-run complement to dispatch__status/dispatch__transcript (live). Each check's output is tail-truncated (the diagnostic tail), flagged with truncated: true when capped. A green run yields an empty checks map.",
+    params: [
+      run_id: [
+        kind: :value,
+        description:
+          "Run id string from dispatch__task / dispatch__await / result_store__list_run_records. Returns {:error, :not_found} when no persisted record exists for it (never recorded, or the store is disabled)."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{run_id, task_id, verdict :pass|:fail|nil, failed_checks: [name], checks: %{name => %{output: string, truncated: boolean}}}}. {:error, :not_found} for an unknown/unrecorded run_id, or {:error, reason} on a store failure."
+    }
+  )
+
+  @spec verdict_detail(String.t()) :: {:ok, map()} | {:error, :not_found | term()}
+  def verdict_detail(run_id) when is_binary(run_id) do
+    case ResultStore.list_run_records(run_id: run_id) do
+      {:ok, [%LogRecord{} = record | _]} -> {:ok, summarize_verdict_detail(record)}
+      {:ok, []} -> {:error, :not_found}
+      {:error, _reason} = error -> error
+    end
+  end
+
   # Shared dispatch path for `task/4` (subscriber nil) and `await/5` (subscriber
   # the calling process). Identical resolve → ingest → start_run flow; only the
   # subscriber differs.
@@ -227,6 +423,41 @@ defmodule Harness.Dispatch do
     }
   end
 
+  # Summarizers for the macro-generated run-observation tools. Each projects a
+  # Harness.Run payload into a JSON-safe map (no structs, no tuples).
+  @spec summarize_status(Status.t()) :: map()
+  defp summarize_status(%Status{} = status) do
+    %{
+      run_id: status.run_id,
+      task_id: status.task_id,
+      project_name: status.project_name,
+      state: status.state,
+      worktree_path: status.worktree_path,
+      agent_os_pid: status.agent_os_pid,
+      agent_kind: status.agent_kind,
+      verdict_status: status.verdict_status,
+      repair_attempts: status.repair_attempts,
+      reason: status.reason
+    }
+  end
+
+  @spec summarize_transcript(%{buffer: binary(), seq: non_neg_integer()}) :: map()
+  defp summarize_transcript(%{buffer: buffer, seq: seq}), do: %{transcript: buffer, seq: seq}
+
+  @spec summarize_transcript_events(%{
+          events: [{atom(), map()}],
+          agent_kind: atom() | nil,
+          seq: non_neg_integer()
+        }) :: map()
+  defp summarize_transcript_events(%{events: events, agent_kind: agent_kind, seq: seq}) do
+    %{events: Enum.map(events, &event_to_map/1), agent_kind: agent_kind, seq: seq}
+  end
+
+  # Parser events are {type, payload} tuples — not JSON-encodable. Flatten each
+  # to its payload map tagged with the :type so the whole tool result serializes.
+  @spec event_to_map({atom(), map()}) :: map()
+  defp event_to_map({type, payload}) when is_map(payload), do: Map.put(payload, :type, type)
+
   @spec timeout_summary(String.t(), pos_integer()) :: map()
   defp timeout_summary(run_id, timeout_ms) do
     %{
@@ -239,6 +470,114 @@ defmodule Harness.Dispatch do
         "The await budget elapsed before the run settled. The run was NOT cancelled and keeps going; observe it later via run_id (Harness.Run.status/1 or the recorded run records) or cancel it with Harness.Run.cancel/1."
     }
   end
+
+  # Bundle dispatch is Oban-backed and resolves each job's executor from the
+  # ingested item's render agent, so only the three delegatable executors are
+  # accepted; a non-delegatable name would silently run claude (see @delegatable_adapters).
+  @spec resolve_delegatable_adapter(String.t()) ::
+          {:ok, {module(), atom()}} | {:error, {:unknown_adapter | :non_delegatable_adapter, String.t()}}
+  defp resolve_delegatable_adapter(adapter) when adapter in @delegatable_adapters, do: resolve_adapter(adapter)
+
+  defp resolve_delegatable_adapter(adapter) do
+    case resolve_adapter(adapter) do
+      {:ok, _pair} -> {:error, {:non_delegatable_adapter, adapter}}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  # Ingest each bundle task into a %Roadmap.Item{}, halting on the first failure.
+  # rmap emits task ids as JSON (string or integer); coerce to the string id
+  # `Roadmap.ingest({:id, _})` requires.
+  @spec ingest_bundle([map()], Project.t(), atom()) :: {:ok, [Roadmap.Item.t()]} | {:error, error()}
+  defp ingest_bundle(tasks, project, render_agent) do
+    tasks
+    |> Enum.reduce_while({:ok, []}, fn task, {:ok, items} ->
+      case Roadmap.ingest({:id, to_string(task["id"])}, project: project, agent: render_agent) do
+        {:ok, item} -> {:cont, {:ok, [item | items]}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, items} -> {:ok, Enum.reverse(items)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  # Resolve a non-empty list of executor names to adapter modules for a same-task
+  # A/B run. All six executors are valid here — run_pinned takes modules directly.
+  @spec resolve_adapter_modules([String.t()]) :: {:ok, [module()]} | {:error, error()}
+  defp resolve_adapter_modules([]), do: {:error, :no_adapters}
+
+  defp resolve_adapter_modules(adapters) do
+    adapters
+    |> Enum.reduce_while({:ok, []}, fn adapter, {:ok, modules} ->
+      case resolve_adapter(adapter) do
+        {:ok, {module, _render_agent}} -> {:cont, {:ok, [module | modules]}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, modules} -> {:ok, Enum.reverse(modules)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  # Projects an A/B Comparison into a JSON-safe map. Public (@doc false) so the
+  # struct→map projection is testable without a live A/B run — same testability
+  # seam as await_result/2 above.
+  @doc false
+  @spec summarize_comparison(Comparison.t()) :: map()
+  def summarize_comparison(%Comparison{} = comparison) do
+    %{
+      batch_id: comparison.batch_id,
+      task_id: comparison.task_id,
+      total: comparison.total,
+      max_concurrency: comparison.max_concurrency,
+      entries: Enum.map(comparison.entries, &summarize_entry/1)
+    }
+  end
+
+  # Projects a settled run's LogRecord into the per-check failure-output map.
+  # Public (@doc false) so the projection is testable with a hand-built
+  # %LogRecord{} — same testability seam as summarize_comparison/1 above. The
+  # record's check_output is already capped + JSON-safe (string keys, string/bool
+  # values); this just surfaces it alongside the verdict + failed-check names.
+  @doc false
+  @spec summarize_verdict_detail(LogRecord.t()) :: map()
+  def summarize_verdict_detail(%LogRecord{} = record) do
+    %{
+      run_id: record.run_id,
+      task_id: record.task_id,
+      verdict: record.verdict,
+      failed_checks: Enum.map(record.failure_cause.failed_checks, & &1.name),
+      checks: record.check_output
+    }
+  end
+
+  # Project one adapter's A/B metrics into a JSON-safe map: the module to a
+  # readable name, the token usage struct to a plain map, the run reason through
+  # jsonable/1 (a crash reason can be a tagged tuple).
+  @spec summarize_entry(Entry.t()) :: map()
+  defp summarize_entry(%Entry{} = entry) do
+    %{
+      adapter: inspect(entry.adapter),
+      run_id: entry.run_id,
+      state: entry.state,
+      reason: jsonable(entry.reason),
+      verdict: entry.verdict,
+      repair_attempts: entry.repair_attempts,
+      duration_ms: entry.duration_ms,
+      first_attempt_failed_check_count: entry.first_attempt_failed_check_count,
+      agent_diff_size: entry.agent_diff_size,
+      token_usage: Map.from_struct(entry.token_usage)
+    }
+  end
+
+  # Pass scalars through; inspect anything else (e.g. a {:run_crashed, _} reason)
+  # so the comparison summary stays JSON-encodable. nil is an atom, so it passes.
+  @spec jsonable(term()) :: term()
+  defp jsonable(term) when is_atom(term) or is_binary(term) or is_number(term), do: term
+  defp jsonable(term), do: inspect(term)
 
   @spec resolve_adapter(String.t()) :: {:ok, {module(), atom()}} | {:error, {:unknown_adapter, String.t()}}
   defp resolve_adapter(adapter) do

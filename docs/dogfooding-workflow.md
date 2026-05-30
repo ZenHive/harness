@@ -63,9 +63,13 @@ grader** — never the agent's self-reported result.
 
 ## Running a dogfood task
 
-There are two dispatch paths. **The live-node Tidewave path is preferred** for most runs.
-The `mix run` script is the **fallback** for full diagnostic dumps — debugging a
-`:verification_red` run where you need per-failed-check stdout/stderr in your terminal.
+There are three dispatch paths. **The native flat MCP tools (`dispatch__task` + the
+`dispatch__*` observe/triage family) are the default** — one JSON call, no struct
+threading, and `dispatch__verdict_detail` now reads per-failed-check output straight
+from the persisted record. The **Tidewave `project_eval` path** is the escape hatch for
+struct-level control the flat tools don't expose (explicit `retry_policy`, fail-over
+adapter lists, `subscriber: self()`). The **`mix run` script** is the last-resort
+fallback for dumping full diagnostics to your terminal in one blocking process.
 
 > **⚠ Never start a second driver BEAM while runs are in flight.** A second harness BEAM
 > starting while the first still has runs in flight runs a worktree sweep at boot that
@@ -85,7 +89,12 @@ directly to the non-delegatable adapter's module (`Harness.AgentAdapter.Grok` /
 
 > **Antigravity caveat (Task 32):** `agy` ignores the port `cwd` and resolves workspace via git-common-dir to the main checkout. `Harness.AgentAdapter.Antigravity` declares `worktree_isolation: false`, so `Harness.Run` rejects dispatch before spawn — Antigravity cannot drive worktree-isolated runs until the CLI gains a headless workspace constraint.
 
-### Live-node dispatch via Tidewave `project_eval` (preferred)
+### Live-node dispatch via Tidewave `project_eval` (escape hatch — struct-level control)
+
+Reach for this only when you need struct-level control the flat `dispatch__*` tools don't
+expose (explicit `retry_policy`, an ordered fail-over adapter list, `required_capabilities`,
+`subscriber: self()`). For a routine dispatch, prefer `dispatch__task` below — it collapses
+this whole two-eval dance into one call.
 
 The dashboard endpoint runs the Tidewave plug in `:dev` (`Harness.Dashboard.Endpoint`,
 port 4018), so any IEx-style snippet you'd run inside the orchestrator's BEAM can be sent
@@ -118,7 +127,9 @@ state — so the eval process exiting between dispatch and observation is fine.
    dashboard subscribes to `Phoenix.PubSub` topic `harness:run:<id>:transcript`, which
    `AgentAdapter.Driver.run/3` feeds via its `:on_output` callback. Bounded 200 KiB buffer.
 
-6. **Poll status (optional, while alive):**
+6. **Poll status (optional, while alive):** `Harness.Run.status/1` here, or the JSON-native
+   `dispatch__status` / `dispatch__transcript` / `dispatch__transcript_events` tools by `run_id`
+   from any MCP caller (and `dispatch__cancel` to kill it).
 
    ```elixir
    Harness.Run.status("<run-id>")
@@ -143,26 +154,30 @@ state — so the eval process exiting between dispatch and observation is fine.
    See § Reading the verdict for what the state/reason combinations mean and what action
    each one warrants.
 
-> **⚠ LogRecord field coverage.** `%LogRecord{}` carries verdict **status** (`:pass`/`:fail`)
-> and **failed-check names** (name + kind + exit_status), but NOT per-check stdout/stderr.
-> When you need to triage a red verdict by reading the actual check output (a credo
-> finding, a failing test message, the sobelow trace), the live `%Harness.Run.Result{}`
-> via subscriber is the only path — drop to the **mix-run fallback** below.
+> **LogRecord field coverage.** `%LogRecord{}` carries verdict **status** (`:pass`/`:fail`),
+> **failed-check names** (name + kind + exit_status), the full agent transcript, AND the
+> **captured stdout+stderr of each failed check** (`rec.check_output`, failed-checks-only,
+> tail-truncated to a byte cap). To triage a red verdict by reading the actual check output
+> (a credo finding, a failing test message, the sobelow trace), call
+> `dispatch__verdict_detail(run_id)` or read `rec.check_output` directly — no re-run needed.
+> Only the *non-failing* checks' output is dropped; for that, the live `%Harness.Run.Result{}`
+> via subscriber (the **mix-run fallback** below) remains the path.
 
 8. **Read the verdict** (see § Reading the verdict).
 
-### Headless MCP dispatch via `dispatch__task` (external-consumer path)
+### Native MCP dispatch via `dispatch__task` (default / primary path)
 
-The same `:4018` Bandit also serves the harness **MCP server** at `/harness/mcp`. When the
-harness checkout's `.mcp.json` carries a second entry named `harness`
+The same `:4018` Bandit serves the harness **MCP server** at `/harness/mcp`. When the
+harness checkout's `.mcp.json` carries a `harness` entry
 (`{"type":"http","url":"http://localhost:4018/harness/mcp"}` alongside the `tidewave`
-entry), the flat `dispatch__task` tool surfaces in-session as `mcp__harness__dispatch__task`.
-This is the **stateless-JSON** dispatch path — it collapses the struct-passing
-`roadmap__ingest` → `supervisor__start_run` two-step (which a JSON caller can't run: it
-can't hold the `%Roadmap.Item{}` / `%Project{}` between calls) into one scalar call.
+entry), the flat tools surface in-session as `mcp__harness__dispatch__task` and the rest of
+the `dispatch__*` / `roadmap__*` family. This is the **default dispatch surface** — it
+collapses the struct-passing `roadmap__ingest` → `supervisor__start_run` two-step (which a
+JSON caller can't run: it can't hold the `%Roadmap.Item{}` / `%Project{}` between calls)
+into one scalar call, and the matching `dispatch__status` / `dispatch__transcript` /
+`dispatch__verdict_detail` tools cover observe + triage without ever dropping to Elixir.
 
-Prefer this over `project_eval` when you want to dogfood the *MCP surface itself* (genuine
-external-consumer testing) rather than drive harness as an in-process Elixir client.
+Use the `project_eval` path above only for struct-level control the flat tools don't expose.
 
 ```
 mcp__harness__dispatch__task(
@@ -181,9 +196,14 @@ The run starts with `subscriber: nil`; observe it afterward by `run_id`.
 
 **Gotchas when observing an MCP-dispatched run** (learned 2026-05-30, batch 98/103/20):
 
+- **Observe over JSON with the flat run tools, not the store filter.** While the run is
+  live, call `dispatch__status` / `dispatch__transcript` (by `run_id`); after it settles,
+  `dispatch__verdict_detail(run_id)` returns the failed-checks' captured output straight
+  from the persisted record. These are the JSON-native path and avoid the filter quirk below.
 - **`result_store__list_run_records` rejects a map filter.** The function wants a
   *keyword list* (`list_run_records(run_id: id)`); the MCP tool serializes `{run_id: ...}`
-  as a map and fails with `no function clause matching`. Observe via
+  as a map and fails with `no function clause matching`. Prefer `dispatch__status` /
+  `dispatch__verdict_detail` (above); if you must hit the store, observe via
   `mcp__tidewave__project_eval` calling `Harness.ResultStore.list_run_records(run_id: id)`
   directly, or via `supervisor__list_runs` while the run is still registered.
 - **`rec.verdict` is a plain atom** (`:pass` / `:fail`), *not* a struct — `rec.verdict.status`

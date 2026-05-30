@@ -6,6 +6,16 @@ defmodule Harness.Run.LogRecord do
   adapter hits quota or becomes unavailable. Each attempt gets its own record so
   post-run analysis can reconstruct red verdicts, fail-overs, quota blocks, and
   agent comparison metrics without needing the original process to still exist.
+
+  ## Per-check output (`check_output`)
+
+  A record also carries the captured stdout+stderr of each *failed* check, so a
+  later JSON/MCP caller can read *why* a check failed without the original
+  `%Run.Result{}` still being in memory. It is deliberately bounded: only failing
+  checks are kept (a green run carries an empty map) and each is tail-truncated to
+  `@check_output_cap_bytes` (16 KB) — a single verdict can emit megabytes, and the
+  diagnostic signal (the failing assertion, the credo/dialyzer warning, the test
+  summary) lands at the tail.
   """
 
   alias Harness.AgentAdapter.Outcome
@@ -13,6 +23,8 @@ defmodule Harness.Run.LogRecord do
   alias Harness.TokenUsage
   alias Harness.Verification.Result, as: CheckResult
   alias Harness.Verification.Verdict
+
+  @check_output_cap_bytes 16_000
 
   @typedoc "A compact failed-check summary for logs and queries."
   @type failed_check :: %{
@@ -26,6 +38,15 @@ defmodule Harness.Run.LogRecord do
           reason: RunResult.reason(),
           failed_checks: [failed_check()]
         }
+
+  @typedoc """
+  Captured output of each failed check, keyed by check name.
+
+  Only failing checks are present (a green verdict yields `%{}`); each entry's
+  `output` is the combined stdout+stderr tail-truncated to `@check_output_cap_bytes`,
+  with `truncated: true` when it was capped.
+  """
+  @type check_output :: %{optional(String.t()) => %{output: String.t(), truncated: boolean()}}
 
   @typedoc "One persisted run-attempt record."
   @type t :: %__MODULE__{
@@ -46,7 +67,8 @@ defmodule Harness.Run.LogRecord do
           failure_cause: failure_cause(),
           agent_outcome_kind: Outcome.kind() | nil,
           agent_exit_status: integer() | nil,
-          agent_output: binary()
+          agent_output: binary(),
+          check_output: check_output()
         }
 
   @enforce_keys [
@@ -79,7 +101,8 @@ defmodule Harness.Run.LogRecord do
     :agent_outcome_kind,
     :agent_exit_status,
     token_usage: %TokenUsage{},
-    agent_output: ""
+    agent_output: "",
+    check_output: %{}
   ]
 
   @doc "Builds a structured record from a settled run result and batch metadata."
@@ -105,7 +128,8 @@ defmodule Harness.Run.LogRecord do
       failure_cause: failure_cause(result),
       agent_outcome_kind: outcome && outcome.kind,
       agent_exit_status: outcome && outcome.exit_status,
-      agent_output: (outcome && outcome.output) || ""
+      agent_output: (outcome && outcome.output) || "",
+      check_output: check_output(result.verdict)
     }
   end
 
@@ -131,4 +155,40 @@ defmodule Harness.Run.LogRecord do
   end
 
   defp failed_checks(nil), do: []
+
+  # Capture only the failing checks' output (the "why did it fail" signal); a
+  # green verdict carries none. Each output is tail-truncated — failures surface
+  # at the end of test/credo/dialyzer output.
+  @spec check_output(Verdict.t() | nil) :: check_output()
+  defp check_output(%Verdict{results: results}) do
+    results
+    |> Enum.filter(&(&1.status == :fail))
+    |> Map.new(fn %CheckResult{} = result ->
+      {capped, truncated?} = cap_output(result.output)
+      {result.name, %{output: capped, truncated: truncated?}}
+    end)
+  end
+
+  defp check_output(nil), do: %{}
+
+  # Keep the last @check_output_cap_bytes bytes (the diagnostic tail), flagging
+  # whether the output was capped.
+  @spec cap_output(String.t()) :: {String.t(), boolean()}
+  defp cap_output(output) when byte_size(output) <= @check_output_cap_bytes, do: {output, false}
+
+  defp cap_output(output) do
+    tail = binary_part(output, byte_size(output) - @check_output_cap_bytes, @check_output_cap_bytes)
+    {valid_utf8_tail(tail), true}
+  end
+
+  # Tail truncation can split a multi-byte codepoint at the FRONT of the kept
+  # slice; drop leading bytes until the remainder is valid UTF-8.
+  @spec valid_utf8_tail(binary()) :: binary()
+  defp valid_utf8_tail(<<>>), do: <<>>
+
+  defp valid_utf8_tail(bin) do
+    if String.valid?(bin),
+      do: bin,
+      else: valid_utf8_tail(binary_part(bin, 1, byte_size(bin) - 1))
+  end
 end

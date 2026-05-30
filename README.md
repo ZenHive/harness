@@ -8,7 +8,7 @@ Harness pulls tasks from an `rmap` roadmap, dispatches each to a headless coding
 
 Post-v0_5: harness is a long-running multi-project OTP node. `Harness.ProjectRegistry` holds N first-class projects (Elixir, Rust, anything with a shell-driven check stack); Oban (queue-per-project, Postgres-persisted) provides dispatch with restart resilience; six agent adapters (Claude Code, Codex, Cursor, Grok, Antigravity, Pi) drive runs; the `Harness.Run` `gen_statem` owns the per-run lifecycle and an autonomous repair loop; `Oban.Plugins.Cron` lets the roadmap drive itself unattended.
 
-The cold-path consumer surface is the **Phoenix LiveView dashboard** + embedded **Oban Web** + the **Tidewave MCP** plug, all served by one standalone Bandit endpoint on `http://localhost:4018`. Tidewave + IEx + the dashboard ARE the agent surface for the Elixir-native consumer; MCP/JSON CLI (Task 17) remains **deferred** until a non-BEAM consumer needs it.
+The cold-path consumer surface is the **Phoenix LiveView dashboard** + embedded **Oban Web** + a **native MCP server** (`/harness/mcp`, flat JSON-RPC tools) + a **Tidewave MCP** plug (`/tidewave/mcp`, `project_eval`), all served by one standalone Bandit endpoint on `http://localhost:4018`. The native MCP tools (`dispatch__task`, `dispatch__status`, `dispatch__verdict_detail`, `roadmap__*`, …) are the primary surface for any JSON/MCP orchestrator; Tidewave `project_eval` + IEx are the escape hatch for arbitrary eval and the struct-passing ops the flat tools deliberately omit.
 
 See [ROADMAP.md](ROADMAP.md) for the current task state (rendered from `roadmap/tasks.toml` by `rmap`), [docs/dogfooding-workflow.md](docs/dogfooding-workflow.md) for the operator runbook, and [skills/harness-driver/SKILL.md](skills/harness-driver/SKILL.md) for the AI-orchestrator contract.
 
@@ -24,7 +24,8 @@ Boots the OTP application, Postgres-backed Oban, and the standalone dashboard en
 |---|---|
 | `http://localhost:4018/harness` | LiveView dashboard — project switcher, per-bucket run counts, per-run drill-down with live transcript pane |
 | `http://localhost:4018/harness/oban` | Oban Web — queue / job rows / retries / scheduled work |
-| `http://localhost:4018/tidewave/mcp` | Tidewave MCP endpoint (dev only) — for IEx-style `project_eval` and tool dispatch |
+| `http://localhost:4018/harness/mcp` | **Native MCP server** — flat JSON-RPC tools (`dispatch__*`, `roadmap__*`, …); the primary surface for a JSON/MCP orchestrator |
+| `http://localhost:4018/tidewave/mcp` | Tidewave MCP endpoint (dev only) — `project_eval` escape hatch for arbitrary eval + struct-surface ops |
 
 The standalone Bandit endpoint is gated by `config :harness, :dashboard, enabled: true` AND `Bandit` being in the dep stack. Mountable consumers (their own Phoenix endpoint) leave `enabled: false` and route `live "/harness/*path", Harness.Dashboard.Live` themselves.
 
@@ -57,7 +58,7 @@ config :harness, :projects, [
 
 `:elixir` is the lighter day-to-day stack. To make a green verdict imply *"my own `mix precommit` would also pass"* — closing the gap where harness grades green but a coverage gate (or `format`/`warnings-as-errors`) would block the merge — register against the mergeable-bar preset instead: `preset: {:elixir_precommit, cover_threshold: 80, exclude: [:integration]}`. It adds `format --check-formatted`, `compile --warnings-as-errors`, a coverage threshold on `test`, and `doctor --raise` to the stack.
 
-**2. Add harness's MCP endpoint to `myapp/.mcp.json`** — as a SECOND server entry, alongside `myapp`'s own Tidewave if it has one. The driver agent in `myapp` reaches harness's `project_eval` over MCP-over-HTTP:
+**2. Add harness's MCP endpoints to `myapp/.mcp.json`** — alongside `myapp`'s own Tidewave if it has one. The `harness` entry (native flat tools) is your primary surface; the optional `harness_eval` entry is the `project_eval` escape hatch into harness's BEAM:
 
 ```json
 {
@@ -68,13 +69,17 @@ config :harness, :projects, [
     },
     "harness": {
       "type": "http",
+      "url": "http://localhost:4018/harness/mcp"
+    },
+    "harness_eval": {
+      "type": "http",
       "url": "http://localhost:4018/tidewave/mcp"
     }
   }
 }
 ```
 
-Name the second entry `harness` (not a second `tidewave`) — Claude Code surfaces the tool as `mcp__<server-name>__project_eval`, so this gives you two distinguishable tools: `mcp__tidewave__project_eval` (inspect `myapp`'s state) and `mcp__harness__project_eval` (dispatch harness runs). No port collision — two BEAMs, two ports.
+Claude Code surfaces a server's tools as `mcp__<server-name>__<tool>`, giving three distinguishable surfaces: `mcp__tidewave__project_eval` (inspect `myapp`'s state, port 4001), `mcp__harness__dispatch__task` & the rest of the flat driver tools (dispatch + observe + triage against harness's `:4018` BEAM — **the primary surface**), and `mcp__harness_eval__project_eval` (escape hatch for arbitrary eval + struct-surface ops). Drop `harness_eval` if you only need the flat tools. No port collision — different BEAMs / paths.
 
 **3. Import the driver skill from `myapp/CLAUDE.md`** so the AI agent in `myapp` knows how to use the surface:
 
@@ -82,7 +87,7 @@ Name the second entry `harness` (not a second `tidewave`) — Claude Code surfac
 @~/_DATA/code/harness/skills/harness-driver/SKILL.md
 ```
 
-Restart the Claude Code session in `myapp` to pick up the new `.mcp.json` entry. After that, the agent can dispatch via `mcp__harness__project_eval` against `:4018`, harness manages isolated worktrees of `myapp`, runs `myapp`'s check stack, and reports `%Harness.Run.Result{}` back.
+Restart the Claude Code session in `myapp` to pick up the new `.mcp.json` entries. After that, the agent dispatches via the flat `mcp__harness__dispatch__task` tool (and observes with `mcp__harness__dispatch__status` / `dispatch__verdict_detail`) against `:4018`; harness manages isolated worktrees of `myapp`, runs `myapp`'s check stack, and reports the verified verdict back.
 
 Full driver contract (entry points, two-eval pattern for ephemeral MCP eval processes, cross-checkout sharp edges, secret scrubbing): [skills/harness-driver/SKILL.md](skills/harness-driver/SKILL.md) § "Context A — Driving harness from another repo".
 

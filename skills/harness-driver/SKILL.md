@@ -19,12 +19,12 @@ argument-hint: "harness driver | delegate via harness | use harness for this tas
 | Role | Who | Where it lives |
 |---|---|---|
 | **Operator** | Human | Starts `iex -S mix` in `~/_DATA/code/harness/`, registers projects, watches the dashboard |
-| **Driver** | You — the AI orchestrator reading this | Dispatches via Tidewave MCP (`project_eval`) against harness's `:4018` BEAM, reads `%Harness.Run.Result{}` / `%LogRecord{}` |
+| **Driver** | You — the AI orchestrator reading this | Dispatches via harness's **native flat MCP tools** (`mcp__harness__dispatch__*`, etc.) against harness's `:4018` BEAM; drops to `project_eval` only for arbitrary eval / struct-surface ops; reads verdict summaries / `%LogRecord{}` |
 | **Implementer** | The headless agent harness spawns (Claude / Codex / Cursor / Grok / Antigravity / Pi) | Runs in an isolated git worktree harness manages, graded by the verification stack — **not you** |
 
 You (driver) do not run the implementation work. You decide which task, which adapter, which env scrubbing — then dispatch and read the verified verdict.
 
-**Post-v0_5 reality:** Harness is a multi-project OTP node with Oban dispatch, per-project queues, restart resilience, Phoenix LiveView dashboard + Oban Web, Tidewave MCP all on one Bandit endpoint (`http://localhost:4018`), and `Oban.Plugins.Cron` for autonomous polling.
+**Post-v0_5 reality:** Harness is a multi-project OTP node with Oban dispatch, per-project queues, restart resilience, Phoenix LiveView dashboard + Oban Web, a **native MCP server** (`/harness/mcp`, flat JSON tools) AND a Tidewave MCP plug (`/tidewave/mcp`, `project_eval` escape hatch) all on one Bandit endpoint (`http://localhost:4018`), and `Oban.Plugins.Cron` for autonomous polling. **The native MCP tools are the primary driver surface; `project_eval` is the escape hatch** — see § "Primary Surface" below.
 
 ---
 
@@ -36,7 +36,7 @@ You are an AI agent in `~/_DATA/code/myapp/` (or wherever). You want harness —
 
 Four setup steps the consuming repo needs:
 
-**1. Operator runs harness.** A `iex -S mix` session in `~/_DATA/code/harness/`. This boots the dashboard at `http://localhost:4018`, Tidewave MCP at `http://localhost:4018/tidewave/mcp`, Oban queues, the lot. Verify by opening `http://localhost:4018/harness` in a browser.
+**1. Operator runs harness.** A `iex -S mix` session in `~/_DATA/code/harness/`. This boots the dashboard at `http://localhost:4018`, the **native MCP server** at `http://localhost:4018/harness/mcp` (the flat driver tools), the Tidewave MCP plug at `http://localhost:4018/tidewave/mcp` (the `project_eval` escape hatch), Oban queues, the lot. Verify by opening `http://localhost:4018/harness` in a browser.
 
 **2. Register `myapp` with harness.** Three paths:
 
@@ -85,9 +85,9 @@ Four setup steps the consuming repo needs:
 
 - **Shared / committed:** if the project belongs in the harness repo's tracked config (every contributor should see it), add the same entry to `config/dev.exs` instead and commit. Use this only when the registration is genuinely shared — host-specific paths belong in `dev.local.exs`.
 
-- **Ad-hoc (one-shot):** dispatch `Harness.ProjectRegistry.register/1` via `mcp__harness__project_eval`. Cleared on next BEAM restart — fine for experiments, not for ongoing work.
+- **Ad-hoc (one-shot):** dispatch `Harness.ProjectRegistry.register/1` via the `project_eval` escape hatch (`mcp__harness_eval__project_eval`, wired in step 3). Cleared on next BEAM restart — fine for experiments, not for ongoing work.
 
-**3. Add harness's MCP endpoint to `myapp`'s `.mcp.json`.** This is the load-bearing step that lets the driver (you) reach harness's `project_eval` from inside `myapp`. Add a SECOND entry alongside `myapp`'s own Tidewave (if it has one):
+**3. Add harness's MCP endpoints to `myapp`'s `.mcp.json`.** This is the load-bearing step that wires the driver (you) to harness. Add the native server (your primary surface) and, optionally, the eval escape hatch — alongside `myapp`'s own Tidewave (if it has one):
 
 ```json
 {
@@ -98,18 +98,23 @@ Four setup steps the consuming repo needs:
     },
     "harness": {
       "type": "http",
+      "url": "http://localhost:4018/harness/mcp"
+    },
+    "harness_eval": {
+      "type": "http",
       "url": "http://localhost:4018/tidewave/mcp"
     }
   }
 }
 ```
 
-**Naming matters.** Call the entry `harness`, not a second `tidewave` — Claude Code surfaces the tool as `mcp__<server-name>__project_eval`, so this convention gives you two distinguishable tools:
+**Naming matters.** Claude Code surfaces a server's tools as `mcp__<server-name>__<tool>`, so these three names give you three distinguishable surfaces:
 
-- `mcp__tidewave__project_eval` — runs Elixir snippets inside `myapp`'s BEAM (useful for inspecting `myapp` state).
-- `mcp__harness__project_eval` — runs Elixir snippets inside harness's `:4018` BEAM (this is where you dispatch runs).
+- `mcp__tidewave__*` (e.g. `project_eval`) — inspect `myapp`'s own BEAM state (port 4001).
+- `mcp__harness__*` — harness's **native flat driver tools** (`dispatch__task`, `dispatch__status`, `dispatch__verdict_detail`, `roadmap__*`, …) against harness's `:4018` BEAM. **This is your primary surface** — see § "Primary Surface" below.
+- `mcp__harness_eval__project_eval` — the **escape hatch**: arbitrary Elixir inside harness's `:4018` BEAM, for the struct-surface ops the flat tools deliberately omit (`Run.Supervisor.start_run/4`, `Batch.run/4`, ad-hoc `ProjectRegistry.register/1`). Optional — skip it if you only need the flat tools.
 
-No port collision: two different BEAMs at two different ports. No curl needed — MCP-over-HTTP handles transport.
+No port collision: different BEAMs / paths. No curl needed — MCP-over-HTTP handles transport. If you don't need arbitrary eval into harness, drop the `harness_eval` entry entirely.
 
 **4. Import this skill from `myapp`'s `CLAUDE.md`.**
 
@@ -119,15 +124,15 @@ No port collision: two different BEAMs at two different ports. No curl needed �
 
 `myapp`'s CLAUDE.md is otherwise the place to describe `myapp`'s domain, conventions, and verification stack — none of that gets dragged into harness. The skill carries the harness-side contract.
 
-**Then restart your Claude Code session** so the new `.mcp.json` entry is picked up. Verify by checking the tool list contains `mcp__harness__project_eval`.
+**Then restart your Claude Code session** so the new `.mcp.json` entries are picked up. Verify by checking the tool list contains `mcp__harness__dispatch__task` (and the rest of the flat surface).
 
-After these four steps, every dispatch pattern below uses `mcp__harness__project_eval` from `myapp`.
+After these four steps, the default dispatch path from `myapp` is the native `mcp__harness__dispatch__*` tools, with `mcp__harness_eval__project_eval` as the escape hatch.
 
 ### Context B — Dogfooding inside the harness checkout
 
-You are an AI agent in `~/_DATA/code/harness/` itself, building harness with harness. The skill is already imported via `@skills/harness-driver/SKILL.md` from harness's CLAUDE.md. Harness's own `.mcp.json` names its single MCP entry `tidewave`, so the dispatch tool is `mcp__tidewave__project_eval`.
+You are an AI agent in `~/_DATA/code/harness/` itself, building harness with harness. The skill is already imported via `@skills/harness-driver/SKILL.md` from harness's CLAUDE.md. Harness's own `.mcp.json` wires **two** entries against its single `:4018` BEAM: a `harness` entry at `/harness/mcp` (the native flat tools → `mcp__harness__dispatch__*`) and a `tidewave` entry at `/tidewave/mcp` (the escape hatch → `mcp__tidewave__project_eval`).
 
-Everything else in this skill applies identically — wherever you see `mcp__harness__project_eval` in the patterns below, it's `mcp__tidewave__project_eval` in this context.
+So in this context the names collapse: the native dispatch tools are `mcp__harness__dispatch__*` (same as Context A), and the `project_eval` escape hatch is `mcp__tidewave__project_eval` (Context A's `mcp__harness_eval__project_eval`). Everything else applies identically.
 
 ---
 
@@ -140,17 +145,45 @@ Everything else in this skill applies identically — wherever you see `mcp__har
 
 The verification stack — not the agent's self-report — is always the source of truth.
 
+**Always reach for the native flat MCP tools first** (next section). The Elixir struct surface (`start_run`, `Batch`, `compare`) over `project_eval` is the escape hatch for the handful of ops the flat tools deliberately omit — not the default.
+
 **Token-economy carve-out (dogfooding only).** Inside the harness checkout, a task with all of D≤2 + ≤30 LOC across ≤3 files + no harness-surface change (no new adapter / behaviour callback / supervision-tree / verification-stack edit) may be hand-built. Two ~15-LOC fixes burn more orchestration tokens through `Batch.dispatch/2` than they save in integration signal — the dispatch lifecycle isn't meaningfully exercised at that size. This carve-out does NOT apply in the consuming-repo context: there you have no in-checkout option, and the orchestration token cost is offset by the role split (you'd otherwise context-switch into the consuming repo's BEAM yourself). Full rationale and the matching policy bullet live in `CLAUDE.md` § Dogfooding.
 
 ---
 
-## Two Main Surfaces
+## Primary Surface: Native Flat MCP Tools (`mcp__harness__*`)
 
-> Throughout this section, replace `mcp__harness__project_eval` with `mcp__tidewave__project_eval` if you are in context B (dogfooding inside the harness checkout).
+**This is the default way you drive harness.** Harness ships its own MCP server (`Harness.Dashboard.MCPServer`, on `anubis_mcp`) at `http://localhost:4018/harness/mcp`, exposing the descripex-annotated driver surface as flat, JSON-native tools. Wired per the setup above, Claude Code surfaces each as `mcp__harness__<tool>` — **no Elixir, no struct passing, no `project_eval` for the common path.** The whole dispatch → observe → triage loop is JSON-native end to end:
 
-### 1. Full Verified Lifecycle (recommended default)
+| Tool | Does |
+|---|---|
+| `dispatch__task` | Dispatch one roadmap task fire-and-forget → returns a `run_id`. |
+| `dispatch__await` | Dispatch + block until settled → compact verdict summary (bounded by `timeout_ms`; on timeout returns a `:timed_out` summary, run keeps going). |
+| `dispatch__bundle` | Fan out the next session-sized bundle → one Oban-backed job per task (delegatable adapters only: claude/codex/cursor). |
+| `dispatch__compare` | Same-task A/B across N adapters in isolated worktrees → side-by-side per-adapter metrics. All six executors. |
+| `dispatch__status` | Live snapshot of an in-flight (or 5s-lingering) run by `run_id`: state, verdict-so-far, repair attempts, agent pid. |
+| `dispatch__transcript` / `dispatch__transcript_events` | Buffered raw / parsed transcript for a live run, with a `seq` to poll deltas. |
+| `dispatch__cancel` | Cancel an in-flight run (idempotent). |
+| `dispatch__verdict_detail` | After settle, read the **captured output of the failed checks** by `run_id` (the actual test/credo/dialyzer stdout) — loaded from the persisted record, so it works after the run process is gone. |
+| `roadmap__list` / `roadmap__next_bundle` / `roadmap__ingest` | Browse / ingest a registered project's roadmap as structured data. |
+| `project_registry__list` / `project_registry__lookup` | Discover registered project names + config. |
+| `result_store__list_run_records` | Settled-run records (verdict status, failed-check names, transcript, token usage). |
+| `playbooks__list` / `playbooks__get` | Ready-made orchestration recipes. |
+| `audit_review__grade_fix` | Cross-agent HIGH-tier grade of a commit. |
 
-Use when you want the complete harness guarantees:
+**Canonical loop, zero Elixir:** `dispatch__task` (or `dispatch__bundle`) → `dispatch__status` / `dispatch__transcript` to watch → `dispatch__verdict_detail` to triage a red verdict. Or collapse the wait into one `dispatch__await` call when you want the verdict in-band.
+
+`project_eval` is deliberately **not** on this surface — it's the escape hatch (next section), reached for only when you need arbitrary eval or one of the struct-passing ops the flat tools omit (`supervisor__start_run`, `batch__*`, `agent_evaluation__compare`, `audit_review__grade_fix_with`). The Manifest's `:exchange_data` filter is what keeps those off the JSON surface; the flat wrappers above are the JSON-native way around it. For the full descripex/MCP mechanics, see § "Driving via Chat / MCP".
+
+---
+
+## Escape Hatch: The Elixir Struct Surface (`project_eval` / IEx)
+
+> Reach for this surface only when the flat tools above don't cover what you need — arbitrary eval, or the struct-passing ops they omit. In **Context A** the eval tool is `mcp__harness_eval__project_eval`; in **Context B** (dogfooding) it's `mcp__tidewave__project_eval`. The patterns below are written with the bare Elixir calls — run them through whichever eval tool your context wires.
+
+### 1. Full Verified Lifecycle (the struct-level dispatch path)
+
+Use when you want the complete harness guarantees *and* need struct-level control the flat `dispatch__*` tools don't expose:
 
 - Isolated git worktree (`harness/<run-id>` branch)
 - Harness-owned rule injection
@@ -159,7 +192,7 @@ Use when you want the complete harness guarantees:
 - Autonomous repair loop (red → feed failures back → re-grade, up to `max_repair_attempts`)
 - Proper `Harness.Run.Result` with structured verdict
 
-**Entry points (Elixir, callable via `mcp__harness__project_eval` or IEx):**
+**Entry points (Elixir, callable via the `project_eval` escape hatch — `mcp__harness_eval__project_eval` / `mcp__tidewave__project_eval` — or IEx):**
 
 ```elixir
 # Fetch the registered project (a %Harness.Project{}, NOT a string).
@@ -206,7 +239,7 @@ end
 - Both error `{:error, {:unknown_project, name}}` for an unregistered name, plus the same `rmap_*` reasons as `ingest/2`.
 
 `Run.Supervisor.start_run/4` options worth knowing (full list in moduledoc):
-- `:subscriber` — pid that receives `{:harness_run, run_id, result}`. Defaults to caller. **Pass `nil` when dispatching from `mcp__harness__project_eval`** (eval process is ephemeral; see two-eval pattern).
+- `:subscriber` — pid that receives `{:harness_run, run_id, result}`. Defaults to caller. **Pass `nil` when dispatching from a `project_eval` escape-hatch snippet** (eval process is ephemeral; see two-eval pattern).
 - `:total_timeout` / `:idle_timeout` — agent run timeouts (forwarded to `Driver`).
 - `:lifetime_timeout` — whole-job wall budget in ms.
 - `:adapter_opts` — per-adapter knobs forwarded to `Invocation`.
@@ -343,7 +376,14 @@ The same descripex-annotated harness toolset is exposed as a spec-compliant **MC
 
 When `Harness.Chat.Claude` spawns its backing `claude -p`, it writes exactly this config to a per-session `.harness-mcp-config.json` and passes it via `--mcp-config <path>`. External consumers point their own `.mcp.json` at the URL the same way.
 
-**Only JSON-driveable tools are on the MCP/chat surface.** `Harness.Manifest.mcp_tools/1` rejects any tool with an `:exchange_data` param — a stateless JSON caller cannot construct an Elixir struct — so `supervisor__start_run`, the `batch__*` tools (`batch__dispatch` / `batch__run` / `batch__run_pinned` / `batch__run_evaluation`), `agent_evaluation__compare`, and `audit_review__grade_fix_with` are **excluded** from `tools/list`. They stay on the full Elixir driver surface (`Harness.Manifest.build/0` / `modules/0`, `project_eval`, IEx). Exposed JSON tools: `dispatch__task`, `dispatch__await`, `roadmap__ingest` / `roadmap__list` / `roadmap__next_bundle`, `project_registry__list` / `project_registry__lookup`, `playbooks__list` / `playbooks__get`, `audit_review__grade_fix`.
+**Only JSON-driveable tools are on the MCP/chat surface.** `Harness.Manifest.mcp_tools/1` rejects any tool with an `:exchange_data` param — a stateless JSON caller cannot construct an Elixir struct — so `supervisor__start_run`, the `batch__*` tools (`batch__dispatch` / `batch__run` / `batch__run_pinned` / `batch__run_evaluation`), `agent_evaluation__compare`, and `audit_review__grade_fix_with` are **excluded** from `tools/list`. They stay on the full Elixir driver surface (`Harness.Manifest.build/0` / `modules/0`, `project_eval`, IEx). Exposed JSON tools (the § "Primary Surface" list):
+
+- **Dispatch:** `dispatch__task`, `dispatch__await`, `dispatch__bundle`, `dispatch__compare`.
+- **Observe / control a live run by `run_id`:** `dispatch__status`, `dispatch__transcript`, `dispatch__transcript_events`, `dispatch__cancel`.
+- **Settled-run detail:** `dispatch__verdict_detail` (failed-check captured output), `result_store__list_run_records`.
+- **Roadmap / registry / recipes:** `roadmap__ingest` / `roadmap__list` / `roadmap__next_bundle`, `project_registry__list` / `project_registry__lookup`, `playbooks__list` / `playbooks__get`, `audit_review__grade_fix`.
+
+The run-observation four (`status` / `transcript` / `transcript_events` / `cancel`) wrap `Harness.Run` functions whose `run :: String.t() | pid()` handle would otherwise mark them `:exchange_data`; the flat `run_id`-only wrappers (macro-generated via `Harness.Dispatch.RunTool` for the uniform `{:ok,_} | {:error,:not_found}` trio, hand-written for `cancel`'s bare `:ok`) are the JSON-native path that closes the live-observe gap. `dispatch__bundle` / `dispatch__compare` / `dispatch__verdict_detail` are the JSON-native counterparts to the struct-only `batch__*` / `agent_evaluation__compare` / per-check-output ops.
 
 **Flat dispatch — `dispatch__task`.** The struct-passing `roadmap__ingest` → `supervisor__start_run` two-step is not runnable over a stateless JSON boundary (the caller cannot hold the returned `%Harness.Roadmap.Item{}` between calls, and `start_run` takes `%Item{}` / `%Project{}` structs). `Harness.Dispatch.task/4` (tool `dispatch__task`) collapses the flow into one call taking only JSON scalars: `project_name` (registered project), `task` (id string or `"next"`), `adapter` (`claude` default / `codex` / `cursor` / `grok` / `antigravity` / `pi`), and `scrub_anthropic_key` (boolean, default `true` — strips `ANTHROPIC_API_KEY` so Claude dispatches use subscription OAuth). It resolves the project, ingests the task, applies the scrub, and starts the supervised run with `subscriber: nil`, returning `{:ok, %{run_id: ...}}` or a structured `{:error, reason}`. **Non-delegatable executors** (grok / antigravity / pi) are handled internally via the ingest-with-a-delegatable-render-agent (`:claude`) two-step — the orchestrator never has to know about it. Observe the run afterward by `run_id`. This is the chat/MCP replacement for the in-process Elixir two-step, which stays canonical for `project_eval`/IEx.
 
@@ -364,23 +404,28 @@ A playbook body names the exact tools to call, in order, with the gotchas inline
 
 | Surface | Use when |
 |---|---|
-| `dispatch__task` (chat / MCP) | You're a stateless JSON orchestrator dispatching one roadmap task fire-and-forget. One flat call (scalars only), returns a `run_id` you observe later. The JSON-surface replacement for the struct two-step. |
-| `dispatch__await` (chat / MCP) | Same dispatch, but you want the verified verdict **in-band** — blocks until the run settles (bounded by `timeout_ms`) and returns a compact verdict summary instead of a `run_id` to poll. Tightens the orchestration loop to one call. |
-| `Run.Supervisor.start_run/4` / `Batch.dispatch/2` | You're driving a specific roadmap task end-to-end through verification from the in-process Elixir driver (`project_eval` / IEx). You want the verdict, not a transcript. |
-| `Driver.run/3` / `AuditReview.grade_fix/1` | You want a cheap one-shot agent invocation (probe, grade, A/B), no worktree/verification lifecycle. |
-| `Chat.Session` + `Chat.Claude` | The operator (human or upstream LLM) wants to drive harness in natural language and watch tool calls render in the dashboard — exploratory ops, status queries, free-form orchestration. The LLM picks which tools to call. |
-| MCP endpoint at `/harness/mcp` | An **external** orchestrator (another Claude session, Cursor, Sprite, etc.) wants to call harness tools without being inside harness's BEAM. Standard MCP transport — same `.mcp.json` shape you'd use for any MCP server. |
-| `playbooks__list` / `playbooks__get` | You (the orchestrator) want a ready-made recipe for a common flow rather than assembling the tool sequence yourself. List the catalog, fetch the one that fits, follow it. |
+| `dispatch__task` (flat MCP) | **Default dispatch.** Stateless JSON, one roadmap task fire-and-forget. Scalars only, returns a `run_id` you observe later. The JSON-surface replacement for the struct two-step. |
+| `dispatch__await` (flat MCP) | Same dispatch, verdict **in-band** — blocks until settled (bounded by `timeout_ms`), returns a compact verdict summary instead of a `run_id` to poll. Tightens the loop to one call. |
+| `dispatch__bundle` (flat MCP) | Fan out the **next bundle** of pending tasks at once — one Oban-backed job per task, per-project concurrency cap. Delegatable adapters only (claude/codex/cursor). |
+| `dispatch__compare` (flat MCP) | **A/B one task across N adapters** in isolated worktrees; returns side-by-side per-adapter metrics. Blocks until all settle. All six executors. |
+| `dispatch__status` / `dispatch__transcript` / `dispatch__transcript_events` (flat MCP) | **Observe a live run** by `run_id` — lifecycle snapshot or buffered/parsed transcript (with `seq` for delta polling). The JSON-native replacement for `Harness.Run.status/1` + the browser transcript pane. |
+| `dispatch__cancel` (flat MCP) | **Kill an in-flight run** by `run_id` (idempotent). |
+| `dispatch__verdict_detail` (flat MCP) | **Triage a red verdict** after settle — the captured stdout+stderr of each failed check, by `run_id`, loaded from the persisted record. No re-run needed. |
+| `Run.Supervisor.start_run/4` / `Batch.run/4` (escape hatch — `project_eval` / IEx) | You need struct-level control the flat tools don't expose — explicit `retry_policy`, `required_capabilities`, `adapter_opts`, an ordered fail-over adapter list, or `subscriber: self()` from a long-lived BEAM. |
+| `Driver.run/3` / `AuditReview.grade_fix/1` | A cheap one-shot agent invocation (probe, grade, A/B), no worktree/verification lifecycle. `audit_review__grade_fix` is the flat default-pairing version. |
+| `Chat.Session` + `Chat.Claude` | The operator (human or upstream LLM) drives harness in natural language and watches tool calls render in the dashboard — exploratory ops, status queries, free-form orchestration. The LLM picks which tools to call. |
+| MCP endpoint at `/harness/mcp` | An **external** orchestrator (another Claude session, Cursor, Sprite, etc.) calls harness tools without being inside harness's BEAM. Standard MCP transport — same `.mcp.json` shape you'd use for any MCP server. This is what surfaces all the flat tools above. |
+| `playbooks__list` / `playbooks__get` | You want a ready-made recipe for a common flow rather than assembling the tool sequence yourself. List the catalog, fetch the one that fits, follow it. |
 
 ---
 
 ## Recommended Patterns (copy these)
 
-> Replace `mcp__harness__project_eval` with `mcp__tidewave__project_eval` if you are in Context B.
+> These are the **escape-hatch** patterns — Elixir run through `project_eval` (`mcp__harness_eval__project_eval` in Context A, `mcp__tidewave__project_eval` in Context B). For the common dispatch/observe/triage loop, prefer the flat `mcp__harness__dispatch__*` tools (§ "Primary Surface") — `dispatch__task` + `dispatch__status` + `dispatch__verdict_detail` replace the two-eval dance below for everything except struct-level ops.
 
 **Long-running dispatch from MCP eval (result-survives-eval-exit pattern):**
 
-`mcp__harness__project_eval` against the live `iex -S mix` node is the preferred dispatch surface. The eval process is ephemeral — it exits as soon as the snippet returns — so `subscriber: self()` is wrong here (the subscriber would be dead before the run settles). The Run process records a `%Harness.Run.LogRecord{}` to `Harness.ResultStore` on settle regardless, so use the two-eval pattern:
+When you do drop to `project_eval` against the live `iex -S mix` node, the eval process is ephemeral — it exits as soon as the snippet returns — so `subscriber: self()` is wrong here (the subscriber would be dead before the run settles). The Run process records a `%Harness.Run.LogRecord{}` to `Harness.ResultStore` on settle regardless, so use the two-eval pattern (or just call `dispatch__task` and skip all of this):
 
 ```elixir
 # EVAL 1 — dispatch. Eval process exits immediately; the run keeps going.
@@ -410,7 +455,7 @@ end
 
 Live transcript: open `http://localhost:4018/harness/runs/<run_id>` in the browser. LiveView is subscribed to `Phoenix.PubSub` topic `harness:run:<id>:transcript`, fed by `Driver.run/3`'s `:on_output` callback. The operator (human) usually has this open; you (driver) usually don't need it unless you're triaging.
 
-> **LogRecord field coverage caveat.** `%LogRecord{}` carries verdict **status** (`:pass`/`:fail`), failed-check **names** (name + kind + exit_status), per-run `token_usage` (`%Harness.TokenUsage{}`, parsed from the transcript and summed across repair attempts), and the full agent transcript — but NOT per-check stdout/stderr. When you need to triage a red verdict by reading actual check output (a credo finding, a failing-test message), the live `%Harness.Run.Result{}` via subscriber is the only path — drop to the mix-run script in `docs/dogfooding-workflow.md` § "Full-diagnostic dispatch via `mix run` (fallback)".
+> **LogRecord field coverage.** `%LogRecord{}` carries verdict **status** (`:pass`/`:fail`), failed-check **names** (name + kind + exit_status), per-run `token_usage` (`%Harness.TokenUsage{}`, parsed from the transcript and summed across repair attempts), the full agent transcript, AND — since the per-check-output change — the **captured stdout+stderr of each failed check** (`check_output`, failed-checks-only, tail-truncated to a byte cap). To triage a red verdict by reading actual check output (a credo finding, a failing-test message) just call `dispatch__verdict_detail(run_id)` (or read `rec.check_output` off the LogRecord) — no need to re-run via subscriber. The deliberately-dropped detail is now only the *non-failing* checks' output; for that, the live `%Harness.Run.Result{}` via subscriber (or the mix-run script in `docs/dogfooding-workflow.md`) remains the path.
 
 **Single delegation with explicit adapter choice (subscriber-IS-caller variant, mix-run / long-lived BEAM only):**
 
@@ -513,11 +558,11 @@ true = Harness.AgentAdapter.supports?(Harness.AgentAdapter.Pi, {:cost_tier, :fre
 
 **General (apply to both contexts):**
 
-- **Headless MCP surface exists for tool-equipped consumers.** Use `GET /harness/mcp/tools` to list Descripex-backed tools and `POST /harness/mcp/call` with `%{"name" => tool_name, "arguments" => %{}}` to dispatch them. This is now the supported alternative to `mcp__harness__project_eval` for external consumers that can call tools directly; Tidewave `project_eval` remains useful for ad-hoc Elixir inspection and snippets.
+- **The native MCP surface is the primary one — `project_eval` is the escape hatch, not the other way round.** The flat tools are served by a spec-compliant MCP server (`Harness.Dashboard.MCPServer`, JSON-RPC 2.0 over Streamable HTTP at `/harness/mcp`) — you call them as ordinary `mcp__harness__<tool>` tools via the `.mcp.json` HTTP-transport entry, not via any bespoke `GET`/`POST` REST shape. Tidewave `project_eval` remains wired alongside it purely for ad-hoc Elixir inspection and the struct-surface ops the flat tools deliberately omit. If you find yourself writing `start_run`/`Batch`/`compare` snippets through `project_eval` for a routine dispatch, stop — there's a flat tool for it.
 - **AgentRegistry is a soft hint, not a contract** (Task 40 resolved 2026-05-27 as option (b)). Unavailability state is in-memory only and clears on GenServer restart **by design** — the registry is a latency optimization to skip known-bad adapters at dispatch; correctness lives in Oban (workers map quota → `{:snooze, _}`, persisted job rows survive both restarts and quota windows). Bounded cost of a restart-clear: one wasted first-attempt per previously-marked-unavailable adapter. Don't trust quota state across BEAM restarts; do trust Oban retry. Also: Task 41 (Codex worktree-isolation regression) is **resolved as of 2026-05-27** — `codex exec --cd <cwd>` pins the working root at the exec level, mirroring the Task 32 fix shape. Full rationale: `Harness.AgentRegistry` `@moduledoc` § "Availability is a soft hint, not a contract".
 - **Worktree isolation is enforced via capability + guard.** Only `Harness.AgentAdapter.Antigravity` currently declares `worktree_isolation: false`; the dispatch guard (`Harness.Worktree.Isolation`) refuses to start a worktree-isolated run on a non-isolating adapter and snapshots the main checkout porcelain mid-run to trap pollution (Task 32). Past regressions all live on `:checkout_polluted` reason — see `docs/dogfooding-workflow.md` verdict table. Task 60 (2026-05-27) added a four-tier pollution allowlist (run opts → project → app config → `default_pollution_allowlist/0`) that ignores incidental `.claude/`, `.DS_Store`, and editor temp/lock writes; roadmap files are deliberately NOT allowlisted (a genuine agent mutation to them is a bug worth catching). Note: running `rmap` mutations in a parallel session against the same checkout will also trigger `:checkout_polluted` — a false positive caused by the operator, not the agent (see `docs/dogfooding-workflow.md` § "Known sharp edges").
 - **Non-delegatable two-step dance**: Easy to forget. The skill exists partly to make this impossible to miss. Distinct from worktree isolation (see § "Non-delegatable adapters" above for both axes).
-- **Results are delivered to the subscriber** but not automatically persisted beyond Oban job rows + the file-backed `ResultStore` `LogRecord` (Task 19). Keep the transcript if you need it later; `LogRecord` carries the transcript but not per-check stdout/stderr.
+- **Results are delivered to the subscriber** but not automatically persisted beyond Oban job rows + the file-backed `ResultStore` `LogRecord` (Task 19). The `LogRecord` carries the transcript AND the failed-checks' captured output (`check_output`, capped) — read it via `dispatch__verdict_detail` / `result_store__list_run_records`; only the non-failing checks' output is dropped.
 - **Cold verification** (especially dialyzer PLT) can be slow on first run in a fresh worktree.
 - **Secret scrubbing**: Use the `:env` map with `false` values. Do this explicitly for any key that might shadow a subscription (classic `ANTHROPIC_API_KEY` shadowing Claude's OAuth case).
 

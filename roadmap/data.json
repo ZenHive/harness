@@ -3969,6 +3969,34 @@
       "implemented": "Added Harness.Dashboard.RunFeed (fleet topic harness:runs, broadcast_update/1 + broadcast_settled/1, PubSub-whereis guarded). Harness.Run broadcasts a non-terminal update on each live state-enter (dispatched/running/committing/verifying/consulting) and a single settled message from settle/2. Dashboard.Live now drives Active/History as Phoenix.LiveView streams (distinct active-/hist- dom_id prefixes) patched per-row from the feed; persisted history read from the store once at mount + on project switch (replacing the 1s poll-and-disk-scan tick). Slow 5s :meta_tick refreshes sidebar metadata + recomputes in-memory fleet counts (self-healing when terminal-linger expires). project_name threaded onto the public Status + LogRecord structs (Map.get decode for pre-field records); project switcher is now a phx-change form; filter_runs reads status.project_name. Supersedes Task 105's out_of_scope. New RunFeed unit + run-feed integration tests; live/status_view tests updated.",
       "delivered_by": "claude",
       "cross_repo": []
+    },
+    {
+      "id": "108",
+      "phase": 11,
+      "bundle": "autolanding",
+      "milestone": "v0_9",
+      "status": "pending",
+      "title": "Thread env scrubbing through Oban Run.Worker so dispatch__bundle honors scrub_anthropic_key",
+      "scores": {
+        "d": 2,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 1.5,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Harness.Run.Worker threads an :env map from its Oban job args into Run.Supervisor.start_run/4",
+        "dispatch__bundle accepts scrub_anthropic_key (default true) and the scrub reaches each enqueued run's start_run :env",
+        "A Run.Worker test asserts the :env (with ANTHROPIC_API_KEY scrubbed) reaches start_run"
+      ],
+      "out_of_scope": [
+        "Changing the dispatch__task / dispatch__await / dispatch__compare scrub paths (already correct)"
+      ],
+      "body": "dispatch__task / dispatch__await / dispatch__compare scrub ANTHROPIC_API_KEY via the :env opt to start_run (the subscription-OAuth path). dispatch__bundle dispatches through Harness.Batch.dispatch/2 -> Oban Run.Worker, whose run_opts/1 threads only [batch_id, subscriber] -- no :env. So a bundle of Claude tasks runs with the inherited ANTHROPIC_API_KEY (metered API, or a billing_error if that key's account is out of credit) instead of subscription OAuth, unlike the other dispatch tools.\n\nFix: thread an :env map into the Oban job args (must stay term/JSON-serializable for Postgres-persisted jobs) and apply it in Run.Worker when starting the gen_statem; then add a scrub_anthropic_key param (default true) to dispatch__bundle. Discovered while building the JSON-native dispatch surface (dispatch__bundle/compare); deferred because it changes the Oban job-args contract.\n",
+      "created_at": "2026-05-30",
+      "scored_at": "2026-05-30",
+      "cross_repo": []
     }
   ]
 }
