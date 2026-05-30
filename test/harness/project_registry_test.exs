@@ -92,12 +92,21 @@ defmodule Harness.ProjectRegistryTest do
         name: "configured-map",
         source: {:local, "/tmp/harness-cm"},
         check_stack: %CheckStack{name: :smoke, checks: []},
-        roadmap_path: "/tmp/harness-cm/roadmap/tasks.toml"
+        roadmap_path: "/tmp/harness-cm/roadmap/tasks.toml",
+        landing_policy: :auto
       }
 
       Application.put_env(:harness, :projects, [entry])
 
-      assert {:ok, %{projects: %{"configured-map" => %Harness.Project{check_stacks: [%CheckStack{name: :smoke}]}}}} =
+      assert {:ok,
+              %{
+                projects: %{
+                  "configured-map" => %Harness.Project{
+                    check_stacks: [%CheckStack{name: :smoke}],
+                    landing_policy: :auto
+                  }
+                }
+              }} =
                ProjectRegistry.init(:noargs)
     end
 
@@ -240,7 +249,9 @@ defmodule Harness.ProjectRegistryTest do
           ],
           fn {project, id} ->
             Task.async(fn ->
-              {:ok, run_id, pid} = RunSupervisor.start_run(item.(id), project, Harness.FakeAdapter, opts)
+              {:ok, run_id, pid} =
+                RunSupervisor.start_run(item.(id), project, Harness.FakeAdapter, opts)
+
               await_result(run_id, pid)
             end)
           end

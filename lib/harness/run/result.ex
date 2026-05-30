@@ -26,6 +26,9 @@ defmodule Harness.Run.Result do
     * `:passed` — the verification stack graded the worktree green (`:done`).
     * `:verification_red` — a check in the stack failed; any configured repair
       attempts were exhausted without going green (see `repair_attempts`).
+    * `:semantic_rejection` — the verification stack was green, but the
+      configured cross-family semantic gate rejected the committed diff against
+      the task body and acceptance criteria.
     * `:no_changes` — the agent terminated without changing the worktree, so
       there was nothing to commit; the run delivered nothing.
     * `{:checkout_polluted, status}` — reserved. Since Task 66 the run
@@ -58,6 +61,7 @@ defmodule Harness.Run.Result do
   @type reason ::
           :passed
           | :verification_red
+          | :semantic_rejection
           | :no_changes
           | {:checkout_polluted, String.t()}
           | {:checkout_pollution_check_failed, term()}

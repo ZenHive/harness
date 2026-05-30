@@ -60,7 +60,10 @@ defmodule Harness.Manifest do
   )
 
   @spec modules() :: [module()]
-  def modules, do: @driver_surface
+  def modules do
+    Enum.each(@driver_surface, &Code.ensure_loaded!/1)
+    @driver_surface
+  end
 
   api(:mcp_tools, "Render the JSON-driveable driver surface as MCP tool definitions.",
     params: [

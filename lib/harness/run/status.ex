@@ -13,7 +13,7 @@ defmodule Harness.Run.Status do
   alias Harness.Run.Result
 
   @typedoc "The lifecycle state a run is currently in."
-  @type state :: :dispatched | :running | :committing | :verifying | :done | :failed
+  @type state :: :dispatched | :running | :committing | :verifying | :consulting | :done | :failed
 
   @typedoc """
   A run snapshot.

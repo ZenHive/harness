@@ -15,7 +15,8 @@ defmodule Harness.ProjectRegistry do
 
   require Logger
 
-  @type error :: {:duplicate, String.t()} | {:unknown_project, String.t()} | {:invalid_project, term()}
+  @type error ::
+          {:duplicate, String.t()} | {:unknown_project, String.t()} | {:invalid_project, term()}
 
   @doc false
   @spec child_spec(term()) :: Supervisor.child_spec()
@@ -43,6 +44,7 @@ defmodule Harness.ProjectRegistry do
 
           {:error, reason} ->
             Logger.warning("harness project registry: skipping invalid config entry: #{inspect(reason)}")
+
             acc
         end
       end)
@@ -172,7 +174,8 @@ defmodule Harness.ProjectRegistry do
          check_stacks: check_stacks,
          roadmap_path: roadmap_path,
          concurrency_cap: Map.get(entry, :concurrency_cap),
-         pollution_allowlist: Map.get(entry, :pollution_allowlist)
+         pollution_allowlist: Map.get(entry, :pollution_allowlist),
+         landing_policy: Map.get(entry, :landing_policy, :manual)
        }}
     end
   end
@@ -185,6 +188,7 @@ defmodule Harness.ProjectRegistry do
 
       {:error, reason} ->
         Logger.warning("harness project registry: failed to start Oban queue for #{project.name}: #{inspect(reason)}")
+
         :ok
     end
   end
@@ -207,7 +211,8 @@ defmodule Harness.ProjectRegistry do
     end
   end
 
-  @spec fetch_check_stacks(map()) :: {:ok, [CheckStack.t()]} | {:error, {:invalid_project, term()}}
+  @spec fetch_check_stacks(map()) ::
+          {:ok, [CheckStack.t()]} | {:error, {:invalid_project, term()}}
   defp fetch_check_stacks(%{stacks: stacks}) when is_list(stacks) and stacks != [] do
     stacks
     |> Enum.reduce_while({:ok, []}, fn entry, {:ok, acc} ->

@@ -91,7 +91,17 @@ config :harness, :project, cache_root: Path.expand("~/_DATA/harness/projects")
 # Result persistence — see Harness.ResultStore.
 # The default store is file-backed and keeps structured run records plus
 # reloadable batch results under this root.
-config :harness, :result_store, {Harness.ResultStore.File, root: Path.expand("~/.harness/results")}
+config :harness,
+       :result_store,
+       {Harness.ResultStore.File, root: Path.expand("~/.harness/results")}
+
+# Green-verdict semantic gate. `enabled: :auto` means the gate runs only for
+# projects whose landing_policy is :auto; false disables it even for auto-land
+# projects. The grader defaults through Harness.AuditReview's cross-family
+# :claude <-> :codex pairing; test/dev overrides may pass :grader plus the same
+# AuditReview pass-through opts (:model, :adapter_opts, :total_timeout,
+# :idle_timeout).
+config :harness, :semantic_gate, enabled: :auto
 
 # Registered orchestration targets — see Harness.Project and Harness.ProjectRegistry.
 # Each entry is a keyword list: name, source ({:local, path}), roadmap_path,
@@ -156,7 +166,10 @@ if config_env() == :test do
   config :harness, :dashboard, enabled: false, port: 4018
   config :harness, :oban_enabled, false
   config :harness, :repo_enabled, false
-  config :harness, :result_store, {Harness.ResultStore.File, root: Path.join(System.tmp_dir!(), "harness_results_test")}
+
+  config :harness,
+         :result_store,
+         {Harness.ResultStore.File, root: Path.join(System.tmp_dir!(), "harness_results_test")}
 
   config :harness, :worktree,
     base_dir: Path.join(System.tmp_dir!(), "harness_worktrees_test"),

@@ -49,8 +49,8 @@ defmodule Harness.AuditReview do
   # Auto-pairs only the two agents that audit-review's HIGH tier explicitly
   # names: Codex grades Claude, Claude grades Codex. Other implementers must
   # pass :grader explicitly — there is no defensible default for grok/cursor/etc.
-  # TODO: extend auto-pairing once a cost-tier capability surface on
-  # Harness.AgentRegistry lets us pick the cheaper-but-capable grader automatically.
+  # Cost-tier-aware grader selection can be layered onto AgentRegistry later,
+  # but this module keeps the default pair deliberately explicit.
   @grader_pairs %{claude: :codex, codex: :claude}
 
   @typedoc "What the grader concluded about the fix."

@@ -18,6 +18,8 @@ defmodule Harness.Project do
   - `concurrency_cap` — per-project batch cap; `nil` inherits the global default.
   - `pollution_allowlist` — optional path patterns ignored by the main-checkout
     pollution diff (`Harness.Worktree.Isolation`); `nil` inherits app defaults.
+  - `landing_policy` — `:manual` by default; `:auto` means green runs are
+    eligible for autonomous landing and therefore for the semantic gate.
   """
 
   alias Harness.CheckStack
@@ -25,7 +27,15 @@ defmodule Harness.Project do
   alias Harness.Project.Source.Local
 
   @enforce_keys [:name, :source, :check_stacks, :roadmap_path]
-  defstruct [:name, :source, :check_stacks, :roadmap_path, concurrency_cap: nil, pollution_allowlist: nil]
+  defstruct [
+    :name,
+    :source,
+    :check_stacks,
+    :roadmap_path,
+    concurrency_cap: nil,
+    pollution_allowlist: nil,
+    landing_policy: :manual
+  ]
 
   @typedoc "Where harness finds the target repository."
   @type source :: Local.t() | Github.t()
@@ -37,7 +47,8 @@ defmodule Harness.Project do
           check_stacks: [CheckStack.t()],
           roadmap_path: String.t(),
           concurrency_cap: pos_integer() | nil,
-          pollution_allowlist: [String.t()] | nil
+          pollution_allowlist: [String.t()] | nil,
+          landing_policy: :manual | :auto
         }
 
   @doc """
@@ -50,6 +61,7 @@ defmodule Harness.Project do
   @spec repo_path(t(), keyword()) :: String.t()
   def repo_path(project, opts \\ [])
   def repo_path(%__MODULE__{source: {:local, _}} = project, _opts), do: Local.path(project)
+
   def repo_path(%__MODULE__{source: {:github, _}} = project, opts), do: Github.local_path(project, opts)
 
   @doc """
@@ -66,6 +78,8 @@ defmodule Harness.Project do
   """
   @spec ensure_local_repo(t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def ensure_local_repo(project, opts \\ [])
+
   def ensure_local_repo(%__MODULE__{source: {:local, _}} = project, _opts), do: {:ok, Local.path(project)}
+
   def ensure_local_repo(%__MODULE__{source: {:github, _}} = project, opts), do: Github.ensure_local(project, opts)
 end
