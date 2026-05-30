@@ -151,6 +151,49 @@ state — so the eval process exiting between dispatch and observation is fine.
 
 8. **Read the verdict** (see § Reading the verdict).
 
+### Headless MCP dispatch via `dispatch__task` (external-consumer path)
+
+The same `:4018` Bandit also serves the harness **MCP server** at `/harness/mcp`. When the
+harness checkout's `.mcp.json` carries a second entry named `harness`
+(`{"type":"http","url":"http://localhost:4018/harness/mcp"}` alongside the `tidewave`
+entry), the flat `dispatch__task` tool surfaces in-session as `mcp__harness__dispatch__task`.
+This is the **stateless-JSON** dispatch path — it collapses the struct-passing
+`roadmap__ingest` → `supervisor__start_run` two-step (which a JSON caller can't run: it
+can't hold the `%Roadmap.Item{}` / `%Project{}` between calls) into one scalar call.
+
+Prefer this over `project_eval` when you want to dogfood the *MCP surface itself* (genuine
+external-consumer testing) rather than drive harness as an in-process Elixir client.
+
+```
+mcp__harness__dispatch__task(
+  project_name: "harness",
+  task: "<task-id>",            # or "next"
+  adapter: "claude",           # codex | cursor | grok | antigravity | pi
+  scrub_anthropic_key: true    # default true — strips ANTHROPIC_API_KEY → subscription OAuth
+)
+#=> {:ok, %{run_id: "run-..."}}
+```
+
+`scrub_anthropic_key: true` (the default) handles the OAuth-vs-API gotcha natively — no
+explicit `env:` map needed. Non-delegatable executors (grok/antigravity/pi) are handled
+internally via the ingest-with-`:claude`-render-agent two-step; the caller never sees it.
+The run starts with `subscriber: nil`; observe it afterward by `run_id`.
+
+**Gotchas when observing an MCP-dispatched run** (learned 2026-05-30, batch 98/103/20):
+
+- **`result_store__list_run_records` rejects a map filter.** The function wants a
+  *keyword list* (`list_run_records(run_id: id)`); the MCP tool serializes `{run_id: ...}`
+  as a map and fails with `no function clause matching`. Observe via
+  `mcp__tidewave__project_eval` calling `Harness.ResultStore.list_run_records(run_id: id)`
+  directly, or via `supervisor__list_runs` while the run is still registered.
+- **`rec.verdict` is a plain atom** (`:pass` / `:fail`), *not* a struct — `rec.verdict.status`
+  raises `:pass.status/0 is undefined`. Read the atom directly.
+- **`agent_diff_size` is unreliable** — it under-reported a 320-insertion diff as `3` on
+  Task 103. For true diff size use `git diff --stat development...<branch>`, not the field.
+- **A record file appearing under `~/.harness/results/runs/<base64url(run_id)>.term` is the
+  settle signal** — arm an event-shaped `Monitor` (`until [ -f "$f" ]; do sleep 5; done`)
+  on it rather than polling, which the PreToolUse hook blocks.
+
 ### Full-diagnostic dispatch via `mix run` (fallback)
 
 Use when you need per-failed-check stdout/stderr dumped to your terminal — debugging
