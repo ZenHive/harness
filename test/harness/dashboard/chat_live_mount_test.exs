@@ -28,18 +28,34 @@ defmodule Harness.Dashboard.ChatLiveMountTest do
     :ok
   end
 
-  describe "new-session mount (:new action)" do
-    test "mounts /harness/chat, generates a session id, and redirects to the deep link", %{conn: conn} do
-      # apply_action(:new) push_patches to /harness/chat/<generated-id>; on the
-      # initial connected mount LiveViewTest surfaces that as a live_redirect.
-      assert {:error, {:live_redirect, %{to: to}}} = live(conn, "/harness/chat")
-      assert to =~ ~r"^/harness/chat/chat-[0-9a-f]+$"
-
-      # Following it runs the :show branch (ensure_session + load_snapshot on the
-      # freshly-started, empty session).
-      {:ok, _view, html} = live(conn, to)
+  describe "index mount (:index action)" do
+    test "mounts /harness/chat as a session index, not a redirect to a fresh session", %{conn: conn} do
+      # Task 93 moved /harness/chat from :new (auto-redirect) to :index. The bare
+      # URL now renders the list; minting a fresh session is the "New chat" button.
+      {:ok, _view, html} = live(conn, "/harness/chat")
+      assert html =~ "Chats"
       assert html =~ "New chat"
-      assert html =~ "chat-"
+    end
+
+    test "lists a live session with its derived label and a deep link", %{conn: conn} do
+      fun = fn _req, _cb, _opts -> {:ok, %{content: [], stop_reason: "end_turn"}} end
+      sid = start_fun_session(fun)
+      {:ok, _} = Session.user_message(sid, "make me a sandwich")
+
+      {:ok, _view, html} = live(conn, "/harness/chat")
+
+      # Live session surfaces with the first-user-message label, a "live" marker,
+      # the id, and a link to its deep-link URL.
+      assert html =~ "make me a sandwich"
+      assert html =~ sid
+      assert html =~ ~s(href="/harness/chat/#{sid}")
+      assert html =~ "live"
+    end
+
+    test "the New chat button mints a fresh session and navigates to it", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/harness/chat")
+      assert {:error, {:live_redirect, %{to: to}}} = render_click(view, "new_chat", %{})
+      assert to =~ ~r"^/harness/chat/chat-[0-9a-f]+$"
     end
   end
 

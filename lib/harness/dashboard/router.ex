@@ -39,7 +39,7 @@ defmodule Harness.Dashboard.Router do
 
     live("/harness", Live, :index, as: :dashboard)
     live("/harness/runs/:run_id", Live, :show, as: :dashboard)
-    live("/harness/chat", ChatLive, :new, as: :dashboard_chat)
+    live("/harness/chat", ChatLive, :index, as: :dashboard_chat)
     live("/harness/chat/:session_id", ChatLive, :show, as: :dashboard_chat)
   end
 end

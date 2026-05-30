@@ -3,6 +3,7 @@ defmodule Harness.Chat.SessionTest do
 
   alias Harness.Chat.FunBackend
   alias Harness.Chat.Session
+  alias Harness.Chat.Store
   alias Harness.Chat.Stream
   alias Harness.Chat.Supervisor
   alias Harness.Chat.Tools
@@ -377,6 +378,51 @@ defmodule Harness.Chat.SessionTest do
 
       assert pid1 == pid2
       assert Supervisor.whereis("dup-cover-1") == pid1
+    end
+  end
+
+  describe "Harness.Chat.Supervisor.list_sessions/0" do
+    test "enumerates currently-live session ids" do
+      noop = fn _, _, _ -> {:ok, %{content: [], stop_reason: "end_turn"}} end
+      id_a = "list-cover-a-#{System.unique_integer([:positive])}"
+      id_b = "list-cover-b-#{System.unique_integer([:positive])}"
+
+      {:ok, ^id_a, _} = Supervisor.start_session(id: id_a, backend: FunBackend, backend_opts: [fun: noop])
+      {:ok, ^id_b, _} = Supervisor.start_session(id: id_b, backend: FunBackend, backend_opts: [fun: noop])
+
+      ids = Supervisor.list_sessions()
+      assert id_a in ids
+      assert id_b in ids
+    end
+  end
+
+  describe "persistence (Task 93)" do
+    test "a completed turn is persisted to the store" do
+      id = "persist-#{System.unique_integer([:positive])}"
+
+      fun = fn _req, _cb, _opts -> {:ok, %{content: [%{type: "text", text: "ack"}], stop_reason: "end_turn"}} end
+      {:ok, ^id, _pid} = Supervisor.start_session(id: id, backend: FunBackend, backend_opts: [fun: fun])
+
+      {:ok, _} = Session.user_message(id, "persist this turn")
+
+      # Session.init/handle_call use the config'd test store root; load with no
+      # opts reads that same root.
+      assert {:ok, %{messages: messages}} = Store.load(id)
+      assert Enum.any?(messages, &match?(%{role: :user, content: "persist this turn"}, &1))
+    end
+
+    test "a new session rehydrates a previously-saved transcript on init" do
+      id = "rehydrate-#{System.unique_integer([:positive])}"
+      saved = [%{role: :user, content: "remembered across restart"}]
+
+      # Simulate a prior BEAM having persisted this session, then start a fresh
+      # GenServer under the same id — init/1 should load the saved messages.
+      :ok = Store.save(id, saved)
+
+      noop = fn _, _, _ -> {:ok, %{content: [], stop_reason: "end_turn"}} end
+      {:ok, ^id, _pid} = Supervisor.start_session(id: id, backend: FunBackend, backend_opts: [fun: noop])
+
+      assert {:ok, ^saved} = Session.snapshot(id)
     end
   end
 end

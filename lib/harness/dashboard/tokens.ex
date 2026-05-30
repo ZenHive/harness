@@ -371,6 +371,46 @@ defmodule Harness.Dashboard.Tokens do
       }
       .chat-header button:hover { border-color: var(--accent); }
 
+      /* Chat index — session list */
+      .chat-index { display: flex; flex-direction: column; gap: var(--space-4); }
+      .session-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+      .session-card {
+        border: 1px solid var(--rule);
+        border-radius: 0.4rem;
+        background: var(--surface);
+        transition: border-color var(--motion-fast) var(--ease-out);
+      }
+      .session-card:hover { border-color: var(--accent); }
+      .session-link {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+        padding: var(--space-3);
+        text-decoration: none;
+      }
+      .session-link:hover { text-decoration: none; }
+      .session-label {
+        font-family: var(--font-display);
+        font-size: var(--text-md);
+        color: var(--text);
+      }
+      .session-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: var(--space-1) var(--space-3);
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+      }
+      .session-live {
+        color: var(--verdict-pass);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 600;
+      }
+      .session-id { color: var(--text-subtle); }
+
       .messages {
         display: flex;
         flex-direction: column;

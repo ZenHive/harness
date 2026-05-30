@@ -55,6 +55,7 @@ defmodule Harness.Dashboard.ChatLive do
   use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}
 
   alias Harness.Chat.Session
+  alias Harness.Chat.Store
   alias Harness.Chat.Stream
   alias Harness.Chat.Supervisor, as: ChatSupervisor
   alias Harness.Dashboard.Components
@@ -85,6 +86,7 @@ defmodule Harness.Dashboard.ChatLive do
      |> assign(:input, "")
      |> assign(:message_ids, [])
      |> assign(:empty?, true)
+     |> assign(:sessions, [])
      |> assign(:playbooks, Harness.Playbooks.list())}
   end
 
@@ -95,9 +97,12 @@ defmodule Harness.Dashboard.ChatLive do
   end
 
   @spec apply_action(Socket.t(), atom(), map()) :: Socket.t()
-  defp apply_action(socket, :new, _params) do
-    new_id = generate_session_id()
-    push_patch(socket, to: "/harness/chat/#{new_id}")
+  defp apply_action(socket, :index, _params) do
+    socket
+    |> maybe_unsubscribe(socket.assigns.session_id)
+    |> assign(:session_id, nil)
+    |> assign(:active, nil)
+    |> assign(:sessions, list_index_sessions())
   end
 
   defp apply_action(socket, :show, %{"session_id" => id}) do
@@ -586,10 +591,59 @@ defmodule Harness.Dashboard.ChatLive do
   @spec prefill_text(String.t()) :: String.t()
   def prefill_text(name) when is_binary(name), do: "run the #{name} playbook for "
 
+  ## --- Index session list ---------------------------------------------------
+
+  # Merges live sessions (from the Registry) with persisted-but-dead ones (from
+  # the file store), keyed by session id so a session that is both live and
+  # persisted appears once — the live snapshot wins (it's the fresher truth).
+  # Live sessions sort to the top; persisted ones follow by most-recent-first.
+  @spec list_index_sessions() :: [map()]
+  defp list_index_sessions do
+    live =
+      ChatSupervisor.list_sessions()
+      |> Enum.flat_map(&live_summary/1)
+      |> Map.new(&{&1.session_id, &1})
+
+    persisted = Map.new(Store.list(), &{&1.session_id, Map.put(&1, :live?, false)})
+
+    persisted
+    |> Map.merge(live)
+    |> Map.values()
+    |> Enum.sort_by(&{if(&1.live?, do: 1, else: 0), updated_sort_key(&1.updated_at)}, :desc)
+  end
+
+  # A live session's summary, derived from its in-memory snapshot. Returns `[]`
+  # when the session died between the Registry list and this snapshot call (a
+  # benign race) so the merge simply drops it.
+  @spec live_summary(String.t()) :: [map()]
+  defp live_summary(id) do
+    case Session.snapshot(id) do
+      {:ok, messages} ->
+        [
+          %{
+            session_id: id,
+            label: Store.derive_label(messages),
+            message_count: length(messages),
+            updated_at: nil,
+            live?: true
+          }
+        ]
+
+      {:error, :not_found} ->
+        []
+    end
+  end
+
+  @spec updated_sort_key(DateTime.t() | nil) :: integer()
+  defp updated_sort_key(nil), do: 0
+  defp updated_sort_key(%DateTime{} = dt), do: DateTime.to_unix(dt)
+
   ## --- Render ---------------------------------------------------------------
 
   @impl Phoenix.LiveView
   @spec render(map()) :: Rendered.t()
+  def render(%{live_action: :index} = assigns), do: render_index(assigns)
+
   def render(assigns) do
     ~H"""
     <.chat_shell session_id={@session_id} disabled?={@active != nil}>
@@ -627,6 +681,38 @@ defmodule Harness.Dashboard.ChatLive do
         <button :if={@active != nil} type="button" class="stop-btn" phx-click="cancel">Stop</button>
       </form>
     </.chat_shell>
+    """
+  end
+
+  @spec render_index(map()) :: Rendered.t()
+  defp render_index(assigns) do
+    ~H"""
+    <div class="chat-index">
+      <header class="chat-header">
+        <h1>Chats</h1>
+        <button type="button" phx-click="new_chat">New chat</button>
+      </header>
+
+      <p :if={@sessions == []} class="empty-state">
+        No chat sessions yet. Start one with “New chat”.
+      </p>
+
+      <ul :if={@sessions != []} class="session-list">
+        <li :for={session <- @sessions} class="session-card">
+          <a class="session-link" href={"/harness/chat/#{session.session_id}"}>
+            <span class="session-label">{session.label}</span>
+            <span class="session-meta">
+              <span :if={session.live?} class="session-live">live</span>
+              <span class="session-id">{session.session_id}</span>
+              <span class="session-count">{session.message_count} msgs</span>
+              <span :if={session.updated_at} class="session-time">
+                {Calendar.strftime(session.updated_at, "%Y-%m-%d %H:%M UTC")}
+              </span>
+            </span>
+          </a>
+        </li>
+      </ul>
+    </div>
     """
   end
 

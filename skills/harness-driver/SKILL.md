@@ -317,6 +317,8 @@ Stream the session live by subscribing to `Phoenix.PubSub` topic `"harness:chat:
 
 `:backend` is **required** on `Session.init/1` — no implicit default. The session injects its own `session_id` into `backend_opts` before each `stream/3` call so backends can derive a stable per-session workspace without an extra registration step.
 
+**Persistence + index (Task 93).** Chat transcripts survive a BEAM restart via `Harness.Chat.Store` — a file-backed term store (mirrors `Harness.ResultStore.File`) under the `config :harness, :chat_store, root: …` path (`false` disables it). `Session` persists its `:messages` after each completed turn and rehydrates them on `init/1`, so reopening `/harness/chat/<session_id>` after a restart replays the prior turns (history is bounded to the most recent 200 messages, mirroring the live cap). The bare `/harness/chat` route is now the **`:index`** action: it lists live sessions (`Harness.Chat.Supervisor.list_sessions/0`, over `Harness.Chat.Registry`) merged with persisted-but-dead ones from the store — each with a derived label, message count, last-activity, and a deep link; the "New chat" button mints a fresh session. `Store.save/3` / `load/2` / `list/1` are the store surface; `Store.derive_label/1` is the shared first-user-message labeller.
+
 ### Headless MCP surface (external consumers)
 
 The same descripex-annotated harness toolset is exposed as a spec-compliant **MCP server** on the same Bandit (`http://localhost:4018/harness/mcp`). The implementation is `Harness.Dashboard.MCPServer` (built on `anubis_mcp`, JSON-RPC 2.0 over Streamable HTTP via `Anubis.Server.Transport.StreamableHTTP.Plug`). `initialize` / `ping` / prompts / resources fall through to anubis's `@before_compile`-appended catch-all; harness overrides `tools/list` and `tools/call` to reuse `Harness.Chat.Tools` (the same registry + dispatcher the in-process chat loop calls).
@@ -535,6 +537,7 @@ Changes that require an update to this skill:
 - **Changes to project-registration config shape** (`config :harness, :projects, [...]`)
 - **Changes to the `.mcp.json` shape Tidewave expects, or harness's dashboard port (`:4018`)**
 - New or changed `Harness.Chat.Backend` callbacks, new backends, or changes to `Harness.Chat.Session`'s public surface (`start_link/2`, `user_message/3`, `snapshot/1`, `cancel/1`)
+- Changes to chat persistence (`Harness.Chat.Store` `save/3` / `load/2` / `list/1` shapes, the `config :harness, :chat_store` key), `Harness.Chat.Supervisor.list_sessions/0`, or the `/harness/chat` `:index` route
 - Changes to the MCP transport (`/harness/mcp` path, JSON-RPC envelope, tool naming, `Harness.Chat.Tools` registry shape)
 - Additional MCP backends beyond `Harness.Chat.Claude` (if/when a library-backed metered-API backend lands as an opt-in)
 - New or changed `Harness.Playbooks` (catalog entries, `priv/playbooks/*.md` recipes that drift from the actual tool surface, or the `list/0` / `get/1` shapes)

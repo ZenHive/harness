@@ -51,6 +51,17 @@ defmodule Harness.Chat.Supervisor do
     end
   end
 
+  @doc """
+  Returns the ids of every currently-live chat session, via the Registry.
+
+  Live sessions only — persisted-but-not-running sessions live in
+  `Harness.Chat.Store`. `Harness.Dashboard.ChatLive`'s index merges the two.
+  """
+  @spec list_sessions() :: [String.t()]
+  def list_sessions do
+    Registry.select(@registry, [{{:"$1", :_, :_}, [], [:"$1"]}])
+  end
+
   @doc "Looks up a session pid by `session_id` via the Registry."
   @spec whereis(String.t()) :: pid() | nil
   def whereis(session_id) when is_binary(session_id) do

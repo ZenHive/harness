@@ -24,6 +24,11 @@ config :harness, Oban,
   queues: [],
   plugins: [Oban.Plugins.Pruner]
 
+# Chat session persistence — see Harness.Chat.Store.
+# File-backed term store so chat transcripts survive a BEAM restart. Set to
+# `false` to disable persistence entirely.
+config :harness, :chat_store, root: Path.expand("~/.harness/chats")
+
 # Autonomous roadmap polling is opt-in. When enabled, Harness.Oban appends an
 # Oban.Plugins.Cron entry that runs Harness.Cron.RoadmapPoller on this schedule.
 config :harness, :cron_polling,
@@ -147,6 +152,7 @@ if config_env() == :test do
     pool_size: 10
 
   config :harness, Oban, testing: :inline
+  config :harness, :chat_store, root: Path.join(System.tmp_dir!(), "harness_chats_test")
   config :harness, :dashboard, enabled: false, port: 4018
   config :harness, :oban_enabled, false
   config :harness, :repo_enabled, false

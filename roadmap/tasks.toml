@@ -3158,7 +3158,7 @@ done_at = "2026-05-29"
 id = "93"
 phase = 9
 bundle = "chat-orchestrator"
-status = "pending"
+status = "done"
 title = "Chat session persistence + index page — survive restart, list & reopen past chats"
 scores = { d = 5, b = 6, u = 5 }
 acceptance_criteria = ["A chat session's messages survive a BEAM restart: start a session, send turns, restart iex -S mix, reopen /harness/chat/<session_id> and the prior turns render", "Harness.Chat.Supervisor.list_sessions/0 returns currently-live session ids (over Harness.Chat.Registry)", "/harness/chat renders an index of existing sessions (live + persisted) with a recognizable label, last-activity, and a link to each; a 'new chat' button mints a fresh session", "Persisted state is bounded (mirrors the live 200-message / per-turn truncation caps) so the store does not grow unbounded", "Index and detail compose on the existing Harness.Dashboard.Components / Tokens vocabulary — no new inline styles", "Tests: list_sessions/0 enumerates live sessions; persistence round-trips a session's messages through the store (save -> rehydrate)"]
@@ -3172,8 +3172,12 @@ Chat sessions are in-memory DynamicSupervisor children registered in Harness.Cha
 
 This is LiveView + heex work — hand-build via browser tooling per the global rule, not headless dispatch.
 """
+implemented = "File-backed Harness.Chat.Store (term files, mirrors ResultStore.File) persists session messages (bounded to last 200) after each turn; Session rehydrates on init. Supervisor.list_sessions/0 enumerates live sessions via Registry. /harness/chat is now the :index action listing live+persisted sessions (label/count/activity/deep-link) with a New chat button. Composes on Tokens (.chat-index/.session-list). Tests: store round-trip/list/bounding/disabled, list_sessions/0, persist-on-turn + rehydrate-on-init. Browser-verified index listing + rehydration of a dead-session deep-link through the running BEAM."
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-29"
 scored_at = "2026-05-29"
+done_at = "2026-05-30"
 
 [[task]]
 id = "94"

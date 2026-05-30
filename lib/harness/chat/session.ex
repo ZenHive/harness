@@ -10,8 +10,11 @@ defmodule Harness.Chat.Session do
   use GenServer
 
   alias Harness.Chat.Backend
+  alias Harness.Chat.Store
   alias Harness.Chat.Stream
   alias Harness.Chat.Tools
+
+  require Logger
 
   @registry Harness.Chat.Registry
   @default_max_iterations 16
@@ -104,7 +107,7 @@ defmodule Harness.Chat.Session do
        backend_opts: Keyword.get(opts, :backend_opts, []),
        tools: tools,
        tool_schemas: Tools.schemas(tools),
-       messages: [],
+       messages: rehydrate_messages(session_id),
        max_iterations: Keyword.get(opts, :max_iterations, @default_max_iterations),
        max_history_bytes: Keyword.get(opts, :max_history_bytes, @default_max_history_bytes),
        tool_call_history: MapSet.new(),
@@ -124,6 +127,7 @@ defmodule Harness.Chat.Session do
   def handle_call({:user_message, text}, _from, state) do
     state = %{state | busy?: true, tool_call_history: MapSet.new()}
     {result, state} = run_turn(state, text)
+    persist(state)
     {:reply, result, %{state | busy?: false}}
   end
 
@@ -388,4 +392,32 @@ defmodule Harness.Chat.Session do
 
   @spec via(String.t()) :: {:via, Registry, {module(), String.t()}}
   defp via(session_id), do: {:via, Registry, {@registry, session_id}}
+
+  # Loads any saved transcript for this session id so a reopened session (after
+  # a BEAM restart, or a deep-link to a session whose GenServer died) resumes
+  # with its prior turns. Empty for a genuinely new session id.
+  @spec rehydrate_messages(String.t()) :: [map()]
+  defp rehydrate_messages(session_id) do
+    case Store.load(session_id) do
+      {:ok, %{messages: messages}} -> messages
+      {:error, :not_found} -> []
+    end
+  end
+
+  # Persists the session's messages after each completed turn (Task 93).
+  # Best-effort, mirroring `Harness.ResultStore`: a failed write degrades
+  # restart-survival but never fails the turn. Empty histories aren't persisted
+  # — a freshly-minted session with no turns stays out of the store (it still
+  # shows on the index as a live session).
+  @spec persist(map()) :: :ok
+  defp persist(%{messages: []}), do: :ok
+
+  defp persist(%{session_id: session_id, messages: messages}) do
+    case Store.save(session_id, messages) do
+      :ok -> :ok
+      {:error, reason} -> Logger.warning("harness chat: persist failed for #{session_id}: #{inspect(reason)}")
+    end
+
+    :ok
+  end
 end
