@@ -3476,7 +3476,7 @@
       "phase": 10,
       "bundle": "dashboard-chrome",
       "milestone": "v0_8",
-      "status": "pending",
+      "status": "done",
       "title": "Kill button for in-flight runs on the dashboard",
       "scores": {
         "d": 2,
@@ -3501,6 +3501,83 @@
         "Confirming the agent OS process is reaped — that is Harness.Run.cancel/1's responsibility, already tested at the run layer"
       ],
       "body": "Add a kill/cancel control to the dashboard so an operator watching a run go bad (wrong cwd, agent thrashing, runaway repair loop) can stop it from the browser instead of dropping to project_eval. The primitive already exists: Harness.Run.cancel/1 (descripex-annotated, @spec cancel(run()) :: :ok) kills the agent and settles the run :failed, and is already guarded against :done/:failed states (calling it on a settled run is a no-op).\n\nWire it into Harness.Dashboard.Live (the module serving both /harness :index and /harness/runs/:run_id :show):\n\n- A \"Kill run\" button on the run-detail (:show) view, shown only while the run is in-flight (a live Harness.Run.status/1 lookup succeeds — i.e. not yet a settled LogRecord). A handle_event calls Harness.Run.cancel(run_id).\n- The same control inline on the index for each active/running row, so you don't have to drill in first.\n- Destructive-action confirm (phx-click with a data-confirm prompt) — a misfire settles the run :failed.\n- After cancel, the existing 1s :tick poll already refreshes status, so the row/detail transitions to :failed on its own; no extra broadcast needed, but verify the button disappears once settled.\n\nCompose on the existing Components/Tokens vocabulary (dashboard-chrome bundle) — reuse a button style, don't introduce a new one. Reserve the single --accent terminal-state cue for the kill affordance if it reads well.\n",
+      "created_at": "2026-05-29",
+      "done_at": "2026-05-29",
+      "scored_at": "2026-05-29",
+      "implemented": "Kill button on the run-detail LiveView; live_test.exs covers happy path. Hand-salvaged via cross-agent verification in chat orchestrator after dispatched run died from BEAM hot-reload cascade — verification stack ran green, mix precommit coverage gate (75.92%) deferred to follow-up.",
+      "delivered_by": "claude",
+      "verified": true,
+      "cross_repo": []
+    },
+    {
+      "id": "95",
+      "phase": 9,
+      "bundle": "chat-orchestrator",
+      "status": "pending",
+      "title": "Chat UI: add stop/cancel control to streaming session",
+      "scores": {
+        "d": 2,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 3.0,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A visible stop button appears when streaming? is true",
+        "Clicking it terminates the backend Port and clears the streaming indicator",
+        "Session history is preserved"
+      ],
+      "body": "The /harness/chat LiveView has no in-UI affordance to terminate an in-flight session. Today a runaway orchestrator can only be killed via OS pid or a BEAM eval against Harness.Chat.Supervisor. Add a stop button visible when the session is actively streaming; it should close the backend Port cleanly and emit a :terminal event so the LiveView clears the streaming indicator.",
+      "created_at": "2026-05-29",
+      "scored_at": "2026-05-29",
+      "cross_repo": []
+    },
+    {
+      "id": "96",
+      "phase": 9,
+      "bundle": "chat-orchestrator",
+      "status": "pending",
+      "title": "Chat: clear streaming indicator on :terminal events, not only :done",
+      "scores": {
+        "d": 1,
+        "b": 4,
+        "u": 5
+      },
+      "eff": 4.5,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Backend :terminal event clears the streaming-in-progress UI state",
+        "Verified by killing the backend Claude OS process mid-turn"
+      ],
+      "body": "When the backend Port exits without a graceful :done (Claude self-exit on summary, OS kill, or crash), the LiveView's streaming indicator stays sticky until page refresh. Clear it on :terminal events too. Surfaced 2026-05-29 in the Task 94 salvage flow — orchestrator finished but the chat UI still showed streaming? true.",
+      "created_at": "2026-05-29",
+      "scored_at": "2026-05-29",
+      "cross_repo": []
+    },
+    {
+      "id": "97",
+      "phase": 6,
+      "bundle": "deferred",
+      "status": "pending",
+      "title": "Reconcile harness verification stack vs project mix precommit",
+      "scores": {
+        "d": 4,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 1.63,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A registered project can declare its precommit gates and harness's verification verdict reflects them",
+        "OR documentation makes the divergence explicit and surfaces in the dashboard run-detail"
+      ],
+      "out_of_scope": [
+        "Auto-raising coverage to satisfy a project's gate"
+      ],
+      "body": "A dispatched run can grade green by Harness.CheckStack but be unmergeable under the project's own `mix precommit` — surfaced on Task 94 (coverage gate 80% vs measured 75.92%). The orchestrator misattributed the run's cause-of-death to this gap (it was actually a BEAM hot-reload cascade), but the gap is real. Decide: harness mirrors the project's precommit (or a declared subset), or the project trims precommit to what harness already covers. Either way, the policy should be visible on %Harness.Project{} so a consuming repo can opt in.",
       "created_at": "2026-05-29",
       "scored_at": "2026-05-29",
       "cross_repo": []

@@ -136,6 +136,12 @@ if config_env() == :test do
     secret_key_base: "harness-dashboard-test-secret-key-base-64-chars-min-or-phoenix-rejects-it",
     render_errors: [formats: [html: ErrorHTML], layout: false]
 
+  # The standalone Endpoint isn't supervised in test (dashboard enabled: false);
+  # test/test_helper.exs starts it directly for Phoenix.LiveViewTest. server:
+  # false means it never binds :4018 (the dev BEAM holds it) — LiveViewTest
+  # drives the in-process LiveView client, no real socket server needed.
+  config :harness, Endpoint, server: false
+
   config :harness, Harness.Repo,
     pool: Ecto.Adapters.SQL.Sandbox,
     pool_size: 10

@@ -16,7 +16,8 @@ defmodule Harness.MixProject do
         "OTP-native AI agent orchestrator: dispatches rmap tasks to headless coding agents in isolated worktrees, verifies with the target project's own check stack, and reports verified outcomes.",
       source_url: "https://github.com/efries/harness",
       docs: docs(),
-      dialyzer: dialyzer()
+      dialyzer: dialyzer(),
+      test_coverage: test_coverage()
     ]
   end
 
@@ -44,6 +45,30 @@ defmodule Harness.MixProject do
       # Internal modules (@moduledoc false) named in CHANGELOG/doc prose —
       # legitimate mentions, but ExDoc warns on autolinks to hidden modules.
       skip_code_autolink_to: ["Harness.Application", "Harness.Worktree.Sweeper"]
+    ]
+  end
+
+  # Coverage excludes only genuinely-untestable surfaces, so the
+  # --cover-threshold gate reflects the testable code (not metric-gaming):
+  #   * Phoenix-generated boilerplate (Endpoint/Router/Layouts/Tokens/Repo/
+  #     QueueBootstrap) — no branch logic to assert.
+  #   * Chat.Claude — `claude -p` Port orchestration (spawns a real external
+  #     binary; integration territory). Its pure logic lives in
+  #     Chat.Claude.StreamParser, which IS covered.
+  # The dashboard LiveViews are NOT excluded — they're exercised via
+  # Phoenix.LiveViewTest (test/harness/dashboard/{live,chat_live}_test.exs).
+  defp test_coverage do
+    [
+      ignore_modules: [
+        Harness.Dashboard.Endpoint,
+        Harness.Dashboard.Router,
+        Harness.Dashboard.Router.Helpers,
+        Harness.Dashboard.Layouts,
+        Harness.Dashboard.Tokens,
+        Harness.Repo,
+        Harness.Oban.QueueBootstrap,
+        Harness.Chat.Claude
+      ]
     ]
   end
 
@@ -107,6 +132,8 @@ defmodule Harness.MixProject do
       {:bandit, "~> 1.11", optional: true},
 
       # Dev/test tooling — standard harness stack per global conventions
+      # lazy_html: LiveView 1.x's DOM parser for Phoenix.LiveViewTest assertions.
+      {:lazy_html, ">= 0.1.0", only: :test},
       {:ex_unit_json, "~> 0.4.3", only: [:dev, :test], runtime: false},
       {:dialyzer_json, "~> 0.2", only: [:dev, :test], runtime: false},
       {:styler, "~> 1.11", only: [:dev, :test], runtime: false},

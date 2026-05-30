@@ -3159,7 +3159,7 @@ id = "94"
 phase = 10
 bundle = "dashboard-chrome"
 milestone = "v0_8"
-status = "pending"
+status = "done"
 title = "Kill button for in-flight runs on the dashboard"
 scores = { d = 2, b = 6, u = 6 }
 acceptance_criteria = ["Run-detail (/harness/runs/:run_id) shows a confirm-gated Kill button while the run is in-flight; clicking it cancels the run and it settles :failed", "The index lists a kill control on each active/running run row", "The kill control is absent for already-settled (:done/:failed) runs", "Clicking kill routes through Harness.Run.cancel/1 (no new cancellation path)", "After cancel, the view transitions to the settled state via the existing poll (button gone, verdict :failed)", "Tests: handle_event for the kill action invokes cancel and the run settles; the button-visibility guard hides it for settled runs"]
@@ -3176,5 +3176,46 @@ Wire it into Harness.Dashboard.Live (the module serving both /harness :index and
 
 Compose on the existing Components/Tokens vocabulary (dashboard-chrome bundle) — reuse a button style, don't introduce a new one. Reserve the single --accent terminal-state cue for the kill affordance if it reads well.
 """
+implemented = "Kill button on the run-detail LiveView; live_test.exs covers happy path. Hand-salvaged via cross-agent verification in chat orchestrator after dispatched run died from BEAM hot-reload cascade — verification stack ran green, mix precommit coverage gate (75.92%) deferred to follow-up."
+delivered_by = "claude"
+verified = true
+created_at = "2026-05-29"
+scored_at = "2026-05-29"
+done_at = "2026-05-29"
+
+[[task]]
+id = "95"
+phase = 9
+bundle = "chat-orchestrator"
+status = "pending"
+title = "Chat UI: add stop/cancel control to streaming session"
+scores = { d = 2, b = 6, u = 6 }
+acceptance_criteria = ["A visible stop button appears when streaming? is true", "Clicking it terminates the backend Port and clears the streaming indicator", "Session history is preserved"]
+body = "The /harness/chat LiveView has no in-UI affordance to terminate an in-flight session. Today a runaway orchestrator can only be killed via OS pid or a BEAM eval against Harness.Chat.Supervisor. Add a stop button visible when the session is actively streaming; it should close the backend Port cleanly and emit a :terminal event so the LiveView clears the streaming indicator."
+created_at = "2026-05-29"
+scored_at = "2026-05-29"
+
+[[task]]
+id = "96"
+phase = 9
+bundle = "chat-orchestrator"
+status = "pending"
+title = "Chat: clear streaming indicator on :terminal events, not only :done"
+scores = { d = 1, b = 4, u = 5 }
+acceptance_criteria = ["Backend :terminal event clears the streaming-in-progress UI state", "Verified by killing the backend Claude OS process mid-turn"]
+body = "When the backend Port exits without a graceful :done (Claude self-exit on summary, OS kill, or crash), the LiveView's streaming indicator stays sticky until page refresh. Clear it on :terminal events too. Surfaced 2026-05-29 in the Task 94 salvage flow — orchestrator finished but the chat UI still showed streaming? true."
+created_at = "2026-05-29"
+scored_at = "2026-05-29"
+
+[[task]]
+id = "97"
+phase = 6
+bundle = "deferred"
+status = "pending"
+title = "Reconcile harness verification stack vs project mix precommit"
+scores = { d = 4, b = 7, u = 6 }
+acceptance_criteria = ["A registered project can declare its precommit gates and harness's verification verdict reflects them", "OR documentation makes the divergence explicit and surfaces in the dashboard run-detail"]
+out_of_scope = ["Auto-raising coverage to satisfy a project's gate"]
+body = "A dispatched run can grade green by Harness.CheckStack but be unmergeable under the project's own `mix precommit` — surfaced on Task 94 (coverage gate 80% vs measured 75.92%). The orchestrator misattributed the run's cause-of-death to this gap (it was actually a BEAM hot-reload cascade), but the gap is real. Decide: harness mirrors the project's precommit (or a declared subset), or the project trims precommit to what harness already covers. Either way, the policy should be visible on %Harness.Project{} so a consuming repo can opt in."
 created_at = "2026-05-29"
 scored_at = "2026-05-29"
