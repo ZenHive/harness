@@ -3717,7 +3717,7 @@
       "phase": 11,
       "bundle": "autolanding",
       "milestone": "v0_9",
-      "status": "pending",
+      "status": "done",
       "title": "Autonomous merge-train — serialized lander (happy path)",
       "scores": {
         "d": 5,
@@ -3739,9 +3739,14 @@
         "Post-merge-red auto-repair and conflict re-dispatch (resilience task)",
         "Opening PRs or any human review gate"
       ],
+      "shipped_in": "d6ce8a7",
       "body": "Close the loop: a green + gate-approved run currently leaves a harness/<id> branch that a human hand-integrates onto development (docs/dogfooding-workflow.md 'Integration order'). Replace that manual dance with a serialized autonomous lander. Single merge to the target at a time (N parallel ff-merges race). Per approved branch: git merge --ff-only onto the project's land target; if the target HEAD moved, rebase harness/<id> and RE-RUN the full verification stack on the integrated result; green => keep the merge and write the outcome back to rmap (status done --verified --delivered-by <agent> --implemented ... and shipped_in <sha>); red-post-merge or true-conflict => retain the branch + hand off to the resilience task. Direct merge to target, no PR, no human review — the verification stack is the grader (project philosophy). Build on Harness.Git.run/2 + Harness.Worktree; serialize via a GenServer or single-concurrency Oban queue. Add land-policy + target-branch fields to %Harness.Project{}. The --verified rmap flag is justified by the upstream semantic gate (a cross-family grader agreed) — exact semantic match for that field.\n",
       "created_at": "2026-05-30",
+      "done_at": "2026-05-30",
       "scored_at": "2026-05-30",
+      "implemented": "Serialized merge-train lander: ff-only/rebase land onto target_branch with post-rebase re-verification; mark_landed write-back; single-concurrency Oban landing queue. 13 tests green.",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     },
     {

@@ -3326,17 +3326,22 @@ id = "100"
 phase = 11
 bundle = "autolanding"
 milestone = "v0_9"
-status = "pending"
+status = "done"
 title = "Autonomous merge-train — serialized lander (happy path)"
 scores = { d = 5, b = 8, u = 9 }
+depends_on = ["99"]
 acceptance_criteria = ["an approved branch ff- or rebase-merges onto the project land target", "the integrated state is re-verified before the merge is kept", "on green, the rmap task advances with verified=true and shipped_in=<sha>, no manual commands", "two concurrent green runs land one at a time without racing the target branch"]
 out_of_scope = ["Post-merge-red auto-repair and conflict re-dispatch (resilience task)", "Opening PRs or any human review gate"]
 body = """
 Close the loop: a green + gate-approved run currently leaves a harness/<id> branch that a human hand-integrates onto development (docs/dogfooding-workflow.md 'Integration order'). Replace that manual dance with a serialized autonomous lander. Single merge to the target at a time (N parallel ff-merges race). Per approved branch: git merge --ff-only onto the project's land target; if the target HEAD moved, rebase harness/<id> and RE-RUN the full verification stack on the integrated result; green => keep the merge and write the outcome back to rmap (status done --verified --delivered-by <agent> --implemented ... and shipped_in <sha>); red-post-merge or true-conflict => retain the branch + hand off to the resilience task. Direct merge to target, no PR, no human review — the verification stack is the grader (project philosophy). Build on Harness.Git.run/2 + Harness.Worktree; serialize via a GenServer or single-concurrency Oban queue. Add land-policy + target-branch fields to %Harness.Project{}. The --verified rmap flag is justified by the upstream semantic gate (a cross-family grader agreed) — exact semantic match for that field.
 """
+implemented = "Serialized merge-train lander: ff-only/rebase land onto target_branch with post-rebase re-verification; mark_landed write-back; single-concurrency Oban landing queue. 13 tests green."
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-30"
 scored_at = "2026-05-30"
-depends_on = ["99"]
+done_at = "2026-05-30"
+shipped_in = "d6ce8a7"
 
 [[task]]
 id = "101"
