@@ -25,6 +25,11 @@ headless agent in an isolated worktree, then graded by the project's own check s
    This single call ingests the task, applies the secret scrub, and starts the supervised run
    with no subscriber. It returns `{run_id: ...}`. The run keeps going after the call returns.
 
+   **Want the verdict in-band instead of polling?** Call `dispatch__await` with the same
+   arguments plus an optional `timeout_ms` (default 30 min). It blocks until the run settles and
+   returns the verdict summary directly — skip steps 4–5. On timeout it returns a structured
+   `:timed_out` summary carrying the `run_id` (the run is not cancelled; fall back to step 4).
+
 4. **Observe to settle.** Poll `run__status` with the `run_id` while it is alive; once it settles
    (and the 5s linger passes) read the durable record via `result_store__list_run_records`
    (`run_id:`). For a live transcript, point the operator at `http://localhost:4018/harness/runs/<run_id>`.

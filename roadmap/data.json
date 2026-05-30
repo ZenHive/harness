@@ -3778,7 +3778,7 @@
       "phase": 11,
       "bundle": "autolanding",
       "milestone": "v0_9",
-      "status": "pending",
+      "status": "done",
       "title": "dispatch__await — blocking dispatch tool for chat/MCP",
       "scores": {
         "d": 3,
@@ -3799,7 +3799,10 @@
       ],
       "body": "dispatch__task returns a run_id the orchestrator must then poll. Add a blocking/awaiting variant (dispatch__await) that subscribes to the run and returns the settled verdict as the tool result, so a tool-equipped LLM driving harness over MCP gets the answer in one call instead of a poll loop. Tightens the orchestration loop for the primary AI consumer (future instances driving harness). Build on Harness.Dispatch + the existing subscriber path; surface via Harness.Chat.Tools + Harness.Manifest so it appears on both the in-process chat dispatcher and the external MCP surface. Must bound the wait (timeout) so a hung run returns a structured timeout result, not a wedged tool call.\n",
       "created_at": "2026-05-30",
+      "done_at": "2026-05-30",
       "scored_at": "2026-05-30",
+      "implemented": "Added Harness.Dispatch.await/5 (tool dispatch__await): blocking dispatch that subscribes the caller to the run and returns a compact verdict summary, bounded by timeout_ms with a structured :timed_out fallback (run not cancelled). Shared start/5 path with task/4; summarize/timeout logic split into testable await_result/2. Surfaces on Chat.Tools + MCP via Manifest. dispatch__task unchanged.",
+      "delivered_by": "claude",
       "cross_repo": []
     }
   ]
