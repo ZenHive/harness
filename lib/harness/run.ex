@@ -75,6 +75,7 @@ defmodule Harness.Run do
   alias Harness.AgentAdapter.Run, as: AgentRun
   alias Harness.AgentRegistry
   alias Harness.AuditReview
+  alias Harness.Dashboard.RunFeed
   alias Harness.Dashboard.Transcript
   alias Harness.Dashboard.Transcript.Parser
   alias Harness.Git
@@ -388,6 +389,7 @@ defmodule Harness.Run do
   @doc false
   @spec dispatched(event(), term(), data()) :: handler_result()
   def dispatched(:enter, _old_state, data) do
+    RunFeed.broadcast_update(status_snapshot(:dispatched, data))
     task = start_task(fn -> Worktree.create(data.project, worktree_opts(data)) end)
     {:keep_state, %{data | task: task}}
   end
@@ -430,6 +432,7 @@ defmodule Harness.Run do
   # stale handle from a prior attempt never misleads the cancel-defer logic or a
   # `status/1` snapshot.
   def running(:enter, _old_state, data) do
+    RunFeed.broadcast_update(status_snapshot(:running, data))
     parent = self()
     invocation = build_invocation(data)
     checkout_snapshot = checkout_snapshot_for_run(data)
@@ -496,6 +499,7 @@ defmodule Harness.Run do
   @doc false
   @spec committing(event(), term(), data()) :: handler_result()
   def committing(:enter, _old_state, data) do
+    RunFeed.broadcast_update(status_snapshot(:committing, data))
     worktree = data.worktree
     message = commit_message(data)
     task = start_task(fn -> commit_worktree(worktree, message) end)
@@ -530,6 +534,7 @@ defmodule Harness.Run do
   @doc false
   @spec verifying(event(), term(), data()) :: handler_result()
   def verifying(:enter, _old_state, data) do
+    RunFeed.broadcast_update(status_snapshot(:verifying, data))
     worktree = data.worktree
     task = start_task(fn -> Verification.run(worktree.path, verification_opts(data)) end)
     {:keep_state, %{data | task: task}}
@@ -604,6 +609,7 @@ defmodule Harness.Run do
   @doc false
   @spec consulting(event(), term(), data()) :: handler_result()
   def consulting(:enter, _old_state, data) do
+    RunFeed.broadcast_update(status_snapshot(:consulting, data))
     task = start_task(fn -> grade_consultation(data) end)
     {:keep_state, %{data | task: task}}
   end
@@ -860,10 +866,12 @@ defmodule Harness.Run do
   @spec settle(data(), Result.state()) :: data()
   defp settle(data, terminal_state) do
     result = build_result(data, terminal_state)
+    data = %{data | result: result}
     persist_run_record(data, result)
     finish_worktree(data.worktree, terminal_state)
     notify_subscriber(data.subscriber, data.run_id, result)
-    %{data | result: result}
+    RunFeed.broadcast_settled(status_snapshot(terminal_state, data))
+    data
   end
 
   @spec build_result(data(), Result.state()) :: Result.t()
@@ -900,6 +908,7 @@ defmodule Harness.Run do
       batch_id: data.batch_id,
       agent: data.item.agent,
       adapter: data.adapter,
+      project_name: data.project.name,
       duration_ms: run_duration_ms(data)
     )
     |> ResultStore.record_run(data.result_store)
@@ -951,6 +960,7 @@ defmodule Harness.Run do
     %Status{
       run_id: data.run_id,
       task_id: data.item.id,
+      project_name: data.project.name,
       state: state,
       worktree_path: data.worktree && data.worktree.path,
       agent_os_pid: data.agent_run && data.agent_run.os_pid,

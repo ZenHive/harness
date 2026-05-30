@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 10 — Dashboard Operator UX (9 of 9 done · 0 in progress)
+**Focus phase:** 10 — Dashboard Operator UX (10 of 10 done · 0 in progress)
 
-**Last shipped:** Task 105 — Surface persisted run history in the dashboard (index list + drill-down replay) on 2026-05-30
+**Last shipped:** Task 105 — Surface persisted run history in the dashboard (index list + drill-down replay), Task 107 — Event-driven dashboard run tables (RunFeed) + per-project history filtering on 2026-05-30
 
 **Up next:** Task 100 — Autonomous merge-train — serialized lander (happy path) [D:5/B:8/U:9 → Eff:1.7] 🚀
 <!-- FOCUS:END -->

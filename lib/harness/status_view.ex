@@ -49,7 +49,7 @@ defmodule Harness.StatusView do
   @doc "Collects the current fleet snapshot from registered runs and the agent registry."
   @spec snapshot() :: t()
   def snapshot do
-    runs = Enum.flat_map(RunSupervisor.list_runs(), &run_entry/1)
+    runs = live_runs()
     live_ids = MapSet.new(runs, & &1.status.run_id)
 
     %{
@@ -58,6 +58,28 @@ defmodule Harness.StatusView do
       unavailable_agents: AgentRegistry.list_unavailable(),
       cron_polling: RoadmapPoller.status()
     }
+  end
+
+  @doc """
+  The in-memory live-run entries — every registered `Harness.Run`'s status,
+  classified into a bucket. No disk I/O (unlike `snapshot/0`, which also reads
+  the persisted history). The dashboard seeds its active-run stream from this
+  and recomputes it on each lifecycle event.
+  """
+  @spec live_runs() :: [run_entry()]
+  def live_runs do
+    Enum.flat_map(RunSupervisor.list_runs(), &run_entry/1)
+  end
+
+  @doc """
+  Builds a `run_entry` (status + bucket + detail) from a `Harness.Run.Status`.
+
+  The public builder the dashboard uses to turn a `RunFeed` lifecycle broadcast
+  into a renderable row, shared with the live/history entry construction below.
+  """
+  @spec run_entry_for(Status.t()) :: run_entry()
+  def run_entry_for(%Status{} = status) do
+    %{status: status, bucket: classify(status), detail: detail(status)}
   end
 
   # Settled runs read back from the configured ResultStore, minus any run_id
@@ -83,8 +105,7 @@ defmodule Harness.StatusView do
 
   @spec history_entry(LogRecord.t()) :: run_entry()
   defp history_entry(%LogRecord{} = record) do
-    status = Status.from_log_record(record)
-    %{status: status, bucket: classify(status), detail: detail(status)}
+    record |> Status.from_log_record() |> run_entry_for()
   end
 
   @doc "Renders `snapshot/0` output for terminal display."
@@ -120,11 +141,8 @@ defmodule Harness.StatusView do
   @spec run_entry(String.t()) :: [run_entry()]
   defp run_entry(run_id) do
     case Run.status(run_id) do
-      {:ok, status} ->
-        [%{status: status, bucket: classify(status), detail: detail(status)}]
-
-      {:error, :not_found} ->
-        []
+      {:ok, status} -> [run_entry_for(status)]
+      {:error, :not_found} -> []
     end
   end
 

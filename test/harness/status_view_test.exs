@@ -135,6 +135,32 @@ defmodule Harness.StatusViewTest do
     end
   end
 
+  describe "run_entry_for/1" do
+    test "wraps a status into a classified, detailed entry" do
+      entry = StatusView.run_entry_for(%Status{run_id: "e-1", task_id: "1", state: :running})
+      assert %{status: %Status{run_id: "e-1"}, bucket: :in_flight, detail: nil} = entry
+
+      failed =
+        StatusView.run_entry_for(%Status{run_id: "e-2", task_id: "1", state: :failed, reason: :verification_red})
+
+      assert %{bucket: :red, detail: "verification_red"} = failed
+    end
+  end
+
+  describe "live_runs/0" do
+    test "collects in-memory live runs as classified entries (no history/disk)" do
+      run_id = start_run(adapter_opts: [command: :sleep], terminal_linger: 5_000)
+      assert await_running(run_id)
+
+      entries = StatusView.live_runs()
+      mine = Enum.find(entries, &(&1.status.run_id == run_id))
+
+      assert %{status: %Status{run_id: ^run_id, state: :running}, bucket: :in_flight} = mine
+
+      assert :ok = Run.cancel(run_id)
+    end
+  end
+
   defp record(run_id, opts) do
     reason = Keyword.get(opts, :reason, :passed)
 

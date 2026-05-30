@@ -3905,6 +3905,70 @@
       "implemented": "Added Status.from_log_record/1 (synthetic snapshot from a settled LogRecord); StatusView.snapshot/0 now emits a deduped, newest-first, capped :history list from ResultStore (render/1 + bucket_counts stay live-only); Dashboard.Live drill-down falls back to ResultStore for settled runs, replaying the transcript via the per-agent Parser (agent resolved from record.agent or reverse-mapped adapter), with a terminal-status tick guard and an extracted run_table/1 component shared by the Active/History tables. Display-only; no new storage. 10 new tests; full offline suite 867 green.",
       "delivered_by": "claude",
       "cross_repo": []
+    },
+    {
+      "id": "106",
+      "phase": 12,
+      "bundle": "dashboard",
+      "status": "pending",
+      "title": "ResultStore: stop re-warning on every scan for undecodable term files",
+      "scores": {
+        "d": 2,
+        "b": 3,
+        "u": 4
+      },
+      "eff": 1.75,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A directory containing one or more undecodable .term files does not emit a per-file warning on every list_run_records call",
+        "Valid records in the same directory are still returned",
+        "If quarantine chosen: undecodable files are moved aside (not deleted) and a single info/warn line names the count + destination",
+        "Test covers a mixed dir (valid + corrupt) asserting the warning behavior and that valid records survive"
+      ],
+      "out_of_scope": [
+        "Recovering data from corrupt term files (they are unrecoverable by definition)",
+        "Changing the on-disk record format"
+      ],
+      "body": "Harness.ResultStore.File logs a Logger.warning for every undecodable .term file on EVERY list_run_records scan. A force-killed gen_statem (BEAM death mid-run) leaves a partial/corrupt term file behind; thereafter each scan re-warns it. With the dashboard's old 1s tick this spammed iex once per second per client; even after the event-driven rework (history read once at mount + on project switch) a corrupt file still warns on each of those reads, and `mix harness.status` warns too. First consumer: the operator watching iex — observed 11 corrupt files (from the Task 97/99 BEAM crashes) spamming the console. Pick one: (a) auto-quarantine undecodable files into a sibling .quarantine/ dir on first encounter so they drop out of subsequent scans, or (b) downgrade the per-file log to debug and emit at most one aggregated warning per scan ('N undecodable records skipped'). Quarantine is preferred — it also stops the wasted decode attempt on every scan. Manual workaround already applied this session: moved the 11 corrupt files to ~/.harness/results/runs/.quarantine/.",
+      "created_at": "2026-05-30",
+      "scored_at": "2026-05-30",
+      "cross_repo": []
+    },
+    {
+      "id": "107",
+      "phase": 10,
+      "bundle": "run-history",
+      "status": "done",
+      "title": "Event-driven dashboard run tables (RunFeed) + per-project history filtering",
+      "scores": {
+        "d": 5,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 1.2,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Active/history run tables update from a fleet PubSub feed (Harness.Dashboard.RunFeed, topic harness:runs) instead of a per-second poll",
+        "Harness.Run gen_statem broadcasts a non-terminal update on each live state-enter and a single settled message on terminal enter",
+        "Both tables are Phoenix.LiveView streams patched per-row; persisted history is read from the store once at mount (and on project switch), not per tick",
+        "Sidebar metadata refreshes on a slow 5s meta tick with no disk I/O; topbar counts self-heal on that tick when a settled run's terminal-linger expires",
+        "Runs carry project_name (threaded onto Status + LogRecord); the project switcher (now a phx-change form) narrows both tables; pre-field records decode as no-project"
+      ],
+      "out_of_scope": [
+        "Postgres consolidation of ResultStore",
+        "Re-warning suppression for undecodable term files (tracked as Task 106)"
+      ],
+      "body": "Follow-on to Task 105. Replace the dashboard's 1s tick (which re-read and decoded the entire persisted results directory from disk every second per connected client) with an event-driven model: a fleet-wide RunFeed PubSub feed the Harness.Run gen_statem broadcasts on each lifecycle change, driving Phoenix.LiveView streams for the Active and History tables. Thread project_name onto the public Status and LogRecord structs (defensive Map.get decode for pre-field records) so the project switcher actually filters both tables — this intentionally supersedes Task 105's out_of_scope, which had deferred the LogRecord project field and history project-filtering.",
+      "created_at": "2026-05-30",
+      "done_at": "2026-05-30",
+      "scored_at": "2026-05-30",
+      "implemented": "Added Harness.Dashboard.RunFeed (fleet topic harness:runs, broadcast_update/1 + broadcast_settled/1, PubSub-whereis guarded). Harness.Run broadcasts a non-terminal update on each live state-enter (dispatched/running/committing/verifying/consulting) and a single settled message from settle/2. Dashboard.Live now drives Active/History as Phoenix.LiveView streams (distinct active-/hist- dom_id prefixes) patched per-row from the feed; persisted history read from the store once at mount + on project switch (replacing the 1s poll-and-disk-scan tick). Slow 5s :meta_tick refreshes sidebar metadata + recomputes in-memory fleet counts (self-healing when terminal-linger expires). project_name threaded onto the public Status + LogRecord structs (Map.get decode for pre-field records); project switcher is now a phx-change form; filter_runs reads status.project_name. Supersedes Task 105's out_of_scope. New RunFeed unit + run-feed integration tests; live/status_view tests updated.",
+      "delivered_by": "claude",
+      "cross_repo": []
     }
   ]
 }

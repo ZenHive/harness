@@ -41,6 +41,7 @@ defmodule Harness.Run.Status do
   @type t :: %__MODULE__{
           run_id: String.t(),
           task_id: String.t(),
+          project_name: String.t() | nil,
           state: state(),
           worktree_path: String.t() | nil,
           agent_os_pid: non_neg_integer() | nil,
@@ -54,6 +55,7 @@ defmodule Harness.Run.Status do
   defstruct [
     :run_id,
     :task_id,
+    :project_name,
     :state,
     :worktree_path,
     :agent_os_pid,
@@ -78,6 +80,9 @@ defmodule Harness.Run.Status do
     %__MODULE__{
       run_id: record.run_id,
       task_id: record.task_id,
+      # Map.get (not record.project_name) so records persisted before this field
+      # existed decode without a KeyError — they simply filter as "no project".
+      project_name: Map.get(record, :project_name),
       state: record.state,
       worktree_path: nil,
       agent_os_pid: nil,

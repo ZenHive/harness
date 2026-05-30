@@ -2,29 +2,41 @@ defmodule Harness.Dashboard.Live do
   @moduledoc """
   The harness LiveView (Task 50).
 
-  Renders three views off the same module:
+  Renders two views off the same module:
 
-    * `:index` (`/harness`) — project switcher, per-bucket run counts, and
-      grouped active-run table; one row per run with state and verdict.
+    * `:index` (`/harness`) — project switcher, per-bucket run counts, and two
+      `Phoenix.LiveView` streams: "Active runs" (in-flight / repairing runs) and
+      "Run history" (settled runs). One row per run with state and verdict.
     * `:show` (`/harness/runs/:run_id`) — drill-down on a single run with its
       live `Harness.Run.Status` fields and a streaming transcript pane fed by
       `Harness.Dashboard.Transcript` (Pass 2) broadcasts.
 
-  Live state is sourced from `Harness.StatusView.snapshot/0` for the run
-  buckets and `Harness.ProjectRegistry.list/0` for the project switcher. A 1s
-  tick keeps the snapshot fresh; per-run transcript chunks arrive over
-  `Phoenix.PubSub` and append to the LiveView's bounded transcript buffer.
+  ## Event-driven, not polled
+
+  The run tables are driven by `Harness.Dashboard.RunFeed` — a fleet-wide
+  PubSub feed the `Harness.Run` gen_statem broadcasts on each lifecycle change.
+  `{:harness_run_update, status}` patches the active-run stream in place (keyed
+  by run id); `{:harness_run_settled, status}` removes the row from the active
+  stream and prepends it to history. The persisted history is read from the
+  store **once at mount** (and re-filtered in memory on a project switch) — no
+  per-tick disk scan.
+
+  Sidebar metadata (registered projects, adapters, unavailable/quota agents) has
+  no event source, so a slow **5s `:meta_tick`** keeps it fresh. That tick does
+  no disk I/O and never touches the run streams.
 
   An operator can kill an in-flight run from either view via a confirm-gated
-  "Kill run" button (`Task 94`); the `"kill_run"` event routes straight through
-  `Harness.Run.cancel/1` (idempotent — settles the run `:failed`), and the
-  next tick transitions the row/detail to its settled state.
+  "Kill run" button (`Task 94`); the `"kill_run"` event routes through
+  `Harness.Run.cancel/1` (idempotent — settles the run `:failed`). The resulting
+  `:harness_run_settled` broadcast transitions the row/detail to its settled
+  state.
   """
 
   use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}
 
   alias Harness.AgentRegistry
   alias Harness.Dashboard.Components
+  alias Harness.Dashboard.RunFeed
   alias Harness.Dashboard.Transcript
   alias Harness.Dashboard.Transcript.Parser
   alias Harness.ProjectRegistry
@@ -35,18 +47,34 @@ defmodule Harness.Dashboard.Live do
   alias Phoenix.LiveView.Rendered
   alias Phoenix.LiveView.Socket
 
-  @tick_interval_ms 1_000
+  @meta_tick_interval_ms 5_000
+
+  # Mirror StatusView's history cap so the history stream's DOM size stays
+  # bounded over a long-lived session.
+  @history_limit 200
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    if connected?(socket), do: schedule_tick()
+    if connected?(socket) do
+      RunFeed.subscribe()
+      schedule_meta_tick()
+    end
+
+    # The single disk read: seed sidebar + history at mount. Active runs and the
+    # history/active stream contents are populated by apply_action(:index) from
+    # in-memory state (live_runs/0) + the history_all assign — no further reads.
+    snapshot = StatusView.snapshot()
 
     {:ok,
      socket
      |> assign(:projects, ProjectRegistry.list())
-     |> assign(:snapshot, StatusView.snapshot())
      |> assign(:adapters, list_adapters())
+     |> assign(:unavailable, snapshot.unavailable_agents)
      |> assign(:selected_project, nil)
+     |> assign(:counts, bucket_counts(snapshot))
+     |> assign(:history_all, snapshot.history)
+     |> assign(:active_empty?, true)
+     |> assign(:history_empty?, snapshot.history == [])
      |> assign(:transcript, "")
      |> assign(:transcript_bytes, 0)
      |> assign(:transcript_events, [])
@@ -55,7 +83,11 @@ defmodule Harness.Dashboard.Live do
      |> assign(:last_seq, 0)
      |> assign(:events_last_seq, 0)
      |> assign(:run_status, nil)
-     |> assign(:run_id, nil)}
+     |> assign(:run_id, nil)
+     |> stream_configure(:active_runs, dom_id: &"active-#{&1.status.run_id}")
+     |> stream_configure(:history, dom_id: &"hist-#{&1.status.run_id}")
+     |> stream(:active_runs, [])
+     |> stream(:history, [])}
   end
 
   @impl Phoenix.LiveView
@@ -66,12 +98,20 @@ defmodule Harness.Dashboard.Live do
   @spec apply_action(Socket.t(), atom(), map()) :: Socket.t()
   defp apply_action(socket, :index, params) do
     selected = Map.get(params, "project")
+    runs = StatusView.live_runs()
+    active = runs |> reject_terminal() |> filter_runs(selected)
+    history = filter_runs(socket.assigns.history_all, selected)
 
     socket
-    |> assign(:selected_project, selected)
     |> maybe_unsubscribe(socket.assigns[:run_id])
     |> assign(:run_id, nil)
     |> assign(:run_status, nil)
+    |> assign(:selected_project, selected)
+    |> assign(:counts, bucket_counts(%{runs: runs}))
+    |> assign(:active_empty?, active == [])
+    |> assign(:history_empty?, history == [])
+    |> stream(:active_runs, active, reset: true)
+    |> stream(:history, history, reset: true)
   end
 
   defp apply_action(socket, :show, %{"run_id" => run_id} = params) do
@@ -107,27 +147,36 @@ defmodule Harness.Dashboard.Live do
   defp raw_view_param?(_), do: false
 
   @impl Phoenix.LiveView
-  def handle_info(:tick, socket) do
-    schedule_tick()
+  def handle_info(:meta_tick, socket) do
+    schedule_meta_tick()
 
+    # Sidebar-only refresh: registered projects, adapters, and unavailable/quota
+    # agents. All in-memory — no snapshot, no store read, no run-stream touch.
     socket =
       socket
       |> assign(:projects, ProjectRegistry.list())
-      |> assign(:snapshot, StatusView.snapshot())
       |> assign(:adapters, list_adapters())
+      |> assign(:unavailable, AgentRegistry.list_unavailable())
 
-    # Only re-poll a run that can still change. A terminal status (a settled
-    # live run that has reached :done/:failed, or a historical run loaded from
-    # the store) is frozen, so skip it — avoids re-reading the store from disk
-    # every tick for an already-loaded settled run.
-    socket =
-      cond do
-        is_nil(socket.assigns[:run_id]) -> socket
-        terminal_status?(socket.assigns[:run_status]) -> socket
-        true -> refresh_run_status(socket, socket.assigns[:run_id])
-      end
+    # On the index, also recompute the in-memory fleet counts + active-empty
+    # flag. Lifecycle events drive these, but a settled run's terminal-linger
+    # expiry (~5s) deregisters it with no broadcast — without this, the topbar
+    # tallies keep counting the gone run until the next fleet event. live_runs/0
+    # is in-memory (no disk), and recompute_active only assigns — no stream patch.
+    socket = if socket.assigns.live_action == :index, do: recompute_active(socket), else: socket
 
     {:noreply, socket}
+  end
+
+  # Fleet run-lifecycle feed (RunFeed). On the index view these patch the run
+  # streams; on the show view they refresh the focused run's status. A run that
+  # belongs to a different view/run_id is ignored.
+  def handle_info({:harness_run_update, %Status{} = status}, socket) do
+    {:noreply, apply_run_update(socket, status)}
+  end
+
+  def handle_info({:harness_run_settled, %Status{} = status}, socket) do
+    {:noreply, apply_run_settled(socket, status)}
   end
 
   # Guard against cross-run bleed: a previously viewed run can still have
@@ -184,14 +233,96 @@ defmodule Harness.Dashboard.Live do
 
   def handle_info(_other, socket), do: {:noreply, socket}
 
+  # ── Run-lifecycle application ─────────────────────────────────────────────
+
+  # On the show view, a lifecycle message only matters when it's the focused
+  # run — refresh its status (live transitions + settle freeze).
+  @spec apply_run_update(Socket.t(), Status.t()) :: Socket.t()
+  defp apply_run_update(%{assigns: %{live_action: :show}} = socket, %Status{} = status) do
+    refresh_focused_run(socket, status)
+  end
+
+  defp apply_run_update(socket, %Status{} = status) do
+    entry = StatusView.run_entry_for(status)
+    socket = recompute_active(socket)
+
+    if passes_filter?(entry, socket.assigns.selected_project) do
+      stream_insert(socket, :active_runs, entry)
+    else
+      socket
+    end
+  end
+
+  @spec apply_run_settled(Socket.t(), Status.t()) :: Socket.t()
+  defp apply_run_settled(%{assigns: %{live_action: :show}} = socket, %Status{} = status) do
+    refresh_focused_run(socket, status)
+  end
+
+  defp apply_run_settled(socket, %Status{} = status) do
+    entry = StatusView.run_entry_for(status)
+    history_all = prepend_history(entry, socket.assigns.history_all)
+    selected = socket.assigns.selected_project
+
+    socket =
+      socket
+      |> stream_delete(:active_runs, entry)
+      |> assign(:history_all, history_all)
+      |> recompute_active()
+      |> assign(:history_empty?, filter_runs(history_all, selected) == [])
+
+    if passes_filter?(entry, selected) do
+      stream_insert(socket, :history, entry, at: 0, limit: @history_limit)
+    else
+      socket
+    end
+  end
+
+  @spec refresh_focused_run(Socket.t(), Status.t()) :: Socket.t()
+  defp refresh_focused_run(socket, %Status{run_id: run_id} = status) do
+    if socket.assigns.run_id == run_id do
+      assign(socket, :run_status, status)
+    else
+      socket
+    end
+  end
+
+  # Recompute the fleet counts + active-empty flag from the in-memory live runs.
+  # counts are fleet-wide (every project — matches the pre-stream behavior);
+  # active_empty? reflects the *filtered* active table the operator sees.
+  @spec recompute_active(Socket.t()) :: Socket.t()
+  defp recompute_active(socket) do
+    runs = StatusView.live_runs()
+    active = runs |> reject_terminal() |> filter_runs(socket.assigns.selected_project)
+
+    socket
+    |> assign(:counts, bucket_counts(%{runs: runs}))
+    |> assign(:active_empty?, active == [])
+  end
+
+  @spec prepend_history(StatusView.run_entry(), [StatusView.run_entry()]) :: [StatusView.run_entry()]
+  defp prepend_history(entry, history_all) do
+    deduped = Enum.reject(history_all, &(&1.status.run_id == entry.status.run_id))
+    Enum.take([entry | deduped], @history_limit)
+  end
+
+  @spec passes_filter?(StatusView.run_entry(), String.t() | nil) :: boolean()
+  defp passes_filter?(entry, selected), do: filter_runs([entry], selected) != []
+
+  # The active table shows only non-terminal runs; a settled run lives in
+  # history. Lingering settled runs (still registered for ~5s) are excluded here.
+  @spec reject_terminal([StatusView.run_entry()]) :: [StatusView.run_entry()]
+  defp reject_terminal(runs) do
+    Enum.reject(runs, fn entry -> entry.status.state in [:done, :failed] end)
+  end
+
   @spec trim_events_to_cap(list(), pos_integer()) :: list()
   defp trim_events_to_cap(events, cap) do
     count = length(events)
     if count <= cap, do: events, else: Enum.drop(events, count - cap)
   end
 
-  @spec schedule_tick() :: reference()
-  defp schedule_tick, do: Process.send_after(self(), :tick, @tick_interval_ms)
+  @spec schedule_meta_tick() :: reference()
+  defp schedule_meta_tick, do: Process.send_after(self(), :meta_tick, @meta_tick_interval_ms)
 
   @spec list_adapters() :: [%{agent: atom(), module: module(), installed: boolean()}]
   defp list_adapters do
@@ -200,17 +331,6 @@ defmodule Harness.Dashboard.Live do
       %{agent: agent, module: module, installed: AgentRegistry.installed?(module)}
     end)
     |> Enum.sort_by(& &1.agent)
-  end
-
-  @spec refresh_run_status(Socket.t(), String.t()) :: Socket.t()
-  defp refresh_run_status(socket, run_id) do
-    status =
-      case Harness.Run.status(run_id) do
-        {:ok, %Status{} = status} -> status
-        {:error, :not_found} -> nil
-      end
-
-    assign(socket, :run_status, status)
   end
 
   # Settled run: no live gen_statem to subscribe to. Rebuild the status snapshot
@@ -348,14 +468,6 @@ defmodule Harness.Dashboard.Live do
 
   @spec render_index(map()) :: Rendered.t()
   defp render_index(assigns) do
-    counts = bucket_counts(assigns.snapshot)
-    filtered_runs = filter_runs(assigns.snapshot.runs, assigns.selected_project)
-    history = Map.get(assigns.snapshot, :history, [])
-    filtered_history = filter_runs(history, assigns.selected_project)
-
-    assigns =
-      assign(assigns, counts: counts, filtered_runs: filtered_runs, filtered_history: filtered_history)
-
     ~H"""
     <div class="topbar">
       <strong>Project:</strong>
@@ -368,12 +480,12 @@ defmodule Harness.Dashboard.Live do
     </div>
 
     <h2>Active runs</h2>
-    <p :if={@filtered_runs == []}>No runs in flight or lingering.</p>
-    <.run_table :if={@filtered_runs != []} rows={@filtered_runs} />
+    <p :if={@active_empty?}>No runs in flight or lingering.</p>
+    <.run_table id="active-runs" rows={@streams.active_runs} />
 
     <h2>Run history</h2>
-    <p :if={@filtered_history == []}>No persisted runs.</p>
-    <.run_table :if={@filtered_history != []} rows={@filtered_history} />
+    <p :if={@history_empty?}>No persisted runs.</p>
+    <.run_table id="run-history" rows={@streams.history} />
 
     <h3>Adapters</h3>
     <table>
@@ -393,10 +505,10 @@ defmodule Harness.Dashboard.Live do
       </tbody>
     </table>
 
-    <div :if={@snapshot.unavailable_agents != []}>
+    <div :if={@unavailable != []}>
       <h3>Unavailable agents</h3>
       <ul>
-        <li :for={{adapter, reason} <- @snapshot.unavailable_agents}>
+        <li :for={{adapter, reason} <- @unavailable}>
           <code>{inspect(adapter)}</code> — {inspect(reason)}
         </li>
       </ul>
@@ -457,18 +569,23 @@ defmodule Harness.Dashboard.Live do
   @spec project_switcher(map()) :: Rendered.t()
   defp project_switcher(assigns) do
     ~H"""
-    <select phx-change="select_project">
-      <option value="">All projects</option>
-      <option :for={project <- @projects} value={project.name} selected={@selected == project.name}>
-        {project.name}
-      </option>
-    </select>
+    <form phx-change="select_project">
+      <select name="project">
+        <option value="">All projects</option>
+        <option :for={project <- @projects} value={project.name} selected={@selected == project.name}>
+          {project.name}
+        </option>
+      </select>
+    </form>
     """
   end
 
-  attr(:rows, :list, required: true)
+  attr(:id, :string, required: true)
+  attr(:rows, :any, required: true)
 
-  # Shared by the "Active runs" and "Run history" tables. Settled rows render no
+  # Shared by the "Active runs" and "Run history" tables. `rows` is a
+  # `Phoenix.LiveView` stream; the `<tbody>` carries `phx-update="stream"` and a
+  # stable id so inserts/deletes patch individual rows. Settled rows render no
   # kill action — `killable?/1` returns false for terminal states — so the same
   # markup serves both live and historical entries.
   @spec run_table(map()) :: Rendered.t()
@@ -486,8 +603,8 @@ defmodule Harness.Dashboard.Live do
           <th>Action</th>
         </tr>
       </thead>
-      <tbody>
-        <tr :for={entry <- @rows}>
+      <tbody id={@id} phx-update="stream">
+        <tr :for={{dom_id, entry} <- @rows} id={dom_id}>
           <td>{entry.status.task_id}</td>
           <td><.run_link run_id={entry.status.run_id} /></td>
           <td>
@@ -535,7 +652,7 @@ defmodule Harness.Dashboard.Live do
   end
 
   @impl Phoenix.LiveView
-  def handle_event("select_project", %{"value" => project_name}, socket) do
+  def handle_event("select_project", %{"project" => project_name}, socket) do
     target =
       case project_name do
         "" -> "/harness"
@@ -546,18 +663,9 @@ defmodule Harness.Dashboard.Live do
   end
 
   def handle_event("kill_run", %{"run_id" => run_id}, socket) do
+    # Idempotent — settles the run :failed. The resulting :harness_run_settled
+    # broadcast transitions the index streams and (if focused) the detail view.
     :ok = Harness.Run.cancel(run_id)
-
-    # The 1s tick already refreshes index rows; refresh the detail view here so
-    # its Kill button vanishes immediately when the cancelled run is the one
-    # currently being viewed.
-    socket =
-      if socket.assigns[:run_id] == run_id do
-        refresh_run_status(socket, run_id)
-      else
-        socket
-      end
-
     {:noreply, socket}
   end
 
@@ -576,10 +684,7 @@ defmodule Harness.Dashboard.Live do
   def filter_runs(runs, nil), do: runs
 
   def filter_runs(runs, project_name) do
-    Enum.filter(runs, fn entry ->
-      String.starts_with?(entry.status.run_id, "#{project_name}/") or
-        Map.get(entry, :project_name) == project_name
-    end)
+    Enum.filter(runs, &(&1.status.project_name == project_name))
   end
 
   @doc false
@@ -593,10 +698,4 @@ defmodule Harness.Dashboard.Live do
   def killable?(%Status{state: state}) when state in [:done, :failed], do: false
   def killable?(%Status{}), do: true
   def killable?(nil), do: false
-
-  # A settled run is frozen — no live process, no further state changes — so the
-  # tick loop stops re-polling it. nil (no status yet) is not terminal.
-  @spec terminal_status?(Status.t() | nil) :: boolean()
-  defp terminal_status?(%Status{state: state}) when state in [:done, :failed], do: true
-  defp terminal_status?(_status), do: false
 end

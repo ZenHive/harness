@@ -20,6 +20,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no new storage layer. `mix harness.status` terminal output and the topbar
   tallies stay live-only.
 
+  The dashboard run tables are now **event-driven**: a new fleet PubSub feed
+  (`Harness.Dashboard.RunFeed`, topic `harness:runs`) carries
+  `{:harness_run_update, status}` on each non-terminal run transition and
+  `{:harness_run_settled, status}` on settle, and both tables are
+  `Phoenix.LiveView` streams patched per-row from those messages. This replaces
+  the previous 1-second tick that re-read and decoded the entire persisted
+  results directory from disk on every tick per connected client — history now
+  loads once at mount and patches on settle. Sidebar metadata (projects,
+  adapters, quota) refreshes on a slow 5-second metadata-only tick (no disk).
+
+  The dashboard **project filter** now works: runs carry a `project_name`
+  (threaded onto `Harness.Run.Status` and `%LogRecord{}` from the run's
+  `%Project{}`), and the project switcher is a `phx-change` form (a bare
+  `<select phx-change>` outside a form silently dropped the event), so selecting
+  a project narrows both the active and history tables to that project and "All
+  projects" restores the full view. Records persisted before `project_name`
+  existed decode as "no project" and appear only under "All projects".
+
 - **Mergeable-bar verification preset — `:elixir_precommit` (Task 97).** A green
   `:elixir` preset verdict could still be unmergeable under the project's own
   `mix precommit` (the divergence surfaced on Task 94: harness graded green

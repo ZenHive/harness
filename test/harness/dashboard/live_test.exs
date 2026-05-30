@@ -24,13 +24,13 @@ defmodule Harness.Dashboard.LiveTest do
     status = %Status{
       run_id: run_id,
       task_id: Keyword.get(opts, :task_id, "1"),
+      project_name: project_name,
       state: Keyword.get(opts, :state, :running),
       repair_attempts: Keyword.get(opts, :repair_attempts, 0),
       verdict_status: Keyword.get(opts, :verdict_status, nil)
     }
 
-    base = %{status: status, bucket: bucket, detail: Keyword.get(opts, :detail, nil)}
-    if project_name, do: Map.put(base, :project_name, project_name), else: base
+    %{status: status, bucket: bucket, detail: Keyword.get(opts, :detail, nil)}
   end
 
   describe "bucket_counts/1" do
@@ -56,22 +56,11 @@ defmodule Harness.Dashboard.LiveTest do
 
   describe "filter_runs/2 (project filtering)" do
     test "no filter returns the runs unchanged" do
-      runs = [run_entry("alpha/r1"), run_entry("beta/r2")]
+      runs = [run_entry("r-1", "alpha"), run_entry("r-2", "beta")]
       assert Live.filter_runs(runs, nil) == runs
     end
 
-    test "filters by the run_id prefix convention (`<project>/<run>`)" do
-      runs = [
-        run_entry("alpha/r1"),
-        run_entry("alpha/r2"),
-        run_entry("beta/r1")
-      ]
-
-      filtered = Live.filter_runs(runs, "alpha")
-      assert Enum.map(filtered, & &1.status.run_id) == ["alpha/r1", "alpha/r2"]
-    end
-
-    test "filters by the optional :project_name entry field" do
+    test "filters by the status's project_name" do
       runs = [
         run_entry("r-1", "alpha"),
         run_entry("r-2", "alpha"),
@@ -80,6 +69,11 @@ defmodule Harness.Dashboard.LiveTest do
 
       filtered = Live.filter_runs(runs, "alpha")
       assert Enum.map(filtered, & &1.status.run_id) == ["r-1", "r-2"]
+    end
+
+    test "a project with no matching runs filters to empty" do
+      runs = [run_entry("r-1", "alpha"), run_entry("r-2", "beta")]
+      assert Live.filter_runs(runs, "gamma") == []
     end
   end
 
@@ -141,6 +135,26 @@ defmodule Harness.Dashboard.LiveTest do
     end
   end
 
+  describe "handle_event(\"select_project\", ...)" do
+    test "a project selection patches to the filtered URL" do
+      socket = %Socket{assigns: %{__changed__: %{}}}
+
+      {:noreply, socket} = Live.handle_event("select_project", %{"project" => "alpha"}, socket)
+
+      assert {:live, :patch, %{to: to}} = socket.redirected
+      assert to == "/harness?project=alpha"
+    end
+
+    test "the empty option patches back to the unfiltered URL" do
+      socket = %Socket{assigns: %{__changed__: %{}}}
+
+      {:noreply, socket} = Live.handle_event("select_project", %{"project" => ""}, socket)
+
+      assert {:live, :patch, %{to: to}} = socket.redirected
+      assert to == "/harness"
+    end
+  end
+
   describe "show drill-down (settled-run fallback to ResultStore)" do
     test "rebuilds status and replays the transcript from the persisted record" do
       output = ~s({"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}\n)
@@ -183,24 +197,46 @@ defmodule Harness.Dashboard.LiveTest do
     end
   end
 
-  describe "handle_info(:tick, ...) terminal guard" do
-    test "does not re-poll a run already holding a terminal status" do
-      status = %Status{run_id: "term-x", task_id: "1", state: :done, verdict_status: :pass}
+  describe "run-lifecycle feed (show view)" do
+    test "an update for the focused run refreshes its status" do
+      next = %Status{run_id: "focus-1", task_id: "1", state: :verifying}
+      socket = show_lifecycle_socket("focus-1", %Status{run_id: "focus-1", task_id: "1", state: :running})
 
-      {:noreply, socket} = Live.handle_info(:tick, tick_socket("term-x", status))
+      {:noreply, socket} = Live.handle_info({:harness_run_update, next}, socket)
 
-      # Without the guard, refresh would find no live run and blank the status.
-      assert socket.assigns.run_status == status
+      assert socket.assigns.run_status == next
     end
 
-    test "still refreshes a non-terminal run (which clears once the process is gone)" do
-      {:noreply, socket} =
-        Live.handle_info(
-          :tick,
-          tick_socket("gone-running", %Status{run_id: "gone-running", task_id: "1", state: :running})
-        )
+    test "a settled message for the focused run freezes its terminal status" do
+      settled = %Status{run_id: "focus-2", task_id: "1", state: :failed, reason: :cancelled}
+      socket = show_lifecycle_socket("focus-2", %Status{run_id: "focus-2", task_id: "1", state: :running})
 
-      assert socket.assigns.run_status == nil
+      {:noreply, socket} = Live.handle_info({:harness_run_settled, settled}, socket)
+
+      assert socket.assigns.run_status == settled
+    end
+
+    test "a lifecycle message for a different run is ignored" do
+      current = %Status{run_id: "focus-3", task_id: "1", state: :running}
+      socket = show_lifecycle_socket("focus-3", current)
+
+      other = %Status{run_id: "other", task_id: "9", state: :running}
+      {:noreply, socket} = Live.handle_info({:harness_run_update, other}, socket)
+
+      assert socket.assigns.run_status == current
+    end
+  end
+
+  describe "handle_info(:meta_tick, ...)" do
+    test "refreshes sidebar metadata and recomputes the in-memory fleet counts" do
+      {:noreply, socket} = Live.handle_info(:meta_tick, meta_tick_socket())
+
+      assert is_list(socket.assigns.projects)
+      assert is_list(socket.assigns.adapters)
+      assert is_list(socket.assigns.unavailable)
+      # Counts self-heal on the slow tick even with no lifecycle event in flight.
+      assert is_map(socket.assigns.counts)
+      assert is_boolean(socket.assigns.active_empty?)
     end
   end
 
@@ -226,15 +262,21 @@ defmodule Harness.Dashboard.LiveTest do
     }
   end
 
-  defp tick_socket(run_id, run_status) do
+  defp show_lifecycle_socket(run_id, run_status) do
+    %Socket{
+      assigns: %{__changed__: %{}, live_action: :show, run_id: run_id, run_status: run_status}
+    }
+  end
+
+  defp meta_tick_socket do
     %Socket{
       assigns: %{
         __changed__: %{},
-        run_id: run_id,
-        run_status: run_status,
+        live_action: :index,
+        selected_project: nil,
         projects: [],
-        snapshot: %{runs: [], history: [], unavailable_agents: []},
-        adapters: []
+        adapters: [],
+        unavailable: []
       }
     }
   end

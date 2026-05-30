@@ -10,8 +10,9 @@
 # Where third-party dependencies like ExDoc output generated docs.
 /doc/
 
-# Offline HexDocs cache (mix hex.docs fetch / hexdocs_mcp).
-/.hex-docs/
+# Offline HexDocs cache (mix hex.docs fetch / hexdocs_mcp). Unanchored so a
+# stray cache fetched into a nested dir (e.g. priv/templates/) is ignored too.
+.hex-docs/
 
 # If the VM crashes, it generates a dump, let's ignore it too.
 erl_crash.dump

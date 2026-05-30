@@ -40,14 +40,14 @@ defmodule Harness.Dashboard.LiveMountTest do
       {:ok, view, _html} = live(conn, "/harness")
 
       view
-      |> element("select[phx-change=select_project]")
-      |> render_change(%{"value" => "livemount-demo"})
+      |> element("form[phx-change=select_project]")
+      |> render_change(%{"project" => "livemount-demo"})
 
       assert_patch(view, "/harness?project=livemount-demo")
 
       view
-      |> element("select[phx-change=select_project]")
-      |> render_change(%{"value" => ""})
+      |> element("form[phx-change=select_project]")
+      |> render_change(%{"project" => ""})
 
       assert_patch(view, "/harness")
     end
@@ -147,8 +147,8 @@ defmodule Harness.Dashboard.LiveMountTest do
       assert render(view) =~ "Run synthetic-run"
     end
 
-    test ":tick refreshes the snapshot without crashing on a not-found run", %{view: view} do
-      send(view.pid, :tick)
+    test ":meta_tick refreshes sidebar metadata without crashing on a not-found run", %{view: view} do
+      send(view.pid, :meta_tick)
       assert render(view) =~ "Transcript"
     end
   end
