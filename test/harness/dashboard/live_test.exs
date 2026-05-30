@@ -7,12 +7,15 @@ defmodule Harness.Dashboard.LiveTest do
 
   use ExUnit.Case, async: true
 
+  alias Harness.AgentRegistry
   alias Harness.Dashboard.Live
   alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
+  alias Harness.ResultStore
   alias Harness.Roadmap.Item
   alias Harness.Run
+  alias Harness.Run.LogRecord
   alias Harness.Run.Result
   alias Harness.Run.Status
   alias Phoenix.LiveView.Socket
@@ -138,8 +141,123 @@ defmodule Harness.Dashboard.LiveTest do
     end
   end
 
+  describe "show drill-down (settled-run fallback to ResultStore)" do
+    test "rebuilds status and replays the transcript from the persisted record" do
+      output = ~s({"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}\n)
+
+      :ok =
+        ResultStore.record_run(
+          log_record("drill-claude",
+            state: :failed,
+            reason: :verification_red,
+            verdict: :fail,
+            agent: :claude,
+            agent_output: output
+          )
+        )
+
+      {:noreply, socket} = Live.handle_params(%{"run_id" => "drill-claude"}, "/harness/runs/drill-claude", show_socket())
+
+      assert %Status{state: :failed, verdict_status: :fail} = socket.assigns.run_status
+      assert socket.assigns.transcript == output
+      assert socket.assigns.agent_kind == :claude
+      refute socket.assigns.transcript_events == []
+    end
+
+    test "resolves the parser kind by reverse-mapping the adapter when agent is nil" do
+      [{agent, module} | _] = Map.to_list(AgentRegistry.agents())
+
+      :ok = ResultStore.record_run(log_record("drill-byadapter", agent: nil, adapter: module, agent_output: "x\n"))
+
+      {:noreply, socket} =
+        Live.handle_params(%{"run_id" => "drill-byadapter"}, "/harness/runs/drill-byadapter", show_socket())
+
+      assert socket.assigns.agent_kind == agent
+    end
+
+    test "leaves run_status nil for a run with no live process and no record" do
+      {:noreply, socket} =
+        Live.handle_params(%{"run_id" => "no-such-run-xyz"}, "/harness/runs/no-such-run-xyz", show_socket())
+
+      assert socket.assigns.run_status == nil
+    end
+  end
+
+  describe "handle_info(:tick, ...) terminal guard" do
+    test "does not re-poll a run already holding a terminal status" do
+      status = %Status{run_id: "term-x", task_id: "1", state: :done, verdict_status: :pass}
+
+      {:noreply, socket} = Live.handle_info(:tick, tick_socket("term-x", status))
+
+      # Without the guard, refresh would find no live run and blank the status.
+      assert socket.assigns.run_status == status
+    end
+
+    test "still refreshes a non-terminal run (which clears once the process is gone)" do
+      {:noreply, socket} =
+        Live.handle_info(
+          :tick,
+          tick_socket("gone-running", %Status{run_id: "gone-running", task_id: "1", state: :running})
+        )
+
+      assert socket.assigns.run_status == nil
+    end
+  end
+
   defp socket_with_run(run_id) do
     %Socket{assigns: %{__changed__: %{}, run_id: run_id, run_status: nil}}
+  end
+
+  defp show_socket do
+    %Socket{
+      assigns: %{
+        __changed__: %{},
+        live_action: :show,
+        run_id: nil,
+        run_status: nil,
+        transcript: "",
+        transcript_bytes: 0,
+        transcript_events: [],
+        agent_kind: nil,
+        raw_view: false,
+        last_seq: 0,
+        events_last_seq: 0
+      }
+    }
+  end
+
+  defp tick_socket(run_id, run_status) do
+    %Socket{
+      assigns: %{
+        __changed__: %{},
+        run_id: run_id,
+        run_status: run_status,
+        projects: [],
+        snapshot: %{runs: [], history: [], unavailable_agents: []},
+        adapters: []
+      }
+    }
+  end
+
+  defp log_record(run_id, opts) do
+    reason = Keyword.get(opts, :reason, :passed)
+
+    %LogRecord{
+      batch_id: "batch-#{run_id}",
+      run_id: run_id,
+      task_id: Keyword.get(opts, :task_id, "1"),
+      agent: Keyword.get(opts, :agent),
+      adapter: Keyword.get(opts, :adapter, FakeAdapter),
+      state: Keyword.get(opts, :state, :done),
+      reason: reason,
+      verdict: Keyword.get(opts, :verdict, :pass),
+      duration_ms: 1_000,
+      repair_attempts: 0,
+      first_attempt_failed_check_count: 0,
+      failure_cause: %{reason: reason, failed_checks: []},
+      agent_outcome_kind: Keyword.get(opts, :agent_outcome_kind),
+      agent_output: Keyword.get(opts, :agent_output, "")
+    }
   end
 
   defp item do

@@ -149,6 +149,11 @@ description = "mpp.dev-inspired dashboard repaint: shared Components module (nav
 order = 1
 phase = 10
 
+[bundles.run-history]
+description = "Surface persisted run history in the dashboard: the index list and drill-down read only live state, so settled runs vanish from view on restart even though they persist as LogRecords under ~/.harness/results. Merge ResultStore history into the index + replay settled-run transcripts in drill-down. Display-only — no new storage."
+order = 2
+phase = 10
+
 [bundles.autolanding]
 description = "Close the autonomous loop: a green run lands itself on the target branch with the human as pure witness. Acceptance-criteria visibility onto %Item{}, a cross-family adversarial semantic gate, a serialized merge-train (ff/rebase + integrated re-verify + rmap write-back), post-merge auto-repair and conflict re-dispatch with a blocked sink, a read-only witness notification channel, and a blocking dispatch__await MCP tool. Also carries per-run token capture (Task 20, milestone-unpinned) — a routing-efficiency signal that's topically adjacent but not a landing-loop gate."
 order = 1
@@ -3409,3 +3414,23 @@ Scope to define when picked up: which slice of dogfooding-workflow.md is generic
 """
 created_at = "2026-05-30"
 scored_at = "2026-05-30"
+
+[[task]]
+id = "105"
+phase = 10
+bundle = "run-history"
+status = "done"
+title = "Surface persisted run history in the dashboard (index list + drill-down replay)"
+scores = { d = 3, b = 6, u = 7 }
+acceptance_criteria = ["Run history rows appear in the dashboard index after a BEAM restart with no live runs", "Drill-down on a settled run shows its fields and replays its transcript (parsed + raw)", "A live run_id is not duplicated into history (live entry wins)", "mix harness.status terminal output and topbar counts stay live-only", "Tests green: Status.from_log_record/1, StatusView history merge, drill-down fallback + tick guard"]
+out_of_scope = ["Postgres consolidation of ResultStore / Chat.Store", "Per-project filtering of history (LogRecord has no project field)", "Adding a timestamp/project field to LogRecord (ordering stays run_id-desc)"]
+body = """
+The dashboard's run list and drill-down read only live state (`StatusView.snapshot/0` -> `RunSupervisor.list_runs/0`, and `Harness.Run.status/1`), so after a BEAM restart the run list renders empty and `/harness/runs/:run_id` shows "Run not found" -- even though every settled run persists durably as a `%Harness.Run.LogRecord{}` under `~/.harness/results`. This is a display gap, not a persistence gap.
+
+Merge persisted `ResultStore` history into the index (new "Run history" table, deduped against live runs, newest-first, capped) and add a settled-run drill-down that rebuilds the status snapshot and replays the transcript from the record. Reuse the existing render path via a synthetic `Status.from_log_record/1`. Keep `mix harness.status` terminal output and the topbar tallies live-only -- history is dashboard-only. No new storage layer.
+"""
+implemented = "Added Status.from_log_record/1 (synthetic snapshot from a settled LogRecord); StatusView.snapshot/0 now emits a deduped, newest-first, capped :history list from ResultStore (render/1 + bucket_counts stay live-only); Dashboard.Live drill-down falls back to ResultStore for settled runs, replaying the transcript via the per-agent Parser (agent resolved from record.agent or reverse-mapped adapter), with a terminal-status tick guard and an extracted run_table/1 component shared by the Active/History tables. Display-only; no new storage. 10 new tests; full offline suite 867 green."
+delivered_by = "claude"
+created_at = "2026-05-30"
+scored_at = "2026-05-30"
+done_at = "2026-05-30"

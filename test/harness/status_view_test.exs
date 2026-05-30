@@ -5,8 +5,10 @@ defmodule Harness.StatusViewTest do
   alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
+  alias Harness.ResultStore
   alias Harness.Roadmap.Item
   alias Harness.Run
+  alias Harness.Run.LogRecord
   alias Harness.Run.Status
   alias Harness.Run.Supervisor, as: RunSupervisor
   alias Harness.StatusView
@@ -89,6 +91,69 @@ defmodule Harness.StatusViewTest do
     assert output =~ "task 8  #{run_id}  running"
 
     assert :ok = Run.cancel(run_id)
+  end
+
+  describe "snapshot/0 history (persisted settled runs)" do
+    test "surfaces persisted records newest-first with the right buckets" do
+      :ok = ResultStore.record_run(record("sv-hist-001", state: :done, verdict: :pass))
+      :ok = ResultStore.record_run(record("sv-hist-002", state: :failed, reason: :verification_red, verdict: :fail))
+      :ok = ResultStore.record_run(record("sv-hist-003", state: :done, verdict: :pass))
+
+      mine = Enum.filter(StatusView.snapshot().history, &(&1.status.run_id in ~w(sv-hist-001 sv-hist-002 sv-hist-003)))
+
+      # run_ids embed an ordinal, so descending string sort is newest-first.
+      assert Enum.map(mine, & &1.status.run_id) == ~w(sv-hist-003 sv-hist-002 sv-hist-001)
+
+      buckets = Map.new(mine, &{&1.status.run_id, &1.bucket})
+      assert buckets["sv-hist-003"] == :green
+      assert buckets["sv-hist-002"] == :red
+    end
+
+    test "excludes a run that is still live (the live entry wins)" do
+      run_id = start_run(adapter_opts: [command: :sleep], terminal_linger: 5_000)
+      assert await_running(run_id)
+
+      :ok = ResultStore.record_run(record(run_id, state: :done, verdict: :pass))
+
+      snapshot = StatusView.snapshot()
+
+      assert Enum.any?(snapshot.runs, &(&1.status.run_id == run_id))
+      refute Enum.any?(snapshot.history, &(&1.status.run_id == run_id))
+
+      assert :ok = Run.cancel(run_id)
+    end
+
+    test "render/1 ignores history so `mix harness.status` stays current-fleet" do
+      history = [
+        %{status: %Status{run_id: "sv-hist-x", task_id: "hist-task", state: :done}, bucket: :green, detail: nil}
+      ]
+
+      output = StatusView.render(%{runs: [], unavailable_agents: [], history: history, cron_polling: :disabled})
+
+      assert output =~ "(no runs in flight or lingering)"
+      refute output =~ "hist-task"
+    end
+  end
+
+  defp record(run_id, opts) do
+    reason = Keyword.get(opts, :reason, :passed)
+
+    %LogRecord{
+      batch_id: "batch-#{run_id}",
+      run_id: run_id,
+      task_id: Keyword.get(opts, :task_id, "1"),
+      agent: Keyword.get(opts, :agent),
+      adapter: FakeAdapter,
+      state: Keyword.get(opts, :state, :done),
+      reason: reason,
+      verdict: Keyword.get(opts, :verdict, :pass),
+      duration_ms: 1_000,
+      repair_attempts: 0,
+      first_attempt_failed_check_count: 0,
+      failure_cause: %{reason: reason, failed_checks: []},
+      agent_outcome_kind: Keyword.get(opts, :agent_outcome_kind),
+      agent_output: Keyword.get(opts, :agent_output, "")
+    }
   end
 
   defp start_run(overrides) do

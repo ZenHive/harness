@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Persisted run history in the dashboard (Task 105).** The dashboard index and
+  drill-down previously read only live state, so every settled run vanished from
+  view on a BEAM restart even though it persists durably as a
+  `%Harness.Run.LogRecord{}` under `~/.harness/results`. The index now renders a
+  "Run history" table merged from the `ResultStore` (deduped against live runs —
+  the live entry wins — newest-first, capped), and drilling into a settled run
+  rebuilds its status snapshot (`Harness.Run.Status.from_log_record/1`) and
+  replays its transcript from the record via the per-agent parser. Display-only;
+  no new storage layer. `mix harness.status` terminal output and the topbar
+  tallies stay live-only.
+
 - **Mergeable-bar verification preset — `:elixir_precommit` (Task 97).** A green
   `:elixir` preset verdict could still be unmergeable under the project's own
   `mix precommit` (the divergence surfaced on Task 94: harness graded green

@@ -26,7 +26,10 @@ defmodule Harness.Dashboard.Live do
   alias Harness.AgentRegistry
   alias Harness.Dashboard.Components
   alias Harness.Dashboard.Transcript
+  alias Harness.Dashboard.Transcript.Parser
   alias Harness.ProjectRegistry
+  alias Harness.ResultStore
+  alias Harness.Run.LogRecord
   alias Harness.Run.Status
   alias Harness.StatusView
   alias Phoenix.LiveView.Rendered
@@ -72,20 +75,31 @@ defmodule Harness.Dashboard.Live do
   end
 
   defp apply_action(socket, :show, %{"run_id" => run_id} = params) do
-    socket
-    |> maybe_unsubscribe(socket.assigns[:run_id])
-    |> subscribe_transcript(run_id)
-    |> assign(:run_id, run_id)
-    |> assign(:transcript, "")
-    |> assign(:transcript_bytes, 0)
-    |> assign(:transcript_events, [])
-    |> assign(:agent_kind, nil)
-    |> assign(:raw_view, raw_view_param?(params))
-    |> assign(:last_seq, 0)
-    |> assign(:events_last_seq, 0)
-    |> backfill_transcript(run_id)
-    |> backfill_transcript_events(run_id)
-    |> refresh_run_status(run_id)
+    socket =
+      socket
+      |> maybe_unsubscribe(socket.assigns[:run_id])
+      |> assign(:run_id, run_id)
+      |> assign(:transcript, "")
+      |> assign(:transcript_bytes, 0)
+      |> assign(:transcript_events, [])
+      |> assign(:agent_kind, nil)
+      |> assign(:raw_view, raw_view_param?(params))
+      |> assign(:last_seq, 0)
+      |> assign(:events_last_seq, 0)
+
+    # Resolve the source once: a live run streams over PubSub; a settled run is
+    # replayed from its persisted LogRecord so the drill-down survives a restart.
+    case Harness.Run.status(run_id) do
+      {:ok, %Status{} = status} ->
+        socket
+        |> assign(:run_status, status)
+        |> subscribe_transcript(run_id)
+        |> backfill_transcript(run_id)
+        |> backfill_transcript_events(run_id)
+
+      {:error, :not_found} ->
+        load_historical(socket, run_id)
+    end
   end
 
   @spec raw_view_param?(map()) :: boolean()
@@ -102,10 +116,15 @@ defmodule Harness.Dashboard.Live do
       |> assign(:snapshot, StatusView.snapshot())
       |> assign(:adapters, list_adapters())
 
+    # Only re-poll a run that can still change. A terminal status (a settled
+    # live run that has reached :done/:failed, or a historical run loaded from
+    # the store) is frozen, so skip it — avoids re-reading the store from disk
+    # every tick for an already-loaded settled run.
     socket =
-      case socket.assigns[:run_id] do
-        nil -> socket
-        run_id -> refresh_run_status(socket, run_id)
+      cond do
+        is_nil(socket.assigns[:run_id]) -> socket
+        terminal_status?(socket.assigns[:run_status]) -> socket
+        true -> refresh_run_status(socket, socket.assigns[:run_id])
       end
 
     {:noreply, socket}
@@ -194,6 +213,70 @@ defmodule Harness.Dashboard.Live do
     assign(socket, :run_status, status)
   end
 
+  # Settled run: no live gen_statem to subscribe to. Rebuild the status snapshot
+  # and replay the transcript from the persisted LogRecord so the drill-down
+  # survives a BEAM restart. An empty/errored store lookup leaves run_status nil
+  # (the render_show "Run not found" copy).
+  @spec load_historical(Socket.t(), String.t()) :: Socket.t()
+  defp load_historical(socket, run_id) do
+    case ResultStore.list_run_records(run_id: run_id) do
+      {:ok, [%LogRecord{} = record | _]} ->
+        socket
+        |> assign(:run_status, Status.from_log_record(record))
+        |> replay_transcript(record)
+
+      _ ->
+        assign(socket, :run_status, nil)
+    end
+  end
+
+  # Mirrors backfill_transcript/2 + backfill_transcript_events/2 for a settled
+  # run, sourcing both panes from the record's captured output instead of the
+  # live gen_statem. The raw pane is always populated; the parsed pane only when
+  # the executing agent can be resolved to a parser kind.
+  @spec replay_transcript(Socket.t(), LogRecord.t()) :: Socket.t()
+  defp replay_transcript(socket, %LogRecord{agent_output: output} = record) do
+    socket =
+      socket
+      |> assign(:transcript, output)
+      |> assign(:transcript_bytes, byte_size(output))
+
+    case agent_kind_for(record) do
+      nil ->
+        socket
+
+      agent_kind ->
+        socket
+        |> assign(:transcript_events, parse_events(agent_kind, output))
+        |> assign(:agent_kind, agent_kind)
+    end
+  end
+
+  @spec parse_events(Parser.agent_kind(), binary()) :: [Parser.event()]
+  defp parse_events(agent_kind, output) do
+    state = Parser.init_state(agent_kind)
+    {events, state} = Parser.append(agent_kind, output, state)
+    {final, _state} = Parser.finalize(agent_kind, state)
+    events ++ final
+  end
+
+  # LogRecord.agent carries the agent atom on the batch path; for a direct run
+  # it can be nil, so fall back to reverse-mapping the adapter module against
+  # AgentRegistry.agents/0. Returns nil when neither resolves to a known parser
+  # kind (raw pane still renders).
+  @spec agent_kind_for(LogRecord.t()) :: Parser.agent_kind() | nil
+  defp agent_kind_for(%LogRecord{agent: agent, adapter: adapter}) do
+    agents = AgentRegistry.agents()
+    known = Enum.map(agents, fn {a, _module} -> a end)
+
+    if agent in known, do: agent, else: reverse_lookup_agent(agents, adapter)
+  end
+
+  @spec reverse_lookup_agent(%{atom() => module()}, module()) :: atom() | nil
+  defp reverse_lookup_agent(agents, adapter) do
+    Enum.find_value(agents, fn {agent, module} -> if module == adapter, do: agent end)
+  end
+
   @spec subscribe_transcript(Socket.t(), String.t()) :: Socket.t()
   defp subscribe_transcript(socket, run_id) do
     if connected?(socket) do
@@ -267,7 +350,11 @@ defmodule Harness.Dashboard.Live do
   defp render_index(assigns) do
     counts = bucket_counts(assigns.snapshot)
     filtered_runs = filter_runs(assigns.snapshot.runs, assigns.selected_project)
-    assigns = assign(assigns, counts: counts, filtered_runs: filtered_runs)
+    history = Map.get(assigns.snapshot, :history, [])
+    filtered_history = filter_runs(history, assigns.selected_project)
+
+    assigns =
+      assign(assigns, counts: counts, filtered_runs: filtered_runs, filtered_history: filtered_history)
 
     ~H"""
     <div class="topbar">
@@ -282,34 +369,11 @@ defmodule Harness.Dashboard.Live do
 
     <h2>Active runs</h2>
     <p :if={@filtered_runs == []}>No runs in flight or lingering.</p>
-    <table :if={@filtered_runs != []}>
-      <thead>
-        <tr>
-          <th>Task</th>
-          <th>Run</th>
-          <th>State</th>
-          <th>Attempts</th>
-          <th>Verdict</th>
-          <th>Detail</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr :for={entry <- @filtered_runs}>
-          <td>{entry.status.task_id}</td>
-          <td><.run_link run_id={entry.status.run_id} /></td>
-          <td>
-            <Components.bucket_badge bucket={entry.bucket} label={to_string(entry.status.state)} />
-          </td>
-          <td>{entry.status.repair_attempts}</td>
-          <td>{verdict_label(entry.status.verdict_status)}</td>
-          <td>{entry.detail || ""}</td>
-          <td>
-            <.kill_button :if={killable?(entry.status)} run_id={entry.status.run_id} />
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <.run_table :if={@filtered_runs != []} rows={@filtered_runs} />
+
+    <h2>Run history</h2>
+    <p :if={@filtered_history == []}>No persisted runs.</p>
+    <.run_table :if={@filtered_history != []} rows={@filtered_history} />
 
     <h3>Adapters</h3>
     <table>
@@ -402,6 +466,45 @@ defmodule Harness.Dashboard.Live do
     """
   end
 
+  attr(:rows, :list, required: true)
+
+  # Shared by the "Active runs" and "Run history" tables. Settled rows render no
+  # kill action — `killable?/1` returns false for terminal states — so the same
+  # markup serves both live and historical entries.
+  @spec run_table(map()) :: Rendered.t()
+  defp run_table(assigns) do
+    ~H"""
+    <table>
+      <thead>
+        <tr>
+          <th>Task</th>
+          <th>Run</th>
+          <th>State</th>
+          <th>Attempts</th>
+          <th>Verdict</th>
+          <th>Detail</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr :for={entry <- @rows}>
+          <td>{entry.status.task_id}</td>
+          <td><.run_link run_id={entry.status.run_id} /></td>
+          <td>
+            <Components.bucket_badge bucket={entry.bucket} label={to_string(entry.status.state)} />
+          </td>
+          <td>{entry.status.repair_attempts}</td>
+          <td>{verdict_label(entry.status.verdict_status)}</td>
+          <td>{entry.detail || ""}</td>
+          <td>
+            <.kill_button :if={killable?(entry.status)} run_id={entry.status.run_id} />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    """
+  end
+
   attr(:run_id, :string, required: true)
 
   @spec run_link(map()) :: Rendered.t()
@@ -490,4 +593,10 @@ defmodule Harness.Dashboard.Live do
   def killable?(%Status{state: state}) when state in [:done, :failed], do: false
   def killable?(%Status{}), do: true
   def killable?(nil), do: false
+
+  # A settled run is frozen — no live process, no further state changes — so the
+  # tick loop stops re-polling it. nil (no status yet) is not terminal.
+  @spec terminal_status?(Status.t() | nil) :: boolean()
+  defp terminal_status?(%Status{state: state}) when state in [:done, :failed], do: true
+  defp terminal_status?(_status), do: false
 end

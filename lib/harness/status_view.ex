@@ -8,10 +8,14 @@ defmodule Harness.StatusView do
 
   alias Harness.AgentRegistry
   alias Harness.Cron.RoadmapPoller
+  alias Harness.ResultStore
   alias Harness.Run
+  alias Harness.Run.LogRecord
   alias Harness.Run.Result
   alias Harness.Run.Status
   alias Harness.Run.Supervisor, as: RunSupervisor
+
+  require Logger
 
   @type bucket :: :in_flight | :repairing | :green | :red
 
@@ -24,8 +28,14 @@ defmodule Harness.StatusView do
   @type t :: %{
           required(:runs) => [run_entry()],
           required(:unavailable_agents) => [{module(), term()}],
+          optional(:history) => [run_entry()],
           optional(:cron_polling) => RoadmapPoller.cron_status()
         }
+
+  # Most-recent settled runs surfaced as dashboard history. run_ids embed an
+  # epoch-ms component, so a descending string sort is a recency proxy; capped
+  # so an unbounded ~/.harness/results never bloats the snapshot.
+  @history_limit 200
 
   @bucket_order [:in_flight, :repairing, :green, :red]
 
@@ -40,8 +50,41 @@ defmodule Harness.StatusView do
   @spec snapshot() :: t()
   def snapshot do
     runs = Enum.flat_map(RunSupervisor.list_runs(), &run_entry/1)
+    live_ids = MapSet.new(runs, & &1.status.run_id)
 
-    %{runs: runs, unavailable_agents: AgentRegistry.list_unavailable(), cron_polling: RoadmapPoller.status()}
+    %{
+      runs: runs,
+      history: history(live_ids),
+      unavailable_agents: AgentRegistry.list_unavailable(),
+      cron_polling: RoadmapPoller.status()
+    }
+  end
+
+  # Settled runs read back from the configured ResultStore, minus any run_id
+  # still live (live entry wins — see snapshot/0). Best-effort: a store error
+  # degrades to an empty history, never crashes the snapshot. render/1 and
+  # bucket_counts/1 deliberately ignore this key so `mix harness.status` and the
+  # topbar tallies stay "current fleet" — history is a dashboard-only surface.
+  @spec history(MapSet.t()) :: [run_entry()]
+  defp history(live_ids) do
+    case ResultStore.list_run_records() do
+      {:ok, records} ->
+        records
+        |> Enum.reject(&MapSet.member?(live_ids, &1.run_id))
+        |> Enum.sort_by(& &1.run_id, :desc)
+        |> Enum.take(@history_limit)
+        |> Enum.map(&history_entry/1)
+
+      {:error, reason} ->
+        Logger.warning("harness status view: failed to list run records: #{inspect(reason)}")
+        []
+    end
+  end
+
+  @spec history_entry(LogRecord.t()) :: run_entry()
+  defp history_entry(%LogRecord{} = record) do
+    status = Status.from_log_record(record)
+    %{status: status, bucket: classify(status), detail: detail(status)}
   end
 
   @doc "Renders `snapshot/0` output for terminal display."

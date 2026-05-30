@@ -134,6 +134,11 @@
       "order": 1,
       "description": "Batch fan-out, failure-classified retry, autonomous repair loop"
     },
+    "run-history": {
+      "phase": 10,
+      "order": 2,
+      "description": "Surface persisted run history in the dashboard: the index list and drill-down read only live state, so settled runs vanish from view on restart even though they persist as LogRecords under ~/.harness/results. Merge ResultStore history into the index + replay settled-run transcripts in drill-down. Display-only — no new storage."
+    },
     "scaffold": {
       "phase": 1,
       "order": 1,
@@ -3865,6 +3870,40 @@
       "body": "docs/dogfooding-workflow.md is the INCUBATOR for the harness workflow — where it's developed and proven while harness itself is built. Once harness is functionally complete and that doc has stabilized, PROMOTE it into the global includes as a new include: ~/.claude/includes/harness-workflow.md.\n\nThe includes mechanism is the delivery channel and it STAYS. harness-workflow.md simply becomes one of the global includes. Then every repo adopts the harness workflow exactly the way it adopts every other include today — `@~/.claude/includes/harness-workflow.md` in its CLAUDE.md. No new opt-in mechanism, no retiring the includes directory: the harness workflow graduates from in-repo incubation into the standard include set, and the whole repo portfolio picks it up through the existing import path.\n\nThis is a forward capstone, NOT current work. Gated on (a) harness functionally complete (autonomous landing loop closed) and (b) docs/dogfooding-workflow.md stable enough to generalize from. Do not start until both hold; captured here so the intent survives across instances.\n\nScope to define when picked up: which slice of dogfooding-workflow.md is generic enough to globalize vs what stays harness-repo-specific; how harness-workflow.md relates to the existing workflow includes (does it absorb workflow-philosophy / task-prioritization / the dogfooding rules, supersede them, or sit alongside?); where the scattered per-project memory facts (claude-does-not-commit, dogfood-batch-size, harness-human-is-sakshi) land in the promoted include; how it syncs back to the marketplace skills the way the other includes do.\n",
       "created_at": "2026-05-30",
       "scored_at": "2026-05-30",
+      "cross_repo": []
+    },
+    {
+      "id": "105",
+      "phase": 10,
+      "bundle": "run-history",
+      "status": "done",
+      "title": "Surface persisted run history in the dashboard (index list + drill-down replay)",
+      "scores": {
+        "d": 3,
+        "b": 6,
+        "u": 7
+      },
+      "eff": 2.17,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Run history rows appear in the dashboard index after a BEAM restart with no live runs",
+        "Drill-down on a settled run shows its fields and replays its transcript (parsed + raw)",
+        "A live run_id is not duplicated into history (live entry wins)",
+        "mix harness.status terminal output and topbar counts stay live-only",
+        "Tests green: Status.from_log_record/1, StatusView history merge, drill-down fallback + tick guard"
+      ],
+      "out_of_scope": [
+        "Postgres consolidation of ResultStore / Chat.Store",
+        "Per-project filtering of history (LogRecord has no project field)",
+        "Adding a timestamp/project field to LogRecord (ordering stays run_id-desc)"
+      ],
+      "body": "The dashboard's run list and drill-down read only live state (`StatusView.snapshot/0` -> `RunSupervisor.list_runs/0`, and `Harness.Run.status/1`), so after a BEAM restart the run list renders empty and `/harness/runs/:run_id` shows \"Run not found\" -- even though every settled run persists durably as a `%Harness.Run.LogRecord{}` under `~/.harness/results`. This is a display gap, not a persistence gap.\n\nMerge persisted `ResultStore` history into the index (new \"Run history\" table, deduped against live runs, newest-first, capped) and add a settled-run drill-down that rebuilds the status snapshot and replays the transcript from the record. Reuse the existing render path via a synthetic `Status.from_log_record/1`. Keep `mix harness.status` terminal output and the topbar tallies live-only -- history is dashboard-only. No new storage layer.\n",
+      "created_at": "2026-05-30",
+      "done_at": "2026-05-30",
+      "scored_at": "2026-05-30",
+      "implemented": "Added Status.from_log_record/1 (synthetic snapshot from a settled LogRecord); StatusView.snapshot/0 now emits a deduped, newest-first, capped :history list from ResultStore (render/1 + bucket_counts stay live-only); Dashboard.Live drill-down falls back to ResultStore for settled runs, replaying the transcript via the per-agent Parser (agent resolved from record.agent or reverse-mapped adapter), with a terminal-status tick guard and an extracted run_table/1 component shared by the Active/History tables. Display-only; no new storage. 10 new tests; full offline suite 867 green.",
+      "delivered_by": "claude",
       "cross_repo": []
     }
   ]

@@ -10,6 +10,7 @@ defmodule Harness.Run.Status do
   """
 
   alias Harness.AgentAdapter.Outcome
+  alias Harness.Run.LogRecord
   alias Harness.Run.Result
 
   @typedoc "The lifecycle state a run is currently in."
@@ -61,4 +62,29 @@ defmodule Harness.Run.Status do
     :reason,
     repair_attempts: 0
   ]
+
+  @doc """
+  Reconstructs a `Status` snapshot from a settled `Harness.Run.LogRecord`.
+
+  Where `status/1` reads a *live* run's gen_statem, this rebuilds the same
+  shape from the persisted record so the dashboard can render runs that no
+  longer have a process (e.g. after a BEAM restart). The record's settled
+  `state` is always `:done` or `:failed`, so the resulting `Status` classifies
+  as a terminal (and thus non-killable) run. `worktree_path` and `agent_os_pid`
+  are not retained on the record, so both are `nil`.
+  """
+  @spec from_log_record(LogRecord.t()) :: t()
+  def from_log_record(%LogRecord{} = record) do
+    %__MODULE__{
+      run_id: record.run_id,
+      task_id: record.task_id,
+      state: record.state,
+      worktree_path: nil,
+      agent_os_pid: nil,
+      agent_kind: record.agent_outcome_kind,
+      verdict_status: record.verdict,
+      repair_attempts: record.repair_attempts,
+      reason: record.reason
+    }
+  end
 end
