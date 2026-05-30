@@ -17,6 +17,7 @@ defmodule Harness.Batch.AgentEvaluation do
   alias Harness.Roadmap.Item
   alias Harness.Run.LogRecord
   alias Harness.Run.Result, as: RunResult
+  alias Harness.TokenUsage
   alias Harness.Verification.Verdict
 
   defmodule Entry do
@@ -25,6 +26,12 @@ defmodule Harness.Batch.AgentEvaluation do
 
     `verdict` is the verification stack's binary `:pass` / `:fail` (or `nil`
     when verification never ran). No composite score is computed.
+
+    `token_usage` is the `Harness.TokenUsage` parsed from the adapter's raw
+    transcript (summed across repair attempts) — the efficiency signal that
+    lets an A/B comparison weigh *how many tokens* an adapter spent, not only
+    whether it passed. An empty usage (all-`nil`) means the wire format
+    reported no token counts.
     """
 
     @typedoc "Side-by-side metrics for one adapter on the shared task."
@@ -38,6 +45,7 @@ defmodule Harness.Batch.AgentEvaluation do
             duration_ms: non_neg_integer() | nil,
             first_attempt_failed_check_count: non_neg_integer(),
             agent_diff_size: non_neg_integer() | nil,
+            token_usage: TokenUsage.t(),
             result: RunResult.t()
           }
 
@@ -60,7 +68,8 @@ defmodule Harness.Batch.AgentEvaluation do
       :duration_ms,
       :first_attempt_failed_check_count,
       :agent_diff_size,
-      :result
+      :result,
+      token_usage: %TokenUsage{}
     ]
   end
 
@@ -113,7 +122,7 @@ defmodule Harness.Batch.AgentEvaluation do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %Comparison{batch_id, task_id, total, max_concurrency, entries, events}} — entries holds per-adapter %Entry{} metrics (verdict, repair_attempts, duration_ms, first_attempt_failed_check_count, agent_diff_size). {:error, Batch.error()}."
+        "{:ok, %Comparison{batch_id, task_id, total, max_concurrency, entries, events}} — entries holds per-adapter %Entry{} metrics (verdict, repair_attempts, duration_ms, first_attempt_failed_check_count, agent_diff_size, token_usage). {:error, Batch.error()}."
     }
   )
 
@@ -212,8 +221,23 @@ defmodule Harness.Batch.AgentEvaluation do
       duration_ms: record && record.duration_ms,
       first_attempt_failed_check_count: result.first_attempt_failed_check_count,
       agent_diff_size: result.agent_diff_size,
+      token_usage: entry_token_usage(record, result),
       result: result
     }
+  end
+
+  # Prefers the persisted record's measured usage, falling back to the live
+  # result's, then an empty usage. `Map.get/2` tolerates a pre-token persisted
+  # record whose term predates the field (returns nil) — never a crash.
+  @spec entry_token_usage(LogRecord.t() | nil, RunResult.t()) :: TokenUsage.t()
+  defp entry_token_usage(record, result) do
+    record_usage = record && Map.get(record, :token_usage)
+
+    cond do
+      match?(%TokenUsage{}, record_usage) and TokenUsage.measured?(record_usage) -> record_usage
+      match?(%TokenUsage{}, result.token_usage) -> result.token_usage
+      true -> TokenUsage.empty()
+    end
   end
 
   @spec verdict_status(RunResult.t()) :: :pass | :fail | nil

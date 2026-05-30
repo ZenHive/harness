@@ -10,6 +10,7 @@ defmodule Harness.Run.LogRecord do
 
   alias Harness.AgentAdapter.Outcome
   alias Harness.Run.Result, as: RunResult
+  alias Harness.TokenUsage
   alias Harness.Verification.Result, as: CheckResult
   alias Harness.Verification.Verdict
 
@@ -40,6 +41,7 @@ defmodule Harness.Run.LogRecord do
           repair_attempts: non_neg_integer(),
           first_attempt_failed_check_count: non_neg_integer(),
           agent_diff_size: non_neg_integer() | nil,
+          token_usage: TokenUsage.t(),
           failure_cause: failure_cause(),
           agent_outcome_kind: Outcome.kind() | nil,
           agent_exit_status: integer() | nil,
@@ -74,6 +76,7 @@ defmodule Harness.Run.LogRecord do
     :failure_cause,
     :agent_outcome_kind,
     :agent_exit_status,
+    token_usage: %TokenUsage{},
     agent_output: ""
   ]
 
@@ -95,6 +98,7 @@ defmodule Harness.Run.LogRecord do
       repair_attempts: result.repair_attempts,
       first_attempt_failed_check_count: result.first_attempt_failed_check_count,
       agent_diff_size: result.agent_diff_size,
+      token_usage: result.token_usage || %TokenUsage{},
       failure_cause: failure_cause(result),
       agent_outcome_kind: outcome && outcome.kind,
       agent_exit_status: outcome && outcome.exit_status,

@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-run token capture — efficiency signal.** Harness now parses each
+  adapter's raw transcript for input/output token counts (`Harness.TokenUsage`)
+  and threads them through `%Harness.Run.Result{}`, `%Harness.Run.LogRecord{}`,
+  and `%Harness.Batch.AgentEvaluation.Entry{}` — so an A/B comparison can weigh
+  *token efficiency* (did the adapter solve the task in 50k tokens or 500k?),
+  not only the binary pass/fail verdict, and cumulative burn becomes the input
+  signal for predictive quota fail-over. Counts are summed across repair
+  attempts, so a multi-attempt run's burn is attributable. Per-adapter parsing
+  (Claude/Cursor stream-json `usage`, Codex `turn.completed`, Pi
+  `message_update` deduped by `responseId`, Grok terminal `end`); a wire format
+  that carries no usage records an empty usage (all-`nil`) and never crashes.
+  Not dollar accounting — agents run on flat subscriptions.
+
 - **Per-stack working directories — multi-language monorepos.** A project now
   holds a *list* of check stacks (`%Harness.Project{}.check_stacks`) instead of
   one, and each `%Harness.CheckStack{}` carries a `workdir` (relative to the
