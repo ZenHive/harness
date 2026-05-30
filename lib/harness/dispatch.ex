@@ -39,7 +39,7 @@ defmodule Harness.Dispatch do
 
   import Harness.Dispatch.RunTool
 
-  alias Harness.AgentAdapter
+  alias Harness.AgentAdapter.Registry
   alias Harness.Batch
   alias Harness.Batch.AgentEvaluation
   alias Harness.Batch.AgentEvaluation.Comparison
@@ -57,25 +57,6 @@ defmodule Harness.Dispatch do
   # blocking tool call should not park a tool-equipped LLM indefinitely — the
   # caller can override per dispatch, and the run keeps going past the budget.
   @default_await_timeout_ms 1_800_000
-
-  # Adapter name (as the orchestrator passes it) → {adapter module, render agent}.
-  # The render agent is what `rmap delegate` renders the prompt for; the adapter
-  # module is what actually executes. They diverge for non-delegatable executors
-  # (grok/antigravity/pi), which render via :claude but run on their own module.
-  @adapters %{
-    "claude" => {AgentAdapter.Claude, :claude},
-    "codex" => {AgentAdapter.Codex, :codex},
-    "cursor" => {AgentAdapter.Cursor, :cursor},
-    "grok" => {AgentAdapter.Grok, :claude},
-    "antigravity" => {AgentAdapter.Antigravity, :claude},
-    "pi" => {AgentAdapter.Pi, :claude}
-  }
-
-  # The Oban fan-out path (`dispatch__bundle` → Harness.Batch.dispatch/2) keys
-  # each enqueued job's adapter off the ingested item's render agent, so it can
-  # only drive the three delegatable executors. Asking it to dispatch a bundle
-  # on grok/antigravity/pi would silently run claude instead — rejected up front.
-  @delegatable_adapters ~w(claude codex cursor)
 
   @typedoc "A reason a dispatch tool can fail with (in addition to the ingest/start_run reasons it forwards)."
   @type error ::
@@ -473,15 +454,18 @@ defmodule Harness.Dispatch do
 
   # Bundle dispatch is Oban-backed and resolves each job's executor from the
   # ingested item's render agent, so only the three delegatable executors are
-  # accepted; a non-delegatable name would silently run claude (see @delegatable_adapters).
+  # accepted; a non-delegatable name would silently run claude (see Registry.delegatable?/1).
   @spec resolve_delegatable_adapter(String.t()) ::
           {:ok, {module(), atom()}} | {:error, {:unknown_adapter | :non_delegatable_adapter, String.t()}}
-  defp resolve_delegatable_adapter(adapter) when adapter in @delegatable_adapters, do: resolve_adapter(adapter)
-
   defp resolve_delegatable_adapter(adapter) do
     case resolve_adapter(adapter) do
-      {:ok, _pair} -> {:error, {:non_delegatable_adapter, adapter}}
-      {:error, _reason} = error -> error
+      {:ok, pair} ->
+        if Registry.delegatable?(adapter),
+          do: {:ok, pair},
+          else: {:error, {:non_delegatable_adapter, adapter}}
+
+      {:error, _reason} = error ->
+        error
     end
   end
 
@@ -580,12 +564,7 @@ defmodule Harness.Dispatch do
   defp jsonable(term), do: inspect(term)
 
   @spec resolve_adapter(String.t()) :: {:ok, {module(), atom()}} | {:error, {:unknown_adapter, String.t()}}
-  defp resolve_adapter(adapter) do
-    case Map.fetch(@adapters, adapter) do
-      {:ok, pair} -> {:ok, pair}
-      :error -> {:error, {:unknown_adapter, adapter}}
-    end
-  end
+  defp resolve_adapter(adapter), do: Registry.resolve(adapter)
 
   @spec lookup_project(String.t()) :: {:ok, Project.t()} | {:error, {:unknown_project, String.t()}}
   defp lookup_project(project_name) do

@@ -223,6 +223,42 @@ defmodule Harness.Roadmap do
     end
   end
 
+  api(:mark_blocked, """
+  Routes a task to `blocked` with a structured reason — the lander's terminal sink.
+
+  Transitions the task to `blocked` via `rmap status <id> blocked --reason "<reason>"`.
+  When the merge-train exhausts its landing-attempt cap (a post-merge-red or
+  conflict that a fresh re-dispatch could not resolve), the task is parked
+  `blocked` so `rmap next` skips it and a human/orchestrator can read *why*
+  without opening `tasks.toml`. Without a sink the loop would silently retry
+  forever — this is the honest dead end.
+
+  Options:
+
+    * `:root` — the project root holding `roadmap/tasks.toml` (required).
+    * `:reason` — the structured blocked reason (required; rmap mandates a
+      reason on `blocked` transitions, auto-cleared when the task leaves blocked).
+    * `:rmap_bin` — override the `rmap` binary name/path (intended for tests).
+
+  Returns `{:ok, output}` or `{:error, {status, output, args}}`.
+
+  > Depends on rmap's `--reason` status flag + `blocked_reason` field.
+  """)
+
+  @spec mark_blocked(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  def mark_blocked(item_or_id, opts) do
+    root = Keyword.fetch!(opts, :root)
+    reason = Keyword.fetch!(opts, :reason)
+    rmap_bin = Keyword.get(opts, :rmap_bin, "rmap")
+    ctx = %{root: root, tasks_path: Path.join(root, "roadmap/tasks.toml"), rmap_bin: rmap_bin}
+
+    args = ["status", landing_task_id(item_or_id), "blocked", "--reason", reason]
+
+    with :ok <- ensure_rmap(rmap_bin) do
+      run_rmap(args, ctx)
+    end
+  end
+
   @spec landing_task_id(Item.t() | String.t()) :: String.t()
   defp landing_task_id(%Item{id: id}), do: to_string(id)
   defp landing_task_id(id) when is_binary(id), do: id

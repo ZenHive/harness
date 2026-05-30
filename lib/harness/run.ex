@@ -149,6 +149,7 @@ defmodule Harness.Run do
            base_ref: String.t() | nil,
            adapter_opts: keyword(),
            env: %{optional(String.t()) => String.t() | false},
+           land_attempt: pos_integer(),
            worktree: Worktree.t() | nil,
            checkout_snapshot: String.t() | nil,
            pollution_allowlist: [String.t()],
@@ -363,6 +364,7 @@ defmodule Harness.Run do
       base_ref: Keyword.get(opts, :base_ref),
       adapter_opts: Keyword.get(opts, :adapter_opts, []),
       env: Keyword.get(opts, :env, %{}),
+      land_attempt: Keyword.get(opts, :land_attempt, 1),
       worktree: nil,
       checkout_snapshot: nil,
       pollution_allowlist: resolve_pollution_allowlist(project, opts),
@@ -894,7 +896,8 @@ defmodule Harness.Run do
       "run_id" => data.run_id,
       "task_id" => to_string(data.item.id),
       "agent" => to_string(data.item.agent),
-      "branch" => "harness/" <> data.run_id
+      "branch" => "harness/" <> data.run_id,
+      "land_attempt" => data.land_attempt
     }
     |> LanderWorker.new(queue: HarnessOban.landing_queue_name(project))
     |> HarnessOban.insert()
