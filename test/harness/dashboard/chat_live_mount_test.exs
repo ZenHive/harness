@@ -23,6 +23,8 @@ defmodule Harness.Dashboard.ChatLiveMountTest do
       for {session_id, _} <- Registry.select(Harness.Chat.Registry, [{{:"$1", :_, :_}, [], [:"$1"]}]) do
         if pid = ChatSupervisor.whereis(session_id), do: Process.exit(pid, :kill)
       end
+
+      File.rm_rf(Path.join(System.tmp_dir!(), "harness_chats_test"))
     end)
 
     :ok

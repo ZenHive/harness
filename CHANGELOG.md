@@ -44,6 +44,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keyword-typed params decode from JSON objects without crashing
   `Keyword.get/3`, and integer-keyed `tasks.toml` ids coerce to strings on
   ingest.
+- **Chat session persistence + index page (Task 93).** Chat transcripts now
+  survive a BEAM restart. `Harness.Chat.Store` is a file-backed term store
+  (one `:erlang.term_to_binary` file per session under
+  `config :harness, :chat_store, root: …`, written via a `.tmp` sibling +
+  atomic rename; `false` disables it). `Harness.Chat.Session` persists its
+  messages after each completed turn (bounded to the most recent 200,
+  mirroring the live buffer cap) and rehydrates them on init, so reopening
+  `/harness/chat/<session_id>` replays the prior turns. The bare
+  `/harness/chat` route is now a session **index** listing live sessions
+  (`Harness.Chat.Supervisor.list_sessions/0`) merged with persisted-but-dead
+  ones — each with a derived label, message count, last-activity, and a deep
+  link; a "New chat" button mints a fresh session.
 - **v0_7 chat orchestrator (5 shipped, 1 superseded).** Harness now ships
   a third consumer surface alongside the verified-run lifecycle and the
   cheap driver path: a natural-language chat session backed by `claude -p`
