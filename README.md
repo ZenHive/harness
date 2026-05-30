@@ -55,6 +55,8 @@ config :harness, :projects, [
 ]
 ```
 
+`:elixir` is the lighter day-to-day stack. To make a green verdict imply *"my own `mix precommit` would also pass"* — closing the gap where harness grades green but a coverage gate (or `format`/`warnings-as-errors`) would block the merge — register against the mergeable-bar preset instead: `preset: {:elixir_precommit, cover_threshold: 80, exclude: [:integration]}`. It adds `format --check-formatted`, `compile --warnings-as-errors`, a coverage threshold on `test`, and `doctor --raise` to the stack.
+
 **2. Add harness's MCP endpoint to `myapp/.mcp.json`** — as a SECOND server entry, alongside `myapp`'s own Tidewave if it has one. The driver agent in `myapp` reaches harness's `project_eval` over MCP-over-HTTP:
 
 ```json

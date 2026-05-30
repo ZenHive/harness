@@ -57,6 +57,11 @@ Four setup steps the consuming repo needs:
       name: "myapp",
       source: {:local, "/Users/efries/_DATA/code/myapp"},
       preset: :elixir,                     # or :rust, or a fully-spec'd %Harness.CheckStack{}
+      # `:elixir` is the lighter day-to-day stack. To make a green verdict imply
+      # "the project's `mix precommit` would also pass" (Task 97 — close the
+      # coverage-gate divergence), opt into the mergeable-bar preset instead:
+      #   preset: {:elixir_precommit, cover_threshold: 80, exclude: [:integration]}
+      # It adds format / compile-warnings / coverage-threshold / doctor --raise gates.
       roadmap_path: "/Users/efries/_DATA/code/myapp",
       concurrency_cap: 2
     ],

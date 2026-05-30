@@ -124,6 +124,24 @@ defmodule Harness.ProjectRegistryTest do
       assert [%CheckStack{name: :elixir, workdir: ""}] = project.check_stacks
     end
 
+    test "a parameterized {:elixir_precommit, opts} preset declares the project's merge gate" do
+      entry = [
+        name: "merge-gated",
+        source: {:local, "/tmp/harness-mg"},
+        preset: {:elixir_precommit, cover_threshold: 85, exclude: [:integration]},
+        roadmap_path: "/tmp/harness-mg/roadmap/tasks.toml"
+      ]
+
+      Application.put_env(:harness, :projects, [entry])
+
+      assert {:ok, %{projects: %{"merge-gated" => project}}} = ProjectRegistry.init(:noargs)
+      assert [%CheckStack{name: :elixir_precommit, workdir: ""} = stack] = project.check_stacks
+
+      test_check = Enum.find(stack.checks, &(&1.name == "test"))
+      assert "85" in test_check.args
+      assert "integration" in test_check.args
+    end
+
     test "loads multiple stacks from a :stacks list, each with its own workdir" do
       entry = [
         name: "multi",

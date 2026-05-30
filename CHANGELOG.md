@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Mergeable-bar verification preset — `:elixir_precommit` (Task 97).** A green
+  `:elixir` preset verdict could still be unmergeable under the project's own
+  `mix precommit` (the divergence surfaced on Task 94: harness graded green
+  while the project's 80% coverage gate measured 75.92%). The new
+  `:elixir_precommit` preset mirrors that mergeable bar — on top of the default
+  stack it adds `format --check-formatted`, `compile --warnings-as-errors`, a
+  coverage threshold on `test`, and `doctor --raise` — so a project opts into
+  "verdict ⇒ mergeable" via `preset: {:elixir_precommit, cover_threshold: 80,
+  exclude: [:integration]}` in its registration config. The gates are ordinary
+  `Harness.Verification.Check`s, so they flow through the existing per-check
+  verdict display in the dashboard run-detail. The harness self-project now
+  registers against `:elixir_precommit`; `:elixir` stays the lighter default.
+
 - **Blocking dispatch — `dispatch__await` (Task 103).** A blocking companion to
   `dispatch__task` for the chat/MCP surface. Where `dispatch__task` returns a
   `run_id` the orchestrator must then poll, `Harness.Dispatch.await/5`

@@ -249,6 +249,12 @@ defmodule Harness.ProjectRegistry do
       match?(%CheckStack{}, Map.get(entry, :check_stack)) ->
         {:ok, Map.fetch!(entry, :check_stack)}
 
+      # `preset: {:elixir_precommit, cover_threshold: 85, ...}` — a parameterized
+      # preset declaring the project's own merge gate (Task 97).
+      match?({name, opts} when is_atom(name) and is_list(opts), Map.get(entry, :preset)) ->
+        {name, opts} = Map.fetch!(entry, :preset)
+        Preset.fetch(name, opts)
+
       # `is_atom(nil)` is true, so a bare `is_atom(Map.get(...))` form would
       # falsely match when :preset is missing. Match an explicit non-nil atom.
       is_atom(Map.get(entry, :preset)) and not is_nil(Map.get(entry, :preset)) ->

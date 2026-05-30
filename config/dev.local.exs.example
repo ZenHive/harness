@@ -8,14 +8,19 @@ import Config
 # available. Consumed by `Harness.ProjectRegistry.init/1`.
 
 config :harness, :projects, [
-  # Keep the harness checkout itself registered.
+  # Keep the harness checkout itself registered. `{:elixir_precommit, ...}`
+  # mirrors harness's own `mix precommit` merge bar (coverage gate + format +
+  # warnings-as-errors), so a green verdict implies a mergeable change — see
+  # Task 97. Use plain `preset: :elixir` for the lighter day-to-day stack.
   [
     name: "harness",
     source: {:local, Path.expand("..", __DIR__)},
-    preset: :elixir,
+    preset: {:elixir_precommit, cover_threshold: 80, exclude: [:integration]},
     roadmap_path: Path.expand("..", __DIR__)
   ],
   # Example host-local project — single language, one stack at the repo root.
+  # Swap to `preset: {:elixir_precommit, cover_threshold: N, exclude: [...]}`
+  # to grade against your own merge gate instead of the lighter `:elixir` stack.
   [
     name: "myapp",
     source: {:local, "/Users/me/_DATA/code/myapp"},
