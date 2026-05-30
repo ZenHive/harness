@@ -153,19 +153,62 @@ defmodule Harness.Worktree do
     end
   end
 
-  # Serializes `git worktree add` per parent repo. Concurrent adds against one
-  # repo contend on git's repo-level locks (the worktrees registry under
-  # `$GIT_DIR/worktrees/`, plus config/HEAD writes); under load one loser comes
-  # back `{:git_failed, …}`, which surfaces as a spurious create/2 collision.
-  # `:global.trans/2` (infinite retries) lets each add take the lock in turn —
-  # the id is `{ResourceId, LockRequesterId}`, so `self()` keys it per caller for
-  # mutual exclusion. The add is fast (~tens of ms) so the queue drains quickly.
+  @doc """
+  Checks an *existing* branch out into a fresh worktree.
+
+  Unlike `create/2`, which carves a new `harness/<id>` branch off a base ref,
+  this checks out an already-existing branch (e.g. a settled run's retained
+  `harness/<run-id>`) so the autonomous lander can rebase + re-verify the
+  integrated state on it. A branch can only be checked out in one worktree at a
+  time — the run's own worktree is already torn down on success, so its branch
+  is free.
+
+  Carves the working directory at `<base_dir>/<repo-basename>/landing/<id>` by
+  default; override with the `:path` option.
+
+  Options:
+
+    * `:path` — explicit worktree directory (intended for tests).
+    * `:base_dir` — override the configured worktree root.
+    * `:id` — override the generated id used in the default path.
+
+  Returns `{:ok, %Harness.Worktree{}}` whose `branch` is the checked-out branch
+  and `base_sha` its tip at checkout, or `{:error, reason}` — see `t:error/0`.
+  Tear down with `remove/1`.
+  """
+  @spec checkout_existing(String.t(), String.t(), keyword()) :: {:ok, t()} | {:error, error()}
+  def checkout_existing(repo, branch, opts \\ []) when is_binary(repo) and is_binary(branch) do
+    id = Keyword.get(opts, :id) || generate_id()
+    path = Keyword.get(opts, :path) || Path.join([base_dir(opts), repo_slug(repo), "landing", id])
+
+    with :ok <- validate_repo(repo),
+         {:ok, _output} <- locked_worktree_add(repo, ["worktree", "add", path, branch]),
+         {:ok, base_sha} <- resolve_base_sha(path) do
+      {:ok, %__MODULE__{id: id, path: path, branch: branch, repo: repo, base_sha: base_sha}}
+    end
+  end
+
+  @spec repo_slug(String.t()) :: String.t()
+  defp repo_slug(repo), do: repo |> Path.basename() |> String.replace(~r/[^A-Za-z0-9_.-]/, "_")
+
   @spec add_worktree(String.t(), String.t(), String.t(), String.t()) ::
           {:ok, String.t()} | {:error, error()}
   defp add_worktree(repo, branch, path, base_ref) do
+    locked_worktree_add(repo, ["worktree", "add", "-b", branch, path, base_ref])
+  end
+
+  # Serializes `git worktree add` per parent repo. Concurrent adds against one
+  # repo contend on git's repo-level locks (the worktrees registry under
+  # `$GIT_DIR/worktrees/`, plus config/HEAD writes); under load one loser comes
+  # back `{:git_failed, …}`, which surfaces as a spurious add collision.
+  # `:global.trans/2` (infinite retries) lets each add take the lock in turn —
+  # the id is `{ResourceId, LockRequesterId}`, so `self()` keys it per caller for
+  # mutual exclusion. The add is fast (~tens of ms) so the queue drains quickly.
+  @spec locked_worktree_add(String.t(), [String.t()]) :: {:ok, String.t()} | {:error, error()}
+  defp locked_worktree_add(repo, args) do
     case :global.trans(
            {{__MODULE__, :worktree_add, repo}, self()},
-           fn -> Git.run(["worktree", "add", "-b", branch, path, base_ref], repo) end
+           fn -> Git.run(args, repo) end
          ) do
       :aborted -> {:error, {:worktree_lock_aborted, repo}}
       result -> result
@@ -302,6 +345,9 @@ defmodule Harness.Worktree do
   removed before staging, so it never becomes part of a delivery commit.
   """
   @spec activate(t()) :: :ok | {:error, error()}
+  # `marker` is a fixed filename under a harness-created worktree path, not
+  # external input.
+  # sobelow_skip ["Traversal.FileModule"]
   def activate(%__MODULE__{path: path, id: id, branch: branch}) do
     with :ok <- assert_worktree_dir(path) do
       marker = Path.join(path, @active_marker)

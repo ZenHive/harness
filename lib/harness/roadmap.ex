@@ -184,6 +184,53 @@ defmodule Harness.Roadmap do
     end
   end
 
+  api(:mark_landed, """
+  Writes the outcome of a successful autonomous land back to rmap.
+
+  Transitions the task to `done` with `verified=true` and the landed commit SHA
+  as `shipped_in`, via `rmap status <id> done --verified --shipped-in <sha>`
+  (plus `--delivered-by` / `--implemented` when supplied). This is the
+  merge-train lander's writeback step; the implementer dispatched the work, the
+  verification stack graded it green post-integration, so `verified` is honest.
+
+  Options:
+
+    * `:root` — the project root holding `roadmap/tasks.toml` (required).
+    * `:sha` — the landed commit SHA recorded as `shipped_in` (required).
+    * `:delivered_by` — agent string for `--delivered-by` (optional).
+    * `:implemented` — what shipped, for `--implemented` (optional).
+    * `:rmap_bin` — override the `rmap` binary name/path (intended for tests).
+
+  Returns `{:ok, output}` or `{:error, {status, output, args}}`.
+
+  > Depends on rmap's `--shipped-in` status flag (rmap roadmap Task 33).
+  """)
+
+  @spec mark_landed(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  def mark_landed(item_or_id, opts) do
+    root = Keyword.fetch!(opts, :root)
+    sha = Keyword.fetch!(opts, :sha)
+    rmap_bin = Keyword.get(opts, :rmap_bin, "rmap")
+    ctx = %{root: root, tasks_path: Path.join(root, "roadmap/tasks.toml"), rmap_bin: rmap_bin}
+
+    args =
+      ["status", landing_task_id(item_or_id), "done", "--verified", "--shipped-in", sha]
+      |> append_flag("--delivered-by", opts[:delivered_by])
+      |> append_flag("--implemented", opts[:implemented])
+
+    with :ok <- ensure_rmap(rmap_bin) do
+      run_rmap(args, ctx)
+    end
+  end
+
+  @spec landing_task_id(Item.t() | String.t()) :: String.t()
+  defp landing_task_id(%Item{id: id}), do: to_string(id)
+  defp landing_task_id(id) when is_binary(id), do: id
+
+  @spec append_flag([String.t()], String.t(), String.t() | nil) :: [String.t()]
+  defp append_flag(args, _flag, nil), do: args
+  defp append_flag(args, flag, value) when is_binary(value), do: args ++ [flag, value]
+
   @spec build_ctx(keyword()) :: {:ok, ctx()} | {:error, error()}
   defp build_ctx(opts) do
     with {:ok, root} <- resolve_root(opts) do
@@ -225,8 +272,16 @@ defmodule Harness.Roadmap do
 
   @spec ensure_rmap(String.t()) :: :ok | {:error, {:rmap_not_found, String.t()}}
   defp ensure_rmap(rmap_bin) do
-    if System.find_executable(rmap_bin), do: :ok, else: {:error, {:rmap_not_found, rmap_bin}}
+    if System.find_executable(rmap_bin) || executable_file?(rmap_bin),
+      do: :ok,
+      else: {:error, {:rmap_not_found, rmap_bin}}
   end
+
+  # `System.find_executable/1` only searches PATH for bare names; an explicit
+  # path (e.g. a test stub at /tmp/.../rmap, or an absolute install path) is
+  # accepted when it points at a regular file on disk.
+  @spec executable_file?(String.t()) :: boolean()
+  defp executable_file?(path), do: String.contains?(path, "/") and File.regular?(path)
 
   # rmap next has no "next" mode in `delegate`, so :next is resolved in two
   # steps: discover the id here, then render the prompt from it.

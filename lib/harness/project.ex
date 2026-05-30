@@ -20,6 +20,9 @@ defmodule Harness.Project do
     pollution diff (`Harness.Worktree.Isolation`); `nil` inherits app defaults.
   - `landing_policy` — `:manual` by default; `:auto` means green runs are
     eligible for autonomous landing and therefore for the semantic gate.
+  - `target_branch` — the branch the autonomous lander fast-forward-pushes an
+    approved run onto (e.g. `"development"`). `nil` by default; a project only
+    auto-lands when it sets both `landing_policy: :auto` and a `target_branch`.
   """
 
   alias Harness.CheckStack
@@ -34,7 +37,8 @@ defmodule Harness.Project do
     :roadmap_path,
     concurrency_cap: nil,
     pollution_allowlist: nil,
-    landing_policy: :manual
+    landing_policy: :manual,
+    target_branch: nil
   ]
 
   @typedoc "Where harness finds the target repository."
@@ -48,7 +52,8 @@ defmodule Harness.Project do
           roadmap_path: String.t(),
           concurrency_cap: pos_integer() | nil,
           pollution_allowlist: [String.t()] | nil,
-          landing_policy: :manual | :auto
+          landing_policy: :manual | :auto,
+          target_branch: String.t() | nil
         }
 
   @doc """

@@ -443,6 +443,18 @@ let the rest rebase against it, resolve any same-file merges by hand. The
 verification stack re-runs on `development` after the last merge — if it
 goes red post-merge that's an integration failure, not a per-run failure.
 
+**Autonomous landing (Task 100, opt-in).** A project that sets both
+`landing_policy: :auto` and `target_branch` skips the manual merge above: a green
+run enqueues one job on the serialized `landing_<name>` Oban queue (limit 1), and
+`Harness.Lander.land/1` ff-merges the branch onto `origin/<target>` (rebasing if
+the target moved), **re-verifies the integrated state**, then **ff-pushes** the
+verified tip (`git push origin <tip>:refs/heads/<target>`, no `--force`) and
+advances the rmap task (`rmap status <id> done --verified --shipped-in <sha>`). The
+push touches `origin`, never your local checkout — after a land, `git switch
+<target> && git pull`. The harness self-project stays `:manual` (no auto-push to
+`origin/development`). Conflict / post-merge-red / push-rejected outcomes retain
+the branch and return a typed seam for Task 101; they never land a red state.
+
 ## HIGH-tier audit grader dispatch (`Harness.AuditReview`)
 
 Distinct from the roadmap-task dispatch above. The codified `staged-review:audit-review`

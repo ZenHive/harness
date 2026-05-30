@@ -47,27 +47,45 @@ defmodule Harness.Oban do
   end
 
   @doc """
-  Starts or scales the queue for `project` when Oban is running normally.
+  Starts or scales the queues for `project` when Oban is running normally.
+
+  Each project gets two queues: the dispatch queue (`project_<name>`, sized to
+  the concurrency cap) and the landing queue (`landing_<name>`, fixed at limit 1
+  so the autonomous merge-train lands one approved run at a time per project).
   """
   @spec ensure_project_queue(Project.t()) :: :ok | {:error, term()}
   def ensure_project_queue(%Project{} = project) do
     if queues_enabled?() and Process.whereis(__MODULE__) do
-      Oban.start_queue(__MODULE__,
-        queue: queue_name(project),
-        limit: queue_limit(project),
-        local_only: true
-      )
+      with :ok <-
+             Oban.start_queue(__MODULE__,
+               queue: queue_name(project),
+               limit: queue_limit(project),
+               local_only: true
+             ) do
+        Oban.start_queue(__MODULE__,
+          queue: landing_queue_name(project),
+          limit: 1,
+          local_only: true
+        )
+      end
     else
       :ok
     end
   end
 
   @doc """
-  Returns the Oban queue name for a project.
+  Returns the Oban dispatch-queue name for a project.
   """
   @spec queue_name(Project.t() | String.t()) :: String.t()
   def queue_name(%Project{name: name}), do: queue_name(name)
   def queue_name(name) when is_binary(name), do: "project_#{name}"
+
+  @doc """
+  Returns the Oban landing-queue name for a project (`landing_<name>`).
+  """
+  @spec landing_queue_name(Project.t() | String.t()) :: String.t()
+  def landing_queue_name(%Project{name: name}), do: landing_queue_name(name)
+  def landing_queue_name(name) when is_binary(name), do: "landing_#{name}"
 
   @doc false
   @spec bootstrap_project_queues() :: :ok

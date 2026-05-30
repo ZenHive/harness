@@ -79,6 +79,8 @@ defmodule Harness.Run do
   alias Harness.Dashboard.Transcript
   alias Harness.Dashboard.Transcript.Parser
   alias Harness.Git
+  alias Harness.Lander.Worker, as: LanderWorker
+  alias Harness.Oban, as: HarnessOban
   alias Harness.Project
   alias Harness.ResultStore
   alias Harness.Roadmap.Item
@@ -95,6 +97,7 @@ defmodule Harness.Run do
   alias Harness.Verification.Verdict
   alias Harness.Worktree
   alias Harness.Worktree.Isolation
+  alias Oban.Job
 
   require Logger
 
@@ -871,7 +874,44 @@ defmodule Harness.Run do
     finish_worktree(data.worktree, terminal_state)
     notify_subscriber(data.subscriber, data.run_id, result)
     RunFeed.broadcast_settled(status_snapshot(terminal_state, data))
+    maybe_enqueue_landing(data, terminal_state)
     data
+  end
+
+  # Autonomous merge-train trigger: a run that settles green under a project that
+  # opts into landing (`landing_policy: :auto` + a non-empty `target_branch`)
+  # enqueues exactly one landing job onto the project's serialized `landing_<name>`
+  # queue. Every other terminal state — red verdict, failure, `:manual` project,
+  # or a project with no `target_branch` — enqueues nothing.
+  @spec maybe_enqueue_landing(data(), Result.state()) :: :ok
+  defp maybe_enqueue_landing(
+         %{reason: :passed, project: %Project{landing_policy: :auto, target_branch: tb} = project} = data,
+         :done
+       )
+       when is_binary(tb) and tb != "" do
+    %{
+      "project_name" => project.name,
+      "run_id" => data.run_id,
+      "task_id" => to_string(data.item.id),
+      "agent" => to_string(data.item.agent),
+      "branch" => "harness/" <> data.run_id
+    }
+    |> LanderWorker.new(queue: HarnessOban.landing_queue_name(project))
+    |> HarnessOban.insert()
+    |> log_landing_enqueue(data.run_id)
+  end
+
+  defp maybe_enqueue_landing(_data, _terminal_state), do: :ok
+
+  @spec log_landing_enqueue({:ok, Job.t()} | {:error, term()}, String.t()) :: :ok
+  defp log_landing_enqueue({:ok, _job}, run_id) do
+    Logger.info("harness run: enqueued autonomous landing for run #{run_id}")
+    :ok
+  end
+
+  defp log_landing_enqueue({:error, reason}, run_id) do
+    Logger.warning("harness run: failed to enqueue landing for run #{run_id}: #{inspect(reason)}")
+    :ok
   end
 
   @spec build_result(data(), Result.state()) :: Result.t()

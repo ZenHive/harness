@@ -3482,3 +3482,60 @@ Fix: thread an :env map into the Oban job args (must stay term/JSON-serializable
 """
 created_at = "2026-05-30"
 scored_at = "2026-05-30"
+
+[[task]]
+id = "109"
+phase = 11
+bundle = "autolanding"
+milestone = "v0_9"
+status = "pending"
+title = "Cron autonomy master toggle — runtime enable/disable from the dashboard, persisted"
+scores = { d = 3, b = 4, u = 4 }
+acceptance_criteria = ["Single-row harness_settings Ecto table (Postgres already mandated, no new dep) holds the autonomy-enabled flag; a config-file fallback is acceptable if justified", "Dashboard LiveView toggle flips autonomy on/off at runtime via Application.put_env + persists, taking effect on the next cron tick WITHOUT a restart", "On boot the persisted value is loaded into app env so the flag survives restart", "Dashboard shows the RESOLVED autonomy state (extend RoadmapPoller.status/0), unambiguous at a glance", "Every flip is auditable: info-level log (not debug) or audit row with actor + timestamp", "Tests: store read/write + boot-load reconciliation; poller respects a runtime flip (enabled->disabled stops new dispatch at next tick); LiveView toggle integration"]
+out_of_scope = ["Per-project flags (Task 110) and live schedule editing (Task 111)"]
+body = """
+Autonomous roadmap polling (Harness.Cron.RoadmapPoller) is gated by a compile-time config :harness, :cron_polling, enabled: false. Starting/stopping the autonomous fleet requires a config edit + reboot. No runtime control and no incident kill-switch -- yet this flag governs unattended dispatch of code-writing agents.
+
+perform/1 already reads enabled?() live from app env on every tick (lib/harness/cron/roadmap_poller.ex:31), so a runtime flip takes effect at the next tick with no restart. Missing: (a) a persisted store so a flip survives a BEAM restart, (b) a dashboard control, (c) an audit trail (who flipped it, when) -- today skips are Logger.debug only, so autonomy state is effectively invisible.
+"""
+created_at = "2026-05-30"
+scored_at = "2026-05-30"
+
+[[task]]
+id = "110"
+phase = 11
+bundle = "autolanding"
+milestone = "v0_9"
+status = "pending"
+title = "Per-project cron autonomy flag — pause/resume autonomy per registered project"
+scores = { d = 2, b = 3, u = 3 }
+depends_on = [109]
+acceptance_criteria = ["Per-project autonomy-enabled flag lives alongside concurrency_cap on %Harness.Project{} (or settings store keyed by project name), persisted", "poll_project/1 skips a project whose effective state is false; the skip is observable (info-level or status field), not a silent debug line", "New projects register with the flag OFF by default", "Dashboard renders per-project autonomy state AND the resolved effective state (master AND project) per row", "Tests: effective-state truth table (master x project), default-off on register, poller skips a disabled project while dispatching an enabled sibling"]
+body = """
+The master toggle (Task 109) is fleet-wide all-or-nothing. With multi-project federation (ProjectRegistry), an operator wants to pause autonomy on one flaky/sensitive project -- or onboard a newly-registered repo with autonomy OFF until its check stack proves out -- while the rest of the fleet keeps running. RoadmapPoller.perform/1 already walks Enum.each(ProjectRegistry.list(), &poll_project/1), so the hook point exists.
+
+Settled design: additive, not a replacement. Effective autonomy = master_enabled AND project_enabled; the master toggle stays the single incident kill-switch. Default OFF on registration -- an operator opts a project in after watching it. Document the friction: enabling master alone dispatches nothing until at least one project is also enabled; the dashboard must make this obvious to avoid the "I turned it on, why is nothing happening?" trap.
+"""
+created_at = "2026-05-30"
+scored_at = "2026-05-30"
+
+[[task]]
+id = "111"
+phase = 11
+bundle = "autolanding"
+milestone = "v0_9"
+status = "pending"
+title = "Cron schedule editing from the UI — boot-applied presets, optional live reconfig"
+scores = { d = 4, b = 2, u = 2 }
+depends_on = [109]
+acceptance_criteria = ["Settings store holds the schedule; cron_plugin/0 sources it (falls back to the @default_schedule 0 */2 * * * when unset)", "UI exposes a preset picker (hourly / 2h / 6h / daily); invalid/free-form input cannot reach Oban", "Dashboard shows current schedule + next tick (reuse RoadmapPoller.status/0 / next_tick/1)", "Tests: schedule round-trips through the store; cron_plugin/0 reflects the stored value; invalid input rejected before reaching Oban", "Live runtime reconfig is explicitly out of scope unless separately justified"]
+out_of_scope = ["Live runtime Oban Cron teardown/re-add unless boot-applied presets prove insufficient"]
+body = """
+The cron cadence is baked into the Oban Cron plugin's crontab once at boot (RoadmapPoller.cron_plugin/0 -> Harness.Oban supervision child). Unlike the enabled flag (read live each tick), the SCHEDULE cannot change without reconfiguring the Cron plugin.
+
+Cheap 80% first: persist the chosen schedule; cron_plugin/0 reads it at boot. UI offers a small preset set (hourly / 2h / 6h / daily) rather than a free-form crontab box (avoids invalid-cron footguns). Changes apply on the NEXT restart -- satisfies most needs, low risk.
+
+Expensive 20% (optional): changing cadence WITHOUT restart means tearing down and re-adding the Oban Cron plugin at runtime. Oban supports it but it is fiddly and easy to get wrong. Gate behind the preset work; only build if presets prove insufficient. Honest low B/U until then.
+"""
+created_at = "2026-05-30"
+scored_at = "2026-05-30"
