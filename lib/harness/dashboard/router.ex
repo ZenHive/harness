@@ -38,6 +38,7 @@ defmodule Harness.Dashboard.Router do
     pipe_through(:browser)
 
     live("/harness", Live, :index, as: :dashboard)
+    live("/harness/kpi", KPILive, :index, as: :dashboard_kpi)
     live("/harness/runs/:run_id", Live, :show, as: :dashboard)
     live("/harness/chat", ChatLive, :index, as: :dashboard_chat)
     live("/harness/chat/:session_id", ChatLive, :show, as: :dashboard_chat)

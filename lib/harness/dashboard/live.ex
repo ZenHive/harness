@@ -522,6 +522,7 @@ defmodule Harness.Dashboard.Live do
       <span class="count">{@counts.repairing} repairing</span>
       <span class="count">{@counts.green} green</span>
       <span class="count">{@counts.red} red</span>
+      <a href="/harness/kpi">Agent KPIs →</a>
       <a href="/harness/oban">Open Oban Web →</a>
     </div>
 

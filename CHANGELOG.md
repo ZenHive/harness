@@ -18,6 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (mean total tokens per `:pass` run, `nil` when an agent has no green runs). No
   new capture — every input field already exists on `LogRecord`. Pure functions
   only: the caller supplies the records, so the rollup is testable without I/O.
+- **Per-agent KPI dashboard (`Harness.Dashboard.KPILive`, Task 115).** A
+  sortable per-agent trust ledger at `/harness/kpi` (linked from the dashboard
+  topbar) that renders `Harness.AgentKPI.aggregate/1` over every persisted run
+  record: run count, success rate, first-attempt-pass rate, mean repair
+  attempts, mean tokens, and cost-to-green — one row per agent, every column
+  click-to-sort. An empty store renders an explicit "no run records yet" state
+  rather than a table of zeros. Reads the store at mount and re-aggregates on
+  each `:harness_run_settled` fleet event (the only event that mints a new
+  record). Resolves the Task 81 (`CompareLive`) relationship as a **deliberate
+  sibling**: this is the fleet-wide aggregate ledger, Task 81 is the
+  per-comparison A/B surface — neither subsumes the other.
 - **Run change-set view on the run-detail page.** Each run now shows what it
   changed: an in-flight run lists the files the agent is editing (from its
   transcript tool calls), and a settled run shows the actual git diff — file
