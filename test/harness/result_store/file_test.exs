@@ -55,7 +55,7 @@ defmodule Harness.ResultStore.FileTest do
       assert returned.run_id == "run-abc"
       # New aggregated form, downgraded warning -> debug, exactly one line.
       assert log =~ "skipped 1 term file"
-      assert log =~ "undecodable under :safe"
+      assert log =~ "undecodable"
       # Regression: the old per-file warning string must be gone.
       refute log =~ "skipping undecodable term file"
     end
@@ -89,7 +89,7 @@ defmodule Harness.ResultStore.FileTest do
       assert returned.run_id == "run-keep"
       # One aggregated line for both skips, split by class.
       assert log =~ "skipped 2 term file"
-      assert log =~ "1 undecodable under :safe"
+      assert log =~ "1 undecodable"
       assert log =~ "1 cross-typed"
       # Both skipped files are LEFT IN PLACE — not moved or deleted.
       assert File.exists?(Path.join(runs_dir, "torn.term"))
@@ -106,6 +106,61 @@ defmodule Harness.ResultStore.FileTest do
       assert returned.run_id == "run-clean"
       refute log =~ "skipped"
     end
+  end
+
+  describe "decode resilience (cross-version atom drift)" do
+    # The bug this guards: read_term/1 used :erlang.binary_to_term(body, [:safe]),
+    # which REJECTS a valid term that references an atom not currently interned in
+    # the BEAM — silently dropping records written by a prior build. We craft that
+    # exact case by encoding a record, then byte-patching its `reason` atom name to
+    # a never-interned string of equal length, yielding a binary that [:safe]
+    # refuses but plain binary_to_term accepts.
+    test "recovers a record whose atom is absent from the table (would fail under :safe)", %{root: root} do
+      placeholder = :drift_placeholder_atom
+      bin = :erlang.term_to_binary(log_record(run_id: "drift", reason: placeholder))
+
+      name = Atom.to_string(placeholder)
+      # A same-length, NEVER-interned atom name. It carries System.unique_integer so
+      # it is fresh on every run — even a warm BEAM that already interned a prior
+      # run's name (this test's own decode below interns it). Without that, :safe
+      # would stop rejecting on the second run and the precondition would misfire.
+      novel = unique_atom_name(byte_size(name))
+      assert byte_size(novel) == byte_size(name)
+      assert length(:binary.matches(bin, name)) == 1
+      refute interned?(novel)
+
+      patched = :binary.replace(bin, name, novel)
+
+      # Precondition: this really is the drift case — :safe rejects, plain accepts.
+      assert_raise ArgumentError, fn -> :erlang.binary_to_term(patched, [:safe]) end
+      assert is_struct(:erlang.binary_to_term(patched), LogRecord)
+
+      runs_dir = Path.join(root, "runs")
+      File.mkdir_p!(runs_dir)
+      # On-disk name mirrors safe_id/1 + run_path/2 (Base.url_encode64, no padding).
+      File.write!(Path.join(runs_dir, Base.url_encode64("drift", padding: false) <> ".term"), patched)
+
+      assert {:ok, [returned]} = Store.list_run_records([], root: root)
+      assert returned.run_id == "drift"
+      assert returned.reason == String.to_atom(novel)
+    end
+  end
+
+  # A fresh, never-before-interned atom name of exactly `len` bytes (unique per
+  # call via System.unique_integer, z-padded to length).
+  @spec unique_atom_name(pos_integer()) :: String.t()
+  defp unique_atom_name(len) do
+    ("z" <> Integer.to_string(System.unique_integer([:positive])))
+    |> String.pad_trailing(len, "z")
+    |> binary_part(0, len)
+  end
+
+  @spec interned?(String.t()) :: boolean()
+  defp interned?(name) do
+    _ = String.to_existing_atom(name)
+    true
+  rescue
+    ArgumentError -> false
   end
 
   describe "CRUD roundtrips and filters" do

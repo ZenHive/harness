@@ -186,12 +186,16 @@ defmodule Harness.Chat.Store do
     end
   end
 
-  # Decodes with [:safe]; only ever reads harness-owned files under the root.
+  # Decodes WITHOUT [:safe]: harness-owned files written by this app's own
+  # term_to_binary under the root — not untrusted input. [:safe] would refuse a
+  # term referencing an atom not yet interned in the running BEAM, silently dropping
+  # valid sessions written by a prior build (cross-version atom drift). The rescue
+  # still catches genuinely torn bytes.
   # sobelow_skip ["Traversal.FileModule", "Misc.BinToTerm"]
   @spec read_term(String.t()) :: {:ok, term()} | {:error, term()}
   defp read_term(path) do
     case File.read(path) do
-      {:ok, body} -> {:ok, :erlang.binary_to_term(body, [:safe])}
+      {:ok, body} -> {:ok, :erlang.binary_to_term(body)}
       {:error, reason} -> {:error, reason}
     end
   rescue

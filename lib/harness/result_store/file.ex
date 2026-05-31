@@ -62,13 +62,11 @@ defmodule Harness.ResultStore.File do
 
   # Skips are counted, not logged per-file: a single corrupt-looking file used to
   # emit one Logger.warning on EVERY scan (dashboard / mix harness.status all funnel
-  # here), spamming the console. The dominant skip cause is an [:safe] decode failure
-  # — a record referencing an atom/struct this node hasn't loaded yet (cross-version
-  # drift) — which is transient and self-healing: it decodes again once the writing
-  # build runs. So the file is left in place (NOT quarantined or deleted; moving it
-  # would hide a record that would otherwise reappear) and at most one aggregated
-  # :debug line is emitted per scan. Genuinely torn bytes are near-impossible because
-  # writes are atomic (.tmp + rename) and only *.term is read.
+  # here), spamming the console. An `:undecodable` skip means genuinely torn bytes —
+  # near-impossible, since writes are atomic (.tmp + rename) and only *.term is read.
+  # A `:cross_typed` skip is a file that decoded fine but to some other term, not a
+  # %LogRecord{}. Either way the file is left in place (NOT quarantined or deleted)
+  # and at most one aggregated :debug line is emitted per scan.
   @spec collect_records([{:ok, term()} | {:error, term()}], Harness.ResultStore.filters()) ::
           {:ok, [LogRecord.t()]}
   defp collect_records(records, filters) do
@@ -94,8 +92,8 @@ defmodule Harness.ResultStore.File do
   defp log_skipped(%{cross_typed: cross, undecodable: undecodable}) do
     Logger.debug(fn ->
       "harness result store: skipped #{cross + undecodable} term file(s) " <>
-        "(#{undecodable} undecodable under :safe — likely cross-version atom drift, " <>
-        "re-read next scan; #{cross} cross-typed). Files left in place."
+        "(#{undecodable} undecodable/corrupt; #{cross} cross-typed non-record). " <>
+        "Files left in place."
     end)
   end
 
@@ -124,12 +122,16 @@ defmodule Harness.ResultStore.File do
   end
 
   @spec read_term(String.t()) :: {:ok, term()} | {:error, term()}
-  # Paths are root-contained as above. Term decoding uses [:safe] and only reads
-  # harness-owned files from the configured store root.
+  # Decodes WITHOUT [:safe]: these are harness-owned files written by this app's
+  # own term_to_binary under the store root — not untrusted input. [:safe] refuses
+  # any term referencing an atom not currently interned in the running BEAM, which
+  # silently dropped valid records written by a prior build (cross-version atom
+  # drift on reason/agent/adapter atoms). The rescue still catches genuinely torn
+  # bytes — they raise ArgumentError with or without :safe.
   # sobelow_skip ["Traversal.FileModule", "Misc.BinToTerm"]
   defp read_term(path) do
     case File.read(path) do
-      {:ok, body} -> {:ok, :erlang.binary_to_term(body, [:safe])}
+      {:ok, body} -> {:ok, :erlang.binary_to_term(body)}
       {:error, reason} -> {:error, reason}
     end
   rescue

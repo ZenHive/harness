@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Run records (and chat sessions) written by a prior build are no longer
+  silently dropped on read.** `Harness.ResultStore.File` and `Harness.Chat.Store`
+  decoded their persisted `.term` files with `:erlang.binary_to_term(body, [:safe])`;
+  `[:safe]` rejects any term referencing an atom not currently interned in the
+  running BEAM, so a record/session whose `reason`/`agent`/`adapter` atom came from
+  an older build failed to decode and vanished from the dashboard run history, the
+  per-agent KPI ledger, and `load_batch/2` (observed: 30 of 45 real run records
+  invisible). These are harness-owned files written by harness's own
+  `term_to_binary`, not untrusted input, so `[:safe]` guarded a non-existent threat
+  at the cost of dropping valid data. Both now decode without `:safe`; the existing
+  `rescue ArgumentError` still catches genuinely torn bytes.
+
 ### Added
 
 - **Per-agent KPI aggregation over run records (Task 114).** `Harness.AgentKPI`

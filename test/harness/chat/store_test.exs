@@ -72,6 +72,34 @@ defmodule Harness.Chat.StoreTest do
       summaries = Store.list(root: dir)
       assert [%{session_id: "chat-ok"}] = summaries
     end
+
+    # Mirrors the ResultStore.File drift fix: read_term/1 decodes WITHOUT [:safe],
+    # so a session whose message references an atom not interned in the running
+    # BEAM (written by a prior build) still loads instead of being dropped.
+    test "loads a session whose atom is absent from the table (would fail under :safe)", %{tmp_dir: dir} do
+      :ok = Store.save("chat-drift", [%{role: :user, content: "hi", marker: :drift_chat_placeholder}], root: dir)
+
+      # session_path/2 base64url-encodes the id (no padding) + ".term".
+      path = Path.join(dir, Base.url_encode64("chat-drift", padding: false) <> ".term")
+      bin = File.read!(path)
+      name = Atom.to_string(:drift_chat_placeholder)
+      # Fresh, never-interned, same-length atom name (see file_test for rationale).
+      novel =
+        ("z" <> Integer.to_string(System.unique_integer([:positive])))
+        |> String.pad_trailing(byte_size(name), "z")
+        |> binary_part(0, byte_size(name))
+
+      assert byte_size(novel) == byte_size(name)
+      assert length(:binary.matches(bin, name)) == 1
+
+      patched = :binary.replace(bin, name, novel)
+      assert_raise ArgumentError, fn -> :erlang.binary_to_term(patched, [:safe]) end
+      File.write!(path, patched)
+
+      assert {:ok, record} = Store.load("chat-drift", root: dir)
+      assert [%{marker: marker}] = record.messages
+      assert marker == String.to_atom(novel)
+    end
   end
 
   describe "derive_label/1" do
