@@ -5,7 +5,6 @@ defmodule Harness.Cron.RoadmapPollerTest do
   alias Harness.Cron.RoadmapPoller
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
-  alias Harness.Roadmap.Item
   alias Oban.Plugins.Cron
 
   setup do
@@ -19,8 +18,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
       restore_env(:cron_polling, prior_cron_polling)
       restore_env(:cron_project_autonomy, prior_project_autonomy)
       Application.delete_env(:harness, :oban_insert)
-      Application.delete_env(:harness, :queue_headroom?)
-      Application.delete_env(:harness, :roadmap_ingest)
+      Application.delete_env(:harness, :roadmap_ready)
     end)
 
     :ok
@@ -46,14 +44,14 @@ defmodule Harness.Cron.RoadmapPollerTest do
            ]
   end
 
-  test "disabled poller does not ingest or enqueue work" do
+  test "disabled poller does not read the roadmap or enqueue work" do
     parent = self()
     project = ProjectFixture.from_repo("/tmp/harness-cron-disabled", name: "cron-disabled")
     assert :ok = ProjectRegistry.register(project)
 
-    Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts ->
-      send(parent, :ingested)
-      {:ok, item("51")}
+    Application.put_env(:harness, :roadmap_ready, fn _project ->
+      send(parent, :read)
+      {:ok, [task("51", nil)]}
     end)
 
     Application.put_env(:harness, :oban_insert, fn changeset ->
@@ -62,22 +60,23 @@ defmodule Harness.Cron.RoadmapPollerTest do
     end)
 
     assert :ok = RoadmapPoller.perform(%Oban.Job{})
-    refute_received :ingested
+    refute_received :read
     refute_received {:inserted, _job}
   end
 
-  test "enabled tick ingests pending project work and enqueues a run worker job" do
+  test "enabled tick dispatches the whole ready batch, routing each task to its agent" do
     parent = self()
-    project = ProjectFixture.from_repo("/tmp/harness-cron-enabled", name: "cron-enabled", concurrency_cap: 2)
+    project = ProjectFixture.from_repo("/tmp/harness-cron-enabled", name: "cron-enabled", concurrency_cap: 10)
     assert :ok = ProjectRegistry.register(project)
 
     Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
     Application.put_env(:harness, :cron_project_autonomy, %{"cron-enabled" => true})
-    Application.put_env(:harness, :queue_headroom?, fn ^project -> true end)
 
-    Application.put_env(:harness, :roadmap_ingest, fn :next, opts ->
-      send(parent, {:ingest, opts[:project_root]})
-      {:ok, item("51")}
+    # The whole dispatchable set is fanned out in one tick — one task with no
+    # model (defaults :claude), one routed to :codex via the `model` field.
+    Application.put_env(:harness, :roadmap_ready, fn p ->
+      send(parent, {:ready, p.name})
+      {:ok, [task("51", nil), task("52", "codex")]}
     end)
 
     Application.put_env(:harness, :oban_insert, fn changeset ->
@@ -88,7 +87,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
 
     assert :ok = RoadmapPoller.perform(%Oban.Job{})
 
-    assert_received {:ingest, "/tmp/harness-cron-enabled"}
+    assert_received {:ready, "cron-enabled"}
 
     assert_received {:inserted,
                      %Oban.Job{
@@ -101,71 +100,52 @@ defmodule Harness.Cron.RoadmapPollerTest do
                        queue: "project_cron-enabled",
                        worker: "Harness.Run.Worker"
                      }}
+
+    assert_received {:inserted,
+                     %Oban.Job{
+                       args: %{item_id: "52", adapter_module: "Elixir.Harness.AgentAdapter.Codex"}
+                     }}
   end
 
-  test "enabled tick skips enqueue when queue has no headroom" do
+  test "a task routed to an unavailable agent is skipped; the rest of the batch still dispatches" do
     parent = self()
-    project = ProjectFixture.from_repo("/tmp/harness-cron-full", name: "cron-full")
+    project = ProjectFixture.from_repo("/tmp/harness-cron-unavailable", name: "cron-unavailable", concurrency_cap: 10)
     assert :ok = ProjectRegistry.register(project)
-
-    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
-    Application.put_env(:harness, :cron_project_autonomy, %{"cron-full" => true})
-    Application.put_env(:harness, :queue_headroom?, fn ^project -> false end)
-
-    Application.put_env(:harness, :roadmap_ingest, fn :next, _opts ->
-      send(parent, :ingested)
-      {:ok, item("51")}
-    end)
-
-    Application.put_env(:harness, :oban_insert, fn changeset ->
-      send(parent, {:inserted, Ecto.Changeset.apply_action!(changeset, :insert)})
-      {:ok, Ecto.Changeset.apply_action!(changeset, :insert)}
-    end)
-
-    assert :ok = RoadmapPoller.perform(%Oban.Job{})
-    assert_received :ingested
-    refute_received {:inserted, _job}
-  end
-
-  test "enabled tick skips enqueue when the requested adapter is unavailable" do
-    parent = self()
-    project = ProjectFixture.from_repo("/tmp/harness-cron-unavailable", name: "cron-unavailable")
-    assert :ok = ProjectRegistry.register(project)
+    # Claude (the default route) is out; the codex-routed task is unaffected.
     assert :ok = AgentRegistry.mark_unavailable(Harness.AgentAdapter.Claude, :quota)
 
     Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
     Application.put_env(:harness, :cron_project_autonomy, %{"cron-unavailable" => true})
-    Application.put_env(:harness, :queue_headroom?, fn ^project -> true end)
 
-    Application.put_env(:harness, :roadmap_ingest, fn :next, _opts ->
-      send(parent, :ingested)
-      {:ok, item("51")}
+    Application.put_env(:harness, :roadmap_ready, fn _p ->
+      {:ok, [task("51", nil), task("52", "codex")]}
     end)
 
     Application.put_env(:harness, :oban_insert, fn changeset ->
-      send(parent, {:inserted, Ecto.Changeset.apply_action!(changeset, :insert)})
-      {:ok, Ecto.Changeset.apply_action!(changeset, :insert)}
+      job = Ecto.Changeset.apply_action!(changeset, :insert)
+      send(parent, {:inserted, job.args})
+      {:ok, job}
     end)
 
     assert :ok = RoadmapPoller.perform(%Oban.Job{})
-    assert_received :ingested
-    refute_received {:inserted, _job}
+
+    refute_received {:inserted, %{item_id: "51"}}
+    assert_received {:inserted, %{item_id: "52", adapter_module: "Elixir.Harness.AgentAdapter.Codex"}}
   end
 
   test "master on dispatches only projects whose own autonomy flag is on" do
     parent = self()
-    on_project = ProjectFixture.from_repo("/tmp/harness-cron-on", name: "cron-on", concurrency_cap: 2)
+    on_project = ProjectFixture.from_repo("/tmp/harness-cron-on", name: "cron-on", concurrency_cap: 10)
     off_project = ProjectFixture.from_repo("/tmp/harness-cron-off", name: "cron-off")
     assert :ok = ProjectRegistry.register(on_project)
     assert :ok = ProjectRegistry.register(off_project)
 
     Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
     Application.put_env(:harness, :cron_project_autonomy, %{"cron-on" => true, "cron-off" => false})
-    Application.put_env(:harness, :queue_headroom?, fn _project -> true end)
 
-    Application.put_env(:harness, :roadmap_ingest, fn :next, opts ->
-      send(parent, {:ingest, opts[:project_root]})
-      {:ok, item("51")}
+    Application.put_env(:harness, :roadmap_ready, fn p ->
+      send(parent, {:ready, p.name})
+      {:ok, [task("51", nil)]}
     end)
 
     Application.put_env(:harness, :oban_insert, fn changeset ->
@@ -174,10 +154,10 @@ defmodule Harness.Cron.RoadmapPollerTest do
 
     assert :ok = RoadmapPoller.perform(%Oban.Job{})
 
-    # Effective autonomy = master AND project: the enabled sibling dispatches, the
-    # disabled one is never even ingested.
-    assert_received {:ingest, "/tmp/harness-cron-on"}
-    refute_received {:ingest, "/tmp/harness-cron-off"}
+    # Effective autonomy = master AND project: the enabled sibling's roadmap is
+    # read, the disabled one's is never touched.
+    assert_received {:ready, "cron-on"}
+    refute_received {:ready, "cron-off"}
   end
 
   test "reports the next tick from the configured schedule" do
@@ -190,7 +170,8 @@ defmodule Harness.Cron.RoadmapPollerTest do
   defp cron_plugin?({Cron, _opts}), do: true
   defp cron_plugin?(_plugin), do: false
 
-  defp item(id), do: %Item{id: id, title: "Task #{id}", prompt: "do #{id}", agent: :claude}
+  # A `rmap ready --dispatchable --fields id,model,markers` row.
+  defp task(id, model), do: %{"id" => id, "model" => model, "markers" => []}
 
   defp restore_env(key, nil), do: Application.delete_env(:harness, key)
   defp restore_env(key, value), do: Application.put_env(:harness, key, value)

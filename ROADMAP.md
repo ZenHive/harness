@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 126 — Run change-set view on the run-detail page (live edited-files + settled git diff) on 2026-05-31
 
-**Up next:** Task 127 — Configuration inspector LiveView — read-only operator view of the resolved harness config [D:2/B:3/U:3 → Eff:1.5] 🚀
+**Up next:** Task 131 — Cron poller: mark dispatched tasks in_progress to stop re-dispatch of completed-but-unlanded work [D:2/B:4/U:4 → Eff:2.0] 🎯
 <!-- FOCUS:END -->
 
 ---

@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Autonomous cron polling no longer dispatches `handbuild` tasks headless, and
+  now dispatches the whole parallel-safe batch per tick instead of one task.**
+  `Harness.Cron.RoadmapPoller` selected work via `Harness.Roadmap.ingest(:next)`,
+  which shells `rmap next` — a surface with no `--dispatchable`/negative-marker
+  filter, so it returned `handbuild`-marked UI tasks that then idle-timed-out
+  under headless dispatch (observed: task 127, a LiveView, dispatched to Claude).
+  It also enqueued only the single `:next` task per tick. The poller now selects
+  via new `Harness.Roadmap.ready/1` (`rmap ready --dispatchable --fields id,model,markers`),
+  which excludes `handbuild` and returns the full deps-done set, and enqueues one
+  `Run.Worker` per task — Oban's per-project queue caps concurrency at the
+  project's `concurrency_cap` (the harness self-project now sets `concurrency_cap: 10`).
+  Inserts are unique over `{project_name, item_id}` across non-terminal states, so
+  a later tick won't re-enqueue an in-flight task. Each task routes to its agent
+  via the `model` field (the harness roadmap's convention), then `cx`/`csr`
+  markers, else `:claude`; a task whose agent is operator-disabled or
+  quota-unavailable is skipped via `AgentRegistry.select/2`.
 - **Run records (and chat sessions) written by a prior build are no longer
   silently dropped on read.** `Harness.ResultStore.File` and `Harness.Chat.Store`
   decoded their persisted `.term` files with `:erlang.binary_to_term(body, [:safe])`;

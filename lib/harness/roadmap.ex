@@ -127,6 +127,29 @@ defmodule Harness.Roadmap do
   defp acceptance_criteria(%{"acceptance_criteria" => criteria}) when is_list(criteria), do: criteria
   defp acceptance_criteria(_task), do: []
 
+  @doc """
+  Lists the parallel-safe, headless-dispatchable task set via `rmap ready --dispatchable`.
+
+  Returns every `pending` task whose deps are all `done`, **excluding** `handbuild`-marked
+  tasks (browser-driven UI work that idle-times-out under headless dispatch). The set is
+  mutually independent by construction, so the whole list is safe to fan out at once — this
+  is the selection surface the autonomous cron poller dispatches as a batch, vs the single
+  best `ingest(:next)`.
+
+  Each task map carries the `--fields`-projected keys `id`, `model`, and `markers` — enough
+  for the consumer to route each task to its agent (`model` / `cx` / `csr`) without a second
+  rmap call. The same working-root precedence as `ingest/2` applies (`:project` >
+  `:project_name` > `:project_root` > cwd).
+  """
+  @spec ready(keyword()) :: {:ok, [map()]} | {:error, error()}
+  def ready(opts \\ []) do
+    with {:ok, ctx} <- build_ctx(opts),
+         :ok <- ensure_rmap(ctx.rmap_bin),
+         {:ok, output} <- run_ready(ctx) do
+      decode_ready(output)
+    end
+  end
+
   api(:list, "List a registered project's roadmap tasks as structured data (optionally by status) via rmap.",
     params: [
       project_name: [
@@ -373,6 +396,27 @@ defmodule Harness.Roadmap do
   @spec status_argv(String.t() | nil) :: [String.t()]
   defp status_argv(nil), do: []
   defp status_argv(status), do: ["--status", to_string(status)]
+
+  # `--dispatchable` drops handbuild tasks; `--fields` projects to a bare JSON
+  # array of just the routing-relevant keys (and implies --json).
+  @spec run_ready(ctx()) :: {:ok, String.t()} | {:error, error()}
+  defp run_ready(ctx) do
+    case run_rmap(["ready", "--dispatchable", "--fields", "id,model,markers"], ctx) do
+      {:ok, output} -> {:ok, output}
+      {:error, failure} -> {:error, classify_failure(failure, nil)}
+    end
+  end
+
+  # `rmap ready --fields ...` emits a bare JSON array (one object per task); an
+  # empty dispatchable set yields `[]`.
+  @spec decode_ready(String.t()) :: {:ok, [map()]} | {:error, error()}
+  defp decode_ready(output) do
+    case JSON.decode(output) do
+      {:ok, tasks} when is_list(tasks) -> {:ok, tasks}
+      {:ok, other} -> {:error, {:rmap_bad_output, {:unexpected_json, other}}}
+      {:error, reason} -> {:error, {:rmap_bad_output, reason}}
+    end
+  end
 
   # `rmap list --json` returns the full roadmap envelope; the task array lives
   # under the singular "task" key. An empty roadmap yields an empty list.

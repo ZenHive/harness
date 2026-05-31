@@ -1,6 +1,19 @@
 defmodule Harness.Cron.RoadmapPoller do
   @moduledoc """
   Cron-driven worker that polls registered project roadmaps for dispatchable work.
+
+  Each tick dispatches the project's **parallel-safe batch** — every task in
+  `rmap ready --dispatchable` (deps done, `handbuild` excluded), routed to its
+  agent and enqueued as an independent `Harness.Run.Worker` job. Concurrency is
+  Oban's job — the `project_<name>` queue runs up to the project's
+  `concurrency_cap` at once; the rest sit `available` and start as slots free.
+  Inserts are made unique over `{project_name, item_id}` across non-terminal
+  states, so a task already queued or running is not re-enqueued by a later tick.
+
+  Agent routing per task (in precedence): the `model` field when it names a
+  delegatable agent (the harness roadmap's convention), then the `cx` / `csr`
+  delegation markers, else `:claude`. A task routed to an agent the operator has
+  disabled (or that is quota-unavailable) is skipped via `AgentRegistry.select/2`.
   """
 
   use Oban.Worker, queue: :cron, max_attempts: 1
@@ -10,7 +23,6 @@ defmodule Harness.Cron.RoadmapPoller do
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.Roadmap
-  alias Harness.Roadmap.Item
   alias Harness.Run.Worker, as: RunWorker
   alias Oban.Plugins.Cron
 
@@ -20,6 +32,17 @@ defmodule Harness.Cron.RoadmapPoller do
   @cron_queue :cron
   @cron_queue_limit 1
   @dispatch_meta %{harness_stage: "cron_poll"}
+  # Agent names harness can route to: the trio the Run.Worker accepts
+  # (`agent_for_adapter`). A task whose `model`/marker names anything else
+  # falls back to :claude.
+  @model_agents %{"claude" => :claude, "codex" => :codex, "cursor" => :cursor}
+  # Dedup window: skip re-enqueueing a task that already has a job in any
+  # non-terminal state. A completed/cancelled job does not block a later tick.
+  @unique_opts [
+    keys: [:project_name, :item_id],
+    states: [:available, :scheduled, :executing, :retryable],
+    period: :infinity
+  ]
 
   @type cron_status ::
           :disabled
@@ -102,9 +125,8 @@ defmodule Harness.Cron.RoadmapPoller do
   @spec poll_project(Project.t()) :: :ok
   defp poll_project(%Project{} = project) do
     if Settings.project_enabled?(project) do
-      case ingest_next(project) do
-        {:ok, %Item{} = item} -> maybe_enqueue(project, item)
-        {:error, :no_pending_task} -> :ok
+      case ready_tasks(project) do
+        {:ok, tasks} -> Enum.each(tasks, &enqueue_task(project, &1))
         {:error, reason} -> log_ingest_error(project, reason)
       end
     else
@@ -112,45 +134,56 @@ defmodule Harness.Cron.RoadmapPoller do
     end
   end
 
-  @spec maybe_enqueue(Project.t(), Item.t()) :: :ok
-  defp maybe_enqueue(%Project{} = project, %Item{} = item) do
-    with true <- queue_headroom?(project),
-         {:ok, adapter} <- AgentRegistry.delegatable_module_for_agent(item.agent),
+  # One dispatchable task → one run job. Routing and the operator/availability
+  # gate live in `select/2`; a task routed to a disabled or quota-exhausted agent
+  # is logged and skipped, never dispatched.
+  @spec enqueue_task(Project.t(), map()) :: :ok
+  defp enqueue_task(%Project{} = project, task) when is_map(task) do
+    item_id = to_string(task["id"])
+
+    with {:ok, adapter} <- AgentRegistry.delegatable_module_for_agent(task_agent(task)),
          {:ok, adapter} <- AgentRegistry.select(adapter),
-         {:ok, _job} <- enqueue_run(project, item, adapter) do
+         {:ok, _job} <- enqueue_run(project, item_id, adapter) do
       :ok
     else
-      false -> :ok
-      {:error, reason} -> log_dispatch_skip(project, item, reason)
+      {:error, reason} -> log_dispatch_skip(project, item_id, reason)
     end
   end
 
-  @spec enqueue_run(Project.t(), Item.t(), module()) :: {:ok, Oban.Job.t()} | {:error, term()}
-  defp enqueue_run(%Project{} = project, %Item{} = item, adapter) when is_atom(adapter) do
+  # Agent routing: the `model` field when it names a delegatable agent (the
+  # harness roadmap's convention), then the cx/csr delegation markers, else
+  # :claude. Anything `model` names outside the routable trio defaults to claude.
+  @spec task_agent(map()) :: atom()
+  defp task_agent(task) do
+    model = task["model"]
+    markers = task["markers"] || []
+
+    cond do
+      is_binary(model) and Map.has_key?(@model_agents, model) -> Map.fetch!(@model_agents, model)
+      "cx" in markers -> :codex
+      "csr" in markers -> :cursor
+      true -> :claude
+    end
+  end
+
+  @spec enqueue_run(Project.t(), String.t(), module()) :: {:ok, Oban.Job.t()} | {:error, term()}
+  defp enqueue_run(%Project{} = project, item_id, adapter) when is_binary(item_id) and is_atom(adapter) do
     args = %{
       project_name: project.name,
-      item_id: item.id,
+      item_id: item_id,
       adapter_module: Atom.to_string(adapter)
     }
 
     args
-    |> RunWorker.new(queue: Harness.Oban.queue_name(project), meta: @dispatch_meta)
+    |> RunWorker.new(queue: Harness.Oban.queue_name(project), meta: @dispatch_meta, unique: @unique_opts)
     |> Harness.Oban.insert()
   end
 
-  @spec ingest_next(Project.t()) :: {:ok, Item.t()} | {:error, term()}
-  defp ingest_next(%Project{} = project) do
-    case Application.get_env(:harness, :roadmap_ingest) do
-      fun when is_function(fun, 2) -> fun.(:next, project_root: project.roadmap_path)
-      _other -> Roadmap.ingest(:next, project_root: project.roadmap_path)
-    end
-  end
-
-  @spec queue_headroom?(Project.t()) :: boolean()
-  defp queue_headroom?(%Project{} = project) do
-    case Application.get_env(:harness, :queue_headroom?) do
+  @spec ready_tasks(Project.t()) :: {:ok, [map()]} | {:error, term()}
+  defp ready_tasks(%Project{} = project) do
+    case Application.get_env(:harness, :roadmap_ready) do
       fun when is_function(fun, 1) -> fun.(project)
-      _other -> Harness.Oban.queue_headroom?(project)
+      _other -> Roadmap.ready(project_root: project.roadmap_path)
     end
   end
 
@@ -163,12 +196,12 @@ defmodule Harness.Cron.RoadmapPoller do
 
   @spec log_ingest_error(Project.t(), term()) :: :ok
   defp log_ingest_error(%Project{} = project, reason) do
-    Logger.debug("harness cron poller: #{project.name} roadmap ingest skipped: #{inspect(reason)}")
+    Logger.debug("harness cron poller: #{project.name} roadmap ready skipped: #{inspect(reason)}")
   end
 
-  @spec log_dispatch_skip(Project.t(), Item.t(), term()) :: :ok
-  defp log_dispatch_skip(%Project{} = project, %Item{} = item, reason) do
-    Logger.debug("harness cron poller: #{project.name} task #{item.id} dispatch skipped: #{inspect(reason)}")
+  @spec log_dispatch_skip(Project.t(), String.t(), term()) :: :ok
+  defp log_dispatch_skip(%Project{} = project, item_id, reason) do
+    Logger.debug("harness cron poller: #{project.name} task #{item_id} dispatch skipped: #{inspect(reason)}")
   end
 
   @spec config() :: keyword()

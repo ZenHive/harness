@@ -4942,6 +4942,85 @@
       "implemented": "Harness.Agent.Settings (file-backed term store at ~/.harness/agent_settings.term, app-env cache :harness/:agent_disabled, load_into_env/0 on boot in application.ex). AgentRegistry.select/2 gated via dispatchable?/1 = enabled? AND available?, keyed by @module_to_agent (test doubles stay dispatchable). Settings LiveView Agents card: per-adapter toggle + enabled/disabled pill + not-installed hint, reusing existing components. Agents default ON; disable opt-in, persisted across restart, audited at info level. Tests: agent/settings_test.exs (8), agent_registry_test.exs operator-gate describe (3), settings_live_test.exs agent card (2). 39 touched-file tests green; browser-verified card render + toggle round-trip + live select fall-over.",
       "delivered_by": "claude",
       "cross_repo": []
+    },
+    {
+      "id": "129",
+      "phase": 11,
+      "bundle": "autolanding",
+      "milestone": "v0_9",
+      "status": "done",
+      "title": "Cron poller: dispatch the parallel-safe ready batch, skip handbuild",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "touches": [
+        "lib/harness/cron/roadmap_poller.ex",
+        "lib/harness/roadmap.ex",
+        "config/dev.exs"
+      ],
+      "body": "BUG: autonomous cron polling selected work via Roadmap.ingest(:next) -> rmap next, which has no --dispatchable/negative-marker filter, so it dispatched handbuild UI tasks headless (idle-timeout, zero diff; observed task 127 -> Claude). It also enqueued only one task per tick.\n\nFIX (harness-only, option B): add Roadmap.ready/1 (rmap ready --dispatchable --fields id,model,markers), excludes handbuild + returns full deps-done set. Poller enqueues one Run.Worker per task; Oban per-project queue caps concurrency at concurrency_cap (harness self-project set to 10). Inserts unique over {project_name,item_id} across non-terminal states. Per-task agent routing: model field (harness convention) -> cx/csr markers -> :claude; disabled/quota-unavailable agents skipped via AgentRegistry.select/2.\n",
+      "created_at": "2026-05-31",
+      "done_at": "2026-05-31",
+      "scored_at": "2026-05-31",
+      "implemented": "Added Harness.Roadmap.ready/1 (rmap ready --dispatchable --fields id,model,markers) — excludes handbuild, returns full deps-done set as bare-array routing rows. Rewrote RoadmapPoller.poll_project to fan the whole set out: one Run.Worker per task, unique over {project_name,item_id} across non-terminal states, per-task agent via model->cx/csr->:claude, disabled/unavailable agents skipped through select/2. Removed the single :next ingest + queue_headroom gate (Oban per-project queue limit = concurrency_cap now caps concurrency). harness self-project concurrency_cap: 10 in dev.exs. Tests: roadmap_test ready/1 block (4), roadmap_poller_test rewritten for batch (8). 33 touched-file tests green; live rmap ready verified: 5 dispatchable (3 codex/2 cursor), handbuild 127/81/111 excluded.",
+      "delivered_by": "claude",
+      "cross_repo": []
+    },
+    {
+      "id": "130",
+      "phase": 11,
+      "bundle": "autolanding",
+      "milestone": "v0_9",
+      "status": "pending",
+      "title": "rmap: first-class per-task agent/delegate field (stop overloading model)",
+      "scores": {
+        "d": 3,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 1.0,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "touches": [
+        "../rmap/src"
+      ],
+      "body": "CROSS-REPO (../rmap). The harness roadmap encodes the target agent in the `model` field (values \"codex\"/\"cursor\"), but rmap.md documents `model` as a free-text LLM id, distinct from the agent environment (rmap delegate --to), with cx/csr markers as the delegation channel. The harness cron poller currently routes on `model` then cx/csr as a workaround.\n\nrmap is ours: add a first-class per-task agent/delegate field (or formalize that model-naming-an-agent IS the route), so consumers route on one documented field instead of overloading model. Update rmap.md + the poller's task_agent/1 to use it.\n",
+      "created_at": "2026-05-31",
+      "scored_at": "2026-05-31",
+      "cross_repo": []
+    },
+    {
+      "id": "131",
+      "phase": 11,
+      "bundle": "autolanding",
+      "milestone": "v0_9",
+      "status": "pending",
+      "title": "Cron poller: mark dispatched tasks in_progress to stop re-dispatch of completed-but-unlanded work",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "touches": [
+        "lib/harness/cron/roadmap_poller.ex",
+        "lib/harness/run/worker.ex",
+        "lib/harness/roadmap.ex"
+      ],
+      "body": "The poller never marks a dispatched task in_progress, and harness lands manually (landing_policy :manual). So once a run completes green but is NOT auto-landed, the task stays pending and the next tick re-dispatches it -> same green-but-unlanded tasks re-run every tick forever. Oban {project_name,item_id} uniqueness only dedups WHILE in-flight, not completed-then-pending.\n\nFIX: on dispatch, transition the task to in_progress (rmap status <id> in_progress) so rmap ready/next stop returning it; on terminal failure return it to pending/blocked. Decide writeback owner (poller vs Run lifecycle). Required for unattended autonomy to converge instead of looping.\n",
+      "created_at": "2026-05-31",
+      "scored_at": "2026-05-31",
+      "cross_repo": []
     }
   ]
 }

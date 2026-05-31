@@ -25,7 +25,12 @@ config :harness, :projects, [
     source: {:local, Path.expand("..", __DIR__)},
     preset: {:elixir_precommit, cover_threshold: 80, exclude: [:integration]},
     roadmap_path: Path.expand("..", __DIR__),
-    semantic_gate: :always
+    semantic_gate: :always,
+    # The cron poller dispatches the whole `rmap ready --dispatchable` batch each
+    # tick; this caps how many of those runs the `project_harness` queue executes
+    # concurrently (the rest sit `available` and start as slots free). Without it
+    # the queue defaults to limit 1 and the batch serializes.
+    concurrency_cap: 10
   ]
 ]
 

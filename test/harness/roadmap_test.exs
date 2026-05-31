@@ -197,6 +197,34 @@ defmodule Harness.RoadmapTest do
     end
   end
 
+  describe "ready/1" do
+    test "decodes the dispatchable set as a bare array of routing rows" do
+      stub =
+        stub_script(~s(echo '[{"id":"7","model":"codex","markers":[]},{"id":"8","model":null,"markers":["bug"]}]'))
+
+      assert {:ok, [%{"id" => "7", "model" => "codex"}, %{"id" => "8", "model" => nil}]} =
+               Roadmap.ready(project_root: @sample, rmap_bin: stub)
+    end
+
+    test "an empty dispatchable set decodes to []" do
+      stub = stub_script("echo '[]'")
+
+      assert {:ok, []} = Roadmap.ready(project_root: @sample, rmap_bin: stub)
+    end
+
+    test "reports rmap_bad_output when ready emits non-array JSON" do
+      stub = stub_script("echo '{}'")
+
+      assert {:error, {:rmap_bad_output, {:unexpected_json, %{}}}} =
+               Roadmap.ready(project_root: @sample, rmap_bin: stub)
+    end
+
+    test "reports rmap_not_found when the binary is absent" do
+      assert {:error, {:rmap_not_found, "definitely-not-rmap-xyz"}} =
+               Roadmap.ready(project_root: @sample, rmap_bin: "definitely-not-rmap-xyz")
+    end
+  end
+
   describe "Item" do
     test "enforces all four fields" do
       assert_raise ArgumentError, fn -> struct!(Item, id: "1") end
