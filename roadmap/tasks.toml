@@ -4043,3 +4043,21 @@ FIX: on dispatch, transition the task to in_progress (rmap status <id> in_progre
 """
 created_at = "2026-05-31"
 scored_at = "2026-05-31"
+
+[[task]]
+id = "132"
+phase = 14
+bundle = "agent-rules"
+status = "done"
+title = "Sync harness ingest/dispatch to rmap's widened delegate --to vocabulary"
+scores = { d = 2, b = 3, u = 3 }
+acceptance_criteria = ["Roadmap.ingest accepts all six harness adapters (claude/codex/cursor/grok/antigravity/pi) and renders each natively — no claude-rendered two-step", 'ingest(agent: :droid) is rejected as {:invalid_agent, :droid}; dispatch rejects "droid" as {:unknown_adapter, "droid"}', "AgentAdapter.Registry maps grok/antigravity/pi to their own render agent (not :claude); @delegatable_adapters and AgentRegistry @delegatable_agents cover all six", "Stale 'non-delegatable two-step' narrative reframed to 'renderable vs executable' across CLAUDE.md, harness-driver SKILL, both priv playbooks, agent-cli-reference, dogfooding-workflow", "Tests lock the inverted contract green (roadmap/agent_registry/dispatch + new AgentAdapter.Registry test)"]
+body = """
+rmap shipped a widened `delegate --to` enum (claude/codex/cursor/grok/antigravity/pi/droid), so the harness premise that grok/antigravity/pi are *non-delegatable* (render-via-:claude two-step) is now false — rmap renders native prompts for all six. Invert the contract: make the six first-class `Roadmap.ingest(agent: …)` targets dispatched directly on their own adapter, drop the two-step, and reject `droid` (renderable by rmap, but harness has no Droid adapter). Reframe every doc/playbook that described the old non-delegatable two-step. Keep the worktree-isolation axis (Antigravity `worktree_isolation: false`) distinct and unchanged.
+"""
+implemented = "Inverted the renderable-vs-executable contract: AgentAdapter.Registry @adapters now maps grok/antigravity/pi to native render agents (was :claude) and @delegatable_adapters covers all six; AgentRegistry @delegatable_agents widened to six; Roadmap @valid_agents widened to six (droid rejected, no adapter). dispatch.ex needed no logic change (delegates to registry). Reframed CLAUDE.md, harness-driver SKILL, both priv playbooks, agent-cli-reference, dogfooding-workflow, playbooks.ex. Tests inverted (roadmap/agent_registry/dispatch) + new test/harness/agent_adapter/registry_test.exs; ~190 green across touched suites."
+delivered_by = "claude"
+created_at = "2026-05-31"
+scored_at = "2026-05-31"
+done_at = "2026-05-31"
+shipped_in = "f07f717"
