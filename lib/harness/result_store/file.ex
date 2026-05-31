@@ -60,27 +60,43 @@ defmodule Harness.ResultStore.File do
     end
   end
 
-  @spec collect_records([{:ok, LogRecord.t()} | {:error, term()}], Harness.ResultStore.filters()) ::
+  # Skips are counted, not logged per-file: a single corrupt-looking file used to
+  # emit one Logger.warning on EVERY scan (dashboard / mix harness.status all funnel
+  # here), spamming the console. The dominant skip cause is an [:safe] decode failure
+  # — a record referencing an atom/struct this node hasn't loaded yet (cross-version
+  # drift) — which is transient and self-healing: it decodes again once the writing
+  # build runs. So the file is left in place (NOT quarantined or deleted; moving it
+  # would hide a record that would otherwise reappear) and at most one aggregated
+  # :debug line is emitted per scan. Genuinely torn bytes are near-impossible because
+  # writes are atomic (.tmp + rename) and only *.term is read.
+  @spec collect_records([{:ok, term()} | {:error, term()}], Harness.ResultStore.filters()) ::
           {:ok, [LogRecord.t()]}
   defp collect_records(records, filters) do
-    records
-    |> Enum.reduce([], fn
-      {:ok, %LogRecord{} = record}, acc ->
-        if match_filters?(record, filters), do: [record | acc], else: acc
+    {kept, skipped} =
+      Enum.reduce(records, {[], %{cross_typed: 0, undecodable: 0}}, fn
+        {:ok, %LogRecord{} = record}, {acc, skip} ->
+          if match_filters?(record, filters), do: {[record | acc], skip}, else: {acc, skip}
 
-      {:ok, _other}, acc ->
-        # Skip term files in runs/ that didn't decode to a LogRecord — stale or
-        # cross-typed entries shouldn't crash list_run_records with a FunctionClauseError.
-        acc
+        {:ok, _other}, {acc, skip} ->
+          {acc, Map.update!(skip, :cross_typed, &(&1 + 1))}
 
-      {:error, reason}, acc ->
-        # An atom-stale or otherwise undecodable term file shouldn't mask every
-        # healthy record. Log and skip, mirroring the {:ok, _other} clause above.
-        Logger.warning("harness result store: skipping undecodable term file: #{inspect(reason)}")
-        acc
+        {:error, _reason}, {acc, skip} ->
+          {acc, Map.update!(skip, :undecodable, &(&1 + 1))}
+      end)
+
+    log_skipped(skipped)
+    {:ok, Enum.reverse(kept)}
+  end
+
+  @spec log_skipped(%{cross_typed: non_neg_integer(), undecodable: non_neg_integer()}) :: :ok
+  defp log_skipped(%{cross_typed: 0, undecodable: 0}), do: :ok
+
+  defp log_skipped(%{cross_typed: cross, undecodable: undecodable}) do
+    Logger.debug(fn ->
+      "harness result store: skipped #{cross + undecodable} term file(s) " <>
+        "(#{undecodable} undecodable under :safe — likely cross-version atom drift, " <>
+        "re-read next scan; #{cross} cross-typed). Files left in place."
     end)
-    |> Enum.reverse()
-    |> then(&{:ok, &1})
   end
 
   @spec match_filters?(LogRecord.t(), Harness.ResultStore.filters()) :: boolean()

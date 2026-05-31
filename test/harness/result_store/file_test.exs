@@ -19,9 +19,10 @@ defmodule Harness.ResultStore.FileTest do
     {:ok, root: root}
   end
 
-  describe "list_run_records/2 with a corrupt sibling file" do
-    test "returns the healthy record and logs a warning for the bad one", %{root: root} do
-      record = %LogRecord{
+  @spec log_record(keyword()) :: LogRecord.t()
+  defp log_record(overrides) do
+    struct(
+      %LogRecord{
         batch_id: "batch-test",
         run_id: "run-abc",
         task_id: "task-73",
@@ -32,9 +33,15 @@ defmodule Harness.ResultStore.FileTest do
         repair_attempts: 0,
         first_attempt_failed_check_count: 0,
         failure_cause: %{reason: nil, failed_checks: []}
-      }
+      },
+      overrides
+    )
+  end
 
-      :ok = Store.record_run(record, root: root)
+  describe "list_run_records/2 skips undecodable / cross-typed siblings without per-file spam" do
+    test "returns the healthy record and emits one aggregated :debug line (no per-file warning)",
+         %{root: root} do
+      :ok = Store.record_run(log_record(run_id: "run-abc"), root: root)
 
       corrupt_path = Path.join([root, "runs", "garbage.term"])
       File.write!(corrupt_path, <<0, 1, 2, 3, "not a term">>)
@@ -43,11 +50,15 @@ defmodule Harness.ResultStore.FileTest do
 
       assert {:ok, [returned]} = result
       assert returned.run_id == "run-abc"
-      assert log =~ "skipping undecodable term file"
-      assert log =~ "invalid_term_file"
+      # New aggregated form, downgraded warning -> debug, exactly one line.
+      assert log =~ "skipped 1 term file"
+      assert log =~ "undecodable under :safe"
+      # Regression: the old per-file warning string must be gone.
+      refute log =~ "skipping undecodable term file"
     end
 
-    test "returns {:ok, []} when the only file is corrupt", %{root: root} do
+    test "returns {:ok, []} when the only file is undecodable, with one aggregated line",
+         %{root: root} do
       runs_dir = Path.join(root, "runs")
       File.mkdir_p!(runs_dir)
       File.write!(Path.join(runs_dir, "garbage.term"), <<255, 254, 253>>)
@@ -55,7 +66,42 @@ defmodule Harness.ResultStore.FileTest do
       {result, log} = with_log(fn -> Store.list_run_records([], root: root) end)
 
       assert {:ok, []} = result
-      assert log =~ "skipping undecodable term file"
+      assert log =~ "skipped 1 term file"
+      refute log =~ "skipping undecodable term file"
+    end
+
+    test "mixed dir: returns only the LogRecord and counts undecodable + cross-typed separately",
+         %{root: root} do
+      :ok = Store.record_run(log_record(run_id: "run-keep"), root: root)
+
+      runs_dir = Path.join(root, "runs")
+      # Genuinely torn bytes (fail binary_to_term entirely).
+      File.write!(Path.join(runs_dir, "torn.term"), <<0, 1, 2, 3, "not a term">>)
+      # A valid term that simply isn't a LogRecord (decodes, wrong struct/shape).
+      File.write!(Path.join(runs_dir, "crosstyped.term"), :erlang.term_to_binary(%{kind: :other}))
+
+      {result, log} = with_log(fn -> Store.list_run_records([], root: root) end)
+
+      assert {:ok, [returned]} = result
+      assert returned.run_id == "run-keep"
+      # One aggregated line for both skips, split by class.
+      assert log =~ "skipped 2 term file"
+      assert log =~ "1 undecodable under :safe"
+      assert log =~ "1 cross-typed"
+      # Both skipped files are LEFT IN PLACE — not moved or deleted.
+      assert File.exists?(Path.join(runs_dir, "torn.term"))
+      assert File.exists?(Path.join(runs_dir, "crosstyped.term"))
+      refute File.dir?(Path.join(runs_dir, ".quarantine"))
+    end
+
+    test "healthy-only dir emits no skip line", %{root: root} do
+      :ok = Store.record_run(log_record(run_id: "run-clean"), root: root)
+
+      {result, log} = with_log(fn -> Store.list_run_records([], root: root) end)
+
+      assert {:ok, [returned]} = result
+      assert returned.run_id == "run-clean"
+      refute log =~ "skipped"
     end
   end
 
