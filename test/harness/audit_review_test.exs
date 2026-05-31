@@ -4,6 +4,17 @@ defmodule Harness.AuditReviewTest do
   alias Harness.AgentAdapter.Outcome
   alias Harness.AuditReview
 
+  # Generous ceilings for the end-to-end dispatch tests below. Each spawns a
+  # real, fast-exiting grader subprocess (/bin/echo, /bin/sh), so the only way
+  # the idle window trips is OS-level subprocess scheduling starvation under the
+  # full async suite — not a slow command. Wide headroom keeps these
+  # deterministic (one such test flaked a harness grading run with
+  # `{:timed_out, :idle}` + empty output) without weakening any assertion: the
+  # run still must emit its sentinel and exit. The dedicated idle-timeout test
+  # keeps its own tight `idle_timeout: 150`.
+  @dispatch_total_timeout 30_000
+  @dispatch_idle_timeout 20_000
+
   describe "extract_verdict/1" do
     test "returns :approve when only the approve sentinel appears" do
       assert AuditReview.extract_verdict("...analysis...\n<<<VERDICT:APPROVE>>>") == :approve
@@ -145,8 +156,8 @@ defmodule Harness.AuditReviewTest do
                  prompt: "review this fix",
                  cwd: "/tmp",
                  adapter_opts: [command: {:echo, "<<<VERDICT:APPROVE>>>"}],
-                 total_timeout: 10_000,
-                 idle_timeout: 5_000
+                 total_timeout: @dispatch_total_timeout,
+                 idle_timeout: @dispatch_idle_timeout
                )
     end
 
@@ -159,8 +170,8 @@ defmodule Harness.AuditReviewTest do
                  prompt: "review this fix",
                  cwd: "/tmp",
                  adapter_opts: [command: {:echo, "<<<VERDICT:REJECT>>>"}],
-                 total_timeout: 10_000,
-                 idle_timeout: 5_000
+                 total_timeout: @dispatch_total_timeout,
+                 idle_timeout: @dispatch_idle_timeout
                )
     end
 
@@ -187,8 +198,8 @@ defmodule Harness.AuditReviewTest do
                  prompt: "review this fix",
                  cwd: "/tmp",
                  adapter_opts: [command: :echo],
-                 total_timeout: 10_000,
-                 idle_timeout: 5_000
+                 total_timeout: @dispatch_total_timeout,
+                 idle_timeout: @dispatch_idle_timeout
                )
     end
 
@@ -205,8 +216,8 @@ defmodule Harness.AuditReviewTest do
                  prompt: "review",
                  cwd: "/tmp",
                  adapter_opts: [command: {:echo, "<<<VERDICT:APPROVE>>>"}],
-                 total_timeout: 10_000,
-                 idle_timeout: 5_000
+                 total_timeout: @dispatch_total_timeout,
+                 idle_timeout: @dispatch_idle_timeout
                )
     end
 
@@ -222,8 +233,8 @@ defmodule Harness.AuditReviewTest do
                  prompt: "review",
                  cwd: "/tmp",
                  adapter_opts: [command: :missing],
-                 total_timeout: 10_000,
-                 idle_timeout: 5_000
+                 total_timeout: @dispatch_total_timeout,
+                 idle_timeout: @dispatch_idle_timeout
                )
     end
 
@@ -244,8 +255,8 @@ defmodule Harness.AuditReviewTest do
                  prompt: "review",
                  cwd: tmp_dir,
                  adapter_opts: [command: :write],
-                 total_timeout: 10_000,
-                 idle_timeout: 5_000
+                 total_timeout: @dispatch_total_timeout,
+                 idle_timeout: @dispatch_idle_timeout
                )
 
       assert File.exists?(Path.join(tmp_dir, "agent_output.txt"))
