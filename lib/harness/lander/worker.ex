@@ -4,23 +4,18 @@ defmodule Harness.Lander.Worker do
 
   Enqueued by `Harness.Run` when a run settles green under a `landing_policy:
   :auto` project, onto the serialized `landing_<name>` queue (limit 1). Resolves
-  the project from the registry and delegates to `Harness.Lander.land/1`,
-  mapping the structured outcome to Oban's worker contract:
-
-    * `{:landed, _}` → `:ok`
-    * `{:post_merge_red, _}` / `{:conflict, _}` / `{:push_rejected, _}` /
-      `{:skipped, _}` → `{:cancel, outcome}` — terminal for the happy-path
-      lander; Task 101 owns repair/retry of these.
-    * `{:error, reason}` → `{:error, reason}` — a transient failure (fetch,
-      checkout) Oban retries up to `max_attempts`.
+  the project from the registry, delegates to `Harness.Lander.land/1`, and hands
+  the structured outcome to `Harness.Lander.Resilience.route/2`, which maps it to
+  Oban's worker contract — landing the run, re-dispatching/re-landing under the
+  attempt cap, or marking the task `blocked` at the cap. The worker stays thin:
+  build the request, land, route.
   """
 
   use Oban.Worker, queue: :default, max_attempts: 3
 
   alias Harness.Lander
+  alias Harness.Lander.Resilience
   alias Harness.ProjectRegistry
-
-  require Logger
 
   @impl Oban.Worker
   @spec perform(Oban.Job.t()) :: Oban.Worker.result()
@@ -36,23 +31,10 @@ defmodule Harness.Lander.Worker do
         branch: branch
       }
       |> Lander.land()
-      |> to_oban_result(args)
+      |> Resilience.route(args)
     else
       {:error, reason} -> {:cancel, reason}
     end
-  end
-
-  @spec to_oban_result(Lander.outcome(), map()) :: Oban.Worker.result()
-  defp to_oban_result({:landed, sha}, args) do
-    Logger.info("harness lander: landed task #{args["task_id"]} (run #{args["run_id"]}) at #{sha}")
-    :ok
-  end
-
-  defp to_oban_result({:error, reason}, _args), do: {:error, reason}
-
-  defp to_oban_result(outcome, args) do
-    Logger.warning("harness lander: task #{args["task_id"]} did not land: #{inspect(outcome)}")
-    {:cancel, outcome}
   end
 
   @spec fetch_arg(map(), String.t()) :: {:ok, String.t()} | {:error, {:missing_arg, String.t()}}

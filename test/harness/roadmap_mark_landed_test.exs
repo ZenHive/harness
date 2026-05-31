@@ -72,4 +72,34 @@ defmodule Harness.RoadmapMarkLandedTest do
                Roadmap.mark_landed("1", root: tmp_dir, sha: "x", rmap_bin: Path.join(tmp_dir, "nope-rmap"))
     end
   end
+
+  describe "mark_blocked/2" do
+    test "builds the blocked + --reason argv with --tasks-path", %{tmp_dir: tmp_dir} do
+      {script, args_file} = stub_rmap(tmp_dir)
+
+      assert {:ok, _output} =
+               Roadmap.mark_blocked("101",
+                 root: tmp_dir,
+                 reason: "land-cap exhausted after conflict x2",
+                 rmap_bin: script
+               )
+
+      recorded = args_file |> File.read!() |> String.split("\n", trim: true)
+
+      assert recorded == [
+               "status",
+               "101",
+               "blocked",
+               "--reason",
+               "land-cap exhausted after conflict x2",
+               "--tasks-path",
+               Path.join(tmp_dir, "roadmap/tasks.toml")
+             ]
+    end
+
+    test "returns {:error, {:rmap_not_found, _}} when the binary is absent", %{tmp_dir: tmp_dir} do
+      assert {:error, {:rmap_not_found, _bin}} =
+               Roadmap.mark_blocked("1", root: tmp_dir, reason: "x", rmap_bin: Path.join(tmp_dir, "nope-rmap"))
+    end
+  end
 end

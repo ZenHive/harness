@@ -80,6 +80,7 @@ defmodule Harness.RunLandingTriggerTest do
       assert args["run_id"] == run_id
       assert args["agent"] == "claude"
       assert args["branch"] == "harness/" <> run_id
+      assert args["land_attempt"] == 1
     end
 
     test "a green :manual run enqueues nothing" do
