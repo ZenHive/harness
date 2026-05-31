@@ -271,6 +271,7 @@
         "u": 7
       },
       "eff": 3.0,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -299,6 +300,7 @@
         "u": 5
       },
       "eff": 1.67,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -332,6 +334,7 @@
         "u": 9
       },
       "eff": 3.0,
+      "dep_layer": 1,
       "markers": [],
       "depends_on": [
         "2"
@@ -367,6 +370,7 @@
         "u": 9
       },
       "eff": 1.5,
+      "dep_layer": 2,
       "markers": [],
       "depends_on": [
         "3"
@@ -399,6 +403,7 @@
         "u": 8
       },
       "eff": 1.88,
+      "dep_layer": 0,
       "markers": [
         "parallel"
       ],
@@ -430,6 +435,7 @@
         "u": 7
       },
       "eff": 2.33,
+      "dep_layer": 0,
       "markers": [
         "parallel"
       ],
@@ -460,6 +466,7 @@
         "u": 8
       },
       "eff": 1.7,
+      "dep_layer": 0,
       "markers": [
         "parallel"
       ],
@@ -494,6 +501,7 @@
         "u": 9
       },
       "eff": 1.8,
+      "dep_layer": 3,
       "markers": [],
       "depends_on": [
         "4",
@@ -527,6 +535,7 @@
         "u": 8
       },
       "eff": 1.7,
+      "dep_layer": 4,
       "markers": [],
       "depends_on": [
         "8"
@@ -557,6 +566,7 @@
         "u": 6
       },
       "eff": 1.63,
+      "dep_layer": 4,
       "markers": [
         "parallel"
       ],
@@ -591,6 +601,7 @@
         "u": 7
       },
       "eff": 1.5,
+      "dep_layer": 4,
       "markers": [
         "parallel"
       ],
@@ -625,6 +636,7 @@
         "u": 7
       },
       "eff": 1.75,
+      "dep_layer": 3,
       "markers": [],
       "depends_on": [
         "4"
@@ -655,6 +667,7 @@
         "u": 6
       },
       "eff": 1.0,
+      "dep_layer": 4,
       "markers": [
         "parallel"
       ],
@@ -687,6 +700,7 @@
         "u": 5
       },
       "eff": 1.0,
+      "dep_layer": 4,
       "markers": [],
       "depends_on": [
         "12"
@@ -717,6 +731,7 @@
         "u": 5
       },
       "eff": 1.25,
+      "dep_layer": 4,
       "markers": [
         "parallel"
       ],
@@ -749,6 +764,7 @@
         "u": 6
       },
       "eff": 1.3,
+      "dep_layer": 5,
       "markers": [],
       "depends_on": [
         "13",
@@ -783,6 +799,7 @@
         "u": 8
       },
       "eff": 1.33,
+      "dep_layer": 5,
       "markers": [],
       "depends_on": [
         "9"
@@ -811,6 +828,7 @@
         "u": 5
       },
       "eff": 1.67,
+      "dep_layer": 5,
       "markers": [
         "parallel"
       ],
@@ -844,6 +862,7 @@
         "u": 5
       },
       "eff": 1.0,
+      "dep_layer": 5,
       "markers": [
         "parallel"
       ],
@@ -878,6 +897,7 @@
         "u": 6
       },
       "eff": 1.5,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -912,6 +932,7 @@
         "u": 3
       },
       "eff": 0.57,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -939,6 +960,7 @@
         "u": 7
       },
       "eff": 1.75,
+      "dep_layer": 3,
       "markers": [],
       "depends_on": [
         "4"
@@ -976,6 +998,7 @@
         "u": 3
       },
       "eff": 1.0,
+      "dep_layer": 3,
       "markers": [
         "bug"
       ],
@@ -1007,6 +1030,7 @@
         "u": 9
       },
       "eff": 3.0,
+      "dep_layer": 0,
       "markers": [
         "bug"
       ],
@@ -1039,6 +1063,7 @@
         "u": 5
       },
       "eff": 1.25,
+      "dep_layer": 4,
       "markers": [],
       "depends_on": [
         "12"
@@ -1073,6 +1098,7 @@
         "u": 4
       },
       "eff": 1.33,
+      "dep_layer": 4,
       "markers": [],
       "depends_on": [
         "12"
@@ -1105,6 +1131,7 @@
         "u": 6
       },
       "eff": 1.5,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -1135,6 +1162,7 @@
         "u": 6
       },
       "eff": 1.5,
+      "dep_layer": 5,
       "markers": [],
       "depends_on": [
         "9",
@@ -1173,6 +1201,7 @@
         "u": 4
       },
       "eff": 1.67,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -1210,6 +1239,7 @@
         "u": 4
       },
       "eff": 1.67,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -1246,6 +1276,7 @@
         "u": 4
       },
       "eff": 1.75,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -1276,6 +1307,7 @@
         "u": 5
       },
       "eff": 1.38,
+      "dep_layer": 0,
       "markers": [
         "bug"
       ],
@@ -1312,6 +1344,7 @@
         "u": 5
       },
       "eff": 1.38,
+      "dep_layer": 6,
       "markers": [],
       "depends_on": [
         "9",
@@ -1349,6 +1382,7 @@
         "u": 6
       },
       "eff": 2.17,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -1379,6 +1413,7 @@
         "u": 5
       },
       "eff": 1.67,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -1407,6 +1442,7 @@
         "u": 6
       },
       "eff": 1.63,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -1436,6 +1472,7 @@
         "u": 5
       },
       "eff": 1.83,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -1464,6 +1501,7 @@
         "u": 4
       },
       "eff": 1.17,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -1492,6 +1530,7 @@
         "u": 5
       },
       "eff": 1.25,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -1520,6 +1559,7 @@
         "u": 4
       },
       "eff": 1.33,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -1547,6 +1587,7 @@
         "u": 7
       },
       "eff": 1.4,
+      "dep_layer": 0,
       "markers": [
         "bug"
       ],
@@ -1585,6 +1626,7 @@
         "u": 4
       },
       "eff": 3.5,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -1617,6 +1659,7 @@
         "u": 7
       },
       "eff": 2.17,
+      "dep_layer": 0,
       "markers": [
         "bug"
       ],
@@ -1653,6 +1696,7 @@
         "u": 8
       },
       "eff": 1.88,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -1691,6 +1735,7 @@
         "u": 6
       },
       "eff": 2.0,
+      "dep_layer": 1,
       "markers": [],
       "depends_on": [
         44
@@ -1729,6 +1774,7 @@
         "u": 9
       },
       "eff": 1.42,
+      "dep_layer": 1,
       "markers": [],
       "depends_on": [
         44
@@ -1772,6 +1818,7 @@
         "u": 6
       },
       "eff": 1.2,
+      "dep_layer": 2,
       "markers": [],
       "depends_on": [
         46
@@ -1813,6 +1860,7 @@
         "u": 8
       },
       "eff": 1.21,
+      "dep_layer": 2,
       "markers": [],
       "depends_on": [
         46
@@ -1857,6 +1905,7 @@
         "u": 4
       },
       "eff": 2.0,
+      "dep_layer": 3,
       "markers": [],
       "depends_on": [
         46,
@@ -1894,6 +1943,7 @@
         "u": 8
       },
       "eff": 1.21,
+      "dep_layer": 3,
       "markers": [],
       "depends_on": [
         46,
@@ -1941,6 +1991,7 @@
         "u": 5
       },
       "eff": 1.83,
+      "dep_layer": 3,
       "markers": [
         "parallel"
       ],
@@ -1983,6 +2034,7 @@
         "u": 7
       },
       "eff": 1.5,
+      "dep_layer": 4,
       "markers": [
         "parallel"
       ],
@@ -2023,6 +2075,7 @@
         "u": 4
       },
       "eff": 2.0,
+      "dep_layer": 5,
       "markers": [
         "parallel"
       ],
@@ -2062,6 +2115,7 @@
         "u": 5
       },
       "eff": 1.67,
+      "dep_layer": 6,
       "markers": [
         "parallel"
       ],
@@ -2103,6 +2157,7 @@
         "u": 7
       },
       "eff": 2.33,
+      "dep_layer": 1,
       "markers": [
         "bug"
       ],
@@ -2141,6 +2196,7 @@
         "u": 5
       },
       "eff": 2.5,
+      "dep_layer": 1,
       "markers": [
         "bug"
       ],
@@ -2176,6 +2232,7 @@
         "u": 6
       },
       "eff": 3.0,
+      "dep_layer": 6,
       "markers": [
         "bug"
       ],
@@ -2214,6 +2271,7 @@
         "u": 7
       },
       "eff": 2.33,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "model": "claude-opus-4-7",
@@ -2254,6 +2312,7 @@
         "u": 4
       },
       "eff": 0.9,
+      "dep_layer": 6,
       "markers": [],
       "depends_on": [
         11,
@@ -2298,6 +2357,7 @@
         "u": 7
       },
       "eff": 3.25,
+      "dep_layer": 0,
       "markers": [
         "bug"
       ],
@@ -2333,6 +2393,7 @@
         "u": 8
       },
       "eff": 1.6,
+      "dep_layer": 0,
       "markers": [
         "bug"
       ],
@@ -2367,6 +2428,7 @@
         "u": 5
       },
       "eff": 2.25,
+      "dep_layer": 0,
       "markers": [
         "bug"
       ],
@@ -2395,6 +2457,7 @@
         "u": 8
       },
       "eff": 2.5,
+      "dep_layer": 0,
       "markers": [
         "bug"
       ],
@@ -2433,6 +2496,7 @@
         "u": 5
       },
       "eff": 2.5,
+      "dep_layer": 0,
       "markers": [
         "bug"
       ],
@@ -2469,6 +2533,7 @@
         "u": 7
       },
       "eff": 1.75,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -2501,6 +2566,7 @@
         "u": 7
       },
       "eff": 2.0,
+      "dep_layer": 1,
       "markers": [
         "bug"
       ],
@@ -2539,6 +2605,7 @@
         "u": 5
       },
       "eff": 1.67,
+      "dep_layer": 0,
       "markers": [
         "bug"
       ],
@@ -2569,6 +2636,7 @@
         "u": 3
       },
       "eff": 3.0,
+      "dep_layer": 0,
       "markers": [
         "bug"
       ],
@@ -2599,6 +2667,7 @@
         "u": 4
       },
       "eff": 2.0,
+      "dep_layer": 0,
       "markers": [
         "bug"
       ],
@@ -2629,6 +2698,7 @@
         "u": 6
       },
       "eff": 2.75,
+      "dep_layer": 0,
       "markers": [
         "bug"
       ],
@@ -2666,6 +2736,7 @@
         "u": 9
       },
       "eff": 2.83,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -2702,6 +2773,7 @@
         "u": 8
       },
       "eff": 3.5,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -2738,6 +2810,7 @@
         "u": 7
       },
       "eff": 3.0,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -2773,6 +2846,7 @@
         "u": 7
       },
       "eff": 3.5,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -2812,6 +2886,7 @@
         "u": 8
       },
       "eff": 2.0,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -2850,6 +2925,7 @@
         "u": 7
       },
       "eff": 1.5,
+      "dep_layer": 1,
       "markers": [],
       "depends_on": [
         "75"
@@ -2892,6 +2968,7 @@
         "u": 6
       },
       "eff": 2.0,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -2931,6 +3008,7 @@
         "u": 6
       },
       "eff": 1.75,
+      "dep_layer": 2,
       "markers": [],
       "depends_on": [
         "76",
@@ -2983,6 +3061,7 @@
         "u": 8
       },
       "eff": 3.75,
+      "dep_layer": 1,
       "markers": [],
       "depends_on": [
         "75"
@@ -3022,6 +3101,7 @@
         "u": 4
       },
       "eff": 1.5,
+      "dep_layer": 3,
       "markers": [],
       "depends_on": [
         "78"
@@ -3060,7 +3140,10 @@
         "u": 3
       },
       "eff": 1.17,
-      "markers": [],
+      "dep_layer": 3,
+      "markers": [
+        "handbuild"
+      ],
       "depends_on": [
         "78"
       ],
@@ -3101,6 +3184,7 @@
         "u": 8
       },
       "eff": 2.67,
+      "dep_layer": 2,
       "markers": [
         "bug"
       ],
@@ -3141,6 +3225,7 @@
         "u": 8
       },
       "eff": 2.0,
+      "dep_layer": 2,
       "markers": [
         "bug"
       ],
@@ -3180,6 +3265,7 @@
         "u": 3
       },
       "eff": 3.0,
+      "dep_layer": 0,
       "markers": [
         "bug"
       ],
@@ -3216,6 +3302,7 @@
         "u": 8
       },
       "eff": 1.6,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -3260,6 +3347,7 @@
         "u": 7
       },
       "eff": 1.75,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -3301,6 +3389,7 @@
         "u": 9
       },
       "eff": 1.8,
+      "dep_layer": 1,
       "markers": [],
       "depends_on": [
         85,
@@ -3346,6 +3435,7 @@
         "u": 8
       },
       "eff": 1.88,
+      "dep_layer": 2,
       "markers": [],
       "depends_on": [
         75,
@@ -3379,6 +3469,7 @@
         "u": 7
       },
       "eff": 2.33,
+      "dep_layer": 2,
       "markers": [],
       "depends_on": [
         75,
@@ -3415,6 +3506,7 @@
         "u": 6
       },
       "eff": 3.0,
+      "dep_layer": 3,
       "markers": [],
       "depends_on": [
         89
@@ -3449,6 +3541,7 @@
         "u": 8
       },
       "eff": 2.0,
+      "dep_layer": 3,
       "markers": [],
       "depends_on": [
         79,
@@ -3491,6 +3584,7 @@
         "u": 7
       },
       "eff": 1.75,
+      "dep_layer": 0,
       "markers": [
         "bug"
       ],
@@ -3528,6 +3622,7 @@
         "u": 5
       },
       "eff": 1.1,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -3566,6 +3661,7 @@
         "u": 6
       },
       "eff": 3.0,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -3603,6 +3699,7 @@
         "u": 6
       },
       "eff": 3.0,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -3631,6 +3728,7 @@
         "u": 5
       },
       "eff": 4.5,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -3658,6 +3756,7 @@
         "u": 6
       },
       "eff": 1.63,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -3690,6 +3789,7 @@
         "u": 8
       },
       "eff": 2.33,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -3725,6 +3825,7 @@
         "u": 8
       },
       "eff": 1.6,
+      "dep_layer": 1,
       "markers": [],
       "depends_on": [
         "98"
@@ -3762,6 +3863,7 @@
         "u": 9
       },
       "eff": 1.7,
+      "dep_layer": 2,
       "markers": [],
       "depends_on": [
         "99"
@@ -3799,6 +3901,7 @@
         "u": 7
       },
       "eff": 1.4,
+      "dep_layer": 3,
       "markers": [],
       "depends_on": [
         "100"
@@ -3836,6 +3939,7 @@
         "u": 7
       },
       "eff": 3.25,
+      "dep_layer": 4,
       "markers": [],
       "depends_on": [
         "101"
@@ -3873,6 +3977,7 @@
         "u": 6
       },
       "eff": 1.83,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -3906,6 +4011,7 @@
         "u": 7
       },
       "eff": 1.25,
+      "dep_layer": 2,
       "markers": [],
       "depends_on": [
         99
@@ -3936,6 +4042,7 @@
         "u": 7
       },
       "eff": 2.17,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -3970,6 +4077,7 @@
         "u": 4
       },
       "eff": 1.75,
+      "dep_layer": 0,
       "markers": [
         "bug"
       ],
@@ -4007,6 +4115,7 @@
         "u": 6
       },
       "eff": 1.2,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -4041,6 +4150,7 @@
         "u": 3
       },
       "eff": 1.5,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -4074,6 +4184,7 @@
         "u": 4
       },
       "eff": 1.33,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -4105,6 +4216,7 @@
         "u": 3
       },
       "eff": 1.5,
+      "dep_layer": 1,
       "markers": [],
       "depends_on": [
         109
@@ -4134,6 +4246,7 @@
         "u": 2
       },
       "eff": 0.5,
+      "dep_layer": 1,
       "markers": [],
       "depends_on": [
         109
@@ -4166,6 +4279,7 @@
         "u": 7
       },
       "eff": 2.33,
+      "dep_layer": 4,
       "markers": [],
       "depends_on": [
         101
@@ -4204,6 +4318,7 @@
         "u": 6
       },
       "eff": 1.08,
+      "dep_layer": 5,
       "markers": [],
       "depends_on": [
         99,
@@ -4241,6 +4356,7 @@
         "u": 8
       },
       "eff": 2.0,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -4271,7 +4387,7 @@
       "phase": 13,
       "bundle": "production-kpis",
       "milestone": "v0_10",
-      "status": "pending",
+      "status": "done",
       "title": "Per-agent KPI dashboard LiveView — the at-a-glance trust ledger",
       "scores": {
         "d": 4,
@@ -4279,7 +4395,10 @@
         "u": 6
       },
       "eff": 1.5,
-      "markers": [],
+      "dep_layer": 1,
+      "markers": [
+        "handbuild"
+      ],
       "depends_on": [
         114
       ],
@@ -4294,9 +4413,13 @@
         "New aggregation logic — consumes Harness.AgentKPI (Task 114) as-is",
         "Headless dispatch of this task — LiveView/heex/CSS work is hand-built via tidewave + browser, not headless dispatch"
       ],
+      "shipped_in": "21b2b1b",
       "body": "Surface Harness.AgentKPI.aggregate/1 (Task 114) output as a LiveView table on the harness dashboard so the operator/orchestrator sees every agent's trust signal at once — success rate, first-attempt-pass, cost-to-green, tokens, repair burden, run count — sortable by column. This closes the user's stated gap: we have the data but cannot view it at once.\n\nResolve at pickup whether this merges into Task 81 (CompareLive) as one unified KPI surface or sits beside it. Hand-build via tidewave + an attached browser — per CLAUDE.md, headless agents idle-timeout on visual work with no reward signal.\n",
       "created_at": "2026-05-31",
+      "done_at": "2026-05-31",
       "scored_at": "2026-05-31",
+      "implemented": "Harness.Dashboard.KPILive — sortable per-agent KPI table at /harness/kpi over AgentKPI.aggregate/1; explicit no-data state; re-aggregates on :harness_run_settled; Task 81 (CompareLive) kept as a deliberate sibling (fleet-wide ledger vs per-comparison A/B); 4 LiveView tests via ConnCase.",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -4312,6 +4435,7 @@
         "u": 10
       },
       "eff": 2.25,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -4344,6 +4468,7 @@
         "u": 8
       },
       "eff": 1.33,
+      "dep_layer": 1,
       "markers": [],
       "depends_on": [
         116
@@ -4378,6 +4503,7 @@
         "u": 8
       },
       "eff": 1.33,
+      "dep_layer": 2,
       "markers": [],
       "depends_on": [
         117
@@ -4411,6 +4537,7 @@
         "u": 10
       },
       "eff": 1.67,
+      "dep_layer": 3,
       "markers": [],
       "depends_on": [
         116,
@@ -4447,6 +4574,7 @@
         "u": 8
       },
       "eff": 3.5,
+      "dep_layer": 4,
       "markers": [],
       "depends_on": [
         119
@@ -4480,6 +4608,7 @@
         "u": 10
       },
       "eff": 1.67,
+      "dep_layer": 5,
       "markers": [],
       "depends_on": [
         119,
@@ -4516,6 +4645,7 @@
         "u": 8
       },
       "eff": 1.33,
+      "dep_layer": 6,
       "markers": [],
       "depends_on": [
         117,
@@ -4551,6 +4681,7 @@
         "u": 6
       },
       "eff": 3.0,
+      "dep_layer": 2,
       "markers": [],
       "depends_on": [
         99
@@ -4582,6 +4713,7 @@
         "u": 5
       },
       "eff": 1.67,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "module": "Harness.AgentRules",
@@ -4615,6 +4747,7 @@
         "u": 4
       },
       "eff": 1.5,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "module": "Harness.Run",
@@ -4646,6 +4779,7 @@
         "u": 5
       },
       "eff": 1.67,
+      "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [

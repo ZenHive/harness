@@ -2645,6 +2645,7 @@ bundle = "deferred"
 status = "pending"
 title = "Harness.Dashboard.CompareLive — A/B agent-evaluation view"
 scores = { d = 3, b = 4, u = 3 }
+markers = ["handbuild"]
 depends_on = ["78"]
 acceptance_criteria = [
   "LiveView at /harness/compare/:comparison_id rendering the side-by-side per-adapter metrics produced by Harness.Batch.AgentEvaluation.compare/4 (verdict, repair_attempts, duration_ms, first_attempt_failed_check_count, agent_diff_size)",
@@ -2665,8 +2666,6 @@ out_of_scope = [
   "Cross-comparison aggregation (which adapter wins most often over N comparisons) — separate concern, later",
   "Comparison cancellation mid-flight",
 ]
-created_at = "2026-05-28"
-scored_at = "2026-05-28"
 body = """
 Future-idea task, filed unpinned (no milestone) — pick up when same-task A/B agent evaluation becomes a frequent enough workflow to justify a UI. Currently Harness.Batch.AgentEvaluation.compare/4 exists as a backend (Task 33's deliverable) but has no operator-facing surface — comparison results are observable only via the returned struct or by drilling into each adapter's run record individually.
 
@@ -2688,6 +2687,8 @@ Transcript-tab switching is the only meaningful interaction in this view. Treat 
 
 Forbidden: striped data tables, balanced "fairness" cell weighting (where pass and fail look equally weighted — the whole point is that they don't), default browser focus rings without restyling, Inter / Roboto / Arial / system-ui / Space Grotesk.
 """
+created_at = "2026-05-28"
+scored_at = "2026-05-28"
 
 [[task]]
 id = "82"
@@ -3679,9 +3680,10 @@ id = "115"
 phase = 13
 bundle = "production-kpis"
 milestone = "v0_10"
-status = "pending"
+status = "done"
 title = "Per-agent KPI dashboard LiveView — the at-a-glance trust ledger"
 scores = { d = 4, b = 6, u = 6 }
+markers = ["handbuild"]
 depends_on = [114]
 acceptance_criteria = ["A dashboard route (port 4018) renders one row per agent with success_rate, first_attempt_pass_rate, cost_to_green, mean tokens, mean repair_attempts, run_count", "Columns are sortable; an agent with no runs renders a clear 'no data' state, not a crash or misleading zeros", "Relationship to the already-pending Task 81 (CompareLive, A/B agent-evaluation view) is resolved explicitly — merged into it or documented as a deliberate sibling surface", "LiveView test asserts the table renders the aggregated values for a seeded record set"]
 out_of_scope = ["Capability / per-domain scores — Tasks 119/121 surface those; this is the production observational ledger", "New aggregation logic — consumes Harness.AgentKPI (Task 114) as-is", "Headless dispatch of this task — LiveView/heex/CSS work is hand-built via tidewave + browser, not headless dispatch"]
@@ -3690,8 +3692,12 @@ Surface Harness.AgentKPI.aggregate/1 (Task 114) output as a LiveView table on th
 
 Resolve at pickup whether this merges into Task 81 (CompareLive) as one unified KPI surface or sits beside it. Hand-build via tidewave + an attached browser — per CLAUDE.md, headless agents idle-timeout on visual work with no reward signal.
 """
+implemented = "Harness.Dashboard.KPILive — sortable per-agent KPI table at /harness/kpi over AgentKPI.aggregate/1; explicit no-data state; re-aggregates on :harness_run_settled; Task 81 (CompareLive) kept as a deliberate sibling (fleet-wide ledger vs per-comparison A/B); 4 LiveView tests via ConnCase."
+verified = true
 created_at = "2026-05-31"
 scored_at = "2026-05-31"
+done_at = "2026-05-31"
+shipped_in = "21b2b1b"
 
 [[task]]
 id = "116"
