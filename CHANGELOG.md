@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-agent KPI aggregation over run records (Task 114).** `Harness.AgentKPI`
+  rolls a list of `%Harness.Run.LogRecord{}` (e.g. from
+  `ResultStore.list_run_records/1`) up by `agent` into a per-agent ledger:
+  `success_rate` (`:pass` / total), `first_attempt_pass_rate` (`:pass` with zero
+  repairs), `duration_ms` median + p90 (nearest-rank), mean tokens
+  (input/output/total), mean `repair_attempts`, and a `cost_to_green` composite
+  (mean total tokens per `:pass` run, `nil` when an agent has no green runs). No
+  new capture — every input field already exists on `LogRecord`. Pure functions
+  only: the caller supplies the records, so the rollup is testable without I/O.
 - **Run change-set view on the run-detail page.** Each run now shows what it
   changed: an in-flight run lists the files the agent is editing (from its
   transcript tool calls), and a settled run shows the actual git diff — file

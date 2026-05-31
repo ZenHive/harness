@@ -1,0 +1,138 @@
+defmodule Harness.AgentKPI do
+  @moduledoc """
+  Per-agent KPI rollup over the run records `Harness.ResultStore` already persists.
+
+  This context adds **no new capture** — every input field (`agent`, `verdict`,
+  `duration_ms`, `token_usage`, `repair_attempts`) is already on
+  `Harness.Run.LogRecord`. It is a read-only aggregation that makes the data we
+  already have viewable at a glance: roll a record list up by `agent` into
+  success rate, first-attempt-pass rate, duration median/p90, mean tokens, mean
+  repair attempts, and a cost-to-green composite.
+
+  ## Pure by construction
+
+  `aggregate/1` does no I/O — the caller supplies the record set (typically from
+  `Harness.ResultStore.list_run_records/1`), so the rollup is testable without a
+  store. Aggregates are recomputed on read, never persisted.
+
+  ## Conventions
+
+    * A `verdict` of `:pass` is a success; `:fail` and `nil` (verification never
+      ran) both count as non-successes in the denominators.
+    * Token means treat an unreported (`nil`) component as `0` and divide by the
+      agent's full run count. In practice reporting is all-or-nothing per agent
+      (a plain-text adapter reports none), so this matches the per-agent rollup.
+    * `cost_to_green` is the mean total tokens across an agent's `:pass` runs; an
+      agent with zero `:pass` runs reports `nil` (no divide-by-zero, not `0`).
+  """
+
+  alias Harness.Run.LogRecord
+  alias Harness.TokenUsage
+
+  @typedoc "Median and 90th-percentile (nearest-rank) of an agent's run durations."
+  @type duration_summary :: %{median: number(), p90: non_neg_integer()}
+
+  @typedoc "Mean tokens per run for an agent, by component."
+  @type token_means :: %{input: float(), output: float(), total: float()}
+
+  @typedoc "Rolled-up KPIs for one agent."
+  @type agent_kpi :: %{
+          run_count: pos_integer(),
+          success_rate: float(),
+          first_attempt_pass_rate: float(),
+          duration_ms: duration_summary(),
+          tokens: token_means(),
+          repair_attempts: float(),
+          cost_to_green: float() | nil
+        }
+
+  @typedoc "Per-agent ledger keyed by the record's `agent` atom (or `nil` for an unregistered adapter)."
+  @type t :: %{optional(atom() | nil) => agent_kpi()}
+
+  @doc """
+  Rolls a list of `Harness.Run.LogRecord` up into a per-agent KPI ledger.
+
+  Returns a map keyed by each record's `agent`; an empty input returns `%{}`.
+  """
+  @spec aggregate([LogRecord.t()]) :: t()
+  def aggregate(records) when is_list(records) do
+    records
+    |> Enum.group_by(& &1.agent)
+    |> Map.new(fn {agent, group} -> {agent, summarize(group)} end)
+  end
+
+  @spec summarize([LogRecord.t()]) :: agent_kpi()
+  defp summarize(records) do
+    run_count = length(records)
+    passes = Enum.filter(records, &(&1.verdict == :pass))
+    durations = records |> Enum.map(& &1.duration_ms) |> Enum.sort()
+
+    %{
+      run_count: run_count,
+      success_rate: rate(length(passes), run_count),
+      first_attempt_pass_rate: rate(first_attempt_passes(records), run_count),
+      duration_ms: %{median: median(durations), p90: percentile(durations, 90)},
+      tokens: token_means(records, run_count),
+      repair_attempts: mean(Enum.map(records, & &1.repair_attempts), run_count),
+      cost_to_green: cost_to_green(passes)
+    }
+  end
+
+  @spec first_attempt_passes([LogRecord.t()]) :: non_neg_integer()
+  defp first_attempt_passes(records) do
+    Enum.count(records, &(&1.verdict == :pass and &1.repair_attempts == 0))
+  end
+
+  @spec token_means([LogRecord.t()], pos_integer()) :: token_means()
+  defp token_means(records, run_count) do
+    %{
+      input: mean(Enum.map(records, &token_field(&1, :input)), run_count),
+      output: mean(Enum.map(records, &token_field(&1, :output)), run_count),
+      total: mean(Enum.map(records, &token_field(&1, :total)), run_count)
+    }
+  end
+
+  # An unreported (nil) or absent component contributes 0 to the mean.
+  @spec token_field(LogRecord.t(), :input | :output | :total) :: non_neg_integer()
+  defp token_field(%LogRecord{token_usage: %TokenUsage{} = usage}, field) do
+    case Map.get(usage, field) do
+      count when is_integer(count) -> count
+      _ -> 0
+    end
+  end
+
+  defp token_field(_record, _field), do: 0
+
+  @spec cost_to_green([LogRecord.t()]) :: float() | nil
+  defp cost_to_green([]), do: nil
+
+  defp cost_to_green(passes) do
+    mean(Enum.map(passes, &token_field(&1, :total)), length(passes))
+  end
+
+  @spec rate(non_neg_integer(), pos_integer()) :: float()
+  defp rate(count, total) when total > 0, do: count / total
+
+  @spec mean([number()], pos_integer()) :: float()
+  defp mean(values, count) when count > 0, do: Enum.sum(values) / count
+
+  @spec median([non_neg_integer()]) :: number()
+  defp median(sorted) do
+    n = length(sorted)
+    mid = div(n, 2)
+
+    case rem(n, 2) do
+      1 -> Enum.at(sorted, mid)
+      0 -> (Enum.at(sorted, mid - 1) + Enum.at(sorted, mid)) / 2
+    end
+  end
+
+  # Nearest-rank percentile via integer arithmetic so float drift never bumps the
+  # rank past an element boundary (e.g. 0.9 * 10 rounding up to 10).
+  @spec percentile([non_neg_integer()], pos_integer()) :: non_neg_integer()
+  defp percentile(sorted, p) do
+    n = length(sorted)
+    rank = div(p * n + 99, 100)
+    Enum.at(sorted, max(rank, 1) - 1)
+  end
+end
