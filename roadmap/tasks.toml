@@ -3607,7 +3607,7 @@ id = "112"
 phase = 11
 bundle = "autolanding"
 milestone = "v0_9"
-status = "in_progress"
+status = "done"
 title = "Mid-run reflex floor — progress-stall detector + unified deterministic watchdog"
 scores = { d = 3, b = 7, u = 7 }
 depends_on = [101]
@@ -3616,9 +3616,14 @@ out_of_scope = ["LLM/semantic judgment of the transcript (Task 113)", "live mid-
 body = """
 Today's liveness guard is byte-idle only (Port silence -> kill). It misses the productive-spin hang documented on Task 78: the agent emits tokens (timer stays happy) while re-reading the same files with zero edits. Add a PROGRESS-stall detector (no edit / no new tool-call within a window, not just byte silence) and CONSOLIDATE the existing reflex guards -- idle-timeout, the Worktree.Isolation porcelain snapshot, and a blocked-command interceptor (rm -rf outside worktree, deps.clean, force-push, verification-stack edits) -- into ONE deterministic mid-run layer that can halt a run and route it (repair / blocked) via Resilience.route/2. REFACTOR the scattered guards into this layer; no parallel path. No LLM -- timers + pattern-match only. Demote-only: it can halt, never bless. This is the ungameable floor that also bounds the watcher-regress for the LLM layer (Task 113): something mechanical must watch the watcher.
 """
+implemented = "Unified Harness.Run.Reflex deterministic mid-run floor: progress-stall detector (tool-call markers + worktree fingerprint dual-signal) consolidating idle/total deadlines, checkout-porcelain snapshot, and blocked-command detection; trips route via Resilience.route/2 (demote-only — redispatch-under-cap/block-at-cap + Task-102 Event). Delivered by codex (green after 2 repair cycles); review pass added cancel-wins precedence over reflex re-dispatch, narrowed the grade-edit guard so dep-adds/config aren't false-blocked, and gated per-line JSON decode; stabilized 2 pre-existing flaky tests (async result_store env isolation + verification timeout-capture budget). Squash-landed onto development."
+delivered_by = "codex"
+verified = true
 created_at = "2026-05-31"
 started_at = "2026-05-31"
 scored_at = "2026-05-31"
+done_at = "2026-05-31"
+shipped_in = "1593c5c"
 
 [[task]]
 id = "113"
@@ -3802,6 +3807,26 @@ body = """
 Periodically run the benchmark corpus (Task 117) through the available agents via Batch.AgentEvaluation, persist the scores (Task 119), and prioritize the (agent, domain) cells Task 120 flags unmeasured or stale and Task 121 wants explored. Builds on the existing Oban.Plugins.Cron (Task 51) — queue-per-project + cron are already in the stack.
 
 Respect agent availability (AgentRegistry) and cost: do not re-benchmark fresh cells, cap concurrency, and log what was skipped (no silent truncation). This closes the loop — the system keeps its trust signal current without a human kicking off benchmarks.
+"""
+created_at = "2026-05-31"
+scored_at = "2026-05-31"
+
+[[task]]
+id = "123"
+phase = 11
+bundle = "autolanding"
+status = "pending"
+title = "Decouple semantic gate from auto-land so dogfooding dispatches get green-verdict scrutiny"
+scores = { d = 2, b = 6, u = 6 }
+depends_on = [99]
+acceptance_criteria = ["Semantic gate (Task 99) can be enabled for a project whose landing_policy is :manual — a config setting selects always | auto_land_only (current default) | off, defaulting to current behaviour (on iff auto-landing)", "A per-dispatch override (start_run :semantic_gate opt, surfaced on dispatch__task/await) forces the gate on for one run regardless of landing policy", "Test: a manual-landing project with the gate enabled dispatches the cross-family grader on a green verdict and routes REJECT into the repair loop (mirror Task 99's test under manual policy)", "Default behaviour unchanged: gate stays OFF for manual-landing projects unless explicitly enabled"]
+out_of_scope = ["Acceptance-criteria quality checks — inherits Task 99's stance: the gate trusts criteria as written", "Changing the grader/pairing logic or the sentinel verdict extraction (reused from AuditReview/Task 99 unchanged)"]
+body = """
+Concrete evidence: Task 108 was dispatched through harness and settled green while objectively incomplete — the agent built the producer plumbing (Batch.put_env persists :env into Oban job args) but across two repair rounds never wired the consumer side (Run.Worker.run_opts reading args["env"] into start_run) and wrote no AC test, so the scrub was dead-on-arrival. The check stack passed it because it grades suite-green, not AC-met. Hand-finished on land.
+
+The mechanism that would have caught this already exists: Task 99's cross-family semantic gate dispatches an opposite-family grader with (body + acceptance_criteria + committed diff) and REJECTs exactly "stubbed the hard case / solved the adjacent problem". But its trigger is hardcoded "ON when the project's landing policy would auto-land, OFF otherwise". The harness self-project is landing_policy: manual + target_branch: nil, so the gate is OFF for harness's own dogfooding dispatches — the core of its methodology runs with the one AC-aware check disabled.
+
+Fix: decouple gate-enablement from auto-land. A project-level config (always | auto_land_only | off) plus a per-dispatch override lets a manual-landing project opt the gate on. Low difficulty — the gate machinery (consulting state in Harness.Run, AuditReview.grade_fix/1, sentinel extraction, :semantic_rejection repair route) is built by Task 99; only the WHEN-it-fires predicate changes.
 """
 created_at = "2026-05-31"
 scored_at = "2026-05-31"
