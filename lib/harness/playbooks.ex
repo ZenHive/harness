@@ -5,7 +5,7 @@ defmodule Harness.Playbooks do
   A playbook is a markdown recipe — "dispatch a single task", "fan out a bundle",
   "A/B compare adapters", "audit-grade a fix" — written for the tool-equipped LLM
   driving harness. It names the exact MCP tools to call, in order, with the
-  gotchas (secret scrubbing, non-delegatable two-step, verdict reading) inline.
+  gotchas (secret scrubbing, adapter selection, verdict reading) inline.
 
   Surfaced as two tools via `Harness.Manifest` → `Harness.Chat.Tools` and the
   external MCP endpoint: `playbooks__list` returns the catalog, `playbooks__get`

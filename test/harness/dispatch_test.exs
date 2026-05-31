@@ -255,8 +255,11 @@ defmodule Harness.DispatchTest do
       assert {:error, {:unknown_adapter, "bogus"}} = Dispatch.bundle("any-project", "bogus")
     end
 
-    test "rejects a non-delegatable adapter (Oban bundle path is delegatable-only)" do
-      assert {:error, {:non_delegatable_adapter, "grok"}} = Dispatch.bundle("any-project", "grok")
+    test "accepts grok now that rmap renders it natively (reaches project lookup)" do
+      # grok used to be rejected as non-delegatable; rmap's widened delegate
+      # vocabulary makes it a first-class bundle adapter, so resolution passes
+      # and the next gate — project lookup — is what rejects this unregistered name.
+      assert {:error, {:unknown_project, "any-project"}} = Dispatch.bundle("any-project", "grok")
     end
 
     test "returns unknown_project for an unregistered project on a delegatable adapter" do

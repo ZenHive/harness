@@ -149,13 +149,11 @@ defmodule Harness.AgentRegistryTest do
       assert Pi in adapters
     end
 
-    test "delegatable_agents/0 returns only the rmap-delegate trio" do
+    test "delegatable_agents/0 returns every harness adapter (rmap renders each natively)" do
       delegatable = AgentRegistry.delegatable_agents()
 
-      assert delegatable |> Map.keys() |> Enum.sort() == [:claude, :codex, :cursor]
-      refute Map.has_key?(delegatable, :grok)
-      refute Map.has_key?(delegatable, :antigravity)
-      refute Map.has_key?(delegatable, :pi)
+      assert delegatable |> Map.keys() |> Enum.sort() ==
+               [:antigravity, :claude, :codex, :cursor, :grok, :pi]
     end
   end
 
@@ -175,16 +173,13 @@ defmodule Harness.AgentRegistryTest do
   end
 
   describe "delegatable_module_for_agent/1" do
-    test "resolves each trio agent" do
+    test "resolves every harness adapter — all six render natively and are delegatable" do
       assert {:ok, Claude} = AgentRegistry.delegatable_module_for_agent(:claude)
       assert {:ok, Codex} = AgentRegistry.delegatable_module_for_agent(:codex)
       assert {:ok, Cursor} = AgentRegistry.delegatable_module_for_agent(:cursor)
-    end
-
-    test "rejects known but non-delegatable agents with :non_delegatable" do
-      assert {:error, {:non_delegatable, :grok}} = AgentRegistry.delegatable_module_for_agent(:grok)
-      assert {:error, {:non_delegatable, :antigravity}} = AgentRegistry.delegatable_module_for_agent(:antigravity)
-      assert {:error, {:non_delegatable, :pi}} = AgentRegistry.delegatable_module_for_agent(:pi)
+      assert {:ok, Grok} = AgentRegistry.delegatable_module_for_agent(:grok)
+      assert {:ok, Antigravity} = AgentRegistry.delegatable_module_for_agent(:antigravity)
+      assert {:ok, Pi} = AgentRegistry.delegatable_module_for_agent(:pi)
     end
 
     test "rejects unknown atoms with :unsupported_agent" do

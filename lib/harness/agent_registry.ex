@@ -114,7 +114,12 @@ defmodule Harness.AgentRegistry do
 
   @module_to_agent Map.new(@agents, fn {atom, mod} -> {mod, atom} end)
 
-  @delegatable_agents [:claude, :codex, :cursor]
+  # rmap's `delegate --to` renders a native prompt for every adapter harness
+  # ships, so all six are delegatable. (The set is kept distinct from
+  # `Map.keys(@agents)` so a future adapter rmap can't render — e.g. a harness
+  # `droid` adapter before rmap support — can be added to `@agents` without
+  # silently becoming delegatable.)
+  @delegatable_agents [:claude, :codex, :cursor, :grok, :antigravity, :pi]
 
   @executables %{
     Claude => "claude",
@@ -289,9 +294,10 @@ defmodule Harness.AgentRegistry do
   @doc """
   Returns the atom→module map for the agents `rmap delegate --to` supports.
 
-  Currently `:claude`, `:codex`, `:cursor`. The other three adapters (Grok,
-  Antigravity, Pi) ship through the two-step non-delegatable dispatch pattern;
-  see `Harness.Roadmap.ingest/2` and the `harness-driver` skill.
+  All six harness adapters (`:claude`, `:codex`, `:cursor`, `:grok`,
+  `:antigravity`, `:pi`) — rmap renders a native prompt for each, so each is
+  dispatched directly with its own render agent. (rmap can also render `droid`,
+  but harness has no `droid` adapter, so it is not in this map.)
   """
   @spec delegatable_agents() :: %{agent() => module()}
   def delegatable_agents, do: Map.take(@agents, @delegatable_agents)

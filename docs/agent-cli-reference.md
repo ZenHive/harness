@@ -18,11 +18,13 @@ that adapter — treat this file as a starting point, not a frozen contract.
 | Session resume | `--resume`/`-r <id\|name>` · `--continue`/`-c` · `--fork-session` | `codex exec resume [ID]` · `--last` · `--all` | `--resume [chatId]` · `--continue` | `-s`/`--session-id` · `-r`/`--resume` · `-c`/`--continue` | `--continue` |
 | Working dir / approval | `--add-dir` · `--permission-mode default\|acceptEdits\|plan\|auto\|dontAsk\|bypassPermissions` | `--cd`/`-C` · `--sandbox read-only\|workspace-write\|danger-full-access` · `--ask-for-approval untrusted\|on-request\|never` | `--workspace` · `-f`/`--force` · `--yolo` · `--trust` (headless) | `--cwd` · `--always-approve` | `--dangerously-skip-permissions` |
 
-## Ingestion and Prompt Rendering Contract for Non-Delegatable Adapters
+## Ingestion and Prompt Rendering Contract
 
-Only a subset of adapters (`Claude Code`, `Codex`, and `Cursor`) are delegatable targets natively supported by the `rmap` CLI (`rmap delegate --to` accepts only these options). Consequently, the harness ingestion surface (`Harness.Roadmap.ingest/2`) restricts its valid agents to `:claude`, `:codex`, and `:cursor`.
+`rmap delegate --to` renders a native prompt for every adapter harness ships — `Claude Code`, `Codex`, `Cursor`, `Grok`, `Antigravity`, and `Pi`. The harness ingestion surface (`Harness.Roadmap.ingest/2`) accepts all six as `:agent` values and dispatches each directly on its own adapter module; there is no claude-rendered two-step.
 
-The non-delegatable adapters (`Grok` and `Antigravity`) run using prompts rendered for one of the delegatable agents. They are executed by ingesting the task prompt under a delegatable agent configuration, and then passing the resulting `%Harness.Roadmap.Item{}` directly to their adapter module (`Harness.AgentAdapter.Grok` or `Harness.AgentAdapter.Antigravity`) when invoking `Harness.Run.Supervisor.start_run/4` (or via `Harness.Batch`).
+`rmap` can also render a `droid` prompt, but harness ships **no Droid adapter**, so `:droid` is rejected at the ingest boundary (`{:invalid_agent, :droid}`) and at flat dispatch (`{:unknown_adapter, "droid"}`) — there is no executor to run it. Adding an executor is two-sided: a `rmap delegate --to` target (the rmap binary is ours, `../rmap/`; the `droid` render target already exists) **plus** a harness `AgentAdapter` added to `Harness.Roadmap`'s `@valid_agents` and `Harness.AgentAdapter.Registry`.
+
+(Worktree isolation is an orthogonal axis: only `Antigravity` declares `worktree_isolation: false`. See `skills/harness-driver/SKILL.md` § "Renderable vs executable agents".)
 
 ## Per-agent detail
 

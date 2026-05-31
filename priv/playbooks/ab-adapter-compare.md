@@ -17,8 +17,9 @@ on the *same* task — to compare verdict, repair effort, and diff size side by 
    list (e.g. `[Harness.AgentAdapter.Claude, Harness.AgentAdapter.Codex, Harness.AgentAdapter.Cursor]`)
    and a `max_concurrency`. Each adapter runs in its own isolated worktree and is graded
    independently by the same verification stack.
-   - For non-delegatable adapters in the mix, ingest with a delegatable agent (step 3 already does)
-     and include the non-delegatable adapter module directly in the list.
+   - Any of the six adapters can be in the list (`Grok`, `Antigravity`, `Pi` included) — they all
+     run the single shared prompt step 3 ingested. `droid` is not an option: rmap renders it but
+     harness has no Droid adapter module.
 
 5. **Read the comparison.** The result's `entries` carry per-adapter metrics: `verdict`,
    `repair_attempts`, `duration_ms`, `first_attempt_failed_check_count`, `agent_diff_size`. The

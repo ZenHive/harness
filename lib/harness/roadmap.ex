@@ -28,19 +28,20 @@ defmodule Harness.Roadmap do
   Ingestion is read-only: it never writes the roadmap back (claiming a task is
   the run-lifecycle's concern).
 
-  ## Non-delegatable Adapters Contract
+  ## Renderable vs Executable Agents
 
-  Non-delegatable adapters (such as `Grok` and `Antigravity`) are not valid targets
-  for rmap delegation (`rmap delegate --to` accepts only `claude`, `codex`, or `cursor`).
-  Therefore, passing `:grok` or `:antigravity` as the `:agent` option to `ingest/2` is
-  rejected by design.
+  rmap's `delegate --to` renders a native prompt for every agent harness ships —
+  `:claude`, `:codex`, `:cursor`, `:grok`, `:antigravity`, `:pi`. Any of the six
+  is a valid `:agent` for `ingest/2` and runs directly on its own adapter; there
+  is no two-step indirection.
 
-  To run a task using a non-delegatable adapter:
-  1. Ingest the task using a delegatable agent (e.g. `:claude`, `:codex`, or `:cursor`),
-     which produces a `Harness.Roadmap.Item` with the corresponding rendered prompt.
-  2. Dispatch that item directly to the non-delegatable adapter module (e.g.
-     `Harness.AgentAdapter.Grok` or `Harness.AgentAdapter.Antigravity`) via
-     `Harness.Run.Supervisor.start_run/4` (or via `Harness.Batch` using the adapter module).
+  rmap can also render for agents harness has no adapter for (currently `droid`).
+  Passing such an agent to `ingest/2` is rejected by design — there is no executor
+  to run the rendered prompt. Closing that gap is mechanical and two-sided: a new
+  rmap `delegate --to` target is a small rmap-lib task (the rmap binary is ours,
+  `../rmap/`), and harness then adds an `AgentAdapter` plus the agent to
+  `@valid_agents`. The render side already exists for `droid`; only the harness
+  adapter is missing.
   """
 
   use Descripex, namespace: "/roadmap"
@@ -49,16 +50,14 @@ defmodule Harness.Roadmap do
   alias Harness.ProjectRegistry
   alias Harness.Roadmap.Item
 
-  # Mirrors `rmap delegate --to`'s accepted values exactly — ingestion shells
-  # out to `rmap delegate` to render the prompt, so an agent rmap cannot
-  # delegate to (e.g. :grok, :antigravity) is rejected here rather than failing
-  # downstream with an opaque `{:rmap_failed, _}`.
-  #
-  # Contract for non-delegatable adapters: Grok and Antigravity run with a
-  # claude/codex/cursor-rendered prompt. Ingestion rejects them on the ingest
-  # surface, but they can be run by dispatching the ingested item directly to their
-  # adapter module via `Harness.Run.Supervisor.start_run/4`.
-  @valid_agents [:claude, :codex, :cursor]
+  # The agents harness can both render (via `rmap delegate --to`) AND execute
+  # (has an `AgentAdapter` for). rmap renders natively for all six, so each is
+  # accepted here and dispatched directly on its own adapter. An agent rmap can
+  # render but harness can't run (e.g. :droid — no adapter yet) is rejected here
+  # rather than failing downstream with an opaque `{:rmap_failed, _}` or a
+  # missing-module crash. Adding one is two-sided: an rmap-lib `--to` target
+  # (already done for droid) plus a harness adapter listed here.
+  @valid_agents [:claude, :codex, :cursor, :grok, :antigravity, :pi]
 
   @typedoc "Which task to ingest: the next pending one, or one named by id."
   @type selector :: :next | {:id, String.t()}

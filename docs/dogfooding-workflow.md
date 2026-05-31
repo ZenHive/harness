@@ -77,15 +77,14 @@ fallback for dumping full diagnostics to your terminal in one blocking process.
 > Drive everything from one long-lived node — the `iex -S mix` you started for the
 > dashboard. This applies to both paths below.
 
-### Non-delegatable adapters contract
+### Renderable vs executable agents
 
-Non-delegatable adapters (`Grok` and `Antigravity`) are not valid options on the ingestion
-surface because `rmap delegate --to` does not support them (so `ingest(agent: :grok)` and
-`ingest(agent: :antigravity)` are rejected). Instead, ingest with a delegatable agent
-(`:claude`, `:codex`, or `:cursor`) and pass the resulting `%Harness.Roadmap.Item{}`
-directly to the non-delegatable adapter's module (`Harness.AgentAdapter.Grok` /
-`Harness.AgentAdapter.Antigravity` / `Harness.AgentAdapter.Pi`) when calling
-`Harness.Run.Supervisor.start_run/4`. Applies to both dispatch paths.
+`rmap delegate --to` renders a native prompt for all six harness adapters (`:claude`, `:codex`,
+`:cursor`, `:grok`, `:antigravity`, `:pi`), so each is a valid `ingest(agent: …)` value and runs
+directly on its own adapter module — no claude-rendered two-step. `rmap` can also render `droid`,
+but harness has no Droid adapter, so `ingest(agent: :droid)` is rejected (`{:invalid_agent, :droid}`)
+and flat dispatch rejects it as `{:unknown_adapter, "droid"}`. Adding an executor is two-sided:
+an rmap-lib `--to` target (already shipped for `droid`) plus a harness `AgentAdapter`.
 
 > **Antigravity caveat (Task 32):** `agy` ignores the port `cwd` and resolves workspace via git-common-dir to the main checkout. `Harness.AgentAdapter.Antigravity` declares `worktree_isolation: false`, so `Harness.Run` rejects dispatch before spawn — Antigravity cannot drive worktree-isolated runs until the CLI gains a headless workspace constraint.
 
@@ -413,13 +412,13 @@ gated by `:concurrency` on a `Harness.Batch` (Task 9) when you want a cap;
 the dogfood driver uses raw `start_run` calls and lets the supervisor settle
 them all in parallel.
 
-**Rotate non-delegatable adapters in deliberately.** `Grok` (and `Antigravity`
-once Task 32 resolves) are accepted dogfood drivers via the two-step
-ingest-as-delegatable + `start_run/4` with the non-delegatable adapter module
-pattern (see CLAUDE.md § "Agent Headless Entry Points"). The extra step is not
-a reason to silently exclude them from a batch — that's training-comfort bias,
-not a real constraint. Round-1 Task 25 (Grok-driven) settled `:passed`; the
-dispatch is documented and works.
+**Rotate `Grok` / `Antigravity` / `Pi` in deliberately.** They are first-class
+dogfood drivers — rmap renders native prompts for them, so `ingest(agent: :grok)`
+→ `start_run/4` with `Harness.AgentAdapter.Grok` is the whole flow (no two-step).
+Don't silently exclude them from a batch — that's training-comfort bias, not a
+real constraint. Round-1 Task 25 (Grok-driven) settled `:passed`. (Antigravity
+still can't run *worktree-isolated* — `worktree_isolation: false`, Task 32 — but
+that's the isolation axis, independent of rendering.)
 
 **The one hard limit: never batch two tasks that edit the same function.**
 That's a guaranteed un-auto-mergable collision (e.g. Tasks 34 + 35 both

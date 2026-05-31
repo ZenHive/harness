@@ -70,6 +70,8 @@ full struct API and use the two-step `roadmap__ingest` → `start_run` directly:
   )
 ```
 
-For non-delegatable adapters, ingest with a delegatable agent (`:claude`/`:codex`/`:cursor`) and
-pass the `%Item{}` to the real adapter module. This struct-passing path is for the in-process
-driver only, not the stateless chat/MCP orchestrator.
+rmap renders a native prompt for all six adapters (`:claude`/`:codex`/`:cursor`/`:grok`/`:antigravity`/`:pi`),
+so just `ingest(agent: <adapter>)` and dispatch the `%Item{}` to its own adapter module — no
+claude-rendered two-step. This struct-passing path is for the in-process driver only, not the
+stateless chat/MCP orchestrator. (`droid` is renderable by rmap but has no harness adapter, so it
+is not a valid executor.)

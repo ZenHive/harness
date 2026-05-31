@@ -26,13 +26,15 @@ defmodule Harness.Dispatch do
   rather than wedging the tool call. `task/4` (fire-and-forget) is unchanged
   alongside it.
 
-  ## Non-delegatable executors
+  ## Adapter vocabulary
 
-  `rmap delegate --to` only renders prompts for `:claude`, `:codex`, `:cursor`.
-  Grok / Antigravity / Pi are dispatched via the documented two-step: ingest
-  with a delegatable render agent (`:claude`), then dispatch the ingested item
-  to the real adapter module. `task/4` does this internally, so the orchestrator
-  never has to know about it.
+  `rmap delegate --to` renders a native prompt for every harness adapter —
+  `claude`, `codex`, `cursor`, `grok`, `antigravity`, `pi` — so each is a valid
+  `adapter` here and is dispatched directly (no claude-rendered two-step). rmap
+  can also render `droid`, but harness has no Droid adapter, so `droid` resolves
+  to `{:unknown_adapter, "droid"}`. Adding a new executor is two-sided: an rmap
+  `delegate --to` target (the rmap binary is ours, `../rmap/`) plus a harness
+  `Harness.AgentAdapter` — the render side already exists for `droid`.
   """
 
   use Descripex, namespace: "/dispatch"
@@ -86,7 +88,7 @@ defmodule Harness.Dispatch do
         kind: :value,
         default: "claude",
         description:
-          "Executor: claude | codex | cursor | grok | antigravity | pi. Non-delegatable executors (grok/antigravity/pi) are handled via the ingest-with-a-delegatable-agent two-step internally."
+          "Executor: claude | codex | cursor | grok | antigravity | pi — rmap renders a native prompt for each, so each runs directly on its own adapter. (droid is renderable by rmap but has no harness adapter, so it is rejected as unknown_adapter.)"
       ],
       scrub_anthropic_key: [
         kind: :value,
@@ -136,7 +138,7 @@ defmodule Harness.Dispatch do
         kind: :value,
         default: "claude",
         description:
-          "Executor: claude | codex | cursor | grok | antigravity | pi. Non-delegatable executors (grok/antigravity/pi) are handled via the ingest-with-a-delegatable-agent two-step internally."
+          "Executor: claude | codex | cursor | grok | antigravity | pi — rmap renders a native prompt for each, so each runs directly on its own adapter. (droid is renderable by rmap but has no harness adapter, so it is rejected as unknown_adapter.)"
       ],
       timeout_ms: [
         kind: :value,
@@ -274,7 +276,7 @@ defmodule Harness.Dispatch do
         kind: :value,
         default: "claude",
         description:
-          "Delegatable executor only: claude | codex | cursor. The Oban bundle path keys each job's adapter off the task's render agent, so non-delegatable executors (grok/antigravity/pi) are rejected — dispatch those one task at a time via dispatch__task."
+          "Executor: claude | codex | cursor | grok | antigravity | pi. The Oban bundle path keys each job's adapter off the task's render agent; rmap renders natively for all six, so each is accepted. (droid is renderable by rmap but has no harness adapter, so it is rejected as unknown_adapter.)"
       ],
       scrub_anthropic_key: [
         kind: :value,
@@ -310,7 +312,7 @@ defmodule Harness.Dispatch do
 
   api(
     :compare,
-    "Same-task A/B agent evaluation over JSON: ingest one roadmap task once (rendered for claude) and run it concurrently across N adapters in isolated worktrees, returning side-by-side per-adapter metrics. Supports all six executors — each adapter runs the shared prompt directly (the two-step that lets non-delegatable executors run). In-process and blocking: returns once every adapter's run has settled. The JSON-native counterpart to Harness.Batch.AgentEvaluation.compare/4.",
+    "Same-task A/B agent evaluation over JSON: ingest one roadmap task once — rendered once (for claude) so every adapter runs an identical prompt, which is what makes the comparison fair — and run it concurrently across N adapters in isolated worktrees, returning side-by-side per-adapter metrics. Supports all six executors (claude | codex | cursor | grok | antigravity | pi), each running that shared prompt directly. In-process and blocking: returns once every adapter's run has settled. The JSON-native counterpart to Harness.Batch.AgentEvaluation.compare/4.",
     params: [
       project_name: [
         kind: :value,
@@ -346,6 +348,9 @@ defmodule Harness.Dispatch do
       when is_binary(project_name) and is_binary(task) and is_list(adapters) and is_boolean(scrub_anthropic_key) do
     with {:ok, modules} <- resolve_adapter_modules(adapters),
          {:ok, project} <- lookup_project(project_name),
+         # Render once, for claude, on purpose: every adapter must run the
+         # identical prompt for the A/B comparison to be fair — this is not the
+         # old non-delegatable two-step (rmap now renders natively for all six).
          {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: :claude),
          {:ok, %Comparison{} = comparison} <-
            AgentEvaluation.compare(item, project, modules, env: scrub_env(scrub_anthropic_key)) do
@@ -495,8 +500,9 @@ defmodule Harness.Dispatch do
   end
 
   # Bundle dispatch is Oban-backed and resolves each job's executor from the
-  # ingested item's render agent, so only the three delegatable executors are
-  # accepted; a non-delegatable name would silently run claude (see Registry.delegatable?/1).
+  # ingested item's render agent. rmap renders natively for all six adapters, so
+  # all six pass; the guard remains in case a future adapter is registered
+  # without a matching `delegate --to` target (see Registry.delegatable?/1).
   @spec resolve_delegatable_adapter(String.t()) ::
           {:ok, {module(), atom()}} | {:error, {:unknown_adapter | :non_delegatable_adapter, String.t()}}
   defp resolve_delegatable_adapter(adapter) do

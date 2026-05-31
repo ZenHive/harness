@@ -48,6 +48,18 @@ defmodule Harness.RoadmapTest do
       assert item.prompt =~ "Target: codex"
     end
 
+    test "renders natively for every harness adapter, including grok/antigravity/pi" do
+      # rmap's widened `delegate --to` renders a native prompt for all six —
+      # no claude-rendered two-step. The agent atom flows straight through and
+      # the rendered Target matches.
+      for agent <- [:claude, :codex, :cursor, :grok, :antigravity, :pi] do
+        assert {:ok, %Item{agent: ^agent} = item} =
+                 Roadmap.ingest({:id, "1"}, project_root: @sample, agent: agent)
+
+        assert item.prompt =~ "Target: #{agent}"
+      end
+    end
+
     test "returns task_not_found for an unknown id" do
       assert {:error, {:task_not_found, "999"}} =
                Roadmap.ingest({:id, "999"}, project_root: @sample)
@@ -120,14 +132,17 @@ defmodule Harness.RoadmapTest do
   end
 
   describe "ingest/2 errors" do
-    test "rejects an unsupported agent before shelling out" do
-      assert {:error, {:invalid_agent, :grok}} =
-               Roadmap.ingest({:id, "1"}, project_root: @sample, agent: :grok)
+    test "rejects :droid — rmap renders it but harness has no executor for it" do
+      # rmap's `delegate --to` accepts droid, but harness ships no Droid adapter,
+      # so ingestion rejects it on the ingest surface rather than rendering a
+      # prompt that nothing can run.
+      assert {:error, {:invalid_agent, :droid}} =
+               Roadmap.ingest({:id, "1"}, project_root: @sample, agent: :droid)
     end
 
-    test "rejects :antigravity — rmap delegate cannot render for it" do
-      assert {:error, {:invalid_agent, :antigravity}} =
-               Roadmap.ingest({:id, "1"}, project_root: @sample, agent: :antigravity)
+    test "rejects an unknown agent before shelling out" do
+      assert {:error, {:invalid_agent, :nope}} =
+               Roadmap.ingest({:id, "1"}, project_root: @sample, agent: :nope)
     end
 
     test "rejects a malformed selector" do
