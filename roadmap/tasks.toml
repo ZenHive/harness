@@ -70,6 +70,11 @@ name = "Workflow Substrate"
 order = 12
 status = "pending"
 
+[phases.13]
+name = "Agent KPIs & Capability Routing"
+order = 13
+status = "pending"
+
 # ----------------------------------------------------------------------------
 # Bundles
 # ----------------------------------------------------------------------------
@@ -78,6 +83,21 @@ status = "pending"
 description = "Harness workflow as the source-of-truth operating contract all repos adopt, retiring the generic global includes"
 order = 1
 phase = 12
+
+[bundles.production-kpis]
+description = "Per-agent KPIs aggregated from existing run records — success rate, cost-to-green, tokens, repair burden — surfaced at a glance"
+order = 1
+phase = 13
+
+[bundles.capability-bench]
+description = "Fixed per-domain benchmark corpus dispatched across all agents; scored, persisted, decayed — the experimental capability dataset"
+order = 2
+phase = 13
+
+[bundles.kpi-routing]
+description = "Recommend-agent-per-domain routing surface (explore/exploit) + Oban cron benchmark scheduler — the behavior-change layer"
+order = 3
+phase = 13
 
 [bundles.scaffold]
 description = "mix project scaffold + standard dep stack"
@@ -225,6 +245,13 @@ description = "Proves harness can drive an rmap task from dispatch to a landed c
 order = 9
 status = "active"
 target_version = "0.9.0"
+
+[milestones.v0_10]
+name = "Agent KPIs & Capability Routing"
+description = "Proves evidence-based per-domain agent routing beats the orchestrator's default self-reliance: capability KPIs — gathered by dispatching a fixed benchmark corpus across every agent and graded by the verification stack, never self-report — change which agent gets dispatched and lower cost-to-green. Tests the hypothesis that the orchestrator falls back to the one familiar agent (or hand-builds) because it flies dark on the others' real capabilities, and that a per-(agent,domain) trust signal placed in the dispatch path corrects that."
+order = 10
+status = "pending"
+target_version = "0.10.0"
 
 # ----------------------------------------------------------------------------
 # Tasks
@@ -3569,3 +3596,207 @@ Expensive 20% (optional): changing cadence WITHOUT restart means tearing down an
 """
 created_at = "2026-05-30"
 scored_at = "2026-05-30"
+
+[[task]]
+id = "112"
+phase = 11
+bundle = "autolanding"
+milestone = "v0_9"
+status = "in_progress"
+title = "Mid-run reflex floor — progress-stall detector + unified deterministic watchdog"
+scores = { d = 3, b = 7, u = 7 }
+depends_on = [101]
+acceptance_criteria = ["progress-stall (no edit/tool-call in window) halts a run the byte-idle timer would let run", "idle-timeout + Isolation porcelain guard + blocked-command interception are unified into one layer, not parallel paths", "a tripped reflex routes through existing Resilience.route/2 (repair or blocked), emitting a Task-102 Event", "the layer is pure deterministic (no agent dispatch) and covered by offline tests"]
+out_of_scope = ["LLM/semantic judgment of the transcript (Task 113)", "live mid-flight steering of the agent"]
+body = """
+Today's liveness guard is byte-idle only (Port silence -> kill). It misses the productive-spin hang documented on Task 78: the agent emits tokens (timer stays happy) while re-reading the same files with zero edits. Add a PROGRESS-stall detector (no edit / no new tool-call within a window, not just byte silence) and CONSOLIDATE the existing reflex guards -- idle-timeout, the Worktree.Isolation porcelain snapshot, and a blocked-command interceptor (rm -rf outside worktree, deps.clean, force-push, verification-stack edits) -- into ONE deterministic mid-run layer that can halt a run and route it (repair / blocked) via Resilience.route/2. REFACTOR the scattered guards into this layer; no parallel path. No LLM -- timers + pattern-match only. Demote-only: it can halt, never bless. This is the ungameable floor that also bounds the watcher-regress for the LLM layer (Task 113): something mechanical must watch the watcher.
+"""
+created_at = "2026-05-31"
+started_at = "2026-05-31"
+scored_at = "2026-05-31"
+
+[[task]]
+id = "113"
+phase = 11
+bundle = "autolanding"
+milestone = "v0_9"
+status = "pending"
+title = "Continuous in-run discernment — sampled cross-family Buddhi on the witness stream"
+scores = { d = 6, b = 7, u = 6 }
+depends_on = [99, 102, 112]
+acceptance_criteria = ["the post-green gate (Task 99) and the in-run sampler share one discernment dispatch path, not duplicated logic", "in-run discernment is weight-gated + sampled; trivial runs skip it; cadence is configurable", "verdict is demote-only: notify-only / halt+re-dispatch / blocked -- no path turns red into green", "ambiguous/low-confidence verdicts on partial transcripts route to notify-only, never halt", "grader dispatch failure or timeout never silently approves (inherits Task 99 fail-safe)", "the Task-112 reflex floor can halt a hung/rogue in-run grader (watcher-regress bounded)"]
+out_of_scope = ["live mid-flight prompt injection / steering (kill + re-dispatch only)", "a separate acting Sakshi agent -- Sakshi never acts", "re-implementing Task 99's settle-time gate -- it becomes the post-green trigger of the shared path"]
+body = """
+Task 99's semantic gate fires ONCE on the final green diff -- it sees the result, never the process. An agent taking destructive/out-of-scope actions, drifting from the plan, or spinning is invisible to it until (or unless) the diff lands. Extend the SAME machinery (AuditReview cross-family pairing, <<<VERDICT>>> sentinel, fail-safe-on-error, the Harness.Run consulting state) from one-shot post-green to a weight-gated SAMPLED check DURING the run, fed by the live witness stream (Task 102 Event hinge + transcript capture). REFACTOR Task 99's gate so the settle-time check and the in-run check share ONE discernment dispatch path -- one Buddhi, two trigger points -- not two copies. Demote-only: notify-only (Task-102 sink) / halt + re-dispatch-with-correction / blocked. Never promotes red->green; never blesses. 'Intervene' = kill + re-dispatch with the verdict fed back through the repair-loop channel -- live mid-flight steering is unsupported across the six CLIs. Gate by weight (high-D, security/bug markers, long-running) + a sample interval; skip trivial runs. This is Buddhi watching itself (continuous self-observation), NOT a new acting agent -- Sakshi (Task 102) still only witnesses. RISK: judging a PARTIAL transcript is noisy -- agents read heavily before editing (Task 78), so 'it's drifting' fires false. Mitigate: ambiguous -> notify-only, never halt; halt reserved for high-confidence rogue/destructive signals. This task partly overlaps Task 99 for the gaming/evasion class; its NON-overlapping value is process visibility (rogue actions + productive-spin) the settle gate cannot see. Score is honest-low for cost + noise + overlap, not demand-doubt.
+"""
+created_at = "2026-05-31"
+scored_at = "2026-05-31"
+
+[[task]]
+id = "114"
+phase = 13
+bundle = "production-kpis"
+milestone = "v0_10"
+status = "pending"
+title = "Harness.AgentKPI — per-agent KPI aggregation over result_store run records"
+scores = { d = 4, b = 8, u = 8 }
+acceptance_criteria = ["Harness.AgentKPI.aggregate/1 takes a list of LogRecord and returns a map keyed by agent, each value carrying: run_count, success_rate, first_attempt_pass_rate, duration_ms {median, p90}, tokens {input, output, total} means, repair_attempts mean, cost_to_green (mean total tokens per :pass run)", "Empty input returns an empty map; an agent with zero :pass runs reports cost_to_green = nil (no divide-by-zero, not 0)", "Pure functions only — no ResultStore/file I/O inside the context; the record list is passed in by the caller", "Tests cover: mixed-agent record set, single-agent, an all-failed agent (success_rate 0.0, cost_to_green nil), and repair-heavy vs first-try agents", "@spec on every def and defp; module passes the project check stack"]
+out_of_scope = ["New run-record fields or capture changes — every input field already exists on LogRecord (agent, verdict, duration_ms, token_usage, repair_attempts, first_attempt_failed_check_count, agent_diff_size)", "Per-domain slicing — depends on Task 116 tagging; this task aggregates global per-agent only", "Persistence of aggregates — recomputed on read from result_store", "Dashboard rendering — Task 115"]
+body = """
+Aggregate the LogRecords ResultStore already persists into a per-agent ledger. Every field needed is captured per run today (agent, verdict, duration_ms, token_usage {input,output,cache,total}, repair_attempts, first_attempt_failed_check_count, agent_diff_size) — confirmed by code survey 2026-05-31. This task adds NO new capture: it is a read-only aggregation context rolling records up by agent into success rate (verdict :pass / total), first-attempt-pass rate (repair_attempts == 0 AND :pass), median + p90 duration_ms, mean tokens (in/out/total), mean repair_attempts, and a cost-to-green composite (mean total tokens per landed-green task).
+
+Pure functions over a record list; the caller supplies the record set (from ResultStore.list_run_records) so the context is testable without I/O. This is the cheap, immediate half of the KPI feature — it makes the data we already have viewable at a glance. Pairs with the experimental capability half (Tasks 116-122).
+"""
+created_at = "2026-05-31"
+scored_at = "2026-05-31"
+
+[[task]]
+id = "115"
+phase = 13
+bundle = "production-kpis"
+milestone = "v0_10"
+status = "pending"
+title = "Per-agent KPI dashboard LiveView — the at-a-glance trust ledger"
+scores = { d = 4, b = 6, u = 6 }
+depends_on = [114]
+acceptance_criteria = ["A dashboard route (port 4018) renders one row per agent with success_rate, first_attempt_pass_rate, cost_to_green, mean tokens, mean repair_attempts, run_count", "Columns are sortable; an agent with no runs renders a clear 'no data' state, not a crash or misleading zeros", "Relationship to the already-pending Task 81 (CompareLive, A/B agent-evaluation view) is resolved explicitly — merged into it or documented as a deliberate sibling surface", "LiveView test asserts the table renders the aggregated values for a seeded record set"]
+out_of_scope = ["Capability / per-domain scores — Tasks 119/121 surface those; this is the production observational ledger", "New aggregation logic — consumes Harness.AgentKPI (Task 114) as-is", "Headless dispatch of this task — LiveView/heex/CSS work is hand-built via tidewave + browser, not headless dispatch"]
+body = """
+Surface Harness.AgentKPI.aggregate/1 (Task 114) output as a LiveView table on the harness dashboard so the operator/orchestrator sees every agent's trust signal at once — success rate, first-attempt-pass, cost-to-green, tokens, repair burden, run count — sortable by column. This closes the user's stated gap: we have the data but cannot view it at once.
+
+Resolve at pickup whether this merges into Task 81 (CompareLive) as one unified KPI surface or sits beside it. Hand-build via tidewave + an attached browser — per CLAUDE.md, headless agents idle-timeout on visual work with no reward signal.
+"""
+created_at = "2026-05-31"
+scored_at = "2026-05-31"
+
+[[task]]
+id = "116"
+phase = 13
+bundle = "capability-bench"
+milestone = "v0_10"
+status = "pending"
+title = "Capability domain taxonomy + per-run domain tagging (the lynchpin)"
+scores = { d = 4, b = 8, u = 10 }
+acceptance_criteria = ["A canonical domain vocabulary is defined in one place (module attribute / function) with the initial Elixir-stack domains (e.g. :otp, :genserver, :liveview, :phoenix, :ecto, :oban) and room to add :rust and other languages", "Benchmark corpus items (Task 117) can declare one or more domain tags", "Run records carry their domain tag(s) so Harness.AgentKPI can group by (agent, domain) — additive and back-compatible with untagged historical records", "Untagged records bucket into an :untagged/global group, never dropped or crashed", "Tests cover tag round-trip on a record and grouping by (agent, domain) including the :untagged bucket"]
+out_of_scope = ["Auto-classifying a free-text task into a domain (ML/heuristic) — tags are declared, not inferred for now (TODO: revisit if manual tagging proves heavy)", "The benchmark corpus content itself — Tasks 117/118", "Routing logic that consumes the tags — Task 121"]
+body = """
+Define the capability-domain vocabulary the KPI/routing system slices on, and thread a domain tag onto (a) benchmark corpus items and (b) run records, so both production and capability KPIs can be sliced per domain.
+
+This is the lynchpin: without per-domain tagging, neither per-domain production KPIs nor capability routing are possible — it blocks most of the phase, so it lands early. Decide the taxonomy shape (flat atom list vs hierarchical), where tags live on a run (a LogRecord field vs derived from the task), and keep it open for non-Elixir domains. Tags are advisory metadata, not a contract — same posture as AgentRegistry availability.
+"""
+created_at = "2026-05-31"
+scored_at = "2026-05-31"
+
+[[task]]
+id = "117"
+phase = 13
+bundle = "capability-bench"
+milestone = "v0_10"
+status = "pending"
+title = "Benchmark corpus structure + loader — fixed, versioned eval set separate from the live roadmap"
+scores = { d = 6, b = 8, u = 8 }
+depends_on = [116]
+acceptance_criteria = ["A benchmark corpus format is defined (proposed priv/benchmarks/*.toml, compile-time embedded like priv/playbooks) with per item: id, version, domain tags (Task 116), task spec (intent + acceptance), target check-stack reference, and expected-green ground truth", "A loader reads the corpus into structs at compile time or boot, validated — a malformed item is a loud error, never a silent skip", "Corpus items are addressable by id and filterable by domain", "Tests cover loading a valid corpus, filtering by domain, and rejecting a malformed item loudly"]
+out_of_scope = ["Corpus content / curated tasks — Task 118", "Dispatching the corpus to agents — reuses Batch.AgentEvaluation, driven by the Task 122 scheduler", "Scoring the results — Task 119", "Mixing benchmark items into roadmap/tasks.toml — they stay separate by design (roadmap tasks get consumed; benchmarks must be stable + repeatable)"]
+body = """
+Define and load a fixed, versioned capability-benchmark corpus that lives OUTSIDE the live roadmap. Each corpus item = a self-contained task spec (intent + acceptance criteria) + a target project / check-stack reference (the verification stack is the grader — same thesis as the rest of harness) + domain tag(s) from Task 116 + a stable id/version.
+
+Benchmarks must be stable, repeatable, and gradeable green by a check stack — distinct from roadmap tasks, which get consumed. This task is the STRUCTURE + loader only; the curated content is Task 118.
+"""
+created_at = "2026-05-31"
+scored_at = "2026-05-31"
+
+[[task]]
+id = "118"
+phase = 13
+bundle = "capability-bench"
+milestone = "v0_10"
+status = "pending"
+title = "Initial Elixir-domain benchmark corpus content (OTP / LiveView / Oban / Ecto)"
+scores = { d = 6, b = 8, u = 8 }
+depends_on = [117]
+acceptance_criteria = ["Benchmark items spanning OTP/gen_statem, LiveView, Oban, Ecto, and plain Elixir (target ~2-3 per domain — decide final count at pickup), each carrying domain tags from Task 116", "Each item is independently gradeable green by its referenced check stack — verified by running a reference solution (or the empty-then-green path) through harness", "Items are sized for a single dispatch (not multi-session epics) so cross-agent comparison stays apples-to-apples", "A short rationale documents what each domain's items probe, so the corpus's representativeness is auditable rather than arbitrary"]
+out_of_scope = ["Rust / non-Elixir corpus — separate later tasks once the Elixir set proves the format", "Corpus loader / structure — Task 117", "Scoring / persistence — Task 119"]
+body = """
+Curate the first real benchmark tasks — the high-value, hard content work. A representative set across the Elixir-stack domains, each self-contained and gradeable green by a check stack so scoring is objective (not LLM-judged).
+
+A weak or biased corpus measures the wrong thing confidently — coverage and representativeness are the deliverable, not just count. This is where the capability benchmark earns its value or doesn't. Rust and other languages are explicitly later tasks.
+"""
+created_at = "2026-05-31"
+scored_at = "2026-05-31"
+
+[[task]]
+id = "119"
+phase = 13
+bundle = "capability-bench"
+milestone = "v0_10"
+status = "pending"
+title = "Capability scoring + persistence — per-(agent,domain) score from AgentEvaluation comparisons"
+scores = { d = 6, b = 10, u = 10 }
+depends_on = [116, 118]
+acceptance_criteria = ["A capability score is computed per (agent, domain) from corpus-run results: success_rate, cost_to_green, mean repair_attempts, plus a documented composite (success-rate-dominant, cost as tiebreaker)", "Scores persist with a scored_at timestamp and the corpus version they were measured against", "Raw per-run metrics are retained alongside the composite so it can be recomputed/retuned without re-dispatching", "An unmeasured (agent, domain) cell is representable as 'no data' — distinct from a measured-low score", "Tests cover: scoring a domain from a seeded Comparison set, the no-data cell, and recomputing the composite from retained raw metrics"]
+out_of_scope = ["Re-running the comparison primitive — Batch.AgentEvaluation (one task -> N agents -> Comparison) already exists and is reused as-is", "Decay / staleness logic — Task 120", "Routing decisions that consume the score — Task 121", "Scheduling the benchmark runs — Task 122"]
+body = """
+Turn the per-adapter metrics Batch.AgentEvaluation already produces (verdict, repair_attempts, duration_ms, token_usage, first_attempt_failed_check_count) into a per-(agent, domain) capability SCORE, persisted with scored_at. The comparison primitive exists; this adds the missing ranking + storage: a composite per agent per domain aggregated over the benchmark-corpus runs for that domain, written to a store so routing (Task 121) and staleness (Task 120) can read it.
+
+Define the composite honestly — success-rate-dominant, cost as tiebreaker — and retain the raw metrics alongside the score so the composite can be retuned without re-running the (expensive) benchmark.
+"""
+created_at = "2026-05-31"
+scored_at = "2026-05-31"
+
+[[task]]
+id = "120"
+phase = 13
+bundle = "capability-bench"
+milestone = "v0_10"
+status = "pending"
+title = "Capability score staleness / decay + re-benchmark-needed signal"
+scores = { d = 2, b = 6, u = 8 }
+depends_on = [119]
+acceptance_criteria = ["A staleness check classifies each (agent, domain) score as fresh / stale given its scored_at and a configurable window (default ~30 days, mirroring rmap's scored_at decay)", "A function lists stale + unmeasured (agent, domain) cells as 're-benchmark needed' candidates", "Stale scores are flagged, not deleted — routing decides how to treat them", "Tests cover fresh, stale, and unmeasured cells against an injected reference date (no Date.utc_today/0 inline, for determinism)"]
+out_of_scope = ["Actually scheduling / running re-benchmarks — Task 122 consumes this signal", "Background timers — this is a pure classification over persisted scores", "Per-agent release detection — staleness is time-based, not version-diffed (TODO: revisit if agent version metadata becomes available)"]
+body = """
+Capability scores measure a specific model snapshot; agents ship 40+ releases, so a 3-month-old score measures a different agent. Add a freshness window + decay on capability scores (mirror rmap's 30-day scored_at decay) so routing can discount or flag stale scores, and emit a 're-benchmark needed' signal per (agent, domain) cell older than the window — which the Task 122 scheduler consumes to prioritize what to re-run.
+
+Pure read over the persisted scored_at; no background process here. Cheap but load-bearing: without it the orchestrator routes confidently on stale data.
+"""
+created_at = "2026-05-31"
+scored_at = "2026-05-31"
+
+[[task]]
+id = "121"
+phase = 13
+bundle = "kpi-routing"
+milestone = "v0_10"
+status = "pending"
+title = "recommend-agent-per-domain routing surface (explore/exploit) in the dispatch path"
+scores = { d = 6, b = 10, u = 10 }
+depends_on = [119, 120]
+acceptance_criteria = ["recommend/1 (or /2 with opts) takes a domain and returns a ranked agent recommendation with rationale (exploit best-known vs explore-this-unmeasured-cell)", "Unmeasured cells are surfaced as explore candidates, distinct from measured-low agents; stale scores (Task 120) are discounted", "The recommendation is reachable over the driver/MCP surface AND referenced in the dispatch / next decision path — not dashboard-only", "Exploration is bounded/configurable (an explore rate, or 'recommend exploration when the cell is unmeasured/stale') so it does not always route to untested agents", "Tests cover: all-measured (exploit best), an unmeasured cell (explore), a stale-best cell (discount + maybe explore), and the no-data-at-all fallback", "skills/harness-driver/SKILL.md updated — recommend is a public driver surface"]
+out_of_scope = ["Auto-dispatching without orchestrator confirmation — recommend returns advice; the orchestrator/consumer decides", "Multi-armed-bandit tuning beyond a simple explore/exploit rule (TODO: revisit if the naive rule misroutes)", "The benchmark scheduler — Task 122"]
+body = """
+The anti-fly-dark mechanism. Expose recommend(domain) -> agent that consults persisted capability scores (Task 119) with explore/exploit: an UNMEASURED (agent, domain) cell is not a low score — it is an exploration candidate, so the orchestrator tries under-measured agents BECAUSE there is no data, not despite it; measured cells exploit the best score, discounting stale ones (Task 120).
+
+Surface this over the driver/MCP surface AND in the dispatch / next path so the orchestrator actually consults it at the decision point instead of defaulting to Claude/self. A recommendation in a dashboard nobody queries changes nothing — it must sit in the path. This task is the whole point of the milestone: it changes orchestrator behavior, not just reporting.
+"""
+created_at = "2026-05-31"
+scored_at = "2026-05-31"
+
+[[task]]
+id = "122"
+phase = 13
+bundle = "kpi-routing"
+milestone = "v0_10"
+status = "pending"
+title = "Oban cron capability-benchmark scheduler — fill unmeasured/stale cells autonomously"
+scores = { d = 6, b = 8, u = 8 }
+depends_on = [117, 119, 121]
+acceptance_criteria = ["An Oban cron job (behind a config toggle, default off in test) periodically selects unmeasured/stale (agent, domain) cells (Task 120) and dispatches the relevant corpus items across the available agents via Batch.AgentEvaluation", "Results are scored + persisted via Task 119; fresh cells are skipped (no needless re-runs)", "Unavailable agents (AgentRegistry) are skipped gracefully; concurrency is capped; skipped/deferred cells are logged, never silently dropped", "The schedule + which cells were (re)benchmarked is observable (log or dashboard) so a human witness can see autonomy working", "Tests cover: cell selection (stale/unmeasured chosen, fresh skipped), the availability skip, and that a run persists a score"]
+out_of_scope = ["The cron master on/off toggle UX — Task 109 owns runtime cron enable/disable; this registers a job that toggle governs", "A new dispatch primitive — reuses Batch.AgentEvaluation", "Routing consumption — Task 121"]
+body = """
+Periodically run the benchmark corpus (Task 117) through the available agents via Batch.AgentEvaluation, persist the scores (Task 119), and prioritize the (agent, domain) cells Task 120 flags unmeasured or stale and Task 121 wants explored. Builds on the existing Oban.Plugins.Cron (Task 51) — queue-per-project + cron are already in the stack.
+
+Respect agent availability (AgentRegistry) and cost: do not re-benchmark fresh cells, cap concurrency, and log what was skipped (no silent truncation). This closes the loop — the system keeps its trust signal current without a human kicking off benchmarks.
+"""
+created_at = "2026-05-31"
+scored_at = "2026-05-31"
