@@ -254,7 +254,13 @@ defmodule Harness.Dispatch do
         kind: :value,
         default: "claude",
         description:
-          "Delegatable executor only: claude | codex | cursor. The Oban bundle path keys each job's adapter off the task's render agent, so non-delegatable executors (grok/antigravity/pi) are rejected — dispatch those one task at a time via dispatch__task. Bundle runs inherit the harness node's environment: the ANTHROPIC_API_KEY scrub applies to the in-process dispatch__task / dispatch__await / dispatch__compare paths, not the Oban worker."
+          "Delegatable executor only: claude | codex | cursor. The Oban bundle path keys each job's adapter off the task's render agent, so non-delegatable executors (grok/antigravity/pi) are rejected — dispatch those one task at a time via dispatch__task."
+      ],
+      scrub_anthropic_key: [
+        kind: :value,
+        default: true,
+        description:
+          "When true (default), scrubs ANTHROPIC_API_KEY from each enqueued run's environment so Claude bundle dispatches use subscription OAuth instead of the metered API. Threaded through the Oban job args into the worker's start_run :env, matching dispatch__task / dispatch__await / dispatch__compare. Harmless for non-Claude adapters."
       ]
     ],
     returns: %{
@@ -264,13 +270,14 @@ defmodule Harness.Dispatch do
     }
   )
 
-  @spec bundle(String.t(), String.t()) :: {:ok, map()} | {:error, error()}
-  def bundle(project_name, adapter \\ "claude") when is_binary(project_name) and is_binary(adapter) do
+  @spec bundle(String.t(), String.t(), boolean()) :: {:ok, map()} | {:error, error()}
+  def bundle(project_name, adapter \\ "claude", scrub_anthropic_key \\ true)
+      when is_binary(project_name) and is_binary(adapter) and is_boolean(scrub_anthropic_key) do
     with {:ok, {_module, render_agent}} <- resolve_delegatable_adapter(adapter),
          {:ok, project} <- lookup_project(project_name),
          {:ok, %{bundle: bundle_meta, tasks: tasks}} <- Roadmap.next_bundle(project_name),
          {:ok, items} <- ingest_bundle(tasks, project, render_agent),
-         {:ok, jobs} <- Batch.dispatch(project, items) do
+         {:ok, jobs} <- Batch.dispatch(project, items, env: scrub_env(scrub_anthropic_key)) do
       {:ok,
        %{
          bundle: bundle_meta,

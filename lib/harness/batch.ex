@@ -84,14 +84,27 @@ defmodule Harness.Batch do
   )
 
   @spec dispatch(Project.t() | String.t(), [Item.t()]) :: {:ok, [Oban.Job.t()]} | {:error, dispatch_error()}
-  def dispatch(project, items) when is_list(items) do
-    with {:ok, project} <- resolve_and_register_project(project) do
-      enqueue_items(project, items)
-    end
-  end
+  def dispatch(project, items) when is_list(items), do: dispatch(project, items, [])
 
   @spec dispatch([Item.t()], Project.t() | String.t()) :: {:ok, [Oban.Job.t()]} | {:error, dispatch_error()}
-  def dispatch(items, project) when is_list(items), do: dispatch(project, items)
+  def dispatch(items, project) when is_list(items), do: dispatch(project, items, [])
+
+  @doc """
+  `dispatch/2` with per-job run options threaded into the enqueued Oban jobs.
+
+  `opts[:env]` (a jsonb-safe `%{"KEY" => "val" | false}` map — e.g.
+  `%{"ANTHROPIC_API_KEY" => false}` to scrub a metered key on Claude OAuth
+  dispatches) is persisted in each job's args and applied by `Harness.Run.Worker`
+  when it starts the run, so an Oban-backed bundle honours the same env scrubbing
+  as the synchronous dispatch tools.
+  """
+  @spec dispatch(Project.t() | String.t(), [Item.t()], keyword()) ::
+          {:ok, [Oban.Job.t()]} | {:error, dispatch_error()}
+  def dispatch(project, items, opts) when is_list(items) and is_list(opts) do
+    with {:ok, project} <- resolve_and_register_project(project) do
+      enqueue_items(project, items, opts)
+    end
+  end
 
   api(:run, "In-process batch — fan out N items concurrently against one or more adapters with retry-on-quota fail-over.",
     params: [
@@ -220,11 +233,11 @@ defmodule Harness.Batch do
 
   defp resolve_and_register_project(name) when is_binary(name), do: resolve_project(name)
 
-  @spec enqueue_items(Project.t(), [Item.t()]) :: {:ok, [Oban.Job.t()]} | {:error, dispatch_error()}
-  defp enqueue_items(%Project{} = project, items) do
+  @spec enqueue_items(Project.t(), [Item.t()], keyword()) :: {:ok, [Oban.Job.t()]} | {:error, dispatch_error()}
+  defp enqueue_items(%Project{} = project, items, opts) do
     items
     |> Enum.reduce_while({:ok, []}, fn item, {:ok, jobs} ->
-      case enqueue_item(project, item) do
+      case enqueue_item(project, item, opts) do
         {:ok, job} -> {:cont, {:ok, [job | jobs]}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
@@ -235,18 +248,30 @@ defmodule Harness.Batch do
     end
   end
 
-  @spec enqueue_item(Project.t(), Item.t()) :: {:ok, Oban.Job.t()} | {:error, dispatch_error()}
-  defp enqueue_item(%Project{} = project, %Item{} = item) do
+  @spec enqueue_item(Project.t(), Item.t(), keyword()) :: {:ok, Oban.Job.t()} | {:error, dispatch_error()}
+  defp enqueue_item(%Project{} = project, %Item{} = item, opts) do
     with {:ok, adapter} <- adapter_for_agent(item.agent) do
-      args = %{
+      %{
         project_name: project.name,
         item_id: item.id,
         adapter_module: Atom.to_string(adapter)
       }
-
-      args
+      |> put_env(opts)
       |> RunWorker.new(queue: Harness.Oban.queue_name(project), meta: %{harness_stage: "dispatch"})
       |> Harness.Oban.insert()
+    end
+  end
+
+  # An optional caller :env map (e.g. %{"ANTHROPIC_API_KEY" => false} to scrub a
+  # metered key on Claude OAuth dispatches) is persisted into the job args so
+  # Harness.Run.Worker can thread it into start_run. Omitted when empty so jobs
+  # without an env override keep their prior args shape; the map is jsonb-safe
+  # (string keys, string|false values).
+  @spec put_env(map(), keyword()) :: map()
+  defp put_env(args, opts) do
+    case Keyword.get(opts, :env, %{}) do
+      env when is_map(env) and map_size(env) > 0 -> Map.put(args, :env, env)
+      _empty -> args
     end
   end
 
