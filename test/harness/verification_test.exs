@@ -120,20 +120,21 @@ defmodule Harness.VerificationTest do
       # shell loop block-buffers stdout to a pipe). A per-receive idle timeout
       # would never fire, since every chunk resets it; this is the case the
       # absolute deadline exists for. The check must still die at the deadline.
-      # The 1s budget leaves room for perl's interpreter start under suite load.
+      # The 2s budget leaves comfortable room for perl's interpreter start under
+      # heavy suite load (1s occasionally lost the startup race → no tick emitted).
       stub =
         stub_script(~S[exec perl -e '$| = 1; while (1) { print "tick\n"; select(undef, undef, undef, 0.05); }'])
 
       began = System.monotonic_time(:millisecond)
 
       assert {:ok, %Verdict{status: :fail, results: [result]}} =
-               Verification.run(dir, checks: [check("streams", stub)], timeout: 1_000)
+               Verification.run(dir, checks: [check("streams", stub)], timeout: 2_000)
 
       elapsed = System.monotonic_time(:millisecond) - began
       assert elapsed < 5_000
       assert result.kind == :timed_out
       assert result.output =~ "tick"
-      assert result.output =~ "timed out after 1000ms"
+      assert result.output =~ "timed out after 2000ms"
     end
 
     test "an :infinity timeout leaves the check unbounded" do

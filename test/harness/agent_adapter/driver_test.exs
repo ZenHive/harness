@@ -36,7 +36,10 @@ defmodule Harness.AgentAdapter.DriverTest do
   end
 
   defp invocation(command) do
-    %Invocation{prompt: "p", cwd: "/tmp", task_id: "7", adapter_opts: [command: command]}
+    cwd = Path.join(System.tmp_dir!(), "harness-driver-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(cwd)
+
+    %Invocation{prompt: "p", cwd: cwd, task_id: "7", adapter_opts: [command: command]}
   end
 
   describe "run/3 — completion" do
@@ -99,6 +102,18 @@ defmodule Harness.AgentAdapter.DriverTest do
 
       assert outcome.output =~ "one"
       assert outcome.output =~ "three"
+    end
+
+    test "progress timeout kills a streaming run with no edits or tool calls" do
+      assert {:ok, %Outcome{kind: {:reflex_halted, :progress_stalled}} = outcome} =
+               Driver.run(FakeAdapter, invocation(:flood),
+                 total_timeout: 10_000,
+                 idle_timeout: 10_000,
+                 progress_timeout: 250
+               )
+
+      assert outcome.output =~ "tick"
+      assert ProcessFixture.await_dead(outcome.run.os_pid) == :ok
     end
   end
 

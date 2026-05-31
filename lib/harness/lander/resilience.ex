@@ -19,10 +19,13 @@ defmodule Harness.Lander.Resilience do
       source the lander can't push to).
     * `{:error, reason}` → `{:error, reason}` (a transient fetch/checkout
       failure — Oban backs off and retries the *same* landing job).
-    * `{:post_merge_red, _}` / `{:conflict, _}` → **fresh re-dispatch** of the
-      task against the current target HEAD (a new run branches off the
-      integrated tip by construction) while under the attempt cap; at the cap,
-      the task is marked `blocked`.
+    * `{:post_merge_red, _}` / `{:conflict, _}` / non-command
+      `{:reflex_halt, _}` → **fresh re-dispatch** of the task against the
+      current target HEAD (a new run branches off the integrated tip by
+      construction) while under the attempt cap; at the cap, the task is marked
+      `blocked`.
+    * blocked-command `{:reflex_halt, {:blocked_command, _}}` → `blocked`
+      immediately.
     * `{:push_rejected, _}` → **re-land** the retained branch (re-fetch / rebase
       / re-verify / push) while under the cap; at the cap, `blocked`.
 
@@ -55,7 +58,7 @@ defmodule Harness.Lander.Resilience do
   @max_land_attempts 2
 
   @typedoc "Which non-landed outcome exhausted the cap — names the blocked reason."
-  @type reason_tag :: :post_merge_red | :conflict | :push_rejected
+  @type reason_tag :: :post_merge_red | :conflict | :push_rejected | :reflex_halt
 
   @typedoc "A pure routing decision produced by `plan/2`."
   @type action ::
@@ -94,6 +97,10 @@ defmodule Harness.Lander.Resilience do
   def plan({:conflict, _output}, attempt), do: cap(attempt, {:redispatch, attempt + 1, :conflict}, :conflict)
 
   def plan({:push_rejected, _output}, attempt), do: cap(attempt, {:reland, attempt + 1}, :push_rejected)
+
+  def plan({:reflex_halt, {:blocked_command, _command}}, _attempt), do: {:block, :reflex_halt}
+
+  def plan({:reflex_halt, _reason}, attempt), do: cap(attempt, {:redispatch, attempt + 1, :reflex_halt}, :reflex_halt)
 
   # Under the cap → the recoverable action; at the cap → block.
   @spec cap(pos_integer(), action(), reason_tag()) :: action()

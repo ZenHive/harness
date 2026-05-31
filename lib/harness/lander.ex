@@ -59,6 +59,7 @@ defmodule Harness.Lander do
           | {:post_merge_red, Verdict.t()}
           | {:conflict, String.t()}
           | {:push_rejected, String.t()}
+          | {:reflex_halt, term()}
           | {:skipped, term()}
           | {:error, term()}
 

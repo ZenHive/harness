@@ -60,6 +60,7 @@ defmodule Harness.Verification do
   alias Harness.Verification.Verdict
 
   @default_timeout 600_000
+  @timeout_output_drain_ms 100
 
   @typedoc "A reason a verification run cannot execute at all."
   @type error ::
@@ -288,7 +289,11 @@ defmodule Harness.Verification do
   # Kills a check that hit its deadline and grades it red.
   @spec timed_out_result(port(), Check.t(), timeout(), iodata()) :: Result.t()
   defp timed_out_result(port, check, timeout, acc) do
+    acc = drain_port_output(port, acc, 0)
     kill_port(port)
+    acc = drain_port_output(port, acc, @timeout_output_drain_ms)
+    close_port(port)
+    acc = drain_port_output(port, acc, 0)
     output = IO.iodata_to_binary(acc) <> "\n[harness] check timed out after #{timeout}ms"
 
     %Result{
@@ -318,16 +323,18 @@ defmodule Harness.Verification do
   defp remaining(:infinity), do: :infinity
   defp remaining(deadline), do: max(0, deadline - System.monotonic_time(:millisecond))
 
-  # Best-effort kill of a timed-out check: close the port and SIGKILL the OS
-  # process. SIGKILL of the immediate pid can orphan grandchildren — the same
-  # limitation as `Harness.AgentAdapter.terminate/1`; the boot-time
-  # `Harness.Worktree.Sweeper` is the backstop.
+  # Best-effort kill of a timed-out check. SIGKILL of the immediate pid can
+  # orphan grandchildren — the same limitation as `Harness.AgentAdapter.terminate/1`;
+  # the boot-time `Harness.Worktree.Sweeper` is the backstop.
   @spec kill_port(port()) :: :ok
   defp kill_port(port) do
     os_pid = port_os_pid(port)
-    close_port(port)
-    if os_pid, do: System.cmd("kill", ["-KILL", Integer.to_string(os_pid)], stderr_to_stdout: true)
-    flush_port(port)
+
+    if os_pid do
+      System.cmd("kill", ["-KILL", Integer.to_string(os_pid)], stderr_to_stdout: true)
+    end
+
+    :ok
   end
 
   @spec port_os_pid(port()) :: non_neg_integer() | nil
@@ -346,14 +353,13 @@ defmodule Harness.Verification do
     ArgumentError -> :ok
   end
 
-  # Drops any port messages already queued before the close, so they never leak
-  # into the caller's mailbox.
-  @spec flush_port(port()) :: :ok
-  defp flush_port(port) do
+  @spec drain_port_output(port(), iodata(), non_neg_integer()) :: iodata()
+  defp drain_port_output(port, acc, wait_ms) do
     receive do
-      {^port, _message} -> flush_port(port)
+      {^port, {:data, data}} -> drain_port_output(port, [acc, data], wait_ms)
+      {^port, _message} -> drain_port_output(port, acc, wait_ms)
     after
-      0 -> :ok
+      wait_ms -> acc
     end
   end
 

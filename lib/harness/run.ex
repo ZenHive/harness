@@ -79,6 +79,7 @@ defmodule Harness.Run do
   alias Harness.Dashboard.Transcript
   alias Harness.Dashboard.Transcript.Parser
   alias Harness.Git
+  alias Harness.Lander.Resilience
   alias Harness.Lander.Worker, as: LanderWorker
   alias Harness.Oban, as: HarnessOban
   alias Harness.Project
@@ -86,6 +87,7 @@ defmodule Harness.Run do
   alias Harness.Roadmap.Item
   alias Harness.Run.FailureClass
   alias Harness.Run.LogRecord
+  alias Harness.Run.Reflex
   alias Harness.Run.RepairPrompt
   alias Harness.Run.Result
   alias Harness.Run.RetryPolicy
@@ -130,6 +132,7 @@ defmodule Harness.Run do
            started_at_ms: integer(),
            total_timeout: timeout() | nil,
            idle_timeout: timeout() | nil,
+           progress_timeout: timeout() | nil,
            lifetime_timeout: pos_integer(),
            terminal_linger: non_neg_integer(),
            max_repair_attempts: non_neg_integer(),
@@ -339,6 +342,7 @@ defmodule Harness.Run do
       started_at_ms: System.monotonic_time(:millisecond),
       total_timeout: Keyword.get(opts, :total_timeout),
       idle_timeout: Keyword.get(opts, :idle_timeout),
+      progress_timeout: Keyword.get(opts, :progress_timeout),
       lifetime_timeout:
         Keyword.get(opts, :lifetime_timeout) ||
           configured(:lifetime_timeout, @default_lifetime_timeout),
@@ -470,14 +474,22 @@ defmodule Harness.Run do
       |> finalize_transcript()
       |> accumulate_token_usage(outcome)
 
-    case {data.cancel_requested, checkout_pollution_reason(data)} do
-      {nil, nil} ->
+    # Precedence: a user cancel is terminal and must win over reflex re-dispatch,
+    # so the reflex clause is gated on `nil` cancel. A cancelled run that also
+    # tripped a reflex falls through to do_cancel / pollution rather than being
+    # re-dispatched. Pollution still beats cancel (unchanged).
+    case {data.cancel_requested, outcome.kind, checkout_pollution_reason(data)} do
+      {nil, {:reflex_halted, reason}, _pollution_reason} ->
+        route_reflex_halt(data, reason)
+        fail(data, {:reflex_halted, reason})
+
+      {nil, _kind, nil} ->
         {:next_state, :committing, data}
 
-      {{reason, from}, nil} ->
+      {{reason, from}, _kind, nil} ->
         do_cancel(data, reason, from)
 
-      {_, pollution_reason} ->
+      {_, _kind, pollution_reason} ->
         fail(data, pollution_reason)
     end
   end
@@ -863,6 +875,34 @@ defmodule Harness.Run do
   defp terminate_agent(%{agent_run: %AgentRun{} = run, adapter: adapter}) do
     adapter.terminate(run)
     :ok
+  end
+
+  @spec route_reflex_halt(data(), term()) :: :ok
+  defp route_reflex_halt(data, reason) do
+    case Resilience.route({:reflex_halt, reason}, resilience_args(data)) do
+      :ok ->
+        :ok
+
+      {:cancel, {:blocked, blocked_reason}} ->
+        Logger.warning("harness run: reflex halt blocked task #{data.item.id}: #{blocked_reason}")
+
+      {:error, route_reason} ->
+        Logger.warning("harness run: reflex halt route failed for task #{data.item.id}: #{inspect(route_reason)}")
+    end
+
+    :ok
+  end
+
+  @spec resilience_args(data()) :: map()
+  defp resilience_args(data) do
+    %{
+      "project_name" => data.project.name,
+      "run_id" => data.run_id,
+      "task_id" => to_string(data.item.id),
+      "agent" => to_string(data.item.agent),
+      "branch" => "harness/" <> data.run_id,
+      "land_attempt" => data.land_attempt
+    }
   end
 
   # Builds and persists the final result, tears the worktree down, then delivers
@@ -1498,6 +1538,7 @@ defmodule Harness.Run do
     ]
     |> put_opt(:total_timeout, data.total_timeout)
     |> put_opt(:idle_timeout, data.idle_timeout)
+    |> put_opt(:progress_timeout, data.progress_timeout)
   end
 
   @spec verification_opts(data()) :: keyword()
@@ -1564,7 +1605,7 @@ defmodule Harness.Run do
 
   @spec checkout_snapshot(String.t()) :: String.t() | nil
   defp checkout_snapshot(repo) when is_binary(repo) do
-    case Isolation.snapshot(repo) do
+    case Reflex.checkout_snapshot(repo) do
       {:ok, snapshot} ->
         snapshot
 
@@ -1578,10 +1619,7 @@ defmodule Harness.Run do
   defp checkout_pollution_reason(data) do
     opts = [pollution_allowlist: data.pollution_allowlist]
 
-    case Isolation.check_pollution(Project.repo_path(data.project), data.checkout_snapshot, opts) do
-      :ok -> nil
-      {:error, reason} -> reason
-    end
+    Reflex.checkout_pollution_reason(Project.repo_path(data.project), data.checkout_snapshot, opts)
   end
 
   @spec resolve_pollution_allowlist(Project.t(), keyword()) :: [String.t()]

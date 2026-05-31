@@ -1,5 +1,8 @@
 defmodule Harness.ResultStore.FileTest do
-  use ExUnit.Case, async: true
+  # async: false — the "storage safety and configuration" describe mutates the
+  # global `:result_store` Application env. Under async it raced concurrent
+  # readers (e.g. Dashboard.Live.load_historical), so this module runs serially.
+  use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
 

@@ -671,8 +671,15 @@ defmodule Harness.Dashboard.Live do
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
+  @typep bucket_count_source :: %{
+           required(:runs) => [StatusView.run_entry()],
+           optional(atom()) => term()
+         }
+
   @doc false
-  @spec bucket_counts(StatusView.t()) :: %{required(StatusView.bucket()) => non_neg_integer()}
+  @spec bucket_counts(bucket_count_source()) :: %{
+          required(StatusView.bucket()) => non_neg_integer()
+        }
   def bucket_counts(%{runs: runs}) do
     Enum.reduce(runs, %{in_flight: 0, repairing: 0, green: 0, red: 0}, fn entry, acc ->
       Map.update(acc, entry.bucket, 1, &(&1 + 1))

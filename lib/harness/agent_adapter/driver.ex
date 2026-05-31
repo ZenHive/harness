@@ -1,6 +1,7 @@
 defmodule Harness.AgentAdapter.Driver do
   @moduledoc """
-  Drives one agent run from spawn to completion under two timeout guards.
+  Drives one agent run from spawn to completion under the deterministic reflex
+  watchdog.
 
   `run/3` spawns an adapter via `Harness.AgentAdapter.invoke/2`, then loops on
   the port's messages — feeding each through the adapter's
@@ -8,19 +9,19 @@ defmodule Harness.AgentAdapter.Driver do
   enforcing termination. It is adapter-agnostic: every adapter is driven the
   same way.
 
-  ## Two deadlines
+  ## Deadlines
 
     * **Total-run budget** — an absolute deadline from the run's spawn time. A
       run is killed when it passes, however much output it is still producing.
     * **Idle window** — an absolute deadline reset on every output chunk. A run
       that emits nothing for the configured window is killed even though the
       total budget has not been spent.
+    * **Progress window** — an absolute deadline reset only by an edit or a new
+      tool call. A run that keeps printing text while making no mechanical
+      progress is killed.
 
-  Both are necessary: the total budget caps a runaway agent that keeps working,
-  the idle window catches one that has wedged (blocked on a prompt, deadlocked)
-  while the total budget still has room. Termination is derived from the port
-  closing or a deadline firing — never from the exit code (`Outcome.kind` is the
-  signal; `exit_status` is advisory).
+  Termination is derived from the port closing or a reflex guard firing — never
+  from the exit code (`Outcome.kind` is the signal; `exit_status` is advisory).
 
   ## Configuration
 
@@ -31,8 +32,10 @@ defmodule Harness.AgentAdapter.Driver do
       (30 minutes).
     * `:idle_timeout` — idle window in milliseconds. Default `300_000`
       (5 minutes).
+    * `:progress_timeout` — progress-stall window in milliseconds. Default
+      `300_000` (5 minutes).
 
-  Per-call `:total_timeout` / `:idle_timeout` options override the config.
+  Per-call timeout options override the config.
 
   ## Concurrency
 
@@ -51,6 +54,7 @@ defmodule Harness.AgentAdapter.Driver do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Run
+  alias Harness.Run.Reflex
 
   @default_total_timeout 1_800_000
   @default_idle_timeout 300_000
@@ -71,13 +75,13 @@ defmodule Harness.AgentAdapter.Driver do
         kind: :value,
         default: [],
         description:
-          "Keyword list. :total_timeout / :idle_timeout (ms overrides). :on_spawn (1-arity hook called with the Run handle the moment the agent spawns — used by Harness.Run to capture the handle for cancellation). :on_output (1-arity hook called with each iodata chunk — used by Harness.Run to fan transcripts to the dashboard PubSub topic). Hook exceptions are swallowed."
+          "Keyword list. :total_timeout / :idle_timeout / :progress_timeout (ms overrides). :on_spawn (1-arity hook called with the Run handle the moment the agent spawns — used by Harness.Run to capture the handle for cancellation). :on_output (1-arity hook called with each iodata chunk — used by Harness.Run to fan transcripts to the dashboard PubSub topic). Hook exceptions are swallowed."
       ]
     ],
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %Harness.AgentAdapter.Outcome{}} for any spawned run (including timeouts / mid-run port errors — kind: :exited | {:timed_out, :idle | :total} | {:error, reason}). {:error, reason} only when nothing spawned (build_command/1 failed, executable missing)."
+        "{:ok, %Harness.AgentAdapter.Outcome{}} for any spawned run (including timeouts / mid-run port errors — kind: :exited | {:timed_out, :idle | :total} | {:reflex_halted, reason} | {:error, reason}). {:error, reason} only when nothing spawned (build_command/1 failed, executable missing)."
     }
   )
 
@@ -85,12 +89,13 @@ defmodule Harness.AgentAdapter.Driver do
   def run(adapter, %Invocation{} = invocation, opts \\ []) do
     total = Keyword.get(opts, :total_timeout) || configured_total_timeout()
     idle = Keyword.get(opts, :idle_timeout) || configured_idle_timeout()
+    progress = Keyword.get(opts, :progress_timeout) || configured_progress_timeout()
     on_output = Keyword.get(opts, :on_output)
 
     case AgentAdapter.invoke(adapter, invocation) do
       {:ok, %Run{} = run} ->
         notify_spawn(Keyword.get(opts, :on_spawn), run)
-        {:ok, drive(adapter, run, total, idle, on_output)}
+        {:ok, drive(adapter, run, invocation, total, idle, progress, on_output)}
 
       {:error, _reason} = error ->
         error
@@ -116,10 +121,25 @@ defmodule Harness.AgentAdapter.Driver do
 
   # Seeds both deadlines and enters the receive loop. The total deadline is
   # anchored to the run's spawn time so the budget covers the whole run.
-  @spec drive(module(), Run.t(), non_neg_integer(), non_neg_integer(), (iodata() -> any()) | nil) :: Outcome.t()
-  defp drive(adapter, run, total, idle, on_output) do
-    started_ms = System.convert_time_unit(run.started_at, :native, :millisecond)
-    loop(adapter, run, started_ms + total, idle, idle_deadline(idle), [], on_output)
+  @spec drive(
+          module(),
+          Run.t(),
+          Invocation.t(),
+          non_neg_integer(),
+          non_neg_integer(),
+          non_neg_integer() | nil,
+          (iodata() -> any()) | nil
+        ) :: Outcome.t()
+  defp drive(adapter, run, invocation, total, idle, progress, on_output) do
+    reflex =
+      Reflex.new(run, invocation,
+        total_timeout: total,
+        idle_timeout: idle,
+        progress_timeout: progress,
+        worktree_path: invocation.cwd
+      )
+
+    loop(adapter, run, reflex, [], on_output)
   end
 
   # Drains the port until the run terminates or a deadline passes. `after` waits
@@ -130,35 +150,48 @@ defmodule Harness.AgentAdapter.Driver do
   # `on_output` hook (when set) fans each chunk to the dashboard transcript
   # stream — invoked inline so a subscriber sees output at the same cadence the
   # accumulator does.
-  @spec loop(module(), Run.t(), integer(), non_neg_integer(), integer(), iodata(), (iodata() -> any()) | nil) ::
+  @spec loop(module(), Run.t(), Reflex.t(), iodata(), (iodata() -> any()) | nil) :: Outcome.t()
+  defp loop(adapter, run, reflex, acc, on_output) do
+    case Reflex.expired(reflex) do
+      {:halt, kind, _reflex} ->
+        expire(adapter, run, acc, kind)
+
+      {:cont, reflex} ->
+        receive_next(adapter, run, reflex, acc, on_output, Reflex.wait(reflex))
+    end
+  end
+
+  @spec receive_next(module(), Run.t(), Reflex.t(), iodata(), (iodata() -> any()) | nil, non_neg_integer()) ::
           Outcome.t()
-  defp loop(adapter, run, total_deadline, idle, idle_deadline, acc, on_output) do
-    wait = min(remaining(total_deadline), remaining(idle_deadline))
+  defp receive_next(adapter, run, reflex, acc, on_output, wait) do
+    receive do
+      message ->
+        case adapter.classify_message(message, run) do
+          {:output, data, next_run} ->
+            notify_output(on_output, data)
+            acc = [acc, data]
 
-    if wait == 0 do
-      expire(adapter, run, acc, total_deadline)
-    else
-      receive do
-        message ->
-          case adapter.classify_message(message, run) do
-            {:output, data, next_run} ->
-              notify_output(on_output, data)
-              loop(adapter, next_run, total_deadline, idle, idle_deadline(idle), [acc, data], on_output)
+            case Reflex.on_output(reflex, data) do
+              {:cont, next_reflex} -> loop(adapter, next_run, next_reflex, acc, on_output)
+              {:halt, kind, _next_reflex} -> expire(adapter, next_run, acc, kind)
+            end
 
-            {:terminated, next_run, status} ->
-              outcome(next_run, acc, status, :exited)
+          {:terminated, next_run, status} ->
+            outcome(next_run, acc, status, :exited)
 
-            {:error, reason, next_run} ->
-              adapter.terminate(next_run)
-              outcome(next_run, acc, nil, {:error, reason})
+          {:error, reason, next_run} ->
+            adapter.terminate(next_run)
+            outcome(next_run, acc, nil, {:error, reason})
 
-            :ignore ->
-              loop(adapter, run, total_deadline, idle, idle_deadline, acc, on_output)
-          end
-      after
-        wait ->
-          expire(adapter, run, acc, total_deadline)
-      end
+          :ignore ->
+            loop(adapter, run, reflex, acc, on_output)
+        end
+    after
+      wait ->
+        case Reflex.expired(reflex) do
+          {:halt, kind, _reflex} -> expire(adapter, run, acc, kind)
+          {:cont, next_reflex} -> loop(adapter, run, next_reflex, acc, on_output)
+        end
     end
   end
 
@@ -177,28 +210,11 @@ defmodule Harness.AgentAdapter.Driver do
     _kind, _value -> :ok
   end
 
-  # Kills a run that hit a deadline and reports which deadline fired.
-  @spec expire(module(), Run.t(), iodata(), integer()) :: Outcome.t()
-  defp expire(adapter, run, acc, total_deadline) do
+  # Kills a run that tripped a reflex guard and reports which guard fired.
+  @spec expire(module(), Run.t(), iodata(), Outcome.kind()) :: Outcome.t()
+  defp expire(adapter, run, acc, kind) do
     adapter.terminate(run)
-    outcome(run, acc, nil, timed_out_kind(total_deadline))
-  end
-
-  # A fresh idle deadline, `idle` ms from now.
-  @spec idle_deadline(non_neg_integer()) :: integer()
-  defp idle_deadline(idle), do: System.monotonic_time(:millisecond) + idle
-
-  # Milliseconds left until `deadline`, floored at 0 so `receive`'s `after`
-  # never sees a negative value.
-  @spec remaining(integer()) :: non_neg_integer()
-  defp remaining(deadline), do: max(0, deadline - System.monotonic_time(:millisecond))
-
-  # Which deadline fired: the total budget wins ties, so it is checked first.
-  @spec timed_out_kind(integer()) :: {:timed_out, :idle | :total}
-  defp timed_out_kind(total_deadline) do
-    if System.monotonic_time(:millisecond) >= total_deadline,
-      do: {:timed_out, :total},
-      else: {:timed_out, :idle}
+    outcome(run, acc, nil, kind)
   end
 
   @spec outcome(Run.t(), iodata(), integer() | nil, Outcome.kind()) :: Outcome.t()
@@ -214,5 +230,10 @@ defmodule Harness.AgentAdapter.Driver do
   @spec configured_idle_timeout() :: non_neg_integer()
   defp configured_idle_timeout do
     :harness |> Application.get_env(:run, []) |> Keyword.get(:idle_timeout, @default_idle_timeout)
+  end
+
+  @spec configured_progress_timeout() :: non_neg_integer()
+  defp configured_progress_timeout do
+    :harness |> Application.get_env(:run, []) |> Keyword.get(:progress_timeout, @default_idle_timeout)
   end
 end

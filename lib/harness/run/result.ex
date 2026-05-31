@@ -44,6 +44,9 @@ defmodule Harness.Run.Result do
       which `Harness.Run` no longer performs.
     * `:cancelled` — the run was cancelled via `Harness.Run.cancel/1`.
     * `:timed_out` — the whole-job lifetime budget elapsed.
+    * `{:reflex_halted, r}` — the deterministic mid-run reflex layer killed the
+      agent for a mechanical liveness or blocked-command reason, then routed
+      the task through `Harness.Lander.Resilience`.
     * `{:worktree_failed, r}` — the isolated worktree could not be created.
     * `{:agent_spawn_failed, r}` — the agent never spawned (e.g. not on `PATH`).
     * `{:driver_crashed, r}` — the agent-driver task crashed.
@@ -67,6 +70,7 @@ defmodule Harness.Run.Result do
           | {:checkout_pollution_check_failed, term()}
           | :cancelled
           | :timed_out
+          | {:reflex_halted, term()}
           | {:worktree_failed, term()}
           | {:agent_spawn_failed, term()}
           | {:driver_crashed, term()}

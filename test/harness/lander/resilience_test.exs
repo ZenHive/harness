@@ -43,6 +43,15 @@ defmodule Harness.Lander.ResilienceTest do
       assert {:reland, 2} = Resilience.plan({:push_rejected, "non-fast-forward"}, 1)
       assert {:block, :push_rejected} = Resilience.plan({:push_rejected, "non-fast-forward"}, 2)
     end
+
+    test "reflex halts re-dispatch under the cap, block at it" do
+      assert {:redispatch, 2, :reflex_halt} = Resilience.plan({:reflex_halt, :progress_stalled}, 1)
+      assert {:block, :reflex_halt} = Resilience.plan({:reflex_halt, :progress_stalled}, 2)
+    end
+
+    test "blocked-command reflex halts block immediately" do
+      assert {:block, :reflex_halt} = Resilience.plan({:reflex_halt, {:blocked_command, "mix deps.clean"}}, 1)
+    end
   end
 
   describe "route/2 — terminal outcomes (no repair)" do
@@ -111,6 +120,24 @@ defmodule Harness.Lander.ResilienceTest do
       assert {:cancel, {:blocked, reason}} = Resilience.route({:push_rejected, "non-fast-forward"}, args)
       assert reason =~ "land-cap exhausted after push_rejected"
 
+      refute_receive {:landing_insert, _changeset}, 300
+    end
+
+    test "reflex halt at the cap cancels as blocked and notifies", %{project: project} do
+      Application.put_env(:harness, :notification_sinks, [CaptureSink])
+      Application.put_env(:harness, :test_capture_pid, self())
+
+      on_exit(fn ->
+        Application.delete_env(:harness, :notification_sinks)
+        Application.delete_env(:harness, :test_capture_pid)
+      end)
+
+      args = base_args(project.name, 2)
+
+      assert {:cancel, {:blocked, reason}} = Resilience.route({:reflex_halt, :progress_stalled}, args)
+      assert reason =~ "land-cap exhausted after reflex_halt"
+
+      assert_receive {:notify, %Event{type: :blocked, task_id: "42", outcome: ^reason, land_attempt: 2}}
       refute_receive {:landing_insert, _changeset}, 300
     end
   end

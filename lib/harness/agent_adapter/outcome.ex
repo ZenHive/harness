@@ -14,10 +14,11 @@ defmodule Harness.AgentAdapter.Outcome do
   @typedoc """
   How a run ended: `:exited` (the process closed on its own),
   `{:timed_out, :idle}` (killed after the idle window elapsed with no output),
-  `{:timed_out, :total}` (killed at the total-run budget), or `{:error, reason}`
-  (the port itself failed mid-run).
+  `{:timed_out, :total}` (killed at the total-run budget),
+  `{:reflex_halted, reason}` (killed by a deterministic mid-run guard), or
+  `{:error, reason}` (the port itself failed mid-run).
   """
-  @type kind :: :exited | {:timed_out, :idle} | {:timed_out, :total} | {:error, term()}
+  @type kind :: :exited | {:timed_out, :idle} | {:timed_out, :total} | {:reflex_halted, term()} | {:error, term()}
 
   @typedoc """
   A completed run.
