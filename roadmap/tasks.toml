@@ -3527,7 +3527,7 @@ id = "108"
 phase = 11
 bundle = "autolanding"
 milestone = "v0_9"
-status = "pending"
+status = "done"
 title = "Thread env scrubbing through Oban Run.Worker so dispatch__bundle honors scrub_anthropic_key"
 scores = { d = 2, b = 3, u = 3 }
 acceptance_criteria = ["Harness.Run.Worker threads an :env map from its Oban job args into Run.Supervisor.start_run/4", "dispatch__bundle accepts scrub_anthropic_key (default true) and the scrub reaches each enqueued run's start_run :env", "A Run.Worker test asserts the :env (with ANTHROPIC_API_KEY scrubbed) reaches start_run"]
@@ -3537,8 +3537,13 @@ dispatch__task / dispatch__await / dispatch__compare scrub ANTHROPIC_API_KEY via
 
 Fix: thread an :env map into the Oban job args (must stay term/JSON-serializable for Postgres-persisted jobs) and apply it in Run.Worker when starting the gen_statem; then add a scrub_anthropic_key param (default true) to dispatch__bundle. Discovered while building the JSON-native dispatch surface (dispatch__bundle/compare); deferred because it changes the Oban job-args contract.
 """
+implemented = 'dispatch__bundle now honors scrub_anthropic_key end-to-end. Dispatched claude built the producer plumbing (Batch.dispatch/3 + put_env persists :env into Oban job args; dispatch.ex bundle/3 scrub_anthropic_key param) but across 2 repair rounds never wired the consumer side, so the scrub was dead-on-arrival. Hand-finished: Run.Worker.run_opts now reads args["env"] and threads env: into start_run when present (omitted when absent). Tests: env reaches start_run; omitted when absent; Batch.dispatch/3 persists/omits env in job args. 968 tests pass, dialyzer/credo/format clean on touched files.'
+delivered_by = "claude-code"
+verified = true
 created_at = "2026-05-30"
 scored_at = "2026-05-30"
+done_at = "2026-05-31"
+shipped_in = "572c47b"
 
 [[task]]
 id = "109"
