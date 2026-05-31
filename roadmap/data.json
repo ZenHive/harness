@@ -4233,7 +4233,7 @@
       "phase": 13,
       "bundle": "production-kpis",
       "milestone": "v0_10",
-      "status": "pending",
+      "status": "done",
       "title": "Harness.AgentKPI — per-agent KPI aggregation over result_store run records",
       "scores": {
         "d": 4,
@@ -4256,9 +4256,14 @@
         "Persistence of aggregates — recomputed on read from result_store",
         "Dashboard rendering — Task 115"
       ],
+      "shipped_in": "9f4060c",
       "body": "Aggregate the LogRecords ResultStore already persists into a per-agent ledger. Every field needed is captured per run today (agent, verdict, duration_ms, token_usage {input,output,cache,total}, repair_attempts, first_attempt_failed_check_count, agent_diff_size) — confirmed by code survey 2026-05-31. This task adds NO new capture: it is a read-only aggregation context rolling records up by agent into success rate (verdict :pass / total), first-attempt-pass rate (repair_attempts == 0 AND :pass), median + p90 duration_ms, mean tokens (in/out/total), mean repair_attempts, and a cost-to-green composite (mean total tokens per landed-green task).\n\nPure functions over a record list; the caller supplies the record set (from ResultStore.list_run_records) so the context is testable without I/O. This is the cheap, immediate half of the KPI feature — it makes the data we already have viewable at a glance. Pairs with the experimental capability half (Tasks 116-122).\n",
       "created_at": "2026-05-31",
+      "done_at": "2026-05-31",
       "scored_at": "2026-05-31",
+      "implemented": "Harness.AgentKPI.aggregate/1 — pure per-agent rollup over a LogRecord list: run_count, success_rate, first_attempt_pass_rate, duration_ms {median, nearest-rank p90}, mean tokens {input,output,total}, mean repair_attempts, and cost_to_green (mean total tokens across :pass runs; nil on zero passes). 9 ExUnit tests cover empty/single/multi-agent, all-failed (success_rate 0.0 + cost_to_green nil), repair-heavy vs first-try, plus nil-token_usage and 0.0-vs-nil edges. Dispatched through harness (run-1780206849034-11a8fd87, claude adapter), settled green first attempt (0 repairs), independently AC-audited on land, ff-merged to development.",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     },
     {

@@ -3656,7 +3656,7 @@ id = "114"
 phase = 13
 bundle = "production-kpis"
 milestone = "v0_10"
-status = "pending"
+status = "done"
 title = "Harness.AgentKPI — per-agent KPI aggregation over result_store run records"
 scores = { d = 4, b = 8, u = 8 }
 acceptance_criteria = ["Harness.AgentKPI.aggregate/1 takes a list of LogRecord and returns a map keyed by agent, each value carrying: run_count, success_rate, first_attempt_pass_rate, duration_ms {median, p90}, tokens {input, output, total} means, repair_attempts mean, cost_to_green (mean total tokens per :pass run)", "Empty input returns an empty map; an agent with zero :pass runs reports cost_to_green = nil (no divide-by-zero, not 0)", "Pure functions only — no ResultStore/file I/O inside the context; the record list is passed in by the caller", "Tests cover: mixed-agent record set, single-agent, an all-failed agent (success_rate 0.0, cost_to_green nil), and repair-heavy vs first-try agents", "@spec on every def and defp; module passes the project check stack"]
@@ -3666,8 +3666,13 @@ Aggregate the LogRecords ResultStore already persists into a per-agent ledger. E
 
 Pure functions over a record list; the caller supplies the record set (from ResultStore.list_run_records) so the context is testable without I/O. This is the cheap, immediate half of the KPI feature — it makes the data we already have viewable at a glance. Pairs with the experimental capability half (Tasks 116-122).
 """
+implemented = "Harness.AgentKPI.aggregate/1 — pure per-agent rollup over a LogRecord list: run_count, success_rate, first_attempt_pass_rate, duration_ms {median, nearest-rank p90}, mean tokens {input,output,total}, mean repair_attempts, and cost_to_green (mean total tokens across :pass runs; nil on zero passes). 9 ExUnit tests cover empty/single/multi-agent, all-failed (success_rate 0.0 + cost_to_green nil), repair-heavy vs first-try, plus nil-token_usage and 0.0-vs-nil edges. Dispatched through harness (run-1780206849034-11a8fd87, claude adapter), settled green first attempt (0 repairs), independently AC-audited on land, ff-merged to development."
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-31"
 scored_at = "2026-05-31"
+done_at = "2026-05-31"
+shipped_in = "9f4060c"
 
 [[task]]
 id = "115"
