@@ -4,8 +4,13 @@
 # Only the [mcp_servers] section is supported in project-level files.
 
 [mcp_servers.tidewave]
-# Local Tidewave dev server (Elixir tools + MCP surface)
-# Started via: iex -S mix tidewave
-url = "http://localhost:4016/tidewave/mcp"
+# Tidewave project_eval escape hatch on the harness dashboard endpoint.
+url = "http://localhost:4018/tidewave/mcp"
+enabled = true
+startup_timeout_sec = 15
+
+[mcp_servers.harness]
+# Native flat harness driver tools.
+url = "http://localhost:4018/harness/mcp"
 enabled = true
 startup_timeout_sec = 15
