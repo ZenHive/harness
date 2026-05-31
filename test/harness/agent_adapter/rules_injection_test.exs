@@ -16,6 +16,9 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
     struct!(%Invocation{prompt: "do the task", cwd: cwd, task_id: "22"}, attrs)
   end
 
+  defp elixir_conventions, do: "Every public function gets a `@spec`"
+  defp verification_gates, do: "Coverage thresholds"
+
   describe "claude_flags/1" do
     test "returns append-system-prompt flags pointing at an ephemeral file", %{cwd: cwd} do
       assert {:ok, flags} = RulesInjection.claude_flags(invocation(cwd))
@@ -28,12 +31,52 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
 
       assert File.exists?(Path.join(cwd, AgentRules.system_prompt_rel_path()))
     end
+
+    test "keeps Elixir conventions for Elixir-language targets", %{cwd: cwd} do
+      assert {:ok, _flags} = RulesInjection.claude_flags(invocation(cwd, language: :elixir))
+
+      body = File.read!(Path.join(cwd, AgentRules.system_prompt_rel_path()))
+      assert body =~ elixir_conventions()
+      refute body =~ verification_gates()
+    end
+
+    test "excludes Elixir conventions for non-Elixir targets", %{cwd: cwd} do
+      assert {:ok, _flags} = RulesInjection.claude_flags(invocation(cwd, language: :rust))
+
+      body = File.read!(Path.join(cwd, AgentRules.system_prompt_rel_path()))
+      refute body =~ elixir_conventions()
+      refute body =~ verification_gates()
+    end
   end
 
   describe "install_codex_rules/1" do
     test "writes AGENTS.md into the worktree", %{cwd: cwd} do
       assert :ok = RulesInjection.install_codex_rules(invocation(cwd))
       assert File.exists?(Path.join(cwd, "AGENTS.md"))
+    end
+
+    test "defaults unknown language to Elixir conventions", %{cwd: cwd} do
+      assert :ok = RulesInjection.install_codex_rules(invocation(cwd))
+
+      body = File.read!(Path.join(cwd, "AGENTS.md"))
+      assert body =~ elixir_conventions()
+      refute body =~ verification_gates()
+    end
+
+    test "keeps Elixir conventions when language is unrecognized", %{cwd: cwd} do
+      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, language: :unknown))
+
+      body = File.read!(Path.join(cwd, "AGENTS.md"))
+      assert body =~ elixir_conventions()
+      refute body =~ verification_gates()
+    end
+
+    test "excludes Elixir conventions for Rust language", %{cwd: cwd} do
+      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, language: :rust))
+
+      body = File.read!(Path.join(cwd, "AGENTS.md"))
+      refute body =~ elixir_conventions()
+      refute body =~ verification_gates()
     end
   end
 
@@ -42,6 +85,14 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
       assert :ok = RulesInjection.install_cursor_rules(invocation(cwd))
       assert File.exists?(Path.join(cwd, ".cursor/rules/harness-operational.mdc"))
     end
+
+    test "excludes Elixir conventions for Rust language", %{cwd: cwd} do
+      assert :ok = RulesInjection.install_cursor_rules(invocation(cwd, language: :rust))
+
+      body = File.read!(Path.join(cwd, ".cursor/rules/harness-operational.mdc"))
+      refute body =~ elixir_conventions()
+      refute body =~ verification_gates()
+    end
   end
 
   describe "prepend_prompt/1" do
@@ -49,6 +100,14 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
       prompt = RulesInjection.prepend_prompt("task body")
 
       assert prompt =~ AgentRules.render()
+      assert String.ends_with?(prompt, "task body")
+    end
+
+    test "excludes Elixir conventions for Rust language", %{cwd: cwd} do
+      prompt = RulesInjection.prepend_prompt("task body", invocation(cwd, language: :rust))
+
+      refute prompt =~ elixir_conventions()
+      refute prompt =~ verification_gates()
       assert String.ends_with?(prompt, "task body")
     end
   end

@@ -78,6 +78,13 @@ defmodule Harness.AgentRulesTest do
       assert body =~ "target repo instructions"
       assert String.starts_with?(body, "<!-- harness-injected")
     end
+
+    test "cleans up a filtered ephemeral AGENTS.md", %{cwd: cwd} do
+      :ok = AgentRules.install_codex_rules!(cwd, exclude: [:verification_gates, :elixir])
+
+      assert :ok = AgentRules.cleanup_injected_rules(cwd)
+      refute File.exists?(Path.join(cwd, "AGENTS.md"))
+    end
   end
 
   describe "install_cursor_rules!/2" do

@@ -1086,10 +1086,15 @@ defmodule Harness.Run do
       task_id: data.item.id,
       session: session,
       permission_mode: :autonomous,
+      language: project_language(data.project),
       adapter_opts: data.adapter_opts,
       env: data.env
     }
   end
+
+  @spec project_language(Project.t()) :: atom() | nil
+  defp project_language(%Project{check_stacks: [%{name: language}]}) when is_atom(language), do: language
+  defp project_language(%Project{}), do: nil
 
   # Whether a red verdict should trigger another repair attempt: the cap is not
   # yet spent, the adapter can resume its session, and the failed attempt did

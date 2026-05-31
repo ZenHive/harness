@@ -19,6 +19,7 @@ defmodule Harness.AgentRules do
   @system_prompt_rel ".harness/agent-rules.md"
   @cursor_rules_rel ".cursor/rules/harness-operational.mdc"
   @codex_agents_filename "AGENTS.md"
+  @codex_agents_marker "<!-- harness-injected: canonical agent rules — ephemeral, do not commit -->"
   @codex_agents_separator "\n\n---\n\n"
 
   @section_body ~r/<!-- @section (\w+) -->\s*(.*?)(?=<!-- @section |\z)/s
@@ -140,7 +141,7 @@ defmodule Harness.AgentRules do
   @spec codex_agents_block(String.t()) :: String.t()
   defp codex_agents_block(rules) do
     String.trim("""
-    <!-- harness-injected: canonical agent rules — ephemeral, do not commit -->
+    #{@codex_agents_marker}
     #{rules}
     """)
   end
@@ -161,7 +162,7 @@ defmodule Harness.AgentRules do
   defp merge_agents_md(harness_block, nil), do: harness_block
 
   defp merge_agents_md(harness_block, existing) do
-    if String.contains?(existing, "harness-injected: canonical agent rules") do
+    if String.contains?(existing, @codex_agents_marker) do
       existing
     else
       harness_block <> @codex_agents_separator <> existing
@@ -186,8 +187,31 @@ defmodule Harness.AgentRules do
   @spec cleanup_codex_agents_body(String.t(), String.t()) ::
           :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
   defp cleanup_codex_agents_body(path, body) do
-    harness_block = codex_agents_block(render())
+    case matching_codex_agents_block(body) do
+      nil ->
+        cleanup_marker_prefixed_agents(path, body)
 
+      harness_block ->
+        cleanup_codex_agents_block(path, body, harness_block)
+    end
+  end
+
+  @spec matching_codex_agents_block(String.t()) :: String.t() | nil
+  defp matching_codex_agents_block(body) do
+    Enum.find(codex_agents_blocks(), &String.starts_with?(body, &1))
+  end
+
+  @spec codex_agents_blocks() :: [String.t()]
+  defp codex_agents_blocks do
+    [
+      codex_agents_block(render()),
+      codex_agents_block(render(exclude: [:verification_gates, :elixir]))
+    ]
+  end
+
+  @spec cleanup_codex_agents_block(String.t(), String.t(), String.t()) ::
+          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  defp cleanup_codex_agents_block(path, body, harness_block) do
     cond do
       body == harness_block ->
         remove_path(path)
@@ -200,9 +224,17 @@ defmodule Harness.AgentRules do
         |> String.replace_prefix(harness_block, "")
         |> String.trim_leading()
         |> write_codex_agents_remainder(path)
+    end
+  end
 
-      true ->
-        :ok
+  @spec cleanup_marker_prefixed_agents(String.t(), String.t()) ::
+          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  defp cleanup_marker_prefixed_agents(path, body) do
+    if String.starts_with?(body, @codex_agents_marker) and String.contains?(body, @codex_agents_separator) do
+      [_harness_block, remainder] = String.split(body, @codex_agents_separator, parts: 2)
+      write_path(path, remainder)
+    else
+      :ok
     end
   end
 

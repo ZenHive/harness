@@ -375,6 +375,6 @@ defmodule Harness.AgentAdapter do
   end
 
   defp prepare_rule_delivery(:prompt_preamble, invocation) do
-    {:ok, %RuleDelivery{prompt: RulesInjection.prepend_prompt(invocation.prompt)}}
+    {:ok, %RuleDelivery{prompt: RulesInjection.prepend_prompt(invocation.prompt, invocation)}}
   end
 end
