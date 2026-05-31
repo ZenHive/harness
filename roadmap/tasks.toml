@@ -3449,7 +3449,7 @@ done_at = "2026-05-30"
 id = "106"
 phase = 12
 bundle = "dashboard"
-status = "in_progress"
+status = "done"
 title = "ResultStore: stop re-warning on every scan for undecodable term files"
 scores = { d = 2, b = 3, u = 4 }
 markers = ["bug"]
@@ -3466,9 +3466,13 @@ CONSEQUENCE: the original "quarantine preferred" plan is WRONG — quarantining 
 
 FIX (cheapest correct): stop the per-file spam, leave every file in place. collect_records/2 counts skips by class — {:ok, _other} = cross_typed (decoded, wrong struct); {:error, _} = undecodable under [:safe] — and emits at most one aggregated Logger.debug line per scan ("skipped N term file(s) (U undecodable under :safe ...; C cross-typed). Files left in place."). No quarantine, no delete, no unsafe binary_to_term.
 """
+implemented = "collect_records/2 reduces to {kept, %{cross_typed, undecodable}}, leaves every file in place, and emits at most one aggregated Logger.debug line per scan (downgraded from per-file Logger.warning), split by skip class. No quarantine/delete: dominant failure is self-healing [:safe] atom drift (investigation: all 42 stored records decode clean; atomic .tmp+rename writes make torn *.term near-impossible, correcting the original premise). test/harness/result_store/file_test.exs covers mixed valid+undecodable+cross-typed (records survive, one aggregated line, files left on disk, old per-file warning gone) + healthy-only no-log; module coverage 90%. Hand-built in worktree; hooks green (compile/test/credo/dialyzer/sobelow)."
+delivered_by = "claude-opus-4-8"
 created_at = "2026-05-30"
 started_at = "2026-05-31"
 scored_at = "2026-05-30"
+done_at = "2026-05-31"
+shipped_in = "fb01463"
 
 [[task]]
 id = "107"

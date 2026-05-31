@@ -3920,7 +3920,7 @@
       "id": "106",
       "phase": 12,
       "bundle": "dashboard",
-      "status": "in_progress",
+      "status": "done",
       "title": "ResultStore: stop re-warning on every scan for undecodable term files",
       "scores": {
         "d": 2,
@@ -3944,10 +3944,14 @@
         "Changing the on-disk record format or the atomic .tmp+rename write scheme",
         "Quarantining or deleting undecodable files — rejected: the dominant failure is self-healing [:safe] atom/struct drift, so moving or deleting would hide records that re-decode once the writing build is loaded"
       ],
+      "shipped_in": "fb01463",
       "body": "Harness.ResultStore.File.list_run_records/2 logs a Logger.warning for EVERY undecodable .term file on EVERY scan (collect_records/2). The dashboard, `mix harness.status`, and dispatch__verdict_detail all funnel through this one chokepoint, so a single corrupt-looking file spams the console on every history read. Observed: ~11 \"corrupt\" files (from the Task 97/99 BEAM crashes) spamming iex.\n\nINVESTIGATION (2026-05-31, live node + all stored records) corrected the original premise:\n- Writes are ATOMIC — write_term/2 writes a sibling .tmp then File.rename's into place (atomic on POSIX), and list_run_records reads only *.term (ignores .tmp). A BEAM-death-mid-write therefore CANNOT leave a torn *.term at the final path; it leaves a .term.tmp (ignored) plus the prior .term intact. Genuinely torn files are near-impossible by design.\n- The real cause is [:safe] rejection: read_term decodes with binary_to_term(body, [:safe]), which raises when a record references an atom/struct the running node hasn't loaded yet (cross-version drift). This is transient and SELF-HEALING — the file decodes again once the writing build runs. Evidence: all 42 records in ~/.harness/results/runs decoded clean as LogRecord under the current node; the original 11 \"corrupt\" files healed on a later deploy.\n\nCONSEQUENCE: the original \"quarantine preferred\" plan is WRONG — quarantining on first [:safe] failure moves a self-healing record out of runs/, so it silently disappears once the correct build runs. Deleting destroys readable records outright.\n\nFIX (cheapest correct): stop the per-file spam, leave every file in place. collect_records/2 counts skips by class — {:ok, _other} = cross_typed (decoded, wrong struct); {:error, _} = undecodable under [:safe] — and emits at most one aggregated Logger.debug line per scan (\"skipped N term file(s) (U undecodable under :safe ...; C cross-typed). Files left in place.\"). No quarantine, no delete, no unsafe binary_to_term.\n",
       "created_at": "2026-05-30",
       "started_at": "2026-05-31",
+      "done_at": "2026-05-31",
       "scored_at": "2026-05-30",
+      "implemented": "collect_records/2 reduces to {kept, %{cross_typed, undecodable}}, leaves every file in place, and emits at most one aggregated Logger.debug line per scan (downgraded from per-file Logger.warning), split by skip class. No quarantine/delete: dominant failure is self-healing [:safe] atom drift (investigation: all 42 stored records decode clean; atomic .tmp+rename writes make torn *.term near-impossible, correcting the original premise). test/harness/result_store/file_test.exs covers mixed valid+undecodable+cross-typed (records survive, one aggregated line, files left on disk, old per-file warning gone) + healthy-only no-log; module coverage 90%. Hand-built in worktree; hooks green (compile/test/credo/dialyzer/sobelow).",
+      "delivered_by": "claude-opus-4-8",
       "cross_repo": []
     },
     {
