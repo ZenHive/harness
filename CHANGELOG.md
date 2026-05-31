@@ -23,6 +23,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Runtime cron-autonomy toggles — master + per-project (Tasks 109/110).** A
+  persisted, dashboard-driven kill-switch for autonomous roadmap polling. The
+  master flag (the fleet-wide incident switch) and a per-project flag are flipped
+  at runtime from a dedicated **Settings page** (`/harness/settings`, linked from
+  the navbar) — toggle switches over the existing dark design system, with a
+  resolved-status pill and an armed/dispatching/paused state per project — no
+  config edit, no restart. Effective autonomy is `master AND project`: a project dispatches only
+  when both are on, so a new project stays non-autonomous (flag defaults OFF)
+  until an operator opts it in, and the master switch pauses the whole fleet at
+  once. The panel shows the resolved poll status (`RoadmapPoller.status/0`) and
+  warns when master is ON but no project is enabled (nothing would dispatch).
+  Flips are audited (info-level log naming the actor) and persisted to a
+  file-backed term store (`~/.harness/cron_settings.term`, mirroring
+  `Harness.Chat.Store`; disable with `config :harness, :cron_settings, false`),
+  so a choice survives a BEAM restart — seeded back into app env on boot before
+  Oban starts. The `Oban.Plugins.Cron` entry now registers **unconditionally**
+  (previously gated on the boot-time `enabled` flag): the tick is always
+  scheduled, and whether it *dispatches* is the live gate inside
+  `RoadmapPoller.perform/1` — without this, toggling autonomy on from a
+  disabled-at-boot node had no scheduled tick to act on. Per-project skips log at
+  info level (no longer a silent debug line). `%Harness.Project{}` and
+  `ProjectRegistry.register/1` are unchanged — absence-means-off lives entirely
+  in the settings store.
 - **Per-agent KPI aggregation over run records (Task 114).** `Harness.AgentKPI`
   rolls a list of `%Harness.Run.LogRecord{}` (e.g. from
   `ResultStore.list_run_records/1`) up by `agent` into a per-agent ledger:

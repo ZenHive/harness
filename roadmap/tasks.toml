@@ -3560,7 +3560,7 @@ id = "109"
 phase = 11
 bundle = "autolanding"
 milestone = "v0_9"
-status = "pending"
+status = "done"
 title = "Cron autonomy master toggle — runtime enable/disable from the dashboard, persisted"
 scores = { d = 3, b = 4, u = 4 }
 markers = ["handbuild"]
@@ -3572,15 +3572,19 @@ Autonomous roadmap polling (Harness.Cron.RoadmapPoller) is gated by a compile-ti
 
 perform/1 already reads enabled?() live from app env on every tick (lib/harness/cron/roadmap_poller.ex:31), so a runtime flip takes effect at the next tick with no restart. Missing: (a) a persisted store so a flip survives a BEAM restart, (b) a dashboard control, (c) an audit trail (who flipped it, when) -- today skips are Logger.debug only, so autonomy state is effectively invisible.
 """
+implemented = "Runtime master cron-autonomy toggle. New Harness.Cron.Settings (file-backed term store at ~/.harness/cron_settings.term, mirroring Chat.Store) persists the master flag; load_into_env/0 seeds :cron_polling :enabled into app env on boot (in Application.start/2) before Oban starts. Decoupled tick-scheduling from dispatch: Harness.Oban now registers the Oban.Plugins.Cron entry + :cron queue UNCONDITIONALLY (was gated on enabled? at boot, so a runtime flip had no tick to act on); RoadmapPoller.perform/1's enabled?() gate is the live switch. Dashboard.Live gained a 'Cron autonomy' panel (master toggle + resolved RoadmapPoller.status/0 + master-on-but-nothing-enabled warning), set_master/2 write-throughs to the store + info-level audit log naming the actor. Verified: tests green; browser-confirmed toggle flips status disabled->scheduled and persists across a simulated reload."
+delivered_by = "claude"
 created_at = "2026-05-30"
+started_at = "2026-05-31"
 scored_at = "2026-05-30"
+done_at = "2026-05-31"
 
 [[task]]
 id = "110"
 phase = 11
 bundle = "autolanding"
 milestone = "v0_9"
-status = "pending"
+status = "done"
 title = "Per-project cron autonomy flag — pause/resume autonomy per registered project"
 scores = { d = 2, b = 3, u = 3 }
 markers = ["handbuild"]
@@ -3592,8 +3596,11 @@ The master toggle (Task 109) is fleet-wide all-or-nothing. With multi-project fe
 
 Settled design: additive, not a replacement. Effective autonomy = master_enabled AND project_enabled; the master toggle stays the single incident kill-switch. Default OFF on registration -- an operator opts a project in after watching it. Document the friction: enabling master alone dispatches nothing until at least one project is also enabled; the dashboard must make this obvious to avoid the "I turned it on, why is nothing happening?" trap.
 """
+implemented = "Per-project cron-autonomy flag layered on Task 109's store. Harness.Cron.Settings holds a %{project_name => bool} map under :cron_project_autonomy (absence ⇒ OFF, so a newly-registered project is non-autonomous until opted in — no %Harness.Project{} or ProjectRegistry.register/1 change needed). RoadmapPoller.poll_project/1 gates on Settings.project_enabled?/1 and logs an info-level 'autonomy disabled, skipped' line (no longer a silent debug skip); effective autonomy = master AND project composes the perform/1 master gate with this per-project gate. Dashboard panel renders per-project rows (own flag + computed effective state) with per-project enable/disable buttons (set_project/3, persisted + audited). Verified: roadmap_poller_test truth-table (master-on + A-off + B-on ⇒ only B dispatches); browser-confirmed enabling harness flips effective on and clears the no-project-enabled warning while rexex stays off."
+delivered_by = "claude"
 created_at = "2026-05-30"
 scored_at = "2026-05-30"
+done_at = "2026-05-31"
 
 [[task]]
 id = "111"

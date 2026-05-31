@@ -29,11 +29,18 @@ config :harness, Oban,
 # `false` to disable persistence entirely.
 config :harness, :chat_store, root: Path.expand("~/.harness/chats")
 
-# Autonomous roadmap polling is opt-in. When enabled, Harness.Oban appends an
-# Oban.Plugins.Cron entry that runs Harness.Cron.RoadmapPoller on this schedule.
+# Autonomous roadmap polling is opt-in. The Oban.Plugins.Cron entry that runs
+# Harness.Cron.RoadmapPoller is registered unconditionally (Task 109) so the
+# runtime master toggle has a scheduled tick to act on; `enabled` is the live
+# dispatch gate (seeded from the persisted store on boot), `schedule` the cadence.
 config :harness, :cron_polling,
   enabled: false,
   schedule: "0 */2 * * *"
+
+# File-backed term store for the persisted cron-autonomy switches (master +
+# per-project flags, Tasks 109/110), so a toggle survives a BEAM restart. Set to
+# `false` to disable persistence (runtime flips still work, nothing is written).
+config :harness, :cron_settings, root: Path.expand("~/.harness")
 
 # config :harness, Harness.Notification.CommandSink,
 #   command: "/usr/local/bin/notify-train.sh",
@@ -176,6 +183,8 @@ if config_env() == :test do
 
   config :harness, Oban, testing: :inline
   config :harness, :chat_store, root: Path.join(System.tmp_dir!(), "harness_chats_test")
+  # Persistence off by default in test; the settings test overrides with a temp root.
+  config :harness, :cron_settings, false
   config :harness, :dashboard, enabled: false, port: 4018
   config :harness, :oban_enabled, false
   config :harness, :repo_enabled, false

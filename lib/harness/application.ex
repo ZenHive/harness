@@ -5,9 +5,16 @@ defmodule Harness.Application do
 
   use Application
 
+  alias Harness.Cron.Settings
+
   @spec start(Application.start_type(), term()) :: {:ok, pid()} | {:error, term()}
   @impl true
   def start(_type, _args) do
+    # Seed the persisted cron-autonomy switches into app env before any child
+    # (notably Oban) boots, so RoadmapPoller.enabled?/0 reflects the operator's
+    # last choice from t=0 rather than the compile-time default (Tasks 109/110).
+    Settings.load_into_env()
+
     opts = [strategy: :one_for_one, name: Harness.Supervisor]
     Supervisor.start_link(children(), opts)
   end

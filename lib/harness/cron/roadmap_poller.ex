@@ -6,6 +6,7 @@ defmodule Harness.Cron.RoadmapPoller do
   use Oban.Worker, queue: :cron, max_attempts: 1
 
   alias Harness.AgentRegistry
+  alias Harness.Cron.Settings
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.Roadmap
@@ -100,10 +101,14 @@ defmodule Harness.Cron.RoadmapPoller do
 
   @spec poll_project(Project.t()) :: :ok
   defp poll_project(%Project{} = project) do
-    case ingest_next(project) do
-      {:ok, %Item{} = item} -> maybe_enqueue(project, item)
-      {:error, :no_pending_task} -> :ok
-      {:error, reason} -> log_ingest_error(project, reason)
+    if Settings.project_enabled?(project) do
+      case ingest_next(project) do
+        {:ok, %Item{} = item} -> maybe_enqueue(project, item)
+        {:error, :no_pending_task} -> :ok
+        {:error, reason} -> log_ingest_error(project, reason)
+      end
+    else
+      log_autonomy_skip(project)
     end
   end
 
@@ -147,6 +152,13 @@ defmodule Harness.Cron.RoadmapPoller do
       fun when is_function(fun, 1) -> fun.(project)
       _other -> Harness.Oban.queue_headroom?(project)
     end
+  end
+
+  # Info-level (not debug) so a paused project is observable in the operator log,
+  # not a silent skip — the 110 contract for per-project autonomy.
+  @spec log_autonomy_skip(Project.t()) :: :ok
+  defp log_autonomy_skip(%Project{} = project) do
+    Logger.info("harness cron poller: #{project.name} autonomy disabled, skipped")
   end
 
   @spec log_ingest_error(Project.t(), term()) :: :ok

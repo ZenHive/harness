@@ -10,12 +10,14 @@ defmodule Harness.Cron.RoadmapPollerTest do
 
   setup do
     prior_cron_polling = Application.get_env(:harness, :cron_polling)
+    prior_project_autonomy = Application.get_env(:harness, :cron_project_autonomy)
 
     AgentRegistry.reset()
     ProjectRegistry.reset()
 
     on_exit(fn ->
       restore_env(:cron_polling, prior_cron_polling)
+      restore_env(:cron_project_autonomy, prior_project_autonomy)
       Application.delete_env(:harness, :oban_insert)
       Application.delete_env(:harness, :queue_headroom?)
       Application.delete_env(:harness, :roadmap_ingest)
@@ -24,12 +26,16 @@ defmodule Harness.Cron.RoadmapPollerTest do
     :ok
   end
 
-  test "disabled by default and omitted from Oban plugins" do
+  test "master autonomy disabled by default, but the cron plugin still registers" do
+    # The tick is always scheduled (Task 109): decoupling "tick is scheduled"
+    # (unconditional) from "tick dispatches" (the runtime master gate) is what
+    # lets the dashboard toggle take effect with no restart.
     refute RoadmapPoller.enabled?()
-    refute Enum.any?(Harness.Oban.oban_opts()[:plugins], &cron_plugin?/1)
+    assert Enum.any?(Harness.Oban.oban_opts()[:plugins], &cron_plugin?/1)
+    assert {:cron, 1} in Harness.Oban.oban_opts()[:queues]
   end
 
-  test "enabled config appends a cron plugin entry and cron queue" do
+  test "cron plugin carries the configured schedule" do
     Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
 
     assert RoadmapPoller.enabled?()
@@ -66,6 +72,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
     assert :ok = ProjectRegistry.register(project)
 
     Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
+    Application.put_env(:harness, :cron_project_autonomy, %{"cron-enabled" => true})
     Application.put_env(:harness, :queue_headroom?, fn ^project -> true end)
 
     Application.put_env(:harness, :roadmap_ingest, fn :next, opts ->
@@ -102,6 +109,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
     assert :ok = ProjectRegistry.register(project)
 
     Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
+    Application.put_env(:harness, :cron_project_autonomy, %{"cron-full" => true})
     Application.put_env(:harness, :queue_headroom?, fn ^project -> false end)
 
     Application.put_env(:harness, :roadmap_ingest, fn :next, _opts ->
@@ -126,6 +134,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
     assert :ok = AgentRegistry.mark_unavailable(Harness.AgentAdapter.Claude, :quota)
 
     Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
+    Application.put_env(:harness, :cron_project_autonomy, %{"cron-unavailable" => true})
     Application.put_env(:harness, :queue_headroom?, fn ^project -> true end)
 
     Application.put_env(:harness, :roadmap_ingest, fn :next, _opts ->
@@ -141,6 +150,34 @@ defmodule Harness.Cron.RoadmapPollerTest do
     assert :ok = RoadmapPoller.perform(%Oban.Job{})
     assert_received :ingested
     refute_received {:inserted, _job}
+  end
+
+  test "master on dispatches only projects whose own autonomy flag is on" do
+    parent = self()
+    on_project = ProjectFixture.from_repo("/tmp/harness-cron-on", name: "cron-on", concurrency_cap: 2)
+    off_project = ProjectFixture.from_repo("/tmp/harness-cron-off", name: "cron-off")
+    assert :ok = ProjectRegistry.register(on_project)
+    assert :ok = ProjectRegistry.register(off_project)
+
+    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
+    Application.put_env(:harness, :cron_project_autonomy, %{"cron-on" => true, "cron-off" => false})
+    Application.put_env(:harness, :queue_headroom?, fn _project -> true end)
+
+    Application.put_env(:harness, :roadmap_ingest, fn :next, opts ->
+      send(parent, {:ingest, opts[:project_root]})
+      {:ok, item("51")}
+    end)
+
+    Application.put_env(:harness, :oban_insert, fn changeset ->
+      {:ok, Ecto.Changeset.apply_action!(changeset, :insert)}
+    end)
+
+    assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+    # Effective autonomy = master AND project: the enabled sibling dispatches, the
+    # disabled one is never even ingested.
+    assert_received {:ingest, "/tmp/harness-cron-on"}
+    refute_received {:ingest, "/tmp/harness-cron-off"}
   end
 
   test "reports the next tick from the configured schedule" do

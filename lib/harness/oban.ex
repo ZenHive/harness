@@ -134,8 +134,8 @@ defmodule Harness.Oban do
       |> Keyword.put_new(:queues, [])
 
     base
-    |> maybe_enable_cron_queue()
-    |> maybe_enable_cron_plugin()
+    |> enable_cron_queue()
+    |> enable_cron_plugin()
     |> Keyword.put(:name, __MODULE__)
   end
 
@@ -173,29 +173,27 @@ defmodule Harness.Oban do
     Harness.Repo.aggregate(query, :count, :id)
   end
 
-  @spec maybe_enable_cron_queue(keyword()) :: keyword()
-  defp maybe_enable_cron_queue(opts) do
-    if RoadmapPoller.enabled?() do
-      {queue, limit} = RoadmapPoller.cron_queue_config()
+  # The cron queue + Cron plugin register UNCONDITIONALLY (not gated on
+  # RoadmapPoller.enabled?/0). Whether a tick *dispatches* is decided live inside
+  # RoadmapPoller.perform/1 via enabled?/0; whether a tick is *scheduled* must not
+  # depend on the boot-time flag, or the runtime master toggle (Task 109) would
+  # have nothing to act on when autonomy was OFF at boot. Oban's `testing` modes
+  # suppress Cron scheduling, so always-registering is inert in tests.
+  @spec enable_cron_queue(keyword()) :: keyword()
+  defp enable_cron_queue(opts) do
+    {queue, limit} = RoadmapPoller.cron_queue_config()
 
-      Keyword.update(opts, :queues, [{queue, limit}], fn
-        queues when is_list(queues) -> Keyword.put_new(queues, queue, limit)
-        _other -> [{queue, limit}]
-      end)
-    else
-      opts
-    end
+    Keyword.update(opts, :queues, [{queue, limit}], fn
+      queues when is_list(queues) -> Keyword.put_new(queues, queue, limit)
+      _other -> [{queue, limit}]
+    end)
   end
 
-  @spec maybe_enable_cron_plugin(keyword()) :: keyword()
-  defp maybe_enable_cron_plugin(opts) do
-    if RoadmapPoller.enabled?() do
-      Keyword.update(opts, :plugins, [RoadmapPoller.cron_plugin()], fn
-        plugins when is_list(plugins) -> plugins ++ [RoadmapPoller.cron_plugin()]
-        _other -> [RoadmapPoller.cron_plugin()]
-      end)
-    else
-      opts
-    end
+  @spec enable_cron_plugin(keyword()) :: keyword()
+  defp enable_cron_plugin(opts) do
+    Keyword.update(opts, :plugins, [RoadmapPoller.cron_plugin()], fn
+      plugins when is_list(plugins) -> plugins ++ [RoadmapPoller.cron_plugin()]
+      _other -> [RoadmapPoller.cron_plugin()]
+    end)
   end
 end

@@ -873,7 +873,159 @@ defmodule Harness.Dashboard.Tokens do
         word-break: break-word;
       }
 
+      /* === Settings page — operator controls (Tasks 109/110) === */
+      .settings {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-5);
+        max-width: 760px;
+      }
+      .settings-head {
+        border-bottom: 1px solid var(--rule);
+        padding-bottom: var(--space-3);
+      }
+      .settings-head h1 { margin: 0 0 var(--space-1); }
+      .settings-sub { margin: 0; color: var(--text-subtle); font-size: var(--text-sm); }
+
+      .setting-card {
+        background: var(--surface);
+        border: 1px solid var(--rule);
+        border-radius: 0.6rem;
+        padding: var(--space-5);
+        animation: settings-rise var(--motion-base) var(--ease-out) both;
+      }
+      .setting-card:nth-of-type(2) { animation-delay: 50ms; }
+      .setting-card h2 { margin: 0 0 var(--space-2); font-size: var(--text-lg); }
+
+      /* Master card: an accent rail down the left edge that lights when armed. */
+      .setting-master { position: relative; overflow: hidden; padding-left: calc(var(--space-5) + 3px); }
+      .setting-master::before {
+        content: "";
+        position: absolute;
+        left: 0; top: 0; bottom: 0;
+        width: 3px;
+        background: var(--rule);
+        transition: background var(--motion-base) var(--ease-out);
+      }
+      .setting-master[data-on="true"]::before { background: var(--accent); }
+      .setting-master-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--space-5);
+      }
+      .setting-desc {
+        margin: 0 0 var(--space-3);
+        color: var(--text-subtle);
+        font-size: var(--text-sm);
+        max-width: 52ch;
+        line-height: 1.5;
+      }
+      .setting-status {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        margin: 0;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--text-subtle);
+      }
+      .setting-warn {
+        margin: var(--space-4) 0 0;
+        padding: var(--space-2) var(--space-3);
+        background: var(--accent-soft);
+        border: 1px solid var(--accent);
+        border-radius: 0.4rem;
+        color: var(--text);
+        font-size: var(--text-sm);
+      }
+      .setting-section-title {
+        margin: 0;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      /* State pill — neutral by default, verdict-green when dispatching, amber when armed. */
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45em;
+        padding: 0.1rem 0.6rem;
+        border-radius: 999px;
+        border: 1px solid var(--rule);
+        background: var(--surface-2);
+        color: var(--text-subtle);
+        font-family: var(--font-display);
+        font-size: var(--text-xs);
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+      .pill::before {
+        content: "";
+        width: 0.45em; height: 0.45em;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      .pill[data-state="on"] { color: var(--verdict-pass); border-color: var(--verdict-pass); }
+      .pill[data-state="armed"] { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+      .pill[data-state="off"] { color: var(--text-muted); }
+
+      /* Toggle switch — track + thumb, amber when checked. role="switch" button. */
+      .toggle {
+        appearance: none;
+        flex: none;
+        width: 3rem;
+        height: 1.6rem;
+        margin: 0;
+        padding: 0;
+        border: 1px solid var(--rule);
+        border-radius: 999px;
+        background: var(--surface-2);
+        cursor: pointer;
+        position: relative;
+        transition: background var(--motion-base) var(--ease-out),
+          border-color var(--motion-base) var(--ease-out);
+      }
+      .toggle::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 0.2rem;
+        transform: translateY(-50%);
+        width: 1.1rem; height: 1.1rem;
+        border-radius: 50%;
+        background: var(--text-subtle);
+        transition: transform var(--motion-base) var(--ease-out),
+          background var(--motion-base) var(--ease-out);
+      }
+      .toggle[aria-checked="true"] { background: var(--accent-soft); border-color: var(--accent); }
+      .toggle[aria-checked="true"]::after { transform: translate(1.4rem, -50%); background: var(--accent); }
+      .toggle:hover { border-color: var(--text-muted); }
+      .toggle[aria-checked="true"]:hover { border-color: var(--accent); }
+      .toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+      .project-list { list-style: none; margin: var(--space-3) 0 0; padding: 0; }
+      .project-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-4);
+        padding: var(--space-3) 0;
+        border-top: 1px solid var(--rule);
+      }
+      .project-row:first-child { border-top: 0; }
+      .project-id { display: flex; align-items: center; gap: var(--space-3); }
+      .project-name { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text); }
+      .project-empty { color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-3) 0; }
+
       /* Motion keyframes — guarded by prefers-reduced-motion at the bottom */
+      @keyframes settings-rise {
+        from { opacity: 0; transform: translateY(0.5rem); }
+        to   { opacity: 1; transform: none; }
+      }
       @keyframes msg-arrive {
         from { opacity: 0; transform: translateY(0.4rem); }
         to   { opacity: 1; transform: none; }
