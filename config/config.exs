@@ -24,6 +24,11 @@ config :harness, Oban,
   queues: [],
   plugins: [Oban.Plugins.Pruner]
 
+# File-backed term store for the persisted per-agent enable/disable switches, so
+# an operator taking an agent out of rotation survives a BEAM restart. Set to
+# `false` to disable persistence (runtime flips still work, nothing is written).
+config :harness, :agent_settings, root: Path.expand("~/.harness")
+
 # Chat session persistence — see Harness.Chat.Store.
 # File-backed term store so chat transcripts survive a BEAM restart. Set to
 # `false` to disable persistence entirely.
@@ -185,8 +190,9 @@ if config_env() == :test do
     pool_size: 10
 
   config :harness, Oban, testing: :inline
+  config :harness, :agent_settings, false
   config :harness, :chat_store, root: Path.join(System.tmp_dir!(), "harness_chats_test")
-  # Persistence off by default in test; the settings test overrides with a temp root.
+  # Persistence off by default in test; the settings tests override with a temp root.
   config :harness, :cron_settings, false
   config :harness, :dashboard, enabled: false, port: 4018
   config :harness, :oban_enabled, false

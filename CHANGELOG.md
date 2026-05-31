@@ -23,6 +23,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-agent enable/disable from the Settings page.** An operator takes an agent
+  out of dispatch rotation (a flaky CLI, an exhausted paid plan, a model under
+  evaluation) with a toggle on `/harness/settings` — an **Agents** card listing all
+  six adapters with an enabled/disabled pill and a "not installed" hint when the CLI
+  binary is off PATH. A disabled agent is skipped by `Harness.AgentRegistry.select/2`
+  (the universal dispatch gate, so runs, batches, and cron ticks all honour it),
+  returning `:no_available_agent` when no enabled+capable adapter remains.
+  Operator-disable is **persisted** (`~/.harness/agent_settings.term`, mirroring
+  `Harness.Chat.Store` / `Harness.Cron.Settings`; disable with
+  `config :harness, :agent_settings, false`) and seeded into app env on boot — a
+  durable operator decision, deliberately distinct from the transient,
+  clears-on-restart quota hint (`available?/1`) it composes with (`select/2` needs
+  both enabled AND available). Agents default ON; disabling is opt-in. Flips are
+  audited at info level naming the actor. New module `Harness.Agent.Settings`.
 - **Runtime cron-autonomy toggles — master + per-project (Tasks 109/110).** A
   persisted, dashboard-driven kill-switch for autonomous roadmap polling. The
   master flag (the fleet-wide incident switch) and a per-project flag are flipped

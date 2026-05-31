@@ -100,6 +100,35 @@ defmodule Harness.AgentRegistryTest do
              AgentRegistry.select([ResumeAdapter], required_capabilities: [:session_resume])
   end
 
+  describe "operator enable/disable gate (Harness.Agent.Settings)" do
+    setup do
+      prior = Application.get_env(:harness, :agent_disabled)
+      on_exit(fn -> restore_env(:agent_disabled, prior) end)
+      :ok
+    end
+
+    test "select/2 skips an operator-disabled agent and falls over to an enabled sibling" do
+      Application.put_env(:harness, :agent_disabled, [:claude])
+
+      assert {:ok, Codex} = AgentRegistry.select([Claude, Codex])
+    end
+
+    test "select/2 surfaces :no_available_agent when the only capable agent is disabled" do
+      Application.put_env(:harness, :agent_disabled, [:claude])
+
+      assert {:error, {:no_available_agent, [Claude]}} = AgentRegistry.select([Claude])
+    end
+
+    test "an enabled agent is selected normally" do
+      Application.put_env(:harness, :agent_disabled, [])
+
+      assert {:ok, Claude} = AgentRegistry.select([Claude])
+    end
+
+    defp restore_env(key, nil), do: Application.delete_env(:harness, key)
+    defp restore_env(key, value), do: Application.put_env(:harness, key, value)
+  end
+
   describe "agents/0 + all/0 + delegatable_agents/0" do
     test "agents/0 returns all six adapters" do
       agents = AgentRegistry.agents()

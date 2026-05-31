@@ -5,15 +5,18 @@ defmodule Harness.Application do
 
   use Application
 
+  alias Harness.Agent.Settings, as: AgentSettings
   alias Harness.Cron.Settings
 
   @spec start(Application.start_type(), term()) :: {:ok, pid()} | {:error, term()}
   @impl true
   def start(_type, _args) do
-    # Seed the persisted cron-autonomy switches into app env before any child
-    # (notably Oban) boots, so RoadmapPoller.enabled?/0 reflects the operator's
-    # last choice from t=0 rather than the compile-time default (Tasks 109/110).
+    # Seed the persisted operator switches into app env before any child boots,
+    # so the dispatch paths reflect the operator's last choice from t=0 rather
+    # than compile-time defaults: cron autonomy (Tasks 109/110, read by Oban's
+    # RoadmapPoller) and per-agent enable/disable (read by AgentRegistry.select/2).
     Settings.load_into_env()
+    AgentSettings.load_into_env()
 
     opts = [strategy: :one_for_one, name: Harness.Supervisor]
     Supervisor.start_link(children(), opts)

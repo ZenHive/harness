@@ -935,6 +935,7 @@
       "dep_layer": 0,
       "markers": [],
       "depends_on": [],
+      "model": "codex",
       "acceptance_criteria": [
         "DEFERRED — no implementation work scheduled. Revisit only when an ACP backend preserves Claude subscription OAuth (per the conditions documented in body), or when API-billing dispatches are an accepted cost for a specific workload; at revisit time, define AC then."
       ],
@@ -4016,6 +4017,7 @@
       "depends_on": [
         99
       ],
+      "model": "cursor",
       "acceptance_criteria": [
         "docs/dogfooding-workflow.md (its generalizable slice) is published as ~/.claude/includes/harness-workflow.md",
         "Any repo adopts the harness workflow by importing it the normal way: @~/.claude/includes/harness-workflow.md",
@@ -4356,6 +4358,7 @@
         102,
         112
       ],
+      "model": "codex",
       "acceptance_criteria": [
         "the post-green gate (Task 99) and the in-run sampler share one discernment dispatch path, not duplicated logic",
         "in-run discernment is weight-gated + sampled; trivial runs skip it; cadence is configurable",
@@ -4469,6 +4472,7 @@
       "dep_layer": 0,
       "markers": [],
       "depends_on": [],
+      "model": "cursor",
       "acceptance_criteria": [
         "A canonical domain vocabulary is defined in one place (module attribute / function) with the initial Elixir-stack domains (e.g. :otp, :genserver, :liveview, :phoenix, :ecto, :oban) and room to add :rust and other languages",
         "Benchmark corpus items (Task 117) can declare one or more domain tags",
@@ -4504,6 +4508,7 @@
       "depends_on": [
         116
       ],
+      "model": "codex",
       "acceptance_criteria": [
         "A benchmark corpus format is defined (proposed priv/benchmarks/*.toml, compile-time embedded like priv/playbooks) with per item: id, version, domain tags (Task 116), task spec (intent + acceptance), target check-stack reference, and expected-green ground truth",
         "A loader reads the corpus into structs at compile time or boot, validated — a malformed item is a loud error, never a silent skip",
@@ -4539,6 +4544,7 @@
       "depends_on": [
         117
       ],
+      "model": "cursor",
       "acceptance_criteria": [
         "Benchmark items spanning OTP/gen_statem, LiveView, Oban, Ecto, and plain Elixir (target ~2-3 per domain — decide final count at pickup), each carrying domain tags from Task 116",
         "Each item is independently gradeable green by its referenced check stack — verified by running a reference solution (or the empty-then-green path) through harness",
@@ -4574,6 +4580,7 @@
         116,
         118
       ],
+      "model": "codex",
       "acceptance_criteria": [
         "A capability score is computed per (agent, domain) from corpus-run results: success_rate, cost_to_green, mean repair_attempts, plus a documented composite (success-rate-dominant, cost as tiebreaker)",
         "Scores persist with a scored_at timestamp and the corpus version they were measured against",
@@ -4610,6 +4617,7 @@
       "depends_on": [
         119
       ],
+      "model": "cursor",
       "acceptance_criteria": [
         "A staleness check classifies each (agent, domain) score as fresh / stale given its scored_at and a configurable window (default ~30 days, mirroring rmap's scored_at decay)",
         "A function lists stale + unmeasured (agent, domain) cells as 're-benchmark needed' candidates",
@@ -4645,6 +4653,7 @@
         119,
         120
       ],
+      "model": "codex",
       "acceptance_criteria": [
         "recommend/1 (or /2 with opts) takes a domain and returns a ranked agent recommendation with rationale (exploit best-known vs explore-this-unmeasured-cell)",
         "Unmeasured cells are surfaced as explore candidates, distinct from measured-low agents; stale scores (Task 120) are discounted",
@@ -4683,6 +4692,7 @@
         119,
         121
       ],
+      "model": "cursor",
       "acceptance_criteria": [
         "An Oban cron job (behind a config toggle, default off in test) periodically selects unmeasured/stale (agent, domain) cells (Task 120) and dispatches the relevant corpus items across the available agents via Batch.AgentEvaluation",
         "Results are scored + persisted via Task 119; fresh cells are skipped (no needless re-runs)",
@@ -4798,6 +4808,7 @@
       "markers": [],
       "depends_on": [],
       "module": "Harness.Run",
+      "model": "codex",
       "acceptance_criteria": [
         "After a run completes, the composed prompt+rules sent on each attempt is retrievable from the run's persisted result record (not only the raw transcript).",
         "Repair attempts are captured distinctly from the initial dispatch (the resume prompt carrying failing-check output is recorded).",

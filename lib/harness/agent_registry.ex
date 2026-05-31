@@ -30,6 +30,17 @@ defmodule Harness.AgentRegistry do
   the same way but lives in its own state field. Either can be removed
   without affecting the other.
 
+  ## Operator enable/disable is a third, persisted gate
+
+  `select/2` composes one more signal that lives **outside** this GenServer:
+  an operator can take an agent out of rotation from the dashboard, persisted
+  in `Harness.Agent.Settings` (app-env cache + term file). A selected adapter
+  must be **both** operator-enabled **and** transiently available. That gate is
+  deliberately *not* stored here — operator-disable is a durable decision that
+  survives a restart (the opposite of the soft, clears-on-restart quota hint
+  below), so it belongs in its own persisted module; this registry only reads
+  it at selection time.
+
   ## Availability is a soft hint, not a contract
 
   Unavailability state (quota-exhausted, manually marked) lives in `GenServer`
@@ -72,6 +83,7 @@ defmodule Harness.AgentRegistry do
 
   use GenServer
 
+  alias Harness.Agent.Settings
   alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Antigravity
   alias Harness.AgentAdapter.Capabilities
@@ -150,10 +162,29 @@ defmodule Harness.AgentRegistry do
         {:error, {:unsupported_capability, first_missing_capability(adapters, required), adapters}}
 
       supported ->
-        case Enum.find(supported, &available?/1) do
+        case Enum.find(supported, &dispatchable?/1) do
           nil -> {:error, {:no_available_agent, supported}}
           adapter -> {:ok, adapter}
         end
+    end
+  end
+
+  # A supported adapter is dispatchable when an operator hasn't taken it out of
+  # rotation (persisted, `Harness.Agent.Settings`) AND it has transient quota
+  # headroom (`available?/1`). The enabled check is a cheap app-env read, so it
+  # short-circuits the GenServer round-trip for a disabled adapter.
+  @spec dispatchable?(module()) :: boolean()
+  defp dispatchable?(adapter) do
+    enabled?(adapter) and available?(adapter)
+  end
+
+  # Operator enable/disable, keyed by agent atom. An adapter module with no agent
+  # atom (a test double) is never operator-disabled, so it stays dispatchable.
+  @spec enabled?(module()) :: boolean()
+  defp enabled?(adapter) do
+    case Map.fetch(@module_to_agent, adapter) do
+      {:ok, agent} -> Settings.enabled?(agent)
+      :error -> true
     end
   end
 

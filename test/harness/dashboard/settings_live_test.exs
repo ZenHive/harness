@@ -11,6 +11,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
   use Harness.Dashboard.ConnCase, async: false
 
+  alias Harness.Agent.Settings, as: AgentSettings
   alias Harness.Cron.Settings
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
@@ -18,6 +19,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   setup %{conn: conn} do
     prior_polling = Application.get_env(:harness, :cron_polling)
     prior_projects = Application.get_env(:harness, :cron_project_autonomy)
+    prior_agents = Application.get_env(:harness, :agent_disabled)
 
     project = ProjectFixture.from_repo("/tmp/harness-settings-live", name: "settings-live")
     :ok = ProjectRegistry.register(project)
@@ -26,6 +28,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
       ProjectRegistry.unregister(project.name)
       restore_env(:cron_polling, prior_polling)
       restore_env(:cron_project_autonomy, prior_projects)
+      restore_env(:agent_disabled, prior_agents)
     end)
 
     {:ok, conn: conn, project: project}
@@ -78,6 +81,34 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     {:ok, _view, html} = live(conn, "/harness/settings")
 
     assert html =~ ~s(href="/harness/settings")
+  end
+
+  test "renders the Agents card with every adapter enabled by default", %{conn: conn} do
+    Application.put_env(:harness, :agent_disabled, [])
+
+    {:ok, _view, html} = live(conn, "/harness/settings")
+
+    assert html =~ "Agents"
+    assert html =~ "Claude"
+    assert html =~ "Codex"
+    # An enabled agent reads "enabled" and exposes a toggle_agent control.
+    assert html =~ "enabled"
+    assert html =~ ~s(phx-click="toggle_agent")
+  end
+
+  test "toggling an agent disables it for dispatch", %{conn: conn} do
+    Application.put_env(:harness, :agent_disabled, [])
+
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> element("button[phx-click=toggle_agent][phx-value-name='claude']")
+      |> render_click()
+
+    assert html =~ "disabled"
+    assert AgentSettings.disabled?(:claude)
+    refute AgentSettings.disabled?(:codex)
   end
 
   defp restore_env(key, nil), do: Application.delete_env(:harness, key)

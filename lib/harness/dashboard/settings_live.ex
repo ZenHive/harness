@@ -15,6 +15,8 @@ defmodule Harness.Dashboard.SettingsLive do
 
   use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}
 
+  alias Harness.Agent.Settings, as: AgentSettings
+  alias Harness.AgentRegistry
   alias Harness.Cron.RoadmapPoller
   alias Harness.Cron.Settings
   alias Harness.Project
@@ -27,13 +29,13 @@ defmodule Harness.Dashboard.SettingsLive do
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     if connected?(socket), do: schedule_meta_tick()
-    {:ok, assign(socket, :autonomy, autonomy_state(ProjectRegistry.list()))}
+    {:ok, refresh(socket)}
   end
 
   @impl Phoenix.LiveView
   def handle_info(:meta_tick, socket) do
     schedule_meta_tick()
-    {:noreply, assign(socket, :autonomy, autonomy_state(ProjectRegistry.list()))}
+    {:noreply, refresh(socket)}
   end
 
   def handle_info(_other, socket), do: {:noreply, socket}
@@ -46,6 +48,15 @@ defmodule Harness.Dashboard.SettingsLive do
 
   def handle_event("toggle_project_autonomy", %{"name" => name}, socket) do
     Settings.set_project(name, not project_flag(socket.assigns.autonomy, name), "dashboard")
+    {:noreply, refresh(socket)}
+  end
+
+  def handle_event("toggle_agent", %{"name" => name}, socket) do
+    case agent_atom(name) do
+      {:ok, agent} -> AgentSettings.set_enabled(agent, not AgentSettings.enabled?(agent), "dashboard")
+      :error -> :noop
+    end
+
     {:noreply, refresh(socket)}
   end
 
@@ -110,6 +121,43 @@ defmodule Harness.Dashboard.SettingsLive do
           <li :if={@autonomy.projects == []} class="project-empty">No projects registered.</li>
         </ul>
       </section>
+
+      <section class="setting-card">
+        <h2 class="setting-section-title">Agents</h2>
+        <p class="setting-desc">
+          Take an agent out of dispatch rotation. A disabled agent is skipped by <code>AgentRegistry.select/2</code>, so no run, batch, or cron tick will
+          choose it; the choice survives a restart. Distinct from a transient quota
+          pause, which clears on its own.
+        </p>
+        <ul class="project-list">
+          <li
+            :for={agent <- @agents}
+            class="project-row"
+            data-effective={to_string(agent.enabled)}
+          >
+            <div class="project-id">
+              <span class="project-name">{agent.label}</span>
+              <span class="pill" data-state={if agent.enabled, do: "on", else: "off"}>
+                {if agent.enabled, do: "enabled", else: "disabled"}
+              </span>
+              <span
+                :if={not agent.installed}
+                class="pill"
+                data-state="off"
+                title="CLI binary not on PATH"
+              >
+                not installed
+              </span>
+            </div>
+            <.toggle
+              on={agent.enabled}
+              event="toggle_agent"
+              value={agent.name}
+              label={"Dispatch for #{agent.label}"}
+            />
+          </li>
+        </ul>
+      </section>
     </div>
     """
   end
@@ -141,7 +189,35 @@ defmodule Harness.Dashboard.SettingsLive do
 
   @spec refresh(Socket.t()) :: Socket.t()
   defp refresh(socket) do
-    assign(socket, :autonomy, autonomy_state(ProjectRegistry.list()))
+    socket
+    |> assign(:autonomy, autonomy_state(ProjectRegistry.list()))
+    |> assign(:agents, agents_state())
+  end
+
+  # The per-agent enable/disable view-model over the registry's agent set:
+  # operator enablement (persisted) plus whether the CLI binary is on PATH (a
+  # disabled-but-installed agent is an operator choice; an enabled-but-missing
+  # one explains a `:no_available_agent` at dispatch).
+  @spec agents_state() :: [map()]
+  defp agents_state do
+    Enum.map(AgentRegistry.agents(), fn {agent, module} ->
+      %{
+        name: Atom.to_string(agent),
+        label: String.capitalize(Atom.to_string(agent)),
+        enabled: AgentSettings.enabled?(agent),
+        installed: AgentRegistry.installed?(module)
+      }
+    end)
+  end
+
+  # Resolves a phx-value agent string back to its atom, accepting only the known
+  # registry keys (never String.to_atom on request input).
+  @spec agent_atom(String.t()) :: {:ok, atom()} | :error
+  defp agent_atom(name) do
+    case Enum.find(AgentRegistry.agents(), fn {agent, _} -> Atom.to_string(agent) == name end) do
+      {agent, _module} -> {:ok, agent}
+      nil -> :error
+    end
   end
 
   # Resolves the autonomy view-model: the master flag, the poller's resolved cron
