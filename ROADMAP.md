@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 10 — Dashboard Operator UX (10 of 10 done · 0 in progress)
+**Focus phase:** 10 — Dashboard Operator UX (11 of 11 done · 0 in progress)
 
-**Last shipped:** Task 105 — Surface persisted run history in the dashboard (index list + drill-down replay), Task 107 — Event-driven dashboard run tables (RunFeed) + per-project history filtering on 2026-05-30
+**Last shipped:** Task 126 — Run change-set view on the run-detail page (live edited-files + settled git diff) on 2026-05-31
 
 **Up next:** Task 109 — Cron autonomy master toggle — runtime enable/disable from the dashboard, persisted [D:3/B:4/U:4 → Eff:1.33] 📋
 <!-- FOCUS:END -->

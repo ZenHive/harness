@@ -12,6 +12,7 @@ defmodule Harness.Dashboard.LiveTest do
   alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
+  alias Harness.ProjectRegistry
   alias Harness.ResultStore
   alias Harness.Roadmap.Item
   alias Harness.Run
@@ -100,6 +101,33 @@ defmodule Harness.Dashboard.LiveTest do
 
     test "a missing run status (detail view, run not found) hides the kill control" do
       refute Live.killable?(nil)
+    end
+  end
+
+  describe "live_edited_files/1 (in-flight edited-file harvest)" do
+    test "surfaces string-keyed file_path / path tool args, first-seen and deduped" do
+      events = [
+        {:assistant_text, %{text: "working"}},
+        {:assistant_tool_use, %{id: "1", name: "Edit", input: %{"file_path" => "lib/a.ex"}}},
+        {:assistant_tool_use, %{id: "2", name: "Read", input: %{"path" => "lib/b.ex"}}},
+        {:assistant_tool_use, %{id: "3", name: "Edit", input: %{"file_path" => "lib/a.ex"}}},
+        {:tool_result, %{tool_use_id: "1", content: "ok"}}
+      ]
+
+      assert Live.live_edited_files(events) == ["lib/a.ex", "lib/b.ex"]
+    end
+
+    test "ignores tool calls whose input carries no file path (e.g. codex command_execution)" do
+      events = [
+        {:assistant_tool_use, %{id: "1", name: "command_execution", input: %{command: "mix test"}}},
+        {:assistant_tool_use, %{id: "2", name: "Bash", input: %{"command" => "ls"}}}
+      ]
+
+      assert Live.live_edited_files(events) == []
+    end
+
+    test "an empty event stream yields no edited files" do
+      assert Live.live_edited_files([]) == []
     end
   end
 
@@ -197,6 +225,38 @@ defmodule Harness.Dashboard.LiveTest do
     end
   end
 
+  describe "show drill-down — changed files (RunDiff)" do
+    test "assigns the git diff for a settled run whose branch exists" do
+      repo = GitFixture.init_repo()
+      run_id = "diff-#{System.unique_integer([:positive])}"
+
+      GitFixture.git!(repo, ["checkout", "-q", "-b", "harness/#{run_id}"])
+      File.write!(Path.join(repo, "new.ex"), "defmodule New do\nend\n")
+      GitFixture.git!(repo, ["add", "."])
+      GitFixture.git!(repo, ["commit", "-q", "-m", "work"])
+      GitFixture.git!(repo, ["checkout", "-q", "main"])
+
+      name = "live-diff-#{System.unique_integer([:positive])}"
+      :ok = ProjectRegistry.register(ProjectFixture.from_repo(repo, name: name))
+      on_exit(fn -> ProjectRegistry.unregister(name) end)
+
+      :ok = ResultStore.record_run(log_record(run_id, project_name: name, agent: :claude, agent_output: "x\n"))
+
+      {:noreply, socket} =
+        Live.handle_params(%{"run_id" => run_id}, "/harness/runs/#{run_id}", show_socket())
+
+      assert {:ok, diff} = socket.assigns.run_diff
+      assert Enum.any?(diff.files, &(&1.path == "new.ex"))
+    end
+
+    test "leaves run_diff nil for a run with no live process and no record" do
+      {:noreply, socket} =
+        Live.handle_params(%{"run_id" => "absent-diff-xyz"}, "/harness/runs/absent-diff-xyz", show_socket())
+
+      assert socket.assigns.run_diff == nil
+    end
+  end
+
   describe "run-lifecycle feed (show view)" do
     test "an update for the focused run refreshes its status" do
       next = %Status{run_id: "focus-1", task_id: "1", state: :verifying}
@@ -288,6 +348,7 @@ defmodule Harness.Dashboard.LiveTest do
       batch_id: "batch-#{run_id}",
       run_id: run_id,
       task_id: Keyword.get(opts, :task_id, "1"),
+      project_name: Keyword.get(opts, :project_name),
       agent: Keyword.get(opts, :agent),
       adapter: Keyword.get(opts, :adapter, FakeAdapter),
       state: Keyword.get(opts, :state, :done),

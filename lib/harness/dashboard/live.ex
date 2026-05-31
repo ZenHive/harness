@@ -43,6 +43,7 @@ defmodule Harness.Dashboard.Live do
   alias Harness.ResultStore
   alias Harness.Run.LogRecord
   alias Harness.Run.Status
+  alias Harness.RunDiff
   alias Harness.StatusView
   alias Phoenix.LiveView.Rendered
   alias Phoenix.LiveView.Socket
@@ -83,6 +84,7 @@ defmodule Harness.Dashboard.Live do
      |> assign(:last_seq, 0)
      |> assign(:events_last_seq, 0)
      |> assign(:run_status, nil)
+     |> assign(:run_diff, nil)
      |> assign(:run_id, nil)
      |> stream_configure(:active_runs, dom_id: &"active-#{&1.status.run_id}")
      |> stream_configure(:history, dom_id: &"hist-#{&1.status.run_id}")
@@ -126,25 +128,69 @@ defmodule Harness.Dashboard.Live do
       |> assign(:raw_view, raw_view_param?(params))
       |> assign(:last_seq, 0)
       |> assign(:events_last_seq, 0)
+      |> assign(:run_diff, nil)
 
     # Resolve the source once: a live run streams over PubSub; a settled run is
     # replayed from its persisted LogRecord so the drill-down survives a restart.
-    case Harness.Run.status(run_id) do
-      {:ok, %Status{} = status} ->
-        socket
-        |> assign(:run_status, status)
-        |> subscribe_transcript(run_id)
-        |> backfill_transcript(run_id)
-        |> backfill_transcript_events(run_id)
+    socket =
+      case Harness.Run.status(run_id) do
+        {:ok, %Status{} = status} ->
+          socket
+          |> assign(:run_status, status)
+          |> subscribe_transcript(run_id)
+          |> backfill_transcript(run_id)
+          |> backfill_transcript_events(run_id)
 
-      {:error, :not_found} ->
-        load_historical(socket, run_id)
-    end
+        {:error, :not_found} ->
+          load_historical(socket, run_id)
+      end
+
+    maybe_load_diff(socket)
   end
+
+  # A terminal run (live-but-lingering or replayed from the store) has its work
+  # committed on the `harness/<run_id>` branch — read the real diff from git on
+  # demand. In-flight and not-found runs carry no committed diff; the show view
+  # renders the live edited-files list instead.
+  @spec maybe_load_diff(Socket.t()) :: Socket.t()
+  defp maybe_load_diff(%{assigns: %{run_status: %Status{state: state} = status}} = socket)
+       when state in [:done, :failed] do
+    assign(socket, :run_diff, RunDiff.for_run(status.run_id, status.project_name))
+  end
+
+  defp maybe_load_diff(socket), do: socket
 
   @spec raw_view_param?(map()) :: boolean()
   defp raw_view_param?(%{"raw" => value}) when value in ["1", "true"], do: true
   defp raw_view_param?(_), do: false
+
+  @doc false
+  # The in-progress change signal for a live run: file paths the agent has
+  # touched, harvested from its file-editing tool calls in the parsed transcript.
+  # Keys on a string-keyed `file_path`/`path` tool argument rather than a tool-name
+  # allowlist, so Claude Edit/Write/MultiEdit and Cursor (whose tool input is
+  # string-keyed) surface. Codex's `command_execution` carries a shell command
+  # under an atom key, not a file path, so it does not surface here. First-seen
+  # order, deduped. `@doc false` def (not defp) so the helper is unit-testable.
+  @spec live_edited_files([Parser.event()]) :: [String.t()]
+  def live_edited_files(events) do
+    events
+    |> Enum.flat_map(fn
+      {:assistant_tool_use, %{input: input}} -> List.wrap(edited_path(input))
+      _other -> []
+    end)
+    |> Enum.uniq()
+  end
+
+  @spec edited_path(term()) :: String.t() | nil
+  defp edited_path(input) when is_map(input) do
+    case input["file_path"] || input["path"] do
+      path when is_binary(path) -> path
+      _other -> nil
+    end
+  end
+
+  defp edited_path(_other), do: nil
 
   @impl Phoenix.LiveView
   def handle_info(:meta_tick, socket) do
@@ -547,6 +593,15 @@ defmodule Harness.Dashboard.Live do
     <p :if={killable?(@run_status)}>
       <.kill_button run_id={@run_id} />
     </p>
+
+    <div :if={@run_status != nil}>
+      <h2>Changed files</h2>
+      <Components.edited_files_live
+        :if={killable?(@run_status)}
+        paths={live_edited_files(@transcript_events)}
+      />
+      <Components.run_diff_view :if={not killable?(@run_status)} diff={@run_diff} />
+    </div>
 
     <h2>Transcript</h2>
     <p class="transcript-toggle">

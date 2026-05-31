@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Run change-set view on the run-detail page.** Each run now shows what it
+  changed: an in-flight run lists the files the agent is editing (from its
+  transcript tool calls), and a settled run shows the actual git diff — file
+  list with `+/−` proportion bars and a colorized unified patch — read on
+  demand from the run's `harness/<run_id>` branch (no diff is persisted). A
+  branch the autonomous lander has already merged/cleaned up degrades to a
+  graceful note. (`Harness.RunDiff`, `Harness.Dashboard.Live`,
+  `Harness.Dashboard.Components`.)
 - **JSON-native dispatch observe / control / fan-out surface.** The flat
   `dispatch__*` MCP + chat tool family gained the run-lifecycle half a JSON
   orchestrator was missing: `dispatch__status` / `dispatch__transcript` /

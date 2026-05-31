@@ -297,6 +297,167 @@ defmodule Harness.Dashboard.Components do
     """
   end
 
+  ## --- Changed files / run diff --------------------------------------------
+
+  attr(:paths, :list, required: true)
+
+  @doc """
+  In-progress edited-file list for a *live* run.
+
+  A live run has no commit yet, so the change signal comes from the agent's
+  own file-editing tool calls (extracted upstream from the parsed transcript
+  events). Renders each path as a chip with a pulsing live dot; an empty list
+  shows a waiting note. Pure — `attr/3` + HEEx only.
+  """
+  @spec edited_files_live(map()) :: Rendered.t()
+  def edited_files_live(assigns) do
+    ~H"""
+    <section class="changed-files changed-files-live">
+      <header class="cf-head">
+        <span class="cf-title">Files being edited</span>
+        <span class="cf-live-tag" aria-label="run in progress">
+          <span class="cf-live-dot" aria-hidden="true"></span>live
+        </span>
+      </header>
+      <p :if={@paths == []} class="cf-empty">No file edits observed yet.</p>
+      <ul :if={@paths != []} class="cf-chips">
+        <li :for={path <- @paths} class="cf-chip">
+          <.file_path path={path} />
+        </li>
+      </ul>
+    </section>
+    """
+  end
+
+  attr(:diff, :any, required: true)
+
+  @doc """
+  Settled-run change set rendered from `Harness.RunDiff.for_run/2`.
+
+  Accepts that function's result verbatim — `{:ok, diff}` renders a summary bar
+  (file count, aggregate +/- proportion) plus a collapsible per-file list, each
+  file expanding to its classified hunk lines. `{:error, :branch_absent}` and
+  other errors render graceful muted notes; `nil` renders nothing. Pure —
+  `attr/3` + HEEx only, no `Phoenix.HTML.raw/1` on git-supplied content.
+  """
+  @spec run_diff_view(map()) :: Rendered.t()
+  def run_diff_view(%{diff: {:ok, diff}} = assigns) do
+    assigns = assign(assigns, :diff, diff)
+
+    ~H"""
+    <section class="changed-files">
+      <header class="cf-head">
+        <span class="cf-title">
+          Changed files <span class="cf-count">{length(@diff.files)}</span>
+        </span>
+        <span class="cf-totals">
+          <span class="cf-add">+{@diff.added}</span>
+          <span class="cf-del">−{@diff.deleted}</span>
+          <.stat_bar added={@diff.added} deleted={@diff.deleted} />
+        </span>
+      </header>
+
+      <p :if={@diff.files == []} class="cf-empty">No file changes recorded for this run.</p>
+
+      <details :for={file <- @diff.files} class="cf-file">
+        <summary class="cf-file-head">
+          <span class={"cf-status cf-status-#{file.status}"} title={to_string(file.status)}>
+            {status_glyph(file.status)}
+          </span>
+          <.file_path path={file.path} />
+          <span :if={file.binary} class="cf-binary">binary</span>
+          <span class="cf-file-counts">
+            <span :if={not file.binary} class="cf-add">+{file.added}</span>
+            <span :if={not file.binary} class="cf-del">−{file.deleted}</span>
+            <.five_square added={file.added} deleted={file.deleted} />
+          </span>
+        </summary>
+        <div class="diff">
+          <div :for={line <- render_lines(file.lines)} class={"dl dl-#{line.kind}"}>{line.text}</div>
+        </div>
+      </details>
+
+      <p :if={@diff.truncated} class="cf-truncated">
+        Diff truncated at 80 KB — open the <code>{@diff.branch}</code> branch for the full patch.
+      </p>
+      <p class="cf-branch">branch <code>{@diff.branch}</code></p>
+    </section>
+    """
+  end
+
+  def run_diff_view(%{diff: {:error, :branch_absent}} = assigns) do
+    ~H"""
+    <section class="changed-files">
+      <p class="cf-note">Diff no longer available — the run branch was merged or cleaned up.</p>
+    </section>
+    """
+  end
+
+  def run_diff_view(%{diff: {:error, _reason}} = assigns) do
+    ~H"""
+    <section class="changed-files">
+      <p class="cf-note">No diff available for this run.</p>
+    </section>
+    """
+  end
+
+  def run_diff_view(%{diff: nil} = assigns) do
+    ~H"""
+    <section class="changed-files"></section>
+    """
+  end
+
+  attr(:path, :string, required: true)
+
+  @doc false
+  # Path typography: dimmed directory, emphasized basename.
+  @spec file_path(map()) :: Rendered.t()
+  def file_path(assigns) do
+    assigns =
+      assigns
+      |> assign(:dir, path_dir(assigns.path))
+      |> assign(:base, Path.basename(assigns.path))
+
+    ~H"""
+    <span class="cf-path">
+      <span :if={@dir != ""} class="cf-path-dir">{@dir}/</span><span class="cf-path-base">{@base}</span>
+    </span>
+    """
+  end
+
+  attr(:added, :integer, required: true)
+  attr(:deleted, :integer, required: true)
+
+  @doc false
+  # Continuous green/red proportion bar for the aggregate (GitHub-style summary).
+  @spec stat_bar(map()) :: Rendered.t()
+  def stat_bar(assigns) do
+    assigns = assign(assigns, :add_pct, add_pct(assigns.added, assigns.deleted))
+
+    ~H"""
+    <span class="cf-statbar" aria-hidden="true">
+      <span class="cf-statbar-add" style={"width:#{@add_pct}%"}></span>
+      <span class="cf-statbar-del" style={"width:#{100 - @add_pct}%"}></span>
+    </span>
+    """
+  end
+
+  attr(:added, :integer, required: true)
+  attr(:deleted, :integer, required: true)
+
+  @doc false
+  # Five-square per-file mini-bar (the classic ▰▰▰▱▱).
+  @spec five_square(map()) :: Rendered.t()
+  def five_square(assigns) do
+    assigns = assign(assigns, :squares, squares(assigns.added, assigns.deleted))
+
+    ~H"""
+    <span class="cf-squares" aria-hidden="true">
+      <span :for={sq <- @squares} class={"cf-sq cf-sq-#{sq}"}></span>
+    </span>
+    """
+  end
+
   ## --- Run transcript view (Task 87) ---------------------------------------
 
   attr(:events, :list, required: true)
@@ -399,6 +560,49 @@ defmodule Harness.Dashboard.Components do
   end
 
   ## --- Private helpers ------------------------------------------------------
+
+  # Drops pure header `:meta` lines (diff --git / index / +++ / ---) from a
+  # file's rendered body — the file row already carries that context. Hunk +
+  # content lines stay.
+  @spec render_lines([Harness.RunDiff.line()]) :: [Harness.RunDiff.line()]
+  defp render_lines(lines), do: Enum.reject(lines, &(&1.kind == :meta))
+
+  @spec status_glyph(Harness.RunDiff.status()) :: String.t()
+  defp status_glyph(:added), do: "A"
+  defp status_glyph(:modified), do: "M"
+  defp status_glyph(:deleted), do: "D"
+  defp status_glyph(:renamed), do: "R"
+
+  @spec path_dir(String.t()) :: String.t()
+  defp path_dir(path) do
+    case Path.dirname(path) do
+      "." -> ""
+      dir -> dir
+    end
+  end
+
+  # Added share of the change as an integer percent; an all-context (0/0) file
+  # reads as balanced 50/50 rather than dividing by zero.
+  @spec add_pct(non_neg_integer(), non_neg_integer()) :: non_neg_integer()
+  defp add_pct(0, 0), do: 50
+  defp add_pct(added, deleted), do: round(added * 100 / (added + deleted))
+
+  # Five-square fill: proportional, but a non-zero side always claims at least
+  # one square so a tiny minority never vanishes.
+  @spec squares(non_neg_integer(), non_neg_integer()) :: [:add | :del | :none]
+  defp squares(0, 0), do: List.duplicate(:none, 5)
+
+  defp squares(added, deleted) do
+    greens = added |> Kernel.*(5) |> div(added + deleted) |> clamp_share(added, deleted)
+    List.duplicate(:add, greens) ++ List.duplicate(:del, 5 - greens)
+  end
+
+  @spec clamp_share(integer(), non_neg_integer(), non_neg_integer()) :: integer()
+  defp clamp_share(greens, added, deleted) do
+    greens
+    |> max(if(added > 0, do: 1, else: 0))
+    |> min(if(deleted > 0, do: 4, else: 5))
+  end
 
   # Classifies a value for the `<.json_tree>` walker. Structs are deliberately
   # treated as `:other` so the walker inspects them rather than descending into

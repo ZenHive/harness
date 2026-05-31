@@ -44,6 +44,22 @@ The `rmap` CLI (the roadmap substrate `roadmap/tasks.toml` uses) is a sibling Ru
 
 **AI driver surface (canonical for orchestrators):** `@skills/harness-driver/SKILL.md` — **load on demand** when driving harness as a consumer. Stable contract for delegation patterns, non-delegatable handling, result interpretation, sharp edges. Any change to public driver surfaces must update it.
 
+## Commands
+
+Toolchain pinned by `.tool-versions`: **Elixir 1.18.4-otp-27** (asdf). Postgres required for the Oban dispatch layer.
+
+| Task | Command |
+|---|---|
+| Run the node | `iex -S mix` — boots the app, Oban (Postgres), and the dashboard on `http://localhost:4018` (routes `/harness`, `/harness/oban`, `/harness/mcp`, `/tidewave/mcp`). **Long-lived; the user starts it manually — don't boot it yourself.** |
+| First-time DB | `mix ecto.create && mix ecto.migrate` (one migration: the Oban jobs table). DB name/user overridable via `HARNESS_DB_NAME` / `HARNESS_DB_USER` (defaults `harness_dev`, `$USER`). |
+| Tests | `mix test.json` — AI-friendly JSON output; **use over bare `mix test`** (load `elixir:ex-unit-json` for flags/jq). `:integration` tests (real agent CLIs, live DB) are **excluded by default** — add `--include integration`. |
+| Single test | `mix test.json test/harness/run_test.exs:42` · re-run only failures: `mix test.json --failed` · coverage: `--cover`. |
+| Fast gate | `mix check.fast` — `format --check-formatted` + `compile --warnings-as-errors` + `credo --strict`. |
+| Pre-commit gate | `mix precommit` — adds `doctor --raise`, `test.json --cover --cover-threshold 80 --exclude integration`, `sobelow`. Hook-bound (180s); **dialyzer is deliberately not here** (cold-PLT timeout). |
+| Before PR / handoff | `mix precommit.full` — `precommit` + `dialyzer.json`. CI mirror (`.github/workflows/harness.yml`). |
+
+**Per-edit hooks already run this stack** (`format`, `compile`, `test.json`, `credo`, `dialyzer.json`, `sobelow`, `doctor`) on every touched file — don't re-run a check the hook just graded. Full-suite `precommit.full` earns its cost only before a PR/merge, after `mix deps.get`, or on a branch switch (see global CLAUDE.md § "Don't Re-Run Hook-Driven Checks").
+
 ## What This Is
 
 `harness` is an OTP-native Elixir engine an **AI orchestrator drives end to end**: pull a task from the rmap roadmap → dispatch to a **headless coding agent** (Claude Code, Cursor, Codex, Grok, Antigravity, Pi) in an isolated git worktree → run the target project's own check stack against the result → report a *verified* outcome. Consumer surfaces: Elixir API (IEx / tidewave / another BEAM process), the Phoenix LiveView dashboard, and an MCP server. It is a long-running OTP node that orchestrates **N registered target projects** (Elixir, Rust, anything with a shell-driven check stack) concurrently.

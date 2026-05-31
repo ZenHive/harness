@@ -32,6 +32,11 @@
       "order": 13,
       "status": "pending"
     },
+    "14": {
+      "name": "Agent Rule Injection & Prompt Provenance",
+      "order": 14,
+      "status": "pending"
+    },
     "2": {
       "name": "Core Loop & Contract Proof",
       "order": 2,
@@ -74,6 +79,11 @@
     }
   },
   "bundles": {
+    "agent-rules": {
+      "phase": 14,
+      "order": 1,
+      "description": "Harden the prompt-to-agent pipeline: language-aware harness rule injection (don't ship Elixir conventions to non-Elixir targets) + capture the composed prompt+rules per run for post-hoc diagnosis"
+    },
     "autolanding": {
       "phase": 11,
       "order": 1,
@@ -3979,8 +3989,7 @@
       "shipped_in": "fb01463",
       "body": "Harness.ResultStore.File.list_run_records/2 logs a Logger.warning for EVERY undecodable .term file on EVERY scan (collect_records/2). The dashboard, `mix harness.status`, and dispatch__verdict_detail all funnel through this one chokepoint, so a single corrupt-looking file spams the console on every history read. Observed: ~11 \"corrupt\" files (from the Task 97/99 BEAM crashes) spamming iex.\n\nINVESTIGATION (2026-05-31, live node + all stored records) corrected the original premise:\n- Writes are ATOMIC — write_term/2 writes a sibling .tmp then File.rename's into place (atomic on POSIX), and list_run_records reads only *.term (ignores .tmp). A BEAM-death-mid-write therefore CANNOT leave a torn *.term at the final path; it leaves a .term.tmp (ignored) plus the prior .term intact. Genuinely torn files are near-impossible by design.\n- The real cause is [:safe] rejection: read_term decodes with binary_to_term(body, [:safe]), which raises when a record references an atom/struct the running node hasn't loaded yet (cross-version drift). This is transient and SELF-HEALING — the file decodes again once the writing build runs. Evidence: all 42 records in ~/.harness/results/runs decoded clean as LogRecord under the current node; the original 11 \"corrupt\" files healed on a later deploy.\n\nCONSEQUENCE: the original \"quarantine preferred\" plan is WRONG — quarantining on first [:safe] failure moves a self-healing record out of runs/, so it silently disappears once the correct build runs. Deleting destroys readable records outright.\n\nFIX (cheapest correct): stop the per-file spam, leave every file in place. collect_records/2 counts skips by class — {:ok, _other} = cross_typed (decoded, wrong struct); {:error, _} = undecodable under [:safe] — and emits at most one aggregated Logger.debug line per scan (\"skipped N term file(s) (U undecodable under :safe ...; C cross-typed). Files left in place.\"). No quarantine, no delete, no unsafe binary_to_term.\n",
       "created_at": "2026-05-30",
-      "started_at": "2026-05-31",
-      "done_at": "2026-05-31",
+      "done_at": "2026-05-30",
       "scored_at": "2026-05-30",
       "implemented": "collect_records/2 reduces to {kept, %{cross_typed, undecodable}}, leaves every file in place, and emits at most one aggregated Logger.debug line per scan (downgraded from per-file Logger.warning), split by skip class. No quarantine/delete: dominant failure is self-healing [:safe] atom drift (investigation: all 42 stored records decode clean; atomic .tmp+rename writes make torn *.term near-impossible, correcting the original premise). test/harness/result_store/file_test.exs covers mixed valid+undecodable+cross-typed (records survive, one aggregated line, files left on disk, old per-file warning gone) + healthy-only no-log; module coverage 90%. Hand-built in worktree; hooks green (compile/test/credo/dialyzer/sobelow).",
       "delivered_by": "claude-opus-4-8",
@@ -4554,6 +4563,106 @@
       "body": "Concrete evidence: Task 108 was dispatched through harness and settled green while objectively incomplete — the agent built the producer plumbing (Batch.put_env persists :env into Oban job args) but across two repair rounds never wired the consumer side (Run.Worker.run_opts reading args[\"env\"] into start_run) and wrote no AC test, so the scrub was dead-on-arrival. The check stack passed it because it grades suite-green, not AC-met. Hand-finished on land.\n\nThe mechanism that would have caught this already exists: Task 99's cross-family semantic gate dispatches an opposite-family grader with (body + acceptance_criteria + committed diff) and REJECTs exactly \"stubbed the hard case / solved the adjacent problem\". But its trigger is hardcoded \"ON when the project's landing policy would auto-land, OFF otherwise\". The harness self-project is landing_policy: manual + target_branch: nil, so the gate is OFF for harness's own dogfooding dispatches — the core of its methodology runs with the one AC-aware check disabled.\n\nFix: decouple gate-enablement from auto-land. A project-level config (always | auto_land_only | off) plus a per-dispatch override lets a manual-landing project opt the gate on. Low difficulty — the gate machinery (consulting state in Harness.Run, AuditReview.grade_fix/1, sentinel extraction, :semantic_rejection repair route) is built by Task 99; only the WHEN-it-fires predicate changes.\n",
       "created_at": "2026-05-31",
       "scored_at": "2026-05-31",
+      "cross_repo": []
+    },
+    {
+      "id": "124",
+      "phase": 14,
+      "bundle": "agent-rules",
+      "status": "pending",
+      "title": "Language-aware harness rule injection — stop shipping Elixir conventions to non-Elixir targets",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.67,
+      "markers": [],
+      "depends_on": [],
+      "module": "Harness.AgentRules",
+      "acceptance_criteria": [
+        "A dispatch against a Rust-language project does NOT include the :elixir section in the injected rules (system-prompt file / AGENTS.md / .cursor rules / prompt preamble, whichever channel the adapter uses).",
+        "An Elixir-language project still receives the :elixir section (no regression); unknown/unspecified language defaults to including it.",
+        "AgentRules.render/1 stays pure (no Project/Registry coupling inside it); the language-to-opts mapping happens at the call site.",
+        "Tests cover: Elixir target includes the section, non-Elixir target excludes it, default-when-unknown includes it.",
+        "No change to the verification-gates exclusion behavior."
+      ],
+      "files_to_modify": [
+        "priv/agent_rules/canonical.md",
+        "lib/harness/agent_rules.ex",
+        "lib/harness/agent_adapter/rules_injection.ex",
+        "lib/harness/agent_adapter.ex"
+      ],
+      "body": "`canonical.md`'s `# Elixir conventions` section (`@spec` on publics, tagged-tuple errors, `TODO(Task N)`, doctest-vs-ExUnit split) is injected into EVERY agent invocation regardless of target language. `RulesInjection.{claude_flags,install_codex_rules,install_cursor_rules}` and `prepend_prompt` all call `AgentRules.render/1` with default opts, so a dispatch against a Rust-preset project (the Rust CheckStack shipped in Task 45) tells the agent to write `@spec`s.\n\nThe section-filter machinery already exists — `render(only: ..., exclude: ...)` with `@default_exclude [:verification_gates]`. What's missing is a wire from the target project's known language to the render opts. Thread the project/check-stack language (the same signal that selects the `:elixir` vs `:rust` preset) through to the rule-injection call site so non-Elixir dispatches exclude `:elixir` (and, if added, include a `:rust` section). Keep the default (Elixir, since harness dogfoods itself in Elixir) when language is unknown.\n\nScope: the language signal must reach the injection site. Today `Invocation` does not carry it; either add a language field to `Invocation` (populated from `%Project{}`/`%CheckStack{}` at dispatch) or pass render opts down. Prefer the minimal plumbing that keeps `AgentRules` pure.\n",
+      "created_at": "2026-05-31",
+      "scored_at": "2026-05-31",
+      "cross_repo": []
+    },
+    {
+      "id": "125",
+      "phase": 14,
+      "bundle": "agent-rules",
+      "status": "pending",
+      "title": "Capture the composed prompt+rules per run for post-hoc diagnosis",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 4
+      },
+      "eff": 1.5,
+      "markers": [],
+      "depends_on": [],
+      "module": "Harness.Run",
+      "acceptance_criteria": [
+        "After a run completes, the composed prompt+rules sent on each attempt is retrievable from the run's persisted result record (not only the raw transcript).",
+        "Repair attempts are captured distinctly from the initial dispatch (the resume prompt carrying failing-check output is recorded).",
+        "Capture works across rule channels (system-prompt file, ephemeral AGENTS.md / .cursor rules, prompt preamble); the recorded artifact reflects what each adapter actually sent.",
+        "Does not break the ephemeral-cleanup invariant (nothing extra committed to the target repo; capture lands in the result store, not the worktree).",
+        "Tests cover initial-dispatch capture and at least one repair-attempt capture."
+      ],
+      "files_to_modify": [
+        "lib/harness/run.ex",
+        "lib/harness/agent_adapter.ex"
+      ],
+      "body": "The exact bytes sent to an agent for a given run are not reconstructable after the fact. Harness-owned rules are rendered into ephemeral worktree files that `AgentRules.cleanup_injected_rules/1` deletes before delivery; the task prompt is the in-memory `Invocation.prompt` (verbatim `rmap delegate` output) and repair prompts are in-memory strings built in `run.ex`. After a run finishes, there is no record of the COMPOSED artifact — task prompt + injected rules + any repair/cross-agent feedback — that the agent actually received.\n\nFor dogfooding, that composed artifact is exactly what you want when diagnosing why an agent failed a task. Capture it at the dispatch boundary (where `attach_rules` + `build_command` have assembled the final prompt/rules for a given attempt) and persist it into the run's result record alongside the existing LogRecords under `~/.harness/results`. Include each repair attempt's prompt, not just the first dispatch.\n\nCompanion to Task 20 (per-run token capture) — same \"record what happened per run\" shape, observability not a landing gate. Default to always-on capture since the artifact is small relative to transcripts and the diagnostic value is highest exactly when you didn't think to enable it.\n",
+      "created_at": "2026-05-31",
+      "scored_at": "2026-05-31",
+      "cross_repo": []
+    },
+    {
+      "id": "126",
+      "phase": 10,
+      "bundle": "dashboard",
+      "status": "done",
+      "title": "Run change-set view on the run-detail page (live edited-files + settled git diff)",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.67,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Settled run (:done/:failed) drill-down shows the real unified diff read on demand from the harness/<run_id> branch (HEAD...branch, across all repair commits)",
+        "In-flight run shows the files being edited, derived from parsed transcript tool-call events (no commit exists yet)",
+        "A run whose branch was merged/cleaned up renders a graceful 'no longer available' note, not a crash (:branch_absent)",
+        "Unregistered/nil project resolves to :unknown_project without raising",
+        "Patch is capped (~80KB tail) with UTF-8-safe truncation; file list shows +adds/-dels per file",
+        "Tests: RunDiff happy path + multi-commit repair + :branch_absent + :unknown_project + nil; LiveView assigns run_diff for settled and derives live edited-files"
+      ],
+      "out_of_scope": [
+        "New persistence on LogRecord (diff reconstructed on demand from the live branch; no stored base_sha or copied patch)",
+        "Per-commit/per-repair-attempt granularity (one aggregate run diff)",
+        "git blame / line-level authorship",
+        "Lazy phx-click diff loading (eager load is fine on the cold path)"
+      ],
+      "body": "The run-detail page (/harness/runs/:run_id, Harness.Dashboard.Live :show) shows metadata + transcript but no view of what the agent actually changed. The change set is fully recoverable without new persistence: every run commits to a harness/<run_id> branch that teardown never deletes (Worktree.remove removes only the working dir). Split by lifecycle: live run -> surface files being edited from streaming transcript tool-call events (no commit yet); settled run -> read the real git diff on demand from the branch.\n",
+      "created_at": "2026-05-31",
+      "done_at": "2026-05-31",
+      "scored_at": "2026-05-31",
+      "implemented": "Added Harness.RunDiff (read-only git diff of harness/<run_id> branch via three-dot merge-base diff HEAD...branch; 80KB tail cap with UTF-8-safe truncation; reasons :branch_absent / :unknown_project / :repo_unavailable). Wired Harness.Dashboard.Live :show to load run_diff for terminal runs and derive live edited-files from transcript tool-call events; new Components.run_diff_view / edited_files_live + diff CSS tokens. 27 tests green (run_diff_test + live_test).",
+      "delivered_by": "claude-opus-4-8",
       "cross_repo": []
     }
   ]

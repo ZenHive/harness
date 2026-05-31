@@ -107,6 +107,14 @@ defmodule Harness.Dashboard.Tokens do
         --verdict-info: #4a7fa8;
         --verdict-warn: #b87b35;
 
+        /* Diff — line-level washes + edges (RunDiff change view) */
+        --diff-add-fg: #5fb07e;
+        --diff-del-fg: #cf6b5a;
+        --diff-add-edge: #4f9b6a;
+        --diff-del-edge: #c25a4a;
+        --diff-add-bg: rgba(79, 155, 106, 0.12);
+        --diff-del-bg: rgba(194, 90, 74, 0.12);
+
         /* Motion */
         --motion-fast: 120ms;
         --motion-base: 200ms;
@@ -334,6 +342,157 @@ defmodule Harness.Dashboard.Tokens do
       }
       .field dt { color: var(--text-subtle); }
       .field dd { margin: 0; font-family: var(--font-mono); }
+
+      /* === Changed files / run diff (Harness.RunDiff) === */
+
+      .changed-files { margin-block: var(--space-4); }
+
+      .cf-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--space-4);
+        flex-wrap: wrap;
+        padding-bottom: var(--space-2);
+        margin-bottom: var(--space-3);
+        border-bottom: 1px solid var(--rule);
+      }
+      .cf-title { font-family: var(--font-display); font-size: var(--text-md); color: var(--text); }
+      .cf-count {
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        border: 1px solid var(--rule);
+        border-radius: 999px;
+        padding: 0 var(--space-2);
+        margin-left: var(--space-1);
+      }
+      .cf-totals { display: flex; align-items: center; gap: var(--space-3); font-family: var(--font-mono); font-size: var(--text-sm); }
+      .cf-add { color: var(--diff-add-fg); }
+      .cf-del { color: var(--diff-del-fg); }
+
+      /* Aggregate proportion bar */
+      .cf-statbar {
+        display: inline-flex;
+        width: 8rem;
+        height: 0.5rem;
+        border-radius: 999px;
+        overflow: hidden;
+        background: var(--surface-2);
+        border: 1px solid var(--rule);
+      }
+      .cf-statbar-add { background: var(--diff-add-edge); }
+      .cf-statbar-del { background: var(--diff-del-edge); }
+
+      /* File rows */
+      .cf-file {
+        border: 1px solid var(--rule);
+        border-radius: 0.4rem;
+        background: var(--surface);
+        margin-bottom: var(--space-2);
+        overflow: hidden;
+      }
+      .cf-file[open] { border-color: rgba(230, 161, 75, 0.30); }
+      .cf-file-head {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-2) var(--space-3);
+        cursor: pointer;
+        list-style: none;
+      }
+      .cf-file-head::-webkit-details-marker { display: none; }
+      .cf-file-head::before {
+        content: "›";
+        color: var(--text-muted);
+        transition: transform var(--motion-fast) var(--ease-out);
+      }
+      .cf-file[open] .cf-file-head::before { transform: rotate(90deg); }
+
+      .cf-status {
+        font-family: var(--font-mono);
+        font-weight: 700;
+        font-size: var(--text-xs);
+        width: 1.2rem;
+        text-align: center;
+        flex: none;
+      }
+      .cf-status-added { color: var(--diff-add-edge); }
+      .cf-status-deleted { color: var(--diff-del-edge); }
+      .cf-status-modified { color: var(--accent); }
+      .cf-status-renamed { color: var(--verdict-info); }
+
+      .cf-path {
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .cf-path-dir { color: var(--text-muted); }
+      .cf-path-base { color: var(--text); font-weight: 600; }
+
+      .cf-file-counts { display: flex; align-items: center; gap: var(--space-2); font-family: var(--font-mono); font-size: var(--text-xs); flex: none; }
+      .cf-binary { color: var(--text-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
+
+      /* Five-square per-file mini-bar */
+      .cf-squares { display: inline-flex; gap: 2px; }
+      .cf-sq { width: 0.55rem; height: 0.55rem; border-radius: 1px; background: var(--surface-2); border: 1px solid var(--rule); }
+      .cf-sq-add { background: var(--diff-add-edge); border-color: var(--diff-add-edge); }
+      .cf-sq-del { background: var(--diff-del-edge); border-color: var(--diff-del-edge); }
+
+      /* Diff body */
+      .diff {
+        border-top: 1px solid var(--rule);
+        overflow-x: auto;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        line-height: 1.5;
+        background: var(--bg);
+      }
+      .dl { white-space: pre; padding: 0 var(--space-3); border-left: 2px solid transparent; }
+      .dl-add { background: var(--diff-add-bg); border-left-color: var(--diff-add-edge); color: var(--text); }
+      .dl-del { background: var(--diff-del-bg); border-left-color: var(--diff-del-edge); color: var(--text); }
+      .dl-ctx { color: var(--text-subtle); }
+      .dl-hunk {
+        background: var(--surface-2);
+        color: var(--verdict-info);
+        position: sticky;
+        left: 0;
+        padding-block: 2px;
+      }
+
+      .cf-truncated, .cf-branch, .cf-note, .cf-empty {
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        margin-block: var(--space-2);
+      }
+      .cf-branch code, .cf-truncated code { color: var(--text-subtle); }
+
+      /* Live edited-files (in-progress run) */
+      .cf-live-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1);
+        font-size: var(--text-xs);
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 600;
+      }
+      .cf-live-dot {
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 999px;
+        background: var(--accent);
+        animation: cf-pulse 1.4s var(--ease-in-out) infinite;
+      }
+      .changed-files-live .cf-chips { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+      .cf-chip { border: 1px solid var(--rule); border-radius: 0.3rem; background: var(--surface); padding: var(--space-1) var(--space-3); }
+
+      @keyframes cf-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 
       /* === Chat surface (Harness.Dashboard.ChatLive) === */
 
