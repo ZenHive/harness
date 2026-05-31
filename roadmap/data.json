@@ -4185,7 +4185,9 @@
       },
       "eff": 1.33,
       "dep_layer": 0,
-      "markers": [],
+      "markers": [
+        "handbuild"
+      ],
       "depends_on": [],
       "acceptance_criteria": [
         "Single-row harness_settings Ecto table (Postgres already mandated, no new dep) holds the autonomy-enabled flag; a config-file fallback is acceptable if justified",
@@ -4197,6 +4199,12 @@
       ],
       "out_of_scope": [
         "Per-project flags (Task 110) and live schedule editing (Task 111)"
+      ],
+      "touches": [
+        "lib/harness/cron/roadmap_poller.ex",
+        "lib/harness/settings.ex",
+        "lib/harness/dashboard/live.ex",
+        "priv/repo/migrations/"
       ],
       "body": "Autonomous roadmap polling (Harness.Cron.RoadmapPoller) is gated by a compile-time config :harness, :cron_polling, enabled: false. Starting/stopping the autonomous fleet requires a config edit + reboot. No runtime control and no incident kill-switch -- yet this flag governs unattended dispatch of code-writing agents.\n\nperform/1 already reads enabled?() live from app env on every tick (lib/harness/cron/roadmap_poller.ex:31), so a runtime flip takes effect at the next tick with no restart. Missing: (a) a persisted store so a flip survives a BEAM restart, (b) a dashboard control, (c) an audit trail (who flipped it, when) -- today skips are Logger.debug only, so autonomy state is effectively invisible.\n",
       "created_at": "2026-05-30",
@@ -4217,7 +4225,9 @@
       },
       "eff": 1.5,
       "dep_layer": 1,
-      "markers": [],
+      "markers": [
+        "handbuild"
+      ],
       "depends_on": [
         109
       ],
@@ -4227,6 +4237,12 @@
         "New projects register with the flag OFF by default",
         "Dashboard renders per-project autonomy state AND the resolved effective state (master AND project) per row",
         "Tests: effective-state truth table (master x project), default-off on register, poller skips a disabled project while dispatching an enabled sibling"
+      ],
+      "touches": [
+        "lib/harness/cron/roadmap_poller.ex",
+        "lib/harness/project.ex",
+        "lib/harness/project_registry.ex",
+        "lib/harness/dashboard/live.ex"
       ],
       "body": "The master toggle (Task 109) is fleet-wide all-or-nothing. With multi-project federation (ProjectRegistry), an operator wants to pause autonomy on one flaky/sensitive project -- or onboard a newly-registered repo with autonomy OFF until its check stack proves out -- while the rest of the fleet keeps running. RoadmapPoller.perform/1 already walks Enum.each(ProjectRegistry.list(), &poll_project/1), so the hook point exists.\n\nSettled design: additive, not a replacement. Effective autonomy = master_enabled AND project_enabled; the master toggle stays the single incident kill-switch. Default OFF on registration -- an operator opts a project in after watching it. Document the friction: enabling master alone dispatches nothing until at least one project is also enabled; the dashboard must make this obvious to avoid the \"I turned it on, why is nothing happening?\" trap.\n",
       "created_at": "2026-05-30",
@@ -4247,7 +4263,9 @@
       },
       "eff": 0.5,
       "dep_layer": 1,
-      "markers": [],
+      "markers": [
+        "handbuild"
+      ],
       "depends_on": [
         109
       ],
@@ -4260,6 +4278,12 @@
       ],
       "out_of_scope": [
         "Live runtime Oban Cron teardown/re-add unless boot-applied presets prove insufficient"
+      ],
+      "touches": [
+        "lib/harness/cron/roadmap_poller.ex",
+        "lib/harness/oban.ex",
+        "lib/harness/settings.ex",
+        "lib/harness/dashboard/live.ex"
       ],
       "body": "The cron cadence is baked into the Oban Cron plugin's crontab once at boot (RoadmapPoller.cron_plugin/0 -> Harness.Oban supervision child). Unlike the enabled flag (read live each tick), the SCHEDULE cannot change without reconfiguring the Cron plugin.\n\nCheap 80% first: persist the chosen schedule; cron_plugin/0 reads it at boot. UI offers a small preset set (hourly / 2h / 6h / daily) rather than a free-form crontab box (avoids invalid-cron footguns). Changes apply on the NEXT restart -- satisfies most needs, low risk.\n\nExpensive 20% (optional): changing cadence WITHOUT restart means tearing down and re-adding the Oban Cron plugin at runtime. Oban supports it but it is fiddly and easy to get wrong. Gate behind the preset work; only build if presets prove insufficient. Honest low B/U until then.\n",
       "created_at": "2026-05-30",
@@ -4695,6 +4719,12 @@
       "out_of_scope": [
         "Acceptance-criteria quality checks — inherits Task 99's stance: the gate trusts criteria as written",
         "Changing the grader/pairing logic or the sentinel verdict extraction (reused from AuditReview/Task 99 unchanged)"
+      ],
+      "touches": [
+        "lib/harness/run.ex",
+        "lib/harness/run/worker.ex",
+        "lib/harness/batch/agent_evaluation.ex",
+        "lib/harness/audit_review.ex"
       ],
       "body": "Concrete evidence: Task 108 was dispatched through harness and settled green while objectively incomplete — the agent built the producer plumbing (Batch.put_env persists :env into Oban job args) but across two repair rounds never wired the consumer side (Run.Worker.run_opts reading args[\"env\"] into start_run) and wrote no AC test, so the scrub was dead-on-arrival. The check stack passed it because it grades suite-green, not AC-met. Hand-finished on land.\n\nThe mechanism that would have caught this already exists: Task 99's cross-family semantic gate dispatches an opposite-family grader with (body + acceptance_criteria + committed diff) and REJECTs exactly \"stubbed the hard case / solved the adjacent problem\". But its trigger is hardcoded \"ON when the project's landing policy would auto-land, OFF otherwise\". The harness self-project is landing_policy: manual + target_branch: nil, so the gate is OFF for harness's own dogfooding dispatches — the core of its methodology runs with the one AC-aware check disabled.\n\nFix: decouple gate-enablement from auto-land. A project-level config (always | auto_land_only | off) plus a per-dispatch override lets a manual-landing project opt the gate on. Low difficulty — the gate machinery (consulting state in Harness.Run, AuditReview.grade_fix/1, sentinel extraction, :semantic_rejection repair route) is built by Task 99; only the WHEN-it-fires predicate changes.\n",
       "created_at": "2026-05-31",

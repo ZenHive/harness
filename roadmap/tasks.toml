@@ -3563,8 +3563,10 @@ milestone = "v0_9"
 status = "pending"
 title = "Cron autonomy master toggle — runtime enable/disable from the dashboard, persisted"
 scores = { d = 3, b = 4, u = 4 }
+markers = ["handbuild"]
 acceptance_criteria = ["Single-row harness_settings Ecto table (Postgres already mandated, no new dep) holds the autonomy-enabled flag; a config-file fallback is acceptable if justified", "Dashboard LiveView toggle flips autonomy on/off at runtime via Application.put_env + persists, taking effect on the next cron tick WITHOUT a restart", "On boot the persisted value is loaded into app env so the flag survives restart", "Dashboard shows the RESOLVED autonomy state (extend RoadmapPoller.status/0), unambiguous at a glance", "Every flip is auditable: info-level log (not debug) or audit row with actor + timestamp", "Tests: store read/write + boot-load reconciliation; poller respects a runtime flip (enabled->disabled stops new dispatch at next tick); LiveView toggle integration"]
 out_of_scope = ["Per-project flags (Task 110) and live schedule editing (Task 111)"]
+touches = ["lib/harness/cron/roadmap_poller.ex", "lib/harness/settings.ex", "lib/harness/dashboard/live.ex", "priv/repo/migrations/"]
 body = """
 Autonomous roadmap polling (Harness.Cron.RoadmapPoller) is gated by a compile-time config :harness, :cron_polling, enabled: false. Starting/stopping the autonomous fleet requires a config edit + reboot. No runtime control and no incident kill-switch -- yet this flag governs unattended dispatch of code-writing agents.
 
@@ -3581,8 +3583,10 @@ milestone = "v0_9"
 status = "pending"
 title = "Per-project cron autonomy flag — pause/resume autonomy per registered project"
 scores = { d = 2, b = 3, u = 3 }
+markers = ["handbuild"]
 depends_on = [109]
 acceptance_criteria = ["Per-project autonomy-enabled flag lives alongside concurrency_cap on %Harness.Project{} (or settings store keyed by project name), persisted", "poll_project/1 skips a project whose effective state is false; the skip is observable (info-level or status field), not a silent debug line", "New projects register with the flag OFF by default", "Dashboard renders per-project autonomy state AND the resolved effective state (master AND project) per row", "Tests: effective-state truth table (master x project), default-off on register, poller skips a disabled project while dispatching an enabled sibling"]
+touches = ["lib/harness/cron/roadmap_poller.ex", "lib/harness/project.ex", "lib/harness/project_registry.ex", "lib/harness/dashboard/live.ex"]
 body = """
 The master toggle (Task 109) is fleet-wide all-or-nothing. With multi-project federation (ProjectRegistry), an operator wants to pause autonomy on one flaky/sensitive project -- or onboard a newly-registered repo with autonomy OFF until its check stack proves out -- while the rest of the fleet keeps running. RoadmapPoller.perform/1 already walks Enum.each(ProjectRegistry.list(), &poll_project/1), so the hook point exists.
 
@@ -3599,9 +3603,11 @@ milestone = "v0_9"
 status = "pending"
 title = "Cron schedule editing from the UI — boot-applied presets, optional live reconfig"
 scores = { d = 4, b = 2, u = 2 }
+markers = ["handbuild"]
 depends_on = [109]
 acceptance_criteria = ["Settings store holds the schedule; cron_plugin/0 sources it (falls back to the @default_schedule 0 */2 * * * when unset)", "UI exposes a preset picker (hourly / 2h / 6h / daily); invalid/free-form input cannot reach Oban", "Dashboard shows current schedule + next tick (reuse RoadmapPoller.status/0 / next_tick/1)", "Tests: schedule round-trips through the store; cron_plugin/0 reflects the stored value; invalid input rejected before reaching Oban", "Live runtime reconfig is explicitly out of scope unless separately justified"]
 out_of_scope = ["Live runtime Oban Cron teardown/re-add unless boot-applied presets prove insufficient"]
+touches = ["lib/harness/cron/roadmap_poller.ex", "lib/harness/oban.ex", "lib/harness/settings.ex", "lib/harness/dashboard/live.ex"]
 body = """
 The cron cadence is baked into the Oban Cron plugin's crontab once at boot (RoadmapPoller.cron_plugin/0 -> Harness.Oban supervision child). Unlike the enabled flag (read live each tick), the SCHEDULE cannot change without reconfiguring the Cron plugin.
 
@@ -3841,6 +3847,7 @@ scores = { d = 2, b = 6, u = 6 }
 depends_on = [99]
 acceptance_criteria = ["Semantic gate (Task 99) can be enabled for a project whose landing_policy is :manual — a config setting selects always | auto_land_only (current default) | off, defaulting to current behaviour (on iff auto-landing)", "A per-dispatch override (start_run :semantic_gate opt, surfaced on dispatch__task/await) forces the gate on for one run regardless of landing policy", "Test: a manual-landing project with the gate enabled dispatches the cross-family grader on a green verdict and routes REJECT into the repair loop (mirror Task 99's test under manual policy)", "Default behaviour unchanged: gate stays OFF for manual-landing projects unless explicitly enabled"]
 out_of_scope = ["Acceptance-criteria quality checks — inherits Task 99's stance: the gate trusts criteria as written", "Changing the grader/pairing logic or the sentinel verdict extraction (reused from AuditReview/Task 99 unchanged)"]
+touches = ["lib/harness/run.ex", "lib/harness/run/worker.ex", "lib/harness/batch/agent_evaluation.ex", "lib/harness/audit_review.ex"]
 body = """
 Concrete evidence: Task 108 was dispatched through harness and settled green while objectively incomplete — the agent built the producer plumbing (Batch.put_env persists :env into Oban job args) but across two repair rounds never wired the consumer side (Run.Worker.run_opts reading args["env"] into start_run) and wrote no AC test, so the scrub was dead-on-arrival. The check stack passed it because it grades suite-green, not AC-met. Hand-finished on land.
 
