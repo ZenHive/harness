@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 126 — Run change-set view on the run-detail page (live edited-files + settled git diff) on 2026-05-31
 
-**Up next:** Task 109 — Cron autonomy master toggle — runtime enable/disable from the dashboard, persisted [D:3/B:4/U:4 → Eff:1.33] 📋
+**Up next:** Task 127 — Configuration inspector LiveView — read-only operator view of the resolved harness config [D:2/B:3/U:3 → Eff:1.5] 🚀
 <!-- FOCUS:END -->
 
 ---

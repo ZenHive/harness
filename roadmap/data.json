@@ -4833,6 +4833,54 @@
       "implemented": "Added Harness.RunDiff (read-only git diff of harness/<run_id> branch via three-dot merge-base diff HEAD...branch; 80KB tail cap with UTF-8-safe truncation; reasons :branch_absent / :unknown_project / :repo_unavailable). Wired Harness.Dashboard.Live :show to load run_diff for terminal runs and derive live edited-files from transcript tool-call events; new Components.run_diff_view / edited_files_live + diff CSS tokens. 27 tests green (run_diff_test + live_test).",
       "delivered_by": "claude-opus-4-8",
       "cross_repo": []
+    },
+    {
+      "id": "127",
+      "phase": 11,
+      "bundle": "autolanding",
+      "milestone": "v0_9",
+      "status": "pending",
+      "title": "Configuration inspector LiveView — read-only operator view of the resolved harness config",
+      "scores": {
+        "d": 2,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 1.5,
+      "dep_layer": 0,
+      "markers": [
+        "handbuild"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "New LiveView at /harness/settings (router scope, :index action) renders the RESOLVED effective config — the value actually in app env after config.exs + runtime.exs env-var overrides, not the source literals.",
+        "Surfaces the full operator-relevant surface from config/config.exs: dashboard (enabled/port), :run timeouts (total/idle/lifetime/terminal_linger/max_repair_attempts), :verification (checks count + timeout), :cron_polling (enabled + schedule), :cross_agent_repair, :semantic_gate, :notification_sinks (sink module names), :result_store backend+root, :chat_store root, :project cache_root, :worktree (base_dir/retain_on_failure/sweep_on_boot), :retry_policy. Group by concern with section headers.",
+        "Each row shows the resolved value AND whether it is a compile-time default, a config.exs override, or a runtime env-var override (e.g. HARNESS_DASHBOARD_PORT) so the operator knows what reboots vs. what env-vars change it.",
+        "Secrets are masked or omitted: secret_key_base, DB password, and any sink/adapter opt that looks like a credential MUST NOT render in plaintext.",
+        "Registered projects (ProjectRegistry.list/0) render as a sub-section: name, source, roadmap_path, concurrency_cap, check-stack preset(s) + workdir per stack.",
+        "Reachable from the dashboard nav (link in the layout alongside the existing KPI / chat links).",
+        "Tests (LiveViewTest): page mounts and renders each section; a configured override (e.g. set :run max_repair_attempts) renders the overridden value, not the default; a secret key is asserted ABSENT from rendered HTML (refute html =~ secret); empty :notification_sinks renders an explicit empty-state, not a crash."
+      ],
+      "out_of_scope": [
+        "Mutating config from the UI — runtime-editable settings are owned by Tasks 109 (cron master toggle), 110 (per-project autonomy), 111 (schedule). This page is read-only; it may LINK to those controls but does not duplicate them.",
+        "Editing config files on disk or writing to Harness.Settings.",
+        "Exposing secret_key_base / DB password / any secret value (mask or omit)."
+      ],
+      "files_to_modify": [
+        "lib/harness/dashboard/router.ex",
+        "lib/harness/dashboard/settings_live.ex"
+      ],
+      "touches": [
+        "lib/harness/dashboard/router.ex",
+        "lib/harness/dashboard/settings_live.ex",
+        "lib/harness/dashboard/components.ex",
+        "lib/harness/dashboard/layouts.ex",
+        "lib/harness/settings.ex"
+      ],
+      "body": "harness is a long-running headless OTP node an operator drives remotely (dashboard / MCP / IEx). There is no way to SEE how the node is configured without shell access to read config/config.exs, config/runtime.exs, and config/dev.local.exs and then mentally resolving env-var overrides. The dashboard router (lib/harness/dashboard/router.ex) mounts run-feed (/harness), KPI (/harness/kpi), and chat (/harness/chat) — no settings/config view exists.\n\nThis task adds the READ-ONLY half: a Configuration inspector LiveView that surfaces the resolved effective config (the table an operator would otherwise reconstruct by hand) grouped by concern, distinguishing compile-time default vs config.exs override vs runtime env-var override, with secrets masked. It is the natural home/sibling for the runtime-mutable controls that Tasks 109/110/111 add (cron autonomy toggle, per-project flags, schedule editing) — it may link to them but does not implement mutation.\n\nMost of harness's config is boot/compile-time and cannot be safely mutated at runtime (Endpoint, Repo, worktree base_dir, result_store backend); read-only is the honest scope for those. The genuinely-runtime-mutable subset (cron enabled/schedule) is read live from app env on each tick and is owned by the autolanding bundle (109/110/111). Keeping inspection (this task) separate from mutation (those tasks) avoids a god-page and lets the read-only view ship independently — no dependency on 109's Harness.Settings store.\n\nUI work -> handbuild (hand-build via tidewave + browser per project policy; headless dispatch idle-times-out on LiveView with no visual reward signal).\n",
+      "created_at": "2026-05-31",
+      "scored_at": "2026-05-31",
+      "cross_repo": []
     }
   ]
 }
