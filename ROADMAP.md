@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 105 — Surface persisted run history in the dashboard (index list + drill-down replay), Task 107 — Event-driven dashboard run tables (RunFeed) + per-project history filtering on 2026-05-30
 
-**Up next:** Task 102 — Witness notification sink (read-only, hard to become a gate) [D:2/B:6/U:7 → Eff:3.25] 🎯
+**Up next:** Task 108 — Thread env scrubbing through Oban Run.Worker so dispatch__bundle honors scrub_anthropic_key [D:2/B:3/U:3 → Eff:1.5] 🚀
 <!-- FOCUS:END -->
 
 ---
