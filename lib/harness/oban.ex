@@ -87,6 +87,36 @@ defmodule Harness.Oban do
   def landing_queue_name(%Project{name: name}), do: landing_queue_name(name)
   def landing_queue_name(name) when is_binary(name), do: "landing_#{name}"
 
+  @doc """
+  Returns the branches the merge-train is currently tracking for `project`.
+
+  A branch is *tracked* while a landing job for it is unfinished (available /
+  scheduled / executing / retryable) on the serialized `landing_<name>` queue.
+  This is the **observable guard** behind the read-only-witness contract: the only
+  way a branch lands is through this queue, so a witness — human or a buddhi sink
+  deciding whether to act — can ask "is the train already on this?" before
+  touching it, rather than racing the train by hand-merging. Returns `[]` when
+  nothing is tracked (or the repo/Oban is not running).
+  """
+  @spec tracked_landing_branches(Project.t() | String.t()) :: [String.t()]
+  def tracked_landing_branches(project) do
+    queue = landing_queue_name(project)
+
+    query =
+      from(job in Oban.Job,
+        where: job.queue == ^queue and job.state in ^@headroom_states,
+        select: job.args
+      )
+
+    query
+    |> Harness.Repo.all()
+    |> Enum.map(&Map.get(&1, "branch"))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  rescue
+    _error -> []
+  end
+
   @doc false
   @spec bootstrap_project_queues() :: :ok
   def bootstrap_project_queues do

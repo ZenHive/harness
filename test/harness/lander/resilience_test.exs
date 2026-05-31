@@ -7,8 +7,11 @@ defmodule Harness.Lander.ResilienceTest do
   use ExUnit.Case, async: false
 
   alias Harness.Lander.Resilience
+  alias Harness.Notification.Event
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
+  alias Harness.Test.CaptureSink
+  alias Harness.Verification.Verdict
 
   describe "plan/2 — pure routing (exhaustive over the outcome union)" do
     test "landed terminates ok at any attempt" do
@@ -125,6 +128,46 @@ defmodule Harness.Lander.ResilienceTest do
 
       assert {:error, {:redispatch_failed, {:unknown_adapter, "not-an-agent"}}} =
                Resilience.route({:post_merge_red, :verdict}, args)
+    end
+  end
+
+  describe "route/2 — witness notifications fire on the three transitions" do
+    setup do
+      Application.put_env(:harness, :notification_sinks, [CaptureSink])
+      Application.put_env(:harness, :test_capture_pid, self())
+
+      on_exit(fn ->
+        Application.delete_env(:harness, :notification_sinks)
+        Application.delete_env(:harness, :test_capture_pid)
+      end)
+
+      :ok
+    end
+
+    test "a landed outcome notifies :landed with the SHA" do
+      assert :ok = Resilience.route({:landed, "deadbeef"}, base_args("any", 1))
+
+      assert_receive {:notify, %Event{type: :landed, task_id: "42", outcome: "deadbeef"}}
+    end
+
+    test "a post_merge_red outcome notifies :post_merge_red on every occurrence (independent of routing)" do
+      # Unregistered project ⇒ the re-dispatch fails, but the witness is notified
+      # of the integration failure first, carrying the failing verdict.
+      verdict = %Verdict{status: :fail, results: []}
+      args = base_args("ghost-#{System.unique_integer([:positive])}", 1)
+
+      assert {:error, {:redispatch_failed, _}} = Resilience.route({:post_merge_red, verdict}, args)
+
+      assert_receive {:notify, %Event{type: :post_merge_red, task_id: "42", outcome: ^verdict}}
+    end
+
+    test "a cap-exhausted outcome notifies :blocked with the structured reason" do
+      project = register_project()
+
+      assert {:cancel, {:blocked, reason}} =
+               Resilience.route({:push_rejected, "non-fast-forward"}, base_args(project.name, 2))
+
+      assert_receive {:notify, %Event{type: :blocked, task_id: "42", outcome: ^reason, land_attempt: 2}}
     end
   end
 

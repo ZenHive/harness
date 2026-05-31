@@ -35,6 +35,10 @@ config :harness, :cron_polling,
   enabled: false,
   schedule: "0 */2 * * *"
 
+# config :harness, Harness.Notification.CommandSink,
+#   command: "/usr/local/bin/notify-train.sh",
+#   args: []
+
 # Verification check stack — see Harness.Verification.
 # Both keys are optional; defaults live in code (elixir_preset/0, 600_000 ms).
 #   :checks  — list of %Harness.Verification.Check{}; defaults to elixir_preset/0.
@@ -82,6 +86,15 @@ config :harness, :cross_agent_repair, enabled: false
 # from their own Phoenix endpoint. `port` only applies to the standalone
 # Endpoint; runtime.exs honours HARNESS_DASHBOARD_PORT when set.
 config :harness, :dashboard, enabled: true, port: 4018
+
+# Witness notification sinks — see Harness.Notification. The lander fires a
+# %Harness.Notification.Event{} on land / blocked / red-post-merge to every sink
+# below; an empty/absent list is a silent no-op. The built-in CommandSink execs
+# an operator command with the event in HARNESS_NOTIFY_* env vars (uncomment and
+# configure to enable). Custom sinks implement the Harness.Notification.Sink
+# behaviour; a discerning (buddhi) sink consumes the event struct and acts
+# *through* the train, never by hand-merging a tracked branch.
+config :harness, :notification_sinks, []
 
 # Project source cache — see Harness.Project.Source.Github.
 # `cache_root` is where harness clones GitHub-source projects on first run

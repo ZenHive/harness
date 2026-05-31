@@ -42,6 +42,8 @@ defmodule Harness.Lander.Resilience do
   alias Harness.AgentAdapter.Registry
   alias Harness.Lander
   alias Harness.Lander.Worker, as: LanderWorker
+  alias Harness.Notification
+  alias Harness.Notification.Event
   alias Harness.Oban, as: HarnessOban
   alias Harness.ProjectRegistry
   alias Harness.Roadmap
@@ -106,15 +108,25 @@ defmodule Harness.Lander.Resilience do
   @spec route(Lander.outcome(), map()) :: Oban.Worker.result()
   def route(outcome, args) do
     attempt = Map.get(args, "land_attempt", 1)
+    maybe_notify_red(outcome, args)
 
     outcome
     |> plan(attempt)
     |> apply_action(args)
   end
 
+  # A post-merge-red branch is notified on *every* occurrence (independent of
+  # whether it re-dispatches or blocks) — the witness sees each integration
+  # failure, and a buddhi witness gets the failing Verdict to reason over.
+  @spec maybe_notify_red(Lander.outcome(), map()) :: :ok
+  defp maybe_notify_red({:post_merge_red, verdict}, args), do: Notification.notify(event(:post_merge_red, verdict, args))
+
+  defp maybe_notify_red(_outcome, _args), do: :ok
+
   @spec apply_action(action(), map()) :: Oban.Worker.result()
   defp apply_action({:ok, {:landed, sha}}, args) do
     Logger.info("harness lander: landed task #{args["task_id"]} (run #{args["run_id"]}) at #{sha}")
+    Notification.notify(event(:landed, sha, args))
     :ok
   end
 
@@ -185,7 +197,23 @@ defmodule Harness.Lander.Resilience do
         )
     end
 
+    Notification.notify(event(:blocked, reason, args))
     {:cancel, {:blocked, reason}}
+  end
+
+  # Builds a witness Event from the worker args + the type-specific outcome
+  # payload (landed SHA / blocked reason / failing Verdict).
+  @spec event(Event.type(), Event.outcome(), map()) :: Event.t()
+  defp event(type, outcome, args) do
+    %Event{
+      type: type,
+      task_id: args["task_id"],
+      run_id: args["run_id"],
+      project: args["project_name"],
+      branch: args["branch"],
+      land_attempt: Map.get(args, "land_attempt", 1),
+      outcome: outcome
+    }
   end
 
   @spec mark_blocked(String.t(), String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
