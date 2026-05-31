@@ -3848,7 +3848,7 @@ scored_at = "2026-05-31"
 id = "123"
 phase = 11
 bundle = "autolanding"
-status = "pending"
+status = "done"
 title = "Decouple semantic gate from auto-land so dogfooding dispatches get green-verdict scrutiny"
 scores = { d = 2, b = 6, u = 6 }
 depends_on = [99]
@@ -3862,14 +3862,19 @@ The mechanism that would have caught this already exists: Task 99's cross-family
 
 Fix: decouple gate-enablement from auto-land. A project-level config (always | auto_land_only | off) plus a per-dispatch override lets a manual-landing project opt the gate on. Low difficulty — the gate machinery (consulting state in Harness.Run, AuditReview.grade_fix/1, sentinel extraction, :semantic_rejection repair route) is built by Task 99; only the WHEN-it-fires predicate changes.
 """
+implemented = "Decoupled semantic gate from auto-land: Project.semantic_gate (:always/:off/:auto_land_only) + Run.project_semantic_gate_enabled?/1 + per-dispatch :semantic_gate override. Salvaged (rebased onto dev; flaky audit_review idle-timeout fixed via widened guard, not sleep); re-verified green post-integration (compile + 113 targeted tests)."
+delivered_by = "claude"
+verified = true
 created_at = "2026-05-31"
 scored_at = "2026-05-31"
+done_at = "2026-05-31"
+shipped_in = "c8692b8"
 
 [[task]]
 id = "124"
 phase = 14
 bundle = "agent-rules"
-status = "pending"
+status = "done"
 title = "Language-aware harness rule injection — stop shipping Elixir conventions to non-Elixir targets"
 scores = { d = 3, b = 5, u = 5 }
 acceptance_criteria = ["A dispatch against a Rust-language project does NOT include the :elixir section in the injected rules (system-prompt file / AGENTS.md / .cursor rules / prompt preamble, whichever channel the adapter uses).", "An Elixir-language project still receives the :elixir section (no regression); unknown/unspecified language defaults to including it.", "AgentRules.render/1 stays pure (no Project/Registry coupling inside it); the language-to-opts mapping happens at the call site.", "Tests cover: Elixir target includes the section, non-Elixir target excludes it, default-when-unknown includes it.", "No change to the verification-gates exclusion behavior."]
@@ -3882,8 +3887,13 @@ The section-filter machinery already exists — `render(only: ..., exclude: ...)
 
 Scope: the language signal must reach the injection site. Today `Invocation` does not carry it; either add a language field to `Invocation` (populated from `%Project{}`/`%CheckStack{}` at dispatch) or pass render opts down. Prefer the minimal plumbing that keeps `AgentRules` pure.
 """
+implemented = "Language-aware rule injection: Invocation.language threaded from Run.project_language/1 (derives from check_stack name); RulesInjection.render_opts/1 maps :rust -> exclude [:verification_gates,:elixir], else default; AgentRules stays pure. Tests cover Rust-excludes / Elixir-includes / unknown-defaults."
+delivered_by = "codex"
+verified = true
 created_at = "2026-05-31"
 scored_at = "2026-05-31"
+done_at = "2026-05-31"
+shipped_in = "d588924"
 
 [[task]]
 id = "125"
@@ -3947,3 +3957,24 @@ UI work -> handbuild (hand-build via tidewave + browser per project policy; head
 """
 created_at = "2026-05-31"
 scored_at = "2026-05-31"
+
+[[task]]
+id = "128"
+phase = 11
+bundle = "autolanding"
+milestone = "v0_9"
+status = "done"
+title = "Per-agent enable/disable from the Settings page"
+scores = { d = 2, b = 3, u = 3 }
+markers = ["handbuild"]
+touches = ["lib/harness/agent/settings.ex", "lib/harness/agent_registry.ex", "lib/harness/dashboard/settings_live.ex", "lib/harness/application.ex", "config/config.exs"]
+body = """
+Let an operator take an agent out of dispatch rotation from /harness/settings, persisted across a BEAM restart.
+
+Mirror the cron-autonomy pattern (Tasks 109/110): a file-backed term store (Harness.Agent.Settings, ~/.harness/agent_settings.term) seeds an app-env cache (:harness, :agent_disabled, a list of disabled agent atoms, absence means enabled) on boot via load_into_env/0; setters write-through and log an info-level audit line. Gate AgentRegistry.select/2 on operator-enablement (composed with the transient available?/1 quota hint, kept distinct per that module's soft-hint design): a disabled agent is skipped, yielding :no_available_agent when no enabled+capable adapter remains, so runs, batches, and cron ticks all honour it. Surface an Agents card on the Settings LiveView with a toggle + enabled/disabled pill + not-installed hint per adapter, reusing the existing dark design-system components. Agents default ON; disabling is opt-in.
+"""
+implemented = "Harness.Agent.Settings (file-backed term store at ~/.harness/agent_settings.term, app-env cache :harness/:agent_disabled, load_into_env/0 on boot in application.ex). AgentRegistry.select/2 gated via dispatchable?/1 = enabled? AND available?, keyed by @module_to_agent (test doubles stay dispatchable). Settings LiveView Agents card: per-adapter toggle + enabled/disabled pill + not-installed hint, reusing existing components. Agents default ON; disable opt-in, persisted across restart, audited at info level. Tests: agent/settings_test.exs (8), agent_registry_test.exs operator-gate describe (3), settings_live_test.exs agent card (2). 39 touched-file tests green; browser-verified card render + toggle round-trip + live select fall-over."
+delivered_by = "claude"
+created_at = "2026-05-31"
+scored_at = "2026-05-31"
+done_at = "2026-05-31"

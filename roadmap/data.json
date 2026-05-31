@@ -4704,7 +4704,7 @@
       "id": "123",
       "phase": 11,
       "bundle": "autolanding",
-      "status": "pending",
+      "status": "done",
       "title": "Decouple semantic gate from auto-land so dogfooding dispatches get green-verdict scrutiny",
       "scores": {
         "d": 2,
@@ -4733,16 +4733,21 @@
         "lib/harness/batch/agent_evaluation.ex",
         "lib/harness/audit_review.ex"
       ],
+      "shipped_in": "c8692b8",
       "body": "Concrete evidence: Task 108 was dispatched through harness and settled green while objectively incomplete — the agent built the producer plumbing (Batch.put_env persists :env into Oban job args) but across two repair rounds never wired the consumer side (Run.Worker.run_opts reading args[\"env\"] into start_run) and wrote no AC test, so the scrub was dead-on-arrival. The check stack passed it because it grades suite-green, not AC-met. Hand-finished on land.\n\nThe mechanism that would have caught this already exists: Task 99's cross-family semantic gate dispatches an opposite-family grader with (body + acceptance_criteria + committed diff) and REJECTs exactly \"stubbed the hard case / solved the adjacent problem\". But its trigger is hardcoded \"ON when the project's landing policy would auto-land, OFF otherwise\". The harness self-project is landing_policy: manual + target_branch: nil, so the gate is OFF for harness's own dogfooding dispatches — the core of its methodology runs with the one AC-aware check disabled.\n\nFix: decouple gate-enablement from auto-land. A project-level config (always | auto_land_only | off) plus a per-dispatch override lets a manual-landing project opt the gate on. Low difficulty — the gate machinery (consulting state in Harness.Run, AuditReview.grade_fix/1, sentinel extraction, :semantic_rejection repair route) is built by Task 99; only the WHEN-it-fires predicate changes.\n",
       "created_at": "2026-05-31",
+      "done_at": "2026-05-31",
       "scored_at": "2026-05-31",
+      "implemented": "Decoupled semantic gate from auto-land: Project.semantic_gate (:always/:off/:auto_land_only) + Run.project_semantic_gate_enabled?/1 + per-dispatch :semantic_gate override. Salvaged (rebased onto dev; flaky audit_review idle-timeout fixed via widened guard, not sleep); re-verified green post-integration (compile + 113 targeted tests).",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     },
     {
       "id": "124",
       "phase": 14,
       "bundle": "agent-rules",
-      "status": "pending",
+      "status": "done",
       "title": "Language-aware harness rule injection — stop shipping Elixir conventions to non-Elixir targets",
       "scores": {
         "d": 3,
@@ -4767,9 +4772,14 @@
         "lib/harness/agent_adapter/rules_injection.ex",
         "lib/harness/agent_adapter.ex"
       ],
+      "shipped_in": "d588924",
       "body": "`canonical.md`'s `# Elixir conventions` section (`@spec` on publics, tagged-tuple errors, `TODO(Task N)`, doctest-vs-ExUnit split) is injected into EVERY agent invocation regardless of target language. `RulesInjection.{claude_flags,install_codex_rules,install_cursor_rules}` and `prepend_prompt` all call `AgentRules.render/1` with default opts, so a dispatch against a Rust-preset project (the Rust CheckStack shipped in Task 45) tells the agent to write `@spec`s.\n\nThe section-filter machinery already exists — `render(only: ..., exclude: ...)` with `@default_exclude [:verification_gates]`. What's missing is a wire from the target project's known language to the render opts. Thread the project/check-stack language (the same signal that selects the `:elixir` vs `:rust` preset) through to the rule-injection call site so non-Elixir dispatches exclude `:elixir` (and, if added, include a `:rust` section). Keep the default (Elixir, since harness dogfoods itself in Elixir) when language is unknown.\n\nScope: the language signal must reach the injection site. Today `Invocation` does not carry it; either add a language field to `Invocation` (populated from `%Project{}`/`%CheckStack{}` at dispatch) or pass render opts down. Prefer the minimal plumbing that keeps `AgentRules` pure.\n",
       "created_at": "2026-05-31",
+      "done_at": "2026-05-31",
       "scored_at": "2026-05-31",
+      "implemented": "Language-aware rule injection: Invocation.language threaded from Run.project_language/1 (derives from check_stack name); RulesInjection.render_opts/1 maps :rust -> exclude [:verification_gates,:elixir], else default; AgentRules stays pure. Tests cover Rust-excludes / Elixir-includes / unknown-defaults.",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -4887,6 +4897,39 @@
       "body": "harness is a long-running headless OTP node an operator drives remotely (dashboard / MCP / IEx). There is no way to SEE how the node is configured without shell access to read config/config.exs, config/runtime.exs, and config/dev.local.exs and then mentally resolving env-var overrides. The dashboard router (lib/harness/dashboard/router.ex) mounts run-feed (/harness), KPI (/harness/kpi), and chat (/harness/chat) — no settings/config view exists.\n\nThis task adds the READ-ONLY half: a Configuration inspector LiveView that surfaces the resolved effective config (the table an operator would otherwise reconstruct by hand) grouped by concern, distinguishing compile-time default vs config.exs override vs runtime env-var override, with secrets masked. It is the natural home/sibling for the runtime-mutable controls that Tasks 109/110/111 add (cron autonomy toggle, per-project flags, schedule editing) — it may link to them but does not implement mutation.\n\nMost of harness's config is boot/compile-time and cannot be safely mutated at runtime (Endpoint, Repo, worktree base_dir, result_store backend); read-only is the honest scope for those. The genuinely-runtime-mutable subset (cron enabled/schedule) is read live from app env on each tick and is owned by the autolanding bundle (109/110/111). Keeping inspection (this task) separate from mutation (those tasks) avoids a god-page and lets the read-only view ship independently — no dependency on 109's Harness.Settings store.\n\nUI work -> handbuild (hand-build via tidewave + browser per project policy; headless dispatch idle-times-out on LiveView with no visual reward signal).\n",
       "created_at": "2026-05-31",
       "scored_at": "2026-05-31",
+      "cross_repo": []
+    },
+    {
+      "id": "128",
+      "phase": 11,
+      "bundle": "autolanding",
+      "milestone": "v0_9",
+      "status": "done",
+      "title": "Per-agent enable/disable from the Settings page",
+      "scores": {
+        "d": 2,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 1.5,
+      "dep_layer": 0,
+      "markers": [
+        "handbuild"
+      ],
+      "depends_on": [],
+      "touches": [
+        "lib/harness/agent/settings.ex",
+        "lib/harness/agent_registry.ex",
+        "lib/harness/dashboard/settings_live.ex",
+        "lib/harness/application.ex",
+        "config/config.exs"
+      ],
+      "body": "Let an operator take an agent out of dispatch rotation from /harness/settings, persisted across a BEAM restart.\n\nMirror the cron-autonomy pattern (Tasks 109/110): a file-backed term store (Harness.Agent.Settings, ~/.harness/agent_settings.term) seeds an app-env cache (:harness, :agent_disabled, a list of disabled agent atoms, absence means enabled) on boot via load_into_env/0; setters write-through and log an info-level audit line. Gate AgentRegistry.select/2 on operator-enablement (composed with the transient available?/1 quota hint, kept distinct per that module's soft-hint design): a disabled agent is skipped, yielding :no_available_agent when no enabled+capable adapter remains, so runs, batches, and cron ticks all honour it. Surface an Agents card on the Settings LiveView with a toggle + enabled/disabled pill + not-installed hint per adapter, reusing the existing dark design-system components. Agents default ON; disabling is opt-in.\n",
+      "created_at": "2026-05-31",
+      "done_at": "2026-05-31",
+      "scored_at": "2026-05-31",
+      "implemented": "Harness.Agent.Settings (file-backed term store at ~/.harness/agent_settings.term, app-env cache :harness/:agent_disabled, load_into_env/0 on boot in application.ex). AgentRegistry.select/2 gated via dispatchable?/1 = enabled? AND available?, keyed by @module_to_agent (test doubles stay dispatchable). Settings LiveView Agents card: per-adapter toggle + enabled/disabled pill + not-installed hint, reusing existing components. Agents default ON; disable opt-in, persisted across restart, audited at info level. Tests: agent/settings_test.exs (8), agent_registry_test.exs operator-gate describe (3), settings_live_test.exs agent card (2). 39 touched-file tests green; browser-verified card render + toggle round-trip + live select fall-over.",
+      "delivered_by": "claude",
       "cross_repo": []
     }
   ]
