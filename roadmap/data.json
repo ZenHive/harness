@@ -3754,7 +3754,7 @@
       "phase": 11,
       "bundle": "autolanding",
       "milestone": "v0_9",
-      "status": "pending",
+      "status": "done",
       "title": "Merge-train resilience — post-merge repair, conflict re-dispatch, blocked sink",
       "scores": {
         "d": 5,
@@ -3776,9 +3776,14 @@
         "Auto-rescope triage agent for blocked tasks (future fast-follow)",
         "Resolver-agent as the primary conflict strategy"
       ],
+      "shipped_in": "bc4ad96",
       "body": "The hard edges of autonomous landing, shaped by a two-peer LLM design consult. (1) Post-merge red: a branch green-in-isolation but red after integration is an INTEGRATION failure — the merge-train contract is 'target is always green after integration'. Handle it with a FRESH re-dispatch of the task against the integrated HEAD (NOT a session-resume with the stale diff — the in-run repair loop is the wrong tool here), re-verify, land if green. (2) True same-function conflict (rare; batch discipline mostly prevents it): re-dispatch the LOSER against the winner's HEAD (first-to-land = ground truth). A resolver agent that composes both diffs is explicitly NOT the default — both peers warned it produces plausible-but-wrong merges of two intents it can't reconcile. (3) Landing-attempt cap, distinct from the in-run repair cap: on exhaustion, flip the rmap task to blocked with a structured blocked_reason — the terminal sink ('without a sink you are lying about autonomy'). Reuse rmap's existing blocked + blocked_reason; no schema change. No path may loop unbounded.\n",
       "created_at": "2026-05-30",
+      "done_at": "2026-05-31",
       "scored_at": "2026-05-30",
+      "implemented": "Harness.Lander.Resilience: pure plan/2 routing table + effectful route/2; post_merge_red/conflict→fresh re-dispatch off integrated HEAD, push_rejected→re-land, cap(2)→blocked sink via Roadmap.mark_blocked. Worker slimmed to land|>route.",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     },
     {
