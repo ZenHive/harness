@@ -110,9 +110,18 @@ defmodule Harness.Run.Worker do
   end
 
   @spec run_opts(Oban.Job.t()) :: keyword()
-  defp run_opts(%Oban.Job{id: id}) when is_integer(id) do
-    [batch_id: "oban-job-#{id}", subscriber: self()]
+  defp run_opts(%Oban.Job{id: id, args: args}) when is_integer(id) do
+    [batch_id: "oban-job-#{id}", subscriber: self()] ++ env_opt(args)
   end
+
+  # The dispatch layer (Harness.Batch) persists an optional caller env override
+  # into the job args (e.g. %{"ANTHROPIC_API_KEY" => false} to scrub a metered
+  # key on Claude OAuth bundles). Thread it into start_run's :env so an
+  # Oban-backed bundle honours the same scrubbing as the synchronous dispatch
+  # tools. Absent or empty ⇒ no :env opt, preserving prior behaviour.
+  @spec env_opt(map()) :: keyword()
+  defp env_opt(%{"env" => env}) when is_map(env) and map_size(env) > 0, do: [env: env]
+  defp env_opt(_args), do: []
 
   @spec checkpoint(Oban.Job.t(), String.t()) :: :ok
   defp checkpoint(%Oban.Job{id: id} = job, stage) when is_integer(id) do

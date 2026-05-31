@@ -58,6 +58,38 @@ defmodule Harness.ObanDispatchTest do
                      }}
   end
 
+  test "dispatch/3 persists an :env override into each enqueued job's args" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-dispatch", name: "envbatch", concurrency_cap: 2)
+
+    Application.put_env(:harness, :oban_insert, fn changeset ->
+      job = Ecto.Changeset.apply_action!(changeset, :insert)
+      send(parent, {:inserted_args, job.args})
+      {:ok, job}
+    end)
+
+    assert {:ok, [_job]} =
+             Batch.dispatch(project, [item("48", :claude)], env: %{"ANTHROPIC_API_KEY" => false})
+
+    assert_received {:inserted_args, %{env: %{"ANTHROPIC_API_KEY" => false}, item_id: "48"}}
+  end
+
+  test "dispatch/3 omits :env from job args when the override is empty" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-dispatch", name: "noenvbatch", concurrency_cap: 2)
+
+    Application.put_env(:harness, :oban_insert, fn changeset ->
+      job = Ecto.Changeset.apply_action!(changeset, :insert)
+      send(parent, {:inserted_args, job.args})
+      {:ok, job}
+    end)
+
+    assert {:ok, [_job]} = Batch.dispatch(project, [item("48", :claude)], env: %{})
+
+    assert_received {:inserted_args, args}
+    refute Map.has_key?(args, :env)
+  end
+
   test "registered project names resolve for dispatch" do
     parent = self()
     project = ProjectFixture.from_repo("/tmp/harness-dispatch", name: "registered", concurrency_cap: 1)
@@ -142,6 +174,90 @@ defmodule Harness.ObanDispatchTest do
 
     assert_received {:ingest, {:id, "48"}, "worker-project", :claude}
     assert_received {:start_run, "48", "worker-project", Harness.AgentAdapter.Claude, "oban-job-123"}
+  end
+
+  test "worker threads a persisted :env override from job args into start_run" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-worker", name: "env-project")
+    assert :ok = ProjectRegistry.register(project)
+
+    Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts ->
+      {:ok, item("48", :claude)}
+    end)
+
+    Application.put_env(:harness, :run_starter, fn %Item{} = item, _run_project, _adapter, opts ->
+      send(parent, {:start_env, Keyword.get(opts, :env)})
+      run_id = "run-env-ok"
+      subscriber = Keyword.fetch!(opts, :subscriber)
+
+      pid =
+        spawn(fn ->
+          send(
+            subscriber,
+            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :passed}}
+          )
+
+          Process.sleep(100)
+        end)
+
+      {:ok, run_id, pid}
+    end)
+
+    assert :ok =
+             Worker.perform(%Oban.Job{
+               id: 124,
+               attempt: 1,
+               args: %{
+                 "project_name" => "env-project",
+                 "item_id" => "48",
+                 "adapter_module" => "Elixir.Harness.AgentAdapter.Claude",
+                 "env" => %{"ANTHROPIC_API_KEY" => false}
+               }
+             })
+
+    # The scrub the dispatch layer persisted into the job args reaches start_run.
+    assert_received {:start_env, %{"ANTHROPIC_API_KEY" => false}}
+  end
+
+  test "worker omits :env when job args carry no override" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-worker", name: "noenv-project")
+    assert :ok = ProjectRegistry.register(project)
+
+    Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts ->
+      {:ok, item("48", :claude)}
+    end)
+
+    Application.put_env(:harness, :run_starter, fn %Item{} = item, _run_project, _adapter, opts ->
+      send(parent, {:start_env_present?, Keyword.has_key?(opts, :env)})
+      run_id = "run-noenv-ok"
+      subscriber = Keyword.fetch!(opts, :subscriber)
+
+      pid =
+        spawn(fn ->
+          send(
+            subscriber,
+            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :passed}}
+          )
+
+          Process.sleep(100)
+        end)
+
+      {:ok, run_id, pid}
+    end)
+
+    assert :ok =
+             Worker.perform(%Oban.Job{
+               id: 125,
+               attempt: 1,
+               args: %{
+                 "project_name" => "noenv-project",
+                 "item_id" => "48",
+                 "adapter_module" => "Elixir.Harness.AgentAdapter.Claude"
+               }
+             })
+
+    assert_received {:start_env_present?, false}
   end
 
   test "worker maps performed terminal failures to cancel and quota failures to snooze" do
