@@ -19,10 +19,21 @@ defmodule Harness.Project do
   - `pollution_allowlist` — optional path patterns ignored by the main-checkout
     pollution diff (`Harness.Worktree.Isolation`); `nil` inherits app defaults.
   - `landing_policy` — `:manual` by default; `:auto` means green runs are
-    eligible for autonomous landing and therefore for the semantic gate.
+    eligible for autonomous landing.
   - `target_branch` — the branch the autonomous lander fast-forward-pushes an
     approved run onto (e.g. `"development"`). `nil` by default; a project only
     auto-lands when it sets both `landing_policy: :auto` and a `target_branch`.
+  - `semantic_gate` — when the cross-family semantic gate (Task 99) runs on a
+    green verdict, decoupled from auto-land (Task 123):
+      - `:always` — every green run is gated, even under `landing_policy: :manual`
+        (lets a manual-landing project — e.g. harness's own dogfooding — opt the
+        AC-aware check on).
+      - `:auto_land_only` — gated only when the project would auto-land
+        (`landing_policy: :auto`). The default; preserves the original
+        gate-iff-auto-landing behaviour.
+      - `:off` — never gated, even when auto-landing.
+    A per-dispatch `semantic_gate: [enabled: true | false]` run opt overrides
+    this project-level setting for a single run.
   """
 
   alias Harness.CheckStack
@@ -38,11 +49,15 @@ defmodule Harness.Project do
     concurrency_cap: nil,
     pollution_allowlist: nil,
     landing_policy: :manual,
-    target_branch: nil
+    target_branch: nil,
+    semantic_gate: :auto_land_only
   ]
 
   @typedoc "Where harness finds the target repository."
   @type source :: Local.t() | Github.t()
+
+  @typedoc "When the cross-family semantic gate runs on a green verdict (Task 123)."
+  @type semantic_gate_mode :: :always | :auto_land_only | :off
 
   @typedoc "A first-class orchestration target."
   @type t :: %__MODULE__{
@@ -53,7 +68,8 @@ defmodule Harness.Project do
           concurrency_cap: pos_integer() | nil,
           pollution_allowlist: [String.t()] | nil,
           landing_policy: :manual | :auto,
-          target_branch: String.t() | nil
+          target_branch: String.t() | nil,
+          semantic_gate: semantic_gate_mode()
         }
 
   @doc """

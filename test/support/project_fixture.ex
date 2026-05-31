@@ -14,7 +14,8 @@ defmodule Harness.ProjectFixture do
       check_stacks: check_stacks(opts),
       roadmap_path: Keyword.get(opts, :roadmap_path, repo),
       concurrency_cap: Keyword.get(opts, :concurrency_cap),
-      landing_policy: Keyword.get(opts, :landing_policy, :manual)
+      landing_policy: Keyword.get(opts, :landing_policy, :manual),
+      semantic_gate: Keyword.get(opts, :semantic_gate, :auto_land_only)
     }
   end
 

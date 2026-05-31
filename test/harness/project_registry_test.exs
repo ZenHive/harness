@@ -110,6 +110,54 @@ defmodule Harness.ProjectRegistryTest do
                ProjectRegistry.init(:noargs)
     end
 
+    test "reads a project-level semantic_gate mode (decoupled from auto-land)" do
+      entry = [
+        name: "gated",
+        source: {:local, "/tmp/harness-gated"},
+        preset: :elixir,
+        roadmap_path: "/tmp/harness-gated/roadmap/tasks.toml",
+        semantic_gate: :always
+      ]
+
+      Application.put_env(:harness, :projects, [entry])
+
+      assert {:ok, %{projects: %{"gated" => %Harness.Project{semantic_gate: :always}}}} =
+               ProjectRegistry.init(:noargs)
+    end
+
+    test "defaults semantic_gate to :auto_land_only when unset" do
+      entry = [
+        name: "ungated",
+        source: {:local, "/tmp/harness-ungated"},
+        preset: :elixir,
+        roadmap_path: "/tmp/harness-ungated/roadmap/tasks.toml"
+      ]
+
+      Application.put_env(:harness, :projects, [entry])
+
+      assert {:ok, %{projects: %{"ungated" => %Harness.Project{semantic_gate: :auto_land_only}}}} =
+               ProjectRegistry.init(:noargs)
+    end
+
+    test "rejects an unknown semantic_gate mode" do
+      bad = [
+        name: "bad-gate",
+        source: {:local, "/tmp/x"},
+        preset: :elixir,
+        roadmap_path: "/tmp/x/tasks.toml",
+        semantic_gate: :sometimes
+      ]
+
+      Application.put_env(:harness, :projects, [bad])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, %{projects: %{}}} = ProjectRegistry.init(:noargs)
+        end)
+
+      assert log =~ "skipping invalid config entry"
+    end
+
     test "back-compat: a singular preset becomes a one-element stack at the repo root" do
       entry = [
         name: "single-preset",

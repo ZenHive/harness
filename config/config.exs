@@ -115,12 +115,15 @@ config :harness,
        :result_store,
        {Harness.ResultStore.File, root: Path.expand("~/.harness/results")}
 
-# Green-verdict semantic gate. `enabled: :auto` means the gate runs only for
-# projects whose landing_policy is :auto; false disables it even for auto-land
-# projects. The grader defaults through Harness.AuditReview's cross-family
-# :claude <-> :codex pairing; test/dev overrides may pass :grader plus the same
-# AuditReview pass-through opts (:model, :adapter_opts, :total_timeout,
-# :idle_timeout).
+# Green-verdict semantic gate. `enabled: :auto` (the default) defers to the
+# project-level `semantic_gate` mode (`:always` | `:auto_land_only` | `:off`,
+# per-project on %Harness.Project{}); `enabled: true`/`false` is a per-dispatch
+# override that forces the gate on/off for one run regardless of landing policy
+# (Task 123). `:auto_land_only` (the project default) preserves the original
+# gate-iff-auto-land behaviour. The grader defaults through Harness.AuditReview's
+# cross-family :claude <-> :codex pairing; test/dev overrides may pass :grader
+# plus the same AuditReview pass-through opts (:model, :adapter_opts,
+# :total_timeout, :idle_timeout).
 config :harness, :semantic_gate, enabled: :auto
 
 # Registered orchestration targets — see Harness.Project and Harness.ProjectRegistry.

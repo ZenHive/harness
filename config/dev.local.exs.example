@@ -12,11 +12,15 @@ config :harness, :projects, [
   # mirrors harness's own `mix precommit` merge bar (coverage gate + format +
   # warnings-as-errors), so a green verdict implies a mergeable change — see
   # Task 97. Use plain `preset: :elixir` for the lighter day-to-day stack.
+  # `semantic_gate: :always` keeps the cross-family semantic gate on for harness
+  # dogfooding even under manual landing (Task 123); needs the opposite-family
+  # agent CLI installed. Drop it (or set `:auto_land_only`) to revert.
   [
     name: "harness",
     source: {:local, Path.expand("..", __DIR__)},
     preset: {:elixir_precommit, cover_threshold: 80, exclude: [:integration]},
-    roadmap_path: Path.expand("..", __DIR__)
+    roadmap_path: Path.expand("..", __DIR__),
+    semantic_gate: :always
   ],
   # Example host-local project — single language, one stack at the repo root.
   # Swap to `preset: {:elixir_precommit, cover_threshold: N, exclude: [...]}`

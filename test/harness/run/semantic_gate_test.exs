@@ -226,6 +226,80 @@ defmodule Harness.Run.SemanticGateTest do
     end
   end
 
+  describe "project-level semantic_gate mode (decoupled from auto-land — Task 123)" do
+    test "project :always enables the gate for a manual-landing project (enabled: :auto)" do
+      prompt_file = tmp_path("semantic-always-manual-prompt")
+      count_file = tmp_path("semantic-always-manual-count")
+
+      manual_always = project(landing_policy: :manual, semantic_gate: :always)
+
+      assert %Result{state: :done, reason: :passed, repair_attempts: 0} =
+               run(
+                 project: manual_always,
+                 semantic_gate: [
+                   enabled: :auto,
+                   grader: RecordingSemanticGrader,
+                   adapter_opts: [prompt_file: prompt_file, count_file: count_file, mode: :approve],
+                   total_timeout: 10_000,
+                   idle_timeout: 5_000
+                 ]
+               )
+
+      assert File.read!(count_file) == "hit\n"
+    end
+
+    test "project :always routes a REJECT into the repair loop under manual landing" do
+      prompt_file = tmp_path("semantic-always-reject-prompt")
+      count_file = tmp_path("semantic-always-reject-count")
+
+      {run_id, pid, repo} =
+        start(
+          project_semantic_gate: :always,
+          adapter_opts: [command: :repair],
+          max_repair_attempts: 1,
+          semantic_gate: [
+            enabled: :auto,
+            grader: RecordingSemanticGrader,
+            adapter_opts: [
+              prompt_file: prompt_file,
+              count_file: count_file,
+              mode: :reject_then_approve
+            ],
+            total_timeout: 10_000,
+            idle_timeout: 5_000
+          ]
+        )
+
+      result = await_result(run_id, pid, 10_000)
+
+      assert %Result{state: :done, reason: :passed, repair_attempts: 1} = result
+      assert File.read!(count_file) == "hit\nhit\n"
+
+      marker = GitFixture.git!(repo, ["show", "harness/#{run_id}:repair_marker"])
+      assert marker =~ "semantic gate rejected"
+      assert marker =~ "first pass missed the contract"
+    end
+
+    test "project :off keeps the gate off even when auto-landing (enabled: :auto)" do
+      prompt_file = tmp_path("semantic-off-auto-prompt")
+      count_file = tmp_path("semantic-off-auto-count")
+
+      auto_off = project(landing_policy: :auto, semantic_gate: :off)
+
+      assert %Result{state: :done, reason: :passed} =
+               run(
+                 project: auto_off,
+                 semantic_gate: [
+                   enabled: :auto,
+                   grader: RecordingSemanticGrader,
+                   adapter_opts: [prompt_file: prompt_file, count_file: count_file, mode: :approve]
+                 ]
+               )
+
+      refute File.exists?(count_file)
+    end
+  end
+
   defp run(overrides) do
     {run_id, pid, _repo} = start(overrides)
     await_result(run_id, pid, 10_000)
@@ -234,7 +308,11 @@ defmodule Harness.Run.SemanticGateTest do
   defp start(overrides) do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()
-    {project, overrides} = Keyword.pop(overrides, :project, project(repo: repo))
+    # `:project_semantic_gate` sets the gate mode on the default project while
+    # keeping it rooted at the repo `start/1` returns, so a test can both shape
+    # the project-level gate AND read the run's `harness/<run_id>` branch.
+    {gate_mode, overrides} = Keyword.pop(overrides, :project_semantic_gate, :auto_land_only)
+    {project, overrides} = Keyword.pop(overrides, :project, project(repo: repo, semantic_gate: gate_mode))
     {item, overrides} = Keyword.pop(overrides, :item, item())
 
     opts =
@@ -259,9 +337,8 @@ defmodule Harness.Run.SemanticGateTest do
 
   defp project(opts) do
     repo = Keyword.get_lazy(opts, :repo, fn -> GitFixture.init_repo() end)
-    landing_policy = Keyword.get(opts, :landing_policy, :manual)
 
-    ProjectFixture.from_repo(repo, landing_policy: landing_policy)
+    ProjectFixture.from_repo(repo, Keyword.take(opts, [:landing_policy, :semantic_gate]))
   end
 
   defp item do

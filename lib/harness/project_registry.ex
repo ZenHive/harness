@@ -166,7 +166,8 @@ defmodule Harness.ProjectRegistry do
     with {:ok, name} <- fetch_required(entry, :name),
          {:ok, source} <- fetch_source(entry),
          {:ok, check_stacks} <- fetch_check_stacks(entry),
-         {:ok, roadmap_path} <- fetch_roadmap_path(entry) do
+         {:ok, roadmap_path} <- fetch_roadmap_path(entry),
+         {:ok, semantic_gate} <- fetch_semantic_gate(entry) do
       {:ok,
        %Project{
          name: name,
@@ -176,7 +177,8 @@ defmodule Harness.ProjectRegistry do
          concurrency_cap: Map.get(entry, :concurrency_cap),
          pollution_allowlist: Map.get(entry, :pollution_allowlist),
          landing_policy: Map.get(entry, :landing_policy, :manual),
-         target_branch: Map.get(entry, :target_branch)
+         target_branch: Map.get(entry, :target_branch),
+         semantic_gate: semantic_gate
        }}
     end
   end
@@ -272,6 +274,20 @@ defmodule Harness.ProjectRegistry do
       {:ok, path} when is_binary(path) -> {:ok, Path.expand(path)}
       {:ok, other} -> {:error, {:invalid_project, {:invalid_roadmap_path, other}}}
       :error -> {:error, {:invalid_project, {:missing, :roadmap_path}}}
+    end
+  end
+
+  # The semantic-gate consumer (`Harness.Run`) pattern-matches the exact mode
+  # atom, so validate at registration rather than crashing a run mid-flight on
+  # a typo. Absent ⇒ `:auto_land_only` (the struct default = gate-iff-auto-land).
+  @valid_semantic_gate_modes [:always, :auto_land_only, :off]
+
+  @spec fetch_semantic_gate(map()) ::
+          {:ok, Project.semantic_gate_mode()} | {:error, {:invalid_project, term()}}
+  defp fetch_semantic_gate(entry) do
+    case Map.get(entry, :semantic_gate, :auto_land_only) do
+      mode when mode in @valid_semantic_gate_modes -> {:ok, mode}
+      other -> {:error, {:invalid_project, {:invalid_semantic_gate, other}}}
     end
   end
 end

@@ -283,6 +283,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Semantic gate decoupled from auto-land (Task 123).** The cross-family
+  semantic gate (Task 99) re-checks a green verdict against the task's
+  acceptance criteria with an opposite-family grader, but its trigger was
+  hardcoded to "on iff the project would auto-land". harness's own self-project
+  lands manually, so its dogfooding dispatches ran with the one AC-aware check
+  off — Task 108 settled green while objectively incomplete and was
+  hand-finished on land. The trigger now consults a project-level
+  `semantic_gate` mode on `%Harness.Project{}` — `:always` (gate every green
+  run, even under manual landing), `:auto_land_only` (the default; preserves the
+  original gate-iff-auto-land behaviour), or `:off` (never gate). A per-dispatch
+  `semantic_gate: [enabled: true | false]` run opt — surfaced as a `semantic_gate`
+  boolean on the `dispatch__task` / `dispatch__await` tools — forces the gate
+  on/off for a single run regardless of landing policy. Default behaviour is
+  unchanged (manual-landing projects stay un-gated unless explicitly enabled);
+  the harness self-project registration (`config/dev.exs`) opts into
+  `semantic_gate: :always` so its dogfooding now gets green-verdict scrutiny.
+  The gate machinery (grader pairing, sentinel extraction, `:semantic_rejection`
+  repair route) is reused from Task 99 unchanged — only the when-it-fires
+  predicate moved.
 - MCP surface reworked from a custom REST endpoint (`Harness.Dashboard.MCP`,
   `GET /harness/mcp/tools` + `POST /harness/mcp/call`) to a spec-compliant
   MCP server (`Harness.Dashboard.MCPServer`, JSON-RPC 2.0 over Streamable

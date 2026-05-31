@@ -9,12 +9,23 @@ import Config
 # dispatched-run verdict implies a mergeable change, not just a green lighter
 # `:elixir` stack (Task 97). Threshold + exclusion track mix.exs's `precommit`
 # alias; keep them in sync if that alias changes.
+#
+# `semantic_gate: :always` opts harness's own dogfooding into the cross-family
+# semantic gate (Task 99) even though it lands manually (Task 123). A green
+# verdict only means "suite passed", not "acceptance criteria met" — Task 108
+# settled green while objectively incomplete. The gate re-checks each green run
+# with an opposite-family grader (claude ⇒ codex by default), so a dispatched
+# task whose diff stubs the hard case or solves only the adjacent problem is
+# rejected back into the repair loop instead of hand-finished on land.
+# Requires the opposite-family agent CLI to be installed for headless dispatch;
+# set to `:auto_land_only` to revert to gate-iff-auto-land (the default).
 config :harness, :projects, [
   [
     name: "harness",
     source: {:local, Path.expand("..", __DIR__)},
     preset: {:elixir_precommit, cover_threshold: 80, exclude: [:integration]},
-    roadmap_path: Path.expand("..", __DIR__)
+    roadmap_path: Path.expand("..", __DIR__),
+    semantic_gate: :always
   ]
 ]
 

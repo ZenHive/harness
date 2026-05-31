@@ -93,6 +93,12 @@ defmodule Harness.Dispatch do
         default: true,
         description:
           "When true (default), scrubs ANTHROPIC_API_KEY from the agent's environment so Claude dispatches use subscription OAuth instead of the metered API. Harmless for non-Claude adapters."
+      ],
+      semantic_gate: [
+        kind: :value,
+        default: false,
+        description:
+          "When true, forces the cross-family semantic gate ON for this one run regardless of the project's landing policy or semantic_gate mode — a green verdict is re-checked by an opposite-family grader against the task's acceptance criteria. Default false leaves the project-level setting (gate-iff-auto-land by default) in control."
       ]
     ],
     returns: %{
@@ -102,11 +108,12 @@ defmodule Harness.Dispatch do
     }
   )
 
-  @spec task(String.t(), String.t(), String.t(), boolean()) ::
+  @spec task(String.t(), String.t(), String.t(), boolean(), boolean()) ::
           {:ok, %{run_id: String.t()}} | {:error, error()}
-  def task(project_name, task, adapter \\ "claude", scrub_anthropic_key \\ true)
-      when is_binary(project_name) and is_binary(task) and is_binary(adapter) and is_boolean(scrub_anthropic_key) do
-    with {:ok, run_id} <- start(project_name, task, adapter, scrub_anthropic_key, nil) do
+  def task(project_name, task, adapter \\ "claude", scrub_anthropic_key \\ true, semantic_gate \\ false)
+      when is_binary(project_name) and is_binary(task) and is_binary(adapter) and is_boolean(scrub_anthropic_key) and
+             is_boolean(semantic_gate) do
+    with {:ok, run_id} <- start(project_name, task, adapter, scrub_anthropic_key, semantic_gate, nil) do
       {:ok, %{run_id: run_id}}
     end
   end
@@ -142,6 +149,12 @@ defmodule Harness.Dispatch do
         default: true,
         description:
           "When true (default), scrubs ANTHROPIC_API_KEY from the agent's environment so Claude dispatches use subscription OAuth instead of the metered API. Harmless for non-Claude adapters."
+      ],
+      semantic_gate: [
+        kind: :value,
+        default: false,
+        description:
+          "When true, forces the cross-family semantic gate ON for this one run regardless of the project's landing policy or semantic_gate mode — a green verdict is re-checked by an opposite-family grader against the task's acceptance criteria. Default false leaves the project-level setting (gate-iff-auto-land by default) in control."
       ]
     ],
     returns: %{
@@ -151,12 +164,19 @@ defmodule Harness.Dispatch do
     }
   )
 
-  @spec await(String.t(), String.t(), String.t(), pos_integer(), boolean()) ::
+  @spec await(String.t(), String.t(), String.t(), pos_integer(), boolean(), boolean()) ::
           {:ok, map()} | {:error, error()}
-  def await(project_name, task, adapter \\ "claude", timeout_ms \\ @default_await_timeout_ms, scrub_anthropic_key \\ true)
+  def await(
+        project_name,
+        task,
+        adapter \\ "claude",
+        timeout_ms \\ @default_await_timeout_ms,
+        scrub_anthropic_key \\ true,
+        semantic_gate \\ false
+      )
       when is_binary(project_name) and is_binary(task) and is_binary(adapter) and is_integer(timeout_ms) and
-             timeout_ms > 0 and is_boolean(scrub_anthropic_key) do
-    with {:ok, run_id} <- start(project_name, task, adapter, scrub_anthropic_key, self()) do
+             timeout_ms > 0 and is_boolean(scrub_anthropic_key) and is_boolean(semantic_gate) do
+    with {:ok, run_id} <- start(project_name, task, adapter, scrub_anthropic_key, semantic_gate, self()) do
       await_result(run_id, timeout_ms)
     end
   end
@@ -361,22 +381,37 @@ defmodule Harness.Dispatch do
     end
   end
 
-  # Shared dispatch path for `task/4` (subscriber nil) and `await/5` (subscriber
+  # Shared dispatch path for `task/5` (subscriber nil) and `await/6` (subscriber
   # the calling process). Identical resolve → ingest → start_run flow; only the
-  # subscriber differs.
-  @spec start(String.t(), String.t(), String.t(), boolean(), pid() | nil) ::
+  # subscriber and per-dispatch semantic-gate override differ.
+  @spec start(String.t(), String.t(), String.t(), boolean(), boolean(), pid() | nil) ::
           {:ok, String.t()} | {:error, error()}
-  defp start(project_name, task, adapter, scrub_anthropic_key, subscriber) do
+  defp start(project_name, task, adapter, scrub_anthropic_key, semantic_gate, subscriber) do
     with {:ok, {adapter_module, render_agent}} <- resolve_adapter(adapter),
          {:ok, project} <- lookup_project(project_name),
          {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: render_agent),
          {:ok, run_id, _pid} <-
-           Run.Supervisor.start_run(item, project, adapter_module,
-             subscriber: subscriber,
-             env: scrub_env(scrub_anthropic_key)
+           Run.Supervisor.start_run(
+             item,
+             project,
+             adapter_module,
+             start_opts(subscriber, scrub_anthropic_key, semantic_gate)
            ) do
       {:ok, run_id}
     end
+  end
+
+  # Build the start_run opts. Forcing the gate ON is an explicit `enabled: true`
+  # opt; leaving it false adds nothing so the project-level `semantic_gate` mode
+  # (and app-env default) stays in control — passing `enabled: false` would
+  # instead force it OFF. Public (@doc false) so the override threading is
+  # testable without a live dispatch through the real agent CLI — same
+  # testability seam as await_result/2 and summarize_comparison/1.
+  @doc false
+  @spec start_opts(pid() | nil, boolean(), boolean()) :: keyword()
+  def start_opts(subscriber, scrub_anthropic_key, semantic_gate) do
+    opts = [subscriber: subscriber, env: scrub_env(scrub_anthropic_key)]
+    if semantic_gate, do: Keyword.put(opts, :semantic_gate, enabled: true), else: opts
   end
 
   @spec summarize(Run.Result.t()) :: map()

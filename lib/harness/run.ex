@@ -1494,14 +1494,26 @@ defmodule Harness.Run do
     Keyword.get(data.cross_agent_repair, :enabled, false)
   end
 
+  # A per-dispatch `enabled: true | false` opt forces the gate on/off for one
+  # run regardless of landing policy (Task 123 AC2). Absent / `:auto` defers to
+  # the project-level `semantic_gate` mode, which decouples gate-enablement from
+  # auto-land so a manual-landing project (e.g. harness's own dogfooding) can
+  # opt the AC-aware check on.
   @spec semantic_gate_enabled?(data()) :: boolean()
   defp semantic_gate_enabled?(data) do
     case Keyword.get(data.semantic_gate, :enabled, :auto) do
       true -> true
-      :auto -> data.project.landing_policy == :auto
+      :auto -> project_semantic_gate_enabled?(data.project)
       _ -> false
     end
   end
+
+  @spec project_semantic_gate_enabled?(Project.t()) :: boolean()
+  defp project_semantic_gate_enabled?(%Project{semantic_gate: :always}), do: true
+  defp project_semantic_gate_enabled?(%Project{semantic_gate: :off}), do: false
+
+  defp project_semantic_gate_enabled?(%Project{semantic_gate: :auto_land_only, landing_policy: policy}),
+    do: policy == :auto
 
   @spec current_sha(data()) :: String.t()
   defp current_sha(%{worktree: %Worktree{path: path, base_sha: fallback}}) do

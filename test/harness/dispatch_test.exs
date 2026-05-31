@@ -72,6 +72,38 @@ defmodule Harness.DispatchTest do
     end
   end
 
+  describe "semantic_gate per-dispatch override surface (Task 123)" do
+    # The force-on threading (start_run semantic_gate: [enabled: true] firing the
+    # gate regardless of landing policy) is proven at the Run level in
+    # Harness.Run.SemanticGateTest; here we assert the JSON-native surface exposes
+    # the override on both dispatch tools so an MCP/chat orchestrator can set it.
+    for tool <- [:task, :await] do
+      test "dispatch__#{tool} surfaces a semantic_gate value param defaulting to false" do
+        entry = Enum.find(Dispatch.__api__(), &match?(%{name: unquote(tool)}, &1))
+
+        assert :semantic_gate in entry.param_order
+
+        param = entry.hints.params.semantic_gate
+        assert param.kind == :value
+        assert param.default == false
+        assert param.description =~ "forces the cross-family semantic gate ON"
+      end
+    end
+
+    test "semantic_gate=true threads a force-on override into the start_run opts" do
+      opts = Dispatch.start_opts(self(), true, true)
+
+      assert Keyword.fetch!(opts, :semantic_gate) == [enabled: true]
+      assert Keyword.fetch!(opts, :subscriber) == self()
+    end
+
+    test "semantic_gate=false leaves the project-level setting in control (no override)" do
+      opts = Dispatch.start_opts(nil, true, false)
+
+      refute Keyword.has_key?(opts, :semantic_gate)
+    end
+  end
+
   describe "await_result/2 settle path" do
     test "summarizes a green settled run delivered to the subscriber" do
       run_id = "run-test-green"
