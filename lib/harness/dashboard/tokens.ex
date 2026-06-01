@@ -1043,6 +1043,73 @@ defmodule Harness.Dashboard.Tokens do
       .project-name { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text); }
       .project-empty { color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-3) 0; }
 
+      /* Config inspector (Task 127) — read-only resolved-config rows + provenance pills. */
+      .config-section { margin-top: var(--space-4); }
+      .config-section:first-of-type { margin-top: var(--space-3); }
+      .config-section-title {
+        margin: 0 0 var(--space-2);
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        color: var(--text-subtle);
+      }
+      .config-rows { margin: 0; }
+      .config-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--space-4);
+        padding: var(--space-2) 0;
+        border-top: 1px solid var(--rule);
+      }
+      .config-row:first-child { border-top: 0; }
+      .config-key { margin: 0; font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text); }
+      .config-val { display: flex; align-items: center; gap: var(--space-3); margin: 0; min-width: 0; }
+      .config-val code {
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        color: var(--text-subtle);
+        overflow-wrap: anywhere;
+      }
+      .config-pill {
+        flex: none;
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        padding: 0.1em 0.55em;
+        border-radius: 999px;
+        border: 1px solid var(--rule);
+        color: var(--text-muted);
+        letter-spacing: 0.01em;
+      }
+      .config-pill[data-prov="config"] { color: var(--accent); border-color: var(--accent); }
+      .config-pill[data-prov="env"] { color: var(--verdict-pass); border-color: var(--verdict-pass); }
+
+      /* The "knob": the env var that overrides a key, shown on every applicable row. */
+      .config-knob {
+        flex: none;
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        padding: 0.05em 0.45em;
+        border-radius: var(--radius-sm, 4px);
+        border: 1px dashed var(--rule);
+        background: var(--surface-2);
+        color: var(--text-subtle);
+        white-space: nowrap;
+      }
+
+      /* Inline legend explaining the provenance pills + the knob chip. */
+      .config-legend {
+        list-style: none;
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2) var(--space-4);
+        margin: 0 0 var(--space-3);
+        padding: var(--space-3) 0 0;
+        border-top: 1px solid var(--rule);
+        font-size: var(--text-sm);
+        color: var(--text-subtle);
+      }
+      .config-legend li { display: inline-flex; align-items: center; gap: var(--space-2); }
+
       /* Motion keyframes — guarded by prefers-reduced-motion at the bottom */
       @keyframes settings-rise {
         from { opacity: 0; transform: translateY(0.5rem); }

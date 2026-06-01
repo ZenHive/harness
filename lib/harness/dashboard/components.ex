@@ -573,7 +573,83 @@ defmodule Harness.Dashboard.Components do
     """
   end
 
+  ## --- Config inspector (Task 127) -----------------------------------------
+
+  attr(:sections, :list, required: true)
+
+  @doc """
+  Read-only effective-config inspector card for `SettingsLive`.
+
+  Takes `Harness.Dashboard.ConfigInspector.resolve/0`'s section list and renders
+  one titled group per concern, each a `<dl>` of key → value rows. This is an
+  *inspector*, not a form: most keys are boot-time, so a row shows the resolved
+  value, a provenance pill (`default` / `config.exs` / `env-set`), and — when the
+  key is env-overridable — the env var that changes it (the "knob"), so the
+  operator always knows *how* to change a value even though they can't here.
+  Secrets arrive pre-redacted from the resolver; this component never unmasks.
+  Pure — `attr/3` + HEEx only.
+  """
+  @spec config_inspector(map()) :: Rendered.t()
+  def config_inspector(assigns) do
+    ~H"""
+    <section class="setting-card">
+      <h2 class="setting-section-title">Configuration</h2>
+      <p class="setting-desc">
+        Read-only inspector of the resolved effective config — compile-time
+        defaults overlaid with <code>config.exs</code>
+        and runtime env-var
+        overrides. Most keys are boot-time: change them in <code>config.exs</code>
+        or via the env var shown on the row, then restart the node. The
+        live-mutable controls (cron autonomy, agent rotation) are the toggles
+        above. Secrets are redacted.
+      </p>
+      <ul class="config-legend">
+        <li><span class="config-pill" data-prov="default">default</span> built-in default</li>
+        <li><span class="config-pill" data-prov="config">config.exs</span> set in config.exs</li>
+        <li><span class="config-pill" data-prov="env">env-set</span> overridden by an env var now</li>
+        <li>
+          <code class="config-knob">HARNESS_…</code> env var that overrides this key (on restart)
+        </li>
+      </ul>
+      <div :for={section <- @sections} class="config-section">
+        <h3 class="config-section-title">{section.title}</h3>
+        <dl class="config-rows">
+          <div :for={row <- section.rows} class="config-row">
+            <dt class="config-key">{row.label}</dt>
+            <dd class="config-val">
+              <code :if={row.value != ""}>{row.value}</code>
+              <code
+                :if={row.env_var}
+                class="config-knob"
+                title="Set this env var, then restart the node."
+              >
+                {row.env_var}
+              </code>
+              <.provenance_pill provenance={row.provenance} />
+            </dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+    """
+  end
+
+  attr(:provenance, :atom, values: [:default, :config, :env], required: true)
+
+  @doc false
+  @spec provenance_pill(map()) :: Rendered.t()
+  defp provenance_pill(assigns) do
+    ~H"""
+    <span class="config-pill" data-prov={@provenance}>{provenance_text(@provenance)}</span>
+    """
+  end
+
   ## --- Private helpers ------------------------------------------------------
+
+  @spec provenance_text(atom()) :: String.t()
+  defp provenance_text(:env), do: "env-set"
+  defp provenance_text(:config), do: "config.exs"
+  defp provenance_text(:default), do: "default"
 
   # Drops pure header `:meta` lines (diff --git / index / +++ / ---) from a
   # file's rendered body — the file row already carries that context. Hunk +

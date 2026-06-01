@@ -19,6 +19,8 @@ defmodule Harness.Dashboard.SettingsLive do
   alias Harness.AgentRegistry
   alias Harness.Cron.RoadmapPoller
   alias Harness.Cron.Settings
+  alias Harness.Dashboard.Components
+  alias Harness.Dashboard.ConfigInspector
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Phoenix.LiveView.Rendered
@@ -158,6 +160,8 @@ defmodule Harness.Dashboard.SettingsLive do
           </li>
         </ul>
       </section>
+
+      <Components.config_inspector sections={@config} />
     </div>
     """
   end
@@ -192,6 +196,7 @@ defmodule Harness.Dashboard.SettingsLive do
     socket
     |> assign(:autonomy, autonomy_state(ProjectRegistry.list()))
     |> assign(:agents, agents_state())
+    |> assign(:config, ConfigInspector.resolve())
   end
 
   # The per-agent enable/disable view-model over the registry's agent set:

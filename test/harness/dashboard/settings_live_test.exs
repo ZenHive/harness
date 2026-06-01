@@ -111,6 +111,56 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     refute AgentSettings.disabled?(:codex)
   end
 
+  test "renders the read-only config inspector card with concern sections", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/harness/settings")
+
+    assert html =~ "Configuration"
+    assert html =~ "Run timeouts"
+    assert html =~ "Result store"
+    assert html =~ "Registered projects"
+  end
+
+  test "the config inspector renders a config.exs-divergent value, not the default", %{conn: conn} do
+    prior_run = Application.get_env(:harness, :run)
+    Application.put_env(:harness, :run, max_repair_attempts: 9)
+    on_exit(fn -> restore_env(:run, prior_run) end)
+
+    {:ok, _view, html} = live(conn, "/harness/settings")
+
+    assert html =~ "max_repair_attempts"
+    assert html =~ "<code>9</code>"
+  end
+
+  test "the config inspector shows the env-var knob, a humanized duration, and the legend", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/harness/settings")
+
+    # The knob: how to change a value, shown even when it's at its default.
+    assert html =~ "HARNESS_DASHBOARD_PORT"
+    # Durations are humanized, not raw ms.
+    assert html =~ "30 min"
+    # The legend explains the provenance vocabulary.
+    assert html =~ "built-in default"
+  end
+
+  test "the config inspector redacts the dashboard secret", %{conn: conn} do
+    secret = Application.get_env(:harness, Harness.Dashboard.Endpoint)[:secret_key_base]
+
+    {:ok, _view, html} = live(conn, "/harness/settings")
+
+    assert html =~ "[redacted]"
+    refute html =~ secret
+  end
+
+  test "the config inspector shows the notification-sinks empty-state", %{conn: conn} do
+    prior_sinks = Application.get_env(:harness, :notification_sinks)
+    Application.put_env(:harness, :notification_sinks, [])
+    on_exit(fn -> restore_env(:notification_sinks, prior_sinks) end)
+
+    {:ok, _view, html} = live(conn, "/harness/settings")
+
+    assert html =~ "none (silent)"
+  end
+
   defp restore_env(key, nil), do: Application.delete_env(:harness, key)
   defp restore_env(key, value), do: Application.put_env(:harness, key, value)
 end

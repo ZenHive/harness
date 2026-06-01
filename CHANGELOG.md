@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Read-only configuration inspector on the operator settings page (Task 127).**
+  A long-running harness node had no way to *see* how it was configured without
+  shell access to read `config/config.exs` + `config/runtime.exs` and mentally
+  resolve env-var overrides. `/harness/settings` now renders a "Configuration"
+  card surfacing the resolved *effective* config grouped by concern — dashboard,
+  run timeouts, verification, cron polling, repair/gating, notifications, result
+  store, paths, worktree, retry policy, database — plus a registered-projects
+  sub-section (source / roadmap / concurrency cap / check-stack + workdir).
+  - New `Harness.Dashboard.ConfigInspector.resolve/0` (pure, declarative spec)
+    reads each concern's app env and tags every row with a **provenance** pill:
+    `default` / `config.exs` / `env: HARNESS_…`. Provenance is a documented
+    heuristic — at runtime a compile default and a `config.exs` override are
+    indistinguishable, so it keys on env-var presence first, then value-vs-default.
+  - **Secrets never render**: `secret_key_base` shows `[redacted]`; the database
+    section surfaces only `database` / `username` / `hostname`, never the password
+    or a connection URL.
+  - Rendered by a new pure `Harness.Dashboard.Components.config_inspector/1`
+    component (sibling card on the existing cron/agent `SettingsLive` page; the
+    nav link already existed). Read-only by design — runtime-mutable controls
+    (cron autonomy, agent rotation) keep their own toggles on the same page.
+  - **Made the inspector actionable** (post-review polish): every env-overridable
+    row now shows the **knob** — the `HARNESS_…` env var that changes it — even
+    when the key is at its default, so the operator always knows *how* to change a
+    value despite the page being read-only. Millisecond durations render humanized
+    (`30 min (1800000 ms)`), and a legend + read-only banner explain the
+    provenance vocabulary and point at the live toggles above. Closes the "shows
+    `default` but I can't set anything / doesn't explain what default is" gap.
+
 - **Agent and model now visible on both the run dashboard and run-detail page.**
   Neither surface previously showed *which agent* (let alone which model) ran a
   given run — the run-detail header surfaced `Status.agent_kind`, which is the
