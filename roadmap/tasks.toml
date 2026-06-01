@@ -2647,8 +2647,8 @@ Forbidden: zebra-striped tables, generic select dropdowns, Inter / Roboto / Aria
 [[task]]
 id = "81"
 phase = 6
-bundle = "deferred"
-status = "pending"
+bundle = "dashboard-chrome"
+status = "done"
 title = "Harness.Dashboard.CompareLive — A/B agent-evaluation view"
 scores = { d = 3, b = 4, u = 3 }
 markers = ["handbuild"]
@@ -2693,8 +2693,10 @@ Transcript-tab switching is the only meaningful interaction in this view. Treat 
 
 Forbidden: striped data tables, balanced "fairness" cell weighting (where pass and fail look equally weighted — the whole point is that they don't), default browser focus rings without restyling, Inter / Roboto / Arial / system-ui / Space Grotesk.
 """
+implemented = "Harness.Dashboard.CompareLive at /harness/compare (launch form) + /harness/compare/:comparison_id (grid). Full-bleed CSS-grid, one lane per adapter, verdict cell dominant + pass/fail asymmetric, per-adapter metric rows. JS.patch ?tab= transcript switching reusing Components.transcript_view (Task 87). Synchronous compare/4 runs in a spawned process; lanes fill live from RunFeed correlated by (task_id, agent) since Run.Status has no batch_id; reload reconstructs settled lanes from ResultStore records. DEVIATION: per-adapter transcripts are bounded assigns lists, not stream/3 — transcript_view groups a full event list which per-event stream_insert can't express, and the 500-event Transcript cap already bounds the MB-scale concern the stream/3 AC guarded. 8 LiveViewTest cases green (form render, 3 validation branches, empty-state, store reconstruction, live RunFeed lane patch, tab param). Hand-built; live 2-adapter browser smoke (AC5) pending operator trigger."
 created_at = "2026-05-28"
 scored_at = "2026-05-28"
+done_at = "2026-06-01"
 
 [[task]]
 id = "82"
@@ -3832,19 +3834,20 @@ id = "120"
 phase = 13
 bundle = "capability-bench"
 milestone = "v0_10"
-status = "pending"
+status = "in_progress"
 title = "Capability score staleness / decay + re-benchmark-needed signal"
-model = "cursor"
 scores = { d = 2, b = 6, u = 8 }
 depends_on = [119]
 acceptance_criteria = ["A staleness check classifies each (agent, domain) score as fresh / stale given its scored_at and a configurable window (default ~30 days, mirroring rmap's scored_at decay)", "A function lists stale + unmeasured (agent, domain) cells as 're-benchmark needed' candidates", "Stale scores are flagged, not deleted — routing decides how to treat them", "Tests cover fresh, stale, and unmeasured cells against an injected reference date (no Date.utc_today/0 inline, for determinism)"]
 out_of_scope = ["Actually scheduling / running re-benchmarks — Task 122 consumes this signal", "Background timers — this is a pure classification over persisted scores", "Per-agent release detection — staleness is time-based, not version-diffed (TODO: revisit if agent version metadata becomes available)"]
+model = "cursor"
 body = """
 Capability scores measure a specific model snapshot; agents ship 40+ releases, so a 3-month-old score measures a different agent. Add a freshness window + decay on capability scores (mirror rmap's 30-day scored_at decay) so routing can discount or flag stale scores, and emit a 're-benchmark needed' signal per (agent, domain) cell older than the window — which the Task 122 scheduler consumes to prioritize what to re-run.
 
 Pure read over the persisted scored_at; no background process here. Cheap but load-bearing: without it the orchestrator routes confidently on stale data.
 """
 created_at = "2026-05-31"
+started_at = "2026-06-01"
 scored_at = "2026-05-31"
 
 [[task]]
@@ -3852,19 +3855,20 @@ id = "121"
 phase = 13
 bundle = "kpi-routing"
 milestone = "v0_10"
-status = "pending"
+status = "in_progress"
 title = "recommend-agent-per-domain routing surface (explore/exploit) in the dispatch path"
-model = "codex"
 scores = { d = 6, b = 10, u = 10 }
 depends_on = [119, 120]
 acceptance_criteria = ["recommend/1 (or /2 with opts) takes a domain and returns a ranked agent recommendation with rationale (exploit best-known vs explore-this-unmeasured-cell)", "Unmeasured cells are surfaced as explore candidates, distinct from measured-low agents; stale scores (Task 120) are discounted", "The recommendation is reachable over the driver/MCP surface AND referenced in the dispatch / next decision path — not dashboard-only", "Exploration is bounded/configurable (an explore rate, or 'recommend exploration when the cell is unmeasured/stale') so it does not always route to untested agents", "Tests cover: all-measured (exploit best), an unmeasured cell (explore), a stale-best cell (discount + maybe explore), and the no-data-at-all fallback", "skills/harness-driver/SKILL.md updated — recommend is a public driver surface"]
 out_of_scope = ["Auto-dispatching without orchestrator confirmation — recommend returns advice; the orchestrator/consumer decides", "Multi-armed-bandit tuning beyond a simple explore/exploit rule (TODO: revisit if the naive rule misroutes)", "The benchmark scheduler — Task 122"]
+model = "codex"
 body = """
 The anti-fly-dark mechanism. Expose recommend(domain) -> agent that consults persisted capability scores (Task 119) with explore/exploit: an UNMEASURED (agent, domain) cell is not a low score — it is an exploration candidate, so the orchestrator tries under-measured agents BECAUSE there is no data, not despite it; measured cells exploit the best score, discounting stale ones (Task 120).
 
 Surface this over the driver/MCP surface AND in the dispatch / next path so the orchestrator actually consults it at the decision point instead of defaulting to Claude/self. A recommendation in a dashboard nobody queries changes nothing — it must sit in the path. This task is the whole point of the milestone: it changes orchestrator behavior, not just reporting.
 """
 created_at = "2026-05-31"
+started_at = "2026-06-01"
 scored_at = "2026-05-31"
 
 [[task]]
@@ -4138,7 +4142,7 @@ id = "134"
 phase = 11
 bundle = "autolanding"
 milestone = "v0_9"
-status = "pending"
+status = "done"
 title = "Dashboard run feed is stale: no live-update for out-of-band runs + no persistent history"
 scores = { d = 2, b = 4, u = 4 }
 markers = ["handbuild"]
@@ -4149,9 +4153,23 @@ OBSERVED: ran a cron-dispatched batch overnight; the open /harness dashboard nev
 ROOT: the index run list is built from in-memory live runs (StatusView.snapshot — gen_statems currently in the registry). The LiveView's :meta_tick refreshes the project sidebar but not the run list, and runs started by the Oban worker (cron path) fire no PubSub event the index subscribes to, so the list doesn't refresh on run appearance. When a run settles + terminal_linger expires it leaves the registry and vanishes — and there is no persistent run-history panel. Compounding: ResultStore had ZERO records for the overnight runs (confirm whether the cron->Run.Worker terminal path actually calls ResultStore.record_run, or records land elsewhere/filtered) — so even a history view would show nothing.
 
 FIX: (1) drive the index run list off a PubSub topic so runs started/settled out-of-band refresh live (or a short tick that re-reads snapshot); (2) add a persistent run-history panel backed by ResultStore.list_run_records (most-recent N), so settled/pruned runs remain visible; (3) confirm + fix ResultStore recording on the Oban-dispatched path. handbuild (LiveView/PubSub UI work).
+
+## STATE CORRECTION (2026-06-02) — scope narrowed to a backend gap; UI is done
+
+FIX(1) live PubSub-driven index run list, FIX(2) the ResultStore-backed run-history panel, and FIX(3) happy-path recording all SHIPPED in commit 8bbbc5e (RunFeed.broadcast_update on every state transition; broadcast_settled + ResultStore.record_run in Run.settle/2 at run.ex:987-996,1076-1090). Do NOT rebuild the dashboard UI — it works for runs that settle normally.
+
+THE ONE REMAINING GAP IS BACKEND, NOT UI: when the supervised run *process crashes* it never reaches its own settle/2, so it is never recorded nor broadcast. In `Harness.Run.Worker.await_run/3` (lib/harness/run/worker.ex:109-124) the `{:DOWN, ref, :process, _pid, reason}` branch synthesizes a `%Result{state: :failed, reason: {:run_crashed, reason}}` and returns it to Oban, but bypasses ResultStore.record_run AND RunFeed.broadcast_settled — so a crashed cron/overnight run is invisible on the dashboard (matches the "ZERO records overnight" observation). Secondarily, setup_failure_disposition/2 (worker.ex:53-62) handles pre-run setup failures that also never produce a record (lower priority — there is no run to show, but consider whether a placeholder belongs).
+
+SCOPE: route the worker's crash-path synthesized Result through the same persistence + settled-broadcast the happy path uses — reuse Harness.Run.Result -> LogRecord.from_result -> ResultStore.record_run and Harness.Dashboard.RunFeed.broadcast_settled (mirror run.ex persist_run_record/2 + settle/2). The worker lacks the full run `data` (worktree, batch_id, durations), so build the record from what await_run has (run_id, task_id, item.agent, project, adapter) — extend the synthesized Result / LogRecord builder minimally rather than faking a full run data map. Add a regression test (test/harness/run/worker_test.exs) asserting a crashed run (monitored pid dies) produces a ResultStore record AND a RunFeed settled broadcast. Marker stays handbuild only by history; this residual is headless-dispatchable backend work.
 """
+implemented = "Crash-path recording in Run.Worker: the await_run :DOWN branch now builds a LogRecord via LogRecord.from_result and routes it through ResultStore.record_run + RunFeed.broadcast_settled (mirroring run.ex settle/2), so crashed Oban/cron runs are persisted and visible on the dashboard. Regression test in oban_dispatch_test.exs (monitored pid crash => record + settled broadcast). UI/PubSub/history half shipped earlier in 8bbbc5e; this run (run-1780355012564-c5ab5bd9, codex, verdict :pass, 0 repairs) closed the backend residual."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-01"
+started_at = "2026-06-01"
 scored_at = "2026-06-01"
+done_at = "2026-06-01"
+shipped_in = "9687780"
 
 [[task]]
 id = "135"
@@ -4544,7 +4562,7 @@ id = "150"
 phase = 11
 bundle = "autolanding"
 milestone = "v0_9"
-status = "pending"
+status = "in_progress"
 title = "Run recovery — hold/steer/resume gen_statem API (operator-mediated mid-run recovery)"
 scores = { d = 3, b = 6, u = 5 }
 depends_on = [112]
@@ -4569,6 +4587,34 @@ BUILD:
 7. Surface held?/hold reason in Run.Status so status/1 and the dashboard reflect it.
 
 Follow the descripex api(...) + :gen_statem.call pattern used by cancel/1.
+"""
+created_at = "2026-06-01"
+started_at = "2026-06-01"
+scored_at = "2026-06-01"
+
+[[task]]
+id = "151"
+phase = 13
+bundle = "capability-bench"
+milestone = "v0_10"
+status = "pending"
+title = "Agent evaluation corpus — stand up the Elixir corpus repo + prove Mode-B hidden-grader isolation"
+scores = { d = 4, b = 5, u = 4 }
+acceptance_criteria = ["A new per-language corpus repo (~/code/agent-corpus-elixir) exists as a real Elixir project (mix.exs, lib skeletons) with roadmap/tasks.toml as the benchmark, registered as a %Harness.Project{} (landing_policy :manual — corpus runs are scored, never merged)", "Grader-isolation Mode B is PROVEN on one unfamiliar-library task (zen_websocket or mpp): the agent's worktree never contains the grading test, the grader is injected/applied only at verification time (realization (a) — confirm whether CheckStack.setup already supports post-agent/pre-check injection or add the minimal feature), and the agent is graded on a hidden behavioral spec", "One Mode-A visible-spec task also passes end-to-end (in-repo tests the agent makes pass) to exercise both grading modes", "Running the two tasks via Harness.Batch.AgentEvaluation.compare/4 across >=2 enabled adapters populates Harness.CapabilityScore per (agent, domain, corpus_version) and renders in Harness.Dashboard.CompareLive", "corpus_version is recorded (git SHA of the corpus repo or a documented bumped string) so scores are version-comparable; tasks are append-mostly"]
+out_of_scope = ["Authoring the full v1 set of 6-10 corpus tasks — this task proves the grading pattern on 2 tasks first; the rest is a follow-on once the Mode-B injection mechanism is settled", "The Rust corpus repo (~/code/agent-corpus-rust) — a later clone of the proven Elixir pattern", "Anti-contamination hardening beyond keeping Mode-B graders out of the agent worktree (e.g. private answer-key repo) — decide during this task, harden later"]
+touches = ["lib/harness/check_stack.ex", "lib/harness/project_registry.ex", "lib/harness/capability_domain.ex"]
+body = """
+Design + rationale: ~/_DATA/concepts/agent-corpus/README.md (canonical). This task is the v1 bootstrap that proves the grading pattern; do NOT author the full corpus here. Spans harness + a new ~/code/agent-corpus-elixir repo.
+
+WHY: harness already shipped the machinery that consumes an agent-evaluation corpus but has no corpus to feed it — CapabilityDomain (:otp/:genserver/:liveview/:phoenix/:ecto/:oban/:rust/:elixir), CapabilityScore + ResultStore.get_capability_score/4 keyed by (agent, domain, corpus_version), AgentEvaluation.compare/4, and CompareLive (Task 81). A per-language corpus repo registered as a %Harness.Project{} is the missing input. Per-language repos (not a monorepo) so each carries one coherent toolchain check_stack.
+
+THE LOAD-BEARING DECISION — grader isolation (two modes, see concept doc):
+- Mode A (visible-spec / TDD): grading tests in the repo, agent makes them pass. Mainstream Elixir/OTP/LiveView surfaces. Measures implementation skill.
+- Mode B (hidden-grader / unfamiliar library): the whole point of a zen_websocket/mpp task is the agent has provably never seen the API — does it read the source or hallucinate? If the grading test is in the worktree it REVEALS the API and destroys the measurement. So Mode-B graders MUST be withheld from the agent worktree and applied only at verification time. Realization (a): graders live on the host outside the worktree, copied in by the check_stack right before checks run. FIRST verify whether Harness.CheckStack.setup already supports a post-agent/pre-check injection step or whether it's a small harness feature to add — that is the probable infra addition and the thing to settle before authoring tasks.
+
+DIFFERENTIATION: lean the corpus toward Mode-B unfamiliar-library tasks (libs you own/know well enough to author behavioral checks for). That is the un-gameable signal nobody else measures; generic HumanEval-style puzzles are saturated/trained-on and rot fastest — skip them.
+
+Open questions in the concept doc: CheckStack injection support (Q1), answer-key storage host-dir vs private repo (Q2), corpus_version fingerprint (Q3), worktree network access vs vendoring the unfamiliar dep (Q4 — vendoring is more reproducible).
 """
 created_at = "2026-06-01"
 scored_at = "2026-06-01"

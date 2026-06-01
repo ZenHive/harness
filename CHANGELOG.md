@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A/B agent-evaluation dashboard view (Task 81, `Harness.Dashboard.CompareLive`).**
+  New LiveView at `/harness/compare` (launch form) and `/harness/compare/:comparison_id`
+  (the grid) surfacing `Harness.Batch.AgentEvaluation.compare/4` side by side: one
+  full-bleed CSS-grid lane per adapter, the verdict cell dominant and pass/fail
+  deliberately asymmetric, with per-adapter metric rows (verdict, repair attempts,
+  duration, first-pass red checks, diff size, tokens). Click a lane header to switch
+  the lower transcript pane to that adapter (`JS.patch` with a `?tab=` param, so the
+  pane is shareable). The synchronous `compare/4` runs in a spawned process and the
+  lanes fill live from `RunFeed`, correlated by `(task_id, agent)` since `Run.Status`
+  carries no `batch_id`; a reload reconstructs settled lanes from `ResultStore` run
+  records. Reuses `Tokens` + `page_shell/1` + the Task-87 `transcript_view/1`; a new
+  `.compare-*` token block carries the layout. Per-adapter transcripts are bounded
+  assigns lists (the Task-87 `transcript_view` groups a full event list, which a
+  per-event `stream/3` can't express — the MB-scale concern the `stream/3` AC guarded
+  against is already met by the 500-event `Transcript` cap).
+
 - **Capability scoring + persistence per (agent, domain) (Task 119, codex
   delivery).** `Harness.CapabilityScore` turns the per-adapter metrics
   `Batch.AgentEvaluation` already produces into a persisted composite score —
@@ -135,6 +151,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     page still shows their model via the live transcript parse.
 
 ### Fixed
+
+- **Crashed Oban-dispatched runs are now recorded and broadcast (Task 134, codex
+  delivery).** When a supervised run process died before reaching its own
+  `settle/2`, `Harness.Run.Worker.await_run` synthesized a `:failed` Result for
+  Oban but never persisted it nor broadcast it — so a crashed cron/overnight run
+  left zero `ResultStore` records and never appeared on the dashboard (the
+  "ZERO records overnight" observation). The worker's `:DOWN` branch now routes
+  the synthesized Result through the same path the happy path uses
+  (`LogRecord.from_result` → `ResultStore.record_run` +
+  `Run.Status.from_log_record` → `RunFeed.broadcast_settled`), built from what
+  the worker has on hand (run/task/agent/adapter/project + wall-clock duration).
+  Closes the backend residual of Task 134; the live-update UI half shipped
+  earlier in 8bbbc5e.
 
 - **Grok token usage now recovered from its on-disk session log (KPI showed 0).**
   Grok's headless `--output-format streaming-json` stdout — the stream harness
