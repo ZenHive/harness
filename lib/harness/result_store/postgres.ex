@@ -13,8 +13,10 @@ defmodule Harness.ResultStore.Postgres do
 
   alias Harness.AgentKPI
   alias Harness.Batch.Result, as: BatchResult
+  alias Harness.CapabilityScore
   alias Harness.Repo
   alias Harness.ResultStore.Schema.BatchResult, as: BatchResultSchema
+  alias Harness.ResultStore.Schema.CapabilityScore, as: CapabilityScoreSchema
   alias Harness.ResultStore.Schema.RunRecord, as: RunRecordSchema
   alias Harness.Run.LogRecord
   alias Harness.TokenUsage
@@ -255,6 +257,84 @@ defmodule Harness.ResultStore.Postgres do
       {limit, filters} when is_integer(limit) and limit > 0 -> {limit, filters}
       {_bad, filters} -> {nil, filters}
     end
+  end
+
+  @impl Harness.ResultStore
+  @spec save_capability_score(CapabilityScore.t(), keyword()) :: :ok | {:error, term()}
+  def save_capability_score(%CapabilityScore{} = score, opts) when is_list(opts) do
+    repo = Keyword.get(opts, :repo, Repo)
+
+    attrs = %{
+      agent: atom_or_string(score.agent),
+      domain: atom_or_string(score.domain),
+      corpus_version: score.corpus_version,
+      scored_at: score.scored_at,
+      composite_score: score.composite_score,
+      payload: :erlang.term_to_binary(score)
+    }
+
+    schema = %CapabilityScoreSchema{
+      agent: attrs.agent,
+      domain: attrs.domain,
+      corpus_version: attrs.corpus_version
+    }
+
+    changeset = CapabilityScoreSchema.changeset(schema, attrs)
+
+    try do
+      case repo.insert(
+             changeset,
+             on_conflict: :replace_all,
+             conflict_target: [:agent, :domain, :corpus_version]
+           ) do
+        {:ok, _} -> :ok
+        {:error, cs} -> {:error, {:changeset, cs.errors}}
+      end
+    rescue
+      e -> {:error, e}
+    end
+  end
+
+  @impl Harness.ResultStore
+  @spec get_capability_score(atom(), atom(), String.t(), keyword()) ::
+          {:ok, CapabilityScore.t()} | :no_data | {:error, term()}
+  def get_capability_score(agent, domain, corpus_version, opts)
+      when is_atom(agent) and is_atom(domain) and is_binary(corpus_version) and is_list(opts) do
+    repo = Keyword.get(opts, :repo, Repo)
+
+    try do
+      repo
+      |> fetch_capability_score_row(agent, domain, corpus_version)
+      |> decode_capability_score_row(agent, domain, corpus_version)
+    rescue
+      e -> {:error, e}
+    end
+  end
+
+  @spec fetch_capability_score_row(module(), atom(), atom(), String.t()) :: CapabilityScoreSchema.t() | nil
+  defp fetch_capability_score_row(repo, agent, domain, corpus_version) do
+    repo.get_by(CapabilityScoreSchema,
+      agent: atom_or_string(agent),
+      domain: atom_or_string(domain),
+      corpus_version: corpus_version
+    )
+  end
+
+  @spec decode_capability_score_row(CapabilityScoreSchema.t() | nil, atom(), atom(), String.t()) ::
+          {:ok, CapabilityScore.t()} | :no_data | {:error, term()}
+  defp decode_capability_score_row(nil, _agent, _domain, _corpus_version), do: :no_data
+
+  defp decode_capability_score_row(%CapabilityScoreSchema{payload: payload}, agent, domain, corpus_version)
+       when is_binary(payload) do
+    case safe_binary_to_term(payload) do
+      {:ok, %CapabilityScore{} = score} -> {:ok, score}
+      {:ok, _other} -> {:error, {:invalid_capability_score, agent, domain, corpus_version}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp decode_capability_score_row(_row, agent, domain, corpus_version) do
+    {:error, {:invalid_capability_score_row, agent, domain, corpus_version}}
   end
 
   # --- filter translation (documented keys only; others ignored for forward compat) ---

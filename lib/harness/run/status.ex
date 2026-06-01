@@ -95,7 +95,7 @@ defmodule Harness.Run.Status do
       project_name: Map.get(record, :project_name),
       agent: Map.get(record, :agent),
       model: Map.get(record, :model),
-      state: record.state,
+      state: state_from_log_record(record),
       worktree_path: nil,
       agent_os_pid: nil,
       agent_kind: record.agent_outcome_kind,
@@ -104,4 +104,10 @@ defmodule Harness.Run.Status do
       reason: record.reason
     }
   end
+
+  @spec state_from_log_record(LogRecord.t()) :: state()
+  defp state_from_log_record(%LogRecord{state: state}) when state in [:done, :failed], do: state
+  defp state_from_log_record(%LogRecord{state: :passed}), do: :done
+  defp state_from_log_record(%LogRecord{verdict: :pass}), do: :done
+  defp state_from_log_record(%LogRecord{}), do: :failed
 end

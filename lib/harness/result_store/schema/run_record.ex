@@ -31,7 +31,9 @@ defmodule Harness.ResultStore.Schema.RunRecord do
 
     field :agent_output, :binary
 
-    timestamps()
+    # usec precision: inserted_at is the recency ordering key for
+    # list_run_records (Task 139); second-precision ties are non-deterministic.
+    timestamps(type: :naive_datetime_usec)
   end
 
   @doc false
