@@ -10,6 +10,7 @@ defmodule Harness.ResultStore.File do
   @behaviour Harness.ResultStore
 
   alias Harness.Batch.Result, as: BatchResult
+  alias Harness.CapabilityScore
   alias Harness.Run.LogRecord
 
   require Logger
@@ -57,6 +58,27 @@ defmodule Harness.ResultStore.File do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  @impl Harness.ResultStore
+  @spec save_capability_score(CapabilityScore.t(), keyword()) :: :ok | {:error, term()}
+  def save_capability_score(%CapabilityScore{} = score, opts) when is_list(opts) do
+    write_term(capability_score_path(score.agent, score.domain, score.corpus_version, opts), score)
+  end
+
+  @impl Harness.ResultStore
+  @spec get_capability_score(atom(), atom(), String.t(), keyword()) ::
+          {:ok, CapabilityScore.t()} | :no_data | {:error, term()}
+  def get_capability_score(agent, domain, corpus_version, opts)
+      when is_atom(agent) and is_atom(domain) and is_binary(corpus_version) and is_list(opts) do
+    path = capability_score_path(agent, domain, corpus_version, opts)
+
+    case read_term(path) do
+      {:ok, %CapabilityScore{} = score} -> {:ok, score}
+      {:ok, _other} -> {:error, {:invalid_term_file, path}}
+      {:error, :enoent} -> :no_data
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -148,6 +170,11 @@ defmodule Harness.ResultStore.File do
     storage_path(opts, ["batches", safe_id(batch_id) <> ".term"])
   end
 
+  @spec capability_score_path(atom(), atom(), String.t(), keyword()) :: String.t()
+  defp capability_score_path(agent, domain, corpus_version, opts) do
+    storage_path(opts, ["capability_scores", safe_score_key(agent, domain, corpus_version) <> ".term"])
+  end
+
   @spec storage_path(keyword(), [String.t()]) :: String.t()
   defp storage_path(opts, segments) do
     root = root(opts)
@@ -164,6 +191,13 @@ defmodule Harness.ResultStore.File do
   @spec safe_id(String.t()) :: String.t()
   defp safe_id(id) do
     Base.url_encode64(id, padding: false)
+  end
+
+  @spec safe_score_key(atom(), atom(), String.t()) :: String.t()
+  defp safe_score_key(agent, domain, corpus_version) do
+    {agent, domain, corpus_version}
+    |> :erlang.term_to_binary()
+    |> Base.url_encode64(padding: false)
   end
 
   @spec root(keyword()) :: String.t()

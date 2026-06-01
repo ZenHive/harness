@@ -24,6 +24,7 @@ defmodule Harness.ResultStore do
   use Descripex, namespace: "/result_store"
 
   alias Harness.Batch.Result, as: BatchResult
+  alias Harness.CapabilityScore
   alias Harness.Run.LogRecord
 
   @typedoc "A configured result store module, with optional module-specific options."
@@ -43,6 +44,13 @@ defmodule Harness.ResultStore do
 
   @doc "Lists persisted run records, optionally filtered by exact field values."
   @callback list_run_records(filters(), keyword()) :: {:ok, [LogRecord.t()]} | {:error, term()}
+
+  @doc "Persists one computed capability score."
+  @callback save_capability_score(CapabilityScore.t(), keyword()) :: :ok | {:error, term()}
+
+  @doc "Loads one persisted capability score cell, or returns :no_data when unmeasured."
+  @callback get_capability_score(atom(), atom(), String.t(), keyword()) ::
+              {:ok, CapabilityScore.t()} | :no_data | {:error, term()}
 
   api(
     :record_run,
@@ -145,6 +153,66 @@ defmodule Harness.ResultStore do
 
   def list_run_records(store, filters) when is_list(filters) do
     dispatch(store, :list_run_records, [filters])
+  end
+
+  api(:save_capability_score, "Persist one computed capability score.",
+    params: [
+      score: [
+        kind: :value,
+        description:
+          "%Harness.CapabilityScore{} computed from AgentEvaluation comparisons, including retained raw metrics."
+      ],
+      store: [
+        kind: :value,
+        default: nil,
+        description: "Configured store from ResultStore.configured/0, or override; `false`/`nil` short-circuits."
+      ]
+    ],
+    returns: %{type: :tuple, description: ":ok or {:error, reason} from the backing store."}
+  )
+
+  @spec save_capability_score(CapabilityScore.t(), store()) :: :ok | {:error, term()}
+  def save_capability_score(score, store \\ configured())
+
+  def save_capability_score(%CapabilityScore{}, false), do: :ok
+  def save_capability_score(%CapabilityScore{}, nil), do: :ok
+
+  def save_capability_score(%CapabilityScore{} = score, store) do
+    dispatch(store, :save_capability_score, [score])
+  end
+
+  api(:get_capability_score, "Load one persisted capability score cell, returning :no_data when unmeasured.",
+    params: [
+      agent: [kind: :value, description: "Agent atom, e.g. :codex."],
+      domain: [kind: :value, description: "Capability domain atom, e.g. :ecto."],
+      corpus_version: [kind: :value, description: "Corpus version fingerprint or caller-supplied version string."],
+      store: [
+        kind: :value,
+        default: nil,
+        description: "Configured store from ResultStore.configured/0, or override; `false`/`nil` returns :no_data."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description: "{:ok, %Harness.CapabilityScore{}} when measured, :no_data when absent, or {:error, reason}."
+    }
+  )
+
+  @spec get_capability_score(atom(), atom(), String.t(), store()) ::
+          {:ok, CapabilityScore.t()} | :no_data | {:error, term()}
+  def get_capability_score(agent, domain, corpus_version, store \\ configured())
+
+  def get_capability_score(agent, domain, corpus_version, false)
+      when is_atom(agent) and is_atom(domain) and is_binary(corpus_version),
+      do: :no_data
+
+  def get_capability_score(agent, domain, corpus_version, nil)
+      when is_atom(agent) and is_atom(domain) and is_binary(corpus_version),
+      do: :no_data
+
+  def get_capability_score(agent, domain, corpus_version, store)
+      when is_atom(agent) and is_atom(domain) and is_binary(corpus_version) do
+    dispatch(store, :get_capability_score, [agent, domain, corpus_version])
   end
 
   api(:configured, "Return the configured result store, defaulting to the file-backed store.",
