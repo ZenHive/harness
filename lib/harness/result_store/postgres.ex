@@ -199,13 +199,23 @@ defmodule Harness.ResultStore.Postgres do
 
   @spec float_or_zero(term()) :: float()
   defp float_or_zero(nil), do: 0.0
-  defp float_or_zero(%Decimal{} = d), do: Decimal.to_float(d)
   defp float_or_zero(n) when is_number(n), do: n / 1
+  defp float_or_zero(value), do: sql_avg_to_float(value) || 0.0
 
   @spec float_or_nil(term()) :: float() | nil
   defp float_or_nil(nil), do: nil
-  defp float_or_nil(%Decimal{} = d), do: Decimal.to_float(d)
   defp float_or_nil(n) when is_number(n), do: n / 1
+  defp float_or_nil(value), do: sql_avg_to_float(value)
+
+  # Postgres `avg/1` returns `%Decimal{sign, coef, exp}`; avoid `Decimal.to_float/1`
+  # so Dialyzer does not require the Decimal app on the PLT.
+  @spec sql_avg_to_float(term()) :: float() | nil
+  defp sql_avg_to_float(%{sign: sign, coef: coef, exp: exp})
+       when sign in [-1, 1] and is_integer(coef) and is_integer(exp) do
+    sign * coef * :math.pow(10, exp)
+  end
+
+  defp sql_avg_to_float(_), do: nil
 
   @spec select_without_agent_output(Ecto.Query.t()) :: Ecto.Query.t()
   defp select_without_agent_output(query) do
