@@ -9,16 +9,16 @@ import Config
 
 config :harness, :projects, [
   # Keep the harness checkout itself registered. `{:elixir_precommit, ...}`
-  # mirrors harness's own `mix precommit` merge bar (coverage gate + format +
-  # warnings-as-errors), so a green verdict implies a mergeable change — see
-  # Task 97. Use plain `preset: :elixir` for the lighter day-to-day stack.
+  # mirrors harness's merge bar and includes DB-backed integration tests via an
+  # isolated per-worktree Postgres test DB. Use plain `preset: :elixir` for the
+  # lighter day-to-day stack.
   # `semantic_gate: :always` keeps the cross-family semantic gate on for harness
   # dogfooding even under manual landing (Task 123); needs the opposite-family
   # agent CLI installed. Drop it (or set `:auto_land_only`) to revert.
   [
     name: "harness",
     source: {:local, Path.expand("..", __DIR__)},
-    preset: {:elixir_precommit, cover_threshold: 80, exclude: [:integration]},
+    preset: {:elixir_precommit, cover_threshold: 80, include: [:integration], database: :postgres},
     roadmap_path: Path.expand("..", __DIR__),
     semantic_gate: :always
   ],

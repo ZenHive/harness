@@ -4,11 +4,10 @@ import Config
 # so `Harness.ProjectRegistry.lookup("harness")` succeeds against `iex -S mix`
 # without a manual registration step. Test/prod stay un-opinionated.
 # Consumed by `Harness.ProjectRegistry.init/1` (project_registry.ex:28-43).
-# `preset: {:elixir_precommit, ...}` mirrors harness's own merge bar
-# (`mix precommit` — coverage gate 80, integration tests excluded) so a green
-# dispatched-run verdict implies a mergeable change, not just a green lighter
-# `:elixir` stack (Task 97). Threshold + exclusion track mix.exs's `precommit`
-# alias; keep them in sync if that alias changes.
+# `preset: {:elixir_precommit, ...}` mirrors harness's merge bar plus the
+# DB-backed integration contract suite. The local fast `mix precommit` alias
+# still excludes `:integration`; harness dogfooding opts in here because the
+# verifier can provision a per-worktree Postgres test DB before grading.
 #
 # `semantic_gate: :always` opts harness's own dogfooding into the cross-family
 # semantic gate (Task 99) even though it lands manually (Task 123). A green
@@ -23,7 +22,7 @@ config :harness, :projects, [
   [
     name: "harness",
     source: {:local, Path.expand("..", __DIR__)},
-    preset: {:elixir_precommit, cover_threshold: 80, exclude: [:integration]},
+    preset: {:elixir_precommit, cover_threshold: 80, include: [:integration], database: :postgres},
     roadmap_path: Path.expand("..", __DIR__),
     semantic_gate: :always,
     # The cron poller dispatches the whole `rmap ready --dispatchable` batch each

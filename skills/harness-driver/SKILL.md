@@ -61,7 +61,8 @@ Four setup steps the consuming repo needs:
       # "the project's `mix precommit` would also pass" (Task 97 — close the
       # coverage-gate divergence), opt into the mergeable-bar preset instead:
       #   preset: {:elixir_precommit, cover_threshold: 80, exclude: [:integration]}
-      # It adds format / compile-warnings / coverage-threshold / doctor --raise gates.
+      # DB-backed suites can include integration tests with a per-worktree DB:
+      #   preset: {:elixir_precommit, cover_threshold: 80, include: [:integration], database: :postgres}
       roadmap_path: "/Users/efries/_DATA/code/myapp",
       concurrency_cap: 2
     ],

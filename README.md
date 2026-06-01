@@ -56,7 +56,7 @@ config :harness, :projects, [
 ]
 ```
 
-`:elixir` is the lighter day-to-day stack. To make a green verdict imply *"my own `mix precommit` would also pass"* — closing the gap where harness grades green but a coverage gate (or `format`/`warnings-as-errors`) would block the merge — register against the mergeable-bar preset instead: `preset: {:elixir_precommit, cover_threshold: 80, exclude: [:integration]}`. It adds `format --check-formatted`, `compile --warnings-as-errors`, a coverage threshold on `test`, and `doctor --raise` to the stack.
+`:elixir` is the lighter day-to-day stack. To make a green verdict imply *"my own `mix precommit` would also pass"* — closing the gap where harness grades green but a coverage gate (or `format`/`warnings-as-errors`) would block the merge — register against the mergeable-bar preset instead: `preset: {:elixir_precommit, cover_threshold: 80, exclude: [:integration]}`. It adds `format --check-formatted`, `compile --warnings-as-errors`, a coverage threshold on `test`, and `doctor --raise` to the stack. DB-backed projects can opt into tagged integration tests with a provisioned per-worktree Postgres test DB via `preset: {:elixir_precommit, cover_threshold: 80, include: [:integration], database: :postgres}`.
 
 **2. Add harness's MCP endpoints to `myapp/.mcp.json`** — alongside `myapp`'s own Tidewave if it has one. The `harness` entry (native flat tools) is your primary surface; the optional `harness_eval` entry is the `project_eval` escape hatch into harness's BEAM:
 

@@ -41,6 +41,11 @@ defmodule Harness.CheckStack.Preset.Elixir do
   @sobelow_check %Check{name: "sobelow", command: "mix", args: ["sobelow", "--exit", "--skip"]}
 
   @deps_setup %Check{name: "deps", command: "mix", args: ["deps.get"]}
+  @postgres_test_env %{"MIX_ENV" => "test", "HARNESS_DB_NAME" => {:harness, :test_database}}
+  @postgres_setup [
+    %Check{name: "test-db-create", command: "mix", args: ["ecto.create", "--quiet"], env: @postgres_test_env},
+    %Check{name: "test-db-migrate", command: "mix", args: ["ecto.migrate", "--quiet"], env: @postgres_test_env}
+  ]
 
   @checks [
     %Check{name: "test", command: "mix", args: ["test.json"]},
@@ -80,6 +85,13 @@ defmodule Harness.CheckStack.Preset.Elixir do
       `[:integration]` for a suite whose integration tests need a live DB (and
       so can't run in a fresh worktree). Each becomes a `--exclude <tag>` pair.
       Defaults to `[]`.
+    * `:include` — ExUnit tags the coverage-gated run should include, e.g.
+      `[:integration]` when the project's verification environment can satisfy
+      those tests. Each becomes a `--include <tag>` pair. Defaults to `[]`.
+    * `:database` — set to `:postgres` to provision an isolated test database
+      (`mix ecto.create --quiet` then `mix ecto.migrate --quiet`) before checks.
+      The setup and test check run with `MIX_ENV=test` and a per-worktree
+      `HARNESS_DB_NAME`, leaving the host's default test DB untouched.
 
   The check order warms `_build` for the later tools: `format` (cheap, fail
   fast), `compile`, `test`, `dialyzer`, `credo`, `doctor`, `sobelow`.
@@ -88,16 +100,27 @@ defmodule Harness.CheckStack.Preset.Elixir do
   def precommit(opts \\ []) do
     threshold = Keyword.get(opts, :cover_threshold, @default_cover_threshold)
     exclude = Keyword.get(opts, :exclude, [])
+    include = Keyword.get(opts, :include, [])
+    database = Keyword.get(opts, :database)
 
-    %CheckStack{name: :elixir_precommit, setup: [@deps_setup], checks: precommit_checks(threshold, exclude)}
+    %CheckStack{
+      name: :elixir_precommit,
+      setup: precommit_setup(database),
+      checks: precommit_checks(threshold, exclude, include, database)
+    }
   end
 
-  @spec precommit_checks(non_neg_integer(), [atom() | String.t()]) :: [Check.t()]
-  defp precommit_checks(threshold, exclude) do
+  @spec precommit_setup(:postgres | nil) :: [Check.t()]
+  defp precommit_setup(nil), do: [@deps_setup]
+  defp precommit_setup(:postgres), do: [@deps_setup | @postgres_setup]
+
+  @spec precommit_checks(non_neg_integer(), [atom() | String.t()], [atom() | String.t()], :postgres | nil) ::
+          [Check.t()]
+  defp precommit_checks(threshold, exclude, include, database) do
     [
       %Check{name: "format", command: "mix", args: ["format", "--check-formatted"]},
       %Check{name: "compile", command: "mix", args: ["compile", "--warnings-as-errors"]},
-      %Check{name: "test", command: "mix", args: test_args(threshold, exclude)},
+      test_check(test_args(threshold, exclude, include), database),
       %Check{name: "dialyzer", command: "mix", args: ["dialyzer.json"]},
       @credo_check,
       %Check{name: "doctor", command: "mix", args: ["doctor", "--raise"]},
@@ -105,9 +128,14 @@ defmodule Harness.CheckStack.Preset.Elixir do
     ]
   end
 
-  @spec test_args(non_neg_integer(), [atom() | String.t()]) :: [String.t()]
-  defp test_args(threshold, exclude) do
+  @spec test_check([String.t()], :postgres | nil) :: Check.t()
+  defp test_check(args, :postgres), do: %Check{name: "test", command: "mix", args: args, env: @postgres_test_env}
+  defp test_check(args, nil), do: %Check{name: "test", command: "mix", args: args}
+
+  @spec test_args(non_neg_integer(), [atom() | String.t()], [atom() | String.t()]) :: [String.t()]
+  defp test_args(threshold, exclude, include) do
     ["test.json", "--cover", "--cover-threshold", Integer.to_string(threshold)] ++
-      Enum.flat_map(exclude, &["--exclude", to_string(&1)])
+      Enum.flat_map(exclude, &["--exclude", to_string(&1)]) ++
+      Enum.flat_map(include, &["--include", to_string(&1)])
   end
 end
