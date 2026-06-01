@@ -10,7 +10,7 @@ defmodule Harness.Dispatch.RunTool do
   `:exchange_data` and `Harness.Manifest.mcp_tools/1` drops them from the MCP /
   chat surface — even though the **run-id-string path is perfectly
   JSON-driveable**. The `pid` alternative is the only thing making them "exchange
-  data". A JSON orchestrator that called `dispatch__task` and holds a `run_id`
+  data". A JSON orchestrator that called `dispatch-task` and holds a `run_id`
   therefore had no JSON tool to follow that live run. `defrun_tool/1` closes the
   gap: it emits a one-arg `run_id` (`:value`) wrapper that delegates to
   `Harness.Run.<name>/1`, projects the `{:ok, value}` payload through a
@@ -40,7 +40,7 @@ defmodule Harness.Dispatch.RunTool do
       defrun_tool name: :status,
         summarize: :summarize_status,
         description: "Snapshot one in-flight or lingering-terminal run by run_id.",
-        run_id_doc: "Run id string from dispatch__task / dispatch__await.",
+        run_id_doc: "Run id string from dispatch-task / dispatch-await.",
         returns: "{:ok, map} | {:error, :not_found}"
 
   Expands to a `Descripex.api/3` declaration, an `@spec`, and a `def` delegating
@@ -53,7 +53,7 @@ defmodule Harness.Dispatch.RunTool do
               type: :atom,
               required: true,
               doc:
-                "The generated function name on the using module. Also the `Harness.Run` function it delegates to (same atom) and the MCP tool suffix (`dispatch__<name>`)."
+                "The generated function name on the using module. Also the `Harness.Run` function it delegates to (same atom) and the MCP tool suffix (`dispatch-<name>`)."
             ],
             summarize: [
               type: :atom,

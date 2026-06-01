@@ -338,7 +338,7 @@ defmodule Harness.Dashboard.ChatLive do
 
   # Playbook chip → prefill the composer with the recipe request, leaving the
   # cursor after "for " for the operator to name the target project. The slug
-  # (not the title) is interpolated so the orchestrator calls playbooks__get
+  # (not the title) is interpolated so the orchestrator calls playbooks-get
   # with the name the catalog actually keys on.
   def handle_event("prefill", %{"name" => name}, socket) do
     {:noreply, assign(socket, :input, prefill_text(name))}
@@ -586,7 +586,7 @@ defmodule Harness.Dashboard.ChatLive do
 
   @doc false
   # The composer prefill for a playbook chip. Slug (not title) so the
-  # orchestrator's playbooks__get call keys on the catalog name; trailing
+  # orchestrator's playbooks-get call keys on the catalog name; trailing
   # "for " leaves the cursor where the operator names the target project.
   @spec prefill_text(String.t()) :: String.t()
   def prefill_text(name) when is_binary(name), do: "run the #{name} playbook for "

@@ -40,6 +40,18 @@ defmodule Harness.Manifest do
                       {module |> Module.split() |> List.last() |> Macro.underscore(), module}
                     end)
 
+  # Single delimiter between the logical group (module short name) and action
+  # (function) in generated MCP/chat tool names. Descripex hardcodes "__" as
+  # joiner in MCP.tools/2; we transform to this delimiter so that client
+  # namespacing (`<server>__<tool>`) never produces a qualified name containing
+  # "__" more than once. Chosen char is in MCP tool-name charset [a-zA-Z0-9_-].
+  # This is the convention source: both MCP server and in-process Chat.Tools
+  # read the emitted names (and split for reverse lookup) from here.
+  @tool_name_delimiter "-"
+
+  @spec tool_name_delimiter() :: String.t()
+  def tool_name_delimiter, do: @tool_name_delimiter
+
   api(:build, "Build the harness driver-surface manifest (JSON-serializable).",
     returns: %{
       type: :map,
@@ -82,20 +94,26 @@ defmodule Harness.Manifest do
 
   # Only tools driveable over a stateless JSON boundary are returned: any tool
   # with an :exchange_data param (a struct a JSON caller cannot construct — e.g.
-  # supervisor__start_run, the batch__* / agent_evaluation__* tools) is excluded
+  # supervisor-start_run, the batch-* / agent_evaluation-* tools) is excluded
   # from the MCP/chat surface. They stay on the full Elixir driver surface
-  # (build/0, modules/0) for in-process callers. The flat dispatch__task tool is
+  # (build/0, modules/0) for in-process callers. The flat dispatch-task tool is
   # the JSON-native replacement for the struct-passing ingest → start_run flow.
   @spec mcp_tools(keyword()) :: [map()]
   def mcp_tools(opts \\ []) do
     @driver_surface
     |> Descripex.MCP.tools(opts)
+    |> Enum.map(&transform_tool_name/1)
     |> Enum.reject(&struct_arg_tool?/1)
+  end
+
+  defp transform_tool_name(%{name: name} = tool) do
+    %{tool | name: String.replace(name, "__", @tool_name_delimiter)}
   end
 
   @spec struct_arg_tool?(map()) :: boolean()
   defp struct_arg_tool?(%{name: name}) do
-    with [prefix, func] <- String.split(name, "__", parts: 2),
+    delim = @tool_name_delimiter
+    with [prefix, func] <- String.split(name, delim, parts: 2),
          {:ok, module} <- Map.fetch(@prefix_to_module, prefix) do
       exchange_data_params?(module, func)
     else

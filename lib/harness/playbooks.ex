@@ -8,7 +8,7 @@ defmodule Harness.Playbooks do
   gotchas (secret scrubbing, adapter selection, verdict reading) inline.
 
   Surfaced as two tools via `Harness.Manifest` → `Harness.Chat.Tools` and the
-  external MCP endpoint: `playbooks__list` returns the catalog, `playbooks__get`
+  external MCP endpoint: `playbooks-list` returns the catalog, `playbooks-get`
   returns one playbook's full markdown body. The orchestrator calls `list` to see
   what's available, `get` to load the recipe it then executes by calling the other
   harness tools. The dashboard surfaces them as buttons that prefill the chat input.
@@ -73,7 +73,7 @@ defmodule Harness.Playbooks do
     returns: %{
       type: :list,
       description:
-        "[%{name, title, summary}] — `name` is the slug to pass to playbooks__get; `title`/`summary` describe each playbook. Static catalog; cannot fail."
+        "[%{name, title, summary}] — `name` is the slug to pass to playbooks-get; `title`/`summary` describe each playbook. Static catalog; cannot fail."
     }
   )
 
@@ -84,7 +84,7 @@ defmodule Harness.Playbooks do
     params: [
       name: [
         kind: :value,
-        description: "Playbook slug from playbooks__list (e.g. \"dispatch-single-task\")."
+        description: "Playbook slug from playbooks-list (e.g. \"dispatch-single-task\")."
       ]
     ],
     returns: %{

@@ -77,7 +77,7 @@ defmodule Harness.Dispatch do
       project_name: [
         kind: :value,
         description:
-          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1. SOURCE valid names from project_registry__list."
+          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1. SOURCE valid names from project_registry-list."
       ],
       task: [
         kind: :value,
@@ -122,12 +122,12 @@ defmodule Harness.Dispatch do
 
   api(
     :await,
-    "Dispatch one roadmap task and block until the run settles, returning a compact verdict summary (state, reason, per-check results) instead of a run_id to poll. The bounded blocking variant of dispatch__task — one call gets the answer. The wait is capped by timeout_ms; on timeout it returns a structured :timed_out summary (the run keeps going, observable later via run_id), never a wedged tool call.",
+    "Dispatch one roadmap task and block until the run settles, returning a compact verdict summary (state, reason, per-check results) instead of a run_id to poll. The bounded blocking variant of dispatch-task — one call gets the answer. The wait is capped by timeout_ms; on timeout it returns a structured :timed_out summary (the run keeps going, observable later via run_id), never a wedged tool call.",
     params: [
       project_name: [
         kind: :value,
         description:
-          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1. SOURCE valid names from project_registry__list."
+          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1. SOURCE valid names from project_registry-list."
       ],
       task: [
         kind: :value,
@@ -162,7 +162,7 @@ defmodule Harness.Dispatch do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, summary} where summary is a settled-run map (run_id, task_id, state :done|:failed, reason, passed, verdict with per-check results, repair_attempts, diagnostics) OR a :timed_out map (run_id, state :timed_out, reason :await_timeout, timeout_ms). {:error, reason} on a dispatch failure (unknown_adapter, unknown_project, the rmap ingest reasons, or a start_run failure) — same as dispatch__task."
+        "{:ok, summary} where summary is a settled-run map (run_id, task_id, state :done|:failed, reason, passed, verdict with per-check results, repair_attempts, diagnostics) OR a :timed_out map (run_id, state :timed_out, reason :await_timeout, timeout_ms). {:error, reason} on a dispatch failure (unknown_adapter, unknown_project, the rmap ingest reasons, or a start_run failure) — same as dispatch-task."
     }
   )
 
@@ -200,7 +200,7 @@ defmodule Harness.Dispatch do
 
   # --- Run observation / control over JSON ---
   #
-  # The live/in-flight complement to result_store__list_run_records (which covers
+  # The live/in-flight complement to result_store-list_run_records (which covers
   # SETTLED runs). status/transcript/transcript_events are macro-generated from
   # the uniform `{:ok, _} | {:error, :not_found}` Harness.Run functions; cancel
   # is hand-written because it returns a bare `:ok`. All take a run_id string —
@@ -210,9 +210,9 @@ defmodule Harness.Dispatch do
     name: :status,
     summarize: :summarize_status,
     description:
-      "Snapshot one in-flight or lingering-terminal run by run_id: lifecycle state, verdict status so far, repair attempts. The live counterpart to result_store__list_run_records (settled runs). Returns {:error, :not_found} once a run has stopped and unregistered.",
+      "Snapshot one in-flight or lingering-terminal run by run_id: lifecycle state, verdict status so far, repair attempts. The live counterpart to result_store-list_run_records (settled runs). Returns {:error, :not_found} once a run has stopped and unregistered.",
     run_id_doc:
-      "Run id string returned by dispatch__task / dispatch__await (or supervisor__list_runs). A stopped/unknown run yields {:error, :not_found}.",
+      "Run id string returned by dispatch-task / dispatch-await (or supervisor-list_runs). A stopped/unknown run yields {:error, :not_found}.",
     returns:
       "{:ok, map} carrying run_id, task_id, project_name, state, worktree_path, agent_os_pid, agent_kind, verdict_status, repair_attempts, reason. {:error, :not_found} for stopped/unknown runs."
   )
@@ -221,9 +221,9 @@ defmodule Harness.Dispatch do
     name: :transcript,
     summarize: :summarize_transcript,
     description:
-      "Return the buffered raw agent transcript and last seq tag for an in-flight or lingering run, by run_id. Poll with the prior seq to detect new output. For a settled run's full record use result_store__list_run_records.",
+      "Return the buffered raw agent transcript and last seq tag for an in-flight or lingering run, by run_id. Poll with the prior seq to detect new output. For a settled run's full record use result_store-list_run_records.",
     run_id_doc:
-      "Run id string returned by dispatch__task / dispatch__await. A stopped/unknown run yields {:error, :not_found}.",
+      "Run id string returned by dispatch-task / dispatch-await. A stopped/unknown run yields {:error, :not_found}.",
     returns:
       "{:ok, %{transcript: binary (bounded ~200 KiB), seq: non_neg_integer}}. {:error, :not_found} for stopped/unknown runs."
   )
@@ -234,7 +234,7 @@ defmodule Harness.Dispatch do
     description:
       "Return the parsed transcript events (assistant text, tool calls, tool results, system events) + last seq tag for an in-flight or lingering run, by run_id. Events are flattened to JSON-safe maps tagged with a :type.",
     run_id_doc:
-      "Run id string returned by dispatch__task / dispatch__await. A stopped/unknown run yields {:error, :not_found}.",
+      "Run id string returned by dispatch-task / dispatch-await. A stopped/unknown run yields {:error, :not_found}.",
     returns:
       "{:ok, %{events: [%{type: atom, ...}], agent_kind: atom | nil, seq: non_neg_integer}}. {:error, :not_found} for stopped/unknown runs."
   )
@@ -246,7 +246,7 @@ defmodule Harness.Dispatch do
       run_id: [
         kind: :value,
         description:
-          "Run id string returned by dispatch__task / dispatch__await. Cancelling a stopped/unknown run is a harmless no-op."
+          "Run id string returned by dispatch-task / dispatch-await. Cancelling a stopped/unknown run is a harmless no-op."
       ]
     ],
     returns: %{
@@ -265,12 +265,12 @@ defmodule Harness.Dispatch do
 
   api(
     :bundle,
-    "Fan out the next session-sized bundle of pending roadmap tasks for a registered project: ingest each task and enqueue one Oban-backed, restart-resilient run job per task on the chosen delegatable adapter (project-scoped queue, per-project concurrency cap). Fire-and-forget — returns the ingested task ids and Oban job ids; observe each run later via dispatch__status / result_store__list_run_records. The JSON-native counterpart to Harness.Roadmap.next_bundle/1 + Harness.Batch.dispatch/2.",
+    "Fan out the next session-sized bundle of pending roadmap tasks for a registered project: ingest each task and enqueue one Oban-backed, restart-resilient run job per task on the chosen delegatable adapter (project-scoped queue, per-project concurrency cap). Fire-and-forget — returns the ingested task ids and Oban job ids; observe each run later via dispatch-status / result_store-list_run_records. The JSON-native counterpart to Harness.Roadmap.next_bundle/1 + Harness.Batch.dispatch/2.",
     params: [
       project_name: [
         kind: :value,
         description:
-          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1. SOURCE valid names from project_registry__list."
+          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1. SOURCE valid names from project_registry-list."
       ],
       adapter: [
         kind: :value,
@@ -282,7 +282,7 @@ defmodule Harness.Dispatch do
         kind: :value,
         default: true,
         description:
-          "When true (default), scrubs ANTHROPIC_API_KEY from each enqueued run's environment so Claude bundle dispatches use subscription OAuth instead of the metered API. Threaded through the Oban job args into the worker's start_run :env, matching dispatch__task / dispatch__await / dispatch__compare. Harmless for non-Claude adapters."
+          "When true (default), scrubs ANTHROPIC_API_KEY from each enqueued run's environment so Claude bundle dispatches use subscription OAuth instead of the metered API. Threaded through the Oban job args into the worker's start_run :env, matching dispatch-task / dispatch-await / dispatch-compare. Harmless for non-Claude adapters."
       ]
     ],
     returns: %{
@@ -317,7 +317,7 @@ defmodule Harness.Dispatch do
       project_name: [
         kind: :value,
         description:
-          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1. SOURCE valid names from project_registry__list."
+          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1. SOURCE valid names from project_registry-list."
       ],
       task: [
         kind: :value,
@@ -362,12 +362,12 @@ defmodule Harness.Dispatch do
 
   api(
     :verdict_detail,
-    "Read the captured output of the failed checks for a SETTLED run by run_id: the actual test/credo/dialyzer/etc. stdout+stderr a JSON caller needs to see *why* a check failed. Loads the persisted run record (Harness.ResultStore.list_run_records/1), so it works after the run process is gone — the settled-run complement to dispatch__status/dispatch__transcript (live). Each check's output is tail-truncated (the diagnostic tail), flagged with truncated: true when capped. A green run yields an empty checks map.",
+    "Read the captured output of the failed checks for a SETTLED run by run_id: the actual test/credo/dialyzer/etc. stdout+stderr a JSON caller needs to see *why* a check failed. Loads the persisted run record (Harness.ResultStore.list_run_records/1), so it works after the run process is gone — the settled-run complement to dispatch-status/dispatch-transcript (live). Each check's output is tail-truncated (the diagnostic tail), flagged with truncated: true when capped. A green run yields an empty checks map.",
     params: [
       run_id: [
         kind: :value,
         description:
-          "Run id string from dispatch__task / dispatch__await / result_store__list_run_records. Returns {:error, :not_found} when no persisted record exists for it (never recorded, or the store is disabled)."
+          "Run id string from dispatch-task / dispatch-await / result_store-list_run_records. Returns {:error, :not_found} when no persisted record exists for it (never recorded, or the store is disabled)."
       ]
     ],
     returns: %{

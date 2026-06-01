@@ -157,7 +157,7 @@ defmodule Harness.Roadmap do
       project_name: [
         kind: :value,
         description:
-          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1 to its roadmap_path. SOURCE valid names from project_registry__list."
+          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1 to its roadmap_path. SOURCE valid names from project_registry-list."
       ],
       status: [
         kind: :value,
@@ -189,7 +189,7 @@ defmodule Harness.Roadmap do
       project_name: [
         kind: :value,
         description:
-          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1 to its roadmap_path. SOURCE valid names from project_registry__list."
+          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1 to its roadmap_path. SOURCE valid names from project_registry-list."
       ]
     ],
     returns: %{

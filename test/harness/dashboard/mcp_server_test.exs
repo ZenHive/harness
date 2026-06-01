@@ -26,7 +26,7 @@ defmodule Harness.Dashboard.MCPServerTest do
       assert {:reply, %{"tools" => tools}, ^frame} = MCPServer.handle_request(request, frame)
       assert is_list(tools)
 
-      lookup = Enum.find(tools, &(&1["name"] == "project_registry__list"))
+      lookup = Enum.find(tools, &(&1["name"] == "project_registry-list"))
       assert %{"description" => description, "inputSchema" => schema} = lookup
       assert description == "List every registered project, sorted by name."
       assert schema["type"] == "object"
@@ -40,7 +40,7 @@ defmodule Harness.Dashboard.MCPServerTest do
       project = ProjectFixture.from_repo("/tmp/harness-mcp-smoke", name: "mcp-smoke")
       assert :ok = ProjectRegistry.register(project)
 
-      request = call_request("project_registry__list", %{})
+      request = call_request("project_registry-list", %{})
 
       assert {:reply, %{"content" => content, "isError" => false}, ^frame} =
                MCPServer.handle_request(request, frame)
@@ -54,7 +54,7 @@ defmodule Harness.Dashboard.MCPServerTest do
       project = ProjectFixture.from_repo("/tmp/harness-mcp-lookup", name: "mcp-lookup")
       assert :ok = ProjectRegistry.register(project)
 
-      request = call_request("project_registry__lookup", %{"name" => "mcp-lookup"})
+      request = call_request("project_registry-lookup", %{"name" => "mcp-lookup"})
 
       assert {:reply, %{"content" => [%{"text" => text}], "isError" => false}, ^frame} =
                MCPServer.handle_request(request, frame)
@@ -64,18 +64,18 @@ defmodule Harness.Dashboard.MCPServerTest do
     end
 
     test "returns JSON-RPC :invalid_params error for an unknown tool", %{frame: frame} do
-      request = call_request("missing__tool", %{})
+      request = call_request("missing-tool", %{})
 
       assert {:error, %Error{code: code, data: data}, ^frame} =
                MCPServer.handle_request(request, frame)
 
       # MCP protocol -32602 = invalid_params
       assert code == -32_602
-      assert data[:message] =~ "missing__tool"
+      assert data[:message] =~ "missing-tool"
     end
 
     test "returns isError=true for schema validation failure with per-field path", %{frame: frame} do
-      request = call_request("project_registry__lookup", %{})
+      request = call_request("project_registry-lookup", %{})
 
       assert {:reply, %{"content" => [%{"text" => text}], "isError" => true}, ^frame} =
                MCPServer.handle_request(request, frame)
@@ -92,7 +92,7 @@ defmodule Harness.Dashboard.MCPServerTest do
         "jsonrpc" => "2.0",
         "id" => 5,
         "method" => "tools/call",
-        "params" => %{"name" => "project_registry__list"}
+        "params" => %{"name" => "project_registry-list"}
       }
 
       assert {:reply, %{"content" => _, "isError" => false}, ^frame} =

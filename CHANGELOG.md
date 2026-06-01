@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **MCP tool names now use "-" (not "__") as the group/action delimiter.** Descripex
+  emits `<group>__<action>` (e.g. `dispatch__task`); when MCP clients (grok, others)
+  qualify as `<server>__<tool>`, this produced `harness__dispatch__task` (two "__"),
+  causing "Skipping MCP tool" rejects for the entire harness surface. The fix is
+  centralized in `Harness.Manifest` (the single source of truth for both the MCP
+  server and `Harness.Chat.Tools`): post-process Descripex output, expose
+  `tool_name_delimiter/0`, update the two reverse-lookup splits. All 35 tool names,
+  docstrings, and tests updated at the convention source. Grok-style qualified names
+  now contain exactly one "__". Added test asserting the invariant. Task 135.
 - **The cron poller no longer re-dispatches completed-but-unlanded tasks every
   tick — the run lifecycle now claims a dispatched task `in_progress` on start.**
   Under `landing_policy: :manual`, a run could finish green yet stay unlanded, so

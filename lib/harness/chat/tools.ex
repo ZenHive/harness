@@ -81,8 +81,10 @@ defmodule Harness.Chat.Tools do
 
   @spec resolve_tool!(map(), [module()]) :: entry()
   defp resolve_tool!(%{name: name, description: description, inputSchema: schema}, modules) do
+    delim = Harness.Manifest.tool_name_delimiter()
+
     {prefix, func_name} =
-      case String.split(name, "__", parts: 2) do
+      case String.split(name, delim, parts: 2) do
         [prefix, func_name] -> {prefix, func_name}
         _ -> raise ArgumentError, "invalid MCP tool name #{inspect(name)}"
       end
@@ -102,7 +104,7 @@ defmodule Harness.Chat.Tools do
       input_schema: schema,
       # `param_order` (descripex >= 0.7) preserves declaration order; `Map.keys`
       # was hash-ordered, so multi-required-param tools dispatched arguments to
-      # the wrong positions (e.g. roadmap__list got status as project_name).
+      # the wrong positions (e.g. roadmap-list got status as project_name).
       param_keys: api_entry.param_order,
       params: params
     }
