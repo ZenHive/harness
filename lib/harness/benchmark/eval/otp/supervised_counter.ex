@@ -10,7 +10,7 @@ defmodule Harness.Benchmark.Eval.Otp.SupervisedCounter do
   end
 
   @impl Supervisor
-  @spec init(keyword()) :: {:ok, {{module(), :restart, :permanent, :worker, [atom()]}, [map()]}}
+  @spec init(keyword()) :: {:ok, {Supervisor.sup_flags(), [Supervisor.child_spec()]}}
   def init(opts) do
     child_name = Keyword.get(opts, :child_name, Counter)
 
