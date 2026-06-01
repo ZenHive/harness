@@ -198,10 +198,16 @@ defmodule Harness.ResultStore.Postgres do
   defp default(nil, default), do: default
   defp default(value, _default), do: value
 
+  # Column values come from our own INSERTs (Atom.to_string in log_record_to_attrs)
+  # — never user-supplied. Matches manifest.ex / chat/tools.ex pattern.
+  # sobelow_skip ["DOS.StringToAtom"]
   @spec string_to_atom(String.t() | nil) :: atom() | nil
   defp string_to_atom(nil), do: nil
   defp string_to_atom(s) when is_binary(s), do: String.to_atom(s)
 
+  # Column values come from our own INSERTs (Atom.to_string in log_record_to_attrs)
+  # — never user-supplied. Matches manifest.ex / chat/tools.ex pattern.
+  # sobelow_skip ["DOS.StringToAtom"]
   @spec string_to_module(String.t() | nil) :: module() | nil
   defp string_to_module(nil), do: nil
   defp string_to_module(s) when is_binary(s), do: String.to_atom(s)
@@ -230,6 +236,9 @@ defmodule Harness.ResultStore.Postgres do
   defp encode_map_key(k) when is_binary(k), do: k
   defp encode_map_key(k), do: inspect(k)
 
+  # $atom markers come only from our encode_term/encode_map_key (harness-controlled)
+  # — not user-supplied free text. Matches manifest.ex / chat/tools.ex pattern.
+  # sobelow_skip ["DOS.StringToAtom"]
   @spec decode_term(term()) :: term()
   defp decode_term(nil), do: nil
   defp decode_term(%{"$atom" => name}) when is_binary(name), do: String.to_atom(name)
@@ -245,6 +254,9 @@ defmodule Harness.ResultStore.Postgres do
   defp decode_term(list) when is_list(list), do: Enum.map(list, &decode_term/1)
   defp decode_term(other), do: other
 
+  # Map keys come only from our encode_term (harness-controlled jsonb roundtrip)
+  # — not user-supplied free text. Matches manifest.ex / chat/tools.ex pattern.
+  # sobelow_skip ["DOS.StringToAtom"]
   @spec decode_map_key(String.t() | term()) :: atom() | String.t()
   defp decode_map_key(k) when is_binary(k), do: String.to_atom(k)
   defp decode_map_key(k), do: k
