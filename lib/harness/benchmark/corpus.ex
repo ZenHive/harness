@@ -111,7 +111,8 @@ defmodule Harness.Benchmark.Corpus do
     |> String.to_charlist()
     |> :file.read_file()
     |> case do
-      {:ok, body} -> IO.iodata_to_binary(body)
+      {:ok, body} ->
+        IO.iodata_to_binary(body)
 
       {:error, reason} ->
         raise File.Error, reason: reason, action: "read file", path: path
