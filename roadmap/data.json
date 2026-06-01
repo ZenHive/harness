@@ -5006,7 +5006,7 @@
       "phase": 11,
       "bundle": "autolanding",
       "milestone": "v0_9",
-      "status": "pending",
+      "status": "done",
       "title": "Cron poller: mark dispatched tasks in_progress to stop re-dispatch of completed-but-unlanded work",
       "scores": {
         "d": 2,
@@ -5030,9 +5030,14 @@
         "lib/harness/run/worker.ex",
         "lib/harness/roadmap.ex"
       ],
+      "shipped_in": "e47e5bf",
       "body": "The poller never marks a dispatched task in_progress, and harness lands manually (landing_policy :manual). So once a run completes green but is NOT auto-landed, the task stays pending and the next tick re-dispatches it -> same green-but-unlanded tasks re-run every tick forever. Oban {project_name,item_id} uniqueness only dedups WHILE in-flight, not completed-then-pending.\n\nFIX: on dispatch, transition the task to in_progress (rmap status <id> in_progress) so rmap ready/next stop returning it; on terminal failure return it to pending/blocked. Decide writeback owner (poller vs Run lifecycle). Required for unattended autonomy to converge instead of looping.\n",
       "created_at": "2026-05-31",
+      "done_at": "2026-06-01",
       "scored_at": "2026-05-31",
+      "implemented": "Roadmap.mark_in_progress/2 + mark_pending/2 (shell rmap status, :root/:rmap_bin opts, tagged-tuple return). Run.Worker claims in_progress on start (best-effort, logs on failure) and reverts to pending ONLY on terminal failure via FailureClass.classify==:terminal — green-unlanded stays in_progress (stops the re-dispatch loop under :manual landing), transient snoozes without reverting. Poller untouched. Seam-based worker tests + mark_in_progress/mark_pending unit tests. Delivered by grok, run run-1780277844276-9fec2836 (verdict pass), cherry-picked e47e5bf.",
+      "delivered_by": "grok",
+      "verified": true,
       "cross_repo": []
     },
     {

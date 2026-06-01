@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The cron poller no longer re-dispatches completed-but-unlanded tasks every
+  tick — the run lifecycle now claims a dispatched task `in_progress` on start.**
+  Under `landing_policy: :manual`, a run could finish green yet stay unlanded, so
+  the task remained `pending` and the next tick re-dispatched the same green work
+  forever (Oban `{project, item}` uniqueness only dedups *in-flight*, not
+  completed-then-pending). `Harness.Run.Worker` now best-effort claims the task
+  `in_progress` before `start_run` (a failed writeback logs and continues, never
+  fails the run) via the new `Harness.Roadmap.mark_in_progress/2`; a green-unlanded
+  run *stays* `in_progress` (only an explicit land moves it to `done`), while a
+  terminal failure reverts to `pending` (`Roadmap.mark_pending/2`, not `blocked`)
+  so a later tick retries — transient failures snooze without reverting. Writeback
+  owner is the run lifecycle, not the poller. Delivered by grok via harness
+  dogfooding (run `run-1780277844276-9fec2836`, verdict `pass`), Task 131.
 - **Grok (and any token-streamed) chain-of-thought now renders as one collapsed
   reasoning card instead of a wall of empty `THOUGHT` rows.** Grok streams
   reasoning token-by-token — one `{:system, kind: :thought}` event per token —

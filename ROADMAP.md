@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 126 — Run change-set view on the run-detail page (live edited-files + settled git diff) on 2026-05-31
 
-**Up next:** Task 131 — Cron poller: mark dispatched tasks in_progress to stop re-dispatch of completed-but-unlanded work [D:2/B:4/U:4 → Eff:2.0] 🎯
+**Up next:** Task 134 — Dashboard run feed is stale: no live-update for out-of-band runs + no persistent history [D:2/B:4/U:4 → Eff:2.0] 🎯
 <!-- FOCUS:END -->
 
 ---

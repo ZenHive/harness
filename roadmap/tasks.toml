@@ -4037,18 +4037,23 @@ id = "131"
 phase = 11
 bundle = "autolanding"
 milestone = "v0_9"
-status = "pending"
+status = "done"
 title = "Cron poller: mark dispatched tasks in_progress to stop re-dispatch of completed-but-unlanded work"
 scores = { d = 2, b = 4, u = 4 }
-touches = ["lib/harness/cron/roadmap_poller.ex", "lib/harness/run/worker.ex", "lib/harness/roadmap.ex"]
 acceptance_criteria = ["Roadmap.mark_in_progress/2 added, mirroring mark_blocked/2 — shells `rmap status <id> in_progress` against the project's roadmap_path (opts: :root required, :rmap_bin override for tests); returns {:ok, output} | {:error, {status, output, args}}", "Writeback owner is the run lifecycle (Harness.Run.Worker), NOT the poller — the moduledoc already states claiming is the run-lifecycle's concern; the poller keeps only enqueuing", "On run START the worker claims the task in_progress (best-effort: a failed writeback logs but does not fail the run), so the next cron tick's `rmap ready`/`next` no longer return it", "A green-but-unlanded run LEAVES the task in_progress (never reverts to pending) — under landing_policy :manual this is exactly what stops the re-dispatch loop; only an explicit land transitions it to done", "A terminal-failure run (red verdict after repair exhausted, or run crash) reverts the task to pending so a later tick retries it — use pending, not blocked, for ordinary failures", "Tests cover: claim-on-start, green-unlanded-stays-in_progress, terminal-failure-reverts-to-pending, and a Roadmap.mark_in_progress unit test mirroring the mark_blocked test (stub rmap binary)"]
+touches = ["lib/harness/cron/roadmap_poller.ex", "lib/harness/run/worker.ex", "lib/harness/roadmap.ex"]
 body = """
 The poller never marks a dispatched task in_progress, and harness lands manually (landing_policy :manual). So once a run completes green but is NOT auto-landed, the task stays pending and the next tick re-dispatches it -> same green-but-unlanded tasks re-run every tick forever. Oban {project_name,item_id} uniqueness only dedups WHILE in-flight, not completed-then-pending.
 
 FIX: on dispatch, transition the task to in_progress (rmap status <id> in_progress) so rmap ready/next stop returning it; on terminal failure return it to pending/blocked. Decide writeback owner (poller vs Run lifecycle). Required for unattended autonomy to converge instead of looping.
 """
+implemented = "Roadmap.mark_in_progress/2 + mark_pending/2 (shell rmap status, :root/:rmap_bin opts, tagged-tuple return). Run.Worker claims in_progress on start (best-effort, logs on failure) and reverts to pending ONLY on terminal failure via FailureClass.classify==:terminal — green-unlanded stays in_progress (stops the re-dispatch loop under :manual landing), transient snoozes without reverting. Poller untouched. Seam-based worker tests + mark_in_progress/mark_pending unit tests. Delivered by grok, run run-1780277844276-9fec2836 (verdict pass), cherry-picked e47e5bf."
+delivered_by = "grok"
+verified = true
 created_at = "2026-05-31"
 scored_at = "2026-05-31"
+done_at = "2026-06-01"
+shipped_in = "e47e5bf"
 
 [[task]]
 id = "132"
