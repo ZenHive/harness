@@ -3725,19 +3725,24 @@ id = "116"
 phase = 13
 bundle = "capability-bench"
 milestone = "v0_10"
-status = "pending"
+status = "done"
 title = "Capability domain taxonomy + per-run domain tagging (the lynchpin)"
-model = "cursor"
 scores = { d = 4, b = 8, u = 10 }
 acceptance_criteria = ["A canonical domain vocabulary is defined in one place (module attribute / function) with the initial Elixir-stack domains (e.g. :otp, :genserver, :liveview, :phoenix, :ecto, :oban) and room to add :rust and other languages", "Benchmark corpus items (Task 117) can declare one or more domain tags", "Run records carry their domain tag(s) so Harness.AgentKPI can group by (agent, domain) — additive and back-compatible with untagged historical records", "Untagged records bucket into an :untagged/global group, never dropped or crashed", "Tests cover tag round-trip on a record and grouping by (agent, domain) including the :untagged bucket"]
 out_of_scope = ["Auto-classifying a free-text task into a domain (ML/heuristic) — tags are declared, not inferred for now (TODO: revisit if manual tagging proves heavy)", "The benchmark corpus content itself — Tasks 117/118", "Routing logic that consumes the tags — Task 121"]
+model = "cursor"
 body = """
 Define the capability-domain vocabulary the KPI/routing system slices on, and thread a domain tag onto (a) benchmark corpus items and (b) run records, so both production and capability KPIs can be sliced per domain.
 
 This is the lynchpin: without per-domain tagging, neither per-domain production KPIs nor capability routing are possible — it blocks most of the phase, so it lands early. Decide the taxonomy shape (flat atom list vs hierarchical), where tags live on a run (a LogRecord field vs derived from the task), and keep it open for non-Elixir domains. Tags are advisory metadata, not a contract — same posture as AgentRegistry availability.
 """
+implemented = "Harness.CapabilityDomain canonical vocabulary module (flat atom list: otp/genserver/liveview/phoenix/ecto/oban/rust + open), domain tags threaded onto Benchmark.Item, Roadmap.Item, and LogRecord (additive, untagged -> :untagged bucket), AgentKPI groups by {agent, domain}. Delivered by cursor (run run-1780281607021-ffc85e29), harness verdict green after 1 repair attempt."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-05-31"
 scored_at = "2026-05-31"
+done_at = "2026-06-01"
+shipped_in = "81f9f9b"
 
 [[task]]
 id = "117"
@@ -4289,6 +4294,28 @@ body = """
 agent_settings.term and cron_settings.term (~/.harness/) are tiny boot-time key-value files read once into app env, each with its own atomic .tmp+rename plumbing. Honest assessment: files are genuinely fine here — no query need, no growth, no dashboard surface beyond the existing toggles. This task records the consolidation option (one harness_settings KV table replacing two term files and their duplicated write plumbing).
 
 DEFERRED with a deliberately low score — capture, not endorsement. It earns dispatch only if a third settings store appears (rule of three) or a multi-node deployment makes file-on-one-host wrong.
+"""
+created_at = "2026-06-01"
+scored_at = "2026-06-01"
+
+[[task]]
+id = "143"
+phase = 11
+bundle = "autolanding"
+milestone = "v0_9"
+status = "pending"
+title = "Verification bootstraps the worktree (deps seed / setup step) — stop grading on a missing-deps environment"
+scores = { d = 4, b = 7, u = 8 }
+markers = ["bug"]
+acceptance_criteria = ["A fresh worktree with zero agent-side mix invocations still gets a real verdict: verification compiles and runs the check stack itself", "Setup/bootstrap failure (e.g. deps.get network error) is classified as an environment error, NOT a red verdict — it never enters the repair loop as if the agent's code failed", "Elixir presets (:elixir, :elixir_precommit) declare the bootstrap (mix deps.get); Rust preset documents why it needs none (cargo fetches on build)", "The known-sharp-edge entry in docs/dogfooding-workflow.md is updated to reflect the fix", "Test: verification against a worktree without deps/ goes green when the underlying code is green (regression for the grok-runs class)"]
+out_of_scope = ["Caching/sharing deps or _build across worktrees for speed (separate optimization task)", "Per-agent prompt rules telling agents to run deps.get (fix the grader, not the agents)"]
+touches = ["lib/harness/check_stack.ex", "lib/harness/check_stack/preset/elixir.ex", "lib/harness/check_stack/preset/rust.ex", "lib/harness/verification.ex", "lib/harness/worktree.ex", "test/harness/verification_test.exs", "test/harness/check_stack_test.exs", "docs/dogfooding-workflow.md", "skills/harness-driver/SKILL.md"]
+body = """
+OBSERVED twice: every grok dispatch fails verification spuriously because grok never runs `mix deps.get`, and a fresh git worktree has no deps/ or _build/ (gitignored). Task 135 (run-1780279364278-38f3dc26): grok delivered a correct 10-file diff, harness verdict red on missing deps, hand-verified 15/15 green and cherry-picked as ef56bb0. Task 136 (run-1780281607656-c514b65a): same — first attempt red with all checks failing on missing deps, repair attempt burned to have grok run deps.get. Codex/cursor happen to bootstrap deps themselves, masking the gap.
+
+ROOT: Harness.Verification.run/2 has no environment-bootstrap step; the grader's correctness depends on the implementer's habits — exactly the implementer/grader coupling harness exists to remove. docs/dogfooding-workflow.md 'Known sharp edges' documents this and instructs filing it.
+
+FIX (design choice for the implementer): either (a) a non-grading setup phase on %Harness.CheckStack{} (e.g. setup: [%Check{name: :deps, command: "mix", args: ["deps.get"]}]) run by Verification.run/2 before checks, with failure -> {:error, {:setup_failed, ...}} (environment error, distinct from a red verdict); or (b) Worktree.create/2 seeds deps/ from the source checkout. Option (a) is language-honest (each preset declares its own bootstrap) and keeps Worktree generic; prefer it unless implementation reveals otherwise. The repair loop must never see a setup failure as agent-caused.
 """
 created_at = "2026-06-01"
 scored_at = "2026-06-01"
