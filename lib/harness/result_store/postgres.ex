@@ -251,6 +251,10 @@ defmodule Harness.ResultStore.Postgres do
 
   # --- safe term decode (mirrors File resilience) ---
 
+  # Decodes harness-owned term binary (batch_results.payload written via
+  # term_to_binary on %Batch.Result{} we control in save_batch). Not
+  # untrusted input. Rescue still catches torn bytes.
+  # sobelow_skip ["Misc.BinToTerm"]
   @spec safe_binary_to_term(binary()) :: {:ok, term()} | {:error, term()}
   defp safe_binary_to_term(bin) when is_binary(bin) do
     {:ok, :erlang.binary_to_term(bin)}

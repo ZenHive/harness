@@ -1,7 +1,5 @@
 defmodule Harness.ResultStore.Schema.RunRecord do
-  @moduledoc """
-  Ecto schema for the run_records table (Task 137).
-  """
+  @moduledoc false
 
   use Ecto.Schema
 
@@ -36,6 +34,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
     timestamps()
   end
 
+  @doc false
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(%__MODULE__{} = struct, attrs) when is_map(attrs) do
     cast(struct, attrs, [
