@@ -3780,7 +3780,7 @@ id = "118"
 phase = 13
 bundle = "capability-bench"
 milestone = "v0_10"
-status = "in_progress"
+status = "done"
 title = "Initial Elixir-domain benchmark corpus content (OTP / LiveView / Oban / Ecto)"
 scores = { d = 6, b = 8, u = 8 }
 depends_on = [117]
@@ -3792,9 +3792,14 @@ Curate the first real benchmark tasks — the high-value, hard content work. A r
 
 A weak or biased corpus measures the wrong thing confidently — coverage and representativeness are the deliverable, not just count. This is where the capability benchmark earns its value or doesn't. Rust and other languages are explicitly later tasks.
 """
+implemented = "11 benchmark items across ecto/elixir/genserver-otp/liveview/oban (TOML spec + reference solution module + test each), priv/benchmarks/README.md rationale, corpus loader path fix (lib/priv -> repo-root priv), result-store contract fixture state fix. Graded green by harness (1 repair attempt); landed via merge after dropping dead :passed classify addition."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-05-31"
 started_at = "2026-06-01"
 scored_at = "2026-05-31"
+done_at = "2026-06-01"
+shipped_in = "82d8489"
 
 [[task]]
 id = "119"
@@ -4383,7 +4388,7 @@ id = "145"
 phase = 13
 bundle = "postgres-results"
 milestone = "v0_10"
-status = "in_progress"
+status = "done"
 title = "Verification can't grade :integration-tagged tests — DB-backed code passes green while broken against real Postgres"
 scores = { d = 4, b = 6, u = 5 }
 markers = ["bug"]
@@ -4396,9 +4401,14 @@ GAP: the grader structurally cannot verify the primary deliverable of any DB-bac
 
 FIX DIRECTION (implementer's call): a check-stack option to include integration tags when the environment supports it — e.g. preset opt `include: [:integration]` plus a worktree test-DB provisioning step (MIX_ENV=test ecto.create + ecto.migrate, mirroring the Task 143 deps bootstrap). Concurrent worktrees share one Postgres instance; the Ecto sandbox handles isolation but migrations from divergent branches need thought (per-worktree DB name, e.g. harness_test_<run_id>, dropped at finish).
 """
+implemented = "Check.env field with {:harness, :test_database} dynamic resolution; :include / :database opts on :elixir_precommit; test-db-create/migrate setup steps under MIX_ENV=test + per-worktree HARNESS_DB_NAME. Run's verification died environmentally (worktree swept mid-deps); salvaged from run branch, merged with task 147's warm-up setup (deps+deps.compile + postgres steps), verified by hand: precommit green (1195 tests, 83.25% cover) + 5/5 Postgres integration tests."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-01"
 started_at = "2026-06-01"
 scored_at = "2026-06-01"
+done_at = "2026-06-01"
+shipped_in = "edd81f6"
 
 [[task]]
 id = "146"
@@ -4469,3 +4479,34 @@ created_at = "2026-06-01"
 scored_at = "2026-06-01"
 done_at = "2026-06-01"
 shipped_in = "5772667"
+
+[[task]]
+id = "149"
+phase = 7
+bundle = "multi-project"
+status = "pending"
+title = "Declarative env on check stacks + parameterized :rust preset (unblocks federated grading: rexex DB tests + reth target-dir)"
+scores = { d = 3, b = 4, u = 4 }
+acceptance_criteria = ["Harness.CheckStack carries an `env` map (String => String) threaded into Verification's System.cmd `:env` for every check in the stack; a test asserts a spawned check sees the configured env var", ":rust preset accepts `{:rust, opts}` with :target_dir (adds --target-dir to clippy/test/build, omitted on fmt), :release (default keeps `cargo build --release`; false => plain `cargo build`), and :timeout_per_check; bare `:rust` is unchanged (back-compat test)", "A project config entry accepts `env:` alongside `preset:`/`workdir:` so a custom Rust stack is expressible in config WITHOUT a %CheckStack{} struct literal (which breaks config-eval boot)", "rexex's config/dev.local.exs is updated to the durable struct-free form and the node boots cleanly with it", "DATABASE_URL propagation is proven by a verification-level test that the stack env reaches the spawned check command"]
+files_to_modify = ["lib/harness/check_stack.ex", "lib/harness/verification.ex", "lib/harness/check_stack/preset/rust.ex", "lib/harness/check_stack/preset.ex", "lib/harness/project_registry.ex"]
+touches = ["lib/harness/check_stack.ex", "lib/harness/verification.ex", "lib/harness/check_stack/preset/rust.ex", "lib/harness/check_stack/preset.ex", "lib/harness/project_registry.ex", "config/dev.local.exs", "test/harness/verification_test.exs", "test/harness/check_stack/preset_test.exs", "test/harness/project_registry_test.exs"]
+body = """
+OBSERVED: rexex (a registered Rust project) cannot be correctly graded by harness as-is. Two gaps surfaced while making it dispatch-ready:
+
+1. Its `cargo test` suite (rust/crates/indexer-core/tests/db.rs) REQUIRES `DATABASE_URL` + a Postgres server — it uses `#[sqlx::test]` ephemeral per-test DBs and even ships a canary test (`database_url_must_be_set`) with setup instructions. In a fresh isolated worktree there is no DATABASE_URL, so the `test` check is RED on every dispatched run regardless of the agent's work (14/14 db tests fail with `DATABASE_URL must be set: EnvVar(NotPresent)`).
+
+2. The stock `:rust` preset recompiles the heavy `reth` git-dep per worktree (no shared target dir) and runs a redundant `cargo build --release` (a second full compile on top of `cargo test`'s debug build).
+
+Neither tuning is expressible declaratively today: Harness.CheckStack / Harness.Verification.Check have NO `env` field, and a project config entry cannot carry a `%Harness.CheckStack{}` struct literal — config is evaluated before harness modules are compiled/loaded, so a struct literal in dev.local.exs breaks BOOT (confirmed: `Harness.Verification.Check.__struct__/1 is undefined` at config-eval). The only working path right now is a node-global `System.put_env("DATABASE_URL", ...)` hack plus a tuned struct built at runtime via `ProjectRegistry.register/1` — both lost on the next BEAM restart.
+
+FIX:
+(1) Add a declarative `env` field to Harness.CheckStack (a `%{String => String}` map applied to EVERY check in the stack) and thread it through Harness.Verification (run + prepare) into the `System.cmd` `:env` option. This is the load-bearing part: DATABASE_URL MUST be an environment variable — cargo/sqlx read it from the environment, it cannot be passed as a flag.
+(2) Parameterize the `:rust` preset: `Preset.Rust.preset/1` + `Preset.fetch(:rust, opts)` accepting `:target_dir` (threads `--target-dir DIR` into clippy/test/build args, omitted on fmt which does not compile), `:release` (bool; default preserves the stock `cargo build --release`, `false` => plain `cargo build`), and `:timeout_per_check`. Mirror the existing `{:elixir_precommit, opts}` precedent in Preset.fetch/2.
+(3) Let a project config entry carry `env:` (and `preset: {:rust, opts}`) in ProjectRegistry.resolve_stack so dev.local.exs expresses rexex's stack struct-free and DURABLY, e.g.:
+    stacks: [[preset: {:rust, target_dir: "/Users/efries/.cache/harness/cargo-target/rexex", release: false, timeout_per_check: 1_800_000}, workdir: "rust", env: %{"DATABASE_URL" => "postgres://localhost/rexex_test"}]]
+Then rexex's tuned registration survives a restart instead of relying on the runtime register hack.
+
+CONTEXT: empirically (this machine) the cold reth compile is ~1 min/check, not the tens-of-minutes initially feared, so `:target_dir`/`:timeout_per_check` are hygiene/headroom; the `env` field (item 1) is the actual correctness blocker for grading rexex. Backend-only (Verification / CheckStack / preset / registry) — headless-dispatchable, no UI.
+"""
+created_at = "2026-06-01"
+scored_at = "2026-06-01"

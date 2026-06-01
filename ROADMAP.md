@@ -92,7 +92,7 @@
 > Scoped pivot (milestone v0_5): harness extends from "harness-on-harness" to N registered target projects (Elixir, Rust, anything with a shell-driven check stack). First-class `%Harness.Project{}` registry; declarative `%Harness.CheckStack{}` with per-language presets; Oban-backed dispatch (queue-per-project, restart-resilient); GitHub source cloning; Phoenix LiveView dashboard + embedded Oban Web as the primary cold-path surface; cron-driven autonomous roadmap polling. Hand-built (not dogfooded) for the pivot window — see CLAUDE.md § Dogfooding.
 
 <!-- TASKS:BEGIN phase=7 -->
-> 16 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-7-multi-project-federation).
+> 17 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-7-multi-project-federation).
 <!-- TASKS:END -->
 
 ---
