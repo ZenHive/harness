@@ -1,0 +1,15 @@
+id = "bench.elixir.loader"
+version = 1
+domains = ["elixir", "otp"]
+expected_green = true
+
+[task]
+intent = "Add a small loader for a fixed corpus."
+acceptance = [
+  "The item is fetchable by id",
+  "The item declares Elixir and OTP domains"
+]
+
+[target]
+project = "harness"
+check_stack = "elixir"

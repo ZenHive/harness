@@ -28,7 +28,18 @@ defmodule Harness.CapabilityDomainTest do
   end
 
   test "Benchmark.Item.build/1 validates and carries domain tags" do
-    assert {:ok, item} = Item.build(id: "bench-1", domains: [:oban, :otp, :oban])
+    assert {:ok, item} =
+             Item.build(
+               id: "bench-1",
+               version: 1,
+               domains: [:oban, :otp, :oban],
+               intent: "Exercise benchmark item validation.",
+               acceptance_criteria: ["The item builds"],
+               target_project: "harness",
+               check_stack: "elixir",
+               expected_green: true
+             )
+
     assert item.id == "bench-1"
     assert item.domains == [:oban, :otp]
   end
