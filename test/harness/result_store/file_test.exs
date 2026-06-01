@@ -163,64 +163,20 @@ defmodule Harness.ResultStore.FileTest do
     ArgumentError -> false
   end
 
-  describe "CRUD roundtrips and filters" do
-    test "record_run + list_run_records roundtrip with filter", %{root: root} do
-      record = %LogRecord{
-        batch_id: "b1",
-        run_id: "r1",
-        task_id: "t1",
-        adapter: Claude,
-        state: :passed,
-        reason: nil,
-        duration_ms: 42,
-        repair_attempts: 0,
-        first_attempt_failed_check_count: 0,
-        failure_cause: %{reason: nil, failed_checks: []}
-      }
+  describe "ResultStore contract (shared with Postgres backend)" do
+    alias Harness.ResultStoreContract
 
-      assert :ok = Store.record_run(record, root: root)
-
-      assert {:ok, [retrieved]} = Store.list_run_records([batch_id: "b1"], root: root)
-      assert retrieved.run_id == "r1"
-      assert retrieved.state == :passed
-      assert retrieved.domains == []
+    test "CRUD roundtrips + filters + domains via contract", %{root: root} do
+      assert :ok = ResultStoreContract.assert_crud_roundtrips({Store, root: root})
     end
 
-    test "record_run persists domain tags and list_run_records roundtrips them", %{root: root} do
-      record =
-        log_record(
-          run_id: "r-domains",
-          domains: [:otp, :oban]
-        )
-
-      assert :ok = Store.record_run(record, root: root)
-
-      assert {:ok, [retrieved]} = Store.list_run_records([], root: root)
-      assert retrieved.domains == [:otp, :oban]
+    test "complex fields (tuple reason, non-UTF8 agent_output) via contract", %{root: root} do
+      assert :ok = ResultStoreContract.assert_complex_fields({Store, root: root})
     end
+  end
 
-    test "non-matching filter returns empty list", %{root: root} do
-      record = %LogRecord{
-        batch_id: "b1",
-        run_id: "r1",
-        task_id: "t1",
-        adapter: Claude,
-        state: :passed,
-        reason: nil,
-        duration_ms: 42,
-        repair_attempts: 0,
-        first_attempt_failed_check_count: 0,
-        failure_cause: %{reason: nil, failed_checks: []}
-      }
-
-      assert :ok = Store.record_run(record, root: root)
-
-      assert {:ok, []} = Store.list_run_records([batch_id: "nope"], root: root)
-    end
-
-    # Review fix #13: write_term/2 writes a sibling .tmp then atomically renames
-    # it into place. After a successful write the .term must exist and no .tmp
-    # sibling may linger (a leftover .tmp would mean the rename never happened).
+  # File-specific atomic-write guarantee (not part of the cross-backend contract).
+  describe "atomic write (File only)" do
     test "record_run leaves the final .term and no .tmp sibling", %{root: root} do
       record = %LogRecord{
         batch_id: "b-atomic",
@@ -243,8 +199,11 @@ defmodule Harness.ResultStore.FileTest do
       assert Enum.any?(files, &String.ends_with?(&1, ".term"))
       refute Enum.any?(files, &String.ends_with?(&1, ".tmp"))
     end
+  end
 
-    test "save_batch + load_batch happy path and invalid term type", %{root: root} do
+  # File-specific save/load invalid term (contract covers the happy path).
+  describe "save_batch invalid term (File only)" do
+    test "save_batch + load_batch detects non-BatchResult term", %{root: root} do
       alias Result, as: BatchResult
 
       batch_result = %BatchResult{
@@ -260,7 +219,6 @@ defmodule Harness.ResultStore.FileTest do
       assert loaded.batch_id == "batch-crud"
 
       # Write a valid term that is not a BatchResult -> load_batch should error
-      # Use Base.url_encode64 (same as Store.safe_id) so the path is legal under the root guard.
       bad_name = Base.url_encode64("bad-batch", padding: false)
       bad_path = Path.join([root, "batches", bad_name <> ".term"])
       File.mkdir_p!(Path.dirname(bad_path))

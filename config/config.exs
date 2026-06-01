@@ -113,12 +113,11 @@ config :harness, :notification_sinks, []
 # and `git fetch`es before every subsequent run.
 config :harness, :project, cache_root: Path.expand("~/_DATA/harness/projects")
 
-# Result persistence — see Harness.ResultStore.
-# The default store is file-backed and keeps structured run records plus
-# reloadable batch results under this root.
-config :harness,
-       :result_store,
-       {Harness.ResultStore.File, root: Path.expand("~/.harness/results")}
+# Result persistence — see Harness.ResultStore and runtime.exs.
+# Default is chosen at runtime based on :repo_enabled (Postgres when true for
+# the harness self-host; File when false for library consumers). An explicit
+# :result_store config value always wins over the repo_enabled heuristic.
+# (The concrete default lives in config/runtime.exs so the flip is in one place.)
 
 # Green-verdict semantic gate. `enabled: :auto` (the default) defers to the
 # project-level `semantic_gate` mode (`:always` | `:auto_land_only` | `:off`,

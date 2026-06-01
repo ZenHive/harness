@@ -39,3 +39,20 @@ end
 if secret = System.get_env("HARNESS_SECRET_KEY_BASE") do
   config :harness, Endpoint, secret_key_base: secret
 end
+
+# ResultStore backend (Task 137): default to the Postgres implementation when
+# :repo_enabled (the normal case for the harness self-host and any deployment
+# with Oban), keep the File backend for library consumers that mount harness
+# with `repo_enabled: false`. An explicit `config :harness, :result_store, ...`
+# (or Application.put_env at runtime) always wins.
+result_store = Application.get_env(:harness, :result_store)
+
+if is_nil(result_store) do
+  repo_enabled = Application.get_env(:harness, :repo_enabled, true)
+
+  if repo_enabled do
+    config :harness, :result_store, {Harness.ResultStore.Postgres, []}
+  else
+    config :harness, :result_store, {Harness.ResultStore.File, root: Path.expand("~/.harness/results")}
+  end
+end

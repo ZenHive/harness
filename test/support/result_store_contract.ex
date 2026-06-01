@@ -1,0 +1,100 @@
+defmodule Harness.ResultStoreContract do
+  @moduledoc """
+  Shared contract assertions for any Harness.ResultStore backend (Task 137).
+
+  Extracted from the original FileTest CRUD roundtrips so both File and
+  Postgres (and future backends) exercise the identical behaviour.
+  """
+
+  import ExUnit.Assertions
+
+  alias Harness.AgentAdapter.Claude
+  alias Harness.Batch.Result, as: BatchResult
+  alias Harness.ResultStore
+  alias Harness.Run.LogRecord
+
+  @spec log_record(keyword()) :: LogRecord.t()
+  def log_record(overrides \\ []) do
+    struct(
+      %LogRecord{
+        batch_id: "batch-test",
+        run_id: "run-abc",
+        task_id: "task-73",
+        adapter: Claude,
+        state: :passed,
+        reason: nil,
+        duration_ms: 1234,
+        repair_attempts: 0,
+        first_attempt_failed_check_count: 0,
+        failure_cause: %{reason: nil, failed_checks: []}
+      },
+      overrides
+    )
+  end
+
+  @doc "Run the basic CRUD + filter roundtrips against the given store (module or {mod, opts})."
+  @spec assert_crud_roundtrips(ResultStore.store()) :: :ok
+  def assert_crud_roundtrips(store) do
+    # record + list filter
+    record = %LogRecord{
+      batch_id: "b1",
+      run_id: "r1",
+      task_id: "t1",
+      adapter: Claude,
+      state: :passed,
+      reason: nil,
+      duration_ms: 42,
+      repair_attempts: 0,
+      first_attempt_failed_check_count: 0,
+      failure_cause: %{reason: nil, failed_checks: []}
+    }
+
+    assert :ok = ResultStore.record_run(record, store)
+
+    assert {:ok, [retrieved]} = ResultStore.list_run_records(store, batch_id: "b1")
+    assert retrieved.run_id == "r1"
+    assert retrieved.state == :passed
+    assert retrieved.domains == []
+
+    # domains roundtrip (added post-Task 116)
+    rec_d = log_record(run_id: "r-domains", domains: [:otp, :oban])
+    assert :ok = ResultStore.record_run(rec_d, store)
+    assert {:ok, [rd]} = ResultStore.list_run_records(store, run_id: "r-domains")
+    assert rd.domains == [:otp, :oban]
+
+    # non-match
+    assert {:ok, []} = ResultStore.list_run_records(store, batch_id: "nope")
+
+    # batch
+    br = %BatchResult{batch_id: "batch-crud", total: 0, max_concurrency: 1, results: []}
+    assert :ok = ResultStore.save_batch(br, store)
+    assert {:ok, loaded} = ResultStore.load_batch("batch-crud", store)
+    assert loaded.batch_id == "batch-crud"
+
+    :ok
+  end
+
+  @doc "Roundtrip a record with tuple reason (e.g. {:agent_spawn_failed, :enoent}) and non-UTF8 agent_output."
+  @spec assert_complex_fields(ResultStore.store()) :: :ok
+  def assert_complex_fields(store) do
+    non_utf8 = <<0, 255, 128, 42, 0>>
+    reason = {:agent_spawn_failed, :enoent}
+
+    rec =
+      log_record(
+        run_id: "r-complex",
+        reason: reason,
+        agent_output: non_utf8,
+        failure_cause: %{reason: reason, failed_checks: []}
+      )
+
+    assert :ok = ResultStore.record_run(rec, store)
+
+    assert {:ok, [retrieved]} = ResultStore.list_run_records(store, run_id: "r-complex")
+    assert retrieved.reason == reason
+    assert retrieved.agent_output == non_utf8
+    assert retrieved.failure_cause.reason == reason
+
+    :ok
+  end
+end
