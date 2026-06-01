@@ -166,6 +166,8 @@ The verification stack — not the agent's self-report — is always the source 
 | `dispatch__cancel` | Cancel an in-flight run (idempotent). |
 | `dispatch__verdict_detail` | After settle, read the **captured output of the failed checks** by `run_id` (the actual test/credo/dialyzer stdout) — loaded from the persisted record, so it works after the run process is gone. |
 | `roadmap__list` / `roadmap__next_bundle` / `roadmap__ingest` | Browse / ingest a registered project's roadmap as structured data. |
+| `roadmap__ready` | The parallel-safe, headless-dispatchable task set (`rmap ready --dispatchable`) — every pending task with all deps done, `handbuild` excluded; mutually independent, safe to fan out as one batch. |
+| `roadmap__mark_landed` / `roadmap__mark_blocked` | Write a run's outcome back to the roadmap: `done --verified --shipped-in <sha>` after a successful land; `blocked --reason "..."` as the terminal sink. |
 | `project_registry__list` / `project_registry__lookup` | Discover registered project names + config. |
 | `result_store__list_run_records` | Settled-run records (verdict status, failed-check names, transcript, token usage). |
 | `playbooks__list` / `playbooks__get` | Ready-made orchestration recipes. |
@@ -236,6 +238,7 @@ end
 - Both take a **registered project name string** (resolved via `ProjectRegistry.lookup/1` → `roadmap_path`) — the flat, JSON-native shape the MCP/chat orchestrator calls as the `roadmap__list` / `roadmap__next_bundle` tools. SOURCE valid names from `project_registry__list`.
 - `list/2` returns `{:ok, [task_map]}` — each map carries `id`, `title`, `status`, `phase`, `bundle`, `eff`, `markers`, `milestone`. Finer filters (phase/marker/bundle/milestone) are client-side on the returned list; only `status` is pushed to rmap.
 - `next_bundle/1` returns `{:ok, %{bundle: meta | nil, tasks: [...]}}` (`bundle: nil` when nothing is pending).
+- `ready/1` is the **parallel-safe dispatch set** (`rmap ready --dispatchable --fields id,model,markers`): every pending task whose deps are all done, `handbuild` excluded — mutually independent, safe to fan out as one batch (the cron poller's selection surface; MCP tool `roadmap__ready`). Takes the same working-root opts as `ingest/2` (`:project` > `:project_name` > `:project_root` > cwd).
 - Both error `{:error, {:unknown_project, name}}` for an unregistered name, plus the same `rmap_*` reasons as `ingest/2`.
 
 `Run.Supervisor.start_run/4` options worth knowing (full list in moduledoc):
@@ -378,7 +381,7 @@ When `Harness.Chat.Claude` spawns its backing `claude -p`, it writes exactly thi
 - **Dispatch:** `dispatch__task`, `dispatch__await`, `dispatch__bundle`, `dispatch__compare`.
 - **Observe / control a live run by `run_id`:** `dispatch__status`, `dispatch__transcript`, `dispatch__transcript_events`, `dispatch__cancel`.
 - **Settled-run detail:** `dispatch__verdict_detail` (failed-check captured output), `result_store__list_run_records`.
-- **Roadmap / registry / recipes:** `roadmap__ingest` / `roadmap__list` / `roadmap__next_bundle`, `project_registry__list` / `project_registry__lookup`, `playbooks__list` / `playbooks__get`, `audit_review__grade_fix`.
+- **Roadmap / registry / recipes:** `roadmap__ingest` / `roadmap__list` / `roadmap__next_bundle` / `roadmap__ready` / `roadmap__mark_landed` / `roadmap__mark_blocked`, `project_registry__list` / `project_registry__lookup`, `playbooks__list` / `playbooks__get`, `audit_review__grade_fix`.
 
 The run-observation four (`status` / `transcript` / `transcript_events` / `cancel`) wrap `Harness.Run` functions whose `run :: String.t() | pid()` handle would otherwise mark them `:exchange_data`; the flat `run_id`-only wrappers (macro-generated via `Harness.Dispatch.RunTool` for the uniform `{:ok,_} | {:error,:not_found}` trio, hand-written for `cancel`'s bare `:ok`) are the JSON-native path that closes the live-observe gap. `dispatch__bundle` / `dispatch__compare` / `dispatch__verdict_detail` are the JSON-native counterparts to the struct-only `batch__*` / `agent_evaluation__compare` / per-check-output ops.
 

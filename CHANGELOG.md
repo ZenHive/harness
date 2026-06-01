@@ -50,6 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`roadmap__ready` MCP/chat tool.** `Harness.Roadmap.ready/1` — the parallel-safe,
+  headless-dispatchable task set the cron poller fans out (`rmap ready --dispatchable`,
+  `handbuild` excluded; Task 129) — is now descripex-`api()`-annotated, so it surfaces
+  as `roadmap__ready` on the `/harness/mcp` endpoint and the in-process chat tool
+  dispatcher. An external orchestrator can read the fan-out-safe batch as structured
+  data without shelling rmap.
 - **Per-agent enable/disable from the Settings page.** An operator takes an agent
   out of dispatch rotation (a flaky CLI, an exhausted paid plan, a model under
   evaluation) with a toggle on `/harness/settings` — an **Agents** card listing all

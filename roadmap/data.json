@@ -5017,6 +5017,14 @@
       "dep_layer": 0,
       "markers": [],
       "depends_on": [],
+      "acceptance_criteria": [
+        "Roadmap.mark_in_progress/2 added, mirroring mark_blocked/2 — shells `rmap status <id> in_progress` against the project's roadmap_path (opts: :root required, :rmap_bin override for tests); returns {:ok, output} | {:error, {status, output, args}}",
+        "Writeback owner is the run lifecycle (Harness.Run.Worker), NOT the poller — the moduledoc already states claiming is the run-lifecycle's concern; the poller keeps only enqueuing",
+        "On run START the worker claims the task in_progress (best-effort: a failed writeback logs but does not fail the run), so the next cron tick's `rmap ready`/`next` no longer return it",
+        "A green-but-unlanded run LEAVES the task in_progress (never reverts to pending) — under landing_policy :manual this is exactly what stops the re-dispatch loop; only an explicit land transitions it to done",
+        "A terminal-failure run (red verdict after repair exhausted, or run crash) reverts the task to pending so a later tick retries it — use pending, not blocked, for ordinary failures",
+        "Tests cover: claim-on-start, green-unlanded-stays-in_progress, terminal-failure-reverts-to-pending, and a Roadmap.mark_in_progress unit test mirroring the mark_blocked test (stub rmap binary)"
+      ],
       "touches": [
         "lib/harness/cron/roadmap_poller.ex",
         "lib/harness/run/worker.ex",
