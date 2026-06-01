@@ -133,6 +133,50 @@ defmodule Harness.AgentKPITest do
     end
   end
 
+  describe "aggregate_by_agent_domain/1" do
+    test "groups by {agent, domain} and buckets untagged records under :untagged" do
+      records = [
+        record(agent: :claude, verdict: :pass, domains: [:otp]),
+        record(agent: :claude, verdict: :fail, domains: [:liveview]),
+        record(agent: :codex, verdict: :pass),
+        record(agent: :codex, verdict: :pass, domains: [:otp, :ecto])
+      ]
+
+      kpi = AgentKPI.aggregate_by_agent_domain(records)
+
+      assert kpi[{:claude, :otp}].run_count == 1
+      assert kpi[{:claude, :otp}].success_rate == 1.0
+      assert kpi[{:claude, :liveview}].run_count == 1
+      assert kpi[{:claude, :liveview}].success_rate == 0.0
+      assert kpi[{:codex, :untagged}].run_count == 1
+      assert kpi[{:codex, :otp}].run_count == 1
+      assert kpi[{:codex, :ecto}].run_count == 1
+    end
+
+    test "treats missing domains on legacy records as untagged without crashing" do
+      legacy =
+        struct!(LogRecord, %{
+          batch_id: "batch-1",
+          run_id: "run-legacy",
+          task_id: "t",
+          adapter: Claude,
+          state: :done,
+          reason: :passed,
+          duration_ms: 100,
+          repair_attempts: 0,
+          first_attempt_failed_check_count: 0,
+          failure_cause: %{reason: :passed, failed_checks: []},
+          agent: :claude,
+          verdict: :pass,
+          token_usage: TokenUsage.empty()
+        })
+
+      kpi = AgentKPI.aggregate_by_agent_domain([legacy])
+
+      assert kpi[{:claude, :untagged}].run_count == 1
+    end
+  end
+
   describe "aggregate/1 repair-heavy vs first-try" do
     test "first_attempt_pass_rate separates a first-try agent from a repair-heavy one" do
       records = [

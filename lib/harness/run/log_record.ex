@@ -27,6 +27,7 @@ defmodule Harness.Run.LogRecord do
 
   alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Outcome
+  alias Harness.CapabilityDomain
   alias Harness.Run.Result, as: RunResult
   alias Harness.TokenUsage
   alias Harness.Verification.Result, as: CheckResult
@@ -77,7 +78,8 @@ defmodule Harness.Run.LogRecord do
           agent_outcome_kind: Outcome.kind() | nil,
           agent_exit_status: integer() | nil,
           agent_output: binary(),
-          check_output: check_output()
+          check_output: check_output(),
+          domains: [CapabilityDomain.t()]
         }
 
   @enforce_keys [
@@ -112,7 +114,8 @@ defmodule Harness.Run.LogRecord do
     token_usage: %TokenUsage{},
     composed_inputs: [],
     agent_output: "",
-    check_output: %{}
+    check_output: %{},
+    domains: []
   ]
 
   @doc "Builds a structured record from a settled run result and batch metadata."
@@ -140,8 +143,23 @@ defmodule Harness.Run.LogRecord do
       agent_outcome_kind: outcome && outcome.kind,
       agent_exit_status: outcome && outcome.exit_status,
       agent_output: (outcome && outcome.output) || "",
-      check_output: check_output(result.verdict)
+      check_output: check_output(result.verdict),
+      domains: domains_from_meta(meta)
     }
+  end
+
+  @doc """
+  Returns the record's domain tags, defaulting pre-tagging persisted records to `[]`.
+  """
+  @spec domains(t()) :: [CapabilityDomain.t()]
+  def domains(%__MODULE__{domains: domains}) when is_list(domains), do: domains
+  def domains(_record), do: []
+
+  @spec domains_from_meta(keyword()) :: [CapabilityDomain.t()]
+  defp domains_from_meta(meta) do
+    meta
+    |> Keyword.get(:domains, [])
+    |> CapabilityDomain.normalize()
   end
 
   @spec verdict_status(Verdict.t() | nil) :: :pass | :fail | nil

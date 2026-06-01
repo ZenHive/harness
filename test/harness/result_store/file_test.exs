@@ -183,8 +183,38 @@ defmodule Harness.ResultStore.FileTest do
       assert {:ok, [retrieved]} = Store.list_run_records([batch_id: "b1"], root: root)
       assert retrieved.run_id == "r1"
       assert retrieved.state == :passed
+      assert retrieved.domains == []
+    end
 
-      # Non-matching filter
+    test "record_run persists domain tags and list_run_records roundtrips them", %{root: root} do
+      record =
+        log_record(
+          run_id: "r-domains",
+          domains: [:otp, :oban]
+        )
+
+      assert :ok = Store.record_run(record, root: root)
+
+      assert {:ok, [retrieved]} = Store.list_run_records([], root: root)
+      assert retrieved.domains == [:otp, :oban]
+    end
+
+    test "non-matching filter returns empty list", %{root: root} do
+      record = %LogRecord{
+        batch_id: "b1",
+        run_id: "r1",
+        task_id: "t1",
+        adapter: Claude,
+        state: :passed,
+        reason: nil,
+        duration_ms: 42,
+        repair_attempts: 0,
+        first_attempt_failed_check_count: 0,
+        failure_cause: %{reason: nil, failed_checks: []}
+      }
+
+      assert :ok = Store.record_run(record, root: root)
+
       assert {:ok, []} = Store.list_run_records([batch_id: "nope"], root: root)
     end
 

@@ -42,6 +42,22 @@ defmodule Harness.Run.LogRecordTest do
     end
   end
 
+  describe "from_result/2 domains" do
+    test "carries normalized domain tags from meta onto the record" do
+      record = LogRecord.from_result(result([]), Keyword.put(meta(), :domains, [:oban, :otp, :oban]))
+
+      assert record.domains == [:oban, :otp]
+      assert LogRecord.domains(record) == [:oban, :otp]
+    end
+
+    test "defaults to an empty domain list when meta omits domains" do
+      record = LogRecord.from_result(result([]), meta())
+
+      assert record.domains == []
+      assert LogRecord.domains(record) == []
+    end
+  end
+
   describe "from_result/2 check_output" do
     test "captures only the failing checks' output, keyed by check name" do
       verdict = %Verdict{

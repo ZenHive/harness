@@ -705,7 +705,8 @@ defmodule Harness.Batch do
       batch_id: context.batch_id,
       agent: worker.item.agent,
       adapter: adapter_from_result(result) || List.first(context.adapters),
-      duration_ms: run_duration_ms(worker)
+      duration_ms: run_duration_ms(worker),
+      domains: worker.item.domains
     )
     |> ResultStore.record_run(context.result_store)
     |> log_store_error("run record", result.run_id)

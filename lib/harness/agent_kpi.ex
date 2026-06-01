@@ -3,11 +3,12 @@ defmodule Harness.AgentKPI do
   Per-agent KPI rollup over the run records `Harness.ResultStore` already persists.
 
   This context adds **no new capture** — every input field (`agent`, `verdict`,
-  `duration_ms`, `token_usage`, `repair_attempts`) is already on
+  `duration_ms`, `token_usage`, `repair_attempts`, `domains`) is already on
   `Harness.Run.LogRecord`. It is a read-only aggregation that makes the data we
   already have viewable at a glance: roll a record list up by `agent` into
   success rate, first-attempt-pass rate, duration median/p90, mean tokens, mean
-  repair attempts, and a cost-to-green composite.
+  repair attempts, and a cost-to-green composite. `aggregate_by_agent_domain/1`
+  adds the same rollup keyed by `{agent, domain}` for per-domain slicing.
 
   ## Pure by construction
 
@@ -26,6 +27,7 @@ defmodule Harness.AgentKPI do
       agent with zero `:pass` runs reports `nil` (no divide-by-zero, not `0`).
   """
 
+  alias Harness.CapabilityDomain
   alias Harness.Run.LogRecord
   alias Harness.TokenUsage
 
@@ -49,6 +51,9 @@ defmodule Harness.AgentKPI do
   @typedoc "Per-agent ledger keyed by the record's `agent` atom (or `nil` for an unregistered adapter)."
   @type t :: %{optional(atom() | nil) => agent_kpi()}
 
+  @typedoc "Per-(agent, domain) ledger keyed by `{agent, domain}`."
+  @type by_agent_domain :: %{optional({atom() | nil, CapabilityDomain.bucket()}) => agent_kpi()}
+
   @doc """
   Rolls a list of `Harness.Run.LogRecord` up into a per-agent KPI ledger.
 
@@ -59,6 +64,28 @@ defmodule Harness.AgentKPI do
     records
     |> Enum.group_by(& &1.agent)
     |> Map.new(fn {agent, group} -> {agent, summarize(group)} end)
+  end
+
+  @doc """
+  Rolls records up by `{agent, domain}` for per-domain KPI slicing.
+
+  Records with multiple domain tags contribute to each tag's bucket. Untagged
+  records bucket under `{agent, :untagged}` and are never dropped.
+  """
+  @spec aggregate_by_agent_domain([LogRecord.t()]) :: by_agent_domain()
+  def aggregate_by_agent_domain(records) when is_list(records) do
+    records
+    |> Enum.flat_map(&agent_domain_pairs/1)
+    |> Enum.group_by(fn {key, _record} -> key end, fn {_key, record} -> record end)
+    |> Map.new(fn {key, group} -> {key, summarize(group)} end)
+  end
+
+  @spec agent_domain_pairs(LogRecord.t()) :: [{{atom() | nil, CapabilityDomain.bucket()}, LogRecord.t()}]
+  defp agent_domain_pairs(record) do
+    record
+    |> LogRecord.domains()
+    |> CapabilityDomain.buckets()
+    |> Enum.map(fn domain -> {{record.agent, domain}, record} end)
   end
 
   @spec summarize([LogRecord.t()]) :: agent_kpi()

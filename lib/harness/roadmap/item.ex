@@ -10,6 +10,8 @@ defmodule Harness.Roadmap.Item do
   `Task` module.
   """
 
+  alias Harness.CapabilityDomain
+
   @typedoc """
   An ingested roadmap task.
 
@@ -25,6 +27,8 @@ defmodule Harness.Roadmap.Item do
       agent can read the task's contract without re-parsing the prompt.
     * `acceptance_criteria` — the task's structured acceptance criteria as a list
       of strings; an empty list when the task declares none.
+    * `domains` — advisory capability-domain tags copied onto run records at
+      settle time; empty for untagged production tasks and historical ingests.
   """
   @type t :: %__MODULE__{
           id: String.t(),
@@ -32,9 +36,10 @@ defmodule Harness.Roadmap.Item do
           prompt: String.t(),
           agent: :claude | :codex | :cursor,
           body: String.t() | nil,
-          acceptance_criteria: [String.t()]
+          acceptance_criteria: [String.t()],
+          domains: [CapabilityDomain.t()]
         }
 
   @enforce_keys [:id, :title, :prompt, :agent]
-  defstruct [:id, :title, :prompt, :agent, :body, acceptance_criteria: []]
+  defstruct [:id, :title, :prompt, :agent, :body, acceptance_criteria: [], domains: []]
 end

@@ -999,7 +999,8 @@ defmodule Harness.Run do
       agent: data.item.agent,
       adapter: data.adapter,
       project_name: data.project.name,
-      duration_ms: run_duration_ms(data)
+      duration_ms: run_duration_ms(data),
+      domains: data.item.domains
     )
     |> ResultStore.record_run(data.result_store)
     |> log_store_error(result.run_id)
