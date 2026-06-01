@@ -1,0 +1,16 @@
+id = "bench.oban.reverse"
+version = 1
+domains = ["oban"]
+expected_green = true
+
+[task]
+intent = "Add Harness.Benchmark.Eval.Oban.Reverse — an Oban.Worker that reverses the :text string in job args and returns {:ok, reversed}."
+acceptance = [
+  "perform/1 reverses the :text arg",
+  "perform/1 returns {:ok, reversed_string}",
+  "module uses Oban.Worker with a unique queue"
+]
+
+[target]
+project = "harness"
+check_stack = "elixir"

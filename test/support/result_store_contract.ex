@@ -22,8 +22,8 @@ defmodule Harness.ResultStoreContract do
         run_id: "run-abc",
         task_id: "task-73",
         adapter: Claude,
-        state: :passed,
-        reason: nil,
+        state: :done,
+        reason: :passed,
         duration_ms: 1234,
         repair_attempts: 0,
         first_attempt_failed_check_count: 0,
@@ -42,8 +42,8 @@ defmodule Harness.ResultStoreContract do
       run_id: "r1",
       task_id: "t1",
       adapter: Claude,
-      state: :passed,
-      reason: nil,
+      state: :done,
+      reason: :passed,
       duration_ms: 42,
       repair_attempts: 0,
       first_attempt_failed_check_count: 0,
@@ -54,7 +54,7 @@ defmodule Harness.ResultStoreContract do
 
     assert {:ok, [retrieved]} = ResultStore.list_run_records(store, batch_id: "b1")
     assert retrieved.run_id == "r1"
-    assert retrieved.state == :passed
+    assert retrieved.state == :done
     assert retrieved.domains == []
 
     # domains roundtrip (added post-Task 116)

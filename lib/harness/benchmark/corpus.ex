@@ -2,7 +2,8 @@ defmodule Harness.Benchmark.Corpus do
   @moduledoc """
   Loader for fixed capability-benchmark corpus files.
 
-  Corpus files live under `priv/benchmarks/*.toml` and use one item per file:
+  Corpus files live under `priv/benchmarks/*.toml` (one item per file; recompile
+  after adding or removing a TOML). Each file uses the schema:
 
       id = "bench.example"
       version = 1
@@ -23,7 +24,7 @@ defmodule Harness.Benchmark.Corpus do
 
   alias Harness.Benchmark.Item
 
-  @corpus_dir Path.expand("../../priv/benchmarks", __DIR__)
+  @corpus_dir Path.expand("../../../priv/benchmarks", __DIR__)
   @corpus_paths @corpus_dir |> Path.join("*.toml") |> Path.wildcard() |> Enum.sort()
 
   for path <- @corpus_paths do

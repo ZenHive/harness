@@ -1,0 +1,16 @@
+id = "bench.elixir.pipeline"
+version = 1
+domains = ["elixir"]
+expected_green = true
+
+[task]
+intent = "Add Harness.Benchmark.Eval.Elixir.Pipeline — parse_int/1 using with: trim string, parse integer, reject negatives."
+acceptance = [
+  "parse_int/1 returns {:ok, int} for positive integers",
+  "parse_int/1 returns {:error, :negative} for negative values",
+  "parse_int/1 returns {:error, :invalid} for non-numeric input"
+]
+
+[target]
+project = "harness"
+check_stack = "elixir"

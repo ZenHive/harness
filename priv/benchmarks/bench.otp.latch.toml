@@ -1,0 +1,16 @@
+id = "bench.otp.latch"
+version = 1
+domains = ["otp"]
+expected_green = true
+
+[task]
+intent = "Add Harness.Benchmark.Eval.Otp.Latch — a :gen_statem with :open/:closed states, :toggle cast, and :set cast to force a state."
+acceptance = [
+  "gen_statem starts via start_link/1",
+  ":toggle alternates between :open and :closed",
+  ":set accepts only :open or :closed"
+]
+
+[target]
+project = "harness"
+check_stack = "elixir"
