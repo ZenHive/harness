@@ -4308,7 +4308,7 @@ id = "143"
 phase = 11
 bundle = "autolanding"
 milestone = "v0_9"
-status = "pending"
+status = "done"
 title = "Verification bootstraps the worktree (deps seed / setup step) — stop grading on a missing-deps environment"
 scores = { d = 4, b = 7, u = 8 }
 markers = ["bug"]
@@ -4322,8 +4322,13 @@ ROOT: Harness.Verification.run/2 has no environment-bootstrap step; the grader's
 
 FIX (design choice for the implementer): either (a) a non-grading setup phase on %Harness.CheckStack{} (e.g. setup: [%Check{name: :deps, command: "mix", args: ["deps.get"]}]) run by Verification.run/2 before checks, with failure -> {:error, {:setup_failed, ...}} (environment error, distinct from a red verdict); or (b) Worktree.create/2 seeds deps/ from the source checkout. Option (a) is language-honest (each preset declares its own bootstrap) and keeps Worktree generic; prefer it unless implementation reveals otherwise. The repair loop must never see a setup failure as agent-caused.
 """
+implemented = "Verification.run/2 now bootstraps the worktree before grading: a non-grading setup step seeds deps (mix deps.get) so fresh worktrees aren't graded on a missing-deps environment. Delivered by cursor (run run-1780282646180-4a4b4ae0), salvaged after a hot-reload crash killed the original run's persist; re-verified green via Harness.Verification.run."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-06-01"
 scored_at = "2026-06-01"
+done_at = "2026-06-01"
+shipped_in = "9c5048c"
 
 [[task]]
 id = "144"
