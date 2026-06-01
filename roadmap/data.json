@@ -5168,6 +5168,32 @@
       "delivered_by": "grok",
       "verified": true,
       "cross_repo": []
+    },
+    {
+      "id": "136",
+      "phase": 14,
+      "bundle": "agent-rules",
+      "status": "pending",
+      "title": "Grok parsed transcript shows reasoning + text only — no tool-call/tool-result blocks (parser gap)",
+      "scores": {
+        "d": 3,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 1.0,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "touches": [
+        "lib/harness/dashboard/transcript/parser/grok.ex",
+        "test/harness/dashboard/transcript/parser/grok_test.exs"
+      ],
+      "body": "OBSERVED 2026-06-01 dogfooding task 135 to grok (run-1780279364278-38f3dc26): grok produced a 10-file diff (real edits) yet the run-detail PARSED transcript rendered ONLY reasoning cards — block tally showed transcript-thought >0 but tool-call=0, msg-assistant=0, eyebrow=0. So an operator watching a grok dogfood run sees it THINK but never sees it ACT (no file edits, no commands, no tool results).\n\nROOT: lib/harness/dashboard/transcript/parser/grok.ex maps only two shapes — {:assistant_text, ...} and {:system, kind: :thought, ...}. It emits NO :assistant_tool_use or :tool_result events, which Task 87's component (Components.transcript_view/1) renders as .tool-call blocks. Claude's parser maps these; grok's does not.\n\nINVESTIGATE: (1) does grok's streaming-json wire format expose tool-call / tool-result events (check a real grok transcript in agent_output, and grok CLI --output-format streaming-json docs)? (2) if yes, map them to :assistant_tool_use / :tool_result in grok.ex mirroring claude.ex; (3) if grok does NOT stream structured tool calls, document that limitation in the parser moduledoc and surface SOMETHING (the raw action lines) rather than dropping them. Add grok_test.exs cases for tool-call/tool-result like the other parser tests. Browser-confirm the parsed view shows grok's actions.\n",
+      "created_at": "2026-06-01",
+      "scored_at": "2026-06-01",
+      "cross_repo": []
     }
   ]
 }
