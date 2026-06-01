@@ -39,20 +39,26 @@ defmodule Harness.Verification.Check do
     * `command` — the executable to run, resolved on `PATH` (e.g. `"mix"`).
     * `args` — the argument vector, always a list, never a shell string
       (e.g. `["test.json"]`).
+    * `env` — per-check environment overrides. String values are set, `false`
+      unsets a variable, and `{:harness, :test_database}` resolves to the
+      verifier's isolated per-worktree test database name.
     * `post_process` — optional `{module, function}` hook that re-grades the
       check's `Harness.Verification.Result` (see `t:post_process/0`); `nil`
       means grade purely on process exit status.
   """
+  @type env_value :: String.t() | false | {:harness, :test_database}
+
   @type t :: %__MODULE__{
           name: String.t(),
           role: atom() | nil,
           command: String.t(),
           args: [String.t()],
+          env: %{String.t() => env_value()},
           post_process: post_process() | nil
         }
 
   @enforce_keys [:name, :command, :args]
-  defstruct [:name, :command, :args, role: nil, post_process: nil]
+  defstruct [:name, :command, :args, role: nil, env: %{}, post_process: nil]
 
   @doc """
   Invokes a `post_process` hook on `result`, returning the (possibly re-graded)

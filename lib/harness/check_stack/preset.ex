@@ -29,7 +29,8 @@ defmodule Harness.CheckStack.Preset do
 
   `:elixir` is the lighter day-to-day stack; `:elixir_precommit` is the
   mergeable-bar stack mirroring `mix precommit` (Task 97). For a parameterized
-  `:elixir_precommit` (custom `cover_threshold` / `exclude`), use `fetch/2`.
+  `:elixir_precommit` (custom `cover_threshold`, ExUnit tag filters, or
+  Postgres test DB provisioning), use `fetch/2`.
   """
   @spec fetch(atom()) :: {:ok, CheckStack.t()} | {:error, error()}
   def fetch(:elixir), do: {:ok, ElixirPreset.preset()}
@@ -40,11 +41,11 @@ defmodule Harness.CheckStack.Preset do
   @doc """
   Returns a parameterized built-in `Harness.CheckStack`.
 
-  Only `:elixir_precommit` reads `opts` (`:cover_threshold`, `:exclude` — see
-  `Harness.CheckStack.Preset.Elixir.precommit/1`); every other preset ignores
-  them and resolves identically to `fetch/1`. This is the form a project's
-  registration config uses to declare its own merge gate, e.g.
-  `preset: {:elixir_precommit, cover_threshold: 85, exclude: [:integration]}`.
+  Only `:elixir_precommit` reads `opts` (`:cover_threshold`, `:exclude`,
+  `:include`, `:database` — see `Harness.CheckStack.Preset.Elixir.precommit/1`);
+  every other preset ignores them and resolves identically to `fetch/1`. This is
+  the form a project's registration config uses to declare its own merge gate,
+  e.g. `preset: {:elixir_precommit, cover_threshold: 85, exclude: [:integration]}`.
   """
   @spec fetch(atom(), keyword()) :: {:ok, CheckStack.t()} | {:error, error()}
   def fetch(:elixir_precommit, opts) when is_list(opts), do: {:ok, ElixirPreset.precommit(opts)}

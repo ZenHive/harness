@@ -86,6 +86,38 @@ defmodule Harness.CheckStack.Preset.ElixirTest do
                ["test.json", "--cover", "--cover-threshold", "80", "--exclude", "integration", "--exclude", "external"]
     end
 
+    test ":include appends --include pairs for tags the grader should execute" do
+      test_check =
+        Enum.find(Preset.Elixir.precommit(include: [:integration, :postgres]).checks, &(&1.name == "test"))
+
+      assert test_check.args ==
+               ["test.json", "--cover", "--cover-threshold", "80", "--include", "integration", "--include", "postgres"]
+    end
+
+    test ":database :postgres provisions an isolated test DB before checks" do
+      %CheckStack{setup: setup, checks: checks} = Preset.Elixir.precommit(database: :postgres)
+
+      assert Enum.map(setup, & &1.name) == ["deps", "deps.compile", "test-db-create", "test-db-migrate"]
+
+      assert Enum.map(setup, & &1.args) == [
+               ["deps.get"],
+               ["deps.compile"],
+               ["ecto.create", "--quiet"],
+               ["ecto.migrate", "--quiet"]
+             ]
+
+      db_setup = Enum.filter(setup, &String.starts_with?(&1.name, "test-db-"))
+
+      assert db_setup != []
+
+      assert Enum.all?(db_setup, fn check ->
+               check.env == %{"MIX_ENV" => "test", "HARNESS_DB_NAME" => {:harness, :test_database}}
+             end)
+
+      test_check = Enum.find(checks, &(&1.name == "test"))
+      assert test_check.env == %{"MIX_ENV" => "test", "HARNESS_DB_NAME" => {:harness, :test_database}}
+    end
+
     test "doctor gates with --raise so its exit status is load-bearing" do
       doctor = Enum.find(Preset.Elixir.precommit().checks, &(&1.name == "doctor"))
       assert doctor.args == ["doctor", "--raise"]

@@ -96,6 +96,29 @@ defmodule Harness.VerificationTest do
       assert result.status == :pass
       assert File.exists?(Path.join(dir, "ran-here"))
     end
+
+    test "injects check env with a per-worktree test database name" do
+      dir = worktree_dir()
+
+      stub =
+        stub_script("""
+        test "$MIX_ENV" = "test" || exit 3
+        case "$HARNESS_DB_NAME" in
+          harness_test_*) ;;
+          *) exit 4 ;;
+        esac
+        printf "%s" "$HARNESS_DB_NAME" > db-name
+        """)
+
+      env = %{"MIX_ENV" => "test", "HARNESS_DB_NAME" => {:harness, :test_database}}
+      env_check = %Check{name: "env", command: stub, args: [], env: env}
+
+      assert {:ok, %Verdict{status: :pass, results: [result]}} =
+               Verification.run(dir, checks: [env_check])
+
+      assert result.status == :pass
+      assert File.read!(Path.join(dir, "db-name")) =~ "harness_test_"
+    end
   end
 
   describe "run/2 timeout" do

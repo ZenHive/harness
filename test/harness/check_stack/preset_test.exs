@@ -40,6 +40,16 @@ defmodule Harness.CheckStack.PresetTest do
       assert "integration" in test_check.args
     end
 
+    test "fetch(:elixir_precommit, opts) threads include tags and database provisioning through" do
+      assert {:ok, stack} = Preset.fetch(:elixir_precommit, include: [:integration], database: :postgres)
+
+      test_check = Enum.find(stack.checks, &(&1.name == "test"))
+      assert "--include" in test_check.args
+      assert "integration" in test_check.args
+      assert test_check.env == %{"MIX_ENV" => "test", "HARNESS_DB_NAME" => {:harness, :test_database}}
+      assert Enum.map(stack.setup, & &1.name) == ["deps", "deps.compile", "test-db-create", "test-db-migrate"]
+    end
+
     test "non-precommit presets ignore opts and resolve like fetch/1" do
       assert Preset.fetch(:elixir, cover_threshold: 90) == Preset.fetch(:elixir)
       assert Preset.fetch(:cobol, []) == {:error, {:unknown_preset, :cobol}}

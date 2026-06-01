@@ -66,6 +66,7 @@ defmodule Harness.Verification do
 
   @default_timeout 600_000
   @timeout_output_drain_ms 100
+  @test_database_prefix "harness_test"
 
   @typedoc "A reason a verification run cannot execute at all."
   @type error ::
@@ -184,7 +185,7 @@ defmodule Harness.Verification do
     timeout = timeout_override || stack.timeout_per_check || configured_timeout()
 
     if File.dir?(check_dir) do
-      run_setup(stack, check_dir, timeout, post_process_opts)
+      run_setup(stack, check_dir, timeout, post_process_opts, dynamic_env(path, stack))
     else
       {:error, {:workdir_not_found, check_dir}}
     end
@@ -250,8 +251,10 @@ defmodule Harness.Verification do
     if File.dir?(check_dir) do
       timeout = timeout_override || stack.timeout_per_check || configured_timeout()
 
-      with :ok <- run_setup(stack, check_dir, timeout, post_process_opts) do
-        {:ok, Enum.map(stack.checks, &run_check(&1, check_dir, timeout, post_process_opts))}
+      run_env = dynamic_env(path, stack)
+
+      with :ok <- run_setup(stack, check_dir, timeout, post_process_opts, run_env) do
+        {:ok, Enum.map(stack.checks, &run_check(&1, check_dir, timeout, post_process_opts, run_env))}
       end
     else
       {:error, {:workdir_not_found, check_dir}}
@@ -261,14 +264,14 @@ defmodule Harness.Verification do
   # Runs a stack's non-grading bootstrap commands before its checks. Empty setup
   # is a no-op. The first failing setup step halts with `{:setup_failed, _}` —
   # an environment error distinct from a red verdict.
-  @spec run_setup(CheckStack.t(), String.t(), timeout(), keyword()) ::
+  @spec run_setup(CheckStack.t(), String.t(), timeout(), keyword(), map()) ::
           :ok | {:error, {:setup_failed, setup_failure()}}
-  defp run_setup(%CheckStack{setup: []}, _check_dir, _timeout, _post_process_opts), do: :ok
+  defp run_setup(%CheckStack{setup: []}, _check_dir, _timeout, _post_process_opts, _run_env), do: :ok
 
-  defp run_setup(%CheckStack{} = stack, check_dir, timeout, post_process_opts) do
+  defp run_setup(%CheckStack{} = stack, check_dir, timeout, post_process_opts, run_env) do
     stack.setup
     |> Enum.reduce_while(:ok, fn check, :ok ->
-      case run_check(check, check_dir, timeout, post_process_opts) do
+      case run_check(check, check_dir, timeout, post_process_opts, run_env) do
         %Result{status: :pass} ->
           {:cont, :ok}
 
@@ -287,6 +290,22 @@ defmodule Harness.Verification do
   @spec stack_dir(String.t(), String.t() | nil) :: String.t()
   defp stack_dir(path, workdir) when workdir in [nil, ""], do: path
   defp stack_dir(path, workdir), do: Path.join(path, workdir)
+
+  @spec dynamic_env(String.t(), CheckStack.t()) :: %{atom() => String.t()}
+  defp dynamic_env(path, %CheckStack{} = stack) do
+    %{test_database: test_database_name(path, stack)}
+  end
+
+  @spec test_database_name(String.t(), CheckStack.t()) :: String.t()
+  defp test_database_name(path, %CheckStack{name: name}) do
+    slug =
+      [Path.basename(path), to_string(name), :erlang.phash2(path)]
+      |> Enum.join("_")
+      |> String.replace(~r/[^A-Za-z0-9_]/, "_")
+      |> String.trim("_")
+
+    "#{@test_database_prefix}_#{slug}"
+  end
 
   @spec configured_checks() :: [Check.t()]
   defp configured_checks do
@@ -325,30 +344,54 @@ defmodule Harness.Verification do
   # crash, so the verdict still reports every sibling check. Any
   # `post_process` hook on the check runs after the port exits (or times out),
   # so it sees the same `Result` shape the verdict will carry.
-  @spec run_check(Check.t(), String.t(), timeout(), keyword()) :: Result.t()
-  defp run_check(%Check{} = check, worktree_path, timeout, post_process_opts) do
-    raw_result = collect_check(check, worktree_path, timeout)
+  @spec run_check(Check.t(), String.t(), timeout(), keyword(), map()) :: Result.t()
+  defp run_check(%Check{} = check, worktree_path, timeout, post_process_opts, run_env) do
+    raw_result = collect_check(check, worktree_path, timeout, run_env)
     Check.apply_post_process(check, raw_result, post_process_opts)
   end
 
-  @spec collect_check(Check.t(), String.t(), timeout()) :: Result.t()
-  defp collect_check(%Check{} = check, worktree_path, timeout) do
+  @spec collect_check(Check.t(), String.t(), timeout(), map()) :: Result.t()
+  defp collect_check(%Check{} = check, worktree_path, timeout, run_env) do
     case System.find_executable(check.command) do
       nil ->
         fail_result(check, "could not launch #{inspect(check.command)}: not found on PATH")
 
       executable ->
         port =
-          Port.open({:spawn_executable, executable}, [
-            :binary,
-            :exit_status,
-            :hide,
-            :stderr_to_stdout,
-            {:args, check.args},
-            {:cd, worktree_path}
-          ])
+          Port.open(
+            {:spawn_executable, executable},
+            port_options(check, worktree_path, run_env)
+          )
 
         collect(port, check, timeout, deadline(timeout), [])
+    end
+  end
+
+  @spec port_options(Check.t(), String.t(), map()) :: [term()]
+  defp port_options(%Check{} = check, worktree_path, run_env) do
+    maybe_put_env(
+      [:binary, :exit_status, :hide, :stderr_to_stdout, {:args, check.args}, {:cd, worktree_path}],
+      check.env,
+      run_env
+    )
+  end
+
+  @spec maybe_put_env([term()], %{String.t() => Check.env_value()} | nil, map()) :: [term()]
+  defp maybe_put_env(options, env, _run_env) when env in [nil, %{}], do: options
+
+  defp maybe_put_env(options, env, run_env) when is_map(env) do
+    [{:env, Enum.map(env, fn {key, value} -> {String.to_charlist(key), env_port_value(value, run_env)} end)} | options]
+  end
+
+  @spec resolve_env_value(Check.env_value(), map()) :: String.t() | false
+  defp resolve_env_value({:harness, key}, run_env), do: Map.fetch!(run_env, key)
+  defp resolve_env_value(value, _run_env) when is_binary(value) or value == false, do: value
+
+  @spec env_port_value(Check.env_value(), map()) :: charlist() | false
+  defp env_port_value(value, run_env) do
+    case resolve_env_value(value, run_env) do
+      false -> false
+      resolved -> String.to_charlist(resolved)
     end
   end
 
