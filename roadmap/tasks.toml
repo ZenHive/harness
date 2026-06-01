@@ -3660,18 +3660,23 @@ id = "113"
 phase = 11
 bundle = "autolanding"
 milestone = "v0_9"
-status = "pending"
+status = "done"
 title = "Continuous in-run discernment — sampled cross-family Buddhi on the witness stream"
-model = "codex"
 scores = { d = 6, b = 7, u = 6 }
 depends_on = [99, 102, 112]
 acceptance_criteria = ["the post-green gate (Task 99) and the in-run sampler share one discernment dispatch path, not duplicated logic", "in-run discernment is weight-gated + sampled; trivial runs skip it; cadence is configurable", "verdict is demote-only: notify-only / halt+re-dispatch / blocked -- no path turns red into green", "ambiguous/low-confidence verdicts on partial transcripts route to notify-only, never halt", "grader dispatch failure or timeout never silently approves (inherits Task 99 fail-safe)", "the Task-112 reflex floor can halt a hung/rogue in-run grader (watcher-regress bounded)"]
 out_of_scope = ["live mid-flight prompt injection / steering (kill + re-dispatch only)", "a separate acting Sakshi agent -- Sakshi never acts", "re-implementing Task 99's settle-time gate -- it becomes the post-green trigger of the shared path"]
+model = "codex"
 body = """
 Task 99's semantic gate fires ONCE on the final green diff -- it sees the result, never the process. An agent taking destructive/out-of-scope actions, drifting from the plan, or spinning is invisible to it until (or unless) the diff lands. Extend the SAME machinery (AuditReview cross-family pairing, <<<VERDICT>>> sentinel, fail-safe-on-error, the Harness.Run consulting state) from one-shot post-green to a weight-gated SAMPLED check DURING the run, fed by the live witness stream (Task 102 Event hinge + transcript capture). REFACTOR Task 99's gate so the settle-time check and the in-run check share ONE discernment dispatch path -- one Buddhi, two trigger points -- not two copies. Demote-only: notify-only (Task-102 sink) / halt + re-dispatch-with-correction / blocked. Never promotes red->green; never blesses. 'Intervene' = kill + re-dispatch with the verdict fed back through the repair-loop channel -- live mid-flight steering is unsupported across the six CLIs. Gate by weight (high-D, security/bug markers, long-running) + a sample interval; skip trivial runs. This is Buddhi watching itself (continuous self-observation), NOT a new acting agent -- Sakshi (Task 102) still only witnesses. RISK: judging a PARTIAL transcript is noisy -- agents read heavily before editing (Task 78), so 'it's drifting' fires false. Mitigate: ambiguous -> notify-only, never halt; halt reserved for high-confidence rogue/destructive signals. This task partly overlaps Task 99 for the gaming/evasion class; its NON-overlapping value is process visibility (rogue actions + productive-spin) the settle gate cannot see. Score is honest-low for cost + noise + overlap, not demand-doubt.
 """
+implemented = "Sampled in-run cross-family discernment on the witness stream: transcript chunks trigger maybe_sample_in_run_discernment (interval/weight/long-running gates), grading the partial transcript + uncommitted diff via grade_discernment(:in_run). Reject verdicts halt-and-redispatch (repairable) or fail the run; approve/unclear are notify-only (demote-only contract). Notification.Event gains :in_run_discernment. Delivered by codex (run run-1780281606207-181496be); salvaged: rebased onto development, hand-fixed feedback spec (+optional :trigger) and dropped kill_task/1 dup, then re-verified green (test/dialyzer/credo/doctor/sobelow)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-05-31"
 scored_at = "2026-05-31"
+done_at = "2026-06-01"
+shipped_in = "caaeec1"
 
 [[task]]
 id = "114"
