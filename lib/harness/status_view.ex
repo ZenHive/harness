@@ -139,6 +139,8 @@ defmodule Harness.StatusView do
   def classify(%Status{state: state}) when state in [:dispatched, :running, :committing, :verifying, :consulting],
     do: :in_flight
 
+  def classify(%Status{}), do: :in_flight
+
   @spec run_entry(String.t()) :: [run_entry()]
   defp run_entry(run_id) do
     case Run.status(run_id) do
