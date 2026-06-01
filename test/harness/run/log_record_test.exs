@@ -57,11 +57,53 @@ defmodule Harness.Run.LogRecordTest do
       assert record.model == "claude-opus-4-8"
     end
 
-    test "is nil when the agent reports no model" do
+    test "falls back to the requested model when the agent reports none" do
+      outcome = %Outcome{run: nil, kind: :exited, exit_status: 0, output: ~s({"type":"turn.completed"}\n)}
+
+      record =
+        LogRecord.from_result(
+          result(agent_outcome: outcome),
+          Keyword.merge(meta(), agent: :codex, requested_model: "gpt-5.4")
+        )
+
+      assert record.model == "gpt-5.4"
+    end
+
+    test "prefers the reported model over the requested model when both are present" do
+      outcome = %Outcome{
+        run: nil,
+        kind: :exited,
+        exit_status: 0,
+        output: ~s({"type":"system","subtype":"init","model":"claude-opus-4-8"}\n)
+      }
+
+      record =
+        LogRecord.from_result(
+          result(agent_outcome: outcome),
+          Keyword.put(meta(), :requested_model, "claude-opus-4-7")
+        )
+
+      assert record.model == "claude-opus-4-8"
+    end
+
+    test "is nil when neither the agent nor the dispatch meta names a model" do
       outcome = %Outcome{run: nil, kind: :exited, exit_status: 0, output: ~s({"type":"turn.completed"}\n)}
       record = LogRecord.from_result(result(agent_outcome: outcome), Keyword.put(meta(), :agent, :codex))
 
       assert record.model == nil
+    end
+  end
+
+  describe "resolve_model/3" do
+    test "reported > requested > nil" do
+      transcript = ~s({"type":"system","subtype":"init","model":"claude-opus-4-8"}\n)
+
+      assert LogRecord.resolve_model(:claude, transcript, "claude-opus-4-7") == "claude-opus-4-8"
+
+      assert LogRecord.resolve_model(:codex, ~s({"type":"turn.completed"}\n), "gpt-5.4") ==
+               "gpt-5.4"
+
+      assert LogRecord.resolve_model(:codex, ~s({"type":"turn.completed"}\n), nil) == nil
     end
   end
 

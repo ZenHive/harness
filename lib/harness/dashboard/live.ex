@@ -670,7 +670,7 @@ defmodule Harness.Dashboard.Live do
           <td>{entry.status.task_id}</td>
           <td><.run_link run_id={entry.status.run_id} /></td>
           <td><code>{agent_label(entry.status.agent, nil)}</code></td>
-          <td>{entry.status.model || "—"}</td>
+          <td>{model_label(entry.status.agent, entry.status.model, "")}</td>
           <td>
             <Components.bucket_badge bucket={entry.bucket} label={to_string(entry.status.state)} />
           </td>
@@ -783,12 +783,30 @@ defmodule Harness.Dashboard.Live do
   # The model the agent reported using. Prefers the value stored on the settled
   # record; for a live run (no record yet) it parses the captured transcript,
   # since claude/cursor name the model early in their stream. Agents that never
-  # report a model (codex/grok/antigravity) render "—".
+  # report a model fall back to the task's requested model; when only that is
+  # known, the label carries a "(requested)" hint.
   @doc false
   @spec model_label(Parser.agent_kind() | nil, String.t() | nil, binary()) :: String.t()
   def model_label(agent_kind, stored, transcript) do
-    stored || Harness.AgentModel.parse(agent_kind, transcript) || "—"
+    reported = Harness.AgentModel.parse(agent_kind, transcript)
+
+    cond do
+      is_binary(stored) and stored != "" ->
+        if is_nil(reported) and requested_only_agent?(agent_kind),
+          do: "#{stored} (requested)",
+          else: stored
+
+      is_binary(reported) ->
+        reported
+
+      true ->
+        "—"
+    end
   end
+
+  @spec requested_only_agent?(Parser.agent_kind() | nil) :: boolean()
+  defp requested_only_agent?(agent) when agent in [:codex, :grok, :antigravity, :pi], do: true
+  defp requested_only_agent?(_agent), do: false
 
   # honestly render "—" rather than a misleading 0.
   @doc false

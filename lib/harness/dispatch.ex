@@ -50,6 +50,7 @@ defmodule Harness.Dispatch do
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
   alias Harness.Roadmap
+  alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.LogRecord
   alias Harness.Run.Status
@@ -400,7 +401,7 @@ defmodule Harness.Dispatch do
              item,
              project,
              adapter_module,
-             start_opts(subscriber, scrub_anthropic_key, semantic_gate)
+             run_start_opts(item, subscriber, scrub_anthropic_key, semantic_gate)
            ) do
       {:ok, run_id}
     end
@@ -417,6 +418,22 @@ defmodule Harness.Dispatch do
   def start_opts(subscriber, scrub_anthropic_key, semantic_gate) do
     opts = [subscriber: subscriber, env: scrub_env(scrub_anthropic_key)]
     if semantic_gate, do: Keyword.put(opts, :semantic_gate, enabled: true), else: opts
+  end
+
+  @doc false
+  @spec run_start_opts(Item.t(), pid() | nil, boolean(), boolean()) :: keyword()
+  def run_start_opts(%Item{} = item, subscriber, scrub_anthropic_key, semantic_gate) do
+    item
+    |> Map.get(:model)
+    |> case do
+      model when is_binary(model) ->
+        subscriber
+        |> start_opts(scrub_anthropic_key, semantic_gate)
+        |> Keyword.put(:requested_model, model)
+
+      _other ->
+        start_opts(subscriber, scrub_anthropic_key, semantic_gate)
+    end
   end
 
   @spec summarize(Run.Result.t()) :: map()
@@ -520,7 +537,7 @@ defmodule Harness.Dispatch do
   # Ingest each bundle task into a %Roadmap.Item{}, halting on the first failure.
   # rmap emits task ids as JSON (string or integer); coerce to the string id
   # `Roadmap.ingest({:id, _})` requires.
-  @spec ingest_bundle([map()], Project.t(), atom()) :: {:ok, [Roadmap.Item.t()]} | {:error, error()}
+  @spec ingest_bundle([map()], Project.t(), atom()) :: {:ok, [Item.t()]} | {:error, error()}
   defp ingest_bundle(tasks, project, render_agent) do
     tasks
     |> Enum.reduce_while({:ok, []}, fn task, {:ok, items} ->

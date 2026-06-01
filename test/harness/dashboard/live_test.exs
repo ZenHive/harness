@@ -325,7 +325,8 @@ defmodule Harness.Dashboard.LiveTest do
       assert Live.model_label(:cursor, "claude-opus-4-8", transcript) == "claude-opus-4-8"
       # No stored value → parse the live transcript (claude/cursor report it early).
       assert Live.model_label(:cursor, nil, transcript) == "Composer 2.5 Fast"
-      # Agent that never reports a model → —.
+      # Agent that never reports a model → requested fallback with a hint.
+      assert Live.model_label(:grok, "grok-3", ~s({"type":"text","data":"hi"}\n)) == "grok-3 (requested)"
       assert Live.model_label(:grok, nil, ~s({"type":"text","data":"hi"}\n)) == "—"
     end
   end

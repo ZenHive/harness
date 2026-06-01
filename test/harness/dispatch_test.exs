@@ -102,6 +102,19 @@ defmodule Harness.DispatchTest do
 
       refute Keyword.has_key?(opts, :semantic_gate)
     end
+
+    test "run_start_opts threads the ingested item's model into start_run as requested_model" do
+      item = %Item{id: "144", title: "t", prompt: "p", agent: :codex, model: "gpt-5.4"}
+
+      assert Keyword.fetch!(Dispatch.run_start_opts(item, self(), true, false), :requested_model) ==
+               "gpt-5.4"
+    end
+
+    test "run_start_opts omits requested_model when the item carries none" do
+      item = %Item{id: "144", title: "t", prompt: "p", agent: :codex}
+
+      refute Keyword.has_key?(Dispatch.run_start_opts(item, nil, true, false), :requested_model)
+    end
   end
 
   describe "await_result/2 settle path" do

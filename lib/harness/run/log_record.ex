@@ -132,7 +132,12 @@ defmodule Harness.Run.LogRecord do
       task_id: result.task_id,
       project_name: Keyword.get(meta, :project_name),
       agent: Keyword.get(meta, :agent),
-      model: AgentModel.parse(Keyword.get(meta, :agent), (outcome && outcome.output) || ""),
+      model:
+        resolve_model(
+          Keyword.get(meta, :agent),
+          (outcome && outcome.output) || "",
+          Keyword.get(meta, :requested_model)
+        ),
       adapter: Keyword.fetch!(meta, :adapter),
       state: result.state,
       reason: result.reason,
@@ -158,6 +163,12 @@ defmodule Harness.Run.LogRecord do
   @spec domains(t()) :: [CapabilityDomain.t()]
   def domains(%__MODULE__{domains: domains}) when is_list(domains), do: domains
   def domains(_record), do: []
+
+  @doc false
+  @spec resolve_model(atom() | nil, binary(), String.t() | nil) :: String.t() | nil
+  def resolve_model(agent, output, requested_model) do
+    AgentModel.parse(agent, output) || requested_model
+  end
 
   @spec domains_from_meta(keyword()) :: [CapabilityDomain.t()]
   defp domains_from_meta(meta) do

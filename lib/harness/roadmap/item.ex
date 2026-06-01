@@ -29,6 +29,9 @@ defmodule Harness.Roadmap.Item do
       of strings; an empty list when the task declares none.
     * `domains` — advisory capability-domain tags copied onto run records at
       settle time; empty for untagged production tasks and historical ingests.
+    * `model` — the task's pinned `model` field from rmap when present (an LLM
+      id like `claude-opus-4-7`, or an agent routing token like `codex`); carried
+      through dispatch as the requested model when the agent does not self-report.
   """
   @type t :: %__MODULE__{
           id: String.t(),
@@ -37,9 +40,10 @@ defmodule Harness.Roadmap.Item do
           agent: :claude | :codex | :cursor,
           body: String.t() | nil,
           acceptance_criteria: [String.t()],
-          domains: [CapabilityDomain.t()]
+          domains: [CapabilityDomain.t()],
+          model: String.t() | nil
         }
 
   @enforce_keys [:id, :title, :prompt, :agent]
-  defstruct [:id, :title, :prompt, :agent, :body, acceptance_criteria: [], domains: []]
+  defstruct [:id, :title, :prompt, :agent, :body, acceptance_criteria: [], domains: [], model: nil]
 end

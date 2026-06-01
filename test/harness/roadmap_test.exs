@@ -111,6 +111,32 @@ defmodule Harness.RoadmapTest do
       assert {:ok, %Item{id: "7", acceptance_criteria: []}} =
                Roadmap.ingest({:id, "7"}, project_root: @sample, rmap_bin: stub)
     end
+
+    test "carries the task model field onto the ingested item" do
+      stub =
+        stub_script("""
+        case "$1" in
+          show) echo '{"id":"7","title":"Pinned model","model":"gpt-5.4"}' ;;
+          delegate) echo 'rendered prompt' ;;
+        esac
+        """)
+
+      assert {:ok, %Item{id: "7", model: "gpt-5.4"}} =
+               Roadmap.ingest({:id, "7"}, project_root: @sample, rmap_bin: stub)
+    end
+
+    test "defaults model to nil when the task omits it" do
+      stub =
+        stub_script("""
+        case "$1" in
+          show) echo '{"id":"7","title":"Bare task"}' ;;
+          delegate) echo 'rendered prompt' ;;
+        esac
+        """)
+
+      assert {:ok, %Item{id: "7", model: nil}} =
+               Roadmap.ingest({:id, "7"}, project_root: @sample, rmap_bin: stub)
+    end
   end
 
   describe "ingest/2 next" do

@@ -115,7 +115,8 @@ defmodule Harness.Roadmap do
          prompt: prompt,
          agent: agent,
          body: task["body"],
-         acceptance_criteria: acceptance_criteria(task)
+         acceptance_criteria: acceptance_criteria(task),
+         model: task_model(task)
        }}
     end
   end
@@ -126,6 +127,10 @@ defmodule Harness.Roadmap do
   @spec acceptance_criteria(map()) :: [String.t()]
   defp acceptance_criteria(%{"acceptance_criteria" => criteria}) when is_list(criteria), do: criteria
   defp acceptance_criteria(_task), do: []
+
+  @spec task_model(map()) :: String.t() | nil
+  defp task_model(%{"model" => model}) when is_binary(model) and model != "", do: model
+  defp task_model(_task), do: nil
 
   api(:ready, "List the parallel-safe, headless-dispatchable task set via rmap ready --dispatchable.",
     params: [

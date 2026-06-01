@@ -97,7 +97,7 @@ defmodule Harness.Run.Worker do
     # is in_progress (or green-unlanded under manual landing_policy).
     _ = claim_in_progress(item, project)
 
-    case start_run(item, project, adapter, run_opts(job)) do
+    case start_run(item, project, adapter, run_opts(job, item)) do
       {:ok, run_id, pid} ->
         {:ok, await_run(run_id, Process.monitor(pid), item)}
 
@@ -123,9 +123,17 @@ defmodule Harness.Run.Worker do
     end
   end
 
-  @spec run_opts(Oban.Job.t()) :: keyword()
-  defp run_opts(%Oban.Job{id: id, args: args}) when is_integer(id) do
-    [batch_id: "oban-job-#{id}", subscriber: self()] ++ env_opt(args)
+  @spec run_opts(Oban.Job.t(), Item.t()) :: keyword()
+  defp run_opts(%Oban.Job{id: id, args: args}, %Item{} = item) when is_integer(id) do
+    opts = [batch_id: "oban-job-#{id}", subscriber: self()]
+
+    opts =
+      case item.model do
+        model when is_binary(model) -> Keyword.put(opts, :requested_model, model)
+        _other -> opts
+      end
+
+    opts ++ env_opt(args)
   end
 
   # The dispatch layer (Harness.Batch) persists an optional caller env override

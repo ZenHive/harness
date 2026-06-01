@@ -30,8 +30,9 @@ defmodule Harness.Run.Status do
     * `agent` — the executing adapter's identity atom (`:claude` / `:cursor` /
       …), resolved at run start; `nil` for an unregistered adapter / test double.
       Distinct from `agent_kind`, which is the *outcome* kind, not the identity.
-    * `model` — the LLM model the agent reported using, when known (claude /
-      cursor self-report it in their transcript; others and live runs are `nil`).
+    * `model` — the LLM model for this run: the agent-reported id when present
+      (claude / cursor self-report in their transcript), else the task's pinned
+      requested model, else `nil`.
     * `agent_kind` — how the agent run ended (`t:Harness.AgentAdapter.Outcome.kind/0`),
       or `nil` before the agent has finished.
     * `verdict_status` — the verification verdict (`:pass` / `:fail`), or `nil`

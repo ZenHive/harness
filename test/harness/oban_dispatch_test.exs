@@ -220,6 +220,88 @@ defmodule Harness.ObanDispatchTest do
     assert_received {:start_env, %{"ANTHROPIC_API_KEY" => false}}
   end
 
+  test "worker threads the ingested item's model into start_run as requested_model" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-worker", name: "model-project")
+    assert :ok = ProjectRegistry.register(project)
+
+    Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts ->
+      {:ok, item("48", :codex, "gpt-5.4")}
+    end)
+
+    Application.put_env(:harness, :run_starter, fn %Item{} = item, _run_project, _adapter, opts ->
+      send(parent, {:start_requested_model, Keyword.get(opts, :requested_model), item.id})
+      run_id = "run-model-ok"
+      subscriber = Keyword.fetch!(opts, :subscriber)
+
+      pid =
+        spawn(fn ->
+          send(
+            subscriber,
+            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :passed}}
+          )
+
+          Process.sleep(100)
+        end)
+
+      {:ok, run_id, pid}
+    end)
+
+    assert :ok =
+             Worker.perform(%Oban.Job{
+               id: 126,
+               attempt: 1,
+               args: %{
+                 "project_name" => "model-project",
+                 "item_id" => "48",
+                 "adapter_module" => "Elixir.Harness.AgentAdapter.Codex"
+               }
+             })
+
+    assert_received {:start_requested_model, "gpt-5.4", "48"}
+  end
+
+  test "worker omits requested_model when the ingested item carries none" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-worker", name: "nomodel-project")
+    assert :ok = ProjectRegistry.register(project)
+
+    Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts ->
+      {:ok, item("48", :claude)}
+    end)
+
+    Application.put_env(:harness, :run_starter, fn %Item{} = _item, _run_project, _adapter, opts ->
+      send(parent, {:start_requested_model?, Keyword.has_key?(opts, :requested_model)})
+      run_id = "run-nomodel-ok"
+      subscriber = Keyword.fetch!(opts, :subscriber)
+
+      pid =
+        spawn(fn ->
+          send(
+            subscriber,
+            {:harness_run, run_id, %Result{run_id: run_id, task_id: "48", state: :done, reason: :passed}}
+          )
+
+          Process.sleep(100)
+        end)
+
+      {:ok, run_id, pid}
+    end)
+
+    assert :ok =
+             Worker.perform(%Oban.Job{
+               id: 127,
+               attempt: 1,
+               args: %{
+                 "project_name" => "nomodel-project",
+                 "item_id" => "48",
+                 "adapter_module" => "Elixir.Harness.AgentAdapter.Claude"
+               }
+             })
+
+    assert_received {:start_requested_model?, false}
+  end
+
   test "worker omits :env when job args carry no override" do
     parent = self()
     project = ProjectFixture.from_repo("/tmp/harness-worker", name: "noenv-project")
@@ -539,8 +621,8 @@ defmodule Harness.ObanDispatchTest do
     end
   end
 
-  defp item(id, agent) do
-    %Item{id: id, title: "Task #{id}", prompt: "do #{id}", agent: agent}
+  defp item(id, agent, model \\ nil) do
+    %Item{id: id, title: "Task #{id}", prompt: "do #{id}", agent: agent, model: model}
   end
 
   defp job(args) do

@@ -135,6 +135,7 @@ defmodule Harness.Run do
            subscriber: pid() | nil,
            result_store: ResultStore.store(),
            batch_id: String.t(),
+           requested_model: String.t() | nil,
            started_at_ms: integer(),
            total_timeout: timeout() | nil,
            idle_timeout: timeout() | nil,
@@ -355,6 +356,7 @@ defmodule Harness.Run do
       subscriber: Keyword.get(opts, :subscriber),
       result_store: Keyword.get(opts, :result_store, ResultStore.configured()),
       batch_id: Keyword.get(opts, :batch_id) || run_id,
+      requested_model: Keyword.get(opts, :requested_model) || item.model,
       started_at_ms: System.monotonic_time(:millisecond),
       total_timeout: Keyword.get(opts, :total_timeout),
       idle_timeout: Keyword.get(opts, :idle_timeout),
@@ -1051,6 +1053,7 @@ defmodule Harness.Run do
     |> LogRecord.from_result(
       batch_id: data.batch_id,
       agent: data.item.agent,
+      requested_model: data.requested_model,
       adapter: data.adapter,
       project_name: data.project.name,
       duration_ms: run_duration_ms(data),
@@ -1107,10 +1110,10 @@ defmodule Harness.Run do
       task_id: data.item.id,
       project_name: data.project.name,
       # data.agent_kind is the executing adapter's identity atom (resolved at
-      # init); model is not parsed live in the gen_statem, so it stays nil
-      # until the settled record fills it (the detail view parses it live).
+      # init). Live runs show the task's requested model until settle; the
+      # settled record prefers the agent-reported model when present.
       agent: data.agent_kind,
-      model: nil,
+      model: data.requested_model,
       state: state,
       worktree_path: data.worktree && data.worktree.path,
       agent_os_pid: data.agent_run && data.agent_run.os_pid,
