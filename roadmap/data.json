@@ -4510,7 +4510,7 @@
       "phase": 13,
       "bundle": "capability-bench",
       "milestone": "v0_10",
-      "status": "pending",
+      "status": "done",
       "title": "Benchmark corpus structure + loader — fixed, versioned eval set separate from the live roadmap",
       "scores": {
         "d": 6,
@@ -4536,9 +4536,15 @@
         "Scoring the results — Task 119",
         "Mixing benchmark items into roadmap/tasks.toml — they stay separate by design (roadmap tasks get consumed; benchmarks must be stable + repeatable)"
       ],
+      "shipped_in": "ba144bb",
       "body": "Define and load a fixed, versioned capability-benchmark corpus that lives OUTSIDE the live roadmap. Each corpus item = a self-contained task spec (intent + acceptance criteria) + a target project / check-stack reference (the verification stack is the grader — same thesis as the rest of harness) + domain tag(s) from Task 116 + a stable id/version.\n\nBenchmarks must be stable, repeatable, and gradeable green by a check stack — distinct from roadmap tasks, which get consumed. This task is the STRUCTURE + loader only; the curated content is Task 118.\n",
       "created_at": "2026-05-31",
+      "started_at": "2026-06-01",
+      "done_at": "2026-06-01",
       "scored_at": "2026-05-31",
+      "implemented": "Benchmark corpus structure + loader: priv-style TOML corpus (test/fixtures/benchmark_corpus), Harness.Benchmark.Corpus loader with loud malformed-item rejection, addressable by id + filterable by domain. Delivered by codex via harness dispatch (1 repair attempt), verification stack green.",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -4887,7 +4893,7 @@
       "phase": 11,
       "bundle": "autolanding",
       "milestone": "v0_9",
-      "status": "pending",
+      "status": "done",
       "title": "Configuration inspector LiveView — read-only operator view of the resolved harness config",
       "scores": {
         "d": 2,
@@ -4927,7 +4933,10 @@
       ],
       "body": "harness is a long-running headless OTP node an operator drives remotely (dashboard / MCP / IEx). There is no way to SEE how the node is configured without shell access to read config/config.exs, config/runtime.exs, and config/dev.local.exs and then mentally resolving env-var overrides. The dashboard router (lib/harness/dashboard/router.ex) mounts run-feed (/harness), KPI (/harness/kpi), and chat (/harness/chat) — no settings/config view exists.\n\nThis task adds the READ-ONLY half: a Configuration inspector LiveView that surfaces the resolved effective config (the table an operator would otherwise reconstruct by hand) grouped by concern, distinguishing compile-time default vs config.exs override vs runtime env-var override, with secrets masked. It is the natural home/sibling for the runtime-mutable controls that Tasks 109/110/111 add (cron autonomy toggle, per-project flags, schedule editing) — it may link to them but does not implement mutation.\n\nMost of harness's config is boot/compile-time and cannot be safely mutated at runtime (Endpoint, Repo, worktree base_dir, result_store backend); read-only is the honest scope for those. The genuinely-runtime-mutable subset (cron enabled/schedule) is read live from app env on each tick and is owned by the autolanding bundle (109/110/111). Keeping inspection (this task) separate from mutation (those tasks) avoids a god-page and lets the read-only view ship independently — no dependency on 109's Harness.Settings store.\n\nUI work -> handbuild (hand-build via tidewave + browser per project policy; headless dispatch idle-times-out on LiveView with no visual reward signal).\n",
       "created_at": "2026-05-31",
+      "started_at": "2026-06-01",
+      "done_at": "2026-06-01",
       "scored_at": "2026-05-31",
+      "implemented": "Read-only config inspector card on /harness/settings: new Harness.Dashboard.ConfigInspector.resolve/0 (declarative spec, provenance heuristic env>config>default, secret redaction) + Components.config_inspector/1 component + SettingsLive assign/render + CSS. 12 concern sections + registered-projects sub-section. 17 tests green; verified live in browser after iex restart (hand-built, no separate grader).",
       "cross_repo": []
     },
     {
@@ -5220,7 +5229,7 @@
       "phase": 13,
       "bundle": "postgres-results",
       "milestone": "v0_10",
-      "status": "pending",
+      "status": "done",
       "title": "Postgres-backed result store — run_records/batch_results schemas + ResultStore.Postgres backend + repo_enabled config flip",
       "scores": {
         "d": 4,
@@ -5256,9 +5265,15 @@
         "config/config.exs",
         "skills/harness-driver/SKILL.md"
       ],
+      "shipped_in": "0fdde57",
       "body": "Postgres is a hard runtime dependency (Oban) but holds only the oban_jobs table; every settled run's LogRecord goes to file-backed term storage (~/.harness/results) that the dashboard/KPI layer must load wholesale to query anything. Move run/batch result persistence into Postgres behind the existing Harness.ResultStore behaviour. Three parts, one PR:\n\n1. Schemas + migrations. run_records table mapping %Harness.Run.LogRecord{} (lib/harness/run/log_record.ex): run_id (string, unique index); batch_id / task_id / project_name / agent / adapter / state / verdict / agent_outcome_kind as strings; duration_ms / repair_attempts / first_attempt_failed_check_count / agent_diff_size / agent_exit_status as integers; reason / token_usage / composed_inputs / failure_cause / check_output as jsonb (reason is a {tag, inner} tuple — needs a tuple-to-map round-trip helper); agent_output as bytea (transcript tails can carry non-UTF8 bytes); timestamps(). Secondary indexes: batch_id, agent, project_name, inserted_at. batch_results table: batch_id (unique), total, max_concurrency, payload bytea via term_to_binary — the only read path is whole-struct load_batch/2, so don't normalize the embedded results list into rows.\n\n2. Harness.ResultStore.Postgres implementing the existing 4-callback behaviour (record_run / save_batch / load_batch / list_run_records — lib/harness/result_store.ex). record_run upserts on run_id. Never raises: the best-effort contract (result_store.ex moduledoc) means store failures return {:error, _} and the run continues. list_run_records translates the documented filter keys (run_id, batch_id, agent, adapter, verdict, project_name) to a dynamic where and returns %LogRecord{} structs (not schema structs) ordered inserted_at DESC, so existing consumers need zero changes. Optional :repo opt (default Harness.Repo). Test infra: test/support/data_case.ex wrapping the Sandbox pattern proven in test/harness/oban_queue_bootstrap_test.exs; DB tests tagged :integration; extract the File-backend assertions into a shared contract test run against both backends.\n\n3. Config flip in config/runtime.exs (where Repo config already lives): default :result_store to the Postgres backend when repo_enabled, keep the File backend when repo_enabled is false (library-mounted consumers) and in the test env. An explicit operator :result_store override always wins.\n\nFirst consumer: Task 139 (KPI/dashboard SQL paths) and the phase-13 capability-bench dataset (scored, persisted, decayed) need run records queryable by agent/project/verdict — a directory of term files cannot serve that. Update skills/harness-driver/SKILL.md if it documents the result-store surface.\n",
       "created_at": "2026-06-01",
+      "started_at": "2026-06-01",
+      "done_at": "2026-06-01",
       "scored_at": "2026-06-01",
+      "implemented": "Postgres-backed result store: run_records/batch_results schemas + migration, Harness.ResultStore.Postgres (4-callback behaviour, upsert on run_id, never-raise best-effort), shared ResultStoreContract test run against File + Postgres backends, DataCase sandbox infra, runtime.exs config flip (Postgres when repo_enabled, File otherwise, explicit override wins). Delivered by grok via harness dispatch; salvaged by hand: sobelow skip placement + 3 jsonb codec roundtrip bugs (top-level lists vs :map cast, check_output string-key atomization, token_usage struct identity) — caught only by --include integration against real Postgres, which the grader never runs.",
+      "delivered_by": "grok",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -5512,7 +5527,7 @@
       "phase": 13,
       "bundle": "production-kpis",
       "milestone": "v0_10",
-      "status": "pending",
+      "status": "done",
       "title": "Capture requested model through dispatch so codex/grok runs show a model on the dashboard",
       "scores": {
         "d": 3,
@@ -5541,7 +5556,79 @@
         "lib/harness/dashboard/live.ex",
         "test/harness/run/log_record_test.exs"
       ],
+      "shipped_in": "653723c",
       "body": "`Harness.AgentModel.parse/2` (shipped 83c2be0) extracts the *reported* model from a transcript, but only claude and cursor self-report it — codex, grok, and antigravity emit no model field, so their runs render \"—\" on the index Model column and run-detail Model row.\n\nThread the *requested* model (the rmap task's own `model` field, already surfaced by `rmap delegate` as a `## Context` bullet) through the dispatch chain into `LogRecord.model`, used as a fallback when transcript parsing yields nil. This completes \"which model ran this?\" for every agent, not just the self-reporting two.\n\nPlumbing: the task's `model` → the dispatch boundary (`Harness.Dispatch.task` / `Run.Worker` / `Run.Supervisor.start_run`) → the run meta passed to `LogRecord.from_result/2`. The reported model (ground truth from the transcript) MUST win over the requested model when both are present; requested is only the fallback. Optionally distinguish the two in the UI (e.g. an italic/\"(requested)\" hint) so a reader knows whether the value is observed or merely pinned.\n",
+      "created_at": "2026-06-01",
+      "started_at": "2026-06-01",
+      "done_at": "2026-06-01",
+      "scored_at": "2026-06-01",
+      "implemented": "Requested model threaded through dispatch (Dispatch.task -> Run.Worker -> Run.Supervisor meta -> LogRecord.from_result); reported model from transcript wins over requested; dashboard index Model column + run-detail row show requested model as fallback for codex/grok/antigravity. Delivered by cursor via harness dispatch (0 repairs), verification stack green.",
+      "delivered_by": "cursor",
+      "verified": true,
+      "cross_repo": []
+    },
+    {
+      "id": "145",
+      "phase": 13,
+      "bundle": "postgres-results",
+      "milestone": "v0_10",
+      "status": "pending",
+      "title": "Verification can't grade :integration-tagged tests — DB-backed code passes green while broken against real Postgres",
+      "scores": {
+        "d": 4,
+        "b": 6,
+        "u": 5
+      },
+      "eff": 1.38,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A project/check-stack can opt into running :integration-tagged tests during verification when a database is available",
+        "Worktree verification provisions the test DB it needs (create + migrate) without touching the host's dev/test DB state",
+        "A re-dispatch of a 137-class task (DB-backed contract tests) gets its integration tests actually executed by the grader",
+        "Projects that don't opt in see zero behavior change"
+      ],
+      "touches": [
+        "lib/harness/check_stack/preset/elixir.ex",
+        "lib/harness/verification.ex",
+        "lib/harness/worktree.ex"
+      ],
+      "body": "OBSERVED (task 137 dispatch, run-1780287087805-fddb178d): grok's ResultStore.Postgres had 3 real roundtrip bugs (top-level lists failed Ecto :map cast, check_output string keys atomized on read, token_usage struct identity lost). The check stack graded the delivery green-except-sobelow because DB-backed tests are tagged :integration and every preset runs `--exclude integration`. The bugs were only caught by hand-running `mix test.json --include integration` against the local Postgres in the worktree.\n\nGAP: the grader structurally cannot verify the primary deliverable of any DB-backed task. Acceptance criteria like 'passes the contract suite against Postgres' are unenforceable.\n\nFIX DIRECTION (implementer's call): a check-stack option to include integration tags when the environment supports it — e.g. preset opt `include: [:integration]` plus a worktree test-DB provisioning step (MIX_ENV=test ecto.create + ecto.migrate, mirroring the Task 143 deps bootstrap). Concurrent worktrees share one Postgres instance; the Ecto sandbox handles isolation but migrations from divergent branches need thought (per-worktree DB name, e.g. harness_test_<run_id>, dropped at finish).\n",
+      "created_at": "2026-06-01",
+      "scored_at": "2026-06-01",
+      "cross_repo": []
+    },
+    {
+      "id": "146",
+      "phase": 13,
+      "bundle": "postgres-results",
+      "milestone": "v0_10",
+      "status": "pending",
+      "title": "MCP result_store-list_run_records rejects JSON-caller filters (no function clause matching)",
+      "scores": {
+        "d": 2,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 1.5,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "result_store-list_run_records accepts a JSON object of documented filter keys (run_id, batch_id, agent, adapter, verdict, project_name) and returns matching records",
+        "Unknown filter keys are ignored, not a crash",
+        "A test covers the JSON-shaped (string-keyed map) input path"
+      ],
+      "touches": [
+        "lib/harness/chat/tools.ex",
+        "lib/harness/result_store.ex"
+      ],
+      "body": "OBSERVED: calling the MCP tool result_store-list_run_records with a filters argument from a JSON caller (e.g. {\"filters\": {\"run_id\": \"run-...\"}}) raises 'no function clause matching'. ResultStore.list_run_records/2 expects a keyword list of filter atoms; the MCP/JSON boundary delivers a string-keyed map and nothing translates it. The Elixir-native path (tidewave, IEx) works fine.\n\nFIX: translate the JSON map to the documented filter keyword list at the Chat.Tools/MCP boundary (string keys -> known filter atoms, unknown keys ignored for forward compat — same contract as ResultStore.Postgres.apply_filters), with a test exercising the MCP-shaped input.\n",
       "created_at": "2026-06-01",
       "scored_at": "2026-06-01",
       "cross_repo": []

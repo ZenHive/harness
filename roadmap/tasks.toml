@@ -3754,20 +3754,26 @@ id = "117"
 phase = 13
 bundle = "capability-bench"
 milestone = "v0_10"
-status = "pending"
+status = "done"
 title = "Benchmark corpus structure + loader — fixed, versioned eval set separate from the live roadmap"
-model = "codex"
 scores = { d = 6, b = 8, u = 8 }
 depends_on = [116]
 acceptance_criteria = ["A benchmark corpus format is defined (proposed priv/benchmarks/*.toml, compile-time embedded like priv/playbooks) with per item: id, version, domain tags (Task 116), task spec (intent + acceptance), target check-stack reference, and expected-green ground truth", "A loader reads the corpus into structs at compile time or boot, validated — a malformed item is a loud error, never a silent skip", "Corpus items are addressable by id and filterable by domain", "Tests cover loading a valid corpus, filtering by domain, and rejecting a malformed item loudly"]
 out_of_scope = ["Corpus content / curated tasks — Task 118", "Dispatching the corpus to agents — reuses Batch.AgentEvaluation, driven by the Task 122 scheduler", "Scoring the results — Task 119", "Mixing benchmark items into roadmap/tasks.toml — they stay separate by design (roadmap tasks get consumed; benchmarks must be stable + repeatable)"]
+model = "codex"
 body = """
 Define and load a fixed, versioned capability-benchmark corpus that lives OUTSIDE the live roadmap. Each corpus item = a self-contained task spec (intent + acceptance criteria) + a target project / check-stack reference (the verification stack is the grader — same thesis as the rest of harness) + domain tag(s) from Task 116 + a stable id/version.
 
 Benchmarks must be stable, repeatable, and gradeable green by a check stack — distinct from roadmap tasks, which get consumed. This task is the STRUCTURE + loader only; the curated content is Task 118.
 """
+implemented = "Benchmark corpus structure + loader: priv-style TOML corpus (test/fixtures/benchmark_corpus), Harness.Benchmark.Corpus loader with loud malformed-item rejection, addressable by id + filterable by domain. Delivered by codex via harness dispatch (1 repair attempt), verification stack green."
+delivered_by = "codex"
+verified = true
 created_at = "2026-05-31"
+started_at = "2026-06-01"
 scored_at = "2026-05-31"
+done_at = "2026-06-01"
+shipped_in = "ba144bb"
 
 [[task]]
 id = "118"
@@ -3969,7 +3975,7 @@ id = "127"
 phase = 11
 bundle = "autolanding"
 milestone = "v0_9"
-status = "pending"
+status = "done"
 title = "Configuration inspector LiveView — read-only operator view of the resolved harness config"
 scores = { d = 2, b = 3, u = 3 }
 markers = ["handbuild"]
@@ -3986,8 +3992,11 @@ Most of harness's config is boot/compile-time and cannot be safely mutated at ru
 
 UI work -> handbuild (hand-build via tidewave + browser per project policy; headless dispatch idle-times-out on LiveView with no visual reward signal).
 """
+implemented = "Read-only config inspector card on /harness/settings: new Harness.Dashboard.ConfigInspector.resolve/0 (declarative spec, provenance heuristic env>config>default, secret redaction) + Components.config_inspector/1 component + SettingsLive assign/render + CSS. 12 concern sections + registered-projects sub-section. 17 tests green; verified live in browser after iex restart (hand-built, no separate grader)."
 created_at = "2026-05-31"
+started_at = "2026-06-01"
 scored_at = "2026-05-31"
+done_at = "2026-06-01"
 
 [[task]]
 id = "128"
@@ -4184,7 +4193,7 @@ id = "137"
 phase = 13
 bundle = "postgres-results"
 milestone = "v0_10"
-status = "pending"
+status = "done"
 title = "Postgres-backed result store — run_records/batch_results schemas + ResultStore.Postgres backend + repo_enabled config flip"
 scores = { d = 4, b = 5, u = 5 }
 acceptance_criteria = ["Migrations migrate up and roll back cleanly", "Harness.ResultStore.Postgres passes the same contract test suite as ResultStore.File — record/list round-trip preserves every LogRecord field, including {tag, inner} reason tuples and non-UTF8 agent_output binaries", "record_run/save_batch return {:error, _} and never raise when the Repo is unavailable (best-effort contract preserved)", "ResultStore.configured/0 resolves to the Postgres backend when repo_enabled, the File backend when repo_enabled is false, and an explicit :result_store override always wins", "mix test.json --exclude integration passes with no Postgres running — DB-backed tests are tagged :integration and use a shared Harness.DataCase", "Existing ResultStore consumers (StatusView, Dashboard.Live, AgentKPI, Harness.Dispatch) need zero changes"]
@@ -4201,8 +4210,14 @@ Postgres is a hard runtime dependency (Oban) but holds only the oban_jobs table;
 
 First consumer: Task 139 (KPI/dashboard SQL paths) and the phase-13 capability-bench dataset (scored, persisted, decayed) need run records queryable by agent/project/verdict — a directory of term files cannot serve that. Update skills/harness-driver/SKILL.md if it documents the result-store surface.
 """
+implemented = "Postgres-backed result store: run_records/batch_results schemas + migration, Harness.ResultStore.Postgres (4-callback behaviour, upsert on run_id, never-raise best-effort), shared ResultStoreContract test run against File + Postgres backends, DataCase sandbox infra, runtime.exs config flip (Postgres when repo_enabled, File otherwise, explicit override wins). Delivered by grok via harness dispatch; salvaged by hand: sobelow skip placement + 3 jsonb codec roundtrip bugs (top-level lists vs :map cast, check_output string-key atomization, token_usage struct identity) — caught only by --include integration against real Postgres, which the grader never runs."
+delivered_by = "grok"
+verified = true
 created_at = "2026-06-01"
+started_at = "2026-06-01"
 scored_at = "2026-06-01"
+done_at = "2026-06-01"
+shipped_in = "0fdde57"
 
 [[task]]
 id = "138"
@@ -4340,7 +4355,7 @@ id = "144"
 phase = 13
 bundle = "production-kpis"
 milestone = "v0_10"
-status = "pending"
+status = "done"
 title = "Capture requested model through dispatch so codex/grok runs show a model on the dashboard"
 scores = { d = 3, b = 4, u = 3 }
 acceptance_criteria = ["The requested model from a task's `model` field is threaded through the dispatch path into the meta given to `LogRecord.from_result/2`.", "`LogRecord.model` resolves to the reported model when `AgentModel.parse/2` returns a value, else the requested model, else nil.", "A codex or grok run dispatched with a pinned model shows that model (not '—') on the index Model column and the run-detail Model row.", "Unit tests cover precedence (reported > requested > nil) and the dispatch-to-record threading."]
@@ -4352,6 +4367,52 @@ body = """
 Thread the *requested* model (the rmap task's own `model` field, already surfaced by `rmap delegate` as a `## Context` bullet) through the dispatch chain into `LogRecord.model`, used as a fallback when transcript parsing yields nil. This completes "which model ran this?" for every agent, not just the self-reporting two.
 
 Plumbing: the task's `model` → the dispatch boundary (`Harness.Dispatch.task` / `Run.Worker` / `Run.Supervisor.start_run`) → the run meta passed to `LogRecord.from_result/2`. The reported model (ground truth from the transcript) MUST win over the requested model when both are present; requested is only the fallback. Optionally distinguish the two in the UI (e.g. an italic/"(requested)" hint) so a reader knows whether the value is observed or merely pinned.
+"""
+implemented = "Requested model threaded through dispatch (Dispatch.task -> Run.Worker -> Run.Supervisor meta -> LogRecord.from_result); reported model from transcript wins over requested; dashboard index Model column + run-detail row show requested model as fallback for codex/grok/antigravity. Delivered by cursor via harness dispatch (0 repairs), verification stack green."
+delivered_by = "cursor"
+verified = true
+created_at = "2026-06-01"
+started_at = "2026-06-01"
+scored_at = "2026-06-01"
+done_at = "2026-06-01"
+shipped_in = "653723c"
+
+[[task]]
+id = "145"
+phase = 13
+bundle = "postgres-results"
+milestone = "v0_10"
+status = "pending"
+title = "Verification can't grade :integration-tagged tests — DB-backed code passes green while broken against real Postgres"
+scores = { d = 4, b = 6, u = 5 }
+markers = ["bug"]
+acceptance_criteria = ["A project/check-stack can opt into running :integration-tagged tests during verification when a database is available", "Worktree verification provisions the test DB it needs (create + migrate) without touching the host's dev/test DB state", "A re-dispatch of a 137-class task (DB-backed contract tests) gets its integration tests actually executed by the grader", "Projects that don't opt in see zero behavior change"]
+touches = ["lib/harness/check_stack/preset/elixir.ex", "lib/harness/verification.ex", "lib/harness/worktree.ex"]
+body = """
+OBSERVED (task 137 dispatch, run-1780287087805-fddb178d): grok's ResultStore.Postgres had 3 real roundtrip bugs (top-level lists failed Ecto :map cast, check_output string keys atomized on read, token_usage struct identity lost). The check stack graded the delivery green-except-sobelow because DB-backed tests are tagged :integration and every preset runs `--exclude integration`. The bugs were only caught by hand-running `mix test.json --include integration` against the local Postgres in the worktree.
+
+GAP: the grader structurally cannot verify the primary deliverable of any DB-backed task. Acceptance criteria like 'passes the contract suite against Postgres' are unenforceable.
+
+FIX DIRECTION (implementer's call): a check-stack option to include integration tags when the environment supports it — e.g. preset opt `include: [:integration]` plus a worktree test-DB provisioning step (MIX_ENV=test ecto.create + ecto.migrate, mirroring the Task 143 deps bootstrap). Concurrent worktrees share one Postgres instance; the Ecto sandbox handles isolation but migrations from divergent branches need thought (per-worktree DB name, e.g. harness_test_<run_id>, dropped at finish).
+"""
+created_at = "2026-06-01"
+scored_at = "2026-06-01"
+
+[[task]]
+id = "146"
+phase = 13
+bundle = "postgres-results"
+milestone = "v0_10"
+status = "pending"
+title = "MCP result_store-list_run_records rejects JSON-caller filters (no function clause matching)"
+scores = { d = 2, b = 3, u = 3 }
+markers = ["bug"]
+acceptance_criteria = ["result_store-list_run_records accepts a JSON object of documented filter keys (run_id, batch_id, agent, adapter, verdict, project_name) and returns matching records", "Unknown filter keys are ignored, not a crash", "A test covers the JSON-shaped (string-keyed map) input path"]
+touches = ["lib/harness/chat/tools.ex", "lib/harness/result_store.ex"]
+body = """
+OBSERVED: calling the MCP tool result_store-list_run_records with a filters argument from a JSON caller (e.g. {"filters": {"run_id": "run-..."}}) raises 'no function clause matching'. ResultStore.list_run_records/2 expects a keyword list of filter atoms; the MCP/JSON boundary delivers a string-keyed map and nothing translates it. The Elixir-native path (tidewave, IEx) works fine.
+
+FIX: translate the JSON map to the documented filter keyword list at the Chat.Tools/MCP boundary (string keys -> known filter atoms, unknown keys ignored for forward compat — same contract as ResultStore.Postgres.apply_filters), with a test exercising the MCP-shaped input.
 """
 created_at = "2026-06-01"
 scored_at = "2026-06-01"
