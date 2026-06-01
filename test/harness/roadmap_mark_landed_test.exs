@@ -102,4 +102,54 @@ defmodule Harness.RoadmapMarkLandedTest do
                Roadmap.mark_blocked("1", root: tmp_dir, reason: "x", rmap_bin: Path.join(tmp_dir, "nope-rmap"))
     end
   end
+
+  describe "mark_in_progress/2" do
+    test "builds the status in_progress argv with --tasks-path (no extra flags)", %{tmp_dir: tmp_dir} do
+      {script, args_file} = stub_rmap(tmp_dir)
+
+      assert {:ok, _output} =
+               Roadmap.mark_in_progress("77",
+                 root: tmp_dir,
+                 rmap_bin: script
+               )
+
+      recorded = args_file |> File.read!() |> String.split("\n", trim: true)
+
+      assert recorded == [
+               "status",
+               "77",
+               "in_progress",
+               "--tasks-path",
+               Path.join(tmp_dir, "roadmap/tasks.toml")
+             ]
+    end
+
+    test "returns {:error, {:rmap_not_found, _}} when the binary is absent", %{tmp_dir: tmp_dir} do
+      assert {:error, {:rmap_not_found, _bin}} =
+               Roadmap.mark_in_progress("1", root: tmp_dir, rmap_bin: Path.join(tmp_dir, "nope-rmap"))
+    end
+  end
+
+  describe "mark_pending/2" do
+    test "builds the status pending argv with --tasks-path (no extra flags)", %{tmp_dir: tmp_dir} do
+      {script, args_file} = stub_rmap(tmp_dir)
+
+      assert {:ok, _output} = Roadmap.mark_pending("88", root: tmp_dir, rmap_bin: script)
+
+      recorded = args_file |> File.read!() |> String.split("\n", trim: true)
+
+      assert recorded == [
+               "status",
+               "88",
+               "pending",
+               "--tasks-path",
+               Path.join(tmp_dir, "roadmap/tasks.toml")
+             ]
+    end
+
+    test "returns {:error, {:rmap_not_found, _}} when the binary is absent", %{tmp_dir: tmp_dir} do
+      assert {:error, {:rmap_not_found, _bin}} =
+               Roadmap.mark_pending("1", root: tmp_dir, rmap_bin: Path.join(tmp_dir, "nope-rmap"))
+    end
+  end
 end

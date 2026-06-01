@@ -283,6 +283,61 @@ defmodule Harness.Roadmap do
     end
   end
 
+  api(:mark_in_progress, """
+  Transitions a dispatched task to `in_progress` (best-effort) so `rmap ready` / `next`
+  no longer return it for re-dispatch.
+
+  Owned by the run lifecycle (Harness.Run.Worker), not the poller. Called on run
+  start; a writeback failure logs but does not fail the run. A green-but-unlanded
+  run (landing_policy :manual) stays `in_progress` — this stops the "completed green
+  re-dispatched every tick" loop. Terminal run failure reverts to `pending` (not
+  `blocked`; blocked is the lander's sink only).
+
+  Options:
+
+    * `:root` — the project root holding `roadmap/tasks.toml` (required).
+    * `:rmap_bin` — override the `rmap` binary name/path (intended for tests).
+
+  Returns `{:ok, output}` or `{:error, {status, output, args}}`.
+  """)
+
+  @spec mark_in_progress(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  def mark_in_progress(item_or_id, opts) do
+    root = Keyword.fetch!(opts, :root)
+    rmap_bin = Keyword.get(opts, :rmap_bin, "rmap")
+    ctx = %{root: root, tasks_path: Path.join(root, "roadmap/tasks.toml"), rmap_bin: rmap_bin}
+
+    args = ["status", landing_task_id(item_or_id), "in_progress"]
+
+    with :ok <- ensure_rmap(rmap_bin) do
+      run_rmap(args, ctx)
+    end
+  end
+
+  api(:mark_pending, """
+  Reverts a task to `pending` after a terminal run failure (red after repairs
+  exhausted, or run crash) so a later poller tick can retry it.
+
+  Only for ordinary run failures — lander terminal exhaustion uses `mark_blocked`.
+
+  Options: `:root` (required), `:rmap_bin` (for tests).
+
+  Returns `{:ok, output}` or `{:error, {status, output, args}}`.
+  """)
+
+  @spec mark_pending(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  def mark_pending(item_or_id, opts) do
+    root = Keyword.fetch!(opts, :root)
+    rmap_bin = Keyword.get(opts, :rmap_bin, "rmap")
+    ctx = %{root: root, tasks_path: Path.join(root, "roadmap/tasks.toml"), rmap_bin: rmap_bin}
+
+    args = ["status", landing_task_id(item_or_id), "pending"]
+
+    with :ok <- ensure_rmap(rmap_bin) do
+      run_rmap(args, ctx)
+    end
+  end
+
   @spec landing_task_id(Item.t() | String.t()) :: String.t()
   defp landing_task_id(%Item{id: id}), do: to_string(id)
   defp landing_task_id(id) when is_binary(id), do: id

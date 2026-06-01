@@ -15,6 +15,8 @@ defmodule Harness.Run.Worker do
   alias Harness.Run.RetryPolicy
   alias Harness.Run.Supervisor, as: RunSupervisor
 
+  require Logger
+
   @type args :: %{
           required(String.t()) => String.t()
         }
@@ -30,6 +32,13 @@ defmodule Harness.Run.Worker do
          {:ok, agent} <- agent_for_adapter(adapter),
          {:ok, %Item{} = item} <- ingest_roadmap({:id, item_id}, project: project, agent: agent),
          {:ok, result} <- run_once(job, item, project, adapter) do
+      if terminal_failure?(result) do
+        # Revert only on terminal failures (red after repair cap, run crash).
+        # Green (even unlanded under :manual) stays in_progress; transient/quota
+        # failures keep the job snoozing while task remains in_progress.
+        _ = revert_to_pending(item, project)
+      end
+
       to_oban_result(result, job)
     else
       {:error, reason} -> setup_failure_disposition(reason, max(job.attempt || 1, 1))
@@ -82,6 +91,11 @@ defmodule Harness.Run.Worker do
   @spec run_once(Oban.Job.t(), Item.t(), Project.t(), module()) :: {:ok, Result.t()} | {:error, term()}
   defp run_once(%Oban.Job{} = job, %Item{} = item, %Project{} = project, adapter) do
     checkpoint(job, "run_started")
+
+    # Best-effort claim (run-lifecycle owner per Task 131). Failure logs but does
+    # not abort the run; next cron tick's ready/next will skip this task while it
+    # is in_progress (or green-unlanded under manual landing_policy).
+    _ = claim_in_progress(item, project)
 
     case start_run(item, project, adapter, run_opts(job)) do
       {:ok, run_id, pid} ->
@@ -144,6 +158,10 @@ defmodule Harness.Run.Worker do
   # Test seam: `:roadmap_ingest` and `:run_starter` Application env keys let
   # tests inject fakes without spinning up RunSupervisor / rmap. Never set
   # either in production config.
+  #
+  # `:roadmap_mark_in_progress` and `:roadmap_mark_pending` (arity-2 fns of
+  # (Item.t(), Project.t())) spy on the best-effort rmap writebacks for the
+  # claim-on-start / revert-on-terminal-failure behaviour (Task 131).
   @spec ingest_roadmap(Roadmap.selector(), keyword()) :: {:ok, Item.t()} | {:error, term()}
   defp ingest_roadmap(selector, opts) do
     case Application.get_env(:harness, :roadmap_ingest) do
@@ -159,6 +177,60 @@ defmodule Harness.Run.Worker do
       _other -> RunSupervisor.start_run(item, project, adapter, opts)
     end
   end
+
+  # Best-effort claim + revert seams (default to real Roadmap calls + log).
+  @spec claim_in_progress(Item.t(), Project.t()) :: :ok
+  defp claim_in_progress(%Item{} = item, %Project{} = project) do
+    case Application.get_env(:harness, :roadmap_mark_in_progress) do
+      fun when is_function(fun, 2) -> fun.(item, project)
+      _ -> do_mark_in_progress(item, project)
+    end
+  end
+
+  @spec revert_to_pending(Item.t(), Project.t()) :: :ok
+  defp revert_to_pending(%Item{} = item, %Project{} = project) do
+    case Application.get_env(:harness, :roadmap_mark_pending) do
+      fun when is_function(fun, 2) -> fun.(item, project)
+      _ -> do_mark_pending(item, project)
+    end
+  end
+
+  @spec do_mark_in_progress(Item.t(), Project.t()) :: :ok
+  defp do_mark_in_progress(%Item{} = item, %Project{} = project) do
+    case Roadmap.mark_in_progress(item, root: project.roadmap_path) do
+      {:ok, _output} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "harness run: failed to mark task #{item.id} in_progress (best-effort; continuing): #{inspect(reason)}"
+        )
+
+        :ok
+    end
+  end
+
+  @spec do_mark_pending(Item.t(), Project.t()) :: :ok
+  defp do_mark_pending(%Item{} = item, %Project{} = project) do
+    case Roadmap.mark_pending(item, root: project.roadmap_path) do
+      {:ok, _output} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "harness run: failed to mark task #{item.id} pending after terminal failure (best-effort): #{inspect(reason)}"
+        )
+
+        :ok
+    end
+  end
+
+  @spec terminal_failure?(Result.t()) :: boolean()
+  defp terminal_failure?(%Result{state: :failed} = result) do
+    FailureClass.classify(result, RetryPolicy.new([])) == :terminal
+  end
+
+  defp terminal_failure?(_), do: false
 
   @spec fetch_arg(args(), String.t()) :: {:ok, String.t()} | {:error, {:missing_arg, String.t()}}
   defp fetch_arg(args, key) do

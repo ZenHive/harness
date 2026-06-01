@@ -2,6 +2,7 @@ defmodule Harness.ObanDispatchTest do
   use ExUnit.Case, async: false
 
   alias Harness.Batch
+  alias Harness.Project
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.Roadmap.Item
@@ -346,6 +347,196 @@ defmodule Harness.ObanDispatchTest do
              })
 
     assert is_integer(seconds) and seconds > 0
+  end
+
+  describe "Task 131: claim on run start + revert only on terminal failure (via seams)" do
+    setup do
+      on_exit(fn ->
+        Application.delete_env(:harness, :roadmap_mark_in_progress)
+        Application.delete_env(:harness, :roadmap_mark_pending)
+      end)
+
+      :ok
+    end
+
+    test "claims in_progress on run start (best-effort writeback before start_run)" do
+      parent = self()
+      project = ProjectFixture.from_repo("/tmp/harness-131-claim", name: "claim-proj")
+      assert :ok = ProjectRegistry.register(project)
+
+      Application.put_env(:harness, :roadmap_ingest, fn _sel, _opts -> {:ok, item("131c", :claude)} end)
+
+      Application.put_env(:harness, :roadmap_mark_in_progress, fn %Item{id: id}, %Project{name: name} ->
+        send(parent, {:claimed, id, name})
+        :ok
+      end)
+
+      Application.put_env(:harness, :run_starter, fn %Item{} = it, _p, _a, opts ->
+        run_id = "run-131-claim"
+        subscriber = Keyword.fetch!(opts, :subscriber)
+
+        pid =
+          spawn(fn ->
+            send(
+              subscriber,
+              {:harness_run, run_id, %Result{run_id: run_id, task_id: it.id, state: :done, reason: :passed}}
+            )
+
+            Process.sleep(50)
+          end)
+
+        {:ok, run_id, pid}
+      end)
+
+      assert :ok =
+               Worker.perform(%Oban.Job{
+                 id: 131,
+                 attempt: 1,
+                 args: %{
+                   "project_name" => "claim-proj",
+                   "item_id" => "131c",
+                   "adapter_module" => "Elixir.Harness.AgentAdapter.Claude"
+                 }
+               })
+
+      assert_received {:claimed, "131c", "claim-proj"}
+      # Green passed: no revert
+      refute_received {:reverted, _}
+    end
+
+    test "green-unlanded run leaves task in_progress (no revert call)" do
+      parent = self()
+      project = ProjectFixture.from_repo("/tmp/harness-131-green", name: "green-proj")
+      assert :ok = ProjectRegistry.register(project)
+
+      Application.put_env(:harness, :roadmap_ingest, fn _sel, _opts -> {:ok, item("131g", :claude)} end)
+
+      Application.put_env(:harness, :roadmap_mark_in_progress, fn _item, _proj ->
+        send(parent, :claimed_green)
+        :ok
+      end)
+
+      Application.put_env(:harness, :roadmap_mark_pending, fn _item, _proj ->
+        send(parent, :reverted_green)
+        :ok
+      end)
+
+      Application.put_env(:harness, :run_starter, fn %Item{} = it, _p, _a, opts ->
+        run_id = "run-131-green"
+        subscriber = Keyword.fetch!(opts, :subscriber)
+
+        pid =
+          spawn(fn ->
+            send(
+              subscriber,
+              {:harness_run, run_id, %Result{run_id: run_id, task_id: it.id, state: :done, reason: :passed}}
+            )
+
+            Process.sleep(50)
+          end)
+
+        {:ok, run_id, pid}
+      end)
+
+      assert :ok =
+               Worker.perform(%Oban.Job{
+                 id: 132,
+                 attempt: 1,
+                 args: %{
+                   "project_name" => "green-proj",
+                   "item_id" => "131g",
+                   "adapter_module" => "Elixir.Harness.AgentAdapter.Claude"
+                 }
+               })
+
+      assert_received :claimed_green
+      refute_received :reverted_green
+    end
+
+    test "terminal-failure run (verification_red after repairs) reverts to pending; transient does not" do
+      parent = self()
+      project = ProjectFixture.from_repo("/tmp/harness-131-fail", name: "fail-proj")
+      assert :ok = ProjectRegistry.register(project)
+
+      Application.put_env(:harness, :roadmap_ingest, fn _sel, _opts -> {:ok, item("131f", :claude)} end)
+
+      Application.put_env(:harness, :roadmap_mark_in_progress, fn _item, _proj ->
+        send(parent, :claimed_fail)
+        :ok
+      end)
+
+      Application.put_env(:harness, :roadmap_mark_pending, fn %Item{id: id}, %Project{name: n} ->
+        send(parent, {:reverted, id, n})
+        :ok
+      end)
+
+      # First: terminal red -> expect revert + {:cancel, _} from perform
+      Application.put_env(:harness, :run_starter, fn %Item{} = it, _p, _a, opts ->
+        run_id = "run-131-term"
+        subscriber = Keyword.fetch!(opts, :subscriber)
+
+        pid =
+          spawn(fn ->
+            send(
+              subscriber,
+              {:harness_run, run_id, %Result{run_id: run_id, task_id: it.id, state: :failed, reason: :verification_red}}
+            )
+
+            Process.sleep(50)
+          end)
+
+        {:ok, run_id, pid}
+      end)
+
+      assert {:cancel, :verification_red} =
+               Worker.perform(%Oban.Job{
+                 id: 133,
+                 attempt: 1,
+                 args: %{
+                   "project_name" => "fail-proj",
+                   "item_id" => "131f",
+                   "adapter_module" => "Elixir.Harness.AgentAdapter.Claude"
+                 }
+               })
+
+      assert_received :claimed_fail
+      assert_received {:reverted, "131f", "fail-proj"}
+
+      # Second: transient (e.g. worktree_failed) -> claim, snooze, NO revert
+      Application.put_env(:harness, :run_starter, fn %Item{} = it, _p, _a, opts ->
+        run_id = "run-131-trans"
+        subscriber = Keyword.fetch!(opts, :subscriber)
+
+        pid =
+          spawn(fn ->
+            send(
+              subscriber,
+              {:harness_run, run_id,
+               %Result{run_id: run_id, task_id: it.id, state: :failed, reason: {:worktree_failed, :boom}}}
+            )
+
+            Process.sleep(50)
+          end)
+
+        {:ok, run_id, pid}
+      end)
+
+      assert {:snooze, secs} =
+               Worker.perform(%Oban.Job{
+                 id: 134,
+                 attempt: 2,
+                 args: %{
+                   "project_name" => "fail-proj",
+                   "item_id" => "131f",
+                   "adapter_module" => "Elixir.Harness.AgentAdapter.Claude"
+                 }
+               })
+
+      assert is_integer(secs) and secs > 0
+      assert_received :claimed_fail
+      # No additional revert for the transient case
+      refute_received {:reverted, _, _}
+    end
   end
 
   defp item(id, agent) do
