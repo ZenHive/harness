@@ -4111,3 +4111,21 @@ FIX: (1) drive the index run list off a PubSub topic so runs started/settled out
 """
 created_at = "2026-06-01"
 scored_at = "2026-06-01"
+
+[[task]]
+id = "135"
+phase = 14
+bundle = "agent-rules"
+status = "pending"
+title = "harness MCP tool names use '__' delimiter — rejected by grok (and strict MCP clients)"
+scores = { d = 3, b = 4, u = 4 }
+markers = ["bug"]
+acceptance_criteria = ["harness MCP tool names no longer contain '__' more than once after a client namespaces them as <server>__<tool> — i.e. the group/action delimiter is not '__'", "A grok dispatch (or any client treating '__' as reserved) loads the full harness MCP toolset with zero 'Skipping MCP tool' errors", "The descripex api() namespace + action naming convention is updated at the source (not patched per-tool) so all 33 tools change consistently", "MCP server + in-process chat dispatcher (Harness.Chat.Tools) stay the single source of truth — both surfaces rename together"]
+touches = ["lib/harness/manifest.ex", "lib/harness/chat/tools.ex", "lib/harness/dashboard/mcp_server.ex", "lib/harness/project_registry.ex"]
+body = """
+OBSERVED 2026-06-01 in a grok dispatch transcript (run-1780277844276-9fec2836): grok's MCP client emitted 33x `ERROR Skipping MCP tool: qualified name contains '__' more than once ... server=harness tool=dispatch__task qualified=harness__dispatch__task`. harness names its MCP tools `<group>__<action>` (dispatch__task, roadmap__list, result_store__load_batch). When a client namespaces a server's tool as `<server>__<tool>`, harness tools become `harness__dispatch__task` — '__' twice — and grok rejects ALL of them. Net: harness's entire MCP surface is unusable from grok (and any client reserving '__' as a namespace boundary).
+
+Names derive from descripex api() annotations + per-module `namespace:` (namespace: "/dispatch" -> dispatch__task). Fix at the convention source so all tools change together; do NOT special-case grok. Candidate: a single delimiter that is not '__' consistent with MCP tool-name charset ([a-zA-Z0-9_-]). Keep Harness.Chat.Tools + MCP server as single source of truth so both rename in lockstep. Verify by dispatching to grok: zero skip errors + tools callable.
+"""
+created_at = "2026-06-01"
+scored_at = "2026-06-01"

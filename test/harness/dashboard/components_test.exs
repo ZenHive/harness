@@ -170,6 +170,52 @@ defmodule Harness.Dashboard.ComponentsTest do
       assert html =~ "Waiting for output…"
       refute html =~ "tool-call"
     end
+
+    test "coalesces consecutive :thought tokens into one reasoning card" do
+      # Grok streams chain-of-thought token-by-token — one :system/:thought per
+      # token. Pre-fix these rendered as a wall of empty eyebrow rows (the
+      # token text was dropped); they must fold into a single card carrying the
+      # concatenated text.
+      events =
+        for frag <- ["Run", "Supervisor", ".start", "_run"],
+            do: {:system, %{kind: :thought, data: %{text: frag}}}
+
+      html = render_component(&Components.transcript_view/1, events: events, agent: :grok)
+
+      assert html |> String.split(~s(class="transcript-thought")) |> length() == 2
+      assert html =~ "RunSupervisor.start_run"
+      assert html =~ ">reasoning</summary>"
+      # Not the old empty-eyebrow rendering.
+      refute html =~ ~s(data-kind="thought")
+    end
+
+    test "a thought block is flushed when assistant text follows" do
+      events = [
+        {:system, %{kind: :thought, data: %{text: "let me check"}}},
+        {:assistant_text, %{text: "here is the answer"}}
+      ]
+
+      html = render_component(&Components.transcript_view/1, events: events, agent: :grok)
+
+      assert html =~ ~s(class="transcript-thought")
+      assert html =~ "let me check"
+      assert html =~ ~s(class="msg msg-assistant")
+      assert html =~ "here is the answer"
+    end
+
+    test "a thought between two assistant turns splits the turns" do
+      events = [
+        {:assistant_text, %{text: "first"}},
+        {:system, %{kind: :thought, data: %{text: "reconsidering"}}},
+        {:assistant_text, %{text: "second"}}
+      ]
+
+      html = render_component(&Components.transcript_view/1, events: events, agent: :grok)
+
+      assert html |> String.split(~s(class="msg msg-assistant")) |> length() == 3
+      assert html |> String.split(~s(class="transcript-thought")) |> length() == 2
+      assert html =~ "reconsidering"
+    end
   end
 
   describe "eyebrow/1" do

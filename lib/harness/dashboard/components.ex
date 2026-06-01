@@ -478,8 +478,12 @@ defmodule Harness.Dashboard.Components do
       `tool_use_id == id`) render as a single `<.tool_call>` in the
       tool_use's chronological position; an unmatched tool_use shows status
       `:pending`.
-    * `:system` events render as `<.eyebrow>` metadata lines (init / result /
-      thread_started / turn_started / message_end …).
+    * Consecutive `:thought` `:system` events (grok streams chain-of-thought
+      token-by-token) collapse into one collapsed `<details>` "reasoning" card
+      carrying the concatenated text — without this a single thought renders as
+      hundreds of empty eyebrow rows.
+    * Other `:system` events render as `<.eyebrow>` metadata lines (init /
+      result / thread_started / turn_started / message_end …).
     * `:plain_text` (antigravity passthrough) renders as `<pre
       class="plain-chunk">` monospace cards — no JSON tree.
     * `:unknown` renders as a muted `<details class="transcript-unknown">`
@@ -514,6 +518,15 @@ defmodule Harness.Dashboard.Components do
       text={@block.text}
       tool_calls={@block.tool_calls}
     />
+    """
+  end
+
+  def transcript_block(%{block: %{kind: :thought}} = assigns) do
+    ~H"""
+    <details class="transcript-thought" id={"event-#{@block.id}"}>
+      <summary>reasoning</summary>
+      <pre class="thought-text">{@block.text}</pre>
+    </details>
     """
   end
 
@@ -671,33 +684,50 @@ defmodule Harness.Dashboard.Components do
   # non-tool event flushes them; this keeps the "consecutive text deltas
   # collapse" + "tool_use attaches to current turn" rules in one place.
 
-  defp reduce_event({:assistant_text, %{text: text}}, {blocks, nil, id}) do
-    {blocks, %{kind: :assistant_message, id: id, text: text, tool_calls: []}, id + 1}
+  # Consecutive `:thought` system events fold into one `:thought` block — grok
+  # streams chain-of-thought token-by-token (one `{:system, kind: :thought}`
+  # per token), so without folding a single reasoning paragraph renders as
+  # hundreds of empty eyebrow rows. Mirrors the `:assistant_text` accumulator.
+  # Must precede the generic `:system` clause below.
+  defp reduce_event({:system, %{kind: :thought, data: %{text: text}}}, {blocks, %{kind: :thought} = th, id}) do
+    {blocks, %{th | text: th.text <> text}, id}
   end
 
-  defp reduce_event({:assistant_text, %{text: text}}, {blocks, msg, id}) do
+  defp reduce_event({:system, %{kind: :thought, data: %{text: text}}}, acc) do
+    {blocks, id} = flush_open(acc)
+    {blocks, %{kind: :thought, id: id, text: text}, id + 1}
+  end
+
+  defp reduce_event({:assistant_text, %{text: text}}, {blocks, %{kind: :assistant_message} = msg, id}) do
     {blocks, %{msg | text: msg.text <> text}, id}
   end
 
-  defp reduce_event({:assistant_tool_use, tool_use}, {blocks, nil, id}) do
-    msg = %{kind: :assistant_message, id: id, text: "", tool_calls: [build_tool_call(tool_use)]}
-    {blocks, msg, id + 1}
+  defp reduce_event({:assistant_text, %{text: text}}, acc) do
+    {blocks, id} = flush_open(acc)
+    {blocks, new_message(id, %{text: text}), id + 1}
   end
 
-  defp reduce_event({:assistant_tool_use, tool_use}, {blocks, msg, id}) do
-    msg = %{msg | tool_calls: msg.tool_calls ++ [build_tool_call(tool_use)]}
-    {blocks, msg, id}
+  defp reduce_event({:assistant_tool_use, tool_use}, {blocks, %{kind: :assistant_message} = msg, id}) do
+    {blocks, %{msg | tool_calls: msg.tool_calls ++ [build_tool_call(tool_use)]}, id}
   end
 
-  defp reduce_event({:tool_result, %{tool_use_id: tool_use_id, content: content}}, {blocks, nil, id}) do
-    # Malformed: tool_result without a preceding open assistant_message. Drop
-    # silently — there is no rendering target.
-    _ = {tool_use_id, content}
-    {blocks, nil, id}
+  defp reduce_event({:assistant_tool_use, tool_use}, acc) do
+    {blocks, id} = flush_open(acc)
+    {blocks, new_message(id, %{tool_calls: [build_tool_call(tool_use)]}), id + 1}
   end
 
-  defp reduce_event({:tool_result, %{tool_use_id: tool_use_id, content: content}}, {blocks, msg, id}) do
+  defp reduce_event(
+         {:tool_result, %{tool_use_id: tool_use_id, content: content}},
+         {blocks, %{kind: :assistant_message} = msg, id}
+       ) do
     {blocks, %{msg | tool_calls: fill_tool_result(msg.tool_calls, tool_use_id, content)}, id}
+  end
+
+  defp reduce_event({:tool_result, _result}, acc) do
+    # No open assistant_message to attach to (open is nil or a thought block).
+    # Flush any open thought; the orphan result has no render target, drop it.
+    {blocks, id} = flush_open(acc)
+    {blocks, nil, id}
   end
 
   defp reduce_event({:system, %{kind: kind, data: data}}, acc) do
@@ -720,6 +750,16 @@ defmodule Harness.Dashboard.Components do
 
   defp flush_and_emit({blocks, msg, id}, build_block) do
     {[build_block.(id) | [msg | blocks]], nil, id + 1}
+  end
+
+  # Closes any currently-open block (assistant_message or thought) into the
+  # closed list, returning `{blocks, next_id}` for the caller to open a fresh
+  # block. The open block already owns its id, so the counter is untouched.
+  defp flush_open({blocks, nil, id}), do: {blocks, id}
+  defp flush_open({blocks, open, id}), do: {[open | blocks], id}
+
+  defp new_message(id, fields) do
+    Map.merge(%{kind: :assistant_message, id: id, text: "", tool_calls: []}, fields)
   end
 
   defp build_tool_call(%{id: id, name: name, input: input}) do

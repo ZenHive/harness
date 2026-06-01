@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Grok (and any token-streamed) chain-of-thought now renders as one collapsed
+  reasoning card instead of a wall of empty `THOUGHT` rows.** Grok streams
+  reasoning token-by-token — one `{:system, kind: :thought}` event per token —
+  and the run-detail transcript reducer emitted a separate block per event while
+  the `eyebrow/1` renderer deliberately drops the `data` payload. A single thought
+  therefore rendered as ~150 bare "THOUGHT" labels with the text discarded
+  (the raw stream had every fragment; the parsed view threw it all away). The
+  reducer now folds consecutive `:thought` events into one `:thought` block
+  (mirroring the `:assistant_text` accumulator), rendered as a collapsed
+  `<details>` "reasoning" card carrying the concatenated text — dim and secondary
+  to assistant output. Found dogfooding a grok dispatch of Task 131.
 - **Per-project Oban dispatch + landing queues now actually start at boot, so
   enqueued runs no longer sit `available` forever.** `Harness.Oban.ensure_project_queue/1`
   and `queue_headroom?/1` guarded queue starts on `Process.whereis(Harness.Oban)`,

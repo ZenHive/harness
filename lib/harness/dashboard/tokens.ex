@@ -873,6 +873,28 @@ defmodule Harness.Dashboard.Tokens do
         word-break: break-word;
       }
 
+      /* Collapsed reasoning (chain-of-thought) — dim + secondary to assistant
+         text, so a token-heavy thought stays out of the way until expanded. */
+      .transcript-thought {
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+      }
+      .transcript-thought > summary {
+        cursor: pointer;
+        font-style: italic;
+        letter-spacing: 0.02em;
+      }
+      .transcript-thought[open] { color: var(--text); }
+      .thought-text {
+        margin-block-start: var(--space-2);
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+        opacity: 0.85;
+      }
+
       /* === Settings page — operator controls (Tasks 109/110) === */
       .settings {
         display: flex;
