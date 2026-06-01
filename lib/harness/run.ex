@@ -81,6 +81,8 @@ defmodule Harness.Run do
   alias Harness.Git
   alias Harness.Lander.Resilience
   alias Harness.Lander.Worker, as: LanderWorker
+  alias Harness.Notification
+  alias Harness.Notification.Event, as: NotificationEvent
   alias Harness.Oban, as: HarnessOban
   alias Harness.Project
   alias Harness.ResultStore
@@ -111,6 +113,10 @@ defmodule Harness.Run do
   @default_max_repair_attempts 2
   @semantic_diff_context_lines 80
   @semantic_diff_max_bytes 80_000
+  @default_discernment_sample_interval_ms 300_000
+  @default_discernment_min_weight 6
+  @default_discernment_long_running_ms 600_000
+  @default_discernment_min_transcript_bytes 1
 
   @typedoc "A lifecycle state."
   @type state :: :dispatched | :running | :committing | :verifying | :consulting | :done | :failed
@@ -145,7 +151,13 @@ defmodule Harness.Run do
            last_failed_check_signatures: MapSet.t(term()),
            cross_agent_consulted: boolean(),
            cross_agent_follow_up: boolean(),
-           cross_agent_feedback: %{verdict: AuditReview.verdict(), rationale: String.t()} | nil,
+           cross_agent_feedback:
+             %{
+               required(:verdict) => AuditReview.verdict(),
+               required(:rationale) => String.t(),
+               optional(:trigger) => atom()
+             }
+             | nil,
            checks: [Check.t()] | nil,
            verification_timeout: timeout() | nil,
            base_dir: String.t() | nil,
@@ -164,6 +176,8 @@ defmodule Harness.Run do
            first_attempt_failed_check_count: non_neg_integer(),
            agent_diff_size: non_neg_integer() | nil,
            task: Task.t() | nil,
+           discernment_task: Task.t() | nil,
+           last_discernment_sample_ms: integer() | nil,
            cancel_requested: {Result.reason(), :gen_statem.from() | nil} | nil,
            reason: Result.reason() | nil,
            result: Result.t() | nil,
@@ -183,6 +197,7 @@ defmodule Harness.Run do
            | {:keep_state, data(), [:gen_statem.action()]}
            | {:next_state, state(), data()}
            | {:next_state, state(), data(), [:gen_statem.action()]}
+           | {:repeat_state, data()}
            | {:stop, term(), data()}
 
   # ── Public API ────────────────────────────────────────────────────────────
@@ -381,6 +396,8 @@ defmodule Harness.Run do
       first_attempt_failed_check_count: 0,
       agent_diff_size: nil,
       task: nil,
+      discernment_task: nil,
+      last_discernment_sample_ms: nil,
       cancel_requested: nil,
       reason: nil,
       result: nil,
@@ -472,11 +489,41 @@ defmodule Harness.Run do
     end
   end
 
-  def running(:info, {ref, {:ok, %Outcome{} = outcome}}, %{task: %Task{ref: ref}} = data) do
+  def running(
+        :info,
+        {ref, {:ok, %{verdict: verdict, outcome: %Outcome{} = outcome}}},
+        %{discernment_task: %Task{ref: ref}} = data
+      ) do
     Process.demonitor(ref, [:flush])
 
+    handle_in_run_discernment_outcome(%{data | discernment_task: nil}, verdict, outcome)
+  end
+
+  def running(:info, {ref, {:error, reason}}, %{discernment_task: %Task{ref: ref}} = data) do
+    Process.demonitor(ref, [:flush])
+
+    Logger.warning("harness run: in-run semantic grader failed for #{data.run_id}: #{inspect(reason)}")
+
+    feedback = semantic_gate_failure_feedback({:grader_failed, reason})
+    notify_in_run_discernment(data, :notify_only, feedback, {:grader_failed, reason})
+    {:keep_state, %{data | discernment_task: nil}}
+  end
+
+  def running(:info, {:DOWN, ref, :process, _pid, reason}, %{discernment_task: %Task{ref: ref}} = data)
+      when reason != :normal do
+    Logger.warning("harness run: in-run semantic grader crashed for #{data.run_id}: #{inspect(reason)}")
+
+    feedback = semantic_gate_failure_feedback({:crashed, reason})
+    notify_in_run_discernment(data, :notify_only, feedback, {:grader_failed, {:crashed, reason}})
+    {:keep_state, %{data | discernment_task: nil}}
+  end
+
+  def running(:info, {ref, {:ok, %Outcome{} = outcome}}, %{task: %Task{ref: ref}} = data) do
+    Process.demonitor(ref, [:flush])
+    cancel_task(data.discernment_task)
+
     data =
-      %{data | task: nil, agent_outcome: outcome}
+      %{data | task: nil, discernment_task: nil, agent_outcome: outcome}
       |> finalize_transcript()
       |> accumulate_token_usage(outcome)
 
@@ -502,7 +549,8 @@ defmodule Harness.Run do
 
   def running(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
-    fail(%{data | task: nil}, {:agent_spawn_failed, reason})
+    cancel_task(data.discernment_task)
+    fail(%{data | task: nil, discernment_task: nil}, {:agent_spawn_failed, reason})
   end
 
   def running(:info, {:DOWN, ref, :process, _pid, reason}, %{task: %Task{ref: ref}} = data) when reason != :normal do
@@ -510,7 +558,8 @@ defmodule Harness.Run do
     # checkout AND then crashed the driver, surface the pollution (the agent
     # bug) ahead of the driver crash (the downstream effect).
     pollution_reason = checkout_pollution_reason(data)
-    fail(%{data | task: nil}, pollution_reason || {:driver_crashed, reason})
+    cancel_task(data.discernment_task)
+    fail(%{data | task: nil, discernment_task: nil}, pollution_reason || {:driver_crashed, reason})
   end
 
   def running(event_type, event_content, data) do
@@ -762,7 +811,7 @@ defmodule Harness.Run do
   # for one release; the parsed-event path (Transcript.append_chunk/4 +
   # broadcast_events/3) feeds the new `<.transcript_view>` renderer. Subscribers
   # pattern-match whichever shape they want.
-  defp handle_common(:info, {:transcript_chunk, chunk}, _state, data) do
+  defp handle_common(:info, {:transcript_chunk, chunk}, state, data) do
     {trimmed, trimmed_bytes} = Transcript.append(data.transcript, data.transcript_bytes, chunk)
     new_seq = data.transcript_seq + 1
     Transcript.broadcast(data.run_id, new_seq, chunk)
@@ -770,15 +819,16 @@ defmodule Harness.Run do
     {new_events, delta, new_parser_state} = parse_chunk(data, chunk)
     if delta != [], do: Transcript.broadcast_events(data.run_id, new_seq, delta)
 
-    {:keep_state,
-     %{
-       data
-       | transcript: trimmed,
-         transcript_bytes: trimmed_bytes,
-         transcript_seq: new_seq,
-         transcript_events: new_events,
-         transcript_parser_state: new_parser_state
-     }}
+    data = %{
+      data
+      | transcript: trimmed,
+        transcript_bytes: trimmed_bytes,
+        transcript_seq: new_seq,
+        transcript_events: new_events,
+        transcript_parser_state: new_parser_state
+    }
+
+    maybe_sample_in_run_discernment(state, data)
   end
 
   defp handle_common({:call, from}, :cancel, state, _data) when state in [:done, :failed] do
@@ -818,9 +868,10 @@ defmodule Harness.Run do
   @spec do_cancel(data(), Result.reason(), :gen_statem.from() | nil) :: handler_result()
   defp do_cancel(data, reason, from) do
     cancel_task(data.task)
+    cancel_task(data.discernment_task)
     terminate_agent(data)
     reason = checkout_pollution_reason(data) || reason
-    data = %{data | task: nil, agent_run: nil, cancel_requested: nil, reason: reason}
+    data = %{data | task: nil, discernment_task: nil, agent_run: nil, cancel_requested: nil, reason: reason}
     actions = if from, do: [{:reply, from, :ok}], else: []
     {:next_state, :failed, data, actions}
   end
@@ -837,10 +888,11 @@ defmodule Harness.Run do
   @spec force_settle_lifetime(data()) :: handler_result()
   defp force_settle_lifetime(data) do
     cancel_task(data.task)
+    cancel_task(data.discernment_task)
     terminate_agent(data)
     actions = pending_cancel_reply(data)
     reason = checkout_pollution_reason(data) || :timed_out
-    data = %{data | task: nil, agent_run: nil, cancel_requested: nil, reason: reason}
+    data = %{data | task: nil, discernment_task: nil, agent_run: nil, cancel_requested: nil, reason: reason}
     {:next_state, :failed, data, actions}
   end
 
@@ -855,9 +907,11 @@ defmodule Harness.Run do
   # already exited.
   @spec fail(data(), Result.reason()) :: handler_result()
   defp fail(data, reason) do
+    cancel_task(data.discernment_task)
     terminate_agent(data)
 
-    {:next_state, :failed, %{data | agent_run: nil, cancel_requested: nil, reason: reason}, pending_cancel_reply(data)}
+    {:next_state, :failed, %{data | discernment_task: nil, agent_run: nil, cancel_requested: nil, reason: reason},
+     pending_cancel_reply(data)}
   end
 
   @spec pending_cancel_reply(data()) :: [:gen_statem.action()]
@@ -872,6 +926,15 @@ defmodule Harness.Run do
 
   defp cancel_task(%Task{} = task) do
     Task.shutdown(task, :brutal_kill)
+    :ok
+  end
+
+  @spec kill_task(Task.t() | nil) :: :ok
+  defp kill_task(nil), do: :ok
+
+  defp kill_task(%Task{pid: pid, ref: ref}) do
+    Process.demonitor(ref, [:flush])
+    Process.exit(pid, :kill)
     :ok
   end
 
@@ -1181,7 +1244,7 @@ defmodule Harness.Run do
   end
 
   @spec grade_consultation(data()) :: {:ok, AuditReview.result()} | {:error, term()}
-  defp grade_consultation(%{consultation_kind: :semantic_gate} = data), do: grade_semantic_gate(data)
+  defp grade_consultation(%{consultation_kind: :semantic_gate} = data), do: grade_discernment(data, :post_green)
 
   defp grade_consultation(data), do: grade_repair_approach(data)
 
@@ -1203,16 +1266,16 @@ defmodule Harness.Run do
     |> AuditReview.grade_fix()
   end
 
-  @spec grade_semantic_gate(data()) :: {:ok, AuditReview.result()} | {:error, term()}
-  defp grade_semantic_gate(data) do
+  @spec grade_discernment(data(), :post_green | :in_run) :: {:ok, AuditReview.result()} | {:error, term()}
+  defp grade_discernment(data, trigger) when trigger in [:post_green, :in_run] do
     opts = data.semantic_gate
 
     with :ok <- ensure_cross_family_semantic_grader(data.item.agent, Keyword.get(opts, :grader)),
-         {:ok, diff} <- committed_diff(data) do
+         {:ok, evidence} <- discernment_evidence(data, trigger) do
       [
         implementer: data.item.agent,
         sha: current_sha(data),
-        prompt: semantic_gate_prompt(data, diff),
+        prompt: discernment_prompt(data, trigger, evidence),
         cwd: data.worktree.path
       ]
       |> put_opt(:grader, Keyword.get(opts, :grader))
@@ -1221,6 +1284,16 @@ defmodule Harness.Run do
       |> put_opt(:total_timeout, Keyword.get(opts, :total_timeout))
       |> put_opt(:idle_timeout, Keyword.get(opts, :idle_timeout))
       |> AuditReview.grade_fix()
+    end
+  end
+
+  @spec discernment_evidence(data(), :post_green | :in_run) :: {:ok, String.t()} | {:error, term()}
+  defp discernment_evidence(data, :post_green), do: committed_diff(data)
+
+  defp discernment_evidence(data, :in_run) do
+    case Git.run(["diff", "--stat", "--patch", "--find-renames", "--no-ext-diff"], data.worktree.path) do
+      {:ok, diff} -> {:ok, truncate_semantic_diff(diff)}
+      {:error, reason} -> {:error, {:diff_unavailable, reason}}
     end
   end
 
@@ -1261,6 +1334,59 @@ defmodule Harness.Run do
     reject_semantic_gate(data, feedback)
   end
 
+  @spec handle_in_run_discernment_outcome(data(), AuditReview.verdict(), Outcome.t()) :: handler_result()
+  defp handle_in_run_discernment_outcome(data, :unclear, %Outcome{kind: kind})
+       when kind in [{:timed_out, :idle}, {:timed_out, :total}] do
+    reason = {:grader_failed, kind}
+    feedback = semantic_gate_failure_feedback(reason)
+    notify_in_run_discernment(data, :notify_only, feedback, reason)
+    {:keep_state, data}
+  end
+
+  defp handle_in_run_discernment_outcome(data, verdict, %Outcome{} = outcome) do
+    feedback = %{
+      verdict: verdict,
+      rationale: cross_agent_rationale(outcome.output)
+    }
+
+    handle_in_run_discernment_verdict(data, verdict, feedback)
+  end
+
+  @spec handle_in_run_discernment_verdict(
+          data(),
+          AuditReview.verdict(),
+          %{verdict: AuditReview.verdict(), rationale: String.t()}
+        ) :: handler_result()
+  defp handle_in_run_discernment_verdict(data, :reject, feedback) do
+    feedback = Map.put(feedback, :trigger, :in_run)
+
+    if semantic_repairable?(data) do
+      notify_in_run_discernment(data, :halt_and_redispatch, feedback)
+      terminate_agent(data)
+      kill_task(data.task)
+
+      {:repeat_state,
+       %{
+         data
+         | task: nil,
+           agent_run: nil,
+           cancel_requested: nil,
+           repair_attempts: data.repair_attempts + 1,
+           repair_prompt_kind: :semantic_rejection,
+           cross_agent_feedback: feedback,
+           reason: :semantic_rejection
+       }}
+    else
+      notify_in_run_discernment(data, :blocked, feedback)
+      fail(%{data | cross_agent_feedback: feedback}, :semantic_rejection)
+    end
+  end
+
+  defp handle_in_run_discernment_verdict(data, verdict, feedback) do
+    notify_in_run_discernment(data, :notify_only, %{feedback | verdict: verdict})
+    {:keep_state, data}
+  end
+
   @spec reject_semantic_gate(data(), %{verdict: AuditReview.verdict(), rationale: String.t()}) ::
           handler_result()
   defp reject_semantic_gate(data, feedback) do
@@ -1297,6 +1423,34 @@ defmodule Harness.Run do
     }
   end
 
+  @spec notify_in_run_discernment(
+          data(),
+          :notify_only | :halt_and_redispatch | :blocked,
+          %{verdict: AuditReview.verdict(), rationale: String.t()},
+          term() | nil
+        ) :: :ok
+  defp notify_in_run_discernment(data, action, feedback, reason \\ nil) do
+    outcome =
+      maybe_put_reason(
+        %{action: action, verdict: feedback.verdict, rationale: feedback.rationale, transcript_seq: data.transcript_seq},
+        reason
+      )
+
+    Notification.notify(%NotificationEvent{
+      type: :in_run_discernment,
+      task_id: to_string(data.item.id),
+      run_id: data.run_id,
+      project: data.project.name,
+      branch: "harness/" <> data.run_id,
+      land_attempt: data.land_attempt,
+      outcome: outcome
+    })
+  end
+
+  @spec maybe_put_reason(map(), term() | nil) :: map()
+  defp maybe_put_reason(outcome, nil), do: outcome
+  defp maybe_put_reason(outcome, reason), do: Map.put(outcome, :reason, reason)
+
   @spec cross_agent_prompt(data()) :: String.t()
   defp cross_agent_prompt(data) do
     repair_prompt =
@@ -1329,8 +1483,8 @@ defmodule Harness.Run do
     """
   end
 
-  @spec semantic_gate_prompt(data(), String.t()) :: String.t()
-  defp semantic_gate_prompt(data, diff) do
+  @spec discernment_prompt(data(), :post_green | :in_run, String.t()) :: String.t()
+  defp discernment_prompt(data, :post_green, diff) do
     """
     You are the cross-family semantic gate for a harness green verdict.
 
@@ -1358,6 +1512,43 @@ defmodule Harness.Run do
     """
   end
 
+  defp discernment_prompt(data, :in_run, diff) do
+    """
+    You are the sampled cross-family semantic discernment reviewer for an in-flight harness run.
+
+    You are reading a PARTIAL live transcript. Agents often read and explore
+    before editing, so do not punish uncertainty, quiet exploration, or an
+    incomplete solution. Ambiguous or low-confidence concerns must be REPORTED
+    in your rationale without a reject sentinel. Emit REJECT only for
+    high-confidence rogue/destructive/out-of-scope behavior or productive spin
+    that should halt this attempt and re-dispatch with correction.
+
+    Your verdict is demote-only. APPROVE does not bless the run or turn red
+    green; it only means "no intervention from this sample."
+
+    Implementer: #{data.item.agent}
+    Current commit: #{current_sha(data)}
+
+    Task body:
+    #{empty_placeholder(data.item.body)}
+
+    Acceptance criteria:
+    #{format_acceptance_criteria(data.item.acceptance_criteria)}
+
+    Partial live transcript:
+    #{empty_placeholder(truncate_semantic_diff(data.transcript))}
+
+    Current uncommitted diff, if any:
+    #{empty_placeholder(diff)}
+
+    Return one concise rationale line, then a final sentinel on its own line
+    only when confident:
+    <<<VERDICT:APPROVE>>>
+    or
+    <<<VERDICT:REJECT>>>
+    """
+  end
+
   @spec semantic_repair_prompt(data()) :: String.t()
   defp semantic_repair_prompt(data) do
     rationale =
@@ -1367,13 +1558,10 @@ defmodule Harness.Run do
       end
 
     """
-    harness semantic gate rejected your green verification attempt on task #{data.item.id} —
+    #{semantic_repair_intro(data)}
     repair attempt #{data.repair_attempts} of #{data.max_repair_attempts}.
 
-    The verification checks passed, but the cross-family semantic reviewer did
-    not approve the committed diff against the task contract. Repair the actual
-    task semantics, not just the check stack. Leave your fixes in the working
-    tree; harness will commit, verify, and run the semantic gate again.
+    #{semantic_repair_guidance(data)}
 
     Reviewer rationale:
     #{rationale}
@@ -1383,6 +1571,34 @@ defmodule Harness.Run do
 
     Acceptance criteria:
     #{format_acceptance_criteria(data.item.acceptance_criteria)}
+    """
+  end
+
+  @spec semantic_repair_intro(data()) :: String.t()
+  defp semantic_repair_intro(%{cross_agent_feedback: %{trigger: :in_run}} = data) do
+    "harness semantic discernment rejected your in-run attempt on task #{data.item.id} —"
+  end
+
+  defp semantic_repair_intro(data) do
+    "harness semantic gate rejected your green verification attempt on task #{data.item.id} —"
+  end
+
+  @spec semantic_repair_guidance(data()) :: String.t()
+  defp semantic_repair_guidance(%{cross_agent_feedback: %{trigger: :in_run}}) do
+    """
+    The cross-family semantic reviewer found high-confidence rogue, destructive,
+    out-of-scope, or spinning behavior in the partial live transcript. Repair
+    the actual task semantics and avoid the flagged process failure. Leave your
+    fixes in the working tree; harness will commit and verify the next attempt.
+    """
+  end
+
+  defp semantic_repair_guidance(_data) do
+    """
+    The verification checks passed, but the cross-family semantic reviewer did
+    not approve the committed diff against the task contract. Repair the actual
+    task semantics, not just the check stack. Leave your fixes in the working
+    tree; harness will commit, verify, and run the semantic gate again.
     """
   end
 
@@ -1529,6 +1745,110 @@ defmodule Harness.Run do
   @spec cross_agent_repair_enabled?(data()) :: boolean()
   defp cross_agent_repair_enabled?(data) do
     Keyword.get(data.cross_agent_repair, :enabled, false)
+  end
+
+  @spec maybe_sample_in_run_discernment(state(), data()) :: handler_result()
+  defp maybe_sample_in_run_discernment(:running, data) do
+    opts = in_run_discernment_opts(data)
+    now = System.monotonic_time(:millisecond)
+
+    if in_run_discernment_due?(data, opts, now) do
+      task = start_task(fn -> grade_discernment(data, :in_run) end)
+      {:keep_state, %{data | discernment_task: task, last_discernment_sample_ms: now}}
+    else
+      {:keep_state, data}
+    end
+  end
+
+  defp maybe_sample_in_run_discernment(_state, data), do: {:keep_state, data}
+
+  @spec in_run_discernment_due?(data(), keyword(), integer()) :: boolean()
+  defp in_run_discernment_due?(data, opts, now) do
+    in_run_discernment_enabled?(opts) and
+      is_nil(data.discernment_task) and
+      data.transcript_bytes >= Keyword.get(opts, :min_transcript_bytes, @default_discernment_min_transcript_bytes) and
+      sample_interval_due?(data.last_discernment_sample_ms, Keyword.get(opts, :sample_interval_ms), now) and
+      discernment_weight_passes?(data, opts, now)
+  end
+
+  @spec in_run_discernment_enabled?(keyword()) :: boolean()
+  defp in_run_discernment_enabled?(opts), do: Keyword.get(opts, :enabled, false) == true
+
+  @spec sample_interval_due?(integer() | nil, non_neg_integer() | nil, integer()) :: boolean()
+  defp sample_interval_due?(nil, _interval, _now), do: true
+
+  defp sample_interval_due?(last, nil, now), do: now - last >= @default_discernment_sample_interval_ms
+
+  defp sample_interval_due?(last, interval, now), do: now - last >= interval
+
+  @spec discernment_weight_passes?(data(), keyword(), integer()) :: boolean()
+  defp discernment_weight_passes?(data, opts, now) do
+    min_weight = Keyword.get(opts, :min_weight, @default_discernment_min_weight)
+
+    explicit_weight = Keyword.get(opts, :weight)
+
+    cond do
+      is_integer(explicit_weight) ->
+        explicit_weight >= min_weight
+
+      task_difficulty(data) >= min_weight ->
+        true
+
+      security_or_bug_marker?(task_text(data)) ->
+        true
+
+      long_running?(data, opts, now) ->
+        true
+
+      true ->
+        false
+    end
+  end
+
+  @spec task_difficulty(data()) :: non_neg_integer()
+  defp task_difficulty(data) do
+    case Regex.run(~r/\bD\s*:\s*(\d+)/, task_text(data)) do
+      [_, digits] -> String.to_integer(digits)
+      _other -> 0
+    end
+  end
+
+  @spec security_or_bug_marker?(String.t()) :: boolean()
+  defp security_or_bug_marker?(text) do
+    Regex.match?(~r/\b(security|bug|vulnerability|vulnerable|destructive|rogue)\b/i, text)
+  end
+
+  @spec long_running?(data(), keyword(), integer()) :: boolean()
+  defp long_running?(data, opts, now) do
+    long_running_ms = Keyword.get(opts, :long_running_ms, @default_discernment_long_running_ms)
+    now - data.started_at_ms >= long_running_ms
+  end
+
+  @spec task_text(data()) :: String.t()
+  defp task_text(data) do
+    [
+      data.item.title,
+      data.item.prompt,
+      data.item.body,
+      Enum.join(data.item.acceptance_criteria, "\n")
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n")
+  end
+
+  @spec in_run_discernment_opts(data()) :: keyword()
+  defp in_run_discernment_opts(data) do
+    global =
+      :harness
+      |> Application.get_env(:in_run_discernment, [])
+      |> normalize_cross_agent_repair_opts()
+
+    local =
+      data.semantic_gate
+      |> Keyword.get(:in_run, [])
+      |> normalize_cross_agent_repair_opts()
+
+    Keyword.merge(global, local)
   end
 
   # A per-dispatch `enabled: true | false` opt forces the gate on/off for one

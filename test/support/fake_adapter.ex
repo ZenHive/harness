@@ -80,6 +80,8 @@ defmodule Harness.FakeAdapter do
   #                    different diff while emitting quota text, so the repair
   #                    loop must classify the transcript instead of relying on
   #                    the no-diff short-circuit.
+  # :sampled_repair  — first run emits a witness-visible line, waits briefly,
+  #                    then writes a diff; resumed run records the repair prompt.
   # :write_and_pollute_checkout
   #                  — writes into cwd and the main checkout, so pollution-skip
   #                    tests still have worktree changes to commit.
@@ -176,6 +178,12 @@ defmodule Harness.FakeAdapter do
 
   defp command(:repair_quota_with_output, %Invocation{session: nil}),
     do: {"/bin/sh", ["-c", "echo first-attempt > attempt.txt"], []}
+
+  defp command(:sampled_repair, %Invocation{session: :resume, prompt: prompt}),
+    do: {"/bin/sh", ["-c", ~S(printf '%s' "$1" > repair_marker), "harness-fake", prompt], []}
+
+  defp command(:sampled_repair, %Invocation{session: nil}),
+    do: {"/bin/sh", ["-c", "echo witness-line; sleep 0.25; echo agent-output > agent_output.txt; sleep 0.25"], []}
 
   defp shell_arg(value) do
     "'" <> String.replace(value, "'", "'\"'\"'") <> "'"

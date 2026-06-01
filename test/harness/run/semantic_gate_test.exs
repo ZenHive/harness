@@ -43,6 +43,9 @@ defmodule Harness.Run.SemanticGateTest do
             reject)
               printf 'semantic mismatch\\n<<<VERDICT:REJECT>>>\\n'
               ;;
+            unclear)
+              printf 'partial transcript is ambiguous\\n'
+              ;;
             reject_then_approve)
               if [ "$count" = "0" ]; then
                 printf 'first pass missed the contract\\n<<<VERDICT:REJECT>>>\\n'
@@ -300,6 +303,128 @@ defmodule Harness.Run.SemanticGateTest do
     end
   end
 
+  describe "in-run semantic sampler" do
+    setup do
+      Application.put_env(:harness, :test_capture_pid, self())
+      Application.put_env(:harness, :notification_sinks, [Harness.Test.CaptureSink])
+
+      on_exit(fn ->
+        Application.delete_env(:harness, :test_capture_pid)
+        Application.delete_env(:harness, :notification_sinks)
+      end)
+
+      :ok
+    end
+
+    test "skips trivial runs even when the sampler is enabled" do
+      prompt_file = tmp_path("semantic-sampler-trivial-prompt")
+      count_file = tmp_path("semantic-sampler-trivial-count")
+
+      assert %Result{state: :done, reason: :passed, repair_attempts: 0} =
+               run(
+                 item: item(body: "Small tidy-up."),
+                 adapter_opts: [command: :sampled_repair],
+                 semantic_gate: [
+                   enabled: false,
+                   in_run: [enabled: true, sample_interval_ms: 0],
+                   grader: RecordingSemanticGrader,
+                   adapter_opts: [prompt_file: prompt_file, count_file: count_file, mode: :reject],
+                   total_timeout: 10_000,
+                   idle_timeout: 5_000
+                 ]
+               )
+
+      refute File.exists?(count_file)
+      refute_receive {:notify, _event}, 100
+    end
+
+    test "ambiguous partial-transcript verdict notifies but never halts" do
+      prompt_file = tmp_path("semantic-sampler-unclear-prompt")
+      count_file = tmp_path("semantic-sampler-unclear-count")
+
+      {run_id, pid, repo} =
+        start(
+          item: item(body: "Important security fix. [D:6/B:7]"),
+          adapter_opts: [command: :sampled_repair],
+          semantic_gate: [
+            enabled: false,
+            in_run: [enabled: true, sample_interval_ms: 0],
+            grader: RecordingSemanticGrader,
+            adapter_opts: [prompt_file: prompt_file, count_file: count_file, mode: :unclear],
+            total_timeout: 10_000,
+            idle_timeout: 5_000
+          ]
+        )
+
+      result = await_result(run_id, pid, 10_000)
+
+      assert %Result{state: :done, reason: :passed, repair_attempts: 0} = result
+      assert File.read!(count_file) == "hit\n"
+      assert {:error, _reason} = Harness.Git.run(["show", "harness/#{run_id}:repair_marker"], repo)
+
+      assert_receive {:notify, %{type: :in_run_discernment, outcome: %{action: :notify_only, verdict: :unclear}}}
+
+      prompt = File.read!(prompt_file)
+      assert prompt =~ "Partial live transcript:"
+      assert prompt =~ "witness-line"
+      assert prompt =~ "Ambiguous or low-confidence concerns must be REPORTED"
+    end
+
+    test "high-confidence partial-transcript reject halts and re-dispatches with feedback" do
+      prompt_file = tmp_path("semantic-sampler-reject-prompt")
+      count_file = tmp_path("semantic-sampler-reject-count")
+
+      {run_id, pid, repo} =
+        start(
+          item: item(body: "Security-sensitive fix. [D:6/B:7]"),
+          adapter_opts: [command: :sampled_repair],
+          max_repair_attempts: 1,
+          semantic_gate: [
+            enabled: false,
+            in_run: [enabled: true, sample_interval_ms: 0],
+            grader: RecordingSemanticGrader,
+            adapter_opts: [prompt_file: prompt_file, count_file: count_file, mode: :reject],
+            total_timeout: 10_000,
+            idle_timeout: 5_000
+          ]
+        )
+
+      result = await_result(run_id, pid, 10_000)
+
+      assert %Result{state: :done, reason: :passed, repair_attempts: 1} = result
+      assert File.read!(count_file) == "hit\n"
+
+      marker = GitFixture.git!(repo, ["show", "harness/#{run_id}:repair_marker"])
+      assert marker =~ "semantic discernment rejected your in-run attempt"
+      assert marker =~ "semantic mismatch"
+
+      assert_receive {:notify, %{type: :in_run_discernment, outcome: %{action: :halt_and_redispatch, verdict: :reject}}}
+    end
+
+    test "a hung in-run grader times out and reports notify-only instead of approving silently" do
+      assert %Result{state: :done, reason: :passed, repair_attempts: 0} =
+               run(
+                 item: item(body: "Security-sensitive fix. [D:6/B:7]"),
+                 adapter_opts: [command: :sampled_repair],
+                 semantic_gate: [
+                   enabled: false,
+                   in_run: [enabled: true, sample_interval_ms: 0],
+                   grader: FakeAdapter,
+                   adapter_opts: [command: :sleep],
+                   total_timeout: 10_000,
+                   idle_timeout: 100
+                 ]
+               )
+
+      assert_receive {:notify,
+                      %{
+                        type: :in_run_discernment,
+                        outcome: %{action: :notify_only, verdict: :reject, reason: {:grader_failed, _}}
+                      }},
+                     1_000
+    end
+  end
+
   defp run(overrides) do
     {run_id, pid, _repo} = start(overrides)
     await_result(run_id, pid, 10_000)
@@ -341,14 +466,15 @@ defmodule Harness.Run.SemanticGateTest do
     ProjectFixture.from_repo(repo, Keyword.take(opts, [:landing_policy, :semantic_gate]))
   end
 
-  defp item do
+  defp item(opts \\ []) do
     %Item{
       id: "99",
       title: "Semantic gate",
       prompt: "do the thing",
       agent: :claude,
-      body: "Build the smallest useful thing.",
-      acceptance_criteria: ["preserve the hard case", "do not solve the adjacent problem"]
+      body: Keyword.get(opts, :body, "Build the smallest useful thing."),
+      acceptance_criteria:
+        Keyword.get(opts, :acceptance_criteria, ["preserve the hard case", "do not solve the adjacent problem"])
     }
   end
 

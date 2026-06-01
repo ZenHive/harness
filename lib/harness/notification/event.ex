@@ -20,7 +20,7 @@ defmodule Harness.Notification.Event do
   alias Harness.Verification.Verdict
 
   @typedoc "Which merge-train transition fired."
-  @type type :: :landed | :blocked | :post_merge_red
+  @type type :: :landed | :blocked | :post_merge_red | :in_run_discernment
 
   @typedoc """
   The raw outcome payload, keyed by `type`:
@@ -28,8 +28,9 @@ defmodule Harness.Notification.Event do
     * `:landed` — the landed commit SHA (`String.t()`).
     * `:blocked` — the structured blocked reason (`String.t()`).
     * `:post_merge_red` — the failing `Harness.Verification.Verdict`.
+    * `:in_run_discernment` — a sampled partial-transcript reviewer payload.
   """
-  @type outcome :: String.t() | Verdict.t()
+  @type outcome :: String.t() | Verdict.t() | map()
 
   @typedoc "A merge-train lifecycle event."
   @type t :: %__MODULE__{
@@ -71,6 +72,9 @@ defmodule Harness.Notification.Event do
 
   def summary(%__MODULE__{type: :post_merge_red, task_id: id, outcome: outcome}),
     do: "post-merge red on task #{id}: #{red_detail(outcome)}"
+
+  def summary(%__MODULE__{type: :in_run_discernment, task_id: id, outcome: %{action: action, verdict: verdict}}),
+    do: "in-run discernment on task #{id}: #{action} (#{verdict})"
 
   # Names the failed checks from a Verdict; falls back to inspect for any other
   # payload so the summary never crashes on an unexpected shape.
