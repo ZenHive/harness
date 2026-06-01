@@ -929,15 +929,6 @@ defmodule Harness.Run do
     :ok
   end
 
-  @spec kill_task(Task.t() | nil) :: :ok
-  defp kill_task(nil), do: :ok
-
-  defp kill_task(%Task{pid: pid, ref: ref}) do
-    Process.demonitor(ref, [:flush])
-    Process.exit(pid, :kill)
-    :ok
-  end
-
   @spec terminate_agent(data()) :: :ok
   defp terminate_agent(%{agent_run: nil}), do: :ok
 
@@ -1363,7 +1354,7 @@ defmodule Harness.Run do
     if semantic_repairable?(data) do
       notify_in_run_discernment(data, :halt_and_redispatch, feedback)
       terminate_agent(data)
-      kill_task(data.task)
+      cancel_task(data.task)
 
       {:repeat_state,
        %{
@@ -1426,13 +1417,22 @@ defmodule Harness.Run do
   @spec notify_in_run_discernment(
           data(),
           :notify_only | :halt_and_redispatch | :blocked,
-          %{verdict: AuditReview.verdict(), rationale: String.t()},
+          %{
+            required(:verdict) => AuditReview.verdict(),
+            required(:rationale) => String.t(),
+            optional(:trigger) => atom()
+          },
           term() | nil
         ) :: :ok
   defp notify_in_run_discernment(data, action, feedback, reason \\ nil) do
     outcome =
       maybe_put_reason(
-        %{action: action, verdict: feedback.verdict, rationale: feedback.rationale, transcript_seq: data.transcript_seq},
+        %{
+          action: action,
+          verdict: feedback.verdict,
+          rationale: feedback.rationale,
+          transcript_seq: data.transcript_seq
+        },
         reason
       )
 
