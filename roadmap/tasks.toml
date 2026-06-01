@@ -3806,7 +3806,7 @@ id = "119"
 phase = 13
 bundle = "capability-bench"
 milestone = "v0_10"
-status = "in_progress"
+status = "done"
 title = "Capability scoring + persistence — per-(agent,domain) score from AgentEvaluation comparisons"
 scores = { d = 6, b = 10, u = 10 }
 depends_on = [116, 118]
@@ -3818,9 +3818,14 @@ Turn the per-adapter metrics Batch.AgentEvaluation already produces (verdict, re
 
 Define the composite honestly — success-rate-dominant, cost as tiebreaker — and retain the raw metrics alongside the score so the composite can be retuned without re-running the (expensive) benchmark.
 """
+implemented = "Harness.CapabilityScore: composite per (agent, domain) from Batch.AgentEvaluation comparison metrics — success-rate-dominant, cost-to-green tiebreaker, raw per-run metrics retained for recompute without re-dispatch. Persisted via ResultStore save_capability_score/get_capability_score (File + Postgres backends, capability_scores table keyed agent+domain+corpus_version, scored_at). :no_data distinct from measured-low. Landed with hand-resolved conflicts vs 139/138."
+delivered_by = "codex"
+verified = true
 created_at = "2026-05-31"
 started_at = "2026-06-01"
 scored_at = "2026-05-31"
+done_at = "2026-06-01"
+shipped_in = "a8c24d5"
 
 [[task]]
 id = "120"
@@ -4230,7 +4235,7 @@ shipped_in = "0fdde57"
 id = "138"
 phase = 13
 bundle = "postgres-results"
-status = "in_progress"
+status = "done"
 title = "mix harness.import_results — one-shot file-store to Postgres importer"
 scores = { d = 2, b = 2, u = 2 }
 markers = ["parallel"]
@@ -4243,16 +4248,21 @@ Optional cutover tool for Task 137: import existing file-backed run/batch record
 
 Operators who don't need pre-cutover history skip this entirely; the Postgres store starts empty and fills from the next settled run. Unpinned from the v0_10 milestone on purpose: it's operational continuity tooling, not part of the routing-hypothesis test.
 """
+implemented = "mix harness.import_results: one-shot file-store -> Postgres importer with --root/--repo flags, tolerant decode (corrupt/cross-typed term files skipped + counted, exit 0), idempotent upserts, imported/skipped summary. Tagged :integration. Combined run with task 139."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-06-01"
 started_at = "2026-06-01"
 scored_at = "2026-06-01"
+done_at = "2026-06-01"
+shipped_in = "2fc92d9"
 
 [[task]]
 id = "139"
 phase = 13
 bundle = "postgres-results"
 milestone = "v0_10"
-status = "in_progress"
+status = "done"
 title = "Dashboard/KPI SQL fast paths — aggregate in Postgres instead of loading every run record into memory"
 scores = { d = 3, b = 4, u = 5 }
 markers = ["parallel"]
@@ -4271,9 +4281,14 @@ The KPI ledger (Harness.AgentKPI.aggregate via Dashboard.KPILive), run history (
 
 Consumer evidence: Tasks 114/115 (production-kpis bundle, done) shipped the in-memory KPI aggregation this pushes down into SQL; Task 134 documents the operator pain of run history as load-everything in-memory state. The capability-bench dataset (Tasks 116+) reads the same per-(agent, domain) facts.
 """
+implemented = "ResultStore.aggregate_by_agent/1 behaviour callback: Postgres issues one GROUP BY agent aggregate query (count/filter/avg/array_agg), File falls back to AgentKPI.aggregate(list_run_records). list_run_records gains :limit + inserted_at DESC ordering, list queries omit agent_output bytea (run_id point lookups keep it). StatusView history drops the run-id string-sort hack. Golden parity test File vs Postgres. Combined run with task 138. Landing fix: run_records timestamps to usec precision (migration 20260602010000) — second-precision inserted_at made recency ordering non-deterministic."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-06-01"
 started_at = "2026-06-01"
 scored_at = "2026-06-01"
+done_at = "2026-06-01"
+shipped_in = "2fc92d9"
 
 [[task]]
 id = "140"
@@ -4487,7 +4502,7 @@ shipped_in = "5772667"
 id = "149"
 phase = 7
 bundle = "multi-project"
-status = "in_progress"
+status = "done"
 title = "Parameterize the :rust preset (target_dir/release/timeout/env) for durable rexex config — env field itself shipped in 145"
 scores = { d = 2, b = 3, u = 3 }
 acceptance_criteria = [":rust preset accepts `{:rust, opts}` via Preset.fetch(:rust, opts) + Preset.Rust.preset/1: :target_dir (adds --target-dir to clippy/test/build, omitted on fmt), :release (default keeps `cargo build --release`; false => plain `cargo build`), :timeout_per_check, and :env (a %{String => Check.env_value} stamped onto the stack's checks, reusing the Check.env field shipped in task 145); bare `:rust` is unchanged (back-compat test)", "rexex's config/dev.local.exs expresses its tuned Rust stack struct-free and DURABLY via `preset: {:rust, target_dir: ..., release: false, timeout_per_check: 1_800_000, env: %{\"DATABASE_URL\" => \"postgres://localhost/rexex_test\"}}`; the node boots cleanly and a restart no longer reverts rexex to the stock preset", "A test proves the :rust preset's :env opt lands on the test check and reaches the spawned cargo command (builds on task 145's Check.env Port threading)"]
@@ -4515,9 +4530,14 @@ Then rexex's tuned registration survives a restart instead of relying on the run
 
 CONTEXT: empirically (this machine) the cold reth compile is ~1 min/check, not the tens-of-minutes initially feared, so `:target_dir`/`:timeout_per_check` are hygiene/headroom; the `env` field (item 1) is the actual correctness blocker for grading rexex. Backend-only (Verification / CheckStack / preset / registry) — headless-dispatchable, no UI.
 """
+implemented = "Preset.fetch(:rust, opts) + Preset.Rust.preset/1 with :target_dir (threads --target-dir into clippy/test/build, omitted on fmt), :release (false => plain cargo build), :timeout_per_check, and :env (stamped onto all checks via Check.env from task 145). Bare :rust unchanged. dev.local.exs.example documents the durable rexex registration. Landed minus an out-of-scope StatusView catch-all (superseded by ff625de's guard)."
+delivered_by = "grok"
+verified = true
 created_at = "2026-06-01"
 started_at = "2026-06-01"
 scored_at = "2026-06-01"
+done_at = "2026-06-01"
+shipped_in = "83437a3"
 
 [[task]]
 id = "150"

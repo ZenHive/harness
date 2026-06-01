@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Capability scoring + persistence per (agent, domain) (Task 119, codex
+  delivery).** `Harness.CapabilityScore` turns the per-adapter metrics
+  `Batch.AgentEvaluation` already produces into a persisted composite score —
+  success-rate-dominant, cost-to-green as tiebreaker — keyed by
+  `(agent, domain, corpus_version)` with `scored_at`. Raw per-run metrics are
+  retained alongside the composite so it can be retuned without re-running the
+  benchmark; an unmeasured cell reads `:no_data`, distinct from measured-low.
+  Persisted via new `ResultStore` callbacks (`save_capability_score` /
+  `get_capability_score`) on both the File and Postgres backends
+  (`capability_scores` table). Feeds Tasks 120 (staleness) and 121 (routing).
+
+- **Dashboard/KPI SQL fast paths + file-store importer (Tasks 139 + 138, cursor
+  delivery, one combined run).** The KPI ledger and run history previously
+  loaded *every* persisted run record — transcripts included — into memory to
+  compute scalar aggregates:
+  - `ResultStore.aggregate_by_agent/1` — new behaviour callback; Postgres issues
+    one `GROUP BY agent` aggregate query, the File backend falls back to
+    `AgentKPI.aggregate/1`. KPILive renders identical numbers on both (golden
+    parity test).
+  - `list_run_records` gains `:limit` and orders by `inserted_at DESC`; list
+    queries omit the `agent_output` bytea (only `run_id:` point lookups load
+    transcripts). `StatusView` history drops the run-id string-sort recency hack.
+  - `mix harness.import_results` — one-shot, idempotent file-store → Postgres
+    importer (`--root` / `--repo` flags, tolerant decode, imported/skipped
+    summary) for operators who want pre-cutover history.
+  - Landing fix: `run_records` timestamps are now microsecond-precision
+    (migration `20260602010000`) — at second precision, `inserted_at DESC`
+    ordering was non-deterministic for runs recorded within the same second.
+
+- **Parameterized `:rust` preset (Task 149, grok delivery).**
+  `Preset.fetch(:rust, opts)` / `Preset.Rust.preset/1` accept `:target_dir`
+  (threads `--target-dir` into clippy/test/build, omitted on fmt), `:release`
+  (`false` ⇒ plain `cargo build`), `:timeout_per_check`, and `:env` (stamped
+  onto every check via the `Check.env` field from Task 145). A heavy Rust
+  project like rexex — shared cargo target dir, no redundant release build,
+  `DATABASE_URL` for sqlx tests — is now expressible durably in config as
+  `preset: {:rust, opts}` instead of a runtime-only registration hack.
+
 - **Worktree provisioning — check-stack setup runs before the agent spawns
   (Task 147).** A freshly carved worktree had no `deps/` or `_build/`, so the
   dispatched agent's first `mix` command silently fetched and compiled every
