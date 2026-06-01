@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Agent and model now visible on both the run dashboard and run-detail page.**
+  Neither surface previously showed *which agent* (let alone which model) ran a
+  given run — the run-detail header surfaced `Status.agent_kind`, which is the
+  *outcome* kind (`:exited` / `:timed_out`), not the agent identity, and the
+  index run tables had no agent column at all.
+  - `Harness.Run.Status` gains an `agent` (identity atom, resolved at run start
+    from the gen_statem's `data.agent_kind`) and a `model` field, distinct from
+    the misnamed `agent_kind` (outcome kind, left as-is for compatibility).
+  - `Harness.Run.LogRecord` gains a `model` field, parsed once at settle from the
+    agent's transcript by the new `Harness.AgentModel.parse/2` (claude / cursor
+    self-report the model — `claude-opus-4-8`, `Composer 2.5 Fast`; codex / grok /
+    antigravity emit no model field, verified against captured transcripts, so
+    they render "—"). The *requested* model (rmap task `model`) is a separate fact
+    not present in agent output — capturing it is a possible follow-up.
+  - Dashboard index `run_table` adds **Agent** + **Model** columns (live and
+    history rows). Run-detail page adds a **Model** row that prefers the stored
+    value and falls back to live-parsing the in-flight transcript, so a running
+    claude/cursor run shows its model immediately.
+  - Pre-change persisted records carry no stored `model`, so the index Model
+    column reads "—" for them (no backfill); new runs populate it. The detail
+    page still shows their model via the live transcript parse.
+
 ### Fixed
 
 - **Cross-agent transcript-rendering inconsistencies on the run dashboard.**

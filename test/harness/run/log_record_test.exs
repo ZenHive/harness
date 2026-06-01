@@ -2,6 +2,7 @@ defmodule Harness.Run.LogRecordTest do
   use ExUnit.Case, async: true
 
   alias Harness.AgentAdapter.Claude
+  alias Harness.AgentAdapter.Outcome
   alias Harness.Run.LogRecord
   alias Harness.Run.Result
   alias Harness.TokenUsage
@@ -39,6 +40,28 @@ defmodule Harness.Run.LogRecordTest do
 
       assert record.token_usage == TokenUsage.empty()
       refute TokenUsage.measured?(record.token_usage)
+    end
+  end
+
+  describe "from_result/2 model" do
+    test "parses the reported model from the agent's transcript output" do
+      outcome = %Outcome{
+        run: nil,
+        kind: :exited,
+        exit_status: 0,
+        output: ~s({"type":"system","subtype":"init","model":"claude-opus-4-8"}\n)
+      }
+
+      record = LogRecord.from_result(result(agent_outcome: outcome), meta())
+
+      assert record.model == "claude-opus-4-8"
+    end
+
+    test "is nil when the agent reports no model" do
+      outcome = %Outcome{run: nil, kind: :exited, exit_status: 0, output: ~s({"type":"turn.completed"}\n)}
+      record = LogRecord.from_result(result(agent_outcome: outcome), Keyword.put(meta(), :agent, :codex))
+
+      assert record.model == nil
     end
   end
 

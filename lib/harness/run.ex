@@ -1052,6 +1052,11 @@ defmodule Harness.Run do
       run_id: data.run_id,
       task_id: data.item.id,
       project_name: data.project.name,
+      # data.agent_kind is the executing adapter's identity atom (resolved at
+      # init); model is not parsed live in the gen_statem, so it stays nil
+      # until the settled record fills it (the detail view parses it live).
+      agent: data.agent_kind,
+      model: nil,
       state: state,
       worktree_path: data.worktree && data.worktree.path,
       agent_os_pid: data.agent_run && data.agent_run.os_pid,

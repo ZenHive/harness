@@ -27,6 +27,11 @@ defmodule Harness.Run.Status do
       the agent has spawned and after a cancellation or failure clears the run
       handle; otherwise it stays the spawn-time pid through `verifying` and the
       terminal states, even though the agent process has already exited.
+    * `agent` — the executing adapter's identity atom (`:claude` / `:cursor` /
+      …), resolved at run start; `nil` for an unregistered adapter / test double.
+      Distinct from `agent_kind`, which is the *outcome* kind, not the identity.
+    * `model` — the LLM model the agent reported using, when known (claude /
+      cursor self-report it in their transcript; others and live runs are `nil`).
     * `agent_kind` — how the agent run ended (`t:Harness.AgentAdapter.Outcome.kind/0`),
       or `nil` before the agent has finished.
     * `verdict_status` — the verification verdict (`:pass` / `:fail`), or `nil`
@@ -42,6 +47,8 @@ defmodule Harness.Run.Status do
           run_id: String.t(),
           task_id: String.t(),
           project_name: String.t() | nil,
+          agent: atom() | nil,
+          model: String.t() | nil,
           state: state(),
           worktree_path: String.t() | nil,
           agent_os_pid: non_neg_integer() | nil,
@@ -56,6 +63,8 @@ defmodule Harness.Run.Status do
     :run_id,
     :task_id,
     :project_name,
+    :agent,
+    :model,
     :state,
     :worktree_path,
     :agent_os_pid,
@@ -83,6 +92,8 @@ defmodule Harness.Run.Status do
       # Map.get (not record.project_name) so records persisted before this field
       # existed decode without a KeyError — they simply filter as "no project".
       project_name: Map.get(record, :project_name),
+      agent: Map.get(record, :agent),
+      model: Map.get(record, :model),
       state: record.state,
       worktree_path: nil,
       agent_os_pid: nil,

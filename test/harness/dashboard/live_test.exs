@@ -318,6 +318,16 @@ defmodule Harness.Dashboard.LiveTest do
       assert Live.token_label(:grok, ~s({"type":"text","data":"hi"}\n)) == "—"
       assert Live.token_label(nil, "plain text") == "—"
     end
+
+    test "model_label prefers the stored model, falls back to live transcript parse, then —" do
+      transcript = ~s({"type":"system","subtype":"init","model":"Composer 2.5 Fast"}\n)
+      # Stored value (settled record) wins.
+      assert Live.model_label(:cursor, "claude-opus-4-8", transcript) == "claude-opus-4-8"
+      # No stored value → parse the live transcript (claude/cursor report it early).
+      assert Live.model_label(:cursor, nil, transcript) == "Composer 2.5 Fast"
+      # Agent that never reports a model → —.
+      assert Live.model_label(:grok, nil, ~s({"type":"text","data":"hi"}\n)) == "—"
+    end
   end
 
   defp socket_with_run(run_id) do

@@ -582,7 +582,9 @@ defmodule Harness.Dashboard.Live do
       <dt>Verdict</dt>
       <dd>{verdict_label(@run_status.verdict_status)}</dd>
       <dt>Agent</dt>
-      <dd>{agent_label(@agent_kind, @run_status.agent_kind)}</dd>
+      <dd>{agent_label(@agent_kind, @run_status.agent)}</dd>
+      <dt>Model</dt>
+      <dd>{model_label(@agent_kind, @run_status.model, @transcript)}</dd>
       <dt>Tokens</dt>
       <dd>{token_label(@agent_kind, @transcript)}</dd>
       <dt>Agent OS pid</dt>
@@ -654,6 +656,8 @@ defmodule Harness.Dashboard.Live do
         <tr>
           <th>Task</th>
           <th>Run</th>
+          <th>Agent</th>
+          <th>Model</th>
           <th>State</th>
           <th>Attempts</th>
           <th>Verdict</th>
@@ -665,6 +669,8 @@ defmodule Harness.Dashboard.Live do
         <tr :for={{dom_id, entry} <- @rows} id={dom_id}>
           <td>{entry.status.task_id}</td>
           <td><.run_link run_id={entry.status.run_id} /></td>
+          <td><code>{agent_label(entry.status.agent, nil)}</code></td>
+          <td>{entry.status.model || "—"}</td>
           <td>
             <Components.bucket_badge bucket={entry.bucket} label={to_string(entry.status.state)} />
           </td>
@@ -774,6 +780,16 @@ defmodule Harness.Dashboard.Live do
   # Token burn parsed from the captured transcript with the same per-adapter
   # parser the KPI ledger uses — works for a live (partial) or settled (full)
   # transcript. Agents that report no usage (grok-without-usage, antigravity)
+  # The model the agent reported using. Prefers the value stored on the settled
+  # record; for a live run (no record yet) it parses the captured transcript,
+  # since claude/cursor name the model early in their stream. Agents that never
+  # report a model (codex/grok/antigravity) render "—".
+  @doc false
+  @spec model_label(Parser.agent_kind() | nil, String.t() | nil, binary()) :: String.t()
+  def model_label(agent_kind, stored, transcript) do
+    stored || Harness.AgentModel.parse(agent_kind, transcript) || "—"
+  end
+
   # honestly render "—" rather than a misleading 0.
   @doc false
   @spec token_label(Parser.agent_kind() | nil, binary()) :: String.t()

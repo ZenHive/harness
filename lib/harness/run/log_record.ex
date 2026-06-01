@@ -27,6 +27,7 @@ defmodule Harness.Run.LogRecord do
 
   alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Outcome
+  alias Harness.AgentModel
   alias Harness.CapabilityDomain
   alias Harness.Run.Result, as: RunResult
   alias Harness.TokenUsage
@@ -64,6 +65,7 @@ defmodule Harness.Run.LogRecord do
           task_id: String.t(),
           project_name: String.t() | nil,
           agent: atom() | nil,
+          model: String.t() | nil,
           adapter: module(),
           state: RunResult.state(),
           reason: RunResult.reason(),
@@ -100,6 +102,7 @@ defmodule Harness.Run.LogRecord do
     :task_id,
     :project_name,
     :agent,
+    :model,
     :adapter,
     :state,
     :reason,
@@ -129,6 +132,7 @@ defmodule Harness.Run.LogRecord do
       task_id: result.task_id,
       project_name: Keyword.get(meta, :project_name),
       agent: Keyword.get(meta, :agent),
+      model: AgentModel.parse(Keyword.get(meta, :agent), (outcome && outcome.output) || ""),
       adapter: Keyword.fetch!(meta, :adapter),
       state: result.state,
       reason: result.reason,
