@@ -1110,6 +1110,121 @@ defmodule Harness.Dashboard.Tokens do
       }
       .config-legend li { display: inline-flex; align-items: center; gap: var(--space-2); }
 
+      /* === A/B compare (Harness.Dashboard.CompareLive, Task 81) === */
+
+      /* Launch form */
+      .compare-launch { display: flex; flex-direction: column; gap: var(--space-5); max-width: 640px; }
+      .compare-launch-head { border-bottom: 1px solid var(--rule); padding-bottom: var(--space-3); }
+      .compare-launch-head h1 { margin: 0 0 var(--space-1); }
+      .compare-form { display: flex; flex-direction: column; gap: var(--space-4); }
+      .compare-field { display: flex; flex-direction: column; gap: var(--space-2); }
+      .compare-field > span, .compare-field > legend {
+        font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--text-subtle);
+      }
+      .compare-field input[type="text"], .compare-field select {
+        background: var(--surface); color: var(--text); border: 1px solid var(--rule);
+        border-radius: 0.35rem; padding: var(--space-2) var(--space-3);
+        font-family: var(--font-mono); font-size: var(--text-sm);
+      }
+      .compare-field input[type="text"]:focus, .compare-field select:focus { outline: 1px solid var(--accent); outline-offset: 1px; }
+      .compare-hint { font-weight: 400; color: var(--text-muted); }
+      .compare-adapters { border: 1px solid var(--rule); border-radius: 0.5rem; padding: var(--space-3) var(--space-4); }
+      .compare-adapter-check {
+        display: inline-flex; align-items: center; gap: var(--space-2);
+        margin-right: var(--space-4); font-family: var(--font-mono); font-size: var(--text-sm);
+      }
+      .compare-submit {
+        align-self: flex-start; background: var(--accent); color: #14110a; border: 0;
+        border-radius: 0.35rem; padding: var(--space-2) var(--space-5);
+        font-family: var(--font-display); font-size: var(--text-md); font-weight: 600; cursor: pointer;
+        transition: opacity var(--motion-fast) var(--ease-out);
+      }
+      .compare-submit:hover { opacity: 0.9; }
+
+      /* Full-bleed breakout — the side-by-side grid earns the whole viewport,
+         escaping .page-main's centered max-width. */
+      .compare-bleed {
+        width: 100vw;
+        margin-left: calc(50% - 50vw);
+        padding-inline: var(--space-5);
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-5);
+      }
+      .compare-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
+      .compare-head h1 { margin: var(--space-1) 0 0; }
+      .compare-back { font-family: var(--font-display); font-size: var(--text-sm); color: var(--text-subtle); text-decoration: none; }
+      .compare-back:hover { color: var(--text); }
+      .compare-id { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); }
+
+      .compare-grid {
+        display: grid;
+        grid-template-columns: repeat(var(--lanes, 2), minmax(0, 1fr));
+        gap: var(--space-4);
+        align-items: start;
+      }
+      .compare-lane {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--rule);
+        border-radius: 0.6rem;
+        background: var(--surface);
+        overflow: hidden;
+        transition: border-color var(--motion-base) var(--ease-out);
+      }
+      .compare-lane.is-active { border-color: var(--accent); }
+
+      /* Lane header doubles as the transcript-tab control — a bare button styled
+         as a header, focus restyled to the design vocabulary (no UA ring). */
+      .compare-lane-head {
+        appearance: none;
+        display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+        width: 100%; cursor: pointer; text-align: left;
+        background: var(--surface-2); border: 0; border-bottom: 1px solid var(--rule);
+        padding: var(--space-3) var(--space-4);
+        font: inherit; color: var(--text);
+        transition: background var(--motion-fast) var(--ease-out);
+      }
+      .compare-lane-head:hover { background: var(--rule); }
+      .compare-lane.is-active .compare-lane-head { box-shadow: inset 0 -2px 0 var(--accent); }
+      .compare-lane-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+      .compare-lane-name { font-family: var(--font-mono); font-size: var(--text-md); font-weight: 600; }
+
+      /* Verdict cell — the dominant element of each lane. Pass and fail are
+         deliberately asymmetric: fail is loud (filled wash, heavy edge, larger),
+         pass is calm. Pending is muted and quiet. */
+      .compare-verdict {
+        display: flex; align-items: center; gap: var(--space-3);
+        padding: var(--space-5) var(--space-4);
+        font-family: var(--font-display);
+      }
+      .compare-verdict-mark { font-size: var(--text-2xl); line-height: 1; }
+      .compare-verdict-text { font-size: var(--text-xl); font-weight: 600; letter-spacing: -0.01em; text-transform: lowercase; }
+      .compare-verdict[data-verdict="pass"] { color: var(--verdict-pass); }
+      .compare-verdict[data-verdict="pass"] .compare-verdict-text { font-weight: 500; }
+      .compare-verdict[data-verdict="fail"] {
+        color: var(--verdict-fail);
+        background: var(--diff-del-bg);
+        border-left: 3px solid var(--verdict-fail);
+        padding-block: var(--space-6);
+      }
+      .compare-verdict[data-verdict="fail"] .compare-verdict-mark { font-size: 2.4rem; }
+      .compare-verdict[data-verdict="fail"] .compare-verdict-text { font-weight: 700; }
+      .compare-verdict[data-verdict="pending"] { color: var(--text-muted); }
+      .compare-verdict[data-verdict="pending"] .compare-verdict-mark { animation: cf-pulse 1.4s var(--ease-in-out) infinite; }
+
+      .compare-metrics { margin: 0; padding: var(--space-2) var(--space-4) var(--space-4); }
+      .compare-metric {
+        display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3);
+        padding: var(--space-2) 0; border-top: 1px solid var(--rule);
+      }
+      .compare-metric:first-child { border-top: 0; }
+      .compare-metric dt { color: var(--text-subtle); font-size: var(--text-sm); }
+      .compare-metric dd { margin: 0; font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text); }
+
+      .compare-transcript { border-top: 1px solid var(--rule); padding-top: var(--space-3); }
+
       /* Motion keyframes — guarded by prefers-reduced-motion at the bottom */
       @keyframes settings-rise {
         from { opacity: 0; transform: translateY(0.5rem); }
