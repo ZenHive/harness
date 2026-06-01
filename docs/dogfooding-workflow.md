@@ -104,7 +104,10 @@ state — so the eval process exiting between dispatch and observation is fine.
 1. **Pick the task:** `rmap next`. Note the id.
 2. **Pre-flight:** `git status` clean — the run forks a worktree off `HEAD`, so every fix
    the run depends on must already be committed.
-3. **Claim it:** `rmap status <id> in_progress`.
+3. **Claim it:** `rmap status <id> in_progress`. *(Only the direct `start_run` paths —
+   this `project_eval` snippet and the `mix run` fallback — need this manual claim. The
+   Oban dispatch path (`dispatch__task` / `Batch.dispatch`) claims it automatically on
+   run start via `Harness.Run.Worker`, Task 131 — see below.)*
 4. **Dispatch eval** (single `project_eval` — eval process exits immediately, that's fine):
 
    ```elixir
@@ -192,6 +195,18 @@ mcp__harness__dispatch__task(
 explicit `env:` map needed. Non-delegatable executors (grok/antigravity/pi) are handled
 internally via the ingest-with-`:claude`-render-agent two-step; the caller never sees it.
 The run starts with `subscriber: nil`; observe it afterward by `run_id`.
+
+> **Task-status writeback is automatic on this path (Task 131).** `Harness.Run.Worker`
+> (the Oban worker behind `dispatch__task` / `Batch.dispatch`) claims the task
+> `in_progress` on run start — best-effort: a failed `rmap` writeback logs and continues,
+> never fails the run — so the next cron tick's `rmap ready`/`next` no longer return it.
+> A **green-but-unlanded** run (under `landing_policy: :manual`, which the harness
+> self-project uses) *leaves* the task `in_progress`; only an explicit land moves it to
+> `done`. This is exactly what stops the "completed-green re-dispatched every tick" loop.
+> A **terminal-failure** run reverts the task to `pending` (`Roadmap.mark_pending/2`, not
+> `blocked`) so a later tick retries; transient failures snooze without reverting. The
+> direct `start_run` paths above do NOT go through the Worker, so they don't auto-claim —
+> hence the manual "Claim it" step there.
 
 **Gotchas when observing an MCP-dispatched run** (learned 2026-05-30, batch 98/103/20):
 
@@ -519,10 +534,16 @@ scheduling are out of scope (post-Phase-7).
   before doing any work, and settles `:no_changes`.
 - **timeouts.** The driver sets a 60-min `:lifetime_timeout`. Agent + cold verification
   can be tight; raise it if a run settles `:timed_out` mid-verification.
-- **run results are not persisted.** A settled run delivers its `Harness.Run.Result` to
-  the subscriber and then stops — nothing writes it to disk (Task 19). The dogfood
-  driver prints the agent transcript + verdict; if you need them later, keep the run
-  log. Re-running is the only way to recover a lost result.
+- **run results ARE persisted (Task 19 landed).** On settle, the Run process writes a
+  `%Harness.Run.LogRecord{}` to `Harness.ResultStore` (file-backed under
+  `~/.harness/results/runs/`) regardless of subscriber state — so a result survives the
+  run process exiting and is readable later via `dispatch__verdict_detail(run_id)` or
+  `Harness.ResultStore.list_run_records(run_id: id)`. The record carries the verdict
+  status, failed-check names + their captured output, the agent transcript, token usage,
+  and `agent_diff_size`. The deliverable *diff* itself is not in the record — it lives on
+  the `harness/<run-id>` branch (reconstructed on demand by `Harness.RunDiff`, the
+  run-detail diff view). Only the *non-failing* checks' stdout is dropped; for that, the
+  live `%Harness.Run.Result{}` via subscriber (the mix-run fallback) remains the path.
 - **parallel-session rmap mutations during a run.** A second Claude Code session running
   `rmap status` / `rmap mark` / `rmap new` against the same checkout mid-run will mutate
   `ROADMAP.md`, `roadmap/data.json`, `roadmap/tasks.toml` on the main checkout. The
