@@ -388,11 +388,11 @@ defmodule Harness.DispatchTest do
   end
 
   describe "MCP surface" do
-    test "dispatch__task is exposed as a flat, JSON-passable tool" do
+    test "dispatch-task is exposed as a flat, JSON-passable tool" do
       tools = Harness.Manifest.mcp_tools()
-      tool = Enum.find(tools, &(&1.name == "dispatch__task"))
+      tool = Enum.find(tools, &(&1.name == "dispatch-task"))
 
-      assert tool, "dispatch__task should be on the MCP tool surface"
+      assert tool, "dispatch-task should be on the MCP tool surface"
 
       # Descripex.MCP keys `properties` by atom, `required` by string.
       props = tool.inputSchema.properties
@@ -408,7 +408,7 @@ defmodule Harness.DispatchTest do
     test "excludes struct-arg tools a JSON orchestrator cannot drive" do
       names = Enum.map(Harness.Manifest.mcp_tools(), & &1.name)
 
-      for excluded <- ~w(supervisor__start_run batch__run batch__run_pinned batch__dispatch agent_evaluation__compare) do
+      for excluded <- ~w(supervisor-start_run batch-run batch-run_pinned batch-dispatch agent_evaluation-compare) do
         refute excluded in names, "#{excluded} must not be on the MCP surface"
       end
     end
@@ -424,14 +424,14 @@ defmodule Harness.DispatchTest do
       assert function_exported?(Harness.Batch, :run, 4)
     end
 
-    test "dispatch__await is exposed as a flat, JSON-passable tool alongside dispatch__task" do
+    test "dispatch-await is exposed as a flat, JSON-passable tool alongside dispatch-task" do
       tools = Harness.Manifest.mcp_tools()
 
-      assert Enum.find(tools, &(&1.name == "dispatch__task")),
-             "dispatch__task must remain on the MCP surface"
+      assert Enum.find(tools, &(&1.name == "dispatch-task")),
+             "dispatch-task must remain on the MCP surface"
 
-      tool = Enum.find(tools, &(&1.name == "dispatch__await"))
-      assert tool, "dispatch__await should be on the MCP tool surface"
+      tool = Enum.find(tools, &(&1.name == "dispatch-await"))
+      assert tool, "dispatch-await should be on the MCP tool surface"
 
       props = tool.inputSchema.properties
       assert Map.has_key?(props, :project_name)
@@ -447,14 +447,14 @@ defmodule Harness.DispatchTest do
     test "the in-process chat tool registry resolves both dispatch tools to Harness.Dispatch" do
       registry = Tools.build()
 
-      assert %{module: Dispatch, function: :await} = registry["dispatch__await"]
-      assert %{module: Dispatch, function: :task} = registry["dispatch__task"]
+      assert %{module: Dispatch, function: :await} = registry["dispatch-await"]
+      assert %{module: Dispatch, function: :task} = registry["dispatch-task"]
     end
 
     test "the run observe/control tools are on the MCP surface as run_id-string tools" do
       tools = Harness.Manifest.mcp_tools()
 
-      for name <- ~w(dispatch__status dispatch__transcript dispatch__transcript_events dispatch__cancel) do
+      for name <- ~w(dispatch-status dispatch-transcript dispatch-transcript_events dispatch-cancel) do
         tool = Enum.find(tools, &(&1.name == name))
         assert tool, "#{name} should be on the MCP tool surface"
         assert Map.has_key?(tool.inputSchema.properties, :run_id)
@@ -465,15 +465,15 @@ defmodule Harness.DispatchTest do
     test "the chat tool registry resolves the run observe/control tools to Harness.Dispatch" do
       registry = Tools.build()
 
-      assert %{module: Dispatch, function: :status} = registry["dispatch__status"]
-      assert %{module: Dispatch, function: :transcript} = registry["dispatch__transcript"]
-      assert %{module: Dispatch, function: :transcript_events} = registry["dispatch__transcript_events"]
-      assert %{module: Dispatch, function: :cancel} = registry["dispatch__cancel"]
+      assert %{module: Dispatch, function: :status} = registry["dispatch-status"]
+      assert %{module: Dispatch, function: :transcript} = registry["dispatch-transcript"]
+      assert %{module: Dispatch, function: :transcript_events} = registry["dispatch-transcript_events"]
+      assert %{module: Dispatch, function: :cancel} = registry["dispatch-cancel"]
     end
 
-    test "dispatch__bundle is exposed as a flat, JSON-passable tool" do
-      tool = Enum.find(Harness.Manifest.mcp_tools(), &(&1.name == "dispatch__bundle"))
-      assert tool, "dispatch__bundle should be on the MCP tool surface"
+    test "dispatch-bundle is exposed as a flat, JSON-passable tool" do
+      tool = Enum.find(Harness.Manifest.mcp_tools(), &(&1.name == "dispatch-bundle"))
+      assert tool, "dispatch-bundle should be on the MCP tool surface"
 
       props = tool.inputSchema.properties
       assert Map.has_key?(props, :project_name)
@@ -483,9 +483,9 @@ defmodule Harness.DispatchTest do
       assert tool.inputSchema.required == ["project_name"]
     end
 
-    test "dispatch__compare is exposed as a flat, JSON-passable tool" do
-      tool = Enum.find(Harness.Manifest.mcp_tools(), &(&1.name == "dispatch__compare"))
-      assert tool, "dispatch__compare should be on the MCP tool surface"
+    test "dispatch-compare is exposed as a flat, JSON-passable tool" do
+      tool = Enum.find(Harness.Manifest.mcp_tools(), &(&1.name == "dispatch-compare"))
+      assert tool, "dispatch-compare should be on the MCP tool surface"
 
       props = tool.inputSchema.properties
       assert Map.has_key?(props, :project_name)
@@ -500,22 +500,22 @@ defmodule Harness.DispatchTest do
     test "the chat tool registry resolves the fan-out tools to Harness.Dispatch" do
       registry = Tools.build()
 
-      assert %{module: Dispatch, function: :bundle} = registry["dispatch__bundle"]
-      assert %{module: Dispatch, function: :compare} = registry["dispatch__compare"]
+      assert %{module: Dispatch, function: :bundle} = registry["dispatch-bundle"]
+      assert %{module: Dispatch, function: :compare} = registry["dispatch-compare"]
     end
 
-    test "dispatch__verdict_detail is exposed as a run_id-string tool" do
-      tool = Enum.find(Harness.Manifest.mcp_tools(), &(&1.name == "dispatch__verdict_detail"))
-      assert tool, "dispatch__verdict_detail should be on the MCP tool surface"
+    test "dispatch-verdict_detail is exposed as a run_id-string tool" do
+      tool = Enum.find(Harness.Manifest.mcp_tools(), &(&1.name == "dispatch-verdict_detail"))
+      assert tool, "dispatch-verdict_detail should be on the MCP tool surface"
 
       assert Map.has_key?(tool.inputSchema.properties, :run_id)
       assert tool.inputSchema.required == ["run_id"]
     end
 
-    test "the chat tool registry resolves dispatch__verdict_detail to Harness.Dispatch" do
+    test "the chat tool registry resolves dispatch-verdict_detail to Harness.Dispatch" do
       registry = Tools.build()
 
-      assert %{module: Dispatch, function: :verdict_detail} = registry["dispatch__verdict_detail"]
+      assert %{module: Dispatch, function: :verdict_detail} = registry["dispatch-verdict_detail"]
     end
   end
 

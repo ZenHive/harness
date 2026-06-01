@@ -66,7 +66,7 @@ defmodule Harness.RoadmapBrowseTest do
       registry = Tools.build()
 
       assert {:ok, {:ok, [%{"id" => "2", "status" => "pending"}]}} =
-               Tools.dispatch(registry, "roadmap__list", %{
+               Tools.dispatch(registry, "roadmap-list", %{
                  "project_name" => "browse-sample",
                  "status" => "pending"
                })

@@ -29,7 +29,7 @@ defmodule Harness.Chat.SessionTest do
               {:ok,
                %{
                  content: [
-                   %{type: "tool_use", id: "toolu_1", name: "project_registry__list", input: %{}}
+                   %{type: "tool_use", id: "toolu_1", name: "project_registry-list", input: %{}}
                  ],
                  stop_reason: "tool_use"
                }}
@@ -76,7 +76,7 @@ defmodule Harness.Chat.SessionTest do
              %{
                type: "tool_use",
                id: "toolu_#{n}",
-               name: "project_registry__list",
+               name: "project_registry-list",
                input: %{"n" => n}
              }
            ],
@@ -127,7 +127,7 @@ defmodule Harness.Chat.SessionTest do
              %{
                type: "tool_use",
                id: "toolu_bad",
-               name: "roadmap__ingest",
+               name: "roadmap-ingest",
                input: %{}
              }
            ],
@@ -152,7 +152,7 @@ defmodule Harness.Chat.SessionTest do
               {:ok,
                %{
                  content: [
-                   %{type: "tool_use", id: "toolu_a", name: "project_registry__list", input: %{}}
+                   %{type: "tool_use", id: "toolu_a", name: "project_registry-list", input: %{}}
                  ],
                  stop_reason: "tool_use"
                }}
@@ -161,7 +161,7 @@ defmodule Harness.Chat.SessionTest do
               {:ok,
                %{
                  content: [
-                   %{type: "tool_use", id: "toolu_b", name: "project_registry__list", input: %{}}
+                   %{type: "tool_use", id: "toolu_b", name: "project_registry-list", input: %{}}
                  ],
                  stop_reason: "tool_use"
                }}
@@ -178,7 +178,7 @@ defmodule Harness.Chat.SessionTest do
       assert {:error, %{type: :terminal, reason: :loop_detected, message: message}} =
                Session.user_message(session_id, "Repeat yourself")
 
-      assert message =~ "project_registry__list"
+      assert message =~ "project_registry-list"
     end
   end
 
@@ -211,7 +211,7 @@ defmodule Harness.Chat.SessionTest do
           tool = fn _req, _cb, _opts ->
             {:ok,
              %{
-               content: [%{type: "tool_use", id: "t", name: "project_registry__list", input: %{}}],
+               content: [%{type: "tool_use", id: "t", name: "project_registry-list", input: %{}}],
                stop_reason: "tool_use"
              }}
           end
@@ -352,10 +352,10 @@ defmodule Harness.Chat.SessionTest do
     test "dispatch validates schema before apply/3" do
       registry = Tools.build()
 
-      assert {:ok, _projects} = Tools.dispatch(registry, "project_registry__list", %{})
+      assert {:ok, _projects} = Tools.dispatch(registry, "project_registry-list", %{})
 
       assert {:error, {:schema_validation_failed, _errors}} =
-               Tools.dispatch(registry, "roadmap__ingest", %{})
+               Tools.dispatch(registry, "roadmap-ingest", %{})
     end
   end
 

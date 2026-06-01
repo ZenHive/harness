@@ -49,24 +49,24 @@ defmodule Harness.PlaybooksTest do
   describe "MCP surface integration" do
     test "playbooks tools are exposed via the manifest" do
       names = Enum.map(Harness.Manifest.mcp_tools(), & &1.name)
-      assert "playbooks__list" in names
-      assert "playbooks__get" in names
+      assert "playbooks-list" in names
+      assert "playbooks-get" in names
     end
 
-    test "playbooks__get dispatches positionally through the chat tool registry" do
+    test "playbooks-get dispatches positionally through the chat tool registry" do
       registry = Tools.build()
 
       assert {:ok, {:ok, playbook}} =
-               Tools.dispatch(registry, "playbooks__get", %{"name" => "dispatch-bundle"})
+               Tools.dispatch(registry, "playbooks-get", %{"name" => "dispatch-bundle"})
 
       assert playbook.name == "dispatch-bundle"
       assert playbook.body =~ "batch__dispatch"
     end
 
-    test "playbooks__list dispatches through the chat tool registry" do
+    test "playbooks-list dispatches through the chat tool registry" do
       registry = Tools.build()
 
-      assert {:ok, catalog} = Tools.dispatch(registry, "playbooks__list", %{})
+      assert {:ok, catalog} = Tools.dispatch(registry, "playbooks-list", %{})
       assert Enum.map(catalog, & &1.name) == @expected_names
     end
   end
