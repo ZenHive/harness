@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Per-project Oban dispatch + landing queues now actually start at boot, so
+  enqueued runs no longer sit `available` forever.** `Harness.Oban.ensure_project_queue/1`
+  and `queue_headroom?/1` guarded queue starts on `Process.whereis(Harness.Oban)`,
+  which is always `nil` — Oban registers its instance through `Oban.Registry`
+  (a `{:via, ...}` name), never as a globally named process. The guard therefore
+  short-circuited every start: config-registered projects' queues never left
+  `[:cron]` at boot, and cron-enqueued `Run.Worker` jobs had no producer to run
+  them (observed 2026-05-31: 5 jobs stuck `available` on `project_harness` until
+  a manual `Oban.start_queue`). Both guards now use `Oban.whereis/1`, the
+  registry-aware liveness check. Autonomous dispatch was inert before this fix
+  (Task 133).
 - **Autonomous cron polling no longer dispatches `handbuild` tasks headless, and
   now dispatches the whole parallel-safe batch per tick instead of one task.**
   `Harness.Cron.RoadmapPoller` selected work via `Harness.Roadmap.ingest(:next)`,

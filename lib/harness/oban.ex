@@ -55,7 +55,7 @@ defmodule Harness.Oban do
   """
   @spec ensure_project_queue(Project.t()) :: :ok | {:error, term()}
   def ensure_project_queue(%Project{} = project) do
-    if queues_enabled?() and Process.whereis(__MODULE__) do
+    if queues_enabled?() and oban_running?() do
       with :ok <-
              Oban.start_queue(__MODULE__,
                queue: queue_name(project),
@@ -142,11 +142,21 @@ defmodule Harness.Oban do
   @doc false
   @spec queue_headroom?(Project.t()) :: boolean()
   def queue_headroom?(%Project{} = project) do
-    if queues_enabled?() and Process.whereis(__MODULE__) do
+    if queues_enabled?() and oban_running?() do
       queued_job_count(project) < queue_limit(project)
     else
       true
     end
+  end
+
+  # Oban registers its instance through `Oban.Registry` ({:via, ...}), never as a
+  # globally-named process — so `Process.whereis(Harness.Oban)` is always nil even
+  # when Oban is fully running, and the old guard silently skipped every queue
+  # start (queues never left [:cron] at boot; Task 133). `Oban.whereis/1` is the
+  # registry-aware liveness check and returns the supervisor pid (or nil).
+  @spec oban_running?() :: boolean()
+  defp oban_running? do
+    is_pid(Oban.whereis(__MODULE__))
   end
 
   @spec queues_enabled?() :: boolean()

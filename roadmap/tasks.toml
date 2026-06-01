@@ -3909,13 +3909,13 @@ shipped_in = "d588924"
 id = "125"
 phase = 14
 bundle = "agent-rules"
-status = "pending"
+status = "done"
 title = "Capture the composed prompt+rules per run for post-hoc diagnosis"
-model = "codex"
 scores = { d = 3, b = 5, u = 4 }
 acceptance_criteria = ["After a run completes, the composed prompt+rules sent on each attempt is retrievable from the run's persisted result record (not only the raw transcript).", "Repair attempts are captured distinctly from the initial dispatch (the resume prompt carrying failing-check output is recorded).", "Capture works across rule channels (system-prompt file, ephemeral AGENTS.md / .cursor rules, prompt preamble); the recorded artifact reflects what each adapter actually sent.", "Does not break the ephemeral-cleanup invariant (nothing extra committed to the target repo; capture lands in the result store, not the worktree).", "Tests cover initial-dispatch capture and at least one repair-attempt capture."]
 files_to_modify = ["lib/harness/run.ex", "lib/harness/agent_adapter.ex"]
 module = "Harness.Run"
+model = "codex"
 body = """
 The exact bytes sent to an agent for a given run are not reconstructable after the fact. Harness-owned rules are rendered into ephemeral worktree files that `AgentRules.cleanup_injected_rules/1` deletes before delivery; the task prompt is the in-memory `Invocation.prompt` (verbatim `rmap delegate` output) and repair prompts are in-memory strings built in `run.ex`. After a run finishes, there is no record of the COMPOSED artifact — task prompt + injected rules + any repair/cross-agent feedback — that the agent actually received.
 
@@ -3923,8 +3923,13 @@ For dogfooding, that composed artifact is exactly what you want when diagnosing 
 
 Companion to Task 20 (per-run token capture) — same "record what happened per run" shape, observability not a landing gate. Default to always-on capture since the artifact is small relative to transcripts and the diagnostic value is highest exactly when you didn't think to enable it.
 """
+implemented = "Captured composed prompt+rules per dispatch attempt (prompt, rule_files bytes, argv, session, rule_channel) threaded AgentAdapter.Run.composed_input -> Run.composed_inputs (tagged attempt/phase initial|repair) -> Result.composed_inputs -> LogRecord (subscriber-visible + ResultStore-persisted). Salvaged the best of 3 overnight codex attempts on design merit; fixed one brittle test + added sobelow_skip. delivered_by codex, verified via check.fast + 61 tests by claude."
+delivered_by = "codex"
+verified = true
 created_at = "2026-05-31"
 scored_at = "2026-05-31"
+done_at = "2026-06-01"
+shipped_in = "ed22ceb"
 
 [[task]]
 id = "126"
@@ -4067,7 +4072,7 @@ id = "133"
 phase = 11
 bundle = "autolanding"
 milestone = "v0_9"
-status = "pending"
+status = "done"
 title = "Project dispatch queues not started at boot — enqueued runs sit 'available' forever"
 scores = { d = 2, b = 5, u = 5 }
 touches = ["lib/harness/oban.ex", "lib/harness/project_registry.ex", "lib/harness/application.ex"]
@@ -4078,8 +4083,12 @@ This makes autonomous dispatch inert: a cron tick enqueues work that no producer
 
 FIX: ensure every registered project's dispatch queue (and landing queue) is started when Oban comes up — call bootstrap_project_queues/0 after Oban starts, or have ProjectRegistry.register trigger start_or_scale once Oban is running, with a boot-time reconcile for projects registered pre-Oban. Add a test asserting Oban.config.queues includes project_<name> after boot/registration.
 """
+implemented = "ensure_project_queue/1 + queue_headroom?/1 guarded on Process.whereis(Harness.Oban), always nil since Oban registers via Oban.Registry ({:via,...}) not a global name — so every config-project queue start was silently skipped (queues stuck at [:cron], cron-enqueued Run.Worker jobs sat 'available' forever). Swapped both guards to a new oban_running?/0 helper using Oban.whereis/1. Confirmed live: bootstrap_project_queues/0 now starts project_/landing_ queues. Added :integration regression test (test/harness/oban_queue_bootstrap_test.exs) booting a real Oban + asserting check_all_queues lists the queues after register/1."
+delivered_by = "claude"
 created_at = "2026-05-31"
+started_at = "2026-06-01"
 scored_at = "2026-05-31"
+done_at = "2026-06-01"
 
 [[task]]
 id = "134"
