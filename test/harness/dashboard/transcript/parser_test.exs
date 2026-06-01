@@ -346,6 +346,24 @@ defmodule Harness.Dashboard.Transcript.ParserTest do
       body = read_fixture("grok.ndjson")
       assert parse_bytewise(:grok, body) == parse_full(:grok, body)
     end
+
+    test "grok fixture emits no :assistant_tool_use or :tool_result (wire format limitation)" do
+      events = parse_full(:grok, read_fixture("grok.ndjson"))
+      kinds = event_kinds(events)
+      refute :assistant_tool_use in kinds
+      refute :tool_result in kinds
+    end
+
+    test "hypothetical tool_call/tool_result JSON (if grok ever emits) surfaces as :system :other or :unknown rather than dropped" do
+      tool_line = ~s({"type":"tool_call","id":"tc1","name":"edit_file","input":{"path":"a.ex"}}) <> "\n"
+      result_line = ~s({"type":"tool_result","tool_use_id":"tc1","content":"ok"}) <> "\n"
+
+      {ev1, p} = Parser.append(:grok, tool_line, Parser.init_state(:grok))
+      {ev2, _} = Parser.append(:grok, result_line, p)
+
+      assert [{:system, %{kind: :other, data: %{"_type" => "tool_call"}}}] = ev1
+      assert [{:system, %{kind: :other, data: %{"_type" => "tool_result"}}}] = ev2
+    end
   end
 
   describe "Antigravity / passthrough" do

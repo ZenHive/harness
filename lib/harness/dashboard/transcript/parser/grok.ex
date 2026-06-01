@@ -20,6 +20,17 @@ defmodule Harness.Dashboard.Transcript.Parser.Grok do
 
   Despite Task 86's body grouping Grok as passthrough, real captures show
   structured NDJSON token deltas — the parser honors what the wire emits.
+
+  ## Tool-call / tool-result limitation (Task 136)
+
+  Grok's `streaming-json` NDJSON for `-p` headless only ever emits `thought`,
+  `text`, and `end` (plus ANSI stderr noise). Real action-producing runs
+  (multi-file diffs) and the CLI docs confirm no `tool_use`/`tool_result`/
+  command events appear on the wire. This parser therefore never emits
+  `:assistant_tool_use` or `:tool_result`; the transcript view shows only
+  reasoning + assistant text for grok. Non-JSON lines surface as `:unknown`;
+  other JSON types surface as `:system, kind: :other`. Consult raw pane +
+  diff_size for action evidence. Wire-format limitation, not parser gap.
   """
 
   alias Harness.Dashboard.Transcript.Parser
