@@ -172,9 +172,11 @@ defmodule Harness.Chat.Tools do
   # A keyword-list param (signalled by a list default, e.g. `opts: [default: []]`)
   # arrives from JSON as an object/map. Decode it to a keyword list so the target
   # function's `Keyword.get/3` does not crash with "no function clause matching".
-  # Top-level keys are atomized; this clause must precede the generic map clause.
+  # Top-level keys are atomized (only known atoms; unknowns dropped for forward
+  # compat, same contract as ResultStore.Postgres.apply_filters for filters).
+  # This clause must precede the generic map clause.
   defp decode_param(value, %{kind: :value, default: default}) when is_map(value) and is_list(default) do
-    value |> atomize_keys() |> Map.to_list()
+    to_atom_kwlist(value)
   end
 
   defp decode_param(value, %{kind: :value}) when is_binary(value) do
@@ -216,4 +218,26 @@ defmodule Harness.Chat.Tools do
   defp atomize_value(value) when is_map(value), do: atomize_keys(value)
   defp atomize_value(value) when is_list(value), do: Enum.map(value, &atomize_value/1)
   defp atomize_value(value), do: value
+
+  @spec to_atom_kwlist(map()) :: keyword()
+  # Per-key tolerant atomization for keyword-list params from JSON (e.g. filters).
+  # Only keys that are existing atoms become atom keys in the kwlist; unknown
+  # keys are dropped (ignored) for forward compat — same contract as
+  # ResultStore.Postgres.apply_filters on list_run_records filters.
+  defp to_atom_kwlist(map) when is_map(map) do
+    Enum.flat_map(map, fn {key, value} ->
+      case safe_to_existing_atom(key) do
+        {:ok, atom_key} -> [{atom_key, atomize_value(value)}]
+        :error -> []
+      end
+    end)
+  end
+
+  @spec safe_to_existing_atom(term()) :: {:ok, atom()} | :error
+  defp safe_to_existing_atom(key) do
+    atom = key |> to_string() |> String.to_existing_atom()
+    {:ok, atom}
+  rescue
+    ArgumentError -> :error
+  end
 end

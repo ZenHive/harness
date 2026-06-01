@@ -82,4 +82,30 @@ defmodule Harness.Chat.ToolsTest do
     assert qualified == "harness__dispatch-task"
     assert length(Regex.scan(~r/__/, qualified)) == 1
   end
+
+  test "dispatch/3 translates JSON-shaped (string-keyed map) filters for result_store-list_run_records, atomizing known keys and ignoring unknowns" do
+    registry = Tools.build()
+
+    # Documented keys only (run_id, batch_id, agent, adapter, verdict, project_name) — must succeed and yield a list.
+    assert {:ok, {:ok, list1}} =
+             Tools.dispatch(registry, "result_store-list_run_records", %{"filters" => %{"run_id" => "r-123"}})
+
+    assert is_list(list1)
+
+    # Mix of documented + unknown keys: unknowns ignored (no crash, no poisoning of good keys).
+    assert {:ok, {:ok, list2}} =
+             Tools.dispatch(
+               registry,
+               "result_store-list_run_records",
+               %{"filters" => %{"run_id" => "r-123", "project_name" => "harness", "bogus" => true, "extra" => 1}}
+             )
+
+    assert is_list(list2)
+
+    # Empty map (no filters) also accepted.
+    assert {:ok, {:ok, list3}} =
+             Tools.dispatch(registry, "result_store-list_run_records", %{"filters" => %{}})
+
+    assert is_list(list3)
+  end
 end
