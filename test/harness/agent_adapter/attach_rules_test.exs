@@ -45,6 +45,8 @@ defmodule Harness.AgentAdapter.AttachRulesTest do
 
   alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Claude
+  alias Harness.AgentAdapter.Codex
+  alias Harness.AgentAdapter.Cursor
   alias Harness.AgentAdapter.Grok
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.RulesInjection
@@ -90,5 +92,62 @@ defmodule Harness.AgentAdapter.AttachRulesTest do
     assert {:ok, inv} = AgentAdapter.attach_rules(Claude, inv)
     assert File.exists?(Path.join(cwd, AgentRules.system_prompt_rel_path()))
     assert inv.rules.argv_flags != []
+  end
+
+  test "composed_input/3 captures prompt preamble delivery", %{cwd: cwd} do
+    inv = invocation(cwd)
+
+    assert {:ok, inv} = AgentAdapter.attach_rules(Grok, inv)
+    assert {:ok, {_exe, argv, _env} = command} = Grok.build_command(inv)
+
+    assert %{
+             rule_channel: :prompt_preamble,
+             prompt: prompt,
+             rule_files: [],
+             argv: ^argv
+           } = AgentAdapter.composed_input(Grok, inv, command)
+
+    assert prompt == RulesInjection.prepend_prompt("task")
+    assert prompt in argv
+  end
+
+  test "composed_input/3 captures file-backed rule delivery", %{cwd: cwd} do
+    inv = invocation(cwd)
+
+    assert {:ok, inv} = AgentAdapter.attach_rules(Claude, inv)
+    assert {:ok, {_exe, argv, _env} = command} = Claude.build_command(inv)
+
+    assert %{
+             rule_channel: :system_prompt_file,
+             prompt: "task",
+             rule_files: [%{path: path, content: content}],
+             argv: ^argv
+           } = AgentAdapter.composed_input(Claude, inv, command)
+
+    assert path == Path.join(cwd, AgentRules.system_prompt_rel_path())
+    assert content == AgentRules.render()
+  end
+
+  test "composed_input/3 captures native ephemeral rule files", %{cwd: cwd} do
+    codex_inv = invocation(cwd)
+    cursor_inv = invocation(cwd, task_id: "40")
+
+    assert {:ok, codex_inv} = AgentAdapter.attach_rules(Codex, codex_inv)
+    assert {:ok, codex_command} = Codex.build_command(codex_inv)
+
+    assert %{rule_channel: :codex_ephemeral_file, rule_files: [codex_rules]} =
+             AgentAdapter.composed_input(Codex, codex_inv, codex_command)
+
+    assert codex_rules.path == Path.join(cwd, "AGENTS.md")
+    assert codex_rules.content =~ AgentRules.render()
+
+    assert {:ok, cursor_inv} = AgentAdapter.attach_rules(Cursor, cursor_inv)
+    assert {:ok, cursor_command} = Cursor.build_command(cursor_inv)
+
+    assert %{rule_channel: :cursor_ephemeral_file, rule_files: [cursor_rules]} =
+             AgentAdapter.composed_input(Cursor, cursor_inv, cursor_command)
+
+    assert cursor_rules.path == Path.join(cwd, ".cursor/rules/harness-operational.mdc")
+    assert cursor_rules.content =~ AgentRules.render()
   end
 end

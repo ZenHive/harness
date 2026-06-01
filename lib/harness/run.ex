@@ -158,6 +158,7 @@ defmodule Harness.Run do
            pollution_allowlist: [String.t()],
            agent_run: AgentRun.t() | nil,
            agent_outcome: Outcome.t() | nil,
+           composed_inputs: [AgentAdapter.composed_input()],
            verdict: Verdict.t() | nil,
            token_usage: TokenUsage.t(),
            first_attempt_failed_check_count: non_neg_integer(),
@@ -374,6 +375,7 @@ defmodule Harness.Run do
       pollution_allowlist: resolve_pollution_allowlist(project, opts),
       agent_run: nil,
       agent_outcome: nil,
+      composed_inputs: [],
       verdict: nil,
       token_usage: TokenUsage.empty(),
       first_attempt_failed_check_count: 0,
@@ -458,7 +460,11 @@ defmodule Harness.Run do
   end
 
   def running(:info, {:run_handle, %AgentRun{} = run}, data) do
-    data = %{data | agent_run: run}
+    data = %{
+      data
+      | agent_run: run,
+        composed_inputs: data.composed_inputs ++ [tag_composed_input(run, data)]
+    }
 
     case data.cancel_requested do
       nil -> {:keep_state, data}
@@ -970,7 +976,8 @@ defmodule Harness.Run do
       repair_attempts: data.repair_attempts,
       first_attempt_failed_check_count: data.first_attempt_failed_check_count,
       agent_diff_size: data.agent_diff_size,
-      token_usage: data.token_usage
+      token_usage: data.token_usage,
+      composed_inputs: data.composed_inputs
     }
   end
 
@@ -1091,6 +1098,30 @@ defmodule Harness.Run do
       env: data.env
     }
   end
+
+  @spec tag_composed_input(AgentRun.t(), data()) :: AgentAdapter.composed_input()
+  defp tag_composed_input(%AgentRun{composed_input: input}, data) when is_map(input) do
+    input
+    |> Map.put(:attempt, data.repair_attempts)
+    |> Map.put(:phase, composed_input_phase(data))
+  end
+
+  defp tag_composed_input(%AgentRun{}, data) do
+    %{
+      executable: "",
+      argv: [],
+      rule_channel: data.adapter.rule_channel(),
+      prompt: "",
+      session: nil,
+      rule_files: [],
+      attempt: data.repair_attempts,
+      phase: composed_input_phase(data)
+    }
+  end
+
+  @spec composed_input_phase(data()) :: :initial | :repair
+  defp composed_input_phase(%{repair_attempts: 0}), do: :initial
+  defp composed_input_phase(_data), do: :repair
 
   @spec project_language(Project.t()) :: atom() | nil
   defp project_language(%Project{check_stacks: [%{name: language}]}) when is_atom(language), do: language

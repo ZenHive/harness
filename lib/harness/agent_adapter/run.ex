@@ -20,6 +20,8 @@ defmodule Harness.AgentAdapter.Run do
       it is the spawn-time pid and is not cleared when the agent later exits.
     * `started_at` — `System.monotonic_time/0` captured at spawn. Wall-clock
       duration is derived by the run-lifecycle layer, not the adapter.
+    * `composed_input` — prompt/rule artifact captured after rule attachment and
+      command construction for this exact dispatch attempt.
     * `adapter_state` — adapter-private term (e.g. a line-buffer remainder).
       Harness treats it as opaque.
   """
@@ -29,9 +31,10 @@ defmodule Harness.AgentAdapter.Run do
           port: port(),
           os_pid: non_neg_integer() | nil,
           started_at: integer(),
+          composed_input: Harness.AgentAdapter.composed_input() | nil,
           adapter_state: term()
         }
 
   @enforce_keys [:ref, :adapter, :port, :os_pid, :started_at]
-  defstruct [:ref, :adapter, :port, :os_pid, :started_at, adapter_state: nil]
+  defstruct [:ref, :adapter, :port, :os_pid, :started_at, :composed_input, adapter_state: nil]
 end

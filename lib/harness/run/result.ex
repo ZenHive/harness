@@ -13,6 +13,7 @@ defmodule Harness.Run.Result do
   The subscriber receives this struct as `{:harness_run, run_id, result}`.
   """
 
+  alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Outcome
   alias Harness.TokenUsage
   alias Harness.Verification.Verdict
@@ -110,6 +111,8 @@ defmodule Harness.Run.Result do
     * `token_usage` — `Harness.TokenUsage` parsed from the agent's raw
       transcript and summed across every repair attempt, or an empty usage
       (all-`nil`) when the adapter's wire format reports no token counts.
+    * `composed_inputs` — prompt/rule artifacts captured for each dispatch
+      attempt, including repair attempts.
   """
   @type t :: %__MODULE__{
           run_id: String.t(),
@@ -122,7 +125,8 @@ defmodule Harness.Run.Result do
           repair_attempts: non_neg_integer(),
           first_attempt_failed_check_count: non_neg_integer(),
           agent_diff_size: non_neg_integer() | nil,
-          token_usage: TokenUsage.t()
+          token_usage: TokenUsage.t(),
+          composed_inputs: [AgentAdapter.composed_input()]
         }
 
   @enforce_keys [:run_id, :task_id, :state, :reason]
@@ -137,6 +141,7 @@ defmodule Harness.Run.Result do
     repair_attempts: 0,
     first_attempt_failed_check_count: 0,
     agent_diff_size: nil,
-    token_usage: %TokenUsage{}
+    token_usage: %TokenUsage{},
+    composed_inputs: []
   ]
 end

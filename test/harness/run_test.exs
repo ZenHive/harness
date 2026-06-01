@@ -162,6 +162,30 @@ defmodule Harness.RunTest do
       assert record.token_usage == TokenUsage.empty()
     end
 
+    test "persists the composed input for the initial dispatch" do
+      store = file_store()
+      {run_id, pid} = start(result_store: store)
+
+      assert %Result{state: :done, reason: :passed} = await_result(run_id, pid)
+      assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: run_id)
+
+      assert [
+               %{
+                 attempt: 0,
+                 phase: :initial,
+                 session: nil,
+                 rule_channel: :none,
+                 prompt: "do the thing",
+                 rule_files: [],
+                 argv: argv
+               }
+             ] = record.composed_inputs
+
+      # The captured argv is the adapter's built command (here the fake's
+      # sh-wrapped script), not the prompt — the prompt is matched above.
+      assert is_list(argv) and argv != []
+    end
+
     test "threads an empty token usage onto the result for an unregistered adapter" do
       result = run(checks: [check("ok", "true")])
 
@@ -513,6 +537,29 @@ defmodule Harness.RunTest do
       marker = GitFixture.git!(repo, ["show", "harness/#{run_id}:repair_marker"])
       assert marker =~ "repair attempt 1 of 2"
       assert marker =~ "check: marker"
+    end
+
+    test "persists composed inputs distinctly for repair attempts" do
+      store = file_store()
+
+      {run_id, pid, _repo} =
+        start_repair(
+          adapter_opts: [command: :repair],
+          checks: marker_checks(),
+          max_repair_attempts: 2,
+          result_store: store
+        )
+
+      assert %Result{state: :done, reason: :passed, repair_attempts: 1} = await_result(run_id, pid)
+      assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: run_id)
+
+      assert [
+               %{attempt: 0, phase: :initial, session: nil, prompt: "do the thing"},
+               %{attempt: 1, phase: :repair, session: :resume, prompt: repair_prompt}
+             ] = record.composed_inputs
+
+      assert repair_prompt =~ "repair attempt 1 of 2"
+      assert repair_prompt =~ "check: marker"
     end
 
     test "the loop stops at the configured attempt cap" do

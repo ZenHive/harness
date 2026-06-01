@@ -77,6 +77,9 @@ defmodule Harness.AgentAdapter do
   # why a headless agent CLI cannot be handed a raw OTP-port stdin.
   @sh "/bin/sh"
   @stdin_eof_script ~S(exec "$0" "$@" </dev/null)
+  @codex_agents_rel "AGENTS.md"
+  @cursor_rules_rel ".cursor/rules/harness-operational.mdc"
+  @system_prompt_file_flags ["--append-system-prompt-file", "--system-prompt-file"]
 
   @doc false
   defmacro __using__(_opts \\ []) do
@@ -100,6 +103,31 @@ defmodule Harness.AgentAdapter do
   """
   @type command ::
           {executable :: String.t(), argv :: [String.t()], env :: [{String.t(), String.t() | false}]}
+
+  @typedoc "A rule file captured as part of one agent dispatch input."
+  @type rule_file :: %{
+          required(:path) => String.t(),
+          required(:content) => String.t() | nil,
+          optional(:error) => term()
+        }
+
+  @typedoc """
+  The prompt/rule artifact actually handed to an adapter for one dispatch.
+
+  `argv` is included because some adapters deliver the prompt as a positional
+  value while others use a flag; `rule_files` carries the bytes read after the
+  ephemeral files are written and before cleanup can remove them.
+  """
+  @type composed_input :: %{
+          required(:executable) => String.t(),
+          required(:argv) => [String.t()],
+          required(:rule_channel) => rule_channel(),
+          required(:prompt) => String.t(),
+          required(:session) => term() | nil,
+          required(:rule_files) => [rule_file()],
+          optional(:attempt) => non_neg_integer(),
+          optional(:phase) => :initial | :repair
+        }
 
   @typedoc """
   The result of classifying one process message against a run.
@@ -218,6 +246,21 @@ defmodule Harness.AgentAdapter do
   def task_prompt(%Invocation{prompt: prompt}), do: prompt
 
   @doc """
+  Captures the composed prompt/rule artifact for an already-built dispatch.
+  """
+  @spec composed_input(module(), Invocation.t(), command()) :: composed_input()
+  def composed_input(adapter, %Invocation{} = invocation, {executable, argv, _env}) do
+    %{
+      executable: executable,
+      argv: argv,
+      rule_channel: adapter.rule_channel(),
+      prompt: task_prompt(invocation),
+      session: invocation.session,
+      rule_files: rule_files(adapter.rule_channel(), invocation)
+    }
+  end
+
+  @doc """
   Spawns `adapter` for an invocation and returns a run handle.
 
   Builds the command with the adapter's `c:build_command/1`, spawns it over a
@@ -228,8 +271,9 @@ defmodule Harness.AgentAdapter do
   @spec invoke(module(), Invocation.t()) :: {:ok, Run.t()} | {:error, term()}
   def invoke(adapter, %Invocation{} = invocation) do
     with {:ok, invocation} <- attach_rules(adapter, invocation),
-         {:ok, {executable, argv, env}} <- adapter.build_command(invocation) do
-      spawn_run(adapter, invocation, executable, argv, env)
+         {:ok, {executable, argv, env} = command} <- adapter.build_command(invocation) do
+      input = composed_input(adapter, invocation, command)
+      spawn_run(adapter, invocation, executable, argv, env, input)
     end
   end
 
@@ -300,9 +344,16 @@ defmodule Harness.AgentAdapter do
   # diagnostics, auth errors, and partial-failure context all reach the consumer
   # rather than leaking to the BEAM's own stderr. Raw passthrough means the AI
   # reading the transcript tolerates interleaved stderr; losing it would not.
-  @spec spawn_run(module(), Invocation.t(), String.t(), [String.t()], [{String.t(), String.t() | false}]) ::
+  @spec spawn_run(
+          module(),
+          Invocation.t(),
+          String.t(),
+          [String.t()],
+          [{String.t(), String.t() | false}],
+          composed_input()
+        ) ::
           {:ok, Run.t()} | {:error, term()}
-  defp spawn_run(adapter, invocation, executable, argv, env) do
+  defp spawn_run(adapter, invocation, executable, argv, env, composed_input) do
     case System.find_executable(executable) do
       nil ->
         {:error, {:executable_not_found, executable}}
@@ -325,8 +376,48 @@ defmodule Harness.AgentAdapter do
            adapter: adapter,
            port: port,
            os_pid: OSProcess.os_pid(port),
-           started_at: System.monotonic_time()
+           started_at: System.monotonic_time(),
+           composed_input: composed_input
          }}
+    end
+  end
+
+  @spec rule_files(rule_channel(), Invocation.t()) :: [rule_file()]
+  defp rule_files(:system_prompt_file, invocation) do
+    invocation
+    |> system_prompt_file_paths()
+    |> Enum.map(&read_rule_file/1)
+  end
+
+  defp rule_files(:codex_ephemeral_file, %Invocation{cwd: cwd}) do
+    [read_rule_file(Path.join(cwd, @codex_agents_rel))]
+  end
+
+  defp rule_files(:cursor_ephemeral_file, %Invocation{cwd: cwd}) do
+    [read_rule_file(Path.join(cwd, @cursor_rules_rel))]
+  end
+
+  defp rule_files(:prompt_preamble, _invocation), do: []
+  defp rule_files(:none, _invocation), do: []
+
+  @spec system_prompt_file_paths(Invocation.t()) :: [String.t()]
+  defp system_prompt_file_paths(%Invocation{rules: %RuleDelivery{argv_flags: flags}}) do
+    flags
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.filter(fn [flag, _path] -> flag in @system_prompt_file_flags end)
+    |> Enum.map(fn [_flag, path] -> path end)
+  end
+
+  defp system_prompt_file_paths(_invocation), do: []
+
+  # Diagnostic capture of a harness-owned rule-delivery path (written by
+  # attach_rules/2), not external input; a read miss is recorded, never fatal.
+  # sobelow_skip ["Traversal.FileModule"]
+  @spec read_rule_file(String.t()) :: rule_file()
+  defp read_rule_file(path) do
+    case File.read(path) do
+      {:ok, content} -> %{path: path, content: content}
+      {:error, reason} -> %{path: path, content: nil, error: reason}
     end
   end
 

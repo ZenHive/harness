@@ -16,8 +16,16 @@ defmodule Harness.Run.LogRecord do
   `@check_output_cap_bytes` (16 KB) — a single verdict can emit megabytes, and the
   diagnostic signal (the failing assertion, the credo/dialyzer warning, the test
   summary) lands at the tail.
+
+  ## Composed inputs (`composed_inputs`)
+
+  Each dispatched attempt records the prompt/rule artifact assembled at the
+  adapter boundary. Repair attempts are separate entries tagged with their
+  attempt number so post-hoc diagnosis can inspect the exact feedback prompt
+  that resumed the agent.
   """
 
+  alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Outcome
   alias Harness.Run.Result, as: RunResult
   alias Harness.TokenUsage
@@ -64,6 +72,7 @@ defmodule Harness.Run.LogRecord do
           first_attempt_failed_check_count: non_neg_integer(),
           agent_diff_size: non_neg_integer() | nil,
           token_usage: TokenUsage.t(),
+          composed_inputs: [AgentAdapter.composed_input()],
           failure_cause: failure_cause(),
           agent_outcome_kind: Outcome.kind() | nil,
           agent_exit_status: integer() | nil,
@@ -101,6 +110,7 @@ defmodule Harness.Run.LogRecord do
     :agent_outcome_kind,
     :agent_exit_status,
     token_usage: %TokenUsage{},
+    composed_inputs: [],
     agent_output: "",
     check_output: %{}
   ]
@@ -125,6 +135,7 @@ defmodule Harness.Run.LogRecord do
       first_attempt_failed_check_count: result.first_attempt_failed_check_count,
       agent_diff_size: result.agent_diff_size,
       token_usage: result.token_usage || %TokenUsage{},
+      composed_inputs: result.composed_inputs || [],
       failure_cause: failure_cause(result),
       agent_outcome_kind: outcome && outcome.kind,
       agent_exit_status: outcome && outcome.exit_status,
