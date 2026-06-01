@@ -4444,6 +4444,7 @@ delivered_by = "claude-opus-4-8"
 created_at = "2026-06-01"
 scored_at = "2026-06-01"
 done_at = "2026-06-01"
+shipped_in = "93deab6"
 
 [[task]]
 id = "148"

@@ -5674,6 +5674,7 @@
         "test/support/fake_adapter.ex",
         "skills/harness-driver/SKILL.md"
       ],
+      "shipped_in": "93deab6",
       "body": "OBSERVED: grok runs failing in fresh worktrees. Headless reproduction (grok 0.2.14, exact harness Task-137 prompt, fresh worktree, run from a shell) showed grok handles `mix deps.get` fine and completes the task — but inside harness the worktree is carved with no deps/ and no _build/, so the agent's first mix command silently fetches + compiles ~60 deps for multiple minutes; the Driver's idle/progress reflex (5 min default) kills runs during that silent cold build. The check-stack setup (`mix deps.get`) only ran at verification time, after the agent finished.\n\nFIX: provision the worktree before the agent spawns. (1) Harness.Verification.prepare/2 — runs every resolved stack's setup commands (no grading checks) against the worktree, same opts/error vocabulary as run/2. (2) Harness.Run :dispatched state runs prepare/2 in a task after Worktree.activate + Isolation.validate, transitioning to :running only when provisioning succeeds; a setup failure is an environment error ({:worktree_failed, {:setup_failed, _}}), worktree retained. (3) Elixir presets gain a second setup step `mix deps.compile` so the expensive dep compile happens at provision time (no idle killer) and is a fast no-op at verification time.\n",
       "created_at": "2026-06-01",
       "done_at": "2026-06-01",
