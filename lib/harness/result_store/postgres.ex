@@ -156,27 +156,38 @@ defmodule Harness.ResultStore.Postgres do
     repo = Keyword.get(opts, :repo, Repo)
 
     try do
-      case repo.get_by(CapabilityScoreSchema,
-             agent: atom_or_string(agent),
-             domain: atom_or_string(domain),
-             corpus_version: corpus_version
-           ) do
-        nil ->
-          :no_data
-
-        %CapabilityScoreSchema{payload: payload} when is_binary(payload) ->
-          case safe_binary_to_term(payload) do
-            {:ok, %CapabilityScore{} = score} -> {:ok, score}
-            {:ok, _other} -> {:error, {:invalid_capability_score, agent, domain, corpus_version}}
-            {:error, reason} -> {:error, reason}
-          end
-
-        _ ->
-          {:error, {:invalid_capability_score_row, agent, domain, corpus_version}}
-      end
+      repo
+      |> fetch_capability_score_row(agent, domain, corpus_version)
+      |> decode_capability_score_row(agent, domain, corpus_version)
     rescue
       e -> {:error, e}
     end
+  end
+
+  @spec fetch_capability_score_row(module(), atom(), atom(), String.t()) :: CapabilityScoreSchema.t() | nil
+  defp fetch_capability_score_row(repo, agent, domain, corpus_version) do
+    repo.get_by(CapabilityScoreSchema,
+      agent: atom_or_string(agent),
+      domain: atom_or_string(domain),
+      corpus_version: corpus_version
+    )
+  end
+
+  @spec decode_capability_score_row(CapabilityScoreSchema.t() | nil, atom(), atom(), String.t()) ::
+          {:ok, CapabilityScore.t()} | :no_data | {:error, term()}
+  defp decode_capability_score_row(nil, _agent, _domain, _corpus_version), do: :no_data
+
+  defp decode_capability_score_row(%CapabilityScoreSchema{payload: payload}, agent, domain, corpus_version)
+       when is_binary(payload) do
+    case safe_binary_to_term(payload) do
+      {:ok, %CapabilityScore{} = score} -> {:ok, score}
+      {:ok, _other} -> {:error, {:invalid_capability_score, agent, domain, corpus_version}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp decode_capability_score_row(_row, agent, domain, corpus_version) do
+    {:error, {:invalid_capability_score_row, agent, domain, corpus_version}}
   end
 
   # --- filter translation (documented keys only; others ignored for forward compat) ---
