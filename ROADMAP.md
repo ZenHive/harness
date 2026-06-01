@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 126 — Run change-set view on the run-detail page (live edited-files + settled git diff) on 2026-05-31
 
-**Up next:** Task 131 — Cron poller: mark dispatched tasks in_progress to stop re-dispatch of completed-but-unlanded work [D:2/B:4/U:4 → Eff:2.0] 🎯
+**Up next:** Task 133 — Project dispatch queues not started at boot — enqueued runs sit 'available' forever [D:2/B:5/U:5 → Eff:2.5] 🎯
 <!-- FOCUS:END -->
 
 ---
