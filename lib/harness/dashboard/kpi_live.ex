@@ -2,7 +2,8 @@ defmodule Harness.Dashboard.KPILive do
   @moduledoc """
   Per-agent KPI ledger LiveView (Task 115).
 
-  Renders `Harness.AgentKPI.aggregate/1` over every persisted run record as a
+  Renders `Harness.ResultStore.aggregate_by_agent/0` over every persisted run
+  record as a
   sortable per-agent table: run count, success rate, first-attempt-pass rate,
   mean repair attempts, mean tokens, and cost-to-green. This is the at-a-glance
   *trust ledger* — the question "what is each agent's track record across all
@@ -72,8 +73,8 @@ defmodule Harness.Dashboard.KPILive do
   @spec assign_rows(Socket.t()) :: Socket.t()
   defp assign_rows(socket) do
     rows =
-      case ResultStore.list_run_records() do
-        {:ok, records} -> records |> AgentKPI.aggregate() |> to_rows()
+      case ResultStore.aggregate_by_agent() do
+        {:ok, ledger} -> to_rows(ledger)
         _error -> []
       end
 

@@ -112,13 +112,25 @@ defmodule Harness.StatusViewTest do
 
   describe "snapshot/0 history (persisted settled runs)" do
     test "surfaces persisted records newest-first with the right buckets" do
-      :ok = ResultStore.record_run(record("sv-hist-001", state: :done, verdict: :pass))
-      :ok = ResultStore.record_run(record("sv-hist-002", state: :failed, reason: :verification_red, verdict: :fail))
-      :ok = ResultStore.record_run(record("sv-hist-003", state: :done, verdict: :pass))
+      base = System.os_time(:second)
+
+      for {run_id, offset} <- Enum.with_index(~w(sv-hist-001 sv-hist-002 sv-hist-003)) do
+        fields =
+          case run_id do
+            "sv-hist-002" ->
+              [state: :failed, reason: :verification_red, verdict: :fail]
+
+            _ ->
+              [state: :done, verdict: :pass]
+          end
+
+        :ok = ResultStore.record_run(record(run_id, fields))
+        touch_run_file(run_id, base + offset)
+      end
 
       mine = Enum.filter(StatusView.snapshot().history, &(&1.status.run_id in ~w(sv-hist-001 sv-hist-002 sv-hist-003)))
 
-      # run_ids embed an ordinal, so descending string sort is newest-first.
+      # Store orders by inserted_at / file mtime, newest first.
       assert Enum.map(mine, & &1.status.run_id) == ~w(sv-hist-003 sv-hist-002 sv-hist-001)
 
       buckets = Map.new(mine, &{&1.status.run_id, &1.bucket})
@@ -175,6 +187,18 @@ defmodule Harness.StatusViewTest do
       assert %{status: %Status{run_id: ^run_id, state: :running}, bucket: :in_flight} = mine
 
       assert :ok = Run.cancel(run_id)
+    end
+  end
+
+  defp touch_run_file(run_id, mtime) do
+    case Application.get_env(:harness, :result_store) do
+      {Harness.ResultStore.File, opts} when is_list(opts) ->
+        root = opts |> Keyword.get(:root, "~/.harness/results") |> Path.expand()
+        path = Path.join([root, "runs", Base.url_encode64(run_id, padding: false) <> ".term"])
+        File.touch!(path, mtime)
+
+      _ ->
+        :ok
     end
   end
 

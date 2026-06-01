@@ -9,6 +9,7 @@ defmodule Harness.ResultStore.File do
 
   @behaviour Harness.ResultStore
 
+  alias Harness.AgentKPI
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.Run.LogRecord
 
@@ -43,20 +44,42 @@ defmodule Harness.ResultStore.File do
   @impl Harness.ResultStore
   @spec list_run_records(Harness.ResultStore.filters(), keyword()) :: {:ok, [LogRecord.t()]} | {:error, term()}
   def list_run_records(filters, opts) when is_list(filters) and is_list(opts) do
+    {limit, filters} = pop_limit(filters)
+    point_lookup? = Keyword.has_key?(filters, :run_id)
     dir = Path.join(root(opts), "runs")
 
     case File.ls(dir) do
       {:ok, files} ->
         files
         |> Enum.filter(&String.ends_with?(&1, ".term"))
-        |> Enum.map(&read_term(Path.join(dir, &1)))
-        |> collect_records(filters)
+        |> Enum.map(&read_run_entry(dir, &1))
+        |> collect_records(filters, point_lookup?: point_lookup?, limit: limit)
 
       {:error, :enoent} ->
         {:ok, []}
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  @impl Harness.ResultStore
+  @spec aggregate_by_agent(keyword(), keyword()) :: {:ok, AgentKPI.t()} | {:error, term()}
+  def aggregate_by_agent(_query_opts, opts) when is_list(opts) do
+    case list_run_records([], opts) do
+      {:ok, records} -> {:ok, AgentKPI.aggregate(records)}
+      {:error, _} = err -> err
+    end
+  end
+
+  @spec read_run_entry(String.t(), String.t()) :: {:ok, term(), integer()} | {:error, term()}
+  defp read_run_entry(dir, file) do
+    path = Path.join(dir, file)
+
+    case {read_term(path), File.stat(path, time: :posix)} do
+      {{:ok, term}, {:ok, %File.Stat{mtime: mtime}}} -> {:ok, term, mtime}
+      {{:error, _} = err, _} -> err
+      {_, {:error, _} = err} -> err
     end
   end
 
@@ -67,15 +90,25 @@ defmodule Harness.ResultStore.File do
   # A `:cross_typed` skip is a file that decoded fine but to some other term, not a
   # %LogRecord{}. Either way the file is left in place (NOT quarantined or deleted)
   # and at most one aggregated :debug line is emitted per scan.
-  @spec collect_records([{:ok, term()} | {:error, term()}], Harness.ResultStore.filters()) ::
-          {:ok, [LogRecord.t()]}
-  defp collect_records(records, filters) do
+  @spec collect_records(
+          [{:ok, term(), integer()} | {:error, term()}],
+          Harness.ResultStore.filters(),
+          keyword()
+        ) :: {:ok, [LogRecord.t()]}
+  defp collect_records(records, filters, opts) do
+    point_lookup? = Keyword.get(opts, :point_lookup?, false)
+    limit = Keyword.get(opts, :limit)
+
     {kept, skipped} =
       Enum.reduce(records, {[], %{cross_typed: 0, undecodable: 0}}, fn
-        {:ok, %LogRecord{} = record}, {acc, skip} ->
-          if match_filters?(record, filters), do: {[record | acc], skip}, else: {acc, skip}
+        {:ok, %LogRecord{} = record, mtime}, {acc, skip} ->
+          record = maybe_strip_agent_output(record, point_lookup?)
 
-        {:ok, _other}, {acc, skip} ->
+          if match_filters?(record, filters),
+            do: {[{record, mtime} | acc], skip},
+            else: {acc, skip}
+
+        {:ok, _other, _mtime}, {acc, skip} ->
           {acc, Map.update!(skip, :cross_typed, &(&1 + 1))}
 
         {:error, _reason}, {acc, skip} ->
@@ -83,7 +116,34 @@ defmodule Harness.ResultStore.File do
       end)
 
     log_skipped(skipped)
-    {:ok, Enum.reverse(kept)}
+
+    kept =
+      kept
+      |> Enum.sort_by(fn {_record, mtime} -> mtime end, :desc)
+      |> Enum.map(fn {record, _mtime} -> record end)
+      |> maybe_take(limit)
+
+    {:ok, kept}
+  end
+
+  @spec maybe_strip_agent_output(LogRecord.t(), boolean()) :: LogRecord.t()
+  defp maybe_strip_agent_output(%LogRecord{} = record, true), do: record
+
+  defp maybe_strip_agent_output(%LogRecord{} = record, false) do
+    %{record | agent_output: ""}
+  end
+
+  @spec maybe_take([LogRecord.t()], pos_integer() | nil) :: [LogRecord.t()]
+  defp maybe_take(records, nil), do: records
+  defp maybe_take(records, limit) when is_integer(limit), do: Enum.take(records, limit)
+
+  @spec pop_limit(Harness.ResultStore.filters()) :: {pos_integer() | nil, Harness.ResultStore.filters()}
+  defp pop_limit(filters) do
+    case Keyword.pop(filters, :limit) do
+      {nil, filters} -> {nil, filters}
+      {limit, filters} when is_integer(limit) and limit > 0 -> {limit, filters}
+      {_bad, filters} -> {nil, filters}
+    end
   end
 
   @spec log_skipped(%{cross_typed: non_neg_integer(), undecodable: non_neg_integer()}) :: :ok
