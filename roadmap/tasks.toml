@@ -109,6 +109,11 @@ description = "Recommend-agent-per-domain routing surface (explore/exploit) + Ob
 order = 3
 phase = 13
 
+[bundles.postgres-results]
+description = "Move run/batch result persistence from file-backed term storage into Postgres (already a hard dependency via Oban) behind the existing ResultStore behaviour, then push KPI aggregation and history queries down into SQL — the queryable substrate the capability-bench dataset and KPI ledger read from"
+order = 4
+phase = 13
+
 [bundles.scaffold]
 description = "mix project scaffold + standard dep stack"
 order = 1
@@ -4155,6 +4160,135 @@ OBSERVED 2026-06-01 dogfooding task 135 to grok (run-1780279364278-38f3dc26): gr
 ROOT: lib/harness/dashboard/transcript/parser/grok.ex maps only two shapes — {:assistant_text, ...} and {:system, kind: :thought, ...}. It emits NO :assistant_tool_use or :tool_result events, which Task 87's component (Components.transcript_view/1) renders as .tool-call blocks. Claude's parser maps these; grok's does not.
 
 INVESTIGATE: (1) does grok's streaming-json wire format expose tool-call / tool-result events (check a real grok transcript in agent_output, and grok CLI --output-format streaming-json docs)? (2) if yes, map them to :assistant_tool_use / :tool_result in grok.ex mirroring claude.ex; (3) if grok does NOT stream structured tool calls, document that limitation in the parser moduledoc and surface SOMETHING (the raw action lines) rather than dropping them. Add grok_test.exs cases for tool-call/tool-result like the other parser tests. Browser-confirm the parsed view shows grok's actions.
+"""
+created_at = "2026-06-01"
+scored_at = "2026-06-01"
+
+[[task]]
+id = "137"
+phase = 13
+bundle = "postgres-results"
+milestone = "v0_10"
+status = "pending"
+title = "Postgres-backed result store — run_records/batch_results schemas + ResultStore.Postgres backend + repo_enabled config flip"
+scores = { d = 4, b = 5, u = 5 }
+acceptance_criteria = ["Migrations migrate up and roll back cleanly", "Harness.ResultStore.Postgres passes the same contract test suite as ResultStore.File — record/list round-trip preserves every LogRecord field, including {tag, inner} reason tuples and non-UTF8 agent_output binaries", "record_run/save_batch return {:error, _} and never raise when the Repo is unavailable (best-effort contract preserved)", "ResultStore.configured/0 resolves to the Postgres backend when repo_enabled, the File backend when repo_enabled is false, and an explicit :result_store override always wins", "mix test.json --exclude integration passes with no Postgres running — DB-backed tests are tagged :integration and use a shared Harness.DataCase", "Existing ResultStore consumers (StatusView, Dashboard.Live, AgentKPI, Harness.Dispatch) need zero changes"]
+out_of_scope = ["Importing pre-existing ~/.harness/results term files (Task 138)", "SQL aggregation fast paths for KPIs/history (Task 139)", "Chat store, settings stores, ProjectRegistry persistence (deferred phase-6 tasks)", "Removing or deprecating Harness.ResultStore.File — it stays first-class for repo-less library consumers"]
+touches = ["priv/repo/migrations", "lib/harness/result_store/postgres.ex", "lib/harness/result_store/schema", "lib/harness/result_store/file.ex", "test/support/data_case.ex", "test/harness/result_store", "config/runtime.exs", "config/config.exs", "skills/harness-driver/SKILL.md"]
+body = """
+Postgres is a hard runtime dependency (Oban) but holds only the oban_jobs table; every settled run's LogRecord goes to file-backed term storage (~/.harness/results) that the dashboard/KPI layer must load wholesale to query anything. Move run/batch result persistence into Postgres behind the existing Harness.ResultStore behaviour. Three parts, one PR:
+
+1. Schemas + migrations. run_records table mapping %Harness.Run.LogRecord{} (lib/harness/run/log_record.ex): run_id (string, unique index); batch_id / task_id / project_name / agent / adapter / state / verdict / agent_outcome_kind as strings; duration_ms / repair_attempts / first_attempt_failed_check_count / agent_diff_size / agent_exit_status as integers; reason / token_usage / composed_inputs / failure_cause / check_output as jsonb (reason is a {tag, inner} tuple — needs a tuple-to-map round-trip helper); agent_output as bytea (transcript tails can carry non-UTF8 bytes); timestamps(). Secondary indexes: batch_id, agent, project_name, inserted_at. batch_results table: batch_id (unique), total, max_concurrency, payload bytea via term_to_binary — the only read path is whole-struct load_batch/2, so don't normalize the embedded results list into rows.
+
+2. Harness.ResultStore.Postgres implementing the existing 4-callback behaviour (record_run / save_batch / load_batch / list_run_records — lib/harness/result_store.ex). record_run upserts on run_id. Never raises: the best-effort contract (result_store.ex moduledoc) means store failures return {:error, _} and the run continues. list_run_records translates the documented filter keys (run_id, batch_id, agent, adapter, verdict, project_name) to a dynamic where and returns %LogRecord{} structs (not schema structs) ordered inserted_at DESC, so existing consumers need zero changes. Optional :repo opt (default Harness.Repo). Test infra: test/support/data_case.ex wrapping the Sandbox pattern proven in test/harness/oban_queue_bootstrap_test.exs; DB tests tagged :integration; extract the File-backend assertions into a shared contract test run against both backends.
+
+3. Config flip in config/runtime.exs (where Repo config already lives): default :result_store to the Postgres backend when repo_enabled, keep the File backend when repo_enabled is false (library-mounted consumers) and in the test env. An explicit operator :result_store override always wins.
+
+First consumer: Task 139 (KPI/dashboard SQL paths) and the phase-13 capability-bench dataset (scored, persisted, decayed) need run records queryable by agent/project/verdict — a directory of term files cannot serve that. Update skills/harness-driver/SKILL.md if it documents the result-store surface.
+"""
+created_at = "2026-06-01"
+scored_at = "2026-06-01"
+
+[[task]]
+id = "138"
+phase = 13
+bundle = "postgres-results"
+status = "pending"
+title = "mix harness.import_results — one-shot file-store to Postgres importer"
+scores = { d = 2, b = 2, u = 2 }
+markers = ["parallel"]
+depends_on = [137]
+acceptance_criteria = ["Importing a fixture results dir into a test DB yields matching counts (N runs, M batches)", "Re-running the import is idempotent — upserts, no duplicates, no errors", "Corrupt/undecodable term files are skipped, counted, and logged; exit status stays 0", "Tagged :integration — does not run in the offline suite"]
+out_of_scope = ["Automatic on-boot import (explicit one-shot mix task only)", "Deleting or modifying the source term files after import"]
+touches = ["lib/mix/tasks/harness.import_results.ex", "test/mix/tasks"]
+body = """
+Optional cutover tool for Task 137: import existing file-backed run/batch records (~/.harness/results) into the Postgres result store. A Mix task modeled on lib/mix/tasks/harness.status.ex. Reads the configured file-store root, decodes runs/*.term and batches/*.term with the tolerant-read semantics ResultStore.File already uses (skip + log corrupt or atom-stale files), and upserts each into Postgres via ResultStore.Postgres. Idempotent — re-running is an upsert no-op. Prints an imported/skipped summary. Accepts --root and --repo flags.
+
+Operators who don't need pre-cutover history skip this entirely; the Postgres store starts empty and fills from the next settled run. Unpinned from the v0_10 milestone on purpose: it's operational continuity tooling, not part of the routing-hypothesis test.
+"""
+created_at = "2026-06-01"
+scored_at = "2026-06-01"
+
+[[task]]
+id = "139"
+phase = 13
+bundle = "postgres-results"
+milestone = "v0_10"
+status = "pending"
+title = "Dashboard/KPI SQL fast paths — aggregate in Postgres instead of loading every run record into memory"
+scores = { d = 3, b = 4, u = 5 }
+markers = ["parallel"]
+depends_on = [137]
+acceptance_criteria = ["KPILive renders identical numbers against the File and Postgres backends for the same seeded records (golden parity test)", "History/list queries do not load agent_output transcript binaries (verified by test); only the single-run drill-down/transcript replay selects that column", "The KPI view issues one aggregate query, not one per agent", "Dashboard run-history ordering uses inserted_at, newest first, replacing the run-id string-sort recency hack", "File-backend deployments (repo_enabled false) keep working through the in-memory fallback path"]
+out_of_scope = ["Failure-breakdown (GROUP BY reason) and fleet token-burn (SUM) views — trivial follow-ons once the table exists, but no consumer asked yet", "Visual/layout changes to KPILive or Dashboard.Live — same data shapes, same rendering"]
+touches = ["lib/harness/result_store.ex", "lib/harness/result_store/postgres.ex", "lib/harness/result_store/file.ex", "lib/harness/agent_kpi.ex", "lib/harness/dashboard/kpi_live.ex", "lib/harness/status_view.ex", "lib/harness/dashboard/live.ex"]
+body = """
+The KPI ledger (Harness.AgentKPI.aggregate via Dashboard.KPILive), run history (StatusView.history, Dashboard.Live mount), and verdict drill-downs all call ResultStore.list_run_records with no limit and aggregate/filter in Elixir — every settled run record, including transcript binaries, is decoded into memory to compute scalar aggregates or render 200 rows. With the Postgres store (Task 137) this becomes SQL:
+
+1. Per-agent KPI aggregation: an aggregate-by-agent store operation (optional behaviour callback with a default that falls back to AgentKPI.aggregate(list_run_records()) so the File backend stays first-class). Postgres impl: GROUP BY agent with COUNT / FILTER / AVG / percentile_cont over duration_ms, repair_attempts, token_usage, success rate. Returns the same AgentKPI.t() shape so KPILive rendering code is untouched.
+
+2. History: list_run_records gains a :limit option and orders by inserted_at DESC — replacing the run-id string-sort recency hack in status_view.ex. List-path queries must not select the agent_output bytea column.
+
+3. Point lookups (run_id:, batch_id: filters) ride the unique/secondary indexes from Task 137.
+
+Consumer evidence: Tasks 114/115 (production-kpis bundle, done) shipped the in-memory KPI aggregation this pushes down into SQL; Task 134 documents the operator pain of run history as load-everything in-memory state. The capability-bench dataset (Tasks 116+) reads the same per-(agent, domain) facts.
+"""
+created_at = "2026-06-01"
+scored_at = "2026-06-01"
+
+[[task]]
+id = "140"
+phase = 6
+bundle = "deferred"
+status = "pending"
+title = "Chat session store: behaviour seam + Postgres backend"
+scores = { d = 3, b = 2, u = 2 }
+depends_on = [137]
+acceptance_criteria = ["Existing chat store tests pass unmodified against the facade-to-file path", "The Postgres backend passes the same contract (save/load round-trip, 200-message cap, list ordering by recency)", "The disabled (false/nil) short-circuit is preserved", "Chat.Session and Dashboard.ChatLive callers are unchanged"]
+out_of_scope = ["Chat transcript full-text search — that is the consumer that would justify promoting this out of deferred", "Changing the 200-message persistence cap"]
+touches = ["lib/harness/chat/store.ex", "lib/harness/chat/store", "lib/harness/chat/session.ex", "lib/harness/dashboard/chat_live.ex", "priv/repo/migrations", "config/runtime.exs"]
+body = """
+Harness.Chat.Store (lib/harness/chat/store.ex) is a concrete file-backed module today (Task 93 chose file as the lighter match — a conscious decision). Convert it to a facade + behaviour mirroring the ResultStore pattern: lib/harness/chat/store/file.ex (current logic moved verbatim — atomic .tmp+rename, 200-message cap, tolerant read), lib/harness/chat/store/postgres.ex (new), and a chat_sessions table (session_id unique, messages jsonb capped at 200, timestamps). Config flip on repo_enabled, same pattern as Task 137. Keep derive_label/1 on the facade.
+
+DEFERRED on purpose: chat data is bounded (200 messages/session) and has no cross-session query consumer today. This earns dispatch only after the run-results Postgres substrate (Task 137) has landed AND a chat-search or cross-session-analytics surface is actually wanted. Honest low score reflects that — capture, not endorsement.
+"""
+created_at = "2026-06-01"
+scored_at = "2026-06-01"
+
+[[task]]
+id = "141"
+phase = 6
+bundle = "deferred"
+status = "pending"
+title = "Persist runtime ProjectRegistry registrations to Postgres"
+scores = { d = 2, b = 2, u = 2 }
+depends_on = [137]
+acceptance_criteria = ["A project registered at runtime via ProjectRegistry.register/1 survives a BEAM restart", "Config-declared projects (config :harness, :projects) still win on name conflict", "repo_enabled false keeps today's memory-only behavior", "Per-project Oban queues are bootstrapped for restored registrations at boot"]
+out_of_scope = ["Migrating config-declared projects into the table — config stays the canonical source for the static fleet", "A dashboard CRUD surface for projects"]
+touches = ["lib/harness/project_registry.ex", "priv/repo/migrations", "lib/harness/oban.ex"]
+body = """
+ProjectRegistry.register/1 registrations live only in GenServer state and vanish on restart (lib/harness/project_registry.ex — documented as persists-until-BEAM-restart); only static config :harness, :projects survives. A projects table (name unique + serialized %Harness.Project{} payload — CheckStack structs, preset tuples, and source tuples make this term_to_binary, not jsonb) restores runtime registrations at boot, with config seeds winning on name conflict.
+
+DEFERRED on purpose: today the fleet is config-declared, so nothing is actually lost in practice. This earns dispatch when projects start being registered at runtime (e.g. via the MCP project_registry__register tool from a chat orchestrator session) as the normal path rather than the exception.
+"""
+created_at = "2026-06-01"
+scored_at = "2026-06-01"
+
+[[task]]
+id = "142"
+phase = 6
+bundle = "deferred"
+status = "pending"
+title = "Consolidate agent/cron settings term files into a Postgres key-value store"
+scores = { d = 2, b = 1, u = 1 }
+depends_on = [137]
+acceptance_criteria = ["Both settings modules read/write through one shared store seam", "Boot-time load_into_env/0 behavior is unchanged (settings seeded into app env before dispatch/Oban start)", "The file backend remains for repo_enabled false"]
+out_of_scope = ["New settings or toggles — pure storage consolidation", "A settings UI beyond the existing dashboard toggles"]
+touches = ["lib/harness/agent/settings.ex", "lib/harness/cron/settings.ex", "priv/repo/migrations"]
+body = """
+agent_settings.term and cron_settings.term (~/.harness/) are tiny boot-time key-value files read once into app env, each with its own atomic .tmp+rename plumbing. Honest assessment: files are genuinely fine here — no query need, no growth, no dashboard surface beyond the existing toggles. This task records the consolidation option (one harness_settings KV table replacing two term files and their duplicated write plumbing).
+
+DEFERRED with a deliberately low score — capture, not endorsement. It earns dispatch only if a third settings store appears (rule of three) or a multi-node deployment makes file-on-one-host wrong.
 """
 created_at = "2026-06-01"
 scored_at = "2026-06-01"
