@@ -79,11 +79,43 @@ defmodule Harness.Benchmark.Corpus do
   @spec load_dir!(Path.t()) :: [Item.t()]
   def load_dir!(dir) when is_binary(dir) do
     dir
+    |> toml_paths!()
+    |> Enum.map(&{&1, read_text!(&1)})
+    |> load_sources!()
+  end
+
+  @spec toml_paths!(Path.t()) :: [Path.t()]
+  defp toml_paths!(dir) do
+    root = Path.expand(dir)
+
+    root
     |> Path.join("*.toml")
     |> Path.wildcard()
+    |> Enum.map(&Path.expand/1)
+    |> Enum.map(&assert_under_root!(&1, root))
     |> Enum.sort()
-    |> Enum.map(&{&1, File.read!(&1)})
-    |> load_sources!()
+  end
+
+  @spec assert_under_root!(Path.t(), Path.t()) :: Path.t()
+  defp assert_under_root!(path, root) do
+    if path == root or String.starts_with?(path, root <> "/") do
+      path
+    else
+      raise "invalid benchmark corpus path outside #{root}: #{path}"
+    end
+  end
+
+  @spec read_text!(Path.t()) :: String.t()
+  defp read_text!(path) do
+    path
+    |> String.to_charlist()
+    |> :file.read_file()
+    |> case do
+      {:ok, body} -> IO.iodata_to_binary(body)
+
+      {:error, reason} ->
+        raise File.Error, reason: reason, action: "read file", path: path
+    end
   end
 
   @spec load_sources!([{Path.t(), String.t()}]) :: [Item.t()]
@@ -140,12 +172,19 @@ defmodule Harness.Benchmark.Corpus do
   defp domain_atoms(domains) when is_list(domains) do
     Enum.map(domains, fn
       domain when is_atom(domain) -> domain
-      domain when is_binary(domain) and domain != "" -> String.to_atom(domain)
+      domain when is_binary(domain) and domain != "" -> existing_domain_atom(domain)
       domain -> domain
     end)
   end
 
   defp domain_atoms(domains), do: domains
+
+  @spec existing_domain_atom(String.t()) :: atom() | String.t()
+  defp existing_domain_atom(domain) do
+    String.to_existing_atom(domain)
+  rescue
+    ArgumentError -> domain
+  end
 
   @spec parse_toml!(Path.t(), String.t()) :: map()
   defp parse_toml!(path, body) do
