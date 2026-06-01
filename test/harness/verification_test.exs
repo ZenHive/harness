@@ -2,6 +2,7 @@ defmodule Harness.VerificationTest do
   use ExUnit.Case, async: true
 
   alias Harness.CheckStack
+  alias Harness.CheckStack.Preset.Rust, as: RustPreset
   alias Harness.GitFixture
   alias Harness.Verification
   alias Harness.Verification.Check
@@ -118,6 +119,35 @@ defmodule Harness.VerificationTest do
 
       assert result.status == :pass
       assert File.read!(Path.join(dir, "db-name")) =~ "harness_test_"
+    end
+
+    test ":rust preset :env opt lands on the test check and reaches the spawned process (via Check.env Port threading)" do
+      dir = worktree_dir()
+
+      env = %{"HARNESS_RUST_PRESET_ENV_TEST" => "from_rust_preset_via_check_env"}
+      stack = RustPreset.preset(env: env)
+
+      test_check = Enum.find(stack.checks, &(&1.name == "test"))
+      assert test_check.env == env
+      assert "test" in test_check.args
+
+      # Swap command for a stub (so we don't need real cargo); the env and structure
+      # come from the preset-produced check, proving stamping + Port delivery.
+      stub =
+        stub_script("""
+        case "$HARNESS_RUST_PRESET_ENV_TEST" in
+          from_rust_preset_via_check_env) printf "RUST_PRESET_ENV_OK" > marker ;;
+          *) exit 99 ;;
+        esac
+        """)
+
+      stubbed = %{test_check | command: stub, args: []}
+
+      assert {:ok, %Verdict{status: :pass, results: [result]}} =
+               Verification.run(dir, checks: [stubbed])
+
+      assert result.status == :pass
+      assert File.read!(Path.join(dir, "marker")) == "RUST_PRESET_ENV_OK"
     end
   end
 

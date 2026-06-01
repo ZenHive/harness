@@ -36,6 +36,50 @@ defmodule Harness.CheckStack.Preset.RustTest do
     end
   end
 
+  describe "preset/1 — parameterized" do
+    test "bare preset/0 == preset([]) (back-compat for fetch(:rust) callers)" do
+      assert Preset.Rust.preset() == Preset.Rust.preset([])
+    end
+
+    test ":target_dir threads --target-dir into clippy/test/build but not fmt" do
+      td = "/cache/cargo/rexex"
+      stack = Preset.Rust.preset(target_dir: td)
+
+      fmt = Enum.find(stack.checks, &(&1.name == "fmt"))
+      clippy = Enum.find(stack.checks, &(&1.name == "clippy"))
+      testc = Enum.find(stack.checks, &(&1.name == "test"))
+      build = Enum.find(stack.checks, &(&1.name == "build"))
+
+      assert fmt.args == ["fmt", "--check"]
+      assert clippy.args == ["clippy", "--target-dir", td, "--", "-D", "warnings"]
+      assert testc.args == ["test", "--target-dir", td, "--message-format=json"]
+      assert build.args == ["build", "--target-dir", td, "--release"]
+    end
+
+    test ":release false drops --release from build (but keeps target if also set)" do
+      stack = Preset.Rust.preset(release: false, target_dir: "/t")
+
+      build = Enum.find(stack.checks, &(&1.name == "build"))
+      assert build.args == ["build", "--target-dir", "/t"]
+    end
+
+    test ":timeout_per_check and :env are wired to the stack and checks" do
+      env = %{"DATABASE_URL" => "postgres://localhost/rexex_test"}
+      stack = Preset.Rust.preset(timeout_per_check: 1_800_000, env: env)
+
+      assert stack.timeout_per_check == 1_800_000
+      testc = Enum.find(stack.checks, &(&1.name == "test"))
+      assert testc.env == env
+      # all checks get the env stamped (even fmt/clippy — harmless extra var)
+      assert Enum.all?(stack.checks, &(&1.env == env))
+    end
+
+    test "unknown opts are ignored (defensive; only documented keys used)" do
+      stack = Preset.Rust.preset(unknown: "foo")
+      assert stack.name == :rust
+    end
+  end
+
   describe "verification with the Rust preset" do
     test "passes a green Rust fixture and captures cargo JSON output" do
       project = copy_fixture!("rust_project")
