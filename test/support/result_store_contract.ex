@@ -12,6 +12,7 @@ defmodule Harness.ResultStoreContract do
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.ResultStore
   alias Harness.Run.LogRecord
+  alias Harness.TokenUsage
 
   @spec log_record(keyword()) :: LogRecord.t()
   def log_record(overrides \\ []) do
@@ -94,6 +95,34 @@ defmodule Harness.ResultStoreContract do
     assert retrieved.reason == reason
     assert retrieved.agent_output == non_utf8
     assert retrieved.failure_cause.reason == reason
+
+    # struct identity, string map keys, and list-of-maps roundtrip
+    # (token_usage / check_output / composed_inputs)
+    composed_input = %{
+      executable: "claude",
+      argv: ["-p", "do the task"],
+      rule_channel: :system_prompt_file,
+      prompt: "do the task",
+      session: nil,
+      rule_files: [],
+      attempt: 0,
+      phase: :initial
+    }
+
+    rec_full =
+      log_record(
+        run_id: "r-full",
+        token_usage: %TokenUsage{input: 100, output: 50, total: 150},
+        check_output: %{"sobelow" => %{output: "findings", truncated: false}},
+        composed_inputs: [composed_input]
+      )
+
+    assert :ok = ResultStore.record_run(rec_full, store)
+
+    assert {:ok, [rf]} = ResultStore.list_run_records(store, run_id: "r-full")
+    assert rf.token_usage == %TokenUsage{input: 100, output: 50, total: 150}
+    assert rf.check_output == %{"sobelow" => %{output: "findings", truncated: false}}
+    assert rf.composed_inputs == [composed_input]
 
     :ok
   end

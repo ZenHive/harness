@@ -16,6 +16,7 @@ defmodule Harness.ResultStore.Postgres do
   alias Harness.ResultStore.Schema.BatchResult, as: BatchResultSchema
   alias Harness.ResultStore.Schema.RunRecord, as: RunRecordSchema
   alias Harness.Run.LogRecord
+  alias Harness.TokenUsage
 
   require Logger
 
@@ -156,12 +157,12 @@ defmodule Harness.ResultStore.Postgres do
       first_attempt_failed_check_count: r.first_attempt_failed_check_count,
       agent_diff_size: r.agent_diff_size,
       agent_exit_status: r.agent_exit_status,
-      reason: encode_term(r.reason),
-      token_usage: encode_term(r.token_usage),
-      composed_inputs: encode_term(r.composed_inputs),
-      failure_cause: encode_term(r.failure_cause),
-      check_output: encode_term(r.check_output),
-      domains: encode_term(r.domains),
+      reason: encode_jsonb(r.reason),
+      token_usage: encode_jsonb(r.token_usage),
+      composed_inputs: encode_jsonb(r.composed_inputs),
+      failure_cause: encode_jsonb(r.failure_cause),
+      check_output: encode_jsonb(r.check_output),
+      domains: encode_jsonb(r.domains),
       agent_output: r.agent_output
     }
   end
@@ -177,20 +178,20 @@ defmodule Harness.ResultStore.Postgres do
       model: row.model,
       adapter: string_to_module(row.adapter),
       state: string_to_atom(row.state),
-      reason: decode_term(row.reason),
+      reason: decode_jsonb(row.reason),
       verdict: string_to_atom(row.verdict),
       duration_ms: default(row.duration_ms, 0),
       repair_attempts: default(row.repair_attempts, 0),
       first_attempt_failed_check_count: default(row.first_attempt_failed_check_count, 0),
       agent_diff_size: row.agent_diff_size,
-      token_usage: default(decode_term(row.token_usage), %Harness.TokenUsage{}),
-      composed_inputs: default(decode_term(row.composed_inputs), []),
-      failure_cause: default(decode_term(row.failure_cause), %{reason: nil, failed_checks: []}),
+      token_usage: decode_token_usage(row.token_usage),
+      composed_inputs: default(decode_jsonb(row.composed_inputs), []),
+      failure_cause: default(decode_jsonb(row.failure_cause), %{reason: nil, failed_checks: []}),
       agent_outcome_kind: string_to_atom(row.agent_outcome_kind),
       agent_exit_status: row.agent_exit_status,
       agent_output: default(row.agent_output, ""),
-      check_output: default(decode_term(row.check_output), %{}),
-      domains: default(decode_term(row.domains), [])
+      check_output: decode_check_output(row.check_output),
+      domains: default(decode_jsonb(row.domains), [])
     }
   end
 
@@ -200,19 +201,49 @@ defmodule Harness.ResultStore.Postgres do
 
   # Column values come from our own INSERTs (Atom.to_string in log_record_to_attrs)
   # — never user-supplied. Matches manifest.ex / chat/tools.ex pattern.
+  # The String.to_atom clause must directly follow this comment for the skip to attach.
   # sobelow_skip ["DOS.StringToAtom"]
   @spec string_to_atom(String.t() | nil) :: atom() | nil
-  defp string_to_atom(nil), do: nil
   defp string_to_atom(s) when is_binary(s), do: String.to_atom(s)
+  defp string_to_atom(nil), do: nil
 
   # Column values come from our own INSERTs (Atom.to_string in log_record_to_attrs)
   # — never user-supplied. Matches manifest.ex / chat/tools.ex pattern.
+  # The String.to_atom clause must directly follow this comment for the skip to attach.
   # sobelow_skip ["DOS.StringToAtom"]
   @spec string_to_module(String.t() | nil) :: module() | nil
-  defp string_to_module(nil), do: nil
   defp string_to_module(s) when is_binary(s), do: String.to_atom(s)
+  defp string_to_module(nil), do: nil
 
   # --- term <-> json-safe (tuple roundtrip for reason, atom keys/values, structs) ---
+
+  # jsonb columns are Ecto :map fields; a top-level list (composed_inputs, domains)
+  # cannot cast to :map, so wrap it in a "$list" marker map. Non-list values pass through.
+  @spec encode_jsonb(term()) :: map() | nil
+  defp encode_jsonb(value) do
+    case encode_term(value) do
+      list when is_list(list) -> %{"$list" => list}
+      other -> other
+    end
+  end
+
+  @spec decode_jsonb(term()) :: term()
+  defp decode_jsonb(%{"$list" => list}) when is_list(list), do: decode_term(list)
+  defp decode_jsonb(other), do: decode_term(other)
+
+  # token_usage is a %TokenUsage{} struct on LogRecord; restore struct identity on read.
+  @spec decode_token_usage(map() | nil) :: TokenUsage.t()
+  defp decode_token_usage(nil), do: %TokenUsage{}
+  defp decode_token_usage(map) when is_map(map), do: struct(TokenUsage, decode_term(map))
+
+  # check_output's outer keys are check-name strings (LogRecord.check_output type);
+  # decode values only — the outer keys must never be atomized.
+  @spec decode_check_output(map() | nil) :: LogRecord.check_output()
+  defp decode_check_output(nil), do: %{}
+
+  defp decode_check_output(map) when is_map(map) do
+    Map.new(map, fn {k, v} -> {k, decode_term(v)} end)
+  end
 
   @spec encode_term(term()) :: term()
   defp encode_term(nil), do: nil
@@ -237,11 +268,10 @@ defmodule Harness.ResultStore.Postgres do
   defp encode_map_key(k), do: inspect(k)
 
   # $atom markers come only from our encode_term/encode_map_key (harness-controlled)
-  # — not user-supplied free text. Matches manifest.ex / chat/tools.ex pattern.
-  # sobelow_skip ["DOS.StringToAtom"]
+  # — not user-supplied free text. Decoded via the skip-annotated string_to_atom/1.
   @spec decode_term(term()) :: term()
+  defp decode_term(%{"$atom" => name}) when is_binary(name), do: string_to_atom(name)
   defp decode_term(nil), do: nil
-  defp decode_term(%{"$atom" => name}) when is_binary(name), do: String.to_atom(name)
 
   defp decode_term(%{"$tuple" => list}) when is_list(list) do
     list |> Enum.map(&decode_term/1) |> List.to_tuple()
