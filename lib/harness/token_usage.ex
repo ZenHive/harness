@@ -24,9 +24,12 @@ defmodule Harness.TokenUsage do
 
   ## Per-adapter strategy
 
-    * `:claude` / `:cursor` — Anthropic-shaped `stream-json`. Prefers the
-      terminal `result` event's cumulative `usage`; falls back to summing each
-      `assistant` message's `message.usage` when no result usage is present.
+    * `:claude` — Anthropic-shaped `stream-json`. Prefers the terminal `result`
+      event's cumulative `usage`; falls back to summing each `assistant`
+      message's `message.usage` when no result usage is present.
+    * `:cursor` — terminal `result` event's cumulative `usage`, but with
+      camelCase keys (`inputTokens` / `outputTokens` / `cacheReadTokens` /
+      `cacheWriteTokens`) — NOT Anthropic's snake_case.
     * `:codex` — sums the `usage` on each `turn.completed` event.
     * `:pi` — `message_update` snapshots restate a message's running usage, so
       usage is deduplicated by `responseId` (last snapshot wins per message)
@@ -88,7 +91,7 @@ defmodule Harness.TokenUsage do
   @spec parse(agent_kind(), term()) :: t()
   def parse(_kind, output) when not is_binary(output), do: empty()
   def parse(:claude, output), do: parse_anthropic_stream(output)
-  def parse(:cursor, output), do: parse_anthropic_stream(output)
+  def parse(:cursor, output), do: parse_cursor(output)
   def parse(:codex, output), do: parse_codex(output)
   def parse(:pi, output), do: parse_pi(output)
   def parse(:grok, output), do: parse_grok(output)
@@ -121,6 +124,19 @@ defmodule Harness.TokenUsage do
     |> Enum.map(&get_in(&1, ["message", "usage"]))
     |> Enum.filter(&is_map/1)
     |> sum_usages(&from_anthropic_usage/1)
+  end
+
+  # Cursor reports cumulative usage on its terminal `result` event (same event
+  # shape as Claude's `result`) but with camelCase keys — `inputTokens`,
+  # `outputTokens`, `cacheReadTokens`, `cacheWriteTokens` — not Anthropic's
+  # snake_case. Routing it through the Anthropic parser silently produced
+  # all-`nil` (the keys never matched); read its own shape instead.
+  @spec parse_cursor(binary()) :: t()
+  defp parse_cursor(output) do
+    case output |> json_objects() |> result_usage() do
+      %{} = usage -> from_cursor_usage(usage)
+      nil -> empty()
+    end
   end
 
   @spec parse_codex(binary()) :: t()
@@ -172,6 +188,16 @@ defmodule Harness.TokenUsage do
       output: count(usage["output_tokens"]),
       cache_read: count(usage["cache_read_input_tokens"]),
       cache_creation: count(usage["cache_creation_input_tokens"])
+    })
+  end
+
+  @spec from_cursor_usage(map()) :: t()
+  defp from_cursor_usage(usage) do
+    put_total(%__MODULE__{
+      input: count(usage["inputTokens"]),
+      output: count(usage["outputTokens"]),
+      cache_read: count(usage["cacheReadTokens"]),
+      cache_creation: count(usage["cacheWriteTokens"])
     })
   end
 

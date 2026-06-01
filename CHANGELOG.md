@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Cursor token usage now parsed — the KPI page no longer shows blank tokens
+  for cursor-dispatched runs.** `Harness.TokenUsage.parse(:cursor, …)` routed
+  cursor through the Anthropic stream parser, which reads snake_case
+  `input_tokens`; cursor actually reports cumulative usage on its terminal
+  `result` event with **camelCase** keys (`inputTokens` / `outputTokens` /
+  `cacheReadTokens` / `cacheWriteTokens`), so every cursor run parsed to all-`nil`
+  (16 stored records measured nothing). Added a dedicated `parse_cursor/1` +
+  `from_cursor_usage/1` reading the real shape; the stale "cursor mirrors
+  Anthropic" test (which fed snake_case and so never caught this) is replaced
+  with a real-cursor-shaped fixture. Found dogfooding non-default agents. (Grok
+  is *not* affected: its `end` event can carry `usage` and `parse_grok/1` already
+  extracts it defensively, but it isn't emitted every run/release — both captured
+  grok runs' `end` events had no `usage` key, so all-`nil` is correct-when-absent.
+  Antigravity is plain text with no usage. Surfacing all-`nil` as "—/not reported"
+  rather than a misleading 0 on the KPI page is a display follow-up, not a parser bug.)
+
 - **MCP tool names now use "-" (not "__") as the group/action delimiter.** Descripex
   emits `<group>__<action>` (e.g. `dispatch__task`); when MCP clients (grok, others)
   qualify as `<server>__<tool>`, this produced `harness__dispatch__task` (two "__"),

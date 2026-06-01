@@ -64,15 +64,21 @@ defmodule Harness.TokenUsageTest do
     end
   end
 
-  describe "parse/2 — Cursor (mirrors Anthropic shape)" do
-    test "sums assistant usage" do
+  describe "parse/2 — Cursor (terminal result event, camelCase usage)" do
+    test "reads cumulative usage off the result event's camelCase keys" do
       transcript = """
       {"type":"system","subtype":"init"}
-      {"type":"assistant","message":{"usage":{"input_tokens":12,"output_tokens":3}}}
-      {"type":"result","subtype":"success","is_error":false}
+      {"type":"assistant","message":{"content":"working"}}
+      {"type":"result","subtype":"success","is_error":false,"usage":{"inputTokens":5735,"outputTokens":1517,"cacheReadTokens":415712,"cacheWriteTokens":0}}
       """
 
-      assert %TokenUsage{input: 12, output: 3, total: 15} = TokenUsage.parse(:cursor, transcript)
+      assert %TokenUsage{
+               input: 5735,
+               output: 1517,
+               cache_read: 415_712,
+               cache_creation: 0,
+               total: 422_964
+             } = TokenUsage.parse(:cursor, transcript)
     end
 
     test "usage-less committed fixture yields empty" do
