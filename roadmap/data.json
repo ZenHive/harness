@@ -5496,6 +5496,45 @@
       "created_at": "2026-06-01",
       "scored_at": "2026-06-01",
       "cross_repo": []
+    },
+    {
+      "id": "144",
+      "phase": 13,
+      "bundle": "production-kpis",
+      "milestone": "v0_10",
+      "status": "pending",
+      "title": "Capture requested model through dispatch so codex/grok runs show a model on the dashboard",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 3
+      },
+      "eff": 1.17,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "The requested model from a task's `model` field is threaded through the dispatch path into the meta given to `LogRecord.from_result/2`.",
+        "`LogRecord.model` resolves to the reported model when `AgentModel.parse/2` returns a value, else the requested model, else nil.",
+        "A codex or grok run dispatched with a pinned model shows that model (not '—') on the index Model column and the run-detail Model row.",
+        "Unit tests cover precedence (reported > requested > nil) and the dispatch-to-record threading."
+      ],
+      "files_to_modify": [
+        "lib/harness/run/log_record.ex",
+        "lib/harness/dispatch.ex",
+        "lib/harness/run.ex",
+        "lib/harness/run/worker.ex"
+      ],
+      "touches": [
+        "lib/harness/agent_model.ex",
+        "lib/harness/invocation.ex",
+        "lib/harness/dashboard/live.ex",
+        "test/harness/run/log_record_test.exs"
+      ],
+      "body": "`Harness.AgentModel.parse/2` (shipped 83c2be0) extracts the *reported* model from a transcript, but only claude and cursor self-report it — codex, grok, and antigravity emit no model field, so their runs render \"—\" on the index Model column and run-detail Model row.\n\nThread the *requested* model (the rmap task's own `model` field, already surfaced by `rmap delegate` as a `## Context` bullet) through the dispatch chain into `LogRecord.model`, used as a fallback when transcript parsing yields nil. This completes \"which model ran this?\" for every agent, not just the self-reporting two.\n\nPlumbing: the task's `model` → the dispatch boundary (`Harness.Dispatch.task` / `Run.Worker` / `Run.Supervisor.start_run`) → the run meta passed to `LogRecord.from_result/2`. The reported model (ground truth from the transcript) MUST win over the requested model when both are present; requested is only the fallback. Optionally distinguish the two in the UI (e.g. an italic/\"(requested)\" hint) so a reader knows whether the value is observed or merely pinned.\n",
+      "created_at": "2026-06-01",
+      "scored_at": "2026-06-01",
+      "cross_repo": []
     }
   ]
 }
