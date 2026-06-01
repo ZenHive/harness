@@ -1,18 +1,24 @@
 defmodule Harness.ObanDispatchTest do
   use ExUnit.Case, async: false
 
+  alias Harness.AgentAdapter.Claude
   alias Harness.Batch
+  alias Harness.Dashboard.RunFeed
   alias Harness.Project
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
+  alias Harness.ResultStore
   alias Harness.Roadmap.Item
   alias Harness.Run.Result
   alias Harness.Run.Worker
 
   setup do
+    result_store = Application.get_env(:harness, :result_store)
+
     ProjectRegistry.reset()
     on_exit(fn -> Application.delete_env(:harness, :oban_insert) end)
     on_exit(fn -> Application.delete_env(:harness, :roadmap_ingest) end)
+    on_exit(fn -> Application.put_env(:harness, :result_store, result_store) end)
     on_exit(fn -> Application.delete_env(:harness, :run_starter) end)
     on_exit(fn -> Application.delete_env(:harness, :test_worker_result) end)
     :ok
@@ -174,7 +180,7 @@ defmodule Harness.ObanDispatchTest do
              })
 
     assert_received {:ingest, {:id, "48"}, "worker-project", :claude}
-    assert_received {:start_run, "48", "worker-project", Harness.AgentAdapter.Claude, "oban-job-123"}
+    assert_received {:start_run, "48", "worker-project", Claude, "oban-job-123"}
   end
 
   test "worker threads a persisted :env override from job args into start_run" do
@@ -391,6 +397,51 @@ defmodule Harness.ObanDispatchTest do
              Worker.perform(%{terminal_job | attempt: 2})
 
     assert is_integer(seconds) and seconds > 0
+  end
+
+  test "worker records and broadcasts a monitored run process crash" do
+    root = Path.join(System.tmp_dir!(), "harness-worker-crash-#{System.unique_integer([:positive])}")
+    Application.put_env(:harness, :result_store, {Harness.ResultStore.File, root: root})
+
+    project = ProjectFixture.from_repo("/tmp/harness-worker", name: "crash-project")
+    assert :ok = ProjectRegistry.register(project)
+    :ok = RunFeed.subscribe()
+
+    Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts ->
+      {:ok, item("134", :claude)}
+    end)
+
+    Application.put_env(:harness, :run_starter, fn %Item{} = _item, _project, _adapter, _opts ->
+      {:ok, "run-crashed-worker", spawn(fn -> exit(:boom) end)}
+    end)
+
+    assert {:cancel, {:run_crashed, :boom}} =
+             Worker.perform(%Oban.Job{
+               id: 134,
+               attempt: 1,
+               args: %{
+                 "project_name" => "crash-project",
+                 "item_id" => "134",
+                 "adapter_module" => "Elixir.Harness.AgentAdapter.Claude"
+               }
+             })
+
+    assert {:ok, [record]} = ResultStore.list_run_records(run_id: "run-crashed-worker")
+    assert record.batch_id == "oban-job-134"
+    assert record.task_id == "134"
+    assert record.project_name == "crash-project"
+    assert record.agent == :claude
+    assert record.adapter == Claude
+    assert record.state == :failed
+    assert record.reason == {:run_crashed, :boom}
+
+    assert_receive {:harness_run_settled, status}
+    assert status.run_id == "run-crashed-worker"
+    assert status.task_id == "134"
+    assert status.project_name == "crash-project"
+    assert status.agent == :claude
+    assert status.state == :failed
+    assert status.reason == {:run_crashed, :boom}
   end
 
   test "worker cancels loudly for invalid job arguments" do

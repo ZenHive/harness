@@ -6,13 +6,17 @@ defmodule Harness.Run.Worker do
   use Oban.Worker, queue: :default, max_attempts: 20
 
   alias Harness.AgentRegistry
+  alias Harness.Dashboard.RunFeed
   alias Harness.Project
   alias Harness.ProjectRegistry
+  alias Harness.ResultStore
   alias Harness.Roadmap
   alias Harness.Roadmap.Item
   alias Harness.Run.FailureClass
+  alias Harness.Run.LogRecord
   alias Harness.Run.Result
   alias Harness.Run.RetryPolicy
+  alias Harness.Run.Status
   alias Harness.Run.Supervisor, as: RunSupervisor
 
   require Logger
@@ -91,6 +95,7 @@ defmodule Harness.Run.Worker do
   @spec run_once(Oban.Job.t(), Item.t(), Project.t(), module()) :: {:ok, Result.t()} | {:error, term()}
   defp run_once(%Oban.Job{} = job, %Item{} = item, %Project{} = project, adapter) do
     checkpoint(job, "run_started")
+    started_at_ms = System.monotonic_time(:millisecond)
 
     # Best-effort claim (run-lifecycle owner per Task 131). Failure logs but does
     # not abort the run; next cron tick's ready/next will skip this task while it
@@ -99,33 +104,83 @@ defmodule Harness.Run.Worker do
 
     case start_run(item, project, adapter, run_opts(job, item)) do
       {:ok, run_id, pid} ->
-        {:ok, await_run(run_id, Process.monitor(pid), item)}
+        {:ok, await_run(run_id, Process.monitor(pid), item, project, adapter, job, started_at_ms)}
 
       {:error, reason} ->
         {:error, {:start_run_failed, reason}}
     end
   end
 
-  @spec await_run(String.t(), reference(), Item.t()) :: Result.t()
-  defp await_run(run_id, ref, %Item{} = item) do
+  @spec await_run(String.t(), reference(), Item.t(), Project.t(), module(), Oban.Job.t(), integer()) :: Result.t()
+  defp await_run(run_id, ref, %Item{} = item, %Project{} = project, adapter, %Oban.Job{} = job, started_at_ms) do
     receive do
       {:harness_run, ^run_id, %Result{} = result} ->
         Process.demonitor(ref, [:flush])
         result
 
       {:DOWN, ^ref, :process, _pid, reason} ->
-        %Result{
+        result = %Result{
           run_id: run_id,
           task_id: item.id,
           state: :failed,
           reason: {:run_crashed, reason}
         }
+
+        record_crashed_run(result, item, project, adapter, job, started_at_ms)
+        result
     end
   end
 
+  @spec record_crashed_run(Result.t(), Item.t(), Project.t(), module(), Oban.Job.t(), integer()) :: :ok
+  defp record_crashed_run(
+         %Result{} = result,
+         %Item{} = item,
+         %Project{} = project,
+         adapter,
+         %Oban.Job{} = job,
+         started_at_ms
+       ) do
+    record =
+      LogRecord.from_result(result,
+        batch_id: batch_id(job),
+        agent: item.agent,
+        requested_model: requested_model(item),
+        adapter: adapter,
+        project_name: project.name,
+        duration_ms: duration_ms(started_at_ms),
+        domains: item.domains
+      )
+
+    record
+    |> ResultStore.record_run()
+    |> log_store_error(result.run_id)
+
+    record
+    |> Status.from_log_record()
+    |> RunFeed.broadcast_settled()
+  end
+
+  @spec requested_model(Item.t()) :: String.t() | nil
+  defp requested_model(%Item{model: model}) when is_binary(model), do: model
+  defp requested_model(%Item{}), do: nil
+
+  @spec batch_id(Oban.Job.t()) :: String.t()
+  defp batch_id(%Oban.Job{id: id}) when is_integer(id), do: "oban-job-#{id}"
+
+  @spec duration_ms(integer()) :: non_neg_integer()
+  defp duration_ms(started_at_ms), do: max(0, System.monotonic_time(:millisecond) - started_at_ms)
+
+  @spec log_store_error(:ok | {:error, term()}, String.t()) :: :ok
+  defp log_store_error(:ok, _run_id), do: :ok
+
+  defp log_store_error({:error, reason}, run_id) do
+    Logger.warning("harness run worker: failed to persist crashed run record #{run_id}: #{inspect(reason)}")
+    :ok
+  end
+
   @spec run_opts(Oban.Job.t(), Item.t()) :: keyword()
-  defp run_opts(%Oban.Job{id: id, args: args}, %Item{} = item) when is_integer(id) do
-    opts = [batch_id: "oban-job-#{id}", subscriber: self()]
+  defp run_opts(%Oban.Job{id: id, args: args} = job, %Item{} = item) when is_integer(id) do
+    opts = [batch_id: batch_id(job), subscriber: self()]
 
     opts =
       case item.model do
