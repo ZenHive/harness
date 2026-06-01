@@ -3806,19 +3806,20 @@ id = "119"
 phase = 13
 bundle = "capability-bench"
 milestone = "v0_10"
-status = "pending"
+status = "in_progress"
 title = "Capability scoring + persistence — per-(agent,domain) score from AgentEvaluation comparisons"
-model = "codex"
 scores = { d = 6, b = 10, u = 10 }
 depends_on = [116, 118]
 acceptance_criteria = ["A capability score is computed per (agent, domain) from corpus-run results: success_rate, cost_to_green, mean repair_attempts, plus a documented composite (success-rate-dominant, cost as tiebreaker)", "Scores persist with a scored_at timestamp and the corpus version they were measured against", "Raw per-run metrics are retained alongside the composite so it can be recomputed/retuned without re-dispatching", "An unmeasured (agent, domain) cell is representable as 'no data' — distinct from a measured-low score", "Tests cover: scoring a domain from a seeded Comparison set, the no-data cell, and recomputing the composite from retained raw metrics"]
 out_of_scope = ["Re-running the comparison primitive — Batch.AgentEvaluation (one task -> N agents -> Comparison) already exists and is reused as-is", "Decay / staleness logic — Task 120", "Routing decisions that consume the score — Task 121", "Scheduling the benchmark runs — Task 122"]
+model = "codex"
 body = """
 Turn the per-adapter metrics Batch.AgentEvaluation already produces (verdict, repair_attempts, duration_ms, token_usage, first_attempt_failed_check_count) into a per-(agent, domain) capability SCORE, persisted with scored_at. The comparison primitive exists; this adds the missing ranking + storage: a composite per agent per domain aggregated over the benchmark-corpus runs for that domain, written to a store so routing (Task 121) and staleness (Task 120) can read it.
 
 Define the composite honestly — success-rate-dominant, cost as tiebreaker — and retain the raw metrics alongside the score so the composite can be retuned without re-running the (expensive) benchmark.
 """
 created_at = "2026-05-31"
+started_at = "2026-06-01"
 scored_at = "2026-05-31"
 
 [[task]]
@@ -4229,7 +4230,7 @@ shipped_in = "0fdde57"
 id = "138"
 phase = 13
 bundle = "postgres-results"
-status = "pending"
+status = "in_progress"
 title = "mix harness.import_results — one-shot file-store to Postgres importer"
 scores = { d = 2, b = 2, u = 2 }
 markers = ["parallel"]
@@ -4243,6 +4244,7 @@ Optional cutover tool for Task 137: import existing file-backed run/batch record
 Operators who don't need pre-cutover history skip this entirely; the Postgres store starts empty and fills from the next settled run. Unpinned from the v0_10 milestone on purpose: it's operational continuity tooling, not part of the routing-hypothesis test.
 """
 created_at = "2026-06-01"
+started_at = "2026-06-01"
 scored_at = "2026-06-01"
 
 [[task]]
@@ -4250,7 +4252,7 @@ id = "139"
 phase = 13
 bundle = "postgres-results"
 milestone = "v0_10"
-status = "pending"
+status = "in_progress"
 title = "Dashboard/KPI SQL fast paths — aggregate in Postgres instead of loading every run record into memory"
 scores = { d = 3, b = 4, u = 5 }
 markers = ["parallel"]
@@ -4270,6 +4272,7 @@ The KPI ledger (Harness.AgentKPI.aggregate via Dashboard.KPILive), run history (
 Consumer evidence: Tasks 114/115 (production-kpis bundle, done) shipped the in-memory KPI aggregation this pushes down into SQL; Task 134 documents the operator pain of run history as load-everything in-memory state. The capability-bench dataset (Tasks 116+) reads the same per-(agent, domain) facts.
 """
 created_at = "2026-06-01"
+started_at = "2026-06-01"
 scored_at = "2026-06-01"
 
 [[task]]
@@ -4484,7 +4487,7 @@ shipped_in = "5772667"
 id = "149"
 phase = 7
 bundle = "multi-project"
-status = "pending"
+status = "in_progress"
 title = "Parameterize the :rust preset (target_dir/release/timeout/env) for durable rexex config — env field itself shipped in 145"
 scores = { d = 2, b = 3, u = 3 }
 acceptance_criteria = [":rust preset accepts `{:rust, opts}` via Preset.fetch(:rust, opts) + Preset.Rust.preset/1: :target_dir (adds --target-dir to clippy/test/build, omitted on fmt), :release (default keeps `cargo build --release`; false => plain `cargo build`), :timeout_per_check, and :env (a %{String => Check.env_value} stamped onto the stack's checks, reusing the Check.env field shipped in task 145); bare `:rust` is unchanged (back-compat test)", "rexex's config/dev.local.exs expresses its tuned Rust stack struct-free and DURABLY via `preset: {:rust, target_dir: ..., release: false, timeout_per_check: 1_800_000, env: %{\"DATABASE_URL\" => \"postgres://localhost/rexex_test\"}}`; the node boots cleanly and a restart no longer reverts rexex to the stock preset", "A test proves the :rust preset's :env opt lands on the test check and reaches the spawned cargo command (builds on task 145's Check.env Port threading)"]
@@ -4511,6 +4514,41 @@ FIX:
 Then rexex's tuned registration survives a restart instead of relying on the runtime register hack.
 
 CONTEXT: empirically (this machine) the cold reth compile is ~1 min/check, not the tens-of-minutes initially feared, so `:target_dir`/`:timeout_per_check` are hygiene/headroom; the `env` field (item 1) is the actual correctness blocker for grading rexex. Backend-only (Verification / CheckStack / preset / registry) — headless-dispatchable, no UI.
+"""
+created_at = "2026-06-01"
+started_at = "2026-06-01"
+scored_at = "2026-06-01"
+
+[[task]]
+id = "150"
+phase = 11
+bundle = "autolanding"
+milestone = "v0_9"
+status = "pending"
+title = "Run recovery — hold/steer/resume gen_statem API (operator-mediated mid-run recovery)"
+scores = { d = 3, b = 6, u = 5 }
+depends_on = [112]
+acceptance_criteria = ["hold/1 from :running parks in :held at the next settle boundary (graceful); hold(run, interrupt: true) kills the agent and parks immediately", "while :held the lifetime timer is suspended and the Task-112 reflex watchdog does not fire; resume/1 re-arms the lifetime timer", "steer/2 stashes operator text; resume/1 re-enters :running and build_invocation/1 emits a session: :resume Invocation carrying the operator prompt into the same worktree", "max_hold_timeout elapsing settles :failed with reason :hold_expired; cancel/1 from :held tears the worktree down as usual", "steer/2 on a session_resume: false adapter returns {:error, :resume_unsupported}", "Run.Status exposes held? + hold reason; offline gen_statem tests cover every branch via the test-double adapter"]
+out_of_scope = ["Live mid-flight stdin steering of the running agent (EOF-spawn constraint; deferred from Task 112)", "Dashboard Hold/Steer/Resume UI controls + worktree-path surface (Solution 2 — separate hand-built UI task)", "Multi-operator concurrent co-drive of one worktree"]
+files_to_modify = ["lib/harness/run.ex", "lib/harness/run/status.ex", "config/runtime.exs"]
+touches = ["lib/harness/run.ex", "lib/harness/run/status.ex", "lib/harness/run/reflex.ex", "config/runtime.exs", "test/harness/run_test.exs"]
+body = """
+Backend half of the run-recovery design — full spec in docs/run-recovery-design.md (authored this session; this task IS that doc's Solution 1). Solution 2 (dashboard Hold/Steer/Resume controls) is a separate hand-built UI follow-on and depends on this API.
+
+PROBLEM: an operator watching a run struggle (wandering, stuck mid-repair, about to exhaust attempts) has only cancel/1 today — kill + settle :failed (run.ex:883-892). No "freeze for a human, then continue" path. Re-dispatching from scratch throws away the worktree's partial work AND the agent's conversation.
+
+CONSTRAINT (do not fight it): the spawn feeds stdin /dev/null EOF (agent_adapter.ex:79,363-371), so there is NO live mid-flight stdin steering — exactly what Task 112 deferred. Operator input lands at a transition BOUNDARY, riding the existing repair-resume path: :running re-enter -> build_invocation/1 -> session: :resume in the same cwd-keyed worktree (run.ex:477-492,664-672,1169-1175). Claude --continue resumes by cwd; grok session log is cwd-keyed too.
+
+BUILD:
+1. New :held gen_statem state. Lifetime timer SUSPENDED while held ({{:timeout,:lifetime},:infinity,:lifetime}; re-arm on resume — run.ex:415,867); Task-112 Reflex/progress-stall watchdog does not run (no live agent). Worktree retained (held is not a settle). A max_hold_timeout safeguard (config under :run, default 30 min, :infinity disables) arms a {:state_timeout,:held_expired} so a forgotten hold can't leak a worktree — expiry settles :failed reason :hold_expired.
+2. hold/1 + hold/2: graceful by default (set hold_requested; park at next settle boundary, run.ex:536-545); interrupt: true kills the agent now (mirror do_cancel terminate_agent/1) and parks immediately. No-op from :held; {:error,:terminal} from :done/:failed.
+3. steer/2 (run, text): stash data.operator_feedback + repair_prompt_kind: :operator_steer. Callable while :held or :running (queues to boundary). Append-accumulate multiple notes.
+4. resume/1: from :held -> {:next_state,:running} (re-enter spawns fresh agent via build_invocation, re-arm lifetime). {:error,:not_held} otherwise.
+5. New build_invocation/1 clause for :operator_steer -> operator_steer_prompt/1 wrapping the operator note (optionally folding the last verdict's failing checks), session: :resume. Clear operator_feedback + reset repair_prompt_kind on green/settle like the existing repair clauses (run.ex:647).
+6. Adapter capability degradation: resume gated by capabilities.session_resume (claude.ex:52, agent_adapter.ex:433). For session_resume:false adapters (antigravity) steer returns {:error,:resume_unsupported} (explicit over silently lossy — operator falls back to co-editing the worktree + fresh re-dispatch).
+7. Surface held?/hold reason in Run.Status so status/1 and the dashboard reflect it.
+
+Follow the descripex api(...) + :gen_statem.call pattern used by cancel/1.
 """
 created_at = "2026-06-01"
 scored_at = "2026-06-01"

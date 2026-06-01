@@ -98,6 +98,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Grok token usage now recovered from its on-disk session log (KPI showed 0).**
+  Grok's headless `--output-format streaming-json` stdout — the stream harness
+  captures over the Port — carries no token counts; its terminal `end` event is
+  only `stopReason`/`sessionId`/`requestId`. So `Harness.TokenUsage.parse(:grok,
+  …)` honestly returned empty and the KPI "Mean tokens" column read `0` for grok
+  while cursor/codex showed real figures. Grok *does* record usage, but to a
+  session log under `$HOME` (`~/.grok/sessions/<encoded cwd>/<id>/updates.jsonl`,
+  cumulative `_meta.totalTokens`), which survives worktree teardown. New
+  `Harness.TokenUsage.GrokSession` locates that file by the globally-unique
+  `sessionId` (sidestepping the cwd percent-encoding; session id validated to
+  the uuid charset so it can't traverse) and recovers the cumulative total.
+  - `Harness.Run` accumulates grok usage by **replacing** (not summing) the
+    running total with the recovered cumulative figure, since `--continue` repair
+    attempts share one session log whose `totalTokens` already spans all attempts.
+  - `Harness.TokenUsage.measured?/1` now treats a total-only usage (grok reports
+    no input/output split) as measured, so the recovered figure surfaces in both
+    the KPI rollup and the run-detail transcript token row.
+  - Fix applies to grok runs settling after the change; a pre-fix run's persisted
+    record keeps its `nil` total until re-run or backfilled.
+
 - **Cross-agent transcript-rendering inconsistencies on the run dashboard.**
   Comparing live cursor/codex/grok runs surfaced four UX divergences in how the
   same dashboard renders different agents' transcripts:

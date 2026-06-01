@@ -17,6 +17,10 @@ defmodule Harness.TokenUsageTest do
       assert TokenUsage.measured?(%TokenUsage{output: 0})
       assert TokenUsage.measured?(%TokenUsage{input: 5})
     end
+
+    test "a total-only usage (grok session recovery, no input/output split) is measured" do
+      assert TokenUsage.measured?(%TokenUsage{total: 123_904})
+    end
   end
 
   describe "add/2" do
@@ -31,6 +35,13 @@ defmodule Harness.TokenUsageTest do
       usage = %TokenUsage{input: 4, output: 8, total: 12}
       assert TokenUsage.add(usage, TokenUsage.empty()) == %{usage | total: 12}
       assert TokenUsage.add(TokenUsage.empty(), TokenUsage.empty()) == TokenUsage.empty()
+    end
+
+    test "adding empty preserves a total-only usage (grok session recovery)" do
+      recovered = %TokenUsage{total: 123_904}
+
+      assert TokenUsage.add(recovered, TokenUsage.empty()) == recovered
+      assert TokenUsage.add(TokenUsage.empty(), recovered) == recovered
     end
   end
 

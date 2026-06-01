@@ -93,6 +93,7 @@ defmodule Harness.StatusView do
       {:ok, records} ->
         records
         |> Enum.reject(&MapSet.member?(live_ids, &1.run_id))
+        |> Enum.filter(&settled?/1)
         |> Enum.sort_by(& &1.run_id, :desc)
         |> Enum.take(@history_limit)
         |> Enum.map(&history_entry/1)
@@ -101,6 +102,21 @@ defmodule Harness.StatusView do
         Logger.warning("harness status view: failed to list run records: #{inspect(reason)}")
         []
     end
+  end
+
+  # Settled records always persist a terminal state; anything else (a record
+  # leaked by a stale schema or a misbehaving writer) is skipped so one bad
+  # record never takes down the whole snapshot — and never displaces a good
+  # record from the bounded history window.
+  @spec settled?(LogRecord.t()) :: boolean()
+  defp settled?(%LogRecord{state: state}) when state in [:done, :failed], do: true
+
+  defp settled?(%LogRecord{} = record) do
+    Logger.warning(
+      "harness status view: skipping history record #{record.run_id} with non-terminal state #{inspect(record.state)}"
+    )
+
+    false
   end
 
   @spec history_entry(LogRecord.t()) :: run_entry()

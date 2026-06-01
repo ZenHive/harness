@@ -95,6 +95,7 @@ defmodule Harness.Run do
   alias Harness.Run.RetryPolicy
   alias Harness.Run.Status
   alias Harness.TokenUsage
+  alias Harness.TokenUsage.GrokSession
   alias Harness.Verification
   alias Harness.Verification.Check
   alias Harness.Verification.Result, as: CheckResult
@@ -1053,7 +1054,20 @@ defmodule Harness.Run do
   # the run's running total, so a multi-attempt repair loop's burn is attributable.
   # `agent_kind: nil` (test doubles, unregistered adapters) parses to an empty
   # usage, so the total stays an empty usage — never a crash.
+  #
+  # Grok is the exception: its stdout omits usage entirely, so the figure is
+  # recovered from grok's on-disk session log (`GrokSession`). That log records a
+  # *cumulative* total across `--continue` repair attempts, so the recovered
+  # value REPLACES the running total rather than summing per attempt; only when
+  # recovery yields nothing do we fall back to the (empty) stdout parse.
   @spec accumulate_token_usage(data(), Outcome.t()) :: data()
+  defp accumulate_token_usage(%{agent_kind: :grok} = data, %Outcome{output: output}) do
+    case GrokSession.usage(output) do
+      %TokenUsage{} = recovered when recovered.total != nil -> %{data | token_usage: recovered}
+      _ -> %{data | token_usage: TokenUsage.add(data.token_usage, TokenUsage.parse(:grok, output))}
+    end
+  end
+
   defp accumulate_token_usage(data, %Outcome{output: output}) do
     attempt = TokenUsage.parse(data.agent_kind, output)
     %{data | token_usage: TokenUsage.add(data.token_usage, attempt)}

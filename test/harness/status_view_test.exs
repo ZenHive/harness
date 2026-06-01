@@ -140,6 +140,18 @@ defmodule Harness.StatusViewTest do
       assert :ok = Run.cancel(run_id)
     end
 
+    test "skips a persisted record with a non-terminal state instead of crashing the snapshot" do
+      :ok = ResultStore.record_run(record("sv-hist-good", state: :done, verdict: :pass))
+      :ok = ResultStore.record_run(record("sv-hist-poison", state: :passed))
+
+      {history, log} = ExUnit.CaptureLog.with_log(fn -> StatusView.snapshot().history end)
+      ids = Enum.map(history, & &1.status.run_id)
+
+      assert "sv-hist-good" in ids
+      refute "sv-hist-poison" in ids
+      assert log =~ "skipping history record sv-hist-poison"
+    end
+
     test "render/1 ignores history so `mix harness.status` stays current-fleet" do
       history = [
         %{status: %Status{run_id: "sv-hist-x", task_id: "hist-task", state: :done}, bucket: :green, detail: nil}

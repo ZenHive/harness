@@ -46,6 +46,7 @@ defmodule Harness.Dashboard.Live do
   alias Harness.Run.Status
   alias Harness.RunDiff
   alias Harness.StatusView
+  alias Harness.TokenUsage.GrokSession
   alias Phoenix.LiveView.Rendered
   alias Phoenix.LiveView.Socket
 
@@ -989,7 +990,7 @@ defmodule Harness.Dashboard.Live do
   @doc false
   @spec token_label(Parser.agent_kind() | nil, binary()) :: String.t()
   def token_label(agent_kind, transcript) do
-    usage = Harness.TokenUsage.parse(agent_kind, transcript)
+    usage = token_usage(agent_kind, transcript)
 
     if Harness.TokenUsage.measured?(usage) do
       Integer.to_string(usage.total)
@@ -997,6 +998,19 @@ defmodule Harness.Dashboard.Live do
       "—"
     end
   end
+
+  # Grok omits usage on stdout; recover its cumulative total from the on-disk
+  # session log so the run-detail row matches the KPI rollup rather than reading
+  # "—" against a real figure.
+  @spec token_usage(Parser.agent_kind() | nil, binary()) :: Harness.TokenUsage.t()
+  defp token_usage(:grok, transcript) do
+    case Harness.TokenUsage.parse(:grok, transcript) do
+      %Harness.TokenUsage{} = usage when usage.total != nil -> usage
+      _ -> GrokSession.usage(transcript)
+    end
+  end
+
+  defp token_usage(agent_kind, transcript), do: Harness.TokenUsage.parse(agent_kind, transcript)
 
   @doc false
   @spec killable?(Status.t() | nil) :: boolean()

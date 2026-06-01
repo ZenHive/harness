@@ -61,25 +61,34 @@ defmodule Harness.TokenUsage do
   @spec empty() :: t()
   def empty, do: %__MODULE__{}
 
-  @doc "Returns whether any component field carries a count."
+  @doc """
+  Returns whether any field carries a count.
+
+  Includes `:total` so a usage recovered with only a cumulative total (grok's
+  on-disk session log reports no input/output split — see
+  `Harness.TokenUsage.GrokSession`) still reads as measured.
+  """
   @spec measured?(t()) :: boolean()
-  def measured?(%__MODULE__{input: nil, output: nil, cache_read: nil, cache_creation: nil}), do: false
+  def measured?(%__MODULE__{input: nil, output: nil, cache_read: nil, cache_creation: nil, total: nil}), do: false
   def measured?(%__MODULE__{}), do: true
 
   @doc """
   Sums two usages component-wise, treating `nil` as absent.
 
   `nil + nil = nil`, `nil + n = n` — so adding an empty usage is a no-op and a
-  measured field is never erased. `total` is recomputed from the result.
+  measured field is never erased. `total` sums each side's explicit total
+  (falling back to its component sum), so a total-only usage (grok session
+  recovery — see `Harness.TokenUsage.GrokSession`) survives accumulation.
   """
   @spec add(t(), t()) :: t()
   def add(%__MODULE__{} = a, %__MODULE__{} = b) do
-    put_total(%__MODULE__{
+    %__MODULE__{
       input: add_field(a.input, b.input),
       output: add_field(a.output, b.output),
       cache_read: add_field(a.cache_read, b.cache_read),
-      cache_creation: add_field(a.cache_creation, b.cache_creation)
-    })
+      cache_creation: add_field(a.cache_creation, b.cache_creation),
+      total: add_field(side_total(a), side_total(b))
+    }
   end
 
   @doc """
@@ -261,9 +270,16 @@ defmodule Harness.TokenUsage do
   defp add_field(a, b), do: a + b
 
   @spec put_total(t()) :: t()
-  defp put_total(%__MODULE__{} = usage) do
+  defp put_total(%__MODULE__{} = usage), do: %{usage | total: component_sum(usage)}
+
+  # A side's best-known total: its explicit total, falling back to its component
+  # sum (a hand-built usage may carry components without a precomputed total).
+  @spec side_total(t()) :: non_neg_integer() | nil
+  defp side_total(%__MODULE__{total: total} = usage), do: total || component_sum(usage)
+
+  @spec component_sum(t()) :: non_neg_integer() | nil
+  defp component_sum(%__MODULE__{} = usage) do
     components = Enum.filter([usage.input, usage.output, usage.cache_read, usage.cache_creation], &is_integer/1)
-    total = if components == [], do: nil, else: Enum.sum(components)
-    %{usage | total: total}
+    if components == [], do: nil, else: Enum.sum(components)
   end
 end
