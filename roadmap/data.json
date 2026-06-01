@@ -5134,7 +5134,7 @@
       "id": "135",
       "phase": 14,
       "bundle": "agent-rules",
-      "status": "pending",
+      "status": "done",
       "title": "harness MCP tool names use '__' delimiter — rejected by grok (and strict MCP clients)",
       "scores": {
         "d": 3,
@@ -5159,9 +5159,14 @@
         "lib/harness/dashboard/mcp_server.ex",
         "lib/harness/project_registry.ex"
       ],
+      "shipped_in": "ef56bb0",
       "body": "OBSERVED 2026-06-01 in a grok dispatch transcript (run-1780277844276-9fec2836): grok's MCP client emitted 33x `ERROR Skipping MCP tool: qualified name contains '__' more than once ... server=harness tool=dispatch__task qualified=harness__dispatch__task`. harness names its MCP tools `<group>__<action>` (dispatch__task, roadmap__list, result_store__load_batch). When a client namespaces a server's tool as `<server>__<tool>`, harness tools become `harness__dispatch__task` — '__' twice — and grok rejects ALL of them. Net: harness's entire MCP surface is unusable from grok (and any client reserving '__' as a namespace boundary).\n\nNames derive from descripex api() annotations + per-module `namespace:` (namespace: \"/dispatch\" -> dispatch__task). Fix at the convention source so all tools change together; do NOT special-case grok. Candidate: a single delimiter that is not '__' consistent with MCP tool-name charset ([a-zA-Z0-9_-]). Keep Harness.Chat.Tools + MCP server as single source of truth so both rename in lockstep. Verify by dispatching to grok: zero skip errors + tools callable.\n",
       "created_at": "2026-06-01",
+      "done_at": "2026-06-01",
       "scored_at": "2026-06-01",
+      "implemented": "Manifest.@tool_name_delimiter \"-\" + tool_name_delimiter/0 as single source; transform_tool_name/1 post-processes descripex's hardcoded '__' joiner to '-' so client <server>__<tool> namespacing yields exactly one '__'. struct_arg_tool?/1 + Chat.Tools.resolve_tool! reverse-split on the delimiter. All 35 tool names + docstrings + tests updated at the convention source; MCP server + Chat.Tools stay single source. New invariant test asserts no tool name contains '__'. Delivered by grok (run run-1780279364278-38f3dc26); harness verdict was a spurious deps-missing env failure — independently verified 15/15 green with deps present, cherry-picked ef56bb0.",
+      "delivered_by": "grok",
+      "verified": true,
       "cross_repo": []
     }
   ]

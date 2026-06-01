@@ -49,6 +49,7 @@ defmodule Harness.Manifest do
   # read the emitted names (and split for reverse lookup) from here.
   @tool_name_delimiter "-"
 
+  @doc "The single group/action delimiter used in generated MCP/chat tool names (not `\"__\"`)."
   @spec tool_name_delimiter() :: String.t()
   def tool_name_delimiter, do: @tool_name_delimiter
 
@@ -113,6 +114,7 @@ defmodule Harness.Manifest do
   @spec struct_arg_tool?(map()) :: boolean()
   defp struct_arg_tool?(%{name: name}) do
     delim = @tool_name_delimiter
+
     with [prefix, func] <- String.split(name, delim, parts: 2),
          {:ok, module} <- Map.fetch(@prefix_to_module, prefix) do
       exchange_data_params?(module, func)

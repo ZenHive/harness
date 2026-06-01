@@ -65,9 +65,9 @@ defmodule Harness.Chat.ToolsTest do
     registry = Tools.build()
     names = Map.keys(registry)
 
-    assert Enum.any?(names, &(&1 == "dispatch-task"))
-    assert Enum.any?(names, &(&1 == "roadmap-list"))
-    assert Enum.any?(names, &(&1 == "result_store-list_run_records"))
+    assert "dispatch-task" in names
+    assert "roadmap-list" in names
+    assert "result_store-list_run_records" in names
 
     # Core fix: no tool name contains the old group__action joiner.
     # After a client namespaces as <server>__<tool>, qualified has "__" exactly once.
