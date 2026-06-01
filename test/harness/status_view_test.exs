@@ -47,6 +47,23 @@ defmodule Harness.StatusViewTest do
     assert StatusView.classify(%Status{state: :failed, run_id: "r", task_id: "1"}) == :red
   end
 
+  test "classify/1 covers every lifecycle state in the Status typespec" do
+    # Regression guard for Task 148: a Run state (e.g. :consulting) added without a
+    # classify/1 clause crashes every concurrent snapshot/0 caller, poisoning
+    # verification for all dispatched runs.
+    in_flight_states = [:dispatched, :running, :committing, :verifying, :consulting]
+
+    for state <- in_flight_states do
+      assert StatusView.classify(%Status{state: state, run_id: "r", task_id: "1"}) == :in_flight
+
+      assert StatusView.classify(%Status{state: state, run_id: "r", task_id: "1", repair_attempts: 1}) ==
+               :repairing
+    end
+
+    assert StatusView.classify(%Status{state: :done, run_id: "r", task_id: "1"}) == :green
+    assert StatusView.classify(%Status{state: :failed, run_id: "r", task_id: "1"}) == :red
+  end
+
   test "render/1 groups runs into the four buckets with failure and availability detail" do
     snapshot = %{
       runs: [
