@@ -1,0 +1,16 @@
+id = "bench.ecto.changeset_normalize"
+version = 1
+domains = ["ecto", "elixir"]
+expected_green = true
+
+[task]
+intent = "Add Harness.Benchmark.Eval.Ecto.ChangesetNormalize — cast email, trim/lowercase it in changeset/2, validate required and @ format."
+acceptance = [
+  "changeset/2 trims and lowercases email",
+  "blank email is invalid",
+  "malformed email is invalid"
+]
+
+[target]
+project = "harness"
+check_stack = "elixir"

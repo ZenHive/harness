@@ -1,0 +1,16 @@
+id = "bench.genserver.accumulator"
+version = 1
+domains = ["genserver"]
+expected_green = true
+
+[task]
+intent = "Add Harness.Benchmark.Eval.Genserver.Accumulator — a GenServer that sums integers via cast and returns the total via call."
+acceptance = [
+  "cast/2 adds integers to running total",
+  "call :total returns current sum",
+  "start_link/1 supports a custom name option"
+]
+
+[target]
+project = "harness"
+check_stack = "elixir"

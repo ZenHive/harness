@@ -1,0 +1,16 @@
+id = "bench.liveview.tally"
+version = 1
+domains = ["liveview", "phoenix"]
+expected_green = true
+
+[task]
+intent = "Add Harness.Benchmark.Eval.Liveview.Tally — a LiveView with a count assign, increment/decrement buttons, and a reset event."
+acceptance = [
+  "mount/3 initializes count to zero",
+  "handle_event updates count on inc, dec, and reset",
+  "render/1 shows the current count"
+]
+
+[target]
+project = "harness"
+check_stack = "elixir"

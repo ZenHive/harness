@@ -1,0 +1,16 @@
+id = "bench.liveview.form_validate"
+version = 1
+domains = ["liveview", "phoenix"]
+expected_green = true
+
+[task]
+intent = "Add Harness.Benchmark.Eval.Liveview.FormValidate — a LiveView with a name form; validate rejects blank names and shows an error assign."
+acceptance = [
+  "handle_event validate marks blank names invalid",
+  "handle_event save only succeeds when valid",
+  "render shows error text when invalid"
+]
+
+[target]
+project = "harness"
+check_stack = "elixir"
