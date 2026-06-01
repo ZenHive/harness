@@ -37,6 +37,11 @@ defmodule Harness.CheckStack do
       crate in `"rust"`, a Phoenix app in `"elixir"`). A git worktree is always
       repo-root-granular, so `workdir` is how a stack's checks reach the right
       buildable root within that worktree.
+    * `setup` — non-grading bootstrap commands run before `checks`, in order,
+      in the same `workdir`. A setup failure is an environment error
+      (`{:setup_failed, _}` from `Harness.Verification.run/2`), not a red
+      verdict — the repair loop must never treat missing deps or a network
+      blip during `mix deps.get` as agent-caused. Defaults to `[]`.
   """
 
   alias Harness.Verification.Check
@@ -47,11 +52,12 @@ defmodule Harness.CheckStack do
   @type t :: %__MODULE__{
           name: atom(),
           checks: [Check.t()],
+          setup: [Check.t()],
           parser: module() | nil,
           timeout_per_check: timeout() | nil,
           workdir: String.t()
         }
 
   @enforce_keys [:name, :checks]
-  defstruct [:name, :checks, parser: nil, timeout_per_check: nil, workdir: ""]
+  defstruct [:name, :checks, setup: [], parser: nil, timeout_per_check: nil, workdir: ""]
 end

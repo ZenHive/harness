@@ -32,6 +32,11 @@ defmodule Harness.CheckStack.Preset.ElixirTest do
       assert credo.post_process == {Credo, :apply}
     end
 
+    test "declares mix deps.get as a setup bootstrap" do
+      %CheckStack{setup: setup} = Preset.Elixir.preset()
+      assert [%Check{name: "deps", command: "mix", args: ["deps.get"]}] = setup
+    end
+
     test "leaves parser and timeout_per_check nil (verification default wins)" do
       stack = Preset.Elixir.preset()
       assert stack.parser == nil
@@ -85,6 +90,11 @@ defmodule Harness.CheckStack.Preset.ElixirTest do
     test "the credo check still declares the TagTODO baseline filter" do
       credo = Enum.find(Preset.Elixir.precommit().checks, &(&1.name == "credo"))
       assert credo.post_process == {Credo, :apply}
+    end
+
+    test "declares mix deps.get as a setup bootstrap" do
+      %CheckStack{setup: setup} = Preset.Elixir.precommit()
+      assert [%Check{name: "deps", command: "mix", args: ["deps.get"]}] = setup
     end
   end
 end

@@ -67,6 +67,14 @@ defmodule Harness.Verification do
           :no_checks
           | {:worktree_not_found, String.t()}
           | {:workdir_not_found, String.t()}
+          | {:setup_failed, setup_failure()}
+
+  @typedoc "A stack's setup/bootstrap step failed — an environment error, not a red verdict."
+  @type setup_failure :: %{
+          required(:stack) => atom(),
+          required(:workdir) => String.t(),
+          required(:result) => Result.t()
+        }
 
   @doc """
   Runs the check stack against the worktree at `worktree_path` and returns a verdict.
@@ -103,7 +111,8 @@ defmodule Harness.Verification do
   Returns `{:ok, %Harness.Verification.Verdict{}}`, or `{:error, reason}` —
   `:no_checks` when no stack has checks, `{:worktree_not_found, path}` when
   `worktree_path` is not a directory, `{:workdir_not_found, dir}` when a
-  stack's resolved `workdir` does not exist.
+  stack's resolved `workdir` does not exist, `{:setup_failed, details}` when a
+  stack's bootstrap step fails (environment error — not a red verdict).
   """
   @spec run(String.t(), keyword()) :: {:ok, Verdict.t()} | {:error, error()}
   def run(worktree_path, opts \\ []) when is_binary(worktree_path) do
@@ -156,21 +165,59 @@ defmodule Harness.Verification do
   # concatenates the results stack-by-stack. Bails with `{:workdir_not_found,
   # dir}` the first time a stack's resolved directory is missing — a clear
   # harness error instead of the cryptic per-tool "could not find <manifest>"
-  # a misconfigured workdir would otherwise produce.
+  # a misconfigured workdir would otherwise produce. Setup/bootstrap runs
+  # before each stack's checks; a setup failure halts with `{:setup_failed, _}`.
   @spec run_stacks([CheckStack.t()], String.t(), timeout() | nil, keyword()) ::
-          {:ok, [Result.t()]} | {:error, {:workdir_not_found, String.t()}}
+          {:ok, [Result.t()]}
+          | {:error, {:workdir_not_found, String.t()} | {:setup_failed, setup_failure()}}
   defp run_stacks(stacks, path, timeout_override, post_process_opts) do
     Enum.reduce_while(stacks, {:ok, []}, fn stack, {:ok, acc} ->
-      check_dir = stack_dir(path, stack.workdir)
-
-      if File.dir?(check_dir) do
-        timeout = timeout_override || stack.timeout_per_check || configured_timeout()
-        results = Enum.map(stack.checks, &run_check(&1, check_dir, timeout, post_process_opts))
-        {:cont, {:ok, acc ++ results}}
-      else
-        {:halt, {:error, {:workdir_not_found, check_dir}}}
+      case run_stack(stack, path, timeout_override, post_process_opts) do
+        {:ok, results} -> {:cont, {:ok, acc ++ results}}
+        {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
+  end
+
+  @spec run_stack(CheckStack.t(), String.t(), timeout() | nil, keyword()) ::
+          {:ok, [Result.t()]}
+          | {:error, {:workdir_not_found, String.t()} | {:setup_failed, setup_failure()}}
+  defp run_stack(stack, path, timeout_override, post_process_opts) do
+    check_dir = stack_dir(path, stack.workdir)
+
+    if File.dir?(check_dir) do
+      timeout = timeout_override || stack.timeout_per_check || configured_timeout()
+
+      with :ok <- run_setup(stack, check_dir, timeout, post_process_opts) do
+        {:ok, Enum.map(stack.checks, &run_check(&1, check_dir, timeout, post_process_opts))}
+      end
+    else
+      {:error, {:workdir_not_found, check_dir}}
+    end
+  end
+
+  # Runs a stack's non-grading bootstrap commands before its checks. Empty setup
+  # is a no-op. The first failing setup step halts with `{:setup_failed, _}` —
+  # an environment error distinct from a red verdict.
+  @spec run_setup(CheckStack.t(), String.t(), timeout(), keyword()) ::
+          :ok | {:error, {:setup_failed, setup_failure()}}
+  defp run_setup(%CheckStack{setup: []}, _check_dir, _timeout, _post_process_opts), do: :ok
+
+  defp run_setup(%CheckStack{} = stack, check_dir, timeout, post_process_opts) do
+    stack.setup
+    |> Enum.reduce_while(:ok, fn check, :ok ->
+      case run_check(check, check_dir, timeout, post_process_opts) do
+        %Result{status: :pass} ->
+          {:cont, :ok}
+
+        %Result{} = result ->
+          {:halt, {:error, {:setup_failed, %{stack: stack.name, workdir: check_dir, result: result}}}}
+      end
+    end)
+    |> case do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   # The absolute cwd a stack's checks run in: the worktree root, offset by the

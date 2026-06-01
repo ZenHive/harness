@@ -5,6 +5,10 @@ defmodule Harness.CheckStack.Preset.Rust do
   Four checks, in the order they run: `fmt`, `clippy`, `test`, `build`.
   `cargo test` uses `--message-format=json` so the raw captured output is ready
   for future structured parsers without changing the preset contract.
+
+  No `setup` bootstrap is declared — unlike Elixir's `mix deps.get`, `cargo`
+  fetches crate dependencies on the first build/test invocation, so a fresh
+  worktree needs no separate seed step.
   """
 
   alias Harness.CheckStack

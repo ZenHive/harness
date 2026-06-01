@@ -40,6 +40,8 @@ defmodule Harness.CheckStack.Preset.Elixir do
 
   @sobelow_check %Check{name: "sobelow", command: "mix", args: ["sobelow", "--exit", "--skip"]}
 
+  @deps_setup %Check{name: "deps", command: "mix", args: ["deps.get"]}
+
   @checks [
     %Check{name: "test", command: "mix", args: ["test.json"]},
     %Check{name: "dialyzer", command: "mix", args: ["dialyzer.json"]},
@@ -57,7 +59,7 @@ defmodule Harness.CheckStack.Preset.Elixir do
   10 minutes already accommodates a cold-PLT dialyzer run on this codebase.
   """
   @spec preset() :: CheckStack.t()
-  def preset, do: %CheckStack{name: :elixir, checks: @checks}
+  def preset, do: %CheckStack{name: :elixir, setup: [@deps_setup], checks: @checks}
 
   @doc """
   Returns the mergeable-bar Elixir stack as a `%Harness.CheckStack{}` named
@@ -87,7 +89,7 @@ defmodule Harness.CheckStack.Preset.Elixir do
     threshold = Keyword.get(opts, :cover_threshold, @default_cover_threshold)
     exclude = Keyword.get(opts, :exclude, [])
 
-    %CheckStack{name: :elixir_precommit, checks: precommit_checks(threshold, exclude)}
+    %CheckStack{name: :elixir_precommit, setup: [@deps_setup], checks: precommit_checks(threshold, exclude)}
   end
 
   @spec precommit_checks(non_neg_integer(), [atom() | String.t()]) :: [Check.t()]

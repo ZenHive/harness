@@ -30,6 +30,10 @@ defmodule Harness.CheckStack.Preset.RustTest do
       assert stack.parser == nil
       assert stack.timeout_per_check == nil
     end
+
+    test "needs no setup bootstrap — cargo fetches on build" do
+      assert Preset.Rust.preset().setup == []
+    end
   end
 
   describe "verification with the Rust preset" do

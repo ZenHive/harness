@@ -514,11 +514,12 @@ scheduling are out of scope (post-Phase-7).
 
 ## Known sharp edges
 
-- **deps in the worktree.** A fresh git worktree has no `deps/` or `_build/` (both
-  gitignored). Verification's `mix test.json` etc. only pass if the *agent* ran
-  `mix deps.get` while working — which a competent agent does. If verification fails at
-  compile for missing deps, that is a harness design gap (worktree creation should seed
-  deps, or the run should `mix deps.get` before verifying) — **file it via `rmap new`**.
+- **deps in the worktree (fixed, Task 143).** A fresh git worktree has no `deps/`
+  or `_build/` (both gitignored). Verification now runs each Elixir preset's
+  `setup: [mix deps.get]` bootstrap before grading — a fresh worktree gets a
+  real verdict without the agent having to seed deps. Setup failure (network,
+  hex.pm down) is `{:setup_failed, _}` — an environment error that never enters
+  the repair loop. Rust presets need no bootstrap: `cargo` fetches on build.
 - **strict grader.** The verification preset is `test.json`, `dialyzer.json`,
   `credo --strict`, `doctor`, `sobelow --exit --skip`. Correct-but-not-pristine output
   (one missing `@doc`) goes red. Expect supervised re-dispatch cycles.

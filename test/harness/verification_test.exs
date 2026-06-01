@@ -8,6 +8,8 @@ defmodule Harness.VerificationTest do
   alias Harness.Verification.Result
   alias Harness.Verification.Verdict
 
+  @fixture_root Path.expand("../support/fixtures", __DIR__)
+
   describe "run/2 aggregation" do
     test "all checks passing yields a :pass verdict" do
       dir = worktree_dir()
@@ -255,6 +257,62 @@ defmodule Harness.VerificationTest do
     end
   end
 
+  describe "run/2 setup bootstrap" do
+    test "a setup failure is an environment error, not a red verdict" do
+      dir = worktree_dir()
+
+      stack = %CheckStack{
+        name: :broken,
+        setup: [check("bootstrap", "false")],
+        checks: [check("never-runs", stub_script("touch should-not-exist"))]
+      }
+
+      assert {:error, {:setup_failed, %{stack: :broken, workdir: ^dir, result: result}}} =
+               Verification.run(dir, check_stack: stack)
+
+      assert result.name == "bootstrap"
+      assert result.status == :fail
+      refute File.exists?(Path.join(dir, "should-not-exist"))
+    end
+
+    test "bootstraps deps in a fresh worktree and grades green when the code is green" do
+      project = copy_elixir_fixture!()
+      refute File.exists?(Path.join(project, "deps"))
+
+      stack = %CheckStack{
+        name: :elixir,
+        setup: [check("deps", "mix", ["deps.get"])],
+        checks: [
+          check("compile", "mix", ["compile"]),
+          check("test", "mix", ["test"])
+        ]
+      }
+
+      assert {:ok, %Verdict{status: :pass, results: results}} =
+               Verification.run(project, check_stack: stack)
+
+      assert File.dir?(Path.join(project, "deps"))
+      assert Enum.map(results, & &1.name) == ["compile", "test"]
+      assert Enum.all?(results, &(&1.status == :pass))
+    end
+
+    test "without setup, a deps-dependent project fails compile in a fresh worktree" do
+      project = copy_elixir_fixture!()
+      refute File.exists?(Path.join(project, "deps"))
+
+      stack = %CheckStack{
+        name: :elixir,
+        checks: [check("compile", "mix", ["compile"])]
+      }
+
+      assert {:ok, %Verdict{status: :fail, results: [result]}} =
+               Verification.run(project, check_stack: stack)
+
+      assert result.name == "compile"
+      assert result.status == :fail
+    end
+  end
+
   describe "run/2 with :check_stacks (multi-stack / workdir)" do
     test "runs a stack's checks in its workdir, relative to the worktree root" do
       repo = worktree_dir()
@@ -381,5 +439,13 @@ defmodule Harness.VerificationTest do
     File.chmod!(path, 0o755)
     on_exit(fn -> File.rm(path) end)
     path
+  end
+
+  defp copy_elixir_fixture! do
+    source = Path.join(@fixture_root, "elixir_project")
+    dest = Path.join(System.tmp_dir!(), "harness_elixir_#{System.unique_integer([:positive])}")
+    File.cp_r!(source, dest)
+    on_exit(fn -> File.rm_rf!(dest) end)
+    dest
   end
 end
