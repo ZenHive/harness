@@ -54,5 +54,25 @@ defmodule Harness.CheckStack.PresetTest do
       assert Preset.fetch(:elixir, cover_threshold: 90) == Preset.fetch(:elixir)
       assert Preset.fetch(:cobol, []) == {:error, {:unknown_preset, :cobol}}
     end
+
+    test "fetch(:rust, opts) threads target_dir/release/timeout/env through Preset.Rust" do
+      assert {:ok, stack} = Preset.fetch(:rust, release: false, target_dir: "/c", env: %{"D" => "u"})
+      assert stack == RustPreset.preset(release: false, target_dir: "/c", env: %{"D" => "u"})
+
+      testc = Enum.find(stack.checks, &(&1.name == "test"))
+      assert "--target-dir" in testc.args
+      assert "/c" in testc.args
+      refute "--release" in Enum.find(stack.checks, &(&1.name == "build")).args
+      assert testc.env == %{"D" => "u"}
+      assert stack.timeout_per_check == nil
+    end
+
+    test "fetch(:rust, opts) with timeout_per_check and bare :rust back-compat" do
+      assert {:ok, s1} = Preset.fetch(:rust, timeout_per_check: 123_000)
+      assert s1.timeout_per_check == 123_000
+
+      assert Preset.fetch(:rust, []) == Preset.fetch(:rust)
+      assert Preset.fetch(:rust) == {:ok, RustPreset.preset()}
+    end
   end
 end

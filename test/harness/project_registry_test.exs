@@ -190,6 +190,32 @@ defmodule Harness.ProjectRegistryTest do
       assert "integration" in test_check.args
     end
 
+    test "a parameterized {:rust, opts} preset (target_dir/release/env/timeout) is durable via config" do
+      entry = [
+        name: "rexex",
+        source: {:local, "/tmp/rexex"},
+        preset:
+          {:rust,
+           target_dir: "/cache/harness/rexex",
+           release: false,
+           timeout_per_check: 1_800_000,
+           env: %{"DATABASE_URL" => "postgres://localhost/rexex_test"}},
+        roadmap_path: "/tmp/rexex/roadmap/tasks.toml"
+      ]
+
+      Application.put_env(:harness, :projects, [entry])
+
+      assert {:ok, %{projects: %{"rexex" => project}}} = ProjectRegistry.init(:noargs)
+      assert [%CheckStack{name: :rust, workdir: "", timeout_per_check: 1_800_000} = stack] = project.check_stacks
+
+      testc = Enum.find(stack.checks, &(&1.name == "test"))
+      assert "--target-dir" in testc.args
+      assert "/cache/harness/rexex" in testc.args
+      build = Enum.find(stack.checks, &(&1.name == "build"))
+      refute "--release" in build.args
+      assert testc.env == %{"DATABASE_URL" => "postgres://localhost/rexex_test"}
+    end
+
     test "loads multiple stacks from a :stacks list, each with its own workdir" do
       entry = [
         name: "multi",

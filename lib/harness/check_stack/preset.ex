@@ -30,7 +30,8 @@ defmodule Harness.CheckStack.Preset do
   `:elixir` is the lighter day-to-day stack; `:elixir_precommit` is the
   mergeable-bar stack mirroring `mix precommit` (Task 97). For a parameterized
   `:elixir_precommit` (custom `cover_threshold`, ExUnit tag filters, or
-  Postgres test DB provisioning), use `fetch/2`.
+  Postgres test DB provisioning), use `fetch/2`. `:rust` also supports
+  parameterization via `fetch/2` (see `Preset.Rust.preset/1`).
   """
   @spec fetch(atom()) :: {:ok, CheckStack.t()} | {:error, error()}
   def fetch(:elixir), do: {:ok, ElixirPreset.preset()}
@@ -41,13 +42,22 @@ defmodule Harness.CheckStack.Preset do
   @doc """
   Returns a parameterized built-in `Harness.CheckStack`.
 
-  Only `:elixir_precommit` reads `opts` (`:cover_threshold`, `:exclude`,
-  `:include`, `:database` — see `Harness.CheckStack.Preset.Elixir.precommit/1`);
-  every other preset ignores them and resolves identically to `fetch/1`. This is
-  the form a project's registration config uses to declare its own merge gate,
-  e.g. `preset: {:elixir_precommit, cover_threshold: 85, exclude: [:integration]}`.
+  `:elixir_precommit` reads `opts` (`:cover_threshold`, `:exclude`, `:include`,
+  `:database` — see `Harness.CheckStack.Preset.Elixir.precommit/1`).
+
+  `:rust` accepts parameterization (`:target_dir`, `:release`, `:timeout_per_check`,
+  `:env` — see `Harness.CheckStack.Preset.Rust.preset/1`) so projects like rexex
+  can express a tuned stack (shared target dir, no redundant --release, DATABASE_URL)
+  durably via `preset: {:rust, target_dir: "...", release: false, env: %{"DATABASE_URL" => "..."}}`
+  in config (no struct literals at config-eval time).
+
+  Every other preset ignores opts and resolves identically to `fetch/1`. This is
+  the form a project's registration config uses, e.g.
+  `preset: {:elixir_precommit, cover_threshold: 85, exclude: [:integration]}` or
+  `preset: {:rust, release: false, env: %{"FOO" => "bar"}}`.
   """
   @spec fetch(atom(), keyword()) :: {:ok, CheckStack.t()} | {:error, error()}
+  def fetch(:rust, opts) when is_list(opts), do: {:ok, RustPreset.preset(opts)}
   def fetch(:elixir_precommit, opts) when is_list(opts), do: {:ok, ElixirPreset.precommit(opts)}
   def fetch(name, opts) when is_atom(name) and is_list(opts), do: fetch(name)
 end

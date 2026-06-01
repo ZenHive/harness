@@ -45,5 +45,23 @@ config :harness, :projects, [
       [preset: :rust, workdir: "rust"],
       [preset: :elixir, workdir: "elixir"]
     ]
+  ],
+  # Example: rexex (Rust project with heavy git-deps + sqlx DB tests). Uses the
+  # parameterized :rust preset (Task 149) so its tuned stack (shared target dir
+  # for reth, no redundant --release, DATABASE_URL for #[sqlx::test] suites) is
+  # expressed struct-free and survives BEAM restarts. The env is stamped onto
+  # all checks via the Check.env mechanism (Task 145); workdir points cargo at
+  # the rust/ subdir. `preset: {:rust, opts}` routes through Preset.fetch/2.
+  [
+    name: "rexex",
+    source: {:local, "/Users/efries/_DATA/code/rexex"},
+    preset:
+      {:rust,
+       target_dir: "/Users/efries/.cache/harness/cargo-target/rexex",
+       release: false,
+       timeout_per_check: 1_800_000,
+       env: %{"DATABASE_URL" => "postgres://localhost/rexex_test"}},
+    roadmap_path: "/Users/efries/_DATA/code/rexex",
+    concurrency_cap: 1
   ]
 ]
