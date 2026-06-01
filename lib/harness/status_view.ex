@@ -133,10 +133,11 @@ defmodule Harness.StatusView do
   def classify(%Status{state: :failed}), do: :red
 
   def classify(%Status{state: state, repair_attempts: attempts})
-      when state in [:dispatched, :running, :committing, :verifying] and attempts > 0,
+      when state in [:dispatched, :running, :committing, :verifying, :consulting] and attempts > 0,
       do: :repairing
 
-  def classify(%Status{state: state}) when state in [:dispatched, :running, :committing, :verifying], do: :in_flight
+  def classify(%Status{state: state}) when state in [:dispatched, :running, :committing, :verifying, :consulting],
+    do: :in_flight
 
   @spec run_entry(String.t()) :: [run_entry()]
   defp run_entry(run_id) do
