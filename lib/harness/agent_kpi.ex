@@ -143,6 +143,13 @@ defmodule Harness.AgentKPI do
   @spec mean([number()], pos_integer()) :: float()
   defp mean(values, count) when count > 0, do: Enum.sum(values) / count
 
+  @doc false
+  @spec duration_summary([non_neg_integer()]) :: duration_summary()
+  def duration_summary(durations) when is_list(durations) do
+    sorted = Enum.sort(durations)
+    %{median: median(sorted), p90: percentile(sorted, 90)}
+  end
+
   @spec median([non_neg_integer()]) :: number()
   defp median(sorted) do
     n = length(sorted)

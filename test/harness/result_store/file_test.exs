@@ -279,6 +279,64 @@ defmodule Harness.ResultStore.FileTest do
     end
   end
 
+  describe "list_run_records/2 list-path fast paths (Task 139)" do
+    test "omits agent_output on list scans but returns it for run_id lookup", %{root: root} do
+      huge = :binary.copy(<<0>>, 4096)
+
+      assert :ok =
+               Store.record_run(
+                 log_record(run_id: "list-strip", agent_output: huge),
+                 root: root
+               )
+
+      assert {:ok, [listed]} = Store.list_run_records([], root: root)
+      assert listed.agent_output == ""
+
+      assert {:ok, [point]} = Store.list_run_records([run_id: "list-strip"], root: root)
+      assert byte_size(point.agent_output) == 4096
+    end
+
+    test "respects :limit after mtime recency ordering", %{root: root} do
+      base = System.os_time(:second)
+
+      for {id, offset} <- Enum.with_index(["lim-a", "lim-b", "lim-c"]) do
+        assert :ok = Store.record_run(log_record(run_id: id), root: root)
+
+        path = Path.join([root, "runs", Base.url_encode64(id, padding: false) <> ".term"])
+        File.touch!(path, base + offset)
+      end
+
+      assert {:ok, ids} =
+               [limit: 2]
+               |> Store.list_run_records(root: root)
+               |> then(fn {:ok, rows} -> {:ok, Enum.map(rows, & &1.run_id)} end)
+
+      assert ids == ["lim-c", "lim-b"]
+    end
+  end
+
+  describe "aggregate_by_agent/1" do
+    test "matches AgentKPI.aggregate over list_run_records", %{root: root} do
+      alias Harness.AgentKPI
+
+      for {id, agent, verdict} <- [
+            {"agg-1", :claude, :pass},
+            {"agg-2", :claude, :fail},
+            {"agg-3", :codex, :pass}
+          ] do
+        assert :ok =
+                 Store.record_run(
+                   log_record(run_id: id, agent: agent, verdict: verdict),
+                   root: root
+                 )
+      end
+
+      assert {:ok, records} = Store.list_run_records([], root: root)
+      assert {:ok, ledger} = Store.aggregate_by_agent([], root: root)
+      assert ledger == AgentKPI.aggregate(records)
+    end
+  end
+
   describe "Harness.ResultStore behaviour disabled/nil guards (lifts behaviour coverage)" do
     test "record_run/save_batch/list short-circuit on false/nil without calling impl" do
       alias Harness.ResultStore

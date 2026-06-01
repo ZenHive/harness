@@ -32,9 +32,8 @@ defmodule Harness.StatusView do
           optional(:cron_polling) => RoadmapPoller.cron_status()
         }
 
-  # Most-recent settled runs surfaced as dashboard history. run_ids embed an
-  # epoch-ms component, so a descending string sort is a recency proxy; capped
-  # so an unbounded ~/.harness/results never bloats the snapshot.
+  # Most-recent settled runs surfaced as dashboard history (newest-first via
+  # store `inserted_at` / file mtime ordering, capped at query time).
   @history_limit 200
 
   @bucket_order [:in_flight, :repairing, :green, :red]
@@ -89,13 +88,11 @@ defmodule Harness.StatusView do
   # topbar tallies stay "current fleet" — history is a dashboard-only surface.
   @spec history(MapSet.t()) :: [run_entry()]
   defp history(live_ids) do
-    case ResultStore.list_run_records() do
+    case ResultStore.list_run_records(limit: @history_limit) do
       {:ok, records} ->
         records
         |> Enum.reject(&MapSet.member?(live_ids, &1.run_id))
         |> Enum.filter(&settled?/1)
-        |> Enum.sort_by(& &1.run_id, :desc)
-        |> Enum.take(@history_limit)
         |> Enum.map(&history_entry/1)
 
       {:error, reason} ->

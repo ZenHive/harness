@@ -23,6 +23,7 @@ defmodule Harness.ResultStore do
 
   use Descripex, namespace: "/result_store"
 
+  alias Harness.AgentKPI
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.Run.LogRecord
 
@@ -43,6 +44,14 @@ defmodule Harness.ResultStore do
 
   @doc "Lists persisted run records, optionally filtered by exact field values."
   @callback list_run_records(filters(), keyword()) :: {:ok, [LogRecord.t()]} | {:error, term()}
+
+  @doc """
+  Rolls persisted run records up into a per-agent KPI ledger (`Harness.AgentKPI.t/0`).
+
+  Backends with SQL fast paths (Postgres) issue one aggregate query; others fall
+  back to `list_run_records/1` + `Harness.AgentKPI.aggregate/1`.
+  """
+  @callback aggregate_by_agent(keyword(), keyword()) :: {:ok, AgentKPI.t()} | {:error, term()}
 
   api(
     :record_run,
@@ -127,7 +136,7 @@ defmodule Harness.ResultStore do
         kind: :value,
         default: [],
         description:
-          "Keyword filter list — exact-match field values supported by the store backend. Common keys: run_id, batch_id, agent, adapter, verdict. The 2-arity overload list_run_records(store, filters) is an internal escape hatch — prefer the 1-arity form and configure the store via config :harness, :result_store."
+          "Keyword filter list — exact-match field values supported by the store backend. Common keys: run_id, batch_id, agent, adapter, verdict, :limit (max rows, newest-first). List queries omit transcript binaries unless run_id pins a single row. The 2-arity overload list_run_records(store, filters) is an internal escape hatch — prefer the 1-arity form and configure the store via config :harness, :result_store."
       ]
     ],
     returns: %{type: :tuple, description: "{:ok, [LogRecord.t()]} or {:error, reason}."}
@@ -145,6 +154,29 @@ defmodule Harness.ResultStore do
 
   def list_run_records(store, filters) when is_list(filters) do
     dispatch(store, :list_run_records, [filters])
+  end
+
+  api(
+    :aggregate_by_agent,
+    "Per-agent KPI ledger over all persisted run records (one aggregate query on Postgres).",
+    params: [
+      store: [
+        kind: :value,
+        default: nil,
+        description: "Configured store or override; `false`/`nil` returns {:ok, %{}}."
+      ]
+    ],
+    returns: %{type: :tuple, description: "{:ok, AgentKPI.t()} or {:error, reason}."}
+  )
+
+  @spec aggregate_by_agent(store()) :: {:ok, AgentKPI.t()} | {:error, term()}
+  def aggregate_by_agent(store \\ configured())
+
+  def aggregate_by_agent(false), do: {:ok, %{}}
+  def aggregate_by_agent(nil), do: {:ok, %{}}
+
+  def aggregate_by_agent(store) do
+    dispatch(store, :aggregate_by_agent, [[]])
   end
 
   api(:configured, "Return the configured result store, defaulting to the file-backed store.",

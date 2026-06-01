@@ -400,7 +400,9 @@ defmodule Harness.BatchTest do
     assert quota_record.state == :failed
     assert quota_record.reason == :no_changes
     assert quota_record.failure_cause == %{reason: :no_changes, failed_checks: []}
-    assert quota_record.agent_output =~ "quota exhausted"
+
+    assert {:ok, [quota_full]} = ResultStore.list_run_records(store, run_id: quota_record.run_id)
+    assert quota_full.agent_output =~ "quota exhausted"
 
     assert headroom_record.state == :done
     assert headroom_record.reason == :passed

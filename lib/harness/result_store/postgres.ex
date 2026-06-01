@@ -11,6 +11,7 @@ defmodule Harness.ResultStore.Postgres do
 
   import Ecto.Query
 
+  alias Harness.AgentKPI
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.Repo
   alias Harness.ResultStore.Schema.BatchResult, as: BatchResultSchema
@@ -97,16 +98,162 @@ defmodule Harness.ResultStore.Postgres do
     repo = Keyword.get(opts, :repo, Repo)
 
     try do
+      {limit, filters} = pop_limit(filters)
+      point_lookup? = Keyword.has_key?(filters, :run_id)
+
       query =
         from r in RunRecordSchema,
           order_by: [desc: r.inserted_at]
 
       query = apply_filters(query, filters)
+      query = if point_lookup?, do: query, else: select_without_agent_output(query)
+      query = if limit, do: limit(query, ^limit), else: query
 
       rows = repo.all(query)
       {:ok, Enum.map(rows, &row_to_log_record/1)}
     rescue
       e -> {:error, e}
+    end
+  end
+
+  @impl Harness.ResultStore
+  @spec aggregate_by_agent(keyword(), keyword()) :: {:ok, AgentKPI.t()} | {:error, term()}
+  def aggregate_by_agent(_query_opts, opts) when is_list(opts) do
+    repo = Keyword.get(opts, :repo, Repo)
+
+    try do
+      rows = repo.all(aggregate_by_agent_query())
+      {:ok, aggregate_rows_to_ledger(rows)}
+    rescue
+      e -> {:error, e}
+    end
+  end
+
+  @spec aggregate_by_agent_query() :: Ecto.Query.t()
+  defp aggregate_by_agent_query do
+    from r in RunRecordSchema,
+      group_by: r.agent,
+      select: %{
+        agent: r.agent,
+        run_count: count(r.run_id),
+        pass_count: r.run_id |> count() |> filter(r.verdict == "pass"),
+        first_attempt_pass_count: r.run_id |> count() |> filter(r.verdict == "pass" and r.repair_attempts == 0),
+        durations: fragment("array_agg(? ORDER BY ?)", r.duration_ms, r.duration_ms),
+        repair_attempts_mean: avg(r.repair_attempts),
+        input_mean:
+          avg(
+            fragment(
+              "coalesce((?->>'input')::float, 0)",
+              r.token_usage
+            )
+          ),
+        output_mean:
+          avg(
+            fragment(
+              "coalesce((?->>'output')::float, 0)",
+              r.token_usage
+            )
+          ),
+        total_mean:
+          avg(
+            fragment(
+              "coalesce((?->>'total')::float, 0)",
+              r.token_usage
+            )
+          ),
+        pass_count_for_cost: r.run_id |> count() |> filter(r.verdict == "pass"),
+        cost_to_green_mean:
+          "coalesce((?->>'total')::float, 0)"
+          |> fragment(r.token_usage)
+          |> avg()
+          |> filter(r.verdict == "pass")
+      }
+  end
+
+  @spec aggregate_rows_to_ledger([map()]) :: AgentKPI.t()
+  defp aggregate_rows_to_ledger(rows) do
+    Map.new(rows, fn row ->
+      run_count = row.run_count
+      pass_count = row.pass_count || 0
+
+      cost_to_green =
+        if row.pass_count_for_cost > 0, do: float_or_nil(row.cost_to_green_mean)
+
+      kpi = %{
+        run_count: run_count,
+        success_rate: pass_count / run_count,
+        first_attempt_pass_rate: (row.first_attempt_pass_count || 0) / run_count,
+        duration_ms: AgentKPI.duration_summary(row.durations || []),
+        tokens: %{
+          input: float_or_zero(row.input_mean),
+          output: float_or_zero(row.output_mean),
+          total: float_or_zero(row.total_mean)
+        },
+        repair_attempts: float_or_zero(row.repair_attempts_mean),
+        cost_to_green: cost_to_green
+      }
+
+      {string_to_atom(row.agent), kpi}
+    end)
+  end
+
+  @spec float_or_zero(term()) :: float()
+  defp float_or_zero(nil), do: 0.0
+  defp float_or_zero(n) when is_number(n), do: n / 1
+  defp float_or_zero(value), do: sql_avg_to_float(value) || 0.0
+
+  @spec float_or_nil(term()) :: float() | nil
+  defp float_or_nil(nil), do: nil
+  defp float_or_nil(n) when is_number(n), do: n / 1
+  defp float_or_nil(value), do: sql_avg_to_float(value)
+
+  # Postgres `avg/1` returns `%Decimal{sign, coef, exp}`; avoid `Decimal.to_float/1`
+  # so Dialyzer does not require the Decimal app on the PLT.
+  @spec sql_avg_to_float(term()) :: float() | nil
+  defp sql_avg_to_float(%{sign: sign, coef: coef, exp: exp})
+       when sign in [-1, 1] and is_integer(coef) and is_integer(exp) do
+    sign * coef * :math.pow(10, exp)
+  end
+
+  defp sql_avg_to_float(_), do: nil
+
+  @spec select_without_agent_output(Ecto.Query.t()) :: Ecto.Query.t()
+  defp select_without_agent_output(query) do
+    from r in query,
+      select: %RunRecordSchema{
+        run_id: r.run_id,
+        batch_id: r.batch_id,
+        task_id: r.task_id,
+        project_name: r.project_name,
+        agent: r.agent,
+        model: r.model,
+        adapter: r.adapter,
+        state: r.state,
+        verdict: r.verdict,
+        agent_outcome_kind: r.agent_outcome_kind,
+        duration_ms: r.duration_ms,
+        repair_attempts: r.repair_attempts,
+        first_attempt_failed_check_count: r.first_attempt_failed_check_count,
+        agent_diff_size: r.agent_diff_size,
+        agent_exit_status: r.agent_exit_status,
+        reason: r.reason,
+        token_usage: r.token_usage,
+        composed_inputs: r.composed_inputs,
+        failure_cause: r.failure_cause,
+        check_output: r.check_output,
+        domains: r.domains,
+        agent_output: type(^nil, :binary),
+        inserted_at: r.inserted_at,
+        updated_at: r.updated_at
+      }
+  end
+
+  @spec pop_limit(Harness.ResultStore.filters()) :: {pos_integer() | nil, Harness.ResultStore.filters()}
+  defp pop_limit(filters) do
+    case Keyword.pop(filters, :limit) do
+      {nil, filters} -> {nil, filters}
+      {limit, filters} when is_integer(limit) and limit > 0 -> {limit, filters}
+      {_bad, filters} -> {nil, filters}
     end
   end
 
