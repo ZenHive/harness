@@ -300,6 +300,26 @@ defmodule Harness.Dashboard.LiveTest do
     end
   end
 
+  describe "header labels — agent_label/2 and token_label/2" do
+    test "agent_label prefers the resolved adapter, falls back to the status field, then —" do
+      # Resolved kind (available from run start) wins over the Status field
+      # (nil until termination) — this is the fix for the perpetual "nil".
+      assert Live.agent_label(:cursor, nil) == "cursor"
+      assert Live.agent_label(nil, :claude) == "claude"
+      assert Live.agent_label(nil, nil) == "—"
+    end
+
+    test "token_label parses the transcript and renders the total" do
+      transcript = ~s({"type":"result","usage":{"input_tokens":7,"output_tokens":44}}\n)
+      assert Live.token_label(:claude, transcript) == "51"
+    end
+
+    test "token_label renders — for an agent that reports no usage" do
+      assert Live.token_label(:grok, ~s({"type":"text","data":"hi"}\n)) == "—"
+      assert Live.token_label(nil, "plain text") == "—"
+    end
+  end
+
   defp socket_with_run(run_id) do
     %Socket{assigns: %{__changed__: %{}, run_id: run_id, run_status: nil}}
   end

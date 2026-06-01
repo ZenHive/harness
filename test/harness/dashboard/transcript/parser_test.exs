@@ -172,6 +172,23 @@ defmodule Harness.Dashboard.Transcript.ParserTest do
       body = read_fixture("codex.ndjson")
       assert parse_bytewise(:codex, body) == parse_full(:codex, body)
     end
+
+    # Codex emits several complete agent_message items per turn; each carries a
+    # trailing blank line so the renderer's consecutive-text fold separates them
+    # into paragraphs instead of one undifferentiated wall of text.
+    test "agent_message text carries a trailing separator for the fold" do
+      transcript = """
+      {"type":"item.completed","item":{"type":"agent_message","text":"First message."}}
+      {"type":"item.completed","item":{"type":"agent_message","text":"Second message."}}
+      """
+
+      events = parse_full(:codex, transcript)
+
+      assert [
+               {:assistant_text, %{text: "First message.\n\n"}},
+               {:assistant_text, %{text: "Second message.\n\n"}}
+             ] = events
+    end
   end
 
   describe "Cursor fixture (cursor-agent -p --output-format stream-json)" do
@@ -196,6 +213,52 @@ defmodule Harness.Dashboard.Transcript.ParserTest do
     test "byte-at-a-time feeding emits the same events as one-shot" do
       body = read_fixture("cursor.ndjson")
       assert parse_bytewise(:cursor, body) == parse_full(:cursor, body)
+    end
+
+    # Cursor's real tool_call wire shape (`{type: tool_call, tool_call:
+    # {<kind>ToolCall: {...}}}`) diverges from Claude's assistant/tool_use
+    # blocks. The fixture above predates real tool use, so these inline
+    # transcripts pin the divergent shape that previously fell through to
+    # `:other` (bare "OTHER" eyebrow rows, no tool card).
+    test "tool_call started/completed map to assistant_tool_use + tool_result" do
+      transcript = """
+      {"type":"tool_call","subtype":"started","call_id":"tool_abc","tool_call":{"readToolCall":{"args":{"path":"/repo/lib/foo.ex"}}}}
+      {"type":"tool_call","subtype":"completed","call_id":"tool_abc","tool_call":{"readToolCall":{"args":{"path":"/repo/lib/foo.ex"},"result":{"success":{"content":"defmodule Foo"}}}}}
+      """
+
+      events = parse_full(:cursor, transcript)
+
+      assert [
+               {:assistant_tool_use, %{id: "tool_abc", name: "read", input: %{"path" => "/repo/lib/foo.ex"}}},
+               {:tool_result, %{tool_use_id: "tool_abc", content: %{"success" => %{"content" => "defmodule Foo"}}}}
+             ] = events
+    end
+
+    test "tool name derives from the inner key minus its ToolCall suffix" do
+      for {inner, name} <- [
+            {"readToolCall", "read"},
+            {"grepToolCall", "grep"},
+            {"editToolCall", "edit"},
+            {"shellToolCall", "shell"},
+            {"globToolCall", "glob"}
+          ] do
+        line = ~s({"type":"tool_call","subtype":"started","call_id":"c","tool_call":{"#{inner}":{"args":{}}}}\n)
+        assert [{:assistant_tool_use, %{name: ^name}}] = parse_full(:cursor, line)
+      end
+    end
+
+    test "thinking deltas surface as :thought system events (the reasoning lane)" do
+      transcript = """
+      {"type":"thinking","subtype":"delta","text":"The failing test "}
+      {"type":"thinking","subtype":"delta","text":"uses the old name."}
+      """
+
+      events = parse_full(:cursor, transcript)
+
+      assert [
+               {:system, %{kind: :thought, data: %{text: "The failing test "}}},
+               {:system, %{kind: :thought, data: %{text: "uses the old name."}}}
+             ] = events
     end
   end
 

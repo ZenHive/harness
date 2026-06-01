@@ -2,20 +2,35 @@ defmodule Harness.Dashboard.Transcript.Parser.Cursor do
   @moduledoc """
   Cursor (`cursor-agent -p --output-format stream-json`) transcript parser.
 
-  Cursor's NDJSON stream is structurally near-identical to Claude Code's —
-  one JSON object per line, `system/init` + `assistant` (text and tool_use
-  blocks) + `user` (tool_result blocks) + `result`. The line-buffering and
-  block-translation logic is the same; this module exists as a separate
-  dispatch target so Cursor-specific divergences (different field names in
-  `system/init`, different metadata on tool calls) can be handled here
-  without coupling to the Claude parser.
+  Cursor's NDJSON stream shares Claude's `system/init` + `assistant` (text
+  blocks) + `result` envelope, but tool calls and reasoning use a
+  Cursor-specific shape rather than Claude's `assistant`/`tool_use` +
+  `user`/`tool_result` blocks:
 
-  Today the translate clauses are a direct mirror of Claude's. As cursor's
-  wire format evolves and diverges, this module is the place to capture
-  cursor-only behavior.
+    * `{"type":"tool_call","subtype":"started","call_id":...,"tool_call":{"<kind>ToolCall":{"args":{...}}}}`
+      → `{:assistant_tool_use, %{id: call_id, name: "<kind>", input: args}}`.
+      The human tool name is the inner key minus its `ToolCall` suffix
+      (`readToolCall` → `read`, `editToolCall` → `edit`, …).
+    * the matching `subtype: "completed"` event carries the call's output at
+      `tool_call.<kind>ToolCall.result` → `{:tool_result, %{tool_use_id: call_id, content: result}}`.
+    * `{"type":"thinking","subtype":"delta","text":<fragment>}` streams
+      chain-of-thought token-by-token → `{:system, %{kind: :thought, data: %{text: fragment}}}`
+      (the same reasoning lane grok uses; the renderer folds consecutive
+      fragments into one reasoning card).
+
+  Routing cursor's `tool_call` / `thinking` events through Claude's
+  `assistant`/`user` clauses silently bucketed them as `:other` (rendered as
+  bare "OTHER" eyebrow rows with no tool card) — so the wire shape is handled
+  explicitly here. The `assistant` text and `result` clauses still mirror
+  Claude's.
   """
 
   alias Harness.Dashboard.Transcript.Parser
+
+  # Cursor names each tool call by an inner key like `readToolCall` /
+  # `editToolCall` / `shellToolCall`; the human tool name is that key minus
+  # the suffix (`read` / `edit` / `shell`).
+  @tool_call_suffix "ToolCall"
 
   defstruct buffer: ""
 
@@ -81,6 +96,33 @@ defmodule Harness.Dashboard.Transcript.Parser.Cursor do
     Enum.flat_map(blocks, &translate_user_block/1)
   end
 
+  defp translate(%{"type" => "tool_call", "subtype" => "started", "tool_call" => tc} = event) do
+    {name, args} = tool_call_name_and_args(tc)
+
+    [
+      {:assistant_tool_use,
+       %{
+         id: Map.get(event, "call_id", ""),
+         name: name,
+         input: args
+       }}
+    ]
+  end
+
+  defp translate(%{"type" => "tool_call", "subtype" => "completed", "tool_call" => tc} = event) do
+    [
+      {:tool_result,
+       %{
+         tool_use_id: Map.get(event, "call_id", ""),
+         content: tool_call_result(tc)
+       }}
+    ]
+  end
+
+  defp translate(%{"type" => "thinking", "text" => text}) when is_binary(text) do
+    [{:system, %{kind: :thought, data: %{text: text}}}]
+  end
+
   defp translate(%{"type" => "result"} = result) do
     [{:system, %{kind: :result, data: result}}]
   end
@@ -128,4 +170,30 @@ defmodule Harness.Dashboard.Transcript.Parser.Cursor do
   end
 
   defp translate_user_block(_), do: []
+
+  # Cursor wraps each tool call in a single-key map (`%{"readToolCall" => %{...}}`).
+  # The key minus its `ToolCall` suffix is the human tool name; `args` is the
+  # call's input. An unexpected shape degrades to a generic name + empty input
+  # rather than crashing the parser.
+  @spec tool_call_name_and_args(map()) :: {String.t(), map()}
+  defp tool_call_name_and_args(tool_call) do
+    case Map.to_list(tool_call) do
+      [{inner_key, %{} = body}] ->
+        {String.replace_suffix(inner_key, @tool_call_suffix, ""), Map.get(body, "args", %{})}
+
+      _ ->
+        {"tool", %{}}
+    end
+  end
+
+  # The `completed` event restates the call wrapper with a `result` field added;
+  # surface that result as the tool_result content (the renderer's json tree
+  # walks it). Falls back to the whole body when no `result` key is present.
+  @spec tool_call_result(map()) :: term()
+  defp tool_call_result(tool_call) do
+    case Map.to_list(tool_call) do
+      [{_inner_key, %{} = body}] -> Map.get(body, "result", body)
+      _ -> tool_call
+    end
+  end
 end

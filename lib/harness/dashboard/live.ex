@@ -581,8 +581,10 @@ defmodule Harness.Dashboard.Live do
       <dd>{@run_status.repair_attempts}</dd>
       <dt>Verdict</dt>
       <dd>{verdict_label(@run_status.verdict_status)}</dd>
-      <dt>Agent kind</dt>
-      <dd>{inspect(@run_status.agent_kind)}</dd>
+      <dt>Agent</dt>
+      <dd>{agent_label(@agent_kind, @run_status.agent_kind)}</dd>
+      <dt>Tokens</dt>
+      <dd>{token_label(@agent_kind, @transcript)}</dd>
       <dt>Agent OS pid</dt>
       <dd>{@run_status.agent_os_pid || "—"}</dd>
       <dt>Reason</dt>
@@ -755,6 +757,35 @@ defmodule Harness.Dashboard.Live do
   def verdict_label(:pass), do: "pass"
   def verdict_label(:fail), do: "fail"
   def verdict_label(nil), do: "—"
+
+  # The executing adapter, resolved from its module (`agent_kind_for/1`) and
+  # available the moment a run starts. The `Status.agent_kind` field stays nil
+  # until termination, so it is only the fallback — showing the resolved agent
+  # makes a live run's adapter legible instead of a perpetual "nil".
+  @doc false
+  @spec agent_label(Parser.agent_kind() | nil, atom() | nil) :: String.t()
+  def agent_label(resolved, status_kind) do
+    case resolved || status_kind do
+      nil -> "—"
+      kind -> to_string(kind)
+    end
+  end
+
+  # Token burn parsed from the captured transcript with the same per-adapter
+  # parser the KPI ledger uses — works for a live (partial) or settled (full)
+  # transcript. Agents that report no usage (grok-without-usage, antigravity)
+  # honestly render "—" rather than a misleading 0.
+  @doc false
+  @spec token_label(Parser.agent_kind() | nil, binary()) :: String.t()
+  def token_label(agent_kind, transcript) do
+    usage = Harness.TokenUsage.parse(agent_kind, transcript)
+
+    if Harness.TokenUsage.measured?(usage) do
+      Integer.to_string(usage.total)
+    else
+      "—"
+    end
+  end
 
   @doc false
   @spec killable?(Status.t() | nil) :: boolean()

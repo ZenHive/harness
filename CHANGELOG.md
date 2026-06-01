@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Cross-agent transcript-rendering inconsistencies on the run dashboard.**
+  Comparing live cursor/codex/grok runs surfaced four UX divergences in how the
+  same dashboard renders different agents' transcripts:
+  - **Cursor tool calls rendered as bare "OTHER" eyebrow rows.** The cursor
+    parser assumed Claude's `assistant`/`tool_use` + `user`/`tool_result` block
+    shape, but cursor actually emits `{"type":"tool_call","tool_call":{"<kind>ToolCall":{…}}}`
+    (started/completed) and `{"type":"thinking","subtype":"delta"}` — all of which
+    fell through to `:other`. Added explicit clauses: `tool_call` → `:assistant_tool_use`
+    + `:tool_result` (name = inner key minus its `ToolCall` suffix; result surfaced
+    from `tool_call.<kind>ToolCall.result`), `thinking` → `:thought` (the same
+    reasoning lane grok uses). Cursor runs now render structured tool cards and a
+    folded reasoning card instead of a flood of "OTHER" badges.
+  - **Run-detail header showed "Agent kind: nil" for every live run.** The header
+    surfaced `Status.agent_kind` (nil until termination) instead of the adapter
+    resolved at run start. Now renders the resolved `@agent_kind` (`agent_label/2`),
+    falling back to the Status field, so a running run's agent is legible.
+  - **No token usage on the run-detail page.** Added a `Tokens` row
+    (`token_label/2`) parsing the captured transcript with the same per-adapter
+    parser the KPI ledger uses; agents that report no usage render "—".
+  - **Codex's multiple `agent_message` items mashed into one wall of text.** The
+    renderer folds consecutive `:assistant_text` (correct for grok's token deltas);
+    codex now emits a trailing blank line per complete message so the fold separates
+    them into paragraphs (grok's per-token text path is untouched).
+  Found dogfooding non-default agents. (The `:unknown` "unknown chunk" rows for
+  non-JSON agent output — codex skill-load stderr, grok ANSI noise — are kept
+  by design: Task 86's "never silently drop" contract.)
+
 - **Cursor token usage now parsed — the KPI page no longer shows blank tokens
   for cursor-dispatched runs.** `Harness.TokenUsage.parse(:cursor, …)` routed
   cursor through the Anthropic stream parser, which reads snake_case

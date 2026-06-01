@@ -89,9 +89,14 @@ defmodule Harness.Dashboard.Transcript.Parser.Codex do
     [{:system, %{kind: :turn_completed, data: event}}]
   end
 
+  # Each `agent_message` item is a *complete* intermediate message, not a token
+  # delta. The renderer folds consecutive `:assistant_text` into one block
+  # (right for grok's token-by-token stream), which would otherwise run codex's
+  # distinct messages together into one wall of text. A trailing blank line
+  # keeps them visually separated once folded.
   defp translate(%{"type" => "item.completed", "item" => %{"type" => "agent_message", "text" => text}})
        when is_binary(text) do
-    [{:assistant_text, %{text: text}}]
+    [{:assistant_text, %{text: text <> "\n\n"}}]
   end
 
   defp translate(%{"type" => "item.started", "item" => %{"type" => "command_execution"} = item}) do
