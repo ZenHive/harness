@@ -1,8 +1,9 @@
 defmodule Harness.ProjectFixture do
   @moduledoc false
 
-  alias Harness.CheckStack.Preset.Elixir, as: ElixirPreset
+  alias Harness.CheckStack
   alias Harness.Project
+  alias Harness.Verification.Check
 
   @spec from_repo(String.t(), keyword()) :: Project.t()
   def from_repo(repo, opts \\ []) do
@@ -20,14 +21,17 @@ defmodule Harness.ProjectFixture do
   end
 
   # Accepts a `:check_stacks` list directly, or a singular `:check_stack`
-  # convenience that wraps into a one-element list; defaults to the Elixir
-  # preset at the repo root.
-  @spec check_stacks(keyword()) :: [Harness.CheckStack.t()]
+  # convenience that wraps into a one-element list; defaults to a neutral
+  # always-green stack with no setup. The fixture repo is a README-only git
+  # repo, not an Elixir project, so the Elixir preset's setup/checks could
+  # never legitimately run against it — tests that exercise verification
+  # behavior pass their own checks or stacks explicitly.
+  @spec check_stacks(keyword()) :: [CheckStack.t()]
   defp check_stacks(opts) do
     cond do
       is_list(Keyword.get(opts, :check_stacks)) -> Keyword.fetch!(opts, :check_stacks)
       Keyword.has_key?(opts, :check_stack) -> [Keyword.fetch!(opts, :check_stack)]
-      true -> [ElixirPreset.preset()]
+      true -> [%CheckStack{name: :fixture, checks: [%Check{name: "ok", command: "true", args: []}]}]
     end
   end
 end

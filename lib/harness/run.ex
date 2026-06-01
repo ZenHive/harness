@@ -414,7 +414,7 @@ defmodule Harness.Run do
     {:ok, :dispatched, data, [{{:timeout, :lifetime}, data.lifetime_timeout, :lifetime}]}
   end
 
-  # ── State: dispatched — carve the isolated worktree ───────────────────────
+  # ── State: dispatched — carve + provision the isolated worktree ───────────
 
   @doc false
   @spec dispatched(event(), term(), data()) :: handler_result()
@@ -430,7 +430,12 @@ defmodule Harness.Run do
 
     with :ok <- Worktree.activate(worktree),
          :ok <- Isolation.validate(data.adapter) do
-      {:next_state, :running, data}
+      # Warm the worktree (check-stack setup: deps fetch + compile) before the
+      # agent spawns, so the agent never burns its idle/progress budget on a
+      # silent cold first build. Verification re-runs the same setup later as a
+      # fast no-op.
+      task = start_task(fn -> Verification.prepare(worktree.path, verification_opts(data)) end)
+      {:keep_state, %{data | task: task}}
     else
       {:error, {:worktree_isolation_unsupported, _adapter, _message} = reason} ->
         fail(data, {:agent_spawn_failed, reason})
@@ -440,6 +445,13 @@ defmodule Harness.Run do
     end
   end
 
+  # Provisioning finished — the worktree is warm; hand it to the agent.
+  def dispatched(:info, {ref, :ok}, %{task: %Task{ref: ref}} = data) do
+    Process.demonitor(ref, [:flush])
+    {:next_state, :running, %{data | task: nil}}
+  end
+
+  # Worktree creation or provisioning failed — both are environment errors.
   def dispatched(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
     fail(%{data | task: nil}, {:worktree_failed, reason})

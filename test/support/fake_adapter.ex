@@ -44,6 +44,11 @@ defmodule Harness.FakeAdapter do
   #                    Task 23): a raw OTP-port stdin would stall it forever.
   # :write           — writes a file into cwd (the worktree), exits 0 — a run
   #                    that produced a real diff to commit.
+  # :snapshot_worktree
+  #                  — records cwd's file listing at agent run time
+  #                    (provisioning-order fixture): a check grepping that
+  #                    snapshot proves the check-stack setup ran before the
+  #                    agent spawned.
   # :write_then_hang — writes a file into cwd, then idles emitting nothing — a
   #                    timed-out agent that still left work to commit + grade.
   # :break_git       — overwrites the worktree's .git pointer, so the harness
@@ -112,6 +117,8 @@ defmodule Harness.FakeAdapter do
   defp command(:stdin_eof, _invocation), do: {"/bin/sh", ["-c", "cat; echo stdin-eof-ok"], []}
 
   defp command(:write, _invocation), do: {"/bin/sh", ["-c", "echo agent-output > agent_output.txt"], []}
+
+  defp command(:snapshot_worktree, _invocation), do: {"/bin/sh", ["-c", "ls > agent-saw.txt"], []}
 
   defp command(:write_then_hang, _invocation),
     do: {"/bin/sh", ["-c", "echo agent-output > agent_output.txt; sleep 30"], []}

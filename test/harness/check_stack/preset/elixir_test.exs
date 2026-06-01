@@ -32,9 +32,13 @@ defmodule Harness.CheckStack.Preset.ElixirTest do
       assert credo.post_process == {Credo, :apply}
     end
 
-    test "declares mix deps.get as a setup bootstrap" do
+    test "declares mix deps.get + deps.compile as setup bootstrap steps" do
       %CheckStack{setup: setup} = Preset.Elixir.preset()
-      assert [%Check{name: "deps", command: "mix", args: ["deps.get"]}] = setup
+
+      assert [
+               %Check{name: "deps", command: "mix", args: ["deps.get"]},
+               %Check{name: "deps.compile", command: "mix", args: ["deps.compile"]}
+             ] = setup
     end
 
     test "leaves parser and timeout_per_check nil (verification default wins)" do
@@ -92,9 +96,13 @@ defmodule Harness.CheckStack.Preset.ElixirTest do
       assert credo.post_process == {Credo, :apply}
     end
 
-    test "declares mix deps.get as a setup bootstrap" do
+    test "declares mix deps.get + deps.compile as setup bootstrap steps" do
       %CheckStack{setup: setup} = Preset.Elixir.precommit()
-      assert [%Check{name: "deps", command: "mix", args: ["deps.get"]}] = setup
+
+      assert [
+               %Check{name: "deps", command: "mix", args: ["deps.get"]},
+               %Check{name: "deps.compile", command: "mix", args: ["deps.compile"]}
+             ] = setup
     end
   end
 end

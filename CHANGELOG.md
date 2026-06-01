@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Worktree provisioning — check-stack setup runs before the agent spawns
+  (Task 147).** A freshly carved worktree had no `deps/` or `_build/`, so the
+  dispatched agent's first `mix` command silently fetched and compiled every
+  dep for minutes — long enough to trip the driver's idle/progress reflex and
+  kill the run (observed on grok dispatches). The run now warms the worktree
+  between worktree creation and agent spawn:
+  - New `Harness.Verification.prepare/2` runs every resolved stack's `setup`
+    commands (no grading checks) with `run/2`'s option and error vocabulary.
+  - `Harness.Run`'s `:dispatched` state provisions after `Worktree.activate` +
+    `Isolation.validate`; the agent only spawns into a warmed worktree. A
+    provision failure settles the run `:failed` with
+    `{:worktree_failed, {:setup_failed, _}}` — an environment error, never a
+    red verdict — and the agent never spawns.
+  - The Elixir presets (`preset/0`, `precommit/1`) declare a second setup step
+    `mix deps.compile`, so the expensive dep compile happens at provision time
+    and verification's own setup pass is a fast no-op.
+
 - **Project attribution, roadmap rollup, and a task-level merge signal on the
   dashboard index.** The run tables showed task/run/agent but not *which project*
   a run belonged to, and the index gave no view of how much roadmap was left or

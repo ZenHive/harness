@@ -9,6 +9,11 @@ defmodule Harness.Verification do
   them into a `Harness.Verification.Verdict`. Any red check makes the whole
   verdict red.
 
+  The same module owns the **worktree-provisioning pass**: `prepare/2` runs each
+  stack's `setup` commands (deps fetch/compile) against a freshly carved worktree
+  *before* the agent spawns, so an agent never starts in a cold working
+  directory. `run/2` later re-runs the same setup as a fast no-op.
+
   ## Usage
 
       {:ok, verdict} = Harness.Verification.run("/path/to/worktree")
@@ -125,6 +130,63 @@ defmodule Harness.Verification do
          :ok <- validate_worktree(path),
          {:ok, results} <- run_stacks(stacks, path, timeout_override, post_process_opts) do
       {:ok, build_verdict(results)}
+    end
+  end
+
+  @doc """
+  Runs every stack's setup/bootstrap commands against the worktree at
+  `worktree_path`, without grading any checks.
+
+  This is the worktree-provisioning pass: `Harness.Run` calls it after carving
+  a run's worktree and *before* spawning the agent, so the agent starts in a
+  warm working directory (deps fetched and compiled) instead of burning its
+  idle/progress budget on a silent cold build. `run/2` later re-runs the same
+  setup ahead of the checks, where it is a fast no-op against the warmed
+  `_build`.
+
+  Accepts the same options as `run/2` (`:check_stacks` / `:check_stack` /
+  `:checks` / `:timeout`); stacks whose `setup` is empty are skipped. Returns
+  `:ok`, or `{:error, reason}` with `run/2`'s error vocabulary — a setup
+  failure is an environment error (`{:setup_failed, details}`), never a red
+  verdict.
+  """
+  @spec prepare(String.t(), keyword()) :: :ok | {:error, error()}
+  def prepare(worktree_path, opts \\ []) when is_binary(worktree_path) do
+    path = Path.expand(worktree_path)
+    stacks = resolve_stacks(opts)
+    timeout_override = Keyword.get(opts, :timeout)
+    post_process_opts = post_process_opts(path, opts)
+
+    with :ok <- validate_worktree(path) do
+      prepare_stacks(stacks, path, timeout_override, post_process_opts)
+    end
+  end
+
+  # Runs each stack's setup in its own `workdir`, halting on the first
+  # environment error. Mirrors `run_stacks/4` minus the grading checks.
+  @spec prepare_stacks([CheckStack.t()], String.t(), timeout() | nil, keyword()) ::
+          :ok | {:error, {:workdir_not_found, String.t()} | {:setup_failed, setup_failure()}}
+  defp prepare_stacks(stacks, path, timeout_override, post_process_opts) do
+    Enum.reduce_while(stacks, :ok, fn stack, :ok ->
+      case prepare_stack(stack, path, timeout_override, post_process_opts) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  @spec prepare_stack(CheckStack.t(), String.t(), timeout() | nil, keyword()) ::
+          :ok | {:error, {:workdir_not_found, String.t()} | {:setup_failed, setup_failure()}}
+  defp prepare_stack(%CheckStack{setup: []}, _path, _timeout_override, _post_process_opts), do: :ok
+
+  defp prepare_stack(%CheckStack{} = stack, path, timeout_override, post_process_opts) do
+    check_dir = stack_dir(path, stack.workdir)
+    timeout = timeout_override || stack.timeout_per_check || configured_timeout()
+
+    if File.dir?(check_dir) do
+      run_setup(stack, check_dir, timeout, post_process_opts)
+    else
+      {:error, {:workdir_not_found, check_dir}}
     end
   end
 

@@ -324,6 +324,8 @@ Key fields you care about as driver (full struct: `lib/harness/run/result.ex`):
 
 Never trust `agent_outcome.exit_status` or the agent's self-reported success.
 
+**Worktree provisioning.** Before the agent spawns, the run warms its worktree by running the project check stack's `setup` commands (`Harness.Verification.prepare/2` — for the Elixir presets that's `mix deps.get` + `mix deps.compile`). The agent therefore never burns its idle/progress budget on a silent cold dep build, and verification's own setup pass is a fast no-op. A run that settles `:failed` with reason `{:worktree_failed, {:setup_failed, _}}` hit an **environment error during provisioning** (deps unfetchable, broken bootstrap) — the agent never ran; fix the environment and re-dispatch, don't blame the agent.
+
 ---
 
 ## Driving via Chat / MCP (Phase 9, milestone v0_7)

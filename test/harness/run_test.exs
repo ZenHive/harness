@@ -3,6 +3,7 @@ defmodule Harness.RunTest do
 
   alias Harness.AgentAdapter.Antigravity
   alias Harness.AgentAdapter.Outcome
+  alias Harness.CheckStack
   alias Harness.Dashboard.Transcript
   alias Harness.Dashboard.Transcript.Parser
   alias Harness.FakeAdapter
@@ -252,6 +253,66 @@ defmodule Harness.RunTest do
 
       assert %Result{state: :done, reason: :passed} = result
       assert GitFixture.git!(repo, ["status", "--porcelain"]) =~ "leaked.txt"
+    end
+  end
+
+  describe "worktree provisioning" do
+    test "runs the check-stack setup before the agent spawns" do
+      repo = GitFixture.init_repo()
+
+      stack = %CheckStack{
+        name: :warm,
+        setup: [check("provision", "touch", ["provisioned"])],
+        # Green only if the agent's worktree listing included the provision
+        # marker — i.e. setup ran before the agent did.
+        checks: [check("agent-saw-marker", "grep", ["provisioned", "agent-saw.txt"])]
+      }
+
+      project = ProjectFixture.from_repo(repo, check_stack: stack)
+
+      {:ok, run_id, pid} =
+        Run.Supervisor.start_run(item(), project, FakeAdapter,
+          base_dir: GitFixture.tmp_base(),
+          adapter_opts: [command: :snapshot_worktree],
+          total_timeout: 30_000,
+          idle_timeout: 10_000,
+          lifetime_timeout: 30_000,
+          verification_timeout: 10_000,
+          terminal_linger: 100,
+          max_repair_attempts: 0
+        )
+
+      assert %Result{state: :done, reason: :passed} = await_result(run_id, pid)
+    end
+
+    test "a provision failure settles :failed as an environment error and the agent never spawns" do
+      repo = GitFixture.init_repo()
+
+      stack = %CheckStack{
+        name: :broken,
+        setup: [check("bootstrap", "false")],
+        checks: [check("ok", "true")]
+      }
+
+      project = ProjectFixture.from_repo(repo, check_stack: stack)
+
+      {:ok, run_id, pid} =
+        Run.Supervisor.start_run(item(), project, FakeAdapter,
+          base_dir: GitFixture.tmp_base(),
+          adapter_opts: [command: :write],
+          total_timeout: 30_000,
+          idle_timeout: 10_000,
+          lifetime_timeout: 30_000,
+          verification_timeout: 10_000,
+          terminal_linger: 100,
+          max_repair_attempts: 0
+        )
+
+      result = await_result(run_id, pid)
+
+      assert %Result{state: :failed, reason: {:worktree_failed, {:setup_failed, %{stack: :broken}}}} = result
+      # The agent never spawned: provisioning failed first.
+      assert result.agent_outcome == nil
     end
   end
 

@@ -313,6 +313,80 @@ defmodule Harness.VerificationTest do
     end
   end
 
+  describe "prepare/2 (worktree provisioning)" do
+    test "runs every stack's setup commands without grading any checks" do
+      dir = worktree_dir()
+
+      stack = %CheckStack{
+        name: :warm,
+        setup: [check("touch-marker", "touch", ["provisioned"])],
+        checks: [check("never-graded", "false")]
+      }
+
+      assert :ok = Verification.prepare(dir, check_stack: stack)
+
+      # Setup ran (marker exists); the failing check was never graded.
+      assert File.exists?(Path.join(dir, "provisioned"))
+    end
+
+    test "a stack without setup is a no-op :ok" do
+      dir = worktree_dir()
+      stack = %CheckStack{name: :bare, checks: [check("x", "true")]}
+
+      assert :ok = Verification.prepare(dir, check_stack: stack)
+    end
+
+    test "raw :checks (no stack) provisions as a no-op :ok" do
+      dir = worktree_dir()
+      assert :ok = Verification.prepare(dir, checks: [check("x", "true")])
+    end
+
+    test "a setup failure is an environment error with the failing result" do
+      dir = worktree_dir()
+
+      stack = %CheckStack{
+        name: :broken,
+        setup: [check("bootstrap", "false")],
+        checks: [check("x", "true")]
+      }
+
+      assert {:error, {:setup_failed, %{stack: :broken, workdir: ^dir, result: result}}} =
+               Verification.prepare(dir, check_stack: stack)
+
+      assert result.name == "bootstrap"
+      assert result.status == :fail
+    end
+
+    test "runs each stack's setup in its own workdir" do
+      repo = worktree_dir()
+      File.mkdir_p!(Path.join(repo, "sub"))
+
+      stacks = [
+        %CheckStack{name: :root, setup: [check("root-marker", "touch", ["root-provisioned"])], checks: []},
+        %CheckStack{name: :sub, workdir: "sub", setup: [check("sub-marker", "touch", ["sub-provisioned"])], checks: []}
+      ]
+
+      assert :ok = Verification.prepare(repo, check_stacks: stacks)
+      assert File.exists?(Path.join(repo, "root-provisioned"))
+      assert File.exists?(Path.join([repo, "sub", "sub-provisioned"]))
+    end
+
+    test "errors with {:workdir_not_found, dir} when a setup-bearing stack's workdir is missing" do
+      repo = worktree_dir()
+      stack = %CheckStack{name: :gone, workdir: "nope", setup: [check("x", "true")], checks: []}
+
+      assert {:error, {:workdir_not_found, dir}} = Verification.prepare(repo, check_stacks: [stack])
+      assert dir == Path.join(repo, "nope")
+    end
+
+    test "a non-existent worktree path is an error with the expanded path" do
+      missing = Path.join(System.tmp_dir!(), "does-not-exist-#{System.unique_integer([:positive])}")
+
+      assert {:error, {:worktree_not_found, ^missing}} =
+               Verification.prepare(missing, check_stack: %CheckStack{name: :x, setup: [check("x", "true")], checks: []})
+    end
+  end
+
   describe "run/2 with :check_stacks (multi-stack / workdir)" do
     test "runs a stack's checks in its workdir, relative to the worktree root" do
       repo = worktree_dir()

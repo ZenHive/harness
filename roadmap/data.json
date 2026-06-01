@@ -4552,7 +4552,7 @@
       "phase": 13,
       "bundle": "capability-bench",
       "milestone": "v0_10",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Initial Elixir-domain benchmark corpus content (OTP / LiveView / Oban / Ecto)",
       "scores": {
         "d": 6,
@@ -4579,6 +4579,7 @@
       ],
       "body": "Curate the first real benchmark tasks — the high-value, hard content work. A representative set across the Elixir-stack domains, each self-contained and gradeable green by a check stack so scoring is objective (not LLM-judged).\n\nA weak or biased corpus measures the wrong thing confidently — coverage and representativeness are the deliverable, not just count. This is where the capability benchmark earns its value or doesn't. Rust and other languages are explicitly later tasks.\n",
       "created_at": "2026-05-31",
+      "started_at": "2026-06-01",
       "scored_at": "2026-05-31",
       "cross_repo": []
     },
@@ -5572,7 +5573,7 @@
       "phase": 13,
       "bundle": "postgres-results",
       "milestone": "v0_10",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Verification can't grade :integration-tagged tests — DB-backed code passes green while broken against real Postgres",
       "scores": {
         "d": 4,
@@ -5598,6 +5599,7 @@
       ],
       "body": "OBSERVED (task 137 dispatch, run-1780287087805-fddb178d): grok's ResultStore.Postgres had 3 real roundtrip bugs (top-level lists failed Ecto :map cast, check_output string keys atomized on read, token_usage struct identity lost). The check stack graded the delivery green-except-sobelow because DB-backed tests are tagged :integration and every preset runs `--exclude integration`. The bugs were only caught by hand-running `mix test.json --include integration` against the local Postgres in the worktree.\n\nGAP: the grader structurally cannot verify the primary deliverable of any DB-backed task. Acceptance criteria like 'passes the contract suite against Postgres' are unenforceable.\n\nFIX DIRECTION (implementer's call): a check-stack option to include integration tags when the environment supports it — e.g. preset opt `include: [:integration]` plus a worktree test-DB provisioning step (MIX_ENV=test ecto.create + ecto.migrate, mirroring the Task 143 deps bootstrap). Concurrent worktrees share one Postgres instance; the Ecto sandbox handles isolation but migrations from divergent branches need thought (per-worktree DB name, e.g. harness_test_<run_id>, dropped at finish).\n",
       "created_at": "2026-06-01",
+      "started_at": "2026-06-01",
       "scored_at": "2026-06-01",
       "cross_repo": []
     },
@@ -5606,7 +5608,7 @@
       "phase": 13,
       "bundle": "postgres-results",
       "milestone": "v0_10",
-      "status": "pending",
+      "status": "done",
       "title": "MCP result_store-list_run_records rejects JSON-caller filters (no function clause matching)",
       "scores": {
         "d": 2,
@@ -5628,9 +5630,95 @@
         "lib/harness/chat/tools.ex",
         "lib/harness/result_store.ex"
       ],
+      "shipped_in": "d667e66",
       "body": "OBSERVED: calling the MCP tool result_store-list_run_records with a filters argument from a JSON caller (e.g. {\"filters\": {\"run_id\": \"run-...\"}}) raises 'no function clause matching'. ResultStore.list_run_records/2 expects a keyword list of filter atoms; the MCP/JSON boundary delivers a string-keyed map and nothing translates it. The Elixir-native path (tidewave, IEx) works fine.\n\nFIX: translate the JSON map to the documented filter keyword list at the Chat.Tools/MCP boundary (string keys -> known filter atoms, unknown keys ignored for forward compat — same contract as ResultStore.Postgres.apply_filters), with a test exercising the MCP-shaped input.\n",
       "created_at": "2026-06-01",
+      "done_at": "2026-06-01",
       "scored_at": "2026-06-01",
+      "implemented": "Per-key tolerant atomization in Chat.Tools.decode_param for kwlist params from JSON: known keys atomized via String.to_existing_atom, unknown keys dropped (forward compat, same contract as ResultStore.Postgres.apply_filters). Test covers documented keys, mixed known+unknown, and empty filters. Delivered by grok via harness dispatch (run run-1780302552463-36e17abd); run graded red on a pre-existing development bug (Task 148), salvaged by hand after full-suite + coverage grade went green.",
+      "delivered_by": "grok",
+      "verified": true,
+      "cross_repo": []
+    },
+    {
+      "id": "147",
+      "phase": 11,
+      "bundle": "core-loop",
+      "milestone": "v0_9",
+      "status": "done",
+      "title": "Warm worktree at provision time — run check-stack setup (deps.get + deps.compile) before agent dispatch",
+      "scores": {
+        "d": 2,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 2.5,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Verification.prepare/2 runs stack setup commands in each stack's workdir and returns :ok / {:error, {:setup_failed, _}} / {:error, {:worktree_not_found, _}} / {:error, {:workdir_not_found, _}}",
+        "Run gen_statem provisions the worktree (prepare/2) between worktree creation and agent spawn; agent only spawns into a warmed worktree",
+        "A provision failure settles the run :failed with an environment-error reason, never a red verdict, and never spawns the agent",
+        "Elixir preset/0 and precommit/1 declare setup [deps.get, deps.compile]",
+        "Existing run lifecycle tests still pass (raw :checks runs provision as a no-op)"
+      ],
+      "touches": [
+        "lib/harness/verification.ex",
+        "lib/harness/run.ex",
+        "lib/harness/check_stack/preset/elixir.ex",
+        "test/harness/verification_test.exs",
+        "test/harness/run_test.exs",
+        "test/harness/check_stack/preset/elixir_test.exs",
+        "test/support/project_fixture.ex",
+        "test/support/fake_adapter.ex",
+        "skills/harness-driver/SKILL.md"
+      ],
+      "body": "OBSERVED: grok runs failing in fresh worktrees. Headless reproduction (grok 0.2.14, exact harness Task-137 prompt, fresh worktree, run from a shell) showed grok handles `mix deps.get` fine and completes the task — but inside harness the worktree is carved with no deps/ and no _build/, so the agent's first mix command silently fetches + compiles ~60 deps for multiple minutes; the Driver's idle/progress reflex (5 min default) kills runs during that silent cold build. The check-stack setup (`mix deps.get`) only ran at verification time, after the agent finished.\n\nFIX: provision the worktree before the agent spawns. (1) Harness.Verification.prepare/2 — runs every resolved stack's setup commands (no grading checks) against the worktree, same opts/error vocabulary as run/2. (2) Harness.Run :dispatched state runs prepare/2 in a task after Worktree.activate + Isolation.validate, transitioning to :running only when provisioning succeeds; a setup failure is an environment error ({:worktree_failed, {:setup_failed, _}}), worktree retained. (3) Elixir presets gain a second setup step `mix deps.compile` so the expensive dep compile happens at provision time (no idle killer) and is a fast no-op at verification time.\n",
+      "created_at": "2026-06-01",
+      "done_at": "2026-06-01",
+      "scored_at": "2026-06-01",
+      "implemented": "Verification.prepare/2 (provision pass: runs stack setup only, same error vocabulary as run/2); Run :dispatched state now provisions the worktree after activate+isolation and only then transitions to :running — provision failure settles {:worktree_failed, {:setup_failed, _}} without spawning the agent; Elixir preset/precommit setup is now [deps.get, deps.compile]; ProjectFixture default stack switched to a neutral no-setup pass-stack; FakeAdapter gained :snapshot_worktree fixture; SKILL.md documents provisioning + the new failure reason. 153 tests green across the 7 affected files.",
+      "delivered_by": "claude-opus-4-8",
+      "cross_repo": []
+    },
+    {
+      "id": "148",
+      "phase": 11,
+      "bundle": "autolanding",
+      "status": "done",
+      "title": "StatusView.classify/1 missing :consulting — concurrent suite crashes poison every dispatched run's verification",
+      "scores": {
+        "d": 1,
+        "b": 5,
+        "u": 4
+      },
+      "eff": 4.5,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "StatusView.classify/1 has a clause covering :consulting (both the repairing and in_flight guard lists)",
+        "A test covers classify/1 for a :consulting-state Status (with and without repair_attempts > 0)",
+        "Full suite (mix test.json) is green on development — the dashboard/StatusView/harness.status tests no longer fail under concurrency"
+      ],
+      "files_to_modify": [
+        "lib/harness/status_view.ex"
+      ],
+      "touches": [
+        "lib/harness/status_view.ex",
+        "test/harness/status_view_test.exs"
+      ],
+      "shipped_in": "5772667",
+      "body": "OBSERVED (run run-1780302552463-36e17abd, grok, Task 146): the run's actual task work was clean and on-scope, but verification graded red on test failures in files the agent never touched — Harness.Dashboard.LiveMountTest, Harness.StatusViewTest, Mix.Tasks.Harness.StatusTest all crash with 'no function clause matching in Harness.StatusView.classify/1'. Root cause: the semantic-gate work added a :consulting state to Harness.Run (lib/harness/run.ex state typespec + consulting/3 handler) but never added :consulting to StatusView.classify/1's guard lists. Any concurrent test whose run sits in :consulting while another test calls StatusView.snapshot() crashes the snapshot. The StatusView tests pass 10/10 in isolation — this only fires under full-suite concurrency, so every dispatched run on current development gets graded red regardless of agent quality, breaking the dogfooding loop.\n\nFIX: add :consulting to both classify/1 guard lists (repairing + in_flight). The grok run already wrote exactly this fix during its repair attempts — salvageable from worktree commits ed5d11c + b935293 in /Users/efries/_DATA/worktrees/.harness/harness/run-1780302552463-36e17abd (branch still exists). Add a classify/1 test for :consulting so the gap can't silently reopen.\n",
+      "created_at": "2026-06-01",
+      "done_at": "2026-06-01",
+      "scored_at": "2026-06-01",
+      "implemented": "Added :consulting to both StatusView.classify/1 guard lists (repairing + in_flight). Fix authored by grok during run run-1780302552463-36e17abd repair attempts (the run that exposed the gap), salvaged by hand. Full offline suite 1157/1157 green + coverage 82.88% in the run worktree before landing.",
+      "delivered_by": "grok",
+      "verified": true,
       "cross_repo": []
     }
   ]
