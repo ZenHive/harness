@@ -21,17 +21,21 @@ defmodule Harness.Dashboard.LiveTest do
   alias Harness.Run.Status
   alias Phoenix.LiveView.Socket
 
-  defp run_entry(run_id, project_name \\ nil, bucket \\ :in_flight, opts \\ []) do
+  defp run_entry(run_id, opts) do
     status = %Status{
       run_id: run_id,
       task_id: Keyword.get(opts, :task_id, "1"),
-      project_name: project_name,
+      project_name: Keyword.get(opts, :project_name),
       state: Keyword.get(opts, :state, :running),
       repair_attempts: Keyword.get(opts, :repair_attempts, 0),
       verdict_status: Keyword.get(opts, :verdict_status, nil)
     }
 
-    %{status: status, bucket: bucket, detail: Keyword.get(opts, :detail, nil)}
+    %{
+      status: status,
+      bucket: Keyword.get(opts, :bucket, :in_flight),
+      detail: Keyword.get(opts, :detail, nil)
+    }
   end
 
   describe "bucket_counts/1" do
@@ -42,12 +46,12 @@ defmodule Harness.Dashboard.LiveTest do
     test "groups runs by their classified bucket" do
       snapshot = %{
         runs: [
-          run_entry("a", nil, :in_flight),
-          run_entry("b", nil, :in_flight),
-          run_entry("c", nil, :repairing),
-          run_entry("d", nil, :green),
-          run_entry("e", nil, :red),
-          run_entry("f", nil, :red)
+          run_entry("a", bucket: :in_flight),
+          run_entry("b", bucket: :in_flight),
+          run_entry("c", bucket: :repairing),
+          run_entry("d", bucket: :green),
+          run_entry("e", bucket: :red),
+          run_entry("f", bucket: :red)
         ]
       }
 
@@ -57,15 +61,15 @@ defmodule Harness.Dashboard.LiveTest do
 
   describe "filter_runs/2 (project filtering)" do
     test "no filter returns the runs unchanged" do
-      runs = [run_entry("r-1", "alpha"), run_entry("r-2", "beta")]
+      runs = [run_entry("r-1", project_name: "alpha"), run_entry("r-2", project_name: "beta")]
       assert Live.filter_runs(runs, nil) == runs
     end
 
     test "filters by the status's project_name" do
       runs = [
-        run_entry("r-1", "alpha"),
-        run_entry("r-2", "alpha"),
-        run_entry("r-3", "beta")
+        run_entry("r-1", project_name: "alpha"),
+        run_entry("r-2", project_name: "alpha"),
+        run_entry("r-3", project_name: "beta")
       ]
 
       filtered = Live.filter_runs(runs, "alpha")
@@ -73,7 +77,7 @@ defmodule Harness.Dashboard.LiveTest do
     end
 
     test "a project with no matching runs filters to empty" do
-      runs = [run_entry("r-1", "alpha"), run_entry("r-2", "beta")]
+      runs = [run_entry("r-1", project_name: "alpha"), run_entry("r-2", project_name: "beta")]
       assert Live.filter_runs(runs, "gamma") == []
     end
   end
@@ -83,6 +87,34 @@ defmodule Harness.Dashboard.LiveTest do
       assert Live.verdict_label(:pass) == "pass"
       assert Live.verdict_label(:fail) == "fail"
       assert Live.verdict_label(nil) == "—"
+    end
+  end
+
+  describe "landed_label/2 + landed_entry?/2 (task-level merge join)" do
+    test "a run whose task carries a shipped_in renders the short sha and reads landed" do
+      summaries = %{"alpha" => %{open: 0, done: 1, total: 1, landed: %{"1" => "abc1234ff"}}}
+      entry = run_entry("r-1", project_name: "alpha", bucket: :green, task_id: "1")
+
+      assert Live.landed_label(summaries, entry.status) == "✓ abc1234"
+      assert Live.landed_entry?(entry, summaries)
+    end
+
+    test "an unlanded run renders a dash and reads not-landed" do
+      summaries = %{"alpha" => %{open: 1, done: 0, total: 1, landed: %{}}}
+      entry = run_entry("r-2", project_name: "alpha", bucket: :red, task_id: "2")
+
+      assert Live.landed_label(summaries, entry.status) == "—"
+      refute Live.landed_entry?(entry, summaries)
+    end
+
+    test "merge tracks the task, not the run: a :failed run whose task landed reads merged" do
+      # The salvage case — the run ended :failed but its task picked up a
+      # shipped_in (code cherry-picked / a later run landed it).
+      summaries = %{"alpha" => %{open: 0, done: 1, total: 1, landed: %{"3" => "f00dcafe"}}}
+      entry = run_entry("r-3", project_name: "alpha", bucket: :red, task_id: "3", state: :failed)
+
+      assert Live.landed_entry?(entry, summaries)
+      assert Live.landed_label(summaries, entry.status) == "✓ f00dcaf"
     end
   end
 

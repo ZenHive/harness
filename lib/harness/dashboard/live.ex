@@ -36,6 +36,7 @@ defmodule Harness.Dashboard.Live do
 
   alias Harness.AgentRegistry
   alias Harness.Dashboard.Components
+  alias Harness.Dashboard.RoadmapSummary
   alias Harness.Dashboard.RunFeed
   alias Harness.Dashboard.Transcript
   alias Harness.Dashboard.Transcript.Parser
@@ -50,6 +51,19 @@ defmodule Harness.Dashboard.Live do
 
   @meta_tick_interval_ms 5_000
 
+  # Roadmap rollups (open-task counts + the task_id => shipped_in landed map) come
+  # from a cold-path `rmap list` per project and have no PubSub source, so a slow
+  # tick refreshes them — far slower than meta_tick since landing is minutes-paced.
+  # "Merged" is a property of the TASK (shipped_in), never the run's terminal
+  # state: a :failed run whose code is later salvaged and landed picks up a
+  # shipped_in, so the unmerged filter joins on the task, not on run state.
+  @roadmap_tick_interval_ms 30_000
+
+  # Roadmap rollups (open-task counts + the task_id => shipped_in landed map) come
+  # from a cold-path `rmap list` per project and have no PubSub source, so a slow
+  # tick refreshes them — far slower than meta_tick since landing is minutes-paced.
+  @roadmap_tick_interval_ms 30_000
+
   # Mirror StatusView's history cap so the history stream's DOM size stays
   # bounded over a long-lived session.
   @history_limit 200
@@ -59,7 +73,10 @@ defmodule Harness.Dashboard.Live do
     if connected?(socket) do
       RunFeed.subscribe()
       schedule_meta_tick()
+      schedule_roadmap_tick()
     end
+
+    projects = ProjectRegistry.list()
 
     # The single disk read: seed sidebar + history at mount. Active runs and the
     # history/active stream contents are populated by apply_action(:index) from
@@ -68,7 +85,9 @@ defmodule Harness.Dashboard.Live do
 
     {:ok,
      socket
-     |> assign(:projects, ProjectRegistry.list())
+     |> assign(:projects, projects)
+     |> assign(:roadmap, RoadmapSummary.for_projects(projects))
+     |> assign(:show_landed, false)
      |> assign(:adapters, list_adapters())
      |> assign(:unavailable, snapshot.unavailable_agents)
      |> assign(:selected_project, nil)
@@ -102,7 +121,6 @@ defmodule Harness.Dashboard.Live do
     selected = Map.get(params, "project")
     runs = StatusView.live_runs()
     active = runs |> reject_terminal() |> filter_runs(selected)
-    history = filter_runs(socket.assigns.history_all, selected)
 
     socket
     |> maybe_unsubscribe(socket.assigns[:run_id])
@@ -111,9 +129,8 @@ defmodule Harness.Dashboard.Live do
     |> assign(:selected_project, selected)
     |> assign(:counts, bucket_counts(%{runs: runs}))
     |> assign(:active_empty?, active == [])
-    |> assign(:history_empty?, history == [])
     |> stream(:active_runs, active, reset: true)
-    |> stream(:history, history, reset: true)
+    |> restream_history()
   end
 
   defp apply_action(socket, :show, %{"run_id" => run_id} = params) do
@@ -214,6 +231,18 @@ defmodule Harness.Dashboard.Live do
     {:noreply, socket}
   end
 
+  # Cold-path roadmap refresh: re-read each project's open/landed rollup (no
+  # PubSub source for it). On the index, also re-stream history so a run whose
+  # task has since landed drops out of the default unmerged view and the
+  # Landed column reflects the new shipped_in — streamed rows don't otherwise
+  # re-read the @roadmap assign.
+  def handle_info(:roadmap_tick, socket) do
+    schedule_roadmap_tick()
+    socket = assign(socket, :roadmap, RoadmapSummary.for_projects(socket.assigns.projects))
+    socket = if socket.assigns.live_action == :index, do: restream_history(socket), else: socket
+    {:noreply, socket}
+  end
+
   # Fleet run-lifecycle feed (RunFeed). On the index view these patch the run
   # streams; on the show view they refresh the focused run's status. A run that
   # belongs to a different view/run_id is ignored.
@@ -307,16 +336,19 @@ defmodule Harness.Dashboard.Live do
   defp apply_run_settled(socket, %Status{} = status) do
     entry = StatusView.run_entry_for(status)
     history_all = prepend_history(entry, socket.assigns.history_all)
-    selected = socket.assigns.selected_project
 
     socket =
       socket
       |> stream_delete(:active_runs, entry)
       |> assign(:history_all, history_all)
       |> recompute_active()
-      |> assign(:history_empty?, filter_runs(history_all, selected) == [])
 
-    if passes_filter?(entry, selected) do
+    socket = assign(socket, :history_empty?, history_rows(socket) == [])
+
+    # A just-settled run's task has no shipped_in yet, so it is "unmerged" and
+    # belongs in the default view; show_in_history?/2 still honors the project
+    # filter and a toggled-off landed view for completeness.
+    if show_in_history?(entry, socket) do
       stream_insert(socket, :history, entry, at: 0, limit: @history_limit)
     else
       socket
@@ -354,6 +386,51 @@ defmodule Harness.Dashboard.Live do
   @spec passes_filter?(StatusView.run_entry(), String.t() | nil) :: boolean()
   defp passes_filter?(entry, selected), do: filter_runs([entry], selected) != []
 
+  # The history rows the operator sees: project-filtered, then (unless the landed
+  # view is toggled on) reduced to the unmerged set — runs whose task carries no
+  # shipped_in. Re-streaming with this drops a run the moment its task lands.
+  @spec history_rows(Socket.t()) :: [StatusView.run_entry()]
+  defp history_rows(socket) do
+    socket.assigns.history_all
+    |> filter_runs(socket.assigns.selected_project)
+    |> filter_landed(socket.assigns.show_landed, socket.assigns.roadmap)
+  end
+
+  @spec restream_history(Socket.t()) :: Socket.t()
+  defp restream_history(socket) do
+    rows = history_rows(socket)
+
+    socket
+    |> assign(:history_empty?, rows == [])
+    |> stream(:history, rows, reset: true)
+  end
+
+  @spec filter_landed([StatusView.run_entry()], boolean(), RoadmapSummary.summaries()) ::
+          [StatusView.run_entry()]
+  defp filter_landed(runs, true, _summaries), do: runs
+  defp filter_landed(runs, false, summaries), do: Enum.reject(runs, &landed_entry?(&1, summaries))
+
+  @spec show_in_history?(StatusView.run_entry(), Socket.t()) :: boolean()
+  defp show_in_history?(entry, socket) do
+    passes_filter?(entry, socket.assigns.selected_project) and
+      (socket.assigns.show_landed or not landed_entry?(entry, socket.assigns.roadmap))
+  end
+
+  @doc false
+  @spec landed_entry?(StatusView.run_entry(), RoadmapSummary.summaries()) :: boolean()
+  def landed_entry?(%{status: %Status{project_name: project, task_id: task_id}}, summaries) do
+    RoadmapSummary.landed_sha(summaries, project, task_id) != nil
+  end
+
+  # Count of landed (merged) runs hidden from the unmerged default view, shown on
+  # the toggle so mergedness is legible at a glance without expanding the view.
+  @spec landed_toggle_label([StatusView.run_entry()], String.t() | nil, RoadmapSummary.summaries()) ::
+          String.t()
+  defp landed_toggle_label(history_all, selected, summaries) do
+    hidden = history_all |> filter_runs(selected) |> Enum.count(&landed_entry?(&1, summaries))
+    "Show landed runs (#{hidden})"
+  end
+
   # The active table shows only non-terminal runs; a settled run lives in
   # history. Lingering settled runs (still registered for ~5s) are excluded here.
   @spec reject_terminal([StatusView.run_entry()]) :: [StatusView.run_entry()]
@@ -369,6 +446,9 @@ defmodule Harness.Dashboard.Live do
 
   @spec schedule_meta_tick() :: reference()
   defp schedule_meta_tick, do: Process.send_after(self(), :meta_tick, @meta_tick_interval_ms)
+
+  @spec schedule_roadmap_tick() :: reference()
+  defp schedule_roadmap_tick, do: Process.send_after(self(), :roadmap_tick, @roadmap_tick_interval_ms)
 
   @spec list_adapters() :: [%{agent: atom(), module: module(), installed: boolean()}]
   defp list_adapters do
@@ -526,13 +606,28 @@ defmodule Harness.Dashboard.Live do
       <a href="/harness/oban">Open Oban Web →</a>
     </div>
 
+    <.roadmap_panel projects={@projects} summaries={@roadmap} />
+
     <h2>Active runs</h2>
     <p :if={@active_empty?}>No runs in flight or lingering.</p>
-    <.run_table id="active-runs" rows={@streams.active_runs} />
+    <.run_table id="active-runs" rows={@streams.active_runs} summaries={@roadmap} />
 
-    <h2>Run history</h2>
-    <p :if={@history_empty?}>No persisted runs.</p>
-    <.run_table id="run-history" rows={@streams.history} />
+    <h2>
+      Run history <span :if={!@show_landed}> — unmerged only</span>
+    </h2>
+    <p class="history-toggle">
+      <button type="button" phx-click="toggle_landed">
+        {if @show_landed,
+          do: "Hide landed runs",
+          else: landed_toggle_label(@history_all, @selected_project, @roadmap)}
+      </button>
+    </p>
+    <p :if={@history_empty?}>
+      {if @show_landed,
+        do: "No persisted runs.",
+        else: "No unmerged runs — every settled run has landed."}
+    </p>
+    <.run_table id="run-history" rows={@streams.history} summaries={@roadmap} />
 
     <h3>Adapters</h3>
     <table>
@@ -640,14 +735,70 @@ defmodule Harness.Dashboard.Live do
     """
   end
 
+  attr(:projects, :list, required: true)
+  attr(:summaries, :map, required: true)
+
+  # Per-project roadmap rollup: how much work is open vs done, and how many of a
+  # project's tasks the lander has landed. Sourced from the @roadmap assign (one
+  # `rmap list` per project, refreshed on the slow roadmap_tick), so the panel
+  # answers "how much is left / is anything shipping?" without a run drill-down.
+  @spec roadmap_panel(map()) :: Rendered.t()
+  defp roadmap_panel(assigns) do
+    ~H"""
+    <h2>Roadmap</h2>
+    <p :if={@projects == []}>No projects registered.</p>
+    <table :if={@projects != []}>
+      <thead>
+        <tr>
+          <th>Project</th>
+          <th>Open</th>
+          <th>Done</th>
+          <th>Total</th>
+          <th>Landed</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr :for={row <- roadmap_rows(@projects, @summaries)}>
+          <td>{row.name}</td>
+          <td>{row.open}</td>
+          <td>{row.done}</td>
+          <td>{row.total}</td>
+          <td>{row.landed}</td>
+        </tr>
+      </tbody>
+    </table>
+    """
+  end
+
+  # Flattens the projects + summaries assigns into render-ready rows so the
+  # component reads one precomputed value per cell instead of re-resolving the
+  # summary four times.
+  @spec roadmap_rows([map()], RoadmapSummary.summaries()) :: [map()]
+  defp roadmap_rows(projects, summaries) do
+    Enum.map(projects, fn project ->
+      summary = RoadmapSummary.summary_for(summaries, project.name)
+
+      %{
+        name: project.name,
+        open: summary.open,
+        done: summary.done,
+        total: summary.total,
+        landed: map_size(summary.landed)
+      }
+    end)
+  end
+
   attr(:id, :string, required: true)
   attr(:rows, :any, required: true)
+  attr(:summaries, :map, default: %{})
 
   # Shared by the "Active runs" and "Run history" tables. `rows` is a
   # `Phoenix.LiveView` stream; the `<tbody>` carries `phx-update="stream"` and a
   # stable id so inserts/deletes patch individual rows. Settled rows render no
   # kill action — `killable?/1` returns false for terminal states — so the same
-  # markup serves both live and historical entries.
+  # markup serves both live and historical entries. The Landed cell joins the
+  # run's task against `summaries` (the per-project roadmap rollup) — its
+  # shipped_in if the task merged, else "—".
   @spec run_table(map()) :: Rendered.t()
   defp run_table(assigns) do
     ~H"""
@@ -655,12 +806,14 @@ defmodule Harness.Dashboard.Live do
       <thead>
         <tr>
           <th>Task</th>
+          <th>Project</th>
           <th>Run</th>
           <th>Agent</th>
           <th>Model</th>
           <th>State</th>
           <th>Attempts</th>
           <th>Verdict</th>
+          <th>Landed</th>
           <th>Detail</th>
           <th>Action</th>
         </tr>
@@ -668,6 +821,7 @@ defmodule Harness.Dashboard.Live do
       <tbody id={@id} phx-update="stream">
         <tr :for={{dom_id, entry} <- @rows} id={dom_id}>
           <td>{entry.status.task_id}</td>
+          <td>{entry.status.project_name || "—"}</td>
           <td><.run_link run_id={entry.status.run_id} /></td>
           <td><code>{agent_label(entry.status.agent, nil)}</code></td>
           <td>{model_label(entry.status.agent, entry.status.model, "")}</td>
@@ -676,6 +830,7 @@ defmodule Harness.Dashboard.Live do
           </td>
           <td>{entry.status.repair_attempts}</td>
           <td>{verdict_label(entry.status.verdict_status)}</td>
+          <td>{landed_label(@summaries, entry.status)}</td>
           <td>{entry.detail || ""}</td>
           <td>
             <.kill_button :if={killable?(entry.status)} run_id={entry.status.run_id} />
@@ -733,6 +888,13 @@ defmodule Harness.Dashboard.Live do
     {:noreply, socket}
   end
 
+  def handle_event("toggle_landed", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_landed, not socket.assigns.show_landed)
+     |> restream_history()}
+  end
+
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   @typep bucket_count_source :: %{
@@ -763,6 +925,21 @@ defmodule Harness.Dashboard.Live do
   def verdict_label(:pass), do: "pass"
   def verdict_label(:fail), do: "fail"
   def verdict_label(nil), do: "—"
+
+  # "Merged" is the run's task carrying a shipped_in in the project roadmap (set
+  # by the lander, or by a human salvaging the code) — independent of how the run
+  # itself ended. `✓ <sha>` when landed, else "—".
+  @doc false
+  @spec landed_label(RoadmapSummary.summaries(), Status.t()) :: String.t()
+  def landed_label(summaries, %Status{project_name: project, task_id: task_id}) do
+    case RoadmapSummary.landed_sha(summaries, project, task_id) do
+      nil -> "—"
+      sha -> "✓ " <> short_sha(sha)
+    end
+  end
+
+  @spec short_sha(String.t()) :: String.t()
+  defp short_sha(sha), do: String.slice(sha, 0, 7)
 
   # The executing adapter, resolved from its module (`agent_kind_for/1`) and
   # available the moment a run starts. The `Status.agent_kind` field stays nil

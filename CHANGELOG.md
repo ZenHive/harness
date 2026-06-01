@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Project attribution, roadmap rollup, and a task-level merge signal on the
+  dashboard index.** The run tables showed task/run/agent but not *which project*
+  a run belonged to, and the index gave no view of how much roadmap was left or
+  whether settled runs ever landed. Three additions close that:
+  - **Project column** on the active + history run tables (`status.project_name`).
+  - **Roadmap panel** — per registered project, the open / done / total task
+    counts plus how many tasks the lander has landed. Backed by a new pure
+    `Harness.Dashboard.RoadmapSummary` (one `rmap list` per project, refreshed on
+    a slow 30s `:roadmap_tick`; a `:roadmap_list` test seam mirrors the poller's
+    `:roadmap_ready`). A project whose roadmap can't be read contributes a zero
+    summary rather than crashing the panel.
+  - **Landed column + unmerged-by-default history.** "Merged" is a property of
+    the *task* (its `shipped_in`, written by the merge-train lander or a human
+    salvaging the code) — **not** the run's terminal state, so a `:failed` run
+    whose code is later salvaged and landed correctly reads merged. History now
+    defaults to the actionable **unmerged** set (every open loop regardless of
+    red/green), with a toggle (carrying the hidden-landed count) to reveal landed
+    runs; the `Landed ✓<sha>` column shows the join. The slow tick re-streams
+    history so a run drops out the moment its task lands.
+
 - **Read-only configuration inspector on the operator settings page (Task 127).**
   A long-running harness node had no way to *see* how it was configured without
   shell access to read `config/config.exs` + `config/runtime.exs` and mentally
