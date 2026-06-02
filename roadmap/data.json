@@ -6119,7 +6119,7 @@
       "id": "156",
       "phase": 11,
       "bundle": "autolanding",
-      "status": "in_progress",
+      "status": "done",
       "title": "MCP dispatch-task runs are not restart-resilient — a node restart silently kills in-flight runs with no record",
       "scores": {
         "d": 4,
@@ -6152,10 +6152,15 @@
         "lib/harness/run/worker.ex",
         "lib/harness/run/supervisor.ex"
       ],
+      "shipped_in": "e8de3d6",
       "body": "Found 2026-06-02: task 153's first dispatch (run-1780384973169-0b1933ca, codex) vanished without a trace after a node restart at ~15:42 local. dispatch-status returned not_found, no run_record was written, no supervisor entry, no commits in the worktree — zero evidence the run ever existed.\n\nRoot cause: the MCP dispatch-task tool (Harness.Chat.Tools / dispatch__task) starts the Run gen_statem DIRECTLY via Run.Supervisor.start_run — it does not enqueue through Oban. Only the cron/poller path (RoadmapPoller -> Run.Worker Oban job) gets Postgres-backed persistence. So Task 48's promise that 'jobs survive BEAM death in Postgres' only holds for autonomous cron dispatches; every interactive MCP/chat dispatch is a process-linked run that dies silently with the node.\n\nConsequences observed: the orchestrator (Claude session driving harness) believed the run was still in flight, burned a monitor cycle polling a dead run id, and only discovered the loss by checking node uptime via tidewave. The stale dispatch branch also had to be cleaned up by hand.\n\nFix direction (pick at implementation time, smallest honest fix wins):\n(a) Route dispatch__task through the same Oban Run.Worker the cron poller uses (interactive dispatch becomes an insert + the job starts immediately), so restart resilience is uniform; or\n(b) Keep the direct start but write a run_record tombstone at dispatch time (state :started) so a vanished run is at least detectable/diagnosable after restart.\n\nOption (a) is preferred — it makes Task 48's persistence claim true for all dispatch paths and removes the special case.\n",
       "created_at": "2026-06-02",
       "started_at": "2026-06-02",
+      "done_at": "2026-06-02",
       "scored_at": "2026-06-02",
+      "implemented": "Oban-backed interactive dispatch: dispatch-task pre-generates the run id, persists it in Run.Worker job args, and returns it only after the Oban row is inserted; the worker reuses the stored id so a BEAM restart rescues/re-runs the durable job instead of silently losing the run. Codex delivery (run run-1780393211609-cc989923) + hand salvage of credo MaxLineLength findings; re-graded green by harness :elixir_precommit stack.",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -6206,7 +6211,7 @@
       "id": "158",
       "phase": 11,
       "bundle": "autolanding",
-      "status": "in_progress",
+      "status": "done",
       "title": "Post-green semantic gate rejects green runs when the grader is unavailable (no auto-pair OR disabled grader == reject; Task-59 parity gap)",
       "scores": {
         "d": 3,
@@ -6239,10 +6244,15 @@
         "config/config.exs",
         "test/harness/run/semantic_gate_test.exs"
       ],
+      "shipped_in": "c6bda6a",
       "body": "The post-green semantic gate fails-closed on a *missing grader*, turning every green run by a non-auto-paired agent into a spurious semantic rejection.\n\n`AuditReview.default_grader/1` only auto-pairs `:claude <-> :codex` (by design, fail-closed); `:grok`/`:cursor`/`:antigravity`/`:pi` return `{:no_default_grader, _}` unless an explicit `:grader` is supplied. Task 59 ALREADY handled this for the cross_agent_repair path via `cross_agent_grader_available?/1` (run.ex:1544), which falls back to normal same-agent repair when no grader resolves.\n\nBut the post-green semantic-gate transition was never given the same guard. run.ex:773:\n\n    Verdict.passed?(verdict) and semantic_gate_enabled?(data) ->\n      {:next_state, :consulting, %{data | consultation_kind: :semantic_gate}}\n\nIt gates purely on `semantic_gate_enabled?` — it never checks the grader is resolvable. `ensure_cross_family_semantic_grader(implementer, nil)` returns `:ok` (it only rejects a *same-family* explicit grader), so the run enters `:consulting`, `grade_discernment/2` calls AuditReview with implementer=:grok / grader=nil, gets `{:no_default_grader, :grok}`, and the grader-failure handler routes through `reject_semantic_gate/2` with `semantic_gate_failure_feedback/1` -> verdict `:reject`. Because grok supports session_resume, it then burns all `:max_repair_attempts` re-running with a `:semantic_rejection` prompt that can never succeed (the grader is still missing), then `:cancel`s.\n\nNet: with the semantic gate enabled, FOUR of six agents (grok/cursor/antigravity/pi) can never land a green run unless an explicit `:semantic_gate, grader:` is configured — and the failure masquerades as the agent producing a semantically-bad diff.\n\nObserved live (run-1780390682506-b236573e, Oban job 78, rmap task 9, grok implementing `rmap render --html --multi`):\n- check stack GREEN: verdict `:pass`, `first_attempt_failed_check_count: 0`, `failed_checks: []`, 102-line diff, exit 0.\n- 4x `[warning] harness run: semantic gate grader failed for run-1780390682506-b236573e: {:no_default_grader, :grok}` — one per repair attempt (17:10/17:16/17:19/17:24).\n- settled record: state `:failed`, reason `:semantic_rejection`, repair_attempts 3, duration ~26min, 240k tokens — all wasted.\n- Compounding: `:claude` is operator-disabled this session, so even the natural grok->claude pairing wouldn't grade; `:codex` is the only available cross-family grader.\n\nSECOND TRIGGER observed live — a RESOLVABLE grader that is operator-disabled (run-1780391001875-189f8674, DIRECT MCP dispatch / batch_id == own run-id, harness task 156, codex implementing the MCP-dispatch restart-resilience fix):\n- check stack GREEN: verdict `:pass`, `first_attempt_failed_check_count: 0`, 59-line diff, exit 0.\n- codex's auto-pair grader IS resolvable (`default_grader(:codex)` => `{:ok, Claude}`), so this is NOT the `{:no_default_grader,_}` path — but `:claude` was operator-disabled during the 09:03-09:33Z run window, so the grader could not actually be invoked. The grader call FAILED (infra), and harness conflated that into a `:reject` exactly as in the grok case.\n- The implementer itself flagged the bogus payload (verbatim from the transcript): \"The reviewer payload is still a failed reviewer call, not an actual semantic critique, but this is the last repair slot so I'm going to audit the acceptance criteria aggressively.\" It had no real critique to act on -> burned all 3 repairs -> `:semantic_rejection`. ~30min, ~74M tokens wasted (cache_read 36M + input 38M).\n- No `semantic gate grader failed` warning was logged for this run (unlike grok's 4x), so the conflation also happens silently on the disabled-grader path.\n- (Aside, separate gremlin: codex also logged `failed to load skill .../staged-review/1.19.3/skills/commit-review/SKILL.md: invalid YAML ... line 2 column 274` — a corrupted SKILL.md in codex's OWN plugin cache/sandbox, unrelated to the harness grader bug; flag if it recurs.)\n\nSo the bug has TWO triggers that must both fail-open: (A) no auto-pair exists (grok/cursor/antigravity/pi), and (B) an auto-pair resolves but the grader agent is disabled/unavailable at grade time (codex->claude with claude off). Enabling claude fixes (B) for codex going forward, but the fail-closed conflation must still be corrected so a transient grader outage never masquerades as a semantic rejection.\n\nFix = Task-59 parity for the gate: (1) guard the `:consulting`/:semantic_gate transition on grader availability (reuse `cross_agent_grader_available?` logic, and also treat a resolvable-but-unavailable grader as not-available) so green + no usable grader => `:done`; (2) make `semantic_gate_failure_feedback/1` fail-OPEN for `{:no_default_grader,_}` AND grader infra/unavailability failures on a green run rather than fabricating a `:reject`; (3) expose `:semantic_gate, grader:` config so operators can point grok/cursor/etc at codex.\n\nDiscovered while monitoring grok task 9 from the operator/dashboard lane; this is a run-lifecycle correctness bug in the landing loop (phase 11 autolanding's \"cross-family adversarial semantic gate\"), distinct from the agent-routing fix and from Task 157's restart-resilience work, so it is filed rather than folded into either.\n",
       "created_at": "2026-06-02",
       "started_at": "2026-06-02",
+      "done_at": "2026-06-02",
       "scored_at": "2026-06-02",
+      "implemented": "Green verdict enters the semantic gate only when the gate is enabled AND its cross-family grader is dispatchable (semantic_gate_grader_available?/1); missing or operator-disabled grader fails open to :done instead of rejecting/burning repair attempts. Config flag + settle_green_verdict/1 extraction. Codex delivery (run run-1780393315913-69e683e9) + hand salvage of credo CyclomaticComplexity finding; re-graded green by harness :elixir_precommit stack.",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {

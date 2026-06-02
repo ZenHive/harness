@@ -4787,7 +4787,7 @@ done_at = "2026-06-02"
 id = "156"
 phase = 11
 bundle = "autolanding"
-status = "in_progress"
+status = "done"
 title = "MCP dispatch-task runs are not restart-resilient — a node restart silently kills in-flight runs with no record"
 scores = { d = 4, b = 6, u = 5 }
 markers = ["bug"]
@@ -4809,9 +4809,14 @@ Fix direction (pick at implementation time, smallest honest fix wins):
 
 Option (a) is preferred — it makes Task 48's persistence claim true for all dispatch paths and removes the special case.
 """
+implemented = "Oban-backed interactive dispatch: dispatch-task pre-generates the run id, persists it in Run.Worker job args, and returns it only after the Oban row is inserted; the worker reuses the stored id so a BEAM restart rescues/re-runs the durable job instead of silently losing the run. Codex delivery (run run-1780393211609-cc989923) + hand salvage of credo MaxLineLength findings; re-graded green by harness :elixir_precommit stack."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-02"
 started_at = "2026-06-02"
 scored_at = "2026-06-02"
+done_at = "2026-06-02"
+shipped_in = "e8de3d6"
 
 [[task]]
 id = "157"
@@ -4852,7 +4857,7 @@ shipped_in = "cfbd5ef"
 id = "158"
 phase = 11
 bundle = "autolanding"
-status = "in_progress"
+status = "done"
 title = "Post-green semantic gate rejects green runs when the grader is unavailable (no auto-pair OR disabled grader == reject; Task-59 parity gap)"
 scores = { d = 3, b = 8, u = 8 }
 markers = ["bug"]
@@ -4893,9 +4898,14 @@ Fix = Task-59 parity for the gate: (1) guard the `:consulting`/:semantic_gate tr
 
 Discovered while monitoring grok task 9 from the operator/dashboard lane; this is a run-lifecycle correctness bug in the landing loop (phase 11 autolanding's "cross-family adversarial semantic gate"), distinct from the agent-routing fix and from Task 157's restart-resilience work, so it is filed rather than folded into either.
 """
+implemented = "Green verdict enters the semantic gate only when the gate is enabled AND its cross-family grader is dispatchable (semantic_gate_grader_available?/1); missing or operator-disabled grader fails open to :done instead of rejecting/burning repair attempts. Config flag + settle_green_verdict/1 extraction. Codex delivery (run run-1780393315913-69e683e9) + hand salvage of credo CyclomaticComplexity finding; re-graded green by harness :elixir_precommit stack."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-02"
 started_at = "2026-06-02"
 scored_at = "2026-06-02"
+done_at = "2026-06-02"
+shipped_in = "c6bda6a"
 
 [[task]]
 id = "159"

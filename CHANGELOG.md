@@ -285,6 +285,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Genuinely-red bases (failures no post_process filters) still settle
   `:base_red`.
 
+- **Post-green semantic gate fails open to `:done` when its grader is unavailable
+  or disabled (Task 158, codex delivery).** A green verdict used to enter the
+  semantic-gate consultation unconditionally when the gate was enabled — if no
+  cross-family grader was dispatchable (or the operator disabled the grader), the
+  gate rejected the green run and burned repair attempts on work the check stack
+  had already passed. `Harness.Run` now routes green verdicts through
+  `settle_green_verdict/1`: the gate is consulted only when it is enabled AND
+  `semantic_gate_grader_available?/1` — otherwise the run settles `:done`
+  directly. Mirrors Task 59's AuditReview availability semantics.
+
 - **Interactive `dispatch-task` runs are now Oban-backed and restart-resilient
   (Task 156, codex delivery).** The MCP/chat fire-and-forget dispatch path now
   pre-generates a run id, persists it in the `Harness.Run.Worker` job args, and
