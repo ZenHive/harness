@@ -6028,8 +6028,8 @@
       "id": "154",
       "phase": 11,
       "bundle": "autolanding",
-      "status": "pending",
-      "title": "Cron dispatch leaks ANTHROPIC_API_KEY — autonomous Claude runs die exit 1 (Task 108 follow-through)",
+      "status": "done",
+      "title": "Cron dispatch leaks provider API keys (ANTHROPIC/OPENAI) — subscription agents bypass their login (Task 108 follow-through)",
       "scores": {
         "d": 2,
         "b": 8,
@@ -6046,10 +6046,10 @@
       ],
       "assignee": "codex",
       "acceptance_criteria": [
-        "RoadmapPoller.enqueue_run/3 sets `env: %{\"ANTHROPIC_API_KEY\" => false}` in the Run.Worker job args when the resolved adapter is a subscription-OAuth agent (Claude), so the spawned `claude -p` Port falls back to ~/.claude OAuth creds instead of the metered API key present in the node env",
-        "Non-Claude adapters (codex/cursor/grok/antigravity/pi) enqueue with no spurious env scrub — args unchanged from today",
-        "The scrub decision is driven off a capability/adapter property (e.g. cost_tier or an explicit OAuth-agent predicate), not a hardcoded `== Claude` string match, so future OAuth agents are covered",
-        "Test: a Claude-routed task enqueues a Run.Worker job whose args carry env: %{\"ANTHROPIC_API_KEY\" => false}; a Codex-routed task enqueues with no env key",
+        "RoadmapPoller.enqueue_run/3 sets a per-agent scrub in the Run.Worker job args for each subscription-operated agent — Claude => `env: %{\"ANTHROPIC_API_KEY\" => false}`, Codex => `env: %{\"OPENAI_API_KEY\" => false}` — so the spawned CLI falls back to its stored subscription/OAuth login (~/.claude, ~/.codex auth_mode=chatgpt) instead of a metered provider key present in the node env",
+        "The scrub is a per-agent map (agent => env-var-to-scrub), not a hardcoded single-key special-case, so adding a future subscription agent is a one-line map entry; agents with no metered key to scrub (cursor/grok/antigravity/pi) enqueue with no spurious env key — args unchanged from today",
+        "Whether the agent runs on subscription vs API is operator-declarable (config or a Settings flag), defaulting to subscription-scrub for Claude and Codex; the scrub must NOT fire for an operator who genuinely runs that agent on its metered API key",
+        "Test: a Claude-routed task enqueues args carrying env: %{\"ANTHROPIC_API_KEY\" => false}; a Codex-routed task enqueues args carrying env: %{\"OPENAI_API_KEY\" => false}; a Cursor-routed task enqueues with no env key",
         "CHANGELOG entry under [Unreleased]"
       ],
       "out_of_scope": [
@@ -6065,9 +6065,14 @@
         "lib/harness/cron/roadmap_poller.ex",
         "lib/harness/run/worker.ex"
       ],
-      "body": "Root cause of the 2026-06-02 Claude retry-storm incident (16 failed rmap runs from a single Dispatch-now poll).\n\nTrace:\n- `Harness.Cron.RoadmapPoller.enqueue_run/3` (roadmap_poller.ex:179) builds the Run.Worker job args with only `project_name`, `item_id`, `adapter_module` — NO `:env` key.\n- `Harness.Run.Worker.env_opt/1` (worker.ex:200) only threads a scrub when `args[\"env\"]` is a non-empty map (\"Absent or empty => no :env opt\"). So the autonomous cron path passes no env scrub.\n- The harness node's environment carries `ANTHROPIC_API_KEY` (sk-ant-…, 108 bytes) and no `CLAUDE_CODE_OAUTH_TOKEN`. The Port inherits it, so `claude -p` uses the metered API key instead of the operator's subscription OAuth and exits 1 in ~2.5s with 0 tokens / 0 diff / no stream output.\n- Each failure made Run.Worker return a retryable error -> Oban backed off and retried to ~8 attempts per job -> 2 tasks x 8 attempts = 16 failed run_records. A BEAM restart did not stop it (Oban jobs persist in Postgres); Claude reloaded enabled from its persisted store and the loop resumed on boot.\n\nThe fix is one place. Task 108 already built the consumer plumbing — Worker.env_opt/1 reads `env` from job args and threads it into start_run's `:env` (set/scrub pairs; `false` value = scrub). But Task 108 only wired the manual dispatch__bundle producer; the autonomous cron producer (RoadmapPoller) was never given the scrub. Populate it there for OAuth-subscription adapters.\n\nThis is why Claude is currently operator-disabled as a workaround. With the scrub in place, autonomous Claude dispatch should fall back to ~/.claude OAuth and work.\n",
+      "shipped_in": "7bf1dee",
+      "body": "Root cause of the 2026-06-02 Claude retry-storm incident (16 failed rmap runs from a single Dispatch-now poll).\n\nTrace:\n- `Harness.Cron.RoadmapPoller.enqueue_run/3` (roadmap_poller.ex:179) builds the Run.Worker job args with only `project_name`, `item_id`, `adapter_module` — NO `:env` key.\n- `Harness.Run.Worker.env_opt/1` (worker.ex:200) only threads a scrub when `args[\"env\"]` is a non-empty map (\"Absent or empty => no :env opt\"). So the autonomous cron path passes no env scrub.\n- The harness node's environment carries `ANTHROPIC_API_KEY` (sk-ant-…, 108 bytes) and no `CLAUDE_CODE_OAUTH_TOKEN`. The Port inherits it, so `claude -p` uses the metered API key instead of the operator's subscription OAuth and exits 1 in ~2.5s with 0 tokens / 0 diff / no stream output.\n- Each failure made Run.Worker return a retryable error -> Oban backed off and retried to ~8 attempts per job -> 2 tasks x 8 attempts = 16 failed run_records. A BEAM restart did not stop it (Oban jobs persist in Postgres); Claude reloaded enabled from its persisted store and the loop resumed on boot.\n\nThe fix is one place. Task 108 already built the consumer plumbing — Worker.env_opt/1 reads `env` from job args and threads it into start_run's `:env` (set/scrub pairs; `false` value = scrub). But Task 108 only wired the manual dispatch__bundle producer; the autonomous cron producer (RoadmapPoller) was never given the scrub. Populate it there for OAuth-subscription adapters.\n\nThis is why Claude is currently operator-disabled as a workaround. With the scrub in place, autonomous Claude dispatch should fall back to ~/.claude OAuth and work.\n\nCODEX HAS THE SAME EXPOSURE (broadened 2026-06-02). The node env also carries OPENAI_API_KEY (sk-pro…, 164 bytes), while ~/.codex/auth.json is auth_mode=chatgpt with ChatGPT-subscription tokens and NO stored API key — i.e. Codex is configured for the subscription. Whether `codex exec` honors that subscription or lets the env OPENAI_API_KEY override it when both exist is version-dependent CLI-precedence behavior we did not pin down. The failure mode differs from Claude's and is worse for being invisible: Codex would not crash, it would silently bill the OpenAI API account instead of the ChatGPT subscription. Task 31 (codex) ran green this session, which proves codex authenticated but tells us nothing about which credential it used. The deterministic fix is to scrub OPENAI_API_KEY for Codex dispatch the same way, regardless of precedence — so the scrub is a per-agent map, not a Claude special-case.\n\nCursor / Grok / Antigravity / Pi carry no provider key in the node env today, so they cannot leak; the map simply omits them until one gains an env-key exposure.\n",
       "created_at": "2026-06-02",
+      "done_at": "2026-06-02",
       "scored_at": "2026-06-02",
+      "implemented": "RoadmapPoller.enqueue_run now threads a per-agent subscription env scrub into Run.Worker job args (claude => ANTHROPIC_API_KEY scrub, codex => OPENAI_API_KEY scrub; cursor/grok/antigravity/pi unchanged). Operator-overridable via :cron_polling :subscription_env_scrubs config (set an agent to false/%{} to run on its metered key). Delivered by codex run run-1780387215339-e5a30382, verdict pass after 1 repair attempt.",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -6103,6 +6108,48 @@
       "scored_at": "2026-06-02",
       "implemented": "Harness.Landing.Settings (file-backed term store + overlay/effective/set with target-branch guard), Run.init/1 overlay chokepoint, Landing card + Dispatch now button on SettingsLive, tokens CSS, 6 LiveView + 13 unit tests.",
       "delivered_by": "claude",
+      "cross_repo": []
+    },
+    {
+      "id": "156",
+      "phase": 11,
+      "bundle": "autolanding",
+      "status": "pending",
+      "title": "MCP dispatch-task runs are not restart-resilient — a node restart silently kills in-flight runs with no record",
+      "scores": {
+        "d": 4,
+        "b": 6,
+        "u": 5
+      },
+      "eff": 1.38,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "An interactive dispatch (MCP dispatch-task / chat dispatch__task) survives a node restart: after BEAM restart the run either resumes/re-runs via Oban or is queryable as a failed/orphaned run — it never silently disappears",
+        "dispatch-status (or result_store-list_run_records) can answer 'what happened to run X?' for a run killed by node restart — not_found-with-no-trace is no longer a possible outcome for a dispatched run",
+        "Test: dispatch a run, simulate the supervisor/gen_statem dying without terminal-state writeback, assert a queryable record of the run exists",
+        "CHANGELOG entry under [Unreleased]"
+      ],
+      "out_of_scope": [
+        "Changing the cron/poller dispatch path (already Oban-backed and restart-resilient)",
+        "Dashboard UI for orphaned-run display (separate task if wanted)"
+      ],
+      "files_to_modify": [
+        "lib/harness/chat/tools.ex",
+        "lib/harness/run/worker.ex"
+      ],
+      "touches": [
+        "lib/harness/chat/tools.ex",
+        "lib/harness/run/worker.ex",
+        "lib/harness/run/supervisor.ex"
+      ],
+      "body": "Found 2026-06-02: task 153's first dispatch (run-1780384973169-0b1933ca, codex) vanished without a trace after a node restart at ~15:42 local. dispatch-status returned not_found, no run_record was written, no supervisor entry, no commits in the worktree — zero evidence the run ever existed.\n\nRoot cause: the MCP dispatch-task tool (Harness.Chat.Tools / dispatch__task) starts the Run gen_statem DIRECTLY via Run.Supervisor.start_run — it does not enqueue through Oban. Only the cron/poller path (RoadmapPoller -> Run.Worker Oban job) gets Postgres-backed persistence. So Task 48's promise that 'jobs survive BEAM death in Postgres' only holds for autonomous cron dispatches; every interactive MCP/chat dispatch is a process-linked run that dies silently with the node.\n\nConsequences observed: the orchestrator (Claude session driving harness) believed the run was still in flight, burned a monitor cycle polling a dead run id, and only discovered the loss by checking node uptime via tidewave. The stale dispatch branch also had to be cleaned up by hand.\n\nFix direction (pick at implementation time, smallest honest fix wins):\n(a) Route dispatch__task through the same Oban Run.Worker the cron poller uses (interactive dispatch becomes an insert + the job starts immediately), so restart resilience is uniform; or\n(b) Keep the direct start but write a run_record tombstone at dispatch time (state :started) so a vanished run is at least detectable/diagnosable after restart.\n\nOption (a) is preferred — it makes Task 48's persistence claim true for all dispatch paths and removes the special case.\n",
+      "created_at": "2026-06-02",
+      "scored_at": "2026-06-02",
       "cross_repo": []
     }
   ]
