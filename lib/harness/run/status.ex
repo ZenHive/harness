@@ -14,7 +14,15 @@ defmodule Harness.Run.Status do
   alias Harness.Run.Result
 
   @typedoc "The lifecycle state a run is currently in."
-  @type state :: :dispatched | :running | :committing | :verifying | :consulting | :done | :failed
+  @type state ::
+          :dispatched
+          | :running
+          | :committing
+          | :verifying
+          | :consulting
+          | :held
+          | :done
+          | :failed
 
   @typedoc """
   A run snapshot.
@@ -43,6 +51,9 @@ defmodule Harness.Run.Status do
       attempt in flight.
     * `reason` — why the run settled or is failing, once known (see
       `t:Harness.Run.Result.reason/0`); `nil` while the run is still in flight.
+    * `held?` — `true` while the run is operator-parked in `:held`.
+    * `hold_reason` — `:graceful` or `:interrupt` when `held?` is true; `nil`
+      otherwise.
   """
   @type t :: %__MODULE__{
           run_id: String.t(),
@@ -56,7 +67,9 @@ defmodule Harness.Run.Status do
           agent_kind: Outcome.kind() | nil,
           verdict_status: :pass | :fail | nil,
           repair_attempts: non_neg_integer(),
-          reason: Result.reason() | nil
+          reason: Result.reason() | nil,
+          held?: boolean(),
+          hold_reason: :graceful | :interrupt | nil
         }
 
   @enforce_keys [:run_id, :task_id, :state]
@@ -72,7 +85,9 @@ defmodule Harness.Run.Status do
     :agent_kind,
     :verdict_status,
     :reason,
-    repair_attempts: 0
+    :hold_reason,
+    repair_attempts: 0,
+    held?: false
   ]
 
   @doc """

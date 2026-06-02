@@ -87,6 +87,8 @@ defmodule Harness.FakeAdapter do
   #                    the no-diff short-circuit.
   # :sampled_repair  — first run emits a witness-visible line, waits briefly,
   #                    then writes a diff; resumed run records the repair prompt.
+  # :operator_steer  — first run writes attempt.txt; resumed run records the
+  #                    operator steer prompt into operator_steer_marker.
   # :write_and_pollute_checkout
   #                  — writes into cwd and the main checkout, so pollution-skip
   #                    tests still have worktree changes to commit.
@@ -191,6 +193,15 @@ defmodule Harness.FakeAdapter do
 
   defp command(:sampled_repair, %Invocation{session: nil}),
     do: {"/bin/sh", ["-c", "echo witness-line; sleep 0.25; echo agent-output > agent_output.txt; sleep 0.25"], []}
+
+  defp command(:operator_steer, %Invocation{session: :resume, prompt: prompt}),
+    do:
+      {"/bin/sh",
+       ["-c", ~S(echo agent-output > agent_output.txt; printf '%s' "$1" > operator_steer_marker), "harness-fake", prompt],
+       []}
+
+  defp command(:operator_steer, %Invocation{session: nil}),
+    do: {"/bin/sh", ["-c", "sleep 0.3; echo first-attempt > attempt.txt"], []}
 
   defp shell_arg(value) do
     "'" <> String.replace(value, "'", "'\"'\"'") <> "'"

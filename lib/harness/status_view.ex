@@ -149,7 +149,7 @@ defmodule Harness.StatusView do
       when state in [:dispatched, :running, :committing, :verifying, :consulting] and attempts > 0,
       do: :repairing
 
-  def classify(%Status{state: state}) when state in [:dispatched, :running, :committing, :verifying, :consulting],
+  def classify(%Status{state: state}) when state in [:dispatched, :running, :committing, :verifying, :consulting, :held],
     do: :in_flight
 
   @spec run_entry(String.t()) :: [run_entry()]
@@ -165,6 +165,8 @@ defmodule Harness.StatusView do
 
   defp detail(%Status{state: state, repair_attempts: attempts}) when state not in [:done, :failed] and attempts > 0,
     do: "attempt #{attempts}"
+
+  defp detail(%Status{state: :held, hold_reason: reason}) when not is_nil(reason), do: "held #{reason}"
 
   defp detail(_), do: nil
 

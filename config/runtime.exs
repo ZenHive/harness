@@ -47,6 +47,8 @@ end
 # (or Application.put_env at runtime) always wins.
 result_store = Application.get_env(:harness, :result_store)
 
+config :harness, :run, max_hold_timeout: 1_800_000
+
 if is_nil(result_store) do
   repo_enabled = Application.get_env(:harness, :repo_enabled, true)
 

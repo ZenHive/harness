@@ -15,6 +15,7 @@ defmodule Harness.Run do
       committing  — committing the agent's work to the run branch
       verifying   — the verification stack is grading the worktree
       consulting  — the opposite-agent grader is reviewing a repeated failure
+      held        — operator-parked; worktree retained, lifetime timer suspended
       done        — verification graded the worktree green (terminal)
       failed      — anything else (terminal)
 
@@ -44,6 +45,15 @@ defmodule Harness.Run do
   repair attempt — a quota-starved agent that produces no diff settles
   `:no_changes` rather than burning the remaining attempts. `repair_attempts` on
   both the result and the status snapshot reports how many attempts were made.
+
+  ## Operator recovery (hold / steer / resume)
+
+  `hold/1` parks a live run in `:held` so an operator can co-drive the worktree.
+  Graceful hold waits for the current agent attempt to finish; `hold/2` with
+  `interrupt: true` kills the agent immediately. `steer/2` stashes operator
+  guidance for the next boundary; `resume/1` re-enters `:running` with a
+  session-resume invocation in the same worktree. Steering requires
+  `capabilities.session_resume` on the adapter.
 
   ## Cancellation & timeout
 
@@ -118,9 +128,18 @@ defmodule Harness.Run do
   @default_discernment_min_weight 6
   @default_discernment_long_running_ms 600_000
   @default_discernment_min_transcript_bytes 1
+  @default_max_hold_timeout 1_800_000
 
   @typedoc "A lifecycle state."
-  @type state :: :dispatched | :running | :committing | :verifying | :consulting | :done | :failed
+  @type state ::
+          :dispatched
+          | :running
+          | :committing
+          | :verifying
+          | :consulting
+          | :held
+          | :done
+          | :failed
 
   @typedoc "A run handle: a run id, or the gen_statem pid directly."
   @type run :: String.t() | pid()
@@ -142,11 +161,15 @@ defmodule Harness.Run do
            idle_timeout: timeout() | nil,
            progress_timeout: timeout() | nil,
            lifetime_timeout: pos_integer(),
+           max_hold_timeout: timeout(),
            terminal_linger: non_neg_integer(),
            max_repair_attempts: non_neg_integer(),
            retry_policy: RetryPolicy.t(),
            repair_attempts: non_neg_integer(),
-           repair_prompt_kind: :verification_red | :semantic_rejection | nil,
+           repair_prompt_kind: :verification_red | :semantic_rejection | :operator_steer | nil,
+           hold_requested: false | :graceful | :interrupt,
+           hold_reason: :graceful | :interrupt | nil,
+           operator_feedback: String.t() | nil,
            cross_agent_repair: keyword(),
            semantic_gate: keyword(),
            consultation_kind: :repair | :semantic_gate | nil,
@@ -326,6 +349,89 @@ defmodule Harness.Run do
     :exit, _reason -> :ok
   end
 
+  api(
+    :hold,
+    "Park a live run in :held for operator-mediated recovery. Graceful hold waits for the current agent attempt to finish; interrupt: true kills the agent immediately.",
+    params: [
+      run: [
+        kind: :exchange_data,
+        source: "Harness.Run.Supervisor.list_runs/0",
+        description: "Run id string or gen_statem pid."
+      ],
+      interrupt: [
+        kind: :value,
+        type: :boolean,
+        default: false,
+        description: "When true, terminate the agent now and park immediately."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description: ":ok | {:error, :terminal} | {:error, :invalid_state} | {:error, :not_found}"
+    }
+  )
+
+  @spec hold(run(), boolean()) :: :ok | {:error, :terminal | :invalid_state | :not_found}
+  def hold(run, interrupt \\ false) do
+    case resolve(run) do
+      {:ok, pid} -> :gen_statem.call(pid, {:hold, interrupt})
+      {:error, :not_found} -> {:error, :not_found}
+    end
+  catch
+    :exit, _reason -> {:error, :not_found}
+  end
+
+  api(
+    :steer,
+    "Stash operator guidance for the next agent boundary (append-accumulates). Requires session_resume on the adapter.",
+    params: [
+      run: [
+        kind: :exchange_data,
+        source: "Harness.Run.Supervisor.list_runs/0",
+        description: "Run id string or gen_statem pid."
+      ],
+      text: [kind: :value, type: :string, description: "Operator note for the next resumed attempt."]
+    ],
+    returns: %{
+      type: :tuple,
+      description: ":ok | {:error, :resume_unsupported} | {:error, :not_found}"
+    }
+  )
+
+  @spec steer(run(), String.t()) :: :ok | {:error, :resume_unsupported | :not_found}
+  def steer(run, text) when is_binary(text) do
+    case resolve(run) do
+      {:ok, pid} -> :gen_statem.call(pid, {:steer, text})
+      {:error, :not_found} -> {:error, :not_found}
+    end
+  catch
+    :exit, _reason -> {:error, :not_found}
+  end
+
+  api(:resume, "Resume a :held run — re-enters :running with a session-resume invocation in the same worktree.",
+    params: [
+      run: [
+        kind: :exchange_data,
+        source: "Harness.Run.Supervisor.list_runs/0",
+        description: "Run id string or gen_statem pid."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description: ":ok | {:error, :not_held} | {:error, :not_found}"
+    }
+  )
+
+  @spec resume(run()) :: :ok | {:error, :not_held | :not_found}
+  def resume(run) do
+    case resolve(run) do
+      {:ok, pid} -> :gen_statem.call(pid, :resume)
+      {:error, :not_found} -> {:error, :not_found}
+    end
+  catch
+    :exit, _reason -> {:error, :not_found}
+  end
+
   @spec resolve(run()) :: {:ok, pid()} | {:error, :not_found}
   defp resolve(pid) when is_pid(pid), do: {:ok, pid}
 
@@ -365,6 +471,9 @@ defmodule Harness.Run do
       lifetime_timeout:
         Keyword.get(opts, :lifetime_timeout) ||
           configured(:lifetime_timeout, @default_lifetime_timeout),
+      max_hold_timeout:
+        Keyword.get(opts, :max_hold_timeout) ||
+          configured(:max_hold_timeout, @default_max_hold_timeout),
       terminal_linger:
         Keyword.get(opts, :terminal_linger) ||
           configured(:terminal_linger, @default_terminal_linger),
@@ -374,6 +483,9 @@ defmodule Harness.Run do
       retry_policy: RetryPolicy.from_opts(opts),
       repair_attempts: 0,
       repair_prompt_kind: nil,
+      hold_requested: false,
+      hold_reason: nil,
+      operator_feedback: nil,
       cross_agent_repair: cross_agent_repair_opts(opts),
       semantic_gate: semantic_gate_opts(opts),
       consultation_kind: nil,
@@ -498,9 +610,16 @@ defmodule Harness.Run do
         composed_inputs: data.composed_inputs ++ [tag_composed_input(run, data)]
     }
 
-    case data.cancel_requested do
-      nil -> {:keep_state, data}
-      {reason, from} -> do_cancel(data, reason, from)
+    cond do
+      data.hold_requested == :interrupt ->
+        do_hold(data, :interrupt)
+
+      is_tuple(data.cancel_requested) ->
+        {reason, from} = data.cancel_requested
+        do_cancel(data, reason, from)
+
+      true ->
+        {:keep_state, data}
     end
   end
 
@@ -541,23 +660,27 @@ defmodule Harness.Run do
       %{data | task: nil, discernment_task: nil, agent_outcome: outcome}
       |> finalize_transcript()
       |> accumulate_token_usage(outcome)
+      |> clear_operator_steer_after_invocation()
 
     # Precedence: a user cancel is terminal and must win over reflex re-dispatch,
     # so the reflex clause is gated on `nil` cancel. A cancelled run that also
     # tripped a reflex falls through to do_cancel / pollution rather than being
     # re-dispatched. Pollution still beats cancel (unchanged).
-    case {data.cancel_requested, outcome.kind, checkout_pollution_reason(data)} do
-      {nil, {:reflex_halted, reason}, _pollution_reason} ->
+    case {data.hold_requested, data.cancel_requested, outcome.kind, checkout_pollution_reason(data)} do
+      {hold, nil, _kind, nil} when hold in [:graceful, :interrupt] ->
+        do_hold(data, hold)
+
+      {false, nil, {:reflex_halted, reason}, nil} ->
         route_reflex_halt(data, reason)
         fail(data, {:reflex_halted, reason})
 
-      {nil, _kind, nil} ->
+      {false, nil, _kind, nil} ->
         {:next_state, :committing, data}
 
-      {{reason, from}, _kind, nil} ->
+      {_, {reason, from}, _kind, nil} ->
         do_cancel(data, reason, from)
 
-      {_, _kind, pollution_reason} ->
+      {_, _, _kind, pollution_reason} when not is_nil(pollution_reason) ->
         fail(data, pollution_reason)
     end
   end
@@ -644,7 +767,7 @@ defmodule Harness.Run do
         {:next_state, :consulting, %{data | consultation_kind: :semantic_gate}}
 
       Verdict.passed?(verdict) ->
-        {:next_state, :done, %{data | reason: :passed, repair_prompt_kind: nil}}
+        {:next_state, :done, clear_operator_steer(%{data | reason: :passed, repair_prompt_kind: nil})}
 
       data.cross_agent_follow_up ->
         {:next_state, :failed, %{data | reason: :verification_red, last_failed_check_signatures: failed_signatures}}
@@ -764,6 +887,23 @@ defmodule Harness.Run do
     handle_common(event_type, event_content, :consulting, data)
   end
 
+  # ── State: held — operator-parked, worktree retained ─────────────────────
+
+  @doc false
+  @spec held(event(), term(), data()) :: handler_result()
+  def held(:enter, _old_state, data) do
+    RunFeed.broadcast_update(status_snapshot(:held, data))
+    {:keep_state, data, hold_enter_actions(data)}
+  end
+
+  def held(:state_timeout, :held_expired, data) do
+    fail(data, :hold_expired)
+  end
+
+  def held(event_type, event_content, data) do
+    handle_common(event_type, event_content, :held, data)
+  end
+
   # ── States: done / failed — terminal ──────────────────────────────────────
 
   @doc false
@@ -850,6 +990,51 @@ defmodule Harness.Run do
     {:keep_state_and_data, [{:reply, from, :ok}]}
   end
 
+  defp handle_common({:call, from}, {:hold, _interrupt}, :held, _data) do
+    {:keep_state_and_data, [{:reply, from, :ok}]}
+  end
+
+  defp handle_common({:call, from}, {:hold, _interrupt}, state, _data) when state in [:done, :failed] do
+    {:keep_state_and_data, [{:reply, from, {:error, :terminal}}]}
+  end
+
+  defp handle_common({:call, from}, {:hold, true}, :running, %{agent_run: nil} = data) do
+    {:keep_state, %{data | hold_requested: :interrupt}, [{:reply, from, :ok}]}
+  end
+
+  defp handle_common({:call, from}, {:hold, true}, :running, data) do
+    do_hold(data, :interrupt, [{:reply, from, :ok}])
+  end
+
+  defp handle_common({:call, from}, {:hold, false}, :running, %{hold_requested: hold} = _data)
+       when hold in [:graceful, :interrupt] do
+    {:keep_state_and_data, [{:reply, from, :ok}]}
+  end
+
+  defp handle_common({:call, from}, {:hold, false}, :running, data) do
+    {:keep_state, %{data | hold_requested: :graceful}, [{:reply, from, :ok}]}
+  end
+
+  defp handle_common({:call, from}, {:hold, _interrupt}, _state, _data) do
+    {:keep_state_and_data, [{:reply, from, {:error, :invalid_state}}]}
+  end
+
+  defp handle_common({:call, from}, {:steer, text}, state, data) when state in [:running, :held] do
+    if session_resume_supported?(data) do
+      {:keep_state, apply_steer(data, text), [{:reply, from, :ok}]}
+    else
+      {:keep_state_and_data, [{:reply, from, {:error, :resume_unsupported}}]}
+    end
+  end
+
+  defp handle_common({:call, from}, :resume, :held, data) do
+    do_resume(data, from)
+  end
+
+  defp handle_common({:call, from}, :resume, _state, _data) do
+    {:keep_state_and_data, [{:reply, from, {:error, :not_held}}]}
+  end
+
   defp handle_common({:call, from}, :cancel, :running, %{agent_run: nil} = data) do
     # The agent has spawned but its handle has not arrived yet — defer the
     # cancel until {:run_handle, _} lands, so the agent can actually be killed.
@@ -860,7 +1045,7 @@ defmodule Harness.Run do
     do_cancel(data, :cancelled, from)
   end
 
-  defp handle_common({:timeout, :lifetime}, :lifetime, state, _data) when state in [:done, :failed] do
+  defp handle_common({:timeout, :lifetime}, :lifetime, state, _data) when state in [:done, :failed, :held] do
     :keep_state_and_data
   end
 
@@ -880,6 +1065,75 @@ defmodule Harness.Run do
   # Aborts an in-flight run: kills the current step task, SIGKILLs the agent if
   # one is running, and settles `failed`. `from` is the caller awaiting a cancel
   # reply, or `nil` for a timeout-triggered abort.
+  @spec do_hold(data(), :graceful | :interrupt, [:gen_statem.action()]) :: handler_result()
+  defp do_hold(data, mode, extra_actions \\ []) do
+    cancel_task(data.task)
+    cancel_task(data.discernment_task)
+    terminate_agent(data)
+
+    data = %{
+      data
+      | task: nil,
+        discernment_task: nil,
+        agent_run: nil,
+        hold_requested: false,
+        hold_reason: mode,
+        cancel_requested: nil
+    }
+
+    {:next_state, :held, data, extra_actions ++ hold_enter_actions(data)}
+  end
+
+  @spec do_resume(data(), :gen_statem.from()) :: handler_result()
+  defp do_resume(data, from) do
+    data = %{data | hold_reason: nil}
+
+    {:next_state, :running, data,
+     [
+       {:reply, from, :ok},
+       {{:timeout, :lifetime}, data.lifetime_timeout, :lifetime}
+     ]}
+  end
+
+  @spec hold_enter_actions(data()) :: [:gen_statem.action()]
+  defp hold_enter_actions(data) do
+    [{{:timeout, :lifetime}, :infinity, :lifetime}] ++ hold_expiry_actions(data)
+  end
+
+  @spec hold_expiry_actions(data()) :: [:gen_statem.action()]
+  defp hold_expiry_actions(%{max_hold_timeout: :infinity}), do: []
+
+  defp hold_expiry_actions(%{max_hold_timeout: timeout}) when is_integer(timeout) and timeout > 0 do
+    [{:state_timeout, timeout, :held_expired}]
+  end
+
+  @spec apply_steer(data(), String.t()) :: data()
+  defp apply_steer(data, text) do
+    feedback =
+      case data.operator_feedback do
+        nil -> text
+        existing -> existing <> "\n\n" <> text
+      end
+
+    %{data | operator_feedback: feedback, repair_prompt_kind: :operator_steer}
+  end
+
+  @spec session_resume_supported?(data()) :: boolean()
+  defp session_resume_supported?(data) do
+    AgentAdapter.supports?(data.adapter, :session_resume)
+  end
+
+  @spec clear_operator_steer(data()) :: data()
+  defp clear_operator_steer(data) do
+    %{data | operator_feedback: nil, repair_prompt_kind: nil}
+  end
+
+  @spec clear_operator_steer_after_invocation(data()) :: data()
+  defp clear_operator_steer_after_invocation(%{repair_prompt_kind: :operator_steer} = data),
+    do: clear_operator_steer(data)
+
+  defp clear_operator_steer_after_invocation(data), do: data
+
   @spec do_cancel(data(), Result.reason(), :gen_statem.from() | nil) :: handler_result()
   defp do_cancel(data, reason, from) do
     cancel_task(data.task)
@@ -1146,7 +1400,9 @@ defmodule Harness.Run do
       agent_kind: data.agent_outcome && data.agent_outcome.kind,
       verdict_status: data.verdict && data.verdict.status,
       repair_attempts: data.repair_attempts,
-      reason: data.reason
+      reason: data.reason,
+      held?: state == :held,
+      hold_reason: if(state == :held, do: data.hold_reason)
     }
   end
 
@@ -1158,12 +1414,16 @@ defmodule Harness.Run do
   # The first dispatch runs the task prompt fresh; a repair attempt resumes the
   # agent's session with a prompt carrying the failing checks (RepairPrompt).
   @spec build_invocation(data()) :: Invocation.t()
-  defp build_invocation(%{repair_attempts: 0} = data) do
-    invocation(data, data.item.prompt, nil)
-  end
-
   defp build_invocation(%{repair_prompt_kind: :semantic_rejection} = data) do
     invocation(data, semantic_repair_prompt(data), :resume)
+  end
+
+  defp build_invocation(%{repair_prompt_kind: :operator_steer} = data) do
+    invocation(data, operator_steer_prompt(data), :resume)
+  end
+
+  defp build_invocation(%{repair_attempts: 0} = data) do
+    invocation(data, data.item.prompt, nil)
   end
 
   defp build_invocation(%{verdict: %Verdict{} = verdict} = data) do
@@ -1192,7 +1452,7 @@ defmodule Harness.Run do
   defp tag_composed_input(%AgentRun{composed_input: input}, data) when is_map(input) do
     input
     |> Map.put(:attempt, data.repair_attempts)
-    |> Map.put(:phase, composed_input_phase(data))
+    |> Map.put(:phase, composed_input_phase(input, data))
   end
 
   defp tag_composed_input(%AgentRun{}, data) do
@@ -1204,13 +1464,42 @@ defmodule Harness.Run do
       session: nil,
       rule_files: [],
       attempt: data.repair_attempts,
-      phase: composed_input_phase(data)
+      phase: composed_input_phase_for_data(data)
     }
   end
 
-  @spec composed_input_phase(data()) :: :initial | :repair
-  defp composed_input_phase(%{repair_attempts: 0}), do: :initial
-  defp composed_input_phase(_data), do: :repair
+  @spec composed_input_phase(AgentAdapter.composed_input(), data()) :: :initial | :repair
+  defp composed_input_phase(%{session: :resume}, _data), do: :repair
+
+  defp composed_input_phase(_input, data), do: composed_input_phase_for_data(data)
+
+  @spec composed_input_phase_for_data(data()) :: :initial | :repair
+  defp composed_input_phase_for_data(%{repair_prompt_kind: :operator_steer}), do: :repair
+  defp composed_input_phase_for_data(%{repair_attempts: 0}), do: :initial
+  defp composed_input_phase_for_data(_data), do: :repair
+
+  @spec operator_steer_prompt(data()) :: String.t()
+  defp operator_steer_prompt(%{operator_feedback: feedback} = data) when is_binary(feedback) do
+    header = """
+    An operator has reviewed your progress and sent this guidance:
+
+    #{feedback}
+    """
+
+    case data.verdict do
+      %Verdict{status: :fail} = verdict ->
+        evidence = failing_check_evidence(verdict)
+
+        if evidence == "" do
+          header
+        else
+          header <> "\n\nLast verification failing checks:\n\n" <> evidence
+        end
+
+      _ ->
+        header
+    end
+  end
 
   @spec project_language(Project.t()) :: atom() | nil
   defp project_language(%Project{check_stacks: [%{name: language}]}) when is_atom(language), do: language

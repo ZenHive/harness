@@ -77,6 +77,29 @@ defmodule Harness.RunTest do
   # An adapter that spawns a real, long-lived agent, then crashes the driver
   # task on the agent's first output — a driver crash *after* the agent's OS
   # process exists, which the run must SIGKILL rather than orphan.
+  defmodule NoResumeAdapter do
+    @moduledoc false
+    @behaviour Harness.AgentAdapter
+
+    alias Harness.AgentAdapter.Capabilities
+    alias Harness.AgentAdapter.Invocation
+
+    @impl Harness.AgentAdapter
+    def capabilities, do: %Capabilities{session_resume: false}
+
+    @impl Harness.AgentAdapter
+    def rule_channel, do: :none
+
+    @impl Harness.AgentAdapter
+    def build_command(%Invocation{}), do: {:ok, {"/bin/echo", ["no-resume"], []}}
+
+    @impl Harness.AgentAdapter
+    def classify_message(_message, _run), do: :ignore
+
+    @impl Harness.AgentAdapter
+    def terminate(_run), do: :ok
+  end
+
   defmodule DriverCrashAdapter do
     @moduledoc false
     @behaviour Harness.AgentAdapter
@@ -582,6 +605,221 @@ defmodule Harness.RunTest do
     end
   end
 
+  describe "operator recovery — hold / steer / resume" do
+    test "graceful hold parks in :held at the next agent settle boundary" do
+      gate = Path.join(System.tmp_dir!(), "hold-gate-#{System.unique_integer([:positive])}")
+
+      {run_id, _pid} =
+        start(
+          adapter_opts: [command: {:write_then_wait_for_file, gate}],
+          lifetime_timeout: 30_000,
+          terminal_linger: 100
+        )
+
+      wait_until_running(run_id)
+      assert :ok = Run.hold(run_id)
+      File.touch!(gate)
+      await_held(run_id)
+
+      assert {:ok, %Status{state: :held, held?: true, hold_reason: :graceful, agent_os_pid: nil}} =
+               Run.status(run_id)
+
+      on_exit(fn -> File.rm(gate) end)
+    end
+
+    test "interrupt hold kills the agent and parks immediately" do
+      {run_id, _pid} =
+        start(
+          adapter_opts: [command: :sleep],
+          lifetime_timeout: 30_000,
+          terminal_linger: 100
+        )
+
+      wait_until_running(run_id)
+      os_pid = await_agent_os_pid(run_id)
+      assert :ok = Run.hold(run_id, true)
+
+      assert {:ok, %Status{state: :held, held?: true, hold_reason: :interrupt, agent_os_pid: nil}} =
+               Run.status(run_id)
+
+      assert ProcessFixture.await_dead(os_pid) == :ok
+    end
+
+    test "lifetime timer stays suspended while :held and re-arms on resume" do
+      {held_run_id, held_pid} =
+        start(
+          adapter_opts: [command: :sleep],
+          checks: [check("ok", "true")],
+          lifetime_timeout: 500,
+          max_hold_timeout: 30_000,
+          terminal_linger: 100
+        )
+
+      wait_until_running(held_run_id)
+      assert :ok = Run.hold(held_run_id, true)
+      assert {:ok, %Status{state: :held}} = Run.status(held_run_id)
+
+      Process.sleep(600)
+
+      assert {:ok, %Status{state: :held}} = Run.status(held_run_id)
+      assert :ok = Run.cancel(held_run_id)
+      await_result(held_run_id, held_pid)
+
+      gate = Path.join(System.tmp_dir!(), "resume-gate-#{System.unique_integer([:positive])}")
+
+      {run_id, pid} =
+        start(
+          adapter_opts: [command: {:write_then_wait_for_file, gate}],
+          checks: [check("ok", "true")],
+          lifetime_timeout: 500,
+          max_hold_timeout: 30_000,
+          terminal_linger: 100
+        )
+
+      wait_until_running(run_id)
+      assert :ok = Run.hold(run_id, true)
+      assert :ok = Run.resume(run_id)
+      File.touch!(gate)
+
+      assert %Result{state: :done, reason: :passed} = await_result(run_id, pid, 10_000)
+      on_exit(fn -> File.rm(gate) end)
+    end
+
+    test "steer stashes feedback and resume emits a session-resume operator prompt" do
+      store = file_store()
+
+      repo = GitFixture.init_repo()
+      project = ProjectFixture.from_repo(repo)
+      base = GitFixture.tmp_base()
+
+      opts =
+        Keyword.merge(
+          [
+            base_dir: base,
+            adapter_opts: [command: :operator_steer],
+            checks: [check("ok", "true")],
+            total_timeout: 30_000,
+            idle_timeout: 10_000,
+            lifetime_timeout: 30_000,
+            verification_timeout: 10_000,
+            terminal_linger: 100,
+            max_hold_timeout: 30_000,
+            result_store: store
+          ],
+          []
+        )
+
+      {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, FakeAdapter, opts)
+
+      wait_until_running(run_id, 20, 5_000)
+      assert :ok = Run.hold(run_id, true)
+      assert :ok = Run.steer(run_id, "operator note one")
+      assert :ok = Run.steer(run_id, "operator note two")
+      assert :ok = Run.resume(run_id)
+
+      assert %Result{state: :done, reason: :passed} = await_result(run_id, pid)
+
+      assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: run_id)
+
+      assert [
+               %{attempt: 0, phase: :initial, session: nil},
+               %{attempt: 0, phase: :repair, session: :resume, prompt: steer_prompt}
+             ] = record.composed_inputs
+
+      assert steer_prompt =~ "operator note two"
+      assert steer_prompt =~ "An operator has reviewed your progress"
+    end
+
+    test "max_hold_timeout elapsing settles :failed with :hold_expired" do
+      {run_id, pid} =
+        start(
+          adapter_opts: [command: :sleep],
+          lifetime_timeout: 30_000,
+          max_hold_timeout: 200,
+          terminal_linger: 100
+        )
+
+      wait_until_running(run_id)
+      assert :ok = Run.hold(run_id, true)
+
+      result = await_result(run_id, pid, 5_000)
+      assert %Result{state: :failed, reason: :hold_expired} = result
+      assert Worktree.retained?(result.worktree_path)
+    end
+
+    test "cancel/1 from :held settles :cancelled like any in-flight cancel" do
+      {run_id, pid} =
+        start(
+          adapter_opts: [command: :sleep],
+          lifetime_timeout: 30_000,
+          terminal_linger: 100
+        )
+
+      wait_until_running(run_id)
+      assert :ok = Run.hold(run_id, true)
+      assert :ok = Run.cancel(run_id)
+
+      result = await_result(run_id, pid)
+      assert %Result{state: :failed, reason: :cancelled} = result
+    end
+
+    test "steer/2 on a session_resume: false adapter returns {:error, :resume_unsupported}" do
+      repo = GitFixture.init_repo()
+      project = ProjectFixture.from_repo(repo)
+      base = GitFixture.tmp_base()
+
+      {:ok, run_id, _pid} =
+        Run.Supervisor.start_run(item(), project, NoResumeAdapter,
+          base_dir: base,
+          adapter_opts: [command: :write],
+          checks: [check("ok", "true")],
+          lifetime_timeout: 30_000,
+          terminal_linger: 100
+        )
+
+      wait_until_running(run_id)
+      assert :ok = Run.hold(run_id, true)
+      assert {:error, :resume_unsupported} = Run.steer(run_id, "cannot resume")
+    end
+
+    test "hold from a terminal run returns {:error, :terminal}" do
+      {run_id, pid} =
+        start(
+          checks: [check("ok", "true")],
+          terminal_linger: 5_000
+        )
+
+      assert_receive {:harness_run, ^run_id, %Result{state: :done}}, 5_000
+      assert Process.alive?(pid)
+      assert {:error, :terminal} = Run.hold(run_id)
+    end
+
+    test "resume from a non-held run returns {:error, :not_held}" do
+      {run_id, _pid} = start(adapter_opts: [command: :sleep], lifetime_timeout: 30_000)
+      wait_until_running(run_id)
+      assert {:error, :not_held} = Run.resume(run_id)
+    end
+
+    test "hold from :held is a no-op" do
+      gate = Path.join(System.tmp_dir!(), "hold-noop-gate-#{System.unique_integer([:positive])}")
+
+      {run_id, _pid} =
+        start(
+          adapter_opts: [command: {:write_then_wait_for_file, gate}],
+          lifetime_timeout: 30_000,
+          terminal_linger: 100
+        )
+
+      wait_until_running(run_id)
+      _os_pid = await_agent_os_pid(run_id)
+      assert :ok = Run.hold(run_id, true)
+      await_held(run_id)
+      assert :ok = Run.hold(run_id)
+      assert {:ok, %Status{state: :held, held?: true}} = Run.status(run_id)
+      on_exit(fn -> File.rm(gate) end)
+    end
+  end
+
   describe "autonomous repair loop" do
     test "a red verdict resumes the agent, and the loop settles :done once repair fixes it" do
       {run_id, pid, repo} =
@@ -918,6 +1156,8 @@ defmodule Harness.RunTest do
   # carved, agent task spawned), regardless of whether an agent has yet been
   # observed. Used by the cancel-before-handle regression to anchor the cancel
   # at a point where `agent_run` is still nil so the cancel must be deferred.
+  defp wait_until_running(run_id), do: wait_until_running(run_id, 20, 2_000)
+
   defp wait_until_running(run_id, interval_ms, total_ms) when total_ms > 0 do
     case Run.status(run_id) do
       {:ok, %Status{state: :running}} ->
@@ -930,6 +1170,21 @@ defmodule Harness.RunTest do
   end
 
   defp wait_until_running(_run_id, _interval_ms, _total_ms), do: flunk("run never reached state: :running")
+
+  defp await_held(run_id, tries \\ 150)
+
+  defp await_held(_run_id, 0), do: flunk("run never reached state: :held")
+
+  defp await_held(run_id, tries) do
+    case Run.status(run_id) do
+      {:ok, %Status{state: :held}} ->
+        :ok
+
+      _other ->
+        Process.sleep(20)
+        await_held(run_id, tries - 1)
+    end
+  end
 
   defp await_pid_file(path, tries \\ 200)
 

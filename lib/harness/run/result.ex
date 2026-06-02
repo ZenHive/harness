@@ -71,6 +71,7 @@ defmodule Harness.Run.Result do
           | {:checkout_pollution_check_failed, term()}
           | :cancelled
           | :timed_out
+          | :hold_expired
           | {:reflex_halted, term()}
           | {:worktree_failed, term()}
           | {:agent_spawn_failed, term()}
