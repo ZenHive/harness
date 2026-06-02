@@ -6805,6 +6805,7 @@
         "Harness re-runs the project's check stack on the audit worktree after the agent finishes — the agent's word is never the verdict; red routes to :reviewing exactly like any red implementer delivery; green hands off to the merge-train (autolanding infra) to land on the default branch",
         "A zero-finding audit still produces and lands the .audit/ report commit — the bookkeeping commit IS the range marker; the next cron tick computes an empty unaudited range and does not dispatch",
         "Audit runs are visible in the dashboard and run records with a role distinguishable from implementer/reviewer runs",
+        "The runtime audit agent is NOT hardcoded to one adapter: per-project config knob, defaulting to the existing capability-routing surface (dispatch-recommend, phase 13); cross-family preference vs the dominant implementer family in the audited range mirrors the reviewer-pair independence rule",
         "Integration test: seed a project with unaudited commits past the threshold, run the cron tick, assert an audit run dispatches, lands an audit(...) commit, and the following tick is a no-op"
       ],
       "out_of_scope": [
