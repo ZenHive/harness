@@ -4639,7 +4639,7 @@
       "phase": 13,
       "bundle": "capability-bench",
       "milestone": "v0_10",
-      "status": "in_progress",
+      "status": "done",
       "title": "Capability score staleness / decay + re-benchmark-needed signal",
       "scores": {
         "d": 2,
@@ -4664,10 +4664,15 @@
         "Background timers — this is a pure classification over persisted scores",
         "Per-agent release detection — staleness is time-based, not version-diffed (TODO: revisit if agent version metadata becomes available)"
       ],
+      "shipped_in": "cd2815b",
       "body": "Capability scores measure a specific model snapshot; agents ship 40+ releases, so a 3-month-old score measures a different agent. Add a freshness window + decay on capability scores (mirror rmap's 30-day scored_at decay) so routing can discount or flag stale scores, and emit a 're-benchmark needed' signal per (agent, domain) cell older than the window — which the Task 122 scheduler consumes to prioritize what to re-run.\n\nPure read over the persisted scored_at; no background process here. Cheap but load-bearing: without it the orchestrator routes confidently on stale data.\n",
       "created_at": "2026-05-31",
       "started_at": "2026-06-01",
+      "done_at": "2026-06-02",
       "scored_at": "2026-05-31",
+      "implemented": "Combined run (run-1780357162037-745d7291). Task 120: CapabilityScore.freshness/2 (configurable 30-day window, injectable reference_time), discounted_composite_score/2 (0.5 stale discount), rebenchmark_candidates/1,2 listing stale + unmeasured cells; stale scores flagged, never deleted. Task 121: CapabilityScore.recommend/2 explore/exploit routing (unmeasured cells = explore candidates, measured exploit best discounted score, fallback when no data); surfaced as Dispatch.recommend/2 + MCP dispatch__recommend; dispatch__task/await default adapter switched claude -> recommend so routing sits in the dispatch path; new ResultStore.list_capability_scores callback on File + Postgres; SKILL.md updated.",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -4675,7 +4680,7 @@
       "phase": 13,
       "bundle": "kpi-routing",
       "milestone": "v0_10",
-      "status": "in_progress",
+      "status": "done",
       "title": "recommend-agent-per-domain routing surface (explore/exploit) in the dispatch path",
       "scores": {
         "d": 6,
@@ -4703,10 +4708,15 @@
         "Multi-armed-bandit tuning beyond a simple explore/exploit rule (TODO: revisit if the naive rule misroutes)",
         "The benchmark scheduler — Task 122"
       ],
+      "shipped_in": "cd2815b",
       "body": "The anti-fly-dark mechanism. Expose recommend(domain) -> agent that consults persisted capability scores (Task 119) with explore/exploit: an UNMEASURED (agent, domain) cell is not a low score — it is an exploration candidate, so the orchestrator tries under-measured agents BECAUSE there is no data, not despite it; measured cells exploit the best score, discounting stale ones (Task 120).\n\nSurface this over the driver/MCP surface AND in the dispatch / next path so the orchestrator actually consults it at the decision point instead of defaulting to Claude/self. A recommendation in a dashboard nobody queries changes nothing — it must sit in the path. This task is the whole point of the milestone: it changes orchestrator behavior, not just reporting.\n",
       "created_at": "2026-05-31",
       "started_at": "2026-06-01",
+      "done_at": "2026-06-02",
       "scored_at": "2026-05-31",
+      "implemented": "Combined run (run-1780357162037-745d7291). Task 120: CapabilityScore.freshness/2 (configurable 30-day window, injectable reference_time), discounted_composite_score/2 (0.5 stale discount), rebenchmark_candidates/1,2 listing stale + unmeasured cells; stale scores flagged, never deleted. Task 121: CapabilityScore.recommend/2 explore/exploit routing (unmeasured cells = explore candidates, measured exploit best discounted score, fallback when no data); surfaced as Dispatch.recommend/2 + MCP dispatch__recommend; dispatch__task/await default adapter switched claude -> recommend so routing sits in the dispatch path; new ResultStore.list_capability_scores callback on File + Postgres; SKILL.md updated.",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -5807,7 +5817,7 @@
       "phase": 11,
       "bundle": "autolanding",
       "milestone": "v0_9",
-      "status": "in_progress",
+      "status": "done",
       "title": "Run recovery — hold/steer/resume gen_statem API (operator-mediated mid-run recovery)",
       "scores": {
         "d": 3,
@@ -5845,10 +5855,15 @@
         "config/runtime.exs",
         "test/harness/run_test.exs"
       ],
+      "shipped_in": "605bdbf",
       "body": "Backend half of the run-recovery design — full spec in docs/run-recovery-design.md (authored this session; this task IS that doc's Solution 1). Solution 2 (dashboard Hold/Steer/Resume controls) is a separate hand-built UI follow-on and depends on this API.\n\nPROBLEM: an operator watching a run struggle (wandering, stuck mid-repair, about to exhaust attempts) has only cancel/1 today — kill + settle :failed (run.ex:883-892). No \"freeze for a human, then continue\" path. Re-dispatching from scratch throws away the worktree's partial work AND the agent's conversation.\n\nCONSTRAINT (do not fight it): the spawn feeds stdin /dev/null EOF (agent_adapter.ex:79,363-371), so there is NO live mid-flight stdin steering — exactly what Task 112 deferred. Operator input lands at a transition BOUNDARY, riding the existing repair-resume path: :running re-enter -> build_invocation/1 -> session: :resume in the same cwd-keyed worktree (run.ex:477-492,664-672,1169-1175). Claude --continue resumes by cwd; grok session log is cwd-keyed too.\n\nBUILD:\n1. New :held gen_statem state. Lifetime timer SUSPENDED while held ({{:timeout,:lifetime},:infinity,:lifetime}; re-arm on resume — run.ex:415,867); Task-112 Reflex/progress-stall watchdog does not run (no live agent). Worktree retained (held is not a settle). A max_hold_timeout safeguard (config under :run, default 30 min, :infinity disables) arms a {:state_timeout,:held_expired} so a forgotten hold can't leak a worktree — expiry settles :failed reason :hold_expired.\n2. hold/1 + hold/2: graceful by default (set hold_requested; park at next settle boundary, run.ex:536-545); interrupt: true kills the agent now (mirror do_cancel terminate_agent/1) and parks immediately. No-op from :held; {:error,:terminal} from :done/:failed.\n3. steer/2 (run, text): stash data.operator_feedback + repair_prompt_kind: :operator_steer. Callable while :held or :running (queues to boundary). Append-accumulate multiple notes.\n4. resume/1: from :held -> {:next_state,:running} (re-enter spawns fresh agent via build_invocation, re-arm lifetime). {:error,:not_held} otherwise.\n5. New build_invocation/1 clause for :operator_steer -> operator_steer_prompt/1 wrapping the operator note (optionally folding the last verdict's failing checks), session: :resume. Clear operator_feedback + reset repair_prompt_kind on green/settle like the existing repair clauses (run.ex:647).\n6. Adapter capability degradation: resume gated by capabilities.session_resume (claude.ex:52, agent_adapter.ex:433). For session_resume:false adapters (antigravity) steer returns {:error,:resume_unsupported} (explicit over silently lossy — operator falls back to co-editing the worktree + fresh re-dispatch).\n7. Surface held?/hold reason in Run.Status so status/1 and the dashboard reflect it.\n\nFollow the descripex api(...) + :gen_statem.call pattern used by cancel/1.\n",
       "created_at": "2026-06-01",
       "started_at": "2026-06-01",
+      "done_at": "2026-06-02",
       "scored_at": "2026-06-01",
+      "implemented": "Run recovery API (run-1780357158951-028c67a8, 2 repair attempts). New :held gen_statem state: hold/1 graceful (parks at next settle boundary) + hold(run, interrupt: true) (kills agent, parks now); lifetime timer suspended while held, re-armed on resume/1; steer/2 stashes operator feedback (append-accumulating) and rides the existing repair-resume path as repair_prompt_kind :operator_steer with session: :resume into the same worktree; max_hold_timeout safeguard (default 30 min) settles :failed reason :hold_expired; steer on session_resume: false adapters returns {:error, :resume_unsupported}. Run.Status gains held?/hold_reason; StatusView classifies :held as in-flight. Offline gen_statem tests via FakeAdapter :operator_steer mode.",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -5887,6 +5902,38 @@
       "body": "Design + rationale: ~/_DATA/concepts/agent-corpus/README.md (canonical). This task is the v1 bootstrap that proves the grading pattern; do NOT author the full corpus here. Spans harness + a new ~/code/agent-corpus-elixir repo.\n\nWHY: harness already shipped the machinery that consumes an agent-evaluation corpus but has no corpus to feed it — CapabilityDomain (:otp/:genserver/:liveview/:phoenix/:ecto/:oban/:rust/:elixir), CapabilityScore + ResultStore.get_capability_score/4 keyed by (agent, domain, corpus_version), AgentEvaluation.compare/4, and CompareLive (Task 81). A per-language corpus repo registered as a %Harness.Project{} is the missing input. Per-language repos (not a monorepo) so each carries one coherent toolchain check_stack.\n\nTHE LOAD-BEARING DECISION — grader isolation (two modes, see concept doc):\n- Mode A (visible-spec / TDD): grading tests in the repo, agent makes them pass. Mainstream Elixir/OTP/LiveView surfaces. Measures implementation skill.\n- Mode B (hidden-grader / unfamiliar library): the whole point of a zen_websocket/mpp task is the agent has provably never seen the API — does it read the source or hallucinate? If the grading test is in the worktree it REVEALS the API and destroys the measurement. So Mode-B graders MUST be withheld from the agent worktree and applied only at verification time. Realization (a): graders live on the host outside the worktree, copied in by the check_stack right before checks run. FIRST verify whether Harness.CheckStack.setup already supports a post-agent/pre-check injection step or whether it's a small harness feature to add — that is the probable infra addition and the thing to settle before authoring tasks.\n\nDIFFERENTIATION: lean the corpus toward Mode-B unfamiliar-library tasks (libs you own/know well enough to author behavioral checks for). That is the un-gameable signal nobody else measures; generic HumanEval-style puzzles are saturated/trained-on and rot fastest — skip them.\n\nOpen questions in the concept doc: CheckStack injection support (Q1), answer-key storage host-dir vs private repo (Q2), corpus_version fingerprint (Q3), worktree network access vs vendoring the unfamiliar dep (Q4 — vendoring is more reproducible).\n",
       "created_at": "2026-06-01",
       "scored_at": "2026-06-01",
+      "cross_repo": []
+    },
+    {
+      "id": "152",
+      "phase": 11,
+      "bundle": "autolanding",
+      "status": "pending",
+      "title": "Flaky 150 test: cancel/1-from-:held times out under full-suite load (run_test.exs:750)",
+      "scores": {
+        "d": 2,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 1.5,
+      "dep_layer": 6,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [
+        150
+      ],
+      "acceptance_criteria": [
+        "The run_test.exs:750 hold/cancel test passes deterministically under full-suite load (no retry needed) across 5 consecutive full-suite runs",
+        "Fix is synchronization-based (assert_receive / monitor / deterministic FakeAdapter boundary), not Process.sleep and not a bare timeout bump"
+      ],
+      "touches": [
+        "test/harness/run_test.exs",
+        "test/support/fake_adapter.ex"
+      ],
+      "body": "Found at landing of Task 150 (cursor delivery): the new test \"operator recovery — hold / steer / resume cancel/1 from :held settles :cancelled like any in-flight cancel\" (test/harness/run_test.exs:750) timed out at 60s once during the merge-skew verification run (155 tests across 5 files), then passed on mix test.json's automatic retry AND passes in isolation in ~0.5s. Classic load-timing flake in a new gen_statem test.\n\nLikely cause: the graceful-hold path parks at the next settle boundary, which under suite load (FakeAdapter sleeps + parallel gen_statem runs on a loaded scheduler) can exceed the 60s default timeout. Fix the root synchronization (assert_receive on a settle/hold event with an adequate timeout, or drive the hold boundary deterministically via the FakeAdapter), NOT a Process.sleep or a blanket @tag timeout: bump unless the boundary wait is genuinely unbounded.\n\nPer critical-rules: never repair-loop or block on an unconfirmed flake; this one is confirmed flaky (passes isolated, deterministic), filed for root-cause fix.\n",
+      "created_at": "2026-06-02",
+      "scored_at": "2026-06-02",
       "cross_repo": []
     }
   ]

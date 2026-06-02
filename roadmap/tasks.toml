@@ -3834,7 +3834,7 @@ id = "120"
 phase = 13
 bundle = "capability-bench"
 milestone = "v0_10"
-status = "in_progress"
+status = "done"
 title = "Capability score staleness / decay + re-benchmark-needed signal"
 scores = { d = 2, b = 6, u = 8 }
 depends_on = [119]
@@ -3846,16 +3846,21 @@ Capability scores measure a specific model snapshot; agents ship 40+ releases, s
 
 Pure read over the persisted scored_at; no background process here. Cheap but load-bearing: without it the orchestrator routes confidently on stale data.
 """
+implemented = "Combined run (run-1780357162037-745d7291). Task 120: CapabilityScore.freshness/2 (configurable 30-day window, injectable reference_time), discounted_composite_score/2 (0.5 stale discount), rebenchmark_candidates/1,2 listing stale + unmeasured cells; stale scores flagged, never deleted. Task 121: CapabilityScore.recommend/2 explore/exploit routing (unmeasured cells = explore candidates, measured exploit best discounted score, fallback when no data); surfaced as Dispatch.recommend/2 + MCP dispatch__recommend; dispatch__task/await default adapter switched claude -> recommend so routing sits in the dispatch path; new ResultStore.list_capability_scores callback on File + Postgres; SKILL.md updated."
+delivered_by = "codex"
+verified = true
 created_at = "2026-05-31"
 started_at = "2026-06-01"
 scored_at = "2026-05-31"
+done_at = "2026-06-02"
+shipped_in = "cd2815b"
 
 [[task]]
 id = "121"
 phase = 13
 bundle = "kpi-routing"
 milestone = "v0_10"
-status = "in_progress"
+status = "done"
 title = "recommend-agent-per-domain routing surface (explore/exploit) in the dispatch path"
 scores = { d = 6, b = 10, u = 10 }
 depends_on = [119, 120]
@@ -3867,9 +3872,14 @@ The anti-fly-dark mechanism. Expose recommend(domain) -> agent that consults per
 
 Surface this over the driver/MCP surface AND in the dispatch / next path so the orchestrator actually consults it at the decision point instead of defaulting to Claude/self. A recommendation in a dashboard nobody queries changes nothing — it must sit in the path. This task is the whole point of the milestone: it changes orchestrator behavior, not just reporting.
 """
+implemented = "Combined run (run-1780357162037-745d7291). Task 120: CapabilityScore.freshness/2 (configurable 30-day window, injectable reference_time), discounted_composite_score/2 (0.5 stale discount), rebenchmark_candidates/1,2 listing stale + unmeasured cells; stale scores flagged, never deleted. Task 121: CapabilityScore.recommend/2 explore/exploit routing (unmeasured cells = explore candidates, measured exploit best discounted score, fallback when no data); surfaced as Dispatch.recommend/2 + MCP dispatch__recommend; dispatch__task/await default adapter switched claude -> recommend so routing sits in the dispatch path; new ResultStore.list_capability_scores callback on File + Postgres; SKILL.md updated."
+delivered_by = "codex"
+verified = true
 created_at = "2026-05-31"
 started_at = "2026-06-01"
 scored_at = "2026-05-31"
+done_at = "2026-06-02"
+shipped_in = "cd2815b"
 
 [[task]]
 id = "122"
@@ -4562,7 +4572,7 @@ id = "150"
 phase = 11
 bundle = "autolanding"
 milestone = "v0_9"
-status = "in_progress"
+status = "done"
 title = "Run recovery — hold/steer/resume gen_statem API (operator-mediated mid-run recovery)"
 scores = { d = 3, b = 6, u = 5 }
 depends_on = [112]
@@ -4588,9 +4598,14 @@ BUILD:
 
 Follow the descripex api(...) + :gen_statem.call pattern used by cancel/1.
 """
+implemented = "Run recovery API (run-1780357158951-028c67a8, 2 repair attempts). New :held gen_statem state: hold/1 graceful (parks at next settle boundary) + hold(run, interrupt: true) (kills agent, parks now); lifetime timer suspended while held, re-armed on resume/1; steer/2 stashes operator feedback (append-accumulating) and rides the existing repair-resume path as repair_prompt_kind :operator_steer with session: :resume into the same worktree; max_hold_timeout safeguard (default 30 min) settles :failed reason :hold_expired; steer on session_resume: false adapters returns {:error, :resume_unsupported}. Run.Status gains held?/hold_reason; StatusView classifies :held as in-flight. Offline gen_statem tests via FakeAdapter :operator_steer mode."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-06-01"
 started_at = "2026-06-01"
 scored_at = "2026-06-01"
+done_at = "2026-06-02"
+shipped_in = "605bdbf"
 
 [[task]]
 id = "151"
@@ -4618,3 +4633,24 @@ Open questions in the concept doc: CheckStack injection support (Q1), answer-key
 """
 created_at = "2026-06-01"
 scored_at = "2026-06-01"
+
+[[task]]
+id = "152"
+phase = 11
+bundle = "autolanding"
+status = "pending"
+title = "Flaky 150 test: cancel/1-from-:held times out under full-suite load (run_test.exs:750)"
+scores = { d = 2, b = 3, u = 3 }
+markers = ["bug"]
+depends_on = [150]
+acceptance_criteria = ["The run_test.exs:750 hold/cancel test passes deterministically under full-suite load (no retry needed) across 5 consecutive full-suite runs", "Fix is synchronization-based (assert_receive / monitor / deterministic FakeAdapter boundary), not Process.sleep and not a bare timeout bump"]
+touches = ["test/harness/run_test.exs", "test/support/fake_adapter.ex"]
+body = """
+Found at landing of Task 150 (cursor delivery): the new test "operator recovery — hold / steer / resume cancel/1 from :held settles :cancelled like any in-flight cancel" (test/harness/run_test.exs:750) timed out at 60s once during the merge-skew verification run (155 tests across 5 files), then passed on mix test.json's automatic retry AND passes in isolation in ~0.5s. Classic load-timing flake in a new gen_statem test.
+
+Likely cause: the graceful-hold path parks at the next settle boundary, which under suite load (FakeAdapter sleeps + parallel gen_statem runs on a loaded scheduler) can exceed the 60s default timeout. Fix the root synchronization (assert_receive on a settle/hold event with an adequate timeout, or drive the hold boundary deterministically via the FakeAdapter), NOT a Process.sleep or a blanket @tag timeout: bump unless the boundary wait is genuinely unbounded.
+
+Per critical-rules: never repair-loop or block on an unconfirmed flake; this one is confirmed flaky (passes isolated, deterministic), filed for root-cause fix.
+"""
+created_at = "2026-06-02"
+scored_at = "2026-06-02"

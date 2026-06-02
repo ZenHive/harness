@@ -9,6 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Run recovery — hold/steer/resume gen_statem API (Task 150, cursor delivery).**
+  Operator-mediated mid-run recovery: `Harness.Run.hold/1` parks a struggling run
+  in a new `:held` state at the next settle boundary (`hold(run, interrupt: true)`
+  kills the agent and parks immediately); `steer/2` stashes operator feedback
+  (append-accumulating); `resume/1` re-enters `:running` via the existing
+  repair-resume path (`session: :resume` into the same worktree) carrying the
+  operator prompt as `repair_prompt_kind: :operator_steer`. The lifetime timer is
+  suspended while held and re-armed on resume; a `max_hold_timeout` safeguard
+  (default 30 min, `:infinity` disables) settles `:failed` with reason
+  `:hold_expired` so a forgotten hold can't leak a worktree. `steer/2` on a
+  `session_resume: false` adapter (antigravity) returns
+  `{:error, :resume_unsupported}`. `Run.Status` gains `held?`/`hold_reason`;
+  `StatusView` classifies `:held` as in-flight. Backend half of
+  docs/run-recovery-design.md; the dashboard Hold/Steer/Resume UI is a separate
+  hand-built follow-on.
+
+- **Capability score staleness/decay + recommend-agent routing (Tasks 120 + 121,
+  codex delivery, one combined run).** Task 120: `CapabilityScore.freshness/2`
+  classifies each persisted (agent, domain) score as fresh/stale against a
+  configurable window (default 30 days, injectable `reference_time` for
+  determinism); `discounted_composite_score/2` applies a stale discount (default
+  0.5); `rebenchmark_candidates/1,2` lists stale + unmeasured cells as
+  re-benchmark candidates — stale scores are flagged, never deleted. Task 121:
+  `CapabilityScore.recommend/2` explore/exploit routing — an unmeasured
+  (agent, domain) cell is an exploration candidate (not a low score), measured
+  cells exploit the best discounted score, and a no-data domain falls back
+  (default `:claude`, configurable). Surfaced as `Harness.Dispatch.recommend/2`
+  + MCP tool `dispatch__recommend`, and wired into the dispatch path:
+  `dispatch__task`/`dispatch__await`'s default adapter changed from `"claude"`
+  to `"recommend"` so the orchestrator consults scores at the decision point
+  (explicit adapter names bypass routing). New
+  `ResultStore.list_capability_scores` callback on both File and Postgres
+  backends; `Roadmap.ingest` now threads task `domains` tags onto the Item.
+
 - **A/B agent-evaluation dashboard view (Task 81, `Harness.Dashboard.CompareLive`).**
   New LiveView at `/harness/compare` (launch form) and `/harness/compare/:comparison_id`
   (the grid) surfacing `Harness.Batch.AgentEvaluation.compare/4` side by side: one
@@ -149,6 +183,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Pre-change persisted records carry no stored `model`, so the index Model
     column reads "—" for them (no backfill); new runs populate it. The detail
     page still shows their model via the live transcript parse.
+
+### Changed
+
+- **Adapter/agent state consolidated onto Settings.** The `/harness` dashboard no
+  longer renders the static **Adapters** table or **Unavailable agents** list — both
+  duplicated what the Settings *Agents* card already owns. The dashboard is now purely
+  operational (Roadmap / Active runs / Run history); the transient quota/`unavailable`
+  signal is folded into the Agents card as a "paused" pill (the card's copy already
+  referenced a "transient quota pause"). Drops the `:adapters` / `:unavailable` assigns
+  and `list_adapters/0` from `Dashboard.Live`.
 
 ### Fixed
 
