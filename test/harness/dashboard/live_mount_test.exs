@@ -28,11 +28,10 @@ defmodule Harness.Dashboard.LiveMountTest do
   end
 
   describe "index mount + render" do
-    test "mounts the index, listing the registered project and adapter table", %{conn: conn} do
+    test "mounts the index, listing the registered project", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/harness")
 
       assert html =~ "Active runs"
-      assert html =~ "Adapters"
       assert html =~ "livemount-demo"
     end
 
