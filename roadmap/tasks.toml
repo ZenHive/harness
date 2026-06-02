@@ -4370,7 +4370,7 @@ scored_at = "2026-06-01"
 id = "141"
 phase = 6
 bundle = "deferred"
-status = "in_progress"
+status = "done"
 title = "Persist runtime ProjectRegistry registrations to Postgres"
 scores = { d = 2, b = 2, u = 2 }
 depends_on = [137]
@@ -4382,9 +4382,14 @@ ProjectRegistry.register/1 registrations live only in GenServer state and vanish
 
 DEFERRED on purpose: today the fleet is config-declared, so nothing is actually lost in practice. This earns dispatch when projects start being registered at runtime (e.g. via the MCP project_registry__register tool from a chat orchestrator session) as the normal path rather than the exception.
 """
+implemented = "Harness.ProjectRegistry.Persistence: runtime register/unregister upsert/delete rows in a new projects table (name PK, term_to_binary payload); boot + reload_persisted_state/0 restore persisted projects with config-declared projects winning on name conflict; repo_enabled guard + rescue/log degradation keeps the registry functional without Postgres; ProjectRegistry child moved after repo() in the supervision tree"
+delivered_by = "cursor"
+verified = true
 created_at = "2026-06-01"
 started_at = "2026-06-02"
 scored_at = "2026-06-01"
+done_at = "2026-06-02"
+shipped_in = "c6f701c"
 
 [[task]]
 id = "142"

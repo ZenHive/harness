@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Runtime ProjectRegistry registrations persist to Postgres (Task 141, cursor
+  delivery).** `Harness.ProjectRegistry.Persistence` upserts/deletes runtime
+  `register/1` / `unregister/1` calls in a new `projects` table (name PK,
+  `term_to_binary` payload); the registry restores persisted projects at boot —
+  config-declared projects win on name conflict — so runtime registrations now
+  survive a BEAM restart. Guarded by `:repo_enabled` with rescue/log
+  degradation (registry stays functional without Postgres);
+  `Harness.ProjectRegistry` moved after `repo()` in the supervision tree so the
+  restore can read the database.
+
 - **Per-project landing policy from the dashboard — Landing card +
   `Harness.Landing.Settings`.** The Settings page gains a Landing card: a
   per-project `manual` / `auto-land` select + target-branch input, persisted
