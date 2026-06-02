@@ -4847,3 +4847,52 @@ created_at = "2026-06-02"
 scored_at = "2026-06-02"
 done_at = "2026-06-02"
 shipped_in = "cfbd5ef"
+
+[[task]]
+id = "158"
+phase = 11
+bundle = "autolanding"
+status = "in_progress"
+title = "Post-green semantic gate rejects green runs when the grader is unavailable (no auto-pair OR disabled grader == reject; Task-59 parity gap)"
+scores = { d = 3, b = 8, u = 8 }
+markers = ["bug"]
+acceptance_criteria = ["When the post-green semantic gate is enabled but the grader cannot actually run — EITHER no cross-family grader is resolvable (no explicit `:grader` AND `AuditReview.default_grader/1` returns `{:no_default_grader, _}`, i.e. implementer is grok/cursor/antigravity/pi) OR a grader resolves but is operator-disabled/unavailable at grade time (e.g. codex->claude auto-pair while claude is disabled) — a green-verdict run settles `:done` (or skips the gate to notify-only) instead of being REJECTED. Grader-unavailable (infra) must not be conflated with grade-reject (judgment). BOTH triggers are observed live (see body).", "Mirror the Task-59 fix: the `:consulting`/`consultation_kind: :semantic_gate` transition (run.ex:773) gains the same grader-availability guard already used by `cross_agent_grader_available?/1` (run.ex:1544) for the repair path — green + no resolvable grader => do not enter the gate.", "`semantic_gate_failure_feedback/1` for a `{:no_default_grader, _}` (and grader infra-failure) reason on a green run fails OPEN, not closed: it must not synthesize a `:reject` that burns repair attempts.", "An operator can configure a fallback grader for non-auto-paired agents (`:semantic_gate, grader: :codex`) so grok/cursor/antigravity/pi runs DO get semantically graded when set; document the key in config/config.exs alongside the existing :cross_agent_repair `:grader` comment. The configured grader MUST be applied per-implementer and respect the existing same-family guard: for a codex-authored run a `grader: :codex` is same-family and must NOT reject (fall through to the auto-pair or fail-open per the criteria above) — never regress the working claude<->codex auto-pair.", "Regression test BOTH triggers: (a) a green run with implementer `:grok`, gate enabled, no resolvable grader settles `:done` (not `:failed`/`:semantic_rejection`) and does not increment repair_attempts; (b) a green run with implementer `:codex` whose auto-pair grader (`:claude`) is operator-disabled/unavailable at grade time likewise settles `:done` rather than feeding a failed-grader payload back as a `:semantic_rejection` repair prompt. A sibling test with a resolvable, available `:grader` still runs the gate.", "No change to the green/red verification verdict path, the cross_agent_repair grader pairing, or the claude<->codex auto-pair."]
+files_to_modify = ["lib/harness/run.ex", "config/config.exs", "test/harness/run/semantic_gate_test.exs"]
+touches = ["lib/harness/run.ex", "lib/harness/audit_review.ex", "config/config.exs", "test/harness/run/semantic_gate_test.exs"]
+assignee = "codex"
+body = """
+The post-green semantic gate fails-closed on a *missing grader*, turning every green run by a non-auto-paired agent into a spurious semantic rejection.
+
+`AuditReview.default_grader/1` only auto-pairs `:claude <-> :codex` (by design, fail-closed); `:grok`/`:cursor`/`:antigravity`/`:pi` return `{:no_default_grader, _}` unless an explicit `:grader` is supplied. Task 59 ALREADY handled this for the cross_agent_repair path via `cross_agent_grader_available?/1` (run.ex:1544), which falls back to normal same-agent repair when no grader resolves.
+
+But the post-green semantic-gate transition was never given the same guard. run.ex:773:
+
+    Verdict.passed?(verdict) and semantic_gate_enabled?(data) ->
+      {:next_state, :consulting, %{data | consultation_kind: :semantic_gate}}
+
+It gates purely on `semantic_gate_enabled?` — it never checks the grader is resolvable. `ensure_cross_family_semantic_grader(implementer, nil)` returns `:ok` (it only rejects a *same-family* explicit grader), so the run enters `:consulting`, `grade_discernment/2` calls AuditReview with implementer=:grok / grader=nil, gets `{:no_default_grader, :grok}`, and the grader-failure handler routes through `reject_semantic_gate/2` with `semantic_gate_failure_feedback/1` -> verdict `:reject`. Because grok supports session_resume, it then burns all `:max_repair_attempts` re-running with a `:semantic_rejection` prompt that can never succeed (the grader is still missing), then `:cancel`s.
+
+Net: with the semantic gate enabled, FOUR of six agents (grok/cursor/antigravity/pi) can never land a green run unless an explicit `:semantic_gate, grader:` is configured — and the failure masquerades as the agent producing a semantically-bad diff.
+
+Observed live (run-1780390682506-b236573e, Oban job 78, rmap task 9, grok implementing `rmap render --html --multi`):
+- check stack GREEN: verdict `:pass`, `first_attempt_failed_check_count: 0`, `failed_checks: []`, 102-line diff, exit 0.
+- 4x `[warning] harness run: semantic gate grader failed for run-1780390682506-b236573e: {:no_default_grader, :grok}` — one per repair attempt (17:10/17:16/17:19/17:24).
+- settled record: state `:failed`, reason `:semantic_rejection`, repair_attempts 3, duration ~26min, 240k tokens — all wasted.
+- Compounding: `:claude` is operator-disabled this session, so even the natural grok->claude pairing wouldn't grade; `:codex` is the only available cross-family grader.
+
+SECOND TRIGGER observed live — a RESOLVABLE grader that is operator-disabled (run-1780391001875-189f8674, DIRECT MCP dispatch / batch_id == own run-id, harness task 156, codex implementing the MCP-dispatch restart-resilience fix):
+- check stack GREEN: verdict `:pass`, `first_attempt_failed_check_count: 0`, 59-line diff, exit 0.
+- codex's auto-pair grader IS resolvable (`default_grader(:codex)` => `{:ok, Claude}`), so this is NOT the `{:no_default_grader,_}` path — but `:claude` was operator-disabled during the 09:03-09:33Z run window, so the grader could not actually be invoked. The grader call FAILED (infra), and harness conflated that into a `:reject` exactly as in the grok case.
+- The implementer itself flagged the bogus payload (verbatim from the transcript): "The reviewer payload is still a failed reviewer call, not an actual semantic critique, but this is the last repair slot so I'm going to audit the acceptance criteria aggressively." It had no real critique to act on -> burned all 3 repairs -> `:semantic_rejection`. ~30min, ~74M tokens wasted (cache_read 36M + input 38M).
+- No `semantic gate grader failed` warning was logged for this run (unlike grok's 4x), so the conflation also happens silently on the disabled-grader path.
+- (Aside, separate gremlin: codex also logged `failed to load skill .../staged-review/1.19.3/skills/commit-review/SKILL.md: invalid YAML ... line 2 column 274` — a corrupted SKILL.md in codex's OWN plugin cache/sandbox, unrelated to the harness grader bug; flag if it recurs.)
+
+So the bug has TWO triggers that must both fail-open: (A) no auto-pair exists (grok/cursor/antigravity/pi), and (B) an auto-pair resolves but the grader agent is disabled/unavailable at grade time (codex->claude with claude off). Enabling claude fixes (B) for codex going forward, but the fail-closed conflation must still be corrected so a transient grader outage never masquerades as a semantic rejection.
+
+Fix = Task-59 parity for the gate: (1) guard the `:consulting`/:semantic_gate transition on grader availability (reuse `cross_agent_grader_available?` logic, and also treat a resolvable-but-unavailable grader as not-available) so green + no usable grader => `:done`; (2) make `semantic_gate_failure_feedback/1` fail-OPEN for `{:no_default_grader,_}` AND grader infra/unavailability failures on a green run rather than fabricating a `:reject`; (3) expose `:semantic_gate, grader:` config so operators can point grok/cursor/etc at codex.
+
+Discovered while monitoring grok task 9 from the operator/dashboard lane; this is a run-lifecycle correctness bug in the landing loop (phase 11 autolanding's "cross-family adversarial semantic gate"), distinct from the agent-routing fix and from Task 157's restart-resilience work, so it is filed rather than folded into either.
+"""
+created_at = "2026-06-02"
+started_at = "2026-06-02"
+scored_at = "2026-06-02"
