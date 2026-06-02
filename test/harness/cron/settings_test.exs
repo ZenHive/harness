@@ -1,8 +1,10 @@
 defmodule Harness.Cron.SettingsTest do
   use ExUnit.Case, async: false
 
+  alias Harness.Cron.RoadmapPoller
   alias Harness.Cron.Settings
   alias Harness.ProjectFixture
+  alias Oban.Plugins.Cron
 
   setup do
     prior_settings = Application.get_env(:harness, :cron_settings)
@@ -83,6 +85,64 @@ defmodule Harness.Cron.SettingsTest do
 
       assert :ok = Settings.set_master(false, "test")
       refute Settings.effective?(project)
+    end
+  end
+
+  describe "schedule (Task 111)" do
+    test "set_schedule round-trips through the store and survives a reload" do
+      assert :ok = Settings.set_schedule("6h", "test")
+      assert RoadmapPoller.schedule() == "0 */6 * * *"
+
+      # Simulate a restart: clear env, reload from the persisted file.
+      Application.delete_env(:harness, :cron_polling)
+      assert :ok = Settings.load_into_env()
+      assert RoadmapPoller.schedule() == "0 */6 * * *"
+      assert Settings.active_preset() == "6h"
+    end
+
+    test "cron_plugin/0 reflects the stored schedule" do
+      assert :ok = Settings.set_schedule("daily", "test")
+
+      assert {Cron, crontab: [{"0 0 * * *", RoadmapPoller, _opts}]} = RoadmapPoller.cron_plugin()
+    end
+
+    test "an unknown preset is rejected and never reaches the config" do
+      before = RoadmapPoller.schedule()
+
+      assert {:error, :invalid_preset} = Settings.set_schedule("* * * * *", "test")
+      assert {:error, :invalid_preset} = Settings.set_schedule("hourly-ish", "test")
+
+      # The rejected value never reached :cron_polling, so the schedule is unchanged.
+      assert RoadmapPoller.schedule() == before
+    end
+
+    test "set_schedule preserves the master flag" do
+      assert :ok = Settings.set_master(true, "test")
+      assert :ok = Settings.set_schedule("hourly", "test")
+
+      assert Settings.master_enabled?()
+      assert RoadmapPoller.schedule() == "0 * * * *"
+    end
+
+    test "a persisted schedule outside the preset whitelist is ignored on reload" do
+      # An old/hand-edited file could carry a crontab no longer in the whitelist.
+      Settings.set_master(false, "test")
+      root = Path.join(System.tmp_dir!(), "harness_cron_sched_#{System.unique_integer([:positive])}")
+      Application.put_env(:harness, :cron_settings, root: root)
+      on_exit(fn -> File.rm_rf(root) end)
+
+      File.mkdir_p!(root)
+
+      File.write!(
+        Path.join(root, "cron_settings.term"),
+        :erlang.term_to_binary(%{master_enabled: false, project_autonomy: %{}, schedule: "*/7 * * * *"})
+      )
+
+      Application.delete_env(:harness, :cron_polling)
+      assert :ok = Settings.load_into_env()
+
+      # The non-whitelisted crontab was not applied; the default stands.
+      assert RoadmapPoller.schedule() == "0 */2 * * *"
     end
   end
 

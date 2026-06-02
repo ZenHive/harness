@@ -4287,7 +4287,7 @@
       "phase": 11,
       "bundle": "autolanding",
       "milestone": "v0_9",
-      "status": "pending",
+      "status": "done",
       "title": "Cron schedule editing from the UI — boot-applied presets, optional live reconfig",
       "scores": {
         "d": 4,
@@ -4320,7 +4320,11 @@
       ],
       "body": "The cron cadence is baked into the Oban Cron plugin's crontab once at boot (RoadmapPoller.cron_plugin/0 -> Harness.Oban supervision child). Unlike the enabled flag (read live each tick), the SCHEDULE cannot change without reconfiguring the Cron plugin.\n\nCheap 80% first: persist the chosen schedule; cron_plugin/0 reads it at boot. UI offers a small preset set (hourly / 2h / 6h / daily) rather than a free-form crontab box (avoids invalid-cron footguns). Changes apply on the NEXT restart -- satisfies most needs, low risk.\n\nExpensive 20% (optional): changing cadence WITHOUT restart means tearing down and re-adding the Oban Cron plugin at runtime. Oban supports it but it is fiddly and easy to get wrong. Gate behind the preset work; only build if presets prove insufficient. Honest low B/U until then.\n",
       "created_at": "2026-05-30",
+      "started_at": "2026-06-02",
+      "done_at": "2026-06-02",
       "scored_at": "2026-05-30",
+      "implemented": "Cron schedule persisted in Harness.Cron.Settings (:cron_polling :schedule key, same store as the 109/110 switches); RoadmapPoller.schedule/0 + cron_plugin/0 source it at boot, falling back to @default_schedule. SettingsLive gained a preset picker (hourly/2h/6h/daily) over a closed schedule_presets/0 whitelist — set_schedule/2 rejects any non-preset key ({:error,:invalid_preset}), so free-form crontab cannot reach Oban. Current schedule + next tick already shown via RoadmapPoller.status/0. load_into_env/0 applies a persisted schedule only if still whitelisted (back-compat for records without :schedule). Tests: store round-trip + reload, cron_plugin/0 reflects stored value, invalid rejected, non-whitelisted ignored on reload, LiveView picker render + change. Browser-verified via tidewave. Live reconfig left out of scope as specified.",
+      "delivered_by": "human",
       "cross_repo": []
     },
     {
@@ -5926,7 +5930,7 @@
       "phase": 13,
       "bundle": "capability-bench",
       "milestone": "v0_10",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Agent evaluation corpus — stand up the Elixir corpus repo + prove Mode-B hidden-grader isolation",
       "scores": {
         "d": 4,
@@ -5956,6 +5960,7 @@
       ],
       "body": "Design + rationale: ~/_DATA/concepts/agent-corpus/README.md (canonical). This task is the v1 bootstrap that proves the grading pattern; do NOT author the full corpus here. Spans harness + a new ~/code/agent-corpus-elixir repo.\n\nWHY: harness already shipped the machinery that consumes an agent-evaluation corpus but has no corpus to feed it — CapabilityDomain (:otp/:genserver/:liveview/:phoenix/:ecto/:oban/:rust/:elixir), CapabilityScore + ResultStore.get_capability_score/4 keyed by (agent, domain, corpus_version), AgentEvaluation.compare/4, and CompareLive (Task 81). A per-language corpus repo registered as a %Harness.Project{} is the missing input. Per-language repos (not a monorepo) so each carries one coherent toolchain check_stack.\n\nTHE LOAD-BEARING DECISION — grader isolation (two modes, see concept doc):\n- Mode A (visible-spec / TDD): grading tests in the repo, agent makes them pass. Mainstream Elixir/OTP/LiveView surfaces. Measures implementation skill.\n- Mode B (hidden-grader / unfamiliar library): the whole point of a zen_websocket/mpp task is the agent has provably never seen the API — does it read the source or hallucinate? If the grading test is in the worktree it REVEALS the API and destroys the measurement. So Mode-B graders MUST be withheld from the agent worktree and applied only at verification time. Realization (a): graders live on the host outside the worktree, copied in by the check_stack right before checks run. FIRST verify whether Harness.CheckStack.setup already supports a post-agent/pre-check injection step or whether it's a small harness feature to add — that is the probable infra addition and the thing to settle before authoring tasks.\n\nDIFFERENTIATION: lean the corpus toward Mode-B unfamiliar-library tasks (libs you own/know well enough to author behavioral checks for). That is the un-gameable signal nobody else measures; generic HumanEval-style puzzles are saturated/trained-on and rot fastest — skip them.\n\nOpen questions in the concept doc: CheckStack injection support (Q1), answer-key storage host-dir vs private repo (Q2), corpus_version fingerprint (Q3), worktree network access vs vendoring the unfamiliar dep (Q4 — vendoring is more reproducible).\n",
       "created_at": "2026-06-01",
+      "started_at": "2026-06-02",
       "scored_at": "2026-06-01",
       "cross_repo": []
     },
@@ -6365,7 +6370,7 @@
       "phase": 15,
       "bundle": "reviewer-pair",
       "milestone": "v0_11",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Reviewer core: :reviewing state — cross-family reviewer agent fixes red worktrees inline",
       "scores": {
         "d": 6,
@@ -6400,6 +6405,7 @@
       ],
       "body": "Phase-15 step 1 of the reviewer-pair architecture (docs/reviewer-pair-architecture.md, settled 2026-06-02). The run lifecycle becomes implementer -> reviewer pair: implementer works and commits; check stack runs; on red, a cross-family REVIEWER agent gets the worktree + task spec + transcript + check output and fixes inline — its own edits, commits, check re-runs — until the stack is green or it reports stuck in prose. Harness re-verifies mechanically after review; the reviewer cannot talk its way to done. This replaces the repair loop (resume implementer with a repair prompt) as the red-verdict path. Rationale: every run-lifecycle bug this week (153/156/157/158/159/160 + two unfiled) traces to judgment calls implemented as procedural code; the reviewer absorbs the judgment, harness keeps only mechanics (worktree, ports, check execution, an iteration counter).",
       "created_at": "2026-06-02",
+      "started_at": "2026-06-02",
       "scored_at": "2026-06-02",
       "cross_repo": []
     },

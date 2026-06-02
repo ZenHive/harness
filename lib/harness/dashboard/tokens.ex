@@ -1122,6 +1122,21 @@ defmodule Harness.Dashboard.Tokens do
       .setting-notice[data-kind="ok"] { border-color: var(--verdict-pass); background: var(--surface-2); }
       .setting-notice[data-kind="error"] { border-color: var(--accent); background: var(--accent-soft); }
 
+      /* Cron schedule preset picker (boot-applied; Task 111). */
+      .setting-schedule { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-4); flex-wrap: wrap; }
+      .setting-schedule form { display: flex; align-items: center; gap: var(--space-2); }
+      .setting-schedule label { color: var(--text-muted); font-size: var(--text-sm); }
+      .setting-schedule select {
+        background: var(--surface);
+        color: var(--text);
+        border: 1px solid var(--rule);
+        border-radius: 0.35rem;
+        padding: var(--space-2) var(--space-3);
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+      }
+      .setting-schedule select:focus { outline: 1px solid var(--accent); outline-offset: 1px; }
+
       /* Dispatch-now action row in the master card. */
       .setting-actions { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-4); }
       .btn-dispatch {

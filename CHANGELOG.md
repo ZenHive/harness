@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Cron schedule editing from the dashboard — boot-applied presets (Task 111).**
+  `Harness.Cron.Settings` now persists the poll cadence alongside the 109/110
+  autonomy switches (same `:cron_polling` config + term file), so
+  `RoadmapPoller.schedule/0` / `cron_plugin/0` source it at boot, falling back to
+  `@default_schedule` (`0 */2 * * *`) when unset. `SettingsLive` gained a preset
+  picker (hourly / 2h / 6h / daily) backed by a closed `schedule_presets/0`
+  whitelist — `set_schedule/2` rejects any non-preset key
+  (`{:error, :invalid_preset}`), so a free-form crontab can never reach Oban. The
+  schedule is **boot-applied** (the Cron plugin's crontab is built once at
+  startup); a change takes effect on the next restart, and live runtime reconfig
+  is deliberately out of scope. Current schedule + next tick already render via
+  `RoadmapPoller.status/0`. `load_into_env/0` applies a persisted schedule only
+  if still whitelisted (back-compat for records written before Task 111).
+
 - **Verification baseline attribution — inherited red is no longer blamed on the
   agent (Task 153, codex delivery).** When a check fails, `Harness.Verification`
   now re-runs the same check stack against the dispatch base (`:base_ref`, the

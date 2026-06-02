@@ -3633,7 +3633,7 @@ id = "111"
 phase = 11
 bundle = "autolanding"
 milestone = "v0_9"
-status = "pending"
+status = "done"
 title = "Cron schedule editing from the UI — boot-applied presets, optional live reconfig"
 scores = { d = 4, b = 2, u = 2 }
 markers = ["handbuild"]
@@ -3648,8 +3648,12 @@ Cheap 80% first: persist the chosen schedule; cron_plugin/0 reads it at boot. UI
 
 Expensive 20% (optional): changing cadence WITHOUT restart means tearing down and re-adding the Oban Cron plugin at runtime. Oban supports it but it is fiddly and easy to get wrong. Gate behind the preset work; only build if presets prove insufficient. Honest low B/U until then.
 """
+implemented = "Cron schedule persisted in Harness.Cron.Settings (:cron_polling :schedule key, same store as the 109/110 switches); RoadmapPoller.schedule/0 + cron_plugin/0 source it at boot, falling back to @default_schedule. SettingsLive gained a preset picker (hourly/2h/6h/daily) over a closed schedule_presets/0 whitelist — set_schedule/2 rejects any non-preset key ({:error,:invalid_preset}), so free-form crontab cannot reach Oban. Current schedule + next tick already shown via RoadmapPoller.status/0. load_into_env/0 applies a persisted schedule only if still whitelisted (back-compat for records without :schedule). Tests: store round-trip + reload, cron_plugin/0 reflects stored value, invalid rejected, non-whitelisted ignored on reload, LiveView picker render + change. Browser-verified via tidewave. Live reconfig left out of scope as specified."
+delivered_by = "human"
 created_at = "2026-05-30"
+started_at = "2026-06-02"
 scored_at = "2026-05-30"
+done_at = "2026-06-02"
 
 [[task]]
 id = "112"
@@ -4664,7 +4668,7 @@ id = "151"
 phase = 13
 bundle = "capability-bench"
 milestone = "v0_10"
-status = "pending"
+status = "in_progress"
 title = "Agent evaluation corpus — stand up the Elixir corpus repo + prove Mode-B hidden-grader isolation"
 scores = { d = 4, b = 5, u = 4 }
 acceptance_criteria = ["A new per-language corpus repo (~/code/agent-corpus-elixir) exists as a real Elixir project (mix.exs, lib skeletons) with roadmap/tasks.toml as the benchmark, registered as a %Harness.Project{} (landing_policy :manual — corpus runs are scored, never merged)", "Grader-isolation Mode B is PROVEN on one unfamiliar-library task (zen_websocket or mpp): the agent's worktree never contains the grading test, the grader is injected/applied only at verification time (realization (a) — confirm whether CheckStack.setup already supports post-agent/pre-check injection or add the minimal feature), and the agent is graded on a hidden behavioral spec", "One Mode-A visible-spec task also passes end-to-end (in-repo tests the agent makes pass) to exercise both grading modes", "Running the two tasks via Harness.Batch.AgentEvaluation.compare/4 across >=2 enabled adapters populates Harness.CapabilityScore per (agent, domain, corpus_version) and renders in Harness.Dashboard.CompareLive", "corpus_version is recorded (git SHA of the corpus repo or a documented bumped string) so scores are version-comparable; tasks are append-mostly"]
@@ -4684,6 +4688,7 @@ DIFFERENTIATION: lean the corpus toward Mode-B unfamiliar-library tasks (libs yo
 Open questions in the concept doc: CheckStack injection support (Q1), answer-key storage host-dir vs private repo (Q2), corpus_version fingerprint (Q3), worktree network access vs vendoring the unfamiliar dep (Q4 — vendoring is more reproducible).
 """
 created_at = "2026-06-01"
+started_at = "2026-06-02"
 scored_at = "2026-06-01"
 
 [[task]]
@@ -4998,7 +5003,7 @@ id = "161"
 phase = 15
 bundle = "reviewer-pair"
 milestone = "v0_11"
-status = "pending"
+status = "in_progress"
 title = "Reviewer core: :reviewing state — cross-family reviewer agent fixes red worktrees inline"
 scores = { d = 6, b = 9, u = 9 }
 acceptance_criteria = ["New :reviewing state in the Harness.Run gen_statem: a red verdict routes to :reviewing instead of the repair loop (repair loop left in place but unreachable from the red path; deletion is a later task).", "Reviewer selection is cross-family: the reviewer adapter must be a different agent family than the implementer (generalize AuditReview.default_grader's claude<->codex auto-pair; explicit reviewer: opt overrides). If no cross-family adapter is available, the run settles :failed with a prose reason — never silently skips review.", "Reviewer invocation: a fresh adapter session in the SAME worktree, prompt assembled from task spec + acceptance criteria, implementer transcript tail, diff stat, and full failing-check output, with the instruction: fix inline, commit, re-run checks; end green or write a stuck-report.", "After the reviewer session ends, harness re-runs the check stack mechanically. Green -> run settles :done (reviewer's word is never the verdict). Still red and iterations remain -> reviewer re-invoked with the new check output. Iterations exhausted -> :failed with the reviewer's stuck-report as prose reason.", "One mechanical knob: max_review_iterations (default 2), read from opts/config like max_repair_attempts is today.", "Run.Result and run_records carry reviewer facts: reviewer adapter, review_iterations, reviewer stuck-report (when failed). StatusView shows reviewing state.", "Regression tests: red->review->green settles :done; red->review->still-red->exhausted settles :failed with prose; no cross-family adapter available settles :failed; reviewer edits are graded by the same stack (a reviewer that breaks formatting does not settle :done).", "Architecture contract: docs/reviewer-pair-architecture.md is the spec; no judgment cond-branches added to harness code (the reviewer decides, harness counts and re-verifies)."]
@@ -5007,6 +5012,7 @@ touches = ["lib/harness/run.ex", "lib/harness/run/result.ex", "lib/harness/run/s
 assignee = "codex"
 body = "Phase-15 step 1 of the reviewer-pair architecture (docs/reviewer-pair-architecture.md, settled 2026-06-02). The run lifecycle becomes implementer -> reviewer pair: implementer works and commits; check stack runs; on red, a cross-family REVIEWER agent gets the worktree + task spec + transcript + check output and fixes inline — its own edits, commits, check re-runs — until the stack is green or it reports stuck in prose. Harness re-verifies mechanically after review; the reviewer cannot talk its way to done. This replaces the repair loop (resume implementer with a repair prompt) as the red-verdict path. Rationale: every run-lifecycle bug this week (153/156/157/158/159/160 + two unfiled) traces to judgment calls implemented as procedural code; the reviewer absorbs the judgment, harness keeps only mechanics (worktree, ports, check execution, an iteration counter)."
 created_at = "2026-06-02"
+started_at = "2026-06-02"
 scored_at = "2026-06-02"
 
 [[task]]

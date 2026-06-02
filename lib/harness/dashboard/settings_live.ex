@@ -68,6 +68,16 @@ defmodule Harness.Dashboard.SettingsLive do
     {:noreply, refresh(socket)}
   end
 
+  def handle_event("set_schedule", %{"preset" => preset}, socket) do
+    notice =
+      case Settings.set_schedule(preset, "dashboard") do
+        :ok -> {:ok, "Schedule updated — applies on the next restart."}
+        {:error, :invalid_preset} -> {:error, "Unknown schedule preset."}
+      end
+
+    {:noreply, socket |> assign(:notice, notice) |> refresh()}
+  end
+
   def handle_event("toggle_agent", %{"name" => name}, socket) do
     case agent_atom(name) do
       {:ok, agent} -> AgentSettings.set_enabled(agent, not AgentSettings.enabled?(agent), "dashboard")
@@ -131,6 +141,23 @@ defmodule Harness.Dashboard.SettingsLive do
         <p :if={@autonomy.master and not @autonomy.any_effective?} class="setting-warn">
           Master is on but no project is enabled — nothing will dispatch. Enable a project below.
         </p>
+        <div class="setting-schedule">
+          <form phx-change="set_schedule">
+            <label for="cron-preset">Poll cadence</label>
+            <select id="cron-preset" name="preset">
+              <option
+                :for={{key, label, _crontab} <- @autonomy.presets}
+                value={key}
+                selected={key == @autonomy.active_preset}
+              >
+                {label}
+              </option>
+            </select>
+          </form>
+          <span class="setting-hint">
+            The cron schedule is fixed at boot — a change applies on the next restart.
+          </span>
+        </div>
         <div class="setting-actions">
           <button
             type="button"
@@ -346,7 +373,9 @@ defmodule Harness.Dashboard.SettingsLive do
       master: master,
       status: RoadmapPoller.status(),
       projects: rows,
-      any_effective?: Enum.any?(rows, & &1.effective)
+      any_effective?: Enum.any?(rows, & &1.effective),
+      presets: Settings.schedule_presets(),
+      active_preset: Settings.active_preset()
     }
   end
 

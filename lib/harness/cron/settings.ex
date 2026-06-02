@@ -14,6 +14,16 @@ defmodule Harness.Cron.Settings do
 
   Effective autonomy for a project is `master AND project` (`effective?/1`).
 
+  ## Schedule (Task 111) — boot-applied, not live
+
+  The cron **schedule** is also persisted here (in the same `:cron_polling` config,
+  `:schedule` key, which `RoadmapPoller.schedule/0` already reads). Unlike the
+  switches above, it is **boot-applied**: the Oban Cron plugin's crontab is built
+  once at startup (`RoadmapPoller.cron_plugin/0`), so a changed schedule takes
+  effect on the **next restart**, not the next tick. `set_schedule/2` accepts only
+  a closed `schedule_presets/0` whitelist — a free-form crontab can never reach
+  Oban. Live runtime reconfig (teardown/re-add of the Cron plugin) is out of scope.
+
   ## App env is the live cache; the file is the persistence layer
 
   `RoadmapPoller.perform/1` already reads `enabled?/0` from app env on every tick,
@@ -36,6 +46,7 @@ defmodule Harness.Cron.Settings do
   `config :harness, :cron_settings, root: "/some/path"`.
   """
 
+  alias Harness.Cron.RoadmapPoller
   alias Harness.Project
 
   require Logger
@@ -43,8 +54,23 @@ defmodule Harness.Cron.Settings do
   @default_root "~/.harness"
   @filename "cron_settings.term"
 
-  @typedoc "The persisted record: both switch sets in one term file."
-  @type record :: %{master_enabled: boolean(), project_autonomy: %{String.t() => boolean()}}
+  # The only crontabs that can reach Oban's Cron plugin — a closed
+  # `{key, label, crontab}` whitelist. A free-form crontab box would let an
+  # invalid expression reach `cron_plugin/0`; a preset picker cannot. `"2h"` is
+  # the `RoadmapPoller` default (`@default_schedule "0 */2 * * *"`).
+  @schedule_presets [
+    {"hourly", "Hourly", "0 * * * *"},
+    {"2h", "Every 2 hours", "0 */2 * * *"},
+    {"6h", "Every 6 hours", "0 */6 * * *"},
+    {"daily", "Daily (midnight)", "0 0 * * *"}
+  ]
+
+  @typedoc "The persisted record: both switch sets plus the cron schedule, in one term file."
+  @type record :: %{
+          required(:master_enabled) => boolean(),
+          required(:project_autonomy) => %{String.t() => boolean()},
+          optional(:schedule) => String.t()
+        }
 
   @doc """
   Seeds app env from the persisted file. Called once on boot, before Oban starts,
@@ -60,17 +86,40 @@ defmodule Harness.Cron.Settings do
 
       dir ->
         case read_term(path(dir)) do
-          {:ok, %{master_enabled: master, project_autonomy: projects}}
-          when is_boolean(master) and is_map(projects) ->
-            put_master(master)
-            Application.put_env(:harness, :cron_project_autonomy, projects)
-            :ok
-
-          _other ->
-            :ok
+          {:ok, record} when is_map(record) -> apply_record(record)
+          _other -> :ok
         end
     end
   end
+
+  # Seeds app env from a persisted record. A record missing `:schedule` (written
+  # before Task 111) leaves the default in place; a stored schedule outside the
+  # current preset whitelist is ignored, never applied.
+  @spec apply_record(map()) :: :ok
+  defp apply_record(%{master_enabled: master, project_autonomy: projects} = record)
+       when is_boolean(master) and is_map(projects) do
+    put_master(master)
+    Application.put_env(:harness, :cron_project_autonomy, projects)
+    apply_schedule(Map.get(record, :schedule))
+    :ok
+  end
+
+  defp apply_record(_other), do: :ok
+
+  @spec apply_schedule(term()) :: :ok
+  defp apply_schedule(crontab) when is_binary(crontab) do
+    if known_crontab?(crontab) do
+      put_schedule(crontab)
+    else
+      Logger.warning(
+        "harness cron autonomy: ignoring persisted schedule #{inspect(crontab)} — not in the preset whitelist"
+      )
+    end
+
+    :ok
+  end
+
+  defp apply_schedule(_other), do: :ok
 
   @doc "Returns whether the fleet-wide master autonomy switch is on."
   @spec master_enabled?() :: boolean()
@@ -117,8 +166,60 @@ defmodule Harness.Cron.Settings do
     :ok
   end
 
+  @doc """
+  The selectable cron schedules as `{key, label, crontab}` — the closed whitelist
+  `set_schedule/2` accepts and the picker renders.
+  """
+  @spec schedule_presets() :: [{String.t(), String.t(), String.t()}]
+  def schedule_presets, do: @schedule_presets
+
+  @doc """
+  Returns the preset key of the currently configured schedule, or `nil` when the
+  active crontab matches no preset (e.g. a config-file override outside the set).
+  """
+  @spec active_preset() :: String.t() | nil
+  def active_preset do
+    current = RoadmapPoller.schedule()
+    Enum.find_value(@schedule_presets, fn {key, _label, crontab} -> if crontab == current, do: key end)
+  end
+
+  @doc """
+  Sets the cron schedule from a preset key, persists it, and logs an info-level
+  audit line naming the actor.
+
+  Only the `schedule_presets/0` keys are accepted; an unknown or free-form key is
+  rejected (`{:error, :invalid_preset}`) and never reaches Oban's crontab. The new
+  schedule takes effect on the **next BEAM restart** — the Oban Cron plugin's
+  crontab is built once at boot (`RoadmapPoller.cron_plugin/0`); live reconfig is
+  out of scope (Task 111).
+  """
+  @spec set_schedule(String.t(), String.t()) :: :ok | {:error, :invalid_preset}
+  def set_schedule(preset_key, actor) when is_binary(preset_key) and is_binary(actor) do
+    case Enum.find(@schedule_presets, fn {key, _label, _crontab} -> key == preset_key end) do
+      {_key, _label, crontab} ->
+        put_schedule(crontab)
+        persist()
+        Logger.info("harness cron autonomy: schedule set to #{crontab} (#{preset_key}) by #{actor}")
+        :ok
+
+      nil ->
+        {:error, :invalid_preset}
+    end
+  end
+
   @spec project_map() :: %{String.t() => boolean()}
   defp project_map, do: Application.get_env(:harness, :cron_project_autonomy, %{})
+
+  @spec known_crontab?(String.t()) :: boolean()
+  defp known_crontab?(crontab), do: Enum.any?(@schedule_presets, fn {_key, _label, ct} -> ct == crontab end)
+
+  # Writes the schedule into the existing :cron_polling config, preserving the
+  # :enabled flag (and any other keys) so RoadmapPoller's reads are unaffected.
+  @spec put_schedule(String.t()) :: :ok
+  defp put_schedule(crontab) do
+    config = Application.get_env(:harness, :cron_polling, [])
+    Application.put_env(:harness, :cron_polling, Keyword.put(config, :schedule, crontab))
+  end
 
   # Writes the master flag into the existing :cron_polling config, preserving the
   # schedule (and any other keys) so RoadmapPoller's reads are unaffected.
@@ -142,7 +243,7 @@ defmodule Harness.Cron.Settings do
 
   @spec current_state() :: record()
   defp current_state do
-    %{master_enabled: master_enabled?(), project_autonomy: project_map()}
+    %{master_enabled: master_enabled?(), project_autonomy: project_map(), schedule: RoadmapPoller.schedule()}
   end
 
   @spec path(String.t()) :: String.t()

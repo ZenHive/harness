@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 126 — Run change-set view on the run-detail page (live edited-files + settled git diff) on 2026-05-31
 
-**Up next:** Task 111 — Cron schedule editing from the UI — boot-applied presets, optional live reconfig [D:4/B:2/U:2 → Eff:0.5] ⚠️
+**Up next:** Task 104 — Promote docs/dogfooding-workflow.md to ~/.claude/includes/harness-workflow.md once stable [D:6/B:8/U:7 → Eff:1.25] 📋
 <!-- FOCUS:END -->
 
 ---

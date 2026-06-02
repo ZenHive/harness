@@ -16,6 +16,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   alias Harness.Agent.Settings, as: AgentSettings
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentRegistry
+  alias Harness.Cron.RoadmapPoller
   alias Harness.Cron.Settings
   alias Harness.Landing.Settings, as: LandingSettings
   alias Harness.ProjectFixture
@@ -88,6 +89,42 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     {:ok, _view, html} = live(conn, "/harness/settings")
 
     assert html =~ ~s(href="/harness/settings")
+  end
+
+  test "renders the schedule picker with the active preset selected", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/harness/settings")
+
+    assert html =~ ~s(phx-change="set_schedule")
+    assert html =~ "Poll cadence"
+    # The default schedule (0 */2 * * *) is the "2h" preset, pre-selected.
+    assert html =~ ~r/<option value="2h"\s+selected/
+  end
+
+  test "choosing a preset persists the schedule and confirms", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> element("form[phx-change=set_schedule]")
+      |> render_change(%{preset: "6h"})
+
+    assert html =~ "Schedule updated"
+    assert RoadmapPoller.schedule() == "0 */6 * * *"
+    assert Settings.active_preset() == "6h"
+  end
+
+  test "an unknown preset is rejected with an error notice", %{conn: conn} do
+    before = RoadmapPoller.schedule()
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> element("form[phx-change=set_schedule]")
+      |> render_change(%{preset: "every-minute"})
+
+    assert html =~ "Unknown schedule preset."
+    # The rejected value never reached the config.
+    assert RoadmapPoller.schedule() == before
   end
 
   test "renders the Agents card with every adapter enabled by default", %{conn: conn} do
