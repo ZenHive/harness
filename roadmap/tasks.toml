@@ -80,9 +80,19 @@ name = "Agent Rule Injection & Prompt Provenance"
 order = 14
 status = "pending"
 
+[phases.15]
+name = "Reviewer-Pair Lifecycle"
+order = 15
+status = "pending"
+
 # ----------------------------------------------------------------------------
 # Bundles
 # ----------------------------------------------------------------------------
+
+[bundles.reviewer-pair]
+description = "Replace every run-lifecycle judgment call implemented as procedural code (FailureClass regexes, repair loop, BaselineFilter, semantic gate, :no_changes disposition) with a cross-family reviewer agent that fixes inline in the implementer's worktree until the check stack is green or reports stuck in prose. Architecture: docs/reviewer-pair-architecture.md. Harness code shrinks to mechanical substrate; ~1,100 lines of judgment code deleted."
+order = 1
+phase = 15
 
 [bundles.agent-rules]
 description = "Harden the prompt-to-agent pipeline: language-aware harness rule injection (don't ship Elixir conventions to non-Elixir targets) + capture the composed prompt+rules per run for post-hoc diagnosis"
@@ -267,6 +277,13 @@ description = "Proves evidence-based per-domain agent routing beats the orchestr
 order = 10
 status = "pending"
 target_version = "0.10.0"
+
+[milestones.v0_11]
+name = "Reviewer-Pair Lifecycle"
+description = "Tests the hypothesis that the recurring class of run-lifecycle bugs (failure misclassification, baseline masking, empty-diff wedges, gate rejections — 6 found in one week) is caused by judgment calls implemented as procedural code, and that moving all of them into a cross-family reviewer agent that fixes inline (never classifies) eliminates the class while raising delivery rate without re-dispatch."
+order = 11
+status = "pending"
+target_version = "0.11.0"
 
 # ----------------------------------------------------------------------------
 # Tasks
@@ -4970,3 +4987,71 @@ started_at = "2026-06-02"
 scored_at = "2026-06-02"
 done_at = "2026-06-02"
 shipped_in = "cd87bd0"
+
+[[task]]
+id = "161"
+phase = 15
+bundle = "reviewer-pair"
+milestone = "v0_11"
+status = "pending"
+title = "Reviewer core: :reviewing state — cross-family reviewer agent fixes red worktrees inline"
+scores = { d = 6, b = 9, u = 9 }
+acceptance_criteria = ["New :reviewing state in the Harness.Run gen_statem: a red verdict routes to :reviewing instead of the repair loop (repair loop left in place but unreachable from the red path; deletion is a later task).", "Reviewer selection is cross-family: the reviewer adapter must be a different agent family than the implementer (generalize AuditReview.default_grader's claude<->codex auto-pair; explicit reviewer: opt overrides). If no cross-family adapter is available, the run settles :failed with a prose reason — never silently skips review.", "Reviewer invocation: a fresh adapter session in the SAME worktree, prompt assembled from task spec + acceptance criteria, implementer transcript tail, diff stat, and full failing-check output, with the instruction: fix inline, commit, re-run checks; end green or write a stuck-report.", "After the reviewer session ends, harness re-runs the check stack mechanically. Green -> run settles :done (reviewer's word is never the verdict). Still red and iterations remain -> reviewer re-invoked with the new check output. Iterations exhausted -> :failed with the reviewer's stuck-report as prose reason.", "One mechanical knob: max_review_iterations (default 2), read from opts/config like max_repair_attempts is today.", "Run.Result and run_records carry reviewer facts: reviewer adapter, review_iterations, reviewer stuck-report (when failed). StatusView shows reviewing state.", "Regression tests: red->review->green settles :done; red->review->still-red->exhausted settles :failed with prose; no cross-family adapter available settles :failed; reviewer edits are graded by the same stack (a reviewer that breaks formatting does not settle :done).", "Architecture contract: docs/reviewer-pair-architecture.md is the spec; no judgment cond-branches added to harness code (the reviewer decides, harness counts and re-verifies)."]
+files_to_modify = ["lib/harness/run.ex", "lib/harness/run/result.ex"]
+touches = ["lib/harness/run.ex", "lib/harness/run/result.ex", "lib/harness/run/status.ex", "lib/harness/audit_review.ex", "test/harness/run_test.exs"]
+assignee = "codex"
+body = "Phase-15 step 1 of the reviewer-pair architecture (docs/reviewer-pair-architecture.md, settled 2026-06-02). The run lifecycle becomes implementer -> reviewer pair: implementer works and commits; check stack runs; on red, a cross-family REVIEWER agent gets the worktree + task spec + transcript + check output and fixes inline — its own edits, commits, check re-runs — until the stack is green or it reports stuck in prose. Harness re-verifies mechanically after review; the reviewer cannot talk its way to done. This replaces the repair loop (resume implementer with a repair prompt) as the red-verdict path. Rationale: every run-lifecycle bug this week (153/156/157/158/159/160 + two unfiled) traces to judgment calls implemented as procedural code; the reviewer absorbs the judgment, harness keeps only mechanics (worktree, ports, check execution, an iteration counter)."
+created_at = "2026-06-02"
+scored_at = "2026-06-02"
+
+[[task]]
+id = "162"
+phase = 15
+bundle = "reviewer-pair"
+milestone = "v0_11"
+status = "pending"
+title = "Route empty-diff and green-review through the reviewer; collapse semantic gate into review_green"
+scores = { d = 4, b = 8, u = 8 }
+depends_on = [161]
+acceptance_criteria = ["An empty agent diff no longer settles :no_changes by disposition logic — it routes to :reviewing. The reviewer decides: already-implemented (verify -> green -> done), or nothing-happened (stuck-report -> failed). Both terminal states observable.", "Project field semantic_gate (always/auto_land_only/off enum) is replaced by review_green: boolean — when true, even green verdicts get one reviewer pass scoped to acceptance-criteria conformance before settling :done.", "Quota-exhausted/crashed implementer runs route to the reviewer like any other non-green outcome; the reviewer's stuck-report (not a regex) is what records that the implementer hit a usage limit.", "Back-compat: existing project configs with semantic_gate map onto review_green (always/auto_land_only -> true, off -> false) at registry load; deprecation note in CHANGELOG.", "Regression tests: empty-diff on an already-green branch settles :done with reviewer involvement recorded; empty-diff from a quota-killed implementer settles :failed with prose mentioning the limit; green + review_green: true gets exactly one review pass."]
+files_to_modify = ["lib/harness/run.ex", "lib/harness/project.ex"]
+touches = ["lib/harness/run.ex", "lib/harness/project.ex", "lib/harness/dispatch.ex", "test/harness/run_test.exs", "test/harness/run/semantic_gate_test.exs"]
+assignee = "codex"
+body = "Phase-15 step 2 (docs/reviewer-pair-architecture.md). Empty-diff disposition and the post-green semantic gate are the two remaining judgment branch points outside the red path. Both become reviewer invocations: the reviewer looks at an empty diff and decides what it means; the reviewer reviews green code against acceptance criteria when the project opts in (review_green). This supersedes Task 158's gate-availability fix and Task 159's verify_no_changes? refinement — both were patches on judgment code this architecture deletes."
+created_at = "2026-06-02"
+scored_at = "2026-06-02"
+
+[[task]]
+id = "163"
+phase = 15
+bundle = "reviewer-pair"
+milestone = "v0_11"
+status = "pending"
+title = "The deletion pass: remove FailureClass, RepairPrompt, BaselineFilter, baseline verification, quota regexes, repair loop, consulting state, semantic-gate machinery"
+scores = { d = 5, b = 8, u = 7 }
+depends_on = [161, 162]
+acceptance_criteria = ["Deleted modules: Harness.Run.FailureClass, Harness.Run.RepairPrompt, Harness.Verification.BaselineFilter.Credo (and the baseline_filter dir).", "Deleted from Verification: run_baseline_stacks, mark_pre_existing, the :persistent_term baseline cache, the :base_red verdict status and post_process plumbing. A red check is red; the reviewer deals with it.", "Deleted from Run: repair_attempts/max_repair_attempts/repair_prompt_kind/last_failed_check_signatures fields, the verifying->running repair loopback, the :consulting state, cross_agent_repair machinery, settle_green_verdict/semantic_gate_* functions.", "Deleted from RetryPolicy: quota_patterns and default_quota_patterns; what remains is mechanical backoff only. The 2026-06-02 config disable (quota_patterns: []) is removed along with the field it disabled.", "Run.Worker Oban contract becomes crash-only retry: a run that reached ANY settled verdict (green, stuck, exhausted) is never re-enqueued; only mechanical failures (BEAM death, port spawn failure, worktree race) retry, and retry first removes the prior attempt's worktree/branch (fixes the 2026-06-02 branch-collision cascade observed on run-1780396918179-74f06ecc).", "run_records writes from a retry never overwrite a settled attempt's rich data (verdict, check_output, transcript) with poorer data — the 2026-06-02 data-loss observed on the same run.", "AgentRegistry unavailability marking is fed by reviewer stuck-reports (or removed if nothing feeds it), not by FailureClass.", "Batch failover reads run_records prose/reviewer fields instead of FailureClass classifications.", "Check stack green across the suite after deletion; CHANGELOG records the deletion list with line counts; docs/reviewer-pair-architecture.md deletion table updated with actuals.", "Regression scenarios from the deleted mechanisms' tests are REWRITTEN against the reviewer path, not deleted: inherited base debt, gate-unavailable, empty diff, baseline masking — the reviewer must handle each."]
+files_to_modify = ["lib/harness/run.ex", "lib/harness/verification.ex", "lib/harness/run/worker.ex"]
+touches = ["lib/harness/run.ex", "lib/harness/run/failure_class.ex", "lib/harness/run/repair_prompt.ex", "lib/harness/run/retry_policy.ex", "lib/harness/run/worker.ex", "lib/harness/verification.ex", "lib/harness/verification/baseline_filter/credo.ex", "lib/harness/batch.ex", "lib/harness/agent_registry.ex"]
+assignee = "codex"
+body = "Phase-15 step 3 (docs/reviewer-pair-architecture.md): the payoff. With the reviewer path live (161) and all judgment branch points routed through it (162), every judgment-as-code mechanism is dead weight: ~1,100 lines across FailureClass (131), RepairPrompt (100), BaselineFilter.Credo (273), baseline verification (~150), repair loop + consulting + semantic gate in run.ex (~300), quota patterns (~60), Run.Worker snooze logic (~30). Deleting them is the point — every line removed is a bug class removed. This task also absorbs the two interim bugs found 2026-06-02 (Oban retry branch collision; run_records upsert data loss) — both live in code this pass deletes/rewrites, so they are fixed here rather than patched twice."
+created_at = "2026-06-02"
+scored_at = "2026-06-02"
+
+[[task]]
+id = "164"
+phase = 15
+bundle = "reviewer-pair"
+milestone = "v0_11"
+status = "pending"
+title = "Reviewer-pair docs + driver surface: SKILL.md, CLAUDE.md, StatusView, dashboard fields"
+scores = { d = 2, b = 6, u = 6 }
+markers = ["docs"]
+depends_on = [163]
+acceptance_criteria = ["skills/harness-driver/SKILL.md: result-shape section reflects reviewer fields (review_iterations, reviewer, stuck_report) and drops repair_attempts/base_red/no_changes interpretations.", "CLAUDE.md Architecture + Dogfooding sections reference the reviewer-pair lifecycle; stale references to repair loop / semantic gate / BaselineFilter removed.", "Dashboard StatusView + run history LiveViews render reviewing state and reviewer fields (handbuild marker — UI work).", "docs/dogfooding-workflow.md runbook updated: the manual salvage procedure section becomes 'this is what the reviewer does automatically now'."]
+files_to_modify = ["skills/harness-driver/SKILL.md", "CLAUDE.md"]
+touches = ["skills/harness-driver/SKILL.md", "CLAUDE.md", "docs/reviewer-pair-architecture.md", "docs/dogfooding-workflow.md", "lib/harness/run/status.ex"]
+assignee = "claude"
+body = "Phase-15 step 4: documentation and consumer-surface alignment after the deletion pass. The harness-driver SKILL is the stable contract orchestrators read; it must not describe deleted mechanisms."
+created_at = "2026-06-02"
+scored_at = "2026-06-02"

@@ -72,7 +72,7 @@ Toolchain pinned by `.tool-versions`: **Elixir 1.18.4-otp-27** (asdf). Postgres 
 ## Architecture
 
 - **Elixir / OTP, not TypeScript.** harness *is* N concurrent supervised agent runs needing crash isolation, timeouts, retries, observable state. One run = one supervised `gen_statem`; one batch = a `DynamicSupervisor`.
-- **Core loop.** rmap task → dispatch to headless agent in isolated worktree → run target's check stack → green ⇒ done, red ⇒ repair-or-report. The verification stack (not the agent) is the grader — implementer/evaluator separation.
+- **Core loop.** rmap task → dispatch to headless agent in isolated worktree → run target's check stack → green ⇒ done, red/weird ⇒ **cross-family reviewer agent fixes inline** (see "Judgment Lives in Agents" below). The verification stack (not any agent) decides green — implementer/evaluator separation.
 - **Thin adapter pattern.** One adapter per agent: invocation + raw capture + capability declaration. Behaviour `Harness.AgentAdapter` — required callbacks `capabilities/0` + `rule_channel/0` + `build_command/1`; `classify_message/2` + `terminate/1` default via `use Harness.AgentAdapter` + defoverridable. `AgentAdapter.invoke/2` does the generic Port spawn. `build_command/1` threads caller-controlled env (`Invocation.env`, set/scrub pairs → Port, Task 25). Harness-owned rules delivered ahead of `build_command/1` by `AgentAdapter.attach_rules/2` (Task 39), dispatching on `c:rule_channel/0`: `:system_prompt_file` (Claude), `:codex_ephemeral_file` (Codex/Pi), `:cursor_ephemeral_file` (Cursor), `:prompt_preamble` (Grok/Antigravity), `:none` (test doubles). Every adapter must pass `Harness.AgentAdapter.ConformanceCase` **unchanged** — a leak gets fixed in the behaviour, not patched in the adapter.
 - **No agent-output parsing.** Raw passthrough is simpler *and* more robust — agents ship 40+ releases; a JSON-format change is absorbed by the AI reading the transcript, not by breaking a normalization layer.
 - **Path discipline:** raw-output capture is hot-path-adjacent (allocation-light); run/batch lifecycle is warm-path OTP state; dashboard / MCP is cold-path.
@@ -87,8 +87,24 @@ Core is textbook OTP (Port per run, `gen_statem` per run, `DynamicSupervisor` fo
 - **`claude_code` / `codex_sdk` are CLI wrappers**, not native reimplementations. An SDK's headline value is a normalized event model, which harness's raw-passthrough design deliberately discards. So **uniform Ports for every adapter**.
 - **Cold-path surface = dashboard + Oban Web + MCP, all on one Bandit.** Mountable into a consumer Phoenix endpoint or standalone. MCP (`Harness.Dashboard.MCPServer`, on `anubis_mcp`) exposes the descripex-`api()`-annotated driver surface (`Harness.Manifest`) as MCP JSON-RPC 2.0 over Streamable HTTP at `/harness/mcp`. `Harness.Chat.Tools` is the single source of truth for both the in-process chat dispatcher (`Harness.Chat.Session`) and the MCP surface. `Harness.Roadmap.list/2` + `next_bundle/1` let the orchestrator browse a registered project's roadmap as structured data. `Harness.Playbooks` layers orchestration recipes as compile-time-embedded `priv/playbooks/*.md`.
 - **Oban = queue + persistence + cron, NOT a worker engine.** It *wraps* `Harness.Run` gen_statem: `Harness.Run.Worker` takes `{project_name, item_id, adapter_module}`, spawns the gen_statem, threads terminal state into Oban's contract. gen_statem stays load-bearing (runs are minutes-to-hours with rich live state).
-- **Dispatch retry vs in-run retry — keep separate.** Oban owns dispatch-level persistence/retry (quota/transient → `{:snooze,_}`). The Task-10 retry policy inside `Harness.Run` owns the repair loop after a red verdict. Open-source Oban has no cross-queue global cap; effective ceiling = sum of `project_<name>` queue limits.
+- **Dispatch retry vs in-run retry — keep separate.** Oban owns dispatch-level persistence/retry; **as of 2026-06-02 retry is mechanical-failures-only** (`quota_patterns: []` — a settled verdict is never re-run by the queue). The repair loop inside `Harness.Run` is deprecated pending the reviewer-pair deletion pass. Open-source Oban has no cross-queue global cap; effective ceiling = sum of `project_<name>` queue limits.
 - **`Harness.AgentRegistry` is a soft hint, not a contract** (Task 40, option (b)). Unavailability lives in GenServer state only — no persistence/TTL; restart clears it **by design**. It's a *latency optimization*; *correctness* lives in Oban. Rationale: `lib/harness/agent_registry.ex` `@moduledoc`.
+
+## Judgment Lives in Agents, Not Procedural Code (settled, 2026-06-02 — do not re-litigate)
+
+**The principle:** the check stack (is the worktree green?) is deterministic tooling and stays that way. *Everything that interprets meaning* — why a run failed, whether an empty diff means "already done" or "nothing happened", whose fault a finding is, whether work is worth repairing, whether green code satisfies acceptance criteria — **is an agent's job, never a regex / cond-branch / filter / disposition table.**
+
+**The evidence that settled it:** Tasks 153, 156, 157, 158, 159, 160 plus two unfiled bugs (quota-regex false positive; Oban retry branch-collision cascade) — every run-lifecycle bug in one week traced to a judgment call implemented as procedural code. Zero traced to the check stack. Full analysis: `docs/reviewer-pair-architecture.md`.
+
+**The architecture (phase 15, milestone v0_11):** implementer → reviewer pair. Implementer agent works, commits; check stack runs; on red / empty-diff / green-needing-review, a **cross-family reviewer agent** gets the worktree + task + transcript + check output and **fixes inline** — its own edits and commits — until the stack is green or it reports stuck in prose. Harness re-runs the stack after review (the reviewer's word is never the verdict). One mechanical knob: `max_review_iterations`.
+
+**Rules for every session:**
+
+- When a run-lifecycle bug traces to a judgment call in procedural code, the fix is **moving that judgment to the reviewer** — never another branch/regex/filter. If the reviewer path doesn't exist yet for that decision point, the bug blocks on (or is folded into) the phase-15 tasks.
+- A *classifier* that returns decisions for procedural code to act on is the same mistake (the acting code is the bug factory). The reviewer acts; harness counts and re-verifies.
+- Deprecated pending deletion (don't extend, don't fix forward — fold into the deletion pass, Task 163): `FailureClass`, `RepairPrompt`, `RetryPolicy.quota_patterns`, `BaselineFilter.Credo`, baseline verification / `:base_red`, the repair loop, the consulting state, the semantic gate, `:no_changes` disposition.
+- Interim disables in force until phase 15 lands: `config :harness, :retry_policy, quota_patterns: []` (config.exs) and `semantic_gate: :off` on the harness project (dev.exs). Don't re-enable either.
+- What stays code (the test: is it mechanical?): worktrees, git, Ports, check execution, Oban persistence, counters, timers/watchdogs (`Run.Reflex` is the model of the boundary done right).
 
 ## Agent Headless Entry Points (domain reference)
 
@@ -120,6 +136,7 @@ Core is OTP-dense. `mix reach.otp` (state-machine analysis, dead replies, missin
 - **Phase 7 / v0_5 (multi-project + dashboard, hand-built):** CheckStack + presets (44/45), Project + ProjectRegistry (46), GitHub sources (47), template (49), Oban dispatch (48), Cron poller (51), dashboard + Oban Web on 4018 (50).
 - **Phase 9 / v0_7 (chat orchestrator):** Manifest (75), Chat.Session (76), MCP server on anubis_mcp (79), Chat.Claude subscription-OAuth backend (82), ChatLive + tokens (78). Task 77 (hand-rolled Anthropic client) **deleted as superseded** — violated "Claude subscription, not API" + library-first. **Library-first rule reasserted.**
 - **In progress (v0_8/v0_9):** dashboard LiveViews, flat `dispatch__task`, run kill button (94), per-stack `workdir` (92), chat persistence (93), autonomous merge-train lander (100). Confirm specifics via `rmap next` — this list drifts.
+- **Next major line (v0_11, phase 15):** reviewer-pair lifecycle (161–164) — see "Judgment Lives in Agents" above; `docs/reviewer-pair-architecture.md` is the spec.
 
 ## Dogfooding — harness Builds harness
 
@@ -127,7 +144,7 @@ From the core loop onward, harness is developed *by* harness. **Once bootstrap i
 
 - **Roadmap = harness's own test corpus.** A task harness fails to deliver is a harness bug, filed via `rmap new`, not worked around by hand-building.
 - **Verification stays separate.** Dispatched agent = implementer; harness's check stack = grader. Done = verification green, never the agent's self-report.
-- **Repair loop landed (9/10/11).** Red verdict isn't stop-the-line: harness resumes the agent with failing checks fed back, re-grades up to `:max_repair_attempts`.
+- **Red verdict isn't stop-the-line.** Today: the repair loop (9/10/11) resumes the implementer with failing checks fed back. Target state (phase 15): a cross-family reviewer fixes inline. Until 161 lands, salvage red deliveries by hand per `docs/dogfooding-workflow.md` — that manual loop IS the reviewer prototype.
 - **Hand-built exceptions:**
   - *Scaffolding that reshapes harness's own runtime* (supervision tree, dep stack, Endpoint) **while the verification stack itself is in flux**. A new phase that only adds features on stable surfaces does **not** earn a hand-build window.
   - *Tiny tasks* — ALL of (a) D≤2, (b) ≤30 LOC across ≤3 files, (c) no harness-surface change. Fail any → dispatch. When in doubt, dispatch.

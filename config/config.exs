@@ -96,6 +96,29 @@ config :harness, :notification_sinks, []
 # and `git fetch`es before every subsequent run.
 config :harness, :project, cache_root: Path.expand("~/_DATA/harness/projects")
 
+# Retry policy — see Harness.Run.RetryPolicy and Harness.Run.FailureClass.
+#   :max_retries    — retries after the first attempt; default 3.
+#   :base_delay_ms  — first backoff delay; default 1_000.
+#   :max_delay_ms   — backoff cap; default 60_000.
+#   :multiplier     — exponential factor; default 2.0.
+#   :quota_patterns — regexes for quota/rate-limit detection in agent output.
+# config :harness, :retry_policy,
+#   max_retries: 3,
+#   base_delay_ms: 1_000,
+#   max_delay_ms: 60_000,
+#   multiplier: 2.0
+
+# Quota-pattern classification DISABLED (2026-06-02). The regex classifier
+# false-positived on verification output whose failing test NAMES contained
+# "quota-exhausted" — classifying a real red verdict as agent-quota, which
+# suppressed the repair loop AND made Run.Worker snooze-retry a settled run
+# into a worktree branch collision. With no patterns, every red verdict
+# classifies :terminal: Oban never retries settled runs, and the repair loop
+# is never suppressed. Real quota exhaustion is read by the orchestrator (an
+# AI) from the transcript — which is the reviewer-pair architecture's answer
+# (docs/reviewer-pair-architecture.md); FailureClass is deleted entirely there.
+config :harness, :retry_policy, quota_patterns: []
+
 # Run lifecycle & agent timeouts — see Harness.AgentAdapter.Driver and Harness.Run.
 # All keys are optional; defaults live in code.
 #   :total_timeout       — agent total-run budget in ms; defaults to 1_800_000 (30 min).
@@ -167,18 +190,6 @@ config :harness, :worktree,
 config :harness, ecto_repos: [Harness.Repo]
 
 config :phoenix, :json_library, Jason
-
-# Retry policy — see Harness.Run.RetryPolicy and Harness.Run.FailureClass.
-#   :max_retries    — retries after the first attempt; default 3.
-#   :base_delay_ms  — first backoff delay; default 1_000.
-#   :max_delay_ms   — backoff cap; default 60_000.
-#   :multiplier     — exponential factor; default 2.0.
-#   :quota_patterns — regexes for quota/rate-limit detection in agent output.
-# config :harness, :retry_policy,
-#   max_retries: 3,
-#   base_delay_ms: 1_000,
-#   max_delay_ms: 60_000,
-#   multiplier: 2.0
 
 if config_env() == :dev do
   import_config "dev.exs"

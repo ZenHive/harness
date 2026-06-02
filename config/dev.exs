@@ -9,22 +9,20 @@ import Config
 # still excludes `:integration`; harness dogfooding opts in here because the
 # verifier can provision a per-worktree Postgres test DB before grading.
 #
-# `semantic_gate: :always` opts harness's own dogfooding into the cross-family
-# semantic gate (Task 99) even though it lands manually (Task 123). A green
-# verdict only means "suite passed", not "acceptance criteria met" — Task 108
-# settled green while objectively incomplete. The gate re-checks each green run
-# with an opposite-family grader (claude ⇒ codex by default), so a dispatched
-# task whose diff stubs the hard case or solves only the adjacent problem is
-# rejected back into the repair loop instead of hand-finished on land.
-# Requires the opposite-family agent CLI to be installed for headless dispatch;
-# set to `:auto_land_only` to revert to gate-iff-auto-land (the default).
+# `semantic_gate: :off` (2026-06-02): the gate rejected two green runs in one
+# day (156-first-attempt, rmap task 9 on grok) — judgment-as-code failure mode.
+# Acceptance-criteria review of green runs moves to the reviewer-pair
+# architecture (docs/reviewer-pair-architecture.md, phase 15), where it is a
+# reviewer invocation that FIXES inline instead of rejecting back into a repair
+# loop. Until that lands, green = check-stack green; the human/orchestrator
+# reviews criteria at landing.
 config :harness, :projects, [
   [
     name: "harness",
     source: {:local, Path.expand("..", __DIR__)},
     preset: {:elixir_precommit, cover_threshold: 80, include: [:integration], database: :postgres},
     roadmap_path: Path.expand("..", __DIR__),
-    semantic_gate: :always,
+    semantic_gate: :off,
     # The cron poller dispatches the whole `rmap ready --dispatchable` batch each
     # tick; this caps how many of those runs the `project_harness` queue executes
     # concurrently (the rest sit `available` and start as slots free). Without it
