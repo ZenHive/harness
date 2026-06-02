@@ -7,6 +7,7 @@ defmodule Harness.ObanDispatchTest do
   alias Harness.AgentAdapter.Claude
   alias Harness.Batch
   alias Harness.Dashboard.RunFeed
+  alias Harness.Dispatch
   alias Harness.Oban, as: HarnessOban
   alias Harness.Project
   alias Harness.ProjectFixture
@@ -23,6 +24,7 @@ defmodule Harness.ObanDispatchTest do
     on_exit(fn -> Application.delete_env(:harness, :oban_insert) end)
     on_exit(fn -> Application.delete_env(:harness, :roadmap_ingest) end)
     on_exit(fn -> Application.put_env(:harness, :result_store, result_store) end)
+    on_exit(fn -> Application.delete_env(:harness, :oban_run_job_lookup) end)
     on_exit(fn -> Application.delete_env(:harness, :run_starter) end)
     on_exit(fn -> Application.delete_env(:harness, :test_worker_result) end)
     :ok
@@ -99,6 +101,71 @@ defmodule Harness.ObanDispatchTest do
 
     assert_received {:inserted_args, args}
     refute Map.has_key?(args, :env)
+  end
+
+  test "dispatch-task enqueues a restart-resilient worker job with the returned run id" do
+    parent = self()
+
+    project =
+      ProjectFixture.from_repo("/tmp/harness-dispatch-task",
+        name: "interactive",
+        roadmap_path: "test/fixtures/sample_roadmap"
+      )
+
+    Application.put_env(:harness, :oban_insert, fn changeset ->
+      job = Ecto.Changeset.apply_action!(changeset, :insert)
+      send(parent, {:inserted, job})
+      {:ok, job}
+    end)
+
+    assert :ok = ProjectRegistry.register(project)
+    assert {:ok, %{run_id: run_id}} = Dispatch.task("interactive", "2", "codex", true, true)
+
+    assert_received {:inserted,
+                     %Oban.Job{
+                       args: %{
+                         project_name: "interactive",
+                         item_id: "2",
+                         adapter_module: "Elixir.Harness.AgentAdapter.Codex",
+                         run_id: ^run_id,
+                         env: %{"ANTHROPIC_API_KEY" => false},
+                         semantic_gate: true
+                       },
+                       meta: %{harness_stage: "dispatch"},
+                       queue: "project_interactive",
+                       worker: "Harness.Run.Worker"
+                     }}
+  end
+
+  test "dispatch-status falls back to the persisted Oban worker job for a queued run id" do
+    Application.put_env(:harness, :oban_run_job_lookup, fn
+      "run-queued-156" ->
+        {:ok,
+         %Oban.Job{
+           id: 156,
+           state: "available",
+           queue: "project_interactive",
+           worker: "Harness.Run.Worker",
+           args: %{
+             "project_name" => "interactive",
+             "item_id" => "2",
+             "run_id" => "run-queued-156"
+           }
+         }}
+
+      _other ->
+        {:error, :not_found}
+    end)
+
+    assert {:ok, status} = Dispatch.status("run-queued-156")
+    assert status.run_id == "run-queued-156"
+    assert status.task_id == "2"
+    assert status.project_name == "interactive"
+    assert status.state == :dispatched
+    assert status.reason == {:oban_job, "available"}
+    assert status.oban_job_id == 156
+    assert status.oban_state == "available"
+    assert status.queue == "project_interactive"
   end
 
   test "registered project names resolve for dispatch" do
@@ -269,6 +336,49 @@ defmodule Harness.ObanDispatchTest do
              })
 
     assert_received {:start_requested_model, "gpt-5.4", "48"}
+  end
+
+  test "worker starts runs with the persisted run id from job args" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-worker", name: "run-id-project")
+    assert :ok = ProjectRegistry.register(project)
+
+    Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts ->
+      {:ok, item("156", :codex)}
+    end)
+
+    Application.put_env(:harness, :run_starter, fn %Item{} = item, _run_project, _adapter, opts ->
+      run_id = Keyword.fetch!(opts, :run_id)
+      send(parent, {:start_run_opts, run_id, Keyword.get(opts, :semantic_gate)})
+      subscriber = Keyword.fetch!(opts, :subscriber)
+
+      pid =
+        spawn(fn ->
+          send(
+            subscriber,
+            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :passed}}
+          )
+
+          Process.sleep(50)
+        end)
+
+      {:ok, run_id, pid}
+    end)
+
+    assert :ok =
+             Worker.perform(%Oban.Job{
+               id: 156,
+               attempt: 1,
+               args: %{
+                 "project_name" => "run-id-project",
+                 "item_id" => "156",
+                 "adapter_module" => "Elixir.Harness.AgentAdapter.Codex",
+                 "run_id" => "run-interactive-156",
+                 "semantic_gate" => true
+               }
+             })
+
+    assert_received {:start_run_opts, "run-interactive-156", [enabled: true]}
   end
 
   test "worker omits requested_model when the ingested item carries none" do

@@ -39,6 +39,7 @@ defmodule Harness.Dispatch do
 
   use Descripex, namespace: "/dispatch"
 
+  import Ecto.Query, only: [from: 2]
   import Harness.Dispatch.RunTool
 
   alias Harness.AgentAdapter.Registry
@@ -55,13 +56,17 @@ defmodule Harness.Dispatch do
   alias Harness.Run
   alias Harness.Run.LogRecord
   alias Harness.Run.Status
+  alias Harness.Run.Worker, as: RunWorker
   alias Harness.Verification.Verdict
+  alias Oban.Job
 
   # Default await budget: 30 minutes. A run is minutes-to-hours of work, but a
   # blocking tool call should not park a tool-equipped LLM indefinitely — the
   # caller can override per dispatch, and the run keeps going past the budget.
   @default_await_timeout_ms 1_800_000
   @recommended_adapter "recommend"
+  @run_worker Oban.Worker.to_string(RunWorker)
+  @unfinished_oban_states ~w(available scheduled executing retryable)
 
   @typedoc "A reason a dispatch tool can fail with (in addition to the ingest/start_run reasons it forwards)."
   @type error ::
@@ -118,7 +123,7 @@ defmodule Harness.Dispatch do
   def task(project_name, task, adapter \\ @recommended_adapter, scrub_anthropic_key \\ true, semantic_gate \\ false)
       when is_binary(project_name) and is_binary(task) and is_binary(adapter) and is_boolean(scrub_anthropic_key) and
              is_boolean(semantic_gate) do
-    with {:ok, run_id} <- start(project_name, task, adapter, scrub_anthropic_key, semantic_gate, nil) do
+    with {:ok, run_id} <- enqueue_start(project_name, task, adapter, scrub_anthropic_key, semantic_gate) do
       {:ok, %{run_id: run_id}}
     end
   end
@@ -209,16 +214,30 @@ defmodule Harness.Dispatch do
   # is hand-written because it returns a bare `:ok`. All take a run_id string —
   # the JSON-driveable half of Harness.Run's `String.t() | pid()` handle.
 
-  defrun_tool(
-    name: :status,
-    summarize: :summarize_status,
-    description:
-      "Snapshot one in-flight or lingering-terminal run by run_id: lifecycle state, verdict status so far, repair attempts. The live counterpart to result_store-list_run_records (settled runs). Returns {:error, :not_found} once a run has stopped and unregistered.",
-    run_id_doc:
-      "Run id string returned by dispatch-task / dispatch-await (or supervisor-list_runs). A stopped/unknown run yields {:error, :not_found}.",
-    returns:
-      "{:ok, map} carrying run_id, task_id, project_name, state, worktree_path, agent_os_pid, agent_kind, verdict_status, repair_attempts, reason. {:error, :not_found} for stopped/unknown runs."
+  api(
+    :status,
+    "Snapshot one in-flight, queued, or lingering-terminal run by run_id: lifecycle state, verdict status so far, repair attempts. The live/queued counterpart to result_store-list_run_records (settled runs). Returns {:error, :not_found} only when no live run or unfinished Oban job is known.",
+    params: [
+      run_id: [
+        kind: :value,
+        description:
+          "Run id string returned by dispatch-task / dispatch-await (or supervisor-list_runs). A stopped/unknown run yields {:error, :not_found}."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, map} carrying run_id, task_id, project_name, state, worktree_path, agent_os_pid, agent_kind, verdict_status, repair_attempts, reason. {:error, :not_found} for stopped/unknown runs."
+    }
   )
+
+  @spec status(String.t()) :: {:ok, map()} | {:error, :not_found}
+  def status(run_id) when is_binary(run_id) do
+    case Run.status(run_id) do
+      {:ok, value} -> {:ok, summarize_status(value)}
+      {:error, :not_found} -> oban_job_status(run_id)
+    end
+  end
 
   defrun_tool(
     name: :transcript,
@@ -418,9 +437,46 @@ defmodule Harness.Dispatch do
     end
   end
 
-  # Shared dispatch path for `task/5` (subscriber nil) and `await/6` (subscriber
-  # the calling process). Identical resolve → ingest → start_run flow; only the
-  # subscriber and per-dispatch semantic-gate override differ.
+  # Restart-resilient fire-and-forget path for `task/5`: resolve and render the
+  # item now, then persist the worker job before returning the run id. The worker
+  # re-ingests by task id and starts the run with the stored id when Oban executes
+  # the job.
+  @spec enqueue_start(String.t(), String.t(), String.t(), boolean(), boolean()) ::
+          {:ok, String.t()} | {:error, error()}
+  defp enqueue_start(project_name, task, @recommended_adapter, scrub_anthropic_key, semantic_gate) do
+    with {:ok, project} <- lookup_project(project_name),
+         {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: :claude),
+         {:ok, {adapter_module, render_agent}} <- recommended_adapter_for_item(@recommended_adapter, item),
+         {:ok, item} <- rerender_for_agent(item, project, render_agent),
+         {:ok, run_id, _job} <-
+           RunWorker.enqueue(
+             project,
+             item,
+             adapter_module,
+             run_start_opts(item, nil, scrub_anthropic_key, semantic_gate)
+           ) do
+      {:ok, run_id}
+    end
+  end
+
+  defp enqueue_start(project_name, task, adapter, scrub_anthropic_key, semantic_gate) do
+    with {:ok, {adapter_module, render_agent}} <- resolve_adapter(adapter),
+         {:ok, project} <- lookup_project(project_name),
+         {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: render_agent),
+         {:ok, run_id, _job} <-
+           RunWorker.enqueue(
+             project,
+             item,
+             adapter_module,
+             run_start_opts(item, nil, scrub_anthropic_key, semantic_gate)
+           ) do
+      {:ok, run_id}
+    end
+  end
+
+  # Blocking path for `await/6`: this keeps the in-memory subscriber contract so
+  # the tool call can receive the result directly. `dispatch-task` is the
+  # restart-resilient fire-and-forget MCP path.
   @spec start(String.t(), String.t(), String.t(), boolean(), boolean(), pid() | nil) ::
           {:ok, String.t()} | {:error, error()}
   defp start(project_name, task, @recommended_adapter, scrub_anthropic_key, semantic_gate, subscriber) do
@@ -562,6 +618,66 @@ defmodule Harness.Dispatch do
       reason: status.reason
     }
   end
+
+  @spec oban_job_status(String.t()) :: {:ok, map()} | {:error, :not_found}
+  defp oban_job_status(run_id) do
+    case lookup_oban_run_job(run_id) do
+      {:ok, %Job{} = job} -> {:ok, summarize_oban_job_status(job)}
+      {:error, :not_found} = error -> error
+    end
+  end
+
+  @doc false
+  @spec summarize_oban_job_status(Job.t()) :: map()
+  def summarize_oban_job_status(%Job{} = job) do
+    args = job.args || %{}
+
+    %{
+      run_id: fetch_arg(args, :run_id),
+      task_id: fetch_arg(args, :item_id),
+      project_name: fetch_arg(args, :project_name),
+      state: :dispatched,
+      worktree_path: nil,
+      agent_os_pid: nil,
+      agent_kind: nil,
+      verdict_status: nil,
+      repair_attempts: 0,
+      reason: {:oban_job, job.state},
+      oban_job_id: job.id,
+      oban_state: job.state,
+      queue: job.queue
+    }
+  end
+
+  @spec lookup_oban_run_job(String.t()) :: {:ok, Job.t()} | {:error, :not_found}
+  defp lookup_oban_run_job(run_id) do
+    case Application.get_env(:harness, :oban_run_job_lookup) do
+      fun when is_function(fun, 1) -> fun.(run_id)
+      _other -> query_oban_run_job(run_id)
+    end
+  end
+
+  @spec query_oban_run_job(String.t()) :: {:ok, Job.t()} | {:error, :not_found}
+  defp query_oban_run_job(run_id) do
+    query =
+      from(job in Job,
+        where:
+          job.worker == ^@run_worker and job.state in ^@unfinished_oban_states and
+            fragment("?->>? = ?", job.args, "run_id", ^run_id),
+        order_by: [desc: job.inserted_at],
+        limit: 1
+      )
+
+    case Harness.Repo.one(query) do
+      %Job{} = job -> {:ok, job}
+      nil -> {:error, :not_found}
+    end
+  rescue
+    _error -> {:error, :not_found}
+  end
+
+  @spec fetch_arg(map(), atom()) :: term()
+  defp fetch_arg(args, key) when is_map(args), do: Map.get(args, Atom.to_string(key), Map.get(args, key))
 
   @spec summarize_transcript(%{buffer: binary(), seq: non_neg_integer()}) :: map()
   defp summarize_transcript(%{buffer: buffer, seq: seq}), do: %{transcript: buffer, seq: seq}

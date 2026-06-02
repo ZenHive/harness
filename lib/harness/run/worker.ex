@@ -21,9 +21,36 @@ defmodule Harness.Run.Worker do
 
   require Logger
 
+  @run_id_random_bytes 4
+
   @type args :: %{
           required(String.t()) => String.t()
         }
+
+  @doc """
+  Enqueues a restart-resilient run worker job and returns the run id it will use.
+  """
+  @spec enqueue(Project.t(), Item.t(), module(), keyword()) :: {:ok, String.t(), Oban.Job.t()} | {:error, term()}
+  def enqueue(%Project{} = project, %Item{} = item, adapter, opts \\ []) when is_atom(adapter) and is_list(opts) do
+    run_id = Keyword.get(opts, :run_id) || generate_run_id()
+
+    args =
+      %{
+        project_name: project.name,
+        item_id: item.id,
+        adapter_module: Atom.to_string(adapter),
+        run_id: run_id
+      }
+      |> put_env(opts)
+      |> put_semantic_gate(opts)
+
+    case args
+         |> new(queue: Harness.Oban.queue_name(project), meta: %{harness_stage: "dispatch"})
+         |> Harness.Oban.insert() do
+      {:ok, job} -> {:ok, run_id, job}
+      {:error, _reason} = error -> error
+    end
+  end
 
   @impl Oban.Worker
   @spec perform(Oban.Job.t()) :: Oban.Worker.result()
@@ -188,8 +215,12 @@ defmodule Harness.Run.Worker do
         _other -> opts
       end
 
-    opts ++ env_opt(args)
+    opts ++ run_id_opt(args) ++ env_opt(args) ++ semantic_gate_opt(args)
   end
+
+  @spec run_id_opt(map()) :: keyword()
+  defp run_id_opt(%{"run_id" => run_id}) when is_binary(run_id), do: [run_id: run_id]
+  defp run_id_opt(_args), do: []
 
   # The dispatch layer (Harness.Batch) persists an optional caller env override
   # into the job args (e.g. %{"ANTHROPIC_API_KEY" => false} to scrub a metered
@@ -199,6 +230,10 @@ defmodule Harness.Run.Worker do
   @spec env_opt(map()) :: keyword()
   defp env_opt(%{"env" => env}) when is_map(env) and map_size(env) > 0, do: [env: env]
   defp env_opt(_args), do: []
+
+  @spec semantic_gate_opt(map()) :: keyword()
+  defp semantic_gate_opt(%{"semantic_gate" => true}), do: [semantic_gate: [enabled: true]]
+  defp semantic_gate_opt(_args), do: []
 
   @spec checkpoint(Oban.Job.t(), String.t()) :: :ok
   defp checkpoint(%Oban.Job{id: id} = job, stage) when is_integer(id) do
@@ -329,4 +364,29 @@ defmodule Harness.Run.Worker do
 
   @spec div_ceil(non_neg_integer(), pos_integer()) :: non_neg_integer()
   defp div_ceil(value, divisor), do: div(value + divisor - 1, divisor)
+
+  @spec put_env(map(), keyword()) :: map()
+  defp put_env(args, opts) do
+    case Keyword.get(opts, :env, %{}) do
+      env when is_map(env) and map_size(env) > 0 -> Map.put(args, :env, env)
+      _empty -> args
+    end
+  end
+
+  @spec put_semantic_gate(map(), keyword()) :: map()
+  defp put_semantic_gate(args, opts) do
+    case Keyword.get(opts, :semantic_gate, []) do
+      gate when is_list(gate) ->
+        if Keyword.get(gate, :enabled) == true, do: Map.put(args, :semantic_gate, true), else: args
+
+      _other ->
+        args
+    end
+  end
+
+  @spec generate_run_id() :: String.t()
+  defp generate_run_id do
+    rand = @run_id_random_bytes |> :crypto.strong_rand_bytes() |> Base.encode16(case: :lower)
+    "run-#{System.system_time(:millisecond)}-#{rand}"
+  end
 end

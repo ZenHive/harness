@@ -285,6 +285,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Genuinely-red bases (failures no post_process filters) still settle
   `:base_red`.
 
+- **Interactive `dispatch-task` runs are now Oban-backed and restart-resilient
+  (Task 156, codex delivery).** The MCP/chat fire-and-forget dispatch path now
+  pre-generates a run id, persists it in the `Harness.Run.Worker` job args, and
+  returns that id only after the Oban row is inserted. The worker reuses the
+  stored id when it starts `Harness.Run`, so a BEAM restart can rescue/re-run the
+  durable job instead of silently losing the run with no trace.
+
 - **Orphaned `executing` Run.Worker rows are rescued at boot instead of
   zombie-ing forever (Task 157, codex delivery).** A BEAM restart mid-run used
   to strand the run's Oban job row in `executing` — never completing, blocking
