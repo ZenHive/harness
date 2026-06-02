@@ -196,6 +196,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Postgres result store crashed the run gen_statem on tuple outcome kinds
+  (`{:timed_out, :idle}`).** `Postgres.log_record_to_attrs/1` serialized
+  `agent_outcome_kind` via `atom_or_string/1`, which has no clause for the tuple
+  kinds in `Outcome.kind()` (`{:timed_out, _}`, `{:reflex_halted, _}`,
+  `{:error, _}`) — so any run whose agent didn't exit cleanly raised a
+  `FunctionClauseError` inside `settle/2`, killing the run process and discarding
+  whatever was queued behind it (observed: a passing verification verdict). Two
+  fixes: a dedicated kind↔string codec (tuples serialize as JSON `$tuple`/`$atom`
+  marker text, bare atoms stay plain strings for back-compat with existing rows),
+  and `record_run/2`'s rescue now covers serialization, so a future codec gap
+  surfaces as `{:error, _}` to the caller's existing warning path instead of
+  crashing the gen_statem. Regression coverage added to the shared
+  `ResultStoreContract` so both File and Postgres backends roundtrip tuple kinds.
+
 - **Crashed Oban-dispatched runs are now recorded and broadcast (Task 134, codex
   delivery).** When a supervised run process died before reaching its own
   `settle/2`, `Harness.Run.Worker.await_run` synthesized a `:failed` Result for

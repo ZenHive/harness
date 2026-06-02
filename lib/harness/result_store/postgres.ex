@@ -11,6 +11,7 @@ defmodule Harness.ResultStore.Postgres do
 
   import Ecto.Query
 
+  alias Harness.AgentAdapter.Outcome
   alias Harness.AgentKPI
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.CapabilityScore
@@ -27,19 +28,21 @@ defmodule Harness.ResultStore.Postgres do
   @spec record_run(LogRecord.t(), keyword()) :: :ok | {:error, term()}
   def record_run(%LogRecord{} = record, opts) when is_list(opts) do
     repo = Keyword.get(opts, :repo, Repo)
+
+    # Serialization (log_record_to_attrs) stays inside the rescue: a record
+    # field the codec can't encode must surface as {:error, _}, never raise
+    # into the calling gen_statem (behaviour contract).
     attrs = log_record_to_attrs(record)
 
     schema = %RunRecordSchema{run_id: record.run_id}
     changeset = RunRecordSchema.changeset(schema, attrs)
 
-    try do
-      case repo.insert(changeset, on_conflict: :replace_all, conflict_target: :run_id) do
-        {:ok, _} -> :ok
-        {:error, cs} -> {:error, {:changeset, cs.errors}}
-      end
-    rescue
-      e -> {:error, e}
+    case repo.insert(changeset, on_conflict: :replace_all, conflict_target: :run_id) do
+      {:ok, _} -> :ok
+      {:error, cs} -> {:error, {:changeset, cs.errors}}
     end
+  rescue
+    e -> {:error, e}
   end
 
   @impl Harness.ResultStore
@@ -406,7 +409,7 @@ defmodule Harness.ResultStore.Postgres do
       adapter: module_or_string(r.adapter),
       state: atom_or_string(r.state),
       verdict: atom_or_string(r.verdict),
-      agent_outcome_kind: atom_or_string(r.agent_outcome_kind),
+      agent_outcome_kind: kind_to_string(r.agent_outcome_kind),
       duration_ms: r.duration_ms,
       repair_attempts: r.repair_attempts,
       first_attempt_failed_check_count: r.first_attempt_failed_check_count,
@@ -442,7 +445,7 @@ defmodule Harness.ResultStore.Postgres do
       token_usage: decode_token_usage(row.token_usage),
       composed_inputs: default(decode_jsonb(row.composed_inputs), []),
       failure_cause: default(decode_jsonb(row.failure_cause), %{reason: nil, failed_checks: []}),
-      agent_outcome_kind: string_to_atom(row.agent_outcome_kind),
+      agent_outcome_kind: string_to_kind(row.agent_outcome_kind),
       agent_exit_status: row.agent_exit_status,
       agent_output: default(row.agent_output, ""),
       check_output: decode_check_output(row.check_output),
@@ -469,6 +472,20 @@ defmodule Harness.ResultStore.Postgres do
   @spec string_to_module(String.t() | nil) :: module() | nil
   defp string_to_module(s) when is_binary(s), do: String.to_atom(s)
   defp string_to_module(nil), do: nil
+
+  # agent_outcome_kind is Outcome.kind(): :exited or a tagged tuple such as
+  # {:timed_out, :idle}. The column is :string, so tuple kinds serialize as
+  # JSON text via the same $-marker scheme the jsonb columns use; bare atoms
+  # stay plain strings (back-compat with rows written before the codec).
+  @spec kind_to_string(Outcome.kind() | nil) :: String.t() | nil
+  defp kind_to_string(nil), do: nil
+  defp kind_to_string(kind) when is_atom(kind), do: Atom.to_string(kind)
+  defp kind_to_string(kind) when is_tuple(kind), do: Jason.encode!(encode_term(kind))
+
+  @spec string_to_kind(String.t() | nil) :: Outcome.kind() | nil
+  defp string_to_kind(nil), do: nil
+  defp string_to_kind("{" <> _ = json), do: decode_term(Jason.decode!(json))
+  defp string_to_kind(s) when is_binary(s), do: string_to_atom(s)
 
   # --- term <-> json-safe (tuple roundtrip for reason, atom keys/values, structs) ---
 

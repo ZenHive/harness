@@ -114,7 +114,8 @@ defmodule Harness.ResultStoreContract do
         run_id: "r-full",
         token_usage: %TokenUsage{input: 100, output: 50, total: 150},
         check_output: %{"sobelow" => %{output: "findings", truncated: false}},
-        composed_inputs: [composed_input]
+        composed_inputs: [composed_input],
+        agent_outcome_kind: :exited
       )
 
     assert :ok = ResultStore.record_run(rec_full, store)
@@ -123,6 +124,20 @@ defmodule Harness.ResultStoreContract do
     assert rf.token_usage == %TokenUsage{input: 100, output: 50, total: 150}
     assert rf.check_output == %{"sobelow" => %{output: "findings", truncated: false}}
     assert rf.composed_inputs == [composed_input]
+    assert rf.agent_outcome_kind == :exited
+
+    # tuple agent_outcome_kind roundtrip — regression for the
+    # {:timed_out, :idle} FunctionClauseError that crashed Postgres.record_run
+    # (string column needs a kind codec, not Atom.to_string)
+    for kind <- [{:timed_out, :idle}, {:timed_out, :total}, {:error, :port_closed}] do
+      run_id = "r-kind-#{:erlang.phash2(kind)}"
+
+      rec_kind = log_record(run_id: run_id, agent_outcome_kind: kind)
+      assert :ok = ResultStore.record_run(rec_kind, store)
+
+      assert {:ok, [rk]} = ResultStore.list_run_records(store, run_id: run_id)
+      assert rk.agent_outcome_kind == kind
+    end
 
     :ok
   end
