@@ -46,6 +46,7 @@ defmodule Harness.Dispatch do
   alias Harness.Batch.AgentEvaluation
   alias Harness.Batch.AgentEvaluation.Comparison
   alias Harness.Batch.AgentEvaluation.Entry
+  alias Harness.CapabilityScore
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
@@ -60,6 +61,7 @@ defmodule Harness.Dispatch do
   # blocking tool call should not park a tool-equipped LLM indefinitely — the
   # caller can override per dispatch, and the run keeps going past the budget.
   @default_await_timeout_ms 1_800_000
+  @recommended_adapter "recommend"
 
   @typedoc "A reason a dispatch tool can fail with (in addition to the ingest/start_run reasons it forwards)."
   @type error ::
@@ -87,9 +89,9 @@ defmodule Harness.Dispatch do
       ],
       adapter: [
         kind: :value,
-        default: "claude",
+        default: @recommended_adapter,
         description:
-          "Executor: claude | codex | cursor | grok | antigravity | pi — rmap renders a native prompt for each, so each runs directly on its own adapter. (droid is renderable by rmap but has no harness adapter, so it is rejected as unknown_adapter.)"
+          "Executor: recommend | claude | codex | cursor | grok | antigravity | pi. recommend consults persisted capability scores and falls back safely when no data exists; explicit adapter names bypass recommendation."
       ],
       scrub_anthropic_key: [
         kind: :value,
@@ -113,7 +115,7 @@ defmodule Harness.Dispatch do
 
   @spec task(String.t(), String.t(), String.t(), boolean(), boolean()) ::
           {:ok, %{run_id: String.t()}} | {:error, error()}
-  def task(project_name, task, adapter \\ "claude", scrub_anthropic_key \\ true, semantic_gate \\ false)
+  def task(project_name, task, adapter \\ @recommended_adapter, scrub_anthropic_key \\ true, semantic_gate \\ false)
       when is_binary(project_name) and is_binary(task) and is_binary(adapter) and is_boolean(scrub_anthropic_key) and
              is_boolean(semantic_gate) do
     with {:ok, run_id} <- start(project_name, task, adapter, scrub_anthropic_key, semantic_gate, nil) do
@@ -137,9 +139,9 @@ defmodule Harness.Dispatch do
       ],
       adapter: [
         kind: :value,
-        default: "claude",
+        default: @recommended_adapter,
         description:
-          "Executor: claude | codex | cursor | grok | antigravity | pi — rmap renders a native prompt for each, so each runs directly on its own adapter. (droid is renderable by rmap but has no harness adapter, so it is rejected as unknown_adapter.)"
+          "Executor: recommend | claude | codex | cursor | grok | antigravity | pi. recommend consults persisted capability scores and falls back safely when no data exists; explicit adapter names bypass recommendation."
       ],
       timeout_ms: [
         kind: :value,
@@ -172,7 +174,7 @@ defmodule Harness.Dispatch do
   def await(
         project_name,
         task,
-        adapter \\ "claude",
+        adapter \\ @recommended_adapter,
         timeout_ms \\ @default_await_timeout_ms,
         scrub_anthropic_key \\ true,
         semantic_gate \\ false
@@ -387,11 +389,56 @@ defmodule Harness.Dispatch do
     end
   end
 
+  api(
+    :recommend,
+    "Recommend an agent for a capability domain using persisted capability scores. Returns ranked explore/exploit advice; callers still decide whether to dispatch.",
+    params: [
+      domain: [
+        kind: :value,
+        description: ~s(Capability domain string, e.g. "otp", "ecto", "liveview".)
+      ],
+      opts: [
+        kind: :value,
+        default: [],
+        description:
+          "Keyword options. Common keys: :agents, :corpus_version, :reference_time, :freshness_window_days, :stale_discount, :explore_unmeasured, :fallback_agent, :result_store."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{agent, domain, strategy, rationale, ranked}} or {:error, reason}. strategy is :explore, :exploit, or :fallback_no_data."
+    }
+  )
+
+  @spec recommend(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def recommend(domain, opts \\ []) when is_binary(domain) and is_list(opts) do
+    with {:ok, domain} <- parse_domain(domain) do
+      CapabilityScore.recommend(domain, opts)
+    end
+  end
+
   # Shared dispatch path for `task/5` (subscriber nil) and `await/6` (subscriber
   # the calling process). Identical resolve → ingest → start_run flow; only the
   # subscriber and per-dispatch semantic-gate override differ.
   @spec start(String.t(), String.t(), String.t(), boolean(), boolean(), pid() | nil) ::
           {:ok, String.t()} | {:error, error()}
+  defp start(project_name, task, @recommended_adapter, scrub_anthropic_key, semantic_gate, subscriber) do
+    with {:ok, project} <- lookup_project(project_name),
+         {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: :claude),
+         {:ok, {adapter_module, render_agent}} <- recommended_adapter_for_item(@recommended_adapter, item),
+         {:ok, item} <- rerender_for_agent(item, project, render_agent),
+         {:ok, run_id, _pid} <-
+           Run.Supervisor.start_run(
+             item,
+             project,
+             adapter_module,
+             run_start_opts(item, subscriber, scrub_anthropic_key, semantic_gate)
+           ) do
+      {:ok, run_id}
+    end
+  end
+
   defp start(project_name, task, adapter, scrub_anthropic_key, semantic_gate, subscriber) do
     with {:ok, {adapter_module, render_agent}} <- resolve_adapter(adapter),
          {:ok, project} <- lookup_project(project_name),
@@ -406,6 +453,36 @@ defmodule Harness.Dispatch do
       {:ok, run_id}
     end
   end
+
+  @doc false
+  @spec recommended_adapter_for_item(String.t(), Item.t(), keyword()) ::
+          {:ok, {module(), atom()}} | {:error, term()}
+  def recommended_adapter_for_item(adapter, item, opts \\ [])
+
+  def recommended_adapter_for_item(@recommended_adapter, %Item{} = item, opts) when is_list(opts) do
+    item
+    |> recommendation_domain()
+    |> CapabilityScore.recommend(opts)
+    |> case do
+      {:ok, %{agent: agent}} -> resolve_adapter(Atom.to_string(agent))
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def recommended_adapter_for_item(adapter, %Item{}, opts) when is_binary(adapter) and is_list(opts) do
+    resolve_adapter(adapter)
+  end
+
+  @spec rerender_for_agent(Item.t(), Project.t(), atom()) :: {:ok, Item.t()} | {:error, error()}
+  defp rerender_for_agent(%Item{agent: agent} = item, _project, agent), do: {:ok, item}
+
+  defp rerender_for_agent(%Item{} = item, %Project{} = project, render_agent) do
+    Roadmap.ingest({:id, item.id}, project: project, agent: render_agent)
+  end
+
+  @spec recommendation_domain(Item.t()) :: atom()
+  defp recommendation_domain(%Item{domains: [domain | _]}), do: domain
+  defp recommendation_domain(%Item{}), do: :elixir
 
   # Build the start_run opts. Forcing the gate ON is an explicit `enabled: true`
   # opt; leaving it false adds nothing so the project-level `semantic_gate` mode
@@ -630,6 +707,17 @@ defmodule Harness.Dispatch do
 
   @spec resolve_adapter(String.t()) :: {:ok, {module(), atom()}} | {:error, {:unknown_adapter, String.t()}}
   defp resolve_adapter(adapter), do: Registry.resolve(adapter)
+
+  @spec parse_domain(String.t()) :: {:ok, atom()} | {:error, {:unknown_domain, String.t()}}
+  defp parse_domain(":" <> domain), do: parse_domain(domain)
+
+  # Domains are part of harness's static atom vocabulary; do not create atoms
+  # from arbitrary MCP input.
+  defp parse_domain(domain) do
+    {:ok, String.to_existing_atom(domain)}
+  rescue
+    ArgumentError -> {:error, {:unknown_domain, domain}}
+  end
 
   @spec lookup_project(String.t()) :: {:ok, Project.t()} | {:error, {:unknown_project, String.t()}}
   defp lookup_project(project_name) do

@@ -105,6 +105,33 @@ defmodule Harness.ResultStore.File do
     end
   end
 
+  @impl Harness.ResultStore
+  @spec list_capability_scores(keyword()) :: {:ok, [CapabilityScore.t()]} | {:error, term()}
+  def list_capability_scores(opts) when is_list(opts) do
+    dir = storage_path(opts, ["capability_scores"])
+
+    case File.ls(dir) do
+      {:ok, files} ->
+        scores =
+          files
+          |> Enum.filter(&String.ends_with?(&1, ".term"))
+          |> Enum.map(&read_term(Path.join(dir, &1)))
+          |> Enum.flat_map(fn
+            {:ok, %CapabilityScore{} = score} -> [score]
+            _other -> []
+          end)
+          |> Enum.sort_by(&{&1.domain, &1.agent, &1.corpus_version})
+
+        {:ok, scores}
+
+      {:error, :enoent} ->
+        {:ok, []}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   # Skips are counted, not logged per-file: a single corrupt-looking file used to
   # emit one Logger.warning on EVERY scan (dashboard / mix harness.status all funnel
   # here), spamming the console. An `:undecodable` skip means genuinely torn bytes —

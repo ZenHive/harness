@@ -46,6 +46,7 @@ defmodule Harness.Roadmap do
 
   use Descripex, namespace: "/roadmap"
 
+  alias Harness.CapabilityDomain
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.Roadmap.Item
@@ -116,6 +117,7 @@ defmodule Harness.Roadmap do
          agent: agent,
          body: task["body"],
          acceptance_criteria: acceptance_criteria(task),
+         domains: task_domains(task),
          model: task_model(task)
        }}
     end
@@ -127,6 +129,24 @@ defmodule Harness.Roadmap do
   @spec acceptance_criteria(map()) :: [String.t()]
   defp acceptance_criteria(%{"acceptance_criteria" => criteria}) when is_list(criteria), do: criteria
   defp acceptance_criteria(_task), do: []
+
+  @spec task_domains(map()) :: [CapabilityDomain.t()]
+  defp task_domains(%{"domains" => domains}) when is_list(domains) do
+    domains
+    |> Enum.map(&domain_atom/1)
+    |> CapabilityDomain.normalize()
+  end
+
+  defp task_domains(_task), do: []
+
+  @spec domain_atom(term()) :: atom() | term()
+  defp domain_atom(domain) when is_binary(domain) do
+    String.to_existing_atom(domain)
+  rescue
+    ArgumentError -> domain
+  end
+
+  defp domain_atom(domain), do: domain
 
   @spec task_model(map()) :: String.t() | nil
   defp task_model(%{"model" => model}) when is_binary(model) and model != "", do: model

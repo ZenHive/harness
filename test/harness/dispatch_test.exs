@@ -2,13 +2,16 @@ defmodule Harness.DispatchTest do
   use ExUnit.Case, async: true
 
   alias Harness.AgentAdapter.Claude
+  alias Harness.AgentAdapter.Codex
   alias Harness.Batch.AgentEvaluation
+  alias Harness.CapabilityScore
   alias Harness.Chat.Tools
   alias Harness.Dispatch
   alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
   alias Harness.ResultStore
+  alias Harness.ResultStore.File, as: FileStore
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.LogRecord
@@ -16,6 +19,8 @@ defmodule Harness.DispatchTest do
   alias Harness.Verification.Check
   alias Harness.Verification.Result, as: CheckResult
   alias Harness.Verification.Verdict
+
+  @reference_time ~U[2026-06-01 12:00:00Z]
 
   describe "task/4 adapter resolution" do
     test "rejects an unknown adapter before touching the registry" do
@@ -34,7 +39,7 @@ defmodule Harness.DispatchTest do
       end
     end
 
-    test "defaults the adapter to claude" do
+    test "defaults the adapter to recommendation and falls back through project lookup" do
       assert {:error, {:unknown_project, "__no_such_project__"}} =
                Dispatch.task("__no_such_project__", "next")
     end
@@ -60,7 +65,7 @@ defmodule Harness.DispatchTest do
                Dispatch.await("__no_such_project__", "25", "claude")
     end
 
-    test "defaults the adapter to claude and reaches project lookup" do
+    test "defaults the adapter to recommendation and reaches project lookup" do
       assert {:error, {:unknown_project, "__no_such_project__"}} =
                Dispatch.await("__no_such_project__", "next")
     end
@@ -329,7 +334,7 @@ defmodule Harness.DispatchTest do
             result: %Result{run_id: "run-a", task_id: "42", state: :done, reason: :passed}
           },
           %AgentEvaluation.Entry{
-            adapter: Harness.AgentAdapter.Codex,
+            adapter: Codex,
             run_id: "run-b",
             state: :failed,
             reason: {:run_crashed, :boom},
@@ -397,6 +402,59 @@ defmodule Harness.DispatchTest do
       assert detail.verdict == :fail
       assert detail.failed_checks == ["credo"]
       assert %{"credo" => %{output: _, truncated: false}} = detail.checks
+    end
+  end
+
+  describe "recommend/2 routing advice" do
+    setup do
+      root =
+        Path.join(
+          System.tmp_dir!(),
+          "harness_dispatch_recommend_test_#{System.unique_integer([:positive])}"
+        )
+
+      on_exit(fn -> File.rm_rf!(root) end)
+      {:ok, store: {FileStore, root: root}}
+    end
+
+    test "returns ranked advice over the driver surface", %{store: store} do
+      assert :ok = ResultStore.save_capability_score(score(:codex, :otp, 800.0), store)
+      assert :ok = ResultStore.save_capability_score(score(:claude, :otp, 700.0), store)
+
+      assert {:ok, recommendation} =
+               Dispatch.recommend("otp",
+                 agents: [:claude, :codex],
+                 reference_time: @reference_time,
+                 result_store: store
+               )
+
+      assert recommendation.agent == :codex
+      assert recommendation.strategy == :exploit
+      assert [%{agent: :codex} | _] = recommendation.ranked
+    end
+
+    test "the dispatch recommendation helper resolves the recommended adapter for next-task routing", %{store: store} do
+      assert :ok = ResultStore.save_capability_score(score(:codex, :otp, 800.0), store)
+      assert :ok = ResultStore.save_capability_score(score(:claude, :otp, 700.0), store)
+      item = %Item{id: "120", title: "t", prompt: "p", agent: :claude, domains: [:otp]}
+
+      assert {:ok, {Codex, :codex}} =
+               Dispatch.recommended_adapter_for_item("recommend", item,
+                 agents: [:claude, :codex],
+                 reference_time: @reference_time,
+                 result_store: store
+               )
+    end
+
+    test "explicit adapters bypass recommendation", %{store: store} do
+      item = %Item{id: "120", title: "t", prompt: "p", agent: :claude, domains: [:otp]}
+
+      assert {:ok, {Claude, :claude}} =
+               Dispatch.recommended_adapter_for_item("claude", item,
+                 agents: [:claude, :codex],
+                 reference_time: @reference_time,
+                 result_store: store
+               )
     end
   end
 
@@ -530,6 +588,19 @@ defmodule Harness.DispatchTest do
 
       assert %{module: Dispatch, function: :verdict_detail} = registry["dispatch-verdict_detail"]
     end
+
+    test "dispatch-recommend is exposed as the public routing advice tool" do
+      tool = Enum.find(Harness.Manifest.mcp_tools(), &(&1.name == "dispatch-recommend"))
+      assert tool, "dispatch-recommend should be on the MCP tool surface"
+
+      props = tool.inputSchema.properties
+      assert Map.has_key?(props, :domain)
+      assert Map.has_key?(props, :opts)
+      assert tool.inputSchema.required == ["domain"]
+
+      registry = Tools.build()
+      assert %{module: Dispatch, function: :recommend} = registry["dispatch-recommend"]
+    end
   end
 
   defp green_result(run_id) do
@@ -568,6 +639,22 @@ defmodule Harness.DispatchTest do
       kind: :exited,
       exit_status: if(status == :pass, do: 0, else: 1),
       output: "captured output that must not leak into the summary"
+    }
+  end
+
+  defp score(agent, domain, composite_score) do
+    %CapabilityScore{
+      agent: agent,
+      domain: domain,
+      corpus_version: "test-v1",
+      scored_at: ~U[2026-05-30 00:00:00Z],
+      run_count: 1,
+      success_rate: composite_score / 1_000,
+      cost_to_green: 100.0,
+      mean_repair_attempts: 0.0,
+      mean_first_attempt_failed_check_count: 0.0,
+      composite_score: composite_score,
+      raw_metrics: []
     }
   end
 end

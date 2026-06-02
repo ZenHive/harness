@@ -33,6 +33,12 @@ defmodule Harness.CapabilityScore do
   @cost_tiebreaker_weight 0.7
   @repair_tiebreaker_weight 0.2
   @first_failure_tiebreaker_weight 0.099
+  @freshness_window_days 30
+  @seconds_per_day 86_400
+  @stale_discount 0.5
+  @fallback_agent :claude
+
+  @type freshness :: :fresh | :stale
 
   defmodule RawMetric do
     @moduledoc """
@@ -153,6 +159,64 @@ defmodule Harness.CapabilityScore do
     summarize(score.raw_metrics, score.agent, score.domain, score.corpus_version, score.scored_at)
   end
 
+  @doc "Classifies a persisted capability score as fresh or stale."
+  @spec freshness(t(), keyword()) :: freshness()
+  def freshness(%__MODULE__{} = score, opts \\ []) when is_list(opts) do
+    if score_age_days(score, opts) <= freshness_window_days(opts), do: :fresh, else: :stale
+  end
+
+  @doc "Returns the score's routing value after applying stale-score decay."
+  @spec discounted_composite_score(t(), keyword()) :: float()
+  def discounted_composite_score(%__MODULE__{} = score, opts \\ []) when is_list(opts) do
+    case freshness(score, opts) do
+      :fresh -> score.composite_score
+      :stale -> score.composite_score * stale_discount(opts)
+    end
+  end
+
+  @doc """
+  Lists stale and unmeasured agent/domain cells that need re-benchmarking.
+
+  This is a read-only signal over persisted scores. Stale scores are returned as
+  candidates and left intact in the store; the scheduler decides what to re-run.
+  """
+  @spec rebenchmark_candidates(keyword()) :: {:ok, [map()]} | {:error, term()}
+  def rebenchmark_candidates(opts \\ []) when is_list(opts) do
+    store = Keyword.get(opts, :result_store, ResultStore.configured())
+
+    with {:ok, scores} <- ResultStore.list_capability_scores(store) do
+      {:ok, rebenchmark_candidates(scores, opts)}
+    end
+  end
+
+  @doc "Pure stale/unmeasured candidate classification over a supplied score list."
+  @spec rebenchmark_candidates([t()], keyword()) :: [map()]
+  def rebenchmark_candidates(scores, opts) when is_list(scores) and is_list(opts) do
+    score_by_cell = latest_score_by_cell(scores, Keyword.get(opts, :corpus_version))
+
+    for domain <- domains(opts),
+        agent <- agents(opts),
+        candidate = rebenchmark_candidate(agent, domain, score_by_cell, opts),
+        not is_nil(candidate) do
+      candidate
+    end
+  end
+
+  @doc """
+  Recommends an agent for a capability domain using explore/exploit routing.
+
+  Unmeasured cells become exploration candidates, not low scores. Measured cells
+  exploit the best effective score after stale-score discounting.
+  """
+  @spec recommend(CapabilityDomain.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def recommend(domain, opts \\ []) when is_atom(domain) and is_list(opts) do
+    store = Keyword.get(opts, :result_store, ResultStore.configured())
+
+    with {:ok, scores} <- ResultStore.list_capability_scores(store) do
+      {:ok, recommend_from_scores(domain, scores, opts)}
+    end
+  end
+
   @doc "Returns a deterministic corpus-version fingerprint for the supplied items."
   @spec corpus_version([Item.t()]) :: String.t()
   def corpus_version(items) when is_list(items) do
@@ -254,6 +318,182 @@ defmodule Harness.CapabilityScore do
       error -> error
     end
   end
+
+  @spec recommend_from_scores(CapabilityDomain.t(), [t()], keyword()) :: map()
+  defp recommend_from_scores(domain, scores, opts) do
+    score_by_cell = latest_score_by_cell(scores, Keyword.get(opts, :corpus_version))
+    rows = recommendation_rows(domain, score_by_cell, opts)
+    measured = Enum.filter(rows, &(&1.measurement == :measured))
+    unmeasured = Enum.filter(rows, &(&1.measurement == :unmeasured))
+
+    cond do
+      measured == [] ->
+        fallback_recommendation(domain, rows, opts)
+
+      explore_unmeasured?(opts) and unmeasured != [] ->
+        explore_recommendation(domain, hd(unmeasured), measured, tl(unmeasured))
+
+      true ->
+        exploit_recommendation(domain, measured, unmeasured)
+    end
+  end
+
+  @spec fallback_recommendation(CapabilityDomain.t(), [map()], keyword()) :: map()
+  defp fallback_recommendation(domain, rows, opts) do
+    fallback_agent = Keyword.get(opts, :fallback_agent, @fallback_agent)
+    selected = Enum.find(rows, &(&1.agent == fallback_agent)) || hd(rows)
+
+    %{
+      agent: selected.agent,
+      domain: domain,
+      strategy: :fallback_no_data,
+      rationale: :no_measured_scores,
+      ranked: rows
+    }
+  end
+
+  @spec explore_recommendation(CapabilityDomain.t(), map(), [map()], [map()]) :: map()
+  defp explore_recommendation(domain, selected, measured, remaining_unmeasured) do
+    %{
+      agent: selected.agent,
+      domain: domain,
+      strategy: :explore,
+      rationale: :unmeasured_cell,
+      ranked: [selected | measured ++ remaining_unmeasured]
+    }
+  end
+
+  @spec exploit_recommendation(CapabilityDomain.t(), [map()], [map()]) :: map()
+  defp exploit_recommendation(domain, measured, unmeasured) do
+    selected = hd(measured)
+    rationale = if selected.freshness == :fresh, do: :best_fresh_score, else: :best_discounted_score
+
+    %{
+      agent: selected.agent,
+      domain: domain,
+      strategy: :exploit,
+      rationale: rationale,
+      ranked: measured ++ unmeasured
+    }
+  end
+
+  @spec recommendation_rows(CapabilityDomain.t(), map(), keyword()) :: [map()]
+  defp recommendation_rows(domain, score_by_cell, opts) do
+    {measured, unmeasured} =
+      opts
+      |> agents()
+      |> Enum.map(&recommendation_row(&1, domain, score_by_cell, opts))
+      |> Enum.split_with(&(&1.measurement == :measured))
+
+    Enum.sort_by(measured, & &1.effective_score, :desc) ++ unmeasured
+  end
+
+  @spec recommendation_row(atom(), CapabilityDomain.t(), map(), keyword()) :: map()
+  defp recommendation_row(agent, domain, score_by_cell, opts) do
+    case Map.fetch(score_by_cell, {agent, domain}) do
+      {:ok, %__MODULE__{} = score} ->
+        freshness = freshness(score, opts)
+
+        %{
+          agent: agent,
+          domain: domain,
+          measurement: :measured,
+          freshness: freshness,
+          score: score.composite_score,
+          effective_score: discounted_composite_score(score, opts),
+          scored_at: score.scored_at,
+          age_days: score_age_days(score, opts),
+          corpus_version: score.corpus_version,
+          rationale: if(freshness == :fresh, do: :measured_fresh, else: :stale_discounted)
+        }
+
+      :error ->
+        %{
+          agent: agent,
+          domain: domain,
+          measurement: :unmeasured,
+          freshness: :unmeasured,
+          score: nil,
+          effective_score: nil,
+          scored_at: nil,
+          age_days: nil,
+          corpus_version: Keyword.get(opts, :corpus_version),
+          rationale: :explore_unmeasured
+        }
+    end
+  end
+
+  @spec rebenchmark_candidate(atom(), CapabilityDomain.t(), map(), keyword()) :: map() | nil
+  defp rebenchmark_candidate(agent, domain, score_by_cell, opts) do
+    case Map.fetch(score_by_cell, {agent, domain}) do
+      {:ok, %__MODULE__{} = score} ->
+        if freshness(score, opts) == :stale do
+          %{
+            agent: agent,
+            domain: domain,
+            reason: :stale,
+            freshness: :stale,
+            scored_at: score.scored_at,
+            age_days: score_age_days(score, opts),
+            corpus_version: score.corpus_version
+          }
+        end
+
+      :error ->
+        %{
+          agent: agent,
+          domain: domain,
+          reason: :unmeasured,
+          freshness: :unmeasured,
+          scored_at: nil,
+          age_days: nil,
+          corpus_version: Keyword.get(opts, :corpus_version)
+        }
+    end
+  end
+
+  @spec latest_score_by_cell([t()], String.t() | nil) :: map()
+  defp latest_score_by_cell(scores, corpus_version) do
+    scores
+    |> Enum.filter(&match_corpus_version?(&1, corpus_version))
+    |> Enum.group_by(&{&1.agent, &1.domain})
+    |> Map.new(fn {cell, cell_scores} ->
+      {cell, Enum.max_by(cell_scores, &DateTime.to_unix(&1.scored_at, :microsecond))}
+    end)
+  end
+
+  @spec match_corpus_version?(t(), String.t() | nil) :: boolean()
+  defp match_corpus_version?(_score, nil), do: true
+  defp match_corpus_version?(%__MODULE__{} = score, corpus_version), do: score.corpus_version == corpus_version
+
+  @spec score_age_days(t(), keyword()) :: non_neg_integer()
+  defp score_age_days(%__MODULE__{} = score, opts) do
+    seconds =
+      opts
+      |> reference_time()
+      |> DateTime.diff(score.scored_at, :second)
+      |> max(0)
+
+    div(seconds, @seconds_per_day)
+  end
+
+  @spec reference_time(keyword()) :: DateTime.t()
+  defp reference_time(opts), do: Keyword.get(opts, :reference_time) || DateTime.utc_now()
+
+  @spec freshness_window_days(keyword()) :: pos_integer()
+  defp freshness_window_days(opts), do: Keyword.get(opts, :freshness_window_days, @freshness_window_days)
+
+  @spec stale_discount(keyword()) :: float()
+  defp stale_discount(opts), do: Keyword.get(opts, :stale_discount, @stale_discount)
+
+  @spec explore_unmeasured?(keyword()) :: boolean()
+  defp explore_unmeasured?(opts), do: Keyword.get(opts, :explore_unmeasured, true)
+
+  @spec agents(keyword()) :: [atom()]
+  defp agents(opts), do: Keyword.get(opts, :agents, AgentRegistry.agents() |> Map.keys() |> Enum.sort())
+
+  @spec domains(keyword()) :: [CapabilityDomain.t()]
+  defp domains(opts), do: Keyword.get(opts, :domains, CapabilityDomain.domains())
 
   @spec corpus_version_from_metrics([RawMetric.t()]) :: String.t()
   defp corpus_version_from_metrics(metrics) do

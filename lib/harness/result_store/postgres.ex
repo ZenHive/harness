@@ -311,6 +311,34 @@ defmodule Harness.ResultStore.Postgres do
     end
   end
 
+  @impl Harness.ResultStore
+  @spec list_capability_scores(keyword()) :: {:ok, [CapabilityScore.t()]} | {:error, term()}
+  def list_capability_scores(opts) when is_list(opts) do
+    repo = Keyword.get(opts, :repo, Repo)
+
+    try do
+      rows =
+        CapabilityScoreSchema
+        |> order_by([s], asc: s.domain, asc: s.agent, asc: s.corpus_version)
+        |> repo.all()
+
+      rows
+      |> Enum.reduce_while({:ok, []}, fn row, {:ok, acc} ->
+        case decode_capability_score_row(row, :unknown, :unknown, "unknown") do
+          {:ok, %CapabilityScore{} = score} -> {:cont, {:ok, [score | acc]}}
+          :no_data -> {:cont, {:ok, acc}}
+          {:error, reason} -> {:halt, {:error, reason}}
+        end
+      end)
+      |> case do
+        {:ok, scores} -> {:ok, Enum.reverse(scores)}
+        {:error, _reason} = error -> error
+      end
+    rescue
+      e -> {:error, e}
+    end
+  end
+
   @spec fetch_capability_score_row(module(), atom(), atom(), String.t()) :: CapabilityScoreSchema.t() | nil
   defp fetch_capability_score_row(repo, agent, domain, corpus_version) do
     repo.get_by(CapabilityScoreSchema,

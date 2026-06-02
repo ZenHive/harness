@@ -13,6 +13,7 @@ defmodule Harness.CapabilityScoreTest do
   alias Harness.TokenUsage
 
   @scored_at ~U[2026-06-01 12:00:00Z]
+  @reference_time ~U[2026-06-01 12:00:00Z]
 
   setup do
     root =
@@ -115,6 +116,111 @@ defmodule Harness.CapabilityScoreTest do
     assert retuned.composite_score == score.composite_score
   end
 
+  describe "freshness and re-benchmark candidates" do
+    test "classifies scores as fresh or stale against an injected reference time" do
+      fresh = score(:codex, :otp, ~U[2026-05-15 00:00:00Z], 100.0)
+      stale = score(:claude, :otp, ~U[2026-04-30 00:00:00Z], 100.0)
+
+      assert CapabilityScore.freshness(fresh, reference_time: @reference_time) == :fresh
+      assert CapabilityScore.freshness(stale, reference_time: @reference_time) == :stale
+
+      assert CapabilityScore.freshness(stale, reference_time: @reference_time, freshness_window_days: 45) ==
+               :fresh
+
+      assert CapabilityScore.discounted_composite_score(stale, reference_time: @reference_time) == 50.0
+    end
+
+    test "lists stale and unmeasured cells without deleting stale scores", %{store: store} do
+      fresh = score(:codex, :otp, ~U[2026-05-20 00:00:00Z], 700.0)
+      stale = score(:claude, :otp, ~U[2026-04-20 00:00:00Z], 900.0)
+
+      assert :ok = ResultStore.save_capability_score(fresh, store)
+      assert :ok = ResultStore.save_capability_score(stale, store)
+
+      assert {:ok, candidates} =
+               CapabilityScore.rebenchmark_candidates(
+                 agents: [:codex, :claude, :cursor],
+                 domains: [:otp],
+                 reference_time: @reference_time,
+                 result_store: store
+               )
+
+      assert Enum.map(candidates, &{&1.agent, &1.domain, &1.reason}) == [
+               {:claude, :otp, :stale},
+               {:cursor, :otp, :unmeasured}
+             ]
+
+      assert {:ok, ^stale} = ResultStore.get_capability_score(:claude, :otp, "test-v1", store)
+    end
+  end
+
+  describe "recommend/2" do
+    test "exploits the best measured fresh score", %{store: store} do
+      assert :ok = ResultStore.save_capability_score(score(:codex, :otp, ~U[2026-05-30 00:00:00Z], 800.0), store)
+      assert :ok = ResultStore.save_capability_score(score(:claude, :otp, ~U[2026-05-30 00:00:00Z], 700.0), store)
+
+      assert {:ok, recommendation} =
+               CapabilityScore.recommend(:otp,
+                 agents: [:claude, :codex],
+                 reference_time: @reference_time,
+                 result_store: store
+               )
+
+      assert recommendation.agent == :codex
+      assert recommendation.strategy == :exploit
+      assert recommendation.rationale == :best_fresh_score
+      assert Enum.map(recommendation.ranked, & &1.agent) == [:codex, :claude]
+    end
+
+    test "surfaces an unmeasured cell as an exploration candidate", %{store: store} do
+      assert :ok = ResultStore.save_capability_score(score(:claude, :otp, ~U[2026-05-30 00:00:00Z], 700.0), store)
+
+      assert {:ok, recommendation} =
+               CapabilityScore.recommend(:otp,
+                 agents: [:claude, :codex],
+                 reference_time: @reference_time,
+                 result_store: store
+               )
+
+      assert recommendation.agent == :codex
+      assert recommendation.strategy == :explore
+      assert recommendation.rationale == :unmeasured_cell
+      assert [%{agent: :codex, measurement: :unmeasured} | _] = recommendation.ranked
+    end
+
+    test "discounts a stale best raw score before exploiting", %{store: store} do
+      assert :ok = ResultStore.save_capability_score(score(:codex, :otp, ~U[2026-04-20 00:00:00Z], 1_000.0), store)
+      assert :ok = ResultStore.save_capability_score(score(:claude, :otp, ~U[2026-05-30 00:00:00Z], 600.0), store)
+
+      assert {:ok, recommendation} =
+               CapabilityScore.recommend(:otp,
+                 agents: [:claude, :codex],
+                 reference_time: @reference_time,
+                 result_store: store
+               )
+
+      assert recommendation.agent == :claude
+      assert recommendation.strategy == :exploit
+
+      assert [%{agent: :claude}, %{agent: :codex, freshness: :stale, effective_score: 500.0}] =
+               recommendation.ranked
+    end
+
+    test "falls back when the domain has no measured scores at all", %{store: store} do
+      assert {:ok, recommendation} =
+               CapabilityScore.recommend(:otp,
+                 agents: [:claude, :codex],
+                 fallback_agent: :claude,
+                 reference_time: @reference_time,
+                 result_store: store
+               )
+
+      assert recommendation.agent == :claude
+      assert recommendation.strategy == :fallback_no_data
+      assert Enum.all?(recommendation.ranked, &(&1.measurement == :unmeasured))
+    end
+  end
+
   defp comparison(task_id, entries) do
     %Comparison{
       batch_id: "batch-#{task_id}",
@@ -168,6 +274,22 @@ defmodule Harness.CapabilityScoreTest do
       )
 
     item
+  end
+
+  defp score(agent, domain, scored_at, composite_score) do
+    %CapabilityScore{
+      agent: agent,
+      domain: domain,
+      corpus_version: "test-v1",
+      scored_at: scored_at,
+      run_count: 1,
+      success_rate: composite_score / 1_000,
+      cost_to_green: 100.0,
+      mean_repair_attempts: 0.0,
+      mean_first_attempt_failed_check_count: 0.0,
+      composite_score: composite_score,
+      raw_metrics: []
+    }
   end
 
   defp tokens(input, output), do: %TokenUsage{input: input, output: output, total: input + output}

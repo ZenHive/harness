@@ -61,6 +61,9 @@ defmodule Harness.ResultStore do
   @callback get_capability_score(atom(), atom(), String.t(), keyword()) ::
               {:ok, CapabilityScore.t()} | :no_data | {:error, term()}
 
+  @doc "Lists persisted capability scores for routing and re-benchmark planning."
+  @callback list_capability_scores(keyword()) :: {:ok, [CapabilityScore.t()]} | {:error, term()}
+
   api(
     :record_run,
     "Persist one structured run record. Best-effort — failures log and return {:error, _} but never crash the run.",
@@ -245,6 +248,30 @@ defmodule Harness.ResultStore do
   def get_capability_score(agent, domain, corpus_version, store)
       when is_atom(agent) and is_atom(domain) and is_binary(corpus_version) do
     dispatch(store, :get_capability_score, [agent, domain, corpus_version])
+  end
+
+  api(:list_capability_scores, "List persisted capability score cells for routing and re-benchmark planning.",
+    params: [
+      store: [
+        kind: :value,
+        default: nil,
+        description: "Configured store from ResultStore.configured/0, or override; `false`/`nil` returns {:ok, []}."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description: "{:ok, [%Harness.CapabilityScore{}]} or {:error, reason}."
+    }
+  )
+
+  @spec list_capability_scores(store()) :: {:ok, [CapabilityScore.t()]} | {:error, term()}
+  def list_capability_scores(store \\ configured())
+
+  def list_capability_scores(false), do: {:ok, []}
+  def list_capability_scores(nil), do: {:ok, []}
+
+  def list_capability_scores(store) do
+    dispatch(store, :list_capability_scores, [])
   end
 
   api(:configured, "Return the configured result store, defaulting to the file-backed store.",
