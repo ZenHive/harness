@@ -56,6 +56,21 @@ defmodule Harness.ProjectRegistryTest do
     end
   end
 
+  describe "repo_enabled false — memory-only runtime registration" do
+    test "register/1 does not survive a registry restart when persistence is disabled" do
+      name = "volatile-#{System.unique_integer([:positive])}"
+      project = sample_project(name)
+
+      assert :ok = ProjectRegistry.register(project)
+      assert {:ok, ^project} = ProjectRegistry.lookup(name)
+
+      assert :ok = ProjectRegistry.reset()
+      assert {:ok, %{projects: %{}}} = ProjectRegistry.init(:noargs)
+
+      assert {:error, {:unknown_project, ^name}} = ProjectRegistry.lookup(name)
+    end
+  end
+
   describe "init/1 — config-driven project loading" do
     # init/1 is called by the supervisor at boot. Exercising it directly
     # against a temporary :projects config covers build_project/1 and its

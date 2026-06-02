@@ -38,7 +38,6 @@ defmodule Harness.Application do
     [
       {Registry, keys: :unique, name: Harness.Run.Registry},
       {Registry, keys: :unique, name: Harness.Chat.Registry},
-      Harness.ProjectRegistry,
       Harness.AgentRegistry,
       {Phoenix.PubSub, name: Harness.PubSub},
       Harness.Chat.Supervisor,
@@ -46,6 +45,7 @@ defmodule Harness.Application do
     ] ++
       repo() ++
       [
+        Harness.ProjectRegistry,
         {Task.Supervisor, name: Harness.Run.TaskSupervisor},
         Harness.Run.Supervisor
       ] ++ oban() ++ sweeper() ++ dashboard() ++ mcp_server()

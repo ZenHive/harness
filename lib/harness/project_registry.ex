@@ -1,9 +1,11 @@
 defmodule Harness.ProjectRegistry do
   @moduledoc """
-  In-memory registry of `%Harness.Project{}` records.
+  Registry of `%Harness.Project{}` records.
 
   Projects boot from `config :harness, :projects` and can be registered at
-  runtime via `register/1`.
+  runtime via `register/1`. When `:repo_enabled` is true, runtime registrations
+  are persisted to Postgres and restored at boot; config-declared projects win on
+  name conflict.
   """
 
   use GenServer
@@ -12,6 +14,7 @@ defmodule Harness.ProjectRegistry do
   alias Harness.CheckStack
   alias Harness.CheckStack.Preset
   alias Harness.Project
+  alias Harness.ProjectRegistry.Persistence
 
   require Logger
 
@@ -34,19 +37,14 @@ defmodule Harness.ProjectRegistry do
   @impl GenServer
   @spec init(term()) :: {:ok, %{projects: %{String.t() => Project.t()}}}
   def init(_init_arg) do
+    config_projects = load_config_projects()
+    restored_projects = load_persisted_projects(config_projects)
+
+    Enum.each(restored_projects, &ensure_project_queue/1)
+
     projects =
-      :harness
-      |> Application.get_env(:projects, [])
-      |> Enum.reduce(%{}, fn entry, acc ->
-        case build_project(entry) do
-          {:ok, project} ->
-            Map.put(acc, project.name, project)
-
-          {:error, reason} ->
-            Logger.warning("harness project registry: skipping invalid config entry: #{inspect(reason)}")
-
-            acc
-        end
+      Enum.reduce(restored_projects, config_projects, fn project, acc ->
+        Map.put(acc, project.name, project)
       end)
 
     {:ok, %{projects: projects}}
@@ -54,7 +52,7 @@ defmodule Harness.ProjectRegistry do
 
   api(
     :register,
-    "Register a project struct under its name. Persists until BEAM restart (see config :harness, :projects for durable registration).",
+    "Register a project struct under its name. When :repo_enabled, survives a BEAM restart via Postgres; config :harness, :projects always wins on name conflict.",
     params: [
       project: [
         kind: :value,
@@ -126,12 +124,19 @@ defmodule Harness.ProjectRegistry do
   end
 
   @doc false
+  @spec reload_persisted_state() :: :ok
+  def reload_persisted_state do
+    GenServer.call(__MODULE__, :reload_persisted_state)
+  end
+
+  @doc false
   @impl GenServer
   def handle_call({:register, %Project{name: name} = project}, _from, state) do
     if Map.has_key?(state.projects, name) do
       {:reply, {:error, {:duplicate, name}}, state}
     else
       :ok = ensure_project_queue(project)
+      :ok = Persistence.upsert(project)
       {:reply, :ok, put_in(state.projects[name], project)}
     end
   end
@@ -150,13 +155,31 @@ defmodule Harness.ProjectRegistry do
 
   def handle_call({:unregister, name}, _from, state) do
     case Map.pop(state.projects, name) do
-      {nil, _} -> {:reply, {:error, {:unknown_project, name}}, state}
-      {_project, projects} -> {:reply, :ok, %{state | projects: projects}}
+      {nil, _} ->
+        {:reply, {:error, {:unknown_project, name}}, state}
+
+      {_project, projects} ->
+        :ok = Persistence.delete(name)
+        {:reply, :ok, %{state | projects: projects}}
     end
   end
 
   def handle_call(:reset, _from, _state) do
     {:reply, :ok, %{projects: %{}}}
+  end
+
+  def handle_call(:reload_persisted_state, _from, _state) do
+    config_projects = load_config_projects()
+    restored_projects = load_persisted_projects(config_projects)
+
+    Enum.each(restored_projects, &ensure_project_queue/1)
+
+    projects =
+      Enum.reduce(restored_projects, config_projects, fn project, acc ->
+        Map.put(acc, project.name, project)
+      end)
+
+    {:reply, :ok, %{projects: projects}}
   end
 
   @spec build_project(keyword() | map()) :: {:ok, Project.t()} | {:error, error()}
@@ -181,6 +204,28 @@ defmodule Harness.ProjectRegistry do
          semantic_gate: semantic_gate
        }}
     end
+  end
+
+  @spec load_config_projects() :: %{String.t() => Project.t()}
+  defp load_config_projects do
+    :harness
+    |> Application.get_env(:projects, [])
+    |> Enum.reduce(%{}, fn entry, acc ->
+      case build_project(entry) do
+        {:ok, project} ->
+          Map.put(acc, project.name, project)
+
+        {:error, reason} ->
+          Logger.warning("harness project registry: skipping invalid config entry: #{inspect(reason)}")
+
+          acc
+      end
+    end)
+  end
+
+  @spec load_persisted_projects(%{String.t() => Project.t()}) :: [Project.t()]
+  defp load_persisted_projects(config_projects) do
+    Enum.reject(Persistence.list(), fn %Project{name: name} -> Map.has_key?(config_projects, name) end)
   end
 
   @spec ensure_project_queue(Project.t()) :: :ok
