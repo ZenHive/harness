@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Verification baseline attribution — inherited red is no longer blamed on the
+  agent (Task 153, codex delivery).** When a check fails, `Harness.Verification`
+  now re-runs the same check stack against the dispatch base (`:base_ref`, the
+  worktree's `base_sha`) in a throwaway detached worktree, cached per base SHA
+  via `:persistent_term`. Checks that also fail on the unmodified base are
+  marked `:pre_existing`; a run whose only failures are pre-existing settles
+  with verdict/reason `:base_red` instead of `:fail` / `:verification_red` —
+  never silently green, never agent-blamed — and the repair loop is not
+  triggered for it. Generalizes the credo `BaselineFilter` precedent from
+  finding-level to whole-check attribution.
+
 - **Cron dispatch scrubs subscription-agent provider API keys (Task 154).**
   `Harness.Cron.RoadmapPoller` now persists per-agent env scrubs into
   `Run.Worker` job args for subscription-operated Claude and Codex dispatches

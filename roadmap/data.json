@@ -5984,7 +5984,7 @@
       "id": "153",
       "phase": 11,
       "bundle": "autolanding",
-      "status": "in_progress",
+      "status": "done",
       "title": "Verification can't attribute red to the agent — a pre-existing red base yields false-red verdicts",
       "scores": {
         "d": 4,
@@ -6018,10 +6018,15 @@
         "lib/harness/run.ex",
         "test/harness/verification_test.exs"
       ],
+      "shipped_in": "1b1ae41",
       "body": "Observed 2026-06-02 on run run-1780363855046-3eb6a3a8 (task 130, codex): development carried a pre-existing red (stale Adapters assertion in live_mount_test.exs, left by an out-of-band dashboard commit cebe648). The dispatched agent's work was correct and its own touched-file tests passed, but the :elixir_precommit grader runs the whole suite, so the run settled verdict :fail / verification_red for a failure the agent did not cause. Cost: a full dispatch wasted, hand-triage at landing to discover the red was inherited, and (had repair been enabled) repair attempts would have burned tokens asking the agent to fix someone else's breakage.\n\nThe verification stack already has a narrower precedent: Verification.BaselineFilter.Credo filters credo findings that pre-exist on the base. Generalize the concept to check-level attribution: know what the base scores before blaming the diff.\n",
       "created_at": "2026-06-02",
       "started_at": "2026-06-02",
+      "done_at": "2026-06-02",
       "scored_at": "2026-06-02",
+      "implemented": "Verification.run/2 now attributes red checks: on any :fail with a :base_ref in post-process opts, the same stack re-runs against the dispatch base in a throwaway detached worktree (cached per base SHA via :persistent_term). Checks failing on both sides become :pre_existing; an all-pre-existing red settles as verdict :base_red / Run reason :base_red without triggering the repair loop. Delivered by codex run run-1780386983509-88cd2d29; harness's own verifier was killed mid-grade (lifetime budget — baseline doubles verification time), so graded by hand: mix precommit in the worktree, green at 81.44% coverage with 2 flaky reds passing in isolation.",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
