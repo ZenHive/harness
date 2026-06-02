@@ -6442,7 +6442,7 @@
       "phase": 15,
       "bundle": "reviewer-pair",
       "milestone": "v0_11",
-      "status": "pending",
+      "status": "done",
       "title": "Route empty-diff and green-review through the reviewer; collapse semantic gate into review_green",
       "scores": {
         "d": 4,
@@ -6474,9 +6474,13 @@
         "test/harness/run_test.exs",
         "test/harness/run/semantic_gate_test.exs"
       ],
+      "shipped_in": "ed3351e",
       "body": "Phase-15 step 2 (docs/reviewer-pair-architecture.md). Empty-diff disposition and the post-green semantic gate are the two remaining judgment branch points outside the red path. Both become reviewer invocations: the reviewer looks at an empty diff and decides what it means; the reviewer reviews green code against acceptance criteria when the project opts in (review_green). This supersedes Task 158's gate-availability fix and Task 159's verify_no_changes? refinement — both were patches on judgment code this architecture deletes.",
       "created_at": "2026-06-02",
+      "done_at": "2026-06-02",
       "scored_at": "2026-06-02",
+      "implemented": "Empty implementer diffs now always verify (the :no_changes disposition is unreachable from the run lifecycle) and what an empty diff means is the reviewer's judgment, framed by scope-specific prompts (:fix_red / :empty_diff / :green_conformance). Green verdicts route through route_green_verdict/1: review_green: true (the new Project boolean, default TRUE — replaces the semantic_gate enum) or an empty implementer diff earns exactly one cross-family reviewer conformance pass, re-verified mechanically; wanted-but-unavailable reviewer fails open to :done. Legacy semantic_gate configs and persisted payloads map at registry load (always/auto_land_only=>true, off=>false, absent=>true). Per-dispatch MCP param renamed semantic_gate->review_green; Run.Worker job args carry review_green. Regression tests cover all five AC scenarios incl. quota-starved empty diff recorded by reviewer prose; semantic_gate_test.exs deleted. Hand-built inline on development (user-directed, no worktree/dispatch).",
+      "delivered_by": "claude",
       "cross_repo": []
     },
     {
