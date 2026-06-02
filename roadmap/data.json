@@ -6244,6 +6244,88 @@
       "started_at": "2026-06-02",
       "scored_at": "2026-06-02",
       "cross_repo": []
+    },
+    {
+      "id": "159",
+      "phase": 11,
+      "bundle": "autolanding",
+      "status": "pending",
+      "title": "`:no_changes` cancels before verifying — an already-implemented task wedges in_progress instead of being graded/landed",
+      "scores": {
+        "d": 3,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "When a run produces an empty diff (`agent_diff_size == 0`) but the worktree branch is non-trivially ahead of base OR the task may already be implemented, harness runs its verification stack against the current branch state instead of immediately `{:cancel, :no_changes}`. A green result settles success (verified) and proceeds to the project's landing policy; only a genuinely empty AND ungradeable state cancels.",
+        "Evaluator separation preserved: the decision uses harness's own verification verdict, never the agent's self-reported `cargo test`/summary. (Observed: cursor self-reported 317 green, but harness never independently graded — verdict was nil.)",
+        "Idempotent against an already-landed commit: if the implementation is already on the target branch (nothing to merge), the run still marks the task done/verified (with the existing shipped_in commit if resolvable) rather than attempting an empty merge or re-canceling.",
+        "A truly empty no-op (agent did nothing, branch == base, verification not meaningful) still terminates cleanly — not an infinite verify loop — with a distinct, observable reason.",
+        "Regression test: a run whose agent makes zero edits on a branch that already satisfies the check stack settles a green/verified terminal state (not `:failed`/`:no_changes`); a sibling no-op on a branch that does NOT satisfy the stack terminates without falsely claiming success.",
+        "No change to the normal non-empty-diff verify/repair/land path."
+      ],
+      "files_to_modify": [
+        "lib/harness/run.ex",
+        "test/harness/run_test.exs"
+      ],
+      "touches": [
+        "lib/harness/run.ex",
+        "lib/harness/verification.ex",
+        "test/harness/run_test.exs"
+      ],
+      "body": "A re-dispatch of an already-implemented task is cancelled as `:no_changes` BEFORE harness runs its own verification, leaving the task wedged `in_progress` even though the branch is done and green.\n\nObserved live: rmap task 32 (milestone-drift advisories) was dispatched to cursor (run-1780393199350-a5be7a7d, Oban job 72 attempt 2 — the rescued retry from Task 157). The implementation was ALREADY present on the branch in commit 5781367 (confirmed: on `development` and `origin/origin/development` in ../rmap). Cursor correctly explored, found the work present, ran the rmap check stack itself (cargo test 317 passed, fmt, clippy, `rmap doctor`) all green, and made zero edits — its transcript: \"Task 32 is already implemented on this branch in commit 5781367. The working tree is clean ... No further code changes are needed; harness can grade the current branch state. After a green verdict, the lander should mark task 32 `done` with `--verified`.\"\n\nBut harness settled `state: :failed, reason: :no_changes, verdict: nil, agent_diff_size: 0` — the `:no_changes` disposition short-circuits the run BEFORE the verification stack runs, so:\n1. Harness never independently graded the green branch (verdict nil) — violating evaluator-separation in the one case where the agent's self-report happens to be right.\n2. The task stays `in_progress` in rmap forever (nothing marks it done), so it also drops out of `rmap ready` — same double-stuck shape as the Task 157 zombie, but reached via a different path.\n3. ~500k tokens + 2.2min spent for a result harness then discarded.\n\nThis is a THIRD distinct run-lifecycle gap surfaced 2026-06-02, alongside the semantic-gate no-grader bug (Task 158) and the MCP-dispatch restart-resilience gap (Task 156). Here the agent behaved correctly; harness's terminal-disposition logic is what's wrong: an empty diff is not always \"nothing to do\" — it can mean \"already done, please verify and land.\"\n\nFix direction (implementer's call): in the run gen_statem, when the post-agent diff is empty, branch the disposition — if the branch can be meaningfully graded (ahead of base, or task plausibly already implemented), run Verification.run/2 and treat green as success -> landing-policy, rather than unconditionally `{:cancel, :no_changes}`. Guard against an infinite re-verify loop and keep a clean terminal reason for the genuinely-empty case. Confirm idempotency when the implementation is already on the target branch (mark done/verified, do not attempt an empty merge).\n",
+      "created_at": "2026-06-02",
+      "scored_at": "2026-06-02",
+      "cross_repo": []
+    },
+    {
+      "id": "160",
+      "phase": 11,
+      "bundle": "autolanding",
+      "status": "done",
+      "title": "Baseline run skips diff-aware post_process — agent-caused credo findings masked as :base_red, repair loop never fires",
+      "scores": {
+        "d": 2,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 3.5,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "run_baseline_stacks/4 passes :base_ref into the baseline run's post_process opts, so diff-aware filters (BaselineFilter.Credo) re-grade the baseline by the same standard as the agent worktree",
+        "A check whose baseline failure is fully filtered by its post_process (e.g. credo failing only on TODOs pre-existing at base_ref) no longer masks agent-introduced failures of the same check as :pre_existing — the verdict is :fail and the repair loop fires",
+        "Genuine pre-existing failures (baseline fails for reasons the post_process does not filter) still settle :base_red — no change to the legitimate base-red path",
+        "Regression test: a post-processed check that fails in both worktrees, where the baseline failure is filterable but the agent worktree carries additional agent-caused failure, yields verdict :fail (not :base_red)"
+      ],
+      "files_to_modify": [
+        "lib/harness/verification.ex",
+        "test/harness/verification_test.exs"
+      ],
+      "touches": [
+        "lib/harness/verification.ex",
+        "test/harness/verification_test.exs"
+      ],
+      "shipped_in": "cd87bd0",
+      "body": "Task 153's baseline attribution compares agent vs baseline results at CHECK granularity, but the baseline run never gets the diff-aware post_process applied: run_baseline_stacks/4 (verification.ex:418) passes only `worktree_path:` — no `:base_ref` — so BaselineFilter.Credo is a no-op on the baseline. Consequence: when the base carries any TagTODO (legitimate tracked debt per repo convention), baseline credo is :fail; any agent-side credo failure (post-filter, i.e. genuinely agent-introduced findings) then zips against that baseline :fail and is marked :pre_existing -> verdict :base_red. The run settles failed/base_red with repair_attempts 0 — the agent never gets its own findings fed back.\n\nObserved live 2026-06-02, both interactive dispatches of the day:\n- run-1780393211609-cc989923 (task 156, codex): delivery introduced 2 MaxLineLength findings (dispatch.ex:452,462). Settled :base_red.\n- run-1780393315913-69e683e9 (task 158, codex): delivery introduced 1 CyclomaticComplexity finding (run.ex:761). Settled :base_red.\nIn both, the only baseline credo finding was the pre-existing `# TODO(Task 142)` in lib/harness/landing/settings.ex:180 — which BaselineFilter.Credo filtered from the AGENT results (its annotation: 'N finding(s) remain — verdict stays :fail') but not from the BASELINE results, because the baseline run never received base_ref.\n\nNet: with any credo-visible debt on base, every dispatch becomes a coin flip with no repair safety net — agent faults are misattributed to the base, runs die unrepaired, and the deliveries (which the repair loop would have fixed in one pass) are discarded.\n\nFix: one line — run_baseline_stacks passes `base_ref: base_ref` into the baseline run_stacks post_process opts. The baseline is the base, so every finding pre-existing at base_ref gets filtered there (credo regrades :pass when TODOs are its only findings); agent failures then correctly stay :fail -> repair loop. Checks without a post_process are unaffected; genuinely-red bases (unfilterable failures) still produce :base_red.\n\nDiscovered while landing the 156/158 wave; hand-built by the orchestrator session under the verification-stack-broken hand-build exception (the fix cannot be dispatched through a grader that is itself misgrading).\n",
+      "created_at": "2026-06-02",
+      "started_at": "2026-06-02",
+      "done_at": "2026-06-02",
+      "scored_at": "2026-06-02",
+      "implemented": "One-line fix + regression test: run_baseline_stacks/4 passes base_ref into the baseline run's post_process opts so diff-aware filters (BaselineFilter.Credo) re-grade the baseline by the same standard as the agent worktree. Inherited TagTODO debt no longer keeps baseline credo :fail, so agent-introduced findings correctly classify :fail (repair loop fires) instead of :pre_existing/:base_red. Hand-built inline under the verification-stack-broken exception; per-edit hooks + targeted test run (44/44) graded the touched files.",
+      "delivered_by": "claude",
+      "cross_repo": []
     }
   ]
 }

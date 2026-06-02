@@ -271,6 +271,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Baseline verification runs get the same diff-aware post_process as the agent
+  worktree (Task 160, hand-built).** `run_baseline_stacks/4` never passed
+  `:base_ref` into the baseline run's post-process opts, so
+  `BaselineFilter.Credo` was a no-op on the baseline: any TagTODO tracked-debt
+  comment on the base kept baseline credo `:fail`, and agent-introduced credo
+  findings of the same check were then masked as `:pre_existing` →
+  verdict `:base_red` — the run settled failed with `repair_attempts: 0` and the
+  agent never got its own findings fed back. Observed live on both 2026-06-02
+  interactive dispatches (runs `…cc989923` / `…69e683e9`). The baseline now
+  re-grades by the same standard as the agent worktree, so inherited debt is
+  filtered on both sides and agent faults stay `:fail` → repair loop fires.
+  Genuinely-red bases (failures no post_process filters) still settle
+  `:base_red`.
+
 - **Orphaned `executing` Run.Worker rows are rescued at boot instead of
   zombie-ing forever (Task 157, codex delivery).** A BEAM restart mid-run used
   to strand the run's Oban job row in `executing` — never completing, blocking
