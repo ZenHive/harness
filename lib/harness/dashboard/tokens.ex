@@ -1110,6 +1110,73 @@ defmodule Harness.Dashboard.Tokens do
       }
       .config-legend li { display: inline-flex; align-items: center; gap: var(--space-2); }
 
+      /* Transient operator feedback bar (the bare app layout renders no flash). */
+      .setting-notice {
+        margin: var(--space-3) 0 0;
+        padding: var(--space-2) var(--space-3);
+        border: 1px solid var(--rule);
+        border-radius: 0.4rem;
+        font-size: var(--text-sm);
+        color: var(--text);
+      }
+      .setting-notice[data-kind="ok"] { border-color: var(--verdict-pass); background: var(--surface-2); }
+      .setting-notice[data-kind="error"] { border-color: var(--accent); background: var(--accent-soft); }
+
+      /* Dispatch-now action row in the master card. */
+      .setting-actions { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-4); }
+      .btn-dispatch {
+        appearance: none;
+        background: transparent;
+        color: var(--accent);
+        border: 1px solid var(--accent);
+        border-radius: 0.35rem;
+        padding: var(--space-2) var(--space-3);
+        font-family: var(--font-display);
+        font-size: var(--text-sm);
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .btn-dispatch:hover { background: var(--accent-soft); }
+      .btn-dispatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .setting-hint { color: var(--text-muted); font-size: var(--text-sm); }
+
+      /* Landing card — a per-project form row (policy select + target branch + save). */
+      .landing-form {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        width: 100%;
+        flex-wrap: wrap;
+      }
+      .landing-form .project-id { flex: 1 1 auto; }
+      .landing-form select, .landing-form input[type="text"] {
+        background: var(--surface);
+        color: var(--text);
+        border: 1px solid var(--rule);
+        border-radius: 0.35rem;
+        padding: var(--space-2) var(--space-3);
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+      }
+      .landing-form select:focus, .landing-form input[type="text"]:focus {
+        outline: 1px solid var(--accent);
+        outline-offset: 1px;
+      }
+      .btn-save {
+        appearance: none;
+        background: var(--surface-2);
+        color: var(--text);
+        border: 1px solid var(--rule);
+        border-radius: 0.35rem;
+        padding: var(--space-2) var(--space-3);
+        font-family: var(--font-display);
+        font-size: var(--text-sm);
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .btn-save:hover { border-color: var(--accent); }
+      .btn-save:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
       /* === A/B compare (Harness.Dashboard.CompareLive, Task 81) === */
 
       /* Launch form */

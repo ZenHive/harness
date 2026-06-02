@@ -14,6 +14,12 @@ defmodule Harness.Dashboard.SettingsLive do
   transient quota-unavailability signal (`AgentRegistry.list_unavailable/0`)
   renders only here, not on the run dashboard.
 
+  Hosts the per-project **Landing** card over `Harness.Landing.Settings`: the
+  runtime-flippable `manual` / `auto-land` + target-branch override that arms
+  autonomous merge, and a **Dispatch now** button that fires an immediate
+  roadmap poll instead of waiting for the cron tick. Transient operator feedback
+  rides a `:notice` assign (the bare app layout renders no flash).
+
   Designed as the home for further operator config (the Task 127 config
   inspector slots in here as a sibling card).
   """
@@ -26,17 +32,21 @@ defmodule Harness.Dashboard.SettingsLive do
   alias Harness.Cron.Settings
   alias Harness.Dashboard.Components
   alias Harness.Dashboard.ConfigInspector
+  alias Harness.Landing.Settings, as: LandingSettings
+  alias Harness.Oban, as: HarnessOban
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Phoenix.LiveView.Rendered
   alias Phoenix.LiveView.Socket
+
+  require Logger
 
   @meta_tick_interval_ms 5_000
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     if connected?(socket), do: schedule_meta_tick()
-    {:ok, refresh(socket)}
+    {:ok, socket |> assign(:notice, nil) |> refresh()}
   end
 
   @impl Phoenix.LiveView
@@ -67,6 +77,21 @@ defmodule Harness.Dashboard.SettingsLive do
     {:noreply, refresh(socket)}
   end
 
+  def handle_event("set_landing", %{"name" => name, "landing_policy" => policy, "target_branch" => branch}, socket) do
+    notice =
+      case LandingSettings.set(name, policy_atom(policy), branch, "dashboard") do
+        :ok -> {:ok, "Landing updated for #{name}."}
+        {:error, :target_branch_required} -> {:error, "Auto-land needs a target branch — none was given."}
+        {:error, :invalid_policy} -> {:error, "Unknown landing policy."}
+      end
+
+    {:noreply, socket |> assign(:notice, notice) |> refresh()}
+  end
+
+  def handle_event("dispatch_now", _params, socket) do
+    {:noreply, assign(socket, :notice, dispatch_now())}
+  end
+
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   @impl Phoenix.LiveView
@@ -77,6 +102,10 @@ defmodule Harness.Dashboard.SettingsLive do
         <h1>Settings</h1>
         <p class="settings-sub">Operator controls for autonomous roadmap polling.</p>
       </header>
+
+      <div :if={@notice} class="setting-notice" data-kind={elem(@notice, 0)} role="status">
+        {elem(@notice, 1)}
+      </div>
 
       <section class="setting-card setting-master" data-on={to_string(@autonomy.master)}>
         <div class="setting-master-row">
@@ -102,6 +131,19 @@ defmodule Harness.Dashboard.SettingsLive do
         <p :if={@autonomy.master and not @autonomy.any_effective?} class="setting-warn">
           Master is on but no project is enabled — nothing will dispatch. Enable a project below.
         </p>
+        <div class="setting-actions">
+          <button
+            type="button"
+            class="btn-dispatch"
+            phx-click="dispatch_now"
+            data-confirm="Dispatch a roadmap poll right now?"
+          >
+            Dispatch now
+          </button>
+          <span class="setting-hint">
+            Fire a poll immediately instead of waiting for the next cron tick.
+          </span>
+        </div>
       </section>
 
       <section class="setting-card">
@@ -174,6 +216,8 @@ defmodule Harness.Dashboard.SettingsLive do
         </ul>
       </section>
 
+      <Components.landing_card projects={@landing} />
+
       <Components.config_inspector sections={@config} />
     </div>
     """
@@ -206,10 +250,54 @@ defmodule Harness.Dashboard.SettingsLive do
 
   @spec refresh(Socket.t()) :: Socket.t()
   defp refresh(socket) do
+    projects = ProjectRegistry.list()
+
     socket
-    |> assign(:autonomy, autonomy_state(ProjectRegistry.list()))
+    |> assign(:autonomy, autonomy_state(projects))
     |> assign(:agents, agents_state())
+    |> assign(:landing, landing_state(projects))
     |> assign(:config, ConfigInspector.resolve())
+  end
+
+  # The per-project landing view-model: the *effective* policy (project default
+  # overlaid with the operator's persisted override) rendered as the Landing card.
+  @spec landing_state([Project.t()]) :: [map()]
+  defp landing_state(projects) do
+    Enum.map(projects, fn project ->
+      %{landing_policy: policy, target_branch: branch} = LandingSettings.effective(project)
+      %{name: project.name, label: project.name, auto?: policy == :auto, target_branch: branch}
+    end)
+  end
+
+  # Maps the select's string value to a policy atom without `String.to_atom` on
+  # request input — an unknown value becomes `:invalid`, which `set/4` rejects.
+  @spec policy_atom(String.t()) :: :auto | :manual | :invalid
+  defp policy_atom("auto"), do: :auto
+  defp policy_atom("manual"), do: :manual
+  defp policy_atom(_other), do: :invalid
+
+  # Fires a roadmap poll immediately instead of waiting for the cron tick. Honors
+  # the master kill-switch — a poll with master off would be a no-op, so we say so
+  # rather than enqueue a tick that dispatches nothing.
+  @spec dispatch_now() :: {:ok | :error, String.t()}
+  defp dispatch_now do
+    if Settings.master_enabled?() do
+      enqueue_poll()
+    else
+      {:error, "Master autonomy is off — enable it before dispatching."}
+    end
+  end
+
+  @spec enqueue_poll() :: {:ok | :error, String.t()}
+  defp enqueue_poll do
+    case %{} |> RoadmapPoller.new() |> HarnessOban.insert() do
+      {:ok, _job} ->
+        {:ok, "Poll dispatched — watch the dashboard for new runs."}
+
+      {:error, reason} ->
+        Logger.warning("harness dashboard: dispatch-now enqueue failed: #{inspect(reason)}")
+        {:error, "Could not enqueue a poll."}
+    end
   end
 
   # The per-agent enable/disable view-model over the registry's agent set:

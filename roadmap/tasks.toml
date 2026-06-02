@@ -4712,3 +4712,54 @@ The verification stack already has a narrower precedent: Verification.BaselineFi
 created_at = "2026-06-02"
 started_at = "2026-06-02"
 scored_at = "2026-06-02"
+
+[[task]]
+id = "154"
+phase = 11
+bundle = "autolanding"
+status = "pending"
+title = "Cron dispatch leaks ANTHROPIC_API_KEY — autonomous Claude runs die exit 1 (Task 108 follow-through)"
+scores = { d = 2, b = 8, u = 7 }
+markers = ["bug", "cx"]
+depends_on = [108]
+acceptance_criteria = ['RoadmapPoller.enqueue_run/3 sets `env: %{"ANTHROPIC_API_KEY" => false}` in the Run.Worker job args when the resolved adapter is a subscription-OAuth agent (Claude), so the spawned `claude -p` Port falls back to ~/.claude OAuth creds instead of the metered API key present in the node env', "Non-Claude adapters (codex/cursor/grok/antigravity/pi) enqueue with no spurious env scrub — args unchanged from today", "The scrub decision is driven off a capability/adapter property (e.g. cost_tier or an explicit OAuth-agent predicate), not a hardcoded `== Claude` string match, so future OAuth agents are covered", 'Test: a Claude-routed task enqueues a Run.Worker job whose args carry env: %{"ANTHROPIC_API_KEY" => false}; a Codex-routed task enqueues with no env key', "CHANGELOG entry under [Unreleased]"]
+out_of_scope = ["Changing Run.Worker.env_opt/1 (the consumer plumbing is correct — Task 108); this task only populates the producer side", "Making Oban job execution honor the live agent-disabled flag at run time (separate finding — a disabled agent's already-enqueued job still runs)", "Fail-fast classification of exit-1/no_changes/0-token agent outcomes as terminal `discard` instead of retryable (separate finding — caused the 16-record retry storm)"]
+files_to_modify = ["lib/harness/cron/roadmap_poller.ex", "test/harness/cron/roadmap_poller_test.exs"]
+touches = ["lib/harness/cron/roadmap_poller.ex", "lib/harness/run/worker.ex"]
+assignee = "codex"
+body = """
+Root cause of the 2026-06-02 Claude retry-storm incident (16 failed rmap runs from a single Dispatch-now poll).
+
+Trace:
+- `Harness.Cron.RoadmapPoller.enqueue_run/3` (roadmap_poller.ex:179) builds the Run.Worker job args with only `project_name`, `item_id`, `adapter_module` — NO `:env` key.
+- `Harness.Run.Worker.env_opt/1` (worker.ex:200) only threads a scrub when `args["env"]` is a non-empty map ("Absent or empty => no :env opt"). So the autonomous cron path passes no env scrub.
+- The harness node's environment carries `ANTHROPIC_API_KEY` (sk-ant-…, 108 bytes) and no `CLAUDE_CODE_OAUTH_TOKEN`. The Port inherits it, so `claude -p` uses the metered API key instead of the operator's subscription OAuth and exits 1 in ~2.5s with 0 tokens / 0 diff / no stream output.
+- Each failure made Run.Worker return a retryable error -> Oban backed off and retried to ~8 attempts per job -> 2 tasks x 8 attempts = 16 failed run_records. A BEAM restart did not stop it (Oban jobs persist in Postgres); Claude reloaded enabled from its persisted store and the loop resumed on boot.
+
+The fix is one place. Task 108 already built the consumer plumbing — Worker.env_opt/1 reads `env` from job args and threads it into start_run's `:env` (set/scrub pairs; `false` value = scrub). But Task 108 only wired the manual dispatch__bundle producer; the autonomous cron producer (RoadmapPoller) was never given the scrub. Populate it there for OAuth-subscription adapters.
+
+This is why Claude is currently operator-disabled as a workaround. With the scrub in place, autonomous Claude dispatch should fall back to ~/.claude OAuth and work.
+"""
+created_at = "2026-06-02"
+scored_at = "2026-06-02"
+
+[[task]]
+id = "155"
+phase = 11
+bundle = "autolanding"
+milestone = "v0_9"
+status = "done"
+title = "Per-project landing policy + Dispatch now from the Settings page"
+scores = { d = 2, b = 3, u = 3 }
+markers = ["handbuild"]
+touches = ["lib/harness/landing/settings.ex", "lib/harness/dashboard/settings_live.ex", "lib/harness/dashboard/components.ex", "lib/harness/dashboard/tokens.ex", "lib/harness/run.ex", "lib/harness/application.ex", "config/config.exs"]
+body = """
+Let an operator arm/disarm autonomous merge per project from /harness/settings, persisted across a BEAM restart, and fire an immediate roadmap poll without waiting for the cron tick.
+
+Mirror the cron/agent settings pattern: a file-backed term store (Harness.Landing.Settings, ~/.harness/landing_settings.term) seeds an app-env cache on boot; Run.init/1 overlays the effective policy onto the project so maybe_enqueue_landing/2 acts on the operator's choice, not the registration-time default. Landing card on the Settings LiveView: per-project manual/auto-land select + target-branch input; auto without a branch is rejected. Dispatch now button enqueues a RoadmapPoller job, gated on the master kill-switch.
+"""
+implemented = "Harness.Landing.Settings (file-backed term store + overlay/effective/set with target-branch guard), Run.init/1 overlay chokepoint, Landing card + Dispatch now button on SettingsLive, tokens CSS, 6 LiveView + 13 unit tests."
+delivered_by = "claude"
+created_at = "2026-06-02"
+scored_at = "2026-06-02"
+done_at = "2026-06-02"

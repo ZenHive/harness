@@ -2,7 +2,9 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   @moduledoc """
   `Phoenix.LiveViewTest` coverage for `Harness.Dashboard.SettingsLive` — the
   cron-autonomy controls (Tasks 109/110): master switch, per-project toggle,
-  resolved status, and the master-on-but-nothing-enabled warning.
+  resolved status, and the master-on-but-nothing-enabled warning — plus the
+  per-agent enable/disable card (Task 128), the read-only config inspector
+  (Task 127), the per-project Landing card, and the Dispatch now button.
 
   `async: false` — reads the global `ProjectRegistry` and mutates the
   `:cron_polling` / `:cron_project_autonomy` app env, which would leak across
@@ -15,6 +17,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentRegistry
   alias Harness.Cron.Settings
+  alias Harness.Landing.Settings, as: LandingSettings
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
 
@@ -22,6 +25,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     prior_polling = Application.get_env(:harness, :cron_polling)
     prior_projects = Application.get_env(:harness, :cron_project_autonomy)
     prior_agents = Application.get_env(:harness, :agent_disabled)
+    prior_landing = Application.get_env(:harness, :landing_overrides)
 
     project = ProjectFixture.from_repo("/tmp/harness-settings-live", name: "settings-live")
     :ok = ProjectRegistry.register(project)
@@ -31,6 +35,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
       restore_env(:cron_polling, prior_polling)
       restore_env(:cron_project_autonomy, prior_projects)
       restore_env(:agent_disabled, prior_agents)
+      restore_env(:landing_overrides, prior_landing)
     end)
 
     {:ok, conn: conn, project: project}
@@ -121,6 +126,76 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     assert html =~ "paused"
     assert html =~ "quota_exhausted"
+  end
+
+  test "renders the Landing card with a per-project policy control", %{conn: conn, project: project} do
+    {:ok, _view, html} = live(conn, "/harness/settings")
+
+    assert html =~ "Landing"
+    assert html =~ project.name
+    # A project defaults to manual landing, with an auto-land option and a branch input.
+    assert html =~ "auto-land"
+    assert html =~ ~s(name="target_branch")
+    assert html =~ ~s(phx-submit="set_landing")
+  end
+
+  test "arming auto-land persists the override and confirms", %{conn: conn, project: project} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("form.landing-form", %{landing_policy: "auto", target_branch: "release"})
+      |> render_submit()
+
+    assert html =~ "Landing updated for #{project.name}"
+    effective = LandingSettings.effective(project)
+    assert effective.landing_policy == :auto
+    assert effective.target_branch == "release"
+  end
+
+  test "arming auto-land without a target branch is rejected", %{conn: conn, project: project} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("form.landing-form", %{landing_policy: "auto", target_branch: ""})
+      |> render_submit()
+
+    assert html =~ "needs a target branch"
+    # The rejected submit never armed the project.
+    assert LandingSettings.effective(project).landing_policy == :manual
+  end
+
+  test "Dispatch now with master off explains nothing will dispatch", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html = view |> element("button[phx-click=dispatch_now]") |> render_click()
+
+    assert html =~ "Master autonomy is off"
+  end
+
+  test "Dispatch now with master on enqueues a poll and confirms", %{conn: conn} do
+    Application.put_env(:harness, :oban_insert, fn changeset -> {:ok, changeset} end)
+    on_exit(fn -> Application.delete_env(:harness, :oban_insert) end)
+
+    {:ok, view, _html} = live(conn, "/harness/settings")
+    view |> element("button[phx-click=toggle_master_autonomy]") |> render_click()
+
+    html = view |> element("button[phx-click=dispatch_now]") |> render_click()
+
+    assert html =~ "Poll dispatched"
+  end
+
+  test "Dispatch now surfaces an enqueue failure", %{conn: conn} do
+    Application.put_env(:harness, :oban_insert, fn _changeset -> {:error, :queue_down} end)
+    on_exit(fn -> Application.delete_env(:harness, :oban_insert) end)
+
+    {:ok, view, _html} = live(conn, "/harness/settings")
+    view |> element("button[phx-click=toggle_master_autonomy]") |> render_click()
+
+    html = view |> element("button[phx-click=dispatch_now]") |> render_click()
+
+    assert html =~ "Could not enqueue a poll"
   end
 
   test "renders the read-only config inspector card with concern sections", %{conn: conn} do

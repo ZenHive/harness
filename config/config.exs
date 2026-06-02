@@ -206,6 +206,7 @@ if config_env() == :test do
   # Persistence off by default in test; the settings tests override with a temp root.
   config :harness, :cron_settings, false
   config :harness, :dashboard, enabled: false, port: 4018
+  config :harness, :landing_settings, false
   config :harness, :oban_enabled, false
   config :harness, :repo_enabled, false
 

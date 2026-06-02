@@ -7,6 +7,7 @@ defmodule Harness.Application do
 
   alias Harness.Agent.Settings, as: AgentSettings
   alias Harness.Cron.Settings
+  alias Harness.Landing.Settings, as: LandingSettings
 
   @spec start(Application.start_type(), term()) :: {:ok, pid()} | {:error, term()}
   @impl true
@@ -17,6 +18,7 @@ defmodule Harness.Application do
     # RoadmapPoller) and per-agent enable/disable (read by AgentRegistry.select/2).
     Settings.load_into_env()
     AgentSettings.load_into_env()
+    LandingSettings.load_into_env()
 
     opts = [strategy: :one_for_one, name: Harness.Supervisor]
     Supervisor.start_link(children(), opts)

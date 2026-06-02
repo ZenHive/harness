@@ -91,6 +91,7 @@ defmodule Harness.Run do
   alias Harness.Git
   alias Harness.Lander.Resilience
   alias Harness.Lander.Worker, as: LanderWorker
+  alias Harness.Landing.Settings, as: LandingSettings
   alias Harness.Notification
   alias Harness.Notification.Event, as: NotificationEvent
   alias Harness.Oban, as: HarnessOban
@@ -454,6 +455,12 @@ defmodule Harness.Run do
   @spec init(init_arg()) :: {:ok, :dispatched, data(), [:gen_statem.action()]}
   def init({item, %Project{} = project, adapter, opts}) do
     run_id = Keyword.fetch!(opts, :run_id)
+
+    # Overlay the operator's persisted landing override onto the project so the
+    # landing decision (`maybe_enqueue_landing/2`) and everything downstream act
+    # on the *effective* policy, not the static registration-time default. This
+    # is the single chokepoint every dispatch path funnels through.
+    project = LandingSettings.overlay(project)
 
     data = %{
       run_id: run_id,

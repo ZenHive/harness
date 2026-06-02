@@ -635,6 +635,60 @@ defmodule Harness.Dashboard.Components do
     """
   end
 
+  @doc """
+  The per-project **Landing** card — the operator control for autonomous merge.
+
+  Unlike the read-only config inspector, this is a *form*: each project carries a
+  landing policy (`manual` / `auto-land`) and, when auto, a `target_branch`.
+  Submitting fires `set_landing` on the parent LiveView, which validates (auto
+  requires a branch) and persists the override via `Harness.Landing.Settings`.
+  A green run only merges when the project is `auto-land` with a target branch.
+  """
+  attr(:projects, :list, required: true)
+
+  @spec landing_card(map()) :: Rendered.t()
+  def landing_card(assigns) do
+    ~H"""
+    <section class="setting-card">
+      <h2 class="setting-section-title">Landing</h2>
+      <p class="setting-desc">
+        Per-project autonomous merge. <strong>auto-land</strong>
+        merges a run into its target branch the moment it verifies green <em>and</em>
+        clears the semantic gate; <strong>manual</strong>
+        verifies then stops, leaving the diff in the worktree for you to land.
+        Auto-land requires a target branch — without one it cannot be armed.
+        The choice persists across restarts.
+      </p>
+      <ul class="project-list">
+        <li :for={project <- @projects} class="project-row" data-effective={to_string(project.auto?)}>
+          <form class="landing-form" phx-submit="set_landing">
+            <input type="hidden" name="name" value={project.name} />
+            <div class="project-id">
+              <span class="project-name">{project.label}</span>
+              <span class="pill" data-state={if project.auto?, do: "on", else: "off"}>
+                {if project.auto?, do: "auto-land", else: "manual"}
+              </span>
+            </div>
+            <select name="landing_policy" aria-label={"Landing policy for #{project.label}"}>
+              <option value="manual" selected={not project.auto?}>manual</option>
+              <option value="auto" selected={project.auto?}>auto-land</option>
+            </select>
+            <input
+              type="text"
+              name="target_branch"
+              value={project.target_branch}
+              placeholder="target branch"
+              aria-label={"Target branch for #{project.label}"}
+            />
+            <button type="submit" class="btn-save">Save</button>
+          </form>
+        </li>
+        <li :if={@projects == []} class="project-empty">No projects registered.</li>
+      </ul>
+    </section>
+    """
+  end
+
   attr(:provenance, :atom, values: [:default, :config, :env], required: true)
 
   @doc false

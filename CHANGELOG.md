@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-project landing policy from the dashboard — Landing card +
+  `Harness.Landing.Settings`.** The Settings page gains a Landing card: a
+  per-project `manual` / `auto-land` select + target-branch input, persisted
+  across restarts via a file-backed term store
+  (`~/.harness/landing_settings.term`) that overlays the registration-time
+  `landing_policy` / `target_branch` when a run initializes — arming auto-merge
+  no longer requires hand-editing the registry via `iex`. Auto-land without a
+  target branch is rejected (`{:error, :target_branch_required}`); `:manual`
+  clears the branch. Also adds a **Dispatch now** button that enqueues an
+  immediate roadmap poll (honoring the master kill-switch) instead of waiting
+  for the next cron tick, with transient ok/error feedback via a `:notice`
+  assign.
+
 - **Autonomous dispatch routes on rmap's `assignee` field (Task 130, codex
   delivery).** `RoadmapPoller.task_agent/1` now routes on `assignee` — rmap's
   validated agent-routing field (../rmap task 40) — instead of overloading the
