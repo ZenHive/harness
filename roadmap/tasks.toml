@@ -4911,7 +4911,7 @@ shipped_in = "c6bda6a"
 id = "159"
 phase = 11
 bundle = "autolanding"
-status = "pending"
+status = "in_progress"
 title = "`:no_changes` cancels before verifying — an already-implemented task wedges in_progress instead of being graded/landed"
 scores = { d = 3, b = 6, u = 6 }
 markers = ["bug"]
@@ -4934,6 +4934,7 @@ This is a THIRD distinct run-lifecycle gap surfaced 2026-06-02, alongside the se
 Fix direction (implementer's call): in the run gen_statem, when the post-agent diff is empty, branch the disposition — if the branch can be meaningfully graded (ahead of base, or task plausibly already implemented), run Verification.run/2 and treat green as success -> landing-policy, rather than unconditionally `{:cancel, :no_changes}`. Guard against an infinite re-verify loop and keep a clean terminal reason for the genuinely-empty case. Confirm idempotency when the implementation is already on the target branch (mark done/verified, do not attempt an empty merge).
 """
 created_at = "2026-06-02"
+started_at = "2026-06-02"
 scored_at = "2026-06-02"
 
 [[task]]
