@@ -114,6 +114,11 @@
       "order": 1,
       "description": "v0.6 stabilization: align roadmap reality, refresh operator docs, and prove the README + harness-driver skill against Tidewave"
     },
+    "config-centralization": {
+      "phase": 10,
+      "order": 3,
+      "description": "Centralize harness configuration: one Postgres-backed settings store replacing the per-domain .tmp+rename term files (Cron/Agent/Landing), ConfigInspector reading defaults from their owning modules instead of hardcoded copies, and a declarative Harness.Config schema that makes operator-relevant knobs (run/verification timeouts) runtime-editable from the dashboard. Sequenced after the Phase-15 deletion pass so it never centralizes config keys the reviewer-pair architecture removes."
+    },
     "contract": {
       "phase": 1,
       "order": 2,
@@ -5544,7 +5549,7 @@
       "id": "142",
       "phase": 6,
       "bundle": "deferred",
-      "status": "pending",
+      "status": "superseded",
       "title": "Consolidate agent/cron settings term files into a Postgres key-value store",
       "scores": {
         "d": 2,
@@ -6544,6 +6549,147 @@
         "lib/harness/run/status.ex"
       ],
       "body": "Phase-15 step 4: documentation and consumer-surface alignment after the deletion pass. The harness-driver SKILL is the stable contract orchestrators read; it must not describe deleted mechanisms.",
+      "created_at": "2026-06-02",
+      "scored_at": "2026-06-02",
+      "cross_repo": []
+    },
+    {
+      "id": "165",
+      "phase": 10,
+      "bundle": "config-centralization",
+      "status": "pending",
+      "title": "Consolidate the Cron/Agent/Landing settings term files into one Postgres-backed settings store (file fallback)",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.67,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "One shared settings store module/behaviour all three settings domains (Cron/Agent/Landing) read and write through",
+        "Postgres backend (key-value table) used when repo_enabled; the file backend preserved for repo_enabled: false, with the .tmp+rename plumbing existing exactly once",
+        "Boot-time load_into_env/0 semantics preserved: settings seeded into app env before Oban/dispatch starts",
+        "Existing ~/.harness/*.term files are imported on first boot so an operator's current toggles survive the upgrade",
+        "Cron/Agent/Landing public APIs unchanged; SettingsLive and existing settings tests pass without caller modifications",
+        "ConfigInspector's Paths section reflects the new storage (no stale agent_settings/cron_settings root rows)"
+      ],
+      "out_of_scope": [
+        "Chat store (Task 140 stays separate — session data, not KV)",
+        "New settings or toggles — pure storage consolidation",
+        "The declarative config schema / UI-editable knobs (separate task in this bundle)"
+      ],
+      "touches": [
+        "lib/harness/cron/settings.ex",
+        "lib/harness/agent/settings.ex",
+        "lib/harness/landing/settings.ex",
+        "lib/harness/application.ex",
+        "lib/harness/settings/",
+        "priv/repo/migrations/",
+        "config/config.exs",
+        "test/harness/cron/settings_test.exs",
+        "test/harness/agent/settings_test.exs",
+        "test/harness/landing/settings_test.exs"
+      ],
+      "body": "Supersedes Task 142 — its deferral trigger (\"a third settings store appears\") has fired. Three runtime-flippable settings stores now exist (Harness.Cron.Settings, Harness.Agent.Settings, Harness.Landing.Settings), each carrying its own copy of the .tmp+rename term-file plumbing, and the surface keeps growing (Task 111 added cron-schedule persistence, Task 155 added landing overrides). The TODO(Task 142) marker in lib/harness/landing/settings.ex names this consolidation.\n\nExtract one shared settings store: a Postgres key-value backend (harness_settings table) when repo_enabled — the precedent ResultStore.Postgres (Task 137) and ProjectRegistry persistence (Task 141) already set — with the existing term-file plumbing preserved exactly once as the file backend for repo_enabled: false library consumers. The three domain modules keep their public APIs (enabled?/set_enabled, master_enabled?/set_master/set_schedule, overlay/set) and become thin schemas over the shared store; SettingsLive callers are unchanged. The store seam should be reusable by Task 140 (chat store) later, but chat data stays out of scope here.\n\nFirst consumer: the dashboard settings page (already live) and the follow-up Harness.Config schema task in this bundle, which persists UI-edited operational knobs through this store.\n",
+      "created_at": "2026-06-02",
+      "scored_at": "2026-06-02",
+      "cross_repo": []
+    },
+    {
+      "id": "166",
+      "phase": 10,
+      "bundle": "config-centralization",
+      "status": "pending",
+      "title": "ConfigInspector reads defaults from owning modules; drop sections deleted by the reviewer-pair pass",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 3
+      },
+      "eff": 1.75,
+      "dep_layer": 3,
+      "markers": [],
+      "depends_on": [
+        163
+      ],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "No literal default values remain in config_inspector.ex — every default is read from the module that owns it",
+        "Inspector sections for config removed by Task 163 (cross-agent repair, semantic gate, quota patterns, max_repair_attempts) are deleted or replaced with their reviewer-pair equivalents",
+        "Provenance inference (:default vs :config vs :env) still works for every remaining row",
+        "A test asserts inspector defaults equal the owning modules' actual defaults (the anti-drift contract)"
+      ],
+      "out_of_scope": [
+        "Making any config UI-editable (separate task in this bundle)",
+        "Changing which env vars override which keys"
+      ],
+      "touches": [
+        "lib/harness/dashboard/config_inspector.ex",
+        "lib/harness/run.ex",
+        "lib/harness/verification.ex",
+        "lib/harness/worktree.ex",
+        "lib/harness/run/retry_policy.ex",
+        "lib/harness/agent_adapter/driver.ex",
+        "test/harness/dashboard/config_inspector_test.exs"
+      ],
+      "body": "Harness.Dashboard.ConfigInspector hardcodes a duplicate copy of every code default (timeouts, paths, retry delays) to infer provenance — a drift hazard: when a module's @default_* changes, the inspector silently reports wrong provenance and wrong defaults to the operator. Make each owning module expose its defaults (a defaults/0 or equivalent public constant) and have the inspector read them, so defaults live in exactly one place.\n\nDepends on Task 163 (the deletion pass) because the inspector's \"Repair & gating\" and \"Retry policy\" sections describe config that pass removes (:cross_agent_repair, :semantic_gate, quota patterns, max_repair_attempts). Doing this task first would mean reworking those sections twice; doing it after means this task also deletes the dead sections — which Task 163's acceptance criteria do not cover (the inspector reads app-env keys, not modules, so the deletion won't break compilation; it would just show dead config silently).\n\nFirst consumer: the operator reading /harness/settings — the inspector is already live and already wrong-prone.\n",
+      "created_at": "2026-06-02",
+      "scored_at": "2026-06-02",
+      "cross_repo": []
+    },
+    {
+      "id": "167",
+      "phase": 10,
+      "bundle": "config-centralization",
+      "status": "pending",
+      "title": "Harness.Config declarative schema + UI-editable operational knobs (run/verification timeouts)",
+      "scores": {
+        "d": 5,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 1.2,
+      "dep_layer": 4,
+      "markers": [
+        "handbuild"
+      ],
+      "depends_on": [
+        163,
+        "165",
+        "166"
+      ],
+      "assignee": "human",
+      "acceptance_criteria": [
+        "A Harness.Config module declares schema entries: key path, default, type, overriding env var, ui_editable?, restart_required?",
+        "ConfigInspector renders from the schema; defaults exist in exactly one place (no copies in the inspector, no orphaned @default_* attributes for schema-covered keys)",
+        "SettingsLive renders an editable card for ui_editable keys: run total/idle/lifetime timeouts and verification timeout at minimum",
+        "UI-edited values persist through the consolidated settings store and survive a BEAM restart; they take effect without restart (app-env live cache)",
+        "Restart-required keys are labeled as such in the UI and are not silently hot-applied",
+        "Test-injection env keys are absent from the schema",
+        "Code reads for schema-covered keys go through Harness.Config, not raw Application.get_env"
+      ],
+      "out_of_scope": [
+        "Test-injection seams",
+        "Chat store configuration",
+        "Editing project registrations from this card (ProjectRegistry has its own persistence, Task 141)",
+        "Editing the .exs files from the UI — .exs stays the boot-default layer; UI writes are persisted overrides on top"
+      ],
+      "touches": [
+        "lib/harness/config.ex",
+        "lib/harness/dashboard/config_inspector.ex",
+        "lib/harness/dashboard/settings_live.ex",
+        "lib/harness/run.ex",
+        "lib/harness/verification.ex",
+        "lib/harness/worktree.ex",
+        "lib/harness/agent_adapter/driver.ex",
+        "lib/harness/dispatch.ex",
+        "config/config.exs"
+      ],
+      "body": "The \"centralize hidden configs\" payoff, requested 2026-06-02: ~30 distinct Application.get_env(:harness, ...) keys are read across ~28 files, ~37 @default_* module attributes carry defaults that exist only in code, and the operator's only way to change a run timeout or verification timeout is editing config/*.exs plus a restart.\n\nBuild a declarative Harness.Config schema: one module declaring every operator-relevant key with its default, type, overriding env var, ui_editable? and restart_required? flags. ConfigInspector renders from the schema (extending the owning-module defaults wiring from the sibling inspector task). SettingsLive renders an editable card for keys marked ui_editable — run total/idle/lifetime timeouts and verification timeout are the launch set (the post-Task-163 survivors; max_repair_attempts and semantic/repair gating no longer exist by then) — persisted through the consolidated settings store from the sibling consolidation task, following the same app-env-live-cache + persisted-override pattern the existing settings modules use. Restart-required keys (e.g. dashboard port) render labeled as such, following the Task 111 boot-applied precedent.\n\nOperator-relevant keys only: test-injection seams (:roadmap_list, :roadmap_ready, :run_starter, :oban_insert, :capability_benchmark_*) are seams, not config, and stay out of the schema.\n\nSequenced after Task 163 so the schema never declares keys the reviewer-pair deletion pass removes. Marked handbuild: the editable-settings card is LiveView/DOM work that needs browser feedback.\n",
       "created_at": "2026-06-02",
       "scored_at": "2026-06-02",
       "cross_repo": []

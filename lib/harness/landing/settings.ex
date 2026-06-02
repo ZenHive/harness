@@ -177,9 +177,9 @@ defmodule Harness.Landing.Settings do
   @spec path(String.t()) :: String.t()
   defp path(dir), do: Path.join(dir, @filename)
 
-  # TODO(Task 142): this is the third+ copy of the .tmp+rename term-file plumbing
+  # TODO(Task 165): this is the third+ copy of the .tmp+rename term-file plumbing
   # (Cron.Settings / Agent.Settings / Chat.Store) — the rule-of-three trigger that
-  # task names for consolidating settings stores.
+  # task names for consolidating settings stores into one Postgres-backed store.
   # Write to a `.tmp` sibling then atomically rename (POSIX, same filesystem) so a
   # concurrent reader never observes a half-written term file.
   # sobelow_skip ["Traversal.FileModule"]

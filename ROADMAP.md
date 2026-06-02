@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 10 — Dashboard Operator UX (11 of 11 done · 0 in progress)
+**Focus phase:** 10 — Dashboard Operator UX (11 of 14 done · 0 in progress)
 
 **Last shipped:** Task 126 — Run change-set view on the run-detail page (live edited-files + settled git diff) on 2026-05-31
 
-**Up next:** Task 104 — Promote docs/dogfooding-workflow.md to ~/.claude/includes/harness-workflow.md once stable [D:6/B:8/U:7 → Eff:1.25] 📋
+**Up next:** Task 165 — Consolidate the Cron/Agent/Landing settings term files into one Postgres-backed settings store (file fallback) [D:3/B:5/U:5 → Eff:1.67] 🚀
 <!-- FOCUS:END -->
 
 ---
@@ -82,7 +82,7 @@
 | Task 97 | ✅ | 🎁 **deferred** · Reconcile harness verification stack vs project mix precommit [D:4/B:7/U:6 → Eff:1.62] 🚀 |
 | Task 140 | ⬜ | 🎁 **deferred** · Chat session store: behaviour seam + Postgres backend [D:3/B:2/U:2 → Eff:0.67] ⚠️ |
 | Task 141 | ✅ | 🎁 **deferred** · Persist runtime ProjectRegistry registrations to Postgres [D:2/B:2/U:2 → Eff:1.0] 📋 |
-| Task 142 | ⬜ | 🎁 **deferred** · Consolidate agent/cron settings term files into a Postgres key-value store [D:2/B:1/U:1 → Eff:0.5] ⚠️ |
+| Task 142 | ⛔ | 🎁 **deferred** · Consolidate agent/cron settings term files into a Postgres key-value store [D:2/B:1/U:1 → Eff:0.5] ⚠️ |
 <!-- TASKS:END -->
 
 ---
