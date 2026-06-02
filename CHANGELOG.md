@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Autonomous capability-benchmark cron scheduler (Task 122, cursor delivery).**
+  `Harness.Cron.CapabilityBenchmarkScheduler` closes the capability-trust loop:
+  an Oban cron worker (default `0 3 * * *`, behind
+  `config :harness, :cron_capability_benchmark` — `enabled: false` by default)
+  selects the (agent, domain) cells `CapabilityScore.rebenchmark_candidates/1`
+  flags as unmeasured or stale, prioritizes unmeasured > stale, caps cells per
+  tick (`max_cells_per_tick`, truncations logged as deferred — never silently
+  dropped), skips unavailable agents via `AgentRegistry`, runs the matching
+  benchmark corpus items through `Batch.AgentEvaluation.compare/4`, and persists
+  scores via `CapabilityScore.score_domain/4`. Fresh cells are never re-run.
+  `Harness.Benchmark.as_roadmap_item/2` bridges corpus items to dispatchable
+  roadmap items; `Harness.Oban` now composes the RoadmapPoller and scheduler
+  cron entries into a single `Oban.Plugins.Cron` plugin. `status/0` /
+  `next_tick/1` mirror the RoadmapPoller observability surface.
+
 - **Run recovery — hold/steer/resume gen_statem API (Task 150, cursor delivery).**
   Operator-mediated mid-run recovery: `Harness.Run.hold/1` parks a struggling run
   in a new `:held` state at the next settle boundary (`hold(run, interrupt: true)`
@@ -195,6 +210,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `list_adapters/0` from `Dashboard.Live`.
 
 ### Fixed
+
+- **Flaky Task-150 hold/cancel test made deterministic (Task 152, grok
+  delivery).** `run_test.exs` "cancel/1 from :held" raced `Run.cancel/1` against
+  the graceful hold parking at the next settle boundary — under full-suite load
+  the race lost and the test timed out at 60s. The test now subscribes to
+  `RunFeed` and `assert_receive`s the `:held` status transition before calling
+  `cancel/1`, so it genuinely exercises cancel-from-`:held`. Synchronization
+  fix, no sleeps, no timeout bumps.
 
 - **Postgres result store crashed the run gen_statem on tuple outcome kinds
   (`{:timed_out, :idle}`).** `Postgres.log_record_to_attrs/1` serialized

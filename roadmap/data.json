@@ -4724,7 +4724,7 @@
       "phase": 13,
       "bundle": "kpi-routing",
       "milestone": "v0_10",
-      "status": "in_progress",
+      "status": "done",
       "title": "Oban cron capability-benchmark scheduler — fill unmeasured/stale cells autonomously",
       "scores": {
         "d": 6,
@@ -4752,10 +4752,15 @@
         "A new dispatch primitive — reuses Batch.AgentEvaluation",
         "Routing consumption — Task 121"
       ],
+      "shipped_in": "dd858b2",
       "body": "Periodically run the benchmark corpus (Task 117) through the available agents via Batch.AgentEvaluation, persist the scores (Task 119), and prioritize the (agent, domain) cells Task 120 flags unmeasured or stale and Task 121 wants explored. Builds on the existing Oban.Plugins.Cron (Task 51) — queue-per-project + cron are already in the stack.\n\nRespect agent availability (AgentRegistry) and cost: do not re-benchmark fresh cells, cap concurrency, and log what was skipped (no silent truncation). This closes the loop — the system keeps its trust signal current without a human kicking off benchmarks.\n",
       "created_at": "2026-05-31",
       "started_at": "2026-06-02",
+      "done_at": "2026-06-02",
       "scored_at": "2026-05-31",
+      "implemented": "Harness.Cron.CapabilityBenchmarkScheduler: Oban cron worker (default 03:00 daily, config :cron_capability_benchmark, enabled: false default) selects unmeasured/stale cells via CapabilityScore.rebenchmark_candidates/1, prioritizes unmeasured > stale, caps cells per tick (truncations logged), skips unavailable agents via AgentRegistry, runs corpus items through Batch.AgentEvaluation.compare/4, persists via CapabilityScore.score_domain/4. Harness.Benchmark.as_roadmap_item/2 bridges corpus items to dispatchable roadmap items. Oban.ex composes RoadmapPoller + scheduler cron entries into one Cron plugin.",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -5034,22 +5039,42 @@
       "bundle": "autolanding",
       "milestone": "v0_9",
       "status": "pending",
-      "title": "rmap: first-class per-task agent/delegate field (stop overloading model)",
+      "title": "Route autonomous dispatch on assignee — consume rmap's formalized agent-routing field, stop overloading model",
       "scores": {
-        "d": 3,
-        "b": 3,
-        "u": 3
+        "d": 2,
+        "b": 4,
+        "u": 4
       },
-      "eff": 1.0,
+      "eff": 2.0,
       "dep_layer": 0,
       "markers": [],
       "depends_on": [],
-      "touches": [
-        "../rmap/src"
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "Harness.Roadmap.ready/1 requests --fields id,assignee,markers (not id,model,markers); the roadmap__ready MCP docstring matches",
+        "RoadmapPoller.task_agent/1 routes on assignee (rmap's validated agent set); model is never consulted for routing — it is a free-text LLM pin",
+        "Tasks with assignee = \"human\" are skipped by autonomous dispatch (never enqueued)",
+        "Tasks with no assignee, or an assignee with no harness AgentAdapter (e.g. droid), fall back to :claude; the fallback is documented in the poller moduledoc",
+        "Harness roadmap migrated: agent-name model values (codex/cursor) moved to assignee; genuine LLM pins (e.g. claude-opus-4-7) stay in model; rmap validate green after migration",
+        "skills/harness-driver/SKILL.md ready/1 bullet reflects the assignee-based routing surface",
+        "Tests: task_agent/1 truth table (assignee present / absent / human / unknown-adapter), poller fixtures migrated off model-as-agent"
       ],
-      "body": "CROSS-REPO (../rmap). The harness roadmap encodes the target agent in the `model` field (values \"codex\"/\"cursor\"), but rmap.md documents `model` as a free-text LLM id, distinct from the agent environment (rmap delegate --to), with cx/csr markers as the delegation channel. The harness cron poller currently routes on `model` then cx/csr as a workaround.\n\nrmap is ours: add a first-class per-task agent/delegate field (or formalize that model-naming-an-agent IS the route), so consumers route on one documented field instead of overloading model. Update rmap.md + the poller's task_agent/1 to use it.\n",
+      "out_of_scope": [
+        "rmap-side changes — shipped in ../rmap task 40 (commit 21cbe65): delegate --to now defaults to assignee, rmap.md documents the three-way assignee/model/--to split",
+        "New AgentAdapters (droid stays renderable-but-not-dispatchable)",
+        "cx/csr marker semantics (remain discovery/filter tags, not routing)"
+      ],
+      "touches": [
+        "lib/harness/roadmap.ex",
+        "lib/harness/cron/roadmap_poller.ex",
+        "test/harness/roadmap_test.exs",
+        "test/harness/cron/roadmap_poller_test.exs",
+        "skills/harness-driver/SKILL.md",
+        "roadmap/tasks.toml"
+      ],
+      "body": "CROSS-REPO (../rmap). The harness roadmap encodes the target agent in the `model` field (values \"codex\"/\"cursor\"), but rmap.md documents `model` as a free-text LLM id, distinct from the agent environment (rmap delegate --to), with cx/csr markers as the delegation channel. The harness cron poller currently routes on `model` then cx/csr as a workaround.\n\nrmap is ours: add a first-class per-task agent/delegate field (or formalize that model-naming-an-agent IS the route), so consumers route on one documented field instead of overloading model. Update rmap.md + the poller's task_agent/1 to use it.\n\nUPDATE 2026-06-02: the rmap half is shipped (../rmap task 40, commit 21cbe65) — `assignee` is now THE documented agent-routing field, validated against human|claude|codex|cursor|grok|antigravity|pi|droid, and `rmap delegate <id>` defaults `--to` from it. Remaining scope is harness-side consumption only: route the poller on assignee, skip human-assigned tasks, migrate this roadmap's agent-name model values to assignee, and update the harness-driver skill doc.\n",
       "created_at": "2026-05-31",
-      "scored_at": "2026-05-31",
+      "scored_at": "2026-06-02",
       "cross_repo": []
     },
     {
@@ -5909,7 +5934,7 @@
       "id": "152",
       "phase": 11,
       "bundle": "autolanding",
-      "status": "in_progress",
+      "status": "done",
       "title": "Flaky 150 test: cancel/1-from-:held times out under full-suite load (run_test.exs:750)",
       "scores": {
         "d": 2,
@@ -5932,10 +5957,15 @@
         "test/harness/run_test.exs",
         "test/support/fake_adapter.ex"
       ],
+      "shipped_in": "0571bef",
       "body": "Found at landing of Task 150 (cursor delivery): the new test \"operator recovery — hold / steer / resume cancel/1 from :held settles :cancelled like any in-flight cancel\" (test/harness/run_test.exs:750) timed out at 60s once during the merge-skew verification run (155 tests across 5 files), then passed on mix test.json's automatic retry AND passes in isolation in ~0.5s. Classic load-timing flake in a new gen_statem test.\n\nLikely cause: the graceful-hold path parks at the next settle boundary, which under suite load (FakeAdapter sleeps + parallel gen_statem runs on a loaded scheduler) can exceed the 60s default timeout. Fix the root synchronization (assert_receive on a settle/hold event with an adequate timeout, or drive the hold boundary deterministically via the FakeAdapter), NOT a Process.sleep or a blanket @tag timeout: bump unless the boundary wait is genuinely unbounded.\n\nPer critical-rules: never repair-loop or block on an unconfirmed flake; this one is confirmed flaky (passes isolated, deterministic), filed for root-cause fix.\n",
       "created_at": "2026-06-02",
       "started_at": "2026-06-02",
+      "done_at": "2026-06-02",
       "scored_at": "2026-06-02",
+      "implemented": "Root-cause sync fix: test subscribes to RunFeed and assert_receive's the {:harness_run_update, %Status{state: :held}} transition (5s timeout) before calling Run.cancel/1 — the test now genuinely exercises cancel-from-:held instead of racing hold vs cancel. No sleeps, no timeout bumps.",
+      "delivered_by": "grok",
+      "verified": true,
       "cross_repo": []
     }
   ]

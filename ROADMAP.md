@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 126 — Run change-set view on the run-detail page (live edited-files + settled git diff) on 2026-05-31
 
-**Up next:** Task 130 — rmap: first-class per-task agent/delegate field (stop overloading model) [D:3/B:3/U:3 → Eff:1.0] 📋
+**Up next:** Task 130 — Route autonomous dispatch on assignee — consume rmap's formalized agent-routing field, stop overloading model [D:2/B:4/U:4 → Eff:2.0] 🎯
 <!-- FOCUS:END -->
 
 ---
