@@ -164,7 +164,7 @@ defmodule Harness.Roadmap do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, [task_map]} — every pending task whose deps are all done, excluding handbuild-marked tasks; mutually independent by construction, safe to fan out as one batch. Each map carries the --fields-projected keys id, model, markers — enough to route each task to its agent without a second rmap call. {:error, reason} per t:error/0 (unknown_project, rmap_not_found, roadmap_not_found, rmap_failed, rmap_bad_output)."
+        "{:ok, [task_map]} — every pending task whose deps are all done, excluding handbuild-marked tasks; mutually independent by construction, safe to fan out as one batch. Each map carries the --fields-projected keys id, assignee, markers — enough to route each task to its agent without a second rmap call. {:error, reason} per t:error/0 (unknown_project, rmap_not_found, roadmap_not_found, rmap_failed, rmap_bad_output)."
     }
   )
 
@@ -483,7 +483,7 @@ defmodule Harness.Roadmap do
   # array of just the routing-relevant keys (and implies --json).
   @spec run_ready(ctx()) :: {:ok, String.t()} | {:error, error()}
   defp run_ready(ctx) do
-    case run_rmap(["ready", "--dispatchable", "--fields", "id,model,markers"], ctx) do
+    case run_rmap(["ready", "--dispatchable", "--fields", "id,assignee,markers"], ctx) do
       {:ok, output} -> {:ok, output}
       {:error, failure} -> {:error, classify_failure(failure, nil)}
     end

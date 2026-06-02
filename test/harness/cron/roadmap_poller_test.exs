@@ -75,7 +75,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
     Application.put_env(:harness, :cron_project_autonomy, %{"cron-enabled" => true})
 
     # The whole dispatchable set is fanned out in one tick — one task with no
-    # model (defaults :claude), one routed to :codex via the `model` field.
+    # assignee (defaults :claude), one routed to :codex via `assignee`.
     Application.put_env(:harness, :roadmap_ready, fn p ->
       send(parent, {:ready, p.name})
       {:ok, [task("51", nil), task("52", "codex")]}
@@ -107,6 +107,30 @@ defmodule Harness.Cron.RoadmapPollerTest do
                      %Oban.Job{
                        args: %{item_id: "52", adapter_module: "Elixir.Harness.AgentAdapter.Codex"}
                      }}
+  end
+
+  test "enabled tick skips human-assigned tasks" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-cron-human", name: "cron-human", concurrency_cap: 10)
+    assert :ok = ProjectRegistry.register(project)
+
+    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
+    Application.put_env(:harness, :cron_project_autonomy, %{"cron-human" => true})
+
+    Application.put_env(:harness, :roadmap_ready, fn _p ->
+      {:ok, [task("51", "human"), task("52", "codex")]}
+    end)
+
+    Application.put_env(:harness, :oban_insert, fn changeset ->
+      job = Ecto.Changeset.apply_action!(changeset, :insert)
+      send(parent, {:inserted, job.args})
+      {:ok, job}
+    end)
+
+    assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+    refute_received {:inserted, %{item_id: "51"}}
+    assert_received {:inserted, %{item_id: "52", adapter_module: "Elixir.Harness.AgentAdapter.Codex"}}
   end
 
   test "a task routed to an unavailable agent is skipped; the rest of the batch still dispatches" do
@@ -169,6 +193,26 @@ defmodule Harness.Cron.RoadmapPollerTest do
              RoadmapPoller.next_tick(~U[2026-05-27 00:15:00Z])
   end
 
+  describe "task_agent/1" do
+    test "routes adapter-backed assignees" do
+      assert RoadmapPoller.task_agent(%{"assignee" => "codex", "model" => "claude-opus-4-7"}) == :codex
+      assert RoadmapPoller.task_agent(%{"assignee" => "cursor"}) == :cursor
+    end
+
+    test "defaults missing assignee to claude without consulting model or markers" do
+      assert RoadmapPoller.task_agent(%{"model" => "codex", "markers" => ["csr"]}) == :claude
+      assert RoadmapPoller.task_agent(%{"assignee" => nil, "markers" => ["cx"]}) == :claude
+    end
+
+    test "preserves human assignee for autonomous-dispatch skip" do
+      assert RoadmapPoller.task_agent(%{"assignee" => "human"}) == :human
+    end
+
+    test "falls back to claude for assignees with no harness adapter" do
+      assert RoadmapPoller.task_agent(%{"assignee" => "droid"}) == :claude
+    end
+  end
+
   defp cron_plugin?({Cron, _opts}), do: true
   defp cron_plugin?(_plugin), do: false
 
@@ -181,8 +225,8 @@ defmodule Harness.Cron.RoadmapPollerTest do
     end)
   end
 
-  # A `rmap ready --dispatchable --fields id,model,markers` row.
-  defp task(id, model), do: %{"id" => id, "model" => model, "markers" => []}
+  # A `rmap ready --dispatchable --fields id,assignee,markers` row.
+  defp task(id, assignee), do: %{"id" => id, "assignee" => assignee, "markers" => []}
 
   defp restore_env(key, nil), do: Application.delete_env(:harness, key)
   defp restore_env(key, value), do: Application.put_env(:harness, key, value)

@@ -226,9 +226,15 @@ defmodule Harness.RoadmapTest do
   describe "ready/1" do
     test "decodes the dispatchable set as a bare array of routing rows" do
       stub =
-        stub_script(~s(echo '[{"id":"7","model":"codex","markers":[]},{"id":"8","model":null,"markers":["bug"]}]'))
+        stub_script("""
+        if [ "$1 $2 $3 $4" != "ready --dispatchable --fields id,assignee,markers" ]; then
+          echo "unexpected args: $*" >&2
+          exit 42
+        fi
+        echo '[{"id":"7","assignee":"codex","markers":[]},{"id":"8","assignee":null,"markers":["bug"]}]'
+        """)
 
-      assert {:ok, [%{"id" => "7", "model" => "codex"}, %{"id" => "8", "model" => nil}]} =
+      assert {:ok, [%{"id" => "7", "assignee" => "codex"}, %{"id" => "8", "assignee" => nil}]} =
                Roadmap.ready(project_root: @sample, rmap_bin: stub)
     end
 
