@@ -19,12 +19,9 @@ defmodule Harness.Dashboard.Transcript.ParserTest do
 
   # Feeds the fixture all at once and finalizes the parser. Returns the
   # complete event list — the canonical "the entire transcript was already
-  # delivered" path.
-  defp parse_full(agent, body) do
-    {events, parser} = Parser.append(agent, body, Parser.init_state(agent))
-    {final_events, _parser} = Parser.finalize(agent, parser)
-    events ++ final_events
-  end
+  # delivered" path, delegated to the public replay/2 so every fixture test
+  # exercises it.
+  defp parse_full(agent, body), do: Parser.replay(agent, body)
 
   # Feeds the fixture one byte at a time so the line buffer must reassemble
   # every event across chunk boundaries. The emitted event list must equal

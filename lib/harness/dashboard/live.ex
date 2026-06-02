@@ -494,17 +494,9 @@ defmodule Harness.Dashboard.Live do
 
       agent_kind ->
         socket
-        |> assign(:transcript_events, parse_events(agent_kind, output))
+        |> assign(:transcript_events, Parser.replay(agent_kind, output))
         |> assign(:agent_kind, agent_kind)
     end
-  end
-
-  @spec parse_events(Parser.agent_kind(), binary()) :: [Parser.event()]
-  defp parse_events(agent_kind, output) do
-    state = Parser.init_state(agent_kind)
-    {events, state} = Parser.append(agent_kind, output, state)
-    {final, _state} = Parser.finalize(agent_kind, state)
-    events ++ final
   end
 
   # LogRecord.agent carries the agent atom on the batch path; for a direct run

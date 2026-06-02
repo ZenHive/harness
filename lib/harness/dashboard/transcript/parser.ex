@@ -125,4 +125,19 @@ defmodule Harness.Dashboard.Transcript.Parser do
   def finalize(:pi, state), do: Pi.finalize(state)
   def finalize(:grok, state), do: Grok.finalize(state)
   def finalize(:antigravity, state), do: Passthrough.finalize(state)
+
+  @doc """
+  Parses a complete captured agent output in one pass.
+
+  Composition of `init_state/1` → `append/3` → `finalize/2` for replaying a
+  settled run's `agent_output` (the run-detail and compare record-backfill
+  paths), as opposed to the chunk-by-chunk live path.
+  """
+  @spec replay(agent_kind(), iodata()) :: [event()]
+  def replay(agent_kind, output) do
+    state = init_state(agent_kind)
+    {events, state} = append(agent_kind, output, state)
+    {final, _state} = finalize(agent_kind, state)
+    events ++ final
+  end
 end
