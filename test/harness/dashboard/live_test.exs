@@ -324,8 +324,6 @@ defmodule Harness.Dashboard.LiveTest do
       {:noreply, socket} = Live.handle_info(:meta_tick, meta_tick_socket())
 
       assert is_list(socket.assigns.projects)
-      assert is_list(socket.assigns.adapters)
-      assert is_list(socket.assigns.unavailable)
       # Counts self-heal on the slow tick even with no lifecycle event in flight.
       assert is_map(socket.assigns.counts)
       assert is_boolean(socket.assigns.active_empty?)
@@ -397,9 +395,7 @@ defmodule Harness.Dashboard.LiveTest do
         __changed__: %{},
         live_action: :index,
         selected_project: nil,
-        projects: [],
-        adapters: [],
-        unavailable: []
+        projects: []
       }
     }
   end

@@ -12,6 +12,8 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   use Harness.Dashboard.ConnCase, async: false
 
   alias Harness.Agent.Settings, as: AgentSettings
+  alias Harness.AgentAdapter.Codex
+  alias Harness.AgentRegistry
   alias Harness.Cron.Settings
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
@@ -109,6 +111,16 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     assert html =~ "disabled"
     assert AgentSettings.disabled?(:claude)
     refute AgentSettings.disabled?(:codex)
+  end
+
+  test "a transiently-unavailable agent renders a paused pill (folded in from the dashboard)", %{conn: conn} do
+    :ok = AgentRegistry.mark_unavailable(Codex, {:quota_exhausted, :codex})
+    on_exit(fn -> AgentRegistry.mark_available(Codex) end)
+
+    {:ok, _view, html} = live(conn, "/harness/settings")
+
+    assert html =~ "paused"
+    assert html =~ "quota_exhausted"
   end
 
   test "renders the read-only config inspector card with concern sections", %{conn: conn} do

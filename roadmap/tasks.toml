@@ -3886,19 +3886,20 @@ id = "122"
 phase = 13
 bundle = "kpi-routing"
 milestone = "v0_10"
-status = "pending"
+status = "in_progress"
 title = "Oban cron capability-benchmark scheduler — fill unmeasured/stale cells autonomously"
-model = "cursor"
 scores = { d = 6, b = 8, u = 8 }
 depends_on = [117, 119, 121]
 acceptance_criteria = ["An Oban cron job (behind a config toggle, default off in test) periodically selects unmeasured/stale (agent, domain) cells (Task 120) and dispatches the relevant corpus items across the available agents via Batch.AgentEvaluation", "Results are scored + persisted via Task 119; fresh cells are skipped (no needless re-runs)", "Unavailable agents (AgentRegistry) are skipped gracefully; concurrency is capped; skipped/deferred cells are logged, never silently dropped", "The schedule + which cells were (re)benchmarked is observable (log or dashboard) so a human witness can see autonomy working", "Tests cover: cell selection (stale/unmeasured chosen, fresh skipped), the availability skip, and that a run persists a score"]
 out_of_scope = ["The cron master on/off toggle UX — Task 109 owns runtime cron enable/disable; this registers a job that toggle governs", "A new dispatch primitive — reuses Batch.AgentEvaluation", "Routing consumption — Task 121"]
+model = "cursor"
 body = """
 Periodically run the benchmark corpus (Task 117) through the available agents via Batch.AgentEvaluation, persist the scores (Task 119), and prioritize the (agent, domain) cells Task 120 flags unmeasured or stale and Task 121 wants explored. Builds on the existing Oban.Plugins.Cron (Task 51) — queue-per-project + cron are already in the stack.
 
 Respect agent availability (AgentRegistry) and cost: do not re-benchmark fresh cells, cap concurrency, and log what was skipped (no silent truncation). This closes the loop — the system keeps its trust signal current without a human kicking off benchmarks.
 """
 created_at = "2026-05-31"
+started_at = "2026-06-02"
 scored_at = "2026-05-31"
 
 [[task]]
@@ -4638,7 +4639,7 @@ scored_at = "2026-06-01"
 id = "152"
 phase = 11
 bundle = "autolanding"
-status = "pending"
+status = "in_progress"
 title = "Flaky 150 test: cancel/1-from-:held times out under full-suite load (run_test.exs:750)"
 scores = { d = 2, b = 3, u = 3 }
 markers = ["bug"]
@@ -4653,4 +4654,5 @@ Likely cause: the graceful-hold path parks at the next settle boundary, which un
 Per critical-rules: never repair-loop or block on an unconfirmed flake; this one is confirmed flaky (passes isolated, deterministic), filed for root-cause fix.
 """
 created_at = "2026-06-02"
+started_at = "2026-06-02"
 scored_at = "2026-06-02"

@@ -21,9 +21,10 @@ defmodule Harness.Dashboard.Live do
   store **once at mount** (and re-filtered in memory on a project switch) — no
   per-tick disk scan.
 
-  Sidebar metadata (registered projects, adapters, unavailable/quota agents) has
-  no event source, so a slow **5s `:meta_tick`** keeps it fresh. That tick does
-  no disk I/O and never touches the run streams.
+  Sidebar metadata (registered projects) has no event source, so a slow
+  **5s `:meta_tick`** keeps it fresh. That tick does no disk I/O and never
+  touches the run streams. Adapter install/enable/quota state lives on the
+  Settings page (`Harness.Dashboard.SettingsLive`), not here.
 
   An operator can kill an in-flight run from either view via a confirm-gated
   "Kill run" button (`Task 94`); the `"kill_run"` event routes through
@@ -89,8 +90,6 @@ defmodule Harness.Dashboard.Live do
      |> assign(:projects, projects)
      |> assign(:roadmap, RoadmapSummary.for_projects(projects))
      |> assign(:show_landed, false)
-     |> assign(:adapters, list_adapters())
-     |> assign(:unavailable, snapshot.unavailable_agents)
      |> assign(:selected_project, nil)
      |> assign(:counts, bucket_counts(snapshot))
      |> assign(:history_all, snapshot.history)
@@ -214,13 +213,9 @@ defmodule Harness.Dashboard.Live do
   def handle_info(:meta_tick, socket) do
     schedule_meta_tick()
 
-    # Sidebar-only refresh: registered projects, adapters, and unavailable/quota
-    # agents. All in-memory — no snapshot, no store read, no run-stream touch.
-    socket =
-      socket
-      |> assign(:projects, ProjectRegistry.list())
-      |> assign(:adapters, list_adapters())
-      |> assign(:unavailable, AgentRegistry.list_unavailable())
+    # Sidebar-only refresh: registered projects. In-memory — no snapshot, no
+    # store read, no run-stream touch. (Adapter/agent state lives on Settings.)
+    socket = assign(socket, :projects, ProjectRegistry.list())
 
     # On the index, also recompute the in-memory fleet counts + active-empty
     # flag. Lifecycle events drive these, but a settled run's terminal-linger
@@ -451,15 +446,6 @@ defmodule Harness.Dashboard.Live do
   @spec schedule_roadmap_tick() :: reference()
   defp schedule_roadmap_tick, do: Process.send_after(self(), :roadmap_tick, @roadmap_tick_interval_ms)
 
-  @spec list_adapters() :: [%{agent: atom(), module: module(), installed: boolean()}]
-  defp list_adapters do
-    AgentRegistry.agents()
-    |> Enum.map(fn {agent, module} ->
-      %{agent: agent, module: module, installed: AgentRegistry.installed?(module)}
-    end)
-    |> Enum.sort_by(& &1.agent)
-  end
-
   # Settled run: no live gen_statem to subscribe to. Rebuild the status snapshot
   # and replay the transcript from the persisted LogRecord so the drill-down
   # survives a BEAM restart. An empty/errored store lookup leaves run_status nil
@@ -621,33 +607,6 @@ defmodule Harness.Dashboard.Live do
         else: "No unmerged runs — every settled run has landed."}
     </p>
     <.run_table id="run-history" rows={@streams.history} summaries={@roadmap} />
-
-    <h3>Adapters</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Agent</th>
-          <th>Module</th>
-          <th>Installed</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr :for={adapter <- @adapters}>
-          <td><code>{adapter.agent}</code></td>
-          <td><code>{inspect(adapter.module)}</code></td>
-          <td>{if adapter.installed, do: "yes", else: "no"}</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <div :if={@unavailable != []}>
-      <h3>Unavailable agents</h3>
-      <ul>
-        <li :for={{adapter, reason} <- @unavailable}>
-          <code>{inspect(adapter)}</code> — {inspect(reason)}
-        </li>
-      </ul>
-    </div>
     """
   end
 

@@ -9,6 +9,11 @@ defmodule Harness.Dashboard.SettingsLive do
   project`. A slow `:meta_tick` keeps the project list fresh against
   `ProjectRegistry` since registration has no event source.
 
+  Also hosts the per-agent dispatch controls (Task 128): enable/disable
+  toggles over `Harness.Agent.Settings`, plus installed/paused pills — the
+  transient quota-unavailability signal (`AgentRegistry.list_unavailable/0`)
+  renders only here, not on the run dashboard.
+
   Designed as the home for further operator config (the Task 127 config
   inspector slots in here as a sibling card).
   """
@@ -150,6 +155,14 @@ defmodule Harness.Dashboard.SettingsLive do
               >
                 not installed
               </span>
+              <span
+                :if={agent.unavailable != nil}
+                class="pill"
+                data-state="off"
+                title={"transient pause: #{inspect(agent.unavailable)} — clears on its own or restart"}
+              >
+                paused
+              </span>
             </div>
             <.toggle
               on={agent.enabled}
@@ -200,17 +213,21 @@ defmodule Harness.Dashboard.SettingsLive do
   end
 
   # The per-agent enable/disable view-model over the registry's agent set:
-  # operator enablement (persisted) plus whether the CLI binary is on PATH (a
+  # operator enablement (persisted), whether the CLI binary is on PATH (a
   # disabled-but-installed agent is an operator choice; an enabled-but-missing
-  # one explains a `:no_available_agent` at dispatch).
+  # one explains a `:no_available_agent` at dispatch), and the transient
+  # unavailability reason (quota pause), nil when dispatchable.
   @spec agents_state() :: [map()]
   defp agents_state do
+    unavailable = Map.new(AgentRegistry.list_unavailable())
+
     Enum.map(AgentRegistry.agents(), fn {agent, module} ->
       %{
         name: Atom.to_string(agent),
         label: String.capitalize(Atom.to_string(agent)),
         enabled: AgentSettings.enabled?(agent),
-        installed: AgentRegistry.installed?(module)
+        installed: AgentRegistry.installed?(module),
+        unavailable: Map.get(unavailable, module)
       }
     end)
   end
