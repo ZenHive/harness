@@ -271,6 +271,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Empty-diff runs are verified instead of cancelled `:no_changes` (Task 159,
+  codex delivery + reviewer salvage).** A run whose agent makes zero edits no
+  longer short-circuits to `{:cancel, :no_changes}` before verification: when
+  the agent completed normally (`kind: :exited`, no quota exhaustion) and the
+  project has meaningful checks, harness grades the current branch state —
+  green settles `:done` (the already-implemented case, e.g. rmap task 32 on
+  cursor), red settles `:base_red`, and only a genuinely ungradeable no-op
+  still cancels. The reviewer-salvaged gap: quota-exhausted/timed-out/crashed
+  no-op agents stay failed (`normal_agent_completion?`), preserving
+  quota-failover semantics. First landing reviewed-and-fixed by a cross-family
+  agent per the reviewer-pair model (docs/reviewer-pair-architecture.md).
+
 - **Baseline verification runs get the same diff-aware post_process as the agent
   worktree (Task 160, hand-built).** `run_baseline_stacks/4` never passed
   `:base_ref` into the baseline run's post-process opts, so

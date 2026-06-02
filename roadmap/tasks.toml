@@ -4928,7 +4928,7 @@ shipped_in = "c6bda6a"
 id = "159"
 phase = 11
 bundle = "autolanding"
-status = "in_progress"
+status = "done"
 title = "`:no_changes` cancels before verifying — an already-implemented task wedges in_progress instead of being graded/landed"
 scores = { d = 3, b = 6, u = 6 }
 markers = ["bug"]
@@ -4950,9 +4950,14 @@ This is a THIRD distinct run-lifecycle gap surfaced 2026-06-02, alongside the se
 
 Fix direction (implementer's call): in the run gen_statem, when the post-agent diff is empty, branch the disposition — if the branch can be meaningfully graded (ahead of base, or task plausibly already implemented), run Verification.run/2 and treat green as success -> landing-policy, rather than unconditionally `{:cancel, :no_changes}`. Guard against an infinite re-verify loop and keep a clean terminal reason for the genuinely-empty case. Confirm idempotency when the implementation is already on the target branch (mark done/verified, do not attempt an empty merge).
 """
+implemented = "Empty-diff disposition: committing routes {:ok, :no_changes, _} through verify_no_changes? — when the agent completed normally (kind :exited, no quota exhaustion) and checks are meaningful, the run is verified against current branch state instead of cancelled; green settles :done, red settles :base_red, ungradeable still :no_changes. Codex delivery (run run-1780396918179-74f06ecc) + reviewer salvage: normal_agent_completion? gate added by hand after the original verification red exposed that quota-exhausted no-ops would settle :done (3 batch quota-failover tests). Reviewer-graded: targeted tests 79/79 green, full-suite reds confirmed flaky in isolation, credo finding pre-existing Task-142 debt."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-02"
 started_at = "2026-06-02"
 scored_at = "2026-06-02"
+done_at = "2026-06-02"
+shipped_in = "2d19124"
 
 [[task]]
 id = "160"
