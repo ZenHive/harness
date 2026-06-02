@@ -76,9 +76,15 @@ defmodule Harness.Cron.RoadmapPoller do
   end
 
   @doc false
+  @spec cron_entry() :: {String.t(), module(), keyword()}
+  def cron_entry do
+    {schedule(), __MODULE__, [queue: @cron_queue, max_attempts: 1]}
+  end
+
+  @doc false
   @spec cron_plugin() :: {module(), keyword()}
   def cron_plugin do
-    {Cron, crontab: [{schedule(), __MODULE__, [queue: @cron_queue, max_attempts: 1]}]}
+    {Cron, crontab: [cron_entry()]}
   end
 
   @doc false

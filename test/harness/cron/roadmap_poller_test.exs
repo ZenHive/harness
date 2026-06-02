@@ -2,6 +2,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
   use ExUnit.Case, async: false
 
   alias Harness.AgentRegistry
+  alias Harness.Cron.CapabilityBenchmarkScheduler
   alias Harness.Cron.RoadmapPoller
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
@@ -39,9 +40,10 @@ defmodule Harness.Cron.RoadmapPollerTest do
     assert RoadmapPoller.enabled?()
     assert {:cron, 1} in Harness.Oban.oban_opts()[:queues]
 
-    assert {Cron, crontab: [{"* * * * *", RoadmapPoller, [queue: :cron, max_attempts: 1]}]} in Harness.Oban.oban_opts()[
-             :plugins
-           ]
+    crontab = cron_crontab()
+
+    assert {"* * * * *", RoadmapPoller, [queue: :cron, max_attempts: 1]} in crontab
+    assert CapabilityBenchmarkScheduler.cron_entry() in crontab
   end
 
   test "disabled poller does not read the roadmap or enqueue work" do
@@ -169,6 +171,15 @@ defmodule Harness.Cron.RoadmapPollerTest do
 
   defp cron_plugin?({Cron, _opts}), do: true
   defp cron_plugin?(_plugin), do: false
+
+  defp cron_crontab do
+    Harness.Oban.oban_opts()
+    |> Keyword.get(:plugins, [])
+    |> Enum.find_value([], fn
+      {Cron, crontab: entries} -> entries
+      _ -> false
+    end)
+  end
 
   # A `rmap ready --dispatchable --fields id,model,markers` row.
   defp task(id, model), do: %{"id" => id, "model" => model, "markers" => []}

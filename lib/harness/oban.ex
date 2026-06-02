@@ -11,6 +11,7 @@ defmodule Harness.Oban do
 
   import Ecto.Query, only: [from: 2]
 
+  alias Harness.Cron.CapabilityBenchmarkScheduler
   alias Harness.Cron.RoadmapPoller
   alias Harness.Project
   alias Harness.ProjectRegistry
@@ -201,9 +202,16 @@ defmodule Harness.Oban do
 
   @spec enable_cron_plugin(keyword()) :: keyword()
   defp enable_cron_plugin(opts) do
-    Keyword.update(opts, :plugins, [RoadmapPoller.cron_plugin()], fn
-      plugins when is_list(plugins) -> plugins ++ [RoadmapPoller.cron_plugin()]
-      _other -> [RoadmapPoller.cron_plugin()]
+    plugin = {Oban.Plugins.Cron, crontab: cron_crontab()}
+
+    Keyword.update(opts, :plugins, [plugin], fn
+      plugins when is_list(plugins) -> plugins ++ [plugin]
+      _other -> [plugin]
     end)
+  end
+
+  @spec cron_crontab() :: [{String.t(), module(), keyword()}]
+  defp cron_crontab do
+    [RoadmapPoller.cron_entry(), CapabilityBenchmarkScheduler.cron_entry()]
   end
 end

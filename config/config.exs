@@ -34,6 +34,16 @@ config :harness, :agent_settings, root: Path.expand("~/.harness")
 # `false` to disable persistence entirely.
 config :harness, :chat_store, root: Path.expand("~/.harness/chats")
 
+# Autonomous capability-benchmark scheduler (Task 122). The Oban cron entry is
+# registered unconditionally; `enabled` is the live dispatch gate (default off
+# in test). `max_cells_per_tick` caps cost per tick; `max_concurrency` is
+# forwarded to Batch.AgentEvaluation.compare/4.
+config :harness, :cron_capability_benchmark,
+  enabled: false,
+  schedule: "0 3 * * *",
+  max_cells_per_tick: 3,
+  max_concurrency: 1
+
 # Autonomous roadmap polling is opt-in. The Oban.Plugins.Cron entry that runs
 # Harness.Cron.RoadmapPoller is registered unconditionally (Task 109) so the
 # runtime master toggle has a scheduled tick to act on; `enabled` is the live
