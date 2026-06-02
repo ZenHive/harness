@@ -78,6 +78,7 @@ defmodule Harness.Run do
 
   use Descripex, namespace: "/run"
 
+  alias Harness.Agent.Settings, as: AgentSettings
   alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Driver
   alias Harness.AgentAdapter.Invocation
@@ -770,11 +771,8 @@ defmodule Harness.Run do
     failed_signatures = failed_check_signatures(verdict)
 
     cond do
-      Verdict.passed?(verdict) and semantic_gate_enabled?(data) ->
-        {:next_state, :consulting, %{data | consultation_kind: :semantic_gate}}
-
       Verdict.passed?(verdict) ->
-        {:next_state, :done, clear_operator_steer(%{data | reason: :passed, repair_prompt_kind: nil})}
+        settle_green_verdict(data)
 
       verdict.status == :base_red ->
         {:next_state, :failed, %{data | reason: :base_red, last_failed_check_signatures: failed_signatures}}
@@ -846,7 +844,7 @@ defmodule Harness.Run do
 
     case data.consultation_kind do
       :semantic_gate ->
-        handle_semantic_gate_verdict(data, verdict, feedback)
+        handle_semantic_gate_outcome(data, verdict, outcome, feedback)
 
       _repair ->
         data = %{
@@ -867,7 +865,8 @@ defmodule Harness.Run do
       :semantic_gate ->
         Logger.warning("harness run: semantic gate grader failed for #{data.run_id}: #{inspect(reason)}")
 
-        reject_semantic_gate(%{data | task: nil}, semantic_gate_failure_feedback(reason))
+        feedback = semantic_gate_failure_feedback(reason)
+        handle_semantic_gate_verdict(%{data | task: nil}, feedback.verdict, feedback)
 
       _repair ->
         Logger.warning("harness run: cross-agent repair grader failed for #{data.run_id}: #{inspect(reason)}")
@@ -881,10 +880,8 @@ defmodule Harness.Run do
       :semantic_gate ->
         Logger.warning("harness run: semantic gate grader crashed for #{data.run_id}: #{inspect(reason)}")
 
-        reject_semantic_gate(
-          %{data | task: nil},
-          semantic_gate_failure_feedback({:crashed, reason})
-        )
+        feedback = semantic_gate_failure_feedback({:crashed, reason})
+        handle_semantic_gate_verdict(%{data | task: nil}, feedback.verdict, feedback)
 
       _repair ->
         Logger.warning("harness run: cross-agent repair grader crashed for #{data.run_id}: #{inspect(reason)}")
@@ -1589,7 +1586,8 @@ defmodule Harness.Run do
   defp grade_discernment(data, trigger) when trigger in [:post_green, :in_run] do
     opts = data.semantic_gate
 
-    with :ok <- ensure_cross_family_semantic_grader(data.item.agent, Keyword.get(opts, :grader)),
+    with {:ok, grader} <- semantic_gate_grader(data),
+         true <- semantic_grader_dispatchable?(grader) || {:error, {:semantic_grader_unavailable, grader}},
          {:ok, evidence} <- discernment_evidence(data, trigger) do
       [
         implementer: data.item.agent,
@@ -1597,7 +1595,7 @@ defmodule Harness.Run do
         prompt: discernment_prompt(data, trigger, evidence),
         cwd: data.worktree.path
       ]
-      |> put_opt(:grader, Keyword.get(opts, :grader))
+      |> put_opt(:grader, grader)
       |> put_opt(:model, Keyword.get(opts, :model))
       |> put_opt(:adapter_opts, Keyword.get(opts, :adapter_opts))
       |> put_opt(:total_timeout, Keyword.get(opts, :total_timeout))
@@ -1616,13 +1614,55 @@ defmodule Harness.Run do
     end
   end
 
-  @spec ensure_cross_family_semantic_grader(atom(), atom() | nil) :: :ok | {:error, term()}
-  defp ensure_cross_family_semantic_grader(_implementer, nil), do: :ok
+  @spec semantic_gate_grader(data()) :: {:ok, atom()} | {:error, term()}
+  defp semantic_gate_grader(data) do
+    semantic_gate_grader(data.item.agent, Keyword.get(data.semantic_gate, :grader))
+  end
 
-  defp ensure_cross_family_semantic_grader(implementer, grader) do
+  @spec semantic_gate_grader(atom(), term()) :: {:ok, atom()} | {:error, term()}
+  defp semantic_gate_grader(implementer, nil), do: AuditReview.default_grader(implementer)
+
+  defp semantic_gate_grader(implementer, grader) when is_atom(grader) do
     case known_grader_agent(grader) do
-      {:ok, ^implementer} -> {:error, {:same_family_grader, implementer, grader}}
-      _other -> :ok
+      {:ok, ^implementer} -> AuditReview.default_grader(implementer)
+      _other -> {:ok, grader}
+    end
+  end
+
+  defp semantic_gate_grader(_implementer, grader), do: {:error, {:invalid_option, :grader, grader}}
+
+  # A green verdict enters the semantic gate only when the gate is enabled AND
+  # its cross-family grader is actually dispatchable (Task 158 — a missing or
+  # operator-disabled grader fails open to :done, never burning repair attempts);
+  # otherwise the run settles :done directly.
+  @spec settle_green_verdict(data()) :: handler_result()
+  defp settle_green_verdict(data) do
+    if semantic_gate_enabled?(data) and semantic_gate_grader_available?(data) do
+      {:next_state, :consulting, %{data | consultation_kind: :semantic_gate}}
+    else
+      {:next_state, :done, clear_operator_steer(%{data | reason: :passed, repair_prompt_kind: nil})}
+    end
+  end
+
+  @spec semantic_gate_grader_available?(data()) :: boolean()
+  defp semantic_gate_grader_available?(data) do
+    case semantic_gate_grader(data) do
+      {:ok, grader} -> semantic_grader_dispatchable?(grader)
+      {:error, _reason} -> false
+    end
+  end
+
+  @spec semantic_grader_dispatchable?(atom()) :: boolean()
+  defp semantic_grader_dispatchable?(grader) when is_atom(grader) do
+    case known_grader_agent(grader) do
+      {:ok, agent} ->
+        case AgentRegistry.module_for_agent(agent) do
+          {:ok, module} -> AgentSettings.enabled?(agent) and AgentRegistry.available?(module)
+          {:error, _reason} -> false
+        end
+
+      :unknown ->
+        AgentRegistry.available?(grader)
     end
   end
 
@@ -1645,6 +1685,15 @@ defmodule Harness.Run do
           rationale: String.t()
         }) ::
           handler_result()
+  defp handle_semantic_gate_outcome(data, verdict, %Outcome{} = outcome, feedback) do
+    if semantic_gate_infra_outcome?(outcome) do
+      feedback = semantic_gate_failure_feedback({:grader_failed, outcome.kind, outcome.output})
+      handle_semantic_gate_verdict(data, feedback.verdict, feedback)
+    else
+      handle_semantic_gate_verdict(data, verdict, feedback)
+    end
+  end
+
   defp handle_semantic_gate_verdict(data, :approve, _feedback) do
     {:next_state, :done, %{data | reason: :passed, consultation_kind: nil, repair_prompt_kind: nil}}
   end
@@ -1734,13 +1783,56 @@ defmodule Harness.Run do
       AgentAdapter.supports?(data.adapter, :session_resume)
   end
 
-  @spec semantic_gate_failure_feedback(term()) :: %{verdict: :reject, rationale: String.t()}
+  @spec semantic_gate_failure_feedback(term()) :: %{verdict: AuditReview.verdict(), rationale: String.t()}
   defp semantic_gate_failure_feedback(reason) do
     %{
-      verdict: :reject,
+      verdict: semantic_gate_failure_verdict(reason),
       rationale: "Semantic gate did not approve the diff: #{inspect(reason)}"
     }
   end
+
+  @spec semantic_gate_failure_verdict(term()) :: AuditReview.verdict()
+  defp semantic_gate_failure_verdict(reason) do
+    if semantic_gate_failure_open?(reason), do: :approve, else: :reject
+  end
+
+  @spec semantic_gate_failure_open?(term()) :: boolean()
+  defp semantic_gate_failure_open?({:grader_failed, reason}), do: semantic_gate_failure_open?(reason)
+  defp semantic_gate_failure_open?({:grader_failed, _kind, output}), do: semantic_gate_infra_output?(output)
+  defp semantic_gate_failure_open?({:no_default_grader, _implementer}), do: true
+  defp semantic_gate_failure_open?({:semantic_grader_unavailable, _grader}), do: true
+  defp semantic_gate_failure_open?({:executable_not_found, _executable}), do: true
+  defp semantic_gate_failure_open?({:unknown_agent, _agent}), do: true
+  defp semantic_gate_failure_open?({:same_family_grader, _implementer, _grader}), do: true
+  defp semantic_gate_failure_open?({:crashed, _reason}), do: true
+  defp semantic_gate_failure_open?(_reason), do: false
+
+  @spec semantic_gate_infra_outcome?(Outcome.t()) :: boolean()
+  defp semantic_gate_infra_outcome?(%Outcome{kind: {:error, _reason}}), do: true
+  defp semantic_gate_infra_outcome?(%Outcome{output: output}), do: semantic_gate_infra_output?(output)
+
+  @spec semantic_gate_infra_output?(term()) :: boolean()
+  defp semantic_gate_infra_output?(output) when is_binary(output) do
+    output = String.downcase(output)
+
+    Enum.any?(
+      [
+        ~s("is_error":true),
+        "api_error_status",
+        "credit balance is too low",
+        "subscription quota",
+        "quota exhausted",
+        "quota exceeded",
+        "usage limit",
+        "rate limit exceeded",
+        "agent unavailable",
+        "operator-disabled"
+      ],
+      &String.contains?(output, &1)
+    )
+  end
+
+  defp semantic_gate_infra_output?(_output), do: false
 
   @spec notify_in_run_discernment(
           data(),

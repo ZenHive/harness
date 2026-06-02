@@ -129,8 +129,11 @@ config :harness, :run, max_repair_attempts: 3
 # override that forces the gate on/off for one run regardless of landing policy
 # (Task 123). `:auto_land_only` (the project default) preserves the original
 # gate-iff-auto-land behaviour. The grader defaults through Harness.AuditReview's
-# cross-family :claude <-> :codex pairing; test/dev overrides may pass :grader
-# plus the same AuditReview pass-through opts (:model, :adapter_opts,
+# cross-family :claude <-> :codex pairing; non-auto-paired implementers
+# (:grok/:cursor/:antigravity/:pi) may be pointed at a cross-family fallback with
+# `grader: :codex` or another available grader. Same-family grader settings are
+# ignored in favor of the auto-pair/fail-open path. Test/dev overrides may also
+# pass the same AuditReview pass-through opts (:model, :adapter_opts,
 # :total_timeout, :idle_timeout).
 config :harness, :semantic_gate, enabled: :auto
 

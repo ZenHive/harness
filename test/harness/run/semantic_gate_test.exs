@@ -1,8 +1,11 @@
 defmodule Harness.Run.SemanticGateTest do
   use ExUnit.Case, async: false
 
+  alias Harness.Agent.Settings, as: AgentSettings
   alias Harness.AgentAdapter.Capabilities
+  alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Invocation
+  alias Harness.AgentRegistry
   alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
@@ -65,6 +68,27 @@ defmodule Harness.Run.SemanticGateTest do
   end
 
   describe "green semantic gate" do
+    setup do
+      old_disabled = Application.get_env(:harness, :agent_disabled)
+      old_semantic_gate = Application.get_env(:harness, :semantic_gate)
+
+      on_exit(fn ->
+        AgentRegistry.reset()
+
+        case old_disabled do
+          nil -> Application.delete_env(:harness, :agent_disabled)
+          agents -> Application.put_env(:harness, :agent_disabled, agents)
+        end
+
+        case old_semantic_gate do
+          nil -> Application.delete_env(:harness, :semantic_gate)
+          opts -> Application.put_env(:harness, :semantic_gate, opts)
+        end
+      end)
+
+      :ok
+    end
+
     test "green verdict with gate enabled dispatches a grader with task contract and committed diff" do
       prompt_file = tmp_path("semantic-gate-prompt")
       count_file = tmp_path("semantic-gate-count")
@@ -93,6 +117,81 @@ defmodule Harness.Run.SemanticGateTest do
       assert prompt =~ "agent_output.txt"
       assert prompt =~ "<<<VERDICT:APPROVE>>>"
       assert prompt =~ "<<<VERDICT:REJECT>>>"
+    end
+
+    test "green verdict skips semantic gate when implementer has no default grader" do
+      result =
+        run(
+          item: item(agent: :grok),
+          max_repair_attempts: 3,
+          semantic_gate: [enabled: true]
+        )
+
+      assert %Result{state: :done, reason: :passed, repair_attempts: 0} = result
+    end
+
+    test "green verdict skips semantic gate when auto-paired grader is operator-disabled" do
+      AgentSettings.set_enabled(:claude, false, "test")
+
+      result =
+        run(
+          item: item(agent: :codex),
+          max_repair_attempts: 3,
+          semantic_gate: [enabled: true]
+        )
+
+      assert %Result{state: :done, reason: :passed, repair_attempts: 0} = result
+    end
+
+    test "green verdict skips semantic gate when auto-paired grader is transiently unavailable" do
+      AgentRegistry.mark_unavailable(Claude, :test_unavailable)
+
+      result =
+        run(
+          item: item(agent: :codex),
+          max_repair_attempts: 3,
+          semantic_gate: [enabled: true]
+        )
+
+      assert %Result{state: :done, reason: :passed, repair_attempts: 0} = result
+    end
+
+    test "explicit available grader still runs for non-auto-paired implementer" do
+      prompt_file = tmp_path("semantic-grok-prompt")
+      count_file = tmp_path("semantic-grok-count")
+
+      result =
+        run(
+          item: item(agent: :grok),
+          semantic_gate: [
+            enabled: true,
+            grader: RecordingSemanticGrader,
+            adapter_opts: [prompt_file: prompt_file, count_file: count_file, mode: :approve],
+            total_timeout: 10_000,
+            idle_timeout: 5_000
+          ]
+        )
+
+      assert %Result{state: :done, reason: :passed, repair_attempts: 0} = result
+      assert File.read!(count_file) == "hit\n"
+    end
+
+    test "configured semantic gate grader runs for non-auto-paired implementer" do
+      prompt_file = tmp_path("semantic-configured-grok-prompt")
+      count_file = tmp_path("semantic-configured-grok-count")
+
+      Application.put_env(:harness, :semantic_gate,
+        enabled: true,
+        grader: RecordingSemanticGrader,
+        adapter_opts: [prompt_file: prompt_file, count_file: count_file, mode: :approve],
+        total_timeout: 10_000,
+        idle_timeout: 5_000
+      )
+
+      result = run(item: item(agent: :grok))
+
+      assert %Result{state: :done, reason: :passed, repair_attempts: 0} = result
+      assert File.read!(count_file) == "hit\n"
     end
 
     test "reject blocks done, feeds one repair pass, and approve settles done" do
@@ -127,7 +226,7 @@ defmodule Harness.Run.SemanticGateTest do
       assert marker =~ "first pass missed the contract"
     end
 
-    test "dispatch failure is treated as semantic rejection" do
+    test "dispatch failure fails open instead of semantic rejection" do
       result =
         run(
           semantic_gate: [
@@ -139,7 +238,7 @@ defmodule Harness.Run.SemanticGateTest do
           ]
         )
 
-      assert %Result{state: :failed, reason: :semantic_rejection, repair_attempts: 0} = result
+      assert %Result{state: :done, reason: :passed, repair_attempts: 0} = result
     end
 
     test "timeout without an approve sentinel is treated as semantic rejection" do
@@ -157,16 +256,19 @@ defmodule Harness.Run.SemanticGateTest do
       assert %Result{state: :failed, reason: :semantic_rejection, repair_attempts: 0} = result
     end
 
-    test "explicit same-family grader is rejected fail-safe" do
+    test "explicit same-family grader falls back to the auto-pair and fails open when unavailable" do
+      AgentSettings.set_enabled(:codex, false, "test")
+
       result =
         run(
+          item: item(agent: :claude),
           semantic_gate: [
             enabled: true,
             grader: :claude
           ]
         )
 
-      assert %Result{state: :failed, reason: :semantic_rejection, repair_attempts: 0} = result
+      assert %Result{state: :done, reason: :passed, repair_attempts: 0} = result
     end
 
     test "gate is off by default, auto-enabled for auto-landing projects, and skippable" do
@@ -471,7 +573,7 @@ defmodule Harness.Run.SemanticGateTest do
       id: "99",
       title: "Semantic gate",
       prompt: "do the thing",
-      agent: :claude,
+      agent: Keyword.get(opts, :agent, :claude),
       body: Keyword.get(opts, :body, "Build the smallest useful thing."),
       acceptance_criteria:
         Keyword.get(opts, :acceptance_criteria, ["preserve the hard case", "do not solve the adjacent problem"])
