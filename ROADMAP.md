@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 126 — Run change-set view on the run-detail page (live edited-files + settled git diff) on 2026-05-31
 
-**Up next:** Task 165 — Consolidate the Cron/Agent/Landing settings term files into one Postgres-backed settings store (file fallback) [D:3/B:5/U:5 → Eff:1.67] 🚀
+**Up next:** Task 166 — ConfigInspector reads defaults from owning modules; drop sections deleted by the reviewer-pair pass [D:2/B:4/U:3 → Eff:1.75] 🚀
 <!-- FOCUS:END -->
 
 ---

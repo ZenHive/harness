@@ -6488,7 +6488,7 @@
       "phase": 15,
       "bundle": "reviewer-pair",
       "milestone": "v0_11",
-      "status": "pending",
+      "status": "done",
       "title": "The deletion pass: remove FailureClass, RepairPrompt, BaselineFilter, baseline verification, quota regexes, repair loop, consulting state, semantic-gate machinery",
       "scores": {
         "d": 5,
@@ -6531,9 +6531,13 @@
         "lib/harness/batch.ex",
         "lib/harness/agent_registry.ex"
       ],
+      "shipped_in": "485bf1f",
       "body": "Phase-15 step 3 (docs/reviewer-pair-architecture.md): the payoff. With the reviewer path live (161) and all judgment branch points routed through it (162), every judgment-as-code mechanism is dead weight: ~1,100 lines across FailureClass (131), RepairPrompt (100), BaselineFilter.Credo (273), baseline verification (~150), repair loop + consulting + semantic gate in run.ex (~300), quota patterns (~60), Run.Worker snooze logic (~30). Deleting them is the point — every line removed is a bug class removed. This task also absorbs the two interim bugs found 2026-06-02 (Oban retry branch collision; run_records upsert data loss) — both live in code this pass deletes/rewrites, so they are fixed here rather than patched twice.",
       "created_at": "2026-06-02",
+      "done_at": "2026-06-02",
       "scored_at": "2026-06-02",
+      "implemented": "Deleted FailureClass (131), RepairPrompt (100), BaselineFilter.Credo (273) + baseline verification, post_process plumbing, :base_red, repair loop, :consulting state, cross-agent/semantic-gate machinery, quota regexes — net -1,219 lib/config lines (+470/-1,689), -1,702 total with test rewrites. RetryPolicy rewritten to backoff arithmetic only; repair_attempts metric renamed review_iterations across Result/Status/LogRecord/KPI/dashboards. Oban contract is crash-only: any settled failure cancels + reverts the task; mechanical setup failures snooze capped at 5 (mechanical_retry_exhausted), each retry runs new Worktree.cleanup_for_run/2 (absorbs task 168). Batch failover triggers on {:review_stuck,_} + empty diff, carrying reviewer prose into AgentRegistry marks and batch events. Postgres record_run upsert COALESCEs rich evidence columns (new migration adds reviewer fields); regression scenarios rewritten against the reviewer path (inherited debt paid, Task-160 masking, reviewer-stuck failover, Task-168 collision). Operator-steer composed-input phase renamed :repair -> :steer.",
+      "delivered_by": "claude",
       "cross_repo": []
     },
     {
@@ -6724,7 +6728,7 @@
       "id": "168",
       "phase": 15,
       "bundle": "reviewer-pair",
-      "status": "pending",
+      "status": "superseded",
       "title": "Worktree/branch collision wedges Oban retries — clean up retained worktree+branch before a same-run_id re-attempt",
       "scores": {
         "d": 3,
