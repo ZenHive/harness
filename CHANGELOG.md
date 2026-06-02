@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Reviewer-pair lifecycle, step 1 — `:reviewing` state: a cross-family reviewer
+  agent fixes red worktrees inline (Task 161, codex delivery + reviewer salvage).**
+  A red verdict now routes through `route_red_verdict/1` to a new `:reviewing`
+  gen_statem state instead of the repair loop: a **cross-family reviewer adapter**
+  (different agent family than the implementer; `select_reviewer/1` auto-picks,
+  explicit `reviewer:` opt overrides) gets a fresh session in the SAME worktree
+  with the task spec, implementer transcript tail, diff stat, and full
+  failing-check output, and fixes inline — its own edits and commits. After each
+  reviewer session harness **re-runs the check stack mechanically**; the
+  reviewer's word is never the verdict. One mechanical knob:
+  `max_review_iterations` (default 2; `0` settles `:failed` immediately — the
+  test-env default via `config :harness, :run`). Iterations exhausted or no
+  cross-family adapter available settles `:failed` with the reviewer's
+  stuck-report as prose reason. `Run.Result` / `LogRecord` / `Run.Status` carry
+  `reviewer_adapter`, `review_iterations`, `reviewer_stuck_report`; `StatusView` /
+  `CompareLive` bucket `:reviewing` as repairing. The now-unreachable repair-loop
+  routing functions are deleted; deprecated quota-pattern and cross-agent-repair
+  tests are removed (their behavior is disabled by the `quota_patterns: []`
+  interim config and is deleted wholesale in Task 163).
+
 - **Cron schedule editing from the dashboard — boot-applied presets (Task 111).**
   `Harness.Cron.Settings` now persists the poll cadence alongside the 109/110
   autonomy switches (same `:cron_polling` config + term file), so

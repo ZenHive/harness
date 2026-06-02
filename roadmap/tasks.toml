@@ -4674,7 +4674,7 @@ id = "151"
 phase = 13
 bundle = "capability-bench"
 milestone = "v0_10"
-status = "in_progress"
+status = "pending"
 title = "Agent evaluation corpus — stand up the Elixir corpus repo + prove Mode-B hidden-grader isolation"
 scores = { d = 4, b = 5, u = 4 }
 acceptance_criteria = ["A new per-language corpus repo (~/code/agent-corpus-elixir) exists as a real Elixir project (mix.exs, lib skeletons) with roadmap/tasks.toml as the benchmark, registered as a %Harness.Project{} (landing_policy :manual — corpus runs are scored, never merged)", "Grader-isolation Mode B is PROVEN on one unfamiliar-library task (zen_websocket or mpp): the agent's worktree never contains the grading test, the grader is injected/applied only at verification time (realization (a) — confirm whether CheckStack.setup already supports post-agent/pre-check injection or add the minimal feature), and the agent is graded on a hidden behavioral spec", "One Mode-A visible-spec task also passes end-to-end (in-repo tests the agent makes pass) to exercise both grading modes", "Running the two tasks via Harness.Batch.AgentEvaluation.compare/4 across >=2 enabled adapters populates Harness.CapabilityScore per (agent, domain, corpus_version) and renders in Harness.Dashboard.CompareLive", "corpus_version is recorded (git SHA of the corpus repo or a documented bumped string) so scores are version-comparable; tasks are append-mostly"]
@@ -5009,7 +5009,7 @@ id = "161"
 phase = 15
 bundle = "reviewer-pair"
 milestone = "v0_11"
-status = "in_progress"
+status = "done"
 title = "Reviewer core: :reviewing state — cross-family reviewer agent fixes red worktrees inline"
 scores = { d = 6, b = 9, u = 9 }
 acceptance_criteria = ["New :reviewing state in the Harness.Run gen_statem: a red verdict routes to :reviewing instead of the repair loop (repair loop left in place but unreachable from the red path; deletion is a later task).", "Reviewer selection is cross-family: the reviewer adapter must be a different agent family than the implementer (generalize AuditReview.default_grader's claude<->codex auto-pair; explicit reviewer: opt overrides). If no cross-family adapter is available, the run settles :failed with a prose reason — never silently skips review.", "Reviewer invocation: a fresh adapter session in the SAME worktree, prompt assembled from task spec + acceptance criteria, implementer transcript tail, diff stat, and full failing-check output, with the instruction: fix inline, commit, re-run checks; end green or write a stuck-report.", "After the reviewer session ends, harness re-runs the check stack mechanically. Green -> run settles :done (reviewer's word is never the verdict). Still red and iterations remain -> reviewer re-invoked with the new check output. Iterations exhausted -> :failed with the reviewer's stuck-report as prose reason.", "One mechanical knob: max_review_iterations (default 2), read from opts/config like max_repair_attempts is today.", "Run.Result and run_records carry reviewer facts: reviewer adapter, review_iterations, reviewer stuck-report (when failed). StatusView shows reviewing state.", "Regression tests: red->review->green settles :done; red->review->still-red->exhausted settles :failed with prose; no cross-family adapter available settles :failed; reviewer edits are graded by the same stack (a reviewer that breaks formatting does not settle :done).", "Architecture contract: docs/reviewer-pair-architecture.md is the spec; no judgment cond-branches added to harness code (the reviewer decides, harness counts and re-verifies)."]
@@ -5017,9 +5017,14 @@ files_to_modify = ["lib/harness/run.ex", "lib/harness/run/result.ex"]
 touches = ["lib/harness/run.ex", "lib/harness/run/result.ex", "lib/harness/run/status.ex", "lib/harness/audit_review.ex", "test/harness/run_test.exs"]
 assignee = "codex"
 body = "Phase-15 step 1 of the reviewer-pair architecture (docs/reviewer-pair-architecture.md, settled 2026-06-02). The run lifecycle becomes implementer -> reviewer pair: implementer works and commits; check stack runs; on red, a cross-family REVIEWER agent gets the worktree + task spec + transcript + check output and fixes inline — its own edits, commits, check re-runs — until the stack is green or it reports stuck in prose. Harness re-verifies mechanically after review; the reviewer cannot talk its way to done. This replaces the repair loop (resume implementer with a repair prompt) as the red-verdict path. Rationale: every run-lifecycle bug this week (153/156/157/158/159/160 + two unfiled) traces to judgment calls implemented as procedural code; the reviewer absorbs the judgment, harness keeps only mechanics (worktree, ports, check execution, an iteration counter)."
+implemented = "New :reviewing gen_statem state: route_red_verdict/1 sends red verdicts to a cross-family reviewer agent (select_reviewer/1 picks a different family than the implementer; explicit reviewer: opt overrides) that fixes inline in the same worktree; harness re-runs the check stack mechanically after each review iteration — the reviewer's word is never the verdict. One knob: max_review_iterations (default 2; 0 = settle :failed immediately, test-env default). Run.Result/LogRecord/Status carry reviewer_adapter, review_iterations, reviewer_stuck_report; StatusView buckets :reviewing as repairing. Repair-loop functions deleted (unreachable); deprecated quota-pattern + cross-agent-repair tests deleted (Task 163 scope, forced by the quota_patterns: [] interim disable). Salvage: missing Status fields, valid_utf8_tail/1, test-env review disable, LogRecord/StatusView/CompareLive reviewing support."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-02"
 started_at = "2026-06-02"
 scored_at = "2026-06-02"
+done_at = "2026-06-02"
+shipped_in = "d0846ce"
 
 [[task]]
 id = "162"
@@ -5137,6 +5142,45 @@ Build a declarative Harness.Config schema: one module declaring every operator-r
 Operator-relevant keys only: test-injection seams (:roadmap_list, :roadmap_ready, :run_starter, :oban_insert, :capability_benchmark_*) are seams, not config, and stay out of the schema.
 
 Sequenced after Task 163 so the schema never declares keys the reviewer-pair deletion pass removes. Marked handbuild: the editable-settings card is LiveView/DOM work that needs browser feedback.
+"""
+created_at = "2026-06-02"
+scored_at = "2026-06-02"
+
+[[task]]
+id = "168"
+phase = 15
+bundle = "reviewer-pair"
+status = "pending"
+title = "Worktree/branch collision wedges Oban retries — clean up retained worktree+branch before a same-run_id re-attempt"
+scores = { d = 3, b = 8, u = 8 }
+acceptance_criteria = ["An Oban retry of a failed run whose worktree/branch still exists (retained on failure) does not fail with `fatal: a branch named 'harness/<run_id>' already exists`", "Either the retained worktree+branch are removed before re-create, or the retry reuses them — observed live: job 84 (run-1780400832227-af842f51) burned 11 attempts at ~25ms each on this collision", "A retry that keeps failing mechanically does not snooze forever: snooze-driven max_attempts inflation is bounded or the failure becomes terminal after N identical mechanical failures", "Regression test: fail a run (worktree retained), let the Oban worker re-attempt the same run_id, assert the second attempt gets a working worktree"]
+out_of_scope = ["Any judgment about WHY the first attempt failed (that is the reviewer's job, phase 15)", "Changing the retained-worktree salvage workflow"]
+assignee = "codex"
+body = """
+Observed live 2026-06-02 (run run-1780400832227-af842f51, Oban job 84, task 161 dispatch): the first attempt failed after the agent delivered (setup-phase compile error), harness retained the worktree + branch `harness/run-<id>` by design, then Oban snoozed and re-attempted with the SAME run_id. Every re-attempt calls `git worktree add -b harness/<run_id>` which fails in ~25ms on `fatal: a branch named ... already exists`, gets classified transient (`{:worktree_failed, {:git_failed, ...}}` is in FailureClass.transient?/1), snoozes, and repeats — an infinite mechanical cascade (snooze increments max_attempts, so the budget never exhausts). This is the 'Oban retry branch-collision cascade' unfiled bug referenced in CLAUDE.md § Judgment Lives in Agents.
+
+This is MECHANICAL substrate (worktree/git lifecycle), not agent judgment — it stays procedural code per the phase-15 boundary. The fix belongs in Harness.Worktree / Harness.Run worktree provisioning: detect the leftover branch/worktree for this run_id and remove (or adopt) it before `worktree add`.
+"""
+created_at = "2026-06-02"
+scored_at = "2026-06-02"
+
+[[task]]
+id = "169"
+phase = 15
+bundle = "reviewer-pair"
+status = "pending"
+title = "Agent compile errors surfacing in verification SETUP are misclassified as environment failures — route them to the reviewer"
+scores = { d = 4, b = 8, u = 8 }
+depends_on = [161]
+acceptance_criteria = ["A run whose agent delivery breaks compilation (caught during verification setup, e.g. the test-db-create step compiling the project) routes to :reviewing like any other red verdict — never settles `{:verification_failed, {:setup_failed, _}}` when the setup failure is caused by the agent's own diff", "A genuine environment setup failure (deps unfetchable on a clean base) still settles as setup_failed — the discriminator is mechanical: does setup pass on the base commit but fail on the agent's commit?", "Regression test: an agent that commits code referencing an undefined struct field ends with a reviewer invocation, not a setup_failed verdict", "Observed-live reference: run run-1780400832227-af842f51 (task 161, codex) — delivered 484-line diff with one missing struct field, settled setup_failed, never reviewed"]
+out_of_scope = ["Regex/classifier on compiler output (that is the judgment-as-procedural-code anti-pattern this phase deletes)", "The branch-collision retry cascade (task 168)"]
+assignee = "codex"
+body = """
+Observed live 2026-06-02: codex delivered task 161 (484-line diff, committed) with one compile error (a struct field referenced but never defined). The harness elixir_precommit stack's SETUP phase (test-db-create) compiles the project, so the compile error surfaced as `{:verification_failed, {:setup_failed, ...}}` — which harness treats as an environment error ('the agent never ran; fix the environment and re-dispatch, don't blame the agent' per the driver skill). Result: no repair, no review, the delivery sat in a retained worktree until a human salvaged it by hand.
+
+The judgment call 'whose fault is a setup failure?' is currently encoded procedurally (setup failure => environment). The mechanical discriminator that keeps this out of judgment-code territory: run setup against the base commit; if base setup passes and agent-commit setup fails, the agent's diff broke it => red verdict => reviewer. If base setup also fails, it is genuinely environmental.
+
+Folds into the phase-15 reviewer-pair line per CLAUDE.md § Judgment Lives in Agents (every run-lifecycle judgment bug routes to the reviewer, never another branch/classifier).
 """
 created_at = "2026-06-02"
 scored_at = "2026-06-02"

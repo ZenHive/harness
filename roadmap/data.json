@@ -5936,7 +5936,7 @@
       "phase": 13,
       "bundle": "capability-bench",
       "milestone": "v0_10",
-      "status": "in_progress",
+      "status": "pending",
       "title": "Agent evaluation corpus — stand up the Elixir corpus repo + prove Mode-B hidden-grader isolation",
       "scores": {
         "d": 4,
@@ -6376,7 +6376,7 @@
       "phase": 15,
       "bundle": "reviewer-pair",
       "milestone": "v0_11",
-      "status": "in_progress",
+      "status": "done",
       "title": "Reviewer core: :reviewing state — cross-family reviewer agent fixes red worktrees inline",
       "scores": {
         "d": 6,
@@ -6409,10 +6409,15 @@
         "lib/harness/audit_review.ex",
         "test/harness/run_test.exs"
       ],
+      "shipped_in": "d0846ce",
       "body": "Phase-15 step 1 of the reviewer-pair architecture (docs/reviewer-pair-architecture.md, settled 2026-06-02). The run lifecycle becomes implementer -> reviewer pair: implementer works and commits; check stack runs; on red, a cross-family REVIEWER agent gets the worktree + task spec + transcript + check output and fixes inline — its own edits, commits, check re-runs — until the stack is green or it reports stuck in prose. Harness re-verifies mechanically after review; the reviewer cannot talk its way to done. This replaces the repair loop (resume implementer with a repair prompt) as the red-verdict path. Rationale: every run-lifecycle bug this week (153/156/157/158/159/160 + two unfiled) traces to judgment calls implemented as procedural code; the reviewer absorbs the judgment, harness keeps only mechanics (worktree, ports, check execution, an iteration counter).",
       "created_at": "2026-06-02",
       "started_at": "2026-06-02",
+      "done_at": "2026-06-02",
       "scored_at": "2026-06-02",
+      "implemented": "New :reviewing gen_statem state: route_red_verdict/1 sends red verdicts to a cross-family reviewer agent (select_reviewer/1 picks a different family than the implementer; explicit reviewer: opt overrides) that fixes inline in the same worktree; harness re-runs the check stack mechanically after each review iteration — the reviewer's word is never the verdict. One knob: max_review_iterations (default 2; 0 = settle :failed immediately, test-env default). Run.Result/LogRecord/Status carry reviewer_adapter, review_iterations, reviewer_stuck_report; StatusView buckets :reviewing as repairing. Repair-loop functions deleted (unreachable); deprecated quota-pattern + cross-agent-repair tests deleted (Task 163 scope, forced by the quota_patterns: [] interim disable). Salvage: missing Status fields, valid_utf8_tail/1, test-env review disable, LogRecord/StatusView/CompareLive reviewing support.",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -6690,6 +6695,70 @@
         "config/config.exs"
       ],
       "body": "The \"centralize hidden configs\" payoff, requested 2026-06-02: ~30 distinct Application.get_env(:harness, ...) keys are read across ~28 files, ~37 @default_* module attributes carry defaults that exist only in code, and the operator's only way to change a run timeout or verification timeout is editing config/*.exs plus a restart.\n\nBuild a declarative Harness.Config schema: one module declaring every operator-relevant key with its default, type, overriding env var, ui_editable? and restart_required? flags. ConfigInspector renders from the schema (extending the owning-module defaults wiring from the sibling inspector task). SettingsLive renders an editable card for keys marked ui_editable — run total/idle/lifetime timeouts and verification timeout are the launch set (the post-Task-163 survivors; max_repair_attempts and semantic/repair gating no longer exist by then) — persisted through the consolidated settings store from the sibling consolidation task, following the same app-env-live-cache + persisted-override pattern the existing settings modules use. Restart-required keys (e.g. dashboard port) render labeled as such, following the Task 111 boot-applied precedent.\n\nOperator-relevant keys only: test-injection seams (:roadmap_list, :roadmap_ready, :run_starter, :oban_insert, :capability_benchmark_*) are seams, not config, and stay out of the schema.\n\nSequenced after Task 163 so the schema never declares keys the reviewer-pair deletion pass removes. Marked handbuild: the editable-settings card is LiveView/DOM work that needs browser feedback.\n",
+      "created_at": "2026-06-02",
+      "scored_at": "2026-06-02",
+      "cross_repo": []
+    },
+    {
+      "id": "168",
+      "phase": 15,
+      "bundle": "reviewer-pair",
+      "status": "pending",
+      "title": "Worktree/branch collision wedges Oban retries — clean up retained worktree+branch before a same-run_id re-attempt",
+      "scores": {
+        "d": 3,
+        "b": 8,
+        "u": 8
+      },
+      "eff": 2.67,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "An Oban retry of a failed run whose worktree/branch still exists (retained on failure) does not fail with `fatal: a branch named 'harness/<run_id>' already exists`",
+        "Either the retained worktree+branch are removed before re-create, or the retry reuses them — observed live: job 84 (run-1780400832227-af842f51) burned 11 attempts at ~25ms each on this collision",
+        "A retry that keeps failing mechanically does not snooze forever: snooze-driven max_attempts inflation is bounded or the failure becomes terminal after N identical mechanical failures",
+        "Regression test: fail a run (worktree retained), let the Oban worker re-attempt the same run_id, assert the second attempt gets a working worktree"
+      ],
+      "out_of_scope": [
+        "Any judgment about WHY the first attempt failed (that is the reviewer's job, phase 15)",
+        "Changing the retained-worktree salvage workflow"
+      ],
+      "body": "Observed live 2026-06-02 (run run-1780400832227-af842f51, Oban job 84, task 161 dispatch): the first attempt failed after the agent delivered (setup-phase compile error), harness retained the worktree + branch `harness/run-<id>` by design, then Oban snoozed and re-attempted with the SAME run_id. Every re-attempt calls `git worktree add -b harness/<run_id>` which fails in ~25ms on `fatal: a branch named ... already exists`, gets classified transient (`{:worktree_failed, {:git_failed, ...}}` is in FailureClass.transient?/1), snoozes, and repeats — an infinite mechanical cascade (snooze increments max_attempts, so the budget never exhausts). This is the 'Oban retry branch-collision cascade' unfiled bug referenced in CLAUDE.md § Judgment Lives in Agents.\n\nThis is MECHANICAL substrate (worktree/git lifecycle), not agent judgment — it stays procedural code per the phase-15 boundary. The fix belongs in Harness.Worktree / Harness.Run worktree provisioning: detect the leftover branch/worktree for this run_id and remove (or adopt) it before `worktree add`.\n",
+      "created_at": "2026-06-02",
+      "scored_at": "2026-06-02",
+      "cross_repo": []
+    },
+    {
+      "id": "169",
+      "phase": 15,
+      "bundle": "reviewer-pair",
+      "status": "pending",
+      "title": "Agent compile errors surfacing in verification SETUP are misclassified as environment failures — route them to the reviewer",
+      "scores": {
+        "d": 4,
+        "b": 8,
+        "u": 8
+      },
+      "eff": 2.0,
+      "dep_layer": 1,
+      "markers": [],
+      "depends_on": [
+        161
+      ],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "A run whose agent delivery breaks compilation (caught during verification setup, e.g. the test-db-create step compiling the project) routes to :reviewing like any other red verdict — never settles `{:verification_failed, {:setup_failed, _}}` when the setup failure is caused by the agent's own diff",
+        "A genuine environment setup failure (deps unfetchable on a clean base) still settles as setup_failed — the discriminator is mechanical: does setup pass on the base commit but fail on the agent's commit?",
+        "Regression test: an agent that commits code referencing an undefined struct field ends with a reviewer invocation, not a setup_failed verdict",
+        "Observed-live reference: run run-1780400832227-af842f51 (task 161, codex) — delivered 484-line diff with one missing struct field, settled setup_failed, never reviewed"
+      ],
+      "out_of_scope": [
+        "Regex/classifier on compiler output (that is the judgment-as-procedural-code anti-pattern this phase deletes)",
+        "The branch-collision retry cascade (task 168)"
+      ],
+      "body": "Observed live 2026-06-02: codex delivered task 161 (484-line diff, committed) with one compile error (a struct field referenced but never defined). The harness elixir_precommit stack's SETUP phase (test-db-create) compiles the project, so the compile error surfaced as `{:verification_failed, {:setup_failed, ...}}` — which harness treats as an environment error ('the agent never ran; fix the environment and re-dispatch, don't blame the agent' per the driver skill). Result: no repair, no review, the delivery sat in a retained worktree until a human salvaged it by hand.\n\nThe judgment call 'whose fault is a setup failure?' is currently encoded procedurally (setup failure => environment). The mechanical discriminator that keeps this out of judgment-code territory: run setup against the base commit; if base setup passes and agent-commit setup fails, the agent's diff broke it => red verdict => reviewer. If base setup also fails, it is genuinely environmental.\n\nFolds into the phase-15 reviewer-pair line per CLAUDE.md § Judgment Lives in Agents (every run-lifecycle judgment bug routes to the reviewer, never another branch/classifier).\n",
       "created_at": "2026-06-02",
       "scored_at": "2026-06-02",
       "cross_repo": []
