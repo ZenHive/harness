@@ -42,6 +42,11 @@
       "order": 15,
       "status": "pending"
     },
+    "16": {
+      "name": "Post-Merge Audit Agent",
+      "order": 16,
+      "status": "pending"
+    },
     "2": {
       "name": "Core Loop & Contract Proof",
       "order": 2,
@@ -88,6 +93,11 @@
       "phase": 14,
       "order": 1,
       "description": "Harden the prompt-to-agent pipeline: language-aware harness rule injection (don't ship Elixir conventions to non-Elixir targets) + capture the composed prompt+rules per run for post-hoc diagnosis"
+    },
+    "audit-agent": {
+      "phase": 16,
+      "order": 1,
+      "description": "A third agent role beside implementer and reviewer: a batch-scoped post-merge audit agent. Oban cron watches each registered project's unaudited commit range (last audit(...) commit on the default branch -> HEAD); past a threshold (commit count OR age), harness dispatches an audit agent into a worktree off the default branch to review the whole range, apply hygiene fixes inline, write .audit/<sha>.md reports, and commit as audit(...). Check stack re-runs after (red routes to the reviewer like any red); the merge-train lands it. Batch economics by design: one dispatch amortized over N commits — per-run grading stays the reviewer's seat."
     },
     "autolanding": {
       "phase": 11,
@@ -226,6 +236,13 @@
       "order": 11,
       "status": "pending",
       "target_version": "0.11.0"
+    },
+    "v0_12": {
+      "name": "Post-Merge Audit Agent",
+      "description": "Tests the hypothesis that post-merge hygiene (cross-commit drift, doc gaps, accumulated debt — the audit-review chore the human runs by hand today, with a 206-commit backlog observed 2026-06-02) can be owned end-to-end by a cron-triggered batch audit agent whose output is verified by the check stack and landed by the merge-train, so the human stops running audit-review manually.",
+      "order": 12,
+      "status": "pending",
+      "target_version": "0.12.0"
     },
     "v0_2": {
       "name": "Batch & resilience",
@@ -6759,6 +6776,44 @@
         "The branch-collision retry cascade (task 168)"
       ],
       "body": "Observed live 2026-06-02: codex delivered task 161 (484-line diff, committed) with one compile error (a struct field referenced but never defined). The harness elixir_precommit stack's SETUP phase (test-db-create) compiles the project, so the compile error surfaced as `{:verification_failed, {:setup_failed, ...}}` — which harness treats as an environment error ('the agent never ran; fix the environment and re-dispatch, don't blame the agent' per the driver skill). Result: no repair, no review, the delivery sat in a retained worktree until a human salvaged it by hand.\n\nThe judgment call 'whose fault is a setup failure?' is currently encoded procedurally (setup failure => environment). The mechanical discriminator that keeps this out of judgment-code territory: run setup against the base commit; if base setup passes and agent-commit setup fails, the agent's diff broke it => red verdict => reviewer. If base setup also fails, it is genuinely environmental.\n\nFolds into the phase-15 reviewer-pair line per CLAUDE.md § Judgment Lives in Agents (every run-lifecycle judgment bug routes to the reviewer, never another branch/classifier).\n",
+      "created_at": "2026-06-02",
+      "scored_at": "2026-06-02",
+      "cross_repo": []
+    },
+    {
+      "id": "170",
+      "phase": 16,
+      "bundle": "audit-agent",
+      "milestone": "v0_12",
+      "status": "pending",
+      "title": "Post-merge audit agent: cron-triggered batch audit of the unaudited commit range, verified by the check stack, landed by the merge-train",
+      "scores": {
+        "d": 5,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 1.4,
+      "dep_layer": 3,
+      "markers": [],
+      "depends_on": [
+        163
+      ],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "Oban cron (same pattern as the Task 51 roadmap poller) computes each registered project's unaudited range — commits on the default branch since the last commit whose subject matches ^audit\\( — and dispatches an audit run when EITHER threshold trips: unaudited commit count >= N (default 20) OR oldest unaudited commit age >= M days (default 3); both knobs per-project config",
+        "The audit agent runs in a worktree off the default branch HEAD, receives the commit range + per-commit diffs + the project's check stack description, applies hygiene fixes inline (its own edits), writes .audit/<range-head-sha>.md report(s), and commits everything as a single commit with subject prefix audit(<short-sha>):",
+        "Harness re-runs the project's check stack on the audit worktree after the agent finishes — the agent's word is never the verdict; red routes to :reviewing exactly like any red implementer delivery; green hands off to the merge-train (autolanding infra) to land on the default branch",
+        "A zero-finding audit still produces and lands the .audit/ report commit — the bookkeeping commit IS the range marker; the next cron tick computes an empty unaudited range and does not dispatch",
+        "Audit runs are visible in the dashboard and run records with a role distinguishable from implementer/reviewer runs",
+        "Integration test: seed a project with unaudited commits past the threshold, run the cron tick, assert an audit run dispatches, lands an audit(...) commit, and the following tick is a no-op"
+      ],
+      "out_of_scope": [
+        "Per-run audit (pre-land grading of a single delivery is the reviewer's seat — phase 15)",
+        "Specialist documentation/security agent roles — those are prompt lenses (security marker => security lens in reviewer prompt; doc-gap category inside the audit prompt), not separate dispatches",
+        "Porting the staged-review:audit-review skill verbatim (Linear close-out, Codex second-opinion 3-reasoner merge) — the harness-native audit prompt starts simpler; parity items get filed as follow-ups if the simple prompt misses real findings",
+        "Cross-project audit batching (one agent auditing multiple projects in one dispatch)"
+      ],
+      "body": "The third agent role beside implementer (works the task) and reviewer (fixes red/weird deliveries inline, phase 15): a batch-scoped post-merge audit agent that owns cross-commit hygiene — drift, doc gaps, debt no single run can see.\n\nPlacement decision (settled in-session 2026-06-02): background/batch via Oban cron, NOT behind each task implementation. Per-run grading is the reviewer's seat; a per-run audit agent would be a second grader on the same diff (duplicated judgment, linear cost). Audit's value is precisely the cross-commit view, and batch dispatch amortizes one agent invocation over N commits. The real knob is the trigger threshold (commit count OR age), so backlogs like the observed 206-unaudited-commit range never accumulate, while per-run overhead stays zero.\n\nDemand evidence: the human runs staged-review:audit-review by hand today (the manual prompt shape to port — range -> findings -> inline hygiene fixes -> .audit/<sha>.md -> single audit(...) commit); the SessionStart hook reported a 206-commit unaudited backlog on 2026-06-02. Harness.AuditReview (Task 58) already gives the skill a second-grader dispatch; this task closes the loop so harness INITIATES the audit autonomously instead of only grading fixes.\n\nPasses all three gates from the Judgment-Lives-in-Agents principle: (1) deterministic verifier — check stack re-runs on the audit worktree, merge-train lands it; (2) not foldable into an existing agent's prompt — the reviewer never sees landed cross-commit ranges; (3) batch-triggered, never always-on.\n\nReuses existing substrate: worktree provisioning, AgentAdapter dispatch, check stack verification, Oban cron (51), merge-train landing (100), run records/dashboard. New: unaudited-range computation, threshold trigger, the audit prompt, an audit run role flag.\n\nSequenced after the phase-15 deletion pass (163) so the audit flow is built on the post-deletion mechanical substrate and red audit worktrees route to :reviewing rather than the deprecated repair loop.\n",
       "created_at": "2026-06-02",
       "scored_at": "2026-06-02",
       "cross_repo": []
