@@ -4,6 +4,7 @@ defmodule Harness.RunTest do
   alias Harness.AgentAdapter.Antigravity
   alias Harness.AgentAdapter.Outcome
   alias Harness.CheckStack
+  alias Harness.Dashboard.RunFeed
   alias Harness.Dashboard.Transcript
   alias Harness.Dashboard.Transcript.Parser
   alias Harness.FakeAdapter
@@ -748,6 +749,8 @@ defmodule Harness.RunTest do
     end
 
     test "cancel/1 from :held settles :cancelled like any in-flight cancel" do
+      :ok = RunFeed.subscribe()
+
       {run_id, pid} =
         start(
           adapter_opts: [command: :sleep],
@@ -757,6 +760,7 @@ defmodule Harness.RunTest do
 
       wait_until_running(run_id)
       assert :ok = Run.hold(run_id, true)
+      assert_receive {:harness_run_update, %Status{run_id: ^run_id, state: :held}}, 5_000
       assert :ok = Run.cancel(run_id)
 
       result = await_result(run_id, pid)
