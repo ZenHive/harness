@@ -4318,6 +4318,7 @@
         "lib/harness/settings.ex",
         "lib/harness/dashboard/live.ex"
       ],
+      "shipped_in": "9553520",
       "body": "The cron cadence is baked into the Oban Cron plugin's crontab once at boot (RoadmapPoller.cron_plugin/0 -> Harness.Oban supervision child). Unlike the enabled flag (read live each tick), the SCHEDULE cannot change without reconfiguring the Cron plugin.\n\nCheap 80% first: persist the chosen schedule; cron_plugin/0 reads it at boot. UI offers a small preset set (hourly / 2h / 6h / daily) rather than a free-form crontab box (avoids invalid-cron footguns). Changes apply on the NEXT restart -- satisfies most needs, low risk.\n\nExpensive 20% (optional): changing cadence WITHOUT restart means tearing down and re-adding the Oban Cron plugin at runtime. Oban supports it but it is fiddly and easy to get wrong. Gate behind the preset work; only build if presets prove insufficient. Honest low B/U until then.\n",
       "created_at": "2026-05-30",
       "started_at": "2026-06-02",

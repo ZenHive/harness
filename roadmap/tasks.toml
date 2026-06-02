@@ -3654,6 +3654,7 @@ created_at = "2026-05-30"
 started_at = "2026-06-02"
 scored_at = "2026-05-30"
 done_at = "2026-06-02"
+shipped_in = "9553520"
 
 [[task]]
 id = "112"
