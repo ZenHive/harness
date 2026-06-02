@@ -1,9 +1,13 @@
 defmodule Harness.ObanDispatchTest do
   use ExUnit.Case, async: false
 
+  import Ecto.Query, only: [from: 2]
+
+  alias Ecto.Adapters.SQL.Sandbox
   alias Harness.AgentAdapter.Claude
   alias Harness.Batch
   alias Harness.Dashboard.RunFeed
+  alias Harness.Oban, as: HarnessOban
   alias Harness.Project
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
@@ -729,19 +733,109 @@ defmodule Harness.ObanDispatchTest do
   end
 
   describe "Harness.Oban pure surface (queue naming, limits, headroom guards — coverage lift)" do
-    alias Harness.Oban
-
     test "queue_name public API and headroom guard (exercises enabled?/whereis/queued count paths)" do
       p1 = ProjectFixture.from_repo("/tmp/harness-oban-qn1", name: "demo", concurrency_cap: 4)
       p2 = ProjectFixture.from_repo("/tmp/harness-oban-qn2", name: "nocap")
 
-      assert Oban.queue_name(p1) == "project_demo"
-      assert Oban.queue_name("foo") == "project_foo"
+      assert HarnessOban.queue_name(p1) == "project_demo"
+      assert HarnessOban.queue_name("foo") == "project_foo"
 
       # Headroom guard: when ! (enabled? and whereis), returns true without hitting Ecto agg or limit.
       # This exercises the public queue_headroom? + private queues_enabled? + the else branch.
-      assert Oban.queue_headroom?(p1) == true
-      assert Oban.queue_headroom?(p2) == true
+      assert HarnessOban.queue_headroom?(p1) == true
+      assert HarnessOban.queue_headroom?(p2) == true
     end
+  end
+
+  describe "orphaned executing run jobs" do
+    @tag :integration
+    test "boot rescue makes an orphaned executing Run.Worker row runnable without inserting a duplicate" do
+      start_supervised!(Harness.Repo)
+      :ok = Sandbox.checkout(Harness.Repo)
+      Sandbox.mode(Harness.Repo, {:shared, self()})
+
+      start_supervised!(
+        {Oban,
+         name: HarnessOban,
+         repo: Harness.Repo,
+         notifier: Oban.Notifiers.Isolated,
+         queues: false,
+         plugins: false,
+         stage_interval: :infinity}
+      )
+
+      project = ProjectFixture.from_repo("/tmp/harness-orphan-rescue", name: "orphan-rescue")
+      queue = HarnessOban.queue_name(project)
+
+      args = %{
+        project_name: project.name,
+        item_id: "157",
+        adapter_module: Atom.to_string(Claude)
+      }
+
+      {:ok, orphan} =
+        args
+        |> Worker.new(queue: queue, unique: unique_opts())
+        |> Harness.Repo.insert()
+
+      orphan
+      |> Ecto.Changeset.change(state: "executing", attempted_at: DateTime.add(DateTime.utc_now(), -120, :second))
+      |> Harness.Repo.update!()
+
+      assert :ok = HarnessOban.rescue_orphaned_run_jobs()
+      assert %{state: "available"} = Harness.Repo.reload!(orphan)
+
+      assert {:ok, duplicate} =
+               Oban.insert(HarnessOban, Worker.new(args, queue: queue, unique: unique_opts()))
+
+      assert duplicate.id == orphan.id
+      assert duplicate.conflict? == true
+      assert Harness.Repo.aggregate(job_query(queue, args), :count, :id) == 1
+    end
+
+    @tag :integration
+    test "boot rescue does not touch executing rows while a run is still live" do
+      start_supervised!(Harness.Repo)
+      :ok = Sandbox.checkout(Harness.Repo)
+
+      project = ProjectFixture.from_repo("/tmp/harness-live-rescue", name: "live-rescue")
+      queue = HarnessOban.queue_name(project)
+
+      args = %{
+        project_name: project.name,
+        item_id: "158",
+        adapter_module: Atom.to_string(Claude)
+      }
+
+      {:ok, job} =
+        args
+        |> Worker.new(queue: queue, unique: unique_opts())
+        |> Harness.Repo.insert()
+
+      job
+      |> Ecto.Changeset.change(state: "executing", attempted_at: DateTime.add(DateTime.utc_now(), -120, :second))
+      |> Harness.Repo.update!()
+
+      {:ok, _} = Registry.register(Harness.Run.Registry, "live-run-158", nil)
+
+      assert :ok = HarnessOban.rescue_orphaned_run_jobs()
+      assert %{state: "executing"} = Harness.Repo.reload!(job)
+    end
+  end
+
+  defp job_query(queue, args) do
+    from(job in Oban.Job,
+      where: job.queue == ^queue and job.worker == "Harness.Run.Worker" and job.args == ^stringify_keys(args)
+    )
+  end
+
+  defp stringify_keys(map), do: Map.new(map, fn {key, value} -> {to_string(key), value} end)
+
+  defp unique_opts do
+    [
+      keys: [:project_name, :item_id],
+      states: [:available, :scheduled, :executing, :retryable],
+      period: :infinity
+    ]
   end
 end

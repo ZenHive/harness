@@ -18,6 +18,8 @@ defmodule Harness.Oban do
 
   @default_queue_limit 1
   @headroom_states ~w(available scheduled executing retryable)
+  @run_worker Oban.Worker.to_string(Harness.Run.Worker)
+  @orphan_rescue_child_id Harness.Oban.OrphanedRunRescue
 
   @doc false
   @spec start_link(term()) :: Supervisor.on_start()
@@ -30,6 +32,7 @@ defmodule Harness.Oban do
   def init(_init_arg) do
     children = [
       {Oban, oban_opts()},
+      orphan_rescue_child(),
       Harness.Oban.QueueBootstrap
     ]
 
@@ -125,6 +128,15 @@ defmodule Harness.Oban do
   end
 
   @doc false
+  @spec rescue_orphaned_run_jobs() :: :ok
+  def rescue_orphaned_run_jobs do
+    case Harness.Run.Supervisor.list_runs() do
+      [] -> rescue_executing_run_jobs()
+      [_ | _] -> :ok
+    end
+  end
+
+  @doc false
   @spec oban_opts() :: keyword()
   def oban_opts do
     base =
@@ -182,6 +194,26 @@ defmodule Harness.Oban do
       )
 
     Harness.Repo.aggregate(query, :count, :id)
+  end
+
+  @spec orphan_rescue_child() :: Supervisor.child_spec()
+  defp orphan_rescue_child do
+    %{
+      id: @orphan_rescue_child_id,
+      start: {Task, :start_link, [&rescue_orphaned_run_jobs/0]},
+      restart: :temporary
+    }
+  end
+
+  @spec rescue_executing_run_jobs() :: :ok
+  defp rescue_executing_run_jobs do
+    query =
+      from(job in Oban.Job,
+        where: job.worker == ^@run_worker and job.state == "executing"
+      )
+
+    {_count, _jobs} = Harness.Repo.update_all(query, set: [state: "available"])
+    :ok
   end
 
   # The cron queue + Cron plugin register UNCONDITIONALLY (not gated on
