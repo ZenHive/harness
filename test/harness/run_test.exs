@@ -233,10 +233,24 @@ defmodule Harness.RunTest do
       assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_output.txt"]) =~ "agent-output"
     end
 
-    test "settles :no_changes when the agent produces no diff" do
+    test "verifies a no-diff run and settles :done when the current branch is already green" do
       result = run(adapter_opts: [command: :echo])
 
-      assert %Result{state: :failed, reason: :no_changes} = result
+      assert %Result{state: :done, reason: :passed, agent_diff_size: 0} = result
+      assert %Verdict{status: :pass} = result.verdict
+    end
+
+    test "verifies a no-diff run and fails when the current branch is not green" do
+      result = run(adapter_opts: [command: :echo], checks: [check("no", "false")])
+
+      assert %Result{state: :failed, reason: :base_red, agent_diff_size: 0} = result
+      assert %Verdict{status: :base_red} = result.verdict
+    end
+
+    test "settles :no_changes when a no-diff run has nothing meaningful to grade" do
+      result = run(adapter_opts: [command: :echo], checks: [])
+
+      assert %Result{state: :failed, reason: :no_changes, agent_diff_size: 0} = result
       assert result.verdict == nil
     end
   end

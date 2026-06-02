@@ -731,7 +731,14 @@ defmodule Harness.Run do
 
   def committing(:info, {ref, {:ok, :no_changes, diff_size}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
-    fail(%{data | task: nil, agent_diff_size: diff_size}, :no_changes)
+
+    data = %{data | task: nil, agent_diff_size: diff_size}
+
+    if verify_no_changes?(data) do
+      {:next_state, :verifying, data}
+    else
+      fail(data, :no_changes)
+    end
   end
 
   def committing(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
@@ -2356,6 +2363,32 @@ defmodule Harness.Run do
          {:ok, status} <- Worktree.commit(worktree, message) do
       {:ok, status, diff_size}
     end
+  end
+
+  @spec verify_no_changes?(data()) :: boolean()
+  defp verify_no_changes?(%{repair_attempts: attempts} = data) do
+    attempts == 0 and
+      normal_agent_completion?(data.agent_outcome) and
+      verification_meaningful?(data)
+  end
+
+  # An empty diff earns verification only when the agent ran to completion
+  # normally. A quota-exhausted, timed-out, or crashed agent that made zero
+  # edits is a failed run, not an "already implemented" candidate — promoting
+  # those to :done would break quota-failover semantics (the adapter never gets
+  # marked unavailable and the batch never re-routes).
+  @spec normal_agent_completion?(Outcome.t() | nil) :: boolean()
+  defp normal_agent_completion?(%Outcome{kind: :exited} = outcome) do
+    not AgentRegistry.quota_exhausted?(outcome)
+  end
+
+  defp normal_agent_completion?(_), do: false
+
+  @spec verification_meaningful?(data()) :: boolean()
+  defp verification_meaningful?(%{checks: checks}) when is_list(checks), do: checks != []
+
+  defp verification_meaningful?(%{project: %Project{check_stacks: stacks}}) do
+    Enum.any?(stacks, &(&1.checks != []))
   end
 
   @spec first_attempt_failed_check_count(data(), Verdict.t()) :: non_neg_integer()
