@@ -415,7 +415,15 @@ defmodule Harness.Verification do
 
     with {:ok, _output} <- Git.run(["worktree", "add", "--detach", baseline_path, base_ref], path) do
       try do
-        run_stacks(stacks, baseline_path, timeout_override, worktree_path: baseline_path)
+        # The baseline must be graded by the same standard as the agent worktree:
+        # diff-aware post_process hooks (e.g. BaselineFilter.Credo) need :base_ref
+        # so findings pre-existing at base_ref are filtered here too. Without it,
+        # inherited debt (a TagTODO on base) keeps the baseline check :fail and
+        # masks agent-caused failures of the same check as :pre_existing (Task 160).
+        run_stacks(stacks, baseline_path, timeout_override,
+          worktree_path: baseline_path,
+          base_ref: base_ref
+        )
       after
         _ = Git.run(["worktree", "remove", "--force", baseline_path], path)
       end
