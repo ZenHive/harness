@@ -4860,8 +4860,8 @@
       "dep_layer": 0,
       "markers": [],
       "depends_on": [],
-      "module": "Harness.Run",
       "assignee": "codex",
+      "module": "Harness.Run",
       "acceptance_criteria": [
         "After a run completes, the composed prompt+rules sent on each attempt is retrievable from the run's persisted result record (not only the raw transcript).",
         "Repair attempts are captured distinctly from the initial dispatch (the resume prompt carrying failing-check output is recorded).",
@@ -5038,7 +5038,7 @@
       "phase": 11,
       "bundle": "autolanding",
       "milestone": "v0_9",
-      "status": "in_progress",
+      "status": "done",
       "title": "Route autonomous dispatch on assignee — consume rmap's formalized agent-routing field, stop overloading model",
       "scores": {
         "d": 2,
@@ -5072,10 +5072,15 @@
         "skills/harness-driver/SKILL.md",
         "roadmap/tasks.toml"
       ],
+      "shipped_in": "5ba6862",
       "body": "CROSS-REPO (../rmap). The harness roadmap encodes the target agent in the `model` field (values \"codex\"/\"cursor\"), but rmap.md documents `model` as a free-text LLM id, distinct from the agent environment (rmap delegate --to), with cx/csr markers as the delegation channel. The harness cron poller currently routes on `model` then cx/csr as a workaround.\n\nrmap is ours: add a first-class per-task agent/delegate field (or formalize that model-naming-an-agent IS the route), so consumers route on one documented field instead of overloading model. Update rmap.md + the poller's task_agent/1 to use it.\n\nUPDATE 2026-06-02: the rmap half is shipped (../rmap task 40, commit 21cbe65) — `assignee` is now THE documented agent-routing field, validated against human|claude|codex|cursor|grok|antigravity|pi|droid, and `rmap delegate <id>` defaults `--to` from it. Remaining scope is harness-side consumption only: route the poller on assignee, skip human-assigned tasks, migrate this roadmap's agent-name model values to assignee, and update the harness-driver skill doc.\n",
       "created_at": "2026-05-31",
       "started_at": "2026-06-02",
+      "done_at": "2026-06-02",
       "scored_at": "2026-06-02",
+      "implemented": "Codex delivery (run run-1780363855046-3eb6a3a8): RoadmapPoller.task_agent/1 routes on rmap's assignee field (human skipped via :human_assigned, unknown adapter/missing -> :claude documented in moduledoc); Roadmap.ready/1 + roadmap__ready docstring request --fields id,assignee,markers; harness roadmap migrated model agent-names -> assignee (11 tasks); SKILL.md updated; task_agent/1 truth-table tests + poller fixtures migrated. Landed in 5ba6862 after fixing an unrelated pre-existing red (stale Adapters assertion from cebe648, fixed in a0636da) that caused the run's false-red verdict.",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -5967,6 +5972,49 @@
       "implemented": "Root-cause sync fix: test subscribes to RunFeed and assert_receive's the {:harness_run_update, %Status{state: :held}} transition (5s timeout) before calling Run.cancel/1 — the test now genuinely exercises cancel-from-:held instead of racing hold vs cancel. No sleeps, no timeout bumps.",
       "delivered_by": "grok",
       "verified": true,
+      "cross_repo": []
+    },
+    {
+      "id": "153",
+      "phase": 11,
+      "bundle": "autolanding",
+      "status": "pending",
+      "title": "Verification can't attribute red to the agent — a pre-existing red base yields false-red verdicts",
+      "scores": {
+        "d": 4,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 1.63,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "Before (or alongside) grading an agent's diff, harness establishes the base tree's verdict for the same check stack (baseline run at dispatch time, cached per base SHA, or equivalent)",
+        "A red verdict distinguishes agent-caused failures from failures already present on the base: failed checks that also fail on the unmodified base are reported as pre_existing, not attributed to the agent",
+        "A run whose only failures are pre_existing settles with a distinct outcome (e.g. :base_red) instead of verdict :fail — never silently green, never blamed on the agent",
+        "The repair loop is NOT triggered for pre_existing-only failures (repairing someone else's breakage is scope creep)",
+        "The credo BaselineFilter precedent (lib/harness/verification/baseline_filter/credo.ex) is consulted/reused where it fits — this generalizes that idea from credo findings to whole-check failures",
+        "Tests cover: agent-caused red (attributed), base-red-only (pre_existing, :base_red), mixed (agent failures attributed, base failures filtered)"
+      ],
+      "out_of_scope": [
+        "Fixing the base automatically — surfacing/attribution only; landing the fix is the orchestrator's call",
+        "Re-running the base verdict on every run unconditionally if a per-SHA cache can avoid it (cost control is part of the design, not an afterthought)"
+      ],
+      "files_to_modify": [
+        "lib/harness/verification.ex"
+      ],
+      "touches": [
+        "lib/harness/verification.ex",
+        "lib/harness/run.ex",
+        "test/harness/verification_test.exs"
+      ],
+      "body": "Observed 2026-06-02 on run run-1780363855046-3eb6a3a8 (task 130, codex): development carried a pre-existing red (stale Adapters assertion in live_mount_test.exs, left by an out-of-band dashboard commit cebe648). The dispatched agent's work was correct and its own touched-file tests passed, but the :elixir_precommit grader runs the whole suite, so the run settled verdict :fail / verification_red for a failure the agent did not cause. Cost: a full dispatch wasted, hand-triage at landing to discover the red was inherited, and (had repair been enabled) repair attempts would have burned tokens asking the agent to fix someone else's breakage.\n\nThe verification stack already has a narrower precedent: Verification.BaselineFilter.Credo filters credo findings that pre-exist on the base. Generalize the concept to check-level attribution: know what the base scores before blaming the diff.\n",
+      "created_at": "2026-06-02",
+      "scored_at": "2026-06-02",
       "cross_repo": []
     }
   ]

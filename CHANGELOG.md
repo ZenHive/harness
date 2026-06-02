@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Autonomous dispatch routes on rmap's `assignee` field (Task 130, codex
+  delivery).** `RoadmapPoller.task_agent/1` now routes on `assignee` — rmap's
+  validated agent-routing field (../rmap task 40) — instead of overloading the
+  free-text `model` LLM pin and the `cx`/`csr` markers. `assignee = "human"`
+  tasks are skipped by autonomous dispatch (`:human_assigned`); missing
+  assignees and assignees with no harness adapter (e.g. `droid`) fall back to
+  `:claude`. `Roadmap.ready/1` and the `roadmap__ready` MCP docstring request
+  `--fields id,assignee,markers`; the harness roadmap's agent-name `model`
+  values migrated to `assignee`; `skills/harness-driver/SKILL.md` updated.
+
+- **Postgres codec unit tests via fake repo.** The `LogRecord` ↔ row codec
+  (tuple `agent_outcome_kind`, `$atom`/`$tuple`/`$list` jsonb markers,
+  `TokenUsage` struct restore, never-raise contract) is now graded by the
+  default suite through an injected in-process repo — the regression net for
+  the `{:timed_out, :idle}` crash class, previously only covered by
+  `:integration`-tagged tests the verification stack never runs. Also lifts
+  project coverage back over the 80% gate (79.83% → 81.97%).
+
 - **Autonomous capability-benchmark cron scheduler (Task 122, cursor delivery).**
   `Harness.Cron.CapabilityBenchmarkScheduler` closes the capability-trust loop:
   an Oban cron worker (default `0 3 * * *`, behind
@@ -210,6 +228,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `list_adapters/0` from `Dashboard.Live`.
 
 ### Fixed
+
+- **Stale `Adapters`-on-index assertion broke the default suite (and falsified a
+  dispatch verdict).** The dashboard refactor that moved adapter/unavailable
+  state into Settings (cebe648) updated `live_test.exs` and
+  `settings_live_test.exs` but missed `live_mount_test.exs`, leaving the default
+  suite red on `development`. The first dispatch graded against that base
+  (task 130, codex) got a false-red verdict for a failure it didn't cause. The
+  assertion now matches the post-refactor index.
 
 - **Flaky Task-150 hold/cancel test made deterministic (Task 152, grok
   delivery).** `run_test.exs` "cancel/1 from :held" raced `Run.cancel/1` against
