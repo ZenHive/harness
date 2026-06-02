@@ -146,18 +146,13 @@ config :harness, :run, max_repair_attempts: 3
 # :result_store config value always wins over the repo_enabled heuristic.
 # (The concrete default lives in config/runtime.exs so the flip is in one place.)
 
-# Green-verdict semantic gate. `enabled: :auto` (the default) defers to the
-# project-level `semantic_gate` mode (`:always` | `:auto_land_only` | `:off`,
-# per-project on %Harness.Project{}); `enabled: true`/`false` is a per-dispatch
-# override that forces the gate on/off for one run regardless of landing policy
-# (Task 123). `:auto_land_only` (the project default) preserves the original
-# gate-iff-auto-land behaviour. The grader defaults through Harness.AuditReview's
-# cross-family :claude <-> :codex pairing; non-auto-paired implementers
-# (:grok/:cursor/:antigravity/:pi) may be pointed at a cross-family fallback with
-# `grader: :codex` or another available grader. Same-family grader settings are
-# ignored in favor of the auto-pair/fail-open path. Test/dev overrides may also
-# pass the same AuditReview pass-through opts (:model, :adapter_opts,
-# :total_timeout, :idle_timeout).
+# DEPRECATED (Task 162) — removed in Task 163. The green-verdict semantic gate
+# collapsed into the per-project `review_green: boolean` field (a green verdict
+# gets one cross-family reviewer pass when true) and a per-dispatch
+# `review_green: true` opt; see docs/reviewer-pair-architecture.md. This
+# app-env knob no longer routes anything: it survives only as the legacy opts
+# vehicle for the dead :consulting path until the phase-15 deletion pass
+# removes both.
 config :harness, :semantic_gate, enabled: :auto
 
 # config :harness, Harness.Notification.CommandSink,

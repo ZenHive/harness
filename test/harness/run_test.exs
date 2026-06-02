@@ -198,6 +198,54 @@ defmodule Harness.RunTest do
     end
   end
 
+  defmodule ReviewerNoopGreenAdapter do
+    @moduledoc false
+    # A conforming green-conformance review: the reviewer inspects the work,
+    # changes nothing, and exits — the "conforms, make no changes" branch of
+    # the green review scope.
+    use Harness.AgentAdapter
+
+    alias Harness.AgentAdapter
+    alias Harness.AgentAdapter.Capabilities
+
+    @impl AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl AgentAdapter
+    def rule_channel, do: :none
+
+    @impl AgentAdapter
+    def build_command(_invocation) do
+      {:ok, {"/bin/echo", ["review: conforms to acceptance criteria"], []}}
+    end
+  end
+
+  defmodule ReviewerReportsQuotaAdapter do
+    @moduledoc false
+    # An empty-diff judgment call: the reviewer reads the evidence, decides
+    # nothing happened (the implementer was quota-starved), and reports stuck
+    # in prose instead of fixing — the judgment a regex used to fake.
+    use Harness.AgentAdapter
+
+    alias Harness.AgentAdapter
+    alias Harness.AgentAdapter.Capabilities
+    alias Harness.AgentAdapter.Invocation
+
+    @impl AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl AgentAdapter
+    def rule_channel, do: :none
+
+    @impl AgentAdapter
+    def build_command(%Invocation{prompt: prompt}) do
+      script =
+        ~S(printf '%s' "$1" > reviewer_prompt.txt; echo "STUCK: the implementer hit a usage limit and produced no work")
+
+      {:ok, {"/bin/sh", ["-c", script, "harness-reviewer", prompt], []}}
+    end
+  end
+
   describe "lifecycle — settling on a verdict" do
     test "settles :done and removes the worktree when verification passes" do
       result = run(checks: [check("ok", "true")])
@@ -300,6 +348,12 @@ defmodule Harness.RunTest do
       assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_output.txt"]) =~ "agent-output"
     end
 
+    # Task 162: an empty implementer diff is no longer judged by procedural
+    # code (:no_changes is gone from this path) — it always verifies, and what
+    # the empty diff MEANS is the reviewer's call. With review disabled
+    # (max_review_iterations: 0, the base default_opts), a green branch
+    # settles :done on verification alone; the reviewer-involved scenarios
+    # live in the "reviewer-pair green/empty-diff verdict path" describe.
     test "verifies a no-diff run and settles :done when the current branch is already green" do
       result = run(adapter_opts: [command: :echo])
 
@@ -314,10 +368,10 @@ defmodule Harness.RunTest do
       assert %Verdict{status: :base_red} = result.verdict
     end
 
-    test "settles :no_changes when a no-diff run has nothing meaningful to grade" do
+    test "a no-diff run with an empty check stack fails on verification, not on diff judgment" do
       result = run(adapter_opts: [command: :echo], checks: [])
 
-      assert %Result{state: :failed, reason: :no_changes, agent_diff_size: 0} = result
+      assert %Result{state: :failed, reason: {:verification_failed, :no_checks}, agent_diff_size: 0} = result
       assert result.verdict == nil
     end
   end
@@ -1035,6 +1089,114 @@ defmodule Harness.RunTest do
              } = result
 
       assert %Verdict{status: :fail} = result.verdict
+    end
+  end
+
+  describe "reviewer-pair green/empty-diff verdict path (Task 162)" do
+    test "an empty implementer diff on a green branch gets one reviewer pass before settling :done" do
+      {run_id, pid, _repo} =
+        start_repair(
+          adapter_opts: [command: :echo],
+          checks: [check("ok", "true")],
+          reviewer: ReviewerNoopGreenAdapter,
+          max_review_iterations: 2,
+          max_repair_attempts: 0
+        )
+
+      result = await_result(run_id, pid)
+
+      assert %Result{
+               state: :done,
+               reason: :passed,
+               review_iterations: 1,
+               reviewer_adapter: ReviewerNoopGreenAdapter,
+               agent_diff_size: 0
+             } = result
+
+      assert %Verdict{status: :pass} = result.verdict
+    end
+
+    test "an empty implementer diff on a red branch is judged by the reviewer, who records why in prose" do
+      {run_id, pid, _repo} =
+        start_repair(
+          adapter_opts: [command: {:echo, "subscription quota exhausted"}],
+          checks: [check("red", "false")],
+          reviewer: ReviewerReportsQuotaAdapter,
+          max_review_iterations: 1,
+          max_repair_attempts: 0
+        )
+
+      result = await_result(run_id, pid)
+
+      assert %Result{
+               state: :failed,
+               reason: {:review_stuck, report},
+               review_iterations: 1,
+               reviewer_adapter: ReviewerReportsQuotaAdapter
+             } = result
+
+      assert report =~ "usage limit"
+      assert result.reviewer_stuck_report == report
+
+      # The implementer's raw quota text still rides on the result untouched —
+      # batch-level failover keeps reading it until Task 163 replaces that path.
+      assert result.agent_outcome.output =~ "subscription quota exhausted"
+
+      # The reviewer was framed with the empty-diff judgment, not the fix-red one.
+      prompt = File.read!(Path.join(result.worktree_path, "reviewer_prompt.txt"))
+      assert prompt =~ "The implementer produced NO diff"
+      assert prompt =~ "decide what the empty diff means"
+    end
+
+    test "review_green: true routes a green verdict through exactly one conformance review pass" do
+      {run_id, pid, repo} =
+        start_repair(
+          adapter_opts: [command: :write],
+          checks: [check("ok", "true")],
+          reviewer: ReviewerFixAdapter,
+          review_green: true,
+          max_review_iterations: 3,
+          max_repair_attempts: 0
+        )
+
+      result = await_result(run_id, pid)
+
+      assert %Result{
+               state: :done,
+               reason: :passed,
+               review_iterations: 1,
+               reviewer_adapter: ReviewerFixAdapter
+             } = result
+
+      prompt = GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_prompt.txt"])
+      assert prompt =~ "The check stack in this worktree is GREEN"
+      assert prompt =~ "acceptance criteria"
+      refute prompt =~ "fix inline, commit, re-run checks"
+    end
+
+    test "green verdict wanting review settles :done when no cross-family reviewer is available" do
+      # Task 158 regression guard: green is ground truth — missing review
+      # infrastructure must never fail green work.
+      Enum.each(Harness.AgentRegistry.all(), &Harness.AgentRegistry.mark_unavailable(&1, :test_unavailable))
+      on_exit(fn -> Harness.AgentRegistry.reset() end)
+
+      {run_id, pid, _repo} =
+        start_repair(
+          adapter_opts: [command: :write],
+          checks: [check("ok", "true")],
+          review_green: true,
+          max_review_iterations: 3,
+          max_repair_attempts: 0
+        )
+
+      result = await_result(run_id, pid)
+
+      assert %Result{
+               state: :done,
+               reason: :passed,
+               review_iterations: 0,
+               reviewer_adapter: nil
+             } = result
     end
   end
 

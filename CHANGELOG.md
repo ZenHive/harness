@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Reviewer-pair lifecycle, step 2 — empty-diff and green verdicts route through
+  the reviewer; `semantic_gate` → `review_green` (Task 162, hand-built inline).**
+  An empty implementer diff is no longer judged by procedural code (the
+  `:no_changes` disposition is unreachable from the run lifecycle): every run
+  verifies, and what an empty diff *means* — already implemented vs nothing
+  happened (e.g. quota exhaustion) — is the cross-family reviewer's call, framed
+  by a scope-specific prompt (`:fix_red` / `:empty_diff` / `:green_conformance`).
+  Green verdicts route through `route_green_verdict/1`: a project with
+  `review_green: true` (the **default** — no unreviewed code lands) or a run with
+  an empty implementer diff gets **exactly one** reviewer conformance pass; the
+  check stack re-runs after the reviewer, and a wanted-but-unavailable reviewer
+  fails OPEN to `:done` (green is ground truth — Task 158's lesson). The
+  `Project.semantic_gate` mode enum (`:always` / `:auto_land_only` / `:off`) is
+  **replaced by `review_green: boolean`**; legacy configs and persisted
+  `term_to_binary` payloads are mapped at registry load (`:always` /
+  `:auto_land_only` ⇒ `true`, `:off` ⇒ `false`, absent ⇒ `true`). The
+  per-dispatch MCP/chat override param is renamed `semantic_gate` →
+  `review_green` on `dispatch__task` / `dispatch__await`; `Run.Worker` job args
+  carry `"review_green"`. The reject-into-repair-loop semantic gate
+  (`:consulting` on green) no longer fires — its machinery is deleted wholesale
+  in Task 163.
+
 - **Reviewer-pair lifecycle, step 1 — `:reviewing` state: a cross-family reviewer
   agent fixes red worktrees inline (Task 161, codex delivery + reviewer salvage).**
   A red verdict now routes through `route_red_verdict/1` to a new `:reviewing`

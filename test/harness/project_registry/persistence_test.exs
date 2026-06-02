@@ -78,7 +78,9 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
         concurrency_cap: 4,
         landing_policy: :auto,
         target_branch: "development",
-        semantic_gate: :always
+        # false (non-default) so the roundtrip proves the persisted value wins
+        # over the struct default (true).
+        review_green: false
       }
 
       assert :ok = ProjectRegistry.register(project)
@@ -90,7 +92,7 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
       assert restored.check_stacks == project.check_stacks
       assert restored.concurrency_cap == 4
       assert restored.landing_policy == :auto
-      assert restored.semantic_gate == :always
+      assert restored.review_green == false
     end
   end
 

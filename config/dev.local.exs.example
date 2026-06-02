@@ -12,15 +12,16 @@ config :harness, :projects, [
   # mirrors harness's merge bar and includes DB-backed integration tests via an
   # isolated per-worktree Postgres test DB. Use plain `preset: :elixir` for the
   # lighter day-to-day stack.
-  # `semantic_gate: :always` keeps the cross-family semantic gate on for harness
-  # dogfooding even under manual landing (Task 123); needs the opposite-family
-  # agent CLI installed. Drop it (or set `:auto_land_only`) to revert.
+  # `review_green: true` (the default — shown here for visibility, Task 162)
+  # gives every green verdict one cross-family reviewer pass against the task's
+  # acceptance criteria; needs an opposite-family agent CLI installed. Set
+  # `review_green: false` to let green verdicts settle unreviewed.
   [
     name: "harness",
     source: {:local, Path.expand("..", __DIR__)},
     preset: {:elixir_precommit, cover_threshold: 80, include: [:integration], database: :postgres},
     roadmap_path: Path.expand("..", __DIR__),
-    semantic_gate: :always
+    review_green: true
   ],
   # Example host-local project — single language, one stack at the repo root.
   # Swap to `preset: {:elixir_precommit, cover_threshold: N, exclude: [...]}`

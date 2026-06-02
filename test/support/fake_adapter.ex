@@ -76,10 +76,9 @@ defmodule Harness.FakeAdapter do
   # :repair_noop     — every run churns a committable file but never writes
   #                    repair_marker, so verification stays red — drives the
   #                    repair loop to its attempt cap.
-  # :repair_quota    — the first run writes a diff; the resumed run does nothing,
-  #                    settling :no_changes — a non-repairable failure (a
-  #                    quota-starved agent) that must end the loop, not burn
-  #                    every remaining attempt.
+  # :repair_quota    — the first run writes a diff; the resumed run does nothing
+  #                    (an empty repair diff) — a quota-starved agent that must
+  #                    end the loop, not burn every remaining attempt.
   # :repair_quota_with_output
   #                  — the first run writes a diff; the resumed run writes a
   #                    different diff while emitting quota text, so the repair

@@ -190,7 +190,7 @@ defmodule Harness.ProjectRegistry do
          {:ok, source} <- fetch_source(entry),
          {:ok, check_stacks} <- fetch_check_stacks(entry),
          {:ok, roadmap_path} <- fetch_roadmap_path(entry),
-         {:ok, semantic_gate} <- fetch_semantic_gate(entry) do
+         {:ok, review_green} <- fetch_review_green(entry) do
       {:ok,
        %Project{
          name: name,
@@ -201,7 +201,7 @@ defmodule Harness.ProjectRegistry do
          pollution_allowlist: Map.get(entry, :pollution_allowlist),
          landing_policy: Map.get(entry, :landing_policy, :manual),
          target_branch: Map.get(entry, :target_branch),
-         semantic_gate: semantic_gate
+         review_green: review_green
        }}
     end
   end
@@ -322,17 +322,21 @@ defmodule Harness.ProjectRegistry do
     end
   end
 
-  # The semantic-gate consumer (`Harness.Run`) pattern-matches the exact mode
-  # atom, so validate at registration rather than crashing a run mid-flight on
-  # a typo. Absent ⇒ `:auto_land_only` (the struct default = gate-iff-auto-land).
-  @valid_semantic_gate_modes [:always, :auto_land_only, :off]
-
-  @spec fetch_semantic_gate(map()) ::
-          {:ok, Project.semantic_gate_mode()} | {:error, {:invalid_project, term()}}
-  defp fetch_semantic_gate(entry) do
-    case Map.get(entry, :semantic_gate, :auto_land_only) do
-      mode when mode in @valid_semantic_gate_modes -> {:ok, mode}
-      other -> {:error, {:invalid_project, {:invalid_semantic_gate, other}}}
+  # `review_green` (Task 162): when true (the default), even green verdicts get
+  # one cross-family reviewer pass before settling :done — no unreviewed code
+  # lands. Validate at registration rather than crashing a run mid-flight on a
+  # typo. Absent ⇒ true. The deprecated `semantic_gate` mode enum maps onto it
+  # for back-compat: :always / :auto_land_only ⇒ true, :off ⇒ false (an explicit
+  # legacy opt-out stays an opt-out).
+  @spec fetch_review_green(map()) :: {:ok, boolean()} | {:error, {:invalid_project, term()}}
+  defp fetch_review_green(entry) do
+    case {Map.fetch(entry, :review_green), Map.get(entry, :semantic_gate)} do
+      {{:ok, value}, _legacy} when is_boolean(value) -> {:ok, value}
+      {{:ok, other}, _legacy} -> {:error, {:invalid_project, {:invalid_review_green, other}}}
+      {:error, legacy} when legacy in [:always, :auto_land_only] -> {:ok, true}
+      {:error, :off} -> {:ok, false}
+      {:error, nil} -> {:ok, true}
+      {:error, other} -> {:error, {:invalid_project, {:invalid_semantic_gate, other}}}
     end
   end
 end

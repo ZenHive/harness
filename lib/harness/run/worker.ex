@@ -42,7 +42,7 @@ defmodule Harness.Run.Worker do
         run_id: run_id
       }
       |> put_env(opts)
-      |> put_semantic_gate(opts)
+      |> put_review_green(opts)
 
     case args
          |> new(queue: Harness.Oban.queue_name(project), meta: %{harness_stage: "dispatch"})
@@ -215,7 +215,7 @@ defmodule Harness.Run.Worker do
         _other -> opts
       end
 
-    opts ++ run_id_opt(args) ++ env_opt(args) ++ semantic_gate_opt(args)
+    opts ++ run_id_opt(args) ++ env_opt(args) ++ review_green_opt(args)
   end
 
   @spec run_id_opt(map()) :: keyword()
@@ -231,9 +231,9 @@ defmodule Harness.Run.Worker do
   defp env_opt(%{"env" => env}) when is_map(env) and map_size(env) > 0, do: [env: env]
   defp env_opt(_args), do: []
 
-  @spec semantic_gate_opt(map()) :: keyword()
-  defp semantic_gate_opt(%{"semantic_gate" => true}), do: [semantic_gate: [enabled: true]]
-  defp semantic_gate_opt(_args), do: []
+  @spec review_green_opt(map()) :: keyword()
+  defp review_green_opt(%{"review_green" => true}), do: [review_green: true]
+  defp review_green_opt(_args), do: []
 
   @spec checkpoint(Oban.Job.t(), String.t()) :: :ok
   defp checkpoint(%Oban.Job{id: id} = job, stage) when is_integer(id) do
@@ -373,15 +373,9 @@ defmodule Harness.Run.Worker do
     end
   end
 
-  @spec put_semantic_gate(map(), keyword()) :: map()
-  defp put_semantic_gate(args, opts) do
-    case Keyword.get(opts, :semantic_gate, []) do
-      gate when is_list(gate) ->
-        if Keyword.get(gate, :enabled) == true, do: Map.put(args, :semantic_gate, true), else: args
-
-      _other ->
-        args
-    end
+  @spec put_review_green(map(), keyword()) :: map()
+  defp put_review_green(args, opts) do
+    if Keyword.get(opts, :review_green) == true, do: Map.put(args, :review_green, true), else: args
   end
 
   @spec generate_run_id() :: String.t()

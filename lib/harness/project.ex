@@ -23,17 +23,13 @@ defmodule Harness.Project do
   - `target_branch` — the branch the autonomous lander fast-forward-pushes an
     approved run onto (e.g. `"development"`). `nil` by default; a project only
     auto-lands when it sets both `landing_policy: :auto` and a `target_branch`.
-  - `semantic_gate` — when the cross-family semantic gate (Task 99) runs on a
-    green verdict, decoupled from auto-land (Task 123):
-      - `:always` — every green run is gated, even under `landing_policy: :manual`
-        (lets a manual-landing project — e.g. harness's own dogfooding — opt the
-        AC-aware check on).
-      - `:auto_land_only` — gated only when the project would auto-land
-        (`landing_policy: :auto`). The default; preserves the original
-        gate-iff-auto-landing behaviour.
-      - `:off` — never gated, even when auto-landing.
-    A per-dispatch `semantic_gate: [enabled: true | false]` run opt overrides
-    this project-level setting for a single run.
+  - `review_green` — when `true` (the default), even a green verdict gets one
+    cross-family reviewer pass scoped to acceptance-criteria conformance before
+    the run settles `:done` (Task 162) — no unreviewed code lands. Set `false`
+    to opt out: green settles directly on the check stack alone. A per-dispatch
+    `review_green: true` run opt forces the pass on for one run. Replaces the
+    deprecated `semantic_gate` mode enum — registry load maps legacy configs
+    (`:always`/`:auto_land_only` → `true`, `:off` → `false`).
   """
 
   alias Harness.CheckStack
@@ -50,7 +46,7 @@ defmodule Harness.Project do
     pollution_allowlist: nil,
     landing_policy: :manual,
     target_branch: nil,
-    semantic_gate: :auto_land_only
+    review_green: true
   ]
 
   @typedoc "Where harness finds the target repository."
@@ -58,9 +54,6 @@ defmodule Harness.Project do
 
   @typedoc "Whether green runs require manual landing or are eligible for auto-land."
   @type landing_policy :: :manual | :auto
-
-  @typedoc "When the cross-family semantic gate runs on a green verdict (Task 123)."
-  @type semantic_gate_mode :: :always | :auto_land_only | :off
 
   @typedoc "A first-class orchestration target."
   @type t :: %__MODULE__{
@@ -72,7 +65,7 @@ defmodule Harness.Project do
           pollution_allowlist: [String.t()] | nil,
           landing_policy: landing_policy(),
           target_branch: String.t() | nil,
-          semantic_gate: semantic_gate_mode()
+          review_green: boolean()
         }
 
   @doc """

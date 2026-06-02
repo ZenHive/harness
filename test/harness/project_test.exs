@@ -21,7 +21,7 @@ defmodule Harness.ProjectTest do
       assert project.check_stacks == [stack]
       assert project.concurrency_cap == nil
       assert project.landing_policy == :manual
-      assert project.semantic_gate == :auto_land_only
+      assert project.review_green == true
     end
 
     test "accepts a {:github, url} source" do

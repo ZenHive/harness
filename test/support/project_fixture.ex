@@ -16,7 +16,12 @@ defmodule Harness.ProjectFixture do
       roadmap_path: Keyword.get(opts, :roadmap_path, repo),
       concurrency_cap: Keyword.get(opts, :concurrency_cap),
       landing_policy: Keyword.get(opts, :landing_policy, :manual),
-      semantic_gate: Keyword.get(opts, :semantic_gate, :auto_land_only)
+      # The PRODUCT default is true (every green verdict gets a reviewer pass —
+      # %Project{} defstruct). The FIXTURE default is false for hermeticity:
+      # green-settling tests must not spawn a real cross-family reviewer agent
+      # installed on the host. Tests that exercise green review opt in with
+      # `review_green: true` plus a reviewer test double.
+      review_green: Keyword.get(opts, :review_green, false)
     }
   end
 

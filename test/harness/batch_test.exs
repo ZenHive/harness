@@ -582,9 +582,8 @@ defmodule Harness.BatchTest do
         verification_timeout: @run_timeout_ms,
         terminal_linger: @terminal_linger_ms,
         # Batch orchestration is the unit under test, not the repair loop — a red
-        # task must settle :verification_red on its first verdict. With repair
-        # enabled it would resume, the fixture would produce no fresh diff, and
-        # the run would settle :no_changes instead. Repair is covered by run_test.
+        # task must settle :verification_red on its first verdict instead of
+        # resuming the agent. Repair/review behavior is covered by run_test.
         max_repair_attempts: 0
       ],
       overrides

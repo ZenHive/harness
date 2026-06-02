@@ -125,36 +125,89 @@ defmodule Harness.ProjectRegistryTest do
                ProjectRegistry.init(:noargs)
     end
 
-    test "reads a project-level semantic_gate mode (decoupled from auto-land)" do
+    test "reads a project-level review_green boolean" do
       entry = [
-        name: "gated",
-        source: {:local, "/tmp/harness-gated"},
+        name: "unreviewed",
+        source: {:local, "/tmp/harness-unreviewed"},
         preset: :elixir,
-        roadmap_path: "/tmp/harness-gated/roadmap/tasks.toml",
-        semantic_gate: :always
+        roadmap_path: "/tmp/harness-unreviewed/roadmap/tasks.toml",
+        review_green: false
       ]
 
       Application.put_env(:harness, :projects, [entry])
 
-      assert {:ok, %{projects: %{"gated" => %Harness.Project{semantic_gate: :always}}}} =
+      assert {:ok, %{projects: %{"unreviewed" => %Harness.Project{review_green: false}}}} =
                ProjectRegistry.init(:noargs)
     end
 
-    test "defaults semantic_gate to :auto_land_only when unset" do
+    test "defaults review_green to true when unset" do
       entry = [
-        name: "ungated",
-        source: {:local, "/tmp/harness-ungated"},
+        name: "reviewed-by-default",
+        source: {:local, "/tmp/harness-reviewed"},
         preset: :elixir,
-        roadmap_path: "/tmp/harness-ungated/roadmap/tasks.toml"
+        roadmap_path: "/tmp/harness-reviewed/roadmap/tasks.toml"
       ]
 
       Application.put_env(:harness, :projects, [entry])
 
-      assert {:ok, %{projects: %{"ungated" => %Harness.Project{semantic_gate: :auto_land_only}}}} =
+      assert {:ok, %{projects: %{"reviewed-by-default" => %Harness.Project{review_green: true}}}} =
                ProjectRegistry.init(:noargs)
     end
 
-    test "rejects an unknown semantic_gate mode" do
+    test "back-compat: legacy semantic_gate :always and :auto_land_only map to review_green: true" do
+      for legacy <- [:always, :auto_land_only] do
+        name = "legacy-#{legacy}"
+
+        entry = [
+          name: name,
+          source: {:local, "/tmp/harness-legacy"},
+          preset: :elixir,
+          roadmap_path: "/tmp/harness-legacy/roadmap/tasks.toml",
+          semantic_gate: legacy
+        ]
+
+        Application.put_env(:harness, :projects, [entry])
+
+        assert {:ok, %{projects: %{^name => %Harness.Project{review_green: true}}}} =
+                 ProjectRegistry.init(:noargs)
+      end
+    end
+
+    test "back-compat: legacy semantic_gate :off maps to review_green: false" do
+      entry = [
+        name: "legacy-off",
+        source: {:local, "/tmp/harness-legacy-off"},
+        preset: :elixir,
+        roadmap_path: "/tmp/harness-legacy-off/roadmap/tasks.toml",
+        semantic_gate: :off
+      ]
+
+      Application.put_env(:harness, :projects, [entry])
+
+      assert {:ok, %{projects: %{"legacy-off" => %Harness.Project{review_green: false}}}} =
+               ProjectRegistry.init(:noargs)
+    end
+
+    test "rejects a non-boolean review_green" do
+      bad = [
+        name: "bad-review-green",
+        source: {:local, "/tmp/x"},
+        preset: :elixir,
+        roadmap_path: "/tmp/x/tasks.toml",
+        review_green: :always
+      ]
+
+      Application.put_env(:harness, :projects, [bad])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, %{projects: %{}}} = ProjectRegistry.init(:noargs)
+        end)
+
+      assert log =~ "skipping invalid config entry"
+    end
+
+    test "rejects an unknown legacy semantic_gate mode" do
       bad = [
         name: "bad-gate",
         source: {:local, "/tmp/x"},

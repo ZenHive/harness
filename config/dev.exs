@@ -9,20 +9,19 @@ import Config
 # still excludes `:integration`; harness dogfooding opts in here because the
 # verifier can provision a per-worktree Postgres test DB before grading.
 #
-# `semantic_gate: :off` (2026-06-02): the gate rejected two green runs in one
-# day (156-first-attempt, rmap task 9 on grok) — judgment-as-code failure mode.
-# Acceptance-criteria review of green runs moves to the reviewer-pair
-# architecture (docs/reviewer-pair-architecture.md, phase 15), where it is a
-# reviewer invocation that FIXES inline instead of rejecting back into a repair
-# loop. Until that lands, green = check-stack green; the human/orchestrator
-# reviews criteria at landing.
+# `review_green: true` (Task 162): every green verdict gets one cross-family
+# reviewer pass — acceptance-criteria conformance review by a reviewer that
+# FIXES inline (docs/reviewer-pair-architecture.md). No unreviewed code lands
+# from harness's own dogfooding. This replaces the reject-into-repair-loop
+# semantic gate that misfired on 2026-06-02; the reviewer repairs instead of
+# rejecting, so the old failure mode (green work bounced back) cannot recur.
 config :harness, :projects, [
   [
     name: "harness",
     source: {:local, Path.expand("..", __DIR__)},
     preset: {:elixir_precommit, cover_threshold: 80, include: [:integration], database: :postgres},
     roadmap_path: Path.expand("..", __DIR__),
-    semantic_gate: :off,
+    review_green: true,
     # The cron poller dispatches the whole `rmap ready --dispatchable` batch each
     # tick; this caps how many of those runs the `project_harness` queue executes
     # concurrently (the rest sit `available` and start as slots free). Without it

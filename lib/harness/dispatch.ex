@@ -104,11 +104,11 @@ defmodule Harness.Dispatch do
         description:
           "When true (default), scrubs ANTHROPIC_API_KEY from the agent's environment so Claude dispatches use subscription OAuth instead of the metered API. Harmless for non-Claude adapters."
       ],
-      semantic_gate: [
+      review_green: [
         kind: :value,
         default: false,
         description:
-          "When true, forces the cross-family semantic gate ON for this one run regardless of the project's landing policy or semantic_gate mode — a green verdict is re-checked by an opposite-family grader against the task's acceptance criteria. Default false leaves the project-level setting (gate-iff-auto-land by default) in control."
+          "When true, forces one cross-family reviewer pass on a green verdict for this run — the reviewer reviews the committed work against the task's acceptance criteria and fixes inline if it does not conform. Default false leaves the project-level review_green setting in control. (Replaces the deprecated semantic_gate param.)"
       ]
     ],
     returns: %{
@@ -120,10 +120,10 @@ defmodule Harness.Dispatch do
 
   @spec task(String.t(), String.t(), String.t(), boolean(), boolean()) ::
           {:ok, %{run_id: String.t()}} | {:error, error()}
-  def task(project_name, task, adapter \\ @recommended_adapter, scrub_anthropic_key \\ true, semantic_gate \\ false)
+  def task(project_name, task, adapter \\ @recommended_adapter, scrub_anthropic_key \\ true, review_green \\ false)
       when is_binary(project_name) and is_binary(task) and is_binary(adapter) and is_boolean(scrub_anthropic_key) and
-             is_boolean(semantic_gate) do
-    with {:ok, run_id} <- enqueue_start(project_name, task, adapter, scrub_anthropic_key, semantic_gate) do
+             is_boolean(review_green) do
+    with {:ok, run_id} <- enqueue_start(project_name, task, adapter, scrub_anthropic_key, review_green) do
       {:ok, %{run_id: run_id}}
     end
   end
@@ -160,11 +160,11 @@ defmodule Harness.Dispatch do
         description:
           "When true (default), scrubs ANTHROPIC_API_KEY from the agent's environment so Claude dispatches use subscription OAuth instead of the metered API. Harmless for non-Claude adapters."
       ],
-      semantic_gate: [
+      review_green: [
         kind: :value,
         default: false,
         description:
-          "When true, forces the cross-family semantic gate ON for this one run regardless of the project's landing policy or semantic_gate mode — a green verdict is re-checked by an opposite-family grader against the task's acceptance criteria. Default false leaves the project-level setting (gate-iff-auto-land by default) in control."
+          "When true, forces one cross-family reviewer pass on a green verdict for this run — the reviewer reviews the committed work against the task's acceptance criteria and fixes inline if it does not conform. Default false leaves the project-level review_green setting in control. (Replaces the deprecated semantic_gate param.)"
       ]
     ],
     returns: %{
@@ -182,11 +182,11 @@ defmodule Harness.Dispatch do
         adapter \\ @recommended_adapter,
         timeout_ms \\ @default_await_timeout_ms,
         scrub_anthropic_key \\ true,
-        semantic_gate \\ false
+        review_green \\ false
       )
       when is_binary(project_name) and is_binary(task) and is_binary(adapter) and is_integer(timeout_ms) and
-             timeout_ms > 0 and is_boolean(scrub_anthropic_key) and is_boolean(semantic_gate) do
-    with {:ok, run_id} <- start(project_name, task, adapter, scrub_anthropic_key, semantic_gate, self()) do
+             timeout_ms > 0 and is_boolean(scrub_anthropic_key) and is_boolean(review_green) do
+    with {:ok, run_id} <- start(project_name, task, adapter, scrub_anthropic_key, review_green, self()) do
       await_result(run_id, timeout_ms)
     end
   end
@@ -443,7 +443,7 @@ defmodule Harness.Dispatch do
   # the job.
   @spec enqueue_start(String.t(), String.t(), String.t(), boolean(), boolean()) ::
           {:ok, String.t()} | {:error, error()}
-  defp enqueue_start(project_name, task, @recommended_adapter, scrub_anthropic_key, semantic_gate) do
+  defp enqueue_start(project_name, task, @recommended_adapter, scrub_anthropic_key, review_green) do
     with {:ok, project} <- lookup_project(project_name),
          {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: :claude),
          {:ok, {adapter_module, render_agent}} <- recommended_adapter_for_item(@recommended_adapter, item),
@@ -453,13 +453,13 @@ defmodule Harness.Dispatch do
              project,
              item,
              adapter_module,
-             run_start_opts(item, nil, scrub_anthropic_key, semantic_gate)
+             run_start_opts(item, nil, scrub_anthropic_key, review_green)
            ) do
       {:ok, run_id}
     end
   end
 
-  defp enqueue_start(project_name, task, adapter, scrub_anthropic_key, semantic_gate) do
+  defp enqueue_start(project_name, task, adapter, scrub_anthropic_key, review_green) do
     with {:ok, {adapter_module, render_agent}} <- resolve_adapter(adapter),
          {:ok, project} <- lookup_project(project_name),
          {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: render_agent),
@@ -468,7 +468,7 @@ defmodule Harness.Dispatch do
              project,
              item,
              adapter_module,
-             run_start_opts(item, nil, scrub_anthropic_key, semantic_gate)
+             run_start_opts(item, nil, scrub_anthropic_key, review_green)
            ) do
       {:ok, run_id}
     end
@@ -479,7 +479,7 @@ defmodule Harness.Dispatch do
   # restart-resilient fire-and-forget MCP path.
   @spec start(String.t(), String.t(), String.t(), boolean(), boolean(), pid() | nil) ::
           {:ok, String.t()} | {:error, error()}
-  defp start(project_name, task, @recommended_adapter, scrub_anthropic_key, semantic_gate, subscriber) do
+  defp start(project_name, task, @recommended_adapter, scrub_anthropic_key, review_green, subscriber) do
     with {:ok, project} <- lookup_project(project_name),
          {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: :claude),
          {:ok, {adapter_module, render_agent}} <- recommended_adapter_for_item(@recommended_adapter, item),
@@ -489,13 +489,13 @@ defmodule Harness.Dispatch do
              item,
              project,
              adapter_module,
-             run_start_opts(item, subscriber, scrub_anthropic_key, semantic_gate)
+             run_start_opts(item, subscriber, scrub_anthropic_key, review_green)
            ) do
       {:ok, run_id}
     end
   end
 
-  defp start(project_name, task, adapter, scrub_anthropic_key, semantic_gate, subscriber) do
+  defp start(project_name, task, adapter, scrub_anthropic_key, review_green, subscriber) do
     with {:ok, {adapter_module, render_agent}} <- resolve_adapter(adapter),
          {:ok, project} <- lookup_project(project_name),
          {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: render_agent),
@@ -504,7 +504,7 @@ defmodule Harness.Dispatch do
              item,
              project,
              adapter_module,
-             run_start_opts(item, subscriber, scrub_anthropic_key, semantic_gate)
+             run_start_opts(item, subscriber, scrub_anthropic_key, review_green)
            ) do
       {:ok, run_id}
     end
@@ -540,32 +540,32 @@ defmodule Harness.Dispatch do
   defp recommendation_domain(%Item{domains: [domain | _]}), do: domain
   defp recommendation_domain(%Item{}), do: :elixir
 
-  # Build the start_run opts. Forcing the gate ON is an explicit `enabled: true`
-  # opt; leaving it false adds nothing so the project-level `semantic_gate` mode
-  # (and app-env default) stays in control — passing `enabled: false` would
-  # instead force it OFF. Public (@doc false) so the override threading is
+  # Build the start_run opts. Forcing a green-review pass ON is an explicit
+  # `review_green: true` opt; leaving it false adds nothing so the project-level
+  # `review_green` setting stays in control — passing `review_green: false`
+  # would instead force it OFF. Public (@doc false) so the override threading is
   # testable without a live dispatch through the real agent CLI — same
   # testability seam as await_result/2 and summarize_comparison/1.
   @doc false
   @spec start_opts(pid() | nil, boolean(), boolean()) :: keyword()
-  def start_opts(subscriber, scrub_anthropic_key, semantic_gate) do
+  def start_opts(subscriber, scrub_anthropic_key, review_green) do
     opts = [subscriber: subscriber, env: scrub_env(scrub_anthropic_key)]
-    if semantic_gate, do: Keyword.put(opts, :semantic_gate, enabled: true), else: opts
+    if review_green, do: Keyword.put(opts, :review_green, true), else: opts
   end
 
   @doc false
   @spec run_start_opts(Item.t(), pid() | nil, boolean(), boolean()) :: keyword()
-  def run_start_opts(%Item{} = item, subscriber, scrub_anthropic_key, semantic_gate) do
+  def run_start_opts(%Item{} = item, subscriber, scrub_anthropic_key, review_green) do
     item
     |> Map.get(:model)
     |> case do
       model when is_binary(model) ->
         subscriber
-        |> start_opts(scrub_anthropic_key, semantic_gate)
+        |> start_opts(scrub_anthropic_key, review_green)
         |> Keyword.put(:requested_model, model)
 
       _other ->
-        start_opts(subscriber, scrub_anthropic_key, semantic_gate)
+        start_opts(subscriber, scrub_anthropic_key, review_green)
     end
   end
 

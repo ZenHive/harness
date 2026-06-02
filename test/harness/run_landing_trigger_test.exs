@@ -36,7 +36,6 @@ defmodule Harness.RunLandingTriggerTest do
       adapter_opts: [command: :write],
       checks: [%Check{name: "ok", command: "true", args: []}],
       result_store: nil,
-      semantic_gate: [enabled: false],
       total_timeout: 30_000,
       idle_timeout: 10_000,
       lifetime_timeout: 30_000,

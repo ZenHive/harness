@@ -77,35 +77,36 @@ defmodule Harness.DispatchTest do
     end
   end
 
-  describe "semantic_gate per-dispatch override surface (Task 123)" do
-    # The force-on threading (start_run semantic_gate: [enabled: true] firing the
-    # gate regardless of landing policy) is proven at the Run level in
-    # Harness.Run.SemanticGateTest; here we assert the JSON-native surface exposes
-    # the override on both dispatch tools so an MCP/chat orchestrator can set it.
+  describe "review_green per-dispatch override surface (Tasks 123/162)" do
+    # The force-on threading (start_run review_green: true routing a green verdict
+    # to the cross-family reviewer regardless of the project setting) is proven at
+    # the Run level in Harness.RunTest; here we assert the JSON-native surface
+    # exposes the override on both dispatch tools so an MCP/chat orchestrator can
+    # set it.
     for tool <- [:task, :await] do
-      test "dispatch__#{tool} surfaces a semantic_gate value param defaulting to false" do
+      test "dispatch__#{tool} surfaces a review_green value param defaulting to false" do
         entry = Enum.find(Dispatch.__api__(), &match?(%{name: unquote(tool)}, &1))
 
-        assert :semantic_gate in entry.param_order
+        assert :review_green in entry.param_order
 
-        param = entry.hints.params.semantic_gate
+        param = entry.hints.params.review_green
         assert param.kind == :value
         assert param.default == false
-        assert param.description =~ "forces the cross-family semantic gate ON"
+        assert param.description =~ "cross-family reviewer pass"
       end
     end
 
-    test "semantic_gate=true threads a force-on override into the start_run opts" do
+    test "review_green=true threads a force-on override into the start_run opts" do
       opts = Dispatch.start_opts(self(), true, true)
 
-      assert Keyword.fetch!(opts, :semantic_gate) == [enabled: true]
+      assert Keyword.fetch!(opts, :review_green) == true
       assert Keyword.fetch!(opts, :subscriber) == self()
     end
 
-    test "semantic_gate=false leaves the project-level setting in control (no override)" do
+    test "review_green=false leaves the project-level setting in control (no override)" do
       opts = Dispatch.start_opts(nil, true, false)
 
-      refute Keyword.has_key?(opts, :semantic_gate)
+      refute Keyword.has_key?(opts, :review_green)
     end
 
     test "run_start_opts threads the ingested item's model into start_run as requested_model" do

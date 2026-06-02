@@ -33,19 +33,27 @@ defmodule Harness.Run do
   is recorded for diagnostics, but a run whose agent timed out is still
   verified: the worktree it left behind is what gets graded.
 
-  ## Repair loop
+  ## Reviewer pair
 
-  A red verdict is not necessarily terminal. While repair attempts remain
-  (`:max_repair_attempts`, default `2`) and the adapter can resume its session,
-  `verifying` loops back to `running` instead of settling: the same agent is
-  resumed with a prompt carrying the failing checks' output (see
-  `Harness.Run.RepairPrompt`), re-commits, and is re-graded. The objective check
-  stack stays the grader, so an agent iterating against it is repairing its
-  work, not self-grading. The loop stops on green, on the attempt cap (settling
-  `:failed` / `:verification_red`), or on any non-red terminal failure of a
-  repair attempt — a quota-starved agent that produces no diff settles
-  `:no_changes` rather than burning the remaining attempts. `repair_attempts` on
-  both the result and the status snapshot reports how many attempts were made.
+  A red verdict is not necessarily terminal. While reviewer iterations remain
+  (`:max_review_iterations`, default `2`), `verifying` routes to `reviewing`: a
+  cross-family reviewer agent gets the worktree, the task spec, the implementer
+  transcript, and the failing-check output, and fixes inline — its own edits,
+  its own commits. Harness re-runs the check stack after every pass; the
+  reviewer's word is never the verdict. The loop stops on green, on the
+  iteration cap (settling `:failed` / `{:review_stuck, prose}`), or when no
+  cross-family reviewer is available.
+
+  Two more verdicts route through the same reviewing state (Task 162), so the
+  judgment they need lives in an agent, never in harness code:
+
+  - An **empty implementer diff** always gets a reviewer pass — the reviewer
+    decides whether the task was already implemented (make the checks pass) or
+    nothing happened (write a stuck-report saying why, e.g. a usage limit).
+  - A **green verdict** gets one conformance-scoped reviewer pass when the
+    project opts in via `review_green: true` (or a per-run `review_green:
+    true` opt). Green with no reviewer available still settles `:done` —
+    the check stack is the ground truth.
 
   ## Operator recovery (hold / steer / resume)
 
@@ -177,6 +185,8 @@ defmodule Harness.Run do
            reviewer_adapter: module() | nil,
            reviewer_adapter_opts: keyword(),
            reviewer_stuck_report: String.t() | nil,
+           review_green: boolean(),
+           implementer_empty_diff?: boolean(),
            repair_prompt_kind: :verification_red | :semantic_rejection | :operator_steer | nil,
            hold_requested: false | :graceful | :interrupt,
            hold_reason: :graceful | :interrupt | nil,
@@ -507,6 +517,8 @@ defmodule Harness.Run do
       reviewer_adapter: nil,
       reviewer_adapter_opts: Keyword.get(opts, :reviewer_adapter_opts, []),
       reviewer_stuck_report: nil,
+      review_green: Keyword.get(opts, :review_green, project.review_green),
+      implementer_empty_diff?: false,
       repair_prompt_kind: nil,
       hold_requested: false,
       hold_reason: nil,
@@ -746,16 +758,13 @@ defmodule Harness.Run do
     {:next_state, :verifying, %{data | task: nil, agent_diff_size: diff_size}}
   end
 
+  # An empty diff is never disposed of here — what it *means* (already
+  # implemented vs nothing happened) is the reviewer's judgment, not a
+  # disposition branch (Task 162). Verification runs either way; the verdict
+  # then routes through the reviewer with empty-diff context.
   def committing(:info, {ref, {:ok, :no_changes, diff_size}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
-
-    data = %{data | task: nil, agent_diff_size: diff_size}
-
-    if verify_no_changes?(data) do
-      {:next_state, :verifying, data}
-    else
-      fail(data, :no_changes)
-    end
+    {:next_state, :verifying, %{data | task: nil, agent_diff_size: diff_size, implementer_empty_diff?: true}}
   end
 
   def committing(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
@@ -795,7 +804,7 @@ defmodule Harness.Run do
     failed_signatures = failed_check_signatures(verdict)
 
     if Verdict.passed?(verdict) do
-      settle_green_verdict(data)
+      route_green_verdict(data)
     else
       route_red_verdict(%{data | last_failed_check_signatures: failed_signatures})
     end
@@ -1582,6 +1591,46 @@ defmodule Harness.Run do
   defp legacy_red_reason(%Verdict{status: :base_red}), do: :base_red
   defp legacy_red_reason(_verdict), do: :verification_red
 
+  # A green verdict settles :done unless it still owes a reviewer pass: an
+  # empty implementer diff always owes one ("what does an empty diff mean?" is
+  # the reviewer's judgment), and a project with `review_green: true` owes one
+  # conformance pass. Exactly one — the `review_iterations == 0` guard makes
+  # the post-review green verdict settle. A wanted-but-unavailable reviewer
+  # fails OPEN to :done (Task 158's lesson): the check stack is the ground
+  # truth, and green work must never fail on missing review infrastructure.
+  @spec route_green_verdict(data()) :: handler_result()
+  defp route_green_verdict(data) do
+    if green_review_wanted?(data) do
+      case select_reviewer(data) do
+        {:ok, reviewer} ->
+          {:next_state, :reviewing,
+           %{
+             data
+             | reviewer_adapter: reviewer,
+               review_iterations: data.review_iterations + 1,
+               reviewer_stuck_report: nil
+           }}
+
+        {:error, _reason} ->
+          settle_done(data)
+      end
+    else
+      settle_done(data)
+    end
+  end
+
+  @spec green_review_wanted?(data()) :: boolean()
+  defp green_review_wanted?(data) do
+    data.max_review_iterations > 0 and
+      data.review_iterations == 0 and
+      (data.review_green or data.implementer_empty_diff?)
+  end
+
+  @spec settle_done(data()) :: handler_result()
+  defp settle_done(data) do
+    {:next_state, :done, clear_operator_steer(%{data | reason: :passed, repair_prompt_kind: nil})}
+  end
+
   @spec select_reviewer(data()) :: {:ok, module()} | {:error, term()}
   defp select_reviewer(%{reviewer: nil} = data) do
     implementer = data.item.agent
@@ -1666,7 +1715,7 @@ defmodule Harness.Run do
     %Invocation{
       prompt: reviewer_prompt(data),
       cwd: data.worktree.path,
-      task_id: "#{data.item.id}-review-#{data.review_iterations + 1}",
+      task_id: "#{data.item.id}-review-#{data.review_iterations}",
       permission_mode: :autonomous,
       language: project_language(data.project),
       adapter_opts: data.reviewer_adapter_opts,
@@ -1687,12 +1736,11 @@ defmodule Harness.Run do
     """
     You are the cross-family reviewer for a harness run.
 
-    The implementer has committed work in this SAME worktree, and the check stack is red.
-    Your job: fix inline, commit, re-run checks; end green or write a stuck-report.
+    #{review_scope_instructions(data)}
     Harness will mechanically re-run the same check stack after you exit. Your words cannot make this run done.
 
     Implementer: #{data.item.agent}
-    Reviewer iteration: #{data.review_iterations + 1} of #{data.max_review_iterations}
+    Reviewer iteration: #{data.review_iterations} of #{data.max_review_iterations}
     Current commit: #{current_sha(data)}
 
     Task spec:
@@ -1710,6 +1758,50 @@ defmodule Harness.Run do
     Full failing-check output:
     #{empty_placeholder(failing_check_evidence(data.verdict))}
     """
+  end
+
+  # Which judgment this reviewer pass is being asked to make. Derived, never
+  # stored: a green verdict means conformance review, red + an empty implementer
+  # diff means "decide what the empty diff means", red otherwise means "fix the
+  # worktree". The judgment itself happens in the reviewer agent — these are
+  # only the instructions framing it.
+  @spec review_scope(data()) :: :fix_red | :empty_diff | :green_conformance
+  defp review_scope(data) do
+    cond do
+      match?(%Verdict{}, data.verdict) and Verdict.passed?(data.verdict) -> :green_conformance
+      data.implementer_empty_diff? -> :empty_diff
+      true -> :fix_red
+    end
+  end
+
+  @spec review_scope_instructions(data()) :: String.t()
+  defp review_scope_instructions(data) do
+    case_result =
+      case review_scope(data) do
+        :fix_red ->
+          """
+          The implementer has committed work in this SAME worktree, and the check stack is red.
+          Your job: fix inline, commit, re-run checks; end green or write a stuck-report.
+          """
+
+        :empty_diff ->
+          """
+          The implementer produced NO diff in this worktree, and the check stack is red.
+          The transcript tail below shows what the implementer did — it may have hit a usage limit,
+          crashed, or believed the work was already done. Your job is to decide what the empty diff means:
+          - Already implemented: make the checks pass (fix inline, commit) so the run can settle done.
+          - Nothing happened: write a stuck-report explaining why (e.g. the implementer hit a usage limit).
+          """
+
+        :green_conformance ->
+          """
+          The check stack in this worktree is GREEN. Your job is NOT to fix red checks.
+          Review the implementer's committed work strictly against the task's acceptance criteria below.
+          If it conforms, make no changes and exit. If it does not conform, fix inline and commit.
+          """
+      end
+
+    String.trim_trailing(case_result)
   end
 
   @spec transcript_tail(String.t()) :: String.t()
@@ -1838,27 +1930,6 @@ defmodule Harness.Run do
   end
 
   defp semantic_gate_grader(_implementer, grader), do: {:error, {:invalid_option, :grader, grader}}
-
-  # A green verdict enters the semantic gate only when the gate is enabled AND
-  # its cross-family grader is actually dispatchable (Task 158 — a missing or
-  # operator-disabled grader fails open to :done, never burning repair attempts);
-  # otherwise the run settles :done directly.
-  @spec settle_green_verdict(data()) :: handler_result()
-  defp settle_green_verdict(data) do
-    if semantic_gate_enabled?(data) and semantic_gate_grader_available?(data) do
-      {:next_state, :consulting, %{data | consultation_kind: :semantic_gate}}
-    else
-      {:next_state, :done, clear_operator_steer(%{data | reason: :passed, repair_prompt_kind: nil})}
-    end
-  end
-
-  @spec semantic_gate_grader_available?(data()) :: boolean()
-  defp semantic_gate_grader_available?(data) do
-    case semantic_gate_grader(data) do
-      {:ok, grader} -> semantic_grader_dispatchable?(grader)
-      {:error, _reason} -> false
-    end
-  end
 
   @spec semantic_grader_dispatchable?(atom()) :: boolean()
   defp semantic_grader_dispatchable?(grader) when is_atom(grader) do
@@ -2469,27 +2540,6 @@ defmodule Harness.Run do
     Keyword.merge(global, local)
   end
 
-  # A per-dispatch `enabled: true | false` opt forces the gate on/off for one
-  # run regardless of landing policy (Task 123 AC2). Absent / `:auto` defers to
-  # the project-level `semantic_gate` mode, which decouples gate-enablement from
-  # auto-land so a manual-landing project (e.g. harness's own dogfooding) can
-  # opt the AC-aware check on.
-  @spec semantic_gate_enabled?(data()) :: boolean()
-  defp semantic_gate_enabled?(data) do
-    case Keyword.get(data.semantic_gate, :enabled, :auto) do
-      true -> true
-      :auto -> project_semantic_gate_enabled?(data.project)
-      _ -> false
-    end
-  end
-
-  @spec project_semantic_gate_enabled?(Project.t()) :: boolean()
-  defp project_semantic_gate_enabled?(%Project{semantic_gate: :always}), do: true
-  defp project_semantic_gate_enabled?(%Project{semantic_gate: :off}), do: false
-
-  defp project_semantic_gate_enabled?(%Project{semantic_gate: :auto_land_only, landing_policy: policy}),
-    do: policy == :auto
-
   @spec current_sha(data()) :: String.t()
   defp current_sha(%{worktree: %Worktree{path: path, base_sha: fallback}}) do
     case Git.run(["rev-parse", "HEAD"], path) do
@@ -2554,32 +2604,6 @@ defmodule Harness.Run do
          {:ok, status} <- Worktree.commit(worktree, message) do
       {:ok, status, diff_size}
     end
-  end
-
-  @spec verify_no_changes?(data()) :: boolean()
-  defp verify_no_changes?(%{repair_attempts: attempts} = data) do
-    attempts == 0 and
-      normal_agent_completion?(data.agent_outcome) and
-      verification_meaningful?(data)
-  end
-
-  # An empty diff earns verification only when the agent ran to completion
-  # normally. A quota-exhausted, timed-out, or crashed agent that made zero
-  # edits is a failed run, not an "already implemented" candidate — promoting
-  # those to :done would break quota-failover semantics (the adapter never gets
-  # marked unavailable and the batch never re-routes).
-  @spec normal_agent_completion?(Outcome.t() | nil) :: boolean()
-  defp normal_agent_completion?(%Outcome{kind: :exited} = outcome) do
-    not AgentRegistry.quota_exhausted?(outcome)
-  end
-
-  defp normal_agent_completion?(_), do: false
-
-  @spec verification_meaningful?(data()) :: boolean()
-  defp verification_meaningful?(%{checks: checks}) when is_list(checks), do: checks != []
-
-  defp verification_meaningful?(%{project: %Project{check_stacks: stacks}}) do
-    Enum.any?(stacks, &(&1.checks != []))
   end
 
   @spec first_attempt_failed_check_count(data(), Verdict.t()) :: non_neg_integer()

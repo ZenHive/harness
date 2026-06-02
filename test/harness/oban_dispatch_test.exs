@@ -129,7 +129,7 @@ defmodule Harness.ObanDispatchTest do
                          adapter_module: "Elixir.Harness.AgentAdapter.Codex",
                          run_id: ^run_id,
                          env: %{"ANTHROPIC_API_KEY" => false},
-                         semantic_gate: true
+                         review_green: true
                        },
                        meta: %{harness_stage: "dispatch"},
                        queue: "project_interactive",
@@ -351,7 +351,7 @@ defmodule Harness.ObanDispatchTest do
 
     Application.put_env(:harness, :run_starter, fn %Item{} = item, _run_project, _adapter, opts ->
       run_id = Keyword.fetch!(opts, :run_id)
-      send(parent, {:start_run_opts, run_id, Keyword.get(opts, :semantic_gate)})
+      send(parent, {:start_run_opts, run_id, Keyword.get(opts, :review_green)})
       subscriber = Keyword.fetch!(opts, :subscriber)
 
       pid =
@@ -376,11 +376,11 @@ defmodule Harness.ObanDispatchTest do
                  "item_id" => "156",
                  "adapter_module" => "Elixir.Harness.AgentAdapter.Codex",
                  "run_id" => "run-interactive-156",
-                 "semantic_gate" => true
+                 "review_green" => true
                }
              })
 
-    assert_received {:start_run_opts, "run-interactive-156", [enabled: true]}
+    assert_received {:start_run_opts, "run-interactive-156", true}
   end
 
   test "worker omits requested_model when the ingested item carries none" do
