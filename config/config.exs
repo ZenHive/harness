@@ -47,10 +47,17 @@ config :harness, :cron_capability_benchmark,
 # Autonomous roadmap polling is opt-in. The Oban.Plugins.Cron entry that runs
 # Harness.Cron.RoadmapPoller is registered unconditionally (Task 109) so the
 # runtime master toggle has a scheduled tick to act on; `enabled` is the live
-# dispatch gate (seeded from the persisted store on boot), `schedule` the cadence.
+# dispatch gate (seeded from the persisted store on boot), `schedule` the
+# cadence. `subscription_env_scrubs` removes metered provider keys from
+# subscription-operated agents; set an agent entry to false/%{} when that agent
+# should intentionally use its inherited API key.
 config :harness, :cron_polling,
   enabled: false,
-  schedule: "0 */2 * * *"
+  schedule: "0 */2 * * *",
+  subscription_env_scrubs: %{
+    claude: %{"ANTHROPIC_API_KEY" => false},
+    codex: %{"OPENAI_API_KEY" => false}
+  }
 
 # File-backed term store for the persisted cron-autonomy switches (master +
 # per-project flags, Tasks 109/110), so a toggle survives a BEAM restart. Set to

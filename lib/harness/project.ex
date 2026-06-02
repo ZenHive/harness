@@ -56,6 +56,9 @@ defmodule Harness.Project do
   @typedoc "Where harness finds the target repository."
   @type source :: Local.t() | Github.t()
 
+  @typedoc "Whether green runs require manual landing or are eligible for auto-land."
+  @type landing_policy :: :manual | :auto
+
   @typedoc "When the cross-family semantic gate runs on a green verdict (Task 123)."
   @type semantic_gate_mode :: :always | :auto_land_only | :off
 
@@ -67,7 +70,7 @@ defmodule Harness.Project do
           roadmap_path: String.t(),
           concurrency_cap: pos_integer() | nil,
           pollution_allowlist: [String.t()] | nil,
-          landing_policy: :manual | :auto,
+          landing_policy: landing_policy(),
           target_branch: String.t() | nil,
           semantic_gate: semantic_gate_mode()
         }

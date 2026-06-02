@@ -75,10 +75,10 @@ defmodule Harness.Cron.RoadmapPollerTest do
     Application.put_env(:harness, :cron_project_autonomy, %{"cron-enabled" => true})
 
     # The whole dispatchable set is fanned out in one tick — one task with no
-    # assignee (defaults :claude), one routed to :codex via `assignee`.
+    # assignee (defaults :claude), plus tasks routed via `assignee`.
     Application.put_env(:harness, :roadmap_ready, fn p ->
       send(parent, {:ready, p.name})
-      {:ok, [task("51", nil), task("52", "codex")]}
+      {:ok, [task("51", nil), task("52", "codex"), task("53", "cursor")]}
     end)
 
     Application.put_env(:harness, :oban_insert, fn changeset ->
@@ -96,7 +96,8 @@ defmodule Harness.Cron.RoadmapPollerTest do
                        args: %{
                          project_name: "cron-enabled",
                          item_id: "51",
-                         adapter_module: "Elixir.Harness.AgentAdapter.Claude"
+                         adapter_module: "Elixir.Harness.AgentAdapter.Claude",
+                         env: %{"ANTHROPIC_API_KEY" => false}
                        },
                        meta: %{harness_stage: "cron_poll"},
                        queue: "project_cron-enabled",
@@ -105,8 +106,50 @@ defmodule Harness.Cron.RoadmapPollerTest do
 
     assert_received {:inserted,
                      %Oban.Job{
-                       args: %{item_id: "52", adapter_module: "Elixir.Harness.AgentAdapter.Codex"}
+                       args: %{
+                         item_id: "52",
+                         adapter_module: "Elixir.Harness.AgentAdapter.Codex",
+                         env: %{"OPENAI_API_KEY" => false}
+                       }
                      }}
+
+    assert_received {:inserted,
+                     %Oban.Job{
+                       args: %{item_id: "53", adapter_module: "Elixir.Harness.AgentAdapter.Cursor"} = cursor_args
+                     }}
+
+    refute Map.has_key?(cursor_args, :env)
+  end
+
+  test "operator config can disable subscription scrubs for metered API-key agents" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-cron-metered", name: "cron-metered", concurrency_cap: 10)
+    assert :ok = ProjectRegistry.register(project)
+
+    Application.put_env(:harness, :cron_polling,
+      enabled: true,
+      schedule: "* * * * *",
+      subscription_env_scrubs: %{claude: false, codex: %{}}
+    )
+
+    Application.put_env(:harness, :cron_project_autonomy, %{"cron-metered" => true})
+
+    Application.put_env(:harness, :roadmap_ready, fn _p ->
+      {:ok, [task("51", nil), task("52", "codex")]}
+    end)
+
+    Application.put_env(:harness, :oban_insert, fn changeset ->
+      job = Ecto.Changeset.apply_action!(changeset, :insert)
+      send(parent, {:inserted, job.args})
+      {:ok, job}
+    end)
+
+    assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+    assert_received {:inserted, %{item_id: "51", adapter_module: "Elixir.Harness.AgentAdapter.Claude"} = claude_args}
+    assert_received {:inserted, %{item_id: "52", adapter_module: "Elixir.Harness.AgentAdapter.Codex"} = codex_args}
+    refute Map.has_key?(claude_args, :env)
+    refute Map.has_key?(codex_args, :env)
   end
 
   test "enabled tick skips human-assigned tasks" do

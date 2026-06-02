@@ -38,6 +38,10 @@ defmodule Harness.Cron.RoadmapPoller do
     "codex" => :codex,
     "cursor" => :cursor
   }
+  @default_subscription_env_scrubs %{
+    claude: %{"ANTHROPIC_API_KEY" => false},
+    codex: %{"OPENAI_API_KEY" => false}
+  }
   # Dedup window: skip re-enqueueing a task that already has a job in any
   # non-terminal state. A completed/cancelled job does not block a later tick.
   @unique_opts [
@@ -183,8 +187,30 @@ defmodule Harness.Cron.RoadmapPoller do
     }
 
     args
+    |> put_env(env_scrub_for_adapter(adapter))
     |> RunWorker.new(queue: Harness.Oban.queue_name(project), meta: @dispatch_meta, unique: @unique_opts)
     |> Harness.Oban.insert()
+  end
+
+  @spec put_env(map(), map()) :: map()
+  defp put_env(args, env) when is_map(env) and map_size(env) > 0, do: Map.put(args, :env, env)
+  defp put_env(args, _empty), do: args
+
+  @spec env_scrub_for_adapter(module()) :: %{optional(String.t()) => false}
+  defp env_scrub_for_adapter(adapter) do
+    with {:ok, agent} <- AgentRegistry.agent_for_module(adapter),
+         env when is_map(env) and map_size(env) > 0 <- Map.get(subscription_env_scrubs(), agent, %{}) do
+      env
+    else
+      _other -> %{}
+    end
+  end
+
+  @spec subscription_env_scrubs() :: %{optional(atom()) => map() | false}
+  defp subscription_env_scrubs do
+    configured = Keyword.get(config(), :subscription_env_scrubs, %{})
+
+    Map.merge(@default_subscription_env_scrubs, configured)
   end
 
   @spec ready_tasks(Project.t()) :: {:ok, [map()]} | {:error, term()}

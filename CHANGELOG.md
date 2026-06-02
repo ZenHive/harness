@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Cron dispatch scrubs subscription-agent provider API keys (Task 154).**
+  `Harness.Cron.RoadmapPoller` now persists per-agent env scrubs into
+  `Run.Worker` job args for subscription-operated Claude and Codex dispatches
+  (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`), while leaving Cursor/Grok/
+  Antigravity/Pi args unchanged. Operators can override
+  `:cron_polling, :subscription_env_scrubs` to intentionally run an agent on its
+  inherited metered API key.
+
 - **Runtime ProjectRegistry registrations persist to Postgres (Task 141, cursor
   delivery).** `Harness.ProjectRegistry.Persistence` upserts/deletes runtime
   `register/1` / `unregister/1` calls in a new `projects` table (name PK,
