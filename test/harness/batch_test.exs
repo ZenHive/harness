@@ -229,7 +229,7 @@ defmodule Harness.BatchTest do
                batch_opts(base,
                  max_concurrency: 2,
                  adapter_opts: [command: {:write_status_by_task, ["red"]}],
-                 checks: [check("status", "grep", ["pass", "status.txt"])]
+                 checks: [status_check()]
                )
              )
 
@@ -310,7 +310,7 @@ defmodule Harness.BatchTest do
                  result_store: store,
                  max_concurrency: 2,
                  adapter_opts: [command: {:write_status_by_task, ["red"]}],
-                 checks: [check("status", "grep", ["pass", "status.txt"])]
+                 checks: [status_check()]
                )
              )
 
@@ -538,7 +538,7 @@ defmodule Harness.BatchTest do
                  max_concurrency: 1,
                  retry_policy: [max_retries: 3, base_delay_ms: 1],
                  adapter_opts: [command: {:write_status_by_task, ["red"]}],
-                 checks: [check("status", "grep", ["pass", "status.txt"])]
+                 checks: [status_check()]
                )
              )
 
@@ -688,6 +688,10 @@ defmodule Harness.BatchTest do
   end
 
   defp check(name, command, args), do: %Check{name: name, command: command, args: args}
+
+  defp status_check do
+    check("status", "sh", ["-c", "test ! -f status.txt || grep pass status.txt"])
+  end
 
   defp gate_path do
     path = Path.join(System.tmp_dir!(), "harness-batch-gate-#{System.unique_integer([:positive])}")

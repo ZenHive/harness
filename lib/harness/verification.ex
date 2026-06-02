@@ -60,6 +60,7 @@ defmodule Harness.Verification do
 
   alias Harness.CheckStack
   alias Harness.CheckStack.Preset.Elixir, as: ElixirPreset
+  alias Harness.Git
   alias Harness.Verification.Check
   alias Harness.Verification.Result
   alias Harness.Verification.Verdict
@@ -67,6 +68,7 @@ defmodule Harness.Verification do
   @default_timeout 600_000
   @timeout_output_drain_ms 100
   @test_database_prefix "harness_test"
+  @baseline_cache_namespace {__MODULE__, :baseline_cache}
 
   @typedoc "A reason a verification run cannot execute at all."
   @type error ::
@@ -130,6 +132,7 @@ defmodule Harness.Verification do
     with :ok <- validate_stacks(stacks),
          :ok <- validate_worktree(path),
          {:ok, results} <- run_stacks(stacks, path, timeout_override, post_process_opts) do
+      results = maybe_mark_pre_existing(results, stacks, path, timeout_override, post_process_opts)
       {:ok, build_verdict(results)}
     end
   end
@@ -335,8 +338,117 @@ defmodule Harness.Verification do
 
   @spec build_verdict([Result.t()]) :: Verdict.t()
   defp build_verdict(results) do
-    status = if Enum.all?(results, &(&1.status == :pass)), do: :pass, else: :fail
+    status =
+      cond do
+        Enum.any?(results, &(&1.status == :fail)) -> :fail
+        Enum.any?(results, &(&1.status == :pre_existing)) -> :base_red
+        true -> :pass
+      end
+
     %Verdict{status: status, results: results}
+  end
+
+  @spec maybe_mark_pre_existing([Result.t()], [CheckStack.t()], String.t(), timeout() | nil, keyword()) ::
+          [Result.t()]
+  defp maybe_mark_pre_existing(results, stacks, path, timeout_override, post_process_opts) do
+    base_ref = Keyword.get(post_process_opts, :base_ref)
+
+    if red_results?(results) and is_binary(base_ref) do
+      case baseline_results(stacks, path, timeout_override, base_ref) do
+        {:ok, baseline_results} -> mark_pre_existing(results, baseline_results)
+        {:error, _reason} -> results
+      end
+    else
+      results
+    end
+  end
+
+  @spec red_results?([Result.t()]) :: boolean()
+  defp red_results?(results), do: Enum.any?(results, &(&1.status == :fail))
+
+  @spec baseline_results([CheckStack.t()], String.t(), timeout() | nil, String.t()) ::
+          {:ok, [Result.t()]} | {:error, term()}
+  defp baseline_results(stacks, path, timeout_override, base_ref) do
+    with {:ok, key} <- baseline_cache_key(stacks, path, timeout_override, base_ref) do
+      case baseline_cache_get(key) do
+        {:ok, cached} ->
+          cached
+
+        :error ->
+          result = run_baseline_stacks(stacks, path, timeout_override, base_ref)
+          baseline_cache_put(key, result)
+          result
+      end
+    end
+  end
+
+  @spec baseline_cache_key([CheckStack.t()], String.t(), timeout() | nil, String.t()) ::
+          {:ok, term()} | {:error, term()}
+  defp baseline_cache_key(stacks, path, timeout_override, base_ref) do
+    with {:ok, git_common_dir} <- Git.run(["rev-parse", "--git-common-dir"], path) do
+      {:ok,
+       {
+         Path.expand(String.trim(git_common_dir), path),
+         base_ref,
+         :erlang.phash2({stacks, timeout_override})
+       }}
+    end
+  end
+
+  @spec baseline_cache_get(term()) :: {:ok, {:ok, [Result.t()]} | {:error, term()}} | :error
+  defp baseline_cache_get(key) do
+    case :persistent_term.get({@baseline_cache_namespace, key}, :missing) do
+      :missing -> :error
+      cached -> {:ok, cached}
+    end
+  end
+
+  @spec baseline_cache_put(term(), {:ok, [Result.t()]} | {:error, term()}) :: :ok
+  defp baseline_cache_put(key, result) do
+    :persistent_term.put({@baseline_cache_namespace, key}, result)
+  end
+
+  @spec run_baseline_stacks([CheckStack.t()], String.t(), timeout() | nil, String.t()) ::
+          {:ok, [Result.t()]} | {:error, term()}
+  defp run_baseline_stacks(stacks, path, timeout_override, base_ref) do
+    baseline_path = baseline_worktree_path(path)
+
+    with {:ok, _output} <- Git.run(["worktree", "add", "--detach", baseline_path, base_ref], path) do
+      try do
+        run_stacks(stacks, baseline_path, timeout_override, worktree_path: baseline_path)
+      after
+        _ = Git.run(["worktree", "remove", "--force", baseline_path], path)
+      end
+    end
+  end
+
+  @spec baseline_worktree_path(String.t()) :: String.t()
+  defp baseline_worktree_path(path) do
+    suffix = "#{Path.basename(path)}-base-#{System.unique_integer([:positive])}"
+    Path.join(System.tmp_dir!(), suffix)
+  end
+
+  @spec mark_pre_existing([Result.t()], [Result.t()]) :: [Result.t()]
+  defp mark_pre_existing(results, baseline_results) when length(results) == length(baseline_results) do
+    results
+    |> Enum.zip(baseline_results)
+    |> Enum.map(fn
+      {%Result{status: :fail} = result, %Result{status: :fail}} -> pre_existing_result(result)
+      {result, _baseline_result} -> result
+    end)
+  end
+
+  defp mark_pre_existing(results, _baseline_results), do: results
+
+  @spec pre_existing_result(Result.t()) :: Result.t()
+  defp pre_existing_result(%Result{} = result) do
+    %{
+      result
+      | status: :pre_existing,
+        output:
+          result.output <>
+            "\n[harness] check also failed on the dispatch base; marked pre-existing instead of agent-caused"
+    }
   end
 
   # Spawns one check over an OTP port and collects its result. A check whose

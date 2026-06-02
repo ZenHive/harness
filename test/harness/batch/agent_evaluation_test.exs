@@ -303,7 +303,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
     Keyword.merge(
       [
         base_dir: base,
-        checks: [check("status", "grep", ["pass", "status.txt"])],
+        checks: [status_check()],
         total_timeout: @run_timeout_ms,
         idle_timeout: @run_timeout_ms,
         lifetime_timeout: @run_timeout_ms,
@@ -317,6 +317,10 @@ defmodule Harness.Batch.AgentEvaluationTest do
 
   defp item(id) do
     %Item{id: id, title: "Task #{id}", prompt: "do task #{id}", agent: :claude}
+  end
+
+  defp status_check do
+    check("status", "sh", ["-c", "test ! -f status.txt || grep pass status.txt"])
   end
 
   defp check(name, command, args), do: %Check{name: name, command: command, args: args}

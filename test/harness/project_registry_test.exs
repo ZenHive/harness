@@ -325,7 +325,7 @@ defmodule Harness.ProjectRegistryTest do
       repo_b = GitFixture.init_repo(name: "proj-b")
 
       pass_stack = %CheckStack{name: :pass, checks: [check("ok", "true")]}
-      fail_stack = %CheckStack{name: :fail, checks: [check("no", "false")]}
+      fail_stack = %CheckStack{name: :fail, checks: [check("no", "test", ["!", "-f", "agent_output.txt"])]}
 
       project_a = ProjectFixture.from_repo(repo_a, name: "proj-a", check_stack: pass_stack)
       project_b = ProjectFixture.from_repo(repo_b, name: "proj-b", check_stack: fail_stack)

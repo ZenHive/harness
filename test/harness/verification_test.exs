@@ -65,6 +65,59 @@ defmodule Harness.VerificationTest do
     end
   end
 
+  describe "run/2 baseline attribution" do
+    test "keeps an agent-caused red attributed to the agent" do
+      repo = GitFixture.init_repo()
+      base_ref = current_sha(repo)
+      File.write!(Path.join(repo, "agent-red"), "")
+
+      assert {:ok, %Verdict{status: :fail, results: [result]}} =
+               Verification.run(repo,
+                 base_ref: base_ref,
+                 checks: [check("agent", stub_script("test ! -f agent-red"))]
+               )
+
+      assert result.status == :fail
+    end
+
+    test "settles base-red when every failing check also fails on the base" do
+      repo = GitFixture.init_repo()
+      File.write!(Path.join(repo, "base-red"), "")
+      GitFixture.git!(repo, ["add", "base-red"])
+      GitFixture.git!(repo, ["commit", "-q", "-m", "base red"])
+      base_ref = current_sha(repo)
+
+      assert {:ok, %Verdict{status: :base_red, results: [result]}} =
+               Verification.run(repo,
+                 base_ref: base_ref,
+                 checks: [check("base", stub_script("test ! -f base-red"))]
+               )
+
+      assert result.status == :pre_existing
+      assert result.output =~ "pre-existing"
+    end
+
+    test "filters base failures while leaving agent-caused failures red" do
+      repo = GitFixture.init_repo()
+      File.write!(Path.join(repo, "base-red"), "")
+      GitFixture.git!(repo, ["add", "base-red"])
+      GitFixture.git!(repo, ["commit", "-q", "-m", "base red"])
+      base_ref = current_sha(repo)
+      File.write!(Path.join(repo, "agent-red"), "")
+
+      checks = [
+        check("base", stub_script("test ! -f base-red")),
+        check("agent", stub_script("test ! -f agent-red"))
+      ]
+
+      assert {:ok, %Verdict{status: :fail, results: [base_result, agent_result]}} =
+               Verification.run(repo, base_ref: base_ref, checks: checks)
+
+      assert base_result.status == :pre_existing
+      assert agent_result.status == :fail
+    end
+  end
+
   describe "run/2 capture" do
     test "captures combined stdout and stderr" do
       dir = worktree_dir()
@@ -574,5 +627,11 @@ defmodule Harness.VerificationTest do
     File.cp_r!(source, dest)
     on_exit(fn -> File.rm_rf!(dest) end)
     dest
+  end
+
+  defp current_sha(repo) do
+    repo
+    |> GitFixture.git!(["rev-parse", "HEAD"])
+    |> String.trim()
   end
 end

@@ -13,8 +13,9 @@ defmodule Harness.Verification.Result do
 
     * `name` — the check's label, copied from its `Harness.Verification.Check`.
     * `command` — the executable that ran, kept for readable failure dumps.
-    * `status` — `:pass` (process exited `0`) or `:fail` (any other exit, a
-      timeout, or the executable could not be launched).
+    * `status` — `:pass` (process exited `0`), `:fail` (any other exit, a
+      timeout, or the executable could not be launched), or `:pre_existing`
+      (failed here and on the dispatch base, so it is inherited red).
     * `kind` — *how* the check ended, orthogonal to `status`: `:exited` (ran to
       completion — `status` then carries the pass/fail verdict), `:timed_out`
       (killed at the per-check deadline), or `:not_launched` (the executable
@@ -28,7 +29,7 @@ defmodule Harness.Verification.Result do
   @type t :: %__MODULE__{
           name: String.t(),
           command: String.t(),
-          status: :pass | :fail,
+          status: :pass | :fail | :pre_existing,
           kind: :exited | :timed_out | :not_launched,
           exit_status: integer() | nil,
           output: String.t()

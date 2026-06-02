@@ -873,9 +873,10 @@ defmodule Harness.Dashboard.Live do
   end
 
   @doc false
-  @spec verdict_label(:pass | :fail | nil) :: String.t()
+  @spec verdict_label(:pass | :fail | :base_red | nil) :: String.t()
   def verdict_label(:pass), do: "pass"
   def verdict_label(:fail), do: "fail"
+  def verdict_label(:base_red), do: "base_red"
   def verdict_label(nil), do: "—"
 
   # "Merged" is the run's task carrying a shipped_in in the project roadmap (set

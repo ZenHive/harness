@@ -776,6 +776,9 @@ defmodule Harness.Run do
       Verdict.passed?(verdict) ->
         {:next_state, :done, clear_operator_steer(%{data | reason: :passed, repair_prompt_kind: nil})}
 
+      verdict.status == :base_red ->
+        {:next_state, :failed, %{data | reason: :base_red, last_failed_check_signatures: failed_signatures}}
+
       data.cross_agent_follow_up ->
         {:next_state, :failed, %{data | reason: :verification_red, last_failed_check_signatures: failed_signatures}}
 

@@ -131,7 +131,15 @@ defmodule Harness.Run.CrossAgentRepairTest do
     {run_id, pid, repo}
   end
 
-  defp marker_checks, do: [check("ok", "true"), check("marker", "test", ["-f", "repair_marker"])]
+  defp marker_checks do
+    [
+      check("ok", "true"),
+      check("marker", "sh", [
+        "-c",
+        "test -f repair_marker || { test ! -f attempt.txt && test ! -f churn.txt && test ! -f agent_output.txt; }"
+      ])
+    ]
+  end
 
   defp check(name, command, args \\ []), do: %Check{name: name, command: command, args: args}
 

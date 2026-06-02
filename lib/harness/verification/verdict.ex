@@ -3,8 +3,9 @@ defmodule Harness.Verification.Verdict do
   The aggregate outcome of a verification run: every check's result plus the
   single objective pass/fail the harness grades the run on.
 
-  Any red check makes the whole verdict red — harness never marks a job green
-  unless every check in the stack passed.
+  Any agent-attributed red check makes the whole verdict red. When every red
+  check also fails on the dispatch base, the verdict is `:base_red` instead:
+  not green, but not blamed on the agent.
   """
 
   alias Harness.Verification.Result
@@ -12,12 +13,14 @@ defmodule Harness.Verification.Verdict do
   @typedoc """
   The verdict.
 
-    * `status` — `:pass` only when every result passed; `:fail` if any failed.
+    * `status` — `:pass` only when every result passed; `:fail` if any
+      agent-attributed check failed; `:base_red` when all failures were
+      inherited from the dispatch base.
     * `results` — every check's `Harness.Verification.Result`, in the order the
       checks ran.
   """
   @type t :: %__MODULE__{
-          status: :pass | :fail,
+          status: :pass | :fail | :base_red,
           results: [Result.t()]
         }
 
@@ -27,8 +30,8 @@ defmodule Harness.Verification.Verdict do
   @doc """
   Whether every check in the verdict passed.
 
-  The run-lifecycle maps this onto the `:success` / `:failure` outcome of
-  `Harness.Worktree.finish/3`.
+  `:base_red` is deliberately not passed: inherited red must never silently
+  green a run.
   """
   @spec passed?(t()) :: boolean()
   def passed?(%__MODULE__{status: status}), do: status == :pass

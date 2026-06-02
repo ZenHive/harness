@@ -143,7 +143,7 @@ defmodule Harness.RunTest do
     end
 
     test "settles :failed and retains the worktree when verification fails" do
-      result = run(checks: [check("ok", "true"), check("no", "false")])
+      result = run(checks: [check("ok", "true"), check("no", "test", ["!", "-f", "agent_output.txt"])])
 
       assert %Result{state: :failed, reason: :verification_red} = result
       assert %Verdict{status: :fail} = result.verdict
@@ -884,6 +884,38 @@ defmodule Harness.RunTest do
       assert %Result{state: :failed, reason: :verification_red, repair_attempts: 0} = result
     end
 
+    test "base-red-only verification settles without triggering repair" do
+      repo = GitFixture.init_repo()
+      File.write!(Path.join(repo, "base-red"), "")
+      GitFixture.git!(repo, ["add", "base-red"])
+      GitFixture.git!(repo, ["commit", "-q", "-m", "base red"])
+
+      project = ProjectFixture.from_repo(repo)
+      base = GitFixture.tmp_base()
+
+      opts =
+        Keyword.merge(
+          [
+            base_dir: base,
+            total_timeout: 30_000,
+            idle_timeout: 10_000,
+            lifetime_timeout: 30_000,
+            verification_timeout: 10_000,
+            terminal_linger: 100,
+            adapter_opts: [command: :repair],
+            checks: [check("base", "test", ["!", "-f", "base-red"])],
+            max_repair_attempts: 2
+          ],
+          []
+        )
+
+      {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, FakeAdapter, opts)
+      result = await_result(run_id, pid)
+
+      assert %Result{state: :failed, reason: :base_red, repair_attempts: 0} = result
+      assert %Verdict{status: :base_red} = result.verdict
+    end
+
     test "a non-repairable failure ends the loop without burning the attempt budget" do
       # The resumed agent produces no diff (a quota-starved agent): the run
       # settles :no_changes at one attempt — it does not burn all five.
@@ -1110,7 +1142,15 @@ defmodule Harness.RunTest do
 
   # A check stack the :repair fixtures grade against: red until the resumed
   # agent writes repair_marker into the worktree.
-  defp marker_checks, do: [check("ok", "true"), check("marker", "test", ["-f", "repair_marker"])]
+  defp marker_checks do
+    [
+      check("ok", "true"),
+      check("marker", "sh", [
+        "-c",
+        "test -f repair_marker || { test ! -f attempt.txt && test ! -f churn.txt && test ! -f agent_output.txt; }"
+      ])
+    ]
+  end
 
   defp default_opts(base) do
     [
