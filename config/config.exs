@@ -64,42 +64,6 @@ config :harness, :cron_polling,
 # `false` to disable persistence (runtime flips still work, nothing is written).
 config :harness, :cron_settings, root: Path.expand("~/.harness")
 
-# config :harness, Harness.Notification.CommandSink,
-#   command: "/usr/local/bin/notify-train.sh",
-#   args: []
-
-# Verification check stack — see Harness.Verification.
-# Both keys are optional; defaults live in code (elixir_preset/0, 600_000 ms).
-#   :checks  — list of %Harness.Verification.Check{}; defaults to elixir_preset/0.
-#   :timeout — per-check timeout in ms; defaults to 600_000 (10 min).
-# config :harness, :verification,
-#   checks: [...],
-#   timeout: 600_000
-
-# Run lifecycle & agent timeouts — see Harness.AgentAdapter.Driver and Harness.Run.
-# All keys are optional; defaults live in code.
-#   :total_timeout       — agent total-run budget in ms; defaults to 1_800_000 (30 min).
-#   :idle_timeout        — kill the agent after this many ms with no output; defaults
-#                          to 300_000 (5 min).
-#   :lifetime_timeout    — whole-job wall budget (worktree + agent + verification) in
-#                          ms; defaults to 5_400_000 (90 min).
-#   :terminal_linger     — how long a settled run stays observable before it stops, in
-#                          ms; defaults to 5_000 (5 s).
-#   :max_repair_attempts — how many times a red verdict is fed back to the agent (via
-#                          session resume) before the run settles :failed; defaults
-#                          to 2. 0 disables the autonomous repair loop.
-#   :max_hold_timeout — operator hold safeguard in ms; settles :hold_expired when
-#                       elapsed. Defaults to 1_800_000 (30 min). `:infinity` disables.
-#   :pollution_allowlist — path patterns ignored by the main-checkout pollution diff
-#                          (see `Harness.Worktree.Isolation.default_pollution_allowlist/0`);
-#                          defaults to that list when unset.
-# config :harness, :run,
-#   total_timeout: 1_800_000,
-#   idle_timeout: 300_000,
-#   lifetime_timeout: 5_400_000,
-#   terminal_linger: 5_000,
-#   max_repair_attempts: 2
-
 # Cross-agent repair is opt-in. When enabled, a repeated verification failure
 # can spend one repair move on a one-shot opposite-agent grade before the next
 # same-agent repair pass. Supported keys:
@@ -132,6 +96,27 @@ config :harness, :notification_sinks, []
 # and `git fetch`es before every subsequent run.
 config :harness, :project, cache_root: Path.expand("~/_DATA/harness/projects")
 
+# Run lifecycle & agent timeouts — see Harness.AgentAdapter.Driver and Harness.Run.
+# All keys are optional; defaults live in code.
+#   :total_timeout       — agent total-run budget in ms; defaults to 1_800_000 (30 min).
+#   :idle_timeout        — kill the agent after this many ms with no output; defaults
+#                          to 300_000 (5 min).
+#   :lifetime_timeout    — whole-job wall budget (worktree + agent + verification) in
+#                          ms; defaults to 5_400_000 (90 min).
+#   :terminal_linger     — how long a settled run stays observable before it stops, in
+#                          ms; defaults to 5_000 (5 s).
+#   :max_repair_attempts — how many times a red verdict is fed back to the agent (via
+#                          session resume) before the run settles :failed; defaults
+#                          to 2. 0 disables the autonomous repair loop.
+#   :max_hold_timeout — operator hold safeguard in ms; settles :hold_expired when
+#                       elapsed. Defaults to 1_800_000 (30 min). `:infinity` disables.
+#   :pollution_allowlist — path patterns ignored by the main-checkout pollution diff
+#                          (see `Harness.Worktree.Isolation.default_pollution_allowlist/0`);
+#                          defaults to that list when unset.
+# Other keys keep their code defaults; max_repair_attempts raised from the
+# default 2 so a red run gets a third repair pass before settling :failed.
+config :harness, :run, max_repair_attempts: 3
+
 # Result persistence — see Harness.ResultStore and runtime.exs.
 # Default is chosen at runtime based on :repo_enabled (Postgres when true for
 # the harness self-host; File when false for library consumers). An explicit
@@ -148,6 +133,19 @@ config :harness, :project, cache_root: Path.expand("~/_DATA/harness/projects")
 # plus the same AuditReview pass-through opts (:model, :adapter_opts,
 # :total_timeout, :idle_timeout).
 config :harness, :semantic_gate, enabled: :auto
+
+# config :harness, Harness.Notification.CommandSink,
+#   command: "/usr/local/bin/notify-train.sh",
+#   args: []
+
+# Verification check stack — see Harness.Verification.
+# Both keys are optional; defaults live in code (elixir_preset/0, 600_000 ms).
+#   :checks  — list of %Harness.Verification.Check{}; defaults to elixir_preset/0.
+#   :timeout — per-check timeout in ms; defaults to 600_000 (10 min).
+# Raised to 30 min: the :elixir_precommit test+coverage check alone runs ~10 min
+# on this repo, and the Task-153 baseline re-run doubles verification wall-time
+# on red verdicts — the 10-min code default leaves no headroom.
+config :harness, :verification, timeout: 1_800_000
 
 # Registered orchestration targets — see Harness.Project and Harness.ProjectRegistry.
 # Each entry is a keyword list: name, source ({:local, path}), roadmap_path,
