@@ -75,7 +75,7 @@ defmodule Harness.Run.Supervisor do
         kind: :value,
         default: [],
         description:
-          ~s|Keyword list. :subscriber (pid receiving {:harness_run, run_id, result}; pass nil from ephemeral MCP eval). :run_id (override the generated id). :total_timeout / :idle_timeout / :progress_timeout (agent run budgets in ms). :lifetime_timeout (whole-job wall budget). :terminal_linger (how long a settled run stays observable). :checks / :verification_timeout (override verification stack). :base_dir / :base_ref (worktree root + commit-ish). :adapter_opts (per-agent knobs). :env (%{"KEY" => "val"} to set, %{"KEY" => false} to scrub — used to strip ANTHROPIC_API_KEY on Claude OAuth dispatches). :required_capabilities. :retry_policy. :pollution_allowlist.|
+          ~s|Keyword list. :subscriber (pid receiving {:harness_run, run_id, result}; pass nil from ephemeral MCP eval). :run_id (override the generated id). :total_timeout / :idle_timeout / :progress_timeout (agent run budgets in ms). :lifetime_timeout (whole-job wall budget). :terminal_linger (how long a settled run stays observable). :checks / :verification_timeout (override verification stack). :base_dir / :base_ref (worktree root + commit-ish). :adapter_opts (per-agent knobs). :env (%{"KEY" => "val"} to set, %{"KEY" => false} to scrub — used to strip ANTHROPIC_API_KEY on Claude OAuth dispatches). :required_capabilities. :pollution_allowlist.|
       ]
     ],
     returns: %{

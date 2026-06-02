@@ -67,25 +67,9 @@ defmodule Harness.FakeAdapter do
   #                    (idle-reset fixture); the whole run outlasts that window.
   # :flood           — emits forever (total-timeout fixture; idle keeps resetting).
   # :missing         — an executable not on PATH (invoke-failure fixture).
-  # :repair          — repair-loop happy path: the first run (session nil)
-  #                    writes attempt.txt and no repair_marker, so a check that
-  #                    requires repair_marker grades red; the resumed run
-  #                    (session :resume) writes repair_marker, filling it with
-  #                    the repair prompt it was handed so a test can assert the
-  #                    failing checks were fed back.
-  # :repair_noop     — every run churns a committable file but never writes
-  #                    repair_marker, so verification stays red — drives the
-  #                    repair loop to its attempt cap.
-  # :repair_quota    — the first run writes a diff; the resumed run does nothing
-  #                    (an empty repair diff) — a quota-starved agent that must
-  #                    end the loop, not burn every remaining attempt.
-  # :repair_quota_with_output
-  #                  — the first run writes a diff; the resumed run writes a
-  #                    different diff while emitting quota text, so the repair
-  #                    loop must classify the transcript instead of relying on
-  #                    the no-diff short-circuit.
-  # :sampled_repair  — first run emits a witness-visible line, waits briefly,
-  #                    then writes a diff; resumed run records the repair prompt.
+  # :repair_noop     — churns a committable file but never satisfies a marker
+  #                    check, so verification stays red — the red-implementer
+  #                    fixture the reviewer-path tests build on.
   # :operator_steer  — first run writes attempt.txt; resumed run records the
   #                    operator steer prompt into operator_steer_marker.
   # :write_and_pollute_checkout
@@ -168,31 +152,10 @@ defmodule Harness.FakeAdapter do
 
   defp command(:missing, _invocation), do: {"definitely-not-a-real-binary-xyz", [], []}
 
-  # The prompt rides as a positional parameter ($1), never interpolated into the
-  # script, so a repair prompt of any bytes reaches repair_marker unmangled.
-  defp command(:repair, %Invocation{session: :resume, prompt: prompt}),
-    do: {"/bin/sh", ["-c", ~S(printf '%s' "$1" > repair_marker), "harness-fake", prompt], []}
-
-  defp command(:repair, %Invocation{session: nil}), do: {"/bin/sh", ["-c", "echo first-attempt > attempt.txt"], []}
-
   defp command(:repair_noop, _invocation), do: {"/bin/sh", ["-c", "echo churn >> churn.txt"], []}
 
-  defp command(:repair_quota, %Invocation{session: :resume}), do: {"/bin/echo", ["repair-did-nothing"], []}
-
-  defp command(:repair_quota, %Invocation{session: nil}), do: {"/bin/sh", ["-c", "echo first-attempt > attempt.txt"], []}
-
-  defp command(:repair_quota_with_output, %Invocation{session: :resume}),
-    do: {"/bin/sh", ["-c", "echo churn >> churn.txt; echo subscription quota exhausted"], []}
-
-  defp command(:repair_quota_with_output, %Invocation{session: nil}),
-    do: {"/bin/sh", ["-c", "echo first-attempt > attempt.txt"], []}
-
-  defp command(:sampled_repair, %Invocation{session: :resume, prompt: prompt}),
-    do: {"/bin/sh", ["-c", ~S(printf '%s' "$1" > repair_marker), "harness-fake", prompt], []}
-
-  defp command(:sampled_repair, %Invocation{session: nil}),
-    do: {"/bin/sh", ["-c", "echo witness-line; sleep 0.25; echo agent-output > agent_output.txt; sleep 0.25"], []}
-
+  # The prompt rides as a positional parameter ($1), never interpolated into the
+  # script, so a prompt of any bytes reaches the marker file unmangled.
   defp command(:operator_steer, %Invocation{session: :resume, prompt: prompt}),
     do:
       {"/bin/sh",

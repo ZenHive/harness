@@ -20,9 +20,8 @@ defmodule Harness.Run.LogRecord do
   ## Composed inputs (`composed_inputs`)
 
   Each dispatched attempt records the prompt/rule artifact assembled at the
-  adapter boundary. Repair attempts are separate entries tagged with their
-  attempt number so post-hoc diagnosis can inspect the exact feedback prompt
-  that resumed the agent.
+  adapter boundary, tagged with its attempt number so post-hoc diagnosis can
+  inspect the exact prompt that drove the agent.
   """
 
   alias Harness.AgentAdapter
@@ -71,7 +70,6 @@ defmodule Harness.Run.LogRecord do
           reason: RunResult.reason(),
           verdict: :pass | :fail | nil,
           duration_ms: non_neg_integer(),
-          repair_attempts: non_neg_integer(),
           first_attempt_failed_check_count: non_neg_integer(),
           agent_diff_size: non_neg_integer() | nil,
           token_usage: TokenUsage.t(),
@@ -95,7 +93,6 @@ defmodule Harness.Run.LogRecord do
     :state,
     :reason,
     :duration_ms,
-    :repair_attempts,
     :first_attempt_failed_check_count,
     :failure_cause
   ]
@@ -111,7 +108,6 @@ defmodule Harness.Run.LogRecord do
     :reason,
     :verdict,
     :duration_ms,
-    :repair_attempts,
     :first_attempt_failed_check_count,
     :agent_diff_size,
     :failure_cause,
@@ -149,7 +145,6 @@ defmodule Harness.Run.LogRecord do
       reason: result.reason,
       verdict: verdict_status(result.verdict),
       duration_ms: Keyword.fetch!(meta, :duration_ms),
-      repair_attempts: result.repair_attempts,
       first_attempt_failed_check_count: result.first_attempt_failed_check_count,
       agent_diff_size: result.agent_diff_size,
       token_usage: result.token_usage || %TokenUsage{},

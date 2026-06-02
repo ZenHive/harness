@@ -3,11 +3,11 @@ defmodule Harness.AgentKPI do
   Per-agent KPI rollup over the run records `Harness.ResultStore` already persists.
 
   This context adds **no new capture** — every input field (`agent`, `verdict`,
-  `duration_ms`, `token_usage`, `repair_attempts`, `domains`) is already on
+  `duration_ms`, `token_usage`, `review_iterations`, `domains`) is already on
   `Harness.Run.LogRecord`. It is a read-only aggregation that makes the data we
   already have viewable at a glance: roll a record list up by `agent` into
   success rate, first-attempt-pass rate, duration median/p90, mean tokens, mean
-  repair attempts, and a cost-to-green composite. `aggregate_by_agent_domain/1`
+  review iterations, and a cost-to-green composite. `aggregate_by_agent_domain/1`
   adds the same rollup keyed by `{agent, domain}` for per-domain slicing.
 
   ## Pure by construction
@@ -44,7 +44,7 @@ defmodule Harness.AgentKPI do
           first_attempt_pass_rate: float(),
           duration_ms: duration_summary(),
           tokens: token_means(),
-          repair_attempts: float(),
+          review_iterations: float(),
           cost_to_green: float() | nil
         }
 
@@ -100,14 +100,14 @@ defmodule Harness.AgentKPI do
       first_attempt_pass_rate: rate(first_attempt_passes(records), run_count),
       duration_ms: %{median: median(durations), p90: percentile(durations, 90)},
       tokens: token_means(records, run_count),
-      repair_attempts: mean(Enum.map(records, & &1.repair_attempts), run_count),
+      review_iterations: mean(Enum.map(records, & &1.review_iterations), run_count),
       cost_to_green: cost_to_green(passes)
     }
   end
 
   @spec first_attempt_passes([LogRecord.t()]) :: non_neg_integer()
   defp first_attempt_passes(records) do
-    Enum.count(records, &(&1.verdict == :pass and &1.repair_attempts == 0))
+    Enum.count(records, &(&1.verdict == :pass and &1.review_iterations == 0))
   end
 
   @spec token_means([LogRecord.t()], pos_integer()) :: token_means()

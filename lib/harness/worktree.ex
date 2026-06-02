@@ -382,6 +382,62 @@ defmodule Harness.Worktree do
   end
 
   @doc """
+  Best-effort cleanup of everything a prior attempt of `run_id` left behind:
+  the worktree directory registered for its `harness/<run_id>` branch (if any)
+  and the branch itself (if it exists).
+
+  This is the mechanical-retry hook (`Harness.Run.Worker`): re-attempting the
+  SAME run id must be able to run `git worktree add -b harness/<run_id>` again,
+  which collides with both the worktree registration and the branch a failed
+  prior attempt left behind (the 2026-06-02 branch-collision cascade). It is
+  never called on a settled run — settled failures retain their worktrees (and
+  always their branches) for salvage by design.
+
+  Idempotent and best-effort: every step tolerates "already gone", and a git
+  failure on one step never prevents the others. Always returns `:ok`.
+  """
+  @spec cleanup_for_run(String.t(), String.t()) :: :ok
+  def cleanup_for_run(repo, run_id) when is_binary(repo) and is_binary(run_id) do
+    branch = @branch_prefix <> run_id
+
+    Enum.each(worktree_paths_for_branch(repo, branch), fn path ->
+      _ = Git.run(["worktree", "remove", "--force", path], repo)
+    end)
+
+    _ = Git.run(["worktree", "prune"], repo)
+    _ = Git.run(["branch", "-D", branch], repo)
+    :ok
+  end
+
+  # Parses `git worktree list --porcelain` into the working-directory paths
+  # whose checked-out branch is `branch`. Stanzas are blank-line-separated
+  # blocks starting with `worktree <path>`, carrying a `branch refs/heads/<name>`
+  # line when the worktree is on a branch.
+  @spec worktree_paths_for_branch(String.t(), String.t()) :: [String.t()]
+  defp worktree_paths_for_branch(repo, branch) do
+    case Git.run(["worktree", "list", "--porcelain"], repo) do
+      {:ok, output} ->
+        branch_line = ~r/^branch refs\/heads\/#{Regex.escape(branch)}$/m
+
+        output
+        |> String.split("\n\n", trim: true)
+        |> Enum.filter(&Regex.match?(branch_line, &1))
+        |> Enum.flat_map(&stanza_worktree_path/1)
+
+      {:error, _reason} ->
+        []
+    end
+  end
+
+  @spec stanza_worktree_path(String.t()) :: [String.t()]
+  defp stanza_worktree_path(stanza) do
+    case Regex.run(~r/^worktree (.+)$/m, stanza) do
+      [_, path] -> [path]
+      _other -> []
+    end
+  end
+
+  @doc """
   Whether the worktree directory at `path` carries the retained-on-failure marker.
 
   `Harness.Worktree.Sweeper` uses this to tell a deliberately-kept failed run

@@ -17,7 +17,7 @@ defmodule Harness.AgentKPITest do
       state: :done,
       reason: :passed,
       duration_ms: 100,
-      repair_attempts: 0,
+      review_iterations: 0,
       first_attempt_failed_check_count: 0,
       failure_cause: %{reason: :passed, failed_checks: []},
       token_usage: TokenUsage.empty()
@@ -70,10 +70,10 @@ defmodule Harness.AgentKPITest do
   describe "aggregate/1 single agent" do
     test "rolls success, first-attempt, duration, token, repair, and cost-to-green metrics" do
       records = [
-        record(agent: :claude, verdict: :pass, repair_attempts: 0, duration_ms: 100, token_usage: tokens(600, 400)),
-        record(agent: :claude, verdict: :pass, repair_attempts: 1, duration_ms: 200, token_usage: tokens(1200, 800)),
-        record(agent: :claude, verdict: :fail, repair_attempts: 2, duration_ms: 300, token_usage: tokens(1800, 1200)),
-        record(agent: :claude, verdict: :pass, repair_attempts: 0, duration_ms: 400, token_usage: tokens(2400, 1600))
+        record(agent: :claude, verdict: :pass, review_iterations: 0, duration_ms: 100, token_usage: tokens(600, 400)),
+        record(agent: :claude, verdict: :pass, review_iterations: 1, duration_ms: 200, token_usage: tokens(1200, 800)),
+        record(agent: :claude, verdict: :fail, review_iterations: 2, duration_ms: 300, token_usage: tokens(1800, 1200)),
+        record(agent: :claude, verdict: :pass, review_iterations: 0, duration_ms: 400, token_usage: tokens(2400, 1600))
       ]
 
       kpi = AgentKPI.aggregate(records)[:claude]
@@ -83,7 +83,7 @@ defmodule Harness.AgentKPITest do
       assert kpi.first_attempt_pass_rate == 0.5
       assert kpi.duration_ms == %{median: 250.0, p90: 400}
       assert kpi.tokens == %{input: 1500.0, output: 1000.0, total: 2500.0}
-      assert kpi.repair_attempts == 0.75
+      assert kpi.review_iterations == 0.75
       # mean total tokens across the 3 :pass runs (1000 + 2000 + 4000) / 3
       assert kpi.cost_to_green == 7000 / 3
     end
@@ -163,7 +163,7 @@ defmodule Harness.AgentKPITest do
           state: :done,
           reason: :passed,
           duration_ms: 100,
-          repair_attempts: 0,
+          review_iterations: 0,
           first_attempt_failed_check_count: 0,
           failure_cause: %{reason: :passed, failed_checks: []},
           agent: :claude,
@@ -180,10 +180,10 @@ defmodule Harness.AgentKPITest do
   describe "aggregate/1 repair-heavy vs first-try" do
     test "first_attempt_pass_rate separates a first-try agent from a repair-heavy one" do
       records = [
-        record(agent: :first_try, verdict: :pass, repair_attempts: 0),
-        record(agent: :first_try, verdict: :pass, repair_attempts: 0),
-        record(agent: :repair_heavy, verdict: :pass, repair_attempts: 2),
-        record(agent: :repair_heavy, verdict: :pass, repair_attempts: 3)
+        record(agent: :first_try, verdict: :pass, review_iterations: 0),
+        record(agent: :first_try, verdict: :pass, review_iterations: 0),
+        record(agent: :repair_heavy, verdict: :pass, review_iterations: 2),
+        record(agent: :repair_heavy, verdict: :pass, review_iterations: 3)
       ]
 
       kpi = AgentKPI.aggregate(records)
@@ -193,9 +193,9 @@ defmodule Harness.AgentKPITest do
       assert kpi[:repair_heavy].success_rate == 1.0
       # ...but only the first-try agent passes without repairs.
       assert kpi[:first_try].first_attempt_pass_rate == 1.0
-      assert kpi[:first_try].repair_attempts == 0.0
+      assert kpi[:first_try].review_iterations == 0.0
       assert kpi[:repair_heavy].first_attempt_pass_rate == 0.0
-      assert kpi[:repair_heavy].repair_attempts == 2.5
+      assert kpi[:repair_heavy].review_iterations == 2.5
     end
   end
 

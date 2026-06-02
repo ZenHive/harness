@@ -117,7 +117,7 @@ defmodule Harness.Dashboard.KPILive do
   defp sort_key("run_count"), do: :run_count
   defp sort_key("success_rate"), do: :success_rate
   defp sort_key("first_attempt_pass_rate"), do: :first_attempt_pass_rate
-  defp sort_key("repair_attempts"), do: :repair_attempts
+  defp sort_key("review_iterations"), do: :review_iterations
   defp sort_key("tokens"), do: :tokens
   defp sort_key("cost_to_green"), do: :cost_to_green
   defp sort_key(_other), do: @default_sort
@@ -147,7 +147,7 @@ defmodule Harness.Dashboard.KPILive do
             sort_by={@sort_by}
             sort_dir={@sort_dir}
           />
-          <.sort_th col="repair_attempts" label="Repairs" sort_by={@sort_by} sort_dir={@sort_dir} />
+          <.sort_th col="review_iterations" label="Reviews" sort_by={@sort_by} sort_dir={@sort_dir} />
           <.sort_th col="tokens" label="Mean tokens" sort_by={@sort_by} sort_dir={@sort_dir} />
           <.sort_th col="cost_to_green" label="Cost→green" sort_by={@sort_by} sort_dir={@sort_dir} />
         </tr>
@@ -158,7 +158,7 @@ defmodule Harness.Dashboard.KPILive do
           <td>{row.run_count}</td>
           <td>{format_pct(row.success_rate)}</td>
           <td>{format_pct(row.first_attempt_pass_rate)}</td>
-          <td>{format_float(row.repair_attempts)}</td>
+          <td>{format_float(row.review_iterations)}</td>
           <td>{format_count(row.tokens.total)}</td>
           <td>{format_count(row.cost_to_green)}</td>
         </tr>

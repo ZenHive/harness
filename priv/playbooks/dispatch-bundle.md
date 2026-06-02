@@ -16,8 +16,8 @@ unattended — multiple independent tasks dispatched concurrently, persisted and
 4. **Fan out via Oban.** `batch__dispatch` with the project and the item list. This is
    fire-and-forget: per-project concurrency is governed by the registered `concurrency_cap`, and
    jobs survive a BEAM restart (queue rows live in Postgres). It returns the enqueued jobs.
-   - When you need an explicit in-process cap + the failure-classified retry policy instead of the
-     persisted queue, use `batch__run` with `max_concurrency:` and `retry_policy:`.
+   - When you need an explicit in-process cap instead of the persisted queue, use `batch__run`
+     with `max_concurrency:`.
 
 5. **Monitor.** Point the operator at the dashboard (`http://localhost:4018/harness` for buckets,
    `http://localhost:4018/harness/oban` for the queue). Per-run drill-down + transcript at

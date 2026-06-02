@@ -216,6 +216,51 @@ defmodule Harness.BatchTest do
              Task.await(batch_task, @run_timeout_ms)
   end
 
+  @tag :capture_log
+  test "a crashed batch worker process settles as run_crashed and persists the crash record" do
+    # Kills the WORKER (Batch's spawned middle process), not the run gen_statem —
+    # exercising the batch loop's own :DOWN settlement (settle_worker_down) instead
+    # of the worker's await_run :DOWN branch.
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+    [item] = items(["worker-crash"])
+    store = file_store()
+
+    batch_task =
+      Task.async(fn ->
+        Batch.run(
+          [item],
+          ProjectFixture.from_repo(repo),
+          FakeAdapter,
+          batch_opts(base,
+            max_concurrency: 1,
+            adapter_opts: [command: :sleep],
+            idle_timeout: @run_timeout_ms,
+            total_timeout: @run_timeout_ms,
+            result_store: store
+          )
+        )
+      end)
+
+    # Wait until the run is active, so the worker is parked in its run-monitor
+    # receive — then kill the worker out from under the batch loop.
+    await_batch_run_pid("worker-crash")
+
+    {:monitors, monitors} = Process.info(batch_task.pid, :monitors)
+    worker_pids = for {:process, pid} <- monitors, do: pid
+    assert [worker_pid] = worker_pids
+
+    Process.exit(worker_pid, :kill)
+
+    assert {:ok, %BatchResult{results: [%Result{state: :failed, reason: {:run_crashed, :killed}} = result]}} =
+             Task.await(batch_task, @run_timeout_ms)
+
+    # The crash record was persisted under the synthesized worker-crashed run id.
+    assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: result.run_id)
+    assert record.run_id =~ "worker-crashed-worker-crash"
+    assert record.reason == {:run_crashed, :killed}
+  end
+
   test "keeps running after a red task and reports every task result" do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()
@@ -300,7 +345,7 @@ defmodule Harness.BatchTest do
     assert red_record.adapter == FakeAdapter
     assert red_record.verdict == :fail
     assert red_record.reason == :verification_red
-    assert red_record.repair_attempts == 0
+    assert red_record.review_iterations == 0
     assert red_record.first_attempt_failed_check_count == 1
     assert red_record.agent_diff_size > 0
     assert red_record.duration_ms >= 0
@@ -311,12 +356,10 @@ defmodule Harness.BatchTest do
            }
   end
 
-  # NOTE (2026-06-02): the quota-exhaustion fail-over tests that lived here are
-  # deleted. `config :harness, :retry_policy, quota_patterns: []` disables quota
-  # detection permanently (regex false-positives); quota classification is
-  # deprecated pending the phase-15 deletion pass (Task 163). Adapter
-  # unavailability + pinned fail-over keep coverage via the Task 67 regression
-  # test above.
+  # Task 163: adapter fail-over is no longer triggered by quota regexes — the
+  # cross-family reviewer judges what an empty diff means, and Batch reads that
+  # judgment mechanically ({:review_stuck, _} reason + empty implementer diff).
+  # See "reviewer-stuck with an empty diff fails over" below.
 
   # ---------------------------------------------------------------------------
   # REGRESSION (Task 57): worker spin loop settles via :no_available_agent,
@@ -377,6 +420,65 @@ defmodule Harness.BatchTest do
     assert result.task_id == "spin"
   end
 
+  defmodule StuckReviewerAdapter do
+    @moduledoc false
+    # A reviewer that judges the empty implementer diff as "nothing happened"
+    # and reports stuck in prose — the judgment that triggers batch fail-over.
+    @behaviour Harness.AgentAdapter
+
+    @impl Harness.AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl Harness.AgentAdapter
+    def rule_channel, do: :none
+
+    @impl Harness.AgentAdapter
+    def build_command(_invocation) do
+      {:ok, {"/bin/echo", ["STUCK: the implementer hit a usage limit and produced no work"], []}}
+    end
+
+    @impl Harness.AgentAdapter
+    def classify_message({port, {:data, data}}, %AgentRun{port: port} = run), do: {:output, data, run}
+
+    def classify_message({port, {:exit_status, status}}, %AgentRun{port: port} = run), do: {:terminated, run, status}
+
+    def classify_message(_message, _run), do: :ignore
+
+    @impl Harness.AgentAdapter
+    def terminate(%AgentRun{} = run), do: OSProcess.kill(run)
+  end
+
+  test "reviewer-stuck with an empty diff fails over to the next adapter family carrying the reviewer's prose" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+    [item] = items(["starved"])
+
+    assert {:ok, %BatchResult{results: [result], events: events}} =
+             Batch.run(
+               [item],
+               ProjectFixture.from_repo(repo),
+               [QuotaAdapter, HeadroomAdapter],
+               batch_opts(base,
+                 max_concurrency: 1,
+                 checks: [check("output", "test", ["-f", "agent_output.txt"])],
+                 reviewer: StuckReviewerAdapter,
+                 max_review_iterations: 1
+               )
+             )
+
+    # The item was re-run on the next adapter family and delivered green.
+    assert %Result{task_id: "starved", state: :done, reason: :passed} = result
+
+    # The starved adapter is benched with the reviewer's prose — the orchestrator
+    # reads WHY from the agent's own words, never from a harness regex.
+    assert [{QuotaAdapter, {:review_stuck, "starved", report}}] = AgentRegistry.list_unavailable()
+    assert report =~ "usage limit"
+
+    # The event trail carries the same judgment.
+    assert {:adapter_unavailable, QuotaAdapter, {:review_stuck, "starved", report}} in events
+    assert {:failover, "starved", QuotaAdapter, HeadroomAdapter} in events
+  end
+
   test "retries adapter selection when start_run loses a concurrent availability race" do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()
@@ -415,27 +517,7 @@ defmodule Harness.BatchTest do
     assert AgentRegistry.available?(HeadroomAdapter)
   end
 
-  test "retries a transient failure before settling the batch result" do
-    repo = GitFixture.init_repo()
-    base = GitFixture.tmp_base()
-
-    assert {:ok, %BatchResult{results: [%Result{} = result]}} =
-             Batch.run(
-               items(["transient-task"]),
-               ProjectFixture.from_repo(repo),
-               TransientFirstAdapter,
-               batch_opts(base,
-                 max_concurrency: 1,
-                 retry_policy: [max_retries: 2, base_delay_ms: 1, max_delay_ms: 5]
-               )
-             )
-
-    assert result.state == :done
-    assert result.reason == :passed
-    assert :ets.lookup(:harness_batch_transient_attempts, "transient-task") == [{"transient-task", 2}]
-  end
-
-  test "does not retry terminal verification_red failures" do
+  test "a settled red verdict is returned in one pass — Batch never re-runs a settled verdict" do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()
 
@@ -446,7 +528,6 @@ defmodule Harness.BatchTest do
                FakeAdapter,
                batch_opts(base,
                  max_concurrency: 1,
-                 retry_policy: [max_retries: 3, base_delay_ms: 1],
                  adapter_opts: [command: {:write_status_by_task, ["red"]}],
                  checks: [status_check()]
                )
@@ -455,7 +536,7 @@ defmodule Harness.BatchTest do
     assert {result.state, result.reason} == {:failed, :verification_red}
   end
 
-  test "honours max_retries: 0 and skips transient retry" do
+  test "a mechanical failure settles :failed in one pass — mechanical retry belongs to the Oban dispatch layer" do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()
 
@@ -464,46 +545,12 @@ defmodule Harness.BatchTest do
                items(["transient-task"]),
                ProjectFixture.from_repo(repo),
                TransientFirstAdapter,
-               batch_opts(base,
-                 max_concurrency: 1,
-                 retry_policy: [max_retries: 0, base_delay_ms: 1]
-               )
+               batch_opts(base, max_concurrency: 1)
              )
 
     assert result.state == :failed
     assert match?({:commit_failed, _}, result.reason)
     assert :ets.lookup(:harness_batch_transient_attempts, "transient-task") == [{"transient-task", 1}]
-  end
-
-  test "holds the concurrency slot while a transient retry is in flight" do
-    repo = GitFixture.init_repo()
-    base = GitFixture.tmp_base()
-
-    batch_task =
-      Task.async(fn ->
-        Batch.run(
-          items(~w(retry-first quick-second)),
-          ProjectFixture.from_repo(repo),
-          TransientFirstAdapter,
-          batch_opts(base,
-            max_concurrency: 1,
-            retry_policy: [max_retries: 2, base_delay_ms: 50, max_delay_ms: 100]
-          )
-        )
-      end)
-
-    assert_eventually(fn ->
-      assert :ets.lookup(:harness_batch_transient_attempts, "retry-first") == [{"retry-first", 1}]
-    end)
-
-    refute "quick-second" in active_batch_task_ids(~w(retry-first quick-second))
-
-    assert {:ok, %BatchResult{results: results}} = Task.await(batch_task, @run_timeout_ms)
-
-    assert Enum.map(results, &{&1.task_id, &1.state, &1.reason}) == [
-             {"retry-first", :done, :passed},
-             {"quick-second", :done, :passed}
-           ]
   end
 
   test "concurrent batches survive adapter unavailability during dispatch" do
@@ -584,7 +631,7 @@ defmodule Harness.BatchTest do
         # Batch orchestration is the unit under test, not the repair loop — a red
         # task must settle :verification_red on its first verdict instead of
         # resuming the agent. Repair/review behavior is covered by run_test.
-        max_repair_attempts: 0
+        max_review_iterations: 0
       ],
       overrides
     )

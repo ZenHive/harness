@@ -29,12 +29,12 @@ defmodule Harness.CapabilityScoreTest do
   test "scores a domain from seeded AgentEvaluation comparisons", %{store: store} do
     comparisons = [
       comparison("bench.otp.latch", [
-        entry(Codex, "codex-1", :pass, repair_attempts: 0, token_usage: tokens(100, 20)),
-        entry(Claude, "claude-1", :pass, repair_attempts: 1, token_usage: tokens(500, 100))
+        entry(Codex, "codex-1", :pass, review_iterations: 0, token_usage: tokens(100, 20)),
+        entry(Claude, "claude-1", :pass, review_iterations: 1, token_usage: tokens(500, 100))
       ]),
       comparison("bench.otp.supervised_counter", [
-        entry(Codex, "codex-2", :fail, repair_attempts: 2, first_attempt_failed_check_count: 3),
-        entry(Claude, "claude-2", :pass, repair_attempts: 0, token_usage: tokens(300, 50))
+        entry(Codex, "codex-2", :fail, review_iterations: 2, first_attempt_failed_check_count: 3),
+        entry(Claude, "claude-2", :pass, review_iterations: 0, token_usage: tokens(300, 50))
       ])
     ]
 
@@ -55,12 +55,12 @@ defmodule Harness.CapabilityScoreTest do
     assert codex.run_count == 2
     assert codex.success_rate == 0.5
     assert codex.cost_to_green == 120.0
-    assert codex.mean_repair_attempts == 1.0
+    assert codex.mean_review_iterations == 1.0
     assert length(codex.raw_metrics) == 2
 
     assert claude.success_rate == 1.0
     assert claude.cost_to_green == 475.0
-    assert claude.mean_repair_attempts == 0.5
+    assert claude.mean_review_iterations == 0.5
     assert claude.composite_score > codex.composite_score
 
     assert {:ok, persisted} = ResultStore.get_capability_score(:codex, :otp, "otp-v1", store)
@@ -72,7 +72,7 @@ defmodule Harness.CapabilityScoreTest do
 
     comparisons = [
       comparison("bench.ecto.embedded_profile", [
-        entry(Codex, "codex-low", :fail, repair_attempts: 1, first_attempt_failed_check_count: 2)
+        entry(Codex, "codex-low", :fail, review_iterations: 1, first_attempt_failed_check_count: 2)
       ])
     ]
 
@@ -94,10 +94,10 @@ defmodule Harness.CapabilityScoreTest do
              CapabilityScore.score_domain(
                [
                  comparison("bench.otp.latch", [
-                   entry(Codex, "codex-1", :pass, repair_attempts: 0, token_usage: tokens(100, 25))
+                   entry(Codex, "codex-1", :pass, review_iterations: 0, token_usage: tokens(100, 25))
                  ]),
                  comparison("bench.otp.supervised_counter", [
-                   entry(Codex, "codex-2", :pass, repair_attempts: 2, token_usage: tokens(200, 75))
+                   entry(Codex, "codex-2", :pass, review_iterations: 2, token_usage: tokens(200, 75))
                  ])
                ],
                corpus_items(),
@@ -112,7 +112,7 @@ defmodule Harness.CapabilityScoreTest do
     assert retuned.raw_metrics == score.raw_metrics
     assert retuned.success_rate == 1.0
     assert retuned.cost_to_green == 200.0
-    assert retuned.mean_repair_attempts == 1.0
+    assert retuned.mean_review_iterations == 1.0
     assert retuned.composite_score == score.composite_score
   end
 
@@ -238,7 +238,7 @@ defmodule Harness.CapabilityScoreTest do
       state: if(verdict == :pass, do: :done, else: :failed),
       reason: if(verdict == :pass, do: :passed, else: :verification_red),
       verdict: verdict,
-      repair_attempts: Keyword.fetch!(opts, :repair_attempts),
+      review_iterations: Keyword.fetch!(opts, :review_iterations),
       duration_ms: Keyword.get(opts, :duration_ms, 100),
       first_attempt_failed_check_count: Keyword.get(opts, :first_attempt_failed_check_count, 0),
       agent_diff_size: nil,
@@ -285,7 +285,7 @@ defmodule Harness.CapabilityScoreTest do
       run_count: 1,
       success_rate: composite_score / 1_000,
       cost_to_green: 100.0,
-      mean_repair_attempts: 0.0,
+      mean_review_iterations: 0.0,
       mean_first_attempt_failed_check_count: 0.0,
       composite_score: composite_score,
       raw_metrics: []

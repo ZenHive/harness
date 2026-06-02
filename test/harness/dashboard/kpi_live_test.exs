@@ -43,7 +43,7 @@ defmodule Harness.Dashboard.KPILiveTest do
       state: :done,
       reason: :passed,
       duration_ms: 100,
-      repair_attempts: 0,
+      review_iterations: 0,
       first_attempt_failed_check_count: 0,
       failure_cause: %{reason: :passed, failed_checks: []},
       token_usage: TokenUsage.empty()
@@ -72,9 +72,9 @@ defmodule Harness.Dashboard.KPILiveTest do
 
   describe "aggregated ledger" do
     setup do
-      seed("run-c1", agent: :claude, verdict: :pass, repair_attempts: 0, token_usage: tokens(100, 50))
-      seed("run-c2", agent: :claude, verdict: :fail, repair_attempts: 1, token_usage: tokens(100, 50))
-      seed("run-x1", agent: :codex, verdict: :pass, repair_attempts: 0, token_usage: tokens(1000, 500))
+      seed("run-c1", agent: :claude, verdict: :pass, review_iterations: 0, token_usage: tokens(100, 50))
+      seed("run-c2", agent: :claude, verdict: :fail, review_iterations: 1, token_usage: tokens(100, 50))
+      seed("run-x1", agent: :codex, verdict: :pass, review_iterations: 0, token_usage: tokens(1000, 500))
       :ok
     end
 
@@ -96,7 +96,7 @@ defmodule Harness.Dashboard.KPILiveTest do
     end
 
     test "an agent with zero passes shows cost→green as a dash, not zero", %{conn: conn} do
-      seed("run-g1", agent: :grok, verdict: :fail, repair_attempts: 2, token_usage: tokens(10, 5))
+      seed("run-g1", agent: :grok, verdict: :fail, review_iterations: 2, token_usage: tokens(10, 5))
       {:ok, _view, html} = live(conn, "/harness/kpi")
 
       # grok has no passes — its cost→green cell renders the em-dash placeholder.

@@ -65,7 +65,7 @@ defmodule Harness.Dashboard.CompareLive do
   alias Phoenix.LiveView.Socket
 
   @metric_rows [
-    {:repair_attempts, "repair attempts"},
+    {:review_iterations, "review iterations"},
     {:duration_ms, "duration"},
     {:first_attempt_failed_check_count, "first-pass red checks"},
     {:agent_diff_size, "diff size"},
@@ -455,7 +455,7 @@ defmodule Harness.Dashboard.CompareLive do
       run_id: nil,
       state: nil,
       verdict: nil,
-      repair_attempts: 0,
+      review_iterations: 0,
       duration_ms: nil,
       first_attempt_failed_check_count: nil,
       agent_diff_size: nil,
@@ -474,7 +474,7 @@ defmodule Harness.Dashboard.CompareLive do
       | run_id: status.run_id,
         state: status.state,
         verdict: status.verdict_status || column.verdict,
-        repair_attempts: status.repair_attempts,
+        review_iterations: status.review_iterations,
         settled?: settled? || column.settled?
     }
   end
@@ -486,7 +486,7 @@ defmodule Harness.Dashboard.CompareLive do
       | run_id: entry.run_id,
         state: entry.state,
         verdict: entry.verdict,
-        repair_attempts: entry.repair_attempts,
+        review_iterations: entry.review_iterations,
         duration_ms: entry.duration_ms,
         first_attempt_failed_check_count: entry.first_attempt_failed_check_count,
         agent_diff_size: entry.agent_diff_size,
@@ -503,7 +503,7 @@ defmodule Harness.Dashboard.CompareLive do
       run_id: record.run_id,
       state: record.state,
       verdict: record.verdict,
-      repair_attempts: record.repair_attempts,
+      review_iterations: record.review_iterations,
       duration_ms: record.duration_ms,
       first_attempt_failed_check_count: record.first_attempt_failed_check_count,
       agent_diff_size: record.agent_diff_size,
@@ -553,13 +553,13 @@ defmodule Harness.Dashboard.CompareLive do
     end
   end
 
-  # Lane bucket badge — repair in flight reads amber, terminal verdict reads
+  # Lane bucket badge — review in flight reads amber, terminal verdict reads
   # pass/fail, anything else is in-flight.
   @spec column_bucket(map() | nil) :: atom()
   defp column_bucket(%{verdict: :pass}), do: :green
   defp column_bucket(%{verdict: :fail}), do: :red
   defp column_bucket(%{state: :failed}), do: :red
-  defp column_bucket(%{repair_attempts: n}) when n > 0, do: :repairing
+  defp column_bucket(%{review_iterations: n}) when n > 0, do: :repairing
   defp column_bucket(_), do: :in_flight
 
   @spec verdict_label(map() | nil) :: %{tone: String.t(), glyph: String.t(), text: String.t()}
@@ -567,15 +567,14 @@ defmodule Harness.Dashboard.CompareLive do
   defp verdict_label(%{verdict: :fail}), do: %{tone: "fail", glyph: "✗", text: "fail"}
   defp verdict_label(%{state: :failed}), do: %{tone: "fail", glyph: "✗", text: "failed"}
 
-  defp verdict_label(%{state: state})
-       when state in [:running, :committing, :verifying, :reviewing, :consulting, :dispatched],
-       do: %{tone: "pending", glyph: "◌", text: to_string(state)}
+  defp verdict_label(%{state: state}) when state in [:running, :committing, :verifying, :reviewing, :dispatched],
+    do: %{tone: "pending", glyph: "◌", text: to_string(state)}
 
   defp verdict_label(_), do: %{tone: "pending", glyph: "◌", text: "queued"}
 
   @spec metric(map() | nil, atom()) :: String.t()
   defp metric(nil, _key), do: "—"
-  defp metric(%{repair_attempts: n}, :repair_attempts), do: to_string(n)
+  defp metric(%{review_iterations: n}, :review_iterations), do: to_string(n)
   defp metric(%{duration_ms: nil}, :duration_ms), do: "—"
   defp metric(%{duration_ms: ms}, :duration_ms), do: "#{ms} ms"
   defp metric(%{first_attempt_failed_check_count: nil}, :first_attempt_failed_check_count), do: "—"

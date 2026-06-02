@@ -37,12 +37,57 @@ defmodule Harness.ResultStore.Postgres do
     schema = %RunRecordSchema{run_id: record.run_id}
     changeset = RunRecordSchema.changeset(schema, attrs)
 
-    case repo.insert(changeset, on_conflict: :replace_all, conflict_target: :run_id) do
+    case repo.insert(changeset, on_conflict: conflict_merge_query(), conflict_target: :run_id) do
       {:ok, _} -> :ok
       {:error, cs} -> {:error, {:changeset, cs.errors}}
     end
   rescue
     e -> {:error, e}
+  end
+
+  # Same-run_id upsert that never lets a later write's MISSING data clobber a
+  # settled attempt's rich evidence (Task 163, the 2026-06-02 data-loss bug):
+  # bookkeeping columns always take the incoming row; evidence columns take the
+  # incoming value only when it is actually present (COALESCE / NULLIF), and
+  # review_iterations keeps the highest count ever recorded. Single atomic
+  # round-trip — no read-then-write race.
+  @spec conflict_merge_query() :: Ecto.Query.t()
+  defp conflict_merge_query do
+    from r in RunRecordSchema,
+      update: [
+        set: [
+          # bookkeeping — the latest write wins
+          batch_id: fragment("EXCLUDED.batch_id"),
+          task_id: fragment("EXCLUDED.task_id"),
+          project_name: fragment("EXCLUDED.project_name"),
+          agent: fragment("EXCLUDED.agent"),
+          model: fragment("EXCLUDED.model"),
+          adapter: fragment("EXCLUDED.adapter"),
+          state: fragment("EXCLUDED.state"),
+          reason: fragment("EXCLUDED.reason"),
+          duration_ms: fragment("EXCLUDED.duration_ms"),
+          first_attempt_failed_check_count: fragment("EXCLUDED.first_attempt_failed_check_count"),
+          domains: fragment("EXCLUDED.domains"),
+          token_usage: fragment("EXCLUDED.token_usage"),
+          composed_inputs: fragment("EXCLUDED.composed_inputs"),
+          failure_cause: fragment("EXCLUDED.failure_cause"),
+          updated_at: fragment("EXCLUDED.updated_at"),
+          # rich evidence — incoming nil/empty never overwrites settled data
+          verdict: fragment("COALESCE(EXCLUDED.verdict, ?)", r.verdict),
+          agent_outcome_kind: fragment("COALESCE(EXCLUDED.agent_outcome_kind, ?)", r.agent_outcome_kind),
+          agent_exit_status: fragment("COALESCE(EXCLUDED.agent_exit_status, ?)", r.agent_exit_status),
+          agent_diff_size: fragment("COALESCE(EXCLUDED.agent_diff_size, ?)", r.agent_diff_size),
+          agent_output: fragment("COALESCE(NULLIF(EXCLUDED.agent_output, ''::bytea), ?)", r.agent_output),
+          check_output: fragment("COALESCE(NULLIF(EXCLUDED.check_output, '{}'::jsonb), ?)", r.check_output),
+          review_iterations:
+            fragment(
+              "GREATEST(COALESCE(EXCLUDED.review_iterations, 0), COALESCE(?, 0))",
+              r.review_iterations
+            ),
+          reviewer_adapter: fragment("COALESCE(EXCLUDED.reviewer_adapter, ?)", r.reviewer_adapter),
+          reviewer_stuck_report: fragment("COALESCE(EXCLUDED.reviewer_stuck_report, ?)", r.reviewer_stuck_report)
+        ]
+      ]
   end
 
   @impl Harness.ResultStore
@@ -142,9 +187,10 @@ defmodule Harness.ResultStore.Postgres do
         agent: r.agent,
         run_count: count(r.run_id),
         pass_count: r.run_id |> count() |> filter(r.verdict == "pass"),
-        first_attempt_pass_count: r.run_id |> count() |> filter(r.verdict == "pass" and r.repair_attempts == 0),
+        first_attempt_pass_count:
+          r.run_id |> count() |> filter(r.verdict == "pass" and coalesce(r.review_iterations, 0) == 0),
         durations: fragment("array_agg(? ORDER BY ?)", r.duration_ms, r.duration_ms),
-        repair_attempts_mean: avg(r.repair_attempts),
+        review_iterations_mean: avg(coalesce(r.review_iterations, 0)),
         input_mean:
           avg(
             fragment(
@@ -194,7 +240,7 @@ defmodule Harness.ResultStore.Postgres do
           output: float_or_zero(row.output_mean),
           total: float_or_zero(row.total_mean)
         },
-        repair_attempts: float_or_zero(row.repair_attempts_mean),
+        review_iterations: float_or_zero(row.review_iterations_mean),
         cost_to_green: cost_to_green
       }
 
@@ -237,10 +283,12 @@ defmodule Harness.ResultStore.Postgres do
         verdict: r.verdict,
         agent_outcome_kind: r.agent_outcome_kind,
         duration_ms: r.duration_ms,
-        repair_attempts: r.repair_attempts,
         first_attempt_failed_check_count: r.first_attempt_failed_check_count,
         agent_diff_size: r.agent_diff_size,
         agent_exit_status: r.agent_exit_status,
+        review_iterations: r.review_iterations,
+        reviewer_adapter: r.reviewer_adapter,
+        reviewer_stuck_report: r.reviewer_stuck_report,
         reason: r.reason,
         token_usage: r.token_usage,
         composed_inputs: r.composed_inputs,
@@ -411,10 +459,12 @@ defmodule Harness.ResultStore.Postgres do
       verdict: atom_or_string(r.verdict),
       agent_outcome_kind: kind_to_string(r.agent_outcome_kind),
       duration_ms: r.duration_ms,
-      repair_attempts: r.repair_attempts,
       first_attempt_failed_check_count: r.first_attempt_failed_check_count,
       agent_diff_size: r.agent_diff_size,
       agent_exit_status: r.agent_exit_status,
+      review_iterations: r.review_iterations,
+      reviewer_adapter: module_or_string(r.reviewer_adapter),
+      reviewer_stuck_report: r.reviewer_stuck_report,
       reason: encode_jsonb(r.reason),
       token_usage: encode_jsonb(r.token_usage),
       composed_inputs: encode_jsonb(r.composed_inputs),
@@ -439,9 +489,11 @@ defmodule Harness.ResultStore.Postgres do
       reason: decode_jsonb(row.reason),
       verdict: string_to_atom(row.verdict),
       duration_ms: default(row.duration_ms, 0),
-      repair_attempts: default(row.repair_attempts, 0),
       first_attempt_failed_check_count: default(row.first_attempt_failed_check_count, 0),
       agent_diff_size: row.agent_diff_size,
+      review_iterations: default(row.review_iterations, 0),
+      reviewer_adapter: string_to_module(row.reviewer_adapter),
+      reviewer_stuck_report: row.reviewer_stuck_report,
       token_usage: decode_token_usage(row.token_usage),
       composed_inputs: default(decode_jsonb(row.composed_inputs), []),
       failure_cause: default(decode_jsonb(row.failure_cause), %{reason: nil, failed_checks: []}),

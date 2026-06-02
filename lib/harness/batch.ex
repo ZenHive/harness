@@ -19,7 +19,6 @@ defmodule Harness.Batch do
   alias Harness.Roadmap.Item
   alias Harness.Run.LogRecord
   alias Harness.Run.Result, as: RunResult
-  alias Harness.Run.RetryPolicy
   alias Harness.Run.Supervisor, as: RunSupervisor
   alias Harness.Run.Worker, as: RunWorker
 
@@ -47,7 +46,6 @@ defmodule Harness.Batch do
            project: Project.t(),
            adapters: [module()],
            run_opts: keyword(),
-           retry_policy: RetryPolicy.t(),
            result_store: ResultStore.store(),
            max_concurrency: pos_integer(),
            total: non_neg_integer()
@@ -106,7 +104,7 @@ defmodule Harness.Batch do
     end
   end
 
-  api(:run, "In-process batch — fan out N items concurrently against one or more adapters with retry-on-quota fail-over.",
+  api(:run, "In-process batch — fan out N items concurrently against one or more adapters with reviewer-stuck fail-over.",
     params: [
       items: [
         kind: :exchange_data,
@@ -121,13 +119,13 @@ defmodule Harness.Batch do
       adapter: [
         kind: :value,
         description:
-          "Single adapter module or ordered list. When a list, the first available adapter satisfying :required_capabilities is selected per dispatch. Quota exhaustion fails over to the next capable adapter."
+          "Single adapter module or ordered list. When a list, the first available adapter satisfying :required_capabilities is selected per dispatch. An implementer whose reviewer reports stuck-with-no-diff fails over to the next capable adapter."
       ],
       opts: [
         kind: :value,
         default: [],
         description:
-          "Forwarded to Harness.Run.Supervisor.start_run/4 except :max_concurrency (defaults to project.concurrency_cap or 1). :retry_policy (RetryPolicy.t or keyword) wraps each item's lifecycle. :required_capabilities, :env, etc."
+          "Forwarded to Harness.Run.Supervisor.start_run/4 except :max_concurrency (defaults to project.concurrency_cap or 1). :required_capabilities, :env, etc."
       ]
     ],
     returns: %{
@@ -154,7 +152,6 @@ defmodule Harness.Batch do
         |> Keyword.put(:batch_id, batch_id)
         |> Keyword.put(:result_store, result_store)
 
-      retry_policy = RetryPolicy.from_opts(opts)
       indexed_items = Enum.with_index(items)
 
       context =
@@ -163,7 +160,6 @@ defmodule Harness.Batch do
           project,
           adapters,
           run_opts,
-          retry_policy,
           result_store,
           max_concurrency,
           length(indexed_items)
@@ -199,7 +195,7 @@ defmodule Harness.Batch do
       opts: [
         kind: :value,
         default: [],
-        description: "Forwarded to Harness.Batch.run/4 (max_concurrency, retry_policy, required_capabilities, env)."
+        description: "Forwarded to Harness.Batch.run/4 (max_concurrency, required_capabilities, env)."
       ]
     ],
     returns: %{
@@ -356,18 +352,16 @@ defmodule Harness.Batch do
           Project.t(),
           [module()],
           keyword(),
-          RetryPolicy.t(),
           ResultStore.store(),
           pos_integer(),
           non_neg_integer()
         ) :: loop_context()
-  defp loop_context(batch_id, project, adapters, run_opts, retry_policy, result_store, max_concurrency, total) do
+  defp loop_context(batch_id, project, adapters, run_opts, result_store, max_concurrency, total) do
     %{
       batch_id: batch_id,
       project: project,
       adapters: adapters,
       run_opts: run_opts,
-      retry_policy: retry_policy,
       result_store: result_store,
       max_concurrency: max_concurrency,
       total: total
@@ -438,11 +432,10 @@ defmodule Harness.Batch do
 
     worker_pid =
       spawn(fn ->
-        outcome =
-          RetryPolicy.run(
-            fn -> run_once(item, context.project, adapters, context.run_opts) end,
-            context.retry_policy
-          )
+        # No retry wrapper: the run gen_statem settles every failure into a
+        # %RunResult{} (the reviewer pair owns in-run recovery), and Oban owns
+        # mechanical dispatch retry. The worker reports the bare settled result.
+        outcome = run_once(item, context.project, adapters, context.run_opts)
 
         send(parent, {:batch_worker_done, self(), outcome, started_at_ms})
       end)
@@ -556,21 +549,30 @@ defmodule Harness.Batch do
         Process.demonitor(ref, [:flush])
         active = Map.delete(active, ref)
 
-        case outcome do
-          {:ok, %RunResult{} = result, _attempts} ->
-            {active, Map.put(results, worker.index, result), queue, events}
+        (%RunResult{} = result) = outcome
 
-          {:failover, %RunResult{} = result, :quota_exhausted} ->
-            fail_over(active, results, queue, events, context, worker, result)
-
-          {:error, %RunResult{} = result, _reason} ->
-            {active, Map.put(results, worker.index, result), queue, events}
+        if reviewer_stuck_empty_handed?(result) do
+          fail_over(active, results, queue, events, context, worker, result)
+        else
+          {active, Map.put(results, worker.index, result), queue, events}
         end
 
       :error ->
         {active, results, queue, events}
     end
   end
+
+  # The fail-over trigger is mechanical field-reading, never output-parsing:
+  # the cross-family reviewer reported stuck AND the implementer produced no
+  # diff — the agent delivered literally nothing, so another agent family
+  # deserves the item. A stuck report WITH a diff stays settled (partial work
+  # is salvageable; re-running another agent on top would collide).
+  @spec reviewer_stuck_empty_handed?(RunResult.t()) :: boolean()
+  defp reviewer_stuck_empty_handed?(%RunResult{reason: {:review_stuck, _report}, agent_diff_size: size})
+       when size in [nil, 0],
+       do: true
+
+  defp reviewer_stuck_empty_handed?(%RunResult{}), do: false
 
   @spec settle_worker_down(
           %{reference() => active_worker()},
@@ -642,8 +644,12 @@ defmodule Harness.Batch do
     adapter = adapter_from_result(result)
 
     if adapter do
-      :ok = AgentRegistry.mark_unavailable(adapter, {:quota_exhausted, worker.item.id})
-      events = [{:adapter_unavailable, adapter, {:quota_exhausted, worker.item.id}} | events]
+      # The reviewer's prose rides along in the unavailability mark and the
+      # batch event, so the orchestrator reads WHY the adapter was benched
+      # (quota exhaustion, broken install, …) from the agent's own words.
+      mark = {:review_stuck, worker.item.id, result.reviewer_stuck_report}
+      :ok = AgentRegistry.mark_unavailable(adapter, mark)
+      events = [{:adapter_unavailable, adapter, mark} | events]
       maybe_requeue_after_failover(active, results, queue, events, context, worker, result, adapter)
     else
       {active, Map.put(results, worker.index, result), queue, events}

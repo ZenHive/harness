@@ -8,6 +8,7 @@ defmodule Harness.ObanDispatchTest do
   alias Harness.Batch
   alias Harness.Dashboard.RunFeed
   alias Harness.Dispatch
+  alias Harness.GitFixture
   alias Harness.Oban, as: HarnessOban
   alias Harness.Project
   alias Harness.ProjectFixture
@@ -192,10 +193,10 @@ defmodule Harness.ObanDispatchTest do
                reason: :passed
              })
 
-    # Quota classification is disabled (quota_patterns: [], 2026-06-02): every
-    # settled failure — including spawn failures that look like rate limits —
-    # maps to :cancel, never :snooze. A settled verdict is never re-run by the
-    # queue; quota judgment moves to the reviewer pair (Task 163).
+    # Crash-only contract (Task 163): every settled failure — including spawn
+    # failures that look like rate limits — maps to :cancel, never :snooze. A
+    # settled verdict is never re-run by the queue; what a failure MEANS is the
+    # reviewer pair's judgment inside the run, not the queue's.
     assert {:cancel, {:agent_spawn_failed, "429 rate limit"}} =
              Worker.to_oban_result(%Result{
                run_id: "run-quota",
@@ -500,9 +501,9 @@ defmodule Harness.ObanDispatchTest do
     assert {:cancel, :verification_red} =
              Worker.perform(terminal_job)
 
-    # Quota classification is disabled (quota_patterns: [], 2026-06-02): a
-    # spawn failure that looks like a rate limit is a settled failure and
-    # cancels — the queue never snooze-retries a settled run (Task 163).
+    # Crash-only contract (Task 163): a spawn failure that looks like a rate
+    # limit is a settled failure and cancels — the queue never snooze-retries
+    # a settled run.
     spawn_failed_result = %Result{
       run_id: "run-quota",
       task_id: "49",
@@ -647,6 +648,58 @@ defmodule Harness.ObanDispatchTest do
     assert is_integer(seconds) and seconds > 0
   end
 
+  test "mechanical retries hit a hard ceiling and cancel with :mechanical_retry_exhausted" do
+    # Snoozes do not consume Oban's max_attempts, so without the ceiling a
+    # permanently broken environment (unregistered project, dead rmap) would
+    # snooze forever. At the ceiling the job cancels loudly instead.
+    assert {:cancel, {:mechanical_retry_exhausted, {:unknown_project, "ghost"}}} =
+             Worker.perform(%Oban.Job{
+               id: 7,
+               attempt: 5,
+               args: %{
+                 "project_name" => "ghost",
+                 "item_id" => "1",
+                 "adapter_module" => "Elixir.Harness.AgentAdapter.Claude"
+               }
+             })
+  end
+
+  test "a mechanical start failure cleans the prior attempt's run branch before snoozing (Task 168 regression)" do
+    repo = GitFixture.init_repo()
+    project = ProjectFixture.from_repo(repo, name: "collision-project")
+    assert :ok = ProjectRegistry.register(project)
+
+    run_id = "run-collision-regression"
+
+    # Simulate the prior attempt's leftovers: the run branch already exists, so
+    # a re-attempt's `git worktree add -b harness/<run_id>` would collide and
+    # fail every retry (the 2026-06-02 branch-collision cascade).
+    GitFixture.git!(repo, ["branch", "harness/#{run_id}"])
+
+    Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts -> {:ok, item("168", :claude)} end)
+
+    Application.put_env(:harness, :run_starter, fn _item, _project, _adapter, _opts ->
+      {:error, :port_spawn_failed}
+    end)
+
+    assert {:snooze, seconds} =
+             Worker.perform(%Oban.Job{
+               id: 168,
+               attempt: 2,
+               args: %{
+                 "project_name" => "collision-project",
+                 "item_id" => "168",
+                 "adapter_module" => "Elixir.Harness.AgentAdapter.Claude",
+                 "run_id" => run_id
+               }
+             })
+
+    assert is_integer(seconds) and seconds > 0
+
+    # The leftover branch is gone — the next attempt's worktree add starts clean.
+    assert repo |> GitFixture.git!(["branch", "--list", "harness/#{run_id}"]) |> String.trim() == ""
+  end
+
   describe "Task 131: claim on run start + revert only on terminal failure (via seams)" do
     setup do
       on_exit(fn ->
@@ -751,7 +804,7 @@ defmodule Harness.ObanDispatchTest do
       refute_received :reverted_green
     end
 
-    test "terminal-failure run (verification_red after repairs) reverts to pending; transient does not" do
+    test "any settled failure reverts the task to pending and cancels the job (crash-only contract)" do
       parent = self()
       project = ProjectFixture.from_repo("/tmp/harness-131-fail", name: "fail-proj")
       assert :ok = ProjectRegistry.register(project)
@@ -768,7 +821,7 @@ defmodule Harness.ObanDispatchTest do
         :ok
       end)
 
-      # First: terminal red -> expect revert + {:cancel, _} from perform
+      # A red verdict is a settled failure -> revert + {:cancel, _} from perform
       Application.put_env(:harness, :run_starter, fn %Item{} = it, _p, _a, opts ->
         run_id = "run-131-term"
         subscriber = Keyword.fetch!(opts, :subscriber)
@@ -800,9 +853,12 @@ defmodule Harness.ObanDispatchTest do
       assert_received :claimed_fail
       assert_received {:reverted, "131f", "fail-proj"}
 
-      # Second: transient (e.g. worktree_failed) -> claim, snooze, NO revert
+      # Task 163 crash-only contract: a run that SETTLED on a mechanical-looking
+      # reason (worktree_failed) is still a settled failure — the queue cancels
+      # and reverts; the next cron tick re-dispatches it as a FRESH run. Only
+      # setup failures (the {:error, _} path before a run settles) snooze.
       Application.put_env(:harness, :run_starter, fn %Item{} = it, _p, _a, opts ->
-        run_id = "run-131-trans"
+        run_id = "run-131-settled-mechanical"
         subscriber = Keyword.fetch!(opts, :subscriber)
 
         pid =
@@ -819,7 +875,7 @@ defmodule Harness.ObanDispatchTest do
         {:ok, run_id, pid}
       end)
 
-      assert {:snooze, secs} =
+      assert {:cancel, {:worktree_failed, :boom}} =
                Worker.perform(%Oban.Job{
                  id: 134,
                  attempt: 2,
@@ -830,10 +886,8 @@ defmodule Harness.ObanDispatchTest do
                  }
                })
 
-      assert is_integer(secs) and secs > 0
       assert_received :claimed_fail
-      # No additional revert for the transient case
-      refute_received {:reverted, _, _}
+      assert_received {:reverted, "131f", "fail-proj"}
     end
   end
 

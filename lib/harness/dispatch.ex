@@ -108,7 +108,7 @@ defmodule Harness.Dispatch do
         kind: :value,
         default: false,
         description:
-          "When true, forces one cross-family reviewer pass on a green verdict for this run — the reviewer reviews the committed work against the task's acceptance criteria and fixes inline if it does not conform. Default false leaves the project-level review_green setting in control. (Replaces the deprecated semantic_gate param.)"
+          "When true, forces one cross-family reviewer pass on a green verdict for this run — the reviewer reviews the committed work against the task's acceptance criteria and fixes inline if it does not conform. Default false leaves the project-level review_green setting in control."
       ]
     ],
     returns: %{
@@ -164,13 +164,13 @@ defmodule Harness.Dispatch do
         kind: :value,
         default: false,
         description:
-          "When true, forces one cross-family reviewer pass on a green verdict for this run — the reviewer reviews the committed work against the task's acceptance criteria and fixes inline if it does not conform. Default false leaves the project-level review_green setting in control. (Replaces the deprecated semantic_gate param.)"
+          "When true, forces one cross-family reviewer pass on a green verdict for this run — the reviewer reviews the committed work against the task's acceptance criteria and fixes inline if it does not conform. Default false leaves the project-level review_green setting in control."
       ]
     ],
     returns: %{
       type: :tuple,
       description:
-        "{:ok, summary} where summary is a settled-run map (run_id, task_id, state :done|:failed, reason, passed, verdict with per-check results, repair_attempts, diagnostics) OR a :timed_out map (run_id, state :timed_out, reason :await_timeout, timeout_ms). {:error, reason} on a dispatch failure (unknown_adapter, unknown_project, the rmap ingest reasons, or a start_run failure) — same as dispatch-task."
+        "{:ok, summary} where summary is a settled-run map (run_id, task_id, state :done|:failed, reason, passed, verdict with per-check results, review_iterations, diagnostics) OR a :timed_out map (run_id, state :timed_out, reason :await_timeout, timeout_ms). {:error, reason} on a dispatch failure (unknown_adapter, unknown_project, the rmap ingest reasons, or a start_run failure) — same as dispatch-task."
     }
   )
 
@@ -227,7 +227,7 @@ defmodule Harness.Dispatch do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, map} carrying run_id, task_id, project_name, state, worktree_path, agent_os_pid, agent_kind, verdict_status, repair_attempts, reason. {:error, :not_found} for stopped/unknown runs."
+        "{:ok, map} carrying run_id, task_id, project_name, state, worktree_path, agent_os_pid, agent_kind, verdict_status, review_iterations, reason. {:error, :not_found} for stopped/unknown runs."
     }
   )
 
@@ -361,7 +361,7 @@ defmodule Harness.Dispatch do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %{batch_id, task_id, total, max_concurrency, entries}} where entries is a list of per-adapter maps (adapter, run_id, state, reason, verdict, repair_attempts, duration_ms, first_attempt_failed_check_count, agent_diff_size, token_usage). {:error, reason}: no_adapters, unknown_adapter, unknown_project, the rmap ingest reasons, or a Harness.Batch failure."
+        "{:ok, %{batch_id, task_id, total, max_concurrency, entries}} where entries is a list of per-adapter maps (adapter, run_id, state, reason, verdict, review_iterations, duration_ms, first_attempt_failed_check_count, agent_diff_size, token_usage). {:error, reason}: no_adapters, unknown_adapter, unknown_project, the rmap ingest reasons, or a Harness.Batch failure."
     }
   )
 
@@ -577,7 +577,7 @@ defmodule Harness.Dispatch do
       state: result.state,
       reason: result.reason,
       passed: result.state == :done,
-      repair_attempts: result.repair_attempts,
+      review_iterations: result.review_iterations,
       first_attempt_failed_check_count: result.first_attempt_failed_check_count,
       agent_diff_size: result.agent_diff_size,
       worktree_path: result.worktree_path,
@@ -614,7 +614,7 @@ defmodule Harness.Dispatch do
       agent_os_pid: status.agent_os_pid,
       agent_kind: status.agent_kind,
       verdict_status: status.verdict_status,
-      repair_attempts: status.repair_attempts,
+      review_iterations: status.review_iterations,
       reason: status.reason
     }
   end
@@ -641,7 +641,7 @@ defmodule Harness.Dispatch do
       agent_os_pid: nil,
       agent_kind: nil,
       verdict_status: nil,
-      repair_attempts: 0,
+      review_iterations: 0,
       reason: {:oban_job, job.state},
       oban_job_id: job.id,
       oban_state: job.state,
@@ -807,7 +807,7 @@ defmodule Harness.Dispatch do
       state: entry.state,
       reason: jsonable(entry.reason),
       verdict: entry.verdict,
-      repair_attempts: entry.repair_attempts,
+      review_iterations: entry.review_iterations,
       duration_ms: entry.duration_ms,
       first_attempt_failed_check_count: entry.first_attempt_failed_check_count,
       agent_diff_size: entry.agent_diff_size,

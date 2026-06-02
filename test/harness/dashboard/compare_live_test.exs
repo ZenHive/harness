@@ -101,8 +101,8 @@ defmodule Harness.Dashboard.CompareLiveTest do
     end
 
     test "a live RunFeed update patches the correlated lane", %{conn: conn} do
-      seed(:claude, Claude, "r-1", verdict: :pass, state: :done, reason: :passed, repair_attempts: 0)
-      seed(:codex, Codex, "r-2", verdict: :fail, state: :failed, reason: :verification_red, repair_attempts: 0)
+      seed(:claude, Claude, "r-1", verdict: :pass, state: :done, reason: :passed, review_iterations: 0)
+      seed(:codex, Codex, "r-2", verdict: :fail, state: :failed, reason: :verification_red, review_iterations: 0)
 
       {:ok, view, _html} = live(conn, "/harness/compare/#{@batch}")
 
@@ -112,7 +112,7 @@ defmodule Harness.Dashboard.CompareLiveTest do
         agent: :codex,
         state: :running,
         verdict_status: nil,
-        repair_attempts: 3
+        review_iterations: 3
       }
 
       send(view.pid, {:harness_run_update, status})
@@ -164,7 +164,7 @@ defmodule Harness.Dashboard.CompareLiveTest do
       reason: Keyword.get(fields, :reason, :passed),
       verdict: Keyword.get(fields, :verdict),
       duration_ms: Keyword.get(fields, :duration_ms, 100),
-      repair_attempts: Keyword.get(fields, :repair_attempts, 0),
+      review_iterations: Keyword.get(fields, :review_iterations, 0),
       first_attempt_failed_check_count: 0,
       agent_diff_size: 42,
       token_usage: TokenUsage.empty(),

@@ -13,7 +13,7 @@ defmodule Harness.Run.StatusTest do
           state: :failed,
           reason: {:verification_red, [:credo]},
           verdict: :fail,
-          repair_attempts: 2,
+          review_iterations: 2,
           agent_outcome_kind: :exited
         )
 
@@ -26,7 +26,7 @@ defmodule Harness.Run.StatusTest do
       # LogRecord.verdict -> Status.verdict_status, agent_outcome_kind -> agent_kind.
       assert status.verdict_status == :fail
       assert status.agent_kind == :exited
-      assert status.repair_attempts == 2
+      assert status.review_iterations == 2
       assert status.reason == {:verification_red, [:credo]}
       # Not retained on the record — always nil on a reconstructed snapshot.
       assert status.worktree_path == nil
@@ -41,6 +41,24 @@ defmodule Harness.Run.StatusTest do
       assert status.state == :done
       assert status.verdict_status == :pass
       assert status.agent_kind == nil
+    end
+
+    test "maps a legacy :passed state to :done" do
+      record = log_record("run-legacy", state: :passed, reason: :passed, verdict: :pass)
+
+      assert Status.from_log_record(record).state == :done
+    end
+
+    test "maps a non-terminal state with a green verdict to :done" do
+      record = log_record("run-interrupted-green", state: :verifying, reason: :passed, verdict: :pass)
+
+      assert Status.from_log_record(record).state == :done
+    end
+
+    test "maps a non-terminal state without a green verdict to :failed" do
+      record = log_record("run-interrupted", state: :verifying, reason: nil, verdict: nil)
+
+      assert Status.from_log_record(record).state == :failed
     end
   end
 
@@ -57,7 +75,7 @@ defmodule Harness.Run.StatusTest do
       reason: reason,
       verdict: Keyword.get(opts, :verdict, :pass),
       duration_ms: 1_000,
-      repair_attempts: Keyword.get(opts, :repair_attempts, 0),
+      review_iterations: Keyword.get(opts, :review_iterations, 0),
       first_attempt_failed_check_count: 0,
       failure_cause: %{reason: reason, failed_checks: []},
       agent_outcome_kind: Keyword.get(opts, :agent_outcome_kind),

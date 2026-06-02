@@ -25,7 +25,7 @@ defmodule Harness.ResultStoreContract do
         state: :done,
         reason: :passed,
         duration_ms: 1234,
-        repair_attempts: 0,
+        review_iterations: 0,
         first_attempt_failed_check_count: 0,
         failure_cause: %{reason: nil, failed_checks: []}
       },
@@ -45,7 +45,7 @@ defmodule Harness.ResultStoreContract do
       state: :done,
       reason: :passed,
       duration_ms: 42,
-      repair_attempts: 0,
+      review_iterations: 0,
       first_attempt_failed_check_count: 0,
       failure_cause: %{reason: nil, failed_checks: []}
     }
@@ -115,7 +115,10 @@ defmodule Harness.ResultStoreContract do
         token_usage: %TokenUsage{input: 100, output: 50, total: 150},
         check_output: %{"sobelow" => %{output: "findings", truncated: false}},
         composed_inputs: [composed_input],
-        agent_outcome_kind: :exited
+        agent_outcome_kind: :exited,
+        review_iterations: 2,
+        reviewer_adapter: Claude,
+        reviewer_stuck_report: "implementer hit a usage limit; nothing to fix"
       )
 
     assert :ok = ResultStore.record_run(rec_full, store)
@@ -125,6 +128,9 @@ defmodule Harness.ResultStoreContract do
     assert rf.check_output == %{"sobelow" => %{output: "findings", truncated: false}}
     assert rf.composed_inputs == [composed_input]
     assert rf.agent_outcome_kind == :exited
+    assert rf.review_iterations == 2
+    assert rf.reviewer_adapter == Claude
+    assert rf.reviewer_stuck_report == "implementer hit a usage limit; nothing to fix"
 
     # tuple agent_outcome_kind roundtrip — regression for the
     # {:timed_out, :idle} FunctionClauseError that crashed Postgres.record_run

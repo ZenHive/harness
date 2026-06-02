@@ -27,7 +27,7 @@ defmodule Harness.Dashboard.LiveTest do
       task_id: Keyword.get(opts, :task_id, "1"),
       project_name: Keyword.get(opts, :project_name),
       state: Keyword.get(opts, :state, :running),
-      repair_attempts: Keyword.get(opts, :repair_attempts, 0),
+      review_iterations: Keyword.get(opts, :review_iterations, 0),
       verdict_status: Keyword.get(opts, :verdict_status, nil)
     }
 
@@ -414,7 +414,7 @@ defmodule Harness.Dashboard.LiveTest do
       reason: reason,
       verdict: Keyword.get(opts, :verdict, :pass),
       duration_ms: 1_000,
-      repair_attempts: 0,
+      review_iterations: 0,
       first_attempt_failed_check_count: 0,
       failure_cause: %{reason: reason, failed_checks: []},
       agent_outcome_kind: Keyword.get(opts, :agent_outcome_kind),

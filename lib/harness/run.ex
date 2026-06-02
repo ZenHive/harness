@@ -15,7 +15,6 @@ defmodule Harness.Run do
       committing  — committing the agent's work to the run branch
       verifying   — the verification stack is grading the worktree
       reviewing   — a cross-family reviewer is fixing a red worktree inline
-      consulting  — the opposite-agent grader is reviewing a repeated failure
       held        — operator-parked; worktree retained, lifetime timer suspended
       done        — verification graded the worktree green (terminal)
       failed      — anything else (terminal)
@@ -110,9 +109,7 @@ defmodule Harness.Run do
   alias Harness.Roadmap.Item
   alias Harness.Run.LogRecord
   alias Harness.Run.Reflex
-  alias Harness.Run.RepairPrompt
   alias Harness.Run.Result
-  alias Harness.Run.RetryPolicy
   alias Harness.Run.Status
   alias Harness.TokenUsage
   alias Harness.TokenUsage.GrokSession
@@ -131,9 +128,7 @@ defmodule Harness.Run do
 
   @default_lifetime_timeout 5_400_000
   @default_terminal_linger 5_000
-  @default_max_repair_attempts 2
   @default_max_review_iterations 2
-  @semantic_diff_context_lines 80
   @semantic_diff_max_bytes 80_000
   @reviewer_transcript_tail_bytes 40_000
   @default_discernment_sample_interval_ms 300_000
@@ -149,7 +144,6 @@ defmodule Harness.Run do
           | :committing
           | :verifying
           | :reviewing
-          | :consulting
           | :held
           | :done
           | :failed
@@ -176,10 +170,7 @@ defmodule Harness.Run do
            lifetime_timeout: pos_integer(),
            max_hold_timeout: timeout(),
            terminal_linger: non_neg_integer(),
-           max_repair_attempts: non_neg_integer(),
            max_review_iterations: non_neg_integer(),
-           retry_policy: RetryPolicy.t(),
-           repair_attempts: non_neg_integer(),
            review_iterations: non_neg_integer(),
            reviewer: atom() | module() | nil,
            reviewer_adapter: module() | nil,
@@ -187,23 +178,10 @@ defmodule Harness.Run do
            reviewer_stuck_report: String.t() | nil,
            review_green: boolean(),
            implementer_empty_diff?: boolean(),
-           repair_prompt_kind: :verification_red | :semantic_rejection | :operator_steer | nil,
            hold_requested: false | :graceful | :interrupt,
            hold_reason: :graceful | :interrupt | nil,
            operator_feedback: String.t() | nil,
-           cross_agent_repair: keyword(),
-           semantic_gate: keyword(),
-           consultation_kind: :repair | :semantic_gate | nil,
-           last_failed_check_signatures: MapSet.t(term()),
-           cross_agent_consulted: boolean(),
-           cross_agent_follow_up: boolean(),
-           cross_agent_feedback:
-             %{
-               required(:verdict) => AuditReview.verdict(),
-               required(:rationale) => String.t(),
-               optional(:trigger) => atom()
-             }
-             | nil,
+           in_run_discernment: keyword(),
            checks: [Check.t()] | nil,
            verification_timeout: timeout() | nil,
            base_dir: String.t() | nil,
@@ -273,7 +251,7 @@ defmodule Harness.Run do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %Harness.Run.Status{}} carrying state, worktree_path, agent_os_pid, agent_kind, verdict_status, repair_attempts, reason. {:error, :not_found} for stopped/unknown runs."
+        "{:ok, %Harness.Run.Status{}} carrying state, worktree_path, agent_os_pid, agent_kind, verdict_status, review_iterations, reason. {:error, :not_found} for stopped/unknown runs."
     }
   )
 
@@ -504,14 +482,9 @@ defmodule Harness.Run do
       terminal_linger:
         Keyword.get(opts, :terminal_linger) ||
           configured(:terminal_linger, @default_terminal_linger),
-      max_repair_attempts:
-        Keyword.get(opts, :max_repair_attempts) ||
-          configured(:max_repair_attempts, @default_max_repair_attempts),
       max_review_iterations:
         Keyword.get(opts, :max_review_iterations) ||
           configured(:max_review_iterations, @default_max_review_iterations),
-      retry_policy: RetryPolicy.from_opts(opts),
-      repair_attempts: 0,
       review_iterations: 0,
       reviewer: Keyword.get(opts, :reviewer, configured(:reviewer, nil)),
       reviewer_adapter: nil,
@@ -519,17 +492,10 @@ defmodule Harness.Run do
       reviewer_stuck_report: nil,
       review_green: Keyword.get(opts, :review_green, project.review_green),
       implementer_empty_diff?: false,
-      repair_prompt_kind: nil,
       hold_requested: false,
       hold_reason: nil,
       operator_feedback: nil,
-      cross_agent_repair: cross_agent_repair_opts(opts),
-      semantic_gate: semantic_gate_opts(opts),
-      consultation_kind: nil,
-      last_failed_check_signatures: MapSet.new(),
-      cross_agent_consulted: false,
-      cross_agent_follow_up: false,
-      cross_agent_feedback: nil,
+      in_run_discernment: in_run_discernment_opts(opts),
       checks: Keyword.get(opts, :checks),
       verification_timeout: Keyword.get(opts, :verification_timeout),
       base_dir: Keyword.get(opts, :base_dir),
@@ -673,18 +639,18 @@ defmodule Harness.Run do
   def running(:info, {ref, {:error, reason}}, %{discernment_task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
 
-    Logger.warning("harness run: in-run semantic grader failed for #{data.run_id}: #{inspect(reason)}")
+    Logger.warning("harness run: in-run discernment grader failed for #{data.run_id}: #{inspect(reason)}")
 
-    feedback = semantic_gate_failure_feedback({:grader_failed, reason})
+    feedback = discernment_failure_feedback({:grader_failed, reason})
     notify_in_run_discernment(data, :notify_only, feedback, {:grader_failed, reason})
     {:keep_state, %{data | discernment_task: nil}}
   end
 
   def running(:info, {:DOWN, ref, :process, _pid, reason}, %{discernment_task: %Task{ref: ref}} = data)
       when reason != :normal do
-    Logger.warning("harness run: in-run semantic grader crashed for #{data.run_id}: #{inspect(reason)}")
+    Logger.warning("harness run: in-run discernment grader crashed for #{data.run_id}: #{inspect(reason)}")
 
-    feedback = semantic_gate_failure_feedback({:crashed, reason})
+    feedback = discernment_failure_feedback({:crashed, reason})
     notify_in_run_discernment(data, :notify_only, feedback, {:grader_failed, {:crashed, reason}})
     {:keep_state, %{data | discernment_task: nil}}
   end
@@ -801,12 +767,10 @@ defmodule Harness.Run do
         first_attempt_failed_check_count: first_attempt_failed_check_count(data, verdict)
     }
 
-    failed_signatures = failed_check_signatures(verdict)
-
     if Verdict.passed?(verdict) do
       route_green_verdict(data)
     else
-      route_red_verdict(%{data | last_failed_check_signatures: failed_signatures})
+      route_red_verdict(data)
     end
   end
 
@@ -863,78 +827,6 @@ defmodule Harness.Run do
 
   def reviewing(event_type, event_content, data) do
     handle_common(event_type, event_content, :reviewing, data)
-  end
-
-  # ── State: consulting — one-shot opposite-agent grader ───────────────────
-
-  @doc false
-  @spec consulting(event(), term(), data()) :: handler_result()
-  def consulting(:enter, _old_state, data) do
-    RunFeed.broadcast_update(status_snapshot(:consulting, data))
-    task = start_task(fn -> grade_consultation(data) end)
-    {:keep_state, %{data | task: task}}
-  end
-
-  def consulting(:info, {ref, {:ok, %{verdict: verdict, outcome: %Outcome{} = outcome}}}, %{task: %Task{ref: ref}} = data) do
-    Process.demonitor(ref, [:flush])
-
-    feedback = %{
-      verdict: verdict,
-      rationale: cross_agent_rationale(outcome.output)
-    }
-
-    data = %{data | task: nil}
-
-    case data.consultation_kind do
-      :semantic_gate ->
-        handle_semantic_gate_outcome(data, verdict, outcome, feedback)
-
-      _repair ->
-        data = %{
-          data
-          | cross_agent_feedback: feedback,
-            cross_agent_follow_up: true,
-            consultation_kind: nil
-        }
-
-        {:next_state, :running, data}
-    end
-  end
-
-  def consulting(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
-    Process.demonitor(ref, [:flush])
-
-    case data.consultation_kind do
-      :semantic_gate ->
-        Logger.warning("harness run: semantic gate grader failed for #{data.run_id}: #{inspect(reason)}")
-
-        feedback = semantic_gate_failure_feedback(reason)
-        handle_semantic_gate_verdict(%{data | task: nil}, feedback.verdict, feedback)
-
-      _repair ->
-        Logger.warning("harness run: cross-agent repair grader failed for #{data.run_id}: #{inspect(reason)}")
-
-        {:next_state, :failed, %{data | task: nil, reason: :verification_red, consultation_kind: nil}}
-    end
-  end
-
-  def consulting(:info, {:DOWN, ref, :process, _pid, reason}, %{task: %Task{ref: ref}} = data) when reason != :normal do
-    case data.consultation_kind do
-      :semantic_gate ->
-        Logger.warning("harness run: semantic gate grader crashed for #{data.run_id}: #{inspect(reason)}")
-
-        feedback = semantic_gate_failure_feedback({:crashed, reason})
-        handle_semantic_gate_verdict(%{data | task: nil}, feedback.verdict, feedback)
-
-      _repair ->
-        Logger.warning("harness run: cross-agent repair grader crashed for #{data.run_id}: #{inspect(reason)}")
-
-        {:next_state, :failed, %{data | task: nil, reason: :verification_red, consultation_kind: nil}}
-    end
-  end
-
-  def consulting(event_type, event_content, data) do
-    handle_common(event_type, event_content, :consulting, data)
   end
 
   # ── State: held — operator-parked, worktree retained ─────────────────────
@@ -1165,7 +1057,7 @@ defmodule Harness.Run do
         existing -> existing <> "\n\n" <> text
       end
 
-    %{data | operator_feedback: feedback, repair_prompt_kind: :operator_steer}
+    %{data | operator_feedback: feedback}
   end
 
   @spec session_resume_supported?(data()) :: boolean()
@@ -1175,11 +1067,11 @@ defmodule Harness.Run do
 
   @spec clear_operator_steer(data()) :: data()
   defp clear_operator_steer(data) do
-    %{data | operator_feedback: nil, repair_prompt_kind: nil}
+    %{data | operator_feedback: nil}
   end
 
   @spec clear_operator_steer_after_invocation(data()) :: data()
-  defp clear_operator_steer_after_invocation(%{repair_prompt_kind: :operator_steer} = data),
+  defp clear_operator_steer_after_invocation(%{operator_feedback: feedback} = data) when is_binary(feedback),
     do: clear_operator_steer(data)
 
   defp clear_operator_steer_after_invocation(data), do: data
@@ -1346,7 +1238,6 @@ defmodule Harness.Run do
       agent_outcome: data.agent_outcome,
       verdict: data.verdict,
       worktree_path: data.worktree && data.worktree.path,
-      repair_attempts: data.repair_attempts,
       reviewer_adapter: data.reviewer_adapter,
       review_iterations: data.review_iterations,
       reviewer_stuck_report: data.reviewer_stuck_report,
@@ -1452,7 +1343,6 @@ defmodule Harness.Run do
       agent_os_pid: data.agent_run && data.agent_run.os_pid,
       agent_kind: data.agent_outcome && data.agent_outcome.kind,
       verdict_status: data.verdict && data.verdict.status,
-      repair_attempts: data.repair_attempts,
       review_iterations: data.review_iterations,
       reason: data.reason,
       held?: state == :held,
@@ -1465,27 +1355,17 @@ defmodule Harness.Run do
     Task.Supervisor.async_nolink(@task_supervisor, fun)
   end
 
-  # The first dispatch runs the task prompt fresh; a repair attempt resumes the
-  # agent's session with a prompt carrying the failing checks (RepairPrompt).
+  # The first dispatch runs the task prompt fresh; an operator-steered resume
+  # re-enters the agent's session with the steer prompt. There is no repair
+  # loop — a red verdict is the cross-family reviewer's to fix, never a
+  # procedural re-dispatch (docs/reviewer-pair-architecture.md).
   @spec build_invocation(data()) :: Invocation.t()
-  defp build_invocation(%{repair_prompt_kind: :semantic_rejection} = data) do
-    invocation(data, semantic_repair_prompt(data), :resume)
-  end
-
-  defp build_invocation(%{repair_prompt_kind: :operator_steer} = data) do
+  defp build_invocation(%{operator_feedback: feedback} = data) when is_binary(feedback) do
     invocation(data, operator_steer_prompt(data), :resume)
   end
 
-  defp build_invocation(%{repair_attempts: 0} = data) do
+  defp build_invocation(data) do
     invocation(data, data.item.prompt, nil)
-  end
-
-  defp build_invocation(%{verdict: %Verdict{} = verdict} = data) do
-    prompt =
-      RepairPrompt.build(data.item, verdict, data.repair_attempts, data.max_repair_attempts)
-
-    prompt = add_cross_agent_feedback(prompt, data.cross_agent_feedback)
-    invocation(data, prompt, :resume)
   end
 
   @spec invocation(data(), String.t(), :resume | nil) :: Invocation.t()
@@ -1505,7 +1385,7 @@ defmodule Harness.Run do
   @spec tag_composed_input(AgentRun.t(), data()) :: AgentAdapter.composed_input()
   defp tag_composed_input(%AgentRun{composed_input: input}, data) when is_map(input) do
     input
-    |> Map.put(:attempt, data.repair_attempts)
+    |> Map.put(:attempt, length(data.composed_inputs))
     |> Map.put(:phase, composed_input_phase(input, data))
   end
 
@@ -1517,20 +1397,19 @@ defmodule Harness.Run do
       prompt: "",
       session: nil,
       rule_files: [],
-      attempt: data.repair_attempts,
+      attempt: length(data.composed_inputs),
       phase: composed_input_phase_for_data(data)
     }
   end
 
-  @spec composed_input_phase(AgentAdapter.composed_input(), data()) :: :initial | :repair
-  defp composed_input_phase(%{session: :resume}, _data), do: :repair
+  @spec composed_input_phase(AgentAdapter.composed_input(), data()) :: :initial | :steer
+  defp composed_input_phase(%{session: :resume}, _data), do: :steer
 
   defp composed_input_phase(_input, data), do: composed_input_phase_for_data(data)
 
-  @spec composed_input_phase_for_data(data()) :: :initial | :repair
-  defp composed_input_phase_for_data(%{repair_prompt_kind: :operator_steer}), do: :repair
-  defp composed_input_phase_for_data(%{repair_attempts: 0}), do: :initial
-  defp composed_input_phase_for_data(_data), do: :repair
+  @spec composed_input_phase_for_data(data()) :: :initial | :steer
+  defp composed_input_phase_for_data(%{operator_feedback: feedback}) when is_binary(feedback), do: :steer
+  defp composed_input_phase_for_data(_data), do: :initial
 
   @spec operator_steer_prompt(data()) :: String.t()
   defp operator_steer_prompt(%{operator_feedback: feedback} = data) when is_binary(feedback) do
@@ -1563,7 +1442,7 @@ defmodule Harness.Run do
   defp route_red_verdict(data) do
     cond do
       data.max_review_iterations == 0 ->
-        {:next_state, :failed, %{data | reason: legacy_red_reason(data.verdict)}}
+        {:next_state, :failed, %{data | reason: :verification_red}}
 
       data.review_iterations >= data.max_review_iterations ->
         report = data.reviewer_stuck_report || "Reviewer iterations exhausted while verification remained red."
@@ -1586,10 +1465,6 @@ defmodule Harness.Run do
         end
     end
   end
-
-  @spec legacy_red_reason(Verdict.t() | nil) :: Result.reason()
-  defp legacy_red_reason(%Verdict{status: :base_red}), do: :base_red
-  defp legacy_red_reason(_verdict), do: :verification_red
 
   # A green verdict settles :done unless it still owes a reviewer pass: an
   # empty implementer diff always owes one ("what does an empty diff mean?" is
@@ -1628,7 +1503,7 @@ defmodule Harness.Run do
 
   @spec settle_done(data()) :: handler_result()
   defp settle_done(data) do
-    {:next_state, :done, clear_operator_steer(%{data | reason: :passed, repair_prompt_kind: nil})}
+    {:next_state, :done, clear_operator_steer(%{data | reason: :passed})}
   end
 
   @spec select_reviewer(data()) :: {:ok, module()} | {:error, term()}
@@ -1852,47 +1727,24 @@ defmodule Harness.Run do
     "harness: reviewer iteration #{data.review_iterations} — task #{data.item.id} #{data.item.title} (run #{data.run_id})"
   end
 
-  # NOTE: the same-agent repair-loop predicates (repairable?/1,
-  # cross_agent_repairable?/2, cross_agent_grader_available?/1, failure_class/1)
-  # were deleted when route_red_verdict/1 made the reviewer-pair path the only
-  # red-verdict route — they became unreachable, and the project compiles with
-  # --warnings-as-errors. The rest of the repair machinery is removed by the
-  # phase-15 deletion pass (Task 163).
+  # ── In-run discernment (sampled live-transcript review) ──────────────────
+  #
+  # A cross-family grader samples the implementer's partial transcript while it
+  # works and can halt a high-confidence rogue/destructive/spinning attempt.
+  # The halted attempt routes through the normal pipeline (commit → verify →
+  # reviewer); there is no procedural re-dispatch loop.
 
-  @spec grade_consultation(data()) :: {:ok, AuditReview.result()} | {:error, term()}
-  defp grade_consultation(%{consultation_kind: :semantic_gate} = data), do: grade_discernment(data, :post_green)
+  @spec grade_discernment(data()) :: {:ok, AuditReview.result()} | {:error, term()}
+  defp grade_discernment(data) do
+    opts = data.in_run_discernment
 
-  defp grade_consultation(data), do: grade_repair_approach(data)
-
-  @spec grade_repair_approach(data()) :: {:ok, AuditReview.result()} | {:error, term()}
-  defp grade_repair_approach(data) do
-    opts = data.cross_agent_repair
-
-    [
-      implementer: data.item.agent,
-      sha: current_sha(data),
-      prompt: cross_agent_prompt(data),
-      cwd: data.worktree.path
-    ]
-    |> put_opt(:grader, Keyword.get(opts, :grader))
-    |> put_opt(:model, Keyword.get(opts, :model))
-    |> put_opt(:adapter_opts, Keyword.get(opts, :adapter_opts))
-    |> put_opt(:total_timeout, Keyword.get(opts, :total_timeout))
-    |> put_opt(:idle_timeout, Keyword.get(opts, :idle_timeout))
-    |> AuditReview.grade_fix()
-  end
-
-  @spec grade_discernment(data(), :post_green | :in_run) :: {:ok, AuditReview.result()} | {:error, term()}
-  defp grade_discernment(data, trigger) when trigger in [:post_green, :in_run] do
-    opts = data.semantic_gate
-
-    with {:ok, grader} <- semantic_gate_grader(data),
-         true <- semantic_grader_dispatchable?(grader) || {:error, {:semantic_grader_unavailable, grader}},
-         {:ok, evidence} <- discernment_evidence(data, trigger) do
+    with {:ok, grader} <- discernment_grader(data),
+         true <- discernment_grader_dispatchable?(grader) || {:error, {:discernment_grader_unavailable, grader}},
+         {:ok, evidence} <- discernment_evidence(data) do
       [
         implementer: data.item.agent,
         sha: current_sha(data),
-        prompt: discernment_prompt(data, trigger, evidence),
+        prompt: discernment_prompt(data, evidence),
         cwd: data.worktree.path
       ]
       |> put_opt(:grader, grader)
@@ -1904,35 +1756,33 @@ defmodule Harness.Run do
     end
   end
 
-  @spec discernment_evidence(data(), :post_green | :in_run) :: {:ok, String.t()} | {:error, term()}
-  defp discernment_evidence(data, :post_green), do: committed_diff(data)
-
-  defp discernment_evidence(data, :in_run) do
+  @spec discernment_evidence(data()) :: {:ok, String.t()} | {:error, term()}
+  defp discernment_evidence(data) do
     case Git.run(["diff", "--stat", "--patch", "--find-renames", "--no-ext-diff"], data.worktree.path) do
       {:ok, diff} -> {:ok, truncate_semantic_diff(diff)}
       {:error, reason} -> {:error, {:diff_unavailable, reason}}
     end
   end
 
-  @spec semantic_gate_grader(data()) :: {:ok, atom()} | {:error, term()}
-  defp semantic_gate_grader(data) do
-    semantic_gate_grader(data.item.agent, Keyword.get(data.semantic_gate, :grader))
+  @spec discernment_grader(data()) :: {:ok, atom()} | {:error, term()}
+  defp discernment_grader(data) do
+    discernment_grader(data.item.agent, Keyword.get(data.in_run_discernment, :grader))
   end
 
-  @spec semantic_gate_grader(atom(), term()) :: {:ok, atom()} | {:error, term()}
-  defp semantic_gate_grader(implementer, nil), do: AuditReview.default_grader(implementer)
+  @spec discernment_grader(atom(), term()) :: {:ok, atom()} | {:error, term()}
+  defp discernment_grader(implementer, nil), do: AuditReview.default_grader(implementer)
 
-  defp semantic_gate_grader(implementer, grader) when is_atom(grader) do
+  defp discernment_grader(implementer, grader) when is_atom(grader) do
     case known_grader_agent(grader) do
       {:ok, ^implementer} -> AuditReview.default_grader(implementer)
       _other -> {:ok, grader}
     end
   end
 
-  defp semantic_gate_grader(_implementer, grader), do: {:error, {:invalid_option, :grader, grader}}
+  defp discernment_grader(_implementer, grader), do: {:error, {:invalid_option, :grader, grader}}
 
-  @spec semantic_grader_dispatchable?(atom()) :: boolean()
-  defp semantic_grader_dispatchable?(grader) when is_atom(grader) do
+  @spec discernment_grader_dispatchable?(atom()) :: boolean()
+  defp discernment_grader_dispatchable?(grader) when is_atom(grader) do
     case known_grader_agent(grader) do
       {:ok, agent} ->
         case AgentRegistry.module_for_agent(agent) do
@@ -1959,33 +1809,11 @@ defmodule Harness.Run do
     end
   end
 
-  @spec handle_semantic_gate_verdict(data(), AuditReview.verdict(), %{
-          verdict: AuditReview.verdict(),
-          rationale: String.t()
-        }) ::
-          handler_result()
-  defp handle_semantic_gate_outcome(data, verdict, %Outcome{} = outcome, feedback) do
-    if semantic_gate_infra_outcome?(outcome) do
-      feedback = semantic_gate_failure_feedback({:grader_failed, outcome.kind, outcome.output})
-      handle_semantic_gate_verdict(data, feedback.verdict, feedback)
-    else
-      handle_semantic_gate_verdict(data, verdict, feedback)
-    end
-  end
-
-  defp handle_semantic_gate_verdict(data, :approve, _feedback) do
-    {:next_state, :done, %{data | reason: :passed, consultation_kind: nil, repair_prompt_kind: nil}}
-  end
-
-  defp handle_semantic_gate_verdict(data, _verdict, feedback) do
-    reject_semantic_gate(data, feedback)
-  end
-
   @spec handle_in_run_discernment_outcome(data(), AuditReview.verdict(), Outcome.t()) :: handler_result()
   defp handle_in_run_discernment_outcome(data, :unclear, %Outcome{kind: kind})
        when kind in [{:timed_out, :idle}, {:timed_out, :total}] do
     reason = {:grader_failed, kind}
-    feedback = semantic_gate_failure_feedback(reason)
+    feedback = discernment_failure_feedback(reason)
     notify_in_run_discernment(data, :notify_only, feedback, reason)
     {:keep_state, data}
   end
@@ -1993,7 +1821,7 @@ defmodule Harness.Run do
   defp handle_in_run_discernment_outcome(data, verdict, %Outcome{} = outcome) do
     feedback = %{
       verdict: verdict,
-      rationale: cross_agent_rationale(outcome.output)
+      rationale: discernment_rationale(outcome.output)
     }
 
     handle_in_run_discernment_verdict(data, verdict, feedback)
@@ -2005,28 +1833,16 @@ defmodule Harness.Run do
           %{verdict: AuditReview.verdict(), rationale: String.t()}
         ) :: handler_result()
   defp handle_in_run_discernment_verdict(data, :reject, feedback) do
+    # High-confidence rogue/destructive/spinning behavior: halt the implementer
+    # and route whatever it left through the normal pipeline — commit, verify,
+    # and let the cross-family reviewer judge the worktree. Never a procedural
+    # re-dispatch (docs/reviewer-pair-architecture.md).
     feedback = Map.put(feedback, :trigger, :in_run)
+    notify_in_run_discernment(data, :halt, feedback)
+    terminate_agent(data)
+    cancel_task(data.task)
 
-    if semantic_repairable?(data) do
-      notify_in_run_discernment(data, :halt_and_redispatch, feedback)
-      terminate_agent(data)
-      cancel_task(data.task)
-
-      {:repeat_state,
-       %{
-         data
-         | task: nil,
-           agent_run: nil,
-           cancel_requested: nil,
-           repair_attempts: data.repair_attempts + 1,
-           repair_prompt_kind: :semantic_rejection,
-           cross_agent_feedback: feedback,
-           reason: :semantic_rejection
-       }}
-    else
-      notify_in_run_discernment(data, :blocked, feedback)
-      fail(%{data | cross_agent_feedback: feedback}, :semantic_rejection)
-    end
+    {:next_state, :committing, %{data | task: nil, agent_run: nil, cancel_requested: nil}}
   end
 
   defp handle_in_run_discernment_verdict(data, verdict, feedback) do
@@ -2034,88 +1850,16 @@ defmodule Harness.Run do
     {:keep_state, data}
   end
 
-  @spec reject_semantic_gate(data(), %{verdict: AuditReview.verdict(), rationale: String.t()}) ::
-          handler_result()
-  defp reject_semantic_gate(data, feedback) do
-    data = %{
-      data
-      | consultation_kind: nil,
-        cross_agent_feedback: feedback,
-        reason: :semantic_rejection
-    }
-
-    if semantic_repairable?(data) do
-      {:next_state, :running,
-       %{
-         data
-         | repair_attempts: data.repair_attempts + 1,
-           repair_prompt_kind: :semantic_rejection
-       }}
-    else
-      {:next_state, :failed, data}
-    end
+  # The grader could not run (spawn failure, crash, timeout). In-run discernment
+  # is advisory: an infrastructure failure is reported, never acted on.
+  @spec discernment_failure_feedback(term()) :: %{verdict: AuditReview.verdict(), rationale: String.t()}
+  defp discernment_failure_feedback(reason) do
+    %{verdict: :unclear, rationale: "In-run discernment grader did not run: #{inspect(reason)}"}
   end
-
-  @spec semantic_repairable?(data()) :: boolean()
-  defp semantic_repairable?(data) do
-    data.repair_attempts < data.max_repair_attempts and
-      AgentAdapter.supports?(data.adapter, :session_resume)
-  end
-
-  @spec semantic_gate_failure_feedback(term()) :: %{verdict: AuditReview.verdict(), rationale: String.t()}
-  defp semantic_gate_failure_feedback(reason) do
-    %{
-      verdict: semantic_gate_failure_verdict(reason),
-      rationale: "Semantic gate did not approve the diff: #{inspect(reason)}"
-    }
-  end
-
-  @spec semantic_gate_failure_verdict(term()) :: AuditReview.verdict()
-  defp semantic_gate_failure_verdict(reason) do
-    if semantic_gate_failure_open?(reason), do: :approve, else: :reject
-  end
-
-  @spec semantic_gate_failure_open?(term()) :: boolean()
-  defp semantic_gate_failure_open?({:grader_failed, reason}), do: semantic_gate_failure_open?(reason)
-  defp semantic_gate_failure_open?({:grader_failed, _kind, output}), do: semantic_gate_infra_output?(output)
-  defp semantic_gate_failure_open?({:no_default_grader, _implementer}), do: true
-  defp semantic_gate_failure_open?({:semantic_grader_unavailable, _grader}), do: true
-  defp semantic_gate_failure_open?({:executable_not_found, _executable}), do: true
-  defp semantic_gate_failure_open?({:unknown_agent, _agent}), do: true
-  defp semantic_gate_failure_open?({:same_family_grader, _implementer, _grader}), do: true
-  defp semantic_gate_failure_open?({:crashed, _reason}), do: true
-  defp semantic_gate_failure_open?(_reason), do: false
-
-  @spec semantic_gate_infra_outcome?(Outcome.t()) :: boolean()
-  defp semantic_gate_infra_outcome?(%Outcome{kind: {:error, _reason}}), do: true
-  defp semantic_gate_infra_outcome?(%Outcome{output: output}), do: semantic_gate_infra_output?(output)
-
-  @spec semantic_gate_infra_output?(term()) :: boolean()
-  defp semantic_gate_infra_output?(output) when is_binary(output) do
-    output = String.downcase(output)
-
-    Enum.any?(
-      [
-        ~s("is_error":true),
-        "api_error_status",
-        "credit balance is too low",
-        "subscription quota",
-        "quota exhausted",
-        "quota exceeded",
-        "usage limit",
-        "rate limit exceeded",
-        "agent unavailable",
-        "operator-disabled"
-      ],
-      &String.contains?(output, &1)
-    )
-  end
-
-  defp semantic_gate_infra_output?(_output), do: false
 
   @spec notify_in_run_discernment(
           data(),
-          :notify_only | :halt_and_redispatch | :blocked,
+          :notify_only | :halt,
           %{
             required(:verdict) => AuditReview.verdict(),
             required(:rationale) => String.t(),
@@ -2150,68 +1894,8 @@ defmodule Harness.Run do
   defp maybe_put_reason(outcome, nil), do: outcome
   defp maybe_put_reason(outcome, reason), do: Map.put(outcome, :reason, reason)
 
-  @spec cross_agent_prompt(data()) :: String.t()
-  defp cross_agent_prompt(data) do
-    repair_prompt =
-      RepairPrompt.build(data.item, data.verdict, data.repair_attempts, data.max_repair_attempts)
-
-    """
-    You are the one-shot opposite-agent grader for a harness repair loop.
-
-    Grade the asker's proposed approach before the asker spends the next repair attempt.
-    This is asymmetric grading, not dialogue. Do not ask questions and do not propose a back-and-forth.
-
-    Structured payload:
-
-    Proposed approach:
-    Resume the asker with the focused repair prompt below, then make exactly one follow-up implementation pass.
-
-    Cost of guessing wrong:
-    If the asker repeats the same blind spot, this repair move is spent and the run settles failed when verification stays red.
-
-    Failing check evidence:
-    #{failing_check_evidence(data.verdict)}
-
-    Focused repair prompt the asker will receive:
-    #{repair_prompt}
-
-    Return one concise rationale line, then a final sentinel on its own line:
-    <<<VERDICT:APPROVE>>>
-    or
-    <<<VERDICT:REJECT>>>
-    """
-  end
-
-  @spec discernment_prompt(data(), :post_green | :in_run, String.t()) :: String.t()
-  defp discernment_prompt(data, :post_green, diff) do
-    """
-    You are the cross-family semantic gate for a harness green verdict.
-
-    The verification stack has passed. Your job is adversarial semantic review:
-    decide whether the committed diff actually satisfies the task body and
-    acceptance criteria, without accepting evasions like deleted tests, stubs,
-    or solving only an adjacent problem.
-
-    Implementer: #{data.item.agent}
-    Commit: #{current_sha(data)}
-
-    Task body:
-    #{empty_placeholder(data.item.body)}
-
-    Acceptance criteria:
-    #{format_acceptance_criteria(data.item.acceptance_criteria)}
-
-    Committed diff:
-    #{diff}
-
-    Return one concise rationale line, then a final sentinel on its own line:
-    <<<VERDICT:APPROVE>>>
-    or
-    <<<VERDICT:REJECT>>>
-    """
-  end
-
-  defp discernment_prompt(data, :in_run, diff) do
+  @spec discernment_prompt(data(), String.t()) :: String.t()
+  defp discernment_prompt(data, diff) do
     """
     You are the sampled cross-family semantic discernment reviewer for an in-flight harness run.
 
@@ -2248,78 +1932,6 @@ defmodule Harness.Run do
     """
   end
 
-  @spec semantic_repair_prompt(data()) :: String.t()
-  defp semantic_repair_prompt(data) do
-    rationale =
-      case data.cross_agent_feedback do
-        %{rationale: rationale} -> rationale
-        _ -> "No rationale provided."
-      end
-
-    """
-    #{semantic_repair_intro(data)}
-    repair attempt #{data.repair_attempts} of #{data.max_repair_attempts}.
-
-    #{semantic_repair_guidance(data)}
-
-    Reviewer rationale:
-    #{rationale}
-
-    Task body:
-    #{empty_placeholder(data.item.body)}
-
-    Acceptance criteria:
-    #{format_acceptance_criteria(data.item.acceptance_criteria)}
-    """
-  end
-
-  @spec semantic_repair_intro(data()) :: String.t()
-  defp semantic_repair_intro(%{cross_agent_feedback: %{trigger: :in_run}} = data) do
-    "harness semantic discernment rejected your in-run attempt on task #{data.item.id} —"
-  end
-
-  defp semantic_repair_intro(data) do
-    "harness semantic gate rejected your green verification attempt on task #{data.item.id} —"
-  end
-
-  @spec semantic_repair_guidance(data()) :: String.t()
-  defp semantic_repair_guidance(%{cross_agent_feedback: %{trigger: :in_run}}) do
-    """
-    The cross-family semantic reviewer found high-confidence rogue, destructive,
-    out-of-scope, or spinning behavior in the partial live transcript. Repair
-    the actual task semantics and avoid the flagged process failure. Leave your
-    fixes in the working tree; harness will commit and verify the next attempt.
-    """
-  end
-
-  defp semantic_repair_guidance(_data) do
-    """
-    The verification checks passed, but the cross-family semantic reviewer did
-    not approve the committed diff against the task contract. Repair the actual
-    task semantics, not just the check stack. Leave your fixes in the working
-    tree; harness will commit, verify, and run the semantic gate again.
-    """
-  end
-
-  @spec committed_diff(data()) :: {:ok, String.t()} | {:error, term()}
-  defp committed_diff(data) do
-    args = [
-      "show",
-      "--stat",
-      "--patch",
-      "--find-renames",
-      "--no-ext-diff",
-      "--unified=#{@semantic_diff_context_lines}",
-      "--format=fuller",
-      current_sha(data)
-    ]
-
-    case Git.run(args, data.worktree.path) do
-      {:ok, diff} -> {:ok, truncate_semantic_diff(diff)}
-      {:error, reason} -> {:error, {:diff_unavailable, reason}}
-    end
-  end
-
   @spec truncate_semantic_diff(String.t()) :: String.t()
   defp truncate_semantic_diff(diff) when byte_size(diff) <= @semantic_diff_max_bytes, do: diff
 
@@ -2349,37 +1961,8 @@ defmodule Harness.Run do
 
   defp format_acceptance_criteria(criteria), do: Enum.map_join(criteria, "\n", fn criterion -> "- #{criterion}" end)
 
-  @spec add_cross_agent_feedback(
-          String.t(),
-          %{verdict: AuditReview.verdict(), rationale: String.t()} | nil
-        ) ::
-          String.t()
-  defp add_cross_agent_feedback(prompt, nil), do: prompt
-
-  defp add_cross_agent_feedback(prompt, %{verdict: verdict, rationale: rationale}) do
-    action =
-      case verdict do
-        :approve ->
-          "Commit to the proposed approach."
-
-        :reject ->
-          "Pivot away from the proposed approach and address the repeated failure from a different angle."
-
-        :unclear ->
-          "Treat the missing approval as a rejection and pivot before editing."
-      end
-
-    """
-    Cross-agent grader verdict before this repair attempt: #{verdict |> Atom.to_string() |> String.upcase()}.
-    Rationale: #{rationale}
-    #{action}
-
-    #{prompt}
-    """
-  end
-
-  @spec cross_agent_rationale(String.t()) :: String.t()
-  defp cross_agent_rationale(output) when is_binary(output) do
+  @spec discernment_rationale(String.t()) :: String.t()
+  defp discernment_rationale(output) when is_binary(output) do
     rationale =
       output
       |> String.split("\n")
@@ -2417,32 +2000,13 @@ defmodule Harness.Run do
   defp check_status_line(%CheckResult{kind: :timed_out}), do: "timed out"
   defp check_status_line(%CheckResult{kind: :not_launched}), do: "could not launch"
 
-  @spec failed_check_signatures(Verdict.t()) :: MapSet.t(term())
-  defp failed_check_signatures(%Verdict{results: results}) do
-    results
-    |> Enum.filter(&(&1.status == :fail))
-    |> MapSet.new(&failed_check_signature/1)
-  end
-
-  @spec failed_check_signature(CheckResult.t()) :: term()
-  defp failed_check_signature(%CheckResult{} = result) do
-    {result.name, result.kind, result.exit_status, error_signature(result)}
-  end
-
-  @spec error_signature(CheckResult.t()) :: String.t()
-  defp error_signature(%CheckResult{output: output}) do
-    :sha256
-    |> :crypto.hash(String.trim(output))
-    |> Base.encode16(case: :lower)
-  end
-
   @spec maybe_sample_in_run_discernment(state(), data()) :: handler_result()
   defp maybe_sample_in_run_discernment(:running, data) do
-    opts = in_run_discernment_opts(data)
+    opts = data.in_run_discernment
     now = System.monotonic_time(:millisecond)
 
     if in_run_discernment_due?(data, opts, now) do
-      task = start_task(fn -> grade_discernment(data, :in_run) end)
+      task = start_task(fn -> grade_discernment(data) end)
       {:keep_state, %{data | discernment_task: task, last_discernment_sample_ms: now}}
     else
       {:keep_state, data}
@@ -2525,17 +2089,20 @@ defmodule Harness.Run do
     |> Enum.join("\n")
   end
 
-  @spec in_run_discernment_opts(data()) :: keyword()
-  defp in_run_discernment_opts(data) do
+  # Resolves the in-run discernment options once at init: the per-run
+  # `:in_run_discernment` opt overlays the `:harness, :in_run_discernment`
+  # application config. Disabled unless `enabled: true` is present.
+  @spec in_run_discernment_opts(keyword()) :: keyword()
+  defp in_run_discernment_opts(opts) do
     global =
       :harness
       |> Application.get_env(:in_run_discernment, [])
-      |> normalize_cross_agent_repair_opts()
+      |> normalize_opts()
 
     local =
-      data.semantic_gate
-      |> Keyword.get(:in_run, [])
-      |> normalize_cross_agent_repair_opts()
+      opts
+      |> Keyword.get(:in_run_discernment, [])
+      |> normalize_opts()
 
     Keyword.merge(global, local)
   end
@@ -2554,15 +2121,10 @@ defmodule Harness.Run do
 
   # The message stamped on the agent's delivery commit — identifies the run and
   # the rmap task it served, so the commit is legible in `git log` after the
-  # worktree it came from is gone. Each repair attempt commits separately, so
-  # the branch history reads as a sequence of attempts.
+  # worktree it came from is gone.
   @spec commit_message(data()) :: String.t()
-  defp commit_message(%{repair_attempts: 0} = data) do
-    "harness: agent delivery — task #{data.item.id} #{data.item.title} (run #{data.run_id})"
-  end
-
   defp commit_message(data) do
-    "harness: repair attempt #{data.repair_attempts} — task #{data.item.id} #{data.item.title} (run #{data.run_id})"
+    "harness: agent delivery — task #{data.item.id} #{data.item.title} (run #{data.run_id})"
   end
 
   @spec worktree_opts(data()) :: keyword()
@@ -2592,9 +2154,7 @@ defmodule Harness.Run do
         [check_stacks: data.project.check_stacks]
       end
 
-    opts
-    |> put_opt(:timeout, data.verification_timeout)
-    |> put_opt(:base_ref, data.worktree && data.worktree.base_sha)
+    put_opt(opts, :timeout, data.verification_timeout)
   end
 
   @spec commit_worktree(Worktree.t(), String.t()) ::
@@ -2606,8 +2166,10 @@ defmodule Harness.Run do
     end
   end
 
+  # The failed-check count from the FIRST verification pass — the implementer's
+  # delivery quality before any reviewer iteration touched the worktree.
   @spec first_attempt_failed_check_count(data(), Verdict.t()) :: non_neg_integer()
-  defp first_attempt_failed_check_count(%{repair_attempts: 0}, %Verdict{results: results}) do
+  defp first_attempt_failed_check_count(%{verdict: nil}, %Verdict{results: results}) do
     Enum.count(results, &(&1.status == :fail))
   end
 
@@ -2617,24 +2179,10 @@ defmodule Harness.Run do
   defp put_opt(opts, _key, nil), do: opts
   defp put_opt(opts, key, value), do: Keyword.put(opts, key, value)
 
-  @spec cross_agent_repair_opts(keyword()) :: keyword()
-  defp cross_agent_repair_opts(opts) do
-    opts
-    |> Keyword.get(:cross_agent_repair, Application.get_env(:harness, :cross_agent_repair, []))
-    |> normalize_cross_agent_repair_opts()
-  end
-
-  @spec semantic_gate_opts(keyword()) :: keyword()
-  defp semantic_gate_opts(opts) do
-    opts
-    |> Keyword.get(:semantic_gate, Application.get_env(:harness, :semantic_gate, enabled: :auto))
-    |> normalize_cross_agent_repair_opts()
-  end
-
-  @spec normalize_cross_agent_repair_opts(nil | keyword() | map()) :: keyword()
-  defp normalize_cross_agent_repair_opts(nil), do: []
-  defp normalize_cross_agent_repair_opts(opts) when is_list(opts), do: opts
-  defp normalize_cross_agent_repair_opts(opts) when is_map(opts), do: Map.to_list(opts)
+  @spec normalize_opts(nil | keyword() | map()) :: keyword()
+  defp normalize_opts(nil), do: []
+  defp normalize_opts(opts) when is_list(opts), do: opts
+  defp normalize_opts(opts) when is_map(opts), do: Map.to_list(opts)
 
   @spec checkout_snapshot_for_run(data()) :: String.t() | nil
   defp checkout_snapshot_for_run(data) do

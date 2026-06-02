@@ -3,9 +3,9 @@ defmodule Harness.Verification.Verdict do
   The aggregate outcome of a verification run: every check's result plus the
   single objective pass/fail the harness grades the run on.
 
-  Any agent-attributed red check makes the whole verdict red. When every red
-  check also fails on the dispatch base, the verdict is `:base_red` instead:
-  not green, but not blamed on the agent.
+  Any red check makes the whole verdict red. What a red check *means* — and
+  what to do about it — is the cross-family reviewer's judgment, never a
+  classification harness makes itself (docs/reviewer-pair-architecture.md).
   """
 
   alias Harness.Verification.Result
@@ -13,14 +13,13 @@ defmodule Harness.Verification.Verdict do
   @typedoc """
   The verdict.
 
-    * `status` — `:pass` only when every result passed; `:fail` if any
-      agent-attributed check failed; `:base_red` when all failures were
-      inherited from the dispatch base.
+    * `status` — `:pass` only when every result passed; `:fail` if any check
+      failed.
     * `results` — every check's `Harness.Verification.Result`, in the order the
       checks ran.
   """
   @type t :: %__MODULE__{
-          status: :pass | :fail | :base_red,
+          status: :pass | :fail,
           results: [Result.t()]
         }
 
@@ -29,9 +28,6 @@ defmodule Harness.Verification.Verdict do
 
   @doc """
   Whether every check in the verdict passed.
-
-  `:base_red` is deliberately not passed: inherited red must never silently
-  green a run.
   """
   @spec passed?(t()) :: boolean()
   def passed?(%__MODULE__{status: status}), do: status == :pass

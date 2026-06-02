@@ -33,7 +33,7 @@ defmodule Harness.ResultStore.FileTest do
         state: :passed,
         reason: nil,
         duration_ms: 1234,
-        repair_attempts: 0,
+        review_iterations: 0,
         first_attempt_failed_check_count: 0,
         failure_cause: %{reason: nil, failed_checks: []}
       },
@@ -186,7 +186,7 @@ defmodule Harness.ResultStore.FileTest do
         state: :passed,
         reason: nil,
         duration_ms: 1,
-        repair_attempts: 0,
+        review_iterations: 0,
         first_attempt_failed_check_count: 0,
         failure_cause: %{reason: nil, failed_checks: []}
       }
@@ -247,7 +247,7 @@ defmodule Harness.ResultStore.FileTest do
                    state: :passed,
                    reason: nil,
                    duration_ms: 1,
-                   repair_attempts: 0,
+                   review_iterations: 0,
                    first_attempt_failed_check_count: 0,
                    failure_cause: %{reason: nil, failed_checks: []}
                  },
@@ -268,7 +268,7 @@ defmodule Harness.ResultStore.FileTest do
         state: :passed,
         reason: nil,
         duration_ms: 1,
-        repair_attempts: 0,
+        review_iterations: 0,
         first_attempt_failed_check_count: 0,
         failure_cause: %{reason: nil, failed_checks: []}
       }
@@ -350,7 +350,7 @@ defmodule Harness.ResultStore.FileTest do
         state: :passed,
         reason: nil,
         duration_ms: 1,
-        repair_attempts: 0,
+        review_iterations: 0,
         first_attempt_failed_check_count: 0,
         failure_cause: %{reason: nil, failed_checks: []}
       }

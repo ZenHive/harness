@@ -53,7 +53,7 @@ defmodule Harness.CapabilityScore do
             adapter: module(),
             agent: atom() | module(),
             verdict: :pass | :fail | nil,
-            repair_attempts: non_neg_integer(),
+            review_iterations: non_neg_integer(),
             duration_ms: non_neg_integer() | nil,
             token_usage: TokenUsage.t(),
             cost_tokens: non_neg_integer(),
@@ -68,7 +68,7 @@ defmodule Harness.CapabilityScore do
       :adapter,
       :agent,
       :verdict,
-      :repair_attempts,
+      :review_iterations,
       :duration_ms,
       :token_usage,
       :cost_tokens,
@@ -82,7 +82,7 @@ defmodule Harness.CapabilityScore do
       :adapter,
       :agent,
       :verdict,
-      :repair_attempts,
+      :review_iterations,
       :duration_ms,
       :token_usage,
       :cost_tokens,
@@ -99,7 +99,7 @@ defmodule Harness.CapabilityScore do
           run_count: pos_integer(),
           success_rate: float(),
           cost_to_green: float() | nil,
-          mean_repair_attempts: float(),
+          mean_review_iterations: float(),
           mean_first_attempt_failed_check_count: float(),
           composite_score: float(),
           raw_metrics: [RawMetric.t()]
@@ -113,7 +113,7 @@ defmodule Harness.CapabilityScore do
     :run_count,
     :success_rate,
     :cost_to_green,
-    :mean_repair_attempts,
+    :mean_review_iterations,
     :mean_first_attempt_failed_check_count,
     :composite_score,
     :raw_metrics
@@ -126,7 +126,7 @@ defmodule Harness.CapabilityScore do
     :run_count,
     :success_rate,
     :cost_to_green,
-    :mean_repair_attempts,
+    :mean_review_iterations,
     :mean_first_attempt_failed_check_count,
     :composite_score,
     :raw_metrics
@@ -256,7 +256,7 @@ defmodule Harness.CapabilityScore do
       adapter: entry.adapter,
       agent: agent_for_adapter(entry.adapter),
       verdict: entry.verdict,
-      repair_attempts: entry.repair_attempts,
+      review_iterations: entry.review_iterations,
       duration_ms: entry.duration_ms,
       token_usage: entry.token_usage,
       cost_tokens: token_total(entry.token_usage),
@@ -283,7 +283,7 @@ defmodule Harness.CapabilityScore do
     successes = Enum.filter(metrics, &(&1.verdict == :pass))
     success_rate = rate(length(successes), run_count)
     cost_to_green = cost_to_green(successes)
-    mean_repair_attempts = mean(Enum.map(metrics, & &1.repair_attempts), run_count)
+    mean_review_iterations = mean(Enum.map(metrics, & &1.review_iterations), run_count)
 
     mean_first_attempt_failed_check_count =
       mean(Enum.map(metrics, & &1.first_attempt_failed_check_count), run_count)
@@ -296,10 +296,10 @@ defmodule Harness.CapabilityScore do
       run_count: run_count,
       success_rate: success_rate,
       cost_to_green: cost_to_green,
-      mean_repair_attempts: mean_repair_attempts,
+      mean_review_iterations: mean_review_iterations,
       mean_first_attempt_failed_check_count: mean_first_attempt_failed_check_count,
       composite_score:
-        composite_score(success_rate, cost_to_green, mean_repair_attempts, mean_first_attempt_failed_check_count),
+        composite_score(success_rate, cost_to_green, mean_review_iterations, mean_first_attempt_failed_check_count),
       raw_metrics: metrics
     }
   end
@@ -510,12 +510,12 @@ defmodule Harness.CapabilityScore do
   end
 
   @spec composite_score(float(), float() | nil, float(), float()) :: float()
-  defp composite_score(success_rate, cost_to_green, mean_repair_attempts, mean_first_attempt_failed_check_count) do
+  defp composite_score(success_rate, cost_to_green, mean_review_iterations, mean_first_attempt_failed_check_count) do
     success_component = success_rate * @success_scale
 
     tiebreaker =
       @cost_tiebreaker_weight * cost_efficiency(cost_to_green) +
-        @repair_tiebreaker_weight * reciprocal_efficiency(mean_repair_attempts) +
+        @repair_tiebreaker_weight * reciprocal_efficiency(mean_review_iterations) +
         @first_failure_tiebreaker_weight * reciprocal_efficiency(mean_first_attempt_failed_check_count)
 
     success_component + tiebreaker

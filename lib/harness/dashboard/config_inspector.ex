@@ -74,7 +74,7 @@ defmodule Harness.Dashboard.ConfigInspector do
          field("idle_timeout", fn -> kw(:run, :idle_timeout, 300_000) end, nil, 300_000, format: &ms/1),
          field("lifetime_timeout", fn -> kw(:run, :lifetime_timeout, 5_400_000) end, nil, 5_400_000, format: &ms/1),
          field("terminal_linger", fn -> kw(:run, :terminal_linger, 5_000) end, nil, 5_000, format: &ms/1),
-         field("max_repair_attempts", fn -> kw(:run, :max_repair_attempts, 2) end, nil, 2)
+         field("max_review_iterations", fn -> kw(:run, :max_review_iterations, 2) end, nil, 2)
        ]},
       {"Verification",
        [
@@ -85,11 +85,6 @@ defmodule Harness.Dashboard.ConfigInspector do
        [
          field("enabled", fn -> kw(:cron_polling, :enabled, false) end, nil, false),
          field("schedule", fn -> kw(:cron_polling, :schedule, "0 */2 * * *") end, nil, "0 */2 * * *")
-       ]},
-      {"Repair & gating",
-       [
-         field("cross_agent_repair", fn -> kw(:cross_agent_repair, :enabled, false) end, nil, false),
-         field("semantic_gate", fn -> kw(:semantic_gate, :enabled, :auto) end, nil, :auto)
        ]},
       {"Notifications",
        [

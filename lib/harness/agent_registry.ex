@@ -4,7 +4,8 @@ defmodule Harness.AgentRegistry do
 
   The registry is the orchestrator-facing gate before a run starts. It keeps the
   static adapter contract (`capabilities/0`) separate from transient runtime
-  availability, such as a subscription quota being exhausted.
+  availability, such as an adapter whose reviewer reported it stuck empty-handed
+  (typically a subscription quota exhaustion).
 
   ## Two roles in one module
 
@@ -20,10 +21,14 @@ defmodule Harness.AgentRegistry do
       duplication site that audit_review.ex previously carried as its own
       `@agents` attribute is consolidated here.
 
-    * **Transient unavailability** — `mark_unavailable/2`,
-      `mark_quota_exhausted/2`, `mark_available/1`, `list_unavailable/0`,
-      `available?/1`. In-memory, no persistence, clears on restart by design
-      (see "Availability is a soft hint, not a contract" below).
+    * **Transient unavailability** — `mark_unavailable/2`, `mark_available/1`,
+      `list_unavailable/0`, `available?/1`. In-memory, no persistence, clears on
+      restart by design (see "Availability is a soft hint, not a contract"
+      below). Fed by `Harness.Batch` fail-over: when a run settles
+      `{:review_stuck, report}` with an empty implementer diff, the batch marks
+      the implementer adapter unavailable with the reviewer's prose as the
+      reason — no output-pattern matching is involved (judgment lives in
+      agents, not procedural code).
 
   The two roles never share storage: the static index is module-attribute
   data plus a cache map keyed by adapter module; the transient map is keyed
@@ -43,29 +48,27 @@ defmodule Harness.AgentRegistry do
 
   ## Availability is a soft hint, not a contract
 
-  Unavailability state (quota-exhausted, manually marked) lives in `GenServer`
+  Unavailability state (reviewer-stuck marks, manual marks) lives in `GenServer`
   state only — there is no persistence, no TTL, and no replication. **A
   restart of `Harness.AgentRegistry` (BEAM restart, supervisor restart) clears
-  the table**, and an adapter you knew was quota-exhausted is available again
+  the table**, and an adapter you knew was out of quota is available again
   on the next `select/2`. This is **by design**, not a bug:
 
     * The registry exists as a **latency optimization** — skip a known-bad
       adapter at dispatch time so we do not burn even the first attempt on it.
-    * **Correctness lives one layer below**, in Oban. A worker that hits quota
-      maps the failure to `{:snooze, reason}`; the persisted job row survives
-      both restarts and quota windows, and is retried later with the registry
-      in whatever state it then holds (often a different adapter has come
-      back).
+    * **Correctness lives one layer below**, in Oban. The persisted job row
+      survives both restarts and quota windows; a settled run is never re-run,
+      and the roadmap task reverts to pending so the next dispatch can pick a
+      different adapter with the registry in whatever state it then holds.
     * Quota windows are themselves transient (typically 5h rolling for the
-      major LLM providers). Persisting a quota mark across a restart would
-      usually be **wrong by the time the BEAM comes back up** — the quota
+      major LLM providers). Persisting an unavailability mark across a restart
+      would usually be **wrong by the time the BEAM comes back up** — the quota
       likely refilled. Persistence without a TTL is buggy; persistence with a
       TTL is a TTL design with extra storage.
 
   The bounded cost of a restart-clear is **at most one wasted run attempt per
-  previously-marked-unavailable adapter per restart** — the next worker maps
-  the resulting quota error back to `mark_quota_exhausted/2` and the registry
-  re-converges. Oban's retry/snooze contract absorbs the rest.
+  previously-marked-unavailable adapter per restart** — the next batch
+  fail-over marks the adapter again and the registry re-converges.
 
   ## When to revisit
 
@@ -91,17 +94,7 @@ defmodule Harness.AgentRegistry do
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentAdapter.Cursor
   alias Harness.AgentAdapter.Grok
-  alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Pi
-
-  @quota_patterns [
-    "subscription quota",
-    "quota exhausted",
-    "quota exceeded",
-    "usage limit",
-    "rate limit exceeded",
-    "limit reached"
-  ]
 
   @agents %{
     claude: Claude,
@@ -210,14 +203,6 @@ defmodule Harness.AgentRegistry do
   end
 
   @doc """
-  Marks `adapter` unavailable because its captured output indicates quota exhaustion.
-  """
-  @spec mark_quota_exhausted(module(), Outcome.t()) :: :ok
-  def mark_quota_exhausted(adapter, %Outcome{} = outcome) do
-    mark_unavailable(adapter, {:quota_exhausted, outcome.kind})
-  end
-
-  @doc """
   Marks `adapter` available again.
   """
   @spec mark_available(module()) :: :ok
@@ -261,17 +246,6 @@ defmodule Harness.AgentRegistry do
   @spec reset() :: :ok
   def reset do
     GenServer.call(__MODULE__, :reset)
-  end
-
-  @doc """
-  Detects common quota-exhaustion messages in an agent outcome.
-  """
-  @spec quota_exhausted?(Outcome.t() | nil) :: boolean()
-  def quota_exhausted?(nil), do: false
-
-  def quota_exhausted?(%Outcome{output: output}) when is_binary(output) do
-    output = String.downcase(output)
-    Enum.any?(@quota_patterns, &String.contains?(output, &1))
   end
 
   @doc """

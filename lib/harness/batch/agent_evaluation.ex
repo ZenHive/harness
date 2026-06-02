@@ -28,7 +28,7 @@ defmodule Harness.Batch.AgentEvaluation do
     when verification never ran). No composite score is computed.
 
     `token_usage` is the `Harness.TokenUsage` parsed from the adapter's raw
-    transcript (summed across repair attempts) — the efficiency signal that
+    transcript (summed across dispatches) — the efficiency signal that
     lets an A/B comparison weigh *how many tokens* an adapter spent, not only
     whether it passed. An empty usage (all-`nil`) means the wire format
     reported no token counts.
@@ -41,7 +41,7 @@ defmodule Harness.Batch.AgentEvaluation do
             state: RunResult.state(),
             reason: RunResult.reason(),
             verdict: :pass | :fail | nil,
-            repair_attempts: non_neg_integer(),
+            review_iterations: non_neg_integer(),
             duration_ms: non_neg_integer() | nil,
             first_attempt_failed_check_count: non_neg_integer(),
             agent_diff_size: non_neg_integer() | nil,
@@ -54,7 +54,7 @@ defmodule Harness.Batch.AgentEvaluation do
       :run_id,
       :state,
       :reason,
-      :repair_attempts,
+      :review_iterations,
       :first_attempt_failed_check_count,
       :result
     ]
@@ -64,7 +64,7 @@ defmodule Harness.Batch.AgentEvaluation do
       :state,
       :reason,
       :verdict,
-      :repair_attempts,
+      :review_iterations,
       :duration_ms,
       :first_attempt_failed_check_count,
       :agent_diff_size,
@@ -115,14 +115,13 @@ defmodule Harness.Batch.AgentEvaluation do
       opts: [
         kind: :value,
         default: [],
-        description:
-          "Forwarded to Harness.Batch.run_pinned/3 (max_concurrency, retry_policy, required_capabilities, env)."
+        description: "Forwarded to Harness.Batch.run_pinned/3 (max_concurrency, required_capabilities, env)."
       ]
     ],
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %Comparison{batch_id, task_id, total, max_concurrency, entries, events}} — entries holds per-adapter %Entry{} metrics (verdict, repair_attempts, duration_ms, first_attempt_failed_check_count, agent_diff_size, token_usage). {:error, Batch.error()}."
+        "{:ok, %Comparison{batch_id, task_id, total, max_concurrency, entries, events}} — entries holds per-adapter %Entry{} metrics (verdict, review_iterations, duration_ms, first_attempt_failed_check_count, agent_diff_size, token_usage). {:error, Batch.error()}."
     }
   )
 
@@ -217,7 +216,7 @@ defmodule Harness.Batch.AgentEvaluation do
       state: result.state,
       reason: result.reason,
       verdict: (record && record.verdict) || verdict_status(result),
-      repair_attempts: result.repair_attempts,
+      review_iterations: result.review_iterations,
       duration_ms: record && record.duration_ms,
       first_attempt_failed_check_count: result.first_attempt_failed_check_count,
       agent_diff_size: result.agent_diff_size,

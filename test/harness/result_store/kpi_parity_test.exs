@@ -35,21 +35,21 @@ defmodule Harness.ResultStore.KPIParityTest do
       record("parity-c1",
         agent: :claude,
         verdict: :pass,
-        repair_attempts: 0,
+        review_iterations: 0,
         duration_ms: 100,
         token_usage: tokens(100, 50)
       ),
       record("parity-c2",
         agent: :claude,
         verdict: :fail,
-        repair_attempts: 1,
+        review_iterations: 1,
         duration_ms: 300,
         token_usage: tokens(100, 50)
       ),
       record("parity-x1",
         agent: :codex,
         verdict: :pass,
-        repair_attempts: 0,
+        review_iterations: 0,
         duration_ms: 50,
         token_usage: tokens(1000, 500)
       )
@@ -118,7 +118,7 @@ defmodule Harness.ResultStore.KPIParityTest do
     assert_in_delta(a.tokens.input, b.tokens.input, 1.0e-9)
     assert_in_delta(a.tokens.output, b.tokens.output, 1.0e-9)
     assert_in_delta(a.tokens.total, b.tokens.total, 1.0e-9)
-    assert_in_delta(a.repair_attempts, b.repair_attempts, 1.0e-9)
+    assert_in_delta(a.review_iterations, b.review_iterations, 1.0e-9)
 
     case {a.cost_to_green, b.cost_to_green} do
       {nil, nil} -> :ok
@@ -135,7 +135,7 @@ defmodule Harness.ResultStore.KPIParityTest do
       state: :done,
       reason: :passed,
       duration_ms: 100,
-      repair_attempts: 0,
+      review_iterations: 0,
       first_attempt_failed_check_count: 0,
       failure_cause: %{reason: :passed, failed_checks: []},
       token_usage: TokenUsage.empty()

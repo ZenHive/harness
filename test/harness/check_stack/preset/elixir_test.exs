@@ -3,7 +3,6 @@ defmodule Harness.CheckStack.Preset.ElixirTest do
 
   alias Harness.CheckStack
   alias Harness.CheckStack.Preset
-  alias Harness.Verification.BaselineFilter.Credo
   alias Harness.Verification.Check
 
   describe "preset/0" do
@@ -25,11 +24,6 @@ defmodule Harness.CheckStack.Preset.ElixirTest do
       sobelow = Enum.find(Preset.Elixir.preset().checks, &(&1.name == "sobelow"))
       assert "--exit" in sobelow.args
       assert "--skip" in sobelow.args
-    end
-
-    test "the credo check still declares the TagTODO baseline filter" do
-      credo = Enum.find(Preset.Elixir.preset().checks, &(&1.name == "credo"))
-      assert credo.post_process == {Credo, :apply}
     end
 
     test "declares mix deps.get + deps.compile as setup bootstrap steps" do
@@ -121,11 +115,6 @@ defmodule Harness.CheckStack.Preset.ElixirTest do
     test "doctor gates with --raise so its exit status is load-bearing" do
       doctor = Enum.find(Preset.Elixir.precommit().checks, &(&1.name == "doctor"))
       assert doctor.args == ["doctor", "--raise"]
-    end
-
-    test "the credo check still declares the TagTODO baseline filter" do
-      credo = Enum.find(Preset.Elixir.precommit().checks, &(&1.name == "credo"))
-      assert credo.post_process == {Credo, :apply}
     end
 
     test "declares mix deps.get + deps.compile as setup bootstrap steps" do

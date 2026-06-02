@@ -64,17 +64,6 @@ config :harness, :cron_polling,
 # `false` to disable persistence (runtime flips still work, nothing is written).
 config :harness, :cron_settings, root: Path.expand("~/.harness")
 
-# Cross-agent repair is opt-in. When enabled, a repeated verification failure
-# can spend one repair move on a one-shot opposite-agent grade before the next
-# same-agent repair pass. Supported keys:
-#   :enabled — bool, default false.
-#   :grader — adapter module override; required when the implementer is not
-#             `:claude` or `:codex` (AuditReview only auto-pairs those two).
-#             Run falls back to normal same-agent repair when missing.
-#   :model / :adapter_opts / :total_timeout / :idle_timeout — pass-throughs
-#             forwarded to `Harness.AuditReview.grade_fix/1`.
-config :harness, :cross_agent_repair, enabled: false
-
 # Phoenix LiveView dashboard (Task 50) — Harness.Dashboard.Endpoint + Live.
 # `enabled` toggles the supervised standalone Endpoint; mountable consumers
 # leave it `false` and route `live "/harness/*path", Harness.Dashboard.Live`
@@ -96,28 +85,18 @@ config :harness, :notification_sinks, []
 # and `git fetch`es before every subsequent run.
 config :harness, :project, cache_root: Path.expand("~/_DATA/harness/projects")
 
-# Retry policy — see Harness.Run.RetryPolicy and Harness.Run.FailureClass.
+# Mechanical retry backoff — see Harness.Run.RetryPolicy. Judgment-free: only
+# the arithmetic of "how long before the next mechanical re-attempt" lives here
+# (Run.Worker snooze timing). A settled verdict is never re-run by policy code.
 #   :max_retries    — retries after the first attempt; default 3.
 #   :base_delay_ms  — first backoff delay; default 1_000.
 #   :max_delay_ms   — backoff cap; default 60_000.
 #   :multiplier     — exponential factor; default 2.0.
-#   :quota_patterns — regexes for quota/rate-limit detection in agent output.
 # config :harness, :retry_policy,
 #   max_retries: 3,
 #   base_delay_ms: 1_000,
 #   max_delay_ms: 60_000,
 #   multiplier: 2.0
-
-# Quota-pattern classification DISABLED (2026-06-02). The regex classifier
-# false-positived on verification output whose failing test NAMES contained
-# "quota-exhausted" — classifying a real red verdict as agent-quota, which
-# suppressed the repair loop AND made Run.Worker snooze-retry a settled run
-# into a worktree branch collision. With no patterns, every red verdict
-# classifies :terminal: Oban never retries settled runs, and the repair loop
-# is never suppressed. Real quota exhaustion is read by the orchestrator (an
-# AI) from the transcript — which is the reviewer-pair architecture's answer
-# (docs/reviewer-pair-architecture.md); FailureClass is deleted entirely there.
-config :harness, :retry_policy, quota_patterns: []
 
 # Run lifecycle & agent timeouts — see Harness.AgentAdapter.Driver and Harness.Run.
 # All keys are optional; defaults live in code.
@@ -128,32 +107,21 @@ config :harness, :retry_policy, quota_patterns: []
 #                          ms; defaults to 5_400_000 (90 min).
 #   :terminal_linger     — how long a settled run stays observable before it stops, in
 #                          ms; defaults to 5_000 (5 s).
-#   :max_repair_attempts — how many times a red verdict is fed back to the agent (via
-#                          session resume) before the run settles :failed; defaults
-#                          to 2. 0 disables the autonomous repair loop.
+#   :max_review_iterations — how many cross-family reviewer passes a non-green run
+#                          gets before settling :failed; defaults to 2. 0 disables
+#                          the reviewer-pair path.
 #   :max_hold_timeout — operator hold safeguard in ms; settles :hold_expired when
 #                       elapsed. Defaults to 1_800_000 (30 min). `:infinity` disables.
 #   :pollution_allowlist — path patterns ignored by the main-checkout pollution diff
 #                          (see `Harness.Worktree.Isolation.default_pollution_allowlist/0`);
 #                          defaults to that list when unset.
-# Other keys keep their code defaults; max_repair_attempts raised from the
-# default 2 so a red run gets a third repair pass before settling :failed.
-config :harness, :run, max_repair_attempts: 3
+# All keys keep their code defaults.
 
 # Result persistence — see Harness.ResultStore and runtime.exs.
 # Default is chosen at runtime based on :repo_enabled (Postgres when true for
 # the harness self-host; File when false for library consumers). An explicit
 # :result_store config value always wins over the repo_enabled heuristic.
 # (The concrete default lives in config/runtime.exs so the flip is in one place.)
-
-# DEPRECATED (Task 162) — removed in Task 163. The green-verdict semantic gate
-# collapsed into the per-project `review_green: boolean` field (a green verdict
-# gets one cross-family reviewer pass when true) and a per-dispatch
-# `review_green: true` opt; see docs/reviewer-pair-architecture.md. This
-# app-env knob no longer routes anything: it survives only as the legacy opts
-# vehicle for the dead :consulting path until the phase-15 deletion pass
-# removes both.
-config :harness, :semantic_gate, enabled: :auto
 
 # config :harness, Harness.Notification.CommandSink,
 #   command: "/usr/local/bin/notify-train.sh",
@@ -164,8 +132,8 @@ config :harness, :semantic_gate, enabled: :auto
 #   :checks  — list of %Harness.Verification.Check{}; defaults to elixir_preset/0.
 #   :timeout — per-check timeout in ms; defaults to 600_000 (10 min).
 # Raised to 30 min: the :elixir_precommit test+coverage check alone runs ~10 min
-# on this repo, and the Task-153 baseline re-run doubles verification wall-time
-# on red verdicts — the 10-min code default leaves no headroom.
+# on this repo, and reviewer iterations re-run the full stack after each fix
+# pass — the 10-min code default leaves no headroom.
 config :harness, :verification, timeout: 1_800_000
 
 # Registered orchestration targets — see Harness.Project and Harness.ProjectRegistry.

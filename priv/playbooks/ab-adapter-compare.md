@@ -22,12 +22,12 @@ on the *same* task — to compare verdict, repair effort, and diff size side by 
      harness has no Droid adapter module.
 
 5. **Read the comparison.** The result's `entries` carry per-adapter metrics: `verdict`,
-   `repair_attempts`, `duration_ms`, `first_attempt_failed_check_count`, `agent_diff_size`. The
+   `review_iterations`, `duration_ms`, `first_attempt_failed_check_count`, `agent_diff_size`. The
    verdict stays binary pass/fail — the extra fields are the comparison signal, not a softer grade.
 
 6. **Report the table.** Present the entries side by side. Call out: who passed on the first
-   attempt, who needed repair, who produced the smallest correct diff. Recommend an adapter only on
-   the evidence in the entries.
+   attempt, who needed reviewer help, who produced the smallest correct diff. Recommend an adapter
+   only on the evidence in the entries.
 
 ## Gotchas
 

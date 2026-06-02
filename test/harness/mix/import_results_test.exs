@@ -83,7 +83,7 @@ defmodule Harness.Mix.ImportResultsTest do
       state: :done,
       reason: :passed,
       duration_ms: 1,
-      repair_attempts: 0,
+      review_iterations: 0,
       first_attempt_failed_check_count: 0,
       failure_cause: %{reason: nil, failed_checks: []},
       verdict: :pass

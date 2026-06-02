@@ -46,10 +46,10 @@ defmodule Harness.Dashboard.ConfigInspectorTest do
 
     test "marks a value diverging from the code default as :config provenance" do
       prev = Application.get_env(:harness, :run)
-      Application.put_env(:harness, :run, max_repair_attempts: 9)
+      Application.put_env(:harness, :run, max_review_iterations: 9)
       on_exit(fn -> restore(:run, prev) end)
 
-      resolved = row(sections(), "Run timeouts", "max_repair_attempts")
+      resolved = row(sections(), "Run timeouts", "max_review_iterations")
 
       assert resolved.value == "9"
       assert resolved.provenance == :config

@@ -30,14 +30,6 @@ defmodule Harness.Run.Result do
     * `{:review_stuck, report}` — the reviewer-pair path could not produce a
       green worktree within `max_review_iterations`; `report` is prose from the
       reviewer or from reviewer selection when no cross-family reviewer exists.
-    * `:base_red` — every verification failure was already present on the
-      dispatch base. The run is not green, but repair is not attempted because
-      the red is inherited rather than agent-caused.
-    * `:semantic_rejection` — the verification stack was green, but the
-      configured cross-family semantic gate rejected the committed diff against
-      the task body and acceptance criteria.
-    * `:no_changes` — the agent terminated without changing the worktree, so
-      there was nothing to commit; the run delivered nothing.
     * `{:checkout_polluted, status}` — reserved. Since Task 66 the run
       lifecycle no longer snapshots or diffs the main checkout for adapters
       declaring `worktree_isolation: true` (every shipped adapter today;
@@ -72,9 +64,6 @@ defmodule Harness.Run.Result do
           :passed
           | :verification_red
           | {:review_stuck, String.t()}
-          | :base_red
-          | :semantic_rejection
-          | :no_changes
           | {:checkout_polluted, String.t()}
           | {:checkout_pollution_check_failed, term()}
           | :cancelled
@@ -108,20 +97,14 @@ defmodule Harness.Run.Result do
     * `worktree_path` — the isolated worktree's path, or `nil` if it was never
       created. On a `:failed` run the directory may have been retained for
       inspection.
-    * `repair_attempts` — how many repair attempts the run made before settling.
-      `0` when the first verification settled the run; up to the configured
-      `:max_repair_attempts` when a red verdict drove the autonomous repair loop
-      (see `Harness.Run`). `agent_outcome` and `verdict` then reflect the final
-      attempt.
     * `first_attempt_failed_check_count` — number of failed checks in the first
-      verification verdict, before any repair attempt.
+      verification verdict, before any reviewer involvement.
     * `agent_diff_size` — changed-line count for the agent's first committed
       diff, or `nil` when no diff could be measured.
     * `token_usage` — `Harness.TokenUsage` parsed from the agent's raw
-      transcript and summed across every repair attempt, or an empty usage
+      transcript and summed across every dispatch, or an empty usage
       (all-`nil`) when the adapter's wire format reports no token counts.
-    * `composed_inputs` — prompt/rule artifacts captured for each dispatch
-      attempt, including repair attempts.
+    * `composed_inputs` — prompt/rule artifacts captured for each dispatch.
     * `reviewer_adapter` — the cross-family reviewer adapter used after a red
       verdict, or `nil` if the run never entered review.
     * `review_iterations` — reviewer invocations made before settling.
@@ -137,7 +120,6 @@ defmodule Harness.Run.Result do
           agent_outcome: Outcome.t() | nil,
           verdict: Verdict.t() | nil,
           worktree_path: String.t() | nil,
-          repair_attempts: non_neg_integer(),
           first_attempt_failed_check_count: non_neg_integer(),
           agent_diff_size: non_neg_integer() | nil,
           token_usage: TokenUsage.t(),
@@ -156,7 +138,6 @@ defmodule Harness.Run.Result do
     :agent_outcome,
     :verdict,
     :worktree_path,
-    repair_attempts: 0,
     first_attempt_failed_check_count: 0,
     agent_diff_size: nil,
     token_usage: %TokenUsage{},

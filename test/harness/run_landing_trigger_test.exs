@@ -41,7 +41,7 @@ defmodule Harness.RunLandingTriggerTest do
       lifetime_timeout: 30_000,
       verification_timeout: 10_000,
       terminal_linger: 100,
-      max_repair_attempts: 0
+      max_review_iterations: 0
     ]
 
     {:ok, run_id, _pid} = Run.Supervisor.start_run(item(), project, FakeAdapter, opts)

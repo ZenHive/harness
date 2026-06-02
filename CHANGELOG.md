@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Reviewer-pair lifecycle, step 3 — the deletion pass: judgment code is gone,
+  the reviewer pair is the only path (Task 163, hand-built inline).** Every
+  mechanism that interpreted *meaning* in procedural code is deleted; the
+  cross-family reviewer (Tasks 161/162) absorbs the judgment. Net
+  **−1,219 lines** in `lib/` + `config/` (+470/−1,689 across 32 files);
+  **−1,702** for the whole pass including test rewrites (+959/−2,661, 66 files).
+  - **Whole modules deleted:** `Harness.Run.FailureClass` (131 lines — regex
+    failure classification), `Harness.Run.RepairPrompt` (100 — repair-prompt
+    formatting), `Harness.Verification.BaselineFilter.Credo` (273 —
+    finding-level baseline attribution).
+  - **Repair loop** (`repair_attempts`, `max_repair_attempts`,
+    `repair_prompt_kind`, `last_failed_check_signatures`, the verifying→running
+    loopback), the **`:consulting` state + cross-agent-repair machinery**, the
+    **semantic gate**, and the **quota regexes** deleted from the `Run`
+    gen_statem (`run.ex` −545/+93). Operator steer survives as the only resumed
+    invocation; its composed-input phase is renamed `:repair` → `:steer`.
+  - **Baseline verification** (`run_baseline_stacks`, `mark_pre_existing`,
+    `:persistent_term` cache, `:base_red`, `post_process` check plumbing)
+    deleted from `Harness.Verification` (−173/+28); verdicts are pass/fail only.
+    Inherited debt is no longer attributed away — the reviewer pays it down
+    (regression scenarios rewritten against the reviewer path).
+  - **`RetryPolicy` rewritten to backoff arithmetic only** (−136/+18):
+    `new/1` + `backoff_ms/2`, no `quota_patterns`, no `decide`, no run wrapping.
+    `Batch` no longer retries at all.
+  - **The `repair_attempts` metric is renamed `review_iterations`** across
+    `Result` / `Status` / `LogRecord` / KPI stack / capability scores /
+    dashboards ("how much extra help did this run need", now fed by the
+    reviewer).
+
+### Changed
+
+- **Oban dispatch goes crash-only (Task 163).** Any settled failure — including
+  `worktree_failed` and `agent_spawn_failed` — cancels the job
+  (`{:cancel, reason}`) and reverts the roadmap task to pending; a settled
+  verdict is never re-run by the queue. Only pre-settle mechanical setup
+  failures snooze, capped at 5 attempts
+  (`{:cancel, {:mechanical_retry_exhausted, reason}}`), and each mechanical
+  retry first runs `Worktree.cleanup_for_run/2` to remove the prior attempt's
+  leftover worktree + `harness/<run_id>` branch (the branch-collision bug,
+  absorbs Task 168).
+- **Batch failover is reviewer-judgment-based (Task 163).** An adapter is marked
+  unavailable when a run settles `{:review_stuck, _}` with an empty implementer
+  diff — the reviewer's prose stuck-report rides in the
+  `AgentRegistry.mark_unavailable/2` mark and the `:adapter_unavailable` /
+  `:failover` batch events. No more quota-regex classification.
+- **`ResultStore.Postgres.record_run/2` upsert never loses settled evidence
+  (Task 163).** Re-recording a `run_id` COALESCEs rich evidence columns
+  (verdict, outputs, reviewer fields; `review_iterations` takes GREATEST) so a
+  sparse later write only updates bookkeeping. New migration adds
+  `review_iterations` / `reviewer_adapter` / `reviewer_stuck_report` columns
+  (run `mix ecto.migrate`).
+
 ### Added
 
 - **Reviewer-pair lifecycle, step 2 — empty-diff and green verdicts route through

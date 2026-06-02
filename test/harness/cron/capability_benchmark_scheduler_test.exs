@@ -127,7 +127,7 @@ defmodule Harness.Cron.CapabilityBenchmarkSchedulerTest do
              state: :done,
              reason: :passed,
              verdict: :pass,
-             repair_attempts: 0,
+             review_iterations: 0,
              first_attempt_failed_check_count: 0,
              result: %Harness.Run.Result{run_id: "run-#{item.id}", task_id: item.id, state: :done, reason: :passed}
            }
@@ -208,7 +208,7 @@ defmodule Harness.Cron.CapabilityBenchmarkSchedulerTest do
       run_count: 1,
       success_rate: composite_score / 1_000,
       cost_to_green: 100.0,
-      mean_repair_attempts: 0.0,
+      mean_review_iterations: 0.0,
       mean_first_attempt_failed_check_count: 0.0,
       composite_score: composite_score,
       raw_metrics: []

@@ -126,7 +126,7 @@ defmodule Harness.AgentAdapter do
           required(:session) => term() | nil,
           required(:rule_files) => [rule_file()],
           optional(:attempt) => non_neg_integer(),
-          optional(:phase) => :initial | :repair
+          optional(:phase) => :initial | :steer
         }
 
   @typedoc """

@@ -228,7 +228,7 @@ defmodule Harness.DispatchTest do
         # Generous linger so the settled run stays registered long enough to
         # observe through the Dispatch summarizers across several calls.
         terminal_linger: 5_000,
-        max_repair_attempts: 0
+        max_review_iterations: 0
       ]
 
       item = %Item{id: "8", title: "t", prompt: "do the thing", agent: :claude}
@@ -249,7 +249,7 @@ defmodule Harness.DispatchTest do
       # The summarizer flattens the struct to a plain map of scalars.
       refute is_struct(summary)
       assert Map.has_key?(summary, :verdict_status)
-      assert Map.has_key?(summary, :repair_attempts)
+      assert Map.has_key?(summary, :review_iterations)
       assert Map.has_key?(summary, :worktree_path)
     end
 
@@ -327,7 +327,7 @@ defmodule Harness.DispatchTest do
             state: :done,
             reason: :passed,
             verdict: :pass,
-            repair_attempts: 0,
+            review_iterations: 0,
             duration_ms: 1234,
             first_attempt_failed_check_count: 0,
             agent_diff_size: 12,
@@ -340,7 +340,7 @@ defmodule Harness.DispatchTest do
             state: :failed,
             reason: {:run_crashed, :boom},
             verdict: nil,
-            repair_attempts: 1,
+            review_iterations: 1,
             duration_ms: nil,
             first_attempt_failed_check_count: 2,
             agent_diff_size: nil,
@@ -612,7 +612,7 @@ defmodule Harness.DispatchTest do
       reason: :passed,
       verdict: %Verdict{status: :pass, results: [check_result("tests", :pass)]},
       worktree_path: "/tmp/wt/#{run_id}",
-      repair_attempts: 0,
+      review_iterations: 0,
       first_attempt_failed_check_count: 0,
       agent_diff_size: 12
     }
@@ -626,7 +626,7 @@ defmodule Harness.DispatchTest do
       reason: :verification_red,
       verdict: %Verdict{status: :fail, results: [check_result("tests", :pass), check_result("credo", :fail)]},
       worktree_path: "/tmp/wt/#{run_id}",
-      repair_attempts: 1,
+      review_iterations: 1,
       first_attempt_failed_check_count: 1,
       agent_diff_size: 5
     }
@@ -652,7 +652,7 @@ defmodule Harness.DispatchTest do
       run_count: 1,
       success_rate: composite_score / 1_000,
       cost_to_green: 100.0,
-      mean_repair_attempts: 0.0,
+      mean_review_iterations: 0.0,
       mean_first_attempt_failed_check_count: 0.0,
       composite_score: composite_score,
       raw_metrics: []

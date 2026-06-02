@@ -12,16 +12,21 @@ defmodule Harness.Run.Worker do
   alias Harness.ResultStore
   alias Harness.Roadmap
   alias Harness.Roadmap.Item
-  alias Harness.Run.FailureClass
   alias Harness.Run.LogRecord
   alias Harness.Run.Result
   alias Harness.Run.RetryPolicy
   alias Harness.Run.Status
   alias Harness.Run.Supervisor, as: RunSupervisor
+  alias Harness.Worktree
 
   require Logger
 
   @run_id_random_bytes 4
+
+  # Hard ceiling on mechanical (setup-failure) retries. Snoozes do not consume
+  # Oban's max_attempts, so without this a permanently broken environment would
+  # snooze forever.
+  @max_mechanical_attempts 5
 
   @type args :: %{
           required(String.t()) => String.t()
@@ -63,34 +68,68 @@ defmodule Harness.Run.Worker do
          {:ok, agent} <- agent_for_adapter(adapter),
          {:ok, %Item{} = item} <- ingest_roadmap({:id, item_id}, project: project, agent: agent),
          {:ok, result} <- run_once(job, item, project, adapter) do
-      if terminal_failure?(result) do
-        # Revert only on terminal failures (red after repair cap, run crash).
-        # Green (even unlanded under :manual) stays in_progress; transient/quota
-        # failures keep the job snoozing while task remains in_progress.
+      if settled_failure?(result) do
+        # Any settled failure reverts the task to pending so the next cron tick
+        # can re-dispatch it as a FRESH run. Green (even unlanded under :manual)
+        # stays in_progress.
         _ = revert_to_pending(item, project)
       end
 
       to_oban_result(result, job)
     else
-      {:error, reason} -> setup_failure_disposition(reason, max(job.attempt || 1, 1))
+      {:error, reason} -> setup_failure_disposition(reason, job)
     end
   end
 
   # A persisted job outlives the BEAM, so a setup failure that is merely
   # transient at boot (ProjectRegistry not loaded yet, rmap unavailable, a
-  # supervisor hiccup) must snooze-and-retry rather than be discarded — that is
-  # the restart-resilience Oban is here to provide. Only genuinely malformed
-  # job data, which can never succeed on retry, is cancelled.
-  @spec setup_failure_disposition(term(), pos_integer()) ::
+  # supervisor hiccup) or mechanical (port spawn failure, worktree race) must
+  # snooze-and-retry rather than be discarded — that is the restart-resilience
+  # Oban is here to provide. Only genuinely malformed job data, which can never
+  # succeed on retry, is cancelled immediately; the attempt ceiling stops a
+  # permanently broken environment from snoozing forever.
+  @spec setup_failure_disposition(term(), Oban.Job.t()) ::
           {:snooze, pos_integer()} | {:cancel, term()}
-  defp setup_failure_disposition(reason, attempt) do
-    case reason do
-      {:missing_arg, _} -> {:cancel, reason}
-      {:invalid_adapter_module, _} -> {:cancel, reason}
-      {:unsupported_adapter, _} -> {:cancel, reason}
-      _transient -> {:snooze, snooze_seconds(RetryPolicy.new([]), attempt)}
+  defp setup_failure_disposition(reason, %Oban.Job{} = job) do
+    attempt = max(job.attempt || 1, 1)
+
+    cond do
+      malformed_job_reason?(reason) -> {:cancel, reason}
+      attempt >= @max_mechanical_attempts -> {:cancel, {:mechanical_retry_exhausted, reason}}
+      true -> retry_mechanical_failure(reason, job, attempt)
     end
   end
+
+  @spec malformed_job_reason?(term()) :: boolean()
+  defp malformed_job_reason?({:missing_arg, _}), do: true
+  defp malformed_job_reason?({:invalid_adapter_module, _}), do: true
+  defp malformed_job_reason?({:unsupported_adapter, _}), do: true
+  defp malformed_job_reason?(_reason), do: false
+
+  # A mechanical retry first removes the prior attempt's leftover worktree and
+  # run branch, so the re-attempt's `git worktree add -b harness/<run_id>`
+  # cannot collide with what the failed attempt left behind (the 2026-06-02
+  # branch-collision cascade on run-1780396918179-74f06ecc).
+  @spec retry_mechanical_failure(term(), Oban.Job.t(), pos_integer()) :: {:snooze, pos_integer()}
+  defp retry_mechanical_failure(reason, job, attempt) do
+    cleanup_prior_attempt(reason, job)
+    {:snooze, snooze_seconds(RetryPolicy.new([]), attempt)}
+  end
+
+  @spec cleanup_prior_attempt(term(), Oban.Job.t()) :: :ok
+  defp cleanup_prior_attempt({:start_run_failed, _start_reason}, %Oban.Job{args: args}) do
+    with {:ok, run_id} <- fetch_arg(args, "run_id"),
+         {:ok, project_name} <- fetch_arg(args, "project_name"),
+         {:ok, project} <- ProjectRegistry.lookup(project_name) do
+      Worktree.cleanup_for_run(Project.repo_path(project), run_id)
+    else
+      # No stable run_id in the args (legacy job) or no resolvable project —
+      # nothing to clean; the re-attempt generates a fresh worktree path anyway.
+      _other -> :ok
+    end
+  end
+
+  defp cleanup_prior_attempt(_reason, _job), do: :ok
 
   @doc """
   Maps a terminal `Harness.Run.Result` to Oban's worker return contract.
@@ -104,20 +143,14 @@ defmodule Harness.Run.Worker do
     result_to_oban(result, max(attempt || 1, 1))
   end
 
+  # Crash-only Oban contract: a run that reached ANY settled verdict — green,
+  # red, reviewer-stuck, cancelled, timed out — is never re-enqueued. What a
+  # settled failure *means* was already the reviewer's judgment inside the run;
+  # the queue retries only mechanical failures (setup_failure_disposition).
   @spec result_to_oban(Result.t(), pos_integer()) :: Oban.Worker.result()
   defp result_to_oban(%Result{state: :done, reason: :passed}, _attempt), do: :ok
 
-  defp result_to_oban(%Result{state: :failed} = result, attempt) do
-    policy = RetryPolicy.new([])
-
-    case FailureClass.classify(result, policy) do
-      class when class in [:quota_exhausted, :transient] ->
-        {:snooze, snooze_seconds(policy, attempt)}
-
-      :terminal ->
-        {:cancel, result.reason}
-    end
-  end
+  defp result_to_oban(%Result{state: :failed} = result, _attempt), do: {:cancel, result.reason}
 
   @spec run_once(Oban.Job.t(), Item.t(), Project.t(), module()) :: {:ok, Result.t()} | {:error, term()}
   defp run_once(%Oban.Job{} = job, %Item{} = item, %Project{} = project, adapter) do
@@ -323,12 +356,9 @@ defmodule Harness.Run.Worker do
     end
   end
 
-  @spec terminal_failure?(Result.t()) :: boolean()
-  defp terminal_failure?(%Result{state: :failed} = result) do
-    FailureClass.classify(result, RetryPolicy.new([])) == :terminal
-  end
-
-  defp terminal_failure?(_), do: false
+  @spec settled_failure?(Result.t()) :: boolean()
+  defp settled_failure?(%Result{state: :failed}), do: true
+  defp settled_failure?(_), do: false
 
   @spec fetch_arg(args(), String.t()) :: {:ok, String.t()} | {:error, {:missing_arg, String.t()}}
   defp fetch_arg(args, key) do

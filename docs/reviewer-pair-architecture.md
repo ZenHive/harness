@@ -120,6 +120,15 @@ mechanical (timers, git, ports, persistence), it stays.
 state (`:reviewing`), reviewer prompt assembly, and a re-verify step — all
 mechanical.
 
+**Actuals (deletion pass landed 2026-06-02, Task 163):** `lib/` + `config/`
+net **−1,219 lines** (+470/−1,689 across 32 files); the whole pass including
+the test rewrites nets **−1,702** (+959/−2,661 across 66 files). The big
+movers: `run.ex` −545/+93 (repair loop, consulting state, semantic gate,
+quota regexes), `verification.ex` −173/+28 (baseline machinery + post_process
+plumbing), `retry_policy.ex` −136/+18 (rewritten to backoff arithmetic only),
+plus the three whole-module deletions (FailureClass 131, RepairPrompt 100,
+BaselineFilter.Credo 273).
+
 ### What stays (and why it's allowed to)
 
 | Stays | Why it passes the test |
@@ -162,4 +171,7 @@ dispatchable task, graded by the existing stack:
 
 Interim (already filed as independent bugs, needed before step 3 lands):
 worktree/branch cleanup before Oban retry; run_records upsert must not overwrite
-a prior attempt's settled data.
+a prior attempt's settled data. **Both landed inside step 3** —
+`Worktree.cleanup_for_run/2` runs before every mechanical Oban retry, and the
+Postgres `record_run` upsert COALESCEs rich evidence columns so a sparse later
+write never clobbers a settled attempt.

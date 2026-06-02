@@ -60,7 +60,6 @@ defmodule Harness.Verification do
 
   alias Harness.CheckStack
   alias Harness.CheckStack.Preset.Elixir, as: ElixirPreset
-  alias Harness.Git
   alias Harness.Verification.Check
   alias Harness.Verification.Result
   alias Harness.Verification.Verdict
@@ -68,7 +67,6 @@ defmodule Harness.Verification do
   @default_timeout 600_000
   @timeout_output_drain_ms 100
   @test_database_prefix "harness_test"
-  @baseline_cache_namespace {__MODULE__, :baseline_cache}
 
   @typedoc "A reason a verification run cannot execute at all."
   @type error ::
@@ -108,13 +106,6 @@ defmodule Harness.Verification do
       callers should prefer `:check_stacks`.
     * `:timeout` — override the per-check timeout, in milliseconds, or
       `:infinity` for an unbounded check. Applies to every stack.
-    * `:base_ref` — the dispatch-base commit SHA the worktree branch was
-      forked from. When set, diff-aware post-processors (see
-      `t:Harness.Verification.Check.post_process/0`) re-grade their checks
-      against the baseline — e.g. the credo TagTODO filter drops findings on
-      pre-existing TODOs. The post-process context stays at the worktree root
-      (the diff is whole-repo) even when a stack's checks run in a subdir.
-      `nil` (the default) leaves every check's exit status as the sole grader.
 
   Returns `{:ok, %Harness.Verification.Verdict{}}`, or `{:error, reason}` —
   `:no_checks` when no stack has checks, `{:worktree_not_found, path}` when
@@ -127,12 +118,10 @@ defmodule Harness.Verification do
     path = Path.expand(worktree_path)
     stacks = resolve_stacks(opts)
     timeout_override = Keyword.get(opts, :timeout)
-    post_process_opts = post_process_opts(path, opts)
 
     with :ok <- validate_stacks(stacks),
          :ok <- validate_worktree(path),
-         {:ok, results} <- run_stacks(stacks, path, timeout_override, post_process_opts) do
-      results = maybe_mark_pre_existing(results, stacks, path, timeout_override, post_process_opts)
+         {:ok, results} <- run_stacks(stacks, path, timeout_override) do
       {:ok, build_verdict(results)}
     end
   end
@@ -159,36 +148,35 @@ defmodule Harness.Verification do
     path = Path.expand(worktree_path)
     stacks = resolve_stacks(opts)
     timeout_override = Keyword.get(opts, :timeout)
-    post_process_opts = post_process_opts(path, opts)
 
     with :ok <- validate_worktree(path) do
-      prepare_stacks(stacks, path, timeout_override, post_process_opts)
+      prepare_stacks(stacks, path, timeout_override)
     end
   end
 
   # Runs each stack's setup in its own `workdir`, halting on the first
-  # environment error. Mirrors `run_stacks/4` minus the grading checks.
-  @spec prepare_stacks([CheckStack.t()], String.t(), timeout() | nil, keyword()) ::
+  # environment error. Mirrors `run_stacks/3` minus the grading checks.
+  @spec prepare_stacks([CheckStack.t()], String.t(), timeout() | nil) ::
           :ok | {:error, {:workdir_not_found, String.t()} | {:setup_failed, setup_failure()}}
-  defp prepare_stacks(stacks, path, timeout_override, post_process_opts) do
+  defp prepare_stacks(stacks, path, timeout_override) do
     Enum.reduce_while(stacks, :ok, fn stack, :ok ->
-      case prepare_stack(stack, path, timeout_override, post_process_opts) do
+      case prepare_stack(stack, path, timeout_override) do
         :ok -> {:cont, :ok}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
   end
 
-  @spec prepare_stack(CheckStack.t(), String.t(), timeout() | nil, keyword()) ::
+  @spec prepare_stack(CheckStack.t(), String.t(), timeout() | nil) ::
           :ok | {:error, {:workdir_not_found, String.t()} | {:setup_failed, setup_failure()}}
-  defp prepare_stack(%CheckStack{setup: []}, _path, _timeout_override, _post_process_opts), do: :ok
+  defp prepare_stack(%CheckStack{setup: []}, _path, _timeout_override), do: :ok
 
-  defp prepare_stack(%CheckStack{} = stack, path, timeout_override, post_process_opts) do
+  defp prepare_stack(%CheckStack{} = stack, path, timeout_override) do
     check_dir = stack_dir(path, stack.workdir)
     timeout = timeout_override || stack.timeout_per_check || configured_timeout()
 
     if File.dir?(check_dir) do
-      run_setup(stack, check_dir, timeout, post_process_opts, dynamic_env(path, stack))
+      run_setup(stack, check_dir, timeout, dynamic_env(path, stack))
     else
       {:error, {:workdir_not_found, check_dir}}
     end
@@ -233,22 +221,22 @@ defmodule Harness.Verification do
   # harness error instead of the cryptic per-tool "could not find <manifest>"
   # a misconfigured workdir would otherwise produce. Setup/bootstrap runs
   # before each stack's checks; a setup failure halts with `{:setup_failed, _}`.
-  @spec run_stacks([CheckStack.t()], String.t(), timeout() | nil, keyword()) ::
+  @spec run_stacks([CheckStack.t()], String.t(), timeout() | nil) ::
           {:ok, [Result.t()]}
           | {:error, {:workdir_not_found, String.t()} | {:setup_failed, setup_failure()}}
-  defp run_stacks(stacks, path, timeout_override, post_process_opts) do
+  defp run_stacks(stacks, path, timeout_override) do
     Enum.reduce_while(stacks, {:ok, []}, fn stack, {:ok, acc} ->
-      case run_stack(stack, path, timeout_override, post_process_opts) do
+      case run_stack(stack, path, timeout_override) do
         {:ok, results} -> {:cont, {:ok, acc ++ results}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
   end
 
-  @spec run_stack(CheckStack.t(), String.t(), timeout() | nil, keyword()) ::
+  @spec run_stack(CheckStack.t(), String.t(), timeout() | nil) ::
           {:ok, [Result.t()]}
           | {:error, {:workdir_not_found, String.t()} | {:setup_failed, setup_failure()}}
-  defp run_stack(stack, path, timeout_override, post_process_opts) do
+  defp run_stack(stack, path, timeout_override) do
     check_dir = stack_dir(path, stack.workdir)
 
     if File.dir?(check_dir) do
@@ -256,8 +244,8 @@ defmodule Harness.Verification do
 
       run_env = dynamic_env(path, stack)
 
-      with :ok <- run_setup(stack, check_dir, timeout, post_process_opts, run_env) do
-        {:ok, Enum.map(stack.checks, &run_check(&1, check_dir, timeout, post_process_opts, run_env))}
+      with :ok <- run_setup(stack, check_dir, timeout, run_env) do
+        {:ok, Enum.map(stack.checks, &run_check(&1, check_dir, timeout, run_env))}
       end
     else
       {:error, {:workdir_not_found, check_dir}}
@@ -267,14 +255,14 @@ defmodule Harness.Verification do
   # Runs a stack's non-grading bootstrap commands before its checks. Empty setup
   # is a no-op. The first failing setup step halts with `{:setup_failed, _}` —
   # an environment error distinct from a red verdict.
-  @spec run_setup(CheckStack.t(), String.t(), timeout(), keyword(), map()) ::
+  @spec run_setup(CheckStack.t(), String.t(), timeout(), map()) ::
           :ok | {:error, {:setup_failed, setup_failure()}}
-  defp run_setup(%CheckStack{setup: []}, _check_dir, _timeout, _post_process_opts, _run_env), do: :ok
+  defp run_setup(%CheckStack{setup: []}, _check_dir, _timeout, _run_env), do: :ok
 
-  defp run_setup(%CheckStack{} = stack, check_dir, timeout, post_process_opts, run_env) do
+  defp run_setup(%CheckStack{} = stack, check_dir, timeout, run_env) do
     stack.setup
     |> Enum.reduce_while(:ok, fn check, :ok ->
-      case run_check(check, check_dir, timeout, post_process_opts, run_env) do
+      case run_check(check, check_dir, timeout, run_env) do
         %Result{status: :pass} ->
           {:cont, :ok}
 
@@ -336,142 +324,20 @@ defmodule Harness.Verification do
     if File.dir?(path), do: :ok, else: {:error, {:worktree_not_found, path}}
   end
 
+  # Any red check makes the whole verdict red. There is no baseline
+  # attribution — a red check is red, and what to do about it is the
+  # cross-family reviewer's judgment (docs/reviewer-pair-architecture.md).
   @spec build_verdict([Result.t()]) :: Verdict.t()
   defp build_verdict(results) do
-    status =
-      cond do
-        Enum.any?(results, &(&1.status == :fail)) -> :fail
-        Enum.any?(results, &(&1.status == :pre_existing)) -> :base_red
-        true -> :pass
-      end
-
+    status = if Enum.any?(results, &(&1.status == :fail)), do: :fail, else: :pass
     %Verdict{status: status, results: results}
-  end
-
-  @spec maybe_mark_pre_existing([Result.t()], [CheckStack.t()], String.t(), timeout() | nil, keyword()) ::
-          [Result.t()]
-  defp maybe_mark_pre_existing(results, stacks, path, timeout_override, post_process_opts) do
-    base_ref = Keyword.get(post_process_opts, :base_ref)
-
-    if red_results?(results) and is_binary(base_ref) do
-      case baseline_results(stacks, path, timeout_override, base_ref) do
-        {:ok, baseline_results} -> mark_pre_existing(results, baseline_results)
-        {:error, _reason} -> results
-      end
-    else
-      results
-    end
-  end
-
-  @spec red_results?([Result.t()]) :: boolean()
-  defp red_results?(results), do: Enum.any?(results, &(&1.status == :fail))
-
-  @spec baseline_results([CheckStack.t()], String.t(), timeout() | nil, String.t()) ::
-          {:ok, [Result.t()]} | {:error, term()}
-  defp baseline_results(stacks, path, timeout_override, base_ref) do
-    with {:ok, key} <- baseline_cache_key(stacks, path, timeout_override, base_ref) do
-      case baseline_cache_get(key) do
-        {:ok, cached} ->
-          cached
-
-        :error ->
-          result = run_baseline_stacks(stacks, path, timeout_override, base_ref)
-          baseline_cache_put(key, result)
-          result
-      end
-    end
-  end
-
-  @spec baseline_cache_key([CheckStack.t()], String.t(), timeout() | nil, String.t()) ::
-          {:ok, term()} | {:error, term()}
-  defp baseline_cache_key(stacks, path, timeout_override, base_ref) do
-    with {:ok, git_common_dir} <- Git.run(["rev-parse", "--git-common-dir"], path) do
-      {:ok,
-       {
-         Path.expand(String.trim(git_common_dir), path),
-         base_ref,
-         :erlang.phash2({stacks, timeout_override})
-       }}
-    end
-  end
-
-  @spec baseline_cache_get(term()) :: {:ok, {:ok, [Result.t()]} | {:error, term()}} | :error
-  defp baseline_cache_get(key) do
-    case :persistent_term.get({@baseline_cache_namespace, key}, :missing) do
-      :missing -> :error
-      cached -> {:ok, cached}
-    end
-  end
-
-  @spec baseline_cache_put(term(), {:ok, [Result.t()]} | {:error, term()}) :: :ok
-  defp baseline_cache_put(key, result) do
-    :persistent_term.put({@baseline_cache_namespace, key}, result)
-  end
-
-  @spec run_baseline_stacks([CheckStack.t()], String.t(), timeout() | nil, String.t()) ::
-          {:ok, [Result.t()]} | {:error, term()}
-  defp run_baseline_stacks(stacks, path, timeout_override, base_ref) do
-    baseline_path = baseline_worktree_path(path)
-
-    with {:ok, _output} <- Git.run(["worktree", "add", "--detach", baseline_path, base_ref], path) do
-      try do
-        # The baseline must be graded by the same standard as the agent worktree:
-        # diff-aware post_process hooks (e.g. BaselineFilter.Credo) need :base_ref
-        # so findings pre-existing at base_ref are filtered here too. Without it,
-        # inherited debt (a TagTODO on base) keeps the baseline check :fail and
-        # masks agent-caused failures of the same check as :pre_existing (Task 160).
-        run_stacks(stacks, baseline_path, timeout_override,
-          worktree_path: baseline_path,
-          base_ref: base_ref
-        )
-      after
-        _ = Git.run(["worktree", "remove", "--force", baseline_path], path)
-      end
-    end
-  end
-
-  @spec baseline_worktree_path(String.t()) :: String.t()
-  defp baseline_worktree_path(path) do
-    suffix = "#{Path.basename(path)}-base-#{System.unique_integer([:positive])}"
-    Path.join(System.tmp_dir!(), suffix)
-  end
-
-  @spec mark_pre_existing([Result.t()], [Result.t()]) :: [Result.t()]
-  defp mark_pre_existing(results, baseline_results) when length(results) == length(baseline_results) do
-    results
-    |> Enum.zip(baseline_results)
-    |> Enum.map(fn
-      {%Result{status: :fail} = result, %Result{status: :fail}} -> pre_existing_result(result)
-      {result, _baseline_result} -> result
-    end)
-  end
-
-  defp mark_pre_existing(results, _baseline_results), do: results
-
-  @spec pre_existing_result(Result.t()) :: Result.t()
-  defp pre_existing_result(%Result{} = result) do
-    %{
-      result
-      | status: :pre_existing,
-        output:
-          result.output <>
-            "\n[harness] check also failed on the dispatch base; marked pre-existing instead of agent-caused"
-    }
   end
 
   # Spawns one check over an OTP port and collects its result. A check whose
   # executable is not on PATH never launches — that is a red result, not a
-  # crash, so the verdict still reports every sibling check. Any
-  # `post_process` hook on the check runs after the port exits (or times out),
-  # so it sees the same `Result` shape the verdict will carry.
-  @spec run_check(Check.t(), String.t(), timeout(), keyword(), map()) :: Result.t()
-  defp run_check(%Check{} = check, worktree_path, timeout, post_process_opts, run_env) do
-    raw_result = collect_check(check, worktree_path, timeout, run_env)
-    Check.apply_post_process(check, raw_result, post_process_opts)
-  end
-
-  @spec collect_check(Check.t(), String.t(), timeout(), map()) :: Result.t()
-  defp collect_check(%Check{} = check, worktree_path, timeout, run_env) do
+  # crash, so the verdict still reports every sibling check.
+  @spec run_check(Check.t(), String.t(), timeout(), map()) :: Result.t()
+  defp run_check(%Check{} = check, worktree_path, timeout, run_env) do
     case System.find_executable(check.command) do
       nil ->
         fail_result(check, "could not launch #{inspect(check.command)}: not found on PATH")
@@ -514,17 +380,6 @@ defmodule Harness.Verification do
       resolved -> String.to_charlist(resolved)
     end
   end
-
-  # The opts each `post_process` hook receives: the absolute worktree path
-  # plus any caller-supplied diff-aware context (currently `:base_ref`).
-  @spec post_process_opts(String.t(), keyword()) :: keyword()
-  defp post_process_opts(worktree_path, opts) do
-    maybe_put([worktree_path: worktree_path], :base_ref, Keyword.get(opts, :base_ref))
-  end
-
-  @spec maybe_put(keyword(), atom(), term()) :: keyword()
-  defp maybe_put(opts, _key, nil), do: opts
-  defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
 
   # Drains the port until the check exits or its deadline passes. The deadline
   # is absolute: unlike a `receive`-local timeout, a check that keeps emitting

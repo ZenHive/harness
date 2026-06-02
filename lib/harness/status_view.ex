@@ -145,15 +145,11 @@ defmodule Harness.StatusView do
   def classify(%Status{state: :done}), do: :green
   def classify(%Status{state: :failed}), do: :red
 
-  # A reviewing run IS red work being fixed — same human-facing bucket as the
-  # repair loop, regardless of repair_attempts.
+  # A reviewing run IS red work being fixed — the human-facing "being repaired"
+  # bucket, even though the fixer is now a cross-family reviewer agent.
   def classify(%Status{state: :reviewing}), do: :repairing
 
-  def classify(%Status{state: state, repair_attempts: attempts})
-      when state in [:dispatched, :running, :committing, :verifying, :consulting] and attempts > 0,
-      do: :repairing
-
-  def classify(%Status{state: state}) when state in [:dispatched, :running, :committing, :verifying, :consulting, :held],
+  def classify(%Status{state: state}) when state in [:dispatched, :running, :committing, :verifying, :held],
     do: :in_flight
 
   @spec run_entry(String.t()) :: [run_entry()]
@@ -167,8 +163,8 @@ defmodule Harness.StatusView do
   @spec detail(Status.t()) :: String.t() | nil
   defp detail(%Status{state: :failed, reason: reason}) when not is_nil(reason), do: describe_reason(reason)
 
-  defp detail(%Status{state: state, repair_attempts: attempts}) when state not in [:done, :failed] and attempts > 0,
-    do: "attempt #{attempts}"
+  defp detail(%Status{state: :reviewing, review_iterations: iterations}) when iterations > 0,
+    do: "review iteration #{iterations}"
 
   defp detail(%Status{state: :held, hold_reason: reason}) when not is_nil(reason), do: "held #{reason}"
 
@@ -223,7 +219,10 @@ defmodule Harness.StatusView do
   end
 
   @spec describe_unavailable(term()) :: String.t()
-  defp describe_unavailable({:quota_exhausted, kind}), do: "quota exhausted (#{kind})"
+  defp describe_unavailable({:review_stuck, item_id, report}) when is_binary(report),
+    do: "review stuck on #{item_id}: #{String.slice(report, 0, 120)}"
+
+  defp describe_unavailable({:review_stuck, item_id, _report}), do: "review stuck on #{item_id}"
 
   defp describe_unavailable(reason), do: inspect(reason)
 

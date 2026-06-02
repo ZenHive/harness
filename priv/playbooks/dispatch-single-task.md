@@ -36,8 +36,9 @@ headless agent in an isolated worktree, then graded by the project's own check s
 
 5. **Report the verdict.** The grade is the verification stack, never the agent's self-report.
    Read `state` + `reason` + `verdict`. Green ⇒ done (worktree branch `harness/<run_id>` holds the
-   commit). Red ⇒ summarize the failing checks; the repair loop already retried up to
-   `max_repair_attempts` before settling.
+   commit). Red ⇒ summarize the failing checks; a cross-family reviewer already tried to fix the
+   worktree inline (up to `max_review_iterations`) before the run settled, and
+   `reviewer_stuck_report` carries its prose when it gave up.
 
 ## Gotchas
 

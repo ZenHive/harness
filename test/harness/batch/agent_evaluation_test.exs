@@ -124,7 +124,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
              state: :done,
              reason: :passed,
              verdict: :pass,
-             repair_attempts: 0,
+             review_iterations: 0,
              first_attempt_failed_check_count: 0,
              agent_diff_size: diff_size
            } = Enum.at(entries, 0)
@@ -137,7 +137,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
              state: :failed,
              reason: :verification_red,
              verdict: :fail,
-             repair_attempts: 0,
+             review_iterations: 0,
              first_attempt_failed_check_count: 1,
              agent_diff_size: red_diff
            } = Enum.at(entries, 1)
@@ -252,7 +252,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
         state: :done,
         reason: :passed,
         duration_ms: 10,
-        repair_attempts: 0,
+        review_iterations: 0,
         first_attempt_failed_check_count: 0,
         failure_cause: %{reason: :passed, failed_checks: []},
         token_usage: %Harness.TokenUsage{input: 500, output: 120, total: 620}
@@ -309,7 +309,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
         lifetime_timeout: @run_timeout_ms,
         verification_timeout: @run_timeout_ms,
         terminal_linger: @terminal_linger_ms,
-        max_repair_attempts: 0
+        max_review_iterations: 0
       ],
       overrides
     )

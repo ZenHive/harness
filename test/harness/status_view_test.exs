@@ -39,27 +39,22 @@ defmodule Harness.StatusViewTest do
 
   test "classify/1 maps lifecycle states into the four buckets" do
     assert StatusView.classify(%Status{state: :running, run_id: "r", task_id: "1"}) == :in_flight
-
-    assert StatusView.classify(%Status{state: :running, run_id: "r", task_id: "1", repair_attempts: 1}) ==
-             :repairing
-
+    assert StatusView.classify(%Status{state: :reviewing, run_id: "r", task_id: "1"}) == :repairing
     assert StatusView.classify(%Status{state: :done, run_id: "r", task_id: "1"}) == :green
     assert StatusView.classify(%Status{state: :failed, run_id: "r", task_id: "1"}) == :red
   end
 
   test "classify/1 covers every lifecycle state in the Status typespec" do
-    # Regression guard for Task 148: a Run state (e.g. :consulting) added without a
-    # classify/1 clause crashes every concurrent snapshot/0 caller, poisoning
+    # Regression guard for Task 148: a Run state added without a classify/1
+    # clause crashes every concurrent snapshot/0 caller, poisoning
     # verification for all dispatched runs.
-    in_flight_states = [:dispatched, :running, :committing, :verifying, :consulting]
+    in_flight_states = [:dispatched, :running, :committing, :verifying, :held]
 
     for state <- in_flight_states do
       assert StatusView.classify(%Status{state: state, run_id: "r", task_id: "1"}) == :in_flight
-
-      assert StatusView.classify(%Status{state: state, run_id: "r", task_id: "1", repair_attempts: 1}) ==
-               :repairing
     end
 
+    assert StatusView.classify(%Status{state: :reviewing, run_id: "r", task_id: "1"}) == :repairing
     assert StatusView.classify(%Status{state: :done, run_id: "r", task_id: "1"}) == :green
     assert StatusView.classify(%Status{state: :failed, run_id: "r", task_id: "1"}) == :red
   end
@@ -69,9 +64,9 @@ defmodule Harness.StatusViewTest do
       runs: [
         %{status: %Status{run_id: "run-a", task_id: "1", state: :running}, bucket: :in_flight, detail: nil},
         %{
-          status: %Status{run_id: "run-b", task_id: "2", state: :running, repair_attempts: 1},
+          status: %Status{run_id: "run-b", task_id: "2", state: :reviewing, review_iterations: 1},
           bucket: :repairing,
-          detail: "attempt 1"
+          detail: "review iteration 1"
         },
         %{status: %Status{run_id: "run-c", task_id: "3", state: :done}, bucket: :green, detail: nil},
         %{
@@ -80,7 +75,7 @@ defmodule Harness.StatusViewTest do
           detail: "verification_red"
         }
       ],
-      unavailable_agents: [{FakeAdapter, {:quota_exhausted, :exited}}],
+      unavailable_agents: [{FakeAdapter, {:review_stuck, "task-7", "implementer hit a usage limit"}}],
       cron_polling: :disabled
     }
 
@@ -89,13 +84,13 @@ defmodule Harness.StatusViewTest do
     assert output =~ "IN FLIGHT (1)"
     assert output =~ "task 1  run-a  running"
     assert output =~ "REPAIRING (1)"
-    assert output =~ "task 2  run-b  running  attempt 1"
+    assert output =~ "task 2  run-b  reviewing  review iteration 1"
     assert output =~ "GREEN (1)"
     assert output =~ "task 3  run-c  done"
     assert output =~ "RED (1)"
     assert output =~ "task 4  run-d  failed  verification_red"
     assert output =~ "UNAVAILABLE AGENTS (1)"
-    assert output =~ "FakeAdapter  quota exhausted (exited)"
+    assert output =~ "FakeAdapter  review stuck on task-7: implementer hit a usage limit"
   end
 
   test "snapshot/1 collects live registered runs" do
@@ -227,7 +222,7 @@ defmodule Harness.StatusViewTest do
       reason: reason,
       verdict: Keyword.get(opts, :verdict, :pass),
       duration_ms: 1_000,
-      repair_attempts: 0,
+      review_iterations: 0,
       first_attempt_failed_check_count: 0,
       failure_cause: %{reason: reason, failed_checks: []},
       agent_outcome_kind: Keyword.get(opts, :agent_outcome_kind),
@@ -251,7 +246,7 @@ defmodule Harness.StatusViewTest do
           lifetime_timeout: 30_000,
           verification_timeout: 10_000,
           terminal_linger: 100,
-          max_repair_attempts: 0
+          max_review_iterations: 0
         ],
         overrides
       )

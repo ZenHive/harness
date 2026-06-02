@@ -7,9 +7,7 @@ defmodule Harness.AgentRegistryTest do
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentAdapter.Cursor
   alias Harness.AgentAdapter.Grok
-  alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Pi
-  alias Harness.AgentAdapter.Run
   alias Harness.AgentRegistry
 
   defmodule NoResumeAdapter do
@@ -67,18 +65,12 @@ defmodule Harness.AgentRegistryTest do
     end
   end
 
-  test "marks quota-exhausted adapters unavailable" do
-    outcome = %Outcome{
-      run: %Run{adapter: ResumeAdapter, port: nil, os_pid: nil, ref: make_ref(), started_at: System.monotonic_time()},
-      output: "subscription quota exhausted",
-      exit_status: 1,
-      kind: :exited
-    }
+  test "mark_unavailable/2 records a reviewer-stuck reason readable from list_unavailable/0" do
+    report = "implementer hit a usage limit; nothing in the worktree to fix"
 
-    assert AgentRegistry.quota_exhausted?(outcome)
-    assert :ok = AgentRegistry.mark_quota_exhausted(ResumeAdapter, outcome)
+    assert :ok = AgentRegistry.mark_unavailable(ResumeAdapter, {:review_stuck, "task-7", report})
     refute AgentRegistry.available?(ResumeAdapter)
-    assert [{ResumeAdapter, {:quota_exhausted, :exited}}] = AgentRegistry.list_unavailable()
+    assert [{ResumeAdapter, {:review_stuck, "task-7", ^report}}] = AgentRegistry.list_unavailable()
   end
 
   test "mark_available/1 lifts a previously marked adapter back into availability" do
@@ -87,10 +79,6 @@ defmodule Harness.AgentRegistryTest do
     assert :ok = AgentRegistry.mark_available(ResumeAdapter)
     assert AgentRegistry.available?(ResumeAdapter)
     assert [] = AgentRegistry.list_unavailable()
-  end
-
-  test "quota_exhausted?/1 returns false for a nil outcome" do
-    refute AgentRegistry.quota_exhausted?(nil)
   end
 
   test "select/2 surfaces :no_available_agent when every capable adapter is unavailable" do
