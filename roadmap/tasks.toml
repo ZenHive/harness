@@ -4787,7 +4787,7 @@ done_at = "2026-06-02"
 id = "156"
 phase = 11
 bundle = "autolanding"
-status = "pending"
+status = "in_progress"
 title = "MCP dispatch-task runs are not restart-resilient — a node restart silently kills in-flight runs with no record"
 scores = { d = 4, b = 6, u = 5 }
 markers = ["bug"]
@@ -4810,6 +4810,7 @@ Fix direction (pick at implementation time, smallest honest fix wins):
 Option (a) is preferred — it makes Task 48's persistence claim true for all dispatch paths and removes the special case.
 """
 created_at = "2026-06-02"
+started_at = "2026-06-02"
 scored_at = "2026-06-02"
 
 [[task]]

@@ -6119,7 +6119,7 @@
       "id": "156",
       "phase": 11,
       "bundle": "autolanding",
-      "status": "pending",
+      "status": "in_progress",
       "title": "MCP dispatch-task runs are not restart-resilient — a node restart silently kills in-flight runs with no record",
       "scores": {
         "d": 4,
@@ -6154,6 +6154,7 @@
       ],
       "body": "Found 2026-06-02: task 153's first dispatch (run-1780384973169-0b1933ca, codex) vanished without a trace after a node restart at ~15:42 local. dispatch-status returned not_found, no run_record was written, no supervisor entry, no commits in the worktree — zero evidence the run ever existed.\n\nRoot cause: the MCP dispatch-task tool (Harness.Chat.Tools / dispatch__task) starts the Run gen_statem DIRECTLY via Run.Supervisor.start_run — it does not enqueue through Oban. Only the cron/poller path (RoadmapPoller -> Run.Worker Oban job) gets Postgres-backed persistence. So Task 48's promise that 'jobs survive BEAM death in Postgres' only holds for autonomous cron dispatches; every interactive MCP/chat dispatch is a process-linked run that dies silently with the node.\n\nConsequences observed: the orchestrator (Claude session driving harness) believed the run was still in flight, burned a monitor cycle polling a dead run id, and only discovered the loss by checking node uptime via tidewave. The stale dispatch branch also had to be cleaned up by hand.\n\nFix direction (pick at implementation time, smallest honest fix wins):\n(a) Route dispatch__task through the same Oban Run.Worker the cron poller uses (interactive dispatch becomes an insert + the job starts immediately), so restart resilience is uniform; or\n(b) Keep the direct start but write a run_record tombstone at dispatch time (state :started) so a vanished run is at least detectable/diagnosable after restart.\n\nOption (a) is preferred — it makes Task 48's persistence claim true for all dispatch paths and removes the special case.\n",
       "created_at": "2026-06-02",
+      "started_at": "2026-06-02",
       "scored_at": "2026-06-02",
       "cross_repo": []
     },
