@@ -5479,7 +5479,7 @@
       "id": "141",
       "phase": 6,
       "bundle": "deferred",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Persist runtime ProjectRegistry registrations to Postgres",
       "scores": {
         "d": 2,
@@ -5509,6 +5509,7 @@
       ],
       "body": "ProjectRegistry.register/1 registrations live only in GenServer state and vanish on restart (lib/harness/project_registry.ex — documented as persists-until-BEAM-restart); only static config :harness, :projects survives. A projects table (name unique + serialized %Harness.Project{} payload — CheckStack structs, preset tuples, and source tuples make this term_to_binary, not jsonb) restores runtime registrations at boot, with config seeds winning on name conflict.\n\nDEFERRED on purpose: today the fleet is config-declared, so nothing is actually lost in practice. This earns dispatch when projects start being registered at runtime (e.g. via the MCP project_registry__register tool from a chat orchestrator session) as the normal path rather than the exception.\n",
       "created_at": "2026-06-01",
+      "started_at": "2026-06-02",
       "scored_at": "2026-06-01",
       "cross_repo": []
     },
@@ -5978,7 +5979,7 @@
       "id": "153",
       "phase": 11,
       "bundle": "autolanding",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Verification can't attribute red to the agent — a pre-existing red base yields false-red verdicts",
       "scores": {
         "d": 4,
@@ -6014,6 +6015,7 @@
       ],
       "body": "Observed 2026-06-02 on run run-1780363855046-3eb6a3a8 (task 130, codex): development carried a pre-existing red (stale Adapters assertion in live_mount_test.exs, left by an out-of-band dashboard commit cebe648). The dispatched agent's work was correct and its own touched-file tests passed, but the :elixir_precommit grader runs the whole suite, so the run settled verdict :fail / verification_red for a failure the agent did not cause. Cost: a full dispatch wasted, hand-triage at landing to discover the red was inherited, and (had repair been enabled) repair attempts would have burned tokens asking the agent to fix someone else's breakage.\n\nThe verification stack already has a narrower precedent: Verification.BaselineFilter.Credo filters credo findings that pre-exist on the base. Generalize the concept to check-level attribution: know what the base scores before blaming the diff.\n",
       "created_at": "2026-06-02",
+      "started_at": "2026-06-02",
       "scored_at": "2026-06-02",
       "cross_repo": []
     }

@@ -4370,7 +4370,7 @@ scored_at = "2026-06-01"
 id = "141"
 phase = 6
 bundle = "deferred"
-status = "pending"
+status = "in_progress"
 title = "Persist runtime ProjectRegistry registrations to Postgres"
 scores = { d = 2, b = 2, u = 2 }
 depends_on = [137]
@@ -4383,6 +4383,7 @@ ProjectRegistry.register/1 registrations live only in GenServer state and vanish
 DEFERRED on purpose: today the fleet is config-declared, so nothing is actually lost in practice. This earns dispatch when projects start being registered at runtime (e.g. via the MCP project_registry__register tool from a chat orchestrator session) as the normal path rather than the exception.
 """
 created_at = "2026-06-01"
+started_at = "2026-06-02"
 scored_at = "2026-06-01"
 
 [[task]]
@@ -4694,7 +4695,7 @@ shipped_in = "0571bef"
 id = "153"
 phase = 11
 bundle = "autolanding"
-status = "pending"
+status = "in_progress"
 title = "Verification can't attribute red to the agent — a pre-existing red base yields false-red verdicts"
 scores = { d = 4, b = 7, u = 6 }
 markers = ["bug"]
@@ -4709,4 +4710,5 @@ Observed 2026-06-02 on run run-1780363855046-3eb6a3a8 (task 130, codex): develop
 The verification stack already has a narrower precedent: Verification.BaselineFilter.Credo filters credo findings that pre-exist on the base. Generalize the concept to check-level attribution: know what the base scores before blaming the diff.
 """
 created_at = "2026-06-02"
+started_at = "2026-06-02"
 scored_at = "2026-06-02"
