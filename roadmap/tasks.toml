@@ -4076,7 +4076,7 @@ id = "130"
 phase = 11
 bundle = "autolanding"
 milestone = "v0_9"
-status = "pending"
+status = "in_progress"
 title = "Route autonomous dispatch on assignee — consume rmap's formalized agent-routing field, stop overloading model"
 scores = { d = 2, b = 4, u = 4 }
 acceptance_criteria = [
@@ -4103,6 +4103,7 @@ rmap is ours: add a first-class per-task agent/delegate field (or formalize that
 UPDATE 2026-06-02: the rmap half is shipped (../rmap task 40, commit 21cbe65) — `assignee` is now THE documented agent-routing field, validated against human|claude|codex|cursor|grok|antigravity|pi|droid, and `rmap delegate <id>` defaults `--to` from it. Remaining scope is harness-side consumption only: route the poller on assignee, skip human-assigned tasks, migrate this roadmap's agent-name model values to assignee, and update the harness-driver skill doc.
 """
 created_at = "2026-05-31"
+started_at = "2026-06-02"
 scored_at = "2026-06-02"
 
 [[task]]

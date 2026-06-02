@@ -5038,7 +5038,7 @@
       "phase": 11,
       "bundle": "autolanding",
       "milestone": "v0_9",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Route autonomous dispatch on assignee — consume rmap's formalized agent-routing field, stop overloading model",
       "scores": {
         "d": 2,
@@ -5074,6 +5074,7 @@
       ],
       "body": "CROSS-REPO (../rmap). The harness roadmap encodes the target agent in the `model` field (values \"codex\"/\"cursor\"), but rmap.md documents `model` as a free-text LLM id, distinct from the agent environment (rmap delegate --to), with cx/csr markers as the delegation channel. The harness cron poller currently routes on `model` then cx/csr as a workaround.\n\nrmap is ours: add a first-class per-task agent/delegate field (or formalize that model-naming-an-agent IS the route), so consumers route on one documented field instead of overloading model. Update rmap.md + the poller's task_agent/1 to use it.\n\nUPDATE 2026-06-02: the rmap half is shipped (../rmap task 40, commit 21cbe65) — `assignee` is now THE documented agent-routing field, validated against human|claude|codex|cursor|grok|antigravity|pi|droid, and `rmap delegate <id>` defaults `--to` from it. Remaining scope is harness-side consumption only: route the poller on assignee, skip human-assigned tasks, migrate this roadmap's agent-name model values to assignee, and update the harness-driver skill doc.\n",
       "created_at": "2026-05-31",
+      "started_at": "2026-06-02",
       "scored_at": "2026-06-02",
       "cross_repo": []
     },

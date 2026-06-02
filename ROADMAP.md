@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 126 — Run change-set view on the run-detail page (live edited-files + settled git diff) on 2026-05-31
 
-**Up next:** Task 130 — Route autonomous dispatch on assignee — consume rmap's formalized agent-routing field, stop overloading model [D:2/B:4/U:4 → Eff:2.0] 🎯
+**Up next:** Task 111 — Cron schedule editing from the UI — boot-applied presets, optional live reconfig [D:4/B:2/U:2 → Eff:0.5] ⚠️
 <!-- FOCUS:END -->
 
 ---
