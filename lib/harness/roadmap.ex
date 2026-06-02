@@ -89,7 +89,7 @@ defmodule Harness.Roadmap do
         kind: :value,
         default: [],
         description:
-          "Keyword list. :project (%Harness.Project{} — uses project.roadmap_path; SOURCE the project from Harness.ProjectRegistry.lookup/1). :project_root (directory holding roadmap/tasks.toml — fallback when :project omitted; defaults to File.cwd!/0). :agent (atom :claude/:codex/:cursor — which agent rmap delegate renders the prompt for; defaults to :claude). :rmap_bin (rmap executable path; defaults to \"rmap\")."
+          "Keyword list. :project (%Harness.Project{} — uses project.roadmap_path; SOURCE the project from Harness.ProjectRegistry.lookup/1). :project_root (directory holding roadmap/tasks.toml — fallback when :project omitted; defaults to File.cwd!/0). :agent (atom :claude/:codex/:cursor/:grok/:antigravity/:pi — which agent rmap delegate renders the prompt for; defaults to :claude). :rmap_bin (rmap executable path; defaults to \"rmap\")."
       ]
     ],
     returns: %{

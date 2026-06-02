@@ -316,13 +316,11 @@ defmodule Harness.Run.Worker do
     ArgumentError -> {:error, {:invalid_adapter_module, name}}
   end
 
-  @spec agent_for_adapter(module()) :: {:ok, :claude | :codex | :cursor} | {:error, {:unsupported_adapter, module()}}
-  defp agent_for_adapter(adapter) do
-    case AgentRegistry.agent_for_module(adapter) do
-      {:ok, agent} when agent in [:claude, :codex, :cursor] -> {:ok, agent}
-      _other -> {:error, {:unsupported_adapter, adapter}}
-    end
-  end
+  # Any agent the registry maps is dispatchable — the agent atom only selects the
+  # native prompt rendering in `Roadmap.ingest` (which accepts all six via
+  # `@valid_agents`). A loaded module the registry doesn't know is cancelled.
+  @spec agent_for_adapter(module()) :: {:ok, AgentRegistry.agent()} | {:error, {:unsupported_adapter, module()}}
+  defp agent_for_adapter(adapter), do: AgentRegistry.agent_for_module(adapter)
 
   @spec snooze_seconds(RetryPolicy.t(), pos_integer()) :: pos_integer()
   defp snooze_seconds(%RetryPolicy{} = policy, attempt) when is_integer(attempt) and attempt > 0 do

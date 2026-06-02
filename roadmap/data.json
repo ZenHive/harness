@@ -6156,6 +6156,45 @@
       "created_at": "2026-06-02",
       "scored_at": "2026-06-02",
       "cross_repo": []
+    },
+    {
+      "id": "157",
+      "phase": 11,
+      "bundle": "autolanding",
+      "status": "pending",
+      "title": "Resume/rescue orphaned in-flight runs after a BEAM restart (Oban executing-row zombie)",
+      "scores": {
+        "d": 3,
+        "b": 8,
+        "u": 8
+      },
+      "eff": 2.67,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "After a BEAM restart, an orphaned `executing` Run.Worker job (no live gen_statem) is rescued to a runnable state and re-runs, rather than zombie-ing forever — via Oban.Plugins.Lifeline (with a harness-appropriate rescue_after) and/or a boot-time reconcile sweep in Harness.Application.",
+        "A rescued re-run is idempotent against an already-`in_progress` task: it does not double-dispatch a still-live run, and it reconciles the stale `in_progress` + `executing` state.",
+        "The stale `executing` row no longer blocks re-dispatch of its task once rescued (the RoadmapPoller unique gate sees a terminal/available state).",
+        "Regression test: simulate an orphaned `executing` Run.Worker job with no live process and assert it returns to a runnable state (or re-runs) and the task becomes dispatchable again.",
+        "No change to the green/red verdict path or the landing semantic gate."
+      ],
+      "files_to_modify": [
+        "lib/harness/oban.ex",
+        "test/harness/oban_dispatch_test.exs"
+      ],
+      "touches": [
+        "lib/harness/oban.ex",
+        "lib/harness/run/worker.ex",
+        "lib/harness/application.ex"
+      ],
+      "body": "`Harness.Oban.oban_opts/0` starts from the config plugins (`[Oban.Plugins.Pruner]`) and only adds the Cron plugin + cron queue — there is NO `Oban.Plugins.Lifeline` and no boot-time reconcile. When the BEAM restarts mid-run the run's gen_statem dies, but its Oban job row stays `executing` forever:\n\n1. It never completes — nothing will ever deliver the `{:harness_run, run_id, %Result{}}` the worker's `await_run/3` is blocked on (the process that would send it is gone).\n2. It blocks re-dispatch of that task — `RoadmapPoller.@unique_opts` includes the `:executing` state, so a later tick won't re-enqueue it.\n3. The task stays `in_progress` in rmap (`claim_in_progress/2` ran before the crash), so it also drops out of `rmap ready` — double-stuck.\n\nThis contradicts the stated design goal (CLAUDE.md: \"Oban = dispatch layer ... jobs survive BEAM death in Postgres\", \"restart resilience\"): the persisted job ROW survives, but the in-flight run is not RESUMED — it's stranded as a zombie `executing` row that silently strands its task.\n\nObserved live: cursor run job 72 (rmap task 32) was left `executing` with `Harness.Run.Supervisor.list_runs() == []` (zero live pids) after an operator BEAM restart; rmap 32 stayed `in_progress` and never reappeared in the ready set.\n\nSurfaced during the grok agent-routing fix (the `@assignee_agents` / `agent_for_adapter` 3-agent gates); this is a SEPARATE bug family — in-flight-run restart resilience, not agent routing — so it was filed rather than folded into that commit.\n\nDesign decisions for the implementer (not pre-decided here): `Oban.Plugins.Lifeline` rescues orphaned `executing` -> `available`, but its default `rescue_after` (60 min) is far too slow for harness's dev restart cadence — so a shorter Lifeline interval AND/OR an immediate boot-time sweep (sibling to the existing worktree orphan sweep in `Harness.Application`, application.ex:30) is likely wanted. A rescued `Run.Worker.perform/1` re-runs the whole pipeline (re-ingest + re-claim + fresh run); confirm that's safe and idempotent against a task already `in_progress` (the claim is best-effort per worker.ex; `ready`/`next` already skip `in_progress`).\n",
+      "created_at": "2026-06-02",
+      "scored_at": "2026-06-02",
+      "cross_repo": []
     }
   ]
 }

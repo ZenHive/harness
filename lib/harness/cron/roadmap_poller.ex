@@ -10,11 +10,14 @@ defmodule Harness.Cron.RoadmapPoller do
   Inserts are made unique over `{project_name, item_id}` across non-terminal
   states, so a task already queued or running is not re-enqueued by a later tick.
 
-  Agent routing per task comes from rmap's `assignee` field. `human` assignees
-  are skipped by autonomous dispatch; missing assignees, and assignees outside
-  this autonomous worker's supported adapter set (for example `droid`), fall
-  back to `:claude`. A task routed to an agent the operator has disabled (or
-  that is quota-unavailable) is skipped via `AgentRegistry.select/2`.
+  Agent routing per task comes from rmap's `assignee` field, resolved against
+  `Harness.AgentRegistry` — the single source of truth for the agent set, so a
+  new adapter is dispatchable here with zero edits to this module. `human`
+  assignees are skipped by autonomous dispatch; a *missing* assignee falls back
+  to `@default_agent`. An assignee that names no harness adapter (for example
+  `droid`) is logged and skipped — never silently misrouted to the default
+  agent. A task routed to an agent the operator has disabled (or that is
+  quota-unavailable) is likewise skipped via `AgentRegistry.select/2`.
   """
 
   use Oban.Worker, queue: :cron, max_attempts: 1
@@ -33,11 +36,9 @@ defmodule Harness.Cron.RoadmapPoller do
   @cron_queue :cron
   @cron_queue_limit 1
   @dispatch_meta %{harness_stage: "cron_poll"}
-  @assignee_agents %{
-    "claude" => :claude,
-    "codex" => :codex,
-    "cursor" => :cursor
-  }
+  # Agent for a task with no `assignee`. Real assignees resolve through
+  # `AgentRegistry` (the canonical agent set); this is only the unspecified case.
+  @default_agent :claude
   @default_subscription_env_scrubs %{
     claude: %{"ANTHROPIC_API_KEY" => false},
     codex: %{"OPENAI_API_KEY" => false}
@@ -157,6 +158,9 @@ defmodule Harness.Cron.RoadmapPoller do
       :human ->
         log_dispatch_skip(project, item_id, :human_assigned)
 
+      {:unsupported_assignee, _raw} = reason ->
+        log_dispatch_skip(project, item_id, reason)
+
       agent ->
         with {:ok, adapter} <- AgentRegistry.delegatable_module_for_agent(agent),
              {:ok, adapter} <- AgentRegistry.select(adapter),
@@ -168,13 +172,33 @@ defmodule Harness.Cron.RoadmapPoller do
     end
   end
 
-  @doc false
-  @spec task_agent(map()) :: atom()
+  @doc """
+  Resolves a task's `assignee` to a routing target.
+
+  Returns `:human` (skip), the `@default_agent` for an unspecified assignee, the
+  resolved agent atom for a named one, or `{:unsupported_assignee, raw}` for a
+  string that names no harness adapter. The assignee is resolved against
+  `Harness.AgentRegistry.agents/0` — the registry is the single source of truth,
+  so resolution is deterministic (no atom-table dependence) and a typo or
+  unknown agent never reaches dispatch.
+  """
+  @spec task_agent(map()) :: atom() | {:unsupported_assignee, String.t()}
   def task_agent(task) do
     case task["assignee"] do
       "human" -> :human
-      assignee when is_binary(assignee) -> Map.get(@assignee_agents, assignee, :claude)
-      _other -> :claude
+      assignee when is_binary(assignee) -> resolve_assignee(assignee)
+      _missing -> @default_agent
+    end
+  end
+
+  @spec resolve_assignee(String.t()) :: AgentRegistry.agent() | {:unsupported_assignee, String.t()}
+  defp resolve_assignee(assignee) do
+    AgentRegistry.agents()
+    |> Map.keys()
+    |> Enum.find(&(Atom.to_string(&1) == assignee))
+    |> case do
+      nil -> {:unsupported_assignee, assignee}
+      agent -> agent
     end
   end
 

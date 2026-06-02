@@ -451,14 +451,62 @@ defmodule Harness.ObanDispatchTest do
     project = ProjectFixture.from_repo("/tmp/harness-worker", name: "adapter-check")
     assert :ok = ProjectRegistry.register(project)
 
-    assert {:cancel, {:unsupported_adapter, Harness.AgentAdapter.Grok}} =
+    # A loaded module that is not a harness adapter cancels loudly. (Every real
+    # adapter — including Grok/Antigravity/Pi — is accepted; see the routing test
+    # below.)
+    assert {:cancel, {:unsupported_adapter, Project}} =
              Worker.perform(%Oban.Job{
                args: %{
                  "project_name" => "adapter-check",
                  "item_id" => "1",
+                 "adapter_module" => "Elixir.Harness.Project"
+               }
+             })
+  end
+
+  test "worker accepts every registered adapter, not just claude/codex/cursor" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-worker", name: "grok-project")
+    assert :ok = ProjectRegistry.register(project)
+
+    Application.put_env(:harness, :roadmap_ingest, fn _selector, opts ->
+      send(parent, {:ingest_agent, Keyword.fetch!(opts, :agent)})
+      {:ok, item("9", :grok)}
+    end)
+
+    Application.put_env(:harness, :run_starter, fn %Item{} = item, _run_project, adapter, opts ->
+      send(parent, {:start_adapter, adapter})
+      run_id = "run-grok-ok"
+      subscriber = Keyword.fetch!(opts, :subscriber)
+
+      pid =
+        spawn(fn ->
+          send(
+            subscriber,
+            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :passed}}
+          )
+
+          Process.sleep(100)
+        end)
+
+      {:ok, run_id, pid}
+    end)
+
+    assert :ok =
+             Worker.perform(%Oban.Job{
+               id: 909,
+               attempt: 1,
+               args: %{
+                 "project_name" => "grok-project",
+                 "item_id" => "9",
                  "adapter_module" => "Elixir.Harness.AgentAdapter.Grok"
                }
              })
+
+    # The fix: a Grok adapter is no longer cancelled at the agent gate — it
+    # resolves to the :grok render agent and reaches start_run.
+    assert_received {:ingest_agent, :grok}
+    assert_received {:start_adapter, Harness.AgentAdapter.Grok}
   end
 
   # Review fix #12: a persisted job referencing a not-yet-registered project is

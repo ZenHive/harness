@@ -10,6 +10,7 @@ defmodule Harness.Roadmap.Item do
   `Task` module.
   """
 
+  alias Harness.AgentRegistry
   alias Harness.CapabilityDomain
 
   @typedoc """
@@ -37,7 +38,7 @@ defmodule Harness.Roadmap.Item do
           id: String.t(),
           title: String.t(),
           prompt: String.t(),
-          agent: :claude | :codex | :cursor,
+          agent: AgentRegistry.agent(),
           body: String.t() | nil,
           acceptance_criteria: [String.t()],
           domains: [CapabilityDomain.t()],

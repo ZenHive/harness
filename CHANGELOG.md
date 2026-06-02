@@ -271,6 +271,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Autonomous dispatch can now reach every registered agent, not just
+  claude/codex/cursor.** Two stale 3-agent gates blocked grok/antigravity/pi end
+  to end — surfaced live when an rmap `grok` task routed correctly but its run
+  job was cancelled with `{:unsupported_adapter, …}`:
+  - `Harness.Cron.RoadmapPoller` carried a hand-maintained `@assignee_agents`
+    map covering only those three; a `grok` / `antigravity` / `pi` assignee
+    silently fell back to `:claude` — skipped when Claude was disabled, or
+    misrouted to a metered agent when enabled. Routing now resolves the
+    `assignee` against `Harness.AgentRegistry` (the single source of truth), so a
+    new adapter is dispatchable with zero poller edits. An assignee that names no
+    harness adapter (e.g. `droid`) resolves to `{:unsupported_assignee, raw}` and
+    is logged-and-skipped — never misrouted. A missing assignee still defaults to
+    `@default_agent` (`:claude`).
+  - `Harness.Run.Worker.agent_for_adapter/1` then re-narrowed the resolved agent
+    with a stale `agent in [:claude, :codex, :cursor]` guard, cancelling any
+    grok/antigravity/pi run as `{:unsupported_adapter, _}`. It now delegates to
+    `AgentRegistry.agent_for_module/1` — any registered adapter is accepted; only
+    a loaded module the registry doesn't know is cancelled.
+  - `Harness.Roadmap.Item.t`'s `agent` field type (and the `Roadmap.ingest`
+    `:agent` doc) listed only the original three despite `ingest` producing all
+    six via `@valid_agents`; both now reference the registry's agent set.
+
 - **Stale `Adapters`-on-index assertion broke the default suite (and falsified a
   dispatch verdict).** The dashboard refactor that moved adapter/unavailable
   state into Settings (cebe648) updated `live_test.exs` and

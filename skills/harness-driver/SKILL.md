@@ -427,7 +427,7 @@ A playbook body names the exact tools to call, in order, with the gotchas inline
 | `dispatch__task` (flat MCP) | **Default dispatch.** Stateless JSON, one roadmap task fire-and-forget. Scalars only, returns a `run_id` you observe later. The JSON-surface replacement for the struct two-step. |
 | `dispatch__await` (flat MCP) | Same dispatch, verdict **in-band** — blocks until settled (bounded by `timeout_ms`), returns a compact verdict summary instead of a `run_id` to poll. Tightens the loop to one call. |
 | `dispatch__recommend` (flat MCP) | Ask harness which agent to use for a capability domain before dispatching. Returns ranked explore/exploit advice from persisted scores; does not start a run. |
-| `dispatch__bundle` (flat MCP) | Fan out the **next bundle** of pending tasks at once — one Oban-backed job per task, per-project concurrency cap. Delegatable adapters only (claude/codex/cursor). |
+| `dispatch__bundle` (flat MCP) | Fan out the **next bundle** of pending tasks at once — one Oban-backed job per task, per-project concurrency cap. Any of the six delegatable adapters (claude/codex/cursor/grok/antigravity/pi). |
 | `dispatch__compare` (flat MCP) | **A/B one task across N adapters** in isolated worktrees; returns side-by-side per-adapter metrics. Blocks until all settle. All six executors. |
 | `dispatch__status` / `dispatch__transcript` / `dispatch__transcript_events` (flat MCP) | **Observe a live run** by `run_id` — lifecycle snapshot or buffered/parsed transcript (with `seq` for delta polling). The JSON-native replacement for `Harness.Run.status/1` + the browser transcript pane. |
 | `dispatch__cancel` (flat MCP) | **Kill an in-flight run** by `run_id` (idempotent). |

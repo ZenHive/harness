@@ -78,7 +78,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
     # assignee (defaults :claude), plus tasks routed via `assignee`.
     Application.put_env(:harness, :roadmap_ready, fn p ->
       send(parent, {:ready, p.name})
-      {:ok, [task("51", nil), task("52", "codex"), task("53", "cursor")]}
+      {:ok, [task("51", nil), task("52", "codex"), task("53", "cursor"), task("54", "grok")]}
     end)
 
     Application.put_env(:harness, :oban_insert, fn changeset ->
@@ -119,6 +119,15 @@ defmodule Harness.Cron.RoadmapPollerTest do
                      }}
 
     refute Map.has_key?(cursor_args, :env)
+
+    # The regression guard: a grok assignee used to fall back to :claude
+    # (incomplete routing map). It now reaches the Grok adapter directly.
+    assert_received {:inserted,
+                     %Oban.Job{
+                       args: %{item_id: "54", adapter_module: "Elixir.Harness.AgentAdapter.Grok"} = grok_args
+                     }}
+
+    refute Map.has_key?(grok_args, :env)
   end
 
   test "operator config can disable subscription scrubs for metered API-key agents" do
@@ -237,9 +246,14 @@ defmodule Harness.Cron.RoadmapPollerTest do
   end
 
   describe "task_agent/1" do
-    test "routes adapter-backed assignees" do
+    test "routes every registry-backed assignee, not just the original three" do
+      # The bug this guards: only claude/codex/cursor used to route; grok,
+      # antigravity, pi silently fell back to :claude. All six resolve now.
       assert RoadmapPoller.task_agent(%{"assignee" => "codex", "model" => "claude-opus-4-7"}) == :codex
       assert RoadmapPoller.task_agent(%{"assignee" => "cursor"}) == :cursor
+      assert RoadmapPoller.task_agent(%{"assignee" => "grok"}) == :grok
+      assert RoadmapPoller.task_agent(%{"assignee" => "antigravity"}) == :antigravity
+      assert RoadmapPoller.task_agent(%{"assignee" => "pi"}) == :pi
     end
 
     test "defaults missing assignee to claude without consulting model or markers" do
@@ -251,8 +265,13 @@ defmodule Harness.Cron.RoadmapPollerTest do
       assert RoadmapPoller.task_agent(%{"assignee" => "human"}) == :human
     end
 
-    test "falls back to claude for assignees with no harness adapter" do
-      assert RoadmapPoller.task_agent(%{"assignee" => "droid"}) == :claude
+    test "marks an assignee with no harness adapter unsupported, not a claude misroute" do
+      # `droid` is renderable by rmap but has no harness adapter; it must be
+      # skipped, never silently dispatched to the default agent.
+      assert RoadmapPoller.task_agent(%{"assignee" => "droid"}) == {:unsupported_assignee, "droid"}
+
+      assert RoadmapPoller.task_agent(%{"assignee" => "totally-unknown-xyz"}) ==
+               {:unsupported_assignee, "totally-unknown-xyz"}
     end
   end
 
