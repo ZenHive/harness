@@ -81,7 +81,10 @@ defmodule Harness.Run.LogRecord do
           agent_exit_status: integer() | nil,
           agent_output: binary(),
           check_output: check_output(),
-          domains: [CapabilityDomain.t()]
+          domains: [CapabilityDomain.t()],
+          reviewer_adapter: module() | nil,
+          review_iterations: non_neg_integer(),
+          reviewer_stuck_report: String.t() | nil
         }
 
   @enforce_keys [
@@ -118,7 +121,10 @@ defmodule Harness.Run.LogRecord do
     composed_inputs: [],
     agent_output: "",
     check_output: %{},
-    domains: []
+    domains: [],
+    reviewer_adapter: nil,
+    review_iterations: 0,
+    reviewer_stuck_report: nil
   ]
 
   @doc "Builds a structured record from a settled run result and batch metadata."
@@ -153,7 +159,10 @@ defmodule Harness.Run.LogRecord do
       agent_exit_status: outcome && outcome.exit_status,
       agent_output: (outcome && outcome.output) || "",
       check_output: check_output(result.verdict),
-      domains: domains_from_meta(meta)
+      domains: domains_from_meta(meta),
+      reviewer_adapter: result.reviewer_adapter,
+      review_iterations: result.review_iterations,
+      reviewer_stuck_report: result.reviewer_stuck_report
     }
   end
 

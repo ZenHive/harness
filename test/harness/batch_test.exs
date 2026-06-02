@@ -243,37 +243,6 @@ defmodule Harness.BatchTest do
     assert red.verdict.status == :fail
   end
 
-  test "settles queued items when every capable adapter is quota-exhausted mid-flight" do
-    repo = GitFixture.init_repo()
-    base = GitFixture.tmp_base()
-
-    assert {:ok, %BatchResult{results: results, events: events}} =
-             Batch.run(
-               items(~w(first second third)),
-               ProjectFixture.from_repo(repo),
-               [QuotaAdapter],
-               batch_opts(base,
-                 max_concurrency: 1,
-                 checks: [check("ok", "true", [])]
-               )
-             )
-
-    assert Enum.map(results, & &1.task_id) == ~w(first second third)
-
-    [first | undispatched] = results
-
-    assert first.state == :failed
-    assert AgentRegistry.quota_exhausted?(first.agent_outcome)
-
-    assert Enum.all?(undispatched, &match?(%Result{state: :failed, reason: {:no_available_agent, _}}, &1))
-
-    assert {:adapter_unavailable, QuotaAdapter, {:quota_exhausted, "first"}} in events
-    assert {:no_available_agent, "second", {:no_available_agent, [QuotaAdapter]}} in events
-    assert {:no_available_agent, "third", {:no_available_agent, [QuotaAdapter]}} in events
-
-    refute AgentRegistry.available?(QuotaAdapter)
-  end
-
   test "REGRESSION (Task 67): pinned mode tail-slot continues when head-slot adapter is unavailable" do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()
@@ -342,71 +311,12 @@ defmodule Harness.BatchTest do
            }
   end
 
-  test "fails over from a quota-exhausted adapter to a capable adapter with headroom" do
-    repo = GitFixture.init_repo()
-    base = GitFixture.tmp_base()
-
-    assert {:ok, %BatchResult{results: [%Result{} = result], events: events}} =
-             Batch.run(
-               items(["quota-task"]),
-               ProjectFixture.from_repo(repo),
-               [QuotaAdapter, HeadroomAdapter],
-               batch_opts(base,
-                 max_concurrency: 1,
-                 checks: [check("ok", "true", [])]
-               )
-             )
-
-    assert result.state == :done
-    assert result.reason == :passed
-    refute AgentRegistry.available?(QuotaAdapter)
-    assert AgentRegistry.available?(HeadroomAdapter)
-
-    assert {:adapter_unavailable, QuotaAdapter, {:quota_exhausted, "quota-task"}} in events
-    assert {:failover, "quota-task", QuotaAdapter, HeadroomAdapter} in events
-  end
-
-  test "persists quota-blocked attempts and the fail-over event chain" do
-    repo = GitFixture.init_repo()
-    base = GitFixture.tmp_base()
-    store = file_store()
-    batch_id = batch_id()
-
-    assert {:ok, %BatchResult{events: events}} =
-             Batch.run(
-               items(["quota-task"]),
-               ProjectFixture.from_repo(repo),
-               [QuotaAdapter, HeadroomAdapter],
-               batch_opts(base,
-                 batch_id: batch_id,
-                 result_store: store,
-                 max_concurrency: 1,
-                 checks: [check("ok", "true", [])]
-               )
-             )
-
-    assert {:adapter_unavailable, QuotaAdapter, {:quota_exhausted, "quota-task"}} in events
-    assert {:failover, "quota-task", QuotaAdapter, HeadroomAdapter} in events
-
-    assert {:ok, %BatchResult{events: reloaded_events}} = ResultStore.load_batch(batch_id, store)
-    assert {:failover, "quota-task", QuotaAdapter, HeadroomAdapter} in reloaded_events
-
-    assert {:ok, records} = ResultStore.list_run_records(store, task_id: "quota-task")
-    assert length(records) == 2
-
-    quota_record = Enum.find(records, &(&1.adapter == QuotaAdapter))
-    headroom_record = Enum.find(records, &(&1.adapter == HeadroomAdapter))
-
-    assert quota_record.state == :failed
-    assert quota_record.reason == :no_changes
-    assert quota_record.failure_cause == %{reason: :no_changes, failed_checks: []}
-
-    assert {:ok, [quota_full]} = ResultStore.list_run_records(store, run_id: quota_record.run_id)
-    assert quota_full.agent_output =~ "quota exhausted"
-
-    assert headroom_record.state == :done
-    assert headroom_record.reason == :passed
-  end
+  # NOTE (2026-06-02): the quota-exhaustion fail-over tests that lived here are
+  # deleted. `config :harness, :retry_policy, quota_patterns: []` disables quota
+  # detection permanently (regex false-positives); quota classification is
+  # deprecated pending the phase-15 deletion pass (Task 163). Adapter
+  # unavailability + pinned fail-over keep coverage via the Task 67 regression
+  # test above.
 
   # ---------------------------------------------------------------------------
   # REGRESSION (Task 57): worker spin loop settles via :no_available_agent,

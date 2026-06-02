@@ -233,6 +233,13 @@ if config_env() == :test do
          :result_store,
          {Harness.ResultStore.File, root: Path.join(System.tmp_dir!(), "harness_results_test")}
 
+  # Reviewer-pair routing OFF by default in tests: a red verdict settles
+  # :failed/:verification_red immediately instead of spawning a real
+  # cross-family reviewer agent against the test fixture. Tests that exercise
+  # the reviewing state pass max_review_iterations (and a fake reviewer)
+  # explicitly via run opts, which always win over this config.
+  config :harness, :run, max_review_iterations: 0
+
   config :harness, :worktree,
     base_dir: Path.join(System.tmp_dir!(), "harness_worktrees_test"),
     sweep_on_boot: false

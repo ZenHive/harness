@@ -145,6 +145,10 @@ defmodule Harness.StatusView do
   def classify(%Status{state: :done}), do: :green
   def classify(%Status{state: :failed}), do: :red
 
+  # A reviewing run IS red work being fixed — same human-facing bucket as the
+  # repair loop, regardless of repair_attempts.
+  def classify(%Status{state: :reviewing}), do: :repairing
+
   def classify(%Status{state: state, repair_attempts: attempts})
       when state in [:dispatched, :running, :committing, :verifying, :consulting] and attempts > 0,
       do: :repairing

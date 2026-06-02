@@ -25,8 +25,11 @@ defmodule Harness.Run.Result do
   Why a run settled the way it did.
 
     * `:passed` — the verification stack graded the worktree green (`:done`).
-    * `:verification_red` — a check in the stack failed; any configured repair
-      attempts were exhausted without going green (see `repair_attempts`).
+    * `:verification_red` — a check in the stack failed before reviewer-pair
+      handling existed, or review was explicitly disabled.
+    * `{:review_stuck, report}` — the reviewer-pair path could not produce a
+      green worktree within `max_review_iterations`; `report` is prose from the
+      reviewer or from reviewer selection when no cross-family reviewer exists.
     * `:base_red` — every verification failure was already present on the
       dispatch base. The run is not green, but repair is not attempted because
       the red is inherited rather than agent-caused.
@@ -68,6 +71,7 @@ defmodule Harness.Run.Result do
   @type reason ::
           :passed
           | :verification_red
+          | {:review_stuck, String.t()}
           | :base_red
           | :semantic_rejection
           | :no_changes
@@ -118,6 +122,12 @@ defmodule Harness.Run.Result do
       (all-`nil`) when the adapter's wire format reports no token counts.
     * `composed_inputs` — prompt/rule artifacts captured for each dispatch
       attempt, including repair attempts.
+    * `reviewer_adapter` — the cross-family reviewer adapter used after a red
+      verdict, or `nil` if the run never entered review.
+    * `review_iterations` — reviewer invocations made before settling.
+    * `reviewer_stuck_report` — prose from the reviewer when review exhausted
+      without green, or a selection failure reason when no reviewer was
+      available.
   """
   @type t :: %__MODULE__{
           run_id: String.t(),
@@ -131,7 +141,10 @@ defmodule Harness.Run.Result do
           first_attempt_failed_check_count: non_neg_integer(),
           agent_diff_size: non_neg_integer() | nil,
           token_usage: TokenUsage.t(),
-          composed_inputs: [AgentAdapter.composed_input()]
+          composed_inputs: [AgentAdapter.composed_input()],
+          reviewer_adapter: module() | nil,
+          review_iterations: non_neg_integer(),
+          reviewer_stuck_report: String.t() | nil
         }
 
   @enforce_keys [:run_id, :task_id, :state, :reason]
@@ -147,6 +160,9 @@ defmodule Harness.Run.Result do
     first_attempt_failed_check_count: 0,
     agent_diff_size: nil,
     token_usage: %TokenUsage{},
-    composed_inputs: []
+    composed_inputs: [],
+    reviewer_adapter: nil,
+    review_iterations: 0,
+    reviewer_stuck_report: nil
   ]
 end

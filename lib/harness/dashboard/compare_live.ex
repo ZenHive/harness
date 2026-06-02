@@ -567,8 +567,9 @@ defmodule Harness.Dashboard.CompareLive do
   defp verdict_label(%{verdict: :fail}), do: %{tone: "fail", glyph: "✗", text: "fail"}
   defp verdict_label(%{state: :failed}), do: %{tone: "fail", glyph: "✗", text: "failed"}
 
-  defp verdict_label(%{state: state}) when state in [:running, :committing, :verifying, :consulting, :dispatched],
-    do: %{tone: "pending", glyph: "◌", text: to_string(state)}
+  defp verdict_label(%{state: state})
+       when state in [:running, :committing, :verifying, :reviewing, :consulting, :dispatched],
+       do: %{tone: "pending", glyph: "◌", text: to_string(state)}
 
   defp verdict_label(_), do: %{tone: "pending", glyph: "◌", text: "queued"}
 

@@ -14,6 +14,7 @@ defmodule Harness.Run do
       running     — the agent is working in the worktree
       committing  — committing the agent's work to the run branch
       verifying   — the verification stack is grading the worktree
+      reviewing   — a cross-family reviewer is fixing a red worktree inline
       consulting  — the opposite-agent grader is reviewing a repeated failure
       held        — operator-parked; worktree retained, lifetime timer suspended
       done        — verification graded the worktree green (terminal)
@@ -99,7 +100,6 @@ defmodule Harness.Run do
   alias Harness.Project
   alias Harness.ResultStore
   alias Harness.Roadmap.Item
-  alias Harness.Run.FailureClass
   alias Harness.Run.LogRecord
   alias Harness.Run.Reflex
   alias Harness.Run.RepairPrompt
@@ -124,8 +124,10 @@ defmodule Harness.Run do
   @default_lifetime_timeout 5_400_000
   @default_terminal_linger 5_000
   @default_max_repair_attempts 2
+  @default_max_review_iterations 2
   @semantic_diff_context_lines 80
   @semantic_diff_max_bytes 80_000
+  @reviewer_transcript_tail_bytes 40_000
   @default_discernment_sample_interval_ms 300_000
   @default_discernment_min_weight 6
   @default_discernment_long_running_ms 600_000
@@ -138,6 +140,7 @@ defmodule Harness.Run do
           | :running
           | :committing
           | :verifying
+          | :reviewing
           | :consulting
           | :held
           | :done
@@ -166,8 +169,14 @@ defmodule Harness.Run do
            max_hold_timeout: timeout(),
            terminal_linger: non_neg_integer(),
            max_repair_attempts: non_neg_integer(),
+           max_review_iterations: non_neg_integer(),
            retry_policy: RetryPolicy.t(),
            repair_attempts: non_neg_integer(),
+           review_iterations: non_neg_integer(),
+           reviewer: atom() | module() | nil,
+           reviewer_adapter: module() | nil,
+           reviewer_adapter_opts: keyword(),
+           reviewer_stuck_report: String.t() | nil,
            repair_prompt_kind: :verification_red | :semantic_rejection | :operator_steer | nil,
            hold_requested: false | :graceful | :interrupt,
            hold_reason: :graceful | :interrupt | nil,
@@ -488,8 +497,16 @@ defmodule Harness.Run do
       max_repair_attempts:
         Keyword.get(opts, :max_repair_attempts) ||
           configured(:max_repair_attempts, @default_max_repair_attempts),
+      max_review_iterations:
+        Keyword.get(opts, :max_review_iterations) ||
+          configured(:max_review_iterations, @default_max_review_iterations),
       retry_policy: RetryPolicy.from_opts(opts),
       repair_attempts: 0,
+      review_iterations: 0,
+      reviewer: Keyword.get(opts, :reviewer, configured(:reviewer, nil)),
+      reviewer_adapter: nil,
+      reviewer_adapter_opts: Keyword.get(opts, :reviewer_adapter_opts, []),
+      reviewer_stuck_report: nil,
       repair_prompt_kind: nil,
       hold_requested: false,
       hold_reason: nil,
@@ -777,42 +794,10 @@ defmodule Harness.Run do
 
     failed_signatures = failed_check_signatures(verdict)
 
-    cond do
-      Verdict.passed?(verdict) ->
-        settle_green_verdict(data)
-
-      verdict.status == :base_red ->
-        {:next_state, :failed, %{data | reason: :base_red, last_failed_check_signatures: failed_signatures}}
-
-      data.cross_agent_follow_up ->
-        {:next_state, :failed, %{data | reason: :verification_red, last_failed_check_signatures: failed_signatures}}
-
-      cross_agent_repairable?(data, failed_signatures) ->
-        data = %{
-          data
-          | repair_attempts: data.repair_attempts + 1,
-            last_failed_check_signatures: failed_signatures,
-            repair_prompt_kind: :verification_red,
-            consultation_kind: :repair,
-            cross_agent_consulted: true
-        }
-
-        {:next_state, :consulting, data}
-
-      repairable?(data) ->
-        # Loop back to `running`: the same agent is resumed with the failing
-        # checks fed back. `build_invocation/1` reads the incremented count.
-        data = %{
-          data
-          | repair_attempts: data.repair_attempts + 1,
-            last_failed_check_signatures: failed_signatures,
-            repair_prompt_kind: :verification_red
-        }
-
-        {:next_state, :running, data}
-
-      true ->
-        {:next_state, :failed, %{data | reason: :verification_red, last_failed_check_signatures: failed_signatures}}
+    if Verdict.passed?(verdict) do
+      settle_green_verdict(data)
+    else
+      route_red_verdict(%{data | last_failed_check_signatures: failed_signatures})
     end
   end
 
@@ -827,6 +812,48 @@ defmodule Harness.Run do
 
   def verifying(event_type, event_content, data) do
     handle_common(event_type, event_content, :verifying, data)
+  end
+
+  # ── State: reviewing — cross-family reviewer fixes red worktree inline ───
+
+  @doc false
+  @spec reviewing(event(), term(), data()) :: handler_result()
+  def reviewing(:enter, _old_state, data) do
+    RunFeed.broadcast_update(status_snapshot(:reviewing, data))
+    task = start_task(fn -> run_reviewer(data) end)
+    {:keep_state, %{data | task: task, agent_run: nil}}
+  end
+
+  def reviewing(
+        :info,
+        {ref, {:ok, %{outcome: %Outcome{} = outcome, diff_size: diff_size}}},
+        %{task: %Task{ref: ref}} = data
+      ) do
+    Process.demonitor(ref, [:flush])
+
+    data = %{
+      data
+      | task: nil,
+        reviewer_stuck_report: reviewer_report(outcome),
+        agent_diff_size: max(data.agent_diff_size || 0, diff_size)
+    }
+
+    {:next_state, :verifying, data}
+  end
+
+  def reviewing(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
+    Process.demonitor(ref, [:flush])
+    report = "Reviewer failed to run: #{inspect(reason)}"
+    {:next_state, :failed, %{data | task: nil, reason: {:review_stuck, report}, reviewer_stuck_report: report}}
+  end
+
+  def reviewing(:info, {:DOWN, ref, :process, _pid, reason}, %{task: %Task{ref: ref}} = data) when reason != :normal do
+    report = "Reviewer crashed: #{inspect(reason)}"
+    {:next_state, :failed, %{data | task: nil, reason: {:review_stuck, report}, reviewer_stuck_report: report}}
+  end
+
+  def reviewing(event_type, event_content, data) do
+    handle_common(event_type, event_content, :reviewing, data)
   end
 
   # ── State: consulting — one-shot opposite-agent grader ───────────────────
@@ -1311,6 +1338,9 @@ defmodule Harness.Run do
       verdict: data.verdict,
       worktree_path: data.worktree && data.worktree.path,
       repair_attempts: data.repair_attempts,
+      reviewer_adapter: data.reviewer_adapter,
+      review_iterations: data.review_iterations,
+      reviewer_stuck_report: data.reviewer_stuck_report,
       first_attempt_failed_check_count: data.first_attempt_failed_check_count,
       agent_diff_size: data.agent_diff_size,
       token_usage: data.token_usage,
@@ -1414,6 +1444,7 @@ defmodule Harness.Run do
       agent_kind: data.agent_outcome && data.agent_outcome.kind,
       verdict_status: data.verdict && data.verdict.status,
       repair_attempts: data.repair_attempts,
+      review_iterations: data.review_iterations,
       reason: data.reason,
       held?: state == :held,
       hold_reason: if(state == :held, do: data.hold_reason)
@@ -1519,52 +1550,222 @@ defmodule Harness.Run do
   defp project_language(%Project{check_stacks: [%{name: language}]}) when is_atom(language), do: language
   defp project_language(%Project{}), do: nil
 
-  # Whether a red verdict should trigger another repair attempt: the cap is not
-  # yet spent, the adapter can resume its session, and the failed attempt did
-  # not already classify as quota exhaustion.
-  @spec repairable?(data()) :: boolean()
-  defp repairable?(data) do
-    data.repair_attempts < data.max_repair_attempts and
-      AgentAdapter.supports?(data.adapter, :session_resume) and
-      failure_class(data) != :quota_exhausted
-  end
+  @spec route_red_verdict(data()) :: handler_result()
+  defp route_red_verdict(data) do
+    cond do
+      data.max_review_iterations == 0 ->
+        {:next_state, :failed, %{data | reason: legacy_red_reason(data.verdict)}}
 
-  @spec cross_agent_repairable?(data(), MapSet.t(term())) :: boolean()
-  defp cross_agent_repairable?(data, failed_signatures) do
-    cross_agent_repair_enabled?(data) and
-      cross_agent_grader_available?(data) and
-      not data.cross_agent_consulted and
-      repeated_failure?(data.last_failed_check_signatures, failed_signatures) and
-      repairable?(data)
-  end
+      data.review_iterations >= data.max_review_iterations ->
+        report = data.reviewer_stuck_report || "Reviewer iterations exhausted while verification remained red."
+        {:next_state, :failed, %{data | reason: {:review_stuck, report}, reviewer_stuck_report: report}}
 
-  # AuditReview only auto-pairs `:claude ↔ :codex`; other implementers
-  # (`:grok`, `:cursor`, `:antigravity`, `:pi`) need an explicit `:grader`
-  # in :cross_agent_repair opts. Without one, `AuditReview.grade_fix/1`
-  # returns `{:no_default_grader, _}` and the consulting transition would
-  # short-circuit the same-agent repair loop. Guard here so dispatch falls
-  # back to the normal repair path instead.
-  @spec cross_agent_grader_available?(data()) :: boolean()
-  defp cross_agent_grader_available?(data) do
-    case Keyword.get(data.cross_agent_repair, :grader) do
-      nil ->
-        case AuditReview.default_grader(data.item.agent) do
-          {:ok, _module} -> true
-          {:error, _reason} -> false
+      true ->
+        case select_reviewer(data) do
+          {:ok, reviewer} ->
+            {:next_state, :reviewing,
+             %{
+               data
+               | reviewer_adapter: reviewer,
+                 review_iterations: data.review_iterations + 1,
+                 reviewer_stuck_report: nil
+             }}
+
+          {:error, reason} ->
+            report = "No cross-family reviewer adapter available: #{inspect(reason)}"
+            {:next_state, :failed, %{data | reason: {:review_stuck, report}, reviewer_stuck_report: report}}
         end
-
-      _explicit_grader ->
-        true
     end
   end
 
-  @spec failure_class(data()) :: FailureClass.t()
-  defp failure_class(data) do
-    data
-    |> Map.put(:reason, :verification_red)
-    |> build_result(:failed)
-    |> FailureClass.classify(data.retry_policy)
+  @spec legacy_red_reason(Verdict.t() | nil) :: Result.reason()
+  defp legacy_red_reason(%Verdict{status: :base_red}), do: :base_red
+  defp legacy_red_reason(_verdict), do: :verification_red
+
+  @spec select_reviewer(data()) :: {:ok, module()} | {:error, term()}
+  defp select_reviewer(%{reviewer: nil} = data) do
+    implementer = data.item.agent
+
+    AgentRegistry.agents()
+    |> Enum.reject(fn {agent, _module} -> agent == implementer end)
+    |> Enum.find_value(fn {_agent, module} ->
+      if reviewer_dispatchable?(module), do: {:ok, module}
+    end)
+    |> case do
+      {:ok, module} -> {:ok, module}
+      nil -> {:error, {:no_cross_family_reviewer, implementer}}
+    end
   end
+
+  defp select_reviewer(%{reviewer: reviewer} = data) do
+    with {:ok, module} <- resolve_reviewer(reviewer),
+         :ok <- ensure_cross_family_reviewer(data.item.agent, module),
+         true <- explicit_reviewer_dispatchable?(module) || {:error, {:reviewer_unavailable, module}} do
+      {:ok, module}
+    end
+  end
+
+  @spec resolve_reviewer(atom() | module()) :: {:ok, module()} | {:error, term()}
+  defp resolve_reviewer(reviewer) when is_atom(reviewer) do
+    case AgentRegistry.module_for_agent(reviewer) do
+      {:ok, module} ->
+        {:ok, module}
+
+      {:error, _reason} ->
+        if Code.ensure_loaded?(reviewer) and function_exported?(reviewer, :build_command, 1) do
+          {:ok, reviewer}
+        else
+          {:error, {:unknown_reviewer, reviewer}}
+        end
+    end
+  end
+
+  @spec ensure_cross_family_reviewer(atom(), module()) :: :ok | {:error, term()}
+  defp ensure_cross_family_reviewer(implementer, reviewer_module) do
+    case AgentRegistry.agent_for_module(reviewer_module) do
+      {:ok, ^implementer} -> {:error, {:same_family_reviewer, implementer, reviewer_module}}
+      _other -> :ok
+    end
+  end
+
+  @spec reviewer_dispatchable?(module()) :: boolean()
+  defp reviewer_dispatchable?(module) do
+    AgentRegistry.available?(module) and
+      AgentRegistry.installed?(module) and
+      reviewer_enabled?(module)
+  end
+
+  @spec explicit_reviewer_dispatchable?(module()) :: boolean()
+  defp explicit_reviewer_dispatchable?(module) do
+    case AgentRegistry.agent_for_module(module) do
+      {:ok, _agent} -> reviewer_dispatchable?(module)
+      {:error, _reason} -> AgentRegistry.available?(module)
+    end
+  end
+
+  @spec reviewer_enabled?(module()) :: boolean()
+  defp reviewer_enabled?(module) do
+    case AgentRegistry.agent_for_module(module) do
+      {:ok, agent} -> AgentSettings.enabled?(agent)
+      {:error, _reason} -> true
+    end
+  end
+
+  @spec run_reviewer(data()) ::
+          {:ok, %{outcome: Outcome.t(), diff_size: non_neg_integer()}} | {:error, term()}
+  defp run_reviewer(data) do
+    with {:ok, %Outcome{} = outcome} <-
+           Driver.run(data.reviewer_adapter, reviewer_invocation(data), reviewer_driver_opts(data)),
+         {:ok, _status, diff_size} <- commit_worktree(data.worktree, reviewer_commit_message(data)) do
+      {:ok, %{outcome: outcome, diff_size: diff_size}}
+    end
+  end
+
+  @spec reviewer_invocation(data()) :: Invocation.t()
+  defp reviewer_invocation(data) do
+    %Invocation{
+      prompt: reviewer_prompt(data),
+      cwd: data.worktree.path,
+      task_id: "#{data.item.id}-review-#{data.review_iterations + 1}",
+      permission_mode: :autonomous,
+      language: project_language(data.project),
+      adapter_opts: data.reviewer_adapter_opts,
+      env: data.env
+    }
+  end
+
+  @spec reviewer_driver_opts(data()) :: keyword()
+  defp reviewer_driver_opts(data) do
+    []
+    |> put_opt(:total_timeout, data.total_timeout)
+    |> put_opt(:idle_timeout, data.idle_timeout)
+    |> put_opt(:progress_timeout, data.progress_timeout)
+  end
+
+  @spec reviewer_prompt(data()) :: String.t()
+  defp reviewer_prompt(data) do
+    """
+    You are the cross-family reviewer for a harness run.
+
+    The implementer has committed work in this SAME worktree, and the check stack is red.
+    Your job: fix inline, commit, re-run checks; end green or write a stuck-report.
+    Harness will mechanically re-run the same check stack after you exit. Your words cannot make this run done.
+
+    Implementer: #{data.item.agent}
+    Reviewer iteration: #{data.review_iterations + 1} of #{data.max_review_iterations}
+    Current commit: #{current_sha(data)}
+
+    Task spec:
+    #{empty_placeholder(task_text(data))}
+
+    Acceptance criteria:
+    #{format_acceptance_criteria(data.item.acceptance_criteria)}
+
+    Implementer transcript tail:
+    #{empty_placeholder(transcript_tail(data.transcript))}
+
+    Diff stat:
+    #{empty_placeholder(diff_stat(data))}
+
+    Full failing-check output:
+    #{empty_placeholder(failing_check_evidence(data.verdict))}
+    """
+  end
+
+  @spec transcript_tail(String.t()) :: String.t()
+  defp transcript_tail(transcript) when byte_size(transcript) <= @reviewer_transcript_tail_bytes, do: transcript
+
+  defp transcript_tail(transcript) do
+    tail =
+      binary_part(
+        transcript,
+        byte_size(transcript) - @reviewer_transcript_tail_bytes,
+        @reviewer_transcript_tail_bytes
+      )
+
+    valid_utf8_tail(tail)
+  end
+
+  # binary_part/3 can slice mid-codepoint; drop leading bytes until the tail is
+  # valid UTF-8 again (at most 3 iterations for UTF-8 input).
+  @spec valid_utf8_tail(binary()) :: binary()
+  defp valid_utf8_tail(<<>>), do: <<>>
+
+  defp valid_utf8_tail(bin) do
+    if String.valid?(bin),
+      do: bin,
+      else: valid_utf8_tail(binary_part(bin, 1, byte_size(bin) - 1))
+  end
+
+  @spec diff_stat(data()) :: String.t()
+  defp diff_stat(data) do
+    case Git.run(["diff", "--stat", "#{data.worktree.base_sha}..HEAD"], data.worktree.path) do
+      {:ok, stat} -> String.trim(stat)
+      {:error, reason} -> "diff stat unavailable: #{inspect(reason)}"
+    end
+  end
+
+  @spec reviewer_report(Outcome.t()) :: String.t()
+  defp reviewer_report(%Outcome{output: output}) when is_binary(output) do
+    output
+    |> String.trim()
+    |> case do
+      "" -> "Reviewer exited without a stuck-report."
+      text -> text
+    end
+  end
+
+  @spec reviewer_commit_message(data()) :: String.t()
+  defp reviewer_commit_message(data) do
+    "harness: reviewer iteration #{data.review_iterations} — task #{data.item.id} #{data.item.title} (run #{data.run_id})"
+  end
+
+  # NOTE: the same-agent repair-loop predicates (repairable?/1,
+  # cross_agent_repairable?/2, cross_agent_grader_available?/1, failure_class/1)
+  # were deleted when route_red_verdict/1 made the reviewer-pair path the only
+  # red-verdict route — they became unreachable, and the project compiles with
+  # --warnings-as-errors. The rest of the repair machinery is removed by the
+  # phase-15 deletion pass (Task 163).
 
   @spec grade_consultation(data()) :: {:ok, AuditReview.result()} | {:error, term()}
   defp grade_consultation(%{consultation_kind: :semantic_gate} = data), do: grade_discernment(data, :post_green)
@@ -2162,16 +2363,6 @@ defmodule Harness.Run do
     :sha256
     |> :crypto.hash(String.trim(output))
     |> Base.encode16(case: :lower)
-  end
-
-  @spec repeated_failure?(MapSet.t(term()), MapSet.t(term())) :: boolean()
-  defp repeated_failure?(previous, current) do
-    not MapSet.disjoint?(previous, current)
-  end
-
-  @spec cross_agent_repair_enabled?(data()) :: boolean()
-  defp cross_agent_repair_enabled?(data) do
-    Keyword.get(data.cross_agent_repair, :enabled, false)
   end
 
   @spec maybe_sample_in_run_discernment(state(), data()) :: handler_result()

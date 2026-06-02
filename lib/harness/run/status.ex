@@ -19,6 +19,7 @@ defmodule Harness.Run.Status do
           | :running
           | :committing
           | :verifying
+          | :reviewing
           | :consulting
           | :held
           | :done
@@ -49,6 +50,10 @@ defmodule Harness.Run.Status do
       until a red verdict drives the autonomous repair loop (see `Harness.Run`);
       a snapshot with `state: :running` and `repair_attempts > 0` is a repair
       attempt in flight.
+    * `review_iterations` — how many cross-family reviewer invocations the run
+      has made so far. `0` until a red verdict routes to the reviewer-pair path;
+      a snapshot with `state: :reviewing` is a reviewer fixing the worktree
+      inline.
     * `reason` — why the run settled or is failing, once known (see
       `t:Harness.Run.Result.reason/0`); `nil` while the run is still in flight.
     * `held?` — `true` while the run is operator-parked in `:held`.
@@ -67,6 +72,7 @@ defmodule Harness.Run.Status do
           agent_kind: Outcome.kind() | nil,
           verdict_status: :pass | :fail | nil,
           repair_attempts: non_neg_integer(),
+          review_iterations: non_neg_integer(),
           reason: Result.reason() | nil,
           held?: boolean(),
           hold_reason: :graceful | :interrupt | nil
@@ -87,6 +93,7 @@ defmodule Harness.Run.Status do
     :reason,
     :hold_reason,
     repair_attempts: 0,
+    review_iterations: 0,
     held?: false
   ]
 
@@ -116,6 +123,9 @@ defmodule Harness.Run.Status do
       agent_kind: record.agent_outcome_kind,
       verdict_status: record.verdict,
       repair_attempts: record.repair_attempts,
+      # Map.get so records persisted before the reviewer-pair fields existed
+      # decode without a KeyError — they simply report zero review iterations.
+      review_iterations: Map.get(record, :review_iterations) || 0,
       reason: record.reason
     }
   end

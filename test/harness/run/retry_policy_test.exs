@@ -11,13 +11,13 @@ defmodule Harness.Run.RetryPolicyTest do
 
   @policy RetryPolicy.new(max_retries: 2, base_delay_ms: 10, max_delay_ms: 100, multiplier: 2.0)
 
+  # NOTE (2026-06-02): the quota-detection tests that lived here are deleted.
+  # `config :harness, :retry_policy, quota_patterns: []` disables quota
+  # classification permanently (regex false-positives on verification output);
+  # FailureClass/RetryPolicy.quota_patterns are deprecated pending the
+  # phase-15 deletion pass (Task 163). Only the mechanical retry/backoff
+  # behavior keeps coverage below.
   describe "FailureClass.classify/2" do
-    test "quota exhaustion in agent output" do
-      result = failed(agent_outcome: outcome("Error: rate limit exceeded, try again in 5 hours"))
-
-      assert FailureClass.classify(result, @policy) == :quota_exhausted
-    end
-
     test "transient driver crash" do
       result = failed(reason: {:driver_crashed, :boom})
 
@@ -61,16 +61,6 @@ defmodule Harness.Run.RetryPolicyTest do
       assert FailureClass.classify(result, @policy) == :terminal
     end
 
-    test "quota takes precedence over transient driver crash when output matches" do
-      result =
-        failed(
-          reason: {:driver_crashed, :boom},
-          agent_outcome: outcome("billing_error: subscription quota exhausted")
-        )
-
-      assert FailureClass.classify(result, @policy) == :quota_exhausted
-    end
-
     test "ignores benign quota words in the middle of a long agent transcript" do
       # An agent reading source code or docs that contain quota-related words
       # is not a quota signal — quota errors only appear in the agent's
@@ -91,22 +81,6 @@ defmodule Harness.Run.RetryPolicyTest do
         )
 
       assert FailureClass.classify(result, @policy) == :terminal
-    end
-
-    test "still detects quota signals in the agent transcript tail" do
-      # Real API error envelope at the tail (Claude billing-error precedent
-      # from Task 61's dogfood run) must still classify as quota even when the
-      # transcript is long.
-      filler = String.duplicate("normal agent output line\n", 5_000)
-      transcript = filler <> ~s({"type":"result","is_error":true,"error":"billing_error"})
-
-      result =
-        failed(
-          reason: {:driver_crashed, :boom},
-          agent_outcome: outcome(transcript)
-        )
-
-      assert FailureClass.classify(result, @policy) == :quota_exhausted
     end
 
     test "ignores benign quota words in a verification check's mid-output" do
@@ -176,18 +150,6 @@ defmodule Harness.Run.RetryPolicyTest do
       end
 
       assert {:error, %Result{reason: :no_changes}, :terminal} = RetryPolicy.run(fun, @policy)
-      assert :ets.info(calls, :size) == 1
-    end
-
-    test "quota exhaustion returns fail-over on the first failure — no retry loop" do
-      calls = :ets.new(:quota_calls, [:set, :public])
-
-      fun = fn ->
-        :ets.insert(calls, {System.unique_integer([:positive]), true})
-        failed(agent_outcome: outcome("429 Too Many Requests — usage limit hit"))
-      end
-
-      assert {:failover, %Result{}, :quota_exhausted} = RetryPolicy.run(fun, @policy)
       assert :ets.info(calls, :size) == 1
     end
   end

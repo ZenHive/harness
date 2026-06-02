@@ -192,15 +192,17 @@ defmodule Harness.ObanDispatchTest do
                reason: :passed
              })
 
-    assert {:snooze, seconds} =
+    # Quota classification is disabled (quota_patterns: [], 2026-06-02): every
+    # settled failure — including spawn failures that look like rate limits —
+    # maps to :cancel, never :snooze. A settled verdict is never re-run by the
+    # queue; quota judgment moves to the reviewer pair (Task 163).
+    assert {:cancel, {:agent_spawn_failed, "429 rate limit"}} =
              Worker.to_oban_result(%Result{
                run_id: "run-quota",
                task_id: "2",
                state: :failed,
                reason: {:agent_spawn_failed, "429 rate limit"}
              })
-
-    assert is_integer(seconds) and seconds > 0
 
     assert {:cancel, :verification_red} =
              Worker.to_oban_result(%Result{
@@ -463,7 +465,7 @@ defmodule Harness.ObanDispatchTest do
     assert_received {:start_env_present?, false}
   end
 
-  test "worker maps performed terminal failures to cancel and quota failures to snooze" do
+  test "worker maps performed terminal failures to cancel" do
     project = ProjectFixture.from_repo("/tmp/harness-worker", name: "worker-project")
     assert :ok = ProjectRegistry.register(project)
 
@@ -498,19 +500,20 @@ defmodule Harness.ObanDispatchTest do
     assert {:cancel, :verification_red} =
              Worker.perform(terminal_job)
 
-    quota_result = %Result{
+    # Quota classification is disabled (quota_patterns: [], 2026-06-02): a
+    # spawn failure that looks like a rate limit is a settled failure and
+    # cancels — the queue never snooze-retries a settled run (Task 163).
+    spawn_failed_result = %Result{
       run_id: "run-quota",
       task_id: "49",
       state: :failed,
       reason: {:agent_spawn_failed, "429 rate limit"}
     }
 
-    Application.put_env(:harness, :test_worker_result, quota_result)
+    Application.put_env(:harness, :test_worker_result, spawn_failed_result)
 
-    assert {:snooze, seconds} =
+    assert {:cancel, {:agent_spawn_failed, "429 rate limit"}} =
              Worker.perform(%{terminal_job | attempt: 2})
-
-    assert is_integer(seconds) and seconds > 0
   end
 
   test "worker records and broadcasts a monitored run process crash" do

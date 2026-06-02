@@ -131,6 +131,73 @@ defmodule Harness.RunTest do
     def terminate(run), do: OSProcess.kill(run)
   end
 
+  defmodule ReviewerFixAdapter do
+    @moduledoc false
+    use Harness.AgentAdapter
+
+    alias Harness.AgentAdapter
+    alias Harness.AgentAdapter.Capabilities
+    alias Harness.AgentAdapter.Invocation
+
+    @impl AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl AgentAdapter
+    def rule_channel, do: :none
+
+    @impl AgentAdapter
+    def build_command(%Invocation{prompt: prompt}) do
+      script =
+        ~S(printf '%s' "$1" > reviewer_prompt.txt; echo fixed > repair_marker; git add reviewer_prompt.txt repair_marker; git commit -q -m "reviewer fix")
+
+      {:ok, {"/bin/sh", ["-c", script, "harness-reviewer", prompt], []}}
+    end
+  end
+
+  defmodule ReviewerStillRedAdapter do
+    @moduledoc false
+    use Harness.AgentAdapter
+
+    alias Harness.AgentAdapter
+    alias Harness.AgentAdapter.Capabilities
+
+    @impl AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl AgentAdapter
+    def rule_channel, do: :none
+
+    @impl AgentAdapter
+    def build_command(_invocation) do
+      script =
+        ~S(echo churn >> reviewer_churn.txt; git add reviewer_churn.txt; git commit -q -m "reviewer still red"; echo "STUCK: marker remains absent")
+
+      {:ok, {"/bin/sh", ["-c", script], []}}
+    end
+  end
+
+  defmodule ReviewerBreaksFormattingAdapter do
+    @moduledoc false
+    use Harness.AgentAdapter
+
+    alias Harness.AgentAdapter
+    alias Harness.AgentAdapter.Capabilities
+
+    @impl AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl AgentAdapter
+    def rule_channel, do: :none
+
+    @impl AgentAdapter
+    def build_command(_invocation) do
+      script =
+        ~S(echo fixed > repair_marker; echo bad > formatting_bad; git add repair_marker formatting_bad; git commit -q -m "reviewer bad format"; echo "STUCK: formatting check is still red")
+
+      {:ok, {"/bin/sh", ["-c", script], []}}
+    end
+  end
+
   describe "lifecycle — settling on a verdict" do
     test "settles :done and removes the worktree when verification passes" do
       result = run(checks: [check("ok", "true")])
@@ -838,67 +905,8 @@ defmodule Harness.RunTest do
     end
   end
 
-  describe "autonomous repair loop" do
-    test "a red verdict resumes the agent, and the loop settles :done once repair fixes it" do
-      {run_id, pid, repo} =
-        start_repair(adapter_opts: [command: :repair], checks: marker_checks(), max_repair_attempts: 2)
-
-      result = await_result(run_id, pid)
-
-      assert %Result{state: :done, reason: :passed, repair_attempts: 1} = result
-      assert %Verdict{status: :pass} = result.verdict
-
-      # repair_marker exists only because the resumed run saw session: :resume —
-      # proof the agent was resumed. Its content is the repair prompt the agent
-      # was handed: proof the failing checks were fed back.
-      marker = GitFixture.git!(repo, ["show", "harness/#{run_id}:repair_marker"])
-      assert marker =~ "repair attempt 1 of 2"
-      assert marker =~ "check: marker"
-    end
-
-    test "persists composed inputs distinctly for repair attempts" do
-      store = file_store()
-
-      {run_id, pid, _repo} =
-        start_repair(
-          adapter_opts: [command: :repair],
-          checks: marker_checks(),
-          max_repair_attempts: 2,
-          result_store: store
-        )
-
-      assert %Result{state: :done, reason: :passed, repair_attempts: 1} = await_result(run_id, pid)
-      assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: run_id)
-
-      assert [
-               %{attempt: 0, phase: :initial, session: nil, prompt: "do the thing"},
-               %{attempt: 1, phase: :repair, session: :resume, prompt: repair_prompt}
-             ] = record.composed_inputs
-
-      assert repair_prompt =~ "repair attempt 1 of 2"
-      assert repair_prompt =~ "check: marker"
-    end
-
-    test "the loop stops at the configured attempt cap" do
-      {run_id, pid, _repo} =
-        start_repair(adapter_opts: [command: :repair_noop], checks: marker_checks(), max_repair_attempts: 2)
-
-      result = await_result(run_id, pid)
-
-      assert %Result{state: :failed, reason: :verification_red, repair_attempts: 2} = result
-      assert %Verdict{status: :fail} = result.verdict
-    end
-
-    test "the attempt cap is configurable — 0 disables repair" do
-      {run_id, pid, _repo} =
-        start_repair(adapter_opts: [command: :repair_noop], checks: marker_checks(), max_repair_attempts: 0)
-
-      result = await_result(run_id, pid)
-
-      assert %Result{state: :failed, reason: :verification_red, repair_attempts: 0} = result
-    end
-
-    test "base-red-only verification settles without triggering repair" do
+  describe "red verdict with review disabled (max_review_iterations: 0)" do
+    test "base-red-only verification settles :base_red without invoking a reviewer" do
       repo = GitFixture.init_repo()
       File.write!(Path.join(repo, "base-red"), "")
       GitFixture.git!(repo, ["add", "base-red"])
@@ -907,65 +915,126 @@ defmodule Harness.RunTest do
       project = ProjectFixture.from_repo(repo)
       base = GitFixture.tmp_base()
 
-      opts =
-        Keyword.merge(
-          [
-            base_dir: base,
-            total_timeout: 30_000,
-            idle_timeout: 10_000,
-            lifetime_timeout: 30_000,
-            verification_timeout: 10_000,
-            terminal_linger: 100,
-            adapter_opts: [command: :repair],
-            checks: [check("base", "test", ["!", "-f", "base-red"])],
-            max_repair_attempts: 2
-          ],
-          []
-        )
+      opts = [
+        base_dir: base,
+        total_timeout: 30_000,
+        idle_timeout: 10_000,
+        lifetime_timeout: 30_000,
+        verification_timeout: 10_000,
+        terminal_linger: 100,
+        adapter_opts: [command: :write],
+        checks: [check("base", "test", ["!", "-f", "base-red"])],
+        max_repair_attempts: 0,
+        max_review_iterations: 0
+      ]
 
       {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, FakeAdapter, opts)
       result = await_result(run_id, pid)
 
-      assert %Result{state: :failed, reason: :base_red, repair_attempts: 0} = result
+      assert %Result{state: :failed, reason: :base_red, repair_attempts: 0, review_iterations: 0} = result
       assert %Verdict{status: :base_red} = result.verdict
     end
+  end
 
-    test "a non-repairable failure ends the loop without burning the attempt budget" do
-      # The resumed agent produces no diff (a quota-starved agent): the run
-      # settles :no_changes at one attempt — it does not burn all five.
-      {run_id, pid, _repo} =
-        start_repair(adapter_opts: [command: :repair_quota], checks: marker_checks(), max_repair_attempts: 5)
-
-      result = await_result(run_id, pid)
-
-      assert %Result{state: :failed, reason: :no_changes, repair_attempts: 1} = result
-    end
-
-    test "quota output during repair ends the loop without burning the attempt budget" do
-      {run_id, pid, _repo} =
-        start_repair(
-          adapter_opts: [command: :repair_quota_with_output],
-          checks: marker_checks(),
-          max_repair_attempts: 5
-        )
-
-      result = await_result(run_id, pid)
-
-      assert %Result{state: :failed, reason: :verification_red, repair_attempts: 1} = result
-      assert result.agent_outcome.output =~ "subscription quota exhausted"
-    end
-
-    test "the settled run's status snapshot carries the repair attempt count" do
-      {run_id, _pid, _repo} =
+  describe "reviewer-pair red verdict path" do
+    test "red verification invokes a cross-family reviewer and settles :done only after mechanical re-verification" do
+      {run_id, pid, repo} =
         start_repair(
           adapter_opts: [command: :repair_noop],
           checks: marker_checks(),
-          max_repair_attempts: 1,
-          terminal_linger: 2_000
+          reviewer: ReviewerFixAdapter,
+          max_review_iterations: 2,
+          max_repair_attempts: 2
         )
 
-      assert_receive {:harness_run, ^run_id, %Result{repair_attempts: 1}}, 10_000
-      assert {:ok, %Status{state: :failed, repair_attempts: 1}} = Run.status(run_id)
+      result = await_result(run_id, pid)
+
+      assert %Result{
+               state: :done,
+               reason: :passed,
+               repair_attempts: 0,
+               review_iterations: 1,
+               reviewer_adapter: ReviewerFixAdapter
+             } = result
+
+      prompt = GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_prompt.txt"])
+      assert prompt =~ "You are the cross-family reviewer for a harness run"
+      assert prompt =~ "Task spec:"
+      assert prompt =~ "Acceptance criteria:"
+      assert prompt =~ "Implementer transcript tail:"
+      assert prompt =~ "Diff stat:"
+      assert prompt =~ "Full failing-check output:"
+      assert prompt =~ "fix inline, commit, re-run checks"
+    end
+
+    test "still-red reviewer output is carried as prose when iterations are exhausted" do
+      {run_id, pid, _repo} =
+        start_repair(
+          adapter_opts: [command: :repair_noop],
+          checks: marker_checks(),
+          reviewer: ReviewerStillRedAdapter,
+          max_review_iterations: 1,
+          max_repair_attempts: 2
+        )
+
+      result = await_result(run_id, pid)
+
+      assert %Result{
+               state: :failed,
+               reason: {:review_stuck, "STUCK: marker remains absent"},
+               review_iterations: 1,
+               reviewer_adapter: ReviewerStillRedAdapter,
+               reviewer_stuck_report: "STUCK: marker remains absent",
+               repair_attempts: 0
+             } = result
+    end
+
+    test "no cross-family reviewer available settles failed without silently skipping review" do
+      Enum.each(Harness.AgentRegistry.all(), &Harness.AgentRegistry.mark_unavailable(&1, :test_unavailable))
+      on_exit(fn -> Harness.AgentRegistry.reset() end)
+
+      {run_id, pid, _repo} =
+        start_repair(
+          adapter_opts: [command: :repair_noop],
+          checks: marker_checks(),
+          max_review_iterations: 1,
+          max_repair_attempts: 2
+        )
+
+      result = await_result(run_id, pid)
+
+      assert %Result{
+               state: :failed,
+               reason: {:review_stuck, reason},
+               review_iterations: 0,
+               reviewer_adapter: nil,
+               repair_attempts: 0
+             } = result
+
+      assert reason =~ "No cross-family reviewer adapter available"
+    end
+
+    test "reviewer edits are graded by the same check stack" do
+      {run_id, pid, _repo} =
+        start_repair(
+          adapter_opts: [command: :repair_noop],
+          checks: marker_checks() ++ [check("format", "test", ["!", "-f", "formatting_bad"])],
+          reviewer: ReviewerBreaksFormattingAdapter,
+          max_review_iterations: 1,
+          max_repair_attempts: 2
+        )
+
+      result = await_result(run_id, pid)
+
+      assert %Result{
+               state: :failed,
+               reason: {:review_stuck, "STUCK: formatting check is still red"},
+               review_iterations: 1,
+               reviewer_adapter: ReviewerBreaksFormattingAdapter,
+               repair_attempts: 0
+             } = result
+
+      assert %Verdict{status: :fail} = result.verdict
     end
   end
 
@@ -1176,9 +1245,11 @@ defmodule Harness.RunTest do
       lifetime_timeout: 30_000,
       verification_timeout: 10_000,
       terminal_linger: 100,
-      # The repair loop has its own describe block; keep the base helpers
-      # single-attempt so a red verdict settles straight to :failed.
-      max_repair_attempts: 0
+      # Red-verdict handling (reviewer-pair / legacy repair) has its own
+      # describe blocks; keep the base helpers review- and repair-disabled so
+      # a red verdict settles straight to :failed.
+      max_repair_attempts: 0,
+      max_review_iterations: 0
     ]
   end
 
