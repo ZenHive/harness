@@ -4816,7 +4816,7 @@ scored_at = "2026-06-02"
 id = "157"
 phase = 11
 bundle = "autolanding"
-status = "pending"
+status = "done"
 title = "Resume/rescue orphaned in-flight runs after a BEAM restart (Oban executing-row zombie)"
 scores = { d = 3, b = 8, u = 8 }
 markers = ["bug"]
@@ -4839,5 +4839,10 @@ Surfaced during the grok agent-routing fix (the `@assignee_agents` / `agent_for_
 
 Design decisions for the implementer (not pre-decided here): `Oban.Plugins.Lifeline` rescues orphaned `executing` -> `available`, but its default `rescue_after` (60 min) is far too slow for harness's dev restart cadence — so a shorter Lifeline interval AND/OR an immediate boot-time sweep (sibling to the existing worktree orphan sweep in `Harness.Application`, application.ex:30) is likely wanted. A rescued `Run.Worker.perform/1` re-runs the whole pipeline (re-ingest + re-claim + fresh run); confirm that's safe and idempotent against a task already `in_progress` (the claim is best-effort per worker.ex; `ready`/`next` already skip `in_progress`).
 """
+implemented = "Boot-time reconcile sweep in Harness.Oban: a temporary Task child (after Oban, before QueueBootstrap) flips orphaned executing Run.Worker rows back to available when Run.Supervisor.list_runs() is empty, so persisted jobs re-run after a BEAM restart instead of zombie-ing. Guarded against live runs; rescued rows conflict with (not duplicate) re-dispatch. Two :integration regression tests. Chose boot sweep over Oban.Plugins.Lifeline (AC allowed and/or); verifier was killed by a BEAM crash mid-grade, hand-verified via check.fast + targeted integration tests pre- and post-merge."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-02"
 scored_at = "2026-06-02"
+done_at = "2026-06-02"
+shipped_in = "cfbd5ef"

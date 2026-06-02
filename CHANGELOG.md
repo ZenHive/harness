@@ -271,6 +271,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Orphaned `executing` Run.Worker rows are rescued at boot instead of
+  zombie-ing forever (Task 157, codex delivery).** A BEAM restart mid-run used
+  to strand the run's Oban job row in `executing` — never completing, blocking
+  re-dispatch via the poller's unique gate, and pinning the rmap task
+  `in_progress`. `Harness.Oban` now runs a boot-time reconcile sweep (a
+  temporary Task child, after Oban / before QueueBootstrap) that flips
+  `executing` `Harness.Run.Worker` rows back to `available` when no live run
+  gen_statem exists, so the persisted job re-runs on the fresh node. The sweep
+  is guarded by `Run.Supervisor.list_runs/0` — rows are never touched while any
+  run is live — and a rescued row conflicts with (rather than duplicates) a
+  re-dispatch of the same task.
+
 - **Autonomous dispatch can now reach every registered agent, not just
   claude/codex/cursor.** Two stale 3-agent gates blocked grok/antigravity/pi end
   to end — surfaced live when an rmap `grok` task routed correctly but its run
