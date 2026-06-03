@@ -7206,7 +7206,7 @@
       "phase": 16,
       "bundle": "agent-gate",
       "milestone": "v0_12",
-      "status": "pending",
+      "status": "done",
       "title": "Settled-:failed run teardown kills the Oban worker before {:cancel} returns -> wrongful retry storm (up to max_attempts=20)",
       "scores": {
         "d": 4,
@@ -7243,7 +7243,10 @@
       ],
       "body": "Discovered 2026-06-03 by the first live dogfood dispatch (rmap task 42, Oban job 115). worker.ex:149 maps a settled %Result{state: :failed} to {:cancel, reason} so a rejected/review_stuck run discards the Oban job WITHOUT retry (crash-only design). But the run is started under RunSupervisor (DynamicSupervisor) and the worker only Process.monitor/1's it, yet on run teardown the run kills its linked MCP-transport/port processes with :killed (observed: 5x 'MCP transport details: %{reason: :killed}' at the exact instant the worker died), and that :killed propagated to the Oban worker task as '(EXIT from #PID<...>) killed' BEFORE result_to_oban could return {:cancel}. Oban cannot distinguish that kill from a genuine crash, so it recorded a job error and retried. With Oban.Worker max_attempts: 20 (worker.ex:6), one stuck review re-dispatched the entire ~16-min / ~5M-token claude run; run-1780488946905-b4d8528e settled :review_stuck, then attempt 3 (run-1780489665468-c6c70259) re-ran task 42 from scratch, blind. EVIDENCE: run_records row for run-1780488946905-b4d8528e shows state=failed, reason={:review_stuck,...}, agent_outcome_kind={:timed_out,:idle}, duration_ms=949457; Oban job 115 errors=[{attempt:2, error: '** (EXIT from #PID<0.754.0>) killed'}]. This is the mechanical-substrate defect class the agent-gate explicitly owns (kill propagation / Oban retry arithmetic), NOT a judgment call. Note @max_mechanical_attempts caps SETUP-failure retries via setup_failure_disposition, but an in-perform process kill bypasses that path and falls to raw Oban max_attempts. SECOND MANIFESTATION (2026-06-03, Oban job 118, run-1780493075738-47851ce5, task 183 smoke test) — WORSE than a wasteful retry: a retry/rescue invocation ran Worktree.cleanup_for_run/2 (worktree.ex:424, the ONLY git-branch deleter in the codebase: `git worktree remove --force` + `git branch -D`) against a STILL-LIVE run, destroying its worktree dir AND harness/<run-id> branch mid-flight. Codex implemented cleanly (14-line diff, mix precommit green=1229 passed, exit 0) and the run reached :reviewing with Cursor correctly auto-selected (Pi-exclusion working); the reviewer's Driver.run then hit {:worktree_missing} -> {:review_stuck, 'Reviewer failed to run'}, and terminal retain failed with {:marker_write_failed, .harness-retained, :enoent} (dir already gone). RULED OUT: codex's own 20 commands (none deleted the worktree), and the full test suite (worktree/sweeper tests are GitFixture-isolated to temp repos, never the real checkout). So the deleter is harness runtime; cleanup_for_run is the unique dir+branch deleter. worker.ex cleanup_prior_attempt only calls it on a {:start_run_failed,_} prior reason and THIS run's start_run succeeded — so the trigger is a separate attempt/orphan-rescue re-attempting job 118 while attempt-1's gen_statem was still alive (suspects: oban.ex rescue_orphaned_run_jobs / rescue_executing_run_jobs, oban.ex:147/225). ADDED INVARIANT: cleanup_for_run (and any retry/rescue) MUST refuse to act on a run_id whose gen_statem is still alive (liveness-check RunSupervisor/Registry before remove+branch-delete); and a one-shot Dispatch.task should not ride the 20-attempt retry path at all.",
       "created_at": "2026-06-03",
+      "done_at": "2026-06-03",
       "scored_at": "2026-06-03",
+      "implemented": "Crash-only dispatch hardening (criteria 1-4; criterion 5's cleanup_for_run liveness guard shipped in 5d1d691). Found there is NO link path from Run.Worker to the run's kill blast radius: the worker MONITORS (never links) the gen_statem, which drives agents in async_nolink tasks — a settling run's :killed teardown (OSProcess.kill + Port.close) cannot EXIT the worker. Documented monitor-not-link as the guard; lowered Oban max_attempts 20->5 (@max_dispatch_attempts = @max_mechanical_attempts) so an uncaught worker crash can't re-run a multi-hour job at the old ceiling (snoozes self-bump max_attempts, so setup-retry path unaffected). Regression test: a :failed run that brutally kills a linked helper still yields {:cancel}, no second attempt.",
+      "delivered_by": "claude",
       "cross_repo": []
     },
     {
@@ -7358,7 +7361,7 @@
       "id": "184",
       "phase": 6,
       "bundle": "deferred",
-      "status": "in_progress",
+      "status": "done",
       "title": "Expand the descripex/MCP orchestrator surface (inventory first, then read/observe, then a deliberate write subset)",
       "scores": {
         "d": 3,
@@ -7395,10 +7398,15 @@
         "lib/harness/project_registry.ex",
         "skills/harness-driver/SKILL.md"
       ],
+      "shipped_in": "beaaa82",
       "body": "The primary user is an AI orchestrator (CLAUDE.md), driving harness via the descripex `api()`-annotated surface exposed as MCP (Harness.Manifest -> Harness.Dashboard.MCPServer) and the in-process Harness.Chat.Tools dispatcher. Today an orchestrator can self-serve only the subset currently annotated; everything else needs hand-written chat-tool glue or a human in IEx. Demand signal is direct, not speculative: the AI user asked for this during the 2026-06-03 #180 session — for an AI-native orchestrator the primary consumer IS the demand.\n\nDo it in three steps, cheapest first:\n\n1. INVENTORY (do first). Enumerate what is currently `api()`-annotated / MCP-callable vs. what an orchestrator would want callable. Produce the gap list BEFORE annotating anything — we do not yet know the actual gap.\n\n2. READ/OBSERVE surface — expand generously. Roadmap browse, run status + transcript, AgentKPI + CapabilityScore rollups, project/registry listing. These are pure-mechanical, low-blast-radius, high-leverage; annotate them all.\n\n3. WRITE subset — expose DELIBERATELY, not blanket. Dispatch, cancel, hold/steer/resume, project registration. Each is a real action an autonomous agent can trigger; pick the considered set and document the omissions.\n\nGuardrails (agent-gate doctrine — see CLAUDE.md \"Judgment Lives in Agents\"):\n- descripex describes MECHANICAL surfaces only. NEVER annotate an `api()` that returns a JUDGMENT (is-this-done / is-this-good / whose-fault / should-this-merge). Expose \"merge this branch\" (mechanical), never \"should this merge?\" (judgment). The gate is not \"how much descripex\" but \"expose mechanics, let the agent supply judgment.\"\n- Scope to ORCHESTRATOR agents only. In-run implementer/reviewer agents (working in a worktree on the target project) must NOT get the harness-control MCP surface — handing the agent implementing a task the ability to cancel/dispatch/steer runs is a footgun and a recursion risk.\n- Each `api()` is a contract: any change to the public driver surface must update skills/harness-driver/SKILL.md.\n- Watch context bloat: a fat MCP tool list costs tokens on every orchestrator turn. If the surface grows large, prefer a deferred/search-tool pattern (like harness's own ToolSearch) over dumping every tool into every context.\n\nParked in phase 6 (deferred) on purpose: this is a high-leverage ENABLER, not a blocker — the agent-gate loop works today without it (validated end-to-end on the 2026-06-03 smoke test). Revisit after the active v0_12 cut; left unpinned from any milestone so it does not inflate v0_12.\n",
       "created_at": "2026-06-03",
       "started_at": "2026-06-03",
+      "done_at": "2026-06-03",
       "scored_at": "2026-06-03",
+      "implemented": "Agent-delivered (claude impl, cross-family reviewer approved, ratings 9/9/9/9). Added 4 mechanical write tools to Harness.Dispatch (dispatch-hold/steer/resume/register_project), each rationale'd; read/observe surface confirmed already complete (generic over Manifest.mcp_tools/1, no manifest/chat.tools/mcp_server edits needed); docs/orchestrator-surface-inventory.md inventory + 2 gaps; SKILL.md updated; in-run isolation unchanged. No judgment apis. Landed locally (cherry-pick onto development).",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -7406,7 +7414,7 @@
       "phase": 16,
       "bundle": "agent-gate",
       "milestone": "v0_12",
-      "status": "pending",
+      "status": "done",
       "title": "Same-BEAM :DOWN reaper reclaims the worktree+branch a live-run cleanup-refusal leaks when that run later crashes",
       "scores": {
         "d": 3,
@@ -7444,7 +7452,10 @@
       ],
       "body": "Surfaced by the audit of commit 5d1d691 (.audit/5d1d691-liveness-guard-cleanup.md, finding #1, pri 6, worktree.ex:443). The Task-180 liveness guard makes cleanup_for_run/2 correctly REFUSE to remove the worktree+branch of a run whose gen_statem is still alive (fixing the job-118 live-worktree-destruction). That refusal trades a catastrophic failure (destroying a live checkout) for a recoverable one (a leaked worktree) — but the recovery today is BOOT-ONLY: if the refused run then crashes via the worker's crashed-result path (run/worker.ex:192-201, the {:DOWN,...} branch — no finish_worktree/2), its worktree dir + harness/<run-id> branch survive until the next Harness.Worktree.Sweeper pass at boot (worktree/sweeper.ex:46-58). A long-running harness node accumulates leaked worktrees between boots. There is no same-BEAM Run.Registry / Run.Supervisor :DOWN reaper to close the gap within the node's lifetime.\n\nCRITICAL NUANCE (the reason this is design work, not a one-liner): a reaper MUST distinguish a *crashed* run (no settled Result — reclaim the worktree) from a *settled-:failed* run (reject / review_stuck — RETAIN the worktree+branch by design, so a human/agent can salvage the rejected work per docs/dogfooding-workflow.md). A naive \"reap on any :DOWN\" would destroy exactly the retained-for-salvage worktrees the agent-gate intends to keep. So the reaper needs the settled-vs-crashed signal (e.g. the run records its terminal disposition before exit, or the monitor correlates against the ResultStore record / a retained-marker file) before deleting anything.\n\nThis is mechanical-substrate lifecycle work the agent-gate explicitly owns (worktrees, git, process monitoring) — NOT a judgment call. Complements, does not replace, the boot Sweeper.\n",
       "created_at": "2026-06-03",
+      "done_at": "2026-06-03",
       "scored_at": "2026-06-03",
+      "implemented": "Harness.Worktree.Reaper GenServer (same-BEAM crash reaper). Run tracks at worktree-activate (run.ex dispatched->running), untracks in settle/2. On an ABNORMAL :DOWN it reaps via Worktree.cleanup_for_run iff not retained? — distinguishing crashed (reclaim) from settled-:failed (retain for salvage); idempotent so it can't double-free with the boot Sweeper. Closes the within-node leak gap the boot Sweeper only covers across restarts. Gated by :worktree,:reap_on_crash (off in test). 4 tests: crash reaps worktree+branch, retained kept, :normal kept, untracked kept.",
+      "delivered_by": "claude",
       "cross_repo": []
     }
   ]

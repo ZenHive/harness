@@ -46,9 +46,24 @@ defmodule Harness.Application do
       repo() ++
       [
         Harness.ProjectRegistry,
-        {Task.Supervisor, name: Harness.Run.TaskSupervisor},
-        Harness.Run.Supervisor
-      ] ++ oban() ++ sweeper() ++ dashboard() ++ mcp_server()
+        {Task.Supervisor, name: Harness.Run.TaskSupervisor}
+      ] ++ reaper() ++ [Harness.Run.Supervisor] ++ oban() ++ sweeper() ++ dashboard() ++ mcp_server()
+  end
+
+  # Same-BEAM crash reaper (Task 185): reclaims a worktree+branch a run leaks
+  # when it crashes before settling (the boot Sweeper is the cross-restart
+  # backstop; this closes the within-node gap). Started before Run.Supervisor so
+  # every run can track itself the moment its worktree activates. Disabled in the
+  # test env (config/config.exs) — Reaper tests start it explicitly.
+  @spec reaper() :: [module()]
+  defp reaper do
+    worktree = Application.get_env(:harness, :worktree, [])
+
+    if Keyword.get(worktree, :reap_on_crash, true) do
+      [Harness.Worktree.Reaper]
+    else
+      []
+    end
   end
 
   @spec repo() :: [module()]

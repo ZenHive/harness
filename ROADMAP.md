@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (2 of 8 done · 0 in progress)
+**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (4 of 8 done · 0 in progress)
 
-**Last shipped:** Task 175 — Agent-gate workflow rebuild: reviewer AI is THE gate, no mechanical verification anywhere, Task 176 — Post-merge audit agent: per-land enqueue, third-family auditor, audit(...) commits ff-pushed on 2026-06-03
+**Last shipped:** Task 175 — Agent-gate workflow rebuild: reviewer AI is THE gate, no mechanical verification anywhere, Task 176 — Post-merge audit agent: per-land enqueue, third-family auditor, audit(...) commits ff-pushed, Task 180 — Settled-:failed run teardown kills the Oban worker before {:cancel} returns -> wrongful retry storm (up to max_attempts=20), Task 185 — Same-BEAM :DOWN reaper reclaims the worktree+branch a live-run cleanup-refusal leaks when that run later crashes on 2026-06-03
 
-**Up next:** Task 180 — Settled-:failed run teardown kills the Oban worker before {:cancel} returns -> wrongful retry storm (up to max_attempts=20) [D:4/B:8/U:8 → Eff:2.0] 🎯
+**Up next:** Task 181 — Reviewer can finish work but skip writing .harness/review.json and idle-timeout -> run lost to :review_stuck [D:3/B:6/U:6 → Eff:2.0] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -83,7 +83,7 @@
 | Task 140 | ⬜ | 🎁 **deferred** · Chat session store: behaviour seam + Postgres backend [D:3/B:2/U:2 → Eff:0.67] ⚠️ |
 | Task 141 | ✅ | 🎁 **deferred** · Persist runtime ProjectRegistry registrations to Postgres [D:2/B:2/U:2 → Eff:1.0] 📋 |
 | Task 142 | ⛔ | 🎁 **deferred** · Consolidate agent/cron settings term files into a Postgres key-value store [D:2/B:1/U:1 → Eff:0.5] ⚠️ |
-| Task 184 | 🔄 | 🎁 **deferred** · Expand the descripex/MCP orchestrator surface (inventory first, then read/observe, then a deliberate write subset) [D:3/B:7/U:5 → Eff:2.0] 🎯 |
+| Task 184 | ✅ | 🎁 **deferred** · Expand the descripex/MCP orchestrator surface (inventory first, then read/observe, then a deliberate write subset) [D:3/B:7/U:5 → Eff:2.0] 🎯 |
 <!-- TASKS:END -->
 
 ---

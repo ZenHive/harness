@@ -1,9 +1,28 @@
 defmodule Harness.Run.Worker do
   @moduledoc """
   Oban worker that turns a persisted job row into a supervised harness run.
+
+  ## Crash-only retry contract (Task 180)
+
+  `perform/1` *monitors* — never *links* — the run gen_statem (`run_once/4` via
+  `Process.monitor/1`), and the run drives its agents in `async_nolink` tasks
+  with no BEAM link back to this worker. So when a settling run tears its agent
+  down (`OSProcess.kill/1` = `System.cmd("kill", ...)` + `Port.close/1`), the
+  `:killed` blast radius cannot propagate an EXIT into this worker process: a
+  settled `:failed` result returns `{:cancel, reason}` and a pre-settle
+  gen_statem crash returns `{:run_crashed, reason}` → `{:cancel}` — both terminal,
+  never re-dispatched. The monitor-not-link insulation IS the guard; there is no
+  link path to sever. `@max_dispatch_attempts` therefore bounds ONLY a genuine
+  uncaught worker crash (a transient exception before `perform/1` returns), so a
+  stuck job can never re-run a multi-hour agent run at the old 20-attempt ceiling.
   """
 
-  use Oban.Worker, queue: :default, max_attempts: 20
+  # Crash-only dispatch ceiling (Task 180), unified with @max_mechanical_attempts.
+  # Snoozes self-increment max_attempts (Oban 2.23 worker.ex:273), so the setup
+  # snooze-retry path is unaffected by lowering this — it caps only uncaught
+  # worker crashes that Oban would otherwise retry up to the default 20.
+  @max_dispatch_attempts 5
+  use Oban.Worker, queue: :default, max_attempts: @max_dispatch_attempts
 
   alias Harness.AgentRegistry
   alias Harness.Dashboard.RunFeed
@@ -25,8 +44,9 @@ defmodule Harness.Run.Worker do
 
   # Hard ceiling on mechanical (setup-failure) retries. Snoozes do not consume
   # Oban's max_attempts, so without this a permanently broken environment would
-  # snooze forever.
-  @max_mechanical_attempts 5
+  # snooze forever. Unified with the crash-only dispatch ceiling so both bound at
+  # the same attempt count.
+  @max_mechanical_attempts @max_dispatch_attempts
 
   @type args :: %{
           required(String.t()) => String.t()

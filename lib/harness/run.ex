@@ -103,6 +103,7 @@ defmodule Harness.Run do
   alias Harness.TokenUsage.GrokSession
   alias Harness.Worktree
   alias Harness.Worktree.Isolation
+  alias Harness.Worktree.Reaper
   alias Oban.Job
 
   require Logger
@@ -515,6 +516,10 @@ defmodule Harness.Run do
 
     with :ok <- Worktree.activate(worktree),
          :ok <- Isolation.validate(data.adapter) do
+      # Crash reaper (Task 185): once the worktree is live, a hard crash of this
+      # gen_statem before settle would leak it; the reaper monitors us and reaps
+      # on an abnormal :DOWN. settle/2 untracks once the worktree is finalized.
+      Reaper.track(self(), data.run_id, worktree.path, worktree.repo)
       {:next_state, :running, data}
     else
       {:error, {:worktree_isolation_unsupported, _adapter, _message} = reason} ->
@@ -1094,6 +1099,9 @@ defmodule Harness.Run do
     data = %{data | result: result}
     persist_run_record(data, result)
     finish_worktree(data.worktree, terminal_state)
+    # Worktree is finalized (removed on success / retained on failure) — stop the
+    # crash reaper from monitoring this settled run.
+    Reaper.untrack(data.run_id)
     notify_subscriber(data.subscriber, data.run_id, result)
     RunFeed.broadcast_settled(status_snapshot(terminal_state, data))
     maybe_enqueue_landing(data, terminal_state)

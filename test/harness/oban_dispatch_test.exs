@@ -213,6 +213,67 @@ defmodule Harness.ObanDispatchTest do
              })
   end
 
+  # Task 180: the run gen_statem is monitored (Process.monitor), never linked,
+  # and drives its agents in async_nolink tasks — so a settling :failed run that
+  # brutally kills its own linked helper (standing in for the MCP-transport /
+  # agent-port :killed blast radius) cannot propagate an EXIT into the worker.
+  # perform/1 returns {:cancel} (terminal, no re-dispatch) instead of dying with
+  # "(EXIT from ...) killed" and being retried up to max_attempts.
+  test "settled :failed run that brutally kills a linked helper still cancels the job (no retry storm)" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-teardown-kill", name: "teardown-kill")
+    assert :ok = ProjectRegistry.register(project)
+
+    on_exit(fn -> Application.delete_env(:harness, :roadmap_mark_pending) end)
+
+    Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts -> {:ok, item("42", :claude)} end)
+    Application.put_env(:harness, :roadmap_mark_pending, fn _item, _project -> send(parent, :reverted) end)
+
+    Application.put_env(:harness, :run_starter, fn %Item{} = item, _run_project, _adapter, opts ->
+      send(parent, :start_run_called)
+      run_id = "run-teardown-kill"
+      subscriber = Keyword.fetch!(opts, :subscriber)
+
+      pid =
+        spawn(fn ->
+          # The run's teardown blast radius: a helper linked to the run pid,
+          # standing in for the MCP transport / agent port the run kills at settle.
+          helper = spawn_link(fn -> Process.sleep(:infinity) end)
+
+          send(
+            subscriber,
+            {:harness_run, run_id,
+             %Result{run_id: run_id, task_id: item.id, state: :failed, reason: {:review_rejected, "teardown-kill"}}}
+          )
+
+          # Brutally kill the linked helper; :killed propagates to this run pid
+          # too (no trap_exit), so the worker's monitor also sees {:DOWN, :killed}.
+          Process.exit(helper, :kill)
+        end)
+
+      {:ok, run_id, pid}
+    end)
+
+    # The worker survives the blast radius and reports the settled verdict as a
+    # terminal cancel — a linked-helper kill never reaches this (test) process.
+    assert {:cancel, {:review_rejected, "teardown-kill"}} =
+             Worker.perform(%Oban.Job{
+               id: 118,
+               attempt: 2,
+               args: %{
+                 "project_name" => "teardown-kill",
+                 "item_id" => "42",
+                 "adapter_module" => "Elixir.Harness.AgentAdapter.Claude",
+                 "run_id" => "run-teardown-kill"
+               }
+             })
+
+    # Settled failure reverts the task to pending exactly once — no second attempt.
+    assert_received :start_run_called
+    assert_received :reverted
+    refute_received :start_run_called
+  end
+
   test "worker performs a job through project lookup, roadmap ingestion, and run startup" do
     parent = self()
     project = ProjectFixture.from_repo("/tmp/harness-worker", name: "worker-project")

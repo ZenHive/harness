@@ -85,6 +85,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`CapabilityScore.corpus_version/1` fingerprint), Q4 (vendor the unfamiliar
   lib). The corpus repo itself and the live cross-adapter scoring run are the
   remaining host-side work on Task 151.
+- **`Harness.Worktree.Reaper` — same-BEAM crash reaper (Task 185, hand-built).**
+  A run that crashes before settle never reaches `Worktree.finish/3`, and the
+  `cleanup_for_run/2` liveness guard (Task 180) correctly refuses to touch a live
+  run's checkout — so a crash of a refused-cleanup run would leak its worktree +
+  `harness/<run-id>` branch until the next boot `Harness.Worktree.Sweeper` pass.
+  The reaper monitors each run (`Harness.Run` tracks at worktree-activate, untracks
+  at settle) and, on an **abnormal** `:DOWN`, runs the Sweeper's reap — keeping
+  `retained?` (settled-`:failed`, kept-for-salvage) worktrees, reclaiming only true
+  crash orphans. Closes the within-node gap the boot Sweeper only covers across
+  restarts; gated by `:worktree, :reap_on_crash` (off in test).
+
+### Fixed
+
+- **Crash-only dispatch: a settled `:failed` run can never trigger a retry storm
+  (Task 180, hand-built).** `Harness.Run.Worker` *monitors* — never *links* — the
+  run gen_statem, which drives its agents in `async_nolink` tasks, so a settling
+  run's agent teardown (`OSProcess.kill/1` + `Port.close/1`) cannot propagate a
+  `:killed` EXIT into the worker: a settled `:failed` → `{:cancel}` and a pre-settle
+  crash → `{:run_crashed}` → `{:cancel}`, both terminal. `max_attempts` is lowered
+  from 20 to `@max_dispatch_attempts` (= `@max_mechanical_attempts`, 5) so a genuine
+  uncaught worker crash can't re-run a multi-hour agent run at the old ceiling
+  (snoozes self-increment `max_attempts`, so the setup-retry path is unaffected).
+- **Per-job orphan rescue (5d1d691 audit follow-up).** `Harness.Oban.rescue_orphaned_run_jobs/0`
+  now rescues each `executing` `Run.Worker` job whose `run_id` is **not** in the
+  live registry, instead of refusing the whole rescue when any one run is live —
+  a live run no longer blocks recovering unrelated orphaned jobs from a prior
+  crashed boot.
 
 ### Changed
 

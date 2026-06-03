@@ -141,7 +141,8 @@ config :harness, :reviewer_exclude, [:pi]
 config :harness, :worktree,
   base_dir: Path.expand("~/_DATA/worktrees/.harness"),
   retain_on_failure: true,
-  sweep_on_boot: true
+  sweep_on_boot: true,
+  reap_on_crash: true
 
 config :harness, ecto_repos: [Harness.Repo]
 
@@ -191,5 +192,6 @@ if config_env() == :test do
 
   config :harness, :worktree,
     base_dir: Path.join(System.tmp_dir!(), "harness_worktrees_test"),
-    sweep_on_boot: false
+    sweep_on_boot: false,
+    reap_on_crash: false
 end
