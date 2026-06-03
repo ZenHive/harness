@@ -385,6 +385,23 @@ defmodule Harness.RunTest do
       assert %Result{state: :failed, reason: {:review_stuck, report}} = result
       assert report =~ "same_family_reviewer"
     end
+
+    test "an agent in :reviewer_exclude is never auto-selected as the gate (:pi excluded by default)" do
+      # A cross-family reviewer is normally auto-selected from the registry;
+      # excluding every agent via :reviewer_exclude removes them all and settles
+      # review_stuck rather than handing the gate to an excluded agent. Proves
+      # the denylist — not availability — gates selection. :pi ships excluded
+      # by default (config :harness, :reviewer_exclude) until OSS models are
+      # trusted to review; this asserts the mechanism that enforces it.
+      excluded = Enum.map(Harness.AgentRegistry.agents(), fn {agent, _module} -> agent end)
+      Application.put_env(:harness, :reviewer_exclude, excluded)
+      on_exit(fn -> Application.put_env(:harness, :reviewer_exclude, [:pi]) end)
+
+      result = run(reviewer: nil)
+
+      assert %Result{state: :failed, reason: {:review_stuck, report}, reviewer_adapter: nil} = result
+      assert report =~ "No cross-family reviewer adapter available"
+    end
   end
 
   describe "worktree isolation" do

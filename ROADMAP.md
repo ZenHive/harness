@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (2 of 4 done · 0 in progress)
+**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (2 of 7 done · 0 in progress)
 
 **Last shipped:** Task 175 — Agent-gate workflow rebuild: reviewer AI is THE gate, no mechanical verification anywhere, Task 176 — Post-merge audit agent: per-land enqueue, third-family auditor, audit(...) commits ff-pushed on 2026-06-03
 
-**Up next:** Task 177 — Reviewer KPI ratings feed AgentKPI/CapabilityScore rollups + reviewer rejection-rate tracking [D:3/B:6/U:5 → Eff:1.83] 🚀
+**Up next:** Task 180 — Settled-:failed run teardown kills the Oban worker before {:cancel} returns -> wrongful retry storm (up to max_attempts=20) [D:4/B:8/U:8 → Eff:2.0] 🎯
 <!-- FOCUS:END -->
 
 ---

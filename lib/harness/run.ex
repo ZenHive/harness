@@ -1429,7 +1429,22 @@ defmodule Harness.Run do
   defp reviewer_dispatchable?(module) do
     AgentRegistry.available?(module) and
       AgentRegistry.installed?(module) and
-      reviewer_enabled?(module)
+      reviewer_enabled?(module) and
+      not reviewer_excluded?(module)
+  end
+
+  # Reviewer-eligibility denylist, distinct from the implementer-level
+  # AgentSettings.enabled? flag: an agent here may still implement, it just
+  # can't be picked (auto or explicit) as THE gate. Defaults to [:pi] — Pi/OSS
+  # models are not yet trusted to run the checks + write a sound verdict (see
+  # Task 181). TODO(Task 182): replace this static config with the persisted,
+  # UI-editable per-agent reviewer-eligibility toggle.
+  @spec reviewer_excluded?(module()) :: boolean()
+  defp reviewer_excluded?(module) do
+    case AgentRegistry.agent_for_module(module) do
+      {:ok, agent} -> agent in Application.get_env(:harness, :reviewer_exclude, [:pi])
+      {:error, _reason} -> false
+    end
   end
 
   @spec explicit_reviewer_dispatchable?(module()) :: boolean()

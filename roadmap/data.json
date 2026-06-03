@@ -7174,6 +7174,157 @@
       "implemented": "Behaviour formalized: Harness.Dashboard.Transcript.Parser now defines @callback new/0, feed/2, finalize/1. The 5 NDJSON parsers (Claude/Codex/Cursor/Grok/Pi) 'use' it via a __using__ macro that generates all three over a new Harness.LineParser (extracted NDJSON line-buffer+Jason.decode loop); Passthrough declares @behaviour with hand-written @impl. StreamParser kept separate (chat domain, bare-string vocab) but also migrated onto LineParser. behaviour_candidate smell cleared; all 37 parser/stream tests pass. Hand-built in the reach/ex_dna cleanup pass.",
       "delivered_by": "claude",
       "cross_repo": []
+    },
+    {
+      "id": "179",
+      "phase": 15,
+      "bundle": "reviewer-pair",
+      "status": "superseded",
+      "title": "SMOKE: add a one-sentence summary line to Harness.LineBuffer @moduledoc",
+      "scores": {
+        "d": 1,
+        "b": 1,
+        "u": 1
+      },
+      "eff": 1.0,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "Exactly one sentence added to the Harness.LineBuffer @moduledoc; no code/behavior change",
+        "mix precommit.full stays green (format, compile --warnings-as-errors, credo, doctor, tests, dialyzer)"
+      ],
+      "body": "Throwaway live-dispatch smoke task (agent-gate pipeline validation, 2026-06-03). Append exactly one clarifying sentence to the top of the Harness.LineBuffer @moduledoc noting it is the NDJSON line-accumulator used by the transcript parsers and Chat stream parser. Doc-only, no behavior change. This task will be marked superseded and its worktree discarded after the smoke run — it exists only to exercise dispatch -> implement -> review -> verdict end to end.",
+      "created_at": "2026-06-03",
+      "started_at": "2026-06-03",
+      "scored_at": "2026-06-03",
+      "cross_repo": []
+    },
+    {
+      "id": "180",
+      "phase": 16,
+      "bundle": "agent-gate",
+      "milestone": "v0_12",
+      "status": "pending",
+      "title": "Settled-:failed run teardown kills the Oban worker before {:cancel} returns -> wrongful retry storm (up to max_attempts=20)",
+      "scores": {
+        "d": 4,
+        "b": 8,
+        "u": 8
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "A settled :failed run (reject or review_stuck) results in the Oban job reaching a terminal non-retry state (cancelled/discarded) even when run teardown kills linked processes - no re-dispatch of the same task",
+        "Identify and sever whatever link path lets the run-teardown :killed reach the Oban worker task (decouple the worker's await from the run's kill blast radius, e.g. trap/convert the kill to {:cancel}, or stop subscribing via a linked pid), or guard the worker so a post-settle kill cannot override an already-determined {:cancel}",
+        "max_attempts for dispatch jobs reflects crash-only intent (a settled failure never retries; only genuine pre-settle crashes do, bounded by @max_mechanical_attempts)",
+        "Regression test: a run that settles :failed while its teardown brutally kills a monitored/linked helper process yields a cancelled Oban job and exactly one run record - no second attempt"
+      ],
+      "out_of_scope": [
+        "The reviewer-not-writing-review.json root cause (separate task)",
+        "Changing the reviewer verdict artifact contract"
+      ],
+      "files_to_modify": [
+        "lib/harness/run/worker.ex",
+        "lib/harness/run.ex"
+      ],
+      "touches": [
+        "lib/harness/run/worker.ex",
+        "lib/harness/run.ex",
+        "lib/harness/run/supervisor.ex",
+        "lib/harness/oban.ex"
+      ],
+      "body": "Discovered 2026-06-03 by the first live dogfood dispatch (rmap task 42, Oban job 115). worker.ex:149 maps a settled %Result{state: :failed} to {:cancel, reason} so a rejected/review_stuck run discards the Oban job WITHOUT retry (crash-only design). But the run is started under RunSupervisor (DynamicSupervisor) and the worker only Process.monitor/1's it, yet on run teardown the run kills its linked MCP-transport/port processes with :killed (observed: 5x 'MCP transport details: %{reason: :killed}' at the exact instant the worker died), and that :killed propagated to the Oban worker task as '(EXIT from #PID<...>) killed' BEFORE result_to_oban could return {:cancel}. Oban cannot distinguish that kill from a genuine crash, so it recorded a job error and retried. With Oban.Worker max_attempts: 20 (worker.ex:6), one stuck review re-dispatched the entire ~16-min / ~5M-token claude run; run-1780488946905-b4d8528e settled :review_stuck, then attempt 3 (run-1780489665468-c6c70259) re-ran task 42 from scratch, blind. EVIDENCE: run_records row for run-1780488946905-b4d8528e shows state=failed, reason={:review_stuck,...}, agent_outcome_kind={:timed_out,:idle}, duration_ms=949457; Oban job 115 errors=[{attempt:2, error: '** (EXIT from #PID<0.754.0>) killed'}]. This is the mechanical-substrate defect class the agent-gate explicitly owns (kill propagation / Oban retry arithmetic), NOT a judgment call. Note @max_mechanical_attempts caps SETUP-failure retries via setup_failure_disposition, but an in-perform process kill bypasses that path and falls to raw Oban max_attempts.",
+      "created_at": "2026-06-03",
+      "scored_at": "2026-06-03",
+      "cross_repo": []
+    },
+    {
+      "id": "181",
+      "phase": 16,
+      "bundle": "agent-gate",
+      "milestone": "v0_12",
+      "status": "pending",
+      "title": "Reviewer can finish work but skip writing .harness/review.json and idle-timeout -> run lost to :review_stuck",
+      "scores": {
+        "d": 3,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "Reviewer prompt/playbook instructs the reviewer that writing .harness/review.json is the mandatory FINAL action of the review, before exiting, even when it made fixes - with the exact schema {verdict, report, ratings}",
+        "Reviewing-phase idle/total timeout accounts for the time a reviewer needs to run the project check_command (cargo test / mix precommit.full) without going idle-killed mid-check, or the check run resets the idle watchdog",
+        "When the reviewer commits changes but writes no verdict, the failure remains a loud :review_stuck (no inferring approve from a clean diff) - assert this stays true",
+        "A live or simulated reviewer run that makes fixes ends with a valid review.json and the run settles on its verdict, not :review_stuck"
+      ],
+      "out_of_scope": [
+        "The Oban retry-storm bug (separate task)",
+        "Inferring a verdict from commits/diff in harness code - forbidden by the agent-gate architecture"
+      ],
+      "touches": [
+        "lib/harness/run.ex",
+        "priv/playbooks",
+        "lib/harness/agent_adapter"
+      ],
+      "body": "Discovered 2026-06-03 (rmap task 42, run-1780488946905-b4d8528e). The cross-family reviewer (Pi) reviewed AND committed 274 lines of fixes (review_iterations=1, reviewer_diff_size=274), but never wrote the .harness/review.json verdict artifact and then went idle until the watchdog fired (agent_outcome_kind={:timed_out,:idle}, ~15.8 min wall). Harness correctly settled :failed {:review_stuck, 'Reviewer wrote no .harness/review.json verdict artifact.'} - the gate did its job - but the run's work was discarded and (compounded by the retry-storm bug) the task re-dispatched. The verdict-artifact write is the single load-bearing mechanical output of the reviewer; the reviewer prompt/playbook must make it the non-negotiable FINAL step (write review.json before any other closing action), and the idle watchdog window for the reviewing phase may be too tight for a reviewer running a project's full check_command (rmap = cargo fmt+clippy+test). Per agent-gate philosophy the fix is in the reviewer PROMPT (make the artifact write unconditional + last) plus watchdog tuning - NOT a code classifier inferring a verdict from commits. This task also motivated excluding Pi as a reviewer for now (done separately in lib/harness/run.ex).",
+      "created_at": "2026-06-03",
+      "scored_at": "2026-06-03",
+      "cross_repo": []
+    },
+    {
+      "id": "182",
+      "phase": 16,
+      "bundle": "agent-gate",
+      "milestone": "v0_12",
+      "status": "pending",
+      "title": "Settings page: per-agent reviewer-eligibility toggle (distinct from implementer enable) + select_reviewer consults it",
+      "scores": {
+        "d": 3,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "markers": [
+        "handbuild"
+      ],
+      "depends_on": [],
+      "assignee": "human",
+      "acceptance_criteria": [
+        "Harness.Agent.Settings gains reviewer_eligible?/1 + set_reviewer_eligible/2, persisted, defaulting from config :harness, :reviewer_exclude (pi ineligible by default) so the stopgap behavior is preserved on first boot",
+        "select_reviewer/1 (auto and explicit paths) refuses an agent that is not reviewer_eligible?, with a clear settle reason when no eligible cross-family reviewer exists",
+        "An agent can be enabled as implementer yet ineligible as reviewer (the two toggles are independent) - covered by a test",
+        "SettingsLive renders a per-agent matrix with implementer-enable and reviewer-eligible toggles; flipping reviewer-eligible persists and immediately affects the next dispatch's reviewer selection",
+        "The static :reviewer_exclude config read in run.ex is removed once the persisted setting is authoritative (no two sources of truth)"
+      ],
+      "out_of_scope": [
+        "Per-project reviewer overrides (this is global per-agent; per-project can be a follow-up)",
+        "Changing the cross-family constraint or the verdict artifact contract",
+        "The retry-storm and verdict-artifact bugs (Tasks 180/181)"
+      ],
+      "touches": [
+        "lib/harness/agent/settings.ex",
+        "lib/harness/run.ex",
+        "lib/harness/dashboard/live/settings_live.ex",
+        "lib/harness/dashboard/components.ex"
+      ],
+      "body": "User-requested 2026-06-03 during the first live dogfood session. Make reviewer selection operator-configurable from the dashboard settings page instead of code/config. Today select_reviewer/1 (lib/harness/run.ex) auto-picks the first dispatchable cross-family agent, gated by reviewer_dispatchable? = available? and installed? and reviewer_enabled?; reviewer_enabled? currently reuses the GLOBAL AgentSettings.enabled? flag, which conflates 'can implement' with 'can review'. The immediate need (exclude Pi as reviewer until OSS models are stronger) shipped as a stopgap static config (config :harness, :reviewer_exclude, default [:pi]) read in run.ex - this task replaces that stopgap with a persisted, UI-editable per-agent setting. DESIGN: add a distinct reviewer_eligible?/1 + set_reviewer_eligible/2 to Harness.Agent.Settings (so an agent like Pi can stay enabled as an implementer while being ineligible as a reviewer); seed defaults from the :reviewer_exclude config so existing behavior is preserved (pi ineligible by default); have reviewer_dispatchable?/explicit path consult reviewer_eligible? instead of (or in addition to) the static exclude; render a per-agent matrix on SettingsLive with two columns - 'enabled (implementer)' and 'eligible (reviewer)'. Persisted via the agent settings store (coordinate with Task 165's settings-store consolidation - the eligibility flag should live wherever agent settings land). Handbuild (LiveView/settings UI per the dogfooding UI rule).",
+      "created_at": "2026-06-03",
+      "scored_at": "2026-06-03",
+      "cross_repo": []
     }
   ]
 }
