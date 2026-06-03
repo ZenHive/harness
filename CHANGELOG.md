@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Deterministic full-pipeline E2E test (Task 173, hand-built inline).**
+  `test/harness/pipeline_e2e_test.exs` crosses every seam the pairwise suites
+  (run_test, oban_dispatch_test, lander_test, run_landing_trigger_test) only
+  test in isolation, in one assertion chain: roadmap task → Oban dispatch
+  (`Run.Worker.perform`) → Run gen_statem in a real worktree → agent commit →
+  check-stack verdict → landing job → `Lander.Worker.perform` → ff-push to a
+  bare `origin/<target>` → rmap writeback (`done` + `verified` + `shipped_in`
+  == the landed SHA). Two paths: green (FakeAdapter `:write` deliverable) and
+  red→reviewing→green (a `:repair_noop` implementer grades red, the
+  cross-family reviewer double fixes the worktree inline, mechanical
+  re-verification grades green, and the *reviewed* tree lands). No Postgres
+  and no real agent CLIs — Oban interaction is seam-captured and the agent is
+  `Harness.FakeAdapter` — but the git repos, worktrees, check execution, and
+  rmap ingestion/writeback are all real. Runs in the default suite (not
+  `:integration`), no `Process.sleep`.
+- **`Harness.GitFixture.init_with_origin/1`** — shared bare-origin + working
+  clone fixture (extracted from the hand-rolled copies in `lander_test.exs`
+  and `lander/worker_test.exs`), so ff-pushes to `origin/<target>` are real
+  and assertable in any suite.
 - **Verification-only `inject` step on `Harness.CheckStack` — the Mode-B
   hidden-grader mechanism for the agent-evaluation corpus (Task 151, claude
   delivery + salvage).** Settles the load-bearing decision in

@@ -5,8 +5,9 @@ defmodule Harness.PipelineE2ETest do
   run_landing_trigger_test) only test in isolation:
 
       roadmap task → Oban dispatch (Run.Worker.perform) → Run gen_statem in a
-      real worktree → agent commit → check-stack verdict → landing job →
-      Lander.Worker.perform → ff-push to origin/<target> → rmap writeback
+      real worktree → agent commit → check-stack verdict → (reviewer) →
+      landing job → Lander.Worker.perform → ff-push to origin/<target> →
+      rmap writeback
 
   No Postgres and no real agent CLIs: Oban interaction is seam-captured
   (`:oban_insert`) and the agent is `Harness.FakeAdapter` — but everything else
@@ -33,6 +34,33 @@ defmodule Harness.PipelineE2ETest do
   @moduletag :tmp_dir
 
   @sample_roadmap Path.expand("../fixtures/sample_roadmap", __DIR__)
+
+  # The cross-family reviewer double for the red path (the run_test.exs
+  # ReviewerFixAdapter pattern): fixes the worktree inline — writes the
+  # repair_marker the check stack demands, commits — exactly what a real
+  # reviewer agent does when the implementer's work grades red.
+  defmodule PipelineReviewerAdapter do
+    @moduledoc false
+    use Harness.AgentAdapter
+
+    alias Harness.AgentAdapter
+    alias Harness.AgentAdapter.Capabilities
+    alias Harness.AgentAdapter.Invocation
+
+    @impl AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl AgentAdapter
+    def rule_channel, do: :none
+
+    @impl AgentAdapter
+    def build_command(%Invocation{prompt: prompt}) do
+      script =
+        ~S(printf '%s' "$1" > reviewer_prompt.txt; echo fixed > repair_marker; git add reviewer_prompt.txt repair_marker; git commit -q -m "reviewer fix")
+
+      {:ok, {"/bin/sh", ["-c", script, "harness-reviewer", prompt], []}}
+    end
+  end
 
   setup_all do
     if !System.find_executable("rmap") do
@@ -62,29 +90,25 @@ defmodule Harness.PipelineE2ETest do
     # missing; the read-only fixture ships without one, so give the copy a stub.
     File.write!(Path.join(roadmap_root, "ROADMAP.md"), "# Sample\n\n<!-- TASKS:BEGIN -->\n<!-- TASKS:END -->\n")
 
-    project = register_project(repo, roadmap_root)
     install_seams(tmp_dir)
 
-    %{origin: origin, repo: repo, roadmap_root: roadmap_root, project: project}
+    %{origin: origin, repo: repo, roadmap_root: roadmap_root}
   end
 
   describe "green path" do
     test "roadmap task → dispatch → run → verify → land → writeback", ctx do
+      # The FakeAdapter's :write deliverable satisfies this stack — the SAME
+      # stack grades the run worktree and the lander's integrated tree.
+      project =
+        register_project(ctx.repo, ctx.roadmap_root, [
+          %Check{name: "agent-output", command: "test", args: ["-f", "agent_output.txt"]}
+        ])
+
       install_run_starter(adapter_opts: [command: :write], max_review_iterations: 0)
       run_id = "run-e2e-green"
 
       # ── dispatch → run → verify: synchronous; the green run settles inside ──
-      assert :ok =
-               RunWorker.perform(%Oban.Job{
-                 id: 173,
-                 attempt: 1,
-                 args: %{
-                   "project_name" => ctx.project.name,
-                   "item_id" => "2",
-                   "adapter_module" => "Elixir.Harness.AgentAdapter.Claude",
-                   "run_id" => run_id
-                 }
-               })
+      assert :ok = RunWorker.perform(dispatch_job(project, run_id, 173))
 
       # The run claimed the task and, green-but-unlanded, left it in_progress.
       assert show_task(ctx.roadmap_root, "2")["status"] == "in_progress"
@@ -92,7 +116,7 @@ defmodule Harness.PipelineE2ETest do
       # The settled green :auto run enqueued exactly one landing job on the
       # project's serialized landing queue.
       assert_receive {:oban_insert, changeset}, 5_000
-      assert Ecto.Changeset.get_field(changeset, :queue) == "landing_" <> ctx.project.name
+      assert Ecto.Changeset.get_field(changeset, :queue) == "landing_" <> project.name
 
       landing_args = Ecto.Changeset.get_field(changeset, :args)
       assert landing_args["run_id"] == run_id
@@ -105,8 +129,8 @@ defmodule Harness.PipelineE2ETest do
       assert :ok = LanderWorker.perform(%Oban.Job{args: landing_args})
 
       # origin/<target> advanced to a tip carrying the agent's deliverable.
-      landed_sha = ctx.origin |> GitFixture.git!(["rev-parse", "refs/heads/main"]) |> String.trim()
-      assert GitFixture.git!(ctx.origin, ["ls-tree", "--name-only", landed_sha]) =~ "agent_output.txt"
+      landed_sha = origin_tip(ctx.origin)
+      assert origin_tree(ctx.origin, landed_sha) =~ "agent_output.txt"
 
       # rmap writeback: done + verified + shipped_in == the landed SHA.
       task = show_task(ctx.roadmap_root, "2")
@@ -120,26 +144,71 @@ defmodule Harness.PipelineE2ETest do
       assert record.state == :done
       assert record.reason == :passed
       assert record.task_id == "2"
-      assert record.project_name == ctx.project.name
+      assert record.project_name == project.name
+    end
+  end
+
+  describe "red → reviewing → green path" do
+    test "red implementer → reviewer fixes inline → re-verify green → land → writeback", ctx do
+      # Red until a reviewer writes repair_marker: the :repair_noop implementer
+      # only churns churn.txt, so the first verdict is red and the run routes
+      # to :reviewing instead of settling :failed.
+      project =
+        register_project(ctx.repo, ctx.roadmap_root, [
+          %Check{name: "repair-marker", command: "test", args: ["-f", "repair_marker"]}
+        ])
+
+      install_run_starter(
+        adapter_opts: [command: :repair_noop],
+        reviewer: PipelineReviewerAdapter,
+        max_review_iterations: 2
+      )
+
+      run_id = "run-e2e-red"
+
+      # Synchronous like the green path: red verdict → reviewer fixes inline →
+      # mechanical re-verification grades green → the run settles :done.
+      # (Result-level review_iterations/reviewer assertions live in run_test.exs;
+      # this E2E asserts the cross-seam outcome.)
+      assert :ok = RunWorker.perform(dispatch_job(project, run_id, 174))
+
+      assert_receive {:oban_insert, changeset}, 5_000
+      assert Ecto.Changeset.get_field(changeset, :queue) == "landing_" <> project.name
+
+      landing_args = Ecto.Changeset.get_field(changeset, :args)
+      assert landing_args["run_id"] == run_id
+      assert landing_args["branch"] == "harness/" <> run_id
+
+      # ── land: the integrated tree (implementer churn + reviewer fix) is
+      #    re-verified by the SAME repair-marker stack before the ff-push ──
+      assert :ok = LanderWorker.perform(%Oban.Job{args: landing_args})
+
+      # The landed tip carries BOTH the implementer's churn and the reviewer's fix.
+      landed_sha = origin_tip(ctx.origin)
+      tree = origin_tree(ctx.origin, landed_sha)
+      assert tree =~ "repair_marker"
+      assert tree =~ "churn.txt"
+
+      # rmap writeback lands on the reviewed run like any green run.
+      task = show_task(ctx.roadmap_root, "2")
+      assert task["status"] == "done"
+      assert task["verified"] == true
+      assert task["shipped_in"] == landed_sha
     end
   end
 
   # ── fixtures ──────────────────────────────────────────────────────────────
 
-  # Registered with auto-landing onto main and a check stack the FakeAdapter's
-  # :write deliverable satisfies — the SAME stack grades the run worktree and
-  # the lander's integrated tree.
-  defp register_project(repo, roadmap_root) do
+  # Registered with auto-landing onto main; the check stack is per-test (the
+  # green path grades the implementer's deliverable, the red path a marker only
+  # the reviewer writes).
+  defp register_project(repo, roadmap_root, checks) do
     project = %{
       ProjectFixture.from_repo(repo,
         name: "pipeline-e2e-#{System.unique_integer([:positive])}",
         roadmap_path: roadmap_root,
         landing_policy: :auto,
-        check_stack: %CheckStack{
-          name: :e2e,
-          checks: [%Check{name: "agent-output", command: "test", args: ["-f", "agent_output.txt"]}],
-          workdir: ""
-        }
+        check_stack: %CheckStack{name: :e2e, checks: checks, workdir: ""}
       )
       | target_branch: "main"
     }
@@ -200,6 +269,23 @@ defmodule Harness.PipelineE2ETest do
       RunSupervisor.start_run(item, run_project, FakeAdapter, opts ++ run_opts)
     end)
   end
+
+  defp dispatch_job(project, run_id, job_id) do
+    %Oban.Job{
+      id: job_id,
+      attempt: 1,
+      args: %{
+        "project_name" => project.name,
+        "item_id" => "2",
+        "adapter_module" => "Elixir.Harness.AgentAdapter.Claude",
+        "run_id" => run_id
+      }
+    }
+  end
+
+  defp origin_tip(origin), do: origin |> GitFixture.git!(["rev-parse", "refs/heads/main"]) |> String.trim()
+
+  defp origin_tree(origin, sha), do: GitFixture.git!(origin, ["ls-tree", "--name-only", sha])
 
   defp show_task(roadmap_root, id) do
     assert {output, 0} = System.cmd("rmap", ["show", id, "--json"], cd: roadmap_root, stderr_to_stdout: true)
