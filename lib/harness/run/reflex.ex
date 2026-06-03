@@ -61,11 +61,15 @@ defmodule Harness.Run.Reflex do
 
   @doc "Returns the receive wait until the next reflex deadline."
   @spec wait(t()) :: non_neg_integer()
+  def wait(%__MODULE__{progress_deadline: nil} = reflex) do
+    min(remaining(reflex.total_deadline), remaining(reflex.idle_deadline))
+  end
+
   def wait(%__MODULE__{} = reflex) do
-    reflex
-    |> deadlines()
-    |> Enum.map(&remaining/1)
-    |> Enum.min()
+    reflex.total_deadline
+    |> remaining()
+    |> min(remaining(reflex.idle_deadline))
+    |> min(remaining(reflex.progress_deadline))
   end
 
   @doc "Checks whether any reflex deadline has fired."
@@ -150,11 +154,6 @@ defmodule Harness.Run.Reflex do
   @spec maybe_deadline(integer(), non_neg_integer() | nil) :: deadline() | nil
   defp maybe_deadline(_now, nil), do: nil
   defp maybe_deadline(now, timeout), do: now + timeout
-
-  @spec deadlines(t()) :: [deadline()]
-  defp deadlines(%__MODULE__{} = reflex) do
-    Enum.reject([reflex.total_deadline, reflex.idle_deadline, reflex.progress_deadline], &is_nil/1)
-  end
 
   @spec remaining(deadline()) :: non_neg_integer()
   defp remaining(deadline), do: max(0, deadline - System.monotonic_time(:millisecond))
@@ -245,12 +244,13 @@ defmodule Harness.Run.Reflex do
   @spec rm_rf_outside_worktree?(String.t(), String.t()) :: boolean()
   defp rm_rf_outside_worktree?(command, worktree_path) do
     tokens = shell_tokens(command)
+    expanded_worktree = Path.expand(worktree_path)
 
     tokens
     |> Enum.with_index()
     |> Enum.any?(fn {token, index} ->
       targets = rm_rf_targets(tokens, index + 1)
-      Path.basename(token) == "rm" and outside_worktree?(targets, worktree_path)
+      Path.basename(token) == "rm" and outside_worktree?(targets, expanded_worktree)
     end)
   end
 
@@ -269,16 +269,17 @@ defmodule Harness.Run.Reflex do
     if recursive_force?, do: Enum.reject(rest, &String.starts_with?(&1, "-")), else: []
   end
 
+  # `expanded_worktree` is pre-expanded by the caller (once per command), so the
+  # per-target loop never re-runs Path.expand on the worktree root.
   @spec outside_worktree?([String.t()], String.t()) :: boolean()
-  defp outside_worktree?([], _worktree_path), do: false
+  defp outside_worktree?([], _expanded_worktree), do: false
 
-  defp outside_worktree?(targets, worktree_path) do
-    Enum.any?(targets, &(not inside_worktree?(&1, worktree_path)))
+  defp outside_worktree?(targets, expanded_worktree) do
+    Enum.any?(targets, &(not inside_worktree?(&1, expanded_worktree)))
   end
 
   @spec inside_worktree?(String.t(), String.t()) :: boolean()
-  defp inside_worktree?(target, worktree_path) do
-    expanded_worktree = Path.expand(worktree_path)
+  defp inside_worktree?(target, expanded_worktree) do
     expanded_target = Path.expand(target, expanded_worktree)
     expanded_target == expanded_worktree or String.starts_with?(expanded_target, expanded_worktree <> "/")
   end

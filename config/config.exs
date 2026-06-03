@@ -29,6 +29,14 @@ config :harness, Oban,
 # `false` to disable persistence (runtime flips still work, nothing is written).
 config :harness, :agent_settings, root: Path.expand("~/.harness")
 
+# HIGH-tier second-grader pairing — see Harness.AuditReview.default_grader/1.
+# Maps an implementer agent to the cross-family agent that grades its fix
+# (Codex grades Claude, Claude grades Codex). Override to re-pair or to add
+# auto-pairs for implementers the default leaves unpaired; an implementer absent
+# from the map still gets {:error, {:no_default_grader, implementer}}. Defaults
+# to this same map in code when the key is unset.
+config :harness, :audit_review, grader_pairs: %{claude: :codex, codex: :claude}
+
 # Chat session persistence — see Harness.Chat.Store.
 # File-backed term store so chat transcripts survive a BEAM restart. Set to
 # `false` to disable persistence entirely.

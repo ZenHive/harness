@@ -6,6 +6,7 @@ defmodule Harness.ProjectRegistry.Persistence do
   alias Harness.Project
   alias Harness.ProjectRegistry.Schema.Project, as: ProjectSchema
   alias Harness.Repo
+  alias Harness.TermCodec
 
   require Logger
 
@@ -95,7 +96,7 @@ defmodule Harness.ProjectRegistry.Persistence do
 
   @spec decode_row(ProjectSchema.t()) :: {:ok, Project.t()} | {:error, term()}
   defp decode_row(%ProjectSchema{name: name, payload: payload}) when is_binary(payload) do
-    case safe_binary_to_term(payload) do
+    case TermCodec.safe_binary_to_term(payload) do
       {:ok, %Project{name: ^name} = project} -> {:ok, migrate_payload(project)}
       {:ok, %Project{name: other}} -> {:error, {:name_mismatch, name, other}}
       {:ok, _other} -> {:error, {:invalid_payload, name}}
@@ -123,14 +124,5 @@ defmodule Harness.ProjectRegistry.Persistence do
 
       struct!(Project, fields)
     end
-  end
-
-  # Payload is harness-owned term binary from upsert/1 — not untrusted input.
-  # sobelow_skip ["Misc.BinToTerm"]
-  @spec safe_binary_to_term(binary()) :: {:ok, term()} | {:error, term()}
-  defp safe_binary_to_term(bin) when is_binary(bin) do
-    {:ok, :erlang.binary_to_term(bin)}
-  rescue
-    ArgumentError -> {:error, :invalid_term}
   end
 end

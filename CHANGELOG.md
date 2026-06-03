@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Shared helper modules from the whole-codebase `/simplify` pass (hand-built
+  inline).** `Harness.LineBuffer` (the newline-buffer lifecycle previously
+  copy-pasted across the five transcript parsers + the chat stream parser),
+  `Harness.JSONSafe` (JSON-coercion previously duplicated in the MCP server and
+  chat session), and `Harness.TermCodec` (safe `binary_to_term` previously
+  duplicated in the Postgres result store and registry persistence). All six
+  parsers, both JSON callers, and both decode callers now delegate; public APIs
+  unchanged. One deliberate encoding fix rides along: chat tool results now
+  encode `nil`/`true`/`false` as JSON primitives instead of the strings
+  `"nil"`/`"true"`/`"false"` (the old `to_jsonable/1` preserve clause was dead
+  code, shadowed by its atom clause).
+- **Config-driven HIGH-tier grader pairing.** `Harness.AuditReview.default_grader/1`
+  reads `config :harness, :audit_review, grader_pairs: %{...}` (documented in
+  `config/config.exs`), falling back to the built-in `%{claude: :codex,
+  codex: :claude}` when unset — re-pair or extend to new implementers without a
+  code change.
+
 - **Deterministic full-pipeline E2E test (Task 173, hand-built inline).**
   `test/harness/pipeline_e2e_test.exs` crosses every seam the pairwise suites
   (run_test, oban_dispatch_test, lander_test, run_landing_trigger_test) only
@@ -49,6 +66,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`CapabilityScore.corpus_version/1` fingerprint), Q4 (vendor the unfamiliar
   lib). The corpus repo itself and the live cross-adapter scoring run are the
   remaining host-side work on Task 151.
+
+### Changed
+
+- **Cleanup pass from the whole-codebase `/simplify` review (hand-built inline).**
+  `Harness.Dispatch`: the four near-identical enqueue/start clauses collapse to
+  one `resolve_and_ingest/3` pipeline, and the `scrub_anthropic_key` /
+  `review_green` booleans thread as a single toggles value (MCP surface
+  unchanged). `Harness.AgentAdapter.Driver`: distinct `@default_progress_timeout`
+  (was silently reusing the idle default) and one config read per run.
+  `Harness.Run.Reflex`: deadline wait computed without per-message list
+  allocations; worktree path expanded once per blocked-command sweep.
+  `Harness.Verification` delegates port helpers to `OSProcess`; `Harness.Roadmap`
+  mark_* writebacks share one `landing_ctx/1`; `Harness.Batch` drops the
+  reversed-argument `dispatch/2` overload (no callers).
 
 ### Fixed
 

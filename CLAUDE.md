@@ -63,16 +63,16 @@ Toolchain pinned by `.tool-versions`: **Elixir 1.18.4-otp-27** (asdf). Postgres 
 
 ## What This Is
 
-`harness` is an OTP-native Elixir engine an **AI orchestrator drives end to end**: pull a task from the rmap roadmap → dispatch to a **headless coding agent** (Claude Code, Cursor, Codex, Grok, Antigravity, Pi) in an isolated git worktree → run the target project's own check stack against the result → report a *verified* outcome. Consumer surfaces: Elixir API (IEx / tidewave / another BEAM process), the Phoenix LiveView dashboard, and an MCP server. It is a long-running OTP node that orchestrates **N registered target projects** (Elixir, Rust, anything with a shell-driven check stack) concurrently.
+`harness` is an OTP-native Elixir engine an **AI orchestrator drives end to end**: pull a task from the rmap roadmap → **implementer AI** works in an isolated git worktree → **reviewer AI** (cross-family) reviews, runs the project's checks itself, fixes inline, and renders the verdict → **MERGE** (lander rebase + push) → **audit AI** post-merge. Consumer surfaces: Elixir API (IEx / tidewave / another BEAM process), the Phoenix LiveView dashboard, and an MCP server. It is a long-running OTP node that orchestrates **N registered target projects** (Elixir, Rust, anything an agent can check) concurrently.
 
-**Primary user is an AI agent, not a human** — harness is the OTP-native automation of the delegate → verify → repair loop this repo runs by hand via the `cloud-delegation` skills.
+**Primary user is an AI agent, not a human** — harness is the OTP-native automation of the worktree → implement → review → merge → audit loop this repo's owner runs by hand (see `~/.claude/includes/worktree-workflow.md` for the manual analogue).
 
-**Not a wrapper around one agent.** The `AgentAdapter` behaviour (Task 3) is a deliberately thin contract: *invoke* an agent, *capture its raw output*, declare capabilities — nothing more. **No normalized event model**: the consumer is an AI that reads each agent's raw JSON natively; harness decides "did the job succeed?" from its **own verification stack**, never from the agent's self-reported result.
+**Not a wrapper around one agent.** The `AgentAdapter` behaviour (Task 3) is a deliberately thin contract: *invoke* an agent, *capture its raw output*, declare capabilities — nothing more. **No normalized event model**: the consumer is an AI that reads each agent's raw JSON natively; harness decides "did the job succeed?" from the **reviewer AI's verdict artifact**, never from the implementer's self-reported result.
 
 ## Architecture
 
 - **Elixir / OTP, not TypeScript.** harness *is* N concurrent supervised agent runs needing crash isolation, timeouts, retries, observable state. One run = one supervised `gen_statem`; one batch = a `DynamicSupervisor`.
-- **Core loop.** rmap task → dispatch to headless agent in isolated worktree → run target's check stack → green ⇒ done, red/weird ⇒ **cross-family reviewer agent fixes inline** (see "Judgment Lives in Agents" below). The verification stack (not any agent) decides green — implementer/evaluator separation.
+- **Core loop.** rmap task → implementer AI in isolated worktree → commit → **reviewer AI is the gate** (reviews against acceptance criteria, runs the project's checks itself, fixes inline, writes `.harness/review.json` verdict) → approve ⇒ done ⇒ merge ⇒ post-merge audit AI; reject ⇒ failed, task back to queue. Implementer/evaluator separation is agent/agent (cross-family), not agent/script — see "The Agent-Gate Workflow" below.
 - **Thin adapter pattern.** One adapter per agent: invocation + raw capture + capability declaration. Behaviour `Harness.AgentAdapter` — required callbacks `capabilities/0` + `rule_channel/0` + `build_command/1`; `classify_message/2` + `terminate/1` default via `use Harness.AgentAdapter` + defoverridable. `AgentAdapter.invoke/2` does the generic Port spawn. `build_command/1` threads caller-controlled env (`Invocation.env`, set/scrub pairs → Port, Task 25). Harness-owned rules delivered ahead of `build_command/1` by `AgentAdapter.attach_rules/2` (Task 39), dispatching on `c:rule_channel/0`: `:system_prompt_file` (Claude), `:codex_ephemeral_file` (Codex/Pi), `:cursor_ephemeral_file` (Cursor), `:prompt_preamble` (Grok/Antigravity), `:none` (test doubles). Every adapter must pass `Harness.AgentAdapter.ConformanceCase` **unchanged** — a leak gets fixed in the behaviour, not patched in the adapter.
 - **No agent-output parsing.** Raw passthrough is simpler *and* more robust — agents ship 40+ releases; a JSON-format change is absorbed by the AI reading the transcript, not by breaking a normalization layer.
 - **Path discipline:** raw-output capture is hot-path-adjacent (allocation-light); run/batch lifecycle is warm-path OTP state; dashboard / MCP is cold-path.
@@ -92,20 +92,28 @@ Core is textbook OTP (Port per run, `gen_statem` per run, `DynamicSupervisor` fo
 - **Dispatch retry vs in-run review — keep separate.** Oban owns dispatch-level persistence/retry, and it is **crash-only mechanical** (Task 163): `Harness.Run.RetryPolicy` is pure backoff arithmetic — a settled verdict is never re-run by policy code. Non-green outcomes are handled *inside* the run by the reviewer pair (see "Judgment Lives in Agents"). Open-source Oban has no cross-queue global cap; effective ceiling = sum of `project_<name>` queue limits.
 - **`Harness.AgentRegistry` is a soft hint, not a contract** (Task 40, option (b)). Unavailability lives in GenServer state only — no persistence/TTL; restart clears it **by design**. It's a *latency optimization*; *correctness* lives in Oban. Rationale: `lib/harness/agent_registry.ex` `@moduledoc`.
 
-## Judgment Lives in Agents, Not Procedural Code (settled, 2026-06-02 — do not re-litigate)
+## The Agent-Gate Workflow (settled, 2026-06-03 — THE architecture, do not re-litigate)
 
-**The principle:** the check stack (is the worktree green?) is deterministic tooling and stays that way. *Everything that interprets meaning* — why a run failed, whether an empty diff means "already done" or "nothing happened", whose fault a finding is, whether work is worth repairing, whether green code satisfies acceptance criteria — **is an agent's job, never a regex / cond-branch / filter / disposition table.**
+**The workflow:** `worktree → implementer AI → reviewer AI (THE GATE) → MERGE → audit AI`. There is **no mechanical test runner / verification gate** in harness. The reviewer AI runs the project's checks itself — having harness also run them mechanically added wall-clock, crash surface, false verdicts, and config burden for zero added judgment.
 
-**The evidence that settled it:** Tasks 153, 156, 157, 158, 159, 160 plus two unfiled bugs (quota-regex false positive; Oban retry branch-collision cascade) — every run-lifecycle bug in one week traced to a judgment call implemented as procedural code. Zero traced to the check stack. Full analysis: `docs/reviewer-pair-architecture.md`.
+> **Status:** rebuild in flight per `~/.claude/plans/agent-gate-workflow-rebuild.md`. Any bullet elsewhere in this file describing `CheckStack`, presets, `Harness.Verification`, verdicts, `:verifying`, `review_green`, lander re-verification, or the benchmark corpus describes the **old, deleted** system — this section wins.
 
-**The architecture (shipped — Tasks 161/162/163, milestone v0_11):** implementer → reviewer pair. Implementer agent works, commits; check stack runs; on red / empty-diff / green-needing-review, the run enters the `:reviewing` gen_statem state and a **cross-family reviewer agent** gets the worktree + task + transcript + check output and **fixes inline** — its own edits and commits — until the stack is green or it reports stuck in prose. Harness re-runs the stack after review (the reviewer's word is never the verdict). Mechanical knobs only: `max_review_iterations` (config `:harness, :run`, default 2; 0 disables the reviewer path) and `review_green: true` on a project (every green verdict gets one cross-family review pass — replaces the deleted semantic gate).
+**The principle (extends 2026-06-02's "Judgment Lives in Agents"):** *everything that interprets meaning* — is the work good, why a run failed, what an empty diff means, whether code satisfies acceptance criteria, whether the build/tests pass *in a way that matters* — **is an agent's job, never harness code.** Harness code is mechanical substrate only: worktrees, git, Ports, Oban persistence, counters, timers, reading the reviewer's verdict file.
+
+**The evidence that settled it:** every run-lifecycle bug from 2026-05-26 → 06-03 (tasks 153–163, 168, 169, 171, 172, the task-41 verifier crash, the task-172 failure) traced to the *harness verification/lifecycle machinery* — false reds, false greens, verifier crashes, timeout misconfig, preset gaps. Zero traced to an agent's judgment. 32 salvage/repair/fix commits in 257.
+
+**The stages:**
+
+- **Implementer AI** — works in the isolated worktree, commits. Its self-report is never trusted.
+- **Reviewer AI (cross-family, mandatory, THE gate)** — gets worktree + task + acceptance criteria + implementer transcript + diff stat + the project's `check_command` hint. It reviews, **runs the checks itself**, fixes inline (own edits, own commits), then writes `.harness/review.json`: `{"verdict": "approve"|"reject", "report": "...", "ratings": {...}}`. Harness mechanically reads the file: approve → `:done` → merge; reject/missing → `:failed`, task back to queue. The ratings block scores the implementer (performance, truthfulness, code quality, idiom usage) and feeds AgentKPI.
+- **MERGE** — lander: fetch → detached worktree → rebase onto `origin/<target>` → ff-push. No re-verification.
+- **Audit AI (post-merge, batched, best-effort)** — third-family agent audits the unaudited commit range on the target branch, fixes hygiene inline, commits `audit(...)`, pushes. Never blocks, never reverts.
 
 **Rules for every session:**
 
-- When a run-lifecycle bug traces to a judgment call in procedural code, the fix is **moving that judgment to the reviewer** — never another branch/regex/filter.
-- A *classifier* that returns decisions for procedural code to act on is the same mistake (the acting code is the bug factory). The reviewer acts; harness counts and re-verifies.
-- **Deleted by the deletion pass (Task 163, −1,219 lines) — don't reintroduce:** `FailureClass`, `RepairPrompt`, `RetryPolicy.quota_patterns`, `BaselineFilter.Credo`, baseline verification / `:base_red`, the repair loop, the consulting state, the semantic gate, `:no_changes` disposition. Only remnant: legacy-config migration shims in `ProjectRegistry.Persistence` that map old `semantic_gate` payloads onto `review_green`.
-- What stays code (the test: is it mechanical?): worktrees, git, Ports, check execution, Oban persistence, counters, timers/watchdogs (`Run.Reflex` is the model of the boundary done right).
+- A run-lifecycle bug is fixed by **moving judgment into an agent prompt or verdict artifact** — never by adding a branch/regex/filter/classifier to harness code.
+- Do not reintroduce: `Harness.Verification`, `Harness.CheckStack`, presets, verdicts, `:verifying`, baseline anything, repair loops, semantic gates, quota regexes, `review_green`, `max_review_iterations`, lander re-verification, the mechanical benchmark corpus.
+- What stays code (the test: is it mechanical?): worktrees, git, Ports, Oban persistence, counters, timers/watchdogs, reading `.harness/review.json` / `.harness/audit.json`.
 
 ## Agent Headless Entry Points (domain reference)
 
@@ -118,7 +126,7 @@ Core is textbook OTP (Port per run, `gen_statem` per run, `DynamicSupervisor` fo
 | Antigravity | `agy -p` | none (plain text) |
 | Pi (pi.dev) | `pi -p` | `--mode json` |
 
-All six driven over OTP Ports — uniform, no per-agent SDK. harness captures raw, never parses/normalizes. **Exit code is unreliable**: derive *termination* from Port close + timeout guard; derive *success* from the verification stack — never `$?`, never the agent's self-report.
+All six driven over OTP Ports — uniform, no per-agent SDK. harness captures raw, never parses/normalizes. **Exit code is unreliable**: derive *termination* from Port close + timeout guard; derive *success* from the reviewer AI's `.harness/review.json` verdict — never `$?`, never the implementer's self-report.
 
 **Two-axis adapter contract** (don't conflate):
 - **Renderable vs executable**: `rmap delegate --to` now renders a native prompt for all six adapters (`claude`/`codex`/`cursor`/`grok`/`antigravity`/`pi`), so each is a first-class `Roadmap.ingest(agent: …)` target dispatched directly on its own adapter — the old non-delegatable two-step is gone. rmap can also render `droid`, but harness has **no Droid adapter**, so `:droid` is rejected at the ingest/dispatch boundary (`{:invalid_agent, :droid}` / `{:unknown_adapter, "droid"}`). Adding an executor is two-sided: an rmap-lib `--to` target (the rmap binary is ours, `../rmap/` — already done for `droid`) **plus** a harness `AgentAdapter` listed in `Roadmap`'s `@valid_agents`.
@@ -146,8 +154,8 @@ Core is OTP-dense. `mix reach.otp` (state-machine analysis, dead replies, missin
 From the core loop onward, harness is developed *by* harness. **Once bootstrap is `done`, every remaining pending task is delivered by dispatching it through harness.** Hand-build only what harness cannot yet do for itself. Runbook: `docs/dogfooding-workflow.md`. Driver reference: `@skills/harness-driver/SKILL.md` (load on demand; changes to `AgentAdapter.*` / `Run.Supervisor` / `Batch` / `Roadmap` / Invocation/result shapes must update it).
 
 - **Roadmap = harness's own test corpus.** A task harness fails to deliver is a harness bug, filed via `rmap new`, not worked around by hand-building.
-- **Verification stays separate.** Dispatched agent = implementer; harness's check stack = grader. Done = verification green, never the agent's self-report.
-- **Red verdict isn't stop-the-line.** A red / empty-diff / green-needing-review run routes to the `:reviewing` state (Tasks 161/162): a cross-family reviewer fixes the worktree inline, then the check stack re-grades. Manual salvage per `docs/dogfooding-workflow.md` is the fallback when the reviewer reports stuck.
+- **Evaluation stays separate — agent vs agent.** Dispatched agent = implementer; a cross-family reviewer AI = grader. Done = reviewer approved, never the implementer's self-report.
+- **A reject isn't stop-the-line.** The reviewer fixes what it can inline before deciding; a rejected run puts the task back in the queue for re-dispatch. Manual salvage per `docs/dogfooding-workflow.md` is the fallback when the reviewer rejects.
 - **Hand-built exceptions:**
   - *Scaffolding that reshapes harness's own runtime* (supervision tree, dep stack, Endpoint) **while the verification stack itself is in flux**. A new phase that only adds features on stable surfaces does **not** earn a hand-build window.
   - *Tiny tasks* — ALL of (a) D≤2, (b) ≤30 LOC across ≤3 files, (c) no harness-surface change. Fail any → dispatch. When in doubt, dispatch.

@@ -58,6 +58,7 @@ defmodule Harness.Verification do
       (10 minutes).
   """
 
+  alias Harness.AgentAdapter.OSProcess
   alias Harness.CheckStack
   alias Harness.CheckStack.Preset.Elixir, as: ElixirPreset
   alias Harness.Verification.Check
@@ -460,7 +461,7 @@ defmodule Harness.Verification do
     acc = drain_port_output(port, acc, 0)
     kill_port(port)
     acc = drain_port_output(port, acc, @timeout_output_drain_ms)
-    close_port(port)
+    OSProcess.close(port)
     acc = drain_port_output(port, acc, 0)
     output = IO.iodata_to_binary(acc) <> "\n[harness] check timed out after #{timeout}ms"
 
@@ -496,29 +497,13 @@ defmodule Harness.Verification do
   # the boot-time `Harness.Worktree.Sweeper` is the backstop.
   @spec kill_port(port()) :: :ok
   defp kill_port(port) do
-    os_pid = port_os_pid(port)
+    os_pid = OSProcess.os_pid(port)
 
     if os_pid do
       System.cmd("kill", ["-KILL", Integer.to_string(os_pid)], stderr_to_stdout: true)
     end
 
     :ok
-  end
-
-  @spec port_os_pid(port()) :: non_neg_integer() | nil
-  defp port_os_pid(port) do
-    case Port.info(port, :os_pid) do
-      {:os_pid, os_pid} -> os_pid
-      nil -> nil
-    end
-  end
-
-  @spec close_port(port()) :: :ok
-  defp close_port(port) do
-    Port.close(port)
-    :ok
-  rescue
-    ArgumentError -> :ok
   end
 
   @spec drain_port_output(port(), iodata(), non_neg_integer()) :: iodata()

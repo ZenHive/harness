@@ -35,6 +35,44 @@ defmodule Harness.Run.ReflexTest do
     end
   end
 
+  describe "wait/1" do
+    test "returns the soonest deadline when all three are set" do
+      now = System.monotonic_time(:millisecond)
+
+      reflex = %Reflex{
+        total_deadline: now + 10_000,
+        idle_timeout: 5_000,
+        idle_deadline: now + 5_000,
+        progress_timeout: 3_000,
+        progress_deadline: now + 3_000,
+        worktree_path: "/tmp/work",
+        edit_fingerprint: nil
+      }
+
+      # Soonest of the three (progress at ~3s) bounds the wait; allow slack for
+      # the monotonic read inside wait/1.
+      wait = Reflex.wait(reflex)
+      assert wait > 2_000 and wait <= 3_000
+    end
+
+    test "ignores a nil progress deadline" do
+      now = System.monotonic_time(:millisecond)
+
+      reflex = %Reflex{
+        total_deadline: now + 10_000,
+        idle_timeout: 4_000,
+        idle_deadline: now + 4_000,
+        progress_timeout: nil,
+        progress_deadline: nil,
+        worktree_path: "/tmp/work",
+        edit_fingerprint: nil
+      }
+
+      wait = Reflex.wait(reflex)
+      assert wait > 3_000 and wait <= 4_000
+    end
+  end
+
   describe "checkout porcelain guard" do
     test "delegates main-checkout pollution to the reflex layer" do
       repo = GitFixture.init_repo()

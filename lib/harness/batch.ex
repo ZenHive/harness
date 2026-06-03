@@ -84,9 +84,6 @@ defmodule Harness.Batch do
   @spec dispatch(Project.t() | String.t(), [Item.t()]) :: {:ok, [Oban.Job.t()]} | {:error, dispatch_error()}
   def dispatch(project, items) when is_list(items), do: dispatch(project, items, [])
 
-  @spec dispatch([Item.t()], Project.t() | String.t()) :: {:ok, [Oban.Job.t()]} | {:error, dispatch_error()}
-  def dispatch(items, project) when is_list(items), do: dispatch(project, items, [])
-
   @doc """
   `dispatch/2` with per-job run options threaded into the enqueued Oban jobs.
 

@@ -58,6 +58,7 @@ defmodule Harness.AgentAdapter.Driver do
 
   @default_total_timeout 1_800_000
   @default_idle_timeout 300_000
+  @default_progress_timeout 300_000
 
   api(:run, "Spawn the adapter for an invocation and drive it to completion under total + idle deadlines.",
     params: [
@@ -87,9 +88,7 @@ defmodule Harness.AgentAdapter.Driver do
 
   @spec run(module(), Invocation.t(), keyword()) :: {:ok, Outcome.t()} | {:error, term()}
   def run(adapter, %Invocation{} = invocation, opts \\ []) do
-    total = Keyword.get(opts, :total_timeout) || configured_total_timeout()
-    idle = Keyword.get(opts, :idle_timeout) || configured_idle_timeout()
-    progress = Keyword.get(opts, :progress_timeout) || configured_progress_timeout()
+    {total, idle, progress} = resolve_timeouts(opts)
     on_output = Keyword.get(opts, :on_output)
 
     case AgentAdapter.invoke(adapter, invocation) do
@@ -222,18 +221,17 @@ defmodule Harness.AgentAdapter.Driver do
     %Outcome{run: run, output: IO.iodata_to_binary(acc), exit_status: exit_status, kind: kind}
   end
 
-  @spec configured_total_timeout() :: non_neg_integer()
-  defp configured_total_timeout do
-    :harness |> Application.get_env(:run, []) |> Keyword.get(:total_timeout, @default_total_timeout)
-  end
+  # Resolves the three reflex deadlines in one pass: per-call opts override the
+  # `:harness, :run` config, which falls back to the module defaults. The config
+  # is read once per run rather than once per timeout.
+  @spec resolve_timeouts(keyword()) :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}
+  defp resolve_timeouts(opts) do
+    config = Application.get_env(:harness, :run, [])
 
-  @spec configured_idle_timeout() :: non_neg_integer()
-  defp configured_idle_timeout do
-    :harness |> Application.get_env(:run, []) |> Keyword.get(:idle_timeout, @default_idle_timeout)
-  end
-
-  @spec configured_progress_timeout() :: non_neg_integer()
-  defp configured_progress_timeout do
-    :harness |> Application.get_env(:run, []) |> Keyword.get(:progress_timeout, @default_idle_timeout)
+    {
+      Keyword.get(opts, :total_timeout) || Keyword.get(config, :total_timeout, @default_total_timeout),
+      Keyword.get(opts, :idle_timeout) || Keyword.get(config, :idle_timeout, @default_idle_timeout),
+      Keyword.get(opts, :progress_timeout) || Keyword.get(config, :progress_timeout, @default_progress_timeout)
+    }
   end
 end

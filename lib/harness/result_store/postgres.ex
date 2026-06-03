@@ -20,6 +20,7 @@ defmodule Harness.ResultStore.Postgres do
   alias Harness.ResultStore.Schema.CapabilityScore, as: CapabilityScoreSchema
   alias Harness.ResultStore.Schema.RunRecord, as: RunRecordSchema
   alias Harness.Run.LogRecord
+  alias Harness.TermCodec
   alias Harness.TokenUsage
 
   require Logger
@@ -128,7 +129,7 @@ defmodule Harness.ResultStore.Postgres do
           {:error, :not_found}
 
         %BatchResultSchema{payload: payload} when is_binary(payload) ->
-          case safe_binary_to_term(payload) do
+          case TermCodec.safe_binary_to_term(payload) do
             {:ok, %BatchResult{} = br} -> {:ok, br}
             {:ok, _other} -> {:error, {:invalid_term_payload, batch_id}}
             {:error, r} -> {:error, r}
@@ -405,7 +406,7 @@ defmodule Harness.ResultStore.Postgres do
 
   defp decode_capability_score_row(%CapabilityScoreSchema{payload: payload}, agent, domain, corpus_version)
        when is_binary(payload) do
-    case safe_binary_to_term(payload) do
+    case TermCodec.safe_binary_to_term(payload) do
       {:ok, %CapabilityScore{} = score} -> {:ok, score}
       {:ok, _other} -> {:error, {:invalid_capability_score, agent, domain, corpus_version}}
       {:error, reason} -> {:error, reason}
@@ -614,19 +615,6 @@ defmodule Harness.ResultStore.Postgres do
   @spec decode_map_key(String.t() | term()) :: atom() | String.t()
   defp decode_map_key(k) when is_binary(k), do: String.to_atom(k)
   defp decode_map_key(k), do: k
-
-  # --- safe term decode (mirrors File resilience) ---
-
-  # Decodes harness-owned term binary (batch_results.payload written via
-  # term_to_binary on %Batch.Result{} we control in save_batch). Not
-  # untrusted input. Rescue still catches torn bytes.
-  # sobelow_skip ["Misc.BinToTerm"]
-  @spec safe_binary_to_term(binary()) :: {:ok, term()} | {:error, term()}
-  defp safe_binary_to_term(bin) when is_binary(bin) do
-    {:ok, :erlang.binary_to_term(bin)}
-  rescue
-    ArgumentError -> {:error, :invalid_term}
-  end
 
   # --- test helper: expose sandbox checkout for DataCase consumers ---
   @doc false

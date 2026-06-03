@@ -13,6 +13,7 @@ defmodule Harness.Chat.Session do
   alias Harness.Chat.Store
   alias Harness.Chat.Stream
   alias Harness.Chat.Tools
+  alias Harness.JSONSafe
 
   require Logger
 
@@ -349,16 +350,7 @@ defmodule Harness.Chat.Session do
   defp normalize_content(_), do: []
 
   @spec encode_tool_result(term()) :: String.t()
-  defp encode_tool_result(result), do: Jason.encode!(to_jsonable(result))
-
-  @spec to_jsonable(term()) :: term()
-  defp to_jsonable(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
-  defp to_jsonable(%_{} = struct), do: struct |> Map.from_struct() |> to_jsonable()
-  defp to_jsonable(map) when is_map(map), do: Map.new(map, fn {k, v} -> {to_string(k), to_jsonable(v)} end)
-  defp to_jsonable(list) when is_list(list), do: Enum.map(list, &to_jsonable/1)
-  defp to_jsonable(atom) when is_atom(atom), do: Atom.to_string(atom)
-  defp to_jsonable(other) when is_binary(other) or is_number(other) or is_boolean(other) or is_nil(other), do: other
-  defp to_jsonable(other), do: inspect(other)
+  defp encode_tool_result(result), do: Jason.encode!(JSONSafe.encode(result, JSONSafe.chat_opts()))
 
   @spec history_bytes([map()]) :: non_neg_integer()
   defp history_bytes(messages), do: messages |> Jason.encode!() |> byte_size()

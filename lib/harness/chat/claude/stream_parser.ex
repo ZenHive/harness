@@ -19,6 +19,8 @@ defmodule Harness.Chat.Claude.StreamParser do
   fragments.
   """
 
+  alias Harness.LineBuffer
+
   defstruct buffer: ""
 
   @typedoc "Stream-parser state — accumulates partial-line bytes between Port chunks."
@@ -45,8 +47,7 @@ defmodule Harness.Chat.Claude.StreamParser do
   """
   @spec feed(t(), iodata()) :: {[event()], t()}
   def feed(%__MODULE__{} = parser, chunk) do
-    combined = parser.buffer <> IO.iodata_to_binary(chunk)
-    {complete, remainder} = split_lines(combined)
+    {complete, remainder} = LineBuffer.split(parser.buffer, chunk)
     events = Enum.flat_map(complete, &parse_line/1)
     {events, %{parser | buffer: remainder}}
   end
@@ -57,18 +58,9 @@ defmodule Harness.Chat.Claude.StreamParser do
   the fragment is discarded.
   """
   @spec finalize(t()) :: {[event()], t()}
-  def finalize(%__MODULE__{buffer: ""} = parser), do: {[], parser}
-
-  def finalize(%__MODULE__{buffer: leftover} = parser) do
-    {parse_line(leftover), %{parser | buffer: ""}}
-  end
-
-  @spec split_lines(binary()) :: {[binary()], binary()}
-  defp split_lines(string) do
-    case String.split(string, "\n") do
-      [single] -> {[], single}
-      many -> {Enum.drop(many, -1), List.last(many)}
-    end
+  def finalize(%__MODULE__{} = parser) do
+    {lines, remainder} = LineBuffer.take_remainder(parser.buffer)
+    {Enum.flat_map(lines, &parse_line/1), %{parser | buffer: remainder}}
   end
 
   @spec parse_line(binary()) :: [event()]

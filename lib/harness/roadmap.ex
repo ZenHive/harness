@@ -257,17 +257,15 @@ defmodule Harness.Roadmap do
 
   @spec mark_landed(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def mark_landed(item_or_id, opts) do
-    root = Keyword.fetch!(opts, :root)
+    ctx = landing_ctx(opts)
     sha = Keyword.fetch!(opts, :sha)
-    rmap_bin = Keyword.get(opts, :rmap_bin, "rmap")
-    ctx = %{root: root, tasks_path: Path.join(root, "roadmap/tasks.toml"), rmap_bin: rmap_bin}
 
     args =
       ["status", landing_task_id(item_or_id), "done", "--verified", "--shipped-in", sha]
       |> append_flag("--delivered-by", opts[:delivered_by])
       |> append_flag("--implemented", opts[:implemented])
 
-    with :ok <- ensure_rmap(rmap_bin) do
+    with :ok <- ensure_rmap(ctx.rmap_bin) do
       run_rmap(args, ctx)
     end
   end
@@ -296,14 +294,12 @@ defmodule Harness.Roadmap do
 
   @spec mark_blocked(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def mark_blocked(item_or_id, opts) do
-    root = Keyword.fetch!(opts, :root)
+    ctx = landing_ctx(opts)
     reason = Keyword.fetch!(opts, :reason)
-    rmap_bin = Keyword.get(opts, :rmap_bin, "rmap")
-    ctx = %{root: root, tasks_path: Path.join(root, "roadmap/tasks.toml"), rmap_bin: rmap_bin}
 
     args = ["status", landing_task_id(item_or_id), "blocked", "--reason", reason]
 
-    with :ok <- ensure_rmap(rmap_bin) do
+    with :ok <- ensure_rmap(ctx.rmap_bin) do
       run_rmap(args, ctx)
     end
   end
@@ -328,13 +324,11 @@ defmodule Harness.Roadmap do
 
   @spec mark_in_progress(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def mark_in_progress(item_or_id, opts) do
-    root = Keyword.fetch!(opts, :root)
-    rmap_bin = Keyword.get(opts, :rmap_bin, "rmap")
-    ctx = %{root: root, tasks_path: Path.join(root, "roadmap/tasks.toml"), rmap_bin: rmap_bin}
+    ctx = landing_ctx(opts)
 
     args = ["status", landing_task_id(item_or_id), "in_progress"]
 
-    with :ok <- ensure_rmap(rmap_bin) do
+    with :ok <- ensure_rmap(ctx.rmap_bin) do
       run_rmap(args, ctx)
     end
   end
@@ -352,15 +346,27 @@ defmodule Harness.Roadmap do
 
   @spec mark_pending(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def mark_pending(item_or_id, opts) do
-    root = Keyword.fetch!(opts, :root)
-    rmap_bin = Keyword.get(opts, :rmap_bin, "rmap")
-    ctx = %{root: root, tasks_path: Path.join(root, "roadmap/tasks.toml"), rmap_bin: rmap_bin}
+    ctx = landing_ctx(opts)
 
     args = ["status", landing_task_id(item_or_id), "pending"]
 
-    with :ok <- ensure_rmap(rmap_bin) do
+    with :ok <- ensure_rmap(ctx.rmap_bin) do
       run_rmap(args, ctx)
     end
+  end
+
+  # Builds the rmap context for the lander's mark_* writebacks, which require an
+  # explicit `:root` (unlike `build_ctx/1`, whose root resolution falls back to
+  # registry lookup / cwd).
+  @spec landing_ctx(keyword()) :: ctx()
+  defp landing_ctx(opts) do
+    root = Keyword.fetch!(opts, :root)
+
+    %{
+      root: root,
+      tasks_path: Path.join(root, "roadmap/tasks.toml"),
+      rmap_bin: Keyword.get(opts, :rmap_bin, "rmap")
+    }
   end
 
   @spec landing_task_id(Item.t() | String.t()) :: String.t()

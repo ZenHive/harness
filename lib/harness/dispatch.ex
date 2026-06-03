@@ -123,7 +123,7 @@ defmodule Harness.Dispatch do
   def task(project_name, task, adapter \\ @recommended_adapter, scrub_anthropic_key \\ true, review_green \\ false)
       when is_binary(project_name) and is_binary(task) and is_binary(adapter) and is_boolean(scrub_anthropic_key) and
              is_boolean(review_green) do
-    with {:ok, run_id} <- enqueue_start(project_name, task, adapter, scrub_anthropic_key, review_green) do
+    with {:ok, run_id} <- enqueue_start(project_name, task, adapter, toggles(scrub_anthropic_key, review_green)) do
       {:ok, %{run_id: run_id}}
     end
   end
@@ -186,7 +186,7 @@ defmodule Harness.Dispatch do
       )
       when is_binary(project_name) and is_binary(task) and is_binary(adapter) and is_integer(timeout_ms) and
              timeout_ms > 0 and is_boolean(scrub_anthropic_key) and is_boolean(review_green) do
-    with {:ok, run_id} <- start(project_name, task, adapter, scrub_anthropic_key, review_green, self()) do
+    with {:ok, run_id} <- start(project_name, task, adapter, toggles(scrub_anthropic_key, review_green), self()) do
       await_result(run_id, timeout_ms)
     end
   end
@@ -441,35 +441,12 @@ defmodule Harness.Dispatch do
   # item now, then persist the worker job before returning the run id. The worker
   # re-ingests by task id and starts the run with the stored id when Oban executes
   # the job.
-  @spec enqueue_start(String.t(), String.t(), String.t(), boolean(), boolean()) ::
+  @spec enqueue_start(String.t(), String.t(), String.t(), toggles()) ::
           {:ok, String.t()} | {:error, error()}
-  defp enqueue_start(project_name, task, @recommended_adapter, scrub_anthropic_key, review_green) do
-    with {:ok, project} <- lookup_project(project_name),
-         {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: :claude),
-         {:ok, {adapter_module, render_agent}} <- recommended_adapter_for_item(@recommended_adapter, item),
-         {:ok, item} <- rerender_for_agent(item, project, render_agent),
+  defp enqueue_start(project_name, task, adapter, toggles) do
+    with {:ok, {project, item, adapter_module}} <- resolve_and_ingest(project_name, task, adapter),
          {:ok, run_id, _job} <-
-           RunWorker.enqueue(
-             project,
-             item,
-             adapter_module,
-             run_start_opts(item, nil, scrub_anthropic_key, review_green)
-           ) do
-      {:ok, run_id}
-    end
-  end
-
-  defp enqueue_start(project_name, task, adapter, scrub_anthropic_key, review_green) do
-    with {:ok, {adapter_module, render_agent}} <- resolve_adapter(adapter),
-         {:ok, project} <- lookup_project(project_name),
-         {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: render_agent),
-         {:ok, run_id, _job} <-
-           RunWorker.enqueue(
-             project,
-             item,
-             adapter_module,
-             run_start_opts(item, nil, scrub_anthropic_key, review_green)
-           ) do
+           RunWorker.enqueue(project, item, adapter_module, run_start_opts(item, nil, toggles)) do
       {:ok, run_id}
     end
   end
@@ -477,36 +454,37 @@ defmodule Harness.Dispatch do
   # Blocking path for `await/6`: this keeps the in-memory subscriber contract so
   # the tool call can receive the result directly. `dispatch-task` is the
   # restart-resilient fire-and-forget MCP path.
-  @spec start(String.t(), String.t(), String.t(), boolean(), boolean(), pid() | nil) ::
+  @spec start(String.t(), String.t(), String.t(), toggles(), pid() | nil) ::
           {:ok, String.t()} | {:error, error()}
-  defp start(project_name, task, @recommended_adapter, scrub_anthropic_key, review_green, subscriber) do
-    with {:ok, project} <- lookup_project(project_name),
-         {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: :claude),
-         {:ok, {adapter_module, render_agent}} <- recommended_adapter_for_item(@recommended_adapter, item),
-         {:ok, item} <- rerender_for_agent(item, project, render_agent),
+  defp start(project_name, task, adapter, toggles, subscriber) do
+    with {:ok, {project, item, adapter_module}} <- resolve_and_ingest(project_name, task, adapter),
          {:ok, run_id, _pid} <-
-           Run.Supervisor.start_run(
-             item,
-             project,
-             adapter_module,
-             run_start_opts(item, subscriber, scrub_anthropic_key, review_green)
-           ) do
+           Run.Supervisor.start_run(item, project, adapter_module, run_start_opts(item, subscriber, toggles)) do
       {:ok, run_id}
     end
   end
 
-  defp start(project_name, task, adapter, scrub_anthropic_key, review_green, subscriber) do
+  # The single resolve → ingest pipeline shared by enqueue_start/4 and start/5,
+  # so the adapter-resolution + render logic exists exactly once: a bug fix here
+  # is one edit, not four. The `recommend` sentinel ingests for claude, scores a
+  # recommendation off the item, then re-renders for the chosen agent; a concrete
+  # adapter resolves first and ingests rendered for that agent directly.
+  @spec resolve_and_ingest(String.t(), String.t(), String.t()) ::
+          {:ok, {Project.t(), Item.t(), module()}} | {:error, error()}
+  defp resolve_and_ingest(project_name, task, @recommended_adapter) do
+    with {:ok, project} <- lookup_project(project_name),
+         {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: :claude),
+         {:ok, {adapter_module, render_agent}} <- recommended_adapter_for_item(@recommended_adapter, item),
+         {:ok, item} <- rerender_for_agent(item, project, render_agent) do
+      {:ok, {project, item, adapter_module}}
+    end
+  end
+
+  defp resolve_and_ingest(project_name, task, adapter) do
     with {:ok, {adapter_module, render_agent}} <- resolve_adapter(adapter),
          {:ok, project} <- lookup_project(project_name),
-         {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: render_agent),
-         {:ok, run_id, _pid} <-
-           Run.Supervisor.start_run(
-             item,
-             project,
-             adapter_module,
-             run_start_opts(item, subscriber, scrub_anthropic_key, review_green)
-           ) do
-      {:ok, run_id}
+         {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: render_agent) do
+      {:ok, {project, item, adapter_module}}
     end
   end
 
@@ -540,6 +518,20 @@ defmodule Harness.Dispatch do
   defp recommendation_domain(%Item{domains: [domain | _]}), do: domain
   defp recommendation_domain(%Item{}), do: :elixir
 
+  # The per-dispatch toggle pair (secret-scrub + force-on green review) is built
+  # once at the public entry points (task/await) and threaded through the
+  # internal call chain as one value, so adding a third toggle later touches one
+  # signature, not the whole pipeline. `start_opts/3` / `run_start_opts/4`
+  # (booleans) stay the @doc false testability seam; the /2 + /3 variants below
+  # unpack the toggles map at the start_run boundary.
+  @typedoc false
+  @type toggles :: %{scrub_anthropic_key: boolean(), review_green: boolean()}
+
+  @spec toggles(boolean(), boolean()) :: toggles()
+  defp toggles(scrub_anthropic_key, review_green) do
+    %{scrub_anthropic_key: scrub_anthropic_key, review_green: review_green}
+  end
+
   # Build the start_run opts. Forcing a green-review pass ON is an explicit
   # `review_green: true` opt; leaving it false adds nothing so the project-level
   # `review_green` setting stays in control — passing `review_green: false`
@@ -553,19 +545,29 @@ defmodule Harness.Dispatch do
     if review_green, do: Keyword.put(opts, :review_green, true), else: opts
   end
 
+  @spec start_opts(pid() | nil, toggles()) :: keyword()
+  defp start_opts(subscriber, %{scrub_anthropic_key: scrub, review_green: review_green}) do
+    start_opts(subscriber, scrub, review_green)
+  end
+
   @doc false
   @spec run_start_opts(Item.t(), pid() | nil, boolean(), boolean()) :: keyword()
   def run_start_opts(%Item{} = item, subscriber, scrub_anthropic_key, review_green) do
+    run_start_opts(item, subscriber, toggles(scrub_anthropic_key, review_green))
+  end
+
+  @spec run_start_opts(Item.t(), pid() | nil, toggles()) :: keyword()
+  defp run_start_opts(%Item{} = item, subscriber, toggles) do
     item
     |> Map.get(:model)
     |> case do
       model when is_binary(model) ->
         subscriber
-        |> start_opts(scrub_anthropic_key, review_green)
+        |> start_opts(toggles)
         |> Keyword.put(:requested_model, model)
 
       _other ->
-        start_opts(subscriber, scrub_anthropic_key, review_green)
+        start_opts(subscriber, toggles)
     end
   end
 

@@ -31,6 +31,7 @@ defmodule Harness.Dashboard.MCPServer do
   alias Anubis.MCP.Error
   alias Anubis.Server.Frame
   alias Harness.Chat.Tools
+  alias Harness.JSONSafe
 
   @impl Anubis.Server
   def init(_client_info, frame) do
@@ -89,7 +90,7 @@ defmodule Harness.Dashboard.MCPServer do
 
   @spec success_payload(term()) :: map()
   defp success_payload(result) do
-    text = result |> json_safe() |> Jason.encode!()
+    text = result |> JSONSafe.encode(JSONSafe.mcp_opts()) |> Jason.encode!()
     %{"content" => [%{"type" => "text", "text" => text}], "isError" => false}
   end
 
@@ -120,21 +121,4 @@ defmodule Harness.Dashboard.MCPServer do
   defp normalize_schema_value(value) when is_map(value), do: normalize_schema(value)
   defp normalize_schema_value(value) when is_list(value), do: Enum.map(value, &normalize_schema_value/1)
   defp normalize_schema_value(value), do: value
-
-  @spec json_safe(term()) :: term()
-  defp json_safe(%_struct{} = value), do: value |> Map.from_struct() |> json_safe()
-  defp json_safe(%{} = value), do: Map.new(value, fn {k, v} -> {json_key(k), json_safe(v)} end)
-  defp json_safe(value) when is_list(value), do: Enum.map(value, &json_safe/1)
-  defp json_safe(value) when is_tuple(value), do: value |> Tuple.to_list() |> json_safe()
-  defp json_safe(value) when is_atom(value), do: Atom.to_string(value)
-
-  defp json_safe(value) when is_pid(value) or is_reference(value) or is_function(value) or is_port(value),
-    do: inspect(value)
-
-  defp json_safe(value), do: value
-
-  @spec json_key(term()) :: String.t()
-  defp json_key(key) when is_atom(key), do: Atom.to_string(key)
-  defp json_key(key) when is_binary(key), do: key
-  defp json_key(key), do: inspect(key)
 end

@@ -305,7 +305,7 @@ invocation = %Harness.AgentAdapter.Invocation{
 - **Ad-hoc probes / A/B experiments** — pass a real worktree path you control (typically one you constructed with `Harness.Worktree.create/2` and will clean up yourself). A throwaway `/tmp` path is fine for read-only probes; for anything that may write, it must be a git worktree the adapter can commit into.
 
 `AuditReview.grade_fix/1` is the packaged version of this for HIGH-tier reviews. Worth knowing its optional knobs:
-- `:grader` — defaults to the opposite of `:implementer` for `:claude`/`:codex`; other implementers require explicit `:grader`.
+- `:grader` — defaults to the cross-family pair from `config :harness, :audit_review, grader_pairs:` (built-in default: `:codex` for `:claude` and vice versa); implementers absent from the pair map require explicit `:grader`.
 - `:cwd` — defaults to `File.cwd!/0` (see caveat above for Context A).
 - `:model` — pin a specific model id (e.g. `"claude-opus-4-7"` when grading higher-stakes fixes).
 - `:total_timeout` / `:idle_timeout` — forwarded to `Driver`.

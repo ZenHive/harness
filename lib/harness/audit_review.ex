@@ -34,6 +34,17 @@ defmodule Harness.AuditReview do
   See the codified skill at
   `~/_DATA/code/claude-marketplace-elixir/plugins/staged-review/skills/audit-review/SKILL.md`
   § "Stake-gated fix verification".
+
+  ## Configuring grader pairs
+
+  `default_grader/1` reads the implementer → grader pairing from config, falling
+  back to the built-in `%{claude: :codex, codex: :claude}` default when unset:
+
+      config :harness, :audit_review, grader_pairs: %{claude: :codex, codex: :claude}
+
+  Override it to re-pair (e.g. point Claude at Grok) or to add auto-pairs for
+  implementers the default leaves unpaired. An implementer absent from the
+  configured map still returns `{:error, {:no_default_grader, implementer}}`.
   """
 
   use Descripex, namespace: "/audit_review"
@@ -46,12 +57,14 @@ defmodule Harness.AuditReview do
   @sentinel_approve "<<<VERDICT:APPROVE>>>"
   @sentinel_reject "<<<VERDICT:REJECT>>>"
 
-  # Auto-pairs only the two agents that audit-review's HIGH tier explicitly
-  # names: Codex grades Claude, Claude grades Codex. Other implementers must
-  # pass :grader explicitly — there is no defensible default for grok/cursor/etc.
-  # Cost-tier-aware grader selection can be layered onto AgentRegistry later,
-  # but this module keeps the default pair deliberately explicit.
-  @grader_pairs %{claude: :codex, codex: :claude}
+  # Built-in default: auto-pairs only the two agents that audit-review's HIGH
+  # tier explicitly names — Codex grades Claude, Claude grades Codex. Other
+  # implementers must pass :grader explicitly (no defensible default for
+  # grok/cursor/etc.) unless an operator adds them via the
+  # `config :harness, :audit_review, grader_pairs: %{...}` override read in
+  # default_grader/1. Cost-tier-aware grader selection can be layered onto
+  # AgentRegistry later, but the in-code default stays deliberately explicit.
+  @default_grader_pairs %{claude: :codex, codex: :claude}
 
   @typedoc "What the grader concluded about the fix."
   @type verdict :: :approve | :reject | :unclear
@@ -159,10 +172,18 @@ defmodule Harness.AuditReview do
   """
   @spec default_grader(atom()) :: {:ok, module()} | {:error, {:no_default_grader, atom()}}
   def default_grader(implementer) when is_atom(implementer) do
-    case Map.fetch(@grader_pairs, implementer) do
+    case Map.fetch(grader_pairs(), implementer) do
       {:ok, grader_atom} -> AgentRegistry.module_for_agent(grader_atom)
       :error -> {:error, {:no_default_grader, implementer}}
     end
+  end
+
+  # Config override wins; the built-in pair is the fallback when the key is unset.
+  @spec grader_pairs() :: %{optional(atom()) => atom()}
+  defp grader_pairs do
+    :harness
+    |> Application.get_env(:audit_review, [])
+    |> Keyword.get(:grader_pairs, @default_grader_pairs)
   end
 
   @spec fetch_implementer(keyword()) :: {:ok, atom()} | {:error, term()}

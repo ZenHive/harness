@@ -27,6 +27,7 @@ defmodule Harness.Dashboard.Transcript.Parser.Codex do
   """
 
   alias Harness.Dashboard.Transcript.Parser
+  alias Harness.LineBuffer
 
   defstruct buffer: ""
 
@@ -44,26 +45,16 @@ defmodule Harness.Dashboard.Transcript.Parser.Codex do
   """
   @spec feed(t(), iodata()) :: {[Parser.event()], t()}
   def feed(%__MODULE__{} = parser, chunk) do
-    combined = parser.buffer <> IO.iodata_to_binary(chunk)
-    {complete, remainder} = split_lines(combined)
+    {complete, remainder} = LineBuffer.split(parser.buffer, chunk)
     events = Enum.flat_map(complete, &parse_line/1)
     {events, %{parser | buffer: remainder}}
   end
 
   @doc "Flushes the buffer at port close — same semantics as `feed/2`."
   @spec finalize(t()) :: {[Parser.event()], t()}
-  def finalize(%__MODULE__{buffer: ""} = parser), do: {[], parser}
-
-  def finalize(%__MODULE__{buffer: leftover} = parser) do
-    {parse_line(leftover), %{parser | buffer: ""}}
-  end
-
-  @spec split_lines(binary()) :: {[binary()], binary()}
-  defp split_lines(string) do
-    case String.split(string, "\n") do
-      [single] -> {[], single}
-      many -> {Enum.drop(many, -1), List.last(many)}
-    end
+  def finalize(%__MODULE__{} = parser) do
+    {lines, remainder} = LineBuffer.take_remainder(parser.buffer)
+    {Enum.flat_map(lines, &parse_line/1), %{parser | buffer: remainder}}
   end
 
   @spec parse_line(binary()) :: [Parser.event()]
