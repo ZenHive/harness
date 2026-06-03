@@ -75,6 +75,30 @@ defmodule Harness.ResultStoreContract do
     :ok
   end
 
+  @doc "Delete a persisted run record by id; deletion is idempotent and scoped to the one run_id."
+  @spec assert_delete_run(ResultStore.store()) :: :ok
+  def assert_delete_run(store) do
+    keep = log_record(run_id: "r-keep", batch_id: "b-del")
+    drop = log_record(run_id: "r-drop", batch_id: "b-del")
+    assert :ok = ResultStore.record_run(keep, store)
+    assert :ok = ResultStore.record_run(drop, store)
+
+    # both present
+    assert {:ok, [_, _]} = ResultStore.list_run_records(store, batch_id: "b-del")
+
+    # delete one — returns :ok, removes only that row
+    assert :ok = ResultStore.delete_run("r-drop", store)
+    assert {:ok, []} = ResultStore.list_run_records(store, run_id: "r-drop")
+    assert {:ok, [survivor]} = ResultStore.list_run_records(store, run_id: "r-keep")
+    assert survivor.run_id == "r-keep"
+
+    # idempotent — deleting an absent record is still :ok
+    assert :ok = ResultStore.delete_run("r-drop", store)
+    assert :ok = ResultStore.delete_run("never-existed", store)
+
+    :ok
+  end
+
   @doc "Roundtrip a record with tuple reason (e.g. {:agent_spawn_failed, :enoent}) and non-UTF8 agent_output."
   @spec assert_complex_fields(ResultStore.store()) :: :ok
   def assert_complex_fields(store) do

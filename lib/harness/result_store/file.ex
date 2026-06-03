@@ -65,6 +65,20 @@ defmodule Harness.ResultStore.File do
     end
   end
 
+  # run_path/2 base64-encodes run_id (safe_id/1) and storage_path/2 raises if the
+  # resolved path escapes root — the rm target is harness-constructed, not raw input.
+  # sobelow_skip ["Traversal.FileModule"]
+  @impl Harness.ResultStore
+  @spec delete_run(String.t(), keyword()) :: :ok | {:error, term()}
+  def delete_run(run_id, opts) when is_binary(run_id) and is_list(opts) do
+    case File.rm(run_path(run_id, opts)) do
+      :ok -> :ok
+      # Idempotent: an already-absent record is a successful delete.
+      {:error, :enoent} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   @impl Harness.ResultStore
   @spec aggregate_by_agent(keyword(), keyword()) :: {:ok, AgentKPI.t()} | {:error, term()}
   def aggregate_by_agent(_query_opts, opts) when is_list(opts) do

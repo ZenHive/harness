@@ -5381,9 +5381,10 @@ id = "177"
 phase = 16
 bundle = "agent-gate"
 milestone = "v0_12"
-status = "pending"
+status = "in_progress"
 title = "Reviewer KPI ratings feed AgentKPI/CapabilityScore rollups + reviewer rejection-rate tracking"
 scores = { d = 3, b = 6, u = 5 }
+depends_on = ["175"]
 acceptance_criteria = ["AgentKPI aggregates the reviewer's ratings block (performance, truthfulness, code_quality, idiom_usage) per implementer agent alongside the existing success/first-attempt-pass/duration/cost rollups", "CapabilityScore incorporates mean ratings per (agent, domain) so dispatch-recommend routing reflects reviewer-judged quality, not just approve rate", "Per-agent rejection rate AS REVIEWER is tracked (reviewer_adapter on run_records), so a reviewer with a high rejection rate can be deprioritized in cross-family selection", "The post-merge audit prompt receives the rejection-report history for tasks in its range (run_records query), enabling it to flag false rejections", "Dashboard KPI view renders the ratings columns"]
 out_of_scope = ["Changing the reviewer prompt or the .harness/review.json contract (already shipped in the rebuild)", "Automatic reviewer blacklisting - routing stays advisory (dispatch-recommend)"]
 touches = ["lib/harness/agent_kpi.ex", "lib/harness/capability_score.ex", "lib/harness/audit.ex", "lib/harness/result_store/", "lib/harness/dashboard/kpi_live.ex"]
@@ -5392,8 +5393,8 @@ body = """
 The rebuild already parses + persists the reviewer's ratings (review_ratings on run_records); this task makes them load-bearing. Since rejection is near-never by design, approve/reject rate is NOT the implementer quality signal - the ratings and reviewer_diff_size are. Reviewers get rated too: false-rejection flagging closes the loop (defense #3 in the rebuild plan). Depends on the rebuild task.
 """
 created_at = "2026-06-03"
+started_at = "2026-06-03"
 scored_at = "2026-06-03"
-depends_on = ["175"]
 
 [[task]]
 id = "178"
@@ -5487,7 +5488,7 @@ scored_at = "2026-06-03"
 id = "183"
 phase = 15
 bundle = "agent-gate"
-status = "in_progress"
+status = "superseded"
 title = "Smoke test (throwaway): add Harness.LineBuffer.empty?/1 predicate + test"
 scores = { d = 1, b = 1, u = 1 }
 acceptance_criteria = ["`Harness.LineBuffer.empty?/1` exists with an `@spec` and a `@doc`.", "New ExUnit assertions cover both the empty and non-empty buffer cases.", "`mix precommit` passes clean (format, compile --warnings-as-errors, credo --strict, doctor, test, sobelow)."]
@@ -5571,3 +5572,52 @@ delivered_by = "claude"
 created_at = "2026-06-03"
 scored_at = "2026-06-03"
 done_at = "2026-06-03"
+
+[[task]]
+id = "186"
+phase = 15
+bundle = "agent-gate"
+status = "pending"
+title = "Neuter the push remote in harness-created worktrees so in-run agents can't push/PR past landing_policy"
+scores = { d = 3, b = 6, u = 5 }
+markers = ["security", "handbuild"]
+acceptance_criteria = ["When harness creates a run worktree, the worktree's git config has no usable push path to origin (e.g. `remote.origin.pushurl` set to an invalid/no-op sentinel, or origin push refspec removed) — a `git push` run from inside the worktree fails locally without touching the network.", "The lander is UNAFFECTED: it lands from its own detached worktree / the main checkout, not the run worktree, so neutering the run worktree's push remote does not break auto-landing on :auto projects.", "Fetch still works in the run worktree (reviewer may need to fetch origin/<target> for context) — only PUSH is neutered.", "A regression test asserts that a `git push origin HEAD` invoked with the run worktree's cwd/config exits non-zero and makes no network call, while the same repo's main checkout can still push.", "No judgment added to harness code: this is a mechanical git-config guard applied at worktree creation, not a policy decision evaluated at runtime."]
+files_to_modify = ["lib/harness/worktree.ex", "test/harness/worktree_test.exs"]
+touches = ["lib/harness/worktree.ex", "lib/harness/lander.ex", "test/harness/worktree_test.exs"]
+assignee = "claude"
+body = """
+FINDING (2026-06-04): in-run implementer/reviewer agents have unrestricted shell inside their worktree (that's how the reviewer runs `cargo test`, commits fixes, etc.). Nothing stops one from also running `git push` or `gh pr create` to origin on its own initiative. This was observed on the rmap project: rmap is `landing_policy: :manual`, the harness lander never touched origin, yet task-41 work (commit 69fc726, authored+committed by the in-run `harness@localhost` identity) reached GitHub and had to be pulled back manually. The agent pushed it, bypassing the manual-landing intent.
+
+This violates the agent-gate doctrine that MERGE is the lander's mechanical, policy-gated job — not something an implementer/reviewer can do unilaterally. A `:manual` project should never have anything reach origin except by an explicit operator action.
+
+FIX (mechanical substrate, NOT judgment): at worktree-creation time, neuter the push path in the run worktree's local git config so an agent's `git push` fails locally (e.g. set `remote.origin.pushurl` to a no-op sentinel like `/dev/null` or an invalid URL, or drop the push refspec). Keep fetch intact (reviewer may fetch origin/<target>). The lander is unaffected because it lands from its own detached worktree, not the run worktree.
+
+This does NOT add a runtime branch/classifier/policy-evaluation to harness code — it's a deterministic git-config write applied uniformly at worktree setup, same class as the worktree/branch mechanics already there. `gh pr create` is harder to fully block (it uses the gh token, not the git remote); the push-remote neuter covers the `git push` vector, and a follow-up note should flag that `gh` auth in the run env is a separate, broader surface (consider scrubbing GH_TOKEN/GITHUB_TOKEN from the in-run env via the existing Invocation.env scrub pairs).
+
+Marked handbuild: touches worktree-creation substrate while the run lifecycle is still being hardened (180/185 just landed); hand-build per the dogfooding scaffolding exception.
+"""
+created_at = "2026-06-03"
+scored_at = "2026-06-03"
+
+[[task]]
+id = "187"
+phase = 4
+bundle = "multi-agent"
+status = "pending"
+title = "Flip Antigravity worktree_isolation to true — agy 1.0.5 honors port cwd (Task 32 finding is stale)"
+scores = { d = 2, b = 5, u = 5 }
+depends_on = [32]
+acceptance_criteria = ["Antigravity.capabilities/0 returns worktree_isolation: true; Harness.Worktree.Isolation.validate(Antigravity) returns :ok (no longer rejects dispatch)", "worktree_isolation_limitation/0 is removed; the moduledoc § 'Working directory / workspace' is rewritten to state agy honors the port cwd as of 1.0.5 (cite the re-test)", "antigravity_test.exs is updated (it currently asserts worktree_isolation: false and exercises worktree_isolation_limitation/0); the AgentAdapter.ConformanceCase still passes unchanged", "docs/dogfooding-workflow.md no longer documents Antigravity as rejected-before-spawn", "CONSCIOUS DECISION recorded in the implemented note: flipping to true makes Harness.Run trust the capability and SKIP the post-run main-checkout pollution check for Antigravity. Given agy's behavior already flipped once across a patch release, the implementer/reviewer must decide explicitly whether to (a) trust-and-skip per the current Isolation design, or (b) retain a pollution snapshot/check for Antigravity as belt-and-suspenders — and justify the choice."]
+out_of_scope = ["Fixing or working around the agy headless startup-hang flake — harness's timeout watchdog already covers it", "Adding --add-dir/--sandbox flags to build_command/1 — the re-test shows the bare port cwd is sufficient; no flag earns its plumbing cost", "Changing the Harness.Worktree.Isolation trust-vs-check design for OTHER adapters"]
+assignee = "claude"
+body = """
+Task 32 (2026-05-22) declared `Antigravity` `worktree_isolation: false` because `agy` ignored the port cwd and resolved its workspace via git-common-dir, editing the *main checkout* instead of the run worktree. That finding is stale at agy 1.0.5.
+
+Empirical re-test (2026-06-04, /tmp/agy-isolation-test.sh, exact harness setup: `git worktree add` linked worktree whose `.git` is a file pointing back to the common dir — the precise Task-32 trigger): 4/4 completed runs ISOLATED — baseline (no flags), `--add-dir <wt>`, `--sandbox`, and the combo. In every run agy's cwd was correctly the worktree and writes landed there with the main checkout clean. No flag is needed — the port `:cd` harness already sets (`AgentAdapter.invoke/2`) is now sufficient, so `build_command/1` does NOT need the worktree path threaded in. agy was fixed upstream somewhere across the undocumented 1.0.0→1.0.5 patch run (changelog only documents 1.0.0).
+
+Side finding (do not fix here): one re-test run wedged agy at startup for 15+ min (empty log, no edit, no exit). That is an agy headless-reliability flake, already covered by harness's Port-close + timeout watchdog (termination is never derived from exit code). Not an isolation concern.
+
+Make `Harness.AgentAdapter.Antigravity` declare worktree isolation and update everything that documented the limitation.
+"""
+created_at = "2026-06-03"
+scored_at = "2026-06-03"

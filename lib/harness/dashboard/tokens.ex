@@ -339,6 +339,21 @@ defmodule Harness.Dashboard.Tokens do
       }
       .kill-btn:hover { background: var(--accent-soft); }
 
+      /* Delete affordance — muted (history cleanup), quieter than the --accent kill cue */
+      .delete-btn {
+        background: transparent;
+        color: var(--text-muted);
+        border: 1px solid var(--rule);
+        border-radius: 0.25rem;
+        padding: var(--space-1) var(--space-3);
+        font-family: var(--font-display);
+        font-size: var(--text-sm);
+        font-weight: 600;
+        cursor: pointer;
+        transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out);
+      }
+      .delete-btn:hover { color: var(--text-subtle); border-color: var(--text-muted); }
+
       pre.transcript {
         background: var(--surface);
         padding: var(--space-3);

@@ -171,6 +171,10 @@ defmodule Harness.ResultStore.FileTest do
     test "complex fields (tuple reason, non-UTF8 agent_output) via contract", %{root: root} do
       assert :ok = ResultStoreContract.assert_complex_fields({Store, root: root})
     end
+
+    test "delete_run removes one record idempotently via contract", %{root: root} do
+      assert :ok = ResultStoreContract.assert_delete_run({Store, root: root})
+    end
   end
 
   # File-specific atomic-write guarantee (not part of the cross-backend contract).
@@ -357,6 +361,9 @@ defmodule Harness.ResultStore.FileTest do
 
       assert {:error, :disabled} = ResultStore.load_batch("anything", false)
       assert {:error, :disabled} = ResultStore.load_batch("anything", nil)
+
+      assert :ok = ResultStore.delete_run("r-dis", false)
+      assert :ok = ResultStore.delete_run("r-dis", nil)
     end
   end
 end

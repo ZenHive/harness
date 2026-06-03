@@ -167,6 +167,20 @@ defmodule Harness.ResultStore.Postgres do
   end
 
   @impl Harness.ResultStore
+  @spec delete_run(String.t(), keyword()) :: :ok | {:error, term()}
+  def delete_run(run_id, opts) when is_binary(run_id) and is_list(opts) do
+    repo = Keyword.get(opts, :repo, Repo)
+
+    try do
+      # delete_all is idempotent: a 0-row delete (absent run_id) still returns :ok.
+      {_count, _} = repo.delete_all(from(r in RunRecordSchema, where: r.run_id == ^run_id))
+      :ok
+    rescue
+      e -> {:error, e}
+    end
+  end
+
+  @impl Harness.ResultStore
   @spec aggregate_by_agent(keyword(), keyword()) :: {:ok, AgentKPI.t()} | {:error, term()}
   def aggregate_by_agent(_query_opts, opts) when is_list(opts) do
     repo = Keyword.get(opts, :repo, Repo)

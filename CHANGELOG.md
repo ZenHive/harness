@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Dashboard run-history Delete button + `ResultStore.delete_run/2`.** Settled
+  rows in the "Run history" table now carry a confirm-gated **Delete** action
+  that discards the run's persisted record (e.g. throwaway smoke runs that
+  shouldn't clutter the index or skew KPI rollups). New behaviour callback
+  `Harness.ResultStore.delete_run/2` (idempotent — an absent record returns
+  `:ok`) implemented by both the File and Postgres backends and exercised by the
+  shared `ResultStoreContract`. The function is **deliberately not**
+  `api()`-annotated: `ResultStore` is in the Manifest driver surface, so an
+  annotation would expose a destructive write to the orchestrator MCP/chat tool
+  list — it stays dashboard-operator-only until an orchestrator use case asks
+  for it.
+
 - **The agent-gate workflow rebuild (hand-built, 2026-06-03).** The run
   lifecycle is now `worktree → implementer AI → reviewer AI (THE gate) → MERGE
   → audit AI`, with **no mechanical verification gate anywhere** — the

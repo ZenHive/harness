@@ -375,8 +375,15 @@ defmodule Harness.Dashboard.Live do
 
   @spec prepend_history(StatusView.run_entry(), [StatusView.run_entry()]) :: [StatusView.run_entry()]
   defp prepend_history(entry, history_all) do
-    deduped = Enum.reject(history_all, &(&1.status.run_id == entry.status.run_id))
-    Enum.take([entry | deduped], @history_limit)
+    Enum.take([entry | prune_history(history_all, entry.status.run_id)], @history_limit)
+  end
+
+  # Drops every history entry for `run_id` — shared by prepend_history/2 (dedup
+  # before prepending the latest) and the "delete_run" handler (operator discard).
+  @doc false
+  @spec prune_history([StatusView.run_entry()], String.t()) :: [StatusView.run_entry()]
+  def prune_history(history_all, run_id) do
+    Enum.reject(history_all, &(&1.status.run_id == run_id))
   end
 
   @spec passes_filter?(StatusView.run_entry(), String.t() | nil) :: boolean()
@@ -782,6 +789,7 @@ defmodule Harness.Dashboard.Live do
           <td>{entry.detail || ""}</td>
           <td>
             <.kill_button :if={killable?(entry.status)} run_id={entry.status.run_id} />
+            <.delete_button :if={deletable?(entry.status)} run_id={entry.status.run_id} />
           </td>
         </tr>
       </tbody>
@@ -818,6 +826,27 @@ defmodule Harness.Dashboard.Live do
     """
   end
 
+  attr(:run_id, :string, required: true)
+
+  # Settled-only affordance: discards the run's persisted history record (e.g. a
+  # throwaway smoke run). Confirm-gated since the record is gone for good; routes
+  # to the `"delete_run"` handle_event. Never offered for a live run (deletable?/1
+  # is true only for terminal states).
+  @spec delete_button(map()) :: Rendered.t()
+  defp delete_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      class="delete-btn"
+      phx-click="delete_run"
+      phx-value-run_id={@run_id}
+      data-confirm={"Delete run #{@run_id} from history? This removes its record permanently."}
+    >
+      Delete
+    </button>
+    """
+  end
+
   @impl Phoenix.LiveView
   def handle_event("select_project", %{"project" => project_name}, socket) do
     target =
@@ -834,6 +863,20 @@ defmodule Harness.Dashboard.Live do
     # broadcast transitions the index streams and (if focused) the detail view.
     :ok = Harness.Run.cancel(run_id)
     {:noreply, socket}
+  end
+
+  def handle_event("delete_run", %{"run_id" => run_id}, socket) do
+    # Best-effort store delete (mirrors record_run's contract: logged, never fatal),
+    # then drop the row from both the live stream and the history_all assign so a
+    # later restream (project / landed toggle) doesn't resurrect it.
+    _ = ResultStore.delete_run(run_id)
+
+    socket =
+      socket
+      |> assign(:history_all, prune_history(socket.assigns.history_all, run_id))
+      |> stream_delete_by_dom_id(:history, "hist-#{run_id}")
+
+    {:noreply, assign(socket, :history_empty?, history_rows(socket) == [])}
   end
 
   def handle_event("toggle_landed", _params, socket) do
@@ -964,4 +1007,12 @@ defmodule Harness.Dashboard.Live do
   def killable?(%Status{state: state}) when state in [:done, :failed], do: false
   def killable?(%Status{}), do: true
   def killable?(nil), do: false
+
+  # The inverse of killable?/1: only a settled run has a persisted history record
+  # to discard, so the Delete affordance is offered exactly for terminal states.
+  @doc false
+  @spec deletable?(Status.t() | nil) :: boolean()
+  def deletable?(%Status{state: state}) when state in [:done, :failed], do: true
+  def deletable?(%Status{}), do: false
+  def deletable?(nil), do: false
 end

@@ -36,6 +36,10 @@ defmodule Harness.ResultStore.PostgresTest do
     test "roundtrips complex fields (tuple reason, non-UTF8 binary, review artifact fields)" do
       assert :ok = ResultStoreContract.assert_complex_fields(ResultStore.configured())
     end
+
+    test "delete_run removes one record idempotently via contract" do
+      assert :ok = ResultStoreContract.assert_delete_run(ResultStore.configured())
+    end
   end
 
   describe "same-run_id upsert never loses settled evidence (Task 163)" do

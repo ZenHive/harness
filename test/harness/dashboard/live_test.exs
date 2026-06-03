@@ -135,6 +135,24 @@ defmodule Harness.Dashboard.LiveTest do
     end
   end
 
+  describe "deletable?/1 (delete-button visibility guard)" do
+    test "settled states expose the delete control (persisted history record exists)" do
+      assert Live.deletable?(%Status{run_id: "r", task_id: "1", state: :done})
+      assert Live.deletable?(%Status{run_id: "r", task_id: "1", state: :failed})
+    end
+
+    test "in-flight states have no record yet — no delete control" do
+      for state <- [:dispatched, :running, :committing, :reviewing] do
+        refute Live.deletable?(%Status{run_id: "r", task_id: "1", state: state}),
+               "expected #{state} to be non-deletable"
+      end
+    end
+
+    test "a missing run status hides the delete control" do
+      refute Live.deletable?(nil)
+    end
+  end
+
   describe "live_edited_files/1 (in-flight edited-file harvest)" do
     test "surfaces string-keyed file_path / path tool args, first-seen and deduped" do
       events = [
@@ -191,6 +209,29 @@ defmodule Harness.Dashboard.LiveTest do
     test "cancelling an unknown run is a no-op and returns the socket unchanged" do
       socket = socket_with_run("definitely-not-a-run")
       assert {:noreply, ^socket} = Live.handle_event("kill_run", %{"run_id" => "other-run"}, socket)
+    end
+  end
+
+  # The "delete_run" handler's stream_delete_by_dom_id needs a fully-mounted
+  # LiveView socket (lifecycle hooks), which the disabled-Endpoint test env can't
+  # build — the full click→remove path is browser-verified per the moduledoc. Its
+  # pure view-state core (which entries survive a delete) is prune_history/2:
+  describe "prune_history/2 (delete-run history pruning)" do
+    test "drops every entry for the targeted run_id, keeping order of the rest" do
+      keep1 = run_entry("run-a", state: :done)
+      drop = run_entry("run-drop", state: :failed)
+      keep2 = run_entry("run-b", state: :failed)
+
+      assert Live.prune_history([keep1, drop, keep2], "run-drop") == [keep1, keep2]
+    end
+
+    test "removing the only entry yields an empty history" do
+      assert Live.prune_history([run_entry("run-x", state: :failed)], "run-x") == []
+    end
+
+    test "a run_id that isn't present leaves the list unchanged" do
+      entries = [run_entry("run-a", state: :done)]
+      assert Live.prune_history(entries, "absent") == entries
     end
   end
 

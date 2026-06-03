@@ -47,6 +47,9 @@ defmodule Harness.ResultStore do
   @doc "Lists persisted run records, optionally filtered by exact field values."
   @callback list_run_records(filters(), keyword()) :: {:ok, [LogRecord.t()]} | {:error, term()}
 
+  @doc "Deletes one persisted run record by id. Idempotent — an absent record returns :ok."
+  @callback delete_run(String.t(), keyword()) :: :ok | {:error, term()}
+
   @doc """
   Rolls persisted run records up into a per-agent KPI ledger (`Harness.AgentKPI.t/0`).
 
@@ -166,6 +169,22 @@ defmodule Harness.ResultStore do
 
   def list_run_records(store, filters) when is_list(filters) do
     dispatch(store, :list_run_records, [filters])
+  end
+
+  # Deliberately NOT api()-annotated: ResultStore is in the Manifest driver
+  # surface, so an api() here would expose a destructive write to the orchestrator
+  # MCP/chat tool list. delete_run is dashboard-operator cleanup (the run-history
+  # Delete button calls it directly); keep it off the agent surface until an
+  # orchestrator use case asks for it (then it's a one-line api/3 add).
+  @doc "Deletes one persisted run record by id. Idempotent — an absent record returns :ok."
+  @spec delete_run(String.t(), store()) :: :ok | {:error, term()}
+  def delete_run(run_id, store \\ configured())
+
+  def delete_run(run_id, false) when is_binary(run_id), do: :ok
+  def delete_run(run_id, nil) when is_binary(run_id), do: :ok
+
+  def delete_run(run_id, store) when is_binary(run_id) do
+    dispatch(store, :delete_run, [run_id])
   end
 
   api(
