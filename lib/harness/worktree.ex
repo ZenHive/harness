@@ -80,6 +80,15 @@ defmodule Harness.Worktree do
   @committer_name "harness"
   @committer_email "harness@localhost"
 
+  # No-op push target stamped into the run worktree's push path (Task 186). An
+  # in-run agent has a full shell in its worktree, so nothing intrinsically stops
+  # it running `git push`/`gh pr create` and reaching origin on its own
+  # initiative — bypassing the lander, the only place MERGE is supposed to happen
+  # (a `:manual` project must see nothing reach origin except by operator action).
+  # A local path that is not a git repo makes `git push` fail locally with no
+  # network call ("does not appear to be a git repository").
+  @push_sentinel "/dev/null"
+
   @enforce_keys [:id, :path, :branch, :repo, :base_sha]
   defstruct [:id, :path, :branch, :repo, :base_sha]
 
@@ -164,7 +173,35 @@ defmodule Harness.Worktree do
          {:ok, _output} <- add_worktree(repo, branch, path, base_ref),
          {:ok, base_sha} <- resolve_base_sha(path) do
       :ok = propagate_baseline_files(repo, path)
+      :ok = neuter_push(path)
       {:ok, %__MODULE__{id: id, path: path, branch: branch, repo: repo, base_sha: base_sha}}
+    end
+  end
+
+  # Neuters the push path for the run worktree ONLY, so an in-run agent's
+  # `git push` fails locally without touching the network (Task 186). Fetch is
+  # untouched (`remote.origin.url` still resolves), so the reviewer can still
+  # `git fetch origin/<target>` for context.
+  #
+  # Worktrees SHARE `$GIT_DIR/config` by default, so a plain `git config
+  # remote.origin.pushurl` would neuter push in the operator's main checkout AND
+  # the lander (which pushes from the parent repo) — exactly what must keep
+  # working. `extensions.worktreeConfig` + `git config --worktree` scopes the
+  # override to `$GIT_DIR/worktrees/<id>/config.worktree`, read only by this
+  # worktree. `checkout_existing/2` (the lander's detached worktree) is left
+  # alone on purpose.
+  #
+  # Best-effort: a config failure logs and proceeds — this guard is
+  # defense-in-depth, not a precondition for the worktree being usable.
+  @spec neuter_push(String.t()) :: :ok
+  defp neuter_push(path) do
+    with {:ok, _} <- Git.run(["config", "extensions.worktreeConfig", "true"], path),
+         {:ok, _} <- Git.run(["config", "--worktree", "remote.origin.pushurl", @push_sentinel], path) do
+      :ok
+    else
+      {:error, reason} ->
+        Logger.warning("harness worktree: push-neuter failed for #{path}: #{inspect(reason)}")
+        :ok
     end
   end
 

@@ -87,6 +87,18 @@ defmodule Harness.Dashboard.SettingsLive do
     {:noreply, refresh(socket)}
   end
 
+  def handle_event("toggle_reviewer_eligible", %{"name" => name}, socket) do
+    case agent_atom(name) do
+      {:ok, agent} ->
+        AgentSettings.set_reviewer_eligible(agent, not AgentSettings.reviewer_eligible?(agent), "dashboard")
+
+      :error ->
+        :noop
+    end
+
+    {:noreply, refresh(socket)}
+  end
+
   def handle_event("set_landing", %{"name" => name, "landing_policy" => policy, "target_branch" => branch}, socket) do
     notice =
       case LandingSettings.set(name, policy_atom(policy), branch, "dashboard") do
@@ -201,9 +213,12 @@ defmodule Harness.Dashboard.SettingsLive do
       <section class="setting-card">
         <h2 class="setting-section-title">Agents</h2>
         <p class="setting-desc">
-          Take an agent out of dispatch rotation. A disabled agent is skipped by <code>AgentRegistry.select/2</code>, so no run, batch, or cron tick will
-          choose it; the choice survives a restart. Distinct from a transient quota
-          pause, which clears on its own.
+          Two independent axes per agent. <strong>Enabled</strong> takes it in or out of
+          dispatch rotation (<code>AgentRegistry.select/2</code> skips a disabled agent, so no
+          run, batch, or cron tick chooses it). <strong>Reviewer</strong> governs whether it can
+          be picked as the cross-family review gate — an agent can implement yet be ineligible
+          to review (Pi is ineligible by default). Both choices survive a restart; distinct from a
+          transient quota pause, which clears on its own.
         </p>
         <ul class="project-list">
           <li
@@ -215,6 +230,9 @@ defmodule Harness.Dashboard.SettingsLive do
               <span class="project-name">{agent.label}</span>
               <span class="pill" data-state={if agent.enabled, do: "on", else: "off"}>
                 {if agent.enabled, do: "enabled", else: "disabled"}
+              </span>
+              <span class="pill" data-state={if agent.reviewer_eligible, do: "on", else: "off"}>
+                reviewer {if agent.reviewer_eligible, do: "eligible", else: "ineligible"}
               </span>
               <span
                 :if={not agent.installed}
@@ -233,12 +251,26 @@ defmodule Harness.Dashboard.SettingsLive do
                 paused
               </span>
             </div>
-            <.toggle
-              on={agent.enabled}
-              event="toggle_agent"
-              value={agent.name}
-              label={"Dispatch for #{agent.label}"}
-            />
+            <div class="agent-controls">
+              <div class="agent-control">
+                <span class="agent-control-caption">enabled</span>
+                <.toggle
+                  on={agent.enabled}
+                  event="toggle_agent"
+                  value={agent.name}
+                  label={"Dispatch for #{agent.label}"}
+                />
+              </div>
+              <div class="agent-control">
+                <span class="agent-control-caption">reviewer</span>
+                <.toggle
+                  on={agent.reviewer_eligible}
+                  event="toggle_reviewer_eligible"
+                  value={agent.name}
+                  label={"Reviewer eligibility for #{agent.label}"}
+                />
+              </div>
+            </div>
           </li>
         </ul>
       </section>
@@ -341,6 +373,7 @@ defmodule Harness.Dashboard.SettingsLive do
         name: Atom.to_string(agent),
         label: String.capitalize(Atom.to_string(agent)),
         enabled: AgentSettings.enabled?(agent),
+        reviewer_eligible: AgentSettings.reviewer_eligible?(agent),
         installed: AgentRegistry.installed?(module),
         unavailable: Map.get(unavailable, module)
       }

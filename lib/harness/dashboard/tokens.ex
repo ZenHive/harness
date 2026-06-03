@@ -1058,6 +1058,17 @@ defmodule Harness.Dashboard.Tokens do
       .project-name { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text); }
       .project-empty { color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-3) 0; }
 
+      /* Per-agent control matrix (Task 182): captioned enabled + reviewer toggles. */
+      .agent-controls { display: flex; align-items: flex-end; gap: var(--space-4); flex: none; }
+      .agent-control { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
+      .agent-control-caption {
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--text-muted);
+      }
+
       /* Config inspector (Task 127) — read-only resolved-config rows + provenance pills. */
       .config-section { margin-top: var(--space-4); }
       .config-section:first-of-type { margin-top: var(--space-3); }

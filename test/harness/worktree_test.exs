@@ -118,6 +118,34 @@ defmodule Harness.WorktreeTest do
     end
   end
 
+  describe "create/2 — push neuter (Task 186)" do
+    test "neuters push in the run worktree without leaking to the main checkout" do
+      %{origin: origin, repo: repo} = GitFixture.init_with_origin()
+      base = GitFixture.tmp_base()
+
+      assert {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base)
+
+      # Push from the run worktree fails locally (no network): pushurl is the
+      # /dev/null sentinel, so git never reaches origin and nothing lands there.
+      {_output, status} = System.cmd("git", ["push", "origin", "HEAD"], cd: wt.path, stderr_to_stdout: true)
+      assert status != 0
+      refute GitFixture.git!(origin, ["branch", "--list", wt.branch]) =~ wt.branch
+
+      # The override is scoped to the run worktree's config.worktree, not the
+      # shared config the main checkout / lander read.
+      assert String.trim(GitFixture.git!(wt.path, ["config", "--get", "remote.origin.pushurl"])) == "/dev/null"
+      assert {_o, 1} = System.cmd("git", ["-C", repo, "config", "--get", "remote.origin.pushurl"], stderr_to_stdout: true)
+
+      # Fetch still works in the run worktree — only push is neutered.
+      GitFixture.git!(wt.path, ["fetch", "-q", "origin"])
+
+      # The main checkout can still push: the operator/lander path is unaffected.
+      GitFixture.git!(repo, ["checkout", "-q", "-b", "main-extra"])
+      GitFixture.git!(repo, ["commit", "--allow-empty", "-q", "-m", "post-neuter push"])
+      GitFixture.git!(repo, ["push", "-q", "origin", "main-extra"])
+    end
+  end
+
   describe "create/2 — github source" do
     test "clones the upstream cache on first call, then carves a worktree off it" do
       upstream = GithubFixture.init_upstream(name: "wt-clone")

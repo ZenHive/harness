@@ -6,13 +6,20 @@ defmodule Harness.Agent.SettingsTest do
   setup do
     prior_settings = Application.get_env(:harness, :agent_settings)
     prior_disabled = Application.get_env(:harness, :agent_disabled)
+    prior_ineligible = Application.get_env(:harness, :agent_reviewer_ineligible)
+    prior_exclude = Application.get_env(:harness, :reviewer_exclude)
 
     root = Path.join(System.tmp_dir!(), "harness_agent_settings_#{System.unique_integer([:positive])}")
     Application.put_env(:harness, :agent_settings, root: root)
+    # Start each test from the config-seed fallback (no persisted override yet).
+    Application.delete_env(:harness, :agent_reviewer_ineligible)
+    Application.put_env(:harness, :reviewer_exclude, [:pi])
 
     on_exit(fn ->
       restore_env(:agent_settings, prior_settings)
       restore_env(:agent_disabled, prior_disabled)
+      restore_env(:agent_reviewer_ineligible, prior_ineligible)
+      restore_env(:reviewer_exclude, prior_exclude)
       File.rm_rf(root)
     end)
 
@@ -76,6 +83,59 @@ defmodule Harness.Agent.SettingsTest do
       refute File.exists?(Path.join(root, "agent_settings.term"))
       assert :ok = Settings.load_into_env()
       assert Settings.disabled_agents() == []
+    end
+  end
+
+  describe "reviewer eligibility" do
+    test "seeds ineligibility from the :reviewer_exclude config before any override" do
+      refute Settings.reviewer_eligible?(:pi)
+      assert Settings.reviewer_eligible?(:claude)
+      assert Settings.reviewer_ineligible_agents() == [:pi]
+    end
+
+    test "an agent can be enabled as implementer yet ineligible as reviewer" do
+      assert :ok = Settings.set_enabled(:pi, true, "test")
+      assert :ok = Settings.set_reviewer_eligible(:pi, false, "test")
+
+      assert Settings.enabled?(:pi)
+      refute Settings.reviewer_eligible?(:pi)
+    end
+
+    test "set_reviewer_eligible(false) persists across a reload" do
+      assert :ok = Settings.set_reviewer_eligible(:codex, false, "test")
+      assert Settings.reviewer_ineligible?(:codex)
+
+      # Simulate a restart: clear env, reload from the persisted file.
+      Application.delete_env(:harness, :agent_reviewer_ineligible)
+      assert :ok = Settings.load_into_env()
+      assert Settings.reviewer_ineligible?(:codex)
+    end
+
+    test "a set_enabled toggle does not freeze the reviewer config seed into the file" do
+      # Disabling an implementer is not a reviewer override, so persist/0 must
+      # not materialize the [:pi] seed — the seed has to stay live on reload.
+      assert :ok = Settings.set_enabled(:cursor, false, "test")
+
+      Application.delete_env(:harness, :agent_reviewer_ineligible)
+      assert :ok = Settings.load_into_env()
+
+      assert Application.get_env(:harness, :agent_reviewer_ineligible) == nil
+      assert Settings.reviewer_ineligible_agents() == [:pi]
+
+      # The seed is genuinely live, not frozen: changing it now takes effect.
+      Application.put_env(:harness, :reviewer_exclude, [:pi, :grok])
+      assert Settings.reviewer_ineligible_agents() == [:pi, :grok]
+    end
+
+    test "a persisted empty set makes a seeded agent eligible and overrides the config seed" do
+      assert :ok = Settings.set_reviewer_eligible(:pi, true, "test")
+      assert Settings.reviewer_ineligible_agents() == []
+      assert Settings.reviewer_eligible?(:pi)
+
+      Application.delete_env(:harness, :agent_reviewer_ineligible)
+      assert :ok = Settings.load_into_env()
+      assert Settings.reviewer_eligible?(:pi)
+      assert Settings.reviewer_ineligible_agents() == []
     end
   end
 

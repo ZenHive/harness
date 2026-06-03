@@ -96,11 +96,13 @@ config :harness, :retry_policy,
   max_delay_ms: 60_000,
   multiplier: 2.0
 
-# Reviewer-eligibility denylist (agent atoms). An excluded agent may still be an
-# IMPLEMENTER; it just can't be selected as the reviewer gate. Defaults to [:pi]
-# until OSS-class models reliably run the project's checks AND write a sound
-# `.harness/review.json` verdict (see Task 181). TODO(Task 182): supersede this
-# static list with the persisted, UI-editable per-agent reviewer-eligibility toggle.
+# First-boot SEED for reviewer-eligibility (agent atoms). A seeded agent may still
+# be an IMPLEMENTER; it just can't be selected as the reviewer gate. Defaults to
+# [:pi] until OSS-class models reliably run the project's checks AND write a sound
+# `.harness/review.json` verdict (see Task 181). Read once by
+# `Harness.Agent.Settings.reviewer_ineligible_agents/0` as the fallback before any
+# operator override is persisted (Task 182) — the persisted UI toggle is then
+# authoritative; this list is no longer consulted by run.ex.
 config :harness, :reviewer_exclude, [:pi]
 
 # Run lifecycle & agent timeouts — see Harness.AgentAdapter.Driver and Harness.Run.

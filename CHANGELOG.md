@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-agent reviewer-eligibility toggle, distinct from implementer enable
+  (Task 182).** `Harness.Agent.Settings` gains `reviewer_eligible?/1`,
+  `reviewer_ineligible?/1`, `reviewer_ineligible_agents/0`, and
+  `set_reviewer_eligible/3` — a second, independent axis from the existing
+  enabled (implementer) flag, so an agent can implement yet be ineligible as the
+  cross-family review gate. Persisted as a `reviewer_ineligible` set in
+  `agent_settings.term`, seeded from the `:reviewer_exclude` config (default
+  `[:pi]`) until an operator override is written; `persist/0` only materializes
+  the set once a real override sets the env key, so the config seed stays live
+  until then. `Harness.Run`'s reviewer selection now consults
+  `reviewer_eligible?/1` (the static `reviewer_excluded?` denylist is deleted;
+  `:reviewer_exclude` is no longer read in `run.ex`). The dashboard settings
+  page renders a per-agent enabled + reviewer toggle matrix.
+
+### Security
+
+- **Push-neuter in harness-created run worktrees (Task 186).** An in-run agent
+  has a full shell in its worktree and could run `git push` / `gh pr create` to
+  reach origin on its own initiative, bypassing the lander — the only place
+  MERGE is meant to happen (observed on the rmap `:manual` project: in-run work
+  reached GitHub and had to be pulled back). `Harness.Worktree.create/2` now
+  enables `extensions.worktreeConfig` and sets `remote.origin.pushurl` to a
+  `/dev/null` sentinel via `git config --worktree`, scoped to the run worktree's
+  `config.worktree` only — an in-run `git push` fails locally with no network
+  call. Fetch, the operator's main checkout, and the lander's detached worktree
+  all still push. Best-effort (a config failure logs and proceeds). **Does not
+  cover the `gh pr create` vector** (uses the gh token, not the git remote) —
+  tracked as a follow-up.
+
 - **Dashboard run-history Delete button + `ResultStore.delete_run/2`.** Settled
   rows in the "Run history" table now carry a confirm-gated **Delete** action
   that discards the run's persisted record (e.g. throwaway smoke runs that

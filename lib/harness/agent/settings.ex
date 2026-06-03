@@ -41,9 +41,13 @@ defmodule Harness.Agent.Settings do
   @default_root "~/.harness"
   @filename "agent_settings.term"
   @env_key :agent_disabled
+  @reviewer_env_key :agent_reviewer_ineligible
 
-  @typedoc "The persisted record: the set of operator-disabled agent atoms."
-  @type record :: %{disabled: [atom()]}
+  @typedoc """
+  The persisted record: the operator-disabled set (implementer enablement) and
+  the reviewer-ineligible set (review-gate eligibility), two independent axes.
+  """
+  @type record :: %{:disabled => [atom()], optional(:reviewer_ineligible) => [atom()]}
 
   @doc """
   Seeds app env from the persisted file. Called once on boot, before any dispatch
@@ -59,13 +63,26 @@ defmodule Harness.Agent.Settings do
 
       dir ->
         case TermCodec.read_file(path(dir)) do
-          {:ok, %{disabled: disabled}} when is_list(disabled) ->
-            Application.put_env(:harness, @env_key, Enum.filter(disabled, &is_atom/1))
+          {:ok, record} when is_map(record) ->
+            load_key(record, :disabled, @env_key)
+            load_key(record, :reviewer_ineligible, @reviewer_env_key)
             :ok
 
           _other ->
             :ok
         end
+    end
+  end
+
+  # Loads one persisted agent-atom set into its app-env cache. An absent key is
+  # left unset: `disabled_agents/0` then defaults to enabled, and
+  # `reviewer_ineligible_agents/0` falls back to the `:reviewer_exclude` config
+  # seed — so an old-format file (only `:disabled`) keeps the `[:pi]` stopgap.
+  @spec load_key(map(), atom(), atom()) :: :ok
+  defp load_key(record, key, env_key) do
+    case Map.get(record, key) do
+      list when is_list(list) -> Application.put_env(:harness, env_key, Enum.filter(list, &is_atom/1))
+      _other -> :ok
     end
   end
 
@@ -100,20 +117,92 @@ defmodule Harness.Agent.Settings do
     :ok
   end
 
+  @doc """
+  Returns whether an agent may be picked as THE reviewer gate. Distinct from
+  `enabled?/1`: an agent can be enabled to implement yet ineligible to review
+  (e.g. Pi/OSS models, ineligible by default until trusted to run the checks +
+  write a sound verdict). Absence ⇒ eligible, with the `:reviewer_exclude` config
+  ([:pi]) as the first-boot seed before any operator override is persisted.
+  """
+  @spec reviewer_eligible?(atom()) :: boolean()
+  def reviewer_eligible?(agent) when is_atom(agent), do: not reviewer_ineligible?(agent)
+
+  @doc "Returns whether an agent has been marked ineligible as a reviewer."
+  @spec reviewer_ineligible?(atom()) :: boolean()
+  def reviewer_ineligible?(agent) when is_atom(agent), do: agent in reviewer_ineligible_agents()
+
+  @doc """
+  Returns the reviewer-ineligible agent atoms. Falls back to the
+  `:reviewer_exclude` config seed (default `[:pi]`) until an operator override is
+  persisted — so the stopgap holds on first boot and when persistence is off.
+  """
+  @spec reviewer_ineligible_agents() :: [atom()]
+  def reviewer_ineligible_agents do
+    case Application.get_env(:harness, @reviewer_env_key) do
+      list when is_list(list) -> list
+      _unset -> Application.get_env(:harness, :reviewer_exclude, [:pi])
+    end
+  end
+
+  @doc """
+  Sets an agent's reviewer eligibility at runtime, persists it, and logs an
+  audit line. Once set, the persisted value is authoritative over the config seed
+  (an empty list makes a previously-seeded agent eligible and survives restart).
+  """
+  @spec set_reviewer_eligible(atom(), boolean(), String.t()) :: :ok
+  def set_reviewer_eligible(agent, eligible, actor) when is_atom(agent) and is_boolean(eligible) and is_binary(actor) do
+    ineligible = reviewer_ineligible_agents()
+
+    next =
+      if eligible,
+        do: List.delete(ineligible, agent),
+        else: Enum.uniq([agent | ineligible])
+
+    Application.put_env(:harness, @reviewer_env_key, next)
+    persist()
+    Logger.info("harness agent: #{agent} reviewer-#{eligibility_word(eligible)} by #{actor}")
+    :ok
+  end
+
   @spec state_word(boolean()) :: String.t()
   defp state_word(true), do: "enabled"
   defp state_word(false), do: "disabled"
 
+  @spec eligibility_word(boolean()) :: String.t()
+  defp eligibility_word(true), do: "eligible"
+  defp eligibility_word(false), do: "ineligible"
+
+  # Serializes only the axes that have an explicit value. `reviewer_ineligible`
+  # is written ONLY when its env key is actually set (a real reviewer override
+  # happened) — otherwise omitting it keeps reload falling back to the live
+  # `:reviewer_exclude` seed, so an unrelated set_enabled toggle never freezes
+  # the seed into the file. `:disabled` has no config seed (defaults to []), so
+  # it is always safe to write.
   @spec persist() :: :ok | {:error, term()}
   defp persist do
     case root() do
-      nil -> :ok
-      dir -> TermCodec.write_file(path(dir), %{disabled: disabled_agents()})
+      nil ->
+        :ok
+
+      dir ->
+        record =
+          case Application.get_env(:harness, @reviewer_env_key) do
+            list when is_list(list) -> %{disabled: disabled_agents(), reviewer_ineligible: list}
+            _unset -> %{disabled: disabled_agents()}
+          end
+
+        TermCodec.write_file(path(dir), record)
     end
   end
 
   @spec path(String.t()) :: String.t()
   defp path(dir), do: Path.join(dir, @filename)
+
+  # TODO(Task 165): this store now carries TWO axes (disabled implementers +
+  # reviewer_ineligible reviewers, Task 182) in one term file. When Task 165
+  # folds the Cron/Agent/Landing domains onto the shared Postgres-backed store,
+  # both Agent.Settings axes must move together — the consolidation owns this
+  # file, not just the :disabled set.
 
   # nil ⇒ store disabled; otherwise an expanded absolute root directory.
   @spec root() :: String.t() | nil

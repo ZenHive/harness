@@ -5321,6 +5321,7 @@ acceptance_criteria = ["Tagged both :integration and :live_agent — excluded fr
 out_of_scope = ["Running in CI or the default suite", "Cross-adapter matrix (all six agents) — one adapter proves the live seam; the agent-evaluation corpus (Task 151) owns cross-adapter scoring", "Asserting anything about the agent's code quality — the check stack verdict is the only assertion"]
 touches = ["test/harness/pipeline_live_agent_test.exs"]
 assignee = "claude"
+model = "claude-sonnet-4-6"
 body = """
 The deterministic pipeline E2E (Task 173) proves every harness seam with a scripted agent; this task adds the one seam it cannot prove — a real agent CLI invoked over a Port produces a commit that flows through verification and landing. User-requested 2026-06-03 alongside Task 173.
 
@@ -5463,6 +5464,7 @@ acceptance_criteria = ["Reviewer prompt/playbook instructs the reviewer that wri
 out_of_scope = ["The Oban retry-storm bug (separate task)", "Inferring a verdict from commits/diff in harness code - forbidden by the agent-gate architecture"]
 touches = ["lib/harness/run.ex", "priv/playbooks", "lib/harness/agent_adapter"]
 assignee = "claude"
+model = "claude-sonnet-4-6"
 body = "Discovered 2026-06-03 (rmap task 42, run-1780488946905-b4d8528e). The cross-family reviewer (Pi) reviewed AND committed 274 lines of fixes (review_iterations=1, reviewer_diff_size=274), but never wrote the .harness/review.json verdict artifact and then went idle until the watchdog fired (agent_outcome_kind={:timed_out,:idle}, ~15.8 min wall). Harness correctly settled :failed {:review_stuck, 'Reviewer wrote no .harness/review.json verdict artifact.'} - the gate did its job - but the run's work was discarded and (compounded by the retry-storm bug) the task re-dispatched. The verdict-artifact write is the single load-bearing mechanical output of the reviewer; the reviewer prompt/playbook must make it the non-negotiable FINAL step (write review.json before any other closing action), and the idle watchdog window for the reviewing phase may be too tight for a reviewer running a project's full check_command (rmap = cargo fmt+clippy+test). Per agent-gate philosophy the fix is in the reviewer PROMPT (make the artifact write unconditional + last) plus watchdog tuning - NOT a code classifier inferring a verdict from commits. This task also motivated excluding Pi as a reviewer for now (done separately in lib/harness/run.ex)."
 created_at = "2026-06-03"
 scored_at = "2026-06-03"
@@ -5472,7 +5474,7 @@ id = "182"
 phase = 16
 bundle = "agent-gate"
 milestone = "v0_12"
-status = "pending"
+status = "done"
 title = "Settings page: per-agent reviewer-eligibility toggle (distinct from implementer enable) + select_reviewer consults it"
 scores = { d = 3, b = 6, u = 6 }
 markers = ["handbuild"]
@@ -5481,8 +5483,13 @@ out_of_scope = ["Per-project reviewer overrides (this is global per-agent; per-p
 touches = ["lib/harness/agent/settings.ex", "lib/harness/run.ex", "lib/harness/dashboard/live/settings_live.ex", "lib/harness/dashboard/components.ex"]
 assignee = "human"
 body = "User-requested 2026-06-03 during the first live dogfood session. Make reviewer selection operator-configurable from the dashboard settings page instead of code/config. Today select_reviewer/1 (lib/harness/run.ex) auto-picks the first dispatchable cross-family agent, gated by reviewer_dispatchable? = available? and installed? and reviewer_enabled?; reviewer_enabled? currently reuses the GLOBAL AgentSettings.enabled? flag, which conflates 'can implement' with 'can review'. The immediate need (exclude Pi as reviewer until OSS models are stronger) shipped as a stopgap static config (config :harness, :reviewer_exclude, default [:pi]) read in run.ex - this task replaces that stopgap with a persisted, UI-editable per-agent setting. DESIGN: add a distinct reviewer_eligible?/1 + set_reviewer_eligible/2 to Harness.Agent.Settings (so an agent like Pi can stay enabled as an implementer while being ineligible as a reviewer); seed defaults from the :reviewer_exclude config so existing behavior is preserved (pi ineligible by default); have reviewer_dispatchable?/explicit path consult reviewer_eligible? instead of (or in addition to) the static exclude; render a per-agent matrix on SettingsLive with two columns - 'enabled (implementer)' and 'eligible (reviewer)'. Persisted via the agent settings store (coordinate with Task 165's settings-store consolidation - the eligibility flag should live wherever agent settings land). Handbuild (LiveView/settings UI per the dogfooding UI rule)."
+implemented = "Per-agent reviewer eligibility, distinct from implementer enable. Agent.Settings gains reviewer_eligible?/1 + reviewer_ineligible?/1 + reviewer_ineligible_agents/0 + set_reviewer_eligible/3, persisted as a reviewer_ineligible set in agent_settings.term, seeded from :reviewer_exclude config ([:pi]) until an operator override is written (persisted [] overrides the seed). run.ex reviewer_dispatchable? now consults reviewer_eligible? (static reviewer_excluded? deleted; :reviewer_exclude no longer read in run.ex). SettingsLive renders a per-agent enabled+reviewer toggle matrix with eligibility pill + toggle_reviewer_eligible handler; tokens.ex adds .agent-controls layout. Tests in settings_test/run_test/settings_live_test; browser-verified the live toggle flip on /harness/settings."
+delivered_by = "claude"
 created_at = "2026-06-03"
+started_at = "2026-06-03"
 scored_at = "2026-06-03"
+done_at = "2026-06-03"
+shipped_in = "run.ex"
 
 [[task]]
 id = "183"
@@ -5577,7 +5584,7 @@ done_at = "2026-06-03"
 id = "186"
 phase = 15
 bundle = "agent-gate"
-status = "pending"
+status = "done"
 title = "Neuter the push remote in harness-created worktrees so in-run agents can't push/PR past landing_policy"
 scores = { d = 3, b = 6, u = 5 }
 markers = ["security", "handbuild"]
@@ -5596,8 +5603,13 @@ This does NOT add a runtime branch/classifier/policy-evaluation to harness code 
 
 Marked handbuild: touches worktree-creation substrate while the run lifecycle is still being hardened (180/185 just landed); hand-build per the dogfooding scaffolding exception.
 """
+implemented = "Push-neuter at worktree creation: Worktree.neuter_push/1 enables extensions.worktreeConfig + sets remote.origin.pushurl=/dev/null via 'git config --worktree', scoped to the run worktree's config.worktree only. In-run agent 'git push' fails locally (no network); fetch, the operator's main checkout, and the lander's detached worktree all still push. Regression test in worktree_test.exs asserts all four invariants."
+delivered_by = "claude"
 created_at = "2026-06-03"
+started_at = "2026-06-03"
 scored_at = "2026-06-03"
+done_at = "2026-06-03"
+shipped_in = "worktree.ex"
 
 [[task]]
 id = "187"
@@ -5609,7 +5621,7 @@ scores = { d = 2, b = 5, u = 5 }
 depends_on = [32]
 acceptance_criteria = ["Antigravity.capabilities/0 returns worktree_isolation: true; Harness.Worktree.Isolation.validate(Antigravity) returns :ok (no longer rejects dispatch)", "worktree_isolation_limitation/0 is removed; the moduledoc § 'Working directory / workspace' is rewritten to state agy honors the port cwd as of 1.0.5 (cite the re-test)", "antigravity_test.exs is updated (it currently asserts worktree_isolation: false and exercises worktree_isolation_limitation/0); the AgentAdapter.ConformanceCase still passes unchanged", "docs/dogfooding-workflow.md no longer documents Antigravity as rejected-before-spawn", "CONSCIOUS DECISION recorded in the implemented note: flipping to true makes Harness.Run trust the capability and SKIP the post-run main-checkout pollution check for Antigravity. Given agy's behavior already flipped once across a patch release, the implementer/reviewer must decide explicitly whether to (a) trust-and-skip per the current Isolation design, or (b) retain a pollution snapshot/check for Antigravity as belt-and-suspenders — and justify the choice."]
 out_of_scope = ["Fixing or working around the agy headless startup-hang flake — harness's timeout watchdog already covers it", "Adding --add-dir/--sandbox flags to build_command/1 — the re-test shows the bare port cwd is sufficient; no flag earns its plumbing cost", "Changing the Harness.Worktree.Isolation trust-vs-check design for OTHER adapters"]
-assignee = "claude"
+assignee = "codex"
 body = """
 Task 32 (2026-05-22) declared `Antigravity` `worktree_isolation: false` because `agy` ignored the port cwd and resolved its workspace via git-common-dir, editing the *main checkout* instead of the run worktree. That finding is stale at agy 1.0.5.
 
@@ -5621,3 +5633,26 @@ Make `Harness.AgentAdapter.Antigravity` declare worktree isolation and update ev
 """
 created_at = "2026-06-03"
 scored_at = "2026-06-03"
+
+[[task]]
+id = "188"
+phase = 15
+bundle = "agent-gate"
+status = "pending"
+title = "Scrub GH_TOKEN/GITHUB_TOKEN from in-run env + assess the gh pr create vector (push-neuter follow-up)"
+scores = { d = 3, b = 6, u = 5 }
+markers = ["security"]
+depends_on = [186]
+acceptance_criteria = ["In-run invocation env scrubs GH_TOKEN and GITHUB_TOKEN via the existing Invocation.env scrub pairs, so an in-run `gh` call has no ambient auth to reach origin/open a PR", "Decision recorded: whether `gh pr create` is fully blocked by token-scrub alone, or whether a broader gh-auth isolation is needed (gh can read auth from ~/.config/gh/hosts.yml independent of env vars)", "Regression test asserts the scrub pairs remove both vars from the resolved in-run env", "Worktree push-neuter (Task 186) covers `git push`; this task covers the `gh` vector it explicitly left open"]
+out_of_scope = ["Re-litigating the git push neuter (Task 186, done)", "A runtime policy classifier in harness code — this is a deterministic env scrub, same class as the existing Invocation.env mechanics"]
+touches = ["lib/harness/agent_adapter/invocation.ex", "lib/harness/worktree.ex"]
+assignee = "human"
+body = """
+Follow-up flagged by Task 186's own body (2026-06-04). Task 186 neutered `git push` in run worktrees via `remote.origin.pushurl=/dev/null` (worktree-scoped config), but `gh pr create` is a separate vector: it authenticates with the gh token, not the git remote, so the push-neuter does not stop an in-run agent from opening a PR to origin on its own initiative — still bypassing the lander / a `:manual` landing_policy.
+
+FIX (mechanical substrate, NOT judgment): scrub GH_TOKEN/GITHUB_TOKEN from the in-run invocation env using the existing Invocation.env set/scrub pairs (Task 25), so an in-run `gh` has no ambient token. Note gh can also read auth from `~/.config/gh/hosts.yml` independent of env vars — record explicitly whether env-scrub is sufficient or whether broader gh-auth isolation (e.g. an empty GH_CONFIG_DIR in the run env) is warranted, and justify the choice.
+
+Same agent-gate doctrine as 186: MERGE is the lander's mechanical, policy-gated job — an implementer/reviewer must not reach origin unilaterally.
+"""
+created_at = "2026-06-04"
+scored_at = "2026-06-04"

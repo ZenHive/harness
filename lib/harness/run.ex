@@ -1438,20 +1438,21 @@ defmodule Harness.Run do
     AgentRegistry.available?(module) and
       AgentRegistry.installed?(module) and
       reviewer_enabled?(module) and
-      not reviewer_excluded?(module)
+      reviewer_eligible?(module)
   end
 
-  # Reviewer-eligibility denylist, distinct from the implementer-level
-  # AgentSettings.enabled? flag: an agent here may still implement, it just
-  # can't be picked (auto or explicit) as THE gate. Defaults to [:pi] — Pi/OSS
-  # models are not yet trusted to run the checks + write a sound verdict (see
-  # Task 181). TODO(Task 182): replace this static config with the persisted,
-  # UI-editable per-agent reviewer-eligibility toggle.
-  @spec reviewer_excluded?(module()) :: boolean()
-  defp reviewer_excluded?(module) do
+  # Reviewer-eligibility gate, distinct from the implementer-level
+  # AgentSettings.enabled? flag: an ineligible agent may still implement, it just
+  # can't be picked (auto or explicit) as THE gate. Operator-set and persisted
+  # via AgentSettings (Task 182), seeded from the :reviewer_exclude config
+  # ([:pi]) on first boot — Pi/OSS models aren't yet trusted to run the checks +
+  # write a sound verdict (Task 181). Unknown module ⇒ eligible, matching
+  # reviewer_enabled?/1's default-allow shape.
+  @spec reviewer_eligible?(module()) :: boolean()
+  defp reviewer_eligible?(module) do
     case AgentRegistry.agent_for_module(module) do
-      {:ok, agent} -> agent in Application.get_env(:harness, :reviewer_exclude, [:pi])
-      {:error, _reason} -> false
+      {:ok, agent} -> AgentSettings.reviewer_eligible?(agent)
+      {:error, _reason} -> true
     end
   end
 

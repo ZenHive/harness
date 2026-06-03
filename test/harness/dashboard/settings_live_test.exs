@@ -26,6 +26,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     prior_polling = Application.get_env(:harness, :cron_polling)
     prior_projects = Application.get_env(:harness, :cron_project_autonomy)
     prior_agents = Application.get_env(:harness, :agent_disabled)
+    prior_reviewer = Application.get_env(:harness, :agent_reviewer_ineligible)
     prior_landing = Application.get_env(:harness, :landing_overrides)
 
     project = ProjectFixture.from_repo("/tmp/harness-settings-live", name: "settings-live")
@@ -36,6 +37,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
       restore_env(:cron_polling, prior_polling)
       restore_env(:cron_project_autonomy, prior_projects)
       restore_env(:agent_disabled, prior_agents)
+      restore_env(:agent_reviewer_ineligible, prior_reviewer)
       restore_env(:landing_overrides, prior_landing)
     end)
 
@@ -153,6 +155,27 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     assert html =~ "disabled"
     assert AgentSettings.disabled?(:claude)
     refute AgentSettings.disabled?(:codex)
+  end
+
+  test "toggling reviewer-eligible flips an agent's review-gate eligibility (Task 182)", %{conn: conn} do
+    Application.put_env(:harness, :agent_disabled, [])
+    # Start from the config seed: Pi ships reviewer-ineligible by default.
+    Application.delete_env(:harness, :agent_reviewer_ineligible)
+
+    {:ok, view, html} = live(conn, "/harness/settings")
+
+    assert html =~ "reviewer ineligible"
+    refute AgentSettings.reviewer_eligible?(:pi)
+
+    html =
+      view
+      |> element("button[phx-click=toggle_reviewer_eligible][phx-value-name='pi']")
+      |> render_click()
+
+    assert html =~ "reviewer eligible"
+    assert AgentSettings.reviewer_eligible?(:pi)
+    # The independent axis is untouched: Pi stays enabled as an implementer.
+    assert AgentSettings.enabled?(:pi)
   end
 
   test "a transiently-unavailable agent renders a paused pill (folded in from the dashboard)", %{conn: conn} do

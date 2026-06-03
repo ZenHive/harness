@@ -386,17 +386,23 @@ defmodule Harness.RunTest do
       assert report =~ "same_family_reviewer"
     end
 
-    test "an agent in :reviewer_exclude is never auto-selected as the gate (:pi excluded by default)" do
+    test "a reviewer-ineligible agent is never auto-selected as the gate (Task 182)" do
       # A cross-family reviewer is normally auto-selected from the registry;
-      # excluding every agent via :reviewer_exclude removes them all and settles
-      # review_stuck rather than handing the gate to an excluded agent. Proves
-      # the denylist — not availability — gates selection. :pi ships excluded
-      # by default (config :harness, :reviewer_exclude) until OSS models are
-      # trusted to review; this asserts the mechanism that enforces it.
-      excluded = Enum.map(Harness.AgentRegistry.agents(), fn {agent, _module} -> agent end)
-      prior_exclude = Application.get_env(:harness, :reviewer_exclude, [:pi])
-      Application.put_env(:harness, :reviewer_exclude, excluded)
-      on_exit(fn -> Application.put_env(:harness, :reviewer_exclude, prior_exclude) end)
+      # marking every agent reviewer-ineligible removes them all and settles
+      # review_stuck rather than handing the gate to an ineligible agent. Proves
+      # eligibility — not availability — gates selection. Drives the live env
+      # cache (:agent_reviewer_ineligible) that AgentSettings.reviewer_eligible?/1
+      # reads, so no file is written to the operator's real ~/.harness store.
+      ineligible = Enum.map(Harness.AgentRegistry.agents(), fn {agent, _module} -> agent end)
+      prior = Application.get_env(:harness, :agent_reviewer_ineligible)
+      Application.put_env(:harness, :agent_reviewer_ineligible, ineligible)
+
+      on_exit(fn ->
+        case prior do
+          nil -> Application.delete_env(:harness, :agent_reviewer_ineligible)
+          value -> Application.put_env(:harness, :agent_reviewer_ineligible, value)
+        end
+      end)
 
       result = run(reviewer: nil)
 
