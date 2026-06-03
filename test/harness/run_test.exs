@@ -394,8 +394,9 @@ defmodule Harness.RunTest do
       # by default (config :harness, :reviewer_exclude) until OSS models are
       # trusted to review; this asserts the mechanism that enforces it.
       excluded = Enum.map(Harness.AgentRegistry.agents(), fn {agent, _module} -> agent end)
+      prior_exclude = Application.get_env(:harness, :reviewer_exclude, [:pi])
       Application.put_env(:harness, :reviewer_exclude, excluded)
-      on_exit(fn -> Application.put_env(:harness, :reviewer_exclude, [:pi]) end)
+      on_exit(fn -> Application.put_env(:harness, :reviewer_exclude, prior_exclude) end)
 
       result = run(reviewer: nil)
 
