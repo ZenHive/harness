@@ -5962,7 +5962,9 @@
       },
       "eff": 1.13,
       "dep_layer": 0,
-      "markers": [],
+      "markers": [
+        "handbuild"
+      ],
       "depends_on": [],
       "acceptance_criteria": [
         "A new per-language corpus repo (~/code/agent-corpus-elixir) exists as a real Elixir project (mix.exs, lib skeletons) with roadmap/tasks.toml as the benchmark, registered as a %Harness.Project{} (landing_policy :manual — corpus runs are scored, never merged)",
