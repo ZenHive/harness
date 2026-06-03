@@ -5,7 +5,6 @@ defmodule Harness.WorktreeTest do
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentAdapter.Cursor
   alias Harness.AgentAdapter.Invocation
-  alias Harness.CheckStack
   alias Harness.GitFixture
   alias Harness.GithubFixture
   alias Harness.Project
@@ -411,7 +410,6 @@ defmodule Harness.WorktreeTest do
     %Project{
       name: name,
       source: {:github, url},
-      check_stacks: [%CheckStack{name: :tiny, checks: []}],
       roadmap_path: "/tmp/#{name}"
     }
   end

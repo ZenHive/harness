@@ -9,6 +9,7 @@ defmodule Harness.ResultStoreContract do
   import ExUnit.Assertions
 
   alias Harness.AgentAdapter.Claude
+  alias Harness.AgentAdapter.Codex
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.ResultStore
   alias Harness.Run.LogRecord
@@ -23,11 +24,10 @@ defmodule Harness.ResultStoreContract do
         task_id: "task-73",
         adapter: Claude,
         state: :done,
-        reason: :passed,
+        reason: :approved,
+        verdict: :approve,
         duration_ms: 1234,
-        review_iterations: 0,
-        first_attempt_failed_check_count: 0,
-        failure_cause: %{reason: nil, failed_checks: []}
+        review_iterations: 0
       },
       overrides
     )
@@ -43,11 +43,10 @@ defmodule Harness.ResultStoreContract do
       task_id: "t1",
       adapter: Claude,
       state: :done,
-      reason: :passed,
+      reason: :approved,
+      verdict: :approve,
       duration_ms: 42,
-      review_iterations: 0,
-      first_attempt_failed_check_count: 0,
-      failure_cause: %{reason: nil, failed_checks: []}
+      review_iterations: 0
     }
 
     assert :ok = ResultStore.record_run(record, store)
@@ -55,6 +54,7 @@ defmodule Harness.ResultStoreContract do
     assert {:ok, [retrieved]} = ResultStore.list_run_records(store, batch_id: "b1")
     assert retrieved.run_id == "r1"
     assert retrieved.state == :done
+    assert retrieved.verdict == :approve
     assert retrieved.domains == []
 
     # domains roundtrip (added post-Task 116)
@@ -84,9 +84,10 @@ defmodule Harness.ResultStoreContract do
     rec =
       log_record(
         run_id: "r-complex",
+        state: :failed,
         reason: reason,
-        agent_output: non_utf8,
-        failure_cause: %{reason: reason, failed_checks: []}
+        verdict: nil,
+        agent_output: non_utf8
       )
 
     assert :ok = ResultStore.record_run(rec, store)
@@ -94,10 +95,10 @@ defmodule Harness.ResultStoreContract do
     assert {:ok, [retrieved]} = ResultStore.list_run_records(store, run_id: "r-complex")
     assert retrieved.reason == reason
     assert retrieved.agent_output == non_utf8
-    assert retrieved.failure_cause.reason == reason
+    assert retrieved.verdict == nil
 
     # struct identity, string map keys, and list-of-maps roundtrip
-    # (token_usage / check_output / composed_inputs)
+    # (token_usage / review_ratings / composed_inputs)
     composed_input = %{
       executable: "claude",
       argv: ["-p", "do the task"],
@@ -113,24 +114,26 @@ defmodule Harness.ResultStoreContract do
       log_record(
         run_id: "r-full",
         token_usage: %TokenUsage{input: 100, output: 50, total: 150},
-        check_output: %{"sobelow" => %{output: "findings", truncated: false}},
         composed_inputs: [composed_input],
         agent_outcome_kind: :exited,
-        review_iterations: 2,
-        reviewer_adapter: Claude,
-        reviewer_stuck_report: "implementer hit a usage limit; nothing to fix"
+        reviewer_diff_size: 12,
+        review_iterations: 1,
+        reviewer_adapter: Codex,
+        review_report: "fixed a credo nit inline; approving",
+        review_ratings: %{"performance" => 8, "code_quality" => 7}
       )
 
     assert :ok = ResultStore.record_run(rec_full, store)
 
     assert {:ok, [rf]} = ResultStore.list_run_records(store, run_id: "r-full")
     assert rf.token_usage == %TokenUsage{input: 100, output: 50, total: 150}
-    assert rf.check_output == %{"sobelow" => %{output: "findings", truncated: false}}
     assert rf.composed_inputs == [composed_input]
     assert rf.agent_outcome_kind == :exited
-    assert rf.review_iterations == 2
-    assert rf.reviewer_adapter == Claude
-    assert rf.reviewer_stuck_report == "implementer hit a usage limit; nothing to fix"
+    assert rf.reviewer_diff_size == 12
+    assert rf.review_iterations == 1
+    assert rf.reviewer_adapter == Codex
+    assert rf.review_report == "fixed a credo nit inline; approving"
+    assert rf.review_ratings == %{"performance" => 8, "code_quality" => 7}
 
     # tuple agent_outcome_kind roundtrip — regression for the
     # {:timed_out, :idle} FunctionClauseError that crashed Postgres.record_run

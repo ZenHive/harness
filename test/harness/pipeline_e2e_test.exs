@@ -1,18 +1,19 @@
 defmodule Harness.PipelineE2ETest do
   @moduledoc """
-  Task 173: deterministic full-pipeline E2E — one assertion chain crossing every
-  seam the pairwise suites (run_test, oban_dispatch_test, lander_test,
-  run_landing_trigger_test) only test in isolation:
+  Deterministic full-pipeline E2E for the agent-gate workflow — one assertion
+  chain crossing every seam the pairwise suites (run_test, oban_dispatch_test,
+  lander_test, run_landing_trigger_test, audit_test) only test in isolation:
 
       roadmap task → Oban dispatch (Run.Worker.perform) → Run gen_statem in a
-      real worktree → agent commit → check-stack verdict → (reviewer) →
-      landing job → Lander.Worker.perform → ff-push to origin/<target> →
-      rmap writeback
+      real worktree → implementer commit → reviewer AI (THE gate, verdict
+      artifact) → landing job → Lander.Worker.perform → ff-push to
+      origin/<target> → audit job enqueue → rmap writeback
 
   No Postgres and no real agent CLIs: Oban interaction is seam-captured
-  (`:oban_insert`) and the agent is `Harness.FakeAdapter` — but everything else
-  is real. Real git repos with a bare origin, real worktrees, real check-stack
-  execution, and real rmap against a throwaway fixture-roadmap copy.
+  (`:oban_insert`) and both the implementer and the reviewer are
+  `Harness.FakeAdapter` doubles — but everything else is real. Real git repos
+  with a bare origin, real worktrees, a real `.harness/review.json` verdict
+  artifact, and real rmap against a throwaway fixture-roadmap copy.
 
   `async: false` — registers a project in the global `ProjectRegistry` and
   mutates `:harness` app env seams.
@@ -20,7 +21,6 @@ defmodule Harness.PipelineE2ETest do
 
   use ExUnit.Case, async: false
 
-  alias Harness.CheckStack
   alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.Lander.Worker, as: LanderWorker
@@ -29,38 +29,10 @@ defmodule Harness.PipelineE2ETest do
   alias Harness.ResultStore
   alias Harness.Run.Supervisor, as: RunSupervisor
   alias Harness.Run.Worker, as: RunWorker
-  alias Harness.Verification.Check
 
   @moduletag :tmp_dir
 
   @sample_roadmap Path.expand("../fixtures/sample_roadmap", __DIR__)
-
-  # The cross-family reviewer double for the red path (the run_test.exs
-  # ReviewerFixAdapter pattern): fixes the worktree inline — writes the
-  # repair_marker the check stack demands, commits — exactly what a real
-  # reviewer agent does when the implementer's work grades red.
-  defmodule PipelineReviewerAdapter do
-    @moduledoc false
-    use Harness.AgentAdapter
-
-    alias Harness.AgentAdapter
-    alias Harness.AgentAdapter.Capabilities
-    alias Harness.AgentAdapter.Invocation
-
-    @impl AgentAdapter
-    def capabilities, do: %Capabilities{}
-
-    @impl AgentAdapter
-    def rule_channel, do: :none
-
-    @impl AgentAdapter
-    def build_command(%Invocation{prompt: prompt}) do
-      script =
-        ~S(printf '%s' "$1" > reviewer_prompt.txt; echo fixed > repair_marker; git add reviewer_prompt.txt repair_marker; git commit -q -m "reviewer fix")
-
-      {:ok, {"/bin/sh", ["-c", script, "harness-reviewer", prompt], []}}
-    end
-  end
 
   setup_all do
     if !System.find_executable("rmap") do
@@ -92,45 +64,59 @@ defmodule Harness.PipelineE2ETest do
 
     install_seams(tmp_dir)
 
-    %{origin: origin, repo: repo, roadmap_root: roadmap_root}
+    %{origin: origin, repo: repo, roadmap_root: roadmap_root, pre_land_tip: origin_tip(origin)}
   end
 
-  describe "green path" do
-    test "roadmap task → dispatch → run → verify → land → writeback", ctx do
-      # The FakeAdapter's :write deliverable satisfies this stack — the SAME
-      # stack grades the run worktree and the lander's integrated tree.
-      project =
-        register_project(ctx.repo, ctx.roadmap_root, [
-          %Check{name: "agent-output", command: "test", args: ["-f", "agent_output.txt"]}
-        ])
+  describe "approve path — reviewer approves untouched work" do
+    test "roadmap task → dispatch → run → reviewer gate → land → audit enqueue → writeback", ctx do
+      project = register_project(ctx.repo, ctx.roadmap_root)
 
-      install_run_starter(adapter_opts: [command: :write], max_review_iterations: 0)
-      run_id = "run-e2e-green"
+      install_run_starter(
+        adapter_opts: [command: :write],
+        reviewer_adapter_opts: [command: {:review, "approve"}]
+      )
 
-      # ── dispatch → run → verify: synchronous; the green run settles inside ──
+      run_id = "run-e2e-approve"
+
+      # ── dispatch → run → reviewer gate: synchronous; the approved run settles inside ──
       assert :ok = RunWorker.perform(dispatch_job(project, run_id, 173))
 
-      # The run claimed the task and, green-but-unlanded, left it in_progress.
+      # The run claimed the task and, approved-but-unlanded, left it in_progress.
       assert show_task(ctx.roadmap_root, "2")["status"] == "in_progress"
 
-      # The settled green :auto run enqueued exactly one landing job on the
-      # project's serialized landing queue.
-      assert_receive {:oban_insert, changeset}, 5_000
-      assert Ecto.Changeset.get_field(changeset, :queue) == "landing_" <> project.name
+      # The reviewer-approved :auto run enqueued exactly one landing job on the
+      # project's serialized landing queue, carrying the reviewer identity for
+      # the audit stage's third-family selection.
+      assert_receive {:oban_insert, landing}, 5_000
+      assert Ecto.Changeset.get_field(landing, :queue) == "landing_" <> project.name
 
-      landing_args = Ecto.Changeset.get_field(changeset, :args)
+      landing_args = Ecto.Changeset.get_field(landing, :args)
       assert landing_args["run_id"] == run_id
       assert landing_args["task_id"] == "2"
       assert landing_args["agent"] == "claude"
       assert landing_args["branch"] == "harness/" <> run_id
       assert landing_args["land_attempt"] == 1
+      # FakeAdapter has no agent-family registration → reviewer rides as nil.
+      assert Map.fetch!(landing_args, "reviewer") == nil
 
-      # ── land: checkout retained branch → re-verify → ff-push → writeback ──
+      # ── land: rebase → ff-push (no re-verification — the reviewer WAS the gate) ──
       assert :ok = LanderWorker.perform(%Oban.Job{args: landing_args})
 
-      # origin/<target> advanced to a tip carrying the agent's deliverable.
+      # origin/<target> advanced to a tip carrying the implementer's deliverable.
       landed_sha = origin_tip(ctx.origin)
+      refute landed_sha == ctx.pre_land_tip
       assert origin_tree(ctx.origin, landed_sha) =~ "agent_output.txt"
+
+      # The successful push enqueued one post-merge audit job with the pre-land
+      # base, so the audit AI can compute the unaudited range mechanically.
+      assert_receive {:oban_insert, audit}, 5_000
+      assert Ecto.Changeset.get_field(audit, :queue) == "audit"
+      assert Ecto.Changeset.get_field(audit, :worker) == "Harness.Audit.Worker"
+
+      audit_args = Ecto.Changeset.get_field(audit, :args)
+      assert audit_args["project_name"] == project.name
+      assert audit_args["base_sha"] == ctx.pre_land_tip
+      assert audit_args["implementer"] == "claude"
 
       # rmap writeback: done + verified + shipped_in == the landed SHA.
       task = show_task(ctx.roadmap_root, "2")
@@ -139,88 +125,124 @@ defmodule Harness.PipelineE2ETest do
       assert task["shipped_in"] == landed_sha
       assert task["delivered_by"] == "claude"
 
-      # The run record persisted at settle time (File store under tmp).
+      # The run record persisted at settle time (File store under tmp) carries
+      # the reviewer's verdict, zero-fix diff, and ratings.
       assert {:ok, [record]} = ResultStore.list_run_records(run_id: run_id)
       assert record.state == :done
-      assert record.reason == :passed
+      assert record.reason == :approved
+      assert record.verdict == :approve
+      assert record.reviewer_diff_size == 0
+      assert record.review_ratings == FakeAdapter.review_ratings()
       assert record.task_id == "2"
       assert record.project_name == project.name
     end
   end
 
-  describe "red → reviewing → green path" do
-    test "red implementer → reviewer fixes inline → re-verify green → land → writeback", ctx do
-      # Red until a reviewer writes repair_marker: the :repair_noop implementer
-      # only churns churn.txt, so the first verdict is red and the run routes
-      # to :reviewing instead of settling :failed.
-      project =
-        register_project(ctx.repo, ctx.roadmap_root, [
-          %Check{name: "repair-marker", command: "test", args: ["-f", "repair_marker"]}
-        ])
+  describe "fix-and-approve path — reviewer fixes inline, then approves" do
+    test "implementer churn → reviewer fix commits → land carries both → writeback", ctx do
+      project = register_project(ctx.repo, ctx.roadmap_root)
 
+      # The implementer only churns churn.txt; the reviewer (near-never-reject)
+      # fixes the work inline — its own edit, committed by harness after the
+      # review — and approves.
       install_run_starter(
         adapter_opts: [command: :repair_noop],
-        reviewer: PipelineReviewerAdapter,
-        max_review_iterations: 2
+        reviewer_adapter_opts: [command: {:review_with_fix, "approve"}]
       )
 
-      run_id = "run-e2e-red"
+      run_id = "run-e2e-fix"
 
-      # Synchronous like the green path: red verdict → reviewer fixes inline →
-      # mechanical re-verification grades green → the run settles :done.
-      # (Result-level review_iterations/reviewer assertions live in run_test.exs;
-      # this E2E asserts the cross-seam outcome.)
       assert :ok = RunWorker.perform(dispatch_job(project, run_id, 174))
 
-      assert_receive {:oban_insert, changeset}, 5_000
-      assert Ecto.Changeset.get_field(changeset, :queue) == "landing_" <> project.name
+      assert_receive {:oban_insert, landing}, 5_000
+      assert Ecto.Changeset.get_field(landing, :queue) == "landing_" <> project.name
 
-      landing_args = Ecto.Changeset.get_field(changeset, :args)
+      landing_args = Ecto.Changeset.get_field(landing, :args)
       assert landing_args["run_id"] == run_id
-      assert landing_args["branch"] == "harness/" <> run_id
 
-      # ── land: the integrated tree (implementer churn + reviewer fix) is
-      #    re-verified by the SAME repair-marker stack before the ff-push ──
       assert :ok = LanderWorker.perform(%Oban.Job{args: landing_args})
 
       # The landed tip carries BOTH the implementer's churn and the reviewer's fix.
       landed_sha = origin_tip(ctx.origin)
       tree = origin_tree(ctx.origin, landed_sha)
-      assert tree =~ "repair_marker"
       assert tree =~ "churn.txt"
+      assert tree =~ "reviewer_fix.txt"
+      # The verdict artifact never rides in the deliverable.
+      refute tree =~ ".harness"
 
-      # rmap writeback lands on the reviewed run like any green run.
+      # The audit job still fires — fixes-then-approve lands like any approval.
+      assert_receive {:oban_insert, audit}, 5_000
+      assert Ecto.Changeset.get_field(audit, :queue) == "audit"
+
+      # rmap writeback lands on the reviewed run like any approved run.
       task = show_task(ctx.roadmap_root, "2")
       assert task["status"] == "done"
       assert task["verified"] == true
       assert task["shipped_in"] == landed_sha
+
+      # The record's reviewer-fix diff is the "how much fixing was needed" KPI signal.
+      assert {:ok, [record]} = ResultStore.list_run_records(run_id: run_id)
+      assert record.verdict == :approve
+      assert record.reviewer_diff_size > 0
+    end
+  end
+
+  describe "reject path — the gate holds" do
+    test "reviewer rejects → run fails → task back to pending → nothing lands", ctx do
+      project = register_project(ctx.repo, ctx.roadmap_root)
+
+      install_run_starter(
+        adapter_opts: [command: :write],
+        reviewer_adapter_opts: [command: {:review, "reject"}]
+      )
+
+      run_id = "run-e2e-reject"
+      report = FakeAdapter.review_report("reject")
+
+      # The worker cancels (settled failure, never retried) with the reviewer's report.
+      assert {:cancel, {:review_rejected, ^report}} = RunWorker.perform(dispatch_job(project, run_id, 175))
+
+      # The task went back to the queue for re-dispatch — rejection is a queue
+      # cycle with information, not a dead end.
+      assert show_task(ctx.roadmap_root, "2")["status"] == "pending"
+
+      # No landing job, no audit job, origin untouched.
+      refute_receive {:oban_insert, _changeset}, 200
+      assert origin_tip(ctx.origin) == ctx.pre_land_tip
+
+      # The rejection persisted with the reviewer's report for the next dispatch.
+      assert {:ok, [record]} = ResultStore.list_run_records(run_id: run_id)
+      assert record.state == :failed
+      assert record.reason == {:review_rejected, report}
+      assert record.verdict == :reject
+      assert record.review_report == report
     end
   end
 
   # ── fixtures ──────────────────────────────────────────────────────────────
 
-  # Registered with auto-landing onto main; the check stack is per-test (the
-  # green path grades the implementer's deliverable, the red path a marker only
-  # the reviewer writes).
-  defp register_project(repo, roadmap_root, checks) do
-    project = %{
+  # Registered with auto-landing onto main; the reviewer is the only gate, so
+  # there is no check stack — check_command is a free-text hint for the
+  # (faked) reviewer prompt.
+  defp register_project(repo, roadmap_root) do
+    project =
       ProjectFixture.from_repo(repo,
         name: "pipeline-e2e-#{System.unique_integer([:positive])}",
         roadmap_path: roadmap_root,
         landing_policy: :auto,
-        check_stack: %CheckStack{name: :e2e, checks: checks, workdir: ""}
+        target_branch: "main",
+        check_command: "true"
       )
-      | target_branch: "main"
-    }
 
     :ok = ProjectRegistry.register(project)
     on_exit(fn -> ProjectRegistry.unregister(project.name) end)
     project
   end
 
-  # App-env seams shared by every pipeline test: capture landing inserts, point
-  # the result store at tmp, and disable the persisted landing-settings store so
-  # the lander never reads the operator's real ~/.harness overrides.
+  # App-env seams shared by every pipeline test: capture Oban inserts (landing +
+  # audit), point the result store at tmp, and disable the persisted
+  # landing-settings store so the lander never reads the operator's real
+  # ~/.harness overrides.
   defp install_seams(tmp_dir) do
     test_pid = self()
     prior_result_store = Application.get_env(:harness, :result_store)
@@ -247,8 +269,8 @@ defmodule Harness.PipelineE2ETest do
 
   # The adapter-identity trick: job args carry the Claude adapter (so the
   # AgentRegistry gate and rmap's `--to` target are satisfied), and this seam
-  # swaps in FakeAdapter + test opts on the way into the REAL RunSupervisor.
-  # No real agent CLI ever spawns.
+  # swaps in FakeAdapter — implementer AND reviewer — plus test opts on the way
+  # into the REAL RunSupervisor. No real agent CLI ever spawns.
   defp install_run_starter(test_opts) do
     base_dir = GitFixture.tmp_base()
 
@@ -256,10 +278,10 @@ defmodule Harness.PipelineE2ETest do
       Keyword.merge(
         [
           base_dir: base_dir,
+          reviewer: FakeAdapter,
           total_timeout: 30_000,
           idle_timeout: 10_000,
           lifetime_timeout: 30_000,
-          verification_timeout: 10_000,
           terminal_linger: 100
         ],
         test_opts
@@ -285,7 +307,7 @@ defmodule Harness.PipelineE2ETest do
 
   defp origin_tip(origin), do: origin |> GitFixture.git!(["rev-parse", "refs/heads/main"]) |> String.trim()
 
-  defp origin_tree(origin, sha), do: GitFixture.git!(origin, ["ls-tree", "--name-only", sha])
+  defp origin_tree(origin, sha), do: GitFixture.git!(origin, ["ls-tree", "-r", "--name-only", sha])
 
   defp show_task(roadmap_root, id) do
     assert {output, 0} = System.cmd("rmap", ["show", id, "--json"], cd: roadmap_root, stderr_to_stdout: true)

@@ -87,8 +87,14 @@ defmodule Harness.Dashboard.CompareLiveTest do
     end
 
     test "a settled comparison reconstructs both lanes from the store", %{conn: conn} do
-      seed(:claude, Claude, "r-green", verdict: :pass, state: :done, reason: :passed, duration_ms: 120)
-      seed(:codex, Codex, "r-red", verdict: :fail, state: :failed, reason: :verification_red, duration_ms: 340)
+      seed(:claude, Claude, "r-green", verdict: :approve, state: :done, reason: :approved, duration_ms: 120)
+
+      seed(:codex, Codex, "r-red",
+        verdict: :reject,
+        state: :failed,
+        reason: {:review_rejected, "rejected"},
+        duration_ms: 340
+      )
 
       {:ok, _view, html} = live(conn, "/harness/compare/#{@batch}")
 
@@ -100,32 +106,36 @@ defmodule Harness.Dashboard.CompareLiveTest do
       assert html =~ "340 ms"
     end
 
-    test "a live RunFeed update patches the correlated lane", %{conn: conn} do
-      seed(:claude, Claude, "r-1", verdict: :pass, state: :done, reason: :passed, review_iterations: 0)
-      seed(:codex, Codex, "r-2", verdict: :fail, state: :failed, reason: :verification_red, review_iterations: 0)
+    test "a live RunFeed update patches the correlated lane's reviewer verdict", %{conn: conn} do
+      seed(:claude, Claude, "r-1", verdict: :approve, state: :done, reason: :approved)
+      seed(:codex, Codex, "r-2", verdict: nil, state: :failed, reason: {:run_crashed, :boom})
 
       {:ok, view, _html} = live(conn, "/harness/compare/#{@batch}")
+
+      # Before the update only the claude lane shows an approved verdict.
+      # (Compare connected renders so the count is apples-to-apples.)
+      approved_lanes = fn html -> length(String.split(html, ~s(data-verdict="pass"))) - 1 end
+      before_count = approved_lanes.(render(view))
+      assert before_count == 1
 
       status = %Status{
         run_id: "r-2",
         task_id: "t",
         agent: :codex,
-        state: :running,
-        verdict_status: nil,
-        review_iterations: 3
+        state: :reviewing,
+        review_verdict: :approve
       }
 
       send(view.pid, {:harness_run_update, status})
-      html = render(view)
 
-      # The codex lane's repair-attempts metric reflects the live update — both
-      # lanes seeded at 0, so a "3" proves apply_status correlated by (task, agent).
-      assert html =~ "<dd>3</dd>"
+      # The codex lane's verdict cell reflects the live reviewer verdict — proving
+      # apply_status correlated the update by (task, agent).
+      assert approved_lanes.(render(view)) == 2
     end
 
     test "a tab query param selects the active transcript lane", %{conn: conn} do
-      seed(:claude, Claude, "r-a", verdict: :pass, state: :done, reason: :passed)
-      seed(:codex, Codex, "r-b", verdict: :fail, state: :failed, reason: :verification_red)
+      seed(:claude, Claude, "r-a", verdict: :approve, state: :done, reason: :approved)
+      seed(:codex, Codex, "r-b", verdict: :reject, state: :failed, reason: {:review_rejected, "rejected"})
 
       {:ok, _view, html} = live(conn, "/harness/compare/#{@batch}?tab=codex")
 
@@ -133,8 +143,8 @@ defmodule Harness.Dashboard.CompareLiveTest do
     end
 
     test "a comparison_done error surfaces on the grid", %{conn: conn} do
-      seed(:claude, Claude, "r-e1", verdict: :pass, state: :done, reason: :passed)
-      seed(:codex, Codex, "r-e2", verdict: :fail, state: :failed, reason: :verification_red)
+      seed(:claude, Claude, "r-e1", verdict: :approve, state: :done, reason: :approved)
+      seed(:codex, Codex, "r-e2", verdict: :reject, state: :failed, reason: {:review_rejected, "rejected"})
 
       {:ok, view, _html} = live(conn, "/harness/compare/#{@batch}")
       send(view.pid, {:comparison_done, {:error, "adapter exploded"}})
@@ -161,14 +171,12 @@ defmodule Harness.Dashboard.CompareLiveTest do
       agent: agent,
       adapter: adapter,
       state: Keyword.get(fields, :state, :done),
-      reason: Keyword.get(fields, :reason, :passed),
+      reason: Keyword.get(fields, :reason, :approved),
       verdict: Keyword.get(fields, :verdict),
       duration_ms: Keyword.get(fields, :duration_ms, 100),
-      review_iterations: Keyword.get(fields, :review_iterations, 0),
-      first_attempt_failed_check_count: 0,
+      reviewer_diff_size: Keyword.get(fields, :reviewer_diff_size, 0),
       agent_diff_size: 42,
       token_usage: TokenUsage.empty(),
-      failure_cause: %{reason: Keyword.get(fields, :reason, :passed), failed_checks: []},
       agent_output: ""
     }
 

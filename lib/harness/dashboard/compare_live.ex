@@ -65,10 +65,9 @@ defmodule Harness.Dashboard.CompareLive do
   alias Phoenix.LiveView.Socket
 
   @metric_rows [
-    {:review_iterations, "review iterations"},
     {:duration_ms, "duration"},
-    {:first_attempt_failed_check_count, "first-pass red checks"},
     {:agent_diff_size, "diff size"},
+    {:reviewer_diff_size, "reviewer fix size"},
     {:tokens, "tokens"}
   ]
 
@@ -455,10 +454,9 @@ defmodule Harness.Dashboard.CompareLive do
       run_id: nil,
       state: nil,
       verdict: nil,
-      review_iterations: 0,
       duration_ms: nil,
-      first_attempt_failed_check_count: nil,
       agent_diff_size: nil,
+      reviewer_diff_size: nil,
       token_usage: TokenUsage.empty(),
       settled?: false
     }
@@ -473,8 +471,7 @@ defmodule Harness.Dashboard.CompareLive do
       column
       | run_id: status.run_id,
         state: status.state,
-        verdict: status.verdict_status || column.verdict,
-        review_iterations: status.review_iterations,
+        verdict: status.review_verdict || column.verdict,
         settled?: settled? || column.settled?
     }
   end
@@ -486,10 +483,9 @@ defmodule Harness.Dashboard.CompareLive do
       | run_id: entry.run_id,
         state: entry.state,
         verdict: entry.verdict,
-        review_iterations: entry.review_iterations,
         duration_ms: entry.duration_ms,
-        first_attempt_failed_check_count: entry.first_attempt_failed_check_count,
         agent_diff_size: entry.agent_diff_size,
+        reviewer_diff_size: entry.reviewer_diff_size,
         token_usage: entry.token_usage,
         settled?: true
     }
@@ -503,10 +499,9 @@ defmodule Harness.Dashboard.CompareLive do
       run_id: record.run_id,
       state: record.state,
       verdict: record.verdict,
-      review_iterations: record.review_iterations,
       duration_ms: record.duration_ms,
-      first_attempt_failed_check_count: record.first_attempt_failed_check_count,
       agent_diff_size: record.agent_diff_size,
+      reviewer_diff_size: record.reviewer_diff_size,
       token_usage: record.token_usage || TokenUsage.empty(),
       settled?: true
     }
@@ -554,33 +549,32 @@ defmodule Harness.Dashboard.CompareLive do
   end
 
   # Lane bucket badge — review in flight reads amber, terminal verdict reads
-  # pass/fail, anything else is in-flight.
+  # approved/rejected, anything else is in-flight.
   @spec column_bucket(map() | nil) :: atom()
-  defp column_bucket(%{verdict: :pass}), do: :green
-  defp column_bucket(%{verdict: :fail}), do: :red
+  defp column_bucket(%{verdict: :approve}), do: :green
+  defp column_bucket(%{verdict: :reject}), do: :red
   defp column_bucket(%{state: :failed}), do: :red
-  defp column_bucket(%{review_iterations: n}) when n > 0, do: :repairing
+  defp column_bucket(%{state: :reviewing}), do: :repairing
   defp column_bucket(_), do: :in_flight
 
   @spec verdict_label(map() | nil) :: %{tone: String.t(), glyph: String.t(), text: String.t()}
-  defp verdict_label(%{verdict: :pass}), do: %{tone: "pass", glyph: "●", text: "pass"}
-  defp verdict_label(%{verdict: :fail}), do: %{tone: "fail", glyph: "✗", text: "fail"}
+  defp verdict_label(%{verdict: :approve}), do: %{tone: "pass", glyph: "●", text: "approved"}
+  defp verdict_label(%{verdict: :reject}), do: %{tone: "fail", glyph: "✗", text: "rejected"}
   defp verdict_label(%{state: :failed}), do: %{tone: "fail", glyph: "✗", text: "failed"}
 
-  defp verdict_label(%{state: state}) when state in [:running, :committing, :verifying, :reviewing, :dispatched],
+  defp verdict_label(%{state: state}) when state in [:running, :committing, :reviewing, :dispatched],
     do: %{tone: "pending", glyph: "◌", text: to_string(state)}
 
   defp verdict_label(_), do: %{tone: "pending", glyph: "◌", text: "queued"}
 
   @spec metric(map() | nil, atom()) :: String.t()
   defp metric(nil, _key), do: "—"
-  defp metric(%{review_iterations: n}, :review_iterations), do: to_string(n)
   defp metric(%{duration_ms: nil}, :duration_ms), do: "—"
   defp metric(%{duration_ms: ms}, :duration_ms), do: "#{ms} ms"
-  defp metric(%{first_attempt_failed_check_count: nil}, :first_attempt_failed_check_count), do: "—"
-  defp metric(%{first_attempt_failed_check_count: n}, :first_attempt_failed_check_count), do: to_string(n)
   defp metric(%{agent_diff_size: nil}, :agent_diff_size), do: "—"
   defp metric(%{agent_diff_size: n}, :agent_diff_size), do: "#{n} B"
+  defp metric(%{reviewer_diff_size: nil}, :reviewer_diff_size), do: "—"
+  defp metric(%{reviewer_diff_size: n}, :reviewer_diff_size), do: "#{n} B"
   defp metric(%{token_usage: usage}, :tokens), do: token_label(usage)
 
   @spec token_label(TokenUsage.t()) :: String.t()

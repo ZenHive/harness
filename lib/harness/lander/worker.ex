@@ -32,6 +32,7 @@ defmodule Harness.Lander.Worker do
         run_id: args["run_id"],
         task_id: args["task_id"],
         agent: args["agent"],
+        reviewer: args["reviewer"],
         branch: branch
       }
       |> Lander.land()

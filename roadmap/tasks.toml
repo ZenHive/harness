@@ -1,10 +1,10 @@
 schema_version = 2
 project = "harness"
 default_branch = "development"
-vision = "An OTP-native task-execution engine an AI orchestrator drives end to end: it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent running in an isolated worktree, runs the target project's own check stack against the result, and reports verified outcomes back to its consumer. Today the consumer surface is the BEAM-native Elixir API (called from IEx, tidewave, or another process); the Phase 7 multi-project pivot (milestone v0_5) makes it a long-running OTP node with a Phoenix LiveView dashboard orchestrating N registered target projects (Elixir, Rust, anything with a shell-driven check stack) concurrently. MCP/JSON-CLI is deferred (Phase 6) — it earns complexity only if a non-Elixir consumer ever needs to drive harness from outside the BEAM. harness is itself developed by dogfooding — from the core loop (Task 8) onward, every pending roadmap task is delivered by dispatching it through harness rather than hand-building it (Phase 7's load-bearing scaffolding is the documented exception)."
+vision = "An OTP-native task-execution engine an AI orchestrator drives end to end: it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent (implementer) running in an isolated worktree, gates the result with a cross-family reviewer AI that runs the target project's own checks itself and fixes inline, merges approved work (lander rebase + ff-push), and audits landed commits post-merge with a third agent. The agent-gate workflow (worktree -> implementer AI -> reviewer AI -> MERGE -> audit AI, docs/agent-gate-workflow.md) is THE architecture: judgment lives in agents, harness code is mechanical substrate only. Consumer surfaces: the BEAM-native Elixir API (IEx, tidewave, another process), the Phoenix LiveView dashboard, and the native MCP server — a long-running OTP node orchestrating N registered target projects (Elixir, Rust, anything an agent can check) concurrently. harness is itself developed by dogfooding — from the core loop (Task 8) onward, every pending roadmap task is delivered by dispatching it through harness rather than hand-building it (load-bearing runtime scaffolding is the documented exception)."
 
 [focus]
-phase = 10
+phase = 16
 
 # ----------------------------------------------------------------------------
 # Phases
@@ -86,17 +86,22 @@ order = 15
 status = "pending"
 
 [phases.16]
-name = "Post-Merge Audit Agent"
+name = "Agent-Gate Workflow & Post-Merge Audit"
 order = 16
-status = "pending"
+status = "in_progress"
 
 # ----------------------------------------------------------------------------
 # Bundles
 # ----------------------------------------------------------------------------
 
-[bundles.audit-agent]
-description = "A third agent role beside implementer and reviewer: a batch-scoped post-merge audit agent. Oban cron watches each registered project's unaudited commit range (last audit(...) commit on the default branch -> HEAD); past a threshold (commit count OR age), harness dispatches an audit agent into a worktree off the default branch to review the whole range, apply hygiene fixes inline, write .audit/<sha>.md reports, and commit as audit(...). Check stack re-runs after (red routes to the reviewer like any red); the merge-train lands it. Batch economics by design: one dispatch amortized over N commits — per-run grading stays the reviewer's seat."
+[bundles.agent-gate]
+description = "The agent-gate workflow rebuild (docs/agent-gate-workflow.md): worktree -> implementer AI -> reviewer AI (THE gate) -> MERGE -> audit AI, with no mechanical verification gate anywhere. The cross-family reviewer runs the project's checks itself, fixes inline, and writes .harness/review.json; harness reads it mechanically. Deletes Harness.Verification / CheckStack / presets / :verifying / review_green / the benchmark corpus."
 order = 1
+phase = 16
+
+[bundles.audit-agent]
+description = "A third agent role beside implementer and reviewer: a batch-scoped post-merge audit agent. Each successful land enqueues an audit job (Oban :audit queue, unique per project); the audit agent gets a detached worktree of origin/<target>, reviews the unaudited commit range (last audit(...) commit -> HEAD), applies hygiene fixes inline, writes .audit/<sha>.md reports, commits as audit(...), and harness ff-pushes. Best-effort: never blocks, never reverts. Batch economics by design: one dispatch amortized over N commits — per-run grading stays the reviewer's seat."
+order = 2
 phase = 16
 
 [bundles.reviewer-pair]
@@ -283,28 +288,28 @@ target_version = "0.8.0"
 name = "Autonomous Landing"
 description = "Proves harness can drive an rmap task from dispatch to a landed commit on the target branch with zero human gate — a cross-family adversarial grader approves the diff against its acceptance criteria, a serialized merge-train ff/rebase-merges and re-verifies the integrated state, post-merge reds and conflicts auto-repair via fresh re-dispatch, exhaustion routes to a blocked sink, and the human is a pure witness (notified, never asked). Tests the hypothesis that the autonomous loop's ceiling is set by acceptance-criteria visibility + grader adversariality, not by merge cleverness."
 order = 9
-status = "active"
+status = "done"
 target_version = "0.9.0"
 
 [milestones.v0_10]
 name = "Agent KPIs & Capability Routing"
 description = "Proves evidence-based per-domain agent routing beats the orchestrator's default self-reliance: capability KPIs — gathered by dispatching a fixed benchmark corpus across every agent and graded by the verification stack, never self-report — change which agent gets dispatched and lower cost-to-green. Tests the hypothesis that the orchestrator falls back to the one familiar agent (or hand-builds) because it flies dark on the others' real capabilities, and that a per-(agent,domain) trust signal placed in the dispatch path corrects that."
 order = 10
-status = "pending"
+status = "done"
 target_version = "0.10.0"
 
 [milestones.v0_11]
 name = "Reviewer-Pair Lifecycle"
 description = "Tests the hypothesis that the recurring class of run-lifecycle bugs (failure misclassification, baseline masking, empty-diff wedges, gate rejections — 6 found in one week) is caused by judgment calls implemented as procedural code, and that moving all of them into a cross-family reviewer agent that fixes inline (never classifies) eliminates the class while raising delivery rate without re-dispatch."
 order = 11
-status = "pending"
+status = "done"
 target_version = "0.11.0"
 
 [milestones.v0_12]
-name = "Post-Merge Audit Agent"
-description = "Tests the hypothesis that post-merge hygiene (cross-commit drift, doc gaps, accumulated debt — the audit-review chore the human runs by hand today, with a 206-commit backlog observed 2026-06-02) can be owned end-to-end by a cron-triggered batch audit agent whose output is verified by the check stack and landed by the merge-train, so the human stops running audit-review manually."
+name = "Agent-Gate Workflow & Post-Merge Audit"
+description = "Tests the hypothesis that removing the mechanical verification gate entirely — making a cross-family reviewer AI THE gate (it runs the checks itself, fixes inline, writes the verdict) and adding a post-merge audit AI — eliminates the run-lifecycle bug class (every bug from 2026-05-26 to 06-03 traced to harness verification machinery, zero to agent judgment) while raising delivery rate."
 order = 12
-status = "pending"
+status = "active"
 target_version = "0.12.0"
 
 # ----------------------------------------------------------------------------
@@ -4691,7 +4696,7 @@ id = "151"
 phase = 13
 bundle = "capability-bench"
 milestone = "v0_10"
-status = "in_progress"
+status = "superseded"
 title = "Agent evaluation corpus — stand up the Elixir corpus repo + prove Mode-B hidden-grader isolation"
 scores = { d = 4, b = 5, u = 4 }
 markers = ["handbuild"]
@@ -5091,7 +5096,7 @@ id = "164"
 phase = 15
 bundle = "reviewer-pair"
 milestone = "v0_11"
-status = "pending"
+status = "superseded"
 title = "Reviewer-pair docs + driver surface: SKILL.md, CLAUDE.md, StatusView, dashboard fields"
 scores = { d = 2, b = 6, u = 6 }
 markers = ["docs"]
@@ -5129,7 +5134,7 @@ scored_at = "2026-06-02"
 id = "166"
 phase = 10
 bundle = "config-centralization"
-status = "pending"
+status = "superseded"
 title = "ConfigInspector reads defaults from owning modules; drop sections deleted by the reviewer-pair pass"
 scores = { d = 2, b = 4, u = 3 }
 depends_on = [163]
@@ -5194,7 +5199,7 @@ scored_at = "2026-06-02"
 id = "169"
 phase = 15
 bundle = "reviewer-pair"
-status = "pending"
+status = "superseded"
 title = "Agent compile errors surfacing in verification SETUP are misclassified as environment failures — route them to the reviewer"
 scores = { d = 4, b = 8, u = 8 }
 depends_on = [161]
@@ -5216,7 +5221,7 @@ id = "170"
 phase = 16
 bundle = "audit-agent"
 milestone = "v0_12"
-status = "pending"
+status = "superseded"
 title = "Post-merge audit agent: cron-triggered batch audit of the unaudited commit range, verified by the check stack, landed by the merge-train"
 scores = { d = 5, b = 7, u = 7 }
 depends_on = [163]
@@ -5262,7 +5267,7 @@ shipped_in = "55e30bd"
 id = "172"
 phase = 11
 bundle = "autolanding"
-status = "pending"
+status = "superseded"
 title = "Lander: land a branch that is checked out in a retained run worktree (worktree add --detach)"
 scores = { d = 2, b = 5, u = 5 }
 markers = ["bug"]
@@ -5325,3 +5330,67 @@ Reuses Task 173's fixture/wiring; the only new surface is the live-CLI invocatio
 """
 created_at = "2026-06-03"
 scored_at = "2026-06-03"
+
+[[task]]
+id = "175"
+phase = 16
+bundle = "agent-gate"
+milestone = "v0_12"
+status = "done"
+title = "Agent-gate workflow rebuild: reviewer AI is THE gate, no mechanical verification anywhere"
+scores = { d = 8, b = 10, u = 10 }
+markers = ["handbuild"]
+acceptance_criteria = ["Run lifecycle is dispatched -> running -> committing -> reviewing -> done|failed; :verifying is deleted; reasons are :approved / {:review_rejected, report} / {:review_stuck, report}", "The cross-family reviewer AI gets worktree + task + AC + implementer transcript tail + diff stat + the project's check_command hint, runs the checks itself, fixes inline, and writes .harness/review.json (verdict/report/ratings); harness reads it mechanically (Harness.Run.Review)", "Reviewer prompt biases fix-and-approve as the near-absolute default; rejection is reserved for unsalvageable work and puts the task back in the queue", ".harness/ is excluded from commits and diff measurement; reviewer_diff_size (0 = first-attempt pass) is carried on Result/LogRecord", "Harness.Verification, Harness.CheckStack, presets, review_green, max_review_iterations, lander re-verification, the benchmark corpus, and CapabilityBenchmarkScheduler are deleted whole (no shims, no back-compat)", "Project carries check_command (free-text reviewer hint) instead of check_stacks/preset", "Lander uses a detached worktree, never re-verifies, and enqueues the post-merge audit job after a successful push", "run_records store verdict approve/reject + review_report/review_ratings/reviewer_diff_size (migration); AgentKPI/CapabilityScore re-keyed to reviewer outcomes", "Full offline suite green; mix precommit.full green; docs (CLAUDE.md, README, docs/agent-gate-workflow.md, dogfooding-workflow.md, SKILL.md, playbooks, agent rules, CHANGELOG) re-keyed"]
+out_of_scope = ["Synchronous implementer-rebuttal round after a rejection (doubles wall-clock; revisit only if false-rejection data demands it)", "Rejection-report writeback to the rmap task (needs an rmap CLI surface - filed in ../rmap/'s roadmap)"]
+touches = ["lib/harness/run.ex", "lib/harness/run/review.ex", "lib/harness/run/result.ex", "lib/harness/project.ex", "lib/harness/worktree.ex", "lib/harness/lander.ex", "lib/harness/audit.ex", "lib/harness/dispatch.ex", "lib/harness/result_store/", "test/"]
+assignee = "human"
+body = """
+THE architecture decision (2026-06-03, settled - docs/agent-gate-workflow.md is the spec): everything that interprets meaning is an agent's job, never harness code. Every run-lifecycle bug from 2026-05-26 to 06-03 (tasks 153-163, 168, 169, 171, 172) traced to harness verification/lifecycle machinery; zero traced to agent judgment. The fix is deletion + moving the gate into a cross-family reviewer AI, not improving the machinery. Supersedes tasks 164/166/169/170/172 and the v0_11 reviewer-pair design (review_green / :verifying / mechanical re-verification). Plan anchor: ~/.claude/plans/agent-gate-workflow-rebuild.md.
+"""
+implemented = "Hand-built across 6 batches (2026-06-03, uncommitted on development pending operator review). Run lifecycle rewritten: committing->reviewing with Harness.Run.Review reading .harness/review.json (verdict/report/ratings); reasons :approved/{:review_rejected,r}/{:review_stuck,r}. Deleted whole: Harness.Verification(+check/result/verdict), CheckStack(+presets), :verifying, review_green, max_review_iterations, lander re-verification, benchmark corpus + scheduler. Project gained check_command. Lander: detached worktree, no reverify, enqueues audit job. run_records migration (verdict approve/reject, review_report/review_ratings/reviewer_diff_size); AgentKPI/CapabilityScore re-keyed. Suite 1218/1218 green, coverage 80.01%. Docs/playbooks/agent-rules/SKILL/README/CHANGELOG re-keyed. Spec: docs/agent-gate-workflow.md."
+delivered_by = "claude"
+created_at = "2026-06-03"
+scored_at = "2026-06-03"
+done_at = "2026-06-03"
+
+[[task]]
+id = "176"
+phase = 16
+bundle = "audit-agent"
+milestone = "v0_12"
+status = "done"
+title = "Post-merge audit agent: per-land enqueue, third-family auditor, audit(...) commits ff-pushed"
+scores = { d = 5, b = 7, u = 7 }
+markers = ["handbuild"]
+depends_on = ["175"]
+acceptance_criteria = ['''Harness.Audit (mechanics): detached worktree of origin/<target>; unaudited range = last commit whose subject matches ^audit\( (falling back to the land's base_sha) -> HEAD; rev-list count 0 -> :noop; ff-push only if HEAD advanced''', "Auditor selection: first dispatchable agent not in {implementer, reviewer}; explicit :auditor request override supported (test seam)", "The audit agent reuses audit-review conventions: .audit/<short-sha>.md report committed in the repo, single audit(<short-sha>): commit per pass, hygiene fixes committed inline; .harness/audit.json is read best-effort and never committed", "Harness.Audit.Worker: thin Oban shell on the global :audit queue (limit 1), unique per project while available/scheduled; enqueued by the lander after each successful push with base_sha = pre-land origin/<target> tip", "Best-effort by contract: an audit failure is logged and dropped - it never blocks, reverts, or re-runs a merge", "Outcomes: {:audited, sha} / :noop / :no_changes / {:push_rejected, out} / {:skipped, r} / {:error, r}; covered by audit_test.exs (FakeAdapter auditor double) + audit/worker_test.exs"]
+out_of_scope = ["Cron-triggered count/age thresholds (the superseded task 170 design - per-land enqueue replaces it)", "False-rejection flagging from rejection-report history (wired in the KPI-ratings task)"]
+touches = ["lib/harness/audit.ex", "lib/harness/audit/worker.ex", "lib/harness/lander.ex", "lib/harness/oban.ex", "test/harness/audit_test.exs", "test/harness/audit/worker_test.exs", "test/support/fake_adapter.ex"]
+assignee = "human"
+body = """
+Replaces superseded task 170, whose AC described the old design (cron thresholds, check-stack verification of the audit, merge-train landing). The rebuilt audit agent is the fourth stage of the agent-gate workflow: per-land enqueue, third-family agent, direct ff-push, never blocks. This is the autonomous version of the staged-review:audit-review skill the human runs by hand.
+"""
+implemented = "Hand-built as part of the agent-gate rebuild (Batch 3 + Batch 6 test seam). Harness.Audit (mechanics: detached worktree, audit(...)-marker range computation, third-family selection, :auditor/:auditor_opts test seam, ff-push only when HEAD advanced) + Harness.Audit.Worker (Oban :audit queue, unique per project, enqueued by lander post-push). Covered by audit_test.exs (10 tests incl. FakeAdapter {:audit, sha} double) + audit/worker_test.exs (8)."
+delivered_by = "claude"
+created_at = "2026-06-03"
+scored_at = "2026-06-03"
+done_at = "2026-06-03"
+
+[[task]]
+id = "177"
+phase = 16
+bundle = "agent-gate"
+milestone = "v0_12"
+status = "pending"
+title = "Reviewer KPI ratings feed AgentKPI/CapabilityScore rollups + reviewer rejection-rate tracking"
+scores = { d = 3, b = 6, u = 5 }
+acceptance_criteria = ["AgentKPI aggregates the reviewer's ratings block (performance, truthfulness, code_quality, idiom_usage) per implementer agent alongside the existing success/first-attempt-pass/duration/cost rollups", "CapabilityScore incorporates mean ratings per (agent, domain) so dispatch-recommend routing reflects reviewer-judged quality, not just approve rate", "Per-agent rejection rate AS REVIEWER is tracked (reviewer_adapter on run_records), so a reviewer with a high rejection rate can be deprioritized in cross-family selection", "The post-merge audit prompt receives the rejection-report history for tasks in its range (run_records query), enabling it to flag false rejections", "Dashboard KPI view renders the ratings columns"]
+out_of_scope = ["Changing the reviewer prompt or the .harness/review.json contract (already shipped in the rebuild)", "Automatic reviewer blacklisting - routing stays advisory (dispatch-recommend)"]
+touches = ["lib/harness/agent_kpi.ex", "lib/harness/capability_score.ex", "lib/harness/audit.ex", "lib/harness/result_store/", "lib/harness/dashboard/kpi_live.ex"]
+assignee = "claude"
+body = """
+The rebuild already parses + persists the reviewer's ratings (review_ratings on run_records); this task makes them load-bearing. Since rejection is near-never by design, approve/reject rate is NOT the implementer quality signal - the ratings and reviewer_diff_size are. Reviewers get rated too: false-rejection flagging closes the loop (defense #3 in the rebuild plan). Depends on the rebuild task.
+"""
+created_at = "2026-06-03"
+scored_at = "2026-06-03"
+depends_on = ["175"]

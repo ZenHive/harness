@@ -149,8 +149,7 @@ defmodule Harness.StatusView do
   # bucket, even though the fixer is now a cross-family reviewer agent.
   def classify(%Status{state: :reviewing}), do: :repairing
 
-  def classify(%Status{state: state}) when state in [:dispatched, :running, :committing, :verifying, :held],
-    do: :in_flight
+  def classify(%Status{state: state}) when state in [:dispatched, :running, :committing, :held], do: :in_flight
 
   @spec run_entry(String.t()) :: [run_entry()]
   defp run_entry(run_id) do
@@ -162,9 +161,6 @@ defmodule Harness.StatusView do
 
   @spec detail(Status.t()) :: String.t() | nil
   defp detail(%Status{state: :failed, reason: reason}) when not is_nil(reason), do: describe_reason(reason)
-
-  defp detail(%Status{state: :reviewing, review_iterations: iterations}) when iterations > 0,
-    do: "review iteration #{iterations}"
 
   defp detail(%Status{state: :held, hold_reason: reason}) when not is_nil(reason), do: "held #{reason}"
 

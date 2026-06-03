@@ -11,16 +11,19 @@ defmodule Harness.Batch.AgentEvaluationTest do
   alias Harness.Batch.AgentEvaluation.Comparison
   alias Harness.Batch.AgentEvaluation.Entry
   alias Harness.Batch.Result
+  alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.Roadmap.Item
-  alias Harness.Verification.Check
 
   @run_timeout_ms 30_000
   @terminal_linger_ms 100
 
-  defmodule GreenAdapter do
+  # GoodAdapter leaves the pass-marker file the reviewer double looks for;
+  # SloppyAdapter leaves real work but no marker, so the reviewer rejects it.
+  # Under the agent gate, "green vs red" is the REVIEWER's verdict, not a check.
+  defmodule GoodAdapter do
     @moduledoc false
     @behaviour Harness.AgentAdapter
 
@@ -32,7 +35,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
 
     @impl Harness.AgentAdapter
     def build_command(%Invocation{}) do
-      {:ok, {"/bin/sh", ["-c", "echo agent-output > agent_output.txt; echo pass > status.txt"], []}}
+      {:ok, {"/bin/sh", ["-c", "echo agent-output > agent_output.txt; echo pass > pass_marker.txt"], []}}
     end
 
     @impl Harness.AgentAdapter
@@ -46,7 +49,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
     def terminate(%AgentRun{} = run), do: OSProcess.kill(run)
   end
 
-  defmodule RedAdapter do
+  defmodule SloppyAdapter do
     @moduledoc false
     @behaviour Harness.AgentAdapter
 
@@ -58,7 +61,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
 
     @impl Harness.AgentAdapter
     def build_command(%Invocation{}) do
-      {:ok, {"/bin/sh", ["-c", "echo agent-output > agent_output.txt; echo fail > status.txt"], []}}
+      {:ok, {"/bin/sh", ["-c", "echo agent-output > agent_output.txt"], []}}
     end
 
     @impl Harness.AgentAdapter
@@ -113,19 +116,18 @@ defmodule Harness.Batch.AgentEvaluationTest do
              AgentEvaluation.compare(
                item,
                ProjectFixture.from_repo(repo),
-               [GreenAdapter, RedAdapter],
+               [GoodAdapter, SloppyAdapter],
                eval_opts(base, batch_id: id, result_store: store, max_concurrency: 2)
              )
 
-    assert [%Entry{adapter: GreenAdapter}, %Entry{adapter: RedAdapter}] = entries
+    assert [%Entry{adapter: GoodAdapter}, %Entry{adapter: SloppyAdapter}] = entries
 
     assert %Entry{
-             adapter: GreenAdapter,
+             adapter: GoodAdapter,
              state: :done,
-             reason: :passed,
-             verdict: :pass,
-             review_iterations: 0,
-             first_attempt_failed_check_count: 0,
+             reason: :approved,
+             verdict: :approve,
+             reviewer_diff_size: 0,
              agent_diff_size: diff_size
            } = Enum.at(entries, 0)
 
@@ -133,12 +135,10 @@ defmodule Harness.Batch.AgentEvaluationTest do
     assert Enum.at(entries, 0).duration_ms >= 0
 
     assert %Entry{
-             adapter: RedAdapter,
+             adapter: SloppyAdapter,
              state: :failed,
-             reason: :verification_red,
-             verdict: :fail,
-             review_iterations: 0,
-             first_attempt_failed_check_count: 1,
+             reason: {:review_rejected, _report},
+             verdict: :reject,
              agent_diff_size: red_diff
            } = Enum.at(entries, 1)
 
@@ -154,17 +154,17 @@ defmodule Harness.Batch.AgentEvaluationTest do
              AgentEvaluation.compare(
                item,
                ProjectFixture.from_repo(repo),
-               [GreenAdapter, CrashAdapter, RedAdapter],
+               [GoodAdapter, CrashAdapter, SloppyAdapter],
                eval_opts(base, max_concurrency: 3, result_store: false)
              )
 
     assert length(entries) == 3
 
     by_adapter = Map.new(entries, &{&1.adapter, &1})
-    assert by_adapter[GreenAdapter].state == :done
+    assert by_adapter[GoodAdapter].state == :done
     assert by_adapter[CrashAdapter].state == :failed
-    assert by_adapter[RedAdapter].state == :failed
-    assert by_adapter[RedAdapter].reason == :verification_red
+    assert by_adapter[SloppyAdapter].state == :failed
+    assert match?({:review_rejected, _}, by_adapter[SloppyAdapter].reason)
   end
 
   test "run_pinned keeps adapters on their own slots without cross fail-over" do
@@ -174,7 +174,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
 
     assert {:ok, batch} =
              Batch.run_pinned(
-               [{item, GreenAdapter}, {item, RedAdapter}],
+               [{item, GoodAdapter}, {item, SloppyAdapter}],
                ProjectFixture.from_repo(repo),
                eval_opts(base, max_concurrency: 2)
              )
@@ -194,14 +194,14 @@ defmodule Harness.Batch.AgentEvaluationTest do
           run_id: "r1",
           task_id: "t",
           state: :done,
-          reason: :passed
+          reason: :approved
         }
       ],
       events: []
     }
 
     assert_raise ArgumentError, ~r/equal length/, fn ->
-      AgentEvaluation.from_batch(batch, [GreenAdapter, RedAdapter], false)
+      AgentEvaluation.from_batch(batch, [GoodAdapter, SloppyAdapter], false)
     end
   end
 
@@ -214,7 +214,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
 
     assert {:ok, batch} =
              Batch.run_pinned(
-               [{item, GreenAdapter}, {item, GreenAdapter}],
+               [{item, GoodAdapter}, {item, GoodAdapter}],
                ProjectFixture.from_repo(repo),
                eval_opts(base,
                  batch_id: batch_id,
@@ -222,12 +222,12 @@ defmodule Harness.Batch.AgentEvaluationTest do
                )
              )
 
-    comparison = AgentEvaluation.from_batch(batch, [GreenAdapter, GreenAdapter], store)
+    comparison = AgentEvaluation.from_batch(batch, [GoodAdapter, GoodAdapter], store)
 
     assert comparison.batch_id == batch_id
     assert comparison.task_id == "reload"
     assert length(comparison.entries) == 2
-    assert Enum.all?(comparison.entries, &(&1.state == :done and &1.verdict == :pass))
+    assert Enum.all?(comparison.entries, &(&1.state == :done and &1.verdict == :approve))
   end
 
   test "from_batch surfaces token usage, preferring the persisted record" do
@@ -239,7 +239,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
         run_id: "run-tok",
         task_id: "t",
         state: :done,
-        reason: :passed,
+        reason: :approved,
         token_usage: %Harness.TokenUsage{input: 5, output: 1, total: 6}
       }
 
@@ -248,13 +248,11 @@ defmodule Harness.Batch.AgentEvaluationTest do
         batch_id: batch_id,
         run_id: "run-tok",
         task_id: "t",
-        adapter: GreenAdapter,
+        adapter: GoodAdapter,
         state: :done,
-        reason: :passed,
+        reason: :approved,
+        verdict: :approve,
         duration_ms: 10,
-        review_iterations: 0,
-        first_attempt_failed_check_count: 0,
-        failure_cause: %{reason: :passed, failed_checks: []},
         token_usage: %Harness.TokenUsage{input: 500, output: 120, total: 620}
       }
 
@@ -268,7 +266,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
       events: []
     }
 
-    comparison = AgentEvaluation.from_batch(batch, [GreenAdapter], store)
+    comparison = AgentEvaluation.from_batch(batch, [GoodAdapter], store)
     [%Entry{token_usage: usage}] = comparison.entries
 
     # The persisted record's measured usage wins over the live result's.
@@ -281,7 +279,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
         run_id: "run-fallback",
         task_id: "t",
         state: :done,
-        reason: :passed,
+        reason: :approved,
         token_usage: %Harness.TokenUsage{input: 9, output: 3, total: 12}
       }
 
@@ -293,7 +291,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
       events: []
     }
 
-    comparison = AgentEvaluation.from_batch(batch, [GreenAdapter], false)
+    comparison = AgentEvaluation.from_batch(batch, [GoodAdapter], false)
     [%Entry{token_usage: usage}] = comparison.entries
 
     assert usage == %Harness.TokenUsage{input: 9, output: 3, total: 12}
@@ -303,13 +301,12 @@ defmodule Harness.Batch.AgentEvaluationTest do
     Keyword.merge(
       [
         base_dir: base,
-        checks: [status_check()],
+        reviewer: FakeAdapter,
+        reviewer_adapter_opts: [command: {:review_verdict_by_file, "pass_marker.txt"}],
         total_timeout: @run_timeout_ms,
         idle_timeout: @run_timeout_ms,
         lifetime_timeout: @run_timeout_ms,
-        verification_timeout: @run_timeout_ms,
-        terminal_linger: @terminal_linger_ms,
-        max_review_iterations: 0
+        terminal_linger: @terminal_linger_ms
       ],
       overrides
     )
@@ -318,12 +315,6 @@ defmodule Harness.Batch.AgentEvaluationTest do
   defp item(id) do
     %Item{id: id, title: "Task #{id}", prompt: "do task #{id}", agent: :claude}
   end
-
-  defp status_check do
-    check("status", "sh", ["-c", "test ! -f status.txt || grep pass status.txt"])
-  end
-
-  defp check(name, command, args), do: %Check{name: name, command: command, args: args}
 
   defp batch_id, do: "batch-#{System.unique_integer([:positive])}"
 

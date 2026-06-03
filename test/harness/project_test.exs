@@ -1,34 +1,40 @@
 defmodule Harness.ProjectTest do
   use ExUnit.Case, async: true
 
-  alias Harness.CheckStack
   alias Harness.GitFixture
   alias Harness.Project
-  alias Harness.Verification.Check
 
   describe "%Project{}" do
-    test "requires name, source, check_stacks, and roadmap_path" do
-      stack = %CheckStack{name: :tiny, checks: [%Check{name: "a", command: "true", args: []}]}
-
+    test "requires name, source, and roadmap_path; everything else defaults" do
       project = %Project{
         name: "demo",
         source: {:local, "/tmp/demo"},
-        check_stacks: [stack],
         roadmap_path: "/tmp/demo"
       }
 
       assert project.name == "demo"
-      assert project.check_stacks == [stack]
+      assert project.check_command == nil
       assert project.concurrency_cap == nil
       assert project.landing_policy == :manual
-      assert project.review_green == true
+      assert project.target_branch == nil
+      assert project.pollution_allowlist == nil
+    end
+
+    test "carries the reviewer's check-command hint as free text" do
+      project = %Project{
+        name: "demo",
+        source: {:local, "/tmp/demo"},
+        roadmap_path: "/tmp/demo",
+        check_command: "mix precommit"
+      }
+
+      assert project.check_command == "mix precommit"
     end
 
     test "accepts a {:github, url} source" do
       project = %Project{
         name: "demo",
         source: {:github, "https://github.com/example/demo.git"},
-        check_stacks: [%CheckStack{name: :tiny, checks: []}],
         roadmap_path: "/tmp/demo"
       }
 
@@ -39,7 +45,6 @@ defmodule Harness.ProjectTest do
       project = %Project{
         name: "demo",
         source: {:local, "relative/repo"},
-        check_stacks: [%CheckStack{name: :tiny, checks: []}],
         roadmap_path: "relative/repo"
       }
 
@@ -50,7 +55,6 @@ defmodule Harness.ProjectTest do
       project = %Project{
         name: "demo",
         source: {:github, "https://github.com/example/demo.git"},
-        check_stacks: [%CheckStack{name: :tiny, checks: []}],
         roadmap_path: "/tmp/demo"
       }
 
@@ -62,7 +66,6 @@ defmodule Harness.ProjectTest do
       project = %Project{
         name: "demo",
         source: {:local, "/tmp/demo"},
-        check_stacks: [%CheckStack{name: :tiny, checks: []}],
         roadmap_path: "/tmp/demo"
       }
 

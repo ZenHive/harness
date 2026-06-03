@@ -81,12 +81,10 @@ defmodule Harness.Mix.ImportResultsTest do
       task_id: "t",
       adapter: Claude,
       state: :done,
-      reason: :passed,
+      reason: :approved,
       duration_ms: 1,
       review_iterations: 0,
-      first_attempt_failed_check_count: 0,
-      failure_cause: %{reason: nil, failed_checks: []},
-      verdict: :pass
+      verdict: :approve
     }
 
     path = Path.join([root, "runs", Base.url_encode64(run_id, padding: false) <> ".term"])

@@ -2,7 +2,6 @@ defmodule Harness.Cron.RoadmapPollerTest do
   use ExUnit.Case, async: false
 
   alias Harness.AgentRegistry
-  alias Harness.Cron.CapabilityBenchmarkScheduler
   alias Harness.Cron.RoadmapPoller
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
@@ -43,7 +42,6 @@ defmodule Harness.Cron.RoadmapPollerTest do
     crontab = cron_crontab()
 
     assert {"* * * * *", RoadmapPoller, [queue: :cron, max_attempts: 1]} in crontab
-    assert CapabilityBenchmarkScheduler.cron_entry() in crontab
   end
 
   test "disabled poller does not read the roadmap or enqueue work" do

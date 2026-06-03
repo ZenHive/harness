@@ -3,7 +3,6 @@ defmodule Harness.RunTest do
 
   alias Harness.AgentAdapter.Antigravity
   alias Harness.AgentAdapter.Outcome
-  alias Harness.CheckStack
   alias Harness.Dashboard.RunFeed
   alias Harness.Dashboard.Transcript
   alias Harness.Dashboard.Transcript.Parser
@@ -16,11 +15,10 @@ defmodule Harness.RunTest do
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.Result
+  alias Harness.Run.Review
   alias Harness.Run.Status
   alias Harness.Test.CaptureSink
   alias Harness.TokenUsage
-  alias Harness.Verification.Check
-  alias Harness.Verification.Verdict
   alias Harness.Worktree
 
   # An adapter whose build_command/1 raises — drives the run's driver-task-crash
@@ -75,9 +73,8 @@ defmodule Harness.RunTest do
     def terminate(_run), do: :ok
   end
 
-  # An adapter that spawns a real, long-lived agent, then crashes the driver
-  # task on the agent's first output — a driver crash *after* the agent's OS
-  # process exists, which the run must SIGKILL rather than orphan.
+  # An adapter that spawns a real agent but declares session_resume: false —
+  # drives the steer-unsupported path.
   defmodule NoResumeAdapter do
     @moduledoc false
     @behaviour Harness.AgentAdapter
@@ -92,7 +89,7 @@ defmodule Harness.RunTest do
     def rule_channel, do: :none
 
     @impl Harness.AgentAdapter
-    def build_command(%Invocation{}), do: {:ok, {"/bin/echo", ["no-resume"], []}}
+    def build_command(%Invocation{}), do: {:ok, {"/bin/sleep", ["30"], []}}
 
     @impl Harness.AgentAdapter
     def classify_message(_message, _run), do: :ignore
@@ -101,6 +98,9 @@ defmodule Harness.RunTest do
     def terminate(_run), do: :ok
   end
 
+  # An adapter that spawns a real, long-lived agent, then crashes the driver
+  # task on the agent's first output — a driver crash *after* the agent's OS
+  # process exists, which the run must SIGKILL rather than orphan.
   defmodule DriverCrashAdapter do
     @moduledoc false
     @behaviour Harness.AgentAdapter
@@ -131,170 +131,49 @@ defmodule Harness.RunTest do
     def terminate(run), do: OSProcess.kill(run)
   end
 
-  defmodule ReviewerFixAdapter do
-    @moduledoc false
-    use Harness.AgentAdapter
+  describe "lifecycle — settling on the reviewer's verdict" do
+    test "settles :done and removes the worktree when the reviewer approves" do
+      result = run([])
 
-    alias Harness.AgentAdapter
-    alias Harness.AgentAdapter.Capabilities
-    alias Harness.AgentAdapter.Invocation
-
-    @impl AgentAdapter
-    def capabilities, do: %Capabilities{}
-
-    @impl AgentAdapter
-    def rule_channel, do: :none
-
-    @impl AgentAdapter
-    def build_command(%Invocation{prompt: prompt}) do
-      script =
-        ~S(printf '%s' "$1" > reviewer_prompt.txt; echo fixed > repair_marker; git add reviewer_prompt.txt repair_marker; git commit -q -m "reviewer fix")
-
-      {:ok, {"/bin/sh", ["-c", script, "harness-reviewer", prompt], []}}
-    end
-  end
-
-  defmodule ReviewerStillRedAdapter do
-    @moduledoc false
-    use Harness.AgentAdapter
-
-    alias Harness.AgentAdapter
-    alias Harness.AgentAdapter.Capabilities
-
-    @impl AgentAdapter
-    def capabilities, do: %Capabilities{}
-
-    @impl AgentAdapter
-    def rule_channel, do: :none
-
-    @impl AgentAdapter
-    def build_command(_invocation) do
-      script =
-        ~S(echo churn >> reviewer_churn.txt; git add reviewer_churn.txt; git commit -q -m "reviewer still red"; echo "STUCK: marker remains absent")
-
-      {:ok, {"/bin/sh", ["-c", script], []}}
-    end
-  end
-
-  defmodule ReviewerBreaksFormattingAdapter do
-    @moduledoc false
-    use Harness.AgentAdapter
-
-    alias Harness.AgentAdapter
-    alias Harness.AgentAdapter.Capabilities
-
-    @impl AgentAdapter
-    def capabilities, do: %Capabilities{}
-
-    @impl AgentAdapter
-    def rule_channel, do: :none
-
-    @impl AgentAdapter
-    def build_command(_invocation) do
-      script =
-        ~S(echo fixed > repair_marker; echo bad > formatting_bad; git add repair_marker formatting_bad; git commit -q -m "reviewer bad format"; echo "STUCK: formatting check is still red")
-
-      {:ok, {"/bin/sh", ["-c", script], []}}
-    end
-  end
-
-  defmodule ReviewerNoopGreenAdapter do
-    @moduledoc false
-    # A conforming green-conformance review: the reviewer inspects the work,
-    # changes nothing, and exits — the "conforms, make no changes" branch of
-    # the green review scope.
-    use Harness.AgentAdapter
-
-    alias Harness.AgentAdapter
-    alias Harness.AgentAdapter.Capabilities
-
-    @impl AgentAdapter
-    def capabilities, do: %Capabilities{}
-
-    @impl AgentAdapter
-    def rule_channel, do: :none
-
-    @impl AgentAdapter
-    def build_command(_invocation) do
-      {:ok, {"/bin/echo", ["review: conforms to acceptance criteria"], []}}
-    end
-  end
-
-  defmodule ReviewerReportsQuotaAdapter do
-    @moduledoc false
-    # An empty-diff judgment call: the reviewer reads the evidence, decides
-    # nothing happened (the implementer was quota-starved), and reports stuck
-    # in prose instead of fixing — the judgment a regex used to fake.
-    use Harness.AgentAdapter
-
-    alias Harness.AgentAdapter
-    alias Harness.AgentAdapter.Capabilities
-    alias Harness.AgentAdapter.Invocation
-
-    @impl AgentAdapter
-    def capabilities, do: %Capabilities{}
-
-    @impl AgentAdapter
-    def rule_channel, do: :none
-
-    @impl AgentAdapter
-    def build_command(%Invocation{prompt: prompt}) do
-      script =
-        ~S(printf '%s' "$1" > reviewer_prompt.txt; echo "STUCK: the implementer hit a usage limit and produced no work")
-
-      {:ok, {"/bin/sh", ["-c", script, "harness-reviewer", prompt], []}}
-    end
-  end
-
-  defmodule ReviewerPaysDebtAdapter do
-    @moduledoc false
-    # The reviewer-path replacement for baseline attribution (Task 163):
-    # whatever is red — inherited base debt or agent breakage — the reviewer
-    # removes it and commits; the re-run check stack is the verdict.
-    use Harness.AgentAdapter
-
-    alias Harness.AgentAdapter
-    alias Harness.AgentAdapter.Capabilities
-
-    @impl AgentAdapter
-    def capabilities, do: %Capabilities{}
-
-    @impl AgentAdapter
-    def rule_channel, do: :none
-
-    @impl AgentAdapter
-    def build_command(_invocation) do
-      script =
-        ~S(git rm -q --ignore-unmatch base-red agent_output.txt; git commit -q -m "reviewer pays the debt")
-
-      {:ok, {"/bin/sh", ["-c", script], []}}
-    end
-  end
-
-  describe "lifecycle — settling on a verdict" do
-    test "settles :done and removes the worktree when verification passes" do
-      result = run(checks: [check("ok", "true")])
-
-      assert %Result{state: :done, reason: :passed} = result
-      assert %Verdict{status: :pass} = result.verdict
+      assert %Result{state: :done, reason: :approved} = result
+      assert %Review{verdict: :approve} = result.review
+      assert result.review.report == FakeAdapter.review_report("approve")
+      assert result.review.ratings == FakeAdapter.review_ratings()
       assert %Outcome{kind: :exited} = result.agent_outcome
       assert is_binary(result.worktree_path)
       refute File.dir?(result.worktree_path)
     end
 
-    test "settles :failed and retains the worktree when verification fails" do
-      result = run(checks: [check("ok", "true"), check("no", "test", ["!", "-f", "agent_output.txt"])])
+    test "settles :failed and retains the worktree when the reviewer rejects" do
+      result = run(reviewer_adapter_opts: [command: {:review, "reject"}])
 
-      assert %Result{state: :failed, reason: :verification_red} = result
-      assert %Verdict{status: :fail} = result.verdict
+      assert %Result{state: :failed, reason: {:review_rejected, report}} = result
+      assert report == FakeAdapter.review_report("reject")
+      assert %Review{verdict: :reject} = result.review
       assert File.dir?(result.worktree_path)
       assert Worktree.retained?(result.worktree_path)
     end
 
-    test "verifies the worktree even when the agent times out" do
-      result = run(adapter_opts: [command: :write_then_hang], idle_timeout: 150, checks: [check("ok", "true")])
+    test "a reviewer that writes no verdict artifact settles :failed as review_stuck" do
+      result = run(reviewer_adapter_opts: [command: :echo])
 
-      assert %Result{state: :done, reason: :passed} = result
+      assert %Result{state: :failed, reason: {:review_stuck, report}} = result
+      assert report =~ Review.artifact_path()
+      assert result.review == nil
+    end
+
+    test "a malformed verdict artifact settles :failed as review_stuck" do
+      result = run(reviewer_adapter_opts: [command: :review_malformed])
+
+      assert %Result{state: :failed, reason: {:review_stuck, report}} = result
+      assert report =~ "malformed"
+      assert result.review == nil
+    end
+
+    test "the reviewer still gates the run when the implementer times out" do
+      result = run(adapter_opts: [command: :write_then_hang], idle_timeout: 150)
+
+      assert %Result{state: :done, reason: :approved} = result
       assert %Outcome{kind: {:timed_out, :idle}} = result.agent_outcome
     end
 
@@ -311,17 +190,20 @@ defmodule Harness.RunTest do
       batch_id = "batch-#{System.unique_integer([:positive])}"
       {run_id, pid} = start(batch_id: batch_id, result_store: store)
 
-      assert %Result{state: :done, reason: :passed} = await_result(run_id, pid)
+      assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
       assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: run_id)
 
       assert record.batch_id == batch_id
       assert record.task_id == "8"
       assert record.agent == :claude
       assert record.adapter == FakeAdapter
-      assert record.verdict == :pass
-      assert record.first_attempt_failed_check_count == 0
+      assert record.verdict == :approve
+      assert record.review_report == FakeAdapter.review_report("approve")
+      assert record.review_ratings == FakeAdapter.review_ratings()
       assert record.agent_diff_size > 0
-      assert record.failure_cause == %{reason: :passed, failed_checks: []}
+      # The reviewer double changed nothing — first-attempt pass.
+      assert record.reviewer_diff_size == 0
+      assert record.review_iterations == 0
       # FakeAdapter is not registry-mapped, so its agent_kind is nil and token
       # usage threads through as an empty usage end-to-end — never a crash.
       assert record.token_usage == TokenUsage.empty()
@@ -331,7 +213,7 @@ defmodule Harness.RunTest do
       store = file_store()
       {run_id, pid} = start(result_store: store)
 
-      assert %Result{state: :done, reason: :passed} = await_result(run_id, pid)
+      assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
       assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: run_id)
 
       assert [
@@ -352,7 +234,7 @@ defmodule Harness.RunTest do
     end
 
     test "threads an empty token usage onto the result for an unregistered adapter" do
-      result = run(checks: [check("ok", "true")])
+      result = run([])
 
       assert %Result{token_usage: %TokenUsage{} = usage} = result
       refute TokenUsage.measured?(usage)
@@ -367,37 +249,141 @@ defmodule Harness.RunTest do
 
       result = await_result(run_id, pid)
 
-      assert %Result{state: :done, reason: :passed} = result
+      assert %Result{state: :done, reason: :approved} = result
       # The worktree is gone, but the commit it produced lives on the branch.
       refute File.dir?(result.worktree_path)
       assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_output.txt"]) =~ "agent-output"
     end
 
-    # Task 162: an empty implementer diff is no longer judged by procedural
-    # code (:no_changes is gone from this path) — it always verifies, and what
-    # the empty diff MEANS is the reviewer's call. With review disabled
-    # (max_review_iterations: 0, the base default_opts), a green branch
-    # settles :done on verification alone; the reviewer-involved scenarios
-    # live in the "reviewer-pair green/empty-diff verdict path" describe.
-    test "verifies a no-diff run and settles :done when the current branch is already green" do
-      result = run(adapter_opts: [command: :echo])
+    test "the verdict artifact never rides in the deliverable commits" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
 
-      assert %Result{state: :done, reason: :passed, agent_diff_size: 0} = result
-      assert %Verdict{status: :pass} = result.verdict
+      {:ok, run_id, pid} =
+        Run.Supervisor.start_run(item(), ProjectFixture.from_repo(repo), FakeAdapter, default_opts(base))
+
+      assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
+
+      files = GitFixture.git!(repo, ["ls-tree", "-r", "--name-only", "harness/#{run_id}"])
+      refute files =~ ".harness/review.json"
+    end
+  end
+
+  describe "the reviewer's own fixes" do
+    test "reviewer fixes are committed on the run branch and measured as reviewer diff" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+      store = file_store()
+
+      opts =
+        base
+        |> default_opts()
+        |> Keyword.merge(
+          reviewer_adapter_opts: [command: {:review_with_fix, "approve"}],
+          result_store: store
+        )
+
+      {:ok, run_id, pid} = Run.Supervisor.start_run(item(), ProjectFixture.from_repo(repo), FakeAdapter, opts)
+      result = await_result(run_id, pid)
+
+      assert %Result{state: :done, reason: :approved} = result
+      assert result.reviewer_diff_size > 0
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_fix.txt"]) =~ "reviewer-fix"
+
+      # The fix is attributed to the reviewer in the persisted record.
+      assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: run_id)
+      assert record.reviewer_diff_size > 0
+      assert record.review_iterations == 1
+      assert record.reviewer_adapter == FakeAdapter
     end
 
-    test "verifies a no-diff run and fails when the current branch is not green" do
-      result = run(adapter_opts: [command: :echo], checks: [check("no", "false")])
+    test "a clean approve measures zero reviewer diff (first-attempt pass)" do
+      result = run([])
 
-      assert %Result{state: :failed, reason: :verification_red, agent_diff_size: 0} = result
-      assert %Verdict{status: :fail} = result.verdict
+      assert %Result{state: :done, reason: :approved, reviewer_diff_size: 0} = result
+    end
+  end
+
+  describe "the reviewer prompt" do
+    test "frames the reviewer with the task, evidence, and the project's check hint" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+      project = ProjectFixture.from_repo(repo, check_command: "mix precommit")
+
+      opts =
+        base
+        |> default_opts()
+        |> Keyword.put(:reviewer_adapter_opts, command: {:review_capture_prompt, "approve"})
+
+      {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, FakeAdapter, opts)
+      result = await_result(run_id, pid)
+
+      assert %Result{state: :done, reason: :approved} = result
+
+      prompt = GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_prompt.txt"])
+      assert prompt =~ "You are the cross-family reviewer for a harness run"
+      assert prompt =~ "committed work in this SAME worktree"
+      assert prompt =~ "Fixing is always cheaper than rejecting"
+      assert prompt =~ "Reject ONLY if there is literally nothing to salvage"
+      assert prompt =~ "Project check hint"
+      assert prompt =~ "mix precommit"
+      assert prompt =~ "Task spec:"
+      assert prompt =~ "Acceptance criteria:"
+      assert prompt =~ "Implementer transcript tail:"
+      assert prompt =~ "Diff stat:"
+      assert prompt =~ Review.artifact_path()
     end
 
-    test "a no-diff run with an empty check stack fails on verification, not on diff judgment" do
-      result = run(adapter_opts: [command: :echo], checks: [])
+    test "an empty implementer diff is framed as the reviewer's judgment call" do
+      result =
+        run(
+          adapter_opts: [command: :echo],
+          reviewer_adapter_opts: [command: {:review_capture_prompt, "approve"}]
+        )
 
-      assert %Result{state: :failed, reason: {:verification_failed, :no_checks}, agent_diff_size: 0} = result
-      assert result.verdict == nil
+      assert %Result{state: :done, reason: :approved, agent_diff_size: 0} = result
+
+      # The worktree is removed on approve, but the prompt capture rides on the
+      # run branch via the reviewer-fixes commit — read it from the result's
+      # review instead: the framing is asserted through the retained worktree
+      # on the reject variant below. Here we assert the run settled :done on
+      # the reviewer's call, not on a procedural empty-diff branch.
+    end
+
+    test "an empty implementer diff the reviewer rejects keeps its framing inspectable" do
+      result =
+        run(
+          adapter_opts: [command: :echo],
+          reviewer_adapter_opts: [command: {:review_capture_prompt, "reject"}]
+        )
+
+      assert %Result{state: :failed, reason: {:review_rejected, _report}, agent_diff_size: 0} = result
+
+      # Failure retains the worktree — the empty-diff framing is inspectable.
+      prompt = File.read!(Path.join(result.worktree_path, "reviewer_prompt.txt"))
+      assert prompt =~ "The implementer produced NO diff"
+      assert prompt =~ "Decide"
+      assert prompt =~ "what the empty diff means"
+    end
+  end
+
+  describe "reviewer selection" do
+    test "no cross-family reviewer available settles failed without silently approving" do
+      Enum.each(Harness.AgentRegistry.all(), &Harness.AgentRegistry.mark_unavailable(&1, :test_unavailable))
+      on_exit(fn -> Harness.AgentRegistry.reset() end)
+
+      result = run(reviewer: nil)
+
+      assert %Result{state: :failed, reason: {:review_stuck, report}, reviewer_adapter: nil} = result
+      assert report =~ "No cross-family reviewer adapter available"
+    end
+
+    test "an explicit same-family reviewer is refused — the gate must be cross-family" do
+      # item.agent is :claude; :claude as reviewer is the same family.
+      result = run(reviewer: :claude)
+
+      assert %Result{state: :failed, reason: {:review_stuck, report}} = result
+      assert report =~ "same_family_reviewer"
     end
   end
 
@@ -435,68 +421,8 @@ defmodule Harness.RunTest do
 
       result = await_result(run_id, pid)
 
-      assert %Result{state: :done, reason: :passed} = result
+      assert %Result{state: :done, reason: :approved} = result
       assert GitFixture.git!(repo, ["status", "--porcelain"]) =~ "leaked.txt"
-    end
-  end
-
-  describe "worktree provisioning" do
-    test "runs the check-stack setup before the agent spawns" do
-      repo = GitFixture.init_repo()
-
-      stack = %CheckStack{
-        name: :warm,
-        setup: [check("provision", "touch", ["provisioned"])],
-        # Green only if the agent's worktree listing included the provision
-        # marker — i.e. setup ran before the agent did.
-        checks: [check("agent-saw-marker", "grep", ["provisioned", "agent-saw.txt"])]
-      }
-
-      project = ProjectFixture.from_repo(repo, check_stack: stack)
-
-      {:ok, run_id, pid} =
-        Run.Supervisor.start_run(item(), project, FakeAdapter,
-          base_dir: GitFixture.tmp_base(),
-          adapter_opts: [command: :snapshot_worktree],
-          total_timeout: 30_000,
-          idle_timeout: 10_000,
-          lifetime_timeout: 30_000,
-          verification_timeout: 10_000,
-          terminal_linger: 100,
-          max_review_iterations: 0
-        )
-
-      assert %Result{state: :done, reason: :passed} = await_result(run_id, pid)
-    end
-
-    test "a provision failure settles :failed as an environment error and the agent never spawns" do
-      repo = GitFixture.init_repo()
-
-      stack = %CheckStack{
-        name: :broken,
-        setup: [check("bootstrap", "false")],
-        checks: [check("ok", "true")]
-      }
-
-      project = ProjectFixture.from_repo(repo, check_stack: stack)
-
-      {:ok, run_id, pid} =
-        Run.Supervisor.start_run(item(), project, FakeAdapter,
-          base_dir: GitFixture.tmp_base(),
-          adapter_opts: [command: :write],
-          total_timeout: 30_000,
-          idle_timeout: 10_000,
-          lifetime_timeout: 30_000,
-          verification_timeout: 10_000,
-          terminal_linger: 100,
-          max_review_iterations: 0
-        )
-
-      result = await_result(run_id, pid)
-
-      assert %Result{state: :failed, reason: {:worktree_failed, {:setup_failed, %{stack: :broken}}}} = result
-      # The agent never spawned: provisioning failed first.
-      assert result.agent_outcome == nil
     end
   end
 
@@ -536,17 +462,11 @@ defmodule Harness.RunTest do
       assert result.agent_outcome == nil
     end
 
-    test "settles :failed when verification cannot run" do
-      result = run(checks: [])
-
-      assert %Result{state: :failed, reason: {:verification_failed, :no_checks}} = result
-    end
-
     test "settles :failed when the agent's work cannot be committed" do
       result = run(adapter_opts: [command: :break_git])
 
       assert %Result{state: :failed, reason: {:commit_failed, _reason}} = result
-      assert result.verdict == nil
+      assert result.review == nil
     end
 
     test "settles with a distinct reason when the worktree disappears before commit" do
@@ -554,7 +474,7 @@ defmodule Harness.RunTest do
 
       assert %Result{state: :failed, reason: {:commit_failed, {:worktree_missing, path}}} = result
       assert path == result.worktree_path
-      assert result.verdict == nil
+      assert result.review == nil
     end
 
     test "rejects a run whose cwd vanished after it wrote into a sibling worktree" do
@@ -591,7 +511,7 @@ defmodule Harness.RunTest do
 
       assert expected_branch =~ ~r"\Aharness/"
       assert String.match?(sha, ~r/\A[0-9a-f]{40}\z/)
-      assert result.verdict == nil
+      assert result.review == nil
       # The worktree is retained on failure — the agent's work is still
       # inspectable in the working tree rather than lost to a teardown that
       # would have followed an off-branch commit.
@@ -647,31 +567,16 @@ defmodule Harness.RunTest do
 
     @tag :capture_log
     test "REGRESSION (Task 56): a deferred cancel reply lands when lifetime force-settles before the agent handle arrives" do
-      # Codex (audit of f4d8cb6) flagged a Pri-8 claim: state had
-      # `cancel_requested: {:cancelled, from}`, result settled `:timed_out`,
-      # but the cancel caller's `Task.yield` returned `nil`. This deterministic
-      # regression pins the composed scenario: HangingAdapter never delivers
-      # `{:run_handle, _}` → the run enters :running with agent_run=nil →
-      # cancel arrives and is deferred → lifetime timer fires →
-      # `force_settle_lifetime/1` must reply to the deferred caller AND settle
-      # the result with `:timed_out`. If `pending_cancel_reply/1` ever stops
-      # being threaded into the force-settle actions, this test breaks.
+      # HangingAdapter never delivers `{:run_handle, _}` → the run enters
+      # :running with agent_run=nil → cancel arrives and is deferred → lifetime
+      # timer fires → `force_settle_lifetime/1` must reply to the deferred
+      # caller AND settle the result with `:timed_out`.
       {run_id, pid} = start(adapter: HangingAdapter, lifetime_timeout: 300)
 
-      # Wait until the run is in :running with the cancel-defer path live —
-      # status sees :running once the worktree is ready, before HangingAdapter
-      # would have produced any `{:run_handle, _}` message.
       wait_until_running(run_id, 50, 5_000)
 
-      # Issue the cancel from a separate Task so we can observe whether the
-      # reply ever lands. The Task blocks in :gen_statem.call until either
-      # the deferred reply arrives or the gen_statem dies.
       cancel_task = Task.async(fn -> Run.cancel(run_id) end)
 
-      # The cancel reply only lands once the lifetime timer fires and
-      # `force_settle_lifetime/1` returns its `[{:reply, from, :ok}]` action.
-      # Yield generously (the timer is 300 ms) so a slow CI box doesn't
-      # spuriously fail by under-waiting.
       assert :ok = Task.await(cancel_task, 5_000)
 
       result = await_result(run_id, pid)
@@ -751,18 +656,37 @@ defmodule Harness.RunTest do
       opts = [
         base_dir: base,
         adapter_opts: [command: :write],
-        checks: [check("ok", "true")],
+        reviewer: FakeAdapter,
+        reviewer_adapter_opts: [command: {:review, "approve"}],
         total_timeout: 30_000,
-        idle_timeout: 10_000,
-        verification_timeout: 10_000
+        idle_timeout: 10_000
       ]
 
       {:ok, run_id, _pid} = Run.Supervisor.start_run(item(), ProjectFixture.from_repo(repo), FakeAdapter, opts)
 
-      assert_receive {:harness_run, ^run_id, %Result{state: :done}}, 5_000
-      assert {:ok, %Status{state: :done}} = Run.status(run_id)
+      assert_receive {:harness_run, ^run_id, %Result{state: :done}}, 10_000
+      assert {:ok, %Status{state: :done, review_verdict: :approve}} = Run.status(run_id)
       assert :ok = Run.cancel(run_id)
       assert {:ok, %Status{state: :done}} = Run.status(run_id)
+    end
+
+    test "status/1 reports :reviewing while the reviewer works" do
+      :ok = RunFeed.subscribe()
+
+      {run_id, pid} =
+        start(
+          adapter_opts: [command: :write],
+          # A reviewer that never finishes keeps the run observable in :reviewing.
+          reviewer_adapter_opts: [command: :sleep]
+        )
+
+      # The run broadcasts every state transition; :reviewing means the
+      # implementer committed and the reviewer is now THE gate.
+      assert_receive {:harness_run_update, %Status{run_id: ^run_id, state: :reviewing}}, 10_000
+      assert {:ok, %Status{state: :reviewing, review_verdict: nil}} = Run.status(run_id)
+
+      assert :ok = Run.cancel(run_id)
+      await_result(run_id, pid)
     end
   end
 
@@ -810,13 +734,15 @@ defmodule Harness.RunTest do
       {held_run_id, held_pid} =
         start(
           adapter_opts: [command: :sleep],
-          checks: [check("ok", "true")],
           lifetime_timeout: 500,
           max_hold_timeout: 30_000,
           terminal_linger: 100
         )
 
       wait_until_running(held_run_id)
+      # Interrupt-hold parks synchronously only once the agent handle has
+      # arrived — without this await, hold is deferred and status races.
+      await_agent_os_pid(held_run_id)
       assert :ok = Run.hold(held_run_id, true)
       assert {:ok, %Status{state: :held}} = Run.status(held_run_id)
 
@@ -831,18 +757,18 @@ defmodule Harness.RunTest do
       {run_id, pid} =
         start(
           adapter_opts: [command: {:write_then_wait_for_file, gate}],
-          checks: [check("ok", "true")],
           lifetime_timeout: 500,
           max_hold_timeout: 30_000,
           terminal_linger: 100
         )
 
       wait_until_running(run_id)
+      await_agent_os_pid(run_id)
       assert :ok = Run.hold(run_id, true)
       assert :ok = Run.resume(run_id)
       File.touch!(gate)
 
-      assert %Result{state: :done, reason: :passed} = await_result(run_id, pid, 10_000)
+      assert %Result{state: :done, reason: :approved} = await_result(run_id, pid, 10_000)
       on_exit(fn -> File.rm(gate) end)
     end
 
@@ -854,31 +780,26 @@ defmodule Harness.RunTest do
       base = GitFixture.tmp_base()
 
       opts =
-        Keyword.merge(
-          [
-            base_dir: base,
-            adapter_opts: [command: :operator_steer],
-            checks: [check("ok", "true")],
-            total_timeout: 30_000,
-            idle_timeout: 10_000,
-            lifetime_timeout: 30_000,
-            verification_timeout: 10_000,
-            terminal_linger: 100,
-            max_hold_timeout: 30_000,
-            result_store: store
-          ],
-          []
+        base
+        |> default_opts()
+        |> Keyword.merge(
+          adapter_opts: [command: :operator_steer],
+          max_hold_timeout: 30_000,
+          result_store: store
         )
 
       {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, FakeAdapter, opts)
 
       wait_until_running(run_id, 20, 5_000)
+      # Resume requires the run to actually be :held — interrupt-hold only parks
+      # synchronously after the agent handle arrives, so await it first.
+      await_agent_os_pid(run_id)
       assert :ok = Run.hold(run_id, true)
       assert :ok = Run.steer(run_id, "operator note one")
       assert :ok = Run.steer(run_id, "operator note two")
       assert :ok = Run.resume(run_id)
 
-      assert %Result{state: :done, reason: :passed} = await_result(run_id, pid)
+      assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
 
       assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: run_id)
 
@@ -932,14 +853,12 @@ defmodule Harness.RunTest do
       project = ProjectFixture.from_repo(repo)
       base = GitFixture.tmp_base()
 
-      {:ok, run_id, _pid} =
-        Run.Supervisor.start_run(item(), project, NoResumeAdapter,
-          base_dir: base,
-          adapter_opts: [command: :write],
-          checks: [check("ok", "true")],
-          lifetime_timeout: 30_000,
-          terminal_linger: 100
-        )
+      opts =
+        base
+        |> default_opts()
+        |> Keyword.put(:adapter_opts, [])
+
+      {:ok, run_id, _pid} = Run.Supervisor.start_run(item(), project, NoResumeAdapter, opts)
 
       wait_until_running(run_id)
       assert :ok = Run.hold(run_id, true)
@@ -947,11 +866,7 @@ defmodule Harness.RunTest do
     end
 
     test "hold from a terminal run returns {:error, :terminal}" do
-      {run_id, pid} =
-        start(
-          checks: [check("ok", "true")],
-          terminal_linger: 5_000
-        )
+      {run_id, pid} = start(terminal_linger: 5_000)
 
       assert_receive {:harness_run, ^run_id, %Result{state: :done}}, 5_000
       assert Process.alive?(pid)
@@ -981,265 +896,6 @@ defmodule Harness.RunTest do
       assert :ok = Run.hold(run_id)
       assert {:ok, %Status{state: :held, held?: true}} = Run.status(run_id)
       on_exit(fn -> File.rm(gate) end)
-    end
-  end
-
-  describe "red verdict with review disabled (max_review_iterations: 0)" do
-    test "a red inherited from the base commit settles :verification_red without invoking a reviewer" do
-      # Task 163: there is no :base_red attribution anymore — a red is a red,
-      # whoever caused it. With review disabled it settles :verification_red.
-      {run_id, pid} = start_with_inherited_debt(max_review_iterations: 0)
-      result = await_result(run_id, pid)
-
-      assert %Result{state: :failed, reason: :verification_red, review_iterations: 0} = result
-      assert %Verdict{status: :fail} = result.verdict
-    end
-  end
-
-  describe "reviewer-pair red verdict path" do
-    test "inherited base debt is paid by the reviewer instead of being attributed away" do
-      # Reviewer-path rewrite of the deleted baseline-attribution scenario: the
-      # check fails only because of debt pre-existing on the base commit. No
-      # procedural code decides whose fault that is — the reviewer fixes it,
-      # and the re-run check stack is the verdict.
-      {run_id, pid} =
-        start_with_inherited_debt(
-          reviewer: ReviewerPaysDebtAdapter,
-          max_review_iterations: 1
-        )
-
-      result = await_result(run_id, pid)
-
-      assert %Result{
-               state: :done,
-               reason: :passed,
-               review_iterations: 1,
-               reviewer_adapter: ReviewerPaysDebtAdapter
-             } = result
-
-      assert %Verdict{status: :pass} = result.verdict
-    end
-
-    test "inherited debt cannot mask agent-caused failures — the reviewer fixes both (Task 160 regression)" do
-      # Reviewer-path rewrite of the baseline-masking scenario: one check reds
-      # on inherited base debt, another reds on the agent's own output. The
-      # reviewer must clear both before the stack re-grades green.
-      {run_id, pid} =
-        start_with_inherited_debt(
-          reviewer: ReviewerPaysDebtAdapter,
-          max_review_iterations: 1,
-          checks: [
-            check("no-inherited-debt", "test", ["!", "-f", "base-red"]),
-            check("no-agent-debt", "test", ["!", "-f", "agent_output.txt"])
-          ]
-        )
-
-      result = await_result(run_id, pid)
-
-      assert %Result{
-               state: :done,
-               reason: :passed,
-               review_iterations: 1,
-               reviewer_adapter: ReviewerPaysDebtAdapter
-             } = result
-
-      assert %Verdict{status: :pass} = result.verdict
-    end
-
-    test "red verification invokes a cross-family reviewer and settles :done only after mechanical re-verification" do
-      {run_id, pid, repo} =
-        start_repair(
-          adapter_opts: [command: :repair_noop],
-          checks: marker_checks(),
-          reviewer: ReviewerFixAdapter,
-          max_review_iterations: 2
-        )
-
-      result = await_result(run_id, pid)
-
-      assert %Result{
-               state: :done,
-               reason: :passed,
-               review_iterations: 1,
-               reviewer_adapter: ReviewerFixAdapter
-             } = result
-
-      prompt = GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_prompt.txt"])
-      assert prompt =~ "You are the cross-family reviewer for a harness run"
-      assert prompt =~ "Task spec:"
-      assert prompt =~ "Acceptance criteria:"
-      assert prompt =~ "Implementer transcript tail:"
-      assert prompt =~ "Diff stat:"
-      assert prompt =~ "Full failing-check output:"
-      assert prompt =~ "fix inline, commit, re-run checks"
-    end
-
-    test "still-red reviewer output is carried as prose when iterations are exhausted" do
-      {run_id, pid, _repo} =
-        start_repair(
-          adapter_opts: [command: :repair_noop],
-          checks: marker_checks(),
-          reviewer: ReviewerStillRedAdapter,
-          max_review_iterations: 1
-        )
-
-      result = await_result(run_id, pid)
-
-      assert %Result{
-               state: :failed,
-               reason: {:review_stuck, "STUCK: marker remains absent"},
-               review_iterations: 1,
-               reviewer_adapter: ReviewerStillRedAdapter,
-               reviewer_stuck_report: "STUCK: marker remains absent"
-             } = result
-    end
-
-    test "no cross-family reviewer available settles failed without silently skipping review" do
-      Enum.each(Harness.AgentRegistry.all(), &Harness.AgentRegistry.mark_unavailable(&1, :test_unavailable))
-      on_exit(fn -> Harness.AgentRegistry.reset() end)
-
-      {run_id, pid, _repo} =
-        start_repair(
-          adapter_opts: [command: :repair_noop],
-          checks: marker_checks(),
-          max_review_iterations: 1
-        )
-
-      result = await_result(run_id, pid)
-
-      assert %Result{
-               state: :failed,
-               reason: {:review_stuck, reason},
-               review_iterations: 0,
-               reviewer_adapter: nil
-             } = result
-
-      assert reason =~ "No cross-family reviewer adapter available"
-    end
-
-    test "reviewer edits are graded by the same check stack" do
-      {run_id, pid, _repo} =
-        start_repair(
-          adapter_opts: [command: :repair_noop],
-          checks: marker_checks() ++ [check("format", "test", ["!", "-f", "formatting_bad"])],
-          reviewer: ReviewerBreaksFormattingAdapter,
-          max_review_iterations: 1
-        )
-
-      result = await_result(run_id, pid)
-
-      assert %Result{
-               state: :failed,
-               reason: {:review_stuck, "STUCK: formatting check is still red"},
-               review_iterations: 1,
-               reviewer_adapter: ReviewerBreaksFormattingAdapter
-             } = result
-
-      assert %Verdict{status: :fail} = result.verdict
-    end
-  end
-
-  describe "reviewer-pair green/empty-diff verdict path (Task 162)" do
-    test "an empty implementer diff on a green branch gets one reviewer pass before settling :done" do
-      {run_id, pid, _repo} =
-        start_repair(
-          adapter_opts: [command: :echo],
-          checks: [check("ok", "true")],
-          reviewer: ReviewerNoopGreenAdapter,
-          max_review_iterations: 2
-        )
-
-      result = await_result(run_id, pid)
-
-      assert %Result{
-               state: :done,
-               reason: :passed,
-               review_iterations: 1,
-               reviewer_adapter: ReviewerNoopGreenAdapter,
-               agent_diff_size: 0
-             } = result
-
-      assert %Verdict{status: :pass} = result.verdict
-    end
-
-    test "an empty implementer diff on a red branch is judged by the reviewer, who records why in prose" do
-      {run_id, pid, _repo} =
-        start_repair(
-          adapter_opts: [command: {:echo, "subscription quota exhausted"}],
-          checks: [check("red", "false")],
-          reviewer: ReviewerReportsQuotaAdapter,
-          max_review_iterations: 1
-        )
-
-      result = await_result(run_id, pid)
-
-      assert %Result{
-               state: :failed,
-               reason: {:review_stuck, report},
-               review_iterations: 1,
-               reviewer_adapter: ReviewerReportsQuotaAdapter
-             } = result
-
-      assert report =~ "usage limit"
-      assert result.reviewer_stuck_report == report
-
-      # The implementer's raw output rides on the result untouched — harness
-      # never parses it; the reviewer's prose is the judgment batch failover reads.
-      assert result.agent_outcome.output =~ "subscription quota exhausted"
-
-      # The reviewer was framed with the empty-diff judgment, not the fix-red one.
-      prompt = File.read!(Path.join(result.worktree_path, "reviewer_prompt.txt"))
-      assert prompt =~ "The implementer produced NO diff"
-      assert prompt =~ "decide what the empty diff means"
-    end
-
-    test "review_green: true routes a green verdict through exactly one conformance review pass" do
-      {run_id, pid, repo} =
-        start_repair(
-          adapter_opts: [command: :write],
-          checks: [check("ok", "true")],
-          reviewer: ReviewerFixAdapter,
-          review_green: true,
-          max_review_iterations: 3
-        )
-
-      result = await_result(run_id, pid)
-
-      assert %Result{
-               state: :done,
-               reason: :passed,
-               review_iterations: 1,
-               reviewer_adapter: ReviewerFixAdapter
-             } = result
-
-      prompt = GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_prompt.txt"])
-      assert prompt =~ "The check stack in this worktree is GREEN"
-      assert prompt =~ "acceptance criteria"
-      refute prompt =~ "fix inline, commit, re-run checks"
-    end
-
-    test "green verdict wanting review settles :done when no cross-family reviewer is available" do
-      # Task 158 regression guard: green is ground truth — missing review
-      # infrastructure must never fail green work.
-      Enum.each(Harness.AgentRegistry.all(), &Harness.AgentRegistry.mark_unavailable(&1, :test_unavailable))
-      on_exit(fn -> Harness.AgentRegistry.reset() end)
-
-      {run_id, pid, _repo} =
-        start_repair(
-          adapter_opts: [command: :write],
-          checks: [check("ok", "true")],
-          review_green: true,
-          max_review_iterations: 3
-        )
-
-      result = await_result(run_id, pid)
-
-      assert %Result{
-               state: :done,
-               reason: :passed,
-               review_iterations: 0,
-               reviewer_adapter: nil
-             } = result
     end
   end
 
@@ -1404,87 +1060,20 @@ defmodule Harness.RunTest do
     {run_id, pid}
   end
 
-  # Like start/1 but returns the repo too (so a test can `git show` the run
-  # branch) and never forces max_review_iterations — reviewer-path tests set it.
-  defp start_repair(overrides) do
-    repo = GitFixture.init_repo()
-    project = ProjectFixture.from_repo(repo)
-    base = GitFixture.tmp_base()
-
-    opts =
-      Keyword.merge(
-        [
-          base_dir: base,
-          total_timeout: 30_000,
-          idle_timeout: 10_000,
-          lifetime_timeout: 30_000,
-          verification_timeout: 10_000,
-          terminal_linger: 100
-        ],
-        overrides
-      )
-
-    {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, FakeAdapter, opts)
-    {run_id, pid, repo}
-  end
-
-  # Seeds a repo whose base commit carries tracked debt (`base-red`) failing the
-  # default check, then starts a run whose implementer writes a real diff. The
-  # reviewer-path tests grade how that inherited red gets handled.
-  defp start_with_inherited_debt(overrides) do
-    repo = GitFixture.init_repo()
-    File.write!(Path.join(repo, "base-red"), "")
-    GitFixture.git!(repo, ["add", "base-red"])
-    GitFixture.git!(repo, ["commit", "-q", "-m", "tracked debt on base"])
-
-    project = ProjectFixture.from_repo(repo)
-    base = GitFixture.tmp_base()
-
-    opts =
-      Keyword.merge(
-        [
-          base_dir: base,
-          total_timeout: 30_000,
-          idle_timeout: 10_000,
-          lifetime_timeout: 30_000,
-          verification_timeout: 10_000,
-          terminal_linger: 100,
-          adapter_opts: [command: :write],
-          checks: [check("no-inherited-debt", "test", ["!", "-f", "base-red"])]
-        ],
-        overrides
-      )
-
-    {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, FakeAdapter, opts)
-    {run_id, pid}
-  end
-
-  # A check stack the :repair_noop fixture grades against: red until a
-  # reviewer writes repair_marker into the worktree.
-  defp marker_checks do
-    [
-      check("ok", "true"),
-      check("marker", "sh", [
-        "-c",
-        "test -f repair_marker || { test ! -f attempt.txt && test ! -f churn.txt && test ! -f agent_output.txt; }"
-      ])
-    ]
-  end
-
+  # Every run goes through the reviewer gate, so the defaults wire FakeAdapter
+  # as both implementer (:write) and reviewer ({:review, "approve"} — a clean
+  # approve). FakeAdapter is unregistered, so the cross-family constraint never
+  # trips for test doubles.
   defp default_opts(base) do
     [
       base_dir: base,
       adapter_opts: [command: :write],
-      checks: [check("ok", "true")],
+      reviewer: FakeAdapter,
+      reviewer_adapter_opts: [command: {:review, "approve"}],
       total_timeout: 30_000,
       idle_timeout: 10_000,
       lifetime_timeout: 30_000,
-      verification_timeout: 10_000,
-      terminal_linger: 100,
-      # Red-verdict handling (the reviewer pair) has its own describe blocks;
-      # keep the base helpers review-disabled so a red verdict settles straight
-      # to :failed.
-      max_review_iterations: 0
+      terminal_linger: 100
     ]
   end
 
@@ -1492,9 +1081,7 @@ defmodule Harness.RunTest do
     %Item{id: "8", title: "Supervised run lifecycle", prompt: "do the thing", agent: :claude}
   end
 
-  defp check(name, command, args \\ []), do: %Check{name: name, command: command, args: args}
-
-  defp await_result(run_id, pid, timeout \\ 5_000) do
+  defp await_result(run_id, pid, timeout \\ 10_000) do
     ref = Process.monitor(pid)
     assert_receive {:harness_run, ^run_id, %Result{} = result}, timeout
     assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, timeout

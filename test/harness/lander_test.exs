@@ -1,12 +1,9 @@
 defmodule Harness.LanderTest do
   use ExUnit.Case, async: false
 
-  alias Harness.CheckStack
   alias Harness.GitFixture
   alias Harness.Lander
   alias Harness.Project
-  alias Harness.Verification.Check
-  alias Harness.Verification.Verdict
 
   @moduletag :tmp_dir
 
@@ -21,9 +18,6 @@ defmodule Harness.LanderTest do
     {_output, status} = git(repo, ["merge-base", "--is-ancestor", maybe_ancestor, descendant])
     status == 0
   end
-
-  defp pass_stack, do: [%CheckStack{name: :test, checks: [%Check{name: "ok", command: "true", args: []}], workdir: ""}]
-  defp fail_stack, do: [%CheckStack{name: :test, checks: [%Check{name: "no", command: "false", args: []}], workdir: ""}]
 
   setup %{tmp_dir: tmp_dir} do
     %{origin: origin, repo: repo} = GitFixture.init_with_origin()
@@ -42,18 +36,24 @@ defmodule Harness.LanderTest do
     project = %Project{
       name: "demo",
       source: {:local, repo},
-      check_stacks: pass_stack(),
       roadmap_path: tmp_dir,
       target_branch: "main"
     }
 
-    request = %{project: project, run_id: "run-x", task_id: "1", agent: :claude, branch: "harness/run-x"}
+    request = %{
+      project: project,
+      run_id: "run-x",
+      task_id: "1",
+      agent: :claude,
+      reviewer: :codex,
+      branch: "harness/run-x"
+    }
 
     %{origin: origin, repo: repo, base_sha: base_sha, branch_tip: branch_tip, project: project, request: request}
   end
 
   describe "land/1 — fast-forward path (target unmoved)" do
-    test "pushes the branch tip to origin/<target> and re-verifies green", ctx do
+    test "pushes the branch tip to origin/<target>", ctx do
       assert {:landed, landed} = Lander.land(ctx.request)
       assert landed == ctx.branch_tip
       assert sha(ctx.origin, "refs/heads/main") == ctx.branch_tip
@@ -61,7 +61,7 @@ defmodule Harness.LanderTest do
   end
 
   describe "land/1 — rebase path (target moved under the branch)" do
-    test "rebases onto origin/<target>, re-verifies, then ff-pushes", ctx do
+    test "rebases onto origin/<target>, then ff-pushes", ctx do
       # advance origin/main past the branch's fork point (non-conflicting file).
       File.write!(Path.join(ctx.repo, "main_moved.txt"), "x\n")
       GitFixture.git!(ctx.repo, ["add", "."])
@@ -80,14 +80,28 @@ defmodule Harness.LanderTest do
     end
   end
 
-  describe "land/1 — integrated state re-verified before the merge is kept" do
-    test "a red post-integration verdict aborts the land and retains the branch", ctx do
-      request = %{ctx.request | project: %{ctx.project | check_stacks: fail_stack()}}
+  describe "land/1 — post-merge audit trigger" do
+    test "a successful land enqueues one audit job carrying the pre-land target tip", ctx do
+      test_pid = self()
 
-      assert {:post_merge_red, %Verdict{}} = Lander.land(request)
-      # origin/<target> never advanced; the branch is retained for inspection.
-      assert sha(ctx.origin, "refs/heads/main") == ctx.base_sha
-      assert sha(ctx.repo, "harness/run-x") == ctx.branch_tip
+      Application.put_env(:harness, :oban_insert, fn changeset ->
+        job = Ecto.Changeset.apply_action!(changeset, :insert)
+        send(test_pid, {:audit_insert, job})
+        {:ok, job}
+      end)
+
+      on_exit(fn -> Application.delete_env(:harness, :oban_insert) end)
+
+      assert {:landed, _landed} = Lander.land(ctx.request)
+
+      assert_receive {:audit_insert, %Oban.Job{args: args, worker: "Harness.Audit.Worker", queue: "audit"}}
+
+      assert args == %{
+               "project_name" => "demo",
+               "base_sha" => ctx.base_sha,
+               "implementer" => "claude",
+               "reviewer" => "codex"
+             }
     end
   end
 
@@ -117,7 +131,6 @@ defmodule Harness.LanderTest do
       gh = %Project{
         name: "gh",
         source: {:github, "https://example.com/x.git"},
-        check_stacks: pass_stack(),
         roadmap_path: ctx.request.project.roadmap_path,
         target_branch: "main"
       }

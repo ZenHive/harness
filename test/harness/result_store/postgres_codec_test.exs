@@ -69,21 +69,23 @@ defmodule Harness.ResultStore.PostgresCodecTest do
   end
 
   describe "jsonb term codec" do
-    test "tuple reason + nested failure_cause round-trip" do
+    test "tuple reason round-trips via the $tuple marker" do
       reason = {:agent_spawn_failed, :enoent}
 
-      record =
-        ResultStoreContract.log_record(
-          run_id: "jsonb-reason",
-          reason: reason,
-          failure_cause: %{reason: reason, failed_checks: [%{name: "test", exit_status: 2}]}
-        )
+      record = ResultStoreContract.log_record(run_id: "jsonb-reason", reason: reason)
+
+      assert roundtrip(record).reason == reason
+    end
+
+    test "reviewer rejection reason (tagged tuple with a report string) round-trips" do
+      reason = {:review_rejected, "nothing salvageable"}
+
+      record = ResultStoreContract.log_record(run_id: "jsonb-rejection", reason: reason, verdict: :reject)
 
       decoded = roundtrip(record)
 
       assert decoded.reason == reason
-      assert decoded.failure_cause.reason == reason
-      assert decoded.failure_cause.failed_checks == [%{name: "test", exit_status: 2}]
+      assert decoded.verdict == :reject
     end
 
     test "token_usage struct identity is restored on read" do
@@ -93,11 +95,11 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       assert roundtrip(record).token_usage == usage
     end
 
-    test "check_output outer keys stay strings; inner values decode" do
-      check_output = %{"sobelow" => %{output: "findings", truncated: false}}
-      record = ResultStoreContract.log_record(run_id: "jsonb-checks", check_output: check_output)
+    test "review_ratings outer keys stay strings; values decode" do
+      ratings = %{"performance" => 8, "code_quality" => 7}
+      record = ResultStoreContract.log_record(run_id: "jsonb-ratings", review_ratings: ratings)
 
-      assert roundtrip(record).check_output == check_output
+      assert roundtrip(record).review_ratings == ratings
     end
 
     test "list-valued fields round-trip via the $list marker (composed_inputs, domains)" do
@@ -123,7 +125,7 @@ defmodule Harness.ResultStore.PostgresCodecTest do
           agent: :codex,
           adapter: Codex,
           state: :failed,
-          verdict: :fail
+          verdict: :reject
         )
 
       decoded = roundtrip(record)
@@ -131,7 +133,7 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       assert decoded.agent == :codex
       assert decoded.adapter == Codex
       assert decoded.state == :failed
-      assert decoded.verdict == :fail
+      assert decoded.verdict == :reject
     end
   end
 

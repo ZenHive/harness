@@ -40,14 +40,10 @@ defmodule Harness.Run.Worker do
     run_id = Keyword.get(opts, :run_id) || generate_run_id()
 
     args =
-      %{
-        project_name: project.name,
-        item_id: item.id,
-        adapter_module: Atom.to_string(adapter),
-        run_id: run_id
-      }
-      |> put_env(opts)
-      |> put_review_green(opts)
+      put_env(
+        %{project_name: project.name, item_id: item.id, adapter_module: Atom.to_string(adapter), run_id: run_id},
+        opts
+      )
 
     case args
          |> new(queue: Harness.Oban.queue_name(project), meta: %{harness_stage: "dispatch"})
@@ -143,12 +139,12 @@ defmodule Harness.Run.Worker do
     result_to_oban(result, max(attempt || 1, 1))
   end
 
-  # Crash-only Oban contract: a run that reached ANY settled verdict — green,
-  # red, reviewer-stuck, cancelled, timed out — is never re-enqueued. What a
+  # Crash-only Oban contract: a run that reached ANY settled outcome — approved,
+  # rejected, reviewer-stuck, cancelled, timed out — is never re-enqueued. What a
   # settled failure *means* was already the reviewer's judgment inside the run;
   # the queue retries only mechanical failures (setup_failure_disposition).
   @spec result_to_oban(Result.t(), pos_integer()) :: Oban.Worker.result()
-  defp result_to_oban(%Result{state: :done, reason: :passed}, _attempt), do: :ok
+  defp result_to_oban(%Result{state: :done, reason: :approved}, _attempt), do: :ok
 
   defp result_to_oban(%Result{state: :failed} = result, _attempt), do: {:cancel, result.reason}
 
@@ -248,7 +244,7 @@ defmodule Harness.Run.Worker do
         _other -> opts
       end
 
-    opts ++ run_id_opt(args) ++ env_opt(args) ++ review_green_opt(args)
+    opts ++ run_id_opt(args) ++ env_opt(args)
   end
 
   @spec run_id_opt(map()) :: keyword()
@@ -263,10 +259,6 @@ defmodule Harness.Run.Worker do
   @spec env_opt(map()) :: keyword()
   defp env_opt(%{"env" => env}) when is_map(env) and map_size(env) > 0, do: [env: env]
   defp env_opt(_args), do: []
-
-  @spec review_green_opt(map()) :: keyword()
-  defp review_green_opt(%{"review_green" => true}), do: [review_green: true]
-  defp review_green_opt(_args), do: []
 
   @spec checkpoint(Oban.Job.t(), String.t()) :: :ok
   defp checkpoint(%Oban.Job{id: id} = job, stage) when is_integer(id) do
@@ -401,11 +393,6 @@ defmodule Harness.Run.Worker do
       env when is_map(env) and map_size(env) > 0 -> Map.put(args, :env, env)
       _empty -> args
     end
-  end
-
-  @spec put_review_green(map(), keyword()) :: map()
-  defp put_review_green(args, opts) do
-    if Keyword.get(opts, :review_green) == true, do: Map.put(args, :review_green, true), else: args
   end
 
   @spec generate_run_id() :: String.t()

@@ -11,7 +11,6 @@ defmodule Harness.Lander.ResilienceTest do
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.Test.CaptureSink
-  alias Harness.Verification.Verdict
 
   describe "plan/2 — pure routing (exhaustive over the outcome union)" do
     test "landed terminates ok at any attempt" do
@@ -29,12 +28,7 @@ defmodule Harness.Lander.ResilienceTest do
       assert {:retry, :boom} = Resilience.plan({:error, :boom}, 2)
     end
 
-    test "post_merge_red re-dispatches under the cap, blocks at it" do
-      assert {:redispatch, 2, :post_merge_red} = Resilience.plan({:post_merge_red, :verdict}, 1)
-      assert {:block, :post_merge_red} = Resilience.plan({:post_merge_red, :verdict}, 2)
-    end
-
-    test "conflict re-dispatches (same mechanism as post_merge_red) under the cap, blocks at it" do
+    test "conflict re-dispatches under the cap, blocks at it" do
       assert {:redispatch, 2, :conflict} = Resilience.plan({:conflict, "CONFLICT (content)"}, 1)
       assert {:block, :conflict} = Resilience.plan({:conflict, "CONFLICT (content)"}, 2)
     end
@@ -104,11 +98,11 @@ defmodule Harness.Lander.ResilienceTest do
       {:ok, project: project}
     end
 
-    test "post_merge_red at the cap cancels as blocked and enqueues nothing", %{project: project} do
+    test "conflict at the cap cancels as blocked and enqueues nothing", %{project: project} do
       args = base_args(project.name, 2)
 
-      assert {:cancel, {:blocked, reason}} = Resilience.route({:post_merge_red, :verdict}, args)
-      assert reason =~ "land-cap exhausted after post_merge_red"
+      assert {:cancel, {:blocked, reason}} = Resilience.route({:conflict, "CONFLICT (content)"}, args)
+      assert reason =~ "land-cap exhausted after conflict"
       assert reason =~ "task " <> args["task_id"]
 
       refute_receive {:landing_insert, _changeset}, 300
@@ -154,7 +148,7 @@ defmodule Harness.Lander.ResilienceTest do
       args = %{base_args(project.name, 1) | "agent" => "not-an-agent"}
 
       assert {:error, {:redispatch_failed, {:unknown_adapter, "not-an-agent"}}} =
-               Resilience.route({:post_merge_red, :verdict}, args)
+               Resilience.route({:conflict, "CONFLICT (content)"}, args)
     end
   end
 
@@ -175,17 +169,6 @@ defmodule Harness.Lander.ResilienceTest do
       assert :ok = Resilience.route({:landed, "deadbeef"}, base_args("any", 1))
 
       assert_receive {:notify, %Event{type: :landed, task_id: "42", outcome: "deadbeef"}}
-    end
-
-    test "a post_merge_red outcome notifies :post_merge_red on every occurrence (independent of routing)" do
-      # Unregistered project ⇒ the re-dispatch fails, but the witness is notified
-      # of the integration failure first, carrying the failing verdict.
-      verdict = %Verdict{status: :fail, results: []}
-      args = base_args("ghost-#{System.unique_integer([:positive])}", 1)
-
-      assert {:error, {:redispatch_failed, _}} = Resilience.route({:post_merge_red, verdict}, args)
-
-      assert_receive {:notify, %Event{type: :post_merge_red, task_id: "42", outcome: ^verdict}}
     end
 
     test "a cap-exhausted outcome notifies :blocked with the structured reason" do

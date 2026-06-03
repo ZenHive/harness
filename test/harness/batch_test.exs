@@ -16,7 +16,6 @@ defmodule Harness.BatchTest do
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.Result
-  alias Harness.Verification.Check
 
   @eventually_tries 150
   @eventually_delay_ms 20
@@ -158,7 +157,7 @@ defmodule Harness.BatchTest do
 
     assert {:ok, %BatchResult{results: results}} = Task.await(batch_task, @run_timeout_ms)
     assert Enum.map(results, & &1.task_id) == ~w(1 2 3)
-    assert Enum.all?(results, &match?(%Result{state: :done, reason: :passed}, &1))
+    assert Enum.all?(results, &match?(%Result{state: :done, reason: :approved}, &1))
   end
 
   test "frees a max-concurrency slot when a run reports its result before terminal linger exits" do
@@ -180,8 +179,8 @@ defmodule Harness.BatchTest do
     elapsed_ms = System.monotonic_time(:millisecond) - started_at_ms
 
     assert Enum.map(results, &{&1.task_id, &1.state, &1.reason}) == [
-             {"first", :done, :passed},
-             {"second", :done, :passed}
+             {"first", :done, :approved},
+             {"second", :done, :approved}
            ]
 
     assert elapsed_ms < @long_terminal_linger_ms
@@ -261,7 +260,7 @@ defmodule Harness.BatchTest do
     assert record.reason == {:run_crashed, :killed}
   end
 
-  test "keeps running after a red task and reports every task result" do
+  test "keeps running after a rejected task and reports every task result" do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()
     items = items(~w(green red another-green))
@@ -273,19 +272,18 @@ defmodule Harness.BatchTest do
                FakeAdapter,
                batch_opts(base,
                  max_concurrency: 2,
-                 adapter_opts: [command: {:write_status_by_task, ["red"]}],
-                 checks: [status_check()]
+                 reviewer_adapter_opts: [command: {:review_by_task, ["red"]}]
                )
              )
 
     assert Enum.map(results, &{&1.task_id, &1.state, &1.reason}) == [
-             {"green", :done, :passed},
-             {"red", :failed, :verification_red},
-             {"another-green", :done, :passed}
+             {"green", :done, :approved},
+             {"red", :failed, {:review_rejected, FakeAdapter.review_report("reject")}},
+             {"another-green", :done, :approved}
            ]
 
     red = Enum.find(results, &(&1.task_id == "red"))
-    assert red.verdict.status == :fail
+    assert red.review.verdict == :reject
   end
 
   test "REGRESSION (Task 67): pinned mode tail-slot continues when head-slot adapter is unavailable" do
@@ -303,7 +301,7 @@ defmodule Harness.BatchTest do
              )
 
     assert %Result{task_id: "slot-a", state: :failed, reason: {:no_available_agent, _}} = first
-    assert %Result{task_id: "slot-b", state: :done, reason: :passed} = second
+    assert %Result{task_id: "slot-b", state: :done, reason: :approved} = second
 
     assert {:no_available_agent, "slot-a", {:no_available_agent, [QuotaAdapter]}} in events
   end
@@ -314,6 +312,8 @@ defmodule Harness.BatchTest do
     store = file_store()
     batch_id = batch_id()
 
+    rejected_reason = {:review_rejected, FakeAdapter.review_report("reject")}
+
     assert {:ok, %BatchResult{batch_id: ^batch_id, results: results}} =
              Batch.run(
                items(~w(green red)),
@@ -323,43 +323,32 @@ defmodule Harness.BatchTest do
                  batch_id: batch_id,
                  result_store: store,
                  max_concurrency: 2,
-                 adapter_opts: [command: {:write_status_by_task, ["red"]}],
-                 checks: [status_check()]
+                 reviewer_adapter_opts: [command: {:review_by_task, ["red"]}]
                )
              )
 
     assert Enum.map(results, &{&1.task_id, &1.state, &1.reason}) == [
-             {"green", :done, :passed},
-             {"red", :failed, :verification_red}
+             {"green", :done, :approved},
+             {"red", :failed, rejected_reason}
            ]
 
     assert {:ok, %BatchResult{batch_id: ^batch_id, results: reloaded}} = ResultStore.load_batch(batch_id, store)
 
     assert Enum.map(reloaded, &{&1.task_id, &1.state, &1.reason}) == [
-             {"green", :done, :passed},
-             {"red", :failed, :verification_red}
+             {"green", :done, :approved},
+             {"red", :failed, rejected_reason}
            ]
 
     assert {:ok, [red_record]} = ResultStore.list_run_records(store, task_id: "red")
     assert red_record.agent == :claude
     assert red_record.adapter == FakeAdapter
-    assert red_record.verdict == :fail
-    assert red_record.reason == :verification_red
-    assert red_record.review_iterations == 0
-    assert red_record.first_attempt_failed_check_count == 1
+    assert red_record.verdict == :reject
+    assert red_record.reason == rejected_reason
+    assert red_record.review_report == FakeAdapter.review_report("reject")
+    assert red_record.review_ratings == FakeAdapter.review_ratings()
     assert red_record.agent_diff_size > 0
     assert red_record.duration_ms >= 0
-
-    assert red_record.failure_cause == %{
-             reason: :verification_red,
-             failed_checks: [%{name: "status", kind: :exited, exit_status: 1}]
-           }
   end
-
-  # Task 163: adapter fail-over is no longer triggered by quota regexes — the
-  # cross-family reviewer judges what an empty diff means, and Batch reads that
-  # judgment mechanically ({:review_stuck, _} reason + empty implementer diff).
-  # See "reviewer-stuck with an empty diff fails over" below.
 
   # ---------------------------------------------------------------------------
   # REGRESSION (Task 57): worker spin loop settles via :no_available_agent,
@@ -420,39 +409,18 @@ defmodule Harness.BatchTest do
     assert result.task_id == "spin"
   end
 
-  defmodule StuckReviewerAdapter do
-    @moduledoc false
-    # A reviewer that judges the empty implementer diff as "nothing happened"
-    # and reports stuck in prose — the judgment that triggers batch fail-over.
-    @behaviour Harness.AgentAdapter
-
-    @impl Harness.AgentAdapter
-    def capabilities, do: %Capabilities{}
-
-    @impl Harness.AgentAdapter
-    def rule_channel, do: :none
-
-    @impl Harness.AgentAdapter
-    def build_command(_invocation) do
-      {:ok, {"/bin/echo", ["STUCK: the implementer hit a usage limit and produced no work"], []}}
-    end
-
-    @impl Harness.AgentAdapter
-    def classify_message({port, {:data, data}}, %AgentRun{port: port} = run), do: {:output, data, run}
-
-    def classify_message({port, {:exit_status, status}}, %AgentRun{port: port} = run), do: {:terminated, run, status}
-
-    def classify_message(_message, _run), do: :ignore
-
-    @impl Harness.AgentAdapter
-    def terminate(%AgentRun{} = run), do: OSProcess.kill(run)
-  end
-
-  test "reviewer-stuck with an empty diff fails over to the next adapter family carrying the reviewer's prose" do
+  # Task 163: adapter fail-over is no longer triggered by quota regexes — the
+  # cross-family reviewer judges what an empty diff means, and Batch reads that
+  # judgment mechanically ({:review_stuck, _} reason + empty implementer diff).
+  test "reviewer-stuck with an empty diff fails over to the next adapter family" do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()
     [item] = items(["starved"])
 
+    # The reviewer double judges by what the implementer left behind: an
+    # agent_output.txt means real work (approve); nothing means the implementer
+    # delivered nothing (no artifact → review_stuck). QuotaAdapter writes
+    # nothing; HeadroomAdapter writes agent_output.txt.
     assert {:ok, %BatchResult{results: [result], events: events}} =
              Batch.run(
                [item],
@@ -460,19 +428,17 @@ defmodule Harness.BatchTest do
                [QuotaAdapter, HeadroomAdapter],
                batch_opts(base,
                  max_concurrency: 1,
-                 checks: [check("output", "test", ["-f", "agent_output.txt"])],
-                 reviewer: StuckReviewerAdapter,
-                 max_review_iterations: 1
+                 reviewer_adapter_opts: [command: {:review_if_file, "agent_output.txt"}]
                )
              )
 
     # The item was re-run on the next adapter family and delivered green.
-    assert %Result{task_id: "starved", state: :done, reason: :passed} = result
+    assert %Result{task_id: "starved", state: :done, reason: :approved} = result
 
-    # The starved adapter is benched with the reviewer's prose — the orchestrator
-    # reads WHY from the agent's own words, never from a harness regex.
+    # The starved adapter is benched with the review-stuck report — the
+    # orchestrator reads WHY from the reviewer outcome, never from a harness regex.
     assert [{QuotaAdapter, {:review_stuck, "starved", report}}] = AgentRegistry.list_unavailable()
-    assert report =~ "usage limit"
+    assert report =~ "verdict artifact"
 
     # The event trail carries the same judgment.
     assert {:adapter_unavailable, QuotaAdapter, {:review_stuck, "starved", report}} in events
@@ -501,7 +467,10 @@ defmodule Harness.BatchTest do
           items(["race-task"]),
           ProjectFixture.from_repo(repo),
           [QuotaAdapter, HeadroomAdapter],
-          batch_opts(base, max_concurrency: 1)
+          batch_opts(base,
+            max_concurrency: 1,
+            reviewer_adapter_opts: [command: {:review_if_file, "agent_output.txt"}]
+          )
         )
       end)
 
@@ -512,12 +481,12 @@ defmodule Harness.BatchTest do
 
     assert {:ok, %BatchResult{results: [%Result{} = result]}} = Task.await(batch, @run_timeout_ms)
     assert result.state == :done
-    assert result.reason == :passed
+    assert result.reason == :approved
     refute AgentRegistry.available?(QuotaAdapter)
     assert AgentRegistry.available?(HeadroomAdapter)
   end
 
-  test "a settled red verdict is returned in one pass — Batch never re-runs a settled verdict" do
+  test "a settled rejection is returned in one pass — Batch never re-runs a settled verdict" do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()
 
@@ -528,12 +497,12 @@ defmodule Harness.BatchTest do
                FakeAdapter,
                batch_opts(base,
                  max_concurrency: 1,
-                 adapter_opts: [command: {:write_status_by_task, ["red"]}],
-                 checks: [status_check()]
+                 reviewer_adapter_opts: [command: {:review, "reject"}]
                )
              )
 
-    assert {result.state, result.reason} == {:failed, :verification_red}
+    assert {result.state, result.reason} ==
+             {:failed, {:review_rejected, FakeAdapter.review_report("reject")}}
   end
 
   test "a mechanical failure settles :failed in one pass — mechanical retry belongs to the Oban dispatch layer" do
@@ -622,16 +591,12 @@ defmodule Harness.BatchTest do
       [
         base_dir: base,
         adapter_opts: [command: :write],
-        checks: [check("ok", "true", [])],
+        reviewer: FakeAdapter,
+        reviewer_adapter_opts: [command: {:review, "approve"}],
         total_timeout: @run_timeout_ms,
         idle_timeout: @run_timeout_ms,
         lifetime_timeout: @run_timeout_ms,
-        verification_timeout: @run_timeout_ms,
-        terminal_linger: @terminal_linger_ms,
-        # Batch orchestration is the unit under test, not the repair loop — a red
-        # task must settle :verification_red on its first verdict instead of
-        # resuming the agent. Repair/review behavior is covered by run_test.
-        max_review_iterations: 0
+        terminal_linger: @terminal_linger_ms
       ],
       overrides
     )
@@ -641,12 +606,6 @@ defmodule Harness.BatchTest do
     Enum.map(ids, fn id ->
       %Item{id: id, title: "Task #{id}", prompt: "do task #{id}", agent: :claude}
     end)
-  end
-
-  defp check(name, command, args), do: %Check{name: name, command: command, args: args}
-
-  defp status_check do
-    check("status", "sh", ["-c", "test ! -f status.txt || grep pass status.txt"])
   end
 
   defp gate_path do

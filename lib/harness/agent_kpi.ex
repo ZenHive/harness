@@ -18,13 +18,14 @@ defmodule Harness.AgentKPI do
 
   ## Conventions
 
-    * A `verdict` of `:pass` is a success; `:fail` and `nil` (verification never
-      ran) both count as non-successes in the denominators.
+    * A `verdict` of `:approve` (the reviewer AI's decision) is a success;
+      `:reject` and `nil` (the run never reached review) both count as
+      non-successes in the denominators.
     * Token means treat an unreported (`nil`) component as `0` and divide by the
       agent's full run count. In practice reporting is all-or-nothing per agent
       (a plain-text adapter reports none), so this matches the per-agent rollup.
-    * `cost_to_green` is the mean total tokens across an agent's `:pass` runs; an
-      agent with zero `:pass` runs reports `nil` (no divide-by-zero, not `0`).
+    * `cost_to_green` is the mean total tokens across an agent's `:approve` runs;
+      an agent with zero `:approve` runs reports `nil` (no divide-by-zero, not `0`).
   """
 
   alias Harness.CapabilityDomain
@@ -91,7 +92,7 @@ defmodule Harness.AgentKPI do
   @spec summarize([LogRecord.t()]) :: agent_kpi()
   defp summarize(records) do
     run_count = length(records)
-    passes = Enum.filter(records, &(&1.verdict == :pass))
+    passes = Enum.filter(records, &(&1.verdict == :approve))
     durations = records |> Enum.map(& &1.duration_ms) |> Enum.sort()
 
     %{
@@ -107,7 +108,7 @@ defmodule Harness.AgentKPI do
 
   @spec first_attempt_passes([LogRecord.t()]) :: non_neg_integer()
   defp first_attempt_passes(records) do
-    Enum.count(records, &(&1.verdict == :pass and &1.review_iterations == 0))
+    Enum.count(records, &(&1.verdict == :approve and &1.review_iterations == 0))
   end
 
   @spec token_means([LogRecord.t()], pos_integer()) :: token_means()

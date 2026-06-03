@@ -11,7 +11,6 @@ defmodule Harness.Oban do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Harness.Cron.CapabilityBenchmarkScheduler
   alias Harness.Cron.RoadmapPoller
   alias Harness.Project
   alias Harness.ProjectRegistry
@@ -148,6 +147,7 @@ defmodule Harness.Oban do
 
     base
     |> enable_cron_queue()
+    |> enable_audit_queue()
     |> enable_cron_plugin()
     |> Keyword.put(:name, __MODULE__)
   end
@@ -232,6 +232,18 @@ defmodule Harness.Oban do
     end)
   end
 
+  # The post-merge audit queue: one global queue at limit 1 — audit agent runs
+  # are best-effort and serialized so concurrent lands across projects don't
+  # stack agent processes. Job dedup per project lives on the worker's unique
+  # options (Harness.Audit.Worker.unique_opts/0).
+  @spec enable_audit_queue(keyword()) :: keyword()
+  defp enable_audit_queue(opts) do
+    Keyword.update(opts, :queues, [audit: 1], fn
+      queues when is_list(queues) -> Keyword.put_new(queues, :audit, 1)
+      _other -> [audit: 1]
+    end)
+  end
+
   @spec enable_cron_plugin(keyword()) :: keyword()
   defp enable_cron_plugin(opts) do
     plugin = {Oban.Plugins.Cron, crontab: cron_crontab()}
@@ -244,6 +256,6 @@ defmodule Harness.Oban do
 
   @spec cron_crontab() :: [{String.t(), module(), keyword()}]
   defp cron_crontab do
-    [RoadmapPoller.cron_entry(), CapabilityBenchmarkScheduler.cron_entry()]
+    [RoadmapPoller.cron_entry()]
   end
 end

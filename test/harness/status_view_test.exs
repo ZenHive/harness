@@ -46,9 +46,9 @@ defmodule Harness.StatusViewTest do
 
   test "classify/1 covers every lifecycle state in the Status typespec" do
     # Regression guard for Task 148: a Run state added without a classify/1
-    # clause crashes every concurrent snapshot/0 caller, poisoning
-    # verification for all dispatched runs.
-    in_flight_states = [:dispatched, :running, :committing, :verifying, :held]
+    # clause crashes every concurrent snapshot/0 caller, poisoning the
+    # snapshot for all dispatched runs.
+    in_flight_states = [:dispatched, :running, :committing, :held]
 
     for state <- in_flight_states do
       assert StatusView.classify(%Status{state: state, run_id: "r", task_id: "1"}) == :in_flight
@@ -64,15 +64,15 @@ defmodule Harness.StatusViewTest do
       runs: [
         %{status: %Status{run_id: "run-a", task_id: "1", state: :running}, bucket: :in_flight, detail: nil},
         %{
-          status: %Status{run_id: "run-b", task_id: "2", state: :reviewing, review_iterations: 1},
+          status: %Status{run_id: "run-b", task_id: "2", state: :reviewing},
           bucket: :repairing,
-          detail: "review iteration 1"
+          detail: nil
         },
         %{status: %Status{run_id: "run-c", task_id: "3", state: :done}, bucket: :green, detail: nil},
         %{
-          status: %Status{run_id: "run-d", task_id: "4", state: :failed, reason: :verification_red},
+          status: %Status{run_id: "run-d", task_id: "4", state: :failed, reason: :cancelled},
           bucket: :red,
-          detail: "verification_red"
+          detail: "cancelled"
         }
       ],
       unavailable_agents: [{FakeAdapter, {:review_stuck, "task-7", "implementer hit a usage limit"}}],
@@ -84,11 +84,11 @@ defmodule Harness.StatusViewTest do
     assert output =~ "IN FLIGHT (1)"
     assert output =~ "task 1  run-a  running"
     assert output =~ "REPAIRING (1)"
-    assert output =~ "task 2  run-b  reviewing  review iteration 1"
+    assert output =~ "task 2  run-b  reviewing"
     assert output =~ "GREEN (1)"
     assert output =~ "task 3  run-c  done"
     assert output =~ "RED (1)"
-    assert output =~ "task 4  run-d  failed  verification_red"
+    assert output =~ "task 4  run-d  failed  cancelled"
     assert output =~ "UNAVAILABLE AGENTS (1)"
     assert output =~ "FakeAdapter  review stuck on task-7: implementer hit a usage limit"
   end
@@ -113,10 +113,10 @@ defmodule Harness.StatusViewTest do
         fields =
           case run_id do
             "sv-hist-002" ->
-              [state: :failed, reason: :verification_red, verdict: :fail]
+              [state: :failed, reason: {:review_rejected, "nothing to salvage"}, verdict: :reject]
 
             _ ->
-              [state: :done, verdict: :pass]
+              [state: :done, verdict: :approve]
           end
 
         :ok = ResultStore.record_run(record(run_id, fields))
@@ -137,7 +137,7 @@ defmodule Harness.StatusViewTest do
       run_id = start_run(adapter_opts: [command: :sleep], terminal_linger: 5_000)
       assert await_running(run_id)
 
-      :ok = ResultStore.record_run(record(run_id, state: :done, verdict: :pass))
+      :ok = ResultStore.record_run(record(run_id, state: :done, verdict: :approve))
 
       snapshot = StatusView.snapshot()
 
@@ -148,8 +148,8 @@ defmodule Harness.StatusViewTest do
     end
 
     test "skips a persisted record with a non-terminal state instead of crashing the snapshot" do
-      :ok = ResultStore.record_run(record("sv-hist-good", state: :done, verdict: :pass))
-      :ok = ResultStore.record_run(record("sv-hist-poison", state: :passed))
+      :ok = ResultStore.record_run(record("sv-hist-good", state: :done, verdict: :approve))
+      :ok = ResultStore.record_run(record("sv-hist-poison", state: :reviewing))
 
       {history, log} = ExUnit.CaptureLog.with_log(fn -> StatusView.snapshot().history end)
       ids = Enum.map(history, & &1.status.run_id)
@@ -177,9 +177,9 @@ defmodule Harness.StatusViewTest do
       assert %{status: %Status{run_id: "e-1"}, bucket: :in_flight, detail: nil} = entry
 
       failed =
-        StatusView.run_entry_for(%Status{run_id: "e-2", task_id: "1", state: :failed, reason: :verification_red})
+        StatusView.run_entry_for(%Status{run_id: "e-2", task_id: "1", state: :failed, reason: :cancelled})
 
-      assert %{bucket: :red, detail: "verification_red"} = failed
+      assert %{bucket: :red, detail: "cancelled"} = failed
     end
   end
 
@@ -210,8 +210,6 @@ defmodule Harness.StatusViewTest do
   end
 
   defp record(run_id, opts) do
-    reason = Keyword.get(opts, :reason, :passed)
-
     %LogRecord{
       batch_id: "batch-#{run_id}",
       run_id: run_id,
@@ -219,12 +217,9 @@ defmodule Harness.StatusViewTest do
       agent: Keyword.get(opts, :agent),
       adapter: FakeAdapter,
       state: Keyword.get(opts, :state, :done),
-      reason: reason,
-      verdict: Keyword.get(opts, :verdict, :pass),
+      reason: Keyword.get(opts, :reason, :approved),
+      verdict: Keyword.get(opts, :verdict, :approve),
       duration_ms: 1_000,
-      review_iterations: 0,
-      first_attempt_failed_check_count: 0,
-      failure_cause: %{reason: reason, failed_checks: []},
       agent_outcome_kind: Keyword.get(opts, :agent_outcome_kind),
       agent_output: Keyword.get(opts, :agent_output, "")
     }
@@ -241,12 +236,12 @@ defmodule Harness.StatusViewTest do
       Keyword.merge(
         [
           base_dir: base,
+          reviewer: FakeAdapter,
+          reviewer_adapter_opts: [command: {:review, "approve"}],
           total_timeout: 30_000,
           idle_timeout: 10_000,
           lifetime_timeout: 30_000,
-          verification_timeout: 10_000,
-          terminal_linger: 100,
-          max_review_iterations: 0
+          terminal_linger: 100
         ],
         overrides
       )

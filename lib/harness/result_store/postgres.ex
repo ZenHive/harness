@@ -67,26 +67,25 @@ defmodule Harness.ResultStore.Postgres do
           state: fragment("EXCLUDED.state"),
           reason: fragment("EXCLUDED.reason"),
           duration_ms: fragment("EXCLUDED.duration_ms"),
-          first_attempt_failed_check_count: fragment("EXCLUDED.first_attempt_failed_check_count"),
           domains: fragment("EXCLUDED.domains"),
           token_usage: fragment("EXCLUDED.token_usage"),
           composed_inputs: fragment("EXCLUDED.composed_inputs"),
-          failure_cause: fragment("EXCLUDED.failure_cause"),
           updated_at: fragment("EXCLUDED.updated_at"),
           # rich evidence — incoming nil/empty never overwrites settled data
           verdict: fragment("COALESCE(EXCLUDED.verdict, ?)", r.verdict),
           agent_outcome_kind: fragment("COALESCE(EXCLUDED.agent_outcome_kind, ?)", r.agent_outcome_kind),
           agent_exit_status: fragment("COALESCE(EXCLUDED.agent_exit_status, ?)", r.agent_exit_status),
           agent_diff_size: fragment("COALESCE(EXCLUDED.agent_diff_size, ?)", r.agent_diff_size),
+          reviewer_diff_size: fragment("COALESCE(EXCLUDED.reviewer_diff_size, ?)", r.reviewer_diff_size),
           agent_output: fragment("COALESCE(NULLIF(EXCLUDED.agent_output, ''::bytea), ?)", r.agent_output),
-          check_output: fragment("COALESCE(NULLIF(EXCLUDED.check_output, '{}'::jsonb), ?)", r.check_output),
           review_iterations:
             fragment(
               "GREATEST(COALESCE(EXCLUDED.review_iterations, 0), COALESCE(?, 0))",
               r.review_iterations
             ),
           reviewer_adapter: fragment("COALESCE(EXCLUDED.reviewer_adapter, ?)", r.reviewer_adapter),
-          reviewer_stuck_report: fragment("COALESCE(EXCLUDED.reviewer_stuck_report, ?)", r.reviewer_stuck_report)
+          review_report: fragment("COALESCE(EXCLUDED.review_report, ?)", r.review_report),
+          review_ratings: fragment("COALESCE(NULLIF(EXCLUDED.review_ratings, '{}'::jsonb), ?)", r.review_ratings)
         ]
       ]
   end
@@ -187,9 +186,9 @@ defmodule Harness.ResultStore.Postgres do
       select: %{
         agent: r.agent,
         run_count: count(r.run_id),
-        pass_count: r.run_id |> count() |> filter(r.verdict == "pass"),
+        pass_count: r.run_id |> count() |> filter(r.verdict == "approve"),
         first_attempt_pass_count:
-          r.run_id |> count() |> filter(r.verdict == "pass" and coalesce(r.review_iterations, 0) == 0),
+          r.run_id |> count() |> filter(r.verdict == "approve" and coalesce(r.review_iterations, 0) == 0),
         durations: fragment("array_agg(? ORDER BY ?)", r.duration_ms, r.duration_ms),
         review_iterations_mean: avg(coalesce(r.review_iterations, 0)),
         input_mean:
@@ -213,12 +212,12 @@ defmodule Harness.ResultStore.Postgres do
               r.token_usage
             )
           ),
-        pass_count_for_cost: r.run_id |> count() |> filter(r.verdict == "pass"),
+        pass_count_for_cost: r.run_id |> count() |> filter(r.verdict == "approve"),
         cost_to_green_mean:
           "coalesce((?->>'total')::float, 0)"
           |> fragment(r.token_usage)
           |> avg()
-          |> filter(r.verdict == "pass")
+          |> filter(r.verdict == "approve")
       }
   end
 
@@ -284,17 +283,16 @@ defmodule Harness.ResultStore.Postgres do
         verdict: r.verdict,
         agent_outcome_kind: r.agent_outcome_kind,
         duration_ms: r.duration_ms,
-        first_attempt_failed_check_count: r.first_attempt_failed_check_count,
         agent_diff_size: r.agent_diff_size,
+        reviewer_diff_size: r.reviewer_diff_size,
         agent_exit_status: r.agent_exit_status,
         review_iterations: r.review_iterations,
         reviewer_adapter: r.reviewer_adapter,
-        reviewer_stuck_report: r.reviewer_stuck_report,
+        review_report: r.review_report,
         reason: r.reason,
         token_usage: r.token_usage,
         composed_inputs: r.composed_inputs,
-        failure_cause: r.failure_cause,
-        check_output: r.check_output,
+        review_ratings: r.review_ratings,
         domains: r.domains,
         agent_output: type(^nil, :binary),
         inserted_at: r.inserted_at,
@@ -460,17 +458,16 @@ defmodule Harness.ResultStore.Postgres do
       verdict: atom_or_string(r.verdict),
       agent_outcome_kind: kind_to_string(r.agent_outcome_kind),
       duration_ms: r.duration_ms,
-      first_attempt_failed_check_count: r.first_attempt_failed_check_count,
       agent_diff_size: r.agent_diff_size,
+      reviewer_diff_size: r.reviewer_diff_size,
       agent_exit_status: r.agent_exit_status,
       review_iterations: r.review_iterations,
       reviewer_adapter: module_or_string(r.reviewer_adapter),
-      reviewer_stuck_report: r.reviewer_stuck_report,
+      review_report: r.review_report,
       reason: encode_jsonb(r.reason),
       token_usage: encode_jsonb(r.token_usage),
       composed_inputs: encode_jsonb(r.composed_inputs),
-      failure_cause: encode_jsonb(r.failure_cause),
-      check_output: encode_jsonb(r.check_output),
+      review_ratings: encode_jsonb(r.review_ratings),
       domains: encode_jsonb(r.domains),
       agent_output: r.agent_output
     }
@@ -490,18 +487,17 @@ defmodule Harness.ResultStore.Postgres do
       reason: decode_jsonb(row.reason),
       verdict: string_to_atom(row.verdict),
       duration_ms: default(row.duration_ms, 0),
-      first_attempt_failed_check_count: default(row.first_attempt_failed_check_count, 0),
       agent_diff_size: row.agent_diff_size,
+      reviewer_diff_size: row.reviewer_diff_size,
       review_iterations: default(row.review_iterations, 0),
       reviewer_adapter: string_to_module(row.reviewer_adapter),
-      reviewer_stuck_report: row.reviewer_stuck_report,
+      review_report: row.review_report,
+      review_ratings: decode_review_ratings(row.review_ratings),
       token_usage: decode_token_usage(row.token_usage),
       composed_inputs: default(decode_jsonb(row.composed_inputs), []),
-      failure_cause: default(decode_jsonb(row.failure_cause), %{reason: nil, failed_checks: []}),
       agent_outcome_kind: string_to_kind(row.agent_outcome_kind),
       agent_exit_status: row.agent_exit_status,
       agent_output: default(row.agent_output, ""),
-      check_output: decode_check_output(row.check_output),
       domains: default(decode_jsonb(row.domains), [])
     }
   end
@@ -561,12 +557,12 @@ defmodule Harness.ResultStore.Postgres do
   defp decode_token_usage(nil), do: %TokenUsage{}
   defp decode_token_usage(map) when is_map(map), do: struct(TokenUsage, decode_term(map))
 
-  # check_output's outer keys are check-name strings (LogRecord.check_output type);
-  # decode values only — the outer keys must never be atomized.
-  @spec decode_check_output(map() | nil) :: LogRecord.check_output()
-  defp decode_check_output(nil), do: %{}
+  # review_ratings' outer keys are rating-name strings (LogRecord.review_ratings
+  # type); decode values only — the outer keys must never be atomized.
+  @spec decode_review_ratings(map() | nil) :: %{optional(String.t()) => term()}
+  defp decode_review_ratings(nil), do: %{}
 
-  defp decode_check_output(map) when is_map(map) do
+  defp decode_review_ratings(map) when is_map(map) do
     Map.new(map, fn {k, v} -> {k, decode_term(v)} end)
   end
 

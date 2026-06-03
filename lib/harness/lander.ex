@@ -2,20 +2,25 @@ defmodule Harness.Lander do
   @moduledoc """
   Autonomous merge-train: lands an approved run onto a project's target branch.
 
-  When a run settles green **and** clears the semantic gate (`landing_policy:
-  :auto`), `Harness.Run` enqueues a landing job on the project's serialized
-  `landing_<name>` Oban queue (limit 1, so one approved run lands at a time per
-  project). `Harness.Lander.Worker` resolves the project and calls `land/1`,
-  which:
+  When a run settles `:done` (the reviewer AI approved it) under a project with
+  `landing_policy: :auto`, `Harness.Run` enqueues a landing job on the project's
+  serialized `landing_<name>` Oban queue (limit 1, so one approved run lands at
+  a time per project). `Harness.Lander.Worker` resolves the project and calls
+  `land/1`, which:
 
     1. `git fetch origin`,
-    2. checks out the settled run's `harness/<run-id>` branch in a fresh
-       worktree and, if `origin/<target>` has moved past it, rebases onto it,
-    3. **re-verifies the integrated state** with the project's check stack —
-       the merge is only kept if the integrated tree is still green,
-    4. fast-forward-pushes the verified tip to `origin/<target_branch>` (never
-       `--force`; the operator's local checkout is untouched — they `git pull`),
-    5. writes the outcome back to rmap (`done` + `verified` + `shipped_in`).
+    2. checks out the settled run's `harness/<run-id>` branch into a fresh
+       **detached** worktree and, if `origin/<target>` has moved past it,
+       rebases onto it,
+    3. fast-forward-pushes the tip to `origin/<target_branch>` (never `--force`;
+       the operator's local checkout is untouched — they `git pull`),
+    4. writes the outcome back to rmap (`done` + `verified` + `shipped_in`),
+    5. enqueues a post-merge audit job (`Harness.Audit.Worker`) for the landed
+       range — best-effort, never blocks the land.
+
+  There is **no re-verification step**: the reviewer AI already gated the work
+  (it ran the project's checks itself); the lander is pure git mechanics. The
+  post-merge audit agent is the safety net for integration drift.
 
   ## Land mechanism: remote fast-forward push
 
@@ -26,20 +31,20 @@ defmodule Harness.Lander do
 
   ## Failure routing (Task 101 seam)
 
-  This is the happy-path lander. A non-`:landed` outcome — `{:post_merge_red,
-  verdict}` (integrated tree failed re-verification), `{:conflict, output}`
+  This is the happy-path lander. A non-`:landed` outcome — `{:conflict, output}`
   (rebase hit a conflict), `{:push_rejected, output}` (the target advanced under
   us) — **retains the branch, does not push or write back, and returns the
-  structured tuple.** Post-merge repair, conflict redispatch, and a blocked
-  sink are Task 101's job; they plug into these tuples. `{:skipped, reason}`
-  covers a project the lander can't act on yet (e.g. a `{:github, _}` source).
+  structured tuple.** Conflict redispatch and a blocked sink are
+  `Harness.Lander.Resilience`'s job; they plug into these tuples.
+  `{:skipped, reason}` covers a project the lander can't act on yet (e.g. a
+  `{:github, _}` source).
   """
 
+  alias Harness.Audit.Worker, as: AuditWorker
   alias Harness.Git
+  alias Harness.Oban, as: HarnessOban
   alias Harness.Project
   alias Harness.Roadmap
-  alias Harness.Verification
-  alias Harness.Verification.Verdict
   alias Harness.Worktree
 
   require Logger
@@ -50,13 +55,13 @@ defmodule Harness.Lander do
           :run_id => String.t(),
           :task_id => String.t(),
           :branch => String.t(),
-          optional(:agent) => atom() | String.t() | nil
+          optional(:agent) => atom() | String.t() | nil,
+          optional(:reviewer) => atom() | String.t() | nil
         }
 
   @typedoc "The structured result of a land attempt."
   @type outcome ::
           {:landed, String.t()}
-          | {:post_merge_red, Verdict.t()}
           | {:conflict, String.t()}
           | {:push_rejected, String.t()}
           | {:reflex_halt, term()}
@@ -75,23 +80,22 @@ defmodule Harness.Lander do
     with {:ok, repo} <- repo_path(project),
          {:ok, target} <- target_branch(project),
          :ok <- fetch_origin(repo),
+         {:ok, base_sha} <- remote_target_sha(repo, target),
          {:ok, worktree} <- checkout(repo, branch) do
-      land_in_worktree(worktree, repo, target, project, request)
+      land_in_worktree(worktree, repo, target, base_sha, project, request)
     end
   end
 
-  @spec land_in_worktree(Worktree.t(), String.t(), String.t(), Project.t(), request()) :: outcome()
-  defp land_in_worktree(%Worktree{} = worktree, repo, target, project, request) do
+  @spec land_in_worktree(Worktree.t(), String.t(), String.t(), String.t(), Project.t(), request()) :: outcome()
+  defp land_in_worktree(%Worktree{} = worktree, repo, target, base_sha, project, request) do
     result =
       with {:ok, tip} <- integrate(worktree, target),
-           {:ok, verdict} <- reverify(worktree, project),
-           :ok <- ensure_passed(verdict),
            {:ok, pushed} <- push(repo, tip, target) do
         writeback(project, request, pushed)
+        enqueue_audit(project, request, base_sha)
         {:landed, pushed}
       else
         {:conflict, _output} = conflict -> conflict
-        {:post_merge_red, _verdict} = red -> red
         {:push_rejected, _output} = rejected -> rejected
         {:error, reason} -> {:error, reason}
       end
@@ -102,7 +106,7 @@ defmodule Harness.Lander do
 
   # origin/<target> already an ancestor of the branch tip -> ff-able as-is.
   # Otherwise the target moved, so rebase the branch onto it; a rebase that
-  # hits a conflict is aborted and surfaced for Task 101.
+  # hits a conflict is aborted and surfaced for the resilience layer.
   @spec integrate(Worktree.t(), String.t()) ::
           {:ok, String.t()} | {:conflict, String.t()} | {:error, term()}
   defp integrate(%Worktree{path: path}, target) do
@@ -126,16 +130,6 @@ defmodule Harness.Lander do
         _ = Git.run(["rebase", "--abort"], path)
         {:conflict, output}
     end
-  end
-
-  @spec reverify(Worktree.t(), Project.t()) :: {:ok, Verdict.t()} | {:error, term()}
-  defp reverify(%Worktree{path: path}, %Project{check_stacks: stacks}) do
-    Verification.run(path, check_stacks: stacks)
-  end
-
-  @spec ensure_passed(Verdict.t()) :: :ok | {:post_merge_red, Verdict.t()}
-  defp ensure_passed(%Verdict{} = verdict) do
-    if Verdict.passed?(verdict), do: :ok, else: {:post_merge_red, verdict}
   end
 
   @spec push(String.t(), String.t(), String.t()) ::
@@ -181,15 +175,51 @@ defmodule Harness.Lander do
     end
   end
 
+  # The post-merge audit trigger: one audit job per land, deduped per project by
+  # Oban uniqueness while a job is still waiting. `base_sha` (origin/<target>
+  # before this push) is the audit's range fallback when the branch has no prior
+  # `audit(...)` commit. Best-effort: an enqueue failure — including a raise when
+  # no Oban instance is running — is logged, never un-lands the merge.
+  @spec enqueue_audit(Project.t(), request(), String.t()) :: :ok
+  defp enqueue_audit(%Project{} = project, request, base_sha) do
+    %{
+      "project_name" => project.name,
+      "base_sha" => base_sha,
+      "implementer" => agent_name(request[:agent]),
+      "reviewer" => agent_name(request[:reviewer])
+    }
+    |> AuditWorker.new(unique: AuditWorker.unique_opts())
+    |> HarnessOban.insert()
+    |> case do
+      {:ok, _job} ->
+        :ok
+
+      {:error, reason} ->
+        log_audit_enqueue_failure(project, reason)
+    end
+  rescue
+    error -> log_audit_enqueue_failure(project, error)
+  end
+
+  @spec log_audit_enqueue_failure(Project.t(), term()) :: :ok
+  defp log_audit_enqueue_failure(%Project{} = project, reason) do
+    Logger.warning("harness lander: failed to enqueue audit for project #{project.name}: #{inspect(reason)}")
+
+    :ok
+  end
+
+  @spec agent_name(atom() | String.t() | nil) :: String.t() | nil
+  defp agent_name(nil), do: nil
+  defp agent_name(agent) when is_binary(agent), do: agent
+  defp agent_name(agent) when is_atom(agent), do: Atom.to_string(agent)
+
   @spec delivered_by(atom() | String.t() | nil) :: String.t() | nil
-  defp delivered_by(nil), do: nil
-  defp delivered_by(agent) when is_binary(agent), do: agent
-  defp delivered_by(agent) when is_atom(agent), do: Atom.to_string(agent)
+  defp delivered_by(agent), do: agent_name(agent)
 
   @spec implemented_text(request(), String.t()) :: String.t()
   defp implemented_text(request, sha) do
     by = if agent = request[:agent], do: "by #{agent} ", else: ""
-    "Landed #{by}via merge-train; verified green post-integration (run #{request.run_id}, #{sha})."
+    "Landed #{by}via merge-train; reviewer-approved (run #{request.run_id}, #{sha})."
   end
 
   @spec cleanup(Worktree.t()) :: :ok
@@ -199,7 +229,7 @@ defmodule Harness.Lander do
         :ok
 
       {:error, reason} ->
-        Logger.warning("harness lander: failed to remove re-verify worktree #{worktree.path}: #{inspect(reason)}")
+        Logger.warning("harness lander: failed to remove landing worktree #{worktree.path}: #{inspect(reason)}")
 
         :ok
     end
@@ -218,6 +248,17 @@ defmodule Harness.Lander do
     case Git.run(["fetch", "origin"], repo) do
       {:ok, _output} -> :ok
       {:error, reason} -> {:error, {:fetch_failed, reason}}
+    end
+  end
+
+  # The target tip *before* this land — captured post-fetch so the audit job
+  # knows where the just-landed range starts even when no prior audit(...)
+  # commit exists.
+  @spec remote_target_sha(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  defp remote_target_sha(repo, target) do
+    case Git.run(["rev-parse", "origin/" <> target], repo) do
+      {:ok, output} -> {:ok, String.trim(output)}
+      {:error, reason} -> {:error, {:rev_parse_failed, reason}}
     end
   end
 

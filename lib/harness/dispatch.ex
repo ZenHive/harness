@@ -55,9 +55,9 @@ defmodule Harness.Dispatch do
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.LogRecord
+  alias Harness.Run.Review
   alias Harness.Run.Status
   alias Harness.Run.Worker, as: RunWorker
-  alias Harness.Verification.Verdict
   alias Oban.Job
 
   # Default await budget: 30 minutes. A run is minutes-to-hours of work, but a
@@ -80,7 +80,7 @@ defmodule Harness.Dispatch do
 
   api(
     :task,
-    "Dispatch one roadmap task for a registered project end-to-end: ingest it and start a supervised, verified run on the chosen adapter. Returns a run_id. The single JSON-native dispatch entry point for chat/MCP orchestrators.",
+    "Dispatch one roadmap task for a registered project end-to-end: ingest it and start a supervised, reviewer-gated run on the chosen adapter. Returns a run_id. The single JSON-native dispatch entry point for chat/MCP orchestrators.",
     params: [
       project_name: [
         kind: :value,
@@ -103,12 +103,6 @@ defmodule Harness.Dispatch do
         default: true,
         description:
           "When true (default), scrubs ANTHROPIC_API_KEY from the agent's environment so Claude dispatches use subscription OAuth instead of the metered API. Harmless for non-Claude adapters."
-      ],
-      review_green: [
-        kind: :value,
-        default: false,
-        description:
-          "When true, forces one cross-family reviewer pass on a green verdict for this run — the reviewer reviews the committed work against the task's acceptance criteria and fixes inline if it does not conform. Default false leaves the project-level review_green setting in control."
       ]
     ],
     returns: %{
@@ -118,19 +112,18 @@ defmodule Harness.Dispatch do
     }
   )
 
-  @spec task(String.t(), String.t(), String.t(), boolean(), boolean()) ::
+  @spec task(String.t(), String.t(), String.t(), boolean()) ::
           {:ok, %{run_id: String.t()}} | {:error, error()}
-  def task(project_name, task, adapter \\ @recommended_adapter, scrub_anthropic_key \\ true, review_green \\ false)
-      when is_binary(project_name) and is_binary(task) and is_binary(adapter) and is_boolean(scrub_anthropic_key) and
-             is_boolean(review_green) do
-    with {:ok, run_id} <- enqueue_start(project_name, task, adapter, toggles(scrub_anthropic_key, review_green)) do
+  def task(project_name, task, adapter \\ @recommended_adapter, scrub_anthropic_key \\ true)
+      when is_binary(project_name) and is_binary(task) and is_binary(adapter) and is_boolean(scrub_anthropic_key) do
+    with {:ok, run_id} <- enqueue_start(project_name, task, adapter, scrub_anthropic_key) do
       {:ok, %{run_id: run_id}}
     end
   end
 
   api(
     :await,
-    "Dispatch one roadmap task and block until the run settles, returning a compact verdict summary (state, reason, per-check results) instead of a run_id to poll. The bounded blocking variant of dispatch-task — one call gets the answer. The wait is capped by timeout_ms; on timeout it returns a structured :timed_out summary (the run keeps going, observable later via run_id), never a wedged tool call.",
+    "Dispatch one roadmap task and block until the run settles, returning a compact summary (state, reason, the reviewer AI's verdict) instead of a run_id to poll. The bounded blocking variant of dispatch-task — one call gets the answer. The wait is capped by timeout_ms; on timeout it returns a structured :timed_out summary (the run keeps going, observable later via run_id), never a wedged tool call.",
     params: [
       project_name: [
         kind: :value,
@@ -159,34 +152,27 @@ defmodule Harness.Dispatch do
         default: true,
         description:
           "When true (default), scrubs ANTHROPIC_API_KEY from the agent's environment so Claude dispatches use subscription OAuth instead of the metered API. Harmless for non-Claude adapters."
-      ],
-      review_green: [
-        kind: :value,
-        default: false,
-        description:
-          "When true, forces one cross-family reviewer pass on a green verdict for this run — the reviewer reviews the committed work against the task's acceptance criteria and fixes inline if it does not conform. Default false leaves the project-level review_green setting in control."
       ]
     ],
     returns: %{
       type: :tuple,
       description:
-        "{:ok, summary} where summary is a settled-run map (run_id, task_id, state :done|:failed, reason, passed, verdict with per-check results, review_iterations, diagnostics) OR a :timed_out map (run_id, state :timed_out, reason :await_timeout, timeout_ms). {:error, reason} on a dispatch failure (unknown_adapter, unknown_project, the rmap ingest reasons, or a start_run failure) — same as dispatch-task."
+        "{:ok, summary} where summary is a settled-run map (run_id, task_id, state :done|:failed, reason, passed, review with the reviewer's verdict/report/ratings, agent_diff_size, reviewer_diff_size) OR a :timed_out map (run_id, state :timed_out, reason :await_timeout, timeout_ms). {:error, reason} on a dispatch failure (unknown_adapter, unknown_project, the rmap ingest reasons, or a start_run failure) — same as dispatch-task."
     }
   )
 
-  @spec await(String.t(), String.t(), String.t(), pos_integer(), boolean(), boolean()) ::
+  @spec await(String.t(), String.t(), String.t(), pos_integer(), boolean()) ::
           {:ok, map()} | {:error, error()}
   def await(
         project_name,
         task,
         adapter \\ @recommended_adapter,
         timeout_ms \\ @default_await_timeout_ms,
-        scrub_anthropic_key \\ true,
-        review_green \\ false
+        scrub_anthropic_key \\ true
       )
       when is_binary(project_name) and is_binary(task) and is_binary(adapter) and is_integer(timeout_ms) and
-             timeout_ms > 0 and is_boolean(scrub_anthropic_key) and is_boolean(review_green) do
-    with {:ok, run_id} <- start(project_name, task, adapter, toggles(scrub_anthropic_key, review_green), self()) do
+             timeout_ms > 0 and is_boolean(scrub_anthropic_key) do
+    with {:ok, run_id} <- start(project_name, task, adapter, scrub_anthropic_key, self()) do
       await_result(run_id, timeout_ms)
     end
   end
@@ -216,7 +202,7 @@ defmodule Harness.Dispatch do
 
   api(
     :status,
-    "Snapshot one in-flight, queued, or lingering-terminal run by run_id: lifecycle state, verdict status so far, repair attempts. The live/queued counterpart to result_store-list_run_records (settled runs). Returns {:error, :not_found} only when no live run or unfinished Oban job is known.",
+    "Snapshot one in-flight, queued, or lingering-terminal run by run_id: lifecycle state and the reviewer's verdict so far. The live/queued counterpart to result_store-list_run_records (settled runs). Returns {:error, :not_found} only when no live run or unfinished Oban job is known.",
     params: [
       run_id: [
         kind: :value,
@@ -227,7 +213,7 @@ defmodule Harness.Dispatch do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, map} carrying run_id, task_id, project_name, state, worktree_path, agent_os_pid, agent_kind, verdict_status, review_iterations, reason. {:error, :not_found} for stopped/unknown runs."
+        "{:ok, map} carrying run_id, task_id, project_name, state, worktree_path, agent_os_pid, agent_kind, review_verdict, reason. {:error, :not_found} for stopped/unknown runs."
     }
   )
 
@@ -361,7 +347,7 @@ defmodule Harness.Dispatch do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %{batch_id, task_id, total, max_concurrency, entries}} where entries is a list of per-adapter maps (adapter, run_id, state, reason, verdict, review_iterations, duration_ms, first_attempt_failed_check_count, agent_diff_size, token_usage). {:error, reason}: no_adapters, unknown_adapter, unknown_project, the rmap ingest reasons, or a Harness.Batch failure."
+        "{:ok, %{batch_id, task_id, total, max_concurrency, entries}} where entries is a list of per-adapter maps (adapter, run_id, state, reason, verdict :approve|:reject|nil, reviewer_diff_size, duration_ms, agent_diff_size, token_usage). {:error, reason}: no_adapters, unknown_adapter, unknown_project, the rmap ingest reasons, or a Harness.Batch failure."
     }
   )
 
@@ -380,11 +366,11 @@ defmodule Harness.Dispatch do
     end
   end
 
-  # --- Settled-run failure detail over JSON ---
+  # --- Settled-run review detail over JSON ---
 
   api(
     :verdict_detail,
-    "Read the captured output of the failed checks for a SETTLED run by run_id: the actual test/credo/dialyzer/etc. stdout+stderr a JSON caller needs to see *why* a check failed. Loads the persisted run record (Harness.ResultStore.list_run_records/1), so it works after the run process is gone — the settled-run complement to dispatch-status/dispatch-transcript (live). Each check's output is tail-truncated (the diagnostic tail), flagged with truncated: true when capped. A green run yields an empty checks map.",
+    "Read the reviewer AI's verdict detail for a SETTLED run by run_id: the approve/reject decision, the reviewer's prose report (what it found, fixed, and why it decided), and its implementer KPI ratings. Loads the persisted run record (Harness.ResultStore.list_run_records/1), so it works after the run process is gone — the settled-run complement to dispatch-status/dispatch-transcript (live).",
     params: [
       run_id: [
         kind: :value,
@@ -395,7 +381,7 @@ defmodule Harness.Dispatch do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %{run_id, task_id, verdict :pass|:fail|nil, failed_checks: [name], checks: %{name => %{output: string, truncated: boolean}}}}. {:error, :not_found} for an unknown/unrecorded run_id, or {:error, reason} on a store failure."
+        "{:ok, %{run_id, task_id, verdict :approve|:reject|nil, report: string|nil, ratings: map}}. {:error, :not_found} for an unknown/unrecorded run_id, or {:error, reason} on a store failure."
     }
   )
 
@@ -437,29 +423,34 @@ defmodule Harness.Dispatch do
     end
   end
 
-  # Restart-resilient fire-and-forget path for `task/5`: resolve and render the
+  # Restart-resilient fire-and-forget path for `task/4`: resolve and render the
   # item now, then persist the worker job before returning the run id. The worker
   # re-ingests by task id and starts the run with the stored id when Oban executes
   # the job.
-  @spec enqueue_start(String.t(), String.t(), String.t(), toggles()) ::
+  @spec enqueue_start(String.t(), String.t(), String.t(), boolean()) ::
           {:ok, String.t()} | {:error, error()}
-  defp enqueue_start(project_name, task, adapter, toggles) do
+  defp enqueue_start(project_name, task, adapter, scrub_anthropic_key) do
     with {:ok, {project, item, adapter_module}} <- resolve_and_ingest(project_name, task, adapter),
          {:ok, run_id, _job} <-
-           RunWorker.enqueue(project, item, adapter_module, run_start_opts(item, nil, toggles)) do
+           RunWorker.enqueue(project, item, adapter_module, run_start_opts(item, nil, scrub_anthropic_key)) do
       {:ok, run_id}
     end
   end
 
-  # Blocking path for `await/6`: this keeps the in-memory subscriber contract so
+  # Blocking path for `await/5`: this keeps the in-memory subscriber contract so
   # the tool call can receive the result directly. `dispatch-task` is the
   # restart-resilient fire-and-forget MCP path.
-  @spec start(String.t(), String.t(), String.t(), toggles(), pid() | nil) ::
+  @spec start(String.t(), String.t(), String.t(), boolean(), pid() | nil) ::
           {:ok, String.t()} | {:error, error()}
-  defp start(project_name, task, adapter, toggles, subscriber) do
+  defp start(project_name, task, adapter, scrub_anthropic_key, subscriber) do
     with {:ok, {project, item, adapter_module}} <- resolve_and_ingest(project_name, task, adapter),
          {:ok, run_id, _pid} <-
-           Run.Supervisor.start_run(item, project, adapter_module, run_start_opts(item, subscriber, toggles)) do
+           Run.Supervisor.start_run(
+             item,
+             project,
+             adapter_module,
+             run_start_opts(item, subscriber, scrub_anthropic_key)
+           ) do
       {:ok, run_id}
     end
   end
@@ -518,56 +509,29 @@ defmodule Harness.Dispatch do
   defp recommendation_domain(%Item{domains: [domain | _]}), do: domain
   defp recommendation_domain(%Item{}), do: :elixir
 
-  # The per-dispatch toggle pair (secret-scrub + force-on green review) is built
-  # once at the public entry points (task/await) and threaded through the
-  # internal call chain as one value, so adding a third toggle later touches one
-  # signature, not the whole pipeline. `start_opts/3` / `run_start_opts/4`
-  # (booleans) stay the @doc false testability seam; the /2 + /3 variants below
-  # unpack the toggles map at the start_run boundary.
-  @typedoc false
-  @type toggles :: %{scrub_anthropic_key: boolean(), review_green: boolean()}
-
-  @spec toggles(boolean(), boolean()) :: toggles()
-  defp toggles(scrub_anthropic_key, review_green) do
-    %{scrub_anthropic_key: scrub_anthropic_key, review_green: review_green}
-  end
-
-  # Build the start_run opts. Forcing a green-review pass ON is an explicit
-  # `review_green: true` opt; leaving it false adds nothing so the project-level
-  # `review_green` setting stays in control — passing `review_green: false`
-  # would instead force it OFF. Public (@doc false) so the override threading is
-  # testable without a live dispatch through the real agent CLI — same
+  # Build the start_run opts. Public (@doc false) so the secret-scrub threading
+  # is testable without a live dispatch through the real agent CLI — same
   # testability seam as await_result/2 and summarize_comparison/1.
   @doc false
-  @spec start_opts(pid() | nil, boolean(), boolean()) :: keyword()
-  def start_opts(subscriber, scrub_anthropic_key, review_green) do
-    opts = [subscriber: subscriber, env: scrub_env(scrub_anthropic_key)]
-    if review_green, do: Keyword.put(opts, :review_green, true), else: opts
+  @spec start_opts(pid() | nil, boolean()) :: keyword()
+  def start_opts(subscriber, scrub_anthropic_key) do
+    [subscriber: subscriber, env: scrub_env(scrub_anthropic_key)]
   end
 
-  @spec start_opts(pid() | nil, toggles()) :: keyword()
-  defp start_opts(subscriber, %{scrub_anthropic_key: scrub, review_green: review_green}) do
-    start_opts(subscriber, scrub, review_green)
-  end
-
+  # start_opts plus the task's pinned model (when present) as :requested_model.
   @doc false
-  @spec run_start_opts(Item.t(), pid() | nil, boolean(), boolean()) :: keyword()
-  def run_start_opts(%Item{} = item, subscriber, scrub_anthropic_key, review_green) do
-    run_start_opts(item, subscriber, toggles(scrub_anthropic_key, review_green))
-  end
-
-  @spec run_start_opts(Item.t(), pid() | nil, toggles()) :: keyword()
-  defp run_start_opts(%Item{} = item, subscriber, toggles) do
+  @spec run_start_opts(Item.t(), pid() | nil, boolean()) :: keyword()
+  def run_start_opts(%Item{} = item, subscriber, scrub_anthropic_key) do
     item
     |> Map.get(:model)
     |> case do
       model when is_binary(model) ->
         subscriber
-        |> start_opts(toggles)
+        |> start_opts(scrub_anthropic_key)
         |> Keyword.put(:requested_model, model)
 
       _other ->
-        start_opts(subscriber, toggles)
+        start_opts(subscriber, scrub_anthropic_key)
     end
   end
 
@@ -579,28 +543,21 @@ defmodule Harness.Dispatch do
       state: result.state,
       reason: result.reason,
       passed: result.state == :done,
-      review_iterations: result.review_iterations,
-      first_attempt_failed_check_count: result.first_attempt_failed_check_count,
       agent_diff_size: result.agent_diff_size,
+      reviewer_diff_size: result.reviewer_diff_size,
       worktree_path: result.worktree_path,
-      verdict: summarize_verdict(result.verdict)
+      review: summarize_review(result.review)
     }
   end
 
-  # The verdict summary deliberately drops each check's captured output (a check
-  # can emit megabytes of test/dialyzer output) and the raw agent transcript —
-  # those are not what a JSON tool result should carry. Per-check status + the
-  # failed-check names are enough to act on; full output stays on the
-  # %Run.Result{}/LogRecord for callers that need it.
-  @spec summarize_verdict(Verdict.t() | nil) :: map() | nil
-  defp summarize_verdict(nil), do: nil
+  # The review summary carries the reviewer AI's full verdict artifact — the
+  # decision, its prose report, and its implementer KPI ratings. The raw agent
+  # transcript stays on the %Run.Result{}/LogRecord for callers that need it.
+  @spec summarize_review(Review.t() | nil) :: map() | nil
+  defp summarize_review(nil), do: nil
 
-  defp summarize_verdict(%Verdict{status: status, results: results}) do
-    %{
-      status: status,
-      checks: Enum.map(results, &%{name: &1.name, status: &1.status, kind: &1.kind, exit_status: &1.exit_status}),
-      failed_checks: for(result <- results, result.status == :fail, do: result.name)
-    }
+  defp summarize_review(%Review{verdict: verdict, report: report, ratings: ratings}) do
+    %{verdict: verdict, report: report, ratings: ratings}
   end
 
   # Summarizers for the macro-generated run-observation tools. Each projects a
@@ -615,8 +572,7 @@ defmodule Harness.Dispatch do
       worktree_path: status.worktree_path,
       agent_os_pid: status.agent_os_pid,
       agent_kind: status.agent_kind,
-      verdict_status: status.verdict_status,
-      review_iterations: status.review_iterations,
+      review_verdict: status.review_verdict,
       reason: status.reason
     }
   end
@@ -642,8 +598,7 @@ defmodule Harness.Dispatch do
       worktree_path: nil,
       agent_os_pid: nil,
       agent_kind: nil,
-      verdict_status: nil,
-      review_iterations: 0,
+      review_verdict: nil,
       reason: {:oban_job, job.state},
       oban_job_id: job.id,
       oban_state: job.state,
@@ -781,11 +736,11 @@ defmodule Harness.Dispatch do
     }
   end
 
-  # Projects a settled run's LogRecord into the per-check failure-output map.
+  # Projects a settled run's LogRecord into the reviewer-verdict detail map.
   # Public (@doc false) so the projection is testable with a hand-built
   # %LogRecord{} — same testability seam as summarize_comparison/1 above. The
-  # record's check_output is already capped + JSON-safe (string keys, string/bool
-  # values); this just surfaces it alongside the verdict + failed-check names.
+  # record's review_report/review_ratings are persisted verbatim from the
+  # reviewer's .harness/review.json; this just surfaces them with the decision.
   @doc false
   @spec summarize_verdict_detail(LogRecord.t()) :: map()
   def summarize_verdict_detail(%LogRecord{} = record) do
@@ -793,8 +748,8 @@ defmodule Harness.Dispatch do
       run_id: record.run_id,
       task_id: record.task_id,
       verdict: record.verdict,
-      failed_checks: Enum.map(record.failure_cause.failed_checks, & &1.name),
-      checks: record.check_output
+      report: record.review_report,
+      ratings: record.review_ratings
     }
   end
 
@@ -809,9 +764,8 @@ defmodule Harness.Dispatch do
       state: entry.state,
       reason: jsonable(entry.reason),
       verdict: entry.verdict,
-      review_iterations: entry.review_iterations,
+      reviewer_diff_size: entry.reviewer_diff_size,
       duration_ms: entry.duration_ms,
-      first_attempt_failed_check_count: entry.first_attempt_failed_check_count,
       agent_diff_size: entry.agent_diff_size,
       token_usage: Map.from_struct(entry.token_usage)
     }

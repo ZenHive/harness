@@ -52,21 +52,22 @@ same hand-build window; a new phase that adds features on stable surfaces does n
 ```
 Harness.Roadmap.ingest  ─▶  Harness.Run.Supervisor.start_run  ─▶  Harness.Run.Result
                                       │
-                  dispatched ▶ running ▶ committing ▶ verifying ▶ done | failed
+                  dispatched ▶ running ▶ committing ▶ reviewing ▶ done | failed
 ```
 
 One run = one `Harness.Run` gen_statem. It carves a git worktree off the target repo's
-`HEAD`, dispatches a headless agent into it, commits the agent's diff to branch
-`harness/<run-id>`, runs the verification stack against the worktree, and settles a
-verdict. Green ⇒ `:done`; anything else ⇒ `:failed`. The **verification stack is the
-grader** — never the agent's self-reported result.
+`HEAD`, dispatches a headless implementer agent into it, commits the agent's diff to branch
+`harness/<run-id>`, then dispatches a **cross-family reviewer AI** into the same worktree. The
+reviewer reviews against the acceptance criteria, runs the project's checks itself, fixes what
+it can inline, and writes `.harness/review.json`. Approve ⇒ `:done`; reject/missing ⇒ `:failed`.
+The **reviewer AI is the gate** — never the implementer's self-reported result.
 
 ## Running a dogfood task
 
 There are three dispatch paths. **The native flat MCP tools (`dispatch__task` + the
 `dispatch__*` observe/triage family) are the default** — one JSON call, no struct
-threading, and `dispatch__verdict_detail` now reads per-failed-check output straight
-from the persisted record. The **Tidewave `project_eval` path** is the escape hatch for
+threading, and `dispatch__verdict_detail` reads the reviewer's verdict / report / ratings
+straight from the persisted record. The **Tidewave `project_eval` path** is the escape hatch for
 struct-level control the flat tools don't expose (explicit `retry_policy`, fail-over
 adapter lists, `subscriber: self()`). The **`mix run` script** is the last-resort
 fallback for dumping full diagnostics to your terminal in one blocking process.
@@ -135,7 +136,7 @@ state — so the eval process exiting between dispatch and observation is fine.
 
    ```elixir
    Harness.Run.status("<run-id>")
-   #=> {:ok, %{state: :running, agent_os_pid: 12345, verdict_status: nil}}
+   #=> {:ok, %{state: :running, agent_os_pid: 12345, review_verdict: nil}}
    #=> {:ok, %{state: :done, ...}}                    # +5s linger, then process exits
    #=> {:error, :not_found}                           # after linger
    ```
@@ -146,24 +147,24 @@ state — so the eval process exiting between dispatch and observation is fine.
    {:ok, [%Harness.Run.LogRecord{} = rec]} =
      Harness.ResultStore.list_run_records(run_id: "<run-id>")
 
-   rec.state           # :done | :failed
-   rec.reason          # nil | :verification_red | {:checkout_polluted, _} | ...
-   rec.verdict         # :pass | :fail | nil  (status only — see caveat below)
-   rec.agent_output    # full agent transcript (binary)
-   rec.failure_cause   # %{reason, failed_checks: [%{name, kind, exit_status}]}
+   rec.state              # :done | :failed
+   rec.reason             # :approved | {:review_rejected, _} | {:review_stuck, _} | ...
+   rec.verdict            # :approve | :reject | nil  (the reviewer's decision)
+   rec.review_report      # the reviewer's prose report
+   rec.review_ratings     # the reviewer's KPI ratings map (performance/truthfulness/…)
+   rec.reviewer_diff_size # changed lines the reviewer had to fix (0 = first-attempt pass)
+   rec.agent_output       # full implementer transcript (binary)
    ```
 
    See § Reading the verdict for what the state/reason combinations mean and what action
    each one warrants.
 
-> **LogRecord field coverage.** `%LogRecord{}` carries verdict **status** (`:pass`/`:fail`),
-> **failed-check names** (name + kind + exit_status), the full agent transcript, AND the
-> **captured stdout+stderr of each failed check** (`rec.check_output`, failed-checks-only,
-> tail-truncated to a byte cap). To triage a red verdict by reading the actual check output
-> (a credo finding, a failing test message, the sobelow trace), call
-> `dispatch__verdict_detail(run_id)` or read `rec.check_output` directly — no re-run needed.
-> Only the *non-failing* checks' output is dropped; for that, the live `%Harness.Run.Result{}`
-> via subscriber (the **mix-run fallback** below) remains the path.
+> **LogRecord field coverage.** `%LogRecord{}` carries the reviewer's **verdict**
+> (`:approve`/`:reject`), its **report** + **ratings**, the **reviewer fix-diff size**, the full
+> implementer transcript, and token usage. To triage a rejected run, call
+> `dispatch__verdict_detail(run_id)` or read `rec.review_report` directly — the report is the
+> reviewer's prose on what it found and why it rejected. There is no per-check stdout to dig
+> through: the reviewer already ran the checks and judged them.
 
 8. **Read the verdict** (see § Reading the verdict).
 
@@ -200,9 +201,9 @@ The run starts with `subscriber: nil`; observe it afterward by `run_id`.
 > (the Oban worker behind `dispatch__task` / `Batch.dispatch`) claims the task
 > `in_progress` on run start — best-effort: a failed `rmap` writeback logs and continues,
 > never fails the run — so the next cron tick's `rmap ready`/`next` no longer return it.
-> A **green-but-unlanded** run (under `landing_policy: :manual`, which the harness
+> An **approved-but-unlanded** run (under `landing_policy: :manual`, which the harness
 > self-project uses) *leaves* the task `in_progress`; only an explicit land moves it to
-> `done`. This is exactly what stops the "completed-green re-dispatched every tick" loop.
+> `done`. This is exactly what stops the "completed re-dispatched every tick" loop.
 > A **terminal-failure** run reverts the task to `pending` (`Roadmap.mark_pending/2`, not
 > `blocked`) so a later tick retries; transient failures snooze without reverting. The
 > direct `start_run` paths above do NOT go through the Worker, so they don't auto-claim —
@@ -212,7 +213,7 @@ The run starts with `subscriber: nil`; observe it afterward by `run_id`.
 
 - **Observe over JSON with the flat run tools, not the store filter.** While the run is
   live, call `dispatch__status` / `dispatch__transcript` (by `run_id`); after it settles,
-  `dispatch__verdict_detail(run_id)` returns the failed-checks' captured output straight
+  `dispatch__verdict_detail(run_id)` returns the reviewer's verdict / report / ratings straight
   from the persisted record. These are the JSON-native path and avoid the filter quirk below.
 - **`result_store__list_run_records` rejects a map filter.** The function wants a
   *keyword list* (`list_run_records(run_id: id)`); the MCP tool serializes `{run_id: ...}`
@@ -220,8 +221,8 @@ The run starts with `subscriber: nil`; observe it afterward by `run_id`.
   `dispatch__verdict_detail` (above); if you must hit the store, observe via
   `mcp__tidewave__project_eval` calling `Harness.ResultStore.list_run_records(run_id: id)`
   directly, or via `supervisor__list_runs` while the run is still registered.
-- **`rec.verdict` is a plain atom** (`:pass` / `:fail`), *not* a struct — `rec.verdict.status`
-  raises `:pass.status/0 is undefined`. Read the atom directly.
+- **`rec.verdict` is a plain atom** (`:approve` / `:reject`), *not* a struct — read it directly;
+  the reviewer's prose lives in `rec.review_report`, the ratings in `rec.review_ratings`.
 - **`agent_diff_size` is unreliable** — it under-reported a 320-insertion diff as `3` on
   Task 103. For true diff size use `git diff --stat development...<branch>`, not the field.
 - **A record file appearing under `~/.harness/results/runs/<base64url(run_id)>.term` is the
@@ -230,10 +231,10 @@ The run starts with `subscriber: nil`; observe it afterward by `run_id`.
 
 ### Full-diagnostic dispatch via `mix run` (fallback)
 
-Use when you need per-failed-check stdout/stderr dumped to your terminal — debugging
-`:verification_red` runs is the canonical case. The driver script blocks on a `receive`
-for `{:harness_run, run_id, result}` so the full `%Harness.Run.Result{}` (with
-`verdict.results[].output`) is in hand on settle.
+Use when you want the full transcript + reviewer report dumped to your terminal in one
+blocking process. The driver script blocks on a `receive` for `{:harness_run, run_id, result}`
+so the full `%Harness.Run.Result{}` (implementer transcript, `review` verdict artifact,
+diff sizes) is in hand on settle.
 
 > Same 6-step intent as the Tidewave path (pick / pre-flight / claim / dispatch / watch /
 > read verdict), but **dispatched from a throwaway `mix run` script** instead of a
@@ -264,14 +265,12 @@ lifetime_timeout = 3_600_000
 
 # Build a %Harness.Project{} for the harness checkout itself. Post-v0_5,
 # `Run.Supervisor.start_run/4` and `Roadmap.ingest/2` both want a Project
-# struct — not a path string. (Pre-v0_5 drivers passed `File.cwd!()` and
-# would now FunctionClauseError on the `%Project{} = project` guard.)
-{:ok, check_stack} = Harness.CheckStack.Preset.fetch(:elixir)
-
+# struct — not a path string. `check_command` is a free-text hint handed to
+# the reviewer AI — harness never executes it.
 project = %Harness.Project{
   name: "harness",
   source: {:local, repo},
-  check_stacks: [check_stack],
+  check_command: "mix precommit.full",
   roadmap_path: repo
 }
 
@@ -318,7 +317,7 @@ case Harness.Roadmap.ingest({:id, task_id}, project: project) do
                 {:ok, s} ->
                   IO.puts(
                     "[dogfood] #{DateTime.to_iso8601(DateTime.utc_now())} ... state=#{s.state} " <>
-                      "agent_os_pid=#{inspect(s.agent_os_pid)} verdict=#{inspect(s.verdict_status)}"
+                      "agent_os_pid=#{inspect(s.agent_os_pid)} verdict=#{inspect(s.review_verdict)}"
                   )
 
                 {:error, :not_found} ->
@@ -352,19 +351,11 @@ case Harness.Roadmap.ingest({:id, task_id}, project: project) do
               dump.("AGENT TRANSCRIPT (raw)", o.output)
             end
 
-            if result.verdict do
-              IO.puts("\nverdict:    #{result.verdict.status}")
-
-              for r <- result.verdict.results do
-                IO.puts(
-                  "  #{String.pad_trailing(r.name, 10)} #{String.pad_trailing(to_string(r.status), 5)} " <>
-                    "kind=#{r.kind} exit=#{inspect(r.exit_status)}"
-                )
-              end
-
-              for r <- result.verdict.results, r.status == :fail do
-                dump.("FAILED CHECK: #{r.name}", r.output)
-              end
+            if result.review do
+              IO.puts("\nreview verdict: #{result.review.verdict}")
+              IO.puts("reviewer diff:  #{inspect(result.reviewer_diff_size)} changed lines")
+              IO.puts("ratings:        #{inspect(result.review.ratings)}")
+              dump.("REVIEWER REPORT", result.review.report)
             end
 
             IO.puts("[dogfood] ========== END ==========")
@@ -392,17 +383,17 @@ end
 
 | `state` / `reason` | Meaning | Action |
 |---|---|---|
-| `:done` | Verification went green. | Deliverable is the commit on `harness/<run-id>`. Review its diff, bring it onto `development`, `rmap status <id> done`, update docs. |
-| `:failed` / `:verification_red` | Agent's work failed ≥1 check. | **Supervised** (pre-Task-11): inspect `result.worktree_path` + failed-check output, re-dispatch. The loop working, not a harness bug. |
-| `:failed` / `:no_changes` | Agent produced no diff. | Read the agent transcript to find *why*. (a) Harness never got the agent working — stdin stall, bad spawn → **harness bug**, file via `rmap new`. (b) Agent reached the API and it errored — `billing_error`, auth, rate limit → **environment**, fix it (see § "nested claude") and re-run, not a harness bug. (c) Agent ran and genuinely did nothing → re-dispatch. |
-| `:failed` / `{:worktree_failed,_}` `{:agent_spawn_failed,_}` `{:driver_crashed,_}` `{:commit_failed,_}` `{:verification_failed,_}` `{:verifier_crashed,_}` | Harness-side failure. | **Harness bug.** File via `rmap new`, fix harness, re-dogfood. Do not work around by hand-building. |
+| `:done` / `:approved` | The reviewer AI approved the work (possibly after fixing it inline — check `reviewer_diff_size`). | Deliverable is the commit(s) on `harness/<run-id>` (implementer's + any reviewer fixes). Review the diff, bring it onto `development` (or let auto-landing do it), `rmap status <id> done`, update docs. |
+| `:failed` / `{:review_rejected, report}` | The reviewer found nothing salvageable (degenerate case — rejection is near-never by design). | Read `report` (the reviewer's prose). The task went back to the queue; re-dispatch — possibly with a different implementer. |
+| `:failed` / `{:review_stuck, report}` | The gate could not produce a verdict: no cross-family reviewer available, reviewer crashed, or it exited without writing a readable `.harness/review.json`. | Read `report`. If no reviewer was available → environment/availability issue. If the reviewer ran but wrote nothing → inspect its transcript; re-dispatch. |
+| `:failed` / `{:worktree_failed,_}` `{:agent_spawn_failed,_}` `{:driver_crashed,_}` `{:commit_failed,_}` | Harness-side mechanical failure. | **Harness bug.** File via `rmap new`, fix harness, re-dogfood. Do not work around by hand-building. |
 | `:failed` / `{:checkout_polluted, status}` | Agent wrote outside its run worktree into the main checkout (porcelain shown in `status`). | **Agent bug** (or wrong adapter for the agent). Harness correctly trapped it (`Harness.Worktree.Isolation`). Inspect what the agent leaked, decide whether the adapter needs `worktree_isolation: false` (like Antigravity Task 32), and re-dispatch with a worktree-honoring adapter. NOT a harness bug — the trap fired by design. |
 | `:failed` / `{:checkout_pollution_check_failed, _}` | The post-run pollution `git status` itself errored. | Rare; usually a transient git/IO issue. Re-run; if it persists inspect the main checkout's git state and the harness log. |
 | `:failed` / `:timed_out` | Lifetime budget elapsed. | Raise `:lifetime_timeout` and re-run, or investigate why the agent hung. |
 | run process **crashed** (no settle) | gen_statem died. | **Harness bug.** File via `rmap new`. |
 
-The deliverable branch `harness/<run-id>` survives worktree teardown on a green run; the
-worktree directory itself is *retained* on a red run (`retain_on_failure` default) for
+The deliverable branch `harness/<run-id>` survives worktree teardown on an approved run; the
+worktree directory itself is *retained* on a failed run (`retain_on_failure` default) for
 inspection at `result.worktree_path`. Clean up a no-longer-needed retained worktree with
 `git worktree remove --force <path> && git worktree prune && git branch -D <branch>`.
 
@@ -431,7 +422,7 @@ them all in parallel.
 dogfood drivers — rmap renders native prompts for them, so `ingest(agent: :grok)`
 → `start_run/4` with `Harness.AgentAdapter.Grok` is the whole flow (no two-step).
 Don't silently exclude them from a batch — that's training-comfort bias, not a
-real constraint. Round-1 Task 25 (Grok-driven) settled `:passed`. (Antigravity
+real constraint. Round-1 Task 25 (Grok-driven) settled approved. (Antigravity
 still can't run *worktree-isolated* — `worktree_isolation: false`, Task 32 — but
 that's the isolation axis, independent of rendering.)
 
@@ -453,30 +444,32 @@ while another is in flight. Re-dispatch is fine; concurrent BEAMs are not.
 
 **Integration order.** Deliverable branches `harness/<run-id>` come back onto
 `development` one at a time. Bring in the smallest / most-isolated diff first,
-let the rest rebase against it, resolve any same-file merges by hand. The
-verification stack re-runs on `development` after the last merge — if it
-goes red post-merge that's an integration failure, not a per-run failure.
+let the rest rebase against it, resolve any same-file merges by hand. Run the
+project's own check command (`mix precommit.full`) on `development` after the
+last merge — if it goes red post-merge that's an integration failure, not a
+per-run failure.
 
 **Autonomous landing (Task 100, opt-in).** A project that sets both
-`landing_policy: :auto` and `target_branch` skips the manual merge above: a green
-run enqueues one job on the serialized `landing_<name>` Oban queue (limit 1), and
-`Harness.Lander.land/1` ff-merges the branch onto `origin/<target>` (rebasing if
-the target moved), **re-verifies the integrated state**, then **ff-pushes** the
-verified tip (`git push origin <tip>:refs/heads/<target>`, no `--force`) and
-advances the rmap task (`rmap status <id> done --verified --shipped-in <sha>`). The
-push touches `origin`, never your local checkout — after a land, `git switch
-<target> && git pull`. The harness self-project stays `:manual` (no auto-push to
-`origin/development`). Conflict / post-merge-red / push-rejected outcomes retain
-the branch and return a typed seam for Task 101; they never land a red state.
+`landing_policy: :auto` and `target_branch` skips the manual merge above: an
+approved run enqueues one job on the serialized `landing_<name>` Oban queue (limit 1),
+and `Harness.Lander.land/1` rebases the branch onto `origin/<target>` (if the target
+moved) in a fresh detached worktree, then **ff-pushes** the tip
+(`git push origin <tip>:refs/heads/<target>`, no `--force`, **no re-verification** —
+the reviewer already gated the work) and advances the rmap task
+(`rmap status <id> done --verified --shipped-in <sha>`). A successful push enqueues
+the post-merge audit job. The push touches `origin`, never your local checkout —
+after a land, `git switch <target> && git pull`. The harness self-project stays
+`:manual` (no auto-push to `origin/development`). Conflict / push-rejected outcomes
+retain the branch and return a typed seam for Task 101.
 
 ## HIGH-tier audit grader dispatch (`Harness.AuditReview`)
 
 Distinct from the roadmap-task dispatch above. The codified `staged-review:audit-review`
 skill ("Stake-gated fix verification") sends HIGH-tier fixes to a *different* agent
 for a second-grader read — Codex grades Claude, Claude grades Codex. The grading run
-produces a *text verdict*, not a green/red verification verdict, so it **bypasses
-`Harness.Run` and the verification stack on purpose**: routing through them would
-require a fake passthrough check and pollute the result store with non-task runs.
+produces a one-shot *text verdict*, so it **bypasses the `Harness.Run` lifecycle
+(worktree + reviewer gate) on purpose**: routing a one-shot review through the full
+run lifecycle would pollute the result store with non-task runs.
 
 `Harness.AuditReview.grade_fix/1` is the one-call wrapper. It synchronously dispatches
 the opposite-agent grader via `Harness.AgentAdapter.Driver.run/3` directly, parses the
@@ -514,17 +507,18 @@ scheduling are out of scope (post-Phase-7).
 
 ## Known sharp edges
 
-- **deps in the worktree (fixed, Task 143).** A fresh git worktree has no `deps/`
-  or `_build/` (both gitignored). Verification now runs each Elixir preset's
-  `setup: [mix deps.get]` bootstrap before grading — a fresh worktree gets a
-  real verdict without the agent having to seed deps. Setup failure (network,
-  hex.pm down) is `{:setup_failed, _}` — an environment error that never enters
-  the repair loop. Rust presets need no bootstrap: `cargo` fetches on build.
-- **strict grader.** The verification preset is `test.json`, `dialyzer.json`,
-  `credo --strict`, `doctor`, `sobelow --exit --skip`. Correct-but-not-pristine output
-  (one missing `@doc`) goes red. Expect supervised re-dispatch cycles.
-- **cold dialyzer PLT.** `priv/plts` is gitignored, so the worktree builds a PLT from
-  cold — the slowest check. Fits the 10-min per-check timeout but dominates run time.
+- **deps in the worktree.** A fresh git worktree has no `deps/` or `_build/` (both
+  gitignored). There is no mechanical bootstrap step — the implementer and the reviewer
+  each run `mix deps.get` themselves when they need to compile or test. The project's
+  `check_command` hint should assume a cold worktree.
+- **the reviewer runs the checks.** There is no mechanical check stack. The reviewer AI
+  runs the project's own `check_command` (e.g. `mix precommit.full`), judges the output,
+  and fixes what it can inline before deciding. Correct-but-not-pristine work doesn't
+  fail — the reviewer fixes the nitpicks and approves (fix-and-approve is the near-absolute
+  default; its fixes show up in `reviewer_diff_size`).
+- **cold dialyzer PLT.** `priv/plts` is gitignored, so a reviewer that runs dialyzer in
+  the worktree builds a PLT from cold — the slowest part of its check run. This dominates
+  review wall-clock; budget the `:lifetime_timeout` for it.
 - **nested claude.** The dogfood agent is `claude -p` spawned from inside a Claude Code
   session — nesting itself is fine. Auth is **not** automatically shared, though:
   `claude` checks `ANTHROPIC_API_KEY` *before* its stored OAuth credentials, so an
@@ -532,19 +526,18 @@ scheduling are out of scope (post-Phase-7).
   per-agent via the `:env` opt to `start_run` (`env: %{"ANTHROPIC_API_KEY" => false}`)
   to force the subscription fallback — without that, a run whose key account is out
   of credit dies with a `billing_error` (HTTP 400, `"Credit balance is too low"`)
-  before doing any work, and settles `:no_changes`.
-- **timeouts.** The driver sets a 60-min `:lifetime_timeout`. Agent + cold verification
-  can be tight; raise it if a run settles `:timed_out` mid-verification.
+  before doing any work, producing an empty diff for the reviewer to judge.
+- **timeouts.** The driver sets a 60-min `:lifetime_timeout`. Implementer + reviewer (with
+  a cold PLT) can be tight; raise it if a run settles `:timed_out` mid-review.
 - **run results ARE persisted (Task 19 landed).** On settle, the Run process writes a
   `%Harness.Run.LogRecord{}` to `Harness.ResultStore` (file-backed under
   `~/.harness/results/runs/`) regardless of subscriber state — so a result survives the
   run process exiting and is readable later via `dispatch__verdict_detail(run_id)` or
-  `Harness.ResultStore.list_run_records(run_id: id)`. The record carries the verdict
-  status, failed-check names + their captured output, the agent transcript, token usage,
-  and `agent_diff_size`. The deliverable *diff* itself is not in the record — it lives on
-  the `harness/<run-id>` branch (reconstructed on demand by `Harness.RunDiff`, the
-  run-detail diff view). Only the *non-failing* checks' stdout is dropped; for that, the
-  live `%Harness.Run.Result{}` via subscriber (the mix-run fallback) remains the path.
+  `Harness.ResultStore.list_run_records(run_id: id)`. The record carries the reviewer's
+  verdict / report / ratings, the reviewer fix-diff size, the implementer transcript, token
+  usage, and `agent_diff_size`. The deliverable *diff* itself is not in the record — it lives
+  on the `harness/<run-id>` branch (reconstructed on demand by `Harness.RunDiff`, the
+  run-detail diff view).
 - **parallel-session rmap mutations during a run.** A second Claude Code session running
   `rmap status` / `rmap mark` / `rmap new` against the same checkout mid-run will mutate
   `ROADMAP.md`, `roadmap/data.json`, `roadmap/tasks.toml` on the main checkout. The

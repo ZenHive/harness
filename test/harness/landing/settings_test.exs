@@ -129,7 +129,6 @@ defmodule Harness.Landing.SettingsTest do
     %Project{
       name: name,
       source: {:local, "/tmp/#{name}"},
-      check_stacks: [],
       roadmap_path: "/tmp/#{name}"
     }
   end

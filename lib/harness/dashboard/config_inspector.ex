@@ -26,8 +26,6 @@ defmodule Harness.Dashboard.ConfigInspector do
   the password or a connection URL.
   """
 
-  alias Harness.CheckStack
-  alias Harness.CheckStack.Preset.Elixir, as: ElixirPreset
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
@@ -73,13 +71,7 @@ defmodule Harness.Dashboard.ConfigInspector do
          field("total_timeout", fn -> kw(:run, :total_timeout, 1_800_000) end, nil, 1_800_000, format: &ms/1),
          field("idle_timeout", fn -> kw(:run, :idle_timeout, 300_000) end, nil, 300_000, format: &ms/1),
          field("lifetime_timeout", fn -> kw(:run, :lifetime_timeout, 5_400_000) end, nil, 5_400_000, format: &ms/1),
-         field("terminal_linger", fn -> kw(:run, :terminal_linger, 5_000) end, nil, 5_000, format: &ms/1),
-         field("max_review_iterations", fn -> kw(:run, :max_review_iterations, 2) end, nil, 2)
-       ]},
-      {"Verification",
-       [
-         field("checks", &check_count/0, nil, default_check_count()),
-         field("timeout", fn -> kw(:verification, :timeout, 600_000) end, nil, 600_000, format: &ms/1)
+         field("terminal_linger", fn -> kw(:run, :terminal_linger, 5_000) end, nil, 5_000, format: &ms/1)
        ]},
       {"Cron polling",
        [
@@ -246,17 +238,6 @@ defmodule Harness.Dashboard.ConfigInspector do
     end
   end
 
-  @spec check_count() :: non_neg_integer()
-  defp check_count do
-    case kw(:verification, :checks, nil) do
-      nil -> default_check_count()
-      checks -> length(checks)
-    end
-  end
-
-  @spec default_check_count() :: non_neg_integer()
-  defp default_check_count, do: length(ElixirPreset.preset().checks)
-
   @spec sinks_label([module()]) :: String.t()
   defp sinks_label([]), do: "none (silent)"
   defp sinks_label(sinks), do: Enum.map_join(sinks, ", ", &inspect/1)
@@ -282,7 +263,7 @@ defmodule Harness.Dashboard.ConfigInspector do
           source_label(project.source),
           "roadmap=#{project.roadmap_path}",
           "cap=#{project.concurrency_cap || "∞"}",
-          stacks_label(project.check_stacks)
+          check_command_label(project.check_command)
         ],
         " · "
       )
@@ -294,14 +275,11 @@ defmodule Harness.Dashboard.ConfigInspector do
   defp source_label({:local, dir}), do: "local:#{dir}"
   defp source_label({:github, url}), do: "github:#{url}"
 
-  @spec stacks_label([CheckStack.t()]) :: String.t()
-  defp stacks_label(stacks) do
-    "stacks=" <> Enum.map_join(stacks, ", ", fn stack -> "#{stack.name}@#{workdir_label(stack.workdir)}" end)
-  end
-
-  @spec workdir_label(String.t()) :: String.t()
-  defp workdir_label(""), do: "root"
-  defp workdir_label(workdir), do: workdir
+  # The check_command is a hint handed to the reviewer AI (the gate runs the
+  # checks itself); "none" means the reviewer decides what to run unaided.
+  @spec check_command_label(String.t() | nil) :: String.t()
+  defp check_command_label(nil), do: "check=none"
+  defp check_command_label(command), do: "check=#{command}"
 
   @spec empty_row(String.t()) :: row()
   defp empty_row(text), do: %{label: text, value: "", provenance: :default, env_var: nil}

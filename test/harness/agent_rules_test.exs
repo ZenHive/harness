@@ -16,21 +16,21 @@ defmodule Harness.AgentRulesTest do
 
       assert rendered =~ "Harness operation"
       assert rendered =~ "Development methodology"
-      assert rendered =~ "verification stack is the grader"
+      assert rendered =~ "reviewer AI is the gate"
     end
 
-    test "excludes verification gate thresholds from the injected set" do
+    test "excludes check-expectation thresholds from the injected set" do
       rendered = AgentRules.render()
 
-      refute rendered =~ "Verification gates (harness-enforced"
+      refute rendered =~ "Check expectations (reviewer-graded"
       refute rendered =~ "Coverage thresholds"
       refute rendered =~ "mix credo --strict"
     end
 
-    test "can include verification gates when explicitly requested" do
+    test "can include check expectations when explicitly requested" do
       rendered = AgentRules.render(exclude: [])
 
-      assert rendered =~ "Verification gates (harness-enforced"
+      assert rendered =~ "Check expectations (reviewer-graded"
       assert rendered =~ "Coverage thresholds"
     end
 

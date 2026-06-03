@@ -27,12 +27,12 @@ defmodule Harness.RunFeedIntegrationTest do
         project,
         FakeAdapter,
         base_dir: base,
+        reviewer: FakeAdapter,
+        reviewer_adapter_opts: [command: {:review, "approve"}],
         total_timeout: 30_000,
         idle_timeout: 10_000,
         lifetime_timeout: 30_000,
-        verification_timeout: 10_000,
         terminal_linger: 100,
-        max_review_iterations: 0,
         subscriber: self()
       )
 

@@ -6,7 +6,6 @@ defmodule Harness.Project.Source.GithubIntegrationTest do
 
   use ExUnit.Case, async: false
 
-  alias Harness.CheckStack
   alias Harness.GitFixture
   alias Harness.Project
   alias Harness.Project.Source.Github
@@ -69,7 +68,6 @@ defmodule Harness.Project.Source.GithubIntegrationTest do
     %Project{
       name: name,
       source: {:github, @public_url},
-      check_stacks: [%CheckStack{name: :tiny, checks: []}],
       roadmap_path: "/tmp/#{name}"
     }
   end

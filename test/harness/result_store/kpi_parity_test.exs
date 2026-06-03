@@ -34,21 +34,21 @@ defmodule Harness.ResultStore.KPIParityTest do
     records = [
       record("parity-c1",
         agent: :claude,
-        verdict: :pass,
+        verdict: :approve,
         review_iterations: 0,
         duration_ms: 100,
         token_usage: tokens(100, 50)
       ),
       record("parity-c2",
         agent: :claude,
-        verdict: :fail,
+        verdict: :reject,
         review_iterations: 1,
         duration_ms: 300,
         token_usage: tokens(100, 50)
       ),
       record("parity-x1",
         agent: :codex,
-        verdict: :pass,
+        verdict: :approve,
         review_iterations: 0,
         duration_ms: 50,
         token_usage: tokens(1000, 500)
@@ -82,7 +82,7 @@ defmodule Harness.ResultStore.KPIParityTest do
 
     assert :ok =
              ResultStore.record_run(
-               record("parity-huge", agent_output: huge, verdict: :pass),
+               record("parity-huge", agent_output: huge, verdict: :approve),
                pg_store
              )
 
@@ -97,7 +97,7 @@ defmodule Harness.ResultStore.KPIParityTest do
     pg_store = {PostgresStore, repo: Repo}
 
     for id <- ["parity-old", "parity-mid", "parity-new"] do
-      assert :ok = ResultStore.record_run(record(id, verdict: :pass), pg_store)
+      assert :ok = ResultStore.record_run(record(id, verdict: :approve), pg_store)
       Process.sleep(5)
     end
 
@@ -133,11 +133,9 @@ defmodule Harness.ResultStore.KPIParityTest do
       task_id: "t",
       adapter: Claude,
       state: :done,
-      reason: :passed,
+      reason: :approved,
       duration_ms: 100,
       review_iterations: 0,
-      first_attempt_failed_check_count: 0,
-      failure_cause: %{reason: :passed, failed_checks: []},
       token_usage: TokenUsage.empty()
     }
 

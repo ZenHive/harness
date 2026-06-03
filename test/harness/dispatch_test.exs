@@ -16,9 +16,7 @@ defmodule Harness.DispatchTest do
   alias Harness.Run
   alias Harness.Run.LogRecord
   alias Harness.Run.Result
-  alias Harness.Verification.Check
-  alias Harness.Verification.Result, as: CheckResult
-  alias Harness.Verification.Verdict
+  alias Harness.Run.Review
 
   @reference_time ~U[2026-06-01 12:00:00Z]
 
@@ -77,100 +75,88 @@ defmodule Harness.DispatchTest do
     end
   end
 
-  describe "review_green per-dispatch override surface (Tasks 123/162)" do
-    # The force-on threading (start_run review_green: true routing a green verdict
-    # to the cross-family reviewer regardless of the project setting) is proven at
-    # the Run level in Harness.RunTest; here we assert the JSON-native surface
-    # exposes the override on both dispatch tools so an MCP/chat orchestrator can
-    # set it.
-    for tool <- [:task, :await] do
-      test "dispatch__#{tool} surfaces a review_green value param defaulting to false" do
-        entry = Enum.find(Dispatch.__api__(), &match?(%{name: unquote(tool)}, &1))
+  describe "start_opts/run_start_opts threading" do
+    test "start_opts threads the subscriber and the ANTHROPIC_API_KEY scrub" do
+      opts = Dispatch.start_opts(self(), true)
 
-        assert :review_green in entry.param_order
-
-        param = entry.hints.params.review_green
-        assert param.kind == :value
-        assert param.default == false
-        assert param.description =~ "cross-family reviewer pass"
-      end
-    end
-
-    test "review_green=true threads a force-on override into the start_run opts" do
-      opts = Dispatch.start_opts(self(), true, true)
-
-      assert Keyword.fetch!(opts, :review_green) == true
       assert Keyword.fetch!(opts, :subscriber) == self()
+      assert Keyword.fetch!(opts, :env) == %{"ANTHROPIC_API_KEY" => false}
     end
 
-    test "review_green=false leaves the project-level setting in control (no override)" do
-      opts = Dispatch.start_opts(nil, true, false)
+    test "start_opts without a subscriber or scrub carries a nil subscriber and an empty env" do
+      opts = Dispatch.start_opts(nil, false)
 
-      refute Keyword.has_key?(opts, :review_green)
+      assert Keyword.fetch!(opts, :subscriber) == nil
+      assert Keyword.fetch!(opts, :env) == %{}
     end
 
     test "run_start_opts threads the ingested item's model into start_run as requested_model" do
       item = %Item{id: "144", title: "t", prompt: "p", agent: :codex, model: "gpt-5.4"}
 
-      assert Keyword.fetch!(Dispatch.run_start_opts(item, self(), true, false), :requested_model) ==
+      assert Keyword.fetch!(Dispatch.run_start_opts(item, self(), true), :requested_model) ==
                "gpt-5.4"
     end
 
     test "run_start_opts omits requested_model when the item carries none" do
       item = %Item{id: "144", title: "t", prompt: "p", agent: :codex}
 
-      refute Keyword.has_key?(Dispatch.run_start_opts(item, nil, true, false), :requested_model)
+      refute Keyword.has_key?(Dispatch.run_start_opts(item, nil, true), :requested_model)
     end
   end
 
   describe "await_result/2 settle path" do
-    test "summarizes a green settled run delivered to the subscriber" do
-      run_id = "run-test-green"
+    test "summarizes an approved settled run delivered to the subscriber" do
+      run_id = "run-test-approved"
 
-      send(self(), {:harness_run, run_id, green_result(run_id)})
+      send(self(), {:harness_run, run_id, approved_result(run_id)})
 
       assert {:ok, summary} = Dispatch.await_result(run_id, 1_000)
 
       assert summary.run_id == run_id
       assert summary.task_id == "25"
       assert summary.state == :done
-      assert summary.reason == :passed
+      assert summary.reason == :approved
       assert summary.passed
-      assert summary.verdict.status == :pass
-      assert summary.verdict.failed_checks == []
-      assert [%{name: "tests", status: :pass}] = summary.verdict.checks
-      # The compact summary must not carry the raw check output.
-      refute Map.has_key?(hd(summary.verdict.checks), :output)
+      assert summary.agent_diff_size == 12
+      assert summary.reviewer_diff_size == 0
+      assert summary.worktree_path == "/tmp/wt/#{run_id}"
+      assert summary.review.verdict == :approve
+      assert summary.review.report == "looks good"
+      assert summary.review.ratings == %{"code_quality" => 8}
     end
 
-    test "summarizes a red settled run with failed-check names" do
-      run_id = "run-test-red"
+    test "summarizes a rejected settled run with the reviewer's report" do
+      run_id = "run-test-rejected"
 
-      send(self(), {:harness_run, run_id, red_result(run_id)})
+      send(self(), {:harness_run, run_id, rejected_result(run_id)})
 
       assert {:ok, summary} = Dispatch.await_result(run_id, 1_000)
 
       assert summary.state == :failed
-      assert summary.reason == :verification_red
+      assert summary.reason == {:review_rejected, "nothing salvageable"}
       refute summary.passed
-      assert summary.verdict.status == :fail
-      assert summary.verdict.failed_checks == ["credo"]
+      assert summary.review.verdict == :reject
+      assert summary.review.report == "nothing salvageable"
     end
 
-    test "summarizes a settled run that carries no verdict" do
-      run_id = "run-no-verdict"
+    test "summarizes a settled run that carries no review" do
+      run_id = "run-no-review"
 
-      send(self(), {:harness_run, run_id, %Result{run_id: run_id, task_id: "9", state: :done, reason: :passed}})
+      send(
+        self(),
+        {:harness_run, run_id, %Result{run_id: run_id, task_id: "9", state: :done, reason: :approved}}
+      )
 
       assert {:ok, summary} = Dispatch.await_result(run_id, 1_000)
 
-      # A nil verdict (verification never produced one) projects to nil, not a crash.
-      assert summary.verdict == nil
+      # A nil review (run settled before the reviewer produced one) projects to
+      # nil, not a crash.
+      assert summary.review == nil
       assert summary.state == :done
     end
 
     test "ignores a result for a different run_id and times out" do
-      send(self(), {:harness_run, "some-other-run", green_result("some-other-run")})
+      send(self(), {:harness_run, "some-other-run", approved_result("some-other-run")})
 
       assert {:ok, %{state: :timed_out, run_id: "run-awaited"}} =
                Dispatch.await_result("run-awaited", 30)
@@ -220,15 +206,14 @@ defmodule Harness.DispatchTest do
       opts = [
         base_dir: base,
         adapter_opts: [command: :write],
-        checks: [%Check{name: "ok", command: "true", args: []}],
+        reviewer: FakeAdapter,
+        reviewer_adapter_opts: [command: {:review, "approve"}],
         total_timeout: 30_000,
         idle_timeout: 10_000,
         lifetime_timeout: 30_000,
-        verification_timeout: 10_000,
         # Generous linger so the settled run stays registered long enough to
         # observe through the Dispatch summarizers across several calls.
-        terminal_linger: 5_000,
-        max_review_iterations: 0
+        terminal_linger: 5_000
       ]
 
       item = %Item{id: "8", title: "t", prompt: "do the thing", agent: :claude}
@@ -236,7 +221,7 @@ defmodule Harness.DispatchTest do
       {:ok, run_id, _pid} =
         Run.Supervisor.start_run(item, ProjectFixture.from_repo(repo), FakeAdapter, opts)
 
-      assert_receive {:harness_run, ^run_id, %Result{state: :done}}, 5_000
+      assert_receive {:harness_run, ^run_id, %Result{state: :done}}, 10_000
       {:ok, run_id: run_id}
     end
 
@@ -248,8 +233,7 @@ defmodule Harness.DispatchTest do
       assert summary.state == :done
       # The summarizer flattens the struct to a plain map of scalars.
       refute is_struct(summary)
-      assert Map.has_key?(summary, :verdict_status)
-      assert Map.has_key?(summary, :review_iterations)
+      assert summary.review_verdict == :approve
       assert Map.has_key?(summary, :worktree_path)
     end
 
@@ -325,14 +309,13 @@ defmodule Harness.DispatchTest do
             adapter: Claude,
             run_id: "run-a",
             state: :done,
-            reason: :passed,
-            verdict: :pass,
-            review_iterations: 0,
+            reason: :approved,
+            verdict: :approve,
+            reviewer_diff_size: 0,
             duration_ms: 1234,
-            first_attempt_failed_check_count: 0,
             agent_diff_size: 12,
             token_usage: %Harness.TokenUsage{input: 5, output: 1, total: 6},
-            result: %Result{run_id: "run-a", task_id: "42", state: :done, reason: :passed}
+            result: %Result{run_id: "run-a", task_id: "42", state: :done, reason: :approved}
           },
           %AgentEvaluation.Entry{
             adapter: Codex,
@@ -340,9 +323,8 @@ defmodule Harness.DispatchTest do
             state: :failed,
             reason: {:run_crashed, :boom},
             verdict: nil,
-            review_iterations: 1,
+            reviewer_diff_size: nil,
             duration_ms: nil,
-            first_attempt_failed_check_count: 2,
             agent_diff_size: nil,
             token_usage: %Harness.TokenUsage{},
             result: %Result{run_id: "run-b", task_id: "42", state: :failed, reason: {:run_crashed, :boom}}
@@ -356,8 +338,9 @@ defmodule Harness.DispatchTest do
       # Module → readable string; token usage struct → plain map; scalar reason kept.
       assert a.adapter == "Harness.AgentAdapter.Claude"
       assert a.state == :done
-      assert a.reason == :passed
-      assert a.verdict == :pass
+      assert a.reason == :approved
+      assert a.verdict == :approve
+      assert a.reviewer_diff_size == 0
       assert a.duration_ms == 1234
       # Flattened to a plain map (extra TokenUsage fields like cache_* ride along).
       assert %{input: 5, output: 1, total: 6} = a.token_usage
@@ -370,23 +353,22 @@ defmodule Harness.DispatchTest do
     end
   end
 
-  describe "verdict_detail/1 settled-run failure output" do
+  describe "verdict_detail/1 settled-run reviewer output" do
     # summarize_verdict_detail/1 is the projection seam (mirrors
     # summarize_comparison/1) — covered with a real LogRecord built by
-    # from_result/2 so the failed-check capture is exercised end to end. Unlike
-    # the await summary (which drops check output), verdict_detail SURFACES it.
-    test "surfaces the failing checks' captured output (the await summary drops it)" do
-      record = LogRecord.from_result(red_result("run-vd-1"), batch_id: "b", adapter: Claude, duration_ms: 1)
+    # from_result/2 so the reviewer-artifact capture is exercised end to end.
+    # Unlike the await summary, this surfaces the persisted record.
+    test "surfaces the reviewer's verdict, report, and ratings" do
+      record =
+        LogRecord.from_result(rejected_result("run-vd-1"), batch_id: "b", adapter: Claude, duration_ms: 1)
 
       detail = Dispatch.summarize_verdict_detail(record)
 
       assert detail.run_id == "run-vd-1"
-      assert detail.verdict == :fail
-      assert detail.failed_checks == ["credo"]
-      assert %{"credo" => %{output: output, truncated: false}} = detail.checks
-      assert output =~ "captured output"
-      # A passing check carries no entry — only failures are kept.
-      refute Map.has_key?(detail.checks, "tests")
+      assert detail.task_id == "25"
+      assert detail.verdict == :reject
+      assert detail.report == "nothing salvageable"
+      assert detail.ratings == %{"code_quality" => 2}
     end
 
     test "returns :not_found for an unknown/unrecorded run_id" do
@@ -395,14 +377,16 @@ defmodule Harness.DispatchTest do
 
     test "loads a persisted record from the result store and projects it" do
       run_id = "run-vd-store-#{System.unique_integer([:positive])}"
-      record = LogRecord.from_result(red_result(run_id), batch_id: "b", adapter: Claude, duration_ms: 1)
+
+      record =
+        LogRecord.from_result(rejected_result(run_id), batch_id: "b", adapter: Claude, duration_ms: 1)
+
       :ok = ResultStore.record_run(record)
 
       assert {:ok, detail} = Dispatch.verdict_detail(run_id)
       assert detail.run_id == run_id
-      assert detail.verdict == :fail
-      assert detail.failed_checks == ["credo"]
-      assert %{"credo" => %{output: _, truncated: false}} = detail.checks
+      assert detail.verdict == :reject
+      assert detail.report == "nothing salvageable"
     end
   end
 
@@ -604,42 +588,29 @@ defmodule Harness.DispatchTest do
     end
   end
 
-  defp green_result(run_id) do
+  defp approved_result(run_id) do
     %Result{
       run_id: run_id,
       task_id: "25",
       state: :done,
-      reason: :passed,
-      verdict: %Verdict{status: :pass, results: [check_result("tests", :pass)]},
+      reason: :approved,
+      review: %Review{verdict: :approve, report: "looks good", ratings: %{"code_quality" => 8}},
       worktree_path: "/tmp/wt/#{run_id}",
-      review_iterations: 0,
-      first_attempt_failed_check_count: 0,
-      agent_diff_size: 12
+      agent_diff_size: 12,
+      reviewer_diff_size: 0
     }
   end
 
-  defp red_result(run_id) do
+  defp rejected_result(run_id) do
     %Result{
       run_id: run_id,
       task_id: "25",
       state: :failed,
-      reason: :verification_red,
-      verdict: %Verdict{status: :fail, results: [check_result("tests", :pass), check_result("credo", :fail)]},
+      reason: {:review_rejected, "nothing salvageable"},
+      review: %Review{verdict: :reject, report: "nothing salvageable", ratings: %{"code_quality" => 2}},
       worktree_path: "/tmp/wt/#{run_id}",
-      review_iterations: 1,
-      first_attempt_failed_check_count: 1,
-      agent_diff_size: 5
-    }
-  end
-
-  defp check_result(name, status) do
-    %CheckResult{
-      name: name,
-      command: "mix #{name}",
-      status: status,
-      kind: :exited,
-      exit_status: if(status == :pass, do: 0, else: 1),
-      output: "captured output that must not leak into the summary"
+      agent_diff_size: 5,
+      reviewer_diff_size: 30
     }
   end
 
@@ -652,8 +623,7 @@ defmodule Harness.DispatchTest do
       run_count: 1,
       success_rate: composite_score / 1_000,
       cost_to_green: 100.0,
-      mean_review_iterations: 0.0,
-      mean_first_attempt_failed_check_count: 0.0,
+      mean_reviewer_diff_size: 0.0,
       composite_score: composite_score,
       raw_metrics: []
     }

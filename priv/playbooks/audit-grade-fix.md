@@ -24,14 +24,14 @@
 
 4. **Report.** APPROVE ⇒ relay the grader's confirming notes. REJECT ⇒ surface the grader's
    specific objections so the implementer (or the operator) can address them. The grade is the
-   grader's text verdict, deliberately bypassing the green/red verification stack — this is a
-   review, not a check run.
+   grader's text verdict, deliberately bypassing the run lifecycle (worktree + reviewer gate) —
+   this is a one-shot review, not a run.
 
 ## Gotchas
 
-- `grade_fix` uses the cheap direct driver path (no worktree lifecycle, no verification stack) on
-  purpose: routing a review through the verification stack would need a fake passthrough check and
-  pollute the result store with non-task runs.
+- `grade_fix` uses the cheap direct driver path (no worktree lifecycle, no run gate) on purpose:
+  routing a one-shot review through the full run lifecycle would pollute the result store with
+  non-task runs.
 - The verdict is a *review opinion*, not a build result. Treat a cross-agent REJECT as a signal to
   investigate (per the "verify external reviews" rule), not as an automatic block.
 - `audit_review__default_grader` tells you which grader will be auto-paired for a given implementer

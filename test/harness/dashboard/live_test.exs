@@ -27,8 +27,7 @@ defmodule Harness.Dashboard.LiveTest do
       task_id: Keyword.get(opts, :task_id, "1"),
       project_name: Keyword.get(opts, :project_name),
       state: Keyword.get(opts, :state, :running),
-      review_iterations: Keyword.get(opts, :review_iterations, 0),
-      verdict_status: Keyword.get(opts, :verdict_status, nil)
+      review_verdict: Keyword.get(opts, :review_verdict, nil)
     }
 
     %{
@@ -83,9 +82,9 @@ defmodule Harness.Dashboard.LiveTest do
   end
 
   describe "verdict_label/1" do
-    test "maps the three verdict values onto human strings" do
-      assert Live.verdict_label(:pass) == "pass"
-      assert Live.verdict_label(:fail) == "fail"
+    test "maps the three reviewer-verdict values onto human strings" do
+      assert Live.verdict_label(:approve) == "approved"
+      assert Live.verdict_label(:reject) == "rejected"
       assert Live.verdict_label(nil) == "—"
     end
   end
@@ -120,7 +119,7 @@ defmodule Harness.Dashboard.LiveTest do
 
   describe "killable?/1 (kill-button visibility guard)" do
     test "in-flight states are killable" do
-      for state <- [:dispatched, :running, :committing, :verifying] do
+      for state <- [:dispatched, :running, :committing, :reviewing] do
         assert Live.killable?(%Status{run_id: "r", task_id: "1", state: state}),
                "expected #{state} to be killable"
       end
@@ -223,8 +222,8 @@ defmodule Harness.Dashboard.LiveTest do
         ResultStore.record_run(
           log_record("drill-claude",
             state: :failed,
-            reason: :verification_red,
-            verdict: :fail,
+            reason: {:review_rejected, "fake review: reject"},
+            verdict: :reject,
             agent: :claude,
             agent_output: output
           )
@@ -232,7 +231,7 @@ defmodule Harness.Dashboard.LiveTest do
 
       {:noreply, socket} = Live.handle_params(%{"run_id" => "drill-claude"}, "/harness/runs/drill-claude", show_socket())
 
-      assert %Status{state: :failed, verdict_status: :fail} = socket.assigns.run_status
+      assert %Status{state: :failed, review_verdict: :reject} = socket.assigns.run_status
       assert socket.assigns.transcript == output
       assert socket.assigns.agent_kind == :claude
       refute socket.assigns.transcript_events == []
@@ -291,7 +290,7 @@ defmodule Harness.Dashboard.LiveTest do
 
   describe "run-lifecycle feed (show view)" do
     test "an update for the focused run refreshes its status" do
-      next = %Status{run_id: "focus-1", task_id: "1", state: :verifying}
+      next = %Status{run_id: "focus-1", task_id: "1", state: :reviewing}
       socket = show_lifecycle_socket("focus-1", %Status{run_id: "focus-1", task_id: "1", state: :running})
 
       {:noreply, socket} = Live.handle_info({:harness_run_update, next}, socket)
@@ -401,8 +400,6 @@ defmodule Harness.Dashboard.LiveTest do
   end
 
   defp log_record(run_id, opts) do
-    reason = Keyword.get(opts, :reason, :passed)
-
     %LogRecord{
       batch_id: "batch-#{run_id}",
       run_id: run_id,
@@ -411,12 +408,10 @@ defmodule Harness.Dashboard.LiveTest do
       agent: Keyword.get(opts, :agent),
       adapter: Keyword.get(opts, :adapter, FakeAdapter),
       state: Keyword.get(opts, :state, :done),
-      reason: reason,
-      verdict: Keyword.get(opts, :verdict, :pass),
+      reason: Keyword.get(opts, :reason, :approved),
+      verdict: Keyword.get(opts, :verdict, :approve),
       duration_ms: 1_000,
       review_iterations: 0,
-      first_attempt_failed_check_count: 0,
-      failure_cause: %{reason: reason, failed_checks: []},
       agent_outcome_kind: Keyword.get(opts, :agent_outcome_kind),
       agent_output: Keyword.get(opts, :agent_output, "")
     }

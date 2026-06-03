@@ -30,12 +30,10 @@ defmodule Harness.ResultStore.FileTest do
         run_id: "run-abc",
         task_id: "task-73",
         adapter: Claude,
-        state: :passed,
-        reason: nil,
+        state: :done,
+        reason: :approved,
         duration_ms: 1234,
-        review_iterations: 0,
-        first_attempt_failed_check_count: 0,
-        failure_cause: %{reason: nil, failed_checks: []}
+        review_iterations: 0
       },
       overrides
     )
@@ -183,12 +181,10 @@ defmodule Harness.ResultStore.FileTest do
         run_id: "r-atomic",
         task_id: "t",
         adapter: Claude,
-        state: :passed,
-        reason: nil,
+        state: :done,
+        reason: :approved,
         duration_ms: 1,
-        review_iterations: 0,
-        first_attempt_failed_check_count: 0,
-        failure_cause: %{reason: nil, failed_checks: []}
+        review_iterations: 0
       }
 
       assert :ok = Store.record_run(record, root: root)
@@ -244,12 +240,10 @@ defmodule Harness.ResultStore.FileTest do
                    run_id: "r-cfg",
                    task_id: "t",
                    adapter: Claude,
-                   state: :passed,
-                   reason: nil,
+                   state: :done,
+                   reason: :approved,
                    duration_ms: 1,
-                   review_iterations: 0,
-                   first_attempt_failed_check_count: 0,
-                   failure_cause: %{reason: nil, failed_checks: []}
+                   review_iterations: 0
                  },
                  root: root
                )
@@ -265,12 +259,10 @@ defmodule Harness.ResultStore.FileTest do
         run_id: weird_id,
         task_id: "t",
         adapter: Claude,
-        state: :passed,
-        reason: nil,
+        state: :done,
+        reason: :approved,
         duration_ms: 1,
-        review_iterations: 0,
-        first_attempt_failed_check_count: 0,
-        failure_cause: %{reason: nil, failed_checks: []}
+        review_iterations: 0
       }
 
       assert :ok = Store.record_run(record, root: root)
@@ -320,9 +312,9 @@ defmodule Harness.ResultStore.FileTest do
       alias Harness.AgentKPI
 
       for {id, agent, verdict} <- [
-            {"agg-1", :claude, :pass},
-            {"agg-2", :claude, :fail},
-            {"agg-3", :codex, :pass}
+            {"agg-1", :claude, :approve},
+            {"agg-2", :claude, :reject},
+            {"agg-3", :codex, :approve}
           ] do
         assert :ok =
                  Store.record_run(
@@ -347,12 +339,10 @@ defmodule Harness.ResultStore.FileTest do
         run_id: "r-dis",
         task_id: "t",
         adapter: Claude,
-        state: :passed,
-        reason: nil,
+        state: :done,
+        reason: :approved,
         duration_ms: 1,
-        review_iterations: 0,
-        first_attempt_failed_check_count: 0,
-        failure_cause: %{reason: nil, failed_checks: []}
+        review_iterations: 0
       }
 
       assert :ok = ResultStore.record_run(record, false)

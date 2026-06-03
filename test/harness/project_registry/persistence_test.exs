@@ -67,20 +67,11 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
       project = %Project{
         name: name,
         source: {:github, "https://github.com/example/demo.git"},
-        check_stacks: [
-          %Harness.CheckStack{
-            name: :elixir_precommit,
-            workdir: "elixir",
-            checks: [%Harness.Verification.Check{name: "ok", command: "true", args: []}]
-          }
-        ],
+        check_command: "mix precommit",
         roadmap_path: "/tmp/#{name}/roadmap/tasks.toml",
         concurrency_cap: 4,
         landing_policy: :auto,
-        target_branch: "development",
-        # false (non-default) so the roundtrip proves the persisted value wins
-        # over the struct default (true).
-        review_green: false
+        target_branch: "development"
       }
 
       assert :ok = ProjectRegistry.register(project)
@@ -89,10 +80,10 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
 
       assert {:ok, restored} = ProjectRegistry.lookup(name)
       assert restored.source == project.source
-      assert restored.check_stacks == project.check_stacks
+      assert restored.check_command == "mix precommit"
       assert restored.concurrency_cap == 4
       assert restored.landing_policy == :auto
-      assert restored.review_green == false
+      assert restored.target_branch == "development"
     end
   end
 
@@ -116,7 +107,7 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
       config_entry = [
         name: name,
         source: {:local, "/tmp/config-#{name}"},
-        preset: :elixir,
+        check_command: "mix precommit",
         roadmap_path: "/tmp/config-#{name}/roadmap/tasks.toml"
       ]
 

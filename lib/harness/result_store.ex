@@ -13,8 +13,9 @@ defmodule Harness.ResultStore do
   log any `{:error, _}` via `Logger.warning/1`, and continue. Neither a
   failed `record_run` nor a failed `save_batch` crashes the run or flips
   `Harness.Batch.run/4`'s `{:ok, result}` to `{:error, _}`. Treat a missing
-  record as a degraded observability surface, not a missing verification
-  verdict — verdicts come from `Harness.Verification`, not the store.
+  record as a degraded observability surface, not a missing verdict —
+  verdicts come from the reviewer AI's `.harness/review.json` artifact
+  (`Harness.Run.Review`), not the store.
 
   Set `config :harness, :result_store, false` (or `nil`) to disable
   persistence entirely; both values short-circuit `record_run`, `save_batch`,

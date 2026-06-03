@@ -120,7 +120,7 @@ defmodule Harness.ObanDispatchTest do
     end)
 
     assert :ok = ProjectRegistry.register(project)
-    assert {:ok, %{run_id: run_id}} = Dispatch.task("interactive", "2", "codex", true, true)
+    assert {:ok, %{run_id: run_id}} = Dispatch.task("interactive", "2", "codex", true)
 
     assert_received {:inserted,
                      %Oban.Job{
@@ -129,8 +129,7 @@ defmodule Harness.ObanDispatchTest do
                          item_id: "2",
                          adapter_module: "Elixir.Harness.AgentAdapter.Codex",
                          run_id: ^run_id,
-                         env: %{"ANTHROPIC_API_KEY" => false},
-                         review_green: true
+                         env: %{"ANTHROPIC_API_KEY" => false}
                        },
                        meta: %{harness_stage: "dispatch"},
                        queue: "project_interactive",
@@ -190,13 +189,13 @@ defmodule Harness.ObanDispatchTest do
                run_id: "run-ok",
                task_id: "1",
                state: :done,
-               reason: :passed
+               reason: :approved
              })
 
     # Crash-only contract (Task 163): every settled failure — including spawn
     # failures that look like rate limits — maps to :cancel, never :snooze. A
     # settled verdict is never re-run by the queue; what a failure MEANS is the
-    # reviewer pair's judgment inside the run, not the queue's.
+    # reviewer's judgment inside the run, not the queue's.
     assert {:cancel, {:agent_spawn_failed, "429 rate limit"}} =
              Worker.to_oban_result(%Result{
                run_id: "run-quota",
@@ -205,12 +204,12 @@ defmodule Harness.ObanDispatchTest do
                reason: {:agent_spawn_failed, "429 rate limit"}
              })
 
-    assert {:cancel, :verification_red} =
+    assert {:cancel, {:review_rejected, "not salvageable"}} =
              Worker.to_oban_result(%Result{
-               run_id: "run-red",
+               run_id: "run-rejected",
                task_id: "3",
                state: :failed,
-               reason: :verification_red
+               reason: {:review_rejected, "not salvageable"}
              })
   end
 
@@ -233,7 +232,7 @@ defmodule Harness.ObanDispatchTest do
         spawn(fn ->
           send(
             subscriber,
-            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :passed}}
+            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :approved}}
           )
 
           Process.sleep(100)
@@ -275,7 +274,7 @@ defmodule Harness.ObanDispatchTest do
         spawn(fn ->
           send(
             subscriber,
-            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :passed}}
+            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :approved}}
           )
 
           Process.sleep(100)
@@ -318,7 +317,7 @@ defmodule Harness.ObanDispatchTest do
         spawn(fn ->
           send(
             subscriber,
-            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :passed}}
+            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :approved}}
           )
 
           Process.sleep(100)
@@ -352,14 +351,14 @@ defmodule Harness.ObanDispatchTest do
 
     Application.put_env(:harness, :run_starter, fn %Item{} = item, _run_project, _adapter, opts ->
       run_id = Keyword.fetch!(opts, :run_id)
-      send(parent, {:start_run_opts, run_id, Keyword.get(opts, :review_green)})
+      send(parent, {:start_run_opts, run_id})
       subscriber = Keyword.fetch!(opts, :subscriber)
 
       pid =
         spawn(fn ->
           send(
             subscriber,
-            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :passed}}
+            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :approved}}
           )
 
           Process.sleep(50)
@@ -376,12 +375,11 @@ defmodule Harness.ObanDispatchTest do
                  "project_name" => "run-id-project",
                  "item_id" => "156",
                  "adapter_module" => "Elixir.Harness.AgentAdapter.Codex",
-                 "run_id" => "run-interactive-156",
-                 "review_green" => true
+                 "run_id" => "run-interactive-156"
                }
              })
 
-    assert_received {:start_run_opts, "run-interactive-156", true}
+    assert_received {:start_run_opts, "run-interactive-156"}
   end
 
   test "worker omits requested_model when the ingested item carries none" do
@@ -402,7 +400,7 @@ defmodule Harness.ObanDispatchTest do
         spawn(fn ->
           send(
             subscriber,
-            {:harness_run, run_id, %Result{run_id: run_id, task_id: "48", state: :done, reason: :passed}}
+            {:harness_run, run_id, %Result{run_id: run_id, task_id: "48", state: :done, reason: :approved}}
           )
 
           Process.sleep(100)
@@ -443,7 +441,7 @@ defmodule Harness.ObanDispatchTest do
         spawn(fn ->
           send(
             subscriber,
-            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :passed}}
+            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :approved}}
           )
 
           Process.sleep(100)
@@ -495,10 +493,16 @@ defmodule Harness.ObanDispatchTest do
         "adapter_module" => "Elixir.Harness.AgentAdapter.Claude"
       })
 
-    terminal_result = %Result{run_id: "run-red", task_id: "49", state: :failed, reason: :verification_red}
+    terminal_result = %Result{
+      run_id: "run-rejected",
+      task_id: "49",
+      state: :failed,
+      reason: {:review_rejected, "not salvageable"}
+    }
+
     Application.put_env(:harness, :test_worker_result, terminal_result)
 
-    assert {:cancel, :verification_red} =
+    assert {:cancel, {:review_rejected, "not salvageable"}} =
              Worker.perform(terminal_job)
 
     # Crash-only contract (Task 163): a spawn failure that looks like a rate
@@ -601,7 +605,7 @@ defmodule Harness.ObanDispatchTest do
         spawn(fn ->
           send(
             subscriber,
-            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :passed}}
+            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :approved}}
           )
 
           Process.sleep(100)
@@ -730,7 +734,7 @@ defmodule Harness.ObanDispatchTest do
           spawn(fn ->
             send(
               subscriber,
-              {:harness_run, run_id, %Result{run_id: run_id, task_id: it.id, state: :done, reason: :passed}}
+              {:harness_run, run_id, %Result{run_id: run_id, task_id: it.id, state: :done, reason: :approved}}
             )
 
             Process.sleep(50)
@@ -780,7 +784,7 @@ defmodule Harness.ObanDispatchTest do
           spawn(fn ->
             send(
               subscriber,
-              {:harness_run, run_id, %Result{run_id: run_id, task_id: it.id, state: :done, reason: :passed}}
+              {:harness_run, run_id, %Result{run_id: run_id, task_id: it.id, state: :done, reason: :approved}}
             )
 
             Process.sleep(50)
@@ -821,7 +825,7 @@ defmodule Harness.ObanDispatchTest do
         :ok
       end)
 
-      # A red verdict is a settled failure -> revert + {:cancel, _} from perform
+      # A reviewer rejection is a settled failure -> revert + {:cancel, _} from perform
       Application.put_env(:harness, :run_starter, fn %Item{} = it, _p, _a, opts ->
         run_id = "run-131-term"
         subscriber = Keyword.fetch!(opts, :subscriber)
@@ -830,7 +834,8 @@ defmodule Harness.ObanDispatchTest do
           spawn(fn ->
             send(
               subscriber,
-              {:harness_run, run_id, %Result{run_id: run_id, task_id: it.id, state: :failed, reason: :verification_red}}
+              {:harness_run, run_id,
+               %Result{run_id: run_id, task_id: it.id, state: :failed, reason: {:review_rejected, "rejected"}}}
             )
 
             Process.sleep(50)
@@ -839,7 +844,7 @@ defmodule Harness.ObanDispatchTest do
         {:ok, run_id, pid}
       end)
 
-      assert {:cancel, :verification_red} =
+      assert {:cancel, {:review_rejected, "rejected"}} =
                Worker.perform(%Oban.Job{
                  id: 133,
                  attempt: 1,

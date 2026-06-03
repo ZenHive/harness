@@ -1,6 +1,6 @@
 # harness Roadmap
 
-**Vision:** An OTP-native task-execution engine an AI orchestrator drives end to end — it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent (Claude, Cursor, Codex, Grok) in an isolated worktree, runs the target project's own check stack against the result, and reports verified outcomes back over an agent-shaped surface (MCP tools / JSON CLI).
+**Vision:** An OTP-native task-execution engine an AI orchestrator drives end to end — it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent (Claude, Codex, Cursor, Grok, Antigravity, Pi) in an isolated worktree, gates the result with a cross-family reviewer AI (which runs the target project's own checks itself and fixes inline), merges approved work, audits landed commits post-merge with a third agent, and reports the reviewer's verdicts back over an agent-shaped surface (Elixir API / LiveView dashboard / MCP tools). The agent-gate workflow — `worktree → implementer AI → reviewer AI → MERGE → audit AI` — is the architecture; judgment lives in agents, harness code is mechanical substrate only ([docs/agent-gate-workflow.md](docs/agent-gate-workflow.md)).
 
 **Task tracking:** This file is rendered by `rmap` from `roadmap/tasks.toml`. Don't hand-edit the task tables inside `<!-- TASKS:BEGIN -->` / `<!-- TASKS:END -->` marker pairs — they're regenerated on every `rmap render`. Edit `roadmap/tasks.toml` or use `rmap status` / `rmap mark` / `rmap new`, then `rmap render`. Prose outside the marker pairs is byte-preserved.
 
@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 10 — Dashboard Operator UX (11 of 14 done · 0 in progress)
+**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (2 of 4 done · 0 in progress)
 
-**Last shipped:** Task 126 — Run change-set view on the run-detail page (live edited-files + settled git diff) on 2026-05-31
+**Last shipped:** Task 175 — Agent-gate workflow rebuild: reviewer AI is THE gate, no mechanical verification anywhere, Task 176 — Post-merge audit agent: per-land enqueue, third-family auditor, audit(...) commits ff-pushed on 2026-06-03
 
-**Up next:** Task 166 — ConfigInspector reads defaults from owning modules; drop sections deleted by the reviewer-pair pass [D:2/B:4/U:3 → Eff:1.75] 🚀
+**Up next:** Task 177 — Reviewer KPI ratings feed AgentKPI/CapabilityScore rollups + reviewer rejection-rate tracking [D:3/B:6/U:5 → Eff:1.83] 🚀
 <!-- FOCUS:END -->
 
 ---

@@ -1,10 +1,11 @@
 defmodule Harness.CapabilityScore do
   @moduledoc """
-  Per-(agent, domain) capability score computed from benchmark comparisons.
+  Per-(agent, domain) capability score computed from reviewer-gated run comparisons.
 
   The score is a persisted routing signal, not a verdict. Inputs are the raw
-  metrics already surfaced by `Harness.Batch.AgentEvaluation`: verdict,
-  repair attempts, duration, token usage, and first-attempt failed checks.
+  metrics already surfaced by `Harness.Batch.AgentEvaluation`: the reviewer
+  AI's approve/reject verdict, the reviewer's own fix-diff size, duration, and
+  token usage.
 
   ## Composite
 
@@ -13,26 +14,32 @@ defmodule Harness.CapabilityScore do
       success_rate * 1000 + bounded_tiebreaker
 
   The bounded tiebreaker is less than one point and combines token
-  `cost_to_green`, mean repair attempts, and mean first-attempt failed checks.
-  That keeps success rate as the primary ordering signal while still letting
-  cheaper, cleaner runs sort above more expensive ones inside the same success
-  cohort. Raw per-run metrics are retained on the score so this formula can be
-  retuned without re-running the benchmark corpus.
+  `cost_to_green` and the mean reviewer fix-diff size (how much fixing the
+  reviewer had to do). That keeps approval rate as the primary ordering signal
+  while still letting cheaper, cleaner runs sort above more expensive ones
+  inside the same success cohort. Raw per-run metrics are retained on the score
+  so this formula can be retuned without re-running the comparisons.
+
+  ## Scored-set fingerprint (`corpus_version`)
+
+  `corpus_version` survives as the persisted-score key naming *which set of
+  tasks* produced the score — now a fingerprint of the compared task ids, not a
+  benchmark-corpus version (the mechanical benchmark corpus is deleted; real
+  reviewer-gated runs are the measurement substrate).
   """
 
   alias Harness.AgentRegistry
   alias Harness.Batch.AgentEvaluation.Comparison
   alias Harness.Batch.AgentEvaluation.Entry
-  alias Harness.Benchmark.Item
   alias Harness.CapabilityDomain
   alias Harness.ResultStore
+  alias Harness.Run.Review
   alias Harness.TokenUsage
 
   @success_scale 1_000
   @cost_scale_tokens 100_000
   @cost_tiebreaker_weight 0.7
-  @repair_tiebreaker_weight 0.2
-  @first_failure_tiebreaker_weight 0.099
+  @reviewer_fix_tiebreaker_weight 0.299
   @freshness_window_days 30
   @seconds_per_day 86_400
   @stale_discount 0.5
@@ -48,49 +55,43 @@ defmodule Harness.CapabilityScore do
     @type t :: %__MODULE__{
             batch_id: String.t(),
             task_id: String.t(),
-            task_version: pos_integer(),
             run_id: String.t(),
             adapter: module(),
             agent: atom() | module(),
-            verdict: :pass | :fail | nil,
-            review_iterations: non_neg_integer(),
+            verdict: Review.verdict() | nil,
+            reviewer_diff_size: non_neg_integer() | nil,
             duration_ms: non_neg_integer() | nil,
             token_usage: TokenUsage.t(),
-            cost_tokens: non_neg_integer(),
-            first_attempt_failed_check_count: non_neg_integer()
+            cost_tokens: non_neg_integer()
           }
 
     @enforce_keys [
       :batch_id,
       :task_id,
-      :task_version,
       :run_id,
       :adapter,
       :agent,
       :verdict,
-      :review_iterations,
+      :reviewer_diff_size,
       :duration_ms,
       :token_usage,
-      :cost_tokens,
-      :first_attempt_failed_check_count
+      :cost_tokens
     ]
     defstruct [
       :batch_id,
       :task_id,
-      :task_version,
       :run_id,
       :adapter,
       :agent,
       :verdict,
-      :review_iterations,
+      :reviewer_diff_size,
       :duration_ms,
       :token_usage,
-      :cost_tokens,
-      :first_attempt_failed_check_count
+      :cost_tokens
     ]
   end
 
-  @typedoc "Persisted capability measurement for one agent/domain/corpus cell."
+  @typedoc "Persisted capability measurement for one agent/domain/scored-set cell."
   @type t :: %__MODULE__{
           agent: atom() | module(),
           domain: CapabilityDomain.t(),
@@ -99,8 +100,7 @@ defmodule Harness.CapabilityScore do
           run_count: pos_integer(),
           success_rate: float(),
           cost_to_green: float() | nil,
-          mean_review_iterations: float(),
-          mean_first_attempt_failed_check_count: float(),
+          mean_reviewer_diff_size: float(),
           composite_score: float(),
           raw_metrics: [RawMetric.t()]
         }
@@ -113,8 +113,7 @@ defmodule Harness.CapabilityScore do
     :run_count,
     :success_rate,
     :cost_to_green,
-    :mean_review_iterations,
-    :mean_first_attempt_failed_check_count,
+    :mean_reviewer_diff_size,
     :composite_score,
     :raw_metrics
   ]
@@ -126,8 +125,7 @@ defmodule Harness.CapabilityScore do
     :run_count,
     :success_rate,
     :cost_to_green,
-    :mean_review_iterations,
-    :mean_first_attempt_failed_check_count,
+    :mean_reviewer_diff_size,
     :composite_score,
     :raw_metrics
   ]
@@ -135,18 +133,19 @@ defmodule Harness.CapabilityScore do
   @doc """
   Computes and persists scores for one capability domain.
 
-  Returns one score per measured agent. An empty comparison set returns
-  `{:ok, []}`; callers represent a specific unmeasured cell via
-  `ResultStore.get_capability_score/4`, which returns `:no_data`.
+  The caller scopes `comparisons` to the domain (e.g. via the compared tasks'
+  domain tags); every entry in every comparison is measured. Returns one score
+  per measured agent. An empty comparison set returns `{:ok, []}`; callers
+  represent a specific unmeasured cell via `ResultStore.get_capability_score/4`,
+  which returns `:no_data`.
   """
-  @spec score_domain([Comparison.t()], [Item.t()], CapabilityDomain.t(), keyword()) ::
+  @spec score_domain([Comparison.t()], CapabilityDomain.t(), keyword()) ::
           {:ok, [t()]} | {:error, term()}
-  def score_domain(comparisons, corpus_items, domain, opts \\ [])
-      when is_list(comparisons) and is_list(corpus_items) and is_atom(domain) and is_list(opts) do
+  def score_domain(comparisons, domain, opts \\ []) when is_list(comparisons) and is_atom(domain) and is_list(opts) do
     with {:ok, [domain]} <- CapabilityDomain.validate([domain]) do
       scores =
         comparisons
-        |> raw_metrics(corpus_items, domain)
+        |> raw_metrics()
         |> build_scores(domain, opts)
 
       persist_scores(scores, Keyword.get(opts, :result_store, ResultStore.configured()))
@@ -217,50 +216,26 @@ defmodule Harness.CapabilityScore do
     end
   end
 
-  @doc "Returns a deterministic corpus-version fingerprint for the supplied items."
-  @spec corpus_version([Item.t()]) :: String.t()
-  def corpus_version(items) when is_list(items) do
-    fingerprint =
-      items
-      |> Enum.map(fn %Item{id: id, version: version} -> "#{id}:#{version}" end)
-      |> Enum.sort()
-      |> Enum.join("|")
-
-    :sha256
-    |> :crypto.hash(fingerprint)
-    |> Base.url_encode64(padding: false)
-  end
-
-  @spec raw_metrics([Comparison.t()], [Item.t()], CapabilityDomain.t()) :: [RawMetric.t()]
-  defp raw_metrics(comparisons, corpus_items, domain) do
-    item_by_id =
-      corpus_items
-      |> Enum.filter(&(domain in &1.domains))
-      |> Map.new(&{&1.id, &1})
-
+  @spec raw_metrics([Comparison.t()]) :: [RawMetric.t()]
+  defp raw_metrics(comparisons) do
     Enum.flat_map(comparisons, fn %Comparison{} = comparison ->
-      case Map.fetch(item_by_id, comparison.task_id) do
-        {:ok, item} -> Enum.map(comparison.entries, &raw_metric(comparison, item, &1))
-        :error -> []
-      end
+      Enum.map(comparison.entries, &raw_metric(comparison, &1))
     end)
   end
 
-  @spec raw_metric(Comparison.t(), Item.t(), Entry.t()) :: RawMetric.t()
-  defp raw_metric(%Comparison{} = comparison, %Item{} = item, %Entry{} = entry) do
+  @spec raw_metric(Comparison.t(), Entry.t()) :: RawMetric.t()
+  defp raw_metric(%Comparison{} = comparison, %Entry{} = entry) do
     %RawMetric{
       batch_id: comparison.batch_id,
       task_id: comparison.task_id,
-      task_version: item.version,
       run_id: entry.run_id,
       adapter: entry.adapter,
       agent: agent_for_adapter(entry.adapter),
       verdict: entry.verdict,
-      review_iterations: entry.review_iterations,
+      reviewer_diff_size: entry.reviewer_diff_size,
       duration_ms: entry.duration_ms,
       token_usage: entry.token_usage,
-      cost_tokens: token_total(entry.token_usage),
-      first_attempt_failed_check_count: entry.first_attempt_failed_check_count
+      cost_tokens: token_total(entry.token_usage)
     }
   end
 
@@ -280,13 +255,10 @@ defmodule Harness.CapabilityScore do
   @spec summarize([RawMetric.t()], atom() | module(), CapabilityDomain.t(), String.t(), DateTime.t()) :: t()
   defp summarize(metrics, agent, domain, corpus_version, scored_at) do
     run_count = length(metrics)
-    successes = Enum.filter(metrics, &(&1.verdict == :pass))
+    successes = Enum.filter(metrics, &(&1.verdict == :approve))
     success_rate = rate(length(successes), run_count)
     cost_to_green = cost_to_green(successes)
-    mean_review_iterations = mean(Enum.map(metrics, & &1.review_iterations), run_count)
-
-    mean_first_attempt_failed_check_count =
-      mean(Enum.map(metrics, & &1.first_attempt_failed_check_count), run_count)
+    mean_reviewer_diff_size = mean(Enum.map(metrics, &(&1.reviewer_diff_size || 0)), run_count)
 
     %__MODULE__{
       agent: agent,
@@ -296,10 +268,8 @@ defmodule Harness.CapabilityScore do
       run_count: run_count,
       success_rate: success_rate,
       cost_to_green: cost_to_green,
-      mean_review_iterations: mean_review_iterations,
-      mean_first_attempt_failed_check_count: mean_first_attempt_failed_check_count,
-      composite_score:
-        composite_score(success_rate, cost_to_green, mean_review_iterations, mean_first_attempt_failed_check_count),
+      mean_reviewer_diff_size: mean_reviewer_diff_size,
+      composite_score: composite_score(success_rate, cost_to_green, mean_reviewer_diff_size),
       raw_metrics: metrics
     }
   end
@@ -498,7 +468,7 @@ defmodule Harness.CapabilityScore do
   @spec corpus_version_from_metrics([RawMetric.t()]) :: String.t()
   defp corpus_version_from_metrics(metrics) do
     metrics
-    |> Enum.map(fn %RawMetric{task_id: id, task_version: version} -> "#{id}:#{version}" end)
+    |> Enum.map(fn %RawMetric{task_id: id} -> id end)
     |> Enum.uniq()
     |> Enum.sort()
     |> Enum.join("|")
@@ -509,14 +479,13 @@ defmodule Harness.CapabilityScore do
     end)
   end
 
-  @spec composite_score(float(), float() | nil, float(), float()) :: float()
-  defp composite_score(success_rate, cost_to_green, mean_review_iterations, mean_first_attempt_failed_check_count) do
+  @spec composite_score(float(), float() | nil, float()) :: float()
+  defp composite_score(success_rate, cost_to_green, mean_reviewer_diff_size) do
     success_component = success_rate * @success_scale
 
     tiebreaker =
       @cost_tiebreaker_weight * cost_efficiency(cost_to_green) +
-        @repair_tiebreaker_weight * reciprocal_efficiency(mean_review_iterations) +
-        @first_failure_tiebreaker_weight * reciprocal_efficiency(mean_first_attempt_failed_check_count)
+        @reviewer_fix_tiebreaker_weight * reciprocal_efficiency(mean_reviewer_diff_size)
 
     success_component + tiebreaker
   end
@@ -528,6 +497,7 @@ defmodule Harness.CapabilityScore do
   @spec reciprocal_efficiency(float()) :: float()
   defp reciprocal_efficiency(value), do: 1 / (1 + value)
 
+  # Mean total tokens across an agent's reviewer-approved runs.
   @spec cost_to_green([RawMetric.t()]) :: float() | nil
   defp cost_to_green([]), do: nil
   defp cost_to_green(successes), do: mean(Enum.map(successes, & &1.cost_tokens), length(successes))

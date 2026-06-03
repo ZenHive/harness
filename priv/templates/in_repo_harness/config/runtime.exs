@@ -31,11 +31,13 @@ if base = System.get_env("HARNESS_WORKTREE_ROOT") do
   config :harness, :worktree, base_dir: Path.expand(base)
 end
 
+# check_command is a free-text hint handed to the reviewer AI — the reviewer
+# runs the target project's checks itself; harness never executes this command.
 config :harness, :projects, [
   [
     name: project_name,
     source: {:local, target_root},
-    preset: :rust,
+    check_command: "cargo fmt --check && cargo clippy -- -D warnings && cargo test",
     roadmap_path: harness_root,
     concurrency_cap: 1
   ]

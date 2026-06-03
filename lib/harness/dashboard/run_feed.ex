@@ -11,8 +11,8 @@ defmodule Harness.Dashboard.RunFeed do
   The `Harness.Run` gen_statem emits two message shapes:
 
     * `{:harness_run_update, %Harness.Run.Status{}}` — on each **non-terminal**
-      state-enter (dispatched/running/committing/verifying/reviewing). Covers
-      "a new run appeared" and every live state / review-iteration change. The
+      state-enter (dispatched/running/committing/reviewing). Covers
+      "a new run appeared" and every live state change. The
       dashboard `stream_insert`s the row (dom-id-keyed, so repeated updates
       patch in place).
     * `{:harness_run_settled, %Harness.Run.Status{}}` — once, from `settle/2`

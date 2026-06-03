@@ -52,6 +52,13 @@ defmodule Harness.Worktree do
   @retained_marker ".harness-retained"
   @default_base_dir "~/_DATA/worktrees/.harness"
 
+  # The run-local agent-artifact directory (`.harness/review.json`,
+  # `.harness/audit.json`). Verdict artifacts are read by harness mechanically
+  # and must NEVER ride in the deliverable commit — every staging call excludes
+  # the directory via this pathspec pair (positive root + exclude magic).
+  @artifact_dir ".harness"
+  @stage_pathspec [".", ":(exclude)#{@artifact_dir}"]
+
   # Ignored-but-load-bearing files the parent checkout carries that the verification
   # stack relies on but that .gitignore keeps out of the worktree-add. `.sobelow-skips`
   # is the line-fingerprint baseline audit-review regenerates; without it every harness
@@ -154,14 +161,15 @@ defmodule Harness.Worktree do
   end
 
   @doc """
-  Checks an *existing* branch out into a fresh worktree.
+  Checks an *existing* ref out into a fresh **detached** worktree.
 
   Unlike `create/2`, which carves a new `harness/<id>` branch off a base ref,
-  this checks out an already-existing branch (e.g. a settled run's retained
-  `harness/<run-id>`) so the autonomous lander can rebase + re-verify the
-  integrated state on it. A branch can only be checked out in one worktree at a
-  time — the run's own worktree is already torn down on success, so its branch
-  is free.
+  this checks out an already-existing ref (a settled run's retained
+  `harness/<run-id>` branch, or `origin/<target>` for a post-merge audit) so the
+  autonomous lander / audit worker can operate on its tree. The checkout is
+  always `--detach`: HEAD points at the ref's commit, not the ref itself, so the
+  checkout never conflicts with the same branch being checked out in another
+  worktree (the run's retained worktree, the operator's checkout).
 
   Carves the working directory at `<base_dir>/<repo-basename>/landing/<id>` by
   default; override with the `:path` option.
@@ -172,19 +180,19 @@ defmodule Harness.Worktree do
     * `:base_dir` — override the configured worktree root.
     * `:id` — override the generated id used in the default path.
 
-  Returns `{:ok, %Harness.Worktree{}}` whose `branch` is the checked-out branch
-  and `base_sha` its tip at checkout, or `{:error, reason}` — see `t:error/0`.
-  Tear down with `remove/1`.
+  Returns `{:ok, %Harness.Worktree{}}` whose `branch` is the requested ref name
+  (for reference; HEAD is detached) and `base_sha` its tip at checkout, or
+  `{:error, reason}` — see `t:error/0`. Tear down with `remove/1`.
   """
   @spec checkout_existing(String.t(), String.t(), keyword()) :: {:ok, t()} | {:error, error()}
-  def checkout_existing(repo, branch, opts \\ []) when is_binary(repo) and is_binary(branch) do
+  def checkout_existing(repo, ref, opts \\ []) when is_binary(repo) and is_binary(ref) do
     id = Keyword.get(opts, :id) || generate_id()
     path = Keyword.get(opts, :path) || Path.join([base_dir(opts), repo_slug(repo), "landing", id])
 
     with :ok <- validate_repo(repo),
-         {:ok, _output} <- locked_worktree_add(repo, ["worktree", "add", path, branch]),
+         {:ok, _output} <- locked_worktree_add(repo, ["worktree", "add", "--detach", path, ref]),
          {:ok, base_sha} <- resolve_base_sha(path) do
-      {:ok, %__MODULE__{id: id, path: path, branch: branch, repo: repo, base_sha: base_sha}}
+      {:ok, %__MODULE__{id: id, path: path, branch: ref, repo: repo, base_sha: base_sha}}
     end
   end
 
@@ -255,7 +263,9 @@ defmodule Harness.Worktree do
 
   Discards harness-injected rule files, then stages every remaining change in
   the worktree (`git add -A` — the repo's `.gitignore` still excludes `_build`,
-  `deps`, and friends) and commits it to the `harness/<id>` branch. That commit
+  `deps`, and friends; the `.harness/` artifact directory holding the reviewer's
+  `review.json` verdict is always excluded) and commits it to the
+  `harness/<id>` branch. That commit
   is the run's deliverable: it is what survives `finish/3` teardown, since
   `remove/1` deletes only the working directory.
 
@@ -283,8 +293,8 @@ defmodule Harness.Worktree do
   def commit(%__MODULE__{path: path, branch: branch}, message) when is_binary(message) do
     with :ok <- prepare_for_staging(path),
          :ok <- assert_head_on_branch(path, branch),
-         {:ok, _added} <- Git.run(["add", "-A"], path),
-         {:ok, status} <- Git.run(["status", "--porcelain"], path) do
+         {:ok, _added} <- Git.run(["add", "-A", "--"] ++ @stage_pathspec, path),
+         {:ok, status} <- Git.run(["status", "--porcelain", "--"] ++ @stage_pathspec, path) do
       if String.trim(status) == "" do
         {:ok, :no_changes}
       else
@@ -303,8 +313,23 @@ defmodule Harness.Worktree do
   @spec diff_size(t()) :: {:ok, non_neg_integer()} | {:error, error()}
   def diff_size(%__MODULE__{path: path}) do
     with :ok <- prepare_for_staging(path),
-         {:ok, _added} <- Git.run(["add", "-A"], path),
+         {:ok, _added} <- Git.run(["add", "-A", "--"] ++ @stage_pathspec, path),
          {:ok, numstat} <- Git.run(["diff", "--cached", "--numstat", "HEAD", "--"], path) do
+      {:ok, parse_numstat_size(numstat)}
+    end
+  end
+
+  @doc """
+  Returns the changed-line size of the worktree's committed work since `ref`.
+
+  Measures `ref..HEAD` excluding `.harness/` artifacts — the mechanical "how
+  much did this stage change" signal, e.g. the reviewer's own fixes on top of
+  the implementer's delivery commit.
+  """
+  @spec diff_size_since(t(), String.t()) :: {:ok, non_neg_integer()} | {:error, error()}
+  def diff_size_since(%__MODULE__{path: path}, ref) when is_binary(ref) do
+    with :ok <- assert_worktree_dir(path),
+         {:ok, numstat} <- Git.run(["diff", "--numstat", "#{ref}..HEAD", "--"] ++ @stage_pathspec, path) do
       {:ok, parse_numstat_size(numstat)}
     end
   end

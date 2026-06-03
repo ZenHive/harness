@@ -643,8 +643,11 @@ defmodule Harness.Batch do
     if adapter do
       # The reviewer's prose rides along in the unavailability mark and the
       # batch event, so the orchestrator reads WHY the adapter was benched
-      # (quota exhaustion, broken install, …) from the agent's own words.
-      mark = {:review_stuck, worker.item.id, result.reviewer_stuck_report}
+      # (quota exhaustion, broken install, …) from the agent's own words. The
+      # report lives in the run reason — fail_over is only reached when
+      # reviewer_stuck_empty_handed?/1 matched {:review_stuck, _}.
+      {:review_stuck, stuck_report} = result.reason
+      mark = {:review_stuck, worker.item.id, stuck_report}
       :ok = AgentRegistry.mark_unavailable(adapter, mark)
       events = [{:adapter_unavailable, adapter, mark} | events]
       maybe_requeue_after_failover(active, results, queue, events, context, worker, result, adapter)

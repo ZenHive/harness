@@ -1,6 +1,6 @@
 defmodule Harness.Project do
   @moduledoc """
-  A registered orchestration target: source repo, verification stack, roadmap,
+  A registered orchestration target: source repo, check-command hint, roadmap,
   and optional per-project concurrency cap.
 
   - `name` — unique slug; worktrees are rooted at `<base_dir>/<name>/<run-id>`.
@@ -9,63 +9,52 @@ defmodule Harness.Project do
       - `{:github, url}` — a GitHub URL harness clones (and `git fetch`es
         before each run) into `<cache_root>/<name>`. See
         `Harness.Project.Source.Github`.
-  - `check_stacks` — the list of `%Harness.CheckStack{}`s grading runs against,
-    one per language/component. Verification runs every stack in its own
-    `workdir` (relative to the worktree root) and aggregates into a single
-    verdict (green iff every stack is green). A single-language project is a
-    one-element list with `workdir: ""`.
+  - `check_command` — free-text hint handed to the reviewer AI (e.g.
+    `"mix precommit"`, `"cargo test"`). The reviewer runs the project's checks
+    itself and judges the result; harness never executes this command — it is
+    prompt text, not a verification gate.
   - `roadmap_path` — project root holding `roadmap/tasks.toml` for rmap ingestion.
   - `concurrency_cap` — per-project batch cap; `nil` inherits the global default.
   - `pollution_allowlist` — optional path patterns ignored by the main-checkout
     pollution diff (`Harness.Worktree.Isolation`); `nil` inherits app defaults.
-  - `landing_policy` — `:manual` by default; `:auto` means green runs are
-    eligible for autonomous landing.
+  - `landing_policy` — `:manual` by default; `:auto` means reviewer-approved
+    runs are eligible for autonomous landing.
   - `target_branch` — the branch the autonomous lander fast-forward-pushes an
     approved run onto (e.g. `"development"`). `nil` by default; a project only
     auto-lands when it sets both `landing_policy: :auto` and a `target_branch`.
-  - `review_green` — when `true` (the default), even a green verdict gets one
-    cross-family reviewer pass scoped to acceptance-criteria conformance before
-    the run settles `:done` (Task 162) — no unreviewed code lands. Set `false`
-    to opt out: green settles directly on the check stack alone. A per-dispatch
-    `review_green: true` run opt forces the pass on for one run. Replaces the
-    deprecated `semantic_gate` mode enum — registry load maps legacy configs
-    (`:always`/`:auto_land_only` → `true`, `:off` → `false`).
   """
 
-  alias Harness.CheckStack
   alias Harness.Project.Source.Github
   alias Harness.Project.Source.Local
 
-  @enforce_keys [:name, :source, :check_stacks, :roadmap_path]
+  @enforce_keys [:name, :source, :roadmap_path]
   defstruct [
     :name,
     :source,
-    :check_stacks,
     :roadmap_path,
+    check_command: nil,
     concurrency_cap: nil,
     pollution_allowlist: nil,
     landing_policy: :manual,
-    target_branch: nil,
-    review_green: true
+    target_branch: nil
   ]
 
   @typedoc "Where harness finds the target repository."
   @type source :: Local.t() | Github.t()
 
-  @typedoc "Whether green runs require manual landing or are eligible for auto-land."
+  @typedoc "Whether approved runs require manual landing or are eligible for auto-land."
   @type landing_policy :: :manual | :auto
 
   @typedoc "A first-class orchestration target."
   @type t :: %__MODULE__{
           name: String.t(),
           source: source(),
-          check_stacks: [CheckStack.t()],
           roadmap_path: String.t(),
+          check_command: String.t() | nil,
           concurrency_cap: pos_integer() | nil,
           pollution_allowlist: [String.t()] | nil,
           landing_policy: landing_policy(),
-          target_branch: String.t() | nil,
-          review_green: boolean()
+          target_branch: String.t() | nil
         }
 
   @doc """

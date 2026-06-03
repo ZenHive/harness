@@ -12,13 +12,11 @@ defmodule Harness.Lander.WorkerTest do
 
   use ExUnit.Case, async: false
 
-  alias Harness.CheckStack
   alias Harness.GitFixture
   alias Harness.Lander.Worker
   alias Harness.Landing.Settings, as: LandingSettings
   alias Harness.Project
   alias Harness.ProjectRegistry
-  alias Harness.Verification.Check
 
   @moduletag :tmp_dir
 
@@ -94,9 +92,6 @@ defmodule Harness.Lander.WorkerTest do
     project = %Project{
       name: "worker-overlay-demo",
       source: {:local, repo},
-      check_stacks: [
-        %CheckStack{name: :test, checks: [%Check{name: "ok", command: "true", args: []}], workdir: ""}
-      ],
       roadmap_path: tmp_dir,
       landing_policy: :manual,
       target_branch: nil

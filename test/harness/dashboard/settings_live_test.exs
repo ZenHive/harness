@@ -246,13 +246,13 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
   test "the config inspector renders a config.exs-divergent value, not the default", %{conn: conn} do
     prior_run = Application.get_env(:harness, :run)
-    Application.put_env(:harness, :run, max_review_iterations: 9)
+    Application.put_env(:harness, :run, terminal_linger: 9_000)
     on_exit(fn -> restore_env(:run, prior_run) end)
 
     {:ok, _view, html} = live(conn, "/harness/settings")
 
-    assert html =~ "max_review_iterations"
-    assert html =~ "<code>9</code>"
+    assert html =~ "terminal_linger"
+    assert html =~ "9 s (9000 ms)"
   end
 
   test "the config inspector shows the env-var knob, a humanized duration, and the legend", %{conn: conn} do

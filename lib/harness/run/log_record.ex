@@ -4,18 +4,24 @@ defmodule Harness.Run.LogRecord do
 
   Batch orchestration can fan a single task through multiple attempts when an
   adapter hits quota or becomes unavailable. Each attempt gets its own record so
-  post-run analysis can reconstruct red verdicts, fail-overs, quota blocks, and
+  post-run analysis can reconstruct rejections, fail-overs, quota blocks, and
   agent comparison metrics without needing the original process to still exist.
 
-  ## Per-check output (`check_output`)
+  ## Reviewer verdict (`verdict`, `review_report`, `review_ratings`)
 
-  A record also carries the captured stdout+stderr of each *failed* check, so a
-  later JSON/MCP caller can read *why* a check failed without the original
-  `%Run.Result{}` still being in memory. It is deliberately bounded: only failing
-  checks are kept (a green run carries an empty map) and each is tail-truncated to
-  `@check_output_cap_bytes` (16 KB) — a single verdict can emit megabytes, and the
-  diagnostic signal (the failing assertion, the credo/dialyzer warning, the test
-  summary) lands at the tail.
+  The reviewer AI is the gate: `verdict` stores its decision (`:approve` /
+  `:reject`, `nil` when the run never reached review), `review_report` its
+  prose, and `review_ratings` its implementer KPI scores (performance,
+  truthfulness, code quality, idiom usage, ...) — persisted verbatim as the
+  scoring input for `Harness.AgentKPI` / capability routing.
+
+  ## First-attempt pass (`reviewer_diff_size`, `review_iterations`)
+
+  `reviewer_diff_size` is the changed-line count of the reviewer's own fixes on
+  top of the implementer's delivery commit. `0` + `:approve` means the
+  implementer's work needed no fixes — a first-attempt pass. `review_iterations`
+  is derived from it (`0` when the reviewer changed nothing, `1` otherwise) so
+  the column stays mechanically sourced.
 
   ## Composed inputs (`composed_inputs`)
 
@@ -29,33 +35,8 @@ defmodule Harness.Run.LogRecord do
   alias Harness.AgentModel
   alias Harness.CapabilityDomain
   alias Harness.Run.Result, as: RunResult
+  alias Harness.Run.Review
   alias Harness.TokenUsage
-  alias Harness.Verification.Result, as: CheckResult
-  alias Harness.Verification.Verdict
-
-  @check_output_cap_bytes 16_000
-
-  @typedoc "A compact failed-check summary for logs and queries."
-  @type failed_check :: %{
-          name: String.t(),
-          kind: :exited | :timed_out | :not_launched,
-          exit_status: integer() | nil
-        }
-
-  @typedoc "Reconstructable failure cause carried by every run record."
-  @type failure_cause :: %{
-          reason: RunResult.reason(),
-          failed_checks: [failed_check()]
-        }
-
-  @typedoc """
-  Captured output of each failed check, keyed by check name.
-
-  Only failing checks are present (a green verdict yields `%{}`); each entry's
-  `output` is the combined stdout+stderr tail-truncated to `@check_output_cap_bytes`,
-  with `truncated: true` when it was capped.
-  """
-  @type check_output :: %{optional(String.t()) => %{output: String.t(), truncated: boolean()}}
 
   @typedoc "One persisted run-attempt record."
   @type t :: %__MODULE__{
@@ -68,21 +49,20 @@ defmodule Harness.Run.LogRecord do
           adapter: module(),
           state: RunResult.state(),
           reason: RunResult.reason(),
-          verdict: :pass | :fail | nil,
+          verdict: Review.verdict() | nil,
           duration_ms: non_neg_integer(),
-          first_attempt_failed_check_count: non_neg_integer(),
           agent_diff_size: non_neg_integer() | nil,
+          reviewer_diff_size: non_neg_integer() | nil,
           token_usage: TokenUsage.t(),
           composed_inputs: [AgentAdapter.composed_input()],
-          failure_cause: failure_cause(),
           agent_outcome_kind: Outcome.kind() | nil,
           agent_exit_status: integer() | nil,
           agent_output: binary(),
-          check_output: check_output(),
           domains: [CapabilityDomain.t()],
           reviewer_adapter: module() | nil,
           review_iterations: non_neg_integer(),
-          reviewer_stuck_report: String.t() | nil
+          review_report: String.t() | nil,
+          review_ratings: %{optional(String.t()) => term()}
         }
 
   @enforce_keys [
@@ -92,9 +72,7 @@ defmodule Harness.Run.LogRecord do
     :adapter,
     :state,
     :reason,
-    :duration_ms,
-    :first_attempt_failed_check_count,
-    :failure_cause
+    :duration_ms
   ]
   defstruct [
     :batch_id,
@@ -108,57 +86,46 @@ defmodule Harness.Run.LogRecord do
     :reason,
     :verdict,
     :duration_ms,
-    :first_attempt_failed_check_count,
     :agent_diff_size,
-    :failure_cause,
+    :reviewer_diff_size,
     :agent_outcome_kind,
     :agent_exit_status,
     token_usage: %TokenUsage{},
     composed_inputs: [],
     agent_output: "",
-    check_output: %{},
     domains: [],
     reviewer_adapter: nil,
     review_iterations: 0,
-    reviewer_stuck_report: nil
+    review_report: nil,
+    review_ratings: %{}
   ]
 
   @doc "Builds a structured record from a settled run result and batch metadata."
   @spec from_result(RunResult.t(), keyword()) :: t()
   def from_result(%RunResult{} = result, meta) when is_list(meta) do
-    outcome = result.agent_outcome
-
-    %__MODULE__{
+    record = %__MODULE__{
       batch_id: Keyword.fetch!(meta, :batch_id),
       run_id: result.run_id,
       task_id: result.task_id,
       project_name: Keyword.get(meta, :project_name),
       agent: Keyword.get(meta, :agent),
-      model:
-        resolve_model(
-          Keyword.get(meta, :agent),
-          (outcome && outcome.output) || "",
-          Keyword.get(meta, :requested_model)
-        ),
+      model: record_model(result, meta),
       adapter: Keyword.fetch!(meta, :adapter),
       state: result.state,
       reason: result.reason,
-      verdict: verdict_status(result.verdict),
       duration_ms: Keyword.fetch!(meta, :duration_ms),
-      first_attempt_failed_check_count: result.first_attempt_failed_check_count,
       agent_diff_size: result.agent_diff_size,
-      token_usage: result.token_usage || %TokenUsage{},
-      composed_inputs: result.composed_inputs || [],
-      failure_cause: failure_cause(result),
-      agent_outcome_kind: outcome && outcome.kind,
-      agent_exit_status: outcome && outcome.exit_status,
-      agent_output: (outcome && outcome.output) || "",
-      check_output: check_output(result.verdict),
+      reviewer_diff_size: result.reviewer_diff_size,
+      token_usage: result.token_usage,
+      composed_inputs: result.composed_inputs,
       domains: domains_from_meta(meta),
       reviewer_adapter: result.reviewer_adapter,
-      review_iterations: result.review_iterations,
-      reviewer_stuck_report: result.reviewer_stuck_report
+      review_iterations: review_iterations(result.reviewer_diff_size)
     }
+
+    record
+    |> put_outcome(result.agent_outcome)
+    |> put_review(result.review)
   end
 
   @doc """
@@ -174,6 +141,38 @@ defmodule Harness.Run.LogRecord do
     AgentModel.parse(agent, output) || requested_model
   end
 
+  @spec record_model(RunResult.t(), keyword()) :: String.t() | nil
+  defp record_model(result, meta) do
+    resolve_model(
+      Keyword.get(meta, :agent),
+      agent_output(result.agent_outcome),
+      Keyword.get(meta, :requested_model)
+    )
+  end
+
+  @spec agent_output(Outcome.t() | nil) :: binary()
+  defp agent_output(%Outcome{output: output}) when is_binary(output), do: output
+  defp agent_output(_outcome), do: ""
+
+  @spec put_outcome(t(), Outcome.t() | nil) :: t()
+  defp put_outcome(record, nil), do: record
+
+  defp put_outcome(record, %Outcome{} = outcome) do
+    %{
+      record
+      | agent_outcome_kind: outcome.kind,
+        agent_exit_status: outcome.exit_status,
+        agent_output: outcome.output
+    }
+  end
+
+  @spec put_review(t(), Review.t() | nil) :: t()
+  defp put_review(record, nil), do: record
+
+  defp put_review(record, %Review{} = review) do
+    %{record | verdict: review.verdict, review_report: review.report, review_ratings: review.ratings}
+  end
+
   @spec domains_from_meta(keyword()) :: [CapabilityDomain.t()]
   defp domains_from_meta(meta) do
     meta
@@ -181,62 +180,9 @@ defmodule Harness.Run.LogRecord do
     |> CapabilityDomain.normalize()
   end
 
-  @spec verdict_status(Verdict.t() | nil) :: :pass | :fail | nil
-  defp verdict_status(%Verdict{status: status}), do: status
-  defp verdict_status(nil), do: nil
-
-  @spec failure_cause(RunResult.t()) :: failure_cause()
-  defp failure_cause(%RunResult{} = result) do
-    %{
-      reason: result.reason,
-      failed_checks: failed_checks(result.verdict)
-    }
-  end
-
-  @spec failed_checks(Verdict.t() | nil) :: [failed_check()]
-  defp failed_checks(%Verdict{results: results}) do
-    results
-    |> Enum.filter(&(&1.status == :fail))
-    |> Enum.map(fn %CheckResult{} = result ->
-      %{name: result.name, kind: result.kind, exit_status: result.exit_status}
-    end)
-  end
-
-  defp failed_checks(nil), do: []
-
-  # Capture only the failing checks' output (the "why did it fail" signal); a
-  # green verdict carries none. Each output is tail-truncated — failures surface
-  # at the end of test/credo/dialyzer output.
-  @spec check_output(Verdict.t() | nil) :: check_output()
-  defp check_output(%Verdict{results: results}) do
-    results
-    |> Enum.filter(&(&1.status == :fail))
-    |> Map.new(fn %CheckResult{} = result ->
-      {capped, truncated?} = cap_output(result.output)
-      {result.name, %{output: capped, truncated: truncated?}}
-    end)
-  end
-
-  defp check_output(nil), do: %{}
-
-  # Keep the last @check_output_cap_bytes bytes (the diagnostic tail), flagging
-  # whether the output was capped.
-  @spec cap_output(String.t()) :: {String.t(), boolean()}
-  defp cap_output(output) when byte_size(output) <= @check_output_cap_bytes, do: {output, false}
-
-  defp cap_output(output) do
-    tail = binary_part(output, byte_size(output) - @check_output_cap_bytes, @check_output_cap_bytes)
-    {valid_utf8_tail(tail), true}
-  end
-
-  # Tail truncation can split a multi-byte codepoint at the FRONT of the kept
-  # slice; drop leading bytes until the remainder is valid UTF-8.
-  @spec valid_utf8_tail(binary()) :: binary()
-  defp valid_utf8_tail(<<>>), do: <<>>
-
-  defp valid_utf8_tail(bin) do
-    if String.valid?(bin),
-      do: bin,
-      else: valid_utf8_tail(binary_part(bin, 1, byte_size(bin) - 1))
-  end
+  # "Did the reviewer have to fix anything?" as a 0/1 column, mechanically
+  # derived from its own diff size.
+  @spec review_iterations(non_neg_integer() | nil) :: 0 | 1
+  defp review_iterations(diff_size) when is_integer(diff_size) and diff_size > 0, do: 1
+  defp review_iterations(_diff_size), do: 0
 end

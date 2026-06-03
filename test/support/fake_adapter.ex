@@ -80,6 +80,87 @@ defmodule Harness.FakeAdapter do
   # {:write_sibling_and_move_cwd, path}
   #                  — writes into a sibling worktree, then makes cwd disappear
   #                    (cross-worktree write regression fixture).
+  #
+  # Reviewer doubles (the agent-gate workflow's THE-gate fixtures) — each
+  # writes the .harness/review.json verdict artifact harness reads mechanically:
+  # {:review, verdict}        — writes ONLY the artifact (zero reviewer diff —
+  #                             the first-attempt-pass fixture).
+  # {:review_with_fix, verdict}
+  #                           — writes a fix file then the artifact (nonzero
+  #                             reviewer diff — the reviewer-fixed-it fixture).
+  # {:review_capture_prompt, verdict}
+  #                           — records the reviewer prompt into
+  #                             reviewer_prompt.txt, then writes the artifact.
+  # :review_malformed         — writes invalid JSON to the artifact path (the
+  #                             review-stuck fixture).
+  # {:review_by_task, reject_ids}
+  #                           — rejects the listed item ids, approves the rest
+  #                             (per-task verdict fixture for batch tests; the
+  #                             reviewer invocation's task_id is "<id>-review").
+  # {:review_if_file, path}   — approves when the implementer left `path` in the
+  #                             worktree; otherwise reports stuck in prose and
+  #                             writes NO artifact (the batch fail-over fixture:
+  #                             empty implementer diff → review_stuck).
+  # {:review_verdict_by_file, path}
+  #                           — approves when `path` exists, rejects otherwise —
+  #                             always writes the artifact (per-implementer
+  #                             verdict fixture for A/B comparison tests).
+  #
+  # Audit doubles (post-merge audit agent fixtures):
+  # {:audit, short_sha}       — writes `.audit/<short_sha>.md` + the uncommitted
+  #                             `.harness/audit.json` summary, then commits the
+  #                             report as `audit(<short_sha>): ...` (the
+  #                             audited-and-pushed fixture). Audit harness reads
+  #                             the JSON best-effort and ff-pushes the commit.
+  defp command({:audit, short_sha}, _invocation) when is_binary(short_sha) do
+    script =
+      ~S|mkdir -p .audit .harness; echo "clean - fake audit" > ".audit/$1.md"; | <>
+        ~S|printf '{"findings": 0, "fixed": 0, "report": "clean"}' > .harness/audit.json; | <>
+        ~S|git add .audit; git -c user.email=audit@fake -c user.name=fake-audit commit -q -m "audit($1): fake hygiene pass"|
+
+    {"/bin/sh", ["-c", script, "harness-fake", short_sha], []}
+  end
+
+  defp command({:review_verdict_by_file, path}, _invocation) when is_binary(path) do
+    script =
+      ~S(mkdir -p .harness; if [ -f "$3" ]; then printf '%s' "$1"; else printf '%s' "$2"; fi > .harness/review.json)
+
+    {"/bin/sh", ["-c", script, "harness-fake", review_json("approve"), review_json("reject"), path], []}
+  end
+
+  defp command({:review_by_task, reject_ids}, %Invocation{task_id: task_id}) when is_list(reject_ids) do
+    item_id = String.replace_suffix(task_id, "-review", "")
+    verdict = if item_id in reject_ids, do: "reject", else: "approve"
+    command({:review, verdict}, nil)
+  end
+
+  defp command({:review_if_file, path}, _invocation) when is_binary(path) do
+    script =
+      ~S(if [ -f "$2" ]; then mkdir -p .harness; printf '%s' "$1" > .harness/review.json; ) <>
+        ~S(else echo "STUCK: the implementer produced no work to review"; fi)
+
+    {"/bin/sh", ["-c", script, "harness-fake", review_json("approve"), path], []}
+  end
+
+  defp command({:review, verdict}, _invocation) when verdict in ["approve", "reject"] do
+    {"/bin/sh",
+     ["-c", ~S(mkdir -p .harness; printf '%s' "$1" > .harness/review.json), "harness-fake", review_json(verdict)], []}
+  end
+
+  defp command({:review_with_fix, verdict}, _invocation) when verdict in ["approve", "reject"] do
+    script = ~S(echo reviewer-fix > reviewer_fix.txt; mkdir -p .harness; printf '%s' "$1" > .harness/review.json)
+    {"/bin/sh", ["-c", script, "harness-fake", review_json(verdict)], []}
+  end
+
+  defp command({:review_capture_prompt, verdict}, %Invocation{prompt: prompt}) when verdict in ["approve", "reject"] do
+    script = ~S(printf '%s' "$1" > reviewer_prompt.txt; mkdir -p .harness; printf '%s' "$2" > .harness/review.json)
+    {"/bin/sh", ["-c", script, "harness-fake", prompt, review_json(verdict)], []}
+  end
+
+  defp command(:review_malformed, _invocation) do
+    {"/bin/sh", ["-c", ~S(mkdir -p .harness; echo '{not json' > .harness/review.json)], []}
+  end
+
   defp command({:write_and_pollute_checkout, repo}, _invocation) when is_binary(repo) do
     path = shell_arg(Path.join(repo, "leaked.txt"))
     {"/bin/sh", ["-c", "echo agent-output > agent_output.txt; echo leaked > #{path}"], []}
@@ -167,5 +248,21 @@ defmodule Harness.FakeAdapter do
 
   defp shell_arg(value) do
     "'" <> String.replace(value, "'", "'\"'\"'") <> "'"
+  end
+
+  # The verdict artifact the reviewer doubles write — fixed report/ratings so
+  # tests can assert on the persisted values.
+  @doc false
+  @spec review_ratings() :: %{optional(String.t()) => integer()}
+  def review_ratings do
+    %{"performance" => 8, "truthfulness" => 9, "code_quality" => 7, "idiom" => 8}
+  end
+
+  @doc false
+  @spec review_report(String.t()) :: String.t()
+  def review_report(verdict), do: "fake review: #{verdict}"
+
+  defp review_json(verdict) do
+    Jason.encode!(%{verdict: verdict, report: review_report(verdict), ratings: review_ratings()})
   end
 end

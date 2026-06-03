@@ -6,63 +6,35 @@ import Config
 # This call REPLACES the default `:projects` list from `config/dev.exs`, so
 # the harness self-registration must be repeated if you want it to remain
 # available. Consumed by `Harness.ProjectRegistry.init/1`.
+#
+# `check_command` is a free-text hint handed to the reviewer AI — the reviewer
+# runs the project's checks itself and judges the result; harness never
+# executes the command. Omit it to let the reviewer discover the project's
+# checks on its own (mix.exs aliases, Cargo.toml, CI config, ...).
 
 config :harness, :projects, [
-  # Keep the harness checkout itself registered. `{:elixir_precommit, ...}`
-  # mirrors harness's merge bar and includes DB-backed integration tests via an
-  # isolated per-worktree Postgres test DB. Use plain `preset: :elixir` for the
-  # lighter day-to-day stack.
-  # `review_green: true` (the default — shown here for visibility, Task 162)
-  # gives every green verdict one cross-family reviewer pass against the task's
-  # acceptance criteria; needs an opposite-family agent CLI installed. Set
-  # `review_green: false` to let green verdicts settle unreviewed.
+  # Keep the harness checkout itself registered. `mix precommit.full` is
+  # harness's own mergeable bar (precommit + dialyzer).
   [
     name: "harness",
     source: {:local, Path.expand("..", __DIR__)},
-    preset: {:elixir_precommit, cover_threshold: 80, include: [:integration], database: :postgres},
-    roadmap_path: Path.expand("..", __DIR__),
-    review_green: true
+    check_command: "mix precommit.full",
+    roadmap_path: Path.expand("..", __DIR__)
   ],
-  # Example host-local project — single language, one stack at the repo root.
-  # Swap to `preset: {:elixir_precommit, cover_threshold: N, exclude: [...]}`
-  # to grade against your own merge gate instead of the lighter `:elixir` stack.
+  # Example host-local Elixir project.
   [
     name: "myapp",
     source: {:local, "/Users/me/_DATA/code/myapp"},
-    preset: :elixir,
+    check_command: "mix precommit",
     roadmap_path: "/Users/me/_DATA/code/myapp",
     concurrency_cap: 2
   ],
-  # Example multi-language monorepo — source is the repo root; each stack runs
-  # its checks in its own subdirectory via `workdir`. A git worktree is always
-  # repo-root-granular, so `workdir` is how each stack reaches its buildable
-  # root. Drop `stacks:` and use a singular `preset:`/`check_stack:` for the
-  # single-language case (equivalent to one stack with `workdir: ""`).
+  # Example multi-language monorepo — the hint is free text, so name each
+  # component's command and where it runs; the reviewer works out the rest.
   [
     name: "polyrepo",
     source: {:local, "/Users/me/_DATA/code/polyrepo"},
-    roadmap_path: "/Users/me/_DATA/code/polyrepo",
-    stacks: [
-      [preset: :rust, workdir: "rust"],
-      [preset: :elixir, workdir: "elixir"]
-    ]
-  ],
-  # Example: rexex (Rust project with heavy git-deps + sqlx DB tests). Uses the
-  # parameterized :rust preset (Task 149) so its tuned stack (shared target dir
-  # for reth, no redundant --release, DATABASE_URL for #[sqlx::test] suites) is
-  # expressed struct-free and survives BEAM restarts. The env is stamped onto
-  # all checks via the Check.env mechanism (Task 145); workdir points cargo at
-  # the rust/ subdir. `preset: {:rust, opts}` routes through Preset.fetch/2.
-  [
-    name: "rexex",
-    source: {:local, "/Users/efries/_DATA/code/rexex"},
-    preset:
-      {:rust,
-       target_dir: "/Users/efries/.cache/harness/cargo-target/rexex",
-       release: false,
-       timeout_per_check: 1_800_000,
-       env: %{"DATABASE_URL" => "postgres://localhost/rexex_test"}},
-    roadmap_path: "/Users/efries/_DATA/code/rexex",
-    concurrency_cap: 1
+    check_command: "cd rust && cargo test; cd elixir && mix test",
+    roadmap_path: "/Users/me/_DATA/code/polyrepo"
   ]
 ]

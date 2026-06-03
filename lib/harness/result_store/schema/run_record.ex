@@ -17,18 +17,17 @@ defmodule Harness.ResultStore.Schema.RunRecord do
     field :verdict, :string
     field :agent_outcome_kind, :string
     field :duration_ms, :integer
-    field :first_attempt_failed_check_count, :integer
     field :agent_diff_size, :integer
+    field :reviewer_diff_size, :integer
     field :agent_exit_status, :integer
     field :review_iterations, :integer
     field :reviewer_adapter, :string
-    field :reviewer_stuck_report, :binary
+    field :review_report, :binary
 
     field :reason, :map
     field :token_usage, :map
     field :composed_inputs, :map
-    field :failure_cause, :map
-    field :check_output, :map
+    field :review_ratings, :map
     field :domains, :map
 
     field :agent_output, :binary
@@ -53,17 +52,16 @@ defmodule Harness.ResultStore.Schema.RunRecord do
       :verdict,
       :agent_outcome_kind,
       :duration_ms,
-      :first_attempt_failed_check_count,
       :agent_diff_size,
+      :reviewer_diff_size,
       :agent_exit_status,
       :review_iterations,
       :reviewer_adapter,
-      :reviewer_stuck_report,
+      :review_report,
       :reason,
       :token_usage,
       :composed_inputs,
-      :failure_cause,
-      :check_output,
+      :review_ratings,
       :domains,
       :agent_output
     ])

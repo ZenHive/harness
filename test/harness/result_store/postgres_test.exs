@@ -33,7 +33,7 @@ defmodule Harness.ResultStore.PostgresTest do
       assert :ok = ResultStoreContract.assert_crud_roundtrips(ResultStore.configured())
     end
 
-    test "roundtrips complex fields (tuple reason, non-UTF8 binary, nested failure_cause)" do
+    test "roundtrips complex fields (tuple reason, non-UTF8 binary, review artifact fields)" do
       assert :ok = ResultStoreContract.assert_complex_fields(ResultStore.configured())
     end
   end
@@ -46,16 +46,17 @@ defmodule Harness.ResultStore.PostgresTest do
         ResultStoreContract.log_record(
           run_id: "r-upsert",
           state: :failed,
-          reason: :verification_red,
+          reason: {:review_rejected, "not salvageable"},
           duration_ms: 4321,
-          verdict: :fail,
+          verdict: :reject,
           agent_output: "rich transcript",
-          check_output: %{"credo" => %{output: "3 issues", truncated: false}},
           agent_outcome_kind: :exited,
           agent_diff_size: 12,
-          review_iterations: 2,
+          reviewer_diff_size: 30,
+          review_iterations: 1,
           reviewer_adapter: Claude,
-          reviewer_stuck_report: "still red after 2 iterations"
+          review_report: "not salvageable",
+          review_ratings: %{"code_quality" => 2}
         )
 
       assert :ok = ResultStore.record_run(rich, store)
@@ -66,8 +67,10 @@ defmodule Harness.ResultStore.PostgresTest do
         ResultStoreContract.log_record(
           run_id: "r-upsert",
           state: :done,
-          reason: :passed,
-          duration_ms: 5
+          reason: :approved,
+          duration_ms: 5,
+          verdict: nil,
+          review_ratings: %{}
         )
 
       assert :ok = ResultStore.record_run(sparse, store)
@@ -76,18 +79,19 @@ defmodule Harness.ResultStore.PostgresTest do
 
       # bookkeeping: the latest write wins
       assert rec.state == :done
-      assert rec.reason == :passed
+      assert rec.reason == :approved
       assert rec.duration_ms == 5
 
       # rich evidence: the settled attempt's data survives the sparse write
-      assert rec.verdict == :fail
+      assert rec.verdict == :reject
       assert rec.agent_output == "rich transcript"
-      assert rec.check_output == %{"credo" => %{output: "3 issues", truncated: false}}
       assert rec.agent_outcome_kind == :exited
       assert rec.agent_diff_size == 12
-      assert rec.review_iterations == 2
+      assert rec.reviewer_diff_size == 30
+      assert rec.review_iterations == 1
       assert rec.reviewer_adapter == Claude
-      assert rec.reviewer_stuck_report == "still red after 2 iterations"
+      assert rec.review_report == "not salvageable"
+      assert rec.review_ratings == %{"code_quality" => 2}
     end
   end
 

@@ -27,13 +27,13 @@ defmodule Harness.Notification.CommandSinkTest do
 
   defp event do
     %Event{
-      type: :post_merge_red,
+      type: :blocked,
       task_id: "101",
       run_id: "run-9",
       project: "harness",
       branch: "harness/run-9",
       land_attempt: 2,
-      outcome: "ignored-by-summary-path"
+      outcome: "land-cap exhausted after conflict x2"
     }
   end
 
@@ -46,13 +46,13 @@ defmodule Harness.Notification.CommandSinkTest do
       assert :ok = CommandSink.notify(event())
 
       recorded = File.read!(out_file)
-      assert recorded =~ "HARNESS_NOTIFY_TYPE=post_merge_red"
+      assert recorded =~ "HARNESS_NOTIFY_TYPE=blocked"
       assert recorded =~ "HARNESS_NOTIFY_TASK_ID=101"
       assert recorded =~ "HARNESS_NOTIFY_RUN_ID=run-9"
       assert recorded =~ "HARNESS_NOTIFY_PROJECT=harness"
       assert recorded =~ "HARNESS_NOTIFY_BRANCH=harness/run-9"
       assert recorded =~ "HARNESS_NOTIFY_LAND_ATTEMPT=2"
-      assert recorded =~ "HARNESS_NOTIFY_SUMMARY=post-merge red on task 101"
+      assert recorded =~ "HARNESS_NOTIFY_SUMMARY=blocked task 101: land-cap exhausted after conflict x2"
     end
 
     test "extra args from config are passed through to the command", %{tmp_dir: tmp_dir} do

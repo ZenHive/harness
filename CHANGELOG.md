@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The agent-gate workflow rebuild (hand-built, 2026-06-03).** The run
+  lifecycle is now `worktree → implementer AI → reviewer AI (THE gate) → MERGE
+  → audit AI`, with **no mechanical verification gate anywhere** — the
+  cross-family reviewer AI runs the project's checks itself, fixes inline, and
+  writes the verdict; harness reads it mechanically. New modules/surfaces:
+  `Harness.Run.Review` (parses the reviewer's `.harness/review.json` artifact:
+  `verdict` / `report` / `ratings`), `Harness.Audit` + `Harness.Audit.Worker`
+  (post-merge third-family audit agent on the global `:audit` Oban queue —
+  detached worktree of `origin/<target>`, audits the unaudited commit range,
+  ff-pushes its `audit(<short-sha>): …` commit; never blocks, never reverts),
+  `Harness.Worktree.diff_size_since/2` + `.harness/` exclusion from commits and
+  diff measurement, and `check_command` on `%Harness.Project{}` (a free-text
+  hint handed to the reviewer — harness never executes it). Fix-and-approve is
+  the reviewer's near-absolute default; rejection is reserved for unsalvageable
+  work and puts the task back in the queue with the reviewer's report. Spec:
+  `docs/agent-gate-workflow.md`. **This rebuild supersedes the reviewer-pair
+  entries below (Tasks 161–163):** `review_green`, `:verifying`,
+  `max_review_iterations`, and the check-stack vocabulary they describe no
+  longer exist.
 - **Shared helper modules from the whole-codebase `/simplify` pass (hand-built
   inline).** `Harness.LineBuffer` (the newline-buffer lifecycle previously
   copy-pasted across the five transcript parsers + the chat stream parser),
@@ -69,6 +88,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Run lifecycle re-keyed to the reviewer gate (agent-gate rebuild).** States:
+  `dispatched → running → committing → reviewing → done|failed` (`:verifying`
+  deleted). Reasons: `:approved` / `{:review_rejected, report}` /
+  `{:review_stuck, report}` (replacing `:passed` / `:verification_red` /
+  `{:verification_failed, _}` / `{:verifier_crashed, _}`). `%Run.Result{}`
+  carries `review` (the parsed artifact) + `reviewer_diff_size` (0 =
+  first-attempt pass). run_records store verdict `"approve"`/`"reject"` plus
+  `review_report` / `review_ratings` / `reviewer_diff_size` (new migration);
+  AgentKPI / CapabilityScore re-keyed to reviewer outcomes (success = approved;
+  first-attempt pass = approved with zero reviewer fixes; the ratings block is
+  the implementer quality signal). Dispatch surface: `Dispatch.task/4` +
+  `await/5` (the `review_green` param is gone — review is always mandatory);
+  `dispatch__verdict_detail` returns the reviewer's verdict / report / ratings.
+  Lander: detached worktree, **no re-verification**, enqueues the post-merge
+  audit job after a successful push.
 - **Cleanup pass from the whole-codebase `/simplify` review (hand-built inline).**
   `Harness.Dispatch`: the four near-identical enqueue/start clauses collapse to
   one `resolve_and_ingest/3` pipeline, and the `scrub_anthropic_key` /
@@ -95,6 +129,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The mechanical verification stack — deleted whole (agent-gate rebuild).**
+  `Harness.Verification` (+ check/result/verdict modules),
+  `Harness.CheckStack` (+ Elixir/Rust presets), the `:verifying` run state,
+  `review_green`, `max_review_iterations`, lander re-verification +
+  `{:post_merge_red, _}`, the mechanical benchmark corpus
+  (`Harness.Benchmark.*`, `priv/benchmarks/`,
+  `Harness.Cron.CapabilityBenchmarkScheduler`), and the docs that specified
+  them (`docs/agent-corpus-grading.md`, `docs/reviewer-pair-architecture.md` —
+  replaced by `docs/agent-gate-workflow.md`).
 - **Reviewer-pair lifecycle, step 3 — the deletion pass: judgment code is gone,
   the reviewer pair is the only path (Task 163, hand-built inline).** Every
   mechanism that interpreted *meaning* in procedural code is deleted; the

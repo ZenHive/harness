@@ -1,7 +1,7 @@
 # Dispatch a single roadmap task
 
 **Use when:** the operator wants one specific roadmap task (or "the next one") built by a
-headless agent in an isolated worktree, then graded by the project's own check stack.
+headless agent in an isolated worktree, then gated by a cross-family reviewer AI.
 
 ## Steps (chat / MCP orchestrator)
 
@@ -34,11 +34,12 @@ headless agent in an isolated worktree, then graded by the project's own check s
    (and the 5s linger passes) read the durable record via `result_store__list_run_records`
    (`run_id:`). For a live transcript, point the operator at `http://localhost:4018/harness/runs/<run_id>`.
 
-5. **Report the verdict.** The grade is the verification stack, never the agent's self-report.
-   Read `state` + `reason` + `verdict`. Green ⇒ done (worktree branch `harness/<run_id>` holds the
-   commit). Red ⇒ summarize the failing checks; a cross-family reviewer already tried to fix the
-   worktree inline (up to `max_review_iterations`) before the run settled, and
-   `reviewer_stuck_report` carries its prose when it gave up.
+5. **Report the verdict.** The gate is the cross-family reviewer's verdict, never the
+   implementer's self-report. Read `state` + `reason` + `review`. `:done` / `:approved` ⇒ done
+   (worktree branch `harness/<run_id>` holds the commits — the implementer's plus any reviewer
+   fixes). `{:review_rejected, report}` ⇒ the reviewer found nothing salvageable; the task went
+   back to the queue with the reviewer's report. `{:review_stuck, report}` ⇒ the reviewer never
+   wrote a readable `.harness/review.json` — re-dispatch.
 
 ## Gotchas
 
@@ -52,9 +53,9 @@ headless agent in an isolated worktree, then graded by the project's own check s
 - **Non-delegatable executors** (`grok` / `antigravity` / `pi`) work through `dispatch__task`
   directly — the ingest-with-a-delegatable-render-agent dance is handled internally. (Note:
   `antigravity` is not worktree-isolated and may be rejected by the dispatch guard — expected.)
-- `result_store` records carry the verdict **status** + failed-check **names** + transcript, but
-  not per-check stdout/stderr. To triage a red verdict by reading actual check output, the live
-  `%Harness.Run.Result{}` (subscriber path) is the only source.
+- `result_store` records carry the reviewer's **verdict** (`approve`/`reject`), **report**,
+  **ratings**, and the reviewer's fix-diff size + transcript. The report is the reviewer's prose —
+  there is no per-check stdout to dig through; the reviewer already ran the checks and judged them.
 
 ## In-process Elixir / IEx driver path (NOT the chat path)
 

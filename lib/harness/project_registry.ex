@@ -11,8 +11,6 @@ defmodule Harness.ProjectRegistry do
   use GenServer
   use Descripex, namespace: "/project_registry"
 
-  alias Harness.CheckStack
-  alias Harness.CheckStack.Preset
   alias Harness.Project
   alias Harness.ProjectRegistry.Persistence
 
@@ -57,7 +55,7 @@ defmodule Harness.ProjectRegistry do
       project: [
         kind: :value,
         description:
-          "%Harness.Project{} the caller constructs (name, source, check_stacks, roadmap_path, concurrency_cap, pollution_allowlist)."
+          "%Harness.Project{} the caller constructs (name, source, check_command, roadmap_path, concurrency_cap, pollution_allowlist)."
       ]
     ],
     returns: %{
@@ -188,20 +186,18 @@ defmodule Harness.ProjectRegistry do
   defp build_project(%{} = entry) do
     with {:ok, name} <- fetch_required(entry, :name),
          {:ok, source} <- fetch_source(entry),
-         {:ok, check_stacks} <- fetch_check_stacks(entry),
          {:ok, roadmap_path} <- fetch_roadmap_path(entry),
-         {:ok, review_green} <- fetch_review_green(entry) do
+         {:ok, check_command} <- fetch_check_command(entry) do
       {:ok,
        %Project{
          name: name,
          source: source,
-         check_stacks: check_stacks,
          roadmap_path: roadmap_path,
+         check_command: check_command,
          concurrency_cap: Map.get(entry, :concurrency_cap),
          pollution_allowlist: Map.get(entry, :pollution_allowlist),
          landing_policy: Map.get(entry, :landing_policy, :manual),
-         target_branch: Map.get(entry, :target_branch),
-         review_green: review_green
+         target_branch: Map.get(entry, :target_branch)
        }}
     end
   end
@@ -259,60 +255,6 @@ defmodule Harness.ProjectRegistry do
     end
   end
 
-  @spec fetch_check_stacks(map()) ::
-          {:ok, [CheckStack.t()]} | {:error, {:invalid_project, term()}}
-  defp fetch_check_stacks(%{stacks: stacks}) when is_list(stacks) and stacks != [] do
-    stacks
-    |> Enum.reduce_while({:ok, []}, fn entry, {:ok, acc} ->
-      case resolve_stack(Map.new(List.wrap(entry))) do
-        {:ok, stack} -> {:cont, {:ok, [stack | acc]}}
-        {:error, _} = error -> {:halt, error}
-      end
-    end)
-    |> case do
-      {:ok, resolved} -> {:ok, Enum.reverse(resolved)}
-      {:error, _} = error -> error
-    end
-  end
-
-  # Back-compat: a singular top-level `check_stack:`/`preset:` (no `stacks:`)
-  # is one stack at the repo root (`workdir: ""`).
-  defp fetch_check_stacks(entry) do
-    case resolve_stack(entry) do
-      {:ok, stack} -> {:ok, [stack]}
-      {:error, _} = error -> error
-    end
-  end
-
-  @spec resolve_stack(map()) :: {:ok, CheckStack.t()} | {:error, {:invalid_project, term()}}
-  defp resolve_stack(entry) do
-    with {:ok, stack} <- resolve_stack_base(entry) do
-      {:ok, %{stack | workdir: Map.get(entry, :workdir, "")}}
-    end
-  end
-
-  @spec resolve_stack_base(map()) :: {:ok, CheckStack.t()} | {:error, {:invalid_project, term()}}
-  defp resolve_stack_base(entry) do
-    cond do
-      match?(%CheckStack{}, Map.get(entry, :check_stack)) ->
-        {:ok, Map.fetch!(entry, :check_stack)}
-
-      # `preset: {:elixir_precommit, cover_threshold: 85, ...}` — a parameterized
-      # preset declaring the project's own merge gate (Task 97).
-      match?({name, opts} when is_atom(name) and is_list(opts), Map.get(entry, :preset)) ->
-        {name, opts} = Map.fetch!(entry, :preset)
-        Preset.fetch(name, opts)
-
-      # `is_atom(nil)` is true, so a bare `is_atom(Map.get(...))` form would
-      # falsely match when :preset is missing. Match an explicit non-nil atom.
-      is_atom(Map.get(entry, :preset)) and not is_nil(Map.get(entry, :preset)) ->
-        Preset.fetch(Map.fetch!(entry, :preset))
-
-      true ->
-        {:error, {:invalid_project, {:missing, :check_stack}}}
-    end
-  end
-
   @spec fetch_roadmap_path(map()) :: {:ok, String.t()} | {:error, {:invalid_project, term()}}
   defp fetch_roadmap_path(entry) do
     case Map.fetch(entry, :roadmap_path) do
@@ -322,21 +264,15 @@ defmodule Harness.ProjectRegistry do
     end
   end
 
-  # `review_green` (Task 162): when true (the default), even green verdicts get
-  # one cross-family reviewer pass before settling :done — no unreviewed code
-  # lands. Validate at registration rather than crashing a run mid-flight on a
-  # typo. Absent ⇒ true. The deprecated `semantic_gate` mode enum maps onto it
-  # for back-compat: :always / :auto_land_only ⇒ true, :off ⇒ false (an explicit
-  # legacy opt-out stays an opt-out).
-  @spec fetch_review_green(map()) :: {:ok, boolean()} | {:error, {:invalid_project, term()}}
-  defp fetch_review_green(entry) do
-    case {Map.fetch(entry, :review_green), Map.get(entry, :semantic_gate)} do
-      {{:ok, value}, _legacy} when is_boolean(value) -> {:ok, value}
-      {{:ok, other}, _legacy} -> {:error, {:invalid_project, {:invalid_review_green, other}}}
-      {:error, legacy} when legacy in [:always, :auto_land_only] -> {:ok, true}
-      {:error, :off} -> {:ok, false}
-      {:error, nil} -> {:ok, true}
-      {:error, other} -> {:error, {:invalid_project, {:invalid_semantic_gate, other}}}
+  # `check_command` is a free-text hint the reviewer AI receives in its prompt
+  # (e.g. "mix precommit"). Optional — a project without one leaves the reviewer
+  # to discover the project's checks itself. Harness never executes it.
+  @spec fetch_check_command(map()) :: {:ok, String.t() | nil} | {:error, {:invalid_project, term()}}
+  defp fetch_check_command(entry) do
+    case Map.get(entry, :check_command) do
+      nil -> {:ok, nil}
+      command when is_binary(command) -> {:ok, command}
+      other -> {:error, {:invalid_project, {:invalid_check_command, other}}}
     end
   end
 end

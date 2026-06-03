@@ -8,7 +8,6 @@ defmodule Harness.Run.SupervisorTest do
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.Result
-  alias Harness.Verification.Check
 
   defmodule NoResumeAdapter do
     @moduledoc false
@@ -60,7 +59,8 @@ defmodule Harness.Run.SupervisorTest do
       Run.Supervisor.start_run(item(), project_b, FakeAdapter,
         base_dir: base,
         adapter_opts: [command: :write],
-        checks: [check("ok", "true")],
+        reviewer: FakeAdapter,
+        reviewer_adapter_opts: [command: {:review, "approve"}],
         total_timeout: 30_000,
         idle_timeout: 10_000,
         lifetime_timeout: 30_000,
@@ -108,6 +108,4 @@ defmodule Harness.Run.SupervisorTest do
   defp item do
     %Item{id: "8", title: "t", prompt: "p", agent: :claude}
   end
-
-  defp check(name, command), do: %Check{name: name, command: command, args: []}
 end

@@ -624,10 +624,8 @@ defmodule Harness.Dashboard.Live do
       <dd>{@run_status.task_id}</dd>
       <dt>State</dt>
       <dd>{@run_status.state}</dd>
-      <dt>Review iterations</dt>
-      <dd>{@run_status.review_iterations}</dd>
       <dt>Verdict</dt>
-      <dd>{verdict_label(@run_status.verdict_status)}</dd>
+      <dd>{verdict_label(@run_status.review_verdict)}</dd>
       <dt>Agent</dt>
       <dd>{agent_label(@agent_kind, @run_status.agent)}</dd>
       <dt>Model</dt>
@@ -763,7 +761,6 @@ defmodule Harness.Dashboard.Live do
           <th>Agent</th>
           <th>Model</th>
           <th>State</th>
-          <th>Reviews</th>
           <th>Verdict</th>
           <th>Landed</th>
           <th>Detail</th>
@@ -780,8 +777,7 @@ defmodule Harness.Dashboard.Live do
           <td>
             <Components.bucket_badge bucket={entry.bucket} label={to_string(entry.status.state)} />
           </td>
-          <td>{entry.status.review_iterations}</td>
-          <td>{verdict_label(entry.status.verdict_status)}</td>
+          <td>{verdict_label(entry.status.review_verdict)}</td>
           <td>{landed_label(@summaries, entry.status)}</td>
           <td>{entry.detail || ""}</td>
           <td>
@@ -873,9 +869,9 @@ defmodule Harness.Dashboard.Live do
   end
 
   @doc false
-  @spec verdict_label(:pass | :fail | nil) :: String.t()
-  def verdict_label(:pass), do: "pass"
-  def verdict_label(:fail), do: "fail"
+  @spec verdict_label(:approve | :reject | nil) :: String.t()
+  def verdict_label(:approve), do: "approved"
+  def verdict_label(:reject), do: "rejected"
   def verdict_label(nil), do: "—"
 
   # "Merged" is the run's task carrying a shipped_in in the project roadmap (set

@@ -5,26 +5,18 @@ defmodule Harness.Run.LogRecordTest do
   alias Harness.AgentAdapter.Outcome
   alias Harness.Run.LogRecord
   alias Harness.Run.Result
+  alias Harness.Run.Review
   alias Harness.TokenUsage
-  alias Harness.Verification.Result, as: CheckResult
-  alias Harness.Verification.Verdict
 
   defp result(fields) do
     struct!(
-      %Result{run_id: "run-1", task_id: "8", state: :done, reason: :passed},
+      %Result{run_id: "run-1", task_id: "8", state: :done, reason: :approved},
       fields
     )
   end
 
   defp meta do
     [batch_id: "batch-1", agent: :claude, adapter: Claude, duration_ms: 1234]
-  end
-
-  defp check(fields) do
-    struct!(
-      %CheckResult{name: "c", command: "cmd", status: :fail, kind: :exited, exit_status: 1, output: ""},
-      fields
-    )
   end
 
   describe "from_result/2 token usage" do
@@ -35,8 +27,10 @@ defmodule Harness.Run.LogRecordTest do
       assert record.token_usage == usage
     end
 
-    test "defaults to an empty usage when the result carries none" do
-      record = LogRecord.from_result(result(token_usage: nil), meta())
+    test "an unmeasured result carries an empty usage onto the record" do
+      # A %Result{} always holds a %TokenUsage{} (struct default — never nil);
+      # unmeasured runs carry the empty usage through to the record.
+      record = LogRecord.from_result(result([]), meta())
 
       assert record.token_usage == TokenUsage.empty()
       refute TokenUsage.measured?(record.token_usage)
@@ -123,61 +117,64 @@ defmodule Harness.Run.LogRecordTest do
     end
   end
 
-  describe "from_result/2 check_output" do
-    test "captures only the failing checks' output, keyed by check name" do
-      verdict = %Verdict{
-        status: :fail,
-        results: [
-          check(name: "test", status: :fail, output: "boom"),
-          check(name: "credo", status: :pass, exit_status: 0, output: "clean")
-        ]
+  describe "from_result/2 review (the reviewer's verdict artifact)" do
+    test "carries the reviewer's verdict, report, and ratings onto the record" do
+      review = %Review{
+        verdict: :approve,
+        report: "ran the checks, fixed a credo nit, approving",
+        ratings: %{"performance" => 8, "code_quality" => 7}
       }
 
-      record = LogRecord.from_result(result(verdict: verdict), meta())
+      record = LogRecord.from_result(result(review: review), meta())
 
-      assert Map.keys(record.check_output) == ["test"]
-      assert record.check_output["test"] == %{output: "boom", truncated: false}
+      assert record.verdict == :approve
+      assert record.review_report == "ran the checks, fixed a credo nit, approving"
+      assert record.review_ratings == %{"performance" => 8, "code_quality" => 7}
     end
 
-    test "tail-truncates output past the cap and flags it, keeping the diagnostic tail" do
-      big = String.duplicate("x", 20_000) <> "TAIL_MARKER"
-      verdict = %Verdict{status: :fail, results: [check(name: "dialyzer", output: big)]}
+    test "carries a rejection verdict with the reviewer's report" do
+      review = %Review{verdict: :reject, report: "nothing to salvage"}
 
-      record = LogRecord.from_result(result(verdict: verdict), meta())
-      entry = record.check_output["dialyzer"]
+      record =
+        LogRecord.from_result(
+          result(state: :failed, reason: {:review_rejected, "nothing to salvage"}, review: review),
+          meta()
+        )
 
-      assert entry.truncated
-      assert byte_size(entry.output) <= 16_000
-      assert String.ends_with?(entry.output, "TAIL_MARKER")
+      assert record.verdict == :reject
+      assert record.review_report == "nothing to salvage"
+      assert record.review_ratings == %{}
     end
 
-    test "trims a UTF-8 codepoint split by the tail boundary, keeping valid output" do
-      # "你" is 3 bytes; 6000 copies = 18_000 bytes. The 16_000-byte tail starts
-      # 2_000 bytes in (not a multiple of 3), so the slice begins mid-codepoint —
-      # valid_utf8_tail must trim the leading partial byte(s).
-      big = String.duplicate("你", 6_000)
-      verdict = %Verdict{status: :fail, results: [check(name: "test", output: big)]}
+    test "leaves the verdict fields at their defaults when the run never produced a review" do
+      record = LogRecord.from_result(result(state: :failed, reason: :cancelled, review: nil), meta())
 
-      record = LogRecord.from_result(result(verdict: verdict), meta())
-      entry = record.check_output["test"]
+      assert record.verdict == nil
+      assert record.review_report == nil
+      assert record.review_ratings == %{}
+    end
+  end
 
-      assert entry.truncated
-      assert String.valid?(entry.output)
-      assert byte_size(entry.output) <= 16_000
+  describe "from_result/2 review_iterations (derived from the reviewer's diff)" do
+    test "is 0 when the reviewer changed nothing (first-attempt pass)" do
+      record = LogRecord.from_result(result(reviewer_diff_size: 0), meta())
+
+      assert record.review_iterations == 0
+      assert record.reviewer_diff_size == 0
     end
 
-    test "is an empty map for a green verdict" do
-      verdict = %Verdict{status: :pass, results: [check(name: "test", status: :pass, exit_status: 0, output: "ok")]}
+    test "is 1 when the reviewer committed fixes" do
+      record = LogRecord.from_result(result(reviewer_diff_size: 12), meta())
 
-      record = LogRecord.from_result(result(verdict: verdict), meta())
-
-      assert record.check_output == %{}
+      assert record.review_iterations == 1
+      assert record.reviewer_diff_size == 12
     end
 
-    test "is an empty map when the result carries no verdict" do
-      record = LogRecord.from_result(result(verdict: nil), meta())
+    test "is 0 when the run never reached review" do
+      record = LogRecord.from_result(result(reviewer_diff_size: nil), meta())
 
-      assert record.check_output == %{}
+      assert record.review_iterations == 0
+      assert record.reviewer_diff_size == nil
     end
   end
 end

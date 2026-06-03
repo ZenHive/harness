@@ -19,19 +19,14 @@ defmodule Harness.Lander.Resilience do
       source the lander can't push to).
     * `{:error, reason}` → `{:error, reason}` (a transient fetch/checkout
       failure — Oban backs off and retries the *same* landing job).
-    * `{:post_merge_red, _}` / `{:conflict, _}` / non-command
-      `{:reflex_halt, _}` → **fresh re-dispatch** of the task against the
-      current target HEAD (a new run branches off the integrated tip by
-      construction) while under the attempt cap; at the cap, the task is marked
-      `blocked`.
+    * `{:conflict, _}` / non-command `{:reflex_halt, _}` → **fresh re-dispatch**
+      of the task against the current target HEAD (a new run branches off the
+      integrated tip by construction) while under the attempt cap; at the cap,
+      the task is marked `blocked`.
     * blocked-command `{:reflex_halt, {:blocked_command, _}}` → `blocked`
       immediately.
     * `{:push_rejected, _}` → **re-land** the retained branch (re-fetch / rebase
-      / re-verify / push) while under the cap; at the cap, `blocked`.
-
-  `post_merge_red` and `conflict` share the same mechanism (fresh re-dispatch)
-  and the same cap; only the blocked-reason tag differs. There is no resolver
-  agent — the task's two-peer consult rejected one.
+      / push) while under the cap; at the cap, `blocked`.
 
   ## The attempt cap
 
@@ -58,7 +53,7 @@ defmodule Harness.Lander.Resilience do
   @max_land_attempts 2
 
   @typedoc "Which non-landed outcome exhausted the cap — names the blocked reason."
-  @type reason_tag :: :post_merge_red | :conflict | :push_rejected | :reflex_halt
+  @type reason_tag :: :conflict | :push_rejected | :reflex_halt
 
   @typedoc "A pure routing decision produced by `plan/2`."
   @type action ::
@@ -91,9 +86,6 @@ defmodule Harness.Lander.Resilience do
   def plan({:skipped, _reason} = skipped, _attempt), do: {:ok, skipped}
   def plan({:error, reason}, _attempt), do: {:retry, reason}
 
-  def plan({:post_merge_red, _verdict}, attempt),
-    do: cap(attempt, {:redispatch, attempt + 1, :post_merge_red}, :post_merge_red)
-
   def plan({:conflict, _output}, attempt), do: cap(attempt, {:redispatch, attempt + 1, :conflict}, :conflict)
 
   def plan({:push_rejected, _output}, attempt), do: cap(attempt, {:reland, attempt + 1}, :push_rejected)
@@ -115,20 +107,11 @@ defmodule Harness.Lander.Resilience do
   @spec route(Lander.outcome(), map()) :: Oban.Worker.result()
   def route(outcome, args) do
     attempt = Map.get(args, "land_attempt", 1)
-    maybe_notify_red(outcome, args)
 
     outcome
     |> plan(attempt)
     |> apply_action(args)
   end
-
-  # A post-merge-red branch is notified on *every* occurrence (independent of
-  # whether it re-dispatches or blocks) — the witness sees each integration
-  # failure, and a buddhi witness gets the failing Verdict to reason over.
-  @spec maybe_notify_red(Lander.outcome(), map()) :: :ok
-  defp maybe_notify_red({:post_merge_red, verdict}, args), do: Notification.notify(event(:post_merge_red, verdict, args))
-
-  defp maybe_notify_red(_outcome, _args), do: :ok
 
   @spec apply_action(action(), map()) :: Oban.Worker.result()
   defp apply_action({:ok, {:landed, sha}}, args) do
@@ -170,7 +153,7 @@ defmodule Harness.Lander.Resilience do
 
   # Re-insert a landing job for the retained branch on the serialized landing
   # queue, carrying the bumped attempt — the branch re-lands (re-fetch / rebase /
-  # re-verify / push) after whatever advanced the target has settled.
+  # push) after whatever advanced the target has settled.
   @spec reland(map(), pos_integer()) :: Oban.Worker.result()
   defp reland(args, attempt) do
     with {:ok, project} <- ProjectRegistry.lookup(args["project_name"]),
@@ -209,7 +192,7 @@ defmodule Harness.Lander.Resilience do
   end
 
   # Builds a witness Event from the worker args + the type-specific outcome
-  # payload (landed SHA / blocked reason / failing Verdict).
+  # payload (landed SHA / blocked reason).
   @spec event(Event.type(), Event.outcome(), map()) :: Event.t()
   defp event(type, outcome, args) do
     %Event{

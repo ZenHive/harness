@@ -42,16 +42,6 @@ config :harness, :audit_review, grader_pairs: %{claude: :codex, codex: :claude}
 # `false` to disable persistence entirely.
 config :harness, :chat_store, root: Path.expand("~/.harness/chats")
 
-# Autonomous capability-benchmark scheduler (Task 122). The Oban cron entry is
-# registered unconditionally; `enabled` is the live dispatch gate (default off
-# in test). `max_cells_per_tick` caps cost per tick; `max_concurrency` is
-# forwarded to Batch.AgentEvaluation.compare/4.
-config :harness, :cron_capability_benchmark,
-  enabled: false,
-  schedule: "0 3 * * *",
-  max_cells_per_tick: 3,
-  max_concurrency: 1
-
 # Autonomous roadmap polling is opt-in. The Oban.Plugins.Cron entry that runs
 # Harness.Cron.RoadmapPoller is registered unconditionally (Task 109) so the
 # runtime master toggle has a scheduled tick to act on; `enabled` is the live
@@ -111,13 +101,10 @@ config :harness, :retry_policy,
 #   :total_timeout       — agent total-run budget in ms; defaults to 1_800_000 (30 min).
 #   :idle_timeout        — kill the agent after this many ms with no output; defaults
 #                          to 300_000 (5 min).
-#   :lifetime_timeout    — whole-job wall budget (worktree + agent + verification) in
+#   :lifetime_timeout    — whole-job wall budget (worktree + implementer + reviewer) in
 #                          ms; defaults to 5_400_000 (90 min).
 #   :terminal_linger     — how long a settled run stays observable before it stops, in
 #                          ms; defaults to 5_000 (5 s).
-#   :max_review_iterations — how many cross-family reviewer passes a non-green run
-#                          gets before settling :failed; defaults to 2. 0 disables
-#                          the reviewer-pair path.
 #   :max_hold_timeout — operator hold safeguard in ms; settles :hold_expired when
 #                       elapsed. Defaults to 1_800_000 (30 min). `:infinity` disables.
 #   :pollution_allowlist — path patterns ignored by the main-checkout pollution diff
@@ -135,22 +122,13 @@ config :harness, :retry_policy,
 #   command: "/usr/local/bin/notify-train.sh",
 #   args: []
 
-# Verification check stack — see Harness.Verification.
-# Both keys are optional; defaults live in code (elixir_preset/0, 600_000 ms).
-#   :checks  — list of %Harness.Verification.Check{}; defaults to elixir_preset/0.
-#   :timeout — per-check timeout in ms; defaults to 600_000 (10 min).
-# Raised to 30 min: the :elixir_precommit test+coverage check alone runs ~10 min
-# on this repo, and reviewer iterations re-run the full stack after each fix
-# pass — the 10-min code default leaves no headroom.
-config :harness, :verification, timeout: 1_800_000
-
 # Registered orchestration targets — see Harness.Project and Harness.ProjectRegistry.
 # Each entry is a keyword list: name, source ({:local, path}), roadmap_path,
-# optional concurrency_cap, and a check-stack declaration — either a singular
-# `preset:`/`check_stack:` (one stack at the repo root) or `stacks:` (a list of
-# `[preset:/check_stack:, workdir:]` for multi-language monorepos, each run in
-# its own subdirectory). Dev self-registers the harness checkout via
-# config/dev.exs; test/prod stay un-opinionated.
+# optional concurrency_cap, and an optional `check_command:` free-text hint the
+# reviewer AI receives in its prompt (e.g. "mix precommit") — the reviewer runs
+# the project's checks itself; harness never executes the command. Dev
+# self-registers the harness checkout via config/dev.exs; test/prod stay
+# un-opinionated.
 
 # Per-run git worktree lifecycle — see Harness.Worktree.
 config :harness, :worktree,
@@ -203,13 +181,6 @@ if config_env() == :test do
   config :harness,
          :result_store,
          {Harness.ResultStore.File, root: Path.join(System.tmp_dir!(), "harness_results_test")}
-
-  # Reviewer-pair routing OFF by default in tests: a red verdict settles
-  # :failed/:verification_red immediately instead of spawning a real
-  # cross-family reviewer agent against the test fixture. Tests that exercise
-  # the reviewing state pass max_review_iterations (and a fake reviewer)
-  # explicitly via run opts, which always win over this config.
-  config :harness, :run, max_review_iterations: 0
 
   config :harness, :worktree,
     base_dir: Path.join(System.tmp_dir!(), "harness_worktrees_test"),

@@ -2,11 +2,11 @@
 
 **OTP-native task-execution engine an AI orchestrator drives end to end.**
 
-Harness pulls tasks from an `rmap` roadmap, dispatches each to a headless coding agent (Claude Code, Cursor, Codex, Grok, Antigravity, Pi) running in an isolated git worktree, runs the target project's own check stack against the result, and reports a *verified* outcome. The primary user is an AI orchestrator, not a human. The verification stack — not the agent's self-report — is the source of truth for success/failure. Every adapter is held to the same `AgentAdapter` behaviour and a reusable conformance suite.
+Harness pulls tasks from an `rmap` roadmap, dispatches each to a headless coding agent (Claude Code, Cursor, Codex, Grok, Antigravity, Pi) running in an isolated git worktree, then gates the result with a **cross-family reviewer AI** — the reviewer runs the target project's own checks itself, fixes what it can inline, and writes the verdict. The primary user is an AI orchestrator, not a human. The reviewer's verdict — not the implementer's self-report — is the source of truth for success/failure. Every adapter is held to the same `AgentAdapter` behaviour and a reusable conformance suite.
 
 ## Status
 
-Post-v0_5: harness is a long-running multi-project OTP node. `Harness.ProjectRegistry` holds N first-class projects (Elixir, Rust, anything with a shell-driven check stack); Oban (queue-per-project, Postgres-persisted) provides dispatch with restart resilience; six agent adapters (Claude Code, Codex, Cursor, Grok, Antigravity, Pi) drive runs; the `Harness.Run` `gen_statem` owns the per-run lifecycle and an autonomous repair loop; `Oban.Plugins.Cron` lets the roadmap drive itself unattended.
+Harness is a long-running multi-project OTP node. `Harness.ProjectRegistry` holds N first-class projects (Elixir, Rust, anything an agent can check); Oban (queue-per-project, Postgres-persisted) provides dispatch with restart resilience; six agent adapters (Claude Code, Codex, Cursor, Grok, Antigravity, Pi) drive runs; the `Harness.Run` `gen_statem` owns the per-run lifecycle (implement → commit → review → settle); approved runs can auto-land (rebase + ff-push) and get a post-merge audit agent; `Oban.Plugins.Cron` lets the roadmap drive itself unattended. Architecture spec: [docs/agent-gate-workflow.md](docs/agent-gate-workflow.md).
 
 The cold-path consumer surface is the **Phoenix LiveView dashboard** + embedded **Oban Web** + a **native MCP server** (`/harness/mcp`, flat JSON-RPC tools) + a **Tidewave MCP** plug (`/tidewave/mcp`, `project_eval`), all served by one standalone Bandit endpoint on `http://localhost:4018`. The native MCP tools (`dispatch__task`, `dispatch__status`, `dispatch__verdict_detail`, `roadmap__*`, …) are the primary surface for any JSON/MCP orchestrator; Tidewave `project_eval` + IEx are the escape hatch for arbitrary eval and the struct-passing ops the flat tools deliberately omit.
 
@@ -31,7 +31,7 @@ The standalone Bandit endpoint is gated by `config :harness, :dashboard, enabled
 
 ## Use harness from another repo
 
-The common case: you have a project (`myapp`) and want harness — running as a long-lived `iex -S mix` BEAM in `~/_DATA/code/harness/` — to dispatch tasks from `myapp`'s roadmap to headless coding agents, run `myapp`'s own check stack as the grader, and report verified verdicts back to the AI agent driving from inside `myapp`.
+The common case: you have a project (`myapp`) and want harness — running as a long-lived `iex -S mix` BEAM in `~/_DATA/code/harness/` — to dispatch tasks from `myapp`'s roadmap to headless coding agents, gate each result with a cross-family reviewer AI (which runs `myapp`'s own checks itself), and report the reviewer's verdicts back to the AI agent driving from inside `myapp`.
 
 Three setup steps:
 
@@ -43,20 +43,20 @@ config :harness, :projects, [
   [
     name: "harness",
     source: {:local, Path.expand("..", __DIR__)},
-    preset: :elixir,
+    check_command: "mix precommit.full",
     roadmap_path: Path.expand("..", __DIR__)
   ],
   [
     name: "myapp",
     source: {:local, "/Users/you/_DATA/code/myapp"},
-    preset: :elixir,                     # or :rust, or a fully-spec'd %Harness.CheckStack{}
+    check_command: "mix precommit",      # free-text hint for the reviewer AI
     roadmap_path: "/Users/you/_DATA/code/myapp",
     concurrency_cap: 2
   ]
 ]
 ```
 
-`:elixir` is the lighter day-to-day stack. To make a green verdict imply *"my own `mix precommit` would also pass"* — closing the gap where harness grades green but a coverage gate (or `format`/`warnings-as-errors`) would block the merge — register against the mergeable-bar preset instead: `preset: {:elixir_precommit, cover_threshold: 80, exclude: [:integration]}`. It adds `format --check-formatted`, `compile --warnings-as-errors`, a coverage threshold on `test`, and `doctor --raise` to the stack. DB-backed projects can opt into tagged integration tests with a provisioned per-worktree Postgres test DB via `preset: {:elixir_precommit, cover_threshold: 80, include: [:integration], database: :postgres}`.
+`check_command` is a free-text hint handed to the reviewer AI — the reviewer runs the project's checks itself and judges the output; harness never executes the command. Point it at your project's mergeable bar (`mix precommit`, `cargo test && cargo clippy`, …); for a multi-language monorepo just describe each component's command in the hint. Omit it to let the reviewer discover the checks on its own.
 
 **2. Add harness's MCP endpoints to `myapp/.mcp.json`** — alongside `myapp`'s own Tidewave if it has one. The `harness` entry (native flat tools) is your primary surface; the optional `harness_eval` entry is the `project_eval` escape hatch into harness's BEAM:
 
@@ -87,7 +87,7 @@ Claude Code surfaces a server's tools as `mcp__<server-name>__<tool>`, giving th
 @~/_DATA/code/harness/skills/harness-driver/SKILL.md
 ```
 
-Restart the Claude Code session in `myapp` to pick up the new `.mcp.json` entries. After that, the agent dispatches via the flat `mcp__harness__dispatch__task` tool (and observes with `mcp__harness__dispatch__status` / `dispatch__verdict_detail`) against `:4018`; harness manages isolated worktrees of `myapp`, runs `myapp`'s check stack, and reports the verified verdict back.
+Restart the Claude Code session in `myapp` to pick up the new `.mcp.json` entries. After that, the agent dispatches via the flat `mcp__harness__dispatch__task` tool (and observes with `mcp__harness__dispatch__status` / `dispatch__verdict_detail`) against `:4018`; harness manages isolated worktrees of `myapp`, gates each run with the cross-family reviewer AI, and reports the reviewer's verdict back.
 
 Full driver contract (entry points, two-eval pattern for ephemeral MCP eval processes, cross-checkout sharp edges, secret scrubbing): [skills/harness-driver/SKILL.md](skills/harness-driver/SKILL.md) § "Context A — Driving harness from another repo".
 

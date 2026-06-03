@@ -5,7 +5,6 @@ defmodule Harness.CapabilityScoreTest do
   alias Harness.AgentAdapter.Codex
   alias Harness.Batch.AgentEvaluation.Comparison
   alias Harness.Batch.AgentEvaluation.Entry
-  alias Harness.Benchmark.Item
   alias Harness.CapabilityScore
   alias Harness.ResultStore
   alias Harness.ResultStore.File, as: FileStore
@@ -29,17 +28,17 @@ defmodule Harness.CapabilityScoreTest do
   test "scores a domain from seeded AgentEvaluation comparisons", %{store: store} do
     comparisons = [
       comparison("bench.otp.latch", [
-        entry(Codex, "codex-1", :pass, review_iterations: 0, token_usage: tokens(100, 20)),
-        entry(Claude, "claude-1", :pass, review_iterations: 1, token_usage: tokens(500, 100))
+        entry(Codex, "codex-1", :approve, reviewer_diff_size: 0, token_usage: tokens(100, 20)),
+        entry(Claude, "claude-1", :approve, reviewer_diff_size: 10, token_usage: tokens(500, 100))
       ]),
       comparison("bench.otp.supervised_counter", [
-        entry(Codex, "codex-2", :fail, review_iterations: 2, first_attempt_failed_check_count: 3),
-        entry(Claude, "claude-2", :pass, review_iterations: 0, token_usage: tokens(300, 50))
+        entry(Codex, "codex-2", :reject, reviewer_diff_size: 40),
+        entry(Claude, "claude-2", :approve, reviewer_diff_size: 0, token_usage: tokens(300, 50))
       ])
     ]
 
     assert {:ok, scores} =
-             CapabilityScore.score_domain(comparisons, corpus_items(), :otp,
+             CapabilityScore.score_domain(comparisons, :otp,
                corpus_version: "otp-v1",
                scored_at: @scored_at,
                result_store: store
@@ -55,16 +54,34 @@ defmodule Harness.CapabilityScoreTest do
     assert codex.run_count == 2
     assert codex.success_rate == 0.5
     assert codex.cost_to_green == 120.0
-    assert codex.mean_review_iterations == 1.0
+    assert codex.mean_reviewer_diff_size == 20.0
     assert length(codex.raw_metrics) == 2
 
     assert claude.success_rate == 1.0
     assert claude.cost_to_green == 475.0
-    assert claude.mean_review_iterations == 0.5
+    assert claude.mean_reviewer_diff_size == 5.0
     assert claude.composite_score > codex.composite_score
 
     assert {:ok, persisted} = ResultStore.get_capability_score(:codex, :otp, "otp-v1", store)
     assert persisted == codex
+  end
+
+  test "derives a corpus_version fingerprint from the compared task ids when none is given" do
+    assert {:ok, [score]} =
+             CapabilityScore.score_domain(
+               [
+                 comparison("task.42", [
+                   entry(Codex, "codex-1", :approve, reviewer_diff_size: 0, token_usage: tokens(100, 25))
+                 ])
+               ],
+               :otp,
+               scored_at: @scored_at,
+               result_store: false
+             )
+
+    # The fingerprint is deterministic over the sorted unique task ids.
+    assert is_binary(score.corpus_version)
+    assert score.corpus_version != ""
   end
 
   test "an unmeasured cell is explicit no data, distinct from a measured-low score", %{store: store} do
@@ -72,12 +89,12 @@ defmodule Harness.CapabilityScoreTest do
 
     comparisons = [
       comparison("bench.ecto.embedded_profile", [
-        entry(Codex, "codex-low", :fail, review_iterations: 1, first_attempt_failed_check_count: 2)
+        entry(Codex, "codex-low", :reject, reviewer_diff_size: 25)
       ])
     ]
 
     assert {:ok, [%CapabilityScore{} = low]} =
-             CapabilityScore.score_domain(comparisons, corpus_items(), :ecto,
+             CapabilityScore.score_domain(comparisons, :ecto,
                corpus_version: "ecto-v1",
                scored_at: @scored_at,
                result_store: store
@@ -94,13 +111,12 @@ defmodule Harness.CapabilityScoreTest do
              CapabilityScore.score_domain(
                [
                  comparison("bench.otp.latch", [
-                   entry(Codex, "codex-1", :pass, review_iterations: 0, token_usage: tokens(100, 25))
+                   entry(Codex, "codex-1", :approve, reviewer_diff_size: 0, token_usage: tokens(100, 25))
                  ]),
                  comparison("bench.otp.supervised_counter", [
-                   entry(Codex, "codex-2", :pass, review_iterations: 2, token_usage: tokens(200, 75))
+                   entry(Codex, "codex-2", :approve, reviewer_diff_size: 30, token_usage: tokens(200, 75))
                  ])
                ],
-               corpus_items(),
                :otp,
                corpus_version: "otp-v1",
                scored_at: @scored_at,
@@ -112,7 +128,7 @@ defmodule Harness.CapabilityScoreTest do
     assert retuned.raw_metrics == score.raw_metrics
     assert retuned.success_rate == 1.0
     assert retuned.cost_to_green == 200.0
-    assert retuned.mean_review_iterations == 1.0
+    assert retuned.mean_reviewer_diff_size == 15.0
     assert retuned.composite_score == score.composite_score
   end
 
@@ -232,48 +248,30 @@ defmodule Harness.CapabilityScoreTest do
   end
 
   defp entry(adapter, run_id, verdict, opts) do
+    {state, reason} =
+      if verdict == :approve do
+        {:done, :approved}
+      else
+        {:failed, {:review_rejected, "rejected"}}
+      end
+
     %Entry{
       adapter: adapter,
       run_id: run_id,
-      state: if(verdict == :pass, do: :done, else: :failed),
-      reason: if(verdict == :pass, do: :passed, else: :verification_red),
+      state: state,
+      reason: reason,
       verdict: verdict,
-      review_iterations: Keyword.fetch!(opts, :review_iterations),
+      reviewer_diff_size: Keyword.fetch!(opts, :reviewer_diff_size),
       duration_ms: Keyword.get(opts, :duration_ms, 100),
-      first_attempt_failed_check_count: Keyword.get(opts, :first_attempt_failed_check_count, 0),
       agent_diff_size: nil,
       token_usage: Keyword.get(opts, :token_usage, TokenUsage.empty()),
       result: %RunResult{
         run_id: run_id,
         task_id: "task",
-        state: if(verdict == :pass, do: :done, else: :failed),
-        reason: if(verdict == :pass, do: :passed, else: :verification_red)
+        state: state,
+        reason: reason
       }
     }
-  end
-
-  defp corpus_items do
-    [
-      item("bench.otp.latch", [:otp, :elixir]),
-      item("bench.otp.supervised_counter", [:otp, :genserver]),
-      item("bench.ecto.embedded_profile", [:ecto, :elixir])
-    ]
-  end
-
-  defp item(id, domains) do
-    {:ok, item} =
-      Item.build(
-        id: id,
-        version: 1,
-        domains: domains,
-        intent: "implement #{id}",
-        acceptance_criteria: ["it works"],
-        target_project: "harness",
-        check_stack: "elixir",
-        expected_green: true
-      )
-
-    item
   end
 
   defp score(agent, domain, scored_at, composite_score) do
@@ -285,8 +283,7 @@ defmodule Harness.CapabilityScoreTest do
       run_count: 1,
       success_rate: composite_score / 1_000,
       cost_to_green: 100.0,
-      mean_review_iterations: 0.0,
-      mean_first_attempt_failed_check_count: 0.0,
+      mean_reviewer_diff_size: 0.0,
       composite_score: composite_score,
       raw_metrics: []
     }

@@ -12,13 +12,13 @@ defmodule Harness.Run.Status do
   alias Harness.AgentAdapter.Outcome
   alias Harness.Run.LogRecord
   alias Harness.Run.Result
+  alias Harness.Run.Review
 
   @typedoc "The lifecycle state a run is currently in."
   @type state ::
           :dispatched
           | :running
           | :committing
-          | :verifying
           | :reviewing
           | :held
           | :done
@@ -33,7 +33,7 @@ defmodule Harness.Run.Status do
     * `worktree_path` — the isolated worktree's path, or `nil` before it exists.
     * `agent_os_pid` — the agent's OS pid, captured once at spawn. `nil` before
       the agent has spawned and after a cancellation or failure clears the run
-      handle; otherwise it stays the spawn-time pid through `verifying` and the
+      handle; otherwise it stays the spawn-time pid through `reviewing` and the
       terminal states, even though the agent process has already exited.
     * `agent` — the executing adapter's identity atom (`:claude` / `:cursor` /
       …), resolved at run start; `nil` for an unregistered adapter / test double.
@@ -43,12 +43,8 @@ defmodule Harness.Run.Status do
       requested model, else `nil`.
     * `agent_kind` — how the agent run ended (`t:Harness.AgentAdapter.Outcome.kind/0`),
       or `nil` before the agent has finished.
-    * `verdict_status` — the verification verdict (`:pass` / `:fail`), or `nil`
-      before verification has finished.
-    * `review_iterations` — how many cross-family reviewer invocations the run
-      has made so far. `0` until a red verdict routes to the reviewer-pair path;
-      a snapshot with `state: :reviewing` is a reviewer fixing the worktree
-      inline.
+    * `review_verdict` — the reviewer's decision (`:approve` / `:reject`), or
+      `nil` before the reviewer has written its verdict artifact.
     * `reason` — why the run settled or is failing, once known (see
       `t:Harness.Run.Result.reason/0`); `nil` while the run is still in flight.
     * `held?` — `true` while the run is operator-parked in `:held`.
@@ -65,8 +61,7 @@ defmodule Harness.Run.Status do
           worktree_path: String.t() | nil,
           agent_os_pid: non_neg_integer() | nil,
           agent_kind: Outcome.kind() | nil,
-          verdict_status: :pass | :fail | nil,
-          review_iterations: non_neg_integer(),
+          review_verdict: Review.verdict() | nil,
           reason: Result.reason() | nil,
           held?: boolean(),
           hold_reason: :graceful | :interrupt | nil
@@ -83,10 +78,9 @@ defmodule Harness.Run.Status do
     :worktree_path,
     :agent_os_pid,
     :agent_kind,
-    :verdict_status,
+    :review_verdict,
     :reason,
     :hold_reason,
-    review_iterations: 0,
     held?: false
   ]
 
@@ -114,17 +108,12 @@ defmodule Harness.Run.Status do
       worktree_path: nil,
       agent_os_pid: nil,
       agent_kind: record.agent_outcome_kind,
-      verdict_status: record.verdict,
-      # Map.get so records persisted before the reviewer-pair fields existed
-      # decode without a KeyError — they simply report zero review iterations.
-      review_iterations: Map.get(record, :review_iterations) || 0,
+      review_verdict: Map.get(record, :verdict),
       reason: record.reason
     }
   end
 
   @spec state_from_log_record(LogRecord.t()) :: state()
   defp state_from_log_record(%LogRecord{state: state}) when state in [:done, :failed], do: state
-  defp state_from_log_record(%LogRecord{state: :passed}), do: :done
-  defp state_from_log_record(%LogRecord{verdict: :pass}), do: :done
   defp state_from_log_record(%LogRecord{}), do: :failed
 end

@@ -31,7 +31,6 @@ defmodule Harness.Dashboard.ConfigInspectorTest do
       for title <- [
             "Dashboard",
             "Run timeouts",
-            "Verification",
             "Cron polling",
             "Notifications",
             "Result store",
@@ -46,12 +45,12 @@ defmodule Harness.Dashboard.ConfigInspectorTest do
 
     test "marks a value diverging from the code default as :config provenance" do
       prev = Application.get_env(:harness, :run)
-      Application.put_env(:harness, :run, max_review_iterations: 9)
+      Application.put_env(:harness, :run, terminal_linger: 9_000)
       on_exit(fn -> restore(:run, prev) end)
 
-      resolved = row(sections(), "Run timeouts", "max_review_iterations")
+      resolved = row(sections(), "Run timeouts", "terminal_linger")
 
-      assert resolved.value == "9"
+      assert resolved.value == "9 s (9000 ms)"
       assert resolved.provenance == :config
     end
 
@@ -96,7 +95,7 @@ defmodule Harness.Dashboard.ConfigInspectorTest do
       assert row(sections(), "Notifications", "sinks").value == "none (silent)"
     end
 
-    test "lists a registered project with its source, roadmap path, and stacks" do
+    test "lists a registered project with its source, roadmap path, and check-command hint" do
       project = ProjectFixture.from_repo("/tmp/harness-config-inspect", name: "config-inspect")
       :ok = ProjectRegistry.register(project)
       on_exit(fn -> ProjectRegistry.unregister(project.name) end)
@@ -105,7 +104,7 @@ defmodule Harness.Dashboard.ConfigInspectorTest do
 
       assert resolved.value =~ "local:/tmp/harness-config-inspect"
       assert resolved.value =~ "roadmap="
-      assert resolved.value =~ "stacks="
+      assert resolved.value =~ "check="
     end
 
     test "renders an empty-state when no projects are registered" do

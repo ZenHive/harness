@@ -3,20 +3,20 @@ defmodule Harness.Run do
   The supervised lifecycle of one coding-agent job.
 
   A `Harness.Run` is a `:gen_statem` that owns one rmap task end to end: it
-  creates an isolated git worktree, dispatches a headless agent into it, waits
-  for the agent to terminate, runs the verification stack against the result,
-  and settles on a verdict. It is the unit the project's CLAUDE.md calls "one
-  run = one supervised gen_statem".
+  creates an isolated git worktree, dispatches a headless implementer agent
+  into it, commits the agent's work, hands the worktree to a cross-family
+  reviewer agent — THE gate — and settles on the reviewer's verdict. It is the
+  unit the project's CLAUDE.md calls "one run = one supervised gen_statem".
 
   ## States
 
       dispatched  — creating the isolated worktree
-      running     — the agent is working in the worktree
-      committing  — committing the agent's work to the run branch
-      verifying   — the verification stack is grading the worktree
-      reviewing   — a cross-family reviewer is fixing a red worktree inline
+      running     — the implementer agent is working in the worktree
+      committing  — committing the implementer's work to the run branch
+      reviewing   — the cross-family reviewer (THE gate) reviews, runs the
+                    project's checks itself, fixes inline, writes its verdict
       held        — operator-parked; worktree retained, lifetime timer suspended
-      done        — verification graded the worktree green (terminal)
+      done        — the reviewer approved (terminal)
       failed      — anything else (terminal)
 
   Each state runs its slow work in a task *monitored, never linked* by the
@@ -25,34 +25,21 @@ defmodule Harness.Run do
   to its subscriber as `{:harness_run, run_id, result}`, lingers briefly so a
   late `status/1` still resolves, then stops `:normal`.
 
-  ## Grading
+  ## The gate
 
-  A run is graded green by the verification stack alone — never by the agent's
-  exit code or self-reported result. The agent's `Harness.AgentAdapter.Outcome`
-  is recorded for diagnostics, but a run whose agent timed out is still
-  verified: the worktree it left behind is what gets graded.
+  A run is graded by the reviewer AI alone — never by the implementer's exit
+  code, self-reported result, or any mechanical check runner inside harness.
+  The reviewer gets the worktree, the task spec, the implementer transcript
+  tail, the diff stat, and the project's `check_command` hint. It reviews, runs
+  the checks itself, fixes inline (its own edits, its own commits), and writes
+  `.harness/review.json` (`Harness.Run.Review`). Harness reads that artifact
+  mechanically: approve settles `:done`, reject settles `:failed` with the
+  reviewer's report, a missing or malformed artifact settles `:failed` as
+  `{:review_stuck, ...}`.
 
-  ## Reviewer pair
-
-  A red verdict is not necessarily terminal. While reviewer iterations remain
-  (`:max_review_iterations`, default `2`), `verifying` routes to `reviewing`: a
-  cross-family reviewer agent gets the worktree, the task spec, the implementer
-  transcript, and the failing-check output, and fixes inline — its own edits,
-  its own commits. Harness re-runs the check stack after every pass; the
-  reviewer's word is never the verdict. The loop stops on green, on the
-  iteration cap (settling `:failed` / `{:review_stuck, prose}`), or when no
-  cross-family reviewer is available.
-
-  Two more verdicts route through the same reviewing state (Task 162), so the
-  judgment they need lives in an agent, never in harness code:
-
-  - An **empty implementer diff** always gets a reviewer pass — the reviewer
-    decides whether the task was already implemented (make the checks pass) or
-    nothing happened (write a stuck-report saying why, e.g. a usage limit).
-  - A **green verdict** gets one conformance-scoped reviewer pass when the
-    project opts in via `review_green: true` (or a per-run `review_green:
-    true` opt). Green with no reviewer available still settles `:done` —
-    the check stack is the ground truth.
+  Rejection is reserved for degenerate cases — an empty or unusable worktree,
+  destructive or fully off-task work. Everything fixable the reviewer fixes and
+  approves: a rejection cycle costs two more full agent runs.
 
   ## Operator recovery (hold / steer / resume)
 
@@ -110,13 +97,10 @@ defmodule Harness.Run do
   alias Harness.Run.LogRecord
   alias Harness.Run.Reflex
   alias Harness.Run.Result
+  alias Harness.Run.Review
   alias Harness.Run.Status
   alias Harness.TokenUsage
   alias Harness.TokenUsage.GrokSession
-  alias Harness.Verification
-  alias Harness.Verification.Check
-  alias Harness.Verification.Result, as: CheckResult
-  alias Harness.Verification.Verdict
   alias Harness.Worktree
   alias Harness.Worktree.Isolation
   alias Oban.Job
@@ -128,7 +112,6 @@ defmodule Harness.Run do
 
   @default_lifetime_timeout 5_400_000
   @default_terminal_linger 5_000
-  @default_max_review_iterations 2
   @semantic_diff_max_bytes 80_000
   @reviewer_transcript_tail_bytes 40_000
   @default_discernment_sample_interval_ms 300_000
@@ -142,7 +125,6 @@ defmodule Harness.Run do
           :dispatched
           | :running
           | :committing
-          | :verifying
           | :reviewing
           | :held
           | :done
@@ -170,22 +152,17 @@ defmodule Harness.Run do
            lifetime_timeout: pos_integer(),
            max_hold_timeout: timeout(),
            terminal_linger: non_neg_integer(),
-           max_review_iterations: non_neg_integer(),
-           review_iterations: non_neg_integer(),
            reviewer: atom() | module() | nil,
            reviewer_adapter: module() | nil,
            reviewer_adapter_opts: keyword(),
-           reviewer_stuck_report: String.t() | nil,
-           review_green: boolean(),
+           review: Review.t() | nil,
+           reviewer_diff_size: non_neg_integer() | nil,
            implementer_empty_diff?: boolean(),
            hold_requested: false | :graceful | :interrupt,
            hold_reason: :graceful | :interrupt | nil,
            operator_feedback: String.t() | nil,
            in_run_discernment: keyword(),
-           checks: [Check.t()] | nil,
-           verification_timeout: timeout() | nil,
            base_dir: String.t() | nil,
-           base_ref: String.t() | nil,
            adapter_opts: keyword(),
            env: %{optional(String.t()) => String.t() | false},
            land_attempt: pos_integer(),
@@ -195,9 +172,7 @@ defmodule Harness.Run do
            agent_run: AgentRun.t() | nil,
            agent_outcome: Outcome.t() | nil,
            composed_inputs: [AgentAdapter.composed_input()],
-           verdict: Verdict.t() | nil,
            token_usage: TokenUsage.t(),
-           first_attempt_failed_check_count: non_neg_integer(),
            agent_diff_size: non_neg_integer() | nil,
            task: Task.t() | nil,
            discernment_task: Task.t() | nil,
@@ -251,7 +226,7 @@ defmodule Harness.Run do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %Harness.Run.Status{}} carrying state, worktree_path, agent_os_pid, agent_kind, verdict_status, review_iterations, reason. {:error, :not_found} for stopped/unknown runs."
+        "{:ok, %Harness.Run.Status{}} carrying state, worktree_path, agent_os_pid, agent_kind, review_verdict, reason. {:error, :not_found} for stopped/unknown runs."
     }
   )
 
@@ -482,24 +457,17 @@ defmodule Harness.Run do
       terminal_linger:
         Keyword.get(opts, :terminal_linger) ||
           configured(:terminal_linger, @default_terminal_linger),
-      max_review_iterations:
-        Keyword.get(opts, :max_review_iterations) ||
-          configured(:max_review_iterations, @default_max_review_iterations),
-      review_iterations: 0,
       reviewer: Keyword.get(opts, :reviewer, configured(:reviewer, nil)),
       reviewer_adapter: nil,
       reviewer_adapter_opts: Keyword.get(opts, :reviewer_adapter_opts, []),
-      reviewer_stuck_report: nil,
-      review_green: Keyword.get(opts, :review_green, project.review_green),
+      review: nil,
+      reviewer_diff_size: nil,
       implementer_empty_diff?: false,
       hold_requested: false,
       hold_reason: nil,
       operator_feedback: nil,
       in_run_discernment: in_run_discernment_opts(opts),
-      checks: Keyword.get(opts, :checks),
-      verification_timeout: Keyword.get(opts, :verification_timeout),
       base_dir: Keyword.get(opts, :base_dir),
-      base_ref: Keyword.get(opts, :base_ref),
       adapter_opts: Keyword.get(opts, :adapter_opts, []),
       env: Keyword.get(opts, :env, %{}),
       land_attempt: Keyword.get(opts, :land_attempt, 1),
@@ -509,9 +477,7 @@ defmodule Harness.Run do
       agent_run: nil,
       agent_outcome: nil,
       composed_inputs: [],
-      verdict: nil,
       token_usage: TokenUsage.empty(),
-      first_attempt_failed_check_count: 0,
       agent_diff_size: nil,
       task: nil,
       discernment_task: nil,
@@ -530,7 +496,7 @@ defmodule Harness.Run do
     {:ok, :dispatched, data, [{{:timeout, :lifetime}, data.lifetime_timeout, :lifetime}]}
   end
 
-  # ── State: dispatched — carve + provision the isolated worktree ───────────
+  # ── State: dispatched — carve the isolated worktree ──────────────────────
 
   @doc false
   @spec dispatched(event(), term(), data()) :: handler_result()
@@ -540,18 +506,16 @@ defmodule Harness.Run do
     {:keep_state, %{data | task: task}}
   end
 
+  # The worktree exists — hand it to the agent. No mechanical warm-up step:
+  # a cold first build is the implementer's (and ultimately the reviewer's)
+  # to handle, not harness code's.
   def dispatched(:info, {ref, {:ok, %Worktree{} = worktree}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
     data = %{data | task: nil, worktree: worktree}
 
     with :ok <- Worktree.activate(worktree),
          :ok <- Isolation.validate(data.adapter) do
-      # Warm the worktree (check-stack setup: deps fetch + compile) before the
-      # agent spawns, so the agent never burns its idle/progress budget on a
-      # silent cold first build. Verification re-runs the same setup later as a
-      # fast no-op.
-      task = start_task(fn -> Verification.prepare(worktree.path, verification_opts(data)) end)
-      {:keep_state, %{data | task: task}}
+      {:next_state, :running, data}
     else
       {:error, {:worktree_isolation_unsupported, _adapter, _message} = reason} ->
         fail(data, {:agent_spawn_failed, reason})
@@ -561,13 +525,6 @@ defmodule Harness.Run do
     end
   end
 
-  # Provisioning finished — the worktree is warm; hand it to the agent.
-  def dispatched(:info, {ref, :ok}, %{task: %Task{ref: ref}} = data) do
-    Process.demonitor(ref, [:flush])
-    {:next_state, :running, %{data | task: nil}}
-  end
-
-  # Worktree creation or provisioning failed — both are environment errors.
   def dispatched(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
     fail(%{data | task: nil}, {:worktree_failed, reason})
@@ -581,14 +538,14 @@ defmodule Harness.Run do
     handle_common(event_type, event_content, :dispatched, data)
   end
 
-  # ── State: running — the agent works in the worktree ──────────────────────
+  # ── State: running — the implementer agent works in the worktree ──────────
 
   @doc false
   @spec running(event(), term(), data()) :: handler_result()
   # Entering `running` always means a fresh agent is about to spawn — the first
-  # dispatch, or a repair attempt. `agent_run` / `agent_outcome` are reset so a
-  # stale handle from a prior attempt never misleads the cancel-defer logic or a
-  # `status/1` snapshot.
+  # dispatch, or an operator-steered resume. `agent_run` / `agent_outcome` are
+  # reset so a stale handle from a prior attempt never misleads the cancel-defer
+  # logic or a `status/1` snapshot.
   def running(:enter, _old_state, data) do
     RunFeed.broadcast_update(status_snapshot(:running, data))
     parent = self()
@@ -707,7 +664,7 @@ defmodule Harness.Run do
     handle_common(event_type, event_content, :running, data)
   end
 
-  # ── State: committing — capture the agent's work on the run branch ────────
+  # ── State: committing — capture the implementer's work on the run branch ──
 
   @doc false
   @spec committing(event(), term(), data()) :: handler_result()
@@ -721,16 +678,17 @@ defmodule Harness.Run do
 
   def committing(:info, {ref, {:ok, :committed, diff_size}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
-    {:next_state, :verifying, %{data | task: nil, agent_diff_size: diff_size}}
+    route_to_review(%{data | task: nil, agent_diff_size: diff_size})
   end
 
   # An empty diff is never disposed of here — what it *means* (already
   # implemented vs nothing happened) is the reviewer's judgment, not a
-  # disposition branch (Task 162). Verification runs either way; the verdict
-  # then routes through the reviewer with empty-diff context.
+  # disposition branch. The reviewer gets the empty-diff context in its prompt
+  # and decides: approve (already implemented / fixed it itself) or reject
+  # (nothing to salvage).
   def committing(:info, {ref, {:ok, :no_changes, diff_size}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
-    {:next_state, :verifying, %{data | task: nil, agent_diff_size: diff_size, implementer_empty_diff?: true}}
+    route_to_review(%{data | task: nil, agent_diff_size: diff_size, implementer_empty_diff?: true})
   end
 
   def committing(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
@@ -746,48 +704,7 @@ defmodule Harness.Run do
     handle_common(event_type, event_content, :committing, data)
   end
 
-  # ── State: verifying — grade the worktree ─────────────────────────────────
-
-  @doc false
-  @spec verifying(event(), term(), data()) :: handler_result()
-  def verifying(:enter, _old_state, data) do
-    RunFeed.broadcast_update(status_snapshot(:verifying, data))
-    worktree = data.worktree
-    task = start_task(fn -> Verification.run(worktree.path, verification_opts(data)) end)
-    {:keep_state, %{data | task: task}}
-  end
-
-  def verifying(:info, {ref, {:ok, %Verdict{} = verdict}}, %{task: %Task{ref: ref}} = data) do
-    Process.demonitor(ref, [:flush])
-
-    data = %{
-      data
-      | task: nil,
-        verdict: verdict,
-        first_attempt_failed_check_count: first_attempt_failed_check_count(data, verdict)
-    }
-
-    if Verdict.passed?(verdict) do
-      route_green_verdict(data)
-    else
-      route_red_verdict(data)
-    end
-  end
-
-  def verifying(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
-    Process.demonitor(ref, [:flush])
-    fail(%{data | task: nil}, {:verification_failed, reason})
-  end
-
-  def verifying(:info, {:DOWN, ref, :process, _pid, reason}, %{task: %Task{ref: ref}} = data) when reason != :normal do
-    fail(%{data | task: nil}, {:verifier_crashed, reason})
-  end
-
-  def verifying(event_type, event_content, data) do
-    handle_common(event_type, event_content, :verifying, data)
-  end
-
-  # ── State: reviewing — cross-family reviewer fixes red worktree inline ───
+  # ── State: reviewing — the cross-family reviewer is THE gate ─────────────
 
   @doc false
   @spec reviewing(event(), term(), data()) :: handler_result()
@@ -799,30 +716,22 @@ defmodule Harness.Run do
 
   def reviewing(
         :info,
-        {ref, {:ok, %{outcome: %Outcome{} = outcome, diff_size: diff_size}}},
+        {ref, {:ok, %{outcome: %Outcome{}, reviewer_diff_size: diff_size, review: review}}},
         %{task: %Task{ref: ref}} = data
       ) do
     Process.demonitor(ref, [:flush])
-
-    data = %{
-      data
-      | task: nil,
-        reviewer_stuck_report: reviewer_report(outcome),
-        agent_diff_size: max(data.agent_diff_size || 0, diff_size)
-    }
-
-    {:next_state, :verifying, data}
+    settle_review(%{data | task: nil, reviewer_diff_size: diff_size}, review)
   end
 
   def reviewing(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
     report = "Reviewer failed to run: #{inspect(reason)}"
-    {:next_state, :failed, %{data | task: nil, reason: {:review_stuck, report}, reviewer_stuck_report: report}}
+    {:next_state, :failed, %{data | task: nil, reason: {:review_stuck, report}}}
   end
 
   def reviewing(:info, {:DOWN, ref, :process, _pid, reason}, %{task: %Task{ref: ref}} = data) when reason != :normal do
     report = "Reviewer crashed: #{inspect(reason)}"
-    {:next_state, :failed, %{data | task: nil, reason: {:review_stuck, report}, reviewer_stuck_report: report}}
+    {:next_state, :failed, %{data | task: nil, reason: {:review_stuck, report}}}
   end
 
   def reviewing(event_type, event_content, data) do
@@ -899,7 +808,7 @@ defmodule Harness.Run do
     {:keep_state_and_data, [{:reply, from, snapshot}]}
   end
 
-  # State-agnostic so a chunk that lands during `:committing` / `:verifying` /
+  # State-agnostic so a chunk that lands during `:committing` / `:reviewing` /
   # `:terminal_linger` still appends — the agent's Port can flush after the
   # gen_statem has already transitioned out of `:running`.
   #
@@ -1191,14 +1100,14 @@ defmodule Harness.Run do
     data
   end
 
-  # Autonomous merge-train trigger: a run that settles green under a project that
-  # opts into landing (`landing_policy: :auto` + a non-empty `target_branch`)
+  # Autonomous merge-train trigger: a run the reviewer approved under a project
+  # that opts into landing (`landing_policy: :auto` + a non-empty `target_branch`)
   # enqueues exactly one landing job onto the project's serialized `landing_<name>`
-  # queue. Every other terminal state — red verdict, failure, `:manual` project,
-  # or a project with no `target_branch` — enqueues nothing.
+  # queue. Every other terminal state — rejection, failure, `:manual` project, or
+  # a project with no `target_branch` — enqueues nothing.
   @spec maybe_enqueue_landing(data(), Result.state()) :: :ok
   defp maybe_enqueue_landing(
-         %{reason: :passed, project: %Project{landing_policy: :auto, target_branch: tb} = project} = data,
+         %{reason: :approved, project: %Project{landing_policy: :auto, target_branch: tb} = project} = data,
          :done
        )
        when is_binary(tb) and tb != "" do
@@ -1207,6 +1116,7 @@ defmodule Harness.Run do
       "run_id" => data.run_id,
       "task_id" => to_string(data.item.id),
       "agent" => to_string(data.item.agent),
+      "reviewer" => reviewer_agent_name(data.reviewer_adapter),
       "branch" => "harness/" <> data.run_id,
       "land_attempt" => data.land_attempt
     }
@@ -1216,6 +1126,18 @@ defmodule Harness.Run do
   end
 
   defp maybe_enqueue_landing(_data, _terminal_state), do: :ok
+
+  # The reviewer's agent-family name, threaded through the landing job so the
+  # post-merge audit can pick a third family (∉ {implementer, reviewer}).
+  @spec reviewer_agent_name(module() | nil) :: String.t() | nil
+  defp reviewer_agent_name(nil), do: nil
+
+  defp reviewer_agent_name(reviewer_adapter) do
+    case AgentRegistry.agent_for_module(reviewer_adapter) do
+      {:ok, agent} -> to_string(agent)
+      {:error, _reason} -> nil
+    end
+  end
 
   @spec log_landing_enqueue({:ok, Job.t()} | {:error, term()}, String.t()) :: :ok
   defp log_landing_enqueue({:ok, _job}, run_id) do
@@ -1236,27 +1158,25 @@ defmodule Harness.Run do
       state: terminal_state,
       reason: data.reason,
       agent_outcome: data.agent_outcome,
-      verdict: data.verdict,
+      review: data.review,
       worktree_path: data.worktree && data.worktree.path,
       reviewer_adapter: data.reviewer_adapter,
-      review_iterations: data.review_iterations,
-      reviewer_stuck_report: data.reviewer_stuck_report,
-      first_attempt_failed_check_count: data.first_attempt_failed_check_count,
       agent_diff_size: data.agent_diff_size,
+      reviewer_diff_size: data.reviewer_diff_size,
       token_usage: data.token_usage,
       composed_inputs: data.composed_inputs
     }
   end
 
   # Parses the just-settled attempt's transcript for token usage and sums it into
-  # the run's running total, so a multi-attempt repair loop's burn is attributable.
+  # the run's running total, so a multi-attempt run's burn is attributable.
   # `agent_kind: nil` (test doubles, unregistered adapters) parses to an empty
   # usage, so the total stays an empty usage — never a crash.
   #
   # Grok is the exception: its stdout omits usage entirely, so the figure is
   # recovered from grok's on-disk session log (`GrokSession`). That log records a
-  # *cumulative* total across `--continue` repair attempts, so the recovered
-  # value REPLACES the running total rather than summing per attempt; only when
+  # *cumulative* total across `--continue` attempts, so the recovered value
+  # REPLACES the running total rather than summing per attempt; only when
   # recovery yields nothing do we fall back to the (empty) stdout parse.
   @spec accumulate_token_usage(data(), Outcome.t()) :: data()
   defp accumulate_token_usage(%{agent_kind: :grok} = data, %Outcome{output: output}) do
@@ -1342,8 +1262,7 @@ defmodule Harness.Run do
       worktree_path: data.worktree && data.worktree.path,
       agent_os_pid: data.agent_run && data.agent_run.os_pid,
       agent_kind: data.agent_outcome && data.agent_outcome.kind,
-      verdict_status: data.verdict && data.verdict.status,
-      review_iterations: data.review_iterations,
+      review_verdict: data.review && data.review.verdict,
       reason: data.reason,
       held?: state == :held,
       hold_reason: if(state == :held, do: data.hold_reason)
@@ -1357,8 +1276,7 @@ defmodule Harness.Run do
 
   # The first dispatch runs the task prompt fresh; an operator-steered resume
   # re-enters the agent's session with the steer prompt. There is no repair
-  # loop — a red verdict is the cross-family reviewer's to fix, never a
-  # procedural re-dispatch (docs/reviewer-pair-architecture.md).
+  # loop — whatever the implementer leaves behind is the reviewer's to judge.
   @spec build_invocation(data()) :: Invocation.t()
   defp build_invocation(%{operator_feedback: feedback} = data) when is_binary(feedback) do
     invocation(data, operator_steer_prompt(data), :resume)
@@ -1376,7 +1294,6 @@ defmodule Harness.Run do
       task_id: data.item.id,
       session: session,
       permission_mode: :autonomous,
-      language: project_language(data.project),
       adapter_opts: data.adapter_opts,
       env: data.env
     }
@@ -1412,98 +1329,54 @@ defmodule Harness.Run do
   defp composed_input_phase_for_data(_data), do: :initial
 
   @spec operator_steer_prompt(data()) :: String.t()
-  defp operator_steer_prompt(%{operator_feedback: feedback} = data) when is_binary(feedback) do
-    header = """
+  defp operator_steer_prompt(%{operator_feedback: feedback}) when is_binary(feedback) do
+    """
     An operator has reviewed your progress and sent this guidance:
 
     #{feedback}
     """
+  end
 
-    case data.verdict do
-      %Verdict{status: :fail} = verdict ->
-        evidence = failing_check_evidence(verdict)
+  # ── The gate: routing into review and settling on the verdict artifact ───
 
-        if evidence == "" do
-          header
-        else
-          header <> "\n\nLast verification failing checks:\n\n" <> evidence
-        end
+  # Every committed worktree goes to the reviewer — THE gate. There is no
+  # mechanical verification step; the reviewer runs the project's checks itself
+  # and writes the verdict artifact harness reads. A run with no available
+  # cross-family reviewer cannot be gated, so it fails (the task goes back to
+  # the queue for re-dispatch when one is available).
+  @spec route_to_review(data()) :: handler_result()
+  defp route_to_review(data) do
+    case select_reviewer(data) do
+      {:ok, reviewer} ->
+        {:next_state, :reviewing, %{data | reviewer_adapter: reviewer}}
 
-      _ ->
-        header
+      {:error, reason} ->
+        report = "No cross-family reviewer adapter available: #{inspect(reason)}"
+        {:next_state, :failed, %{data | reason: {:review_stuck, report}}}
     end
   end
 
-  @spec project_language(Project.t()) :: atom() | nil
-  defp project_language(%Project{check_stacks: [%{name: language}]}) when is_atom(language), do: language
-  defp project_language(%Project{}), do: nil
-
-  @spec route_red_verdict(data()) :: handler_result()
-  defp route_red_verdict(data) do
-    cond do
-      data.max_review_iterations == 0 ->
-        {:next_state, :failed, %{data | reason: :verification_red}}
-
-      data.review_iterations >= data.max_review_iterations ->
-        report = data.reviewer_stuck_report || "Reviewer iterations exhausted while verification remained red."
-        {:next_state, :failed, %{data | reason: {:review_stuck, report}, reviewer_stuck_report: report}}
-
-      true ->
-        case select_reviewer(data) do
-          {:ok, reviewer} ->
-            {:next_state, :reviewing,
-             %{
-               data
-               | reviewer_adapter: reviewer,
-                 review_iterations: data.review_iterations + 1,
-                 reviewer_stuck_report: nil
-             }}
-
-          {:error, reason} ->
-            report = "No cross-family reviewer adapter available: #{inspect(reason)}"
-            {:next_state, :failed, %{data | reason: {:review_stuck, report}, reviewer_stuck_report: report}}
-        end
-    end
+  # The verdict artifact is read mechanically — approve settles :done, reject
+  # settles :failed with the reviewer's report, an unreadable artifact settles
+  # :failed as review_stuck. What the work MEANS was the reviewer's judgment;
+  # this function only routes on what it wrote.
+  @spec settle_review(data(), {:ok, Review.t()} | {:error, Review.error()}) :: handler_result()
+  defp settle_review(data, {:ok, %Review{verdict: :approve} = review}) do
+    {:next_state, :done, clear_operator_steer(%{data | review: review, reason: :approved})}
   end
 
-  # A green verdict settles :done unless it still owes a reviewer pass: an
-  # empty implementer diff always owes one ("what does an empty diff mean?" is
-  # the reviewer's judgment), and a project with `review_green: true` owes one
-  # conformance pass. Exactly one — the `review_iterations == 0` guard makes
-  # the post-review green verdict settle. A wanted-but-unavailable reviewer
-  # fails OPEN to :done (Task 158's lesson): the check stack is the ground
-  # truth, and green work must never fail on missing review infrastructure.
-  @spec route_green_verdict(data()) :: handler_result()
-  defp route_green_verdict(data) do
-    if green_review_wanted?(data) do
-      case select_reviewer(data) do
-        {:ok, reviewer} ->
-          {:next_state, :reviewing,
-           %{
-             data
-             | reviewer_adapter: reviewer,
-               review_iterations: data.review_iterations + 1,
-               reviewer_stuck_report: nil
-           }}
-
-        {:error, _reason} ->
-          settle_done(data)
-      end
-    else
-      settle_done(data)
-    end
+  defp settle_review(data, {:ok, %Review{verdict: :reject} = review}) do
+    {:next_state, :failed, %{data | review: review, reason: {:review_rejected, review.report}}}
   end
 
-  @spec green_review_wanted?(data()) :: boolean()
-  defp green_review_wanted?(data) do
-    data.max_review_iterations > 0 and
-      data.review_iterations == 0 and
-      (data.review_green or data.implementer_empty_diff?)
+  defp settle_review(data, {:error, :missing}) do
+    report = "Reviewer wrote no #{Review.artifact_path()} verdict artifact."
+    {:next_state, :failed, %{data | reason: {:review_stuck, report}}}
   end
 
-  @spec settle_done(data()) :: handler_result()
-  defp settle_done(data) do
-    {:next_state, :done, clear_operator_steer(%{data | reason: :passed})}
+  defp settle_review(data, {:error, {:malformed, detail}}) do
+    report = "Reviewer verdict artifact is malformed: #{inspect(detail)}"
+    {:next_state, :failed, %{data | reason: {:review_stuck, report}}}
   end
 
   @spec select_reviewer(data()) :: {:ok, module()} | {:error, term()}
@@ -1575,13 +1448,47 @@ defmodule Harness.Run do
     end
   end
 
+  # Runs the reviewer agent in the implementer's worktree, commits whatever it
+  # changed (its own fixes), measures the reviewer's own diff, and reads the
+  # verdict artifact. The artifact read result rides inside the :ok tuple so a
+  # missing/malformed verdict still carries the outcome + diff evidence back to
+  # the gen_statem instead of discarding it.
   @spec run_reviewer(data()) ::
-          {:ok, %{outcome: Outcome.t(), diff_size: non_neg_integer()}} | {:error, term()}
+          {:ok,
+           %{
+             outcome: Outcome.t(),
+             reviewer_diff_size: non_neg_integer(),
+             review: {:ok, Review.t()} | {:error, Review.error()}
+           }}
+          | {:error, term()}
   defp run_reviewer(data) do
+    pre_review_sha = current_sha(data)
+
     with {:ok, %Outcome{} = outcome} <-
            Driver.run(data.reviewer_adapter, reviewer_invocation(data), reviewer_driver_opts(data)),
-         {:ok, _status, diff_size} <- commit_worktree(data.worktree, reviewer_commit_message(data)) do
-      {:ok, %{outcome: outcome, diff_size: diff_size}}
+         {:ok, _status, _total_diff_size} <- commit_worktree(data.worktree, reviewer_commit_message(data)) do
+      {:ok,
+       %{
+         outcome: outcome,
+         reviewer_diff_size: measure_reviewer_diff(data, pre_review_sha),
+         review: Review.read(data.worktree.path)
+       }}
+    end
+  end
+
+  # Changed-line count of the reviewer's own commits — the "how much fixing was
+  # needed" KPI signal. Zero means the implementer's work needed no fixes.
+  # Measurement failures degrade to 0 rather than failing the run: the verdict
+  # artifact, not this number, is the gate.
+  @spec measure_reviewer_diff(data(), String.t()) :: non_neg_integer()
+  defp measure_reviewer_diff(data, pre_review_sha) do
+    case Worktree.diff_size_since(data.worktree, pre_review_sha) do
+      {:ok, diff_size} ->
+        diff_size
+
+      {:error, reason} ->
+        Logger.warning("harness run: reviewer diff measurement failed for #{data.run_id}: #{inspect(reason)}")
+        0
     end
   end
 
@@ -1590,9 +1497,8 @@ defmodule Harness.Run do
     %Invocation{
       prompt: reviewer_prompt(data),
       cwd: data.worktree.path,
-      task_id: "#{data.item.id}-review-#{data.review_iterations}",
+      task_id: "#{data.item.id}-review",
       permission_mode: :autonomous,
-      language: project_language(data.project),
       adapter_opts: data.reviewer_adapter_opts,
       env: data.env
     }
@@ -1606,16 +1512,50 @@ defmodule Harness.Run do
     |> put_opt(:progress_timeout, data.progress_timeout)
   end
 
+  # The reviewer's instructions — THE gate's prompt. The judgment (is the work
+  # good, do the checks pass in a way that matters, what does an empty diff
+  # mean) lives entirely in the reviewer agent; harness only frames it and
+  # reads the artifact it writes.
   @spec reviewer_prompt(data()) :: String.t()
   defp reviewer_prompt(data) do
     """
-    You are the cross-family reviewer for a harness run.
+    You are the cross-family reviewer for a harness run — THE gate that decides whether this work is accepted.
 
-    #{review_scope_instructions(data)}
-    Harness will mechanically re-run the same check stack after you exit. Your words cannot make this run done.
+    #{reviewer_situation(data)}
+
+    Your job, in order:
+    1. Review the work against the task spec and acceptance criteria below.
+    2. Run the project's checks yourself (hint below) and judge the results.
+    3. Fix everything that needs fixing — your own edits, your own commits. Wrong approach, bugs,
+       missing tests, failing checks, style: fix it all, then approve.
+    4. Write your verdict to `#{Review.artifact_path()}` (format below), then exit. This file is the ONLY
+       thing harness reads — prose outside it has no effect on the outcome.
+
+    Fixing is always cheaper than rejecting — a rejection costs two more full agent runs.
+    Anything you can fix: fix it and approve. Reject ONLY if there is literally nothing to salvage
+    (an empty or unusable worktree, or work so destructive or off-task that redoing it from scratch
+    is faster than fixing it).
+
+    Verdict artifact — REQUIRED, write it even when you reject:
+
+    #{Review.artifact_path()}
+    {
+      "verdict": "approve" | "reject",
+      "report": "<what you found, what you fixed, why you decided>",
+      "ratings": {
+        "performance": <0-10>,
+        "truthfulness": <0-10 — the implementer's self-report vs what you actually found>,
+        "code_quality": <0-10 — judgment-based; less code can be much better>,
+        "idiom": <0-10 — language/framework idiom and project-convention usage>
+      }
+    }
+
+    A missing or malformed #{Review.artifact_path()} fails this run.
+
+    Project check hint (run these yourself; judge the output):
+    #{empty_placeholder(data.project.check_command)}
 
     Implementer: #{data.item.agent}
-    Reviewer iteration: #{data.review_iterations} of #{data.max_review_iterations}
     Current commit: #{current_sha(data)}
 
     Task spec:
@@ -1629,54 +1569,27 @@ defmodule Harness.Run do
 
     Diff stat:
     #{empty_placeholder(diff_stat(data))}
-
-    Full failing-check output:
-    #{empty_placeholder(failing_check_evidence(data.verdict))}
     """
   end
 
-  # Which judgment this reviewer pass is being asked to make. Derived, never
-  # stored: a green verdict means conformance review, red + an empty implementer
-  # diff means "decide what the empty diff means", red otherwise means "fix the
-  # worktree". The judgment itself happens in the reviewer agent — these are
-  # only the instructions framing it.
-  @spec review_scope(data()) :: :fix_red | :empty_diff | :green_conformance
-  defp review_scope(data) do
-    cond do
-      match?(%Verdict{}, data.verdict) and Verdict.passed?(data.verdict) -> :green_conformance
-      data.implementer_empty_diff? -> :empty_diff
-      true -> :fix_red
-    end
+  # The one piece of situational framing the reviewer needs: whether the
+  # implementer actually committed anything. What an empty diff MEANS is the
+  # reviewer's judgment, not a harness disposition branch.
+  @spec reviewer_situation(data()) :: String.t()
+  defp reviewer_situation(%{implementer_empty_diff?: true}) do
+    String.trim_trailing("""
+    The implementer produced NO diff in this worktree. The transcript tail below shows what it
+    did — it may have hit a usage limit, crashed, or believed the work was already done. Decide
+    what the empty diff means:
+    - Already implemented / you can implement it: do the work or verify it, run the checks, approve.
+    - Nothing happened and nothing is salvageable: reject, and say why in your report.
+    """)
   end
 
-  @spec review_scope_instructions(data()) :: String.t()
-  defp review_scope_instructions(data) do
-    case_result =
-      case review_scope(data) do
-        :fix_red ->
-          """
-          The implementer has committed work in this SAME worktree, and the check stack is red.
-          Your job: fix inline, commit, re-run checks; end green or write a stuck-report.
-          """
-
-        :empty_diff ->
-          """
-          The implementer produced NO diff in this worktree, and the check stack is red.
-          The transcript tail below shows what the implementer did — it may have hit a usage limit,
-          crashed, or believed the work was already done. Your job is to decide what the empty diff means:
-          - Already implemented: make the checks pass (fix inline, commit) so the run can settle done.
-          - Nothing happened: write a stuck-report explaining why (e.g. the implementer hit a usage limit).
-          """
-
-        :green_conformance ->
-          """
-          The check stack in this worktree is GREEN. Your job is NOT to fix red checks.
-          Review the implementer's committed work strictly against the task's acceptance criteria below.
-          If it conforms, make no changes and exit. If it does not conform, fix inline and commit.
-          """
-      end
-
-    String.trim_trailing(case_result)
+  defp reviewer_situation(_data) do
+    String.trim_trailing("""
+    The implementer has committed work in this SAME worktree. It is yours to review, fix, and gate.
+    """)
   end
 
   @spec transcript_tail(String.t()) :: String.t()
@@ -1712,27 +1625,17 @@ defmodule Harness.Run do
     end
   end
 
-  @spec reviewer_report(Outcome.t()) :: String.t()
-  defp reviewer_report(%Outcome{output: output}) when is_binary(output) do
-    output
-    |> String.trim()
-    |> case do
-      "" -> "Reviewer exited without a stuck-report."
-      text -> text
-    end
-  end
-
   @spec reviewer_commit_message(data()) :: String.t()
   defp reviewer_commit_message(data) do
-    "harness: reviewer iteration #{data.review_iterations} — task #{data.item.id} #{data.item.title} (run #{data.run_id})"
+    "harness: reviewer fixes — task #{data.item.id} #{data.item.title} (run #{data.run_id})"
   end
 
   # ── In-run discernment (sampled live-transcript review) ──────────────────
   #
   # A cross-family grader samples the implementer's partial transcript while it
   # works and can halt a high-confidence rogue/destructive/spinning attempt.
-  # The halted attempt routes through the normal pipeline (commit → verify →
-  # reviewer); there is no procedural re-dispatch loop.
+  # The halted attempt routes through the normal pipeline (commit → review);
+  # there is no procedural re-dispatch loop.
 
   @spec grade_discernment(data()) :: {:ok, AuditReview.result()} | {:error, term()}
   defp grade_discernment(data) do
@@ -1834,9 +1737,9 @@ defmodule Harness.Run do
         ) :: handler_result()
   defp handle_in_run_discernment_verdict(data, :reject, feedback) do
     # High-confidence rogue/destructive/spinning behavior: halt the implementer
-    # and route whatever it left through the normal pipeline — commit, verify,
-    # and let the cross-family reviewer judge the worktree. Never a procedural
-    # re-dispatch (docs/reviewer-pair-architecture.md).
+    # and route whatever it left through the normal pipeline — commit, then let
+    # the cross-family reviewer judge the worktree. Never a procedural
+    # re-dispatch.
     feedback = Map.put(feedback, :trigger, :in_run)
     notify_in_run_discernment(data, :halt, feedback)
     terminate_agent(data)
@@ -1906,8 +1809,8 @@ defmodule Harness.Run do
     high-confidence rogue/destructive/out-of-scope behavior or productive spin
     that should halt this attempt and re-dispatch with correction.
 
-    Your verdict is demote-only. APPROVE does not bless the run or turn red
-    green; it only means "no intervention from this sample."
+    Your verdict is demote-only. APPROVE does not bless the run or accept the
+    work; it only means "no intervention from this sample."
 
     Implementer: #{data.item.agent}
     Current commit: #{current_sha(data)}
@@ -1976,29 +1879,6 @@ defmodule Harness.Run do
       rationale -> rationale
     end
   end
-
-  @spec failing_check_evidence(Verdict.t()) :: String.t()
-  defp failing_check_evidence(%Verdict{results: results}) do
-    results
-    |> Enum.filter(&(&1.status == :fail))
-    |> Enum.map_join("\n\n", &format_check_evidence/1)
-  end
-
-  @spec format_check_evidence(CheckResult.t()) :: String.t()
-  defp format_check_evidence(%CheckResult{} = result) do
-    """
-    check: #{result.name}
-    status: #{check_status_line(result)}
-    command: #{result.command}
-    output:
-    #{String.trim(result.output)}
-    """
-  end
-
-  @spec check_status_line(CheckResult.t()) :: String.t()
-  defp check_status_line(%CheckResult{kind: :exited, exit_status: status}), do: "exited #{status}"
-  defp check_status_line(%CheckResult{kind: :timed_out}), do: "timed out"
-  defp check_status_line(%CheckResult{kind: :not_launched}), do: "could not launch"
 
   @spec maybe_sample_in_run_discernment(state(), data()) :: handler_result()
   defp maybe_sample_in_run_discernment(:running, data) do
@@ -2129,9 +2009,7 @@ defmodule Harness.Run do
 
   @spec worktree_opts(data()) :: keyword()
   defp worktree_opts(data) do
-    [id: data.run_id]
-    |> put_opt(:base_dir, data.base_dir)
-    |> put_opt(:base_ref, data.base_ref)
+    put_opt([id: data.run_id], :base_dir, data.base_dir)
   end
 
   @spec driver_opts(data(), pid()) :: keyword()
@@ -2145,18 +2023,6 @@ defmodule Harness.Run do
     |> put_opt(:progress_timeout, data.progress_timeout)
   end
 
-  @spec verification_opts(data()) :: keyword()
-  defp verification_opts(data) do
-    opts =
-      if data.checks do
-        [checks: data.checks]
-      else
-        [check_stacks: data.project.check_stacks]
-      end
-
-    put_opt(opts, :timeout, data.verification_timeout)
-  end
-
   @spec commit_worktree(Worktree.t(), String.t()) ::
           {:ok, :committed | :no_changes, non_neg_integer()} | {:error, Worktree.error()}
   defp commit_worktree(%Worktree{} = worktree, message) do
@@ -2165,15 +2031,6 @@ defmodule Harness.Run do
       {:ok, status, diff_size}
     end
   end
-
-  # The failed-check count from the FIRST verification pass — the implementer's
-  # delivery quality before any reviewer iteration touched the worktree.
-  @spec first_attempt_failed_check_count(data(), Verdict.t()) :: non_neg_integer()
-  defp first_attempt_failed_check_count(%{verdict: nil}, %Verdict{results: results}) do
-    Enum.count(results, &(&1.status == :fail))
-  end
-
-  defp first_attempt_failed_check_count(data, _verdict), do: data.first_attempt_failed_check_count
 
   @spec put_opt(keyword(), atom(), term()) :: keyword()
   defp put_opt(opts, _key, nil), do: opts

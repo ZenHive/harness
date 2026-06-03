@@ -52,7 +52,7 @@ live. Override with `HARNESS_TARGET_ROOT` when the layout differs.
 The registered project uses:
 
 - `source: {:local, target_root}` — where worktrees are carved from
-- `preset: :rust` — `cargo fmt`, `clippy`, `test`, `build`
+- `check_command: "cargo fmt --check && cargo clippy && cargo test"` — free-text hint for the reviewer AI
 - `roadmap_path: harness_root` — so rmap reads `harness/roadmap/tasks.toml`
 
 Rename `lib/project_harness.ex` and the `:project_harness` app atom in

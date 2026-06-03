@@ -3,20 +3,20 @@ defmodule Harness.Run.Result do
   The final outcome of one `Harness.Run` lifecycle, delivered to the run's
   subscriber when it settles.
 
-  A run settles into exactly one of two states — `:done` (the verification
-  stack graded the worktree green) or `:failed` (everything else: a red
-  verdict, a step that could not run, a crashed task, a cancellation, or the
-  lifetime budget elapsed). `reason` carries the precise cause; `agent_outcome`
-  and `verdict` are whatever evidence the run produced before it settled, each
-  `nil` if the run never reached that step.
+  A run settles into exactly one of two states — `:done` (the cross-family
+  reviewer AI approved the work) or `:failed` (everything else: a rejection, a
+  missing verdict artifact, a step that could not run, a crashed task, a
+  cancellation, or the lifetime budget elapsed). `reason` carries the precise
+  cause; `agent_outcome` and `review` are whatever evidence the run produced
+  before it settled, each `nil` if the run never reached that step.
 
   The subscriber receives this struct as `{:harness_run, run_id, result}`.
   """
 
   alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Outcome
+  alias Harness.Run.Review
   alias Harness.TokenUsage
-  alias Harness.Verification.Verdict
 
   @typedoc "The terminal state a run settled into."
   @type state :: :done | :failed
@@ -24,45 +24,35 @@ defmodule Harness.Run.Result do
   @typedoc """
   Why a run settled the way it did.
 
-    * `:passed` — the verification stack graded the worktree green (`:done`).
-    * `:verification_red` — a check in the stack failed before reviewer-pair
-      handling existed, or review was explicitly disabled.
-    * `{:review_stuck, report}` — the reviewer-pair path could not produce a
-      green worktree within `max_review_iterations`; `report` is prose from the
-      reviewer or from reviewer selection when no cross-family reviewer exists.
-    * `{:checkout_polluted, status}` — reserved. Since Task 66 the run
-      lifecycle no longer snapshots or diffs the main checkout for adapters
-      declaring `worktree_isolation: true` (every shipped adapter today;
-      adapters declaring `false` fail earlier with
-      `{:agent_spawn_failed, {:worktree_isolation_unsupported, _, _}}`), so
-      `Harness.Run` does not currently surface this reason. Preserved in the
-      type for callers using `Harness.Worktree.Isolation.check_pollution/3`
-      directly and for a future correlation-based detector.
-    * `{:checkout_pollution_check_failed, r}` — reserved. Same lineage as
-      `:checkout_polluted`: would surface only from a runtime pollution check,
-      which `Harness.Run` no longer performs.
+    * `:approved` — the reviewer AI approved the worktree (`:done`).
+    * `{:review_rejected, report}` — the reviewer rejected the work; `report`
+      is the reviewer's prose explaining why. Rejection is reserved for
+      degenerate cases (nothing to salvage) — the task goes back to the queue.
+    * `{:review_stuck, report}` — the gate could not produce a verdict: no
+      cross-family reviewer was available, the reviewer failed to run or
+      crashed, or it exited without writing a readable `.harness/review.json`.
+    * `{:checkout_polluted, status}` — the agent leaked changes into the main
+      checkout instead of its isolated worktree.
+    * `{:checkout_pollution_check_failed, r}` — the pollution diff itself
+      could not run.
     * `:cancelled` — the run was cancelled via `Harness.Run.cancel/1`.
     * `:timed_out` — the whole-job lifetime budget elapsed.
+    * `:hold_expired` — an operator-held run outlived the hold safeguard.
     * `{:reflex_halted, r}` — the deterministic mid-run reflex layer killed the
-      agent for a mechanical liveness or blocked-command reason, then routed
-      the task through `Harness.Lander.Resilience`.
+      agent for a mechanical liveness or blocked-command reason.
     * `{:worktree_failed, r}` — the isolated worktree could not be created.
     * `{:agent_spawn_failed, r}` — the agent never spawned (e.g. not on `PATH`).
     * `{:driver_crashed, r}` — the agent-driver task crashed.
     * `{:commit_failed, r}` — the agent's work could not be committed to the
       run branch. `{:worktree_missing, path}` means the run worktree directory
       disappeared before commit.
-    * `{:verification_failed, r}` — verification could not run at all.
-    * `{:verifier_crashed, r}` — the verification task crashed.
     * `{:run_crashed, r}` — the run process exited before delivering a result.
     * `{:no_available_agent, r}` — the batch could not pick an adapter for the
-      item; the item never produced a run. Used when every capable adapter has
-      been marked unavailable (typically by quota fail-over) before the item
-      reached `start_run`.
+      item; the item never produced a run.
   """
   @type reason ::
-          :passed
-          | :verification_red
+          :approved
+          | {:review_rejected, String.t()}
           | {:review_stuck, String.t()}
           | {:checkout_polluted, String.t()}
           | {:checkout_pollution_check_failed, term()}
@@ -74,8 +64,6 @@ defmodule Harness.Run.Result do
           | {:agent_spawn_failed, term()}
           | {:driver_crashed, term()}
           | {:commit_failed, term()}
-          | {:verification_failed, term()}
-          | {:verifier_crashed, term()}
           | {:run_crashed, term()}
           | {:no_available_agent, term()}
 
@@ -92,25 +80,23 @@ defmodule Harness.Run.Result do
     * `reason` — the precise cause (see `t:reason/0`).
     * `agent_outcome` — the `Harness.AgentAdapter.Outcome`, or `nil` if the run
       failed before the agent ran.
-    * `verdict` — the `Harness.Verification.Verdict`, or `nil` if the run failed
-      before verification.
+    * `review` — the reviewer's parsed `.harness/review.json` verdict artifact
+      (`Harness.Run.Review`), or `nil` if the run never produced one.
     * `worktree_path` — the isolated worktree's path, or `nil` if it was never
       created. On a `:failed` run the directory may have been retained for
       inspection.
-    * `first_attempt_failed_check_count` — number of failed checks in the first
-      verification verdict, before any reviewer involvement.
-    * `agent_diff_size` — changed-line count for the agent's first committed
+    * `agent_diff_size` — changed-line count of the implementer's committed
       diff, or `nil` when no diff could be measured.
+    * `reviewer_diff_size` — changed-line count of the reviewer's own fixes on
+      top of the implementer's delivery commit, or `nil` when the run never
+      reached review. `0` means the reviewer changed nothing — the
+      implementer's work needed no fixes (first-attempt pass).
     * `token_usage` — `Harness.TokenUsage` parsed from the agent's raw
       transcript and summed across every dispatch, or an empty usage
       (all-`nil`) when the adapter's wire format reports no token counts.
     * `composed_inputs` — prompt/rule artifacts captured for each dispatch.
-    * `reviewer_adapter` — the cross-family reviewer adapter used after a red
-      verdict, or `nil` if the run never entered review.
-    * `review_iterations` — reviewer invocations made before settling.
-    * `reviewer_stuck_report` — prose from the reviewer when review exhausted
-      without green, or a selection failure reason when no reviewer was
-      available.
+    * `reviewer_adapter` — the cross-family reviewer adapter that gated the
+      run, or `nil` if the run never entered review.
   """
   @type t :: %__MODULE__{
           run_id: String.t(),
@@ -118,15 +104,13 @@ defmodule Harness.Run.Result do
           state: state(),
           reason: reason(),
           agent_outcome: Outcome.t() | nil,
-          verdict: Verdict.t() | nil,
+          review: Review.t() | nil,
           worktree_path: String.t() | nil,
-          first_attempt_failed_check_count: non_neg_integer(),
           agent_diff_size: non_neg_integer() | nil,
+          reviewer_diff_size: non_neg_integer() | nil,
           token_usage: TokenUsage.t(),
           composed_inputs: [AgentAdapter.composed_input()],
-          reviewer_adapter: module() | nil,
-          review_iterations: non_neg_integer(),
-          reviewer_stuck_report: String.t() | nil
+          reviewer_adapter: module() | nil
         }
 
   @enforce_keys [:run_id, :task_id, :state, :reason]
@@ -136,14 +120,12 @@ defmodule Harness.Run.Result do
     :state,
     :reason,
     :agent_outcome,
-    :verdict,
+    :review,
     :worktree_path,
-    first_attempt_failed_check_count: 0,
     agent_diff_size: nil,
+    reviewer_diff_size: nil,
     token_usage: %TokenUsage{},
     composed_inputs: [],
-    reviewer_adapter: nil,
-    review_iterations: 0,
-    reviewer_stuck_report: nil
+    reviewer_adapter: nil
   ]
 end

@@ -24,8 +24,9 @@ unattended — multiple independent tasks dispatched concurrently, persisted and
    `/harness/runs/<run_id>`. For structured polling, `result_store__list_run_records` as each run
    settles.
 
-6. **Report per task.** Summarize each run's `state`/`reason`/`verdict`. Green tasks are done;
-   reds need triage (read the failing-check names; the repair loop already exhausted its retries).
+6. **Report per task.** Summarize each run's `state`/`reason`/review verdict. Approved tasks are
+   done (the reviewer already fixed what it could inline); rejected tasks went back to the queue
+   with the reviewer's report.
 
 ## Gotchas
 

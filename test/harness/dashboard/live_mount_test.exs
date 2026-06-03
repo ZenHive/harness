@@ -87,7 +87,8 @@ defmodule Harness.Dashboard.LiveMountTest do
       assert html =~ "Transcript"
       # run_status was backfilled ({:ok, …}), so the field list renders (not the
       # "Run not found" branch).
-      assert html =~ "Review iterations"
+      assert html =~ "Worktree path"
+      assert html =~ "Verdict"
     end
 
     test "an unknown run id renders the not-found branch", %{conn: conn} do

@@ -97,7 +97,7 @@ defmodule Harness.ProjectRegistry.Persistence do
   @spec decode_row(ProjectSchema.t()) :: {:ok, Project.t()} | {:error, term()}
   defp decode_row(%ProjectSchema{name: name, payload: payload}) when is_binary(payload) do
     case TermCodec.safe_binary_to_term(payload) do
-      {:ok, %Project{name: ^name} = project} -> {:ok, migrate_payload(project)}
+      {:ok, %Project{name: ^name} = project} -> {:ok, rebuild_on_current_shape(project)}
       {:ok, %Project{name: other}} -> {:error, {:name_mismatch, name, other}}
       {:ok, _other} -> {:error, {:invalid_payload, name}}
       {:error, reason} -> {:error, reason}
@@ -106,23 +106,12 @@ defmodule Harness.ProjectRegistry.Persistence do
 
   defp decode_row(%ProjectSchema{name: name}), do: {:error, {:missing_payload, name}}
 
-  # A payload serialized before Task 162 carries the deprecated `semantic_gate`
-  # mode and lacks `review_green`. Rebuild it on the current struct shape so
-  # field access never raises: :always / :auto_land_only ⇒ true, :off ⇒ false.
-  @spec migrate_payload(struct()) :: Project.t()
-  defp migrate_payload(%Project{} = project) do
-    if Map.has_key?(project, :review_green) do
-      project
-    else
-      legacy = Map.get(project, :semantic_gate, :off)
-
-      fields =
-        project
-        |> Map.from_struct()
-        |> Map.delete(:semantic_gate)
-        |> Map.put(:review_green, legacy in [:always, :auto_land_only])
-
-      struct!(Project, fields)
-    end
+  # A payload serialized by an older harness may carry deleted fields
+  # (check_stacks, review_green) and lack newer ones (check_command). Rebuild on
+  # the current struct shape: known fields survive, unknown fields drop, missing
+  # fields take struct defaults — field access never raises.
+  @spec rebuild_on_current_shape(struct()) :: Project.t()
+  defp rebuild_on_current_shape(%Project{} = project) do
+    struct(Project, Map.from_struct(project))
   end
 end

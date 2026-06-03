@@ -5,7 +5,7 @@ defmodule Harness.Batch.AgentEvaluation do
 
   Built on `Harness.Batch.run_pinned/3` (same fan-out, crash isolation, and
   concurrency cap as a normal batch). Metrics are an additive layer on top of
-  the binary pass/fail verification verdict; they never become the verdict.
+  the reviewer AI's approve/reject verdict; they never become the verdict.
   """
 
   use Descripex, namespace: "/batch/agent_evaluation"
@@ -17,20 +17,24 @@ defmodule Harness.Batch.AgentEvaluation do
   alias Harness.Roadmap.Item
   alias Harness.Run.LogRecord
   alias Harness.Run.Result, as: RunResult
+  alias Harness.Run.Review
   alias Harness.TokenUsage
-  alias Harness.Verification.Verdict
 
   defmodule Entry do
     @moduledoc """
     Per-agent evaluation metrics for one adapter's attempt on the shared task.
 
-    `verdict` is the verification stack's binary `:pass` / `:fail` (or `nil`
-    when verification never ran). No composite score is computed.
+    `verdict` is the reviewer AI's `:approve` / `:reject` decision (or `nil`
+    when the run never reached review). No composite score is computed.
+
+    `reviewer_diff_size` is the changed-line count of the reviewer's own fixes
+    on top of the implementer's delivery — `0` + `:approve` means the work
+    needed no fixes (first-attempt pass).
 
     `token_usage` is the `Harness.TokenUsage` parsed from the adapter's raw
     transcript (summed across dispatches) — the efficiency signal that
     lets an A/B comparison weigh *how many tokens* an adapter spent, not only
-    whether it passed. An empty usage (all-`nil`) means the wire format
+    whether it was approved. An empty usage (all-`nil`) means the wire format
     reported no token counts.
     """
 
@@ -40,10 +44,9 @@ defmodule Harness.Batch.AgentEvaluation do
             run_id: String.t(),
             state: RunResult.state(),
             reason: RunResult.reason(),
-            verdict: :pass | :fail | nil,
-            review_iterations: non_neg_integer(),
+            verdict: Review.verdict() | nil,
+            reviewer_diff_size: non_neg_integer() | nil,
             duration_ms: non_neg_integer() | nil,
-            first_attempt_failed_check_count: non_neg_integer(),
             agent_diff_size: non_neg_integer() | nil,
             token_usage: TokenUsage.t(),
             result: RunResult.t()
@@ -54,8 +57,6 @@ defmodule Harness.Batch.AgentEvaluation do
       :run_id,
       :state,
       :reason,
-      :review_iterations,
-      :first_attempt_failed_check_count,
       :result
     ]
     defstruct [
@@ -64,9 +65,8 @@ defmodule Harness.Batch.AgentEvaluation do
       :state,
       :reason,
       :verdict,
-      :review_iterations,
+      :reviewer_diff_size,
       :duration_ms,
-      :first_attempt_failed_check_count,
       :agent_diff_size,
       :result,
       token_usage: %TokenUsage{}
@@ -121,7 +121,7 @@ defmodule Harness.Batch.AgentEvaluation do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %Comparison{batch_id, task_id, total, max_concurrency, entries, events}} — entries holds per-adapter %Entry{} metrics (verdict, review_iterations, duration_ms, first_attempt_failed_check_count, agent_diff_size, token_usage). {:error, Batch.error()}."
+        "{:ok, %Comparison{batch_id, task_id, total, max_concurrency, entries, events}} — entries holds per-adapter %Entry{} metrics (verdict :approve|:reject|nil, reviewer_diff_size, duration_ms, agent_diff_size, token_usage). {:error, Batch.error()}."
     }
   )
 
@@ -215,10 +215,9 @@ defmodule Harness.Batch.AgentEvaluation do
       run_id: result.run_id,
       state: result.state,
       reason: result.reason,
-      verdict: (record && record.verdict) || verdict_status(result),
-      review_iterations: result.review_iterations,
+      verdict: (record && record.verdict) || review_verdict(result),
+      reviewer_diff_size: entry_reviewer_diff_size(record, result),
       duration_ms: record && record.duration_ms,
-      first_attempt_failed_check_count: result.first_attempt_failed_check_count,
       agent_diff_size: result.agent_diff_size,
       token_usage: entry_token_usage(record, result),
       result: result
@@ -226,20 +225,29 @@ defmodule Harness.Batch.AgentEvaluation do
   end
 
   # Prefers the persisted record's measured usage, falling back to the live
-  # result's, then an empty usage. `Map.get/2` tolerates a pre-token persisted
-  # record whose term predates the field (returns nil) — never a crash.
+  # result's (always a `%TokenUsage{}`, empty when unmeasured). `Map.get/2`
+  # tolerates a pre-token persisted record whose term predates the field
+  # (returns nil) — never a crash.
   @spec entry_token_usage(LogRecord.t() | nil, RunResult.t()) :: TokenUsage.t()
   defp entry_token_usage(record, result) do
     record_usage = record && Map.get(record, :token_usage)
 
-    cond do
-      match?(%TokenUsage{}, record_usage) and TokenUsage.measured?(record_usage) -> record_usage
-      match?(%TokenUsage{}, result.token_usage) -> result.token_usage
-      true -> TokenUsage.empty()
+    if match?(%TokenUsage{}, record_usage) and TokenUsage.measured?(record_usage) do
+      record_usage
+    else
+      result.token_usage
     end
   end
 
-  @spec verdict_status(RunResult.t()) :: :pass | :fail | nil
-  defp verdict_status(%RunResult{verdict: %Verdict{status: status}}), do: status
-  defp verdict_status(_), do: nil
+  @spec review_verdict(RunResult.t()) :: Review.verdict() | nil
+  defp review_verdict(%RunResult{review: %Review{verdict: verdict}}), do: verdict
+  defp review_verdict(_), do: nil
+
+  # Prefers the persisted record's measurement; a record predating the field
+  # (Map.get -> nil) falls back to the live result's.
+  @spec entry_reviewer_diff_size(LogRecord.t() | nil, RunResult.t()) :: non_neg_integer() | nil
+  defp entry_reviewer_diff_size(record, result) do
+    record_size = record && Map.get(record, :reviewer_diff_size)
+    if is_integer(record_size), do: record_size, else: result.reviewer_diff_size
+  end
 end
