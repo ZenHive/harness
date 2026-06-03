@@ -2,6 +2,7 @@ defmodule Harness.LanderTest do
   use ExUnit.Case, async: false
 
   alias Harness.CheckStack
+  alias Harness.GitFixture
   alias Harness.Lander
   alias Harness.Project
   alias Harness.Verification.Check
@@ -12,14 +13,9 @@ defmodule Harness.LanderTest do
   # ── git fixture: a bare `origin` + a working clone, so the lander's
   #    ff-push to `origin/<target>` is real and assertable. ──────────────
 
-  defp git!(repo, args) do
-    {output, 0} = System.cmd("git", ["-C", repo | args], stderr_to_stdout: true)
-    output
-  end
-
   defp git(repo, args), do: System.cmd("git", ["-C", repo | args], stderr_to_stdout: true)
 
-  defp sha(repo, ref), do: repo |> git!(["rev-parse", ref]) |> String.trim()
+  defp sha(repo, ref), do: repo |> GitFixture.git!(["rev-parse", ref]) |> String.trim()
 
   defp ancestor?(repo, maybe_ancestor, descendant) do
     {_output, status} = git(repo, ["merge-base", "--is-ancestor", maybe_ancestor, descendant])
@@ -30,31 +26,18 @@ defmodule Harness.LanderTest do
   defp fail_stack, do: [%CheckStack{name: :test, checks: [%Check{name: "no", command: "false", args: []}], workdir: ""}]
 
   setup %{tmp_dir: tmp_dir} do
-    origin = Path.join(tmp_dir, "origin.git")
-    repo = Path.join(tmp_dir, "repo")
-
-    {_out, 0} = System.cmd("git", ["init", "--bare", "--initial-branch=main", origin], stderr_to_stdout: true)
-
-    File.mkdir_p!(repo)
-    git!(repo, ["init", "--initial-branch=main"])
-    git!(repo, ["config", "user.email", "test@example.com"])
-    git!(repo, ["config", "user.name", "Test"])
-    git!(repo, ["remote", "add", "origin", origin])
-    File.write!(Path.join(repo, "README.md"), "base\n")
-    git!(repo, ["add", "."])
-    git!(repo, ["commit", "-m", "initial"])
-    git!(repo, ["push", "-u", "origin", "main"])
+    %{origin: origin, repo: repo} = GitFixture.init_with_origin()
 
     base_sha = sha(repo, "HEAD")
 
     # the settled run's deliverable: harness/<run-id> with one extra commit.
-    git!(repo, ["checkout", "-b", "harness/run-x"])
+    GitFixture.git!(repo, ["checkout", "-b", "harness/run-x"])
     File.write!(Path.join(repo, "feature.txt"), "work\n")
-    git!(repo, ["add", "."])
-    git!(repo, ["commit", "-m", "agent work"])
+    GitFixture.git!(repo, ["add", "."])
+    GitFixture.git!(repo, ["commit", "-m", "agent work"])
     branch_tip = sha(repo, "HEAD")
     # leave HEAD on main so the branch is free for checkout_existing.
-    git!(repo, ["checkout", "main"])
+    GitFixture.git!(repo, ["checkout", "main"])
 
     project = %Project{
       name: "demo",
@@ -81,11 +64,11 @@ defmodule Harness.LanderTest do
     test "rebases onto origin/<target>, re-verifies, then ff-pushes", ctx do
       # advance origin/main past the branch's fork point (non-conflicting file).
       File.write!(Path.join(ctx.repo, "main_moved.txt"), "x\n")
-      git!(ctx.repo, ["add", "."])
-      git!(ctx.repo, ["commit", "-m", "main moves"])
-      git!(ctx.repo, ["push", "origin", "main"])
+      GitFixture.git!(ctx.repo, ["add", "."])
+      GitFixture.git!(ctx.repo, ["commit", "-m", "main moves"])
+      GitFixture.git!(ctx.repo, ["push", "origin", "main"])
       moved_main = sha(ctx.origin, "refs/heads/main")
-      git!(ctx.repo, ["checkout", "main"])
+      GitFixture.git!(ctx.repo, ["checkout", "main"])
 
       assert {:landed, landed} = Lander.land(ctx.request)
       # the landed tip is the rebased branch, not the pre-rebase tip.
@@ -111,17 +94,17 @@ defmodule Harness.LanderTest do
   describe "land/1 — conflict on rebase (Task 101 seam)" do
     test "surfaces {:conflict, _} and leaves origin/<target> untouched", ctx do
       # conflicting edit on the branch...
-      git!(ctx.repo, ["checkout", "harness/run-x"])
+      GitFixture.git!(ctx.repo, ["checkout", "harness/run-x"])
       File.write!(Path.join(ctx.repo, "README.md"), "branch side\n")
-      git!(ctx.repo, ["add", "."])
-      git!(ctx.repo, ["commit", "-m", "branch readme"])
-      git!(ctx.repo, ["checkout", "main"])
+      GitFixture.git!(ctx.repo, ["add", "."])
+      GitFixture.git!(ctx.repo, ["commit", "-m", "branch readme"])
+      GitFixture.git!(ctx.repo, ["checkout", "main"])
 
       # ...and a conflicting edit on main, pushed to origin.
       File.write!(Path.join(ctx.repo, "README.md"), "main side\n")
-      git!(ctx.repo, ["add", "."])
-      git!(ctx.repo, ["commit", "-m", "main readme"])
-      git!(ctx.repo, ["push", "origin", "main"])
+      GitFixture.git!(ctx.repo, ["add", "."])
+      GitFixture.git!(ctx.repo, ["commit", "-m", "main readme"])
+      GitFixture.git!(ctx.repo, ["push", "origin", "main"])
       moved_main = sha(ctx.origin, "refs/heads/main")
 
       assert {:conflict, _output} = Lander.land(ctx.request)

@@ -20,6 +20,19 @@ defmodule Harness.GitFixture do
     repo
   end
 
+  # A bare `origin` plus a working clone pushed to `origin/main` — the lander
+  # suite's fixture shape, so ff-pushes to `origin/<target>` are real and
+  # assertable. Per-test branch/commit setup stays in the tests.
+  @spec init_with_origin(keyword()) :: %{origin: String.t(), repo: String.t()}
+  def init_with_origin(opts \\ []) do
+    name = Keyword.get(opts, :name, "repo")
+    origin = init_bare(name)
+    repo = init_repo(name: name)
+    git!(repo, ["remote", "add", "origin", origin])
+    git!(repo, ["push", "-q", "-u", "origin", "main"])
+    %{origin: origin, repo: repo}
+  end
+
   @spec tmp_base(keyword()) :: String.t()
   def tmp_base(opts \\ []) do
     base = unique_tmp_dir(Keyword.get(opts, :name, "base"))
@@ -33,6 +46,21 @@ defmodule Harness.GitFixture do
       {output, 0} -> output
       {output, status} -> raise "git #{Enum.join(args, " ")} failed (#{status}):\n#{output}"
     end
+  end
+
+  # `git init --bare` creates the directory itself, so this cannot go through
+  # `git!/2` (whose `-C <repo>` requires an existing directory).
+  @spec init_bare(String.t()) :: String.t()
+  defp init_bare(name) do
+    origin = unique_tmp_dir("#{name}-origin")
+
+    case System.cmd("git", ["init", "-q", "--bare", "--initial-branch=main", origin], stderr_to_stdout: true) do
+      {_output, 0} -> :ok
+      {output, status} -> raise "git init --bare failed (#{status}):\n#{output}"
+    end
+
+    ExUnit.Callbacks.on_exit(fn -> File.rm_rf(origin) end)
+    origin
   end
 
   @spec unique_tmp_dir(String.t()) :: String.t()

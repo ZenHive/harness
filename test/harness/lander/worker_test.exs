@@ -37,7 +37,7 @@ defmodule Harness.Lander.WorkerTest do
   describe "perform/1 — runtime landing override (dashboard auto-land)" do
     setup %{tmp_dir: tmp_dir} do
       setup_landing_store(tmp_dir)
-      fixture = git_fixture(tmp_dir)
+      fixture = git_fixture()
       project = register_project(fixture.repo, tmp_dir)
 
       Map.put(fixture, :project, project)
@@ -74,22 +74,9 @@ defmodule Harness.Lander.WorkerTest do
   end
 
   # Bare origin + working clone with a settled harness/<run-id> branch
-  # (mirrors Harness.LanderTest's fixture).
-  defp git_fixture(tmp_dir) do
-    origin = Path.join(tmp_dir, "origin.git")
-    repo = Path.join(tmp_dir, "repo")
-
-    {_out, 0} = System.cmd("git", ["init", "--bare", "--initial-branch=main", origin], stderr_to_stdout: true)
-
-    File.mkdir_p!(repo)
-    GitFixture.git!(repo, ["init", "--initial-branch=main"])
-    GitFixture.git!(repo, ["config", "user.email", "test@example.com"])
-    GitFixture.git!(repo, ["config", "user.name", "Test"])
-    GitFixture.git!(repo, ["remote", "add", "origin", origin])
-    File.write!(Path.join(repo, "README.md"), "base\n")
-    GitFixture.git!(repo, ["add", "."])
-    GitFixture.git!(repo, ["commit", "-m", "initial"])
-    GitFixture.git!(repo, ["push", "-u", "origin", "main"])
+  # (shares Harness.LanderTest's fixture shape via GitFixture.init_with_origin/1).
+  defp git_fixture do
+    %{origin: origin, repo: repo} = GitFixture.init_with_origin()
 
     GitFixture.git!(repo, ["checkout", "-b", "harness/run-overlay"])
     File.write!(Path.join(repo, "feature.txt"), "work\n")
