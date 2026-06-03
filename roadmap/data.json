@@ -7353,6 +7353,53 @@
       "started_at": "2026-06-03",
       "scored_at": "2026-06-03",
       "cross_repo": []
+    },
+    {
+      "id": "184",
+      "phase": 6,
+      "bundle": "deferred",
+      "status": "in_progress",
+      "title": "Expand the descripex/MCP orchestrator surface (inventory first, then read/observe, then a deliberate write subset)",
+      "scores": {
+        "d": 3,
+        "b": 7,
+        "u": 5
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "An inventory exists (doc or task note) listing every function currently `api()`-annotated / reachable via Harness.Manifest + the MCP server + Harness.Chat.Tools, against the orchestrator-desired set, with the gap explicitly called out.",
+        "All identified read/observe operations (roadmap browse, run status/transcript, AgentKPI + CapabilityScore rollups, project/registry listing) are `api()`-annotated and reachable via BOTH Harness.Chat.Tools and the MCP server.",
+        "The chosen write-operation subset (dispatch / cancel / hold-steer-resume / project registration) is annotated, each with a one-line rationale, plus an explicit note of what was intentionally left unexposed and why.",
+        "No `api()` annotation returns a JUDGMENT value (is-this-done / is-this-good / whose-fault / should-this-merge); a reviewer can confirm every newly-exposed function is mechanical.",
+        "skills/harness-driver/SKILL.md updated to document the expanded surface (existing mandate: any public driver-surface change updates the SKILL).",
+        "In-run agent rules and the dispatch path are unchanged: implementer/reviewer agents working inside a target-project worktree still receive NO harness-control MCP tools."
+      ],
+      "files_to_modify": [
+        "lib/harness/manifest.ex",
+        "lib/harness/chat/tools.ex",
+        "lib/harness/dashboard/mcp_server.ex",
+        "skills/harness-driver/SKILL.md"
+      ],
+      "touches": [
+        "lib/harness/manifest.ex",
+        "lib/harness/chat/tools.ex",
+        "lib/harness/dashboard/mcp_server.ex",
+        "lib/harness/run/supervisor.ex",
+        "lib/harness/roadmap.ex",
+        "lib/harness/agent_kpi.ex",
+        "lib/harness/capability_score.ex",
+        "lib/harness/project_registry.ex",
+        "skills/harness-driver/SKILL.md"
+      ],
+      "body": "The primary user is an AI orchestrator (CLAUDE.md), driving harness via the descripex `api()`-annotated surface exposed as MCP (Harness.Manifest -> Harness.Dashboard.MCPServer) and the in-process Harness.Chat.Tools dispatcher. Today an orchestrator can self-serve only the subset currently annotated; everything else needs hand-written chat-tool glue or a human in IEx. Demand signal is direct, not speculative: the AI user asked for this during the 2026-06-03 #180 session — for an AI-native orchestrator the primary consumer IS the demand.\n\nDo it in three steps, cheapest first:\n\n1. INVENTORY (do first). Enumerate what is currently `api()`-annotated / MCP-callable vs. what an orchestrator would want callable. Produce the gap list BEFORE annotating anything — we do not yet know the actual gap.\n\n2. READ/OBSERVE surface — expand generously. Roadmap browse, run status + transcript, AgentKPI + CapabilityScore rollups, project/registry listing. These are pure-mechanical, low-blast-radius, high-leverage; annotate them all.\n\n3. WRITE subset — expose DELIBERATELY, not blanket. Dispatch, cancel, hold/steer/resume, project registration. Each is a real action an autonomous agent can trigger; pick the considered set and document the omissions.\n\nGuardrails (agent-gate doctrine — see CLAUDE.md \"Judgment Lives in Agents\"):\n- descripex describes MECHANICAL surfaces only. NEVER annotate an `api()` that returns a JUDGMENT (is-this-done / is-this-good / whose-fault / should-this-merge). Expose \"merge this branch\" (mechanical), never \"should this merge?\" (judgment). The gate is not \"how much descripex\" but \"expose mechanics, let the agent supply judgment.\"\n- Scope to ORCHESTRATOR agents only. In-run implementer/reviewer agents (working in a worktree on the target project) must NOT get the harness-control MCP surface — handing the agent implementing a task the ability to cancel/dispatch/steer runs is a footgun and a recursion risk.\n- Each `api()` is a contract: any change to the public driver surface must update skills/harness-driver/SKILL.md.\n- Watch context bloat: a fat MCP tool list costs tokens on every orchestrator turn. If the surface grows large, prefer a deferred/search-tool pattern (like harness's own ToolSearch) over dumping every tool into every context.\n\nParked in phase 6 (deferred) on purpose: this is a high-leverage ENABLER, not a blocker — the agent-gate loop works today without it (validated end-to-end on the 2026-06-03 smoke test). Revisit after the active v0_12 cut; left unpinned from any milestone so it does not inflate v0_12.\n",
+      "created_at": "2026-06-03",
+      "started_at": "2026-06-03",
+      "scored_at": "2026-06-03",
+      "cross_repo": []
     }
   ]
 }
