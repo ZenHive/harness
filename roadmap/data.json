@@ -7400,6 +7400,52 @@
       "started_at": "2026-06-03",
       "scored_at": "2026-06-03",
       "cross_repo": []
+    },
+    {
+      "id": "185",
+      "phase": 16,
+      "bundle": "agent-gate",
+      "milestone": "v0_12",
+      "status": "pending",
+      "title": "Same-BEAM :DOWN reaper reclaims the worktree+branch a live-run cleanup-refusal leaks when that run later crashes",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 1.33,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "A run whose cleanup_for_run/2 was correctly refused (live gen_statem, the Task 180 liveness guard) and which then CRASHES has its worktree dir + harness/<run-id> branch reclaimed within the node's lifetime — not left until the next boot-time Harness.Worktree.Sweeper pass",
+        "The reaper distinguishes a CRASHED run (reclaim) from a SETTLED-:failed run (retain worktree+branch by design, for manual salvage per docs/dogfooding-workflow.md) — a :failed run that finishes cleanly must NOT have its worktree reaped",
+        "Mechanism is a same-BEAM signal (e.g. monitor the Run.Registry entry / Run.Supervisor child and act on the :DOWN), not a new poll loop duplicating the Sweeper",
+        "Regression test: a monitored run that crashes (abnormal exit, no settled Result) triggers worktree+branch reclamation; a run that settles :failed and exits normally leaves its worktree+branch intact",
+        "No double-free: reaper and boot Sweeper cannot both delete the same worktree (idempotent — a missing dir/branch is a no-op, not an error)"
+      ],
+      "out_of_scope": [
+        "The cleanup-refusal liveness guard itself (Task 180 — this task builds ON it, reclaiming what it correctly refuses to touch)",
+        "Changing the settled-:failed worktree-retention policy (retention is intended; only crashed-run leaks are in scope)",
+        "Replacing the boot-time Harness.Worktree.Sweeper (the reaper complements it for in-node lifetime; boot sweep stays the cross-boot backstop)"
+      ],
+      "files_to_modify": [
+        "lib/harness/worktree/sweeper.ex",
+        "lib/harness/run/supervisor.ex"
+      ],
+      "touches": [
+        "lib/harness/worktree.ex",
+        "lib/harness/worktree/sweeper.ex",
+        "lib/harness/run/supervisor.ex",
+        "lib/harness/run/worker.ex"
+      ],
+      "body": "Surfaced by the audit of commit 5d1d691 (.audit/5d1d691-liveness-guard-cleanup.md, finding #1, pri 6, worktree.ex:443). The Task-180 liveness guard makes cleanup_for_run/2 correctly REFUSE to remove the worktree+branch of a run whose gen_statem is still alive (fixing the job-118 live-worktree-destruction). That refusal trades a catastrophic failure (destroying a live checkout) for a recoverable one (a leaked worktree) — but the recovery today is BOOT-ONLY: if the refused run then crashes via the worker's crashed-result path (run/worker.ex:192-201, the {:DOWN,...} branch — no finish_worktree/2), its worktree dir + harness/<run-id> branch survive until the next Harness.Worktree.Sweeper pass at boot (worktree/sweeper.ex:46-58). A long-running harness node accumulates leaked worktrees between boots. There is no same-BEAM Run.Registry / Run.Supervisor :DOWN reaper to close the gap within the node's lifetime.\n\nCRITICAL NUANCE (the reason this is design work, not a one-liner): a reaper MUST distinguish a *crashed* run (no settled Result — reclaim the worktree) from a *settled-:failed* run (reject / review_stuck — RETAIN the worktree+branch by design, so a human/agent can salvage the rejected work per docs/dogfooding-workflow.md). A naive \"reap on any :DOWN\" would destroy exactly the retained-for-salvage worktrees the agent-gate intends to keep. So the reaper needs the settled-vs-crashed signal (e.g. the run records its terminal disposition before exit, or the monitor correlates against the ResultStore record / a retained-marker file) before deleting anything.\n\nThis is mechanical-substrate lifecycle work the agent-gate explicitly owns (worktrees, git, process monitoring) — NOT a judgment call. Complements, does not replace, the boot Sweeper.\n",
+      "created_at": "2026-06-03",
+      "scored_at": "2026-06-03",
+      "cross_repo": []
     }
   ]
 }

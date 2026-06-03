@@ -146,10 +146,9 @@ defmodule Harness.Oban do
   @doc false
   @spec rescue_orphaned_run_jobs() :: :ok
   def rescue_orphaned_run_jobs do
-    case Harness.Run.Supervisor.list_runs() do
-      [] -> rescue_executing_run_jobs()
-      [_ | _] -> :ok
-    end
+    Harness.Run.Supervisor.list_runs()
+    |> MapSet.new()
+    |> rescue_orphaned_executing_jobs()
   end
 
   @doc false
@@ -222,13 +221,35 @@ defmodule Harness.Oban do
     }
   end
 
-  @spec rescue_executing_run_jobs() :: :ok
-  defp rescue_executing_run_jobs do
+  # Per-job liveness: rescue every `executing` Run.Worker job whose run is NOT
+  # live in this BEAM, rather than refusing the whole rescue when any one run is
+  # registered. The old all-or-nothing left genuinely-orphaned jobs from a prior
+  # crashed boot stuck `executing` forever whenever a single unrelated run was
+  # live. A job is left alone only when its `run_id` arg matches a registered run
+  # (the live run owns its worktree+branch and settles on its own); a job whose
+  # run_id is absent (legacy) or unregistered is orphaned and made runnable.
+  @spec rescue_orphaned_executing_jobs(MapSet.t(String.t())) :: :ok
+  defp rescue_orphaned_executing_jobs(live_run_ids) do
     query =
       from(job in Oban.Job,
-        where: job.worker == ^@run_worker and job.state == "executing"
+        where: job.worker == ^@run_worker and job.state == "executing",
+        select: {job.id, job.args}
       )
 
+    orphan_ids =
+      query
+      |> Harness.Repo.all()
+      |> Enum.reject(fn {_id, args} -> MapSet.member?(live_run_ids, Map.get(args, "run_id")) end)
+      |> Enum.map(fn {id, _args} -> id end)
+
+    mark_jobs_available(orphan_ids)
+  end
+
+  @spec mark_jobs_available([integer()]) :: :ok
+  defp mark_jobs_available([]), do: :ok
+
+  defp mark_jobs_available(job_ids) do
+    query = from(job in Oban.Job, where: job.id in ^job_ids)
     {_count, _jobs} = Harness.Repo.update_all(query, set: [state: "available"])
     :ok
   end

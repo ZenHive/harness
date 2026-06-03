@@ -19,8 +19,8 @@ audited_by: audit-review v1
 
 | # | Pri | Category | File:Line | Description | Resolution |
 |---|-----|----------|-----------|-------------|------------|
-| 1 | 6   | design   | lib/harness/worktree.ex:443 | Refused cleanup on a live run that later crashes leaks worktree+branch until boot (no same-BEAM reaper) | Recorded as follow-up (not filed — see note) |
-| 2 | 5   | design   | lib/harness/oban.ex:149      | `rescue_orphaned_run_jobs/0` is all-or-nothing: any live run blocks rescuing unrelated orphaned `executing` jobs; runs once at boot | Recorded as follow-up (not filed — see note) |
+| 1 | 6   | design   | lib/harness/worktree.ex:443 | Refused cleanup on a live run that later crashes leaks worktree+branch until boot (no same-BEAM reaper) | **Filed as rmap task 185** (backfill, see note) |
+| 2 | 5   | design   | lib/harness/oban.ex:149      | `rescue_orphaned_run_jobs/0` is all-or-nothing: any live run blocks rescuing unrelated orphaned `executing` jobs; runs once at boot | **Fixed inline** (per-job liveness, backfill, see note) |
 
 ## Summary
 
@@ -42,7 +42,10 @@ The two findings are **verified design follow-ups**, not defects in the committe
 1. **Post-refusal leak** — a refused-then-crashed run finishes via the worker's crashed-result path (`run/worker.ex:192-201`) without `finish_worktree/2`; only the boot-time sweeper reclaims it. A same-BEAM `Run.Registry` `:DOWN` reaper would close the gap within the node's lifetime.
 2. **All-or-nothing orphan rescue** — per-job liveness instead of refusing the whole rescue would let unrelated orphans recover while one run is live.
 
-**Not filed as an rmap task in this audit commit:** the roadmap files (`tasks.toml`, `data.json`, `ROADMAP.md`) carried pre-existing *uncommitted* work (a draft task 184 from another session) when the audit ran. Filing via `rmap new` would re-render those files and entangle task 184 into the `audit(...)` commit. Surfaced in the audit summary instead — the user should `rmap new` these two follow-ups (suggest phase 16 / bundle `agent-gate` / milestone `v0_12`, audit-estimate D3/B4/U4) once task 184 is committed.
+**Deferred at audit time, backfilled 2026-06-03:** the roadmap files (`tasks.toml`, `data.json`, `ROADMAP.md`) carried pre-existing *uncommitted* work (a draft task 184 from another session) when the audit ran, so filing via `rmap new` would have entangled task 184 into the `audit(...)` commit. The two follow-ups were surfaced in the summary and resolved in a separate backfill commit once task 184 landed:
+
+- **Finding #2 (all-or-nothing orphan rescue) — fixed inline.** `rescue_orphaned_run_jobs/0` now does **per-job liveness**: it builds the live run-id set (`Run.Supervisor.list_runs/0`) and rescues every `executing` Run.Worker job whose `run_id` arg is **not** registered, instead of refusing the whole rescue when any one run is live. A live run's job (run_id ∈ registry) is left alone; a job whose run_id is absent (legacy) or unregistered is made runnable. Regression test added (`oban_dispatch_test.exs`: orphan recovered while an unrelated run is live).
+- **Finding #1 (post-refusal worktree leak) — filed as rmap task 185** (phase 16 / bundle `agent-gate` / milestone `v0_12`, D3/B4/U4). It is genuine OTP-lifecycle design work — a same-BEAM `:DOWN` reaper that distinguishes *crashed* runs (reclaim) from *settled-:failed* runs (retain for salvage) — not a one-liner, so it stays a tracked task rather than an inline fix.
 
 ## Codex second-opinion
 

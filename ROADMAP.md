@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (2 of 7 done · 0 in progress)
+**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (2 of 8 done · 0 in progress)
 
 **Last shipped:** Task 175 — Agent-gate workflow rebuild: reviewer AI is THE gate, no mechanical verification anywhere, Task 176 — Post-merge audit agent: per-land enqueue, third-family auditor, audit(...) commits ff-pushed on 2026-06-03
 

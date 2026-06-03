@@ -999,7 +999,7 @@ defmodule Harness.ObanDispatchTest do
     end
 
     @tag :integration
-    test "boot rescue does not touch executing rows while a run is still live" do
+    test "boot rescue does not touch the executing row whose run is still live" do
       start_supervised!(Harness.Repo)
       :ok = Sandbox.checkout(Harness.Repo)
 
@@ -1009,7 +1009,8 @@ defmodule Harness.ObanDispatchTest do
       args = %{
         project_name: project.name,
         item_id: "158",
-        adapter_module: Atom.to_string(Claude)
+        adapter_module: Atom.to_string(Claude),
+        run_id: "live-run-158"
       }
 
       {:ok, job} =
@@ -1025,6 +1026,46 @@ defmodule Harness.ObanDispatchTest do
 
       assert :ok = HarnessOban.rescue_orphaned_run_jobs()
       assert %{state: "executing"} = Harness.Repo.reload!(job)
+    end
+
+    @tag :integration
+    test "boot rescue recovers an orphaned executing row even while an unrelated run is live" do
+      start_supervised!(Harness.Repo)
+      :ok = Sandbox.checkout(Harness.Repo)
+
+      project = ProjectFixture.from_repo("/tmp/harness-mixed-rescue", name: "mixed-rescue")
+      queue = HarnessOban.queue_name(project)
+
+      live_args = %{
+        project_name: project.name,
+        item_id: "159",
+        adapter_module: Atom.to_string(Claude),
+        run_id: "live-run-159"
+      }
+
+      orphan_args = %{
+        project_name: project.name,
+        item_id: "160",
+        adapter_module: Atom.to_string(Claude),
+        run_id: "orphan-run-160"
+      }
+
+      {:ok, live_job} = live_args |> Worker.new(queue: queue, unique: unique_opts()) |> Harness.Repo.insert()
+      {:ok, orphan_job} = orphan_args |> Worker.new(queue: queue, unique: unique_opts()) |> Harness.Repo.insert()
+
+      for job <- [live_job, orphan_job] do
+        job
+        |> Ecto.Changeset.change(state: "executing", attempted_at: DateTime.add(DateTime.utc_now(), -120, :second))
+        |> Harness.Repo.update!()
+      end
+
+      # Only the run behind live_job is registered; orphan-run-160 crashed a prior boot.
+      {:ok, _} = Registry.register(Harness.Run.Registry, "live-run-159", nil)
+
+      assert :ok = HarnessOban.rescue_orphaned_run_jobs()
+
+      assert %{state: "executing"} = Harness.Repo.reload!(live_job)
+      assert %{state: "available"} = Harness.Repo.reload!(orphan_job)
     end
   end
 
