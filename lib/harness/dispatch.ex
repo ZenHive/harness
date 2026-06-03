@@ -269,6 +269,179 @@ defmodule Harness.Dispatch do
     {:ok, %{run_id: run_id, cancelled: true}}
   end
 
+  # --- Operator-mediated run recovery over JSON: hold / steer / resume ---
+  #
+  # The write counterparts to dispatch-cancel. Like cancel/status, the underlying
+  # Harness.Run functions take a `String.t() | pid()` handle (so descripex marks
+  # them :exchange_data and the Manifest drops them from the JSON surface); these
+  # are the flat run-id-string wrappers. They are NOT macro-generated via
+  # RunTool: hold takes a second arg, steer takes a text arg, and all three
+  # return a bare `:ok` (not `{:ok, _}`), so their shapes diverge from the
+  # uniform observation trio — hand-written, mirroring cancel/1.
+
+  api(
+    :hold,
+    "Park an in-flight run in :held for operator-mediated recovery, by run_id. Graceful (default) waits for the current agent attempt to finish; interrupt: true kills the agent immediately. The JSON-native counterpart to Harness.Run.hold/2 — a mechanical lifecycle transition, not a judgment.",
+    params: [
+      run_id: [
+        kind: :value,
+        description:
+          "Run id string returned by dispatch-task / dispatch-await (or supervisor-list_runs). A stopped/unknown run yields {:error, :not_found}."
+      ],
+      interrupt: [
+        kind: :value,
+        default: false,
+        description:
+          "When true, terminate the agent now and park immediately; when false, park at the next attempt boundary."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{run_id, held: true, interrupt: bool}} on a parked run. {:error, reason}: :terminal (already settled), :invalid_state, or :not_found."
+    }
+  )
+
+  @spec hold(String.t(), boolean()) ::
+          {:ok, %{run_id: String.t(), held: true, interrupt: boolean()}}
+          | {:error, :terminal | :invalid_state | :not_found}
+  def hold(run_id, interrupt \\ false) when is_binary(run_id) and is_boolean(interrupt) do
+    case Run.hold(run_id, interrupt) do
+      :ok -> {:ok, %{run_id: run_id, held: true, interrupt: interrupt}}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  api(
+    :steer,
+    "Stash operator guidance for the next agent boundary of a run (append-accumulates), by run_id. Requires a session-resume-capable adapter. The JSON-native counterpart to Harness.Run.steer/2 — it records a note for the next resumed attempt; it does not itself judge or act on the run.",
+    params: [
+      run_id: [
+        kind: :value,
+        description:
+          "Run id string returned by dispatch-task / dispatch-await. A stopped/unknown run yields {:error, :not_found}."
+      ],
+      text: [
+        kind: :value,
+        description: "Operator note threaded into the next resumed agent attempt."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{run_id, steered: true}} when the note is stashed. {:error, reason}: :resume_unsupported (adapter cannot resume) or :not_found."
+    }
+  )
+
+  @spec steer(String.t(), String.t()) ::
+          {:ok, %{run_id: String.t(), steered: true}}
+          | {:error, :resume_unsupported | :not_found}
+  def steer(run_id, text) when is_binary(run_id) and is_binary(text) do
+    case Run.steer(run_id, text) do
+      :ok -> {:ok, %{run_id: run_id, steered: true}}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  api(
+    :resume,
+    "Resume a :held run, by run_id — re-enters :running with a session-resume invocation in the same worktree (any stashed steer note is applied). The JSON-native counterpart to Harness.Run.resume/1 — a mechanical lifecycle transition.",
+    params: [
+      run_id: [
+        kind: :value,
+        description:
+          "Run id string of a currently :held run (see dispatch-status). A non-held or unknown run yields an error."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{run_id, resumed: true}} on re-entry to :running. {:error, reason}: :not_held (run was not parked) or :not_found."
+    }
+  )
+
+  @spec resume(String.t()) ::
+          {:ok, %{run_id: String.t(), resumed: true}} | {:error, :not_held | :not_found}
+  def resume(run_id) when is_binary(run_id) do
+    case Run.resume(run_id) do
+      :ok -> {:ok, %{run_id: run_id, resumed: true}}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  # --- Project registration over JSON ---
+  #
+  # Harness.ProjectRegistry.register/1 takes a %Harness.Project{} struct
+  # (:exchange_data — off the JSON surface). This is the flat scalar entry point:
+  # it assembles the struct through the registry's validated builder so a runtime
+  # registration behaves identically to a config :harness, :projects entry. The
+  # rarer struct fields (landing_policy, target_branch, pollution_allowlist) are
+  # intentionally NOT exposed here — register those via config or the project_eval
+  # struct path (see docs/orchestrator-surface-inventory.md § Omissions).
+
+  api(
+    :register_project,
+    "Register a project for dispatch from JSON scalars: build a validated %Harness.Project{} (with path expansion, same as a config entry) and register it. The JSON-native counterpart to Harness.ProjectRegistry.register/1. Runtime registration does NOT survive a BEAM restart unless :repo_enabled — for durable registration use config :harness, :projects.",
+    params: [
+      name: [
+        kind: :value,
+        description:
+          ~s|Project name slug (e.g. "myapp"). Must be unique; a taken slug returns {:error, {:duplicate, name}}.|
+      ],
+      source_type: [
+        kind: :value,
+        description: ~s{Project source kind: "local" (a filesystem path) or "github" (a clone URL).}
+      ],
+      source_location: [
+        kind: :value,
+        description: "Filesystem path (for local) or clone URL (for github) of the project source."
+      ],
+      roadmap_path: [
+        kind: :value,
+        description: "Filesystem path to the project root containing roadmap/tasks.toml (resolves rmap browse/ingest)."
+      ],
+      check_command: [
+        kind: :value,
+        default: nil,
+        description:
+          ~s{Optional free-text hint handed to the reviewer AI (e.g. "mix precommit"). Harness never runs it; the reviewer runs the project's checks itself.}
+      ],
+      concurrency_cap: [
+        kind: :value,
+        default: nil,
+        description: "Optional per-project max concurrent runs (the project's Oban queue limit). nil leaves the default."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{name: name}} on success. {:error, reason}: {:invalid_source_type, value}, {:invalid_project, _} (missing/invalid field), or {:duplicate, name}."
+    }
+  )
+
+  @spec register_project(String.t(), String.t(), String.t(), String.t(), String.t() | nil, pos_integer() | nil) ::
+          {:ok, %{name: String.t()}} | {:error, term()}
+  def register_project(name, source_type, source_location, roadmap_path, check_command \\ nil, concurrency_cap \\ nil)
+      when is_binary(name) and is_binary(source_type) and is_binary(source_location) and is_binary(roadmap_path) do
+    with {:ok, source} <- build_source(source_type, source_location),
+         attrs = [
+           name: name,
+           source: source,
+           roadmap_path: roadmap_path,
+           check_command: check_command,
+           concurrency_cap: concurrency_cap
+         ],
+         :ok <- ProjectRegistry.register(attrs) do
+      {:ok, %{name: name}}
+    end
+  end
+
+  @spec build_source(String.t(), String.t()) ::
+          {:ok, Project.source()} | {:error, {:invalid_source_type, String.t()}}
+  defp build_source("local", location), do: {:ok, {:local, location}}
+  defp build_source("github", location), do: {:ok, {:github, location}}
+  defp build_source(other, _location), do: {:error, {:invalid_source_type, other}}
+
   # --- Fan-out over JSON: whole-bundle dispatch + same-task A/B compare ---
 
   api(

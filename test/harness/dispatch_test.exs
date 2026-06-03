@@ -251,6 +251,32 @@ defmodule Harness.DispatchTest do
     end
   end
 
+  describe "run recovery — unknown run_id" do
+    # hold/steer/resume delegate to Harness.Run by run_id; an unknown id
+    # exercises the {:error, :not_found} pass-through without spawning a run.
+    test "hold passes {:error, :not_found} through for an unknown run_id" do
+      assert {:error, :not_found} = Dispatch.hold("__no_such_run__")
+    end
+
+    test "steer passes {:error, :not_found} through for an unknown run_id" do
+      assert {:error, :not_found} = Dispatch.steer("__no_such_run__", "do X next")
+    end
+
+    test "resume passes {:error, :not_found} through for an unknown run_id" do
+      assert {:error, :not_found} = Dispatch.resume("__no_such_run__")
+    end
+  end
+
+  describe "register_project/6 — input validation" do
+    # An invalid source_type is rejected by build_source before any registry
+    # interaction, so this stays async-safe (no global registry mutation). The
+    # registration round-trip lives in the async: false ProjectRegistry test.
+    test "rejects an unknown source_type before touching the registry" do
+      assert {:error, {:invalid_source_type, "ftp"}} =
+               Dispatch.register_project("p", "ftp", "/tmp/p", "/tmp/p")
+    end
+  end
+
   describe "bundle/2 fan-out resolution" do
     # Adapter resolution runs before project lookup and before rmap/Oban, so the
     # three rejection shapes are provable without a registered project or a DB.
@@ -572,6 +598,66 @@ defmodule Harness.DispatchTest do
       registry = Tools.build()
 
       assert %{module: Dispatch, function: :verdict_detail} = registry["dispatch-verdict_detail"]
+    end
+
+    test "the run recovery tools (hold/steer/resume) are on the MCP surface as run_id-string tools" do
+      tools = Harness.Manifest.mcp_tools()
+
+      for name <- ~w(dispatch-hold dispatch-steer dispatch-resume) do
+        tool = Enum.find(tools, &(&1.name == name))
+        assert tool, "#{name} should be on the MCP tool surface"
+        assert Map.has_key?(tool.inputSchema.properties, :run_id)
+        # run_id is the only undefaulted scalar; steer also requires text.
+        assert "run_id" in tool.inputSchema.required
+      end
+
+      steer = Enum.find(tools, &(&1.name == "dispatch-steer"))
+      assert Map.has_key?(steer.inputSchema.properties, :text)
+      assert Enum.sort(steer.inputSchema.required) == ["run_id", "text"]
+
+      hold = Enum.find(tools, &(&1.name == "dispatch-hold"))
+      assert Map.has_key?(hold.inputSchema.properties, :interrupt)
+      # interrupt defaults to false, so only run_id is required.
+      assert hold.inputSchema.required == ["run_id"]
+    end
+
+    test "the chat tool registry resolves the run recovery tools to Harness.Dispatch" do
+      registry = Tools.build()
+
+      assert %{module: Dispatch, function: :hold} = registry["dispatch-hold"]
+      assert %{module: Dispatch, function: :steer} = registry["dispatch-steer"]
+      assert %{module: Dispatch, function: :resume} = registry["dispatch-resume"]
+    end
+
+    test "dispatch-register_project is exposed as a flat, JSON-passable tool" do
+      tool = Enum.find(Harness.Manifest.mcp_tools(), &(&1.name == "dispatch-register_project"))
+      assert tool, "dispatch-register_project should be on the MCP tool surface"
+
+      props = tool.inputSchema.properties
+      assert Map.has_key?(props, :name)
+      assert Map.has_key?(props, :source_type)
+      assert Map.has_key?(props, :source_location)
+      assert Map.has_key?(props, :roadmap_path)
+      assert Map.has_key?(props, :check_command)
+      assert Map.has_key?(props, :concurrency_cap)
+
+      # check_command and concurrency_cap default; the other four are required.
+      assert Enum.sort(tool.inputSchema.required) ==
+               ["name", "roadmap_path", "source_location", "source_type"]
+
+      assert %{module: Dispatch, function: :register_project} =
+               Tools.build()["dispatch-register_project"]
+    end
+
+    test "the struct-arg project_registry-register is NOT on the JSON surface" do
+      names = Enum.map(Harness.Manifest.mcp_tools(), & &1.name)
+
+      # register/1 takes a %Project{} struct (:exchange_data) a JSON caller
+      # cannot construct — JSON orchestrators use dispatch-register_project.
+      refute "project_registry-register" in names
+      # The non-struct registry reads stay on the surface.
+      assert "project_registry-list" in names
+      assert "project_registry-lookup" in names
     end
 
     test "dispatch-recommend is exposed as the public routing advice tool" do

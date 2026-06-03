@@ -53,7 +53,13 @@ defmodule Harness.ProjectRegistry do
     "Register a project struct under its name. When :repo_enabled, survives a BEAM restart via Postgres; config :harness, :projects always wins on name conflict.",
     params: [
       project: [
-        kind: :value,
+        # A %Harness.Project{} struct a stateless JSON caller cannot construct —
+        # so this stays off the MCP/chat surface (Harness.Manifest drops
+        # :exchange_data tools). JSON orchestrators register via the flat
+        # scalar tool Harness.Dispatch.register_project/6 (dispatch-register_project),
+        # which builds the struct through this module's validated builder.
+        kind: :exchange_data,
+        source: "Harness.Dispatch.register_project/6 (the JSON-native scalar entry point)",
         description:
           "%Harness.Project{} the caller constructs (name, source, check_command, roadmap_path, concurrency_cap, pollution_allowlist)."
       ]
@@ -64,9 +70,20 @@ defmodule Harness.ProjectRegistry do
     }
   )
 
-  @spec register(Project.t()) :: :ok | {:error, error()}
+  @spec register(Project.t() | keyword() | map()) :: :ok | {:error, error()}
   def register(%Project{} = project) do
     GenServer.call(__MODULE__, {:register, project})
+  end
+
+  # In-process convenience: build a validated %Project{} from attrs (keyword or
+  # map) and register it. Shares fetch/validation/path-expansion with
+  # config-declared projects via build_project/1, so a runtime registration
+  # behaves identically to a config entry. This is the path the JSON-native
+  # Harness.Dispatch.register_project/6 routes through.
+  def register(attrs) when is_list(attrs) or is_map(attrs) do
+    with {:ok, project} <- build_project(attrs) do
+      register(project)
+    end
   end
 
   api(:lookup, "Look up a registered project by name slug.",

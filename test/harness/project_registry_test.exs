@@ -1,6 +1,7 @@
 defmodule Harness.ProjectRegistryTest do
   use ExUnit.Case, async: false
 
+  alias Harness.Dispatch
   alias Harness.GitFixture
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
@@ -35,6 +36,64 @@ defmodule Harness.ProjectRegistryTest do
 
     test "unregister/1 errors on an unknown name" do
       assert {:error, {:unknown_project, "missing"}} = ProjectRegistry.unregister("missing")
+    end
+
+    test "register/1 accepts attrs (keyword) and builds a validated, path-expanded project" do
+      assert :ok =
+               ProjectRegistry.register(
+                 name: "kw",
+                 source: {:local, "/tmp/kw"},
+                 roadmap_path: "/tmp/kw",
+                 check_command: "mix test"
+               )
+
+      assert {:ok, project} = ProjectRegistry.lookup("kw")
+      assert project.name == "kw"
+      assert project.source == {:local, "/tmp/kw"}
+      assert project.check_command == "mix test"
+      # build_project defaults landing_policy when attrs omit it.
+      assert project.landing_policy == :manual
+    end
+
+    test "register/1 returns invalid_project for attrs missing a required field" do
+      assert {:error, {:invalid_project, {:missing, :roadmap_path}}} =
+               ProjectRegistry.register(name: "bad", source: {:local, "/tmp/bad"})
+    end
+  end
+
+  describe "Dispatch.register_project/6 — JSON-native registration" do
+    test "registers a local-source project and makes it lookup-resolvable" do
+      assert {:ok, %{name: "reg-local"}} =
+               Dispatch.register_project("reg-local", "local", "/tmp/reg-local", "/tmp/reg-local", "mix test", 2)
+
+      assert {:ok, project} = ProjectRegistry.lookup("reg-local")
+      assert project.source == {:local, "/tmp/reg-local"}
+      assert project.check_command == "mix test"
+      assert project.concurrency_cap == 2
+    end
+
+    test "registers a github-source project with default optional fields" do
+      assert {:ok, %{name: "reg-gh"}} =
+               Dispatch.register_project("reg-gh", "github", "https://example.com/reg-gh.git", "/tmp/reg-gh")
+
+      assert {:ok, project} = ProjectRegistry.lookup("reg-gh")
+      assert project.source == {:github, "https://example.com/reg-gh.git"}
+      assert project.check_command == nil
+      assert project.concurrency_cap == nil
+    end
+
+    test "surfaces a duplicate registration as an error" do
+      assert {:ok, _} = Dispatch.register_project("dup", "local", "/tmp/dup", "/tmp/dup")
+
+      assert {:error, {:duplicate, "dup"}} =
+               Dispatch.register_project("dup", "local", "/tmp/dup", "/tmp/dup")
+    end
+
+    test "rejects an unknown source_type before touching the registry" do
+      assert {:error, {:invalid_source_type, "svn"}} =
+               Dispatch.register_project("reg-bad", "svn", "/tmp/reg-bad", "/tmp/reg-bad")
+
+      assert {:error, {:unknown_project, "reg-bad"}} = ProjectRegistry.lookup("reg-bad")
     end
 
     test "lookup/1 errors on an unknown name" do
