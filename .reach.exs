@@ -1,22 +1,55 @@
-# Reach architecture policy for harness (OTP-heavy AI orchestrator)
+# Reach architecture policy for harness (OTP-native agent-gate orchestrator)
+#
+# harness is hub-and-spoke (AgentAdapter behaviour ↔ core run lifecycle ↔
+# cold-path dashboard), not a layered architecture — a `layers:`/`deps:` policy
+# would report layer cycles that exist by design. The real invariants are
+# expressed as forbidden-call rules + public-facade boundaries instead.
 [
-  layers: [
-    core: "Harness.*",
-    adapters: "Harness.Adapters.*",
-    surface: "Harness.Surface.*"
-  ],
-  deps: [
-    # Adapters and surface should not reach into each other's internals
+  calls: [
     forbidden: [
-      {:adapters, :surface},
-      {:surface, :adapters}
+      # The cold-path dashboard never drives agent adapters directly — all
+      # dispatch goes through Harness.Dispatch / Harness.Batch.
+      {"Harness.Dashboard.*", ["Harness.AgentAdapter.*"]},
+      # Adapters are leaves invoked by the run lifecycle — they never reach
+      # into the dashboard surface or the Oban dispatch / landing layer.
+      {"Harness.AgentAdapter.*",
+       [
+         "Harness.Dashboard.*",
+         "Harness.Dispatch.*",
+         "Harness.Batch.*",
+         "Harness.Oban.*",
+         "Harness.Lander.*"
+       ]}
     ]
   ],
   boundaries: [
-    public: ["Harness", "Harness.Application", "Harness.StatusView"],
-    internal: ["Harness.Adapters.*", "Harness.Core.*"]
+    # Modules legitimately driven from outside the Harness namespace (Mix
+    # tasks, IEx consumers, mounting Phoenix apps): the descripex
+    # api()-annotated driver surface plus the persistence/result structs it
+    # exchanges.
+    public: [
+      "Harness",
+      "Harness.Application",
+      "Harness.AgentAdapter.Driver",
+      "Harness.AgentKPI",
+      "Harness.AuditReview",
+      "Harness.Batch",
+      "Harness.Batch.*",
+      "Harness.Dispatch",
+      "Harness.Dispatch.*",
+      "Harness.Manifest",
+      "Harness.Playbooks",
+      "Harness.ProjectRegistry",
+      "Harness.ResultStore",
+      "Harness.ResultStore.*",
+      "Harness.Roadmap",
+      "Harness.Roadmap.*",
+      "Harness.Run",
+      "Harness.Run.*",
+      "Harness.StatusView"
+    ]
   ],
   smells: [
-    # Start conservative; tighten as the gen_statem / DynamicSupervisor code lands
+    # Start conservative; tighten as new smell checks prove signal on this codebase.
   ]
 ]

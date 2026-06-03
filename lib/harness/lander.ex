@@ -77,7 +77,7 @@ defmodule Harness.Lander do
   """
   @spec land(request()) :: outcome()
   def land(%{project: %Project{} = project, branch: branch} = request) when is_binary(branch) do
-    with {:ok, repo} <- repo_path(project),
+    with {:ok, repo} <- Project.local_repo_path(project),
          {:ok, target} <- target_branch(project),
          :ok <- fetch_origin(repo),
          {:ok, base_sha} <- remote_target_sha(repo, target),
@@ -234,10 +234,6 @@ defmodule Harness.Lander do
         :ok
     end
   end
-
-  @spec repo_path(Project.t()) :: {:ok, String.t()} | {:skipped, :github_source}
-  defp repo_path(%Project{source: {:local, _}} = project), do: {:ok, Project.repo_path(project)}
-  defp repo_path(%Project{source: {:github, _}}), do: {:skipped, :github_source}
 
   @spec target_branch(Project.t()) :: {:ok, String.t()} | {:error, :no_target_branch}
   defp target_branch(%Project{target_branch: tb}) when is_binary(tb) and tb != "", do: {:ok, tb}

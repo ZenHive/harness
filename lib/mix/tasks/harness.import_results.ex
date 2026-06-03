@@ -20,6 +20,7 @@ defmodule Mix.Tasks.Harness.ImportResults do
   alias Harness.ResultStore.File, as: FileStore
   alias Harness.ResultStore.Postgres, as: PostgresStore
   alias Harness.Run.LogRecord
+  alias Harness.TermCodec
 
   require Logger
 
@@ -109,7 +110,7 @@ defmodule Mix.Tasks.Harness.ImportResults do
   @spec import_file_result(String.t(), module(), (term(), ResultStore.store() -> term()), ResultStore.store()) ::
           :imported | {:skipped, term()}
   defp import_file_result(path, expected_mod, persist_fun, store) do
-    case read_term(path) do
+    case TermCodec.read_file(path) do
       {:ok, %{} = term} -> persist_decoded(term, expected_mod, persist_fun, store)
       {:error, reason} -> {:skipped, reason}
     end
@@ -131,16 +132,6 @@ defmodule Mix.Tasks.Harness.ImportResults do
   defp log_skip(path, reason, acc) do
     Logger.warning("harness import_results: skipped #{path}: #{inspect(reason)}")
     %{acc | skipped: acc.skipped + 1}
-  end
-
-  @spec read_term(String.t()) :: {:ok, term()} | {:error, term()}
-  defp read_term(path) do
-    case File.read(path) do
-      {:ok, body} -> {:ok, :erlang.binary_to_term(body)}
-      {:error, reason} -> {:error, reason}
-    end
-  rescue
-    ArgumentError -> {:error, {:invalid_term_file, path}}
   end
 
   @spec struct_type(struct()) :: module()

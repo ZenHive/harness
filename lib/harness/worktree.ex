@@ -656,10 +656,7 @@ defmodule Harness.Worktree do
   defp live_owner_pid?(nil), do: false
 
   defp live_owner_pid?(pid) do
-    case System.cmd("kill", ["-0", pid], stderr_to_stdout: true) do
-      {_output, 0} -> true
-      {_output, _status} -> false
-    end
+    match?({_output, 0}, System.cmd("kill", ["-0", pid], stderr_to_stdout: true))
   end
 
   @spec config(atom()) :: term()

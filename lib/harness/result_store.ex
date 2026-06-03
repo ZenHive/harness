@@ -287,6 +287,19 @@ defmodule Harness.ResultStore do
     Application.get_env(:harness, :result_store, {Harness.ResultStore.File, []})
   end
 
+  # Pops a positive-integer `:limit` from `filters`, returning `{limit, rest}`.
+  # Shared by the File and Postgres backends so the "newest-N rows" cap parses
+  # identically: a non-positive or non-integer `:limit` is treated as absent
+  # (`{nil, rest}`) rather than rejected. Backend-internal (`@doc false`).
+  @doc false
+  @spec pop_limit(filters()) :: {pos_integer() | nil, filters()}
+  def pop_limit(filters) when is_list(filters) do
+    case Keyword.pop(filters, :limit) do
+      {limit, rest} when is_integer(limit) and limit > 0 -> {limit, rest}
+      {_absent_or_bad, rest} -> {nil, rest}
+    end
+  end
+
   @spec dispatch(module() | {module(), keyword()}, atom(), [term()]) :: term()
   defp dispatch({module, opts}, function, args) when is_atom(module) and is_list(opts) do
     apply(module, function, args ++ [opts])

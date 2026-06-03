@@ -13,6 +13,7 @@ defmodule Harness.ResultStore.File do
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.CapabilityScore
   alias Harness.Run.LogRecord
+  alias Harness.TermCodec
 
   require Logger
 
@@ -21,13 +22,13 @@ defmodule Harness.ResultStore.File do
   @impl Harness.ResultStore
   @spec record_run(LogRecord.t(), keyword()) :: :ok | {:error, term()}
   def record_run(%LogRecord{} = record, opts) when is_list(opts) do
-    write_term(run_path(record.run_id, opts), record)
+    TermCodec.write_file(run_path(record.run_id, opts), record)
   end
 
   @impl Harness.ResultStore
   @spec save_batch(BatchResult.t(), keyword()) :: :ok | {:error, term()}
   def save_batch(%BatchResult{} = result, opts) when is_list(opts) do
-    write_term(batch_path(result.batch_id, opts), result)
+    TermCodec.write_file(batch_path(result.batch_id, opts), result)
   end
 
   @impl Harness.ResultStore
@@ -35,7 +36,7 @@ defmodule Harness.ResultStore.File do
   def load_batch(batch_id, opts) when is_binary(batch_id) and is_list(opts) do
     path = batch_path(batch_id, opts)
 
-    case read_term(path) do
+    case TermCodec.read_file(path) do
       {:ok, %BatchResult{} = result} -> {:ok, result}
       {:ok, _other} -> {:error, {:invalid_term_file, path}}
       {:error, reason} -> {:error, reason}
@@ -45,7 +46,7 @@ defmodule Harness.ResultStore.File do
   @impl Harness.ResultStore
   @spec list_run_records(Harness.ResultStore.filters(), keyword()) :: {:ok, [LogRecord.t()]} | {:error, term()}
   def list_run_records(filters, opts) when is_list(filters) and is_list(opts) do
-    {limit, filters} = pop_limit(filters)
+    {limit, filters} = Harness.ResultStore.pop_limit(filters)
     point_lookup? = Keyword.has_key?(filters, :run_id)
     dir = Path.join(root(opts), "runs")
 
@@ -77,7 +78,7 @@ defmodule Harness.ResultStore.File do
   defp read_run_entry(dir, file) do
     path = Path.join(dir, file)
 
-    case {read_term(path), File.stat(path, time: :posix)} do
+    case {TermCodec.read_file(path), File.stat(path, time: :posix)} do
       {{:ok, term}, {:ok, %File.Stat{mtime: mtime}}} -> {:ok, term, mtime}
       {{:error, _} = err, _} -> err
       {_, {:error, _} = err} -> err
@@ -87,7 +88,7 @@ defmodule Harness.ResultStore.File do
   @impl Harness.ResultStore
   @spec save_capability_score(CapabilityScore.t(), keyword()) :: :ok | {:error, term()}
   def save_capability_score(%CapabilityScore{} = score, opts) when is_list(opts) do
-    write_term(capability_score_path(score.agent, score.domain, score.corpus_version, opts), score)
+    TermCodec.write_file(capability_score_path(score.agent, score.domain, score.corpus_version, opts), score)
   end
 
   @impl Harness.ResultStore
@@ -97,7 +98,7 @@ defmodule Harness.ResultStore.File do
       when is_atom(agent) and is_atom(domain) and is_binary(corpus_version) and is_list(opts) do
     path = capability_score_path(agent, domain, corpus_version, opts)
 
-    case read_term(path) do
+    case TermCodec.read_file(path) do
       {:ok, %CapabilityScore{} = score} -> {:ok, score}
       {:ok, _other} -> {:error, {:invalid_term_file, path}}
       {:error, :enoent} -> :no_data
@@ -115,11 +116,7 @@ defmodule Harness.ResultStore.File do
         scores =
           files
           |> Enum.filter(&String.ends_with?(&1, ".term"))
-          |> Enum.map(&read_term(Path.join(dir, &1)))
-          |> Enum.flat_map(fn
-            {:ok, %CapabilityScore{} = score} -> [score]
-            _other -> []
-          end)
+          |> Enum.flat_map(&decode_score(Path.join(dir, &1)))
           |> Enum.sort_by(&{&1.domain, &1.agent, &1.corpus_version})
 
         {:ok, scores}
@@ -129,6 +126,15 @@ defmodule Harness.ResultStore.File do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  # Decodes one persisted score file; anything that isn't a %CapabilityScore{} is skipped.
+  @spec decode_score(String.t()) :: [CapabilityScore.t()]
+  defp decode_score(path) do
+    case TermCodec.read_file(path) do
+      {:ok, %CapabilityScore{} = score} -> [score]
+      _other -> []
     end
   end
 
@@ -186,15 +192,6 @@ defmodule Harness.ResultStore.File do
   defp maybe_take(records, nil), do: records
   defp maybe_take(records, limit) when is_integer(limit), do: Enum.take(records, limit)
 
-  @spec pop_limit(Harness.ResultStore.filters()) :: {pos_integer() | nil, Harness.ResultStore.filters()}
-  defp pop_limit(filters) do
-    case Keyword.pop(filters, :limit) do
-      {nil, filters} -> {nil, filters}
-      {limit, filters} when is_integer(limit) and limit > 0 -> {limit, filters}
-      {_bad, filters} -> {nil, filters}
-    end
-  end
-
   @spec log_skipped(%{cross_typed: non_neg_integer(), undecodable: non_neg_integer()}) :: :ok
   defp log_skipped(%{cross_typed: 0, undecodable: 0}), do: :ok
 
@@ -209,42 +206,6 @@ defmodule Harness.ResultStore.File do
   @spec match_filters?(LogRecord.t(), Harness.ResultStore.filters()) :: boolean()
   defp match_filters?(%LogRecord{} = record, filters) do
     Enum.all?(filters, fn {key, value} -> Map.get(record, key) == value end)
-  end
-
-  @spec write_term(String.t(), term()) :: :ok | {:error, term()}
-  # Paths are built internally by storage_path/2 from an expanded root plus
-  # base64url-encoded ids, then checked to stay under that root.
-  #
-  # Write to a sibling `.tmp` then atomically rename it into place: a concurrent
-  # reader (list_run_records reading the runs/ dir) never observes a half-written
-  # term file, and a crash mid-write leaves the old file intact rather than torn.
-  # rename/2 is atomic on POSIX within one filesystem; the tmp sibling shares the
-  # target's directory, so the rename stays same-filesystem.
-  # sobelow_skip ["Traversal.FileModule"]
-  defp write_term(path, term) do
-    tmp = path <> ".tmp"
-
-    with :ok <- File.mkdir_p(Path.dirname(path)),
-         :ok <- File.write(tmp, :erlang.term_to_binary(term)) do
-      File.rename(tmp, path)
-    end
-  end
-
-  @spec read_term(String.t()) :: {:ok, term()} | {:error, term()}
-  # Decodes WITHOUT [:safe]: these are harness-owned files written by this app's
-  # own term_to_binary under the store root — not untrusted input. [:safe] refuses
-  # any term referencing an atom not currently interned in the running BEAM, which
-  # silently dropped valid records written by a prior build (cross-version atom
-  # drift on reason/agent/adapter atoms). The rescue still catches genuinely torn
-  # bytes — they raise ArgumentError with or without :safe.
-  # sobelow_skip ["Traversal.FileModule", "Misc.BinToTerm"]
-  defp read_term(path) do
-    case File.read(path) do
-      {:ok, body} -> {:ok, :erlang.binary_to_term(body)}
-      {:error, reason} -> {:error, reason}
-    end
-  rescue
-    ArgumentError -> {:error, {:invalid_term_file, path}}
   end
 
   @spec run_path(String.t(), keyword()) :: String.t()

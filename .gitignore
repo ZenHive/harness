@@ -63,3 +63,6 @@ harness-*.tar
 # (.1.18, .rc-1.20, etc.) stay local — they're per-developer scratch files
 # for testing across Elixir versions.
 .tool-versions.*
+
+# mix reach report viewer output (generated)
+/reach_report/

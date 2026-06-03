@@ -368,6 +368,8 @@ defmodule Harness.Dashboard.ChatLive do
   @doc false
   @spec normalize_snapshot([map()]) :: [map()]
   def normalize_snapshot(messages) do
+    # Entries accumulate newest-first (prepend), so merge_tool_results finds the
+    # most recent assistant entry at the head; reversed once at the end.
     {acc, _idx} =
       Enum.reduce(messages, {[], 0}, fn msg, {acc, idx} ->
         case msg do
@@ -380,7 +382,7 @@ defmodule Harness.Dashboard.ChatLive do
               tool_calls: []
             }
 
-            {acc ++ [entry], idx + 1}
+            {[entry | acc], idx + 1}
 
           %{role: :user, content: blocks} when is_list(blocks) ->
             {acc2, idx2} = merge_tool_results(acc, blocks, idx)
@@ -388,14 +390,14 @@ defmodule Harness.Dashboard.ChatLive do
 
           %{role: :assistant, content: blocks} when is_list(blocks) ->
             entry = assistant_entry(blocks, idx)
-            {acc ++ [entry], idx + 1}
+            {[entry | acc], idx + 1}
 
           _ ->
             {acc, idx}
         end
       end)
 
-    acc
+    Enum.reverse(acc)
   end
 
   @spec assistant_entry([map()], non_neg_integer()) :: map()
@@ -403,7 +405,7 @@ defmodule Harness.Dashboard.ChatLive do
     text =
       blocks
       |> Enum.filter(&block_text?/1)
-      |> Enum.map_join("", &block_text/1)
+      |> Enum.map_join(&block_text/1)
       |> truncate_bounded()
 
     tool_calls =
@@ -444,16 +446,13 @@ defmodule Harness.Dashboard.ChatLive do
     end)
   end
 
+  # `acc` is newest-first (see normalize_snapshot), so the first assistant entry
+  # found IS the most recent one — no reverse needed.
   @spec merge_one_result([map()], String.t() | nil, term()) :: [map()]
   defp merge_one_result(acc, nil, _decoded), do: acc
 
   defp merge_one_result(acc, tool_use_id, decoded) do
-    target = to_string(tool_use_id)
-
-    acc
-    |> Enum.reverse()
-    |> mark_last_with_tool(target, decoded)
-    |> Enum.reverse()
+    mark_last_with_tool(acc, to_string(tool_use_id), decoded)
   end
 
   @spec mark_last_with_tool([map()], String.t(), term()) :: [map()]

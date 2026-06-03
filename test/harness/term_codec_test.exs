@@ -34,4 +34,52 @@ defmodule Harness.TermCodecTest do
       assert {:error, :invalid_term} = TermCodec.safe_binary_to_term("")
     end
   end
+
+  describe "write_file/2 + read_file/1" do
+    @tag :tmp_dir
+    test "round-trips a term through a file", %{tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "record.term")
+      term = %{session_id: "abc", messages: [%{role: :user, content: "hi"}]}
+
+      assert :ok = TermCodec.write_file(path, term)
+      assert {:ok, ^term} = TermCodec.read_file(path)
+    end
+
+    @tag :tmp_dir
+    test "write_file/2 creates missing parent directories", %{tmp_dir: tmp_dir} do
+      path = Path.join([tmp_dir, "deeply", "nested", "record.term"])
+
+      assert :ok = TermCodec.write_file(path, :payload)
+      assert {:ok, :payload} = TermCodec.read_file(path)
+    end
+
+    @tag :tmp_dir
+    test "write_file/2 leaves no .tmp sibling behind", %{tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "record.term")
+
+      assert :ok = TermCodec.write_file(path, %{a: 1})
+      refute File.exists?(path <> ".tmp")
+    end
+
+    @tag :tmp_dir
+    test "write_file/2 atomically replaces an existing file", %{tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "record.term")
+
+      assert :ok = TermCodec.write_file(path, :first)
+      assert :ok = TermCodec.write_file(path, :second)
+      assert {:ok, :second} = TermCodec.read_file(path)
+    end
+
+    test "read_file/1 returns the posix error for a missing file" do
+      assert {:error, :enoent} = TermCodec.read_file("/nonexistent/path/record.term")
+    end
+
+    @tag :tmp_dir
+    test "read_file/1 returns {:error, {:invalid_term_file, path}} for garbage bytes", %{tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "torn.term")
+      File.write!(path, <<0, 1, 2, 3>>)
+
+      assert {:error, {:invalid_term_file, ^path}} = TermCodec.read_file(path)
+    end
+  end
 end

@@ -155,7 +155,7 @@ defmodule Harness.RunDiff do
   # are dropped.
   @spec reduce_line(String.t(), [file()]) :: [file()]
   defp reduce_line("diff --git " <> rest, files) do
-    {old, new} = parse_git_header(rest)
+    {_old, new} = parse_git_header(rest)
 
     file = %{
       path: new,
@@ -167,7 +167,6 @@ defmodule Harness.RunDiff do
       lines: [%{kind: :meta, text: "diff --git " <> rest}]
     }
 
-    _ = old
     [file | files]
   end
 

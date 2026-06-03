@@ -54,6 +54,19 @@ defmodule Harness.Dashboard.Transcript.Parser do
   (each parser declares its own type alias); callers pass it through verbatim.
   Tested directly by feeding fixture bytes — including mid-line splits — and
   asserting the emitted sequence.
+
+  ## Behaviour + `use` macro (Task 178)
+
+  This module is also a behaviour the five NDJSON parsers implement
+  (`Passthrough` implements the callbacks by hand — it has no line semantics).
+  The three callbacks — `c:new/0`, `c:feed/2`, `c:finalize/1` — are the same
+  surface the dispatcher below fans out on; `@callback` makes the contract
+  compile-checked instead of convention. `use Harness.Dashboard.Transcript.Parser`
+  generates all three (a `buffer: ""` struct + `Harness.LineParser` plumbing),
+  leaving each parser to supply only its agent-specific `translate/1` clauses.
+  `Harness.Chat.Claude.StreamParser` shares the NDJSON *shape* coincidentally but
+  is a different domain (chat streaming, bare-string event vocab) — it uses
+  `Harness.LineParser` directly, not this behaviour.
   """
 
   alias Harness.Dashboard.Transcript.Parser.Claude
@@ -77,6 +90,99 @@ defmodule Harness.Dashboard.Transcript.Parser do
           | {:system, %{kind: atom(), data: map()}}
           | {:plain_text, %{text: String.t()}}
           | {:unknown, %{raw: String.t()}}
+
+  @doc "Returns a fresh parser state with an empty line buffer."
+  @callback new() :: parser_state()
+
+  @doc "Feeds an iodata chunk; returns `{events, state}` with partial bytes carried in state."
+  @callback feed(parser_state(), iodata()) :: {[event()], parser_state()}
+
+  @doc "Flushes any trailing partial-line bytes at port close."
+  @callback finalize(parser_state()) :: {[event()], parser_state()}
+
+  @doc """
+  Generates the `new/0`, `feed/2`, and `finalize/1` callbacks for an NDJSON
+  parser, delegating the line-buffer + `Jason.decode` loop to `Harness.LineParser`.
+
+  The using module supplies `translate/1` — its agent-specific clause set
+  mapping a decoded JSON object to a list of `t:event/0`. Undecodable lines
+  become `{:unknown, %{raw: line}}` via `unknown_line/1` (never dropped).
+  """
+  defmacro __using__(_opts) do
+    quote do
+      @behaviour Harness.Dashboard.Transcript.Parser
+
+      alias Harness.Dashboard.Transcript.Parser
+      alias Harness.LineParser
+
+      defstruct buffer: ""
+
+      @typedoc "Line-buffer carrying any partial trailing bytes between chunks."
+      @type t :: %__MODULE__{buffer: binary()}
+
+      @impl Parser
+      @spec new() :: t()
+      def new, do: %__MODULE__{}
+
+      @impl Parser
+      @spec feed(t(), iodata()) :: {[Parser.event()], t()}
+      def feed(%__MODULE__{} = parser, chunk) do
+        {events, remainder} = LineParser.feed(parser.buffer, chunk, &translate/1, &Parser.unknown_line/1)
+        {events, %{parser | buffer: remainder}}
+      end
+
+      @impl Parser
+      @spec finalize(t()) :: {[Parser.event()], t()}
+      def finalize(%__MODULE__{} = parser) do
+        {events, remainder} = LineParser.finalize(parser.buffer, &translate/1, &Parser.unknown_line/1)
+        {events, %{parser | buffer: remainder}}
+      end
+    end
+  end
+
+  @doc "Wraps an undecodable line as an `:unknown` event so raw bytes survive."
+  @spec unknown_line(String.t()) :: [event()]
+  def unknown_line(line), do: [{:unknown, %{raw: line}}]
+
+  @doc """
+  Translates one Claude-shaped `assistant` content block (`text` / `tool_use`)
+  into the unified vocabulary. Shared by the Claude and Cursor parsers, which
+  reuse Claude's `assistant`/`user` block envelope verbatim.
+  """
+  @spec translate_assistant_block(map()) :: [event()]
+  def translate_assistant_block(%{"type" => "text", "text" => text}) when is_binary(text) do
+    [{:assistant_text, %{text: text}}]
+  end
+
+  def translate_assistant_block(%{"type" => "tool_use"} = block) do
+    [
+      {:assistant_tool_use,
+       %{
+         id: Map.get(block, "id", ""),
+         name: Map.get(block, "name", ""),
+         input: Map.get(block, "input", %{})
+       }}
+    ]
+  end
+
+  def translate_assistant_block(_), do: []
+
+  @doc """
+  Translates one Claude-shaped `user` content block (`tool_result`) into the
+  unified vocabulary. Shared by the Claude and Cursor parsers.
+  """
+  @spec translate_user_block(map()) :: [event()]
+  def translate_user_block(%{"type" => "tool_result"} = block) do
+    [
+      {:tool_result,
+       %{
+         tool_use_id: Map.get(block, "tool_use_id", ""),
+         content: Map.get(block, "content")
+       }}
+    ]
+  end
+
+  def translate_user_block(_), do: []
 
   @doc """
   Returns a fresh parser state for `agent_kind`.

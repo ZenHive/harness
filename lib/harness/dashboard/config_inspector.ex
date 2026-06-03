@@ -90,8 +90,8 @@ defmodule Harness.Dashboard.ConfigInspector do
       {"Paths",
        [
          field("chat_store root", fn -> kw(:chat_store, :root, nil) end, nil, Path.expand("~/.harness/chats")),
-         field("agent_settings root", fn -> settings_root(:agent_settings) end, nil, Path.expand("~/.harness")),
-         field("cron_settings root", fn -> settings_root(:cron_settings) end, nil, Path.expand("~/.harness")),
+         field("agent_settings root", fn -> settings_root(:agent_settings) end, nil, harness_root()),
+         field("cron_settings root", fn -> settings_root(:cron_settings) end, nil, harness_root()),
          field(
            "project cache_root",
            fn -> kw(:project, :cache_root, nil) end,
@@ -228,12 +228,22 @@ defmodule Harness.Dashboard.ConfigInspector do
     end
   end
 
+  # Shared default root for the on-disk settings stores.
+  @spec harness_root() :: String.t()
+  defp harness_root, do: Path.expand("~/.harness")
+
   # `ResultStore.configured/0` is `{module, opts}`, or `false`/`nil` when off.
   @spec store_part(:backend | :root) :: term()
-  defp store_part(part) do
+  defp store_part(:backend) do
     case ResultStore.configured() do
-      {module, _opts} when part == :backend -> module
-      {_module, opts} when part == :root -> Keyword.get(opts, :root)
+      {module, _opts} -> module
+      _disabled -> "disabled"
+    end
+  end
+
+  defp store_part(:root) do
+    case ResultStore.configured() do
+      {_module, opts} -> Keyword.get(opts, :root)
       _disabled -> "disabled"
     end
   end

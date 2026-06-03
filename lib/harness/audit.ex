@@ -86,7 +86,7 @@ defmodule Harness.Audit do
   """
   @spec run(request()) :: outcome()
   def run(%{project: %Project{} = project, base_sha: base_sha} = request) when is_binary(base_sha) do
-    with {:ok, repo} <- repo_path(project),
+    with {:ok, repo} <- Project.local_repo_path(project),
          {:ok, target} <- target_branch(project),
          :ok <- fetch_origin(repo),
          {:ok, worktree} <- checkout(repo, target) do
@@ -279,10 +279,6 @@ defmodule Harness.Audit do
         :ok
     end
   end
-
-  @spec repo_path(Project.t()) :: {:ok, String.t()} | {:skipped, :github_source}
-  defp repo_path(%Project{source: {:local, _}} = project), do: {:ok, Project.repo_path(project)}
-  defp repo_path(%Project{source: {:github, _}}), do: {:skipped, :github_source}
 
   @spec target_branch(Project.t()) :: {:ok, String.t()} | {:skipped, :no_target_branch}
   defp target_branch(%Project{target_branch: tb}) when is_binary(tb) and tb != "", do: {:ok, tb}

@@ -5394,3 +5394,22 @@ The rebuild already parses + persists the reviewer's ratings (review_ratings on 
 created_at = "2026-06-03"
 scored_at = "2026-06-03"
 depends_on = ["175"]
+
+[[task]]
+id = "178"
+phase = 10
+bundle = "dashboard-chrome"
+status = "done"
+title = "Formalize Harness.Dashboard.Transcript.Parser as a behaviour (@callback new/feed/finalize)"
+scores = { d = 2, b = 4, u = 4 }
+acceptance_criteria = ["Harness.Dashboard.Transcript.Parser defines @callback new() :: state, @callback feed(state, iodata()) :: {[event()], state}, @callback finalize(state) :: {[event()], state}", "All 6 parser modules (Claude, Codex, Cursor, Grok, Pi, Passthrough) declare @behaviour Harness.Dashboard.Transcript.Parser with @impl true on each callback", "Harness.Chat.Claude.StreamParser is NOT made an implementation - it shares the shape coincidentally but is a different domain (chat streaming, not transcript parsing)", "mix reach.check --smells no longer reports the transcript-parser behaviour_candidate finding", "Existing parser tests pass unchanged"]
+touches = ["lib/harness/dashboard/transcript/parser.ex", "lib/harness/dashboard/transcript/parser/claude.ex", "lib/harness/dashboard/transcript/parser/codex.ex", "lib/harness/dashboard/transcript/parser/cursor.ex", "lib/harness/dashboard/transcript/parser/grok.ex", "lib/harness/dashboard/transcript/parser/pi.ex", "lib/harness/dashboard/transcript/parser/passthrough.ex"]
+assignee = "claude"
+body = """
+Found by mix reach.check --smells (behaviour_candidate): the 6 per-agent transcript parsers expose the same 3 public callbacks (new/0, feed/2, finalize/1) by convention only - the dispatcher pattern-matches on agent_kind but nothing enforces the contract at compile time. Formalizing it as a behaviour matches the project's AgentAdapter idiom: adding a new agent parser gets callback conformance checking for free. Pure mechanical change, no runtime behavior difference.
+"""
+implemented = "Behaviour formalized: Harness.Dashboard.Transcript.Parser now defines @callback new/0, feed/2, finalize/1. The 5 NDJSON parsers (Claude/Codex/Cursor/Grok/Pi) 'use' it via a __using__ macro that generates all three over a new Harness.LineParser (extracted NDJSON line-buffer+Jason.decode loop); Passthrough declares @behaviour with hand-written @impl. StreamParser kept separate (chat domain, bare-string vocab) but also migrated onto LineParser. behaviour_candidate smell cleared; all 37 parser/stream tests pass. Hand-built in the reach/ex_dna cleanup pass."
+delivered_by = "claude"
+created_at = "2026-06-03"
+scored_at = "2026-06-03"
+done_at = "2026-06-03"

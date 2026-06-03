@@ -40,6 +40,7 @@ defmodule Harness.Landing.Settings do
   """
 
   alias Harness.Project
+  alias Harness.TermCodec
 
   require Logger
 
@@ -67,7 +68,7 @@ defmodule Harness.Landing.Settings do
         :ok
 
       dir ->
-        case read_term(path(dir)) do
+        case TermCodec.read_file(path(dir)) do
           {:ok, map} when is_map(map) ->
             Application.put_env(:harness, @env_key, sanitize(map))
             :ok
@@ -170,41 +171,17 @@ defmodule Harness.Landing.Settings do
   defp persist do
     case root() do
       nil -> :ok
-      dir -> write_term(path(dir), overrides())
+      dir -> TermCodec.write_file(path(dir), overrides())
     end
   end
 
   @spec path(String.t()) :: String.t()
   defp path(dir), do: Path.join(dir, @filename)
 
-  # TODO(Task 165): this is the third+ copy of the .tmp+rename term-file plumbing
-  # (Cron.Settings / Agent.Settings / Chat.Store) — the rule-of-three trigger that
-  # task names for consolidating settings stores into one Postgres-backed store.
-  # Write to a `.tmp` sibling then atomically rename (POSIX, same filesystem) so a
-  # concurrent reader never observes a half-written term file.
-  # sobelow_skip ["Traversal.FileModule"]
-  @spec write_term(String.t(), term()) :: :ok | {:error, term()}
-  defp write_term(path, term) do
-    tmp = path <> ".tmp"
-
-    with :ok <- File.mkdir_p(Path.dirname(path)),
-         :ok <- File.write(tmp, :erlang.term_to_binary(term)) do
-      File.rename(tmp, path)
-    end
-  end
-
-  # Decodes WITHOUT [:safe]: a harness-owned file written by this app's own
-  # term_to_binary, not untrusted input. The rescue still catches torn bytes.
-  # sobelow_skip ["Traversal.FileModule", "Misc.BinToTerm"]
-  @spec read_term(String.t()) :: {:ok, term()} | {:error, term()}
-  defp read_term(path) do
-    case File.read(path) do
-      {:ok, body} -> {:ok, :erlang.binary_to_term(body)}
-      {:error, reason} -> {:error, reason}
-    end
-  rescue
-    ArgumentError -> {:error, {:invalid_term_file, path}}
-  end
+  # TODO(Task 165): the .tmp+rename term-file plumbing now lives once in
+  # Harness.TermCodec (this store + Cron.Settings / Agent.Settings / Chat.Store
+  # all read/write through it); Task 165 still owns folding the three settings
+  # domains onto one shared Postgres-backed store behind the same file fallback.
 
   # nil ⇒ store disabled; otherwise an expanded absolute root directory.
   @spec root() :: String.t() | nil

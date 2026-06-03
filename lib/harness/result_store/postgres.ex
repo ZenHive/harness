@@ -148,7 +148,7 @@ defmodule Harness.ResultStore.Postgres do
     repo = Keyword.get(opts, :repo, Repo)
 
     try do
-      {limit, filters} = pop_limit(filters)
+      {limit, filters} = Harness.ResultStore.pop_limit(filters)
       point_lookup? = Keyword.has_key?(filters, :run_id)
 
       query =
@@ -298,15 +298,6 @@ defmodule Harness.ResultStore.Postgres do
         inserted_at: r.inserted_at,
         updated_at: r.updated_at
       }
-  end
-
-  @spec pop_limit(Harness.ResultStore.filters()) :: {pos_integer() | nil, Harness.ResultStore.filters()}
-  defp pop_limit(filters) do
-    case Keyword.pop(filters, :limit) do
-      {nil, filters} -> {nil, filters}
-      {limit, filters} when is_integer(limit) and limit > 0 -> {limit, filters}
-      {_bad, filters} -> {nil, filters}
-    end
   end
 
   @impl Harness.ResultStore

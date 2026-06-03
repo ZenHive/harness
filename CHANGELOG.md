@@ -114,8 +114,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Harness.Verification` delegates port helpers to `OSProcess`; `Harness.Roadmap`
   mark_* writebacks share one `landing_ctx/1`; `Harness.Batch` drops the
   reversed-argument `dispatch/2` overload (no callers).
+- **Static-analysis pass from `mix reach.check` (hand-built inline).**
+  `.reach.exs` rewritten to the actual architecture (the bootstrap policy
+  referenced `Harness.Adapters.*` / `Harness.Surface.*`, namespaces that never
+  existed): dashboard ↮ adapters invariants as forbidden-call rules + the
+  descripex driver surface as public facades; `mix reach.check --arch` is green
+  and CI-usable. Smell fixes ride along: `ChatLive.normalize_snapshot/1` builds
+  prepend-and-reverse instead of `++`-appending per message (and
+  `merge_one_result/3` drops its double-reverse), `Map.keys |> Enum.each` →
+  pair iteration (CompareLive), `case` → `match?/2` (Worktree),
+  guard-on-literal → pattern-matched clauses + deduped `Path.expand`
+  (ConfigInspector), `map |> flat_map` → single `flat_map` (Chat.Store,
+  ResultStore.File), redundant `map_join` separator (ChatLive), and a
+  pattern-level discard replacing `_ = old` (RunDiff).
 
-### Fixed
+- **Clone elimination from `mix ex_dna` (hand-built inline) — 10 clones → 0
+  across 118 files.** `Harness.Dashboard.Transcript.Parser` is now a behaviour
+  (`@callback new/0`, `feed/2`, `finalize/1`) with a `use` macro that generates
+  all three over a new `Harness.LineParser` (the shared NDJSON
+  line-buffer + `Jason.decode` loop); the five NDJSON parsers shed their
+  per-module boilerplate and the Claude↔Cursor block translators move to shared
+  `Parser.translate_assistant_block/1` / `translate_user_block/1` (Task 178).
+  `Harness.Chat.Claude.StreamParser` stays a separate domain (bare-string vocab)
+  but also routes through `LineParser`. The `.tmp`+rename term-file plumbing —
+  previously copy-pasted in six stores — collapses to
+  `Harness.TermCodec.read_file/1` + `write_file/2` (Agent/Cron/Landing settings,
+  Chat.Store, ResultStore.File, the import-results task), retiring the
+  `TODO(Task 165)` rule-of-three marker (165 still owns the Postgres-backed
+  consolidation). Three 2-site clones lifted to shared homes:
+  `Harness.Project.local_repo_path/1` (Audit + Lander),
+  `Harness.Oban.put_env_arg/2` (Batch + Run.Worker), and
+  `Harness.ResultStore.pop_limit/1` (File + Postgres backends).
 
 - **`Harness.Lander.Worker` now applies the runtime landing override
   (`Harness.Landing.Settings.overlay/1`) to the project it resolves from the

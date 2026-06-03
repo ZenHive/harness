@@ -13,52 +13,7 @@ defmodule Harness.Dashboard.Transcript.Parser.Claude do
   itself follows `StreamParser`'s shape verbatim.
   """
 
-  alias Harness.Dashboard.Transcript.Parser
-  alias Harness.LineBuffer
-
-  defstruct buffer: ""
-
-  @typedoc "Line-buffer carrying any partial trailing bytes between chunks."
-  @type t :: %__MODULE__{buffer: binary()}
-
-  @doc "Returns a fresh parser with an empty line buffer."
-  @spec new() :: t()
-  def new, do: %__MODULE__{}
-
-  @doc """
-  Feeds an iodata `chunk` and returns `{events, parser}`.
-
-  Complete lines emit zero or more events; partial trailing bytes are held
-  until the next chunk supplies the rest. Non-JSON or partially-JSON lines
-  emit `{:unknown, %{raw: line}}`.
-  """
-  @spec feed(t(), iodata()) :: {[Parser.event()], t()}
-  def feed(%__MODULE__{} = parser, chunk) do
-    {complete, remainder} = LineBuffer.split(parser.buffer, chunk)
-    events = Enum.flat_map(complete, &parse_line/1)
-    {events, %{parser | buffer: remainder}}
-  end
-
-  @doc """
-  Flushes the buffer at port close. A trailing fragment that happens to be a
-  complete JSON object (claude exited without a final newline) is parsed and
-  returned; otherwise it is preserved as `:unknown`.
-  """
-  @spec finalize(t()) :: {[Parser.event()], t()}
-  def finalize(%__MODULE__{} = parser) do
-    {lines, remainder} = LineBuffer.take_remainder(parser.buffer)
-    {Enum.flat_map(lines, &parse_line/1), %{parser | buffer: remainder}}
-  end
-
-  @spec parse_line(binary()) :: [Parser.event()]
-  defp parse_line(""), do: []
-
-  defp parse_line(line) do
-    case Jason.decode(line) do
-      {:ok, decoded} -> translate(decoded)
-      {:error, _} -> [{:unknown, %{raw: line}}]
-    end
-  end
+  use Harness.Dashboard.Transcript.Parser
 
   @spec translate(map()) :: [Parser.event()]
   defp translate(%{"type" => "system", "subtype" => "init"} = event) do
@@ -70,11 +25,11 @@ defmodule Harness.Dashboard.Transcript.Parser.Claude do
   end
 
   defp translate(%{"type" => "assistant", "message" => %{"content" => blocks}}) when is_list(blocks) do
-    Enum.flat_map(blocks, &translate_assistant_block/1)
+    Enum.flat_map(blocks, &Parser.translate_assistant_block/1)
   end
 
   defp translate(%{"type" => "user", "message" => %{"content" => blocks}}) when is_list(blocks) do
-    Enum.flat_map(blocks, &translate_user_block/1)
+    Enum.flat_map(blocks, &Parser.translate_user_block/1)
   end
 
   defp translate(%{"type" => "result"} = result) do
@@ -102,35 +57,4 @@ defmodule Harness.Dashboard.Transcript.Parser.Claude do
   defp system_kind(%{"subtype" => "rate_limit_event"}), do: :rate_limit_event
   defp system_kind(%{"subtype" => sub}) when is_binary(sub), do: :other
   defp system_kind(_), do: :system
-
-  @spec translate_assistant_block(map()) :: [Parser.event()]
-  defp translate_assistant_block(%{"type" => "text", "text" => text}) when is_binary(text) do
-    [{:assistant_text, %{text: text}}]
-  end
-
-  defp translate_assistant_block(%{"type" => "tool_use"} = block) do
-    [
-      {:assistant_tool_use,
-       %{
-         id: Map.get(block, "id", ""),
-         name: Map.get(block, "name", ""),
-         input: Map.get(block, "input", %{})
-       }}
-    ]
-  end
-
-  defp translate_assistant_block(_), do: []
-
-  @spec translate_user_block(map()) :: [Parser.event()]
-  defp translate_user_block(%{"type" => "tool_result"} = block) do
-    [
-      {:tool_result,
-       %{
-         tool_use_id: Map.get(block, "tool_use_id", ""),
-         content: Map.get(block, "content")
-       }}
-    ]
-  end
-
-  defp translate_user_block(_), do: []
 end

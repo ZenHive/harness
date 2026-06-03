@@ -433,8 +433,7 @@ defmodule Harness.Dashboard.CompareLive do
   defp reset_comparison(socket) do
     socket.assigns
     |> Map.get(:run_to_adapter, %{})
-    |> Map.keys()
-    |> Enum.each(&Transcript.unsubscribe/1)
+    |> Enum.each(fn {run_id, _adapter} -> Transcript.unsubscribe(run_id) end)
 
     socket
     |> assign(:comparison_id, nil)

@@ -33,46 +33,7 @@ defmodule Harness.Dashboard.Transcript.Parser.Grok do
   diff_size for action evidence. Wire-format limitation, not parser gap.
   """
 
-  alias Harness.Dashboard.Transcript.Parser
-  alias Harness.LineBuffer
-
-  defstruct buffer: ""
-
-  @typedoc "Line-buffer state."
-  @type t :: %__MODULE__{buffer: binary()}
-
-  @doc "Returns a fresh parser."
-  @spec new() :: t()
-  def new, do: %__MODULE__{}
-
-  @doc """
-  Feeds an iodata `chunk` and returns `{events, parser}`. Non-JSON lines
-  (ANSI-coloured stderr noise on auth / transport errors) emit
-  `{:unknown, %{raw: line}}`.
-  """
-  @spec feed(t(), iodata()) :: {[Parser.event()], t()}
-  def feed(%__MODULE__{} = parser, chunk) do
-    {complete, remainder} = LineBuffer.split(parser.buffer, chunk)
-    events = Enum.flat_map(complete, &parse_line/1)
-    {events, %{parser | buffer: remainder}}
-  end
-
-  @doc "Flushes the buffer at port close — same semantics as `feed/2`."
-  @spec finalize(t()) :: {[Parser.event()], t()}
-  def finalize(%__MODULE__{} = parser) do
-    {lines, remainder} = LineBuffer.take_remainder(parser.buffer)
-    {Enum.flat_map(lines, &parse_line/1), %{parser | buffer: remainder}}
-  end
-
-  @spec parse_line(binary()) :: [Parser.event()]
-  defp parse_line(""), do: []
-
-  defp parse_line(line) do
-    case Jason.decode(line) do
-      {:ok, decoded} -> translate(decoded)
-      {:error, _} -> [{:unknown, %{raw: line}}]
-    end
-  end
+  use Harness.Dashboard.Transcript.Parser
 
   @spec translate(map()) :: [Parser.event()]
   defp translate(%{"type" => "text", "data" => fragment}) when is_binary(fragment) do

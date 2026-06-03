@@ -15,6 +15,8 @@ defmodule Harness.Dashboard.Transcript.Parser.Passthrough do
   is no line semantics.
   """
 
+  @behaviour Harness.Dashboard.Transcript.Parser
+
   alias Harness.Dashboard.Transcript.Parser
 
   defstruct unused: nil
@@ -23,12 +25,14 @@ defmodule Harness.Dashboard.Transcript.Parser.Passthrough do
   @type t :: %__MODULE__{}
 
   @doc "Returns a fresh parser (no state to carry)."
+  @impl Parser
   @spec new() :: t()
   def new, do: %__MODULE__{}
 
   @doc """
   Emits one `:plain_text` event per non-empty chunk.
   """
+  @impl Parser
   @spec feed(t(), iodata()) :: {[Parser.event()], t()}
   def feed(%__MODULE__{} = parser, chunk) do
     case IO.iodata_to_binary(chunk) do
@@ -38,6 +42,7 @@ defmodule Harness.Dashboard.Transcript.Parser.Passthrough do
   end
 
   @doc "Nothing to flush — passthrough holds no state."
+  @impl Parser
   @spec finalize(t()) :: {[Parser.event()], t()}
   def finalize(%__MODULE__{} = parser), do: {[], parser}
 end

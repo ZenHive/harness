@@ -48,6 +48,7 @@ defmodule Harness.Cron.Settings do
 
   alias Harness.Cron.RoadmapPoller
   alias Harness.Project
+  alias Harness.TermCodec
 
   require Logger
 
@@ -85,7 +86,7 @@ defmodule Harness.Cron.Settings do
         :ok
 
       dir ->
-        case read_term(path(dir)) do
+        case TermCodec.read_file(path(dir)) do
           {:ok, record} when is_map(record) -> apply_record(record)
           _other -> :ok
         end
@@ -237,7 +238,7 @@ defmodule Harness.Cron.Settings do
   defp persist do
     case root() do
       nil -> :ok
-      dir -> write_term(path(dir), current_state())
+      dir -> TermCodec.write_file(path(dir), current_state())
     end
   end
 
@@ -248,32 +249,6 @@ defmodule Harness.Cron.Settings do
 
   @spec path(String.t()) :: String.t()
   defp path(dir), do: Path.join(dir, @filename)
-
-  # Write to a `.tmp` sibling then atomically rename (POSIX, same filesystem) so a
-  # concurrent reader never observes a half-written term file.
-  # sobelow_skip ["Traversal.FileModule"]
-  @spec write_term(String.t(), term()) :: :ok | {:error, term()}
-  defp write_term(path, term) do
-    tmp = path <> ".tmp"
-
-    with :ok <- File.mkdir_p(Path.dirname(path)),
-         :ok <- File.write(tmp, :erlang.term_to_binary(term)) do
-      File.rename(tmp, path)
-    end
-  end
-
-  # Decodes WITHOUT [:safe]: a harness-owned file written by this app's own
-  # term_to_binary, not untrusted input. The rescue still catches torn bytes.
-  # sobelow_skip ["Traversal.FileModule", "Misc.BinToTerm"]
-  @spec read_term(String.t()) :: {:ok, term()} | {:error, term()}
-  defp read_term(path) do
-    case File.read(path) do
-      {:ok, body} -> {:ok, :erlang.binary_to_term(body)}
-      {:error, reason} -> {:error, reason}
-    end
-  rescue
-    ArgumentError -> {:error, {:invalid_term_file, path}}
-  end
 
   # nil ⇒ store disabled; otherwise an expanded absolute root directory.
   @spec root() :: String.t() | nil

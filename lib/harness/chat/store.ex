@@ -31,6 +31,8 @@ defmodule Harness.Chat.Store do
   `config :harness, :chat_store, root: "/some/path"`.
   """
 
+  alias Harness.TermCodec
+
   require Logger
 
   @default_root "~/.harness/chats"
@@ -68,7 +70,7 @@ defmodule Harness.Chat.Store do
           updated_at: DateTime.utc_now()
         }
 
-        write_term(session_path(dir, session_id), record)
+        TermCodec.write_file(session_path(dir, session_id), record)
     end
   end
 
@@ -85,7 +87,7 @@ defmodule Harness.Chat.Store do
         {:error, :not_found}
 
       dir ->
-        case read_term(session_path(dir, session_id)) do
+        case TermCodec.read_file(session_path(dir, session_id)) do
           {:ok, %{session_id: _, messages: _, updated_at: _} = record} -> {:ok, record}
           _ -> {:error, :not_found}
         end
@@ -108,8 +110,7 @@ defmodule Harness.Chat.Store do
           {:ok, files} ->
             files
             |> Enum.filter(&String.ends_with?(&1, ".term"))
-            |> Enum.map(&read_term(Path.join(dir, &1)))
-            |> Enum.flat_map(&summarize/1)
+            |> Enum.flat_map(&summarize(TermCodec.read_file(Path.join(dir, &1))))
             |> Enum.sort_by(& &1.updated_at, {:desc, DateTime})
 
           {:error, :enoent} ->
@@ -171,35 +172,6 @@ defmodule Harness.Chat.Store do
     else
       raise ArgumentError, "chat store path escaped root"
     end
-  end
-
-  # Write to a `.tmp` sibling then atomically rename (POSIX, same filesystem):
-  # a concurrent `list/1` never observes a half-written term file.
-  # sobelow_skip ["Traversal.FileModule"]
-  @spec write_term(String.t(), term()) :: :ok | {:error, term()}
-  defp write_term(path, term) do
-    tmp = path <> ".tmp"
-
-    with :ok <- File.mkdir_p(Path.dirname(path)),
-         :ok <- File.write(tmp, :erlang.term_to_binary(term)) do
-      File.rename(tmp, path)
-    end
-  end
-
-  # Decodes WITHOUT [:safe]: harness-owned files written by this app's own
-  # term_to_binary under the root — not untrusted input. [:safe] would refuse a
-  # term referencing an atom not yet interned in the running BEAM, silently dropping
-  # valid sessions written by a prior build (cross-version atom drift). The rescue
-  # still catches genuinely torn bytes.
-  # sobelow_skip ["Traversal.FileModule", "Misc.BinToTerm"]
-  @spec read_term(String.t()) :: {:ok, term()} | {:error, term()}
-  defp read_term(path) do
-    case File.read(path) do
-      {:ok, body} -> {:ok, :erlang.binary_to_term(body)}
-      {:error, reason} -> {:error, reason}
-    end
-  rescue
-    ArgumentError -> {:error, {:invalid_term_file, path}}
   end
 
   # nil ⇒ store disabled; otherwise an expanded absolute root directory.

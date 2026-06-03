@@ -249,22 +249,9 @@ defmodule Harness.Batch do
         item_id: item.id,
         adapter_module: Atom.to_string(adapter)
       }
-      |> put_env(opts)
+      |> Harness.Oban.put_env_arg(opts)
       |> RunWorker.new(queue: Harness.Oban.queue_name(project), meta: %{harness_stage: "dispatch"})
       |> Harness.Oban.insert()
-    end
-  end
-
-  # An optional caller :env map (e.g. %{"ANTHROPIC_API_KEY" => false} to scrub a
-  # metered key on Claude OAuth dispatches) is persisted into the job args so
-  # Harness.Run.Worker can thread it into start_run. Omitted when empty so jobs
-  # without an env override keep their prior args shape; the map is jsonb-safe
-  # (string keys, string|false values).
-  @spec put_env(map(), keyword()) :: map()
-  defp put_env(args, opts) do
-    case Keyword.get(opts, :env, %{}) do
-      env when is_map(env) and map_size(env) > 0 -> Map.put(args, :env, env)
-      _empty -> args
     end
   end
 

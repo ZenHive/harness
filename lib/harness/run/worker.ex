@@ -40,7 +40,7 @@ defmodule Harness.Run.Worker do
     run_id = Keyword.get(opts, :run_id) || generate_run_id()
 
     args =
-      put_env(
+      Harness.Oban.put_env_arg(
         %{project_name: project.name, item_id: item.id, adapter_module: Atom.to_string(adapter), run_id: run_id},
         opts
       )
@@ -386,14 +386,6 @@ defmodule Harness.Run.Worker do
 
   @spec div_ceil(non_neg_integer(), pos_integer()) :: non_neg_integer()
   defp div_ceil(value, divisor), do: div(value + divisor - 1, divisor)
-
-  @spec put_env(map(), keyword()) :: map()
-  defp put_env(args, opts) do
-    case Keyword.get(opts, :env, %{}) do
-      env when is_map(env) and map_size(env) > 0 -> Map.put(args, :env, env)
-      _empty -> args
-    end
-  end
 
   @spec generate_run_id() :: String.t()
   defp generate_run_id do

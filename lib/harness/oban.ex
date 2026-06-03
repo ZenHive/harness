@@ -84,6 +84,23 @@ defmodule Harness.Oban do
   def queue_name(name) when is_binary(name), do: "project_#{name}"
 
   @doc """
+  Threads a caller `:env` map from `opts` into Oban job `args`.
+
+  An optional caller env map (e.g. `%{"ANTHROPIC_API_KEY" => false}` to scrub a
+  metered key on Claude OAuth dispatches) is persisted into the job args so the
+  run worker can thread it into `start_run`. Omitted when empty so jobs without
+  an env override keep their prior args shape; the map must be jsonb-safe
+  (string keys, `string | false` values).
+  """
+  @spec put_env_arg(map(), keyword()) :: map()
+  def put_env_arg(args, opts) when is_map(args) and is_list(opts) do
+    case Keyword.get(opts, :env, %{}) do
+      env when is_map(env) and map_size(env) > 0 -> Map.put(args, :env, env)
+      _empty -> args
+    end
+  end
+
+  @doc """
   Returns the Oban landing-queue name for a project (`landing_<name>`).
   """
   @spec landing_queue_name(Project.t() | String.t()) :: String.t()

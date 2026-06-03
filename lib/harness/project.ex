@@ -88,4 +88,17 @@ defmodule Harness.Project do
   def ensure_local_repo(%__MODULE__{source: {:local, _}} = project, _opts), do: {:ok, Local.path(project)}
 
   def ensure_local_repo(%__MODULE__{source: {:github, _}} = project, opts), do: Github.ensure_local(project, opts)
+
+  @doc """
+  Resolves the on-disk repo path for a `{:local, _}` project, or signals that a
+  `{:github, _}` source has no operable local checkout for git-mutating callers.
+
+  The post-merge lander and audit both gate on this: a local source yields
+  `{:ok, path}` for the rebase/audit worktree; a GitHub source short-circuits
+  their `with` chain via `{:skipped, :github_source}` (those flows operate on an
+  operator checkout, not the read-only clone cache).
+  """
+  @spec local_repo_path(t()) :: {:ok, String.t()} | {:skipped, :github_source}
+  def local_repo_path(%__MODULE__{source: {:local, _}} = project), do: {:ok, repo_path(project)}
+  def local_repo_path(%__MODULE__{source: {:github, _}}), do: {:skipped, :github_source}
 end

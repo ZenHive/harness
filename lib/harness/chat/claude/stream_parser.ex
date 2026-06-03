@@ -19,7 +19,7 @@ defmodule Harness.Chat.Claude.StreamParser do
   fragments.
   """
 
-  alias Harness.LineBuffer
+  alias Harness.LineParser
 
   defstruct buffer: ""
 
@@ -47,8 +47,7 @@ defmodule Harness.Chat.Claude.StreamParser do
   """
   @spec feed(t(), iodata()) :: {[event()], t()}
   def feed(%__MODULE__{} = parser, chunk) do
-    {complete, remainder} = LineBuffer.split(parser.buffer, chunk)
-    events = Enum.flat_map(complete, &parse_line/1)
+    {events, remainder} = LineParser.feed(parser.buffer, chunk, &translate/1, &drop_invalid/1)
     {events, %{parser | buffer: remainder}}
   end
 
@@ -59,19 +58,15 @@ defmodule Harness.Chat.Claude.StreamParser do
   """
   @spec finalize(t()) :: {[event()], t()}
   def finalize(%__MODULE__{} = parser) do
-    {lines, remainder} = LineBuffer.take_remainder(parser.buffer)
-    {Enum.flat_map(lines, &parse_line/1), %{parser | buffer: remainder}}
+    {events, remainder} = LineParser.finalize(parser.buffer, &translate/1, &drop_invalid/1)
+    {events, %{parser | buffer: remainder}}
   end
 
-  @spec parse_line(binary()) :: [event()]
-  defp parse_line(""), do: []
-
-  defp parse_line(line) do
-    case Jason.decode(line) do
-      {:ok, map} -> translate(map)
-      {:error, _} -> []
-    end
-  end
+  # The chat backend does not need corrupt-line preservation (unlike the
+  # dashboard transcript parser), so undecodable lines are dropped — claude
+  # occasionally prints banner / blank stderr noise folded in via stderr_to_stdout.
+  @spec drop_invalid(String.t()) :: [event()]
+  defp drop_invalid(_line), do: []
 
   @spec translate(map()) :: [event()]
   defp translate(%{"type" => "system", "subtype" => "init"} = event), do: [{:system_init, event}]
