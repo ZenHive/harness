@@ -92,11 +92,11 @@ config :harness, :project, cache_root: Path.expand("~/_DATA/harness/projects")
 #   :base_delay_ms  — first backoff delay; default 1_000.
 #   :max_delay_ms   — backoff cap; default 60_000.
 #   :multiplier     — exponential factor; default 2.0.
-# config :harness, :retry_policy,
-#   max_retries: 3,
-#   base_delay_ms: 1_000,
-#   max_delay_ms: 60_000,
-#   multiplier: 2.0
+config :harness, :retry_policy,
+  max_retries: 3,
+  base_delay_ms: 1_000,
+  max_delay_ms: 60_000,
+  multiplier: 2.0
 
 # Run lifecycle & agent timeouts — see Harness.AgentAdapter.Driver and Harness.Run.
 # All keys are optional; defaults live in code.

@@ -31,6 +31,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lib). The corpus repo itself and the live cross-adapter scoring run are the
   remaining host-side work on Task 151.
 
+### Fixed
+
+- **`Harness.Lander.Worker` now applies the runtime landing override
+  (`Harness.Landing.Settings.overlay/1`) to the project it resolves from the
+  registry (Task 171).** `Harness.Run` already applied the overlay at init, so
+  green settles on dashboard-flipped projects enqueued landing jobs — but the
+  worker re-resolved the raw registration (`landing_policy: :manual`, no
+  `target_branch`), so every such landing job failed `{:error,
+  :no_target_branch}` → 3 Oban retries → discarded. Projects whose auto-land is
+  flipped on from the dashboard (rather than at registration) can now actually
+  land. Regression + control tests in `test/harness/lander/worker_test.exs`.
+
 ### Removed
 
 - **Reviewer-pair lifecycle, step 3 — the deletion pass: judgment code is gone,
