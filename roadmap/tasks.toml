@@ -4691,7 +4691,7 @@ id = "151"
 phase = 13
 bundle = "capability-bench"
 milestone = "v0_10"
-status = "pending"
+status = "in_progress"
 title = "Agent evaluation corpus — stand up the Elixir corpus repo + prove Mode-B hidden-grader isolation"
 scores = { d = 4, b = 5, u = 4 }
 markers = ["handbuild"]
@@ -5238,3 +5238,85 @@ Sequenced after the phase-15 deletion pass (163) so the audit flow is built on t
 """
 created_at = "2026-06-02"
 scored_at = "2026-06-02"
+
+[[task]]
+id = "171"
+phase = 11
+bundle = "autolanding"
+status = "done"
+title = "Lander.Worker ignores the runtime landing override — dashboard auto-land fails with :no_target_branch"
+scores = { d = 1, b = 8, u = 8 }
+markers = ["bug"]
+acceptance_criteria = ["Lander.Worker.perform/1 builds the land request from LandingSettings.overlay(project), not the raw registry entry", "Regression test: project registered :manual/no-target + persisted :auto override lands via Worker.perform/1", "Control test: no override -> {:error, :no_target_branch} still surfaces (Oban retries)"]
+files_to_modify = ["lib/harness/lander/worker.ex", "test/harness/lander/worker_test.exs"]
+assignee = "claude"
+body = "Found live 2026-06-03 while salvaging rmap task 41 (run-1780445879568-5820b2e9): Harness.Run applies Landing.Settings.overlay/1 at init (run.ex:461), so the green-settle trigger enqueues landing jobs for dashboard-flipped projects — but Harness.Lander.Worker re-resolves the project via ProjectRegistry.lookup/1 WITHOUT the overlay, so the lander sees the raw registration (landing_policy: :manual, target_branch: nil) and every landing job fails {:error, :no_target_branch} → 3 Oban retries → discarded. Any project whose auto-land is set from the dashboard (rather than registration-time config) can never land. Fix: apply LandingSettings.overlay/1 to the looked-up project in Lander.Worker.perform/1, mirroring run.ex. Regression test: registered :manual/nil project + persisted :auto override → Worker.perform lands; control case without override still surfaces :no_target_branch."
+implemented = "Lander.Worker.perform/1 applies LandingSettings.overlay/1 to the looked-up project (mirroring run.ex init); regression test (registered :manual/nil + persisted :auto override lands via Worker.perform/1) and control test (no override still surfaces :no_target_branch) in worker_test.exs"
+delivered_by = "claude"
+created_at = "2026-06-03"
+scored_at = "2026-06-03"
+done_at = "2026-06-03"
+shipped_in = "55e30bd"
+
+[[task]]
+id = "172"
+phase = 11
+bundle = "autolanding"
+status = "pending"
+title = "Lander: land a branch that is checked out in a retained run worktree (worktree add --detach)"
+scores = { d = 2, b = 5, u = 5 }
+markers = ["bug"]
+acceptance_criteria = ["Lander.land/1 checks out the landing worktree detached (or by SHA), never by branch name", "Regression test: branch checked out in another worktree + landing job -> lands successfully", "Existing lander tests (ff-push, rebase, post-merge-red, conflict, push-rejected reland) stay green"]
+files_to_modify = ["lib/harness/lander.ex", "test/harness/lander_test.exs"]
+body = "Found live 2026-06-03 during the same task-41 salvage: a failed run retains its worktree (by design, for salvage), and that worktree has the run branch checked out. When an operator then enqueues a landing job for that branch (the manual-salvage workflow in docs/dogfooding-workflow.md), the lander's checkout fails: git worktree add <landing-path> <branch> -> 'fatal: <branch> is already used by worktree at <run worktree>'. Green runs never hit this (their worktree is removed at settle, before the landing job is enqueued), but the salvage path always does. Fix: the lander does not need the branch checked out, only its commit — use git worktree add --detach (or resolve the branch tip and add by SHA), so landing never collides with a retained run worktree. Push semantics unchanged (the lander pushes the rebased tip SHA to origin/<target>)."
+created_at = "2026-06-03"
+scored_at = "2026-06-03"
+
+[[task]]
+id = "173"
+phase = 15
+bundle = "reviewer-pair"
+milestone = "v0_11"
+status = "pending"
+title = "Deterministic full-pipeline E2E test: roadmap task → Oban dispatch → run → verify → review → land → writeback in one flow"
+scores = { d = 4, b = 7, u = 7 }
+markers = ["handbuild"]
+depends_on = [171]
+acceptance_criteria = ["One test flow drives: fixture project with rmap roadmap → Run.Worker/Oban dispatch → worktree provision → FakeAdapter commits a real diff → check stack grades green → landing trigger enqueues on the serialized landing queue → Lander.Worker pushes to a local bare origin → fixture roadmap task marked done + ResultStore run record persisted", "Red-path variant: scripted implementer delivers a red worktree, run enters :reviewing, a scripted reviewer (FakeAdapter branch) fixes it inline, the stack re-grades green, the run lands", "Exercises Lander.Worker.perform/1 (not Lander.land/1 directly) so the Task 171 class of seam bug — runtime landing override applied by Run but not by the lander — cannot recur silently", "Runs without real agent CLIs or network; Postgres-dependent portions tagged :integration consistent with the existing Oban tests", "No Process.sleep synchronization — assert_receive / poll-until-condition only"]
+out_of_scope = ["Live agent CLIs (separate follow-up task)", "Dashboard LiveView assertions", "Multi-project concurrent dispatch scenarios"]
+touches = ["test/harness/pipeline_e2e_test.exs", "test/support/fake_adapter.ex", "test/support/project_fixture.ex", "test/support/git_fixture.ex"]
+assignee = "claude"
+body = """
+Every pipeline seam is tested pairwise today (run_test, oban_dispatch_test, lander_test, run_landing_trigger_test) but no test crosses all of them in one flow: roadmap task → Oban dispatch → Run gen_statem → agent commit → verification → reviewer routing → landing → roadmap/result-store writeback.
+
+The escaped-bug evidence is cross-seam by nature: Task 171 (Run applies LandingSettings.overlay/1 at init, Lander.Worker re-resolves the project without it → every dashboard-flipped auto-land fails) and Task 172 (retained run worktree blocks the lander's branch checkout) both live in the gaps BETWEEN pairwise-tested stages — as did the week of lifecycle bugs (153–163) that settled the reviewer-pair architecture. A deterministic full-pipeline test is the guard for that class.
+
+All scaffolding exists: FakeAdapter (:write / :write_then_hang branches commit real diffs in real worktrees), GitFixture (throwaway repos + local bare origins), ProjectFixture, the tiny elixir_project fixture, DataCase. The task is wiring them into one assertion chain, green path + red→reviewing→green path.
+
+Sequenced after Task 171 so the E2E test lands against a fixed Lander.Worker (otherwise its own acceptance criterion fails on a known bug).
+"""
+created_at = "2026-06-03"
+scored_at = "2026-06-03"
+
+[[task]]
+id = "174"
+phase = 15
+bundle = "reviewer-pair"
+status = "pending"
+title = "Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged"
+scores = { d = 3, b = 5, u = 4 }
+markers = ["handbuild"]
+depends_on = [173]
+acceptance_criteria = ["Tagged both :integration and :live_agent — excluded from the default suite and mix precommit; run via mix test.json --include live_agent", "Fails loudly with flunk + setup instructions (CLI install command, auth step) when the agent CLI is missing or unauthenticated — never skips silently", "Drives one real headless agent (default Claude, adapter selectable via env var) through the same chain as Task 173: trivial fixture task → dispatch → worktree → real agent commit → check stack verification → land to a local bare origin", "Wall-clock bounded: trivial prompt + per-test total_timeout override so a hung CLI cannot stall the run beyond ~5 minutes"]
+out_of_scope = ["Running in CI or the default suite", "Cross-adapter matrix (all six agents) — one adapter proves the live seam; the agent-evaluation corpus (Task 151) owns cross-adapter scoring", "Asserting anything about the agent's code quality — the check stack verdict is the only assertion"]
+touches = ["test/harness/pipeline_live_agent_test.exs"]
+assignee = "claude"
+body = """
+The deterministic pipeline E2E (Task 173) proves every harness seam with a scripted agent; this task adds the one seam it cannot prove — a real agent CLI invoked over a Port produces a commit that flows through verification and landing. User-requested 2026-06-03 alongside Task 173.
+
+This formalizes what daily dogfooding runs prove ad hoc into a repeatable, on-demand check: run it when upgrading an agent CLI version, changing an adapter's build_command, or validating a new host. It is hand-run by design (quota cost, host CLI + auth required), which is why it carries the handbuild marker and lives outside the default suite.
+
+Reuses Task 173's fixture/wiring; the only new surface is the live-CLI invocation path and the missing-credential flunk guard (per the integration-test never-skip-silently rule).
+"""
+created_at = "2026-06-03"
+scored_at = "2026-06-03"
