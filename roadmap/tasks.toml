@@ -5270,6 +5270,7 @@ acceptance_criteria = ["Lander.land/1 checks out the landing worktree detached (
 files_to_modify = ["lib/harness/lander.ex", "test/harness/lander_test.exs"]
 body = "Found live 2026-06-03 during the same task-41 salvage: a failed run retains its worktree (by design, for salvage), and that worktree has the run branch checked out. When an operator then enqueues a landing job for that branch (the manual-salvage workflow in docs/dogfooding-workflow.md), the lander's checkout fails: git worktree add <landing-path> <branch> -> 'fatal: <branch> is already used by worktree at <run worktree>'. Green runs never hit this (their worktree is removed at settle, before the landing job is enqueued), but the salvage path always does. Fix: the lander does not need the branch checked out, only its commit — use git worktree add --detach (or resolve the branch tip and add by SHA), so landing never collides with a retained run worktree. Push semantics unchanged (the lander pushes the rebased tip SHA to origin/<target>)."
 created_at = "2026-06-03"
+started_at = "2026-06-03"
 scored_at = "2026-06-03"
 
 [[task]]
@@ -5277,7 +5278,7 @@ id = "173"
 phase = 15
 bundle = "reviewer-pair"
 milestone = "v0_11"
-status = "pending"
+status = "done"
 title = "Deterministic full-pipeline E2E test: roadmap task → Oban dispatch → run → verify → review → land → writeback in one flow"
 scores = { d = 4, b = 7, u = 7 }
 markers = ["handbuild"]
@@ -5295,8 +5296,12 @@ All scaffolding exists: FakeAdapter (:write / :write_then_hang branches commit r
 
 Sequenced after Task 171 so the E2E test lands against a fixed Lander.Worker (otherwise its own acceptance criterion fails on a known bug).
 """
+implemented = "Hand-built inline in 3 commits: eea3fdc extracts GitFixture.init_with_origin/1 (dedup of the bare-origin fixture in lander_test + lander/worker_test); 27d4d1a adds test/harness/pipeline_e2e_test.exs green path (roadmap task -> Run.Worker.perform -> FakeAdapter :write in a real worktree -> check stack green -> seam-captured landing job -> Lander.Worker.perform -> ff-push to bare origin -> rmap writeback done/verified/shipped_in + ResultStore record); ecbf37e adds the red->reviewing->green path (:repair_noop implementer grades red, cross-family reviewer double fixes inline, re-verification grades green, the reviewed tree lands) + CHANGELOG. Runs in the default suite (no Postgres needed — all Oban interaction seam-captured, satisfying the :integration criterion vacuously), no Process.sleep, exercises Lander.Worker.perform/1 not Lander.land/1."
+delivered_by = "claude"
 created_at = "2026-06-03"
 scored_at = "2026-06-03"
+done_at = "2026-06-03"
+shipped_in = "ecbf37e"
 
 [[task]]
 id = "174"
