@@ -73,10 +73,15 @@ defmodule Harness.Verification do
           :no_checks
           | {:worktree_not_found, String.t()}
           | {:workdir_not_found, String.t()}
-          | {:setup_failed, setup_failure()}
+          | {:setup_failed, stage_failure()}
+          | {:inject_failed, stage_failure()}
 
-  @typedoc "A stack's setup/bootstrap step failed — an environment error, not a red verdict."
-  @type setup_failure :: %{
+  @typedoc """
+  A stack's non-grading stage step failed — an environment error, not a red
+  verdict. Carried by `{:setup_failed, _}` (the bootstrap stage, both lifecycle
+  phases) and `{:inject_failed, _}` (the verification-only injection stage).
+  """
+  @type stage_failure :: %{
           required(:stack) => atom(),
           required(:workdir) => String.t(),
           required(:result) => Result.t()
@@ -110,8 +115,15 @@ defmodule Harness.Verification do
   Returns `{:ok, %Harness.Verification.Verdict{}}`, or `{:error, reason}` —
   `:no_checks` when no stack has checks, `{:worktree_not_found, path}` when
   `worktree_path` is not a directory, `{:workdir_not_found, dir}` when a
-  stack's resolved `workdir` does not exist, `{:setup_failed, details}` when a
-  stack's bootstrap step fails (environment error — not a red verdict).
+  stack's resolved `workdir` does not exist, `{:setup_failed, details}` /
+  `{:inject_failed, details}` when a stack's bootstrap or injection step fails
+  (environment errors — not red verdicts).
+
+  A stack's `inject` commands run here — after `setup`, before the grading
+  `checks` — and **only** here, never in `prepare/2`. That is the Mode-B
+  hidden-grader mechanism: a grading test withheld from the agent's worktree is
+  copied in at verification time (see `Harness.CheckStack` and
+  `docs/agent-corpus-grading.md`).
   """
   @spec run(String.t(), keyword()) :: {:ok, Verdict.t()} | {:error, error()}
   def run(worktree_path, opts \\ []) when is_binary(worktree_path) do
@@ -142,6 +154,10 @@ defmodule Harness.Verification do
   `:ok`, or `{:error, reason}` with `run/2`'s error vocabulary — a setup
   failure is an environment error (`{:setup_failed, details}`), never a red
   verdict.
+
+  A stack's `inject` commands are **never** run here — they are
+  verification-only (`run/2`), so a Mode-B hidden grader never reaches the
+  agent's worktree.
   """
   @spec prepare(String.t(), keyword()) :: :ok | {:error, error()}
   def prepare(worktree_path, opts \\ []) when is_binary(worktree_path) do
@@ -155,9 +171,11 @@ defmodule Harness.Verification do
   end
 
   # Runs each stack's setup in its own `workdir`, halting on the first
-  # environment error. Mirrors `run_stacks/3` minus the grading checks.
+  # environment error. Mirrors `run_stacks/3` minus the grading checks — and
+  # deliberately minus the `inject` stage: an injected file (a Mode-B hidden
+  # grader) must never reach the agent's worktree.
   @spec prepare_stacks([CheckStack.t()], String.t(), timeout() | nil) ::
-          :ok | {:error, {:workdir_not_found, String.t()} | {:setup_failed, setup_failure()}}
+          :ok | {:error, {:workdir_not_found, String.t()} | {:setup_failed, stage_failure()}}
   defp prepare_stacks(stacks, path, timeout_override) do
     Enum.reduce_while(stacks, :ok, fn stack, :ok ->
       case prepare_stack(stack, path, timeout_override) do
@@ -168,7 +186,7 @@ defmodule Harness.Verification do
   end
 
   @spec prepare_stack(CheckStack.t(), String.t(), timeout() | nil) ::
-          :ok | {:error, {:workdir_not_found, String.t()} | {:setup_failed, setup_failure()}}
+          :ok | {:error, {:workdir_not_found, String.t()} | {:setup_failed, stage_failure()}}
   defp prepare_stack(%CheckStack{setup: []}, _path, _timeout_override), do: :ok
 
   defp prepare_stack(%CheckStack{} = stack, path, timeout_override) do
@@ -223,7 +241,10 @@ defmodule Harness.Verification do
   # before each stack's checks; a setup failure halts with `{:setup_failed, _}`.
   @spec run_stacks([CheckStack.t()], String.t(), timeout() | nil) ::
           {:ok, [Result.t()]}
-          | {:error, {:workdir_not_found, String.t()} | {:setup_failed, setup_failure()}}
+          | {:error,
+             {:workdir_not_found, String.t()}
+             | {:setup_failed, stage_failure()}
+             | {:inject_failed, stage_failure()}}
   defp run_stacks(stacks, path, timeout_override) do
     Enum.reduce_while(stacks, {:ok, []}, fn stack, {:ok, acc} ->
       case run_stack(stack, path, timeout_override) do
@@ -235,7 +256,10 @@ defmodule Harness.Verification do
 
   @spec run_stack(CheckStack.t(), String.t(), timeout() | nil) ::
           {:ok, [Result.t()]}
-          | {:error, {:workdir_not_found, String.t()} | {:setup_failed, setup_failure()}}
+          | {:error,
+             {:workdir_not_found, String.t()}
+             | {:setup_failed, stage_failure()}
+             | {:inject_failed, stage_failure()}}
   defp run_stack(stack, path, timeout_override) do
     check_dir = stack_dir(path, stack.workdir)
 
@@ -244,7 +268,8 @@ defmodule Harness.Verification do
 
       run_env = dynamic_env(path, stack)
 
-      with :ok <- run_setup(stack, check_dir, timeout, run_env) do
+      with :ok <- run_setup(stack, check_dir, timeout, run_env),
+           :ok <- run_inject(stack, check_dir, timeout, run_env) do
         {:ok, Enum.map(stack.checks, &run_check(&1, check_dir, timeout, run_env))}
       end
     else
@@ -253,27 +278,43 @@ defmodule Harness.Verification do
   end
 
   # Runs a stack's non-grading bootstrap commands before its checks. Empty setup
-  # is a no-op. The first failing setup step halts with `{:setup_failed, _}` —
-  # an environment error distinct from a red verdict.
+  # is a no-op. The first failing step halts with `{:setup_failed, _}` — an
+  # environment error distinct from a red verdict. Runs in both lifecycle
+  # phases (`prepare/2` and `run/2`).
   @spec run_setup(CheckStack.t(), String.t(), timeout(), map()) ::
-          :ok | {:error, {:setup_failed, setup_failure()}}
-  defp run_setup(%CheckStack{setup: []}, _check_dir, _timeout, _run_env), do: :ok
+          :ok | {:error, {:setup_failed, stage_failure()}}
+  defp run_setup(%CheckStack{setup: setup, name: name}, check_dir, timeout, run_env) do
+    run_stage(:setup_failed, name, setup, check_dir, timeout, run_env)
+  end
 
-  defp run_setup(%CheckStack{} = stack, check_dir, timeout, run_env) do
-    stack.setup
-    |> Enum.reduce_while(:ok, fn check, :ok ->
+  # Runs a stack's verification-only injection commands after setup and before
+  # checks. Called only from `run_stack/3` (i.e. `run/2`), never from
+  # `prepare/2`, so an injected file never reaches the agent's worktree — the
+  # Mode-B hidden-grader mechanism (docs/agent-corpus-grading.md). The first
+  # failing step halts with `{:inject_failed, _}`, an environment error, not a
+  # red verdict.
+  @spec run_inject(CheckStack.t(), String.t(), timeout(), map()) ::
+          :ok | {:error, {:inject_failed, stage_failure()}}
+  defp run_inject(%CheckStack{inject: inject, name: name}, check_dir, timeout, run_env) do
+    run_stage(:inject_failed, name, inject, check_dir, timeout, run_env)
+  end
+
+  # Runs a list of non-grading stage commands in order, halting on the first
+  # failure with `{failure_tag, stage_failure()}`. An empty list is a no-op.
+  @spec run_stage(atom(), atom(), [Check.t()], String.t(), timeout(), map()) ::
+          :ok | {:error, {atom(), stage_failure()}}
+  defp run_stage(_failure_tag, _stack_name, [], _check_dir, _timeout, _run_env), do: :ok
+
+  defp run_stage(failure_tag, stack_name, commands, check_dir, timeout, run_env) do
+    Enum.reduce_while(commands, :ok, fn check, :ok ->
       case run_check(check, check_dir, timeout, run_env) do
         %Result{status: :pass} ->
           {:cont, :ok}
 
         %Result{} = result ->
-          {:halt, {:error, {:setup_failed, %{stack: stack.name, workdir: check_dir, result: result}}}}
+          {:halt, {:error, {failure_tag, %{stack: stack_name, workdir: check_dir, result: result}}}}
       end
     end)
-    |> case do
-      :ok -> :ok
-      {:error, reason} -> {:error, reason}
-    end
   end
 
   # The absolute cwd a stack's checks run in: the worktree root, offset by the

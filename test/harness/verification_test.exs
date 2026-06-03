@@ -366,6 +366,80 @@ defmodule Harness.VerificationTest do
     end
   end
 
+  describe "run/2 inject (Mode-B hidden grader)" do
+    test "inject runs at verification time, before checks, so the grader is present" do
+      dir = worktree_dir()
+      grader = host_answer_key!("# hidden behavioral grader the agent never saw")
+
+      stack = %CheckStack{
+        name: :mode_b,
+        inject: [check("inject-grader", "cp", [grader, Path.join(dir, "hidden_grader.exs")])],
+        checks: [check("grade", "test", ["-f", "hidden_grader.exs"])]
+      }
+
+      assert {:ok, %Verdict{status: :pass, results: [result]}} =
+               Verification.run(dir, check_stack: stack)
+
+      assert result.name == "grade"
+      assert result.status == :pass
+      # The injected grader is present at grading time.
+      assert File.exists?(Path.join(dir, "hidden_grader.exs"))
+    end
+
+    test "inject does NOT run during prepare/2 — the hidden grader never reaches the agent worktree" do
+      dir = worktree_dir()
+      grader = host_answer_key!("# hidden behavioral grader")
+
+      stack = %CheckStack{
+        name: :mode_b,
+        setup: [check("setup-marker", "touch", ["setup-ran"])],
+        inject: [check("inject-grader", "cp", [grader, Path.join(dir, "hidden_grader.exs")])],
+        checks: [check("grade", "test", ["-f", "hidden_grader.exs"])]
+      }
+
+      assert :ok = Verification.prepare(dir, check_stack: stack)
+
+      # Setup ran in the provisioning pass (the agent starts in a warm dir)...
+      assert File.exists?(Path.join(dir, "setup-ran"))
+      # ...but inject did NOT: the agent's worktree never contains the grader.
+      # This is the Mode-B isolation guarantee — the agent is graded on a spec
+      # it provably never had access to.
+      refute File.exists?(Path.join(dir, "hidden_grader.exs"))
+    end
+
+    test "an inject failure is an environment error, not a red verdict" do
+      dir = worktree_dir()
+
+      stack = %CheckStack{
+        name: :broken_inject,
+        inject: [check("bad-inject", "false")],
+        checks: [check("never-runs", stub_script("touch should-not-exist"))]
+      }
+
+      assert {:error, {:inject_failed, %{stack: :broken_inject, workdir: ^dir, result: result}}} =
+               Verification.run(dir, check_stack: stack)
+
+      assert result.name == "bad-inject"
+      assert result.status == :fail
+      # The grading check never ran: an inject failure halts before checks.
+      refute File.exists?(Path.join(dir, "should-not-exist"))
+    end
+
+    test "inject runs after setup, so it can build on a provisioned dir" do
+      dir = worktree_dir()
+
+      stack = %CheckStack{
+        name: :ordered,
+        setup: [check("make-dir", "mkdir", ["target"])],
+        inject: [check("inject-into-dir", "touch", ["target/grader"])],
+        checks: [check("grade", "test", ["-f", "target/grader"])]
+      }
+
+      assert {:ok, %Verdict{status: :pass}} = Verification.run(dir, check_stack: stack)
+      assert File.exists?(Path.join([dir, "target", "grader"]))
+    end
+  end
+
   describe "prepare/2 (worktree provisioning)" do
     test "runs every stack's setup commands without grading any checks" do
       dir = worktree_dir()
@@ -564,6 +638,16 @@ defmodule Harness.VerificationTest do
     path = Path.join(System.tmp_dir!(), "check_stub_#{System.unique_integer([:positive])}")
     File.write!(path, "#!/bin/sh\n#{body}\n")
     File.chmod!(path, 0o755)
+    on_exit(fn -> File.rm(path) end)
+    path
+  end
+
+  # Writes a host-side answer-key file outside the worktree, cleaned up after
+  # the test. Stands in for the Mode-B grader an `inject` command copies into
+  # the worktree at verification time — the agent never sees this path.
+  defp host_answer_key!(contents) do
+    path = Path.join(System.tmp_dir!(), "answer_key_#{System.unique_integer([:positive])}.exs")
+    File.write!(path, contents)
     on_exit(fn -> File.rm(path) end)
     path
   end

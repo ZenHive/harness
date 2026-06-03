@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Verification-only `inject` step on `Harness.CheckStack` — the Mode-B
+  hidden-grader mechanism for the agent-evaluation corpus (Task 151, claude
+  delivery + salvage).** Settles the load-bearing decision in
+  `docs/agent-corpus-grading.md`: `CheckStack`'s existing `setup` runs in *both*
+  `Harness.Verification.prepare/2` (pre-agent, into the worktree) and `run/2`,
+  so a grader injected via `setup` would leak into the agent's worktree and
+  reveal the API. The new `inject` field runs **only** in `run/2` (after
+  `setup`, before the grading `checks`), **never** in `prepare/2` — so a
+  withheld grading test can be copied in from a host-side answer key at
+  verification time, after the agent has finished, and the agent is graded on a
+  behavioral spec it provably never saw. An `inject` failure is an environment
+  error (`{:inject_failed, _}`), not a red verdict, mirroring `setup`'s
+  `{:setup_failed, _}`. Proven deterministically (no live agent) in
+  `verification_test.exs` (`run/2` inject isolation) and
+  `corpus_grading_test.exs` (a corpus-shaped repo grading one Mode-A
+  visible-spec task and one Mode-B hidden-grader task end-to-end, including a
+  hallucinated solution that fails the hidden behavioral grader). Resolves
+  concept-doc Q1 (inject), Q2 (host answer key), Q3
+  (`CapabilityScore.corpus_version/1` fingerprint), Q4 (vendor the unfamiliar
+  lib). The corpus repo itself and the live cross-adapter scoring run are the
+  remaining host-side work on Task 151.
+
 ### Removed
 
 - **Reviewer-pair lifecycle, step 3 — the deletion pass: judgment code is gone,

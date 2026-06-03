@@ -40,8 +40,24 @@ defmodule Harness.CheckStack do
     * `setup` — non-grading bootstrap commands run before `checks`, in order,
       in the same `workdir`. A setup failure is an environment error
       (`{:setup_failed, _}` from `Harness.Verification.run/2`), not a red
-      verdict — the repair loop must never treat missing deps or a network
-      blip during `mix deps.get` as agent-caused. Defaults to `[]`.
+      verdict — missing deps or a network blip during `mix deps.get` is never
+      blamed on the agent. Defaults to `[]`. **Setup
+      runs in both lifecycle phases** — at worktree-provision time
+      (`Harness.Verification.prepare/2`, before the agent spawns) and again
+      ahead of the grading checks (`run/2`) — so it must never carry anything
+      the agent should not see: a file `setup` materializes lands in the
+      agent's worktree.
+    * `inject` — verification-only commands run after `setup` and before
+      `checks`, in the same `workdir`, by `Harness.Verification.run/2` **but
+      never by `prepare/2`**. This is the post-agent / pre-check injection step:
+      because it skips the provisioning pass, it can materialize a file the
+      agent must not see — a *hidden grader* (Mode B of the agent-evaluation
+      corpus). A Mode-B benchmark withholds its grading test from the corpus
+      repo and lists an `inject` command that copies the grader in from a
+      host-side answer key right before checks run, so the agent is graded on a
+      behavioral spec it never had access to. Like `setup`, an `inject` failure
+      is an environment error (`{:inject_failed, _}`), not a red verdict.
+      Defaults to `[]`.
   """
 
   alias Harness.Verification.Check
@@ -53,11 +69,12 @@ defmodule Harness.CheckStack do
           name: atom(),
           checks: [Check.t()],
           setup: [Check.t()],
+          inject: [Check.t()],
           parser: module() | nil,
           timeout_per_check: timeout() | nil,
           workdir: String.t()
         }
 
   @enforce_keys [:name, :checks]
-  defstruct [:name, :checks, setup: [], parser: nil, timeout_per_check: nil, workdir: ""]
+  defstruct [:name, :checks, setup: [], inject: [], parser: nil, timeout_per_check: nil, workdir: ""]
 end
