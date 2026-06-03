@@ -101,6 +101,21 @@ defmodule Harness.Dashboard.KPILiveTest do
       assert html =~ "—"
     end
 
+    test "renders a column per reviewer rating key with the per-agent mean", %{conn: conn} do
+      # Two claude runs rated on the same keys; the ledger means them.
+      seed("run-r1", agent: :grok, verdict: :approve, review_ratings: %{"performance" => 8, "idiom" => 6})
+      seed("run-r2", agent: :grok, verdict: :approve, review_ratings: %{"performance" => 6, "idiom" => 10})
+
+      {:ok, _view, html} = live(conn, "/harness/kpi")
+
+      # The free-form rating keys surface as humanized column headers…
+      assert html =~ "Performance"
+      assert html =~ "Idiom"
+      # …and the means render (performance (8+6)/2 = 7.0, idiom (6+10)/2 = 8.0).
+      assert html =~ "7.0"
+      assert html =~ "8.0"
+    end
+
     test "columns are sortable — clicking a header reorders the rows", %{conn: conn} do
       {:ok, view, html} = live(conn, "/harness/kpi")
 

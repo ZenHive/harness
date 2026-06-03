@@ -17,6 +17,10 @@ defmodule Harness.AuditTest do
   alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
+  alias Harness.ResultStore
+  alias Harness.ResultStore.File, as: FileStore
+  alias Harness.Run.LogRecord
+  alias Harness.TokenUsage
 
   # ── git fixture: bare origin + working clone, mirroring the post-land state
   #    (everything the audit reviews is already on origin/main). ─────────────
@@ -37,6 +41,33 @@ defmodule Harness.AuditTest do
     commit!(ctx.repo, "feature.txt", "landed work")
     GitFixture.git!(ctx.repo, ["push", "-q", "origin", "main"])
     sha(ctx.repo, "HEAD")
+  end
+
+  # An isolated File-backed store rooted in a per-test tmp dir, cleaned on exit.
+  defp isolated_store do
+    root = Path.join(System.tmp_dir!(), "harness_audit_store_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(root)
+    on_exit(fn -> File.rm_rf(root) end)
+    {FileStore, root: root}
+  end
+
+  defp seed_rejection(store, project_name, run_id, task_id, report) do
+    record =
+      struct!(LogRecord, %{
+        batch_id: "batch-audit",
+        run_id: run_id,
+        task_id: task_id,
+        project_name: project_name,
+        adapter: FakeAdapter,
+        state: :failed,
+        reason: {:review_rejected, report},
+        duration_ms: 100,
+        verdict: :reject,
+        review_report: report,
+        token_usage: TokenUsage.empty()
+      })
+
+    :ok = ResultStore.record_run(record, store)
   end
 
   setup do
@@ -152,6 +183,55 @@ defmodule Harness.AuditTest do
                })
 
       assert ctx.origin |> GitFixture.git!(["rev-parse", "main"]) |> String.trim() == landed_sha
+    end
+  end
+
+  describe "run/1 — reviewer rejection history in the audit prompt (AC4)" do
+    test "recent reviewer rejections for the project ride into the audit prompt", ctx do
+      land_work!(ctx)
+      short = ctx.repo |> GitFixture.git!(["rev-parse", "--short", "HEAD"]) |> String.trim()
+
+      store = isolated_store()
+      seed_rejection(store, ctx.project.name, "rev-1", "t.91", "reviewer rejected: stray debug IO left in handler")
+      # A different project's rejection must NOT leak into this project's prompt.
+      seed_rejection(store, "other-project", "rev-2", "t.99", "unrelated rejection from another repo")
+
+      assert {:audited, _sha} =
+               Audit.run(%{
+                 project: ctx.project,
+                 base_sha: ctx.base_sha,
+                 auditor: FakeAdapter,
+                 auditor_opts: [command: {:audit_capture_prompt, short}],
+                 result_store: store
+               })
+
+      GitFixture.git!(ctx.repo, ["fetch", "-q", "origin"])
+      prompt = GitFixture.git!(ctx.repo, ["show", "origin/main:.audit/#{short}.md"])
+
+      assert prompt =~ "Reviewer-quality feedback loop"
+      assert prompt =~ "t.91"
+      assert prompt =~ "stray debug IO left in handler"
+      # Scoped to this project — the other repo's rejection is filtered out.
+      refute prompt =~ "t.99"
+    end
+
+    test "a project with no recorded rejections frames the section as empty", ctx do
+      land_work!(ctx)
+      short = ctx.repo |> GitFixture.git!(["rev-parse", "--short", "HEAD"]) |> String.trim()
+
+      assert {:audited, _sha} =
+               Audit.run(%{
+                 project: ctx.project,
+                 base_sha: ctx.base_sha,
+                 auditor: FakeAdapter,
+                 auditor_opts: [command: {:audit_capture_prompt, short}],
+                 result_store: isolated_store()
+               })
+
+      GitFixture.git!(ctx.repo, ["fetch", "-q", "origin"])
+      prompt = GitFixture.git!(ctx.repo, ["show", "origin/main:.audit/#{short}.md"])
+
+      assert prompt =~ "(no reviewer rejections recorded for this project)"
     end
   end
 

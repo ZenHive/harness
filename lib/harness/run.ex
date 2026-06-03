@@ -79,6 +79,7 @@ defmodule Harness.Run do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Run, as: AgentRun
+  alias Harness.AgentKPI
   alias Harness.AgentRegistry
   alias Harness.AuditReview
   alias Harness.Dashboard.RunFeed
@@ -120,6 +121,9 @@ defmodule Harness.Run do
   @default_discernment_long_running_ms 600_000
   @default_discernment_min_transcript_bytes 1
   @default_max_hold_timeout 1_800_000
+  # Recent run records sampled to score reviewer rejection rates for cross-family
+  # reviewer selection — bounds the per-run store read (newest-first).
+  @reviewer_rejection_sample 500
 
   @typedoc "A lifecycle state."
   @type state ::
@@ -1393,12 +1397,11 @@ defmodule Harness.Run do
 
     AgentRegistry.agents()
     |> Enum.reject(fn {agent, _module} -> agent == implementer end)
-    |> Enum.find_value(fn {_agent, module} ->
-      if reviewer_dispatchable?(module), do: {:ok, module}
-    end)
+    |> Enum.filter(fn {_agent, module} -> reviewer_dispatchable?(module) end)
+    |> prioritize_reviewers(reviewer_rejection_rates())
     |> case do
-      {:ok, module} -> {:ok, module}
-      nil -> {:error, {:no_cross_family_reviewer, implementer}}
+      [{_agent, module} | _rest] -> {:ok, module}
+      [] -> {:error, {:no_cross_family_reviewer, implementer}}
     end
   end
 
@@ -1407,6 +1410,38 @@ defmodule Harness.Run do
          :ok <- ensure_cross_family_reviewer(data.item.agent, module),
          true <- explicit_reviewer_dispatchable?(module) || {:error, {:reviewer_unavailable, module}} do
       {:ok, module}
+    end
+  end
+
+  # Orders dispatchable cross-family reviewer candidates, deprioritizing high
+  # rejection rates. A stable sort by each candidate's historical rejection rate
+  # AS a reviewer (`rates`, keyed by adapter module): a reviewer that rejects too
+  # freely sinks, while an unmeasured reviewer defaults to 0.0 and keeps its
+  # registry order. Advisory only — it reorders, never removes (no blacklist).
+  # `@doc false` public so the routing decision is unit-testable without a real
+  # auto-selection run (which needs installed agent CLIs).
+  @doc false
+  @spec prioritize_reviewers([{atom(), module()}], %{optional(module()) => float()}) :: [{atom(), module()}]
+  def prioritize_reviewers(candidates, rates) when is_list(candidates) and is_map(rates) do
+    Enum.sort_by(candidates, fn {_agent, module} -> Map.get(rates, module, 0.0) end)
+  end
+
+  # Advisory cross-family tiebreaker: among equally-dispatchable reviewers,
+  # prefer the one with the lower historical rejection rate AS a reviewer, so a
+  # reviewer that rejects too freely is deprioritized (never blacklisted —
+  # unmeasured reviewers default to 0.0 and the stable sort preserves registry
+  # order when there is no data). Best-effort: a disabled/erroring store yields
+  # an empty map and the original registry order stands.
+  @spec reviewer_rejection_rates() :: %{optional(module()) => float()}
+  defp reviewer_rejection_rates do
+    case ResultStore.list_run_records(limit: @reviewer_rejection_sample) do
+      {:ok, records} ->
+        records
+        |> AgentKPI.aggregate_reviewer_rejections()
+        |> Map.new(fn {module, metrics} -> {module, metrics.rejection_rate} end)
+
+      _error ->
+        %{}
     end
   end
 

@@ -36,6 +36,11 @@ defmodule Harness.Batch.AgentEvaluation do
     lets an A/B comparison weigh *how many tokens* an adapter spent, not only
     whether it was approved. An empty usage (all-`nil`) means the wire format
     reported no token counts.
+
+    `ratings` is the reviewer AI's free-form quality scores for this attempt
+    (the `.harness/review.json` `ratings` block, persisted on the run record).
+    `Harness.CapabilityScore` means them per `{agent, domain}` so routing
+    reflects reviewer-judged quality, not approve rate alone.
     """
 
     @typedoc "Side-by-side metrics for one adapter on the shared task."
@@ -49,6 +54,7 @@ defmodule Harness.Batch.AgentEvaluation do
             duration_ms: non_neg_integer() | nil,
             agent_diff_size: non_neg_integer() | nil,
             token_usage: TokenUsage.t(),
+            ratings: %{optional(String.t()) => term()},
             result: RunResult.t()
           }
 
@@ -69,7 +75,8 @@ defmodule Harness.Batch.AgentEvaluation do
       :duration_ms,
       :agent_diff_size,
       :result,
-      token_usage: %TokenUsage{}
+      token_usage: %TokenUsage{},
+      ratings: %{}
     ]
   end
 
@@ -220,9 +227,15 @@ defmodule Harness.Batch.AgentEvaluation do
       duration_ms: record && record.duration_ms,
       agent_diff_size: result.agent_diff_size,
       token_usage: entry_token_usage(record, result),
+      ratings: entry_ratings(record),
       result: result
     }
   end
+
+  # The reviewer's ratings live only on the persisted record (parsed from the
+  # verdict artifact). A pre-rating record (Map.get -> nil) yields `%{}`.
+  @spec entry_ratings(LogRecord.t() | nil) :: %{optional(String.t()) => term()}
+  defp entry_ratings(record), do: (record && Map.get(record, :review_ratings)) || %{}
 
   # Prefers the persisted record's measured usage, falling back to the live
   # result's (always a `%TokenUsage{}`, empty when unmeasured). `Map.get/2`

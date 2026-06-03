@@ -34,11 +34,13 @@ defmodule Harness.Audit do
   alias Harness.AgentRegistry
   alias Harness.Git
   alias Harness.Project
+  alias Harness.ResultStore
   alias Harness.Worktree
 
   require Logger
 
   @audit_report_path ".harness/audit.json"
+  @rejection_history_limit 20
 
   @typedoc """
   The audit request a worker builds from Oban args.
@@ -54,7 +56,8 @@ defmodule Harness.Audit do
           optional(:implementer) => String.t() | nil,
           optional(:reviewer) => String.t() | nil,
           optional(:auditor) => module() | nil,
-          optional(:auditor_opts) => keyword()
+          optional(:auditor_opts) => keyword(),
+          optional(:result_store) => ResultStore.store()
         }
 
   @typedoc """
@@ -197,7 +200,7 @@ defmodule Harness.Audit do
   @spec invocation(Worktree.t(), String.t(), Project.t(), request(), map()) :: Invocation.t()
   defp invocation(worktree, target, project, request, range) do
     %Invocation{
-      prompt: audit_prompt(target, project, range),
+      prompt: audit_prompt(target, project, range, rejection_history(project, request)),
       cwd: worktree.path,
       task_id: "audit-#{project.name}-#{range.short_sha}",
       permission_mode: :autonomous,
@@ -205,11 +208,41 @@ defmodule Harness.Audit do
     }
   end
 
+  # Recent reviewer rejections for this project, from the run-records store. The
+  # auditor (an AI) correlates them against the landed range to flag FALSE
+  # rejections — the reviewer-quality feedback loop. Mechanical read only; a
+  # disabled or empty store yields the "(none ...)" placeholder, never a crash.
+  @spec rejection_history(Project.t(), request()) :: String.t()
+  defp rejection_history(project, request) do
+    store = Map.get(request, :result_store) || ResultStore.configured()
+
+    case ResultStore.list_run_records(store,
+           verdict: :reject,
+           project_name: project.name,
+           limit: @rejection_history_limit
+         ) do
+      {:ok, [_ | _] = records} -> Enum.map_join(records, "\n", &rejection_line/1)
+      _empty_or_error -> "(no reviewer rejections recorded for this project)"
+    end
+  end
+
+  @spec rejection_line(Harness.Run.LogRecord.t()) :: String.t()
+  defp rejection_line(record) do
+    "- task #{record.task_id} (run #{record.run_id}): #{rejection_summary(record.review_report)}"
+  end
+
+  @spec rejection_summary(String.t() | nil) :: String.t()
+  defp rejection_summary(report) when is_binary(report) do
+    report |> String.slice(0, 500) |> String.replace(~r/\s+/, " ") |> String.trim()
+  end
+
+  defp rejection_summary(_report), do: "(no report)"
+
   # The audit agent's instructions. The judgment (what is a hygiene issue, what
   # matters, what to fix) lives entirely in the agent; harness only frames the
   # range and pushes whatever it commits.
-  @spec audit_prompt(String.t(), Project.t(), map()) :: String.t()
-  defp audit_prompt(target, project, range) do
+  @spec audit_prompt(String.t(), Project.t(), map(), String.t()) :: String.t()
+  defp audit_prompt(target, project, range, rejections) do
     """
     You are the post-merge audit agent for project #{project.name} — a best-effort hygiene pass over
     commits that already landed on `#{target}`. The merge is settled: you never revert, unmerge, or
@@ -230,6 +263,13 @@ defmodule Harness.Audit do
     5. Write a machine-readable summary to `#{@audit_report_path}`:
        {"findings": <count>, "fixed": <count>, "report": "<one-paragraph summary>"}
        Do NOT commit this file — it is harness-internal.
+
+    Reviewer-quality feedback loop — recent reviewer rejections for this project (a cross-family
+    reviewer is THE gate, and rejection is rare by design). If a task in the landed range above also
+    appears here and the work that actually landed looks sound, that rejection may have been a FALSE
+    rejection — note it in your `.audit/#{range.short_sha}.md` report. This only feeds the report; you
+    still never revert or block.
+    #{rejections}
 
     Project check hint (run yourself if needed; judge the output):
     #{project.check_command || "(none provided)"}

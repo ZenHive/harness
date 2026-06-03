@@ -13,12 +13,14 @@ defmodule Harness.CapabilityScore do
 
       success_rate * 1000 + bounded_tiebreaker
 
-  The bounded tiebreaker is less than one point and combines token
-  `cost_to_green` and the mean reviewer fix-diff size (how much fixing the
-  reviewer had to do). That keeps approval rate as the primary ordering signal
-  while still letting cheaper, cleaner runs sort above more expensive ones
-  inside the same success cohort. Raw per-run metrics are retained on the score
-  so this formula can be retuned without re-running the comparisons.
+  The bounded tiebreaker is less than one point and combines the reviewer's
+  mean ratings (reviewer-judged quality), token `cost_to_green`, and the mean
+  reviewer fix-diff size (how much fixing the reviewer had to do). Because
+  rejection is near-never by design, approval rate is nearly constant across
+  agents — so the ratings term is what actually moves routing inside a
+  same-success cohort, letting `dispatch-recommend` reflect reviewer-judged
+  quality rather than approve rate alone. Raw per-run metrics are retained on
+  the score so this formula can be retuned without re-running the comparisons.
 
   ## Scored-set fingerprint (`corpus_version`)
 
@@ -28,6 +30,7 @@ defmodule Harness.CapabilityScore do
   reviewer-gated runs are the measurement substrate).
   """
 
+  alias Harness.AgentKPI
   alias Harness.AgentRegistry
   alias Harness.Batch.AgentEvaluation.Comparison
   alias Harness.Batch.AgentEvaluation.Entry
@@ -38,8 +41,10 @@ defmodule Harness.CapabilityScore do
 
   @success_scale 1_000
   @cost_scale_tokens 100_000
-  @cost_tiebreaker_weight 0.7
-  @reviewer_fix_tiebreaker_weight 0.299
+  @ratings_tiebreaker_weight 0.5
+  @cost_tiebreaker_weight 0.3
+  @reviewer_fix_tiebreaker_weight 0.199
+  @rating_scale 10.0
   @freshness_window_days 30
   @seconds_per_day 86_400
   @stale_discount 0.5
@@ -62,7 +67,8 @@ defmodule Harness.CapabilityScore do
             reviewer_diff_size: non_neg_integer() | nil,
             duration_ms: non_neg_integer() | nil,
             token_usage: TokenUsage.t(),
-            cost_tokens: non_neg_integer()
+            cost_tokens: non_neg_integer(),
+            ratings: %{optional(String.t()) => term()}
           }
 
     @enforce_keys [
@@ -87,7 +93,8 @@ defmodule Harness.CapabilityScore do
       :reviewer_diff_size,
       :duration_ms,
       :token_usage,
-      :cost_tokens
+      :cost_tokens,
+      ratings: %{}
     ]
   end
 
@@ -101,6 +108,7 @@ defmodule Harness.CapabilityScore do
           success_rate: float(),
           cost_to_green: float() | nil,
           mean_reviewer_diff_size: float(),
+          mean_ratings: %{optional(String.t()) => float()},
           composite_score: float(),
           raw_metrics: [RawMetric.t()]
         }
@@ -127,7 +135,8 @@ defmodule Harness.CapabilityScore do
     :cost_to_green,
     :mean_reviewer_diff_size,
     :composite_score,
-    :raw_metrics
+    :raw_metrics,
+    mean_ratings: %{}
   ]
 
   @doc """
@@ -235,9 +244,14 @@ defmodule Harness.CapabilityScore do
       reviewer_diff_size: entry.reviewer_diff_size,
       duration_ms: entry.duration_ms,
       token_usage: entry.token_usage,
-      cost_tokens: token_total(entry.token_usage)
+      cost_tokens: token_total(entry.token_usage),
+      ratings: entry_ratings(entry)
     }
   end
+
+  # Tolerates a pre-rating Entry whose struct predates the field (Map.get -> nil).
+  @spec entry_ratings(Entry.t()) :: %{optional(String.t()) => term()}
+  defp entry_ratings(entry), do: Map.get(entry, :ratings) || %{}
 
   @spec build_scores([RawMetric.t()], CapabilityDomain.t(), keyword()) :: [t()]
   defp build_scores(metrics, domain, opts) do
@@ -259,6 +273,7 @@ defmodule Harness.CapabilityScore do
     success_rate = rate(length(successes), run_count)
     cost_to_green = cost_to_green(successes)
     mean_reviewer_diff_size = mean(Enum.map(metrics, &(&1.reviewer_diff_size || 0)), run_count)
+    mean_ratings = AgentKPI.rating_means(Enum.map(metrics, &entry_ratings/1))
 
     %__MODULE__{
       agent: agent,
@@ -269,7 +284,8 @@ defmodule Harness.CapabilityScore do
       success_rate: success_rate,
       cost_to_green: cost_to_green,
       mean_reviewer_diff_size: mean_reviewer_diff_size,
-      composite_score: composite_score(success_rate, cost_to_green, mean_reviewer_diff_size),
+      mean_ratings: mean_ratings,
+      composite_score: composite_score(success_rate, cost_to_green, mean_reviewer_diff_size, mean_ratings),
       raw_metrics: metrics
     }
   end
@@ -479,15 +495,30 @@ defmodule Harness.CapabilityScore do
     end)
   end
 
-  @spec composite_score(float(), float() | nil, float()) :: float()
-  defp composite_score(success_rate, cost_to_green, mean_reviewer_diff_size) do
+  @spec composite_score(float(), float() | nil, float(), %{optional(String.t()) => float()}) :: float()
+  defp composite_score(success_rate, cost_to_green, mean_reviewer_diff_size, mean_ratings) do
     success_component = success_rate * @success_scale
 
     tiebreaker =
-      @cost_tiebreaker_weight * cost_efficiency(cost_to_green) +
+      @ratings_tiebreaker_weight * ratings_efficiency(mean_ratings) +
+        @cost_tiebreaker_weight * cost_efficiency(cost_to_green) +
         @reviewer_fix_tiebreaker_weight * reciprocal_efficiency(mean_reviewer_diff_size)
 
     success_component + tiebreaker
+  end
+
+  # Reviewer-judged quality as a [0,1] tiebreaker: the overall mean rating
+  # (across the reviewer's free-form keys) normalized against a 10-point scale.
+  # No rating reported contributes 0.0, so an unrated cohort sorts purely on
+  # the cost / reviewer-fix terms — never penalized below a rated one's floor.
+  @spec ratings_efficiency(%{optional(String.t()) => float()}) :: float()
+  defp ratings_efficiency(mean_ratings) when map_size(mean_ratings) == 0, do: 0.0
+
+  defp ratings_efficiency(mean_ratings) do
+    values = Map.values(mean_ratings)
+    overall = Enum.sum(values) / length(values)
+
+    overall |> Kernel./(@rating_scale) |> min(1.0) |> max(0.0)
   end
 
   @spec cost_efficiency(float() | nil) :: float()

@@ -3,12 +3,22 @@ defmodule Harness.AgentKPI do
   Per-agent KPI rollup over the run records `Harness.ResultStore` already persists.
 
   This context adds **no new capture** — every input field (`agent`, `verdict`,
-  `duration_ms`, `token_usage`, `review_iterations`, `domains`) is already on
-  `Harness.Run.LogRecord`. It is a read-only aggregation that makes the data we
-  already have viewable at a glance: roll a record list up by `agent` into
-  success rate, first-attempt-pass rate, duration median/p90, mean tokens, mean
-  review iterations, and a cost-to-green composite. `aggregate_by_agent_domain/1`
-  adds the same rollup keyed by `{agent, domain}` for per-domain slicing.
+  `duration_ms`, `token_usage`, `review_iterations`, `review_ratings`,
+  `reviewer_adapter`, `domains`) is already on `Harness.Run.LogRecord`. It is a
+  read-only aggregation that makes the data we already have viewable at a
+  glance: roll a record list up by `agent` into success rate,
+  first-attempt-pass rate, duration median/p90, mean tokens, mean review
+  iterations, the reviewer's mean ratings, and a cost-to-green composite.
+  `aggregate_by_agent_domain/1` adds the same rollup keyed by `{agent, domain}`
+  for per-domain slicing.
+
+  ## Reviewer-as-gate rollup
+
+  `aggregate_reviewer_rejections/1` is the mirror-image view: keyed by
+  `reviewer_adapter` (the cross-family reviewer that gated the run), it reports
+  each reviewer's rejection rate. Since rejection is near-never by design, a
+  reviewer with an outlier rejection rate is the signal — it lets cross-family
+  selection deprioritize a reviewer that rejects too freely.
 
   ## Pure by construction
 
@@ -38,6 +48,9 @@ defmodule Harness.AgentKPI do
   @typedoc "Mean tokens per run for an agent, by component."
   @type token_means :: %{input: float(), output: float(), total: float()}
 
+  @typedoc "Mean of each reviewer rating key (the keys are the reviewer's, free-form)."
+  @type rating_means :: %{optional(String.t()) => float()}
+
   @typedoc "Rolled-up KPIs for one agent."
   @type agent_kpi :: %{
           run_count: pos_integer(),
@@ -46,8 +59,19 @@ defmodule Harness.AgentKPI do
           duration_ms: duration_summary(),
           tokens: token_means(),
           review_iterations: float(),
+          ratings: rating_means(),
           cost_to_green: float() | nil
         }
+
+  @typedoc "Rejection metrics for one reviewer adapter acting AS the gate."
+  @type reviewer_rejection :: %{
+          reviewed_count: pos_integer(),
+          rejection_count: non_neg_integer(),
+          rejection_rate: float()
+        }
+
+  @typedoc "Per-reviewer-adapter rejection ledger keyed by the reviewer module."
+  @type reviewer_ledger :: %{optional(module()) => reviewer_rejection()}
 
   @typedoc "Per-agent ledger keyed by the record's `agent` atom (or `nil` for an unregistered adapter)."
   @type t :: %{optional(atom() | nil) => agent_kpi()}
@@ -102,7 +126,73 @@ defmodule Harness.AgentKPI do
       duration_ms: %{median: median(durations), p90: percentile(durations, 90)},
       tokens: token_means(records, run_count),
       review_iterations: mean(Enum.map(records, & &1.review_iterations), run_count),
+      ratings: rating_means(Enum.map(records, &record_ratings/1)),
       cost_to_green: cost_to_green(passes)
+    }
+  end
+
+  @doc """
+  Rolls records up by `reviewer_adapter` into a per-reviewer rejection ledger.
+
+  Only records the reviewer actually gated count toward the denominator —
+  `reviewer_adapter` set and a non-nil `verdict`. A reviewer's `rejection_rate`
+  is its `:reject` verdicts over those gated runs; an empty input returns `%{}`.
+  """
+  @spec aggregate_reviewer_rejections([LogRecord.t()]) :: reviewer_ledger()
+  def aggregate_reviewer_rejections(records) when is_list(records) do
+    records
+    |> Enum.filter(&reviewed?/1)
+    |> Enum.group_by(&reviewer_adapter/1)
+    |> Map.new(fn {reviewer, group} -> {reviewer, summarize_reviewer(group)} end)
+  end
+
+  @doc """
+  Means each numeric rating key across a list of the reviewer's `ratings` maps.
+
+  The reviewer's keys and scales are free-form, so every numeric-valued key is
+  meaned independently over the maps that actually carry it. Non-numeric values
+  and absent keys are ignored (never counted as `0`); no rating reported
+  returns `%{}`.
+  """
+  @spec rating_means([map()]) :: rating_means()
+  def rating_means(ratings_maps) when is_list(ratings_maps) do
+    ratings_maps
+    |> Enum.flat_map(&numeric_ratings/1)
+    |> Enum.group_by(fn {key, _value} -> key end, fn {_key, value} -> value end)
+    |> Map.new(fn {key, values} -> {key, Enum.sum(values) / length(values)} end)
+  end
+
+  @spec numeric_ratings(term()) :: [{String.t(), number()}]
+  defp numeric_ratings(map) when is_map(map) do
+    for {key, value} <- map, is_number(value), do: {to_string(key), value}
+  end
+
+  defp numeric_ratings(_other), do: []
+
+  # Tolerates a pre-rating persisted record whose term predates the field.
+  @spec record_ratings(LogRecord.t()) :: map()
+  defp record_ratings(record), do: Map.get(record, :review_ratings) || %{}
+
+  @spec reviewed?(LogRecord.t()) :: boolean()
+  defp reviewed?(record) do
+    not is_nil(reviewer_adapter(record)) and record_verdict(record) in [:approve, :reject]
+  end
+
+  @spec reviewer_adapter(LogRecord.t()) :: module() | nil
+  defp reviewer_adapter(record), do: Map.get(record, :reviewer_adapter)
+
+  @spec record_verdict(LogRecord.t()) :: atom() | nil
+  defp record_verdict(record), do: Map.get(record, :verdict)
+
+  @spec summarize_reviewer([LogRecord.t()]) :: reviewer_rejection()
+  defp summarize_reviewer(records) do
+    reviewed_count = length(records)
+    rejection_count = Enum.count(records, &(record_verdict(&1) == :reject))
+
+    %{
+      reviewed_count: reviewed_count,
+      rejection_count: rejection_count,
+      rejection_rate: rejection_count / reviewed_count
     }
   end
 

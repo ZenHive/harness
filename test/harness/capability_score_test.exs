@@ -66,6 +66,43 @@ defmodule Harness.CapabilityScoreTest do
     assert persisted == codex
   end
 
+  test "means the reviewer ratings per agent and lets them break a same-success tie", %{store: store} do
+    # Both agents pass every run with identical cost and zero reviewer fixes, so
+    # success_rate and the cost/fix tiebreakers are equal — only the reviewer's
+    # ratings can separate them.
+    comparisons = [
+      comparison("bench.otp.latch", [
+        entry(Codex, "codex-1", :approve,
+          reviewer_diff_size: 0,
+          token_usage: tokens(100, 0),
+          ratings: %{"performance" => 9, "idiom" => 9}
+        ),
+        entry(Claude, "claude-1", :approve,
+          reviewer_diff_size: 0,
+          token_usage: tokens(100, 0),
+          ratings: %{"performance" => 4, "idiom" => 4}
+        )
+      ])
+    ]
+
+    assert {:ok, scores} =
+             CapabilityScore.score_domain(comparisons, :otp,
+               corpus_version: "otp-v1",
+               scored_at: @scored_at,
+               result_store: store
+             )
+
+    codex = Enum.find(scores, &(&1.agent == :codex))
+    claude = Enum.find(scores, &(&1.agent == :claude))
+
+    assert codex.mean_ratings == %{"performance" => 9.0, "idiom" => 9.0}
+    assert claude.mean_ratings == %{"performance" => 4.0, "idiom" => 4.0}
+
+    # Equal success/cost/fix; the better-rated agent sorts higher purely on ratings.
+    assert codex.success_rate == claude.success_rate
+    assert codex.composite_score > claude.composite_score
+  end
+
   test "derives a corpus_version fingerprint from the compared task ids when none is given" do
     assert {:ok, [score]} =
              CapabilityScore.score_domain(
@@ -264,6 +301,7 @@ defmodule Harness.CapabilityScoreTest do
       reviewer_diff_size: Keyword.fetch!(opts, :reviewer_diff_size),
       duration_ms: Keyword.get(opts, :duration_ms, 100),
       agent_diff_size: nil,
+      ratings: Keyword.get(opts, :ratings, %{}),
       token_usage: Keyword.get(opts, :token_usage, TokenUsage.empty()),
       result: %RunResult{
         run_id: run_id,

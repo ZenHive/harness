@@ -5,10 +5,15 @@ defmodule Harness.Dashboard.KPILive do
   Renders `Harness.ResultStore.aggregate_by_agent/0` over every persisted run
   record as a
   sortable per-agent table: run count, success rate, first-attempt-pass rate,
-  mean repair attempts, mean tokens, and cost-to-green. This is the at-a-glance
-  *trust ledger* — the question "what is each agent's track record across all
-  runs?" answered in one view, closing the user's stated gap (we had the data via
-  `Harness.AgentKPI` but no way to see it at once).
+  mean repair attempts, mean tokens, cost-to-green, and the reviewer's mean
+  ratings. This is the at-a-glance *trust ledger* — the question "what is each
+  agent's track record across all runs?" answered in one view, closing the
+  user's stated gap (we had the data via `Harness.AgentKPI` but no way to see
+  it at once).
+
+  The reviewer-ratings columns are derived from the union of rating keys present
+  across the ledger (the reviewer's keys are free-form), so a reviewer that adds
+  a new rating dimension surfaces a new column with no code change.
 
   ## Relationship to Task 81 (`CompareLive`) — deliberate siblings
 
@@ -78,8 +83,22 @@ defmodule Harness.Dashboard.KPILive do
         _error -> []
       end
 
-    assign(socket, :rows, sort_rows(rows, socket.assigns.sort_by, socket.assigns.sort_dir))
+    socket
+    |> assign(:rows, sort_rows(rows, socket.assigns.sort_by, socket.assigns.sort_dir))
+    |> assign(:rating_keys, rating_keys(rows))
   end
+
+  # The union of rating keys across the ledger, sorted — one table column each.
+  @spec rating_keys([map()]) :: [String.t()]
+  defp rating_keys(rows) do
+    rows
+    |> Enum.flat_map(fn row -> Map.keys(row_ratings(row)) end)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  @spec row_ratings(map()) :: %{optional(String.t()) => float()}
+  defp row_ratings(row), do: Map.get(row, :ratings) || %{}
 
   @spec to_rows(AgentKPI.t()) :: [map()]
   defp to_rows(ledger) do
@@ -107,12 +126,13 @@ defmodule Harness.Dashboard.KPILive do
     Enum.sort_by(present, &sort_value(&1, key), dir) ++ missing
   end
 
-  @spec sort_value(map(), atom()) :: term()
+  @spec sort_value(map(), atom() | {:rating, String.t()}) :: term()
   defp sort_value(row, :agent), do: to_string(row.agent)
   defp sort_value(row, :tokens), do: row.tokens.total
+  defp sort_value(row, {:rating, key}), do: Map.get(row_ratings(row), key)
   defp sort_value(row, key), do: Map.fetch!(row, key)
 
-  @spec sort_key(String.t()) :: atom()
+  @spec sort_key(String.t()) :: atom() | {:rating, String.t()}
   defp sort_key("agent"), do: :agent
   defp sort_key("run_count"), do: :run_count
   defp sort_key("success_rate"), do: :success_rate
@@ -120,6 +140,7 @@ defmodule Harness.Dashboard.KPILive do
   defp sort_key("review_iterations"), do: :review_iterations
   defp sort_key("tokens"), do: :tokens
   defp sort_key("cost_to_green"), do: :cost_to_green
+  defp sort_key("rating:" <> key), do: {:rating, key}
   defp sort_key(_other), do: @default_sort
 
   @impl Phoenix.LiveView
@@ -150,6 +171,13 @@ defmodule Harness.Dashboard.KPILive do
           <.sort_th col="review_iterations" label="Reviews" sort_by={@sort_by} sort_dir={@sort_dir} />
           <.sort_th col="tokens" label="Mean tokens" sort_by={@sort_by} sort_dir={@sort_dir} />
           <.sort_th col="cost_to_green" label="Cost→green" sort_by={@sort_by} sort_dir={@sort_dir} />
+          <.sort_th
+            :for={key <- @rating_keys}
+            col={"rating:#{key}"}
+            label={rating_label(key)}
+            sort_by={@sort_by}
+            sort_dir={@sort_dir}
+          />
         </tr>
       </thead>
       <tbody>
@@ -161,6 +189,7 @@ defmodule Harness.Dashboard.KPILive do
           <td>{format_float(row.review_iterations)}</td>
           <td>{format_count(row.tokens.total)}</td>
           <td>{format_count(row.cost_to_green)}</td>
+          <td :for={key <- @rating_keys}>{format_rating(Map.get(row_ratings(row), key))}</td>
         </tr>
       </tbody>
     </table>
@@ -203,6 +232,17 @@ defmodule Harness.Dashboard.KPILive do
   @spec format_count(number() | nil) :: String.t()
   defp format_count(nil), do: "—"
   defp format_count(value), do: value |> round() |> Integer.to_string() |> delimit()
+
+  # A reviewer rating mean (e.g. 8.0); an agent never rated on this key shows a dash.
+  @spec format_rating(number() | nil) :: String.t()
+  defp format_rating(nil), do: "—"
+  defp format_rating(value), do: :erlang.float_to_binary(value / 1, decimals: 1)
+
+  # Humanize a free-form rating key for the column header (code_quality → "Code quality").
+  @spec rating_label(String.t()) :: String.t()
+  defp rating_label(key) do
+    key |> String.replace("_", " ") |> String.capitalize()
+  end
 
   # Group an integer string into thousands so a 27M-token count reads at a glance.
   @spec delimit(String.t()) :: String.t()

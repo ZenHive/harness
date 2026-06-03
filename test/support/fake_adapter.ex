@@ -112,6 +112,20 @@ defmodule Harness.FakeAdapter do
   #                             report as `audit(<short_sha>): ...` (the
   #                             audited-and-pushed fixture). Audit harness reads
   #                             the JSON best-effort and ff-pushes the commit.
+  # {:audit_capture_prompt, short_sha}
+  #                  — records the audit prompt into the committed
+  #                    `.audit/<short_sha>.md`, so a test can read the prompt
+  #                    back off origin after the ff-push (the audit-prompt
+  #                    content fixture). The prompt rides as a positional
+  #                    parameter ($2), never interpolated into the script.
+  defp command({:audit_capture_prompt, short_sha}, %Invocation{prompt: prompt}) when is_binary(short_sha) do
+    script =
+      ~S|mkdir -p .audit; printf '%s' "$2" > ".audit/$1.md"; | <>
+        ~S|git add .audit; git -c user.email=audit@fake -c user.name=fake-audit commit -q -m "audit($1): captured prompt"|
+
+    {"/bin/sh", ["-c", script, "harness-fake", short_sha, prompt], []}
+  end
+
   defp command({:audit, short_sha}, _invocation) when is_binary(short_sha) do
     script =
       ~S|mkdir -p .audit .harness; echo "clean - fake audit" > ".audit/$1.md"; | <>

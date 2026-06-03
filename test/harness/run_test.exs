@@ -386,6 +386,26 @@ defmodule Harness.RunTest do
       assert report =~ "same_family_reviewer"
     end
 
+    test "prioritize_reviewers/2 sinks a high-rejection-rate reviewer below a cleaner one" do
+      candidates = [{:codex, CodexReviewer}, {:cursor, CursorReviewer}, {:grok, GrokReviewer}]
+
+      # codex rejects freely, grok never; cursor is unmeasured (defaults 0.0).
+      rates = %{CodexReviewer => 0.8, GrokReviewer => 0.0}
+
+      ordered = Run.prioritize_reviewers(candidates, rates)
+
+      # grok (0.0) and the unmeasured cursor (0.0) keep registry order ahead of
+      # the high-rejection codex, which sinks to last.
+      assert ordered == [{:cursor, CursorReviewer}, {:grok, GrokReviewer}, {:codex, CodexReviewer}]
+    end
+
+    test "prioritize_reviewers/2 preserves registry order when there is no rejection data" do
+      candidates = [{:codex, CodexReviewer}, {:cursor, CursorReviewer}]
+
+      # Empty rates → every candidate defaults to 0.0 → stable sort is a no-op.
+      assert Run.prioritize_reviewers(candidates, %{}) == candidates
+    end
+
     test "a reviewer-ineligible agent is never auto-selected as the gate (Task 182)" do
       # A cross-family reviewer is normally auto-selected from the registry;
       # marking every agent reviewer-ineligible removes them all and settles

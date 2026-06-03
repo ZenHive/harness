@@ -37,21 +37,24 @@ defmodule Harness.ResultStore.KPIParityTest do
         verdict: :approve,
         review_iterations: 0,
         duration_ms: 100,
-        token_usage: tokens(100, 50)
+        token_usage: tokens(100, 50),
+        review_ratings: %{"performance" => 8, "idiom" => 6}
       ),
       record("parity-c2",
         agent: :claude,
         verdict: :reject,
         review_iterations: 1,
         duration_ms: 300,
-        token_usage: tokens(100, 50)
+        token_usage: tokens(100, 50),
+        review_ratings: %{"performance" => 6, "idiom" => 10}
       ),
       record("parity-x1",
         agent: :codex,
         verdict: :approve,
         review_iterations: 0,
         duration_ms: 50,
-        token_usage: tokens(1000, 500)
+        token_usage: tokens(1000, 500),
+        review_ratings: %{"performance" => 9}
       )
     ]
 
@@ -119,6 +122,12 @@ defmodule Harness.ResultStore.KPIParityTest do
     assert_in_delta(a.tokens.output, b.tokens.output, 1.0e-9)
     assert_in_delta(a.tokens.total, b.tokens.total, 1.0e-9)
     assert_in_delta(a.review_iterations, b.review_iterations, 1.0e-9)
+
+    assert a.ratings |> Map.keys() |> Enum.sort() == b.ratings |> Map.keys() |> Enum.sort()
+
+    for key <- Map.keys(a.ratings) do
+      assert_in_delta(a.ratings[key], b.ratings[key], 1.0e-9)
+    end
 
     case {a.cost_to_green, b.cost_to_green} do
       {nil, nil} -> :ok

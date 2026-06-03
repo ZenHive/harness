@@ -231,7 +231,10 @@ defmodule Harness.ResultStore.Postgres do
           "coalesce((?->>'total')::float, 0)"
           |> fragment(r.token_usage)
           |> avg()
-          |> filter(r.verdict == "approve")
+          |> filter(r.verdict == "approve"),
+        # Collect each run's ratings jsonb; the per-key means are computed in
+        # Elixir (AgentKPI.rating_means) so File and Postgres share the rollup.
+        ratings: fragment("array_agg(?)", r.review_ratings)
       }
   end
 
@@ -255,6 +258,7 @@ defmodule Harness.ResultStore.Postgres do
           total: float_or_zero(row.total_mean)
         },
         review_iterations: float_or_zero(row.review_iterations_mean),
+        ratings: AgentKPI.rating_means(row.ratings || []),
         cost_to_green: cost_to_green
       }
 

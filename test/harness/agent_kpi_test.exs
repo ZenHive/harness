@@ -197,6 +197,70 @@ defmodule Harness.AgentKPITest do
     end
   end
 
+  describe "aggregate/1 reviewer ratings" do
+    test "means each numeric rating key per agent over the records that report it" do
+      records = [
+        record(agent: :claude, verdict: :approve, review_ratings: %{"performance" => 8, "idiom" => 6}),
+        record(agent: :claude, verdict: :approve, review_ratings: %{"performance" => 6, "idiom" => 10}),
+        # A record that never reached review contributes no ratings — absent keys
+        # are not counted as 0.
+        record(agent: :claude, verdict: nil, review_ratings: %{})
+      ]
+
+      ratings = AgentKPI.aggregate(records)[:claude].ratings
+
+      assert ratings == %{"performance" => 7.0, "idiom" => 8.0}
+    end
+
+    test "ignores non-numeric rating values and absent keys, never coercing to 0" do
+      records = [
+        record(agent: :codex, verdict: :approve, review_ratings: %{"performance" => 9, "notes" => "great"}),
+        record(agent: :codex, verdict: :approve, review_ratings: %{"performance" => 7})
+      ]
+
+      ratings = AgentKPI.aggregate(records)[:codex].ratings
+
+      # "notes" (string) is dropped; "performance" means the two numbers it has.
+      assert ratings == %{"performance" => 8.0}
+    end
+
+    test "an agent with no ratings reports an empty map, not a crash" do
+      assert AgentKPI.aggregate([record(agent: :grok, verdict: :approve)])[:grok].ratings == %{}
+    end
+  end
+
+  describe "aggregate_reviewer_rejections/1" do
+    test "rejection rate is keyed by reviewer_adapter over gated runs only" do
+      records = [
+        # Claude reviewed 4 runs, rejecting 1.
+        record(reviewer_adapter: ClaudeReviewer, verdict: :approve),
+        record(reviewer_adapter: ClaudeReviewer, verdict: :approve),
+        record(reviewer_adapter: ClaudeReviewer, verdict: :approve),
+        record(reviewer_adapter: ClaudeReviewer, verdict: :reject),
+        # Codex reviewed 2, rejecting both.
+        record(reviewer_adapter: CodexReviewer, verdict: :reject),
+        record(reviewer_adapter: CodexReviewer, verdict: :reject),
+        # A run that never reached a reviewer (no adapter, nil verdict) is not gated.
+        record(reviewer_adapter: nil, verdict: nil)
+      ]
+
+      ledger = AgentKPI.aggregate_reviewer_rejections(records)
+
+      assert ledger[ClaudeReviewer] == %{reviewed_count: 4, rejection_count: 1, rejection_rate: 0.25}
+      assert ledger[CodexReviewer] == %{reviewed_count: 2, rejection_count: 2, rejection_rate: 1.0}
+      refute Map.has_key?(ledger, nil)
+    end
+
+    test "empty input returns an empty ledger" do
+      assert AgentKPI.aggregate_reviewer_rejections([]) == %{}
+    end
+
+    test "rating_means/1 is reusable over a bare list of ratings maps" do
+      assert AgentKPI.rating_means([%{"a" => 2}, %{"a" => 4, "b" => 10}]) == %{"a" => 3.0, "b" => 10.0}
+      assert AgentKPI.rating_means([]) == %{}
+    end
+  end
+
   describe "aggregate/1 reviewer-fixed vs first-try" do
     test "first_attempt_pass_rate separates a first-try agent from one whose reviewer always fixes" do
       records = [

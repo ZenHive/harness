@@ -16,6 +16,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.Roadmap.Item
+  alias Harness.Run.LogRecord
 
   @run_timeout_ms 30_000
   @terminal_linger_ms 100
@@ -244,7 +245,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
       }
 
     record =
-      %Harness.Run.LogRecord{
+      %LogRecord{
         batch_id: batch_id,
         run_id: "run-tok",
         task_id: "t",
@@ -271,6 +272,45 @@ defmodule Harness.Batch.AgentEvaluationTest do
 
     # The persisted record's measured usage wins over the live result's.
     assert usage == %Harness.TokenUsage{input: 500, output: 120, total: 620}
+  end
+
+  test "from_batch surfaces the reviewer's ratings from the persisted record" do
+    store = file_store()
+    batch_id = batch_id()
+
+    result = %Harness.Run.Result{run_id: "run-rate", task_id: "t", state: :done, reason: :approved}
+
+    record =
+      %LogRecord{
+        batch_id: batch_id,
+        run_id: "run-rate",
+        task_id: "t",
+        adapter: GoodAdapter,
+        state: :done,
+        reason: :approved,
+        verdict: :approve,
+        duration_ms: 10,
+        review_ratings: %{"performance" => 8, "idiom" => 7}
+      }
+
+    :ok = Harness.ResultStore.record_run(record, store)
+
+    batch = %Result{batch_id: batch_id, total: 1, max_concurrency: 1, results: [result], events: []}
+
+    comparison = AgentEvaluation.from_batch(batch, [GoodAdapter], store)
+    [%Entry{ratings: ratings}] = comparison.entries
+
+    assert ratings == %{"performance" => 8, "idiom" => 7}
+  end
+
+  test "from_batch defaults ratings to an empty map when no record is stored" do
+    result = %Harness.Run.Result{run_id: "run-norate", task_id: "t", state: :done, reason: :approved}
+    batch = %Result{batch_id: "no-store", total: 1, max_concurrency: 1, results: [result], events: []}
+
+    comparison = AgentEvaluation.from_batch(batch, [GoodAdapter], false)
+    [%Entry{ratings: ratings}] = comparison.entries
+
+    assert ratings == %{}
   end
 
   test "from_batch falls back to the result's token usage when no record is stored" do
