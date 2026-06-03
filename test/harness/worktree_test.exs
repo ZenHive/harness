@@ -375,6 +375,42 @@ defmodule Harness.WorktreeTest do
     end
   end
 
+  describe "cleanup_for_run/2" do
+    test "removes the worktree directory and branch a non-live run left behind" do
+      {repo, wt} = create_worktree()
+
+      assert :ok = Worktree.cleanup_for_run(repo, wt.id)
+
+      refute File.dir?(wt.path)
+      assert GitFixture.git!(repo, ["branch", "--list", wt.branch]) == ""
+    end
+
+    test "refuses to touch a live run's worktree and branch" do
+      {repo, wt} = create_worktree()
+
+      # A live gen_statem registers under Harness.Run.Registry keyed by run id.
+      # cleanup_for_run must read that as "owned by a live process" and refuse —
+      # the 2026-06-03 job-118 case, where a retry's cleanup destroyed the live
+      # run's checkout mid-review (→ {:worktree_missing} at :reviewing).
+      parent = self()
+
+      live =
+        spawn(fn ->
+          {:ok, _} = Registry.register(Harness.Run.Registry, wt.id, nil)
+          send(parent, :registered)
+          Process.sleep(:infinity)
+        end)
+
+      assert_receive :registered
+      on_exit(fn -> Process.exit(live, :kill) end)
+
+      assert :ok = Worktree.cleanup_for_run(repo, wt.id)
+
+      assert File.dir?(wt.path)
+      assert GitFixture.git!(repo, ["branch", "--list", wt.branch]) =~ wt.branch
+    end
+  end
+
   describe "retained?/1" do
     test "is false for a fresh worktree, true once retained" do
       {_repo, wt} = create_worktree()

@@ -47,10 +47,18 @@ defmodule Harness.Worktree do
   alias Harness.Git
   alias Harness.Project
 
+  require Logger
+
   @branch_prefix "harness/"
   @active_marker ".harness-active"
   @retained_marker ".harness-retained"
   @default_base_dir "~/_DATA/worktrees/.harness"
+
+  # The Registry every live Harness.Run gen_statem registers under (keyed by
+  # run_id). `cleanup_for_run/2` consults it as the mechanical liveness signal —
+  # a run_id present here owns a live process, so its worktree+branch must never
+  # be torn down out from under it.
+  @run_registry Harness.Run.Registry
 
   # The run-local agent-artifact directory (`.harness/review.json`,
   # `.harness/audit.json`). Verdict artifacts are read by harness mechanically
@@ -418,11 +426,34 @@ defmodule Harness.Worktree do
   never called on a settled run — settled failures retain their worktrees (and
   always their branches) for salvage by design.
 
+  ## Liveness guard
+
+  A second Oban attempt can re-run while the FIRST attempt's gen_statem is still
+  alive (an `:already_started` registry collision). Tearing down then would
+  destroy a live run's worktree+branch mid-flight (the 2026-06-03 job-118
+  live-destruction case → `{:worktree_missing}` at `:reviewing`). So this refuses
+  outright when `run_id` is still registered in `Harness.Run.Registry`: a live
+  run owns its checkout, and no retry/rescue path may reap it.
+
   Idempotent and best-effort: every step tolerates "already gone", and a git
   failure on one step never prevents the others. Always returns `:ok`.
   """
   @spec cleanup_for_run(String.t(), String.t()) :: :ok
   def cleanup_for_run(repo, run_id) when is_binary(repo) and is_binary(run_id) do
+    if live_run?(run_id) do
+      Logger.warning(
+        "Harness.Worktree.cleanup_for_run refused for live run #{run_id}: " <>
+          "gen_statem still registered; leaving its worktree and branch intact."
+      )
+
+      :ok
+    else
+      do_cleanup_for_run(repo, run_id)
+    end
+  end
+
+  @spec do_cleanup_for_run(String.t(), String.t()) :: :ok
+  defp do_cleanup_for_run(repo, run_id) do
     branch = @branch_prefix <> run_id
 
     Enum.each(worktree_paths_for_branch(repo, branch), fn path ->
@@ -432,6 +463,17 @@ defmodule Harness.Worktree do
     _ = Git.run(["worktree", "prune"], repo)
     _ = Git.run(["branch", "-D", branch], repo)
     :ok
+  end
+
+  # Mechanical liveness signal: a run_id registered in Harness.Run.Registry owns
+  # a live gen_statem. Guarded against the registry being unstarted (no live runs
+  # ⇒ false) so cleanup never crashes on a bare unit boot.
+  @spec live_run?(String.t()) :: boolean()
+  defp live_run?(run_id) do
+    case Process.whereis(@run_registry) do
+      nil -> false
+      _pid -> Registry.lookup(@run_registry, run_id) != []
+    end
   end
 
   # Parses `git worktree list --porcelain` into the working-directory paths

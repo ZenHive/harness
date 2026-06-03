@@ -7224,7 +7224,8 @@
         "A settled :failed run (reject or review_stuck) results in the Oban job reaching a terminal non-retry state (cancelled/discarded) even when run teardown kills linked processes - no re-dispatch of the same task",
         "Identify and sever whatever link path lets the run-teardown :killed reach the Oban worker task (decouple the worker's await from the run's kill blast radius, e.g. trap/convert the kill to {:cancel}, or stop subscribing via a linked pid), or guard the worker so a post-settle kill cannot override an already-determined {:cancel}",
         "max_attempts for dispatch jobs reflects crash-only intent (a settled failure never retries; only genuine pre-settle crashes do, bounded by @max_mechanical_attempts)",
-        "Regression test: a run that settles :failed while its teardown brutally kills a monitored/linked helper process yields a cancelled Oban job and exactly one run record - no second attempt"
+        "Regression test: a run that settles :failed while its teardown brutally kills a monitored/linked helper process yields a cancelled Oban job and exactly one run record - no second attempt",
+        "cleanup_for_run/2 (and the orphan-rescue/retry path that invokes it) refuses to remove the worktree+branch of a run_id whose gen_statem is still alive - a live run_id is never cleaned; regression test: invoking the retry/rescue cleanup against a live run leaves its worktree+branch intact (the 2026-06-03 job-118 live-worktree-destruction case)"
       ],
       "out_of_scope": [
         "The reviewer-not-writing-review.json root cause (separate task)",
@@ -7240,7 +7241,7 @@
         "lib/harness/run/supervisor.ex",
         "lib/harness/oban.ex"
       ],
-      "body": "Discovered 2026-06-03 by the first live dogfood dispatch (rmap task 42, Oban job 115). worker.ex:149 maps a settled %Result{state: :failed} to {:cancel, reason} so a rejected/review_stuck run discards the Oban job WITHOUT retry (crash-only design). But the run is started under RunSupervisor (DynamicSupervisor) and the worker only Process.monitor/1's it, yet on run teardown the run kills its linked MCP-transport/port processes with :killed (observed: 5x 'MCP transport details: %{reason: :killed}' at the exact instant the worker died), and that :killed propagated to the Oban worker task as '(EXIT from #PID<...>) killed' BEFORE result_to_oban could return {:cancel}. Oban cannot distinguish that kill from a genuine crash, so it recorded a job error and retried. With Oban.Worker max_attempts: 20 (worker.ex:6), one stuck review re-dispatched the entire ~16-min / ~5M-token claude run; run-1780488946905-b4d8528e settled :review_stuck, then attempt 3 (run-1780489665468-c6c70259) re-ran task 42 from scratch, blind. EVIDENCE: run_records row for run-1780488946905-b4d8528e shows state=failed, reason={:review_stuck,...}, agent_outcome_kind={:timed_out,:idle}, duration_ms=949457; Oban job 115 errors=[{attempt:2, error: '** (EXIT from #PID<0.754.0>) killed'}]. This is the mechanical-substrate defect class the agent-gate explicitly owns (kill propagation / Oban retry arithmetic), NOT a judgment call. Note @max_mechanical_attempts caps SETUP-failure retries via setup_failure_disposition, but an in-perform process kill bypasses that path and falls to raw Oban max_attempts.",
+      "body": "Discovered 2026-06-03 by the first live dogfood dispatch (rmap task 42, Oban job 115). worker.ex:149 maps a settled %Result{state: :failed} to {:cancel, reason} so a rejected/review_stuck run discards the Oban job WITHOUT retry (crash-only design). But the run is started under RunSupervisor (DynamicSupervisor) and the worker only Process.monitor/1's it, yet on run teardown the run kills its linked MCP-transport/port processes with :killed (observed: 5x 'MCP transport details: %{reason: :killed}' at the exact instant the worker died), and that :killed propagated to the Oban worker task as '(EXIT from #PID<...>) killed' BEFORE result_to_oban could return {:cancel}. Oban cannot distinguish that kill from a genuine crash, so it recorded a job error and retried. With Oban.Worker max_attempts: 20 (worker.ex:6), one stuck review re-dispatched the entire ~16-min / ~5M-token claude run; run-1780488946905-b4d8528e settled :review_stuck, then attempt 3 (run-1780489665468-c6c70259) re-ran task 42 from scratch, blind. EVIDENCE: run_records row for run-1780488946905-b4d8528e shows state=failed, reason={:review_stuck,...}, agent_outcome_kind={:timed_out,:idle}, duration_ms=949457; Oban job 115 errors=[{attempt:2, error: '** (EXIT from #PID<0.754.0>) killed'}]. This is the mechanical-substrate defect class the agent-gate explicitly owns (kill propagation / Oban retry arithmetic), NOT a judgment call. Note @max_mechanical_attempts caps SETUP-failure retries via setup_failure_disposition, but an in-perform process kill bypasses that path and falls to raw Oban max_attempts. SECOND MANIFESTATION (2026-06-03, Oban job 118, run-1780493075738-47851ce5, task 183 smoke test) — WORSE than a wasteful retry: a retry/rescue invocation ran Worktree.cleanup_for_run/2 (worktree.ex:424, the ONLY git-branch deleter in the codebase: `git worktree remove --force` + `git branch -D`) against a STILL-LIVE run, destroying its worktree dir AND harness/<run-id> branch mid-flight. Codex implemented cleanly (14-line diff, mix precommit green=1229 passed, exit 0) and the run reached :reviewing with Cursor correctly auto-selected (Pi-exclusion working); the reviewer's Driver.run then hit {:worktree_missing} -> {:review_stuck, 'Reviewer failed to run'}, and terminal retain failed with {:marker_write_failed, .harness-retained, :enoent} (dir already gone). RULED OUT: codex's own 20 commands (none deleted the worktree), and the full test suite (worktree/sweeper tests are GitFixture-isolated to temp repos, never the real checkout). So the deleter is harness runtime; cleanup_for_run is the unique dir+branch deleter. worker.ex cleanup_prior_attempt only calls it on a {:start_run_failed,_} prior reason and THIS run's start_run succeeded — so the trigger is a separate attempt/orphan-rescue re-attempting job 118 while attempt-1's gen_statem was still alive (suspects: oban.ex rescue_orphaned_run_jobs / rescue_executing_run_jobs, oban.ex:147/225). ADDED INVARIANT: cleanup_for_run (and any retry/rescue) MUST refuse to act on a run_id whose gen_statem is still alive (liveness-check RunSupervisor/Registry before remove+branch-delete); and a one-shot Dispatch.task should not ride the 20-attempt retry path at all.",
       "created_at": "2026-06-03",
       "scored_at": "2026-06-03",
       "cross_repo": []
@@ -7323,6 +7324,33 @@
       ],
       "body": "User-requested 2026-06-03 during the first live dogfood session. Make reviewer selection operator-configurable from the dashboard settings page instead of code/config. Today select_reviewer/1 (lib/harness/run.ex) auto-picks the first dispatchable cross-family agent, gated by reviewer_dispatchable? = available? and installed? and reviewer_enabled?; reviewer_enabled? currently reuses the GLOBAL AgentSettings.enabled? flag, which conflates 'can implement' with 'can review'. The immediate need (exclude Pi as reviewer until OSS models are stronger) shipped as a stopgap static config (config :harness, :reviewer_exclude, default [:pi]) read in run.ex - this task replaces that stopgap with a persisted, UI-editable per-agent setting. DESIGN: add a distinct reviewer_eligible?/1 + set_reviewer_eligible/2 to Harness.Agent.Settings (so an agent like Pi can stay enabled as an implementer while being ineligible as a reviewer); seed defaults from the :reviewer_exclude config so existing behavior is preserved (pi ineligible by default); have reviewer_dispatchable?/explicit path consult reviewer_eligible? instead of (or in addition to) the static exclude; render a per-agent matrix on SettingsLive with two columns - 'enabled (implementer)' and 'eligible (reviewer)'. Persisted via the agent settings store (coordinate with Task 165's settings-store consolidation - the eligibility flag should live wherever agent settings land). Handbuild (LiveView/settings UI per the dogfooding UI rule).",
       "created_at": "2026-06-03",
+      "scored_at": "2026-06-03",
+      "cross_repo": []
+    },
+    {
+      "id": "183",
+      "phase": 15,
+      "bundle": "agent-gate",
+      "status": "in_progress",
+      "title": "Smoke test (throwaway): add Harness.LineBuffer.empty?/1 predicate + test",
+      "scores": {
+        "d": 1,
+        "b": 1,
+        "u": 1
+      },
+      "eff": 1.0,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "`Harness.LineBuffer.empty?/1` exists with an `@spec` and a `@doc`.",
+        "New ExUnit assertions cover both the empty and non-empty buffer cases.",
+        "`mix precommit` passes clean (format, compile --warnings-as-errors, credo --strict, doctor, test, sobelow)."
+      ],
+      "body": "THROWAWAY agent-gate smoke-test payload — exists only to exercise the live dispatch -> implementer -> reviewer -> verdict loop end to end with a real, reviewable diff. Will be superseded once the run settles; the work is NOT expected to land (project landing_policy is :manual). Keep the change minimal and self-contained.\n\nAdd a small, spec'd convenience predicate to `lib/harness/line_buffer.ex`:\n\n    @spec empty?(binary()) :: boolean()\n    def empty?(buffer) when is_binary(buffer), do: buffer == \"\"\n\nIt reports whether the line buffer currently holds a pending partial line (i.e. whether `take_remainder/1` would yield no trailing fragment). Add a one-line `@doc` (no IO in examples; a doctest is fine since this is pure and API-shape only). Add focused ExUnit assertions in `test/harness/line_buffer_test.exs` covering the empty (`true`) and non-empty (`false`) cases.\n",
+      "created_at": "2026-06-03",
+      "started_at": "2026-06-03",
       "scored_at": "2026-06-03",
       "cross_repo": []
     }

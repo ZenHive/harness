@@ -90,10 +90,25 @@ defmodule Harness.Run.Worker do
     attempt = max(job.attempt || 1, 1)
 
     cond do
+      duplicate_run_reason?(reason) -> {:cancel, duplicate_cancel_reason(reason)}
       malformed_job_reason?(reason) -> {:cancel, reason}
       attempt >= @max_mechanical_attempts -> {:cancel, {:mechanical_retry_exhausted, reason}}
       true -> retry_mechanical_failure(reason, job, attempt)
     end
+  end
+
+  # An `:already_started` registry collision means a PRIOR attempt's run for this
+  # run_id is still live — this re-attempt is a duplicate, not a setup failure.
+  # Cancel it terminally (off the snooze/retry path) and never run cleanup: the
+  # live run owns its worktree+branch and settles on its own (the 2026-06-03
+  # job-118 case, where the retry's cleanup destroyed the live run's checkout).
+  @spec duplicate_run_reason?(term()) :: boolean()
+  defp duplicate_run_reason?({:start_run_failed, {:already_started, _pid}}), do: true
+  defp duplicate_run_reason?(_reason), do: false
+
+  @spec duplicate_cancel_reason(term()) :: {:duplicate_run_in_flight, pid()}
+  defp duplicate_cancel_reason({:start_run_failed, {:already_started, pid}}) do
+    {:duplicate_run_in_flight, pid}
   end
 
   @spec malformed_job_reason?(term()) :: boolean()

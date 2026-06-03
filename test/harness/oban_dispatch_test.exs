@@ -566,6 +566,39 @@ defmodule Harness.ObanDispatchTest do
     assert status.reason == {:run_crashed, :boom}
   end
 
+  test "worker cancels a duplicate re-attempt while the run is in flight, off the retry/cleanup path" do
+    project = ProjectFixture.from_repo("/tmp/harness-worker", name: "dup-project")
+    assert :ok = ProjectRegistry.register(project)
+
+    Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts -> {:ok, item("180", :claude)} end)
+    Application.put_env(:harness, :roadmap_mark_in_progress, fn _item, _project -> :ok end)
+    on_exit(fn -> Application.delete_env(:harness, :roadmap_mark_in_progress) end)
+
+    # A prior attempt's run for this run_id is still alive, so start_run collides
+    # on the {:via, Registry, ...} registration: DynamicSupervisor.start_child
+    # returns {:error, {:already_started, pid}} (the 2026-06-03 job-118 case).
+    live = spawn(fn -> Process.sleep(:infinity) end)
+    on_exit(fn -> Process.exit(live, :kill) end)
+
+    Application.put_env(:harness, :run_starter, fn %Item{} = _item, _project, _adapter, _opts ->
+      {:error, {:already_started, live}}
+    end)
+
+    # Cancelled terminally as a duplicate — NOT snoozed onto the mechanical-retry
+    # path, which would run cleanup_for_run and destroy the LIVE run's worktree.
+    assert {:cancel, {:duplicate_run_in_flight, ^live}} =
+             Worker.perform(%Oban.Job{
+               id: 180,
+               attempt: 1,
+               args: %{
+                 "project_name" => "dup-project",
+                 "item_id" => "180",
+                 "adapter_module" => "Elixir.Harness.AgentAdapter.Claude",
+                 "run_id" => "run-dup-180"
+               }
+             })
+  end
+
   test "worker cancels loudly for invalid job arguments" do
     assert {:cancel, {:missing_arg, "item_id"}} =
              Worker.perform(%Oban.Job{args: %{"project_name" => "missing-item"}})
