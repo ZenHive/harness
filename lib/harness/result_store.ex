@@ -177,7 +177,7 @@ defmodule Harness.ResultStore do
   # MCP/chat tool list. delete_run is dashboard-operator cleanup (the run-history
   # Delete button calls it directly); keep it off the agent surface until an
   # orchestrator use case asks for it (then it's a one-line api/3 add).
-  @doc "Deletes one persisted run record by id. Idempotent — an absent record returns :ok."
+  @doc false
   @spec delete_run(String.t(), store()) :: :ok | {:error, term()}
   def delete_run(run_id, store \\ configured())
 
