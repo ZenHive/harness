@@ -6009,7 +6009,7 @@ shipped_in = "d23e6f2"
 id = "200"
 phase = 16
 bundle = "resilience"
-status = "in_progress"
+status = "done"
 title = "Bound spawned-run process memory: kill a run whose agent/check_command process tree runs away (it OOM'd the host twice)"
 scores = { d = 4, b = 5, u = 5 }
 acceptance_criteria = ["A per-run memory watchdog samples the resident memory of the spawned process GROUP (the Port'd agent CLI + all descendants, including the check_command mix it runs) and force-kills the whole tree + fails the run when it crosses a configurable threshold (sensible default, e.g. a few GB).",
@@ -6035,15 +6035,19 @@ Task: bound the memory of the spawned run process tree so a runaway agent/check_
 
 Mechanical substrate only — sample/threshold/kill of spawned OS processes. No judgment in code, no output parsing, no change to the reviewer verdict contract. Not capping the harness node's own heap (it was fine). Fits phase 16 / resilience.
 """
+implemented = "Per-run memory watchdog: new Harness.Run.MemoryGuard (ps-based tree RSS sample + whole-tree SIGKILL reap, since Ports have no process group and macOS lacks setsid). Run arms a named {:timeout, :mem_sample} generic timeout (default 6GiB/5s, configurable per-run + app env), samples both agent and reviewer trees, and on breach kills the tree before port teardown and settles :failed {:memory_runaway, %{role, os_pid, rss_kb, threshold_kb}}. Aggregate ceiling (sum of project_<name> Oban queue limits) documented in MemoryGuard moduledoc. 7 new tests; reviewer-gate contract untouched."
+delivered_by = "claude"
 created_at = "2026-06-04"
 started_at = "2026-06-04"
 scored_at = "2026-06-04"
+done_at = "2026-06-04"
+shipped_in = "ecc4ca3"
 
 [[task]]
 id = "201"
 phase = 16
 bundle = "resilience"
-status = "pending"
+status = "done"
 title = "Reorder terminate_reviewer/terminate_agent before cancel_task in the general cancel/lifetime/fail handlers"
 scores = { d = 2, b = 3, u = 3 }
 markers = ["bug"]
@@ -6055,8 +6059,12 @@ assignee = "claude"
 body = """
 Discovered in the Task 199 reviewing-watchdog audit (.audit/d23e6f2-task-199-reviewing-watchdog.md, finding #3 remainder). fail_review_stuck/2 was reordered to terminate the reviewer before cancel_task, but the general cancel/lifetime/fail handlers (run.ex ~1041/1072/1102) still run cancel_task(data.task) before terminate_reviewer/terminate_agent. Closing the task that owns the Port first can reap/race the stored os_pid. Benign in practice (kill dead/own pid), but the consistent ordering is terminate-then-cancel. Same pattern affects the implementer terminate_agent path.
 """
+implemented = "Reordered terminate_agent/terminate_reviewer before cancel_task in do_cancel/3, force_settle_lifetime/1, and fail/2 so the adapter SIGKILLs the captured os_pid while its Port is still open, matching the already-fixed fail_review_stuck/fail_memory_runaway order. Regression test cancels mid-:reviewing with a real pid-writing reviewer and asserts the reviewer's spawned tree is reaped (not orphaned). Behavior-neutral consistency fix; precommit.full green."
+delivered_by = "claude"
 created_at = "2026-06-04"
 scored_at = "2026-06-04"
+done_at = "2026-06-04"
+shipped_in = "ab93c3f"
 
 [[task]]
 id = "202"

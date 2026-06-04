@@ -8088,7 +8088,7 @@
       "id": "200",
       "phase": 16,
       "bundle": "resilience",
-      "status": "in_progress",
+      "status": "done",
       "title": "Bound spawned-run process memory: kill a run whose agent/check_command process tree runs away (it OOM'd the host twice)",
       "scores": {
         "d": 4,
@@ -8126,17 +8126,21 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "ecc4ca3",
       "body": "On 2026-06-04 the laptop crashed twice (13:10 kernel watchdog panic — watchdogd starved; 13:48 second reboot after a 13:41 JetsamEvent/OOM with ~93 MB free).\n\nCORRECTED root cause (process-level inspection, not just the jetsam snapshot):\n- PID 48366 = the harness node (owns port 4018, cwd = main checkout). CALM at 30 MB. Not the culprit.\n- PID 16184 = a `mix` beam running INSIDE a run worktree (…/worktrees/.harness/onchain/run-1780547484818-438b5f97) — i.e. the reviewer's `check_command` for that onchain run — runaway at 12–27 GB. THIS is the OOM that panicked the laptop twice.\n\nSo it is NOT the harness node's own heap and NOT raw-transcript passthrough. The reviewer AI runs the target project's `check_command` itself; harness Ports the agent CLI (lib/harness/agent_adapter/os_process.ex), the agent runs `mix …` as its own child, and that grandchild process leaked/blew up to tens of GB with nothing bounding it. Harness spawns the tree but never limits its memory — a single misbehaving project check (here an \"onchain\" project's mix task) takes down the whole host.\n\nTask: bound the memory of the spawned run process tree so a runaway agent/check_command can't OOM the host.\n1. Per-run memory watchdog (mechanical, alongside the existing run timeout watchdog in lib/harness/run.ex): periodically sample the resident memory of the spawned process GROUP (Port'd agent CLI + all descendants) and, past a configurable threshold (a few GB default), force-kill the entire tree and settle the run :failed with a clear reason.\n2. Make the spawn killable as a group: ensure os_process.ex spawns the agent in its own process group / records the pid so the watchdog can reap the WHOLE descendant tree (a leaked grandchild mix/beam.smp must not orphan-survive the kill).\n3. Bound aggregate pressure: document the effective concurrency ceiling (sum of per-project Oban queue limits) and/or hold new dispatch under high host memory pressure.\n\nMechanical substrate only — sample/threshold/kill of spawned OS processes. No judgment in code, no output parsing, no change to the reviewer verdict contract. Not capping the harness node's own heap (it was fine). Fits phase 16 / resilience.\n",
       "created_at": "2026-06-04",
       "started_at": "2026-06-04",
+      "done_at": "2026-06-04",
       "scored_at": "2026-06-04",
+      "implemented": "Per-run memory watchdog: new Harness.Run.MemoryGuard (ps-based tree RSS sample + whole-tree SIGKILL reap, since Ports have no process group and macOS lacks setsid). Run arms a named {:timeout, :mem_sample} generic timeout (default 6GiB/5s, configurable per-run + app env), samples both agent and reviewer trees, and on breach kills the tree before port teardown and settles :failed {:memory_runaway, %{role, os_pid, rss_kb, threshold_kb}}. Aggregate ceiling (sum of project_<name> Oban queue limits) documented in MemoryGuard moduledoc. 7 new tests; reviewer-gate contract untouched.",
+      "delivered_by": "claude",
       "cross_repo": []
     },
     {
       "id": "201",
       "phase": 16,
       "bundle": "resilience",
-      "status": "pending",
+      "status": "done",
       "title": "Reorder terminate_reviewer/terminate_agent before cancel_task in the general cancel/lifetime/fail handlers",
       "scores": {
         "d": 2,
@@ -8164,9 +8168,13 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "ab93c3f",
       "body": "Discovered in the Task 199 reviewing-watchdog audit (.audit/d23e6f2-task-199-reviewing-watchdog.md, finding #3 remainder). fail_review_stuck/2 was reordered to terminate the reviewer before cancel_task, but the general cancel/lifetime/fail handlers (run.ex ~1041/1072/1102) still run cancel_task(data.task) before terminate_reviewer/terminate_agent. Closing the task that owns the Port first can reap/race the stored os_pid. Benign in practice (kill dead/own pid), but the consistent ordering is terminate-then-cancel. Same pattern affects the implementer terminate_agent path.\n",
       "created_at": "2026-06-04",
+      "done_at": "2026-06-04",
       "scored_at": "2026-06-04",
+      "implemented": "Reordered terminate_agent/terminate_reviewer before cancel_task in do_cancel/3, force_settle_lifetime/1, and fail/2 so the adapter SIGKILLs the captured os_pid while its Port is still open, matching the already-fixed fail_review_stuck/fail_memory_runaway order. Regression test cancels mid-:reviewing with a real pid-writing reviewer and asserts the reviewer's spawned tree is reaped (not orphaned). Behavior-neutral consistency fix; precommit.full green.",
+      "delivered_by": "claude",
       "cross_repo": []
     },
     {
