@@ -29,6 +29,7 @@ defmodule Harness.Dashboard.ConfigInspector do
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
+  alias Harness.SettingsStore
 
   @type provenance :: :default | :config | :env
 
@@ -87,11 +88,16 @@ defmodule Harness.Dashboard.ConfigInspector do
          field("backend", fn -> store_part(:backend) end, nil, ResultStore.File, format: &inspect/1),
          field("root", fn -> store_part(:root) end, nil, Path.expand("~/.harness/results"))
        ]},
+      {"Settings store",
+       [
+         field("backend", fn -> settings_store_part(:backend) end, nil, settings_store_default(:backend),
+           format: &inspect/1
+         ),
+         field("root", fn -> settings_store_part(:root) end, nil, settings_store_default(:root))
+       ]},
       {"Paths",
        [
          field("chat_store root", fn -> kw(:chat_store, :root, nil) end, nil, Path.expand("~/.harness/chats")),
-         field("agent_settings root", fn -> settings_root(:agent_settings) end, nil, harness_root()),
-         field("cron_settings root", fn -> settings_root(:cron_settings) end, nil, harness_root()),
          field(
            "project cache_root",
            fn -> kw(:project, :cache_root, nil) end,
@@ -219,15 +225,6 @@ defmodule Harness.Dashboard.ConfigInspector do
     :harness |> Application.get_env(Harness.Repo, []) |> Keyword.get(key)
   end
 
-  # A store root configured as `false`/`nil` means persistence is off.
-  @spec settings_root(atom()) :: term()
-  defp settings_root(group) do
-    case Application.get_env(:harness, group, []) do
-      list when is_list(list) -> Keyword.get(list, :root)
-      _disabled -> "disabled"
-    end
-  end
-
   # Shared default root for the on-disk settings stores.
   @spec harness_root() :: String.t()
   defp harness_root, do: Path.expand("~/.harness")
@@ -246,6 +243,34 @@ defmodule Harness.Dashboard.ConfigInspector do
       {_module, opts} -> Keyword.get(opts, :root)
       _disabled -> "disabled"
     end
+  end
+
+  # `SettingsStore.configured/0` is `{module, opts}`, chosen from repo_enabled
+  # unless explicitly overridden. Postgres has no path; it lives in the
+  # harness_settings table.
+  @spec settings_store_part(:backend | :root) :: term()
+  defp settings_store_part(:backend) do
+    case SettingsStore.configured() do
+      {module, _opts} -> module
+      _disabled -> "disabled"
+    end
+  end
+
+  defp settings_store_part(:root) do
+    case SettingsStore.configured() do
+      {SettingsStore.File, opts} -> Keyword.get(opts, :root, harness_root())
+      {SettingsStore.Postgres, _opts} -> "database:harness_settings"
+      _disabled -> "disabled"
+    end
+  end
+
+  @spec settings_store_default(:backend | :root) :: term()
+  defp settings_store_default(:backend) do
+    if Application.get_env(:harness, :repo_enabled, true), do: SettingsStore.Postgres, else: SettingsStore.File
+  end
+
+  defp settings_store_default(:root) do
+    if Application.get_env(:harness, :repo_enabled, true), do: "database:harness_settings", else: harness_root()
   end
 
   @spec sinks_label([module()]) :: String.t()

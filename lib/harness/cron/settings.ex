@@ -24,36 +24,32 @@ defmodule Harness.Cron.Settings do
   a closed `schedule_presets/0` whitelist — a free-form crontab can never reach
   Oban. Live runtime reconfig (teardown/re-add of the Cron plugin) is out of scope.
 
-  ## App env is the live cache; the file is the persistence layer
+  ## App env is the live cache; SettingsStore is the persistence layer
 
   `RoadmapPoller.perform/1` already reads `enabled?/0` from app env on every tick,
   so a flip takes effect at the next tick with no restart. This module keeps that
   model: every setter writes app env (the value the poller reads) **and**
-  write-throughs to a file so the choice survives a BEAM restart. `load_into_env/0`
-  runs once on boot to seed app env from the file before Oban starts.
-
-  Mirrors `Harness.Chat.Store`: a single Erlang external-term file written via a
-  `.tmp` sibling + atomic rename, so a concurrent reader never sees a torn file.
-  File-backed (not Ecto) deliberately — two booleans do not justify the project's
-  first Ecto schema + sandbox apparatus, and a config-file store is the precedent
-  `Harness.Chat.Store` already sets.
+  write-throughs to `Harness.SettingsStore` so the choice survives a BEAM
+  restart. `load_into_env/0` runs once on boot to seed app env from the shared
+  store before Oban starts.
 
   ## Disabling
 
   `config :harness, :cron_settings, false` (or `nil`) short-circuits persistence:
   setters still update app env (runtime flips work) but nothing is written, and
-  `load_into_env/0` is a no-op. Otherwise configure the root with
-  `config :harness, :cron_settings, root: "/some/path"`.
+  `load_into_env/0` is a no-op. Otherwise the legacy root is used by the file
+  fallback and for first-boot import of old `cron_settings.term` files.
   """
 
   alias Harness.Cron.RoadmapPoller
   alias Harness.Project
-  alias Harness.TermCodec
+  alias Harness.SettingsStore
 
   require Logger
 
   @default_root "~/.harness"
   @filename "cron_settings.term"
+  @store_key :cron
 
   # The only crontabs that can reach Oban's Cron plugin — a closed
   # `{key, label, crontab}` whitelist. A free-form crontab box would let an
@@ -66,7 +62,7 @@ defmodule Harness.Cron.Settings do
     {"daily", "Daily (midnight)", "0 0 * * *"}
   ]
 
-  @typedoc "The persisted record: both switch sets plus the cron schedule, in one term file."
+  @typedoc "The persisted settings-store value: both switch sets plus the cron schedule."
   @type record :: %{
           required(:master_enabled) => boolean(),
           required(:project_autonomy) => %{String.t() => boolean()},
@@ -74,22 +70,16 @@ defmodule Harness.Cron.Settings do
         }
 
   @doc """
-  Seeds app env from the persisted file. Called once on boot, before Oban starts,
+  Seeds app env from the persisted store. Called once on boot, before Oban starts,
   so `RoadmapPoller.enabled?/0` reflects the persisted master flag from t=0.
 
   No file (or a disabled store) leaves the compile-time config defaults in place.
   """
   @spec load_into_env() :: :ok
   def load_into_env do
-    case root() do
-      nil ->
-        :ok
-
-      dir ->
-        case TermCodec.read_file(path(dir)) do
-          {:ok, record} when is_map(record) -> apply_record(record)
-          _other -> :ok
-        end
+    case SettingsStore.fetch(@store_key, store_opts()) do
+      {:ok, record} when is_map(record) -> apply_record(record)
+      _missing_or_invalid -> :ok
     end
   end
 
@@ -236,10 +226,7 @@ defmodule Harness.Cron.Settings do
 
   @spec persist() :: :ok | {:error, term()}
   defp persist do
-    case root() do
-      nil -> :ok
-      dir -> TermCodec.write_file(path(dir), current_state())
-    end
+    SettingsStore.put(@store_key, current_state(), store_opts())
   end
 
   @spec current_state() :: record()
@@ -247,16 +234,6 @@ defmodule Harness.Cron.Settings do
     %{master_enabled: master_enabled?(), project_autonomy: project_map(), schedule: RoadmapPoller.schedule()}
   end
 
-  @spec path(String.t()) :: String.t()
-  defp path(dir), do: Path.join(dir, @filename)
-
-  # nil ⇒ store disabled; otherwise an expanded absolute root directory.
-  @spec root() :: String.t() | nil
-  defp root do
-    case Application.get_env(:harness, :cron_settings, root: @default_root) do
-      false -> nil
-      nil -> nil
-      opts when is_list(opts) -> opts |> Keyword.get(:root, @default_root) |> Path.expand()
-    end
-  end
+  @spec store_opts() :: SettingsStore.legacy_opts()
+  defp store_opts, do: [legacy_config_key: :cron_settings, legacy_filename: @filename, default_root: @default_root]
 end

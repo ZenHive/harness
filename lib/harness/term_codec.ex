@@ -6,10 +6,9 @@ defmodule Harness.TermCodec do
   itself funnels through this module — `Harness.ResultStore.File` /
   `Harness.ResultStore.Postgres` (run/batch/score payloads),
   `Harness.ProjectRegistry.Persistence` (project payloads), `Harness.Chat.Store`
-  (chat sessions), and the `Harness.Agent.Settings` / `Harness.Cron.Settings` /
-  `Harness.Landing.Settings` operator-toggle stores. They all decode the same
-  way: succeed with the term, or rescue a torn/garbage binary into an error
-  tuple rather than letting `ArgumentError` escape.
+  (chat sessions), and `Harness.SettingsStore.File` (operator settings). They all
+  decode the same way: succeed with the term, or rescue a torn/garbage binary
+  into an error tuple rather than letting `ArgumentError` escape.
 
   ## Why decoding skips `[:safe]`
 

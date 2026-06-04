@@ -27,9 +27,10 @@ config :harness, Oban,
   # jobs are low-volume; the retention is for observability, not throughput.
   plugins: [{Oban.Plugins.Pruner, max_age: 60 * 60 * 24}]
 
-# File-backed term store for the persisted per-agent enable/disable switches, so
-# an operator taking an agent out of rotation survives a BEAM restart. Set to
-# `false` to disable persistence (runtime flips still work, nothing is written).
+# Legacy per-agent settings root. Runtime-flippable settings persist through
+# Harness.SettingsStore (Postgres when repo_enabled, file fallback otherwise);
+# this root is used by the file backend and for first-boot legacy import.
+# Set to `false` to disable persistence for this domain.
 config :harness, :agent_settings, root: Path.expand("~/.harness")
 
 # HIGH-tier second-grader pairing — see Harness.AuditReview.default_grader/1.
@@ -60,9 +61,10 @@ config :harness, :cron_polling,
     codex: %{"OPENAI_API_KEY" => false}
   }
 
-# File-backed term store for the persisted cron-autonomy switches (master +
-# per-project flags, Tasks 109/110), so a toggle survives a BEAM restart. Set to
-# `false` to disable persistence (runtime flips still work, nothing is written).
+# Legacy cron settings root. Runtime-flippable settings persist through
+# Harness.SettingsStore (Postgres when repo_enabled, file fallback otherwise);
+# this root is used by the file backend and for first-boot legacy import.
+# Set to `false` to disable persistence for this domain.
 config :harness, :cron_settings, root: Path.expand("~/.harness")
 
 # Phoenix LiveView dashboard (Task 50) — Harness.Dashboard.Endpoint + Live.

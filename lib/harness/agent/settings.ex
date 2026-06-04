@@ -18,59 +18,55 @@ defmodule Harness.Agent.Settings do
   unknown agent failing a dispatch is cheap and recoverable, whereas silently
   disabling a new agent would be surprising.
 
-  ## App env is the live cache; the file is the persistence layer
+  ## App env is the live cache; SettingsStore is the persistence layer
 
   `Harness.AgentRegistry.select/2` reads `disabled?/1` from app env on every
-  dispatch, so a toggle takes effect on the next selection with no restart. Every
-  setter writes app env **and** write-throughs to a `.tmp`+rename term file so the
-  choice survives a restart. `load_into_env/0` runs once on boot to seed app env
-  from the file. Mirrors `Harness.Cron.Settings` / `Harness.Chat.Store`.
+  dispatch, so a toggle takes effect on the next selection with no restart.
+  Every setter writes app env **and** write-throughs to `Harness.SettingsStore`
+  so the choice survives a restart. `load_into_env/0` runs once on boot to seed
+  app env from the shared store.
 
   ## Disabling
 
   `config :harness, :agent_settings, false` (or `nil`) short-circuits persistence:
   setters still update app env (runtime flips work) but nothing is written, and
-  `load_into_env/0` is a no-op. Otherwise configure the root with
-  `config :harness, :agent_settings, root: "/some/path"`.
+  `load_into_env/0` is a no-op. Otherwise the legacy root is used by the file
+  fallback and for first-boot import of old `agent_settings.term` files.
   """
 
-  alias Harness.TermCodec
+  alias Harness.SettingsStore
 
   require Logger
 
   @default_root "~/.harness"
   @filename "agent_settings.term"
+  @store_key :agent
   @env_key :agent_disabled
   @reviewer_env_key :agent_reviewer_ineligible
 
   @typedoc """
-  The persisted record: the operator-disabled set (implementer enablement) and
-  the reviewer-ineligible set (review-gate eligibility), two independent axes.
+  The persisted settings-store value: the operator-disabled set (implementer
+  enablement) and the reviewer-ineligible set (review-gate eligibility), two
+  independent axes.
   """
   @type record :: %{:disabled => [atom()], optional(:reviewer_ineligible) => [atom()]}
 
   @doc """
-  Seeds app env from the persisted file. Called once on boot, before any dispatch
+  Seeds app env from the persisted store. Called once on boot, before any dispatch
   path reads `disabled?/1`, so an operator's last choice is in force from t=0.
 
   No file (or a disabled store) leaves every agent enabled.
   """
   @spec load_into_env() :: :ok
   def load_into_env do
-    case root() do
-      nil ->
+    case SettingsStore.fetch(@store_key, store_opts()) do
+      {:ok, record} when is_map(record) ->
+        load_key(record, :disabled, @env_key)
+        load_key(record, :reviewer_ineligible, @reviewer_env_key)
         :ok
 
-      dir ->
-        case TermCodec.read_file(path(dir)) do
-          {:ok, record} when is_map(record) ->
-            load_key(record, :disabled, @env_key)
-            load_key(record, :reviewer_ineligible, @reviewer_env_key)
-            :ok
-
-          _other ->
-            :ok
-        end
+      _missing_or_invalid ->
+        :ok
     end
   end
 
@@ -176,41 +172,19 @@ defmodule Harness.Agent.Settings do
   # is written ONLY when its env key is actually set (a real reviewer override
   # happened) — otherwise omitting it keeps reload falling back to the live
   # `:reviewer_exclude` seed, so an unrelated set_enabled toggle never freezes
-  # the seed into the file. `:disabled` has no config seed (defaults to []), so
+  # the seed into the store. `:disabled` has no config seed (defaults to []), so
   # it is always safe to write.
   @spec persist() :: :ok | {:error, term()}
   defp persist do
-    case root() do
-      nil ->
-        :ok
+    record =
+      case Application.get_env(:harness, @reviewer_env_key) do
+        list when is_list(list) -> %{disabled: disabled_agents(), reviewer_ineligible: list}
+        _unset -> %{disabled: disabled_agents()}
+      end
 
-      dir ->
-        record =
-          case Application.get_env(:harness, @reviewer_env_key) do
-            list when is_list(list) -> %{disabled: disabled_agents(), reviewer_ineligible: list}
-            _unset -> %{disabled: disabled_agents()}
-          end
-
-        TermCodec.write_file(path(dir), record)
-    end
+    SettingsStore.put(@store_key, record, store_opts())
   end
 
-  @spec path(String.t()) :: String.t()
-  defp path(dir), do: Path.join(dir, @filename)
-
-  # TODO(Task 165): this store now carries TWO axes (disabled implementers +
-  # reviewer_ineligible reviewers, Task 182) in one term file. When Task 165
-  # folds the Cron/Agent/Landing domains onto the shared Postgres-backed store,
-  # both Agent.Settings axes must move together — the consolidation owns this
-  # file, not just the :disabled set.
-
-  # nil ⇒ store disabled; otherwise an expanded absolute root directory.
-  @spec root() :: String.t() | nil
-  defp root do
-    case Application.get_env(:harness, :agent_settings, root: @default_root) do
-      false -> nil
-      nil -> nil
-      opts when is_list(opts) -> opts |> Keyword.get(:root, @default_root) |> Path.expand()
-    end
-  end
+  @spec store_opts() :: SettingsStore.legacy_opts()
+  defp store_opts, do: [legacy_config_key: :agent_settings, legacy_filename: @filename, default_root: @default_root]
 end

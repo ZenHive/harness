@@ -5,21 +5,9 @@ defmodule Harness.Application do
 
   use Application
 
-  alias Harness.Agent.Settings, as: AgentSettings
-  alias Harness.Cron.Settings
-  alias Harness.Landing.Settings, as: LandingSettings
-
   @spec start(Application.start_type(), term()) :: {:ok, pid()} | {:error, term()}
   @impl true
   def start(_type, _args) do
-    # Seed the persisted operator switches into app env before any child boots,
-    # so the dispatch paths reflect the operator's last choice from t=0 rather
-    # than compile-time defaults: cron autonomy (Tasks 109/110, read by Oban's
-    # RoadmapPoller) and per-agent enable/disable (read by AgentRegistry.select/2).
-    Settings.load_into_env()
-    AgentSettings.load_into_env()
-    LandingSettings.load_into_env()
-
     opts = [strategy: :one_for_one, name: Harness.Supervisor]
     Supervisor.start_link(children(), opts)
   end
@@ -33,18 +21,21 @@ defmodule Harness.Application do
   # endpoint (Task 50) supervises last — Phoenix.PubSub must already be up so
   # the Driver loop's transcript broadcast has a working bus whether or not the
   # Endpoint is started in the current environment.
+  #
+  # SettingsLoader runs after Repo (when enabled) and before Oban/dispatch
+  # children, so Postgres-backed settings hydrate app env before Oban builds its
+  # cron plugin while file-backed library consumers keep the same boot semantics.
   @spec children() :: [Supervisor.child_spec() | {module(), term()} | module()]
   defp children do
-    [
-      {Registry, keys: :unique, name: Harness.Run.Registry},
-      {Registry, keys: :unique, name: Harness.Chat.Registry},
-      Harness.AgentRegistry,
-      {Phoenix.PubSub, name: Harness.PubSub},
-      Harness.Chat.Supervisor,
-      {Task.Supervisor, name: Harness.Chat.TaskSupervisor}
-    ] ++
-      repo() ++
+    repo() ++
       [
+        Harness.SettingsLoader,
+        {Registry, keys: :unique, name: Harness.Run.Registry},
+        {Registry, keys: :unique, name: Harness.Chat.Registry},
+        Harness.AgentRegistry,
+        {Phoenix.PubSub, name: Harness.PubSub},
+        Harness.Chat.Supervisor,
+        {Task.Supervisor, name: Harness.Chat.TaskSupervisor},
         Harness.ProjectRegistry,
         {Task.Supervisor, name: Harness.Run.TaskSupervisor}
       ] ++ reaper() ++ [Harness.Run.Supervisor] ++ oban() ++ sweeper() ++ dashboard() ++ mcp_server()

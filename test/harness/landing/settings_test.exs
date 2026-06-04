@@ -11,6 +11,7 @@ defmodule Harness.Landing.SettingsTest do
 
   alias Harness.Landing.Settings, as: LandingSettings
   alias Harness.Project
+  alias Harness.TermCodec
 
   @env_key :landing_overrides
 
@@ -103,8 +104,8 @@ defmodule Harness.Landing.SettingsTest do
       :ok = LandingSettings.set(project.name, :auto, "ship", "test")
       # Hand-write a torn record with one good and one malformed entry.
       bad = %{project.name => %{landing_policy: :auto, target_branch: "ship"}, "junk" => :not_a_map}
-      path = Path.join(root, "landing_settings.term")
-      File.write!(path, :erlang.term_to_binary(bad))
+      path = Path.join(root, "harness_settings.term")
+      assert :ok = TermCodec.write_file(path, %{"landing" => bad})
 
       Application.put_env(:harness, @env_key, %{})
       :ok = LandingSettings.load_into_env()

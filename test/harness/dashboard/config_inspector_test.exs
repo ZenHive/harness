@@ -34,6 +34,7 @@ defmodule Harness.Dashboard.ConfigInspectorTest do
             "Cron polling",
             "Notifications",
             "Result store",
+            "Settings store",
             "Worktree",
             "Retry policy",
             "Database",
@@ -93,6 +94,19 @@ defmodule Harness.Dashboard.ConfigInspectorTest do
       on_exit(fn -> restore(:notification_sinks, prev) end)
 
       assert row(sections(), "Notifications", "sinks").value == "none (silent)"
+    end
+
+    test "paths section no longer lists per-domain settings roots" do
+      labels =
+        sections()
+        |> Enum.find(&(&1.title == "Paths"))
+        |> Map.fetch!(:rows)
+        |> Enum.map(& &1.label)
+
+      refute "agent_settings root" in labels
+      refute "cron_settings root" in labels
+      assert row(sections(), "Settings store", "backend")
+      assert row(sections(), "Settings store", "root")
     end
 
     test "lists a registered project with its source, roadmap path, and check-command hint" do

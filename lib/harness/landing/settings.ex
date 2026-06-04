@@ -11,19 +11,13 @@ defmodule Harness.Landing.Settings do
   into `:auto` **with a target branch** — the missing UI control that previously
   forced hand-editing the registry via `iex`.
 
-  ## App env is the live cache; the file is the persistence layer
+  ## App env is the live cache; SettingsStore is the persistence layer
 
   `Harness.Run` reads the *effective* project (`overlay/1`) when a run starts, so a
   flip takes effect on the next run with no restart. Every setter writes app env
-  (the value `overlay/1` reads) **and** write-throughs to a file so the choice
-  survives a BEAM restart. `load_into_env/0` runs once on boot to seed app env from
-  the file.
-
-  Mirrors `Harness.Cron.Settings` / `Harness.Chat.Store`: a single Erlang
-  external-term file written via a `.tmp` sibling + atomic rename, so a concurrent
-  reader never sees a torn file. File-backed (not Ecto) deliberately — a small
-  per-project config map does not justify the project's first Ecto schema +
-  sandbox apparatus, and it is the precedent the sibling settings stores set.
+  (the value `overlay/1` reads) **and** write-throughs to
+  `Harness.SettingsStore` so the choice survives a BEAM restart. `load_into_env/0`
+  runs once on boot to seed app env from the shared store.
 
   ## The footgun guard
 
@@ -35,47 +29,43 @@ defmodule Harness.Landing.Settings do
 
   `config :harness, :landing_settings, false` (or `nil`) short-circuits
   persistence: setters still update app env (runtime flips work) but nothing is
-  written, and `load_into_env/0` is a no-op. Otherwise configure the root with
-  `config :harness, :landing_settings, root: "/some/path"`.
+  written, and `load_into_env/0` is a no-op. Otherwise the legacy root is used
+  by the file fallback and for first-boot import of old `landing_settings.term`
+  files.
   """
 
   alias Harness.Project
-  alias Harness.TermCodec
+  alias Harness.SettingsStore
 
   require Logger
 
   @default_root "~/.harness"
   @filename "landing_settings.term"
+  @store_key :landing
   @env_key :landing_overrides
   @valid_policies [:manual, :auto]
 
   @typedoc "A single project's landing override: policy plus (for `:auto`) the merge target."
   @type override :: %{landing_policy: Project.landing_policy(), target_branch: String.t() | nil}
 
-  @typedoc "The persisted record: project name => override."
+  @typedoc "The persisted settings-store value: project name => override."
   @type record :: %{String.t() => override()}
 
   @doc """
-  Seeds app env from the persisted file. Called once on boot so `overlay/1`
+  Seeds app env from the persisted store. Called once on boot so `overlay/1`
   reflects the persisted overrides from t=0.
 
   No file (or a disabled store) leaves the registration-time defaults in place.
   """
   @spec load_into_env() :: :ok
   def load_into_env do
-    case root() do
-      nil ->
+    case SettingsStore.fetch(@store_key, store_opts()) do
+      {:ok, map} when is_map(map) ->
+        Application.put_env(:harness, @env_key, sanitize(map))
         :ok
 
-      dir ->
-        case TermCodec.read_file(path(dir)) do
-          {:ok, map} when is_map(map) ->
-            Application.put_env(:harness, @env_key, sanitize(map))
-            :ok
-
-          _other ->
-            :ok
-        end
+      _missing_or_invalid ->
+        :ok
     end
   end
 
@@ -169,27 +159,9 @@ defmodule Harness.Landing.Settings do
 
   @spec persist() :: :ok | {:error, term()}
   defp persist do
-    case root() do
-      nil -> :ok
-      dir -> TermCodec.write_file(path(dir), overrides())
-    end
+    SettingsStore.put(@store_key, overrides(), store_opts())
   end
 
-  @spec path(String.t()) :: String.t()
-  defp path(dir), do: Path.join(dir, @filename)
-
-  # TODO(Task 165): the .tmp+rename term-file plumbing now lives once in
-  # Harness.TermCodec (this store + Cron.Settings / Agent.Settings / Chat.Store
-  # all read/write through it); Task 165 still owns folding the three settings
-  # domains onto one shared Postgres-backed store behind the same file fallback.
-
-  # nil ⇒ store disabled; otherwise an expanded absolute root directory.
-  @spec root() :: String.t() | nil
-  defp root do
-    case Application.get_env(:harness, :landing_settings, root: @default_root) do
-      false -> nil
-      nil -> nil
-      opts when is_list(opts) -> opts |> Keyword.get(:root, @default_root) |> Path.expand()
-    end
-  end
+  @spec store_opts() :: SettingsStore.legacy_opts()
+  defp store_opts, do: [legacy_config_key: :landing_settings, legacy_filename: @filename, default_root: @default_root]
 end
