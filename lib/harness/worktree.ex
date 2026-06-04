@@ -22,11 +22,11 @@ defmodule Harness.Worktree do
 
   ## What it does not own
 
-  Branch deletion and merge. `create/2` carves the `harness/<id>` branch and
-  `commit/2` captures the agent's work onto it — those commits are the run's
-  deliverable, so teardown removes only the working directory, never the branch.
-  Deleting the branch or merging it back is the orchestrator's call. A crashed
-  run that never reaches `finish/3` is reaped by the boot-time sweep in
+  Branch deletion and merge. `create/2` carves or resets the `harness/<id>`
+  branch and `commit/2` captures the agent's work onto it — those commits are
+  the run's deliverable, so teardown removes only the working directory, never
+  the branch. Deleting the branch or merging it back is the orchestrator's call.
+  A crashed run that never reaches `finish/3` is reaped by the boot-time sweep in
   `Harness.Worktree.Sweeper`.
 
   ## Configuration
@@ -142,9 +142,11 @@ defmodule Harness.Worktree do
   @doc """
   Creates an isolated worktree for a run against `project`.
 
-  Carves a fresh working directory at `<base_dir>/<project.name>/<id>` and a new
+  Carves a fresh working directory at `<base_dir>/<project.name>/<id>` and a
   branch `harness/<id>` off the repo's current `HEAD`. The `id` is unique per
   call, so concurrent `create/2` invocations on the same project never collide.
+  When Oban retries the same logical run after a BEAM restart, the stable id may
+  point at a branch left by the crashed attempt; that branch is reset and reused.
 
   For `{:github, _}` sources, this also clones the upstream into the project's
   cache (`<cache_root>/<project.name>`) on first call, and `git fetch`es +
@@ -247,7 +249,7 @@ defmodule Harness.Worktree do
   @spec add_worktree(String.t(), String.t(), String.t(), String.t()) ::
           {:ok, String.t()} | {:error, error()}
   defp add_worktree(repo, branch, path, base_ref) do
-    locked_worktree_add(repo, ["worktree", "add", "-b", branch, path, base_ref])
+    locked_worktree_add(repo, ["worktree", "add", "-B", branch, path, base_ref])
   end
 
   # Serializes `git worktree add` per parent repo. Concurrent adds against one

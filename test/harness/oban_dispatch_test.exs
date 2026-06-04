@@ -8,6 +8,7 @@ defmodule Harness.ObanDispatchTest do
   alias Harness.Batch
   alias Harness.Dashboard.RunFeed
   alias Harness.Dispatch
+  alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.Oban, as: HarnessOban
   alias Harness.Project
@@ -16,6 +17,7 @@ defmodule Harness.ObanDispatchTest do
   alias Harness.ResultStore
   alias Harness.Roadmap.Item
   alias Harness.Run.Result
+  alias Harness.Run.Supervisor, as: RunSupervisor
   alias Harness.Run.Worker
 
   setup do
@@ -796,6 +798,50 @@ defmodule Harness.ObanDispatchTest do
 
     # The leftover branch is gone — the next attempt's worktree add starts clean.
     assert repo |> GitFixture.git!(["branch", "--list", "harness/#{run_id}"]) |> String.trim() == ""
+  end
+
+  test "worker retry reuses a stale run branch instead of cancelling on worktree creation" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+    root = Path.join(System.tmp_dir!(), "harness-worker-retry-#{System.unique_integer([:positive])}")
+    run_id = "run-retry-existing-branch"
+    branch = "harness/#{run_id}"
+    project = ProjectFixture.from_repo(repo, name: "retry-branch-project")
+
+    GitFixture.git!(repo, ["branch", branch])
+    Application.put_env(:harness, :result_store, {Harness.ResultStore.File, root: root})
+    assert :ok = ProjectRegistry.register(project)
+
+    Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts -> {:ok, item("195", :claude)} end)
+
+    Application.put_env(:harness, :run_starter, fn %Item{} = item, run_project, _adapter, opts ->
+      run_opts = [
+        base_dir: base,
+        adapter_opts: [command: :write],
+        reviewer: FakeAdapter,
+        reviewer_adapter_opts: [command: {:review, "approve"}],
+        total_timeout: 30_000,
+        idle_timeout: 10_000,
+        lifetime_timeout: 30_000,
+        terminal_linger: 100
+      ]
+
+      RunSupervisor.start_run(item, run_project, FakeAdapter, opts ++ run_opts)
+    end)
+
+    assert :ok =
+             Worker.perform(%Oban.Job{
+               id: 195,
+               attempt: 2,
+               args: %{
+                 "project_name" => project.name,
+                 "item_id" => "195",
+                 "adapter_module" => "Elixir.Harness.AgentAdapter.Claude",
+                 "run_id" => run_id
+               }
+             })
+
+    assert GitFixture.git!(repo, ["ls-tree", "-r", "--name-only", branch]) =~ "agent_output.txt"
   end
 
   describe "Task 131: claim on run start + revert only on terminal failure (via seams)" do

@@ -63,6 +63,22 @@ defmodule Harness.WorktreeTest do
       assert wt.branch == "harness/run-fixed-id"
     end
 
+    test "reuses an existing run branch left by a crashed prior attempt" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+      run_id = "run-retry-branch"
+      branch = "harness/#{run_id}"
+
+      GitFixture.git!(repo, ["branch", branch])
+
+      assert {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base, id: run_id)
+
+      assert wt.id == run_id
+      assert wt.branch == branch
+      assert File.dir?(wt.path)
+      assert String.trim(GitFixture.git!(wt.path, ["branch", "--show-current"])) == branch
+    end
+
     test "rejects a path that is not a git repository" do
       base = GitFixture.tmp_base()
       plain = GitFixture.tmp_base(name: "plain")
