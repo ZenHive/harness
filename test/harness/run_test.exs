@@ -407,7 +407,8 @@ defmodule Harness.RunTest do
     end
 
     test "a project-pinned same-family reviewer is refused" do
-      {run_id, pid} = start_with_project_reviewer(ProjectFixture.from_repo(GitFixture.init_repo(), reviewer: :claude), [])
+      project = ProjectFixture.from_repo(GitFixture.init_repo(), reviewer: :claude)
+      {run_id, pid} = start_with_project_reviewer(project, [])
 
       assert %Result{state: :failed, reason: {:review_stuck, report}, reviewer_adapter: nil} =
                await_result(run_id, pid)
