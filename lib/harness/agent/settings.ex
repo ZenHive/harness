@@ -49,7 +49,7 @@ defmodule Harness.Agent.Settings do
   enablement) and the reviewer-ineligible set (review-gate eligibility), two
   independent axes.
   """
-  @type record :: %{:disabled => [atom()], optional(:reviewer_ineligible) => [atom()]}
+  @type t :: %{:disabled => [atom()], optional(:reviewer_ineligible) => [atom()]}
 
   @doc """
   Seeds app env from the persisted store. Called once on boot, before any dispatch

@@ -38,6 +38,21 @@ defmodule Harness.Dashboard.MCPServer do
     {:ok, Frame.assign(frame, :tool_registry, Tools.build())}
   end
 
+  # `use Anubis.Server`'s generated `child_spec/1` branches on a statically-`nil`
+  # `@__authorization_config__` (we configure no MCP authorization), which Elixir
+  # 1.20's type checker flags as a dead clause. Override with the auth-free spec —
+  # behaviour-identical to the generated version's `else` branch, minus the branch.
+  @doc false
+  @spec child_spec(keyword()) :: Supervisor.child_spec()
+  def child_spec(opts) do
+    %{
+      id: __MODULE__,
+      start: {Anubis.Server.Supervisor, :start_link, [__MODULE__, opts]},
+      type: :supervisor,
+      restart: :permanent
+    }
+  end
+
   @impl Anubis.Server
   def handle_request(%{"method" => "tools/list"} = _request, frame) do
     registry = registry(frame)
@@ -59,12 +74,6 @@ defmodule Harness.Dashboard.MCPServer do
     dispatch_tool(name, arguments, frame)
   end
 
-  # `Tools.dispatch/3`'s success typing currently enumerates the exact error
-  # shapes, so dialyzer flags the defensive `{:error, other}` catch-all below
-  # as unreachable. Keep the clause — it guards the anubis request handler
-  # against a future Tools.dispatch error shape no one updated this case for —
-  # and suppress the now-redundant match warning.
-  @dialyzer {:no_match, dispatch_tool: 3}
   @spec dispatch_tool(String.t(), map(), Frame.t()) ::
           {:reply, map(), Frame.t()} | {:error, Error.t(), Frame.t()}
   defp dispatch_tool(name, arguments, frame) do
@@ -80,11 +89,6 @@ defmodule Harness.Dashboard.MCPServer do
 
       {:error, {:dispatch_failed, message}} ->
         {:reply, error_payload("Dispatch failed: #{message}"), frame}
-
-      # A novel error shape from Tools.dispatch must not CaseClauseError-crash
-      # the anubis request handler; surface it as an MCP tool error instead.
-      {:error, other} ->
-        {:reply, error_payload("Dispatch failed: #{inspect(other)}"), frame}
     end
   end
 

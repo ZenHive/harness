@@ -53,7 +53,7 @@ defmodule Harness.Landing.Settings do
         }
 
   @typedoc "The persisted settings-store value: project name => override."
-  @type record :: %{String.t() => override()}
+  @type t :: %{String.t() => override()}
 
   @doc """
   Seeds app env from the persisted store. Called once on boot so `overlay/1`
@@ -181,12 +181,12 @@ defmodule Harness.Landing.Settings do
 
   defp normalize_branch(_other), do: nil
 
-  @spec overrides() :: record()
+  @spec overrides() :: t()
   defp overrides, do: Application.get_env(:harness, @env_key, %{})
 
   # Keeps only well-formed `{policy, branch}` entries from a loaded file, so a
   # torn or hand-edited term can't inject a malformed override into app env.
-  @spec sanitize(map()) :: record()
+  @spec sanitize(map()) :: t()
   defp sanitize(map) do
     for {name, override} <- map,
         is_binary(name),

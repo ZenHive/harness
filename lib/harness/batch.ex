@@ -553,8 +553,7 @@ defmodule Harness.Batch do
   # is salvageable; re-running another agent on top would collide).
   @spec reviewer_stuck_empty_handed?(RunResult.t()) :: boolean()
   defp reviewer_stuck_empty_handed?(%RunResult{reason: {:review_stuck, _report}, agent_diff_size: size})
-       when size in [nil, 0],
-       do: true
+       when size in [nil, 0], do: true
 
   defp reviewer_stuck_empty_handed?(%RunResult{}), do: false
 

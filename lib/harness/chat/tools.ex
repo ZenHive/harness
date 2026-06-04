@@ -50,7 +50,11 @@ defmodule Harness.Chat.Tools do
   end
 
   @doc "Dispatches `tool_name` with JSON `arguments` via apply/3 after schema validation."
-  @spec dispatch(registry(), String.t(), map()) :: {:ok, term()} | {:error, term()}
+  @spec dispatch(registry(), String.t(), map()) ::
+          {:ok, term()}
+          | {:error, {:unknown_tool, String.t()}}
+          | {:error, {:schema_validation_failed, [map()]}}
+          | {:error, {:dispatch_failed, String.t()}}
   def dispatch(registry, tool_name, arguments) when is_map(registry) and is_binary(tool_name) and is_map(arguments) do
     with {:ok, entry} <- lookup(registry, tool_name),
          :ok <- validate_args(entry, arguments),

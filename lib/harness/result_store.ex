@@ -259,12 +259,10 @@ defmodule Harness.ResultStore do
   def get_capability_score(agent, domain, corpus_version, store \\ configured())
 
   def get_capability_score(agent, domain, corpus_version, false)
-      when is_atom(agent) and is_atom(domain) and is_binary(corpus_version),
-      do: :no_data
+      when is_atom(agent) and is_atom(domain) and is_binary(corpus_version), do: :no_data
 
   def get_capability_score(agent, domain, corpus_version, nil)
-      when is_atom(agent) and is_atom(domain) and is_binary(corpus_version),
-      do: :no_data
+      when is_atom(agent) and is_atom(domain) and is_binary(corpus_version), do: :no_data
 
   def get_capability_score(agent, domain, corpus_version, store)
       when is_atom(agent) and is_atom(domain) and is_binary(corpus_version) do

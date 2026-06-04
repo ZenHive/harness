@@ -23,8 +23,6 @@ defmodule Harness.ResultStore.Postgres do
   alias Harness.TermCodec
   alias Harness.TokenUsage
 
-  require Logger
-
   @impl Harness.ResultStore
   @spec record_run(LogRecord.t(), keyword()) :: :ok | {:error, term()}
   def record_run(%LogRecord{} = record, opts) when is_list(opts) do

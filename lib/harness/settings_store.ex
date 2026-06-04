@@ -8,7 +8,7 @@ defmodule Harness.SettingsStore do
   """
 
   @type key :: atom() | String.t()
-  @type store :: module() | {module(), keyword()} | nil | false
+  @type store :: module() | {module(), keyword()} | false
   @type legacy_opts :: [
           legacy_config_key: atom(),
           legacy_filename: String.t(),
@@ -103,9 +103,7 @@ defmodule Harness.SettingsStore do
 
   @spec dispatch(store(), atom(), [term()]) :: term()
   defp dispatch(false, :fetch, [_key, _opts]), do: :not_found
-  defp dispatch(nil, :fetch, [_key, _opts]), do: :not_found
   defp dispatch(false, :put, [_key, _value, _opts]), do: :ok
-  defp dispatch(nil, :put, [_key, _value, _opts]), do: :ok
 
   defp dispatch({module, backend_opts}, function, args) when is_atom(module) and is_list(backend_opts) do
     apply(module, function, args ++ [backend_opts])

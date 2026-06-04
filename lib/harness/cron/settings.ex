@@ -63,7 +63,7 @@ defmodule Harness.Cron.Settings do
   ]
 
   @typedoc "The persisted settings-store value: both switch sets plus the cron schedule."
-  @type record :: %{
+  @type t :: %{
           required(:master_enabled) => boolean(),
           required(:project_autonomy) => %{String.t() => boolean()},
           optional(:schedule) => String.t()
@@ -229,7 +229,7 @@ defmodule Harness.Cron.Settings do
     SettingsStore.put(@store_key, current_state(), store_opts())
   end
 
-  @spec current_state() :: record()
+  @spec current_state() :: t()
   defp current_state do
     %{master_enabled: master_enabled?(), project_autonomy: project_map(), schedule: RoadmapPoller.schedule()}
   end

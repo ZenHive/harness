@@ -32,7 +32,7 @@ defmodule Harness.Chat.Store.File do
   end
 
   @impl Store
-  @spec load(String.t(), keyword()) :: {:ok, Store.record()} | {:error, :not_found}
+  @spec load(String.t(), keyword()) :: {:ok, Store.session_record()} | {:error, :not_found}
   def load(session_id, opts) when is_binary(session_id) and is_list(opts) do
     case root(opts) do
       nil ->

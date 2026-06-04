@@ -42,7 +42,7 @@ defmodule Harness.Chat.Store do
   """
 
   @typedoc "A loaded session record: the rehydration payload for `Harness.Chat.Session`."
-  @type record :: %{session_id: String.t(), messages: [map()], updated_at: DateTime.t()}
+  @type session_record :: %{session_id: String.t(), messages: [map()], updated_at: DateTime.t()}
 
   @typedoc "An index summary: the per-row payload `Harness.Dashboard.ChatLive` renders."
   @type summary :: %{
@@ -59,7 +59,7 @@ defmodule Harness.Chat.Store do
   @callback save(String.t(), [map()], keyword()) :: :ok | {:error, term()}
 
   @doc "Loads a persisted session by id, or `{:error, :not_found}`."
-  @callback load(String.t(), keyword()) :: {:ok, record()} | {:error, :not_found}
+  @callback load(String.t(), keyword()) :: {:ok, session_record()} | {:error, :not_found}
 
   @doc "Lists every persisted session as an index `summary`, most-recently-updated first."
   @callback list(keyword()) :: [summary()]
@@ -77,7 +77,7 @@ defmodule Harness.Chat.Store do
   end
 
   @doc "Loads a persisted session by id via the configured backend."
-  @spec load(String.t(), keyword()) :: {:ok, record()} | {:error, :not_found}
+  @spec load(String.t(), keyword()) :: {:ok, session_record()} | {:error, :not_found}
   def load(session_id, opts \\ []) when is_binary(session_id) do
     dispatch(:load, [session_id], opts)
   end
