@@ -22,6 +22,12 @@ defmodule Harness.Run.MemoryGuard do
   cap). Keep `mem_threshold_kb × that-sum` comfortably under host memory — the
   per-run cap is the runaway backstop, the queue limits are the steady-state
   bound.
+
+  `host_rss_kb/0` + `host_total_kb/0` are the substrate for the aggregate
+  companion to the per-run cap: `Harness.Run.Worker`'s node-pressure admission
+  gate (Task 202) samples `host_rss_kb/0` and snoozes a NEW run when it is over a
+  configurable high-water mark (defaulting to a fraction of `host_total_kb/0`),
+  so well-behaved concurrent trees cannot collectively OOM the host.
   """
 
   @typep ps_row :: {non_neg_integer(), non_neg_integer()}
@@ -57,6 +63,53 @@ defmodule Harness.Run.MemoryGuard do
     ps_table()
     |> descendants(os_pid)
     |> Enum.each(fn pid -> System.cmd("kill", ["-KILL", Integer.to_string(pid)], stderr_to_stdout: true) end)
+  end
+
+  @doc """
+  Total resident memory (KiB) summed across every process in the host table —
+  the aggregate-pressure sample feeding the node-pressure admission gate (Task
+  202). Mechanical sum of `ps -o rss=`; 0 when `ps` is unavailable.
+  """
+  @spec host_rss_kb() :: non_neg_integer()
+  def host_rss_kb do
+    Enum.reduce(ps_table(), 0, fn {_pid, {_ppid, rss}}, sum -> sum + rss end)
+  end
+
+  @doc """
+  Total physical RAM (KiB) of the host, or 0 when it cannot be determined.
+
+  Mechanical probe: `sysctl hw.memsize` on macOS, `/proc/meminfo` on Linux. Used
+  only to derive a headroom-leaving default high-water mark for the node-pressure
+  gate; 0 on any other platform or read failure, which makes the gate fail open
+  (admit) rather than deadlock dispatch.
+  """
+  @spec host_total_kb() :: non_neg_integer()
+  def host_total_kb do
+    case :os.type() do
+      {:unix, :darwin} -> sysctl_memsize_kb()
+      {:unix, _other} -> meminfo_total_kb()
+      _other -> 0
+    end
+  end
+
+  @spec sysctl_memsize_kb() :: non_neg_integer()
+  defp sysctl_memsize_kb do
+    with {out, 0} <- System.cmd("sysctl", ["-n", "hw.memsize"], stderr_to_stdout: true),
+         {bytes, _rest} <- Integer.parse(String.trim(out)) do
+      div(bytes, 1024)
+    else
+      _other -> 0
+    end
+  end
+
+  @spec meminfo_total_kb() :: non_neg_integer()
+  defp meminfo_total_kb do
+    with {:ok, contents} <- File.read("/proc/meminfo"),
+         [_line, kb] <- Regex.run(~r/MemTotal:\s+(\d+)/, contents) do
+      String.to_integer(kb)
+    else
+      _other -> 0
+    end
   end
 
   # Process table: pid => {ppid, rss_kb}. Empty map if `ps` is unavailable.

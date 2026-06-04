@@ -51,6 +51,16 @@ result_store = Application.get_env(:harness, :result_store)
 #   config :harness, :run, mem_threshold_kb: 6 * 1024 * 1024, mem_sample_interval: 5_000
 # Defaults live in Harness.Run; set these to tune the spawned-tree RSS ceiling
 # (KiB) or sample cadence (ms).
+#
+# Node-pressure admission gate (Task 202) — the aggregate companion to the
+# per-run cap — is also on this key:
+#   config :harness, :run, mem_highwater_kb: 40 * 1024 * 1024, mem_pressure_snooze: 30
+# When host resident memory is over mem_highwater_kb (KiB), Harness.Run.Worker
+# snoozes NEW run admission mem_pressure_snooze seconds instead of spawning
+# another concurrent tree. Unset, mem_highwater_kb defaults to 85% of detected
+# host RAM (or fails open if host RAM can't be probed); an explicit value ≤ 0
+# disables the gate. mem_pressure_snooze defaults to 30. Defaults live in
+# Harness.Run.Worker.
 config :harness, :run, max_hold_timeout: 1_800_000
 
 if is_nil(result_store) do

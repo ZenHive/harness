@@ -82,4 +82,27 @@ defmodule Harness.Run.MemoryGuardTest do
       for child <- children, do: assert(ProcessFixture.await_dead(child) == :ok)
     end
   end
+
+  describe "host pressure substrate (Task 202)" do
+    test "host_rss_kb sums resident memory across the process table" do
+      # At minimum this test's own BEAM is resident, so the aggregate is positive.
+      assert MemoryGuard.host_rss_kb() > 0
+    end
+
+    test "host_rss_kb out-weighs any single spawned tree (it is the aggregate, not one tree)" do
+      {os_pid, _children} = spawn_tree(2)
+
+      assert MemoryGuard.host_rss_kb() > MemoryGuard.tree_rss_kb(os_pid)
+    end
+
+    test "host_total_kb probes physical RAM — positive on unix, 0 on unknown platforms" do
+      total = MemoryGuard.host_total_kb()
+      assert is_integer(total)
+
+      case :os.type() do
+        {:unix, _other} -> assert total > 0
+        _other -> assert total == 0
+      end
+    end
+  end
 end

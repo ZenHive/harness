@@ -30,6 +30,7 @@ defmodule Harness.ObanDispatchTest do
     on_exit(fn -> Application.delete_env(:harness, :oban_run_job_lookup) end)
     on_exit(fn -> Application.delete_env(:harness, :run_starter) end)
     on_exit(fn -> Application.delete_env(:harness, :test_worker_result) end)
+    on_exit(fn -> Application.delete_env(:harness, :node_pressure_sampler) end)
     :ok
   end
 
@@ -748,6 +749,72 @@ defmodule Harness.ObanDispatchTest do
     assert is_integer(seconds) and seconds > 0
   end
 
+  # Task 202: the node-pressure admission gate is the aggregate companion to the
+  # per-run memory watchdog. Over the high-water mark, a NEW run snoozes (the job
+  # is HELD for re-dispatch, not discarded) before any gen_statem is spawned.
+  test "worker snoozes NEW admission when host memory pressure is over the high-water mark" do
+    put_run_env(mem_highwater_kb: 1_000, mem_pressure_snooze: 9)
+    Application.put_env(:harness, :node_pressure_sampler, fn -> 2_000 end)
+
+    # The gate fires before start_run — a run must never be admitted under pressure.
+    Application.put_env(:harness, :run_starter, fn _item, _project, _adapter, _opts ->
+      flunk("run admitted while over the node-pressure high-water mark")
+    end)
+
+    assert {:snooze, 9} =
+             Worker.perform(%Oban.Job{
+               id: 202,
+               attempt: 1,
+               args: %{
+                 "project_name" => "pressure-project",
+                 "item_id" => "202",
+                 "adapter_module" => "Elixir.Harness.AgentAdapter.Claude"
+               }
+             })
+  end
+
+  test "worker admits the run when host memory pressure is under the high-water mark" do
+    parent = self()
+    put_run_env(mem_highwater_kb: 100_000)
+    Application.put_env(:harness, :node_pressure_sampler, fn -> 50_000 end)
+
+    project = ProjectFixture.from_repo("/tmp/harness-under-pressure", name: "under-pressure-project")
+    assert :ok = ProjectRegistry.register(project)
+
+    Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts -> {:ok, item("202", :claude)} end)
+
+    Application.put_env(:harness, :run_starter, fn %Item{} = item, _run_project, _adapter, opts ->
+      send(parent, :admitted)
+      run_id = "run-under-pressure"
+      subscriber = Keyword.fetch!(opts, :subscriber)
+
+      pid =
+        spawn(fn ->
+          send(
+            subscriber,
+            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :approved}}
+          )
+
+          Process.sleep(100)
+        end)
+
+      {:ok, run_id, pid}
+    end)
+
+    assert :ok =
+             Worker.perform(%Oban.Job{
+               id: 203,
+               attempt: 1,
+               args: %{
+                 "project_name" => "under-pressure-project",
+                 "item_id" => "202",
+                 "adapter_module" => "Elixir.Harness.AgentAdapter.Claude"
+               }
+             })
+
+    assert_received :admitted
+  end
+
   test "mechanical retries hit a hard ceiling and cancel with :mechanical_retry_exhausted" do
     # Snoozes do not consume Oban's max_attempts, so without the ceiling a
     # permanently broken environment (unregistered project, dead rmap) would
@@ -1038,6 +1105,15 @@ defmodule Harness.ObanDispatchTest do
 
   defp item(id, agent, model \\ nil) do
     %Item{id: id, title: "Task #{id}", prompt: "do #{id}", agent: agent, model: model}
+  end
+
+  # Merge keys into the :harness :run config (runtime.exs seeds it with
+  # max_hold_timeout) and restore the original on exit, so node-pressure gate
+  # tests can set mem_highwater_kb / mem_pressure_snooze without clobbering it.
+  defp put_run_env(extra) do
+    original = Application.get_env(:harness, :run, [])
+    Application.put_env(:harness, :run, Keyword.merge(original, extra))
+    on_exit(fn -> Application.put_env(:harness, :run, original) end)
   end
 
   defp job(args) do

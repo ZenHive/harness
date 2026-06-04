@@ -197,6 +197,11 @@ if config_env() == :test do
          :result_store,
          {Harness.ResultStore.File, root: Path.join(System.tmp_dir!(), "harness_results_test")}
 
+  # Disable the node-pressure admission gate (Task 202) by default so worker
+  # tests aren't coupled to the live host's free RAM; the gate's own tests
+  # override mem_highwater_kb to a deterministic positive value.
+  config :harness, :run, mem_highwater_kb: 0
+
   config :harness, :worktree,
     base_dir: Path.join(System.tmp_dir!(), "harness_worktrees_test"),
     sweep_on_boot: false,
