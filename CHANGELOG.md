@@ -19,6 +19,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Task 140: chat session store is now a behaviour + facade with a Postgres
+  backend.** `Harness.Chat.Store` is converted from a concrete file-backed module
+  into a facade over the `@callback save/3` · `load/2` · `list/1` behaviour
+  (mirroring `Harness.ResultStore`). `Harness.Chat.Store.File` holds the original
+  atomic-`.tmp`-rename / 200-message-cap / tolerant-read logic verbatim;
+  `Harness.Chat.Store.Postgres` (+ `Harness.Chat.Store.Postgres.ChatSession`
+  schema, `chat_sessions` table) is new. The backend is selected via
+  `config :harness, :chat_store_backend` (default `File`, so existing
+  file-backed behaviour and the `:chat_store` root/disable config are unchanged);
+  call-time opts override configured backend opts. The Postgres `load/list`
+  decode restores atom keys with `String.to_existing_atom` + binary fallback (no
+  atom-table DoS). Salvaged from an antigravity run that built the backends but
+  left the facade unwired; the facade + tests were hand-finished. The Postgres
+  backend's error-rescue + JSON-decode paths are now graded by the **default**
+  (non-`:integration`) suite via an in-process `FakeRepo`
+  (`test/harness/chat/store/postgres_codec_test.exs`, mirroring
+  `ResultStore.PostgresCodecTest`), bringing all three Chat.Store modules over the
+  80 % coverage gate (Postgres was 0 % in the gated run — only an `:integration`
+  round-trip exercised it).
 - **Task 104: harness-workflow promoted to global includes.** `priv/includes/harness-workflow.md` is the version-controlled source for the generalized harness delegate/verify/repair/land workflow (extracted from the incubator `docs/dogfooding-workflow.md`). New `mix harness.install_includes [--dest DIR] [--force]` installs (or updates with .bak) to `~/.claude/includes/harness-workflow.md`. Any repo adopts the normal way: `@~/.claude/includes/harness-workflow.md` (layered, does not supersede workflow-philosophy / task-prioritization / worktree-workflow). References, CLAUDE.md load-on-demand, SKILL.md, README, and in-repo recipe updated. Tests cover install paths.
 - **Reviewer KPI ratings feed AgentKPI/CapabilityScore + reviewer
   rejection-rate tracking (Task 177).** `AgentKPI.aggregate_reviewer_rejections/1`

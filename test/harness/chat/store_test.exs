@@ -112,13 +112,96 @@ defmodule Harness.Chat.StoreTest do
       assert Store.derive_label([]) == "New chat"
       assert Store.derive_label([%{role: :assistant, content: [%{type: "text", text: "hi"}]}]) == "New chat"
     end
+
+    test "reads a string-keyed user message (post-JSON shape)" do
+      assert Store.derive_label([%{"role" => "user", "content" => "hi there"}]) == "hi there"
+    end
+
+    test "treats a whitespace-only user message as no text" do
+      assert Store.derive_label([%{role: :user, content: "   \n\t "}]) == "New chat"
+    end
   end
 
   describe "disabled store" do
-    test "save is a no-op, load is :not_found, list is empty" do
+    test "save is a no-op, load is :not_found, list is empty (root: false)" do
       assert :ok = Store.save("chat-disabled", [%{role: :user, content: "x"}], root: false)
       assert {:error, :not_found} = Store.load("chat-disabled", root: false)
       assert [] = Store.list(root: false)
     end
+
+    test "root: nil disables the store the same way root: false does" do
+      assert :ok = Store.save("chat-nil", [%{role: :user, content: "x"}], root: nil)
+      assert {:error, :not_found} = Store.load("chat-nil", root: nil)
+      assert [] = Store.list(root: nil)
+    end
   end
+
+  describe "list/1 over a non-listable root" do
+    test "a missing directory lists empty (File.ls :enoent)", %{tmp_dir: dir} do
+      assert Store.list(root: Path.join(dir, "does-not-exist")) == []
+    end
+
+    test "a root that is a regular file lists empty (File.ls non-enoent error)", %{tmp_dir: dir} do
+      file = Path.join(dir, "not-a-dir")
+      File.write!(file, "i am a file")
+      assert Store.list(root: file) == []
+    end
+  end
+
+  describe "backend selection (facade dispatch)" do
+    setup do
+      prior = Application.get_env(:harness, :chat_store_backend)
+      on_exit(fn -> restore(:chat_store_backend, prior) end)
+      :ok
+    end
+
+    test "defaults to the file backend when unconfigured" do
+      Application.delete_env(:harness, :chat_store_backend)
+      assert Store.configured() == Harness.Chat.Store.File
+    end
+
+    test "a {module, opts} backend merges its opts under call-time opts", %{tmp_dir: dir} do
+      # Backend opts supply the root; no call-time root is passed.
+      Application.put_env(:harness, :chat_store_backend, {Harness.Chat.Store.File, [root: dir]})
+
+      assert :ok = Store.save("chat-tuple", [%{role: :user, content: "via backend opts"}])
+      assert {:ok, %{messages: [%{content: "via backend opts"}]}} = Store.load("chat-tuple")
+    end
+
+    test "call-time opts override the backend's configured opts", %{tmp_dir: dir} do
+      # Backend root is bogus; the call-time root: dir must win (Keyword.merge).
+      Application.put_env(
+        :harness,
+        :chat_store_backend,
+        {Harness.Chat.Store.File, [root: "/nonexistent/should/be/overridden"]}
+      )
+
+      assert :ok = Store.save("chat-override", [%{role: :user, content: "wins"}], root: dir)
+      assert {:ok, %{messages: [%{content: "wins"}]}} = Store.load("chat-override", root: dir)
+    end
+  end
+
+  describe "configured-root disabling (no call-time root opt)" do
+    setup do
+      prior = Application.get_env(:harness, :chat_store)
+      on_exit(fn -> restore(:chat_store, prior) end)
+      :ok
+    end
+
+    test "config :chat_store, false short-circuits list/0 to []" do
+      Application.put_env(:harness, :chat_store, false)
+      # No call-time opts: exercises the facade list/0 default-arg clause and the
+      # File backend's `configured_root` false branch.
+      assert Store.list() == []
+    end
+
+    test "config :chat_store, nil short-circuits to []" do
+      Application.put_env(:harness, :chat_store, nil)
+      assert Store.list() == []
+    end
+  end
+
+  @spec restore(atom(), term()) :: :ok
+  defp restore(key, nil), do: Application.delete_env(:harness, key)
+  defp restore(key, value), do: Application.put_env(:harness, key, value)
 end

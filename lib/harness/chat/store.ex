@@ -1,12 +1,44 @@
 defmodule Harness.Chat.Store do
   @moduledoc """
-  Pluggable persistence for chat sessions (Task 93 / Task 140).
+  Pluggable persistence boundary for chat sessions (Task 93, Task 140).
 
-  Backends: `Harness.Chat.Store.File` (default) and `Harness.Chat.Store.Postgres`.
-  Select via `config :harness, :chat_store_backend, Harness.Chat.Store.Postgres`.
+  The core talks only to this behaviour. The default implementation is
+  `Harness.Chat.Store.File` (one Erlang external-term file per session, written
+  via a `.tmp` sibling + atomic rename), keeping persistence file-backed unless a
+  backend is explicitly configured. `Harness.Chat.Store.Postgres` (one
+  `chat_sessions` row per session via `Harness.Repo`) is available for shared-DB
+  deployments. Mirrors the `Harness.ResultStore` facade/behaviour split.
 
-  Disable with `config :harness, :chat_store, false` — `save/3` is a no-op `:ok`,
-  `load/2` returns `{:error, :not_found}`, `list/1` returns `[]`.
+  ## Selecting a backend
+
+  Defaults to file-backed. Configure another module (optionally with backend
+  opts) via `:chat_store_backend`:
+
+      config :harness, :chat_store_backend, Harness.Chat.Store.Postgres
+      config :harness, :chat_store_backend, {Harness.Chat.Store.Postgres, repo: MyRepo}
+
+  ## What is persisted
+
+  A session's raw `Harness.Chat.Session` `:messages` (Anthropic-shaped) plus an
+  `updated_at` stamp. `Harness.Chat.Session` calls `save/3` after each completed
+  turn and rehydrates via `load/2` on init, so a transcript survives a BEAM
+  restart: reopening `/harness/chat/<session_id>` replays the saved turns.
+
+  ## Bounding
+
+  Each backend keeps only the most recent 200 messages (mirroring
+  `Harness.Dashboard.ChatLive`'s live cap) so the store does not grow unbounded.
+  Per-turn text is already byte-bounded upstream by the session's
+  `:max_history_bytes` guard.
+
+  ## Disabling (file backend)
+
+  The file backend reads `config :harness, :chat_store` for its root, or
+  `false`/`nil` to short-circuit every call (`save/3` is a no-op `:ok`, `load/2`
+  returns `{:error, :not_found}`, `list/1` returns `[]`):
+
+      config :harness, :chat_store, root: "/some/path"
+      config :harness, :chat_store, false
   """
 
   @typedoc "A loaded session record: the rehydration payload for `Harness.Chat.Session`."
@@ -20,35 +52,46 @@ defmodule Harness.Chat.Store do
           updated_at: DateTime.t()
         }
 
-  @doc "Persists a session's messages with implementation-specific options."
+  @typedoc "A configured chat store backend module, with optional module-specific options."
+  @type backend :: module() | {module(), keyword()}
+
+  @doc "Persists a session's messages (bounded to the most recent 200) with a fresh `updated_at`."
   @callback save(String.t(), [map()], keyword()) :: :ok | {:error, term()}
 
-  @doc "Loads a persisted session by id."
+  @doc "Loads a persisted session by id, or `{:error, :not_found}`."
   @callback load(String.t(), keyword()) :: {:ok, record()} | {:error, :not_found}
 
-  @doc "Lists persisted sessions as index summaries."
+  @doc "Lists every persisted session as an index `summary`, most-recently-updated first."
   @callback list(keyword()) :: [summary()]
 
   @doc """
-  Persists a session's messages. Best-effort — failures degrade restart-survival only.
+  Persists a session's messages via the configured backend.
+
+  Best-effort: returns `:ok` when the store is disabled or the write succeeds,
+  `{:error, reason}` on failure (the caller logs and continues — a failed persist
+  degrades restart-survival, it does not fail the turn).
   """
   @spec save(String.t(), [map()], keyword()) :: :ok | {:error, term()}
   def save(session_id, messages, opts \\ []) when is_binary(session_id) and is_list(messages) do
-    dispatch(opts, :save, [session_id, messages, opts])
+    dispatch(:save, [session_id, messages], opts)
   end
 
-  @doc "Loads a persisted session by id."
+  @doc "Loads a persisted session by id via the configured backend."
   @spec load(String.t(), keyword()) :: {:ok, record()} | {:error, :not_found}
   def load(session_id, opts \\ []) when is_binary(session_id) do
-    dispatch(opts, :load, [session_id, opts])
+    dispatch(:load, [session_id], opts)
   end
 
-  @doc "Lists every persisted session as an index summary, most-recently-updated first."
+  @doc "Lists persisted sessions via the configured backend, most-recently-updated first."
   @spec list(keyword()) :: [summary()]
   def list(opts \\ []) do
-    dispatch(opts, :list, [opts])
+    dispatch(:list, [], opts)
   end
 
+  # Derives a recognizable label from a session's messages — the first user
+  # message text, truncated, or "New chat" when none exists yet. Exposed (not
+  # `defp`) so the backends and `Harness.Dashboard.ChatLive` label sessions with
+  # the same rule; `@doc false` keeps it off the public surface.
   @doc false
   @spec derive_label([map()]) :: String.t()
   def derive_label(messages) do
@@ -59,8 +102,8 @@ defmodule Harness.Chat.Store do
     end)
   end
 
-  @doc "Returns the configured chat store backend module (default `Harness.Chat.Store.File`)."
-  @spec configured() :: module()
+  @doc false
+  @spec configured() :: backend()
   def configured do
     Application.get_env(:harness, :chat_store_backend, Harness.Chat.Store.File)
   end
@@ -76,9 +119,14 @@ defmodule Harness.Chat.Store do
     end
   end
 
-  @spec dispatch(keyword(), atom(), [term()]) :: term()
-  defp dispatch(opts, function, args) do
-    backend = Keyword.get(opts, :backend, configured())
-    apply(backend, function, args)
+  @spec dispatch(atom(), [term()], keyword()) :: term()
+  defp dispatch(function, args, call_opts) do
+    case configured() do
+      {module, opts} when is_atom(module) and is_list(opts) ->
+        apply(module, function, args ++ [Keyword.merge(opts, call_opts)])
+
+      module when is_atom(module) ->
+        apply(module, function, args ++ [call_opts])
+    end
   end
 end

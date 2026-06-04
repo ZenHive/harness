@@ -1,34 +1,68 @@
 defmodule Harness.Chat.Store.PostgresTest do
   use Harness.DataCase, async: false
 
-  alias Harness.Chat.Store
   alias Harness.Chat.Store.Postgres, as: PostgresStore
 
   @moduletag :integration
 
-  setup do
-    prior = Application.get_env(:harness, :chat_store_backend)
-    Application.put_env(:harness, :chat_store_backend, PostgresStore)
+  describe "save/3 + load/2 round-trip" do
+    test "persists messages and reloads with atom keys + role restored" do
+      messages = [
+        %{role: :user, content: "hello"},
+        %{role: :assistant, content: [%{type: "text", text: "hi"}]}
+      ]
 
-    on_exit(fn ->
-      if prior,
-        do: Application.put_env(:harness, :chat_store_backend, prior),
-        else: Application.delete_env(:harness, :chat_store_backend)
-    end)
+      assert :ok = PostgresStore.save("chat-pg", messages, [])
+      assert {:ok, record} = PostgresStore.load("chat-pg", [])
+      assert record.session_id == "chat-pg"
+      assert %DateTime{} = record.updated_at
 
-    :ok
+      assert [%{role: :user, content: "hello"}, %{role: :assistant, content: content}] =
+               record.messages
+
+      assert [%{type: "text", text: "hi"}] = content
+    end
+
+    test "save overwrites the prior record for the same id (upsert)" do
+      :ok = PostgresStore.save("chat-up", [%{role: :user, content: "first"}], [])
+      :ok = PostgresStore.save("chat-up", [%{role: :user, content: "second"}], [])
+
+      assert {:ok, %{messages: [%{role: :user, content: "second"}]}} =
+               PostgresStore.load("chat-up", [])
+    end
+
+    test "caps persisted messages at the most recent 200" do
+      messages = for i <- 1..250, do: %{role: :user, content: "m#{i}"}
+      :ok = PostgresStore.save("chat-cap", messages, [])
+
+      assert {:ok, %{messages: loaded}} = PostgresStore.load("chat-cap", [])
+      assert length(loaded) == 200
+      assert List.last(loaded) == %{role: :user, content: "m250"}
+      assert hd(loaded) == %{role: :user, content: "m51"}
+    end
+
+    test "load of an unknown session is :not_found" do
+      assert {:error, :not_found} = PostgresStore.load("chat-missing", [])
+    end
   end
 
-  test "save/3 + load/2 round-trip through the Store facade" do
-    messages = [%{role: :user, content: "postgres probe"}]
+  describe "list/1" do
+    test "returns summaries, most-recently-updated first" do
+      :ok = PostgresStore.save("chat-a", [%{role: :user, content: "alpha question"}], [])
+      :ok = PostgresStore.save("chat-b", [%{role: :user, content: "beta question"}], [])
 
-    assert :ok = Store.save("chat-pg-1", messages)
-    assert {:ok, record} = Store.load("chat-pg-1")
-    assert record.session_id == "chat-pg-1"
-    assert record.messages == messages
-    assert %DateTime{} = record.updated_at
+      summaries = PostgresStore.list([])
+      ids = Enum.map(summaries, & &1.session_id)
+      assert "chat-a" in ids and "chat-b" in ids
 
-    summaries = Store.list()
-    assert Enum.any?(summaries, &(&1.session_id == "chat-pg-1"))
+      a = Enum.find(summaries, &(&1.session_id == "chat-a"))
+      assert a.label == "alpha question"
+      assert a.message_count == 1
+      assert %DateTime{} = a.updated_at
+    end
+
+    test "is empty when nothing is persisted" do
+      assert PostgresStore.list([]) == []
+    end
   end
 end

@@ -99,7 +99,7 @@ defmodule Harness.Chat.Store.Postgres do
   @spec decode_message(term()) :: term()
   defp decode_message(map) when is_map(map) do
     Map.new(map, fn {k, v} ->
-      key = atom_key(k)
+      key = decode_key(k)
       value = decode_message_value(key, v)
       {key, value}
     end)
@@ -111,14 +111,16 @@ defmodule Harness.Chat.Store.Postgres do
 
   defp decode_message(other), do: other
 
-  @spec atom_key(atom() | String.t()) :: atom() | String.t()
-  defp atom_key(k) when is_atom(k), do: k
-
-  defp atom_key(k) when is_binary(k) do
+  # Restore a known atom key; keep an unrecognized key as a binary so a malformed
+  # row can never exhaust the atom table (Sobelow DOS.StringToAtom).
+  @spec decode_key(term()) :: atom() | String.t()
+  defp decode_key(k) when is_binary(k) do
     String.to_existing_atom(k)
   rescue
     ArgumentError -> k
   end
+
+  defp decode_key(k), do: k
 
   @spec decode_message_value(atom() | String.t(), term()) :: term()
   defp decode_message_value(:role, "user"), do: :user
