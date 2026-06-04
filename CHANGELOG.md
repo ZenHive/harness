@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Audit 5e3941b: chat session migration shape.** The `chat_sessions.messages`
   migration now creates the same `{:array, :map}` column type that
   `Harness.Chat.Store.Postgres.ChatSession` inserts.
+- **Task 203: reviewer missing-verdict recovery.** A reviewer that finishes its
+  review but exits without writing `.harness/review.json` is now re-prompted ONCE
+  in the same worktree with a terse "write the verdict now" nudge before the run
+  is discarded — recovering the full implementer+reviewer spend on a recoverable
+  miss (`Harness.Run` `settle_review/2` on `{:error, :missing}`, bounded by a
+  `reviewer_reprompt_count` counter; `:repeat_state` re-arms the spawn/idle
+  watchdogs identically to the first pass). The re-prompt is mechanical — a
+  re-issued flush of the artifact the reviewer owed, interpreting no work — so it
+  stays inside the agent-gate rule. Malformed verdicts and rejects are unchanged;
+  a second miss settles `:failed` as `{:review_stuck, ...}` exactly as before.
 
 ### Added
 

@@ -70,7 +70,11 @@ Harness reads the file mechanically (`Harness.Run.Review`):
 
 - `approve` → run settles `:done`, reason `:approved` → landing enqueued (if `landing_policy: :auto`)
 - `reject` → run settles `:failed`, reason `{:review_rejected, report}` → task back to the queue
-- missing / malformed → `:failed`, reason `{:review_stuck, report}`
+- malformed → `:failed`, reason `{:review_stuck, report}`
+- missing → the reviewer is re-prompted **once** in the same worktree to write its verdict (Task 203);
+  a second miss settles `:failed`, reason `{:review_stuck, report}`. The re-prompt is mechanical — a
+  re-issued flush of the artifact the reviewer owed, interpreting no work — so it stays inside the
+  agent-gate rule rather than reopening "machinery interprets outcomes".
 
 The `.harness/` directory is excluded from commits and diff measurement — the artifact is a
 side channel, never part of the deliverable.

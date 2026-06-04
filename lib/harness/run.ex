@@ -34,8 +34,11 @@ defmodule Harness.Run do
   the checks itself, fixes inline (its own edits, its own commits), and writes
   `.harness/review.json` (`Harness.Run.Review`). Harness reads that artifact
   mechanically: approve settles `:done`, reject settles `:failed` with the
-  reviewer's report, a missing or malformed artifact settles `:failed` as
-  `{:review_stuck, ...}`.
+  reviewer's report, a malformed artifact settles `:failed` as
+  `{:review_stuck, ...}`. A *missing* artifact (the reviewer exited without
+  writing it) is re-prompted ONCE in the same worktree (Task 203) — a mechanical
+  re-issue of the flush, not a re-judgment — before settling `{:review_stuck,
+  ...}` on a second miss.
 
   Rejection is reserved for degenerate cases — an empty or unusable worktree,
   destructive or fully off-task work. Everything fixable the reviewer fixes and
@@ -136,6 +139,22 @@ defmodule Harness.Run do
   # the 90-min lifetime cap, which remains the real backstop.
   @reviewer_idle_floor 600_000
 
+  # Missing-verdict re-prompt budget (Task 203). The reviewer's one mandatory
+  # mechanical act is writing `.harness/review.json`; a reviewer that finishes
+  # the review but exits a hair before that write loses the ENTIRE run (full
+  # implementer + reviewer spend) to a discard + re-dispatch (rmap
+  # run-…-f3ebb30a: a 214-line review, reviewer exited 0 without the verdict).
+  # On a MISSING verdict only, re-invoke the SAME reviewer once in the SAME
+  # worktree with a terse "write the verdict now" nudge before failing as
+  # :review_stuck. This is MECHANICAL — re-issuing a flush of an artifact the
+  # reviewer was contractually required to write. Harness interprets no work,
+  # classifies no outcome, makes no approve/reject decision: the verdict still
+  # lives entirely in whatever the re-invoked reviewer writes. It does not
+  # reopen the agent-gate "machinery interprets outcomes" door (CLAUDE.md) — a
+  # bounded retry of a mechanical write is the same class as retrying a failed
+  # `git push`. Bounded to exactly one retry; a second miss fails as before.
+  @reviewer_reprompt_limit 1
+
   # Per-run memory watchdog (Task 200). The reviewer AI runs the project's
   # check_command itself; harness Ports the agent CLI and the agent forks `mix`/
   # `cargo`/… as its own descendants — a tree harness spawns but never bounded.
@@ -187,6 +206,8 @@ defmodule Harness.Run do
            mem_sample_interval: pos_integer(),
            review: Review.t() | nil,
            reviewer_diff_size: non_neg_integer() | nil,
+           reviewer_pre_review_sha: String.t() | nil,
+           reviewer_reprompt_count: non_neg_integer(),
            implementer_empty_diff?: boolean(),
            hold_requested: false | :graceful | :interrupt,
            hold_reason: :graceful | :interrupt | nil,
@@ -493,6 +514,8 @@ defmodule Harness.Run do
       mem_sample_interval: mem_sample_interval,
       review: nil,
       reviewer_diff_size: nil,
+      reviewer_pre_review_sha: nil,
+      reviewer_reprompt_count: 0,
       implementer_empty_diff?: false,
       hold_requested: false,
       hold_reason: nil,
@@ -1559,7 +1582,12 @@ defmodule Harness.Run do
   defp route_to_review(data) do
     case select_reviewer(data) do
       {:ok, reviewer} ->
-        {:next_state, :reviewing, %{data | reviewer_adapter: reviewer}}
+        # Capture the implementer's final SHA ONCE, here at the single entry into
+        # review. `measure_reviewer_diff/2` spans from this baseline, so a
+        # Task-203 re-prompt (`:repeat_state`, which never re-routes) keeps the
+        # original baseline and the fix-diff KPI counts the WHOLE review —
+        # including a first pass that fixed-then-exited before its verdict.
+        {:next_state, :reviewing, %{data | reviewer_adapter: reviewer, reviewer_pre_review_sha: current_sha(data)}}
 
       {:error, reason} ->
         report = "No cross-family reviewer adapter available: #{inspect(reason)}"
@@ -1578,6 +1606,17 @@ defmodule Harness.Run do
 
   defp settle_review(data, {:ok, %Review{verdict: :reject} = review}) do
     {:next_state, :failed, %{data | review: review, reason: {:review_rejected, review.report}}}
+  end
+
+  # Missing verdict — the recoverable case (Task 203). On the FIRST miss only,
+  # re-enter :reviewing to re-invoke the same reviewer in the same worktree with
+  # a terse nudge (see `reviewer_reprompt/1`); `:repeat_state` re-runs the enter
+  # callback, re-arming the spawn/idle watchdogs identically to the first pass.
+  # A second miss (count already at the limit) fails as :review_stuck — no loop.
+  defp settle_review(%{reviewer_reprompt_count: count} = data, {:error, :missing})
+       when count < @reviewer_reprompt_limit do
+    Logger.info("harness run: reviewer wrote no verdict for #{data.run_id} — re-prompting once (attempt #{count + 1})")
+    {:repeat_state, %{data | reviewer_reprompt_count: count + 1, task: nil}}
   end
 
   defp settle_review(data, {:error, :missing}) do
@@ -1720,7 +1759,10 @@ defmodule Harness.Run do
            }}
           | {:error, term()}
   defp run_reviewer(data, parent) do
-    pre_review_sha = current_sha(data)
+    # Set once at the single route-into-review entry (`route_to_review/1`) so the
+    # fix-diff spans the whole review across any Task-203 re-prompt; `||` only
+    # guards the degenerate nil (a run that reached review without routing).
+    pre_review_sha = data.reviewer_pre_review_sha || current_sha(data)
 
     with {:ok, %Outcome{} = outcome} <-
            Driver.run(data.reviewer_adapter, reviewer_invocation(data), reviewer_driver_opts(data, parent)),
@@ -1753,7 +1795,7 @@ defmodule Harness.Run do
   @spec reviewer_invocation(data()) :: Invocation.t()
   defp reviewer_invocation(data) do
     %Invocation{
-      prompt: reviewer_prompt(data),
+      prompt: reviewer_invocation_prompt(data),
       cwd: data.worktree.path,
       task_id: "#{data.item.id}-review",
       permission_mode: :autonomous,
@@ -1793,6 +1835,61 @@ defmodule Harness.Run do
   def reviewer_idle_timeout(nil), do: @reviewer_idle_floor
   def reviewer_idle_timeout(:infinity), do: :infinity
   def reviewer_idle_timeout(idle) when is_integer(idle), do: max(idle, @reviewer_idle_floor)
+
+  # First pass gets the full gate prompt; a Task-203 re-prompt (count > 0) gets
+  # the terse "you exited without writing the verdict — write it now" nudge.
+  @spec reviewer_invocation_prompt(data()) :: String.t()
+  defp reviewer_invocation_prompt(%{reviewer_reprompt_count: count} = data) when count > 0, do: reviewer_reprompt(data)
+
+  defp reviewer_invocation_prompt(data), do: reviewer_prompt(data)
+
+  # Task 203 re-prompt: a fresh invocation of the same reviewer whose prior pass
+  # exited without writing the verdict. All review work is already committed in
+  # this worktree; the ONE remaining job is producing the artifact. Terse by
+  # design — the verdict schema + the task framing the agent needs to ground an
+  # honest approve/reject, nothing more.
+  @spec reviewer_reprompt(data()) :: String.t()
+  defp reviewer_reprompt(data) do
+    """
+    You are the cross-family reviewer for a harness run. You already reviewed this work in a prior
+    pass but exited WITHOUT writing your verdict to `#{Review.artifact_path()}`, so harness is about
+    to discard the entire run.
+
+    This is your ONLY remaining job, nothing else: all prior fixes are already committed in this
+    worktree — assess its current state, run the project's checks below if you need to confirm, then
+    write your verdict file NOW and stop. Do not re-do a full review or make new changes unless a
+    check is actually failing.
+
+    Verdict artifact — write this, then stop:
+
+    #{Review.artifact_path()}
+    {
+      "verdict": "approve" | "reject",
+      "report": "<what you found, what you fixed, why you decided>",
+      "ratings": {
+        "performance": <0-10>,
+        "truthfulness": <0-10 — the implementer's self-report vs what you actually found>,
+        "code_quality": <0-10 — judgment-based; less code can be much better>,
+        "idiom": <0-10 — language/framework idiom and project-convention usage>
+      }
+    }
+
+    Fixing is cheaper than rejecting — approve anything salvageable; reject only if nothing is.
+    A missing or malformed #{Review.artifact_path()} fails this run for good.
+
+    Project check hint (run these yourself if confirming; judge the output):
+    #{empty_placeholder(data.project.check_command)}
+
+    Implementer: #{data.item.agent}
+    Current commit: #{current_sha(data)}
+
+    Task spec:
+    #{empty_placeholder(task_text(data))}
+
+    Acceptance criteria:
+    #{format_acceptance_criteria(data.item.acceptance_criteria)}
+    """
+  end
 
   # The reviewer's instructions — THE gate's prompt. The judgment (is the work
   # good, do the checks pass in a way that matters, what does an empty diff

@@ -161,6 +161,51 @@ defmodule Harness.FakeAdapter do
      ["-c", ~S(mkdir -p .harness; printf '%s' "$1" > .harness/review.json), "harness-fake", review_json(verdict)], []}
   end
 
+  # {:review_miss_then, verdict}
+  #   — first invocation leaves an (excluded) `.harness/` marker and writes NO
+  #     artifact (the missing-verdict miss); the second invocation, seeing the
+  #     marker, writes the verdict. Drives the Task-203 missing -> re-prompt ->
+  #     verdict recovery path with one real miss followed by a real verdict.
+  defp command({:review_miss_then, verdict}, _invocation) when verdict in ["approve", "reject"] do
+    script =
+      ~S(mkdir -p .harness; if [ -f .harness/.reprompt-marker ]; then printf '%s' "$1" > .harness/review.json; ) <>
+        ~S(else : > .harness/.reprompt-marker; fi)
+
+    {"/bin/sh", ["-c", script, "harness-fake", review_json(verdict)], []}
+  end
+
+  # {:review_count_then, behavior}
+  #   — appends one byte to the (excluded) `.harness/.invoke-count` on EVERY
+  #     invocation so a test can count reviewer passes off the retained
+  #     worktree, then performs `behavior`: `:miss` writes no artifact (a
+  #     persistent miss — proves the Task-203 re-prompt fires exactly once,
+  #     count == 2), `:malformed` writes invalid JSON (proves malformed does NOT
+  #     re-prompt, count == 1).
+  defp command({:review_count_then, behavior}, _invocation) when behavior in [:miss, :malformed] do
+    tail =
+      case behavior do
+        :miss -> ""
+        :malformed -> ~S(; echo '{not json' > .harness/review.json)
+      end
+
+    {"/bin/sh", ["-c", ~S(mkdir -p .harness; printf x >> .harness/.invoke-count) <> tail], []}
+  end
+
+  # {:review_fix_miss_then, verdict}
+  #   — first invocation commits a real fix (`reviewer_fix.txt`) + leaves the
+  #     (excluded) marker but writes NO verdict (the fix-then-exit miss); the
+  #     second invocation, seeing the marker, writes the verdict without further
+  #     fixes. Drives the Task-203 KPI check: the fix-diff baseline stays the
+  #     implementer's SHA across the re-prompt, so the first pass's committed fix
+  #     is still counted (a recomputed-at-retry baseline would report 0).
+  defp command({:review_fix_miss_then, verdict}, _invocation) when verdict in ["approve", "reject"] do
+    script =
+      ~S(mkdir -p .harness; if [ -f .harness/.reprompt-marker ]; then printf '%s' "$1" > .harness/review.json; ) <>
+        ~S(else : > .harness/.reprompt-marker; printf 'reviewer-fix\n' > reviewer_fix.txt; fi)
+
+    {"/bin/sh", ["-c", script, "harness-fake", review_json(verdict)], []}
+  end
+
   defp command({:review_with_fix, verdict}, _invocation) when verdict in ["approve", "reject"] do
     script = ~S(echo reviewer-fix > reviewer_fix.txt; mkdir -p .harness; printf '%s' "$1" > .harness/review.json)
     {"/bin/sh", ["-c", script, "harness-fake", review_json(verdict)], []}

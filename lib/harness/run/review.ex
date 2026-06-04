@@ -12,9 +12,11 @@ defmodule Harness.Run.Review do
         "ratings": {"performance": 8, "truthfulness": 9, "code_quality": 7, "idiom": 8}
       }
 
-  Harness never interprets the work itself — it only reads this file. A missing
-  or malformed artifact settles the run `:failed` (`{:review_stuck, ...}`); the
-  gate cannot pass silently. The artifact lives under `.harness/`, which
+  Harness never interprets the work itself — it only reads this file. A
+  malformed artifact settles the run `:failed` (`{:review_stuck, ...}`); a
+  missing artifact is re-prompted once before failing the same way (Task 203,
+  `Harness.Run`); the gate cannot pass silently. The artifact lives under
+  `.harness/`, which
   `Harness.Worktree.commit/2` excludes from staging, so it never rides in the
   deliverable commit.
   """

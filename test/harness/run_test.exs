@@ -232,6 +232,48 @@ defmodule Harness.RunTest do
       assert result.review == nil
     end
 
+    # Task 203: a reviewer that exits without the verdict is re-prompted ONCE in
+    # the same worktree before the run is discarded — recovering the full
+    # implementer+reviewer spend on a recoverable miss.
+    test "a missing verdict re-prompts the reviewer once, then settles on its retry verdict" do
+      result = run(reviewer_adapter_opts: [command: {:review_miss_then, "approve"}])
+
+      # First pass wrote no artifact; the re-prompt's verdict gates the run.
+      assert %Result{state: :done, reason: :approved} = result
+      assert %Review{verdict: :approve} = result.review
+    end
+
+    test "the missing-verdict re-prompt is bounded to exactly one retry (no loop)" do
+      result = run(reviewer_adapter_opts: [command: {:review_count_then, :miss}])
+
+      assert %Result{state: :failed, reason: {:review_stuck, report}} = result
+      assert report =~ Review.artifact_path()
+      assert result.review == nil
+      # Two invocations total: the original pass + exactly one re-prompt.
+      assert File.read!(Path.join(result.worktree_path, ".harness/.invoke-count")) == "xx"
+    end
+
+    test "a malformed verdict is never re-prompted — it fails on the first pass" do
+      result = run(reviewer_adapter_opts: [command: {:review_count_then, :malformed}])
+
+      assert %Result{state: :failed, reason: {:review_stuck, report}} = result
+      assert report =~ "malformed"
+      # One invocation only: malformed is unrecoverable, not a missing-write miss.
+      assert File.read!(Path.join(result.worktree_path, ".harness/.invoke-count")) == "x"
+    end
+
+    # Task 203 KPI: the fix-diff baseline is captured once at route-into-review,
+    # so a first pass that commits fixes then exits without its verdict still has
+    # those fixes counted when the re-prompt produces the verdict. A baseline
+    # recomputed at the retry's start would span only the (empty) retry → 0.
+    test "the fix-diff KPI counts the first pass's fixes across a re-prompt" do
+      result = run(reviewer_adapter_opts: [command: {:review_fix_miss_then, "approve"}])
+
+      assert %Result{state: :done, reason: :approved} = result
+      assert %Review{verdict: :approve} = result.review
+      assert result.reviewer_diff_size >= 1
+    end
+
     test "the reviewer still gates the run when the implementer times out" do
       result = run(adapter_opts: [command: :write_then_hang], idle_timeout: 150)
 
