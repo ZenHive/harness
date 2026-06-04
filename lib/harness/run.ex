@@ -2096,8 +2096,37 @@ defmodule Harness.Run do
   end
 
   @spec worktree_opts(data()) :: keyword()
+  defp worktree_opts(%{project: %Project{target_branch: target}} = data) when is_binary(target) and target != "" do
+    opts = base_worktree_opts(data)
+
+    case fetch_target(data.project, target) do
+      :ok ->
+        Keyword.put(opts, :base_ref, "origin/" <> target)
+
+      {:error, reason} ->
+        Logger.warning(
+          "harness run: failed to fetch origin/#{target} for run #{data.run_id}: #{inspect(reason)}; falling back to HEAD"
+        )
+
+        opts
+    end
+  end
+
   defp worktree_opts(data) do
+    base_worktree_opts(data)
+  end
+
+  @spec base_worktree_opts(data()) :: keyword()
+  defp base_worktree_opts(data) do
     put_opt([id: data.run_id], :base_dir, data.base_dir)
+  end
+
+  @spec fetch_target(Project.t(), String.t()) :: :ok | {:error, Git.error()}
+  defp fetch_target(%Project{} = project, target) do
+    case Git.run(["fetch", "origin", target], Project.repo_path(project)) do
+      {:ok, _output} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @spec driver_opts(data(), pid()) :: keyword()
