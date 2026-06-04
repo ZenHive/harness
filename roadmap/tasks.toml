@@ -5971,19 +5971,19 @@ This CONTRADICTS the CLAUDE.md claim that Antigravity's Task 32 isolation findin
 
 Fix direction: trace the Antigravity adapter's build_command/1 + Port cwd handling; determine whether agy ignores the Port cwd for file writes (vs honoring it for reads only). Either make it isolate, or flip its declared capability to worktree_isolation: false (so Harness.Run re-enables the pollution snapshot / main-checkout guard for it). agy stays disabled for dispatch until this is resolved.
 """
-implemented = "Landed by codex via reviewer-approved harness run run-1780547458206-bbe4011b. Antigravity build_command/1 now passes --add-dir <worktree> before -p so agy is pinned to the run worktree in addition to the Port cwd; docs corrected the stale agy-honors-cwd claim. Regression tests assert --add-dir placement/path and distinct concurrent worktree paths; reviewer report approved with targeted compile/test evidence and implementer precommit.full green."
-delivered_by = "codex"
+implemented = "Antigravity adapter passes --add-dir <worktree> in build_command/1 so agy writes isolate to the run worktree (agy ignores Port cwd for writes); mirrors Codex exec --cd. Landed 5e3941b. The run also reconstructed a Chat.Store facade off the half-finished 140 base; that piece was superseded by the ResultStore-consistent variant in 705dd1e."
+delivered_by = "cursor"
 verified = true
 created_at = "2026-06-04"
 scored_at = "2026-06-04"
 done_at = "2026-06-04"
-shipped_in = "5e3941b85b4884f0a72f6b534424cbc4c6143da1"
+shipped_in = "5e3941b"
 
 [[task]]
 id = "199"
 phase = 16
 bundle = "resilience"
-status = "pending"
+status = "in_progress"
 title = "Run wedges in :reviewing when the reviewer process is never tracked (reviewer=nil) — add an idle/progress watchdog so a lost reviewer fails fast instead of holding a queue slot to the 90-min lifetime cap"
 scores = { d = 5, b = 6, u = 5 }
 markers = ["bug"]
@@ -5997,4 +5997,5 @@ OBSERVED 2026-06-04 (this session). The salvaged task-140 antigravity run (run-1
 This is a MECHANICAL liveness gap, not a judgment bug: :reviewing has no idle/progress watchdog, so a never-tracked (or silently-failed-to-spawn) reviewer never trips a timeout. Fix is a timer armed on entry to :reviewing + fail-fast on reviewer-spawn error — substrate only. Do NOT add any branch/regex/classifier interpreting review meaning (that violates the agent-gate rule); the verdict still comes only from .harness/review.json.
 """
 created_at = "2026-06-04"
+started_at = "2026-06-04"
 scored_at = "2026-06-04"
