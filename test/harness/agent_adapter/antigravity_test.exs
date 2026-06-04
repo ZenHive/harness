@@ -29,13 +29,25 @@ defmodule Harness.AgentAdapter.AntigravityTest do
   end
 
   describe "build_command/1" do
+    test "pins the run worktree via --add-dir (port cwd alone is insufficient — Task 32/198)", %{cwd: cwd} do
+      assert {:ok, {"agy", argv, []}} = Antigravity.build_command(invocation(cwd))
+
+      add_dir_index = Enum.find_index(argv, &(&1 == "--add-dir"))
+      assert add_dir_index, "argv must carry --add-dir"
+      assert Enum.at(argv, add_dir_index + 1) == cwd
+      p_index = Enum.find_index(argv, &(&1 == "-p"))
+      assert add_dir_index < p_index, "--add-dir must precede -p"
+    end
+
     test "builds a headless run for the autonomous baseline", %{cwd: cwd} do
       assert {:ok, {"agy", argv, []}} = Antigravity.build_command(invocation(cwd))
 
       assert argv == [
+               "--add-dir",
+               cwd,
+               "--dangerously-skip-permissions",
                "-p",
-               RulesInjection.prepend_prompt("do the task"),
-               "--dangerously-skip-permissions"
+               RulesInjection.prepend_prompt("do the task")
              ]
     end
 
@@ -48,11 +60,28 @@ defmodule Harness.AgentAdapter.AntigravityTest do
       assert {:ok, {"agy", argv, []}} = Antigravity.build_command(invocation(cwd, session: :resume))
 
       assert argv == [
-               "-p",
-               RulesInjection.prepend_prompt("do the task"),
+               "--add-dir",
+               cwd,
                "--dangerously-skip-permissions",
-               "--continue"
+               "--continue",
+               "-p",
+               RulesInjection.prepend_prompt("do the task")
              ]
+    end
+
+    test "two concurrent invocations carry distinct --add-dir paths (parallel-batch regression for Task 198)",
+         %{cwd: cwd} do
+      sibling =
+        Path.join(Path.dirname(cwd), "harness-antigravity-sibling-#{System.unique_integer()}")
+
+      File.mkdir_p!(sibling)
+      on_exit(fn -> File.rm_rf!(sibling) end)
+
+      assert {:ok, {"agy", argv_a, []}} = Antigravity.build_command(invocation(cwd))
+      assert {:ok, {"agy", argv_b, []}} = Antigravity.build_command(invocation(sibling))
+
+      assert Enum.at(argv_a, Enum.find_index(argv_a, &(&1 == "--add-dir")) + 1) == cwd
+      assert Enum.at(argv_b, Enum.find_index(argv_b, &(&1 == "--add-dir")) + 1) == sibling
     end
 
     test "omits the resume flag for a fresh run", %{cwd: cwd} do

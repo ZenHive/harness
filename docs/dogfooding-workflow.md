@@ -89,7 +89,7 @@ but harness has no Droid adapter, so `ingest(agent: :droid)` is rejected (`{:inv
 and flat dispatch rejects it as `{:unknown_adapter, "droid"}`. Adding an executor is two-sided:
 an rmap-lib `--to` target (already shipped for `droid`) plus a harness `AgentAdapter`.
 
-> **Antigravity isolation note (Task 187):** Task 32's `agy` cwd finding is stale as of `agy` 1.0.5. A 2026-06-04 linked-worktree re-test showed `agy` honoring the Port `cwd`, with writes landing in the run worktree and the main checkout staying clean. `Harness.AgentAdapter.Antigravity` now declares `worktree_isolation: true`.
+> **Antigravity isolation note (Task 198):** `agy` ignores Port `cwd` for file writes (Task 32). Harness pins the run worktree via `--add-dir <cwd>` in `build_command/1` (Task 198 — mirrors Codex `exec --cd`, Task 41). `worktree_isolation: true` remains declared; do not re-enable autonomous `agy` dispatch until a live run proves isolation end-to-end.
 
 ### Live-node dispatch via Tidewave `project_eval` (escape hatch — struct-level control)
 
@@ -425,7 +425,7 @@ dogfood drivers — rmap renders native prompts for them, so `ingest(agent: :gro
 → `start_run/4` with `Harness.AgentAdapter.Grok` is the whole flow (no two-step).
 Don't silently exclude them from a batch — that's training-comfort bias, not a
 real constraint. Round-1 Task 25 (Grok-driven) settled approved. Antigravity's
-old worktree-isolation caveat is resolved as of `agy` 1.0.5 (Task 187).
+worktree isolation requires `--add-dir` in the adapter argv (Task 198); Port `cwd` alone is insufficient.
 
 **The one hard limit: never batch two tasks that edit the same function.**
 That's a guaranteed un-auto-mergable collision (e.g. Tasks 34 + 35 both

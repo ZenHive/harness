@@ -7,6 +7,7 @@ defmodule Harness.Chat.Store.Postgres do
 
   import Ecto.Query
 
+  alias Harness.Chat.Store
   alias Harness.Chat.Store.Postgres.ChatSession
   alias Harness.Repo
 
@@ -14,7 +15,7 @@ defmodule Harness.Chat.Store.Postgres do
 
   @max_persisted_messages 200
 
-  @impl Harness.Chat.Store
+  @impl Store
   @spec save(String.t(), [map()], keyword()) :: :ok | {:error, term()}
   def save(session_id, messages, opts) when is_binary(session_id) and is_list(messages) and is_list(opts) do
     repo = Keyword.get(opts, :repo, Repo)
@@ -38,8 +39,8 @@ defmodule Harness.Chat.Store.Postgres do
     end
   end
 
-  @impl Harness.Chat.Store
-  @spec load(String.t(), keyword()) :: {:ok, Harness.Chat.Store.record()} | {:error, :not_found}
+  @impl Store
+  @spec load(String.t(), keyword()) :: {:ok, Store.record()} | {:error, :not_found}
   def load(session_id, opts) when is_binary(session_id) and is_list(opts) do
     repo = Keyword.get(opts, :repo, Repo)
 
@@ -57,8 +58,8 @@ defmodule Harness.Chat.Store.Postgres do
     end
   end
 
-  @impl Harness.Chat.Store
-  @spec list(keyword()) :: [Harness.Chat.Store.summary()]
+  @impl Store
+  @spec list(keyword()) :: [Store.summary()]
   def list(opts) when is_list(opts) do
     repo = Keyword.get(opts, :repo, Repo)
 
@@ -71,9 +72,10 @@ defmodule Harness.Chat.Store.Postgres do
 
       Enum.map(rows, fn %ChatSession{session_id: id, messages: messages, updated_at: updated_at} ->
         decoded = decode_messages(messages)
+
         %{
           session_id: id,
-          label: Harness.Chat.Store.derive_label(decoded),
+          label: Store.derive_label(decoded),
           message_count: length(decoded),
           updated_at: DateTime.from_naive!(updated_at, "Etc/UTC")
         }
@@ -97,7 +99,7 @@ defmodule Harness.Chat.Store.Postgres do
   @spec decode_message(term()) :: term()
   defp decode_message(map) when is_map(map) do
     Map.new(map, fn {k, v} ->
-      key = if is_binary(k), do: String.to_atom(k), else: k
+      key = atom_key(k)
       value = decode_message_value(key, v)
       {key, value}
     end)
@@ -108,6 +110,15 @@ defmodule Harness.Chat.Store.Postgres do
   end
 
   defp decode_message(other), do: other
+
+  @spec atom_key(atom() | String.t()) :: atom() | String.t()
+  defp atom_key(k) when is_atom(k), do: k
+
+  defp atom_key(k) when is_binary(k) do
+    String.to_existing_atom(k)
+  rescue
+    ArgumentError -> k
+  end
 
   @spec decode_message_value(atom() | String.t(), term()) :: term()
   defp decode_message_value(:role, "user"), do: :user

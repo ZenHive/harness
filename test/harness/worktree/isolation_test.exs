@@ -10,7 +10,7 @@ defmodule Harness.Worktree.IsolationTest do
       assert :ok = Isolation.validate(Harness.FakeAdapter)
     end
 
-    test "accepts Antigravity now that agy honors the port cwd" do
+    test "accepts Antigravity when worktree isolation is declared (cwd pinned via --add-dir in build_command/1)" do
       assert :ok = Isolation.validate(Antigravity)
     end
   end

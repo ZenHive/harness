@@ -12,15 +12,12 @@ defmodule Harness.AgentAdapter.Antigravity do
 
   ## Working directory / workspace
 
-  `Harness.AgentAdapter.invoke/2` sets the port's `:cd` to the run worktree.
-  As of `agy` 1.0.5, Antigravity honors that port cwd for linked git worktrees:
-  a 2026-06-04 re-test using the exact Task-32 trigger (`git worktree add`,
-  with `.git` as a file pointing at the common dir) completed 4/4 isolated runs
-  across baseline, `--add-dir <wt>`, `--sandbox`, and combined invocations.
-  Writes landed in the run worktree and the main checkout stayed clean.
-
-  No extra workspace flag is threaded into `build_command/1`; the port `:cd`
-  set by the shared adapter invocation is the isolation mechanism.
+  `agy` does **not** honor the port `:cd` alone for file writes (Task 32, Task
+  198): it resolves workspace via git metadata and can edit the main checkout
+  while the run worktree stays clean. Isolation is pinned on two channels, like
+  Codex's `--cd` fix (Task 41): the port `:cd` **and** `--add-dir <worktree>`
+  in `build_command/1`. `--add-dir` is the load-bearing flag — `agy` exposes no
+  `--cwd` / `--workspace` replacement, only this repeatable workspace add.
 
   ## Permission mode
 
@@ -81,7 +78,11 @@ defmodule Harness.AgentAdapter.Antigravity do
          :ok <- validate_model(invocation.model),
          {:ok, permission} <- AgentAdapter.permission_flag(@permission_modes, invocation.permission_mode),
          {:ok, resume} <- AgentAdapter.resume_args(invocation.session) do
-      argv = ["-p", AgentAdapter.task_prompt(invocation), permission] ++ resume
+      argv =
+        ["--add-dir", invocation.cwd, permission] ++
+          resume ++
+          ["-p", AgentAdapter.task_prompt(invocation)]
+
       env = Map.to_list(invocation.env)
       {:ok, {"agy", argv, env}}
     end

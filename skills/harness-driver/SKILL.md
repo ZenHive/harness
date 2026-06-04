@@ -261,7 +261,7 @@ For Oban-backed dispatch (preferred for persistence + restart resilience):
 
 rmap can also render an agent harness has **no adapter for** (currently `droid`). `ingest(agent: :droid)` is rejected (`{:invalid_agent, :droid}`) because there is no executor to run the prompt, and `dispatch__task adapter: "droid"` rejects as `{:unknown_adapter, "droid"}`. Adding an executor is two-sided: an rmap-lib `--to` target (the rmap binary is ours at `../rmap/` — already shipped for `droid`) **plus** a harness `AgentAdapter` added to `Harness.Roadmap`'s `@valid_agents` and `Harness.AgentAdapter.Registry`.
 
-> **Worktree isolation is a separate, orthogonal axis.** All six shipped adapters currently declare `worktree_isolation: true`. Antigravity's Task 32 finding is stale as of `agy` 1.0.5: a 2026-06-04 linked-worktree re-test showed `agy` honoring the Port `cwd` and isolating writes to the run worktree. The dispatch guard (`Harness.Worktree.Isolation`) still refuses to start a worktree-isolated run on any future adapter that declares `false`. This is independent of whether rmap can render the agent.
+> **Worktree isolation is a separate, orthogonal axis.** All six shipped adapters currently declare `worktree_isolation: true`. `agy` ignores Port `cwd` for writes unless the adapter also passes `--add-dir <worktree>` (Task 32/198 — mirrors Codex `exec --cd`, Task 41). The dispatch guard (`Harness.Worktree.Isolation`) still refuses to start a worktree-isolated run on any future adapter that declares `false`. This is independent of whether rmap can render the agent.
 
 ### 2. Cheap / Direct Driver Path (`Harness.AgentAdapter.Driver.run/3`)
 

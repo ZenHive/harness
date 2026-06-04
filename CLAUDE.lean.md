@@ -87,7 +87,7 @@ All six driven over OTP Ports — uniform, no per-agent SDK. harness captures ra
 
 **Two-axis adapter contract** (don't conflate):
 - **Renderable vs executable**: `rmap delegate --to` now renders a native prompt for all six adapters (`claude`/`codex`/`cursor`/`grok`/`antigravity`/`pi`), so each is a first-class `Roadmap.ingest(agent: …)` target dispatched directly on its own adapter — the old non-delegatable two-step is gone. rmap can also render `droid`, but harness has **no Droid adapter**, so `:droid` is rejected at the ingest/dispatch boundary (`{:invalid_agent, :droid}` / `{:unknown_adapter, "droid"}`). Adding an executor is two-sided: an rmap-lib `--to` target (the rmap binary is ours, `../rmap/` — already done for `droid`) **plus** a harness `AgentAdapter` listed in `Roadmap`'s `@valid_agents`.
-- **Worktree isolation**: all six shipped adapters declare `worktree_isolation: true`. Antigravity's Task 32 finding is stale as of `agy` 1.0.5: a 2026-06-04 linked-worktree re-test showed `agy` honoring the Port `cwd` with writes isolated to the run worktree. `Harness.Run` trusts this capability and skips the main-checkout pollution snapshot for isolating adapters. Codex's equivalent regression (Task 41) is resolved (`codex exec --cd`).
+- **Worktree isolation**: all six shipped adapters declare `worktree_isolation: true`. `agy` does **not** honor Port `cwd` alone (Task 32/198) — the adapter pins the run worktree via `--add-dir <cwd>` in `build_command/1`, mirroring Codex's `exec --cd` fix (Task 41). `Harness.Run` trusts declared isolation and skips the main-checkout pollution snapshot for isolating adapters.
 
 ## Reach Is in the Dep Stack
 

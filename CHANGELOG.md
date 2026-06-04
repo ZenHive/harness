@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Antigravity worktree isolation regression (Task 198).** `agy` ignores Port `cwd`
+  for file writes; `Harness.AgentAdapter.Antigravity` now passes `--add-dir <worktree>`
+  in `build_command/1` (mirrors Codex `exec --cd`, Task 41). Reverts the incorrect
+  Task 187 claim that port cwd alone was sufficient.
+
 ### Added
 
 - **Task 104: harness-workflow promoted to global includes.** `priv/includes/harness-workflow.md` is the version-controlled source for the generalized harness delegate/verify/repair/land workflow (extracted from the incubator `docs/dogfooding-workflow.md`). New `mix harness.install_includes [--dest DIR] [--force]` installs (or updates with .bak) to `~/.claude/includes/harness-workflow.md`. Any repo adopts the normal way: `@~/.claude/includes/harness-workflow.md` (layered, does not supersede workflow-philosophy / task-prioritization / worktree-workflow). References, CLAUDE.md load-on-demand, SKILL.md, README, and in-repo recipe updated. Tests cover install paths.
@@ -213,10 +220,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolver. Promoted to `@doc false` public function for unit testing.
 - **Oban job retention extended to 24h.** `Oban.Plugins.Pruner` `max_age` bumped from the
   60s default to 24 hours so settled land/audit jobs remain inspectable in Oban Web.
-- **Antigravity worktree isolation restored (Task 187).** `agy` 1.0.5 honors the Port `cwd`
-  for linked git worktrees; `Harness.AgentAdapter.Antigravity` now declares
-  `worktree_isolation: true`, `worktree_isolation_limitation/0` is removed, and pre-spawn
-  rejection is lifted.
+- **Antigravity worktree isolation (Task 187, superseded by Task 198).** Declared
+  `worktree_isolation: true` and lifted pre-spawn rejection; Task 198 corrected the
+  isolation mechanism to `--add-dir` (port cwd alone was insufficient).
 - **Run lifecycle re-keyed to the reviewer gate (agent-gate rebuild).** States:
   `dispatched → running → committing → reviewing → done|failed` (`:verifying`
   deleted). Reasons: `:approved` / `{:review_rejected, report}` /

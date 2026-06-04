@@ -67,7 +67,10 @@ defmodule Harness.MixProject do
         Harness.Dashboard.Tokens,
         Harness.Repo,
         Harness.Oban.QueueBootstrap,
-        Harness.Chat.Claude
+        Harness.Chat.Claude,
+        # Task 140: Postgres chat persistence — exercised by :integration tests.
+        Harness.Chat.Store.Postgres,
+        Harness.Chat.Store.Postgres.ChatSession
       ]
     ]
   end

@@ -24,7 +24,7 @@ that adapter — treat this file as a starting point, not a frozen contract.
 
 `rmap` can also render a `droid` prompt, but harness ships **no Droid adapter**, so `:droid` is rejected at the ingest boundary (`{:invalid_agent, :droid}`) and at flat dispatch (`{:unknown_adapter, "droid"}`) — there is no executor to run it. Adding an executor is two-sided: a `rmap delegate --to` target (the rmap binary is ours, `../rmap/`; the `droid` render target already exists) **plus** a harness `AgentAdapter` added to `Harness.Roadmap`'s `@valid_agents` and `Harness.AgentAdapter.Registry`.
 
-(Worktree isolation is an orthogonal axis: all six shipped adapters currently declare `worktree_isolation: true`. Antigravity's Task 32 finding is stale as of `agy` 1.0.5; a 2026-06-04 linked-worktree re-test showed `agy` honoring the Port `cwd`.)
+(Worktree isolation is an orthogonal axis: all six shipped adapters declare `worktree_isolation: true`. `agy` ignores Port `cwd` for writes; harness pins the run worktree via `--add-dir` in `build_command/1` — Task 32/198, same shape as Codex `exec --cd`.)
 
 ## Per-agent detail
 
@@ -77,6 +77,7 @@ that adapter — treat this file as a starting point, not a frozen contract.
 - Output: Standard output (plain text).
 - **No system-prompt flag.**
 - Resume: `--continue`.
+- Workspace: `--add-dir <path>` (repeatable; harness passes the run worktree — Port `cwd` alone does not confine writes; Task 32/198).
 - `--dangerously-skip-permissions` auto-approves operations and skips permission prompts.
 
 ## System-prompt injection verdict (for Task 22)

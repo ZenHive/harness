@@ -5,6 +5,7 @@ defmodule Harness.Chat.Store.File do
 
   @behaviour Harness.Chat.Store
 
+  alias Harness.Chat.Store
   alias Harness.TermCodec
 
   require Logger
@@ -12,7 +13,7 @@ defmodule Harness.Chat.Store.File do
   @default_root "~/.harness/chats"
   @max_persisted_messages 200
 
-  @impl Harness.Chat.Store
+  @impl Store
   @spec save(String.t(), [map()], keyword()) :: :ok | {:error, term()}
   def save(session_id, messages, opts) when is_binary(session_id) and is_list(messages) and is_list(opts) do
     case root(opts) do
@@ -30,8 +31,8 @@ defmodule Harness.Chat.Store.File do
     end
   end
 
-  @impl Harness.Chat.Store
-  @spec load(String.t(), keyword()) :: {:ok, Harness.Chat.Store.record()} | {:error, :not_found}
+  @impl Store
+  @spec load(String.t(), keyword()) :: {:ok, Store.record()} | {:error, :not_found}
   def load(session_id, opts) when is_binary(session_id) and is_list(opts) do
     case root(opts) do
       nil ->
@@ -45,8 +46,8 @@ defmodule Harness.Chat.Store.File do
     end
   end
 
-  @impl Harness.Chat.Store
-  @spec list(keyword()) :: [Harness.Chat.Store.summary()]
+  @impl Store
+  @spec list(keyword()) :: [Store.summary()]
   def list(opts) when is_list(opts) do
     case root(opts) do
       nil ->
@@ -70,12 +71,12 @@ defmodule Harness.Chat.Store.File do
     end
   end
 
-  @spec summarize({:ok, term()} | {:error, term()}) :: [Harness.Chat.Store.summary()]
+  @spec summarize({:ok, term()} | {:error, term()}) :: [Store.summary()]
   defp summarize({:ok, %{session_id: id, messages: messages, updated_at: %DateTime{} = updated_at}}) do
     [
       %{
         session_id: id,
-        label: Harness.Chat.Store.derive_label(messages),
+        label: Store.derive_label(messages),
         message_count: length(messages),
         updated_at: updated_at
       }
