@@ -50,6 +50,8 @@ The `rmap` CLI (the roadmap substrate `roadmap/tasks.toml` uses) is a sibling Ru
 Toolchain pinned by `.tool-versions`: **Elixir 1.18.4-otp-27** (asdf). Postgres required for the Oban dispatch layer.
 
 > **Sync `development` before working when auto-land is on.** With `landing_policy: :auto`, the lander is a *second committer* to `origin/<target>` — it ff-pushes from a detached worktree and deliberately **never touches your checkout**, so your local `development` ref drifts behind origin after every autonomous land. **Start a session (and before any commit/push) with `git fetch origin development && git rebase origin/development`** (or `git pull --rebase origin development`) — rebase, because you'll often have local commits the lander doesn't. Skipping this is how you get a stale base / surprise non-ff push reject.
+>
+> **A clean rebase authorizes the push.** When the user has asked you to commit on `development` and the rebase onto `origin/development` lands clean (or you resolve the conflicts cleanly and finish the rebase), `git push origin development` is the completing step — do it without re-asking. The rebase is the safety check; a synced, ahead-by-N branch that you don't push just drifts again on the next autonomous land. (If the rebase still has unresolved conflicts, or the push is non-ff, stop and surface it — don't force-push a shared branch.)
 
 | Task | Command |
 |---|---|
