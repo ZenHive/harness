@@ -105,7 +105,7 @@ Core is OTP-dense. `mix reach.otp` (state-machine analysis, dead replies, missin
 
 ## Dogfooding — harness Builds harness
 
-From the core loop onward, harness is developed *by* harness. **Once bootstrap is `done`, every remaining pending task is delivered by dispatching it through harness.** Hand-build only what harness cannot yet do for itself. Runbook: `docs/dogfooding-workflow.md`. Driver reference: `@skills/harness-driver/SKILL.md` (load on demand; changes to `AgentAdapter.*` / `Run.Supervisor` / `Batch` / `Roadmap` / Invocation/result shapes must update it).
+From the core loop onward, harness is developed *by* harness. **Once bootstrap is `done`, every remaining pending task is delivered by dispatching it through harness.** Hand-build only what harness cannot yet do for itself. Runbook: `docs/dogfooding-workflow.md` (harness-incubator specifics + script template); general harness workflow contract (adopt via @ import in any repo): `@~/.claude/includes/harness-workflow.md`. Driver reference: `@skills/harness-driver/SKILL.md` (load on demand; changes to `AgentAdapter.*` / `Run.Supervisor` / `Batch` / `Roadmap` / Invocation/result shapes must update it).
 
 - **Roadmap = harness's own test corpus.** A task harness fails to deliver is a harness bug, filed via `rmap new`, not worked around by hand-building.
 - **Verification stays separate.** Dispatched agent = implementer; harness's check stack = grader. Done = verification green, never the agent's self-report.

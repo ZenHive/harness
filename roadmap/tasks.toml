@@ -3521,6 +3521,7 @@ Scope to define when picked up: which slice of dogfooding-workflow.md is generic
 """
 created_at = "2026-05-30"
 scored_at = "2026-05-30"
+implemented = "Promoted generalizable slice: added priv/includes/harness-workflow.md (canonical source); implemented mix harness.install_includes with --dest/--force + backup-on-change semantics (modeled on import_results); added test/mix/tasks/harness.install_includes_test.exs exercising install/up-to-date/backup/force paths via --dest (tmp-isolated); updated CLAUDE.md (load-on-demand table + dogfooding ref), skills/harness-driver/SKILL.md (verdict + surfaces), README, docs/in-repo-subdir-recipe.md, docs/dogfooding-workflow.md (incubator header), CHANGELOG. Relationship resolved as layered (no absorption/supersession) per the include's table. ACs met via the install + @-import path; harness self now documents the adoption. Minimal diff; tests verify the publish mechanism without touching real ~/.claude."
 
 [[task]]
 id = "105"

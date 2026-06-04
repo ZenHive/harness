@@ -7,6 +7,7 @@
 @~/.claude/includes/critical-rules.md
 @~/.claude/includes/code-style.md
 @~/.claude/includes/rmap.md
+@~/.claude/includes/harness-workflow.md
 
 > **Trimmed 2026-05-30.** The previous version `@`-imported 14 includes + the 43 KB harness-driver SKILL (~44k tokens always-on), which drove compulsive re-reading on Opus 4.8. The eager floor is now the three above — `critical-rules` (guardrails), `code-style` (KPIs), `rmap` (roadmap decision layer, used every session). `response-conventions` is inherited from `~/.claude/CLAUDE.md`, not re-imported here. Everything else is **load-on-demand** — pull it only when the trigger matches.
 
@@ -21,6 +22,7 @@
 | D/B/U scoring, ceremony floor, task-writing | Skill `elixir:roadmap-planning` + `@~/.claude/includes/task-writing.md` |
 | Session-per-phase / batched-execution / evaluator-separation rules | `@~/.claude/includes/workflow-philosophy.md` |
 | Worktree-per-branch workflow | `@~/.claude/includes/worktree-workflow.md` |
+| Harness delegate→verify→repair→land workflow (portfolio adoption) | `@~/.claude/includes/harness-workflow.md` |
 | Driving harness as a consumer (dispatch patterns, result shapes) | `@skills/harness-driver/SKILL.md` |
 | Phoenix project setup / gen.auth | Skill `phoenix:phoenix-setup` |
 | Net-new / redesign frontend surface (distinctiveness IS the goal) | Skill `frontend-design:frontend-design` — **not** for incremental work in the existing dashboard design system (match `tokens.ex` + `components.ex` patterns instead; skill is at most a reference) |
@@ -155,7 +157,7 @@ Core is OTP-dense. `mix reach.otp` (state-machine analysis, dead replies, missin
 
 ## Dogfooding — harness Builds harness
 
-From the core loop onward, harness is developed *by* harness. **Once bootstrap is `done`, every remaining pending task is delivered by dispatching it through harness.** Hand-build only what harness cannot yet do for itself. Runbook: `docs/dogfooding-workflow.md`. Driver reference: `@skills/harness-driver/SKILL.md` (load on demand; changes to `AgentAdapter.*` / `Run.Supervisor` / `Batch` / `Roadmap` / Invocation/result shapes must update it).
+From the core loop onward, harness is developed *by* harness. **Once bootstrap is `done`, every remaining pending task is delivered by dispatching it through harness.** Hand-build only what harness cannot yet do for itself. Runbook: `docs/dogfooding-workflow.md` (harness-incubator specifics + script template); general harness workflow contract (adopt via @ import in any repo): `@~/.claude/includes/harness-workflow.md`. Driver reference: `@skills/harness-driver/SKILL.md` (load on demand; changes to `AgentAdapter.*` / `Run.Supervisor` / `Batch` / `Roadmap` / Invocation/result shapes must update it).
 
 - **Roadmap = harness's own test corpus.** A task harness fails to deliver is a harness bug, filed via `rmap new`, not worked around by hand-building.
 - **Evaluation stays separate — agent vs agent.** Dispatched agent = implementer; a cross-family reviewer AI = grader. Done = reviewer approved, never the implementer's self-report.

@@ -202,5 +202,6 @@ Pre-1.0, read `CHANGELOG.md` on every bump; config shapes may shift.
 ## Related docs
 
 - Solo multi-project workflow: `CLAUDE.md` § Phase 7 multi-project federation
-- Dogfooding loop: `docs/dogfooding-workflow.md`
+- Harness workflow (adopt): `@~/.claude/includes/harness-workflow.md` (source `priv/includes/harness-workflow.md`; `mix harness.install_includes`)
+- Dogfooding loop (harness self): `docs/dogfooding-workflow.md`
 - Template source: `priv/templates/in_repo_harness/`

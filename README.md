@@ -10,7 +10,7 @@ Harness is a long-running multi-project OTP node. `Harness.ProjectRegistry` hold
 
 The cold-path consumer surface is the **Phoenix LiveView dashboard** + embedded **Oban Web** + a **native MCP server** (`/harness/mcp`, flat JSON-RPC tools) + a **Tidewave MCP** plug (`/tidewave/mcp`, `project_eval`), all served by one standalone Bandit endpoint on `http://localhost:4018`. The native MCP tools (`dispatch__task`, `dispatch__status`, `dispatch__verdict_detail`, `roadmap__*`, …) are the primary surface for any JSON/MCP orchestrator; Tidewave `project_eval` + IEx are the escape hatch for arbitrary eval and the struct-passing ops the flat tools deliberately omit.
 
-See [ROADMAP.md](ROADMAP.md) for the current task state (rendered from `roadmap/tasks.toml` by `rmap`), [docs/dogfooding-workflow.md](docs/dogfooding-workflow.md) for the operator runbook, and [skills/harness-driver/SKILL.md](skills/harness-driver/SKILL.md) for the AI-orchestrator contract.
+See [ROADMAP.md](ROADMAP.md) for the current task state (rendered from `roadmap/tasks.toml` by `rmap`), [@~/.claude/includes/harness-workflow.md](https://github.com/ZenHive/harness/blob/development/priv/includes/harness-workflow.md) (via `mix harness.install_includes`) for the operator workflow (adopt in any repo), [docs/dogfooding-workflow.md](docs/dogfooding-workflow.md) for harness-incubator specifics, and [skills/harness-driver/SKILL.md](skills/harness-driver/SKILL.md) for the AI-orchestrator contract.
 
 ## Running the node
 

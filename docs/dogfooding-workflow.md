@@ -1,5 +1,7 @@
 # Dogfooding Workflow — Operational Runbook
 
+> **Incubator only.** The generalizable harness workflow contract has been promoted to the global includes as `~/.claude/includes/harness-workflow.md` (source: `priv/includes/harness-workflow.md` in this repo; installed via `mix harness.install_includes`). Other repos adopt by adding `@~/.claude/includes/harness-workflow.md` to their `CLAUDE.md` (layered with `workflow-philosophy.md` etc — see the promoted include's "Relationship" table). This file retains harness-specific cutover history, the full driver-script template, batch run log, and repo-only sharp edges.
+
 **Policy** lives in `CLAUDE.md` § "Dogfooding — harness Builds harness".
 **AI driver contract** (for orchestrators): `skills/harness-driver/SKILL.md` — load this first when driving harness as the primary consumer.
 

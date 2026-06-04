@@ -299,7 +299,7 @@ invocation = %Harness.AgentAdapter.Invocation{
 
 ## Reading and Acting on Results
 
-Always read `Harness.Run.Result` (or the `Outcome` from the cheap path). The verdict table in `docs/dogfooding-workflow.md` is still the best reference for what the various states + reasons mean and what action you should take.
+Always read `Harness.Run.Result` (or the `Outcome` from the cheap path). The verdict table in `@~/.claude/includes/harness-workflow.md` (promoted from docs/dogfooding-workflow.md) is the reference for states + reasons + actions; `docs/dogfooding-workflow.md` retains the harness-incubator driver template and cutover log.
 
 Key fields you care about as driver (full struct: `lib/harness/run/result.ex`):
 - `state` + `reason` — `:done`/`:approved`, or `:failed` with `{:review_rejected, report}` / `{:review_stuck, report}` / a mechanical reason
@@ -624,7 +624,8 @@ When in doubt, read the current moduledocs for `Harness.AgentAdapter`, `Harness.
 
 - `README.md` § "Use harness from another repo" (the human-facing onboarding for Context A)
 - `CLAUDE.md` § "Dogfooding — harness Builds harness" (policy)
-- `docs/dogfooding-workflow.md` (detailed operational runbook + verdict table + driver script template)
+- `@~/.claude/includes/harness-workflow.md` (portfolio harness workflow contract + verdict table; layered on workflow-philosophy etc)
+- `docs/dogfooding-workflow.md` (harness-incubator runbook + full driver script template + batch log)
 - `docs/agent-cli-reference.md` (per-agent headless facts)
 - `ROADMAP.md` (current phase and open tasks)
 

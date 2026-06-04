@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Task 104: harness-workflow promoted to global includes.** `priv/includes/harness-workflow.md` is the version-controlled source for the generalized harness delegate/verify/repair/land workflow (extracted from the incubator `docs/dogfooding-workflow.md`). New `mix harness.install_includes [--dest DIR] [--force]` installs (or updates with .bak) to `~/.claude/includes/harness-workflow.md`. Any repo adopts the normal way: `@~/.claude/includes/harness-workflow.md` (layered, does not supersede workflow-philosophy / task-prioritization / worktree-workflow). References, CLAUDE.md load-on-demand, SKILL.md, README, and in-repo recipe updated. Tests cover install paths.
 - **Reviewer KPI ratings feed AgentKPI/CapabilityScore + reviewer
   rejection-rate tracking (Task 177).** `AgentKPI.aggregate_reviewer_rejections/1`
   rolls run records up by `reviewer_adapter` into a per-reviewer rejection
