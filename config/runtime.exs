@@ -47,6 +47,10 @@ end
 # (or Application.put_env at runtime) always wins.
 result_store = Application.get_env(:harness, :result_store)
 
+# Per-run memory watchdog (Task 200) is overridable on this same :run key:
+#   config :harness, :run, mem_threshold_kb: 6 * 1024 * 1024, mem_sample_interval: 5_000
+# Defaults live in Harness.Run; set these to tune the spawned-tree RSS ceiling
+# (KiB) or sample cadence (ms).
 config :harness, :run, max_hold_timeout: 1_800_000
 
 if is_nil(result_store) do

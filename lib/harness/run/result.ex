@@ -37,6 +37,11 @@ defmodule Harness.Run.Result do
       could not run.
     * `:cancelled` — the run was cancelled via `Harness.Run.cancel/1`.
     * `:timed_out` — the whole-job lifetime budget elapsed.
+    * `{:memory_runaway, info}` — the per-run memory watchdog force-killed the
+      spawned process tree (agent CLI + the `check_command` it forked) after its
+      resident memory crossed the configured ceiling, so a runaway project check
+      cannot OOM the host (Task 200). `info` carries `:role` (`:agent` |
+      `:reviewer`), `:os_pid`, `:rss_kb`, and `:threshold_kb`.
     * `:hold_expired` — an operator-held run outlived the hold safeguard.
     * `{:reflex_halted, r}` — the deterministic mid-run reflex layer killed the
       agent for a mechanical liveness or blocked-command reason.
@@ -58,6 +63,7 @@ defmodule Harness.Run.Result do
           | {:checkout_pollution_check_failed, term()}
           | :cancelled
           | :timed_out
+          | {:memory_runaway, map()}
           | :hold_expired
           | {:reflex_halted, term()}
           | {:worktree_failed, term()}

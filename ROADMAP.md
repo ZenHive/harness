@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (16 of 19 done · 0 in progress)
+**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (16 of 20 done · 1 in progress)
 
 **Last shipped:** Task 181 — Reviewer can finish work but skip writing .harness/review.json and idle-timeout -> run lost to :review_stuck, Task 190 — Start the global :audit Oban queue so the post-merge audit AI actually runs, Task 191 — Audit-surfaced: Worktree reaper vs Run.Registry unregister ordering race, Task 192 — Audit-surfaced: Task 190 — add real insert-and-drain test for the :audit Oban queue, Task 194 — Clean (:no_changes) post-merge audit leaves no watermark — range re-audited every land, Task 195 — Run.Worker crash-recovery: idempotent worktree setup so an Oban retry after BEAM restart reuses the run's branch instead of colliding, Task 196 — Runs branch from origin/<target>, not operator-checkout HEAD — fetch origin before worktree create so dispatched runs always build on the latest landed code, Task 197 — Lander auto-fast-forwards the operator's local target ref when safe, so a land does not leave local development drifting behind origin, Task 198 — Antigravity (agy) adapter leaks writes into the operator checkout instead of the run worktree — worktree isolation regression, Task 199 — Run wedges in :reviewing when the reviewer process is never tracked (reviewer=nil) — add an idle/progress watchdog so a lost reviewer fails fast instead of holding a queue slot to the 90-min lifetime cap on 2026-06-04
 

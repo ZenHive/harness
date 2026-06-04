@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Task 200: per-run memory watchdog bounds spawned process trees.**
+  `Harness.Run.MemoryGuard` samples the resident memory of a run's spawned OS
+  process tree (the Port'd agent CLI + every descendant, including the
+  `check_command` `mix`/`cargo` the reviewer AI runs) on a timer; a tree past a
+  configurable ceiling (default 6 GiB) is SIGKILL-reaped whole and the run
+  settles `:failed` with `{:memory_runaway, info}`. Fixes the 2026-06-04 double
+  host-OOM, where an "onchain" reviewer check beam ran away to ~27 GB (kernel
+  watchdog panic + jetsam) while `OSProcess.kill/1` reaped only the immediate
+  pid and orphaned the grandchild. Mechanical substrate only — `ps`/`kill`, no
+  output parsing, no change to the reviewer verdict contract. Overridable via
+  `config :harness, :run, mem_threshold_kb:`/`mem_sample_interval:`.
 - **Task 140: chat session store is now a behaviour + facade with a Postgres
   backend.** `Harness.Chat.Store` is converted from a concrete file-backed module
   into a facade over the `@callback save/3` · `load/2` · `list/1` behaviour

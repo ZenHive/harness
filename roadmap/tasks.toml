@@ -6009,29 +6009,34 @@ shipped_in = "d23e6f2"
 id = "200"
 phase = 16
 bundle = "resilience"
-status = "pending"
-title = "Bound harness node memory: per-run raw-output cap + BEAM ceiling so a runaway run can't OOM the host"
-scores = { d = 3, b = 4, u = 4 }
-acceptance_criteria = ["A single run's accumulated raw agent output is bounded by a configurable byte cap (sensible default, e.g. a few MB); past the cap, output is truncated/spilled rather than held whole in gen_statem state, with a marker that truncation occurred.", "Aggregate concurrent runs cannot drive the node into swap-thrash: either an effective concurrency ceiling is documented/enforced (sum of project_<name> Oban queue limits) OR a node-level guard holds new dispatch under high :erlang.memory(:total) pressure.", "A regression test proves output past the cap does not grow run state unbounded (feed N×cap bytes, assert state size stays O(cap)).", "No change to the reviewer-gate verdict contract — reviewer still reads .harness/review.json; this is mechanical substrate only."]
-out_of_scope = ["Parsing/normalizing agent output (raw passthrough stays).", "Any judgment moved into harness code — purely mechanical memory bounding (counters/limits/timers), consistent with the agent-gate architecture.", "Reworking the run lifecycle or reviewer flow."]
-files_to_modify = ["lib/harness/run.ex", "config/runtime.exs"]
-touches = ["lib/harness/run.ex", "lib/harness/agent_adapter.ex", "config/runtime.exs", "lib/harness/run/supervisor.ex"]
+status = "in_progress"
+title = "Bound spawned-run process memory: kill a run whose agent/check_command process tree runs away (it OOM'd the host twice)"
+scores = { d = 4, b = 5, u = 5 }
+acceptance_criteria = ["A per-run memory watchdog samples the resident memory of the spawned process GROUP (the Port'd agent CLI + all descendants, including the check_command mix it runs) and force-kills the whole tree + fails the run when it crosses a configurable threshold (sensible default, e.g. a few GB).",
+"The kill reaps the entire descendant tree, not just the direct child — a leaked grandchild mix/beam.smp must not survive the run being torn down (verify no orphan process after kill).", "Aggregate concurrent runs cannot drive the node into swap-thrash: the effective concurrency ceiling (sum of project_<name> Oban queue limits) is documented, and/or a node-level guard holds new dispatch under high host memory pressure.", "A regression test proves a child that allocates past the threshold is killed and the run settles :failed with a clear reason — not silently, and without taking the harness node down.", "No change to the reviewer-gate verdict contract — reviewer still reads .harness/review.json; this is mechanical substrate (sample/threshold/kill) only."]
+out_of_scope = ["Parsing/normalizing agent or check output (raw passthrough stays).", "Any judgment moved into harness code — purely mechanical memory bounding of spawned OS processes (sample/threshold/kill), consistent with the agent-gate architecture.", "Reworking the run lifecycle or reviewer flow; capping the harness node's own heap (it was calm at 30 MB — not the problem)."]
+files_to_modify = ["lib/harness/agent_adapter/os_process.ex", "lib/harness/run.ex"]
+touches = ["lib/harness/agent_adapter/os_process.ex", "lib/harness/run.ex", "lib/harness/agent_adapter.ex", "config/runtime.exs", "lib/harness/run/supervisor.ex"]
 domains = ["otp"]
 assignee = "claude"
 body = """
-On 2026-06-04 the laptop crashed twice. Host evidence:
-- 13:10:16 kernel panic: "watchdog timeout: no checkins from watchdogd in 90 seconds" — wedged-system symptom (watchdogd starved of scheduling).
-- 13:41:15 JetsamEvent (OOM): ~93 MB free (5,968 pages), 167M compressions, compressor at 1.7 GB; largestProcess = beam.smp. Jetsam killed processes; second reboot at 13:48.
+On 2026-06-04 the laptop crashed twice (13:10 kernel watchdog panic — watchdogd starved; 13:48 second reboot after a 13:41 JetsamEvent/OOM with ~93 MB free).
 
-Root cause: the harness OTP node (`iex -S mix`) was the largest memory consumer during exhaustion. Raw-passthrough holds full agent transcripts in the per-run gen_statem state; a long-running or high-fanout dispatch accumulates raw output with no ceiling, and N concurrent worktrees + buffers can exhaust host RAM — which both starved watchdogd (panic) and tripped jetsam (OOM).
+CORRECTED root cause (process-level inspection, not just the jetsam snapshot):
+- PID 48366 = the harness node (owns port 4018, cwd = main checkout). CALM at 30 MB. Not the culprit.
+- PID 16184 = a `mix` beam running INSIDE a run worktree (…/worktrees/.harness/onchain/run-1780547484818-438b5f97) — i.e. the reviewer's `check_command` for that onchain run — runaway at 12–27 GB. THIS is the OOM that panicked the laptop twice.
 
-Task: add mechanical memory bounds so a runaway/high-fanout run cannot OOM the host.
-1. Cap per-run accumulated raw output in Harness.Run state (configurable byte limit; truncate or spill-to-disk past the cap, record that truncation happened). The reviewer/audit AI reads .harness artifacts and the worktree, not the in-memory buffer, so truncating the in-memory copy is safe.
-2. Bound aggregate pressure: document + wire the effective concurrency ceiling (sum of per-project Oban queue limits) and/or add a node memory guard that holds new dispatch when :erlang.memory(:total) crosses a threshold.
+So it is NOT the harness node's own heap and NOT raw-transcript passthrough. The reviewer AI runs the target project's `check_command` itself; harness Ports the agent CLI (lib/harness/agent_adapter/os_process.ex), the agent runs `mix …` as its own child, and that grandchild process leaked/blew up to tens of GB with nothing bounding it. Harness spawns the tree but never limits its memory — a single misbehaving project check (here an "onchain" project's mix task) takes down the whole host.
 
-Mechanical substrate only — no judgment in code, no output parsing. Fits phase 16 / resilience.
+Task: bound the memory of the spawned run process tree so a runaway agent/check_command can't OOM the host.
+1. Per-run memory watchdog (mechanical, alongside the existing run timeout watchdog in lib/harness/run.ex): periodically sample the resident memory of the spawned process GROUP (Port'd agent CLI + all descendants) and, past a configurable threshold (a few GB default), force-kill the entire tree and settle the run :failed with a clear reason.
+2. Make the spawn killable as a group: ensure os_process.ex spawns the agent in its own process group / records the pid so the watchdog can reap the WHOLE descendant tree (a leaked grandchild mix/beam.smp must not orphan-survive the kill).
+3. Bound aggregate pressure: document the effective concurrency ceiling (sum of per-project Oban queue limits) and/or hold new dispatch under high host memory pressure.
+
+Mechanical substrate only — sample/threshold/kill of spawned OS processes. No judgment in code, no output parsing, no change to the reviewer verdict contract. Not capping the harness node's own heap (it was fine). Fits phase 16 / resilience.
 """
 created_at = "2026-06-04"
+started_at = "2026-06-04"
 scored_at = "2026-06-04"
 
 [[task]]
@@ -6049,6 +6054,30 @@ domains = ["otp"]
 assignee = "claude"
 body = """
 Discovered in the Task 199 reviewing-watchdog audit (.audit/d23e6f2-task-199-reviewing-watchdog.md, finding #3 remainder). fail_review_stuck/2 was reordered to terminate the reviewer before cancel_task, but the general cancel/lifetime/fail handlers (run.ex ~1041/1072/1102) still run cancel_task(data.task) before terminate_reviewer/terminate_agent. Closing the task that owns the Port first can reap/race the stored os_pid. Benign in practice (kill dead/own pid), but the consistent ordering is terminate-then-cancel. Same pattern affects the implementer terminate_agent path.
+"""
+created_at = "2026-06-04"
+scored_at = "2026-06-04"
+
+[[task]]
+id = "202"
+phase = 16
+bundle = "resilience"
+status = "pending"
+title = "Node-pressure dispatch gate: hold new run admission under high host memory (AC3 follow-up to task 200)"
+scores = { d = 4, b = 2, u = 3 }
+depends_on = [200]
+acceptance_criteria = ["Before a Run.Worker spawns the run gen_statem, a mechanical guard checks host/node memory pressure (e.g. :erlang.memory(:total) and/or system free RAM via the same ps substrate as MemoryGuard) and, past a configurable high-water mark, defers admission (Oban snooze/retry) instead of starting another concurrent tree.", "The gate is purely mechanical (sample + threshold + snooze) — no judgment, no output parsing — and never blocks a run already in flight (it only throttles NEW admission).", "Default high-water mark is configurable on the :harness :run key alongside mem_threshold_kb; a sensible default leaves headroom under host RAM.", "A test proves admission is deferred when the pressure sample is over the mark and proceeds when under it, without losing the Oban job (it snoozes/retries, not discards).", "No change to the reviewer-gate verdict contract or the per-run watchdog from task 200."]
+out_of_scope = ["The per-run memory watchdog itself (shipped in task 200 — this is the aggregate companion bound).", "A global cross-queue concurrency cap (open-source Oban has none; the documented sum-of-queue-limits ceiling stays the steady-state bound).", "Any judgment moved into harness code."]
+files_to_modify = ["lib/harness/run/worker.ex"]
+touches = ["lib/harness/run/worker.ex", "lib/harness/oban.ex", "config/runtime.exs"]
+domains = ["otp"]
+assignee = "claude"
+body = """
+DEFERRED follow-up to task 200's AC3. Task 200 took the "document" branch of AC3's and/or: MemoryGuard's moduledoc names the steady-state ceiling (sum of project_<name> Oban queue limits, kept × mem_threshold_kb under host RAM). The per-run watchdog stops ONE runaway tree but does not stop N concurrent well-behaved trees from summing past host RAM under high concurrency.
+
+This task adds the optional node-pressure dispatch gate: a mechanical admission throttle at the Run.Worker boundary that holds NEW run admission (Oban snooze/retry) when host/node memory pressure is over a configurable high-water mark — the aggregate companion to the per-run cap.
+
+Deliberately deferred / low urgency: the 2026-06-04 host crash was a single-runaway OOM, fully addressed by task 200's per-run watchdog. This aggregate gate only earns its keep once real concurrency (multiple registered projects dispatching simultaneously) approaches host RAM. File now so the AC3 surface isn't lost; pick up when concurrency actually grows. depends_on 200 (builds on the same MemoryGuard ps substrate + :run config key).
 """
 created_at = "2026-06-04"
 scored_at = "2026-06-04"

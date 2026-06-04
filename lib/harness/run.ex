@@ -98,6 +98,7 @@ defmodule Harness.Run do
   alias Harness.ResultStore
   alias Harness.Roadmap.Item
   alias Harness.Run.LogRecord
+  alias Harness.Run.MemoryGuard
   alias Harness.Run.Reflex
   alias Harness.Run.Result
   alias Harness.Run.Review
@@ -141,6 +142,15 @@ defmodule Harness.Run do
   # holding the project queue slot until lifetime (Task 199).
   @default_reviewer_spawn_timeout 60_000
 
+  # Per-run memory watchdog (Task 200). The reviewer AI runs the project's
+  # check_command itself; harness Ports the agent CLI and the agent forks `mix`/
+  # `cargo`/… as its own descendants — a tree harness spawns but never bounded.
+  # On 2026-06-04 an "onchain" check beam ran away to ~27 GB and OOM'd the host
+  # twice (kernel watchdog panic + jetsam). Sample the spawned tree's resident
+  # memory on this interval and force-kill it past the ceiling, settling :failed.
+  @default_mem_threshold_kb 6 * 1024 * 1024
+  @default_mem_sample_interval 5_000
+
   @typedoc "A lifecycle state."
   @type state ::
           :dispatched
@@ -179,6 +189,8 @@ defmodule Harness.Run do
            reviewer_run: AgentRun.t() | nil,
            reviewer_spawn_timeout: pos_integer(),
            reviewing_idle_timeout: pos_integer() | nil,
+           mem_threshold_kb: pos_integer(),
+           mem_sample_interval: pos_integer(),
            review: Review.t() | nil,
            reviewer_diff_size: non_neg_integer() | nil,
            implementer_empty_diff?: boolean(),
@@ -459,6 +471,8 @@ defmodule Harness.Run do
     # is the single chokepoint every dispatch path funnels through.
     project = LandingSettings.overlay(project)
 
+    {mem_threshold_kb, mem_sample_interval} = mem_watchdog_config(opts)
+
     data = %{
       run_id: run_id,
       item: item,
@@ -489,6 +503,8 @@ defmodule Harness.Run do
         Keyword.get(opts, :reviewer_spawn_timeout) ||
           configured(:reviewer_spawn_timeout, @default_reviewer_spawn_timeout),
       reviewing_idle_timeout: Keyword.get(opts, :reviewing_idle_timeout),
+      mem_threshold_kb: mem_threshold_kb,
+      mem_sample_interval: mem_sample_interval,
       review: nil,
       reviewer_diff_size: nil,
       implementer_empty_diff?: false,
@@ -522,7 +538,11 @@ defmodule Harness.Run do
       transcript_parser_state: init_parser_state(adapter)
     }
 
-    {:ok, :dispatched, data, [{{:timeout, :lifetime}, data.lifetime_timeout, :lifetime}]}
+    {:ok, :dispatched, data,
+     [
+       {{:timeout, :lifetime}, data.lifetime_timeout, :lifetime},
+       {{:timeout, :mem_sample}, data.mem_sample_interval, :mem_sample}
+     ]}
   end
 
   # ── State: dispatched — carve the isolated worktree ──────────────────────
@@ -957,6 +977,14 @@ defmodule Harness.Run do
     force_settle_lifetime(data)
   end
 
+  defp handle_common({:timeout, :mem_sample}, :mem_sample, state, _data) when state in [:done, :failed, :held] do
+    :keep_state_and_data
+  end
+
+  defp handle_common({:timeout, :mem_sample}, :mem_sample, _state, data) do
+    check_memory(data)
+  end
+
   # Stale task messages (a result or DOWN from a task already consumed or
   # killed) and any other unrecognised info — ignored.
   defp handle_common(:info, _content, _state, _data), do: :keep_state_and_data
@@ -995,7 +1023,8 @@ defmodule Harness.Run do
     {:next_state, :running, data,
      [
        {:reply, from, :ok},
-       {{:timeout, :lifetime}, data.lifetime_timeout, :lifetime}
+       {{:timeout, :lifetime}, data.lifetime_timeout, :lifetime},
+       {{:timeout, :mem_sample}, data.mem_sample_interval, :mem_sample}
      ]}
   end
 
@@ -1115,6 +1144,68 @@ defmodule Harness.Run do
          cancel_requested: nil,
          reason: reason
      }, pending_cancel_reply(data)}
+  end
+
+  # Memory watchdog tick (Task 200): sample the resident memory of each live
+  # spawned tree (implementer agent + reviewer); over the ceiling → reap the
+  # whole tree and settle :failed, otherwise re-arm. Mechanical — `ps`/`kill`,
+  # no judgment, no output parsing.
+  @spec check_memory(data()) :: handler_result()
+  defp check_memory(data) do
+    case runaway_tree(data) do
+      {role, os_pid, rss_kb} ->
+        fail_memory_runaway(data, role, os_pid, rss_kb)
+
+      nil ->
+        {:keep_state_and_data, [{{:timeout, :mem_sample}, data.mem_sample_interval, :mem_sample}]}
+    end
+  end
+
+  @spec runaway_tree(data()) :: {:agent | :reviewer, non_neg_integer(), non_neg_integer()} | nil
+  defp runaway_tree(data) do
+    Enum.find_value([{:agent, data.agent_run}, {:reviewer, data.reviewer_run}], fn {role, run} ->
+      over_threshold(role, run, data.mem_threshold_kb)
+    end)
+  end
+
+  @spec over_threshold(:agent | :reviewer, AgentRun.t() | nil, pos_integer()) ::
+          {:agent | :reviewer, non_neg_integer(), non_neg_integer()} | nil
+  defp over_threshold(_role, nil, _threshold), do: nil
+  defp over_threshold(_role, %AgentRun{os_pid: nil}, _threshold), do: nil
+
+  defp over_threshold(role, %AgentRun{os_pid: os_pid}, threshold) do
+    rss_kb = MemoryGuard.tree_rss_kb(os_pid)
+    if rss_kb > threshold, do: {role, os_pid, rss_kb}
+  end
+
+  # Force-kills the runaway process tree (the descendant grandchild a plain
+  # adapter.terminate/1 would orphan) BEFORE the adapter teardown closes its
+  # Port — while the port is open the os_pid still names this run's tree
+  # (mirrors the OSProcess.kill ordering note) — then settles :failed.
+  @spec fail_memory_runaway(data(), :agent | :reviewer, non_neg_integer(), non_neg_integer()) ::
+          handler_result()
+  defp fail_memory_runaway(data, role, os_pid, rss_kb) do
+    MemoryGuard.kill_tree(os_pid)
+    cancel_task(data.task)
+    cancel_task(data.discernment_task)
+    terminate_agent(data)
+    terminate_reviewer(data)
+    actions = pending_cancel_reply(data)
+
+    reason =
+      {:memory_runaway, %{role: role, os_pid: os_pid, rss_kb: rss_kb, threshold_kb: data.mem_threshold_kb}}
+
+    next = %{
+      data
+      | task: nil,
+        discernment_task: nil,
+        agent_run: nil,
+        reviewer_run: nil,
+        cancel_requested: nil,
+        reason: reason
+    }
+
+    {:next_state, :failed, next, actions}
   end
 
   @spec pending_cancel_reply(data()) :: [:gen_statem.action()]
@@ -2321,6 +2412,15 @@ defmodule Harness.Run do
   @spec configured(atom(), term()) :: term()
   defp configured(key, default) do
     :harness |> Application.get_env(:run, []) |> Keyword.get(key, default)
+  end
+
+  # Resolves the per-run memory watchdog ceiling + sample interval (Task 200):
+  # explicit opt > app env > module default. Kept out of `init/1`'s data map so
+  # the `||` fallbacks don't push init over the cyclomatic-complexity gate.
+  @spec mem_watchdog_config(keyword()) :: {pos_integer(), pos_integer()}
+  defp mem_watchdog_config(opts) do
+    {Keyword.get(opts, :mem_threshold_kb) || configured(:mem_threshold_kb, @default_mem_threshold_kb),
+     Keyword.get(opts, :mem_sample_interval) || configured(:mem_sample_interval, @default_mem_sample_interval)}
   end
 
   # Resolves the adapter module back to its `Parser.agent_kind` atom for the
