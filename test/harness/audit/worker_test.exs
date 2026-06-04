@@ -10,11 +10,13 @@ defmodule Harness.Audit.WorkerTest do
 
   use ExUnit.Case, async: false
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias Harness.Audit.Worker
   alias Harness.GitFixture
   alias Harness.Project
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
+  alias Harness.Repo
 
   defp job(args), do: %Oban.Job{args: args}
 
@@ -32,6 +34,42 @@ defmodule Harness.Audit.WorkerTest do
       # cron/roadmap_poller_test.exs): its {name, limit} pair is in the boot
       # queues list. limit 1 keeps audit agent runs serialized across projects.
       assert {:audit, 1} in Harness.Oban.oban_opts()[:queues]
+    end
+
+    @tag :integration
+    test "inserted audit worker job drains on a live Oban instance" do
+      start_supervised!(Repo)
+      :ok = Sandbox.checkout(Repo)
+      Sandbox.mode(Repo, {:shared, self()})
+
+      start_supervised!(
+        {Oban,
+         name: Harness.Oban,
+         repo: Repo,
+         notifier: Oban.Notifiers.Isolated,
+         queues: [audit: [limit: 1, paused: true]],
+         plugins: false}
+      )
+
+      assert %{queue: "audit", paused: true} = Oban.check_queue(Harness.Oban, queue: :audit)
+
+      project =
+        register!(%Project{
+          name: "audit-drain-#{System.unique_integer([:positive])}",
+          source: {:github, "https://github.com/zenhive/demo"},
+          roadmap_path: "/tmp",
+          target_branch: "main"
+        })
+
+      args = %{"project_name" => project.name, "base_sha" => "abc"}
+
+      assert {:ok, %Oban.Job{state: "available"} = job} =
+               Oban.insert(Harness.Oban, Worker.new(args, unique: Worker.unique_opts()))
+
+      assert %{success: 1, failure: 0, snoozed: 0} =
+               Oban.drain_queue(Harness.Oban, queue: :audit, with_safety: false)
+
+      assert %{state: "completed"} = Repo.reload!(job)
     end
   end
 
