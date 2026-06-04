@@ -172,11 +172,34 @@ defmodule Harness.Audit do
   defp newest_base([base], _path, _fallback_base), do: {:ok, base}
 
   defp newest_base(bases, path, _fallback_base) do
-    case Git.run(["log", "--format=%H", "-1" | bases], path) do
-      {:ok, output} -> {:ok, String.trim(output)}
-      {:error, reason} -> {:error, {:audit_base_failed, reason}}
+    case pick_newest_base(bases, path) do
+      {:ok, base} -> {:ok, base}
+      :error -> {:error, {:audit_base_failed, :no_reachable_base}}
     end
   end
+
+  # Among ancestor candidates, the newest watermark is closest to HEAD (smallest
+  # base..HEAD count). `git log -1 sha1 sha2` does NOT pick the newest.
+  @spec pick_newest_base([String.t()], String.t()) :: {:ok, String.t()} | :error
+  defp pick_newest_base(bases, path) do
+    bases
+    |> Enum.reduce_while(nil, fn base, acc ->
+      case commit_count(path, base) do
+        {:ok, count} -> {:cont, prefer_newer_base(base, count, acc)}
+        {:error, _} -> {:cont, acc}
+      end
+    end)
+    |> case do
+      {base, _} -> {:ok, base}
+      nil -> :error
+    end
+  end
+
+  @spec prefer_newer_base(String.t(), non_neg_integer(), {String.t(), non_neg_integer()} | nil) ::
+          {String.t(), non_neg_integer()}
+  defp prefer_newer_base(base, count, nil), do: {base, count}
+  defp prefer_newer_base(base, count, {_, best}) when count < best, do: {base, count}
+  defp prefer_newer_base(_base, _count, acc), do: acc
 
   @spec commit_count(String.t(), String.t()) :: {:ok, non_neg_integer()} | {:error, term()}
   defp commit_count(path, base) do
