@@ -3503,13 +3503,13 @@ done_at = "2026-05-30"
 id = "104"
 phase = 12
 bundle = "workflow-substrate"
-status = "pending"
+status = "done"
 title = "Promote docs/dogfooding-workflow.md to ~/.claude/includes/harness-workflow.md once stable"
-assignee = "cursor"
 scores = { d = 6, b = 8, u = 7 }
 depends_on = [99]
 acceptance_criteria = ["docs/dogfooding-workflow.md (its generalizable slice) is published as ~/.claude/includes/harness-workflow.md", "Any repo adopts the harness workflow by importing it the normal way: @~/.claude/includes/harness-workflow.md", "The relationship between harness-workflow.md and the existing workflow includes (workflow-philosophy / task-prioritization / etc.) is resolved — absorbed, superseded, or layered — with no contradictions"]
 out_of_scope = ["Any work before harness is functionally complete and docs/dogfooding-workflow.md is stable", "Retiring or replacing the ~/.claude/includes/* mechanism — it stays; harness-workflow.md becomes one of the includes"]
+assignee = "cursor"
 body = """
 docs/dogfooding-workflow.md is the INCUBATOR for the harness workflow — where it's developed and proven while harness itself is built. Once harness is functionally complete and that doc has stabilized, PROMOTE it into the global includes as a new include: ~/.claude/includes/harness-workflow.md.
 
@@ -3519,9 +3519,13 @@ This is a forward capstone, NOT current work. Gated on (a) harness functionally 
 
 Scope to define when picked up: which slice of dogfooding-workflow.md is generic enough to globalize vs what stays harness-repo-specific; how harness-workflow.md relates to the existing workflow includes (does it absorb workflow-philosophy / task-prioritization / the dogfooding rules, supersede them, or sit alongside?); where the scattered per-project memory facts (claude-does-not-commit, dogfood-batch-size, harness-human-is-sakshi) land in the promoted include; how it syncs back to the marketplace skills the way the other includes do.
 """
+implemented = "Landed by grok via merge-train; reviewer-approved (run run-1780544343941-58978d8d)."
+delivered_by = "grok"
+verified = true
 created_at = "2026-05-30"
 scored_at = "2026-05-30"
-implemented = "Promoted generalizable slice: added priv/includes/harness-workflow.md (canonical source); implemented mix harness.install_includes with --dest/--force + backup-on-change semantics (modeled on import_results); added test/mix/tasks/harness.install_includes_test.exs exercising install/up-to-date/backup/force paths via --dest (tmp-isolated); updated CLAUDE.md (load-on-demand table + dogfooding ref), skills/harness-driver/SKILL.md (verdict + surfaces), README, docs/in-repo-subdir-recipe.md, docs/dogfooding-workflow.md (incubator header), CHANGELOG. Relationship resolved as layered (no absorption/supersession) per the include's table. ACs met via the install + @-import path; harness self now documents the adoption. Minimal diff; tests verify the publish mechanism without touching real ~/.claude."
+done_at = "2026-06-04"
+shipped_in = "87f81cd59c9716c796962182f5b4e8e6d8d7ec0e"
 
 [[task]]
 id = "105"
@@ -4402,7 +4406,7 @@ shipped_in = "2fc92d9"
 id = "140"
 phase = 6
 bundle = "deferred"
-status = "pending"
+status = "done"
 title = "Chat session store: behaviour seam + Postgres backend"
 scores = { d = 3, b = 2, u = 2 }
 depends_on = [137]
@@ -4414,8 +4418,12 @@ Harness.Chat.Store (lib/harness/chat/store.ex) is a concrete file-backed module 
 
 DEFERRED on purpose: chat data is bounded (200 messages/session) and has no cross-session query consumer today. This earns dispatch only after the run-results Postgres substrate (Task 137) has landed AND a chat-search or cross-session-analytics surface is actually wanted. Honest low score reflects that — capture, not endorsement.
 """
+implemented = "Chat.Store converted to behaviour+facade (save/3·load/2·list/1) mirroring ResultStore; File backend (verbatim logic) + new Postgres backend + chat_sessions table; backend via :chat_store_backend (default File). Salvaged from antigravity run run-1780544645702-1a831f01 (backends built, facade unwired + Sobelow String.to_atom flag); facade + tests hand-finished by claude. verified NOT set — no independent reviewer ran (hand-built/checked: full precommit stack green)."
+delivered_by = "antigravity+claude"
 created_at = "2026-06-01"
 scored_at = "2026-06-01"
+done_at = "2026-06-04"
+shipped_in = "1d7bc471734e56e717651b87aae2beb4ab9d17b9"
 
 [[task]]
 id = "141"
@@ -5918,7 +5926,7 @@ shipped_in = "9e99a3810661c880d03039cc330dcdd819a4600d"
 id = "197"
 phase = 16
 bundle = "resilience"
-status = "pending"
+status = "done"
 title = "Lander auto-fast-forwards the operator's local target ref when safe, so a land does not leave local development drifting behind origin"
 scores = { d = 4, b = 6, u = 6 }
 acceptance_criteria = ["After a successful land, when the operator checkout is NOT on <target>, the local <target> ref fast-forwards to the pushed tip without modifying the working tree", "When on <target> with a clean tree, the local <target> fast-forwards (merge --ff-only); the operator's HEAD advances to the landed tip", "Dirty tree or non-ff (local ahead) -> no checkout mutation, and a Notification is fired naming the drift", "Never uses --force and never moves the checkout off the operator's current branch; ff-only is asserted by a test that sets up a non-ff local and confirms it is left untouched + notified", "mix precommit.full green"]
@@ -5936,5 +5944,10 @@ Fix direction (mechanical git-state inspection -- needs a design pass before dis
 
 It is fast-forward-only, so it can never overwrite operator work -- a refinement of "never touch the checkout", not a reversal. Open design questions to settle first: (1) the on-<target>+clean case is the common one (operator sits on development with the BEAM running) AND the riskiest -- confirm `merge --ff-only` against a possibly-running BEAM's CWD is safe; (2) where this hook lives (post-push in Lander.run vs a separate witness step); (3) whether it is opt-in per project. Residual after this lands: hand-build still needs a deliberate BEAM restart (Elixir won't hot-load structural changes), but the operator would restart already-synced.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780544165280-a81daf9c)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-04"
 scored_at = "2026-06-04"
+done_at = "2026-06-04"
+shipped_in = "c48c4394ff075f0f57562b41cdbdee85e8560f0f"

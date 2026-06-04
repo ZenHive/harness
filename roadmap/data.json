@@ -4056,7 +4056,7 @@
       "id": "104",
       "phase": 12,
       "bundle": "workflow-substrate",
-      "status": "pending",
+      "status": "done",
       "title": "Promote docs/dogfooding-workflow.md to ~/.claude/includes/harness-workflow.md once stable",
       "scores": {
         "d": 6,
@@ -4079,9 +4079,14 @@
         "Any work before harness is functionally complete and docs/dogfooding-workflow.md is stable",
         "Retiring or replacing the ~/.claude/includes/* mechanism — it stays; harness-workflow.md becomes one of the includes"
       ],
+      "shipped_in": "87f81cd59c9716c796962182f5b4e8e6d8d7ec0e",
       "body": "docs/dogfooding-workflow.md is the INCUBATOR for the harness workflow — where it's developed and proven while harness itself is built. Once harness is functionally complete and that doc has stabilized, PROMOTE it into the global includes as a new include: ~/.claude/includes/harness-workflow.md.\n\nThe includes mechanism is the delivery channel and it STAYS. harness-workflow.md simply becomes one of the global includes. Then every repo adopts the harness workflow exactly the way it adopts every other include today — `@~/.claude/includes/harness-workflow.md` in its CLAUDE.md. No new opt-in mechanism, no retiring the includes directory: the harness workflow graduates from in-repo incubation into the standard include set, and the whole repo portfolio picks it up through the existing import path.\n\nThis is a forward capstone, NOT current work. Gated on (a) harness functionally complete (autonomous landing loop closed) and (b) docs/dogfooding-workflow.md stable enough to generalize from. Do not start until both hold; captured here so the intent survives across instances.\n\nScope to define when picked up: which slice of dogfooding-workflow.md is generic enough to globalize vs what stays harness-repo-specific; how harness-workflow.md relates to the existing workflow includes (does it absorb workflow-philosophy / task-prioritization / the dogfooding rules, supersede them, or sit alongside?); where the scattered per-project memory facts (claude-does-not-commit, dogfood-batch-size, harness-human-is-sakshi) land in the promoted include; how it syncs back to the marketplace skills the way the other includes do.\n",
       "created_at": "2026-05-30",
+      "done_at": "2026-06-04",
       "scored_at": "2026-05-30",
+      "implemented": "Landed by grok via merge-train; reviewer-approved (run run-1780544343941-58978d8d).",
+      "delivered_by": "grok",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -5489,7 +5494,7 @@
       "id": "140",
       "phase": 6,
       "bundle": "deferred",
-      "status": "pending",
+      "status": "done",
       "title": "Chat session store: behaviour seam + Postgres backend",
       "scores": {
         "d": 3,
@@ -5520,9 +5525,13 @@
         "priv/repo/migrations",
         "config/runtime.exs"
       ],
+      "shipped_in": "1d7bc471734e56e717651b87aae2beb4ab9d17b9",
       "body": "Harness.Chat.Store (lib/harness/chat/store.ex) is a concrete file-backed module today (Task 93 chose file as the lighter match — a conscious decision). Convert it to a facade + behaviour mirroring the ResultStore pattern: lib/harness/chat/store/file.ex (current logic moved verbatim — atomic .tmp+rename, 200-message cap, tolerant read), lib/harness/chat/store/postgres.ex (new), and a chat_sessions table (session_id unique, messages jsonb capped at 200, timestamps). Config flip on repo_enabled, same pattern as Task 137. Keep derive_label/1 on the facade.\n\nDEFERRED on purpose: chat data is bounded (200 messages/session) and has no cross-session query consumer today. This earns dispatch only after the run-results Postgres substrate (Task 137) has landed AND a chat-search or cross-session-analytics surface is actually wanted. Honest low score reflects that — capture, not endorsement.\n",
       "created_at": "2026-06-01",
+      "done_at": "2026-06-04",
       "scored_at": "2026-06-01",
+      "implemented": "Chat.Store converted to behaviour+facade (save/3·load/2·list/1) mirroring ResultStore; File backend (verbatim logic) + new Postgres backend + chat_sessions table; backend via :chat_store_backend (default File). Salvaged from antigravity run run-1780544645702-1a831f01 (backends built, facade unwired + Sobelow String.to_atom flag); facade + tests hand-finished by claude. verified NOT set — no independent reviewer ran (hand-built/checked: full precommit stack green).",
+      "delivered_by": "antigravity+claude",
       "cross_repo": []
     },
     {
@@ -7950,7 +7959,7 @@
       "id": "197",
       "phase": 16,
       "bundle": "resilience",
-      "status": "pending",
+      "status": "done",
       "title": "Lander auto-fast-forwards the operator's local target ref when safe, so a land does not leave local development drifting behind origin",
       "scores": {
         "d": 4,
@@ -7980,9 +7989,14 @@
         "lib/harness/notification.ex",
         "test/harness/lander_test.exs"
       ],
+      "shipped_in": "c48c4394ff075f0f57562b41cdbdee85e8560f0f",
       "body": "Sibling to the runs-branch-from-origin task. Today the lander pushes the remote ref and leaves the operator checkout alone by design (lander.ex:27-30), so local `development` drifts behind origin on every land and the operator must `git pull`/rebase by hand before any in-BEAM hand-build work. This is the friction that blocked task 167 this session and, on an accidental restart, orphaned in-flight runs against stale code.\n\nFix direction (mechanical git-state inspection -- needs a design pass before dispatch, hence no auto-dispatch): after a successful push, attempt a SAFE local sync of the target ref:\n- Operator NOT on <target> -> `git fetch origin <target>:<target>` updates the local branch ref without touching the working tree.\n- Operator ON <target> with a clean tree -> `git merge --ff-only origin/<target>`.\n- Dirty tree, or local has commits not on origin (non-ff) -> SKIP and fire a Notification (\"local <target> behind origin by N; sync manually\").\n\nIt is fast-forward-only, so it can never overwrite operator work -- a refinement of \"never touch the checkout\", not a reversal. Open design questions to settle first: (1) the on-<target>+clean case is the common one (operator sits on development with the BEAM running) AND the riskiest -- confirm `merge --ff-only` against a possibly-running BEAM's CWD is safe; (2) where this hook lives (post-push in Lander.run vs a separate witness step); (3) whether it is opt-in per project. Residual after this lands: hand-build still needs a deliberate BEAM restart (Elixir won't hot-load structural changes), but the operator would restart already-synced.\n",
       "created_at": "2026-06-04",
+      "done_at": "2026-06-04",
       "scored_at": "2026-06-04",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1780544165280-a81daf9c).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     }
   ]
