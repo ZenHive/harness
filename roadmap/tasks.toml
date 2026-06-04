@@ -5956,7 +5956,7 @@ shipped_in = "c48c4394ff075f0f57562b41cdbdee85e8560f0f"
 id = "198"
 phase = 16
 bundle = "resilience"
-status = "pending"
+status = "done"
 title = "Antigravity (agy) adapter leaks writes into the operator checkout instead of the run worktree — worktree isolation regression"
 scores = { d = 5, b = 8, u = 4 }
 markers = ["bug"]
@@ -5971,8 +5971,13 @@ This CONTRADICTS the CLAUDE.md claim that Antigravity's Task 32 isolation findin
 
 Fix direction: trace the Antigravity adapter's build_command/1 + Port cwd handling; determine whether agy ignores the Port cwd for file writes (vs honoring it for reads only). Either make it isolate, or flip its declared capability to worktree_isolation: false (so Harness.Run re-enables the pollution snapshot / main-checkout guard for it). agy stays disabled for dispatch until this is resolved.
 """
+implemented = "Landed by codex via reviewer-approved harness run run-1780547458206-bbe4011b. Antigravity build_command/1 now passes --add-dir <worktree> before -p so agy is pinned to the run worktree in addition to the Port cwd; docs corrected the stale agy-honors-cwd claim. Regression tests assert --add-dir placement/path and distinct concurrent worktree paths; reviewer report approved with targeted compile/test evidence and implementer precommit.full green."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-04"
 scored_at = "2026-06-04"
+done_at = "2026-06-04"
+shipped_in = "5e3941b85b4884f0a72f6b534424cbc4c6143da1"
 
 [[task]]
 id = "199"

@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for file writes; `Harness.AgentAdapter.Antigravity` now passes `--add-dir <worktree>`
   in `build_command/1` (mirrors Codex `exec --cd`, Task 41). Reverts the incorrect
   Task 187 claim that port cwd alone was sufficient.
+- **Audit 5e3941b: chat session migration shape.** The `chat_sessions.messages`
+  migration now creates the same `{:array, :map}` column type that
+  `Harness.Chat.Store.Postgres.ChatSession` inserts.
 
 ### Added
 
