@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (10 of 12 done · 0 in progress)
+**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (13 of 15 done · 0 in progress)
 
-**Last shipped:** Task 181 — Reviewer can finish work but skip writing .harness/review.json and idle-timeout -> run lost to :review_stuck, Task 190 — Start the global :audit Oban queue so the post-merge audit AI actually runs, Task 191 — Audit-surfaced: Worktree reaper vs Run.Registry unregister ordering race, Task 192 — Audit-surfaced: Task 190 — add real insert-and-drain test for the :audit Oban queue on 2026-06-04
+**Last shipped:** Task 181 — Reviewer can finish work but skip writing .harness/review.json and idle-timeout -> run lost to :review_stuck, Task 190 — Start the global :audit Oban queue so the post-merge audit AI actually runs, Task 191 — Audit-surfaced: Worktree reaper vs Run.Registry unregister ordering race, Task 192 — Audit-surfaced: Task 190 — add real insert-and-drain test for the :audit Oban queue, Task 194 — Clean (:no_changes) post-merge audit leaves no watermark — range re-audited every land, Task 195 — Run.Worker crash-recovery: idempotent worktree setup so an Oban retry after BEAM restart reuses the run's branch instead of colliding, Task 196 — Runs branch from origin/<target>, not operator-checkout HEAD — fetch origin before worktree create so dispatched runs always build on the latest landed code on 2026-06-04
 
-**Up next:** Task 194 — Clean (:no_changes) post-merge audit leaves no watermark — range re-audited every land [D:3/B:2/U:3 → Eff:0.83] ⚠️
+**Up next:** Task 197 — Lander auto-fast-forwards the operator's local target ref when safe, so a land does not leave local development drifting behind origin [D:4/B:6/U:6 → Eff:1.5] 🚀
 <!-- FOCUS:END -->
 
 ---

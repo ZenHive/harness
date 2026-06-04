@@ -5114,7 +5114,7 @@ scored_at = "2026-06-02"
 id = "165"
 phase = 10
 bundle = "config-centralization"
-status = "pending"
+status = "done"
 title = "Consolidate the Cron/Agent/Landing settings term files into one Postgres-backed settings store (file fallback)"
 scores = { d = 3, b = 5, u = 5 }
 acceptance_criteria = ["One shared settings store module/behaviour all three settings domains (Cron/Agent/Landing) read and write through", "Postgres backend (key-value table) used when repo_enabled; the file backend preserved for repo_enabled: false, with the .tmp+rename plumbing existing exactly once", "Boot-time load_into_env/0 semantics preserved: settings seeded into app env before Oban/dispatch starts", "Existing ~/.harness/*.term files are imported on first boot so an operator's current toggles survive the upgrade", "Cron/Agent/Landing public APIs unchanged; SettingsLive and existing settings tests pass without caller modifications", "ConfigInspector's Paths section reflects the new storage (no stale agent_settings/cron_settings root rows)"]
@@ -5128,8 +5128,14 @@ Extract one shared settings store: a Postgres key-value backend (harness_setting
 
 First consumer: the dashboard settings page (already live) and the follow-up Harness.Config schema task in this bundle, which persists UI-edited operational knobs through this store.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780539893859-d84fc38d, 2a43aa5ff51be246ff4b5afc0cf70a6345c5445b)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-02"
+started_at = "2026-06-04"
 scored_at = "2026-06-02"
+done_at = "2026-06-04"
+shipped_in = "2a43aa5ff51be246ff4b5afc0cf70a6345c5445b"
 
 [[task]]
 id = "166"
@@ -5158,22 +5164,22 @@ id = "167"
 phase = 10
 bundle = "config-centralization"
 status = "pending"
-title = "Harness.Config declarative schema + UI-editable operational knobs (run/verification timeouts)"
+title = "Harness.Config declarative schema + UI-editable operational knobs (run timeouts)"
 scores = { d = 5, b = 6, u = 6 }
 markers = ["handbuild"]
-depends_on = [163, "165", "166"]
-acceptance_criteria = ["A Harness.Config module declares schema entries: key path, default, type, overriding env var, ui_editable?, restart_required?", "ConfigInspector renders from the schema; defaults exist in exactly one place (no copies in the inspector, no orphaned @default_* attributes for schema-covered keys)", "SettingsLive renders an editable card for ui_editable keys: run total/idle/lifetime timeouts and verification timeout at minimum", "UI-edited values persist through the consolidated settings store and survive a BEAM restart; they take effect without restart (app-env live cache)", "Restart-required keys are labeled as such in the UI and are not silently hot-applied", "Test-injection env keys are absent from the schema", "Code reads for schema-covered keys go through Harness.Config, not raw Application.get_env"]
+depends_on = [163, "165"]
+acceptance_criteria = ["A Harness.Config module declares schema entries: key path, default, type, overriding env var, ui_editable?, restart_required?", "ConfigInspector renders from the schema; defaults exist in exactly one place (no copies in the inspector, no orphaned @default_* attributes for schema-covered keys)", "SettingsLive renders an editable card for ui_editable keys: run total/idle/lifetime timeouts at minimum", "UI-edited values persist through the consolidated settings store and survive a BEAM restart; they take effect without restart (app-env live cache)", "Restart-required keys are labeled as such in the UI and are not silently hot-applied", "Test-injection env keys are absent from the schema", "Code reads for schema-covered keys go through Harness.Config, not raw Application.get_env"]
 out_of_scope = ["Test-injection seams", "Chat store configuration", "Editing project registrations from this card (ProjectRegistry has its own persistence, Task 141)", "Editing the .exs files from the UI — .exs stays the boot-default layer; UI writes are persisted overrides on top"]
-touches = ["lib/harness/config.ex", "lib/harness/dashboard/config_inspector.ex", "lib/harness/dashboard/settings_live.ex", "lib/harness/run.ex", "lib/harness/verification.ex", "lib/harness/worktree.ex", "lib/harness/agent_adapter/driver.ex", "lib/harness/dispatch.ex", "config/config.exs"]
+touches = ["lib/harness/config.ex", "lib/harness/dashboard/config_inspector.ex", "lib/harness/dashboard/settings_live.ex", "lib/harness/run.ex", "lib/harness/worktree.ex", "lib/harness/agent_adapter/driver.ex", "lib/harness/dispatch.ex", "config/config.exs"]
 assignee = "human"
 body = """
-The "centralize hidden configs" payoff, requested 2026-06-02: ~30 distinct Application.get_env(:harness, ...) keys are read across ~28 files, ~37 @default_* module attributes carry defaults that exist only in code, and the operator's only way to change a run timeout or verification timeout is editing config/*.exs plus a restart.
+The "centralize hidden configs" payoff, requested 2026-06-02: ~30 distinct Application.get_env(:harness, ...) keys are read across ~28 files, ~37 @default_* module attributes carry defaults that exist only in code, and the operator's only way to change a run timeout is editing config/*.exs plus a restart.
 
-Build a declarative Harness.Config schema: one module declaring every operator-relevant key with its default, type, overriding env var, ui_editable? and restart_required? flags. ConfigInspector renders from the schema (extending the owning-module defaults wiring from the sibling inspector task). SettingsLive renders an editable card for keys marked ui_editable — run total/idle/lifetime timeouts and verification timeout are the launch set (the post-Task-163 survivors; max_repair_attempts and semantic/repair gating no longer exist by then) — persisted through the consolidated settings store from the sibling consolidation task, following the same app-env-live-cache + persisted-override pattern the existing settings modules use. Restart-required keys (e.g. dashboard port) render labeled as such, following the Task 111 boot-applied precedent.
+Build a declarative Harness.Config schema: one module declaring every operator-relevant key with its default, type, overriding env var, ui_editable? and restart_required? flags. ConfigInspector renders from the schema (extending the owning-module defaults wiring from the sibling inspector task). SettingsLive renders an editable card for keys marked ui_editable — the run total/idle/lifetime timeouts are the launch set (the agent-gate rebuild deleted Harness.Verification, so there is no verification timeout, and max_repair_attempts / semantic gating are likewise gone) — persisted through the consolidated settings store from the sibling consolidation task, following the same app-env-live-cache + persisted-override pattern the existing settings modules use. Restart-required keys (e.g. dashboard port) render labeled as such, following the Task 111 boot-applied precedent.
 
-Operator-relevant keys only: test-injection seams (:roadmap_list, :roadmap_ready, :run_starter, :oban_insert, :capability_benchmark_*) are seams, not config, and stay out of the schema.
+Operator-relevant keys only: test-injection seams (:roadmap_list, :roadmap_ready, :run_starter, :oban_insert) are seams, not config, and stay out of the schema.
 
-Sequenced after Task 163 so the schema never declares keys the reviewer-pair deletion pass removes. Marked handbuild: the editable-settings card is LiveView/DOM work that needs browser feedback.
+Sequenced after Task 163 so the schema never declares keys the deletion passes removed (the reviewer-pair line was itself superseded by the agent-gate rebuild; the surviving editable knobs are the Run gen_statem timeouts). Marked handbuild: the editable-settings card is LiveView/DOM work that needs browser feedback.
 """
 created_at = "2026-06-02"
 scored_at = "2026-06-02"
@@ -5318,13 +5324,13 @@ title = "Live-agent E2E smoke test: one real headless agent CLI through the full
 scores = { d = 3, b = 5, u = 4 }
 markers = ["handbuild"]
 depends_on = [173]
-acceptance_criteria = ["Tagged both :integration and :live_agent — excluded from the default suite and mix precommit; run via mix test.json --include live_agent", "Fails loudly with flunk + setup instructions (CLI install command, auth step) when the agent CLI is missing or unauthenticated — never skips silently", "Drives one real headless agent (default Claude, adapter selectable via env var) through the same chain as Task 173: trivial fixture task → dispatch → worktree → real agent commit → check stack verification → land to a local bare origin", "Wall-clock bounded: trivial prompt + per-test total_timeout override so a hung CLI cannot stall the run beyond ~5 minutes"]
-out_of_scope = ["Running in CI or the default suite", "Cross-adapter matrix (all six agents) — one adapter proves the live seam; the agent-evaluation corpus (Task 151) owns cross-adapter scoring", "Asserting anything about the agent's code quality — the check stack verdict is the only assertion"]
+acceptance_criteria = ["Tagged both :integration and :live_agent — excluded from the default suite and mix precommit; run via mix test.json --include live_agent", "Fails loudly with flunk + setup instructions (CLI install command, auth step) when the agent CLI is missing or unauthenticated — never skips silently", "Drives one real headless agent (default Claude, adapter selectable via env var) through the same chain as Task 173: trivial fixture task → dispatch → worktree → real agent commit → reviewer AI gate (writes .harness/review.json) → land to a local bare origin", "Wall-clock bounded: trivial prompt + per-test total_timeout override so a hung CLI cannot stall the run beyond ~5 minutes"]
+out_of_scope = ["Running in CI or the default suite", "Cross-adapter matrix (all six agents) — one adapter proves the live seam; per-adapter scoring is owned by AgentKPI/CapabilityScore re-keyed to reviewer outcomes", "Asserting anything about the agent's code quality — the reviewer's .harness/review.json verdict is the only assertion"]
 touches = ["test/harness/pipeline_live_agent_test.exs"]
 assignee = "claude"
 model = "claude-sonnet-4-6"
 body = """
-The deterministic pipeline E2E (Task 173) proves every harness seam with a scripted agent; this task adds the one seam it cannot prove — a real agent CLI invoked over a Port produces a commit that flows through verification and landing. User-requested 2026-06-03 alongside Task 173.
+The deterministic pipeline E2E (Task 173) proves every harness seam with a scripted agent; this task adds the one seam it cannot prove — a real agent CLI invoked over a Port produces a commit that flows through the reviewer gate and landing. User-requested 2026-06-03 alongside Task 173.
 
 This formalizes what daily dogfooding runs prove ad hoc into a repeatable, on-demand check: run it when upgrading an agent CLI version, changing an adapter's build_command, or validating a new host. It is hand-run by design (quota cost, host CLI + auth required), which is why it carries the handbuild marker and lives outside the default suite.
 
@@ -5786,7 +5792,7 @@ shipped_in = "a247050357e0c1fd8a9d2dc7a7dd8ad6275167ef"
 id = "193"
 phase = 10
 bundle = "config-centralization"
-status = "pending"
+status = "done"
 title = "Per-project reviewer override (%Harness.Project{reviewer}) + Run.init overlay + select_reviewer consults it + Settings-page runtime override"
 scores = { d = 2, b = 4, u = 4 }
 depends_on = [165]
@@ -5806,14 +5812,20 @@ Two layers, deliberately split from Task 165:
 
 Keep nil = auto-select as the untouched default. An explicit pin must still pass the cross-family + eligibility + dispatchable gates; a bad pin fails loudly with a settle reason, it does not silently degrade to auto-select (that would hide operator misconfiguration). Reviewer-model pinning stays out — reviewer_invocation/1 carries no model and adding one is a separate change with weak payoff (the reviewer's job is judgment, and model IDs churn).
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780541452651-0d8218f5, 79126233ec353965c896a82d3e4d3c25c02cae64)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-04"
+started_at = "2026-06-04"
 scored_at = "2026-06-04"
+done_at = "2026-06-04"
+shipped_in = "79126233ec353965c896a82d3e4d3c25c02cae64"
 
 [[task]]
 id = "194"
 phase = 16
 bundle = "audit-agent"
-status = "pending"
+status = "done"
 title = "Clean (:no_changes) post-merge audit leaves no watermark — range re-audited every land"
 scores = { d = 3, b = 2, u = 3 }
 acceptance_criteria = ["After a post-merge audit returns :no_changes, the next land's auditor does NOT re-audit the same already-clean commit range", "A fix-bearing audit (audit() commit) and a clean audit both advance the audited watermark"]
@@ -5827,6 +5839,101 @@ Harness.Audit.unaudited_range/2 bases the range on the last `audit(` commit reac
 Confirmed live 2026-06-04: catch-up audit of 4983985..01fc5eb (3 clean commits) returned :no_changes; origin untouched, no marker, so the next land would re-audit the same 3 + new commits.
 
 Fix direction (mechanical, not judgment): record a last-audited-clean watermark (sha) the range logic also consults — base = the most recent of {last audit( commit, persisted clean watermark}. Persist alongside the existing ~/.harness term stores. Do NOT write empty marker commits to the shared branch. Keep :no_changes as the outcome; only the range baseline changes.
+"""
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780539893880-2716b3d4, 5ec3069004c6bc5e74348b5e1f4a35f6eff260b3)."
+delivered_by = "codex"
+verified = true
+created_at = "2026-06-04"
+started_at = "2026-06-04"
+scored_at = "2026-06-04"
+done_at = "2026-06-04"
+shipped_in = "5ec3069004c6bc5e74348b5e1f4a35f6eff260b3"
+
+[[task]]
+id = "195"
+phase = 16
+bundle = "resilience"
+status = "done"
+title = "Run.Worker crash-recovery: idempotent worktree setup so an Oban retry after BEAM restart reuses the run's branch instead of colliding"
+scores = { d = 3, b = 4, u = 3 }
+markers = ["bug"]
+files_to_modify = ["lib/harness/run/worker.ex", "lib/harness/worktree.ex"]
+touches = ["lib/harness/run.ex", "test/harness/run/worker_test.exs"]
+assignee = "codex"
+body = """
+Observed 2026-06-04: an accidental BEAM restart killed two in-flight harness runs (tasks 165, 194). Oban persisted the `executing` jobs and rescued them to attempt 2, but each retry CANCELLED with:
+
+    {:cancel, {:worktree_failed, {:git_failed, ["worktree","add","-b","harness/run-<id>", <path>, "HEAD"], 255, "fatal: a branch named 'harness/run-<id>' already exists"}}}
+
+Root cause (mechanical, not judgment): the worktree reaper removes the crashed attempt's *worktree* but leaves its *branch*. The Oban job keeps the SAME run_id across retries, so attempt 2's `git worktree add -b harness/run-<id>` collides on the leftover branch and the run is lost -- exactly the in-flight work crash-only retry is supposed to recover.
+
+Fix direction (idempotent setup; all mechanical -- git/worktree/Oban retry, no agent judgment):
+- On worktree creation, when the branch already exists for THIS run_id (a prior crashed attempt of the same job), reuse/reset it: `git worktree add -B <branch> <path> <base>` or detect-existing-branch then `git worktree add <path> <branch>`, rather than failing on `-b`.
+- Equivalently, the worker's crash-recovery prelude reaps its own orphan branch before re-creating. Reuse is safe because run_id is stable across retries (same logical run).
+
+Acceptance: a test simulating "branch already exists for this run_id" drives the worker through a second attempt and the worktree is (re)created green instead of `{:cancel, {:worktree_failed, ...}}`. Manual repro: dispatch a run, kill the BEAM mid-run, restart -- the rescued Oban job recovers instead of cancelling.
+
+Related litter (note, not in scope): ~23 stale rmap-project worktrees under ~/_DATA/worktrees/.harness/rmap/ from earlier runs survive across settles -- the reaper may not clear worktrees for manual (non-landing) projects. File separately if confirmed.
+"""
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780541452627-936a9948, 7de97330cc0aa4e0bdf5e3a0ba69a064c7f11689)."
+delivered_by = "codex"
+verified = true
+created_at = "2026-06-04"
+started_at = "2026-06-04"
+scored_at = "2026-06-04"
+done_at = "2026-06-04"
+shipped_in = "7de97330cc0aa4e0bdf5e3a0ba69a064c7f11689"
+
+[[task]]
+id = "196"
+phase = 16
+bundle = "resilience"
+status = "done"
+title = "Runs branch from origin/<target>, not operator-checkout HEAD — fetch origin before worktree create so dispatched runs always build on the latest landed code"
+scores = { d = 3, b = 7, u = 7 }
+markers = ["bug"]
+acceptance_criteria = ["When a project has a target_branch, Run fetches origin/<target> and the run worktree's base SHA equals origin/<target>'s tip -- not the operator checkout HEAD", "Regression test: with origin/<target> ahead of the local checkout, a dispatched run's worktree base == origin tip (proves staleness of the operator checkout no longer affects runs)", "Fetch failure (e.g. offline) logs a warning and falls back to base_ref HEAD; the run still starts (never crashes on fetch failure)", "Projects with target_branch nil are unchanged (base_ref stays HEAD)", "mix precommit.full green"]
+out_of_scope = ["An opt-in flag to branch a run from local unlanded HEAD instead of origin (rare; the dogfooding norm is to push local work before dispatching). File separately if a real need appears.", "Auto-syncing the operator checkout itself -- that is the sibling lander-auto-ff task"]
+files_to_modify = ["lib/harness/run.ex", "lib/harness/worktree.ex"]
+touches = ["lib/harness/project.ex", "test/harness/run_test.exs", "test/harness/worktree_test.exs"]
+assignee = "codex"
+body = """
+Observed 2026-06-04: the lander pushes to the *remote* target ref from a detached worktree and deliberately never touches the operator checkout (lander.ex:27-30 -- "the operator's local checkout is untouched"). So local `development` drifts behind origin after every autonomous land. The compounding half: `Worktree.create/2` defaults `base_ref` to "HEAD" (worktree.ex:168) and `Run` never overrides it or fetches origin first -- so when the operator checkout is stale, every DISPATCHED run also forks from stale code, and the staleness only surfaces as a rebase conflict at land time. The manual `git fetch && git rebase` the operator must run before dispatching is the only thing keeping runs current; that is the smell.
+
+Fix (mechanical -- git/fetch/worktree lifecycle, no agent judgment): before creating a run's worktree, when the project has a `target_branch`, `git fetch origin <target>` and pass `base_ref: "origin/<target>"` to `Worktree.create`. The run branch then forks from the latest landed tip regardless of the operator checkout's state, which ALSO makes the run's base match what the lander rebases onto -> fewer/zero land conflicts.
+
+Best-effort: if the fetch fails (offline), log and fall back to HEAD -- never crash the run on a fetch failure. Projects with `target_branch: nil` keep the current HEAD behavior.
+"""
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780542720281-b44c60f0, 9e99a3810661c880d03039cc330dcdd819a4600d)."
+delivered_by = "codex"
+verified = true
+created_at = "2026-06-04"
+started_at = "2026-06-04"
+scored_at = "2026-06-04"
+done_at = "2026-06-04"
+shipped_in = "9e99a3810661c880d03039cc330dcdd819a4600d"
+
+[[task]]
+id = "197"
+phase = 16
+bundle = "resilience"
+status = "pending"
+title = "Lander auto-fast-forwards the operator's local target ref when safe, so a land does not leave local development drifting behind origin"
+scores = { d = 4, b = 6, u = 6 }
+acceptance_criteria = ["After a successful land, when the operator checkout is NOT on <target>, the local <target> ref fast-forwards to the pushed tip without modifying the working tree", "When on <target> with a clean tree, the local <target> fast-forwards (merge --ff-only); the operator's HEAD advances to the landed tip", "Dirty tree or non-ff (local ahead) -> no checkout mutation, and a Notification is fired naming the drift", "Never uses --force and never moves the checkout off the operator's current branch; ff-only is asserted by a test that sets up a non-ff local and confirms it is left untouched + notified", "mix precommit.full green"]
+out_of_scope = ["Hot code reloading to avoid the BEAM restart (out of reach; Elixir won't hot-load structural changes)", "Changing the run worktree base (sibling task)"]
+files_to_modify = ["lib/harness/lander.ex"]
+touches = ["lib/harness/notification.ex", "test/harness/lander_test.exs"]
+assignee = "codex"
+body = """
+Sibling to the runs-branch-from-origin task. Today the lander pushes the remote ref and leaves the operator checkout alone by design (lander.ex:27-30), so local `development` drifts behind origin on every land and the operator must `git pull`/rebase by hand before any in-BEAM hand-build work. This is the friction that blocked task 167 this session and, on an accidental restart, orphaned in-flight runs against stale code.
+
+Fix direction (mechanical git-state inspection -- needs a design pass before dispatch, hence no auto-dispatch): after a successful push, attempt a SAFE local sync of the target ref:
+- Operator NOT on <target> -> `git fetch origin <target>:<target>` updates the local branch ref without touching the working tree.
+- Operator ON <target> with a clean tree -> `git merge --ff-only origin/<target>`.
+- Dirty tree, or local has commits not on origin (non-ff) -> SKIP and fire a Notification ("local <target> behind origin by N; sync manually").
+
+It is fast-forward-only, so it can never overwrite operator work -- a refinement of "never touch the checkout", not a reversal. Open design questions to settle first: (1) the on-<target>+clean case is the common one (operator sits on development with the BEAM running) AND the riskiest -- confirm `merge --ff-only` against a possibly-running BEAM's CWD is safe; (2) where this hook lives (post-push in Lander.run vs a separate witness step); (3) whether it is opt-in per project. Residual after this lands: hand-build still needs a deliberate BEAM restart (Elixir won't hot-load structural changes), but the operator would restart already-synced.
 """
 created_at = "2026-06-04"
 scored_at = "2026-06-04"
