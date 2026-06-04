@@ -8237,7 +8237,7 @@
       "id": "203",
       "phase": 16,
       "bundle": "agent-gate",
-      "status": "pending",
+      "status": "done",
       "title": "Reviewer missing-verdict recovery: re-prompt the reviewer once before discarding the run",
       "scores": {
         "d": 4,
@@ -8269,9 +8269,13 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "a662f82",
       "body": "On 2026-06-05 task 37 (hieroglyph) failed as {:review_stuck, \"Reviewer wrote no .harness/review.json verdict artifact.\"} (run ...-f3ebb30a). The cursor implementer committed a 214-line diff; the auto-selected Claude reviewer ran the project checks (worktree _build was compiled) and exited 0 WITHOUT writing the verdict file, so harness discarded the entire run via settle_review {:error, :missing} (run.ex:1583) and re-queued task 37 from scratch. The full implementer+reviewer spend (including the Opus reviewer tokens) was thrown away for a recoverable miss. Root trigger that night was a too-heavy check_command (cold-PLT dialyzer in precommit.full rebuilds per worktree, minutes) exhausting the headless reviewer's turn budget before it reached the mandatory write step; that config is already softened to mix precommit, but the fragility is general — any reviewer that exits a hair early loses everything, no matter the project. Proposal: on {:error, :missing} ONLY, re-invoke the same reviewer once in the same worktree with a terse 'write the verdict now, nothing else' nudge, bounded to exactly one retry via a counter on the run data; a second miss fails as review_stuck as today. The retry costs one short reviewer invocation vs a full re-dispatch (implementer + reviewer) on discard, so it pays for itself the first time it saves a run. DESIGN TENSION (why assignee=human, settle before building): the agent-gate rule (CLAUDE.md) fixes run-lifecycle bugs by moving judgment into an agent prompt/artifact, never by adding a branch to harness code. A bounded single re-prompt is defensible as a mechanical retry of a mechanical artifact write — it interprets no meaning, classifies no outcome — but it IS a new branch in the :reviewing state and needs explicit sign-off that it stays mechanical and does not reopen the 'machinery interprets outcomes' door the rebuild closed. Decide that framing first; if it holds, the implementation is small and contained to Harness.Run.",
       "created_at": "2026-06-05",
+      "done_at": "2026-06-04",
       "scored_at": "2026-06-05",
+      "implemented": "settle_review/2 on {:error, :missing} re-enters :reviewing via :repeat_state (re-arming spawn/idle watchdogs) once, bounded by reviewer_reprompt_count; the retry invokes the same reviewer in the same worktree with a terse write-the-verdict nudge (reviewer_reprompt/1). Malformed/reject unchanged; second miss settles {:review_stuck,_}. Fix-diff baseline captured once at route_to_review so reviewer_diff_size spans the whole review across the re-prompt. Tests cover missing->verdict->approve, missing->missing->stuck, malformed-unchanged, and the cross-reprompt KPI.",
+      "delivered_by": "human",
       "cross_repo": []
     }
   ]
