@@ -8045,7 +8045,7 @@
       "id": "199",
       "phase": 16,
       "bundle": "resilience",
-      "status": "in_progress",
+      "status": "done",
       "title": "Run wedges in :reviewing when the reviewer process is never tracked (reviewer=nil) — add an idle/progress watchdog so a lost reviewer fails fast instead of holding a queue slot to the 90-min lifetime cap",
       "scores": {
         "d": 5,
@@ -8073,10 +8073,15 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "d23e6f2",
       "body": "OBSERVED 2026-06-04 (this session). The salvaged task-140 antigravity run (run-1780544645702-1a831f01) reached state :reviewing with the implementer outcome captured (agent_kind: :exited) but the reviewer never tracked: data.reviewer = nil, data.review = nil, reviewer_adapter = Harness.AgentAdapter.Cursor. The gen_statem sat in loop_receive with message_queue_len 0 and NO armed wakeup — wedged for ~20 min. The only armed timer was lifetime_timeout (5_400_000 ms = 90 min); idle_timeout and progress_timeout were nil in :reviewing. So a run whose reviewer spawn is lost holds its project-queue concurrency slot for up to 90 minutes before the lifetime cap fails it. Had to cancel it manually (Harness.Run.cancel/1) to free the slot.\n\nThis is a MECHANICAL liveness gap, not a judgment bug: :reviewing has no idle/progress watchdog, so a never-tracked (or silently-failed-to-spawn) reviewer never trips a timeout. Fix is a timer armed on entry to :reviewing + fail-fast on reviewer-spawn error — substrate only. Do NOT add any branch/regex/classifier interpreting review meaning (that violates the agent-gate rule); the verdict still comes only from .harness/review.json.\n",
       "created_at": "2026-06-04",
       "started_at": "2026-06-04",
+      "done_at": "2026-06-04",
       "scored_at": "2026-06-04",
+      "implemented": "Reviewing-phase watchdog: on :reviewing enter, arm a spawn state_timeout (reviewer_spawn_timeout, default 60s) + capture the reviewer Run handle via Driver :on_spawn; once spawned, switch to an idle state_timeout re-armed on each transcript chunk. Either timer settles :failed {:review_stuck} well under the 90-min lifetime cap, freeing the queue slot. terminate_reviewer/1 added to cancel/timeout/fail paths. Salvaged run.ex+run_test.exs from crashed run run-1780547458231-66f464e9 (reviewer never ran — laptop kernel panic mid-review); stale Chat.Store hunks dropped. Manually gated: diff reviewed + precommit.full green.",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     }
   ]
