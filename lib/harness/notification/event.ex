@@ -3,8 +3,9 @@ defmodule Harness.Notification.Event do
   A merge-train lifecycle event handed to notification sinks.
 
   Fired by `Harness.Lander.Resilience` when a run **lands** or a task is
-  **blocked** (landing-attempt cap exhausted), and by `Harness.Run` when in-run
-  discernment samples a partial transcript.
+  **blocked** (landing-attempt cap exhausted), by `Harness.Lander` when the
+  operator's local target branch needs manual sync after a successful land, and
+  by `Harness.Run` when in-run discernment samples a partial transcript.
 
   ## The sakshi↔buddhi hinge
 
@@ -19,13 +20,14 @@ defmodule Harness.Notification.Event do
   """
 
   @typedoc "Which merge-train transition fired."
-  @type type :: :landed | :blocked | :in_run_discernment
+  @type type :: :landed | :blocked | :local_sync_skipped | :in_run_discernment
 
   @typedoc """
   The raw outcome payload, keyed by `type`:
 
     * `:landed` — the landed commit SHA (`String.t()`).
     * `:blocked` — the structured blocked reason (`String.t()`).
+    * `:local_sync_skipped` — the manual-sync reason (`String.t()`).
     * `:in_run_discernment` — a sampled partial-transcript reviewer payload.
   """
   @type outcome :: String.t() | map()
@@ -67,6 +69,9 @@ defmodule Harness.Notification.Event do
   def summary(%__MODULE__{type: :landed, task_id: id, outcome: sha}), do: "landed task #{id} at #{sha}"
 
   def summary(%__MODULE__{type: :blocked, task_id: id, outcome: reason}), do: "blocked task #{id}: #{reason}"
+
+  def summary(%__MODULE__{type: :local_sync_skipped, task_id: id, outcome: reason}),
+    do: "local sync skipped for task #{id}: #{reason}"
 
   def summary(%__MODULE__{type: :in_run_discernment, task_id: id, outcome: %{action: action, verdict: verdict}}),
     do: "in-run discernment on task #{id}: #{action} (#{verdict})"

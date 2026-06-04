@@ -82,7 +82,7 @@ defmodule Harness.SettingsStore.PostgresTest do
     assert CronSettings.master_enabled?()
     assert CronSettings.project_enabled?(project)
     assert CronSettings.active_preset() == "hourly"
-    assert LandingSettings.effective(project) == %{landing_policy: :auto, target_branch: "release"}
+    assert LandingSettings.effective(project) == %{landing_policy: :auto, target_branch: "release", reviewer: nil}
     assert Repo.aggregate(Setting, :count) == 3
 
     assert :ok = TermCodec.write_file(Path.join(root, "agent_settings.term"), %{disabled: [:claude]})

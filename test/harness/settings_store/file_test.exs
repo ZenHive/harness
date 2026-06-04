@@ -70,7 +70,7 @@ defmodule Harness.SettingsStore.FileTest do
     refute AgentSettings.enabled?(:codex)
     assert CronSettings.master_enabled?()
     assert CronSettings.project_enabled?(project)
-    assert LandingSettings.effective(project) == %{landing_policy: :auto, target_branch: "main"}
+    assert LandingSettings.effective(project) == %{landing_policy: :auto, target_branch: "main", reviewer: nil}
   end
 
   test "file backend imports legacy per-domain term files once", %{root: root} do

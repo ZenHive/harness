@@ -661,7 +661,7 @@ defmodule Harness.Dashboard.Components do
       </p>
       <ul class="project-list">
         <li :for={project <- @projects} class="project-row" data-effective={to_string(project.auto?)}>
-          <form class="landing-form" phx-submit="set_landing">
+          <form id={"landing-form-#{project.name}"} class="landing-form" phx-submit="set_landing">
             <input type="hidden" name="name" value={project.name} />
             <div class="project-id">
               <span class="project-name">{project.label}</span>

@@ -204,7 +204,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     html =
       view
-      |> form("form.landing-form", %{landing_policy: "auto", target_branch: "release"})
+      |> form("#landing-form-#{project.name}", %{landing_policy: "auto", target_branch: "release"})
       |> render_submit()
 
     assert html =~ "Landing updated for #{project.name}"
@@ -218,7 +218,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     html =
       view
-      |> form("form.landing-form", %{landing_policy: "auto", target_branch: ""})
+      |> form("#landing-form-#{project.name}", %{landing_policy: "auto", target_branch: ""})
       |> render_submit()
 
     assert html =~ "needs a target branch"
@@ -231,7 +231,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     html =
       view
-      |> form("form.reviewer-form", %{name: project.name, reviewer: "codex"})
+      |> form("#reviewer-form-#{project.name}", %{name: project.name, reviewer: "codex"})
       |> render_submit()
 
     assert html =~ "Reviewer updated for #{project.name}"
@@ -239,7 +239,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     html =
       view
-      |> form("form.reviewer-form", %{name: project.name, reviewer: ""})
+      |> form("#reviewer-form-#{project.name}", %{name: project.name, reviewer: ""})
       |> render_submit()
 
     assert html =~ "Reviewer updated for #{project.name}"

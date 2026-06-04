@@ -3,6 +3,7 @@ defmodule Harness.LanderTest do
 
   alias Harness.GitFixture
   alias Harness.Lander
+  alias Harness.Notification.Event
   alias Harness.Project
 
   @moduletag :tmp_dir
@@ -57,6 +58,63 @@ defmodule Harness.LanderTest do
       assert {:landed, landed} = Lander.land(ctx.request)
       assert landed == ctx.branch_tip
       assert sha(ctx.origin, "refs/heads/main") == ctx.branch_tip
+    end
+  end
+
+  describe "land/1 — post-push local target sync" do
+    test "fast-forwards local target ref without touching the checkout when operator is off target", ctx do
+      GitFixture.git!(ctx.repo, ["checkout", "-b", "side"])
+      side_head = sha(ctx.repo, "HEAD")
+
+      assert {:landed, landed} = Lander.land(ctx.request)
+
+      assert landed == ctx.branch_tip
+      assert sha(ctx.repo, "main") == landed
+      assert sha(ctx.repo, "HEAD") == side_head
+      assert String.trim(GitFixture.git!(ctx.repo, ["branch", "--show-current"])) == "side"
+      refute File.exists?(Path.join(ctx.repo, "feature.txt"))
+    end
+
+    test "fast-forwards HEAD when operator is on target with a clean tree", ctx do
+      assert String.trim(GitFixture.git!(ctx.repo, ["branch", "--show-current"])) == "main"
+
+      assert {:landed, landed} = Lander.land(ctx.request)
+
+      assert landed == ctx.branch_tip
+      assert sha(ctx.repo, "HEAD") == landed
+      assert File.read!(Path.join(ctx.repo, "feature.txt")) == "work\n"
+    end
+
+    test "skips and notifies when operator is on target with a dirty tree", ctx do
+      put_capture_sink()
+      File.write!(Path.join(ctx.repo, "scratch.txt"), "local\n")
+
+      assert {:landed, landed} = Lander.land(ctx.request)
+
+      assert landed == ctx.branch_tip
+      assert sha(ctx.repo, "HEAD") == ctx.base_sha
+      assert File.read!(Path.join(ctx.repo, "scratch.txt")) == "local\n"
+      assert_receive {:notify, %Event{type: :local_sync_skipped, outcome: reason}}
+      assert reason =~ "local main behind origin by 1"
+      assert reason =~ "sync manually"
+    end
+
+    test "leaves a non-ff local target untouched and notifies instead of forcing it", ctx do
+      put_capture_sink()
+      File.write!(Path.join(ctx.repo, "local.txt"), "operator\n")
+      GitFixture.git!(ctx.repo, ["add", "."])
+      GitFixture.git!(ctx.repo, ["commit", "-m", "operator work"])
+      local_head = sha(ctx.repo, "HEAD")
+
+      assert {:landed, landed} = Lander.land(ctx.request)
+
+      assert landed == ctx.branch_tip
+      assert sha(ctx.origin, "refs/heads/main") == landed
+      assert sha(ctx.repo, "HEAD") == local_head
+      assert File.read!(Path.join(ctx.repo, "local.txt")) == "operator\n"
+      assert_receive {:notify, %Event{type: :local_sync_skipped, outcome: reason}}
+      assert reason =~ "local main behind origin by 1"
+      assert reason =~ "sync manually"
     end
   end
 
@@ -185,5 +243,15 @@ defmodule Harness.LanderTest do
       request = %{ctx.request | project: %{ctx.project | target_branch: nil}}
       assert {:error, :no_target_branch} = Lander.land(request)
     end
+  end
+
+  defp put_capture_sink do
+    Application.put_env(:harness, :notification_sinks, [Harness.Test.CaptureSink])
+    Application.put_env(:harness, :test_capture_pid, self())
+
+    on_exit(fn ->
+      Application.delete_env(:harness, :notification_sinks)
+      Application.delete_env(:harness, :test_capture_pid)
+    end)
   end
 end

@@ -31,4 +31,16 @@ defmodule Harness.Notification.EventTest do
       assert Event.summary(event) == "in-run discernment on task 7: notify_only (unclear)"
     end
   end
+
+  describe "summary/1 — local_sync_skipped" do
+    test "names the manual sync reason" do
+      event = %Event{
+        type: :local_sync_skipped,
+        task_id: "197",
+        outcome: "local main behind origin by 1; sync manually"
+      }
+
+      assert Event.summary(event) == "local sync skipped for task 197: local main behind origin by 1; sync manually"
+    end
+  end
 end

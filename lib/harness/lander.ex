@@ -13,7 +13,8 @@ defmodule Harness.Lander do
        **detached** worktree and, if `origin/<target>` has moved past it,
        rebases onto it,
     3. fast-forward-pushes the tip to `origin/<target_branch>` (never `--force`;
-       the operator's local checkout is untouched — they `git pull`),
+       then fast-forwards the operator's local target ref when Git says it is
+       safe),
     4. writes the outcome back to rmap (`done` + `verified` + `shipped_in`),
     5. enqueues a post-merge audit job (`Harness.Audit.Worker`) for the landed
        range — best-effort, never blocks the land.
@@ -25,9 +26,11 @@ defmodule Harness.Lander do
   ## Land mechanism: remote fast-forward push
 
   Landing is a ff-only `git push origin <tip>:refs/heads/<target>`. The push
-  target is the *remote* branch, so harness never moves a locally-checked-out
-  ref (which would desync the operator's working tree). `shipped_in` is the
-  pushed SHA.
+  target is the *remote* branch. After that succeeds, harness attempts a local
+  ff-only sync: an unchecked-out local target ref is updated by fetch, while a
+  clean checked-out target is advanced by `git merge --ff-only origin/<target>`.
+  Dirty or non-ff local state is left alone and surfaced as a notification.
+  `shipped_in` is the pushed SHA.
 
   ## Failure routing (Task 101 seam)
 
@@ -43,6 +46,8 @@ defmodule Harness.Lander do
   alias Harness.Audit.Worker, as: AuditWorker
   alias Harness.Git
   alias Harness.Lander.Resolver
+  alias Harness.Notification
+  alias Harness.Notification.Event
   alias Harness.Oban, as: HarnessOban
   alias Harness.Project
   alias Harness.Roadmap
@@ -92,6 +97,7 @@ defmodule Harness.Lander do
     result =
       with {:ok, tip} <- integrate(worktree, target, base_sha, request),
            {:ok, pushed} <- push(repo, tip, target) do
+        sync_local_target(repo, target, project, request)
         writeback(project, request, pushed)
         enqueue_audit(project, request, base_sha)
         {:landed, pushed}
@@ -221,6 +227,94 @@ defmodule Harness.Lander do
           do: {:push_rejected, output},
           else: {:error, {:push_failed, output}}
     end
+  end
+
+  @spec sync_local_target(String.t(), String.t(), Project.t(), request()) :: :ok
+  defp sync_local_target(repo, target, project, request) do
+    with :ok <- fetch_remote_target(repo, target),
+         {:ok, branch} <- current_branch(repo) do
+      if branch == target do
+        sync_checked_out_target(repo, target, project, request)
+      else
+        sync_unchecked_out_target(repo, target, project, request)
+      end
+    else
+      {:error, reason} ->
+        notify_local_sync_skipped(project, request, "local #{target} sync skipped: #{inspect(reason)}; sync manually")
+    end
+  end
+
+  @spec fetch_remote_target(String.t(), String.t()) :: :ok | {:error, term()}
+  defp fetch_remote_target(repo, target) do
+    case Git.run(["fetch", "origin", "#{target}:refs/remotes/origin/#{target}"], repo) do
+      {:ok, _output} -> :ok
+      {:error, reason} -> {:error, {:fetch_remote_target_failed, reason}}
+    end
+  end
+
+  @spec current_branch(String.t()) :: {:ok, String.t()} | {:error, term()}
+  defp current_branch(repo) do
+    case Git.run(["branch", "--show-current"], repo) do
+      {:ok, output} -> {:ok, String.trim(output)}
+      {:error, reason} -> {:error, {:current_branch_failed, reason}}
+    end
+  end
+
+  @spec sync_checked_out_target(String.t(), String.t(), Project.t(), request()) :: :ok
+  defp sync_checked_out_target(repo, target, project, request) do
+    if clean_worktree?(repo) do
+      merge_target(repo, target, project, request)
+    else
+      notify_local_sync_skipped(project, request, drift_message(repo, target))
+    end
+  end
+
+  @spec clean_worktree?(String.t()) :: boolean()
+  defp clean_worktree?(repo) do
+    match?({:ok, ""}, Git.run(["status", "--porcelain"], repo))
+  end
+
+  @spec merge_target(String.t(), String.t(), Project.t(), request()) :: :ok
+  defp merge_target(repo, target, project, request) do
+    case Git.run(["merge", "--ff-only", "origin/" <> target], repo) do
+      {:ok, _output} -> :ok
+      {:error, _reason} -> notify_local_sync_skipped(project, request, drift_message(repo, target))
+    end
+  end
+
+  @spec sync_unchecked_out_target(String.t(), String.t(), Project.t(), request()) :: :ok
+  defp sync_unchecked_out_target(repo, target, project, request) do
+    case Git.run(["fetch", "origin", "#{target}:#{target}"], repo) do
+      {:ok, _output} -> :ok
+      {:error, _reason} -> notify_local_sync_skipped(project, request, drift_message(repo, target))
+    end
+  end
+
+  @spec drift_message(String.t(), String.t()) :: String.t()
+  defp drift_message(repo, target) do
+    "local #{target} behind origin by #{behind_count(repo, target)}; sync manually"
+  end
+
+  @spec behind_count(String.t(), String.t()) :: non_neg_integer() | String.t()
+  defp behind_count(repo, target) do
+    case Git.run(["rev-list", "--count", "#{target}..origin/#{target}"], repo) do
+      {:ok, output} -> output |> String.trim() |> String.to_integer()
+      {:error, _reason} -> "unknown"
+    end
+  end
+
+  @spec notify_local_sync_skipped(Project.t(), request(), String.t()) :: :ok
+  defp notify_local_sync_skipped(project, request, reason) do
+    Logger.warning("harness lander: #{reason}")
+
+    Notification.notify(%Event{
+      type: :local_sync_skipped,
+      task_id: request.task_id,
+      run_id: request.run_id,
+      project: project.name,
+      branch: request.branch,
+      outcome: reason
+    })
   end
 
   @spec non_fast_forward?(String.t()) :: boolean()

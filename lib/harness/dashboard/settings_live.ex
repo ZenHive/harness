@@ -300,7 +300,11 @@ defmodule Harness.Dashboard.SettingsLive do
         </p>
         <ul class="project-list">
           <li :for={project <- @reviewers.projects} class="project-row">
-            <form class="reviewer-form" phx-submit="set_project_reviewer">
+            <form
+              id={"reviewer-form-#{project.name}"}
+              class="reviewer-form"
+              phx-submit="set_project_reviewer"
+            >
               <input type="hidden" name="name" value={project.name} />
               <div class="project-id">
                 <span class="project-name">{project.label}</span>
