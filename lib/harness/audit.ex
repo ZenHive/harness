@@ -19,6 +19,11 @@ defmodule Harness.Audit do
        `.harness/audit.json` summary harness logs,
     5. fast-forward-push whatever the agent committed back to the target.
 
+  Clean audits (`:no_changes`) intentionally do not write empty `audit(...)`
+  marker commits to the shared branch. Instead, harness records the audited tip
+  in a local term watermark store and consults that watermark alongside the last
+  reachable `audit(...)` commit when framing the next range.
+
   ## Best-effort, never a gate
 
   The audit never blocks, reverts, or unmerges a landed run. Every degenerate
@@ -35,11 +40,14 @@ defmodule Harness.Audit do
   alias Harness.Git
   alias Harness.Project
   alias Harness.ResultStore
+  alias Harness.TermCodec
   alias Harness.Worktree
 
   require Logger
 
   @audit_report_path ".harness/audit.json"
+  @default_watermark_root "~/.harness"
+  @watermark_file "audit_watermarks.term"
   @rejection_history_limit 20
   @rejection_summary_limit 500
 
@@ -101,7 +109,7 @@ defmodule Harness.Audit do
   @spec audit_in_worktree(Worktree.t(), String.t(), String.t(), Project.t(), request()) :: outcome()
   defp audit_in_worktree(%Worktree{} = worktree, repo, target, project, request) do
     result =
-      case unaudited_range(worktree.path, request.base_sha) do
+      case unaudited_range(worktree.path, request.base_sha, project, target) do
         {:ok, :empty} -> :noop
         {:ok, range} -> run_auditor(worktree, repo, target, project, request, range)
         {:error, reason} -> {:error, reason}
@@ -111,28 +119,62 @@ defmodule Harness.Audit do
     result
   end
 
-  # The range is mechanical: last audit(...) commit on the tip (the audit
-  # convention's own bookkeeping), else the pre-land base the lander recorded.
-  @spec unaudited_range(String.t(), String.t()) ::
+  # The range is mechanical: the newest reachable audit watermark (an audit(...)
+  # commit or local clean-audit marker), else the pre-land base the lander
+  # recorded.
+  @spec unaudited_range(String.t(), String.t(), Project.t(), String.t()) ::
           {:ok, :empty | %{base: String.t(), log: String.t(), short_sha: String.t()}} | {:error, term()}
-  defp unaudited_range(path, fallback_base) do
-    with {:ok, base} <- audit_base(path, fallback_base),
+  defp unaudited_range(path, fallback_base, project, target) do
+    with {:ok, base} <- audit_base(path, fallback_base, project, target),
          {:ok, count} <- commit_count(path, base) do
       if count == 0, do: {:ok, :empty}, else: describe_range(path, base)
     end
   end
 
-  @spec audit_base(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
-  defp audit_base(path, fallback_base) do
+  @spec audit_base(String.t(), String.t(), Project.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  defp audit_base(path, fallback_base, project, target) do
+    with {:ok, audit_marker} <- audit_marker_base(path) do
+      path
+      |> reachable_bases([audit_marker, watermark(project, target)])
+      |> newest_base(path, fallback_base)
+    end
+  end
+
+  @spec audit_marker_base(String.t()) :: {:ok, String.t() | nil} | {:error, term()}
+  defp audit_marker_base(path) do
     case Git.run(["log", "--grep", "^audit(", "-1", "--format=%H", "HEAD"], path) do
       {:ok, output} ->
         case String.trim(output) do
-          "" -> {:ok, fallback_base}
+          "" -> {:ok, nil}
           sha -> {:ok, sha}
         end
 
       {:error, reason} ->
         {:error, {:audit_base_failed, reason}}
+    end
+  end
+
+  @spec reachable_bases(String.t(), [String.t() | nil]) :: [String.t()]
+  defp reachable_bases(path, candidates) do
+    candidates
+    |> Enum.filter(&(is_binary(&1) and &1 != ""))
+    |> Enum.uniq()
+    |> Enum.filter(&reachable?(path, &1))
+  end
+
+  @spec reachable?(String.t(), String.t()) :: boolean()
+  defp reachable?(path, sha) do
+    match?({:ok, _output}, Git.run(["merge-base", "--is-ancestor", sha, "HEAD"], path))
+  end
+
+  @spec newest_base([String.t()], String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  defp newest_base([], _path, fallback_base), do: {:ok, fallback_base}
+  defp newest_base([base], _path, _fallback_base), do: {:ok, base}
+
+  defp newest_base(bases, path, _fallback_base) do
+    case Git.run(["log", "--format=%H", "-1" | bases], path) do
+      {:ok, output} -> {:ok, String.trim(output)}
+      {:error, reason} -> {:error, {:audit_base_failed, reason}}
     end
   end
 
@@ -159,7 +201,9 @@ defmodule Harness.Audit do
          {:ok, %Outcome{}} <- Driver.run(auditor, invocation(worktree, target, project, request, range), []),
          {:ok, head} <- head_sha(worktree.path) do
       log_audit_report(worktree.path)
-      push_if_advanced(repo, worktree, target, head)
+      outcome = push_if_advanced(repo, worktree, target, head)
+      record_watermark(project, target, head, outcome)
+      outcome
     end
   end
 
@@ -321,6 +365,84 @@ defmodule Harness.Audit do
         Logger.warning("harness audit: push rejected (target advanced); dropping audit work: #{output}")
 
         {:push_rejected, output}
+    end
+  end
+
+  @spec record_watermark(Project.t(), String.t(), String.t(), outcome()) :: :ok
+  defp record_watermark(project, target, head, :no_changes) do
+    persist_watermark(project, target, head)
+  end
+
+  defp record_watermark(project, target, head, {:audited, _sha}) do
+    persist_watermark(project, target, head)
+  end
+
+  defp record_watermark(_project, _target, _head, _outcome), do: :ok
+
+  @spec watermark(Project.t(), String.t()) :: String.t() | nil
+  defp watermark(%Project{name: name}, target) do
+    with dir when is_binary(dir) <- watermark_root(),
+         {:ok, record} when is_map(record) <- TermCodec.read_file(watermark_path(dir)),
+         project_record when is_map(project_record) <- Map.get(record, name),
+         sha when is_binary(sha) and sha != "" <- Map.get(project_record, target) do
+      sha
+    else
+      _missing_or_malformed -> nil
+    end
+  end
+
+  @spec persist_watermark(Project.t(), String.t(), String.t()) :: :ok
+  defp persist_watermark(%Project{name: name}, target, sha) do
+    case watermark_root() do
+      nil ->
+        :ok
+
+      dir ->
+        record =
+          dir
+          |> read_watermarks()
+          |> put_watermark(name, target, sha)
+
+        case TermCodec.write_file(watermark_path(dir), record) do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning("harness audit: failed to persist audit watermark for #{name}/#{target}: #{inspect(reason)}")
+
+            :ok
+        end
+    end
+  end
+
+  @spec read_watermarks(String.t()) :: map()
+  defp read_watermarks(dir) do
+    case TermCodec.read_file(watermark_path(dir)) do
+      {:ok, record} when is_map(record) -> record
+      _missing_or_malformed -> %{}
+    end
+  end
+
+  @spec put_watermark(map(), String.t(), String.t(), String.t()) :: map()
+  defp put_watermark(record, project_name, target, sha) do
+    project_record =
+      case Map.get(record, project_name) do
+        map when is_map(map) -> map
+        _other -> %{}
+      end
+
+    Map.put(record, project_name, Map.put(project_record, target, sha))
+  end
+
+  @spec watermark_path(String.t()) :: String.t()
+  defp watermark_path(dir), do: Path.join(dir, @watermark_file)
+
+  @spec watermark_root() :: String.t() | nil
+  defp watermark_root do
+    case Application.get_env(:harness, :audit_watermarks, root: @default_watermark_root) do
+      false -> nil
+      nil -> nil
+      opts when is_list(opts) -> opts |> Keyword.get(:root, @default_watermark_root) |> Path.expand()
     end
   end
 

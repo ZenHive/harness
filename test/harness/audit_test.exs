@@ -23,7 +23,10 @@ defmodule Harness.AuditTest do
   alias Harness.ResultStore
   alias Harness.ResultStore.File, as: FileStore
   alias Harness.Run.LogRecord
+  alias Harness.TermCodec
   alias Harness.TokenUsage
+
+  @watermark_file "audit_watermarks.term"
 
   # ── git fixture: bare origin + working clone, mirroring the post-land state
   #    (everything the audit reviews is already on origin/main). ─────────────
@@ -76,8 +79,16 @@ defmodule Harness.AuditTest do
   setup do
     %{origin: origin, repo: repo} = GitFixture.init_with_origin()
     project = ProjectFixture.from_repo(repo, name: "audit-demo", target_branch: "main")
+    prior_watermarks = Application.get_env(:harness, :audit_watermarks)
+    watermarks_root = Path.join(System.tmp_dir!(), "harness_audit_watermarks_#{System.unique_integer([:positive])}")
+    Application.put_env(:harness, :audit_watermarks, root: watermarks_root)
 
-    %{origin: origin, repo: repo, project: project, base_sha: sha(repo, "HEAD")}
+    on_exit(fn ->
+      restore(:audit_watermarks, prior_watermarks)
+      File.rm_rf(watermarks_root)
+    end)
+
+    %{origin: origin, repo: repo, project: project, base_sha: sha(repo, "HEAD"), watermarks_root: watermarks_root}
   end
 
   describe "run/1 — skip routing (projects that can't be audited)" do
@@ -187,6 +198,56 @@ defmodule Harness.AuditTest do
 
       assert ctx.origin |> GitFixture.git!(["rev-parse", "main"]) |> String.trim() == landed_sha
     end
+
+    test "a clean audit watermark prevents re-auditing the same range after a later land", ctx do
+      land_work!(ctx)
+      first_short = ctx.repo |> GitFixture.git!(["rev-parse", "--short", "HEAD"]) |> String.trim()
+
+      assert {:audited, audited_sha} =
+               Audit.run(%{
+                 project: ctx.project,
+                 base_sha: ctx.base_sha,
+                 auditor: FakeAdapter,
+                 auditor_opts: [command: {:audit, first_short}]
+               })
+
+      assert {:ok, watermarks} = TermCodec.read_file(Path.join(ctx.watermarks_root, @watermark_file))
+      assert get_in(watermarks, [ctx.project.name, ctx.project.target_branch]) == audited_sha
+
+      GitFixture.git!(ctx.repo, ["pull", "--ff-only", "-q", "origin", "main"])
+      commit!(ctx.repo, "clean.txt", "clean landed work")
+      GitFixture.git!(ctx.repo, ["push", "-q", "origin", "main"])
+      clean_sha = sha(ctx.repo, "HEAD")
+
+      assert :no_changes =
+               Audit.run(%{
+                 project: ctx.project,
+                 base_sha: audited_sha,
+                 auditor: FakeAdapter,
+                 auditor_opts: [command: :echo]
+               })
+
+      assert {:ok, watermarks} = TermCodec.read_file(Path.join(ctx.watermarks_root, @watermark_file))
+      assert get_in(watermarks, [ctx.project.name, ctx.project.target_branch]) == clean_sha
+
+      commit!(ctx.repo, "later.txt", "later landed work")
+      GitFixture.git!(ctx.repo, ["push", "-q", "origin", "main"])
+      later_short = ctx.repo |> GitFixture.git!(["rev-parse", "--short", "HEAD"]) |> String.trim()
+
+      assert {:audited, _sha} =
+               Audit.run(%{
+                 project: ctx.project,
+                 base_sha: clean_sha,
+                 auditor: FakeAdapter,
+                 auditor_opts: [command: {:audit_capture_prompt, later_short}]
+               })
+
+      GitFixture.git!(ctx.repo, ["fetch", "-q", "origin"])
+      prompt = GitFixture.git!(ctx.repo, ["show", "origin/main:.audit/#{later_short}.md"])
+
+      assert prompt =~ "later landed work"
+      refute prompt =~ "clean landed work"
+    end
   end
 
   describe "run/1 — reviewer rejection history in the audit prompt (AC4)" do
@@ -284,6 +345,10 @@ defmodule Harness.AuditTest do
       assert :noop = Audit.run(%{project: ctx.project, base_sha: ctx.base_sha})
     end
   end
+
+  @spec restore(atom(), term()) :: :ok
+  defp restore(key, nil), do: Application.delete_env(:harness, key)
+  defp restore(key, value), do: Application.put_env(:harness, key, value)
 
   describe "select_auditor/1 — cross-family + reviewer-eligibility gate" do
     test "an explicit :auditor override wins, bypassing the registry scan" do
