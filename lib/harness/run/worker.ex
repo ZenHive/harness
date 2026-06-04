@@ -200,7 +200,7 @@ defmodule Harness.Run.Worker do
   @spec setup_failure_disposition(term(), Oban.Job.t()) ::
           {:snooze, pos_integer()} | {:cancel, term()}
   defp setup_failure_disposition(reason, %Oban.Job{} = job) do
-    attempt = max(job.attempt || 1, 1)
+    attempt = max(job.attempt, 1)
 
     cond do
       duplicate_run_reason?(reason) -> {:cancel, duplicate_cancel_reason(reason)}
@@ -390,9 +390,9 @@ defmodule Harness.Run.Worker do
   defp env_opt(_args), do: []
 
   @spec checkpoint(Oban.Job.t(), String.t()) :: :ok
-  defp checkpoint(%Oban.Job{id: id} = job, stage) when is_integer(id) do
+  defp checkpoint(%Oban.Job{} = job, stage) do
     if Process.whereis(Harness.Oban) do
-      meta = Map.put(job.meta || %{}, "harness_stage", stage)
+      meta = Map.put(job.meta, "harness_stage", stage)
 
       case Oban.update_job(Harness.Oban, job, %{meta: meta}) do
         {:ok, _job} -> :ok
@@ -404,8 +404,6 @@ defmodule Harness.Run.Worker do
   rescue
     _error -> :ok
   end
-
-  defp checkpoint(%Oban.Job{}, _stage), do: :ok
 
   # Test seam: `:roadmap_ingest` and `:run_starter` Application env keys let
   # tests inject fakes without spinning up RunSupervisor / rmap. Never set

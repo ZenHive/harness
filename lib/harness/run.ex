@@ -999,9 +999,9 @@ defmodule Harness.Run do
   # reply, or `nil` for a timeout-triggered abort.
   @spec do_hold(data(), :graceful | :interrupt, [:gen_statem.action()]) :: handler_result()
   defp do_hold(data, mode, extra_actions \\ []) do
+    terminate_agent(data)
     cancel_task(data.task)
     cancel_task(data.discernment_task)
-    terminate_agent(data)
 
     data = %{
       data
@@ -1192,10 +1192,10 @@ defmodule Harness.Run do
           handler_result()
   defp fail_memory_runaway(data, role, os_pid, rss_kb) do
     MemoryGuard.kill_tree(os_pid)
-    cancel_task(data.task)
-    cancel_task(data.discernment_task)
     terminate_agent(data)
     terminate_reviewer(data)
+    cancel_task(data.task)
+    cancel_task(data.discernment_task)
     actions = pending_cancel_reply(data)
 
     reason =

@@ -162,6 +162,37 @@ defmodule Harness.RunTest do
     def terminate(run), do: OSProcess.kill(run)
   end
 
+  defmodule ReportingTerminateAdapter do
+    @moduledoc false
+    @behaviour Harness.AgentAdapter
+
+    alias Harness.AgentAdapter.Capabilities
+    alias Harness.AgentAdapter.OSProcess
+
+    @impl Harness.AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl Harness.AgentAdapter
+    def rule_channel, do: :none
+
+    @impl Harness.AgentAdapter
+    def build_command(%{adapter_opts: opts}) do
+      owner = Keyword.fetch!(opts, :owner)
+      Application.put_env(:harness, :terminate_report_owner, owner)
+      {:ok, {"/bin/sh", ["-c", "exec sleep 30"], []}}
+    end
+
+    @impl Harness.AgentAdapter
+    def classify_message(_message, _run), do: :ignore
+
+    @impl Harness.AgentAdapter
+    def terminate(run) do
+      owner = Application.fetch_env!(:harness, :terminate_report_owner)
+      send(owner, {:terminated_with_live_port?, Port.info(run.port, :os_pid) != nil})
+      OSProcess.kill(run)
+    end
+  end
+
   describe "lifecycle — settling on the reviewer's verdict" do
     test "settles :done and removes the worktree when the reviewer approves" do
       result = run([])
@@ -1128,6 +1159,25 @@ defmodule Harness.RunTest do
                Run.status(run_id)
 
       assert ProcessFixture.await_dead(os_pid) == :ok
+    end
+
+    test "REGRESSION: interrupt hold terminates the agent before cancelling its driver task" do
+      on_exit(fn -> Application.delete_env(:harness, :terminate_report_owner) end)
+
+      {run_id, _pid} =
+        start(
+          adapter: ReportingTerminateAdapter,
+          adapter_opts: [owner: self()],
+          lifetime_timeout: 30_000,
+          terminal_linger: 100
+        )
+
+      wait_until_running(run_id)
+      await_agent_os_pid(run_id)
+
+      assert :ok = Run.hold(run_id, true)
+      assert_receive {:terminated_with_live_port?, true}, 5_000
+      await_held(run_id)
     end
 
     test "lifetime timer stays suspended while :held and re-arms on resume" do
