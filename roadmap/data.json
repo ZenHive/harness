@@ -7998,6 +7998,80 @@
       "delivered_by": "codex",
       "verified": true,
       "cross_repo": []
+    },
+    {
+      "id": "198",
+      "phase": 16,
+      "bundle": "resilience",
+      "status": "pending",
+      "title": "Antigravity (agy) adapter leaks writes into the operator checkout instead of the run worktree — worktree isolation regression",
+      "scores": {
+        "d": 5,
+        "b": 8,
+        "u": 4
+      },
+      "eff": 1.2,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "Reproduce: dispatch a task to the antigravity adapter and confirm whether file writes land in the run worktree (cwd) or leak into the operator checkout",
+        "Antigravity adapter honors the Port cwd so ALL writes are confined to the run worktree — a dispatched agy run never modifies the operator checkout",
+        "Harness.AgentAdapter.ConformanceCase passes for Antigravity unchanged; add a regression test asserting cwd-confinement (or a documented capability flip to worktree_isolation: false if agy genuinely cannot isolate)",
+        "CLAUDE.md's stale 2026-06-04 'agy honors cwd / isolation fixed' note is corrected to match observed reality",
+        "mix precommit.full green"
+      ],
+      "out_of_scope": [
+        "Re-enabling agy for autonomous dispatch before isolation is proven (it stays off the assignee rotation until this lands)",
+        "Changes to other adapters"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "OBSERVED 2026-06-04 (this session). A task-140 dispatch to the antigravity (agy = Gemini) adapter wrote its files — lib/harness/chat/store/file.ex, .../schema/chat_session.ex, priv/repo/migrations/*_add_chat_sessions.exs — DIRECTLY INTO THE OPERATOR CHECKOUT (/Users/efries/_DATA/code/harness) instead of its run worktree. The run's worktree (run-1780544343922-f47fcfb9) was left at the base commit with ZERO commits. The leaked, half-broken schema file (a `t()` undefined @spec) broke `recompile` in the operator's running iex. It also ran `mix ecto.migrate` against the dev DB from the operator checkout (recorded an orphan migration version).\n\nThis CONTRADICTS the CLAUDE.md claim that Antigravity's Task 32 isolation finding was 'stale as of agy 1.0.5' and that a 2026-06-04 linked-worktree re-test showed agy honoring the Port cwd. Observed behavior says agy does NOT honor cwd. Harness.Run trusts `worktree_isolation: true` and skips the main-checkout pollution snapshot for isolating adapters — so an agy leak is invisible to harness and lands in the operator's working tree.\n\nFix direction: trace the Antigravity adapter's build_command/1 + Port cwd handling; determine whether agy ignores the Port cwd for file writes (vs honoring it for reads only). Either make it isolate, or flip its declared capability to worktree_isolation: false (so Harness.Run re-enables the pollution snapshot / main-checkout guard for it). agy stays disabled for dispatch until this is resolved.\n",
+      "created_at": "2026-06-04",
+      "scored_at": "2026-06-04",
+      "cross_repo": []
+    },
+    {
+      "id": "199",
+      "phase": 16,
+      "bundle": "resilience",
+      "status": "pending",
+      "title": "Run wedges in :reviewing when the reviewer process is never tracked (reviewer=nil) — add an idle/progress watchdog so a lost reviewer fails fast instead of holding a queue slot to the 90-min lifetime cap",
+      "scores": {
+        "d": 5,
+        "b": 6,
+        "u": 5
+      },
+      "eff": 1.1,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "Reproduce: a run enters :reviewing but the reviewer process is never tracked (state data reviewer=nil, review=nil) and the gen_statem sits idle (loop_receive, no armed wakeup) until the 90-min lifetime_timeout",
+        "Add a MECHANICAL idle/progress watchdog armed on entry to :reviewing (a timer, not a judgment classifier): if the reviewer makes no progress within a bounded window, the run settles to :failed (missing verdict) and frees its queue slot — task back to queue per the agent-gate workflow",
+        "Reviewer-spawn failure is surfaced fast: if attach/spawn of the reviewer returns error or the reviewer Port never starts, do not silently sit in :reviewing",
+        "Regression test: a run whose reviewer never produces a verdict transitions to :failed within the watchdog window, not at the lifetime cap",
+        "mix precommit.full green"
+      ],
+      "out_of_scope": [
+        "Any judgment/classifier in harness code about WHY review failed or whether the work is good — that stays the reviewer AI's job; this is purely a mechanical timeout/liveness guard (timers are substrate, per the agent-gate rules)",
+        "Reintroducing review_green / max_review_iterations / repair loops"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "OBSERVED 2026-06-04 (this session). The salvaged task-140 antigravity run (run-1780544645702-1a831f01) reached state :reviewing with the implementer outcome captured (agent_kind: :exited) but the reviewer never tracked: data.reviewer = nil, data.review = nil, reviewer_adapter = Harness.AgentAdapter.Cursor. The gen_statem sat in loop_receive with message_queue_len 0 and NO armed wakeup — wedged for ~20 min. The only armed timer was lifetime_timeout (5_400_000 ms = 90 min); idle_timeout and progress_timeout were nil in :reviewing. So a run whose reviewer spawn is lost holds its project-queue concurrency slot for up to 90 minutes before the lifetime cap fails it. Had to cancel it manually (Harness.Run.cancel/1) to free the slot.\n\nThis is a MECHANICAL liveness gap, not a judgment bug: :reviewing has no idle/progress watchdog, so a never-tracked (or silently-failed-to-spawn) reviewer never trips a timeout. Fix is a timer armed on entry to :reviewing + fail-fast on reviewer-spawn error — substrate only. Do NOT add any branch/regex/classifier interpreting review meaning (that violates the agent-gate rule); the verdict still comes only from .harness/review.json.\n",
+      "created_at": "2026-06-04",
+      "scored_at": "2026-06-04",
+      "cross_repo": []
     }
   ]
 }
