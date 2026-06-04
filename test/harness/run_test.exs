@@ -133,6 +133,35 @@ defmodule Harness.RunTest do
     def terminate(run), do: OSProcess.kill(run)
   end
 
+  # A real, long-lived agent that records its own pid and otherwise idles — lets
+  # a test capture the spawned os_pid and assert terminate/1 reaped it on a
+  # cancel/lifetime/fail path (Task 201).
+  defmodule PidFileAdapter do
+    @moduledoc false
+    @behaviour Harness.AgentAdapter
+
+    alias Harness.AgentAdapter.Capabilities
+    alias Harness.AgentAdapter.OSProcess
+
+    @impl Harness.AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl Harness.AgentAdapter
+    def rule_channel, do: :none
+
+    @impl Harness.AgentAdapter
+    def build_command(%{adapter_opts: opts}) do
+      pid_file = Keyword.fetch!(opts, :pid_file)
+      {:ok, {"/bin/sh", ["-c", "echo $$ > #{pid_file}; exec sleep 30"], []}}
+    end
+
+    @impl Harness.AgentAdapter
+    def classify_message(_message, _run), do: :ignore
+
+    @impl Harness.AgentAdapter
+    def terminate(run), do: OSProcess.kill(run)
+  end
+
   describe "lifecycle — settling on the reviewer's verdict" do
     test "settles :done and removes the worktree when the reviewer approves" do
       result = run([])
@@ -889,6 +918,30 @@ defmodule Harness.RunTest do
 
     test "cancelling an unknown run is a no-op" do
       assert :ok = Run.cancel("definitely-not-a-run")
+    end
+
+    test "REGRESSION (Task 201): cancel during :reviewing terminates the reviewer's spawned tree" do
+      # The implementer commits fast → :reviewing with a live reviewer whose
+      # os_pid is captured. do_cancel must run terminate_reviewer BEFORE
+      # cancel_task so the reviewer process is reaped, not orphaned.
+      pid_file = Path.join(System.tmp_dir!(), "harness-rev-#{System.unique_integer([:positive])}.pid")
+      on_exit(fn -> File.rm(pid_file) end)
+
+      {run_id, pid} =
+        start(
+          adapter_opts: [command: :write],
+          reviewer: PidFileAdapter,
+          reviewer_adapter_opts: [pid_file: pid_file],
+          reviewing_idle_timeout: 30_000,
+          lifetime_timeout: 30_000,
+          terminal_linger: 100
+        )
+
+      reviewer_os_pid = await_pid_file(pid_file)
+      assert :ok = Run.cancel(run_id)
+
+      assert %Result{state: :failed, reason: :cancelled} = await_result(run_id, pid)
+      assert ProcessFixture.await_dead(reviewer_os_pid) == :ok
     end
   end
 

@@ -1069,10 +1069,12 @@ defmodule Harness.Run do
 
   @spec do_cancel(data(), Result.reason(), :gen_statem.from() | nil) :: handler_result()
   defp do_cancel(data, reason, from) do
-    cancel_task(data.task)
-    cancel_task(data.discernment_task)
+    # Terminate-then-cancel: the adapter SIGKILLs the captured os_pid while its
+    # Port is still open, before cancel_task tears down the Port owner (Task 201).
     terminate_agent(data)
     terminate_reviewer(data)
+    cancel_task(data.task)
+    cancel_task(data.discernment_task)
     reason = checkout_pollution_reason(data) || reason
 
     data = %{
@@ -1100,10 +1102,12 @@ defmodule Harness.Run do
   # `cancel/1` that arrived before the agent handle) still gets `:ok`.
   @spec force_settle_lifetime(data()) :: handler_result()
   defp force_settle_lifetime(data) do
-    cancel_task(data.task)
-    cancel_task(data.discernment_task)
+    # Terminate-then-cancel (Task 201): reap the captured os_pid before the Port
+    # owner is torn down.
     terminate_agent(data)
     terminate_reviewer(data)
+    cancel_task(data.task)
+    cancel_task(data.discernment_task)
     actions = pending_cancel_reply(data)
     reason = checkout_pollution_reason(data) || :timed_out
 
@@ -1131,9 +1135,11 @@ defmodule Harness.Run do
   # already exited.
   @spec fail(data(), Result.reason()) :: handler_result()
   defp fail(data, reason) do
-    cancel_task(data.discernment_task)
+    # Terminate-then-cancel (Task 201): SIGKILL the captured os_pid before
+    # cancel_task closes the Port owner.
     terminate_agent(data)
     terminate_reviewer(data)
+    cancel_task(data.discernment_task)
 
     {:next_state, :failed,
      %{
