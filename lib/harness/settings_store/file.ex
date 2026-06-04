@@ -54,23 +54,26 @@ defmodule Harness.SettingsStore.File do
   @spec import_legacy(String.t(), keyword(), keyword()) :: {:ok, term()} | :not_found | {:error, term()}
   defp import_legacy(key, opts, backend_opts) do
     case SettingsStore.legacy_path(opts) do
-      nil ->
-        :not_found
+      nil -> :not_found
+      legacy_path -> import_from_legacy_path(key, legacy_path, opts, backend_opts)
+    end
+  end
 
-      legacy_path ->
-        case TermCodec.read_file(legacy_path) do
-          {:ok, value} ->
-            case put(key, value, opts, backend_opts) do
-              :ok -> {:ok, value}
-              {:error, _reason} = error -> error
-            end
+  @spec import_from_legacy_path(String.t(), String.t(), keyword(), keyword()) ::
+          {:ok, term()} | :not_found | {:error, term()}
+  defp import_from_legacy_path(key, legacy_path, opts, backend_opts) do
+    case TermCodec.read_file(legacy_path) do
+      {:ok, value} -> persist_import(key, value, opts, backend_opts)
+      {:error, :enoent} -> :not_found
+      {:error, _reason} = error -> error
+    end
+  end
 
-          {:error, :enoent} ->
-            :not_found
-
-          {:error, _reason} = error ->
-            error
-        end
+  @spec persist_import(String.t(), term(), keyword(), keyword()) :: {:ok, term()} | {:error, term()}
+  defp persist_import(key, value, opts, backend_opts) do
+    case put(key, value, opts, backend_opts) do
+      :ok -> {:ok, value}
+      {:error, _reason} = error -> error
     end
   end
 
