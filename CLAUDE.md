@@ -7,9 +7,8 @@
 @~/.claude/includes/critical-rules.md
 @~/.claude/includes/code-style.md
 @~/.claude/includes/rmap.md
-@~/.claude/includes/harness-workflow.md
 
-> **Trimmed 2026-05-30.** The previous version `@`-imported 14 includes + the 43 KB harness-driver SKILL (~44k tokens always-on), which drove compulsive re-reading on Opus 4.8. The eager floor is now the three above — `critical-rules` (guardrails), `code-style` (KPIs), `rmap` (roadmap decision layer, used every session). `response-conventions` is inherited from `~/.claude/CLAUDE.md`, not re-imported here. Everything else is **load-on-demand** — pull it only when the trigger matches.
+> **Trimmed 2026-05-30.** The previous version `@`-imported 14 includes + the 43 KB harness-driver SKILL (~44k tokens always-on), which drove compulsive re-reading on Opus 4.8. The eager floor is now the three above — `critical-rules` (guardrails), `code-style` (KPIs), `rmap` (roadmap decision layer, used every session). Harness workflow (`harness-workflow.md`) is load-on-demand below — same adoption path as other repos: `@~/.claude/includes/harness-workflow.md`. `response-conventions` is inherited from `~/.claude/CLAUDE.md`, not re-imported here. Everything else is **load-on-demand** — pull it only when the trigger matches.
 
 ## Load-on-demand (don't auto-load — read the file or invoke the skill when the trigger hits)
 

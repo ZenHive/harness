@@ -30,8 +30,10 @@ defmodule Mix.Tasks.Harness.InstallIncludes do
     dest_dir = Keyword.get(opts, :dest) || Path.expand("~/.claude/includes")
     src = locate_source()
 
-    unless File.regular?(src) do
-      Mix.raise("harness includes source not found at #{src} (priv/includes/harness-workflow.md missing from this harness install)")
+    if !File.regular?(src) do
+      Mix.raise(
+        "harness includes source not found at #{src} (priv/includes/harness-workflow.md missing from this harness install)"
+      )
     end
 
     File.mkdir_p!(dest_dir)
@@ -46,15 +48,17 @@ defmodule Mix.Tasks.Harness.InstallIncludes do
   defp locate_source do
     # Preferred: the priv that ships with the :harness application (works for
     # hex dep installs and for `iex -S mix` after compile).
-    case :code.priv_dir(:harness) do
-      {:error, _} ->
-        # Dev-tree fallback: task lives at lib/mix/tasks/, priv is three levels up.
-        Path.expand("../../../priv/includes/harness-workflow.md", __DIR__)
+    case_result =
+      case :code.priv_dir(:harness) do
+        {:error, _} ->
+          # Dev-tree fallback: task lives at lib/mix/tasks/, priv is three levels up.
+          Path.expand("../../../priv/includes/harness-workflow.md", __DIR__)
 
-      priv_dir ->
-        Path.join([priv_dir, "includes", "harness-workflow.md"])
-    end
-    |> Path.expand()
+        priv_dir ->
+          Path.join([priv_dir, "includes", "harness-workflow.md"])
+      end
+
+    Path.expand(case_result)
   end
 
   @spec install_file(String.t(), String.t(), keyword()) :: String.t()
@@ -62,29 +66,46 @@ defmodule Mix.Tasks.Harness.InstallIncludes do
     content = File.read!(src)
 
     if File.exists?(target) do
-      case File.read(target) do
-        {:ok, ^content} ->
-          "up-to-date:"
-
-        {:ok, _existing} ->
-          if Keyword.get(opts, :force, false) do
-            File.cp!(src, target)
-            "updated (forced):"
-          else
-            bak = target <> ".bak-" <> Integer.to_string(System.system_time(:second))
-            File.cp!(target, bak)
-            File.cp!(src, target)
-            "updated (backup #{Path.basename(bak)}):"
-          end
-
-        {:error, reason} ->
-          # Unreadable target; treat as replaceable.
-          File.cp!(src, target)
-          "installed (replaced unreadable target #{inspect(reason)}):"
-      end
+      action_for_existing(src, target, content, opts)
     else
-      File.cp!(src, target)
-      "installed:"
+      copy_fresh(src, target, "installed:")
     end
+  end
+
+  @spec action_for_existing(String.t(), String.t(), String.t(), keyword()) :: String.t()
+  defp action_for_existing(src, target, content, opts) do
+    case File.read(target) do
+      {:ok, ^content} ->
+        "up-to-date:"
+
+      {:error, reason} ->
+        copy_fresh(src, target, "installed (replaced unreadable target #{inspect(reason)}):")
+
+      {:ok, _} ->
+        overwrite_existing(src, target, opts)
+    end
+  end
+
+  @spec overwrite_existing(String.t(), String.t(), keyword()) :: String.t()
+  defp overwrite_existing(src, target, opts) do
+    if Keyword.get(opts, :force, false) do
+      copy_fresh(src, target, "updated (forced):")
+    else
+      overwrite_with_backup(src, target)
+    end
+  end
+
+  @spec copy_fresh(String.t(), String.t(), String.t()) :: String.t()
+  defp copy_fresh(src, target, prefix) do
+    File.cp!(src, target)
+    prefix
+  end
+
+  @spec overwrite_with_backup(String.t(), String.t()) :: String.t()
+  defp overwrite_with_backup(src, target) do
+    bak = target <> ".bak-" <> Integer.to_string(System.system_time(:second))
+    File.cp!(target, bak)
+    File.cp!(src, target)
+    "updated (backup #{Path.basename(bak)}):"
   end
 end

@@ -48,7 +48,8 @@ defmodule Mix.Tasks.Harness.InstallIncludesTest do
 
     assert output =~ "up-to-date:"
     assert File.stat!(target).mtime == mtime_before
-    refute File.exists?(target <> ".bak-" <> "0") # no timestamped bak created
+    # no timestamped bak created
+    refute File.exists?(target <> ".bak-" <> "0")
   end
 
   test "changed content produces backup then updates (without --force)", %{dest: dest, src: src} do
@@ -95,7 +96,7 @@ defmodule Mix.Tasks.Harness.InstallIncludesTest do
     candidates = [
       Path.expand("priv/includes/harness-workflow.md", File.cwd!()),
       # In case test cwd differs
-      Path.join([Path.dirname(__DIR__), "..", "..", "priv", "includes", "harness-workflow.md"]) |> Path.expand()
+      [Path.dirname(__DIR__), "..", "..", "priv", "includes", "harness-workflow.md"] |> Path.join() |> Path.expand()
     ]
 
     Enum.find(candidates, &File.regular?/1) ||

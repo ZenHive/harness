@@ -29,6 +29,11 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     prior_reviewer = Application.get_env(:harness, :agent_reviewer_ineligible)
     prior_landing = Application.get_env(:harness, :landing_overrides)
 
+    # Other async:false dashboard tests may leave projects registered; isolate this page.
+    for %{name: name} <- ProjectRegistry.list() do
+      ProjectRegistry.unregister(name)
+    end
+
     project = ProjectFixture.from_repo("/tmp/harness-settings-live", name: "settings-live")
     :ok = ProjectRegistry.register(project)
 
