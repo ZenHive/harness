@@ -973,7 +973,7 @@
       "id": "21",
       "phase": 6,
       "bundle": "deferred",
-      "status": "pending",
+      "status": "blocked",
       "title": "ACP transport adapter",
       "scores": {
         "d": 7,
@@ -995,6 +995,7 @@
       "body": "DEFERRED — original \"speculative, awaiting ACP adoption\" framing superseded 2026-05-27 by a sharper blocker. ACP adoption itself is no longer the issue: the ACP Registry went live 2026-01-28 with Claude Code, Codex CLI, Cursor, Gemini CLI, Copilot CLI, and Pi as registered backends; Zed 1.0 (2026-04-29) and JetBrains (late 2025) ship first-class ACP support; `openclaw/acpx` provides a headless ACP CLI client suitable as a Port target. The reason to stay deferred is **subscription auth incompatibility**.\n\nThe reference Claude ACP adapter (`@zed-industries/claude-agent-acp`) calls the Anthropic API directly and **requires `ANTHROPIC_API_KEY`** — it explicitly rejects subscription OAuth tokens (`sk-ant-oat01-...`). Anthropic's Feb 2026 Authentication & Credential Use policy further restricts subscription OAuth to \"Claude Code and claude.ai\", making routing it through a different product (acpx) a Consumer ToS violation in addition to a technical one. harness's native `claude -p` adapter today preserves subscription auth by shelling out to the real `claude` binary, which reads its own credentials — harness never touches the token. This repo's whole dogfooding economy depends on that — see the `feedback_claude_subscription_not_api.md` memory and the standing practice of scrubbing `ANTHROPIC_API_KEY` on every Claude dispatch.\n\nNet: ACP for Claude converts free subscription dispatches into metered API calls. Across a dogfood batch that is real money, not academic.\n\n**Conditions to revisit:** (a) an ACP backend exists that preserves subscription OAuth for Claude — e.g. an ACP server that internally shells out to the native `claude` binary the way harness already does, OR (b) a specific agent ships ACP support with no native CLI alternative AND its auth model is acceptable, OR (c) API-billing dispatches become a deliberate cost the user wants to pay for some workload (high-stakes grading, off-quota burst capacity). Investigate Codex/Cursor ACP auth models at revisit time — the openclaw issue confirms the Claude case only; the other backends are unknown and would change the calculus if they preserve subscription.\n\nSources: openclaw/openclaw#53456 (claude-agent-acp requires API key); Anthropic Authentication docs at https://code.claude.com/docs/en/authentication; ACP Registry launch 2026-01-28.\n",
       "created_at": "2026-05-20",
       "scored_at": "2026-05-27",
+      "blocked_reason": "Deferred by subscription-auth blocker: revisit only when an ACP backend preserves Claude subscription OAuth, or API-billing dispatch is deliberately accepted for a specific workload.",
       "cross_repo": []
     },
     {
