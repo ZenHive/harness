@@ -168,6 +168,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`Audit.select_auditor/1` exclusion normalized to strings (atom-arg
+  footgun).** The cross-family exclusion was `to_string(agent) in excluded`,
+  but `excluded` was whatever the caller passed: the real Oban-worker path
+  passes JSON string args (`"codex"`/`"cursor"`) and excluded correctly, while
+  any atom-keyed caller (the `@doc false` unit surface, future in-process
+  callers) silently no-matched the `in` test and could pick the reviewer's own
+  family to audit its own land. Both sides are now `to_string/1`-normalized;
+  regression test asserts atom and string args agree and never select the
+  implementer/reviewer family.
 - **Reviewer verdict-artifact write made the unconditional FINAL step + reviewing-phase
   idle floor (Task 181, hand-built).** A cross-family reviewer could finish reviewing and
   committing fixes yet exit/idle without writing `.harness/review.json`, losing the run to

@@ -310,5 +310,26 @@ defmodule Harness.AuditTest do
           :ok
       end
     end
+
+    test "excludes the implementer/reviewer family whether args are atoms or strings" do
+      # Regression: exclusion is `to_string(agent) in excluded`, so atom-keyed
+      # callers must be normalized too — otherwise the reviewer's own family
+      # (cursor here) slips past the reject and audits its own land.
+      string_req = Audit.select_auditor(%{implementer: "codex", reviewer: "cursor"})
+      atom_req = Audit.select_auditor(%{implementer: :codex, reviewer: :cursor})
+
+      assert string_req == atom_req
+
+      for result <- [string_req, atom_req] do
+        case result do
+          {:ok, module} ->
+            {:ok, agent} = AgentRegistry.agent_for_module(module)
+            refute agent in [:codex, :cursor]
+
+          {:skipped, :no_audit_agent} ->
+            :ok
+        end
+      end
+    end
   end
 end

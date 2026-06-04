@@ -173,7 +173,14 @@ defmodule Harness.Audit do
   def select_auditor(%{auditor: auditor}) when is_atom(auditor) and not is_nil(auditor), do: {:ok, auditor}
 
   def select_auditor(request) do
-    excluded = Enum.reject([request[:implementer], request[:reviewer]], &is_nil/1)
+    # Normalize both sides to strings: the real Oban-worker path passes JSON
+    # string args, but atom-keyed callers (the `@doc false` unit surface, future
+    # in-process callers) would otherwise no-match the `in` test and let the
+    # reviewer's own family audit its own land.
+    excluded =
+      [request[:implementer], request[:reviewer]]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&to_string/1)
 
     AgentRegistry.agents()
     |> Enum.reject(fn {agent, _module} -> to_string(agent) in excluded end)
