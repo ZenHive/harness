@@ -7700,7 +7700,7 @@
       "id": "191",
       "phase": 16,
       "bundle": "agent-gate",
-      "status": "pending",
+      "status": "done",
       "title": "Audit-surfaced: Worktree reaper vs Run.Registry unregister ordering race",
       "scores": {
         "d": 3,
@@ -7718,16 +7718,22 @@
       "out_of_scope": [
         "Any change to the boot Sweeper backstop (it already catches the leak on next boot)"
       ],
+      "shipped_in": "01fc5eb8e8f441e2890e3f9b91b3df3ca828f4dd",
       "body": "Audit (claude reviewer) flagged a race in lib/harness/worktree/reaper.ex (cleanup_for_run/maybe_reap): when a run gen_statem crashes, the reaper's monitor :DOWN and the Harness.Run.Registry auto-unregister are unordered. If :DOWN is processed before the registry clears, cleanup_for_run/2's live_run? guard sees the run still registered and REFUSES the reap, so the worktree leaks until the boot Sweeper — i.e. degrades to the pre-task-185 behavior the reaper exists to fix. Trigger: a run killed with Process.exit(pid, :kill) such that the reaper drains its mailbox faster than the Registry monitor fires.\n\ndiscuss-design DIVERGENCE in audit: Claude flagged it (graceful degradation, not a crash; boot Sweeper backstops); Codex found nothing on the same commit. No convergent fix, so dropped from auto-apply and filed here for the user's call. Lowest-risk mitigation: one-shot retry after a short delay when cleanup_for_run returns refused-for-live; cleaner fix touches cleanup_for_run's contract (caller can't currently distinguish refused-live from done). Confirm whether the boot-Sweeper backstop is considered sufficient before adding retry machinery.\n\nFiled by audit-review against commit 3c0fdc7 on 2026-06-04; see .audit/3c0fdc7-crash-only-dispatch-same-be.md.\n",
       "created_at": "2026-06-04",
+      "started_at": "2026-06-04",
+      "done_at": "2026-06-04",
       "scored_at": "2026-06-04",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1780537662359-0c161f5c, 01fc5eb8e8f441e2890e3f9b91b3df3ca828f4dd).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
       "id": "192",
       "phase": 16,
       "bundle": "audit-agent",
-      "status": "pending",
+      "status": "done",
       "title": "Audit-surfaced: Task 190 — add real insert-and-drain test for the :audit Oban queue",
       "scores": {
         "d": 2,
@@ -7744,9 +7750,15 @@
       "out_of_scope": [
         "Re-opening Task 190's status (queue start itself shipped and works)"
       ],
+      "shipped_in": "a247050357e0c1fd8a9d2dc7a7dd8ad6275167ef",
       "body": "Audit (codex reviewer) flagged that Task 190 was marked done with acceptance criterion #2 met only by a config-presence proxy. The criterion explicitly required: 'An enqueued AuditWorker job is actually executed (not left available forever); proven by a test that inserts an audit job and observes it run/drain rather than a guard that only checks insertion.' The implemented note acknowledges insert→drain isn't runnable in the offline suite (oban_enabled:false, repo_enabled:false) and substitutes a {:audit,1} in oban_opts()[:queues] assertion plus the worker's existing perform-routing drain tests.\n\nThe substitution is defensible for the offline suite but does not satisfy the criterion as written. File a proper insert→drain proof as an :integration test (live Oban instance + repo), tagged so it stays out of the default offline run.\n\nFiled by audit-review against commit 35f2c04 on 2026-06-04; see .audit/35f2c04-reviewer-verdict-write-manda.md.\n",
       "created_at": "2026-06-04",
+      "started_at": "2026-06-04",
+      "done_at": "2026-06-04",
       "scored_at": "2026-06-04",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1780537662329-5c81aebd, a247050357e0c1fd8a9d2dc7a7dd8ad6275167ef).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -7792,6 +7804,41 @@
         "lib/harness/project_registry.ex"
       ],
       "body": "Wire a per-project reviewer override so an operator can pin which cross-family agent gates a given project's runs, instead of always taking the rejection-rate-ordered auto-selection. Asked for directly; the multi-project-federation case is concrete — different registered repos may warrant different reviewers.\n\nThe seam already exists on both ends: Task 155 (done) established the `%Harness.Project{}`-field + `Run.init/1` overlay + Settings-page-editable pattern for `landing_policy`; Task 182 (done) made `select_reviewer/1` consult per-agent reviewer-eligibility. This task is the same shape one layer over: a `reviewer` field on the project, overlaid in `Run.init/1`, with `select_reviewer/1`'s explicit-reviewer path (already present at run.ex:1418) reached from the project rather than only from a Run opt / app config.\n\nTwo layers, deliberately split from Task 165:\n1. Struct field + Run.init overlay + select_reviewer wiring — depends on nothing in 165; config-declared projects can set `reviewer` at registration immediately.\n2. The operator runtime override (Settings page, persisted) — THIS is the only 165 dependency: its persistence must ride 165's consolidated Postgres-backed settings store, never a 4th `~/.harness/*.term` file (the exact sprawl 165 exists to kill). Hence depends_on 165, NOT folded into 165 (whose out-of-scope forbids new settings).\n\nKeep nil = auto-select as the untouched default. An explicit pin must still pass the cross-family + eligibility + dispatchable gates; a bad pin fails loudly with a settle reason, it does not silently degrade to auto-select (that would hide operator misconfiguration). Reviewer-model pinning stays out — reviewer_invocation/1 carries no model and adding one is a separate change with weak payoff (the reviewer's job is judgment, and model IDs churn).\n",
+      "created_at": "2026-06-04",
+      "scored_at": "2026-06-04",
+      "cross_repo": []
+    },
+    {
+      "id": "194",
+      "phase": 16,
+      "bundle": "audit-agent",
+      "status": "pending",
+      "title": "Clean (:no_changes) post-merge audit leaves no watermark — range re-audited every land",
+      "scores": {
+        "d": 3,
+        "b": 2,
+        "u": 3
+      },
+      "eff": 0.83,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "After a post-merge audit returns :no_changes, the next land's auditor does NOT re-audit the same already-clean commit range",
+        "A fix-bearing audit (audit() commit) and a clean audit both advance the audited watermark"
+      ],
+      "out_of_scope": [
+        "Writing empty audit() marker commits to the shared branch (noise on the merge-train)"
+      ],
+      "files_to_modify": [
+        "lib/harness/audit.ex"
+      ],
+      "touches": [
+        "lib/harness/audit.ex",
+        "lib/harness/audit/worker.ex"
+      ],
+      "body": "Harness.Audit.unaudited_range/2 bases the range on the last `audit(` commit reachable from HEAD (audit_base/2). A clean audit returns :no_changes (audit.ex:313, head == base_sha) and commits nothing, so NO `audit(` marker is written. Consequence: the same clean commit range is re-audited on every subsequent land until some audit actually commits a fix — bounded but wasteful auditor spend under active landing (each land re-reads a growing clean range).\n\nConfirmed live 2026-06-04: catch-up audit of 4983985..01fc5eb (3 clean commits) returned :no_changes; origin untouched, no marker, so the next land would re-audit the same 3 + new commits.\n\nFix direction (mechanical, not judgment): record a last-audited-clean watermark (sha) the range logic also consults — base = the most recent of {last audit( commit, persisted clean watermark}. Persist alongside the existing ~/.harness term stores. Do NOT write empty marker commits to the shared branch. Keep :no_changes as the outcome; only the range baseline changes.\n",
       "created_at": "2026-06-04",
       "scored_at": "2026-06-04",
       "cross_repo": []
