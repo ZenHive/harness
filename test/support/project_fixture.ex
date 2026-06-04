@@ -15,7 +15,8 @@ defmodule Harness.ProjectFixture do
       concurrency_cap: Keyword.get(opts, :concurrency_cap),
       landing_policy: Keyword.get(opts, :landing_policy, :manual),
       target_branch: Keyword.get(opts, :target_branch),
-      pollution_allowlist: Keyword.get(opts, :pollution_allowlist)
+      pollution_allowlist: Keyword.get(opts, :pollution_allowlist),
+      reviewer: Keyword.get(opts, :reviewer)
     }
   end
 end

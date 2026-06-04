@@ -48,6 +48,19 @@ defmodule Harness.Landing.SettingsTest do
       :ok = LandingSettings.set("other", :auto, "main", "test")
       assert LandingSettings.overlay(project) == project
     end
+
+    test "applies a persisted reviewer override onto the project", %{project: project} do
+      :ok = LandingSettings.set_reviewer(project.name, :codex, "test")
+
+      assert LandingSettings.overlay(project).reviewer == :codex
+    end
+
+    test "an explicit nil reviewer override clears the registration default", %{project: project} do
+      registered = %{project | reviewer: :codex}
+      :ok = LandingSettings.set_reviewer(project.name, nil, "test")
+
+      assert LandingSettings.overlay(registered).reviewer == nil
+    end
   end
 
   describe "set/4" do
@@ -79,14 +92,16 @@ defmodule Harness.Landing.SettingsTest do
 
   describe "effective/1" do
     test "reflects the project's own values when no override is set", %{project: project} do
-      armed = %{project | landing_policy: :auto, target_branch: "main"}
-      assert LandingSettings.effective(armed) == %{landing_policy: :auto, target_branch: "main"}
+      armed = %{project | landing_policy: :auto, target_branch: "main", reviewer: :codex}
+      assert LandingSettings.effective(armed) == %{landing_policy: :auto, target_branch: "main", reviewer: :codex}
     end
 
     test "reflects the override over the project default", %{project: project} do
-      armed = %{project | landing_policy: :auto, target_branch: "main"}
+      armed = %{project | landing_policy: :auto, target_branch: "main", reviewer: :codex}
       :ok = LandingSettings.set(project.name, :manual, nil, "test")
-      assert LandingSettings.effective(armed) == %{landing_policy: :manual, target_branch: nil}
+      :ok = LandingSettings.set_reviewer(project.name, nil, "test")
+
+      assert LandingSettings.effective(armed) == %{landing_policy: :manual, target_branch: nil, reviewer: nil}
     end
   end
 
@@ -100,10 +115,18 @@ defmodule Harness.Landing.SettingsTest do
       assert LandingSettings.overlay(project).target_branch == "ship"
     end
 
+    test "set_reviewer/3 write-throughs so load_into_env/0 restores the override", %{project: project} do
+      :ok = LandingSettings.set_reviewer(project.name, :codex, "test")
+      Application.put_env(:harness, @env_key, %{})
+      :ok = LandingSettings.load_into_env()
+
+      assert LandingSettings.overlay(project).reviewer == :codex
+    end
+
     test "load_into_env/0 sanitizes a malformed persisted entry", %{root: root, project: project} do
       :ok = LandingSettings.set(project.name, :auto, "ship", "test")
       # Hand-write a torn record with one good and one malformed entry.
-      bad = %{project.name => %{landing_policy: :auto, target_branch: "ship"}, "junk" => :not_a_map}
+      bad = %{project.name => %{landing_policy: :auto, target_branch: "ship", reviewer: :codex}, "junk" => :not_a_map}
       path = Path.join(root, "harness_settings.term")
       assert :ok = TermCodec.write_file(path, %{"landing" => bad})
 
@@ -111,6 +134,7 @@ defmodule Harness.Landing.SettingsTest do
       :ok = LandingSettings.load_into_env()
 
       assert LandingSettings.overlay(project).target_branch == "ship"
+      assert LandingSettings.overlay(project).reviewer == :codex
       assert LandingSettings.overlay(project("junk")) == project("junk")
     end
 
@@ -120,6 +144,8 @@ defmodule Harness.Landing.SettingsTest do
       :ok = LandingSettings.set(project.name, :auto, "ship", "test")
       # Runtime flip took effect…
       assert LandingSettings.overlay(project).landing_policy == :auto
+      :ok = LandingSettings.set_reviewer(project.name, :codex, "test")
+      assert LandingSettings.overlay(project).reviewer == :codex
       # …but no file was written.
       refute File.exists?(Path.join(root, "landing_settings.term"))
     end

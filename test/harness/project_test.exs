@@ -18,6 +18,7 @@ defmodule Harness.ProjectTest do
       assert project.landing_policy == :manual
       assert project.target_branch == nil
       assert project.pollution_allowlist == nil
+      assert project.reviewer == nil
     end
 
     test "carries the reviewer's check-command hint as free text" do

@@ -406,6 +406,60 @@ defmodule Harness.RunTest do
       assert report =~ "same_family_reviewer"
     end
 
+    test "a project-pinned same-family reviewer is refused" do
+      {run_id, pid} = start_with_project_reviewer(ProjectFixture.from_repo(GitFixture.init_repo(), reviewer: :claude), [])
+
+      assert %Result{state: :failed, reason: {:review_stuck, report}, reviewer_adapter: nil} =
+               await_result(run_id, pid)
+
+      assert report =~ "same_family_reviewer"
+    end
+
+    test "a runtime reviewer override wins over a registration default" do
+      project = ProjectFixture.from_repo(GitFixture.init_repo(), reviewer: :codex)
+      prior = Application.get_env(:harness, :landing_overrides)
+      Application.put_env(:harness, :landing_overrides, %{project.name => %{reviewer: :claude}})
+
+      on_exit(fn ->
+        case prior do
+          nil -> Application.delete_env(:harness, :landing_overrides)
+          value -> Application.put_env(:harness, :landing_overrides, value)
+        end
+      end)
+
+      {run_id, pid} = start_with_project_reviewer(project, [])
+
+      assert %Result{state: :failed, reason: {:review_stuck, report}, reviewer_adapter: nil} =
+               await_result(run_id, pid)
+
+      assert report =~ "same_family_reviewer"
+    end
+
+    test "a project-pinned reviewer-ineligible agent is refused" do
+      project = ProjectFixture.from_repo(GitFixture.init_repo(), reviewer: :codex)
+      codex = Harness.AgentAdapter.Codex
+      prior = Application.get_env(:harness, :agent_reviewer_ineligible)
+      Application.put_env(:harness, :agent_reviewer_ineligible, [:codex])
+      :sys.replace_state(Harness.AgentRegistry, &put_in(&1, [:installed, codex], true))
+
+      on_exit(fn ->
+        case prior do
+          nil -> Application.delete_env(:harness, :agent_reviewer_ineligible)
+          value -> Application.put_env(:harness, :agent_reviewer_ineligible, value)
+        end
+
+        Harness.AgentRegistry.reset()
+      end)
+
+      {run_id, pid} = start_with_project_reviewer(project, [])
+
+      assert %Result{state: :failed, reason: {:review_stuck, report}, reviewer_adapter: nil} =
+               await_result(run_id, pid)
+
+      assert report =~ "reviewer_unavailable"
+      assert report =~ "Codex"
+    end
+
     test "prioritize_reviewers/2 sinks a high-rejection-rate reviewer below a cleaner one" do
       candidates = [{:codex, CodexReviewer}, {:cursor, CursorReviewer}, {:grok, GrokReviewer}]
 
@@ -1119,9 +1173,27 @@ defmodule Harness.RunTest do
   defp start(overrides) do
     repo = GitFixture.init_repo()
     project = ProjectFixture.from_repo(repo)
+    start_with_project(project, overrides)
+  end
+
+  defp start_with_project(project, overrides) do
     base = GitFixture.tmp_base()
     {adapter, overrides} = Keyword.pop(overrides, :adapter, FakeAdapter)
     opts = Keyword.merge(default_opts(base), overrides)
+
+    {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, adapter, opts)
+    {run_id, pid}
+  end
+
+  defp start_with_project_reviewer(project, overrides) do
+    base = GitFixture.tmp_base()
+    {adapter, overrides} = Keyword.pop(overrides, :adapter, FakeAdapter)
+
+    opts =
+      base
+      |> default_opts()
+      |> Keyword.delete(:reviewer)
+      |> Keyword.merge(overrides)
 
     {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, adapter, opts)
     {run_id, pid}

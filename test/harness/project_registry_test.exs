@@ -44,13 +44,15 @@ defmodule Harness.ProjectRegistryTest do
                  name: "kw",
                  source: {:local, "/tmp/kw"},
                  roadmap_path: "/tmp/kw",
-                 check_command: "mix test"
+                 check_command: "mix test",
+                 reviewer: :codex
                )
 
       assert {:ok, project} = ProjectRegistry.lookup("kw")
       assert project.name == "kw"
       assert project.source == {:local, "/tmp/kw"}
       assert project.check_command == "mix test"
+      assert project.reviewer == :codex
       # build_project defaults landing_policy when attrs omit it.
       assert project.landing_policy == :manual
     end
@@ -149,7 +151,8 @@ defmodule Harness.ProjectRegistryTest do
         name: "configured",
         source: {:local, "/tmp/harness-configured"},
         check_command: "mix precommit",
-        roadmap_path: "/tmp/harness-configured/roadmap/tasks.toml"
+        roadmap_path: "/tmp/harness-configured/roadmap/tasks.toml",
+        reviewer: :codex
       ]
 
       Application.put_env(:harness, :projects, [entry])
@@ -158,6 +161,7 @@ defmodule Harness.ProjectRegistryTest do
                ProjectRegistry.init(:noargs)
 
       assert project.check_command == "mix precommit"
+      assert project.reviewer == :codex
     end
 
     test "loads a valid project from a map config" do

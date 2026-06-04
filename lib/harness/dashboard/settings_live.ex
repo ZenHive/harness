@@ -110,6 +110,20 @@ defmodule Harness.Dashboard.SettingsLive do
     {:noreply, socket |> assign(:notice, notice) |> refresh()}
   end
 
+  def handle_event("set_project_reviewer", %{"name" => name, "reviewer" => reviewer}, socket) do
+    notice =
+      case reviewer_atom(reviewer) do
+        {:ok, pin} ->
+          LandingSettings.set_reviewer(name, pin, "dashboard")
+          {:ok, "Reviewer updated for #{name}."}
+
+        :error ->
+          {:error, "Unknown reviewer."}
+      end
+
+    {:noreply, socket |> assign(:notice, notice) |> refresh()}
+  end
+
   def handle_event("dispatch_now", _params, socket) do
     {:noreply, assign(socket, :notice, dispatch_now())}
   end
@@ -277,6 +291,40 @@ defmodule Harness.Dashboard.SettingsLive do
 
       <Components.landing_card projects={@landing} />
 
+      <section class="setting-card">
+        <h2 class="setting-section-title">Project reviewers</h2>
+        <p class="setting-desc">
+          Optional per-project reviewer pin. <strong>auto</strong>
+          keeps the cross-family rejection-rate ordering; a pin still has to be
+          cross-family, reviewer-eligible, and dispatchable when the run reaches the gate.
+        </p>
+        <ul class="project-list">
+          <li :for={project <- @reviewers.projects} class="project-row">
+            <form class="reviewer-form" phx-submit="set_project_reviewer">
+              <input type="hidden" name="name" value={project.name} />
+              <div class="project-id">
+                <span class="project-name">{project.label}</span>
+                <span class="pill" data-state={if project.reviewer == nil, do: "off", else: "on"}>
+                  reviewer {project.reviewer_label}
+                </span>
+              </div>
+              <select name="reviewer" aria-label={"Reviewer for #{project.label}"}>
+                <option value="" selected={project.reviewer == nil}>auto</option>
+                <option
+                  :for={option <- @reviewers.options}
+                  value={option.name}
+                  selected={project.reviewer == option.agent}
+                >
+                  {option.label}
+                </option>
+              </select>
+              <button type="submit" class="btn-save">Save</button>
+            </form>
+          </li>
+          <li :if={@reviewers.projects == []} class="project-empty">No projects registered.</li>
+        </ul>
+      </section>
+
       <Components.config_inspector sections={@config} />
     </div>
     """
@@ -315,6 +363,7 @@ defmodule Harness.Dashboard.SettingsLive do
     |> assign(:autonomy, autonomy_state(projects))
     |> assign(:agents, agents_state())
     |> assign(:landing, landing_state(projects))
+    |> assign(:reviewers, reviewer_state(projects))
     |> assign(:config, ConfigInspector.resolve())
   end
 
@@ -326,6 +375,25 @@ defmodule Harness.Dashboard.SettingsLive do
       %{landing_policy: policy, target_branch: branch} = LandingSettings.effective(project)
       %{name: project.name, label: project.name, auto?: policy == :auto, target_branch: branch}
     end)
+  end
+
+  @spec reviewer_state([Project.t()]) :: map()
+  defp reviewer_state(projects) do
+    options = reviewer_options()
+
+    rows =
+      Enum.map(projects, fn project ->
+        %{reviewer: reviewer} = LandingSettings.effective(project)
+
+        %{
+          name: project.name,
+          label: project.name,
+          reviewer: reviewer,
+          reviewer_label: reviewer_label(reviewer)
+        }
+      end)
+
+    %{projects: rows, options: options}
   end
 
   # Maps the select's string value to a policy atom without `String.to_atom` on
@@ -389,6 +457,22 @@ defmodule Harness.Dashboard.SettingsLive do
       nil -> :error
     end
   end
+
+  @spec reviewer_atom(String.t()) :: {:ok, atom() | nil} | :error
+  defp reviewer_atom(""), do: {:ok, nil}
+  defp reviewer_atom(name), do: agent_atom(name)
+
+  @spec reviewer_options() :: [map()]
+  defp reviewer_options do
+    Enum.map(AgentRegistry.agents(), fn {agent, _module} ->
+      name = Atom.to_string(agent)
+      %{agent: agent, name: name, label: String.capitalize(name)}
+    end)
+  end
+
+  @spec reviewer_label(atom() | nil) :: String.t()
+  defp reviewer_label(nil), do: "auto"
+  defp reviewer_label(reviewer), do: reviewer |> Atom.to_string() |> String.capitalize()
 
   # Resolves the autonomy view-model: the master flag, the poller's resolved cron
   # status, and per-project (own flag, effective = master AND own) rows.

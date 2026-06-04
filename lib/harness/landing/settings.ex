@@ -45,8 +45,12 @@ defmodule Harness.Landing.Settings do
   @env_key :landing_overrides
   @valid_policies [:manual, :auto]
 
-  @typedoc "A single project's landing override: policy plus (for `:auto`) the merge target."
-  @type override :: %{landing_policy: Project.landing_policy(), target_branch: String.t() | nil}
+  @typedoc "A single project's runtime override: landing policy and/or reviewer pin."
+  @type override :: %{
+          optional(:landing_policy) => Project.landing_policy(),
+          optional(:target_branch) => String.t() | nil,
+          optional(:reviewer) => atom() | nil
+        }
 
   @typedoc "The persisted settings-store value: project name => override."
   @type record :: %{String.t() => override()}
@@ -77,8 +81,10 @@ defmodule Harness.Landing.Settings do
   @spec overlay(Project.t()) :: Project.t()
   def overlay(%Project{name: name} = project) do
     case Map.get(overrides(), name) do
-      %{landing_policy: policy, target_branch: branch} ->
-        %{project | landing_policy: policy, target_branch: branch}
+      %{} = override ->
+        project
+        |> overlay_landing(override)
+        |> overlay_reviewer(override)
 
       _none ->
         project
@@ -92,7 +98,7 @@ defmodule Harness.Landing.Settings do
   @spec effective(Project.t()) :: override()
   def effective(%Project{} = project) do
     effective = overlay(project)
-    %{landing_policy: effective.landing_policy, target_branch: effective.target_branch}
+    %{landing_policy: effective.landing_policy, target_branch: effective.target_branch, reviewer: effective.reviewer}
   end
 
   @doc """
@@ -119,9 +125,24 @@ defmodule Harness.Landing.Settings do
     {:error, :invalid_policy}
   end
 
+  @doc """
+  Sets or clears a project's reviewer override at runtime, preserving any landing
+  override already stored for the project.
+  """
+  @spec set_reviewer(String.t(), atom() | nil, String.t()) :: :ok
+  def set_reviewer(name, reviewer, actor)
+      when is_binary(name) and (is_atom(reviewer) or is_nil(reviewer)) and is_binary(actor) do
+    put_and_persist(name, %{reviewer: reviewer}, actor)
+  end
+
   @spec put_and_persist(String.t(), override(), String.t()) :: :ok
   defp put_and_persist(name, override, actor) do
-    Application.put_env(:harness, @env_key, Map.put(overrides(), name, override))
+    Application.put_env(
+      :harness,
+      @env_key,
+      Map.put(overrides(), name, Map.merge(Map.get(overrides(), name, %{}), override))
+    )
+
     persist()
     Logger.info("harness landing: #{name} -> #{describe(override)} by #{actor}")
     :ok
@@ -130,6 +151,24 @@ defmodule Harness.Landing.Settings do
   @spec describe(override()) :: String.t()
   defp describe(%{landing_policy: :auto, target_branch: branch}), do: "auto-land to #{branch}"
   defp describe(%{landing_policy: :manual}), do: "manual"
+  defp describe(%{reviewer: nil}), do: "reviewer auto"
+  defp describe(%{reviewer: reviewer}), do: "reviewer #{reviewer}"
+
+  @spec overlay_landing(Project.t(), override()) :: Project.t()
+  defp overlay_landing(project, %{landing_policy: policy, target_branch: branch}) do
+    %{project | landing_policy: policy, target_branch: branch}
+  end
+
+  defp overlay_landing(project, _override), do: project
+
+  @spec overlay_reviewer(Project.t(), override()) :: Project.t()
+  defp overlay_reviewer(project, override) do
+    if Map.has_key?(override, :reviewer) do
+      %{project | reviewer: Map.get(override, :reviewer)}
+    else
+      project
+    end
+  end
 
   # nil ⇒ no usable branch (absent / blank); otherwise the trimmed branch.
   @spec normalize_branch(term()) :: String.t() | nil
@@ -149,13 +188,41 @@ defmodule Harness.Landing.Settings do
   # torn or hand-edited term can't inject a malformed override into app env.
   @spec sanitize(map()) :: record()
   defp sanitize(map) do
-    for {name, %{landing_policy: policy, target_branch: branch}} <- map,
+    for {name, override} <- map,
         is_binary(name),
-        policy in @valid_policies,
-        is_binary(branch) or is_nil(branch),
+        sanitized = sanitize_override(override),
+        not is_nil(sanitized),
         into: %{},
-        do: {name, %{landing_policy: policy, target_branch: branch}}
+        do: {name, sanitized}
   end
+
+  @spec sanitize_override(term()) :: override() | nil
+  defp sanitize_override(%{} = override) do
+    %{}
+    |> sanitize_landing(override)
+    |> sanitize_reviewer(override)
+    |> case do
+      clean when map_size(clean) == 0 -> nil
+      clean -> clean
+    end
+  end
+
+  defp sanitize_override(_override), do: nil
+
+  @spec sanitize_landing(override(), map()) :: override()
+  defp sanitize_landing(base, %{landing_policy: policy, target_branch: branch})
+       when policy in @valid_policies and (is_binary(branch) or is_nil(branch)) do
+    Map.merge(base, %{landing_policy: policy, target_branch: branch})
+  end
+
+  defp sanitize_landing(base, _override), do: base
+
+  @spec sanitize_reviewer(override(), map()) :: override()
+  defp sanitize_reviewer(base, %{reviewer: reviewer}) when is_atom(reviewer) or is_nil(reviewer) do
+    Map.put(base, :reviewer, reviewer)
+  end
+
+  defp sanitize_reviewer(base, _override), do: base
 
   @spec persist() :: :ok | {:error, term()}
   defp persist do

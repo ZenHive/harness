@@ -214,7 +214,8 @@ defmodule Harness.ProjectRegistry do
          concurrency_cap: Map.get(entry, :concurrency_cap),
          pollution_allowlist: Map.get(entry, :pollution_allowlist),
          landing_policy: Map.get(entry, :landing_policy, :manual),
-         target_branch: Map.get(entry, :target_branch)
+         target_branch: Map.get(entry, :target_branch),
+         reviewer: Map.get(entry, :reviewer)
        }}
     end
   end

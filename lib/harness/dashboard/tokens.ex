@@ -1182,15 +1182,15 @@ defmodule Harness.Dashboard.Tokens do
       .setting-hint { color: var(--text-muted); font-size: var(--text-sm); }
 
       /* Landing card — a per-project form row (policy select + target branch + save). */
-      .landing-form {
+      .landing-form, .reviewer-form {
         display: flex;
         align-items: center;
         gap: var(--space-3);
         width: 100%;
         flex-wrap: wrap;
       }
-      .landing-form .project-id { flex: 1 1 auto; }
-      .landing-form select, .landing-form input[type="text"] {
+      .landing-form .project-id, .reviewer-form .project-id { flex: 1 1 auto; }
+      .landing-form select, .landing-form input[type="text"], .reviewer-form select {
         background: var(--surface);
         color: var(--text);
         border: 1px solid var(--rule);
@@ -1199,7 +1199,7 @@ defmodule Harness.Dashboard.Tokens do
         font-family: var(--font-mono);
         font-size: var(--text-sm);
       }
-      .landing-form select:focus, .landing-form input[type="text"]:focus {
+      .landing-form select:focus, .landing-form input[type="text"]:focus, .reviewer-form select:focus {
         outline: 1px solid var(--accent);
         outline-offset: 1px;
       }

@@ -472,7 +472,7 @@ defmodule Harness.Run do
       terminal_linger:
         Keyword.get(opts, :terminal_linger) ||
           configured(:terminal_linger, @default_terminal_linger),
-      reviewer: Keyword.get(opts, :reviewer, configured(:reviewer, nil)),
+      reviewer: Keyword.get(opts, :reviewer, project.reviewer || configured(:reviewer, nil)),
       reviewer_adapter: nil,
       reviewer_adapter_opts: Keyword.get(opts, :reviewer_adapter_opts, []),
       review: nil,

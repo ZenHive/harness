@@ -226,6 +226,26 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     assert LandingSettings.effective(project).landing_policy == :manual
   end
 
+  test "setting and clearing a per-project reviewer persists the override", %{conn: conn, project: project} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("form.reviewer-form", %{name: project.name, reviewer: "codex"})
+      |> render_submit()
+
+    assert html =~ "Reviewer updated for #{project.name}"
+    assert LandingSettings.effective(project).reviewer == :codex
+
+    html =
+      view
+      |> form("form.reviewer-form", %{name: project.name, reviewer: ""})
+      |> render_submit()
+
+    assert html =~ "Reviewer updated for #{project.name}"
+    assert LandingSettings.effective(%{project | reviewer: :codex}).reviewer == nil
+  end
+
   test "Dispatch now with master off explains nothing will dispatch", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/harness/settings")
 

@@ -1,7 +1,7 @@
 defmodule Harness.Project do
   @moduledoc """
   A registered orchestration target: source repo, check-command hint, roadmap,
-  and optional per-project concurrency cap.
+  optional per-project concurrency cap, and optional reviewer pin.
 
   - `name` — unique slug; worktrees are rooted at `<base_dir>/<name>/<run-id>`.
   - `source` — where the repo lives:
@@ -22,6 +22,8 @@ defmodule Harness.Project do
   - `target_branch` — the branch the autonomous lander fast-forward-pushes an
     approved run onto (e.g. `"development"`). `nil` by default; a project only
     auto-lands when it sets both `landing_policy: :auto` and a `target_branch`.
+  - `reviewer` — optional agent atom that pins this project's cross-family
+    reviewer gate; `nil` keeps the default auto-selection.
   """
 
   alias Harness.Project.Source.Github
@@ -36,7 +38,8 @@ defmodule Harness.Project do
     concurrency_cap: nil,
     pollution_allowlist: nil,
     landing_policy: :manual,
-    target_branch: nil
+    target_branch: nil,
+    reviewer: nil
   ]
 
   @typedoc "Where harness finds the target repository."
@@ -54,7 +57,8 @@ defmodule Harness.Project do
           concurrency_cap: pos_integer() | nil,
           pollution_allowlist: [String.t()] | nil,
           landing_policy: landing_policy(),
-          target_branch: String.t() | nil
+          target_branch: String.t() | nil,
+          reviewer: atom() | nil
         }
 
   @doc """
