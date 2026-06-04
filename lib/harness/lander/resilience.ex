@@ -22,7 +22,9 @@ defmodule Harness.Lander.Resilience do
     * `{:conflict, _}` / non-command `{:reflex_halt, _}` → **fresh re-dispatch**
       of the task against the current target HEAD (a new run branches off the
       integrated tip by construction) while under the attempt cap; at the cap,
-      the task is marked `blocked`.
+      the task is marked `blocked`. A `{:conflict, _}` only reaches here *after*
+      the lander's in-worktree merge-resolver agent (Task 189) already tried and
+      failed to reconcile the markers — re-dispatch is the documented fallback.
     * blocked-command `{:reflex_halt, {:blocked_command, _}}` → `blocked`
       immediately.
     * `{:push_rejected, _}` → **re-land** the retained branch (re-fetch / rebase

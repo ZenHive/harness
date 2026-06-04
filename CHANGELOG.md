@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Lander merge-conflict resolver agent (Task 189).** A rebase conflict during
+  an auto-land no longer dead-ends straight into a fresh re-dispatch (which
+  discards a reviewer-approved diff and reruns the implementer blind). The
+  lander now leaves the detached landing worktree mid-rebase (markers in place)
+  and hands it to a cross-family merge-resolver agent — `Harness.Lander.Resolver`
+  — that reconciles the markers (default: keep both additive sides), then
+  harness mechanically `git add`s, asserts **zero** leftover conflict markers
+  (`git diff --cached --check`), and runs `git rebase --continue` before the
+  existing ff-push. The resolver is an *attempt, never a gate*: it does not
+  re-run the project checks or re-grade the diff (the reviewer already approved
+  both sides), and any failure — no eligible cross-family resolver, the agent
+  declines, markers still present, or `rebase --continue` rejecting — aborts the
+  rebase and falls back to the existing `{:conflict, _}` → re-dispatch path. **A
+  still-conflicted tree is never landed.** Resolver selection reuses the
+  reviewer-eligibility/registry discipline (family ≠ implementer; prefers the
+  run's own approving reviewer). Injectable via the `:lander_resolver` env (like
+  `:oban_insert`) so the suite exercises the git finalize without spawning a CLI.
 - **Per-agent reviewer-eligibility toggle, distinct from implementer enable
   (Task 182).** `Harness.Agent.Settings` gains `reviewer_eligible?/1`,
   `reviewer_ineligible?/1`, `reviewer_ineligible_agents/0`, and

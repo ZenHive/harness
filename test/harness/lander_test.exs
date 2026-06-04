@@ -105,21 +105,64 @@ defmodule Harness.LanderTest do
     end
   end
 
-  describe "land/1 — conflict on rebase (Task 101 seam)" do
-    test "surfaces {:conflict, _} and leaves origin/<target> untouched", ctx do
-      # conflicting edit on the branch...
+  describe "land/1 — conflict on rebase (Task 189: merge-resolver agent)" do
+    # Stages a real rebase conflict on README.md: the branch and origin/main
+    # both edit it from a shared base. Returns the moved-main sha for assertions.
+    defp stage_conflict(ctx) do
       GitFixture.git!(ctx.repo, ["checkout", "harness/run-x"])
       File.write!(Path.join(ctx.repo, "README.md"), "branch side\n")
       GitFixture.git!(ctx.repo, ["add", "."])
       GitFixture.git!(ctx.repo, ["commit", "-m", "branch readme"])
       GitFixture.git!(ctx.repo, ["checkout", "main"])
 
-      # ...and a conflicting edit on main, pushed to origin.
       File.write!(Path.join(ctx.repo, "README.md"), "main side\n")
       GitFixture.git!(ctx.repo, ["add", "."])
       GitFixture.git!(ctx.repo, ["commit", "-m", "main readme"])
       GitFixture.git!(ctx.repo, ["push", "origin", "main"])
-      moved_main = sha(ctx.origin, "refs/heads/main")
+      sha(ctx.origin, "refs/heads/main")
+    end
+
+    defp put_resolver(fun) do
+      Application.put_env(:harness, :lander_resolver, fun)
+      on_exit(fn -> Application.delete_env(:harness, :lander_resolver) end)
+    end
+
+    test "a resolver that reconciles the markers lands both sides", ctx do
+      moved_main = stage_conflict(ctx)
+
+      # The injected resolver edits the open landing worktree to keep BOTH sides
+      # (exactly what a real merge-resolver agent would do), leaving no markers.
+      put_resolver(fn %{path: path}, _opts ->
+        File.write!(Path.join(path, "README.md"), "main side\nbranch side\n")
+        :ok
+      end)
+
+      assert {:landed, landed} = Lander.land(ctx.request)
+      # the conflict was resolved + continued, then ff-pushed.
+      assert sha(ctx.origin, "refs/heads/main") == landed
+      assert ancestor?(ctx.origin, moved_main, "refs/heads/main")
+      {readme, 0} = git(ctx.origin, ["show", landed <> ":README.md"])
+      assert readme =~ "main side"
+      assert readme =~ "branch side"
+    end
+
+    test "a resolver that leaves conflict markers NEVER lands — falls back to {:conflict, _}", ctx do
+      moved_main = stage_conflict(ctx)
+
+      # The agent "ran" but left a marker behind; the mechanical gate must catch
+      # it, abort the rebase, and fall back rather than land a poisoned tree.
+      put_resolver(fn %{path: path}, _opts ->
+        File.write!(Path.join(path, "README.md"), "<<<<<<< HEAD\nmain side\n=======\nbranch side\n>>>>>>> x\n")
+        :ok
+      end)
+
+      assert {:conflict, _output} = Lander.land(ctx.request)
+      assert sha(ctx.origin, "refs/heads/main") == moved_main
+    end
+
+    test "an unavailable/declining resolver falls back to {:conflict, _}, origin untouched", ctx do
+      moved_main = stage_conflict(ctx)
+      put_resolver(fn _worktree, _opts -> {:error, :no_resolver} end)
 
       assert {:conflict, _output} = Lander.land(ctx.request)
       assert sha(ctx.origin, "refs/heads/main") == moved_main

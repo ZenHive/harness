@@ -42,6 +42,7 @@ defmodule Harness.Lander do
 
   alias Harness.Audit.Worker, as: AuditWorker
   alias Harness.Git
+  alias Harness.Lander.Resolver
   alias Harness.Oban, as: HarnessOban
   alias Harness.Project
   alias Harness.Roadmap
@@ -89,7 +90,7 @@ defmodule Harness.Lander do
   @spec land_in_worktree(Worktree.t(), String.t(), String.t(), String.t(), Project.t(), request()) :: outcome()
   defp land_in_worktree(%Worktree{} = worktree, repo, target, base_sha, project, request) do
     result =
-      with {:ok, tip} <- integrate(worktree, target),
+      with {:ok, tip} <- integrate(worktree, target, base_sha, request),
            {:ok, pushed} <- push(repo, tip, target) do
         writeback(project, request, pushed)
         enqueue_audit(project, request, base_sha)
@@ -106,29 +107,105 @@ defmodule Harness.Lander do
 
   # origin/<target> already an ancestor of the branch tip -> ff-able as-is.
   # Otherwise the target moved, so rebase the branch onto it; a rebase that
-  # hits a conflict is aborted and surfaced for the resilience layer.
-  @spec integrate(Worktree.t(), String.t()) ::
+  # hits a conflict is handed to the merge-resolver agent (Task 189) before any
+  # fallback to the resilience layer.
+  @spec integrate(Worktree.t(), String.t(), String.t(), request()) ::
           {:ok, String.t()} | {:conflict, String.t()} | {:error, term()}
-  defp integrate(%Worktree{path: path}, target) do
+  defp integrate(%Worktree{} = worktree, target, base_sha, request) do
     origin_ref = "origin/" <> target
 
-    case Git.run(["merge-base", "--is-ancestor", origin_ref, "HEAD"], path) do
-      {:ok, _output} -> head_sha(path)
-      {:error, {:git_failed, _args, 1, _output}} -> rebase_onto(path, origin_ref)
+    case Git.run(["merge-base", "--is-ancestor", origin_ref, "HEAD"], worktree.path) do
+      {:ok, _output} -> head_sha(worktree.path)
+      {:error, {:git_failed, _args, 1, _output}} -> rebase_onto(worktree, origin_ref, base_sha, request)
       {:error, reason} -> {:error, {:ancestry_check_failed, reason}}
     end
   end
 
-  @spec rebase_onto(String.t(), String.t()) ::
+  # A clean rebase ff-lands as before. A conflict is NOT aborted up-front: the
+  # worktree is left mid-rebase (markers in place) and a cross-family resolver
+  # agent is given a chance to reconcile. Only if resolution fails do we abort
+  # and surface `{:conflict, _}` for the resilience layer's re-dispatch.
+  @spec rebase_onto(Worktree.t(), String.t(), String.t(), request()) ::
           {:ok, String.t()} | {:conflict, String.t()} | {:error, term()}
-  defp rebase_onto(path, origin_ref) do
+  defp rebase_onto(%Worktree{path: path} = worktree, origin_ref, base_sha, request) do
     case Git.run(["rebase", origin_ref], path) do
+      {:ok, _output} -> head_sha(path)
+      {:error, {:git_failed, _args, _status, output}} -> resolve_or_abort(worktree, base_sha, request, output)
+    end
+  end
+
+  # The agent edits the worktree (Resolver), then harness mechanically stages,
+  # asserts zero leftover conflict markers, and continues the rebase. Any
+  # failure — resolver unavailable, the agent declined, markers still present,
+  # or `rebase --continue` rejecting — aborts the rebase and falls back to the
+  # existing `{:conflict, _}` -> re-dispatch path. A still-conflicted tree is
+  # never landed. No re-verification: the reviewer already approved both sides.
+  @spec resolve_or_abort(Worktree.t(), String.t(), request(), String.t()) ::
+          {:ok, String.t()} | {:conflict, String.t()}
+  defp resolve_or_abort(%Worktree{path: path} = worktree, base_sha, request, conflict_output) do
+    with :ok <- run_resolver(worktree, base_sha, request),
+         :ok <- stage_all(path),
+         :ok <- assert_resolved(path),
+         {:ok, tip} <- continue_rebase(path) do
+      Logger.info("harness lander: merge-resolver reconciled rebase conflict for task #{request.task_id}")
+      {:ok, tip}
+    else
+      {:error, reason} ->
+        _ = Git.run(["rebase", "--abort"], path)
+
+        Logger.info(
+          "harness lander: merge-resolver fell back to re-dispatch for task #{request.task_id} (#{inspect(reason)})"
+        )
+
+        {:conflict, conflict_output}
+    end
+  end
+
+  @spec run_resolver(Worktree.t(), String.t(), request()) :: :ok | {:error, term()}
+  defp run_resolver(%Worktree{} = worktree, base_sha, request) do
+    resolver_fun().(worktree,
+      implementer: request[:agent],
+      reviewer: request[:reviewer],
+      task_id: request.task_id,
+      base_sha: base_sha
+    )
+  end
+
+  # Injectable (mirrors `:oban_insert`) so the suite exercises the git finalize
+  # without spawning a real agent. Default is the live cross-family resolver.
+  @spec resolver_fun() :: (Worktree.t(), keyword() -> :ok | {:error, term()})
+  defp resolver_fun, do: Application.get_env(:harness, :lander_resolver, &Resolver.resolve/2)
+
+  @spec stage_all(String.t()) :: :ok | {:error, term()}
+  defp stage_all(path) do
+    case Git.run(["add", "-A"], path) do
+      {:ok, _output} -> :ok
+      {:error, reason} -> {:error, {:stage_failed, reason}}
+    end
+  end
+
+  # Authoritative leftover-marker gate: `git diff --cached --check` flags any
+  # staged line that introduces a conflict marker. Whitespace-only `--check`
+  # noise (also non-zero) never blocks a land — only "conflict marker" does.
+  @spec assert_resolved(String.t()) :: :ok | {:error, term()}
+  defp assert_resolved(path) do
+    case Git.run(["diff", "--cached", "--check"], path) do
       {:ok, _output} ->
-        head_sha(path)
+        :ok
 
       {:error, {:git_failed, _args, _status, output}} ->
-        _ = Git.run(["rebase", "--abort"], path)
-        {:conflict, output}
+        if String.contains?(output, "conflict marker"),
+          do: {:error, {:unresolved_markers, output}},
+          else: :ok
+    end
+  end
+
+  # `-c core.editor=true` skips the editor for the rebase's resolution commit.
+  @spec continue_rebase(String.t()) :: {:ok, String.t()} | {:error, term()}
+  defp continue_rebase(path) do
+    case Git.run(["-c", "core.editor=true", "rebase", "--continue"], path) do
+      {:ok, _output} -> head_sha(path)
+      {:error, {:git_failed, _args, _status, output}} -> {:error, {:rebase_continue_failed, output}}
     end
   end
 

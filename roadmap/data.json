@@ -7597,7 +7597,7 @@
       "id": "189",
       "phase": 11,
       "bundle": "autolanding",
-      "status": "pending",
+      "status": "done",
       "title": "Lander conflict-resolver agent: on rebase conflict, spawn a cross-family merge AI to resolve in-place instead of re-dispatching",
       "scores": {
         "d": 3,
@@ -7637,7 +7637,10 @@
       ],
       "body": "The MERGE stage is mechanical today: the lander rebases harness/<run-id> onto the target and ff-pushes. On a rebase CONFLICT, Lander.Resilience.plan/2 routes {:conflict,_} to a fresh re-dispatch — which is wrong twice: it discards a reviewer-APPROVED diff and reruns the implementer from scratch, and it treats conflict reconciliation as something a re-run can fix when it is actually a JUDGMENT call (keep both sides, reconcile overlapping intents) that an AI does better than code or a blind redo.\n\nThis applies the agent-gate rule to the MERGE node: a clean ff-merge stays pure mechanics (no agent); a rebase conflict spawns a merge-resolver agent. Demonstrated 2026-06-04 landing task 177 — its run branch (parented before 182 landed) conflicted with 182 in test/harness/run_test.exs: 177 added prioritize_reviewers/2 tests, 182 renamed an adjacent test; the resolution was 'keep both', exactly the judgment a re-dispatch cannot make and an agent can. That hand-merge is the motivating case.\n\nDesign: when the lander's rebase exits conflicted, instead of {:redispatch,...}, leave the conflict in the already-open detached landing worktree and spawn a cross-family resolver agent there. Give it the conflicted files, both sides, and both tasks' intents (derivable: the run's task body, plus the bodies of the commits that landed on target since the run branched). The agent edits the worktree to resolve; the lander does `git add` + `git rebase --continue`, then the existing ff-push (or :auto_local once that exists). Resolver failure falls back to the current block/re-dispatch path — the resolver is an attempt, never a new gate, and never lands a still-conflicted tree.\n\nThis is NOT a re-verification step: the resolver only reconciles markers, never re-grades or re-runs checks (the reviewer already approved both sides). Gated behind landing_policy: :auto (and orthogonal to the local-only push decision, tracked separately as :auto_local).\n",
       "created_at": "2026-06-04",
+      "done_at": "2026-06-04",
       "scored_at": "2026-06-04",
+      "implemented": "Harness.Lander.Resolver: rebase conflict during auto-land spawns a cross-family merge-resolver agent in the open detached landing worktree (markers in place) instead of blind re-dispatch. Lander leaves the rebase conflicted, runs the resolver (prefers the run's approving reviewer, else first eligible cross-family per reviewer-eligibility/registry), then mechanically git-adds, asserts zero leftover markers via 'git diff --cached --check', and 'rebase --continue' (core.editor=true) before the existing ff-push. Resolver never re-runs checks/re-grades. Any failure (no resolver, declined, markers remain, continue rejects) aborts + falls back to the existing {:conflict,_}->re-dispatch path; a still-conflicted tree is never landed. Injectable via :lander_resolver env for tests. New resolver.ex + lander rewire; lander_test (resolve/markers-left/declined) + resolver_test (cross-family invariant + prompt) green.",
+      "delivered_by": "claude",
       "cross_repo": []
     },
     {
