@@ -296,7 +296,7 @@ defmodule Harness.Worktree do
   end
 
   # The new branch's HEAD points at the resolved base_ref's commit right after
-  # `git worktree add -b`; capture it as the worktree's stable base SHA before
+  # `git worktree add -B`; capture it as the worktree's stable base SHA before
   # any further commits land on the branch.
   @spec resolve_base_sha(String.t()) :: {:ok, String.t()} | {:error, error()}
   defp resolve_base_sha(path) do
@@ -459,7 +459,7 @@ defmodule Harness.Worktree do
   and the branch itself (if it exists).
 
   This is the mechanical-retry hook (`Harness.Run.Worker`): re-attempting the
-  SAME run id must be able to run `git worktree add -b harness/<run_id>` again,
+  SAME run id must be able to run `git worktree add -B harness/<run_id>` again,
   which collides with both the worktree registration and the branch a failed
   prior attempt left behind (the 2026-06-02 branch-collision cascade). It is
   never called on a settled run — settled failures retain their worktrees (and

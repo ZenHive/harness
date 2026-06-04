@@ -138,7 +138,7 @@ defmodule Harness.Run.Worker do
   defp malformed_job_reason?(_reason), do: false
 
   # A mechanical retry first removes the prior attempt's leftover worktree and
-  # run branch, so the re-attempt's `git worktree add -b harness/<run_id>`
+  # run branch, so the re-attempt's `git worktree add -B harness/<run_id>`
   # cannot collide with what the failed attempt left behind (the 2026-06-02
   # branch-collision cascade on run-1780396918179-74f06ecc).
   @spec retry_mechanical_failure(term(), Oban.Job.t(), pos_integer()) :: {:snooze, pos_integer()}
