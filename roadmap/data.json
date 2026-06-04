@@ -8181,7 +8181,7 @@
       "id": "202",
       "phase": 16,
       "bundle": "resilience",
-      "status": "pending",
+      "status": "done",
       "title": "Node-pressure dispatch gate: hold new run admission under high host memory (AC3 follow-up to task 200)",
       "scores": {
         "d": 4,
@@ -8218,9 +8218,15 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "aba9698ec30659225a229d87c989a8c2be6a1e55",
       "body": "DEFERRED follow-up to task 200's AC3. Task 200 took the \"document\" branch of AC3's and/or: MemoryGuard's moduledoc names the steady-state ceiling (sum of project_<name> Oban queue limits, kept × mem_threshold_kb under host RAM). The per-run watchdog stops ONE runaway tree but does not stop N concurrent well-behaved trees from summing past host RAM under high concurrency.\n\nThis task adds the optional node-pressure dispatch gate: a mechanical admission throttle at the Run.Worker boundary that holds NEW run admission (Oban snooze/retry) when host/node memory pressure is over a configurable high-water mark — the aggregate companion to the per-run cap.\n\nDeliberately deferred / low urgency: the 2026-06-04 host crash was a single-runaway OOM, fully addressed by task 200's per-run watchdog. This aggregate gate only earns its keep once real concurrency (multiple registered projects dispatching simultaneously) approaches host RAM. File now so the AC3 surface isn't lost; pick up when concurrency actually grows. depends_on 200 (builds on the same MemoryGuard ps substrate + :run config key).\n",
       "created_at": "2026-06-04",
+      "started_at": "2026-06-04",
+      "done_at": "2026-06-04",
       "scored_at": "2026-06-04",
+      "implemented": "Landed by claude via merge-train; reviewer-approved (run run-1780562228613-8874a8f7, aba9698ec30659225a229d87c989a8c2be6a1e55).",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     }
   ]
