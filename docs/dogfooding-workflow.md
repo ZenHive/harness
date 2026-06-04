@@ -87,7 +87,7 @@ but harness has no Droid adapter, so `ingest(agent: :droid)` is rejected (`{:inv
 and flat dispatch rejects it as `{:unknown_adapter, "droid"}`. Adding an executor is two-sided:
 an rmap-lib `--to` target (already shipped for `droid`) plus a harness `AgentAdapter`.
 
-> **Antigravity caveat (Task 32):** `agy` ignores the port `cwd` and resolves workspace via git-common-dir to the main checkout. `Harness.AgentAdapter.Antigravity` declares `worktree_isolation: false`, so `Harness.Run` rejects dispatch before spawn — Antigravity cannot drive worktree-isolated runs until the CLI gains a headless workspace constraint.
+> **Antigravity isolation note (Task 187):** Task 32's `agy` cwd finding is stale as of `agy` 1.0.5. A 2026-06-04 linked-worktree re-test showed `agy` honoring the Port `cwd`, with writes landing in the run worktree and the main checkout staying clean. `Harness.AgentAdapter.Antigravity` now declares `worktree_isolation: true`.
 
 ### Live-node dispatch via Tidewave `project_eval` (escape hatch — struct-level control)
 
@@ -387,7 +387,7 @@ end
 | `:failed` / `{:review_rejected, report}` | The reviewer found nothing salvageable (degenerate case — rejection is near-never by design). | Read `report` (the reviewer's prose). The task went back to the queue; re-dispatch — possibly with a different implementer. |
 | `:failed` / `{:review_stuck, report}` | The gate could not produce a verdict: no cross-family reviewer available, reviewer crashed, or it exited without writing a readable `.harness/review.json`. | Read `report`. If no reviewer was available → environment/availability issue. If the reviewer ran but wrote nothing → inspect its transcript; re-dispatch. |
 | `:failed` / `{:worktree_failed,_}` `{:agent_spawn_failed,_}` `{:driver_crashed,_}` `{:commit_failed,_}` | Harness-side mechanical failure. | **Harness bug.** File via `rmap new`, fix harness, re-dogfood. Do not work around by hand-building. |
-| `:failed` / `{:checkout_polluted, status}` | Agent wrote outside its run worktree into the main checkout (porcelain shown in `status`). | **Agent bug** (or wrong adapter for the agent). Harness correctly trapped it (`Harness.Worktree.Isolation`). Inspect what the agent leaked, decide whether the adapter needs `worktree_isolation: false` (like Antigravity Task 32), and re-dispatch with a worktree-honoring adapter. NOT a harness bug — the trap fired by design. |
+| `:failed` / `{:checkout_polluted, status}` | Agent wrote outside its run worktree into the main checkout (porcelain shown in `status`). | **Agent bug** (or wrong adapter for the agent). Harness correctly trapped it (`Harness.Worktree.Isolation`). Inspect what the agent leaked, decide whether the adapter needs `worktree_isolation: false`, and re-dispatch with a worktree-honoring adapter. NOT a harness bug — the trap fired by design. |
 | `:failed` / `{:checkout_pollution_check_failed, _}` | The post-run pollution `git status` itself errored. | Rare; usually a transient git/IO issue. Re-run; if it persists inspect the main checkout's git state and the harness log. |
 | `:failed` / `:timed_out` | Lifetime budget elapsed. | Raise `:lifetime_timeout` and re-run, or investigate why the agent hung. |
 | run process **crashed** (no settle) | gen_statem died. | **Harness bug.** File via `rmap new`. |
@@ -422,9 +422,8 @@ them all in parallel.
 dogfood drivers — rmap renders native prompts for them, so `ingest(agent: :grok)`
 → `start_run/4` with `Harness.AgentAdapter.Grok` is the whole flow (no two-step).
 Don't silently exclude them from a batch — that's training-comfort bias, not a
-real constraint. Round-1 Task 25 (Grok-driven) settled approved. (Antigravity
-still can't run *worktree-isolated* — `worktree_isolation: false`, Task 32 — but
-that's the isolation axis, independent of rendering.)
+real constraint. Round-1 Task 25 (Grok-driven) settled approved. Antigravity's
+old worktree-isolation caveat is resolved as of `agy` 1.0.5 (Task 187).
 
 **The one hard limit: never batch two tasks that edit the same function.**
 That's a guaranteed un-auto-mergable collision (e.g. Tasks 34 + 35 both

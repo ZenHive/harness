@@ -18,12 +18,12 @@ defmodule Harness.AgentAdapter.AntigravityTest do
   end
 
   describe "capabilities/0" do
-    test "declares resume + streaming output, autonomous-only permission mode, no worktree isolation" do
+    test "declares resume + streaming output, autonomous-only permission mode, and worktree isolation" do
       assert %Capabilities{
                session_resume: true,
                streaming_output: true,
                permission_modes: [:autonomous],
-               worktree_isolation: false
+               worktree_isolation: true
              } = Antigravity.capabilities()
     end
   end
@@ -68,12 +68,6 @@ defmodule Harness.AgentAdapter.AntigravityTest do
     test "rejects a session value that is not the :resume sentinel", %{cwd: cwd} do
       assert {:error, {:unsupported_session_token, "abc-123"}} =
                Antigravity.build_command(invocation(cwd, session: "abc-123"))
-    end
-  end
-
-  describe "worktree isolation" do
-    test "documents the agy limitation for dispatch gating" do
-      assert Antigravity.worktree_isolation_limitation() =~ "git-common-dir"
     end
   end
 end

@@ -5639,6 +5639,11 @@ Side finding (do not fix here): one re-test run wedged agy at startup for 15+ mi
 
 Make `Harness.AgentAdapter.Antigravity` declare worktree isolation and update everything that documented the limitation.
 """
+implemented = """
+Flipped `Harness.AgentAdapter.Antigravity.capabilities/0` to `worktree_isolation: true`, removed `worktree_isolation_limitation/0`, and rewrote the adapter's working-directory moduledoc around the 2026-06-04 `agy` 1.0.5 linked-worktree re-test. Updated adapter/isolation tests so Antigravity validates successfully, and removed the obsolete run test that expected pre-spawn rejection. Updated dogfooding / agent-reference / harness-driver docs so Antigravity is no longer documented as rejected-before-spawn.
+
+CONSCIOUS DECISION: trust-and-skip per the current `Harness.Worktree.Isolation` design. Flipping Antigravity to `worktree_isolation: true` means `Harness.Run` will trust the capability and skip the post-run main-checkout pollution snapshot for Antigravity, just like the other shipped isolating adapters. I chose not to add an Antigravity-specific belt-and-suspenders pollution check because Task 187's re-test covers the exact linked-worktree failure mode, adding an adapter exception would undermine the existing capability contract, and changing the trust-vs-check design is explicitly out of scope for this task. If `agy` regresses again, the right fix is to flip the capability back or add a general correlation-based detector in a separate task, not silently special-case Antigravity here.
+"""
 created_at = "2026-06-03"
 scored_at = "2026-06-03"
 

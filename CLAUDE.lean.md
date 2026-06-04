@@ -87,7 +87,7 @@ All six driven over OTP Ports — uniform, no per-agent SDK. harness captures ra
 
 **Two-axis adapter contract** (don't conflate):
 - **Non-delegatable** (`Grok`, `Antigravity`, `Pi`): `rmap delegate --to` doesn't render prompts for them, so `Roadmap.ingest(agent: …)` rejects them. **Two-step pattern**: ingest with a delegatable agent (`:claude`/`:codex`/`:cursor`), then pass the `%Harness.Roadmap.Item{}` directly to the non-delegatable adapter via `Run.Supervisor.start_run/4` or `Batch`. (The flat `dispatch__task` MCP tool hides this two-step internally.)
-- **Worktree isolation**: only `Antigravity` declares `worktree_isolation: false` (`agy` resolves workspace via git-common-dir, ignoring Port `cwd` — Task 32); the `Harness.Worktree.Isolation` guard refuses worktree-isolated dispatch on a non-isolating adapter and snapshots the checkout porcelain mid-run to trap pollution. Codex's equivalent regression (Task 41) is resolved (`codex exec --cd`).
+- **Worktree isolation**: all six shipped adapters declare `worktree_isolation: true`. Antigravity's Task 32 finding is stale as of `agy` 1.0.5: a 2026-06-04 linked-worktree re-test showed `agy` honoring the Port `cwd` with writes isolated to the run worktree. `Harness.Run` trusts this capability and skips the main-checkout pollution snapshot for isolating adapters. Codex's equivalent regression (Task 41) is resolved (`codex exec --cd`).
 
 ## Reach Is in the Dep Stack
 

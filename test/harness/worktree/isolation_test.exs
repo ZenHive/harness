@@ -10,11 +10,8 @@ defmodule Harness.Worktree.IsolationTest do
       assert :ok = Isolation.validate(Harness.FakeAdapter)
     end
 
-    test "rejects Antigravity before spawn" do
-      assert {:error, {:worktree_isolation_unsupported, Antigravity, message}} =
-               Isolation.validate(Antigravity)
-
-      assert message =~ "agy ignores the port cwd"
+    test "accepts Antigravity now that agy honors the port cwd" do
+      assert :ok = Isolation.validate(Antigravity)
     end
   end
 

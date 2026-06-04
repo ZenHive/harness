@@ -472,23 +472,6 @@ defmodule Harness.RunTest do
   end
 
   describe "worktree isolation" do
-    test "Antigravity dispatch fails fast without polluting the main checkout" do
-      repo = GitFixture.init_repo()
-      base = GitFixture.tmp_base()
-
-      {:ok, run_id, pid} =
-        Run.Supervisor.start_run(item(), ProjectFixture.from_repo(repo), Antigravity, default_opts(base))
-
-      result = await_result(run_id, pid)
-
-      assert %Result{
-               state: :failed,
-               reason: {:agent_spawn_failed, {:worktree_isolation_unsupported, Antigravity, _message}}
-             } = result
-
-      assert GitFixture.git!(repo, ["status", "--porcelain"]) == ""
-    end
-
     test "REGRESSION (Task 66): skips pollution detection for adapters declaring worktree isolation" do
       repo = GitFixture.init_repo()
       base = GitFixture.tmp_base()

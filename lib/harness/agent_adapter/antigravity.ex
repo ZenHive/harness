@@ -12,17 +12,15 @@ defmodule Harness.AgentAdapter.Antigravity do
 
   ## Working directory / workspace
 
-  **Does not honor the port `cwd`.** `Harness.AgentAdapter.invoke/2` sets the
-  port's `:cd` to the run worktree, but `agy` ignores it for workspace
-  resolution. The CLI exposes no `--cwd`, `--workspace`, or `--project` flag;
-  `--add-dir` is the only directory control and it is *additive* — it widens
-  the workspace rather than replacing it.
+  `Harness.AgentAdapter.invoke/2` sets the port's `:cd` to the run worktree.
+  As of `agy` 1.0.5, Antigravity honors that port cwd for linked git worktrees:
+  a 2026-06-04 re-test using the exact Task-32 trigger (`git worktree add`,
+  with `.git` as a file pointing at the common dir) completed 4/4 isolated runs
+  across baseline, `--add-dir <wt>`, `--sandbox`, and combined invocations.
+  Writes landed in the run worktree and the main checkout stayed clean.
 
-  `agy` resolves its workspace from git metadata (following a linked worktree's
-  `.git` file back to the main checkout's common git dir) or from a configured /
-  last-used workspace. During dogfooding it edited the *main checkout* while
-  the run worktree stayed clean. Harness therefore declares
-  `worktree_isolation: false` and rejects Antigravity dispatch before spawn.
+  No extra workspace flag is threaded into `build_command/1`; the port `:cd`
+  set by the shared adapter invocation is the isolation mechanism.
 
   ## Permission mode
 
@@ -50,16 +48,9 @@ defmodule Harness.AgentAdapter.Antigravity do
 
   @permission_modes %{autonomous: "--dangerously-skip-permissions"}
 
-  @doc false
-  @spec worktree_isolation_limitation() :: String.t()
-  def worktree_isolation_limitation do
-    "agy ignores the port cwd and resolves workspace via git-common-dir to the main checkout; " <>
-      "harness cannot headlessly constrain it to a run worktree"
-  end
-
   @doc """
   Declares Antigravity's capabilities: session resume and streaming output,
-  with `:autonomous` the only permission mode. Worktree isolation is unsupported.
+  with `:autonomous` the only permission mode.
   """
   @impl AgentAdapter
   @spec capabilities() :: Capabilities.t()
@@ -68,7 +59,7 @@ defmodule Harness.AgentAdapter.Antigravity do
       session_resume: true,
       permission_modes: [:autonomous],
       streaming_output: true,
-      worktree_isolation: false
+      worktree_isolation: true
     }
   end
 
