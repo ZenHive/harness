@@ -16,6 +16,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   alias Harness.Agent.Settings, as: AgentSettings
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentRegistry
+  alias Harness.Config
   alias Harness.Cron.RoadmapPoller
   alias Harness.Cron.Settings
   alias Harness.Landing.Settings, as: LandingSettings
@@ -28,6 +29,12 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     prior_agents = Application.get_env(:harness, :agent_disabled)
     prior_reviewer = Application.get_env(:harness, :agent_reviewer_ineligible)
     prior_landing = Application.get_env(:harness, :landing_overrides)
+    prior_run = Application.get_env(:harness, :run)
+    prior_config_store = Application.get_env(:harness, :config_settings)
+
+    # Isolate the Harness.Config persistence file to a throwaway root.
+    config_root = Path.join(System.tmp_dir!(), "harness_settings_live_config_#{System.unique_integer([:positive])}")
+    Application.put_env(:harness, :config_settings, root: config_root)
 
     # Other async:false dashboard tests may leave projects registered; isolate this page.
     for %{name: name} <- ProjectRegistry.list() do
@@ -44,6 +51,9 @@ defmodule Harness.Dashboard.SettingsLiveTest do
       restore_env(:agent_disabled, prior_agents)
       restore_env(:agent_reviewer_ineligible, prior_reviewer)
       restore_env(:landing_overrides, prior_landing)
+      restore_env(:run, prior_run)
+      restore_env(:config_settings, prior_config_store)
+      File.rm_rf(config_root)
     end)
 
     {:ok, conn: conn, project: project}
@@ -191,6 +201,61 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     assert html =~ "paused"
     assert html =~ "quota_exhausted"
+  end
+
+  test "renders the editable config card with a row per ui-editable key (Task 167)", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/harness/settings")
+
+    assert html =~ "Run &amp; dashboard config"
+    assert html =~ ~s(phx-submit="set_config")
+    # A run-timeout row and the restart-required dashboard port row both render.
+    assert html =~ ~s(id="config-form-run__lifetime_timeout")
+    assert html =~ ~s(id="config-form-dashboard__port")
+    # The port carries the restart pill; run timeouts don't.
+    assert html =~ "restart"
+  end
+
+  test "editing a run timeout persists through Harness.Config and confirms (Task 167)", %{conn: conn} do
+    Application.put_env(:harness, :run, lifetime_timeout: 5_400_000)
+
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("#config-form-run__lifetime_timeout", %{value: "99000"})
+      |> render_submit()
+
+    assert html =~ "lifetime_timeout saved."
+    assert Config.get({:run, :lifetime_timeout}) == 99_000
+  end
+
+  test "a restart-required edit is persisted but not hot-applied, and says so (Task 167)", %{conn: conn} do
+    Application.put_env(:harness, :dashboard, port: 4018)
+
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("#config-form-dashboard__port", %{value: "4099"})
+      |> render_submit()
+
+    assert html =~ "applies on the next node restart"
+    # Live value unchanged until the next boot.
+    assert Config.get({:dashboard, :port}) == 4018
+  end
+
+  test "an invalid config value surfaces an error and changes nothing (Task 167)", %{conn: conn} do
+    Application.put_env(:harness, :run, lifetime_timeout: 5_400_000)
+
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("#config-form-run__lifetime_timeout", %{value: "not-a-number"})
+      |> render_submit()
+
+    assert html =~ "Unknown or invalid config value."
+    assert Config.get({:run, :lifetime_timeout}) == 5_400_000
   end
 
   test "renders the Landing card with a per-project policy control", %{conn: conn, project: project} do

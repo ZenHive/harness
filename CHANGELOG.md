@@ -19,6 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Task 167: declarative operator-config schema + UI-editable run timeouts.**
+  `Harness.Config` (+ `Harness.Config.Entry`) centralizes the operator-relevant
+  `:harness` app-env keys — each declaring its key path, baked-in default, type,
+  overriding env var, and `ui_editable?`/`restart_required?`/`secret?` flags — so
+  defaults live in one place (`schema/0`) instead of scattered `@default_*`
+  attributes. `get/1` is the schema-backed read path; `put/3` validates, persists
+  through `Harness.SettingsStore`, and hot-applies to app env unless the key is
+  `restart_required?` (a set env var wins over a persisted override on boot, via
+  `load_into_env/0`). `Harness.Dashboard.ConfigInspector` now renders from the
+  schema (only the result/settings store sections stay derived); `SettingsLive`
+  gains an editable card for the run timeouts + dashboard port, with
+  restart-required keys labeled deferred-until-boot. `Harness.Run` routes its six
+  timeout reads through `Config.get({:run, key})`.
 - **Task 200: per-run memory watchdog bounds spawned process trees.**
   `Harness.Run.MemoryGuard` samples the resident memory of a run's spawned OS
   process tree (the Port'd agent CLI + every descendant, including the

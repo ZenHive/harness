@@ -84,6 +84,7 @@ defmodule Harness.Run do
   alias Harness.AgentKPI
   alias Harness.AgentRegistry
   alias Harness.AuditReview
+  alias Harness.Config
   alias Harness.Dashboard.RunFeed
   alias Harness.Dashboard.Transcript
   alias Harness.Dashboard.Transcript.Parser
@@ -115,15 +116,12 @@ defmodule Harness.Run do
   @registry Harness.Run.Registry
   @task_supervisor Harness.Run.TaskSupervisor
 
-  @default_lifetime_timeout 5_400_000
-  @default_terminal_linger 5_000
   @semantic_diff_max_bytes 80_000
   @reviewer_transcript_tail_bytes 40_000
   @default_discernment_sample_interval_ms 300_000
   @default_discernment_min_weight 6
   @default_discernment_long_running_ms 600_000
   @default_discernment_min_transcript_bytes 1
-  @default_max_hold_timeout 1_800_000
   # Recent run records sampled to score reviewer rejection rates for cross-family
   # reviewer selection — bounds the per-run store read (newest-first).
   @reviewer_rejection_sample 500
@@ -137,10 +135,6 @@ defmodule Harness.Run do
   # check can't trip it; an explicit higher idle_timeout still wins. Well under
   # the 90-min lifetime cap, which remains the real backstop.
   @reviewer_idle_floor 600_000
-  # Spawn watchdog for :reviewing — if the reviewer's Port never starts (a hung
-  # attach/build_command/invoke before :on_spawn fires), fail fast instead of
-  # holding the project queue slot until lifetime (Task 199).
-  @default_reviewer_spawn_timeout 60_000
 
   # Per-run memory watchdog (Task 200). The reviewer AI runs the project's
   # check_command itself; harness Ports the agent CLI and the agent forks `mix`/
@@ -483,25 +477,17 @@ defmodule Harness.Run do
       batch_id: Keyword.get(opts, :batch_id) || run_id,
       requested_model: Keyword.get(opts, :requested_model) || item.model,
       started_at_ms: System.monotonic_time(:millisecond),
-      total_timeout: Keyword.get(opts, :total_timeout),
-      idle_timeout: Keyword.get(opts, :idle_timeout),
+      total_timeout: run_timeout(opts, :total_timeout),
+      idle_timeout: run_timeout(opts, :idle_timeout),
       progress_timeout: Keyword.get(opts, :progress_timeout),
-      lifetime_timeout:
-        Keyword.get(opts, :lifetime_timeout) ||
-          configured(:lifetime_timeout, @default_lifetime_timeout),
-      max_hold_timeout:
-        Keyword.get(opts, :max_hold_timeout) ||
-          configured(:max_hold_timeout, @default_max_hold_timeout),
-      terminal_linger:
-        Keyword.get(opts, :terminal_linger) ||
-          configured(:terminal_linger, @default_terminal_linger),
+      lifetime_timeout: run_timeout(opts, :lifetime_timeout),
+      max_hold_timeout: run_timeout(opts, :max_hold_timeout),
+      terminal_linger: run_timeout(opts, :terminal_linger),
       reviewer: Keyword.get(opts, :reviewer, project.reviewer || configured(:reviewer, nil)),
       reviewer_adapter: nil,
       reviewer_adapter_opts: Keyword.get(opts, :reviewer_adapter_opts, []),
       reviewer_run: nil,
-      reviewer_spawn_timeout:
-        Keyword.get(opts, :reviewer_spawn_timeout) ||
-          configured(:reviewer_spawn_timeout, @default_reviewer_spawn_timeout),
+      reviewer_spawn_timeout: run_timeout(opts, :reviewer_spawn_timeout),
       reviewing_idle_timeout: Keyword.get(opts, :reviewing_idle_timeout),
       mem_threshold_kb: mem_threshold_kb,
       mem_sample_interval: mem_sample_interval,
@@ -2418,6 +2404,16 @@ defmodule Harness.Run do
   @spec configured(atom(), term()) :: term()
   defp configured(key, default) do
     :harness |> Application.get_env(:run, []) |> Keyword.get(key, default)
+  end
+
+  # Resolves a run timeout: explicit opt wins, else the `Harness.Config` schema
+  # value (schema default folded with any persisted operator override). Keeps the
+  # `||` fallbacks out of `init/1` so it stays under the complexity gate, and
+  # routes the read through the schema (Task 167) — defaults live in `Config`, not
+  # in `@default_*` attributes here.
+  @spec run_timeout(keyword(), atom()) :: timeout() | nil
+  defp run_timeout(opts, key) do
+    Keyword.get(opts, key) || Config.get({:run, key})
   end
 
   # Resolves the per-run memory watchdog ceiling + sample interval (Task 200):

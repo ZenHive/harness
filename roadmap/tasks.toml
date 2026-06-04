@@ -5172,7 +5172,7 @@ scored_at = "2026-06-02"
 id = "167"
 phase = 10
 bundle = "config-centralization"
-status = "pending"
+status = "done"
 title = "Harness.Config declarative schema + UI-editable operational knobs (run timeouts)"
 scores = { d = 5, b = 6, u = 6 }
 markers = ["handbuild"]
@@ -5190,8 +5190,12 @@ Operator-relevant keys only: test-injection seams (:roadmap_list, :roadmap_ready
 
 Sequenced after Task 163 so the schema never declares keys the deletion passes removed (the reviewer-pair line was itself superseded by the agent-gate rebuild; the surviving editable knobs are the Run gen_statem timeouts). Marked handbuild: the editable-settings card is LiveView/DOM work that needs browser feedback.
 """
+implemented = "Harness.Config (Config + Config.Entry): declarative schema of ~24 operator keys (key path/default/type/env_var/ui_editable?/restart_required?/secret?), defaults living in one place. get/1 read path, put/3 (validate→persist via SettingsStore→hot-apply unless restart_required→audit log), load_into_env/0 (boot seed, env-var wins). ConfigInspector renders schema_sections from Config.schema (removed literal-default sections + dead helpers); only result/settings store stay derived. run.ex routes 6 timeout reads through Config.get({:run,k}) via run_timeout/2; @default_* attrs removed. SettingsLive: editable config_form card (7 run+dashboard rows), set_config handler parsing str→int (empty=nil unbounded), restart-required pill. Tests: config_test.exs 16, settings_live_test +4, config_inspector updated. Browser-verified on 4018: lifetime round-trips, port persists-not-hot-applied."
+delivered_by = "claude"
 created_at = "2026-06-02"
+started_at = "2026-06-04"
 scored_at = "2026-06-02"
+done_at = "2026-06-04"
 
 [[task]]
 id = "168"

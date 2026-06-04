@@ -636,6 +636,64 @@ defmodule Harness.Dashboard.Components do
   end
 
   @doc """
+  Editable card for the `ui_editable?` subset of the `Harness.Config` schema.
+
+  Companion to the read-only `config_inspector/1`: where the inspector shows every
+  resolved key, this renders a number input per editable key (the run timeouts +
+  the dashboard port) so an operator changes them from the dashboard. Submitting a
+  row fires `set_config` on the parent LiveView, which validates against the schema
+  and persists through `Harness.SettingsStore`. A `restart_required?` key carries a
+  pill saying the edit applies on the next boot (it is persisted, not hot-applied);
+  the rest take effect on the next run. An empty input on a nullable duration means
+  "unbounded" (the schema default for total/idle). Pure — `attr/3` + HEEx only.
+  """
+  attr(:entries, :list, required: true)
+
+  @spec config_form(map()) :: Rendered.t()
+  def config_form(assigns) do
+    ~H"""
+    <section class="setting-card">
+      <h2 class="setting-section-title">Run &amp; dashboard config</h2>
+      <p class="setting-desc">
+        Live-editable config. Run timeouts take effect on the next run; an empty
+        timeout means <em>unbounded</em>. Keys marked
+        <span class="pill" data-state="off">restart</span>
+        are persisted but apply only on the next node boot. Other keys (env vars,
+        paths, secrets) stay read-only in the inspector below.
+      </p>
+      <ul class="project-list">
+        <li :for={entry <- @entries} class="project-row">
+          <form id={"config-form-#{entry.id}"} class="config-edit-form" phx-submit="set_config">
+            <input type="hidden" name="key" value={entry.id} />
+            <div class="project-id">
+              <span class="project-name">{entry.label}</span>
+              <span
+                :if={entry.restart_required?}
+                class="pill"
+                data-state="off"
+                title="Persisted now; applies on the next node boot."
+              >
+                restart
+              </span>
+            </div>
+            <input
+              type="number"
+              name="value"
+              min="0"
+              value={entry.input_value}
+              placeholder={entry.placeholder}
+              aria-label={"#{entry.label} (#{entry.unit})"}
+            />
+            <span class="setting-hint">{entry.unit}</span>
+            <button type="submit" class="btn-save">Save</button>
+          </form>
+        </li>
+      </ul>
+    </section>
+    """
+  end
+
+  @doc """
   The per-project **Landing** card — the operator control for autonomous merge.
 
   Unlike the read-only config inspector, this is a *form*: each project carries a

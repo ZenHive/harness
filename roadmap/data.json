@@ -6698,7 +6698,7 @@
       "id": "167",
       "phase": 10,
       "bundle": "config-centralization",
-      "status": "pending",
+      "status": "done",
       "title": "Harness.Config declarative schema + UI-editable operational knobs (run timeouts)",
       "scores": {
         "d": 5,
@@ -6742,7 +6742,11 @@
       ],
       "body": "The \"centralize hidden configs\" payoff, requested 2026-06-02: ~30 distinct Application.get_env(:harness, ...) keys are read across ~28 files, ~37 @default_* module attributes carry defaults that exist only in code, and the operator's only way to change a run timeout is editing config/*.exs plus a restart.\n\nBuild a declarative Harness.Config schema: one module declaring every operator-relevant key with its default, type, overriding env var, ui_editable? and restart_required? flags. ConfigInspector renders from the schema (extending the owning-module defaults wiring from the sibling inspector task). SettingsLive renders an editable card for keys marked ui_editable — the run total/idle/lifetime timeouts are the launch set (the agent-gate rebuild deleted Harness.Verification, so there is no verification timeout, and max_repair_attempts / semantic gating are likewise gone) — persisted through the consolidated settings store from the sibling consolidation task, following the same app-env-live-cache + persisted-override pattern the existing settings modules use. Restart-required keys (e.g. dashboard port) render labeled as such, following the Task 111 boot-applied precedent.\n\nOperator-relevant keys only: test-injection seams (:roadmap_list, :roadmap_ready, :run_starter, :oban_insert) are seams, not config, and stay out of the schema.\n\nSequenced after Task 163 so the schema never declares keys the deletion passes removed (the reviewer-pair line was itself superseded by the agent-gate rebuild; the surviving editable knobs are the Run gen_statem timeouts). Marked handbuild: the editable-settings card is LiveView/DOM work that needs browser feedback.\n",
       "created_at": "2026-06-02",
+      "started_at": "2026-06-04",
+      "done_at": "2026-06-04",
       "scored_at": "2026-06-02",
+      "implemented": "Harness.Config (Config + Config.Entry): declarative schema of ~24 operator keys (key path/default/type/env_var/ui_editable?/restart_required?/secret?), defaults living in one place. get/1 read path, put/3 (validate→persist via SettingsStore→hot-apply unless restart_required→audit log), load_into_env/0 (boot seed, env-var wins). ConfigInspector renders schema_sections from Config.schema (removed literal-default sections + dead helpers); only result/settings store stay derived. run.ex routes 6 timeout reads through Config.get({:run,k}) via run_timeout/2; @default_* attrs removed. SettingsLive: editable config_form card (7 run+dashboard rows), set_config handler parsing str→int (empty=nil unbounded), restart-required pill. Tests: config_test.exs 16, settings_live_test +4, config_inspector updated. Browser-verified on 4018: lifetime round-trips, port persists-not-hot-applied.",
+      "delivered_by": "claude",
       "cross_repo": []
     },
     {

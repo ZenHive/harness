@@ -76,8 +76,16 @@ defmodule Harness.Dashboard.ConfigInspectorTest do
     end
 
     test "humanizes millisecond durations while keeping the raw value for precision" do
-      assert row(sections(), "Run timeouts", "total_timeout").value == "30 min (1800000 ms)"
+      assert row(sections(), "Run timeouts", "lifetime_timeout").value == "90 min (5400000 ms)"
       assert row(sections(), "Run timeouts", "terminal_linger").value == "5 s (5000 ms)"
+    end
+
+    test "renders an unset (nil-default) run timeout as the em-dash, not a cosmetic literal" do
+      # total_timeout / idle_timeout have no config fallback in `Harness.Run` — they
+      # default to nil (unbounded). The inspector must show that honestly, not a
+      # misleading non-nil literal the run engine never applies.
+      assert row(sections(), "Run timeouts", "total_timeout").value == "—"
+      assert row(sections(), "Run timeouts", "idle_timeout").value == "—"
     end
 
     test "carries the overriding env var on a row even when it is at its default" do

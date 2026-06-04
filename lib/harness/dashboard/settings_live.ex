@@ -28,6 +28,7 @@ defmodule Harness.Dashboard.SettingsLive do
 
   alias Harness.Agent.Settings, as: AgentSettings
   alias Harness.AgentRegistry
+  alias Harness.Config
   alias Harness.Cron.RoadmapPoller
   alias Harness.Cron.Settings
   alias Harness.Dashboard.Components
@@ -119,6 +120,16 @@ defmodule Harness.Dashboard.SettingsLive do
 
         :error ->
           {:error, "Unknown reviewer."}
+      end
+
+    {:noreply, socket |> assign(:notice, notice) |> refresh()}
+  end
+
+  def handle_event("set_config", %{"key" => id, "value" => raw}, socket) do
+    notice =
+      case resolve_config_edit(id, raw) do
+        {:ok, entry, value} -> persist_config(entry, value)
+        :error -> {:error, "Unknown or invalid config value."}
       end
 
     {:noreply, socket |> assign(:notice, notice) |> refresh()}
@@ -329,6 +340,8 @@ defmodule Harness.Dashboard.SettingsLive do
         </ul>
       </section>
 
+      <Components.config_form entries={@config_edit} />
+
       <Components.config_inspector sections={@config} />
     </div>
     """
@@ -369,7 +382,89 @@ defmodule Harness.Dashboard.SettingsLive do
     |> assign(:landing, landing_state(projects))
     |> assign(:reviewers, reviewer_state(projects))
     |> assign(:config, ConfigInspector.resolve())
+    |> assign(:config_edit, config_edit_state())
   end
+
+  # The editable-config view-model: the `ui_editable?` schema subset, each row
+  # carrying its current resolved value as the input default and a stable string
+  # `id` so `set_config` resolves the edit back to a schema entry without
+  # `String.to_atom` on request input.
+  @spec config_edit_state() :: [map()]
+  defp config_edit_state do
+    Enum.map(Config.editable_entries(), fn entry ->
+      %{
+        id: config_id(entry.key),
+        label: entry.label,
+        unit: config_unit(entry.type),
+        input_value: config_input_value(Config.get(entry.key)),
+        placeholder: config_placeholder(entry),
+        restart_required?: entry.restart_required?
+      }
+    end)
+  end
+
+  # A CSS-id-safe stable encoding of a schema key (no `:`/`.` — those break the
+  # form's `id` as a selector). Round-trips via the editable-entry lookup in
+  # `resolve_config_edit/2`, so the exact string only has to be stable, not parsed.
+  @spec config_id(Config.Entry.key()) :: String.t()
+  defp config_id({ns, sub}), do: "#{ns}__#{sub}"
+  defp config_id(flat) when is_atom(flat), do: Atom.to_string(flat)
+
+  @spec config_unit(Config.Entry.value_type()) :: String.t()
+  defp config_unit(:duration_ms), do: "ms"
+  defp config_unit(_type), do: ""
+
+  @spec config_input_value(term()) :: String.t()
+  defp config_input_value(nil), do: ""
+  defp config_input_value(value) when is_integer(value), do: Integer.to_string(value)
+
+  @spec config_placeholder(Config.Entry.t()) :: String.t()
+  defp config_placeholder(%{type: :duration_ms, default: nil}), do: "unbounded"
+  defp config_placeholder(%{default: default}), do: config_input_value(default)
+
+  # Resolves a submitted form `id` back to its schema entry (never String.to_atom
+  # on request input) and parses the raw string per the entry's type. An empty
+  # input on a nullable duration is nil (unbounded); any other unparseable value
+  # is `:error`, surfaced as a notice.
+  @spec resolve_config_edit(String.t(), String.t()) :: {:ok, Config.Entry.t(), term()} | :error
+  defp resolve_config_edit(id, raw) do
+    case Enum.find(Config.editable_entries(), &(config_id(&1.key) == id)) do
+      %{type: type} = entry ->
+        case parse_config_value(String.trim(raw), type) do
+          {:ok, value} -> {:ok, entry, value}
+          :error -> :error
+        end
+
+      nil ->
+        :error
+    end
+  end
+
+  @spec parse_config_value(String.t(), Config.Entry.value_type()) :: {:ok, term()} | :error
+  defp parse_config_value("", :duration_ms), do: {:ok, nil}
+
+  defp parse_config_value(raw, type) when type in [:duration_ms, :integer] do
+    case Integer.parse(raw) do
+      {value, ""} -> {:ok, value}
+      _unparseable -> :error
+    end
+  end
+
+  defp parse_config_value(_raw, _type), do: :error
+
+  @spec persist_config(Config.Entry.t(), term()) :: {:ok | :error, String.t()}
+  defp persist_config(entry, value) do
+    case Config.put(entry.key, value, "dashboard") do
+      :ok -> {:ok, config_saved_notice(entry)}
+      {:error, _reason} -> {:error, "Could not save #{entry.label}."}
+    end
+  end
+
+  @spec config_saved_notice(Config.Entry.t()) :: String.t()
+  defp config_saved_notice(%{restart_required?: true, label: label}),
+    do: "#{label} saved — applies on the next node restart."
+
+  defp config_saved_notice(%{label: label}), do: "#{label} saved."
 
   # The per-project landing view-model: the *effective* policy (project default
   # overlaid with the operator's persisted override) rendered as the Landing card.

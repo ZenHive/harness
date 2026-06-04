@@ -2,6 +2,7 @@ defmodule Harness.SettingsLoader do
   @moduledoc false
 
   alias Harness.Agent.Settings, as: AgentSettings
+  alias Harness.Config
   alias Harness.Cron.Settings, as: CronSettings
   alias Harness.Landing.Settings, as: LandingSettings
 
@@ -29,6 +30,7 @@ defmodule Harness.SettingsLoader do
     CronSettings.load_into_env()
     AgentSettings.load_into_env()
     LandingSettings.load_into_env()
+    Config.load_into_env()
     :ok
   end
 end
