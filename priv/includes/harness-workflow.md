@@ -46,7 +46,7 @@ Rejections put the task back in the queue for re-dispatch. Fix-and-approve is th
 
 **Three dispatch paths** (prefer top to bottom):
 
-1. **Native MCP — default.** `dispatch__task` (fire-and-forget) or `dispatch__await` (blocks until settle) against `http://localhost:4018/harness/mcp`. Observe via `dispatch__status`, `dispatch__transcript`, `dispatch__verdict_detail`. `scrub_anthropic_key: true` (default) forces subscription OAuth over inherited `ANTHROPIC_API_KEY`.
+1. **Native MCP — default.** `dispatch-task` (fire-and-forget) or `dispatch-await` (blocks until settle) against `http://localhost:4018/harness/mcp`. Observe via `dispatch-status`, `dispatch-transcript`, `dispatch-verdict_detail`. `scrub_anthropic_key: true` (default) forces subscription OAuth over inherited `ANTHROPIC_API_KEY`.
 2. **Tidewave `project_eval` — escape hatch.** Struct-level control the flat tools don't expose (`retry_policy`, fail-over adapter lists, `subscriber: self()`). Run persists to `Harness.ResultStore` even when the eval process exits.
 3. **`mix run` driver script — fallback.** Full transcript + reviewer report to terminal. See harness repo `docs/dogfooding-workflow.md` for the canonical template.
 
@@ -67,7 +67,7 @@ Rejections put the task back in the queue for re-dispatch. Fix-and-approve is th
 | `:failed` / `:timed_out` | Lifetime budget elapsed. | Raise `:lifetime_timeout` or investigate hang. |
 | run process **crashed** (no settle) | gen_statem died. | **Harness bug.** File via `rmap new`. |
 
-Failed runs retain the worktree at `result.worktree_path` for inspection. Approved runs keep branch `harness/<run-id>` after worktree teardown. Use `dispatch__verdict_detail` for reviewer report, ratings, and `reviewer_diff_size` — no mechanical per-check stdout.
+Failed runs retain the worktree at `result.worktree_path` for inspection. Approved runs keep branch `harness/<run-id>` after worktree teardown. Use `dispatch-verdict_detail` for reviewer report, ratings, and `reviewer_diff_size` — no mechanical per-check stdout.
 
 ### Parallel Dispatch
 

@@ -8232,6 +8232,47 @@
       "delivered_by": "claude",
       "verified": true,
       "cross_repo": []
+    },
+    {
+      "id": "203",
+      "phase": 16,
+      "bundle": "agent-gate",
+      "status": "pending",
+      "title": "Reviewer missing-verdict recovery: re-prompt the reviewer once before discarding the run",
+      "scores": {
+        "d": 4,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 1.5,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "human",
+      "acceptance_criteria": [
+        "settle_review/2 on {:error, :missing} ONLY re-invokes the same reviewer adapter once, in the same worktree, with a terse nudge ('you exited without writing .harness/review.json — write your verdict now, nothing else') before failing the run as review_stuck",
+        "The re-prompt is bounded to exactly one retry via a counter on the gen_statem data; a second missing verdict fails as {:review_stuck, _} exactly as today (no loop)",
+        "Only the missing-file case retries: {:error, {:malformed, _}}, {:review_rejected, _}, and approve are all unchanged",
+        "Reviewer idle/total/spawn timeouts apply to the retry invocation identically to the first review pass",
+        "Design tension resolved in the PR text: a bounded single re-prompt of a mechanical artifact write is documented as MECHANICAL (re-issuing a flush), not judgment-in-harness — explicit sign-off that it does not reopen the agent-gate 'machinery interprets outcomes' door",
+        "Tests cover all three paths: missing->verdict-on-retry->approve, missing->missing->review_stuck, malformed-unchanged; offline suite + mix precommit green"
+      ],
+      "out_of_scope": [
+        "Retrying on malformed verdicts or on reject",
+        "More than one re-prompt (any unbounded loop)",
+        "Switching to a different reviewer adapter on the retry",
+        "Changing the primary reviewer prompt's verdict instructions or the check_command"
+      ],
+      "files_to_modify": [
+        "lib/harness/run.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "On 2026-06-05 task 37 (hieroglyph) failed as {:review_stuck, \"Reviewer wrote no .harness/review.json verdict artifact.\"} (run ...-f3ebb30a). The cursor implementer committed a 214-line diff; the auto-selected Claude reviewer ran the project checks (worktree _build was compiled) and exited 0 WITHOUT writing the verdict file, so harness discarded the entire run via settle_review {:error, :missing} (run.ex:1583) and re-queued task 37 from scratch. The full implementer+reviewer spend (including the Opus reviewer tokens) was thrown away for a recoverable miss. Root trigger that night was a too-heavy check_command (cold-PLT dialyzer in precommit.full rebuilds per worktree, minutes) exhausting the headless reviewer's turn budget before it reached the mandatory write step; that config is already softened to mix precommit, but the fragility is general — any reviewer that exits a hair early loses everything, no matter the project. Proposal: on {:error, :missing} ONLY, re-invoke the same reviewer once in the same worktree with a terse 'write the verdict now, nothing else' nudge, bounded to exactly one retry via a counter on the run data; a second miss fails as review_stuck as today. The retry costs one short reviewer invocation vs a full re-dispatch (implementer + reviewer) on discard, so it pays for itself the first time it saves a run. DESIGN TENSION (why assignee=human, settle before building): the agent-gate rule (CLAUDE.md) fixes run-lifecycle bugs by moving judgment into an agent prompt/artifact, never by adding a branch to harness code. A bounded single re-prompt is defensible as a mechanical retry of a mechanical artifact write — it interprets no meaning, classifies no outcome — but it IS a new branch in the :reviewing state and needs explicit sign-off that it stays mechanical and does not reopen the 'machinery interprets outcomes' door the rebuild closed. Decide that framing first; if it holds, the implementation is small and contained to Harness.Run.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
     }
   ]
 }
