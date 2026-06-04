@@ -7689,6 +7689,59 @@
       "implemented": "Queue start already shipped in the agent-gate rebuild (1a02627): Harness.Oban.oban_opts/0 augments static queues:[] via enable_audit_queue/1, adding {:audit,1} at boot (limit 1, serialized, alongside the sibling :cron queue). The only gap vs acceptance was coverage — added an assertion in audit/worker_test.exs that {:audit,1} in oban_opts()[:queues], mirroring how the cron queue is verified. Insert→drain isn't runnable in test (oban_enabled:false, repo_enabled:false → no instance/repo), so the config-presence assert is the idiomatic boot proof; the worker's perform routing is already exhaustively drain-tested in the same file.",
       "delivered_by": "claude",
       "cross_repo": []
+    },
+    {
+      "id": "191",
+      "phase": 16,
+      "bundle": "agent-gate",
+      "status": "pending",
+      "title": "Audit-surfaced: Worktree reaper vs Run.Registry unregister ordering race",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 3
+      },
+      "eff": 1.17,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A run gen_statem brutally killed (Process.exit(pid, :kill)) has its worktree reaped within-node, not left for the boot Sweeper",
+        "cleanup_for_run/2 can distinguish refused-for-live from done, OR a documented one-shot retry covers the monitor/registry ordering window"
+      ],
+      "out_of_scope": [
+        "Any change to the boot Sweeper backstop (it already catches the leak on next boot)"
+      ],
+      "body": "Audit (claude reviewer) flagged a race in lib/harness/worktree/reaper.ex (cleanup_for_run/maybe_reap): when a run gen_statem crashes, the reaper's monitor :DOWN and the Harness.Run.Registry auto-unregister are unordered. If :DOWN is processed before the registry clears, cleanup_for_run/2's live_run? guard sees the run still registered and REFUSES the reap, so the worktree leaks until the boot Sweeper — i.e. degrades to the pre-task-185 behavior the reaper exists to fix. Trigger: a run killed with Process.exit(pid, :kill) such that the reaper drains its mailbox faster than the Registry monitor fires.\n\ndiscuss-design DIVERGENCE in audit: Claude flagged it (graceful degradation, not a crash; boot Sweeper backstops); Codex found nothing on the same commit. No convergent fix, so dropped from auto-apply and filed here for the user's call. Lowest-risk mitigation: one-shot retry after a short delay when cleanup_for_run returns refused-for-live; cleaner fix touches cleanup_for_run's contract (caller can't currently distinguish refused-live from done). Confirm whether the boot-Sweeper backstop is considered sufficient before adding retry machinery.\n\nFiled by audit-review against commit 3c0fdc7 on 2026-06-04; see .audit/3c0fdc7-crash-only-dispatch-same-be.md.\n",
+      "created_at": "2026-06-04",
+      "scored_at": "2026-06-04",
+      "cross_repo": []
+    },
+    {
+      "id": "192",
+      "phase": 16,
+      "bundle": "audit-agent",
+      "status": "pending",
+      "title": "Audit-surfaced: Task 190 — add real insert-and-drain test for the :audit Oban queue",
+      "scores": {
+        "d": 2,
+        "b": 3,
+        "u": 4
+      },
+      "eff": 1.75,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "An :integration test inserts a Harness.Audit.Worker job and observes it run/drain on a live Oban+repo, satisfying Task 190 acceptance criterion #2 (not the config-presence proxy)"
+      ],
+      "out_of_scope": [
+        "Re-opening Task 190's status (queue start itself shipped and works)"
+      ],
+      "body": "Audit (codex reviewer) flagged that Task 190 was marked done with acceptance criterion #2 met only by a config-presence proxy. The criterion explicitly required: 'An enqueued AuditWorker job is actually executed (not left available forever); proven by a test that inserts an audit job and observes it run/drain rather than a guard that only checks insertion.' The implemented note acknowledges insert→drain isn't runnable in the offline suite (oban_enabled:false, repo_enabled:false) and substitutes a {:audit,1} in oban_opts()[:queues] assertion plus the worker's existing perform-routing drain tests.\n\nThe substitution is defensible for the offline suite but does not satisfy the criterion as written. File a proper insert→drain proof as an :integration test (live Oban instance + repo), tagged so it stays out of the default offline run.\n\nFiled by audit-review against commit 35f2c04 on 2026-06-04; see .audit/35f2c04-reviewer-verdict-write-manda.md.\n",
+      "created_at": "2026-06-04",
+      "scored_at": "2026-06-04",
+      "cross_repo": []
     }
   ]
 }

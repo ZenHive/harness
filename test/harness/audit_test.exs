@@ -233,6 +233,34 @@ defmodule Harness.AuditTest do
 
       assert prompt =~ "(no reviewer rejections recorded for this project)"
     end
+
+    test "an explicit result_store: false disables the lookup even when a store is configured", ctx do
+      land_work!(ctx)
+      short = ctx.repo |> GitFixture.git!(["rev-parse", "--short", "HEAD"]) |> String.trim()
+
+      # A configured store HAS a rejection for this project; the request explicitly
+      # disables persistence (`false`), which must win over the configured fallback.
+      configured = isolated_store()
+      seed_rejection(configured, ctx.project.name, "rev-9", "t.42", "configured-store rejection that must not leak")
+      prev = Application.get_env(:harness, :result_store)
+      Application.put_env(:harness, :result_store, configured)
+      on_exit(fn -> Application.put_env(:harness, :result_store, prev) end)
+
+      assert {:audited, _sha} =
+               Audit.run(%{
+                 project: ctx.project,
+                 base_sha: ctx.base_sha,
+                 auditor: FakeAdapter,
+                 auditor_opts: [command: {:audit_capture_prompt, short}],
+                 result_store: false
+               })
+
+      GitFixture.git!(ctx.repo, ["fetch", "-q", "origin"])
+      prompt = GitFixture.git!(ctx.repo, ["show", "origin/main:.audit/#{short}.md"])
+
+      refute prompt =~ "t.42"
+      assert prompt =~ "(no reviewer rejections recorded for this project)"
+    end
   end
 
   describe "run/1 — origin synchronization" do

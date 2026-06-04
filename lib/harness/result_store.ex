@@ -19,7 +19,8 @@ defmodule Harness.ResultStore do
 
   Set `config :harness, :result_store, false` (or `nil`) to disable
   persistence entirely; both values short-circuit `record_run`, `save_batch`,
-  `load_batch`, and `list_run_records` without dispatching to a backend.
+  `load_batch`, `list_run_records`, and `delete_run` without dispatching to a
+  backend.
   """
 
   use Descripex, namespace: "/result_store"

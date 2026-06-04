@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (8 of 9 done · 0 in progress)
+**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (8 of 11 done · 0 in progress)
 
 **Last shipped:** Task 181 — Reviewer can finish work but skip writing .harness/review.json and idle-timeout -> run lost to :review_stuck, Task 190 — Start the global :audit Oban queue so the post-merge audit AI actually runs on 2026-06-04
 
-**Up next:** Task 187 — Flip Antigravity worktree_isolation to true — agy 1.0.5 honors port cwd (Task 32 finding is stale) [D:2/B:5/U:5 → Eff:2.5] 🎯
+**Up next:** Task 192 — Audit-surfaced: Task 190 — add real insert-and-drain test for the :audit Oban queue [D:2/B:3/U:4 → Eff:1.75] 🚀
 <!-- FOCUS:END -->
 
 ---

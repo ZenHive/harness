@@ -41,6 +41,7 @@ defmodule Harness.Audit do
 
   @audit_report_path ".harness/audit.json"
   @rejection_history_limit 20
+  @rejection_summary_limit 500
 
   @typedoc """
   The audit request a worker builds from Oban args.
@@ -214,7 +215,7 @@ defmodule Harness.Audit do
   # disabled or empty store yields the "(none ...)" placeholder, never a crash.
   @spec rejection_history(Project.t(), request()) :: String.t()
   defp rejection_history(project, request) do
-    store = Map.get(request, :result_store) || ResultStore.configured()
+    store = Map.get(request, :result_store, ResultStore.configured())
 
     case ResultStore.list_run_records(store,
            verdict: :reject,
@@ -233,7 +234,7 @@ defmodule Harness.Audit do
 
   @spec rejection_summary(String.t() | nil) :: String.t()
   defp rejection_summary(report) when is_binary(report) do
-    report |> String.slice(0, 500) |> String.replace(~r/\s+/, " ") |> String.trim()
+    report |> String.slice(0, @rejection_summary_limit) |> String.replace(~r/\s+/, " ") |> String.trim()
   end
 
   defp rejection_summary(_report), do: "(no report)"

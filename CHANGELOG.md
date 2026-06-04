@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Reviewer KPI ratings feed AgentKPI/CapabilityScore + reviewer
+  rejection-rate tracking (Task 177).** `AgentKPI.aggregate_reviewer_rejections/1`
+  rolls run records up by `reviewer_adapter` into a per-reviewer rejection
+  ledger, and `AgentKPI.rating_means/1` means the reviewer's numeric rating
+  keys. `CapabilityScore` gains a `mean_ratings` field and a ratings-tiebreaker
+  term (weight 0.5, sub-success_rate): since approval is near-constant by
+  design, reviewer-judged quality is what moves `dispatch-recommend` routing
+  within a same-success cohort. `Harness.Run.prioritize_reviewers/2`
+  deprioritizes (never blacklists) cross-family reviewers with a high historical
+  rejection rate. `Harness.Audit` now feeds the auditor the project's recent
+  reviewer rejections so it can flag FALSE rejections — report-only, never a
+  revert.
 - **Lander merge-conflict resolver agent (Task 189).** A rebase conflict during
   an auto-land no longer dead-ends straight into a fresh re-dispatch (which
   discards a reviewer-approved diff and reruns the implementer blind). The
