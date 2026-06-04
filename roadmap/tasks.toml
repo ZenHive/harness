@@ -5382,7 +5382,7 @@ id = "177"
 phase = 16
 bundle = "agent-gate"
 milestone = "v0_12"
-status = "in_progress"
+status = "done"
 title = "Reviewer KPI ratings feed AgentKPI/CapabilityScore rollups + reviewer rejection-rate tracking"
 scores = { d = 3, b = 6, u = 5 }
 depends_on = ["175"]
@@ -5393,9 +5393,14 @@ assignee = "claude"
 body = """
 The rebuild already parses + persists the reviewer's ratings (review_ratings on run_records); this task makes them load-bearing. Since rejection is near-never by design, approve/reject rate is NOT the implementer quality signal - the ratings and reviewer_diff_size are. Reviewers get rated too: false-rejection flagging closes the loop (defense #3 in the rebuild plan). Depends on the rebuild task.
 """
+implemented = "Reviewer KPI ratings feed AgentKPI/CapabilityScore rollups + reviewer rejection-rate tracking; prioritize_reviewers/2 sinks high-rejection reviewers. Cherry-picked onto development, run_test.exs conflict (177 prioritize tests vs 182 rename) resolved keeping both."
+delivered_by = "claude"
+verified = true
 created_at = "2026-06-03"
 started_at = "2026-06-03"
 scored_at = "2026-06-03"
+done_at = "2026-06-03"
+shipped_in = "048053c"
 
 [[task]]
 id = "178"
@@ -5456,7 +5461,7 @@ id = "181"
 phase = 16
 bundle = "agent-gate"
 milestone = "v0_12"
-status = "pending"
+status = "done"
 title = "Reviewer can finish work but skip writing .harness/review.json and idle-timeout -> run lost to :review_stuck"
 scores = { d = 3, b = 6, u = 6 }
 markers = ["bug"]
@@ -5466,8 +5471,11 @@ touches = ["lib/harness/run.ex", "priv/playbooks", "lib/harness/agent_adapter"]
 assignee = "claude"
 model = "claude-sonnet-4-6"
 body = "Discovered 2026-06-03 (rmap task 42, run-1780488946905-b4d8528e). The cross-family reviewer (Pi) reviewed AND committed 274 lines of fixes (review_iterations=1, reviewer_diff_size=274), but never wrote the .harness/review.json verdict artifact and then went idle until the watchdog fired (agent_outcome_kind={:timed_out,:idle}, ~15.8 min wall). Harness correctly settled :failed {:review_stuck, 'Reviewer wrote no .harness/review.json verdict artifact.'} - the gate did its job - but the run's work was discarded and (compounded by the retry-storm bug) the task re-dispatched. The verdict-artifact write is the single load-bearing mechanical output of the reviewer; the reviewer prompt/playbook must make it the non-negotiable FINAL step (write review.json before any other closing action), and the idle watchdog window for the reviewing phase may be too tight for a reviewer running a project's full check_command (rmap = cargo fmt+clippy+test). Per agent-gate philosophy the fix is in the reviewer PROMPT (make the artifact write unconditional + last) plus watchdog tuning - NOT a code classifier inferring a verdict from commits. This task also motivated excluding Pi as a reviewer for now (done separately in lib/harness/run.ex)."
+implemented = "Two-part agent-gate fix (no verdict inference — forbidden). (1) Reviewer prompt (run.ex reviewer_prompt/1): the .harness/review.json write is reframed as the unconditional FINAL action — explicit warning that exiting/going idle without it discards the entire run regardless of fixes made; step 4 is now 'LAST, after every fix and check is done'. (2) Reviewing-phase idle floor: new reviewer_idle_timeout/1 floors the idle window at 10 min (@reviewer_idle_floor 600_000) so a silent cold check_command run (cargo test / mix precommit.full) can't idle-kill the reviewer before it writes the verdict; nil→floor, lower override→raised, higher override + :infinity preserved; threaded via reviewer_driver_opts/1. Tests: prompt asserts the FINAL/mandatory/idle language via review_capture_prompt; 4 idle-floor unit tests; :review_stuck-stays-loud (missing+malformed) and reviewer-makes-fixes-then-writes-verdict were already covered. 66/66 run_test green."
+delivered_by = "claude"
 created_at = "2026-06-03"
 scored_at = "2026-06-03"
+done_at = "2026-06-04"
 
 [[task]]
 id = "182"
@@ -5656,3 +5664,56 @@ Same agent-gate doctrine as 186: MERGE is the lander's mechanical, policy-gated 
 """
 created_at = "2026-06-04"
 scored_at = "2026-06-04"
+
+[[task]]
+id = "189"
+phase = 11
+bundle = "autolanding"
+status = "pending"
+title = "Lander conflict-resolver agent: on rebase conflict, spawn a cross-family merge AI to resolve in-place instead of re-dispatching"
+scores = { d = 3, b = 4, u = 3 }
+depends_on = [101]
+acceptance_criteria = ["On a rebase conflict, the lander spawns a cross-family merge-resolver agent in the existing detached landing worktree (conflict markers left in place, MERGING state) instead of routing {:conflict,_} to re-dispatch.", "The resolver is handed the conflicted file list, both sides (target = ours, the run's commit = theirs), and BOTH contributing tasks' intents (the run's task body + the body of the commit(s) that landed on target since the run branched); it edits the worktree, then the lander runs `git add` + `git rebase --continue` and proceeds to the existing ff-push (or :auto_local) path.", "Resolver failure (markers still present, or the agent declines) falls back to the existing block / re-dispatch resilience path — a still-conflicted tree is NEVER landed.", "Resolver does NOT re-run the project checks or re-grade the diff (no re-verification) — it reconciles conflict markers only; the reviewer already approved both sides.", "Lander.Resilience.plan/2 (or its caller) gains a {:conflict,_} -> {:resolve,...} branch with re-dispatch as the fallback; covered by resilience_test.exs.", "Resolver family != implementer family (same cross-family discipline as the reviewer); selection reuses reviewer-eligibility/registry."]
+out_of_scope = [":auto_local (merge into local development without pushing to origin) — separate landing-policy decision/task.", "Non-rebase merge strategies — the lander stays rebase + ff only.", "Any re-verification, re-review, or check re-run of the resolved tree."]
+files_to_modify = ["lib/harness/lander/resilience.ex", "lib/harness/lander.ex"]
+touches = ["lib/harness/lander.ex", "lib/harness/lander/resilience.ex", "lib/harness/lander/worker.ex", "test/harness/lander/resilience_test.exs"]
+assignee = "human"
+module = "Harness.Lander.Resilience"
+body = """
+The MERGE stage is mechanical today: the lander rebases harness/<run-id> onto the target and ff-pushes. On a rebase CONFLICT, Lander.Resilience.plan/2 routes {:conflict,_} to a fresh re-dispatch — which is wrong twice: it discards a reviewer-APPROVED diff and reruns the implementer from scratch, and it treats conflict reconciliation as something a re-run can fix when it is actually a JUDGMENT call (keep both sides, reconcile overlapping intents) that an AI does better than code or a blind redo.
+
+This applies the agent-gate rule to the MERGE node: a clean ff-merge stays pure mechanics (no agent); a rebase conflict spawns a merge-resolver agent. Demonstrated 2026-06-04 landing task 177 — its run branch (parented before 182 landed) conflicted with 182 in test/harness/run_test.exs: 177 added prioritize_reviewers/2 tests, 182 renamed an adjacent test; the resolution was 'keep both', exactly the judgment a re-dispatch cannot make and an agent can. That hand-merge is the motivating case.
+
+Design: when the lander's rebase exits conflicted, instead of {:redispatch,...}, leave the conflict in the already-open detached landing worktree and spawn a cross-family resolver agent there. Give it the conflicted files, both sides, and both tasks' intents (derivable: the run's task body, plus the bodies of the commits that landed on target since the run branched). The agent edits the worktree to resolve; the lander does `git add` + `git rebase --continue`, then the existing ff-push (or :auto_local once that exists). Resolver failure falls back to the current block/re-dispatch path — the resolver is an attempt, never a new gate, and never lands a still-conflicted tree.
+
+This is NOT a re-verification step: the resolver only reconciles markers, never re-grades or re-runs checks (the reviewer already approved both sides). Gated behind landing_policy: :auto (and orthogonal to the local-only push decision, tracked separately as :auto_local).
+"""
+created_at = "2026-06-04"
+scored_at = "2026-06-04"
+
+[[task]]
+id = "190"
+phase = 16
+bundle = "audit-agent"
+status = "done"
+title = "Start the global :audit Oban queue so the post-merge audit AI actually runs"
+scores = { d = 1, b = 3, u = 3 }
+depends_on = [176]
+acceptance_criteria = ["The `:audit` queue (limit 1, the AuditWorker's queue) is started when Oban runs — not just `project_<name>`/`landing_<name>`, which are the only queues ensure_project_queue/1 currently starts.", "An enqueued AuditWorker job is actually executed (not left `available` forever); proven by a test that inserts an audit job and observes it run/drain rather than a guard that only checks insertion.", "Start path mirrors the existing dynamic local_only pattern (or static config) — pick one and justify in the moduledoc; do not break the deliberately-empty static `queues: []` design without saying why.", "No-op safe: starting twice (boot + per-project ensure) does not crash; idempotent like ensure_project_queue/1."]
+out_of_scope = ["Turning on auto-land itself (landing_policy flip is an operator action).", "Any change to what the audit agent does — this only makes the queue process the jobs the lander already enqueues."]
+files_to_modify = ["lib/harness/oban.ex", "lib/harness/application.ex"]
+touches = ["lib/harness/oban.ex", "lib/harness/application.ex", "config/config.exs", "test/harness/oban_test.exs"]
+assignee = "human"
+module = "Harness.Oban"
+body = """
+The post-merge audit AI is wired but dead: `Harness.Audit.Worker` is `use Oban.Worker, queue: :audit, max_attempts: 2` (a single GLOBAL serialized queue, limit 1), and `Harness.Lander.enqueue_audit/3` inserts a job on every successful land — but NOTHING ever starts the `:audit` queue. Static config is `queues: []` (config.exs), and the only dynamic starter, `Harness.Oban.ensure_project_queue/1`, starts just `project_<name>` + `landing_<name>` per project. So an inserted audit job sits `available` forever and the audit stage never fires.
+
+This is the second of the two reasons the audit AI is currently inactive (the first being that all projects are `landing_policy: :manual`, so the lander — the only enqueue site — never runs). Flipping a project to `:auto` exposes this gap immediately: lands would push, then silently skip audit.
+
+Fix: start the global `:audit` queue (limit 1) when Oban is up. Because it is global (not per-project), the natural home is a one-time boot start rather than ensure_project_queue/1 (which is per-project and would redundantly re-start it). Keep it idempotent and local_only-consistent with the existing project-queue startup. Mechanical substrate only — no judgment, no agent change.
+"""
+implemented = "Queue start already shipped in the agent-gate rebuild (1a02627): Harness.Oban.oban_opts/0 augments static queues:[] via enable_audit_queue/1, adding {:audit,1} at boot (limit 1, serialized, alongside the sibling :cron queue). The only gap vs acceptance was coverage — added an assertion in audit/worker_test.exs that {:audit,1} in oban_opts()[:queues], mirroring how the cron queue is verified. Insert→drain isn't runnable in test (oban_enabled:false, repo_enabled:false → no instance/repo), so the config-presence assert is the idiomatic boot proof; the worker's perform routing is already exhaustively drain-tested in the same file."
+delivered_by = "claude"
+created_at = "2026-06-04"
+scored_at = "2026-06-04"
+done_at = "2026-06-04"

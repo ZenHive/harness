@@ -124,6 +124,16 @@ defmodule Harness.Run do
   # Recent run records sampled to score reviewer rejection rates for cross-family
   # reviewer selection — bounds the per-run store read (newest-first).
   @reviewer_rejection_sample 500
+  # Idle-window floor for the reviewing phase. The reviewer runs the project's
+  # full check_command (`cargo test`, `mix precommit.full`) itself — a stretch
+  # that streams nothing for minutes while the check compiles/runs, so the
+  # implementer-grade 5-min idle default can fire mid-check and lose the run to
+  # :review_stuck before the verdict is written (Task 181, rmap run-…-b4d8528e:
+  # reviewer fixed 274 lines, then idle-killed at ~15.8 min before writing
+  # review.json). Floor the reviewing idle window at 10 min so a single silent
+  # check can't trip it; an explicit higher idle_timeout still wins. Well under
+  # the 90-min lifetime cap, which remains the real backstop.
+  @reviewer_idle_floor 600_000
 
   @typedoc "A lifecycle state."
   @type state ::
@@ -1567,9 +1577,21 @@ defmodule Harness.Run do
   defp reviewer_driver_opts(data) do
     []
     |> put_opt(:total_timeout, data.total_timeout)
-    |> put_opt(:idle_timeout, data.idle_timeout)
+    |> put_opt(:idle_timeout, reviewer_idle_timeout(data.idle_timeout))
     |> put_opt(:progress_timeout, data.progress_timeout)
   end
+
+  # Floors the reviewing-phase idle window at @reviewer_idle_floor so a silent
+  # check run can't idle-kill the reviewer before it writes the verdict (Task
+  # 181). `nil` (no caller override → Driver applies its 5-min default) becomes
+  # the floor; an explicit idle_timeout below the floor is raised to it; an
+  # explicit higher value wins. `@doc false` public so the floor is unit-testable
+  # without a live reviewer run.
+  @doc false
+  @spec reviewer_idle_timeout(timeout() | nil) :: timeout()
+  def reviewer_idle_timeout(nil), do: @reviewer_idle_floor
+  def reviewer_idle_timeout(:infinity), do: :infinity
+  def reviewer_idle_timeout(idle) when is_integer(idle), do: max(idle, @reviewer_idle_floor)
 
   # The reviewer's instructions — THE gate's prompt. The judgment (is the work
   # good, do the checks pass in a way that matters, what does an empty diff
@@ -1587,15 +1609,22 @@ defmodule Harness.Run do
     2. Run the project's checks yourself (hint below) and judge the results.
     3. Fix everything that needs fixing — your own edits, your own commits. Wrong approach, bugs,
        missing tests, failing checks, style: fix it all, then approve.
-    4. Write your verdict to `#{Review.artifact_path()}` (format below), then exit. This file is the ONLY
-       thing harness reads — prose outside it has no effect on the outcome.
+    4. LAST, after every fix and check is done: write your verdict to `#{Review.artifact_path()}`
+       (format below). This is your FINAL action — write the file, then stop.
+
+    ⚠️ Writing `#{Review.artifact_path()}` is mandatory and unconditional — it is the ONE thing
+    harness reads. If you finish fixing and reviewing but exit WITHOUT writing it, your entire run is
+    discarded as a failure and the work is thrown away, no matter how much you fixed. Do not end your
+    turn, declare yourself done, or go idle until the file is written. Even when you reject, even when
+    you ran out of other things to do — the verdict file is always the last thing you write before you
+    stop. Prose in your transcript has no effect; only this file does.
 
     Fixing is always cheaper than rejecting — a rejection costs two more full agent runs.
     Anything you can fix: fix it and approve. Reject ONLY if there is literally nothing to salvage
     (an empty or unusable worktree, or work so destructive or off-task that redoing it from scratch
     is faster than fixing it).
 
-    Verdict artifact — REQUIRED, write it even when you reject:
+    Verdict artifact — REQUIRED final action, write it even when you reject:
 
     #{Review.artifact_path()}
     {

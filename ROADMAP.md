@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (5 of 8 done · 1 in progress)
+**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (8 of 9 done · 0 in progress)
 
-**Last shipped:** Task 175 — Agent-gate workflow rebuild: reviewer AI is THE gate, no mechanical verification anywhere, Task 176 — Post-merge audit agent: per-land enqueue, third-family auditor, audit(...) commits ff-pushed, Task 180 — Settled-:failed run teardown kills the Oban worker before {:cancel} returns -> wrongful retry storm (up to max_attempts=20), Task 182 — Settings page: per-agent reviewer-eligibility toggle (distinct from implementer enable) + select_reviewer consults it, Task 185 — Same-BEAM :DOWN reaper reclaims the worktree+branch a live-run cleanup-refusal leaks when that run later crashes on 2026-06-03
+**Last shipped:** Task 181 — Reviewer can finish work but skip writing .harness/review.json and idle-timeout -> run lost to :review_stuck, Task 190 — Start the global :audit Oban queue so the post-merge audit AI actually runs on 2026-06-04
 
-**Up next:** Task 181 — Reviewer can finish work but skip writing .harness/review.json and idle-timeout -> run lost to :review_stuck [D:3/B:6/U:6 → Eff:2.0] 🎯
+**Up next:** Task 187 — Flip Antigravity worktree_isolation to true — agy 1.0.5 honors port cwd (Task 32 finding is stale) [D:2/B:5/U:5 → Eff:2.5] 🎯
 <!-- FOCUS:END -->
 
 ---

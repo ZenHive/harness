@@ -139,6 +139,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Reviewer verdict-artifact write made the unconditional FINAL step + reviewing-phase
+  idle floor (Task 181, hand-built).** A cross-family reviewer could finish reviewing and
+  committing fixes yet exit/idle without writing `.harness/review.json`, losing the run to
+  `:review_stuck` despite real work (observed: Pi committed 274 lines, then idle-timed-out
+  at ~15.8 min). Per agent-gate doctrine the fix is in the reviewer PROMPT, not a code
+  classifier inferring a verdict: `reviewer_prompt/1` now frames the artifact write as the
+  mandatory, unconditional last action (exiting without it discards the entire run). Plus
+  `reviewer_idle_timeout/1` floors the reviewing-phase idle window at 10 min
+  (`@reviewer_idle_floor`) so a silent cold `check_command` run (`cargo test` /
+  `mix precommit.full`) can't idle-kill the reviewer before the verdict is written —
+  `nil`→floor, lower override→raised, higher override and `:infinity` preserved.
 - **Crash-only dispatch: a settled `:failed` run can never trigger a retry storm
   (Task 180, hand-built).** `Harness.Run.Worker` *monitors* — never *links* — the
   run gen_statem, which drives its agents in `async_nolink` tasks, so a settling

@@ -24,6 +24,17 @@ defmodule Harness.Audit.WorkerTest do
     project
   end
 
+  describe "the :audit queue is started at boot" do
+    test "oban_opts/0 includes {:audit, 1} so Oban starts the queue this worker declares" do
+      # Worker is `use Oban.Worker, queue: :audit`; the lander enqueues onto it
+      # after every land. The queue only drains if Oban actually starts it —
+      # proven here the same way the sibling global :cron queue is (see
+      # cron/roadmap_poller_test.exs): its {name, limit} pair is in the boot
+      # queues list. limit 1 keeps audit agent runs serialized across projects.
+      assert {:audit, 1} in Harness.Oban.oban_opts()[:queues]
+    end
+  end
+
   describe "unique_opts/0" do
     test "dedups per project while waiting only — executing audits never block new jobs" do
       opts = Worker.unique_opts()

@@ -334,6 +334,26 @@ defmodule Harness.RunTest do
       assert prompt =~ Review.artifact_path()
     end
 
+    test "makes writing the verdict artifact the mandatory, unconditional FINAL action (Task 181)" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+
+      opts =
+        base
+        |> default_opts()
+        |> Keyword.put(:reviewer_adapter_opts, command: {:review_capture_prompt, "approve"})
+
+      {:ok, run_id, pid} = Run.Supervisor.start_run(item(), ProjectFixture.from_repo(repo), FakeAdapter, opts)
+      assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
+
+      prompt = GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_prompt.txt"])
+      # The root-cause fix for the reviewer-skips-verdict stall: the prompt must
+      # frame the artifact write as the unconditional last step before exit.
+      assert prompt =~ "FINAL action"
+      assert prompt =~ "mandatory and unconditional"
+      assert prompt =~ "go idle until the file is written"
+    end
+
     test "an empty implementer diff is framed as the reviewer's judgment call" do
       result =
         run(
@@ -428,6 +448,26 @@ defmodule Harness.RunTest do
 
       assert %Result{state: :failed, reason: {:review_stuck, report}, reviewer_adapter: nil} = result
       assert report =~ "No cross-family reviewer adapter available"
+    end
+  end
+
+  describe "reviewer idle-timeout floor (Task 181)" do
+    test "nil idle (Driver default) is raised to the 10-min reviewing floor" do
+      # No caller override would otherwise leave the reviewer on the Driver's
+      # 5-min idle default — too tight for a silent cold check run.
+      assert Run.reviewer_idle_timeout(nil) == 600_000
+    end
+
+    test "an idle override below the floor is raised to the floor" do
+      assert Run.reviewer_idle_timeout(150) == 600_000
+    end
+
+    test "an idle override above the floor wins" do
+      assert Run.reviewer_idle_timeout(900_000) == 900_000
+    end
+
+    test "an explicit :infinity idle is preserved" do
+      assert Run.reviewer_idle_timeout(:infinity) == :infinity
     end
   end
 
