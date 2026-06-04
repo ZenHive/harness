@@ -6004,3 +6004,51 @@ started_at = "2026-06-04"
 scored_at = "2026-06-04"
 done_at = "2026-06-04"
 shipped_in = "d23e6f2"
+
+[[task]]
+id = "200"
+phase = 16
+bundle = "resilience"
+status = "pending"
+title = "Bound harness node memory: per-run raw-output cap + BEAM ceiling so a runaway run can't OOM the host"
+scores = { d = 3, b = 4, u = 4 }
+acceptance_criteria = ["A single run's accumulated raw agent output is bounded by a configurable byte cap (sensible default, e.g. a few MB); past the cap, output is truncated/spilled rather than held whole in gen_statem state, with a marker that truncation occurred.", "Aggregate concurrent runs cannot drive the node into swap-thrash: either an effective concurrency ceiling is documented/enforced (sum of project_<name> Oban queue limits) OR a node-level guard holds new dispatch under high :erlang.memory(:total) pressure.", "A regression test proves output past the cap does not grow run state unbounded (feed N×cap bytes, assert state size stays O(cap)).", "No change to the reviewer-gate verdict contract — reviewer still reads .harness/review.json; this is mechanical substrate only."]
+out_of_scope = ["Parsing/normalizing agent output (raw passthrough stays).", "Any judgment moved into harness code — purely mechanical memory bounding (counters/limits/timers), consistent with the agent-gate architecture.", "Reworking the run lifecycle or reviewer flow."]
+files_to_modify = ["lib/harness/run.ex", "config/runtime.exs"]
+touches = ["lib/harness/run.ex", "lib/harness/agent_adapter.ex", "config/runtime.exs", "lib/harness/run/supervisor.ex"]
+domains = ["otp"]
+assignee = "claude"
+body = """
+On 2026-06-04 the laptop crashed twice. Host evidence:
+- 13:10:16 kernel panic: "watchdog timeout: no checkins from watchdogd in 90 seconds" — wedged-system symptom (watchdogd starved of scheduling).
+- 13:41:15 JetsamEvent (OOM): ~93 MB free (5,968 pages), 167M compressions, compressor at 1.7 GB; largestProcess = beam.smp. Jetsam killed processes; second reboot at 13:48.
+
+Root cause: the harness OTP node (`iex -S mix`) was the largest memory consumer during exhaustion. Raw-passthrough holds full agent transcripts in the per-run gen_statem state; a long-running or high-fanout dispatch accumulates raw output with no ceiling, and N concurrent worktrees + buffers can exhaust host RAM — which both starved watchdogd (panic) and tripped jetsam (OOM).
+
+Task: add mechanical memory bounds so a runaway/high-fanout run cannot OOM the host.
+1. Cap per-run accumulated raw output in Harness.Run state (configurable byte limit; truncate or spill-to-disk past the cap, record that truncation happened). The reviewer/audit AI reads .harness artifacts and the worktree, not the in-memory buffer, so truncating the in-memory copy is safe.
+2. Bound aggregate pressure: document + wire the effective concurrency ceiling (sum of per-project Oban queue limits) and/or add a node memory guard that holds new dispatch when :erlang.memory(:total) crosses a threshold.
+
+Mechanical substrate only — no judgment in code, no output parsing. Fits phase 16 / resilience.
+"""
+created_at = "2026-06-04"
+scored_at = "2026-06-04"
+
+[[task]]
+id = "201"
+phase = 16
+bundle = "resilience"
+status = "pending"
+title = "Reorder terminate_reviewer/terminate_agent before cancel_task in the general cancel/lifetime/fail handlers"
+scores = { d = 2, b = 3, u = 3 }
+markers = ["bug"]
+acceptance_criteria = ["In Harness.Run's general cancel, lifetime-timeout, and fail/2 handlers, terminate_reviewer(data) and terminate_agent(data) run BEFORE cancel_task(data.task) so the adapter SIGKILLs the captured os_pid before the Port owner is torn down", "A regression test asserts the reviewer/agent adapter terminate/1 is invoked on these paths when a run handle was captured", "mix precommit.full green"]
+out_of_scope = ["The reviewing-phase fail_review_stuck path (already reordered in the Task 199 audit, d23e6f2)"]
+files_to_modify = ["lib/harness/run.ex"]
+domains = ["otp"]
+assignee = "claude"
+body = """
+Discovered in the Task 199 reviewing-watchdog audit (.audit/d23e6f2-task-199-reviewing-watchdog.md, finding #3 remainder). fail_review_stuck/2 was reordered to terminate the reviewer before cancel_task, but the general cancel/lifetime/fail handlers (run.ex ~1041/1072/1102) still run cancel_task(data.task) before terminate_reviewer/terminate_agent. Closing the task that owns the Port first can reap/race the stored os_pid. Benign in practice (kill dead/own pid), but the consistent ordering is terminate-then-cancel. Same pattern affects the implementer terminate_agent path.
+"""
+created_at = "2026-06-04"
+scored_at = "2026-06-04"

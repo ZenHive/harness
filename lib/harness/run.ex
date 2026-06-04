@@ -775,11 +775,13 @@ defmodule Harness.Run do
 
   def reviewing(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
+    terminate_reviewer(data)
     report = "Reviewer failed to run: #{inspect(reason)}"
     {:next_state, :failed, clear_reviewer_run(%{data | task: nil, reason: {:review_stuck, report}})}
   end
 
   def reviewing(:info, {:DOWN, ref, :process, _pid, reason}, %{task: %Task{ref: ref}} = data) when reason != :normal do
+    terminate_reviewer(data)
     report = "Reviewer crashed: #{inspect(reason)}"
     {:next_state, :failed, clear_reviewer_run(%{data | task: nil, reason: {:review_stuck, report}})}
   end
@@ -1148,16 +1150,23 @@ defmodule Harness.Run do
 
   @spec fail_review_stuck(data(), String.t()) :: handler_result()
   defp fail_review_stuck(data, report) do
-    cancel_task(data.task)
+    # Terminate the reviewer (SIGKILL via its captured os_pid) BEFORE tearing
+    # down the task that owns its Port — closing the port first could reap/race
+    # the pid (Task 199 audit).
     terminate_reviewer(data)
+    cancel_task(data.task)
     {:next_state, :failed, clear_reviewer_run(%{data | task: nil, reason: {:review_stuck, report}})}
   end
 
   @spec clear_reviewer_run(data()) :: data()
   defp clear_reviewer_run(data), do: %{data | reviewer_run: nil}
 
+  # Re-arm the idle watchdog on reviewer progress — but ONLY once the reviewer
+  # handle is captured (reviewer_run set). Before the handle arrives the spawn
+  # watchdog owns the single state_timeout; a stray/early transcript chunk must
+  # not replace it with the longer idle window (Task 199 audit).
   @spec rearm_reviewing_idle(state(), data(), handler_result()) :: handler_result()
-  defp rearm_reviewing_idle(:reviewing, data, {:keep_state, next_data}) do
+  defp rearm_reviewing_idle(:reviewing, %{reviewer_run: %AgentRun{}} = data, {:keep_state, next_data}) do
     {:keep_state, next_data, [{:state_timeout, reviewing_idle_timeout(data), :reviewer_idle_timeout}]}
   end
 
