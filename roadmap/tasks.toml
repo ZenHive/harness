@@ -5650,7 +5650,7 @@ created_at = "2026-06-03"
 started_at = "2026-06-04"
 scored_at = "2026-06-03"
 done_at = "2026-06-04"
-shipped_in = "6a88faa1ec292f1728a95f28dda1d5e315613d9d"
+shipped_in = "6ce069c50555141659c854b9c34f96cb71927337"
 
 [[task]]
 id = "188"

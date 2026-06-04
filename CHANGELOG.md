@@ -196,6 +196,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Post-merge auditor requires reviewer-eligibility (extends Task 182).**
+  `Harness.Audit.select_auditor/1` now consults `AgentSettings.reviewer_eligible?/1`
+  in addition to registry availability — the auditor commits and ff-pushes to the shared
+  target branch unsupervised, so it demands the same trust flag as the reviewer and lander
+  resolver. Promoted to `@doc false` public function for unit testing.
+- **Oban job retention extended to 24h.** `Oban.Plugins.Pruner` `max_age` bumped from the
+  60s default to 24 hours so settled land/audit jobs remain inspectable in Oban Web.
+- **Antigravity worktree isolation restored (Task 187).** `agy` 1.0.5 honors the Port `cwd`
+  for linked git worktrees; `Harness.AgentAdapter.Antigravity` now declares
+  `worktree_isolation: true`, `worktree_isolation_limitation/0` is removed, and pre-spawn
+  rejection is lifted.
 - **Run lifecycle re-keyed to the reviewer gate (agent-gate rebuild).** States:
   `dispatched → running → committing → reviewing → done|failed` (`:verifying`
   deleted). Reasons: `:approved` / `{:review_rejected, report}` /

@@ -193,8 +193,8 @@ mcp__harness__dispatch__task(
 ```
 
 `scrub_anthropic_key: true` (the default) handles the OAuth-vs-API gotcha natively — no
-explicit `env:` map needed. Non-delegatable executors (grok/antigravity/pi) are handled
-internally via the ingest-with-`:claude`-render-agent two-step; the caller never sees it.
+explicit `env:` map needed. All six shipped adapters (`claude`/`codex`/`cursor`/`grok`/
+`antigravity`/`pi`) ingest and dispatch directly on their own adapter module.
 The run starts with `subscriber: nil`; observe it afterward by `run_id`.
 
 > **Task-status writeback is automatic on this path (Task 131).** `Harness.Run.Worker`

@@ -50,9 +50,9 @@ headless agent in an isolated worktree, then gated by a cross-family reviewer AI
   `%Project{}` structs they take.
 - **Secret scrubbing is automatic.** `scrub_anthropic_key` defaults to `true`, so Claude
   dispatches use subscription OAuth, not the metered API. You don't pass an env map.
-- **Non-delegatable executors** (`grok` / `antigravity` / `pi`) work through `dispatch__task`
-  directly — the ingest-with-a-delegatable-render-agent dance is handled internally. (Note:
-  `antigravity` is not worktree-isolated and may be rejected by the dispatch guard — expected.)
+- **All six shipped adapters** (`claude` / `codex` / `cursor` / `grok` / `antigravity` / `pi`)
+  dispatch through `dispatch__task` on their own adapter module — no two-step render dance.
+  (`droid` renders in rmap but has no harness adapter and is rejected at ingest.)
 - `result_store` records carry the reviewer's **verdict** (`approve`/`reject`), **report**,
   **ratings**, and the reviewer's fix-diff size + transcript. The report is the reviewer's prose —
   there is no per-check stdout to dig through; the reviewer already ran the checks and judged them.
