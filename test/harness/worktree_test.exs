@@ -432,7 +432,7 @@ defmodule Harness.WorktreeTest do
       assert_receive :registered
       on_exit(fn -> Process.exit(live, :kill) end)
 
-      assert :ok = Worktree.cleanup_for_run(repo, wt.id)
+      assert {:error, :live_run} = Worktree.cleanup_for_run(repo, wt.id)
 
       assert File.dir?(wt.path)
       assert GitFixture.git!(repo, ["branch", "--list", wt.branch]) =~ wt.branch

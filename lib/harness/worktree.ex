@@ -473,9 +473,10 @@ defmodule Harness.Worktree do
   run owns its checkout, and no retry/rescue path may reap it.
 
   Idempotent and best-effort: every step tolerates "already gone", and a git
-  failure on one step never prevents the others. Always returns `:ok`.
+  failure on one step never prevents the others. Returns `{:error, :live_run}`
+  only when the liveness guard refuses to touch a registered run.
   """
-  @spec cleanup_for_run(String.t(), String.t()) :: :ok
+  @spec cleanup_for_run(String.t(), String.t()) :: :ok | {:error, :live_run}
   def cleanup_for_run(repo, run_id) when is_binary(repo) and is_binary(run_id) do
     if live_run?(run_id) do
       Logger.warning(
@@ -483,7 +484,7 @@ defmodule Harness.Worktree do
           "gen_statem still registered; leaving its worktree and branch intact."
       )
 
-      :ok
+      {:error, :live_run}
     else
       do_cleanup_for_run(repo, run_id)
     end

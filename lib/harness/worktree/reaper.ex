@@ -28,6 +28,7 @@ defmodule Harness.Worktree.Reaper do
 
   @typep tracked :: {run_id :: String.t(), worktree_path :: String.t(), repo :: String.t()}
   @typep state :: %{by_ref: %{reference() => tracked()}, by_run: %{String.t() => reference()}}
+  @retry_after_ms 50
 
   @doc false
   @spec start_link(term()) :: GenServer.on_start()
@@ -79,7 +80,7 @@ defmodule Harness.Worktree.Reaper do
   def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
     case Map.pop(state.by_ref, ref) do
       {{run_id, worktree_path, repo}, by_ref} ->
-        maybe_reap(run_id, worktree_path, repo, reason)
+        maybe_reap(run_id, worktree_path, repo, reason, retry?: true)
         {:noreply, %{state | by_ref: by_ref, by_run: Map.delete(state.by_run, run_id)}}
 
       {nil, _by_ref} ->
@@ -87,13 +88,18 @@ defmodule Harness.Worktree.Reaper do
     end
   end
 
+  def handle_info({:retry_reap, run_id, worktree_path, repo, reason}, state) do
+    maybe_reap(run_id, worktree_path, repo, reason, retry?: false)
+    {:noreply, state}
+  end
+
   def handle_info(_message, state), do: {:noreply, state}
 
   # Crash-only reap: a settled run exits `:normal`/`:shutdown` and has already
   # finalized its worktree, so only an abnormal exit reaches the reclaim path —
   # and even then a retained (kept-for-salvage) worktree is left untouched.
-  @spec maybe_reap(String.t(), String.t(), String.t(), term()) :: :ok
-  defp maybe_reap(run_id, worktree_path, repo, reason) do
+  @spec maybe_reap(String.t(), String.t(), String.t(), term(), keyword()) :: :ok
+  defp maybe_reap(run_id, worktree_path, repo, reason, opts) do
     cond do
       not crash?(reason) ->
         :ok
@@ -104,7 +110,23 @@ defmodule Harness.Worktree.Reaper do
 
       true ->
         Logger.info("worktree reaper: reclaiming crash-orphaned worktree+branch for run #{run_id} (#{inspect(reason)})")
-        Worktree.cleanup_for_run(repo, run_id)
+        reap_or_retry(run_id, worktree_path, repo, reason, Keyword.fetch!(opts, :retry?))
+    end
+  end
+
+  @spec reap_or_retry(String.t(), String.t(), String.t(), term(), boolean()) :: :ok
+  defp reap_or_retry(run_id, worktree_path, repo, reason, retry?) do
+    case Worktree.cleanup_for_run(repo, run_id) do
+      :ok ->
+        :ok
+
+      {:error, :live_run} when retry? ->
+        Logger.info("worktree reaper: run #{run_id} still registered after crash DOWN; retrying once")
+        Process.send_after(self(), {:retry_reap, run_id, worktree_path, repo, reason}, @retry_after_ms)
+        :ok
+
+      {:error, :live_run} ->
+        :ok
     end
   end
 

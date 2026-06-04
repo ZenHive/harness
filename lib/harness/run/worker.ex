@@ -152,7 +152,8 @@ defmodule Harness.Run.Worker do
     with {:ok, run_id} <- fetch_arg(args, "run_id"),
          {:ok, project_name} <- fetch_arg(args, "project_name"),
          {:ok, project} <- ProjectRegistry.lookup(project_name) do
-      Worktree.cleanup_for_run(Project.repo_path(project), run_id)
+      _ = Worktree.cleanup_for_run(Project.repo_path(project), run_id)
+      :ok
     else
       # No stable run_id in the args (legacy job) or no resolvable project —
       # nothing to clean; the re-attempt generates a fresh worktree path anyway.

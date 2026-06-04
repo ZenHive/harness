@@ -7,6 +7,8 @@ defmodule Harness.Worktree.ReaperTest do
   alias Harness.Worktree.Reaper
 
   @retained_marker ".harness-retained"
+  @eventually_tries 50
+  @eventually_delay_ms 10
 
   setup do
     # The app does not start the reaper in the test env (reap_on_crash: false);
@@ -41,6 +43,36 @@ defmodule Harness.Worktree.ReaperTest do
 
       assert File.dir?(wt.path)
       assert GitFixture.git!(repo, ["branch", "--list", wt.branch]) =~ wt.branch
+    end
+
+    test "retries once when registry liveness has not cleared before the crash DOWN is handled" do
+      {repo, wt} = create_worktree()
+      parent = self()
+
+      live_holder =
+        spawn(fn ->
+          {:ok, _} = Registry.register(Harness.Run.Registry, wt.id, nil)
+          send(parent, :registered)
+
+          receive do
+            :unregister -> :ok
+          end
+        end)
+
+      assert_receive :registered
+      on_exit(fn -> Process.exit(live_holder, :kill) end)
+
+      run = spawn(fn -> Process.sleep(:infinity) end)
+
+      Reaper.track(run, wt.id, wt.path, wt.repo)
+      sync(run)
+
+      crash(run)
+
+      assert File.dir?(wt.path)
+
+      send(live_holder, :unregister)
+      assert_reaped(repo, wt)
     end
   end
 
@@ -98,6 +130,27 @@ defmodule Harness.Worktree.ReaperTest do
     :sys.get_state(Reaper)
     :ok
   end
+
+  @spec assert_reaped(String.t(), Worktree.t(), pos_integer()) :: :ok
+  defp assert_reaped(repo, wt, tries \\ @eventually_tries)
+
+  defp assert_reaped(repo, wt, tries) when tries > 1 do
+    if File.dir?(wt.path) or branch_exists?(repo, wt.branch) do
+      Process.sleep(@eventually_delay_ms)
+      assert_reaped(repo, wt, tries - 1)
+    else
+      :ok
+    end
+  end
+
+  defp assert_reaped(repo, wt, 1) do
+    refute File.dir?(wt.path), "expected #{wt.path} to be reaped after retry"
+    assert GitFixture.git!(repo, ["branch", "--list", wt.branch]) == ""
+    :ok
+  end
+
+  @spec branch_exists?(String.t(), String.t()) :: boolean()
+  defp branch_exists?(repo, branch), do: GitFixture.git!(repo, ["branch", "--list", branch]) != ""
 
   @spec create_worktree() :: {String.t(), Worktree.t()}
   defp create_worktree do
