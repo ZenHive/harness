@@ -528,6 +528,91 @@ defmodule Harness.RunTest do
     end
   end
 
+  describe "reviewing watchdog (Task 199)" do
+    test "REGRESSION: a reviewer that never spawns settles :failed within the spawn watchdog, not the lifetime cap" do
+      {run_id, pid} =
+        start(
+          reviewer: HangingAdapter,
+          reviewer_spawn_timeout: 300,
+          lifetime_timeout: 30_000,
+          terminal_linger: 100
+        )
+
+      assert %Result{state: :failed, reason: {:review_stuck, report}} = await_result(run_id, pid, 5_000)
+      assert report =~ "never spawned"
+    end
+
+    test "REGRESSION: a reviewer that never produces a verdict settles :failed within the idle watchdog, not the lifetime cap" do
+      {run_id, pid} =
+        start(
+          reviewer_adapter_opts: [command: :sleep],
+          reviewing_idle_timeout: 300,
+          lifetime_timeout: 30_000,
+          terminal_linger: 100
+        )
+
+      assert %Result{state: :failed, reason: {:review_stuck, report}} = await_result(run_id, pid, 5_000)
+      assert report =~ "no progress"
+    end
+
+    test "reviewing_idle_timeout/1 uses the explicit run opt when set" do
+      assert Run.reviewing_idle_timeout(%{reviewing_idle_timeout: 42_000, idle_timeout: 150}) == 42_000
+    end
+
+    test "reviewing_idle_timeout/1 falls back to the reviewing idle floor when unset" do
+      assert Run.reviewing_idle_timeout(%{reviewing_idle_timeout: nil, idle_timeout: nil}) == 600_000
+    end
+
+    test "a reviewer whose driver fails settles :failed as review_stuck without waiting for lifetime" do
+      result =
+        run(
+          reviewer_adapter_opts: [command: :missing],
+          reviewer_spawn_timeout: 30_000,
+          lifetime_timeout: 60_000,
+          terminal_linger: 100
+        )
+
+      assert %Result{state: :failed, reason: {:review_stuck, report}} = result
+      assert report =~ "Reviewer failed to run"
+    end
+
+    test "a reviewer task crash settles :failed as review_stuck without waiting for lifetime" do
+      result =
+        run(
+          reviewer: CrashingAdapter,
+          reviewer_spawn_timeout: 30_000,
+          lifetime_timeout: 60_000,
+          terminal_linger: 100
+        )
+
+      assert %Result{state: :failed, reason: {:review_stuck, report}} = result
+      assert report =~ "boom in build_command"
+    end
+
+    test "reviewer output re-arms the idle watchdog during :reviewing" do
+      :ok = RunFeed.subscribe()
+
+      {run_id, pid} =
+        start(
+          reviewer_adapter_opts: [command: :sleep],
+          reviewing_idle_timeout: 400,
+          lifetime_timeout: 30_000,
+          terminal_linger: 100
+        )
+
+      assert_receive {:harness_run_update, %Status{run_id: ^run_id, state: :reviewing}}, 10_000
+
+      for _ <- 1..6 do
+        send(pid, {:transcript_chunk, "tick"})
+        Process.sleep(150)
+        assert {:ok, %Status{state: :reviewing}} = Run.status(run_id)
+      end
+
+      assert :ok = Run.cancel(run_id)
+      await_result(run_id, pid)
+    end
+  end
+
   describe "worktree isolation" do
     test "branches a targeted project from origin target even when local HEAD is stale" do
       %{origin: origin, repo: repo} = GitFixture.init_with_origin()

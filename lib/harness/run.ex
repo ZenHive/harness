@@ -54,7 +54,9 @@ defmodule Harness.Run do
 
   `cancel/1` aborts an in-flight run; a per-run lifetime budget does the same
   when it elapses. Both kill the in-flight step task and SIGKILL the agent if
-  one is running, then settle `failed`. The lifetime budget is a last-resort
+  one is running, then settle `failed`. The `:reviewing` state arms its own
+  spawn and idle watchdogs so a lost reviewer Port cannot hold a project queue
+  slot until the lifetime cap (Task 199). The lifetime budget is a last-resort
   deadline — it force-settles even when the agent run handle never arrived (a
   hung adapter `build_command`/`invoke`). In that race a just-spawned OS
   process whose pid was never received may leak; the boot-time
@@ -134,6 +136,10 @@ defmodule Harness.Run do
   # check can't trip it; an explicit higher idle_timeout still wins. Well under
   # the 90-min lifetime cap, which remains the real backstop.
   @reviewer_idle_floor 600_000
+  # Spawn watchdog for :reviewing — if the reviewer's Port never starts (a hung
+  # attach/build_command/invoke before :on_spawn fires), fail fast instead of
+  # holding the project queue slot until lifetime (Task 199).
+  @default_reviewer_spawn_timeout 60_000
 
   @typedoc "A lifecycle state."
   @type state ::
@@ -170,6 +176,9 @@ defmodule Harness.Run do
            reviewer: atom() | module() | nil,
            reviewer_adapter: module() | nil,
            reviewer_adapter_opts: keyword(),
+           reviewer_run: AgentRun.t() | nil,
+           reviewer_spawn_timeout: pos_integer(),
+           reviewing_idle_timeout: pos_integer() | nil,
            review: Review.t() | nil,
            reviewer_diff_size: non_neg_integer() | nil,
            implementer_empty_diff?: boolean(),
@@ -475,6 +484,11 @@ defmodule Harness.Run do
       reviewer: Keyword.get(opts, :reviewer, project.reviewer || configured(:reviewer, nil)),
       reviewer_adapter: nil,
       reviewer_adapter_opts: Keyword.get(opts, :reviewer_adapter_opts, []),
+      reviewer_run: nil,
+      reviewer_spawn_timeout:
+        Keyword.get(opts, :reviewer_spawn_timeout) ||
+          configured(:reviewer_spawn_timeout, @default_reviewer_spawn_timeout),
+      reviewing_idle_timeout: Keyword.get(opts, :reviewing_idle_timeout),
       review: nil,
       reviewer_diff_size: nil,
       implementer_empty_diff?: false,
@@ -729,8 +743,25 @@ defmodule Harness.Run do
   @spec reviewing(event(), term(), data()) :: handler_result()
   def reviewing(:enter, _old_state, data) do
     RunFeed.broadcast_update(status_snapshot(:reviewing, data))
-    task = start_task(fn -> run_reviewer(data) end)
-    {:keep_state, %{data | task: task, agent_run: nil}}
+    parent = self()
+    task = start_task(fn -> run_reviewer(data, parent) end)
+
+    {:keep_state, %{data | task: task, agent_run: nil, reviewer_run: nil},
+     [{:state_timeout, data.reviewer_spawn_timeout, :reviewer_spawn_timeout}]}
+  end
+
+  def reviewing(:info, {:reviewer_handle, %AgentRun{} = run}, data) do
+    {:keep_state, %{data | reviewer_run: run}, [{:state_timeout, reviewing_idle_timeout(data), :reviewer_idle_timeout}]}
+  end
+
+  def reviewing(:state_timeout, :reviewer_spawn_timeout, %{reviewer_run: nil} = data) do
+    fail_review_stuck(data, reviewer_spawn_timeout_report(data))
+  end
+
+  def reviewing(:state_timeout, :reviewer_spawn_timeout, _data), do: :keep_state_and_data
+
+  def reviewing(:state_timeout, :reviewer_idle_timeout, data) do
+    fail_review_stuck(data, reviewer_idle_timeout_report(data))
   end
 
   def reviewing(
@@ -739,18 +770,18 @@ defmodule Harness.Run do
         %{task: %Task{ref: ref}} = data
       ) do
     Process.demonitor(ref, [:flush])
-    settle_review(%{data | task: nil, reviewer_diff_size: diff_size}, review)
+    settle_review(clear_reviewer_run(%{data | task: nil, reviewer_diff_size: diff_size}), review)
   end
 
   def reviewing(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
     report = "Reviewer failed to run: #{inspect(reason)}"
-    {:next_state, :failed, %{data | task: nil, reason: {:review_stuck, report}}}
+    {:next_state, :failed, clear_reviewer_run(%{data | task: nil, reason: {:review_stuck, report}})}
   end
 
   def reviewing(:info, {:DOWN, ref, :process, _pid, reason}, %{task: %Task{ref: ref}} = data) when reason != :normal do
     report = "Reviewer crashed: #{inspect(reason)}"
-    {:next_state, :failed, %{data | task: nil, reason: {:review_stuck, report}}}
+    {:next_state, :failed, clear_reviewer_run(%{data | task: nil, reason: {:review_stuck, report}})}
   end
 
   def reviewing(event_type, event_content, data) do
@@ -853,7 +884,8 @@ defmodule Harness.Run do
         transcript_parser_state: new_parser_state
     }
 
-    maybe_sample_in_run_discernment(state, data)
+    result = maybe_sample_in_run_discernment(state, data)
+    rearm_reviewing_idle(state, data, result)
   end
 
   defp handle_common({:call, from}, :cancel, state, _data) when state in [:done, :failed] do
@@ -1009,8 +1041,19 @@ defmodule Harness.Run do
     cancel_task(data.task)
     cancel_task(data.discernment_task)
     terminate_agent(data)
+    terminate_reviewer(data)
     reason = checkout_pollution_reason(data) || reason
-    data = %{data | task: nil, discernment_task: nil, agent_run: nil, cancel_requested: nil, reason: reason}
+
+    data = %{
+      data
+      | task: nil,
+        discernment_task: nil,
+        agent_run: nil,
+        reviewer_run: nil,
+        cancel_requested: nil,
+        reason: reason
+    }
+
     actions = if from, do: [{:reply, from, :ok}], else: []
     {:next_state, :failed, data, actions}
   end
@@ -1029,9 +1072,20 @@ defmodule Harness.Run do
     cancel_task(data.task)
     cancel_task(data.discernment_task)
     terminate_agent(data)
+    terminate_reviewer(data)
     actions = pending_cancel_reply(data)
     reason = checkout_pollution_reason(data) || :timed_out
-    data = %{data | task: nil, discernment_task: nil, agent_run: nil, cancel_requested: nil, reason: reason}
+
+    data = %{
+      data
+      | task: nil,
+        discernment_task: nil,
+        agent_run: nil,
+        reviewer_run: nil,
+        cancel_requested: nil,
+        reason: reason
+    }
+
     {:next_state, :failed, data, actions}
   end
 
@@ -1048,9 +1102,17 @@ defmodule Harness.Run do
   defp fail(data, reason) do
     cancel_task(data.discernment_task)
     terminate_agent(data)
+    terminate_reviewer(data)
 
-    {:next_state, :failed, %{data | discernment_task: nil, agent_run: nil, cancel_requested: nil, reason: reason},
-     pending_cancel_reply(data)}
+    {:next_state, :failed,
+     %{
+       data
+       | discernment_task: nil,
+         agent_run: nil,
+         reviewer_run: nil,
+         cancel_requested: nil,
+         reason: reason
+     }, pending_cancel_reply(data)}
   end
 
   @spec pending_cancel_reply(data()) :: [:gen_statem.action()]
@@ -1074,6 +1136,41 @@ defmodule Harness.Run do
   defp terminate_agent(%{agent_run: %AgentRun{} = run, adapter: adapter}) do
     adapter.terminate(run)
     :ok
+  end
+
+  @spec terminate_reviewer(data()) :: :ok
+  defp terminate_reviewer(%{reviewer_run: nil}), do: :ok
+
+  defp terminate_reviewer(%{reviewer_run: %AgentRun{} = run, reviewer_adapter: adapter}) when is_atom(adapter) do
+    adapter.terminate(run)
+    :ok
+  end
+
+  @spec fail_review_stuck(data(), String.t()) :: handler_result()
+  defp fail_review_stuck(data, report) do
+    cancel_task(data.task)
+    terminate_reviewer(data)
+    {:next_state, :failed, clear_reviewer_run(%{data | task: nil, reason: {:review_stuck, report}})}
+  end
+
+  @spec clear_reviewer_run(data()) :: data()
+  defp clear_reviewer_run(data), do: %{data | reviewer_run: nil}
+
+  @spec rearm_reviewing_idle(state(), data(), handler_result()) :: handler_result()
+  defp rearm_reviewing_idle(:reviewing, data, {:keep_state, next_data}) do
+    {:keep_state, next_data, [{:state_timeout, reviewing_idle_timeout(data), :reviewer_idle_timeout}]}
+  end
+
+  defp rearm_reviewing_idle(_state, _data, result), do: result
+
+  @spec reviewer_spawn_timeout_report(data()) :: String.t()
+  defp reviewer_spawn_timeout_report(data) do
+    "Reviewer agent never spawned within #{data.reviewer_spawn_timeout}ms."
+  end
+
+  @spec reviewer_idle_timeout_report(data()) :: String.t()
+  defp reviewer_idle_timeout_report(data) do
+    "Reviewer made no progress within #{reviewing_idle_timeout(data)}ms."
   end
 
   @spec route_reflex_halt(data(), term()) :: :ok
@@ -1522,7 +1619,7 @@ defmodule Harness.Run do
   # verdict artifact. The artifact read result rides inside the :ok tuple so a
   # missing/malformed verdict still carries the outcome + diff evidence back to
   # the gen_statem instead of discarding it.
-  @spec run_reviewer(data()) ::
+  @spec run_reviewer(data(), pid()) ::
           {:ok,
            %{
              outcome: Outcome.t(),
@@ -1530,11 +1627,11 @@ defmodule Harness.Run do
              review: {:ok, Review.t()} | {:error, Review.error()}
            }}
           | {:error, term()}
-  defp run_reviewer(data) do
+  defp run_reviewer(data, parent) do
     pre_review_sha = current_sha(data)
 
     with {:ok, %Outcome{} = outcome} <-
-           Driver.run(data.reviewer_adapter, reviewer_invocation(data), reviewer_driver_opts(data)),
+           Driver.run(data.reviewer_adapter, reviewer_invocation(data), reviewer_driver_opts(data, parent)),
          {:ok, _status, _total_diff_size} <- commit_worktree(data.worktree, reviewer_commit_message(data)) do
       {:ok,
        %{
@@ -1573,13 +1670,25 @@ defmodule Harness.Run do
     }
   end
 
-  @spec reviewer_driver_opts(data()) :: keyword()
-  defp reviewer_driver_opts(data) do
-    []
+  @spec reviewer_driver_opts(data(), pid()) :: keyword()
+  defp reviewer_driver_opts(data, parent) do
+    [
+      on_spawn: fn run -> send(parent, {:reviewer_handle, run}) end,
+      on_output: fn chunk -> send(parent, {:transcript_chunk, chunk}) end
+    ]
     |> put_opt(:total_timeout, data.total_timeout)
     |> put_opt(:idle_timeout, reviewer_idle_timeout(data.idle_timeout))
     |> put_opt(:progress_timeout, data.progress_timeout)
   end
+
+  # Idle window for the gen_statem-level :reviewing watchdog. An explicit
+  # `:reviewing_idle_timeout` run opt wins (tests); otherwise the same floor as
+  # the Driver's reviewing idle window.
+  @doc false
+  @spec reviewing_idle_timeout(data()) :: pos_integer()
+  def reviewing_idle_timeout(%{reviewing_idle_timeout: idle}) when is_integer(idle), do: idle
+
+  def reviewing_idle_timeout(data), do: reviewer_idle_timeout(data.idle_timeout)
 
   # Floors the reviewing-phase idle window at @reviewer_idle_floor so a silent
   # check run can't idle-kill the reviewer before it writes the verdict (Task
