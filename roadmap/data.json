@@ -7523,7 +7523,7 @@
       "id": "187",
       "phase": 4,
       "bundle": "multi-agent",
-      "status": "pending",
+      "status": "done",
       "title": "Flip Antigravity worktree_isolation to true — agy 1.0.5 honors port cwd (Task 32 finding is stale)",
       "scores": {
         "d": 2,
@@ -7549,9 +7549,15 @@
         "Adding --add-dir/--sandbox flags to build_command/1 — the re-test shows the bare port cwd is sufficient; no flag earns its plumbing cost",
         "Changing the Harness.Worktree.Isolation trust-vs-check design for OTHER adapters"
       ],
+      "shipped_in": "6a88faa1ec292f1728a95f28dda1d5e315613d9d",
       "body": "Task 32 (2026-05-22) declared `Antigravity` `worktree_isolation: false` because `agy` ignored the port cwd and resolved its workspace via git-common-dir, editing the *main checkout* instead of the run worktree. That finding is stale at agy 1.0.5.\n\nEmpirical re-test (2026-06-04, /tmp/agy-isolation-test.sh, exact harness setup: `git worktree add` linked worktree whose `.git` is a file pointing back to the common dir — the precise Task-32 trigger): 4/4 completed runs ISOLATED — baseline (no flags), `--add-dir <wt>`, `--sandbox`, and the combo. In every run agy's cwd was correctly the worktree and writes landed there with the main checkout clean. No flag is needed — the port `:cd` harness already sets (`AgentAdapter.invoke/2`) is now sufficient, so `build_command/1` does NOT need the worktree path threaded in. agy was fixed upstream somewhere across the undocumented 1.0.0→1.0.5 patch run (changelog only documents 1.0.0).\n\nSide finding (do not fix here): one re-test run wedged agy at startup for 15+ min (empty log, no edit, no exit). That is an agy headless-reliability flake, already covered by harness's Port-close + timeout watchdog (termination is never derived from exit code). Not an isolation concern.\n\nMake `Harness.AgentAdapter.Antigravity` declare worktree isolation and update everything that documented the limitation.\n",
       "created_at": "2026-06-03",
+      "started_at": "2026-06-04",
+      "done_at": "2026-06-04",
       "scored_at": "2026-06-03",
+      "implemented": "Flipped `Harness.AgentAdapter.Antigravity.capabilities/0` to `worktree_isolation: true`, removed `worktree_isolation_limitation/0`, and rewrote the adapter's working-directory moduledoc around the 2026-06-04 `agy` 1.0.5 linked-worktree re-test. Updated adapter/isolation tests so Antigravity validates successfully, and removed the obsolete run test that expected pre-spawn rejection. Updated dogfooding / agent-reference / harness-driver docs so Antigravity is no longer documented as rejected-before-spawn.\n\nCONSCIOUS DECISION: trust-and-skip per the current `Harness.Worktree.Isolation` design. Flipping Antigravity to `worktree_isolation: true` means `Harness.Run` will trust the capability and skip the post-run main-checkout pollution snapshot for Antigravity, just like the other shipped isolating adapters. I chose not to add an Antigravity-specific belt-and-suspenders pollution check because Task 187's re-test covers the exact linked-worktree failure mode, adding an adapter exception would undermine the existing capability contract, and changing the trust-vs-check design is explicitly out of scope for this task. If `agy` regresses again, the right fix is to flip the capability back or add a general correlation-based detector in a separate task, not silently special-case Antigravity here.\n",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -7739,6 +7745,53 @@
         "Re-opening Task 190's status (queue start itself shipped and works)"
       ],
       "body": "Audit (codex reviewer) flagged that Task 190 was marked done with acceptance criterion #2 met only by a config-presence proxy. The criterion explicitly required: 'An enqueued AuditWorker job is actually executed (not left available forever); proven by a test that inserts an audit job and observes it run/drain rather than a guard that only checks insertion.' The implemented note acknowledges insert→drain isn't runnable in the offline suite (oban_enabled:false, repo_enabled:false) and substitutes a {:audit,1} in oban_opts()[:queues] assertion plus the worker's existing perform-routing drain tests.\n\nThe substitution is defensible for the offline suite but does not satisfy the criterion as written. File a proper insert→drain proof as an :integration test (live Oban instance + repo), tagged so it stays out of the default offline run.\n\nFiled by audit-review against commit 35f2c04 on 2026-06-04; see .audit/35f2c04-reviewer-verdict-write-manda.md.\n",
+      "created_at": "2026-06-04",
+      "scored_at": "2026-06-04",
+      "cross_repo": []
+    },
+    {
+      "id": "193",
+      "phase": 10,
+      "bundle": "config-centralization",
+      "status": "pending",
+      "title": "Per-project reviewer override (%Harness.Project{reviewer}) + Run.init overlay + select_reviewer consults it + Settings-page runtime override",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 2.0,
+      "dep_layer": 1,
+      "markers": [],
+      "depends_on": [
+        165
+      ],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "%Harness.Project{} gains a `reviewer :: atom() | nil` field (nil = today's auto-select; an agent atom pins the cross-family reviewer for that project), defaulting nil so existing registrations and tests are byte-unchanged",
+        "Run.init/1 overlays the project's effective reviewer onto the run's :reviewer opt (mirrors the Task 155 landing_policy overlay), so select_reviewer/1 honors it without a new Run opt at the call site",
+        "select_reviewer/1 with an explicit project reviewer still enforces ensure_cross_family_reviewer/2 + reviewer-eligibility (Task 182) + dispatchability — a pinned same-family or ineligible reviewer settles :failed with a clear reason, never silently falls back to auto-select",
+        "Operator can set/clear the per-project reviewer from /harness/settings, persisted across a BEAM restart through the consolidated settings store (Task 165), NOT a new ~/.harness/*.term file",
+        "config-declared projects (config :harness, :projects) may set reviewer at registration time; the runtime override wins over the registration default, mirroring the landing-policy precedent",
+        "Existing select_reviewer, SettingsLive, and project tests pass unchanged; new tests cover the overlay precedence and the same-family/ineligible-pin rejection paths"
+      ],
+      "out_of_scope": [
+        "Per-project reviewer MODEL pinning — reviewer_invocation/1 threads no model today; a separate, larger change",
+        "Per-task reviewer override in rmap — deliberately not adding a reviewer field to the roadmap Task schema (couples roadmap authoring to routing the system is built to decide)",
+        "Changing the nil-default auto-selection (cross-family + rejection-rate ordering stays the default behavior)"
+      ],
+      "files_to_modify": [
+        "lib/harness/project.ex",
+        "lib/harness/run.ex",
+        "lib/harness/dashboard/settings_live.ex"
+      ],
+      "touches": [
+        "lib/harness/project.ex",
+        "lib/harness/run.ex",
+        "lib/harness/dashboard/settings_live.ex",
+        "lib/harness/project_registry.ex"
+      ],
+      "body": "Wire a per-project reviewer override so an operator can pin which cross-family agent gates a given project's runs, instead of always taking the rejection-rate-ordered auto-selection. Asked for directly; the multi-project-federation case is concrete — different registered repos may warrant different reviewers.\n\nThe seam already exists on both ends: Task 155 (done) established the `%Harness.Project{}`-field + `Run.init/1` overlay + Settings-page-editable pattern for `landing_policy`; Task 182 (done) made `select_reviewer/1` consult per-agent reviewer-eligibility. This task is the same shape one layer over: a `reviewer` field on the project, overlaid in `Run.init/1`, with `select_reviewer/1`'s explicit-reviewer path (already present at run.ex:1418) reached from the project rather than only from a Run opt / app config.\n\nTwo layers, deliberately split from Task 165:\n1. Struct field + Run.init overlay + select_reviewer wiring — depends on nothing in 165; config-declared projects can set `reviewer` at registration immediately.\n2. The operator runtime override (Settings page, persisted) — THIS is the only 165 dependency: its persistence must ride 165's consolidated Postgres-backed settings store, never a 4th `~/.harness/*.term` file (the exact sprawl 165 exists to kill). Hence depends_on 165, NOT folded into 165 (whose out-of-scope forbids new settings).\n\nKeep nil = auto-select as the untouched default. An explicit pin must still pass the cross-family + eligibility + dispatchable gates; a bad pin fails loudly with a settle reason, it does not silently degrade to auto-select (that would hide operator misconfiguration). Reviewer-model pinning stays out — reviewer_invocation/1 carries no model and adding one is a separate change with weak payoff (the reviewer's job is judgment, and model IDs churn).\n",
       "created_at": "2026-06-04",
       "scored_at": "2026-06-04",
       "cross_repo": []

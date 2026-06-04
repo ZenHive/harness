@@ -22,7 +22,10 @@ config :harness, Endpoint,
 config :harness, Oban,
   repo: Harness.Repo,
   queues: [],
-  plugins: [Oban.Plugins.Pruner]
+  # Keep settled jobs for 24h (the Pruner default is 60s, which made post-merge
+  # audit + landing outcomes vanish before they could be inspected). Land/audit
+  # jobs are low-volume; the retention is for observability, not throughput.
+  plugins: [{Oban.Plugins.Pruner, max_age: 60 * 60 * 24}]
 
 # File-backed term store for the persisted per-agent enable/disable switches, so
 # an operator taking an agent out of rotation survives a BEAM restart. Set to

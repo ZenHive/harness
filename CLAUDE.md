@@ -49,6 +49,8 @@ The `rmap` CLI (the roadmap substrate `roadmap/tasks.toml` uses) is a sibling Ru
 
 Toolchain pinned by `.tool-versions`: **Elixir 1.18.4-otp-27** (asdf). Postgres required for the Oban dispatch layer.
 
+> **Sync `development` before working when auto-land is on.** With `landing_policy: :auto`, the lander is a *second committer* to `origin/<target>` — it ff-pushes from a detached worktree and deliberately **never touches your checkout**, so your local `development` ref drifts behind origin after every autonomous land. **Start a session (and before any commit/push) with `git fetch origin development && git rebase origin/development`** (or `git pull --rebase origin development`) — rebase, because you'll often have local commits the lander doesn't. Skipping this is how you get a stale base / surprise non-ff push reject.
+
 | Task | Command |
 |---|---|
 | Run the node | `iex -S mix` — boots the app, Oban (Postgres), and the dashboard on `http://localhost:4018` (routes `/harness`, `/harness/oban`, `/harness/mcp`, `/tidewave/mcp`). **Long-lived; the user starts it manually — don't boot it yourself.** |

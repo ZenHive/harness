@@ -13,6 +13,9 @@ defmodule Harness.AuditTest do
 
   use ExUnit.Case, async: false
 
+  alias Harness.Agent.Settings, as: AgentSettings
+  alias Harness.AgentAdapter.Pi
+  alias Harness.AgentRegistry
   alias Harness.Audit
   alias Harness.FakeAdapter
   alias Harness.GitFixture
@@ -279,6 +282,33 @@ defmodule Harness.AuditTest do
       # read the stale local HEAD instead, the range from base_sha would be empty
       # too — so assert against a base that is only "covered" on the remote.
       assert :noop = Audit.run(%{project: ctx.project, base_sha: ctx.base_sha})
+    end
+  end
+
+  describe "select_auditor/1 — cross-family + reviewer-eligibility gate" do
+    test "an explicit :auditor override wins, bypassing the registry scan" do
+      assert {:ok, FakeAdapter} = Audit.select_auditor(%{auditor: FakeAdapter})
+    end
+
+    test "never selects a non-reviewer-eligible agent (pi), and whatever it picks IS eligible" do
+      # The auditor commits+pushes to the shared target unsupervised, so the gate
+      # must match the reviewer/resolver trust flag — pi (enabled but NOT
+      # reviewer-eligible by default) must never be chosen to audit.
+      result = Audit.select_auditor(%{implementer: "codex", reviewer: "claude"})
+
+      # Either no eligible third-family agent is available in this env (=> skip),
+      # or one is chosen — but it is NEVER pi, and it IS reviewer-eligible.
+      refute match?({:ok, Pi}, result)
+
+      case result do
+        {:ok, module} ->
+          {:ok, agent} = AgentRegistry.agent_for_module(module)
+          assert AgentSettings.reviewer_eligible?(agent)
+          refute agent == :pi
+
+        {:skipped, :no_audit_agent} ->
+          :ok
+      end
     end
   end
 end

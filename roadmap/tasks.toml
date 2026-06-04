@@ -5623,7 +5623,7 @@ shipped_in = "worktree.ex"
 id = "187"
 phase = 4
 bundle = "multi-agent"
-status = "pending"
+status = "done"
 title = "Flip Antigravity worktree_isolation to true — agy 1.0.5 honors port cwd (Task 32 finding is stale)"
 scores = { d = 2, b = 5, u = 5 }
 depends_on = [32]
@@ -5644,8 +5644,13 @@ Flipped `Harness.AgentAdapter.Antigravity.capabilities/0` to `worktree_isolation
 
 CONSCIOUS DECISION: trust-and-skip per the current `Harness.Worktree.Isolation` design. Flipping Antigravity to `worktree_isolation: true` means `Harness.Run` will trust the capability and skip the post-run main-checkout pollution snapshot for Antigravity, just like the other shipped isolating adapters. I chose not to add an Antigravity-specific belt-and-suspenders pollution check because Task 187's re-test covers the exact linked-worktree failure mode, adding an adapter exception would undermine the existing capability contract, and changing the trust-vs-check design is explicitly out of scope for this task. If `agy` regresses again, the right fix is to flip the capability back or add a general correlation-based detector in a separate task, not silently special-case Antigravity here.
 """
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-03"
+started_at = "2026-06-04"
 scored_at = "2026-06-03"
+done_at = "2026-06-04"
+shipped_in = "6a88faa1ec292f1728a95f28dda1d5e315613d9d"
 
 [[task]]
 id = "188"
@@ -5760,6 +5765,33 @@ Audit (codex reviewer) flagged that Task 190 was marked done with acceptance cri
 The substitution is defensible for the offline suite but does not satisfy the criterion as written. File a proper insert→drain proof as an :integration test (live Oban instance + repo), tagged so it stays out of the default offline run.
 
 Filed by audit-review against commit 35f2c04 on 2026-06-04; see .audit/35f2c04-reviewer-verdict-write-manda.md.
+"""
+created_at = "2026-06-04"
+scored_at = "2026-06-04"
+
+[[task]]
+id = "193"
+phase = 10
+bundle = "config-centralization"
+status = "pending"
+title = "Per-project reviewer override (%Harness.Project{reviewer}) + Run.init overlay + select_reviewer consults it + Settings-page runtime override"
+scores = { d = 2, b = 4, u = 4 }
+depends_on = [165]
+acceptance_criteria = ["%Harness.Project{} gains a `reviewer :: atom() | nil` field (nil = today's auto-select; an agent atom pins the cross-family reviewer for that project), defaulting nil so existing registrations and tests are byte-unchanged", "Run.init/1 overlays the project's effective reviewer onto the run's :reviewer opt (mirrors the Task 155 landing_policy overlay), so select_reviewer/1 honors it without a new Run opt at the call site", "select_reviewer/1 with an explicit project reviewer still enforces ensure_cross_family_reviewer/2 + reviewer-eligibility (Task 182) + dispatchability — a pinned same-family or ineligible reviewer settles :failed with a clear reason, never silently falls back to auto-select", "Operator can set/clear the per-project reviewer from /harness/settings, persisted across a BEAM restart through the consolidated settings store (Task 165), NOT a new ~/.harness/*.term file", "config-declared projects (config :harness, :projects) may set reviewer at registration time; the runtime override wins over the registration default, mirroring the landing-policy precedent", "Existing select_reviewer, SettingsLive, and project tests pass unchanged; new tests cover the overlay precedence and the same-family/ineligible-pin rejection paths"]
+out_of_scope = ["Per-project reviewer MODEL pinning — reviewer_invocation/1 threads no model today; a separate, larger change", "Per-task reviewer override in rmap — deliberately not adding a reviewer field to the roadmap Task schema (couples roadmap authoring to routing the system is built to decide)", "Changing the nil-default auto-selection (cross-family + rejection-rate ordering stays the default behavior)"]
+files_to_modify = ["lib/harness/project.ex", "lib/harness/run.ex", "lib/harness/dashboard/settings_live.ex"]
+touches = ["lib/harness/project.ex", "lib/harness/run.ex", "lib/harness/dashboard/settings_live.ex", "lib/harness/project_registry.ex"]
+assignee = "codex"
+body = """
+Wire a per-project reviewer override so an operator can pin which cross-family agent gates a given project's runs, instead of always taking the rejection-rate-ordered auto-selection. Asked for directly; the multi-project-federation case is concrete — different registered repos may warrant different reviewers.
+
+The seam already exists on both ends: Task 155 (done) established the `%Harness.Project{}`-field + `Run.init/1` overlay + Settings-page-editable pattern for `landing_policy`; Task 182 (done) made `select_reviewer/1` consult per-agent reviewer-eligibility. This task is the same shape one layer over: a `reviewer` field on the project, overlaid in `Run.init/1`, with `select_reviewer/1`'s explicit-reviewer path (already present at run.ex:1418) reached from the project rather than only from a Run opt / app config.
+
+Two layers, deliberately split from Task 165:
+1. Struct field + Run.init overlay + select_reviewer wiring — depends on nothing in 165; config-declared projects can set `reviewer` at registration immediately.
+2. The operator runtime override (Settings page, persisted) — THIS is the only 165 dependency: its persistence must ride 165's consolidated Postgres-backed settings store, never a 4th `~/.harness/*.term` file (the exact sprawl 165 exists to kill). Hence depends_on 165, NOT folded into 165 (whose out-of-scope forbids new settings).
+
+Keep nil = auto-select as the untouched default. An explicit pin must still pass the cross-family + eligibility + dispatchable gates; a bad pin fails loudly with a settle reason, it does not silently degrade to auto-select (that would hide operator misconfiguration). Reviewer-model pinning stays out — reviewer_invocation/1 carries no model and adding one is a separate change with weak payoff (the reviewer's job is judgment, and model IDs churn).
 """
 created_at = "2026-06-04"
 scored_at = "2026-06-04"

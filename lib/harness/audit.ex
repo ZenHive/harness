@@ -163,13 +163,16 @@ defmodule Harness.Audit do
     end
   end
 
+  @doc false
   # An explicit :auditor in the request wins (test stubs / config overrides);
   # otherwise: first dispatchable adapter outside both the implementer's and the
   # reviewer's families — the third family. None available → skip (best-effort).
+  # `@doc false` (not `defp`) so the cross-family + reviewer-eligibility invariant
+  # is unit-testable, mirroring `Harness.Lander.Resolver.select_resolver/2`.
   @spec select_auditor(request()) :: {:ok, module()} | {:skipped, :no_audit_agent}
-  defp select_auditor(%{auditor: auditor}) when is_atom(auditor) and not is_nil(auditor), do: {:ok, auditor}
+  def select_auditor(%{auditor: auditor}) when is_atom(auditor) and not is_nil(auditor), do: {:ok, auditor}
 
-  defp select_auditor(request) do
+  def select_auditor(request) do
     excluded = Enum.reject([request[:implementer], request[:reviewer]], &is_nil/1)
 
     AgentRegistry.agents()
@@ -187,13 +190,19 @@ defmodule Harness.Audit do
   defp auditor_dispatchable?(module) do
     AgentRegistry.available?(module) and
       AgentRegistry.installed?(module) and
-      auditor_enabled?(module)
+      auditor_eligible?(module)
   end
 
-  @spec auditor_enabled?(module()) :: boolean()
-  defp auditor_enabled?(module) do
+  # The auditor commits and ff-pushes to the shared target branch unsupervised —
+  # a *higher*-trust role than the reviewer gate. So it requires the same
+  # `reviewer_eligible?` trust flag the reviewer and resolver demand (not just
+  # `enabled?`): an agent we won't trust to *gate* a run must not be trusted to
+  # autonomously *write to* the target branch. An unresolvable module (test
+  # doubles via the explicit `:auditor` override) stays permissive.
+  @spec auditor_eligible?(module()) :: boolean()
+  defp auditor_eligible?(module) do
     case AgentRegistry.agent_for_module(module) do
-      {:ok, agent} -> AgentSettings.enabled?(agent)
+      {:ok, agent} -> AgentSettings.enabled?(agent) and AgentSettings.reviewer_eligible?(agent)
       {:error, _reason} -> true
     end
   end
