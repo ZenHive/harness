@@ -184,7 +184,13 @@ defmodule Harness.AuditReviewTest do
                )
     end
 
-    test "returns :unclear verdict on idle timeout with no sentinel", %{cwd: cwd} do
+    test "returns :unclear verdict on idle timeout with no sentinel" do
+      # Isolated cwd — /tmp's churn resets the reflex progress fingerprint and
+      # starves the idle watchdog under a shared directory (DriverTest uses the
+      # same unique-tmp pattern for :sleep).
+      cwd = Path.join(System.tmp_dir!(), "harness-audit-idle-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(cwd)
+
       assert {:ok, %{verdict: :unclear, outcome: %Outcome{kind: {:timed_out, :idle}}}} =
                AuditReview.grade_fix(
                  implementer: :claude,
