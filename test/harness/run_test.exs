@@ -950,22 +950,20 @@ defmodule Harness.RunTest do
       assert_raise RuntimeError, fn -> GitFixture.git!(repo, ["show", "harness/#{run_id}:foreign.txt"]) end
     end
 
-    test "settles :failed without stranding the deliverable when the agent moves HEAD" do
-      result = run(adapter_opts: [command: :detach_head])
+    test "lands the deliverable when the agent detaches HEAD at the run-branch tip" do
+      repo = GitFixture.init_repo()
+      project = ProjectFixture.from_repo(repo)
+      {run_id, pid} = start_with_project(project, adapter_opts: [command: :detach_head])
+      result = await_result(run_id, pid)
 
-      assert %Result{
-               state: :failed,
-               reason: {:commit_failed, {:head_moved, expected_branch, {:detached, sha}}}
-             } = result
-
-      assert expected_branch =~ ~r"\Aharness/"
-      assert String.match?(sha, ~r/\A[0-9a-f]{40}\z/)
-      assert result.review == nil
-      # The worktree is retained on failure — the agent's work is still
-      # inspectable in the working tree rather than lost to a teardown that
-      # would have followed an off-branch commit.
-      assert Worktree.retained?(result.worktree_path)
-      assert File.read!(Path.join(result.worktree_path, "agent_output.txt")) =~ "agent-output"
+      # commit/2 re-attaches the detached HEAD to the run branch losslessly, so
+      # the deliverable is committed and the run proceeds through the gate to
+      # :done rather than failing on a moved HEAD and stranding the work.
+      assert %Result{state: :done, reason: :approved} = result
+      assert result.review.verdict == :approve
+      # Success tears the worktree down; the deliverable lives on the branch.
+      refute File.dir?(result.worktree_path)
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_output.txt"]) =~ "agent-output"
     end
   end
 

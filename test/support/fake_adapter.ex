@@ -53,10 +53,10 @@ defmodule Harness.FakeAdapter do
   #                    timed-out agent that still left work to commit + grade.
   # :break_git       — overwrites the worktree's .git pointer, so the harness
   #                    commit step fails (the commit-failure fixture).
-  # :detach_head     — writes a file into cwd then detaches HEAD off the run
-  #                    branch (HEAD-moved fixture for Task 30): proves the
-  #                    commit step refuses to land work on a moved HEAD rather
-  #                    than stranding the deliverable.
+  # :detach_head     — writes a file into cwd then detaches HEAD at the run
+  #                    branch tip (HEAD-moved fixture): proves commit/2 losslessly
+  #                    re-attaches HEAD to the branch and lands the deliverable
+  #                    rather than stranding it (the reconcile-on-commit path).
   # {:write_then_wait_for_file, path}
   #                  — writes a file, then waits until path exists (batch cap fixture).
   # {:write_status_by_task, red_ids}

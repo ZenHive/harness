@@ -74,6 +74,16 @@ defmodule Harness.Worktree do
   # appear (e.g. credo's .credo-skips, a future doctor baseline, etc.).
   @baseline_files [".sobelow-skips"]
 
+  # Gitignored build directories `warm/2` seeds a fresh worktree with by copying
+  # them from the parent checkout (CoW-cloned where the filesystem supports it).
+  # These are absent in a `git worktree add` tree, so without warming the
+  # implementer cold-fetches deps and the reviewer cold-compiles + cold-builds the
+  # dialyzer PLT — minutes of work harness can skip by copying already-built bytes.
+  # Elixir-shaped by default; override per host via `:harness, :worktree,
+  # :warm_paths` (e.g. `["target"]` for a Rust target). Warming is a pure
+  # optimization — never a gate — so an unknown/empty list just means cold builds.
+  @default_warm_paths ["deps", "_build", "priv/plts"]
+
   # Identity stamped on commit/2's commits — set explicitly so a commit never
   # fails on a repo with no user.name/user.email configured, and so harness-made
   # deliveries stay attributable (`git log --author=harness`).
@@ -180,6 +190,101 @@ defmodule Harness.Worktree do
       :ok = propagate_baseline_files(repo, path)
       :ok = neuter_push(path)
       {:ok, %__MODULE__{id: id, path: path, branch: branch, repo: repo, base_sha: base_sha}}
+    end
+  end
+
+  @doc """
+  Seeds a fresh worktree with the parent checkout's already-built artifacts.
+
+  `git worktree add` only materializes tracked files, so the gitignored build
+  directories (`deps`, `_build`, the dialyzer PLT under `priv/plts`) are absent
+  in a new worktree — leaving the implementer to cold-fetch deps and the reviewer
+  to cold-compile and cold-build the PLT, minutes of work per run. This copies
+  those directories from the parent checkout (CoW-cloned via `cp -c` where the
+  filesystem supports it, plain copy otherwise) so the agent drops into a warmed
+  tree and only the changed app modules recompile.
+
+  Pure mechanical byte-copy — the restored-and-decoupled descendant of the warm
+  step the agent-gate rebuild deleted along with `Harness.Verification`. It is a
+  best-effort optimization, **never a gate**: any copy that fails is logged and
+  skipped (the agent simply cold-builds that path), so `warm/2` always returns
+  `:ok`. Only paths present in the parent and absent in the worktree are seeded,
+  so it never clobbers agent-produced state.
+
+  Which directories to seed comes from `opts[:warm_paths]`, else the
+  `:harness, :worktree, :warm_paths` app config, else `#{inspect(@default_warm_paths)}`.
+  """
+  @spec warm(t(), keyword()) :: :ok
+  def warm(%__MODULE__{path: path, repo: repo}, opts \\ []) do
+    seeded =
+      Enum.filter(warm_paths(opts), fn rel ->
+        seedable?(repo, path, rel) and seed_path(repo, path, rel)
+      end)
+
+    if seeded != [] do
+      Logger.debug("harness worktree: warmed #{path} with #{Enum.join(seeded, ", ")}")
+    end
+
+    :ok
+  end
+
+  @spec warm_paths(keyword()) :: [String.t()]
+  defp warm_paths(opts) do
+    Keyword.get(opts, :warm_paths) || config(:warm_paths) || @default_warm_paths
+  end
+
+  # A path is seedable when the parent checkout has it and the worktree does not —
+  # never overwrite something `git worktree add` (or the agent) already produced.
+  @spec seedable?(String.t(), String.t(), String.t()) :: boolean()
+  defp seedable?(repo, worktree_path, rel) do
+    File.exists?(Path.join(repo, rel)) and not File.exists?(Path.join(worktree_path, rel))
+  end
+
+  # Copies one build directory parent -> worktree. A failed copy is logged, its
+  # partial output removed (so no half-copied tree fools a staleness check into
+  # skipping a rebuild), and reported as not-seeded — the agent cold-builds it.
+  # sobelow_skip ["Traversal.FileModule"]
+  @spec seed_path(String.t(), String.t(), String.t()) :: boolean()
+  defp seed_path(repo, worktree_path, rel) do
+    src = Path.join(repo, rel)
+    dst = Path.join(worktree_path, rel)
+    _ = File.mkdir_p(Path.dirname(dst))
+
+    case clone_copy(src, dst) do
+      :ok ->
+        true
+
+      {:error, reason} ->
+        Logger.warning("harness worktree: warm copy of #{rel} failed: #{inspect(reason)}")
+        _ = File.rm_rf(dst)
+        false
+    end
+  end
+
+  # Prefer a copy-on-write clone (`cp -c`, instant + zero extra space on APFS);
+  # fall back to a plain recursive copy where the filesystem or `cp` lacks it
+  # (Linux/CI). Either way the bytes land — CoW is an efficiency detail, not a
+  # correctness requirement.
+  @spec clone_copy(String.t(), String.t()) :: :ok | {:error, term()}
+  defp clone_copy(src, dst) do
+    case System.cmd("cp", ["-cR", src, dst], stderr_to_stdout: true) do
+      {_out, 0} -> :ok
+      {_out, _nonzero} -> fallback_copy(src, dst)
+    end
+  rescue
+    error in [ErlangError, RuntimeError] ->
+      Logger.debug("harness worktree: cp clone unavailable (#{inspect(error)}); falling back")
+      fallback_copy(src, dst)
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  @spec fallback_copy(String.t(), String.t()) :: :ok | {:error, term()}
+  defp fallback_copy(src, dst) do
+    _ = File.rm_rf(dst)
+
+    case File.cp_r(src, dst) do
+      {:ok, _copied} -> :ok
+      {:error, reason, _file} -> {:error, reason}
     end
   end
 

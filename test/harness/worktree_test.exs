@@ -134,6 +134,56 @@ defmodule Harness.WorktreeTest do
     end
   end
 
+  describe "warm/2" do
+    test "seeds configured gitignored build dirs from the parent into the worktree" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+      File.mkdir_p!(Path.join(repo, "deps/foo"))
+      File.write!(Path.join(repo, "deps/foo/mix.exs"), "compiled-dep")
+      File.mkdir_p!(Path.join(repo, "priv/plts"))
+      File.write!(Path.join(repo, "priv/plts/core.plt"), "PLT")
+
+      assert {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base)
+      # git worktree add only materializes tracked files — the untracked build
+      # dirs are absent until warming copies them in.
+      refute File.exists?(Path.join(wt.path, "deps/foo/mix.exs"))
+
+      assert :ok = Worktree.warm(wt, warm_paths: ["deps", "priv/plts"])
+
+      assert File.read!(Path.join(wt.path, "deps/foo/mix.exs")) == "compiled-dep"
+      assert File.read!(Path.join(wt.path, "priv/plts/core.plt")) == "PLT"
+    end
+
+    test "never clobbers a path the worktree already produced" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+      File.mkdir_p!(Path.join(repo, "deps"))
+      File.write!(Path.join(repo, "deps/parent.txt"), "parent")
+
+      assert {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base)
+      File.mkdir_p!(Path.join(wt.path, "deps"))
+      File.write!(Path.join(wt.path, "deps/agent.txt"), "agent")
+
+      assert :ok = Worktree.warm(wt, warm_paths: ["deps"])
+
+      # The worktree already had deps/ — warm leaves it untouched, never merging
+      # the parent's copy over agent-produced state.
+      assert File.read!(Path.join(wt.path, "deps/agent.txt")) == "agent"
+      refute File.exists?(Path.join(wt.path, "deps/parent.txt"))
+    end
+
+    test "is a best-effort no-op for a configured path the parent lacks" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+
+      assert {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base)
+
+      assert :ok = Worktree.warm(wt, warm_paths: ["_build", "deps"])
+      refute File.exists?(Path.join(wt.path, "_build"))
+      refute File.exists?(Path.join(wt.path, "deps"))
+    end
+  end
+
   describe "create/2 — push neuter (Task 186)" do
     test "neuters push in the run worktree without leaking to the main checkout" do
       %{origin: origin, repo: repo} = GitFixture.init_with_origin()

@@ -566,14 +566,20 @@ defmodule Harness.Run do
     {:keep_state, %{data | task: task}}
   end
 
-  # The worktree exists — hand it to the agent. No mechanical warm-up step:
-  # a cold first build is the implementer's (and ultimately the reviewer's)
-  # to handle, not harness code's.
+  # The worktree exists — warm it, then hand it to the agent. Warming is a
+  # mechanical byte-copy of the parent checkout's gitignored build artifacts
+  # (deps/_build/PLT) into the fresh tree, so the implementer doesn't cold-fetch
+  # deps and the reviewer doesn't cold-compile + cold-build the dialyzer PLT. It
+  # is a pure optimization, never a gate — `warm/2` always returns `:ok`; a copy
+  # that fails just means the agent cold-builds that path. (Mechanics, not
+  # judgment: copying bytes — the mantra-clean half of the warm step the
+  # agent-gate rebuild deleted along with Harness.Verification.)
   def dispatched(:info, {ref, {:ok, %Worktree{} = worktree}}, %{task: %Task{ref: ref}} = data) do
     Process.demonitor(ref, [:flush])
     data = %{data | task: nil, worktree: worktree}
 
     with :ok <- Worktree.activate(worktree),
+         :ok <- Worktree.warm(worktree),
          :ok <- Isolation.validate(data.adapter) do
       # Crash reaper (Task 185): once the worktree is live, a hard crash of this
       # gen_statem before settle would leak it; the reaper monitors us and reaps

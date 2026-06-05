@@ -110,9 +110,19 @@ defmodule Harness.Audit do
   defp audit_in_worktree(%Worktree{} = worktree, repo, target, project, request) do
     result =
       case unaudited_range(worktree.path, request.base_sha, project, target) do
-        {:ok, :empty} -> :noop
-        {:ok, range} -> run_auditor(worktree, repo, target, project, request, range)
-        {:error, reason} -> {:error, reason}
+        {:ok, :empty} ->
+          :noop
+
+        {:ok, range} ->
+          # The auditor runs the project's checks, so warm its fresh worktree the
+          # same way a run worktree is warmed — seed deps/_build/PLT from the
+          # parent so the auditor doesn't cold-compile + cold-build the PLT. Only
+          # done when there's a range to audit; a :noop checks nothing.
+          :ok = Worktree.warm(worktree)
+          run_auditor(worktree, repo, target, project, request, range)
+
+        {:error, reason} ->
+          {:error, reason}
       end
 
     cleanup(worktree)
