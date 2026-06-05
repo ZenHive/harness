@@ -9042,7 +9042,7 @@
       "phase": 18,
       "bundle": "judgment-collapse",
       "milestone": "v0_13",
-      "status": "in_progress",
+      "status": "pending",
       "title": "Extract + harden git non-fast-forward detection (dedupe lander/durable, prefer plumbing over English match)",
       "scores": {
         "d": 2,
