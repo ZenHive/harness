@@ -5,6 +5,7 @@ defmodule Harness.LanderTest do
   alias Harness.Lander
   alias Harness.Notification.Event
   alias Harness.Project
+  alias Harness.Run.LogRecord
 
   @moduletag :tmp_dir
 
@@ -242,6 +243,37 @@ defmodule Harness.LanderTest do
     test "errors when the project declares no target_branch", ctx do
       request = %{ctx.request | project: %{ctx.project | target_branch: nil}}
       assert {:error, :no_target_branch} = Lander.land(request)
+    end
+  end
+
+  describe "enqueue/1 + landing_args/2 (operator Re-land)" do
+    test "landing_args/2 reconstructs the landing job from a persisted record" do
+      record = %LogRecord{
+        batch_id: "b",
+        run_id: "run-abc",
+        task_id: "42",
+        adapter: Harness.AgentAdapter.Claude,
+        state: :done,
+        reason: :approved,
+        duration_ms: 1,
+        agent: :claude
+      }
+
+      project = %Project{name: "demo", source: {:local, "/tmp/x"}, roadmap_path: "/tmp", target_branch: "main"}
+
+      assert Lander.landing_args(record, project) == %{
+               "project_name" => "demo",
+               "run_id" => "run-abc",
+               "task_id" => "42",
+               "agent" => "claude",
+               "reviewer" => nil,
+               "branch" => "harness/run-abc",
+               "land_attempt" => 1
+             }
+    end
+
+    test "enqueue/1 returns :not_found for an unrecorded run_id" do
+      assert {:error, :not_found} = Lander.enqueue("__no_such_run__")
     end
   end
 

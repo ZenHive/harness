@@ -48,6 +48,7 @@ defmodule Harness.Dispatch do
   alias Harness.Batch.AgentEvaluation.Comparison
   alias Harness.Batch.AgentEvaluation.Entry
   alias Harness.CapabilityScore
+  alias Harness.Lander
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
@@ -367,6 +368,135 @@ defmodule Harness.Dispatch do
       :ok -> {:ok, %{run_id: run_id, resumed: true}}
       {:error, _reason} = error -> error
     end
+  end
+
+  api(
+    :resume_failed,
+    "Resume a SETTLED :failed run by run_id: re-dispatch its roadmap task on a NEW run that branches off the retained harness/<run-id> branch (the prior attempt's commits are the starting point) with the failure report injected into the prompt — the implementer continues from prior work instead of redoing it. Same agent by default; escalate=true routes via Harness.CapabilityScore to the recommended agent for the task's domain. DISTINCT from dispatch-resume, which un-pauses a live :held run.",
+    params: [
+      run_id: [
+        kind: :value,
+        description:
+          "Run id of a settled :failed run (from dispatch-status / result_store-list_run_records). {:error, :not_found} when unrecorded, {:error, :not_failed} when the run did not fail."
+      ],
+      escalate: [
+        kind: :value,
+        default: false,
+        description:
+          "When true, pick the agent via capability scores on the task's first domain (reuses the dispatch-task recommend path; :elixir when the task has no domains). When false (default), reuse the agent that ran originally."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{run_id: new_run_id, resumed_from: old_run_id, agent: atom}} on a started run. {:error, reason}: :not_found, :not_failed, the ingest reasons, or a start_run failure."
+    }
+  )
+
+  @spec resume_failed(String.t(), boolean()) ::
+          {:ok, %{run_id: String.t(), resumed_from: String.t(), agent: atom() | nil}}
+          | {:error, error()}
+  def resume_failed(run_id, escalate \\ false) when is_binary(run_id) and is_boolean(escalate) do
+    with {:ok, record} <- load_failed_record(run_id),
+         {:ok, {project, item, adapter_module}} <-
+           resolve_and_ingest(record.project_name, record.task_id, resume_adapter(record, escalate)),
+         resumed = resume_item(item, record),
+         {:ok, new_run_id, _pid} <-
+           Run.Supervisor.start_run(resumed, project, adapter_module, resume_opts(resumed, run_id)) do
+      {:ok, %{run_id: new_run_id, resumed_from: run_id, agent: resumed.agent}}
+    end
+  end
+
+  @spec load_failed_record(String.t()) ::
+          {:ok, LogRecord.t()} | {:error, :not_found | :not_failed | term()}
+  defp load_failed_record(run_id) do
+    case ResultStore.list_run_records(run_id: run_id) do
+      {:ok, [%LogRecord{state: :failed} = record | _]} -> {:ok, record}
+      {:ok, [%LogRecord{} | _]} -> {:error, :not_failed}
+      {:ok, []} -> {:error, :not_found}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  # escalate → the recommend sentinel (capability-scored routing); otherwise the
+  # original agent. A record with no recorded agent also falls back to recommend.
+  # Public (@doc false) so the routing is testable without a live dispatch — the
+  # same testability seam as run_start_opts/3.
+  @doc false
+  @spec resume_adapter(LogRecord.t(), boolean()) :: String.t()
+  def resume_adapter(_record, true), do: @recommended_adapter
+
+  def resume_adapter(%LogRecord{agent: agent}, false) when is_atom(agent) and not is_nil(agent), do: Atom.to_string(agent)
+
+  def resume_adapter(%LogRecord{}, false), do: @recommended_adapter
+
+  # Inject the prior attempt's failure report into the freshly-rendered prompt so
+  # the resumed implementer knows what to fix; the commits themselves arrive via
+  # the base_ref branch, not the prompt. Public (@doc false) for the same seam.
+  @doc false
+  @spec resume_item(Item.t(), LogRecord.t()) :: Item.t()
+  def resume_item(%Item{} = item, %LogRecord{} = record) do
+    %{item | prompt: item.prompt <> "\n\n" <> prior_attempt_section(record)}
+  end
+
+  @spec prior_attempt_section(LogRecord.t()) :: String.t()
+  defp prior_attempt_section(%LogRecord{review_report: report}) when is_binary(report) and report != "" do
+    """
+    ## Prior attempt failed — reviewer report
+
+    #{report}
+
+    The prior attempt's commits are already present (this run branches off them). Address the issues above and finish the task.
+    """
+  end
+
+  defp prior_attempt_section(%LogRecord{reason: reason}) do
+    """
+    ## Prior attempt failed
+
+    The previous run did not complete: #{resume_reason_text(reason)}
+
+    The prior attempt's commits are already present (this run branches off them). Continue from there and finish the task.
+    """
+  end
+
+  @spec resume_reason_text(Run.Result.reason()) :: String.t()
+  defp resume_reason_text({tag, detail}) when tag in [:review_stuck, :review_rejected] and is_binary(detail), do: detail
+
+  defp resume_reason_text(reason), do: inspect(reason)
+
+  # base_ref branches the resumed run off the retained failed branch so the prior
+  # commits are the starting point (the resume's headline cost saving). Public
+  # (@doc false) so the base_ref threading is testable without a live dispatch.
+  @doc false
+  @spec resume_opts(Item.t(), String.t()) :: keyword()
+  def resume_opts(%Item{} = item, old_run_id) do
+    item
+    |> run_start_opts(nil, true)
+    |> Keyword.put(:base_ref, "harness/" <> old_run_id)
+  end
+
+  api(
+    :reland,
+    "Re-enqueue a landing job for a run by run_id whose automatic land-train hit its cap and blocked the task: re-fetch, rebase the retained harness/<run-id> branch onto the current target, and push. ZERO agent tokens — pure git, the branch is already built and reviewer-approved. The JSON-native counterpart to Harness.Lander.enqueue/1; mechanical (the caller decides a re-land is warranted, harness only re-enqueues).",
+    params: [
+      run_id: [
+        kind: :value,
+        description:
+          "Run id of a settled run with a retained harness/<run-id> branch (typically a run whose task is blocked by a land-cap). {:error, :not_found} when no persisted record exists, {:error, :unknown_project} when its project is no longer registered."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{run_id, task_id}} on enqueue. {:error, reason}: :not_found, :unknown_project, or an Oban insert failure."
+    }
+  )
+
+  @spec reland(String.t()) ::
+          {:ok, %{run_id: String.t(), task_id: String.t()}} | {:error, error()}
+  def reland(run_id) when is_binary(run_id) do
+    Lander.enqueue(run_id)
   end
 
   # --- Project registration over JSON ---

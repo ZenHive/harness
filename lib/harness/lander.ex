@@ -43,14 +43,19 @@ defmodule Harness.Lander do
   `{:github, _}` source).
   """
 
+  alias Harness.AgentRegistry
   alias Harness.Audit.Worker, as: AuditWorker
   alias Harness.Git
   alias Harness.Lander.Resolver
+  alias Harness.Lander.Worker, as: LanderWorker
   alias Harness.Notification
   alias Harness.Notification.Event
   alias Harness.Oban, as: HarnessOban
   alias Harness.Project
+  alias Harness.ProjectRegistry
+  alias Harness.ResultStore
   alias Harness.Roadmap
+  alias Harness.Run.LogRecord
   alias Harness.Worktree
 
   require Logger
@@ -89,6 +94,79 @@ defmodule Harness.Lander do
          {:ok, base_sha} <- remote_target_sha(repo, target),
          {:ok, worktree} <- checkout(repo, branch) do
       land_in_worktree(worktree, repo, target, base_sha, project, request)
+    end
+  end
+
+  @doc """
+  Manually enqueue a landing job for a settled run by `run_id` — the operator
+  "Re-land" path for a run whose automatic land-train hit its cap and blocked
+  the task.
+
+  Reconstructs the landing args from the persisted run record (`run_id`,
+  `task_id`, `project_name`, `agent`, reviewer family) and inserts a fresh
+  `Harness.Lander.Worker` job at `land_attempt: 1` on the project's serialized
+  `landing_<name>` queue — the same job shape the automatic train enqueues, so
+  it re-fetches, rebases onto the current target, and pushes.
+
+  Mechanical by design: it does **not** judge whether a re-land is warranted —
+  the caller (operator clicking the dashboard button, or an orchestrator)
+  decides; harness only re-enqueues.
+  """
+  @spec enqueue(String.t()) ::
+          {:ok, %{run_id: String.t(), task_id: String.t()}} | {:error, :not_found | term()}
+  def enqueue(run_id) when is_binary(run_id) do
+    with {:ok, record} <- load_record(run_id),
+         {:ok, project} <- ProjectRegistry.lookup(record.project_name),
+         {:ok, _job} <- insert_landing(record, project) do
+      {:ok, %{run_id: run_id, task_id: record.task_id}}
+    end
+  end
+
+  @spec load_record(String.t()) :: {:ok, LogRecord.t()} | {:error, :not_found | term()}
+  defp load_record(run_id) do
+    case ResultStore.list_run_records(run_id: run_id) do
+      {:ok, [%LogRecord{} = record | _]} -> {:ok, record}
+      {:ok, []} -> {:error, :not_found}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @spec insert_landing(LogRecord.t(), Project.t()) :: {:ok, Oban.Job.t()} | {:error, term()}
+  defp insert_landing(%LogRecord{} = record, %Project{} = project) do
+    record
+    |> landing_args(project)
+    |> LanderWorker.new(queue: HarnessOban.landing_queue_name(project))
+    |> HarnessOban.insert()
+  end
+
+  # The Oban-arg map a manual re-land enqueues, reconstructed from the persisted
+  # run record. Pure (@doc false) so the reconstruction is testable without an
+  # Oban instance or a database — the branch is derived from the run id, the
+  # attempt resets to 1 (a fresh operator-initiated land cycle).
+  @doc false
+  @spec landing_args(LogRecord.t(), Project.t()) :: %{optional(String.t()) => term()}
+  def landing_args(%LogRecord{} = record, %Project{} = project) do
+    %{
+      "project_name" => project.name,
+      "run_id" => record.run_id,
+      "task_id" => record.task_id,
+      "agent" => to_string(record.agent),
+      "reviewer" => reviewer_name(record.reviewer_adapter),
+      "branch" => "harness/" <> record.run_id,
+      "land_attempt" => 1
+    }
+  end
+
+  # The reviewer's agent-family name (∉ {implementer, auditor}) threaded onto the
+  # landing job so a post-merge audit can pick a third family. Best-effort: an
+  # unrecognized module just drops to nil (audit falls back).
+  @spec reviewer_name(module() | nil) :: String.t() | nil
+  defp reviewer_name(nil), do: nil
+
+  defp reviewer_name(module) do
+    case AgentRegistry.agent_for_module(module) do
+      {:ok, agent} -> to_string(agent)
+      {:error, _reason} -> nil
     end
   end
 

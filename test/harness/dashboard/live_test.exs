@@ -153,6 +153,51 @@ defmodule Harness.Dashboard.LiveTest do
     end
   end
 
+  describe "resumable?/1 (resume-button visibility guard)" do
+    test "a settled :failed run is resumable" do
+      assert Live.resumable?(%Status{run_id: "r", task_id: "1", state: :failed})
+    end
+
+    test "a :done run is not resumable (it lands / re-lands, not resumes)" do
+      refute Live.resumable?(%Status{run_id: "r", task_id: "1", state: :done})
+    end
+
+    test "in-flight states are not resumable" do
+      for state <- [:dispatched, :running, :committing, :reviewing] do
+        refute Live.resumable?(%Status{run_id: "r", task_id: "1", state: state}),
+               "expected #{state} to be non-resumable"
+      end
+    end
+
+    test "a missing run status hides the resume control" do
+      refute Live.resumable?(nil)
+    end
+  end
+
+  describe "relandable?/2 (re-land-button visibility guard)" do
+    test "a run whose task is blocked in the summaries is re-landable" do
+      summaries = %{"proj" => %{open: 1, done: 0, total: 1, landed: %{}, blocked: %{"7" => true}}}
+
+      assert Live.relandable?(
+               %Status{run_id: "r", task_id: "7", project_name: "proj", state: :done},
+               summaries
+             )
+    end
+
+    test "a run whose task is not blocked is not re-landable" do
+      summaries = %{"proj" => %{open: 0, done: 1, total: 1, landed: %{}, blocked: %{}}}
+
+      refute Live.relandable?(
+               %Status{run_id: "r", task_id: "7", project_name: "proj", state: :done},
+               summaries
+             )
+    end
+
+    test "a missing run status hides the re-land control" do
+      refute Live.relandable?(nil, %{})
+    end
+  end
+
   describe "live_edited_files/1 (in-flight edited-file harvest)" do
     test "surfaces string-keyed file_path / path tool args, first-seen and deduped" do
       events = [

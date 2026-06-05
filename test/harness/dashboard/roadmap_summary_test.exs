@@ -40,6 +40,12 @@ defmodule Harness.Dashboard.RoadmapSummaryTest do
       assert summary.landed == %{"5" => "abc1234ff"}
     end
 
+    test "builds the blocked task set (the Re-land gate)" do
+      summary = RoadmapSummary.tally(@tasks)
+
+      assert summary.blocked == %{"3" => true}
+    end
+
     test "ignores a blank or missing shipped_in" do
       tasks = [
         %{"id" => "7", "status" => "done", "shipped_in" => ""},
@@ -56,7 +62,7 @@ defmodule Harness.Dashboard.RoadmapSummaryTest do
     end
 
     test "an empty roadmap tallies to a zero summary" do
-      assert RoadmapSummary.tally([]) == %{open: 0, done: 0, total: 0, landed: %{}}
+      assert RoadmapSummary.tally([]) == %{open: 0, done: 0, total: 0, landed: %{}, blocked: %{}}
     end
   end
 
@@ -84,9 +90,33 @@ defmodule Harness.Dashboard.RoadmapSummaryTest do
     end
   end
 
+  describe "blocked?/3" do
+    setup do
+      {:ok, summaries: %{"alpha" => RoadmapSummary.tally(@tasks)}}
+    end
+
+    test "is true for a blocked task (the Re-land gate)", %{summaries: summaries} do
+      assert RoadmapSummary.blocked?(summaries, "alpha", "3")
+    end
+
+    test "is false for a non-blocked task", %{summaries: summaries} do
+      refute RoadmapSummary.blocked?(summaries, "alpha", "1")
+      refute RoadmapSummary.blocked?(summaries, "alpha", "4")
+    end
+
+    test "is false for an unknown project", %{summaries: summaries} do
+      refute RoadmapSummary.blocked?(summaries, "ghost", "3")
+    end
+
+    test "is false when project or task is nil", %{summaries: summaries} do
+      refute RoadmapSummary.blocked?(summaries, nil, "3")
+      refute RoadmapSummary.blocked?(summaries, "alpha", nil)
+    end
+  end
+
   describe "summary_for/2" do
     test "returns a zero summary for an unregistered project name" do
-      assert RoadmapSummary.summary_for(%{}, "ghost") == %{open: 0, done: 0, total: 0, landed: %{}}
+      assert RoadmapSummary.summary_for(%{}, "ghost") == %{open: 0, done: 0, total: 0, landed: %{}, blocked: %{}}
     end
   end
 
@@ -113,7 +143,7 @@ defmodule Harness.Dashboard.RoadmapSummaryTest do
 
       summaries = RoadmapSummary.for_projects([project])
 
-      assert summaries["broken-proj"] == %{open: 0, done: 0, total: 0, landed: %{}}
+      assert summaries["broken-proj"] == %{open: 0, done: 0, total: 0, landed: %{}, blocked: %{}}
     end
   end
 

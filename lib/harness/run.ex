@@ -214,6 +214,7 @@ defmodule Harness.Run do
            operator_feedback: String.t() | nil,
            in_run_discernment: keyword(),
            base_dir: String.t() | nil,
+           base_ref: String.t() | nil,
            adapter_opts: keyword(),
            env: %{optional(String.t()) => String.t() | false},
            land_attempt: pos_integer(),
@@ -522,6 +523,7 @@ defmodule Harness.Run do
       operator_feedback: nil,
       in_run_discernment: in_run_discernment_opts(opts),
       base_dir: Keyword.get(opts, :base_dir),
+      base_ref: Keyword.get(opts, :base_ref),
       adapter_opts: Keyword.get(opts, :adapter_opts, []),
       env: Keyword.get(opts, :env, %{}),
       land_attempt: Keyword.get(opts, :land_attempt, 1),
@@ -2394,6 +2396,12 @@ defmodule Harness.Run do
   end
 
   @spec worktree_opts(data()) :: keyword()
+  # An explicit :base_ref (e.g. a resumed run branching off the retained
+  # harness/<old-run-id> branch) wins over the computed origin/<target> base.
+  defp worktree_opts(%{base_ref: base_ref} = data) when is_binary(base_ref) and base_ref != "" do
+    Keyword.put(base_worktree_opts(data), :base_ref, base_ref)
+  end
+
   defp worktree_opts(%{project: %Project{target_branch: target}} = data) when is_binary(target) and target != "" do
     opts = base_worktree_opts(data)
 

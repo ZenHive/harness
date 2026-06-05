@@ -31,6 +31,27 @@ defmodule Harness.Dashboard.Live do
   `Harness.Run.cancel/1` (idempotent — settles the run `:failed`). The resulting
   `:harness_run_settled` broadcast transitions the row/detail to its settled
   state.
+
+  ## Recovery affordances (Task 204)
+
+  Settled runs carry two confirm-gated recovery buttons, each surfaced only when
+  the run's state permits it — harness offers, the operator chooses (agent-gate:
+  no auto-classification of which recovery applies):
+
+    * **Resume / Resume ↑** — on a `:failed` run (`resumable?/1`). Re-dispatches the
+      run's roadmap task on a NEW run that branches off the retained
+      `harness/<run-id>` branch (prior commits are the starting point) with the
+      failure report injected into the prompt. The plain button reuses the original
+      agent; "Resume ↑" escalates to the capability-recommended agent. Routes through
+      `Harness.Dispatch.resume_failed/2`.
+    * **Re-land** — on a run whose land-train hit its cap and left the task `blocked`
+      (`relandable?/2`, gated on `Harness.Dashboard.RoadmapSummary.blocked?/3`).
+      Re-enqueues the landing job (`Harness.Dispatch.reland/1` → `Harness.Lander.enqueue/1`);
+      the branch is already reviewer-approved, so this spends **zero agent tokens**.
+
+  Both events set the `:notice` assign (`{kind, msg}`), rendered as a transient
+  `setting-notice` bar — the bare app layout has no Phoenix flash. Stream refresh
+  rides the normal `RunFeed` broadcast.
   """
 
   use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}
@@ -90,6 +111,7 @@ defmodule Harness.Dashboard.Live do
      |> assign(:projects, projects)
      |> assign(:roadmap, RoadmapSummary.for_projects(projects))
      |> assign(:show_landed, false)
+     |> assign(:notice, nil)
      |> assign(:selected_project, nil)
      |> assign(:counts, bucket_counts(snapshot))
      |> assign(:history_all, snapshot.history)
@@ -592,6 +614,10 @@ defmodule Harness.Dashboard.Live do
       <a href="/harness/oban">Open Oban Web →</a>
     </div>
 
+    <div :if={@notice} class="setting-notice" data-kind={elem(@notice, 0)} role="status">
+      {elem(@notice, 1)}
+    </div>
+
     <.roadmap_panel projects={@projects} summaries={@roadmap} />
 
     <h2>Active runs</h2>
@@ -789,6 +815,9 @@ defmodule Harness.Dashboard.Live do
           <td>{entry.detail || ""}</td>
           <td>
             <.kill_button :if={killable?(entry.status)} run_id={entry.status.run_id} />
+            <.resume_button :if={resumable?(entry.status)} run_id={entry.status.run_id} />
+            <.resume_button :if={resumable?(entry.status)} run_id={entry.status.run_id} escalate />
+            <.reland_button :if={relandable?(entry.status, @summaries)} run_id={entry.status.run_id} />
             <.delete_button :if={deletable?(entry.status)} run_id={entry.status.run_id} />
           </td>
         </tr>
@@ -847,6 +876,64 @@ defmodule Harness.Dashboard.Live do
     """
   end
 
+  attr(:run_id, :string, required: true)
+  attr(:escalate, :boolean, default: false)
+
+  # Failed-only affordance: re-dispatch the run's task on a NEW run branched off
+  # the retained harness/<run-id> branch (prior commits as the starting point)
+  # with the failure report in the prompt. The plain button reuses the original
+  # agent; the escalate variant (phx-value-escalate) routes to a
+  # capability-recommended agent. Confirm-gated since it spends agent tokens.
+  @spec resume_button(map()) :: Rendered.t()
+  defp resume_button(%{escalate: true} = assigns) do
+    ~H"""
+    <button
+      type="button"
+      class="resume-btn"
+      phx-click="resume_run"
+      phx-value-run_id={@run_id}
+      phx-value-escalate="true"
+      data-confirm={"Resume run #{@run_id} with an escalated (capability-recommended) agent? Starts a new run off the failed branch."}
+    >
+      Resume ↑
+    </button>
+    """
+  end
+
+  defp resume_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      class="resume-btn"
+      phx-click="resume_run"
+      phx-value-run_id={@run_id}
+      data-confirm={"Resume run #{@run_id}? Starts a new run off the retained failed branch with the same agent."}
+    >
+      Resume
+    </button>
+    """
+  end
+
+  attr(:run_id, :string, required: true)
+
+  # Offered when the run's task is blocked (a land-cap-exhausted train). Re-enqueues
+  # the landing job — zero agent tokens, pure git — confirm-gated; routes to the
+  # `"reland_run"` handle_event.
+  @spec reland_button(map()) :: Rendered.t()
+  defp reland_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      class="reland-btn"
+      phx-click="reland_run"
+      phx-value-run_id={@run_id}
+      data-confirm={"Re-land run #{@run_id}? Re-enqueues the landing job (no agent run)."}
+    >
+      Re-land
+    </button>
+    """
+  end
+
   @impl Phoenix.LiveView
   def handle_event("select_project", %{"project" => project_name}, socket) do
     target =
@@ -877,6 +964,36 @@ defmodule Harness.Dashboard.Live do
       |> stream_delete_by_dom_id(:history, "hist-#{run_id}")
 
     {:noreply, assign(socket, :history_empty?, history_rows(socket) == [])}
+  end
+
+  def handle_event("resume_run", %{"run_id" => run_id} = params, socket) do
+    # Re-dispatch a settled :failed run off its retained harness/<run-id> branch
+    # (prior commits as the starting point) with the failure report in the prompt.
+    # The new run surfaces in Active runs via the RunFeed broadcast; the :notice
+    # assign reports the outcome (the bare app layout renders no flash).
+    notice =
+      case Harness.Dispatch.resume_failed(run_id, params["escalate"] == "true") do
+        {:ok, %{run_id: new_run_id, agent: agent}} ->
+          {:ok, "Resumed #{run_id} → new run #{new_run_id} on #{agent}."}
+
+        {:error, reason} ->
+          {:error, "Resume failed: #{inspect(reason)}"}
+      end
+
+    {:noreply, assign(socket, :notice, notice)}
+  end
+
+  def handle_event("reland_run", %{"run_id" => run_id}, socket) do
+    # Re-enqueue the landing job for a run whose land-train blocked its task
+    # (0 agent tokens — pure git). Success surfaces as the Landed column updating
+    # on the next roadmap tick; the :notice assign reports the enqueue outcome.
+    notice =
+      case Harness.Dispatch.reland(run_id) do
+        {:ok, %{task_id: task_id}} -> {:ok, "Re-land enqueued for task #{task_id} (run #{run_id})."}
+        {:error, reason} -> {:error, "Re-land failed: #{inspect(reason)}"}
+      end
+
+    {:noreply, assign(socket, :notice, notice)}
   end
 
   def handle_event("toggle_landed", _params, socket) do
@@ -1015,4 +1132,23 @@ defmodule Harness.Dashboard.Live do
   def deletable?(%Status{state: state}) when state in [:done, :failed], do: true
   def deletable?(%Status{}), do: false
   def deletable?(nil), do: false
+
+  # A settled :failed run can be resumed: re-dispatched off its retained
+  # harness/<run-id> branch with the failure report as guidance. :done runs land
+  # (or re-land); live runs are killed/steered, not resumed.
+  @doc false
+  @spec resumable?(Status.t() | nil) :: boolean()
+  def resumable?(%Status{state: :failed}), do: true
+  def resumable?(%Status{}), do: false
+  def resumable?(nil), do: false
+
+  # A run is re-landable when its roadmap task is blocked — the shape a land-cap
+  # -exhausted merge-train leaves behind. The operator reads the blocked reason in
+  # the row, then re-enqueues the landing job. (Mechanical gate; the human decides.)
+  @doc false
+  @spec relandable?(Status.t() | nil, RoadmapSummary.summaries()) :: boolean()
+  def relandable?(%Status{project_name: project, task_id: task_id}, summaries),
+    do: RoadmapSummary.blocked?(summaries, project, task_id)
+
+  def relandable?(nil, _summaries), do: false
 end

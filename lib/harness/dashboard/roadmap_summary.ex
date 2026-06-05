@@ -38,7 +38,8 @@ defmodule Harness.Dashboard.RoadmapSummary do
           open: non_neg_integer(),
           done: non_neg_integer(),
           total: non_neg_integer(),
-          landed: %{optional(String.t()) => String.t()}
+          landed: %{optional(String.t()) => String.t()},
+          blocked: %{optional(String.t()) => true}
         }
 
   @typedoc "Per-project summaries keyed by project name."
@@ -67,11 +68,23 @@ defmodule Harness.Dashboard.RoadmapSummary do
 
   def landed_sha(_summaries, _project_name, _task_id), do: nil
 
+  @doc """
+  Whether the run's task is currently `blocked` in the roadmap — joining
+  `project_name` + `task_id` against the summaries map. The dashboard gates the
+  "Re-land" button on this (a land-cap-exhausted train marks the task `blocked`).
+  """
+  @spec blocked?(%{optional(String.t()) => summary()}, String.t() | nil, String.t() | nil) :: boolean()
+  def blocked?(summaries, project_name, task_id) when is_binary(project_name) and is_binary(task_id) do
+    summaries |> summary_for(project_name) |> Map.fetch!(:blocked) |> Map.has_key?(task_id)
+  end
+
+  def blocked?(_summaries, _project_name, _task_id), do: false
+
   @doc false
   @spec tally([map()]) :: summary()
   def tally(tasks) do
     Enum.reduce(tasks, empty(), fn task, acc ->
-      acc |> bump_counts(task["status"]) |> bump_landed(task)
+      acc |> bump_counts(task["status"]) |> bump_landed(task) |> bump_blocked(task)
     end)
   end
 
@@ -104,6 +117,13 @@ defmodule Harness.Dashboard.RoadmapSummary do
 
   defp bump_landed(acc, _task), do: acc
 
+  @spec bump_blocked(summary(), map()) :: summary()
+  defp bump_blocked(acc, %{"id" => id, "status" => "blocked"}) do
+    %{acc | blocked: Map.put(acc.blocked, to_string(id), true)}
+  end
+
+  defp bump_blocked(acc, _task), do: acc
+
   @spec empty() :: summary()
-  defp empty, do: %{open: 0, done: 0, total: 0, landed: %{}}
+  defp empty, do: %{open: 0, done: 0, total: 0, landed: %{}, blocked: %{}}
 end

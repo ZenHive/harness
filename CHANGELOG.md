@@ -29,6 +29,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Task 204: dashboard Resume + Re-land recovery buttons.** Settled runs now
+  carry two confirm-gated recovery affordances, each surfaced only when the run's
+  state permits it (agent-gate: harness offers, the operator chooses; no
+  auto-classification). **Resume / Resume ↑** on a `:failed` run re-dispatches its
+  roadmap task on a new run branched off the retained `harness/<run-id>` branch —
+  the prior attempt's commits are the starting point, with the failure report
+  injected into the prompt — reusing the original agent (plain) or escalating to
+  the capability-recommended agent (`Harness.Dispatch.resume_failed/2`; a new
+  `:base_ref` start-run opt threads the branch base through `Harness.Run`'s
+  `worktree_opts/1`). **Re-land** on a run whose land-train hit its cap and left
+  the task `blocked` re-enqueues the landing job
+  (`Harness.Dispatch.reland/1` → `Harness.Lander.enqueue/1`, gated on
+  `Harness.Dashboard.RoadmapSummary.blocked?/3`) — the branch is already
+  reviewer-approved, so it spends **zero agent tokens**. Both also exposed as MCP
+  tools `dispatch-resume_failed` / `dispatch-reland`.
 - **Task 167: declarative operator-config schema + UI-editable run timeouts.**
   `Harness.Config` (+ `Harness.Config.Entry`) centralizes the operator-relevant
   `:harness` app-env keys — each declaring its key path, baked-in default, type,

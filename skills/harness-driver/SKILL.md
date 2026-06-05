@@ -150,6 +150,8 @@ The cross-family reviewer AI's verdict — not the implementer's self-report —
 | `dispatch-transcript` / `dispatch-transcript_events` | Buffered raw / parsed transcript for a live run, with a `seq` to poll deltas. |
 | `dispatch-cancel` | Cancel an in-flight run (idempotent). |
 | `dispatch-hold` / `dispatch-steer` / `dispatch-resume` | Operator-mediated run recovery by `run_id`: park a run (`hold`, `interrupt:` to kill the agent now), stash guidance for the next agent boundary (`steer`), re-enter `:running` in the same worktree (`resume`). The JSON-native counterparts to `Harness.Run.hold/2` · `steer/2` · `resume/1`. |
+| `dispatch-resume_failed` | Recover a SETTLED `:failed` run by `run_id`: re-dispatch its roadmap task on a NEW run branched off the retained `harness/<run-id>` branch (prior commits are the start point) with the failure report injected. Same agent by default; `escalate: true` routes via capability score to the recommended agent. DISTINCT from `dispatch-resume` (which un-pauses a live `:held` run). |
+| `dispatch-reland` | Re-enqueue the landing job for a run whose land-train hit its cap and left the task `blocked`. Pure git, reviewer-approved branch — **zero agent tokens**. `Harness.Dispatch.reland/1` → `Harness.Lander.enqueue/1`. |
 | `dispatch-verdict_detail` | After settle, read the **reviewer's verdict / report / ratings** by `run_id` — loaded from the persisted record, so it works after the run process is gone. |
 | `dispatch-register_project` | Register a project for dispatch from JSON scalars (`name`, `source_type` local/github, `source_location`, `roadmap_path`, optional `check_command` / `concurrency_cap`) — the JSON-native path for `Harness.ProjectRegistry.register/1` (which takes a struct). Runtime-only unless `:repo_enabled`; durable registration stays config + restart. |
 | `roadmap-list` / `roadmap-next_bundle` / `roadmap-ingest` | Browse / ingest a registered project's roadmap as structured data. |
@@ -369,6 +371,7 @@ When `Harness.Chat.Claude` spawns its backing `claude -p`, it writes exactly thi
 
 - **Dispatch:** `dispatch-task`, `dispatch-await`, `dispatch-recommend`, `dispatch-bundle`, `dispatch-compare`.
 - **Observe / control a live run by `run_id`:** `dispatch-status`, `dispatch-transcript`, `dispatch-transcript_events`, `dispatch-cancel`, `dispatch-hold`, `dispatch-steer`, `dispatch-resume`.
+- **Recover a settled run by `run_id`:** `dispatch-resume_failed` (re-dispatch a `:failed` task off its retained branch + failure report; same-agent or `escalate`), `dispatch-reland` (re-enqueue landing for a land-capped `blocked` task, zero tokens).
 - **Settled-run detail:** `dispatch-verdict_detail` (the reviewer's verdict / report / ratings), `result_store-list_run_records`.
 - **Agent KPIs / routing:** `result_store-aggregate_by_agent` (per-agent KPI rollup), `result_store-get_capability_score` / `result_store-list_capability_scores`, `dispatch-recommend`.
 - **Roadmap / registry / recipes:** `roadmap-ingest` / `roadmap-list` / `roadmap-next_bundle` / `roadmap-ready` / `roadmap-mark_landed` / `roadmap-mark_blocked`, `project_registry-list` / `project_registry-lookup` / `dispatch-register_project`, `playbooks-list` / `playbooks-get`, `audit_review-grade_fix`.
