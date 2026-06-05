@@ -39,6 +39,7 @@ defmodule Harness.StatusViewTest do
 
   test "classify/1 maps lifecycle states into the four buckets" do
     assert StatusView.classify(%Status{state: :running, run_id: "r", task_id: "1"}) == :in_flight
+    assert StatusView.classify(%Status{state: :recovering, run_id: "r", task_id: "1"}) == :repairing
     assert StatusView.classify(%Status{state: :reviewing, run_id: "r", task_id: "1"}) == :repairing
     assert StatusView.classify(%Status{state: :done, run_id: "r", task_id: "1"}) == :green
     assert StatusView.classify(%Status{state: :failed, run_id: "r", task_id: "1"}) == :red

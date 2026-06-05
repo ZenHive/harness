@@ -14,6 +14,7 @@ defmodule Harness.ResultStore.PostgresTest do
   alias Harness.ResultStore
   alias Harness.ResultStore.Postgres, as: Store
   alias Harness.ResultStoreContract
+  alias Harness.TokenUsage
 
   @moduletag :integration
 
@@ -63,7 +64,11 @@ defmodule Harness.ResultStore.PostgresTest do
           review_ratings: %{"code_quality" => 2},
           reviewer_outcome_kind: :exited,
           reviewer_exit_status: 0,
-          reviewer_output: "reviewer transcript: checks pass, no verdict written"
+          reviewer_output: "reviewer transcript: checks pass, no verdict written",
+          recovery_attempts: 1,
+          recovery_outcome: :dead,
+          recovery_repaired: "documented unrecoverable checkout leak",
+          recovery_token_usage: %TokenUsage{input: 20, output: 10, total: 30}
         )
 
       assert :ok = ResultStore.record_run(rich, store)
@@ -102,6 +107,10 @@ defmodule Harness.ResultStore.PostgresTest do
       assert rec.reviewer_outcome_kind == :exited
       assert rec.reviewer_exit_status == 0
       assert rec.reviewer_output == "reviewer transcript: checks pass, no verdict written"
+      assert rec.recovery_attempts == 1
+      assert rec.recovery_outcome == :dead
+      assert rec.recovery_repaired == "documented unrecoverable checkout leak"
+      assert rec.recovery_token_usage == %TokenUsage{input: 20, output: 10, total: 30}
     end
   end
 

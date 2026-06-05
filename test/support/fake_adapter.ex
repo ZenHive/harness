@@ -28,7 +28,7 @@ defmodule Harness.FakeAdapter do
     # build_command error, never a silent fallback (the conformance contract).
     if mode in capabilities().permission_modes do
       with {:ok, invocation} <- AgentAdapter.attach_rules(__MODULE__, invocation) do
-        {exe, argv, _} = command(Keyword.get(opts, :command, :echo), invocation)
+        {exe, argv, _} = command(command_for(invocation, opts), invocation)
         {:ok, {exe, argv, Map.to_list(invocation.env)}}
       end
     else
@@ -106,6 +106,13 @@ defmodule Harness.FakeAdapter do
   #                             always writes the artifact (per-implementer
   #                             verdict fixture for A/B comparison tests).
   #
+  # Recovery doubles (bounded `.harness/recovery.json` seam fixtures) — selected
+  # with `recovery_command:` when the invocation task id ends in "-recovery":
+  # :recovery_clean       — moves `$HARNESS_RECOVERY_REPO/leaked.txt` into the
+  #                         worktree artifact directory and
+  #                         writes a repaired artifact.
+  # :recovery_dead        — writes a dead artifact.
+  #
   # Audit doubles (post-merge audit agent fixtures):
   # {:audit, short_sha}       — writes `.audit/<short_sha>.md` + the uncommitted
   #                             `.harness/audit.json` summary, then commits the
@@ -118,6 +125,30 @@ defmodule Harness.FakeAdapter do
   #                    back off origin after the ff-push (the audit-prompt
   #                    content fixture). The prompt rides as a positional
   #                    parameter ($2), never interpolated into the script.
+  defp command_for(%Invocation{task_id: task_id}, opts) when is_binary(task_id) do
+    if String.ends_with?(task_id, "-recovery") do
+      Keyword.get(opts, :recovery_command, Keyword.get(opts, :command, :echo))
+    else
+      Keyword.get(opts, :command, :echo)
+    end
+  end
+
+  defp command_for(_invocation, opts), do: Keyword.get(opts, :command, :echo)
+
+  defp command(:recovery_clean, _invocation) do
+    json = Jason.encode!(%{outcome: "repaired", report: "cleaned fake checkout leak", repaired: "removed leaked.txt"})
+
+    script =
+      ~S|mkdir -p .harness; if [ -f "$HARNESS_RECOVERY_REPO/leaked.txt" ]; then mv "$HARNESS_RECOVERY_REPO/leaked.txt" .harness/recovered-leaked.txt; fi; printf '%s' "$1" > .harness/recovery.json|
+
+    {"/bin/sh", ["-c", script, "harness-fake", json], []}
+  end
+
+  defp command(:recovery_dead, _invocation) do
+    json = Jason.encode!(%{outcome: "dead", report: "fake recovery declared dead", repaired: nil})
+    {"/bin/sh", ["-c", ~S|mkdir -p .harness; printf '%s' "$1" > .harness/recovery.json|, "harness-fake", json], []}
+  end
+
   defp command({:audit_capture_prompt, short_sha}, %Invocation{prompt: prompt}) when is_binary(short_sha) do
     script =
       ~S|mkdir -p .audit; printf '%s' "$2" > ".audit/$1.md"; | <>

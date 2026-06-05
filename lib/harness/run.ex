@@ -13,6 +13,7 @@ defmodule Harness.Run do
       dispatched  — creating the isolated worktree
       running     — the implementer agent is working in the worktree
       committing  — committing the implementer's work to the run branch
+      recovering   — bounded AI recovery for witnessed checkout pollution
       reviewing   — the cross-family reviewer (THE gate) reviews, runs the
                     project's checks itself, fixes inline, writes its verdict
       held        — operator-parked; worktree retained, lifetime timer suspended
@@ -103,6 +104,7 @@ defmodule Harness.Run do
   alias Harness.Roadmap.Item
   alias Harness.Run.LogRecord
   alias Harness.Run.MemoryGuard
+  alias Harness.Run.Recovery
   alias Harness.Run.Reflex
   alias Harness.Run.Result
   alias Harness.Run.Review
@@ -169,6 +171,7 @@ defmodule Harness.Run do
           :dispatched
           | :running
           | :committing
+          | :recovering
           | :reviewing
           | :held
           | :done
@@ -200,6 +203,14 @@ defmodule Harness.Run do
            reviewer_adapter: module() | nil,
            reviewer_adapter_opts: keyword(),
            reviewer_run: AgentRun.t() | nil,
+           recovery_adapter: module() | nil,
+           recovery_run: AgentRun.t() | nil,
+           recovery_budget: non_neg_integer(),
+           recovery_attempts: non_neg_integer(),
+           recovery_reason: Result.reason() | nil,
+           recovery_outcome: Recovery.outcome() | nil,
+           recovery_repaired: String.t() | nil,
+           recovery_token_usage: TokenUsage.t(),
            reviewer_spawn_timeout: pos_integer(),
            reviewing_idle_timeout: pos_integer() | nil,
            mem_threshold_kb: pos_integer(),
@@ -221,6 +232,7 @@ defmodule Harness.Run do
            land_attempt: pos_integer(),
            worktree: Worktree.t() | nil,
            checkout_snapshot: String.t() | nil,
+           checkout_pollution_check?: boolean(),
            pollution_allowlist: [String.t()],
            agent_run: AgentRun.t() | nil,
            agent_outcome: Outcome.t() | nil,
@@ -510,6 +522,14 @@ defmodule Harness.Run do
       reviewer_adapter: nil,
       reviewer_adapter_opts: Keyword.get(opts, :reviewer_adapter_opts, []),
       reviewer_run: nil,
+      recovery_adapter: nil,
+      recovery_run: nil,
+      recovery_budget: Keyword.get(opts, :recovery_budget, 1),
+      recovery_attempts: 0,
+      recovery_reason: nil,
+      recovery_outcome: nil,
+      recovery_repaired: nil,
+      recovery_token_usage: TokenUsage.empty(),
       reviewer_spawn_timeout: run_timeout(opts, :reviewer_spawn_timeout),
       reviewing_idle_timeout: Keyword.get(opts, :reviewing_idle_timeout),
       mem_threshold_kb: mem_threshold_kb,
@@ -531,6 +551,7 @@ defmodule Harness.Run do
       land_attempt: Keyword.get(opts, :land_attempt, 1),
       worktree: nil,
       checkout_snapshot: nil,
+      checkout_pollution_check?: Keyword.get(opts, :checkout_pollution_check, false),
       pollution_allowlist: resolve_pollution_allowlist(project, opts),
       agent_run: nil,
       agent_outcome: nil,
@@ -713,7 +734,7 @@ defmodule Harness.Run do
         do_cancel(data, reason, from)
 
       {_, _, _kind, pollution_reason} when not is_nil(pollution_reason) ->
-        fail(data, pollution_reason)
+        recover_checkout_pollution(data, pollution_reason)
     end
   end
 
@@ -774,6 +795,78 @@ defmodule Harness.Run do
 
   def committing(event_type, event_content, data) do
     handle_common(event_type, event_content, :committing, data)
+  end
+
+  # ── State: recovering — bounded AI seam before checkout-pollution failure ──
+
+  @doc false
+  @spec recovering(event(), term(), data()) :: handler_result()
+  def recovering(:enter, _old_state, data) do
+    RunFeed.broadcast_update(status_snapshot(:recovering, data))
+
+    case select_reviewer(data) do
+      {:ok, adapter} ->
+        parent = self()
+        task = start_task(fn -> run_recovery(%{data | recovery_adapter: adapter}, parent) end)
+
+        {:keep_state,
+         %{
+           data
+           | task: task,
+             recovery_adapter: adapter,
+             recovery_run: nil,
+             recovery_attempts: data.recovery_attempts + 1
+         }, [{:state_timeout, data.reviewer_spawn_timeout, :recovery_spawn_timeout}]}
+
+      {:error, reason} ->
+        Logger.warning("harness run: recovery agent unavailable for #{data.run_id}: #{inspect(reason)}")
+        {:next_state, :failed, %{data | reason: data.recovery_reason}}
+    end
+  end
+
+  def recovering(:info, {:recovery_handle, %AgentRun{} = run}, data) do
+    {:keep_state, %{data | recovery_run: run}, [{:state_timeout, reviewing_idle_timeout(data), :recovery_idle_timeout}]}
+  end
+
+  def recovering(:state_timeout, :recovery_spawn_timeout, %{recovery_run: nil} = data) do
+    fail_recovery_dead(data, "Recovery agent never spawned within #{data.reviewer_spawn_timeout}ms.")
+  end
+
+  def recovering(:state_timeout, :recovery_spawn_timeout, _data), do: :keep_state_and_data
+
+  def recovering(:state_timeout, :recovery_idle_timeout, data) do
+    fail_recovery_dead(data, "Recovery made no progress within #{reviewing_idle_timeout(data)}ms.")
+  end
+
+  def recovering(
+        :info,
+        {ref, {:ok, %{outcome: %Outcome{} = outcome, recovery: recovery}}},
+        %{task: %Task{ref: ref}} = data
+      ) do
+    Process.demonitor(ref, [:flush])
+
+    data =
+      data
+      |> clear_recovery_run()
+      |> Map.put(:task, nil)
+      |> accumulate_recovery_token_usage(outcome)
+
+    settle_recovery(data, recovery)
+  end
+
+  def recovering(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
+    Process.demonitor(ref, [:flush])
+    terminate_recovery(data)
+    fail_recovery_dead(%{data | task: nil}, "Recovery failed to run: #{inspect(reason)}")
+  end
+
+  def recovering(:info, {:DOWN, ref, :process, _pid, reason}, %{task: %Task{ref: ref}} = data) when reason != :normal do
+    terminate_recovery(data)
+    fail_recovery_dead(%{data | task: nil}, "Recovery crashed: #{inspect(reason)}")
+  end
+
+  def recovering(event_type, event_content, data) do
+    handle_common(event_type, event_content, :recovering, data)
   end
 
   # ── State: reviewing — the cross-family reviewer is THE gate ─────────────
@@ -1096,6 +1189,7 @@ defmodule Harness.Run do
     # Terminate-then-cancel: the adapter SIGKILLs the captured os_pid while its
     # Port is still open, before cancel_task tears down the Port owner (Task 201).
     terminate_agent(data)
+    terminate_recovery(data)
     terminate_reviewer(data)
     cancel_task(data.task)
     cancel_task(data.discernment_task)
@@ -1106,6 +1200,7 @@ defmodule Harness.Run do
       | task: nil,
         discernment_task: nil,
         agent_run: nil,
+        recovery_run: nil,
         reviewer_run: nil,
         cancel_requested: nil,
         reason: reason
@@ -1129,6 +1224,7 @@ defmodule Harness.Run do
     # Terminate-then-cancel (Task 201): reap the captured os_pid before the Port
     # owner is torn down.
     terminate_agent(data)
+    terminate_recovery(data)
     terminate_reviewer(data)
     cancel_task(data.task)
     cancel_task(data.discernment_task)
@@ -1140,6 +1236,7 @@ defmodule Harness.Run do
       | task: nil,
         discernment_task: nil,
         agent_run: nil,
+        recovery_run: nil,
         reviewer_run: nil,
         cancel_requested: nil,
         reason: reason
@@ -1162,6 +1259,7 @@ defmodule Harness.Run do
     # Terminate-then-cancel (Task 201): SIGKILL the captured os_pid before
     # cancel_task closes the Port owner.
     terminate_agent(data)
+    terminate_recovery(data)
     terminate_reviewer(data)
     cancel_task(data.discernment_task)
 
@@ -1170,6 +1268,7 @@ defmodule Harness.Run do
        data
        | discernment_task: nil,
          agent_run: nil,
+         recovery_run: nil,
          reviewer_run: nil,
          cancel_requested: nil,
          reason: reason
@@ -1191,15 +1290,16 @@ defmodule Harness.Run do
     end
   end
 
-  @spec runaway_tree(data()) :: {:agent | :reviewer, non_neg_integer(), non_neg_integer()} | nil
+  @spec runaway_tree(data()) :: {:agent | :recovery | :reviewer, non_neg_integer(), non_neg_integer()} | nil
   defp runaway_tree(data) do
-    Enum.find_value([{:agent, data.agent_run}, {:reviewer, data.reviewer_run}], fn {role, run} ->
+    Enum.find_value([{:agent, data.agent_run}, {:recovery, data.recovery_run}, {:reviewer, data.reviewer_run}], fn {role,
+                                                                                                                    run} ->
       over_threshold(role, run, data.mem_threshold_kb)
     end)
   end
 
-  @spec over_threshold(:agent | :reviewer, AgentRun.t() | nil, pos_integer()) ::
-          {:agent | :reviewer, non_neg_integer(), non_neg_integer()} | nil
+  @spec over_threshold(:agent | :recovery | :reviewer, AgentRun.t() | nil, pos_integer()) ::
+          {:agent | :recovery | :reviewer, non_neg_integer(), non_neg_integer()} | nil
   defp over_threshold(_role, nil, _threshold), do: nil
   defp over_threshold(_role, %AgentRun{os_pid: nil}, _threshold), do: nil
 
@@ -1212,11 +1312,12 @@ defmodule Harness.Run do
   # adapter.terminate/1 would orphan) BEFORE the adapter teardown closes its
   # Port — while the port is open the os_pid still names this run's tree
   # (mirrors the OSProcess.kill ordering note) — then settles :failed.
-  @spec fail_memory_runaway(data(), :agent | :reviewer, non_neg_integer(), non_neg_integer()) ::
+  @spec fail_memory_runaway(data(), :agent | :recovery | :reviewer, non_neg_integer(), non_neg_integer()) ::
           handler_result()
   defp fail_memory_runaway(data, role, os_pid, rss_kb) do
     MemoryGuard.kill_tree(os_pid)
     terminate_agent(data)
+    terminate_recovery(data)
     terminate_reviewer(data)
     cancel_task(data.task)
     cancel_task(data.discernment_task)
@@ -1230,6 +1331,7 @@ defmodule Harness.Run do
       | task: nil,
         discernment_task: nil,
         agent_run: nil,
+        recovery_run: nil,
         reviewer_run: nil,
         cancel_requested: nil,
         reason: reason
@@ -1267,6 +1369,64 @@ defmodule Harness.Run do
   defp terminate_reviewer(%{reviewer_run: %AgentRun{} = run, reviewer_adapter: adapter}) when is_atom(adapter) do
     adapter.terminate(run)
     :ok
+  end
+
+  @spec terminate_recovery(data()) :: :ok
+  defp terminate_recovery(%{recovery_run: nil}), do: :ok
+
+  defp terminate_recovery(%{recovery_run: %AgentRun{} = run, recovery_adapter: adapter}) when is_atom(adapter) do
+    adapter.terminate(run)
+    :ok
+  end
+
+  @spec clear_recovery_run(data()) :: data()
+  defp clear_recovery_run(data), do: %{data | recovery_run: nil}
+
+  @spec recover_checkout_pollution(data(), Result.reason()) :: handler_result()
+  defp recover_checkout_pollution(%{recovery_attempts: attempts, recovery_budget: budget} = data, reason)
+       when attempts < budget do
+    {:next_state, :recovering, %{data | reason: reason, recovery_reason: reason}}
+  end
+
+  defp recover_checkout_pollution(data, reason), do: {:next_state, :failed, %{data | reason: reason}}
+
+  @spec fail_recovery_dead(data(), String.t()) :: handler_result()
+  defp fail_recovery_dead(data, report) do
+    Logger.info("harness run: recovery declared dead for #{data.run_id}: #{report}")
+    terminate_recovery(data)
+    cancel_task(data.task)
+
+    {:next_state, :failed,
+     %{
+       data
+       | task: nil,
+         recovery_run: nil,
+         recovery_outcome: :dead,
+         recovery_repaired: nil,
+         reason: data.recovery_reason
+     }}
+  end
+
+  @spec settle_recovery(data(), {:ok, Recovery.t()} | {:error, Recovery.error()}) :: handler_result()
+  defp settle_recovery(data, {:ok, %Recovery{outcome: :repaired} = recovery}) do
+    Logger.info("harness run: recovery repaired #{data.run_id}; resuming through commit + review")
+
+    {:next_state, :committing,
+     %{
+       data
+       | recovery_outcome: :repaired,
+         recovery_repaired: recovery.repaired,
+         reason: nil,
+         recovery_reason: nil
+     }}
+  end
+
+  defp settle_recovery(data, {:ok, %Recovery{outcome: :dead} = recovery}) do
+    fail_recovery_dead(%{data | recovery_repaired: recovery.repaired}, recovery.report)
+  end
+
+  defp settle_recovery(data, {:error, reason}) do
+    fail_recovery_dead(data, "Recovery artifact is malformed or missing: #{inspect(reason)}")
   end
 
   @spec fail_review_stuck(data(), String.t()) :: handler_result()
@@ -1414,7 +1574,11 @@ defmodule Harness.Run do
       agent_diff_size: data.agent_diff_size,
       reviewer_diff_size: data.reviewer_diff_size,
       token_usage: data.token_usage,
-      composed_inputs: data.composed_inputs
+      composed_inputs: data.composed_inputs,
+      recovery_attempts: data.recovery_attempts,
+      recovery_outcome: data.recovery_outcome,
+      recovery_repaired: data.recovery_repaired,
+      recovery_token_usage: data.recovery_token_usage
     }
   end
 
@@ -1439,6 +1603,12 @@ defmodule Harness.Run do
   defp accumulate_token_usage(data, %Outcome{output: output}) do
     attempt = TokenUsage.parse(data.agent_kind, output)
     %{data | token_usage: TokenUsage.add(data.token_usage, attempt)}
+  end
+
+  @spec accumulate_recovery_token_usage(data(), Outcome.t()) :: data()
+  defp accumulate_recovery_token_usage(data, %Outcome{output: output}) do
+    attempt = TokenUsage.parse(agent_kind_for(data.recovery_adapter), output)
+    %{data | recovery_token_usage: TokenUsage.add(data.recovery_token_usage, attempt)}
   end
 
   @spec persist_run_record(data(), Result.t()) :: :ok
@@ -1759,6 +1929,64 @@ defmodule Harness.Run do
       {:ok, agent} -> AgentSettings.enabled?(agent)
       {:error, _reason} -> true
     end
+  end
+
+  @spec run_recovery(data(), pid()) ::
+          {:ok, %{outcome: Outcome.t(), recovery: {:ok, Recovery.t()} | {:error, Recovery.error()}}}
+          | {:error, term()}
+  defp run_recovery(%{recovery_adapter: adapter} = data, parent) when is_atom(adapter) do
+    with {:ok, %Outcome{} = outcome} <-
+           Driver.run(adapter, recovery_invocation(data), recovery_driver_opts(data, parent)) do
+      {:ok, %{outcome: outcome, recovery: Recovery.read(data.worktree.path)}}
+    end
+  end
+
+  @spec recovery_invocation(data()) :: Invocation.t()
+  defp recovery_invocation(data) do
+    repo_path = Project.repo_path(data.project)
+
+    %Invocation{
+      prompt: Recovery.prompt(recovery_context(data, repo_path)),
+      cwd: data.worktree.path,
+      task_id: "#{data.item.id}-recovery",
+      permission_mode: :autonomous,
+      adapter_opts: data.reviewer_adapter_opts,
+      env: Map.put(data.env, "HARNESS_RECOVERY_REPO", repo_path)
+    }
+  end
+
+  @spec recovery_context(data(), String.t()) :: Recovery.context()
+  defp recovery_context(data, repo_path) do
+    %{
+      reason: data.recovery_reason,
+      repo_path: repo_path,
+      git_status: git_status(data.worktree.path),
+      transcript_tail: transcript_tail(data.transcript),
+      check_output: recovery_check_output(data.recovery_reason, repo_path)
+    }
+  end
+
+  @spec recovery_check_output(Result.reason() | nil, String.t()) :: String.t()
+  defp recovery_check_output({:checkout_polluted, status}, _repo_path) when is_binary(status), do: status
+  defp recovery_check_output(_reason, repo_path), do: git_status(repo_path)
+
+  @spec git_status(String.t()) :: String.t()
+  defp git_status(path) do
+    case Git.run(["status", "--porcelain"], path) do
+      {:ok, status} -> status
+      {:error, reason} -> "git status failed: #{inspect(reason)}"
+    end
+  end
+
+  @spec recovery_driver_opts(data(), pid()) :: keyword()
+  defp recovery_driver_opts(data, parent) do
+    [
+      on_spawn: fn run -> send(parent, {:recovery_handle, run}) end,
+      on_output: fn chunk -> send(parent, {:transcript_chunk, chunk}) end
+    ]
+    |> put_opt(:total_timeout, data.total_timeout)
+    |> put_opt(:idle_timeout, reviewer_idle_timeout(data.idle_timeout))
+    |> put_opt(:progress_timeout, data.progress_timeout)
   end
 
   # Runs the reviewer agent in the implementer's worktree, commits whatever it
@@ -2504,6 +2732,10 @@ defmodule Harness.Run do
   defp normalize_opts(opts) when is_map(opts), do: Map.to_list(opts)
 
   @spec checkout_snapshot_for_run(data()) :: String.t() | nil
+  defp checkout_snapshot_for_run(%{checkout_pollution_check?: true} = data) do
+    checkout_snapshot(Project.repo_path(data.project))
+  end
+
   defp checkout_snapshot_for_run(data) do
     if AgentAdapter.supports?(data.adapter, :worktree_isolation) do
       nil

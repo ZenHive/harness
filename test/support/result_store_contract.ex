@@ -157,7 +157,11 @@ defmodule Harness.ResultStoreContract do
         review_ratings: %{"performance" => 8, "code_quality" => 7},
         reviewer_outcome_kind: :exited,
         reviewer_exit_status: 0,
-        reviewer_output: reviewer_non_utf8
+        reviewer_output: reviewer_non_utf8,
+        recovery_attempts: 1,
+        recovery_outcome: :repaired,
+        recovery_repaired: "moved leaked file",
+        recovery_token_usage: %TokenUsage{input: 10, output: 5, total: 15}
       )
 
     assert :ok = ResultStore.record_run(rec_full, store)
@@ -178,6 +182,10 @@ defmodule Harness.ResultStoreContract do
     assert rf.reviewer_outcome_kind == :exited
     assert rf.reviewer_exit_status == 0
     assert rf.reviewer_output == reviewer_non_utf8
+    assert rf.recovery_attempts == 1
+    assert rf.recovery_outcome == :repaired
+    assert rf.recovery_repaired == "moved leaked file"
+    assert rf.recovery_token_usage == %TokenUsage{input: 10, output: 5, total: 15}
 
     # tuple agent_outcome_kind roundtrip — regression for the
     # {:timed_out, :idle} FunctionClauseError that crashed Postgres.record_run

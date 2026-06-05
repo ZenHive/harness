@@ -553,6 +553,7 @@ defmodule Harness.Dashboard.CompareLive do
   defp column_bucket(%{verdict: :approve}), do: :green
   defp column_bucket(%{verdict: :reject}), do: :red
   defp column_bucket(%{state: :failed}), do: :red
+  defp column_bucket(%{state: :recovering}), do: :repairing
   defp column_bucket(%{state: :reviewing}), do: :repairing
   defp column_bucket(_), do: :in_flight
 
@@ -561,7 +562,7 @@ defmodule Harness.Dashboard.CompareLive do
   defp verdict_label(%{verdict: :reject}), do: %{tone: "fail", glyph: "✗", text: "rejected"}
   defp verdict_label(%{state: :failed}), do: %{tone: "fail", glyph: "✗", text: "failed"}
 
-  defp verdict_label(%{state: state}) when state in [:running, :committing, :reviewing, :dispatched],
+  defp verdict_label(%{state: state}) when state in [:running, :committing, :recovering, :reviewing, :dispatched],
     do: %{tone: "pending", glyph: "◌", text: to_string(state)}
 
   defp verdict_label(_), do: %{tone: "pending", glyph: "◌", text: "queued"}

@@ -42,7 +42,7 @@ defmodule Harness.Run.Result do
       spawned process tree (agent CLI + the `check_command` it forked) after its
       resident memory crossed the configured ceiling, so a runaway project check
       cannot OOM the host (Task 200). `info` carries `:role` (`:agent` |
-      `:reviewer`), `:os_pid`, `:rss_kb`, and `:threshold_kb`.
+      `:recovery` | `:reviewer`), `:os_pid`, `:rss_kb`, and `:threshold_kb`.
     * `:hold_expired` — an operator-held run outlived the hold safeguard.
     * `{:reflex_halted, r}` — the deterministic mid-run reflex layer killed the
       agent for a mechanical liveness or blocked-command reason.

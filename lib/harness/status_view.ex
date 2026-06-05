@@ -145,8 +145,9 @@ defmodule Harness.StatusView do
   def classify(%Status{state: :done}), do: :green
   def classify(%Status{state: :failed}), do: :red
 
-  # A reviewing run IS red work being fixed — the human-facing "being repaired"
-  # bucket, even though the fixer is now a cross-family reviewer agent.
+  # A recovering/reviewing run IS red work being fixed — the human-facing
+  # "being repaired" bucket, even though the fixer is now an AI agent.
+  def classify(%Status{state: :recovering}), do: :repairing
   def classify(%Status{state: :reviewing}), do: :repairing
 
   def classify(%Status{state: state}) when state in [:dispatched, :running, :committing, :held], do: :in_flight

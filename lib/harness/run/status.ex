@@ -19,6 +19,7 @@ defmodule Harness.Run.Status do
           :dispatched
           | :running
           | :committing
+          | :recovering
           | :reviewing
           | :held
           | :done
