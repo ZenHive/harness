@@ -9011,7 +9011,7 @@
       "phase": 18,
       "bundle": "judgment-collapse",
       "milestone": "v0_13",
-      "status": "pending",
+      "status": "done",
       "title": "rmap structured error envelope — replace roadmap.ex English-stderr classification with exit codes / JSON",
       "scores": {
         "d": 3,
@@ -9037,9 +9037,14 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "22cbfb60ba3ee15554493eb430c01e1c69bd0e1f",
       "body": "roadmap.ex:633-638 classifies failures by regex-matching rmap's English stderr. rmap is OURS (../rmap). Interpreting an English error string is fragile (wording/locale drift) and is meaning-from-prose. Fix at the source: structured exit codes or a JSON error envelope; harness matches the code. Mechanical at heart — but the meaning belongs in the contract, not a harness regex.",
       "created_at": "2026-06-05",
+      "done_at": "2026-06-05",
       "scored_at": "2026-06-05",
+      "implemented": "Landed by claude via merge-train; reviewer-approved (run run-1780652940399-7d1f693e, 22cbfb60ba3ee15554493eb430c01e1c69bd0e1f).",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     },
     {

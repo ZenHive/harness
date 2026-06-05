@@ -6491,7 +6491,7 @@ id = "220"
 phase = 18
 bundle = "judgment-collapse"
 milestone = "v0_13"
-status = "pending"
+status = "done"
 title = "rmap structured error envelope — replace roadmap.ex English-stderr classification with exit codes / JSON"
 scores = { d = 3, b = 3, u = 3 }
 acceptance_criteria = ["rmap (../rmap, ours) emits a distinct exit code or a --json error envelope distinguishing task-not-found from invalid-roadmap.", "Harness.Roadmap.classify_failure/2 matches on the structured signal, not the English-text regex / invalid-TOML substring.", "Both repos' tests pass; ROADMAP/CHANGELOG updated in each."]
@@ -6500,8 +6500,13 @@ touches = ["../rmap"]
 domains = ["otp"]
 assignee = "claude"
 body = "roadmap.ex:633-638 classifies failures by regex-matching rmap's English stderr. rmap is OURS (../rmap). Interpreting an English error string is fragile (wording/locale drift) and is meaning-from-prose. Fix at the source: structured exit codes or a JSON error envelope; harness matches the code. Mechanical at heart — but the meaning belongs in the contract, not a harness regex."
+implemented = "Landed by claude via merge-train; reviewer-approved (run run-1780652940399-7d1f693e, 22cbfb60ba3ee15554493eb430c01e1c69bd0e1f)."
+delivered_by = "claude"
+verified = true
 created_at = "2026-06-05"
 scored_at = "2026-06-05"
+done_at = "2026-06-05"
+shipped_in = "22cbfb60ba3ee15554493eb430c01e1c69bd0e1f"
 
 [[task]]
 id = "221"
