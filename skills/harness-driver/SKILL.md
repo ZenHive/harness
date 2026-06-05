@@ -307,6 +307,7 @@ Key fields you care about as driver (full struct: `lib/harness/run/result.ex`):
 - `state` + `reason` — `:done`/`:approved`, or `:failed` with `{:review_rejected, report}` / `{:review_stuck, report}` / a mechanical reason
 - `review` — the parsed `.harness/review.json` artifact (`%Harness.Run.Review{verdict, report, ratings}`)
 - `agent_outcome` (raw implementer transcript + kind + exit_status)
+- `reviewer_outcome` (raw reviewer transcript + kind + exit_status, or `nil` if the run never produced a clean reviewer outcome — killed by an idle/spawn timeout, crashed, or no reviewer available). On a `{:review_stuck, _}` run this is the diagnostic of *why* the gate produced no verdict; the dominant stuck mode is a clean reviewer exit that simply omitted the verdict file.
 - `worktree_path` (the deliverable; the branch name is conventionally `"harness/" <> run_id` — not stored on `Result`)
 - `agent_diff_size`, `reviewer_diff_size` (diagnostics; reviewer diff `0` = first-attempt pass)
 - `reviewer_adapter` (which cross-family agent gated the run)
@@ -467,7 +468,7 @@ end
 
 Live transcript: open `http://localhost:4018/harness/runs/<run_id>` in the browser. LiveView is subscribed to `Phoenix.PubSub` topic `harness:run:<id>:transcript`, fed by `Driver.run/3`'s `:on_output` callback. The operator (human) usually has this open; you (driver) usually don't need it unless you're triaging.
 
-> **LogRecord field coverage.** `%LogRecord{}` carries the reviewer's **verdict** (`:approve`/`:reject`), its **report** (`review_report`) + **ratings** (`review_ratings`), the **reviewer fix-diff size** (`reviewer_diff_size`), per-run `token_usage` (`%Harness.TokenUsage{}`, parsed from the transcript), and the full implementer transcript. To triage a rejected run just call `dispatch-verdict_detail(run_id)` (or read `rec.review_report` off the LogRecord) — the report is the reviewer's prose on what it found. There is no per-check stdout to dig through: the reviewer already ran the checks and judged them.
+> **LogRecord field coverage.** `%LogRecord{}` carries the reviewer's **verdict** (`:approve`/`:reject`), its **report** (`review_report`) + **ratings** (`review_ratings`), the **reviewer fix-diff size** (`reviewer_diff_size`), per-run `token_usage` (`%Harness.TokenUsage{}`, parsed from the transcript), the full implementer transcript (`agent_output` + `agent_outcome_kind` / `agent_exit_status`), and — mirroring it — the full **reviewer** transcript (`reviewer_output` + `reviewer_outcome_kind` / `reviewer_exit_status`), so a `{:review_stuck, _}` run is diagnosable after the fact. Both raw-transcript blobs are dropped from `list_run_records` scans and returned only on a single-`run_id` point lookup. To triage a rejected run just call `dispatch-verdict_detail(run_id)` (or read `rec.review_report` off the LogRecord) — the report is the reviewer's prose on what it found. There is no per-check stdout to dig through: the reviewer already ran the checks and judged them.
 
 **Single delegation with explicit adapter choice (subscriber-IS-caller variant, mix-run / long-lived BEAM only):**
 

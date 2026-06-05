@@ -9438,6 +9438,53 @@
       "created_at": "2026-06-05",
       "scored_at": "2026-06-05",
       "cross_repo": []
+    },
+    {
+      "id": "232",
+      "phase": 18,
+      "bundle": "judgment-collapse",
+      "milestone": "v0_13",
+      "status": "done",
+      "title": "Persist reviewer raw output + outcome (kind/exit_status) on LogRecord so review_stuck is diagnosable",
+      "scores": {
+        "d": 2,
+        "b": 5,
+        "u": 7
+      },
+      "eff": 3.0,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "Harness.Run.Result gains a `reviewer_outcome :: Outcome.t() | nil` field — the reviewer agent's settled %Outcome{} (its raw transcript in .output, plus .kind / .exit_status), or nil when the run never produced a clean reviewer outcome (killed by idle/spawn timeout, crash, or no reviewer available).",
+        "run.ex captures the reviewer Outcome that is currently pattern-matched-and-discarded at the `:reviewing` {:ok, %{outcome: %Outcome{}, ...}} clause, stashes it on the gen_statem data, and threads it into build_result. On a Task-203 re-prompt the LAST pass's outcome wins (overwrite, not accumulate).",
+        "Harness.Run.LogRecord gains `reviewer_output :: binary()` (default \"\"), `reviewer_outcome_kind :: Outcome.kind() | nil`, `reviewer_exit_status :: integer() | nil`, populated from result.reviewer_outcome via a put_reviewer_outcome/2 mirroring the existing put_outcome/2. Pure mechanical capture — no interpretation, no classifier.",
+        "Tests cover: (a) LogRecord.from_result with a reviewer_outcome populates the three new fields from the Outcome; (b) a nil reviewer_outcome leaves them at defaults; (c) a review_stuck run (clean reviewer exit, no verdict file) persists the reviewer's raw transcript in reviewer_output so the next stuck run is diagnosable. NEVER-HIDE-FAILURES assertions (flunk on unexpected), not assert-true."
+      ],
+      "out_of_scope": [
+        "Persisting partial reviewer transcript when the reviewer was KILLED (idle/spawn timeout, crash) — no clean Outcome exists on those paths; reviewer_outcome stays nil and the existing {:review_stuck, report} reason already records which kill path. Capturing the live transcript segment for killed reviewers is a separate, more invasive transcript-segmentation effort.",
+        "Any KPI attribution / reviewer-reliability rollup change — that is task 231.",
+        "Reducing the review_stuck rate itself (prompt / timeout / re-prompt-budget tuning)."
+      ],
+      "files_to_modify": [
+        "lib/harness/run/result.ex",
+        "lib/harness/run/log_record.ex",
+        "lib/harness/run.ex"
+      ],
+      "touches": [
+        "lib/harness/run/result.ex",
+        "lib/harness/run/log_record.ex",
+        "lib/harness/run.ex",
+        "test/harness/run/log_record_test.exs"
+      ],
+      "body": "## Why (the muster, 2026-06-05)\nreview_stuck (reviewer exits without writing .harness/review.json) is recurring and cross-family (Claude/Cursor/Pi). Root-causing it is blocked by a diagnostic gap: harness persists the IMPLEMENTER's raw output (agent_output, from the implementer Outcome) but DISCARDS the reviewer's Outcome — it is pattern-matched at run.ex:806 (`{:ok, %{outcome: %Outcome{}, reviewer_diff_size: _, review: _}}`) and never bound. So on a stuck run we have the reason string but not the reviewer's transcript showing WHAT it did before ending its turn without the file write.\n\n## The dominant stuck mode is a CLEAN exit, not a kill\nEvidence: stuck runs are SHORTER than successful ones (median ~506s vs ~780s, max 2000s), and stuck median diff (~214) ~= ok (~244). The reviewer is not being timeout-killed mid-review — it reviews, then ends its turn early without the mandatory final write. On that path the reviewer Outcome IS present (Driver.run returned {:ok, %Outcome{}}) with kind=:completed, exit_status, and the full transcript in .output. Capturing it is the highest-value diagnostic and is free — the value is already in hand at run.ex:806, just thrown away.\n\n## Mantra check\nPure mechanics: capture a raw %Outcome{} and copy three fields onto the persisted record, mirroring the implementer side exactly (put_outcome/2). No judgment, no classifier, no regex inferring fault. This persists facts so a future AI (or task 231's rollup) can read them; it does not compute meaning.\n\n## Approach (non-binding)\n1. Run.Result: add reviewer_outcome field + typedoc.\n2. run.ex: add reviewer_outcome to data struct (type + init nil); bind the outcome in the :reviewing {:ok, ...} clause and stash on data before settle_review; add reviewer_outcome to build_result.\n3. LogRecord: add reviewer_output / reviewer_outcome_kind / reviewer_exit_status + put_reviewer_outcome/2; call it in from_result.\n4. Tests per acceptance criteria.\n",
+      "created_at": "2026-06-05",
+      "started_at": "2026-06-05",
+      "done_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "implemented": "Added reviewer_outcome to Run.Result (captured from the previously-discarded reviewer Outcome in the :reviewing settle path) and reviewer_output/reviewer_outcome_kind/reviewer_exit_status to Run.LogRecord (put_reviewer_outcome/2 mirroring put_outcome/2). Postgres schema columns + migration + cast/conflict-merge(COALESCE)/select-strip/row mapping; File backend strips the reviewer_output blob on list scans (point lookup keeps it). Tests: log_record_test (3 cases incl. review_stuck transcript), run_test (approve + review_stuck capture), result_store contract + file/postgres backends. Docs: CHANGELOG + harness-driver SKILL.",
+      "cross_repo": []
     }
   ]
 }

@@ -23,6 +23,17 @@ defmodule Harness.Run.LogRecord do
   is derived from it (`0` when the reviewer changed nothing, `1` otherwise) so
   the column stays mechanically sourced.
 
+  ## Reviewer output (`reviewer_output`, `reviewer_outcome_kind`, `reviewer_exit_status`)
+
+  The reviewer agent's raw transcript (`reviewer_output`) and settled outcome
+  facts (`reviewer_outcome_kind`, `reviewer_exit_status`), mirroring the
+  implementer's `agent_output` / `agent_outcome_kind` / `agent_exit_status`.
+  Persisted so a `:review_stuck` run (reviewer exited without writing the
+  verdict file) is diagnosable after the fact — the dominant stuck mode is a
+  *clean* reviewer exit, so the transcript shows what it did before omitting the
+  write. Defaults (`""` / `nil`) when the run produced no clean reviewer outcome
+  (killed by an idle/spawn timeout, crashed, or no reviewer available).
+
   ## Composed inputs (`composed_inputs`)
 
   Each dispatched attempt records the prompt/rule artifact assembled at the
@@ -58,6 +69,9 @@ defmodule Harness.Run.LogRecord do
           agent_outcome_kind: Outcome.kind() | nil,
           agent_exit_status: integer() | nil,
           agent_output: binary(),
+          reviewer_outcome_kind: Outcome.kind() | nil,
+          reviewer_exit_status: integer() | nil,
+          reviewer_output: binary(),
           domains: [CapabilityDomain.t()],
           reviewer_adapter: module() | nil,
           review_iterations: non_neg_integer(),
@@ -93,6 +107,9 @@ defmodule Harness.Run.LogRecord do
     token_usage: %TokenUsage{},
     composed_inputs: [],
     agent_output: "",
+    reviewer_outcome_kind: nil,
+    reviewer_exit_status: nil,
+    reviewer_output: "",
     domains: [],
     reviewer_adapter: nil,
     review_iterations: 0,
@@ -125,6 +142,7 @@ defmodule Harness.Run.LogRecord do
 
     record
     |> put_outcome(result.agent_outcome)
+    |> put_reviewer_outcome(result.reviewer_outcome)
     |> put_review(result.review)
   end
 
@@ -163,6 +181,18 @@ defmodule Harness.Run.LogRecord do
       | agent_outcome_kind: outcome.kind,
         agent_exit_status: outcome.exit_status,
         agent_output: outcome.output
+    }
+  end
+
+  @spec put_reviewer_outcome(t(), Outcome.t() | nil) :: t()
+  defp put_reviewer_outcome(record, nil), do: record
+
+  defp put_reviewer_outcome(record, %Outcome{} = outcome) do
+    %{
+      record
+      | reviewer_outcome_kind: outcome.kind,
+        reviewer_exit_status: outcome.exit_status,
+        reviewer_output: outcome.output
     }
   end
 

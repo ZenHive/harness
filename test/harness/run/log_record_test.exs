@@ -155,6 +155,68 @@ defmodule Harness.Run.LogRecordTest do
     end
   end
 
+  describe "from_result/2 reviewer outcome (raw transcript + kind/exit_status)" do
+    test "carries the reviewer's kind, exit status, and raw transcript onto the record" do
+      outcome = %Outcome{
+        run: nil,
+        kind: :exited,
+        exit_status: 0,
+        output: ~s({"type":"system"}\n{"type":"result","subtype":"success"}\n)
+      }
+
+      record = LogRecord.from_result(result(reviewer_outcome: outcome), meta())
+
+      assert record.reviewer_outcome_kind == :exited
+      assert record.reviewer_exit_status == 0
+      assert record.reviewer_output == ~s({"type":"system"}\n{"type":"result","subtype":"success"}\n)
+    end
+
+    test "leaves the reviewer fields at their defaults when there is no clean reviewer outcome" do
+      # Killed reviewer (idle/spawn timeout, crash) or no reviewer available:
+      # reviewer_outcome is nil, so the persisted facts stay at their defaults
+      # rather than being fabricated.
+      record = LogRecord.from_result(result(state: :failed, reason: :cancelled, reviewer_outcome: nil), meta())
+
+      assert record.reviewer_outcome_kind == nil
+      assert record.reviewer_exit_status == nil
+      assert record.reviewer_output == ""
+    end
+
+    test "a review_stuck run persists the reviewer's raw transcript so the next stuck run is diagnosable" do
+      # The dominant review_stuck mode: the reviewer exits cleanly but writes no
+      # .harness/review.json. The Outcome IS present (kind=:exited, status 0);
+      # its transcript is the only record of what the reviewer did before
+      # omitting the verdict file.
+      transcript =
+        ~s({"type":"assistant","text":"checks pass, looks good"}\n) <>
+          ~s({"type":"result","subtype":"success"}\n)
+
+      outcome = %Outcome{run: nil, kind: :exited, exit_status: 0, output: transcript}
+
+      record =
+        LogRecord.from_result(
+          result(
+            state: :failed,
+            reason: {:review_stuck, "Reviewer wrote no .harness/review.json verdict artifact."},
+            reviewer_outcome: outcome,
+            review: nil
+          ),
+          meta()
+        )
+
+      # The run failed with no verdict — but the reviewer's transcript survives.
+      assert record.verdict == nil
+      assert record.reviewer_outcome_kind == :exited
+      assert record.reviewer_exit_status == 0
+      assert record.reviewer_output == transcript
+
+      case record.reason do
+        {:review_stuck, _report} -> :ok
+        other -> flunk("expected a {:review_stuck, _} reason, got: #{inspect(other)}")
+      end
+    end
+  end
+
   describe "from_result/2 review_iterations (derived from the reviewer's diff)" do
     test "is 0 when the reviewer changed nothing (first-attempt pass)" do
       record = LogRecord.from_result(result(reviewer_diff_size: 0), meta())

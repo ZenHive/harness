@@ -103,6 +103,14 @@ defmodule Harness.Run.Result do
     * `composed_inputs` — prompt/rule artifacts captured for each dispatch.
     * `reviewer_adapter` — the cross-family reviewer adapter that gated the
       run, or `nil` if the run never entered review.
+    * `reviewer_outcome` — the reviewer agent's settled
+      `Harness.AgentAdapter.Outcome` (its raw transcript in `.output`, plus
+      `.kind` / `.exit_status`), or `nil` when the run never produced a clean
+      reviewer outcome (killed by an idle/spawn timeout, crashed, or no
+      cross-family reviewer was available). The dominant `:review_stuck` mode
+      is a *clean* reviewer exit that simply omits the verdict file — there the
+      outcome is present and is the highest-value diagnostic of why the gate
+      produced nothing.
   """
   @type t :: %__MODULE__{
           run_id: String.t(),
@@ -116,7 +124,8 @@ defmodule Harness.Run.Result do
           reviewer_diff_size: non_neg_integer() | nil,
           token_usage: TokenUsage.t(),
           composed_inputs: [AgentAdapter.composed_input()],
-          reviewer_adapter: module() | nil
+          reviewer_adapter: module() | nil,
+          reviewer_outcome: Outcome.t() | nil
         }
 
   @enforce_keys [:run_id, :task_id, :state, :reason]
@@ -132,6 +141,7 @@ defmodule Harness.Run.Result do
     reviewer_diff_size: nil,
     token_usage: %TokenUsage{},
     composed_inputs: [],
-    reviewer_adapter: nil
+    reviewer_adapter: nil,
+    reviewer_outcome: nil
   ]
 end

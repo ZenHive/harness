@@ -23,6 +23,8 @@ defmodule Harness.ResultStore.Schema.RunRecord do
     field :review_iterations, :integer
     field :reviewer_adapter, :string
     field :review_report, :binary
+    field :reviewer_outcome_kind, :string
+    field :reviewer_exit_status, :integer
 
     field :reason, :map
     field :token_usage, :map
@@ -31,6 +33,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
     field :domains, :map
 
     field :agent_output, :binary
+    field :reviewer_output, :binary
 
     # usec precision: inserted_at is the recency ordering key for
     # list_run_records (Task 139); second-precision ties are non-deterministic.
@@ -58,12 +61,15 @@ defmodule Harness.ResultStore.Schema.RunRecord do
       :review_iterations,
       :reviewer_adapter,
       :review_report,
+      :reviewer_outcome_kind,
+      :reviewer_exit_status,
       :reason,
       :token_usage,
       :composed_inputs,
       :review_ratings,
       :domains,
-      :agent_output
+      :agent_output,
+      :reviewer_output
     ])
   end
 

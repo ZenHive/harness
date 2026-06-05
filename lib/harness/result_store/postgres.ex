@@ -83,6 +83,9 @@ defmodule Harness.ResultStore.Postgres do
             ),
           reviewer_adapter: fragment("COALESCE(EXCLUDED.reviewer_adapter, ?)", r.reviewer_adapter),
           review_report: fragment("COALESCE(EXCLUDED.review_report, ?)", r.review_report),
+          reviewer_outcome_kind: fragment("COALESCE(EXCLUDED.reviewer_outcome_kind, ?)", r.reviewer_outcome_kind),
+          reviewer_exit_status: fragment("COALESCE(EXCLUDED.reviewer_exit_status, ?)", r.reviewer_exit_status),
+          reviewer_output: fragment("COALESCE(NULLIF(EXCLUDED.reviewer_output, ''::bytea), ?)", r.reviewer_output),
           review_ratings: fragment("COALESCE(NULLIF(EXCLUDED.review_ratings, '{}'::jsonb), ?)", r.review_ratings)
         ]
       ]
@@ -305,12 +308,15 @@ defmodule Harness.ResultStore.Postgres do
         review_iterations: r.review_iterations,
         reviewer_adapter: r.reviewer_adapter,
         review_report: r.review_report,
+        reviewer_outcome_kind: r.reviewer_outcome_kind,
+        reviewer_exit_status: r.reviewer_exit_status,
         reason: r.reason,
         token_usage: r.token_usage,
         composed_inputs: r.composed_inputs,
         review_ratings: r.review_ratings,
         domains: r.domains,
         agent_output: type(^nil, :binary),
+        reviewer_output: type(^nil, :binary),
         inserted_at: r.inserted_at,
         updated_at: r.updated_at
       }
@@ -471,12 +477,15 @@ defmodule Harness.ResultStore.Postgres do
       review_iterations: r.review_iterations,
       reviewer_adapter: module_or_string(r.reviewer_adapter),
       review_report: r.review_report,
+      reviewer_outcome_kind: kind_to_string(r.reviewer_outcome_kind),
+      reviewer_exit_status: r.reviewer_exit_status,
       reason: encode_jsonb(r.reason),
       token_usage: encode_jsonb(r.token_usage),
       composed_inputs: encode_jsonb(r.composed_inputs),
       review_ratings: encode_jsonb(r.review_ratings),
       domains: encode_jsonb(r.domains),
-      agent_output: r.agent_output
+      agent_output: r.agent_output,
+      reviewer_output: r.reviewer_output
     }
   end
 
@@ -505,6 +514,9 @@ defmodule Harness.ResultStore.Postgres do
       agent_outcome_kind: string_to_kind(row.agent_outcome_kind),
       agent_exit_status: row.agent_exit_status,
       agent_output: default(row.agent_output, ""),
+      reviewer_outcome_kind: string_to_kind(row.reviewer_outcome_kind),
+      reviewer_exit_status: row.reviewer_exit_status,
+      reviewer_output: default(row.reviewer_output, ""),
       domains: default(decode_jsonb(row.domains), [])
     }
   end

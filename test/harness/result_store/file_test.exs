@@ -276,20 +276,23 @@ defmodule Harness.ResultStore.FileTest do
   end
 
   describe "list_run_records/2 list-path fast paths (Task 139)" do
-    test "omits agent_output on list scans but returns it for run_id lookup", %{root: root} do
+    test "omits agent_output + reviewer_output on list scans but returns them for run_id lookup", %{root: root} do
       huge = :binary.copy(<<0>>, 4096)
+      huge_reviewer = :binary.copy(<<1>>, 4096)
 
       assert :ok =
                Store.record_run(
-                 log_record(run_id: "list-strip", agent_output: huge),
+                 log_record(run_id: "list-strip", agent_output: huge, reviewer_output: huge_reviewer),
                  root: root
                )
 
       assert {:ok, [listed]} = Store.list_run_records([], root: root)
       assert listed.agent_output == ""
+      assert listed.reviewer_output == ""
 
       assert {:ok, [point]} = Store.list_run_records([run_id: "list-strip"], root: root)
       assert byte_size(point.agent_output) == 4096
+      assert byte_size(point.reviewer_output) == 4096
     end
 
     test "respects :limit after mtime recency ordering", %{root: root} do

@@ -205,6 +205,7 @@ defmodule Harness.Run do
            mem_threshold_kb: pos_integer(),
            mem_sample_interval: pos_integer(),
            review: Review.t() | nil,
+           reviewer_outcome: Outcome.t() | nil,
            reviewer_diff_size: non_neg_integer() | nil,
            reviewer_pre_review_sha: String.t() | nil,
            reviewer_reprompt_count: non_neg_integer(),
@@ -514,6 +515,7 @@ defmodule Harness.Run do
       mem_threshold_kb: mem_threshold_kb,
       mem_sample_interval: mem_sample_interval,
       review: nil,
+      reviewer_outcome: nil,
       reviewer_diff_size: nil,
       reviewer_pre_review_sha: nil,
       reviewer_reprompt_count: 0,
@@ -803,11 +805,16 @@ defmodule Harness.Run do
 
   def reviewing(
         :info,
-        {ref, {:ok, %{outcome: %Outcome{}, reviewer_diff_size: diff_size, review: review}}},
+        {ref, {:ok, %{outcome: %Outcome{} = outcome, reviewer_diff_size: diff_size, review: review}}},
         %{task: %Task{ref: ref}} = data
       ) do
     Process.demonitor(ref, [:flush])
-    settle_review(clear_reviewer_run(%{data | task: nil, reviewer_diff_size: diff_size}), review)
+    # Capture the reviewer's settled Outcome (raw transcript + kind/exit_status)
+    # — on a clean-exit-no-verdict run this is the only diagnostic of why the
+    # gate produced nothing. A Task-203 re-prompt re-enters here, so the LAST
+    # pass's outcome overwrites the prior (the attempt that actually settled).
+    data = clear_reviewer_run(%{data | task: nil, reviewer_diff_size: diff_size, reviewer_outcome: outcome})
+    settle_review(data, review)
   end
 
   def reviewing(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
@@ -1401,6 +1408,7 @@ defmodule Harness.Run do
       reason: data.reason,
       agent_outcome: data.agent_outcome,
       review: data.review,
+      reviewer_outcome: data.reviewer_outcome,
       worktree_path: data.worktree && data.worktree.path,
       reviewer_adapter: data.reviewer_adapter,
       agent_diff_size: data.agent_diff_size,

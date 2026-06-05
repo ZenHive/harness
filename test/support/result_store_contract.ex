@@ -134,6 +134,10 @@ defmodule Harness.ResultStoreContract do
       phase: :initial
     }
 
+    # Non-UTF8 reviewer transcript exercises the :binary column / blob codec,
+    # mirroring agent_output; a point lookup (run_id filter) keeps the blob.
+    reviewer_non_utf8 = <<7, 254, 0, 99, 255>>
+
     rec_full =
       log_record(
         run_id: "r-full",
@@ -144,7 +148,10 @@ defmodule Harness.ResultStoreContract do
         review_iterations: 1,
         reviewer_adapter: Codex,
         review_report: "fixed a credo nit inline; approving",
-        review_ratings: %{"performance" => 8, "code_quality" => 7}
+        review_ratings: %{"performance" => 8, "code_quality" => 7},
+        reviewer_outcome_kind: :exited,
+        reviewer_exit_status: 0,
+        reviewer_output: reviewer_non_utf8
       )
 
     assert :ok = ResultStore.record_run(rec_full, store)
@@ -158,6 +165,9 @@ defmodule Harness.ResultStoreContract do
     assert rf.reviewer_adapter == Codex
     assert rf.review_report == "fixed a credo nit inline; approving"
     assert rf.review_ratings == %{"performance" => 8, "code_quality" => 7}
+    assert rf.reviewer_outcome_kind == :exited
+    assert rf.reviewer_exit_status == 0
+    assert rf.reviewer_output == reviewer_non_utf8
 
     # tuple agent_outcome_kind roundtrip — regression for the
     # {:timed_out, :idle} FunctionClauseError that crashed Postgres.record_run

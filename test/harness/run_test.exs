@@ -202,6 +202,8 @@ defmodule Harness.RunTest do
       assert result.review.report == FakeAdapter.review_report("approve")
       assert result.review.ratings == FakeAdapter.review_ratings()
       assert %Outcome{kind: :exited} = result.agent_outcome
+      # The reviewer's own settled outcome is captured alongside the implementer's.
+      assert %Outcome{kind: :exited} = result.reviewer_outcome
       assert is_binary(result.worktree_path)
       refute File.dir?(result.worktree_path)
     end
@@ -222,6 +224,13 @@ defmodule Harness.RunTest do
       assert %Result{state: :failed, reason: {:review_stuck, report}} = result
       assert report =~ Review.artifact_path()
       assert result.review == nil
+
+      # The dominant review_stuck mode is a CLEAN reviewer exit with no verdict
+      # file — the reviewer's Outcome (raw transcript + kind/exit_status) is
+      # captured so the next stuck run is diagnosable (Task 232). `:echo` exits 0
+      # after emitting its line; that transcript must survive onto the result.
+      assert %Outcome{kind: :exited, exit_status: 0, output: output} = result.reviewer_outcome
+      assert output =~ "harness-test"
     end
 
     test "a malformed verdict artifact settles :failed as review_stuck" do

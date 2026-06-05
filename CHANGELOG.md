@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Reviewer transcript + outcome now persisted on every run record (Task 232).**
+  harness persisted the *implementer's* raw transcript (`agent_output` + kind /
+  exit_status) but discarded the *reviewer's* — its `%Outcome{}` was
+  pattern-matched and thrown away in the `:reviewing` settle path. So a
+  `{:review_stuck, _}` run (the reviewer exited without writing
+  `.harness/review.json`) left no record of *what the reviewer did* before
+  omitting the verdict, blocking any root-cause of the recurring cross-family
+  stuck rate. `Harness.Run.Result` now carries `reviewer_outcome`, and
+  `Harness.Run.LogRecord` mirrors the implementer fields with `reviewer_output`
+  / `reviewer_outcome_kind` / `reviewer_exit_status` (Postgres columns +
+  migration; both raw-transcript blobs are stripped from list scans and
+  returned only on a single-`run_id` point lookup). The dominant stuck mode is
+  a *clean* reviewer exit, so the captured transcript is the diagnostic. Pure
+  mechanical capture — facts persisted for an AI to read, no judgment in code.
+
 ### Fixed
 
 - **Roadmap status transitions are now git-durable (Task 215).** harness's dispatch

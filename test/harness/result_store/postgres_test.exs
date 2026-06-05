@@ -60,7 +60,10 @@ defmodule Harness.ResultStore.PostgresTest do
           review_iterations: 1,
           reviewer_adapter: Claude,
           review_report: "not salvageable",
-          review_ratings: %{"code_quality" => 2}
+          review_ratings: %{"code_quality" => 2},
+          reviewer_outcome_kind: :exited,
+          reviewer_exit_status: 0,
+          reviewer_output: "reviewer transcript: checks pass, no verdict written"
         )
 
       assert :ok = ResultStore.record_run(rich, store)
@@ -96,6 +99,9 @@ defmodule Harness.ResultStore.PostgresTest do
       assert rec.reviewer_adapter == Claude
       assert rec.review_report == "not salvageable"
       assert rec.review_ratings == %{"code_quality" => 2}
+      assert rec.reviewer_outcome_kind == :exited
+      assert rec.reviewer_exit_status == 0
+      assert rec.reviewer_output == "reviewer transcript: checks pass, no verdict written"
     end
   end
 

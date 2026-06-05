@@ -195,11 +195,13 @@ defmodule Harness.ResultStore.File do
     {:ok, kept}
   end
 
+  # Drops the large raw-transcript blobs (implementer + reviewer) from list
+  # responses; a point lookup (single run_id) keeps them for diagnosis.
   @spec maybe_strip_agent_output(LogRecord.t(), boolean()) :: LogRecord.t()
   defp maybe_strip_agent_output(%LogRecord{} = record, true), do: record
 
   defp maybe_strip_agent_output(%LogRecord{} = record, false) do
-    %{record | agent_output: ""}
+    %{record | agent_output: "", reviewer_output: ""}
   end
 
   @spec maybe_take([LogRecord.t()], pos_integer() | nil) :: [LogRecord.t()]
