@@ -30,13 +30,12 @@ defmodule Harness.Run.Review do
   Legacy flat `ratings` is still parsed for back-compat with artifacts written
   before this change.
 
-  Harness never interprets the work itself — it only reads this file. A
-  malformed artifact settles the run `:failed` (`{:review_stuck, ...}`); a
-  missing artifact is re-prompted once before failing the same way (Task 203,
-  `Harness.Run`); the gate cannot pass silently. The artifact lives under
-  `.harness/`, which
-  `Harness.Worktree.commit/2` excludes from staging, so it never rides in the
-  deliverable commit.
+  Harness never interprets the work itself — it only reads this file. An
+  unreadable artifact (missing or malformed) is re-prompted once in the same
+  worktree before failing as `{:review_stuck, ...}` on a second miss (Task 203
+  generalized by Task 228, `Harness.Run`); the gate cannot pass silently. The
+  artifact lives under `.harness/`, which `Harness.Worktree.commit/2` excludes
+  from staging, so it never rides in the deliverable commit.
   """
 
   @artifact_path ".harness/review.json"

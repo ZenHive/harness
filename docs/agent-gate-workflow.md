@@ -70,11 +70,12 @@ Harness reads the file mechanically (`Harness.Run.Review`):
 
 - `approve` → run settles `:done`, reason `:approved` → landing enqueued (if `landing_policy: :auto`)
 - `reject` → run settles `:failed`, reason `{:review_rejected, report}` → task back to the queue
-- malformed → `:failed`, reason `{:review_stuck, report}`
-- missing → the reviewer is re-prompted **once** in the same worktree to write its verdict (Task 203);
-  a second miss settles `:failed`, reason `{:review_stuck, report}`. The re-prompt is mechanical — a
-  re-issued flush of the artifact the reviewer owed, interpreting no work — so it stays inside the
-  agent-gate rule rather than reopening "machinery interprets outcomes".
+- unreadable (missing or malformed `.harness/review.json`) → re-prompted **once** in the same
+  worktree (Task 203 generalized by 228); a second unreadable settles `:failed`, reason
+  `{:review_stuck, report}`. Mechanical re-issue of the mandatory write — no judgment.
+- reviewer spawn/idle timeout → rotate to next eligible cross-family reviewer from the finite
+  slate (rejection-rate prioritized; explicit list pins order); exhausts → `:review_stuck`.
+  Also mechanical (no content inspection).
 
 The `.harness/` directory is excluded from commits and diff measurement — the artifact is a
 side channel, never part of the deliverable.
@@ -91,8 +92,11 @@ the reviewer actually found, code quality, idiom usage) and feeds `Harness.Agent
 implementer quality signal — the ratings and the reviewer's fix-diff size
 (`reviewer_diff_size`) are.
 
-**Reviewer selection:** first dispatchable adapter from a different agent family than the
-implementer (alphabetical), or an explicit `reviewer:` override per dispatch.
+**Reviewer selection:** the ordered cross-family slate (dispatchable agents ≠ implementer family,
+prioritized by historical rejection rate from the result store for rotation order; unmeasured keep
+registry order). Head is primary; tail are rotation fallbacks on timeout. Explicit `reviewer: Atom`
+pins one; `reviewer: [A, B, C]` supplies a custom rotation order (validated cross-family + dispatchable).
+No reviewer available → `:review_stuck`.
 
 ### MERGE — the lander
 

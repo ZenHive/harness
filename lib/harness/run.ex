@@ -1484,6 +1484,7 @@ defmodule Harness.Run do
   end
 
   defp rotate_or_fail_review(data, report), do: fail_review_stuck(data, report)
+
   @spec fail_review_stuck(data(), String.t()) :: handler_result()
   defp fail_review_stuck(data, report) do
     # Terminate the reviewer (SIGKILL via its captured os_pid) BEFORE tearing

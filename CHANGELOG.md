@@ -25,6 +25,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the recovery AI. Includes hardened terminate/cancel/memory paths for the recovery
   slot and `checkout_pollution_check` opt. Credo-strict line-length follow-up in same
   delivery.
+- **Reviewer-stage mechanical fallbacks (Task 228).** Generalize Task 203's missing-verdict
+  re-prompt to *unreadable* verdict artifacts (missing *or* malformed `.harness/review.json`) —
+  one bounded mechanical re-issue of the write in the same worktree before honest
+  `{:review_stuck, ...}`. On reviewer spawn/idle timeout, rotate to the next eligible
+  cross-family reviewer from the finite candidate slate carved at `route_to_review`
+  (auto: registry minus implementer family, rejection-rate prioritized for rotation order;
+  explicit `reviewer: [M1, M2]` supplies operator rotation sequence). Both fallbacks are
+  mechanical (no content-based recoverability judgment) and witnessed as raw facts
+  (`reviewer_reprompt_count`, `reviewer_rotation_count`) on `Run.Result` / `LogRecord` /
+  persisted `run_records` (plus migration + codec + contract tests). Delivery includes
+  `select_reviewers/1` (returns `[primary | candidates]`), `rotate_or_fail_review/2`,
+  updated reprompt prompt, and the rotation tests (HangingAdapter, SpawnThenIdleReviewer
+  doubles). Same-batch repair: recovering seam updated for the rename; LogRecord 34-field
+  credo disable with mantra comment (recovery facts). Config: dev `concurrency_cap` lowered
+  10→3 with rationale (stale-base divergence + shared reviewer pool under wide dispatch).
 - **Oban Lifeline rescues orphaned landing/audit jobs (Task 209).** Open-source Oban
   does not move `executing` rows back to `available` when a worker dies mid-land or
   mid-audit — a BEAM restart left onchain landing job 294 stuck `executing` for
