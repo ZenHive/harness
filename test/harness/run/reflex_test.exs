@@ -15,10 +15,39 @@ defmodule Harness.Run.ReflexTest do
     end
 
     test "blocks recursive forced removal outside the worktree" do
-      worktree = "/tmp/harness-worktree"
+      worktree = "/Users/dev/worktrees/run-1"
 
-      assert {:blocked_command, "rm -rf /tmp/elsewhere"} = Reflex.blocked_command("rm -rf /tmp/elsewhere", worktree)
+      assert {:blocked_command, "rm -rf /Users/dev/elsewhere"} =
+               Reflex.blocked_command("rm -rf /Users/dev/elsewhere", worktree)
+
+      assert {:blocked_command, "rm -rf /Users/dev/important"} =
+               Reflex.blocked_command("rm -rf /Users/dev/important", worktree)
+
       assert nil == Reflex.blocked_command("rm -rf tmp/build", worktree)
+    end
+
+    test "allows recursive removal of OS temp scratch (test fixtures, throwaway repos)" do
+      worktree = "/Users/dev/worktrees/run-1"
+      tmp_sub = Path.join(System.tmp_dir!(), "harness_results_test")
+
+      # absolute $TMPDIR scratch (task 231 case) and /tmp scratch are ephemeral
+      assert nil == Reflex.blocked_command("rm -rf #{tmp_sub} && echo cleared", worktree)
+      assert nil == Reflex.blocked_command("rm -rf /tmp/gtlocktest", worktree)
+
+      # ...but the temp root itself is not a sub-path, so it stays blocked
+      assert {:blocked_command, _} = Reflex.blocked_command("rm -rf /tmp", worktree)
+    end
+
+    test "does not sweep a later command's path token as an rm target" do
+      # task 227: `rm -rf gtlocktest` then, commands later, `git worktree add
+      # ../gtlock_wt` — the `../gtlock_wt` token must not count as an rm target.
+      worktree = "/Users/dev/worktrees/run-1"
+
+      command =
+        "cd /tmp && rm -rf gtlocktest && mkdir gtlocktest && " <>
+          "git worktree add -q ../gtlock_wt -b wtbranch; cd /tmp && rm -rf gtlocktest gtlock_wt"
+
+      assert nil == Reflex.blocked_command(command, worktree)
     end
 
     test "does not block edits to the former grader or CI config paths" do

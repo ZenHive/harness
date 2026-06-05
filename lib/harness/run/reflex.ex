@@ -263,8 +263,20 @@ defmodule Harness.Run.Reflex do
         String.contains?(flag, "r") and String.contains?(flag, "f")
       end)
 
-    if recursive_force?, do: Enum.reject(rest, &String.starts_with?(&1, "-")), else: []
+    if recursive_force? do
+      # Operands belong to THIS rm only — stop at the first shell separator so a
+      # later command's path token (e.g. `git worktree add ../sibling`) isn't
+      # swept in as a phantom delete target.
+      rest
+      |> Enum.take_while(&(not shell_separator?(&1)))
+      |> Enum.reject(&String.starts_with?(&1, "-"))
+    else
+      []
+    end
   end
+
+  @spec shell_separator?(String.t()) :: boolean()
+  defp shell_separator?(token), do: String.contains?(token, ["&", ";", "|", "<", ">"])
 
   # `expanded_worktree` is pre-expanded by the caller (once per command), so the
   # per-target loop never re-runs Path.expand on the worktree root.
@@ -272,13 +284,33 @@ defmodule Harness.Run.Reflex do
   defp outside_worktree?([], _expanded_worktree), do: false
 
   defp outside_worktree?(targets, expanded_worktree) do
-    Enum.any?(targets, &(not inside_worktree?(&1, expanded_worktree)))
+    Enum.any?(targets, &(not inside_safe_zone?(&1, expanded_worktree)))
+  end
+
+  # Safe to `rm -rf`: resolves inside the run worktree, or strictly inside an OS
+  # temp root (ephemeral scratch — test fixtures, throwaway git repos). The temp
+  # root itself is NOT safe (only sub-paths), so `rm -rf /tmp` stays blocked;
+  # catastrophic targets ($HOME, repo root, /) stay blocked too.
+  @spec inside_safe_zone?(String.t(), String.t()) :: boolean()
+  defp inside_safe_zone?(target, expanded_worktree) do
+    expanded_target = Path.expand(target, expanded_worktree)
+
+    inside_worktree?(expanded_target, expanded_worktree) or under_temp_root?(expanded_target)
   end
 
   @spec inside_worktree?(String.t(), String.t()) :: boolean()
-  defp inside_worktree?(target, expanded_worktree) do
-    expanded_target = Path.expand(target, expanded_worktree)
+  defp inside_worktree?(expanded_target, expanded_worktree) do
     expanded_target == expanded_worktree or String.starts_with?(expanded_target, expanded_worktree <> "/")
+  end
+
+  @spec under_temp_root?(String.t()) :: boolean()
+  defp under_temp_root?(expanded_target) do
+    Enum.any?(temp_roots(), &String.starts_with?(expanded_target, &1 <> "/"))
+  end
+
+  @spec temp_roots() :: [String.t()]
+  defp temp_roots do
+    ["/tmp", System.tmp_dir!()] |> Enum.map(&Path.expand/1) |> Enum.uniq()
   end
 
   @spec shell_tokens(String.t()) :: [String.t()]
