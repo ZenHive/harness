@@ -6189,3 +6189,27 @@ delivered_by = "claude"
 created_at = "2026-06-05"
 scored_at = "2026-06-05"
 done_at = "2026-06-05"
+
+[[task]]
+id = "207"
+phase = 16
+bundle = "agent-gate"
+status = "done"
+title = "Configurable default dispatch agent (unassigned tasks → codex, not claude)"
+scores = { d = 2, b = 3, u = 3 }
+markers = ["handbuild"]
+acceptance_criteria = ["Harness.Config gains {:dispatch, :default_agent}, default :codex, ui_editable?, validated against the implementer-agent set [:claude,:codex,:cursor,:grok,:antigravity,:pi].", "CapabilityScore.fallback_recommendation reads Config.get({:dispatch, :default_agent}) instead of hardcoded :claude; explicit fallback_agent opt still overrides.", "SettingsLive renders a dispatch-default select card + set_default_agent handler; the :agent entry is excluded from the number-input config card.", "Reviewer eligibility axis untouched — Claude stays reviewer-eligible.", "Tests: config :agent validation, fallback reads config default, settings event."]
+out_of_scope = ["No change to rmap resolve_target (the interactive CLI error is correct).", "No change to reviewer-eligibility.", "No new adapter."]
+files_to_modify = ["lib/harness/config.ex", "lib/harness/capability_score.ex", "lib/harness/dashboard/settings_live.ex", "lib/harness/dashboard/components.ex"]
+touches = ["test/harness/capability_score_test.exs", "test/harness/config_test.exs"]
+domains = ["otp"]
+assignee = "human"
+module = "Harness.Config"
+body = "Unassigned roadmap tasks dispatched via the default recommend adapter hit CapabilityScore.recommend with no measured scores and fall back to the hardcoded @fallback_agent :claude (capability_score.ex:51) — silently spending precious Claude tokens. Make the no-data fallback a configurable Harness.Config key (default :codex), editable in the dashboard SettingsLive, so unassigned work routes to a cheap implementer by default while Claude stays reserved for the (separate) reviewer axis. Root-cause companion: rmap.md include patched to push assignee at task creation so agents stop omitting it."
+implemented = "Added Harness.Config {:dispatch, :default_agent} (default :codex, :agent-typed, ui_editable, validated against implementer set). CapabilityScore no-data fallback reads it instead of hardcoded :claude (explicit :fallback_agent opt still wins). SettingsLive gained a Dispatch-default select card + set_default_agent handler; :agent excluded from the number-input config card. rmap.md include patched to push assignee at creation. 62 tests green; reviewer-eligibility axis untouched."
+delivered_by = "claude"
+created_at = "2026-06-05"
+started_at = "2026-06-05"
+scored_at = "2026-06-05"
+done_at = "2026-06-05"
+shipped_in = "PR#1"
