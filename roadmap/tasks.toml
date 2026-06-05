@@ -6814,3 +6814,29 @@ assignee = "human"
 body = "Task 229 persists recovery_attempts + recovery token spend as raw facts, but nothing surfaces them — yet the v0_14 milestone hypothesis is literally 'recovery token cost demonstrably lower than hard-fail + manual redispatch.' You cannot close v0_14 without seeing the data. Operator (2026-06-05): we have the data now, add this. Surface it as a KPI view (sibling to 225 /harness/kpi, also handbuild) plus an AI-synthesis path for 'is recovery worth it'. Raw facts in code; meaning written by an AI."
 created_at = "2026-06-05"
 scored_at = "2026-06-05"
+
+[[task]]
+id = "236"
+phase = 19
+bundle = "self-heal"
+milestone = "v0_14"
+status = "pending"
+title = "Review-only salvage primitive — re-review a retained branch without re-running the implementer"
+scores = { d = 3, b = 6, u = 6 }
+acceptance_criteria = ["A dispatch entry (e.g. dispatch-rereview run_id / Dispatch.rereview/1) loads a settled run record, branches a worktree off harness/<run-id>, and starts a Run that enters :reviewing WITHOUT spawning the implementer Port.", "The reviewer runs against the existing committed work; approve -> land via the normal lander path; reject/missing -> :failed, task back to queue. Same .harness/review.json verdict contract as a normal run.", "A test asserts the implementer phase is genuinely skipped: no implementer invocation, no implementer token spend; only the reviewer runs.", "Doc note in dispatch.ex distinguishing rereview (review-stage failure, work is good) from resume_failed (implement-stage failure, continue the work)."]
+out_of_scope = ["No classifier/heuristic deciding WHICH path to auto-use — the caller picks rereview vs resume_failed explicitly.", "No change to the verdict-artifact format or the lander's rebase/ff-push mechanics."]
+files_to_modify = ["lib/harness/dispatch.ex", "lib/harness/run.ex"]
+touches = ["lib/harness/dispatch.ex", "lib/harness/run.ex", "lib/harness/lander.ex", "test/harness/dispatch_test.exs"]
+domains = ["otp"]
+assignee = "codex"
+body = """
+When a run fails at the REVIEW stage — `review_stuck` (reviewer died / quota / exited without writing `.harness/review.json`) or a beam-restart cancellation mid-review — but the implementer already committed good work on the retained `harness/<run-id>` branch, the only salvage today is `resume_failed`, which re-runs the IMPLEMENTER off that branch before reviewing again. That pays a full implementer cycle (tokens + wall-clock) to fix a reviewer-side failure where the implementation was never the problem.
+
+Observed repeatedly: this session's 211/221/229 salvage (all review-stage failures with good committed work), plus the earlier 64/76/77/78/79/219 `review_stuck` batch. Every one re-spent an implementer cycle it did not need.
+
+Add a review-only path: take a settled run (or a retained `harness/<run-id>` branch) + its task, seed a worktree from the branch, and enter the `Harness.Run` gen_statem directly in `:reviewing` — skipping the `:running`/implementer phase entirely — producing a verdict and landing on approve via the normal lander path.
+
+Mechanical only (THE MANTRA): no judgment is added. The caller decides rereview-vs-resume_failed; harness just offers a lifecycle entry that starts at the gate instead of at the implementer. resume_failed stays for the implement-failed case; this is the review-failed case.
+"""
+created_at = "2026-06-05"
+scored_at = "2026-06-05"
