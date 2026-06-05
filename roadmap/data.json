@@ -52,6 +52,11 @@
       "order": 17,
       "status": "in_progress"
     },
+    "18": {
+      "name": "Judgment Collapse",
+      "order": 18,
+      "status": "in_progress"
+    },
     "2": {
       "name": "Core Loop & Contract Proof",
       "order": 2,
@@ -169,6 +174,11 @@
       "order": 1,
       "description": "Parked work — revisit after the core milestones ship"
     },
+    "judgment-collapse": {
+      "phase": 18,
+      "order": 4,
+      "description": "The leitmotif made empirical (CLAUDE.md THE MANTRA): count facts in code, write the meaning of facts with an AI. Find and delete the places where harness still COMPUTES meaning — the CapabilityScore composite + routing arithmetic, the in-run stakes regex gate, the reflex grade-gaming blocklist, English-error classification — and route that meaning through an agent reading raw facts (or a structured signal at source). Persist facts; never let a formula pretend to know what they mean."
+    },
     "kpi-routing": {
       "phase": 13,
       "order": 3,
@@ -261,8 +271,15 @@
       "name": "Agent-Gate Workflow & Post-Merge Audit",
       "description": "Tests the hypothesis that removing the mechanical verification gate entirely — making a cross-family reviewer AI THE gate (it runs the checks itself, fixes inline, writes the verdict) and adding a post-merge audit AI — eliminates the run-lifecycle bug class (every bug from 2026-05-26 to 06-03 traced to harness verification machinery, zero to agent judgment) while raising delivery rate.",
       "order": 12,
-      "status": "active",
+      "status": "done",
       "target_version": "0.12.0"
+    },
+    "v0_13": {
+      "name": "Judgment Collapse — count facts in code, write meaning with an AI",
+      "description": "Tests the hypothesis that harness still COMPUTES meaning it has no business computing — KPI/capability composites, in-run stakes gating, grade-gaming blocklists, English-error classification — and that deleting this judgment-arithmetic (routing the meaning through an agent that reads raw facts instead) shrinks the codebase and removes a false-verdict bug class WITHOUT degrading routing quality. The empirical proof of the leitmotif: count facts in code; write the meaning of facts with an AI.",
+      "order": 13,
+      "status": "active",
+      "target_version": "0.13.0"
     },
     "v0_2": {
       "name": "Batch & resilience",
@@ -8846,6 +8863,351 @@
       "scored_at": "2026-06-05",
       "implemented": "Harness.Roadmap.Durable makes every harness rmap status transition a durable git op: fetch target -> mutate fresh detached worktree at origin/<target> -> commit 'roadmap: task <id> -> <status>' -> ff-push (non-ff re-fetch+replay+retry, never --force) -> ff the operator's LOCAL target via shared Harness.Git.TargetSync so on-disk tasks.toml never drifts behind origin (the out-of-sync/merge-break the user flagged). All four Roadmap.mark_* mutators consolidated through one mutate/4 chokepoint; durable when a %Project{} with target_branch+local source is passed, else local rmap write. TargetSync extracted from Lander.sync_local_target and reused by both. Callers (Run.Worker, Lander.writeback, Lander.Resilience) pass project:. Tests: roadmap/durable_test.exs (interleave, non-ff retry+exhaustion, no-op, local ff-sync, dirty-skip, fallback).",
       "delivered_by": "claude",
+      "cross_repo": []
+    },
+    {
+      "id": "216",
+      "phase": 18,
+      "bundle": "judgment-collapse",
+      "milestone": "v0_13",
+      "status": "pending",
+      "title": "Per-facet scout-AI competence assessment — replace the CapabilityScore composite + routing scalar",
+      "scores": {
+        "d": 4,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.25,
+      "dep_layer": 1,
+      "markers": [],
+      "depends_on": [
+        "224"
+      ],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "A scout AI reads raw run records grouped by the AI-assigned task facets (from the facet-foundation predecessor) and writes a per-facet competence assessment: for each task-kind, which agent wins on approve-rate / first-try / reviewer-quality / cost, WITH reasoning. Refreshed on a cron or on demand — never a recomputed formula.",
+        "dispatch-recommend picks an agent by matching an incoming task's (predicted) facets against that per-facet assessment and returns the choice + the scout's rationale — not by ranking a composite scalar.",
+        "AgentKPI is UNCHANGED — it is already pure fact-counting and /harness/kpi depends on it; the deletion is confined to CapabilityScore (task 217).",
+        "No magic weights (0.5/0.3/0.199), no stale_discount, no corpus_version fingerprint, no explore/exploit constants remain in the routing path.",
+        "Tests cover: per-facet grouping, the scout assessment read path, dispatch-recommend matching facets, and the no-data fallback (unmeasured facet -> explore)."
+      ],
+      "files_to_modify": [
+        "lib/harness/dispatch.ex",
+        "lib/harness/dispatch/run_tool.ex"
+      ],
+      "touches": [
+        "lib/harness/result_store.ex",
+        "lib/harness/capability_score.ex",
+        "lib/harness/agent_kpi.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "THE flagship of v0_13, and the actual product: a routing ORACLE answering 'what kind of task goes to which agent?' empirically. A routing oracle is a key->value map: task-kind (the KEY, from the facet-foundation predecessor) -> which agent wins (the VALUE: approve / first-try / reviewer-quality / cost, already captured). Today harness has the value but squashes the per-kind granularity into ONE tunable composite scalar (capability_score.ex:502-533 — ratings+cost+fix-size via hand-tuned weights, freshness decay, corpus fingerprint, explore/exploit branching, 562 LOC) that dispatch-recommend routes on. 'Which agent is best at THIS KIND of work?' is judgment — a scout AI reading the records grouped by facet answers it per-kind and explains itself, where a scalar cannot. Build the per-facet scout assessment + facet-matched routing here; the composite deletion is task 217. Keep ResultStore (raw facts) and AgentKPI (pure counting — the /harness/kpi ledger). The moduledoc itself admits the weights need 'retuning' — that is the tell.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "217",
+      "phase": 18,
+      "bundle": "judgment-collapse",
+      "milestone": "v0_13",
+      "status": "pending",
+      "title": "Delete CapabilityScore composite/weights/freshness/corpus + the routing arithmetic",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 1.33,
+      "dep_layer": 2,
+      "markers": [],
+      "depends_on": [
+        "216"
+      ],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "composite_score/4 + every tiebreaker-weight / cost-scale / stale-discount / freshness-window constant removed.",
+        "freshness / discounted_composite / rebenchmark-candidate / recommend-from-scores logic removed or reduced to a thin read of the assessment artifact.",
+        "corpus_version sha-fingerprinting removed.",
+        "mix compile --warnings-as-errors clean; no orphaned ResultStore.save_capability_score callers; tests updated/removed."
+      ],
+      "files_to_modify": [
+        "lib/harness/capability_score.ex"
+      ],
+      "touches": [
+        "lib/harness/result_store.ex",
+        "lib/harness/dispatch.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "Dependent on the scout-AI assessment task. Once routing reads an AI-written assessment artifact, the entire arithmetic ranking layer in capability_score.ex is dead weight. This is the LOC the mantra predicts shouldn't exist. Persist raw facts; delete the formula that pretends to know what they mean.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "218",
+      "phase": 18,
+      "bundle": "judgment-collapse",
+      "milestone": "v0_13",
+      "status": "pending",
+      "title": "In-run discernment: thread rmap d-score + markers onto Roadmap.Item, delete the prose regexes in run.ex",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 3
+      },
+      "eff": 1.17,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "Harness.Roadmap.Item carries the task's structured `d` score and `markers` (rmap already types them); roadmap ingest populates them.",
+        "run.ex task_difficulty/1 (the D-score prose-scrape regex) and security_or_bug_marker?/1 (the security|bug keyword classifier) are deleted.",
+        "The in-run discernment stakes gate reads the structured d-score / :security / :bug markers instead of scraping concatenated prompt text.",
+        "Tests: a task tagged :security but whose prose lacks the word still gates as high-stakes; a task whose body merely mentions 'bug' in a comment does not false-positive."
+      ],
+      "files_to_modify": [
+        "lib/harness/roadmap/item.ex",
+        "lib/harness/roadmap.ex",
+        "lib/harness/run.ex"
+      ],
+      "touches": [
+        "lib/harness/run/reflex.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "run.ex:2329-2340 decides whether to spend an AI mid-run sample on a run by regex-scraping the difficulty score and keyword-matching 'security|bug|...' out of prose. Both are judgment-as-regex AND redundant: rmap already carries scores.d and markers [:security,:bug] as typed fields — but Roadmap.Item (item.ex:37) threads only `domains`, dropping d + markers, which is why the regex workaround exists. Carry the structured fields; read them. The keyword regex misses CVE/exploit/auth-bypass and false-positives on 'fixed a bug'; the typed marker does neither.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "219",
+      "phase": 18,
+      "bundle": "judgment-collapse",
+      "milestone": "v0_13",
+      "status": "pending",
+      "title": "Delete reflex.ex verification_stack_edit? grade-gaming blocklist (dead path + reviewer-owned judgment)",
+      "scores": {
+        "d": 2,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 1.5,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "verification_stack_edit?/1 and its clause in blocked_command/2 are removed.",
+        "The genuinely-mechanical guards stay: rm -rf outside worktree, git push --force, mix deps.clean.",
+        "Reflex tests for the deleted clause removed; remaining guard tests pass."
+      ],
+      "files_to_modify": [
+        "lib/harness/run/reflex.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "reflex.ex:292-298 halts a run if it sees an edit command touching .github/workflows/ or lib/harness/verification. Two defects: (1) lib/harness/verification was DELETED — half the guard matches a path that no longer exists; (2) 'is this edit an attempt to cheat the grader?' is intent = the reviewer's judgment. The function's OWN comment (lines 287-291) says grade-gaming 'is caught at the verdict level by the cross-family semantic gate, not by a path blocklist here' — while the blocklist does exactly that. Delete it. A blocklist guessing intent is the mantra's anti-pattern in miniature.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "220",
+      "phase": 18,
+      "bundle": "judgment-collapse",
+      "milestone": "v0_13",
+      "status": "pending",
+      "title": "rmap structured error envelope — replace roadmap.ex English-stderr classification with exit codes / JSON",
+      "scores": {
+        "d": 3,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 1.0,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "rmap (../rmap, ours) emits a distinct exit code or a --json error envelope distinguishing task-not-found from invalid-roadmap.",
+        "Harness.Roadmap.classify_failure/2 matches on the structured signal, not the English-text regex / invalid-TOML substring.",
+        "Both repos' tests pass; ROADMAP/CHANGELOG updated in each."
+      ],
+      "files_to_modify": [
+        "lib/harness/roadmap.ex"
+      ],
+      "touches": [
+        "../rmap"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "roadmap.ex:633-638 classifies failures by regex-matching rmap's English stderr. rmap is OURS (../rmap). Interpreting an English error string is fragile (wording/locale drift) and is meaning-from-prose. Fix at the source: structured exit codes or a JSON error envelope; harness matches the code. Mechanical at heart — but the meaning belongs in the contract, not a harness regex.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "221",
+      "phase": 18,
+      "bundle": "judgment-collapse",
+      "milestone": "v0_13",
+      "status": "pending",
+      "title": "Extract + harden git non-fast-forward detection (dedupe lander/durable, prefer plumbing over English match)",
+      "scores": {
+        "d": 2,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 1.5,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "A single Harness.Git predicate replaces the duplicated non-fast-forward / fetch-first / rejected triplet in lander.ex:338-340 and roadmap/durable.ex:227-229.",
+        "Detection prefers a deterministic signal (push exit status + rev-parse ancestry) over matching git's English output where feasible; English match remains only as a documented fallback.",
+        "Tests cover the non-ff path for both callers."
+      ],
+      "files_to_modify": [
+        "lib/harness/git.ex",
+        "lib/harness/lander.ex",
+        "lib/harness/roadmap/durable.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "lander.ex:338-340 and roadmap/durable.ex:227-229 carry the identical English-string triplet to detect a rejected push. This is mechanical git-porcelain (legitimately code) but it is duplicated and fragile to git version/locale. Extract one predicate; lean on plumbing exit codes + ancestry checks. Mechanics that stay mechanics — just made DRY and robust.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "222",
+      "phase": 18,
+      "bundle": "judgment-collapse",
+      "milestone": "v0_13",
+      "status": "pending",
+      "title": "DECIDE: collapse the 6 transcript parsers + 6 token-usage parsers toward raw/generic (display tradeoff)",
+      "scores": {
+        "d": 4,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 0.75,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "human",
+      "acceptance_criteria": [
+        "A written decision (docs/ note) on whether to keep, collapse, or delete the per-agent parsers, weighing the display-quality tradeoff against the raw-passthrough thesis.",
+        "If collapse is chosen, a follow-up implementation task is filed; if keep, the rationale is recorded so it isn't re-litigated."
+      ],
+      "files_to_modify": [
+        "docs/judgment-collapse.md"
+      ],
+      "touches": [
+        "lib/harness/dashboard/transcript/parser.ex",
+        "lib/harness/token_usage.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "The contested one — flagged as 'weigh it', not 'delete it'. dashboard/transcript/parser/* (7 files) and token_usage.ex:100-241 (6 per-adapter parsers) couple harness to each agent's wire format ('agents ship 40+ releases') — exactly the brittleness raw-passthrough was designed to avoid. But these are cold-path DISPLAY + token FACTS, not judgment, so there is a real tradeoff: a generic/raw view loses the structured chat-turn rendering. This is a human decision (owner sign-off), not a blind dispatch. Token counts are facts (mechanical); the transcript chat-view is display. Decide deliberately.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "224",
+      "phase": 18,
+      "bundle": "judgment-collapse",
+      "milestone": "v0_13",
+      "status": "pending",
+      "title": "Task-facet foundation — reviewer emits AI-assigned task-kind facets in review.json, persisted on the run record as the routing KEY",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.67,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "review.json gains an optional `facets` block alongside `ratings` — open-vocabulary AI characterization of what the task ACTUALLY was, read from the task spec + the real diff (e.g. {language, surface, archetype, difficulty, risk}). Reviewer prompt instructs it to emit them.",
+        "Harness.Run.Review parses `facets` verbatim (free-form keys/values, like ratings); a missing block parses to %{} — never a crash, never a closed enum.",
+        "Facets persist onto Harness.Run.LogRecord (and the Postgres run_record schema) so they are queryable as the per-record task-kind key.",
+        "This is GROUND TRUTH from the diff — it supersedes the sparse, optional, human-assigned `domains` tag as the grouping key (domains may remain as a coarse prior).",
+        "Tests: facet parse/persist round-trip, missing-block tolerance, and a record carrying facets readable back from ResultStore."
+      ],
+      "files_to_modify": [
+        "lib/harness/run/review.ex",
+        "lib/harness/run/log_record.ex",
+        "lib/harness/run.ex"
+      ],
+      "touches": [
+        "lib/harness/result_store/schema/run_record.ex",
+        "lib/harness/agent_kpi.ex",
+        "docs/agent-gate-workflow.md"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "The ROOT of the routing-oracle work and the gap behind the whole KPI feature. The KPI's point is 'what kind of task -> which agent', but today the only task-kind signal is `domains`: optional, human-assigned, sparse (empty for most production tasks). Truthfulness/tokens/quality are OUTCOME axes (the value), not task-TYPE axes (the key) — you cannot rank 'best at X' without knowing each run WAS an X. 'What kind of task is this?' is judgment, so an AI writes it (mantra: count facts in code, write meaning with an AI) — and the reviewer is already in the perfect seat: it reads the task spec AND the actual diff + transcript, so it characterizes what the task REALLY was (spec says 'small fix'; diff reveals a gen_statem concurrency bug). Add a `facets` block to review.json at near-zero marginal cost (no extra dispatch). Everything downstream — the scout per-facet assessment (216), the composite deletion (217), the KPI pivot (this milestone) — groups on these facets. Open vocabulary, not a maintained enum.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "225",
+      "phase": 18,
+      "bundle": "judgment-collapse",
+      "milestone": "v0_13",
+      "status": "pending",
+      "title": "/harness/kpi pivots by task-facet — per-kind agent ledger + the scout's written verdict",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 5
+      },
+      "eff": 1.5,
+      "dep_layer": 2,
+      "markers": [],
+      "depends_on": [
+        "224",
+        "216"
+      ],
+      "assignee": "human",
+      "acceptance_criteria": [
+        "The KPI LiveView can filter/group the per-agent ledger by task-facet (e.g. 'OTP gen_statem refactors' vs 'LiveView UI' vs 'Ecto migrations') instead of only the flat fleet-wide table.",
+        "Within a selected facet, each agent's approve% / first-try% / reviewer-quality / mean-tokens / cost-to-green are shown — answering 'who is best at THIS kind of task'.",
+        "The scout's per-facet written verdict (from task 216) renders beside the fact ledger: facts (what happened) + AI-written meaning (who to use), side by side.",
+        "An untagged/no-facet bucket still renders (records without facets are never dropped). Hand-built via tidewave + browser (LiveView work), not headless dispatch."
+      ],
+      "files_to_modify": [
+        "lib/harness/dashboard/kpi_live.ex"
+      ],
+      "touches": [
+        "lib/harness/agent_kpi.ex",
+        "lib/harness/result_store.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "The empirical answer made visible. Today /harness/kpi (kpi_live.ex) renders one flat fleet-wide AgentKPI ledger — fact-counting, mantra-compliant, the human sorts and judges. With per-record facets (root task) and the scout's per-facet verdict (216), the page becomes the routing oracle's face: pivot by task-kind, see each agent's record within that kind, read the scout's verdict alongside. This is the 'what kind of tasks, which agent is best at' view the KPIs exist for. LiveView/heex work -> hand-build via tidewave + browser per CLAUDE.md (headless agents idle-timeout on visual-feedback tasks); assignee human.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
       "cross_repo": []
     }
   ]

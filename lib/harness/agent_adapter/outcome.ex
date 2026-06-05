@@ -5,8 +5,8 @@ defmodule Harness.AgentAdapter.Outcome do
   Returned inside `{:ok, outcome}` by `Harness.AgentAdapter.Driver.run/3`. The
   `kind` field — never `exit_status` — is the authoritative termination signal:
   harness derives *termination* from the process closing or a timeout firing,
-  and *success* from its own verification stack, never from the agent's exit
-  code.
+  and *success* from the cross-family reviewer's `.harness/review.json` verdict
+  (`Harness.Run.Review`), never from the agent's exit code.
   """
 
   alias Harness.AgentAdapter.Run

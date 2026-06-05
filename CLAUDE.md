@@ -103,6 +103,16 @@ Core is textbook OTP (Port per run, `gen_statem` per run, `DynamicSupervisor` fo
 
 **The principle (extends 2026-06-02's "Judgment Lives in Agents"):** *everything that interprets meaning* — is the work good, why a run failed, what an empty diff means, whether code satisfies acceptance criteria, whether the build/tests pass *in a way that matters* — **is an agent's job, never harness code.** Harness code is mechanical substrate only: worktrees, git, Ports, Oban persistence, counters, timers, reading the reviewer's verdict file.
 
+> ## 🧭 THE MANTRA — count facts in code; write the *meaning* of facts with an AI.
+>
+> This is the leitmotif of every harness session. Read it before you touch this codebase; recite it when you design, review, or refactor.
+>
+> Harness code may **count** a fact: `run_count`, summed tokens, a duration, a file's bytes, a git ref, a queue depth. It may never **judge** the fact: *who is good at this work, why this run failed, whether this code is good, whether this run is worth watching, which agent to route to.* Judgment is written by an agent — into a verdict artifact, an assessment file, a prompt's reasoning — never computed by harness.
+>
+> **The failure mode is not just "a classifier in code." It is harness counting the facts AND computing their meaning.** When you see aggregation that *fuses* facts into a verdict, score, ranking, or route — magic weights (`0.5·x + 0.3·y`), percentile gates, keyword classifiers (`~r/security|bug/`), staleness decay, "is this high-stakes enough" branches — **that is judgment wearing arithmetic's clothing.** Delete the arithmetic; persist the raw facts; have an agent write the judgment from them, on demand or as a cached artifact. The reviewer already writes per-run `ratings` — do not let harness *recompute* a verdict from those numbers; an AI that reads the raw records judges better than any formula, and explains itself.
+>
+> **The test, every time:** is this code *counting* (mechanics — keep) or *deciding what the count means* (judgment — an agent writes it)? When in doubt, it's judgment. The proof is in the git log: ~1,400 LOC of KPI/score/route arithmetic and every run-lifecycle false-verdict bug came from harness computing meaning it had no business computing.
+
 **The evidence that settled it:** every run-lifecycle bug from 2026-05-26 → 06-03 (tasks 153–163, 168, 169, 171, 172, the task-41 verifier crash, the task-172 failure) traced to the *harness verification/lifecycle machinery* — false reds, false greens, verifier crashes, timeout misconfig, preset gaps. Zero traced to an agent's judgment. 32 salvage/repair/fix commits in 257.
 
 **The stages:**

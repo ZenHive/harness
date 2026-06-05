@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 204 — Dashboard Resume + Re-land buttons: recover failed runs & blocked land-trains, Task 205 — Verify + declare auth_env_scrub for Cursor/Grok/Pi/Antigravity adapters, Task 206 — Scrub provider auth API keys from spawned agent CLIs (subscription billing), Task 207 — Configurable default dispatch agent (unassigned tasks → codex, not claude) on 2026-06-05
 
-**Up next:** Task 209 — Oban Lifeline plugin — auto-rescue orphaned executing landing/audit jobs [D:2/B:6/U:6 → Eff:3.0] 🎯
+**Up next:** Task 224 — Task-facet foundation — reviewer emits AI-assigned task-kind facets in review.json, persisted on the run record as the routing KEY [D:3/B:5/U:5 → Eff:1.67] 🚀
 <!-- FOCUS:END -->
 
 ---
