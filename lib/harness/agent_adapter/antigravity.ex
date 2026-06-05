@@ -53,8 +53,9 @@ defmodule Harness.AgentAdapter.Antigravity do
   @spec capabilities() :: Capabilities.t()
   def capabilities do
     # Intentionally no `auth_env_scrub`: official Antigravity CLI auth docs
-    # describe keyring/browser/SSH OAuth flows and no API-key env var; local
-    # `agy` help/strings do not verify `GEMINI_API_KEY` or `GOOGLE_API_KEY`.
+    # describe secure-keyring, browser, and SSH OAuth flows with no API-key env
+    # var; local `agy` help/strings do not verify `GEMINI_API_KEY` or
+    # `GOOGLE_API_KEY` as CLI auth overrides.
     # Source: https://antigravity.google/docs/cli-install
     %Capabilities{
       session_resume: true,

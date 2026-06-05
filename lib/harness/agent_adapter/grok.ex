@@ -67,7 +67,9 @@ defmodule Harness.AgentAdapter.Grok do
   @spec capabilities() :: Capabilities.t()
   # Source: xAI Grok Build docs state `XAI_API_KEY` enables API-key auth in
   # non-browser environments; local `grok 0.2.22` bundled docs/source strings
-  # say the API key takes precedence over browser credentials.
+  # say "`XAI_API_KEY` -- highest priority" and "API key takes precedence over
+  # browser credentials." `GROK_CODE_XAI_API_KEY` appears only as a custom-model
+  # endpoint fallback, not as the CLI login override.
   # https://docs.x.ai/build/overview
   def capabilities, do: %Capabilities{session_resume: true, auth_env_scrub: ["XAI_API_KEY"]}
 
