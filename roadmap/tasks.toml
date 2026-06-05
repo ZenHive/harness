@@ -6329,7 +6329,7 @@ depends_on = ["208"]
 id = "211"
 phase = 17
 bundle = "settings-pq"
-status = "in_progress"
+status = "pending"
 title = "Move audit watermarks to the Postgres settings store (off audit_watermarks.term)"
 scores = { d = 2, b = 5, u = 5 }
 acceptance_criteria = ["Audit watermarks (last-audited sha per project) read/write the Postgres settings store instead of ~/.harness/audit_watermarks.term; with repo_enabled:false they are ephemeral (no-op backend) like all other settings.", "First-boot one-time import of an existing audit_watermarks.term into Postgres so in-flight audit ranges are preserved.", "Harness.Audit no longer aliases/calls TermCodec for watermark read/write.", "Test: watermark survives a simulated restart under repo_enabled:true; ephemeral under false; clean (:no_changes) audit still leaves a watermark (regression on Task 194)."]
