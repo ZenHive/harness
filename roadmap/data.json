@@ -9170,6 +9170,49 @@
       "created_at": "2026-06-05",
       "scored_at": "2026-06-05",
       "cross_repo": []
+    },
+    {
+      "id": "226",
+      "phase": 17,
+      "bundle": "judgment-collapse",
+      "status": "done",
+      "title": "Restore mechanical worktree warming (deps/_build/PLT seed) at provision",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "markers": [
+        "handbuild"
+      ],
+      "depends_on": [],
+      "assignee": "human",
+      "acceptance_criteria": [
+        "Worktree.warm/2 seeds a fresh worktree with the parent checkout's gitignored build dirs (deps/_build/priv/plts) by CoW copy (cp -c, plain-copy fallback)",
+        "Best-effort: always returns :ok, never a gate — a failed copy just means the agent cold-builds that path",
+        "Only seeds parent-present + worktree-absent paths, so it never clobbers agent-produced state",
+        "Wired into Run.dispatched (implementer+reviewer) and Audit (auditor, only when there is a range to check)",
+        "NOT a reintroduction of Harness.Verification — warming is mechanics (copying built bytes), decoupled from any check gate"
+      ],
+      "files_to_modify": [
+        "lib/harness/worktree.ex",
+        "lib/harness/run.ex",
+        "lib/harness/audit.ex"
+      ],
+      "domains": [
+        "otp",
+        "git"
+      ],
+      "shipped_in": "b5470de6dae1b061e00fd4d3df0cffe81e080214",
+      "body": "The agent-gate rebuild (2026-06-03) deleted Harness.Verification wholesale and took the worktree warm-up (deps.get + deps.compile via Verification.prepare/2) with it as collateral, leaving every run worktree to cold-fetch deps and every reviewer/auditor to cold-compile + cold-build the dialyzer PLT (minutes/run; root cause of a 17min/4.3M-token run). run.ex even enshrined the loss with a comment claiming a cold build is the agent's job. But warming is the mantra-clean MECHANICS half (copy already-built bytes), not the judgment half that was correctly deleted. Restore it decoupled: Worktree.warm/2.",
+      "created_at": "2026-06-05",
+      "done_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "implemented": "Worktree.warm/2 CoW-clones (cp -c, File.cp_r fallback) the parent's gitignored deps/_build/priv/plts into a fresh worktree; best-effort (always :ok); only parent-present + worktree-absent paths; configurable via :harness, :worktree, :warm_paths. Wired into Run.dispatched and Audit (range-only). Includes stale run_test detach-head fix. Decoupled from any check gate — not a Harness.Verification revival.",
+      "delivered_by": "human",
+      "cross_repo": []
     }
   ]
 }
