@@ -51,7 +51,11 @@ defmodule Harness.Run.Worker do
 
   # Default high-water mark, as a percent of host physical RAM, when
   # :harness :run, :mem_highwater_kb is unset — leaves headroom under host RAM.
-  @default_node_pressure_percent 85
+  # The sampler (sum of per-process `ps` RSS) double-counts shared pages, so it
+  # over-reads real usage — notably right after boot, when macOS holds most RAM
+  # as reclaimable active/inactive cache. 95 keeps a genuine-OOM backstop while
+  # not tripping on that over-count; lower it via :harness :run, :mem_highwater_kb.
+  @default_node_pressure_percent 95
 
   # Hard ceiling on mechanical (setup-failure) retries. Snoozes do not consume
   # Oban's max_attempts, so without this a permanently broken environment would
