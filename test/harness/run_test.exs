@@ -75,6 +75,32 @@ defmodule Harness.RunTest do
     def terminate(_run), do: :ok
   end
 
+  # A reviewer double that spawns a real, long-lived process — its handle fires,
+  # then it goes silent — to drive the reviewer idle-timeout rotation path
+  # (Task 228).
+  defmodule SpawnThenIdleReviewer do
+    @moduledoc false
+    @behaviour Harness.AgentAdapter
+
+    alias Harness.AgentAdapter.Capabilities
+    alias Harness.AgentAdapter.OSProcess
+
+    @impl Harness.AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl Harness.AgentAdapter
+    def rule_channel, do: :none
+
+    @impl Harness.AgentAdapter
+    def build_command(_invocation), do: {:ok, {"/bin/sleep", ["30"], []}}
+
+    @impl Harness.AgentAdapter
+    def classify_message(_message, _run), do: :ignore
+
+    @impl Harness.AgentAdapter
+    def terminate(run), do: OSProcess.kill(run)
+  end
+
   # An adapter that spawns a real agent but declares session_resume: false —
   # drives the steer-unsupported path.
   defmodule NoResumeAdapter do
@@ -250,6 +276,17 @@ defmodule Harness.RunTest do
       # First pass wrote no artifact; the re-prompt's verdict gates the run.
       assert %Result{state: :done, reason: :approved} = result
       assert %Review{verdict: :approve} = result.review
+      assert result.reviewer_reprompt_count == 1
+    end
+
+    # Task 228: a MALFORMED first verdict routes through the SAME re-prompt path a
+    # missing one uses — the reviewer's retry writes a valid verdict and gates it.
+    test "a malformed verdict re-prompts the reviewer once, then settles on its retry verdict" do
+      result = run(reviewer_adapter_opts: [command: {:review_malformed_then, "approve"}])
+
+      assert %Result{state: :done, reason: :approved} = result
+      assert %Review{verdict: :approve} = result.review
+      assert result.reviewer_reprompt_count == 1
     end
 
     test "the missing-verdict re-prompt is bounded to exactly one retry (no loop)" do
@@ -262,13 +299,18 @@ defmodule Harness.RunTest do
       assert File.read!(Path.join(result.worktree_path, ".harness/.invoke-count")) == "xx"
     end
 
-    test "a malformed verdict is never re-prompted — it fails on the first pass" do
+    # Task 228: a malformed verdict now re-prompts on the same bounded path a
+    # missing one uses — a persistently malformed reviewer re-prompts exactly once,
+    # then fails honestly. The bound is real: no loop.
+    test "a persistently malformed verdict re-prompts once, then still fails as review_stuck" do
       result = run(reviewer_adapter_opts: [command: {:review_count_then, :malformed}])
 
       assert %Result{state: :failed, reason: {:review_stuck, report}} = result
       assert report =~ "malformed"
-      # One invocation only: malformed is unrecoverable, not a missing-write miss.
-      assert File.read!(Path.join(result.worktree_path, ".harness/.invoke-count")) == "x"
+      assert result.review == nil
+      # Two invocations total: the original malformed pass + exactly one re-prompt.
+      assert File.read!(Path.join(result.worktree_path, ".harness/.invoke-count")) == "xx"
+      assert result.reviewer_reprompt_count == 1
     end
 
     # Task 203 KPI: the fix-diff baseline is captured once at route-into-review,
@@ -721,6 +763,72 @@ defmodule Harness.RunTest do
 
       assert :ok = Run.cancel(run_id)
       await_result(run_id, pid)
+    end
+  end
+
+  describe "reviewer-timeout rotation (Task 228)" do
+    test "a reviewer that never spawns rotates to the next cross-family reviewer" do
+      result =
+        run(
+          reviewer: [HangingAdapter, FakeAdapter],
+          reviewer_spawn_timeout: 300,
+          lifetime_timeout: 30_000,
+          terminal_linger: 100
+        )
+
+      # HangingAdapter never spawns → the spawn watchdog rotates to FakeAdapter,
+      # which writes the approve verdict and gates the run.
+      assert %Result{state: :done, reason: :approved, reviewer_adapter: FakeAdapter} = result
+      assert result.reviewer_rotation_count == 1
+    end
+
+    test "a reviewer that spawns then goes idle rotates to the next cross-family reviewer" do
+      result =
+        run(
+          reviewer: [SpawnThenIdleReviewer, FakeAdapter],
+          reviewing_idle_timeout: 300,
+          lifetime_timeout: 30_000,
+          terminal_linger: 100
+        )
+
+      # SpawnThenIdleReviewer spawns then goes silent → the idle watchdog rotates
+      # to FakeAdapter, which approves.
+      assert %Result{state: :done, reason: :approved, reviewer_adapter: FakeAdapter} = result
+      assert result.reviewer_rotation_count == 1
+    end
+
+    test "an exhausted rotation slate settles :failed as review_stuck (bounded, no loop)" do
+      # A single never-spawning reviewer with no fallback exhausts the slate on the
+      # first timeout and fails honestly — rotation never loops.
+      result =
+        run(
+          reviewer: [HangingAdapter],
+          reviewer_spawn_timeout: 300,
+          lifetime_timeout: 30_000,
+          terminal_linger: 100
+        )
+
+      assert %Result{state: :failed, reason: {:review_stuck, report}} = result
+      assert report =~ "never spawned"
+      assert result.reviewer_rotation_count == 0
+    end
+
+    test "the rotation count is witnessed as a raw fact on the persisted run record" do
+      store = file_store()
+
+      {run_id, pid} =
+        start(
+          reviewer: [HangingAdapter, FakeAdapter],
+          reviewer_spawn_timeout: 300,
+          lifetime_timeout: 30_000,
+          terminal_linger: 100,
+          result_store: store
+        )
+
+      assert %Result{state: :done} = await_result(run_id, pid)
+      assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: run_id)
+      assert record.reviewer_rotation_count == 1
+      assert record.reviewer_adapter == FakeAdapter
     end
   end
 

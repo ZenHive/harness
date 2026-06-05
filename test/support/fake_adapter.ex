@@ -205,13 +205,26 @@ defmodule Harness.FakeAdapter do
     {"/bin/sh", ["-c", script, "harness-fake", review_json(verdict)], []}
   end
 
+  # {:review_malformed_then, verdict}
+  #   — first invocation writes a MALFORMED verdict (invalid JSON) and leaves the
+  #     (excluded) marker; the second invocation, seeing the marker, writes the
+  #     valid verdict. Drives the Task-228 malformed -> re-prompt -> verdict
+  #     recovery path (the malformed analogue of {:review_miss_then, _}).
+  defp command({:review_malformed_then, verdict}, _invocation) when verdict in ["approve", "reject"] do
+    script =
+      ~S(mkdir -p .harness; if [ -f .harness/.reprompt-marker ]; then printf '%s' "$1" > .harness/review.json; ) <>
+        ~S(else : > .harness/.reprompt-marker; echo '{not json' > .harness/review.json; fi)
+
+    {"/bin/sh", ["-c", script, "harness-fake", review_json(verdict)], []}
+  end
+
   # {:review_count_then, behavior}
   #   — appends one byte to the (excluded) `.harness/.invoke-count` on EVERY
   #     invocation so a test can count reviewer passes off the retained
   #     worktree, then performs `behavior`: `:miss` writes no artifact (a
   #     persistent miss — proves the Task-203 re-prompt fires exactly once,
-  #     count == 2), `:malformed` writes invalid JSON (proves malformed does NOT
-  #     re-prompt, count == 1).
+  #     count == 2), `:malformed` writes invalid JSON (since Task 228 a malformed
+  #     verdict re-prompts on the same path, so this also reaches count == 2).
   defp command({:review_count_then, behavior}, _invocation) when behavior in [:miss, :malformed] do
     tail =
       case behavior do
