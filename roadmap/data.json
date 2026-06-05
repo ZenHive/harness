@@ -47,6 +47,11 @@
       "order": 16,
       "status": "in_progress"
     },
+    "17": {
+      "name": "Settings Consolidation & Resilience",
+      "order": 17,
+      "status": "in_progress"
+    },
     "2": {
       "name": "Core Loop & Contract Proof",
       "order": 2,
@@ -199,6 +204,11 @@
       "order": 1,
       "description": "Replace every run-lifecycle judgment call implemented as procedural code (FailureClass regexes, repair loop, BaselineFilter, semantic gate, :no_changes disposition) with a cross-family reviewer agent that fixes inline in the implementer's worktree until the check stack is green or reports stuck in prose. Architecture: docs/reviewer-pair-architecture.md. Harness code shrinks to mechanical substrate; ~1,100 lines of judgment code deleted."
     },
+    "roadmap-durability": {
+      "phase": 17,
+      "order": 4,
+      "description": "Make harness's own roadmap mutations safe under the multi-writer reality rmap.md documents. harness's dispatch lifecycle mutates the canonical roadmap/tasks.toml (rmap status transitions) but treats them as uncommitted local writes — no fetch+rebase before write, no commit, no push — so every harness run silently races sibling Claude sessions and cloud agents against the same shared file. Make the transitions git-durable."
+    },
     "run-history": {
       "phase": 10,
       "order": 2,
@@ -208,6 +218,11 @@
       "phase": 1,
       "order": 1,
       "description": "mix project scaffold + standard dep stack"
+    },
+    "settings-pq": {
+      "phase": 17,
+      "order": 3,
+      "description": "Collapse harness's scattered settings (exs registration defaults + SettingsStore overlay + app-env cache + per-domain enable switches + ~/.harness/*.term files) into ONE Postgres table as single source of truth. Kills the silent-divergence class of bug (onchain landing-policy reverting on restart). repo_enabled:false = ephemeral (surfaced via a flash). Plus the Oban Lifeline rescuer for orphaned executing jobs that today's investigation surfaced."
     },
     "surface": {
       "phase": 5,
@@ -8454,6 +8469,374 @@
       "scored_at": "2026-06-05",
       "implemented": "Added Harness.Config {:dispatch, :default_agent} (default :codex, :agent-typed, ui_editable, validated against implementer set). CapabilityScore no-data fallback reads it instead of hardcoded :claude (explicit :fallback_agent opt still wins). SettingsLive gained a Dispatch-default select card + set_default_agent handler; :agent excluded from the number-input config card. rmap.md include patched to push assignee at creation. 62 tests green; reviewer-eligibility axis untouched.",
       "delivered_by": "claude",
+      "cross_repo": []
+    },
+    {
+      "id": "208",
+      "phase": 17,
+      "bundle": "settings-pq",
+      "status": "pending",
+      "title": "Single Postgres-backed settings store — collapse the exs/overlay/app-env layering",
+      "scores": {
+        "d": 6,
+        "b": 8,
+        "u": 8
+      },
+      "eff": 1.33,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "human",
+      "module": "Harness.SettingsStore",
+      "acceptance_criteria": [
+        "All operator-flippable settings (landing policy/target, cron toggles, agent enablement, reviewer pins, runtime project registrations) read from and write to ONE Postgres table; with repo_enabled:true that table is the single source of truth — no app-env overlay cache, no exs fallback.",
+        "Reading a setting never falls back to an exs default at runtime: exs :projects becomes a one-time first-boot import into the table (import_legacy of the *.term files runs once for landing/cron/agent so existing flips carry over), after which Postgres always wins.",
+        "SettingsLive shows the effective persisted value for every setting; a flip on the page survives a BEAM restart with identical values (regression test for today's silent landing-policy revert).",
+        "Harness.SettingsLoader is deleted; Harness.SettingsStore.File backend is deleted; the per-domain enable switches (:landing_settings/:cron_settings/:agent_settings config keys + SettingsStore.disabled?/legacy_config_key) are removed.",
+        "repo_enabled:false means ephemeral in-memory settings via the existing no-op false backend (put->:ok, fetch->:not_found) — no file backend, no new code; ephemeral state surfaced to the operator (see flash task).",
+        "Harness.TermCodec is RETAINED — still serves ResultStore.File, Chat.Store.File, Audit watermarks, ProjectRegistry.Persistence, and the Postgres legacy-import; only its settings caller goes.",
+        "Tests: restart-survives-flip for landing/cron/agent; first-boot legacy import populates the table from a seeded *.term; repo_enabled:false yields ephemeral reads; no exs-fallback after a value is set."
+      ],
+      "out_of_scope": [
+        "ResultStore, Chat store, and Audit-watermark persistence stay on their current backends.",
+        "TermCodec deletion (gated on the above leaving term files).",
+        "repo_enabled itself stays in code — cannot bootstrap the DB connection from the DB."
+      ],
+      "files_to_modify": [
+        "config/config.exs",
+        "config/runtime.exs",
+        "lib/harness/settings_store.ex",
+        "lib/harness/settings_store/file.ex",
+        "lib/harness/settings_loader.ex",
+        "lib/harness/landing/settings.ex",
+        "lib/harness/cron/settings.ex",
+        "lib/harness/agent/settings.ex",
+        "lib/harness/application.ex",
+        "lib/harness/dashboard/settings_live.ex",
+        "lib/harness/dashboard/config_inspector.ex"
+      ],
+      "touches": [
+        "lib/harness/project_registry.ex",
+        "lib/harness/project_registry/persistence.ex",
+        "lib/harness/settings_store/postgres.ex",
+        "lib/harness/settings_store/schema/setting.ex"
+      ],
+      "domains": [
+        "otp",
+        "ecto"
+      ],
+      "body": "Today onchain's landing-policy flip silently reverted on restart: the value lived in three layers (exs registration default -> SettingsStore overlay -> app-env cache) and landing persistence was off because :landing_settings had no default root config line (cron/agent do, config.exs line 34/68; landing was only set false in the test block) so Landing.Settings.disabled? short-circuited every write. Tracing 'is this setting on and will it survive restart?' took seven hops across dev.local.exs/dev.exs/config.exs/runtime.exs/SettingsStore/Landing.Settings/app-env — the layering is unmanageable. Collapse to one Postgres table as single source of truth (Postgres is already a hard dep via Oban; SettingsStore is already a behaviour with a Postgres backend; ProjectRegistry already persists to Postgres when repo_enabled). Delete overlay/app-env-cache/exs-fallback and the per-domain enable switches. Net deletion: SettingsLoader + SettingsStore.File + disabled?/legacy_config_key + per-domain config keys; exs becomes a one-time import only.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "209",
+      "phase": 17,
+      "bundle": "settings-pq",
+      "status": "pending",
+      "title": "Oban Lifeline plugin — auto-rescue orphaned executing landing/audit jobs",
+      "scores": {
+        "d": 2,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 3.0,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "module": "Harness.Application",
+      "acceptance_criteria": [
+        "Oban.Plugins.Lifeline added to the Harness.Oban plugins list with a rescue_after window (suggest 30 min, > the longest legitimate land/audit) so jobs orphaned in executing (worker died mid-run) are moved back to available and retried.",
+        "A test asserts an executing job older than rescue_after is rescued to available, and a freshly-executing job is not.",
+        "Doc note in Application explaining why Lifeline is needed: open-source Oban does not rescue executing-orphans; only Pruner was configured, so a worker crash mid-land stranded the job forever (observed: landing job 294 / onchain task 41 stuck executing 25+ min)."
+      ],
+      "out_of_scope": [
+        "No change to RetryPolicy (dispatch-level backoff is separate).",
+        "No re-verification on rescued landing jobs — the lander is already non-verifying by design."
+      ],
+      "files_to_modify": [
+        "lib/harness/application.ex"
+      ],
+      "touches": [
+        "test/harness/application_test.exs"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "harness configures only Oban.Plugins.Pruner. Open-source Oban has no automatic rescue for jobs stuck executing when their worker process dies (BEAM restart / crash mid-run) — the row sits executing forever. This stranded onchain landing job 294 (task 41) for 25+ minutes today; it was manually transitioned to available to unblock. Add Oban.Plugins.Lifeline (rescue_after ~30 min) so orphaned executing landing_* and audit jobs are automatically requeued. Small, high-value resilience fix.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "210",
+      "phase": 17,
+      "bundle": "settings-pq",
+      "status": "pending",
+      "title": "Flash on ephemeral settings + refactor dashboard notices into a shared flash mechanism",
+      "scores": {
+        "d": 4,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.25,
+      "dep_layer": 1,
+      "markers": [
+        "handbuild"
+      ],
+      "depends_on": [
+        "208"
+      ],
+      "assignee": "human",
+      "module": "Harness.Dashboard",
+      "acceptance_criteria": [
+        "When settings are ephemeral (repo_enabled:false — writes are no-ops that vanish on restart), the dashboard shows a persistent flash/banner making it unmistakable that changes will NOT survive a restart.",
+        "Existing ad-hoc dashboard notices are refactored into one shared flash component/helper (single source for transient + persistent operator notices) rather than per-LiveView bespoke markup.",
+        "The ephemeral-state flash is driven by the actual store mode (no-op backend detected), not a hardcoded flag.",
+        "Hand-built via tidewave + browser per the UI-work rule; verify the banner renders under repo_enabled:false and is absent under :true."
+      ],
+      "out_of_scope": [
+        "No change to the persistence backend selection itself (that is the consolidation task)."
+      ],
+      "files_to_modify": [
+        "lib/harness/dashboard/components.ex",
+        "lib/harness/dashboard/settings_live.ex",
+        "lib/harness/dashboard/live.ex"
+      ],
+      "touches": [
+        "lib/harness/dashboard/layouts.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "We agreed repo_enabled:false should make settings ephemeral (in-memory, lost on restart). That is only safe if the operator can SEE it is ephemeral — otherwise it is the same silent-divergence trap relocated. Add a persistent flash/banner surfacing ephemeral-settings mode, driven by the live store backend (no-op false backend = ephemeral). While here, consolidate the existing scattered dashboard notices into one shared flash mechanism. Depends on the settings consolidation defining the ephemeral mode.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "211",
+      "phase": 17,
+      "bundle": "settings-pq",
+      "status": "pending",
+      "title": "Move audit watermarks to the Postgres settings store (off audit_watermarks.term)",
+      "scores": {
+        "d": 2,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 2.5,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "module": "Harness.Audit",
+      "acceptance_criteria": [
+        "Audit watermarks (last-audited sha per project) read/write the Postgres settings store instead of ~/.harness/audit_watermarks.term; with repo_enabled:false they are ephemeral (no-op backend) like all other settings.",
+        "First-boot one-time import of an existing audit_watermarks.term into Postgres so in-flight audit ranges are preserved.",
+        "Harness.Audit no longer aliases/calls TermCodec for watermark read/write.",
+        "Test: watermark survives a simulated restart under repo_enabled:true; ephemeral under false; clean (:no_changes) audit still leaves a watermark (regression on Task 194)."
+      ],
+      "out_of_scope": [
+        "No change to audit content/range logic, only its persistence."
+      ],
+      "files_to_modify": [
+        "lib/harness/audit.ex"
+      ],
+      "touches": [
+        "test/harness/audit_test.exs"
+      ],
+      "domains": [
+        "otp",
+        "ecto"
+      ],
+      "body": "audit.ex persists per-project audit watermarks to ~/.harness/audit_watermarks.term via TermCodec. This is orchestrator state that must survive a BEAM restart and belongs in the same single Postgres substrate as settings (Task 208). Move it there; ephemeral under repo_enabled:false. One of the TermCodec-consumer migrations that together let TermCodec be deleted.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "212",
+      "phase": 17,
+      "bundle": "settings-pq",
+      "status": "pending",
+      "title": "Retire ResultStore.File + Chat.Store.File — Postgres-only, ephemeral when repo_enabled:false",
+      "scores": {
+        "d": 4,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.25,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "module": "Harness.ResultStore",
+      "acceptance_criteria": [
+        "ResultStore and Chat.Store select the Postgres backend when repo_enabled:true and a no-op/in-memory ephemeral backend when false; the File backends (ResultStore.File, Chat.Store.File) are deleted.",
+        "One-time first-boot import of existing ~/.harness/results and ~/.harness/chats term data into Postgres so KPI history and chat sessions are preserved.",
+        "AgentKPI / CapabilityScore rollups read identical data post-migration (no KPI regression).",
+        "Ephemeral mode surfaced to the operator via the shared flash (Task 210) — same banner that covers ephemeral settings.",
+        "Tests: result record + chat session survive restart under :true; ephemeral under :false; legacy import populates from seeded term files."
+      ],
+      "out_of_scope": [
+        "TermCodec deletion (capstone task).",
+        "No change to the KPI rollup math or chat dispatch logic — persistence only."
+      ],
+      "files_to_modify": [
+        "lib/harness/result_store.ex",
+        "lib/harness/result_store/file.ex",
+        "lib/harness/chat/store/file.ex",
+        "config/runtime.exs"
+      ],
+      "touches": [
+        "lib/harness/result_store/postgres.ex",
+        "test/harness/result_store_test.exs"
+      ],
+      "domains": [
+        "otp",
+        "ecto"
+      ],
+      "body": "ResultStore (Task 137) and Chat.Store already have Postgres backends; the File backends are only the repo_enabled:false fallback and the last high-volume TermCodec consumers besides audit. Commit to one substrate: Postgres when repo_enabled, ephemeral (no-op) otherwise, surfaced via the ephemeral flash (Task 210). Drop the File backends after a one-time import. Larger than the settings move because of KPI history + chat session preservation, so it is its own task.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "213",
+      "phase": 17,
+      "bundle": "settings-pq",
+      "status": "pending",
+      "title": "Delete Harness.TermCodec + close the legacy *.term import window (capstone)",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 2.0,
+      "dep_layer": 1,
+      "markers": [],
+      "depends_on": [
+        "208",
+        "211",
+        "212"
+      ],
+      "assignee": "codex",
+      "module": "Harness.TermCodec",
+      "acceptance_criteria": [
+        "After settings (208), audit watermarks, and ResultStore+Chat are Postgres-only, no module references Harness.TermCodec; the module is deleted.",
+        "The Postgres backends' import_legacy paths and the harness.import_results mix task are removed (or gated off) once the migration window closes — no remaining reader of *.term files.",
+        "ProjectRegistry.Persistence no longer uses TermCodec (folded into 208).",
+        "mix compile --warnings-as-errors + full suite green with TermCodec absent."
+      ],
+      "out_of_scope": [
+        "Does not itself migrate any data — purely removes the dead serializer + import paths once predecessors land."
+      ],
+      "files_to_modify": [
+        "lib/harness/term_codec.ex",
+        "lib/mix/tasks/harness.import_results.ex"
+      ],
+      "touches": [
+        "lib/harness/settings_store/postgres.ex",
+        "lib/harness/result_store/postgres.ex",
+        "lib/harness/project_registry/persistence.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "TermCodec is the shared Erlang-term file serializer. Once its callers move to Postgres (settings 208, audit watermarks, ResultStore+Chat) and the one-time legacy-import window closes, TermCodec and the import_legacy paths are dead code. Capstone deletion — gated on the predecessor migrations; do not start until they land.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "214",
+      "phase": 17,
+      "bundle": "settings-pq",
+      "status": "pending",
+      "title": "Reconcile run landed-state against the target branch — fix the false 'approved but not landed' signal",
+      "scores": {
+        "d": 3,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 2.33,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "module": "Harness.ResultStore",
+      "acceptance_criteria": [
+        "A run's 'landed' status is derived from whether its commit is reachable from origin/<target_branch> (or an equivalent merge-state check), NOT solely from the presence of a completed lander Oban job.",
+        "Runs merged via direct commit (self-repo / hand-built) or under landing_policy:manual no longer show as 'approved but not landed' once their work is on the target branch.",
+        "Dashboard run feed reflects the reconciled state; a run truly approved-and-unlanded (e.g. manual policy, not yet merged) is still distinguishable from merged.",
+        "Test: a run with no lander job but whose commit is on origin/<target> reports landed; an approved run not on the branch reports not-landed."
+      ],
+      "out_of_scope": [
+        "No change to the lander itself.",
+        "No auto-landing of manual-policy projects (that stays an operator choice)."
+      ],
+      "files_to_modify": [
+        "lib/harness/result_store.ex",
+        "lib/harness/dashboard/run_feed.ex"
+      ],
+      "touches": [
+        "lib/harness/lander.ex",
+        "test/harness/result_store_test.exs"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "Investigation today: the operator perceived 'many approved tasks stuck unmerged', but cross-project analysis showed nothing genuinely stuck — harness's 9 'approved_not_landed' were 8 done + 1 blocked (merged via direct commit, verified on development: tasks 195/194/187), and rmap's 2 are manual-landing by design. The result store / dashboard equates 'no completed lander Oban job' with 'not merged', which is false for direct-commit (self-repo / hand-built) and manual-policy work. Reconcile landed-state against the actual target branch (commit reachable from origin/<target>) so the dashboard stops crying false-stuck. Directly addresses the confusion that kicked off this whole session.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "215",
+      "phase": 17,
+      "bundle": "roadmap-durability",
+      "status": "pending",
+      "title": "Make harness roadmap mutations git-durable — fetch+rebase, commit, push the rmap status transition",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 1.33,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5-codex",
+      "acceptance_criteria": [
+        "Every harness-driven `rmap status` transition on a project's canonical `roadmap/tasks.toml` (in_progress at dispatch start; done/pending at settle) is a durable git operation, not an uncommitted local-file write.",
+        "Before mutating, harness fetches and rebases the roadmap working copy onto the project's target branch so it never writes from a stale on-disk copy (the discipline rmap.md mandates for human writers).",
+        "After mutating, harness commits the tasks.toml change (subject e.g. `roadmap: task <id> -> <status>`) and pushes to the target branch.",
+        "Concurrent writers (sibling Claude sessions, cloud agents, other harness runs) no longer silently clobber each other's roadmap edits — verified by an integration test that interleaves two transitions against the same file.",
+        "A non-ff push (a second writer landed first) is handled by re-fetch+rebase+retry, not force-push; persistent conflict surfaces an error, never a blind overwrite.",
+        "Mechanical git substrate only — no judgment branch added to harness code."
+      ],
+      "out_of_scope": [
+        "The single-Postgres settings consolidation (Task 208) — orthogonal.",
+        "Moving the roadmap out of TOML/git into Postgres — tasks.toml stays the canonical git-versioned source of truth."
+      ],
+      "touches": [
+        "lib/harness/run.ex",
+        "lib/harness/roadmap.ex",
+        "lib/harness/lander.ex"
+      ],
+      "domains": [
+        "otp",
+        "git"
+      ],
+      "body": "The multi-writer hazard rmap.md documents for human sessions also applies to harness itself, and just bit us: a sibling Claude session held a stale copy of `tasks.toml` and clobbered this session's phase-17 additions (recovered by hand).\n\nharness's dispatch lifecycle mutates the CANONICAL `roadmap/tasks.toml` — `rmap status <id> in_progress` at dispatch start, `done`/`pending` at settle — but treats those mutations as ephemeral local-file writes: it does NOT fetch+rebase the working copy before writing, does NOT commit the transition, and does NOT push it. So every harness run is a silent, uncommitted concurrent writer racing every other session and cloud agent against the same shared file. rmap's validate-then-write guards against INVALID writes, not LOST ones — two valid writers still overwrite each other.\n\nThe roadmap status transition is pure mechanical git (fetch, rebase, commit one file, ff-push, retry-on-non-ff) — it fits the agent-gate principle that harness code is mechanical substrate only, no judgment. Make the transition durable and rebase-before-write so the canonical roadmap stops drifting uncommitted across writers.\n\nOpen design point for the implementer: where the roadmap mutation runs (main checkout vs the run's isolated worktree) and whether the push target is the project's `target_branch`. rmap walks ancestors to find `roadmap/tasks.toml`; pin the mutation+commit to a single well-defined checkout so the rebase semantics are unambiguous.\n",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
       "cross_repo": []
     }
   ]
