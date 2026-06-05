@@ -6362,7 +6362,7 @@ scored_at = "2026-06-05"
 id = "215"
 phase = 17
 bundle = "roadmap-durability"
-status = "pending"
+status = "done"
 title = "Make harness roadmap mutations git-durable — fetch+rebase, commit, push the rmap status transition"
 scores = { d = 3, b = 4, u = 4 }
 markers = ["bug"]
@@ -6381,5 +6381,8 @@ The roadmap status transition is pure mechanical git (fetch, rebase, commit one 
 
 Open design point for the implementer: where the roadmap mutation runs (main checkout vs the run's isolated worktree) and whether the push target is the project's `target_branch`. rmap walks ancestors to find `roadmap/tasks.toml`; pin the mutation+commit to a single well-defined checkout so the rebase semantics are unambiguous.
 """
+implemented = "Harness.Roadmap.Durable makes every harness rmap status transition a durable git op: fetch target -> mutate fresh detached worktree at origin/<target> -> commit 'roadmap: task <id> -> <status>' -> ff-push (non-ff re-fetch+replay+retry, never --force) -> ff the operator's LOCAL target via shared Harness.Git.TargetSync so on-disk tasks.toml never drifts behind origin (the out-of-sync/merge-break the user flagged). All four Roadmap.mark_* mutators consolidated through one mutate/4 chokepoint; durable when a %Project{} with target_branch+local source is passed, else local rmap write. TargetSync extracted from Lander.sync_local_target and reused by both. Callers (Run.Worker, Lander.writeback, Lander.Resilience) pass project:. Tests: roadmap/durable_test.exs (interleave, non-ff retry+exhaustion, no-op, local ff-sync, dirty-skip, fallback)."
+delivered_by = "claude"
 created_at = "2026-06-05"
 scored_at = "2026-06-05"
+done_at = "2026-06-05"

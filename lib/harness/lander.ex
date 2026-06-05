@@ -46,6 +46,7 @@ defmodule Harness.Lander do
   alias Harness.AgentRegistry
   alias Harness.Audit.Worker, as: AuditWorker
   alias Harness.Git
+  alias Harness.Git.TargetSync
   alias Harness.Lander.Resolver
   alias Harness.Lander.Worker, as: LanderWorker
   alias Harness.Notification
@@ -307,77 +308,14 @@ defmodule Harness.Lander do
     end
   end
 
+  # After the code ff-push, fast-forward the operator's local target too (shared
+  # ff-only sync, never forcing a dirty/diverged checkout) so it doesn't drift
+  # behind origin. A skip is surfaced as a witness event.
   @spec sync_local_target(String.t(), String.t(), Project.t(), request()) :: :ok
   defp sync_local_target(repo, target, project, request) do
-    with :ok <- fetch_remote_target(repo, target),
-         {:ok, branch} <- current_branch(repo) do
-      if branch == target do
-        sync_checked_out_target(repo, target, project, request)
-      else
-        sync_unchecked_out_target(repo, target, project, request)
-      end
-    else
-      {:error, reason} ->
-        notify_local_sync_skipped(project, request, "local #{target} sync skipped: #{inspect(reason)}; sync manually")
-    end
-  end
-
-  @spec fetch_remote_target(String.t(), String.t()) :: :ok | {:error, term()}
-  defp fetch_remote_target(repo, target) do
-    case Git.run(["fetch", "origin", "#{target}:refs/remotes/origin/#{target}"], repo) do
-      {:ok, _output} -> :ok
-      {:error, reason} -> {:error, {:fetch_remote_target_failed, reason}}
-    end
-  end
-
-  @spec current_branch(String.t()) :: {:ok, String.t()} | {:error, term()}
-  defp current_branch(repo) do
-    case Git.run(["branch", "--show-current"], repo) do
-      {:ok, output} -> {:ok, String.trim(output)}
-      {:error, reason} -> {:error, {:current_branch_failed, reason}}
-    end
-  end
-
-  @spec sync_checked_out_target(String.t(), String.t(), Project.t(), request()) :: :ok
-  defp sync_checked_out_target(repo, target, project, request) do
-    if clean_worktree?(repo) do
-      merge_target(repo, target, project, request)
-    else
-      notify_local_sync_skipped(project, request, drift_message(repo, target))
-    end
-  end
-
-  @spec clean_worktree?(String.t()) :: boolean()
-  defp clean_worktree?(repo) do
-    match?({:ok, ""}, Git.run(["status", "--porcelain"], repo))
-  end
-
-  @spec merge_target(String.t(), String.t(), Project.t(), request()) :: :ok
-  defp merge_target(repo, target, project, request) do
-    case Git.run(["merge", "--ff-only", "origin/" <> target], repo) do
-      {:ok, _output} -> :ok
-      {:error, _reason} -> notify_local_sync_skipped(project, request, drift_message(repo, target))
-    end
-  end
-
-  @spec sync_unchecked_out_target(String.t(), String.t(), Project.t(), request()) :: :ok
-  defp sync_unchecked_out_target(repo, target, project, request) do
-    case Git.run(["fetch", "origin", "#{target}:#{target}"], repo) do
-      {:ok, _output} -> :ok
-      {:error, _reason} -> notify_local_sync_skipped(project, request, drift_message(repo, target))
-    end
-  end
-
-  @spec drift_message(String.t(), String.t()) :: String.t()
-  defp drift_message(repo, target) do
-    "local #{target} behind origin by #{behind_count(repo, target)}; sync manually"
-  end
-
-  @spec behind_count(String.t(), String.t()) :: non_neg_integer() | String.t()
-  defp behind_count(repo, target) do
-    case Git.run(["rev-list", "--count", "#{target}..origin/#{target}"], repo) do
-      {:ok, output} -> output |> String.trim() |> String.to_integer()
-      {:error, _reason} -> "unknown"
+    case TargetSync.ff_local(repo, target) do
+      :synced -> :ok
+      {:skipped, reason} -> notify_local_sync_skipped(project, request, reason)
     end
   end
 
@@ -407,7 +345,7 @@ defmodule Harness.Lander do
   @spec writeback(Project.t(), request(), String.t()) :: :ok
   defp writeback(%Project{} = project, request, sha) do
     case Roadmap.mark_landed(request.task_id,
-           root: project.roadmap_path,
+           project: project,
            sha: sha,
            delivered_by: delivered_by(request[:agent]),
            implemented: implemented_text(request, sha)

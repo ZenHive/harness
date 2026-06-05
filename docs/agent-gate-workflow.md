@@ -119,6 +119,32 @@ hygiene fixes committed inline. Harness ff-pushes only if HEAD advanced.
 Outcomes: `{:audited, sha}` · `:noop` (range empty / already audited) · `:no_changes` (auditor
 committed nothing) · `{:push_rejected, out}` · `{:skipped, r}` · `{:error, r}`.
 
+### Roadmap state transitions — durable git, not local-file writes
+
+Every rmap status transition the lifecycle makes on a project's *canonical*
+`roadmap/tasks.toml` — `in_progress` at dispatch start (`Harness.Run.Worker`),
+`pending` on terminal run failure, `done --verified --shipped-in` at land
+(`Harness.Lander`), `blocked` on land-cap exhaustion (`Harness.Lander.Resilience`)
+— is a **durable git operation**, not an uncommitted local-file write. All four
+funnel through `Harness.Roadmap.mark_*`, which (when the project carries a
+`target_branch` + local source) delegates to `Harness.Roadmap.Durable`: fetch the
+target → mutate a fresh detached worktree at its tip → commit
+(`roadmap: task <id> -> <status>`) → ff-push (non-ff push re-fetches, replays,
+retries — never `--force`) → **fast-forward the operator's local `<target>`** to
+the pushed commit (`Harness.Git.TargetSync`, ff-only, never touching a
+dirty/diverged checkout).
+
+That last step matters: pushing to origin but leaving the operator's working copy
+stale is exactly how `roadmap/tasks.toml` drifts behind origin and a later merge
+conflicts or silently loses the harness transition — so the local sync is part of
+the durable write, not an afterthought. The same `TargetSync` core does the
+lander's post-code-push local sync. Together they let concurrent sessions, cloud
+agents, and other harness runs neither clobber *nor* fall behind each other's
+roadmap edits (rmap's validate-then-write guards *invalid* writes, not *lost*
+ones). A project without a `target_branch` (or a `{:github, _}` source) falls
+back to the historical local rmap write. Mechanical substrate only — no judgment
+branch added to harness code.
+
 **Never blocks, never reverts.** A failed audit is logged and dropped; the merge stands.
 
 ## What is code vs what is judgment

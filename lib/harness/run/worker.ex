@@ -447,7 +447,7 @@ defmodule Harness.Run.Worker do
 
   @spec do_mark_in_progress(Item.t(), Project.t()) :: :ok
   defp do_mark_in_progress(%Item{} = item, %Project{} = project) do
-    case Roadmap.mark_in_progress(item, root: project.roadmap_path) do
+    case Roadmap.mark_in_progress(item, project: project) do
       {:ok, _output} ->
         :ok
 
@@ -462,7 +462,7 @@ defmodule Harness.Run.Worker do
 
   @spec do_mark_pending(Item.t(), Project.t()) :: :ok
   defp do_mark_pending(%Item{} = item, %Project{} = project) do
-    case Roadmap.mark_pending(item, root: project.roadmap_path) do
+    case Roadmap.mark_pending(item, project: project) do
       {:ok, _output} ->
         :ok
 

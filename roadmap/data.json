@@ -8798,7 +8798,7 @@
       "id": "215",
       "phase": 17,
       "bundle": "roadmap-durability",
-      "status": "pending",
+      "status": "done",
       "title": "Make harness roadmap mutations git-durable — fetch+rebase, commit, push the rmap status transition",
       "scores": {
         "d": 3,
@@ -8836,7 +8836,10 @@
       ],
       "body": "The multi-writer hazard rmap.md documents for human sessions also applies to harness itself, and just bit us: a sibling Claude session held a stale copy of `tasks.toml` and clobbered this session's phase-17 additions (recovered by hand).\n\nharness's dispatch lifecycle mutates the CANONICAL `roadmap/tasks.toml` — `rmap status <id> in_progress` at dispatch start, `done`/`pending` at settle — but treats those mutations as ephemeral local-file writes: it does NOT fetch+rebase the working copy before writing, does NOT commit the transition, and does NOT push it. So every harness run is a silent, uncommitted concurrent writer racing every other session and cloud agent against the same shared file. rmap's validate-then-write guards against INVALID writes, not LOST ones — two valid writers still overwrite each other.\n\nThe roadmap status transition is pure mechanical git (fetch, rebase, commit one file, ff-push, retry-on-non-ff) — it fits the agent-gate principle that harness code is mechanical substrate only, no judgment. Make the transition durable and rebase-before-write so the canonical roadmap stops drifting uncommitted across writers.\n\nOpen design point for the implementer: where the roadmap mutation runs (main checkout vs the run's isolated worktree) and whether the push target is the project's `target_branch`. rmap walks ancestors to find `roadmap/tasks.toml`; pin the mutation+commit to a single well-defined checkout so the rebase semantics are unambiguous.\n",
       "created_at": "2026-06-05",
+      "done_at": "2026-06-05",
       "scored_at": "2026-06-05",
+      "implemented": "Harness.Roadmap.Durable makes every harness rmap status transition a durable git op: fetch target -> mutate fresh detached worktree at origin/<target> -> commit 'roadmap: task <id> -> <status>' -> ff-push (non-ff re-fetch+replay+retry, never --force) -> ff the operator's LOCAL target via shared Harness.Git.TargetSync so on-disk tasks.toml never drifts behind origin (the out-of-sync/merge-break the user flagged). All four Roadmap.mark_* mutators consolidated through one mutate/4 chokepoint; durable when a %Project{} with target_branch+local source is passed, else local rmap write. TargetSync extracted from Lander.sync_local_target and reused by both. Callers (Run.Worker, Lander.writeback, Lander.Resilience) pass project:. Tests: roadmap/durable_test.exs (interleave, non-ff retry+exhaustion, no-op, local ff-sync, dirty-skip, fallback).",
+      "delivered_by": "claude",
       "cross_repo": []
     }
   ]

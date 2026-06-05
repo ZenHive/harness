@@ -211,7 +211,7 @@ defmodule Harness.Lander.Resilience do
   @spec mark_blocked(String.t(), String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
   defp mark_blocked(project_name, task_id, reason) do
     with {:ok, project} <- ProjectRegistry.lookup(project_name) do
-      Roadmap.mark_blocked(task_id, root: project.roadmap_path, reason: reason)
+      Roadmap.mark_blocked(task_id, project: project, reason: reason)
     end
   end
 end

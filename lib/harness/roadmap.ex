@@ -49,6 +49,7 @@ defmodule Harness.Roadmap do
   alias Harness.CapabilityDomain
   alias Harness.Project
   alias Harness.ProjectRegistry
+  alias Harness.Roadmap.Durable
   alias Harness.Roadmap.Item
 
   # The agents harness can both render (via `rmap delegate --to`) AND execute
@@ -244,7 +245,11 @@ defmodule Harness.Roadmap do
 
   Options:
 
-    * `:root` — the project root holding `roadmap/tasks.toml` (required).
+    * `:project` — a `%Harness.Project{}`. When it carries a `target_branch`
+      and a local source, the transition is pushed durably to that branch (see
+      "Durability" below); otherwise this supplies the local-write root.
+    * `:root` — the project root holding `roadmap/tasks.toml`. Required unless
+      `:project` is given (then `project.roadmap_path` is used).
     * `:sha` — the landed commit SHA recorded as `shipped_in` (required).
     * `:delivered_by` — agent string for `--delivered-by` (optional).
     * `:implemented` — what shipped, for `--implemented` (optional).
@@ -252,22 +257,27 @@ defmodule Harness.Roadmap do
 
   Returns `{:ok, output}` or `{:error, {status, output, args}}`.
 
+  ## Durability
+
+  When `:project` carries a `target_branch` + local source, the transition is a
+  durable git operation — fetch the target, mutate a fresh detached worktree at
+  its tip, commit, and ff-push (`Harness.Roadmap.Durable`) — so concurrent
+  writers never clobber each other's roadmap edits. Lacking such a project it
+  falls back to a plain local rmap write.
+
   > Depends on rmap's `--shipped-in` status flag (rmap roadmap Task 33).
   """)
 
   @spec mark_landed(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def mark_landed(item_or_id, opts) do
-    ctx = landing_ctx(opts)
     sha = Keyword.fetch!(opts, :sha)
 
-    args =
-      ["status", landing_task_id(item_or_id), "done", "--verified", "--shipped-in", sha]
+    status_args =
+      ["done", "--verified", "--shipped-in", sha]
       |> append_flag("--delivered-by", opts[:delivered_by])
       |> append_flag("--implemented", opts[:implemented])
 
-    with :ok <- ensure_rmap(ctx.rmap_bin) do
-      run_rmap(args, ctx)
-    end
+    mutate(item_or_id, status_args, "done (shipped #{short_sha(sha)})", opts)
   end
 
   api(:mark_blocked, """
@@ -282,7 +292,11 @@ defmodule Harness.Roadmap do
 
   Options:
 
-    * `:root` — the project root holding `roadmap/tasks.toml` (required).
+    * `:project` — a `%Harness.Project{}`; with a `target_branch` + local source
+      the transition is pushed durably to that branch, else supplies the
+      local-write root (see `mark_landed/2` § Durability).
+    * `:root` — the project root holding `roadmap/tasks.toml`. Required unless
+      `:project` is given.
     * `:reason` — the structured blocked reason (required; rmap mandates a
       reason on `blocked` transitions, auto-cleared when the task leaves blocked).
     * `:rmap_bin` — override the `rmap` binary name/path (intended for tests).
@@ -294,14 +308,8 @@ defmodule Harness.Roadmap do
 
   @spec mark_blocked(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def mark_blocked(item_or_id, opts) do
-    ctx = landing_ctx(opts)
     reason = Keyword.fetch!(opts, :reason)
-
-    args = ["status", landing_task_id(item_or_id), "blocked", "--reason", reason]
-
-    with :ok <- ensure_rmap(ctx.rmap_bin) do
-      run_rmap(args, ctx)
-    end
+    mutate(item_or_id, ["blocked", "--reason", reason], "blocked", opts)
   end
 
   api(:mark_in_progress, """
@@ -316,7 +324,11 @@ defmodule Harness.Roadmap do
 
   Options:
 
-    * `:root` — the project root holding `roadmap/tasks.toml` (required).
+    * `:project` — a `%Harness.Project{}`; with a `target_branch` + local source
+      the transition is pushed durably to that branch, else supplies the
+      local-write root (see `mark_landed/2` § Durability).
+    * `:root` — the project root holding `roadmap/tasks.toml`. Required unless
+      `:project` is given.
     * `:rmap_bin` — override the `rmap` binary name/path (intended for tests).
 
   Returns `{:ok, output}` or `{:error, {status, output, args}}`.
@@ -324,13 +336,7 @@ defmodule Harness.Roadmap do
 
   @spec mark_in_progress(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def mark_in_progress(item_or_id, opts) do
-    ctx = landing_ctx(opts)
-
-    args = ["status", landing_task_id(item_or_id), "in_progress"]
-
-    with :ok <- ensure_rmap(ctx.rmap_bin) do
-      run_rmap(args, ctx)
-    end
+    mutate(item_or_id, ["in_progress"], "in_progress", opts)
   end
 
   api(:mark_pending, """
@@ -339,34 +345,94 @@ defmodule Harness.Roadmap do
 
   Only for ordinary run failures — lander terminal exhaustion uses `mark_blocked`.
 
-  Options: `:root` (required), `:rmap_bin` (for tests).
+  Options: `:project` (durable push when it has a `target_branch` + local source,
+  see `mark_landed/2` § Durability), `:root` (required unless `:project` is
+  given), `:rmap_bin` (for tests).
 
   Returns `{:ok, output}` or `{:error, {status, output, args}}`.
   """)
 
   @spec mark_pending(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def mark_pending(item_or_id, opts) do
-    ctx = landing_ctx(opts)
+    mutate(item_or_id, ["pending"], "pending", opts)
+  end
 
-    args = ["status", landing_task_id(item_or_id), "pending"]
+  # The single chokepoint every mark_* transition funnels through. Builds the
+  # rmap `status` argv, then either pushes it durably to the project's target
+  # branch (when a usable %Project{} is supplied — see `durable_target/1`) or
+  # falls back to a plain local rmap write (the historical best-effort path,
+  # kept for callers that pass only `:root`, e.g. tests and target-branch-less
+  # projects).
+  @spec mutate(Item.t() | String.t(), [String.t()], String.t(), keyword()) ::
+          {:ok, String.t()} | {:error, term()}
+  defp mutate(item_or_id, status_args, label, opts) do
+    ctx = landing_ctx(opts)
+    task_id = landing_task_id(item_or_id)
+    args = ["status", task_id | status_args]
 
     with :ok <- ensure_rmap(ctx.rmap_bin) do
-      run_rmap(args, ctx)
+      apply_mutation(args, ctx, opts, task_id, label)
     end
   end
 
-  # Builds the rmap context for the lander's mark_* writebacks, which require an
-  # explicit `:root` (unlike `build_ctx/1`, whose root resolution falls back to
-  # registry lookup / cwd).
+  @spec apply_mutation([String.t()], ctx(), keyword(), String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, term()}
+  defp apply_mutation(args, ctx, opts, task_id, label) do
+    case durable_target(opts) do
+      {:ok, repo, target} ->
+        Durable.commit(repo, target,
+          message: "roadmap: task #{task_id} -> #{label}",
+          apply: fn root -> run_rmap(args, durable_ctx(root, ctx.rmap_bin)) end
+        )
+
+      :none ->
+        run_rmap(args, ctx)
+    end
+  end
+
+  # A durable write needs a local repo to push from and a branch to push to. A
+  # project missing either — no `target_branch`, or a `{:github, _}` source with
+  # no operable local checkout — falls back to the plain local rmap write.
+  @spec durable_target(keyword()) :: {:ok, String.t(), String.t()} | :none
+  defp durable_target(opts) do
+    with %Project{target_branch: target} = project when is_binary(target) and target != "" <-
+           Keyword.get(opts, :project),
+         {:ok, repo} <- Project.local_repo_path(project) do
+      {:ok, repo, target}
+    else
+      _ -> :none
+    end
+  end
+
+  @spec durable_ctx(String.t(), String.t()) :: ctx()
+  defp durable_ctx(root, rmap_bin) do
+    %{root: root, tasks_path: Path.join(root, "roadmap/tasks.toml"), rmap_bin: rmap_bin}
+  end
+
+  @spec short_sha(String.t()) :: String.t()
+  defp short_sha(sha) when is_binary(sha), do: String.slice(sha, 0, 12)
+
+  # Builds the rmap context for the mark_* transitions. The local-write root is
+  # an explicit `:root`, or `project.roadmap_path` when only `:project` is given
+  # (unlike `build_ctx/1`, whose root resolution falls back to registry / cwd).
   @spec landing_ctx(keyword()) :: ctx()
   defp landing_ctx(opts) do
-    root = Keyword.fetch!(opts, :root)
+    root = landing_root(opts)
 
     %{
       root: root,
       tasks_path: Path.join(root, "roadmap/tasks.toml"),
       rmap_bin: Keyword.get(opts, :rmap_bin, "rmap")
     }
+  end
+
+  @spec landing_root(keyword()) :: String.t()
+  defp landing_root(opts) do
+    case {Keyword.get(opts, :root), Keyword.get(opts, :project)} do
+      {root, _project} when is_binary(root) -> root
+      {_root, %Project{roadmap_path: path}} -> path
+      _ -> raise ArgumentError, "Harness.Roadmap mark_* requires :root or :project"
+    end
   end
 
   @spec landing_task_id(Item.t() | String.t()) :: String.t()
