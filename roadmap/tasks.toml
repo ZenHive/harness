@@ -6502,7 +6502,7 @@ id = "221"
 phase = 18
 bundle = "judgment-collapse"
 milestone = "v0_13"
-status = "pending"
+status = "in_progress"
 title = "Extract + harden git non-fast-forward detection (dedupe lander/durable, prefer plumbing over English match)"
 scores = { d = 2, b = 3, u = 3 }
 acceptance_criteria = ["A single Harness.Git predicate replaces the duplicated non-fast-forward / fetch-first / rejected triplet in lander.ex:338-340 and roadmap/durable.ex:227-229.", "Detection prefers a deterministic signal (push exit status + rev-parse ancestry) over matching git's English output where feasible; English match remains only as a documented fallback.", "Tests cover the non-ff path for both callers."]
@@ -6511,6 +6511,7 @@ domains = ["otp"]
 assignee = "claude"
 body = "lander.ex:338-340 and roadmap/durable.ex:227-229 carry the identical English-string triplet to detect a rejected push. This is mechanical git-porcelain (legitimately code) but it is duplicated and fragile to git version/locale. Extract one predicate; lean on plumbing exit codes + ancestry checks. Mechanics that stay mechanics — just made DRY and robust."
 created_at = "2026-06-05"
+started_at = "2026-06-05"
 scored_at = "2026-06-05"
 
 [[task]]

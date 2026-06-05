@@ -9041,7 +9041,7 @@
       "phase": 18,
       "bundle": "judgment-collapse",
       "milestone": "v0_13",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Extract + harden git non-fast-forward detection (dedupe lander/durable, prefer plumbing over English match)",
       "scores": {
         "d": 2,
@@ -9068,6 +9068,7 @@
       ],
       "body": "lander.ex:338-340 and roadmap/durable.ex:227-229 carry the identical English-string triplet to detect a rejected push. This is mechanical git-porcelain (legitimately code) but it is duplicated and fragile to git version/locale. Extract one predicate; lean on plumbing exit codes + ancestry checks. Mechanics that stay mechanics — just made DRY and robust.",
       "created_at": "2026-06-05",
+      "started_at": "2026-06-05",
       "scored_at": "2026-06-05",
       "cross_repo": []
     },
