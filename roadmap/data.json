@@ -8671,7 +8671,7 @@
       "id": "211",
       "phase": 17,
       "bundle": "settings-pq",
-      "status": "pending",
+      "status": "done",
       "title": "Move audit watermarks to the Postgres settings store (off audit_watermarks.term)",
       "scores": {
         "d": 2,
@@ -8703,10 +8703,15 @@
         "otp",
         "ecto"
       ],
+      "shipped_in": "0d8fc166ffa66a2bf9b4b4242a50830d4af099bf",
       "body": "audit.ex persists per-project audit watermarks to ~/.harness/audit_watermarks.term via TermCodec. This is orchestrator state that must survive a BEAM restart and belongs in the same single Postgres substrate as settings (Task 208). Move it there; ephemeral under repo_enabled:false. One of the TermCodec-consumer migrations that together let TermCodec be deleted.",
       "created_at": "2026-06-05",
       "started_at": "2026-06-05",
+      "done_at": "2026-06-05",
       "scored_at": "2026-06-05",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1780656112784-6f59b998, 0d8fc166ffa66a2bf9b4b4242a50830d4af099bf).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {

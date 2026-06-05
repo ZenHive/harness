@@ -6340,7 +6340,7 @@ depends_on = ["208"]
 id = "211"
 phase = 17
 bundle = "settings-pq"
-status = "pending"
+status = "done"
 title = "Move audit watermarks to the Postgres settings store (off audit_watermarks.term)"
 scores = { d = 2, b = 5, u = 5 }
 acceptance_criteria = ["Audit watermarks (last-audited sha per project) read/write the Postgres settings store instead of ~/.harness/audit_watermarks.term; with repo_enabled:false they are ephemeral (no-op backend) like all other settings.", "First-boot one-time import of an existing audit_watermarks.term into Postgres so in-flight audit ranges are preserved.", "Harness.Audit no longer aliases/calls TermCodec for watermark read/write.", "Test: watermark survives a simulated restart under repo_enabled:true; ephemeral under false; clean (:no_changes) audit still leaves a watermark (regression on Task 194)."]
@@ -6351,9 +6351,14 @@ domains = ["otp", "ecto"]
 assignee = "codex"
 module = "Harness.Audit"
 body = "audit.ex persists per-project audit watermarks to ~/.harness/audit_watermarks.term via TermCodec. This is orchestrator state that must survive a BEAM restart and belongs in the same single Postgres substrate as settings (Task 208). Move it there; ephemeral under repo_enabled:false. One of the TermCodec-consumer migrations that together let TermCodec be deleted."
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780656112784-6f59b998, 0d8fc166ffa66a2bf9b4b4242a50830d4af099bf)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-05"
 started_at = "2026-06-05"
 scored_at = "2026-06-05"
+done_at = "2026-06-05"
+shipped_in = "0d8fc166ffa66a2bf9b4b4242a50830d4af099bf"
 
 [[task]]
 id = "212"
