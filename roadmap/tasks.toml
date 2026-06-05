@@ -129,6 +129,11 @@ description = "The self-healing run loop (planning doc: plan-a-refactor-of-happy
 order = 1
 phase = 19
 
+[bundles.dispatch-economy]
+description = "Tiny tasks cost a full implement->review->audit ceremony each, so a pile of fragments is token-expensive. Two outputs: MEASURE the per-task ceremony/fragmentation tax from the per-run token facts already captured (raw aggregation, no verdict), and replace roadmap_poller.ex's code-driven next-task/grouping selection with a full-context orchestrator AI gated by a mechanical upside-count (counting decides WHETHER to wake the smart layer; the AI decides the grouping). Mantra-clean: count facts in code, write the batching meaning with an AI."
+order = 2
+phase = 19
+
 [bundles.roadmap-durability]
 description = "Make harness's own roadmap mutations safe under the multi-writer reality rmap.md documents. harness's dispatch lifecycle mutates the canonical roadmap/tasks.toml (rmap status transitions) but treats them as uncommitted local writes — no fetch+rebase before write, no commit, no push — so every harness run silently races sibling Claude sessions and cloud agents against the same shared file. Make the transitions git-durable."
 order = 4
@@ -5389,7 +5394,7 @@ depends_on = [173]
 acceptance_criteria = ["Tagged both :integration and :live_agent — excluded from the default suite and mix precommit; run via mix test.json --include live_agent", "Fails loudly with flunk + setup instructions (CLI install command, auth step) when the agent CLI is missing or unauthenticated — never skips silently", "Drives one real headless agent (default Claude, adapter selectable via env var) through the same chain as Task 173: trivial fixture task → dispatch → worktree → real agent commit → reviewer AI gate (writes .harness/review.json) → land to a local bare origin", "Wall-clock bounded: trivial prompt + per-test total_timeout override so a hung CLI cannot stall the run beyond ~5 minutes"]
 out_of_scope = ["Running in CI or the default suite", "Cross-adapter matrix (all six agents) — one adapter proves the live seam; per-adapter scoring is owned by AgentKPI/CapabilityScore re-keyed to reviewer outcomes", "Asserting anything about the agent's code quality — the reviewer's .harness/review.json verdict is the only assertion"]
 touches = ["test/harness/pipeline_live_agent_test.exs"]
-assignee = "claude"
+assignee = "cursor"
 model = "claude-sonnet-4-6"
 body = """
 The deterministic pipeline E2E (Task 173) proves every harness seam with a scripted agent; this task adds the one seam it cannot prove — a real agent CLI invoked over a Port produces a commit that flows through the reviewer gate and landing. User-requested 2026-06-03 alongside Task 173.
@@ -6442,7 +6447,7 @@ acceptance_criteria = ["A scout AI reads raw run records grouped by the AI-assig
 files_to_modify = ["lib/harness/dispatch.ex", "lib/harness/dispatch/run_tool.ex", "lib/harness/capability_score.ex"]
 touches = ["lib/harness/result_store.ex", "lib/harness/agent_kpi.ex"]
 domains = ["otp"]
-assignee = "claude"
+assignee = "cursor"
 body = "THE flagship of v0_13, and the actual product: a routing ORACLE answering 'what kind of task goes to which agent?' empirically. A routing oracle is a key->value map: task-kind (the KEY, from the facet-foundation predecessor) -> which agent wins (the VALUE: approve / first-try / reviewer-quality / cost, already captured). Today harness has the value but squashes the per-kind granularity into ONE tunable composite scalar (capability_score.ex:502-533 — ratings+cost+fix-size via hand-tuned weights, freshness decay, corpus fingerprint, explore/exploit branching, 562 LOC) that dispatch-recommend routes on. 'Which agent is best at THIS KIND of work?' is judgment — a scout AI reading the records grouped by facet answers it per-kind and explains itself, where a scalar cannot. Build the per-facet scout assessment + facet-matched routing AND delete the now-orphaned composite in the same change — the build and the deletion are one atomic swap (you cannot satisfy 'no magic weights remain in the routing path' without removing capability_score.ex's arithmetic). Keep ResultStore (raw facts) and AgentKPI (pure counting — the /harness/kpi ledger). The moduledoc itself admits the weights need 'retuning' — that is the tell. (Absorbed former task 217 — the composite deletion was that task's whole deliverable and is already entailed by this task's acceptance criteria.)"
 created_at = "2026-06-05"
 scored_at = "2026-06-05"
@@ -6609,7 +6614,7 @@ acceptance_criteria = ["Transient substrate ops retry-with-backoff before any fa
 files_to_modify = ["lib/harness/worktree.ex", "lib/harness/run.ex"]
 touches = ["lib/harness/agent_adapter.ex", "lib/harness/run/retry_policy.ex"]
 domains = ["otp"]
-assignee = "claude"
+assignee = "codex"
 body = "Tier-1 of the two-tier self-heal design. The implement->review->audit loop hard-fails on mechanical hiccups (git locks, spawn races) an AI or a simple retry could absorb. Zero-token mechanical retry on genuinely-transient substrate ops, BEFORE any failure path runs. Retrying a git lock is mechanical counting; it classifies nothing — which keeps it mantra-clean and out of the false-red/false-green class. Independent quick win, parallel to the AI-recovery seam (229)."
 created_at = "2026-06-05"
 scored_at = "2026-06-05"
@@ -6662,7 +6667,7 @@ depends_on = [227, 229]
 acceptance_criteria = ["Remove the scattered special-case :failed settlements / {:error,_} aborts that the Tier-1 retry (227) and the recovery seam (229) now cover; keep ONLY genuine-rejection (verdict:reject) and truly-dead terminals.", "mix compile --warnings-as-errors clean; no orphaned recovery/retry call paths; the run lifecycle has fewer terminal branches than before (less code is the proof).", "Tests for the deleted special-cases removed; remaining terminal-state tests pass."]
 files_to_modify = ["lib/harness/run.ex", "lib/harness/run/worker.ex"]
 domains = ["otp"]
-assignee = "claude"
+assignee = "codex"
 body = "Last in the self-heal sequence — the less-code payoff, sequenced AFTER the seam proves out so we never delete a special-case before its generic replacement is live. depends_on 227 (retry) + 229 (seam); 228 is independent. This is where the refactor actually shrinks run.ex."
 created_at = "2026-06-05"
 scored_at = "2026-06-05"
@@ -6736,3 +6741,54 @@ created_at = "2026-06-05"
 started_at = "2026-06-05"
 scored_at = "2026-06-05"
 done_at = "2026-06-05"
+
+[[task]]
+id = "233"
+phase = 19
+bundle = "dispatch-economy"
+status = "pending"
+title = "Cron-as-orchestrator-AI — replace roadmap_poller.ex code-driven task selection with a full-context orchestrator AI gated by a mechanical upside-count"
+scores = { d = 3, b = 3, u = 3 }
+acceptance_criteria = ["A mechanical upside-count gate runs every cron tick (pure counting, no agent): count dispatchable pending tasks (deps done, not handbuild) whose `touches` sets are disjoint enough to batch. Zero/one trivial task -> do NOT wake the orchestrator (fall back to the existing direct dispatch).", "When the count shows a batchable cluster, spawn an orchestrator AI WITH FULL CONTEXT (the rmap ready set with bodies/scores/touches/markers/assignee, capability facts) — it is the smart layer, not token-starved. It decides the inline/batch/dispatch grouping and emits the dispatch plan as an artifact harness reads mechanically.", "roadmap_poller.ex no longer encodes the next-task / grouping DECISION in code (the @default_agent + assignee cond selection is replaced by reading the orchestrator's plan). Harness still mechanically: counts, fires the timer, reads the plan, enqueues. NOTE: @default_agent = :claude is itself the opus-last-roster violation; the orchestrator must honor each task's stored assignee (cursor/codex/grok preferred, claude reserved) rather than defaulting work to claude.", "No cond/regex in harness classifies which tasks to batch — the grouping judgment lives in the orchestrator AI's plan artifact (mantra: count facts in code, write meaning with an AI).", "Tests: a tick with no batchable cluster never spawns the orchestrator (zero token cost); a tick with a cluster spawns it once and harness enqueues exactly the plan it wrote."]
+files_to_modify = ["lib/harness/cron/roadmap_poller.ex"]
+touches = ["lib/harness/cron/roadmap_poller.ex", "lib/harness/dispatch.ex"]
+domains = ["otp"]
+assignee = "cursor"
+body = "Tiny tasks cost a full implement->review->audit ceremony each, so a pile of fragments is token-expensive. roadmap_poller.ex (269 LOC) currently picks the next task and routes it by code (assignee / @default_agent = :claude) — a mechanical selector that cannot judge whether several pending tasks should batch into one dispatch, and whose claude default burns opus tokens against the opus-last roster. Reframe: cron is just a timer (mechanical); what it TRIGGERS should be an orchestrator AI that reads the ready set and decides inline/batch/dispatch grouping with real judgment. CORRECTION (operator, 2026-06-05): the orchestrator is THE SMART LAYER — give it full context, do not token-starve it. The earlier plan-doc instinct to hand it minimal tokens was wrong; constraining the smart guy defeats the point. Token economy comes from the MECHANICAL UPSIDE-COUNT GATE that decides WHETHER to wake it (counting is ~free, mantra-clean), never from crippling its reasoning. The orchestrator never runs for nothing; when it runs, it thinks fully. Sibling to the measure-fragmentation-tax task — that quantifies the tax this saves."
+created_at = "2026-06-05"
+scored_at = "2026-06-05"
+
+[[task]]
+id = "234"
+phase = 19
+bundle = "dispatch-economy"
+status = "pending"
+title = "MEASURE the fragmentation / ceremony tax — quantify per-task dispatch overhead from the per-run token facts already captured"
+scores = { d = 1, b = 2, u = 3 }
+acceptance_criteria = ["A read-only analysis (query or small read fn over the run records / ResultStore) computes the per-task ceremony token cost: implementer + cross-family reviewer + audit token spend per landed task, aggregated across recent runs.", "Output is raw facts only (per-task totals, distribution, median/p90) — it ranks nothing and decides nothing (no 'should we batch' verdict in code; that is the orchestrator AI's job).", "The result is consumable by an AI (chat/MCP tool or a documented query) so the operator can see whether a real fragmentation tax exists and set the orchestrator's upside-count threshold from data, not a guess.", "Tests: the aggregation returns correct per-task totals over a fixture set of run records."]
+files_to_modify = ["lib/harness/agent_kpi.ex"]
+touches = ["lib/harness/agent_kpi.ex", "lib/harness/result_store.ex"]
+domains = ["otp"]
+assignee = "codex"
+body = "The cron-orchestrator task is gated on a mechanical upside-count, but we have no measured number for the fragmentation tax it would save. We DO have the data now: every run persists token facts on the run record. This task surfaces the per-task ceremony cost (implementer + reviewer + audit tokens per landed task) as raw aggregated facts — counting only, no verdict. It is the data prerequisite that sets the orchestrator's batch threshold and proves (or disproves) that the tax is real. Cheap, read-only, dispatchable. Sibling to the cron-orchestrator task; NOT a blocker for it (operator: add, don't defer)."
+created_at = "2026-06-05"
+scored_at = "2026-06-05"
+
+[[task]]
+id = "235"
+phase = 19
+bundle = "self-heal"
+milestone = "v0_14"
+status = "pending"
+title = "Surface the self-heal recovery facts — KPI view over Task 229's persisted recovery_attempts + recovery token spend (tests the v0_14 hypothesis)"
+scores = { d = 2, b = 3, u = 3 }
+markers = ["handbuild"]
+depends_on = [229]
+acceptance_criteria = ["A read surface (AgentKPI / ResultStore read + dashboard view and/or chat/MCP tool) exposes the recovery facts Task 229 persists: recovery_attempts, outcome (repaired|dead), what was repaired, and recovery token spend — as raw facts, ranking/judging nothing.", "The masked-failure rate (how often recovery 'repaired') AND the recovery token cost are both visible, so the v0_14 hypothesis 'recovery cost demonstrably lower than hard-fail + manual redispatch' is testable from the surfaced data.", "Synthesis ('is recovery worth it / trending') is handed to an AI on demand, never computed by a formula in harness.", "Hand-built (dashboard/LiveView UI) per the headless-UI rule; the backend read fn is unit-tested, the view smoke-tested in the browser."]
+files_to_modify = ["lib/harness/agent_kpi.ex"]
+touches = ["lib/harness/agent_kpi.ex", "lib/harness/result_store.ex", "lib/harness/dashboard"]
+domains = ["liveview"]
+assignee = "human"
+body = "Task 229 persists recovery_attempts + recovery token spend as raw facts, but nothing surfaces them — yet the v0_14 milestone hypothesis is literally 'recovery token cost demonstrably lower than hard-fail + manual redispatch.' You cannot close v0_14 without seeing the data. Operator (2026-06-05): we have the data now, add this. Surface it as a KPI view (sibling to 225 /harness/kpi, also handbuild) plus an AI-synthesis path for 'is recovery worth it'. Raw facts in code; meaning written by an AI."
+created_at = "2026-06-05"
+scored_at = "2026-06-05"
