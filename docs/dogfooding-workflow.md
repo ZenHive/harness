@@ -54,7 +54,7 @@ same hand-build window; a new phase that adds features on stable surfaces does n
 ```
 Harness.Roadmap.ingest  ─▶  Harness.Run.Supervisor.start_run  ─▶  Harness.Run.Result
                                       │
-                  dispatched ▶ running ▶ committing ▶ reviewing ▶ done | failed
+                  dispatched ▶ running ▶ committing ▶ recovering ▶ reviewing ▶ done | failed
 ```
 
 One run = one `Harness.Run` gen_statem. It carves a git worktree off the target repo's

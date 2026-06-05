@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Bounded, witnessed AI-recovery seam for checkout pollution (Task 229).** `Harness.Run`
+  routes the one genuinely interpretive non-rejection failure (implementer checkout
+  pollution) through a per-run budgeted (default 1) cross-family recovery AI before
+  hard-failing. Recovery AI gets minimal context only (reason + main-checkout git status
+  + transcript tail + check output), writes `.harness/recovery.json` (`"outcome":
+  "repaired"|"dead"`, report, optional short repaired note). `repaired` resumes at
+  `:committing` (re-runs full reviewer gate); `dead`/missing/malformed settles `:failed`
+  with original reason. Reviewer rejects bypass recovery entirely. New transient
+  `:recovering` state (surfaces as `:repairing` in StatusView/dashboard like
+  `:reviewing`). Witness fields (`recovery_attempts`/`_outcome`/`_repaired`/
+  `recovery_token_usage`) on `Result`, `LogRecord`, and Postgres `run_records` (raw
+  facts persisted for witness metrics; `recovery_token_usage` proves two-tier recovery
+  is cheaper than hard-fail + re-dispatch). Mechanical artifact read; all judgment in
+  the recovery AI. Includes hardened terminate/cancel/memory paths for the recovery
+  slot and `checkout_pollution_check` opt. Credo-strict line-length follow-up in same
+  delivery.
 - **Oban Lifeline rescues orphaned landing/audit jobs (Task 209).** Open-source Oban
   does not move `executing` rows back to `available` when a worker dies mid-land or
   mid-audit — a BEAM restart left onchain landing job 294 stuck `executing` for

@@ -120,7 +120,7 @@ defmodule Harness.Dashboard.LiveTest do
 
   describe "killable?/1 (kill-button visibility guard)" do
     test "in-flight states are killable" do
-      for state <- [:dispatched, :running, :committing, :reviewing] do
+      for state <- [:dispatched, :running, :committing, :reviewing, :recovering] do
         assert Live.killable?(%Status{run_id: "r", task_id: "1", state: state}),
                "expected #{state} to be killable"
       end
@@ -143,7 +143,7 @@ defmodule Harness.Dashboard.LiveTest do
     end
 
     test "in-flight states have no record yet — no delete control" do
-      for state <- [:dispatched, :running, :committing, :reviewing] do
+      for state <- [:dispatched, :running, :committing, :reviewing, :recovering] do
         refute Live.deletable?(%Status{run_id: "r", task_id: "1", state: state}),
                "expected #{state} to be non-deletable"
       end
@@ -164,7 +164,7 @@ defmodule Harness.Dashboard.LiveTest do
     end
 
     test "in-flight states are not resumable" do
-      for state <- [:dispatched, :running, :committing, :reviewing] do
+      for state <- [:dispatched, :running, :committing, :reviewing, :recovering] do
         refute Live.resumable?(%Status{run_id: "r", task_id: "1", state: state}),
                "expected #{state} to be non-resumable"
       end

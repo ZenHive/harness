@@ -12,7 +12,7 @@ re-verification, and the mechanical benchmark corpus.
 ```
 worktree → implementer AI → reviewer AI (THE GATE) → MERGE → audit AI
 
-dispatched → running (implementer) → committing → reviewing (reviewer) → done | failed
+dispatched → running (implementer) → committing → recovering (bounded AI) → reviewing (reviewer) → done | failed
                                                                             ↓ (done + auto policy)
                                                               MERGE (lander: rebase + ff-push)
                                                                             ↓
