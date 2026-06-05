@@ -6160,7 +6160,7 @@ shipped_in = "8d9039a"
 id = "205"
 phase = 16
 bundle = "agent-gate"
-status = "pending"
+status = "done"
 title = "Verify + declare auth_env_scrub for Cursor/Grok/Pi/Antigravity adapters"
 scores = { d = 2, b = 2, u = 2 }
 markers = ["bug"]
@@ -6180,9 +6180,14 @@ Per CLI, verify (docs / reference impl, per RESEARCH-BEFORE-ASSERTING) which env
 
 Do NOT declare a var you haven't verified diverts billing -- an empty list is honest; a wrong scrub is silent breakage.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780640176325-5d587ac8, d634686d18c0c47075ef605c98a887abefd59c85)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-05"
 started_at = "2026-06-05"
 scored_at = "2026-06-05"
+done_at = "2026-06-05"
+shipped_in = "d634686d18c0c47075ef605c98a887abefd59c85"
 
 [[task]]
 id = "206"

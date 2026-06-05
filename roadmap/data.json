@@ -8344,7 +8344,7 @@
       "id": "205",
       "phase": 16,
       "bundle": "agent-gate",
-      "status": "pending",
+      "status": "done",
       "title": "Verify + declare auth_env_scrub for Cursor/Grok/Pi/Antigravity adapters",
       "scores": {
         "d": 2,
@@ -8371,10 +8371,15 @@
       "touches": [
         "lib/harness/agent_adapter/capabilities.ex"
       ],
+      "shipped_in": "d634686d18c0c47075ef605c98a887abefd59c85",
       "body": "Follow-up to the auth-scrub fix (Claude/ANTHROPIC_API_KEY billed the dead API key instead of the subscription -> review_stuck across every Claude-reviewer run; Codex/OPENAI_API_KEY was silently diverting too). The Capabilities.auth_env_scrub field + AgentAdapter.scrub_auth_env/2 mechanism is in place; Claude and Codex now declare their keys; invoke/2 applies the scrub.\n\nThe other four adapters inherit auth_env_scrub: [] (default). No diverting key is currently in the node env for them, so no ACTIVE bug -- but fill the slot so a future stray key can't silently divert billing off the subscription/login.\n\nPer CLI, verify (docs / reference impl, per RESEARCH-BEFORE-ASSERTING) which env var(s) force API-key billing over the interactive login, then declare in capabilities/0:\n- cursor-agent (Cursor): likely CURSOR_API_KEY\n- grok (xAI): likely XAI_API_KEY / GROK_API_KEY\n- pi (pi.dev): unknown -- verify\n- agy (Antigravity, Google): unknown -- likely GEMINI_API_KEY / GOOGLE_API_KEY\n\nDo NOT declare a var you haven't verified diverts billing -- an empty list is honest; a wrong scrub is silent breakage.\n",
       "created_at": "2026-06-05",
       "started_at": "2026-06-05",
+      "done_at": "2026-06-05",
       "scored_at": "2026-06-05",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1780640176325-5d587ac8, d634686d18c0c47075ef605c98a887abefd59c85).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
