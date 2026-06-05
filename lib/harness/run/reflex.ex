@@ -76,11 +76,11 @@ defmodule Harness.Run.Reflex do
   @spec expired(t()) :: {:cont, t()} | {:halt, halt_kind(), t()}
   def expired(%__MODULE__{} = reflex) do
     cond do
-      remaining(reflex.total_deadline) == 0 ->
-        {:halt, {:timed_out, :total}, reflex}
-
       remaining(reflex.idle_deadline) == 0 ->
         {:halt, {:timed_out, :idle}, reflex}
+
+      remaining(reflex.total_deadline) == 0 ->
+        {:halt, {:timed_out, :total}, reflex}
 
       progress_expired?(reflex) ->
         expire_progress(reflex)
