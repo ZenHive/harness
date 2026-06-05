@@ -6416,35 +6416,17 @@ phase = 18
 bundle = "judgment-collapse"
 milestone = "v0_13"
 status = "pending"
-title = "Per-facet scout-AI competence assessment — replace the CapabilityScore composite + routing scalar"
+title = "Per-facet scout-AI competence assessment — replace AND delete the CapabilityScore composite + routing arithmetic"
 scores = { d = 4, b = 5, u = 5 }
-acceptance_criteria = ["A scout AI reads raw run records grouped by the AI-assigned task facets (from the facet-foundation predecessor) and writes a per-facet competence assessment: for each task-kind, which agent wins on approve-rate / first-try / reviewer-quality / cost, WITH reasoning. Refreshed on a cron or on demand — never a recomputed formula.", "dispatch-recommend picks an agent by matching an incoming task's (predicted) facets against that per-facet assessment and returns the choice + the scout's rationale — not by ranking a composite scalar.", "AgentKPI is UNCHANGED — it is already pure fact-counting and /harness/kpi depends on it; the deletion is confined to CapabilityScore (task 217).", "No magic weights (0.5/0.3/0.199), no stale_discount, no corpus_version fingerprint, no explore/exploit constants remain in the routing path.", "Tests cover: per-facet grouping, the scout assessment read path, dispatch-recommend matching facets, and the no-data fallback (unmeasured facet -> explore)."]
-files_to_modify = ["lib/harness/dispatch.ex", "lib/harness/dispatch/run_tool.ex"]
-touches = ["lib/harness/result_store.ex", "lib/harness/capability_score.ex", "lib/harness/agent_kpi.ex"]
+acceptance_criteria = ["A scout AI reads raw run records grouped by the AI-assigned task facets (from the facet-foundation predecessor) and writes a per-facet competence assessment: for each task-kind, which agent wins on approve-rate / first-try / reviewer-quality / cost, WITH reasoning. Refreshed on a cron or on demand — never a recomputed formula.", "dispatch-recommend picks an agent by matching an incoming task's (predicted) facets against that per-facet assessment and returns the choice + the scout's rationale — not by ranking a composite scalar.", "AgentKPI is UNCHANGED — it is already pure fact-counting and /harness/kpi depends on it; the deletion is confined to CapabilityScore.", "composite_score/4 + every tiebreaker-weight / cost-scale / stale-discount / freshness-window constant removed; freshness / discounted_composite / rebenchmark-candidate / recommend-from-scores reduced to a thin read of the assessment artifact or deleted; corpus_version sha-fingerprinting removed.", "No magic weights (0.5/0.3/0.199), no stale_discount, no corpus_version fingerprint, no explore/exploit constants remain in the routing path; mix compile --warnings-as-errors clean; no orphaned ResultStore.save_capability_score callers.", "Tests cover: per-facet grouping, the scout assessment read path, dispatch-recommend matching facets, the no-data fallback (unmeasured facet -> explore); CapabilityScore tests updated/removed."]
+files_to_modify = ["lib/harness/dispatch.ex", "lib/harness/dispatch/run_tool.ex", "lib/harness/capability_score.ex"]
+touches = ["lib/harness/result_store.ex", "lib/harness/agent_kpi.ex"]
 domains = ["otp"]
 assignee = "claude"
-body = "THE flagship of v0_13, and the actual product: a routing ORACLE answering 'what kind of task goes to which agent?' empirically. A routing oracle is a key->value map: task-kind (the KEY, from the facet-foundation predecessor) -> which agent wins (the VALUE: approve / first-try / reviewer-quality / cost, already captured). Today harness has the value but squashes the per-kind granularity into ONE tunable composite scalar (capability_score.ex:502-533 — ratings+cost+fix-size via hand-tuned weights, freshness decay, corpus fingerprint, explore/exploit branching, 562 LOC) that dispatch-recommend routes on. 'Which agent is best at THIS KIND of work?' is judgment — a scout AI reading the records grouped by facet answers it per-kind and explains itself, where a scalar cannot. Build the per-facet scout assessment + facet-matched routing here; the composite deletion is task 217. Keep ResultStore (raw facts) and AgentKPI (pure counting — the /harness/kpi ledger). The moduledoc itself admits the weights need 'retuning' — that is the tell."
+body = "THE flagship of v0_13, and the actual product: a routing ORACLE answering 'what kind of task goes to which agent?' empirically. A routing oracle is a key->value map: task-kind (the KEY, from the facet-foundation predecessor) -> which agent wins (the VALUE: approve / first-try / reviewer-quality / cost, already captured). Today harness has the value but squashes the per-kind granularity into ONE tunable composite scalar (capability_score.ex:502-533 — ratings+cost+fix-size via hand-tuned weights, freshness decay, corpus fingerprint, explore/exploit branching, 562 LOC) that dispatch-recommend routes on. 'Which agent is best at THIS KIND of work?' is judgment — a scout AI reading the records grouped by facet answers it per-kind and explains itself, where a scalar cannot. Build the per-facet scout assessment + facet-matched routing AND delete the now-orphaned composite in the same change — the build and the deletion are one atomic swap (you cannot satisfy 'no magic weights remain in the routing path' without removing capability_score.ex's arithmetic). Keep ResultStore (raw facts) and AgentKPI (pure counting — the /harness/kpi ledger). The moduledoc itself admits the weights need 'retuning' — that is the tell. (Absorbed former task 217 — the composite deletion was that task's whole deliverable and is already entailed by this task's acceptance criteria.)"
 created_at = "2026-06-05"
 scored_at = "2026-06-05"
 depends_on = ["224"]
-
-[[task]]
-id = "217"
-phase = 18
-bundle = "judgment-collapse"
-milestone = "v0_13"
-status = "pending"
-title = "Delete CapabilityScore composite/weights/freshness/corpus + the routing arithmetic"
-scores = { d = 3, b = 4, u = 4 }
-acceptance_criteria = ["composite_score/4 + every tiebreaker-weight / cost-scale / stale-discount / freshness-window constant removed.", "freshness / discounted_composite / rebenchmark-candidate / recommend-from-scores logic removed or reduced to a thin read of the assessment artifact.", "corpus_version sha-fingerprinting removed.", "mix compile --warnings-as-errors clean; no orphaned ResultStore.save_capability_score callers; tests updated/removed."]
-files_to_modify = ["lib/harness/capability_score.ex"]
-touches = ["lib/harness/result_store.ex", "lib/harness/dispatch.ex"]
-domains = ["otp"]
-assignee = "claude"
-body = "Dependent on the scout-AI assessment task. Once routing reads an AI-written assessment artifact, the entire arithmetic ranking layer in capability_score.ex is dead weight. This is the LOC the mantra predicts shouldn't exist. Persist raw facts; delete the formula that pretends to know what they mean."
-created_at = "2026-06-05"
-scored_at = "2026-06-05"
-depends_on = ["216"]
 
 [[task]]
 id = "218"
