@@ -71,6 +71,10 @@ defmodule Harness.AgentAdapter.Pi do
   """
   @impl AgentAdapter
   @spec capabilities() :: Capabilities.t()
+  # Intentionally no `auth_env_scrub`: Pi supports subscription OAuth and many
+  # API-key providers, but its documented credential order is `--api-key`,
+  # `auth.json`, then environment variable, so env keys do not force API-key
+  # billing over a stored login. Source: https://pi.dev/docs/latest/providers
   def capabilities, do: %Capabilities{session_resume: true, cost_tier: :free}
 
   @impl AgentAdapter

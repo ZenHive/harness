@@ -65,7 +65,11 @@ defmodule Harness.AgentAdapter.Grok do
   """
   @impl AgentAdapter
   @spec capabilities() :: Capabilities.t()
-  def capabilities, do: %Capabilities{session_resume: true}
+  # Source: xAI Grok Build docs state `XAI_API_KEY` enables API-key auth in
+  # non-browser environments; local `grok 0.2.22` bundled docs/source strings
+  # say the API key takes precedence over browser credentials.
+  # https://docs.x.ai/build/overview
+  def capabilities, do: %Capabilities{session_resume: true, auth_env_scrub: ["XAI_API_KEY"]}
 
   @impl AgentAdapter
   @spec rule_channel() :: AgentAdapter.rule_channel()

@@ -55,7 +55,10 @@ defmodule Harness.AgentAdapter.Cursor do
   """
   @impl AgentAdapter
   @spec capabilities() :: Capabilities.t()
-  def capabilities, do: %Capabilities{session_resume: true}
+  # Source: Cursor CLI authentication docs and `cursor-agent --help` state that
+  # API-key auth can be supplied by `CURSOR_API_KEY`, distinct from browser login.
+  # https://docs.cursor.com/en/cli/reference/authentication
+  def capabilities, do: %Capabilities{session_resume: true, auth_env_scrub: ["CURSOR_API_KEY"]}
 
   @impl AgentAdapter
   @spec rule_channel() :: AgentAdapter.rule_channel()

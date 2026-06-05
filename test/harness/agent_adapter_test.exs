@@ -2,10 +2,14 @@ defmodule Harness.AgentAdapterTest do
   use ExUnit.Case, async: true
 
   alias Harness.AgentAdapter
+  alias Harness.AgentAdapter.Antigravity
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
+  alias Harness.AgentAdapter.Cursor
+  alias Harness.AgentAdapter.Grok
   alias Harness.AgentAdapter.Invocation
+  alias Harness.AgentAdapter.Pi
   alias Harness.AgentAdapter.Run
   alias Harness.FakeAdapter
   alias Harness.ProcessFixture
@@ -78,6 +82,35 @@ defmodule Harness.AgentAdapterTest do
     test "is a no-op for an adapter that declares no scrub" do
       env = [{"ANTHROPIC_API_KEY", "sk-keepme"}]
       assert AgentAdapter.scrub_auth_env(FakeAdapter, env) == env
+    end
+
+    test "declared adapter scrubs force API-key env vars unset" do
+      cases = [
+        {Claude, ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"]},
+        {Codex, ["OPENAI_API_KEY"]},
+        {Cursor, ["CURSOR_API_KEY"]},
+        {Grok, ["XAI_API_KEY"]}
+      ]
+
+      for {adapter, keys} <- cases, key <- keys do
+        assert key in adapter.capabilities().auth_env_scrub
+
+        env = [{"PATH", "/usr/bin"}, {key, "stray-key"}]
+        scrubbed = AgentAdapter.scrub_auth_env(adapter, env)
+
+        assert {"PATH", "/usr/bin"} in scrubbed
+        assert {key, false} in scrubbed
+        refute {key, "stray-key"} in scrubbed
+      end
+    end
+
+    test "Pi and Antigravity honestly declare no verified diverting env scrub" do
+      env = [{"GEMINI_API_KEY", "gemini-key"}, {"GOOGLE_API_KEY", "google-key"}]
+
+      assert Pi.capabilities().auth_env_scrub == []
+      assert Antigravity.capabilities().auth_env_scrub == []
+      assert AgentAdapter.scrub_auth_env(Pi, env) == env
+      assert AgentAdapter.scrub_auth_env(Antigravity, env) == env
     end
 
     test "Claude and Codex declare their provider key scrubs" do
