@@ -35,6 +35,7 @@ defmodule Harness.CapabilityScore do
   alias Harness.Batch.AgentEvaluation.Comparison
   alias Harness.Batch.AgentEvaluation.Entry
   alias Harness.CapabilityDomain
+  alias Harness.Config
   alias Harness.ResultStore
   alias Harness.Run.Review
   alias Harness.TokenUsage
@@ -48,7 +49,6 @@ defmodule Harness.CapabilityScore do
   @freshness_window_days 30
   @seconds_per_day 86_400
   @stale_discount 0.5
-  @fallback_agent :claude
 
   @type freshness :: :fresh | :stale
 
@@ -324,9 +324,13 @@ defmodule Harness.CapabilityScore do
     end
   end
 
+  # No measured scores for this domain: route to the operator-configured default
+  # dispatch agent (`{:dispatch, :default_agent}`, default :codex — keeping
+  # precious Claude tokens for the reviewer axis), not a hardcoded :claude. An
+  # explicit `:fallback_agent` opt still wins (tests, deliberate overrides).
   @spec fallback_recommendation(CapabilityDomain.t(), [map()], keyword()) :: map()
   defp fallback_recommendation(domain, rows, opts) do
-    fallback_agent = Keyword.get(opts, :fallback_agent, @fallback_agent)
+    fallback_agent = Keyword.get(opts, :fallback_agent, Config.get({:dispatch, :default_agent}))
     selected = Enum.find(rows, &(&1.agent == fallback_agent)) || hd(rows)
 
     %{

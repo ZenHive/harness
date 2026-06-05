@@ -135,6 +135,16 @@ defmodule Harness.Dashboard.SettingsLive do
     {:noreply, socket |> assign(:notice, notice) |> refresh()}
   end
 
+  def handle_event("set_default_agent", %{"agent" => raw}, socket) do
+    notice =
+      case dispatch_agent_atom(raw) do
+        {:ok, agent} -> persist_default_agent(agent)
+        :error -> {:error, "Unknown dispatch agent."}
+      end
+
+    {:noreply, socket |> assign(:notice, notice) |> refresh()}
+  end
+
   def handle_event("dispatch_now", _params, socket) do
     {:noreply, assign(socket, :notice, dispatch_now())}
   end
@@ -340,6 +350,32 @@ defmodule Harness.Dashboard.SettingsLive do
         </ul>
       </section>
 
+      <section class="setting-card">
+        <h2 class="setting-section-title">Dispatch default</h2>
+        <p class="setting-desc">
+          The implementer agent an <strong>unassigned</strong> task routes to when capability
+          scores have no data yet (the <code>recommend</code> no-data fallback). Defaults to a
+          cheap agent so unassigned work doesn't silently spend Claude tokens — Claude stays
+          available on the separate <strong>reviewer</strong> axis above.
+        </p>
+        <form id="dispatch-default-form" class="reviewer-form" phx-submit="set_default_agent">
+          <div class="project-id">
+            <span class="project-name">Unassigned → implementer</span>
+            <span class="pill" data-state="on">{@dispatch.current}</span>
+          </div>
+          <select name="agent" aria-label="Default dispatch agent">
+            <option
+              :for={agent <- @dispatch.agents}
+              value={to_string(agent)}
+              selected={agent == @dispatch.current}
+            >
+              {agent}
+            </option>
+          </select>
+          <button type="submit" class="btn-save">Save</button>
+        </form>
+      </section>
+
       <Components.config_form entries={@config_edit} />
 
       <Components.config_inspector sections={@config} />
@@ -383,6 +419,15 @@ defmodule Harness.Dashboard.SettingsLive do
     |> assign(:reviewers, reviewer_state(projects))
     |> assign(:config, ConfigInspector.resolve())
     |> assign(:config_edit, config_edit_state())
+    |> assign(:dispatch, dispatch_state())
+  end
+
+  # The dispatch-default view-model: the configured no-data fallback agent plus
+  # the closed option set the `<select>` renders. `:agent`-typed config is steered
+  # by this dedicated card, so it never reaches the number-input `config_form`.
+  @spec dispatch_state() :: %{current: atom(), agents: [atom()]}
+  defp dispatch_state do
+    %{current: Config.get({:dispatch, :default_agent}), agents: Config.dispatch_agents()}
   end
 
   # The editable-config view-model: the `ui_editable?` schema subset, each row
@@ -391,7 +436,9 @@ defmodule Harness.Dashboard.SettingsLive do
   # `String.to_atom` on request input.
   @spec config_edit_state() :: [map()]
   defp config_edit_state do
-    Enum.map(Config.editable_entries(), fn entry ->
+    Config.editable_entries()
+    |> Enum.reject(&(&1.type == :agent))
+    |> Enum.map(fn entry ->
       %{
         id: config_id(entry.key),
         label: entry.label,
@@ -560,6 +607,26 @@ defmodule Harness.Dashboard.SettingsLive do
   @spec reviewer_atom(String.t()) :: {:ok, atom() | nil} | :error
   defp reviewer_atom(""), do: {:ok, nil}
   defp reviewer_atom(name), do: agent_atom(name)
+
+  # Maps the dispatch-default select's string value to an agent atom against the
+  # closed `Config.dispatch_agents/0` set (never String.to_atom on request input).
+  # Unlike `agent_atom/1`, the source is the validation set, not the installed
+  # registry — the default may name an adapter not currently registered.
+  @spec dispatch_agent_atom(String.t()) :: {:ok, atom()} | :error
+  defp dispatch_agent_atom(name) do
+    case Enum.find(Config.dispatch_agents(), &(Atom.to_string(&1) == name)) do
+      nil -> :error
+      agent -> {:ok, agent}
+    end
+  end
+
+  @spec persist_default_agent(atom()) :: {:ok | :error, String.t()}
+  defp persist_default_agent(agent) do
+    case Config.put({:dispatch, :default_agent}, agent, "dashboard") do
+      :ok -> {:ok, "Default dispatch agent set to #{agent}."}
+      {:error, _reason} -> {:error, "Could not save default dispatch agent."}
+    end
+  end
 
   @spec reviewer_options() :: [map()]
   defp reviewer_options do

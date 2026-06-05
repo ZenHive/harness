@@ -17,6 +17,7 @@ defmodule Harness.ConfigTest do
   setup do
     prior_run = Application.get_env(:harness, :run)
     prior_dashboard = Application.get_env(:harness, :dashboard)
+    prior_dispatch = Application.get_env(:harness, :dispatch)
     prior_store = Application.get_env(:harness, :config_settings)
 
     # Isolate the persistence file to a throwaway root.
@@ -26,6 +27,7 @@ defmodule Harness.ConfigTest do
     on_exit(fn ->
       restore(:run, prior_run)
       restore(:dashboard, prior_dashboard)
+      restore(:dispatch, prior_dispatch)
       restore(:config_settings, prior_store)
       File.rm_rf(root)
     end)
@@ -35,7 +37,7 @@ defmodule Harness.ConfigTest do
 
   describe "schema/0" do
     test "every entry is a well-formed Entry with a known type" do
-      types = ~w(duration_ms integer boolean string path float atom_list)a
+      types = ~w(duration_ms integer boolean string path float atom_list agent)a
 
       for %Entry{} = entry <- Config.schema() do
         assert is_binary(entry.section)
@@ -115,6 +117,31 @@ defmodule Harness.ConfigTest do
       assert :ok = Config.put({:dashboard, :port}, 4099, "test")
       # The live value is unchanged — applies only on the next boot via load_into_env/0.
       assert Config.get({:dashboard, :port}) == 4018
+    end
+
+    test "accepts an :agent-typed value in the implementer set and hot-applies it" do
+      assert :ok = Config.put({:dispatch, :default_agent}, :cursor, "test")
+      assert Config.get({:dispatch, :default_agent}) == :cursor
+    end
+
+    test "rejects an agent outside the implementer set without mutating" do
+      Application.put_env(:harness, :dispatch, default_agent: :codex)
+      assert {:error, :invalid_value} = Config.put({:dispatch, :default_agent}, :droid, "test")
+      assert {:error, :invalid_value} = Config.put({:dispatch, :default_agent}, :human, "test")
+      assert Config.get({:dispatch, :default_agent}) == :codex
+    end
+  end
+
+  describe "dispatch default agent" do
+    test "schema default is :codex — unassigned work avoids spending Claude tokens" do
+      assert Config.get({:dispatch, :default_agent}) == :codex
+    end
+
+    test "dispatch_agents/0 is the implementer set, excluding :human" do
+      agents = Config.dispatch_agents()
+      assert :claude in agents and :codex in agents and :cursor in agents
+      refute :human in agents
+      refute :droid in agents
     end
   end
 

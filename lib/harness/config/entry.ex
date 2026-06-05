@@ -24,7 +24,7 @@ defmodule Harness.Config.Entry do
   @type key :: {atom() | module(), atom()} | atom()
 
   @typedoc "The value's kind — drives inspector formatting and editable-input parsing/validation."
-  @type value_type :: :duration_ms | :integer | :boolean | :string | :path | :float | :atom_list
+  @type value_type :: :duration_ms | :integer | :boolean | :string | :path | :float | :atom_list | :agent
 
   @type t :: %__MODULE__{
           section: String.t(),

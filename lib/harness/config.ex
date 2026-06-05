@@ -47,6 +47,12 @@ defmodule Harness.Config do
   @filename "config_settings.term"
   @store_key :config
 
+  # The implementer agents an unassigned task may default-route to — the closed
+  # set the `:agent`-typed `{:dispatch, :default_agent}` key validates against and
+  # the dashboard select renders. Mirrors `Harness.Roadmap`'s `@valid_agents`
+  # (minus `:human`, which is never an autonomous dispatch target).
+  @implementer_agents [:claude, :codex, :cursor, :grok, :antigravity, :pi]
+
   @doc """
   The full declarative config schema — one `Entry` per operator-relevant key.
 
@@ -79,6 +85,7 @@ defmodule Harness.Config do
       ),
       e("Cron polling", "enabled", {:cron_polling, :enabled}, false, :boolean),
       e("Cron polling", "schedule", {:cron_polling, :schedule}, "0 */2 * * *", :string, restart_required?: true),
+      e("Dispatch", "default_agent", {:dispatch, :default_agent}, :codex, :agent, ui_editable?: true),
       e("Notifications", "sinks", :notification_sinks, [], :atom_list),
       e("Paths", "chat_store root", {:chat_store, :root}, Path.expand("~/.harness/chats"), :path),
       e("Paths", "project cache_root", {:project, :cache_root}, Path.expand("~/_DATA/harness/projects"), :path),
@@ -100,6 +107,10 @@ defmodule Harness.Config do
   @doc "The `ui_editable?` subset of the schema, in declaration order — the editable dashboard card's source."
   @spec editable_entries() :: [Entry.t()]
   def editable_entries, do: Enum.filter(schema(), & &1.ui_editable?)
+
+  @doc "The implementer agents an unassigned task may default-route to — the dashboard select's option source and the `:agent`-type validation set."
+  @spec dispatch_agents() :: [atom()]
+  def dispatch_agents, do: @implementer_agents
 
   @doc """
   Resolves a schema key's effective value from app env, falling back to the
@@ -176,6 +187,7 @@ defmodule Harness.Config do
   @spec validate(Entry.t(), term()) :: :ok | {:error, :invalid_value}
   defp validate(%Entry{type: :duration_ms}, value) when is_nil(value) or (is_integer(value) and value >= 0), do: :ok
   defp validate(%Entry{type: :integer}, value) when is_integer(value) and value > 0, do: :ok
+  defp validate(%Entry{type: :agent}, value) when value in @implementer_agents, do: :ok
   defp validate(_entry, _value), do: {:error, :invalid_value}
 
   @spec read_env(Entry.key(), term()) :: term()

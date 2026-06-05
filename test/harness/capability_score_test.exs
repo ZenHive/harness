@@ -6,6 +6,7 @@ defmodule Harness.CapabilityScoreTest do
   alias Harness.Batch.AgentEvaluation.Comparison
   alias Harness.Batch.AgentEvaluation.Entry
   alias Harness.CapabilityScore
+  alias Harness.Config
   alias Harness.ResultStore
   alias Harness.ResultStore.File, as: FileStore
   alias Harness.Run.Result, as: RunResult
@@ -271,6 +272,22 @@ defmodule Harness.CapabilityScoreTest do
       assert recommendation.agent == :claude
       assert recommendation.strategy == :fallback_no_data
       assert Enum.all?(recommendation.ranked, &(&1.measurement == :unmeasured))
+    end
+
+    test "with no :fallback_agent opt, falls back to the configured default dispatch agent (not :claude)",
+         %{store: store} do
+      configured = Config.get({:dispatch, :default_agent})
+
+      assert {:ok, recommendation} =
+               CapabilityScore.recommend(:otp,
+                 agents: [:claude, :codex, :cursor],
+                 reference_time: @reference_time,
+                 result_store: store
+               )
+
+      assert recommendation.strategy == :fallback_no_data
+      assert recommendation.agent == configured
+      assert configured == :codex, "schema default keeps Claude tokens for the reviewer axis"
     end
   end
 
