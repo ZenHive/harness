@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (23 of 25 done · 0 in progress)
+**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (23 of 25 done · 1 in progress)
 
 **Last shipped:** Task 204 — Dashboard Resume + Re-land buttons: recover failed runs & blocked land-trains, Task 206 — Scrub provider auth API keys from spawned agent CLIs (subscription billing), Task 207 — Configurable default dispatch agent (unassigned tasks → codex, not claude) on 2026-06-05
 
-**Up next:** Task 205 — Verify + declare auth_env_scrub for Cursor/Grok/Pi/Antigravity adapters [D:2/B:2/U:2 → Eff:1.0] 📋
+**Up next:** Task 209 — Oban Lifeline plugin — auto-rescue orphaned executing landing/audit jobs [D:2/B:6/U:6 → Eff:3.0] 🎯
 <!-- FOCUS:END -->
 
 ---
