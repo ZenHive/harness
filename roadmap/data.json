@@ -57,6 +57,11 @@
       "order": 18,
       "status": "in_progress"
     },
+    "19": {
+      "name": "Self-Healing Run Loop",
+      "order": 19,
+      "status": "pending"
+    },
     "2": {
       "name": "Core Loop & Contract Proof",
       "order": 2,
@@ -229,6 +234,11 @@
       "order": 1,
       "description": "mix project scaffold + standard dep stack"
     },
+    "self-heal": {
+      "phase": 19,
+      "order": 1,
+      "description": "The self-healing run loop (planning doc: plan-a-refactor-of-happy-summit Workstream A). implement->review->audit today hard-fails on mechanical hiccups an AI or a simple retry could absorb. Two tiers, both mantra-clean: Tier-1 = zero-token bounded mechanical retry on transient substrate ops (git create/commit/fetch, Port spawn) — pure counting, classifies nothing; Tier-2 = ONE bounded, witnessed AI-recovery seam (.harness/recovery.json, repaired|dead) for the interpretive minority, generalizing Task 203's re-prompt and Task 189's resolver. No cond/regex error-classifier in harness (that is the tasks 153-163 bug class). Recovery never routes a genuine reject and never resumes past the reviewer gate."
+    },
     "settings-pq": {
       "phase": 17,
       "order": 3,
@@ -280,6 +290,13 @@
       "order": 13,
       "status": "active",
       "target_version": "0.13.0"
+    },
+    "v0_14": {
+      "name": "Self-Healing Run Loop — mechanical failures heal inline, not surface as stupid errors",
+      "description": "Tests the hypothesis that the great majority of run failures are MECHANICAL (transient/structural — git locks, spawn races, malformed verdict files, checkout pollution, reviewer timeouts) and can self-heal inline so they never reach the operator, via a two-tier design — zero-token bounded mechanical retry for substrate ops + ONE bounded, witnessed AI-recovery seam for the interpretive minority — WITHOUT masking genuine rejections, and at a recovery token cost demonstrably lower than the hard-fail + manual-redispatch path it replaces. Same leitmotif applied to failure handling: count the failure facts (retries, recovery attempts, token spend) in code; let an AI write the meaning (repaired vs genuinely dead) into .harness/recovery.json.",
+      "order": 14,
+      "status": "pending",
+      "target_version": "0.14.0"
     },
     "v0_2": {
       "name": "Batch & resilience",
@@ -9094,23 +9111,25 @@
       "bundle": "judgment-collapse",
       "milestone": "v0_13",
       "status": "pending",
-      "title": "Task-facet foundation — reviewer emits AI-assigned task-kind facets in review.json, persisted on the run record as the routing KEY",
+      "title": "Reviewer rubric foundation — task-kind facets (routing KEY) + two-axis scored skills (routing VALUE) in review.json",
       "scores": {
-        "d": 3,
+        "d": 4,
         "b": 5,
         "u": 5
       },
-      "eff": 1.67,
+      "eff": 1.25,
       "dep_layer": 0,
       "markers": [],
       "depends_on": [],
       "assignee": "claude",
       "acceptance_criteria": [
-        "review.json gains an optional `facets` block alongside `ratings` — open-vocabulary AI characterization of what the task ACTUALLY was, read from the task spec + the real diff (e.g. {language, surface, archetype, difficulty, risk}). Reviewer prompt instructs it to emit them.",
-        "Harness.Run.Review parses `facets` verbatim (free-form keys/values, like ratings); a missing block parses to %{} — never a crash, never a closed enum.",
-        "Facets persist onto Harness.Run.LogRecord (and the Postgres run_record schema) so they are queryable as the per-record task-kind key.",
-        "This is GROUND TRUTH from the diff — it supersedes the sparse, optional, human-assigned `domains` tag as the grouping key (domains may remain as a coarse prior).",
-        "Tests: facet parse/persist round-trip, missing-block tolerance, and a record carrying facets readable back from ResultStore."
+        "review.json gains an optional `facets` block — open-vocabulary AI characterization of what the task ACTUALLY was, read from the task spec + the real diff (e.g. {language, surface, archetype, difficulty, risk}). This is the routing KEY. Reviewer prompt instructs it to emit them.",
+        "review.json's flat `ratings` is replaced by a richer two-axis `skills` block — programming domains (otp, ecto, phoenix, liveview, js, rust…) AND cross-cutting qualities (concurrency, error_handling, idiom, test_rigor, security, docs, truthfulness), each {score 0-10, note}, assessed ONLY for skills the diff exercised. This is the richer routing VALUE that replaces the fused 4-key ratings. Legacy flat `ratings` folded in for back-compat.",
+        "Both blocks ride the SAME reviewer-prompt change — reviewer_prompt/1 AND reviewer_reprompt/1 in run.ex updated in sync (the prompt is embedded twice).",
+        "Harness.Run.Review parses both `facets` and `skills` verbatim (free-form keys/values); a missing block parses to %{} — never a crash, never a closed enum.",
+        "Both persist onto Harness.Run.LogRecord + the Postgres run_record schema (open `:map` columns + one additive migration `review_skills`) so they are queryable per-record. Coordinate this migration with the recovery run_record columns (v0_14 AR-seam) to avoid a migration-ordering clash.",
+        "facets are GROUND TRUTH from the diff — supersede the sparse, optional, human-assigned `domains` tag as the grouping key (domains may remain a coarse prior).",
+        "Tests: facet + skills parse/persist round-trip, missing-block tolerance, legacy-ratings back-compat, and a record carrying both readable back from ResultStore."
       ],
       "files_to_modify": [
         "lib/harness/run/review.ex",
@@ -9120,12 +9139,13 @@
       "touches": [
         "lib/harness/result_store/schema/run_record.ex",
         "lib/harness/agent_kpi.ex",
+        "lib/harness/capability_domain.ex",
         "docs/agent-gate-workflow.md"
       ],
       "domains": [
         "otp"
       ],
-      "body": "The ROOT of the routing-oracle work and the gap behind the whole KPI feature. The KPI's point is 'what kind of task -> which agent', but today the only task-kind signal is `domains`: optional, human-assigned, sparse (empty for most production tasks). Truthfulness/tokens/quality are OUTCOME axes (the value), not task-TYPE axes (the key) — you cannot rank 'best at X' without knowing each run WAS an X. 'What kind of task is this?' is judgment, so an AI writes it (mantra: count facts in code, write meaning with an AI) — and the reviewer is already in the perfect seat: it reads the task spec AND the actual diff + transcript, so it characterizes what the task REALLY was (spec says 'small fix'; diff reveals a gen_statem concurrency bug). Add a `facets` block to review.json at near-zero marginal cost (no extra dispatch). Everything downstream — the scout per-facet assessment (216), the composite deletion (217), the KPI pivot (this milestone) — groups on these facets. Open vocabulary, not a maintained enum.",
+      "body": "The ROOT of the routing-oracle work — both halves of the key->value map, landed in ONE reviewer-prompt change because they share every file (reviewer_prompt/1 + reviewer_reprompt/1 in run.ex, the review.ex parse, the log_record + run_record persistence). (1) The KEY: today the only task-kind signal is `domains` — optional, human-assigned, sparse (empty for most production tasks). Truthfulness/tokens/quality are OUTCOME axes (value), not task-TYPE axes (key) — you cannot rank 'best at X' without knowing each run WAS an X. 'What kind of task is this?' is judgment, so the reviewer (already reading spec + diff + transcript) writes a `facets` block. (2) The VALUE: today the reviewer emits a flat 4-key `ratings` that CapabilityScore then fuses into one magic-weight number. Replace it with a two-axis `skills` rubric (domains × qualities, each {score, note}, only for skills the diff exercised) — far richer raw facts for an AI to synthesize capability from later, no formula. Both blocks cost near-zero marginal dispatch (the reviewer already runs). Everything downstream — the scout per-facet assessment + composite deletion (216), the KPI pivot (225) — reads these. Open vocabulary, not a maintained enum. (Absorbed the planning-doc's AN-1 'rich agent-skill rubric' — it is the VALUE half of this same change, not a separate task.)",
       "created_at": "2026-06-05",
       "scored_at": "2026-06-05",
       "cross_repo": []
@@ -9212,6 +9232,211 @@
       "scored_at": "2026-06-05",
       "implemented": "Worktree.warm/2 CoW-clones (cp -c, File.cp_r fallback) the parent's gitignored deps/_build/priv/plts into a fresh worktree; best-effort (always :ok); only parent-present + worktree-absent paths; configurable via :harness, :worktree, :warm_paths. Wired into Run.dispatched and Audit (range-only). Includes stale run_test detach-head fix. Decoupled from any check gate — not a Harness.Verification revival.",
       "delivered_by": "human",
+      "cross_repo": []
+    },
+    {
+      "id": "227",
+      "phase": 19,
+      "bundle": "self-heal",
+      "milestone": "v0_14",
+      "status": "pending",
+      "title": "Tier-1: bounded mechanical retry on transient substrate ops (worktree git + agent Port spawn)",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "Transient substrate ops retry-with-backoff before any failure: worktree create/commit/fetch (worktree.ex) and agent Port spawn (run.ex / adapter invoke). Bounded attempt count + backoff, mirroring the existing Oban setup-snooze pattern pushed down into the run's git/port ops.",
+        "Pure COUNTING — the retry classifies nothing; it does NOT inspect the error string to decide recoverability (that would be the tasks 153-163 bug class). It retries a bounded number of times and gives up; meaning is never computed here.",
+        "Covers live gaps 1/2/3 from the plan (worktree-create lock, commit race, Port-spawn failure) — these are mechanical and need NO AI.",
+        "Coordinate with task 226's warm/2 in worktree.ex (same file, already landed) to avoid a stale base.",
+        "Tests: a transient git lock that clears on retry succeeds; a persistent failure still fails honestly after the bound; no error-string matching introduced."
+      ],
+      "files_to_modify": [
+        "lib/harness/worktree.ex",
+        "lib/harness/run.ex"
+      ],
+      "touches": [
+        "lib/harness/agent_adapter.ex",
+        "lib/harness/run/retry_policy.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "Tier-1 of the two-tier self-heal design. The implement->review->audit loop hard-fails on mechanical hiccups (git locks, spawn races) an AI or a simple retry could absorb. Zero-token mechanical retry on genuinely-transient substrate ops, BEFORE any failure path runs. Retrying a git lock is mechanical counting; it classifies nothing — which keeps it mantra-clean and out of the false-red/false-green class. Independent quick win, parallel to the AI-recovery seam (229).",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "228",
+      "phase": 19,
+      "bundle": "self-heal",
+      "milestone": "v0_14",
+      "status": "pending",
+      "title": "Reviewer-stage mechanical fallbacks: re-prompt on malformed review.json + rotate reviewer on timeout",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "Malformed .harness/review.json is routed through the SAME re-prompt path that missing review.json already uses (today missing is re-prompted, malformed hard-fails with {:review_stuck,_}) — generalizing Task 203, a mechanical re-run, not a new AI seam.",
+        "On reviewer spawn/idle timeout, rotate to the next eligible cross-family reviewer (must stay cross-family from the implementer) before settling failed — mechanical reviewer rotation, covers plan gap 6.",
+        "Both fallbacks are bounded (a finite re-prompt / rotation count) and witnessed as raw facts on the run record; neither inspects content to judge recoverability.",
+        "Tests: a malformed verdict re-prompts and then succeeds; an exhausted re-prompt still fails honestly; a reviewer timeout rotates to a different cross-family reviewer."
+      ],
+      "files_to_modify": [
+        "lib/harness/run.ex",
+        "lib/harness/run/review.ex"
+      ],
+      "touches": [
+        "docs/agent-gate-workflow.md"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "Two reviewer-stage mechanical fallbacks landed together because they share the reviewer settlement path in run.ex / run/review.ex and a single reviewer pass verifies both. Covers plan gaps 4 (malformed review.json) and 6 (reviewer timeout). Both are mechanical: re-prompt is a re-run (Task 203 generalized), rotation is next-eligible selection — neither needs the AI-recovery seam. Independent of 229.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "229",
+      "phase": 19,
+      "bundle": "self-heal",
+      "milestone": "v0_14",
+      "status": "pending",
+      "title": "Tier-2: the bounded, witnessed AI-recovery seam (.harness/recovery.json) — first call-site checkout pollution",
+      "scores": {
+        "d": 4,
+        "b": 5,
+        "u": 4
+      },
+      "eff": 1.13,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "ONE pre-terminal recovery seam: before settling :failed for a NON-rejection reason, spawn a bounded recovery AI with MINIMAL context (error term + git status + transcript tail + failing-check output — never the full transcript) that writes .harness/recovery.json: repaired -> resume the lifecycle / dead -> settle :failed. Harness reads the file mechanically and decides NOTHING about recoverability itself.",
+        "First and only initial call-site = checkout pollution (plan gap 5 — the one genuinely interpretive failure; gaps 1/2/3 are Tier-1 retry in 227, gaps 4/6 are mechanical fallbacks in 228). The seam is built generalizable (call-sites can be added later) but ships with exactly one consumer — no generic-for-zero-consumers over-build.",
+        "GUARDRAIL: a repaired outcome resumes at a state that RE-RUNS the reviewer gate — never skips to :done. A recovery that commits and resumes past the gate is the false-green class returning.",
+        "GUARDRAIL: recovery is bounded PER-RUN (a single run-level recovery budget, not per-failure-type — else N gaps x 1 attempt burns N recovery AIs on one doomed run), and a genuine verdict:reject is NEVER routed through recovery.",
+        "WITNESS (folds in the plan's GR-1): persist recovery_attempts, the outcome, what was repaired, AND recovery token spend as raw facts on log_record + the run_record schema (one additive migration). No scoring. The token spend is the metric that proves two-tier is cheaper than hard-fail+manual-redispatch.",
+        "Coordinate the run_record migration with task 224's review_skills migration to avoid a migration-ordering clash.",
+        "Optionally refactor Task 189's lander resolver and Task 203's re-prompt to be call-sites of this one seam (door left open; not required to land).",
+        "No cond/regex error-classifier added to harness (mantra check); the recovery DECISION lives in recovery.json, written by the AI.",
+        "Tests: pollute the checkout -> run recovers and re-hits the gate; a genuinely-dead case settles :failed with witnessed recovery_attempts; per-run budget exhaustion fails honestly; verdict:reject bypasses recovery."
+      ],
+      "files_to_modify": [
+        "lib/harness/run.ex",
+        "lib/harness/run/recovery.ex",
+        "lib/harness/run/log_record.ex"
+      ],
+      "touches": [
+        "lib/harness/result_store/schema/run_record.ex",
+        "lib/harness/lander/resolver.ex",
+        "docs/agent-gate-workflow.md"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "Tier-2 anchor and the headline of the self-heal milestone — but NARROWED from the plan's lifecycle-wide-generic seam after walking the 6 gaps: 5 of 6 are mechanical (retry/re-prompt/rotate, tasks 227/228). Only checkout-pollution disposition genuinely needs an AI to read the situation, so the seam ships with that ONE call-site rather than a generic pre-terminal hook reaching for problems that don't exist yet. Generalizes Task 203 (missing-verdict re-prompt) and Task 189 (lander resolver) into one .harness/recovery.json pattern the door is open to route more gaps through later. Bounded, witnessed, never hides a genuine reject, never resumes past the reviewer gate. The token-spend witness IS the milestone hypothesis test.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "230",
+      "phase": 19,
+      "bundle": "self-heal",
+      "milestone": "v0_14",
+      "status": "pending",
+      "title": "Cleanup: delete subsumed hard-fail paths once retry + recovery seam prove out",
+      "scores": {
+        "d": 2,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 1.5,
+      "dep_layer": 1,
+      "markers": [],
+      "depends_on": [
+        227,
+        229
+      ],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "Remove the scattered special-case :failed settlements / {:error,_} aborts that the Tier-1 retry (227) and the recovery seam (229) now cover; keep ONLY genuine-rejection (verdict:reject) and truly-dead terminals.",
+        "mix compile --warnings-as-errors clean; no orphaned recovery/retry call paths; the run lifecycle has fewer terminal branches than before (less code is the proof).",
+        "Tests for the deleted special-cases removed; remaining terminal-state tests pass."
+      ],
+      "files_to_modify": [
+        "lib/harness/run.ex",
+        "lib/harness/run/worker.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "Last in the self-heal sequence — the less-code payoff, sequenced AFTER the seam proves out so we never delete a special-case before its generic replacement is live. depends_on 227 (retry) + 229 (seam); 228 is independent. This is where the refactor actually shrinks run.ex.",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "231",
+      "phase": 18,
+      "bundle": "judgment-collapse",
+      "milestone": "v0_13",
+      "status": "pending",
+      "title": "AgentKPI: attribute review_stuck to the reviewer, not the implementer; track per-reviewer verdict-write reliability",
+      "scores": {
+        "d": 3,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "AgentKPI exposes a per-reviewer-adapter verdict-write reliability metric: review_stuck count over total reviews that reviewer gated, computed purely from persisted LogRecord fields (reason == {:review_stuck, _} keyed by reviewer_adapter). No new judgment branch/regex/classifier — it only counts a fact already on the record.",
+        "A review_stuck run no longer debits the IMPLEMENTER's success_rate: it is excluded from (or counted separately in) the implementer's run_count denominator, because the implementer exited fine and the REVIEWER produced no artifact. Attribution is keyed mechanically on `reason`, not inferred.",
+        "The per-reviewer ledger (reviewer_rejection rollup) is extended to surface no-verdict/review_stuck failures alongside rejections — currently it ignores them (only verdict in [:approve,:reject] is counted).",
+        "Tests cover: reviewer verdict-write-reliability math; review_stuck excluded from implementer success denominator; review_stuck included in the reviewer reliability rollup. Use NEVER-HIDE-FAILURES assertions (flunk on unexpected), not assert-true-on-any-outcome.",
+        "The new reviewer-reliability signal is surfaced wherever AgentKPI is already surfaced (the /harness/kpi dashboard LiveView and the MCP KPI tool), consistent with existing presentation — no net-new design surface."
+      ],
+      "out_of_scope": [
+        "Reducing the review_stuck RATE itself (reviewer prompt / timeout / re-prompt-budget tuning) — separate task.",
+        "Persisting the reviewer's raw transcript + outcome (kind/exit_status) so killed-vs-clean-exit is distinguishable — separate diagnostic task; this task counts only the already-persisted `reason` fact.",
+        "Any capability-routing change that consumes the new reliability signal — file separately once the signal exists."
+      ],
+      "files_to_modify": [
+        "Harness.AgentKPI",
+        "Harness.CapabilityScore"
+      ],
+      "touches": [
+        "lib/harness/agent_kpi.ex",
+        "lib/harness/capability_score.ex",
+        "test/harness/agent_kpi_test.exs",
+        "test/harness/capability_score_test.exs"
+      ],
+      "body": "## Observation (the muster, 2026-06-05)\nAcross 10 persisted review_stuck records (reviewer exited without writing `.harness/review.json`): Cursor 6 / Claude 3 / Pi 1 by reviewer adapter. This is NOT a Cursor bug — Cursor also wrote 38 successful verdicts (it is the most-dispatched reviewer); its 6 are a base-rate-of-use artifact. The failure is cross-family: any reviewer sometimes ends its turn without the mandatory final file write. It correlates with large implementer diffs / long review durations (task 64 = a 21,583-line implementer diff; stuck reviews span 376-1006s).\n\n## The two KPI defects (both confirmed in agent_kpi.ex)\n1. IMPLEMENTER penalized for a REVIEWER flake. `agent_kpi.ex:119` sets `passes = verdict == :approve` and `:124` computes `success_rate = passes / run_count`. A review_stuck run has `verdict == nil`, so it sits in the implementer's denominator as a non-pass — e.g. codex (exited 0, real diff) is debited because Cursor wrote no artifact. Since CapabilityScore/routing consume these rates, the distortion mis-routes future dispatch.\n2. REVIEWER reliability invisible. The per-reviewer ledger (`agent_kpi.ex:178`) only counts records whose `verdict in [:approve, :reject]`. review_stuck (verdict nil) is excluded entirely, so \"did this reviewer write a verdict at all?\" is untracked — exactly the signal needed to prefer reliable reviewers.\n\n## Why this belongs in the KPI (mantra check)\nreview_stuck is a COUNTED FACT — `reason == {:review_stuck, _}`, already persisted on every LogRecord, keyed by `reviewer_adapter`. Rolling it up read-only and fixing attribution (reviewer fact, not implementer fault) is counting + aggregation, NOT judgment. Do not add a classifier, regex, or \"is this the reviewer's fault\" heuristic — the `reason` field already states the fact; the task only counts and attributes it.\n\n## Approach sketch (non-binding)\n- AgentKPI: in the per-agent rollup, partition records so review_stuck is not a non-pass against the implementer (exclude from denominator or report as a separate `reviewer_flaked` count).\n- AgentKPI: extend the per-reviewer rollup to count review_stuck (verdict nil + reason review_stuck) as a `no_verdict_rate` alongside `rejection_rate`.\n- Surface in /harness/kpi + MCP KPI tool.\n\nDiscovered while driving the autocron onchain batch; 6 of the recent failures were review_stuck. Related (separate) follow-ups noted in out_of_scope.\n",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
       "cross_repo": []
     }
   ]
