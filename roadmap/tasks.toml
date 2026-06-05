@@ -6296,7 +6296,7 @@ scored_at = "2026-06-05"
 id = "209"
 phase = 17
 bundle = "settings-pq"
-status = "done"
+status = "pending"
 title = "Oban Lifeline plugin — auto-rescue orphaned executing landing/audit jobs"
 scores = { d = 2, b = 6, u = 6 }
 acceptance_criteria = ["Oban.Plugins.Lifeline added to the Harness.Oban plugins list with a rescue_after window (suggest 30 min, > the longest legitimate land/audit) so jobs orphaned in executing (worker died mid-run) are moved back to available and retried.", "A test asserts an executing job older than rescue_after is rescued to available, and a freshly-executing job is not.", "Doc note in Application explaining why Lifeline is needed: open-source Oban does not rescue executing-orphans; only Pruner was configured, so a worker crash mid-land stranded the job forever (observed: landing job 294 / onchain task 41 stuck executing 25+ min)."]

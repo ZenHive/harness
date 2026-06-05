@@ -8579,7 +8579,7 @@
       "id": "209",
       "phase": 17,
       "bundle": "settings-pq",
-      "status": "done",
+      "status": "pending",
       "title": "Oban Lifeline plugin — auto-rescue orphaned executing landing/audit jobs",
       "scores": {
         "d": 2,
