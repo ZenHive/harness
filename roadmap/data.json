@@ -9364,7 +9364,7 @@
       "phase": 19,
       "bundle": "self-heal",
       "milestone": "v0_14",
-      "status": "in_progress",
+      "status": "done",
       "title": "Tier-2: the bounded, witnessed AI-recovery seam (.harness/recovery.json) — first call-site checkout pollution",
       "scores": {
         "d": 4,
@@ -9400,10 +9400,15 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "5e371f81cbbec093031affeab8eb8f4d4b8792ba",
       "body": "Tier-2 anchor and the headline of the self-heal milestone — but NARROWED from the plan's lifecycle-wide-generic seam after walking the 6 gaps: 5 of 6 are mechanical (retry/re-prompt/rotate, tasks 227/228). Only checkout-pollution disposition genuinely needs an AI to read the situation, so the seam ships with that ONE call-site rather than a generic pre-terminal hook reaching for problems that don't exist yet. Generalizes Task 203 (missing-verdict re-prompt) and Task 189 (lander resolver) into one .harness/recovery.json pattern the door is open to route more gaps through later. Bounded, witnessed, never hides a genuine reject, never resumes past the reviewer gate. The token-spend witness IS the milestone hypothesis test.",
       "created_at": "2026-06-05",
       "started_at": "2026-06-05",
+      "done_at": "2026-06-05",
       "scored_at": "2026-06-05",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1780656714913-de3355be, 5e371f81cbbec093031affeab8eb8f4d4b8792ba).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {

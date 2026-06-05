@@ -6669,7 +6669,7 @@ id = "229"
 phase = 19
 bundle = "self-heal"
 milestone = "v0_14"
-status = "in_progress"
+status = "done"
 title = "Tier-2: the bounded, witnessed AI-recovery seam (.harness/recovery.json) — first call-site checkout pollution"
 scores = { d = 4, b = 5, u = 4 }
 acceptance_criteria = ["ONE pre-terminal recovery seam: before settling :failed for a NON-rejection reason, spawn a bounded recovery AI with MINIMAL context (error term + git status + transcript tail + failing-check output — never the full transcript) that writes .harness/recovery.json: repaired -> resume the lifecycle / dead -> settle :failed. Harness reads the file mechanically and decides NOTHING about recoverability itself.", "First and only initial call-site = checkout pollution (plan gap 5 — the one genuinely interpretive failure; gaps 1/2/3 are Tier-1 retry in 227, gaps 4/6 are mechanical fallbacks in 228). The seam is built generalizable (call-sites can be added later) but ships with exactly one consumer — no generic-for-zero-consumers over-build.", "GUARDRAIL: a repaired outcome resumes at a state that RE-RUNS the reviewer gate — never skips to :done. A recovery that commits and resumes past the gate is the false-green class returning.", "GUARDRAIL: recovery is bounded PER-RUN (a single run-level recovery budget, not per-failure-type — else N gaps x 1 attempt burns N recovery AIs on one doomed run), and a genuine verdict:reject is NEVER routed through recovery.", "WITNESS (folds in the plan's GR-1): persist recovery_attempts, the outcome, what was repaired, AND recovery token spend as raw facts on log_record + the run_record schema (one additive migration). No scoring. The token spend is the metric that proves two-tier is cheaper than hard-fail+manual-redispatch.", "Coordinate the run_record migration with task 224's review_skills migration to avoid a migration-ordering clash.", "Optionally refactor Task 189's lander resolver and Task 203's re-prompt to be call-sites of this one seam (door left open; not required to land).", "No cond/regex error-classifier added to harness (mantra check); the recovery DECISION lives in recovery.json, written by the AI.", "Tests: pollute the checkout -> run recovers and re-hits the gate; a genuinely-dead case settles :failed with witnessed recovery_attempts; per-run budget exhaustion fails honestly; verdict:reject bypasses recovery."]
@@ -6678,9 +6678,14 @@ touches = ["lib/harness/result_store/schema/run_record.ex", "lib/harness/lander/
 domains = ["otp"]
 assignee = "claude"
 body = "Tier-2 anchor and the headline of the self-heal milestone — but NARROWED from the plan's lifecycle-wide-generic seam after walking the 6 gaps: 5 of 6 are mechanical (retry/re-prompt/rotate, tasks 227/228). Only checkout-pollution disposition genuinely needs an AI to read the situation, so the seam ships with that ONE call-site rather than a generic pre-terminal hook reaching for problems that don't exist yet. Generalizes Task 203 (missing-verdict re-prompt) and Task 189 (lander resolver) into one .harness/recovery.json pattern the door is open to route more gaps through later. Bounded, witnessed, never hides a genuine reject, never resumes past the reviewer gate. The token-spend witness IS the milestone hypothesis test."
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780656714913-de3355be, 5e371f81cbbec093031affeab8eb8f4d4b8792ba)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-05"
 started_at = "2026-06-05"
 scored_at = "2026-06-05"
+done_at = "2026-06-05"
+shipped_in = "5e371f81cbbec093031affeab8eb8f4d4b8792ba"
 
 [[task]]
 id = "230"
