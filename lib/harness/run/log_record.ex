@@ -43,12 +43,22 @@ defmodule Harness.Run.LogRecord do
   Each dispatched attempt records the prompt/rule artifact assembled at the
   adapter boundary, tagged with its attempt number so post-hoc diagnosis can
   inspect the exact prompt that drove the agent.
+
+  ## AI-recovery witness (`recovery_attempts`, `recovery_outcome`, `recovery_repaired`, `recovery_token_usage`)
+
+  Raw facts about the bounded AI-recovery seam (`Harness.Run.Recovery`), persisted
+  with no scoring: how many times recovery was spawned on this run, the last
+  decision (`:repaired` / `:dead`), the AI's repair note, and the recovery token
+  spend. The token figure is the witness metric that proves two-tier recovery is
+  cheaper than a hard fail plus manual re-dispatch. All default to "recovery never
+  ran" (`0` / `nil` / empty usage) for the overwhelming majority of runs.
   """
 
   alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentModel
   alias Harness.CapabilityDomain
+  alias Harness.Run.Recovery
   alias Harness.Run.Result, as: RunResult
   alias Harness.Run.Review
   alias Harness.TokenUsage
@@ -82,7 +92,11 @@ defmodule Harness.Run.LogRecord do
           review_report: String.t() | nil,
           review_facets: %{optional(String.t()) => term()},
           review_skills: %{optional(String.t()) => term()},
-          review_ratings: %{optional(String.t()) => term()}
+          review_ratings: %{optional(String.t()) => term()},
+          recovery_attempts: non_neg_integer(),
+          recovery_outcome: Recovery.outcome() | nil,
+          recovery_repaired: String.t() | nil,
+          recovery_token_usage: TokenUsage.t()
         }
 
   @enforce_keys [
@@ -122,7 +136,11 @@ defmodule Harness.Run.LogRecord do
     review_report: nil,
     review_facets: %{},
     review_skills: %{},
-    review_ratings: %{}
+    review_ratings: %{},
+    recovery_attempts: 0,
+    recovery_outcome: nil,
+    recovery_repaired: nil,
+    recovery_token_usage: %TokenUsage{}
   ]
 
   @doc "Builds a structured record from a settled run result and batch metadata."
@@ -145,7 +163,11 @@ defmodule Harness.Run.LogRecord do
       composed_inputs: result.composed_inputs,
       domains: domains_from_meta(meta),
       reviewer_adapter: result.reviewer_adapter,
-      review_iterations: review_iterations(result.reviewer_diff_size)
+      review_iterations: review_iterations(result.reviewer_diff_size),
+      recovery_attempts: result.recovery_attempts,
+      recovery_outcome: result.recovery_outcome,
+      recovery_repaired: result.recovery_repaired,
+      recovery_token_usage: result.recovery_token_usage
     }
 
     record

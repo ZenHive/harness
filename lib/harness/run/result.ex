@@ -15,6 +15,7 @@ defmodule Harness.Run.Result do
 
   alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Outcome
+  alias Harness.Run.Recovery
   alias Harness.Run.Review
   alias Harness.TokenUsage
 
@@ -111,6 +112,15 @@ defmodule Harness.Run.Result do
       is a *clean* reviewer exit that simply omits the verdict file — there the
       outcome is present and is the highest-value diagnostic of why the gate
       produced nothing.
+    * `recovery_attempts` — how many times the bounded AI-recovery seam
+      (`Harness.Run.Recovery`) was spawned on this run. `0` for the
+      overwhelming majority of runs (recovery never fired).
+    * `recovery_outcome` — the last recovery AI's decision (`:repaired` /
+      `:dead`), or `nil` when recovery never ran.
+    * `recovery_repaired` — the recovery AI's note on what it repaired, or `nil`.
+    * `recovery_token_usage` — `Harness.TokenUsage` summed across every recovery
+      attempt — the witness metric proving two-tier recovery is cheaper than a
+      hard fail plus manual re-dispatch. Empty when recovery never ran.
   """
   @type t :: %__MODULE__{
           run_id: String.t(),
@@ -125,7 +135,11 @@ defmodule Harness.Run.Result do
           token_usage: TokenUsage.t(),
           composed_inputs: [AgentAdapter.composed_input()],
           reviewer_adapter: module() | nil,
-          reviewer_outcome: Outcome.t() | nil
+          reviewer_outcome: Outcome.t() | nil,
+          recovery_attempts: non_neg_integer(),
+          recovery_outcome: Recovery.outcome() | nil,
+          recovery_repaired: String.t() | nil,
+          recovery_token_usage: TokenUsage.t()
         }
 
   @enforce_keys [:run_id, :task_id, :state, :reason]
@@ -142,6 +156,10 @@ defmodule Harness.Run.Result do
     token_usage: %TokenUsage{},
     composed_inputs: [],
     reviewer_adapter: nil,
-    reviewer_outcome: nil
+    reviewer_outcome: nil,
+    recovery_attempts: 0,
+    recovery_outcome: nil,
+    recovery_repaired: nil,
+    recovery_token_usage: %TokenUsage{}
   ]
 end

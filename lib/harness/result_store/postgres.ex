@@ -88,7 +88,15 @@ defmodule Harness.ResultStore.Postgres do
           reviewer_output: fragment("COALESCE(NULLIF(EXCLUDED.reviewer_output, ''::bytea), ?)", r.reviewer_output),
           review_facets: fragment("COALESCE(NULLIF(EXCLUDED.review_facets, '{}'::jsonb), ?)", r.review_facets),
           review_skills: fragment("COALESCE(NULLIF(EXCLUDED.review_skills, '{}'::jsonb), ?)", r.review_skills),
-          review_ratings: fragment("COALESCE(NULLIF(EXCLUDED.review_ratings, '{}'::jsonb), ?)", r.review_ratings)
+          review_ratings: fragment("COALESCE(NULLIF(EXCLUDED.review_ratings, '{}'::jsonb), ?)", r.review_ratings),
+          recovery_attempts:
+            fragment(
+              "GREATEST(COALESCE(EXCLUDED.recovery_attempts, 0), COALESCE(?, 0))",
+              r.recovery_attempts
+            ),
+          recovery_outcome: fragment("COALESCE(EXCLUDED.recovery_outcome, ?)", r.recovery_outcome),
+          recovery_repaired: fragment("COALESCE(EXCLUDED.recovery_repaired, ?)", r.recovery_repaired),
+          recovery_token_usage: fragment("COALESCE(EXCLUDED.recovery_token_usage, ?)", r.recovery_token_usage)
         ]
       ]
   end
@@ -328,6 +336,9 @@ defmodule Harness.ResultStore.Postgres do
         review_report: r.review_report,
         reviewer_outcome_kind: r.reviewer_outcome_kind,
         reviewer_exit_status: r.reviewer_exit_status,
+        recovery_attempts: r.recovery_attempts,
+        recovery_outcome: r.recovery_outcome,
+        recovery_repaired: r.recovery_repaired,
         reason: r.reason,
         token_usage: r.token_usage,
         composed_inputs: r.composed_inputs,
@@ -335,6 +346,7 @@ defmodule Harness.ResultStore.Postgres do
         review_skills: r.review_skills,
         review_ratings: r.review_ratings,
         domains: r.domains,
+        recovery_token_usage: r.recovery_token_usage,
         agent_output: type(^nil, :binary),
         reviewer_output: type(^nil, :binary),
         inserted_at: r.inserted_at,
@@ -499,6 +511,9 @@ defmodule Harness.ResultStore.Postgres do
       review_report: r.review_report,
       reviewer_outcome_kind: kind_to_string(r.reviewer_outcome_kind),
       reviewer_exit_status: r.reviewer_exit_status,
+      recovery_attempts: r.recovery_attempts,
+      recovery_outcome: atom_or_string(r.recovery_outcome),
+      recovery_repaired: r.recovery_repaired,
       reason: encode_jsonb(r.reason),
       token_usage: encode_jsonb(r.token_usage),
       composed_inputs: encode_jsonb(r.composed_inputs),
@@ -506,6 +521,7 @@ defmodule Harness.ResultStore.Postgres do
       review_skills: encode_jsonb(r.review_skills),
       review_ratings: encode_jsonb(r.review_ratings),
       domains: encode_jsonb(r.domains),
+      recovery_token_usage: encode_jsonb(r.recovery_token_usage),
       agent_output: r.agent_output,
       reviewer_output: r.reviewer_output
     }
@@ -541,7 +557,11 @@ defmodule Harness.ResultStore.Postgres do
       reviewer_outcome_kind: string_to_kind(row.reviewer_outcome_kind),
       reviewer_exit_status: row.reviewer_exit_status,
       reviewer_output: default(row.reviewer_output, ""),
-      domains: default(decode_jsonb(row.domains), [])
+      domains: default(decode_jsonb(row.domains), []),
+      recovery_attempts: default(row.recovery_attempts, 0),
+      recovery_outcome: string_to_atom(row.recovery_outcome),
+      recovery_repaired: row.recovery_repaired,
+      recovery_token_usage: decode_token_usage(row.recovery_token_usage)
     }
   end
 

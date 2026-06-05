@@ -26,6 +26,10 @@ defmodule Harness.ResultStore.Schema.RunRecord do
     field :reviewer_outcome_kind, :string
     field :reviewer_exit_status, :integer
 
+    field :recovery_attempts, :integer
+    field :recovery_outcome, :string
+    field :recovery_repaired, :binary
+
     field :reason, :map
     field :token_usage, :map
     field :composed_inputs, :map
@@ -33,6 +37,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
     field :review_skills, :map
     field :review_ratings, :map
     field :domains, :map
+    field :recovery_token_usage, :map
 
     field :agent_output, :binary
     field :reviewer_output, :binary
@@ -65,6 +70,9 @@ defmodule Harness.ResultStore.Schema.RunRecord do
       :review_report,
       :reviewer_outcome_kind,
       :reviewer_exit_status,
+      :recovery_attempts,
+      :recovery_outcome,
+      :recovery_repaired,
       :reason,
       :token_usage,
       :composed_inputs,
@@ -72,6 +80,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
       :review_skills,
       :review_ratings,
       :domains,
+      :recovery_token_usage,
       :agent_output,
       :reviewer_output
     ])
