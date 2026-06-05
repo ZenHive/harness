@@ -2321,8 +2321,12 @@ defmodule Harness.Run do
 
   defp sample_interval_due?(last, interval, now), do: now - last >= interval
 
+  # Public only as a deterministic test seam for the stakes gate (it reads the
+  # structured d-score / :security / :bug markers off the Item, not prose) — an
+  # internal predicate of the running-state lifecycle, never a consumer surface.
+  @doc false
   @spec discernment_weight_passes?(data(), keyword(), integer()) :: boolean()
-  defp discernment_weight_passes?(data, opts, now) do
+  def discernment_weight_passes?(data, opts, now) do
     min_weight = Keyword.get(opts, :min_weight, @default_discernment_min_weight)
 
     explicit_weight = Keyword.get(opts, :weight)
@@ -2331,10 +2335,10 @@ defmodule Harness.Run do
       is_integer(explicit_weight) ->
         explicit_weight >= min_weight
 
-      task_difficulty(data) >= min_weight ->
+      task_d_score(data) >= min_weight ->
         true
 
-      security_or_bug_marker?(task_text(data)) ->
+      high_stakes_marker?(data) ->
         true
 
       long_running?(data, opts, now) ->
@@ -2345,18 +2349,17 @@ defmodule Harness.Run do
     end
   end
 
-  @spec task_difficulty(data()) :: non_neg_integer()
-  defp task_difficulty(data) do
-    case Regex.run(~r/\bD\s*:\s*(\d+)/, task_text(data)) do
-      [_, digits] -> String.to_integer(digits)
-      _other -> 0
-    end
-  end
+  # rmap's typed difficulty score, threaded onto the Item at ingest. No score
+  # (historical ingests, scoreless tasks) reads as 0 — never triggers on weight.
+  @spec task_d_score(data()) :: non_neg_integer()
+  defp task_d_score(%{item: %Item{d: d}}) when is_integer(d), do: d
+  defp task_d_score(_data), do: 0
 
-  @spec security_or_bug_marker?(String.t()) :: boolean()
-  defp security_or_bug_marker?(text) do
-    Regex.match?(~r/\b(security|bug|vulnerability|vulnerable|destructive|rogue)\b/i, text)
-  end
+  # The typed `:security` / `:bug` markers from rmap, not a prose keyword scrape:
+  # catches a :security-tagged task whose prose never says "security", and does
+  # not false-positive on a body that merely mentions "fixed a bug".
+  @spec high_stakes_marker?(data()) :: boolean()
+  defp high_stakes_marker?(%{item: %Item{markers: markers}}), do: :security in markers or :bug in markers
 
   @spec long_running?(data(), keyword(), integer()) :: boolean()
   defp long_running?(data, opts, now) do

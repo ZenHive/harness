@@ -119,6 +119,8 @@ defmodule Harness.Roadmap do
          body: task["body"],
          acceptance_criteria: acceptance_criteria(task),
          domains: task_domains(task),
+         d: task_d_score(task),
+         markers: task_markers(task),
          model: task_model(task)
        }}
     end
@@ -148,6 +150,30 @@ defmodule Harness.Roadmap do
   end
 
   defp domain_atom(domain), do: domain
+
+  # rmap nests the difficulty score under `scores.d`; a task without scores omits
+  # the key. Carried structurally so the in-run discernment gate reads the typed
+  # field instead of regex-scraping `D:X` from the rendered prompt.
+  @spec task_d_score(map()) :: non_neg_integer() | nil
+  defp task_d_score(%{"scores" => %{"d" => d}}) when is_integer(d) and d >= 0, do: d
+  defp task_d_score(_task), do: nil
+
+  # rmap emits `markers` as a JSON array of strings from a closed enum
+  # (parallel | cx | csr | bug | security | docs | handbuild). Convert to atoms
+  # so the stakes gate matches `:security` / `:bug` typed values; an unknown
+  # marker (no existing atom) falls back to its string, never crashing.
+  @spec task_markers(map()) :: [atom() | String.t()]
+  defp task_markers(%{"markers" => markers}) when is_list(markers), do: Enum.map(markers, &marker_atom/1)
+  defp task_markers(_task), do: []
+
+  @spec marker_atom(term()) :: atom() | term()
+  defp marker_atom(marker) when is_binary(marker) do
+    String.to_existing_atom(marker)
+  rescue
+    ArgumentError -> marker
+  end
+
+  defp marker_atom(marker), do: marker
 
   @spec task_model(map()) :: String.t() | nil
   defp task_model(%{"model" => model}) when is_binary(model) and model != "", do: model

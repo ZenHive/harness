@@ -30,6 +30,15 @@ defmodule Harness.Roadmap.Item do
       of strings; an empty list when the task declares none.
     * `domains` — advisory capability-domain tags copied onto run records at
       settle time; empty for untagged production tasks and historical ingests.
+    * `d` — the task's structured rmap difficulty score (`scores.d`), or `nil`
+      when the task carries no score. Carried as a typed field so the in-run
+      discernment stakes gate reads it directly instead of scraping `D:X` out of
+      the rendered prompt text.
+    * `markers` — the task's rmap markers as atoms (e.g. `:security`, `:bug`,
+      `:parallel`); an empty list when the task declares none. Carried so the
+      stakes gate matches the typed `:security` / `:bug` markers instead of
+      keyword-matching prose (which misses CVE/exploit/auth-bypass and
+      false-positives on "fixed a bug").
     * `model` — the task's pinned `model` field from rmap when present (an LLM
       id like `claude-opus-4-7`, or an agent routing token like `codex`); carried
       through dispatch as the requested model when the agent does not self-report.
@@ -42,9 +51,22 @@ defmodule Harness.Roadmap.Item do
           body: String.t() | nil,
           acceptance_criteria: [String.t()],
           domains: [CapabilityDomain.t()],
+          d: non_neg_integer() | nil,
+          markers: [atom() | String.t()],
           model: String.t() | nil
         }
 
   @enforce_keys [:id, :title, :prompt, :agent]
-  defstruct [:id, :title, :prompt, :agent, :body, acceptance_criteria: [], domains: [], model: nil]
+  defstruct [
+    :id,
+    :title,
+    :prompt,
+    :agent,
+    :body,
+    :d,
+    acceptance_criteria: [],
+    domains: [],
+    markers: [],
+    model: nil
+  ]
 end

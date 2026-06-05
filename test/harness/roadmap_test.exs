@@ -137,6 +137,59 @@ defmodule Harness.RoadmapTest do
       assert {:ok, %Item{id: "7", model: nil}} =
                Roadmap.ingest({:id, "7"}, project_root: @sample, rmap_bin: stub)
     end
+
+    test "threads the structured d-score from rmap's scores.d onto the Item" do
+      # Fixture task "1" carries scores = { d = 2, ... }; the typed score is
+      # threaded so the in-run discernment gate reads it without prose-scraping.
+      assert {:ok, %Item{id: "1", d: 2, markers: []}} =
+               Roadmap.ingest({:id, "1"}, project_root: @sample)
+    end
+
+    test "defaults d to nil when the task carries no scores" do
+      stub =
+        stub_script("""
+        case "$1" in
+          show) echo '{"id":"7","title":"Scoreless task"}' ;;
+          delegate) echo 'rendered prompt' ;;
+        esac
+        """)
+
+      assert {:ok, %Item{id: "7", d: nil}} =
+               Roadmap.ingest({:id, "7"}, project_root: @sample, rmap_bin: stub)
+    end
+
+    test "threads rmap markers as typed atoms onto the Item" do
+      # A :security-tagged task whose title/body never say "security" — the typed
+      # marker still threads through, so the stakes gate matches it.
+      stub =
+        stub_script("""
+        case "$1" in
+          show) echo '{"id":"7","title":"Harden the lander","markers":["security","parallel"]}' ;;
+          delegate) echo 'rendered prompt' ;;
+        esac
+        """)
+
+      assert {:ok, %Item{id: "7", markers: markers}} =
+               Roadmap.ingest({:id, "7"}, project_root: @sample, rmap_bin: stub)
+
+      assert :security in markers
+      assert :parallel in markers
+    end
+
+    test "defaults markers to an empty list when the task omits them" do
+      # A body that merely mentions a bug in prose carries no typed :bug marker —
+      # the structured field, not the prose, decides; no false-positive.
+      stub =
+        stub_script("""
+        case "$1" in
+          show) echo '{"id":"7","title":"Tidy docs","body":"Note: we fixed a bug here once."}' ;;
+          delegate) echo 'rendered prompt' ;;
+        esac
+        """)
+
+      assert {:ok, %Item{id: "7", markers: []}} =
+               Roadmap.ingest({:id, "7"}, project_root: @sample, rmap_bin: stub)
+    end
   end
 
   describe "ingest/2 next" do
