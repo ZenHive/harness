@@ -9400,7 +9400,7 @@
       "phase": 18,
       "bundle": "judgment-collapse",
       "milestone": "v0_13",
-      "status": "pending",
+      "status": "in_progress",
       "title": "AgentKPI: attribute review_stuck to the reviewer, not the implementer; track per-reviewer verdict-write reliability",
       "scores": {
         "d": 3,
@@ -9436,6 +9436,7 @@
       ],
       "body": "## Observation (the muster, 2026-06-05)\nAcross 10 persisted review_stuck records (reviewer exited without writing `.harness/review.json`): Cursor 6 / Claude 3 / Pi 1 by reviewer adapter. This is NOT a Cursor bug — Cursor also wrote 38 successful verdicts (it is the most-dispatched reviewer); its 6 are a base-rate-of-use artifact. The failure is cross-family: any reviewer sometimes ends its turn without the mandatory final file write. It correlates with large implementer diffs / long review durations (task 64 = a 21,583-line implementer diff; stuck reviews span 376-1006s).\n\n## The two KPI defects (both confirmed in agent_kpi.ex)\n1. IMPLEMENTER penalized for a REVIEWER flake. `agent_kpi.ex:119` sets `passes = verdict == :approve` and `:124` computes `success_rate = passes / run_count`. A review_stuck run has `verdict == nil`, so it sits in the implementer's denominator as a non-pass — e.g. codex (exited 0, real diff) is debited because Cursor wrote no artifact. Since CapabilityScore/routing consume these rates, the distortion mis-routes future dispatch.\n2. REVIEWER reliability invisible. The per-reviewer ledger (`agent_kpi.ex:178`) only counts records whose `verdict in [:approve, :reject]`. review_stuck (verdict nil) is excluded entirely, so \"did this reviewer write a verdict at all?\" is untracked — exactly the signal needed to prefer reliable reviewers.\n\n## Why this belongs in the KPI (mantra check)\nreview_stuck is a COUNTED FACT — `reason == {:review_stuck, _}`, already persisted on every LogRecord, keyed by `reviewer_adapter`. Rolling it up read-only and fixing attribution (reviewer fact, not implementer fault) is counting + aggregation, NOT judgment. Do not add a classifier, regex, or \"is this the reviewer's fault\" heuristic — the `reason` field already states the fact; the task only counts and attributes it.\n\n## Approach sketch (non-binding)\n- AgentKPI: in the per-agent rollup, partition records so review_stuck is not a non-pass against the implementer (exclude from denominator or report as a separate `reviewer_flaked` count).\n- AgentKPI: extend the per-reviewer rollup to count review_stuck (verdict nil + reason review_stuck) as a `no_verdict_rate` alongside `rejection_rate`.\n- Surface in /harness/kpi + MCP KPI tool.\n\nDiscovered while driving the autocron onchain batch; 6 of the recent failures were review_stuck. Related (separate) follow-ups noted in out_of_scope.\n",
       "created_at": "2026-06-05",
+      "started_at": "2026-06-05",
       "scored_at": "2026-06-05",
       "cross_repo": []
     },
