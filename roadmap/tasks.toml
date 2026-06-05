@@ -6296,7 +6296,7 @@ scored_at = "2026-06-05"
 id = "209"
 phase = 17
 bundle = "settings-pq"
-status = "pending"
+status = "done"
 title = "Oban Lifeline plugin — auto-rescue orphaned executing landing/audit jobs"
 scores = { d = 2, b = 6, u = 6 }
 acceptance_criteria = ["Oban.Plugins.Lifeline added to the Harness.Oban plugins list with a rescue_after window (suggest 30 min, > the longest legitimate land/audit) so jobs orphaned in executing (worker died mid-run) are moved back to available and retried.", "A test asserts an executing job older than rescue_after is rescued to available, and a freshly-executing job is not.", "Doc note in Application explaining why Lifeline is needed: open-source Oban does not rescue executing-orphans; only Pruner was configured, so a worker crash mid-land stranded the job forever (observed: landing job 294 / onchain task 41 stuck executing 25+ min)."]
@@ -6359,7 +6359,7 @@ scored_at = "2026-06-05"
 id = "212"
 phase = 17
 bundle = "settings-pq"
-status = "in_progress"
+status = "pending"
 title = "Retire ResultStore.File + Chat.Store.File — Postgres-only, ephemeral when repo_enabled:false"
 scores = { d = 4, b = 5, u = 5 }
 acceptance_criteria = ["ResultStore and Chat.Store select the Postgres backend when repo_enabled:true and a no-op/in-memory ephemeral backend when false; the File backends (ResultStore.File, Chat.Store.File) are deleted.", "One-time first-boot import of existing ~/.harness/results and ~/.harness/chats term data into Postgres so KPI history and chat sessions are preserved.", "AgentKPI / CapabilityScore rollups read identical data post-migration (no KPI regression).", "Ephemeral mode surfaced to the operator via the shared flash (Task 210) — same banner that covers ephemeral settings.", "Tests: result record + chat session survive restart under :true; ephemeral under :false; legacy import populates from seeded term files."]
@@ -6641,7 +6641,7 @@ id = "228"
 phase = 19
 bundle = "self-heal"
 milestone = "v0_14"
-status = "in_progress"
+status = "pending"
 title = "Reviewer-stage mechanical fallbacks: re-prompt on malformed review.json + rotate reviewer on timeout"
 scores = { d = 2, b = 4, u = 4 }
 acceptance_criteria = ["Malformed .harness/review.json is routed through the SAME re-prompt path that missing review.json already uses (today missing is re-prompted, malformed hard-fails with {:review_stuck,_}) — generalizing Task 203, a mechanical re-run, not a new AI seam.", "On reviewer spawn/idle timeout, rotate to the next eligible cross-family reviewer (must stay cross-family from the implementer) before settling failed — mechanical reviewer rotation, covers plan gap 6.", "Both fallbacks are bounded (a finite re-prompt / rotation count) and witnessed as raw facts on the run record; neither inspects content to judge recoverability.", "Tests: a malformed verdict re-prompts and then succeeds; an exhausted re-prompt still fails honestly; a reviewer timeout rotates to a different cross-family reviewer."]
@@ -6694,7 +6694,7 @@ id = "231"
 phase = 18
 bundle = "judgment-collapse"
 milestone = "v0_13"
-status = "in_progress"
+status = "pending"
 title = "AgentKPI: attribute review_stuck to the reviewer, not the implementer; track per-reviewer verdict-write reliability"
 scores = { d = 3, b = 6, u = 6 }
 acceptance_criteria = ["AgentKPI exposes a per-reviewer-adapter verdict-write reliability metric: review_stuck count over total reviews that reviewer gated, computed purely from persisted LogRecord fields (reason == {:review_stuck, _} keyed by reviewer_adapter). No new judgment branch/regex/classifier — it only counts a fact already on the record.", "A review_stuck run no longer debits the IMPLEMENTER's success_rate: it is excluded from (or counted separately in) the implementer's run_count denominator, because the implementer exited fine and the REVIEWER produced no artifact. Attribution is keyed mechanically on `reason`, not inferred.", "The per-reviewer ledger (reviewer_rejection rollup) is extended to surface no-verdict/review_stuck failures alongside rejections — currently it ignores them (only verdict in [:approve,:reject] is counted).", "Tests cover: reviewer verdict-write-reliability math; review_stuck excluded from implementer success denominator; review_stuck included in the reviewer reliability rollup. Use NEVER-HIDE-FAILURES assertions (flunk on unexpected), not assert-true-on-any-outcome.", "The new reviewer-reliability signal is surfaced wherever AgentKPI is already surfaced (the /harness/kpi dashboard LiveView and the MCP KPI tool), consistent with existing presentation — no net-new design surface."]

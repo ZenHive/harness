@@ -8579,7 +8579,7 @@
       "id": "209",
       "phase": 17,
       "bundle": "settings-pq",
-      "status": "pending",
+      "status": "done",
       "title": "Oban Lifeline plugin — auto-rescue orphaned executing landing/audit jobs",
       "scores": {
         "d": 2,
@@ -8713,7 +8713,7 @@
       "id": "212",
       "phase": 17,
       "bundle": "settings-pq",
-      "status": "in_progress",
+      "status": "pending",
       "title": "Retire ResultStore.File + Chat.Store.File — Postgres-only, ephemeral when repo_enabled:false",
       "scores": {
         "d": 4,
@@ -9315,7 +9315,7 @@
       "phase": 19,
       "bundle": "self-heal",
       "milestone": "v0_14",
-      "status": "in_progress",
+      "status": "pending",
       "title": "Reviewer-stage mechanical fallbacks: re-prompt on malformed review.json + rotate reviewer on timeout",
       "scores": {
         "d": 2,
@@ -9438,7 +9438,7 @@
       "phase": 18,
       "bundle": "judgment-collapse",
       "milestone": "v0_13",
-      "status": "in_progress",
+      "status": "pending",
       "title": "AgentKPI: attribute review_stuck to the reviewer, not the implementer; track per-reviewer verdict-write reliability",
       "scores": {
         "d": 3,
