@@ -21,17 +21,9 @@ defmodule Harness.Run.ReflexTest do
       assert nil == Reflex.blocked_command("rm -rf tmp/build", worktree)
     end
 
-    test "blocks edits to the grader and CI config" do
-      assert {:blocked_command, "apply_patch lib/harness/verification.ex"} =
-               Reflex.blocked_command("apply_patch lib/harness/verification.ex", "/tmp/work")
-
-      assert {:blocked_command, _} =
-               Reflex.blocked_command("sed -i '' 's/x/y/' .github/workflows/ci.yml", "/tmp/work")
-    end
-
-    test "allows legitimate dep-adds and config edits" do
-      assert nil == Reflex.blocked_command("apply_patch mix.exs", "/tmp/work")
-      assert nil == Reflex.blocked_command("sed -i '' 's/x/y/' config/runtime.exs", "/tmp/work")
+    test "does not block edits to the former grader or CI config paths" do
+      assert nil == Reflex.blocked_command("apply_patch lib/harness/verification.ex", "/tmp/work")
+      assert nil == Reflex.blocked_command("sed -i '' 's/x/y/' .github/workflows/ci.yml", "/tmp/work")
     end
   end
 

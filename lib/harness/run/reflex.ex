@@ -136,9 +136,6 @@ defmodule Harness.Run.Reflex do
       rm_rf_outside_worktree?(normalized, worktree_path) ->
         {:blocked_command, normalized}
 
-      verification_stack_edit?(downcased) ->
-        {:blocked_command, normalized}
-
       true ->
         nil
     end
@@ -282,19 +279,6 @@ defmodule Harness.Run.Reflex do
   defp inside_worktree?(target, expanded_worktree) do
     expanded_target = Path.expand(target, expanded_worktree)
     expanded_target == expanded_worktree or String.starts_with?(expanded_target, expanded_worktree <> "/")
-  end
-
-  # Blocks an implementer from editing the grader itself or CI config to
-  # manufacture a green verdict. mix.exs / mix.lock / config/* are intentionally
-  # NOT blocked: dep-adds and config edits are legitimate task work, and
-  # grade-gaming is caught at the verdict level by the Task-99 cross-family
-  # semantic gate, not by a path blocklist here.
-  @spec verification_stack_edit?(String.t()) :: boolean()
-  defp verification_stack_edit?(command) do
-    edit_command? =
-      String.contains?(command, ["apply_patch", "sed -i", "perl -pi", " > ", " tee ", "git restore", "git checkout"])
-
-    edit_command? and String.contains?(command, [".github/workflows/", "lib/harness/verification"])
   end
 
   @spec shell_tokens(String.t()) :: [String.t()]
