@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 204 — Dashboard Resume + Re-land buttons: recover failed runs & blocked land-trains, Task 205 — Verify + declare auth_env_scrub for Cursor/Grok/Pi/Antigravity adapters, Task 206 — Scrub provider auth API keys from spawned agent CLIs (subscription billing), Task 207 — Configurable default dispatch agent (unassigned tasks → codex, not claude) on 2026-06-05
 
-**Up next:** Task 219 — Delete reflex.ex verification_stack_edit? grade-gaming blocklist (dead path + reviewer-owned judgment) [D:2/B:3/U:3 → Eff:1.5] 🚀
+**Up next:** Task 221 — Extract + harden git non-fast-forward detection (dedupe lander/durable, prefer plumbing over English match) [D:2/B:3/U:3 → Eff:1.5] 🚀
 <!-- FOCUS:END -->
 
 ---

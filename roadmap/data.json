@@ -8973,7 +8973,7 @@
       "phase": 18,
       "bundle": "judgment-collapse",
       "milestone": "v0_13",
-      "status": "pending",
+      "status": "done",
       "title": "Delete reflex.ex verification_stack_edit? grade-gaming blocklist (dead path + reviewer-owned judgment)",
       "scores": {
         "d": 2,
@@ -8996,9 +8996,14 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "6e96cf500feb4415d59d12af41c2ae91400ba4b9",
       "body": "reflex.ex:292-298 halts a run if it sees an edit command touching .github/workflows/ or lib/harness/verification. Two defects: (1) lib/harness/verification was DELETED — half the guard matches a path that no longer exists; (2) 'is this edit an attempt to cheat the grader?' is intent = the reviewer's judgment. The function's OWN comment (lines 287-291) says grade-gaming 'is caught at the verdict level by the cross-family semantic gate, not by a path blocklist here' — while the blocklist does exactly that. Delete it. A blocklist guessing intent is the mantra's anti-pattern in miniature.",
       "created_at": "2026-06-05",
+      "done_at": "2026-06-05",
       "scored_at": "2026-06-05",
+      "implemented": "Landed by claude via merge-train; reviewer-approved (run run-1780653573555-815418eb, 6e96cf500feb4415d59d12af41c2ae91400ba4b9).",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     },
     {
