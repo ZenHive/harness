@@ -69,6 +69,20 @@ defmodule Harness.ResultStore.PostgresCodecTest do
   end
 
   describe "jsonb term codec" do
+    test "reviewer fallback counters round-trip as raw run facts" do
+      record =
+        ResultStoreContract.log_record(
+          run_id: "reviewer-fallback-counts",
+          reviewer_reprompt_count: 1,
+          reviewer_rotation_count: 2
+        )
+
+      decoded = roundtrip(record)
+
+      assert decoded.reviewer_reprompt_count == 1
+      assert decoded.reviewer_rotation_count == 2
+    end
+
     test "tuple reason round-trips via the $tuple marker" do
       reason = {:agent_spawn_failed, :enoent}
 

@@ -21,6 +21,8 @@ defmodule Harness.ResultStore.Schema.RunRecord do
     field :reviewer_diff_size, :integer
     field :agent_exit_status, :integer
     field :review_iterations, :integer
+    field :reviewer_reprompt_count, :integer
+    field :reviewer_rotation_count, :integer
     field :reviewer_adapter, :string
     field :review_report, :binary
     field :reviewer_outcome_kind, :string
@@ -66,6 +68,8 @@ defmodule Harness.ResultStore.Schema.RunRecord do
       :reviewer_diff_size,
       :agent_exit_status,
       :review_iterations,
+      :reviewer_reprompt_count,
+      :reviewer_rotation_count,
       :reviewer_adapter,
       :review_report,
       :reviewer_outcome_kind,

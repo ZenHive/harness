@@ -59,6 +59,8 @@ defmodule Harness.ResultStore.PostgresTest do
           agent_diff_size: 12,
           reviewer_diff_size: 30,
           review_iterations: 1,
+          reviewer_reprompt_count: 1,
+          reviewer_rotation_count: 2,
           reviewer_adapter: Claude,
           review_report: "not salvageable",
           review_ratings: %{"code_quality" => 2},
@@ -101,6 +103,8 @@ defmodule Harness.ResultStore.PostgresTest do
       assert rec.agent_diff_size == 12
       assert rec.reviewer_diff_size == 30
       assert rec.review_iterations == 1
+      assert rec.reviewer_reprompt_count == 1
+      assert rec.reviewer_rotation_count == 2
       assert rec.reviewer_adapter == Claude
       assert rec.review_report == "not salvageable"
       assert rec.review_ratings == %{"code_quality" => 2}

@@ -81,6 +81,16 @@ defmodule Harness.ResultStore.Postgres do
               "GREATEST(COALESCE(EXCLUDED.review_iterations, 0), COALESCE(?, 0))",
               r.review_iterations
             ),
+          reviewer_reprompt_count:
+            fragment(
+              "GREATEST(COALESCE(EXCLUDED.reviewer_reprompt_count, 0), COALESCE(?, 0))",
+              r.reviewer_reprompt_count
+            ),
+          reviewer_rotation_count:
+            fragment(
+              "GREATEST(COALESCE(EXCLUDED.reviewer_rotation_count, 0), COALESCE(?, 0))",
+              r.reviewer_rotation_count
+            ),
           reviewer_adapter: fragment("COALESCE(EXCLUDED.reviewer_adapter, ?)", r.reviewer_adapter),
           review_report: fragment("COALESCE(EXCLUDED.review_report, ?)", r.review_report),
           reviewer_outcome_kind: fragment("COALESCE(EXCLUDED.reviewer_outcome_kind, ?)", r.reviewer_outcome_kind),
@@ -332,6 +342,8 @@ defmodule Harness.ResultStore.Postgres do
         reviewer_diff_size: r.reviewer_diff_size,
         agent_exit_status: r.agent_exit_status,
         review_iterations: r.review_iterations,
+        reviewer_reprompt_count: r.reviewer_reprompt_count,
+        reviewer_rotation_count: r.reviewer_rotation_count,
         reviewer_adapter: r.reviewer_adapter,
         review_report: r.review_report,
         reviewer_outcome_kind: r.reviewer_outcome_kind,
@@ -507,6 +519,8 @@ defmodule Harness.ResultStore.Postgres do
       reviewer_diff_size: r.reviewer_diff_size,
       agent_exit_status: r.agent_exit_status,
       review_iterations: r.review_iterations,
+      reviewer_reprompt_count: r.reviewer_reprompt_count,
+      reviewer_rotation_count: r.reviewer_rotation_count,
       reviewer_adapter: module_or_string(r.reviewer_adapter),
       review_report: r.review_report,
       reviewer_outcome_kind: kind_to_string(r.reviewer_outcome_kind),
@@ -544,6 +558,8 @@ defmodule Harness.ResultStore.Postgres do
       agent_diff_size: row.agent_diff_size,
       reviewer_diff_size: row.reviewer_diff_size,
       review_iterations: default(row.review_iterations, 0),
+      reviewer_reprompt_count: default(row.reviewer_reprompt_count, 0),
+      reviewer_rotation_count: default(row.reviewer_rotation_count, 0),
       reviewer_adapter: string_to_module(row.reviewer_adapter),
       review_report: row.review_report,
       review_facets: decode_freeform_block(row.review_facets),

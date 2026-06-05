@@ -150,6 +150,8 @@ defmodule Harness.ResultStoreContract do
         agent_outcome_kind: :exited,
         reviewer_diff_size: 12,
         review_iterations: 1,
+        reviewer_reprompt_count: 1,
+        reviewer_rotation_count: 2,
         reviewer_adapter: Codex,
         review_report: "fixed a credo nit inline; approving",
         review_facets: %{"language" => "elixir", "surface" => "otp", "archetype" => "feature"},
@@ -172,6 +174,8 @@ defmodule Harness.ResultStoreContract do
     assert rf.agent_outcome_kind == :exited
     assert rf.reviewer_diff_size == 12
     assert rf.review_iterations == 1
+    assert rf.reviewer_reprompt_count == 1
+    assert rf.reviewer_rotation_count == 2
     assert rf.reviewer_adapter == Codex
     assert rf.review_report == "fixed a credo nit inline; approving"
     # facets (routing KEY) + skills (routing VALUE) round-trip verbatim, including
