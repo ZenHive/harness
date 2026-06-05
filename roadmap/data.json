@@ -8702,7 +8702,7 @@
       "id": "212",
       "phase": 17,
       "bundle": "settings-pq",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Retire ResultStore.File + Chat.Store.File — Postgres-only, ephemeral when repo_enabled:false",
       "scores": {
         "d": 4,
@@ -8742,6 +8742,7 @@
       ],
       "body": "ResultStore (Task 137) and Chat.Store already have Postgres backends; the File backends are only the repo_enabled:false fallback and the last high-volume TermCodec consumers besides audit. Commit to one substrate: Postgres when repo_enabled, ephemeral (no-op) otherwise, surfaced via the ephemeral flash (Task 210). Drop the File backends after a one-time import. Larger than the settings move because of KPI history + chat session preservation, so it is its own task.",
       "created_at": "2026-06-05",
+      "started_at": "2026-06-05",
       "scored_at": "2026-06-05",
       "cross_repo": []
     },
