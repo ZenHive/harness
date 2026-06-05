@@ -289,6 +289,20 @@ defmodule Harness.RunTest do
       assert result.reviewer_reprompt_count == 1
     end
 
+    test "the re-prompt count is witnessed as a raw fact on the persisted run record" do
+      store = file_store()
+
+      {run_id, pid} =
+        start(
+          reviewer_adapter_opts: [command: {:review_malformed_then, "approve"}],
+          result_store: store
+        )
+
+      assert %Result{state: :done, reviewer_reprompt_count: 1} = await_result(run_id, pid)
+      assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: run_id)
+      assert record.reviewer_reprompt_count == 1
+    end
+
     test "the missing-verdict re-prompt is bounded to exactly one retry (no loop)" do
       result = run(reviewer_adapter_opts: [command: {:review_count_then, :miss}])
 
