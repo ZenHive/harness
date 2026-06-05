@@ -19,8 +19,10 @@ config :harness, :projects, [
     # The cron poller dispatches the whole `rmap ready --dispatchable` batch each
     # tick; this caps how many of those runs the `project_harness` queue executes
     # concurrently (the rest sit `available` and start as slots free). Without it
-    # the queue defaults to limit 1 and the batch serializes.
-    concurrency_cap: 10
+    # the queue defaults to limit 1 and the batch serializes. Kept low (3): a wide
+    # batch off one `development` snapshot causes stale-base rebase divergence +
+    # a shared-reviewer quota cliff; <=3 keeps the base fresh between lands.
+    concurrency_cap: 3
   ]
 ]
 
