@@ -13,7 +13,8 @@ defmodule Harness.PipelineE2ETest do
   (`:oban_insert`) and both the implementer and the reviewer are
   `Harness.FakeAdapter` doubles — but everything else is real. Real git repos
   with a bare origin, real worktrees, a real `.harness/review.json` verdict
-  artifact, and real rmap against a throwaway fixture-roadmap copy.
+  artifact, and real rmap against a fixture roadmap seeded on `origin/main`
+  (durable writeback requires `roadmap/tasks.toml` on the target branch).
 
   `async: false` — registers a project in the global `ProjectRegistry` and
   mutates `:harness` app env seams.
@@ -51,20 +52,11 @@ defmodule Harness.PipelineE2ETest do
   setup %{tmp_dir: tmp_dir} do
     # Real project repo + bare origin, so the lander's ff-push is assertable.
     %{origin: origin, repo: repo} = GitFixture.init_with_origin()
-
-    # Roadmap copy OUTSIDE the project repo: rmap writebacks (in_progress, done)
-    # mutate tasks.toml, and a copy inside the checkout would trip the run's
-    # checkout-pollution guard.
-    roadmap_root = Path.join(tmp_dir, "roadmap-copy")
-    File.mkdir_p!(roadmap_root)
-    File.cp_r!(@sample_roadmap, roadmap_root)
-    # rmap mutators (status writebacks) re-render ROADMAP.md and error if it is
-    # missing; the read-only fixture ships without one, so give the copy a stub.
-    File.write!(Path.join(roadmap_root, "ROADMAP.md"), "# Sample\n\n<!-- TASKS:BEGIN -->\n<!-- TASKS:END -->\n")
+    seed_roadmap!(repo)
 
     install_seams(tmp_dir)
 
-    %{origin: origin, repo: repo, roadmap_root: roadmap_root, pre_land_tip: origin_tip(origin)}
+    %{origin: origin, repo: repo, roadmap_root: repo}
   end
 
   describe "approve path — reviewer approves untouched work" do
@@ -99,13 +91,17 @@ defmodule Harness.PipelineE2ETest do
       # FakeAdapter has no agent-family registration → reviewer rides as nil.
       assert Map.fetch!(landing_args, "reviewer") == nil
 
+      pre_land_tip = origin_tip(ctx.origin)
+
       # ── land: rebase → ff-push (no re-verification — the reviewer WAS the gate) ──
       assert :ok = LanderWorker.perform(%Oban.Job{args: landing_args})
 
       # origin/<target> advanced to a tip carrying the implementer's deliverable.
-      landed_sha = origin_tip(ctx.origin)
-      refute landed_sha == ctx.pre_land_tip
-      assert origin_tree(ctx.origin, landed_sha) =~ "agent_output.txt"
+      refute origin_tip(ctx.origin) == pre_land_tip
+
+      task = show_task(ctx.roadmap_root, "2")
+      shipped_sha = task["shipped_in"]
+      assert origin_tree(ctx.origin, shipped_sha) =~ "agent_output.txt"
 
       # The successful push enqueued one post-merge audit job with the pre-land
       # base, so the audit AI can compute the unaudited range mechanically.
@@ -115,14 +111,12 @@ defmodule Harness.PipelineE2ETest do
 
       audit_args = Ecto.Changeset.get_field(audit, :args)
       assert audit_args["project_name"] == project.name
-      assert audit_args["base_sha"] == ctx.pre_land_tip
+      assert audit_args["base_sha"] == pre_land_tip
       assert audit_args["implementer"] == "claude"
 
-      # rmap writeback: done + verified + shipped_in == the landed SHA.
-      task = show_task(ctx.roadmap_root, "2")
+      # rmap writeback: done + verified + shipped_in == the landed code SHA.
       assert task["status"] == "done"
       assert task["verified"] == true
-      assert task["shipped_in"] == landed_sha
       assert task["delivered_by"] == "claude"
 
       # The run record persisted at settle time (File store under tmp) carries
@@ -162,9 +156,9 @@ defmodule Harness.PipelineE2ETest do
 
       assert :ok = LanderWorker.perform(%Oban.Job{args: landing_args})
 
-      # The landed tip carries BOTH the implementer's churn and the reviewer's fix.
-      landed_sha = origin_tip(ctx.origin)
-      tree = origin_tree(ctx.origin, landed_sha)
+      task = show_task(ctx.roadmap_root, "2")
+      shipped_sha = task["shipped_in"]
+      tree = origin_tree(ctx.origin, shipped_sha)
       assert tree =~ "churn.txt"
       assert tree =~ "reviewer_fix.txt"
       # The verdict artifact never rides in the deliverable.
@@ -175,10 +169,9 @@ defmodule Harness.PipelineE2ETest do
       assert Ecto.Changeset.get_field(audit, :queue) == "audit"
 
       # rmap writeback lands on the reviewed run like any approved run.
-      task = show_task(ctx.roadmap_root, "2")
       assert task["status"] == "done"
       assert task["verified"] == true
-      assert task["shipped_in"] == landed_sha
+      assert shipped_sha != ""
 
       # The record's reviewer-fix diff is the "how much fixing was needed" KPI signal.
       assert {:ok, [record]} = ResultStore.list_run_records(run_id: run_id)
@@ -206,9 +199,9 @@ defmodule Harness.PipelineE2ETest do
       # cycle with information, not a dead end.
       assert show_task(ctx.roadmap_root, "2")["status"] == "pending"
 
-      # No landing job, no audit job, origin untouched.
+      # No landing job, no audit job, and no agent deliverable on origin.
       refute_receive {:oban_insert, _changeset}, 200
-      assert origin_tip(ctx.origin) == ctx.pre_land_tip
+      refute origin_tree(ctx.origin, origin_tip(ctx.origin)) =~ "agent_output.txt"
 
       # The rejection persisted with the reviewer's report for the next dispatch.
       assert {:ok, [record]} = ResultStore.list_run_records(run_id: run_id)
@@ -308,6 +301,24 @@ defmodule Harness.PipelineE2ETest do
   defp origin_tip(origin), do: origin |> GitFixture.git!(["rev-parse", "refs/heads/main"]) |> String.trim()
 
   defp origin_tree(origin, sha), do: GitFixture.git!(origin, ["ls-tree", "-r", "--name-only", sha])
+
+  defp seed_roadmap!(repo) do
+    File.cp_r!(@sample_roadmap, repo)
+
+    File.write!(
+      Path.join(repo, "ROADMAP.md"),
+      "# Sample\n\n<!-- TASKS:BEGIN -->\n<!-- TASKS:END -->\n"
+    )
+
+    tasks_path = Path.join(repo, "roadmap/tasks.toml")
+
+    assert {_, 0} =
+             System.cmd("rmap", ["render", "--tasks-path", tasks_path], stderr_to_stdout: true)
+
+    GitFixture.git!(repo, ["add", "-A"])
+    GitFixture.git!(repo, ["commit", "-q", "-m", "seed roadmap"])
+    GitFixture.git!(repo, ["push", "-q", "origin", "main"])
+  end
 
   defp show_task(roadmap_root, id) do
     assert {output, 0} = System.cmd("rmap", ["show", id, "--json"], cd: roadmap_root, stderr_to_stdout: true)
