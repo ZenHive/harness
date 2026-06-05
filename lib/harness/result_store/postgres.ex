@@ -86,6 +86,8 @@ defmodule Harness.ResultStore.Postgres do
           reviewer_outcome_kind: fragment("COALESCE(EXCLUDED.reviewer_outcome_kind, ?)", r.reviewer_outcome_kind),
           reviewer_exit_status: fragment("COALESCE(EXCLUDED.reviewer_exit_status, ?)", r.reviewer_exit_status),
           reviewer_output: fragment("COALESCE(NULLIF(EXCLUDED.reviewer_output, ''::bytea), ?)", r.reviewer_output),
+          review_facets: fragment("COALESCE(NULLIF(EXCLUDED.review_facets, '{}'::jsonb), ?)", r.review_facets),
+          review_skills: fragment("COALESCE(NULLIF(EXCLUDED.review_skills, '{}'::jsonb), ?)", r.review_skills),
           review_ratings: fragment("COALESCE(NULLIF(EXCLUDED.review_ratings, '{}'::jsonb), ?)", r.review_ratings)
         ]
       ]
@@ -313,6 +315,8 @@ defmodule Harness.ResultStore.Postgres do
         reason: r.reason,
         token_usage: r.token_usage,
         composed_inputs: r.composed_inputs,
+        review_facets: r.review_facets,
+        review_skills: r.review_skills,
         review_ratings: r.review_ratings,
         domains: r.domains,
         agent_output: type(^nil, :binary),
@@ -482,6 +486,8 @@ defmodule Harness.ResultStore.Postgres do
       reason: encode_jsonb(r.reason),
       token_usage: encode_jsonb(r.token_usage),
       composed_inputs: encode_jsonb(r.composed_inputs),
+      review_facets: encode_jsonb(r.review_facets),
+      review_skills: encode_jsonb(r.review_skills),
       review_ratings: encode_jsonb(r.review_ratings),
       domains: encode_jsonb(r.domains),
       agent_output: r.agent_output,
@@ -508,6 +514,8 @@ defmodule Harness.ResultStore.Postgres do
       review_iterations: default(row.review_iterations, 0),
       reviewer_adapter: string_to_module(row.reviewer_adapter),
       review_report: row.review_report,
+      review_facets: decode_freeform_block(row.review_facets),
+      review_skills: decode_freeform_block(row.review_skills),
       review_ratings: decode_review_ratings(row.review_ratings),
       token_usage: decode_token_usage(row.token_usage),
       composed_inputs: default(decode_jsonb(row.composed_inputs), []),
@@ -584,6 +592,15 @@ defmodule Harness.ResultStore.Postgres do
   defp decode_review_ratings(map) when is_map(map) do
     Map.new(map, fn {k, v} -> {k, decode_term(v)} end)
   end
+
+  # facets/skills are reviewer-authored, open-vocabulary JSON (Task 224): free-form
+  # string keys at every level, never a closed enum. They are stored verbatim and
+  # must read back verbatim — atomizing any key would lose fidelity (and trip the
+  # DOS.StringToAtom guard on untrusted input). jsonb already returns string-keyed
+  # maps, so the read is a straight passthrough.
+  @spec decode_freeform_block(map() | nil) :: %{optional(String.t()) => term()}
+  defp decode_freeform_block(nil), do: %{}
+  defp decode_freeform_block(map) when is_map(map), do: map
 
   @spec encode_term(term()) :: term()
   defp encode_term(nil), do: nil

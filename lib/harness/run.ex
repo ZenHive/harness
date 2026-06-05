@@ -1882,13 +1882,14 @@ defmodule Harness.Run do
     {
       "verdict": "approve" | "reject",
       "report": "<what you found, what you fixed, why you decided>",
-      "ratings": {
-        "performance": <0-10>,
-        "truthfulness": <0-10 — the implementer's self-report vs what you actually found>,
-        "code_quality": <0-10 — judgment-based; less code can be much better>,
-        "idiom": <0-10 — language/framework idiom and project-convention usage>
-      }
+      "facets": {"language": "...", "surface": "...", "archetype": "...", "difficulty": "...", "risk": "..."},
+      "skills": {"<domain or quality the diff exercised>": {"score": <0-10>, "note": "<one line>"}}
     }
+
+    `facets` characterizes what this task ACTUALLY was, read from the spec + the real diff (open
+    vocabulary). `skills` scores ONLY the domains and qualities the diff genuinely exercised (otp,
+    ecto, concurrency, error_handling, idiom, test_rigor, security, docs, truthfulness, ...) — each a
+    {"score": 0-10, "note": "..."} map, open vocabulary, no padding with zeros.
 
     Fixing is cheaper than rejecting — approve anything salvageable; reject only if nothing is.
     A missing or malformed #{Review.artifact_path()} fails this run for good.
@@ -1949,13 +1950,29 @@ defmodule Harness.Run do
     {
       "verdict": "approve" | "reject",
       "report": "<what you found, what you fixed, why you decided>",
-      "ratings": {
-        "performance": <0-10>,
-        "truthfulness": <0-10 — the implementer's self-report vs what you actually found>,
-        "code_quality": <0-10 — judgment-based; less code can be much better>,
-        "idiom": <0-10 — language/framework idiom and project-convention usage>
+      "facets": {
+        "language": "<elixir | rust | js | ...>",
+        "surface": "<otp | ecto | phoenix | liveview | cli | migration | docs | ...>",
+        "archetype": "<feature | bugfix | refactor | test | infra | ...>",
+        "difficulty": "<trivial | moderate | hard>",
+        "risk": "<low | medium | high>"
+      },
+      "skills": {
+        "<domain or quality the diff actually exercised>": {"score": <0-10>, "note": "<one line>"}
       }
     }
+
+    `facets` is GROUND TRUTH — characterize what this task ACTUALLY was from the task spec and the
+    REAL diff in front of you, not from any label it was filed under. Open vocabulary: add/rename keys
+    as the work warrants; the five above are a starting set, not a fixed schema.
+
+    `skills` is a two-axis rubric. Score ONLY the skills this diff genuinely exercised — leave the rest
+    out, never pad with zeros:
+    - programming domains touched — e.g. otp, ecto, phoenix, liveview, js, rust
+    - cross-cutting qualities shown — e.g. concurrency, error_handling, idiom, test_rigor, security,
+      docs, truthfulness (the implementer's self-report vs what you actually found)
+    Each is a {"score": 0-10, "note": "..."} map; the note is your one-line evidence for the score.
+    Open vocabulary — these are examples, not an enum.
 
     A missing or malformed #{Review.artifact_path()} fails this run.
 

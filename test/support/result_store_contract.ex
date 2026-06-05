@@ -56,6 +56,10 @@ defmodule Harness.ResultStoreContract do
     assert retrieved.state == :done
     assert retrieved.verdict == :approve
     assert retrieved.domains == []
+    # a record that omits the reviewer rubric reads back with empty-map defaults,
+    # never nil — missing-block tolerance through the store layer (Task 224).
+    assert retrieved.review_facets == %{}
+    assert retrieved.review_skills == %{}
 
     # domains roundtrip (added post-Task 116)
     rec_d = log_record(run_id: "r-domains", domains: [:otp, :oban])
@@ -148,6 +152,8 @@ defmodule Harness.ResultStoreContract do
         review_iterations: 1,
         reviewer_adapter: Codex,
         review_report: "fixed a credo nit inline; approving",
+        review_facets: %{"language" => "elixir", "surface" => "otp", "archetype" => "feature"},
+        review_skills: %{"otp" => %{"score" => 8, "note" => "clean gen_statem"}},
         review_ratings: %{"performance" => 8, "code_quality" => 7},
         reviewer_outcome_kind: :exited,
         reviewer_exit_status: 0,
@@ -164,6 +170,10 @@ defmodule Harness.ResultStoreContract do
     assert rf.review_iterations == 1
     assert rf.reviewer_adapter == Codex
     assert rf.review_report == "fixed a credo nit inline; approving"
+    # facets (routing KEY) + skills (routing VALUE) round-trip verbatim, including
+    # the nested {score, note} maps — free-form string keys preserved at every level.
+    assert rf.review_facets == %{"language" => "elixir", "surface" => "otp", "archetype" => "feature"}
+    assert rf.review_skills == %{"otp" => %{"score" => 8, "note" => "clean gen_statem"}}
     assert rf.review_ratings == %{"performance" => 8, "code_quality" => 7}
     assert rf.reviewer_outcome_kind == :exited
     assert rf.reviewer_exit_status == 0

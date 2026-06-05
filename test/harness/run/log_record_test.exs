@@ -132,6 +132,37 @@ defmodule Harness.Run.LogRecordTest do
       assert record.review_ratings == %{"performance" => 8, "code_quality" => 7}
     end
 
+    test "carries the reviewer's facets (routing KEY) and skills (routing VALUE) onto the record" do
+      review = %Review{
+        verdict: :approve,
+        report: "clean",
+        facets: %{"language" => "elixir", "surface" => "otp", "archetype" => "feature"},
+        skills: %{"otp" => %{"score" => 8, "note" => "clean gen_statem"}}
+      }
+
+      record = LogRecord.from_result(result(review: review), meta())
+
+      assert record.review_facets == %{"language" => "elixir", "surface" => "otp", "archetype" => "feature"}
+      assert record.review_skills == %{"otp" => %{"score" => 8, "note" => "clean gen_statem"}}
+    end
+
+    test "facets and skills default to empty maps when the reviewer omitted them (legacy artifact)" do
+      review = %Review{verdict: :approve, report: "ok", ratings: %{"performance" => 8}}
+
+      record = LogRecord.from_result(result(review: review), meta())
+
+      assert record.review_facets == %{}
+      assert record.review_skills == %{}
+      assert record.review_ratings == %{"performance" => 8}
+    end
+
+    test "leaves facets and skills at empty-map defaults when the run never produced a review" do
+      record = LogRecord.from_result(result(state: :failed, reason: :cancelled, review: nil), meta())
+
+      assert record.review_facets == %{}
+      assert record.review_skills == %{}
+    end
+
     test "carries a rejection verdict with the reviewer's report" do
       review = %Review{verdict: :reject, report: "nothing to salvage"}
 

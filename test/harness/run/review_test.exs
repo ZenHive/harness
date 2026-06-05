@@ -68,6 +68,64 @@ defmodule Harness.Run.ReviewTest do
     end
   end
 
+  describe "parse/1 — facets (the routing KEY)" do
+    test "the facets block rides through verbatim as a free-form string-keyed map" do
+      json =
+        ~s({"verdict": "approve", "report": "ok", "facets": ) <>
+          ~s({"language": "elixir", "surface": "otp", "archetype": "feature", "difficulty": "hard", "risk": "low"}})
+
+      assert {:ok, %Review{facets: facets}} = Review.parse(json)
+
+      assert facets == %{
+               "language" => "elixir",
+               "surface" => "otp",
+               "archetype" => "feature",
+               "difficulty" => "hard",
+               "risk" => "low"
+             }
+    end
+
+    test "facets is open-vocabulary — unknown keys are preserved, never validated against an enum" do
+      json = ~s({"verdict": "approve", "facets": {"novel_axis": "whatever", "language": "rust"}})
+
+      assert {:ok, %Review{facets: %{"novel_axis" => "whatever", "language" => "rust"}}} = Review.parse(json)
+    end
+
+    test "a missing or non-map facets block defaults to an empty map" do
+      assert {:ok, %Review{facets: %{}}} = Review.parse(~s({"verdict": "approve"}))
+      assert {:ok, %Review{facets: %{}}} = Review.parse(~s({"verdict": "reject", "facets": "n/a"}))
+    end
+  end
+
+  describe "parse/1 — skills (the routing VALUE)" do
+    test "the two-axis skills rubric rides through verbatim with nested score/note maps" do
+      json =
+        ~s({"verdict": "approve", "report": "ok", "skills": ) <>
+          ~s({"otp": {"score": 8, "note": "clean gen_statem"}, "truthfulness": {"score": 9, "note": "report matched diff"}}})
+
+      assert {:ok, %Review{skills: skills}} = Review.parse(json)
+
+      assert skills == %{
+               "otp" => %{"score" => 8, "note" => "clean gen_statem"},
+               "truthfulness" => %{"score" => 9, "note" => "report matched diff"}
+             }
+    end
+
+    test "a missing or non-map skills block defaults to an empty map" do
+      assert {:ok, %Review{skills: %{}}} = Review.parse(~s({"verdict": "approve"}))
+      assert {:ok, %Review{skills: %{}}} = Review.parse(~s({"verdict": "reject", "skills": 7}))
+    end
+
+    test "legacy ratings and the new skills block coexist for back-compat" do
+      json =
+        ~s({"verdict": "approve", "ratings": {"performance": 8}, ) <>
+          ~s("skills": {"ecto": {"score": 7, "note": "migration"}}})
+
+      assert {:ok, %Review{ratings: %{"performance" => 8}, skills: %{"ecto" => %{"score" => 7, "note" => "migration"}}}} =
+               Review.parse(json)
+    end
+  end
+
   describe "parse/1 — malformed contents" do
     test "invalid JSON is malformed with the decoder error" do
       assert {:error, {:malformed, {:invalid_json, %Jason.DecodeError{}}}} = Review.parse("not json at all")

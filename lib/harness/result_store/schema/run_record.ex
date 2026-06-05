@@ -29,6 +29,8 @@ defmodule Harness.ResultStore.Schema.RunRecord do
     field :reason, :map
     field :token_usage, :map
     field :composed_inputs, :map
+    field :review_facets, :map
+    field :review_skills, :map
     field :review_ratings, :map
     field :domains, :map
 
@@ -66,6 +68,8 @@ defmodule Harness.ResultStore.Schema.RunRecord do
       :reason,
       :token_usage,
       :composed_inputs,
+      :review_facets,
+      :review_skills,
       :review_ratings,
       :domains,
       :agent_output,

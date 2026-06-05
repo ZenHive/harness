@@ -7,13 +7,17 @@ defmodule Harness.Run.LogRecord do
   post-run analysis can reconstruct rejections, fail-overs, quota blocks, and
   agent comparison metrics without needing the original process to still exist.
 
-  ## Reviewer verdict (`verdict`, `review_report`, `review_ratings`)
+  ## Reviewer verdict (`verdict`, `review_report`, `review_facets`, `review_skills`, `review_ratings`)
 
   The reviewer AI is the gate: `verdict` stores its decision (`:approve` /
-  `:reject`, `nil` when the run never reached review), `review_report` its
-  prose, and `review_ratings` its implementer KPI scores (performance,
-  truthfulness, code quality, idiom usage, ...) — persisted verbatim as the
-  scoring input for `Harness.AgentKPI` / capability routing.
+  `:reject`, `nil` when the run never reached review) and `review_report` its
+  prose. `review_facets` is the routing KEY (open-vocabulary ground-truth
+  characterization of what the task actually was) and `review_skills` the routing
+  VALUE (two-axis domains × qualities rubric of `{score, note}` maps) — both
+  persisted verbatim as raw facts an AI synthesizes capability from later (Task
+  224). `review_ratings` is the legacy flat KPI block, kept for back-compat with
+  pre-`skills` records. All three default to `%{}` and feed downstream KPI /
+  capability routing — harness never fuses them into a number.
 
   ## First-attempt pass (`reviewer_diff_size`, `review_iterations`)
 
@@ -76,6 +80,8 @@ defmodule Harness.Run.LogRecord do
           reviewer_adapter: module() | nil,
           review_iterations: non_neg_integer(),
           review_report: String.t() | nil,
+          review_facets: %{optional(String.t()) => term()},
+          review_skills: %{optional(String.t()) => term()},
           review_ratings: %{optional(String.t()) => term()}
         }
 
@@ -114,6 +120,8 @@ defmodule Harness.Run.LogRecord do
     reviewer_adapter: nil,
     review_iterations: 0,
     review_report: nil,
+    review_facets: %{},
+    review_skills: %{},
     review_ratings: %{}
   ]
 
@@ -200,7 +208,14 @@ defmodule Harness.Run.LogRecord do
   defp put_review(record, nil), do: record
 
   defp put_review(record, %Review{} = review) do
-    %{record | verdict: review.verdict, review_report: review.report, review_ratings: review.ratings}
+    %{
+      record
+      | verdict: review.verdict,
+        review_report: review.report,
+        review_facets: review.facets,
+        review_skills: review.skills,
+        review_ratings: review.ratings
+    }
   end
 
   @spec domains_from_meta(keyword()) :: [CapabilityDomain.t()]
