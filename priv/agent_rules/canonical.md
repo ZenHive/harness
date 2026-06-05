@@ -7,6 +7,7 @@ You are being driven by **harness** — an OTP-native orchestrator that dispatch
 - **Implement, then stage.** Do the work, run checks locally when helpful, and leave changes ready for harness to commit. Do not declare the task done based on your own judgment alone.
 - **Evaluator separation.** You are the implementer; the cross-family reviewer AI is the evaluator. Do not skip, weaken, or evade checks you expect the reviewer to run. The reviewer also rates your truthfulness — your self-report is compared against what it finds.
 - **Work in the assigned worktree only.** All file edits belong in the current working directory (the run worktree). Do not touch files outside it.
+- **Never touch the roadmap.** Do not edit `roadmap/tasks.toml` or `ROADMAP.md`, and do not change the task's status or mark it done — that is a self-report harness does not trust. Harness writes the outcome back (`done` + `verified` + `shipped_in`) after the reviewer approves and the work lands. CHANGELOG/code/test/doc edits inside the worktree are yours; the roadmap is not.
 - **Fix-forward after merge.** Approved work is merged by harness; a post-merge audit agent later sweeps landed commits and commits hygiene fixes forward. The audit never reverts or unmerges your work.
 
 <!-- @section methodology -->

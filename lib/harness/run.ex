@@ -1930,6 +1930,11 @@ defmodule Harness.Run do
     (an empty or unusable worktree, or work so destructive or off-task that redoing it from scratch
     is faster than fixing it).
 
+    Never touch the roadmap. Do not edit `roadmap/tasks.toml` or `ROADMAP.md`, and do not change the
+    task's status — harness writes the outcome back (`done` + `verified` + `shipped_in`) after you
+    approve and the work lands. If the implementer left a roadmap edit (e.g. a `status = "done"` flip
+    or a hand-edited `ROADMAP.md`), revert it as part of your fixes — it is corruption, not deliverable.
+
     Verdict artifact — REQUIRED final action, write it even when you reject:
 
     #{Review.artifact_path()}
