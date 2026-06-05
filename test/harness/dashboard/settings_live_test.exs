@@ -30,6 +30,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     prior_reviewer = Application.get_env(:harness, :agent_reviewer_ineligible)
     prior_landing = Application.get_env(:harness, :landing_overrides)
     prior_run = Application.get_env(:harness, :run)
+    prior_dispatch = Application.get_env(:harness, :dispatch)
     prior_config_store = Application.get_env(:harness, :config_settings)
 
     # Isolate the Harness.Config persistence file to a throwaway root.
@@ -52,6 +53,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
       restore_env(:agent_reviewer_ineligible, prior_reviewer)
       restore_env(:landing_overrides, prior_landing)
       restore_env(:run, prior_run)
+      restore_env(:dispatch, prior_dispatch)
       restore_env(:config_settings, prior_config_store)
       File.rm_rf(config_root)
     end)
@@ -256,6 +258,42 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     assert html =~ "Unknown or invalid config value."
     assert Config.get({:run, :lifetime_timeout}) == 5_400_000
+  end
+
+  test "renders the Dispatch default card seeded with the configured agent (Task 207)", %{conn: conn} do
+    Application.put_env(:harness, :dispatch, default_agent: :codex)
+
+    {:ok, _view, html} = live(conn, "/harness/settings")
+
+    assert html =~ "Dispatch default"
+    assert html =~ "Unassigned →"
+  end
+
+  test "choosing a dispatch default persists through Harness.Config and confirms (Task 207)", %{conn: conn} do
+    Application.put_env(:harness, :dispatch, default_agent: :codex)
+
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("#dispatch-default-form", %{agent: "cursor"})
+      |> render_submit()
+
+    assert html =~ "Default dispatch agent set to cursor."
+    assert Config.get({:dispatch, :default_agent}) == :cursor
+  end
+
+  test "an unknown dispatch agent is rejected with an error notice (Task 207)", %{conn: conn} do
+    Application.put_env(:harness, :dispatch, default_agent: :codex)
+
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    # The select only offers valid agents, so push the event directly to exercise
+    # the handler's rejection of a crafted out-of-set value.
+    html = render_hook(view, "set_default_agent", %{"agent" => "droid"})
+
+    assert html =~ "Unknown dispatch agent."
+    assert Config.get({:dispatch, :default_agent}) == :codex
   end
 
   test "renders the Landing card with a per-project policy control", %{conn: conn, project: project} do
