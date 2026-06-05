@@ -206,6 +206,12 @@ defmodule Harness.ResultStore.Postgres do
         pass_count: r.run_id |> count() |> filter(r.verdict == "approve"),
         first_attempt_pass_count:
           r.run_id |> count() |> filter(r.verdict == "approve" and coalesce(r.review_iterations, 0) == 0),
+        # review_stuck runs: the reason jsonb roundtrips a tuple as
+        # {"$tuple": [{"$atom": "review_stuck"}, "..."]} (see encode_term/1).
+        reviewer_flaked_count:
+          r.run_id
+          |> count()
+          |> filter(fragment("(?->'$tuple'->0->>'$atom') = 'review_stuck'", r.reason)),
         durations: fragment("array_agg(? ORDER BY ?)", r.duration_ms, r.duration_ms),
         review_iterations_mean: avg(coalesce(r.review_iterations, 0)),
         input_mean:
@@ -246,14 +252,19 @@ defmodule Harness.ResultStore.Postgres do
     Map.new(rows, fn row ->
       run_count = row.run_count
       pass_count = row.pass_count || 0
+      reviewer_flaked = row.reviewer_flaked_count || 0
+      # Mirror AgentKPI.summarize/1: a review_stuck run is the reviewer's failure,
+      # excluded from the implementer's success denominator (never run_count).
+      attributable_count = run_count - reviewer_flaked
 
       cost_to_green =
         if row.pass_count_for_cost > 0, do: float_or_nil(row.cost_to_green_mean)
 
       kpi = %{
         run_count: run_count,
-        success_rate: pass_count / run_count,
-        first_attempt_pass_rate: (row.first_attempt_pass_count || 0) / run_count,
+        reviewer_flaked: reviewer_flaked,
+        success_rate: safe_rate(pass_count, attributable_count),
+        first_attempt_pass_rate: safe_rate(row.first_attempt_pass_count || 0, attributable_count),
         duration_ms: AgentKPI.duration_summary(row.durations || []),
         tokens: %{
           input: float_or_zero(row.input_mean),
@@ -268,6 +279,11 @@ defmodule Harness.ResultStore.Postgres do
       {string_to_atom(row.agent), kpi}
     end)
   end
+
+  # Zero attributable runs (every run reviewer-flaked) → 0.0, never a div-by-zero.
+  @spec safe_rate(non_neg_integer(), non_neg_integer()) :: float()
+  defp safe_rate(_count, 0), do: 0.0
+  defp safe_rate(count, total), do: count / total
 
   @spec float_or_zero(term()) :: float()
   defp float_or_zero(nil), do: 0.0

@@ -67,6 +67,52 @@ defmodule Harness.CapabilityScoreTest do
     assert persisted == codex
   end
 
+  test "a review_stuck run is excluded from the agent's success denominator", %{store: store} do
+    comparisons = [
+      comparison("bench.otp.latch", [
+        entry(Codex, "codex-1", :approve, reviewer_diff_size: 0, token_usage: tokens(100, 20)),
+        # The reviewer wrote no verdict for Claude's run — its failure, not Claude's.
+        entry(Claude, "claude-1", nil, reviewer_diff_size: 0, reason: {:review_stuck, "no artifact"})
+      ]),
+      comparison("bench.otp.supervised_counter", [
+        entry(Codex, "codex-2", :approve, reviewer_diff_size: 0, token_usage: tokens(100, 20)),
+        entry(Claude, "claude-2", :approve, reviewer_diff_size: 0, token_usage: tokens(100, 20))
+      ])
+    ]
+
+    assert {:ok, scores} =
+             CapabilityScore.score_domain(comparisons, :otp,
+               corpus_version: "otp-v1",
+               scored_at: @scored_at,
+               result_store: store
+             )
+
+    claude = Enum.find(scores, &(&1.agent == :claude))
+
+    # Two runs total, one reviewer-flaked: 1 approve over 1 attributable run = 1.0,
+    # NOT 1/2 — the flake must not drag the implementer's routing score down.
+    assert claude.run_count == 2
+    assert claude.success_rate == 1.0
+  end
+
+  test "an agent whose only run was reviewer-flaked scores 0.0 success without crashing", %{store: store} do
+    comparisons = [
+      comparison("bench.otp.latch", [
+        entry(Claude, "claude-1", nil, reviewer_diff_size: 0, reason: {:review_stuck, "no artifact"})
+      ])
+    ]
+
+    assert {:ok, [claude]} =
+             CapabilityScore.score_domain(comparisons, :otp,
+               corpus_version: "otp-v1",
+               scored_at: @scored_at,
+               result_store: store
+             )
+
+    assert claude.run_count == 1
+    assert claude.success_rate == 0.0
+  end
+
   test "means the reviewer ratings per agent and lets them break a same-success tie", %{store: store} do
     # Both agents pass every run with identical cost and zero reviewer fixes, so
     # success_rate and the cost/fix tiebreakers are equal — only the reviewer's
@@ -303,10 +349,10 @@ defmodule Harness.CapabilityScoreTest do
 
   defp entry(adapter, run_id, verdict, opts) do
     {state, reason} =
-      if verdict == :approve do
-        {:done, :approved}
-      else
-        {:failed, {:review_rejected, "rejected"}}
+      cond do
+        reason = Keyword.get(opts, :reason) -> {:failed, reason}
+        verdict == :approve -> {:done, :approved}
+        true -> {:failed, {:review_rejected, "rejected"}}
       end
 
     %Entry{

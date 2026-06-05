@@ -13,6 +13,11 @@ defmodule Harness.CapabilityScore do
 
       success_rate * 1000 + bounded_tiebreaker
 
+  `success_rate` is over the *attributable* runs only: a `{:review_stuck, _}`
+  run (the reviewer wrote no verdict) is the reviewer's failure, not the
+  implementer's, so it is excluded from the denominator rather than scored as a
+  non-pass that would mis-route future dispatch.
+
   The bounded tiebreaker is less than one point and combines the reviewer's
   mean ratings (reviewer-judged quality), token `cost_to_green`, and the mean
   reviewer fix-diff size (how much fixing the reviewer had to do). Because
@@ -64,6 +69,7 @@ defmodule Harness.CapabilityScore do
             adapter: module(),
             agent: atom() | module(),
             verdict: Review.verdict() | nil,
+            reason: term(),
             reviewer_diff_size: non_neg_integer() | nil,
             duration_ms: non_neg_integer() | nil,
             token_usage: TokenUsage.t(),
@@ -83,6 +89,8 @@ defmodule Harness.CapabilityScore do
       :token_usage,
       :cost_tokens
     ]
+    # `reason` defaults to nil so a metric persisted before the field roundtrips
+    # (read back as a non-stuck run, never miscounted as a reviewer flake).
     defstruct [
       :batch_id,
       :task_id,
@@ -94,6 +102,7 @@ defmodule Harness.CapabilityScore do
       :duration_ms,
       :token_usage,
       :cost_tokens,
+      reason: nil,
       ratings: %{}
     ]
   end
@@ -241,6 +250,7 @@ defmodule Harness.CapabilityScore do
       adapter: entry.adapter,
       agent: agent_for_adapter(entry.adapter),
       verdict: entry.verdict,
+      reason: entry.reason,
       reviewer_diff_size: entry.reviewer_diff_size,
       duration_ms: entry.duration_ms,
       token_usage: entry.token_usage,
@@ -269,8 +279,12 @@ defmodule Harness.CapabilityScore do
   @spec summarize([RawMetric.t()], atom() | module(), CapabilityDomain.t(), String.t(), DateTime.t()) :: t()
   defp summarize(metrics, agent, domain, corpus_version, scored_at) do
     run_count = length(metrics)
+    # A review_stuck run is the reviewer's failure, not the implementer's — keep
+    # it out of the routing success denominator so a reviewer flake never
+    # mis-routes future dispatch (Task 231). Keyed mechanically on `reason`.
+    attributable_count = run_count - Enum.count(metrics, &review_stuck?/1)
     successes = Enum.filter(metrics, &(&1.verdict == :approve))
-    success_rate = rate(length(successes), run_count)
+    success_rate = rate(length(successes), attributable_count)
     cost_to_green = cost_to_green(successes)
     mean_reviewer_diff_size = mean(Enum.map(metrics, &(&1.reviewer_diff_size || 0)), run_count)
     mean_ratings = AgentKPI.rating_means(Enum.map(metrics, &entry_ratings/1))
@@ -537,7 +551,16 @@ defmodule Harness.CapabilityScore do
   defp cost_to_green([]), do: nil
   defp cost_to_green(successes), do: mean(Enum.map(successes, & &1.cost_tokens), length(successes))
 
-  @spec rate(non_neg_integer(), pos_integer()) :: float()
+  # A run the reviewer ended without writing a verdict — keyed on the metric's
+  # persisted `reason`, not inferred. nil/legacy reasons never match.
+  @spec review_stuck?(RawMetric.t()) :: boolean()
+  defp review_stuck?(%RawMetric{reason: reason}), do: match?({:review_stuck, _report}, reason)
+
+  # A zero denominator means every measured run was reviewer-flaked: no
+  # attributable run, so the cell scores 0.0 success (composite then sorts on the
+  # cost/fix tiebreakers) rather than dividing by zero.
+  @spec rate(non_neg_integer(), non_neg_integer()) :: float()
+  defp rate(_count, 0), do: 0.0
   defp rate(count, total) when total > 0, do: count / total
 
   @spec mean([number()], pos_integer()) :: float()

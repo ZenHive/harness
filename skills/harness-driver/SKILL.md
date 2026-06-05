@@ -374,7 +374,7 @@ When `Harness.Chat.Claude` spawns its backing `claude -p`, it writes exactly thi
 - **Observe / control a live run by `run_id`:** `dispatch-status`, `dispatch-transcript`, `dispatch-transcript_events`, `dispatch-cancel`, `dispatch-hold`, `dispatch-steer`, `dispatch-resume`.
 - **Recover a settled run by `run_id`:** `dispatch-resume_failed` (re-dispatch a `:failed` task off its retained branch + failure report; same-agent or `escalate`), `dispatch-reland` (re-enqueue landing for a land-capped `blocked` task, zero tokens).
 - **Settled-run detail:** `dispatch-verdict_detail` (the reviewer's verdict / report / ratings), `result_store-list_run_records`.
-- **Agent KPIs / routing:** `result_store-aggregate_by_agent` (per-agent KPI rollup), `result_store-get_capability_score` / `result_store-list_capability_scores`, `dispatch-recommend`.
+- **Agent KPIs / routing:** `result_store-aggregate_by_agent` (per-agent KPI rollup, incl. `reviewer_flaked` — review_stuck runs excluded from the implementer's success denominator), `result_store-aggregate_reviewer_reliability` (per-reviewer-adapter rejection + no-verdict/review_stuck rate), `result_store-get_capability_score` / `result_store-list_capability_scores`, `dispatch-recommend`.
 - **Roadmap / registry / recipes:** `roadmap-ingest` / `roadmap-list` / `roadmap-next_bundle` / `roadmap-ready` / `roadmap-mark_landed` / `roadmap-mark_blocked`, `project_registry-list` / `project_registry-lookup` / `dispatch-register_project`, `playbooks-list` / `playbooks-get`, `audit_review-grade_fix`.
 
 The full annotated-surface inventory (what is reachable, what is intentionally in-process, and the judgment-free / in-run-isolation guarantees) lives in `docs/orchestrator-surface-inventory.md`.

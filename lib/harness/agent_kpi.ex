@@ -16,9 +16,22 @@ defmodule Harness.AgentKPI do
 
   `aggregate_reviewer_rejections/1` is the mirror-image view: keyed by
   `reviewer_adapter` (the cross-family reviewer that gated the run), it reports
-  each reviewer's rejection rate. Since rejection is near-never by design, a
-  reviewer with an outlier rejection rate is the signal — it lets cross-family
-  selection deprioritize a reviewer that rejects too freely.
+  each reviewer's rejection rate **and** its verdict-write reliability. Since
+  rejection is near-never by design, a reviewer with an outlier rejection rate
+  is one signal; `no_verdict_rate` is the other — the fraction of gated runs
+  the reviewer ended without writing `.harness/review.json` (a
+  `{:review_stuck, _}` reason). Both let cross-family selection deprioritize a
+  reviewer that rejects too freely or flakes on the mandatory final write.
+
+  ## Reviewer-flaked attribution
+
+  A `{:review_stuck, _}` run is the *reviewer's* failure, not the implementer's:
+  the implementer exited fine and the reviewer produced no verdict artifact. So
+  it is partitioned out of the implementer's `success_rate` /
+  `first_attempt_pass_rate` denominator (`attributable_count = run_count -
+  reviewer_flaked`) and surfaced as a separate `reviewer_flaked` count.
+  Attribution is keyed mechanically on the persisted `reason` field — no
+  classifier, no "whose fault" heuristic.
 
   ## Pure by construction
 
@@ -30,7 +43,9 @@ defmodule Harness.AgentKPI do
 
     * A `verdict` of `:approve` (the reviewer AI's decision) is a success;
       `:reject` and `nil` (the run never reached review) both count as
-      non-successes in the denominators.
+      non-successes in the denominators, **except** a `{:review_stuck, _}` run,
+      which is excluded from the implementer's denominator entirely (the
+      reviewer, not the implementer, failed it).
     * Token means treat an unreported (`nil`) component as `0` and divide by the
       agent's full run count. In practice reporting is all-or-nothing per agent
       (a plain-text adapter reports none), so this matches the per-agent rollup.
@@ -54,6 +69,7 @@ defmodule Harness.AgentKPI do
   @typedoc "Rolled-up KPIs for one agent."
   @type agent_kpi :: %{
           run_count: pos_integer(),
+          reviewer_flaked: non_neg_integer(),
           success_rate: float(),
           first_attempt_pass_rate: float(),
           duration_ms: duration_summary(),
@@ -63,11 +79,18 @@ defmodule Harness.AgentKPI do
           cost_to_green: float() | nil
         }
 
-  @typedoc "Rejection metrics for one reviewer adapter acting AS the gate."
+  @typedoc """
+  Rejection + verdict-write reliability metrics for one reviewer adapter acting
+  AS the gate. `no_verdict_count` is the reviewer's `{:review_stuck, _}` runs
+  (gated but no `.harness/review.json` written); `no_verdict_rate` is that over
+  the reviews it gated.
+  """
   @type reviewer_rejection :: %{
           reviewed_count: pos_integer(),
           rejection_count: non_neg_integer(),
-          rejection_rate: float()
+          rejection_rate: float(),
+          no_verdict_count: non_neg_integer(),
+          no_verdict_rate: float()
         }
 
   @typedoc "Per-reviewer-adapter rejection ledger keyed by the reviewer module."
@@ -116,13 +139,18 @@ defmodule Harness.AgentKPI do
   @spec summarize([LogRecord.t()]) :: agent_kpi()
   defp summarize(records) do
     run_count = length(records)
+    reviewer_flaked = Enum.count(records, &review_stuck?/1)
+    # The reviewer, not the implementer, failed a review_stuck run, so exclude it
+    # from the implementer's success denominator (never from run_count, a fact).
+    attributable_count = run_count - reviewer_flaked
     passes = Enum.filter(records, &(&1.verdict == :approve))
     durations = records |> Enum.map(& &1.duration_ms) |> Enum.sort()
 
     %{
       run_count: run_count,
-      success_rate: rate(length(passes), run_count),
-      first_attempt_pass_rate: rate(first_attempt_passes(records), run_count),
+      reviewer_flaked: reviewer_flaked,
+      success_rate: rate(length(passes), attributable_count),
+      first_attempt_pass_rate: rate(first_attempt_passes(records), attributable_count),
       duration_ms: %{median: median(durations), p90: percentile(durations, 90)},
       tokens: token_means(records, run_count),
       review_iterations: mean(Enum.map(records, & &1.review_iterations), run_count),
@@ -135,8 +163,11 @@ defmodule Harness.AgentKPI do
   Rolls records up by `reviewer_adapter` into a per-reviewer rejection ledger.
 
   Only records the reviewer actually gated count toward the denominator —
-  `reviewer_adapter` set and a non-nil `verdict`. A reviewer's `rejection_rate`
-  is its `:reject` verdicts over those gated runs; an empty input returns `%{}`.
+  `reviewer_adapter` set and either a non-nil `verdict` or a
+  `{:review_stuck, _}` reason (the reviewer ran but wrote no verdict). A
+  reviewer's `rejection_rate` is its `:reject` verdicts over those gated runs;
+  `no_verdict_rate` is its `{:review_stuck, _}` runs over the same — its
+  verdict-write reliability. An empty input returns `%{}`.
   """
   @spec aggregate_reviewer_rejections([LogRecord.t()]) :: reviewer_ledger()
   def aggregate_reviewer_rejections(records) when is_list(records) do
@@ -175,8 +206,14 @@ defmodule Harness.AgentKPI do
 
   @spec reviewed?(LogRecord.t()) :: boolean()
   defp reviewed?(record) do
-    not is_nil(reviewer_adapter(record)) and record_verdict(record) in [:approve, :reject]
+    not is_nil(reviewer_adapter(record)) and
+      (record_verdict(record) in [:approve, :reject] or review_stuck?(record))
   end
+
+  # A run the reviewer ended without writing a verdict artifact — keyed purely
+  # on the persisted `reason` fact, no inference.
+  @spec review_stuck?(LogRecord.t()) :: boolean()
+  defp review_stuck?(record), do: match?({:review_stuck, _report}, Map.get(record, :reason))
 
   @spec reviewer_adapter(LogRecord.t()) :: module() | nil
   defp reviewer_adapter(record), do: Map.get(record, :reviewer_adapter)
@@ -188,11 +225,14 @@ defmodule Harness.AgentKPI do
   defp summarize_reviewer(records) do
     reviewed_count = length(records)
     rejection_count = Enum.count(records, &(record_verdict(&1) == :reject))
+    no_verdict_count = Enum.count(records, &review_stuck?/1)
 
     %{
       reviewed_count: reviewed_count,
       rejection_count: rejection_count,
-      rejection_rate: rejection_count / reviewed_count
+      rejection_rate: rejection_count / reviewed_count,
+      no_verdict_count: no_verdict_count,
+      no_verdict_rate: no_verdict_count / reviewed_count
     }
   end
 
@@ -228,7 +268,11 @@ defmodule Harness.AgentKPI do
     mean(Enum.map(passes, &token_field(&1, :total)), length(passes))
   end
 
-  @spec rate(non_neg_integer(), pos_integer()) :: float()
+  # A zero denominator means every run for this agent was reviewer-flaked — no
+  # attributable run to rate, so report 0.0 (the `reviewer_flaked` count, equal
+  # to run_count here, is what disambiguates "no signal" from "genuinely 0%").
+  @spec rate(non_neg_integer(), non_neg_integer()) :: float()
+  defp rate(_count, 0), do: 0.0
   defp rate(count, total) when total > 0, do: count / total
 
   @spec mean([number()], pos_integer()) :: float()

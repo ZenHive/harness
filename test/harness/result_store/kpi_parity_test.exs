@@ -55,6 +55,16 @@ defmodule Harness.ResultStore.KPIParityTest do
         duration_ms: 50,
         token_usage: tokens(1000, 500),
         review_ratings: %{"performance" => 9}
+      ),
+      # A reviewer-flaked codex run: the SQL and in-memory rollups must agree that
+      # this is excluded from codex's success denominator, not a non-pass.
+      record("parity-x2",
+        agent: :codex,
+        verdict: nil,
+        reason: {:review_stuck, "no artifact"},
+        review_iterations: 0,
+        duration_ms: 70,
+        token_usage: tokens(200, 100)
       )
     ]
 
@@ -114,6 +124,7 @@ defmodule Harness.ResultStore.KPIParityTest do
 
   defp assert_kpi_equal(a, b) do
     assert a.run_count == b.run_count
+    assert a.reviewer_flaked == b.reviewer_flaked
     assert_in_delta(a.success_rate, b.success_rate, 1.0e-9)
     assert_in_delta(a.first_attempt_pass_rate, b.first_attempt_pass_rate, 1.0e-9)
     assert_in_delta(a.duration_ms.median, b.duration_ms.median, 1.0e-9)

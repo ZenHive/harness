@@ -211,6 +211,32 @@ defmodule Harness.ResultStore do
     dispatch(store, :aggregate_by_agent, [[]])
   end
 
+  api(
+    :aggregate_reviewer_reliability,
+    "Per-reviewer-adapter reliability ledger over all persisted run records: rejection_rate and no_verdict_rate (review_stuck — the reviewer gated the run but wrote no verdict). Derived from list_run_records; no SQL fast path.",
+    params: [
+      store: [
+        kind: :value,
+        default: nil,
+        description: "Configured store or override; `false`/`nil` returns {:ok, %{}}."
+      ]
+    ],
+    returns: %{type: :tuple, description: "{:ok, AgentKPI.reviewer_ledger()} or {:error, reason}."}
+  )
+
+  @spec aggregate_reviewer_reliability(store()) :: {:ok, AgentKPI.reviewer_ledger()} | {:error, term()}
+  def aggregate_reviewer_reliability(store \\ configured())
+
+  def aggregate_reviewer_reliability(false), do: {:ok, %{}}
+  def aggregate_reviewer_reliability(nil), do: {:ok, %{}}
+
+  def aggregate_reviewer_reliability(store) do
+    case list_run_records(store, []) do
+      {:ok, records} -> {:ok, AgentKPI.aggregate_reviewer_rejections(records)}
+      {:error, _} = err -> err
+    end
+  end
+
   api(:save_capability_score, "Persist one computed capability score.",
     params: [
       score: [

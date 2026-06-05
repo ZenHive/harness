@@ -246,9 +246,52 @@ defmodule Harness.AgentKPITest do
 
       ledger = AgentKPI.aggregate_reviewer_rejections(records)
 
-      assert ledger[ClaudeReviewer] == %{reviewed_count: 4, rejection_count: 1, rejection_rate: 0.25}
-      assert ledger[CodexReviewer] == %{reviewed_count: 2, rejection_count: 2, rejection_rate: 1.0}
+      assert ledger[ClaudeReviewer] ==
+               %{reviewed_count: 4, rejection_count: 1, rejection_rate: 0.25, no_verdict_count: 0, no_verdict_rate: 0.0}
+
+      assert ledger[CodexReviewer] ==
+               %{reviewed_count: 2, rejection_count: 2, rejection_rate: 1.0, no_verdict_count: 0, no_verdict_rate: 0.0}
+
       refute Map.has_key?(ledger, nil)
+    end
+
+    test "review_stuck runs count toward the reviewer's verdict-write reliability" do
+      records = [
+        # Cursor gated 4 runs: approved 2, but flaked (wrote no verdict) on 2.
+        record(reviewer_adapter: CursorReviewer, verdict: :approve),
+        record(reviewer_adapter: CursorReviewer, verdict: :approve),
+        record(reviewer_adapter: CursorReviewer, verdict: nil, reason: {:review_stuck, "no artifact"}),
+        record(reviewer_adapter: CursorReviewer, verdict: nil, reason: {:review_stuck, "no artifact"}),
+        # Claude gated 1, wrote its verdict.
+        record(reviewer_adapter: ClaudeReviewer, verdict: :approve)
+      ]
+
+      ledger = AgentKPI.aggregate_reviewer_rejections(records)
+
+      assert ledger[CursorReviewer] == %{
+               reviewed_count: 4,
+               rejection_count: 0,
+               rejection_rate: 0.0,
+               no_verdict_count: 2,
+               no_verdict_rate: 0.5
+             }
+
+      assert ledger[ClaudeReviewer].no_verdict_count == 0
+      assert ledger[ClaudeReviewer].no_verdict_rate == 0.0
+    end
+
+    test "a verdict-less run with a non-stuck reason is not counted as a gated review" do
+      # reviewer_adapter set but the run died for another reason (e.g. the whole
+      # job timed out) — no verdict, not review_stuck, so it never gated a review.
+      records = [
+        record(reviewer_adapter: GrokReviewer, verdict: :approve),
+        record(reviewer_adapter: GrokReviewer, verdict: nil, reason: :timed_out)
+      ]
+
+      ledger = AgentKPI.aggregate_reviewer_rejections(records)
+
+      assert ledger[GrokReviewer].reviewed_count == 1
+      assert ledger[GrokReviewer].no_verdict_count == 0
     end
 
     test "empty input returns an empty ledger" do
@@ -258,6 +301,55 @@ defmodule Harness.AgentKPITest do
     test "rating_means/1 is reusable over a bare list of ratings maps" do
       assert AgentKPI.rating_means([%{"a" => 2}, %{"a" => 4, "b" => 10}]) == %{"a" => 3.0, "b" => 10.0}
       assert AgentKPI.rating_means([]) == %{}
+    end
+  end
+
+  describe "aggregate/1 reviewer-flaked attribution" do
+    test "a review_stuck run does not debit the implementer's success_rate" do
+      records = [
+        # The implementer exited fine on both; the reviewer wrote a verdict once
+        # (approve) and flaked once (review_stuck). Only the gated run counts
+        # against the implementer.
+        record(agent: :codex, verdict: :approve, reason: :approved),
+        record(agent: :codex, verdict: nil, reason: {:review_stuck, "reviewer wrote no verdict"})
+      ]
+
+      kpi = AgentKPI.aggregate(records)[:codex]
+
+      assert kpi.run_count == 2
+      assert kpi.reviewer_flaked == 1
+      # 1 approve over 1 attributable run, NOT 1/2 — the flake is the reviewer's.
+      assert kpi.success_rate == 1.0
+      assert kpi.first_attempt_pass_rate == 1.0
+    end
+
+    test "a genuine implementer failure (reject) still debits success_rate" do
+      records = [
+        record(agent: :codex, verdict: :approve, reason: :approved),
+        record(agent: :codex, verdict: :reject, reason: {:review_rejected, "broken"}),
+        record(agent: :codex, verdict: nil, reason: {:review_stuck, "no artifact"})
+      ]
+
+      kpi = AgentKPI.aggregate(records)[:codex]
+
+      assert kpi.run_count == 3
+      assert kpi.reviewer_flaked == 1
+      # 1 approve over 2 attributable (approve + reject); the stuck run is excluded.
+      assert kpi.success_rate == 0.5
+    end
+
+    test "an implementer whose every run was reviewer-flaked reports 0.0 over 0 attributable" do
+      records = [
+        record(agent: :pi, verdict: nil, reason: {:review_stuck, "no artifact"}),
+        record(agent: :pi, verdict: nil, reason: {:review_stuck, "no artifact"})
+      ]
+
+      kpi = AgentKPI.aggregate(records)[:pi]
+
+      assert kpi.run_count == 2
+      assert kpi.reviewer_flaked == 2
+      assert kpi.success_rate == 0.0
+      assert kpi.first_attempt_pass_rate == 0.0
     end
   end
 

@@ -116,6 +116,38 @@ defmodule Harness.Dashboard.KPILiveTest do
       assert html =~ "8.0"
     end
 
+    test "a reviewer-flaked run is excluded from the implementer's success and counted in its own column", %{
+      conn: conn
+    } do
+      # codex's review_stuck run must not drag its success below 100% (1/1 gated),
+      # and the reviewer-flaked count surfaces as its own column value.
+      seed("run-flaked", agent: :codex, verdict: nil, reason: {:review_stuck, "no artifact"})
+      {:ok, _view, html} = live(conn, "/harness/kpi")
+
+      assert html =~ "Rvw flaked"
+      # codex: 1 approve + 1 flaked → 100% success over 1 attributable run, flaked = 1.
+      assert html =~ "100%"
+    end
+
+    test "renders the reviewer reliability table with rejection and no-verdict rates", %{conn: conn} do
+      seed("run-rv1", agent: :codex, verdict: :approve, reviewer_adapter: CursorReviewer)
+
+      seed("run-rv2",
+        agent: :codex,
+        verdict: nil,
+        reason: {:review_stuck, "no artifact"},
+        reviewer_adapter: CursorReviewer
+      )
+
+      {:ok, _view, html} = live(conn, "/harness/kpi")
+
+      assert html =~ "Reviewer reliability"
+      assert html =~ "CursorReviewer"
+      assert html =~ "No-verdict rate"
+      # Cursor gated 2, flaked 1 → 50% no-verdict rate.
+      assert html =~ "50%"
+    end
+
     test "columns are sortable — clicking a header reorders the rows", %{conn: conn} do
       {:ok, view, html} = live(conn, "/harness/kpi")
 

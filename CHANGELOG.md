@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **AgentKPI attributes review_stuck to the reviewer, and tracks per-reviewer
+  verdict-write reliability (Task 231).** A `{:review_stuck, _}` run (the
+  reviewer ended its turn without writing `.harness/review.json`) is the
+  *reviewer's* failure, not the implementer's — yet it sat in the implementer's
+  `success_rate` denominator as a non-pass, mis-routing future dispatch through
+  `Harness.CapabilityScore`. Both rollups now exclude it from the implementer's
+  denominator (`attributable_count = run_count − reviewer_flaked`) and surface
+  the count as a separate `reviewer_flaked` field; the Postgres SQL fast path
+  mirrors the in-memory rollup (KPI parity preserved). The per-reviewer ledger
+  (`AgentKPI.aggregate_reviewer_rejections/1`) gains `no_verdict_count` /
+  `no_verdict_rate` alongside the rejection rate — the reviewer's verdict-write
+  reliability, the signal needed to prefer reliable reviewers. Surfaced on the
+  `/harness/kpi` dashboard (a `Rvw flaked` column + a worst-first *Reviewer
+  reliability* table) and the MCP KPI surface
+  (`result_store-aggregate_reviewer_reliability`). Pure counting + mechanical
+  attribution keyed on the persisted `reason` fact — no classifier, no
+  "whose-fault" heuristic.
 - **Reviewer transcript + outcome now persisted on every run record (Task 232).**
   harness persisted the *implementer's* raw transcript (`agent_output` + kind /
   exit_status) but discarded the *reviewer's* — its `%Outcome{}` was

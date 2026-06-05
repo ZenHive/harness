@@ -4,12 +4,19 @@ defmodule Harness.Dashboard.KPILive do
 
   Renders `Harness.ResultStore.aggregate_by_agent/0` over every persisted run
   record as a
-  sortable per-agent table: run count, success rate, first-attempt-pass rate,
-  mean repair attempts, mean tokens, cost-to-green, and the reviewer's mean
-  ratings. This is the at-a-glance *trust ledger* — the question "what is each
-  agent's track record across all runs?" answered in one view, closing the
-  user's stated gap (we had the data via `Harness.AgentKPI` but no way to see
-  it at once).
+  sortable per-agent table: run count, reviewer-flaked count (review_stuck runs
+  excluded from the implementer's success denominator), success rate,
+  first-attempt-pass rate, mean repair attempts, mean tokens, cost-to-green, and
+  the reviewer's mean ratings. This is the at-a-glance *trust ledger* — the
+  question "what is each agent's track record across all runs?" answered in one
+  view, closing the user's stated gap (we had the data via `Harness.AgentKPI`
+  but no way to see it at once).
+
+  A second *reviewer reliability* table renders
+  `Harness.ResultStore.aggregate_reviewer_reliability/0`, keyed by the reviewer
+  adapter that gated each run: rejection rate and no-verdict (review_stuck) rate
+  — the cross-family reviewer's verdict-write reliability, sorted
+  worst-first.
 
   The reviewer-ratings columns are derived from the union of rating keys present
   across the ledger (the reviewer's keys are free-form), so a reviewer that adds
@@ -86,6 +93,24 @@ defmodule Harness.Dashboard.KPILive do
     socket
     |> assign(:rows, sort_rows(rows, socket.assigns.sort_by, socket.assigns.sort_dir))
     |> assign(:rating_keys, rating_keys(rows))
+    |> assign(:reviewer_rows, reviewer_rows())
+  end
+
+  # The per-reviewer-adapter reliability ledger: each reviewer's rejection and
+  # verdict-write (review_stuck) rates. Sorted worst-reliability-first so a
+  # reviewer that flakes the mandatory verdict write surfaces at the top. A store
+  # read error degrades to an empty ledger (the no-data state).
+  @spec reviewer_rows() :: [map()]
+  defp reviewer_rows do
+    case ResultStore.aggregate_reviewer_reliability() do
+      {:ok, ledger} ->
+        ledger
+        |> Enum.map(fn {reviewer, kpi} -> Map.put(kpi, :reviewer, reviewer) end)
+        |> Enum.sort_by(&{&1.no_verdict_rate, &1.rejection_rate}, :desc)
+
+      _error ->
+        []
+    end
   end
 
   # The union of rating keys across the ledger, sorted — one table column each.
@@ -135,6 +160,7 @@ defmodule Harness.Dashboard.KPILive do
   @spec sort_key(String.t()) :: atom() | {:rating, String.t()}
   defp sort_key("agent"), do: :agent
   defp sort_key("run_count"), do: :run_count
+  defp sort_key("reviewer_flaked"), do: :reviewer_flaked
   defp sort_key("success_rate"), do: :success_rate
   defp sort_key("first_attempt_pass_rate"), do: :first_attempt_pass_rate
   defp sort_key("review_iterations"), do: :review_iterations
@@ -161,6 +187,7 @@ defmodule Harness.Dashboard.KPILive do
         <tr>
           <.sort_th col="agent" label="Agent" sort_by={@sort_by} sort_dir={@sort_dir} />
           <.sort_th col="run_count" label="Runs" sort_by={@sort_by} sort_dir={@sort_dir} />
+          <.sort_th col="reviewer_flaked" label="Rvw flaked" sort_by={@sort_by} sort_dir={@sort_dir} />
           <.sort_th col="success_rate" label="Success" sort_by={@sort_by} sort_dir={@sort_dir} />
           <.sort_th
             col="first_attempt_pass_rate"
@@ -184,12 +211,41 @@ defmodule Harness.Dashboard.KPILive do
         <tr :for={row <- @rows}>
           <td><code>{row.agent || "—"}</code></td>
           <td>{row.run_count}</td>
+          <td>{row.reviewer_flaked}</td>
           <td>{format_pct(row.success_rate)}</td>
           <td>{format_pct(row.first_attempt_pass_rate)}</td>
           <td>{format_float(row.review_iterations)}</td>
           <td>{format_count(row.tokens.total)}</td>
           <td>{format_count(row.cost_to_green)}</td>
           <td :for={key <- @rating_keys}>{format_rating(Map.get(row_ratings(row), key))}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div :if={@reviewer_rows != []} class="topbar">
+      <strong>Reviewer reliability</strong>
+      <span class="count">{length(@reviewer_rows)} reviewers</span>
+    </div>
+
+    <table :if={@reviewer_rows != []}>
+      <thead>
+        <tr>
+          <th>Reviewer</th>
+          <th>Gated</th>
+          <th>Rejections</th>
+          <th>Reject rate</th>
+          <th>No verdict</th>
+          <th>No-verdict rate</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr :for={row <- @reviewer_rows}>
+          <td><code>{inspect(row.reviewer)}</code></td>
+          <td>{row.reviewed_count}</td>
+          <td>{row.rejection_count}</td>
+          <td>{format_pct(row.rejection_rate)}</td>
+          <td>{row.no_verdict_count}</td>
+          <td>{format_pct(row.no_verdict_rate)}</td>
         </tr>
       </tbody>
     </table>

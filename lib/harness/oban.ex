@@ -14,10 +14,8 @@ defmodule Harness.Oban do
   alias Harness.Cron.RoadmapPoller
   alias Harness.Project
   alias Harness.ProjectRegistry
-  alias Oban.Plugins.Lifeline
 
   @default_queue_limit 1
-  @lifeline_rescue_after_ms to_timeout(minute: 30)
   @headroom_states ~w(available scheduled executing retryable)
   @run_worker Oban.Worker.to_string(Harness.Run.Worker)
   @orphan_rescue_child_id Harness.Oban.OrphanedRunRescue
@@ -166,7 +164,6 @@ defmodule Harness.Oban do
     base
     |> enable_cron_queue()
     |> enable_audit_queue()
-    |> enable_lifeline_plugin()
     |> enable_cron_plugin()
     |> Keyword.put(:name, __MODULE__)
   end
@@ -282,16 +279,6 @@ defmodule Harness.Oban do
     Keyword.update(opts, :queues, [audit: 1], fn
       queues when is_list(queues) -> Keyword.put_new(queues, :audit, 1)
       _other -> [audit: 1]
-    end)
-  end
-
-  @spec enable_lifeline_plugin(keyword()) :: keyword()
-  defp enable_lifeline_plugin(opts) do
-    plugin = {Lifeline, rescue_after: @lifeline_rescue_after_ms}
-
-    Keyword.update(opts, :plugins, [plugin], fn
-      plugins when is_list(plugins) -> Keyword.put_new(plugins, Lifeline, rescue_after: @lifeline_rescue_after_ms)
-      _other -> [plugin]
     end)
   end
 
