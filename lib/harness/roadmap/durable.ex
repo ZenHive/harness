@@ -218,15 +218,10 @@ defmodule Harness.Roadmap.Durable do
         :ok
 
       {:error, {:git_failed, _args, _status, output}} ->
-        if non_fast_forward?(output), do: :retry, else: {:error, {:roadmap_push_failed, output}}
+        if Git.non_fast_forward?(path, "HEAD", target, output),
+          do: :retry,
+          else: {:error, {:roadmap_push_failed, output}}
     end
-  end
-
-  @spec non_fast_forward?(String.t()) :: boolean()
-  defp non_fast_forward?(output) do
-    String.contains?(output, "non-fast-forward") or
-      String.contains?(output, "fetch first") or
-      String.contains?(output, "[rejected]")
   end
 
   @spec cleanup(Worktree.t()) :: :ok

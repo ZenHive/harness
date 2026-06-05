@@ -28,4 +28,63 @@ defmodule Harness.Git do
   def work_tree?(repo) do
     match?({:ok, _output}, run(["rev-parse", "--is-inside-work-tree"], repo))
   end
+
+  @doc """
+  Whether a failed `git push` of `pushed_ref` to `target` was rejected because it
+  was **not a fast-forward** (the remote moved ahead under us), as opposed to any
+  other push failure (auth, network, hook).
+
+  Prefers a deterministic plumbing signal over git's English output: it force-
+  refreshes the remote-tracking ref for `target`, then asks
+  `git merge-base --is-ancestor <remote-tip> <pushed_ref>`. A non-fast-forward is
+  exactly "the *current* remote tip is not an ancestor of what we pushed" — a
+  fact independent of git's locale or release-specific phrasing.
+
+  Falls back to matching git's rejection text (`non-fast-forward` / `fetch first`
+  / `[rejected]`) only when the deterministic check is **inconclusive**: the
+  remote ref can't be refreshed (offline, or the branch doesn't exist yet) or a
+  ref won't resolve. `output` is the combined stdout+stderr of the failed push.
+  """
+  @spec non_fast_forward?(String.t(), String.t(), String.t(), String.t()) :: boolean()
+  def non_fast_forward?(repo, pushed_ref, target, output) do
+    case remote_divergence(repo, pushed_ref, target) do
+      :diverged -> true
+      :fast_forwardable -> false
+      :inconclusive -> rejected_text?(output)
+    end
+  end
+
+  # The deterministic signal. `+` force-updates the tracking ref (a remote that
+  # only moved forward is a fast-forward of it anyway; the prefix just keeps a
+  # rewound remote from failing the fetch). Any failure — offline, missing
+  # branch, unresolved ref — yields `:inconclusive` so the caller text-matches.
+  @spec remote_divergence(String.t(), String.t(), String.t()) ::
+          :diverged | :fast_forwardable | :inconclusive
+  defp remote_divergence(repo, pushed_ref, target) do
+    remote_ref = "refs/remotes/origin/" <> target
+
+    with {:ok, _fetched} <- run(["fetch", "origin", "+#{target}:#{remote_ref}"], repo),
+         {:ok, _remote} <- run(["rev-parse", "--verify", "--quiet", remote_ref <> "^{commit}"], repo),
+         {:ok, _pushed} <- run(["rev-parse", "--verify", "--quiet", pushed_ref <> "^{commit}"], repo) do
+      if ancestor?(repo, remote_ref, pushed_ref), do: :fast_forwardable, else: :diverged
+    else
+      _error -> :inconclusive
+    end
+  end
+
+  # `merge-base --is-ancestor A B` exits 0 iff A is an ancestor of (or equal to) B.
+  @spec ancestor?(String.t(), String.t(), String.t()) :: boolean()
+  defp ancestor?(repo, maybe_ancestor, descendant) do
+    match?({:ok, _output}, run(["merge-base", "--is-ancestor", maybe_ancestor, descendant], repo))
+  end
+
+  # Documented fallback only: git's English push-rejection phrasing is locale- and
+  # version-fragile, so it is consulted solely when `remote_divergence/3` can't
+  # decide deterministically.
+  @spec rejected_text?(String.t()) :: boolean()
+  defp rejected_text?(output) do
+    String.contains?(output, "non-fast-forward") or
+      String.contains?(output, "fetch first") or
+      String.contains?(output, "[rejected]")
+  end
 end

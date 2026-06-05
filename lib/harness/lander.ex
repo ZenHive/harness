@@ -302,7 +302,7 @@ defmodule Harness.Lander do
         {:ok, tip}
 
       {:error, {:git_failed, _args, _status, output}} ->
-        if non_fast_forward?(output),
+        if Git.non_fast_forward?(repo, tip, target, output),
           do: {:push_rejected, output},
           else: {:error, {:push_failed, output}}
     end
@@ -331,13 +331,6 @@ defmodule Harness.Lander do
       branch: request.branch,
       outcome: reason
     })
-  end
-
-  @spec non_fast_forward?(String.t()) :: boolean()
-  defp non_fast_forward?(output) do
-    String.contains?(output, "non-fast-forward") or
-      String.contains?(output, "fetch first") or
-      String.contains?(output, "[rejected]")
   end
 
   # The push succeeded, so the code IS landed; a writeback failure (e.g. rmap's
