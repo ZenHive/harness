@@ -38,12 +38,12 @@ defmodule Harness.Dashboard.Live do
   the run's state permits it — harness offers, the operator chooses (agent-gate:
   no auto-classification of which recovery applies):
 
-    * **Resume / Resume ↑** — on a `:failed` run (`resumable?/1`). Re-dispatches the
+    * **Resume / Escalate** — on a `:failed` run (`resumable?/1`). Re-dispatches the
       run's roadmap task on a NEW run that branches off the retained
       `harness/<run-id>` branch (prior commits are the starting point) with the
-      failure report injected into the prompt. The plain button reuses the original
-      agent; "Resume ↑" escalates to the capability-recommended agent. Routes through
-      `Harness.Dispatch.resume_failed/2`.
+      failure report injected into the prompt. "Resume" reuses the original agent;
+      "Escalate" routes to the capability-recommended agent. Both go through
+      `Harness.Dispatch.resume_failed/2` (escalate? = the `escalate` flag).
     * **Re-land** — on a run whose land-train hit its cap and left the task `blocked`
       (`relandable?/2`, gated on `Harness.Dashboard.RoadmapSummary.blocked?/3`).
       Re-enqueues the landing job (`Harness.Dispatch.reland/1` → `Harness.Lander.enqueue/1`);
@@ -814,11 +814,16 @@ defmodule Harness.Dashboard.Live do
           <td>{landed_label(@summaries, entry.status)}</td>
           <td>{entry.detail || ""}</td>
           <td>
-            <.kill_button :if={killable?(entry.status)} run_id={entry.status.run_id} />
-            <.resume_button :if={resumable?(entry.status)} run_id={entry.status.run_id} />
-            <.resume_button :if={resumable?(entry.status)} run_id={entry.status.run_id} escalate />
-            <.reland_button :if={relandable?(entry.status, @summaries)} run_id={entry.status.run_id} />
-            <.delete_button :if={deletable?(entry.status)} run_id={entry.status.run_id} />
+            <div class="row-actions">
+              <.kill_button :if={killable?(entry.status)} run_id={entry.status.run_id} />
+              <.resume_button :if={resumable?(entry.status)} run_id={entry.status.run_id} />
+              <.resume_button :if={resumable?(entry.status)} run_id={entry.status.run_id} escalate />
+              <.reland_button
+                :if={relandable?(entry.status, @summaries)}
+                run_id={entry.status.run_id}
+              />
+              <.delete_button :if={deletable?(entry.status)} run_id={entry.status.run_id} />
+            </div>
           </td>
         </tr>
       </tbody>
@@ -893,9 +898,9 @@ defmodule Harness.Dashboard.Live do
       phx-click="resume_run"
       phx-value-run_id={@run_id}
       phx-value-escalate="true"
-      data-confirm={"Resume run #{@run_id} with an escalated (capability-recommended) agent? Starts a new run off the failed branch."}
+      data-confirm={"Escalate run #{@run_id} to a capability-recommended agent? Starts a new run off the failed branch with a different agent."}
     >
-      Resume ↑
+      Escalate
     </button>
     """
   end

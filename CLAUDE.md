@@ -48,7 +48,7 @@ The `rmap` CLI (the roadmap substrate `roadmap/tasks.toml` uses) is a sibling Ru
 
 ## Commands
 
-Toolchain pinned by `.tool-versions`: **Elixir 1.18.4-otp-27** (asdf). Postgres required for the Oban dispatch layer.
+Toolchain: **Elixir 1.20** (asdf). The `.tool-versions` pin was dropped in the 1.20-compat migration (`2ef4638`), so asdf resolves the version from the global default — re-add a local `.tool-versions` if you want a reproducible per-repo pin. Postgres required for the Oban dispatch layer.
 
 > **Sync `development` before working when auto-land is on.** With `landing_policy: :auto`, the lander is a *second committer* to `origin/<target>` — it ff-pushes from a detached worktree and deliberately **never touches your checkout**, so your local `development` ref drifts behind origin after every autonomous land. **Start a session (and before any commit/push) with `git fetch origin development && git rebase origin/development`** (or `git pull --rebase origin development`) — rebase, because you'll often have local commits the lander doesn't. Skipping this is how you get a stale base / surprise non-ff push reject.
 >

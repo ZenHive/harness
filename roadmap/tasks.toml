@@ -6119,3 +6119,24 @@ created_at = "2026-06-05"
 scored_at = "2026-06-05"
 done_at = "2026-06-04"
 shipped_in = "a662f82"
+
+[[task]]
+id = "204"
+phase = 16
+bundle = "agent-gate"
+status = "done"
+title = "Dashboard Resume + Re-land buttons: recover failed runs & blocked land-trains"
+scores = { d = 3, b = 4, u = 3 }
+markers = ["handbuild"]
+acceptance_criteria = ["Resume button on a :failed run row re-dispatches its task branched off the retained harness/<run-id> branch with the failure report injected into the prompt; same-agent default, escalate mode routes via CapabilityScore.recommend", "Re-land button on a run whose task is blocked re-enqueues a landing job at land_attempt:1 on landing_<project>; zero agent tokens", "Harness.Run accepts a :base_ref start_run opt threaded into worktree_opts/1 (overrides origin/<target>)", "MCP tools dispatch-resume-failed and dispatch-reland resolve in Harness.Chat.Tools.build/1, distinct from existing dispatch-resume", "Tests cover base_ref override, resume_failed/2 (same vs escalate, missing record), Lander.enqueue/2, and dashboard gating predicates"]
+files_to_modify = ["lib/harness/run.ex", "lib/harness/dispatch.ex", "lib/harness/lander.ex", "lib/harness/lander/resilience.ex", "lib/harness/dashboard/live.ex"]
+domains = ["liveview", "oban", "otp"]
+assignee = "human"
+body = "Failed runs show only Delete; blocked land-trains have no re-trigger. Both leave value on the table (retained worktree+branch; reviewer-approved branch re-lands for 0 tokens). Add operator Resume (base_ref off failed branch + report; same/escalate) and Re-land (re-enqueue landing). Plan: ~/.claude/plans/vectorized-exploring-kahn.md. Agent-gate: harness offers what surviving state permits, human/orchestrator chooses recovery, no auto-classification. --continue session mode deferred (cwd wrinkle)."
+implemented = "Shipped a69b2e2 (+mix-fix 8d9039a). Resume/Resume↑ on :failed runs (Dispatch.resume_failed/2: re-dispatch off retained harness/<run-id> branch via new Run :base_ref opt threaded into worktree_opts/1, failure report injected; same-agent or escalate via CapabilityScore). Re-land on land-capped blocked tasks (Dispatch.reland/1 -> Lander.enqueue/1, land_attempt:1, zero tokens). RoadmapSummary.blocked?/3 gate; :notice operator-feedback bar. MCP dispatch-resume_failed + dispatch-reland. Gates green: full suite 1429/0, dialyzer 0, doctor 100%."
+delivered_by = "claude"
+created_at = "2026-06-04"
+started_at = "2026-06-04"
+scored_at = "2026-06-04"
+done_at = "2026-06-05"
+shipped_in = "8d9039a"

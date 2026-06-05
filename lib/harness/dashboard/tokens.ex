@@ -354,6 +354,44 @@ defmodule Harness.Dashboard.Tokens do
       }
       .delete-btn:hover { color: var(--text-subtle); border-color: var(--text-muted); }
 
+      /* Resume affordance — recovery re-dispatch off a failed run. Verdict-info
+         tint reads "actionable, non-destructive", distinct from the --accent kill
+         cue and the muted delete cleanup. The Escalate variant shares the style;
+         the label + confirm copy carry the difference. */
+      .resume-btn {
+        background: transparent;
+        color: var(--verdict-info);
+        border: 1px solid var(--verdict-info);
+        border-radius: 0.25rem;
+        padding: var(--space-1) var(--space-3);
+        font-family: var(--font-display);
+        font-size: var(--text-sm);
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color var(--motion-fast) var(--ease-out);
+      }
+      .resume-btn:hover { background: rgba(74, 127, 168, 0.16); }
+
+      /* Re-land affordance — zero-token git re-enqueue of a land-capped train.
+         Verdict-pass tint mirrors the "landed" badge the re-land is reaching for. */
+      .reland-btn {
+        background: transparent;
+        color: var(--verdict-pass);
+        border: 1px solid var(--verdict-pass);
+        border-radius: 0.25rem;
+        padding: var(--space-1) var(--space-3);
+        font-family: var(--font-display);
+        font-size: var(--text-sm);
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color var(--motion-fast) var(--ease-out);
+      }
+      .reland-btn:hover { background: rgba(79, 155, 106, 0.16); }
+
+      /* Action cell can stack up to three affordances on a failed/blocked row
+         (Resume · Escalate · Delete) — flex-gap keeps them from butting together. */
+      .row-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
       pre.transcript {
         background: var(--surface);
         padding: var(--space-3);
