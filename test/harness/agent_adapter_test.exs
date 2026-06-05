@@ -3,6 +3,8 @@ defmodule Harness.AgentAdapterTest do
 
   alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Capabilities
+  alias Harness.AgentAdapter.Claude
+  alias Harness.AgentAdapter.Codex
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Run
   alias Harness.FakeAdapter
@@ -53,8 +55,34 @@ defmodule Harness.AgentAdapterTest do
                permission_modes: [:autonomous],
                streaming_output: true,
                worktree_isolation: true,
-               cost_tier: :metered
+               cost_tier: :metered,
+               auth_env_scrub: []
              } = %Capabilities{}
+    end
+  end
+
+  describe "scrub_auth_env/2 (subscription billing)" do
+    test "forces each declared key to {key, false}, dropping any caller-set value" do
+      # Claude declares ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN so the spawned
+      # `claude -p` uses the subscription login, never a stray API key.
+      env = [{"PATH", "/usr/bin"}, {"ANTHROPIC_API_KEY", "sk-leftover"}]
+      scrubbed = AgentAdapter.scrub_auth_env(Claude, env)
+
+      assert {"PATH", "/usr/bin"} in scrubbed
+      assert {"ANTHROPIC_API_KEY", false} in scrubbed
+      assert {"ANTHROPIC_AUTH_TOKEN", false} in scrubbed
+      # The caller's real value is gone — only the unset pair survives.
+      refute {"ANTHROPIC_API_KEY", "sk-leftover"} in scrubbed
+    end
+
+    test "is a no-op for an adapter that declares no scrub" do
+      env = [{"ANTHROPIC_API_KEY", "sk-keepme"}]
+      assert AgentAdapter.scrub_auth_env(FakeAdapter, env) == env
+    end
+
+    test "Claude and Codex declare their provider key scrubs" do
+      assert "ANTHROPIC_API_KEY" in Claude.capabilities().auth_env_scrub
+      assert "OPENAI_API_KEY" in Codex.capabilities().auth_env_scrub
     end
   end
 

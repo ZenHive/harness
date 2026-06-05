@@ -42,18 +42,27 @@ defmodule Harness.AgentAdapter.Capabilities do
       `Harness.AgentRegistry` to surface "free-tier adapters" to the
       orchestrator; this declaration is the cost-awareness primitive — no
       selection policy lives in the struct itself.
+    * `auth_env_scrub` — provider auth env vars to **unset** before spawning the
+      CLI so it bills the operator's subscription/login, not a stray API key. A
+      Port inherits the BEAM's environment; when e.g. `ANTHROPIC_API_KEY` (Claude)
+      or `OPENAI_API_KEY` (Codex) is present, the CLI silently bills the API
+      instead of the subscription — and an empty-balance key fails the run
+      ("Credit balance is too low"). `Harness.AgentAdapter.invoke/2` scrubs each
+      listed key (`{key, false}`). Defaults to `[]` (no scrub).
   """
   @type t :: %__MODULE__{
           session_resume: boolean(),
           permission_modes: [atom()],
           streaming_output: boolean(),
           worktree_isolation: boolean(),
-          cost_tier: cost_tier()
+          cost_tier: cost_tier(),
+          auth_env_scrub: [String.t()]
         }
 
   defstruct session_resume: false,
             permission_modes: [:autonomous],
             streaming_output: true,
             worktree_isolation: true,
-            cost_tier: :metered
+            cost_tier: :metered,
+            auth_env_scrub: []
 end

@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Subscription billing: scrub provider API keys from spawned agent CLIs.** Each
+  agent CLI is spawned as a Port that inherits the BEAM's environment, so a stray
+  `ANTHROPIC_API_KEY` (Claude) or `OPENAI_API_KEY` (Codex) silently diverted
+  billing from the operator's interactive subscription to the API — and an
+  empty-balance key failed the run outright ("Credit balance is too low"),
+  producing `:review_stuck` on every Claude-reviewer run. New
+  `Harness.AgentAdapter.Capabilities.auth_env_scrub` lists the auth vars an adapter
+  must unset; `Harness.AgentAdapter.invoke/2` drops them from the Port env
+  (`{key, false}`) before spawn. Claude scrubs `ANTHROPIC_API_KEY` /
+  `ANTHROPIC_AUTH_TOKEN`, Codex scrubs `OPENAI_API_KEY`; the other four adapters
+  default to `[]` pending per-CLI verification (Task 205).
 - **Antigravity worktree isolation regression (Task 198).** `agy` ignores Port `cwd`
   for file writes; `Harness.AgentAdapter.Antigravity` now passes `--add-dir <worktree>`
   in `build_command/1` (mirrors Codex `exec --cd`, Task 41). Reverts the incorrect

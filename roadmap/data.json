@@ -8324,6 +8324,83 @@
       "implemented": "Shipped a69b2e2 (+mix-fix 8d9039a). Resume/Resume↑ on :failed runs (Dispatch.resume_failed/2: re-dispatch off retained harness/<run-id> branch via new Run :base_ref opt threaded into worktree_opts/1, failure report injected; same-agent or escalate via CapabilityScore). Re-land on land-capped blocked tasks (Dispatch.reland/1 -> Lander.enqueue/1, land_attempt:1, zero tokens). RoadmapSummary.blocked?/3 gate; :notice operator-feedback bar. MCP dispatch-resume_failed + dispatch-reland. Gates green: full suite 1429/0, dialyzer 0, doctor 100%.",
       "delivered_by": "claude",
       "cross_repo": []
+    },
+    {
+      "id": "205",
+      "phase": 16,
+      "bundle": "agent-gate",
+      "status": "pending",
+      "title": "Verify + declare auth_env_scrub for Cursor/Grok/Pi/Antigravity adapters",
+      "scores": {
+        "d": 2,
+        "b": 2,
+        "u": 2
+      },
+      "eff": 1.0,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Each adapter either declares verified auth_env_scrub keys or carries a code comment documenting it as login-only with no diverting env var",
+        "Each declaration cites the source confirming the var forces API billing",
+        "scrub_auth_env test covers each newly-declared adapter"
+      ],
+      "files_to_modify": [
+        "lib/harness/agent_adapter/cursor.ex",
+        "lib/harness/agent_adapter/grok.ex",
+        "lib/harness/agent_adapter/pi.ex",
+        "lib/harness/agent_adapter/antigravity.ex"
+      ],
+      "touches": [
+        "lib/harness/agent_adapter/capabilities.ex"
+      ],
+      "body": "Follow-up to the auth-scrub fix (Claude/ANTHROPIC_API_KEY billed the dead API key instead of the subscription -> review_stuck across every Claude-reviewer run; Codex/OPENAI_API_KEY was silently diverting too). The Capabilities.auth_env_scrub field + AgentAdapter.scrub_auth_env/2 mechanism is in place; Claude and Codex now declare their keys; invoke/2 applies the scrub.\n\nThe other four adapters inherit auth_env_scrub: [] (default). No diverting key is currently in the node env for them, so no ACTIVE bug -- but fill the slot so a future stray key can't silently divert billing off the subscription/login.\n\nPer CLI, verify (docs / reference impl, per RESEARCH-BEFORE-ASSERTING) which env var(s) force API-key billing over the interactive login, then declare in capabilities/0:\n- cursor-agent (Cursor): likely CURSOR_API_KEY\n- grok (xAI): likely XAI_API_KEY / GROK_API_KEY\n- pi (pi.dev): unknown -- verify\n- agy (Antigravity, Google): unknown -- likely GEMINI_API_KEY / GOOGLE_API_KEY\n\nDo NOT declare a var you haven't verified diverts billing -- an empty list is honest; a wrong scrub is silent breakage.\n",
+      "created_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "cross_repo": []
+    },
+    {
+      "id": "206",
+      "phase": 16,
+      "bundle": "agent-gate",
+      "status": "done",
+      "title": "Scrub provider auth API keys from spawned agent CLIs (subscription billing)",
+      "scores": {
+        "d": 2,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 3.25,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Capabilities.auth_env_scrub field lists per-adapter auth vars to unset before spawn",
+        "AgentAdapter.invoke/2 drops the scrub keys from the Port env ({key, false}) regardless of inherited/Invocation.env value",
+        "Claude scrubs ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN, Codex scrubs OPENAI_API_KEY",
+        "scrub_auth_env/2 unit-tested (drops caller value, appends unset, no-op for empty scrub)"
+      ],
+      "files_to_modify": [
+        "lib/harness/agent_adapter.ex",
+        "lib/harness/agent_adapter/capabilities.ex",
+        "lib/harness/agent_adapter/claude.ex",
+        "lib/harness/agent_adapter/codex.ex",
+        "test/harness/agent_adapter_test.exs"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "Bug: each agent CLI is spawned as a Port inheriting the BEAM environment. A stray ANTHROPIC_API_KEY (Claude) or OPENAI_API_KEY (Codex) silently diverted billing from the operator's interactive subscription to the provider API -- and an empty-balance key failed the run outright (\"Credit balance is too low\"), producing :review_stuck on every Claude-reviewer run.\n\nFix: new Capabilities.auth_env_scrub field naming the auth vars an adapter must unset; AgentAdapter.invoke/2 drops them from the Port env ({key, false}) before spawn (always unset, regardless of what the inherited env or Invocation.env carried). Claude and Codex declare their keys; the other four adapters default to [] pending per-CLI verification (follow-up Task 205).\n",
+      "created_at": "2026-06-05",
+      "done_at": "2026-06-05",
+      "scored_at": "2026-06-05",
+      "implemented": "Capabilities.auth_env_scrub field + AgentAdapter.scrub_auth_env/2 (drops scrub keys from Port env as {key, false} regardless of inherited/Invocation.env value); applied by invoke/2 before spawn. Claude scrubs ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN, Codex scrubs OPENAI_API_KEY; other four default to [] (follow-up 206->205). 3 scrub_auth_env unit tests + struct-default test updated. Shipped in this commit.",
+      "delivered_by": "claude",
+      "cross_repo": []
     }
   ]
 }

@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (21 of 22 done · 0 in progress)
+**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (22 of 24 done · 0 in progress)
 
-**Last shipped:** Task 204 — Dashboard Resume + Re-land buttons: recover failed runs & blocked land-trains on 2026-06-05
+**Last shipped:** Task 204 — Dashboard Resume + Re-land buttons: recover failed runs & blocked land-trains, Task 206 — Scrub provider auth API keys from spawned agent CLIs (subscription billing) on 2026-06-05
 
-**Up next:** Task 188 — Scrub GH_TOKEN/GITHUB_TOKEN from in-run env + assess the gh pr create vector (push-neuter follow-up) [D:3/B:6/U:5 → Eff:1.83] 🚀
+**Up next:** Task 205 — Verify + declare auth_env_scrub for Cursor/Grok/Pi/Antigravity adapters [D:2/B:2/U:2 → Eff:1.0] 📋
 <!-- FOCUS:END -->
 
 ---

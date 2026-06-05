@@ -49,7 +49,7 @@ defmodule Harness.AgentAdapter.Claude do
   """
   @impl AgentAdapter
   @spec capabilities() :: Capabilities.t()
-  def capabilities, do: %Capabilities{session_resume: true}
+  def capabilities, do: %Capabilities{session_resume: true, auth_env_scrub: ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"]}
 
   @impl AgentAdapter
   @spec rule_channel() :: AgentAdapter.rule_channel()

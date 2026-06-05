@@ -273,8 +273,32 @@ defmodule Harness.AgentAdapter do
     with {:ok, invocation} <- attach_rules(adapter, invocation),
          {:ok, {executable, argv, env} = command} <- adapter.build_command(invocation) do
       input = composed_input(adapter, invocation, command)
-      spawn_run(adapter, invocation, executable, argv, env, input)
+      spawn_run(adapter, invocation, executable, argv, scrub_auth_env(adapter, env), input)
     end
+  end
+
+  @doc """
+  Unsets the adapter's `c:Harness.AgentAdapter.Capabilities.t/0`
+  `auth_env_scrub` keys in `env` so the spawned CLI bills the operator's
+  subscription, not a stray provider API key.
+
+  Harness spawns each agent CLI as a Port that inherits the BEAM's environment.
+  When a provider API key is present (`ANTHROPIC_API_KEY` for `claude`,
+  `OPENAI_API_KEY` for `codex`), the CLI silently prefers API billing over the
+  interactive subscription login — and a key with an empty balance fails the run
+  outright ("Credit balance is too low"). Drops any caller-set value for a
+  scrubbed key, then appends `{key, false}` for each — so the key is *always*
+  unset in the Port env regardless of what the inherited environment or
+  `Invocation.env` carried. A no-op for adapters that declare no scrub. Applied
+  by `invoke/2`; public so the scrub is unit-testable without spawning a CLI.
+  """
+  @spec scrub_auth_env(module(), [{String.t(), String.t() | false}]) :: [{String.t(), String.t() | false}]
+  def scrub_auth_env(adapter, env) do
+    scrub = adapter.capabilities().auth_env_scrub
+
+    env
+    |> Enum.reject(fn {key, _value} -> key in scrub end)
+    |> Enum.concat(Enum.map(scrub, &{&1, false}))
   end
 
   @doc """
