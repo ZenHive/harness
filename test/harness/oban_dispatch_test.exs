@@ -5,11 +5,13 @@ defmodule Harness.ObanDispatchTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Harness.AgentAdapter.Claude
+  alias Harness.Audit.Worker, as: AuditWorker
   alias Harness.Batch
   alias Harness.Dashboard.RunFeed
   alias Harness.Dispatch
   alias Harness.FakeAdapter
   alias Harness.GitFixture
+  alias Harness.Lander.Worker, as: LanderWorker
   alias Harness.Oban, as: HarnessOban
   alias Harness.Project
   alias Harness.ProjectFixture
@@ -19,6 +21,14 @@ defmodule Harness.ObanDispatchTest do
   alias Harness.Run.Result
   alias Harness.Run.Supervisor, as: RunSupervisor
   alias Harness.Run.Worker
+  alias Oban.Notifiers.Isolated
+  alias Oban.Plugins.Lifeline
+
+  @lifeline_rescue_after_ms to_timeout(second: 5)
+  @lifeline_interval_ms 20
+  @lifeline_wait_tries 50
+  @lifeline_wait_delay_ms 20
+  @stale_attempted_at_offset_ms @lifeline_rescue_after_ms + to_timeout(second: 1)
 
   setup do
     result_store = Application.get_env(:harness, :result_store)
@@ -1133,6 +1143,75 @@ defmodule Harness.ObanDispatchTest do
       assert HarnessOban.queue_headroom?(p1) == true
       assert HarnessOban.queue_headroom?(p2) == true
     end
+
+    test "oban_opts/0 includes Lifeline with a thirty minute rescue window" do
+      plugins = HarnessOban.oban_opts()[:plugins]
+
+      assert {Lifeline, opts} =
+               Enum.find(plugins, &match?({Lifeline, _opts}, &1))
+
+      assert opts[:rescue_after] == to_timeout(minute: 30)
+    end
+  end
+
+  describe "lifeline rescue for landing and audit jobs" do
+    @tag :integration
+    test "old executing landing and audit jobs become available while fresh executing jobs stay put" do
+      previous_oban = Application.get_env(:harness, Oban)
+
+      Application.put_env(:harness, Oban,
+        repo: Harness.Repo,
+        queues: false,
+        plugins: false,
+        notifier: Isolated,
+        peer: Oban.Peers.Isolated
+      )
+
+      on_exit(fn -> Application.put_env(:harness, Oban, previous_oban) end)
+
+      start_supervised!(Harness.Repo)
+      :ok = Sandbox.checkout(Harness.Repo)
+      Sandbox.mode(Harness.Repo, {:shared, self()})
+
+      project = ProjectFixture.from_repo("/tmp/harness-lifeline", name: "lifeline")
+
+      old_landing =
+        insert_executing_job!(
+          LanderWorker.new(landing_args(project), queue: HarnessOban.landing_queue_name(project)),
+          stale_attempted_at()
+        )
+
+      old_audit =
+        insert_executing_job!(
+          AuditWorker.new(audit_args(project), unique: AuditWorker.unique_opts()),
+          stale_attempted_at()
+        )
+
+      fresh_audit =
+        insert_executing_job!(
+          AuditWorker.new(audit_args(%{project | name: "lifeline-fresh"}), unique: AuditWorker.unique_opts()),
+          DateTime.utc_now()
+        )
+
+      oban_opts = HarnessOban.oban_opts()
+      lifeline_plugins = oban_opts |> Keyword.get(:plugins, []) |> lifeline_test_plugins()
+
+      start_supervised!(
+        {Oban,
+         Keyword.merge(oban_opts,
+           queues: false,
+           plugins: lifeline_plugins,
+           stage_interval: :infinity
+         )}
+      )
+
+      assert_eventually_lifeline(fn ->
+        assert %{state: "available"} = Harness.Repo.reload!(old_landing)
+        assert %{state: "available"} = Harness.Repo.reload!(old_audit)
+      end)
+
+      assert %{state: "executing"} = Harness.Repo.reload!(fresh_audit)
+    end
   end
 
   describe "orphaned executing run jobs" do
@@ -1146,7 +1225,7 @@ defmodule Harness.ObanDispatchTest do
         {Oban,
          name: HarnessOban,
          repo: Harness.Repo,
-         notifier: Oban.Notifiers.Isolated,
+         notifier: Isolated,
          queues: false,
          plugins: false,
          stage_interval: :infinity}
@@ -1259,6 +1338,55 @@ defmodule Harness.ObanDispatchTest do
   end
 
   defp stringify_keys(map), do: Map.new(map, fn {key, value} -> {to_string(key), value} end)
+
+  defp landing_args(project) do
+    %{
+      "project_name" => project.name,
+      "run_id" => "lifeline-run",
+      "task_id" => "209",
+      "agent" => "codex",
+      "branch" => "harness/lifeline-run",
+      "land_attempt" => 1
+    }
+  end
+
+  defp audit_args(project), do: %{"project_name" => project.name, "base_sha" => "abc123"}
+
+  defp insert_executing_job!(changeset, attempted_at) do
+    {:ok, job} = Harness.Repo.insert(changeset)
+
+    job
+    |> Ecto.Changeset.change(state: "executing", attempt: 1, attempted_at: attempted_at)
+    |> Harness.Repo.update!()
+  end
+
+  defp stale_attempted_at do
+    DateTime.add(DateTime.utc_now(), -@stale_attempted_at_offset_ms, :millisecond)
+  end
+
+  defp lifeline_test_plugins(plugins) do
+    Enum.flat_map(List.wrap(plugins), fn
+      {Lifeline, opts} ->
+        [{Lifeline, Keyword.merge(opts, interval: @lifeline_interval_ms, rescue_after: @lifeline_rescue_after_ms)}]
+
+      Lifeline ->
+        [{Lifeline, interval: @lifeline_interval_ms, rescue_after: @lifeline_rescue_after_ms}]
+
+      _other ->
+        []
+    end)
+  end
+
+  defp assert_eventually_lifeline(fun, tries \\ @lifeline_wait_tries)
+  defp assert_eventually_lifeline(fun, 1), do: fun.()
+
+  defp assert_eventually_lifeline(fun, tries) when tries > 1 do
+    fun.()
+  rescue
+    ExUnit.AssertionError ->
+      Process.sleep(@lifeline_wait_delay_ms)
+      assert_eventually_lifeline(fun, tries - 1)
+  end
 
   defp unique_opts do
     [
