@@ -1290,16 +1290,23 @@ defmodule Harness.Run do
     end
   end
 
-  @spec runaway_tree(data()) :: {:agent | :recovery | :reviewer, non_neg_integer(), non_neg_integer()} | nil
+  @type runaway_role :: :agent | :recovery | :reviewer
+
+  @spec runaway_tree(data()) :: {runaway_role(), non_neg_integer(), non_neg_integer()} | nil
   defp runaway_tree(data) do
-    Enum.find_value([{:agent, data.agent_run}, {:recovery, data.recovery_run}, {:reviewer, data.reviewer_run}], fn {role,
-                                                                                                                    run} ->
+    candidates = [
+      {:agent, data.agent_run},
+      {:recovery, data.recovery_run},
+      {:reviewer, data.reviewer_run}
+    ]
+
+    Enum.find_value(candidates, fn {role, run} ->
       over_threshold(role, run, data.mem_threshold_kb)
     end)
   end
 
-  @spec over_threshold(:agent | :recovery | :reviewer, AgentRun.t() | nil, pos_integer()) ::
-          {:agent | :recovery | :reviewer, non_neg_integer(), non_neg_integer()} | nil
+  @spec over_threshold(runaway_role(), AgentRun.t() | nil, pos_integer()) ::
+          {runaway_role(), non_neg_integer(), non_neg_integer()} | nil
   defp over_threshold(_role, nil, _threshold), do: nil
   defp over_threshold(_role, %AgentRun{os_pid: nil}, _threshold), do: nil
 
@@ -1312,7 +1319,7 @@ defmodule Harness.Run do
   # adapter.terminate/1 would orphan) BEFORE the adapter teardown closes its
   # Port — while the port is open the os_pid still names this run's tree
   # (mirrors the OSProcess.kill ordering note) — then settles :failed.
-  @spec fail_memory_runaway(data(), :agent | :recovery | :reviewer, non_neg_integer(), non_neg_integer()) ::
+  @spec fail_memory_runaway(data(), runaway_role(), non_neg_integer(), non_neg_integer()) ::
           handler_result()
   defp fail_memory_runaway(data, role, os_pid, rss_kb) do
     MemoryGuard.kill_tree(os_pid)
