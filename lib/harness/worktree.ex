@@ -131,11 +131,13 @@ defmodule Harness.Worktree do
           | {:git_failed, args :: [String.t()], status :: integer(), output :: String.t()}
 
   @typedoc """
-  Where the worktree's HEAD was actually pointing when `commit/2` rejected it.
+  Where the worktree's HEAD was pointing when `commit/2` could not reconcile it
+  onto the run branch — a defensive `:head_moved` backstop only, as the three
+  realistic agent moves (HEAD at/ahead/behind the frozen run branch) all
+  re-attach losslessly.
 
-  `{:branch, name}` — the agent ran `git switch`/`git checkout` to a different
-  branch. `{:detached, sha}` — the agent detached HEAD (e.g. `git checkout
-  --detach` or `git checkout <sha>`).
+  `{:branch, name}` — HEAD was on a different branch. `{:detached, sha}` — HEAD
+  was detached (e.g. `git checkout --detach` or `git checkout <sha>`).
   """
   @type head_label :: {:branch, String.t()} | {:detached, String.t()}
 
@@ -321,26 +323,27 @@ defmodule Harness.Worktree do
   <#{@committer_email}>`), so it never fails on a repo with no `user.name` /
   `user.email` configured.
 
-  Before staging, asserts the worktree's HEAD still points at its own
-  `harness/<id>` branch. An agent that ran `git switch`/`git checkout` (or
-  detached HEAD) inside the worktree would otherwise land the commit
-  off-branch, where teardown then loses it. If HEAD has moved, no commit is
-  made and `{:error, {:head_moved, expected, actual}}` is returned — the
-  agent's work stays in the working tree for the retained-on-failure path to
-  preserve.
+  Before staging, re-attaches HEAD to its own `harness/<id>` branch via
+  `reconcile_head_to_branch/2`. An agent that ran `git switch`/`git checkout`
+  (or detached HEAD) inside the worktree would otherwise land the commit
+  off-branch, where teardown then loses it. Because the run branch is frozen
+  once HEAD leaves it, re-attaching is always a lossless git op (fast-forwarding
+  the branch onto any detached-ahead commits first) — never a judgment call.
 
   Returns:
 
     * `{:ok, :committed}` — the agent's work was committed.
-    * `{:ok, :no_changes}` — the agent left the worktree unchanged; there was
-      nothing to commit.
-    * `{:error, reason}` — HEAD moved off the run branch, or a git invocation
-      failed (see `t:error/0`).
+    * `{:ok, :no_changes}` — the agent left the worktree unchanged (including
+      when re-attachment fast-forwarded the branch onto a commit the agent
+      already made while detached); there was nothing further to commit.
+    * `{:error, reason}` — HEAD could not be reconciled onto the run branch
+      (the unreachable divergence backstop), or a git invocation failed (see
+      `t:error/0`).
   """
   @spec commit(t(), String.t()) :: {:ok, :committed | :no_changes} | {:error, error()}
   def commit(%__MODULE__{path: path, branch: branch}, message) when is_binary(message) do
     with :ok <- prepare_for_staging(path),
-         :ok <- assert_head_on_branch(path, branch),
+         :ok <- reconcile_head_to_branch(path, branch),
          {:ok, _added} <- Git.run(["add", "-A", "--"] ++ @stage_pathspec, path),
          {:ok, status} <- Git.run(["status", "--porcelain", "--"] ++ @stage_pathspec, path) do
       if String.trim(status) == "" do
@@ -579,31 +582,60 @@ defmodule Harness.Worktree do
     Keyword.get(opts, :base_dir) || config(:base_dir) || Path.expand(@default_base_dir)
   end
 
-  # Verifies the worktree's HEAD still points at its own `harness/<id>` branch.
-  # An agent that ran `git switch`/`git checkout` (or detached HEAD) would
-  # otherwise have its work commit land off-branch, where worktree teardown
-  # would then lose it. `git branch --show-current` exits 0 either way, emitting
-  # the branch name when on a branch or an empty string when detached.
-  @spec assert_head_on_branch(String.t(), String.t()) :: :ok | {:error, error()}
-  defp assert_head_on_branch(path, expected_branch) do
-    with {:ok, output} <- Git.run(["branch", "--show-current"], path) do
-      actual = String.trim(output)
+  # Re-attaches HEAD to the run's `harness/<id>` branch before staging, so an
+  # agent that ran `git switch`/`git checkout`/`--detach` inside the worktree
+  # can't strand its work off-branch (where teardown would lose it). This is
+  # pure git mechanics, never a judgment call: the run branch only ever advances
+  # while HEAD is on it, so once the agent moves HEAD the branch is FROZEN — and
+  # a frozen branch vs a moved HEAD is always one of three lossless cases:
+  #   * HEAD at the branch tip → re-attach (`git checkout <branch>`).
+  #   * HEAD behind the tip (agent checked out an older commit) → re-attach;
+  #     the branch already holds everything, working-tree edits carry over.
+  #   * HEAD ahead of the tip (agent committed while detached) → fast-forward
+  #     the branch onto the agent's commits, then re-attach.
+  # Genuine divergence (each side holding commits the other lacks) is UNREACHABLE
+  # here — there is no second writer to advance the branch — so it needs no agent
+  # merge-reconciler; it stays a defensive `:head_moved` backstop only.
+  @spec reconcile_head_to_branch(String.t(), String.t()) :: :ok | {:error, error()}
+  defp reconcile_head_to_branch(path, branch) do
+    with {:ok, current} <- Git.run(["branch", "--show-current"], path) do
+      if String.trim(current) == branch, do: :ok, else: reattach_head(path, branch, String.trim(current))
+    end
+  end
 
+  @spec reattach_head(String.t(), String.t(), String.t()) :: :ok | {:error, error()}
+  defp reattach_head(path, branch, current) do
+    with {:ok, head} <- rev_parse(path, "HEAD"),
+         {:ok, tip} <- rev_parse(path, branch),
+         {:ok, base} <- rev_parse(path, ["merge-base", head, tip]) do
       cond do
-        actual == expected_branch -> :ok
-        actual == "" -> {:error, {:head_moved, expected_branch, {:detached, current_head_sha(path)}}}
-        true -> {:error, {:head_moved, expected_branch, {:branch, actual}}}
+        head == tip or base == head -> checkout(path, branch)
+        base == tip -> fast_forward(path, branch, head)
+        true -> {:error, {:head_moved, branch, head_label(current, head)}}
       end
     end
   end
 
-  @spec current_head_sha(String.t()) :: String.t()
-  defp current_head_sha(path) do
-    case Git.run(["rev-parse", "HEAD"], path) do
-      {:ok, output} -> String.trim(output)
-      {:error, _reason} -> "unknown"
-    end
+  @spec rev_parse(String.t(), String.t() | [String.t()]) :: {:ok, String.t()} | {:error, error()}
+  defp rev_parse(path, ref) when is_binary(ref), do: rev_parse(path, ["rev-parse", ref])
+
+  defp rev_parse(path, args) when is_list(args) do
+    with {:ok, output} <- Git.run(args, path), do: {:ok, String.trim(output)}
   end
+
+  @spec checkout(String.t(), String.t()) :: :ok | {:error, error()}
+  defp checkout(path, branch) do
+    with {:ok, _output} <- Git.run(["checkout", branch], path), do: :ok
+  end
+
+  @spec fast_forward(String.t(), String.t(), String.t()) :: :ok | {:error, error()}
+  defp fast_forward(path, branch, head) do
+    with {:ok, _moved} <- Git.run(["branch", "-f", branch, head], path), do: checkout(path, branch)
+  end
+
+  @spec head_label(String.t(), String.t()) :: head_label()
+  defp head_label("", head), do: {:detached, head}
+  defp head_label(current, _head), do: {:branch, current}
 
   @spec prepare_for_staging(String.t()) :: :ok | {:error, error()}
   defp prepare_for_staging(path) do

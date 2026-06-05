@@ -330,35 +330,59 @@ defmodule Harness.WorktreeTest do
       assert status != 0
     end
 
-    test "refuses to commit when the agent detached HEAD off the run branch" do
+    test "re-attaches and commits when the agent detached HEAD at the branch tip" do
       {repo, wt} = create_worktree()
       File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
-      branch_sha_before = String.trim(GitFixture.git!(repo, ["rev-parse", wt.branch]))
       GitFixture.git!(wt.path, ["checkout", "-q", "--detach"])
-      head_sha = String.trim(GitFixture.git!(wt.path, ["rev-parse", "HEAD"]))
 
-      assert {:error, {:head_moved, expected, {:detached, ^head_sha}}} =
-               Worktree.commit(wt, "agent delivery")
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
 
-      assert expected == wt.branch
-      # Deliverable is not stranded: the run branch is unchanged, and the
-      # agent's work still lives in the worktree's working tree.
-      assert String.trim(GitFixture.git!(repo, ["rev-parse", wt.branch])) == branch_sha_before
-      assert File.read!(Path.join(wt.path, "delivery.txt")) == "agent work\n"
+      # HEAD is back on the run branch and the deliverable landed on it.
+      assert String.trim(GitFixture.git!(wt.path, ["branch", "--show-current"])) == wt.branch
+      assert GitFixture.git!(repo, ["show", "#{wt.branch}:delivery.txt"]) == "agent work\n"
     end
 
-    test "refuses to commit when the agent switched HEAD to a different branch" do
+    test "re-attaches and commits when the agent switched HEAD to a different branch" do
       {repo, wt} = create_worktree()
       File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
-      branch_sha_before = String.trim(GitFixture.git!(repo, ["rev-parse", wt.branch]))
       GitFixture.git!(wt.path, ["checkout", "-q", "-b", "agent-detour"])
 
-      assert {:error, {:head_moved, expected, {:branch, "agent-detour"}}} =
-               Worktree.commit(wt, "agent delivery")
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
 
-      assert expected == wt.branch
-      assert String.trim(GitFixture.git!(repo, ["rev-parse", wt.branch])) == branch_sha_before
-      assert File.read!(Path.join(wt.path, "delivery.txt")) == "agent work\n"
+      assert String.trim(GitFixture.git!(wt.path, ["branch", "--show-current"])) == wt.branch
+      assert GitFixture.git!(repo, ["show", "#{wt.branch}:delivery.txt"]) == "agent work\n"
+    end
+
+    test "fast-forwards the branch when the agent committed while detached (HEAD ahead)" do
+      {repo, wt} = create_worktree()
+      # Agent detaches, commits its delivery off-branch, then leaves HEAD there.
+      GitFixture.git!(wt.path, ["checkout", "-q", "--detach"])
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+      GitFixture.git!(wt.path, ["add", "delivery.txt"])
+      GitFixture.git!(wt.path, ["commit", "-q", "-m", "off-branch delivery"])
+      detached_sha = String.trim(GitFixture.git!(wt.path, ["rev-parse", "HEAD"]))
+
+      assert {:ok, :no_changes} = Worktree.commit(wt, "agent delivery")
+
+      # The branch was fast-forwarded onto the detached commit — work preserved.
+      assert String.trim(GitFixture.git!(wt.path, ["branch", "--show-current"])) == wt.branch
+      assert String.trim(GitFixture.git!(repo, ["rev-parse", wt.branch])) == detached_sha
+      assert GitFixture.git!(repo, ["show", "#{wt.branch}:delivery.txt"]) == "agent work\n"
+    end
+
+    test "re-attaches to the tip when the agent checked out an older commit (HEAD behind)" do
+      {repo, wt} = create_worktree()
+      File.write!(Path.join(wt.path, "first.txt"), "first\n")
+      assert {:ok, :committed} = Worktree.commit(wt, "first delivery")
+      tip = String.trim(GitFixture.git!(repo, ["rev-parse", wt.branch]))
+      # Agent rewinds HEAD to the base commit, behind the branch tip.
+      GitFixture.git!(wt.path, ["checkout", "-q", wt.base_sha])
+
+      assert {:ok, :no_changes} = Worktree.commit(wt, "agent delivery")
+
+      # Re-attached to the tip; the branch keeps the committed deliverable.
+      assert String.trim(GitFixture.git!(wt.path, ["branch", "--show-current"])) == wt.branch
+      assert String.trim(GitFixture.git!(repo, ["rev-parse", wt.branch])) == tip
     end
   end
 
