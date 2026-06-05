@@ -8939,7 +8939,7 @@
       "phase": 18,
       "bundle": "judgment-collapse",
       "milestone": "v0_13",
-      "status": "pending",
+      "status": "done",
       "title": "In-run discernment: thread rmap d-score + markers onto Roadmap.Item, delete the prose regexes in run.ex",
       "scores": {
         "d": 3,
@@ -8968,9 +8968,14 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "a3be1619dcaa4bf99171acd1e054caab86914bbc",
       "body": "run.ex:2329-2340 decides whether to spend an AI mid-run sample on a run by regex-scraping the difficulty score and keyword-matching 'security|bug|...' out of prose. Both are judgment-as-regex AND redundant: rmap already carries scores.d and markers [:security,:bug] as typed fields — but Roadmap.Item (item.ex:37) threads only `domains`, dropping d + markers, which is why the regex workaround exists. Carry the structured fields; read them. The keyword regex misses CVE/exploit/auth-bypass and false-positives on 'fixed a bug'; the typed marker does neither.",
       "created_at": "2026-06-05",
+      "done_at": "2026-06-05",
       "scored_at": "2026-06-05",
+      "implemented": "Landed by claude via merge-train; reviewer-approved (run run-1780652939610-0e1b56f5, a3be1619dcaa4bf99171acd1e054caab86914bbc).",
+      "delivered_by": "claude",
+      "verified": true,
       "cross_repo": []
     },
     {

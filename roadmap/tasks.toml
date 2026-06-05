@@ -6458,7 +6458,7 @@ id = "218"
 phase = 18
 bundle = "judgment-collapse"
 milestone = "v0_13"
-status = "pending"
+status = "done"
 title = "In-run discernment: thread rmap d-score + markers onto Roadmap.Item, delete the prose regexes in run.ex"
 scores = { d = 3, b = 4, u = 3 }
 acceptance_criteria = ["Harness.Roadmap.Item carries the task's structured `d` score and `markers` (rmap already types them); roadmap ingest populates them.", "run.ex task_difficulty/1 (the D-score prose-scrape regex) and security_or_bug_marker?/1 (the security|bug keyword classifier) are deleted.", "The in-run discernment stakes gate reads the structured d-score / :security / :bug markers instead of scraping concatenated prompt text.", "Tests: a task tagged :security but whose prose lacks the word still gates as high-stakes; a task whose body merely mentions 'bug' in a comment does not false-positive."]
@@ -6467,8 +6467,13 @@ touches = ["lib/harness/run/reflex.ex"]
 domains = ["otp"]
 assignee = "claude"
 body = "run.ex:2329-2340 decides whether to spend an AI mid-run sample on a run by regex-scraping the difficulty score and keyword-matching 'security|bug|...' out of prose. Both are judgment-as-regex AND redundant: rmap already carries scores.d and markers [:security,:bug] as typed fields — but Roadmap.Item (item.ex:37) threads only `domains`, dropping d + markers, which is why the regex workaround exists. Carry the structured fields; read them. The keyword regex misses CVE/exploit/auth-bypass and false-positives on 'fixed a bug'; the typed marker does neither."
+implemented = "Landed by claude via merge-train; reviewer-approved (run run-1780652939610-0e1b56f5, a3be1619dcaa4bf99171acd1e054caab86914bbc)."
+delivered_by = "claude"
+verified = true
 created_at = "2026-06-05"
 scored_at = "2026-06-05"
+done_at = "2026-06-05"
+shipped_in = "a3be1619dcaa4bf99171acd1e054caab86914bbc"
 
 [[task]]
 id = "219"
