@@ -8713,7 +8713,7 @@
       "id": "212",
       "phase": 17,
       "bundle": "settings-pq",
-      "status": "in_progress",
+      "status": "pending",
       "title": "Retire ResultStore.File + Chat.Store.File — Postgres-only, ephemeral when repo_enabled:false",
       "scores": {
         "d": 4,

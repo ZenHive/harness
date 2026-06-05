@@ -6359,7 +6359,7 @@ scored_at = "2026-06-05"
 id = "212"
 phase = 17
 bundle = "settings-pq"
-status = "in_progress"
+status = "pending"
 title = "Retire ResultStore.File + Chat.Store.File — Postgres-only, ephemeral when repo_enabled:false"
 scores = { d = 4, b = 5, u = 5 }
 acceptance_criteria = ["ResultStore and Chat.Store select the Postgres backend when repo_enabled:true and a no-op/in-memory ephemeral backend when false; the File backends (ResultStore.File, Chat.Store.File) are deleted.", "One-time first-boot import of existing ~/.harness/results and ~/.harness/chats term data into Postgres so KPI history and chat sessions are preserved.", "AgentKPI / CapabilityScore rollups read identical data post-migration (no KPI regression).", "Ephemeral mode surfaced to the operator via the shared flash (Task 210) — same banner that covers ephemeral settings.", "Tests: result record + chat session survive restart under :true; ephemeral under :false; legacy import populates from seeded term files."]
