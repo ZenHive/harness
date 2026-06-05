@@ -813,8 +813,11 @@ defmodule Harness.Run do
   def recovering(:enter, _old_state, data) do
     RunFeed.broadcast_update(status_snapshot(:recovering, data))
 
-    case select_reviewer(data) do
-      {:ok, adapter} ->
+    # Task 228 renamed select_reviewer/1 -> select_reviewers/1 ({:ok, [module, ...]}
+    # rotation slate). The recovery seam is a one-shot AI call, so it takes the
+    # primary (highest-priority cross-family) adapter and ignores the rotation tail.
+    case select_reviewers(data) do
+      {:ok, [adapter | _candidates]} ->
         parent = self()
         task = start_task(fn -> run_recovery(%{data | recovery_adapter: adapter}, parent) end)
 

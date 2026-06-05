@@ -110,6 +110,11 @@ defmodule Harness.Run.LogRecord do
     :reason,
     :duration_ms
   ]
+  # LogRecord is a deliberately flat persistence fact-record: run facts + reviewer
+  # facts + recovery facts (Task 229), each a column the result store reads. Per
+  # the mantra ("count facts in code"), these are facts, not behavior — the 34-field
+  # count is the shape of the data, not a refactor smell.
+  # credo:disable-for-next-line Credo.Check.Warning.StructFieldAmount
   defstruct [
     :batch_id,
     :run_id,
