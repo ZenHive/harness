@@ -48,6 +48,14 @@ defmodule Harness.Dashboard.Live do
       (`relandable?/2`, gated on `Harness.Dashboard.RoadmapSummary.blocked?/3`).
       Re-enqueues the landing job (`Harness.Dispatch.reland/1` → `Harness.Lander.enqueue/1`);
       the branch is already reviewer-approved, so this spends **zero agent tokens**.
+    * **Land** — on an approved-but-unlanded run of a `landing_policy: :manual`
+      project that has a `target_branch` configured (`landable?/3`). Manual-policy
+      projects never auto-enqueue a land, so an approved run otherwise sits with
+      only a Delete action; this is the manual merge trigger. Same backend as
+      Re-land (`Harness.Lander.enqueue/1`, zero agent tokens) — the gate differs:
+      Re-land recovers a blocked auto-train, Land is the first land of a manual
+      project. The button is hidden until `target_branch` is set, so it appears
+      exactly where landing can succeed (`landable_project_names/1`).
 
   Both events set the `:notice` assign (`{kind, msg}`), rendered as a transient
   `setting-notice` bar — the bare app layout has no Phoenix flash. Stream refresh
@@ -62,6 +70,7 @@ defmodule Harness.Dashboard.Live do
   alias Harness.Dashboard.RunFeed
   alias Harness.Dashboard.Transcript
   alias Harness.Dashboard.Transcript.Parser
+  alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
   alias Harness.Run.LogRecord
@@ -622,7 +631,12 @@ defmodule Harness.Dashboard.Live do
 
     <h2>Active runs</h2>
     <p :if={@active_empty?}>No runs in flight or lingering.</p>
-    <.run_table id="active-runs" rows={@streams.active_runs} summaries={@roadmap} />
+    <.run_table
+      id="active-runs"
+      rows={@streams.active_runs}
+      summaries={@roadmap}
+      landable_projects={landable_project_names(@projects)}
+    />
 
     <h2>
       Run history <span :if={!@show_landed}> — unmerged only</span>
@@ -639,7 +653,12 @@ defmodule Harness.Dashboard.Live do
         do: "No persisted runs.",
         else: "No unmerged runs — every settled run has landed."}
     </p>
-    <.run_table id="run-history" rows={@streams.history} summaries={@roadmap} />
+    <.run_table
+      id="run-history"
+      rows={@streams.history}
+      summaries={@roadmap}
+      landable_projects={landable_project_names(@projects)}
+    />
     """
   end
 
@@ -774,6 +793,7 @@ defmodule Harness.Dashboard.Live do
   attr(:id, :string, required: true)
   attr(:rows, :any, required: true)
   attr(:summaries, :map, default: %{})
+  attr(:landable_projects, :any, default: MapSet.new())
 
   # Shared by the "Active runs" and "Run history" tables. `rows` is a
   # `Phoenix.LiveView` stream; the `<tbody>` carries `phx-update="stream"` and a
@@ -821,6 +841,11 @@ defmodule Harness.Dashboard.Live do
               <.reland_button
                 :if={relandable?(entry.status, @summaries)}
                 run_id={entry.status.run_id}
+              />
+              <.reland_button
+                :if={landable?(entry.status, @summaries, @landable_projects)}
+                run_id={entry.status.run_id}
+                first_land
               />
               <.delete_button :if={deletable?(entry.status)} run_id={entry.status.run_id} />
             </div>
@@ -920,11 +945,28 @@ defmodule Harness.Dashboard.Live do
   end
 
   attr(:run_id, :string, required: true)
+  attr(:first_land, :boolean, default: false)
 
   # Offered when the run's task is blocked (a land-cap-exhausted train). Re-enqueues
   # the landing job — zero agent tokens, pure git — confirm-gated; routes to the
-  # `"reland_run"` handle_event.
+  # `"reland_run"` handle_event. The `first_land` variant is the same control for a
+  # never-landed approved run of a manual-policy project (`landable?/3`): identical
+  # backend, only the label/copy differ ("Land" — first land — vs "Re-land" — retry).
   @spec reland_button(map()) :: Rendered.t()
+  defp reland_button(%{first_land: true} = assigns) do
+    ~H"""
+    <button
+      type="button"
+      class="reland-btn"
+      phx-click="reland_run"
+      phx-value-run_id={@run_id}
+      data-confirm={"Land run #{@run_id}? Enqueues the landing job (no agent run)."}
+    >
+      Land
+    </button>
+    """
+  end
+
   defp reland_button(assigns) do
     ~H"""
     <button
@@ -1156,4 +1198,38 @@ defmodule Harness.Dashboard.Live do
     do: RoadmapSummary.blocked?(summaries, project, task_id)
 
   def relandable?(nil, _summaries), do: false
+
+  # A run is (first-)landable when it settled :done with an :approve verdict, its
+  # task hasn't merged (no shipped_in) and isn't blocked (that's relandable?/2's
+  # case), and its project is in `landable_projects` — the manual-policy projects
+  # with a target_branch (see landable_project_names/1). Manual-policy projects
+  # never auto-enqueue a land, so this is the operator's first merge trigger; the
+  # backend is identical to re-land (Lander.enqueue/1).
+  @doc false
+  @spec landable?(Status.t() | nil, RoadmapSummary.summaries(), MapSet.t(String.t())) :: boolean()
+  def landable?(
+        %Status{state: :done, review_verdict: :approve, project_name: project, task_id: task_id},
+        summaries,
+        landable_projects
+      )
+      when is_binary(project) do
+    MapSet.member?(landable_projects, project) and
+      RoadmapSummary.landed_sha(summaries, project, task_id) == nil and
+      not RoadmapSummary.blocked?(summaries, project, task_id)
+  end
+
+  def landable?(_status, _summaries, _landable_projects), do: false
+
+  # The set of project names where a manual "Land" button can succeed: manual
+  # landing policy (auto projects land via the train) AND a configured
+  # target_branch (Lander.land/1 bails without one). Gating the button on this set
+  # keeps it hidden until landing can actually work.
+  @doc false
+  @spec landable_project_names([Project.t()]) :: MapSet.t(String.t())
+  def landable_project_names(projects) do
+    for %Project{name: name, landing_policy: :manual, target_branch: tb} <- projects,
+        is_binary(tb) and tb != "",
+        into: MapSet.new(),
+        do: name
+  end
 end

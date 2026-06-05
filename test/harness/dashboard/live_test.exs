@@ -11,6 +11,7 @@ defmodule Harness.Dashboard.LiveTest do
   alias Harness.Dashboard.Live
   alias Harness.FakeAdapter
   alias Harness.GitFixture
+  alias Harness.Project
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
@@ -195,6 +196,109 @@ defmodule Harness.Dashboard.LiveTest do
 
     test "a missing run status hides the re-land control" do
       refute Live.relandable?(nil, %{})
+    end
+  end
+
+  describe "landable?/3 (manual first-land button visibility guard)" do
+    @unlanded %{open: 1, done: 0, total: 1, landed: %{}, blocked: %{}}
+
+    defp done_approved(opts) do
+      %Status{
+        run_id: "r",
+        task_id: Keyword.get(opts, :task_id, "7"),
+        project_name: Keyword.get(opts, :project_name, "proj"),
+        state: Keyword.get(opts, :state, :done),
+        review_verdict: Keyword.get(opts, :review_verdict, :approve)
+      }
+    end
+
+    test "an approved, unlanded, unblocked run of a landable project is landable" do
+      summaries = %{"proj" => @unlanded}
+      landable = MapSet.new(["proj"])
+
+      assert Live.landable?(done_approved(task_id: "7"), summaries, landable)
+    end
+
+    test "a project absent from the landable set (no target_branch) hides the button" do
+      summaries = %{"proj" => @unlanded}
+
+      refute Live.landable?(done_approved(task_id: "7"), summaries, MapSet.new())
+    end
+
+    test "an already-landed run hides the button (task carries a shipped_in)" do
+      summaries = %{"proj" => %{@unlanded | landed: %{"7" => "abc1234"}}}
+
+      refute Live.landable?(done_approved(task_id: "7"), summaries, MapSet.new(["proj"]))
+    end
+
+    test "a blocked task is not landable — that is relandable?/2's case" do
+      summaries = %{"proj" => %{@unlanded | blocked: %{"7" => true}}}
+
+      refute Live.landable?(done_approved(task_id: "7"), summaries, MapSet.new(["proj"]))
+    end
+
+    test "a rejected verdict hides the button even when the project is landable" do
+      summaries = %{"proj" => @unlanded}
+
+      refute Live.landable?(
+               done_approved(task_id: "7", review_verdict: :reject),
+               summaries,
+               MapSet.new(["proj"])
+             )
+    end
+
+    test "a non-:done state hides the button" do
+      summaries = %{"proj" => @unlanded}
+
+      refute Live.landable?(
+               done_approved(task_id: "7", state: :failed),
+               summaries,
+               MapSet.new(["proj"])
+             )
+    end
+
+    test "a missing run status hides the control" do
+      refute Live.landable?(nil, %{}, MapSet.new(["proj"]))
+    end
+  end
+
+  describe "landable_project_names/1 (manual-policy + target_branch set)" do
+    defp project(name, opts) do
+      %Project{
+        name: name,
+        source: nil,
+        roadmap_path: "/tmp/#{name}",
+        landing_policy: Keyword.get(opts, :landing_policy, :manual),
+        target_branch: Keyword.get(opts, :target_branch)
+      }
+    end
+
+    test "includes a manual-policy project with a configured target_branch" do
+      names = Live.landable_project_names([project("a", target_branch: "main")])
+
+      assert MapSet.member?(names, "a")
+    end
+
+    test "excludes a manual-policy project with no target_branch (land would bail)" do
+      names = Live.landable_project_names([project("a", target_branch: nil)])
+
+      refute MapSet.member?(names, "a")
+    end
+
+    test "excludes an empty-string target_branch" do
+      names = Live.landable_project_names([project("a", target_branch: "")])
+
+      refute MapSet.member?(names, "a")
+    end
+
+    test "excludes an auto-policy project — the train lands those, not the button" do
+      names = Live.landable_project_names([project("a", landing_policy: :auto, target_branch: "main")])
+
+      refute MapSet.member?(names, "a")
+    end
+
+    test "an empty project list yields an empty set" do
+      assert Live.landable_project_names([]) == MapSet.new()
     end
   end
 
