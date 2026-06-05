@@ -35,11 +35,16 @@ defmodule Harness.Run do
   the checks itself, fixes inline (its own edits, its own commits), and writes
   `.harness/review.json` (`Harness.Run.Review`). Harness reads that artifact
   mechanically: approve settles `:done`, reject settles `:failed` with the
-  reviewer's report, a malformed artifact settles `:failed` as
-  `{:review_stuck, ...}`. A *missing* artifact (the reviewer exited without
-  writing it) is re-prompted ONCE in the same worktree (Task 203) — a mechanical
-  re-issue of the flush, not a re-judgment — before settling `{:review_stuck,
-  ...}` on a second miss.
+  reviewer's report. An *unreadable* artifact — missing (the reviewer exited
+  without writing it) or malformed (it wrote invalid verdict JSON) — is
+  re-prompted ONCE in the same worktree (Task 203, generalized) — a mechanical
+  re-issue of the mandatory write, not a re-judgment — before settling
+  `{:review_stuck, ...}` on a second unreadable result. A reviewer that never
+  spawns or goes idle past its watchdog is *rotated* to the next eligible
+  cross-family reviewer (the finite slate carved at route-into-review) before
+  settling `{:review_stuck, ...}` — also mechanical: next-candidate selection,
+  no content inspected to judge recoverability. Both fallback counts ride onto
+  the run record as raw facts.
 
   Rejection is reserved for degenerate cases — an empty or unusable worktree,
   destructive or fully off-task work. Everything fixable the reviewer fixes and
@@ -199,8 +204,9 @@ defmodule Harness.Run do
            lifetime_timeout: pos_integer(),
            max_hold_timeout: timeout(),
            terminal_linger: non_neg_integer(),
-           reviewer: atom() | module() | nil,
+           reviewer: atom() | module() | [atom() | module()] | nil,
            reviewer_adapter: module() | nil,
+           reviewer_candidates: [module()],
            reviewer_adapter_opts: keyword(),
            reviewer_run: AgentRun.t() | nil,
            recovery_adapter: module() | nil,
@@ -220,6 +226,7 @@ defmodule Harness.Run do
            reviewer_diff_size: non_neg_integer() | nil,
            reviewer_pre_review_sha: String.t() | nil,
            reviewer_reprompt_count: non_neg_integer(),
+           reviewer_rotation_count: non_neg_integer(),
            implementer_empty_diff?: boolean(),
            hold_requested: false | :graceful | :interrupt,
            hold_reason: :graceful | :interrupt | nil,
@@ -520,6 +527,7 @@ defmodule Harness.Run do
       terminal_linger: run_timeout(opts, :terminal_linger),
       reviewer: Keyword.get(opts, :reviewer, project.reviewer || configured(:reviewer, nil)),
       reviewer_adapter: nil,
+      reviewer_candidates: [],
       reviewer_adapter_opts: Keyword.get(opts, :reviewer_adapter_opts, []),
       reviewer_run: nil,
       recovery_adapter: nil,
@@ -539,6 +547,7 @@ defmodule Harness.Run do
       reviewer_diff_size: nil,
       reviewer_pre_review_sha: nil,
       reviewer_reprompt_count: 0,
+      reviewer_rotation_count: 0,
       implementer_empty_diff?: false,
       hold_requested: false,
       hold_reason: nil,
@@ -887,13 +896,13 @@ defmodule Harness.Run do
   end
 
   def reviewing(:state_timeout, :reviewer_spawn_timeout, %{reviewer_run: nil} = data) do
-    fail_review_stuck(data, reviewer_spawn_timeout_report(data))
+    rotate_or_fail_review(data, reviewer_spawn_timeout_report(data))
   end
 
   def reviewing(:state_timeout, :reviewer_spawn_timeout, _data), do: :keep_state_and_data
 
   def reviewing(:state_timeout, :reviewer_idle_timeout, data) do
-    fail_review_stuck(data, reviewer_idle_timeout_report(data))
+    rotate_or_fail_review(data, reviewer_idle_timeout_report(data))
   end
 
   def reviewing(
@@ -1436,6 +1445,42 @@ defmodule Harness.Run do
     fail_recovery_dead(data, "Recovery artifact is malformed or missing: #{inspect(reason)}")
   end
 
+  # Reviewer spawn/idle timeout fallback (plan gap 6). Before settling the run
+  # :failed, rotate to the next eligible cross-family reviewer carved at
+  # route-into-review (`reviewer_candidates`, cross-family by construction). The
+  # candidate list is finite, so rotation is bounded by construction; the count
+  # is witnessed as a raw fact on the run record. This is MECHANICAL — picking the
+  # next candidate, no content inspection to judge whether the work is
+  # recoverable — the same class as the missing/malformed re-prompt. Exhausting
+  # the candidates settles :review_stuck exactly as before.
+  @spec rotate_or_fail_review(data(), String.t()) :: handler_result()
+  defp rotate_or_fail_review(%{reviewer_candidates: [next | rest]} = data, _report) do
+    # Terminate the timed-out reviewer (SIGKILL via its captured os_pid) and tear
+    # down its step task BEFORE re-entering :reviewing — same ordering as
+    # fail_review_stuck so closing the Port can't race the pid (Task 199 audit).
+    terminate_reviewer(data)
+    cancel_task(data.task)
+
+    Logger.info(
+      "harness run: reviewer timed out for #{data.run_id} — rotating to #{inspect(next)} " <>
+        "(rotation #{data.reviewer_rotation_count + 1})"
+    )
+
+    data = %{
+      data
+      | task: nil,
+        reviewer_run: nil,
+        reviewer_adapter: next,
+        reviewer_candidates: rest,
+        reviewer_rotation_count: data.reviewer_rotation_count + 1
+    }
+
+    # :repeat_state re-runs the :reviewing enter callback, spawning the rotated-to
+    # reviewer in the same worktree and re-arming the spawn/idle watchdogs.
+    {:repeat_state, data}
+  end
+
+  defp rotate_or_fail_review(data, report), do: fail_review_stuck(data, report)
   @spec fail_review_stuck(data(), String.t()) :: handler_result()
   defp fail_review_stuck(data, report) do
     # Terminate the reviewer (SIGKILL via its captured os_pid) BEFORE tearing
@@ -1582,6 +1627,8 @@ defmodule Harness.Run do
       reviewer_diff_size: data.reviewer_diff_size,
       token_usage: data.token_usage,
       composed_inputs: data.composed_inputs,
+      reviewer_reprompt_count: data.reviewer_reprompt_count,
+      reviewer_rotation_count: data.reviewer_rotation_count,
       recovery_attempts: data.recovery_attempts,
       recovery_outcome: data.recovery_outcome,
       recovery_repaired: data.recovery_repaired,
@@ -1773,14 +1820,22 @@ defmodule Harness.Run do
   # the queue for re-dispatch when one is available).
   @spec route_to_review(data()) :: handler_result()
   defp route_to_review(data) do
-    case select_reviewer(data) do
-      {:ok, reviewer} ->
+    case select_reviewers(data) do
+      {:ok, [primary | candidates]} ->
         # Capture the implementer's final SHA ONCE, here at the single entry into
         # review. `measure_reviewer_diff/2` spans from this baseline, so a
-        # Task-203 re-prompt (`:repeat_state`, which never re-routes) keeps the
-        # original baseline and the fix-diff KPI counts the WHOLE review —
-        # including a first pass that fixed-then-exited before its verdict.
-        {:next_state, :reviewing, %{data | reviewer_adapter: reviewer, reviewer_pre_review_sha: current_sha(data)}}
+        # Task-203 re-prompt OR a timeout rotation (both `:repeat_state`, which
+        # never re-routes) keeps the original baseline and the fix-diff KPI counts
+        # the WHOLE review — including a first pass that fixed-then-exited before
+        # its verdict. `candidates` is the ordered cross-family fallback set the
+        # reviewer-timeout rotation (`rotate_or_fail_review/2`) draws from.
+        {:next_state, :reviewing,
+         %{
+           data
+           | reviewer_adapter: primary,
+             reviewer_candidates: candidates,
+             reviewer_pre_review_sha: current_sha(data)
+         }}
 
       {:error, reason} ->
         report = "No cross-family reviewer adapter available: #{inspect(reason)}"
@@ -1801,14 +1856,21 @@ defmodule Harness.Run do
     {:next_state, :failed, %{data | review: review, reason: {:review_rejected, review.report}}}
   end
 
-  # Missing verdict — the recoverable case (Task 203). On the FIRST miss only,
-  # re-enter :reviewing to re-invoke the same reviewer in the same worktree with
-  # a terse nudge (see `reviewer_reprompt/1`); `:repeat_state` re-runs the enter
-  # callback, re-arming the spawn/idle watchdogs identically to the first pass.
-  # A second miss (count already at the limit) fails as :review_stuck — no loop.
-  defp settle_review(%{reviewer_reprompt_count: count} = data, {:error, :missing})
-       when count < @reviewer_reprompt_limit do
-    Logger.info("harness run: reviewer wrote no verdict for #{data.run_id} — re-prompting once (attempt #{count + 1})")
+  # Unreadable verdict — the recoverable case (Task 203, generalized to cover a
+  # MALFORMED artifact alongside a MISSING one). On the FIRST miss only, re-enter
+  # :reviewing to re-invoke the same reviewer in the same worktree with a terse
+  # nudge (see `reviewer_reprompt/1`); `:repeat_state` re-runs the enter callback,
+  # re-arming the spawn/idle watchdogs identically to the first pass. The clause
+  # matches ANY `{:error, _}` read result — harness inspects no content to judge
+  # whether the verdict is recoverable; it simply re-issues the mandatory write
+  # once. A second miss (count already at the limit) falls through to the honest
+  # :review_stuck failure below — no loop.
+  defp settle_review(%{reviewer_reprompt_count: count} = data, {:error, reason}) when count < @reviewer_reprompt_limit do
+    Logger.info(
+      "harness run: reviewer verdict unreadable (#{inspect(reason)}) for #{data.run_id} — " <>
+        "re-prompting once (attempt #{count + 1})"
+    )
+
     {:repeat_state, %{data | reviewer_reprompt_count: count + 1, task: nil}}
   end
 
@@ -1822,21 +1884,63 @@ defmodule Harness.Run do
     {:next_state, :failed, %{data | reason: {:review_stuck, report}}}
   end
 
-  @spec select_reviewer(data()) :: {:ok, module()} | {:error, term()}
-  defp select_reviewer(%{reviewer: nil} = data) do
+  # Resolves the ordered cross-family reviewer set for a run. The head is the
+  # primary reviewer; the tail is the rotation fallback the reviewer-timeout
+  # path (`rotate_or_fail_review/2`) draws from. Auto-selection returns the whole
+  # prioritized registry slate; an explicit pin returns a one-element list; an
+  # explicit list is an operator-supplied rotation order (each element validated
+  # cross-family + dispatchable). Empty ⇒ `:review_stuck`.
+  @spec select_reviewers(data()) :: {:ok, [module(), ...]} | {:error, term()}
+  defp select_reviewers(%{reviewer: nil} = data) do
+    case auto_reviewer_modules(data) do
+      [] -> {:error, {:no_cross_family_reviewer, data.item.agent}}
+      modules -> {:ok, modules}
+    end
+  end
+
+  defp select_reviewers(%{reviewer: reviewers} = data) when is_list(reviewers) do
+    resolve_reviewer_list(data, reviewers)
+  end
+
+  defp select_reviewers(%{reviewer: reviewer} = data) do
+    with {:ok, module} <- resolve_single_reviewer(data, reviewer), do: {:ok, [module]}
+  end
+
+  # The full prioritized cross-family slate from the registry — every
+  # dispatchable agent that is not the implementer's family, deprioritized by
+  # historical rejection rate. The list is the rotation order on a reviewer
+  # timeout, not just the single auto-pick.
+  @spec auto_reviewer_modules(data()) :: [module()]
+  defp auto_reviewer_modules(data) do
     implementer = data.item.agent
 
     AgentRegistry.agents()
     |> Enum.reject(fn {agent, _module} -> agent == implementer end)
     |> Enum.filter(fn {_agent, module} -> reviewer_dispatchable?(module) end)
     |> prioritize_reviewers(reviewer_rejection_rates())
+    |> Enum.map(fn {_agent, module} -> module end)
+  end
+
+  # An explicit reviewer rotation order: resolve + validate each in turn, failing
+  # fast on the first invalid pin (mirrors the single-explicit refusal semantics).
+  @spec resolve_reviewer_list(data(), [atom() | module()]) :: {:ok, [module(), ...]} | {:error, term()}
+  defp resolve_reviewer_list(data, reviewers) do
+    reviewers
+    |> Enum.reduce_while([], fn reviewer, acc ->
+      case resolve_single_reviewer(data, reviewer) do
+        {:ok, module} -> {:cont, [module | acc]}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
     |> case do
-      [{_agent, module} | _rest] -> {:ok, module}
-      [] -> {:error, {:no_cross_family_reviewer, implementer}}
+      {:error, reason} -> {:error, reason}
+      [] -> {:error, {:no_cross_family_reviewer, data.item.agent}}
+      modules -> {:ok, Enum.reverse(modules)}
     end
   end
 
-  defp select_reviewer(%{reviewer: reviewer} = data) do
+  @spec resolve_single_reviewer(data(), atom() | module()) :: {:ok, module()} | {:error, term()}
+  defp resolve_single_reviewer(data, reviewer) do
     with {:ok, module} <- resolve_reviewer(reviewer),
          :ok <- ensure_cross_family_reviewer(data.item.agent, module),
          true <- explicit_reviewer_dispatchable?(module) || {:error, {:reviewer_unavailable, module}} do
@@ -2088,27 +2192,28 @@ defmodule Harness.Run do
   def reviewer_idle_timeout(idle) when is_integer(idle), do: max(idle, @reviewer_idle_floor)
 
   # First pass gets the full gate prompt; a Task-203 re-prompt (count > 0) gets
-  # the terse "you exited without writing the verdict — write it now" nudge.
+  # the terse "harness couldn't read your verdict — write a valid one now" nudge.
   @spec reviewer_invocation_prompt(data()) :: String.t()
   defp reviewer_invocation_prompt(%{reviewer_reprompt_count: count} = data) when count > 0, do: reviewer_reprompt(data)
 
   defp reviewer_invocation_prompt(data), do: reviewer_prompt(data)
 
-  # Task 203 re-prompt: a fresh invocation of the same reviewer whose prior pass
-  # exited without writing the verdict. All review work is already committed in
-  # this worktree; the ONE remaining job is producing the artifact. Terse by
+  # Task 203 re-prompt (generalized): a fresh invocation of the same reviewer
+  # whose prior pass left no READABLE verdict — it either exited without writing
+  # the artifact or wrote invalid JSON. All review work is already committed in
+  # this worktree; the ONE remaining job is producing a valid artifact. Terse by
   # design — the verdict schema + the task framing the agent needs to ground an
   # honest approve/reject, nothing more.
   @spec reviewer_reprompt(data()) :: String.t()
   defp reviewer_reprompt(data) do
     """
     You are the cross-family reviewer for a harness run. You already reviewed this work in a prior
-    pass but exited WITHOUT writing your verdict to `#{Review.artifact_path()}`, so harness is about
-    to discard the entire run.
+    pass, but harness could not read a valid verdict from `#{Review.artifact_path()}` — it was missing
+    or contained invalid JSON, so harness is about to discard the entire run.
 
     This is your ONLY remaining job, nothing else: all prior fixes are already committed in this
     worktree — assess its current state, run the project's checks below if you need to confirm, then
-    write your verdict file NOW and stop. Do not re-do a full review or make new changes unless a
+    write a VALID verdict file NOW and stop. Do not re-do a full review or make new changes unless a
     check is actually failing.
 
     Verdict artifact — write this, then stop:

@@ -112,6 +112,12 @@ defmodule Harness.Run.Result do
       is a *clean* reviewer exit that simply omits the verdict file — there the
       outcome is present and is the highest-value diagnostic of why the gate
       produced nothing.
+    * `reviewer_reprompt_count` — how many times the reviewer was re-prompted to
+      write a readable verdict after a missing/malformed artifact (Task 203,
+      bounded). A raw fact, not a judgment — `0` on a clean first-pass verdict.
+    * `reviewer_rotation_count` — how many times the gate rotated to a different
+      cross-family reviewer after a spawn/idle timeout, bounded by the finite
+      candidate slate. `0` when the first reviewer produced a verdict in time.
     * `recovery_attempts` — how many times the bounded AI-recovery seam
       (`Harness.Run.Recovery`) was spawned on this run. `0` for the
       overwhelming majority of runs (recovery never fired).
@@ -136,6 +142,8 @@ defmodule Harness.Run.Result do
           composed_inputs: [AgentAdapter.composed_input()],
           reviewer_adapter: module() | nil,
           reviewer_outcome: Outcome.t() | nil,
+          reviewer_reprompt_count: non_neg_integer(),
+          reviewer_rotation_count: non_neg_integer(),
           recovery_attempts: non_neg_integer(),
           recovery_outcome: Recovery.outcome() | nil,
           recovery_repaired: String.t() | nil,
@@ -157,6 +165,8 @@ defmodule Harness.Run.Result do
     composed_inputs: [],
     reviewer_adapter: nil,
     reviewer_outcome: nil,
+    reviewer_reprompt_count: 0,
+    reviewer_rotation_count: 0,
     recovery_attempts: 0,
     recovery_outcome: nil,
     recovery_repaired: nil,
