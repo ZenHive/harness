@@ -9325,7 +9325,7 @@
       "phase": 19,
       "bundle": "self-heal",
       "milestone": "v0_14",
-      "status": "pending",
+      "status": "done",
       "title": "Reviewer-stage mechanical fallbacks: re-prompt on malformed review.json + rotate reviewer on timeout",
       "scores": {
         "d": 2,
@@ -9353,10 +9353,15 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "7eb476a9d75a65d46f6bf54cd30ae117bfa803c8",
       "body": "Two reviewer-stage mechanical fallbacks landed together because they share the reviewer settlement path in run.ex / run/review.ex and a single reviewer pass verifies both. Covers plan gaps 4 (malformed review.json) and 6 (reviewer timeout). Both are mechanical: re-prompt is a re-run (Task 203 generalized), rotation is next-eligible selection — neither needs the AI-recovery seam. Independent of 229.",
       "created_at": "2026-06-05",
       "started_at": "2026-06-05",
+      "done_at": "2026-06-05",
       "scored_at": "2026-06-05",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1780669045744-a0a954dd, 7eb476a9d75a65d46f6bf54cd30ae117bfa803c8).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
