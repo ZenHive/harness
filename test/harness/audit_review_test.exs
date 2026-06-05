@@ -147,63 +147,72 @@ defmodule Harness.AuditReviewTest do
   end
 
   describe "grade_fix/1 — end-to-end dispatch" do
-    test "extracts :approve verdict from a grader that emits the approve sentinel" do
+    # Reflex fingerprints invocation.cwd at spawn — /tmp is huge on macOS and
+    # stalls the driver before the fast /bin/echo fixture can finish.
+    setup do
+      cwd = Path.join(System.tmp_dir!(), "audit-review-dispatch-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(cwd)
+      on_exit(fn -> File.rm_rf!(cwd) end)
+      %{cwd: cwd}
+    end
+
+    test "extracts :approve verdict from a grader that emits the approve sentinel", %{cwd: cwd} do
       assert {:ok, %{verdict: :approve, outcome: %Outcome{kind: :exited}, grader: Harness.FakeAdapter}} =
                AuditReview.grade_fix(
                  implementer: :claude,
                  grader: Harness.FakeAdapter,
                  sha: "abc1234",
                  prompt: "review this fix",
-                 cwd: "/tmp",
+                 cwd: cwd,
                  adapter_opts: [command: {:echo, "<<<VERDICT:APPROVE>>>"}],
                  total_timeout: @dispatch_total_timeout,
                  idle_timeout: @dispatch_idle_timeout
                )
     end
 
-    test "extracts :reject verdict from a grader that emits the reject sentinel" do
+    test "extracts :reject verdict from a grader that emits the reject sentinel", %{cwd: cwd} do
       assert {:ok, %{verdict: :reject, outcome: %Outcome{kind: :exited}}} =
                AuditReview.grade_fix(
                  implementer: :claude,
                  grader: Harness.FakeAdapter,
                  sha: "abc1234",
                  prompt: "review this fix",
-                 cwd: "/tmp",
+                 cwd: cwd,
                  adapter_opts: [command: {:echo, "<<<VERDICT:REJECT>>>"}],
                  total_timeout: @dispatch_total_timeout,
                  idle_timeout: @dispatch_idle_timeout
                )
     end
 
-    test "returns :unclear verdict on idle timeout with no sentinel" do
+    test "returns :unclear verdict on idle timeout with no sentinel", %{cwd: cwd} do
       assert {:ok, %{verdict: :unclear, outcome: %Outcome{kind: {:timed_out, :idle}}}} =
                AuditReview.grade_fix(
                  implementer: :claude,
                  grader: Harness.FakeAdapter,
                  sha: "abc1234",
                  prompt: "review this fix",
-                 cwd: "/tmp",
+                 cwd: cwd,
                  adapter_opts: [command: :sleep],
                  total_timeout: 10_000,
                  idle_timeout: 150
                )
     end
 
-    test "returns :unclear verdict on completed run with no sentinel" do
+    test "returns :unclear verdict on completed run with no sentinel", %{cwd: cwd} do
       assert {:ok, %{verdict: :unclear, outcome: %Outcome{kind: :exited}}} =
                AuditReview.grade_fix(
                  implementer: :claude,
                  grader: Harness.FakeAdapter,
                  sha: "abc1234",
                  prompt: "review this fix",
-                 cwd: "/tmp",
+                 cwd: cwd,
                  adapter_opts: [command: :echo],
                  total_timeout: @dispatch_total_timeout,
                  idle_timeout: @dispatch_idle_timeout
                )
     end
 
-    test "synthetic task_id includes the sha" do
+    test "synthetic task_id includes the sha", %{cwd: cwd} do
       # The FakeAdapter doesn't expose task_id in its output, but build_invocation
       # is a private helper — assert indirectly that dispatch with a sha succeeds
       # (proves the Invocation was built with a non-empty task_id, which is
@@ -214,14 +223,14 @@ defmodule Harness.AuditReviewTest do
                  grader: Harness.FakeAdapter,
                  sha: "deadbeef",
                  prompt: "review",
-                 cwd: "/tmp",
+                 cwd: cwd,
                  adapter_opts: [command: {:echo, "<<<VERDICT:APPROVE>>>"}],
                  total_timeout: @dispatch_total_timeout,
                  idle_timeout: @dispatch_idle_timeout
                )
     end
 
-    test "propagates {:error, _} when Driver.run fails to spawn" do
+    test "propagates {:error, _} when Driver.run fails to spawn", %{cwd: cwd} do
       # FakeAdapter's :missing fixture points to a non-existent executable;
       # Driver.run returns {:error, _} before spawning, and the with-chain
       # in grade_fix/1 must propagate it instead of producing an {:ok, _}.
@@ -231,7 +240,7 @@ defmodule Harness.AuditReviewTest do
                  grader: Harness.FakeAdapter,
                  sha: "abc1234",
                  prompt: "review",
-                 cwd: "/tmp",
+                 cwd: cwd,
                  adapter_opts: [command: :missing],
                  total_timeout: @dispatch_total_timeout,
                  idle_timeout: @dispatch_idle_timeout
