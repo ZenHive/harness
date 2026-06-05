@@ -6667,7 +6667,7 @@ id = "231"
 phase = 18
 bundle = "judgment-collapse"
 milestone = "v0_13"
-status = "blocked"
+status = "pending"
 title = "AgentKPI: attribute review_stuck to the reviewer, not the implementer; track per-reviewer verdict-write reliability"
 scores = { d = 3, b = 6, u = 6 }
 acceptance_criteria = ["AgentKPI exposes a per-reviewer-adapter verdict-write reliability metric: review_stuck count over total reviews that reviewer gated, computed purely from persisted LogRecord fields (reason == {:review_stuck, _} keyed by reviewer_adapter). No new judgment branch/regex/classifier — it only counts a fact already on the record.", "A review_stuck run no longer debits the IMPLEMENTER's success_rate: it is excluded from (or counted separately in) the implementer's run_count denominator, because the implementer exited fine and the REVIEWER produced no artifact. Attribution is keyed mechanically on `reason`, not inferred.", "The per-reviewer ledger (reviewer_rejection rollup) is extended to surface no-verdict/review_stuck failures alongside rejections — currently it ignores them (only verdict in [:approve,:reject] is counted).", "Tests cover: reviewer verdict-write-reliability math; review_stuck excluded from implementer success denominator; review_stuck included in the reviewer reliability rollup. Use NEVER-HIDE-FAILURES assertions (flunk on unexpected), not assert-true-on-any-outcome.", "The new reviewer-reliability signal is surfaced wherever AgentKPI is already surfaced (the /harness/kpi dashboard LiveView and the MCP KPI tool), consistent with existing presentation — no net-new design surface."]
@@ -6675,7 +6675,6 @@ out_of_scope = ["Reducing the review_stuck RATE itself (reviewer prompt / timeou
 files_to_modify = ["Harness.AgentKPI", "Harness.CapabilityScore"]
 touches = ["lib/harness/agent_kpi.ex", "lib/harness/capability_score.ex", "test/harness/agent_kpi_test.exs", "test/harness/capability_score_test.exs"]
 assignee = "claude"
-blocked_reason = "land-cap exhausted after reflex_halt x2 (task 231, last run run-1780654113453-d8e861f3)"
 body = """
 ## Observation (the muster, 2026-06-05)
 Across 10 persisted review_stuck records (reviewer exited without writing `.harness/review.json`): Cursor 6 / Claude 3 / Pi 1 by reviewer adapter. This is NOT a Cursor bug — Cursor also wrote 38 successful verdicts (it is the most-dispatched reviewer); its 6 are a base-rate-of-use artifact. The failure is cross-family: any reviewer sometimes ends its turn without the mandatory final file write. It correlates with large implementer diffs / long review durations (task 64 = a 21,583-line implementer diff; stuck reviews span 376-1006s).
