@@ -6608,7 +6608,7 @@ id = "228"
 phase = 19
 bundle = "self-heal"
 milestone = "v0_14"
-status = "pending"
+status = "in_progress"
 title = "Reviewer-stage mechanical fallbacks: re-prompt on malformed review.json + rotate reviewer on timeout"
 scores = { d = 2, b = 4, u = 4 }
 acceptance_criteria = ["Malformed .harness/review.json is routed through the SAME re-prompt path that missing review.json already uses (today missing is re-prompted, malformed hard-fails with {:review_stuck,_}) — generalizing Task 203, a mechanical re-run, not a new AI seam.", "On reviewer spawn/idle timeout, rotate to the next eligible cross-family reviewer (must stay cross-family from the implementer) before settling failed — mechanical reviewer rotation, covers plan gap 6.", "Both fallbacks are bounded (a finite re-prompt / rotation count) and witnessed as raw facts on the run record; neither inspects content to judge recoverability.", "Tests: a malformed verdict re-prompts and then succeeds; an exhausted re-prompt still fails honestly; a reviewer timeout rotates to a different cross-family reviewer."]
@@ -6618,6 +6618,7 @@ domains = ["otp"]
 assignee = "claude"
 body = "Two reviewer-stage mechanical fallbacks landed together because they share the reviewer settlement path in run.ex / run/review.ex and a single reviewer pass verifies both. Covers plan gaps 4 (malformed review.json) and 6 (reviewer timeout). Both are mechanical: re-prompt is a re-run (Task 203 generalized), rotation is next-eligible selection — neither needs the AI-recovery seam. Independent of 229."
 created_at = "2026-06-05"
+started_at = "2026-06-05"
 scored_at = "2026-06-05"
 
 [[task]]
