@@ -8808,7 +8808,7 @@
       "id": "214",
       "phase": 17,
       "bundle": "settings-pq",
-      "status": "in_progress",
+      "status": "pending",
       "title": "Reconcile run landed-state against the target branch — fix the false 'approved but not landed' signal",
       "scores": {
         "d": 3,
