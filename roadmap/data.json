@@ -9135,7 +9135,7 @@
       "phase": 18,
       "bundle": "judgment-collapse",
       "milestone": "v0_13",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Reviewer rubric foundation — task-kind facets (routing KEY) + two-axis scored skills (routing VALUE) in review.json",
       "scores": {
         "d": 4,
@@ -9172,6 +9172,7 @@
       ],
       "body": "The ROOT of the routing-oracle work — both halves of the key->value map, landed in ONE reviewer-prompt change because they share every file (reviewer_prompt/1 + reviewer_reprompt/1 in run.ex, the review.ex parse, the log_record + run_record persistence). (1) The KEY: today the only task-kind signal is `domains` — optional, human-assigned, sparse (empty for most production tasks). Truthfulness/tokens/quality are OUTCOME axes (value), not task-TYPE axes (key) — you cannot rank 'best at X' without knowing each run WAS an X. 'What kind of task is this?' is judgment, so the reviewer (already reading spec + diff + transcript) writes a `facets` block. (2) The VALUE: today the reviewer emits a flat 4-key `ratings` that CapabilityScore then fuses into one magic-weight number. Replace it with a two-axis `skills` rubric (domains × qualities, each {score, note}, only for skills the diff exercised) — far richer raw facts for an AI to synthesize capability from later, no formula. Both blocks cost near-zero marginal dispatch (the reviewer already runs). Everything downstream — the scout per-facet assessment + composite deletion (216), the KPI pivot (225) — reads these. Open vocabulary, not a maintained enum. (Absorbed the planning-doc's AN-1 'rich agent-skill rubric' — it is the VALUE half of this same change, not a separate task.)",
       "created_at": "2026-06-05",
+      "started_at": "2026-06-05",
       "scored_at": "2026-06-05",
       "cross_repo": []
     },
