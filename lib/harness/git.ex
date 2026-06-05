@@ -9,6 +9,8 @@ defmodule Harness.Git do
   @typedoc "A failed git invocation: the argv, the exit status, the combined output."
   @type error :: {:git_failed, args :: [String.t()], status :: integer(), output :: String.t()}
 
+  @git_success_status 0
+
   @doc """
   Runs `git -C <repo> <args...>`, capturing combined stdout + stderr.
 
@@ -34,25 +36,28 @@ defmodule Harness.Git do
   was **not a fast-forward** (the remote moved ahead under us), as opposed to any
   other push failure (auth, network, hook).
 
-  Prefers a deterministic plumbing signal over git's English output: it force-
-  refreshes the remote-tracking ref for `target`, then asks
-  `git merge-base --is-ancestor <remote-tip> <pushed_ref>`. A non-fast-forward is
-  exactly "the *current* remote tip is not an ancestor of what we pushed" — a
-  fact independent of git's locale or release-specific phrasing.
+  Prefers a deterministic plumbing signal over git's English output: it first
+  requires the failed push's non-zero `status`, force-refreshes the
+  remote-tracking ref for `target`, then asks `git merge-base --is-ancestor
+  <remote-tip> <pushed_ref>`. A non-fast-forward is exactly "the *current*
+  remote tip is not an ancestor of what we pushed" — a fact independent of
+  git's locale or release-specific phrasing.
 
   Falls back to matching git's rejection text (`non-fast-forward` / `fetch first`
   / `[rejected]`) only when the deterministic check is **inconclusive**: the
   remote ref can't be refreshed (offline, or the branch doesn't exist yet) or a
   ref won't resolve. `output` is the combined stdout+stderr of the failed push.
   """
-  @spec non_fast_forward?(String.t(), String.t(), String.t(), String.t()) :: boolean()
-  def non_fast_forward?(repo, pushed_ref, target, output) do
+  @spec non_fast_forward?(String.t(), String.t(), String.t(), integer(), String.t()) :: boolean()
+  def non_fast_forward?(repo, pushed_ref, target, status, output) when status != @git_success_status do
     case remote_divergence(repo, pushed_ref, target) do
       :diverged -> true
       :fast_forwardable -> false
       :inconclusive -> rejected_text?(output)
     end
   end
+
+  def non_fast_forward?(_repo, _pushed_ref, _target, _status, _output), do: false
 
   # The deterministic signal. `+` force-updates the tracking ref (a remote that
   # only moved forward is a fast-forward of it anyway; the prefix just keeps a

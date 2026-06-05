@@ -217,8 +217,8 @@ defmodule Harness.Roadmap.Durable do
       {:ok, _output} ->
         :ok
 
-      {:error, {:git_failed, _args, _status, output}} ->
-        if Git.non_fast_forward?(path, "HEAD", target, output),
+      {:error, {:git_failed, _args, status, output}} ->
+        if Git.non_fast_forward?(path, "HEAD", target, status, output),
           do: :retry,
           else: {:error, {:roadmap_push_failed, output}}
     end

@@ -301,8 +301,8 @@ defmodule Harness.Lander do
       {:ok, _output} ->
         {:ok, tip}
 
-      {:error, {:git_failed, _args, _status, output}} ->
-        if Git.non_fast_forward?(repo, tip, target, output),
+      {:error, {:git_failed, _args, status, output}} ->
+        if Git.non_fast_forward?(repo, tip, target, status, output),
           do: {:push_rejected, output},
           else: {:error, {:push_failed, output}}
     end

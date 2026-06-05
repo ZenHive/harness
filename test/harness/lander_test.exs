@@ -8,6 +8,7 @@ defmodule Harness.LanderTest do
   alias Harness.Run.LogRecord
 
   @moduletag :tmp_dir
+  @executable_file_mode 0o755
 
   # ── git fixture: a bare `origin` + a working clone, so the lander's
   #    ff-push to `origin/<target>` is real and assertable. ──────────────
@@ -136,6 +137,16 @@ defmodule Harness.LanderTest do
       # integrated history contains BOTH the moved-main commit and the agent work.
       assert ancestor?(ctx.origin, moved_main, "refs/heads/main")
       {_out, 0} = git(ctx.origin, ["cat-file", "-e", landed <> ":feature.txt"])
+    end
+  end
+
+  describe "land/1 — non-ff push race" do
+    test "returns push_rejected when origin advances during the final push", ctx do
+      stage_origin_advancing_hook(ctx.origin)
+
+      assert {:push_rejected, output} = Lander.land(ctx.request)
+      assert output =~ "remote advanced by hook"
+      refute sha(ctx.origin, "refs/heads/main") == ctx.branch_tip
     end
   end
 
@@ -285,5 +296,42 @@ defmodule Harness.LanderTest do
       Application.delete_env(:harness, :notification_sinks)
       Application.delete_env(:harness, :test_capture_pid)
     end)
+  end
+
+  @spec stage_origin_advancing_hook(String.t()) :: :ok
+  defp stage_origin_advancing_hook(origin) do
+    competitor = competing_commit(origin)
+    hooks_dir = Path.join(origin, "hooks")
+    File.mkdir_p!(hooks_dir)
+    GitFixture.git!(origin, ["config", "core.hooksPath", hooks_dir])
+
+    File.write!(Path.join(hooks_dir, "update"), """
+    #!/bin/sh
+    ref="$1"
+    if [ "$ref" = "refs/heads/main" ]; then
+      git update-ref refs/heads/main #{competitor}
+      echo "remote advanced by hook"
+      exit 1
+    fi
+    exit 0
+    """)
+
+    File.chmod!(Path.join(hooks_dir, "update"), @executable_file_mode)
+    :ok
+  end
+
+  @spec competing_commit(String.t()) :: String.t()
+  defp competing_commit(origin) do
+    clone = Path.join(System.tmp_dir!(), "lander-compete-#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf(clone) end)
+
+    {_out, 0} = System.cmd("git", ["clone", "-q", origin, clone], stderr_to_stdout: true)
+    GitFixture.git!(clone, ["config", "user.email", "compete@example.com"])
+    GitFixture.git!(clone, ["config", "user.name", "Competitor"])
+    File.write!(Path.join(clone, "competing.txt"), "competing\n")
+    GitFixture.git!(clone, ["add", "."])
+    GitFixture.git!(clone, ["commit", "-q", "-m", "competing change"])
+    GitFixture.git!(clone, ["push", "-q", "origin", "HEAD:refs/heads/hook-competing"])
+    sha(clone, "HEAD")
   end
 end

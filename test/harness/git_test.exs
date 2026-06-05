@@ -5,8 +5,10 @@ defmodule Harness.GitTest do
   alias Harness.GitFixture
 
   @moduletag :tmp_dir
+  @git_push_failed 1
+  @git_push_ok 0
 
-  describe "non_fast_forward?/4 — deterministic ancestry signal" do
+  describe "non_fast_forward?/5 — deterministic ancestry signal" do
     setup do
       # A bare origin + working clone, both at the same `main` tip. Tests then
       # drive divergence by landing a competing commit on origin directly.
@@ -20,14 +22,14 @@ defmodule Harness.GitTest do
       # `repo`'s HEAD is still the pre-competitor tip, so the current remote tip
       # is no longer an ancestor of it. The push output is empty on purpose:
       # the verdict comes from the ancestry check, not the text.
-      assert Git.non_fast_forward?(repo, "HEAD", "main", "")
+      assert Git.non_fast_forward?(repo, "HEAD", "main", @git_push_failed, "")
     end
 
     test "the lander's call shape (an explicit tip sha) is handled too", %{origin: origin, repo: repo} do
       tip = repo |> GitFixture.git!(["rev-parse", "HEAD"]) |> String.trim()
       compete(origin)
 
-      assert Git.non_fast_forward?(repo, tip, "main", "")
+      assert Git.non_fast_forward?(repo, tip, "main", @git_push_failed, "")
     end
 
     test "the remote is still an ancestor (a non-ff failure it is NOT) -> false", %{repo: repo} do
@@ -38,11 +40,27 @@ defmodule Harness.GitTest do
       GitFixture.git!(repo, ["add", "local.txt"])
       GitFixture.git!(repo, ["commit", "-q", "-m", "local ahead"])
 
-      refute Git.non_fast_forward?(repo, "HEAD", "main", "! [rejected] main -> main (non-fast-forward)")
+      refute Git.non_fast_forward?(
+               repo,
+               "HEAD",
+               "main",
+               @git_push_failed,
+               "! [rejected] main -> main (non-fast-forward)"
+             )
+    end
+
+    test "a successful push status is never classified as rejected", %{repo: repo} do
+      refute Git.non_fast_forward?(
+               repo,
+               "HEAD",
+               "main",
+               @git_push_ok,
+               "! [rejected] main -> main (non-fast-forward)"
+             )
     end
   end
 
-  describe "non_fast_forward?/4 — English fallback when inconclusive" do
+  describe "non_fast_forward?/5 — English fallback when inconclusive" do
     setup do
       # No remote configured, so the refresh fetch fails and the predicate must
       # fall back to matching git's rejection text.
@@ -51,12 +69,19 @@ defmodule Harness.GitTest do
     end
 
     test "rejection text matches -> true", %{repo: repo} do
-      assert Git.non_fast_forward?(repo, "HEAD", "main", "! [rejected] main (fetch first)")
-      assert Git.non_fast_forward?(repo, "HEAD", "main", "Updates were rejected because ... non-fast-forward")
+      assert Git.non_fast_forward?(repo, "HEAD", "main", @git_push_failed, "! [rejected] main (fetch first)")
+
+      assert Git.non_fast_forward?(
+               repo,
+               "HEAD",
+               "main",
+               @git_push_failed,
+               "Updates were rejected because ... non-fast-forward"
+             )
     end
 
     test "an unrelated failure (no rejection text) -> false", %{repo: repo} do
-      refute Git.non_fast_forward?(repo, "HEAD", "main", "fatal: Authentication failed for 'origin'")
+      refute Git.non_fast_forward?(repo, "HEAD", "main", @git_push_failed, "fatal: Authentication failed for 'origin'")
     end
   end
 
