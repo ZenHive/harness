@@ -9411,7 +9411,7 @@
       "phase": 18,
       "bundle": "judgment-collapse",
       "milestone": "v0_13",
-      "status": "in_progress",
+      "status": "blocked",
       "title": "AgentKPI: attribute review_stuck to the reviewer, not the implementer; track per-reviewer verdict-write reliability",
       "scores": {
         "d": 3,
@@ -9449,6 +9449,7 @@
       "created_at": "2026-06-05",
       "started_at": "2026-06-05",
       "scored_at": "2026-06-05",
+      "blocked_reason": "land-cap exhausted after reflex_halt x2 (task 231, last run run-1780654113453-d8e861f3)",
       "cross_repo": []
     },
     {
