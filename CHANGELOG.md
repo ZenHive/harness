@@ -36,8 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Harness.AgentAdapter.Capabilities.auth_env_scrub` lists the auth vars an adapter
   must unset; `Harness.AgentAdapter.invoke/2` drops them from the Port env
   (`{key, false}`) before spawn. Claude scrubs `ANTHROPIC_API_KEY` /
-  `ANTHROPIC_AUTH_TOKEN`, Codex scrubs `OPENAI_API_KEY`; the other four adapters
-  default to `[]` pending per-CLI verification (Task 205).
+  `ANTHROPIC_AUTH_TOKEN`, Codex scrubs `OPENAI_API_KEY`; per-CLI verification
+  (Task 205) added `CURSOR_API_KEY` (Cursor) and `XAI_API_KEY` (Grok), while
+  Antigravity and Pi intentionally declare none (subscription-OAuth CLIs with no
+  single billing-diverting key — documented at each adapter's `capabilities/0`).
 - **Antigravity worktree isolation regression (Task 198).** `agy` ignores Port `cwd`
   for file writes; `Harness.AgentAdapter.Antigravity` now passes `--add-dir <worktree>`
   in `build_command/1` (mirrors Codex `exec --cd`, Task 41). Reverts the incorrect
@@ -57,6 +59,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a second miss settles `:failed` as `{:review_stuck, ...}` exactly as before.
 
 ### Added
+
+- **Task 207: configurable default dispatch agent.** A new operator-config key
+  `{:dispatch, :default_agent}` (`:agent`-typed, UI-editable, default `:codex`)
+  sets which implementer an unassigned roadmap task default-routes to — replacing
+  the hard-coded `:claude` fallback. `Harness.Config.dispatch_agents/0` exposes the
+  validation set (the implementer agents minus `:human`) that both the `:agent`
+  type and the dashboard Settings select draw from; `Harness.CapabilityScore` reads
+  the key as the `dispatch-recommend` fallback agent. Configurable from the Settings
+  LiveView. Tests cover the config round-trip, the agent-set validation, and the
+  settings-select wiring.
 
 - **Task 204: dashboard Resume + Re-land recovery buttons.** Settled runs now
   carry two confirm-gated recovery affordances, each surfaced only when the run's
