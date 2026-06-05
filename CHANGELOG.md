@@ -75,6 +75,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stays inside the agent-gate rule. Malformed verdicts and rejects are unchanged;
   a second miss settles `:failed` as `{:review_stuck, ...}` exactly as before.
 
+### Changed
+
+- **rmap failures classified by structured exit code, not English stderr (Task 220).**
+  `Harness.Roadmap.classify_failure/2` previously regex-matched rmap's English
+  stderr (`~r/task .+ not found/i`, `String.contains?(output, "invalid TOML")`) to
+  decide `:task_not_found` vs `:roadmap_not_found` — fragile against wording/locale
+  drift, and meaning-from-prose for a CLI harness *owns* (`../rmap`). Fixed at the
+  source: rmap now exits **3** for task-not-found and **4** for an
+  unreadable/missing/malformed roadmap (`tests/cli.rs` covers both); harness matches
+  on the exit code. Semantic validation errors keep the generic code and still fall
+  to `{:rmap_failed, …}`. The classifier carries no regex anymore — the meaning lives
+  in rmap's exit-code contract.
+
 ### Added
 
 - **Task 207: configurable default dispatch agent.** A new operator-config key

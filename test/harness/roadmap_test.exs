@@ -206,11 +206,11 @@ defmodule Harness.RoadmapTest do
     end
 
     test "reports rmap_failed for an unclassified rmap failure" do
-      # A stub that exits non-zero with no output — the failure matches neither
-      # the task-not-found nor the invalid-TOML branch.
-      stub = stub_script("exit 3")
+      # A stub that exits with a code outside rmap's structured set (3 =
+      # task-not-found, 4 = invalid-roadmap) — falls through to the generic branch.
+      stub = stub_script("exit 5")
 
-      assert {:error, {:rmap_failed, _args, 3, ""}} =
+      assert {:error, {:rmap_failed, _args, 5, ""}} =
                Roadmap.ingest({:id, "1"}, project_root: @sample, rmap_bin: stub)
     end
 

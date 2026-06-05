@@ -624,17 +624,20 @@ defmodule Harness.Roadmap do
     end
   end
 
-  # An unreadable, missing, or malformed roadmap file surfaces as an
-  # "invalid TOML" error; a missing task as "task <id> not found". Anything
-  # else is an unclassified rmap failure. rmap is always given an explicit
-  # --tasks-path, so its ancestor-walk "could not find roadmap" path is
-  # unreachable here.
+  # rmap (../rmap, ours) emits structured exit codes for the classifiable
+  # failures so harness branches on the contract, not on English stderr:
+  # 3 = task <id> not found, 4 = the roadmap is unreadable/missing/malformed TOML.
+  # Anything else is an unclassified rmap failure. rmap is always given an
+  # explicit --tasks-path, so its ancestor-walk "could not find roadmap" path is
+  # unreachable here. Exit 3 only arises from a `show`/`delegate` call (both
+  # carry an id), so the is_binary(id) guard is belt-and-suspenders.
+  @rmap_exit_task_not_found 3
+  @rmap_exit_invalid_roadmap 4
+
   @spec classify_failure(failure(), String.t() | nil) :: error()
-  defp classify_failure({status, output, args}, id) do
-    cond do
-      is_binary(id) and Regex.match?(~r/task .+ not found/i, output) -> {:task_not_found, id}
-      String.contains?(output, "invalid TOML") -> :roadmap_not_found
-      true -> {:rmap_failed, args, status, output}
-    end
-  end
+  defp classify_failure({@rmap_exit_task_not_found, _output, _args}, id) when is_binary(id), do: {:task_not_found, id}
+
+  defp classify_failure({@rmap_exit_invalid_roadmap, _output, _args}, _id), do: :roadmap_not_found
+
+  defp classify_failure({status, output, args}, _id), do: {:rmap_failed, args, status, output}
 end
