@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Roadmap status transitions are now git-durable (Task 215).** harness's dispatch
+  lifecycle mutates the *canonical* `roadmap/tasks.toml` (`in_progress` at dispatch
+  start, `done`/`pending`/`blocked` at settle), but historically treated those as
+  uncommitted local-file writes — so every run silently raced every other session
+  and cloud agent against the shared file, and a stale copy could clobber a
+  concurrent writer's edits (rmap's validate-then-write guards *invalid* writes,
+  not *lost* ones). New `Harness.Roadmap.Durable` makes each transition a durable
+  git op: fetch the project's `target_branch` → mutate a fresh detached worktree at
+  the `origin/<target>` tip → commit (`roadmap: task <id> -> <status>`) → ff-push
+  (non-ff re-fetches, replays the mutation on the winner's tip, and retries up to a
+  cap — never `--force`) → fast-forward the operator's *local* target via the
+  shared `Harness.Git.TargetSync` (ff-only, never touching a dirty/diverged
+  checkout) so on-disk `tasks.toml` doesn't drift behind origin. All four
+  `Harness.Roadmap.mark_*` mutators funnel through one `mutate/4` chokepoint;
+  durable when a `%Harness.Project{}` with a `target_branch` + local source is
+  passed, else the historical local rmap write. `TargetSync` is extracted from the
+  lander's post-push sync and reused by both. Mechanical substrate only — no
+  judgment branch added to harness code.
 - **Subscription billing: scrub provider API keys from spawned agent CLIs.** Each
   agent CLI is spawned as a Port that inherits the BEAM's environment, so a stray
   `ANTHROPIC_API_KEY` (Claude) or `OPENAI_API_KEY` (Codex) silently diverted
