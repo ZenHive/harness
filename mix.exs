@@ -179,8 +179,11 @@ defmodule Harness.MixProject do
         "compile --warnings-as-errors",
         "credo --strict --ignore TagTODO,TagFIXME",
         "doctor --raise",
-        # preferred_envs (cli/0) is ignored for alias steps — set MIX_ENV explicitly.
-        "cmd MIX_ENV=test mix test.json --quiet --cover --cover-threshold 80 --summary-only --exclude integration",
+        # preferred_envs (cli/0) is ignored for alias steps — set MIX_ENV
+        # explicitly. `mix cmd` execs its first token directly (no shell), so an
+        # inline `MIX_ENV=test` prefix is read as the program name (:enoent);
+        # route through `sh -c` so the env assignment is interpreted.
+        ~s|cmd sh -c "MIX_ENV=test mix test.json --quiet --cover --cover-threshold 80 --summary-only --exclude integration"|,
         "sobelow --exit --skip"
       ],
       # CI mirror — adds dialyzer. Matches .github/workflows/harness.yml.
