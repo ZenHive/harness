@@ -48,7 +48,7 @@ The `rmap` CLI (the roadmap substrate `roadmap/tasks.toml` uses) is a sibling Ru
 
 ## Commands
 
-Toolchain: **Elixir 1.20 / OTP 29** (asdf). The `.tool-versions` pin was dropped in the 1.20-compat migration (`2ef4638`), so asdf resolves the version from the global default — re-add a local `.tool-versions` if you want a reproducible per-repo pin. Postgres required for the Oban dispatch layer.
+Toolchain: **Elixir 1.20.0 / OTP 29** (asdf) — resolved from the global `~/.tool-versions` (`1.20.0-otp-29` / `erlang 29.0.1`), since the repo has no plain `.tool-versions`. `mix.exs` floors at `~> 1.18`; a repo-local `.tool-versions.1.18` (1.18.4/OTP27) pins the lower-bound compat target — `cp .tool-versions.1.18 .tool-versions` for a reproducible per-repo pin. Postgres required for the Oban dispatch layer.
 
 > **Sync `development` before committing when auto-land is on.** With `landing_policy: :auto`, the lander is a *second committer* to `origin/<target>` — it ff-pushes from a detached worktree and deliberately **never touches your checkout**, so your local `development` ref drifts behind origin after every autonomous land. **Before any commit/push, `git fetch origin development && git rebase origin/development`** (or `git pull --rebase origin development`) — rebase, because you'll often have local commits the lander doesn't. Skip it and you get a stale base / non-ff push reject. A clean rebase → `git push origin development` is the completing step; just do it. If the rebase still has unresolved conflicts or the push is non-ff, stop and surface it — don't force-push a shared branch.
 
