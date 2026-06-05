@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Oban Lifeline rescues orphaned landing/audit jobs (Task 209).** Open-source Oban
+  does not move `executing` rows back to `available` when a worker dies mid-land or
+  mid-audit — a BEAM restart left onchain landing job 294 stuck `executing` for
+  25+ minutes. `Harness.Oban` now registers `Oban.Plugins.Lifeline` with a
+  30-minute `rescue_after` window (longer than any legitimate land/audit) so stale
+  `landing_*` and `audit` rows retry automatically. Complements the boot-time
+  `Run.Worker` orphan sweep (Task 160) without replacing it.
+- **Audit watermarks in the Postgres settings store (Task 211).** Clean audits
+  (`:no_changes`) no longer need an empty `audit(...)` marker commit on the shared
+  branch — harness records the audited tip in `Harness.SettingsStore` under
+  `:audit` (with a one-time import from `~/.harness/audit_watermarks.term`).
+  `repo_enabled:false` keeps watermarks ephemeral like other settings.
+- **Reviewer rubric: facets (routing KEY) + skills (routing VALUE) in review.json
+  (Task 224).** The cross-family reviewer now writes open-vocabulary `facets`
+  (ground-truth task characterization from spec + diff) and `skills` (two-axis
+  `{score, note}` rubric) alongside the legacy flat `ratings`. Harness persists
+  both verbatim; no fusion into capability scores in code.
+- **In-run discernment reads rmap d-score + markers structurally (Task 218).**
+  `Harness.Roadmap.Item` carries `d` and `:security`/`:bug` markers from rmap;
+  `Harness.Run.discernment_weight_passes?/3` gates sampled transcript review on
+  those facts instead of prose regexes over task titles/bodies.
+- **Mechanical worktree warming at provision (Task 226).** `Harness.Worktree`
+  seeds `deps/`, `_build/`, and a cold PLT into new run worktrees so the
+  reviewer's first `mix precommit` is not paying a full cold compile every dispatch.
+- **Shared git non-fast-forward detection (Task 221).** New `Harness.Git.non_fast_forward?/5`
+  dedupes the lander and `Roadmap.Durable` push-rejection triplet: prefers
+  `fetch` + `merge-base --is-ancestor` over matching git's English output, with
+  documented text fallback when plumbing is inconclusive.
 - **AgentKPI attributes review_stuck to the reviewer, and tracks per-reviewer
   verdict-write reliability (Task 231).** A `{:review_stuck, _}` run (the
   reviewer ended its turn without writing `.harness/review.json`) is the
@@ -43,6 +71,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Reflex watchdog no longer false-halts on benign temp cleanup (Tasks 219, reflex
+  follow-up).** Deleted the dead `verification_stack_edit?` grade-gaming blocklist
+  (reviewer-owned judgment per agent-gate). The reflex layer now ignores
+  `rm -rf`/`unlink` on harness temp-scratch paths and worktree-sweeper tokens so
+  agents cleaning `_build` or tmp dirs are not reflex-halted mid-run.
 - **Roadmap status transitions are now git-durable (Task 215).** harness's dispatch
   lifecycle mutates the *canonical* `roadmap/tasks.toml` (`in_progress` at dispatch
   start, `done`/`pending`/`blocked` at settle), but historically treated those as

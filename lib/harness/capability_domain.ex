@@ -2,9 +2,9 @@ defmodule Harness.CapabilityDomain do
   @moduledoc """
   Advisory capability-domain vocabulary for KPI slicing and routing.
 
-  Flat atom list — not hierarchical. Tags are declared on benchmark corpus
-  items and copied onto run records; they are metadata, not a contract (same
-  posture as `Harness.AgentRegistry` availability).
+  Flat atom list — not hierarchical. Tags are declared on roadmap tasks and
+  copied onto run records; they are metadata, not a contract (same posture as
+  `Harness.AgentRegistry` availability).
 
   Unknown atoms are kept at normalize time so new stacks (e.g. `:rust`) land
   without a code change; `@domains/0` is the curated starter set only.

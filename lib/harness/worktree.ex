@@ -111,9 +111,8 @@ defmodule Harness.Worktree do
     * `repo` — the parent repository the worktree was carved out of.
     * `base_sha` — the commit SHA the `harness/<id>` branch was forked from
       (the resolved `:base_ref`). Stable for the worktree's lifetime; later
-      commits on the branch never shift it. Diff-aware tooling (e.g. the
-      verification stack's baseline-TODO filter) uses it to tell agent-added
-      content from inherited debt.
+      commits on the branch never shift it. Diff-aware tooling uses it to tell
+      agent-added content from inherited debt on the branch.
   """
   @type t :: %__MODULE__{
           id: String.t(),

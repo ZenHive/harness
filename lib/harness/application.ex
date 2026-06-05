@@ -68,6 +68,10 @@ defmodule Harness.Application do
 
   @spec oban() :: [module()]
   defp oban do
+    # `Harness.Oban` installs Lifeline because open-source Oban does not rescue
+    # executing orphans on its own. With only Pruner configured, a BEAM/worker
+    # crash mid-land stranded landing job 294 for onchain task 41 in `executing`
+    # for 25+ minutes; Lifeline makes those stale landing/audit rows retryable.
     if Application.get_env(:harness, :oban_enabled, true) do
       [Harness.Oban]
     else
