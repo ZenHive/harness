@@ -8344,7 +8344,7 @@
       "id": "205",
       "phase": 16,
       "bundle": "agent-gate",
-      "status": "in_progress",
+      "status": "pending",
       "title": "Verify + declare auth_env_scrub for Cursor/Grok/Pi/Antigravity adapters",
       "scores": {
         "d": 2,
