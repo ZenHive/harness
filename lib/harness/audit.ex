@@ -21,7 +21,7 @@ defmodule Harness.Audit do
 
   Clean audits (`:no_changes`) intentionally do not write empty `audit(...)`
   marker commits to the shared branch. Instead, harness records the audited tip
-  in a local term watermark store and consults that watermark alongside the last
+  in the shared settings store and consults that watermark alongside the last
   reachable `audit(...)` commit when framing the next range.
 
   ## Best-effort, never a gate
@@ -40,7 +40,7 @@ defmodule Harness.Audit do
   alias Harness.Git
   alias Harness.Project
   alias Harness.ResultStore
-  alias Harness.TermCodec
+  alias Harness.SettingsStore
   alias Harness.Worktree
 
   require Logger
@@ -48,6 +48,7 @@ defmodule Harness.Audit do
   @audit_report_path ".harness/audit.json"
   @default_watermark_root "~/.harness"
   @watermark_file "audit_watermarks.term"
+  @watermark_store_key :audit
   @rejection_history_limit 20
   @rejection_summary_limit 500
 
@@ -414,8 +415,7 @@ defmodule Harness.Audit do
 
   @spec watermark(Project.t(), String.t()) :: String.t() | nil
   defp watermark(%Project{name: name}, target) do
-    with dir when is_binary(dir) <- watermark_root(),
-         {:ok, record} when is_map(record) <- TermCodec.read_file(watermark_path(dir)),
+    with {:ok, record} when is_map(record) <- fetch_watermarks(),
          project_record when is_map(project_record) <- Map.get(record, name),
          sha when is_binary(sha) and sha != "" <- Map.get(project_record, target) do
       sha
@@ -426,31 +426,31 @@ defmodule Harness.Audit do
 
   @spec persist_watermark(Project.t(), String.t(), String.t()) :: :ok
   defp persist_watermark(%Project{name: name}, target, sha) do
-    case watermark_root() do
-      nil ->
-        :ok
+    if watermark_persistence_enabled?() do
+      record = put_watermark(read_watermarks(), name, target, sha)
 
-      dir ->
-        record =
-          dir
-          |> read_watermarks()
-          |> put_watermark(name, target, sha)
+      case SettingsStore.put(@watermark_store_key, record, store_opts()) do
+        :ok ->
+          :ok
 
-        case TermCodec.write_file(watermark_path(dir), record) do
-          :ok ->
-            :ok
+        {:error, reason} ->
+          Logger.warning("harness audit: failed to persist audit watermark for #{name}/#{target}: #{inspect(reason)}")
 
-          {:error, reason} ->
-            Logger.warning("harness audit: failed to persist audit watermark for #{name}/#{target}: #{inspect(reason)}")
-
-            :ok
-        end
+          :ok
+      end
+    else
+      :ok
     end
   end
 
-  @spec read_watermarks(String.t()) :: map()
-  defp read_watermarks(dir) do
-    case TermCodec.read_file(watermark_path(dir)) do
+  @spec fetch_watermarks() :: {:ok, term()} | :not_found | {:error, term()}
+  defp fetch_watermarks do
+    if watermark_persistence_enabled?(), do: SettingsStore.fetch(@watermark_store_key, store_opts()), else: :not_found
+  end
+
+  @spec read_watermarks() :: map()
+  defp read_watermarks do
+    case fetch_watermarks() do
       {:ok, record} when is_map(record) -> record
       _missing_or_malformed -> %{}
     end
@@ -467,17 +467,12 @@ defmodule Harness.Audit do
     Map.put(record, project_name, Map.put(project_record, target, sha))
   end
 
-  @spec watermark_path(String.t()) :: String.t()
-  defp watermark_path(dir), do: Path.join(dir, @watermark_file)
+  @spec watermark_persistence_enabled?() :: boolean()
+  defp watermark_persistence_enabled?, do: Application.get_env(:harness, :repo_enabled, true)
 
-  @spec watermark_root() :: String.t() | nil
-  defp watermark_root do
-    case Application.get_env(:harness, :audit_watermarks, root: @default_watermark_root) do
-      false -> nil
-      nil -> nil
-      opts when is_list(opts) -> opts |> Keyword.get(:root, @default_watermark_root) |> Path.expand()
-    end
-  end
+  @spec store_opts() :: SettingsStore.legacy_opts()
+  defp store_opts,
+    do: [legacy_config_key: :audit_watermarks, legacy_filename: @watermark_file, default_root: @default_watermark_root]
 
   @spec cleanup(Worktree.t()) :: :ok
   defp cleanup(%Worktree{} = worktree) do
