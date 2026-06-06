@@ -732,9 +732,8 @@ defmodule Harness.Run do
       |> clear_operator_steer_after_invocation()
 
     # Precedence: a user cancel is terminal and must win over reflex re-dispatch,
-    # so the reflex clause is gated on `nil` cancel. A cancelled run that also
-    # tripped a reflex falls through to do_cancel / pollution rather than being
-    # re-dispatched. Pollution still beats cancel (unchanged).
+    # so the reflex clause is gated on `nil` cancel. Checkout pollution routes
+    # through the bounded recovery seam before any non-terminal advance.
     case {data.hold_requested, data.cancel_requested, outcome.kind, checkout_pollution_reason(data)} do
       {hold, nil, _kind, nil} when hold in [:graceful, :interrupt] ->
         do_hold(data, hold)
@@ -761,12 +760,13 @@ defmodule Harness.Run do
   end
 
   def running(:info, {:DOWN, ref, :process, _pid, reason}, %{task: %Task{ref: ref}} = data) when reason != :normal do
-    # Mirrors the do_cancel / timeout paths: if the agent polluted the main
-    # checkout AND then crashed the driver, surface the pollution (the agent
-    # bug) ahead of the driver crash (the downstream effect).
-    pollution_reason = checkout_pollution_reason(data)
     cancel_task(data.discernment_task)
-    fail(%{data | task: nil, discernment_task: nil}, pollution_reason || {:driver_crashed, reason})
+    data = %{data | task: nil, discernment_task: nil}
+
+    case checkout_pollution_reason(data) do
+      nil -> fail(data, {:driver_crashed, reason})
+      pollution_reason -> recover_checkout_pollution(data, pollution_reason)
+    end
   end
 
   def running(event_type, event_content, data) do
@@ -1212,7 +1212,6 @@ defmodule Harness.Run do
     terminate_reviewer(data)
     cancel_task(data.task)
     cancel_task(data.discernment_task)
-    reason = checkout_pollution_reason(data) || reason
 
     data = %{
       data
@@ -1248,7 +1247,6 @@ defmodule Harness.Run do
     cancel_task(data.task)
     cancel_task(data.discernment_task)
     actions = pending_cancel_reply(data)
-    reason = checkout_pollution_reason(data) || :timed_out
 
     data = %{
       data
@@ -1258,7 +1256,7 @@ defmodule Harness.Run do
         recovery_run: nil,
         reviewer_run: nil,
         cancel_requested: nil,
-        reason: reason
+        reason: :timed_out
     }
 
     {:next_state, :failed, data, actions}

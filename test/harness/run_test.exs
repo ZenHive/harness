@@ -47,6 +47,36 @@ defmodule Harness.RunTest do
     def terminate(_run), do: :ok
   end
 
+  # An adapter that pollutes the main checkout before crashing in build_command/1.
+  # Drives the post-Task-229 cleanup path: witnessed checkout pollution should
+  # route through recovery even when the immediate driver task dies.
+  defmodule PollutingCrashAdapter do
+    @moduledoc false
+    @behaviour Harness.AgentAdapter
+
+    alias Harness.AgentAdapter.Capabilities
+    alias Harness.AgentAdapter.Invocation
+
+    @impl Harness.AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl Harness.AgentAdapter
+    def rule_channel, do: :none
+
+    @impl Harness.AgentAdapter
+    def build_command(%Invocation{adapter_opts: opts}) do
+      repo = Keyword.fetch!(opts, :repo)
+      File.write!(Path.join(repo, "leaked.txt"), "leaked\n")
+      raise("polluted checkout before crashing")
+    end
+
+    @impl Harness.AgentAdapter
+    def classify_message(_message, _run), do: :ignore
+
+    @impl Harness.AgentAdapter
+    def terminate(_run), do: :ok
+  end
+
   # An adapter whose build_command/1 blocks forever — the agent never spawns,
   # so {:run_handle, _} never arrives. Drives the lifetime-timeout
   # force-settle path: the budget must still fire even with `agent_run: nil`.
@@ -1088,6 +1118,26 @@ defmodule Harness.RunTest do
       assert result.recovery_repaired == nil
       assert %TokenUsage{} = result.recovery_token_usage
       assert File.dir?(result.worktree_path)
+    end
+
+    @tag :capture_log
+    test "driver crash with checkout pollution routes through recovery before the reviewer gate" do
+      repo = GitFixture.init_repo()
+
+      result =
+        run(
+          project: ProjectFixture.from_repo(repo),
+          adapter: PollutingCrashAdapter,
+          checkout_pollution_check: true,
+          adapter_opts: [repo: repo],
+          reviewer_adapter_opts: [command: {:review, "approve"}, recovery_command: :recovery_clean]
+        )
+
+      assert %Result{state: :done, reason: :approved} = result
+      assert %Review{verdict: :approve} = result.review
+      assert result.recovery_attempts == 1
+      assert result.recovery_outcome == :repaired
+      assert GitFixture.git!(repo, ["status", "--porcelain"]) == ""
     end
 
     test "per-run recovery budget exhaustion fails honestly without spawning recovery" do
