@@ -29,6 +29,9 @@ defmodule Harness.Dashboard.RunFeed do
   subtree) never fails on a missing bus — mirrors `Harness.Dashboard.Transcript`.
   """
 
+  alias Harness.Dashboard.RoadmapSummary
+  alias Harness.Project
+  alias Harness.ResultStore
   alias Harness.Run.Status
 
   @pubsub Harness.PubSub
@@ -37,6 +40,18 @@ defmodule Harness.Dashboard.RunFeed do
   @doc "The fleet-wide run-lifecycle PubSub topic."
   @spec topic() :: String.t()
   def topic, do: @topic
+
+  @doc """
+  Returns the reconciled landed SHA for a run status.
+
+  Roadmap `shipped_in` remains the fast witness when present. Otherwise the feed
+  checks whether the run's retained branch, or an equivalent rebased run commit,
+  is reachable from the project's `origin/<target_branch>`.
+  """
+  @spec landed_sha(Status.t(), RoadmapSummary.summaries(), [Project.t()]) :: String.t() | nil
+  def landed_sha(%Status{} = status, summaries, projects) when is_map(summaries) and is_list(projects) do
+    roadmap_landed_sha(status, summaries) || branch_landed_sha(status, projects)
+  end
 
   @doc "Subscribes the calling process to the fleet run-lifecycle feed. No-op if PubSub is not running."
   @spec subscribe() :: :ok | {:error, term()}
@@ -89,4 +104,24 @@ defmodule Harness.Dashboard.RunFeed do
 
     :ok
   end
+
+  @spec roadmap_landed_sha(Status.t(), RoadmapSummary.summaries()) :: String.t() | nil
+  defp roadmap_landed_sha(%Status{project_name: project, task_id: task_id}, summaries) do
+    RoadmapSummary.landed_sha(summaries, project, task_id)
+  end
+
+  @spec branch_landed_sha(Status.t(), [Project.t()]) :: String.t() | nil
+  defp branch_landed_sha(%Status{project_name: project_name} = status, projects) do
+    case project_by_name(projects, project_name) do
+      %Project{} = project -> ResultStore.landed_sha(status, project)
+      nil -> nil
+    end
+  end
+
+  @spec project_by_name([Project.t()], String.t() | nil) :: Project.t() | nil
+  defp project_by_name(projects, name) when is_binary(name) do
+    Enum.find(projects, &(&1.name == name))
+  end
+
+  defp project_by_name(_projects, _name), do: nil
 end

@@ -427,7 +427,7 @@ defmodule Harness.Dashboard.Live do
   defp history_rows(socket) do
     socket.assigns.history_all
     |> filter_runs(socket.assigns.selected_project)
-    |> filter_landed(socket.assigns.show_landed, socket.assigns.roadmap)
+    |> filter_landed(socket.assigns.show_landed, socket.assigns.roadmap, socket.assigns.projects)
   end
 
   @spec restream_history(Socket.t()) :: Socket.t()
@@ -439,29 +439,33 @@ defmodule Harness.Dashboard.Live do
     |> stream(:history, rows, reset: true)
   end
 
-  @spec filter_landed([StatusView.run_entry()], boolean(), RoadmapSummary.summaries()) ::
+  @spec filter_landed([StatusView.run_entry()], boolean(), RoadmapSummary.summaries(), [Project.t()]) ::
           [StatusView.run_entry()]
-  defp filter_landed(runs, true, _summaries), do: runs
-  defp filter_landed(runs, false, summaries), do: Enum.reject(runs, &landed_entry?(&1, summaries))
+  defp filter_landed(runs, true, _summaries, _projects), do: runs
+  defp filter_landed(runs, false, summaries, projects), do: Enum.reject(runs, &landed_entry?(&1, summaries, projects))
 
   @spec show_in_history?(StatusView.run_entry(), Socket.t()) :: boolean()
   defp show_in_history?(entry, socket) do
     passes_filter?(entry, socket.assigns.selected_project) and
-      (socket.assigns.show_landed or not landed_entry?(entry, socket.assigns.roadmap))
+      (socket.assigns.show_landed or not landed_entry?(entry, socket.assigns.roadmap, socket.assigns.projects))
   end
 
   @doc false
   @spec landed_entry?(StatusView.run_entry(), RoadmapSummary.summaries()) :: boolean()
-  def landed_entry?(%{status: %Status{project_name: project, task_id: task_id}}, summaries) do
-    RoadmapSummary.landed_sha(summaries, project, task_id) != nil
+  def landed_entry?(entry, summaries), do: landed_entry?(entry, summaries, [])
+
+  @doc false
+  @spec landed_entry?(StatusView.run_entry(), RoadmapSummary.summaries(), [Project.t()]) :: boolean()
+  def landed_entry?(%{status: %Status{} = status}, summaries, projects) do
+    RunFeed.landed_sha(status, summaries, projects) != nil
   end
 
   # Count of landed (merged) runs hidden from the unmerged default view, shown on
   # the toggle so mergedness is legible at a glance without expanding the view.
-  @spec landed_toggle_label([StatusView.run_entry()], String.t() | nil, RoadmapSummary.summaries()) ::
+  @spec landed_toggle_label([StatusView.run_entry()], String.t() | nil, RoadmapSummary.summaries(), [Project.t()]) ::
           String.t()
-  defp landed_toggle_label(history_all, selected, summaries) do
-    hidden = history_all |> filter_runs(selected) |> Enum.count(&landed_entry?(&1, summaries))
+  defp landed_toggle_label(history_all, selected, summaries, projects) do
+    hidden = history_all |> filter_runs(selected) |> Enum.count(&landed_entry?(&1, summaries, projects))
     "Show landed runs (#{hidden})"
   end
 
@@ -635,6 +639,7 @@ defmodule Harness.Dashboard.Live do
       id="active-runs"
       rows={@streams.active_runs}
       summaries={@roadmap}
+      projects={@projects}
       landable_projects={landable_project_names(@projects)}
     />
 
@@ -645,7 +650,7 @@ defmodule Harness.Dashboard.Live do
       <button type="button" phx-click="toggle_landed">
         {if @show_landed,
           do: "Hide landed runs",
-          else: landed_toggle_label(@history_all, @selected_project, @roadmap)}
+          else: landed_toggle_label(@history_all, @selected_project, @roadmap, @projects)}
       </button>
     </p>
     <p :if={@history_empty?}>
@@ -657,6 +662,7 @@ defmodule Harness.Dashboard.Live do
       id="run-history"
       rows={@streams.history}
       summaries={@roadmap}
+      projects={@projects}
       landable_projects={landable_project_names(@projects)}
     />
     """
@@ -793,6 +799,7 @@ defmodule Harness.Dashboard.Live do
   attr(:id, :string, required: true)
   attr(:rows, :any, required: true)
   attr(:summaries, :map, default: %{})
+  attr(:projects, :list, default: [])
   attr(:landable_projects, :any, default: MapSet.new())
 
   # Shared by the "Active runs" and "Run history" tables. `rows` is a
@@ -831,7 +838,7 @@ defmodule Harness.Dashboard.Live do
             <Components.bucket_badge bucket={entry.bucket} label={to_string(entry.status.state)} />
           </td>
           <td>{verdict_label(entry.status.review_verdict)}</td>
-          <td>{landed_label(@summaries, entry.status)}</td>
+          <td>{landed_label(@summaries, entry.status, @projects)}</td>
           <td>{entry.detail || ""}</td>
           <td>
             <div class="row-actions">
@@ -843,7 +850,7 @@ defmodule Harness.Dashboard.Live do
                 run_id={entry.status.run_id}
               />
               <.reland_button
-                :if={landable?(entry.status, @summaries, @landable_projects)}
+                :if={landable?(entry.status, @summaries, @landable_projects, @projects)}
                 run_id={entry.status.run_id}
                 first_land
               />
@@ -1086,8 +1093,12 @@ defmodule Harness.Dashboard.Live do
   # itself ended. `✓ <sha>` when landed, else "—".
   @doc false
   @spec landed_label(RoadmapSummary.summaries(), Status.t()) :: String.t()
-  def landed_label(summaries, %Status{project_name: project, task_id: task_id}) do
-    case RoadmapSummary.landed_sha(summaries, project, task_id) do
+  def landed_label(summaries, %Status{} = status), do: landed_label(summaries, status, [])
+
+  @doc false
+  @spec landed_label(RoadmapSummary.summaries(), Status.t(), [Project.t()]) :: String.t()
+  def landed_label(summaries, %Status{} = status, projects) do
+    case RunFeed.landed_sha(status, summaries, projects) do
       nil -> "—"
       sha -> "✓ " <> short_sha(sha)
     end
@@ -1207,18 +1218,23 @@ defmodule Harness.Dashboard.Live do
   # backend is identical to re-land (Lander.enqueue/1).
   @doc false
   @spec landable?(Status.t() | nil, RoadmapSummary.summaries(), MapSet.t(String.t())) :: boolean()
+  def landable?(status, summaries, landable_projects), do: landable?(status, summaries, landable_projects, [])
+
+  @doc false
+  @spec landable?(Status.t() | nil, RoadmapSummary.summaries(), MapSet.t(String.t()), [Project.t()]) :: boolean()
   def landable?(
-        %Status{state: :done, review_verdict: :approve, project_name: project, task_id: task_id},
+        %Status{state: :done, review_verdict: :approve, project_name: project, task_id: task_id} = status,
         summaries,
-        landable_projects
+        landable_projects,
+        projects
       )
       when is_binary(project) do
     MapSet.member?(landable_projects, project) and
-      RoadmapSummary.landed_sha(summaries, project, task_id) == nil and
+      RunFeed.landed_sha(status, summaries, projects) == nil and
       not RoadmapSummary.blocked?(summaries, project, task_id)
   end
 
-  def landable?(_status, _summaries, _landable_projects), do: false
+  def landable?(_status, _summaries, _landable_projects, _projects), do: false
 
   # The set of project names where a manual "Land" button can succeed: manual
   # landing policy (auto projects land via the train) AND a configured
