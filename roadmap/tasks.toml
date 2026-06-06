@@ -6402,7 +6402,7 @@ depends_on = ["208", "211", "212"]
 id = "214"
 phase = 17
 bundle = "settings-pq"
-status = "in_progress"
+status = "done"
 title = "Reconcile run landed-state against the target branch — fix the false 'approved but not landed' signal"
 scores = { d = 3, b = 7, u = 7 }
 acceptance_criteria = ["A run's 'landed' status is derived from whether its commit is reachable from origin/<target_branch> (or an equivalent merge-state check), NOT solely from the presence of a completed lander Oban job.", "Runs merged via direct commit (self-repo / hand-built) or under landing_policy:manual no longer show as 'approved but not landed' once their work is on the target branch.", "Dashboard run feed reflects the reconciled state; a run truly approved-and-unlanded (e.g. manual policy, not yet merged) is still distinguishable from merged.", "Test: a run with no lander job but whose commit is on origin/<target> reports landed; an approved run not on the branch reports not-landed."]
@@ -6413,9 +6413,14 @@ domains = ["otp"]
 assignee = "codex"
 module = "Harness.ResultStore"
 body = "Investigation today: the operator perceived 'many approved tasks stuck unmerged', but cross-project analysis showed nothing genuinely stuck — harness's 9 'approved_not_landed' were 8 done + 1 blocked (merged via direct commit, verified on development: tasks 195/194/187), and rmap's 2 are manual-landing by design. The result store / dashboard equates 'no completed lander Oban job' with 'not merged', which is false for direct-commit (self-repo / hand-built) and manual-policy work. Reconcile landed-state against the actual target branch (commit reachable from origin/<target>) so the dashboard stops crying false-stuck. Directly addresses the confusion that kicked off this whole session."
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780705253957-e24c59ed, 1839557f01d3944b8f43e3e66c30427ff76df8ef)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-05"
 started_at = "2026-06-05"
 scored_at = "2026-06-05"
+done_at = "2026-06-06"
+shipped_in = "1839557f01d3944b8f43e3e66c30427ff76df8ef"
 
 [[task]]
 id = "215"
