@@ -9554,7 +9554,7 @@
       "id": "233",
       "phase": 19,
       "bundle": "dispatch-economy",
-      "status": "pending",
+      "status": "done",
       "title": "Cron-as-orchestrator-AI — replace roadmap_poller.ex code-driven task selection with a full-context orchestrator AI gated by a mechanical upside-count",
       "scores": {
         "d": 3,
@@ -9585,9 +9585,13 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "fdc6aee71dcafc1dd0330fd365f2ebc31743a83b",
       "body": "Tiny tasks cost a full implement->review->audit ceremony each, so a pile of fragments is token-expensive. roadmap_poller.ex (269 LOC) currently picks the next task and routes it by code (assignee / @default_agent = :claude) — a mechanical selector that cannot judge whether several pending tasks should batch into one dispatch, and whose claude default burns opus tokens against the opus-last roster. Reframe: cron is just a timer (mechanical); what it TRIGGERS should be an orchestrator AI that reads the ready set and decides inline/batch/dispatch grouping with real judgment. CORRECTION (operator, 2026-06-05): the orchestrator is THE SMART LAYER — give it full context, do not token-starve it. The earlier plan-doc instinct to hand it minimal tokens was wrong; constraining the smart guy defeats the point. Token economy comes from the MECHANICAL UPSIDE-COUNT GATE that decides WHETHER to wake it (counting is ~free, mantra-clean), never from crippling its reasoning. The orchestrator never runs for nothing; when it runs, it thinks fully. Sibling to the measure-fragmentation-tax task — that quantifies the tax this saves.",
       "created_at": "2026-06-05",
+      "done_at": "2026-06-06",
       "scored_at": "2026-06-05",
+      "implemented": "RoadmapPoller gate: pure count classifies the dispatchable ready set (0 nothing / 1 direct-dispatch by assignee / >=2 wake orchestrator). New Harness.Cron.Orchestrator AI (default :codex, configurable) reads ready+in-flight-touches+capability facts, writes .harness/cron-plan.json {dispatch,skip}; harness reads it mechanically (validate in-set, resolve adapter, enqueue), no grouping logic in code. @default_agent=:claude removed (missing/human assignee skipped, not Opus-defaulted). Roadmap.ready/1 gains :fields opt. Empty/malformed plan dispatches nothing (no blind fan-out); wave-pacing via cron cadence + dedup. Hand-built (UI-free, but reshapes the autonomous dispatch runtime). 24 cron tests + dialyzer 0 + credo clean.",
+      "delivered_by": "claude",
       "cross_repo": []
     },
     {
