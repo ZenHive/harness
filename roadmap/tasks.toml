@@ -6639,7 +6639,7 @@ id = "227"
 phase = 19
 bundle = "self-heal"
 milestone = "v0_14"
-status = "in_progress"
+status = "done"
 title = "Tier-1: bounded mechanical retry on transient substrate ops (worktree git + agent Port spawn)"
 scores = { d = 2, b = 4, u = 4 }
 acceptance_criteria = ["Transient substrate ops retry-with-backoff before any failure: worktree create/commit/fetch (worktree.ex) and agent Port spawn (run.ex / adapter invoke). Bounded attempt count + backoff, mirroring the existing Oban setup-snooze pattern pushed down into the run's git/port ops.", "Pure COUNTING — the retry classifies nothing; it does NOT inspect the error string to decide recoverability (that would be the tasks 153-163 bug class). It retries a bounded number of times and gives up; meaning is never computed here.", "Covers live gaps 1/2/3 from the plan (worktree-create lock, commit race, Port-spawn failure) — these are mechanical and need NO AI.", "Coordinate with task 226's warm/2 in worktree.ex (same file, already landed) to avoid a stale base.", "Tests: a transient git lock that clears on retry succeeds; a persistent failure still fails honestly after the bound; no error-string matching introduced."]
@@ -6648,9 +6648,14 @@ touches = ["lib/harness/agent_adapter.ex", "lib/harness/run/retry_policy.ex"]
 domains = ["otp"]
 assignee = "codex"
 body = "Tier-1 of the two-tier self-heal design. The implement->review->audit loop hard-fails on mechanical hiccups (git locks, spawn races) an AI or a simple retry could absorb. Zero-token mechanical retry on genuinely-transient substrate ops, BEFORE any failure path runs. Retrying a git lock is mechanical counting; it classifies nothing — which keeps it mantra-clean and out of the false-red/false-green class. Independent quick win, parallel to the AI-recovery seam (229)."
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780710369439-c5c72672, 3739c54e6b76c49e4316e88b2867a80573d50d1d)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-05"
 started_at = "2026-06-06"
 scored_at = "2026-06-05"
+done_at = "2026-06-06"
+shipped_in = "3739c54e6b76c49e4316e88b2867a80573d50d1d"
 
 [[task]]
 id = "228"
