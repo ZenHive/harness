@@ -103,7 +103,7 @@ defmodule Harness.Dispatch do
         kind: :value,
         default: @recommended_adapter,
         description:
-          "Executor: recommend | claude | codex | cursor | grok | antigravity | pi. recommend consults persisted capability scores and falls back safely when no data exists; explicit adapter names bypass recommendation."
+          "Executor: recommend | claude | codex | cursor | grok | antigravity | pi. recommend matches the task's facets against the scout's per-facet assessment and falls back safely when no data exists; explicit adapter names bypass recommendation."
       ],
       scrub_anthropic_key: [
         kind: :value,
@@ -146,7 +146,7 @@ defmodule Harness.Dispatch do
         kind: :value,
         default: @recommended_adapter,
         description:
-          "Executor: recommend | claude | codex | cursor | grok | antigravity | pi. recommend consults persisted capability scores and falls back safely when no data exists; explicit adapter names bypass recommendation."
+          "Executor: recommend | claude | codex | cursor | grok | antigravity | pi. recommend matches the task's facets against the scout's per-facet assessment and falls back safely when no data exists; explicit adapter names bypass recommendation."
       ],
       timeout_ms: [
         kind: :value,
@@ -378,7 +378,7 @@ defmodule Harness.Dispatch do
 
   api(
     :resume_failed,
-    "Resume a SETTLED :failed run by run_id: re-dispatch its roadmap task on a NEW run that branches off the retained harness/<run-id> branch (the prior attempt's commits are the starting point) with the failure report injected into the prompt — the implementer continues from prior work instead of redoing it. Same agent by default; escalate=true routes via Harness.CapabilityScore to the recommended agent for the task's domain. DISTINCT from dispatch-resume, which un-pauses a live :held run.",
+    "Resume a SETTLED :failed run by run_id: re-dispatch its roadmap task on a NEW run that branches off the retained harness/<run-id> branch (the prior attempt's commits are the starting point) with the failure report injected into the prompt — the implementer continues from prior work instead of redoing it. Same agent by default; escalate=true routes via the per-facet scout assessment to the recommended agent for the task's predicted facets. DISTINCT from dispatch-resume, which un-pauses a live :held run.",
     params: [
       run_id: [
         kind: :value,
@@ -389,7 +389,7 @@ defmodule Harness.Dispatch do
         kind: :value,
         default: false,
         description:
-          "When true, pick the agent via capability scores on the task's first domain (reuses the dispatch-task recommend path; :elixir when the task has no domains). When false (default), reuse the agent that ran originally."
+          "When true, pick the agent via the scout's per-facet assessment on the task's predicted facets (reuses the dispatch-task recommend path). When false (default), reuse the agent that ran originally."
       ]
     ],
     returns: %{
@@ -765,30 +765,49 @@ defmodule Harness.Dispatch do
 
   api(
     :recommend,
-    "Recommend an agent for a capability domain using persisted capability scores. Returns ranked explore/exploit advice; callers still decide whether to dispatch.",
+    "Recommend an agent by matching facets against the scout's per-facet competence assessment. Returns the scout's choice and rationale; callers still decide whether to dispatch.",
     params: [
       domain: [
         kind: :value,
-        description: ~s(Capability domain string, e.g. "otp", "ecto", "liveview".)
+        description:
+          ~s(Capability domain string used to predict facets when :facets is omitted, e.g. "otp", "ecto", "liveview".)
       ],
       opts: [
         kind: :value,
         default: [],
         description:
-          "Keyword options. Common keys: :agents, :corpus_version, :reference_time, :freshness_window_days, :stale_discount, :explore_unmeasured, :fallback_agent, :result_store."
+          "Keyword options. Common keys: :facets (routing KEY map), :agents, :fallback_agent, :assessment_path, :result_store."
       ]
     ],
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %{agent, domain, strategy, rationale, ranked}} or {:error, reason}. strategy is :explore, :exploit, or :fallback_no_data."
+        "{:ok, %{agent, facets, strategy, rationale, scout_reasoning, matched_facet, ranked}} or {:error, reason}. strategy is :explore, :exploit, or :fallback_no_data."
     }
   )
 
   @spec recommend(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def recommend(domain, opts \\ []) when is_binary(domain) and is_list(opts) do
     with {:ok, domain} <- parse_domain(domain) do
-      CapabilityScore.recommend(domain, opts)
+      facets = Keyword.get(opts, :facets, CapabilityScore.facets_from_domain(domain))
+      CapabilityScore.recommend(facets, opts)
+    end
+  end
+
+  defopts_tool(
+    name: :assess_facets,
+    description:
+      "Refresh the per-facet scout competence assessment from persisted run records. Spawns the scout AI on demand; the written artifact is what dispatch-recommend reads.",
+    opts_doc:
+      "Keyword options. Common keys: :agents, :scout_adapter, :assessment_path, :assessment_root, :result_store, :scratch_dir.",
+    returns: "{:ok, assessment_map} or {:error, reason}."
+  )
+
+  @spec assess_facets(keyword()) :: {:ok, map()} | {:error, term()}
+  def assess_facets(opts \\ []) when is_list(opts) do
+    case CapabilityScore.refresh(opts) do
+      {:ok, assessment} -> {:ok, summarize_assessment(assessment)}
+      {:error, _reason} = error -> error
     end
   end
 
@@ -855,7 +874,7 @@ defmodule Harness.Dispatch do
 
   def recommended_adapter_for_item(@recommended_adapter, %Item{} = item, opts) when is_list(opts) do
     item
-    |> recommendation_domain()
+    |> predict_facets()
     |> CapabilityScore.recommend(opts)
     |> case do
       {:ok, %{agent: agent}} -> resolve_adapter(Atom.to_string(agent))
@@ -874,9 +893,26 @@ defmodule Harness.Dispatch do
     Roadmap.ingest({:id, item.id}, project: project, agent: render_agent)
   end
 
-  @spec recommendation_domain(Item.t()) :: atom()
-  defp recommendation_domain(%Item{domains: [domain | _]}), do: domain
-  defp recommendation_domain(%Item{}), do: :elixir
+  @spec predict_facets(Item.t()) :: map()
+  defp predict_facets(%Item{domains: [domain | _]}), do: CapabilityScore.facets_from_domain(domain)
+  defp predict_facets(%Item{}), do: %{}
+
+  @spec summarize_assessment(CapabilityScore.Assessment.t()) :: map()
+  defp summarize_assessment(%CapabilityScore.Assessment{} = assessment) do
+    %{
+      assessed_at: assessment.assessed_at,
+      record_count: assessment.record_count,
+      entries:
+        Enum.map(assessment.entries, fn %CapabilityScore.Entry{} = entry ->
+          %{
+            facet: entry.facet,
+            winner: entry.winner,
+            reasoning: entry.reasoning,
+            by_agent: entry.by_agent
+          }
+        end)
+    }
+  end
 
   # Build the start_run opts. Public (@doc false) so the secret-scrub threading
   # is testable without a live dispatch through the real agent CLI — same

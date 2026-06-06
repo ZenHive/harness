@@ -5,6 +5,8 @@ defmodule Harness.DispatchTest do
   alias Harness.AgentAdapter.Codex
   alias Harness.Batch.AgentEvaluation
   alias Harness.CapabilityScore
+  alias Harness.CapabilityScore.Assessment
+  alias Harness.CapabilityScore.Entry
   alias Harness.Chat.Tools
   alias Harness.Dispatch
   alias Harness.FakeAdapter
@@ -19,8 +21,6 @@ defmodule Harness.DispatchTest do
   alias Harness.Run.Result
   alias Harness.Run.Review
   alias Harness.TokenUsage
-
-  @reference_time ~U[2026-06-01 12:00:00Z]
 
   defmodule RereviewCountingAdapter do
     @moduledoc false
@@ -613,47 +613,82 @@ defmodule Harness.DispatchTest do
           "harness_dispatch_recommend_test_#{System.unique_integer([:positive])}"
         )
 
-      on_exit(fn -> MemoryStore.reset(root: root) end)
-      {:ok, store: {MemoryStore, root: root}}
+      assessment_root = Path.join(root, "assessment")
+      File.mkdir_p!(assessment_root)
+
+      on_exit(fn ->
+        MemoryStore.reset(root: root)
+        File.rm_rf(root)
+      end)
+
+      {:ok, store: {MemoryStore, root: root}, assessment_root: assessment_root}
     end
 
-    test "returns ranked advice over the driver surface", %{store: store} do
-      assert :ok = ResultStore.save_capability_score(score(:codex, :otp, 800.0), store)
-      assert :ok = ResultStore.save_capability_score(score(:claude, :otp, 700.0), store)
+    test "returns scout-backed advice over the driver surface", %{assessment_root: root} do
+      assert :ok = save_assessment(root, :codex, "otp")
 
       assert {:ok, recommendation} =
                Dispatch.recommend("otp",
                  agents: [:claude, :codex],
-                 reference_time: @reference_time,
-                 result_store: store
+                 assessment_root: root
                )
 
       assert recommendation.agent == :codex
       assert recommendation.strategy == :exploit
-      assert [%{agent: :codex} | _] = recommendation.ranked
+      assert [%{agent: :codex, role: :winner} | _] = recommendation.ranked
     end
 
-    test "the dispatch recommendation helper resolves the recommended adapter for next-task routing", %{store: store} do
-      assert :ok = ResultStore.save_capability_score(score(:codex, :otp, 800.0), store)
-      assert :ok = ResultStore.save_capability_score(score(:claude, :otp, 700.0), store)
+    test "the dispatch recommendation helper resolves the recommended adapter for next-task routing", %{
+      assessment_root: root
+    } do
+      assert :ok = save_assessment(root, :codex, "otp")
       item = %Item{id: "120", title: "t", prompt: "p", agent: :claude, domains: [:otp]}
 
       assert {:ok, {Codex, :codex}} =
                Dispatch.recommended_adapter_for_item("recommend", item,
                  agents: [:claude, :codex],
-                 reference_time: @reference_time,
-                 result_store: store
+                 assessment_root: root
                )
     end
 
-    test "explicit adapters bypass recommendation", %{store: store} do
+    test "assess_facets refreshes the scout assessment on demand", %{store: store, assessment_root: root} do
+      assert :ok =
+               ResultStore.record_run(
+                 log_record(agent: :codex, review_facets: %{"surface" => "otp"}),
+                 store
+               )
+
+      scout = fn context ->
+        {:ok,
+         %Assessment{
+           assessed_at: ~U[2026-06-06 12:00:00Z],
+           record_count: context.record_count,
+           entries: [
+             %Entry{
+               facet: %{"surface" => "otp"},
+               winner: :codex,
+               reasoning: "scout refresh",
+               by_agent: %{}
+             }
+           ]
+         }}
+      end
+
+      prev = Application.get_env(:harness, :capability_scout)
+      on_exit(fn -> restore_scout(prev) end)
+      Application.put_env(:harness, :capability_scout, scout)
+
+      assert {:ok, %{record_count: 1, entries: [%{winner: :codex}]}} =
+               Dispatch.assess_facets(result_store: store, assessment_root: root)
+    end
+
+    test "explicit adapters bypass recommendation", %{assessment_root: root} do
       item = %Item{id: "120", title: "t", prompt: "p", agent: :claude, domains: [:otp]}
 
       assert {:ok, {Claude, :claude}} =
                Dispatch.recommended_adapter_for_item("claude", item,
                  agents: [:claude, :codex],
-                 reference_time: @reference_time,
-                 result_store: store
+                 assessment_root: root
                )
     end
   end
@@ -904,7 +939,8 @@ defmodule Harness.DispatchTest do
       reason: Keyword.get(fields, :reason, {:review_rejected, "r"}),
       duration_ms: 1,
       agent: Keyword.get(fields, :agent, :claude),
-      review_report: Keyword.get(fields, :review_report)
+      review_report: Keyword.get(fields, :review_report),
+      review_facets: Keyword.get(fields, :review_facets, %{})
     }
   end
 
@@ -952,18 +988,24 @@ defmodule Harness.DispatchTest do
 
   defp wait_for_record(run_id, 0), do: flunk("timed out waiting for run record #{run_id}")
 
-  defp score(agent, domain, composite_score) do
-    %CapabilityScore{
-      agent: agent,
-      domain: domain,
-      corpus_version: "test-v1",
-      scored_at: ~U[2026-05-30 00:00:00Z],
-      run_count: 1,
-      success_rate: composite_score / 1_000,
-      cost_to_green: 100.0,
-      mean_reviewer_diff_size: 0.0,
-      composite_score: composite_score,
-      raw_metrics: []
-    }
+  defp restore_scout(nil), do: Application.delete_env(:harness, :capability_scout)
+  defp restore_scout(value), do: Application.put_env(:harness, :capability_scout, value)
+
+  defp save_assessment(root, winner, surface) do
+    CapabilityScore.save_assessment(
+      %Assessment{
+        assessed_at: ~U[2026-06-06 12:00:00Z],
+        record_count: 1,
+        entries: [
+          %Entry{
+            facet: %{"surface" => surface},
+            winner: winner,
+            reasoning: "scout picked #{winner} for #{surface}",
+            by_agent: %{}
+          }
+        ]
+      },
+      assessment_root: root
+    )
   end
 end

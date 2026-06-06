@@ -10,7 +10,7 @@ defmodule Harness.ResultStore.Memory do
 
   alias Harness.AgentKPI
   alias Harness.Batch.Result, as: BatchResult
-  alias Harness.CapabilityScore
+  alias Harness.CapabilityScore.Legacy, as: CapabilityScore
   alias Harness.Run.LogRecord
 
   @table __MODULE__

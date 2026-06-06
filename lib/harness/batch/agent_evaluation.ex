@@ -39,8 +39,8 @@ defmodule Harness.Batch.AgentEvaluation do
 
     `ratings` is the reviewer AI's free-form quality scores for this attempt
     (the `.harness/review.json` `ratings` block, persisted on the run record).
-    `Harness.CapabilityScore` means them per `{agent, domain}` so routing
-    reflects reviewer-judged quality, not approve rate alone.
+    The scout's per-facet assessment reads these facts grouped by reviewer
+    `review_facets`; routing never fuses them into a composite scalar.
     """
 
     @typedoc "Side-by-side metrics for one adapter on the shared task."

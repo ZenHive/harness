@@ -27,7 +27,7 @@ defmodule Harness.ResultStore do
 
   alias Harness.AgentKPI
   alias Harness.Batch.Result, as: BatchResult
-  alias Harness.CapabilityScore
+  alias Harness.CapabilityScore.Legacy, as: CapabilityScore
   alias Harness.Git
   alias Harness.Project
   alias Harness.Run.LogRecord

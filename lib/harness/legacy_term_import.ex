@@ -8,7 +8,7 @@ defmodule Harness.LegacyTermImport do
   """
 
   alias Harness.Batch.Result, as: BatchResult
-  alias Harness.CapabilityScore
+  alias Harness.CapabilityScore.Legacy, as: CapabilityScore
   alias Harness.Chat.Store.Postgres, as: ChatPostgres
   alias Harness.Repo
   alias Harness.ResultStore
@@ -107,6 +107,7 @@ defmodule Harness.LegacyTermImport do
   defp import_file_result(path, expected, persist_fun) do
     with {:ok, term} <- TermCodec.read_file(path),
          true <- expected_term?(term, expected),
+         term = normalize_import_term(term),
          :ok <- persist_fun.(term) do
       :imported
     else
@@ -116,12 +117,18 @@ defmodule Harness.LegacyTermImport do
   end
 
   @spec expected_term?(term(), module() | :chat_session) :: boolean()
+  defp expected_term?(%{__struct__: mod}, CapabilityScore), do: mod in [Harness.CapabilityScore, CapabilityScore]
   defp expected_term?(%{__struct__: mod}, mod), do: true
 
   defp expected_term?(%{session_id: id, messages: messages, updated_at: updated_at}, :chat_session),
     do: is_binary(id) and is_list(messages) and match?(%DateTime{}, updated_at)
 
   defp expected_term?(_term, _expected), do: false
+
+  @spec normalize_import_term(term()) :: term()
+  defp normalize_import_term(%{__struct__: Harness.CapabilityScore} = term), do: %{term | __struct__: CapabilityScore}
+
+  defp normalize_import_term(term), do: term
 
   @spec log_skip(String.t(), term(), stats()) :: stats()
   defp log_skip(path, reason, acc) do

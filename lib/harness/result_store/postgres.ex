@@ -14,7 +14,7 @@ defmodule Harness.ResultStore.Postgres do
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentKPI
   alias Harness.Batch.Result, as: BatchResult
-  alias Harness.CapabilityScore
+  alias Harness.CapabilityScore.Legacy, as: CapabilityScore
   alias Harness.Repo
   alias Harness.ResultStore.Schema.BatchResult, as: BatchResultSchema
   alias Harness.ResultStore.Schema.CapabilityScore, as: CapabilityScoreSchema
@@ -466,9 +466,17 @@ defmodule Harness.ResultStore.Postgres do
   defp decode_capability_score_row(%CapabilityScoreSchema{payload: payload}, agent, domain, corpus_version)
        when is_binary(payload) do
     case TermCodec.safe_binary_to_term(payload) do
-      {:ok, %CapabilityScore{} = score} -> {:ok, score}
-      {:ok, _other} -> {:error, {:invalid_capability_score, agent, domain, corpus_version}}
-      {:error, reason} -> {:error, reason}
+      {:ok, %CapabilityScore{} = score} ->
+        {:ok, score}
+
+      {:ok, %{__struct__: mod} = score} when mod in [Harness.CapabilityScore, CapabilityScore] ->
+        {:ok, %{score | __struct__: CapabilityScore}}
+
+      {:ok, _other} ->
+        {:error, {:invalid_capability_score, agent, domain, corpus_version}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

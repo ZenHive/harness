@@ -1,585 +1,613 @@
 defmodule Harness.CapabilityScore do
   @moduledoc """
-  Per-(agent, domain) capability score computed from reviewer-gated run comparisons.
+  Per-facet routing oracle — scout AI competence assessment over grouped run facts.
 
-  The score is a persisted routing signal, not a verdict. Inputs are the raw
-  metrics already surfaced by `Harness.Batch.AgentEvaluation`: the reviewer
-  AI's approve/reject verdict, the reviewer's own fix-diff size, duration, and
-  token usage.
+  Raw run records carry reviewer-assigned `review_facets` (the routing KEY).
+  Harness groups them mechanically, rolls per-agent facts via `Harness.AgentKPI`
+  (pure counting — no weights), and hands that ledger to a scout AI. The scout
+  writes which agent wins each task-kind on approve / first-try / quality / cost,
+  with reasoning. `dispatch-recommend` matches an incoming task's facets against
+  that artifact — never a recomputed composite scalar.
 
-  ## Composite
-
-  The composite is intentionally success-rate-dominant:
-
-      success_rate * 1000 + bounded_tiebreaker
-
-  `success_rate` is over the *attributable* runs only: a `{:review_stuck, _}`
-  run (the reviewer wrote no verdict) is the reviewer's failure, not the
-  implementer's, so it is excluded from the denominator rather than scored as a
-  non-pass that would mis-route future dispatch.
-
-  The bounded tiebreaker is less than one point and combines the reviewer's
-  mean ratings (reviewer-judged quality), token `cost_to_green`, and the mean
-  reviewer fix-diff size (how much fixing the reviewer had to do). Because
-  rejection is near-never by design, approval rate is nearly constant across
-  agents — so the ratings term is what actually moves routing inside a
-  same-success cohort, letting `dispatch-recommend` reflect reviewer-judged
-  quality rather than approve rate alone. Raw per-run metrics are retained on
-  the score so this formula can be retuned without re-running the comparisons.
-
-  ## Scored-set fingerprint (`corpus_version`)
-
-  `corpus_version` survives as the persisted-score key naming *which set of
-  tasks* produced the score — now a fingerprint of the compared task ids, not a
-  benchmark-corpus version (the mechanical benchmark corpus is deleted; real
-  reviewer-gated runs are the measurement substrate).
+  The legacy `{agent, domain, corpus_version}` persisted cell lives in
+  `Harness.CapabilityScore.Legacy` for term-import / ResultStore round-trip only;
+  active routing never reads or writes it.
   """
 
+  alias Harness.AgentAdapter.Driver
+  alias Harness.AgentAdapter.Invocation
+  alias Harness.AgentAdapter.Outcome
   alias Harness.AgentKPI
   alias Harness.AgentRegistry
-  alias Harness.Batch.AgentEvaluation.Comparison
-  alias Harness.Batch.AgentEvaluation.Entry
-  alias Harness.CapabilityDomain
   alias Harness.Config
   alias Harness.ResultStore
-  alias Harness.Run.Review
-  alias Harness.TokenUsage
+  alias Harness.Run.LogRecord
 
-  @success_scale 1_000
-  @cost_scale_tokens 100_000
-  @ratings_tiebreaker_weight 0.5
-  @cost_tiebreaker_weight 0.3
-  @reviewer_fix_tiebreaker_weight 0.199
-  @rating_scale 10.0
-  @freshness_window_days 30
-  @seconds_per_day 86_400
-  @stale_discount 0.5
+  @artifact_basename "facet-assessment.json"
+  @artifact_rel ".harness/#{@artifact_basename}"
+  @default_root "~/.harness"
+  @default_adapter :codex
+  @default_idle_timeout 120_000
+  @default_total_timeout 300_000
 
-  @type freshness :: :fresh | :stale
-
-  defmodule RawMetric do
-    @moduledoc """
-    One retained per-run input metric used to compute a capability score.
-    """
-
+  defmodule Legacy do
+    @moduledoc false
+    @typedoc false
     @type t :: %__MODULE__{
-            batch_id: String.t(),
-            task_id: String.t(),
-            run_id: String.t(),
-            adapter: module(),
             agent: atom() | module(),
-            verdict: Review.verdict() | nil,
-            reason: term(),
-            reviewer_diff_size: non_neg_integer() | nil,
-            duration_ms: non_neg_integer() | nil,
-            token_usage: TokenUsage.t(),
-            cost_tokens: non_neg_integer(),
-            ratings: %{optional(String.t()) => term()}
+            domain: atom(),
+            corpus_version: String.t(),
+            scored_at: DateTime.t(),
+            run_count: pos_integer(),
+            success_rate: float(),
+            cost_to_green: float() | nil,
+            mean_reviewer_diff_size: float(),
+            mean_ratings: %{optional(String.t()) => float()},
+            composite_score: float(),
+            raw_metrics: [term()]
           }
 
     @enforce_keys [
-      :batch_id,
-      :task_id,
-      :run_id,
-      :adapter,
       :agent,
-      :verdict,
-      :reviewer_diff_size,
-      :duration_ms,
-      :token_usage,
-      :cost_tokens
+      :domain,
+      :corpus_version,
+      :scored_at,
+      :run_count,
+      :success_rate,
+      :cost_to_green,
+      :mean_reviewer_diff_size,
+      :composite_score,
+      :raw_metrics
     ]
-    # `reason` defaults to nil so a metric persisted before the field roundtrips
-    # (read back as a non-stuck run, never miscounted as a reviewer flake).
     defstruct [
-      :batch_id,
-      :task_id,
-      :run_id,
-      :adapter,
       :agent,
-      :verdict,
-      :reviewer_diff_size,
-      :duration_ms,
-      :token_usage,
-      :cost_tokens,
-      reason: nil,
-      ratings: %{}
+      :domain,
+      :corpus_version,
+      :scored_at,
+      :run_count,
+      :success_rate,
+      :cost_to_green,
+      :mean_reviewer_diff_size,
+      :composite_score,
+      :raw_metrics,
+      mean_ratings: %{}
     ]
   end
 
-  @typedoc "Persisted capability measurement for one agent/domain/scored-set cell."
-  @type t :: %__MODULE__{
-          agent: atom() | module(),
-          domain: CapabilityDomain.t(),
-          corpus_version: String.t(),
-          scored_at: DateTime.t(),
-          run_count: pos_integer(),
-          success_rate: float(),
-          cost_to_green: float() | nil,
-          mean_reviewer_diff_size: float(),
-          mean_ratings: %{optional(String.t()) => float()},
-          composite_score: float(),
-          raw_metrics: [RawMetric.t()]
+  defmodule Assessment do
+    @moduledoc false
+
+    @typedoc false
+    @type t :: %__MODULE__{
+            assessed_at: DateTime.t() | nil,
+            record_count: non_neg_integer(),
+            entries: [Harness.CapabilityScore.Entry.t()]
+          }
+
+    @enforce_keys [:assessed_at, :record_count, :entries]
+    defstruct [:assessed_at, :record_count, entries: []]
+  end
+
+  defmodule Entry do
+    @moduledoc false
+
+    @typedoc false
+    @type t :: %__MODULE__{
+            facet: %{optional(String.t()) => term()},
+            winner: atom(),
+            reasoning: String.t(),
+            by_agent: %{optional(atom()) => map()}
+          }
+
+    @enforce_keys [:facet, :winner, :reasoning, :by_agent]
+    defstruct [:facet, :winner, :reasoning, :by_agent]
+  end
+
+  @typedoc "Parsed scout assessment artifact."
+  @type assessment :: Assessment.t()
+
+  @typedoc "One per-facet routing cell from the scout."
+  @type entry :: Entry.t()
+
+  @doc """
+  Groups run records by reviewer-assigned `review_facets`.
+
+  Empty or missing facets bucket under `%{}` (the unfaceted bucket). Keys within
+  each facet map are normalized to strings for stable grouping.
+  """
+  @spec group_by_facet([LogRecord.t()]) :: %{String.t() => [LogRecord.t()]}
+  def group_by_facet(records) when is_list(records) do
+    records
+    |> Enum.group_by(&facet_key(normalize_facet(&1.review_facets)))
+    |> Map.new(fn {key, group} -> {key, group} end)
+  end
+
+  @doc """
+  Rolls per-agent KPI facts for one facet group's records.
+
+  Returns a map keyed by agent atom with `Harness.AgentKPI` ledger cells.
+  """
+  @spec facet_facts([LogRecord.t()]) :: %{optional(atom()) => AgentKPI.agent_kpi()}
+  def facet_facts(records) when is_list(records) do
+    AgentKPI.aggregate(records)
+  end
+
+  @doc "Builds facet-grouped fact ledgers from a record list — scout input, not a verdict."
+  @spec build_scout_context([LogRecord.t()]) :: [map()]
+  def build_scout_context(records) when is_list(records) do
+    records
+    |> group_by_facet()
+    |> Enum.map(fn {_key, group} ->
+      facet = normalize_facet(hd(group).review_facets)
+
+      %{
+        facet: facet,
+        by_agent: facet_facts(group)
+      }
+    end)
+    |> Enum.sort_by(&Jason.encode!(Map.get(&1, :facet, %{})))
+  end
+
+  @doc """
+  Reads the persisted per-facet assessment artifact.
+
+  Returns `:no_data` when no assessment has been written yet.
+  """
+  @spec read_assessment(keyword()) :: {:ok, assessment()} | :no_data | {:error, term()}
+  def read_assessment(opts \\ []) when is_list(opts) do
+    path = assessment_path(opts)
+
+    case File.read(path) do
+      {:ok, body} -> decode_assessment(body)
+      {:error, :enoent} -> :no_data
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Persists a parsed assessment artifact to the configured assessment path."
+  @spec save_assessment(assessment(), keyword()) :: :ok | {:error, term()}
+  def save_assessment(%Assessment{} = assessment, opts \\ []) when is_list(opts) do
+    path = assessment_path(opts)
+    payload = encode_assessment(assessment)
+
+    with :ok <- File.mkdir_p(Path.dirname(path)) do
+      File.write(path, payload)
+    end
+  end
+
+  @doc """
+  Refreshes the per-facet assessment: group records, spawn the scout AI, persist.
+
+  Injectable via `config :harness, :capability_scout` (`fun(context) ::
+  {:ok, assessment} | {:error, term()}`) for tests.
+  """
+  @spec refresh(keyword()) :: {:ok, assessment()} | {:error, term()}
+  def refresh(opts \\ []) when is_list(opts) do
+    store = Keyword.get(opts, :result_store, ResultStore.configured())
+
+    with {:ok, records} <- ResultStore.list_run_records(store, []),
+         context = %{record_count: length(records), groups: build_scout_context(records)},
+         {:ok, assessment} <- run_scout(context, opts),
+         assessment =
+           assessment
+           |> merge_group_facts(context.groups)
+           |> then(&%{&1 | assessed_at: &1.assessed_at || DateTime.utc_now(), record_count: context.record_count}),
+         :ok <- save_assessment(assessment, opts) do
+      {:ok, assessment}
+    end
+  end
+
+  @doc """
+  Recommends an agent by matching `facets` against the scout's per-facet assessment.
+
+  An unmeasured facet (no matching entry) routes `:explore`. A missing assessment
+  falls back to the configured default dispatch agent.
+  """
+  @spec recommend(map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def recommend(facets, opts \\ []) when is_map(facets) and is_list(opts) do
+    facets = normalize_facet(facets)
+
+    case read_assessment(opts) do
+      :no_data ->
+        {:ok, fallback_recommendation(facets, opts)}
+
+      {:ok, %Assessment{} = assessment} ->
+        {:ok, recommend_from_assessment(facets, assessment, opts)}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  @doc "Predicts routing facets from a roadmap domain tag (backward-compatible shim)."
+  @spec facets_from_domain(atom()) :: %{String.t() => term()}
+  def facets_from_domain(domain) when is_atom(domain), do: %{"surface" => Atom.to_string(domain)}
+
+  @doc false
+  @spec assessment_path(keyword()) :: String.t()
+  def assessment_path(opts) when is_list(opts) do
+    Keyword.get(opts, :assessment_path) ||
+      Path.join(assessment_root(opts), @artifact_basename)
+  end
+
+  @doc false
+  @spec artifact_rel_path() :: String.t()
+  def artifact_rel_path, do: @artifact_rel
+
+  @spec run_scout(map(), keyword()) :: {:ok, assessment()} | {:error, term()}
+  defp run_scout(context, opts) do
+    case Application.get_env(:harness, :capability_scout) do
+      fun when is_function(fun, 1) ->
+        fun.(context)
+
+      _other ->
+        spawn_scout(context, opts)
+    end
+  end
+
+  @spec spawn_scout(map(), keyword()) :: {:ok, assessment()} | {:error, term()}
+  defp spawn_scout(context, opts) do
+    scratch = scratch_dir(opts)
+
+    try do
+      with {:ok, _agent, adapter} <- resolve_scout_adapter(opts),
+           {:ok, %Outcome{}} <- Driver.run(adapter, scout_invocation(context, scratch), driver_opts(opts)) do
+        read_scout_artifact(scratch)
+      end
+    after
+      File.rm_rf(scratch)
+    end
+  end
+
+  @spec scout_invocation(map(), String.t()) :: Invocation.t()
+  defp scout_invocation(context, scratch) do
+    %Invocation{
+      prompt: scout_prompt(context),
+      cwd: scratch,
+      task_id: "facet-scout",
+      permission_mode: :autonomous
+    }
+  end
+
+  @spec scout_prompt(map()) :: String.t()
+  defp scout_prompt(%{record_count: count, groups: groups}) do
+    facts_json = Jason.encode!(groups, pretty: true)
+
+    """
+    You are the harness routing scout. Read the per-facet agent fact ledgers below
+    (approve rate, first-try rate, reviewer ratings, cost-to-green — already
+    counted by harness; do NOT recompute or weight them). For EACH facet group,
+    decide which agent wins on balance of approve / first-try / reviewer-quality
+    / cost, and explain why in plain prose.
+
+    Write your verdict as JSON to `#{@artifact_rel}` (relative to your working
+    directory) and exit. Writing that file is the whole job; you change no code.
+
+    ## Required JSON shape
+
+        {
+          "assessed_at": "<ISO-8601 UTC timestamp>",
+          "entries": [
+            {
+              "facet": {"language": "elixir", "surface": "otp", ...},
+              "winner": "codex",
+              "reasoning": "why this agent wins this task-kind"
+            }
+          ]
         }
 
-  @enforce_keys [
-    :agent,
-    :domain,
-    :corpus_version,
-    :scored_at,
-    :run_count,
-    :success_rate,
-    :cost_to_green,
-    :mean_reviewer_diff_size,
-    :composite_score,
-    :raw_metrics
-  ]
-  defstruct [
-    :agent,
-    :domain,
-    :corpus_version,
-    :scored_at,
-    :run_count,
-    :success_rate,
-    :cost_to_green,
-    :mean_reviewer_diff_size,
-    :composite_score,
-    :raw_metrics,
-    mean_ratings: %{}
-  ]
+    Rules:
+    - One entry per input facet group (including the empty `{}` unfaceted bucket).
+    - `winner` is a harness agent name: claude | codex | cursor | grok | antigravity | pi.
+    - `reasoning` is required — the routing rationale an orchestrator can read.
+    - Never emit composite scores, weights, or numeric rankings.
 
-  @doc """
-  Computes and persists scores for one capability domain.
+    ## Input (#{count} run record(s), #{length(groups)} facet group(s))
 
-  The caller scopes `comparisons` to the domain (e.g. via the compared tasks'
-  domain tags); every entry in every comparison is measured. Returns one score
-  per measured agent. An empty comparison set returns `{:ok, []}`; callers
-  represent a specific unmeasured cell via `ResultStore.get_capability_score/4`,
-  which returns `:no_data`.
-  """
-  @spec score_domain([Comparison.t()], CapabilityDomain.t(), keyword()) ::
-          {:ok, [t()]} | {:error, term()}
-  def score_domain(comparisons, domain, opts \\ []) when is_list(comparisons) and is_atom(domain) and is_list(opts) do
-    with {:ok, [domain]} <- CapabilityDomain.validate([domain]) do
-      scores =
-        comparisons
-        |> raw_metrics()
-        |> build_scores(domain, opts)
+    #{facts_json}
+    """
+  end
 
-      persist_scores(scores, Keyword.get(opts, :result_store, ResultStore.configured()))
+  @spec recommend_from_assessment(map(), assessment(), keyword()) :: map()
+  defp recommend_from_assessment(facets, %Assessment{} = assessment, opts) do
+    agents = agents(opts)
+
+    case find_matching_entry(assessment, facets) do
+      %Entry{} = entry ->
+        %{
+          agent: entry.winner,
+          facets: facets,
+          strategy: :exploit,
+          rationale: entry.reasoning,
+          scout_reasoning: entry.reasoning,
+          matched_facet: entry.facet,
+          ranked: ranked_from_entry(entry, agents)
+        }
+
+      nil ->
+        explore_recommendation(facets, agents, opts)
     end
   end
 
-  @doc "Recomputes aggregate metrics and composite from retained raw metrics."
-  @spec recompute(t()) :: t()
-  def recompute(%__MODULE__{} = score) do
-    summarize(score.raw_metrics, score.agent, score.domain, score.corpus_version, score.scored_at)
-  end
+  @spec explore_recommendation(map(), [atom()], keyword()) :: map()
+  defp explore_recommendation(facets, agents, opts) do
+    fallback = Keyword.get(opts, :fallback_agent, Config.get({:dispatch, :default_agent}))
+    agent = Enum.find(agents, &(&1 == fallback)) || hd(agents)
 
-  @doc "Classifies a persisted capability score as fresh or stale."
-  @spec freshness(t(), keyword()) :: freshness()
-  def freshness(%__MODULE__{} = score, opts \\ []) when is_list(opts) do
-    if score_age_days(score, opts) <= freshness_window_days(opts), do: :fresh, else: :stale
-  end
-
-  @doc "Returns the score's routing value after applying stale-score decay."
-  @spec discounted_composite_score(t(), keyword()) :: float()
-  def discounted_composite_score(%__MODULE__{} = score, opts \\ []) when is_list(opts) do
-    case freshness(score, opts) do
-      :fresh -> score.composite_score
-      :stale -> score.composite_score * stale_discount(opts)
-    end
-  end
-
-  @doc """
-  Lists stale and unmeasured agent/domain cells that need re-benchmarking.
-
-  This is a read-only signal over persisted scores. Stale scores are returned as
-  candidates and left intact in the store; the scheduler decides what to re-run.
-  """
-  @spec rebenchmark_candidates(keyword()) :: {:ok, [map()]} | {:error, term()}
-  def rebenchmark_candidates(opts \\ []) when is_list(opts) do
-    store = Keyword.get(opts, :result_store, ResultStore.configured())
-
-    with {:ok, scores} <- ResultStore.list_capability_scores(store) do
-      {:ok, rebenchmark_candidates(scores, opts)}
-    end
-  end
-
-  @doc "Pure stale/unmeasured candidate classification over a supplied score list."
-  @spec rebenchmark_candidates([t()], keyword()) :: [map()]
-  def rebenchmark_candidates(scores, opts) when is_list(scores) and is_list(opts) do
-    score_by_cell = latest_score_by_cell(scores, Keyword.get(opts, :corpus_version))
-
-    for domain <- domains(opts),
-        agent <- agents(opts),
-        candidate = rebenchmark_candidate(agent, domain, score_by_cell, opts),
-        not is_nil(candidate) do
-      candidate
-    end
-  end
-
-  @doc """
-  Recommends an agent for a capability domain using explore/exploit routing.
-
-  Unmeasured cells become exploration candidates, not low scores. Measured cells
-  exploit the best effective score after stale-score discounting.
-  """
-  @spec recommend(CapabilityDomain.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  def recommend(domain, opts \\ []) when is_atom(domain) and is_list(opts) do
-    store = Keyword.get(opts, :result_store, ResultStore.configured())
-
-    with {:ok, scores} <- ResultStore.list_capability_scores(store) do
-      {:ok, recommend_from_scores(domain, scores, opts)}
-    end
-  end
-
-  @spec raw_metrics([Comparison.t()]) :: [RawMetric.t()]
-  defp raw_metrics(comparisons) do
-    Enum.flat_map(comparisons, fn %Comparison{} = comparison ->
-      Enum.map(comparison.entries, &raw_metric(comparison, &1))
-    end)
-  end
-
-  @spec raw_metric(Comparison.t(), Entry.t()) :: RawMetric.t()
-  defp raw_metric(%Comparison{} = comparison, %Entry{} = entry) do
-    %RawMetric{
-      batch_id: comparison.batch_id,
-      task_id: comparison.task_id,
-      run_id: entry.run_id,
-      adapter: entry.adapter,
-      agent: agent_for_adapter(entry.adapter),
-      verdict: entry.verdict,
-      reason: entry.reason,
-      reviewer_diff_size: entry.reviewer_diff_size,
-      duration_ms: entry.duration_ms,
-      token_usage: entry.token_usage,
-      cost_tokens: token_total(entry.token_usage),
-      ratings: entry_ratings(entry)
-    }
-  end
-
-  # Tolerates a pre-rating Entry whose struct predates the field (Map.get -> nil).
-  @spec entry_ratings(Entry.t()) :: %{optional(String.t()) => term()}
-  defp entry_ratings(entry), do: Map.get(entry, :ratings) || %{}
-
-  @spec build_scores([RawMetric.t()], CapabilityDomain.t(), keyword()) :: [t()]
-  defp build_scores(metrics, domain, opts) do
-    corpus_version = Keyword.get(opts, :corpus_version) || corpus_version_from_metrics(metrics)
-    scored_at = Keyword.get(opts, :scored_at) || DateTime.utc_now()
-
-    metrics
-    |> Enum.group_by(& &1.agent)
-    |> Enum.map(fn {agent, agent_metrics} ->
-      summarize(agent_metrics, agent, domain, corpus_version, scored_at)
-    end)
-    |> Enum.sort_by(& &1.agent)
-  end
-
-  @spec summarize([RawMetric.t()], atom() | module(), CapabilityDomain.t(), String.t(), DateTime.t()) :: t()
-  defp summarize(metrics, agent, domain, corpus_version, scored_at) do
-    run_count = length(metrics)
-    # A review_stuck run is the reviewer's failure, not the implementer's — keep
-    # it out of the routing success denominator so a reviewer flake never
-    # mis-routes future dispatch (Task 231). Keyed mechanically on `reason`.
-    attributable_count = run_count - Enum.count(metrics, &review_stuck?/1)
-    successes = Enum.filter(metrics, &(&1.verdict == :approve))
-    success_rate = rate(length(successes), attributable_count)
-    cost_to_green = cost_to_green(successes)
-    mean_reviewer_diff_size = mean(Enum.map(metrics, &(&1.reviewer_diff_size || 0)), run_count)
-    mean_ratings = AgentKPI.rating_means(Enum.map(metrics, &entry_ratings/1))
-
-    %__MODULE__{
+    %{
       agent: agent,
-      domain: domain,
-      corpus_version: corpus_version,
-      scored_at: scored_at,
-      run_count: run_count,
-      success_rate: success_rate,
-      cost_to_green: cost_to_green,
-      mean_reviewer_diff_size: mean_reviewer_diff_size,
-      mean_ratings: mean_ratings,
-      composite_score: composite_score(success_rate, cost_to_green, mean_reviewer_diff_size, mean_ratings),
-      raw_metrics: metrics
+      facets: facets,
+      strategy: :explore,
+      rationale: :unmeasured_facet,
+      scout_reasoning: nil,
+      matched_facet: nil,
+      ranked: Enum.map(agents, &%{agent: &1, measurement: :unmeasured})
     }
   end
 
-  @spec persist_scores([t()], ResultStore.store()) :: {:ok, [t()]} | {:error, term()}
-  defp persist_scores(scores, store) do
-    scores
-    |> Enum.reduce_while({:ok, []}, fn score, {:ok, acc} ->
-      case ResultStore.save_capability_score(score, store) do
-        :ok -> {:cont, {:ok, [score | acc]}}
-        {:error, reason} -> {:halt, {:error, reason}}
+  @spec fallback_recommendation(map(), keyword()) :: map()
+  defp fallback_recommendation(facets, opts) do
+    agents = agents(opts)
+    fallback = Keyword.get(opts, :fallback_agent, Config.get({:dispatch, :default_agent}))
+    agent = Enum.find(agents, &(&1 == fallback)) || hd(agents)
+
+    %{
+      agent: agent,
+      facets: facets,
+      strategy: :fallback_no_data,
+      rationale: :no_assessment,
+      scout_reasoning: nil,
+      matched_facet: nil,
+      ranked: Enum.map(agents, &%{agent: &1, measurement: :unmeasured})
+    }
+  end
+
+  @spec ranked_from_entry(entry(), [atom()]) :: [map()]
+  defp ranked_from_entry(%Entry{winner: winner, by_agent: by_agent}, agents) do
+    measured =
+      by_agent
+      |> Map.keys()
+      |> Enum.filter(&(&1 in agents))
+      |> Enum.sort()
+
+    winner_row = %{agent: winner, measurement: :measured, role: :winner}
+    other_rows = for agent <- measured, agent != winner, do: %{agent: agent, measurement: :measured, role: :runner_up}
+    unmeasured = for agent <- agents, agent not in measured, do: %{agent: agent, measurement: :unmeasured}
+
+    [winner_row | other_rows ++ unmeasured]
+  end
+
+  @spec find_matching_entry(assessment(), map()) :: entry() | nil
+  defp find_matching_entry(%Assessment{entries: entries}, facets) do
+    normalized = normalize_facet(facets)
+
+    entries
+    |> Enum.map(&{facet_overlap(normalize_facet(&1.facet), normalized), &1})
+    |> Enum.filter(fn {score, _entry} -> score > 0 end)
+    |> case do
+      [] ->
+        nil
+
+      scored ->
+        {_score, entry} =
+          Enum.max_by(scored, fn {score, entry} ->
+            {score, exact_facet_match?(entry.facet, normalized)}
+          end)
+
+        entry
+    end
+  end
+
+  @spec merge_group_facts(assessment(), [map()]) :: assessment()
+  defp merge_group_facts(%Assessment{} = assessment, groups) when is_list(groups) do
+    facts_by_facet =
+      Map.new(groups, fn %{facet: facet, by_agent: facts} ->
+        {facet_key(normalize_facet(facet)), facts}
+      end)
+
+    entries =
+      Enum.map(assessment.entries, fn %Entry{} = entry ->
+        %{entry | by_agent: Map.get(facts_by_facet, facet_key(entry.facet), entry.by_agent || %{})}
+      end)
+
+    %{assessment | entries: entries}
+  end
+
+  @spec facet_overlap(map(), map()) :: non_neg_integer()
+  defp facet_overlap(left, right) do
+    left
+    |> Map.keys()
+    |> Enum.count(fn key -> Map.get(right, key) == Map.get(left, key) end)
+  end
+
+  @spec exact_facet_match?(map(), map()) :: 0 | 1
+  defp exact_facet_match?(left, right) do
+    if normalize_facet(left) == normalize_facet(right), do: 1, else: 0
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  @spec read_scout_artifact(String.t()) :: {:ok, assessment()} | {:error, term()}
+  defp read_scout_artifact(scratch) do
+    path = Path.join(scratch, @artifact_rel)
+
+    case File.read(path) do
+      {:ok, body} ->
+        decode_assessment(body)
+
+      {:error, :enoent} ->
+        {:error, :missing_scout_artifact}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @spec decode_assessment(binary()) :: {:ok, assessment()} | {:error, term()}
+  defp decode_assessment(body) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, %{"entries" => entries} = decoded} when is_list(entries) ->
+        with {:ok, decoded_entries} <- decode_entries(entries) do
+          {:ok,
+           %Assessment{
+             assessed_at: assessed_at(decoded),
+             record_count: Map.get(decoded, "record_count", 0),
+             entries: decoded_entries
+           }}
+        end
+
+      {:ok, other} ->
+        {:error, {:malformed_assessment, other}}
+
+      {:error, reason} ->
+        {:error, {:invalid_json, reason}}
+    end
+  end
+
+  @spec decode_entries([map()]) :: {:ok, [entry()]} | {:error, term()}
+  defp decode_entries(entries) when is_list(entries) do
+    entries
+    |> Enum.reduce_while({:ok, []}, fn entry, {:ok, acc} ->
+      case decode_entry(entry) do
+        {:ok, decoded} -> {:cont, {:ok, [decoded | acc]}}
+        {:error, _} = error -> {:halt, error}
       end
     end)
     |> case do
-      {:ok, persisted} -> {:ok, Enum.reverse(persisted)}
+      {:ok, decoded} -> {:ok, Enum.reverse(decoded)}
       error -> error
     end
   end
 
-  @spec recommend_from_scores(CapabilityDomain.t(), [t()], keyword()) :: map()
-  defp recommend_from_scores(domain, scores, opts) do
-    score_by_cell = latest_score_by_cell(scores, Keyword.get(opts, :corpus_version))
-    rows = recommendation_rows(domain, score_by_cell, opts)
-    measured = Enum.filter(rows, &(&1.measurement == :measured))
-    unmeasured = Enum.filter(rows, &(&1.measurement == :unmeasured))
+  @spec decode_entry(map()) :: {:ok, entry()} | {:error, term()}
+  defp decode_entry(%{"facet" => facet, "winner" => winner, "reasoning" => reasoning} = decoded)
+       when is_map(facet) and is_binary(winner) and is_binary(reasoning) do
+    {:ok,
+     %Entry{
+       facet: normalize_facet(facet),
+       winner: decode_agent(winner),
+       reasoning: reasoning,
+       by_agent: decode_by_agent(Map.get(decoded, "by_agent", %{}))
+     }}
+  end
 
-    cond do
-      measured == [] ->
-        fallback_recommendation(domain, rows, opts)
+  defp decode_entry(other), do: {:error, {:invalid_assessment_entry, other}}
 
-      explore_unmeasured?(opts) and unmeasured != [] ->
-        explore_recommendation(domain, hd(unmeasured), measured, tl(unmeasured))
+  @spec decode_by_agent(map()) :: %{optional(atom()) => map()}
+  defp decode_by_agent(by_agent) when is_map(by_agent) do
+    Map.new(by_agent, fn {agent, facts} -> {decode_agent(agent), facts} end)
+  end
 
-      true ->
-        exploit_recommendation(domain, measured, unmeasured)
+  @spec decode_agent(String.t()) :: atom()
+  defp decode_agent(agent) when is_binary(agent) do
+    agent
+    |> String.downcase()
+    |> String.to_existing_atom()
+  rescue
+    ArgumentError -> String.to_atom(agent)
+  end
+
+  @spec encode_assessment(assessment()) :: binary()
+  defp encode_assessment(%Assessment{} = assessment) do
+    Jason.encode!(
+      %{
+        "assessed_at" => datetime_iso(assessment.assessed_at),
+        "record_count" => assessment.record_count,
+        "entries" =>
+          Enum.map(assessment.entries, fn %Entry{} = entry ->
+            %{
+              "facet" => entry.facet,
+              "winner" => Atom.to_string(entry.winner),
+              "reasoning" => entry.reasoning,
+              "by_agent" => encode_by_agent(entry.by_agent)
+            }
+          end)
+      },
+      pretty: true
+    )
+  end
+
+  @spec encode_by_agent(map()) :: map()
+  defp encode_by_agent(by_agent) when is_map(by_agent) do
+    Map.new(by_agent, fn {agent, facts} -> {Atom.to_string(agent), facts} end)
+  end
+
+  @spec assessed_at(map()) :: DateTime.t() | nil
+  defp assessed_at(%{"assessed_at" => iso}) when is_binary(iso) do
+    case DateTime.from_iso8601(iso) do
+      {:ok, dt, _} -> dt
+      _ -> nil
     end
   end
 
-  # No measured scores for this domain: route to the operator-configured default
-  # dispatch agent (`{:dispatch, :default_agent}`, default :codex — keeping
-  # precious Claude tokens for the reviewer axis), not a hardcoded :claude. An
-  # explicit `:fallback_agent` opt still wins (tests, deliberate overrides).
-  @spec fallback_recommendation(CapabilityDomain.t(), [map()], keyword()) :: map()
-  defp fallback_recommendation(domain, rows, opts) do
-    fallback_agent = Keyword.get(opts, :fallback_agent, Config.get({:dispatch, :default_agent}))
-    selected = Enum.find(rows, &(&1.agent == fallback_agent)) || hd(rows)
+  defp assessed_at(_decoded), do: nil
 
-    %{
-      agent: selected.agent,
-      domain: domain,
-      strategy: :fallback_no_data,
-      rationale: :no_measured_scores,
-      ranked: rows
-    }
+  @spec datetime_iso(DateTime.t() | nil) :: String.t() | nil
+  defp datetime_iso(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+  defp datetime_iso(_other), do: nil
+
+  @spec normalize_facet(term()) :: %{String.t() => term()}
+  defp normalize_facet(facet) when is_map(facet) do
+    facet
+    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+    |> Map.new(fn {k, v} -> {to_string(k), v} end)
   end
 
-  @spec explore_recommendation(CapabilityDomain.t(), map(), [map()], [map()]) :: map()
-  defp explore_recommendation(domain, selected, measured, remaining_unmeasured) do
-    %{
-      agent: selected.agent,
-      domain: domain,
-      strategy: :explore,
-      rationale: :unmeasured_cell,
-      ranked: [selected | measured ++ remaining_unmeasured]
-    }
+  defp normalize_facet(_other), do: %{}
+
+  @spec facet_key(map()) :: String.t()
+  defp facet_key(facet) do
+    facet
+    |> normalize_facet()
+    |> Enum.sort()
+    |> Map.new()
+    |> Jason.encode!()
   end
-
-  @spec exploit_recommendation(CapabilityDomain.t(), [map()], [map()]) :: map()
-  defp exploit_recommendation(domain, measured, unmeasured) do
-    selected = hd(measured)
-    rationale = if selected.freshness == :fresh, do: :best_fresh_score, else: :best_discounted_score
-
-    %{
-      agent: selected.agent,
-      domain: domain,
-      strategy: :exploit,
-      rationale: rationale,
-      ranked: measured ++ unmeasured
-    }
-  end
-
-  @spec recommendation_rows(CapabilityDomain.t(), map(), keyword()) :: [map()]
-  defp recommendation_rows(domain, score_by_cell, opts) do
-    {measured, unmeasured} =
-      opts
-      |> agents()
-      |> Enum.map(&recommendation_row(&1, domain, score_by_cell, opts))
-      |> Enum.split_with(&(&1.measurement == :measured))
-
-    Enum.sort_by(measured, & &1.effective_score, :desc) ++ unmeasured
-  end
-
-  @spec recommendation_row(atom(), CapabilityDomain.t(), map(), keyword()) :: map()
-  defp recommendation_row(agent, domain, score_by_cell, opts) do
-    case Map.fetch(score_by_cell, {agent, domain}) do
-      {:ok, %__MODULE__{} = score} ->
-        freshness = freshness(score, opts)
-
-        %{
-          agent: agent,
-          domain: domain,
-          measurement: :measured,
-          freshness: freshness,
-          score: score.composite_score,
-          effective_score: discounted_composite_score(score, opts),
-          scored_at: score.scored_at,
-          age_days: score_age_days(score, opts),
-          corpus_version: score.corpus_version,
-          rationale: if(freshness == :fresh, do: :measured_fresh, else: :stale_discounted)
-        }
-
-      :error ->
-        %{
-          agent: agent,
-          domain: domain,
-          measurement: :unmeasured,
-          freshness: :unmeasured,
-          score: nil,
-          effective_score: nil,
-          scored_at: nil,
-          age_days: nil,
-          corpus_version: Keyword.get(opts, :corpus_version),
-          rationale: :explore_unmeasured
-        }
-    end
-  end
-
-  @spec rebenchmark_candidate(atom(), CapabilityDomain.t(), map(), keyword()) :: map() | nil
-  defp rebenchmark_candidate(agent, domain, score_by_cell, opts) do
-    case Map.fetch(score_by_cell, {agent, domain}) do
-      {:ok, %__MODULE__{} = score} ->
-        if freshness(score, opts) == :stale do
-          %{
-            agent: agent,
-            domain: domain,
-            reason: :stale,
-            freshness: :stale,
-            scored_at: score.scored_at,
-            age_days: score_age_days(score, opts),
-            corpus_version: score.corpus_version
-          }
-        end
-
-      :error ->
-        %{
-          agent: agent,
-          domain: domain,
-          reason: :unmeasured,
-          freshness: :unmeasured,
-          scored_at: nil,
-          age_days: nil,
-          corpus_version: Keyword.get(opts, :corpus_version)
-        }
-    end
-  end
-
-  @spec latest_score_by_cell([t()], String.t() | nil) :: map()
-  defp latest_score_by_cell(scores, corpus_version) do
-    scores
-    |> Enum.filter(&match_corpus_version?(&1, corpus_version))
-    |> Enum.group_by(&{&1.agent, &1.domain})
-    |> Map.new(fn {cell, cell_scores} ->
-      {cell, Enum.max_by(cell_scores, &DateTime.to_unix(&1.scored_at, :microsecond))}
-    end)
-  end
-
-  @spec match_corpus_version?(t(), String.t() | nil) :: boolean()
-  defp match_corpus_version?(_score, nil), do: true
-  defp match_corpus_version?(%__MODULE__{} = score, corpus_version), do: score.corpus_version == corpus_version
-
-  @spec score_age_days(t(), keyword()) :: non_neg_integer()
-  defp score_age_days(%__MODULE__{} = score, opts) do
-    seconds =
-      opts
-      |> reference_time()
-      |> DateTime.diff(score.scored_at, :second)
-      |> max(0)
-
-    div(seconds, @seconds_per_day)
-  end
-
-  @spec reference_time(keyword()) :: DateTime.t()
-  defp reference_time(opts), do: Keyword.get(opts, :reference_time) || DateTime.utc_now()
-
-  @spec freshness_window_days(keyword()) :: pos_integer()
-  defp freshness_window_days(opts), do: Keyword.get(opts, :freshness_window_days, @freshness_window_days)
-
-  @spec stale_discount(keyword()) :: float()
-  defp stale_discount(opts), do: Keyword.get(opts, :stale_discount, @stale_discount)
-
-  @spec explore_unmeasured?(keyword()) :: boolean()
-  defp explore_unmeasured?(opts), do: Keyword.get(opts, :explore_unmeasured, true)
 
   @spec agents(keyword()) :: [atom()]
   defp agents(opts), do: Keyword.get(opts, :agents, AgentRegistry.agents() |> Map.keys() |> Enum.sort())
 
-  @spec domains(keyword()) :: [CapabilityDomain.t()]
-  defp domains(opts), do: Keyword.get(opts, :domains, CapabilityDomain.domains())
-
-  @spec corpus_version_from_metrics([RawMetric.t()]) :: String.t()
-  defp corpus_version_from_metrics(metrics) do
-    metrics
-    |> Enum.map(fn %RawMetric{task_id: id} -> id end)
-    |> Enum.uniq()
-    |> Enum.sort()
-    |> Enum.join("|")
-    |> then(fn fingerprint ->
-      :sha256
-      |> :crypto.hash(fingerprint)
-      |> Base.url_encode64(padding: false)
-    end)
+  @spec assessment_root(keyword()) :: String.t()
+  defp assessment_root(opts) do
+    opts
+    |> Keyword.get(:assessment_root, @default_root)
+    |> Path.expand()
   end
 
-  @spec composite_score(float(), float() | nil, float(), %{optional(String.t()) => float()}) :: float()
-  defp composite_score(success_rate, cost_to_green, mean_reviewer_diff_size, mean_ratings) do
-    success_component = success_rate * @success_scale
+  # sobelow_skip ["Traversal.FileModule"]
+  @spec scratch_dir(keyword()) :: String.t()
+  defp scratch_dir(opts) do
+    dir =
+      Keyword.get_lazy(opts, :scratch_dir, fn ->
+        Path.join(System.tmp_dir!(), "harness-scout-#{System.unique_integer([:positive])}")
+      end)
 
-    tiebreaker =
-      @ratings_tiebreaker_weight * ratings_efficiency(mean_ratings) +
-        @cost_tiebreaker_weight * cost_efficiency(cost_to_green) +
-        @reviewer_fix_tiebreaker_weight * reciprocal_efficiency(mean_reviewer_diff_size)
-
-    success_component + tiebreaker
+    File.mkdir_p!(Path.join(dir, ".harness"))
+    dir
   end
 
-  # Reviewer-judged quality as a [0,1] tiebreaker: the overall mean rating
-  # (across the reviewer's free-form keys) normalized against a 10-point scale.
-  # No rating reported contributes 0.0, so an unrated cohort sorts purely on
-  # the cost / reviewer-fix terms — never penalized below a rated one's floor.
-  @spec ratings_efficiency(%{optional(String.t()) => float()}) :: float()
-  defp ratings_efficiency(mean_ratings) when map_size(mean_ratings) == 0, do: 0.0
+  @spec resolve_scout_adapter(keyword()) :: {:ok, atom(), module()} | {:error, term()}
+  defp resolve_scout_adapter(opts) do
+    agent =
+      opts
+      |> Keyword.get(:scout_adapter)
+      |> case do
+        agent when is_atom(agent) -> agent
+        _ -> Application.get_env(:harness, :capability_scout_adapter, @default_adapter)
+      end
 
-  defp ratings_efficiency(mean_ratings) do
-    values = Map.values(mean_ratings)
-    overall = Enum.sum(values) / length(values)
-
-    overall |> Kernel./(@rating_scale) |> min(1.0) |> max(0.0)
-  end
-
-  @spec cost_efficiency(float() | nil) :: float()
-  defp cost_efficiency(nil), do: 0.0
-  defp cost_efficiency(cost), do: @cost_scale_tokens / (@cost_scale_tokens + cost)
-
-  @spec reciprocal_efficiency(float()) :: float()
-  defp reciprocal_efficiency(value), do: 1 / (1 + value)
-
-  # Mean total tokens across an agent's reviewer-approved runs.
-  @spec cost_to_green([RawMetric.t()]) :: float() | nil
-  defp cost_to_green([]), do: nil
-  defp cost_to_green(successes), do: mean(Enum.map(successes, & &1.cost_tokens), length(successes))
-
-  # A run the reviewer ended without writing a verdict — keyed on the metric's
-  # persisted `reason`, not inferred. nil/legacy reasons never match.
-  @spec review_stuck?(RawMetric.t()) :: boolean()
-  defp review_stuck?(%RawMetric{reason: reason}), do: match?({:review_stuck, _report}, reason)
-
-  # A zero denominator means every measured run was reviewer-flaked: no
-  # attributable run, so the cell scores 0.0 success (composite then sorts on the
-  # cost/fix tiebreakers) rather than dividing by zero.
-  @spec rate(non_neg_integer(), non_neg_integer()) :: float()
-  defp rate(_count, 0), do: 0.0
-  defp rate(count, total) when total > 0, do: count / total
-
-  @spec mean([number()], pos_integer()) :: float()
-  defp mean(values, count) when count > 0, do: Enum.sum(values) / count
-
-  @spec token_total(TokenUsage.t()) :: non_neg_integer()
-  defp token_total(%TokenUsage{total: total}) when is_integer(total), do: total
-
-  defp token_total(%TokenUsage{} = usage) do
-    [usage.input, usage.output, usage.cache_read, usage.cache_creation]
-    |> Enum.filter(&is_integer/1)
-    |> Enum.sum()
-  end
-
-  @spec agent_for_adapter(module()) :: atom() | module()
-  defp agent_for_adapter(adapter) do
-    case AgentRegistry.agent_for_module(adapter) do
-      {:ok, agent} -> agent
-      {:error, _reason} -> adapter
+    case AgentRegistry.delegatable_module_for_agent(agent) do
+      {:ok, module} -> {:ok, agent, module}
+      {:error, reason} -> {:error, {:no_scout_adapter, reason}}
     end
+  end
+
+  @spec driver_opts(keyword()) :: keyword()
+  defp driver_opts(opts) do
+    config = Application.get_env(:harness, :capability_scout, [])
+
+    [
+      idle_timeout: Keyword.get(opts, :idle_timeout, Keyword.get(config, :idle_timeout, @default_idle_timeout)),
+      total_timeout: Keyword.get(opts, :total_timeout, Keyword.get(config, :total_timeout, @default_total_timeout))
+    ]
   end
 end

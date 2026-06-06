@@ -23,6 +23,8 @@ defmodule Harness.Dispatch.RunTool do
   shapes that diverge stay hand-written on `Harness.Dispatch`:
 
     * `cancel/1` returns a bare `:ok` (idempotent), not `{:ok, _}`.
+    * Routing tools (`recommend/2`, `assess_facets/1`) take facet/domain opts,
+      not a `run_id` — they use `defopts_tool/1` instead.
 
   This is the documented Elixir lesson — "when shapes genuinely diverge, split
   macros, don't grow a single one" (see `development-philosophy.md`, the Ecto
@@ -47,6 +49,29 @@ defmodule Harness.Dispatch.RunTool do
   to `Harness.Run.<name>/1`, projecting `{:ok, value}` through the named
   summarizer and passing `{:error, :not_found}` through verbatim.
   """
+
+  @opts_schema NimbleOptions.new!(
+                 name: [
+                   type: :atom,
+                   required: true,
+                   doc: "Generated function name on the using module and MCP suffix (`dispatch-<name>`)."
+                 ],
+                 description: [
+                   type: :string,
+                   required: true,
+                   doc: "Tool description rendered into the descripex `api/3` declaration."
+                 ],
+                 returns: [
+                   type: :string,
+                   required: true,
+                   doc: "The `returns` description in the `api/3` declaration."
+                 ],
+                 opts_doc: [
+                   type: :string,
+                   required: true,
+                   doc: "The optional `opts` keyword-list parameter description."
+                 ]
+               )
 
   @schema NimbleOptions.new!(
             name: [
@@ -77,6 +102,30 @@ defmodule Harness.Dispatch.RunTool do
               doc: "The `returns` description in the `api/3` declaration."
             ]
           )
+
+  @doc """
+  Generates one flat, JSON-native opts-only tool on the using module.
+
+  For routing and refresh surfaces whose sole JSON-passable input is an optional
+  keyword list (`assess_facets/1`), not a `run_id`.
+  """
+  @spec defopts_tool(keyword()) :: Macro.t()
+  defmacro defopts_tool(opts) do
+    opts = NimbleOptions.validate!(opts, @opts_schema)
+    name = Keyword.fetch!(opts, :name)
+    description = Keyword.fetch!(opts, :description)
+    returns = Keyword.fetch!(opts, :returns)
+    opts_doc = Keyword.fetch!(opts, :opts_doc)
+
+    quote do
+      Descripex.api(unquote(name), unquote(description),
+        params: [
+          opts: [kind: :value, default: [], description: unquote(opts_doc)]
+        ],
+        returns: %{type: :tuple, description: unquote(returns)}
+      )
+    end
+  end
 
   @doc """
   Generates one flat, JSON-native run-observation tool on the using module.

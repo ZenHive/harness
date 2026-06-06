@@ -3,7 +3,7 @@ defmodule Harness.LegacyTermImportTest do
 
   alias Harness.AgentAdapter.Claude
   alias Harness.Batch.Result, as: BatchResult
-  alias Harness.CapabilityScore
+  alias Harness.CapabilityScore.Legacy, as: CapabilityScore
   alias Harness.Chat.Store
   alias Harness.LegacyTermImport
   alias Harness.Repo

@@ -2,18 +2,14 @@ defmodule Harness.CapabilityScoreTest do
   use ExUnit.Case, async: true
 
   alias Harness.AgentAdapter.Claude
-  alias Harness.AgentAdapter.Codex
-  alias Harness.Batch.AgentEvaluation.Comparison
-  alias Harness.Batch.AgentEvaluation.Entry
   alias Harness.CapabilityScore
+  alias Harness.CapabilityScore.Assessment
+  alias Harness.CapabilityScore.Entry
   alias Harness.Config
   alias Harness.ResultStore
   alias Harness.ResultStore.Memory, as: MemoryStore
-  alias Harness.Run.Result, as: RunResult
+  alias Harness.Run.LogRecord
   alias Harness.TokenUsage
-
-  @scored_at ~U[2026-06-01 12:00:00Z]
-  @reference_time ~U[2026-06-01 12:00:00Z]
 
   setup do
     root =
@@ -22,373 +18,294 @@ defmodule Harness.CapabilityScoreTest do
         "harness_capability_score_test_#{System.unique_integer([:positive])}"
       )
 
-    on_exit(fn -> MemoryStore.reset(root: root) end)
-    {:ok, store: {MemoryStore, root: root}}
+    assessment_root = Path.join(root, "assessment")
+    File.mkdir_p!(assessment_root)
+
+    on_exit(fn ->
+      MemoryStore.reset(root: root)
+      File.rm_rf(root)
+    end)
+
+    {:ok, store: {MemoryStore, root: root}, assessment_root: assessment_root}
   end
 
-  test "scores a domain from seeded AgentEvaluation comparisons", %{store: store} do
-    comparisons = [
-      comparison("bench.otp.latch", [
-        entry(Codex, "codex-1", :approve, reviewer_diff_size: 0, token_usage: tokens(100, 20)),
-        entry(Claude, "claude-1", :approve, reviewer_diff_size: 10, token_usage: tokens(500, 100))
-      ]),
-      comparison("bench.otp.supervised_counter", [
-        entry(Codex, "codex-2", :reject, reviewer_diff_size: 40),
-        entry(Claude, "claude-2", :approve, reviewer_diff_size: 0, token_usage: tokens(300, 50))
-      ])
+  test "group_by_facet buckets records by normalized review_facets" do
+    records = [
+      record(review_facets: %{"surface" => "otp", "language" => "elixir"}),
+      record(review_facets: %{"language" => "elixir", "surface" => "otp"}),
+      record(review_facets: %{"surface" => "liveview"}),
+      record(review_facets: %{})
     ]
 
-    assert {:ok, scores} =
-             CapabilityScore.score_domain(comparisons, :otp,
-               corpus_version: "otp-v1",
-               scored_at: @scored_at,
-               result_store: store
-             )
+    grouped = CapabilityScore.group_by_facet(records)
 
-    assert [:claude, :codex] = scores |> Enum.map(& &1.agent) |> Enum.sort()
-    codex = Enum.find(scores, &(&1.agent == :codex))
-    claude = Enum.find(scores, &(&1.agent == :claude))
-
-    assert codex.domain == :otp
-    assert codex.corpus_version == "otp-v1"
-    assert codex.scored_at == @scored_at
-    assert codex.run_count == 2
-    assert codex.success_rate == 0.5
-    assert codex.cost_to_green == 120.0
-    assert codex.mean_reviewer_diff_size == 20.0
-    assert length(codex.raw_metrics) == 2
-
-    assert claude.success_rate == 1.0
-    assert claude.cost_to_green == 475.0
-    assert claude.mean_reviewer_diff_size == 5.0
-    assert claude.composite_score > codex.composite_score
-
-    assert {:ok, persisted} = ResultStore.get_capability_score(:codex, :otp, "otp-v1", store)
-    assert persisted == codex
+    assert map_size(grouped) == 3
+    assert length(Map.get(grouped, facet_key(%{"language" => "elixir", "surface" => "otp"}))) == 2
+    assert length(Map.get(grouped, facet_key(%{"surface" => "liveview"}))) == 1
+    assert length(Map.get(grouped, facet_key(%{}))) == 1
   end
 
-  test "a review_stuck run is excluded from the agent's success denominator", %{store: store} do
-    comparisons = [
-      comparison("bench.otp.latch", [
-        entry(Codex, "codex-1", :approve, reviewer_diff_size: 0, token_usage: tokens(100, 20)),
-        # The reviewer wrote no verdict for Claude's run — its failure, not Claude's.
-        entry(Claude, "claude-1", nil, reviewer_diff_size: 0, reason: {:review_stuck, "no artifact"})
-      ]),
-      comparison("bench.otp.supervised_counter", [
-        entry(Codex, "codex-2", :approve, reviewer_diff_size: 0, token_usage: tokens(100, 20)),
-        entry(Claude, "claude-2", :approve, reviewer_diff_size: 0, token_usage: tokens(100, 20))
-      ])
+  test "facet_facts rolls per-agent KPI facts without weighting" do
+    records = [
+      record(agent: :codex, verdict: :approve, review_iterations: 0, token_usage: tokens(100, 20)),
+      record(agent: :codex, verdict: :reject, review_iterations: 1),
+      record(agent: :claude, verdict: :approve, review_iterations: 0, token_usage: tokens(50, 10))
     ]
 
-    assert {:ok, scores} =
-             CapabilityScore.score_domain(comparisons, :otp,
-               corpus_version: "otp-v1",
-               scored_at: @scored_at,
-               result_store: store
-             )
+    facts = CapabilityScore.facet_facts(records)
 
-    claude = Enum.find(scores, &(&1.agent == :claude))
-
-    # Two runs total, one reviewer-flaked: 1 approve over 1 attributable run = 1.0,
-    # NOT 1/2 — the flake must not drag the implementer's routing score down.
-    assert claude.run_count == 2
-    assert claude.success_rate == 1.0
+    assert facts[:codex].run_count == 2
+    assert facts[:codex].success_rate == 0.5
+    assert facts[:claude].success_rate == 1.0
+    assert facts[:claude].cost_to_green == 60.0
   end
 
-  test "an agent whose only run was reviewer-flaked scores 0.0 success without crashing", %{store: store} do
-    comparisons = [
-      comparison("bench.otp.latch", [
-        entry(Claude, "claude-1", nil, reviewer_diff_size: 0, reason: {:review_stuck, "no artifact"})
-      ])
+  test "read_assessment returns :no_data when the artifact is absent", %{assessment_root: root} do
+    assert :no_data = CapabilityScore.read_assessment(assessment_root: root)
+  end
+
+  test "save_assessment and read_assessment round-trip the artifact", %{assessment_root: root} do
+    assessment = sample_assessment()
+
+    assert :ok = CapabilityScore.save_assessment(assessment, assessment_root: root)
+    assert {:ok, loaded} = CapabilityScore.read_assessment(assessment_root: root)
+    assert loaded.assessed_at == assessment.assessed_at
+    assert loaded.record_count == assessment.record_count
+    assert [%Entry{winner: :codex, reasoning: "best at otp"}] = loaded.entries
+  end
+
+  test "recommend exploits the scout winner when facets match the assessment", %{assessment_root: root} do
+    assert :ok =
+             CapabilityScore.save_assessment(
+               %Assessment{
+                 assessed_at: ~U[2026-06-06 12:00:00Z],
+                 record_count: 2,
+                 entries: [
+                   %Entry{
+                     facet: %{"surface" => "otp", "language" => "elixir"},
+                     winner: :codex,
+                     reasoning: "Codex wins otp feature work on approve + cost.",
+                     by_agent: %{}
+                   }
+                 ]
+               },
+               assessment_root: root
+             )
+
+    assert {:ok, recommendation} =
+             CapabilityScore.recommend(
+               %{"surface" => "otp", "language" => "elixir"},
+               agents: [:claude, :codex],
+               assessment_root: root
+             )
+
+    assert recommendation.agent == :codex
+    assert recommendation.strategy == :exploit
+    assert recommendation.scout_reasoning =~ "Codex wins"
+    assert recommendation.matched_facet == %{"language" => "elixir", "surface" => "otp"}
+  end
+
+  test "recommend explores when the facet is unmeasured", %{assessment_root: root} do
+    assert :ok =
+             CapabilityScore.save_assessment(
+               %Assessment{
+                 assessed_at: ~U[2026-06-06 12:00:00Z],
+                 record_count: 1,
+                 entries: [
+                   %Entry{
+                     facet: %{"surface" => "otp"},
+                     winner: :codex,
+                     reasoning: "otp only",
+                     by_agent: %{}
+                   }
+                 ]
+               },
+               assessment_root: root
+             )
+
+    assert {:ok, recommendation} =
+             CapabilityScore.recommend(
+               %{"surface" => "liveview"},
+               agents: [:claude, :codex, :cursor],
+               fallback_agent: :cursor,
+               assessment_root: root
+             )
+
+    assert recommendation.agent == :cursor
+    assert recommendation.strategy == :explore
+    assert recommendation.rationale == :unmeasured_facet
+  end
+
+  test "recommend falls back when no assessment exists", %{assessment_root: root} do
+    configured = Config.get({:dispatch, :default_agent})
+
+    assert {:ok, recommendation} =
+             CapabilityScore.recommend(%{"surface" => "otp"},
+               agents: [:claude, :codex],
+               assessment_root: root
+             )
+
+    assert recommendation.strategy == :fallback_no_data
+    assert recommendation.agent == configured
+    assert recommendation.rationale == :no_assessment
+  end
+
+  test "artifact_rel_path points at the scout artifact inside a worktree" do
+    assert CapabilityScore.artifact_rel_path() == ".harness/facet-assessment.json"
+  end
+
+  test "assessment_path expands assessment_root to the facet artifact file" do
+    root = Path.join(System.tmp_dir!(), "assessment-root-#{System.unique_integer([:positive])}")
+
+    assert String.ends_with?(CapabilityScore.assessment_path(assessment_root: root), "facet-assessment.json")
+  end
+
+  test "recommend propagates assessment read errors" do
+    dir = Path.join(System.tmp_dir!(), "assessment-dir-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf(dir) end)
+
+    assert {:error, _} = CapabilityScore.recommend(%{"surface" => "otp"}, assessment_path: dir)
+  end
+
+  test "facets_from_domain maps a domain tag to a surface facet" do
+    assert CapabilityScore.facets_from_domain(:otp) == %{"surface" => "otp"}
+  end
+
+  test "recommend matches on partial facet overlap when keys agree" do
+    assessment = %Assessment{
+      assessed_at: ~U[2026-06-06 12:00:00Z],
+      record_count: 1,
+      entries: [
+        %Entry{
+          facet: %{"surface" => "otp", "language" => "elixir"},
+          winner: :claude,
+          reasoning: "claude on otp elixir",
+          by_agent: %{}
+        }
+      ]
+    }
+
+    root = Path.join(System.tmp_dir!(), "facet-partial-#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf(root) end)
+    assert :ok = CapabilityScore.save_assessment(assessment, assessment_root: root)
+
+    assert {:ok, %{agent: :claude}} =
+             CapabilityScore.recommend(%{"surface" => "otp"},
+               agents: [:claude, :codex],
+               assessment_root: root
+             )
+  end
+
+  test "build_scout_context groups facet facts for the scout prompt" do
+    records = [
+      record(review_facets: %{"surface" => "otp"}, agent: :codex, verdict: :approve)
     ]
 
-    assert {:ok, [claude]} =
-             CapabilityScore.score_domain(comparisons, :otp,
-               corpus_version: "otp-v1",
-               scored_at: @scored_at,
-               result_store: store
+    assert [%{facet: %{"surface" => "otp"}, by_agent: %{codex: %{run_count: 1}}}] =
+             CapabilityScore.build_scout_context(records)
+  end
+
+  test "read_assessment returns error on invalid JSON" do
+    dir = Path.join(System.tmp_dir!(), "invalid-json-#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf(dir) end)
+    File.mkdir_p!(dir)
+    path = Path.join(dir, "facet-assessment.json")
+    File.write!(path, "not-json")
+
+    assert {:error, {:invalid_json, _}} = CapabilityScore.read_assessment(assessment_path: path)
+  end
+
+  test "decode_assessment rejects malformed JSON payloads" do
+    dir = Path.join(System.tmp_dir!(), "bad-assessment-#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf(dir) end)
+    File.mkdir_p!(dir)
+    path = Path.join(dir, "facet-assessment.json")
+    File.write!(path, ~s({"entries": "not-a-list"}))
+
+    assert {:error, {:malformed_assessment, _}} = CapabilityScore.read_assessment(assessment_path: path)
+  end
+
+  test "refresh injects grouped facts into the saved assessment", %{store: store, assessment_root: root} do
+    assert :ok =
+             ResultStore.record_run(
+               record(
+                 review_facets: %{"surface" => "otp"},
+                 agent: :codex,
+                 verdict: :approve
+               ),
+               store
              )
 
-    assert claude.run_count == 1
-    assert claude.success_rate == 0.0
-  end
+    scout = fn context ->
+      assert [%{facet: %{"surface" => "otp"}, by_agent: by_agent}] = context.groups
+      assert by_agent[:codex].run_count == 1
 
-  test "means the reviewer ratings per agent and lets them break a same-success tie", %{store: store} do
-    # Both agents pass every run with identical cost and zero reviewer fixes, so
-    # success_rate and the cost/fix tiebreakers are equal — only the reviewer's
-    # ratings can separate them.
-    comparisons = [
-      comparison("bench.otp.latch", [
-        entry(Codex, "codex-1", :approve,
-          reviewer_diff_size: 0,
-          token_usage: tokens(100, 0),
-          ratings: %{"performance" => 9, "idiom" => 9}
-        ),
-        entry(Claude, "claude-1", :approve,
-          reviewer_diff_size: 0,
-          token_usage: tokens(100, 0),
-          ratings: %{"performance" => 4, "idiom" => 4}
-        )
-      ])
-    ]
-
-    assert {:ok, scores} =
-             CapabilityScore.score_domain(comparisons, :otp,
-               corpus_version: "otp-v1",
-               scored_at: @scored_at,
-               result_store: store
-             )
-
-    codex = Enum.find(scores, &(&1.agent == :codex))
-    claude = Enum.find(scores, &(&1.agent == :claude))
-
-    assert codex.mean_ratings == %{"performance" => 9.0, "idiom" => 9.0}
-    assert claude.mean_ratings == %{"performance" => 4.0, "idiom" => 4.0}
-
-    # Equal success/cost/fix; the better-rated agent sorts higher purely on ratings.
-    assert codex.success_rate == claude.success_rate
-    assert codex.composite_score > claude.composite_score
-  end
-
-  test "derives a corpus_version fingerprint from the compared task ids when none is given" do
-    assert {:ok, [score]} =
-             CapabilityScore.score_domain(
-               [
-                 comparison("task.42", [
-                   entry(Codex, "codex-1", :approve, reviewer_diff_size: 0, token_usage: tokens(100, 25))
-                 ])
-               ],
-               :otp,
-               scored_at: @scored_at,
-               result_store: false
-             )
-
-    # The fingerprint is deterministic over the sorted unique task ids.
-    assert is_binary(score.corpus_version)
-    assert score.corpus_version != ""
-  end
-
-  test "an unmeasured cell is explicit no data, distinct from a measured-low score", %{store: store} do
-    assert :no_data = ResultStore.get_capability_score(:codex, :ecto, "ecto-v1", store)
-
-    comparisons = [
-      comparison("bench.ecto.embedded_profile", [
-        entry(Codex, "codex-low", :reject, reviewer_diff_size: 25)
-      ])
-    ]
-
-    assert {:ok, [%CapabilityScore{} = low]} =
-             CapabilityScore.score_domain(comparisons, :ecto,
-               corpus_version: "ecto-v1",
-               scored_at: @scored_at,
-               result_store: store
-             )
-
-    assert low.agent == :codex
-    assert low.success_rate == 0.0
-    assert low.composite_score > 0.0
-    assert {:ok, ^low} = ResultStore.get_capability_score(:codex, :ecto, "ecto-v1", store)
-  end
-
-  test "recomputes the composite from retained raw metrics without new comparisons" do
-    assert {:ok, [score]} =
-             CapabilityScore.score_domain(
-               [
-                 comparison("bench.otp.latch", [
-                   entry(Codex, "codex-1", :approve, reviewer_diff_size: 0, token_usage: tokens(100, 25))
-                 ]),
-                 comparison("bench.otp.supervised_counter", [
-                   entry(Codex, "codex-2", :approve, reviewer_diff_size: 30, token_usage: tokens(200, 75))
-                 ])
-               ],
-               :otp,
-               corpus_version: "otp-v1",
-               scored_at: @scored_at,
-               result_store: false
-             )
-
-    retuned = CapabilityScore.recompute(score)
-
-    assert retuned.raw_metrics == score.raw_metrics
-    assert retuned.success_rate == 1.0
-    assert retuned.cost_to_green == 200.0
-    assert retuned.mean_reviewer_diff_size == 15.0
-    assert retuned.composite_score == score.composite_score
-  end
-
-  describe "freshness and re-benchmark candidates" do
-    test "classifies scores as fresh or stale against an injected reference time" do
-      fresh = score(:codex, :otp, ~U[2026-05-15 00:00:00Z], 100.0)
-      stale = score(:claude, :otp, ~U[2026-04-30 00:00:00Z], 100.0)
-
-      assert CapabilityScore.freshness(fresh, reference_time: @reference_time) == :fresh
-      assert CapabilityScore.freshness(stale, reference_time: @reference_time) == :stale
-
-      assert CapabilityScore.freshness(stale, reference_time: @reference_time, freshness_window_days: 45) ==
-               :fresh
-
-      assert CapabilityScore.discounted_composite_score(stale, reference_time: @reference_time) == 50.0
+      {:ok,
+       %Assessment{
+         assessed_at: ~U[2026-06-06 12:00:00Z],
+         record_count: context.record_count,
+         entries: [
+           %Entry{
+             facet: %{"surface" => "otp"},
+             winner: :codex,
+             reasoning: "only agent measured",
+             by_agent: %{}
+           }
+         ]
+       }}
     end
 
-    test "lists stale and unmeasured cells without deleting stale scores", %{store: store} do
-      fresh = score(:codex, :otp, ~U[2026-05-20 00:00:00Z], 700.0)
-      stale = score(:claude, :otp, ~U[2026-04-20 00:00:00Z], 900.0)
+    prev = Application.get_env(:harness, :capability_scout)
+    on_exit(fn -> restore_scout(prev) end)
+    Application.put_env(:harness, :capability_scout, scout)
 
-      assert :ok = ResultStore.save_capability_score(fresh, store)
-      assert :ok = ResultStore.save_capability_score(stale, store)
+    assert {:ok, assessment} =
+             CapabilityScore.refresh(result_store: store, assessment_root: root)
 
-      assert {:ok, candidates} =
-               CapabilityScore.rebenchmark_candidates(
-                 agents: [:codex, :claude, :cursor],
-                 domains: [:otp],
-                 reference_time: @reference_time,
-                 result_store: store
-               )
-
-      assert Enum.map(candidates, &{&1.agent, &1.domain, &1.reason}) == [
-               {:claude, :otp, :stale},
-               {:cursor, :otp, :unmeasured}
-             ]
-
-      assert {:ok, ^stale} = ResultStore.get_capability_score(:claude, :otp, "test-v1", store)
-    end
+    assert assessment.record_count == 1
+    assert assessment.entries |> hd() |> Map.fetch!(:by_agent) |> Map.has_key?(:codex)
+    assert {:ok, loaded} = CapabilityScore.read_assessment(assessment_root: root)
+    assert loaded.entries |> hd() |> Map.fetch!(:by_agent) |> Map.has_key?(:codex)
   end
 
-  describe "recommend/2" do
-    test "exploits the best measured fresh score", %{store: store} do
-      assert :ok = ResultStore.save_capability_score(score(:codex, :otp, ~U[2026-05-30 00:00:00Z], 800.0), store)
-      assert :ok = ResultStore.save_capability_score(score(:claude, :otp, ~U[2026-05-30 00:00:00Z], 700.0), store)
-
-      assert {:ok, recommendation} =
-               CapabilityScore.recommend(:otp,
-                 agents: [:claude, :codex],
-                 reference_time: @reference_time,
-                 result_store: store
-               )
-
-      assert recommendation.agent == :codex
-      assert recommendation.strategy == :exploit
-      assert recommendation.rationale == :best_fresh_score
-      assert Enum.map(recommendation.ranked, & &1.agent) == [:codex, :claude]
-    end
-
-    test "surfaces an unmeasured cell as an exploration candidate", %{store: store} do
-      assert :ok = ResultStore.save_capability_score(score(:claude, :otp, ~U[2026-05-30 00:00:00Z], 700.0), store)
-
-      assert {:ok, recommendation} =
-               CapabilityScore.recommend(:otp,
-                 agents: [:claude, :codex],
-                 reference_time: @reference_time,
-                 result_store: store
-               )
-
-      assert recommendation.agent == :codex
-      assert recommendation.strategy == :explore
-      assert recommendation.rationale == :unmeasured_cell
-      assert [%{agent: :codex, measurement: :unmeasured} | _] = recommendation.ranked
-    end
-
-    test "discounts a stale best raw score before exploiting", %{store: store} do
-      assert :ok = ResultStore.save_capability_score(score(:codex, :otp, ~U[2026-04-20 00:00:00Z], 1_000.0), store)
-      assert :ok = ResultStore.save_capability_score(score(:claude, :otp, ~U[2026-05-30 00:00:00Z], 600.0), store)
-
-      assert {:ok, recommendation} =
-               CapabilityScore.recommend(:otp,
-                 agents: [:claude, :codex],
-                 reference_time: @reference_time,
-                 result_store: store
-               )
-
-      assert recommendation.agent == :claude
-      assert recommendation.strategy == :exploit
-
-      assert [%{agent: :claude}, %{agent: :codex, freshness: :stale, effective_score: 500.0}] =
-               recommendation.ranked
-    end
-
-    test "falls back when the domain has no measured scores at all", %{store: store} do
-      assert {:ok, recommendation} =
-               CapabilityScore.recommend(:otp,
-                 agents: [:claude, :codex],
-                 fallback_agent: :claude,
-                 reference_time: @reference_time,
-                 result_store: store
-               )
-
-      assert recommendation.agent == :claude
-      assert recommendation.strategy == :fallback_no_data
-      assert Enum.all?(recommendation.ranked, &(&1.measurement == :unmeasured))
-    end
-
-    test "with no :fallback_agent opt, falls back to the configured default dispatch agent (not :claude)",
-         %{store: store} do
-      configured = Config.get({:dispatch, :default_agent})
-
-      assert {:ok, recommendation} =
-               CapabilityScore.recommend(:otp,
-                 agents: [:claude, :codex, :cursor],
-                 reference_time: @reference_time,
-                 result_store: store
-               )
-
-      assert recommendation.strategy == :fallback_no_data
-      assert recommendation.agent == configured
-      assert configured == :codex, "schema default keeps Claude tokens for the reviewer axis"
-    end
-  end
-
-  defp comparison(task_id, entries) do
-    %Comparison{
-      batch_id: "batch-#{task_id}",
-      task_id: task_id,
-      total: length(entries),
-      max_concurrency: length(entries),
-      entries: entries
+  defp sample_assessment do
+    %Assessment{
+      assessed_at: ~U[2026-06-06 12:00:00Z],
+      record_count: 1,
+      entries: [
+        %Entry{
+          facet: %{"surface" => "otp"},
+          winner: :codex,
+          reasoning: "best at otp",
+          by_agent: %{codex: %{run_count: 1}}
+        }
+      ]
     }
   end
 
-  defp entry(adapter, run_id, verdict, opts) do
-    {state, reason} =
-      cond do
-        reason = Keyword.get(opts, :reason) -> {:failed, reason}
-        verdict == :approve -> {:done, :approved}
-        true -> {:failed, {:review_rejected, "rejected"}}
-      end
-
-    %Entry{
-      adapter: adapter,
-      run_id: run_id,
-      state: state,
-      reason: reason,
-      verdict: verdict,
-      reviewer_diff_size: Keyword.fetch!(opts, :reviewer_diff_size),
-      duration_ms: Keyword.get(opts, :duration_ms, 100),
-      agent_diff_size: nil,
-      ratings: Keyword.get(opts, :ratings, %{}),
-      token_usage: Keyword.get(opts, :token_usage, TokenUsage.empty()),
-      result: %RunResult{
-        run_id: run_id,
-        task_id: "task",
-        state: state,
-        reason: reason
-      }
-    }
-  end
-
-  defp score(agent, domain, scored_at, composite_score) do
-    %CapabilityScore{
-      agent: agent,
-      domain: domain,
-      corpus_version: "test-v1",
-      scored_at: scored_at,
-      run_count: 1,
-      success_rate: composite_score / 1_000,
-      cost_to_green: 100.0,
-      mean_reviewer_diff_size: 0.0,
-      composite_score: composite_score,
-      raw_metrics: []
+  defp record(opts) do
+    %LogRecord{
+      batch_id: "batch-1",
+      run_id: Keyword.get(opts, :run_id, "run-#{System.unique_integer([:positive])}"),
+      task_id: "task-1",
+      adapter: Keyword.get(opts, :adapter, Claude),
+      state: Keyword.get(opts, :state, :done),
+      reason: Keyword.get(opts, :reason, :approved),
+      duration_ms: 100,
+      agent: Keyword.get(opts, :agent, :claude),
+      verdict: Keyword.get(opts, :verdict, :approve),
+      review_iterations: Keyword.get(opts, :review_iterations, 0),
+      review_facets: Keyword.get(opts, :review_facets, %{}),
+      token_usage: Keyword.get(opts, :token_usage, TokenUsage.empty())
     }
   end
 
   defp tokens(input, output), do: %TokenUsage{input: input, output: output, total: input + output}
+
+  defp facet_key(facet),
+    do: facet |> Enum.map(fn {k, v} -> {to_string(k), v} end) |> Enum.sort() |> Map.new() |> Jason.encode!()
+
+  defp restore_scout(nil), do: Application.delete_env(:harness, :capability_scout)
+  defp restore_scout(value), do: Application.put_env(:harness, :capability_scout, value)
 end

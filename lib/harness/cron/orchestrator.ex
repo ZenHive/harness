@@ -63,8 +63,8 @@ defmodule Harness.Cron.Orchestrator do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentRegistry
+  alias Harness.CapabilityScore
   alias Harness.Project
-  alias Harness.ResultStore
   alias Harness.Roadmap
 
   @artifact_path ".harness/cron-plan.json"
@@ -182,17 +182,22 @@ defmodule Harness.Cron.Orchestrator do
 
   @spec capability_facts() :: [map()]
   defp capability_facts do
-    case ResultStore.list_capability_scores() do
-      {:ok, scores} when is_list(scores) -> Enum.map(scores, &capability_fact/1)
-      _other -> []
+    case CapabilityScore.read_assessment() do
+      {:ok, %CapabilityScore.Assessment{entries: entries}} ->
+        Enum.map(entries, &capability_fact/1)
+
+      _other ->
+        []
     end
   end
 
-  @spec capability_fact(map() | struct()) :: map()
-  defp capability_fact(score) do
-    Map.take(Map.from_struct(score), [:agent, :domain, :score, :sample_size])
-  rescue
-    _error -> %{}
+  @spec capability_fact(CapabilityScore.Entry.t()) :: map()
+  defp capability_fact(%CapabilityScore.Entry{} = entry) do
+    %{
+      facet: entry.facet,
+      winner: entry.winner,
+      reasoning: entry.reasoning
+    }
   end
 
   @doc """
