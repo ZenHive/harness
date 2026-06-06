@@ -14,8 +14,7 @@ config :harness, :worktree,
   retain_on_failure: true,
   sweep_on_boot: true
 
-config :harness, :result_store,
-  {Harness.ResultStore.File, root: Path.join(harness_root, ".harness/results")}
+# Result persistence defaults from config/runtime.exs (:repo_enabled → Postgres or Memory).
 
 config :harness, ecto_repos: [Harness.Repo]
 
