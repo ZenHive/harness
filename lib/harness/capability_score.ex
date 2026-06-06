@@ -29,6 +29,8 @@ defmodule Harness.CapabilityScore do
   @default_adapter :codex
   @default_idle_timeout 120_000
   @default_total_timeout 300_000
+  @known_agents [:claude, :codex, :cursor, :grok, :antigravity, :pi]
+  @known_agent_names Map.new(@known_agents, &{Atom.to_string(&1), &1})
 
   defmodule Legacy do
     @moduledoc false
@@ -154,6 +156,7 @@ defmodule Harness.CapabilityScore do
   Returns `:no_data` when no assessment has been written yet.
   """
   @spec read_assessment(keyword()) :: {:ok, assessment()} | :no_data | {:error, term()}
+  # sobelow_skip ["Traversal.FileModule"]
   def read_assessment(opts \\ []) when is_list(opts) do
     path = assessment_path(opts)
 
@@ -166,6 +169,7 @@ defmodule Harness.CapabilityScore do
 
   @doc "Persists a parsed assessment artifact to the configured assessment path."
   @spec save_assessment(assessment(), keyword()) :: :ok | {:error, term()}
+  # sobelow_skip ["Traversal.FileModule"]
   def save_assessment(%Assessment{} = assessment, opts \\ []) when is_list(opts) do
     path = assessment_path(opts)
     payload = encode_assessment(assessment)
@@ -246,6 +250,7 @@ defmodule Harness.CapabilityScore do
   end
 
   @spec spawn_scout(map(), keyword()) :: {:ok, assessment()} | {:error, term()}
+  # sobelow_skip ["Traversal.FileModule"]
   defp spawn_scout(context, opts) do
     scratch = scratch_dir(opts)
 
@@ -481,29 +486,38 @@ defmodule Harness.CapabilityScore do
   @spec decode_entry(map()) :: {:ok, entry()} | {:error, term()}
   defp decode_entry(%{"facet" => facet, "winner" => winner, "reasoning" => reasoning} = decoded)
        when is_map(facet) and is_binary(winner) and is_binary(reasoning) do
-    {:ok,
-     %Entry{
-       facet: normalize_facet(facet),
-       winner: decode_agent(winner),
-       reasoning: reasoning,
-       by_agent: decode_by_agent(Map.get(decoded, "by_agent", %{}))
-     }}
+    with {:ok, winner} <- decode_agent(winner),
+         {:ok, by_agent} <- decode_by_agent(Map.get(decoded, "by_agent", %{})) do
+      {:ok,
+       %Entry{
+         facet: normalize_facet(facet),
+         winner: winner,
+         reasoning: reasoning,
+         by_agent: by_agent
+       }}
+    end
   end
 
   defp decode_entry(other), do: {:error, {:invalid_assessment_entry, other}}
 
-  @spec decode_by_agent(map()) :: %{optional(atom()) => map()}
+  @spec decode_by_agent(map()) :: {:ok, %{optional(atom()) => map()}} | {:error, term()}
   defp decode_by_agent(by_agent) when is_map(by_agent) do
-    Map.new(by_agent, fn {agent, facts} -> {decode_agent(agent), facts} end)
+    Enum.reduce_while(by_agent, {:ok, %{}}, fn {agent, facts}, {:ok, acc} ->
+      case decode_agent(agent) do
+        {:ok, decoded} -> {:cont, {:ok, Map.put(acc, decoded, facts)}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
   end
 
-  @spec decode_agent(String.t()) :: atom()
+  @spec decode_agent(String.t()) :: {:ok, atom()} | {:error, term()}
   defp decode_agent(agent) when is_binary(agent) do
-    agent
-    |> String.downcase()
-    |> String.to_existing_atom()
-  rescue
-    ArgumentError -> String.to_atom(agent)
+    @known_agent_names
+    |> Map.fetch(String.downcase(agent))
+    |> case do
+      {:ok, known} -> {:ok, known}
+      :error -> {:error, {:unknown_agent, agent}}
+    end
   end
 
   @spec encode_assessment(assessment()) :: binary()

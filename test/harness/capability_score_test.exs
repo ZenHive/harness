@@ -226,6 +226,29 @@ defmodule Harness.CapabilityScoreTest do
     assert {:error, {:malformed_assessment, _}} = CapabilityScore.read_assessment(assessment_path: path)
   end
 
+  test "decode_assessment rejects unknown scout winners" do
+    dir = Path.join(System.tmp_dir!(), "unknown-agent-#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf(dir) end)
+    File.mkdir_p!(dir)
+    path = Path.join(dir, "facet-assessment.json")
+
+    File.write!(
+      path,
+      Jason.encode!(%{
+        "entries" => [
+          %{
+            "facet" => %{"surface" => "otp"},
+            "winner" => "new-agent",
+            "reasoning" => "not a registered harness agent"
+          }
+        ]
+      })
+    )
+
+    assert {:error, {:unknown_agent, "new-agent"}} =
+             CapabilityScore.read_assessment(assessment_path: path)
+  end
+
   test "refresh injects grouped facts into the saved assessment", %{store: store, assessment_root: root} do
     assert :ok =
              ResultStore.record_run(
