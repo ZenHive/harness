@@ -1974,7 +1974,7 @@ defmodule Harness.RunTest do
   end
 
   defp file_store do
-    {Harness.ResultStore.File,
+    {Harness.ResultStore.Memory,
      root:
        Path.join(
          System.tmp_dir!(),

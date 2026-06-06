@@ -39,6 +39,38 @@ defmodule Harness.Chat.Store.Postgres do
     end
   end
 
+  @doc false
+  @spec import_session(Store.session_record(), keyword()) :: :ok | {:error, term()}
+  def import_session(%{session_id: session_id, messages: messages, updated_at: %DateTime{} = updated_at}, opts)
+      when is_binary(session_id) and is_list(messages) and is_list(opts) do
+    repo = Keyword.get(opts, :repo, Repo)
+    naive = updated_at |> DateTime.to_naive() |> ensure_usec()
+
+    schema = %ChatSession{
+      session_id: session_id,
+      messages: Enum.take(messages, -@max_persisted_messages),
+      inserted_at: naive,
+      updated_at: naive
+    }
+
+    try do
+      case repo.insert(schema,
+             on_conflict: {:replace, [:messages, :updated_at]},
+             conflict_target: :session_id
+           ) do
+        {:ok, _} -> :ok
+        {:error, cs} -> {:error, {:changeset, cs.errors}}
+      end
+    rescue
+      e -> {:error, e}
+    end
+  end
+
+  @spec ensure_usec(NaiveDateTime.t()) :: NaiveDateTime.t()
+  defp ensure_usec(%NaiveDateTime{microsecond: {usec, _precision}} = naive) do
+    %{naive | microsecond: {usec, 6}}
+  end
+
   @impl Store
   @spec load(String.t(), keyword()) :: {:ok, Store.session_record()} | {:error, :not_found}
   def load(session_id, opts) when is_binary(session_id) and is_list(opts) do

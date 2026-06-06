@@ -87,7 +87,6 @@ defmodule Harness.Config do
       e("Cron polling", "schedule", {:cron_polling, :schedule}, "0 */2 * * *", :string, restart_required?: true),
       e("Dispatch", "default_agent", {:dispatch, :default_agent}, :codex, :agent, ui_editable?: true),
       e("Notifications", "sinks", :notification_sinks, [], :atom_list),
-      e("Paths", "chat_store root", {:chat_store, :root}, Path.expand("~/.harness/chats"), :path),
       e("Paths", "project cache_root", {:project, :cache_root}, Path.expand("~/_DATA/harness/projects"), :path),
       e("Worktree", "base_dir", {:worktree, :base_dir}, Path.expand("~/_DATA/worktrees/.harness"), :path,
         env_var: "HARNESS_WORKTREE_ROOT"

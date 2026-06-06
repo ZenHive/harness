@@ -2,17 +2,15 @@ defmodule Harness.Chat.Store do
   @moduledoc """
   Pluggable persistence boundary for chat sessions (Task 93, Task 140).
 
-  The core talks only to this behaviour. The default implementation is
-  `Harness.Chat.Store.File` (one Erlang external-term file per session, written
-  via a `.tmp` sibling + atomic rename), keeping persistence file-backed unless a
-  backend is explicitly configured. `Harness.Chat.Store.Postgres` (one
-  `chat_sessions` row per session via `Harness.Repo`) is available for shared-DB
-  deployments. Mirrors the `Harness.ResultStore` facade/behaviour split.
+  The core talks only to this behaviour. Defaults follow `:repo_enabled`:
+  `Harness.Chat.Store.Postgres` for durable deployments and
+  `Harness.Chat.Store.Memory` for ephemeral repo-disabled nodes. Explicit
+  `:chat_store_backend` config still wins.
 
   ## Selecting a backend
 
-  Defaults to file-backed. Configure another module (optionally with backend
-  opts) via `:chat_store_backend`:
+  Configure another module (optionally with backend opts) via
+  `:chat_store_backend`:
 
       config :harness, :chat_store_backend, Harness.Chat.Store.Postgres
       config :harness, :chat_store_backend, {Harness.Chat.Store.Postgres, repo: MyRepo}
@@ -31,14 +29,10 @@ defmodule Harness.Chat.Store do
   Per-turn text is already byte-bounded upstream by the session's
   `:max_history_bytes` guard.
 
-  ## Disabling (file backend)
+  ## Ephemeral mode
 
-  The file backend reads `config :harness, :chat_store` for its root, or
-  `false`/`nil` to short-circuit every call (`save/3` is a no-op `:ok`, `load/2`
-  returns `{:error, :not_found}`, `list/1` returns `[]`):
-
-      config :harness, :chat_store, root: "/some/path"
-      config :harness, :chat_store, false
+  When `:repo_enabled` is false, chat sessions are in-memory only. They remain
+  available while the node runs and disappear on restart.
   """
 
   @typedoc "A loaded session record: the rehydration payload for `Harness.Chat.Session`."
@@ -105,7 +99,17 @@ defmodule Harness.Chat.Store do
   @doc false
   @spec configured() :: backend()
   def configured do
-    Application.get_env(:harness, :chat_store_backend, Harness.Chat.Store.File)
+    case Application.get_env(:harness, :chat_store_backend) do
+      nil ->
+        if Application.get_env(:harness, :repo_enabled, true) do
+          Harness.Chat.Store.Postgres
+        else
+          Harness.Chat.Store.Memory
+        end
+
+      backend ->
+        backend
+    end
   end
 
   @spec truncate_label(String.t()) :: String.t()

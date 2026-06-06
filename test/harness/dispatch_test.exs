@@ -12,7 +12,7 @@ defmodule Harness.DispatchTest do
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
-  alias Harness.ResultStore.File, as: FileStore
+  alias Harness.ResultStore.Memory, as: MemoryStore
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.LogRecord
@@ -613,8 +613,8 @@ defmodule Harness.DispatchTest do
           "harness_dispatch_recommend_test_#{System.unique_integer([:positive])}"
         )
 
-      on_exit(fn -> File.rm_rf!(root) end)
-      {:ok, store: {FileStore, root: root}}
+      on_exit(fn -> MemoryStore.reset(root: root) end)
+      {:ok, store: {MemoryStore, root: root}}
     end
 
     test "returns ranked advice over the driver surface", %{store: store} do

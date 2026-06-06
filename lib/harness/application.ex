@@ -28,6 +28,7 @@ defmodule Harness.Application do
   @spec children() :: [Supervisor.child_spec() | {module(), term()} | module()]
   defp children do
     repo() ++
+      legacy_import() ++
       [
         Harness.SettingsLoader,
         {Registry, keys: :unique, name: Harness.Run.Registry},
@@ -61,6 +62,15 @@ defmodule Harness.Application do
   defp repo do
     if Application.get_env(:harness, :repo_enabled, true) do
       [Harness.Repo]
+    else
+      []
+    end
+  end
+
+  @spec legacy_import() :: [module()]
+  defp legacy_import do
+    if Application.get_env(:harness, :repo_enabled, true) do
+      [Harness.LegacyTermImport]
     else
       []
     end

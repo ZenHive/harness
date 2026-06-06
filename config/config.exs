@@ -41,11 +41,6 @@ config :harness, :agent_settings, root: Path.expand("~/.harness")
 # to this same map in code when the key is unset.
 config :harness, :audit_review, grader_pairs: %{claude: :codex, codex: :claude}
 
-# Chat session persistence — see Harness.Chat.Store.
-# File-backed term store so chat transcripts survive a BEAM restart. Set to
-# `false` to disable persistence entirely.
-config :harness, :chat_store, root: Path.expand("~/.harness/chats")
-
 # Autonomous roadmap polling is opt-in. The Oban.Plugins.Cron entry that runs
 # Harness.Cron.RoadmapPoller is registered unconditionally (Task 109) so the
 # runtime master toggle has a scheduled tick to act on; `enabled` is the live
@@ -128,7 +123,7 @@ config :harness, :reviewer_exclude, [:pi]
 
 # Result persistence — see Harness.ResultStore and runtime.exs.
 # Default is chosen at runtime based on :repo_enabled (Postgres when true for
-# the harness self-host; File when false for library consumers). An explicit
+# the harness self-host; memory when false for library consumers). An explicit
 # :result_store config value always wins over the repo_enabled heuristic.
 # (The concrete default lives in config/runtime.exs so the flip is in one place.)
 
@@ -185,17 +180,13 @@ if config_env() == :test do
 
   config :harness, Oban, testing: :inline
   config :harness, :agent_settings, false
-  config :harness, :chat_store, root: Path.join(System.tmp_dir!(), "harness_chats_test")
   # Persistence off by default in test; the settings tests override with a temp root.
   config :harness, :cron_settings, false
   config :harness, :dashboard, enabled: false, port: 4018
   config :harness, :landing_settings, false
   config :harness, :oban_enabled, false
   config :harness, :repo_enabled, false
-
-  config :harness,
-         :result_store,
-         {Harness.ResultStore.File, root: Path.join(System.tmp_dir!(), "harness_results_test")}
+  config :harness, :result_store, {Harness.ResultStore.Memory, scope: :test_default}
 
   # Disable the node-pressure admission gate (Task 202) by default so worker
   # tests aren't coupled to the live host's free RAM; the gate's own tests

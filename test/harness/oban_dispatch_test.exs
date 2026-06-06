@@ -17,6 +17,7 @@ defmodule Harness.ObanDispatchTest do
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
+  alias Harness.ResultStore.Memory
   alias Harness.Roadmap.Item
   alias Harness.Run.Result
   alias Harness.Run.Supervisor, as: RunSupervisor
@@ -597,7 +598,7 @@ defmodule Harness.ObanDispatchTest do
 
   test "worker records and broadcasts a monitored run process crash" do
     root = Path.join(System.tmp_dir!(), "harness-worker-crash-#{System.unique_integer([:positive])}")
-    Application.put_env(:harness, :result_store, {Harness.ResultStore.File, root: root})
+    Application.put_env(:harness, :result_store, {Memory, root: root})
 
     project = ProjectFixture.from_repo("/tmp/harness-worker", name: "crash-project")
     assert :ok = ProjectRegistry.register(project)
@@ -886,7 +887,7 @@ defmodule Harness.ObanDispatchTest do
     project = ProjectFixture.from_repo(repo, name: "retry-branch-project")
 
     GitFixture.git!(repo, ["branch", branch])
-    Application.put_env(:harness, :result_store, {Harness.ResultStore.File, root: root})
+    Application.put_env(:harness, :result_store, {Memory, root: root})
     assert :ok = ProjectRegistry.register(project)
 
     Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts -> {:ok, item("195", :claude)} end)

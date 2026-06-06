@@ -64,6 +64,8 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   test "renders the settings page with autonomy off by default", %{conn: conn, project: project} do
     {:ok, _view, html} = live(conn, "/harness/settings")
 
+    assert html =~ "result history"
+    assert html =~ "ephemeral"
     assert html =~ "Cron autonomy"
     assert html =~ "polling disabled"
     assert html =~ project.name

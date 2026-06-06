@@ -2,9 +2,9 @@ defmodule Harness.ResultStore do
   @moduledoc """
   Pluggable persistence boundary for run logs and batch results.
 
-  The core orchestrator talks only to this behaviour. The default implementation
-  is `Harness.ResultStore.File`, keeping persistence file-backed unless callers
-  explicitly configure another module.
+  The core orchestrator talks only to this behaviour. Defaults follow
+  `:repo_enabled`: Postgres for durable deployments, in-memory ephemeral storage
+  when the repo is disabled, unless callers explicitly configure another store.
 
   ## Best-effort persistence
 
@@ -331,7 +331,7 @@ defmodule Harness.ResultStore do
     dispatch(store, :list_capability_scores, [])
   end
 
-  api(:configured, "Return the configured result store, defaulting to the file-backed store.",
+  api(:configured, "Return the configured result store, defaulting from :repo_enabled.",
     returns: %{
       type: :term,
       description: "store() — module() | {module(), keyword()} | nil | false. From config :harness, :result_store."
@@ -340,11 +340,21 @@ defmodule Harness.ResultStore do
 
   @spec configured() :: store()
   def configured do
-    Application.get_env(:harness, :result_store, {Harness.ResultStore.File, []})
+    case Application.get_env(:harness, :result_store) do
+      nil ->
+        if Application.get_env(:harness, :repo_enabled, true) do
+          {Harness.ResultStore.Postgres, []}
+        else
+          {Harness.ResultStore.Memory, []}
+        end
+
+      store ->
+        store
+    end
   end
 
   # Pops a positive-integer `:limit` from `filters`, returning `{limit, rest}`.
-  # Shared by the File and Postgres backends so the "newest-N rows" cap parses
+  # Shared by the Memory and Postgres backends so the "newest-N rows" cap parses
   # identically: a non-positive or non-integer `:limit` is treated as absent
   # (`{nil, rest}`) rather than rejected. Backend-internal (`@doc false`).
   @doc false

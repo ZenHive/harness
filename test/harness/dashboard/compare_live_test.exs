@@ -27,7 +27,7 @@ defmodule Harness.Dashboard.CompareLiveTest do
     root = Path.join(System.tmp_dir!(), "harness_compare_test_#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
     prev = Application.get_env(:harness, :result_store)
-    Application.put_env(:harness, :result_store, {ResultStore.File, root: root})
+    Application.put_env(:harness, :result_store, {ResultStore.Memory, root: root})
 
     project = ProjectFixture.from_repo("/tmp/harness-compare-live", name: "compare-live")
     :ok = ProjectRegistry.register(project)

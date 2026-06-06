@@ -633,7 +633,7 @@ defmodule Harness.BatchTest do
   defp batch_id, do: "batch-#{System.unique_integer([:positive])}"
 
   defp file_store do
-    {Harness.ResultStore.File,
+    {Harness.ResultStore.Memory,
      root:
        Path.join(
          System.tmp_dir!(),

@@ -2,9 +2,10 @@ defmodule Harness.Chat.StoreTest do
   use ExUnit.Case, async: true
 
   alias Harness.Chat.Store
-
   # Each test gets an isolated tmp root via @tag :tmp_dir, passed as `root:` so
   # the config'd shared test root never leaks state between tests.
+  alias Harness.Chat.Store.Memory
+
   @moduletag :tmp_dir
 
   describe "save/3 + load/2 round-trip" do
@@ -64,42 +65,6 @@ defmodule Harness.Chat.StoreTest do
     test "is empty when nothing is persisted", %{tmp_dir: dir} do
       assert Store.list(root: dir) == []
     end
-
-    test "skips undecodable term files instead of crashing", %{tmp_dir: dir} do
-      :ok = Store.save("chat-ok", [%{role: :user, content: "good"}], root: dir)
-      File.write!(Path.join(dir, "garbage.term"), "not an erlang term")
-
-      summaries = Store.list(root: dir)
-      assert [%{session_id: "chat-ok"}] = summaries
-    end
-
-    # Mirrors the ResultStore.File drift fix: read_term/1 decodes WITHOUT [:safe],
-    # so a session whose message references an atom not interned in the running
-    # BEAM (written by a prior build) still loads instead of being dropped.
-    test "loads a session whose atom is absent from the table (would fail under :safe)", %{tmp_dir: dir} do
-      :ok = Store.save("chat-drift", [%{role: :user, content: "hi", marker: :drift_chat_placeholder}], root: dir)
-
-      # session_path/2 base64url-encodes the id (no padding) + ".term".
-      path = Path.join(dir, Base.url_encode64("chat-drift", padding: false) <> ".term")
-      bin = File.read!(path)
-      name = Atom.to_string(:drift_chat_placeholder)
-      # Fresh, never-interned, same-length atom name (see file_test for rationale).
-      novel =
-        ("z" <> Integer.to_string(System.unique_integer([:positive])))
-        |> String.pad_trailing(byte_size(name), "z")
-        |> binary_part(0, byte_size(name))
-
-      assert byte_size(novel) == byte_size(name)
-      assert length(:binary.matches(bin, name)) == 1
-
-      patched = :binary.replace(bin, name, novel)
-      assert_raise ArgumentError, fn -> :erlang.binary_to_term(patched, [:safe]) end
-      File.write!(path, patched)
-
-      assert {:ok, record} = Store.load("chat-drift", root: dir)
-      assert [%{marker: marker}] = record.messages
-      assert marker == String.to_atom(novel)
-    end
   end
 
   describe "derive_label/1" do
@@ -122,47 +87,28 @@ defmodule Harness.Chat.StoreTest do
     end
   end
 
-  describe "disabled store" do
-    test "save is a no-op, load is :not_found, list is empty (root: false)" do
-      assert :ok = Store.save("chat-disabled", [%{role: :user, content: "x"}], root: false)
-      assert {:error, :not_found} = Store.load("chat-disabled", root: false)
-      assert [] = Store.list(root: false)
-    end
-
-    test "root: nil disables the store the same way root: false does" do
-      assert :ok = Store.save("chat-nil", [%{role: :user, content: "x"}], root: nil)
-      assert {:error, :not_found} = Store.load("chat-nil", root: nil)
-      assert [] = Store.list(root: nil)
-    end
-  end
-
-  describe "list/1 over a non-listable root" do
-    test "a missing directory lists empty (File.ls :enoent)", %{tmp_dir: dir} do
-      assert Store.list(root: Path.join(dir, "does-not-exist")) == []
-    end
-
-    test "a root that is a regular file lists empty (File.ls non-enoent error)", %{tmp_dir: dir} do
-      file = Path.join(dir, "not-a-dir")
-      File.write!(file, "i am a file")
-      assert Store.list(root: file) == []
-    end
-  end
-
   describe "backend selection (facade dispatch)" do
     setup do
-      prior = Application.get_env(:harness, :chat_store_backend)
-      on_exit(fn -> restore(:chat_store_backend, prior) end)
+      prior_backend = Application.get_env(:harness, :chat_store_backend)
+      prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
+
+      on_exit(fn ->
+        restore(:chat_store_backend, prior_backend)
+        restore(:repo_enabled, prior_repo_enabled)
+      end)
+
       :ok
     end
 
-    test "defaults to the file backend when unconfigured" do
+    test "defaults to the memory backend when repo is disabled and unconfigured" do
+      Application.put_env(:harness, :repo_enabled, false)
       Application.delete_env(:harness, :chat_store_backend)
-      assert Store.configured() == Harness.Chat.Store.File
+      assert Store.configured() == Memory
     end
 
     test "a {module, opts} backend merges its opts under call-time opts", %{tmp_dir: dir} do
       # Backend opts supply the root; no call-time root is passed.
-      Application.put_env(:harness, :chat_store_backend, {Harness.Chat.Store.File, [root: dir]})
+      Application.put_env(:harness, :chat_store_backend, {Memory, [root: dir]})
 
       assert :ok = Store.save("chat-tuple", [%{role: :user, content: "via backend opts"}])
       assert {:ok, %{messages: [%{content: "via backend opts"}]}} = Store.load("chat-tuple")
@@ -173,31 +119,11 @@ defmodule Harness.Chat.StoreTest do
       Application.put_env(
         :harness,
         :chat_store_backend,
-        {Harness.Chat.Store.File, [root: "/nonexistent/should/be/overridden"]}
+        {Memory, [root: "/nonexistent/should/be/overridden"]}
       )
 
       assert :ok = Store.save("chat-override", [%{role: :user, content: "wins"}], root: dir)
       assert {:ok, %{messages: [%{content: "wins"}]}} = Store.load("chat-override", root: dir)
-    end
-  end
-
-  describe "configured-root disabling (no call-time root opt)" do
-    setup do
-      prior = Application.get_env(:harness, :chat_store)
-      on_exit(fn -> restore(:chat_store, prior) end)
-      :ok
-    end
-
-    test "config :chat_store, false short-circuits list/0 to []" do
-      Application.put_env(:harness, :chat_store, false)
-      # No call-time opts: exercises the facade list/0 default-arg clause and the
-      # File backend's `configured_root` false branch.
-      assert Store.list() == []
-    end
-
-    test "config :chat_store, nil short-circuits to []" do
-      Application.put_env(:harness, :chat_store, nil)
-      assert Store.list() == []
     end
   end
 

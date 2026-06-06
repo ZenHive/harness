@@ -1,6 +1,7 @@
 defmodule Harness.Chat.Store.PostgresTest do
   use Harness.DataCase, async: false
 
+  alias Harness.Chat.Store
   alias Harness.Chat.Store.Postgres, as: PostgresStore
 
   @moduletag :integration
@@ -65,4 +66,28 @@ defmodule Harness.Chat.Store.PostgresTest do
       assert PostgresStore.list([]) == []
     end
   end
+
+  describe "repo_enabled selection" do
+    test "repo_enabled true selects Postgres and sessions reload through a fresh facade lookup" do
+      prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
+      prior_chat_backend = Application.get_env(:harness, :chat_store_backend)
+
+      Application.put_env(:harness, :repo_enabled, true)
+      Application.delete_env(:harness, :chat_store_backend)
+
+      on_exit(fn ->
+        restore(:repo_enabled, prior_repo_enabled)
+        restore(:chat_store_backend, prior_chat_backend)
+      end)
+
+      assert Store.configured() == PostgresStore
+      assert :ok = PostgresStore.save("chat-pg-survives", [%{role: :user, content: "still here"}], repo: Repo)
+
+      assert {:ok, %{messages: [%{role: :user, content: "still here"}]}} =
+               PostgresStore.load("chat-pg-survives", repo: Repo)
+    end
+  end
+
+  defp restore(key, nil), do: Application.delete_env(:harness, key)
+  defp restore(key, value), do: Application.put_env(:harness, key, value)
 end

@@ -247,7 +247,7 @@ defmodule Harness.PipelineE2ETest do
       {:ok, %Oban.Job{}}
     end)
 
-    Application.put_env(:harness, :result_store, {ResultStore.File, root: Path.join(tmp_dir, "results")})
+    Application.put_env(:harness, :result_store, {ResultStore.Memory, root: Path.join(tmp_dir, "results")})
     Application.put_env(:harness, :landing_settings, false)
     Application.put_env(:harness, :landing_overrides, %{})
 

@@ -1,6 +1,6 @@
 defmodule Harness.ResultStore.KPIParityTest do
   @moduledoc """
-  Golden parity: File in-memory rollup vs Postgres SQL aggregate (Task 139).
+  Golden parity: Memory in-process rollup vs Postgres SQL aggregate (Task 139).
   """
   use Harness.DataCase, async: false
 
@@ -8,7 +8,7 @@ defmodule Harness.ResultStore.KPIParityTest do
   alias Harness.AgentKPI
   alias Harness.Repo
   alias Harness.ResultStore
-  alias Harness.ResultStore.File, as: FileStore
+  alias Harness.ResultStore.Memory, as: MemoryStore
   alias Harness.ResultStore.Postgres, as: PostgresStore
   alias Harness.ResultStore.Schema.RunRecord, as: RunRecordSchema
   alias Harness.Run.LogRecord
@@ -20,11 +20,10 @@ defmodule Harness.ResultStore.KPIParityTest do
     Repo.delete_all(RunRecordSchema)
     prev = Application.get_env(:harness, :result_store)
     root = Path.join(System.tmp_dir!(), "harness_kpi_parity_#{System.unique_integer([:positive])}")
-    File.mkdir_p!(root)
 
     on_exit(fn ->
       Application.put_env(:harness, :result_store, prev)
-      File.rm_rf(root)
+      MemoryStore.reset(root: root)
     end)
 
     {:ok, root: root}
@@ -72,8 +71,8 @@ defmodule Harness.ResultStore.KPIParityTest do
     records
   end
 
-  test "aggregate_by_agent matches File in-memory rollup for the same records", %{root: root} do
-    file_store = {FileStore, root: root}
+  test "aggregate_by_agent matches Memory in-process rollup for the same records", %{root: root} do
+    file_store = {MemoryStore, root: root}
     pg_store = {PostgresStore, repo: Repo}
 
     records = seed_records(file_store)

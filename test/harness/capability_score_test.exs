@@ -8,7 +8,7 @@ defmodule Harness.CapabilityScoreTest do
   alias Harness.CapabilityScore
   alias Harness.Config
   alias Harness.ResultStore
-  alias Harness.ResultStore.File, as: FileStore
+  alias Harness.ResultStore.Memory, as: MemoryStore
   alias Harness.Run.Result, as: RunResult
   alias Harness.TokenUsage
 
@@ -22,8 +22,8 @@ defmodule Harness.CapabilityScoreTest do
         "harness_capability_score_test_#{System.unique_integer([:positive])}"
       )
 
-    on_exit(fn -> File.rm_rf!(root) end)
-    {:ok, store: {FileStore, root: root}}
+    on_exit(fn -> MemoryStore.reset(root: root) end)
+    {:ok, store: {MemoryStore, root: root}}
   end
 
   test "scores a domain from seeded AgentEvaluation comparisons", %{store: store} do

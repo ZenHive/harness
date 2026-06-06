@@ -47,7 +47,7 @@ defmodule Harness.Dashboard.SettingsLive do
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     if connected?(socket), do: schedule_meta_tick()
-    {:ok, socket |> assign(:notice, nil) |> refresh()}
+    {:ok, socket |> assign(:notice, initial_notice()) |> refresh()}
   end
 
   @impl Phoenix.LiveView
@@ -512,6 +512,15 @@ defmodule Harness.Dashboard.SettingsLive do
     do: "#{label} saved — applies on the next node restart."
 
   defp config_saved_notice(%{label: label}), do: "#{label} saved."
+
+  @spec initial_notice() :: {:ok, String.t()} | nil
+  defp initial_notice do
+    if Application.get_env(:harness, :repo_enabled, true) do
+      nil
+    else
+      {:ok, "Postgres is disabled — settings, result history, KPI scores, and chat sessions are ephemeral."}
+    end
+  end
 
   # The per-project landing view-model: the *effective* policy (project default
   # overlaid with the operator's persisted override) rendered as the Landing card.

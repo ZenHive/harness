@@ -21,7 +21,7 @@ defmodule Harness.AuditTest do
   alias Harness.GitFixture
   alias Harness.ProjectFixture
   alias Harness.ResultStore
-  alias Harness.ResultStore.File, as: FileStore
+  alias Harness.ResultStore.Memory, as: MemoryStore
   alias Harness.Run.LogRecord
   alias Harness.SettingsStore
   alias Harness.TokenUsage
@@ -50,12 +50,11 @@ defmodule Harness.AuditTest do
     sha(ctx.repo, "HEAD")
   end
 
-  # An isolated File-backed store rooted in a per-test tmp dir, cleaned on exit.
+  # An isolated Memory-backed store rooted in a per-test scope, cleaned on exit.
   defp isolated_store do
     root = Path.join(System.tmp_dir!(), "harness_audit_store_#{System.unique_integer([:positive])}")
-    File.mkdir_p!(root)
-    on_exit(fn -> File.rm_rf(root) end)
-    {FileStore, root: root}
+    on_exit(fn -> MemoryStore.reset(root: root) end)
+    {MemoryStore, root: root}
   end
 
   defp seed_rejection(store, project_name, run_id, task_id, report) do

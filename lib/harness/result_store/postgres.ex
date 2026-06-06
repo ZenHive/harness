@@ -106,7 +106,11 @@ defmodule Harness.ResultStore.Postgres do
             ),
           recovery_outcome: fragment("COALESCE(EXCLUDED.recovery_outcome, ?)", r.recovery_outcome),
           recovery_repaired: fragment("COALESCE(EXCLUDED.recovery_repaired, ?)", r.recovery_repaired),
-          recovery_token_usage: fragment("COALESCE(EXCLUDED.recovery_token_usage, ?)", r.recovery_token_usage)
+          recovery_token_usage:
+            fragment(
+              "CASE WHEN jsonb_strip_nulls(EXCLUDED.recovery_token_usage) = '{}'::jsonb THEN ? ELSE EXCLUDED.recovery_token_usage END",
+              r.recovery_token_usage
+            )
         ]
       ]
   end
@@ -260,7 +264,7 @@ defmodule Harness.ResultStore.Postgres do
           |> avg()
           |> filter(r.verdict == "approve"),
         # Collect each run's ratings jsonb; the per-key means are computed in
-        # Elixir (AgentKPI.rating_means) so File and Postgres share the rollup.
+        # Elixir (AgentKPI.rating_means) so Memory and Postgres share the rollup.
         ratings: fragment("array_agg(?)", r.review_ratings)
       }
   end

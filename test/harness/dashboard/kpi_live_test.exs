@@ -22,7 +22,7 @@ defmodule Harness.Dashboard.KPILiveTest do
     root = Path.join(System.tmp_dir!(), "harness_kpi_test_#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
     prev = Application.get_env(:harness, :result_store)
-    Application.put_env(:harness, :result_store, {ResultStore.File, root: root})
+    Application.put_env(:harness, :result_store, {ResultStore.Memory, root: root})
 
     on_exit(fn ->
       Application.put_env(:harness, :result_store, prev)

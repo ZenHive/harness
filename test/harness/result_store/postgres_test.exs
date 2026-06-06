@@ -6,7 +6,7 @@ defmodule Harness.ResultStore.PostgresTest do
   migrated (`MIX_ENV=test mix ecto.create ecto.migrate`).
 
   Uses Harness.DataCase for sandboxed Repo + shared connection.
-  Exercises the exact same contract as the File backend.
+  Exercises the exact same contract as the ephemeral memory backend.
   """
   use Harness.DataCase, async: false
 
@@ -20,7 +20,7 @@ defmodule Harness.ResultStore.PostgresTest do
 
   setup do
     # Point the facade at the Postgres backend with our test Repo for this test.
-    # (test env forces File + repo_enabled false by default.)
+    # (test env forces Memory + repo_enabled false by default.)
     prev = Application.get_env(:harness, :result_store)
     Application.put_env(:harness, :result_store, {Store, repo: Harness.Repo})
 
@@ -142,4 +142,30 @@ defmodule Harness.ResultStore.PostgresTest do
       assert {Store, _} = ResultStore.configured()
     end
   end
+
+  describe "repo_enabled selection" do
+    test "repo_enabled true selects Postgres and records survive a facade reload" do
+      prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
+      prior_result_store = Application.get_env(:harness, :result_store)
+
+      Application.put_env(:harness, :repo_enabled, true)
+      Application.delete_env(:harness, :result_store)
+
+      on_exit(fn ->
+        restore(:repo_enabled, prior_repo_enabled)
+        restore(:result_store, prior_result_store)
+      end)
+
+      assert {Store, []} = ResultStore.configured()
+
+      record = ResultStoreContract.log_record(run_id: "pg-survives-reload", verdict: :approve)
+      assert :ok = ResultStore.record_run(record, {Store, repo: Repo})
+
+      assert {:ok, [%{run_id: "pg-survives-reload"}]} =
+               ResultStore.list_run_records({Store, repo: Repo}, run_id: "pg-survives-reload")
+    end
+  end
+
+  defp restore(key, nil), do: Application.delete_env(:harness, key)
+  defp restore(key, value), do: Application.put_env(:harness, key, value)
 end
