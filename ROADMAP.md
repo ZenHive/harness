@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 204 — Dashboard Resume + Re-land buttons: recover failed runs & blocked land-trains, Task 205 — Verify + declare auth_env_scrub for Cursor/Grok/Pi/Antigravity adapters, Task 206 — Scrub provider auth API keys from spawned agent CLIs (subscription billing), Task 207 — Configurable default dispatch agent (unassigned tasks → codex, not claude) on 2026-06-05
 
-**Up next:** Task 231 — AgentKPI: attribute review_stuck to the reviewer, not the implementer; track per-reviewer verdict-write reliability [D:3/B:6/U:6 → Eff:2.0] 🎯
+**Up next:** Task 216 — Per-facet scout-AI competence assessment — replace AND delete the CapabilityScore composite + routing arithmetic [D:4/B:5/U:5 → Eff:1.25] 📋
 <!-- FOCUS:END -->
 
 ---

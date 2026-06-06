@@ -9463,7 +9463,7 @@
       "phase": 18,
       "bundle": "judgment-collapse",
       "milestone": "v0_13",
-      "status": "pending",
+      "status": "in_progress",
       "title": "AgentKPI: attribute review_stuck to the reviewer, not the implementer; track per-reviewer verdict-write reliability",
       "scores": {
         "d": 3,
