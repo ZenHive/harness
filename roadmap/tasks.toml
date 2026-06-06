@@ -6844,7 +6844,7 @@ id = "236"
 phase = 19
 bundle = "self-heal"
 milestone = "v0_14"
-status = "in_progress"
+status = "done"
 title = "Review-only salvage primitive — re-review a retained branch without re-running the implementer"
 scores = { d = 3, b = 6, u = 6 }
 acceptance_criteria = ["A dispatch entry (e.g. dispatch-rereview run_id / Dispatch.rereview/1) loads a settled run record, branches a worktree off harness/<run-id>, and starts a Run that enters :reviewing WITHOUT spawning the implementer Port.", "The reviewer runs against the existing committed work; approve -> land via the normal lander path; reject/missing -> :failed, task back to queue. Same .harness/review.json verdict contract as a normal run.", "A test asserts the implementer phase is genuinely skipped: no implementer invocation, no implementer token spend; only the reviewer runs.", "Doc note in dispatch.ex distinguishing rereview (review-stage failure, work is good) from resume_failed (implement-stage failure, continue the work)."]
@@ -6862,6 +6862,11 @@ Add a review-only path: take a settled run (or a retained `harness/<run-id>` bra
 
 Mechanical only (THE MANTRA): no judgment is added. The caller decides rereview-vs-resume_failed; harness just offers a lifecycle entry that starts at the gate instead of at the implementer. resume_failed stays for the implement-failed case; this is the review-failed case.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780707110772-b390b44b, 74dd14873b96bea170b6779f7f284e08275095f2)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-05"
 started_at = "2026-06-06"
 scored_at = "2026-06-05"
+done_at = "2026-06-06"
+shipped_in = "74dd14873b96bea170b6779f7f284e08275095f2"
