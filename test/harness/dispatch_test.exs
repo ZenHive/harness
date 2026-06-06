@@ -923,6 +923,18 @@ defmodule Harness.DispatchTest do
       registry = Tools.build()
       assert %{module: Dispatch, function: :recommend} = registry["dispatch-recommend"]
     end
+
+    test "dispatch-assess_facets is exposed as the scout refresh tool" do
+      tool = Enum.find(Harness.Manifest.mcp_tools(), &(&1.name == "dispatch-assess_facets"))
+      assert tool, "dispatch-assess_facets should be on the MCP tool surface"
+
+      props = tool.inputSchema.properties
+      assert Map.has_key?(props, :opts)
+      assert tool.inputSchema.required == []
+
+      registry = Tools.build()
+      assert %{module: Dispatch, function: :assess_facets} = registry["dispatch-assess_facets"]
+    end
   end
 
   defp item(prompt) do
