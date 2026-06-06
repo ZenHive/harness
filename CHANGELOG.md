@@ -105,6 +105,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the recovery AI. Includes hardened terminate/cancel/memory paths for the recovery
   slot and `checkout_pollution_check` opt. Credo-strict line-length follow-up in same
   delivery.
+- **Per-facet scout-AI competence assessment replaces CapabilityScore composite + routing arithmetic (Task 216).**
+  The old composite scalar (hand-tuned weights over ratings/cost/fix-size, stale discount,
+  explore/exploit branching on freshness, corpus fingerprint) is deleted. In its place:
+  raw run records (now carrying reviewer `review_facets`) are grouped mechanically;
+  per-agent facts are rolled by the unchanged `AgentKPI`; a cross-family scout AI (default
+  codex) is spawned on demand or via `dispatch-assess_facets` / `CapabilityScore.refresh/1`
+  to write a per-facet assessment artifact (`.harness/facet-assessment.json`) with winner +
+  prose reasoning for each task-kind. `dispatch-recommend` (and the cron orchestrator context)
+  matches an incoming task's facets against that artifact and returns the scout's choice +
+  rationale (`:exploit`) or a safe `:explore`/fallback when the facet is unmeasured or no
+  assessment exists yet. Legacy `{agent, domain, corpus_version}` composite cells remain
+  import-only via `CapabilityScore.Legacy`, the `capability_scores` ResultStore callbacks,
+  and `LegacyTermImport` (for historical term data cutover); active routing never reads or
+  writes them. `AgentKPI` untouched. No magic weights, no freshness arithmetic, no
+  re-benchmark scheduler remain in the routing path. Decoder hardened in review (agent
+  whitelist, tagged results, no untrusted atom creation). Tests cover facet grouping,
+  assessment round-trip, unknown-winner rejection, dispatch matching, and refresh wiring.
 - **Reviewer-stage mechanical fallbacks (Task 228).** Generalize Task 203's missing-verdict
   re-prompt to *unreadable* verdict artifacts (missing *or* malformed `.harness/review.json`) —
   one bounded mechanical re-issue of the write in the same worktree before honest
