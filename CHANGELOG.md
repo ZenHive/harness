@@ -43,6 +43,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Harness.Roadmap.ready/1` gains a `:fields` opt (default unchanged) so the
   orchestrator receives full task context. The per-project Oban `concurrency_cap`
   stays the mechanical ceiling the plan cannot override.
+- **Review-only salvage primitive — re-review a retained branch (Task 236).**
+  `Harness.Dispatch.rereview/1` (MCP `dispatch-rereview`) and the `review_only?`
+  run path let a driver re-enter the reviewer gate on a settled run's retained
+  `harness/<run-id>` branch without re-running the implementer. The run routes
+  directly from `:dispatched` to `:reviewing` (skipping the agent leg), carries
+  forward the prior `agent_diff_size` for KPI, and is still fully gated by a
+  cross-family reviewer that produces a fresh `.harness/review.json` verdict.
+  Distinct from `resume_failed` (which continues the implementer from the branch
+  + injects the prior report). Mechanical wiring only; all judgment stays with
+  the reviewer AI.
 - **Bounded, witnessed AI-recovery seam for checkout pollution (Task 229).** `Harness.Run`
   routes the one genuinely interpretive non-rejection failure (implementer checkout
   pollution) through a per-run budgeted (default 1) cross-family recovery AI before
