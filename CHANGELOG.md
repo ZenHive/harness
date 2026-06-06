@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Cron-as-orchestrator-AI: full-context dispatch planning gated by a mechanical
+  upside-count (Task 233).** `Harness.Cron.RoadmapPoller` no longer encodes the
+  next-task / grouping / routing decision in code. Each tick a pure count (the
+  mantra's "count facts in code") classifies the dispatchable ready set: 0 →
+  nothing, 1 → direct dispatch by `assignee`, ≥2 → wake the new
+  `Harness.Cron.Orchestrator` — a full-context cross-family AI (default `:codex`,
+  configurable via `config :harness, :cron_polling, orchestrator_adapter:`) that
+  reads the ready set (bodies/scores/touches/markers/assignee) + in-flight task
+  touches + capability facts and writes `.harness/cron-plan.json`
+  (`{"dispatch": [...], "skip": [...]}`). Harness reads the plan mechanically —
+  validates each task is in the woken set, resolves the adapter, enqueues — and
+  decides nothing about grouping; the touch-disjoint / stale-base-avoidance /
+  honor-assignee / Opus-last judgment lives entirely in the plan artifact. The
+  retired `@default_agent = :claude` no longer defaults unrouted work to Opus: a
+  missing or `human` assignee carries no dispatch intent and is logged + skipped.
+  An empty/malformed/agent-failed plan dispatches **nothing** that tick (never a
+  blind fan-out — that was the 2026-06-05 stale-base collision); wave-pacing falls
+  out of the cron cadence + the dedup window, with no wave-tracking state in code.
+  `Harness.Roadmap.ready/1` gains a `:fields` opt (default unchanged) so the
+  orchestrator receives full task context. The per-project Oban `concurrency_cap`
+  stays the mechanical ceiling the plan cannot override.
 - **Bounded, witnessed AI-recovery seam for checkout pollution (Task 229).** `Harness.Run`
   routes the one genuinely interpretive non-rejection failure (implementer checkout
   pollution) through a per-run budgeted (default 1) cross-family recovery AI before

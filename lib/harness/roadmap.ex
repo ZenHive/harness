@@ -185,21 +185,25 @@ defmodule Harness.Roadmap do
         kind: :value,
         default: [],
         description:
-          "Keyword list. Working-root precedence as ingest/2: :project (%Harness.Project{} — uses project.roadmap_path; SOURCE from Harness.ProjectRegistry.lookup/1) > :project_name > :project_root (defaults to File.cwd!/0). :rmap_bin (rmap executable path; defaults to \"rmap\")."
+          ~s|Keyword list. Working-root precedence as ingest/2: :project (%Harness.Project{} — uses project.roadmap_path; SOURCE from Harness.ProjectRegistry.lookup/1) > :project_name > :project_root (defaults to File.cwd!/0). :rmap_bin (rmap executable path; defaults to "rmap"). :fields (list of rmap field names to project; defaults to ["id", "assignee", "markers"] — pass a richer set, e.g. ["id", "assignee", "touches", "scores", "body"], when a consumer needs full task context).|
       ]
     ],
     returns: %{
       type: :tuple,
       description:
-        "{:ok, [task_map]} — every pending task whose deps are all done, excluding handbuild-marked tasks; mutually independent by construction, safe to fan out as one batch. Each map carries the --fields-projected keys id, assignee, markers — enough to route each task to its agent without a second rmap call. {:error, reason} per t:error/0 (unknown_project, rmap_not_found, roadmap_not_found, rmap_failed, rmap_bad_output)."
+        "{:ok, [task_map]} — every pending task whose deps are all done, excluding handbuild-marked tasks; mutually independent by construction, safe to fan out as one batch. Each map carries the --fields-projected keys (id, assignee, markers by default; the :fields opt widens them) — enough to route each task to its agent without a second rmap call. {:error, reason} per t:error/0 (unknown_project, rmap_not_found, roadmap_not_found, rmap_failed, rmap_bad_output)."
     }
   )
 
+  @default_ready_fields ["id", "assignee", "markers"]
+
   @spec ready(keyword()) :: {:ok, [map()]} | {:error, error()}
   def ready(opts \\ []) do
+    fields = Keyword.get(opts, :fields, @default_ready_fields)
+
     with {:ok, ctx} <- build_ctx(opts),
          :ok <- ensure_rmap(ctx.rmap_bin),
-         {:ok, output} <- run_ready(ctx) do
+         {:ok, output} <- run_ready(ctx, fields) do
       decode_ready(output)
     end
   end
@@ -578,10 +582,11 @@ defmodule Harness.Roadmap do
   defp status_argv(status), do: ["--status", to_string(status)]
 
   # `--dispatchable` drops handbuild tasks; `--fields` projects to a bare JSON
-  # array of just the routing-relevant keys (and implies --json).
-  @spec run_ready(ctx()) :: {:ok, String.t()} | {:error, error()}
-  defp run_ready(ctx) do
-    case run_rmap(["ready", "--dispatchable", "--fields", "id,assignee,markers"], ctx) do
+  # array of just the requested keys (and implies --json). The caller picks the
+  # projection: routing-only by default, or a richer set for full task context.
+  @spec run_ready(ctx(), [String.t()]) :: {:ok, String.t()} | {:error, error()}
+  defp run_ready(ctx, fields) do
+    case run_rmap(["ready", "--dispatchable", "--fields", Enum.join(fields, ",")], ctx) do
       {:ok, output} -> {:ok, output}
       {:error, failure} -> {:error, classify_failure(failure, nil)}
     end

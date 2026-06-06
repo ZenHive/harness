@@ -2,27 +2,43 @@ defmodule Harness.Cron.RoadmapPoller do
   @moduledoc """
   Cron-driven worker that polls registered project roadmaps for dispatchable work.
 
-  Each tick dispatches the project's **parallel-safe batch** — every task in
-  `rmap ready --dispatchable` (deps done, `handbuild` excluded), routed to its
-  agent and enqueued as an independent `Harness.Run.Worker` job. Concurrency is
-  Oban's job — the `project_<name>` queue runs up to the project's
-  `concurrency_cap` at once; the rest sit `available` and start as slots free.
-  Inserts are made unique over `{project_name, item_id}` across non-terminal
-  states, so a task already queued or running is not re-enqueued by a later tick.
+  Cron is a timer (mechanical); what it *triggers* is a two-path decision gated by
+  a pure count — the mantra's "count facts in code; write the meaning with an AI"
+  made literal:
 
-  Agent routing per task comes from rmap's `assignee` field, resolved against
-  `Harness.AgentRegistry` — the single source of truth for the agent set, so a
-  new adapter is dispatchable here with zero edits to this module. `human`
-  assignees are skipped by autonomous dispatch; a *missing* assignee falls back
-  to `@default_agent`. An assignee that names no harness adapter (for example
-  `droid`) is logged and skipped — never silently misrouted to the default
-  agent. A task routed to an agent the operator has disabled (or that is
-  quota-unavailable) is likewise skipped via `AgentRegistry.select/2`.
+    * **The gate (mechanical, every tick).** Count how many `rmap ready
+      --dispatchable` tasks carry autonomous dispatch intent (a real, non-human
+      `assignee`). Counting is ~free and decides nothing about grouping.
+    * **One task → direct dispatch.** A lone task has no batching judgment to make,
+      so it is routed by its `assignee` and enqueued without orchestrator overhead.
+    * **Many tasks → the orchestrator AI** (`Harness.Cron.Orchestrator`). It reads
+      the full ready set + in-flight touches + capability facts and emits a
+      dispatch plan; harness reads the plan mechanically and enqueues it. The
+      grouping/sequencing JUDGMENT (which tasks batch, which defer to avoid a
+      stale-base collision, which inline) lives entirely in the plan artifact —
+      never in a `cond`/regex here.
+
+  Concurrency stays Oban's job — the `project_<name>` queue runs up to the
+  project's `concurrency_cap` at once; the rest sit `available` and start as slots
+  free. That queue limit is the mechanical ceiling the orchestrator's plan cannot
+  override. Inserts are unique over `{project_name, item_id}` across non-terminal
+  states, so a task already queued or running is not re-enqueued by a later tick —
+  which is also how wave-pacing falls out of the cron cadence with no
+  wave-tracking state in code.
+
+  Agent routing resolves against `Harness.AgentRegistry` — the single source of
+  truth for the agent set, so a new adapter is dispatchable with zero edits here.
+  A `human` or *missing* assignee carries no autonomous dispatch intent and is
+  logged + skipped — never defaulted to an agent (the retired `@default_agent`
+  silently burned Opus on unrouted work). An assignee/adapter that names no
+  harness adapter, or one the operator has disabled / that is quota-unavailable,
+  is likewise logged and skipped via `AgentRegistry.select/2`.
   """
 
   use Oban.Worker, queue: :cron, max_attempts: 1
 
   alias Harness.AgentRegistry
+  alias Harness.Cron.Orchestrator
   alias Harness.Cron.Settings
   alias Harness.Project
   alias Harness.ProjectRegistry
@@ -36,9 +52,9 @@ defmodule Harness.Cron.RoadmapPoller do
   @cron_queue :cron
   @cron_queue_limit 1
   @dispatch_meta %{harness_stage: "cron_poll"}
-  # Agent for a task with no `assignee`. Real assignees resolve through
-  # `AgentRegistry` (the canonical agent set); this is only the unspecified case.
-  @default_agent :claude
+  # The orchestrator reasons about touch-disjointness, so the ready set is
+  # projected with full task context (not just routing keys) when fetched here.
+  @orchestrator_ready_fields ~w(id assignee markers scores touches files_to_modify dep_layer title body)
   @default_subscription_env_scrubs %{
     claude: %{"ANTHROPIC_API_KEY" => false},
     codex: %{"OPENAI_API_KEY" => false}
@@ -139,7 +155,7 @@ defmodule Harness.Cron.RoadmapPoller do
   defp poll_project(%Project{} = project) do
     if Settings.project_enabled?(project) do
       case ready_tasks(project) do
-        {:ok, tasks} -> Enum.each(tasks, &enqueue_task(project, &1))
+        {:ok, tasks} -> dispatch_decision(project, tasks)
         {:error, reason} -> log_ingest_error(project, reason)
       end
     else
@@ -147,47 +163,103 @@ defmodule Harness.Cron.RoadmapPoller do
     end
   end
 
-  # One dispatchable task → one run job. Routing and the operator/availability
-  # gate live in `select/2`; a task routed to a disabled or quota-exhausted agent
-  # is logged and skipped, never dispatched.
-  @spec enqueue_task(Project.t(), map()) :: :ok
-  defp enqueue_task(%Project{} = project, task) when is_map(task) do
-    item_id = to_string(task["id"])
+  # The mechanical upside-count gate (mantra: count facts in code). Counting how
+  # many tasks carry dispatch intent is pure arithmetic; the grouping JUDGMENT is
+  # the orchestrator's, woken only when the count shows upside (≥2). Zero →
+  # nothing; one → direct dispatch (no orchestrator overhead for a lone task);
+  # many → the orchestrator decides the wave.
+  @spec dispatch_decision(Project.t(), [map()]) :: :ok
+  defp dispatch_decision(%Project{} = project, tasks) do
+    {dispatchable, undispatchable} = Enum.split_with(tasks, &dispatchable?/1)
+    Enum.each(undispatchable, &log_undispatchable(project, &1))
 
+    case dispatchable do
+      [] -> :ok
+      [task] -> direct_dispatch(project, task)
+      many -> orchestrate(project, many)
+    end
+  end
+
+  # A task is autonomously dispatchable iff its assignee resolves to a real,
+  # non-human agent. `human`/missing/unknown carry no routing intent and are
+  # logged + skipped by `dispatch_decision` — never defaulted to an agent.
+  @spec dispatchable?(map()) :: boolean()
+  defp dispatchable?(task) do
     case task_agent(task) do
-      :human ->
-        log_dispatch_skip(project, item_id, :human_assigned)
+      agent when is_atom(agent) and agent not in [:human, :no_assignee] -> true
+      _other -> false
+    end
+  end
 
-      {:unsupported_assignee, _raw} = reason ->
-        log_dispatch_skip(project, item_id, reason)
+  # The N==1 path: a lone task has no grouping to judge, so route by its assignee
+  # and enqueue directly without paying the orchestrator round-trip.
+  @spec direct_dispatch(Project.t(), map()) :: :ok
+  defp direct_dispatch(%Project{} = project, task) do
+    route_and_enqueue(project, to_string(task["id"]), task_agent(task))
+  end
 
-      agent ->
-        with {:ok, adapter} <- AgentRegistry.delegatable_module_for_agent(agent),
-             {:ok, adapter} <- AgentRegistry.select(adapter),
-             {:ok, _job} <- enqueue_run(project, item_id, adapter) do
-          :ok
-        else
-          {:error, reason} -> log_dispatch_skip(project, item_id, reason)
-        end
+  # The N≥2 path: the orchestrator AI returns the dispatch plan; harness reads it
+  # mechanically. An empty/malformed/agent-failed plan dispatches NOTHING this
+  # tick (never a blind fan-out — that was the stale-base damage); the next tick
+  # re-plans against the fresher base.
+  @spec orchestrate(Project.t(), [map()]) :: :ok
+  defp orchestrate(%Project{} = project, tasks) do
+    case Orchestrator.plan(project, tasks) do
+      {:ok, %Orchestrator{dispatch: dispatch, skip: skip}} ->
+        ids = MapSet.new(tasks, &to_string(&1["id"]))
+        Enum.each(dispatch, &enqueue_planned(project, &1, ids))
+        Enum.each(skip, &log_plan_skip(project, &1))
+
+      {:error, reason} ->
+        log_orchestrator_error(project, reason)
+    end
+  end
+
+  # The plan is the grouping JUDGMENT; harness validates only mechanically — the
+  # task is in the woken set, the named adapter resolves, the agent is available —
+  # then enqueues. Concurrency stays capped by the Oban queue limit.
+  @spec enqueue_planned(Project.t(), Orchestrator.dispatch_entry(), MapSet.t()) :: :ok
+  defp enqueue_planned(%Project{} = project, %{task_id: item_id, adapter: adapter}, ids) do
+    with true <- MapSet.member?(ids, item_id),
+         agent when is_atom(agent) <- resolve_assignee(adapter) do
+      route_and_enqueue(project, item_id, agent)
+    else
+      false -> log_dispatch_skip(project, item_id, :not_in_ready_set)
+      {:unsupported_assignee, raw} -> log_dispatch_skip(project, item_id, {:unsupported_adapter, raw})
+    end
+  end
+
+  # Shared tail for both dispatch paths: resolve the agent to an adapter, apply
+  # the operator/availability gate, enqueue. A disabled or quota-exhausted agent
+  # is logged and skipped, never dispatched.
+  @spec route_and_enqueue(Project.t(), String.t(), atom()) :: :ok
+  defp route_and_enqueue(%Project{} = project, item_id, agent) when is_atom(agent) do
+    with {:ok, adapter} <- AgentRegistry.delegatable_module_for_agent(agent),
+         {:ok, adapter} <- AgentRegistry.select(adapter),
+         {:ok, _job} <- enqueue_run(project, item_id, adapter) do
+      :ok
+    else
+      {:error, reason} -> log_dispatch_skip(project, item_id, reason)
     end
   end
 
   @doc """
   Resolves a task's `assignee` to a routing target.
 
-  Returns `:human` (skip), the `@default_agent` for an unspecified assignee, the
-  resolved agent atom for a named one, or `{:unsupported_assignee, raw}` for a
-  string that names no harness adapter. The assignee is resolved against
-  `Harness.AgentRegistry.agents/0` — the registry is the single source of truth,
-  so resolution is deterministic (no atom-table dependence) and a typo or
-  unknown agent never reaches dispatch.
+  Returns `:human` or `:no_assignee` (both skipped — no autonomous dispatch
+  intent), the resolved agent atom for a named one, or `{:unsupported_assignee,
+  raw}` for a string that names no harness adapter. The assignee is resolved
+  against `Harness.AgentRegistry.agents/0` — the registry is the single source of
+  truth, so resolution is deterministic (no atom-table dependence) and a typo or
+  unknown agent never reaches dispatch. A missing assignee is **never** defaulted
+  to an agent (the retired `@default_agent` burned Opus on unrouted work).
   """
   @spec task_agent(map()) :: atom() | {:unsupported_assignee, String.t()}
   def task_agent(task) do
     case task["assignee"] do
       "human" -> :human
       assignee when is_binary(assignee) -> resolve_assignee(assignee)
-      _missing -> @default_agent
+      _missing -> :no_assignee
     end
   end
 
@@ -241,8 +313,31 @@ defmodule Harness.Cron.RoadmapPoller do
   defp ready_tasks(%Project{} = project) do
     case Application.get_env(:harness, :roadmap_ready) do
       fun when is_function(fun, 1) -> fun.(project)
-      _other -> Roadmap.ready(project_root: project.roadmap_path)
+      _other -> Roadmap.ready(project_root: project.roadmap_path, fields: @orchestrator_ready_fields)
     end
+  end
+
+  # A ready task with no autonomous dispatch intent (human / missing / unknown
+  # assignee). Logged so an unrouted task is observable, never silently dropped.
+  @spec log_undispatchable(Project.t(), map()) :: :ok
+  defp log_undispatchable(%Project{} = project, task) do
+    Logger.debug(
+      "harness cron poller: #{project.name} task #{task["id"]} not dispatchable (assignee=#{inspect(task["assignee"])}), skipped"
+    )
+  end
+
+  # The orchestrator's witness for a task it deliberately held back this wave.
+  # Info-level so deferrals/inlines are visible in the operator log.
+  @spec log_plan_skip(Project.t(), Orchestrator.skip_entry()) :: :ok
+  defp log_plan_skip(%Project{} = project, %{task_id: id, disposition: disposition, reason: reason}) do
+    Logger.info("harness cron poller: #{project.name} task #{id} #{disposition} by orchestrator: #{reason}")
+  end
+
+  @spec log_orchestrator_error(Project.t(), term()) :: :ok
+  defp log_orchestrator_error(%Project{} = project, reason) do
+    Logger.warning(
+      "harness cron poller: #{project.name} orchestrator produced no plan (#{inspect(reason)}); dispatching nothing this tick"
+    )
   end
 
   # Info-level (not debug) so a paused project is observable in the operator log,

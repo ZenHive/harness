@@ -2,6 +2,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
   use ExUnit.Case, async: false
 
   alias Harness.AgentRegistry
+  alias Harness.Cron.Orchestrator
   alias Harness.Cron.RoadmapPoller
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
@@ -19,6 +20,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
       restore_env(:cron_project_autonomy, prior_project_autonomy)
       Application.delete_env(:harness, :oban_insert)
       Application.delete_env(:harness, :roadmap_ready)
+      Application.delete_env(:harness, :cron_orchestrator)
     end)
 
     :ok
@@ -64,7 +66,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
     refute_received {:inserted, _job}
   end
 
-  test "enabled tick dispatches the whole ready batch, routing each task to its agent" do
+  test "N>=2 dispatchable tasks route through the orchestrator; only its plan is enqueued" do
     parent = self()
     project = ProjectFixture.from_repo("/tmp/harness-cron-enabled", name: "cron-enabled", concurrency_cap: 10)
     assert :ok = ProjectRegistry.register(project)
@@ -72,11 +74,23 @@ defmodule Harness.Cron.RoadmapPollerTest do
     Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
     Application.put_env(:harness, :cron_project_autonomy, %{"cron-enabled" => true})
 
-    # The whole dispatchable set is fanned out in one tick — one task with no
-    # assignee (defaults :claude), plus tasks routed via `assignee`.
+    # 51 has no assignee (undispatchable — never defaulted to claude); 52/53/54
+    # carry intent, so the gate (N=3) wakes the orchestrator.
     Application.put_env(:harness, :roadmap_ready, fn p ->
       send(parent, {:ready, p.name})
       {:ok, [task("51", nil), task("52", "codex"), task("53", "cursor"), task("54", "grok")]}
+    end)
+
+    # The orchestrator dispatches 52+53 this wave and defers 54 (its judgment);
+    # harness enqueues exactly that — not 54, not the undispatchable 51.
+    Application.put_env(:harness, :cron_orchestrator, fn p, ready ->
+      send(parent, {:planned, p.name, Enum.map(ready, & &1["id"])})
+
+      {:ok,
+       %Orchestrator{
+         dispatch: [%{task_id: "52", adapter: "codex"}, %{task_id: "53", adapter: "cursor"}],
+         skip: [%{task_id: "54", disposition: "defer", reason: "later wave"}]
+       }}
     end)
 
     Application.put_env(:harness, :oban_insert, fn changeset ->
@@ -88,27 +102,20 @@ defmodule Harness.Cron.RoadmapPollerTest do
     assert :ok = RoadmapPoller.perform(%Oban.Job{})
 
     assert_received {:ready, "cron-enabled"}
+    # Only the dispatchable set (52/53/54) is handed to the orchestrator; 51 is not.
+    assert_received {:planned, "cron-enabled", ["52", "53", "54"]}
 
     assert_received {:inserted,
                      %Oban.Job{
                        args: %{
                          project_name: "cron-enabled",
-                         item_id: "51",
-                         adapter_module: "Elixir.Harness.AgentAdapter.Claude",
-                         env: %{"ANTHROPIC_API_KEY" => false}
+                         item_id: "52",
+                         adapter_module: "Elixir.Harness.AgentAdapter.Codex",
+                         env: %{"OPENAI_API_KEY" => false}
                        },
                        meta: %{harness_stage: "cron_poll"},
                        queue: "project_cron-enabled",
                        worker: "Harness.Run.Worker"
-                     }}
-
-    assert_received {:inserted,
-                     %Oban.Job{
-                       args: %{
-                         item_id: "52",
-                         adapter_module: "Elixir.Harness.AgentAdapter.Codex",
-                         env: %{"OPENAI_API_KEY" => false}
-                       }
                      }}
 
     assert_received {:inserted,
@@ -118,14 +125,94 @@ defmodule Harness.Cron.RoadmapPollerTest do
 
     refute Map.has_key?(cursor_args, :env)
 
-    # The regression guard: a grok assignee used to fall back to :claude
-    # (incomplete routing map). It now reaches the Grok adapter directly.
-    assert_received {:inserted,
-                     %Oban.Job{
-                       args: %{item_id: "54", adapter_module: "Elixir.Harness.AgentAdapter.Grok"} = grok_args
-                     }}
+    # Deferred + undispatchable tasks are never enqueued.
+    refute_received {:inserted, %Oban.Job{args: %{item_id: "54"}}}
+    refute_received {:inserted, %Oban.Job{args: %{item_id: "51"}}}
+  end
 
-    refute Map.has_key?(grok_args, :env)
+  test "exactly one dispatchable task is dispatched directly — the orchestrator is not woken" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-cron-single", name: "cron-single", concurrency_cap: 10)
+    assert :ok = ProjectRegistry.register(project)
+
+    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
+    Application.put_env(:harness, :cron_project_autonomy, %{"cron-single" => true})
+
+    # One real assignee + one undispatchable nil → N=1 → direct dispatch, no agent.
+    Application.put_env(:harness, :roadmap_ready, fn _p ->
+      {:ok, [task("51", nil), task("52", "codex")]}
+    end)
+
+    Application.put_env(:harness, :cron_orchestrator, fn _p, _ready ->
+      send(parent, :orchestrator_woken)
+      {:ok, %Orchestrator{dispatch: [], skip: []}}
+    end)
+
+    Application.put_env(:harness, :oban_insert, fn changeset ->
+      job = Ecto.Changeset.apply_action!(changeset, :insert)
+      send(parent, {:inserted, job.args})
+      {:ok, job}
+    end)
+
+    assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+    refute_received :orchestrator_woken
+    assert_received {:inserted, %{item_id: "52", adapter_module: "Elixir.Harness.AgentAdapter.Codex"}}
+    refute_received {:inserted, %{item_id: "51"}}
+  end
+
+  test "zero dispatchable tasks dispatch nothing and never wake the orchestrator" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-cron-zero", name: "cron-zero", concurrency_cap: 10)
+    assert :ok = ProjectRegistry.register(project)
+
+    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
+    Application.put_env(:harness, :cron_project_autonomy, %{"cron-zero" => true})
+
+    # All undispatchable: a human task and an unrouted one.
+    Application.put_env(:harness, :roadmap_ready, fn _p ->
+      {:ok, [task("51", "human"), task("52", nil)]}
+    end)
+
+    Application.put_env(:harness, :cron_orchestrator, fn _p, _ready ->
+      send(parent, :orchestrator_woken)
+      {:ok, %Orchestrator{dispatch: [], skip: []}}
+    end)
+
+    Application.put_env(:harness, :oban_insert, fn changeset ->
+      send(parent, {:inserted, Ecto.Changeset.apply_action!(changeset, :insert).args})
+      {:ok, Ecto.Changeset.apply_action!(changeset, :insert)}
+    end)
+
+    assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+    refute_received :orchestrator_woken
+    refute_received {:inserted, _args}
+  end
+
+  test "an orchestrator that returns no plan dispatches nothing this tick" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-cron-noplan", name: "cron-noplan", concurrency_cap: 10)
+    assert :ok = ProjectRegistry.register(project)
+
+    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
+    Application.put_env(:harness, :cron_project_autonomy, %{"cron-noplan" => true})
+
+    Application.put_env(:harness, :roadmap_ready, fn _p ->
+      {:ok, [task("52", "codex"), task("53", "cursor")]}
+    end)
+
+    # A malformed/agent-failed plan must NOT fall back to a blind fan-out.
+    Application.put_env(:harness, :cron_orchestrator, fn _p, _ready -> {:error, :missing} end)
+
+    Application.put_env(:harness, :oban_insert, fn changeset ->
+      send(parent, {:inserted, Ecto.Changeset.apply_action!(changeset, :insert).args})
+      {:ok, Ecto.Changeset.apply_action!(changeset, :insert)}
+    end)
+
+    assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+    refute_received {:inserted, _args}
   end
 
   test "operator config can disable subscription scrubs for metered API-key agents" do
@@ -142,7 +229,17 @@ defmodule Harness.Cron.RoadmapPollerTest do
     Application.put_env(:harness, :cron_project_autonomy, %{"cron-metered" => true})
 
     Application.put_env(:harness, :roadmap_ready, fn _p ->
-      {:ok, [task("51", nil), task("52", "codex")]}
+      {:ok, [task("51", "claude"), task("52", "codex")]}
+    end)
+
+    # Two dispatchable tasks → orchestrator path; the scrub-disable config applies
+    # at enqueue regardless of which path selected the task.
+    Application.put_env(:harness, :cron_orchestrator, fn _p, _ready ->
+      {:ok,
+       %Orchestrator{
+         dispatch: [%{task_id: "51", adapter: "claude"}, %{task_id: "52", adapter: "codex"}],
+         skip: []
+       }}
     end)
 
     Application.put_env(:harness, :oban_insert, fn changeset ->
@@ -183,18 +280,27 @@ defmodule Harness.Cron.RoadmapPollerTest do
     assert_received {:inserted, %{item_id: "52", adapter_module: "Elixir.Harness.AgentAdapter.Codex"}}
   end
 
-  test "a task routed to an unavailable agent is skipped; the rest of the batch still dispatches" do
+  test "a planned task routed to an unavailable agent is skipped; the rest of the wave dispatches" do
     parent = self()
     project = ProjectFixture.from_repo("/tmp/harness-cron-unavailable", name: "cron-unavailable", concurrency_cap: 10)
     assert :ok = ProjectRegistry.register(project)
-    # Claude (the default route) is out; the codex-routed task is unaffected.
-    assert :ok = AgentRegistry.mark_unavailable(Harness.AgentAdapter.Claude, :quota)
+    # Grok is out; the codex-routed task is unaffected. The availability gate
+    # (AgentRegistry.select/2) is mechanical and applies on the planned path too.
+    assert :ok = AgentRegistry.mark_unavailable(Harness.AgentAdapter.Grok, :quota)
 
     Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
     Application.put_env(:harness, :cron_project_autonomy, %{"cron-unavailable" => true})
 
     Application.put_env(:harness, :roadmap_ready, fn _p ->
-      {:ok, [task("51", nil), task("52", "codex")]}
+      {:ok, [task("51", "grok"), task("52", "codex")]}
+    end)
+
+    Application.put_env(:harness, :cron_orchestrator, fn _p, _ready ->
+      {:ok,
+       %Orchestrator{
+         dispatch: [%{task_id: "51", adapter: "grok"}, %{task_id: "52", adapter: "codex"}],
+         skip: []
+       }}
     end)
 
     Application.put_env(:harness, :oban_insert, fn changeset ->
@@ -254,9 +360,11 @@ defmodule Harness.Cron.RoadmapPollerTest do
       assert RoadmapPoller.task_agent(%{"assignee" => "pi"}) == :pi
     end
 
-    test "defaults missing assignee to claude without consulting model or markers" do
-      assert RoadmapPoller.task_agent(%{"model" => "codex", "markers" => ["csr"]}) == :claude
-      assert RoadmapPoller.task_agent(%{"assignee" => nil, "markers" => ["cx"]}) == :claude
+    test "missing assignee is :no_assignee, never a claude default" do
+      # The retired @default_agent=:claude silently burned Opus on unrouted work.
+      # An unrouted task now carries no dispatch intent and is skipped, not defaulted.
+      assert RoadmapPoller.task_agent(%{"model" => "codex", "markers" => ["csr"]}) == :no_assignee
+      assert RoadmapPoller.task_agent(%{"assignee" => nil, "markers" => ["cx"]}) == :no_assignee
     end
 
     test "preserves human assignee for autonomous-dispatch skip" do
