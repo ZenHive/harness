@@ -22,6 +22,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **ResultStore.File + Chat.Store.File retired; Postgres/Memory default split (Task 212).**
+  `Harness.ResultStore` and `Harness.Chat.Store` now default from `:repo_enabled`:
+  `Postgres` (durable) when true, in-memory ephemeral `Memory` when false. The
+  `File` backends, their term-file layout under `~/.harness/{results,chats}`, and
+  the associated root config keys are deleted. `LegacyTermImport` (started only
+  for repo-enabled nodes) plus `mix harness.import_results` provide a one-time,
+  idempotent cutover of existing `.term` data into Postgres on first boot for
+  self-hosts. Consumer template updated (`d674ca9`). Explicit
+  `:result_store` / `:chat_store_backend` overrides still win; ephemeral mode is
+  reflected in ConfigInspector ("memory:ephemeral") and the shared flash banner.
+  KPI parity and restart-survival tests cover both backends.
+
+- **Hard-fail pollution paths removed after recovery + retry seam (Task 230).**
+  With bounded mechanical recovery for checkout pollution (Task 229) and
+  substrate retry (Task 227) proven in production, the remaining short-circuit
+  paths in `Harness.Run` (driver `:DOWN`, timeout, terminate) that turned a
+  witnessed main-checkout pollution into an immediate hard `:failed` are
+  deleted. Pollution now routes through the per-run recovery AI (with budget)
+  before any terminal advance; only unrecoverable cases or reviewer rejection
+  settle failed. Added `PollutingCrashAdapter` coverage exercising the crash
+  + pollution → recovery path.
+
 - **Tier-1: bounded mechanical retry on transient substrate ops (Task 227).**
   `Harness.Run` and `Harness.Worktree` now retry a bounded number of times on
   transient `{:error, _}` results from worktree git ops (`create`, `commit`,

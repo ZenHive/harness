@@ -99,7 +99,7 @@ defmodule Harness.Dashboard.ConfigInspector do
       {"Result store",
        [
          field("backend", fn -> store_part(:backend) end, result_store_default(:backend), format: &inspect/1),
-         field("root", fn -> store_part(:root) end, Path.expand("~/.harness/results"))
+         field("root", fn -> store_part(:root) end, result_store_default(:root))
        ]},
       {"Settings store",
        [
@@ -197,9 +197,13 @@ defmodule Harness.Dashboard.ConfigInspector do
     end
   end
 
-  @spec result_store_default(:backend) :: module()
+  @spec result_store_default(:backend | :root) :: term()
   defp result_store_default(:backend) do
     if Application.get_env(:harness, :repo_enabled, true), do: ResultStore.Postgres, else: ResultStore.Memory
+  end
+
+  defp result_store_default(:root) do
+    if Application.get_env(:harness, :repo_enabled, true), do: "database:run_records", else: "memory:ephemeral"
   end
 
   # `SettingsStore.configured/0` is `{module, opts}`, chosen from repo_enabled
