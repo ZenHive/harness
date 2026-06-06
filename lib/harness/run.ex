@@ -227,6 +227,8 @@ defmodule Harness.Run do
            reviewer_pre_review_sha: String.t() | nil,
            reviewer_reprompt_count: non_neg_integer(),
            reviewer_rotation_count: non_neg_integer(),
+           review_only?: boolean(),
+           review_only_agent_diff_size: non_neg_integer() | nil,
            implementer_empty_diff?: boolean(),
            hold_requested: false | :graceful | :interrupt,
            hold_reason: :graceful | :interrupt | nil,
@@ -548,6 +550,8 @@ defmodule Harness.Run do
       reviewer_pre_review_sha: nil,
       reviewer_reprompt_count: 0,
       reviewer_rotation_count: 0,
+      review_only?: Keyword.get(opts, :review_only?, false),
+      review_only_agent_diff_size: Keyword.get(opts, :review_only_agent_diff_size),
       implementer_empty_diff?: false,
       hold_requested: false,
       hold_reason: nil,
@@ -612,12 +616,12 @@ defmodule Harness.Run do
 
     with :ok <- Worktree.activate(worktree),
          :ok <- Worktree.warm(worktree),
-         :ok <- Isolation.validate(data.adapter) do
+         :ok <- maybe_validate_implementer_isolation(data) do
       # Crash reaper (Task 185): once the worktree is live, a hard crash of this
       # gen_statem before settle would leak it; the reaper monitors us and reaps
       # on an abnormal :DOWN. settle/2 untracks once the worktree is finalized.
       Reaper.track(self(), data.run_id, worktree.path, worktree.repo)
-      {:next_state, :running, data}
+      route_after_dispatch(data)
     else
       {:error, {:worktree_isolation_unsupported, _adapter, _message} = reason} ->
         fail(data, {:agent_spawn_failed, reason})
@@ -1846,6 +1850,24 @@ defmodule Harness.Run do
         {:next_state, :failed, %{data | reason: {:review_stuck, report}}}
     end
   end
+
+  @spec route_after_dispatch(data()) :: handler_result()
+  defp route_after_dispatch(%{review_only?: true} = data) do
+    diff_size = data.review_only_agent_diff_size || 0
+
+    data
+    |> Map.put(:agent_diff_size, diff_size)
+    |> Map.put(:implementer_empty_diff?, diff_size == 0)
+    |> route_to_review()
+  end
+
+  defp route_after_dispatch(data), do: {:next_state, :running, data}
+
+  @spec maybe_validate_implementer_isolation(data()) ::
+          :ok | {:error, {:worktree_isolation_unsupported, module(), String.t()}}
+  defp maybe_validate_implementer_isolation(%{review_only?: true}), do: :ok
+
+  defp maybe_validate_implementer_isolation(data), do: Isolation.validate(data.adapter)
 
   # The verdict artifact is read mechanically — approve settles :done, reject
   # settles :failed with the reviewer's report, an unreadable artifact settles

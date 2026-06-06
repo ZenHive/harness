@@ -10,6 +10,7 @@ defmodule Harness.DispatchTest do
   alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
+  alias Harness.ProjectRegistry
   alias Harness.ResultStore
   alias Harness.ResultStore.File, as: FileStore
   alias Harness.Roadmap.Item
@@ -17,8 +18,46 @@ defmodule Harness.DispatchTest do
   alias Harness.Run.LogRecord
   alias Harness.Run.Result
   alias Harness.Run.Review
+  alias Harness.TokenUsage
 
   @reference_time ~U[2026-06-01 12:00:00Z]
+
+  defmodule RereviewCountingAdapter do
+    @moduledoc false
+
+    use Harness.AgentAdapter
+
+    alias Harness.AgentAdapter
+    alias Harness.AgentAdapter.Capabilities
+    alias Harness.AgentAdapter.Invocation
+
+    @impl AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl AgentAdapter
+    def rule_channel, do: :none
+
+    @impl AgentAdapter
+    def build_command(%Invocation{adapter_opts: opts, task_id: task_id}) do
+      owner = Keyword.get(opts, :owner) || Application.get_env(:harness, :rereview_counting_owner)
+      if owner, do: send(owner, {:rereview_adapter_invoked, task_id})
+
+      if String.ends_with?(task_id, "-review") do
+        review = Jason.encode!(%{verdict: "approve", report: "review-only approved"})
+
+        {:ok,
+         {"/bin/sh",
+          [
+            "-c",
+            ~S(test -f prior_work.txt && mkdir -p .harness && printf '%s' "$1" > .harness/review.json),
+            "harness-rereview-counting",
+            review
+          ], []}}
+      else
+        {:ok, {"/bin/sh", ["-c", ~S(echo implementer-ran > implementer_invoked.txt)], []}}
+      end
+    end
+  end
 
   describe "task/4 adapter resolution" do
     test "rejects an unknown adapter before touching the registry" do
@@ -340,7 +379,7 @@ defmodule Harness.DispatchTest do
             reviewer_diff_size: 0,
             duration_ms: 1234,
             agent_diff_size: 12,
-            token_usage: %Harness.TokenUsage{input: 5, output: 1, total: 6},
+            token_usage: %TokenUsage{input: 5, output: 1, total: 6},
             result: %Result{run_id: "run-a", task_id: "42", state: :done, reason: :approved}
           },
           %AgentEvaluation.Entry{
@@ -352,7 +391,7 @@ defmodule Harness.DispatchTest do
             reviewer_diff_size: nil,
             duration_ms: nil,
             agent_diff_size: nil,
-            token_usage: %Harness.TokenUsage{},
+            token_usage: %TokenUsage{},
             result: %Result{run_id: "run-b", task_id: "42", state: :failed, reason: {:run_crashed, :boom}}
           }
         ]
@@ -509,6 +548,60 @@ defmodule Harness.DispatchTest do
 
       assert Keyword.get(opts, :base_ref) == "harness/run-old-123"
       assert Keyword.fetch!(opts, :env) == %{"ANTHROPIC_API_KEY" => false}
+    end
+  end
+
+  describe "rereview/1 — review-only failed-run salvage" do
+    test "starts from the retained branch and skips the implementer phase entirely" do
+      old_run_id = "run-rereview-old-#{System.unique_integer([:positive])}"
+      repo = GitFixture.init_repo()
+      default = repo |> GitFixture.git!(["rev-parse", "--abbrev-ref", "HEAD"]) |> String.trim()
+
+      GitFixture.git!(repo, ["checkout", "-b", "harness/#{old_run_id}"])
+      File.write!(Path.join(repo, "prior_work.txt"), "already implemented\n")
+      GitFixture.git!(repo, ["add", "."])
+      GitFixture.git!(repo, ["commit", "-m", "prior attempt"])
+      GitFixture.git!(repo, ["checkout", default])
+
+      project =
+        ProjectFixture.from_repo(repo,
+          name: "rereview-#{System.unique_integer([:positive])}",
+          roadmap_path: Path.expand("../fixtures/sample_roadmap", __DIR__),
+          reviewer: RereviewCountingAdapter
+        )
+
+      :ok = ProjectRegistry.register(project)
+      on_exit(fn -> ProjectRegistry.unregister(project.name) end)
+      Application.put_env(:harness, :rereview_counting_owner, self())
+      on_exit(fn -> Application.delete_env(:harness, :rereview_counting_owner) end)
+
+      :ok =
+        ResultStore.record_run(%LogRecord{
+          batch_id: "b",
+          run_id: old_run_id,
+          task_id: "1",
+          project_name: project.name,
+          adapter: RereviewCountingAdapter,
+          state: :failed,
+          reason: {:review_stuck, "reviewer wrote no verdict"},
+          duration_ms: 1,
+          agent: :claude,
+          agent_diff_size: 1,
+          token_usage: %TokenUsage{input: 100, output: 50, total: 150}
+        })
+
+      assert {:ok, %{run_id: new_run_id, rereviewed_from: ^old_run_id}} =
+               Dispatch.rereview(old_run_id)
+
+      assert_receive {:rereview_adapter_invoked, "1-review"}, 10_000
+      refute_receive {:rereview_adapter_invoked, "1"}, 200
+
+      new_record = wait_for_record(new_run_id)
+      assert new_record.state == :done
+      assert new_record.reason == :approved
+      assert new_record.verdict == :approve
+      assert new_record.token_usage == TokenUsage.empty()
+      assert new_record.composed_inputs == []
     end
   end
 
@@ -725,10 +818,10 @@ defmodule Harness.DispatchTest do
       assert %{module: Dispatch, function: :resume} = registry["dispatch-resume"]
     end
 
-    test "the recovery tools (resume_failed/reland) are on the MCP surface as run_id-string tools" do
+    test "the recovery tools (resume_failed/rereview/reland) are on the MCP surface as run_id-string tools" do
       tools = Harness.Manifest.mcp_tools()
 
-      for name <- ~w(dispatch-resume_failed dispatch-reland) do
+      for name <- ~w(dispatch-resume_failed dispatch-rereview dispatch-reland) do
         tool = Enum.find(tools, &(&1.name == name))
         assert tool, "#{name} should be on the MCP tool surface"
         assert Map.has_key?(tool.inputSchema.properties, :run_id)
@@ -739,12 +832,16 @@ defmodule Harness.DispatchTest do
       resume_failed = Enum.find(tools, &(&1.name == "dispatch-resume_failed"))
       assert Map.has_key?(resume_failed.inputSchema.properties, :escalate)
       assert resume_failed.inputSchema.required == ["run_id"]
+
+      rereview = Enum.find(tools, &(&1.name == "dispatch-rereview"))
+      assert rereview.inputSchema.required == ["run_id"]
     end
 
     test "the chat tool registry resolves the recovery tools to Harness.Dispatch" do
       registry = Tools.build()
 
       assert %{module: Dispatch, function: :resume_failed} = registry["dispatch-resume_failed"]
+      assert %{module: Dispatch, function: :rereview} = registry["dispatch-rereview"]
       assert %{module: Dispatch, function: :reland} = registry["dispatch-reland"]
     end
 
@@ -836,6 +933,24 @@ defmodule Harness.DispatchTest do
       reviewer_diff_size: 30
     }
   end
+
+  defp wait_for_record(run_id, attempts \\ 100)
+
+  defp wait_for_record(run_id, attempts) when attempts > 0 do
+    case ResultStore.list_run_records(run_id: run_id) do
+      {:ok, [%LogRecord{} = record | _]} ->
+        record
+
+      {:ok, []} ->
+        Process.sleep(50)
+        wait_for_record(run_id, attempts - 1)
+
+      {:error, reason} ->
+        flunk("failed to load run record #{run_id}: #{inspect(reason)}")
+    end
+  end
+
+  defp wait_for_record(run_id, 0), do: flunk("timed out waiting for run record #{run_id}")
 
   defp score(agent, domain, composite_score) do
     %CapabilityScore{

@@ -26,6 +26,12 @@ defmodule Harness.Dispatch do
   rather than wedging the tool call. `task/4` (fire-and-forget) is unchanged
   alongside it.
 
+  `resume_failed/2` and `rereview/1` are distinct salvage primitives. Use
+  `resume_failed/2` when the implementer failed and should continue from the
+  retained `harness/<run-id>` branch. Use `rereview/1` when the implementation
+  is already committed and only the review stage failed; it branches a fresh
+  worktree from the retained branch and enters the reviewer gate directly.
+
   ## Adapter vocabulary
 
   `rmap delegate --to` renders a native prompt for every harness adapter —
@@ -407,6 +413,45 @@ defmodule Harness.Dispatch do
     end
   end
 
+  api(
+    :rereview,
+    "Re-review a SETTLED run by run_id without re-running the implementer: branch a new worktree off retained harness/<run-id> and enter Harness.Run directly at the reviewer gate. Use this for review-stage failures where the committed work is already good; use dispatch-resume_failed for implement-stage failures where the implementer must continue the work.",
+    params: [
+      run_id: [
+        kind: :value,
+        description:
+          "Run id with a persisted record and retained harness/<run-id> branch. {:error, :not_found} when unrecorded, {:error, :unknown_project} when its project is no longer registered."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{run_id: new_run_id, rereviewed_from: old_run_id, agent: atom}} on a started review-only run. {:error, reason}: :not_found, :unknown_project, the ingest reasons, or a start_run failure."
+    }
+  )
+
+  @spec rereview(String.t()) ::
+          {:ok, %{run_id: String.t(), rereviewed_from: String.t(), agent: atom() | nil}}
+          | {:error, error()}
+  def rereview(run_id) when is_binary(run_id) do
+    with {:ok, record} <- load_record(run_id),
+         {:ok, project} <- lookup_record_project(record),
+         {:ok, item} <- Roadmap.ingest(selector(record.task_id), project: project, agent: record_agent(record)),
+         {:ok, new_run_id, _pid} <-
+           Run.Supervisor.start_run(item, project, record.adapter, rereview_opts(item, record, run_id)) do
+      {:ok, %{run_id: new_run_id, rereviewed_from: run_id, agent: item.agent}}
+    end
+  end
+
+  @spec load_record(String.t()) :: {:ok, LogRecord.t()} | {:error, :not_found | term()}
+  defp load_record(run_id) do
+    case ResultStore.list_run_records(run_id: run_id) do
+      {:ok, [%LogRecord{} = record | _]} -> {:ok, record}
+      {:ok, []} -> {:error, :not_found}
+      {:error, _reason} = error -> error
+    end
+  end
+
   @spec load_failed_record(String.t()) ::
           {:ok, LogRecord.t()} | {:error, :not_found | :not_failed | term()}
   defp load_failed_record(run_id) do
@@ -475,6 +520,27 @@ defmodule Harness.Dispatch do
     |> run_start_opts(nil, true)
     |> Keyword.put(:base_ref, "harness/" <> old_run_id)
   end
+
+  @doc false
+  @spec rereview_opts(Item.t(), LogRecord.t(), String.t()) :: keyword()
+  def rereview_opts(%Item{} = item, %LogRecord{} = record, old_run_id) do
+    item
+    |> run_start_opts(nil, true)
+    |> Keyword.put(:base_ref, "harness/" <> old_run_id)
+    |> Keyword.put(:review_only?, true)
+    |> Keyword.put(:review_only_agent_diff_size, record.agent_diff_size)
+  end
+
+  @spec lookup_record_project(LogRecord.t()) :: {:ok, Project.t()} | {:error, {:unknown_project, String.t() | nil}}
+  defp lookup_record_project(%LogRecord{project_name: project_name}) when is_binary(project_name) do
+    lookup_project(project_name)
+  end
+
+  defp lookup_record_project(%LogRecord{project_name: project_name}), do: {:error, {:unknown_project, project_name}}
+
+  @spec record_agent(LogRecord.t()) :: atom()
+  defp record_agent(%LogRecord{agent: agent}) when is_atom(agent) and not is_nil(agent), do: agent
+  defp record_agent(%LogRecord{}), do: :claude
 
   api(
     :reland,
