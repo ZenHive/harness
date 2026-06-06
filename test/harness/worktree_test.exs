@@ -114,6 +114,31 @@ defmodule Harness.WorktreeTest do
       assert Enum.all?(worktrees, &File.dir?(&1.path))
     end
 
+    test "retries a transient worktree-create ref lock before failing" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+      run_id = "run-create-lock"
+      lock = git_branch_lock!(repo, "harness/#{run_id}")
+      parent = self()
+
+      spawn(fn ->
+        Process.sleep(30)
+        _ = File.rm(lock)
+        send(parent, :lock_cleared)
+      end)
+
+      assert {:ok, %Worktree{} = wt} =
+               Worktree.create(ProjectFixture.from_repo(repo),
+                 base_dir: base,
+                 id: run_id,
+                 substrate_retry: [max_retries: 5, base_delay_ms: 10, max_delay_ms: 10]
+               )
+
+      assert_receive :lock_cleared
+      assert wt.branch == "harness/#{run_id}"
+      assert File.dir?(wt.path)
+    end
+
     test "propagates the .sobelow-skips baseline from the parent repo into the worktree" do
       repo = GitFixture.init_repo()
       base = GitFixture.tmp_base()
@@ -380,6 +405,45 @@ defmodule Harness.WorktreeTest do
       assert status != 0
     end
 
+    test "retries a transient git lock that clears before failing the commit" do
+      {_repo, wt} = create_worktree()
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+      lock = git_index_lock!(wt.path)
+      parent = self()
+
+      spawn(fn ->
+        Process.sleep(30)
+        _ = File.rm(lock)
+        send(parent, :lock_cleared)
+      end)
+
+      assert {:ok, :committed} =
+               Worktree.commit(wt, "agent delivery",
+                 substrate_retry: [max_retries: 5, base_delay_ms: 10, max_delay_ms: 10]
+               )
+
+      assert_receive :lock_cleared
+    end
+
+    test "persistent git failures still fail after the bounded retry count" do
+      {_repo, wt} = create_worktree()
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+      _lock = git_index_lock!(wt.path)
+
+      assert {:error, {:git_failed, _args, status, _output}} =
+               Worktree.commit(wt, "agent delivery", substrate_retry: [max_retries: 2, base_delay_ms: 1, max_delay_ms: 1])
+
+      assert status != 0
+    end
+
+    test "mechanical retry does not add git error-string classifiers" do
+      source = File.read!("lib/harness/worktree.ex") <> File.read!("lib/harness/run.ex")
+
+      refute source =~ "index.lock"
+      refute source =~ "another git process"
+      refute source =~ "Unable to create"
+    end
+
     test "re-attaches and commits when the agent detached HEAD at the branch tip" do
       {repo, wt} = create_worktree()
       File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
@@ -558,6 +622,26 @@ defmodule Harness.WorktreeTest do
 
   defp invocation(cwd) do
     %Invocation{prompt: "do nothing", cwd: cwd, task_id: "36"}
+  end
+
+  defp git_index_lock!(path) do
+    git_dir = git_dir(path)
+    lock = Path.join(git_dir, "index.lock")
+    File.write!(lock, "locked\n")
+    lock
+  end
+
+  defp git_branch_lock!(repo, branch) do
+    git_dir = git_dir(repo)
+    lock = Path.join([git_dir, "refs", "heads", branch <> ".lock"])
+    File.mkdir_p!(Path.dirname(lock))
+    File.write!(lock, "locked\n")
+    lock
+  end
+
+  defp git_dir(path) do
+    git_dir = String.trim(GitFixture.git!(path, ["rev-parse", "--git-dir"]))
+    if Path.type(git_dir) == :absolute, do: git_dir, else: Path.expand(git_dir, path)
   end
 
   defp github_project(name, url) do

@@ -46,6 +46,7 @@ defmodule Harness.Worktree do
   alias Harness.AgentRules
   alias Harness.Git
   alias Harness.Project
+  alias Harness.Run.RetryPolicy
 
   require Logger
 
@@ -176,6 +177,11 @@ defmodule Harness.Worktree do
   """
   @spec create(Project.t(), keyword()) :: {:ok, t()} | {:error, error()}
   def create(%Project{} = project, opts \\ []) do
+    retry_substrate(opts, fn -> do_create(project, opts) end)
+  end
+
+  @spec do_create(Project.t(), keyword()) :: {:ok, t()} | {:error, error()}
+  defp do_create(%Project{} = project, opts) do
     id = Keyword.get(opts, :id) || generate_id()
     branch = @branch_prefix <> id
     path = Path.join([base_dir(opts), project.name, id])
@@ -444,8 +450,15 @@ defmodule Harness.Worktree do
       (the unreachable divergence backstop), or a git invocation failed (see
       `t:error/0`).
   """
-  @spec commit(t(), String.t()) :: {:ok, :committed | :no_changes} | {:error, error()}
-  def commit(%__MODULE__{path: path, branch: branch}, message) when is_binary(message) do
+  @spec commit(t(), String.t(), keyword()) :: {:ok, :committed | :no_changes} | {:error, error()}
+  def commit(worktree, message, opts \\ [])
+
+  def commit(%__MODULE__{} = worktree, message, opts) when is_binary(message) do
+    retry_substrate(opts, fn -> do_commit(worktree, message) end)
+  end
+
+  @spec do_commit(t(), String.t()) :: {:ok, :committed | :no_changes} | {:error, error()}
+  defp do_commit(%__MODULE__{path: path, branch: branch}, message) do
     with :ok <- prepare_for_staging(path),
          :ok <- reconcile_head_to_branch(path, branch),
          {:ok, _added} <- Git.run(["add", "-A", "--"] ++ @stage_pathspec, path),
@@ -455,6 +468,27 @@ defmodule Harness.Worktree do
       else
         commit_staged(path, message)
       end
+    end
+  end
+
+  @spec retry_substrate(keyword(), (-> term())) :: term()
+  defp retry_substrate(opts, fun) when is_function(fun, 0) do
+    policy = opts |> Keyword.get(:substrate_retry, []) |> RetryPolicy.new()
+    do_retry_substrate(fun, policy, 1)
+  end
+
+  @spec do_retry_substrate((-> term()), RetryPolicy.t(), pos_integer()) :: term()
+  defp do_retry_substrate(fun, %RetryPolicy{} = policy, attempt) do
+    case fun.() do
+      {:error, _reason} = error when attempt > policy.max_retries ->
+        error
+
+      {:error, _reason} ->
+        Process.sleep(RetryPolicy.backoff_ms(policy, attempt))
+        do_retry_substrate(fun, policy, attempt + 1)
+
+      other ->
+        other
     end
   end
 

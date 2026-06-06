@@ -75,6 +75,34 @@ defmodule Harness.RunTest do
     def terminate(_run), do: :ok
   end
 
+  # An adapter whose first invocation builds a command that cannot spawn, then
+  # builds a real command on the second attempt. This exercises run-local
+  # substrate retry before the lifecycle can settle agent_spawn_failed.
+  defmodule TransientSpawnAdapter do
+    @moduledoc false
+    use Harness.AgentAdapter
+
+    alias Harness.AgentAdapter.Capabilities
+
+    @impl Harness.AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl Harness.AgentAdapter
+    def rule_channel, do: :none
+
+    @impl Harness.AgentAdapter
+    def build_command(%{adapter_opts: opts}) do
+      counter = Keyword.fetch!(opts, :counter)
+      attempt = Agent.get_and_update(counter, fn count -> {count + 1, count + 1} end)
+
+      if attempt == 1 do
+        {:ok, {"definitely-not-a-real-binary-xyz", [], []}}
+      else
+        {:ok, {"/bin/sh", ["-c", "printf agent-work > delivery.txt"], []}}
+      end
+    end
+  end
+
   # A reviewer double that spawns a real, long-lived process — its handle fires,
   # then it goes silent — to drive the reviewer idle-timeout rotation path
   # (Task 228).
@@ -232,6 +260,20 @@ defmodule Harness.RunTest do
       assert %Outcome{kind: :exited} = result.reviewer_outcome
       assert is_binary(result.worktree_path)
       refute File.dir?(result.worktree_path)
+    end
+
+    test "retries a transient adapter spawn failure before settling the run" do
+      {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+      result =
+        run(
+          adapter: TransientSpawnAdapter,
+          adapter_opts: [counter: counter],
+          substrate_retry: [max_retries: 1, base_delay_ms: 1, max_delay_ms: 1]
+        )
+
+      assert %Result{state: :done, reason: :approved} = result
+      assert Agent.get(counter, & &1) == 2
     end
 
     test "settles :failed and retains the worktree when the reviewer rejects" do

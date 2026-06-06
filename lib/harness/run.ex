@@ -112,6 +112,7 @@ defmodule Harness.Run do
   alias Harness.Run.Recovery
   alias Harness.Run.Reflex
   alias Harness.Run.Result
+  alias Harness.Run.RetryPolicy
   alias Harness.Run.Review
   alias Harness.Run.Status
   alias Harness.TokenUsage
@@ -234,6 +235,7 @@ defmodule Harness.Run do
            hold_reason: :graceful | :interrupt | nil,
            operator_feedback: String.t() | nil,
            in_run_discernment: keyword(),
+           substrate_retry: keyword(),
            base_dir: String.t() | nil,
            base_ref: String.t() | nil,
            adapter_opts: keyword(),
@@ -557,6 +559,7 @@ defmodule Harness.Run do
       hold_reason: nil,
       operator_feedback: nil,
       in_run_discernment: in_run_discernment_opts(opts),
+      substrate_retry: Keyword.get(opts, :substrate_retry, []),
       base_dir: Keyword.get(opts, :base_dir),
       base_ref: Keyword.get(opts, :base_ref),
       adapter_opts: Keyword.get(opts, :adapter_opts, []),
@@ -657,7 +660,7 @@ defmodule Harness.Run do
     parent = self()
     invocation = build_invocation(data)
     checkout_snapshot = checkout_snapshot_for_run(data)
-    task = start_task(fn -> Driver.run(data.adapter, invocation, driver_opts(data, parent)) end)
+    task = start_task(fn -> run_driver(data, data.adapter, invocation, driver_opts(data, parent)) end)
 
     {:keep_state,
      %{
@@ -778,7 +781,7 @@ defmodule Harness.Run do
     RunFeed.broadcast_update(status_snapshot(:committing, data))
     worktree = data.worktree
     message = commit_message(data)
-    task = start_task(fn -> commit_worktree(worktree, message) end)
+    task = start_task(fn -> commit_worktree(data, worktree, message) end)
     {:keep_state, %{data | task: task}}
   end
 
@@ -2073,7 +2076,7 @@ defmodule Harness.Run do
           | {:error, term()}
   defp run_recovery(%{recovery_adapter: adapter} = data, parent) when is_atom(adapter) do
     with {:ok, %Outcome{} = outcome} <-
-           Driver.run(adapter, recovery_invocation(data), recovery_driver_opts(data, parent)) do
+           run_driver(data, adapter, recovery_invocation(data), recovery_driver_opts(data, parent)) do
       {:ok, %{outcome: outcome, recovery: Recovery.read(data.worktree.path)}}
     end
   end
@@ -2146,8 +2149,8 @@ defmodule Harness.Run do
     pre_review_sha = data.reviewer_pre_review_sha || current_sha(data)
 
     with {:ok, %Outcome{} = outcome} <-
-           Driver.run(data.reviewer_adapter, reviewer_invocation(data), reviewer_driver_opts(data, parent)),
-         {:ok, _status, _total_diff_size} <- commit_worktree(data.worktree, reviewer_commit_message(data)) do
+           run_driver(data, data.reviewer_adapter, reviewer_invocation(data), reviewer_driver_opts(data, parent)),
+         {:ok, _status, _total_diff_size} <- commit_worktree(data, data.worktree, reviewer_commit_message(data)) do
       {:ok,
        %{
          outcome: outcome,
@@ -2810,7 +2813,7 @@ defmodule Harness.Run do
   defp worktree_opts(%{project: %Project{target_branch: target}} = data) when is_binary(target) and target != "" do
     opts = base_worktree_opts(data)
 
-    case fetch_target(data.project, target) do
+    case fetch_target(data.project, target, data.substrate_retry) do
       :ok ->
         Keyword.put(opts, :base_ref, "origin/" <> target)
 
@@ -2829,14 +2832,40 @@ defmodule Harness.Run do
 
   @spec base_worktree_opts(data()) :: keyword()
   defp base_worktree_opts(data) do
-    put_opt([id: data.run_id], :base_dir, data.base_dir)
+    put_opt([id: data.run_id, substrate_retry: data.substrate_retry], :base_dir, data.base_dir)
   end
 
-  @spec fetch_target(Project.t(), String.t()) :: :ok | {:error, Git.error()}
-  defp fetch_target(%Project{} = project, target) do
-    case Git.run(["fetch", "origin", target], Project.repo_path(project)) do
+  @spec fetch_target(Project.t(), String.t(), keyword()) :: :ok | {:error, Git.error()}
+  defp fetch_target(%Project{} = project, target, substrate_retry) do
+    case retry_substrate(substrate_retry, fn -> Git.run(["fetch", "origin", target], Project.repo_path(project)) end) do
       {:ok, _output} -> :ok
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @spec run_driver(data(), module(), Invocation.t(), keyword()) :: {:ok, Outcome.t()} | {:error, term()}
+  defp run_driver(data, adapter, %Invocation{} = invocation, opts) do
+    retry_substrate(data.substrate_retry, fn -> Driver.run(adapter, invocation, opts) end)
+  end
+
+  @spec retry_substrate(keyword(), (-> term())) :: term()
+  defp retry_substrate(opts, fun) when is_function(fun, 0) do
+    policy = RetryPolicy.new(opts)
+    do_retry_substrate(fun, policy, 1)
+  end
+
+  @spec do_retry_substrate((-> term()), RetryPolicy.t(), pos_integer()) :: term()
+  defp do_retry_substrate(fun, %RetryPolicy{} = policy, attempt) do
+    case fun.() do
+      {:error, _reason} = error when attempt > policy.max_retries ->
+        error
+
+      {:error, _reason} ->
+        Process.sleep(RetryPolicy.backoff_ms(policy, attempt))
+        do_retry_substrate(fun, policy, attempt + 1)
+
+      other ->
+        other
     end
   end
 
@@ -2851,13 +2880,15 @@ defmodule Harness.Run do
     |> put_opt(:progress_timeout, data.progress_timeout)
   end
 
-  @spec commit_worktree(Worktree.t(), String.t()) ::
+  @spec commit_worktree(data(), Worktree.t(), String.t()) ::
           {:ok, :committed | :no_changes, non_neg_integer()} | {:error, Worktree.error()}
-  defp commit_worktree(%Worktree{} = worktree, message) do
-    with {:ok, diff_size} <- Worktree.diff_size(worktree),
-         {:ok, status} <- Worktree.commit(worktree, message) do
-      {:ok, status, diff_size}
-    end
+  defp commit_worktree(data, %Worktree{} = worktree, message) do
+    retry_substrate(data.substrate_retry, fn ->
+      with {:ok, diff_size} <- Worktree.diff_size(worktree),
+           {:ok, status} <- Worktree.commit(worktree, message, substrate_retry: [max_retries: 0]) do
+        {:ok, status, diff_size}
+      end
+    end)
   end
 
   @spec put_opt(keyword(), atom(), term()) :: keyword()
