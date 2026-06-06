@@ -8916,7 +8916,7 @@
       "phase": 18,
       "bundle": "judgment-collapse",
       "milestone": "v0_13",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Per-facet scout-AI competence assessment — replace AND delete the CapabilityScore composite + routing arithmetic",
       "scores": {
         "d": 4,
