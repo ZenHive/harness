@@ -9740,6 +9740,59 @@
       "delivered_by": "codex",
       "verified": true,
       "cross_repo": []
+    },
+    {
+      "id": "237",
+      "phase": 19,
+      "bundle": "dispatch-economy",
+      "status": "pending",
+      "title": "Cron manual-approval dispatch mode — park autonomous dispatch for operator approval before enqueue",
+      "scores": {
+        "d": 3,
+        "b": 3,
+        "u": 2
+      },
+      "eff": 0.83,
+      "dep_layer": 0,
+      "markers": [
+        "parallel"
+      ],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "Harness.Cron.Settings: per-project dispatch mode (:auto|:manual), absence => :auto (existing autonomous projects keep auto-dispatching, zero behavior change); persisted via SettingsStore write-through + seeded by load_into_env/0; runtime setter with actor audit log, mirroring set_project/3.",
+        "Poller: under :manual, BOTH direct_dispatch and the orchestrator-plan enqueue park instead of enqueueing; under :auto, behavior is byte-identical to today.",
+        "Pending-approval store + dispatch-approve MCP tool (and a dispatch-pending listing tool) that enqueues a parked record; approval is idempotent.",
+        "Harness.Notification witness event on park (read-only sink, never a gate).",
+        "Tests cover both modes on both the 1-task and >=2-task paths, the park->approve->enqueue round-trip, and that interactive dispatch is ungated."
+      ],
+      "out_of_scope": [
+        "Dashboard approve UI — LiveView, hand-build via tidewave+browser as a small handbuild-marked follow-up; this task ships the core gate + MCP approve.",
+        "Auto-approving any run by heuristic (judgment -> not harness code).",
+        "A Claude Code hook (cannot reach OTP-node autonomous dispatch).",
+        "Migrating the existing on/off boolean to an enum (kept separate for back-compat)."
+      ],
+      "files_to_modify": [
+        "lib/harness/cron/settings.ex",
+        "lib/harness/cron/roadmap_poller.ex",
+        "lib/harness/dispatch.ex",
+        "lib/harness/chat/tools.ex"
+      ],
+      "touches": [
+        "lib/harness/cron/settings.ex",
+        "lib/harness/cron/roadmap_poller.ex",
+        "lib/harness/cron/orchestrator.ex",
+        "lib/harness/dispatch.ex",
+        "lib/harness/chat/tools.ex",
+        "lib/harness/notification.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "Add a per-project cron DISPATCH MODE — `:auto` (default, today's behavior) | `:manual`\n— as a third dimension in `Harness.Cron.Settings`, parallel to the existing on/off\n`:cron_project_autonomy` boolean. Mode only matters when a project is `effective?/1`\n(master AND project enabled).\n\nUnder `:manual`, the poller's autonomous dispatch does NOT call `Worker.enqueue`. Both\nautonomous paths are gated at the SAME enqueue boundary: 1 dispatchable task\n(`direct_dispatch`) and >=2 tasks (the orchestrator AI's `.harness/cron-plan.json`\nplan). Instead of enqueuing, harness PARKS the decision (task ids + resolved adapters)\nas a pending-approval record and fires a `Harness.Notification` witness event. An\noperator `dispatch-approve` action drains the parked record into `Worker.enqueue`,\nafter which the normal implement->review->land loop runs unchanged.\n\nMANTRA-clean: purely MECHANICAL. The orchestrator AI still makes ALL the judgment\n(which tasks, which adapter, touch-disjoint, opus-last); the manual gate only HOLDS the\nmechanical enqueue until an operator approves. No \"is this run high-stakes\" classifier\n— the gate keys solely off the per-project mode flag.\n\nInteractive `dispatch-task` / `dispatch-await` are NOT gated — the operator already\nchose to issue those; only the autonomous (cron) path is parked.\n\nMotivation: cron dispatch runs inside the OTP node, so a Claude Code hook cannot gate\nit. The existing master/per-project toggles are coarse on/off; this is the middle\nground — let the orchestrator plan the wave, but approve before anything spawns (useful\nwhen claude/opus is in the planned adapter set under autonomy). Deferred / low priority\n(eff 0.83): the coarse kill-switch already covers the safety case; this only buys the\nplan-but-approve middle ground. Sibling to Task 233 (the orchestrator) — same cron\ndispatch path.\n",
+      "created_at": "2026-06-06",
+      "scored_at": "2026-06-06",
+      "cross_repo": []
     }
   ]
 }
