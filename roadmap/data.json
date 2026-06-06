@@ -9679,7 +9679,7 @@
       "phase": 19,
       "bundle": "self-heal",
       "milestone": "v0_14",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Review-only salvage primitive — re-review a retained branch without re-running the implementer",
       "scores": {
         "d": 3,
@@ -9716,6 +9716,7 @@
       ],
       "body": "When a run fails at the REVIEW stage — `review_stuck` (reviewer died / quota / exited without writing `.harness/review.json`) or a beam-restart cancellation mid-review — but the implementer already committed good work on the retained `harness/<run-id>` branch, the only salvage today is `resume_failed`, which re-runs the IMPLEMENTER off that branch before reviewing again. That pays a full implementer cycle (tokens + wall-clock) to fix a reviewer-side failure where the implementation was never the problem.\n\nObserved repeatedly: this session's 211/221/229 salvage (all review-stage failures with good committed work), plus the earlier 64/76/77/78/79/219 `review_stuck` batch. Every one re-spent an implementer cycle it did not need.\n\nAdd a review-only path: take a settled run (or a retained `harness/<run-id>` branch) + its task, seed a worktree from the branch, and enter the `Harness.Run` gen_statem directly in `:reviewing` — skipping the `:running`/implementer phase entirely — producing a verdict and landing on approve via the normal lander path.\n\nMechanical only (THE MANTRA): no judgment is added. The caller decides rereview-vs-resume_failed; harness just offers a lifecycle entry that starts at the gate instead of at the implementer. resume_failed stays for the implement-failed case; this is the review-failed case.\n",
       "created_at": "2026-06-05",
+      "started_at": "2026-06-06",
       "scored_at": "2026-06-05",
       "cross_repo": []
     }
