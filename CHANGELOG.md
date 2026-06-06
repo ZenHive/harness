@@ -22,6 +22,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Tier-1: bounded mechanical retry on transient substrate ops (Task 227).**
+  `Harness.Run` and `Harness.Worktree` now retry a bounded number of times on
+  transient `{:error, _}` results from worktree git ops (`create`, `commit`,
+  target fetch) and the agent Port spawn path (`Driver.run`) before the run
+  settles the failure. A new `Harness.Run.RetryPolicy` supplies the arithmetic
+  (knobs from `:harness, :retry_policy` app config or per-dispatch
+  `:substrate_retry`); the wrappers are purely mechanical — only ever retry
+  substrate `{:error, _}`, never inspect agent output, never re-dispatch a settled
+  run, and carry no English-string classifiers (enforced by source invariant test).
+  Run's `commit_worktree` wrapper disables the inner Worktree retry (`max_retries:
+  0`) to avoid double backoff on the (diff_size + commit) compound. All judgment
+  about what a transient substrate failure *means* stays with the cross-family
+  reviewer. Witnessed as raw policy application at the call sites.
+
 - **Cron-as-orchestrator-AI: full-context dispatch planning gated by a mechanical
   upside-count (Task 233).** `Harness.Cron.RoadmapPoller` no longer encodes the
   next-task / grouping / routing decision in code. Each tick a pure count (the
