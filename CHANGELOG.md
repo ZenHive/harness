@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Duplicate migration version silently dropped two `run_records` columns.** Two
+  parallel dispatches each stamped a migration `20260605010000`
+  (`add_review_skills_to_run_records` + `add_reviewer_fallback_counts_to_run_records`);
+  Ecto keys `schema_migrations` by version integer, so once `add_review_skills` ran the
+  fallback-counts migration was permanently skipped — `reviewer_reprompt_count` /
+  `reviewer_rotation_count` never got created. The `RunRecord` Ecto schema selects both,
+  so every `ResultStore.list_run_records/0` (and the AgentKPI / dashboard reads built on
+  it) crashed with `column r0.reviewer_reprompt_count does not exist`. Renamed the skipped
+  migration to a unique version `20260605011000` so it runs; the two columns now exist and
+  the Postgres result-store read path is healthy again.
+
 ### Added
 
 - **Cron-as-orchestrator-AI: full-context dispatch planning gated by a mechanical
