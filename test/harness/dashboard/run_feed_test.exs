@@ -63,6 +63,28 @@ defmodule Harness.Dashboard.RunFeedTest do
       assert RunFeed.landed_sha(status, summaries, [project]) == sha
     end
 
+    test "reports landed via target-branch commit message when the run branch tip was rebased away" do
+      %{repo: repo} = GitFixture.init_with_origin(name: "run-feed-rebased")
+      project = ProjectFixture.from_repo(repo, name: "feed-proj", target_branch: "main")
+
+      GitFixture.git!(repo, ["checkout", "-b", "harness/run-rebased"])
+      File.write!(Path.join(repo, "rebased.txt"), "rebased land\n")
+      GitFixture.git!(repo, ["add", "rebased.txt"])
+      GitFixture.git!(repo, ["commit", "-q", "-m", "harness: agent delivery - task 1 Rebasing land (run run-rebased)"])
+
+      GitFixture.git!(repo, ["checkout", "main"])
+      File.write!(Path.join(repo, "rebased.txt"), "rebased land\n")
+      GitFixture.git!(repo, ["add", "rebased.txt"])
+      GitFixture.git!(repo, ["commit", "-q", "-m", "harness: agent delivery - task 1 Rebasing land (run run-rebased)"])
+      landed_sha = repo |> GitFixture.git!(["rev-parse", "HEAD"]) |> String.trim()
+      GitFixture.git!(repo, ["push", "-q", "origin", "main:refs/heads/main"])
+
+      status = %Status{run_id: "run-rebased", task_id: "1", project_name: project.name, state: :done}
+      summaries = %{project.name => %{open: 1, done: 0, total: 1, landed: %{}, blocked: %{}}}
+
+      assert RunFeed.landed_sha(status, summaries, [project]) == landed_sha
+    end
+
     test "reports not-landed when an approved run branch is not reachable from origin target" do
       %{repo: repo} = GitFixture.init_with_origin(name: "run-feed-unlanded")
       project = ProjectFixture.from_repo(repo, name: "feed-proj", target_branch: "main")

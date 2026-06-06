@@ -68,6 +68,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dedupes the lander and `Roadmap.Durable` push-rejection triplet: prefers
   `fetch` + `merge-base --is-ancestor` over matching git's English output, with
   documented text fallback when plumbing is inconclusive.
+- **Run landed-state reconciliation against the target branch (Task 214).** Dashboard
+  merge labels no longer equate "no roadmap `shipped_in`" with "not merged". Roadmap
+  writeback remains the fast witness; when absent, `Harness.Dashboard.RunFeed.landed_sha/3`
+  falls back to git facts — the run's `harness/<run-id>` branch tip reachable from
+  `origin/<target_branch>`, or a rebased delivery commit located by the standard
+  `(run <run-id>)` message suffix on the target branch. Fixes false "approved but
+  not landed" for direct-commit and manual-landing work already on the target.
 - **AgentKPI attributes review_stuck to the reviewer, and tracks per-reviewer
   verdict-write reliability (Task 231).** A `{:review_stuck, _}` run (the
   reviewer ended its turn without writing `.harness/review.json`) is the
