@@ -6461,7 +6461,7 @@ id = "216"
 phase = 18
 bundle = "judgment-collapse"
 milestone = "v0_13"
-status = "pending"
+status = "done"
 title = "Per-facet scout-AI competence assessment — replace AND delete the CapabilityScore composite + routing arithmetic"
 scores = { d = 4, b = 5, u = 5 }
 depends_on = ["224"]
@@ -6471,9 +6471,14 @@ touches = ["lib/harness/result_store.ex", "lib/harness/agent_kpi.ex"]
 domains = ["otp"]
 assignee = "cursor"
 body = "THE flagship of v0_13, and the actual product: a routing ORACLE answering 'what kind of task goes to which agent?' empirically. A routing oracle is a key->value map: task-kind (the KEY, from the facet-foundation predecessor) -> which agent wins (the VALUE: approve / first-try / reviewer-quality / cost, already captured). Today harness has the value but squashes the per-kind granularity into ONE tunable composite scalar (capability_score.ex:502-533 — ratings+cost+fix-size via hand-tuned weights, freshness decay, corpus fingerprint, explore/exploit branching, 562 LOC) that dispatch-recommend routes on. 'Which agent is best at THIS KIND of work?' is judgment — a scout AI reading the records grouped by facet answers it per-kind and explains itself, where a scalar cannot. Build the per-facet scout assessment + facet-matched routing AND delete the now-orphaned composite in the same change — the build and the deletion are one atomic swap (you cannot satisfy 'no magic weights remain in the routing path' without removing capability_score.ex's arithmetic). Keep ResultStore (raw facts) and AgentKPI (pure counting — the /harness/kpi ledger). The moduledoc itself admits the weights need 'retuning' — that is the tell. (Absorbed former task 217 — the composite deletion was that task's whole deliverable and is already entailed by this task's acceptance criteria.)"
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1780714000066-f7d737a3, 47e7f23e513c95fcc83b30462f78570e8f243580)."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-06-05"
 started_at = "2026-06-06"
 scored_at = "2026-06-05"
+done_at = "2026-06-06"
+shipped_in = "47e7f23e513c95fcc83b30462f78570e8f243580"
 
 [[task]]
 id = "218"
