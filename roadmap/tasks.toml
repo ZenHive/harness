@@ -6461,7 +6461,7 @@ id = "216"
 phase = 18
 bundle = "judgment-collapse"
 milestone = "v0_13"
-status = "in_progress"
+status = "pending"
 title = "Per-facet scout-AI competence assessment — replace AND delete the CapabilityScore composite + routing arithmetic"
 scores = { d = 4, b = 5, u = 5 }
 depends_on = ["224"]
