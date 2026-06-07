@@ -208,6 +208,7 @@ defmodule Harness.Cron.Settings do
   An invalid mode is rejected (`{:error, :invalid_mode}`) and never written.
   """
   @spec set_dispatch_mode(String.t(), dispatch_mode(), String.t()) :: :ok | {:error, :invalid_mode}
+  @spec set_dispatch_mode(String.t(), dispatch_mode(), String.t()) :: :ok | {:error, :invalid_mode}
   def set_dispatch_mode(name, mode, actor) when is_binary(name) and mode in @valid_dispatch_modes and is_binary(actor) do
     Application.put_env(:harness, :cron_dispatch_mode, Map.put(dispatch_mode_map(), name, mode))
     persist()
@@ -215,6 +216,7 @@ defmodule Harness.Cron.Settings do
     :ok
   end
 
+  @spec set_dispatch_mode(String.t(), dispatch_mode(), String.t()) :: :ok | {:error, :invalid_mode}
   def set_dispatch_mode(name, _mode, actor) when is_binary(name) and is_binary(actor) do
     {:error, :invalid_mode}
   end

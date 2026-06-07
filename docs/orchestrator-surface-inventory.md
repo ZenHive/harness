@@ -49,6 +49,7 @@ Reachable over MCP/chat (JSON scalars only). Grouped by orchestrator intent.
 | `roadmap-mark_landed` / `roadmap-mark_blocked` / `roadmap-mark_in_progress` / `roadmap-mark_pending` | `Harness.Roadmap` | Write a run's outcome back to the roadmap |
 | `project_registry-unregister` | `Harness.ProjectRegistry` | Drop a runtime registration |
 | `audit_review-grade_fix` | `Harness.AuditReview` | Cross-agent HIGH-tier grade of one commit |
+| `dispatch-pending` / `dispatch-approve` | `Harness.Dispatch` | List / approve parked autonomous (cron) dispatch decisions for `:manual` mode projects (Task 237) |
 
 ### In-process only (`:exchange_data` — filtered from JSON, reached via `project_eval`/IEx)
 
