@@ -508,6 +508,36 @@ defmodule Harness.RunTest do
       files = GitFixture.git!(repo, ["ls-tree", "-r", "--name-only", "harness/#{run_id}"])
       refute files =~ ".harness/review.json"
     end
+
+    # Task 240: requested_model must reach the implementer Invocation, or the
+    # adapter's `--model` flag is silently never set and every run uses the
+    # agent's default model regardless of the task's pin.
+    test "the run threads requested_model onto the implementer invocation" do
+      repo = GitFixture.init_repo()
+
+      {run_id, pid} =
+        start(
+          project: ProjectFixture.from_repo(repo),
+          adapter_opts: [command: :capture_model],
+          requested_model: "claude-opus-4-8-thinking-high"
+        )
+
+      assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
+
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_model.txt"]) ==
+               "claude-opus-4-8-thinking-high"
+    end
+
+    test "the implementer invocation carries no model when the task is unpinned" do
+      repo = GitFixture.init_repo()
+
+      {run_id, pid} =
+        start(project: ProjectFixture.from_repo(repo), adapter_opts: [command: :capture_model])
+
+      assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
+
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_model.txt"]) == ""
+    end
   end
 
   describe "the reviewer's own fixes" do

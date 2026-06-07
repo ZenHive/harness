@@ -1813,6 +1813,7 @@ defmodule Harness.Run do
       cwd: data.worktree.path,
       task_id: data.item.id,
       session: session,
+      model: data.requested_model,
       permission_mode: :autonomous,
       adapter_opts: data.adapter_opts,
       env: data.env
@@ -2124,6 +2125,7 @@ defmodule Harness.Run do
       prompt: Recovery.prompt(recovery_context(data, repo_path)),
       cwd: data.worktree.path,
       task_id: "#{data.item.id}-recovery",
+      model: data.requested_model,
       permission_mode: :autonomous,
       adapter_opts: data.reviewer_adapter_opts,
       env: Map.put(data.env, "HARNESS_RECOVERY_REPO", repo_path)

@@ -287,6 +287,14 @@ defmodule Harness.FakeAdapter do
 
   defp command(:write, _invocation), do: {"/bin/sh", ["-c", "echo agent-output > agent_output.txt"], []}
 
+  # :capture_model — records invocation.model into a committed file (model-pin
+  #                  threading fixture, Task 240): proves the run threads the
+  #                  task's requested_model onto the agent Invocation, so the
+  #                  adapter's `--model` flag is actually set. The model rides as
+  #                  a positional parameter ($1), empty string when unpinned.
+  defp command(:capture_model, %Invocation{model: model}),
+    do: {"/bin/sh", ["-c", ~S(printf '%s' "$1" > agent_model.txt), "harness-fake", model || ""], []}
+
   defp command(:snapshot_worktree, _invocation), do: {"/bin/sh", ["-c", "ls > agent-saw.txt"], []}
 
   defp command(:write_then_hang, _invocation),
