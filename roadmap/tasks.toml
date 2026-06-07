@@ -5730,7 +5730,7 @@ shipped_in = "6ce069c50555141659c854b9c34f96cb71927337"
 id = "188"
 phase = 15
 bundle = "agent-gate"
-status = "in_progress"
+status = "done"
 title = "Scrub GH_TOKEN/GITHUB_TOKEN from in-run env + assess the gh pr create vector (push-neuter follow-up)"
 scores = { d = 3, b = 6, u = 5 }
 markers = ["security"]
@@ -5746,9 +5746,14 @@ FIX (mechanical substrate, NOT judgment): scrub GH_TOKEN/GITHUB_TOKEN from the i
 
 Same agent-gate doctrine as 186: MERGE is the lander's mechanical, policy-gated job — an implementer/reviewer must not reach origin unilaterally.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780835010530-06fec020, 6ee1f5a1b1356b5dc4a6456b22c48a4316986e3b)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-04"
 started_at = "2026-06-07"
 scored_at = "2026-06-04"
+done_at = "2026-06-07"
+shipped_in = "6ee1f5a1b1356b5dc4a6456b22c48a4316986e3b"
 
 [[task]]
 id = "189"
