@@ -9771,7 +9771,7 @@
       "id": "237",
       "phase": 19,
       "bundle": "dispatch-economy",
-      "status": "in_progress",
+      "status": "done",
       "title": "Cron manual-approval dispatch mode — park autonomous dispatch for operator approval before enqueue",
       "scores": {
         "d": 3,
@@ -9816,10 +9816,15 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "02009a56c2f742f1443ea78db0f171b4bbc63cd6",
       "body": "Add a per-project cron DISPATCH MODE — `:auto` (default, today's behavior) | `:manual`\n— as a third dimension in `Harness.Cron.Settings`, parallel to the existing on/off\n`:cron_project_autonomy` boolean. Mode only matters when a project is `effective?/1`\n(master AND project enabled).\n\nUnder `:manual`, the poller's autonomous dispatch does NOT call `Worker.enqueue`. Both\nautonomous paths are gated at the SAME enqueue boundary: 1 dispatchable task\n(`direct_dispatch`) and >=2 tasks (the orchestrator AI's `.harness/cron-plan.json`\nplan). Instead of enqueuing, harness PARKS the decision (task ids + resolved adapters)\nas a pending-approval record and fires a `Harness.Notification` witness event. An\noperator `dispatch-approve` action drains the parked record into `Worker.enqueue`,\nafter which the normal implement->review->land loop runs unchanged.\n\nMANTRA-clean: purely MECHANICAL. The orchestrator AI still makes ALL the judgment\n(which tasks, which adapter, touch-disjoint, opus-last); the manual gate only HOLDS the\nmechanical enqueue until an operator approves. No \"is this run high-stakes\" classifier\n— the gate keys solely off the per-project mode flag.\n\nInteractive `dispatch-task` / `dispatch-await` are NOT gated — the operator already\nchose to issue those; only the autonomous (cron) path is parked.\n\nMotivation: cron dispatch runs inside the OTP node, so a Claude Code hook cannot gate\nit. The existing master/per-project toggles are coarse on/off; this is the middle\nground — let the orchestrator plan the wave, but approve before anything spawns (useful\nwhen claude/opus is in the planned adapter set under autonomy). Deferred / low priority\n(eff 0.83): the coarse kill-switch already covers the safety case; this only buys the\nplan-but-approve middle ground. Sibling to Task 233 (the orchestrator) — same cron\ndispatch path.\n",
       "created_at": "2026-06-06",
       "started_at": "2026-06-07",
+      "done_at": "2026-06-07",
       "scored_at": "2026-06-06",
+      "implemented": "Landed by cursor via merge-train; reviewer-approved (run run-1780834702856-5211719c, 02009a56c2f742f1443ea78db0f171b4bbc63cd6).",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     },
     {

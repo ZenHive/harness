@@ -6917,7 +6917,7 @@ shipped_in = "74dd14873b96bea170b6779f7f284e08275095f2"
 id = "237"
 phase = 19
 bundle = "dispatch-economy"
-status = "in_progress"
+status = "done"
 title = "Cron manual-approval dispatch mode — park autonomous dispatch for operator approval before enqueue"
 scores = { d = 3, b = 3, u = 2 }
 markers = ["parallel"]
@@ -6958,9 +6958,14 @@ when claude/opus is in the planned adapter set under autonomy). Deferred / low p
 plan-but-approve middle ground. Sibling to Task 233 (the orchestrator) — same cron
 dispatch path.
 """
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1780834702856-5211719c, 02009a56c2f742f1443ea78db0f171b4bbc63cd6)."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-06-06"
 started_at = "2026-06-07"
 scored_at = "2026-06-06"
+done_at = "2026-06-07"
+shipped_in = "02009a56c2f742f1443ea78db0f171b4bbc63cd6"
 
 [[task]]
 id = "238"
