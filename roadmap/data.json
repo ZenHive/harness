@@ -9637,7 +9637,8 @@
       "dep_layer": 0,
       "markers": [],
       "depends_on": [],
-      "assignee": "codex",
+      "assignee": "cursor",
+      "model": "claude-opus-4-8-thinking-high",
       "acceptance_criteria": [
         "A read-only analysis (query or small read fn over the run records / ResultStore) computes the per-task ceremony token cost: implementer + cross-family reviewer + audit token spend per landed task, aggregated across recent runs.",
         "Output is raw facts only (per-task totals, distribution, median/p90) — it ranks nothing and decides nothing (no 'should we batch' verdict in code; that is the orchestrator AI's job).",
