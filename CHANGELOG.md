@@ -407,6 +407,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cover the `gh pr create` vector** (uses the gh token, not the git remote) —
   tracked as a follow-up.
 
+- **GitHub auth isolation for in-run agents (Task 188).** In-run invocation env
+  now forces `GH_TOKEN` and `GITHUB_TOKEN` to `{key, false}` scrub pairs before
+  spawning implementer, reviewer, or recovery agents, closing the `gh pr create`
+  token vector left open by Task 186's push-neuter. Decision recorded: token
+  scrub alone is **not sufficient** to fully block ambient `gh` auth because
+  GitHub CLI can also read `~/.config/gh/hosts.yml`; broader isolation is
+  warranted, so harness also pins `GH_CONFIG_DIR` to the run-local
+  `.harness/gh-config` path. This removes operator `gh` auth from the ambient
+  in-run environment while leaving Task 186's worktree-scoped `git push`
+  sentinel responsible for the separate git transport path.
+
 - **Dashboard run-history Delete button + `ResultStore.delete_run/2`.** Settled
   rows in the "Run history" table now carry a confirm-gated **Delete** action
   that discards the run's persisted record (e.g. throwaway smoke runs that

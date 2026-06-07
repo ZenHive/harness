@@ -292,8 +292,19 @@ defmodule Harness.FakeAdapter do
   #                  task's requested_model onto the agent Invocation, so the
   #                  adapter's `--model` flag is actually set. The model rides as
   #                  a positional parameter ($1), empty string when unpinned.
+  # :capture_github_env
+  #                — records the spawned process' GitHub auth/config env. Used
+  #                  by agent-gate regressions proving in-run agents get no
+  #                  ambient GitHub credentials.
   defp command(:capture_model, %Invocation{model: model}),
     do: {"/bin/sh", ["-c", ~S(printf '%s' "$1" > agent_model.txt), "harness-fake", model || ""], []}
+
+  defp command(:capture_github_env, _invocation) do
+    script =
+      ~S(printf 'GH_TOKEN=%s\nGITHUB_TOKEN=%s\nGH_CONFIG_DIR=%s\n' "$GH_TOKEN" "$GITHUB_TOKEN" "$GH_CONFIG_DIR" > agent_github_env.txt)
+
+    {"/bin/sh", ["-c", script], []}
+  end
 
   defp command(:snapshot_worktree, _invocation), do: {"/bin/sh", ["-c", "ls > agent-saw.txt"], []}
 

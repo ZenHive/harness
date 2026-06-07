@@ -178,6 +178,12 @@ defmodule Harness.Run do
   # memory on this interval and force-kill it past the ceiling, settling :failed.
   @default_mem_threshold_kb 6 * 1024 * 1024
   @default_mem_sample_interval 5_000
+  # Agent-gate substrate: in-run agents must not reach GitHub origin on their
+  # own initiative. Scrubbing tokens alone is not enough because `gh` can read
+  # stored auth from hosts.yml, so invocations also point GH_CONFIG_DIR at a
+  # run-local config directory.
+  @github_auth_env_scrubs ["GH_TOKEN", "GITHUB_TOKEN"]
+  @gh_config_dir Path.join([".harness", "gh-config"])
 
   @typedoc "A lifecycle state."
   @type state ::
@@ -572,7 +578,7 @@ defmodule Harness.Run do
       base_dir: Keyword.get(opts, :base_dir),
       base_ref: Keyword.get(opts, :base_ref),
       adapter_opts: Keyword.get(opts, :adapter_opts, []),
-      env: Keyword.get(opts, :env, %{}),
+      env: scrub_github_auth_env(Keyword.get(opts, :env, %{})),
       land_attempt: Keyword.get(opts, :land_attempt, 1),
       worktree: nil,
       checkout_snapshot: nil,
@@ -1816,8 +1822,20 @@ defmodule Harness.Run do
       model: data.requested_model,
       permission_mode: :autonomous,
       adapter_opts: data.adapter_opts,
-      env: data.env
+      env: in_run_env(data)
     }
+  end
+
+  @spec in_run_env(data()) :: %{optional(String.t()) => String.t() | false}
+  defp in_run_env(%{env: env, worktree: %Worktree{path: path}}) do
+    Map.put(env, "GH_CONFIG_DIR", Path.join(path, @gh_config_dir))
+  end
+
+  @spec scrub_github_auth_env(%{optional(String.t()) => String.t() | false}) :: %{
+          optional(String.t()) => String.t() | false
+        }
+  defp scrub_github_auth_env(env) when is_map(env) do
+    Enum.reduce(@github_auth_env_scrubs, env, fn key, acc -> Map.put(acc, key, false) end)
   end
 
   @spec tag_composed_input(AgentRun.t(), data()) :: AgentAdapter.composed_input()
@@ -2128,7 +2146,7 @@ defmodule Harness.Run do
       model: data.requested_model,
       permission_mode: :autonomous,
       adapter_opts: data.reviewer_adapter_opts,
-      env: Map.put(data.env, "HARNESS_RECOVERY_REPO", repo_path)
+      env: Map.put(in_run_env(data), "HARNESS_RECOVERY_REPO", repo_path)
     }
   end
 
@@ -2221,7 +2239,7 @@ defmodule Harness.Run do
       task_id: "#{data.item.id}-review",
       permission_mode: :autonomous,
       adapter_opts: data.reviewer_adapter_opts,
-      env: data.env
+      env: in_run_env(data)
     }
   end
 

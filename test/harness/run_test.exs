@@ -538,6 +538,32 @@ defmodule Harness.RunTest do
 
       assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_model.txt"]) == ""
     end
+
+    test "in-run invocation env strips ambient GitHub auth for gh" do
+      repo = GitFixture.init_repo()
+
+      {run_id, pid} =
+        start(
+          project: ProjectFixture.from_repo(repo),
+          adapter_opts: [command: :capture_github_env],
+          env: %{
+            "GH_TOKEN" => "caller-gh-token",
+            "GITHUB_TOKEN" => "caller-github-token",
+            "GH_CONFIG_DIR" => "/tmp/leaky-gh-config"
+          }
+        )
+
+      assert %Result{state: :done, reason: :approved, worktree_path: worktree_path} = await_result(run_id, pid)
+
+      expected_gh_config_dir = Path.join([worktree_path, ".harness", "gh-config"])
+
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_github_env.txt"]) ==
+               """
+               GH_TOKEN=
+               GITHUB_TOKEN=
+               GH_CONFIG_DIR=#{expected_gh_config_dir}
+               """
+    end
   end
 
   describe "the reviewer's own fixes" do
