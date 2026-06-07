@@ -9897,6 +9897,45 @@
       "started_at": "2026-06-07",
       "scored_at": "2026-06-06",
       "cross_repo": []
+    },
+    {
+      "id": "240",
+      "phase": 19,
+      "bundle": "dispatch-economy",
+      "status": "pending",
+      "title": "Thread the pinned model into the agent Invocation — requested_model is captured but never reaches --model",
+      "scores": {
+        "d": 1,
+        "b": 4,
+        "u": 3
+      },
+      "eff": 3.5,
+      "dep_layer": 1,
+      "markers": [],
+      "depends_on": [
+        239
+      ],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "`invocation/3` (run.ex:~1772) sets `model: data.requested_model` on the `%Invocation{}` so the implementer run carries the task's pinned model.",
+        "`recovery_invocation/1` (run.ex:~2086) likewise sets `model: data.requested_model` so a resumed run keeps the pin. Reviewer invocation is cross-family by design and stays unpinned.",
+        "A test asserts the built implementer Invocation has `model` equal to the run's requested_model (and nil when unpinned), so a future regression is caught.",
+        "Manual confirmation note in the commit: a `cursor` dispatch of a task with `model = \"claude-opus-4-8-thinking-high\"` shows `--model claude-opus-4-8-thinking-high` in the live cursor-agent argv."
+      ],
+      "files_to_modify": [
+        "lib/harness/run.ex"
+      ],
+      "touches": [
+        "lib/harness/run.ex",
+        "lib/harness/agent_adapter/invocation.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "BUG found 2026-06-07 while exercising the cursor multi-model lever (task 234 dispatched cursor + model=claude-opus-4-8-thinking-high). The rmap model field threads correctly through Roadmap.ingest -> Item.model -> dispatch run_start_opts -> :requested_model -> data.requested_model (run.ex:524), and surfaces in status_snapshot (1743) and the delegate prompt context. BUT the two functions that build the actual %Invocation{} — invocation/3 (implementer) and recovery_invocation/1 (resume) — never copy data.requested_model into Invocation.model. Since AgentAdapter.model_args/1 keys off invocation.model, --model is silently never passed: every cursor run uses its default composer-2.5-fast regardless of the pin. Verified against the live argv of run-1780832742494-db9aae0e: no --model present. Pure mechanics (pass-through a field), not judgment. Gated behind 239 because both edit run.ex; serialize to avoid a merge collision. Once landed, the running node must recompile (or restart) to pick it up before the pin takes effect on new dispatches.",
+      "created_at": "2026-06-07",
+      "scored_at": "2026-06-07",
+      "cross_repo": []
     }
   ]
 }
