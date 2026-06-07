@@ -9626,7 +9626,7 @@
       "id": "234",
       "phase": 19,
       "bundle": "dispatch-economy",
-      "status": "pending",
+      "status": "in_progress",
       "title": "MEASURE the fragmentation / ceremony tax — quantify per-task dispatch overhead from the per-run token facts already captured",
       "scores": {
         "d": 1,
@@ -9657,6 +9657,7 @@
       ],
       "body": "The cron-orchestrator task is gated on a mechanical upside-count, but we have no measured number for the fragmentation tax it would save. We DO have the data now: every run persists token facts on the run record. This task surfaces the per-task ceremony cost (implementer + reviewer + audit tokens per landed task) as raw aggregated facts — counting only, no verdict. It is the data prerequisite that sets the orchestrator's batch threshold and proves (or disproves) that the tax is real. Cheap, read-only, dispatchable. Sibling to the cron-orchestrator task; NOT a blocker for it (operator: add, don't defer).",
       "created_at": "2026-06-05",
+      "started_at": "2026-06-07",
       "scored_at": "2026-06-05",
       "cross_repo": []
     },
