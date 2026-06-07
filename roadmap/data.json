@@ -8526,7 +8526,7 @@
       "id": "208",
       "phase": 17,
       "bundle": "settings-pq",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Single Postgres-backed settings store — collapse the exs/overlay/app-env layering",
       "scores": {
         "d": 6,
@@ -8579,6 +8579,7 @@
       ],
       "body": "Today onchain's landing-policy flip silently reverted on restart: the value lived in three layers (exs registration default -> SettingsStore overlay -> app-env cache) and landing persistence was off because :landing_settings had no default root config line (cron/agent do, config.exs line 34/68; landing was only set false in the test block) so Landing.Settings.disabled? short-circuited every write. Tracing 'is this setting on and will it survive restart?' took seven hops across dev.local.exs/dev.exs/config.exs/runtime.exs/SettingsStore/Landing.Settings/app-env — the layering is unmanageable. Collapse to one Postgres table as single source of truth (Postgres is already a hard dep via Oban; SettingsStore is already a behaviour with a Postgres backend; ProjectRegistry already persists to Postgres when repo_enabled). Delete overlay/app-env-cache/exs-fallback and the per-domain enable switches. Net deletion: SettingsLoader + SettingsStore.File + disabled?/legacy_config_key + per-domain config keys; exs becomes a one-time import only.",
       "created_at": "2026-06-05",
+      "started_at": "2026-06-07",
       "scored_at": "2026-06-05",
       "cross_repo": []
     },

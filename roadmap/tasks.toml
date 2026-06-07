@@ -6284,7 +6284,7 @@ shipped_in = "PR#1"
 id = "208"
 phase = 17
 bundle = "settings-pq"
-status = "pending"
+status = "in_progress"
 title = "Single Postgres-backed settings store — collapse the exs/overlay/app-env layering"
 scores = { d = 6, b = 8, u = 8 }
 acceptance_criteria = ["All operator-flippable settings (landing policy/target, cron toggles, agent enablement, reviewer pins, runtime project registrations) read from and write to ONE Postgres table; with repo_enabled:true that table is the single source of truth — no app-env overlay cache, no exs fallback.", "Reading a setting never falls back to an exs default at runtime: exs :projects becomes a one-time first-boot import into the table (import_legacy of the *.term files runs once for landing/cron/agent so existing flips carry over), after which Postgres always wins.", "SettingsLive shows the effective persisted value for every setting; a flip on the page survives a BEAM restart with identical values (regression test for today's silent landing-policy revert).", "Harness.SettingsLoader is deleted; Harness.SettingsStore.File backend is deleted; the per-domain enable switches (:landing_settings/:cron_settings/:agent_settings config keys + SettingsStore.disabled?/legacy_config_key) are removed.", "repo_enabled:false means ephemeral in-memory settings via the existing no-op false backend (put->:ok, fetch->:not_found) — no file backend, no new code; ephemeral state surfaced to the operator (see flash task).", "Harness.TermCodec is RETAINED — still serves ResultStore.File, Chat.Store.File, Audit watermarks, ProjectRegistry.Persistence, and the Postgres legacy-import; only its settings caller goes.", "Tests: restart-survives-flip for landing/cron/agent; first-boot legacy import populates the table from a seeded *.term; repo_enabled:false yields ephemeral reads; no exs-fallback after a value is set."]
@@ -6293,10 +6293,11 @@ files_to_modify = ["config/config.exs", "config/runtime.exs", "lib/harness/setti
 touches = ["lib/harness/project_registry.ex", "lib/harness/project_registry/persistence.ex", "lib/harness/settings_store/postgres.ex", "lib/harness/settings_store/schema/setting.ex"]
 domains = ["otp", "ecto"]
 assignee = "cursor"
-model = "claude-opus-4-8-thinking-high"
 module = "Harness.SettingsStore"
+model = "claude-opus-4-8-thinking-high"
 body = "Today onchain's landing-policy flip silently reverted on restart: the value lived in three layers (exs registration default -> SettingsStore overlay -> app-env cache) and landing persistence was off because :landing_settings had no default root config line (cron/agent do, config.exs line 34/68; landing was only set false in the test block) so Landing.Settings.disabled? short-circuited every write. Tracing 'is this setting on and will it survive restart?' took seven hops across dev.local.exs/dev.exs/config.exs/runtime.exs/SettingsStore/Landing.Settings/app-env — the layering is unmanageable. Collapse to one Postgres table as single source of truth (Postgres is already a hard dep via Oban; SettingsStore is already a behaviour with a Postgres backend; ProjectRegistry already persists to Postgres when repo_enabled). Delete overlay/app-env-cache/exs-fallback and the per-domain enable switches. Net deletion: SettingsLoader + SettingsStore.File + disabled?/legacy_config_key + per-domain config keys; exs becomes a one-time import only."
 created_at = "2026-06-05"
+started_at = "2026-06-07"
 scored_at = "2026-06-05"
 
 [[task]]
