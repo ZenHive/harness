@@ -217,7 +217,7 @@ defmodule Harness.Dashboard.ConfigInspector do
   defp settings_store_part(:root) do
     case SettingsStore.configured() do
       {SettingsStore.Postgres, _opts} -> "database:harness_settings"
-      {_module, _opts} -> "database:harness_settings"
+      {_module, opts} -> Keyword.get(opts, :root)
       _ephemeral -> "memory:ephemeral"
     end
   end

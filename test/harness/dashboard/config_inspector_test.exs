@@ -16,6 +16,7 @@ defmodule Harness.Dashboard.ConfigInspectorTest do
   alias Harness.Dashboard.Endpoint
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
+  alias Harness.Test.SettingsStoreMemory
 
   defp sections, do: ConfigInspector.resolve()
 
@@ -114,6 +115,15 @@ defmodule Harness.Dashboard.ConfigInspectorTest do
       refute "cron_settings root" in labels
       assert row(sections(), "Settings store", "backend")
       assert row(sections(), "Settings store", "root")
+    end
+
+    test "settings store root is not reported as Postgres for a custom backend" do
+      prev = Application.get_env(:harness, :settings_store)
+      Application.put_env(:harness, :settings_store, {SettingsStoreMemory, scope: :config_inspector_custom})
+      on_exit(fn -> restore(:settings_store, prev) end)
+
+      assert row(sections(), "Settings store", "backend").value =~ "SettingsStoreMemory"
+      assert row(sections(), "Settings store", "root").value == "—"
     end
 
     test "lists a registered project with its source, roadmap path, and check-command hint" do
