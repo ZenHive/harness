@@ -80,6 +80,7 @@ defmodule Harness.AuditTest do
     %{origin: origin, repo: repo} = GitFixture.init_with_origin()
     project = ProjectFixture.from_repo(repo, name: "audit-demo", target_branch: "main")
     prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
+    prior_settings_store = Application.get_env(:harness, :settings_store)
     prior_watermarks = Application.get_env(:harness, :audit_watermarks)
     watermarks_root = Path.join(System.tmp_dir!(), "harness_audit_watermarks_#{System.unique_integer([:positive])}")
     Application.put_env(:harness, :repo_enabled, true)
@@ -88,6 +89,10 @@ defmodule Harness.AuditTest do
 
     on_exit(fn ->
       restore(:repo_enabled, prior_repo_enabled)
+      # The "repo_enabled false" test deletes :settings_store to exercise the
+      # ephemeral store; restore it here so the deletion can't leak past this
+      # module and silently flip every later settings read to the no-op store.
+      restore(:settings_store, prior_settings_store)
       restore(:audit_watermarks, prior_watermarks)
       SettingsStoreMemory.reset(scope: :test_default)
       File.rm_rf(watermarks_root)
