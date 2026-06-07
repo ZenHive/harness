@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it) crashed with `column r0.reviewer_reprompt_count does not exist`. Renamed the skipped
   migration to a unique version `20260605011000` so it runs; the two columns now exist and
   the Postgres result-store read path is healthy again.
+- **Pinned model now actually reaches the agent CLI (Task 240).** `requested_model` (from the rmap task's `model` field, already threaded into Run data, status, LogRecord, and ResultStore by Task 42) is now copied into the `%Invocation{}` built for the implementer path (`invocation/3`) and the recovery/resume path (`recovery_invocation/1`). Before the fix, both builders omitted the key so `AgentAdapter.model_args/1` always saw the struct default (nil) and no `--model` flag was ever emitted — every run (cursor, codex, etc.) used the agent's own default regardless of an explicit Opus (or other) pin on the task. Observed live on a cursor+Opus dispatch for Task 234. Reviewer and resolver invocations remain deliberately unpinned (cross-family judgment roles). Added regression coverage in `run_test.exs` via a `:capture_model` FakeAdapter fixture that writes the received `invocation.model` (or empty) into a committed file for post-settle git-show assertion. Pure pass-through fix; no new surfaces.
 
 ### Added
 
