@@ -9917,7 +9917,7 @@
       "id": "240",
       "phase": 19,
       "bundle": "dispatch-economy",
-      "status": "pending",
+      "status": "done",
       "title": "Thread the pinned model into the agent Invocation — requested_model is captured but never reaches --model",
       "scores": {
         "d": 1,
@@ -9947,9 +9947,12 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "c417188d1bcef5c6f73919292350fbab00157884",
       "body": "BUG found 2026-06-07 while exercising the cursor multi-model lever (task 234 dispatched cursor + model=claude-opus-4-8-thinking-high). The rmap model field threads correctly through Roadmap.ingest -> Item.model -> dispatch run_start_opts -> :requested_model -> data.requested_model (run.ex:524), and surfaces in status_snapshot (1743) and the delegate prompt context. BUT the two functions that build the actual %Invocation{} — invocation/3 (implementer) and recovery_invocation/1 (resume) — never copy data.requested_model into Invocation.model. Since AgentAdapter.model_args/1 keys off invocation.model, --model is silently never passed: every cursor run uses its default composer-2.5-fast regardless of the pin. Verified against the live argv of run-1780832742494-db9aae0e: no --model present. Pure mechanics (pass-through a field), not judgment. Gated behind 239 because both edit run.ex; serialize to avoid a merge collision. Once landed, the running node must recompile (or restart) to pick it up before the pin takes effect on new dispatches.",
       "created_at": "2026-06-07",
+      "done_at": "2026-06-07",
       "scored_at": "2026-06-07",
+      "implemented": "Added model: data.requested_model to invocation/3 and recovery_invocation/1 in run.ex so the pinned model reaches AgentAdapter.model_args/1 and the CLI --model flag. Tests: run_test asserts the implementer invocation carries requested_model (and empty when unpinned) via a new FakeAdapter :capture_model fixture. Reviewer invocation stays cross-family/unpinned by design.",
       "cross_repo": []
     }
   ]
