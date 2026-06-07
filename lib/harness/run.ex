@@ -63,12 +63,12 @@ defmodule Harness.Run do
 
   `cancel/1` aborts an in-flight run; a per-run lifetime budget does the same
   when it elapses. Both kill the in-flight step task and SIGKILL the agent if
-  one is running, then settle `failed`. The `:reviewing` state arms its own
-  spawn and idle watchdogs so a lost reviewer Port cannot hold a project queue
-  slot until the lifetime cap (Task 199). The lifetime budget is a last-resort
-  deadline — it force-settles even when the agent run handle never arrived (a
-  hung adapter `build_command`/`invoke`). In that race a just-spawned OS
-  process whose pid was never received may leak; the boot-time
+  one is running, then settle `failed`. The `:running` and `:reviewing` states
+  arm idle watchdogs so a silent spawned Port cannot hold a project queue slot
+  until the lifetime cap (Tasks 199 and 239). The lifetime budget is a
+  last-resort deadline — it force-settles even when the agent run handle never
+  arrived (a hung adapter `build_command`/`invoke`). In that race a just-spawned
+  OS process whose pid was never received may leak; the boot-time
   `Harness.Worktree.Sweeper` reaps its working directory across restarts.
   Crash isolation is structural — each run is a `:temporary` child of
   `Harness.Run.Supervisor` (a `:one_for_one` DynamicSupervisor), so one run
@@ -147,6 +147,13 @@ defmodule Harness.Run do
   # the 90-min lifetime cap, which remains the real backstop.
   @reviewer_idle_floor 600_000
 
+  # Idle-window floor for the implementer phase (Task 239). Implementers also
+  # run long silent compile/test/dialyzer commands, so the mechanical idle
+  # watchdog must be high enough that one silent check run does not lose the
+  # attempt. An explicit higher idle_timeout still wins; lower/nil values are
+  # raised to the same 10-min floor used by reviewers.
+  @implementer_idle_floor 600_000
+
   # Missing-verdict re-prompt budget (Task 203). The reviewer's one mandatory
   # mechanical act is writing `.harness/review.json`; a reviewer that finishes
   # the review but exits a hair before that write loses the ENTIRE run (full
@@ -201,6 +208,7 @@ defmodule Harness.Run do
            started_at_ms: integer(),
            total_timeout: timeout() | nil,
            idle_timeout: timeout() | nil,
+           implementer_idle_timeout: timeout() | nil,
            progress_timeout: timeout() | nil,
            lifetime_timeout: pos_integer(),
            max_hold_timeout: timeout(),
@@ -525,6 +533,7 @@ defmodule Harness.Run do
       started_at_ms: System.monotonic_time(:millisecond),
       total_timeout: run_timeout(opts, :total_timeout),
       idle_timeout: run_timeout(opts, :idle_timeout),
+      implementer_idle_timeout: Keyword.get(opts, :implementer_idle_timeout),
       progress_timeout: Keyword.get(opts, :progress_timeout),
       lifetime_timeout: run_timeout(opts, :lifetime_timeout),
       max_hold_timeout: run_timeout(opts, :max_hold_timeout),
@@ -688,9 +697,21 @@ defmodule Harness.Run do
         do_cancel(data, reason, from)
 
       true ->
-        {:keep_state, data}
+        {:keep_state, data, [{:state_timeout, running_idle_timeout(data), :implementer_idle_timeout}]}
     end
   end
+
+  def running(:state_timeout, :implementer_idle_timeout, %{agent_run: %AgentRun{} = run} = data) do
+    terminate_agent(data)
+    cancel_task(data.task)
+    cancel_task(data.discernment_task)
+
+    outcome = %Outcome{run: run, output: data.transcript, exit_status: nil, kind: {:timed_out, :idle}}
+
+    settle_implementer_outcome(%{data | task: nil, discernment_task: nil}, outcome)
+  end
+
+  def running(:state_timeout, :implementer_idle_timeout, _data), do: :keep_state_and_data
 
   def running(
         :info,
@@ -725,32 +746,7 @@ defmodule Harness.Run do
     Process.demonitor(ref, [:flush])
     cancel_task(data.discernment_task)
 
-    data =
-      %{data | task: nil, discernment_task: nil, agent_outcome: outcome}
-      |> finalize_transcript()
-      |> accumulate_token_usage(outcome)
-      |> clear_operator_steer_after_invocation()
-
-    # Precedence: a user cancel is terminal and must win over reflex re-dispatch,
-    # so the reflex clause is gated on `nil` cancel. Checkout pollution routes
-    # through the bounded recovery seam before any non-terminal advance.
-    case {data.hold_requested, data.cancel_requested, outcome.kind, checkout_pollution_reason(data)} do
-      {hold, nil, _kind, nil} when hold in [:graceful, :interrupt] ->
-        do_hold(data, hold)
-
-      {false, nil, {:reflex_halted, reason}, nil} ->
-        route_reflex_halt(data, reason)
-        fail(data, {:reflex_halted, reason})
-
-      {false, nil, _kind, nil} ->
-        {:next_state, :committing, data}
-
-      {_, {reason, from}, _kind, nil} ->
-        do_cancel(data, reason, from)
-
-      {_, _, _kind, pollution_reason} when not is_nil(pollution_reason) ->
-        recover_checkout_pollution(data, pollution_reason)
-    end
+    settle_implementer_outcome(%{data | task: nil, discernment_task: nil}, outcome)
   end
 
   def running(:info, {ref, {:error, reason}}, %{task: %Task{ref: ref}} = data) do
@@ -1043,6 +1039,7 @@ defmodule Harness.Run do
     }
 
     result = maybe_sample_in_run_discernment(state, data)
+    result = rearm_running_idle(state, data, result)
     rearm_reviewing_idle(state, data, result)
   end
 
@@ -1129,6 +1126,36 @@ defmodule Harness.Run do
   defp handle_common(_type, _content, _state, _data), do: :keep_state_and_data
 
   # ── Cancellation & settling ───────────────────────────────────────────────
+
+  @spec settle_implementer_outcome(data(), Outcome.t()) :: handler_result()
+  defp settle_implementer_outcome(data, %Outcome{} = outcome) do
+    data =
+      %{data | agent_outcome: outcome}
+      |> finalize_transcript()
+      |> accumulate_token_usage(outcome)
+      |> clear_operator_steer_after_invocation()
+
+    # Precedence: a user cancel is terminal and must win over reflex re-dispatch,
+    # so the reflex clause is gated on `nil` cancel. Checkout pollution routes
+    # through the bounded recovery seam before any non-terminal advance.
+    case {data.hold_requested, data.cancel_requested, outcome.kind, checkout_pollution_reason(data)} do
+      {hold, nil, _kind, nil} when hold in [:graceful, :interrupt] ->
+        do_hold(data, hold)
+
+      {false, nil, {:reflex_halted, reason}, nil} ->
+        route_reflex_halt(data, reason)
+        fail(data, {:reflex_halted, reason})
+
+      {false, nil, _kind, nil} ->
+        {:next_state, :committing, data}
+
+      {_, {reason, from}, _kind, nil} ->
+        do_cancel(data, reason, from)
+
+      {_, _, _kind, pollution_reason} when not is_nil(pollution_reason) ->
+        recover_checkout_pollution(data, pollution_reason)
+    end
+  end
 
   # Aborts an in-flight run: kills the current step task, SIGKILLs the agent if
   # one is running, and settles `failed`. `from` is the caller awaiting a cancel
@@ -1502,6 +1529,16 @@ defmodule Harness.Run do
 
   @spec clear_reviewer_run(data()) :: data()
   defp clear_reviewer_run(data), do: %{data | reviewer_run: nil}
+
+  # Re-arm the idle watchdog on implementer progress — but ONLY once the
+  # implementer handle is captured. Before the handle arrives there is no OS pid
+  # to reap directly, so the lifetime timeout remains the backstop.
+  @spec rearm_running_idle(state(), data(), handler_result()) :: handler_result()
+  defp rearm_running_idle(:running, %{agent_run: %AgentRun{}} = data, {:keep_state, next_data}) do
+    {:keep_state, next_data, [{:state_timeout, running_idle_timeout(data), :implementer_idle_timeout}]}
+  end
+
+  defp rearm_running_idle(_state, _data, result), do: result
 
   # Re-arm the idle watchdog on reviewer progress — but ONLY once the reviewer
   # handle is captured (reviewer_run set). Before the handle arrives the spawn
@@ -2197,6 +2234,25 @@ defmodule Harness.Run do
     |> put_opt(:progress_timeout, data.progress_timeout)
   end
 
+  # Idle window for the gen_statem-level :running watchdog. The explicit
+  # :implementer_idle_timeout run opt exists so tests can prove the mechanics
+  # without waiting for the production floor; normal dispatches use idle_timeout
+  # with the implementer floor below.
+  @spec running_idle_timeout(data()) :: timeout()
+  defp running_idle_timeout(%{implementer_idle_timeout: idle}) when not is_nil(idle), do: idle
+
+  defp running_idle_timeout(data), do: implementer_idle_timeout(data.idle_timeout)
+
+  # Floors the implementer-phase idle window at @implementer_idle_floor so a
+  # silent compile/test/dialyzer command cannot trip the watchdog. `nil` becomes
+  # the floor; explicit lower values are raised to it; explicit higher values
+  # win. `@doc false` public so the floor is unit-testable without a live run.
+  @doc false
+  @spec implementer_idle_timeout(timeout() | nil) :: timeout()
+  def implementer_idle_timeout(nil), do: @implementer_idle_floor
+  def implementer_idle_timeout(:infinity), do: :infinity
+  def implementer_idle_timeout(idle) when is_integer(idle), do: max(idle, @implementer_idle_floor)
+
   # Idle window for the gen_statem-level :reviewing watchdog. An explicit
   # `:reviewing_idle_timeout` run opt wins (tests); otherwise the same floor as
   # the Driver's reviewing idle window.
@@ -2874,7 +2930,7 @@ defmodule Harness.Run do
       on_output: fn chunk -> send(parent, {:transcript_chunk, chunk}) end
     ]
     |> put_opt(:total_timeout, data.total_timeout)
-    |> put_opt(:idle_timeout, data.idle_timeout)
+    |> put_opt(:idle_timeout, implementer_idle_timeout(data.idle_timeout))
     |> put_opt(:progress_timeout, data.progress_timeout)
   end
 
