@@ -6910,7 +6910,7 @@ shipped_in = "74dd14873b96bea170b6779f7f284e08275095f2"
 id = "237"
 phase = 19
 bundle = "dispatch-economy"
-status = "pending"
+status = "in_progress"
 title = "Cron manual-approval dispatch mode — park autonomous dispatch for operator approval before enqueue"
 scores = { d = 3, b = 3, u = 2 }
 markers = ["parallel"]
@@ -6952,6 +6952,7 @@ plan-but-approve middle ground. Sibling to Task 233 (the orchestrator) — same 
 dispatch path.
 """
 created_at = "2026-06-06"
+started_at = "2026-06-07"
 scored_at = "2026-06-06"
 
 [[task]]
