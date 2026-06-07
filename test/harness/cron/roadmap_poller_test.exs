@@ -3,7 +3,9 @@ defmodule Harness.Cron.RoadmapPollerTest do
 
   alias Harness.AgentRegistry
   alias Harness.Cron.Orchestrator
+  alias Harness.Cron.PendingDispatch
   alias Harness.Cron.RoadmapPoller
+  alias Harness.Notification.Event
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Oban.Plugins.Cron
@@ -11,16 +13,23 @@ defmodule Harness.Cron.RoadmapPollerTest do
   setup do
     prior_cron_polling = Application.get_env(:harness, :cron_polling)
     prior_project_autonomy = Application.get_env(:harness, :cron_project_autonomy)
+    prior_dispatch_mode = Application.get_env(:harness, :cron_dispatch_mode)
+    prior_sinks = Application.get_env(:harness, :notification_sinks)
 
     AgentRegistry.reset()
     ProjectRegistry.reset()
+    PendingDispatch.reset()
 
     on_exit(fn ->
       restore_env(:cron_polling, prior_cron_polling)
       restore_env(:cron_project_autonomy, prior_project_autonomy)
+      restore_env(:cron_dispatch_mode, prior_dispatch_mode)
+      restore_env(:notification_sinks, prior_sinks)
       Application.delete_env(:harness, :oban_insert)
       Application.delete_env(:harness, :roadmap_ready)
       Application.delete_env(:harness, :cron_orchestrator)
+      Application.delete_env(:harness, :test_capture_pid)
+      PendingDispatch.reset()
     end)
 
     :ok
@@ -342,6 +351,71 @@ defmodule Harness.Cron.RoadmapPollerTest do
     refute_received {:ready, "cron-off"}
   end
 
+  describe "manual dispatch mode (Task 237)" do
+    test "parks the single direct-dispatch task instead of enqueueing, and fires a witness event" do
+      parent = self()
+      project = ProjectFixture.from_repo("/tmp/harness-cron-manual1", name: "cron-manual1", concurrency_cap: 10)
+      assert :ok = ProjectRegistry.register(project)
+
+      enable_manual("cron-manual1")
+      Application.put_env(:harness, :roadmap_ready, fn _p -> {:ok, [task("52", "codex")]} end)
+      capture_inserts(parent)
+
+      assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+      # Parked, not enqueued.
+      refute_received {:inserted, _args}
+
+      assert [%PendingDispatch{task_id: "52", adapter: Harness.AgentAdapter.Codex, project_name: "cron-manual1"}] =
+               PendingDispatch.list()
+
+      assert_received {:notify, %Event{type: :dispatch_parked, task_id: "52", project: "cron-manual1"}}
+    end
+
+    test "parks the whole orchestrator-planned wave instead of enqueueing" do
+      parent = self()
+      project = ProjectFixture.from_repo("/tmp/harness-cron-manual2", name: "cron-manual2", concurrency_cap: 10)
+      assert :ok = ProjectRegistry.register(project)
+
+      enable_manual("cron-manual2")
+      Application.put_env(:harness, :roadmap_ready, fn _p -> {:ok, [task("52", "codex"), task("53", "cursor")]} end)
+
+      Application.put_env(:harness, :cron_orchestrator, fn _p, _ready ->
+        {:ok,
+         %Orchestrator{
+           dispatch: [%{task_id: "52", adapter: "codex"}, %{task_id: "53", adapter: "cursor"}],
+           skip: []
+         }}
+      end)
+
+      capture_inserts(parent)
+
+      assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+      refute_received {:inserted, _args}
+      assert PendingDispatch.list() |> Enum.map(& &1.task_id) |> Enum.sort() == ["52", "53"]
+      assert_received {:notify, %Event{type: :dispatch_parked, task_id: "52"}}
+      assert_received {:notify, %Event{type: :dispatch_parked, task_id: "53"}}
+    end
+
+    test "a re-tick does not duplicate a parked decision or re-notify" do
+      project = ProjectFixture.from_repo("/tmp/harness-cron-manual-dedup", name: "cron-manual-dedup", concurrency_cap: 10)
+      assert :ok = ProjectRegistry.register(project)
+
+      enable_manual("cron-manual-dedup")
+      Application.put_env(:harness, :roadmap_ready, fn _p -> {:ok, [task("52", "codex")]} end)
+
+      assert :ok = RoadmapPoller.perform(%Oban.Job{})
+      assert_received {:notify, %Event{type: :dispatch_parked, task_id: "52"}}
+
+      # Second tick: the task is still pending (manual mode held it), so it must
+      # not park a duplicate nor re-fire the witness event.
+      assert :ok = RoadmapPoller.perform(%Oban.Job{})
+      refute_received {:notify, _event}
+      assert length(PendingDispatch.list()) == 1
+    end
+  end
+
   test "reports the next tick from the configured schedule" do
     Application.put_env(:harness, :cron_polling, enabled: true, schedule: "0 */2 * * *")
 
@@ -395,6 +469,24 @@ defmodule Harness.Cron.RoadmapPollerTest do
 
   # A `rmap ready --dispatchable --fields id,assignee,markers` row.
   defp task(id, assignee), do: %{"id" => id, "assignee" => assignee, "markers" => []}
+
+  # Turn on autonomy + manual dispatch mode for `name`, capturing park witness
+  # events to the test process via the shared CaptureSink.
+  defp enable_manual(name) do
+    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
+    Application.put_env(:harness, :cron_project_autonomy, %{name => true})
+    Application.put_env(:harness, :cron_dispatch_mode, %{name => :manual})
+    Application.put_env(:harness, :notification_sinks, [Harness.Test.CaptureSink])
+    Application.put_env(:harness, :test_capture_pid, self())
+  end
+
+  defp capture_inserts(parent) do
+    Application.put_env(:harness, :oban_insert, fn changeset ->
+      job = Ecto.Changeset.apply_action!(changeset, :insert)
+      send(parent, {:inserted, job.args})
+      {:ok, job}
+    end)
+  end
 
   defp restore_env(key, nil), do: Application.delete_env(:harness, key)
   defp restore_env(key, value), do: Application.put_env(:harness, key, value)

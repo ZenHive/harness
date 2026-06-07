@@ -39,7 +39,10 @@ defmodule Harness.Cron.RoadmapPoller do
 
   alias Harness.AgentRegistry
   alias Harness.Cron.Orchestrator
+  alias Harness.Cron.PendingDispatch
   alias Harness.Cron.Settings
+  alias Harness.Notification
+  alias Harness.Notification.Event
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.Roadmap
@@ -229,18 +232,64 @@ defmodule Harness.Cron.RoadmapPoller do
     end
   end
 
-  # Shared tail for both dispatch paths: resolve the agent to an adapter, apply
-  # the operator/availability gate, enqueue. A disabled or quota-exhausted agent
-  # is logged and skipped, never dispatched.
+  # Shared tail for both dispatch paths (the N==1 direct path and each N>=2
+  # planned entry): resolve the agent to an adapter, apply the operator/
+  # availability gate, then enqueue OR park. A disabled or quota-exhausted agent
+  # is logged and skipped, never dispatched. The mode gate keys solely off the
+  # project's dispatch mode — no "is this run high-stakes" judgment in code.
   @spec route_and_enqueue(Project.t(), String.t(), atom()) :: :ok
   defp route_and_enqueue(%Project{} = project, item_id, agent) when is_atom(agent) do
     with {:ok, adapter} <- AgentRegistry.delegatable_module_for_agent(agent),
-         {:ok, adapter} <- AgentRegistry.select(adapter),
-         {:ok, _job} <- enqueue_run(project, item_id, adapter) do
-      :ok
+         {:ok, adapter} <- AgentRegistry.select(adapter) do
+      enqueue_or_park(project, item_id, adapter)
     else
       {:error, reason} -> log_dispatch_skip(project, item_id, reason)
     end
+  end
+
+  # The single enqueue boundary both autonomous paths share. Under `:manual` the
+  # resolved decision is parked for operator approval; under `:auto` it is
+  # enqueued exactly as before (byte-identical to the pre-Task-237 behaviour).
+  @spec enqueue_or_park(Project.t(), String.t(), module()) :: :ok
+  defp enqueue_or_park(%Project{} = project, item_id, adapter) do
+    case Settings.dispatch_mode(project) do
+      :manual -> park_for_approval(project, item_id, adapter)
+      :auto -> auto_enqueue(project, item_id, adapter)
+    end
+  end
+
+  @spec auto_enqueue(Project.t(), String.t(), module()) :: :ok
+  defp auto_enqueue(%Project{} = project, item_id, adapter) do
+    case enqueue_run(project, item_id, adapter) do
+      {:ok, _job} -> :ok
+      {:error, reason} -> log_dispatch_skip(project, item_id, reason)
+    end
+  end
+
+  # Park the resolved decision instead of enqueueing. The env scrub is captured
+  # now (same value the auto path applies) so approval honours it without
+  # re-deriving. A witness event fires only on a freshly-parked decision, so a
+  # re-tick of an already-parked task does not re-notify.
+  @spec park_for_approval(Project.t(), String.t(), module()) :: :ok
+  defp park_for_approval(%Project{} = project, item_id, adapter) do
+    case PendingDispatch.park(project.name, item_id, adapter, env_scrub_for_adapter(adapter)) do
+      {:parked, record} ->
+        Notification.notify(park_event(project, record))
+        log_park(project, item_id, adapter)
+
+      {:exists, _record} ->
+        :ok
+    end
+  end
+
+  @spec park_event(Project.t(), PendingDispatch.t()) :: Event.t()
+  defp park_event(%Project{} = project, %PendingDispatch{} = record) do
+    %Event{
+      type: :dispatch_parked,
+      task_id: record.task_id,
+      project: project.name,
+      outcome: %{adapter: inspect(record.adapter), pending_id: record.id}
+    }
   end
 
   @doc """
@@ -355,6 +404,15 @@ defmodule Harness.Cron.RoadmapPoller do
   @spec log_dispatch_skip(Project.t(), String.t(), term()) :: :ok
   defp log_dispatch_skip(%Project{} = project, item_id, reason) do
     Logger.debug("harness cron poller: #{project.name} task #{item_id} dispatch skipped: #{inspect(reason)}")
+  end
+
+  # Info-level so a parked decision is observable in the operator log — manual
+  # mode holds the enqueue, and the operator needs to see what is awaiting them.
+  @spec log_park(Project.t(), String.t(), module()) :: :ok
+  defp log_park(%Project{} = project, item_id, adapter) do
+    Logger.info(
+      "harness cron poller: #{project.name} task #{item_id} parked for approval (mode=manual, adapter=#{inspect(adapter)})"
+    )
   end
 
   @spec config() :: keyword()

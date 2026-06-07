@@ -14,6 +14,17 @@ defmodule Harness.Cron.Settings do
 
   Effective autonomy for a project is `master AND project` (`effective?/1`).
 
+  ## Dispatch mode (Task 237) — a third dimension, orthogonal to on/off
+
+  A per-project **dispatch mode** — `:auto` (default) | `:manual` — lives under
+  `:harness, :cron_dispatch_mode` (`%{project_name => mode}`). **Absence means
+  `:auto`**, so existing autonomous projects keep auto-dispatching with zero
+  behavior change. Mode only matters once a project is `effective?/1`: under
+  `:manual` the poller PARKS its resolved dispatch decision for operator approval
+  (`Harness.Cron.PendingDispatch`) instead of enqueueing it. It is *not* an on/off
+  toggle — `:manual` still lets the orchestrator plan the wave; it only holds the
+  mechanical enqueue. `dispatch_mode/1` reads it; `set_dispatch_mode/3` flips it.
+
   ## Schedule (Task 111) — boot-applied, not live
 
   The cron **schedule** is also persisted here (in the same `:cron_polling` config,
@@ -50,6 +61,7 @@ defmodule Harness.Cron.Settings do
   @default_root "~/.harness"
   @filename "cron_settings.term"
   @store_key :cron
+  @valid_dispatch_modes [:auto, :manual]
 
   # The only crontabs that can reach Oban's Cron plugin — a closed
   # `{key, label, crontab}` whitelist. A free-form crontab box would let an
@@ -62,10 +74,14 @@ defmodule Harness.Cron.Settings do
     {"daily", "Daily (midnight)", "0 0 * * *"}
   ]
 
-  @typedoc "The persisted settings-store value: both switch sets plus the cron schedule."
+  @typedoc "A per-project cron dispatch mode."
+  @type dispatch_mode :: :auto | :manual
+
+  @typedoc "The persisted settings-store value: both switch sets, dispatch modes, plus the cron schedule."
   @type t :: %{
           required(:master_enabled) => boolean(),
           required(:project_autonomy) => %{String.t() => boolean()},
+          optional(:dispatch_mode) => %{String.t() => dispatch_mode()},
           optional(:schedule) => String.t()
         }
 
@@ -91,11 +107,29 @@ defmodule Harness.Cron.Settings do
        when is_boolean(master) and is_map(projects) do
     put_master(master)
     Application.put_env(:harness, :cron_project_autonomy, projects)
+    apply_dispatch_mode(Map.get(record, :dispatch_mode))
     apply_schedule(Map.get(record, :schedule))
     :ok
   end
 
   defp apply_record(_other), do: :ok
+
+  # Seeds per-project dispatch modes from a persisted record. A record missing
+  # `:dispatch_mode` (written before Task 237) leaves the default in place — every
+  # project stays `:auto`. A torn/hand-edited map is sanitized to well-formed
+  # `{binary => :auto | :manual}` entries only.
+  @spec apply_dispatch_mode(term()) :: :ok
+  defp apply_dispatch_mode(modes) when is_map(modes) do
+    Application.put_env(:harness, :cron_dispatch_mode, sanitize_modes(modes))
+    :ok
+  end
+
+  defp apply_dispatch_mode(_other), do: :ok
+
+  @spec sanitize_modes(map()) :: %{String.t() => dispatch_mode()}
+  defp sanitize_modes(modes) do
+    for {name, mode} <- modes, is_binary(name), mode in @valid_dispatch_modes, into: %{}, do: {name, mode}
+  end
 
   @spec apply_schedule(term()) :: :ok
   defp apply_schedule(crontab) when is_binary(crontab) do
@@ -134,6 +168,16 @@ defmodule Harness.Cron.Settings do
   def effective?(%Project{} = project), do: master_enabled?() and project_enabled?(project)
 
   @doc """
+  Returns a project's cron dispatch mode (`:auto` | `:manual`); absence ⇒ `:auto`.
+
+  Only consulted for a project that is already `effective?/1`: `:manual` parks the
+  poller's resolved dispatch decision for operator approval instead of enqueueing.
+  """
+  @spec dispatch_mode(Project.t() | String.t()) :: dispatch_mode()
+  def dispatch_mode(%Project{name: name}), do: dispatch_mode(name)
+  def dispatch_mode(name) when is_binary(name), do: Map.get(dispatch_mode_map(), name, :auto)
+
+  @doc """
   Flips the master switch at runtime, persists it, and logs an info-level audit
   line naming the actor.
   """
@@ -155,6 +199,24 @@ defmodule Harness.Cron.Settings do
     persist()
     Logger.info("harness cron autonomy: project #{name} #{state_word(enabled)} by #{actor}")
     :ok
+  end
+
+  @doc """
+  Sets a project's cron dispatch mode at runtime, persists it, and logs an
+  info-level audit line naming the actor — mirroring `set_project/3`.
+
+  An invalid mode is rejected (`{:error, :invalid_mode}`) and never written.
+  """
+  @spec set_dispatch_mode(String.t(), dispatch_mode(), String.t()) :: :ok | {:error, :invalid_mode}
+  def set_dispatch_mode(name, mode, actor) when is_binary(name) and mode in @valid_dispatch_modes and is_binary(actor) do
+    Application.put_env(:harness, :cron_dispatch_mode, Map.put(dispatch_mode_map(), name, mode))
+    persist()
+    Logger.info("harness cron autonomy: project #{name} dispatch mode #{mode} by #{actor}")
+    :ok
+  end
+
+  def set_dispatch_mode(name, _mode, actor) when is_binary(name) and is_binary(actor) do
+    {:error, :invalid_mode}
   end
 
   @doc """
@@ -201,6 +263,9 @@ defmodule Harness.Cron.Settings do
   @spec project_map() :: %{String.t() => boolean()}
   defp project_map, do: Application.get_env(:harness, :cron_project_autonomy, %{})
 
+  @spec dispatch_mode_map() :: %{String.t() => dispatch_mode()}
+  defp dispatch_mode_map, do: Application.get_env(:harness, :cron_dispatch_mode, %{})
+
   @spec known_crontab?(String.t()) :: boolean()
   defp known_crontab?(crontab), do: Enum.any?(@schedule_presets, fn {_key, _label, ct} -> ct == crontab end)
 
@@ -231,7 +296,12 @@ defmodule Harness.Cron.Settings do
 
   @spec current_state() :: t()
   defp current_state do
-    %{master_enabled: master_enabled?(), project_autonomy: project_map(), schedule: RoadmapPoller.schedule()}
+    %{
+      master_enabled: master_enabled?(),
+      project_autonomy: project_map(),
+      dispatch_mode: dispatch_mode_map(),
+      schedule: RoadmapPoller.schedule()
+    }
   end
 
   @spec store_opts() :: SettingsStore.legacy_opts()

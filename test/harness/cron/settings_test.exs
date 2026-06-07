@@ -10,6 +10,7 @@ defmodule Harness.Cron.SettingsTest do
     prior_settings = Application.get_env(:harness, :cron_settings)
     prior_cron_polling = Application.get_env(:harness, :cron_polling)
     prior_project_autonomy = Application.get_env(:harness, :cron_project_autonomy)
+    prior_dispatch_mode = Application.get_env(:harness, :cron_dispatch_mode)
 
     root = Path.join(System.tmp_dir!(), "harness_cron_settings_#{System.unique_integer([:positive])}")
     Application.put_env(:harness, :cron_settings, root: root)
@@ -18,6 +19,7 @@ defmodule Harness.Cron.SettingsTest do
       restore_env(:cron_settings, prior_settings)
       restore_env(:cron_polling, prior_cron_polling)
       restore_env(:cron_project_autonomy, prior_project_autonomy)
+      restore_env(:cron_dispatch_mode, prior_dispatch_mode)
       File.rm_rf(root)
     end)
 
@@ -63,6 +65,55 @@ defmodule Harness.Cron.SettingsTest do
       Application.delete_env(:harness, :cron_project_autonomy)
       assert :ok = Settings.load_into_env()
       assert Settings.project_enabled?("proj")
+    end
+  end
+
+  describe "dispatch mode (Task 237)" do
+    test "absence defaults to :auto for every project" do
+      project = ProjectFixture.from_repo("/tmp/harness-mode-default", name: "mode-default")
+
+      assert Settings.dispatch_mode("mode-default") == :auto
+      assert Settings.dispatch_mode(project) == :auto
+    end
+
+    test "set_dispatch_mode flips the mode and persists across a reload" do
+      assert :ok = Settings.set_dispatch_mode("proj", :manual, "test")
+      assert Settings.dispatch_mode("proj") == :manual
+
+      # Simulate a restart: clear env, reload from the persisted file.
+      Application.delete_env(:harness, :cron_dispatch_mode)
+      assert :ok = Settings.load_into_env()
+      assert Settings.dispatch_mode("proj") == :manual
+
+      # Flipping back to :auto round-trips too.
+      assert :ok = Settings.set_dispatch_mode("proj", :auto, "test")
+      assert Settings.dispatch_mode("proj") == :auto
+    end
+
+    test "set_dispatch_mode is independent of the on/off autonomy flag" do
+      assert :ok = Settings.set_project("proj", true, "test")
+      assert :ok = Settings.set_dispatch_mode("proj", :manual, "test")
+
+      assert Settings.project_enabled?("proj")
+      assert Settings.dispatch_mode("proj") == :manual
+
+      # Clearing autonomy leaves the mode untouched (orthogonal dimensions).
+      assert :ok = Settings.set_project("proj", false, "test")
+      assert Settings.dispatch_mode("proj") == :manual
+    end
+
+    test "an invalid mode is rejected and never written" do
+      assert {:error, :invalid_mode} = Settings.set_dispatch_mode("proj", :bogus, "test")
+      assert Settings.dispatch_mode("proj") == :auto
+    end
+
+    test "a record without dispatch_mode (pre-237) leaves every project on :auto" do
+      assert :ok = Settings.set_master(true, "test")
+
+      Application.delete_env(:harness, :cron_dispatch_mode)
+      assert :ok = Settings.load_into_env()
+
+      assert Settings.dispatch_mode("anything") == :auto
     end
   end
 

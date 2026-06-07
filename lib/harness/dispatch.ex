@@ -54,6 +54,7 @@ defmodule Harness.Dispatch do
   alias Harness.Batch.AgentEvaluation.Comparison
   alias Harness.Batch.AgentEvaluation.Entry
   alias Harness.CapabilityScore
+  alias Harness.Cron.PendingDispatch
   alias Harness.Lander
   alias Harness.Project
   alias Harness.ProjectRegistry
@@ -564,6 +565,70 @@ defmodule Harness.Dispatch do
           {:ok, %{run_id: String.t(), task_id: String.t()}} | {:error, error()}
   def reland(run_id) when is_binary(run_id) do
     Lander.enqueue(run_id)
+  end
+
+  # --- Manual-approval cron dispatch over JSON: pending / approve (Task 237) ---
+  #
+  # A project whose cron dispatch mode is :manual (Harness.Cron.Settings) does NOT
+  # auto-enqueue an autonomously-selected run — the poller parks the resolved
+  # decision (task id + adapter + env scrub) in Harness.Cron.PendingDispatch and
+  # fires a witness event. These two tools are the operator surface: list what is
+  # parked, then approve one to drain it into the normal implement->review->land
+  # loop. ONLY the cron path is gated; dispatch-task / dispatch-await are not (the
+  # operator already chose to issue those). The gate keys solely off the per-
+  # project mode flag — no "is this run high-stakes" classifier.
+
+  api(
+    :pending,
+    "List autonomous (cron) dispatch decisions parked for operator approval because their project's cron dispatch mode is :manual. Each entry carries the pending id (pass to dispatch-approve), project, task, the resolved adapter, and when it was parked. Interactive dispatch-task / dispatch-await are never parked — only the cron path is.",
+    params: [
+      project_name: [
+        kind: :value,
+        default: nil,
+        description:
+          "Optional registered project name to filter parked decisions; omit/null lists every project's pending decisions."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{pending: [%{id, project_name, task_id, adapter, parked_at}]}} — possibly empty. parked_at is ISO8601."
+    }
+  )
+
+  @spec pending(String.t() | nil) :: {:ok, %{pending: [map()]}}
+  def pending(project_name \\ nil) when is_nil(project_name) or is_binary(project_name) do
+    records =
+      PendingDispatch.list()
+      |> filter_pending(project_name)
+      |> Enum.map(&summarize_pending/1)
+
+    {:ok, %{pending: records}}
+  end
+
+  api(
+    :approve,
+    "Approve a parked autonomous-dispatch decision by its pending id (from dispatch-pending), draining it into the normal reviewer-gated run loop on the adapter the orchestrator already resolved. Idempotent: a second approval of the same id, or an unknown id, returns {:error, :not_found} (the guard that makes double-enqueue impossible). The operator approval gate for :manual cron dispatch mode.",
+    params: [
+      pending_id: [
+        kind: :value,
+        description:
+          ~s|Pending decision id from dispatch-pending (e.g. "myapp:42"). An unknown/already-approved id returns {:error, :not_found}.|
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{run_id, task_id, project_name, adapter}} on a started run. {:error, reason}: :not_found, {:unknown_project, name}, the rmap ingest reasons, or an Oban insert failure."
+    }
+  )
+
+  @spec approve(String.t()) :: {:ok, map()} | {:error, :not_found | term()}
+  def approve(pending_id) when is_binary(pending_id) do
+    case PendingDispatch.approve(pending_id) do
+      {:ok, %{adapter: adapter} = result} -> {:ok, %{result | adapter: inspect(adapter)}}
+      {:error, _reason} = error -> error
+    end
   end
 
   # --- Project registration over JSON ---
@@ -1182,6 +1247,23 @@ defmodule Harness.Dispatch do
   @spec jsonable(term()) :: term()
   defp jsonable(term) when is_atom(term) or is_binary(term) or is_number(term), do: term
   defp jsonable(term), do: inspect(term)
+
+  @spec filter_pending([PendingDispatch.t()], String.t() | nil) :: [PendingDispatch.t()]
+  defp filter_pending(records, nil), do: records
+  defp filter_pending(records, project_name), do: Enum.filter(records, &(&1.project_name == project_name))
+
+  # Projects a parked decision into a JSON-safe map: the adapter module to a
+  # readable name, the parked_at timestamp to ISO8601.
+  @spec summarize_pending(PendingDispatch.t()) :: map()
+  defp summarize_pending(%PendingDispatch{} = record) do
+    %{
+      id: record.id,
+      project_name: record.project_name,
+      task_id: record.task_id,
+      adapter: inspect(record.adapter),
+      parked_at: DateTime.to_iso8601(record.parked_at)
+    }
+  end
 
   @spec resolve_adapter(String.t()) :: {:ok, {module(), atom()}} | {:error, {:unknown_adapter, String.t()}}
   defp resolve_adapter(adapter), do: Registry.resolve(adapter)

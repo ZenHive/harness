@@ -19,8 +19,8 @@ defmodule Harness.Notification.Event do
   is data, never a merge.
   """
 
-  @typedoc "Which merge-train transition fired."
-  @type type :: :landed | :blocked | :local_sync_skipped | :in_run_discernment
+  @typedoc "Which merge-train (or dispatch-gate) transition fired."
+  @type type :: :landed | :blocked | :local_sync_skipped | :in_run_discernment | :dispatch_parked
 
   @typedoc """
   The raw outcome payload, keyed by `type`:
@@ -29,6 +29,9 @@ defmodule Harness.Notification.Event do
     * `:blocked` — the structured blocked reason (`String.t()`).
     * `:local_sync_skipped` — the manual-sync reason (`String.t()`).
     * `:in_run_discernment` — a sampled partial-transcript reviewer payload.
+    * `:dispatch_parked` — a parked autonomous-dispatch decision (`%{adapter,
+      pending_id}`), fired when a `:manual`-mode project holds an enqueue for
+      operator approval instead of dispatching it.
   """
   @type outcome :: String.t() | map()
 
@@ -64,6 +67,11 @@ defmodule Harness.Notification.Event do
       ...>   type: :blocked, task_id: "42", outcome: "land-cap exhausted"
       ...> })
       "blocked task 42: land-cap exhausted"
+
+      iex> Harness.Notification.Event.summary(%Harness.Notification.Event{
+      ...>   type: :dispatch_parked, task_id: "42", outcome: %{adapter: "claude", pending_id: "proj:42"}
+      ...> })
+      "parked dispatch of task 42 for claude (awaiting operator approval)"
   """
   @spec summary(t()) :: String.t()
   def summary(%__MODULE__{type: :landed, task_id: id, outcome: sha}), do: "landed task #{id} at #{sha}"
@@ -75,4 +83,7 @@ defmodule Harness.Notification.Event do
 
   def summary(%__MODULE__{type: :in_run_discernment, task_id: id, outcome: %{action: action, verdict: verdict}}),
     do: "in-run discernment on task #{id}: #{action} (#{verdict})"
+
+  def summary(%__MODULE__{type: :dispatch_parked, task_id: id, outcome: %{adapter: adapter}}),
+    do: "parked dispatch of task #{id} for #{adapter} (awaiting operator approval)"
 end
