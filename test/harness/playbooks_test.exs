@@ -37,7 +37,7 @@ defmodule Harness.PlaybooksTest do
     test "every catalogued playbook resolves to a non-empty body" do
       for name <- @expected_names do
         assert {:ok, %{body: body}} = Playbooks.get(name)
-        assert is_binary(body) and String.length(body) > 100
+        assert String.length(body) > 100
       end
     end
 

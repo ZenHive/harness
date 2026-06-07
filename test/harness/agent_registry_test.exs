@@ -25,6 +25,15 @@ defmodule Harness.AgentRegistryTest do
     def capabilities, do: %Capabilities{session_resume: true, cost_tier: :free}
   end
 
+  defmodule UnknownTier do
+    @moduledoc false
+    # A remote call whose atom() spec the type checker trusts, opaquing the
+    # statically-known :bogus so it is not flagged at the filter_by_cost_tier/2
+    # call site (see the test below).
+    @spec value() :: atom()
+    def value, do: :bogus
+  end
+
   setup do
     AgentRegistry.reset()
     :ok
@@ -59,8 +68,13 @@ defmodule Harness.AgentRegistryTest do
     end
 
     test "raises on an unknown cost tier (guards typos at call sites)" do
+      # UnknownTier.value/0's atom() @spec opaques the statically-known :bogus.
+      # The checker trusts a *remote* call's spec (unlike an inlined local defp,
+      # whose body it re-infers), so :bogus is widened to atom() and not flagged
+      # as incompatible with the :free | :metered param — while the runtime value
+      # still trips the guard, which is the behaviour under test.
       assert_raise FunctionClauseError, fn ->
-        AgentRegistry.filter_by_cost_tier([FreeAdapter], :bogus)
+        AgentRegistry.filter_by_cost_tier([FreeAdapter], UnknownTier.value())
       end
     end
   end

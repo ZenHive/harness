@@ -224,8 +224,8 @@ defmodule Harness.AgentAdapter.ConformanceCase do
         test "builds a spawnable {executable, argv, env} for the autonomous baseline" do
           assert {:ok, {executable, argv, env}} = @adapter.build_command(invocation())
 
-          assert is_binary(executable) and executable != ""
-          assert is_list(argv) and Enum.all?(argv, &is_binary/1)
+          assert executable != ""
+          assert Enum.all?(argv, &is_binary/1)
 
           assert Enum.all?(env, fn
                    {key, value} when is_binary(key) -> is_binary(value) or value === false

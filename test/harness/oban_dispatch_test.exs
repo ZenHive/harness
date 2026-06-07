@@ -757,7 +757,7 @@ defmodule Harness.ObanDispatchTest do
                }
              })
 
-    assert is_integer(seconds) and seconds > 0
+    assert seconds > 0
   end
 
   # Task 202: the node-pressure admission gate is the aggregate companion to the
@@ -872,7 +872,7 @@ defmodule Harness.ObanDispatchTest do
                }
              })
 
-    assert is_integer(seconds) and seconds > 0
+    assert seconds > 0
 
     # The leftover branch is gone — the next attempt's worktree add starts clean.
     assert repo |> GitFixture.git!(["branch", "--list", "harness/#{run_id}"]) |> String.trim() == ""

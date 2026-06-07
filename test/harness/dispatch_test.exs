@@ -271,7 +271,7 @@ defmodule Harness.DispatchTest do
       assert summary.task_id == "8"
       assert summary.state == :done
       # The summarizer flattens the struct to a plain map of scalars.
-      refute is_struct(summary)
+      refute Map.has_key?(summary, :__struct__)
       assert summary.review_verdict == :approve
       assert Map.has_key?(summary, :worktree_path)
     end
