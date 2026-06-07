@@ -43,7 +43,9 @@ defmodule Harness.ResultStore.Memory do
   @spec list_run_records(Harness.ResultStore.filters(), keyword()) :: {:ok, [LogRecord.t()]}
   def list_run_records(filters, opts) when is_list(filters) and is_list(opts) do
     {limit, filters} = Harness.ResultStore.pop_limit(filters)
+    {include_transcripts?, filters} = Keyword.pop(filters, :include_transcripts, false)
     point_lookup? = Keyword.has_key?(filters, :run_id)
+    retain_outputs? = point_lookup? or include_transcripts?
 
     records =
       opts
@@ -51,7 +53,7 @@ defmodule Harness.ResultStore.Memory do
       |> Map.fetch!(:runs)
       |> Map.values()
       |> Enum.sort_by(fn {_record, seq} -> seq end, :desc)
-      |> Enum.map(fn {record, _seq} -> maybe_strip_agent_output(record, point_lookup?) end)
+      |> Enum.map(fn {record, _seq} -> maybe_strip_agent_output(record, retain_outputs?) end)
       |> Enum.filter(&match_filters?(&1, filters))
       |> maybe_take(limit)
 

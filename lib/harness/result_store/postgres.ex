@@ -174,14 +174,16 @@ defmodule Harness.ResultStore.Postgres do
 
     try do
       {limit, filters} = Harness.ResultStore.pop_limit(filters)
+      {include_transcripts?, filters} = Keyword.pop(filters, :include_transcripts, false)
       point_lookup? = Keyword.has_key?(filters, :run_id)
+      retain_outputs? = point_lookup? or include_transcripts?
 
       query =
         from r in RunRecordSchema,
           order_by: [desc: r.inserted_at]
 
       query = apply_filters(query, filters)
-      query = if point_lookup?, do: query, else: select_without_agent_output(query)
+      query = if retain_outputs?, do: query, else: select_without_agent_output(query)
       query = if limit, do: limit(query, ^limit), else: query
 
       rows = repo.all(query)

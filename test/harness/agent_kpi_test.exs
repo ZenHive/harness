@@ -353,6 +353,96 @@ defmodule Harness.AgentKPITest do
     end
   end
 
+  describe "aggregate_ceremony_cost/1" do
+    @reviewer_transcript ~s({"type":"result","usage":{"input_tokens":100,"output_tokens":40}}\n)
+
+    test "sums implementer, reviewer, and audit components per approved run" do
+      records = [
+        record(
+          run_id: "run-a",
+          task_id: "42",
+          verdict: :approve,
+          token_usage: tokens(600, 400),
+          reviewer_adapter: Claude,
+          reviewer_output: @reviewer_transcript
+        ),
+        record(
+          run_id: "run-b",
+          task_id: "43",
+          verdict: :approve,
+          token_usage: tokens(200, 100),
+          reviewer_adapter: Claude,
+          reviewer_output: @reviewer_transcript
+        ),
+        record(run_id: "run-c", task_id: "44", verdict: :reject, token_usage: tokens(900, 900))
+      ]
+
+      cost = AgentKPI.aggregate_ceremony_cost(records)
+
+      assert cost.run_count == 2
+      assert [%{task_id: "42", run_id: "run-a"}, %{task_id: "43", run_id: "run-b"}] = cost.per_task
+
+      [a, b] = cost.per_task
+      assert a.tokens == %{implementer: 1000, reviewer: 140, audit: 0}
+      assert a.total == 1140
+      assert b.tokens == %{implementer: 300, reviewer: 140, audit: 0}
+      assert b.total == 440
+    end
+
+    test "reports median and p90 over per-run ceremony totals" do
+      records = [
+        record(
+          run_id: "run-1",
+          verdict: :approve,
+          token_usage: tokens(100, 100),
+          reviewer_adapter: Claude,
+          reviewer_output: @reviewer_transcript
+        ),
+        record(
+          run_id: "run-2",
+          verdict: :approve,
+          token_usage: tokens(300, 300),
+          reviewer_adapter: Claude,
+          reviewer_output: @reviewer_transcript
+        ),
+        record(
+          run_id: "run-3",
+          verdict: :approve,
+          token_usage: tokens(500, 500),
+          reviewer_adapter: Claude,
+          reviewer_output: @reviewer_transcript
+        )
+      ]
+
+      dist = AgentKPI.aggregate_ceremony_cost(records).distribution
+
+      assert dist.total == %{median: 740.0, p90: 1140}
+      assert dist.implementer == %{median: 600.0, p90: 1000}
+      assert dist.reviewer == %{median: 140, p90: 140}
+      assert dist.audit == %{median: 0, p90: 0}
+    end
+
+    test "empty input returns zeroed distribution" do
+      assert AgentKPI.aggregate_ceremony_cost([]) == %{
+               run_count: 0,
+               per_task: [],
+               distribution: %{
+                 total: %{median: 0, p90: 0},
+                 implementer: %{median: 0, p90: 0},
+                 reviewer: %{median: 0, p90: 0},
+                 audit: %{median: 0, p90: 0}
+               }
+             }
+    end
+
+    test "ceremony_tokens/1 treats missing reviewer_output as zero reviewer spend" do
+      tokens =
+        AgentKPI.ceremony_tokens(record(verdict: :approve, token_usage: tokens(50, 50), reviewer_adapter: Claude))
+
+      assert tokens == %{implementer: 100, reviewer: 0, audit: 0}
+    end
+  end
+
   describe "aggregate/1 reviewer-fixed vs first-try" do
     test "first_attempt_pass_rate separates a first-try agent from one whose reviewer always fixes" do
       records = [

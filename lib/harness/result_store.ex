@@ -249,6 +249,44 @@ defmodule Harness.ResultStore do
     end
   end
 
+  api(
+    :aggregate_ceremony_cost,
+    "Per-run ceremony token facts over reviewer-approved runs: implementer + reviewer + audit (audit is 0 until audit capture lands). Raw median/p90 distribution only — no batching verdict.",
+    params: [
+      opts: [
+        kind: :value,
+        default: [],
+        description:
+          "Options keyword. `:limit` (default 200) caps recent runs scanned (newest-first). Reviewer spend requires reviewer_output — this query sets include_transcripts internally."
+      ],
+      store: [
+        kind: :value,
+        default: nil,
+        description: "Configured store or override; `false`/`nil` returns an empty ceremony_cost map."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description: "{:ok, AgentKPI.ceremony_cost()} or {:error, reason}."
+    }
+  )
+
+  @spec aggregate_ceremony_cost(keyword(), store()) :: {:ok, AgentKPI.ceremony_cost()} | {:error, term()}
+  def aggregate_ceremony_cost(opts \\ [], store \\ configured())
+
+  def aggregate_ceremony_cost(opts, false) when is_list(opts), do: {:ok, AgentKPI.aggregate_ceremony_cost([])}
+  def aggregate_ceremony_cost(opts, nil) when is_list(opts), do: {:ok, AgentKPI.aggregate_ceremony_cost([])}
+
+  def aggregate_ceremony_cost(opts, store) when is_list(opts) do
+    limit = Keyword.get(opts, :limit, 200)
+    filters = [include_transcripts: true, limit: limit]
+
+    case list_run_records(store, filters) do
+      {:ok, records} -> {:ok, AgentKPI.aggregate_ceremony_cost(records)}
+      {:error, _} = err -> err
+    end
+  end
+
   api(:save_capability_score, "Persist one computed capability score.",
     params: [
       score: [

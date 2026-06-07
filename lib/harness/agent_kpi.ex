@@ -12,6 +12,17 @@ defmodule Harness.AgentKPI do
   `aggregate_by_agent_domain/1` adds the same rollup keyed by `{agent, domain}`
   for per-domain slicing.
 
+  ## Ceremony / fragmentation tax (`aggregate_ceremony_cost/1`)
+
+  `aggregate_ceremony_cost/1` counts the per-dispatch token overhead of the
+  implement→review→audit pipeline for reviewer-approved runs (`:approve` +
+  `:done`). Implementer spend comes from the persisted `token_usage`; reviewer
+  spend is parsed from `reviewer_output` via `Harness.TokenUsage` (requires the
+  transcript — use `include_transcripts: true` when listing from
+  `Harness.ResultStore`). Post-merge audit spend is **not** on run records today,
+  so `audit` is reported as `0` until audit capture lands — the breakdown is
+  still honest raw counting, not a batching verdict.
+
   ## Reviewer-as-gate rollup
 
   `aggregate_reviewer_rejections/1` is the mirror-image view: keyed by
@@ -53,6 +64,7 @@ defmodule Harness.AgentKPI do
       an agent with zero `:approve` runs reports `nil` (no divide-by-zero, not `0`).
   """
 
+  alias Harness.AgentRegistry
   alias Harness.CapabilityDomain
   alias Harness.Run.LogRecord
   alias Harness.TokenUsage
@@ -101,6 +113,36 @@ defmodule Harness.AgentKPI do
 
   @typedoc "Per-(agent, domain) ledger keyed by `{agent, domain}`."
   @type by_agent_domain :: %{optional({atom() | nil, CapabilityDomain.bucket()}) => agent_kpi()}
+
+  @typedoc "Token spend by ceremony stage for one approved run."
+  @type ceremony_breakdown :: %{
+          implementer: non_neg_integer(),
+          reviewer: non_neg_integer(),
+          audit: non_neg_integer()
+        }
+
+  @typedoc "Per-run ceremony total keyed by task and run ids."
+  @type ceremony_entry :: %{
+          task_id: String.t(),
+          run_id: String.t(),
+          total: non_neg_integer(),
+          tokens: ceremony_breakdown()
+        }
+
+  @typedoc "Median and p90 over a list of per-run ceremony token totals."
+  @type ceremony_distribution :: %{
+          total: duration_summary(),
+          implementer: duration_summary(),
+          reviewer: duration_summary(),
+          audit: duration_summary()
+        }
+
+  @typedoc "Raw ceremony-cost facts over reviewer-approved runs — no batching verdict."
+  @type ceremony_cost :: %{
+          run_count: non_neg_integer(),
+          per_task: [ceremony_entry()],
+          distribution: ceremony_distribution()
+        }
 
   @doc """
   Rolls a list of `Harness.Run.LogRecord` up into a per-agent KPI ledger.
@@ -156,6 +198,44 @@ defmodule Harness.AgentKPI do
       review_iterations: mean(Enum.map(records, & &1.review_iterations), run_count),
       ratings: rating_means(Enum.map(records, &record_ratings/1)),
       cost_to_green: cost_to_green(passes)
+    }
+  end
+
+  @doc """
+  Counts per-run ceremony token spend over reviewer-approved records.
+
+  Each `:approve` + `:done` record yields one `per_task` entry (implementer +
+  reviewer + audit components). Post-merge audit tokens are not persisted on run
+  records, so `tokens.audit` is `0` until audit capture exists. The
+  `distribution` block is median/p90 over the per-run totals and each
+  component — raw facts only, no batching recommendation.
+  """
+  @spec aggregate_ceremony_cost([LogRecord.t()]) :: ceremony_cost()
+  def aggregate_ceremony_cost(records) when is_list(records) do
+    entries =
+      records
+      |> Enum.filter(&ceremony_eligible?/1)
+      |> Enum.map(&ceremony_entry/1)
+
+    %{
+      run_count: length(entries),
+      per_task: entries,
+      distribution: ceremony_distribution(entries)
+    }
+  end
+
+  @doc """
+  Returns implementer, reviewer, and audit token totals for one run record.
+
+  Reviewer spend is parsed from `reviewer_output` when present; audit is `0`
+  (not on run records).
+  """
+  @spec ceremony_tokens(LogRecord.t()) :: ceremony_breakdown()
+  def ceremony_tokens(%LogRecord{} = record) do
+    %{
+      implementer: token_total(record.token_usage),
+      reviewer: reviewer_token_total(record),
+      audit: 0
     }
   end
 
@@ -235,6 +315,79 @@ defmodule Harness.AgentKPI do
       no_verdict_rate: no_verdict_count / reviewed_count
     }
   end
+
+  @spec ceremony_eligible?(LogRecord.t()) :: boolean()
+  defp ceremony_eligible?(record) do
+    record.verdict == :approve and record.state == :done
+  end
+
+  @spec ceremony_entry(LogRecord.t()) :: ceremony_entry()
+  defp ceremony_entry(record) do
+    tokens = ceremony_tokens(record)
+
+    %{
+      task_id: record.task_id,
+      run_id: record.run_id,
+      total: ceremony_total(tokens),
+      tokens: tokens
+    }
+  end
+
+  @spec ceremony_total(ceremony_breakdown()) :: non_neg_integer()
+  defp ceremony_total(tokens) do
+    tokens.implementer + tokens.reviewer + tokens.audit
+  end
+
+  @spec ceremony_distribution([ceremony_entry()]) :: ceremony_distribution()
+  defp ceremony_distribution([]) do
+    empty = %{median: 0, p90: 0}
+
+    %{
+      total: empty,
+      implementer: empty,
+      reviewer: empty,
+      audit: empty
+    }
+  end
+
+  defp ceremony_distribution(entries) do
+    %{
+      total: duration_summary(Enum.map(entries, & &1.total)),
+      implementer: duration_summary(Enum.map(entries, & &1.tokens.implementer)),
+      reviewer: duration_summary(Enum.map(entries, & &1.tokens.reviewer)),
+      audit: duration_summary(Enum.map(entries, & &1.tokens.audit))
+    }
+  end
+
+  @spec reviewer_token_total(LogRecord.t()) :: non_neg_integer()
+  defp reviewer_token_total(record) do
+    output = Map.get(record, :reviewer_output) || ""
+
+    record
+    |> Map.get(:reviewer_adapter)
+    |> reviewer_agent_kind()
+    |> then(&token_total(TokenUsage.parse(&1, output)))
+  end
+
+  @spec reviewer_agent_kind(module() | nil) :: TokenUsage.agent_kind()
+  defp reviewer_agent_kind(nil), do: nil
+
+  defp reviewer_agent_kind(adapter) do
+    case AgentRegistry.agent_for_module(adapter) do
+      {:ok, agent} -> agent
+      {:error, _reason} -> nil
+    end
+  end
+
+  @spec token_total(TokenUsage.t() | nil) :: non_neg_integer()
+  defp token_total(%TokenUsage{} = usage) do
+    case Map.get(usage, :total) do
+      count when is_integer(count) -> count
+      _ -> Enum.sum(Enum.filter([usage.input, usage.output, usage.cache_read, usage.cache_creation], &is_integer/1))
+    end
+  end
+
+  defp token_total(_other), do: 0
 
   @spec first_attempt_passes([LogRecord.t()]) :: non_neg_integer()
   defp first_attempt_passes(records) do
