@@ -6,9 +6,8 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   per-agent enable/disable card (Task 128), the read-only config inspector
   (Task 127), the per-project Landing card, and the Dispatch now button.
 
-  `async: false` — reads the global `ProjectRegistry` and mutates the
-  `:cron_polling` / `:cron_project_autonomy` app env, which would leak across
-  parallel tests.
+  `async: false` — reads the global `ProjectRegistry` and the test settings
+  store scope, reset per test.
   """
 
   use Harness.Dashboard.ConnCase, async: false
@@ -22,20 +21,14 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   alias Harness.Landing.Settings, as: LandingSettings
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
+  alias Harness.Test.SettingsStoreMemory
 
   setup %{conn: conn} do
     prior_polling = Application.get_env(:harness, :cron_polling)
-    prior_projects = Application.get_env(:harness, :cron_project_autonomy)
-    prior_agents = Application.get_env(:harness, :agent_disabled)
-    prior_reviewer = Application.get_env(:harness, :agent_reviewer_ineligible)
-    prior_landing = Application.get_env(:harness, :landing_overrides)
     prior_run = Application.get_env(:harness, :run)
     prior_dispatch = Application.get_env(:harness, :dispatch)
-    prior_config_store = Application.get_env(:harness, :config_settings)
 
-    # Isolate the Harness.Config persistence file to a throwaway root.
-    config_root = Path.join(System.tmp_dir!(), "harness_settings_live_config_#{System.unique_integer([:positive])}")
-    Application.put_env(:harness, :config_settings, root: config_root)
+    SettingsStoreMemory.reset(scope: :test_default)
 
     # Other async:false dashboard tests may leave projects registered; isolate this page.
     for %{name: name} <- ProjectRegistry.list() do
@@ -48,14 +41,9 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     on_exit(fn ->
       ProjectRegistry.unregister(project.name)
       restore_env(:cron_polling, prior_polling)
-      restore_env(:cron_project_autonomy, prior_projects)
-      restore_env(:agent_disabled, prior_agents)
-      restore_env(:agent_reviewer_ineligible, prior_reviewer)
-      restore_env(:landing_overrides, prior_landing)
       restore_env(:run, prior_run)
       restore_env(:dispatch, prior_dispatch)
-      restore_env(:config_settings, prior_config_store)
-      File.rm_rf(config_root)
+      SettingsStoreMemory.reset(scope: :test_default)
     end)
 
     {:ok, conn: conn, project: project}
@@ -149,8 +137,6 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   end
 
   test "renders the Agents card with every adapter enabled by default", %{conn: conn} do
-    Application.put_env(:harness, :agent_disabled, [])
-
     {:ok, _view, html} = live(conn, "/harness/settings")
 
     assert html =~ "Agents"
@@ -162,8 +148,6 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   end
 
   test "toggling an agent disables it for dispatch", %{conn: conn} do
-    Application.put_env(:harness, :agent_disabled, [])
-
     {:ok, view, _html} = live(conn, "/harness/settings")
 
     html =
@@ -177,10 +161,6 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   end
 
   test "toggling reviewer-eligible flips an agent's review-gate eligibility (Task 182)", %{conn: conn} do
-    Application.put_env(:harness, :agent_disabled, [])
-    # Start from the config seed: Pi ships reviewer-ineligible by default.
-    Application.delete_env(:harness, :agent_reviewer_ineligible)
-
     {:ok, view, html} = live(conn, "/harness/settings")
 
     assert html =~ "reviewer ineligible"

@@ -25,8 +25,8 @@ defmodule Harness.Agent.Settings do
   explicit operator toggle removes it. Reviewer ineligibility is separate: an
   agent can implement yet be barred from the review gate (Pi/OSS models). When
   no reviewer override has ever been persisted, `reviewer_ineligible_agents/0`
-  seeds from the `:reviewer_exclude` config (default `[:pi]`); once set, the
-  persisted value — even an empty list — is authoritative.
+  uses the in-code default seed (`[:pi]`); once set, the persisted value — even
+  an empty list — is authoritative.
 
   With `repo_enabled: false` the store is ephemeral, so every agent reads as
   enabled and reviewer-eligible-by-seed (the dashboard surfaces the ephemerality).
@@ -37,6 +37,7 @@ defmodule Harness.Agent.Settings do
   require Logger
 
   @store_key :agent
+  @default_reviewer_ineligible [:pi]
 
   @typedoc """
   The persisted settings-store value: the operator-disabled set (implementer
@@ -82,8 +83,8 @@ defmodule Harness.Agent.Settings do
   Returns whether an agent may be picked as THE reviewer gate. Distinct from
   `enabled?/1`: an agent can be enabled to implement yet ineligible to review
   (e.g. Pi/OSS models, ineligible by default until trusted to run the checks +
-  write a sound verdict). Absence ⇒ eligible, with the `:reviewer_exclude` config
-  ([:pi]) as the first-boot seed before any operator override is persisted.
+  write a sound verdict). Absence ⇒ eligible, with `[:pi]` as the code default
+  before any operator override is persisted.
   """
   @spec reviewer_eligible?(atom()) :: boolean()
   def reviewer_eligible?(agent) when is_atom(agent), do: not reviewer_ineligible?(agent)
@@ -93,15 +94,15 @@ defmodule Harness.Agent.Settings do
   def reviewer_ineligible?(agent) when is_atom(agent), do: agent in reviewer_ineligible_agents()
 
   @doc """
-  Returns the reviewer-ineligible agent atoms. Falls back to the
-  `:reviewer_exclude` config seed (default `[:pi]`) until an operator override is
-  persisted — so the stopgap holds on first boot and when persistence is off.
+  Returns the reviewer-ineligible agent atoms. Falls back to the in-code seed
+  until an operator override is persisted — so the stopgap holds on first boot
+  and when persistence is off without consulting app env at runtime.
   """
   @spec reviewer_ineligible_agents() :: [atom()]
   def reviewer_ineligible_agents do
     case Map.fetch(record(), :reviewer_ineligible) do
       {:ok, list} when is_list(list) -> Enum.filter(list, &is_atom/1)
-      _unset -> Application.get_env(:harness, :reviewer_exclude, [:pi])
+      _unset -> @default_reviewer_ineligible
     end
   end
 
@@ -134,8 +135,7 @@ defmodule Harness.Agent.Settings do
 
   # The current persisted record, or an empty map (ephemeral store / no row yet).
   # `set_*` preserves the other axis by writing this map back with one key
-  # replaced — so a `set_enabled` toggle never materializes the reviewer seed,
-  # keeping `reviewer_ineligible_agents/0` falling back to `:reviewer_exclude`.
+  # replaced — so a `set_enabled` toggle never materializes the reviewer seed.
   @spec record() :: map()
   defp record do
     case SettingsStore.fetch(@store_key) do

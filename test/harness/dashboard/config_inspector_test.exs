@@ -31,7 +31,6 @@ defmodule Harness.Dashboard.ConfigInspectorTest do
       for title <- [
             "Dashboard",
             "Run timeouts",
-            "Cron polling",
             "Notifications",
             "Result store",
             "Settings store",

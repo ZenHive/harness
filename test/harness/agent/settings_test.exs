@@ -4,8 +4,7 @@ defmodule Harness.Agent.SettingsTest do
   reviewer eligibility, read from and written to the one Postgres settings store
   (the in-memory test backend stands in for Postgres here).
 
-  `async: false` — shares the global test settings store scope and the
-  `:reviewer_exclude` app env, reset per test.
+  `async: false` — shares the global test settings store scope, reset per test.
   """
 
   use ExUnit.Case, async: false
@@ -17,12 +16,9 @@ defmodule Harness.Agent.SettingsTest do
 
   setup do
     SettingsStoreMemory.reset(scope: @scope)
-    prior_exclude = Application.get_env(:harness, :reviewer_exclude)
-    Application.put_env(:harness, :reviewer_exclude, [:pi])
 
     on_exit(fn ->
       SettingsStoreMemory.reset(scope: @scope)
-      restore_env(:reviewer_exclude, prior_exclude)
     end)
 
     :ok
@@ -84,7 +80,7 @@ defmodule Harness.Agent.SettingsTest do
   end
 
   describe "reviewer eligibility" do
-    test "seeds ineligibility from the :reviewer_exclude config before any override" do
+    test "seeds ineligibility from the in-code default before any override" do
       refute Settings.reviewer_eligible?(:pi)
       assert Settings.reviewer_eligible?(:claude)
       assert Settings.reviewer_ineligible_agents() == [:pi]
@@ -106,15 +102,11 @@ defmodule Harness.Agent.SettingsTest do
       assert Settings.reviewer_ineligible?(:codex)
     end
 
-    test "a set_enabled toggle does not freeze the reviewer config seed into the store" do
+    test "a set_enabled toggle does not freeze the reviewer seed into the store" do
       # Disabling an implementer is not a reviewer override, so the persisted
-      # record must not materialize the [:pi] seed — it has to stay live.
+      # record must not materialize the [:pi] seed.
       assert :ok = Settings.set_enabled(:cursor, false, "test")
       assert Settings.reviewer_ineligible_agents() == [:pi]
-
-      # The seed is genuinely live, not frozen: changing it now takes effect.
-      Application.put_env(:harness, :reviewer_exclude, [:pi, :grok])
-      assert Settings.reviewer_ineligible_agents() == [:pi, :grok]
     end
 
     test "a persisted empty set makes a seeded agent eligible and overrides the config seed" do

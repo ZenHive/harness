@@ -37,7 +37,7 @@ defmodule Harness.Cron.Settings do
   `:cron_polling` app-env cache, no boot loader — so a flip is the single source
   of truth and survives a restart. With `repo_enabled: false` the store is
   ephemeral: master/project default off, dispatch mode `:auto`, schedule the
-  default cadence.
+  in-code default cadence.
   """
 
   alias Harness.Project
@@ -209,15 +209,10 @@ defmodule Harness.Cron.Settings do
   @spec known_crontab?(String.t()) :: boolean()
   defp known_crontab?(crontab), do: Enum.any?(@schedule_presets, fn {_key, _label, ct} -> ct == crontab end)
 
-  # The default cadence seed: the `:cron_polling, :schedule` config value (so a
-  # deployment can change the unflipped default) falling back to the constant.
+  # The unflipped cadence is intentionally a code default, not an app-env
+  # fallback. Operators change it through the persisted schedule setting.
   @spec default_schedule() :: String.t()
-  defp default_schedule do
-    :harness
-    |> Application.get_env(:cron_polling, [])
-    |> Keyword.get(:schedule, @default_schedule)
-    |> to_string()
-  end
+  defp default_schedule, do: @default_schedule
 
   @spec state_word(boolean()) :: String.t()
   defp state_word(true), do: "enabled"

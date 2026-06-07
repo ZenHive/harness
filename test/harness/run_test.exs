@@ -1,8 +1,11 @@
+alias Harness.Landing.Settings, as: LandingSettings
+
 defmodule Harness.RunTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
 
+  alias Harness.Agent.Settings, as: AgentSettings
   alias Harness.AgentAdapter.Antigravity
   alias Harness.AgentAdapter.Outcome
   alias Harness.Dashboard.RunFeed
@@ -20,6 +23,7 @@ defmodule Harness.RunTest do
   alias Harness.Run.Review
   alias Harness.Run.Status
   alias Harness.Test.CaptureSink
+  alias Harness.Test.SettingsStoreMemory
   alias Harness.TokenUsage
   alias Harness.Worktree
 
@@ -715,15 +719,9 @@ defmodule Harness.RunTest do
 
     test "a runtime reviewer override wins over a registration default" do
       project = ProjectFixture.from_repo(GitFixture.init_repo(), reviewer: :codex)
-      prior = Application.get_env(:harness, :landing_overrides)
-      Application.put_env(:harness, :landing_overrides, %{project.name => %{reviewer: :claude}})
-
-      on_exit(fn ->
-        case prior do
-          nil -> Application.delete_env(:harness, :landing_overrides)
-          value -> Application.put_env(:harness, :landing_overrides, value)
-        end
-      end)
+      SettingsStoreMemory.reset(scope: :test_default)
+      on_exit(fn -> SettingsStoreMemory.reset(scope: :test_default) end)
+      assert :ok = LandingSettings.set_reviewer(project.name, :claude, "test")
 
       {run_id, pid} = start_with_project_reviewer(project, [])
 
@@ -736,16 +734,12 @@ defmodule Harness.RunTest do
     test "a project-pinned reviewer-ineligible agent is refused" do
       project = ProjectFixture.from_repo(GitFixture.init_repo(), reviewer: :codex)
       codex = Harness.AgentAdapter.Codex
-      prior = Application.get_env(:harness, :agent_reviewer_ineligible)
-      Application.put_env(:harness, :agent_reviewer_ineligible, [:codex])
+      SettingsStoreMemory.reset(scope: :test_default)
+      assert :ok = AgentSettings.set_reviewer_eligible(:codex, false, "test")
       :sys.replace_state(Harness.AgentRegistry, &put_in(&1, [:installed, codex], true))
 
       on_exit(fn ->
-        case prior do
-          nil -> Application.delete_env(:harness, :agent_reviewer_ineligible)
-          value -> Application.put_env(:harness, :agent_reviewer_ineligible, value)
-        end
-
+        SettingsStoreMemory.reset(scope: :test_default)
         Harness.AgentRegistry.reset()
       end)
 
@@ -782,19 +776,12 @@ defmodule Harness.RunTest do
       # A cross-family reviewer is normally auto-selected from the registry;
       # marking every agent reviewer-ineligible removes them all and settles
       # review_stuck rather than handing the gate to an ineligible agent. Proves
-      # eligibility — not availability — gates selection. Drives the live env
-      # cache (:agent_reviewer_ineligible) that AgentSettings.reviewer_eligible?/1
-      # reads, so no file is written to the operator's real ~/.harness store.
+      # eligibility — not availability — gates selection.
       ineligible = Enum.map(Harness.AgentRegistry.agents(), fn {agent, _module} -> agent end)
-      prior = Application.get_env(:harness, :agent_reviewer_ineligible)
-      Application.put_env(:harness, :agent_reviewer_ineligible, ineligible)
+      SettingsStoreMemory.reset(scope: :test_default)
+      Enum.each(ineligible, &AgentSettings.set_reviewer_eligible(&1, false, "test"))
 
-      on_exit(fn ->
-        case prior do
-          nil -> Application.delete_env(:harness, :agent_reviewer_ineligible)
-          value -> Application.put_env(:harness, :agent_reviewer_ineligible, value)
-        end
-      end)
+      on_exit(fn -> SettingsStoreMemory.reset(scope: :test_default) end)
 
       result = run(reviewer: nil)
 

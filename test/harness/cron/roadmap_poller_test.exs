@@ -5,26 +5,26 @@ defmodule Harness.Cron.RoadmapPollerTest do
   alias Harness.Cron.Orchestrator
   alias Harness.Cron.PendingDispatch
   alias Harness.Cron.RoadmapPoller
+  alias Harness.Cron.Settings
   alias Harness.Notification.Event
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
+  alias Harness.Test.SettingsStoreMemory
   alias Oban.Plugins.Cron
 
   setup do
     prior_cron_polling = Application.get_env(:harness, :cron_polling)
-    prior_project_autonomy = Application.get_env(:harness, :cron_project_autonomy)
-    prior_dispatch_mode = Application.get_env(:harness, :cron_dispatch_mode)
     prior_sinks = Application.get_env(:harness, :notification_sinks)
 
+    SettingsStoreMemory.reset(scope: :test_default)
     AgentRegistry.reset()
     ProjectRegistry.reset()
     PendingDispatch.reset()
 
     on_exit(fn ->
       restore_env(:cron_polling, prior_cron_polling)
-      restore_env(:cron_project_autonomy, prior_project_autonomy)
-      restore_env(:cron_dispatch_mode, prior_dispatch_mode)
       restore_env(:notification_sinks, prior_sinks)
+      SettingsStoreMemory.reset(scope: :test_default)
       Application.delete_env(:harness, :oban_insert)
       Application.delete_env(:harness, :roadmap_ready)
       Application.delete_env(:harness, :cron_orchestrator)
@@ -45,14 +45,15 @@ defmodule Harness.Cron.RoadmapPollerTest do
   end
 
   test "cron plugin carries the configured schedule" do
-    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
+    assert :ok = Settings.set_master(true, "test")
+    assert :ok = Settings.set_schedule("hourly", "test")
 
     assert RoadmapPoller.enabled?()
     assert {:cron, 1} in Harness.Oban.oban_opts()[:queues]
 
     crontab = cron_crontab()
 
-    assert {"* * * * *", RoadmapPoller, [queue: :cron, max_attempts: 1]} in crontab
+    assert {"0 * * * *", RoadmapPoller, [queue: :cron, max_attempts: 1]} in crontab
   end
 
   test "disabled poller does not read the roadmap or enqueue work" do
@@ -80,8 +81,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
     project = ProjectFixture.from_repo("/tmp/harness-cron-enabled", name: "cron-enabled", concurrency_cap: 10)
     assert :ok = ProjectRegistry.register(project)
 
-    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
-    Application.put_env(:harness, :cron_project_autonomy, %{"cron-enabled" => true})
+    enable_project("cron-enabled")
 
     # 51 has no assignee (undispatchable — never defaulted to claude); 52/53/54
     # carry intent, so the gate (N=3) wakes the orchestrator.
@@ -144,8 +144,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
     project = ProjectFixture.from_repo("/tmp/harness-cron-single", name: "cron-single", concurrency_cap: 10)
     assert :ok = ProjectRegistry.register(project)
 
-    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
-    Application.put_env(:harness, :cron_project_autonomy, %{"cron-single" => true})
+    enable_project("cron-single")
 
     # One real assignee + one undispatchable nil → N=1 → direct dispatch, no agent.
     Application.put_env(:harness, :roadmap_ready, fn _p ->
@@ -175,8 +174,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
     project = ProjectFixture.from_repo("/tmp/harness-cron-zero", name: "cron-zero", concurrency_cap: 10)
     assert :ok = ProjectRegistry.register(project)
 
-    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
-    Application.put_env(:harness, :cron_project_autonomy, %{"cron-zero" => true})
+    enable_project("cron-zero")
 
     # All undispatchable: a human task and an unrouted one.
     Application.put_env(:harness, :roadmap_ready, fn _p ->
@@ -204,8 +202,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
     project = ProjectFixture.from_repo("/tmp/harness-cron-noplan", name: "cron-noplan", concurrency_cap: 10)
     assert :ok = ProjectRegistry.register(project)
 
-    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
-    Application.put_env(:harness, :cron_project_autonomy, %{"cron-noplan" => true})
+    enable_project("cron-noplan")
 
     Application.put_env(:harness, :roadmap_ready, fn _p ->
       {:ok, [task("52", "codex"), task("53", "cursor")]}
@@ -229,13 +226,8 @@ defmodule Harness.Cron.RoadmapPollerTest do
     project = ProjectFixture.from_repo("/tmp/harness-cron-metered", name: "cron-metered", concurrency_cap: 10)
     assert :ok = ProjectRegistry.register(project)
 
-    Application.put_env(:harness, :cron_polling,
-      enabled: true,
-      schedule: "* * * * *",
-      subscription_env_scrubs: %{claude: false, codex: %{}}
-    )
-
-    Application.put_env(:harness, :cron_project_autonomy, %{"cron-metered" => true})
+    Application.put_env(:harness, :cron_polling, subscription_env_scrubs: %{claude: false, codex: %{}})
+    enable_project("cron-metered")
 
     Application.put_env(:harness, :roadmap_ready, fn _p ->
       {:ok, [task("51", "claude"), task("52", "codex")]}
@@ -270,8 +262,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
     project = ProjectFixture.from_repo("/tmp/harness-cron-human", name: "cron-human", concurrency_cap: 10)
     assert :ok = ProjectRegistry.register(project)
 
-    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
-    Application.put_env(:harness, :cron_project_autonomy, %{"cron-human" => true})
+    enable_project("cron-human")
 
     Application.put_env(:harness, :roadmap_ready, fn _p ->
       {:ok, [task("51", "human"), task("52", "codex")]}
@@ -297,8 +288,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
     # (AgentRegistry.select/2) is mechanical and applies on the planned path too.
     assert :ok = AgentRegistry.mark_unavailable(Harness.AgentAdapter.Grok, :quota)
 
-    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
-    Application.put_env(:harness, :cron_project_autonomy, %{"cron-unavailable" => true})
+    enable_project("cron-unavailable")
 
     Application.put_env(:harness, :roadmap_ready, fn _p ->
       {:ok, [task("51", "grok"), task("52", "codex")]}
@@ -331,8 +321,9 @@ defmodule Harness.Cron.RoadmapPollerTest do
     assert :ok = ProjectRegistry.register(on_project)
     assert :ok = ProjectRegistry.register(off_project)
 
-    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
-    Application.put_env(:harness, :cron_project_autonomy, %{"cron-on" => true, "cron-off" => false})
+    assert :ok = Settings.set_master(true, "test")
+    assert :ok = Settings.set_project("cron-on", true, "test")
+    assert :ok = Settings.set_project("cron-off", false, "test")
 
     Application.put_env(:harness, :roadmap_ready, fn p ->
       send(parent, {:ready, p.name})
@@ -417,7 +408,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
   end
 
   test "reports the next tick from the configured schedule" do
-    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "0 */2 * * *")
+    assert :ok = Settings.set_master(true, "test")
 
     assert {:ok, ~U[2026-05-27 02:00:00Z]} =
              RoadmapPoller.next_tick(~U[2026-05-27 00:15:00Z])
@@ -473,11 +464,15 @@ defmodule Harness.Cron.RoadmapPollerTest do
   # Turn on autonomy + manual dispatch mode for `name`, capturing park witness
   # events to the test process via the shared CaptureSink.
   defp enable_manual(name) do
-    Application.put_env(:harness, :cron_polling, enabled: true, schedule: "* * * * *")
-    Application.put_env(:harness, :cron_project_autonomy, %{name => true})
-    Application.put_env(:harness, :cron_dispatch_mode, %{name => :manual})
+    enable_project(name)
+    Settings.set_dispatch_mode(name, :manual, "test")
     Application.put_env(:harness, :notification_sinks, [Harness.Test.CaptureSink])
     Application.put_env(:harness, :test_capture_pid, self())
+  end
+
+  defp enable_project(name) do
+    Settings.set_master(true, "test")
+    Settings.set_project(name, true, "test")
   end
 
   defp capture_inserts(parent) do

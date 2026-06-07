@@ -14,18 +14,15 @@ defmodule Harness.SettingsStore.PostgresTest do
   setup do
     prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
     prior_settings_store = Application.get_env(:harness, :settings_store)
-    prior_reviewer_exclude = Application.get_env(:harness, :reviewer_exclude)
 
     root = Path.join(System.tmp_dir!(), "harness_settings_store_pg_#{System.unique_integer([:positive])}")
 
     Application.put_env(:harness, :repo_enabled, true)
     Application.put_env(:harness, :settings_store, {PostgresStore, repo: Repo, legacy_root: root})
-    Application.put_env(:harness, :reviewer_exclude, [:pi])
 
     on_exit(fn ->
       restore(:repo_enabled, prior_repo_enabled)
       restore(:settings_store, prior_settings_store)
-      restore(:reviewer_exclude, prior_reviewer_exclude)
       File.rm_rf(root)
     end)
 

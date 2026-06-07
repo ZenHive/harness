@@ -2,10 +2,11 @@ defmodule Harness.ProjectRegistry do
   @moduledoc """
   Registry of `%Harness.Project{}` records.
 
-  Projects boot from `config :harness, :projects` and can be registered at
-  runtime via `register/1`. When `:repo_enabled` is true, runtime registrations
-  are persisted to Postgres and restored at boot; config-declared projects win on
-  name conflict.
+  Projects can be registered at runtime via `register/1`. When `:repo_enabled`
+  is true, runtime registrations are persisted to Postgres and restored at boot;
+  `config :harness, :projects` is a one-time first-boot seed for missing names.
+  Once a row exists, the Postgres row wins. When repo persistence is disabled,
+  config projects remain the ephemeral bootstrap.
   """
 
   use GenServer
@@ -35,22 +36,16 @@ defmodule Harness.ProjectRegistry do
   @impl GenServer
   @spec init(term()) :: {:ok, %{projects: %{String.t() => Project.t()}}}
   def init(_init_arg) do
-    config_projects = load_config_projects()
-    restored_projects = load_persisted_projects(config_projects)
+    restored_projects = load_projects()
 
     Enum.each(restored_projects, &ensure_project_queue/1)
 
-    projects =
-      Enum.reduce(restored_projects, config_projects, fn project, acc ->
-        Map.put(acc, project.name, project)
-      end)
-
-    {:ok, %{projects: projects}}
+    {:ok, %{projects: projects_map(restored_projects)}}
   end
 
   api(
     :register,
-    "Register a project struct under its name. When :repo_enabled, survives a BEAM restart via Postgres; config :harness, :projects always wins on name conflict.",
+    "Register a project struct under its name. When :repo_enabled, survives a BEAM restart via Postgres; config :harness, :projects only seeds missing rows on first boot.",
     params: [
       project: [
         # A %Harness.Project{} struct a stateless JSON caller cannot construct —
@@ -184,17 +179,29 @@ defmodule Harness.ProjectRegistry do
   end
 
   def handle_call(:reload_persisted_state, _from, _state) do
-    config_projects = load_config_projects()
-    restored_projects = load_persisted_projects(config_projects)
+    restored_projects = load_projects()
 
     Enum.each(restored_projects, &ensure_project_queue/1)
 
-    projects =
-      Enum.reduce(restored_projects, config_projects, fn project, acc ->
-        Map.put(acc, project.name, project)
-      end)
+    {:reply, :ok, %{projects: projects_map(restored_projects)}}
+  end
 
-    {:reply, :ok, %{projects: projects}}
+  @spec load_projects() :: [Project.t()]
+  defp load_projects do
+    config_projects = load_config_projects()
+
+    if Persistence.enabled?() do
+      persisted_projects = Persistence.list()
+      import_missing_config_projects(config_projects, persisted_projects)
+      Persistence.list()
+    else
+      Map.values(config_projects)
+    end
+  end
+
+  @spec projects_map([Project.t()]) :: %{String.t() => Project.t()}
+  defp projects_map(projects) do
+    Map.new(projects, fn %Project{name: name} = project -> {name, project} end)
   end
 
   @spec build_project(keyword() | map()) :: {:ok, Project.t()} | {:error, error()}
@@ -237,9 +244,14 @@ defmodule Harness.ProjectRegistry do
     end)
   end
 
-  @spec load_persisted_projects(%{String.t() => Project.t()}) :: [Project.t()]
-  defp load_persisted_projects(config_projects) do
-    Enum.reject(Persistence.list(), fn %Project{name: name} -> Map.has_key?(config_projects, name) end)
+  @spec import_missing_config_projects(%{String.t() => Project.t()}, [Project.t()]) :: :ok
+  defp import_missing_config_projects(config_projects, persisted_projects) do
+    persisted_names = MapSet.new(persisted_projects, & &1.name)
+
+    config_projects
+    |> Map.values()
+    |> Enum.reject(&MapSet.member?(persisted_names, &1.name))
+    |> Enum.each(&Persistence.upsert/1)
   end
 
   @spec ensure_project_queue(Project.t()) :: :ok

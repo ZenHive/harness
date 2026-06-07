@@ -1,10 +1,10 @@
 defmodule Harness.AuditPostgresTest do
   @moduledoc """
-  Postgres-backed audit watermark persistence coverage.
+  Audit watermark persistence coverage with the repo-enabled gate on.
 
-  The regular audit tests use a file-backed SettingsStore test double for speed;
-  this module proves the same watermark key survives through the real
-  `harness_settings` table.
+  Audit watermarks intentionally remain term-backed while operator settings move
+  to Postgres, so this module proves repo-enabled audit runs persist and reuse
+  `audit_watermarks.term` without touching the settings table.
   """
 
   use Harness.DataCase, async: false
@@ -13,14 +13,11 @@ defmodule Harness.AuditPostgresTest do
   alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
-  alias Harness.SettingsStore.Postgres, as: PostgresStore
-  alias Harness.SettingsStore.Schema.Setting
   alias Harness.TermCodec
 
   @moduletag :integration
 
   @watermark_file "audit_watermarks.term"
-  @watermark_store_key "audit"
 
   defp sha(repo, ref), do: repo |> GitFixture.git!(["rev-parse", ref]) |> String.trim()
 
@@ -43,18 +40,15 @@ defmodule Harness.AuditPostgresTest do
     project = ProjectFixture.from_repo(repo, name: "audit-pg", target_branch: "main")
 
     prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
-    prior_settings_store = Application.get_env(:harness, :settings_store)
     prior_watermarks = Application.get_env(:harness, :audit_watermarks)
 
     root = Path.join(System.tmp_dir!(), "harness_audit_pg_#{System.unique_integer([:positive])}")
 
     Application.put_env(:harness, :repo_enabled, true)
-    Application.put_env(:harness, :settings_store, {PostgresStore, repo: Repo})
     Application.put_env(:harness, :audit_watermarks, root: root)
 
     on_exit(fn ->
       restore(:repo_enabled, prior_repo_enabled)
-      restore(:settings_store, prior_settings_store)
       restore(:audit_watermarks, prior_watermarks)
       File.rm_rf(root)
     end)
@@ -75,8 +69,6 @@ defmodule Harness.AuditPostgresTest do
 
     assert stored_watermark(ctx) == landed_sha
 
-    Application.put_env(:harness, :settings_store, {PostgresStore, repo: Repo})
-
     assert :noop =
              Audit.run(%{
                project: ctx.project,
@@ -86,7 +78,7 @@ defmodule Harness.AuditPostgresTest do
              })
   end
 
-  test "imports an existing audit_watermarks.term into Postgres on first read", ctx do
+  test "reads an existing audit_watermarks.term on first range check", ctx do
     landed_sha = land_work!(ctx)
     File.mkdir_p!(ctx.root)
 
@@ -100,8 +92,7 @@ defmodule Harness.AuditPostgresTest do
   end
 
   defp stored_watermark(ctx) do
-    assert %Setting{payload: payload} = Repo.get(Setting, @watermark_store_key)
-    assert {:ok, watermarks} = TermCodec.safe_binary_to_term(payload)
+    assert {:ok, watermarks} = TermCodec.read_file(Path.join(ctx.root, @watermark_file))
     get_in(watermarks, [ctx.project.name, ctx.project.target_branch])
   end
 

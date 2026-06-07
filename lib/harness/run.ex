@@ -2097,7 +2097,7 @@ defmodule Harness.Run do
   # Reviewer-eligibility gate, distinct from the implementer-level
   # AgentSettings.enabled? flag: an ineligible agent may still implement, it just
   # can't be picked (auto or explicit) as THE gate. Operator-set and persisted
-  # via AgentSettings (Task 182), seeded from the :reviewer_exclude config
+  # via AgentSettings (Task 182), seeded from its in-code default
   # ([:pi]) on first boot — Pi/OSS models aren't yet trusted to run the checks +
   # write a sound verdict (Task 181). Unknown module ⇒ eligible, matching
   # reviewer_enabled?/1's default-allow shape.

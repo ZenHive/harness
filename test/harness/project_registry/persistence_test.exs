@@ -87,7 +87,7 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
     end
   end
 
-  describe "config-declared projects win on name conflict" do
+  describe "config-declared projects are first-boot seeds" do
     setup do
       prior = Application.get_env(:harness, :projects)
 
@@ -98,7 +98,26 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
       :ok
     end
 
-    test "reload prefers config over a persisted row with the same name" do
+    test "reload imports a config project when no persisted row exists" do
+      name = "seed-#{System.unique_integer([:positive])}"
+
+      config_entry = [
+        name: name,
+        source: {:local, "/tmp/config-#{name}"},
+        check_command: "mix precommit",
+        roadmap_path: "/tmp/config-#{name}/roadmap/tasks.toml"
+      ]
+
+      Application.put_env(:harness, :projects, [config_entry])
+
+      assert :ok = ProjectRegistry.reload_persisted_state()
+
+      assert {:ok, %Project{roadmap_path: config_path}} = ProjectRegistry.lookup(name)
+      assert config_path == Path.expand("/tmp/config-#{name}/roadmap/tasks.toml")
+      assert %ProjectSchema{name: ^name} = Repo.get(ProjectSchema, name)
+    end
+
+    test "reload keeps an existing persisted row over config with the same name" do
       name = "conflict-#{System.unique_integer([:positive])}"
 
       persisted =
@@ -117,8 +136,8 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
       assert :ok = ProjectRegistry.reload_persisted_state()
 
       assert {:ok, %Project{roadmap_path: config_path}} = ProjectRegistry.lookup(name)
-      assert config_path == Path.expand("/tmp/config-#{name}/roadmap/tasks.toml")
-      refute config_path == persisted.roadmap_path
+      assert config_path == persisted.roadmap_path
+      refute config_path == Path.expand("/tmp/config-#{name}/roadmap/tasks.toml")
     end
   end
 

@@ -42,8 +42,7 @@ defmodule Harness.SettingsStore do
     "landing" => "landing_settings.term",
     "cron" => "cron_settings.term",
     "agent" => "agent_settings.term",
-    "config" => "config_settings.term",
-    "audit" => "audit_watermarks.term"
+    "config" => "config_settings.term"
   }
 
   @doc "Fetches a persisted setting value by key, importing a legacy term file once if no row exists."

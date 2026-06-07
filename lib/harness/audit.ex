@@ -21,7 +21,7 @@ defmodule Harness.Audit do
 
   Clean audits (`:no_changes`) intentionally do not write empty `audit(...)`
   marker commits to the shared branch. Instead, harness records the audited tip
-  in the shared settings store and consults that watermark alongside the last
+  in `audit_watermarks.term` and consults that watermark alongside the last
   reachable `audit(...)` commit when framing the next range.
 
   ## Best-effort, never a gate
@@ -40,13 +40,14 @@ defmodule Harness.Audit do
   alias Harness.Git
   alias Harness.Project
   alias Harness.ResultStore
-  alias Harness.SettingsStore
+  alias Harness.TermCodec
   alias Harness.Worktree
 
   require Logger
 
   @audit_report_path ".harness/audit.json"
-  @watermark_store_key :audit
+  @default_watermark_root "~/.harness"
+  @watermark_file "audit_watermarks.term"
   @rejection_history_limit 20
   @rejection_summary_limit 500
 
@@ -427,7 +428,7 @@ defmodule Harness.Audit do
     if watermark_persistence_enabled?() do
       record = put_watermark(read_watermarks(), name, target, sha)
 
-      case SettingsStore.put(@watermark_store_key, record) do
+      case write_watermarks(record) do
         :ok ->
           :ok
 
@@ -443,7 +444,14 @@ defmodule Harness.Audit do
 
   @spec fetch_watermarks() :: {:ok, term()} | :not_found | {:error, term()}
   defp fetch_watermarks do
-    if watermark_persistence_enabled?(), do: SettingsStore.fetch(@watermark_store_key), else: :not_found
+    if watermark_persistence_enabled?() do
+      case TermCodec.read_file(watermark_path()) do
+        {:error, :enoent} -> :not_found
+        other -> other
+      end
+    else
+      :not_found
+    end
   end
 
   @spec read_watermarks() :: map()
@@ -467,6 +475,18 @@ defmodule Harness.Audit do
 
   @spec watermark_persistence_enabled?() :: boolean()
   defp watermark_persistence_enabled?, do: Application.get_env(:harness, :repo_enabled, true)
+
+  @spec write_watermarks(map()) :: :ok | {:error, term()}
+  defp write_watermarks(record), do: TermCodec.write_file(watermark_path(), record)
+
+  @spec watermark_path() :: String.t()
+  defp watermark_path do
+    :harness
+    |> Application.get_env(:audit_watermarks, [])
+    |> Keyword.get(:root, @default_watermark_root)
+    |> Path.expand()
+    |> Path.join(@watermark_file)
+  end
 
   @spec cleanup(Worktree.t()) :: :ok
   defp cleanup(%Worktree{} = worktree) do

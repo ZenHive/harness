@@ -3,8 +3,8 @@ defmodule Harness.SettingsStoreTest do
 
   alias Harness.SettingsStore
   alias Harness.SettingsStore.Schema.Setting
-  alias Harness.Test.SettingsStoreMemory
   alias Harness.TermCodec
+  alias Harness.Test.SettingsStoreMemory
 
   setup do
     prior = %{

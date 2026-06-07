@@ -39,12 +39,11 @@ config :harness, :audit_review, grader_pairs: %{claude: :codex, codex: :claude}
 # Harness.Cron.RoadmapPoller is registered unconditionally (Task 109) so the
 # runtime master toggle has a scheduled tick to act on. The master switch,
 # per-project autonomy, dispatch mode, and active `schedule` are all persisted
-# in the Postgres settings store (Harness.Cron.Settings) — the `schedule` value
-# here is only the unflipped default cadence. `subscription_env_scrubs` removes
-# metered provider keys from subscription-operated agents; set an agent entry to
-# false/%{} when that agent should intentionally use its inherited API key.
+# in the Postgres settings store (Harness.Cron.Settings). `subscription_env_scrubs`
+# removes metered provider keys from subscription-operated agents; set an agent
+# entry to false/%{} when that agent should intentionally use its inherited API
+# key.
 config :harness, :cron_polling,
-  schedule: "0 */2 * * *",
   subscription_env_scrubs: %{
     claude: %{"ANTHROPIC_API_KEY" => false},
     codex: %{"OPENAI_API_KEY" => false}
@@ -83,15 +82,6 @@ config :harness, :retry_policy,
   base_delay_ms: 1_000,
   max_delay_ms: 60_000,
   multiplier: 2.0
-
-# First-boot SEED for reviewer-eligibility (agent atoms). A seeded agent may still
-# be an IMPLEMENTER; it just can't be selected as the reviewer gate. Defaults to
-# [:pi] until OSS-class models reliably run the project's checks AND write a sound
-# `.harness/review.json` verdict (see Task 181). Read once by
-# `Harness.Agent.Settings.reviewer_ineligible_agents/0` as the fallback before any
-# operator override is persisted (Task 182) — the persisted UI toggle is then
-# authoritative; this list is no longer consulted by run.ex.
-config :harness, :reviewer_exclude, [:pi]
 
 # Run lifecycle & agent timeouts — see Harness.AgentAdapter.Driver and Harness.Run.
 # All keys are optional; defaults live in code.
@@ -172,6 +162,11 @@ if config_env() == :test do
   config :harness, :repo_enabled, false
   config :harness, :result_store, {Harness.ResultStore.Memory, scope: :test_default}
 
+  # Disable the node-pressure admission gate (Task 202) by default so worker
+  # tests aren't coupled to the live host's free RAM; the gate's own tests
+  # override mem_highwater_kb to a deterministic positive value.
+  config :harness, :run, mem_highwater_kb: 0
+
   # repo_enabled is false in test, so the production settings store would be the
   # ephemeral no-op backend. The suite needs a *persistent* (within-BEAM) store
   # to prove a flip survives a simulated restart without a live DB, so default to
@@ -180,13 +175,9 @@ if config_env() == :test do
   # `legacy_root` points at a dir with no `*.term` files so the one-time legacy
   # import is a no-op by default — otherwise every missing-key read would import
   # the developer's real `~/.harness` flips. The legacy-import test overrides it.
-  config :harness, :settings_store,
-    {Harness.Test.SettingsStoreMemory, scope: :test_default, legacy_root: "/nonexistent/harness-test-no-legacy"}
-
-  # Disable the node-pressure admission gate (Task 202) by default so worker
-  # tests aren't coupled to the live host's free RAM; the gate's own tests
-  # override mem_highwater_kb to a deterministic positive value.
-  config :harness, :run, mem_highwater_kb: 0
+  config :harness,
+         :settings_store,
+         {Harness.Test.SettingsStoreMemory, scope: :test_default, legacy_root: "/nonexistent/harness-test-no-legacy"}
 
   config :harness, :worktree,
     base_dir: Path.join(System.tmp_dir!(), "harness_worktrees_test"),

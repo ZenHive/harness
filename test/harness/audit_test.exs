@@ -23,11 +23,11 @@ defmodule Harness.AuditTest do
   alias Harness.ResultStore
   alias Harness.ResultStore.Memory, as: MemoryStore
   alias Harness.Run.LogRecord
-  alias Harness.SettingsStore
+  alias Harness.TermCodec
   alias Harness.Test.SettingsStoreMemory
   alias Harness.TokenUsage
 
-  @watermark_store_key :audit
+  @watermark_file "audit_watermarks.term"
 
   # ── git fixture: bare origin + working clone, mirroring the post-land state
   #    (everything the audit reviews is already on origin/main). ─────────────
@@ -80,23 +80,20 @@ defmodule Harness.AuditTest do
     %{origin: origin, repo: repo} = GitFixture.init_with_origin()
     project = ProjectFixture.from_repo(repo, name: "audit-demo", target_branch: "main")
     prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
-    prior_settings_store = Application.get_env(:harness, :settings_store)
-    scope = :"audit_test_#{System.unique_integer([:positive])}"
+    prior_watermarks = Application.get_env(:harness, :audit_watermarks)
+    watermarks_root = Path.join(System.tmp_dir!(), "harness_audit_watermarks_#{System.unique_integer([:positive])}")
     Application.put_env(:harness, :repo_enabled, true)
-
-    Application.put_env(
-      :harness,
-      :settings_store,
-      {SettingsStoreMemory, scope: scope, legacy_root: "/nonexistent/harness-test-no-legacy"}
-    )
+    Application.put_env(:harness, :audit_watermarks, root: watermarks_root)
+    SettingsStoreMemory.reset(scope: :test_default)
 
     on_exit(fn ->
       restore(:repo_enabled, prior_repo_enabled)
-      restore(:settings_store, prior_settings_store)
-      SettingsStoreMemory.reset(scope: scope)
+      restore(:audit_watermarks, prior_watermarks)
+      SettingsStoreMemory.reset(scope: :test_default)
+      File.rm_rf(watermarks_root)
     end)
 
-    %{origin: origin, repo: repo, project: project, base_sha: sha(repo, "HEAD")}
+    %{origin: origin, repo: repo, project: project, base_sha: sha(repo, "HEAD"), watermarks_root: watermarks_root}
   end
 
   describe "run/1 — skip routing (projects that can't be audited)" do
@@ -221,8 +218,7 @@ defmodule Harness.AuditTest do
                })
 
       assert ctx.origin |> GitFixture.git!(["rev-parse", "main"]) |> String.trim() == landed_sha
-      # The ephemeral (no-op) store persists nothing — the watermark never lands.
-      assert SettingsStore.fetch(@watermark_store_key) == :not_found
+      refute File.exists?(Path.join(ctx.watermarks_root, @watermark_file))
     end
 
     test "a clean audit watermark prevents re-auditing the same range after a later land", ctx do
@@ -375,7 +371,7 @@ defmodule Harness.AuditTest do
   defp restore(key, value), do: Application.put_env(:harness, key, value)
 
   defp stored_watermark(ctx) do
-    assert {:ok, watermarks} = SettingsStore.fetch(@watermark_store_key)
+    assert {:ok, watermarks} = TermCodec.read_file(Path.join(ctx.watermarks_root, @watermark_file))
     get_in(watermarks, [ctx.project.name, ctx.project.target_branch])
   end
 
