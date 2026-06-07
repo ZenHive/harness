@@ -52,6 +52,30 @@ defmodule Harness.Oban do
   end
 
   @doc """
+  Returns whether a non-terminal run worker job already exists for `project` and `item_id`.
+
+  Used by manual cron dispatch approval to preserve the auto path's duplicate
+  protection after an approved job has been enqueued.
+  """
+  @spec unfinished_run_job?(Project.t(), String.t()) :: boolean()
+  def unfinished_run_job?(%Project{} = project, item_id) when is_binary(item_id) do
+    queue = queue_name(project)
+
+    query =
+      from(job in Oban.Job,
+        where:
+          job.queue == ^queue and job.worker == ^@run_worker and job.state in ^@headroom_states and
+            fragment("?->>? = ?", job.args, "project_name", ^project.name) and
+            fragment("?->>? = ?", job.args, "item_id", ^item_id),
+        limit: 1
+      )
+
+    Harness.Repo.exists?(query)
+  rescue
+    _error -> false
+  end
+
+  @doc """
   Starts or scales the queues for `project` when Oban is running normally.
 
   Each project gets two queues: the dispatch queue (`project_<name>`, sized to

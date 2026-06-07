@@ -272,13 +272,17 @@ defmodule Harness.Cron.RoadmapPoller do
   # re-tick of an already-parked task does not re-notify.
   @spec park_for_approval(Project.t(), String.t(), module()) :: :ok
   defp park_for_approval(%Project{} = project, item_id, adapter) do
-    case PendingDispatch.park(project.name, item_id, adapter, env_scrub_for_adapter(adapter)) do
-      {:parked, record} ->
-        Notification.notify(park_event(project, record))
-        log_park(project, item_id, adapter)
+    if Harness.Oban.unfinished_run_job?(project, item_id) do
+      :ok
+    else
+      case PendingDispatch.park(project.name, item_id, adapter, env_scrub_for_adapter(adapter)) do
+        {:parked, record} ->
+          Notification.notify(park_event(project, record))
+          log_park(project, item_id, adapter)
 
-      {:exists, _record} ->
-        :ok
+        {:exists, _record} ->
+          :ok
+      end
     end
   end
 

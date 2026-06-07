@@ -2,8 +2,10 @@ defmodule Harness.Cron.PendingDispatchTest do
   use ExUnit.Case, async: false
 
   alias Harness.AgentAdapter.Codex
+  alias Harness.Chat.Tools
   alias Harness.Cron.PendingDispatch
   alias Harness.Dispatch
+  alias Harness.Manifest
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.Roadmap.Item
@@ -72,6 +74,38 @@ defmodule Harness.Cron.PendingDispatchTest do
       assert {:error, :not_found} = PendingDispatch.approve(record.id)
     end
 
+    test "keeps a claimed approval from being re-parked while enqueue is in flight" do
+      parent = self()
+      project = ProjectFixture.from_repo("/tmp/harness-pending-claimed", name: "pending-claimed")
+      assert :ok = ProjectRegistry.register(project)
+
+      stub_ingest(parent)
+
+      Application.put_env(:harness, :oban_insert, fn changeset ->
+        job = Ecto.Changeset.apply_action!(changeset, :insert)
+        send(parent, :enqueue_started)
+
+        receive do
+          :finish_enqueue -> {:ok, job}
+        end
+      end)
+
+      assert {:parked, record} = PendingDispatch.park("pending-claimed", "42", Codex, %{})
+
+      approver = Task.async(fn -> PendingDispatch.approve(record.id) end)
+      assert_receive :enqueue_started
+
+      assert {:exists, ^record} = PendingDispatch.park("pending-claimed", "42", Codex, %{})
+      assert [] = PendingDispatch.list()
+
+      send(approver.pid, :finish_enqueue)
+
+      assert {:ok, %{task_id: "42", project_name: "pending-claimed", adapter: Codex}} =
+               Task.await(approver)
+
+      assert [] = PendingDispatch.list()
+    end
+
     test "an unknown id is not_found" do
       assert {:error, :not_found} = PendingDispatch.approve("nope:1")
     end
@@ -123,6 +157,20 @@ defmodule Harness.Cron.PendingDispatchTest do
 
       assert {:ok, %{pending: []}} = Dispatch.pending()
       assert {:error, :not_found} = Dispatch.approve(record.id)
+    end
+
+    test "dispatch-pending and dispatch-approve are exposed on the MCP/chat tool surface" do
+      tools = Manifest.mcp_tools()
+      registry = Tools.build()
+
+      assert Enum.find(tools, &(&1.name == "dispatch-pending")),
+             "dispatch-pending should be on the MCP tool surface"
+
+      assert Enum.find(tools, &(&1.name == "dispatch-approve")),
+             "dispatch-approve should be on the MCP tool surface"
+
+      assert %{module: Dispatch, function: :pending} = registry["dispatch-pending"]
+      assert %{module: Dispatch, function: :approve} = registry["dispatch-approve"]
     end
 
     test "interactive dispatch is ungated by manual mode — only the cron path parks" do

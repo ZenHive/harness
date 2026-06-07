@@ -1153,6 +1153,31 @@ defmodule Harness.ObanDispatchTest do
 
       assert opts[:rescue_after] == to_timeout(minute: 30)
     end
+
+    test "unfinished_run_job? detects non-terminal run jobs for a project task" do
+      start_supervised!(Harness.Repo)
+      :ok = Sandbox.checkout(Harness.Repo)
+
+      project = ProjectFixture.from_repo("/tmp/harness-unfinished-run-job", name: "unfinished-run-job")
+      queue = HarnessOban.queue_name(project)
+
+      args = %{
+        project_name: project.name,
+        item_id: "237",
+        adapter_module: Atom.to_string(Claude)
+      }
+
+      {:ok, job} = Harness.Repo.insert(Worker.new(args, queue: queue))
+
+      assert HarnessOban.unfinished_run_job?(project, "237")
+      refute HarnessOban.unfinished_run_job?(project, "other")
+
+      job
+      |> Ecto.Changeset.change(state: "completed")
+      |> Harness.Repo.update!()
+
+      refute HarnessOban.unfinished_run_job?(project, "237")
+    end
   end
 
   describe "lifeline rescue for landing and audit jobs" do

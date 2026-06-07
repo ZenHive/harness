@@ -44,6 +44,9 @@ defmodule Harness.Cron.PendingDispatch do
           parked_at: DateTime.t()
         }
 
+  @typep status :: :parked | :claimed
+  @typep state :: %{String.t() => {status(), t()}}
+
   @enforce_keys [:id, :project_name, :task_id, :adapter, :env, :parked_at]
   defstruct [:id, :project_name, :task_id, :adapter, :env, :parked_at]
 
@@ -54,7 +57,7 @@ defmodule Harness.Cron.PendingDispatch do
   end
 
   @impl GenServer
-  @spec init(term()) :: {:ok, %{String.t() => t()}}
+  @spec init(term()) :: {:ok, state()}
   def init(_init_arg), do: {:ok, %{}}
 
   @doc """
@@ -102,7 +105,7 @@ defmodule Harness.Cron.PendingDispatch do
     id = id_for(project_name, task_id)
 
     case Map.fetch(state, id) do
-      {:ok, record} ->
+      {:ok, {_status, record}} ->
         {:reply, {:exists, record}, state}
 
       :error ->
@@ -115,24 +118,42 @@ defmodule Harness.Cron.PendingDispatch do
           parked_at: DateTime.utc_now()
         }
 
-        {:reply, {:parked, record}, Map.put(state, id, record)}
+        {:reply, {:parked, record}, Map.put(state, id, {:parked, record})}
     end
   end
 
   def handle_call(:list, _from, state) do
-    records = state |> Map.values() |> Enum.sort_by(& &1.parked_at, DateTime)
+    records =
+      state
+      |> Map.values()
+      |> Enum.flat_map(fn
+        {:parked, record} -> [record]
+        {:claimed, _record} -> []
+      end)
+      |> Enum.sort_by(& &1.parked_at, DateTime)
+
     {:reply, records, state}
   end
 
   def handle_call({:claim, id}, _from, state) do
-    case Map.pop(state, id) do
-      {nil, state} -> {:reply, :error, state}
-      {%__MODULE__{} = record, state} -> {:reply, {:ok, record}, state}
+    case Map.fetch(state, id) do
+      {:ok, {:parked, %__MODULE__{} = record}} ->
+        {:reply, {:ok, record}, Map.put(state, id, {:claimed, record})}
+
+      {:ok, {:claimed, %__MODULE__{}}} ->
+        {:reply, :error, state}
+
+      :error ->
+        {:reply, :error, state}
     end
   end
 
   def handle_call({:repark, %__MODULE__{id: id} = record}, _from, state) do
-    {:reply, :ok, Map.put_new(state, id, record)}
+    {:reply, :ok, Map.put(state, id, {:parked, record})}
+  end
+
+  def handle_call({:complete, id}, _from, state) do
+    {:reply, :ok, Map.delete(state, id)}
   end
 
   def handle_call(:reset, _from, _state), do: {:reply, :ok, %{}}
@@ -150,6 +171,7 @@ defmodule Harness.Cron.PendingDispatch do
          {:ok, agent} <- AgentRegistry.agent_for_module(record.adapter),
          {:ok, item} <- ingest_roadmap({:id, record.task_id}, project: project, agent: agent),
          {:ok, run_id, _job} <- RunWorker.enqueue(project, item, record.adapter, env: record.env) do
+      GenServer.call(__MODULE__, {:complete, record.id})
       {:ok, %{run_id: run_id, task_id: record.task_id, project_name: record.project_name, adapter: record.adapter}}
     else
       {:error, _reason} = error ->
