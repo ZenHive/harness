@@ -164,6 +164,8 @@ The cross-family reviewer AI's verdict — not the implementer's self-report —
 
 **Canonical loop, zero Elixir:** `dispatch-task` (or `dispatch-bundle`) → `dispatch-status` / `dispatch-transcript` to watch → `dispatch-verdict_detail` to read the reviewer's report on a rejected run. Or collapse the wait into one `dispatch-await` call when you want the verdict in-band.
 
+**Live recovery loop — hold → steer → resume.** `dispatch-steer` is async: it only stashes a note for the next agent boundary. It does not interrupt a continuous live turn, so steer alone will not reach an agent that is grinding inside the same attempt. To redirect a live turn, call `dispatch-hold` with `interrupt: true`, then `dispatch-steer` with the new instruction, then `dispatch-resume`. For an implementer over-grinding the gate (for example, repeatedly rerunning `mix precommit` trying to make it green before committing), the operator move is force-handoff: hold/interruption → steer "commit your work and hand off; you do not need to green precommit" → resume. The cross-family reviewer runs the gate and can fix checks inline, so the implementer does not need to pass the gate before handing off. This is operator use of existing mechanical primitives, not new harness judgment.
+
 `project_eval` is deliberately **not** on this surface — it's the escape hatch (next section), reached for only when you need arbitrary eval or one of the struct-passing ops the flat tools omit (`supervisor-start_run`, `batch-*`, `agent_evaluation-compare`, `audit_review-grade_fix_with`). The Manifest's `:exchange_data` filter is what keeps those off the JSON surface; the flat wrappers above are the JSON-native way around it. For the full descripex/MCP mechanics, see § "Driving via Chat / MCP".
 
 ---

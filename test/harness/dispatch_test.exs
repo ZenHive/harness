@@ -841,6 +841,7 @@ defmodule Harness.DispatchTest do
 
       hold = Enum.find(tools, &(&1.name == "dispatch-hold"))
       assert Map.has_key?(hold.inputSchema.properties, :interrupt)
+      assert hold.inputSchema.properties.interrupt["type"] == "boolean"
       # interrupt defaults to false, so only run_id is required.
       assert hold.inputSchema.required == ["run_id"]
     end

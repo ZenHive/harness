@@ -298,6 +298,7 @@ defmodule Harness.Dispatch do
       interrupt: [
         kind: :value,
         default: false,
+        schema: boolean(),
         description:
           "When true, terminate the agent now and park immediately; when false, park at the next attempt boundary."
       ]

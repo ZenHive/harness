@@ -57,6 +57,7 @@ defmodule Harness.Chat.Tools do
           | {:error, {:dispatch_failed, String.t()}}
   def dispatch(registry, tool_name, arguments) when is_map(registry) and is_binary(tool_name) and is_map(arguments) do
     with {:ok, entry} <- lookup(registry, tool_name),
+         {:ok, arguments} <- coerce_args(entry, arguments),
          :ok <- validate_args(entry, arguments),
          {:ok, args} <- build_apply_args(entry, arguments) do
       safe_apply(entry, args)
@@ -82,6 +83,54 @@ defmodule Harness.Chat.Tools do
       {:error, violations} -> {:error, {:schema_validation_failed, violations}}
     end
   end
+
+  @spec coerce_args(entry(), map()) :: {:ok, map()}
+  defp coerce_args(entry, arguments) do
+    {:ok, Map.new(arguments, fn {key, value} -> {key, coerce_arg(entry, key, value)} end)}
+  end
+
+  @spec coerce_arg(entry(), term(), term()) :: term()
+  defp coerce_arg(entry, key, value) do
+    details = param_details(entry, key)
+
+    if boolean_param?(details) do
+      coerce_boolean(value)
+    else
+      value
+    end
+  end
+
+  @spec param_details(entry(), term()) :: map()
+  defp param_details(%{params: params}, key) do
+    key_string = to_string(key)
+
+    Enum.find_value(params, %{}, fn {param_key, details} ->
+      if Atom.to_string(param_key) == key_string, do: details
+    end)
+  end
+
+  @spec boolean_param?(map()) :: boolean()
+  defp boolean_param?(details) when is_map(details) do
+    schema = Map.get(details, :schema, %{})
+    schema_type = if is_map(schema), do: Map.get(schema, "type", Map.get(schema, :type))
+
+    schema_type in ["boolean", :boolean] or is_boolean(Map.get(details, :default))
+  end
+
+  @spec coerce_boolean(term()) :: term()
+  defp coerce_boolean(value) when is_boolean(value), do: value
+
+  defp coerce_boolean(value) when is_binary(value) do
+    case String.downcase(String.trim(value)) do
+      "true" -> true
+      "false" -> false
+      _other -> value
+    end
+  end
+
+  defp coerce_boolean(%{"value" => value}), do: coerce_boolean(value)
+  defp coerce_boolean(%{value: value}), do: coerce_boolean(value)
+  defp coerce_boolean(value), do: value
 
   @spec resolve_tool!(map(), [module()]) :: entry()
   defp resolve_tool!(%{name: name, description: description, inputSchema: schema}, modules) do

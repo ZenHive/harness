@@ -98,6 +98,17 @@ defmodule Harness.Dashboard.MCPServerTest do
       assert {:reply, %{"content" => _, "isError" => false}, ^frame} =
                MCPServer.handle_request(request, frame)
     end
+
+    test "coerces dispatch-hold interrupt booleans before applying the tool", %{frame: frame} do
+      for interrupt <- [true, false, "true", "false", %{"value" => true}, %{"value" => false}] do
+        request = call_request("dispatch-hold", %{"run_id" => "__no_such_run__", "interrupt" => interrupt})
+
+        assert {:reply, %{"content" => [%{"text" => text}], "isError" => false}, ^frame} =
+                 MCPServer.handle_request(request, frame)
+
+        assert {:ok, ["error", "not_found"]} = Jason.decode(text)
+      end
+    end
   end
 
   describe "non-tool methods (anubis catch-all fallthrough)" do
