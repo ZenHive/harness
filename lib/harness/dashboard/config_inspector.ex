@@ -176,9 +176,6 @@ defmodule Harness.Dashboard.ConfigInspector do
 
   # ── Derived-store readers ───────────────────────────────────────────────────
 
-  @spec harness_root() :: String.t()
-  defp harness_root, do: Path.expand("~/.harness")
-
   # `ResultStore.configured/0` is `{module, opts}`, or `false`/`nil` when off.
   @spec store_part(:backend | :root) :: term()
   defp store_part(:backend) do
@@ -206,32 +203,32 @@ defmodule Harness.Dashboard.ConfigInspector do
     if Application.get_env(:harness, :repo_enabled, true), do: "database:run_records", else: "memory:ephemeral"
   end
 
-  # `SettingsStore.configured/0` is `{module, opts}`, chosen from repo_enabled
-  # unless explicitly overridden. Postgres has no path; it lives in the
+  # `SettingsStore.configured/0` is `{module, opts}` (Postgres when repo_enabled)
+  # or `false` (the ephemeral no-op store). Postgres has no path; it lives in the
   # harness_settings table.
   @spec settings_store_part(:backend | :root) :: term()
   defp settings_store_part(:backend) do
     case SettingsStore.configured() do
       {module, _opts} -> module
-      _disabled -> "disabled"
+      _ephemeral -> "ephemeral"
     end
   end
 
   defp settings_store_part(:root) do
     case SettingsStore.configured() do
-      {SettingsStore.File, opts} -> Keyword.get(opts, :root, harness_root())
       {SettingsStore.Postgres, _opts} -> "database:harness_settings"
-      _disabled -> "disabled"
+      {_module, _opts} -> "database:harness_settings"
+      _ephemeral -> "memory:ephemeral"
     end
   end
 
   @spec settings_store_default(:backend | :root) :: term()
   defp settings_store_default(:backend) do
-    if Application.get_env(:harness, :repo_enabled, true), do: SettingsStore.Postgres, else: SettingsStore.File
+    if Application.get_env(:harness, :repo_enabled, true), do: SettingsStore.Postgres, else: "ephemeral"
   end
 
   defp settings_store_default(:root) do
-    if Application.get_env(:harness, :repo_enabled, true), do: "database:harness_settings", else: harness_root()
+    if Application.get_env(:harness, :repo_enabled, true), do: "database:harness_settings", else: "memory:ephemeral"
   end
 
   # ── Projects ────────────────────────────────────────────────────────────────

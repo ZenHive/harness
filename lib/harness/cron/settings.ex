@@ -5,68 +5,53 @@ defmodule Harness.Cron.Settings do
 
   Two switches govern unattended dispatch of code-writing agents:
 
-    * the **master** flag — the fleet-wide kill-switch, stored in the existing
-      `:harness, :cron_polling` `:enabled` key so `Harness.Cron.RoadmapPoller`'s
-      `enabled?/0` and `status/0` already reflect it;
-    * a **per-project** flag — a `%{project_name => boolean()}` map under
-      `:harness, :cron_project_autonomy`. **Absence means OFF**, so a freshly
-      registered project is non-autonomous until an operator opts it in.
+    * the **master** flag — the fleet-wide kill-switch (`master_enabled?/0`),
+      which `Harness.Cron.RoadmapPoller.enabled?/0` and `status/0` read;
+    * a **per-project** flag — a `%{project_name => boolean()}` map. **Absence
+      means OFF**, so a freshly registered project is non-autonomous until an
+      operator opts it in.
 
   Effective autonomy for a project is `master AND project` (`effective?/1`).
 
   ## Dispatch mode (Task 237) — a third dimension, orthogonal to on/off
 
-  A per-project **dispatch mode** — `:auto` (default) | `:manual` — lives under
-  `:harness, :cron_dispatch_mode` (`%{project_name => mode}`). **Absence means
-  `:auto`**, so existing autonomous projects keep auto-dispatching with zero
-  behavior change. Mode only matters once a project is `effective?/1`: under
+  A per-project **dispatch mode** — `:auto` (default) | `:manual`. **Absence
+  means `:auto`**, so existing autonomous projects keep auto-dispatching with
+  zero behavior change. Mode only matters once a project is `effective?/1`: under
   `:manual` the poller PARKS its resolved dispatch decision for operator approval
-  (`Harness.Cron.PendingDispatch`) instead of enqueueing it. It is *not* an on/off
-  toggle — `:manual` still lets the orchestrator plan the wave; it only holds the
-  mechanical enqueue. `dispatch_mode/1` reads it; `set_dispatch_mode/3` flips it.
+  (`Harness.Cron.PendingDispatch`) instead of enqueueing it. `dispatch_mode/1`
+  reads it; `set_dispatch_mode/3` flips it.
 
   ## Schedule (Task 111) — boot-applied, not live
 
-  The cron **schedule** is also persisted here (in the same `:cron_polling` config,
-  `:schedule` key, which `RoadmapPoller.schedule/0` already reads). Unlike the
-  switches above, it is **boot-applied**: the Oban Cron plugin's crontab is built
-  once at startup (`RoadmapPoller.cron_plugin/0`), so a changed schedule takes
-  effect on the **next restart**, not the next tick. `set_schedule/2` accepts only
-  a closed `schedule_presets/0` whitelist — a free-form crontab can never reach
-  Oban. Live runtime reconfig (teardown/re-add of the Cron plugin) is out of scope.
+  The cron **schedule** (`schedule/0`) is persisted here too. Unlike the switches
+  above it is **boot-applied**: the Oban Cron plugin's crontab is built once at
+  startup (`RoadmapPoller.cron_plugin/0`), so a changed schedule takes effect on
+  the **next restart**, not the next tick. `set_schedule/2` accepts only a closed
+  `schedule_presets/0` whitelist — a free-form crontab can never reach Oban.
 
-  ## App env is the live cache; SettingsStore is the persistence layer
+  ## One Postgres table, read directly
 
-  `RoadmapPoller.perform/1` already reads `enabled?/0` from app env on every tick,
-  so a flip takes effect at the next tick with no restart. This module keeps that
-  model: every setter writes app env (the value the poller reads) **and**
-  write-throughs to `Harness.SettingsStore` so the choice survives a BEAM
-  restart. `load_into_env/0` runs once on boot to seed app env from the shared
-  store before Oban starts.
-
-  ## Disabling
-
-  `config :harness, :cron_settings, false` (or `nil`) short-circuits persistence:
-  setters still update app env (runtime flips work) but nothing is written, and
-  `load_into_env/0` is a no-op. Otherwise the legacy root is used by the file
-  fallback and for first-boot import of old `cron_settings.term` files.
+  All four values live in one record in `Harness.SettingsStore` (Postgres when
+  `:repo_enabled`) keyed `:cron`. Every read goes straight to the store — no
+  `:cron_polling` app-env cache, no boot loader — so a flip is the single source
+  of truth and survives a restart. With `repo_enabled: false` the store is
+  ephemeral: master/project default off, dispatch mode `:auto`, schedule the
+  default cadence.
   """
 
-  alias Harness.Cron.RoadmapPoller
   alias Harness.Project
   alias Harness.SettingsStore
 
   require Logger
 
-  @default_root "~/.harness"
-  @filename "cron_settings.term"
   @store_key :cron
+  @default_schedule "0 */2 * * *"
   @valid_dispatch_modes [:auto, :manual]
 
   # The only crontabs that can reach Oban's Cron plugin — a closed
   # `{key, label, crontab}` whitelist. A free-form crontab box would let an
-  # invalid expression reach `cron_plugin/0`; a preset picker cannot. `"2h"` is
-  # the `RoadmapPoller` default (`@default_schedule "0 */2 * * *"`).
+  # invalid expression reach `cron_plugin/0`; a preset picker cannot.
   @schedule_presets [
     {"hourly", "Hourly", "0 * * * *"},
     {"2h", "Every 2 hours", "0 */2 * * *"},
@@ -79,86 +64,20 @@ defmodule Harness.Cron.Settings do
 
   @typedoc "The persisted settings-store value: both switch sets, dispatch modes, plus the cron schedule."
   @type t :: %{
-          required(:master_enabled) => boolean(),
-          required(:project_autonomy) => %{String.t() => boolean()},
+          optional(:master_enabled) => boolean(),
+          optional(:project_autonomy) => %{String.t() => boolean()},
           optional(:dispatch_mode) => %{String.t() => dispatch_mode()},
           optional(:schedule) => String.t()
         }
 
-  @doc """
-  Seeds app env from the persisted store. Called once on boot, before Oban starts,
-  so `RoadmapPoller.enabled?/0` reflects the persisted master flag from t=0.
-
-  No file (or a disabled store) leaves the compile-time config defaults in place.
-  """
-  @spec load_into_env() :: :ok
-  def load_into_env do
-    case SettingsStore.fetch(@store_key, store_opts()) do
-      {:ok, record} when is_map(record) -> apply_record(record)
-      _missing_or_invalid -> :ok
-    end
-  end
-
-  # Seeds app env from a persisted record. A record missing `:schedule` (written
-  # before Task 111) leaves the default in place; a stored schedule outside the
-  # current preset whitelist is ignored, never applied.
-  @spec apply_record(map()) :: :ok
-  defp apply_record(%{master_enabled: master, project_autonomy: projects} = record)
-       when is_boolean(master) and is_map(projects) do
-    put_master(master)
-    Application.put_env(:harness, :cron_project_autonomy, projects)
-    apply_dispatch_mode(Map.get(record, :dispatch_mode))
-    apply_schedule(Map.get(record, :schedule))
-    :ok
-  end
-
-  defp apply_record(_other), do: :ok
-
-  # Seeds per-project dispatch modes from a persisted record. A record missing
-  # `:dispatch_mode` (written before Task 237) leaves the default in place — every
-  # project stays `:auto`. A torn/hand-edited map is sanitized to well-formed
-  # `{binary => :auto | :manual}` entries only.
-  @spec apply_dispatch_mode(term()) :: :ok
-  defp apply_dispatch_mode(modes) when is_map(modes) do
-    Application.put_env(:harness, :cron_dispatch_mode, sanitize_modes(modes))
-    :ok
-  end
-
-  defp apply_dispatch_mode(_other), do: :ok
-
-  @spec sanitize_modes(map()) :: %{String.t() => dispatch_mode()}
-  defp sanitize_modes(modes) do
-    for {name, mode} <- modes, is_binary(name), mode in @valid_dispatch_modes, into: %{}, do: {name, mode}
-  end
-
-  @spec apply_schedule(term()) :: :ok
-  defp apply_schedule(crontab) when is_binary(crontab) do
-    if known_crontab?(crontab) do
-      put_schedule(crontab)
-    else
-      Logger.warning(
-        "harness cron autonomy: ignoring persisted schedule #{inspect(crontab)} — not in the preset whitelist"
-      )
-    end
-
-    :ok
-  end
-
-  defp apply_schedule(_other), do: :ok
-
-  @doc "Returns whether the fleet-wide master autonomy switch is on."
+  @doc "Returns whether the fleet-wide master autonomy switch is on (read from the store)."
   @spec master_enabled?() :: boolean()
-  def master_enabled? do
-    :harness
-    |> Application.get_env(:cron_polling, [])
-    |> Keyword.get(:enabled, false)
-    |> Kernel.==(true)
-  end
+  def master_enabled?, do: Map.get(record(), :master_enabled, false) == true
 
   @doc "Returns whether a project's own autonomy flag is on (absence ⇒ false)."
   @spec project_enabled?(Project.t() | String.t()) :: boolean()
   def project_enabled?(%Project{name: name}), do: project_enabled?(name)
-  def project_enabled?(name) when is_binary(name), do: Map.get(project_map(), name, false)
+  def project_enabled?(name) when is_binary(name), do: Map.get(project_map(), name, false) == true
 
   @doc """
   Returns the effective autonomy for a project: `master AND project`. This is the
@@ -169,13 +88,25 @@ defmodule Harness.Cron.Settings do
 
   @doc """
   Returns a project's cron dispatch mode (`:auto` | `:manual`); absence ⇒ `:auto`.
-
-  Only consulted for a project that is already `effective?/1`: `:manual` parks the
-  poller's resolved dispatch decision for operator approval instead of enqueueing.
   """
   @spec dispatch_mode(Project.t() | String.t()) :: dispatch_mode()
   def dispatch_mode(%Project{name: name}), do: dispatch_mode(name)
   def dispatch_mode(name) when is_binary(name), do: Map.get(dispatch_mode_map(), name, :auto)
+
+  @doc """
+  Returns the configured cron expression for roadmap polling: the persisted
+  schedule when it is a known preset, the default cadence otherwise.
+  """
+  @spec schedule() :: String.t()
+  def schedule do
+    case Map.get(record(), :schedule) do
+      crontab when is_binary(crontab) ->
+        if known_crontab?(crontab), do: crontab, else: default_schedule()
+
+      _unset ->
+        default_schedule()
+    end
+  end
 
   @doc """
   Flips the master switch at runtime, persists it, and logs an info-level audit
@@ -183,8 +114,7 @@ defmodule Harness.Cron.Settings do
   """
   @spec set_master(boolean(), String.t()) :: :ok
   def set_master(enabled, actor) when is_boolean(enabled) and is_binary(actor) do
-    put_master(enabled)
-    persist()
+    persist(Map.put(record(), :master_enabled, enabled))
     Logger.info("harness cron autonomy: master #{state_word(enabled)} by #{actor}")
     :ok
   end
@@ -195,8 +125,7 @@ defmodule Harness.Cron.Settings do
   """
   @spec set_project(String.t(), boolean(), String.t()) :: :ok
   def set_project(name, enabled, actor) when is_binary(name) and is_boolean(enabled) and is_binary(actor) do
-    Application.put_env(:harness, :cron_project_autonomy, Map.put(project_map(), name, enabled))
-    persist()
+    persist(Map.put(record(), :project_autonomy, Map.put(project_map(), name, enabled)))
     Logger.info("harness cron autonomy: project #{name} #{state_word(enabled)} by #{actor}")
     :ok
   end
@@ -208,15 +137,12 @@ defmodule Harness.Cron.Settings do
   An invalid mode is rejected (`{:error, :invalid_mode}`) and never written.
   """
   @spec set_dispatch_mode(String.t(), dispatch_mode(), String.t()) :: :ok | {:error, :invalid_mode}
-  @spec set_dispatch_mode(String.t(), dispatch_mode(), String.t()) :: :ok | {:error, :invalid_mode}
   def set_dispatch_mode(name, mode, actor) when is_binary(name) and mode in @valid_dispatch_modes and is_binary(actor) do
-    Application.put_env(:harness, :cron_dispatch_mode, Map.put(dispatch_mode_map(), name, mode))
-    persist()
+    persist(Map.put(record(), :dispatch_mode, Map.put(dispatch_mode_map(), name, mode)))
     Logger.info("harness cron autonomy: project #{name} dispatch mode #{mode} by #{actor}")
     :ok
   end
 
-  @spec set_dispatch_mode(String.t(), dispatch_mode(), String.t()) :: :ok | {:error, :invalid_mode}
   def set_dispatch_mode(name, _mode, actor) when is_binary(name) and is_binary(actor) do
     {:error, :invalid_mode}
   end
@@ -230,11 +156,11 @@ defmodule Harness.Cron.Settings do
 
   @doc """
   Returns the preset key of the currently configured schedule, or `nil` when the
-  active crontab matches no preset (e.g. a config-file override outside the set).
+  active crontab matches no preset.
   """
   @spec active_preset() :: String.t() | nil
   def active_preset do
-    current = RoadmapPoller.schedule()
+    current = schedule()
     Enum.find_value(@schedule_presets, fn {key, _label, crontab} -> if crontab == current, do: key end)
   end
 
@@ -244,16 +170,13 @@ defmodule Harness.Cron.Settings do
 
   Only the `schedule_presets/0` keys are accepted; an unknown or free-form key is
   rejected (`{:error, :invalid_preset}`) and never reaches Oban's crontab. The new
-  schedule takes effect on the **next BEAM restart** — the Oban Cron plugin's
-  crontab is built once at boot (`RoadmapPoller.cron_plugin/0`); live reconfig is
-  out of scope (Task 111).
+  schedule takes effect on the **next BEAM restart** (Task 111).
   """
   @spec set_schedule(String.t(), String.t()) :: :ok | {:error, :invalid_preset}
   def set_schedule(preset_key, actor) when is_binary(preset_key) and is_binary(actor) do
     case Enum.find(@schedule_presets, fn {key, _label, _crontab} -> key == preset_key end) do
       {_key, _label, crontab} ->
-        put_schedule(crontab)
-        persist()
+        persist(Map.put(record(), :schedule, crontab))
         Logger.info("harness cron autonomy: schedule set to #{crontab} (#{preset_key}) by #{actor}")
         :ok
 
@@ -263,49 +186,53 @@ defmodule Harness.Cron.Settings do
   end
 
   @spec project_map() :: %{String.t() => boolean()}
-  defp project_map, do: Application.get_env(:harness, :cron_project_autonomy, %{})
+  defp project_map do
+    case Map.get(record(), :project_autonomy) do
+      map when is_map(map) -> map
+      _other -> %{}
+    end
+  end
 
   @spec dispatch_mode_map() :: %{String.t() => dispatch_mode()}
-  defp dispatch_mode_map, do: Application.get_env(:harness, :cron_dispatch_mode, %{})
+  defp dispatch_mode_map do
+    case Map.get(record(), :dispatch_mode) do
+      map when is_map(map) -> sanitize_modes(map)
+      _other -> %{}
+    end
+  end
+
+  @spec sanitize_modes(map()) :: %{String.t() => dispatch_mode()}
+  defp sanitize_modes(modes) do
+    for {name, mode} <- modes, is_binary(name), mode in @valid_dispatch_modes, into: %{}, do: {name, mode}
+  end
 
   @spec known_crontab?(String.t()) :: boolean()
   defp known_crontab?(crontab), do: Enum.any?(@schedule_presets, fn {_key, _label, ct} -> ct == crontab end)
 
-  # Writes the schedule into the existing :cron_polling config, preserving the
-  # :enabled flag (and any other keys) so RoadmapPoller's reads are unaffected.
-  @spec put_schedule(String.t()) :: :ok
-  defp put_schedule(crontab) do
-    config = Application.get_env(:harness, :cron_polling, [])
-    Application.put_env(:harness, :cron_polling, Keyword.put(config, :schedule, crontab))
-  end
-
-  # Writes the master flag into the existing :cron_polling config, preserving the
-  # schedule (and any other keys) so RoadmapPoller's reads are unaffected.
-  @spec put_master(boolean()) :: :ok
-  defp put_master(enabled) do
-    config = Application.get_env(:harness, :cron_polling, [])
-    Application.put_env(:harness, :cron_polling, Keyword.put(config, :enabled, enabled))
+  # The default cadence seed: the `:cron_polling, :schedule` config value (so a
+  # deployment can change the unflipped default) falling back to the constant.
+  @spec default_schedule() :: String.t()
+  defp default_schedule do
+    :harness
+    |> Application.get_env(:cron_polling, [])
+    |> Keyword.get(:schedule, @default_schedule)
+    |> to_string()
   end
 
   @spec state_word(boolean()) :: String.t()
   defp state_word(true), do: "enabled"
   defp state_word(false), do: "disabled"
 
-  @spec persist() :: :ok | {:error, term()}
-  defp persist do
-    SettingsStore.put(@store_key, current_state(), store_opts())
+  # The current persisted record, or an empty map (ephemeral store / no row yet).
+  # `set_*` preserves the other keys by writing this map back with one replaced.
+  @spec record() :: map()
+  defp record do
+    case SettingsStore.fetch(@store_key) do
+      {:ok, map} when is_map(map) -> map
+      _missing_or_invalid -> %{}
+    end
   end
 
-  @spec current_state() :: t()
-  defp current_state do
-    %{
-      master_enabled: master_enabled?(),
-      project_autonomy: project_map(),
-      dispatch_mode: dispatch_mode_map(),
-      schedule: RoadmapPoller.schedule()
-    }
-  end
-
-  @spec store_opts() :: SettingsStore.legacy_opts()
-  defp store_opts, do: [legacy_config_key: :cron_settings, legacy_filename: @filename, default_root: @default_root]
+  @spec persist(t()) :: :ok | {:error, term()}
+  defp persist(record), do: SettingsStore.put(@store_key, record)
 end

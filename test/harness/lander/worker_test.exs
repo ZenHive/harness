@@ -7,7 +7,7 @@ defmodule Harness.Lander.WorkerTest do
   `{:error, :no_target_branch}`.
 
   `async: false` — registers a fixture project in the global `ProjectRegistry`
-  and mutates the `:harness, :landing_overrides` app env.
+  and points `:harness, :settings_store` at an isolated in-memory scope.
   """
 
   use ExUnit.Case, async: false
@@ -17,6 +17,7 @@ defmodule Harness.Lander.WorkerTest do
   alias Harness.Landing.Settings, as: LandingSettings
   alias Harness.Project
   alias Harness.ProjectRegistry
+  alias Harness.Test.SettingsStoreMemory
 
   @moduletag :tmp_dir
 
@@ -34,7 +35,7 @@ defmodule Harness.Lander.WorkerTest do
 
   describe "perform/1 — runtime landing override (dashboard auto-land)" do
     setup %{tmp_dir: tmp_dir} do
-      setup_landing_store(tmp_dir)
+      setup_landing_store()
       fixture = git_fixture()
       project = register_project(fixture.repo, tmp_dir)
 
@@ -58,16 +59,21 @@ defmodule Harness.Lander.WorkerTest do
 
   # ── fixtures ──────────────────────────────────────────────────────────────
 
-  # Landing-settings store under a temp root (mirrors Harness.Landing.SettingsTest).
-  defp setup_landing_store(tmp_dir) do
-    prior_env = Application.get_env(:harness, :landing_overrides)
-    prior_store = Application.get_env(:harness, :landing_settings)
-    Application.put_env(:harness, :landing_settings, root: Path.join(tmp_dir, "landing-settings"))
-    Application.put_env(:harness, :landing_overrides, %{})
+  # Isolated in-memory settings store (mirrors Harness.Landing.SettingsTest) so
+  # the override the test writes never collides with the operator's real state.
+  defp setup_landing_store do
+    prior_store = Application.get_env(:harness, :settings_store)
+    scope = :"worker_test_#{System.unique_integer([:positive])}"
+
+    Application.put_env(
+      :harness,
+      :settings_store,
+      {SettingsStoreMemory, scope: scope, legacy_root: "/nonexistent/harness-test-no-legacy"}
+    )
 
     on_exit(fn ->
-      restore(:landing_overrides, prior_env)
-      restore(:landing_settings, prior_store)
+      SettingsStoreMemory.reset(scope: scope)
+      restore(:settings_store, prior_store)
     end)
   end
 

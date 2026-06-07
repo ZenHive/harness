@@ -4,8 +4,8 @@ defmodule Harness.ConfigTest do
   read/write accessor for operator config.
 
   `async: false` — every assertion reads or mutates global `:harness` app env and
-  the file-backed `Harness.SettingsStore` (isolated to a per-test tmp root via
-  `:config_settings`), which would leak across parallel tests.
+  the single `Harness.SettingsStore` (isolated to a per-test in-memory scope),
+  which would leak across parallel tests.
   """
 
   use ExUnit.Case, async: false
@@ -13,26 +13,32 @@ defmodule Harness.ConfigTest do
   alias Harness.Config
   alias Harness.Config.Entry
   alias Harness.SettingsStore
+  alias Harness.Test.SettingsStoreMemory
 
   setup do
     prior_run = Application.get_env(:harness, :run)
     prior_dashboard = Application.get_env(:harness, :dashboard)
     prior_dispatch = Application.get_env(:harness, :dispatch)
-    prior_store = Application.get_env(:harness, :config_settings)
+    prior_store = Application.get_env(:harness, :settings_store)
 
-    # Isolate the persistence file to a throwaway root.
-    root = Path.join(System.tmp_dir!(), "harness_config_#{System.unique_integer([:positive])}")
-    Application.put_env(:harness, :config_settings, root: root)
+    # Isolate persistence to a throwaway in-memory scope (no legacy import).
+    scope = :"config_test_#{System.unique_integer([:positive])}"
+
+    Application.put_env(
+      :harness,
+      :settings_store,
+      {SettingsStoreMemory, scope: scope, legacy_root: "/nonexistent/harness-test-no-legacy"}
+    )
 
     on_exit(fn ->
       restore(:run, prior_run)
       restore(:dashboard, prior_dashboard)
       restore(:dispatch, prior_dispatch)
-      restore(:config_settings, prior_store)
-      File.rm_rf(root)
+      restore(:settings_store, prior_store)
+      SettingsStoreMemory.reset(scope: scope)
     end)
 
-    {:ok, root: root}
+    {:ok, scope: scope}
   end
 
   describe "schema/0" do
@@ -83,12 +89,13 @@ defmodule Harness.ConfigTest do
   end
 
   describe "put/3" do
-    test "validates, persists, and hot-applies an editable non-restart key", %{root: root} do
+    test "validates, persists, and hot-applies an editable non-restart key" do
       assert :ok = Config.put({:run, :lifetime_timeout}, 99_000, "test")
       # Live cache updated immediately.
       assert Config.get({:run, :lifetime_timeout}) == 99_000
-      # Persisted to the store file.
-      assert File.exists?(Path.join(root, "harness_settings.term"))
+      # Persisted to the store under the :config key.
+      assert {:ok, overrides} = SettingsStore.fetch(:config)
+      assert overrides[{:run, :lifetime_timeout}] == 99_000
     end
 
     test "accepts nil for a nullable duration (unbounded)" do
@@ -97,9 +104,9 @@ defmodule Harness.ConfigTest do
     end
 
     test "rejects a non-editable key without mutating anything" do
-      before = Application.get_env(:harness, :cron_polling)
-      assert {:error, :not_editable} = Config.put({:cron_polling, :enabled}, true, "test")
-      assert Application.get_env(:harness, :cron_polling) == before
+      before = Application.get_env(:harness, :dashboard)
+      assert {:error, :not_editable} = Config.put({:dashboard, :enabled}, false, "test")
+      assert Application.get_env(:harness, :dashboard) == before
     end
 
     test "rejects an unknown key" do
@@ -179,13 +186,7 @@ defmodule Harness.ConfigTest do
     test "an override for a key no longer in the schema is ignored, not crashed" do
       # Seed the store directly with a stale key alongside a live one — a schema
       # that dropped a key must not crash load_into_env/0 on the orphan override.
-      store_opts = [
-        legacy_config_key: :config_settings,
-        legacy_filename: "config_settings.term",
-        default_root: "~/.harness"
-      ]
-
-      :ok = SettingsStore.put(:config, %{{:run, :gone_key} => 1, {:run, :lifetime_timeout} => 88_000}, store_opts)
+      :ok = SettingsStore.put(:config, %{{:run, :gone_key} => 1, {:run, :lifetime_timeout} => 88_000})
 
       Application.delete_env(:harness, :run)
       assert :ok = Config.load_into_env()

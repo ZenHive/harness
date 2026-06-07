@@ -13,11 +13,14 @@ defmodule Harness.Config do
 
   ## App env is the live cache; SettingsStore is the persistence layer
 
-  Mirrors the existing settings domains (`Harness.Cron.Settings`,
-  `Harness.Agent.Settings`): `get/1` reads the value already folded into app env
-  (compile-time default → `config.exs` → `runtime.exs` env var → persisted UI
-  override). `put/3` validates against the schema, write-throughs to
-  `Harness.SettingsStore`, and — unless the key is `restart_required?` — applies
+  Unlike the on/off settings domains (`Harness.Cron.Settings`,
+  `Harness.Agent.Settings`, `Harness.Landing.Settings`, which read the Postgres
+  store directly), this richer schema keeps an app-env live cache for its
+  env-var-wins / restart-required semantics: `get/1` reads the value already
+  folded into app env (compile-time default → `config.exs` → `runtime.exs` env
+  var → persisted UI override). `put/3` validates against the schema,
+  write-throughs to `Harness.SettingsStore`, and — unless the key is
+  `restart_required?` — applies
   the value to app env live, so a run timeout edit takes effect on the next run
   with no restart. `load_into_env/0` runs once on boot to re-apply persisted
   overrides.
@@ -43,9 +46,20 @@ defmodule Harness.Config do
 
   require Logger
 
-  @default_root "~/.harness"
-  @filename "config_settings.term"
   @store_key :config
+
+  @doc false
+  @spec child_spec(term()) :: Supervisor.child_spec()
+  def child_spec(_arg) do
+    %{id: __MODULE__, start: {__MODULE__, :start_link, []}, restart: :temporary, type: :worker}
+  end
+
+  @doc false
+  @spec start_link() :: :ignore
+  def start_link do
+    load_into_env()
+    :ignore
+  end
 
   # The implementer agents an unassigned task may default-route to — the closed
   # set the `:agent`-typed `{:dispatch, :default_agent}` key validates against and
@@ -83,8 +97,6 @@ defmodule Harness.Config do
       e("Run timeouts", "reviewer_spawn_timeout", {:run, :reviewer_spawn_timeout}, 60_000, :duration_ms,
         ui_editable?: true
       ),
-      e("Cron polling", "enabled", {:cron_polling, :enabled}, false, :boolean),
-      e("Cron polling", "schedule", {:cron_polling, :schedule}, "0 */2 * * *", :string, restart_required?: true),
       e("Dispatch", "default_agent", {:dispatch, :default_agent}, :codex, :agent, ui_editable?: true),
       e("Notifications", "sinks", :notification_sinks, [], :atom_list),
       e("Paths", "project cache_root", {:project, :cache_root}, Path.expand("~/_DATA/harness/projects"), :path),
@@ -211,19 +223,16 @@ defmodule Harness.Config do
 
   @spec persist_override(Entry.key(), term()) :: :ok | {:error, term()}
   defp persist_override(key, value) do
-    SettingsStore.put(@store_key, Map.put(overrides(), key, value), store_opts())
+    SettingsStore.put(@store_key, Map.put(overrides(), key, value))
   end
 
   @spec overrides() :: %{Entry.key() => term()}
   defp overrides do
-    case SettingsStore.fetch(@store_key, store_opts()) do
+    case SettingsStore.fetch(@store_key) do
       {:ok, map} when is_map(map) -> map
       _missing_or_invalid -> %{}
     end
   end
-
-  @spec store_opts() :: SettingsStore.legacy_opts()
-  defp store_opts, do: [legacy_config_key: :config_settings, legacy_filename: @filename, default_root: @default_root]
 
   @spec e(String.t(), String.t(), Entry.key(), term(), Entry.value_type(), keyword()) :: Entry.t()
   defp e(section, label, key, default, type, opts \\ []) do

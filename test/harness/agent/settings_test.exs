@@ -1,29 +1,31 @@
 defmodule Harness.Agent.SettingsTest do
+  @moduledoc """
+  Unit coverage for `Harness.Agent.Settings` — operator agent enablement and
+  reviewer eligibility, read from and written to the one Postgres settings store
+  (the in-memory test backend stands in for Postgres here).
+
+  `async: false` — shares the global test settings store scope and the
+  `:reviewer_exclude` app env, reset per test.
+  """
+
   use ExUnit.Case, async: false
 
   alias Harness.Agent.Settings
+  alias Harness.Test.SettingsStoreMemory
+
+  @scope :test_default
 
   setup do
-    prior_settings = Application.get_env(:harness, :agent_settings)
-    prior_disabled = Application.get_env(:harness, :agent_disabled)
-    prior_ineligible = Application.get_env(:harness, :agent_reviewer_ineligible)
+    SettingsStoreMemory.reset(scope: @scope)
     prior_exclude = Application.get_env(:harness, :reviewer_exclude)
-
-    root = Path.join(System.tmp_dir!(), "harness_agent_settings_#{System.unique_integer([:positive])}")
-    Application.put_env(:harness, :agent_settings, root: root)
-    # Start each test from the config-seed fallback (no persisted override yet).
-    Application.delete_env(:harness, :agent_reviewer_ineligible)
     Application.put_env(:harness, :reviewer_exclude, [:pi])
 
     on_exit(fn ->
-      restore_env(:agent_settings, prior_settings)
-      restore_env(:agent_disabled, prior_disabled)
-      restore_env(:agent_reviewer_ineligible, prior_ineligible)
+      SettingsStoreMemory.reset(scope: @scope)
       restore_env(:reviewer_exclude, prior_exclude)
-      File.rm_rf(root)
     end)
 
-    {:ok, root: root}
+    :ok
   end
 
   describe "enable/disable" do
@@ -33,15 +35,15 @@ defmodule Harness.Agent.SettingsTest do
       assert Settings.disabled_agents() == []
     end
 
-    test "set_enabled(false) disables and persists across a reload" do
+    test "set_enabled(false) disables and the choice survives a restart" do
       assert :ok = Settings.set_enabled(:cursor, false, "test")
       assert Settings.disabled?(:cursor)
       refute Settings.enabled?(:cursor)
 
-      # Simulate a restart: clear env, reload from the persisted file.
-      Application.delete_env(:harness, :agent_disabled)
-      assert :ok = Settings.load_into_env()
+      # No app-env cache to clear: the store is the source of truth, so a fresh
+      # read (as a restarted node would do) still sees the persisted flip.
       assert Settings.disabled?(:cursor)
+      assert Settings.disabled_agents() == [:cursor]
     end
 
     test "re-enabling removes the agent from the disabled set" do
@@ -68,20 +70,15 @@ defmodule Harness.Agent.SettingsTest do
     end
   end
 
-  describe "disabled store" do
-    test "set_enabled still flips env but writes nothing" do
-      Application.put_env(:harness, :agent_settings, false)
+  describe "ephemeral store" do
+    test "with repo disabled, a flip is a no-op and reads stay at the default" do
+      prior = Application.get_env(:harness, :settings_store)
+      Application.put_env(:harness, :settings_store, false)
+      on_exit(fn -> restore_env(:settings_store, prior) end)
 
       assert :ok = Settings.set_enabled(:claude, false, "test")
-      assert Settings.disabled?(:claude)
-
-      # Nothing persisted: a reload from the (disabled) store is a no-op.
-      assert :ok = Settings.load_into_env()
-    end
-
-    test "load_into_env is a no-op when no file exists yet", %{root: root} do
-      refute File.exists?(Path.join(root, "agent_settings.term"))
-      assert :ok = Settings.load_into_env()
+      # The no-op store discards the write; the read falls back to the default.
+      assert Settings.enabled?(:claude)
       assert Settings.disabled_agents() == []
     end
   end
@@ -101,25 +98,18 @@ defmodule Harness.Agent.SettingsTest do
       refute Settings.reviewer_eligible?(:pi)
     end
 
-    test "set_reviewer_eligible(false) persists across a reload" do
+    test "set_reviewer_eligible(false) survives a restart" do
       assert :ok = Settings.set_reviewer_eligible(:codex, false, "test")
       assert Settings.reviewer_ineligible?(:codex)
 
-      # Simulate a restart: clear env, reload from the persisted file.
-      Application.delete_env(:harness, :agent_reviewer_ineligible)
-      assert :ok = Settings.load_into_env()
+      # A fresh read (restarted node) still sees the persisted ineligibility.
       assert Settings.reviewer_ineligible?(:codex)
     end
 
-    test "a set_enabled toggle does not freeze the reviewer config seed into the file" do
-      # Disabling an implementer is not a reviewer override, so persist/0 must
-      # not materialize the [:pi] seed — the seed has to stay live on reload.
+    test "a set_enabled toggle does not freeze the reviewer config seed into the store" do
+      # Disabling an implementer is not a reviewer override, so the persisted
+      # record must not materialize the [:pi] seed — it has to stay live.
       assert :ok = Settings.set_enabled(:cursor, false, "test")
-
-      Application.delete_env(:harness, :agent_reviewer_ineligible)
-      assert :ok = Settings.load_into_env()
-
-      assert Application.get_env(:harness, :agent_reviewer_ineligible) == nil
       assert Settings.reviewer_ineligible_agents() == [:pi]
 
       # The seed is genuinely live, not frozen: changing it now takes effect.
@@ -132,8 +122,7 @@ defmodule Harness.Agent.SettingsTest do
       assert Settings.reviewer_ineligible_agents() == []
       assert Settings.reviewer_eligible?(:pi)
 
-      Application.delete_env(:harness, :agent_reviewer_ineligible)
-      assert :ok = Settings.load_into_env()
+      # A fresh read (restarted node) still honours the persisted empty set.
       assert Settings.reviewer_eligible?(:pi)
       assert Settings.reviewer_ineligible_agents() == []
     end

@@ -27,12 +27,6 @@ config :harness, Oban,
   # jobs are low-volume; the retention is for observability, not throughput.
   plugins: [{Oban.Plugins.Pruner, max_age: 60 * 60 * 24}]
 
-# Legacy per-agent settings root. Runtime-flippable settings persist through
-# Harness.SettingsStore (Postgres when repo_enabled, file fallback otherwise);
-# this root is used by the file backend and for first-boot legacy import.
-# Set to `false` to disable persistence for this domain.
-config :harness, :agent_settings, root: Path.expand("~/.harness")
-
 # HIGH-tier second-grader pairing — see Harness.AuditReview.default_grader/1.
 # Maps an implementer agent to the cross-family agent that grades its fix
 # (Codex grades Claude, Claude grades Codex). Override to re-pair or to add
@@ -43,24 +37,18 @@ config :harness, :audit_review, grader_pairs: %{claude: :codex, codex: :claude}
 
 # Autonomous roadmap polling is opt-in. The Oban.Plugins.Cron entry that runs
 # Harness.Cron.RoadmapPoller is registered unconditionally (Task 109) so the
-# runtime master toggle has a scheduled tick to act on; `enabled` is the live
-# dispatch gate (seeded from the persisted store on boot), `schedule` the
-# cadence. `subscription_env_scrubs` removes metered provider keys from
-# subscription-operated agents; set an agent entry to false/%{} when that agent
-# should intentionally use its inherited API key.
+# runtime master toggle has a scheduled tick to act on. The master switch,
+# per-project autonomy, dispatch mode, and active `schedule` are all persisted
+# in the Postgres settings store (Harness.Cron.Settings) — the `schedule` value
+# here is only the unflipped default cadence. `subscription_env_scrubs` removes
+# metered provider keys from subscription-operated agents; set an agent entry to
+# false/%{} when that agent should intentionally use its inherited API key.
 config :harness, :cron_polling,
-  enabled: false,
   schedule: "0 */2 * * *",
   subscription_env_scrubs: %{
     claude: %{"ANTHROPIC_API_KEY" => false},
     codex: %{"OPENAI_API_KEY" => false}
   }
-
-# Legacy cron settings root. Runtime-flippable settings persist through
-# Harness.SettingsStore (Postgres when repo_enabled, file fallback otherwise);
-# this root is used by the file backend and for first-boot legacy import.
-# Set to `false` to disable persistence for this domain.
-config :harness, :cron_settings, root: Path.expand("~/.harness")
 
 # Phoenix LiveView dashboard (Task 50) — Harness.Dashboard.Endpoint + Live.
 # `enabled` toggles the supervised standalone Endpoint; mountable consumers
@@ -179,14 +167,21 @@ if config_env() == :test do
     pool_size: 10
 
   config :harness, Oban, testing: :inline
-  config :harness, :agent_settings, false
-  # Persistence off by default in test; the settings tests override with a temp root.
-  config :harness, :cron_settings, false
   config :harness, :dashboard, enabled: false, port: 4018
-  config :harness, :landing_settings, false
   config :harness, :oban_enabled, false
   config :harness, :repo_enabled, false
   config :harness, :result_store, {Harness.ResultStore.Memory, scope: :test_default}
+
+  # repo_enabled is false in test, so the production settings store would be the
+  # ephemeral no-op backend. The suite needs a *persistent* (within-BEAM) store
+  # to prove a flip survives a simulated restart without a live DB, so default to
+  # the test-only in-memory backend; the ephemeral-path test overrides this to
+  # `false`, and the Postgres integration test overrides it to the PG backend.
+  # `legacy_root` points at a dir with no `*.term` files so the one-time legacy
+  # import is a no-op by default — otherwise every missing-key read would import
+  # the developer's real `~/.harness` flips. The legacy-import test overrides it.
+  config :harness, :settings_store,
+    {Harness.Test.SettingsStoreMemory, scope: :test_default, legacy_root: "/nonexistent/harness-test-no-legacy"}
 
   # Disable the node-pressure admission gate (Task 202) by default so worker
   # tests aren't coupled to the live host's free RAM; the gate's own tests

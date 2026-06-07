@@ -1,50 +1,47 @@
 defmodule Harness.Cron.SettingsTest do
+  @moduledoc """
+  Unit coverage for `Harness.Cron.Settings` — the master/per-project autonomy
+  switches, dispatch mode, and cron schedule, all read from and written to the
+  one Postgres settings store (the in-memory test backend stands in for Postgres).
+
+  `async: false` — shares the global test settings store scope, reset per test.
+  """
+
   use ExUnit.Case, async: false
 
   alias Harness.Cron.RoadmapPoller
   alias Harness.Cron.Settings
   alias Harness.ProjectFixture
+  alias Harness.SettingsStore
+  alias Harness.Test.SettingsStoreMemory
   alias Oban.Plugins.Cron
 
+  @scope :test_default
+
   setup do
-    prior_settings = Application.get_env(:harness, :cron_settings)
-    prior_cron_polling = Application.get_env(:harness, :cron_polling)
-    prior_project_autonomy = Application.get_env(:harness, :cron_project_autonomy)
-    prior_dispatch_mode = Application.get_env(:harness, :cron_dispatch_mode)
-
-    root = Path.join(System.tmp_dir!(), "harness_cron_settings_#{System.unique_integer([:positive])}")
-    Application.put_env(:harness, :cron_settings, root: root)
-
-    on_exit(fn ->
-      restore_env(:cron_settings, prior_settings)
-      restore_env(:cron_polling, prior_cron_polling)
-      restore_env(:cron_project_autonomy, prior_project_autonomy)
-      restore_env(:cron_dispatch_mode, prior_dispatch_mode)
-      File.rm_rf(root)
-    end)
-
-    {:ok, root: root}
+    SettingsStoreMemory.reset(scope: @scope)
+    on_exit(fn -> SettingsStoreMemory.reset(scope: @scope) end)
+    :ok
   end
 
   describe "master switch" do
-    test "set_master flips app env and persists across a reload" do
+    test "set_master flips and the choice survives a restart" do
       refute Settings.master_enabled?()
 
       assert :ok = Settings.set_master(true, "test")
       assert Settings.master_enabled?()
 
-      # Simulate a restart: clear env, reload from the persisted file.
-      Application.delete_env(:harness, :cron_polling)
-      assert :ok = Settings.load_into_env()
+      # No app-env cache: a fresh read (restarted node) still sees the flip.
       assert Settings.master_enabled?()
+      assert RoadmapPoller.enabled?()
     end
 
-    test "set_master preserves the configured schedule" do
-      Application.put_env(:harness, :cron_polling, enabled: false, schedule: "* * * * *")
-
+    test "set_master preserves a stored schedule" do
+      assert :ok = Settings.set_schedule("hourly", "test")
       assert :ok = Settings.set_master(true, "test")
 
-      assert Keyword.get(Application.get_env(:harness, :cron_polling), :schedule) == "* * * * *"
+      assert Settings.master_enabled?()
+      assert Settings.schedule() == "0 * * * *"
     end
   end
 
@@ -59,11 +56,8 @@ defmodule Harness.Cron.SettingsTest do
       assert Settings.project_enabled?(project)
     end
 
-    test "project flag persists across a reload" do
+    test "project flag survives a restart" do
       assert :ok = Settings.set_project("proj", true, "test")
-
-      Application.delete_env(:harness, :cron_project_autonomy)
-      assert :ok = Settings.load_into_env()
       assert Settings.project_enabled?("proj")
     end
   end
@@ -76,13 +70,8 @@ defmodule Harness.Cron.SettingsTest do
       assert Settings.dispatch_mode(project) == :auto
     end
 
-    test "set_dispatch_mode flips the mode and persists across a reload" do
+    test "set_dispatch_mode flips the mode and survives a restart" do
       assert :ok = Settings.set_dispatch_mode("proj", :manual, "test")
-      assert Settings.dispatch_mode("proj") == :manual
-
-      # Simulate a restart: clear env, reload from the persisted file.
-      Application.delete_env(:harness, :cron_dispatch_mode)
-      assert :ok = Settings.load_into_env()
       assert Settings.dispatch_mode("proj") == :manual
 
       # Flipping back to :auto round-trips too.
@@ -105,15 +94,6 @@ defmodule Harness.Cron.SettingsTest do
     test "an invalid mode is rejected and never written" do
       assert {:error, :invalid_mode} = Settings.set_dispatch_mode("proj", :bogus, "test")
       assert Settings.dispatch_mode("proj") == :auto
-    end
-
-    test "a record without dispatch_mode (pre-237) leaves every project on :auto" do
-      assert :ok = Settings.set_master(true, "test")
-
-      Application.delete_env(:harness, :cron_dispatch_mode)
-      assert :ok = Settings.load_into_env()
-
-      assert Settings.dispatch_mode("anything") == :auto
     end
   end
 
@@ -140,13 +120,11 @@ defmodule Harness.Cron.SettingsTest do
   end
 
   describe "schedule (Task 111)" do
-    test "set_schedule round-trips through the store and survives a reload" do
+    test "set_schedule round-trips through the store and survives a restart" do
       assert :ok = Settings.set_schedule("6h", "test")
       assert RoadmapPoller.schedule() == "0 */6 * * *"
 
-      # Simulate a restart: clear env, reload from the persisted file.
-      Application.delete_env(:harness, :cron_polling)
-      assert :ok = Settings.load_into_env()
+      # A fresh read (restarted node) still sees the stored schedule.
       assert RoadmapPoller.schedule() == "0 */6 * * *"
       assert Settings.active_preset() == "6h"
     end
@@ -157,13 +135,13 @@ defmodule Harness.Cron.SettingsTest do
       assert {Cron, crontab: [{"0 0 * * *", RoadmapPoller, _opts}]} = RoadmapPoller.cron_plugin()
     end
 
-    test "an unknown preset is rejected and never reaches the config" do
+    test "an unknown preset is rejected and never reaches the store" do
       before = RoadmapPoller.schedule()
 
       assert {:error, :invalid_preset} = Settings.set_schedule("* * * * *", "test")
       assert {:error, :invalid_preset} = Settings.set_schedule("hourly-ish", "test")
 
-      # The rejected value never reached :cron_polling, so the schedule is unchanged.
+      # The rejected value never persisted, so the schedule is unchanged.
       assert RoadmapPoller.schedule() == before
     end
 
@@ -175,46 +153,28 @@ defmodule Harness.Cron.SettingsTest do
       assert RoadmapPoller.schedule() == "0 * * * *"
     end
 
-    test "a persisted schedule outside the preset whitelist is ignored on reload" do
-      # An old/hand-edited file could carry a crontab no longer in the whitelist.
-      Settings.set_master(false, "test")
-      root = Path.join(System.tmp_dir!(), "harness_cron_sched_#{System.unique_integer([:positive])}")
-      Application.put_env(:harness, :cron_settings, root: root)
-      on_exit(fn -> File.rm_rf(root) end)
+    test "a persisted schedule outside the preset whitelist is ignored" do
+      # An old/hand-edited record could carry a crontab no longer in the whitelist.
+      assert :ok =
+               SettingsStore.put(:cron, %{master_enabled: false, project_autonomy: %{}, schedule: "*/7 * * * *"})
 
-      File.mkdir_p!(root)
-
-      File.write!(
-        Path.join(root, "cron_settings.term"),
-        :erlang.term_to_binary(%{master_enabled: false, project_autonomy: %{}, schedule: "*/7 * * * *"})
-      )
-
-      Application.delete_env(:harness, :cron_polling)
-      assert :ok = Settings.load_into_env()
-
-      # The non-whitelisted crontab was not applied; the default stands.
+      # The non-whitelisted crontab is not surfaced; the default stands.
       assert RoadmapPoller.schedule() == "0 */2 * * *"
     end
   end
 
-  describe "disabled store" do
-    test "set_master still flips env but writes nothing" do
-      Application.put_env(:harness, :cron_settings, false)
+  describe "ephemeral store" do
+    test "with repo disabled, a flip is a no-op and reads stay at the default" do
+      prior = Application.get_env(:harness, :settings_store)
+      Application.put_env(:harness, :settings_store, false)
+      on_exit(fn -> restore(:settings_store, prior) end)
 
       assert :ok = Settings.set_master(true, "test")
-      assert Settings.master_enabled?()
-
-      # Nothing persisted: a reload from the (disabled) store is a no-op, so the
-      # env value is whatever was last put, not a file read.
-      assert :ok = Settings.load_into_env()
-    end
-
-    test "load_into_env is a no-op when no file exists yet", %{root: root} do
-      refute File.exists?(Path.join(root, "cron_settings.term"))
-      assert :ok = Settings.load_into_env()
+      # The no-op store discards the write; the read falls back to the default.
+      refute Settings.master_enabled?()
     end
   end
 
-  defp restore_env(key, nil), do: Application.delete_env(:harness, key)
-  defp restore_env(key, value), do: Application.put_env(:harness, key, value)
+  defp restore(key, nil), do: Application.delete_env(:harness, key)
+  defp restore(key, value), do: Application.put_env(:harness, key, value)
 end

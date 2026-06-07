@@ -233,14 +233,13 @@ defmodule Harness.PipelineE2ETest do
   end
 
   # App-env seams shared by every pipeline test: capture Oban inserts (landing +
-  # audit), point the result store at tmp, and disable the persisted
-  # landing-settings store so the lander never reads the operator's real
-  # ~/.harness overrides.
+  # audit), point the result store at tmp, and drop to the ephemeral settings
+  # store so the lander reads no persisted landing overrides (and never touches
+  # the operator's real ~/.harness state).
   defp install_seams(tmp_dir) do
     test_pid = self()
     prior_result_store = Application.get_env(:harness, :result_store)
-    prior_landing_settings = Application.get_env(:harness, :landing_settings)
-    prior_landing_overrides = Application.get_env(:harness, :landing_overrides)
+    prior_settings_store = Application.get_env(:harness, :settings_store)
 
     Application.put_env(:harness, :oban_insert, fn changeset ->
       send(test_pid, {:oban_insert, changeset})
@@ -248,15 +247,13 @@ defmodule Harness.PipelineE2ETest do
     end)
 
     Application.put_env(:harness, :result_store, {ResultStore.Memory, root: Path.join(tmp_dir, "results")})
-    Application.put_env(:harness, :landing_settings, false)
-    Application.put_env(:harness, :landing_overrides, %{})
+    Application.put_env(:harness, :settings_store, false)
 
     on_exit(fn ->
       Application.delete_env(:harness, :oban_insert)
       Application.delete_env(:harness, :run_starter)
       restore(:result_store, prior_result_store)
-      restore(:landing_settings, prior_landing_settings)
-      restore(:landing_overrides, prior_landing_overrides)
+      restore(:settings_store, prior_settings_store)
     end)
   end
 

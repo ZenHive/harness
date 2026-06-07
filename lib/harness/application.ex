@@ -22,15 +22,18 @@ defmodule Harness.Application do
   # the Driver loop's transcript broadcast has a working bus whether or not the
   # Endpoint is started in the current environment.
   #
-  # SettingsLoader runs after Repo (when enabled) and before Oban/dispatch
-  # children, so Postgres-backed settings hydrate app env before Oban builds its
-  # cron plugin while file-backed library consumers keep the same boot semantics.
+  # The on/off settings domains (landing/cron/agent) read Postgres directly, so
+  # there is no boot loader to hydrate them. `Harness.Config` keeps an app-env
+  # cache for its env-var-wins / restart-required semantics, so its one-shot
+  # loader child seeds its persisted overrides once — placed after Repo (so the
+  # Postgres store is reachable) and before Oban builds its cron plugin. The seed
+  # is a no-op for the ephemeral (`repo_enabled: false`) store.
   @spec children() :: [Supervisor.child_spec() | {module(), term()} | module()]
   defp children do
     repo() ++
       legacy_import() ++
       [
-        Harness.SettingsLoader,
+        Harness.Config,
         {Registry, keys: :unique, name: Harness.Run.Registry},
         {Registry, keys: :unique, name: Harness.Chat.Registry},
         Harness.AgentRegistry,

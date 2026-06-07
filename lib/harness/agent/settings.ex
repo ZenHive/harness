@@ -9,40 +9,34 @@ defmodule Harness.Agent.Settings do
   clears-on-restart `available?/1` quota hint: disabling is a durable decision,
   quota-unavailability is a soft latency optimization.
 
-  ## Default ON, disable is opt-in
+  ## One Postgres table, read directly
 
-  Stored as the *disabled* set under `:harness, :agent_disabled` (a list of agent
-  atoms). **Absence means enabled**, so a freshly added adapter is dispatchable
-  by default and only an explicit operator toggle removes it — the opposite
-  default from per-project cron autonomy (off-by-default for safety), because an
-  unknown agent failing a dispatch is cheap and recoverable, whereas silently
-  disabling a new agent would be surprising.
+  Every read goes straight to `Harness.SettingsStore` (Postgres when
+  `:repo_enabled`), so the table is the single source of truth — no app-env
+  overlay cache to drift, no boot loader to forget. `disabled?/1` and
+  `reviewer_eligible?/1` are consulted on the dispatch / review-gate paths
+  (selection happens per run, not in a hot loop), so the read cost is warm-path.
 
-  ## App env is the live cache; SettingsStore is the persistence layer
+  ## Two independent axes
 
-  `Harness.AgentRegistry.select/2` reads `disabled?/1` from app env on every
-  dispatch, so a toggle takes effect on the next selection with no restart.
-  Every setter writes app env **and** write-throughs to `Harness.SettingsStore`
-  so the choice survives a restart. `load_into_env/0` runs once on boot to seed
-  app env from the shared store.
+  Stored as the *disabled* set (a list of agent atoms) and a *reviewer-ineligible*
+  set under one record. **Absence of an agent from the disabled set means
+  enabled**, so a freshly added adapter is dispatchable by default and only an
+  explicit operator toggle removes it. Reviewer ineligibility is separate: an
+  agent can implement yet be barred from the review gate (Pi/OSS models). When
+  no reviewer override has ever been persisted, `reviewer_ineligible_agents/0`
+  seeds from the `:reviewer_exclude` config (default `[:pi]`); once set, the
+  persisted value — even an empty list — is authoritative.
 
-  ## Disabling
-
-  `config :harness, :agent_settings, false` (or `nil`) short-circuits persistence:
-  setters still update app env (runtime flips work) but nothing is written, and
-  `load_into_env/0` is a no-op. Otherwise the legacy root is used by the file
-  fallback and for first-boot import of old `agent_settings.term` files.
+  With `repo_enabled: false` the store is ephemeral, so every agent reads as
+  enabled and reviewer-eligible-by-seed (the dashboard surfaces the ephemerality).
   """
 
   alias Harness.SettingsStore
 
   require Logger
 
-  @default_root "~/.harness"
-  @filename "agent_settings.term"
   @store_key :agent
-  @env_key :agent_disabled
-  @reviewer_env_key :agent_reviewer_ineligible
 
   @typedoc """
   The persisted settings-store value: the operator-disabled set (implementer
@@ -50,37 +44,6 @@ defmodule Harness.Agent.Settings do
   independent axes.
   """
   @type t :: %{:disabled => [atom()], optional(:reviewer_ineligible) => [atom()]}
-
-  @doc """
-  Seeds app env from the persisted store. Called once on boot, before any dispatch
-  path reads `disabled?/1`, so an operator's last choice is in force from t=0.
-
-  No file (or a disabled store) leaves every agent enabled.
-  """
-  @spec load_into_env() :: :ok
-  def load_into_env do
-    case SettingsStore.fetch(@store_key, store_opts()) do
-      {:ok, record} when is_map(record) ->
-        load_key(record, :disabled, @env_key)
-        load_key(record, :reviewer_ineligible, @reviewer_env_key)
-        :ok
-
-      _missing_or_invalid ->
-        :ok
-    end
-  end
-
-  # Loads one persisted agent-atom set into its app-env cache. An absent key is
-  # left unset: `disabled_agents/0` then defaults to enabled, and
-  # `reviewer_ineligible_agents/0` falls back to the `:reviewer_exclude` config
-  # seed — so an old-format file (only `:disabled`) keeps the `[:pi]` stopgap.
-  @spec load_key(map(), atom(), atom()) :: :ok
-  defp load_key(record, key, env_key) do
-    case Map.get(record, key) do
-      list when is_list(list) -> Application.put_env(:harness, env_key, Enum.filter(list, &is_atom/1))
-      _other -> :ok
-    end
-  end
 
   @doc "Returns whether an agent is operator-enabled (absence ⇒ enabled)."
   @spec enabled?(atom()) :: boolean()
@@ -90,9 +53,11 @@ defmodule Harness.Agent.Settings do
   @spec disabled?(atom()) :: boolean()
   def disabled?(agent) when is_atom(agent), do: agent in disabled_agents()
 
-  @doc "Returns the list of operator-disabled agent atoms."
+  @doc "Returns the list of operator-disabled agent atoms (read from the store)."
   @spec disabled_agents() :: [atom()]
-  def disabled_agents, do: Application.get_env(:harness, @env_key, [])
+  def disabled_agents do
+    record() |> Map.get(:disabled, []) |> Enum.filter(&is_atom/1)
+  end
 
   @doc """
   Enables or disables an agent at runtime, persists the change, and logs an
@@ -100,15 +65,15 @@ defmodule Harness.Agent.Settings do
   """
   @spec set_enabled(atom(), boolean(), String.t()) :: :ok
   def set_enabled(agent, enabled, actor) when is_atom(agent) and is_boolean(enabled) and is_binary(actor) do
-    disabled = disabled_agents()
+    rec = record()
+    disabled = Map.get(rec, :disabled, [])
 
     next =
       if enabled,
         do: List.delete(disabled, agent),
         else: Enum.uniq([agent | disabled])
 
-    Application.put_env(:harness, @env_key, next)
-    persist()
+    persist(Map.put(rec, :disabled, next))
     Logger.info("harness agent: #{agent} #{state_word(enabled)} by #{actor}")
     :ok
   end
@@ -134,8 +99,8 @@ defmodule Harness.Agent.Settings do
   """
   @spec reviewer_ineligible_agents() :: [atom()]
   def reviewer_ineligible_agents do
-    case Application.get_env(:harness, @reviewer_env_key) do
-      list when is_list(list) -> list
+    case Map.fetch(record(), :reviewer_ineligible) do
+      {:ok, list} when is_list(list) -> Enum.filter(list, &is_atom/1)
       _unset -> Application.get_env(:harness, :reviewer_exclude, [:pi])
     end
   end
@@ -154,8 +119,7 @@ defmodule Harness.Agent.Settings do
         do: List.delete(ineligible, agent),
         else: Enum.uniq([agent | ineligible])
 
-    Application.put_env(:harness, @reviewer_env_key, next)
-    persist()
+    persist(Map.put(record(), :reviewer_ineligible, next))
     Logger.info("harness agent: #{agent} reviewer-#{eligibility_word(eligible)} by #{actor}")
     :ok
   end
@@ -168,23 +132,18 @@ defmodule Harness.Agent.Settings do
   defp eligibility_word(true), do: "eligible"
   defp eligibility_word(false), do: "ineligible"
 
-  # Serializes only the axes that have an explicit value. `reviewer_ineligible`
-  # is written ONLY when its env key is actually set (a real reviewer override
-  # happened) — otherwise omitting it keeps reload falling back to the live
-  # `:reviewer_exclude` seed, so an unrelated set_enabled toggle never freezes
-  # the seed into the store. `:disabled` has no config seed (defaults to []), so
-  # it is always safe to write.
-  @spec persist() :: :ok | {:error, term()}
-  defp persist do
-    record =
-      case Application.get_env(:harness, @reviewer_env_key) do
-        list when is_list(list) -> %{disabled: disabled_agents(), reviewer_ineligible: list}
-        _unset -> %{disabled: disabled_agents()}
-      end
-
-    SettingsStore.put(@store_key, record, store_opts())
+  # The current persisted record, or an empty map (ephemeral store / no row yet).
+  # `set_*` preserves the other axis by writing this map back with one key
+  # replaced — so a `set_enabled` toggle never materializes the reviewer seed,
+  # keeping `reviewer_ineligible_agents/0` falling back to `:reviewer_exclude`.
+  @spec record() :: map()
+  defp record do
+    case SettingsStore.fetch(@store_key) do
+      {:ok, map} when is_map(map) -> map
+      _missing_or_invalid -> %{}
+    end
   end
 
-  @spec store_opts() :: SettingsStore.legacy_opts()
-  defp store_opts, do: [legacy_config_key: :agent_settings, legacy_filename: @filename, default_root: @default_root]
+  @spec persist(t()) :: :ok | {:error, term()}
+  defp persist(record), do: SettingsStore.put(@store_key, record)
 end

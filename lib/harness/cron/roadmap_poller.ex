@@ -51,7 +51,6 @@ defmodule Harness.Cron.RoadmapPoller do
 
   require Logger
 
-  @default_schedule "0 */2 * * *"
   @cron_queue :cron
   @cron_queue_limit 1
   @dispatch_meta %{harness_stage: "cron_poll"}
@@ -85,21 +84,13 @@ defmodule Harness.Cron.RoadmapPoller do
     :ok
   end
 
-  @doc "Returns whether autonomous roadmap polling is enabled."
+  @doc "Returns whether autonomous roadmap polling is enabled (the store-backed master switch)."
   @spec enabled?() :: boolean()
-  def enabled? do
-    config()
-    |> Keyword.get(:enabled, false)
-    |> Kernel.==(true)
-  end
+  def enabled?, do: Settings.master_enabled?()
 
-  @doc "Returns the configured cron expression for roadmap polling."
+  @doc "Returns the configured cron expression for roadmap polling (store-backed, default cadence otherwise)."
   @spec schedule() :: String.t()
-  def schedule do
-    config()
-    |> Keyword.get(:schedule, @default_schedule)
-    |> to_string()
-  end
+  def schedule, do: Settings.schedule()
 
   @doc false
   @spec cron_entry() :: {String.t(), module(), keyword()}

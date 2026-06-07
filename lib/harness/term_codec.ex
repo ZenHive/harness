@@ -5,10 +5,10 @@ defmodule Harness.TermCodec do
   Every harness persistence layer that round-trips Erlang term binaries it wrote
   itself funnels through this module — legacy result/chat imports,
   `Harness.ResultStore.Postgres` (batch/score payloads),
-  `Harness.ProjectRegistry.Persistence` (project payloads), and
-  `Harness.SettingsStore.File` (operator settings). They all
-  decode the same way: succeed with the term, or rescue a torn/garbage binary
-  into an error tuple rather than letting `ArgumentError` escape.
+  `Harness.ProjectRegistry.Persistence` (project payloads), `Harness.Audit`
+  watermarks, and the `Harness.SettingsStore` one-time legacy-settings import.
+  They all decode the same way: succeed with the term, or rescue a torn/garbage
+  binary into an error tuple rather than letting `ArgumentError` escape.
 
   ## Why decoding skips `[:safe]`
 

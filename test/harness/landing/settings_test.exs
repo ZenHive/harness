@@ -1,34 +1,27 @@
 defmodule Harness.Landing.SettingsTest do
   @moduledoc """
   Unit coverage for `Harness.Landing.Settings` — the persisted, runtime-flippable
-  per-project landing override that backs the dashboard's Landing card.
+  per-project landing override that backs the dashboard's Landing card. Reads and
+  writes go straight to the one Postgres settings store (the in-memory test
+  backend stands in for Postgres here).
 
-  `async: false` — reads/writes the global `:harness, :landing_overrides` app env
-  and a term file under a temp root, which would leak across parallel tests.
+  `async: false` — shares the global test settings store scope, reset per test.
   """
 
   use ExUnit.Case, async: false
 
   alias Harness.Landing.Settings, as: LandingSettings
   alias Harness.Project
-  alias Harness.TermCodec
+  alias Harness.SettingsStore
+  alias Harness.Test.SettingsStoreMemory
 
-  @env_key :landing_overrides
+  @scope :test_default
 
   setup do
-    prior_env = Application.get_env(:harness, @env_key)
-    prior_store = Application.get_env(:harness, :landing_settings)
-    root = Path.join(System.tmp_dir!(), "landing-settings-test-#{System.unique_integer([:positive])}")
-    Application.put_env(:harness, :landing_settings, root: root)
-    Application.put_env(:harness, @env_key, %{})
+    SettingsStoreMemory.reset(scope: @scope)
+    on_exit(fn -> SettingsStoreMemory.reset(scope: @scope) end)
 
-    on_exit(fn ->
-      restore(@env_key, prior_env)
-      restore(:landing_settings, prior_store)
-      File.rm_rf(root)
-    end)
-
-    {:ok, root: root, project: project("demo")}
+    {:ok, project: project("demo")}
   end
 
   describe "overlay/1" do
@@ -106,48 +99,39 @@ defmodule Harness.Landing.SettingsTest do
   end
 
   describe "persistence" do
-    test "set/4 write-throughs so load_into_env/0 restores the override", %{project: project} do
+    test "a flip survives a restart (the silent-revert regression)", %{project: project} do
       :ok = LandingSettings.set(project.name, :auto, "ship", "test")
-      # Simulate a restart: clear the live cache, reseed from the file.
-      Application.put_env(:harness, @env_key, %{})
-      :ok = LandingSettings.load_into_env()
-
+      # No app-env cache to clear: the store is the source of truth, so a fresh
+      # read (as a restarted node would do) returns the persisted override.
       assert LandingSettings.overlay(project).target_branch == "ship"
+      assert LandingSettings.overlay(project).landing_policy == :auto
     end
 
-    test "set_reviewer/3 write-throughs so load_into_env/0 restores the override", %{project: project} do
+    test "a reviewer flip survives a restart", %{project: project} do
       :ok = LandingSettings.set_reviewer(project.name, :codex, "test")
-      Application.put_env(:harness, @env_key, %{})
-      :ok = LandingSettings.load_into_env()
-
       assert LandingSettings.overlay(project).reviewer == :codex
     end
 
-    test "load_into_env/0 sanitizes a malformed persisted entry", %{root: root, project: project} do
-      :ok = LandingSettings.set(project.name, :auto, "ship", "test")
-      # Hand-write a torn record with one good and one malformed entry.
-      bad = %{project.name => %{landing_policy: :auto, target_branch: "ship", reviewer: :codex}, "junk" => :not_a_map}
-      path = Path.join(root, "harness_settings.term")
-      assert :ok = TermCodec.write_file(path, %{"landing" => bad})
-
-      Application.put_env(:harness, @env_key, %{})
-      :ok = LandingSettings.load_into_env()
+    test "overlay sanitizes a malformed persisted entry", %{project: project} do
+      good = %{landing_policy: :auto, target_branch: "ship", reviewer: :codex}
+      # Hand-write a torn record with one good and one malformed entry straight
+      # into the store, bypassing the validated setters.
+      torn = %{project.name => good, "junk" => :not_a_map}
+      assert :ok = SettingsStore.put(:landing, torn)
 
       assert LandingSettings.overlay(project).target_branch == "ship"
       assert LandingSettings.overlay(project).reviewer == :codex
       assert LandingSettings.overlay(project("junk")) == project("junk")
     end
 
-    test "a disabled store flips at runtime but writes nothing", %{root: root, project: project} do
-      Application.put_env(:harness, :landing_settings, false)
+    test "with repo disabled, a flip is a no-op (ephemeral)", %{project: project} do
+      prior = Application.get_env(:harness, :settings_store)
+      Application.put_env(:harness, :settings_store, false)
+      on_exit(fn -> restore(:settings_store, prior) end)
 
       :ok = LandingSettings.set(project.name, :auto, "ship", "test")
-      # Runtime flip took effect…
-      assert LandingSettings.overlay(project).landing_policy == :auto
-      :ok = LandingSettings.set_reviewer(project.name, :codex, "test")
-      assert LandingSettings.overlay(project).reviewer == :codex
-      # …but no file was written.
-      refute File.exists?(Path.join(root, "landing_settings.term"))
+      # The no-op store discards the write; overlay returns the registration default.
+      assert LandingSettings.overlay(project).landing_policy == :manual
     end
   end
 

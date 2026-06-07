@@ -46,8 +46,6 @@ defmodule Harness.Audit do
   require Logger
 
   @audit_report_path ".harness/audit.json"
-  @default_watermark_root "~/.harness"
-  @watermark_file "audit_watermarks.term"
   @watermark_store_key :audit
   @rejection_history_limit 20
   @rejection_summary_limit 500
@@ -429,7 +427,7 @@ defmodule Harness.Audit do
     if watermark_persistence_enabled?() do
       record = put_watermark(read_watermarks(), name, target, sha)
 
-      case SettingsStore.put(@watermark_store_key, record, store_opts()) do
+      case SettingsStore.put(@watermark_store_key, record) do
         :ok ->
           :ok
 
@@ -445,7 +443,7 @@ defmodule Harness.Audit do
 
   @spec fetch_watermarks() :: {:ok, term()} | :not_found | {:error, term()}
   defp fetch_watermarks do
-    if watermark_persistence_enabled?(), do: SettingsStore.fetch(@watermark_store_key, store_opts()), else: :not_found
+    if watermark_persistence_enabled?(), do: SettingsStore.fetch(@watermark_store_key), else: :not_found
   end
 
   @spec read_watermarks() :: map()
@@ -469,10 +467,6 @@ defmodule Harness.Audit do
 
   @spec watermark_persistence_enabled?() :: boolean()
   defp watermark_persistence_enabled?, do: Application.get_env(:harness, :repo_enabled, true)
-
-  @spec store_opts() :: SettingsStore.legacy_opts()
-  defp store_opts,
-    do: [legacy_config_key: :audit_watermarks, legacy_filename: @watermark_file, default_root: @default_watermark_root]
 
   @spec cleanup(Worktree.t()) :: :ok
   defp cleanup(%Worktree{} = worktree) do

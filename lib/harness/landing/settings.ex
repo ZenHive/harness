@@ -5,19 +5,18 @@ defmodule Harness.Landing.Settings do
 
   A project's `%Harness.Project{}` carries a *default* `landing_policy`
   (`:manual` | `:auto`) and `target_branch`. Those are registration-time identity;
-  this module is the **overlay** an operator flips at runtime from the dashboard,
+  this module is the **override** an operator flips at runtime from the dashboard,
   the same way `Harness.Cron.Settings` / `Harness.Agent.Settings` overlay autonomy
   and agent enablement. A run never auto-merges until an operator opts the project
-  into `:auto` **with a target branch** — the missing UI control that previously
-  forced hand-editing the registry via `iex`.
+  into `:auto` **with a target branch**.
 
-  ## App env is the live cache; SettingsStore is the persistence layer
+  ## One Postgres table, read directly
 
-  `Harness.Run` reads the *effective* project (`overlay/1`) when a run starts, so a
-  flip takes effect on the next run with no restart. Every setter writes app env
-  (the value `overlay/1` reads) **and** write-throughs to
-  `Harness.SettingsStore` so the choice survives a BEAM restart. `load_into_env/0`
-  runs once on boot to seed app env from the shared store.
+  `overlay/1` reads the persisted overrides straight from `Harness.SettingsStore`
+  (Postgres when `:repo_enabled`) every time a run starts, so the table is the
+  single source of truth — a flip takes effect on the next run and survives a
+  restart with no boot loader and no app-env cache to drift. This is what fixed
+  the silent landing-policy revert: the value lives in exactly one place.
 
   ## The footgun guard
 
@@ -25,13 +24,9 @@ defmodule Harness.Landing.Settings do
   :target_branch_required}`) — arming auto-merge with nowhere to merge is never a
   valid state. `:manual` clears the target branch.
 
-  ## Disabling
-
-  `config :harness, :landing_settings, false` (or `nil`) short-circuits
-  persistence: setters still update app env (runtime flips work) but nothing is
-  written, and `load_into_env/0` is a no-op. Otherwise the legacy root is used
-  by the file fallback and for first-boot import of old `landing_settings.term`
-  files.
+  With `repo_enabled: false` the store is ephemeral: a flip is a no-op write and
+  `overlay/1` always returns the project's registration-time defaults (the
+  dashboard surfaces the ephemerality).
   """
 
   alias Harness.Project
@@ -39,10 +34,7 @@ defmodule Harness.Landing.Settings do
 
   require Logger
 
-  @default_root "~/.harness"
-  @filename "landing_settings.term"
   @store_key :landing
-  @env_key :landing_overrides
   @valid_policies [:manual, :auto]
 
   @typedoc "A single project's runtime override: landing policy and/or reviewer pin."
@@ -54,24 +46,6 @@ defmodule Harness.Landing.Settings do
 
   @typedoc "The persisted settings-store value: project name => override."
   @type t :: %{String.t() => override()}
-
-  @doc """
-  Seeds app env from the persisted store. Called once on boot so `overlay/1`
-  reflects the persisted overrides from t=0.
-
-  No file (or a disabled store) leaves the registration-time defaults in place.
-  """
-  @spec load_into_env() :: :ok
-  def load_into_env do
-    case SettingsStore.fetch(@store_key, store_opts()) do
-      {:ok, map} when is_map(map) ->
-        Application.put_env(:harness, @env_key, sanitize(map))
-        :ok
-
-      _missing_or_invalid ->
-        :ok
-    end
-  end
 
   @doc """
   Overlays the persisted landing override (if any) onto a project, returning the
@@ -137,13 +111,9 @@ defmodule Harness.Landing.Settings do
 
   @spec put_and_persist(String.t(), override(), String.t()) :: :ok
   defp put_and_persist(name, override, actor) do
-    Application.put_env(
-      :harness,
-      @env_key,
-      Map.put(overrides(), name, Map.merge(Map.get(overrides(), name, %{}), override))
-    )
-
-    persist()
+    current = overrides()
+    next = Map.put(current, name, Map.merge(Map.get(current, name, %{}), override))
+    SettingsStore.put(@store_key, next)
     Logger.info("harness landing: #{name} -> #{describe(override)} by #{actor}")
     :ok
   end
@@ -181,11 +151,17 @@ defmodule Harness.Landing.Settings do
 
   defp normalize_branch(_other), do: nil
 
+  # The persisted overrides, sanitized — a torn or hand-edited term can't inject
+  # a malformed override. Reads straight from the store (no app-env cache).
   @spec overrides() :: t()
-  defp overrides, do: Application.get_env(:harness, @env_key, %{})
+  defp overrides do
+    case SettingsStore.fetch(@store_key) do
+      {:ok, map} when is_map(map) -> sanitize(map)
+      _missing_or_invalid -> %{}
+    end
+  end
 
-  # Keeps only well-formed `{policy, branch}` entries from a loaded file, so a
-  # torn or hand-edited term can't inject a malformed override into app env.
+  # Keeps only well-formed `{policy, branch}` / reviewer entries.
   @spec sanitize(map()) :: t()
   defp sanitize(map) do
     for {name, override} <- map,
@@ -223,12 +199,4 @@ defmodule Harness.Landing.Settings do
   end
 
   defp sanitize_reviewer(base, _override), do: base
-
-  @spec persist() :: :ok | {:error, term()}
-  defp persist do
-    SettingsStore.put(@store_key, overrides(), store_opts())
-  end
-
-  @spec store_opts() :: SettingsStore.legacy_opts()
-  defp store_opts, do: [legacy_config_key: :landing_settings, legacy_filename: @filename, default_root: @default_root]
 end

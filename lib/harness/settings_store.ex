@@ -1,38 +1,60 @@
 defmodule Harness.SettingsStore do
   @moduledoc """
-  Shared key-value persistence for runtime-flippable harness settings.
+  Single key-value persistence layer for runtime-flippable harness settings.
 
-  `repo_enabled: true` stores values in Postgres (`harness_settings`); library
-  consumers with `repo_enabled: false` use the file backend. Domain modules keep
-  app env as their live cache and use this module only for restart persistence.
+  With `repo_enabled: true` (the harness self-host and any Oban deployment) the
+  `harness_settings` Postgres table is the **single source of truth**: every
+  operator-flippable setting — landing policy/target, cron toggles + schedule,
+  agent enablement, reviewer pins, operator config overrides — reads from and
+  writes to that one table. There is no app-env overlay cache and no exs
+  fallback: a value, once set, survives a BEAM restart because the next read
+  comes straight back from Postgres.
+
+  Library consumers that mount harness with `repo_enabled: false` get an
+  ephemeral no-op store (`fetch` ⇒ `:not_found`, `put` ⇒ `:ok`): settings cannot
+  be bootstrapped from the database that isn't there, so they fall back to the
+  in-code defaults (the dashboard surfaces this to the operator).
+
+  ## One-time legacy import
+
+  The first read of a key with no Postgres row imports the pre-consolidation
+  per-domain term file (`landing_settings.term` / `cron_settings.term` /
+  `agent_settings.term` / `config_settings.term`) from `~/.harness` and persists
+  it, so an operator's existing flips carry over on the first boot after this
+  collapse. After that one import the row exists and Postgres always wins. The
+  import is skipped entirely for the ephemeral (`false`) store. `Harness.TermCodec`
+  still serves this import (and the other term-backed stores it always has).
   """
 
-  @type key :: atom() | String.t()
-  @type store :: module() | {module(), keyword()} | false
-  @type legacy_opts :: [
-          legacy_config_key: atom(),
-          legacy_filename: String.t(),
-          default_root: String.t()
-        ]
+  alias Harness.TermCodec
 
-  @callback fetch(String.t(), keyword(), keyword()) :: {:ok, term()} | :not_found | {:error, term()}
-  @callback put(String.t(), term(), keyword(), keyword()) :: :ok | {:error, term()}
+  @type key :: atom() | String.t()
+  @type store :: {module(), keyword()} | module() | false
+
+  @callback fetch(String.t(), keyword()) :: {:ok, term()} | :not_found | {:error, term()}
+  @callback put(String.t(), term(), keyword()) :: :ok | {:error, term()}
 
   @default_root "~/.harness"
 
-  @doc "Fetches a persisted setting value by key."
-  @spec fetch(key(), legacy_opts()) :: {:ok, term()} | :not_found | {:error, term()}
-  def fetch(key, opts) when is_list(opts) do
-    if disabled?(opts), do: :not_found, else: dispatch(configured(), :fetch, [normalize_key(key), opts])
-  end
+  # Pre-consolidation per-domain term files imported once on the first read of a
+  # missing key, so existing operator flips carry over after the collapse.
+  @legacy_filenames %{
+    "landing" => "landing_settings.term",
+    "cron" => "cron_settings.term",
+    "agent" => "agent_settings.term",
+    "config" => "config_settings.term",
+    "audit" => "audit_watermarks.term"
+  }
+
+  @doc "Fetches a persisted setting value by key, importing a legacy term file once if no row exists."
+  @spec fetch(key()) :: {:ok, term()} | :not_found | {:error, term()}
+  def fetch(key), do: dispatch_fetch(configured(), normalize_key(key))
 
   @doc "Persists a setting value by key."
-  @spec put(key(), term(), legacy_opts()) :: :ok | {:error, term()}
-  def put(key, value, opts) when is_list(opts) do
-    if disabled?(opts), do: :ok, else: dispatch(configured(), :put, [normalize_key(key), value, opts])
-  end
+  @spec put(key(), term()) :: :ok | {:error, term()}
+  def put(key, value), do: dispatch_put(configured(), normalize_key(key), value)
 
-  @doc "Returns the configured backend, defaulting by `:repo_enabled`."
+  @doc "Returns the configured backend: Postgres when `:repo_enabled`, the ephemeral no-op store otherwise."
   @spec configured() :: store()
   def configured do
     case Application.get_env(:harness, :settings_store) do
@@ -40,7 +62,7 @@ defmodule Harness.SettingsStore do
         if Application.get_env(:harness, :repo_enabled, true) do
           {Harness.SettingsStore.Postgres, []}
         else
-          {Harness.SettingsStore.File, []}
+          false
         end
 
       store ->
@@ -48,68 +70,54 @@ defmodule Harness.SettingsStore do
     end
   end
 
-  @doc false
-  @spec disabled?(keyword()) :: boolean()
-  def disabled?(opts) do
-    case Keyword.fetch(opts, :legacy_config_key) do
-      {:ok, key} -> Application.get_env(:harness, key, root: @default_root) in [false, nil]
-      :error -> false
+  @spec dispatch_fetch(store(), String.t()) :: {:ok, term()} | :not_found | {:error, term()}
+  defp dispatch_fetch(false, _key), do: :not_found
+
+  defp dispatch_fetch(store, key) do
+    {module, backend_opts} = normalize_store(store)
+
+    case module.fetch(key, backend_opts) do
+      :not_found -> import_legacy(key, module, backend_opts)
+      other -> other
     end
   end
 
-  @doc false
-  @spec file_root(keyword(), keyword()) :: String.t()
-  def file_root(backend_opts, opts) do
-    root =
-      case Keyword.get(backend_opts, :root) do
-        nil -> legacy_root(opts)
-        root -> root
-      end
+  @spec dispatch_put(store(), String.t(), term()) :: :ok | {:error, term()}
+  defp dispatch_put(false, _key, _value), do: :ok
 
-    Path.expand(root)
+  defp dispatch_put(store, key, value) do
+    {module, backend_opts} = normalize_store(store)
+    module.put(key, value, backend_opts)
   end
 
-  @doc false
-  @spec legacy_path(keyword()) :: String.t() | nil
-  def legacy_path(opts) do
-    with {:ok, filename} <- Keyword.fetch(opts, :legacy_filename),
-         root when is_binary(root) <- legacy_root(opts) do
-      Path.join(Path.expand(root), filename)
+  @spec normalize_store(store()) :: {module(), keyword()}
+  defp normalize_store({module, opts}) when is_atom(module) and is_list(opts), do: {module, opts}
+  defp normalize_store(module) when is_atom(module), do: {module, []}
+
+  # First read of a missing key: import the legacy per-domain term file (if any)
+  # and persist it through the backend, so it exists as a row thereafter.
+  @spec import_legacy(String.t(), module(), keyword()) :: {:ok, term()} | :not_found | {:error, term()}
+  defp import_legacy(key, module, backend_opts) do
+    with {:ok, filename} <- Map.fetch(@legacy_filenames, key),
+         {:ok, value} <- TermCodec.read_file(legacy_path(backend_opts, filename)),
+         :ok <- module.put(key, value, backend_opts) do
+      {:ok, value}
     else
-      _other -> nil
+      :error -> :not_found
+      {:error, :enoent} -> :not_found
+      {:error, _reason} = error -> error
     end
   end
 
-  @doc false
-  @spec legacy_root(keyword()) :: String.t()
-  def legacy_root(opts) do
-    default = Keyword.get(opts, :default_root, @default_root)
-
-    case Keyword.get(opts, :legacy_config_key) do
-      nil ->
-        default
-
-      key ->
-        case Application.get_env(:harness, key, root: default) do
-          list when is_list(list) -> Keyword.get(list, :root, default)
-          _disabled -> default
-        end
-    end
+  @spec legacy_path(keyword(), String.t()) :: String.t()
+  defp legacy_path(backend_opts, filename) do
+    backend_opts
+    |> Keyword.get(:legacy_root, @default_root)
+    |> Path.expand()
+    |> Path.join(filename)
   end
 
   @spec normalize_key(key()) :: String.t()
   defp normalize_key(key) when is_atom(key), do: Atom.to_string(key)
   defp normalize_key(key) when is_binary(key), do: key
-
-  @spec dispatch(store(), atom(), [term()]) :: term()
-  defp dispatch(false, :fetch, [_key, _opts]), do: :not_found
-  defp dispatch(false, :put, [_key, _value, _opts]), do: :ok
-
-  defp dispatch({module, backend_opts}, function, args) when is_atom(module) and is_list(backend_opts) do
-    apply(module, function, args ++ [backend_opts])
-  end
-
-  defp dispatch(module, function, args) when is_atom(module) do
-    apply(module, function, args ++ [[]])
-  end
 end
