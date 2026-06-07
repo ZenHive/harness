@@ -7636,7 +7636,7 @@
       "id": "188",
       "phase": 15,
       "bundle": "agent-gate",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Scrub GH_TOKEN/GITHUB_TOKEN from in-run env + assess the gh pr create vector (push-neuter follow-up)",
       "scores": {
         "d": 3,
@@ -7668,6 +7668,7 @@
       ],
       "body": "Follow-up flagged by Task 186's own body (2026-06-04). Task 186 neutered `git push` in run worktrees via `remote.origin.pushurl=/dev/null` (worktree-scoped config), but `gh pr create` is a separate vector: it authenticates with the gh token, not the git remote, so the push-neuter does not stop an in-run agent from opening a PR to origin on its own initiative — still bypassing the lander / a `:manual` landing_policy.\n\nFIX (mechanical substrate, NOT judgment): scrub GH_TOKEN/GITHUB_TOKEN from the in-run invocation env using the existing Invocation.env set/scrub pairs (Task 25), so an in-run `gh` has no ambient token. Note gh can also read auth from `~/.config/gh/hosts.yml` independent of env vars — record explicitly whether env-scrub is sufficient or whether broader gh-auth isolation (e.g. an empty GH_CONFIG_DIR in the run env) is warranted, and justify the choice.\n\nSame agent-gate doctrine as 186: MERGE is the lander's mechanical, policy-gated job — an implementer/reviewer must not reach origin unilaterally.\n",
       "created_at": "2026-06-04",
+      "started_at": "2026-06-07",
       "scored_at": "2026-06-04",
       "cross_repo": []
     },
