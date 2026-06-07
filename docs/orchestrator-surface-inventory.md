@@ -33,6 +33,7 @@ Reachable over MCP/chat (JSON scalars only). Grouped by orchestrator intent.
 | `dispatch-verdict_detail` | `Harness.ResultStore` | Settled-run reviewer verdict / report / ratings |
 | `result_store-list_run_records` | `Harness.ResultStore` | Settled run records (verdict, diff sizes, token usage, transcript) |
 | `result_store-aggregate_by_agent` | `Harness.ResultStore` → `Harness.AgentKPI` | **Per-agent KPI rollup** (success, first-attempt-pass, duration p90, cost-to-green) |
+| `result_store-aggregate_ceremony_cost` | `Harness.ResultStore` → `Harness.AgentKPI` | **Per-approved-run ceremony token facts** (implementer + reviewer + audit=0; median/p90 distribution over raw per-run totals — no batching verdict) |
 | `result_store-get_capability_score` / `result_store-list_capability_scores` | `Harness.ResultStore` | **Legacy CapabilityScore cells** (import-only round-trip for historical term data; active routing uses the scout assessment) |
 | `dispatch-recommend` | `Harness.Dispatch.recommend/2` + `Harness.CapabilityScore.recommend/2` | Per-facet scout assessment match: returns scout's winner + reasoning for the task's `review_facets` (`:exploit`), or `:explore`/fallback when unmeasured or no assessment yet. `dispatch-assess_facets` triggers a fresh scout pass. |
 | `project_registry-list` / `project_registry-lookup` | `Harness.ProjectRegistry` | Discover registered projects + config |
@@ -69,7 +70,7 @@ hold/steer/resume · project registration (write).
 |---|---|---|
 | Roadmap browse | ✅ `roadmap-list/ready/next_bundle` | none |
 | Run status / transcript | ✅ `dispatch-status/transcript/transcript_events` | none |
-| AgentKPI rollups | ✅ `result_store-aggregate_by_agent` | none (per-agent) |
+| AgentKPI rollups | ✅ `result_store-aggregate_by_agent` (per-agent), `result_store-aggregate_ceremony_cost` (per-approved-run ceremony/implementer+reviewer+audit token overhead) | none |
 | Capability (scout) routing | ✅ `dispatch-recommend` + `dispatch-assess_facets` (scout per-facet assessment); legacy cells via `result_store-*_capability_score` for import | none |
 | Project / registry listing | ✅ `project_registry-list/lookup` | none |
 | Dispatch | ✅ `dispatch-task/await/bundle/compare` | none |
