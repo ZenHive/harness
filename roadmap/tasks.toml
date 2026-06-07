@@ -6957,7 +6957,7 @@ scored_at = "2026-06-06"
 id = "238"
 phase = 19
 bundle = "dispatch-economy"
-status = "in_progress"
+status = "done"
 title = "Fix MCP dispatch-hold boolean-arg coercion + document hold→steer→resume recovery in harness-driver SKILL"
 scores = { d = 2, b = 4, u = 4 }
 markers = ["bug"]
@@ -6974,9 +6974,14 @@ BUG (hit live 2026-06-06, run-1780714000066-f7d737a3): calling the MCP tool `mcp
 
 DOC (coupled — same recovery surface; CLAUDE.md mandates SKILL updates on driver-surface changes): document the hold→steer→resume operator-recovery pattern in skills/harness-driver/SKILL.md. Two non-obvious facts proven this session: (1) `dispatch-steer` is ASYNC — it stashes a note that only threads in at the next agent boundary, so to redirect a LIVE agent turn you must pair it with `hold(interrupt) → resume`; steer alone never reaches a continuous grind. (2) The reframe that made it work: an implementer that over-grinds the gate (loops re-running `mix precommit` trying to green it before committing) does NOT need to pass the gate — the cross-family reviewer runs and fixes the checks inline. So the operator move for an over-grinding implementer is force-handoff: hold(interrupt) → steer("commit your work and hand off; you don't need to green precommit") → resume. Worked example: task 216 cursor looped precommit ~7x (3 FAILED) on ~15 lines of polish; hold→steer→resume flipped it to :reviewing in <1 min, codex reviewer hardened + approved → landed.
 '''
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780832744894-b5b38535, 485fdeff428d6c93fc5e6031c56c37591d1f0fed)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-06"
 started_at = "2026-06-07"
 scored_at = "2026-06-06"
+done_at = "2026-06-07"
+shipped_in = "485fdeff428d6c93fc5e6031c56c37591d1f0fed"
 
 [[task]]
 id = "239"
