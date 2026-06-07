@@ -6919,7 +6919,8 @@ out_of_scope = ["Dashboard approve UI — LiveView, hand-build via tidewave+brow
 files_to_modify = ["lib/harness/cron/settings.ex", "lib/harness/cron/roadmap_poller.ex", "lib/harness/dispatch.ex", "lib/harness/chat/tools.ex"]
 touches = ["lib/harness/cron/settings.ex", "lib/harness/cron/roadmap_poller.ex", "lib/harness/cron/orchestrator.ex", "lib/harness/dispatch.ex", "lib/harness/chat/tools.ex", "lib/harness/notification.ex"]
 domains = ["otp"]
-assignee = "claude"
+assignee = "cursor"
+model = "claude-opus-4-8-thinking-high"
 body = """
 Add a per-project cron DISPATCH MODE — `:auto` (default, today's behavior) | `:manual`
 — as a third dimension in `Harness.Cron.Settings`, parallel to the existing on/off

@@ -9777,7 +9777,8 @@
         "parallel"
       ],
       "depends_on": [],
-      "assignee": "claude",
+      "assignee": "cursor",
+      "model": "claude-opus-4-8-thinking-high",
       "acceptance_criteria": [
         "Harness.Cron.Settings: per-project dispatch mode (:auto|:manual), absence => :auto (existing autonomous projects keep auto-dispatching, zero behavior change); persisted via SettingsStore write-through + seeded by load_into_env/0; runtime setter with actor audit log, mirroring set_project/3.",
         "Poller: under :manual, BOTH direct_dispatch and the orchestrator-plan enqueue park instead of enqueueing; under :auto, behavior is byte-identical to today.",
