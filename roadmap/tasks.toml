@@ -6987,7 +6987,7 @@ shipped_in = "485fdeff428d6c93fc5e6031c56c37591d1f0fed"
 id = "239"
 phase = 19
 bundle = "dispatch-economy"
-status = "in_progress"
+status = "done"
 title = "Implementer-phase idle watchdog — a wedged :running agent holds a queue slot up to the 90-min lifetime cap"
 scores = { d = 3, b = 4, u = 3 }
 acceptance_criteria = ["The implementer :running phase enforces an idle watchdog: a run whose agent emits no port output for the idle window settles (fail/rotate) instead of waiting for the 90-min lifetime cap.", "The idle floor is high enough that a single silent check_command run (compile + full test + dialyzer) does not trip it — mirror the reviewer floor's rationale; an explicit higher idle_timeout opt still wins.", "Watchdog resets on each transcript chunk (last-activity timer), purely mechanical — no classifier deciding whether the agent is stuck.", "Test: a run with a stubbed agent that goes silent past the floor settles via the watchdog; a run emitting periodic output past the floor does not."]
@@ -7001,9 +7001,14 @@ Confirmed empirically 2026-06-06 (task 216, run-1780712414298-… and run-178071
 
 Asymmetry to fix: the REVIEWING phase already has a deliberate 10-min idle floor (`@reviewer_idle_floor`, Task 181) precisely because the reviewer streams nothing for minutes while running the project checks. The IMPLEMENTER has the identical property (it runs `mix`/`cargo` silently for minutes) but no equivalent floor. Add a mechanical idle watchdog to the implementer phase mirroring the reviewer floor: reset on each port chunk, settle/rotate the run when no output for the idle window, with a floor high enough that a single silent check (compile+test+dialyzer) can't trip it. This is pure mechanics — count ms since last chunk, compare to a threshold; no judgment about whether the agent is "really" stuck. The threshold catches a genuinely-wedged agent in minutes instead of holding a slot for up to 90.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780832746660-843184ed, 129d6d83724b90ebfa2f5c0bcff1257f4bf4d4a0)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-06"
 started_at = "2026-06-07"
 scored_at = "2026-06-06"
+done_at = "2026-06-07"
+shipped_in = "129d6d83724b90ebfa2f5c0bcff1257f4bf4d4a0"
 
 [[task]]
 id = "240"
