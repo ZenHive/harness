@@ -7651,7 +7651,7 @@
       "depends_on": [
         186
       ],
-      "assignee": "human",
+      "assignee": "codex",
       "acceptance_criteria": [
         "In-run invocation env scrubs GH_TOKEN and GITHUB_TOKEN via the existing Invocation.env scrub pairs, so an in-run `gh` call has no ambient auth to reach origin/open a PR",
         "Decision recorded: whether `gh pr create` is fully blocked by token-scrub alone, or whether a broader gh-auth isolation is needed (gh can read auth from ~/.config/gh/hosts.yml independent of env vars)",
@@ -8531,8 +8531,9 @@
       "dep_layer": 0,
       "markers": [],
       "depends_on": [],
-      "assignee": "human",
+      "assignee": "cursor",
       "module": "Harness.SettingsStore",
+      "model": "claude-opus-4-8-thinking-high",
       "acceptance_criteria": [
         "All operator-flippable settings (landing policy/target, cron toggles, agent enablement, reviewer pins, runtime project registrations) read from and write to ONE Postgres table; with repo_enabled:true that table is the single source of truth — no app-env overlay cache, no exs fallback.",
         "Reading a setting never falls back to an exs default at runtime: exs :projects becomes a one-time first-boot import into the table (import_legacy of the *.term files runs once for landing/cron/agent so existing flips carry over), after which Postgres always wins.",
