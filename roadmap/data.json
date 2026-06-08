@@ -10028,12 +10028,12 @@
       "domains": [
         "otp"
       ],
-      "shipped_in": "5adfcb375e72b10b6a172139caefe4f764b6818f",
+      "shipped_in": "72edccd9b2e41cb31f0e8b0d46c29bee65462465",
       "body": "First consumer: the operator watching runs on /harness. Measured 2026-06-08 from the browser: the dashboard takes 12-15s to load while runs are active vs 56ms for /harness/kpi, and it is 100 percent server-side (every SQL query logged is under 41ms — not the DB). Localized to Harness.Dashboard.Live.mount calling RoadmapSummary.for_projects, which fires N SEQUENTIAL rmap list --json OS shell-outs, one per registered project (7 projects). Idle they total ~47ms; under active-run load (an agent CLI saturating CPU/IO, the lander writing tasks.toml) each process spawn stretches and 7 stacked sequentially produce the ~11s dead-render gap seen in the logs at 09:25 (which lines up exactly with a cursor run settling). Fix: run the shell-outs concurrently AND move them off the render critical path so mount paints instantly and the rollup fills in async / on the existing slow tick. This is the dominant, high-confidence cause; the live_runs fan-out (the sibling task) is the secondary suspect and may not even need fixing once this lands.",
       "created_at": "2026-06-08",
       "done_at": "2026-06-08",
       "scored_at": "2026-06-08",
-      "implemented": "RoadmapSummary.for_projects/1 now uses Task.async_stream with a bounded (overridable via :roadmap_summary_timeout_ms) timeout — N projects cost ~one rmap read, not N sequential spawns; timeout/error degrades to empty summary. Live.mount assigns an empty :roadmap and sends an immediate post-connect :roadmap_tick to load the rollup off both the dead HTTP render and the connected mount. Dropped a duplicate @roadmap_tick_interval_ms. Browser-verified: /harness TTFB 37ms (was 12-15s under load), all 7 projects' panels populate after connect.",
+      "implemented": "PARTIAL: RoadmapSummary.for_projects/1 parallelization (Task.async_stream, bounded :roadmap_summary_timeout_ms) shipped and KEPT. But the second half — deferring the roadmap rollup off mount (assign empty :roadmap, load on post-connect tick) — was REVERTED (72edccd): an empty summaries map makes RunFeed.landed_sha skip the shipped_in witness and fall through to branch_landed_sha -> ResultStore.landed_sha_for_run, a per-row 'git fetch origin' for every history row, hanging the /harness render. The 37ms browser check missed it (no busy/unlanded-row state at the time). Root cause of the original slowness is that per-render git fetch, not the roadmap shell-outs — tracked as a follow-up.",
       "delivered_by": "human",
       "cross_repo": []
     },
@@ -10131,6 +10131,53 @@
         "otp"
       ],
       "body": "Diagnosed 2026-06-08 alongside the reviewer/recovery-identity fix (commit 89ccebf, the inline 'A' half of this investigation). The dashboard's Harness.Dashboard.RunFeed is driven SOLELY by the Harness.Run gen_statem, so only the implementer/reviewer/recovery STAGES of a run reach the dashboard. Harness.Audit.Worker (Oban :audit queue) and Harness.Lander are SEPARATE Oban workers that never broadcast to RunFeed: the post-merge audit (a full third-family agent run, transcript-producing) and every land operation (rebase / ff-push / conflict / resolver) are completely invisible on /harness. The Lander only fires Harness.Notification witness events to configured sinks, not the dashboard PubSub bus. Net effect, in the operator's words (2026-06-08): 'i only see implementer runs, but i can not see audit runs and all the other things.' Fix is mechanical and mantra-clean: give Audit + Lander lifecycle broadcasts on a dedicated harness:ops topic (a small Op event struct, PubSub-guarded like RunFeed) and render them in their own dashboard panel — counting which agent/operation did what, relaying the audit's own .harness/audit.json verdict, never recomputing meaning.",
+      "created_at": "2026-06-08",
+      "scored_at": "2026-06-08",
+      "cross_repo": []
+    },
+    {
+      "id": "244",
+      "phase": 17,
+      "bundle": "dashboard-perf",
+      "status": "pending",
+      "title": "Dashboard render hangs on per-row git fetch: move ResultStore landed reconciliation off the /harness render path",
+      "scores": {
+        "d": 3,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 2.17,
+      "dep_layer": 0,
+      "markers": [
+        "handbuild"
+      ],
+      "depends_on": [],
+      "assignee": "human",
+      "module": "Harness.ResultStore",
+      "acceptance_criteria": [
+        "No network git operation runs in the synchronous LiveView render/filter path. Harness.ResultStore.landed_sha_for_run/2 currently calls refresh_remote_target/2 (result_store.ex:435 -> `git fetch origin +<target>:refs/remotes/origin/<target>`) once PER history row, reached from RunFeed.landed_sha -> branch_landed_sha -> ResultStore.landed_sha during filter_landed/landed_entry? on every /harness render. Eliminate the per-render fetch.",
+        "/harness loads in sub-second wall-clock even with up to @history_limit (200) UNLANDED history rows AND an empty roadmap summaries map (the two conditions that, combined, produced a full render hang: every row falls through the shipped_in witness to the git path). Verify with a bounded `curl -w` against http://localhost:4018/harness, not just idle.",
+        "Landed detection still works: the roadmap `shipped_in` witness (RoadmapSummary) stays the fast primary; the branch-reachability fallback must consult only LOCAL refs (origin/<target> kept fresh by the lander's own fetch/push), or be moved to a cached cold-path computation (e.g. refreshed on roadmap_tick), never a synchronous network call during render.",
+        "test/harness/dashboard/run_feed_test.exs landed / rebased-equivalent / unlanded cases still pass — that suite currently relies on refresh_remote_target populating origin/<target>; update the setup to fetch locally (or assert against local refs) so it exercises the new no-network-in-render contract.",
+        "mix precommit.full green; no dialyzer/credo regressions on the touched modules."
+      ],
+      "out_of_scope": [
+        "The RoadmapSummary.for_projects parallelization (already shipped in task 241, kept).",
+        "The StatusView.live_runs/0 Run.status fan-out (separate task 242) — unless it is trivially in the same render pass.",
+        "Any change to the lander's own fetch/push or to landing semantics outside the dashboard read path."
+      ],
+      "files_to_modify": [
+        "lib/harness/result_store.ex",
+        "lib/harness/dashboard/run_feed.ex",
+        "lib/harness/dashboard/live.ex"
+      ],
+      "touches": [
+        "test/harness/dashboard/run_feed_test.exs"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "Root cause found 2026-06-08 while debugging a full /harness hang (http=000, server never responds). Process-stacktrace capture on the hung request showed ~9 stacked requests all blocked in System.cmd -> Harness.Git.run -> ResultStore.refresh_remote_target -> `git fetch origin`, called from Harness.Dashboard.Live.landed_entry?/3 (live.ex:461) -> RunFeed.landed_sha (run_feed.ex:52) -> branch_landed_sha (run_feed.ex:113) -> ResultStore.landed_sha (result_store.ex:184) -> landed_sha_for_run (result_store.ex:416). RunFeed.landed_sha is `roadmap_landed_sha(summaries) || branch_landed_sha(projects)`: when the roadmap summaries map lacks a shipped_in for a row (every unlanded run, or — in the reverted task-241 deferral — EVERY row), it falls through to branch_landed_sha which does a network git fetch PER ROW. With up to 200 history rows this is 200 sequential network fetches inside the synchronous render = the original '12-15s under load' AND the hang. The task-241 deferral (empty :roadmap at mount) was reverted (72edccd) as a stopgap so landed rows short-circuit again, but the per-render network fetch remains the real defect for unlanded rows under load. Fix: get the network call off the render path per the harness mantra (render = mechanics only, no blocking I/O). Hand-build in a fresh session with browser/curl + the run_feed test suite.",
       "created_at": "2026-06-08",
       "scored_at": "2026-06-08",
       "cross_repo": []
