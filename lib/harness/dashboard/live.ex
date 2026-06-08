@@ -91,11 +91,6 @@ defmodule Harness.Dashboard.Live do
   # shipped_in, so the unmerged filter joins on the task, not on run state.
   @roadmap_tick_interval_ms 30_000
 
-  # Roadmap rollups (open-task counts + the task_id => shipped_in landed map) come
-  # from a cold-path `rmap list` per project and have no PubSub source, so a slow
-  # tick refreshes them — far slower than meta_tick since landing is minutes-paced.
-  @roadmap_tick_interval_ms 30_000
-
   # Mirror StatusView's history cap so the history stream's DOM size stays
   # bounded over a long-lived session.
   @history_limit 200
@@ -105,7 +100,13 @@ defmodule Harness.Dashboard.Live do
     if connected?(socket) do
       RunFeed.subscribe()
       schedule_meta_tick()
-      schedule_roadmap_tick()
+      # Load the roadmap rollup OFF the mount render critical path: paint with an
+      # empty rollup now (`:roadmap` below), then fill it in when this fires after
+      # the connected mount. Its handler re-arms the recurring slow tick, so the
+      # N-project `rmap list` shell-outs never block the disconnected HTTP render
+      # or the connected mount — the regression that made `/harness` load in 12-15s
+      # under active-run load.
+      send(self(), :roadmap_tick)
     end
 
     projects = ProjectRegistry.list()
@@ -118,7 +119,7 @@ defmodule Harness.Dashboard.Live do
     {:ok,
      socket
      |> assign(:projects, projects)
-     |> assign(:roadmap, RoadmapSummary.for_projects(projects))
+     |> assign(:roadmap, %{})
      |> assign(:show_landed, false)
      |> assign(:notice, nil)
      |> assign(:selected_project, nil)

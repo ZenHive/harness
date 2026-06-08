@@ -123,7 +123,13 @@ defmodule Harness.Dashboard.RoadmapSummaryTest do
   describe "for_projects/1 (with the :roadmap_list seam)" do
     setup do
       prev = Application.get_env(:harness, :roadmap_list)
-      on_exit(fn -> restore(:roadmap_list, prev) end)
+      prev_timeout = Application.get_env(:harness, :roadmap_summary_timeout_ms)
+
+      on_exit(fn ->
+        restore(:roadmap_list, prev)
+        restore(:roadmap_summary_timeout_ms, prev_timeout)
+      end)
+
       :ok
     end
 
@@ -144,6 +150,40 @@ defmodule Harness.Dashboard.RoadmapSummaryTest do
       summaries = RoadmapSummary.for_projects([project])
 
       assert summaries["broken-proj"] == %{open: 0, done: 0, total: 0, landed: %{}, blocked: %{}}
+    end
+
+    test "a project whose roadmap read times out degrades to a zero summary, never blocking" do
+      project = ProjectFixture.from_repo("/tmp/harness-roadmap-slow", name: "slow-proj")
+      Application.put_env(:harness, :roadmap_summary_timeout_ms, 50)
+
+      Application.put_env(:harness, :roadmap_list, fn _project ->
+        Process.sleep(500)
+        {:ok, @tasks}
+      end)
+
+      summaries = RoadmapSummary.for_projects([project])
+
+      assert summaries["slow-proj"] == %{open: 0, done: 0, total: 0, landed: %{}, blocked: %{}}
+    end
+
+    test "runs per-project reads concurrently — wall-clock is ~one read, not N" do
+      projects =
+        for i <- 1..5 do
+          ProjectFixture.from_repo("/tmp/harness-roadmap-conc-#{i}", name: "conc-#{i}")
+        end
+
+      Application.put_env(:harness, :roadmap_list, fn _project ->
+        Process.sleep(100)
+        {:ok, @tasks}
+      end)
+
+      {elapsed_us, summaries} = :timer.tc(fn -> RoadmapSummary.for_projects(projects) end)
+
+      # Sequential would be ~500ms (5 × 100ms); concurrent is ~100ms. Assert well
+      # under the sequential floor to prove the reads overlap.
+      assert elapsed_us < 300_000
+      assert map_size(summaries) == 5
+      assert summaries["conc-1"].open == 3
     end
   end
 

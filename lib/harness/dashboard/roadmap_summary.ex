@@ -33,6 +33,11 @@ defmodule Harness.Dashboard.RoadmapSummary do
 
   @open_statuses ~w(pending in_progress blocked)
 
+  # Bound each per-project roadmap read so one slow/hung `rmap list` can't stall
+  # the whole rollup. Overridable via `:roadmap_summary_timeout_ms` (test seam,
+  # mirrors `:roadmap_list`).
+  @summarize_timeout_ms 5_000
+
   @typedoc "A per-project roadmap rollup."
   @type summary :: %{
           open: non_neg_integer(),
@@ -45,10 +50,25 @@ defmodule Harness.Dashboard.RoadmapSummary do
   @typedoc "Per-project summaries keyed by project name."
   @type summaries :: %{optional(String.t()) => summary()}
 
-  @doc "Builds the per-project summary map keyed by project name."
+  @doc """
+  Builds the per-project summary map keyed by project name.
+
+  Per-project roadmap reads are independent cold-path shell-outs, so they run
+  concurrently with a bounded timeout — N projects cost ~one shell-out of
+  wall-clock, not N sequential spawns (the regression that made `/harness` take
+  12-15s under active-run load). Ordered results zip back to their project, so a
+  read that times out or crashes degrades to an empty summary (named correctly)
+  rather than blocking or crashing the panel.
+  """
   @spec for_projects([Project.t()]) :: %{optional(String.t()) => summary()}
   def for_projects(projects) when is_list(projects) do
-    Map.new(projects, fn %Project{name: name} = project -> {name, summarize(project)} end)
+    projects
+    |> Task.async_stream(&summarize/1, timeout: summarize_timeout_ms(), on_timeout: :kill_task)
+    |> Enum.zip(projects)
+    |> Map.new(fn
+      {{:ok, summary}, %Project{name: name}} -> {name, summary}
+      {{:exit, _reason}, %Project{name: name}} -> {name, empty()}
+    end)
   end
 
   @doc "Returns the summary for `name`, or a zero summary when absent."
@@ -86,6 +106,11 @@ defmodule Harness.Dashboard.RoadmapSummary do
     Enum.reduce(tasks, empty(), fn task, acc ->
       acc |> bump_counts(task["status"]) |> bump_landed(task) |> bump_blocked(task)
     end)
+  end
+
+  @spec summarize_timeout_ms() :: pos_integer()
+  defp summarize_timeout_ms do
+    Application.get_env(:harness, :roadmap_summary_timeout_ms, @summarize_timeout_ms)
   end
 
   @spec summarize(Project.t()) :: summary()
