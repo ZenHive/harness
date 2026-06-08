@@ -10086,7 +10086,7 @@
       "id": "243",
       "phase": 17,
       "bundle": "dashboard-observability",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Surface audit + lander lifecycle on /harness — broadcast their stage events on a dashboard-subscribed ops feed",
       "scores": {
         "d": 3,
@@ -10132,6 +10132,7 @@
       ],
       "body": "Diagnosed 2026-06-08 alongside the reviewer/recovery-identity fix (commit 89ccebf, the inline 'A' half of this investigation). The dashboard's Harness.Dashboard.RunFeed is driven SOLELY by the Harness.Run gen_statem, so only the implementer/reviewer/recovery STAGES of a run reach the dashboard. Harness.Audit.Worker (Oban :audit queue) and Harness.Lander are SEPARATE Oban workers that never broadcast to RunFeed: the post-merge audit (a full third-family agent run, transcript-producing) and every land operation (rebase / ff-push / conflict / resolver) are completely invisible on /harness. The Lander only fires Harness.Notification witness events to configured sinks, not the dashboard PubSub bus. Net effect, in the operator's words (2026-06-08): 'i only see implementer runs, but i can not see audit runs and all the other things.' Fix is mechanical and mantra-clean: give Audit + Lander lifecycle broadcasts on a dedicated harness:ops topic (a small Op event struct, PubSub-guarded like RunFeed) and render them in their own dashboard panel — counting which agent/operation did what, relaying the audit's own .harness/audit.json verdict, never recomputing meaning.",
       "created_at": "2026-06-08",
+      "started_at": "2026-06-08",
       "scored_at": "2026-06-08",
       "cross_repo": []
     },

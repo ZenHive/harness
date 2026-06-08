@@ -40,6 +40,8 @@ defmodule Harness.Lander.Resilience do
   """
 
   alias Harness.AgentAdapter.Registry
+  alias Harness.Dashboard.OpsFeed
+  alias Harness.Dashboard.OpsFeed.Op
   alias Harness.Lander
   alias Harness.Lander.Worker, as: LanderWorker
   alias Harness.Notification
@@ -190,6 +192,7 @@ defmodule Harness.Lander.Resilience do
     end
 
     Notification.notify(event(:blocked, reason, args))
+    OpsFeed.broadcast(Op.blocked(args, reason))
     {:cancel, {:blocked, reason}}
   end
 

@@ -1,6 +1,8 @@
 defmodule Harness.LanderTest do
   use ExUnit.Case, async: false
 
+  alias Harness.Dashboard.OpsFeed
+  alias Harness.Dashboard.OpsFeed.Op
   alias Harness.GitFixture
   alias Harness.Lander
   alias Harness.Notification.Event
@@ -60,6 +62,15 @@ defmodule Harness.LanderTest do
       assert {:landed, landed} = Lander.land(ctx.request)
       assert landed == ctx.branch_tip
       assert sha(ctx.origin, "refs/heads/main") == ctx.branch_tip
+    end
+
+    test "broadcasts started + settled(:landed) on the dashboard ops feed (task 243)", ctx do
+      :ok = OpsFeed.subscribe()
+
+      assert {:landed, landed} = Lander.land(ctx.request)
+
+      assert_receive {:harness_op, %Op{kind: :land, stage: :landing, run_id: "run-x", target: "main"}}
+      assert_receive {:harness_op, %Op{kind: :land, stage: :landed, run_id: "run-x", sha: ^landed}}
     end
   end
 

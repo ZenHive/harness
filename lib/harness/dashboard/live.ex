@@ -66,6 +66,8 @@ defmodule Harness.Dashboard.Live do
 
   alias Harness.AgentRegistry
   alias Harness.Dashboard.Components
+  alias Harness.Dashboard.OpsFeed
+  alias Harness.Dashboard.OpsFeed.Op
   alias Harness.Dashboard.RoadmapSummary
   alias Harness.Dashboard.RunFeed
   alias Harness.Dashboard.Transcript
@@ -95,10 +97,16 @@ defmodule Harness.Dashboard.Live do
   # bounded over a long-lived session.
   @history_limit 200
 
+  # Audit + land ops are infrequent (minutes-paced) and each settled audit op can
+  # carry a (capped) transcript, so the ops panel keeps a small bounded list in a
+  # plain assign rather than a stream. Newest-first, truncated to this many rows.
+  @ops_limit 40
+
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     if connected?(socket) do
       RunFeed.subscribe()
+      OpsFeed.subscribe()
       schedule_meta_tick()
       schedule_roadmap_tick()
       # Build the branch-reachability landed cache off the (HTTP) render path:
@@ -119,6 +127,7 @@ defmodule Harness.Dashboard.Live do
      |> assign(:projects, projects)
      |> assign(:roadmap, RoadmapSummary.for_projects(projects))
      |> assign(:landed_cache, %{})
+     |> assign(:ops, [])
      |> assign(:show_landed, false)
      |> assign(:notice, nil)
      |> assign(:selected_project, nil)
@@ -290,6 +299,13 @@ defmodule Harness.Dashboard.Live do
 
   def handle_info({:harness_run_settled, %Status{} = status}, socket) do
     {:noreply, apply_run_settled(socket, status)}
+  end
+
+  # Audit + land lifecycle (OpsFeed). Separate Oban workers that never reach the
+  # run gen_statem, so they ride their own topic into a dedicated ops panel —
+  # newest-first, bounded. Prepend on every transition; no run-stream touch.
+  def handle_info({:harness_op, %Op{} = op}, socket) do
+    {:noreply, assign(socket, :ops, Enum.take([op | socket.assigns.ops], @ops_limit))}
   end
 
   # Guard against cross-run bleed: a previously viewed run can still have
@@ -660,6 +676,8 @@ defmodule Harness.Dashboard.Live do
 
     <.roadmap_panel projects={@projects} summaries={@roadmap} />
 
+    <.ops_panel ops={@ops} />
+
     <h2>Active runs</h2>
     <p :if={@active_empty?}>No runs in flight or lingering.</p>
     <.run_table
@@ -826,6 +844,55 @@ defmodule Harness.Dashboard.Live do
       }
     end)
   end
+
+  attr(:ops, :list, required: true)
+
+  # Audit + land lifecycle, the half of the pipeline RunFeed can't see (separate
+  # Oban workers). Each row is one fact-only `OpsFeed.Op` transition; a settled
+  # audit carries its (capped) agent transcript in an expandable block, since the
+  # audit is a real third-family agent run. Facts only — the audit's own
+  # clean/fixed verdict lives in `.harness/audit.json`; this panel just relays it.
+  @spec ops_panel(map()) :: Rendered.t()
+  defp ops_panel(assigns) do
+    ~H"""
+    <h2>Audit &amp; land ops</h2>
+    <p :if={@ops == []}>No audit or land activity yet.</p>
+    <table :if={@ops != []}>
+      <thead>
+        <tr>
+          <th>Kind</th>
+          <th>Stage</th>
+          <th>Project</th>
+          <th>Agent</th>
+          <th>Run / Range</th>
+          <th>SHA</th>
+          <th>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr :for={op <- @ops}>
+          <td><code>{op.kind}</code></td>
+          <td><code>{op.stage}</code></td>
+          <td>{op.project || "—"}</td>
+          <td>{op.agent || "—"}</td>
+          <td>{op.run_id || op.range || "—"}</td>
+          <td>{ops_sha(op.sha)}</td>
+          <td>
+            {op.detail || ""}
+            <details :if={op.transcript}>
+              <summary>transcript</summary>
+              <pre class="transcript">{op.transcript}</pre>
+            </details>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    """
+  end
+
+  @spec ops_sha(String.t() | nil) :: String.t()
+  defp ops_sha(nil), do: "—"
+  defp ops_sha(sha), do: short_sha(sha)
 
   attr(:id, :string, required: true)
   attr(:rows, :any, required: true)

@@ -17,6 +17,8 @@ defmodule Harness.AuditTest do
   alias Harness.AgentAdapter.Pi
   alias Harness.AgentRegistry
   alias Harness.Audit
+  alias Harness.Dashboard.OpsFeed
+  alias Harness.Dashboard.OpsFeed.Op
   alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
@@ -149,15 +151,31 @@ defmodule Harness.AuditTest do
       land_work!(ctx)
       short = ctx.repo |> GitFixture.git!(["rev-parse", "--short", "HEAD"]) |> String.trim()
 
-      assert {:audited, audited_sha} =
-               Audit.run(%{
-                 project: ctx.project,
-                 base_sha: ctx.base_sha,
-                 implementer: "claude",
-                 reviewer: "codex",
-                 auditor: FakeAdapter,
-                 auditor_opts: [command: {:audit, short}]
-               })
+      # Task 243: the audit broadcasts its lifecycle on the dashboard ops feed —
+      # started when the auditor is selected, settled (stage :fixed) with the
+      # agent transcript when the commit lands. Run the audit in a Task so its
+      # port-receive loop runs there, not in this (subscribed) process — mirrors
+      # production, where the Oban worker runs the agent and the LiveView subscribes.
+      :ok = OpsFeed.subscribe()
+
+      task =
+        Task.async(fn ->
+          Audit.run(%{
+            project: ctx.project,
+            base_sha: ctx.base_sha,
+            implementer: "claude",
+            reviewer: "codex",
+            auditor: FakeAdapter,
+            auditor_opts: [command: {:audit, short}]
+          })
+        end)
+
+      assert {:audited, audited_sha} = Task.await(task, 30_000)
+
+      assert_receive {:harness_op, %Op{kind: :audit, stage: :started, project: "audit-demo", agent: agent}}
+      assert agent =~ "FakeAdapter"
+      assert_receive {:harness_op, %Op{kind: :audit, stage: :fixed, sha: ^audited_sha, transcript: t}}
+      assert is_binary(t)
 
       # The audit commit is origin/main's new tip…
       assert ctx.origin |> GitFixture.git!(["rev-parse", "main"]) |> String.trim() == audited_sha

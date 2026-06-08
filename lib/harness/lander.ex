@@ -45,6 +45,8 @@ defmodule Harness.Lander do
 
   alias Harness.AgentRegistry
   alias Harness.Audit.Worker, as: AuditWorker
+  alias Harness.Dashboard.OpsFeed
+  alias Harness.Dashboard.OpsFeed.Op
   alias Harness.Git
   alias Harness.Git.TargetSync
   alias Harness.Lander.Resolver
@@ -89,13 +91,19 @@ defmodule Harness.Lander do
   """
   @spec land(request()) :: outcome()
   def land(%{project: %Project{} = project, branch: branch} = request) when is_binary(branch) do
-    with {:ok, repo} <- Project.local_repo_path(project),
-         {:ok, target} <- target_branch(project),
-         :ok <- fetch_origin(repo),
-         {:ok, base_sha} <- remote_target_sha(repo, target),
-         {:ok, worktree} <- checkout(repo, branch) do
-      land_in_worktree(worktree, repo, target, base_sha, project, request)
-    end
+    OpsFeed.broadcast(Op.land_started(request))
+
+    outcome =
+      with {:ok, repo} <- Project.local_repo_path(project),
+           {:ok, target} <- target_branch(project),
+           :ok <- fetch_origin(repo),
+           {:ok, base_sha} <- remote_target_sha(repo, target),
+           {:ok, worktree} <- checkout(repo, branch) do
+        land_in_worktree(worktree, repo, target, base_sha, project, request)
+      end
+
+    OpsFeed.broadcast(Op.land_settled(request, outcome))
+    outcome
   end
 
   @doc """
@@ -228,6 +236,8 @@ defmodule Harness.Lander do
   @spec resolve_or_abort(Worktree.t(), String.t(), request(), String.t()) ::
           {:ok, String.t()} | {:conflict, String.t()}
   defp resolve_or_abort(%Worktree{path: path} = worktree, base_sha, request, conflict_output) do
+    OpsFeed.broadcast(Op.land_stage(request, :resolving))
+
     with :ok <- run_resolver(worktree, base_sha, request),
          :ok <- stage_all(path),
          :ok <- assert_resolved(path),

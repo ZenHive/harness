@@ -37,6 +37,8 @@ defmodule Harness.Audit do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentRegistry
+  alias Harness.Dashboard.OpsFeed
+  alias Harness.Dashboard.OpsFeed.Op
   alias Harness.Git
   alias Harness.Project
   alias Harness.ResultStore
@@ -96,20 +98,35 @@ defmodule Harness.Audit do
   """
   @spec run(request()) :: outcome()
   def run(%{project: %Project{} = project, base_sha: base_sha} = request) when is_binary(base_sha) do
-    with {:ok, repo} <- Project.local_repo_path(project),
-         {:ok, target} <- target_branch(project),
-         :ok <- fetch_origin(repo),
-         {:ok, worktree} <- checkout(repo, target) do
-      audit_in_worktree(worktree, repo, target, project, request)
-    end
+    # Thread the chosen auditor + its transcript out alongside the outcome (in
+    # `meta`) so the dashboard ops feed (task 243) can relay both — the audit is
+    # a real third-family agent run. Pre-worktree short-circuits carry empty meta.
+    {outcome, meta} =
+      with {:ok, repo} <- Project.local_repo_path(project),
+           {:ok, target} <- target_branch(project),
+           :ok <- fetch_origin(repo),
+           {:ok, worktree} <- checkout(repo, target) do
+        audit_in_worktree(worktree, repo, target, project, request)
+      else
+        short_circuit -> {short_circuit, %{}}
+      end
+
+    OpsFeed.broadcast(Op.audit_settled(project.name, meta[:agent], meta[:range], outcome, meta[:transcript]))
+    outcome
   end
 
-  @spec audit_in_worktree(Worktree.t(), String.t(), String.t(), Project.t(), request()) :: outcome()
+  @typep audit_meta :: %{
+           optional(:agent) => String.t(),
+           optional(:range) => String.t(),
+           optional(:transcript) => binary()
+         }
+
+  @spec audit_in_worktree(Worktree.t(), String.t(), String.t(), Project.t(), request()) :: {outcome(), audit_meta()}
   defp audit_in_worktree(%Worktree{} = worktree, repo, target, project, request) do
     result =
       case unaudited_range(worktree.path, request.base_sha, project, target) do
         {:ok, :empty} ->
-          :noop
+          {:noop, %{}}
 
         {:ok, range} ->
           # The auditor runs the project's checks, so warm its fresh worktree the
@@ -120,7 +137,7 @@ defmodule Harness.Audit do
           run_auditor(worktree, repo, target, project, request, range)
 
         {:error, reason} ->
-          {:error, reason}
+          {{:error, reason}, %{}}
       end
 
     cleanup(worktree)
@@ -226,15 +243,59 @@ defmodule Harness.Audit do
     end
   end
 
-  @spec run_auditor(Worktree.t(), String.t(), String.t(), Project.t(), request(), map()) :: outcome()
+  @spec run_auditor(Worktree.t(), String.t(), String.t(), Project.t(), request(), map()) :: {outcome(), audit_meta()}
   defp run_auditor(worktree, repo, target, project, request, range) do
-    with {:ok, auditor} <- select_auditor(request),
-         {:ok, %Outcome{}} <- Driver.run(auditor, invocation(worktree, target, project, request, range), []),
-         {:ok, head} <- head_sha(worktree.path) do
-      log_audit_report(worktree.path)
-      outcome = push_if_advanced(repo, worktree, target, head)
-      record_watermark(project, target, head, outcome)
-      outcome
+    case select_auditor(request) do
+      {:ok, auditor} ->
+        agent = auditor_name(auditor)
+        OpsFeed.broadcast(Op.audit_started(project.name, agent, range.log))
+        finalize_audit(worktree, repo, target, project, request, range, auditor, agent)
+
+      {:skipped, :no_audit_agent} = skip ->
+        {skip, %{range: range.log}}
+    end
+  end
+
+  # Drives the selected auditor and finalizes: ff-push whatever it committed and
+  # record the watermark. Returns `{outcome, meta}` so `run/1` can relay the
+  # agent + its raw transcript onto the ops feed.
+  @spec finalize_audit(Worktree.t(), String.t(), String.t(), Project.t(), request(), map(), module(), String.t()) ::
+          {outcome(), audit_meta()}
+  defp finalize_audit(worktree, repo, target, project, request, range, auditor, agent) do
+    case Driver.run(auditor, invocation(worktree, target, project, request, range), []) do
+      {:ok, %Outcome{output: output}} ->
+        finalize_after_run(worktree, repo, target, project, range, agent, output)
+
+      {:error, reason} ->
+        {{:error, reason}, %{agent: agent, range: range.log}}
+    end
+  end
+
+  @spec finalize_after_run(Worktree.t(), String.t(), String.t(), Project.t(), map(), String.t(), binary()) ::
+          {outcome(), audit_meta()}
+  defp finalize_after_run(worktree, repo, target, project, range, agent, output) do
+    meta = %{agent: agent, range: range.log, transcript: output}
+
+    case head_sha(worktree.path) do
+      {:ok, head} ->
+        log_audit_report(worktree.path)
+        outcome = push_if_advanced(repo, worktree, target, head)
+        record_watermark(project, target, head, outcome)
+        {outcome, meta}
+
+      {:error, reason} ->
+        {{:error, reason}, meta}
+    end
+  end
+
+  # Display name for the chosen auditor adapter. A module the registry can't
+  # reverse-map (test doubles via the explicit `:auditor` override) falls back to
+  # its inspected module name — fact only, never a routing decision.
+  @spec auditor_name(module()) :: String.t()
+  defp auditor_name(module) do
+    case AgentRegistry.agent_for_module(module) do
+      {:ok, agent} -> to_string(agent)
+      {:error, _reason} -> inspect(module)
     end
   end
 
