@@ -413,13 +413,15 @@ defmodule Harness.ResultStore do
     apply(module, function, args ++ [[]])
   end
 
+  # Local-refs-only landed detection — NO network fetch. The lander keeps the
+  # shared `origin/<target>` remote-tracking ref fresh via its own fetch/push,
+  # so render/cold-path callers consult it directly. A `git fetch` here would put
+  # blocking network I/O on the (formerly per-row) read path — the task-244 hang.
   @spec landed_sha_for_run(String.t(), Project.t()) :: String.t() | nil
   defp landed_sha_for_run(run_id, %Project{target_branch: target} = project)
        when is_binary(run_id) and run_id != "" and is_binary(target) and target != "" do
     case Project.local_repo_path(project) do
       {:ok, repo} ->
-        refresh_remote_target(repo, target)
-
         target_ref = "origin/" <> target
         reachable_branch_sha(repo, run_id, target_ref) || logged_run_sha(repo, run_id, target_ref)
 
@@ -429,12 +431,6 @@ defmodule Harness.ResultStore do
   end
 
   defp landed_sha_for_run(_run_id, %Project{}), do: nil
-
-  @spec refresh_remote_target(String.t(), String.t()) :: :ok
-  defp refresh_remote_target(repo, target) do
-    _ = Git.run(["fetch", "origin", "+#{target}:refs/remotes/origin/#{target}"], repo)
-    :ok
-  end
 
   @spec reachable_branch_sha(String.t(), String.t(), String.t()) :: String.t() | nil
   defp reachable_branch_sha(repo, run_id, target_ref) do

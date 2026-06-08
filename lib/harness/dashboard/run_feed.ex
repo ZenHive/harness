@@ -41,16 +41,49 @@ defmodule Harness.Dashboard.RunFeed do
   @spec topic() :: String.t()
   def topic, do: @topic
 
+  @typedoc "Run-id → branch-reachability landed SHA, precomputed off the render path."
+  @type landed_cache :: %{optional(String.t()) => String.t()}
+
   @doc """
-  Returns the reconciled landed SHA for a run status.
+  Returns the reconciled landed SHA for a run status — **pure, no git/network**.
 
   Roadmap `shipped_in` remains the fast witness when present. Otherwise the feed
-  checks whether the run's retained branch, or an equivalent rebased run commit,
-  is reachable from the project's `origin/<target_branch>`.
+  consults `landed_cache`, a map of run-id → branch-reachability SHA built off the
+  render path by `branch_landed_cache/3` (refreshed on the dashboard's cold-path
+  roadmap tick). The old per-row `git fetch` is gone (task 244) — render does map
+  lookups only.
   """
-  @spec landed_sha(Status.t(), RoadmapSummary.summaries(), [Project.t()]) :: String.t() | nil
-  def landed_sha(%Status{} = status, summaries, projects) when is_map(summaries) and is_list(projects) do
-    roadmap_landed_sha(status, summaries) || branch_landed_sha(status, projects)
+  @spec landed_sha(Status.t(), RoadmapSummary.summaries(), landed_cache()) :: String.t() | nil
+  def landed_sha(%Status{run_id: run_id} = status, summaries, landed_cache)
+      when is_map(summaries) and is_map(landed_cache) do
+    roadmap_landed_sha(status, summaries) || Map.get(landed_cache, run_id)
+  end
+
+  @doc """
+  Cold-path builder for the `landed_cache` consumed by `landed_sha/3`.
+
+  For each status whose task lacks a roadmap `shipped_in` witness, computes the
+  branch-reachability landed SHA via `Harness.ResultStore.landed_sha/2` (LOCAL
+  refs only — no network fetch) and collects `run_id => sha` for the landed ones.
+  Roadmap-covered rows are skipped (the witness already answers them in render),
+  so steady-state work is bounded to the genuinely-unwitnessed rows. Call this
+  off the render path (e.g. on the dashboard roadmap tick), never during render.
+  """
+  @spec branch_landed_cache([Status.t()], RoadmapSummary.summaries(), [Project.t()]) :: landed_cache()
+  def branch_landed_cache(statuses, summaries, projects)
+      when is_list(statuses) and is_map(summaries) and is_list(projects) do
+    by_name = Map.new(projects, &{&1.name, &1})
+
+    statuses
+    |> Enum.reject(&roadmap_landed_sha(&1, summaries))
+    |> Enum.reduce(%{}, fn %Status{run_id: run_id} = status, acc ->
+      with %Project{} = project <- Map.get(by_name, status.project_name),
+           sha when is_binary(sha) <- ResultStore.landed_sha(status, project) do
+        Map.put(acc, run_id, sha)
+      else
+        _ -> acc
+      end
+    end)
   end
 
   @doc "Subscribes the calling process to the fleet run-lifecycle feed. No-op if PubSub is not running."
@@ -109,19 +142,4 @@ defmodule Harness.Dashboard.RunFeed do
   defp roadmap_landed_sha(%Status{project_name: project, task_id: task_id}, summaries) do
     RoadmapSummary.landed_sha(summaries, project, task_id)
   end
-
-  @spec branch_landed_sha(Status.t(), [Project.t()]) :: String.t() | nil
-  defp branch_landed_sha(%Status{project_name: project_name} = status, projects) do
-    case project_by_name(projects, project_name) do
-      %Project{} = project -> ResultStore.landed_sha(status, project)
-      nil -> nil
-    end
-  end
-
-  @spec project_by_name([Project.t()], String.t() | nil) :: Project.t() | nil
-  defp project_by_name(projects, name) when is_binary(name) do
-    Enum.find(projects, &(&1.name == name))
-  end
-
-  defp project_by_name(_projects, _name), do: nil
 end

@@ -44,7 +44,12 @@ defmodule Harness.Dashboard.RunFeedTest do
     assert RunFeed.topic() == "harness:runs"
   end
 
-  describe "landed_sha/3" do
+  # The render-path landed_sha/3 is pure (roadmap witness || cache lookup) — no
+  # git, no network (task 244). The branch-reachability work lives in the
+  # cold-path builder branch_landed_cache/3, which consults LOCAL refs only. The
+  # setup fetches origin into the local tracking ref itself (the render path no
+  # longer does), exercising the no-network-in-render contract.
+  describe "branch_landed_cache/3 + landed_sha/3 (no network in render)" do
     test "reports landed when the run branch tip is reachable from origin target without a roadmap writeback" do
       %{repo: repo} = GitFixture.init_with_origin(name: "run-feed-landed")
       project = ProjectFixture.from_repo(repo, name: "feed-proj", target_branch: "main")
@@ -56,11 +61,14 @@ defmodule Harness.Dashboard.RunFeedTest do
       sha = repo |> GitFixture.git!(["rev-parse", "HEAD"]) |> String.trim()
       GitFixture.git!(repo, ["checkout", "main"])
       GitFixture.git!(repo, ["push", "-q", "origin", "#{sha}:refs/heads/main"])
+      GitFixture.git!(repo, ["fetch", "-q", "origin", "+main:refs/remotes/origin/main"])
 
       status = %Status{run_id: "run-landed", task_id: "1", project_name: project.name, state: :done}
       summaries = %{project.name => %{open: 1, done: 0, total: 1, landed: %{}, blocked: %{}}}
 
-      assert RunFeed.landed_sha(status, summaries, [project]) == sha
+      cache = RunFeed.branch_landed_cache([status], summaries, [project])
+      assert cache == %{"run-landed" => sha}
+      assert RunFeed.landed_sha(status, summaries, cache) == sha
     end
 
     test "reports landed via target-branch commit message when the run branch tip was rebased away" do
@@ -78,11 +86,14 @@ defmodule Harness.Dashboard.RunFeedTest do
       GitFixture.git!(repo, ["commit", "-q", "-m", "harness: agent delivery - task 1 Rebasing land (run run-rebased)"])
       landed_sha = repo |> GitFixture.git!(["rev-parse", "HEAD"]) |> String.trim()
       GitFixture.git!(repo, ["push", "-q", "origin", "main:refs/heads/main"])
+      GitFixture.git!(repo, ["fetch", "-q", "origin", "+main:refs/remotes/origin/main"])
 
       status = %Status{run_id: "run-rebased", task_id: "1", project_name: project.name, state: :done}
       summaries = %{project.name => %{open: 1, done: 0, total: 1, landed: %{}, blocked: %{}}}
 
-      assert RunFeed.landed_sha(status, summaries, [project]) == landed_sha
+      cache = RunFeed.branch_landed_cache([status], summaries, [project])
+      assert cache == %{"run-rebased" => landed_sha}
+      assert RunFeed.landed_sha(status, summaries, cache) == landed_sha
     end
 
     test "reports not-landed when an approved run branch is not reachable from origin target" do
@@ -98,7 +109,20 @@ defmodule Harness.Dashboard.RunFeedTest do
       status = %Status{run_id: "run-unlanded", task_id: "1", project_name: project.name, state: :done}
       summaries = %{project.name => %{open: 1, done: 0, total: 1, landed: %{}, blocked: %{}}}
 
-      assert RunFeed.landed_sha(status, summaries, [project]) == nil
+      cache = RunFeed.branch_landed_cache([status], summaries, [project])
+      assert cache == %{}
+      assert RunFeed.landed_sha(status, summaries, cache) == nil
+    end
+
+    test "roadmap shipped_in witness short-circuits the cache (no git for witnessed rows)" do
+      project = ProjectFixture.from_repo(GitFixture.init_repo(name: "run-feed-witness"), name: "feed-proj")
+
+      status = %Status{run_id: "run-witnessed", task_id: "1", project_name: project.name, state: :done}
+      summaries = %{project.name => %{open: 0, done: 1, total: 1, landed: %{"1" => "abc123"}, blocked: %{}}}
+
+      # Witnessed rows are skipped by the builder; landed_sha resolves via the roadmap.
+      assert RunFeed.branch_landed_cache([status], summaries, [project]) == %{}
+      assert RunFeed.landed_sha(status, summaries, %{}) == "abc123"
     end
   end
 end
