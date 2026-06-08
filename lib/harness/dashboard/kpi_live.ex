@@ -39,11 +39,33 @@ defmodule Harness.Dashboard.KPILive do
   a run settles (`Harness.Dashboard.RunFeed` `:harness_run_settled`) — the only
   event that adds a `LogRecord` and so the only one that moves the aggregates.
   In-flight transitions are ignored.
+
+  ## By task-facet (Task 225)
+
+  Below the flat fleet-wide tables, the same per-agent facts are pivoted by the
+  reviewer-assigned **task facets** (`review_facets`, the routing KEY from Task
+  224) via `Harness.CapabilityScore.group_by_facet/1`. Each facet group shows
+  its per-agent ledger — approve%, first-try%, reviewer-quality (mean rating),
+  mean tokens, cost-to-green — answering "who is best at THIS kind of task?",
+  not just fleet-wide. A facet-pill bar filters to one group; the unfaceted
+  bucket (records the reviewer left untagged) always renders and is never
+  dropped.
+
+  Beside the fact ledger renders the **scout's written verdict** for that facet
+  (`Harness.CapabilityScore.read_assessment/1`, Task 216): the winning agent and
+  its plain-prose reasoning. Facts (what happened, counted by harness) and the
+  AI-written meaning (who to use, written by the scout) sit side by side — the
+  page never recomputes a routing verdict from the numbers. A facet with no
+  assessment entry shows "no scout verdict yet"; an absent artifact degrades the
+  whole column gracefully.
   """
 
   use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}
 
   alias Harness.AgentKPI
+  alias Harness.CapabilityScore
+  alias Harness.CapabilityScore.Assessment
+  alias Harness.CapabilityScore.Entry
   alias Harness.Dashboard.RunFeed
   alias Harness.ResultStore
   alias Harness.Run.Status
@@ -61,14 +83,16 @@ defmodule Harness.Dashboard.KPILive do
      socket
      |> assign(:sort_by, @default_sort)
      |> assign(:sort_dir, @default_dir)
-     |> assign_rows()}
+     |> assign(:facet_filter, nil)
+     |> assign_rows()
+     |> assign_facets()}
   end
 
   # Only a settled run mints a new LogRecord, so it is the only event that can
   # move the aggregates; in-flight updates are ignored to avoid needless re-reads.
   @impl Phoenix.LiveView
   def handle_info({:harness_run_settled, %Status{}}, socket) do
-    {:noreply, assign_rows(socket)}
+    {:noreply, socket |> assign_rows() |> assign_facets()}
   end
 
   def handle_info(_other, socket), do: {:noreply, socket}
@@ -76,6 +100,13 @@ defmodule Harness.Dashboard.KPILive do
   @impl Phoenix.LiveView
   def handle_event("sort", %{"col" => col}, socket) do
     {:noreply, socket |> toggle_sort(col) |> assign_rows()}
+  end
+
+  # An empty key clears the filter (the "All" pill); any other selects one facet
+  # group by its label. Clicking the active pill toggles back to "All".
+  def handle_event("facet", %{"key" => key}, socket) do
+    selected = if key == "" or key == socket.assigns.facet_filter, do: nil, else: key
+    {:noreply, assign(socket, :facet_filter, selected)}
   end
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
@@ -112,6 +143,129 @@ defmodule Harness.Dashboard.KPILive do
         []
     end
   end
+
+  # Pivot the same per-agent facts by reviewer-assigned task facet, and read the
+  # scout's per-facet verdict beside them. Both reads degrade to empty on error,
+  # so a missing store / unwritten assessment renders the no-data state.
+  @spec assign_facets(Socket.t()) :: Socket.t()
+  defp assign_facets(socket) do
+    records =
+      case ResultStore.list_run_records([]) do
+        {:ok, recs} -> recs
+        _error -> []
+      end
+
+    assessment =
+      case CapabilityScore.read_assessment(assessment_opts()) do
+        {:ok, %Assessment{} = a} -> a
+        _no_data_or_error -> nil
+      end
+
+    socket
+    |> assign(:facets, build_facets(records, assessment))
+    |> assign(:assessed_at, assessment && assessment.assessed_at)
+  end
+
+  # Production reads the scout artifact from `~/.harness` (CapabilityScore's
+  # default, shared with the cron orchestrator + dispatch-recommend). An optional
+  # `:facet_assessment_root` config relocates it — and lets tests inject one.
+  @spec assessment_opts() :: keyword()
+  defp assessment_opts do
+    case Application.get_env(:harness, :facet_assessment_root) do
+      nil -> []
+      root -> [assessment_root: root]
+    end
+  end
+
+  # One card per facet group: its label, the scout's verdict entry (or nil), and
+  # the per-agent fact rows. Sorted by label so the layout is stable across reads.
+  @spec build_facets([term()], Assessment.t() | nil) :: [map()]
+  defp build_facets(records, assessment) do
+    verdicts = verdict_index(assessment)
+
+    records
+    |> CapabilityScore.group_by_facet()
+    |> Enum.map(fn {_key, group} ->
+      facet = normalize_facet(hd(group).review_facets)
+
+      %{
+        facet: facet,
+        label: facet_label(facet),
+        verdict: Map.get(verdicts, facet),
+        agents: facet_rows(group)
+      }
+    end)
+    |> Enum.sort_by(& &1.label)
+  end
+
+  # Index the scout's entries by normalized facet map (Elixir map keys are
+  # order-independent, so this matches the grouped records' facets exactly).
+  @spec verdict_index(Assessment.t() | nil) :: %{optional(map()) => Entry.t()}
+  defp verdict_index(nil), do: %{}
+
+  defp verdict_index(%Assessment{entries: entries}) do
+    Map.new(entries, fn %Entry{} = entry -> {normalize_facet(entry.facet), entry} end)
+  end
+
+  # Per-agent KPI rows for one facet group, busiest agent first.
+  @spec facet_rows([term()]) :: [map()]
+  defp facet_rows(records) do
+    records
+    |> AgentKPI.aggregate()
+    |> to_rows()
+    |> Enum.sort_by(& &1.run_count, :desc)
+  end
+
+  @spec normalize_facet(term()) :: %{String.t() => term()}
+  defp normalize_facet(facet) when is_map(facet) do
+    facet
+    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+    |> Map.new(fn {k, v} -> {to_string(k), v} end)
+  end
+
+  defp normalize_facet(_other), do: %{}
+
+  @spec facet_label(map()) :: String.t()
+  defp facet_label(facet) when map_size(facet) == 0, do: "Unfaceted"
+
+  defp facet_label(facet) do
+    facet
+    |> Enum.sort()
+    |> Enum.map_join(" · ", fn {k, v} -> "#{k}=#{facet_value(v)}" end)
+  end
+
+  @spec facet_value(term()) :: String.t()
+  defp facet_value(v) when is_binary(v), do: v
+  defp facet_value(v) when is_number(v) or is_atom(v), do: to_string(v)
+  defp facet_value(v), do: inspect(v)
+
+  # Mean across an agent's reviewer-rating means — a single "reviewer quality"
+  # number for the compact facet table. A mean of already-counted facts, not a
+  # routing verdict (the scout writes that); nil when the diff was never rated.
+  @spec quality(map()) :: float() | nil
+  defp quality(row) do
+    values = row |> row_ratings() |> Map.values() |> Enum.filter(&is_number/1)
+
+    case values do
+      [] -> nil
+      _ -> Enum.sum(values) / length(values)
+    end
+  end
+
+  @spec visible_facets([map()], String.t() | nil) :: [map()]
+  defp visible_facets(facets, nil), do: facets
+  defp visible_facets(facets, label), do: Enum.filter(facets, &(&1.label == label))
+
+  @spec pill_class(String.t() | nil, String.t() | nil) :: String.t()
+  defp pill_class(current, current), do: "facet-pill active"
+  defp pill_class(_current, _target), do: "facet-pill"
+
+  @spec winner_class(map(), Entry.t() | nil) :: String.t()
+  defp winner_class(%{agent: agent}, %Entry{winner: agent}), do: "winner"
+  defp winner_class(_row, _verdict), do: ""
+
+  @spec format_ts(DateTime.t()) :: String.t()
+  defp format_ts(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")
 
   # The union of rating keys across the ledger, sorted — one table column each.
   @spec rating_keys([map()]) :: [String.t()]
@@ -249,6 +403,68 @@ defmodule Harness.Dashboard.KPILive do
         </tr>
       </tbody>
     </table>
+
+    <div class="topbar">
+      <strong>By task-facet</strong>
+      <span class="count">{length(@facets)} facet groups</span>
+      <span :if={@assessed_at} class="count">scout assessed {format_ts(@assessed_at)}</span>
+    </div>
+
+    <p :if={@facets == []}>
+      No faceted records yet — the reviewer assigns task facets in <code>review.json</code>;
+      they appear here once runs settle.
+    </p>
+
+    <div :if={@facets != []} class="facet-filter">
+      <button type="button" class={pill_class(@facet_filter, nil)} phx-click="facet" phx-value-key="">
+        All
+      </button>
+      <button
+        :for={facet <- @facets}
+        type="button"
+        class={pill_class(@facet_filter, facet.label)}
+        phx-click="facet"
+        phx-value-key={facet.label}
+      >
+        {facet.label}
+      </button>
+    </div>
+
+    <div :for={facet <- visible_facets(@facets, @facet_filter)} class="facet-card">
+      <div class="facet-head">
+        <strong>{facet.label}</strong>
+        <span :if={facet.verdict} class="scout-winner">
+          scout → <code>{facet.verdict.winner}</code>
+        </span>
+        <span :if={is_nil(facet.verdict)} class="count">no scout verdict yet</span>
+      </div>
+      <p :if={facet.verdict} class="scout-reasoning">{facet.verdict.reasoning}</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Agent</th>
+            <th>Runs</th>
+            <th>Approve</th>
+            <th>First-try</th>
+            <th>Quality</th>
+            <th>Mean tokens</th>
+            <th>Cost→green</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={row <- facet.agents} class={winner_class(row, facet.verdict)}>
+            <td><code>{row.agent || "—"}</code></td>
+            <td>{row.run_count}</td>
+            <td>{format_pct(row.success_rate)}</td>
+            <td>{format_pct(row.first_attempt_pass_rate)}</td>
+            <td>{format_rating(quality(row))}</td>
+            <td>{format_count(row.tokens.total)}</td>
+            <td>{format_count(row.cost_to_green)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
     """
   end
 

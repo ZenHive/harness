@@ -324,6 +324,50 @@ defmodule Harness.Dashboard.Tokens do
       }
       .count { font-size: var(--text-sm); color: var(--text-subtle); }
 
+      /* Task-facet pivot (Harness.Dashboard.KPILive, Task 225) — facet filter
+         pills, per-facet cards, and the scout's verdict beside the fact ledger. */
+      .facet-filter {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-block: var(--space-3);
+      }
+      button.facet-pill {
+        appearance: none;
+        background: var(--surface);
+        color: var(--text-subtle);
+        border: 1px solid var(--rule);
+        border-radius: 0.25rem;
+        padding: var(--space-1) var(--space-3);
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        cursor: pointer;
+        transition: color var(--motion-fast) var(--ease-out);
+      }
+      button.facet-pill:hover { color: var(--text); }
+      button.facet-pill.active {
+        color: var(--text);
+        border-color: var(--accent);
+        background: var(--accent-soft);
+      }
+      .facet-card { margin-block: var(--space-4); }
+      .facet-head {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2) var(--space-3);
+        align-items: baseline;
+      }
+      .facet-head strong { font-family: var(--font-mono); }
+      .scout-winner { font-size: var(--text-sm); color: var(--verdict-pass); }
+      .scout-reasoning {
+        margin-block: var(--space-2);
+        color: var(--text-subtle);
+        font-size: var(--text-sm);
+        max-width: 70ch;
+      }
+      tr.winner { background: rgba(79, 155, 106, 0.12); }
+      tr.winner td:first-child { box-shadow: inset 0.2rem 0 0 var(--verdict-pass); }
+
       /* Kill affordance — single --accent signal as a terminal-state cue */
       .kill-btn {
         background: transparent;

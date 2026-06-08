@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`/harness/kpi` pivots the per-agent ledger by task-facet (Task 225).** Below the flat fleet-wide tables, the same per-agent facts are grouped by the reviewer-assigned `review_facets` (the routing KEY from Task 224) via `Harness.CapabilityScore.group_by_facet/1`: one card per facet showing each agent's approve% / first-try% / reviewer-quality / mean-tokens / cost-to-green — "who is best at THIS kind of task?", not just fleet-wide. A facet-pill bar filters to one group; the unfaceted bucket always renders. Beside each fact ledger the **scout's written verdict** (`CapabilityScore.read_assessment/1`, Task 216) renders — winning agent + plain-prose reasoning, with the winner's row highlighted — so facts (counted) and AI-written meaning (who to use) sit side by side. The page never recomputes a routing verdict from the numbers (THE MANTRA); a facet with no assessment shows "no scout verdict yet".
+
 ### Fixed
 
 - **Reviewer-only agent was unexpressable; sank every run on a reviewer-only-pinned project.** `Harness.Run.reviewer_dispatchable?/1` ANDed in the implementer-level `AgentSettings.enabled?` gate alongside `reviewer_eligible?`, so a Claude pinned as the dedicated reviewer but disabled as an implementer (`enabled? == false` + `reviewer_eligible? == true`) was rejected as `{:reviewer_unavailable, Claude}`, settling every run `:review_stuck` on a project whose persisted `LandingSettings` pin Claude reviewer-only. The two operator flags are orthogonal — `enabled?` governs IMPLEMENT, `reviewer_eligible?` governs REVIEW — so reviewer-dispatchability now keys on `reviewer_eligible?` alone among the operator gates. Dropped the unused `reviewer_enabled?/1`; exposed `reviewer_dispatchable?/1` as `@doc false def` for the regression test. To bar an agent from both roles, turn off both flags.

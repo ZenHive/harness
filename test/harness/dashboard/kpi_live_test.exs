@@ -11,6 +11,9 @@ defmodule Harness.Dashboard.KPILiveTest do
 
   use Harness.Dashboard.ConnCase, async: false
 
+  alias Harness.CapabilityScore
+  alias Harness.CapabilityScore.Assessment
+  alias Harness.CapabilityScore.Entry
   alias Harness.FakeAdapter
   alias Harness.ResultStore
   alias Harness.Run.LogRecord
@@ -161,6 +164,95 @@ defmodule Harness.Dashboard.KPILiveTest do
       # Re-click flips to asc: claude leads again.
       resorted = view |> element(~s|button[phx-value-col="agent"]|) |> render_click()
       assert before?(resorted, "claude", "codex")
+    end
+  end
+
+  describe "by task-facet pivot" do
+    # Point the scout-artifact read at a per-test tmp root so the verdict column
+    # never touches the operator's real ~/.harness assessment.
+    setup do
+      root = Path.join(System.tmp_dir!(), "harness_facet_test_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(root)
+      prev = Application.get_env(:harness, :facet_assessment_root)
+      Application.put_env(:harness, :facet_assessment_root, root)
+
+      on_exit(fn ->
+        if prev,
+          do: Application.put_env(:harness, :facet_assessment_root, prev),
+          else: Application.delete_env(:harness, :facet_assessment_root)
+
+        File.rm_rf(root)
+      end)
+
+      {:ok, facet_root: root}
+    end
+
+    test "groups the per-agent ledger by reviewer-assigned facet, untagged bucket included", %{conn: conn} do
+      seed("run-otp", agent: :codex, verdict: :approve, review_facets: %{"surface" => "otp", "language" => "elixir"})
+      seed("run-lv", agent: :claude, verdict: :approve, review_facets: %{"surface" => "liveview"})
+      # No review_facets ⇒ defaults to %{} ⇒ the always-rendered unfaceted bucket.
+      seed("run-bare", agent: :grok, verdict: :reject)
+
+      {:ok, _view, html} = live(conn, "/harness/kpi")
+
+      assert html =~ "By task-facet"
+      assert html =~ "language=elixir · surface=otp"
+      assert html =~ "surface=liveview"
+      assert html =~ "Unfaceted"
+    end
+
+    test "renders the scout's verdict and highlights the winning agent row", %{conn: conn, facet_root: root} do
+      seed("run-otp1", agent: :codex, verdict: :approve, review_facets: %{"surface" => "otp"})
+      seed("run-otp2", agent: :claude, verdict: :reject, review_facets: %{"surface" => "otp"})
+
+      assessment = %Assessment{
+        assessed_at: ~U[2026-06-09 12:00:00Z],
+        record_count: 2,
+        entries: [
+          %Entry{
+            facet: %{"surface" => "otp"},
+            winner: :codex,
+            reasoning: "Codex wins OTP gen_statem work decisively.",
+            by_agent: %{}
+          }
+        ]
+      }
+
+      :ok = CapabilityScore.save_assessment(assessment, assessment_root: root)
+
+      {:ok, _view, html} = live(conn, "/harness/kpi")
+
+      assert html =~ "Codex wins OTP gen_statem work decisively."
+      assert html =~ "scout →"
+      assert html =~ "scout assessed 2026-06-09"
+      # The winning agent's row carries the winner class for the highlight.
+      assert html =~ ~s(class="winner")
+    end
+
+    test "a facet with no scout entry shows the no-verdict placeholder", %{conn: conn} do
+      seed("run-q", agent: :codex, verdict: :approve, review_facets: %{"surface" => "ecto"})
+
+      {:ok, _view, html} = live(conn, "/harness/kpi")
+
+      assert html =~ "no scout verdict yet"
+    end
+
+    test "clicking a facet pill filters to that one group", %{conn: conn} do
+      seed("run-a", agent: :codex, verdict: :approve, review_facets: %{"surface" => "otp"})
+      seed("run-b", agent: :claude, verdict: :approve, review_facets: %{"surface" => "liveview"})
+
+      {:ok, view, html} = live(conn, "/harness/kpi")
+      # Both facet cards present before filtering.
+      assert html =~ "surface=otp"
+      assert html =~ "surface=liveview"
+
+      filtered = view |> element(~s|button[phx-value-key="surface=otp"]|) |> render_click()
+
+      # The pill bar still lists every label, but only the otp CARD renders — the
+      # liveview card's table is gone (its label survives only in the pill).
+      assert filtered =~ ~s(class="facet-pill active")
+      # Exactly one facet card table body remains (the filtered group).
+      assert length(String.split(filtered, ~s(class="facet-card"))) == 2
     end
   end
 end
