@@ -10139,7 +10139,7 @@
       "id": "244",
       "phase": 17,
       "bundle": "dashboard-perf",
-      "status": "pending",
+      "status": "done",
       "title": "Dashboard render hangs on per-row git fetch: move ResultStore landed reconciliation off the /harness render path",
       "scores": {
         "d": 3,
@@ -10177,9 +10177,13 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "65b9a10",
       "body": "Root cause found 2026-06-08 while debugging a full /harness hang (http=000, server never responds). Process-stacktrace capture on the hung request showed ~9 stacked requests all blocked in System.cmd -> Harness.Git.run -> ResultStore.refresh_remote_target -> `git fetch origin`, called from Harness.Dashboard.Live.landed_entry?/3 (live.ex:461) -> RunFeed.landed_sha (run_feed.ex:52) -> branch_landed_sha (run_feed.ex:113) -> ResultStore.landed_sha (result_store.ex:184) -> landed_sha_for_run (result_store.ex:416). RunFeed.landed_sha is `roadmap_landed_sha(summaries) || branch_landed_sha(projects)`: when the roadmap summaries map lacks a shipped_in for a row (every unlanded run, or — in the reverted task-241 deferral — EVERY row), it falls through to branch_landed_sha which does a network git fetch PER ROW. With up to 200 history rows this is 200 sequential network fetches inside the synchronous render = the original '12-15s under load' AND the hang. The task-241 deferral (empty :roadmap at mount) was reverted (72edccd) as a stopgap so landed rows short-circuit again, but the per-render network fetch remains the real defect for unlanded rows under load. Fix: get the network call off the render path per the harness mantra (render = mechanics only, no blocking I/O). Hand-build in a fresh session with browser/curl + the run_feed test suite.",
       "created_at": "2026-06-08",
+      "done_at": "2026-06-08",
       "scored_at": "2026-06-08",
+      "implemented": "Removed per-row git fetch from ResultStore.landed_sha_for_run (local refs only; lander keeps origin/<target> fresh). Render-path RunFeed.landed_sha/3 is now pure (roadmap shipped_in witness || landed_cache map lookup); branch-reachability moved to cold-path RunFeed.branch_landed_cache/3 (local git, no fetch), refreshed on connect + roadmap_tick into a :landed_cache assign. /harness renders in 52ms (curl). run_feed_test rewritten to fetch locally + assert via the cache; +witness short-circuit test. precommit.full green.",
+      "delivered_by": "claude",
       "cross_repo": []
     }
   ]
