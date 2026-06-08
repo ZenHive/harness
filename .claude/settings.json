@@ -3,7 +3,15 @@
   "permissions": {
     "defaultMode": "acceptEdits"
   },
+  "extraKnownMarketplaces": {
+    "zenhive": {
+      "source": { "source": "github", "repo": "ZenHive/claude-marketplace" }
+    }
+  },
   "enabledPlugins": {
-    "frontend-design@claude-plugins-official": true
+    "frontend-design@claude-plugins-official": true,
+    "elixir@zenhive": true,
+    "phoenix@zenhive": true,
+    "harness@zenhive": true
   }
 }
