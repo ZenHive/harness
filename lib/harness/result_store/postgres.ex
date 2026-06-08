@@ -20,7 +20,6 @@ defmodule Harness.ResultStore.Postgres do
   alias Harness.ResultStore.Schema.CapabilityScore, as: CapabilityScoreSchema
   alias Harness.ResultStore.Schema.RunRecord, as: RunRecordSchema
   alias Harness.Run.LogRecord
-  alias Harness.TermCodec
   alias Harness.TokenUsage
 
   @impl Harness.ResultStore
@@ -153,7 +152,7 @@ defmodule Harness.ResultStore.Postgres do
           {:error, :not_found}
 
         %BatchResultSchema{payload: payload} when is_binary(payload) ->
-          case TermCodec.safe_binary_to_term(payload) do
+          case decode_binary_payload(payload) do
             {:ok, %BatchResult{} = br} -> {:ok, br}
             {:ok, _other} -> {:error, {:invalid_term_payload, batch_id}}
             {:error, r} -> {:error, r}
@@ -467,7 +466,7 @@ defmodule Harness.ResultStore.Postgres do
 
   defp decode_capability_score_row(%CapabilityScoreSchema{payload: payload}, agent, domain, corpus_version)
        when is_binary(payload) do
-    case TermCodec.safe_binary_to_term(payload) do
+    case decode_binary_payload(payload) do
       {:ok, %CapabilityScore{} = score} ->
         {:ok, score}
 
@@ -484,6 +483,15 @@ defmodule Harness.ResultStore.Postgres do
 
   defp decode_capability_score_row(_row, agent, domain, corpus_version) do
     {:error, {:invalid_capability_score_row, agent, domain, corpus_version}}
+  end
+
+  # Payloads are harness-owned database blobs written by this store.
+  # sobelow_skip ["Misc.BinToTerm"]
+  @spec decode_binary_payload(binary()) :: {:ok, term()} | {:error, :invalid_term}
+  defp decode_binary_payload(payload) do
+    {:ok, :erlang.binary_to_term(payload)}
+  rescue
+    ArgumentError -> {:error, :invalid_term}
   end
 
   # --- filter translation (documented keys only; others ignored for forward compat) ---

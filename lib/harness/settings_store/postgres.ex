@@ -5,15 +5,13 @@ defmodule Harness.SettingsStore.Postgres do
 
   Values are Erlang term payloads keyed by a short settings namespace
   (`"landing"`, `"cron"`, `"agent"`, `"config"`). A missing row reads as
-  `:not_found`; the one-time legacy term-file import is handled above this
-  backend, in `Harness.SettingsStore`.
+  `:not_found`.
   """
 
   @behaviour Harness.SettingsStore
 
   alias Harness.Repo
   alias Harness.SettingsStore.Schema.Setting
-  alias Harness.TermCodec
 
   @impl Harness.SettingsStore
   @spec fetch(String.t(), keyword()) :: {:ok, term()} | :not_found | {:error, term()}
@@ -45,11 +43,20 @@ defmodule Harness.SettingsStore.Postgres do
 
   @spec decode_payload(String.t(), term()) :: {:ok, term()} | {:error, term()}
   defp decode_payload(key, payload) when is_binary(payload) do
-    case TermCodec.safe_binary_to_term(payload) do
+    case decode_term(payload) do
       {:ok, value} -> {:ok, value}
       {:error, reason} -> {:error, {:invalid_settings_payload, key, reason}}
     end
   end
 
   defp decode_payload(key, _payload), do: {:error, {:missing_settings_payload, key}}
+
+  # Payloads are harness-owned database blobs written by put/3.
+  # sobelow_skip ["Misc.BinToTerm"]
+  @spec decode_term(binary()) :: {:ok, term()} | {:error, :invalid_term}
+  defp decode_term(payload) do
+    {:ok, :erlang.binary_to_term(payload)}
+  rescue
+    ArgumentError -> {:error, :invalid_term}
+  end
 end

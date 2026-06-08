@@ -3,7 +3,6 @@ defmodule Harness.SettingsStoreTest do
 
   alias Harness.SettingsStore
   alias Harness.SettingsStore.Schema.Setting
-  alias Harness.TermCodec
   alias Harness.Test.SettingsStoreMemory
 
   setup do
@@ -62,33 +61,12 @@ defmodule Harness.SettingsStoreTest do
     end
   end
 
-  describe "one-time legacy import" do
-    test "imports a legacy term file on the first fetch of a missing key" do
-      scope = unique_scope("legacy")
-      root = tmp_root("legacy-import")
-      on_exit(fn -> File.rm_rf(root) end)
-      on_exit(fn -> SettingsStoreMemory.reset(scope: scope, legacy_root: root) end)
-
-      File.mkdir_p!(root)
-      legacy = %{master_enabled: true, project_autonomy: %{}, schedule: "0 */2 * * *"}
-      assert :ok = TermCodec.write_file(Path.join(root, "cron_settings.term"), legacy)
-
-      Application.put_env(:harness, :settings_store, {SettingsStoreMemory, scope: scope, legacy_root: root})
-
-      # First fetch imports the legacy file and persists it.
-      assert {:ok, ^legacy} = SettingsStore.fetch(:cron)
-      # Subsequent fetch reads the persisted row (legacy file no longer consulted).
-      File.rm!(Path.join(root, "cron_settings.term"))
-      assert {:ok, ^legacy} = SettingsStore.fetch(:cron)
-    end
-
-    test "returns :not_found when no legacy file exists for the key" do
+  describe "missing rows" do
+    test "returns :not_found when no row exists for the key" do
       scope = unique_scope("no-legacy")
-      root = tmp_root("no-legacy")
-      on_exit(fn -> File.rm_rf(root) end)
-      on_exit(fn -> SettingsStoreMemory.reset(scope: scope, legacy_root: root) end)
+      on_exit(fn -> SettingsStoreMemory.reset(scope: scope) end)
 
-      Application.put_env(:harness, :settings_store, {SettingsStoreMemory, scope: scope, legacy_root: root})
+      Application.put_env(:harness, :settings_store, {SettingsStoreMemory, scope: scope})
 
       assert :not_found = SettingsStore.fetch(:landing)
     end
@@ -101,10 +79,6 @@ defmodule Harness.SettingsStoreTest do
   end
 
   defp unique_scope(label), do: :"settings_store_#{label}_#{System.unique_integer([:positive])}"
-
-  defp tmp_root(label) do
-    Path.join(System.tmp_dir!(), "settings_store_#{label}_#{System.unique_integer([:positive])}")
-  end
 
   defp restore_env(prior) do
     Enum.each(prior, fn

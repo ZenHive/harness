@@ -23,11 +23,9 @@ defmodule Harness.AuditTest do
   alias Harness.ResultStore
   alias Harness.ResultStore.Memory, as: MemoryStore
   alias Harness.Run.LogRecord
-  alias Harness.TermCodec
+  alias Harness.SettingsStore
   alias Harness.Test.SettingsStoreMemory
   alias Harness.TokenUsage
-
-  @watermark_file "audit_watermarks.term"
 
   # ── git fixture: bare origin + working clone, mirroring the post-land state
   #    (everything the audit reviews is already on origin/main). ─────────────
@@ -81,10 +79,7 @@ defmodule Harness.AuditTest do
     project = ProjectFixture.from_repo(repo, name: "audit-demo", target_branch: "main")
     prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
     prior_settings_store = Application.get_env(:harness, :settings_store)
-    prior_watermarks = Application.get_env(:harness, :audit_watermarks)
-    watermarks_root = Path.join(System.tmp_dir!(), "harness_audit_watermarks_#{System.unique_integer([:positive])}")
     Application.put_env(:harness, :repo_enabled, true)
-    Application.put_env(:harness, :audit_watermarks, root: watermarks_root)
     SettingsStoreMemory.reset(scope: :test_default)
 
     on_exit(fn ->
@@ -93,12 +88,10 @@ defmodule Harness.AuditTest do
       # ephemeral store; restore it here so the deletion can't leak past this
       # module and silently flip every later settings read to the no-op store.
       restore(:settings_store, prior_settings_store)
-      restore(:audit_watermarks, prior_watermarks)
       SettingsStoreMemory.reset(scope: :test_default)
-      File.rm_rf(watermarks_root)
     end)
 
-    %{origin: origin, repo: repo, project: project, base_sha: sha(repo, "HEAD"), watermarks_root: watermarks_root}
+    %{origin: origin, repo: repo, project: project, base_sha: sha(repo, "HEAD")}
   end
 
   describe "run/1 — skip routing (projects that can't be audited)" do
@@ -223,7 +216,7 @@ defmodule Harness.AuditTest do
                })
 
       assert ctx.origin |> GitFixture.git!(["rev-parse", "main"]) |> String.trim() == landed_sha
-      refute File.exists?(Path.join(ctx.watermarks_root, @watermark_file))
+      assert :not_found = SettingsStore.fetch(:audit)
     end
 
     test "a clean audit watermark prevents re-auditing the same range after a later land", ctx do
@@ -376,7 +369,7 @@ defmodule Harness.AuditTest do
   defp restore(key, value), do: Application.put_env(:harness, key, value)
 
   defp stored_watermark(ctx) do
-    assert {:ok, watermarks} = TermCodec.read_file(Path.join(ctx.watermarks_root, @watermark_file))
+    assert {:ok, watermarks} = SettingsStore.fetch(:audit)
     get_in(watermarks, [ctx.project.name, ctx.project.target_branch])
   end
 

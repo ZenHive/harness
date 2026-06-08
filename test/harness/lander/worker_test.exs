@@ -65,11 +65,7 @@ defmodule Harness.Lander.WorkerTest do
     prior_store = Application.get_env(:harness, :settings_store)
     scope = :"worker_test_#{System.unique_integer([:positive])}"
 
-    Application.put_env(
-      :harness,
-      :settings_store,
-      {SettingsStoreMemory, scope: scope, legacy_root: "/nonexistent/harness-test-no-legacy"}
-    )
+    Application.put_env(:harness, :settings_store, {SettingsStoreMemory, scope: scope})
 
     on_exit(fn ->
       SettingsStoreMemory.reset(scope: scope)

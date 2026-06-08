@@ -8,9 +8,8 @@ defmodule Harness.Test.SettingsStoreMemory do
   restart without a live database, mirroring `Harness.ResultStore.Memory`. It is
   ETS-backed and scope-keyed; `reset/1` clears a scope between tests.
 
-  The one-time legacy term-file import is exercised against this backend exactly
-  as against Postgres: `Harness.SettingsStore` reads, misses, imports the
-  `*.term` file from `:legacy_root`, and `put`s it here.
+  Tests can scope the store with an arbitrary atom so each case starts from an
+  empty persistence surface.
   """
 
   @behaviour Harness.SettingsStore

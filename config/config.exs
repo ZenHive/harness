@@ -172,12 +172,7 @@ if config_env() == :test do
   # to prove a flip survives a simulated restart without a live DB, so default to
   # the test-only in-memory backend; the ephemeral-path test overrides this to
   # `false`, and the Postgres integration test overrides it to the PG backend.
-  # `legacy_root` points at a dir with no `*.term` files so the one-time legacy
-  # import is a no-op by default — otherwise every missing-key read would import
-  # the developer's real `~/.harness` flips. The legacy-import test overrides it.
-  config :harness,
-         :settings_store,
-         {Harness.Test.SettingsStoreMemory, scope: :test_default, legacy_root: "/nonexistent/harness-test-no-legacy"}
+  config :harness, :settings_store, {Harness.Test.SettingsStoreMemory, scope: :test_default}
 
   config :harness, :worktree,
     base_dir: Path.join(System.tmp_dir!(), "harness_worktrees_test"),

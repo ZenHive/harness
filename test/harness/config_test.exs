@@ -21,14 +21,10 @@ defmodule Harness.ConfigTest do
     prior_dispatch = Application.get_env(:harness, :dispatch)
     prior_store = Application.get_env(:harness, :settings_store)
 
-    # Isolate persistence to a throwaway in-memory scope (no legacy import).
+    # Isolate persistence to a throwaway in-memory scope.
     scope = :"config_test_#{System.unique_integer([:positive])}"
 
-    Application.put_env(
-      :harness,
-      :settings_store,
-      {SettingsStoreMemory, scope: scope, legacy_root: "/nonexistent/harness-test-no-legacy"}
-    )
+    Application.put_env(:harness, :settings_store, {SettingsStoreMemory, scope: scope})
 
     on_exit(fn ->
       restore(:run, prior_run)

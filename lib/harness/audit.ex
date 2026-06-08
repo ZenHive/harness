@@ -21,8 +21,8 @@ defmodule Harness.Audit do
 
   Clean audits (`:no_changes`) intentionally do not write empty `audit(...)`
   marker commits to the shared branch. Instead, harness records the audited tip
-  in `audit_watermarks.term` and consults that watermark alongside the last
-  reachable `audit(...)` commit when framing the next range.
+  in the settings store and consults that watermark alongside the last reachable
+  `audit(...)` commit when framing the next range.
 
   ## Best-effort, never a gate
 
@@ -40,14 +40,12 @@ defmodule Harness.Audit do
   alias Harness.Git
   alias Harness.Project
   alias Harness.ResultStore
-  alias Harness.TermCodec
+  alias Harness.SettingsStore
   alias Harness.Worktree
 
   require Logger
 
   @audit_report_path ".harness/audit.json"
-  @default_watermark_root "~/.harness"
-  @watermark_file "audit_watermarks.term"
   @rejection_history_limit 20
   @rejection_summary_limit 500
 
@@ -445,10 +443,7 @@ defmodule Harness.Audit do
   @spec fetch_watermarks() :: {:ok, term()} | :not_found | {:error, term()}
   defp fetch_watermarks do
     if watermark_persistence_enabled?() do
-      case TermCodec.read_file(watermark_path()) do
-        {:error, :enoent} -> :not_found
-        other -> other
-      end
+      SettingsStore.fetch(:audit)
     else
       :not_found
     end
@@ -477,16 +472,7 @@ defmodule Harness.Audit do
   defp watermark_persistence_enabled?, do: Application.get_env(:harness, :repo_enabled, true)
 
   @spec write_watermarks(map()) :: :ok | {:error, term()}
-  defp write_watermarks(record), do: TermCodec.write_file(watermark_path(), record)
-
-  @spec watermark_path() :: String.t()
-  defp watermark_path do
-    :harness
-    |> Application.get_env(:audit_watermarks, [])
-    |> Keyword.get(:root, @default_watermark_root)
-    |> Path.expand()
-    |> Path.join(@watermark_file)
-  end
+  defp write_watermarks(record), do: SettingsStore.put(:audit, record)
 
   @spec cleanup(Worktree.t()) :: :ok
   defp cleanup(%Worktree{} = worktree) do
