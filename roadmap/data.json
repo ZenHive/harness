@@ -9995,7 +9995,7 @@
       "id": "241",
       "phase": 17,
       "bundle": "dashboard-perf",
-      "status": "pending",
+      "status": "done",
       "title": "Dashboard /harness 12-15s load: parallelize + defer RoadmapSummary's per-project rmap shell-outs off the render critical path",
       "scores": {
         "d": 2,
@@ -10028,9 +10028,13 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "5adfcb375e72b10b6a172139caefe4f764b6818f",
       "body": "First consumer: the operator watching runs on /harness. Measured 2026-06-08 from the browser: the dashboard takes 12-15s to load while runs are active vs 56ms for /harness/kpi, and it is 100 percent server-side (every SQL query logged is under 41ms — not the DB). Localized to Harness.Dashboard.Live.mount calling RoadmapSummary.for_projects, which fires N SEQUENTIAL rmap list --json OS shell-outs, one per registered project (7 projects). Idle they total ~47ms; under active-run load (an agent CLI saturating CPU/IO, the lander writing tasks.toml) each process spawn stretches and 7 stacked sequentially produce the ~11s dead-render gap seen in the logs at 09:25 (which lines up exactly with a cursor run settling). Fix: run the shell-outs concurrently AND move them off the render critical path so mount paints instantly and the rollup fills in async / on the existing slow tick. This is the dominant, high-confidence cause; the live_runs fan-out (the sibling task) is the secondary suspect and may not even need fixing once this lands.",
       "created_at": "2026-06-08",
+      "done_at": "2026-06-08",
       "scored_at": "2026-06-08",
+      "implemented": "RoadmapSummary.for_projects/1 now uses Task.async_stream with a bounded (overridable via :roadmap_summary_timeout_ms) timeout — N projects cost ~one rmap read, not N sequential spawns; timeout/error degrades to empty summary. Live.mount assigns an empty :roadmap and sends an immediate post-connect :roadmap_tick to load the rollup off both the dead HTTP render and the connected mount. Dropped a duplicate @roadmap_tick_interval_ms. Browser-verified: /harness TTFB 37ms (was 12-15s under load), all 7 projects' panels populate after connect.",
+      "delivered_by": "human",
       "cross_repo": []
     },
     {
