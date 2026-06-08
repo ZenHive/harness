@@ -6418,14 +6418,14 @@ domains = ["otp"]
 assignee = "codex"
 module = "Harness.TermCodec"
 body = "TermCodec is the shared Erlang-term file serializer. Once its callers move to Postgres (settings 208, audit watermarks, ResultStore+Chat) and the one-time legacy-import window closes, TermCodec and the import_legacy paths are dead code. Capstone deletion — gated on the predecessor migrations; do not start until they land."
-implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780881201600-14d6de03, 5abdb51225e65303fa8840b9ceb65ec27da06c09)."
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780881201600-14d6de03, 864f8b513408ffe1a30765d86a552924a04dcedd)."
 delivered_by = "codex"
 verified = true
 created_at = "2026-06-05"
 started_at = "2026-06-08"
 scored_at = "2026-06-05"
 done_at = "2026-06-08"
-shipped_in = "5abdb51225e65303fa8840b9ceb65ec27da06c09"
+shipped_in = "864f8b513408ffe1a30765d86a552924a04dcedd"
 
 [[task]]
 id = "214"
