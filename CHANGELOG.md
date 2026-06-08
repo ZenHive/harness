@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Reviewer-only agent was unexpressable; sank every run on a reviewer-only-pinned project.** `Harness.Run.reviewer_dispatchable?/1` ANDed in the implementer-level `AgentSettings.enabled?` gate alongside `reviewer_eligible?`, so a Claude pinned as the dedicated reviewer but disabled as an implementer (`enabled? == false` + `reviewer_eligible? == true`) was rejected as `{:reviewer_unavailable, Claude}`, settling every run `:review_stuck` on a project whose persisted `LandingSettings` pin Claude reviewer-only. The two operator flags are orthogonal — `enabled?` governs IMPLEMENT, `reviewer_eligible?` governs REVIEW — so reviewer-dispatchability now keys on `reviewer_eligible?` alone among the operator gates. Dropped the unused `reviewer_enabled?/1`; exposed `reviewer_dispatchable?/1` as `@doc false def` for the regression test. To bar an agent from both roles, turn off both flags.
 - **Duplicate migration version silently dropped two `run_records` columns.** Two
   parallel dispatches each stamped a migration `20260605010000`
   (`add_review_skills_to_run_records` + `add_reviewer_fallback_counts_to_run_records`);
