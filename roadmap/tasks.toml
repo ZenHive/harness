@@ -6601,7 +6601,7 @@ id = "222"
 phase = 18
 bundle = "judgment-collapse"
 milestone = "v0_13"
-status = "pending"
+status = "done"
 title = "DECIDE: collapse the 6 transcript parsers + 6 token-usage parsers toward raw/generic (display tradeoff)"
 scores = { d = 4, b = 3, u = 3 }
 acceptance_criteria = ["A written decision (docs/ note) on whether to keep, collapse, or delete the per-agent parsers, weighing the display-quality tradeoff against the raw-passthrough thesis.", "If collapse is chosen, a follow-up implementation task is filed; if keep, the rationale is recorded so it isn't re-litigated."]
@@ -6610,8 +6610,11 @@ touches = ["lib/harness/dashboard/transcript/parser.ex", "lib/harness/token_usag
 domains = ["otp"]
 assignee = "human"
 body = "The contested one — flagged as 'weigh it', not 'delete it'. dashboard/transcript/parser/* (7 files) and token_usage.ex:100-241 (6 per-adapter parsers) couple harness to each agent's wire format ('agents ship 40+ releases') — exactly the brittleness raw-passthrough was designed to avoid. But these are cold-path DISPLAY + token FACTS, not judgment, so there is a real tradeoff: a generic/raw view loses the structured chat-turn rendering. This is a human decision (owner sign-off), not a blind dispatch. Token counts are facts (mechanical); the transcript chat-view is display. Decide deliberately."
+implemented = "Wrote docs/judgment-collapse.md: decided KEEP both parser families. They are not in the verdict path (success comes from review.json, parser-free), they degrade gracefully (TokenUsage→empty/0, Transcript→{:unknown,raw}) so format churn never breaks the pipeline, and collapsing would lose the structured chat-view + token-efficiency KPI for zero robustness gain. No follow-up task filed."
 created_at = "2026-06-05"
 scored_at = "2026-06-05"
+done_at = "2026-06-08"
+shipped_in = "7e49de6c9f1c2daad577a0cecbb8680ea6b8a11e"
 
 [[task]]
 id = "224"
