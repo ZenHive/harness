@@ -174,6 +174,11 @@
       "order": 1,
       "description": "mpp.dev-inspired dashboard repaint: shared Components module (navbar, footer, page_shell, bucket_badge, transcript_view + extracted message_row/tool_call/json_tree), Tokens overhaul (Geist family, tightened type scale, sticky navbar/footer styles, glyph badges), and run-detail transcript rework from raw stream-json `<pre>` to parsed chat-style turns with per-agent parser dispatch"
     },
+    "dashboard-observability": {
+      "phase": 17,
+      "order": 5,
+      "description": "The /harness dashboard only surfaces the implementer/reviewer/recovery STAGES of a run — the half of the pipeline driven by the Harness.Run gen_statem feeding RunFeed. The post-merge audit (Harness.Audit.Worker, a real third-family agent run) and every land operation (Harness.Lander: rebase / ff-push / conflict / resolver) are separate Oban workers that never broadcast to the dashboard, so they are invisible to the operator. Make them observable on a dedicated harness:ops feed + panel. Mantra-clean: count which agent/operation did what and relay the audit's own verdict, never recompute meaning. Distinct from dashboard-perf (load latency); this is coverage."
+    },
     "dashboard-perf": {
       "phase": 17,
       "order": 4,
@@ -10069,6 +10074,59 @@
         "otp"
       ],
       "body": "Secondary cause from the 2026-06-08 dashboard-slowness investigation. StatusView.live_runs/0 maps Run.status/1 (a synchronous gen_statem call) over every live run, and is invoked multiple times per page render (mount snapshot, handle_params apply_action, recompute_active) plus every 5s meta_tick and every run lifecycle event. When a run's gen_statem is busy (committing, driving its Port, lander rebasing) the call blocks behind that process's mailbox — fitting the 3.7-4.3s HANDLE PARAMS replies in the logs. Make the fan-out resilient: bound each status read and skip a non-responsive run, and trim redundant live_runs/0 calls per render. Lower confidence and smaller win than the sibling RoadmapSummary task — do this AFTER it and re-measure, since that fix alone may resolve the operator-visible pain. Touches the run-lifecycle module (Run.status read path), so it is deliberately split out from the pure dashboard-read-path change to keep that change low-risk.",
+      "created_at": "2026-06-08",
+      "scored_at": "2026-06-08",
+      "cross_repo": []
+    },
+    {
+      "id": "243",
+      "phase": 17,
+      "bundle": "dashboard-observability",
+      "status": "pending",
+      "title": "Surface audit + lander lifecycle on /harness — broadcast their stage events on a dashboard-subscribed ops feed",
+      "scores": {
+        "d": 3,
+        "b": 6,
+        "u": 5
+      },
+      "eff": 1.83,
+      "dep_layer": 0,
+      "markers": [
+        "handbuild"
+      ],
+      "depends_on": [],
+      "assignee": "human",
+      "acceptance_criteria": [
+        "Audit runs are observable on /harness: each Harness.Audit run broadcasts its lifecycle (started / settled) on a dashboard-subscribed feed; the audit agent identity, target commit range, and outcome (clean / fixed+pushed / skipped) are visible, and the audit transcript is viewable (it is a real third-family agent run).",
+        "Land operations are observable: each Harness.Lander job broadcasts its lifecycle (rebasing / ff-pushed / blocked-by-cap / conflict->resolver / skipped) with the run_id, target branch, and resulting SHA.",
+        "Audit + land events do NOT masquerade as %Harness.Run.Status{} rows: they use a distinct feed/topic (recommend harness:ops) and a small Op event struct rendered in their own dashboard panel, so the Active/History run tables stay run-only.",
+        "Mechanical only: the feed COUNTS facts (stage, agent, sha, range, outcome) and never computes a verdict (THE MANTRA). The audit clean/fixed judgment already lives in .harness/audit.json; the feed only relays it.",
+        "PubSub-guarded like RunFeed: a consumer that skipped the dashboard subtree never crashes on a missing bus.",
+        "Tests: the audit + lander broadcast paths are unit-tested (event emitted with the right shape on each transition/terminal); the dashboard panel renders an ops row. LiveView panel hand-built and verified in-browser per the UI-work rule."
+      ],
+      "out_of_scope": [
+        "The reviewer/recovery STAGE identity already shipped in commit 89ccebf — those are Harness.Run stages already on RunFeed; this task is only audit + lander, which are separate Oban workers.",
+        "Any change to what audit/land DECIDE — only their visibility.",
+        "Notification sink behavior: witness events stay as-is; this adds a dashboard feed alongside them, it does not replace sinks."
+      ],
+      "files_to_modify": [
+        "lib/harness/audit.ex",
+        "lib/harness/audit/worker.ex",
+        "lib/harness/lander.ex",
+        "lib/harness/dashboard/live.ex"
+      ],
+      "touches": [
+        "lib/harness/audit.ex",
+        "lib/harness/audit/worker.ex",
+        "lib/harness/lander.ex",
+        "lib/harness/dashboard/run_feed.ex",
+        "lib/harness/dashboard/live.ex",
+        "lib/harness/notification.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "Diagnosed 2026-06-08 alongside the reviewer/recovery-identity fix (commit 89ccebf, the inline 'A' half of this investigation). The dashboard's Harness.Dashboard.RunFeed is driven SOLELY by the Harness.Run gen_statem, so only the implementer/reviewer/recovery STAGES of a run reach the dashboard. Harness.Audit.Worker (Oban :audit queue) and Harness.Lander are SEPARATE Oban workers that never broadcast to RunFeed: the post-merge audit (a full third-family agent run, transcript-producing) and every land operation (rebase / ff-push / conflict / resolver) are completely invisible on /harness. The Lander only fires Harness.Notification witness events to configured sinks, not the dashboard PubSub bus. Net effect, in the operator's words (2026-06-08): 'i only see implementer runs, but i can not see audit runs and all the other things.' Fix is mechanical and mantra-clean: give Audit + Lander lifecycle broadcasts on a dedicated harness:ops topic (a small Op event struct, PubSub-guarded like RunFeed) and render them in their own dashboard panel — counting which agent/operation did what, relaying the audit's own .harness/audit.json verdict, never recomputing meaning.",
       "created_at": "2026-06-08",
       "scored_at": "2026-06-08",
       "cross_repo": []
