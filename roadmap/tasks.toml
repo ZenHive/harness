@@ -6641,18 +6641,23 @@ id = "225"
 phase = 18
 bundle = "judgment-collapse"
 milestone = "v0_13"
-status = "pending"
+status = "done"
 title = "/harness/kpi pivots by task-facet — per-kind agent ledger + the scout's written verdict"
 scores = { d = 3, b = 4, u = 5 }
+depends_on = ["224", "216"]
 acceptance_criteria = ["The KPI LiveView can filter/group the per-agent ledger by task-facet (e.g. 'OTP gen_statem refactors' vs 'LiveView UI' vs 'Ecto migrations') instead of only the flat fleet-wide table.", "Within a selected facet, each agent's approve% / first-try% / reviewer-quality / mean-tokens / cost-to-green are shown — answering 'who is best at THIS kind of task'.", "The scout's per-facet written verdict (from task 216) renders beside the fact ledger: facts (what happened) + AI-written meaning (who to use), side by side.", "An untagged/no-facet bucket still renders (records without facets are never dropped). Hand-built via tidewave + browser (LiveView work), not headless dispatch."]
 files_to_modify = ["lib/harness/dashboard/kpi_live.ex"]
 touches = ["lib/harness/agent_kpi.ex", "lib/harness/result_store.ex"]
 domains = ["otp"]
 assignee = "human"
 body = "The empirical answer made visible. Today /harness/kpi (kpi_live.ex) renders one flat fleet-wide AgentKPI ledger — fact-counting, mantra-compliant, the human sorts and judges. With per-record facets (root task) and the scout's per-facet verdict (216), the page becomes the routing oracle's face: pivot by task-kind, see each agent's record within that kind, read the scout's verdict alongside. This is the 'what kind of tasks, which agent is best at' view the KPIs exist for. LiveView/heex work -> hand-build via tidewave + browser per CLAUDE.md (headless agents idle-timeout on visual-feedback tasks); assignee human."
+implemented = "Pivoted /harness/kpi (kpi_live.ex) by reviewer-assigned review_facets: CapabilityScore.group_by_facet/1 groups records per facet, AgentKPI.aggregate/1 rolls per-agent approve%/first-try%/quality(mean rating)/mean-tokens/cost-to-green per group; scout verdict (CapabilityScore.read_assessment via :facet_assessment_root opt) renders beside each ledger with winner-row highlight, 'no scout verdict yet' fallback; facet-pill filter + always-rendered Unfaceted bucket. Pure fact-counting + scout-verdict relay (mantra). 11 KPILive tests; verified in-browser (22 live facet groups, filter narrows/restores)."
+verified = true
 created_at = "2026-06-05"
+started_at = "2026-06-08"
 scored_at = "2026-06-05"
-depends_on = ["224", "216"]
+done_at = "2026-06-08"
+shipped_in = "09e691dd01dfae15fe3db23a01fab748463d56df"
 
 [[task]]
 id = "226"
