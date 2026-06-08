@@ -1788,6 +1788,8 @@ defmodule Harness.Run do
       worktree_path: data.worktree && data.worktree.path,
       agent_os_pid: data.agent_run && data.agent_run.os_pid,
       agent_kind: data.agent_outcome && data.agent_outcome.kind,
+      reviewer_adapter: agent_kind_for(data.reviewer_adapter),
+      recovery_adapter: agent_kind_for(data.recovery_adapter),
       review_verdict: data.review && data.review.verdict,
       reason: data.reason,
       held?: state == :held,

@@ -10,6 +10,7 @@ defmodule Harness.Run.Status do
   """
 
   alias Harness.AgentAdapter.Outcome
+  alias Harness.AgentRegistry
   alias Harness.Run.LogRecord
   alias Harness.Run.Result
   alias Harness.Run.Review
@@ -44,6 +45,14 @@ defmodule Harness.Run.Status do
       requested model, else `nil`.
     * `agent_kind` — how the agent run ended (`t:Harness.AgentAdapter.Outcome.kind/0`),
       or `nil` before the agent has finished.
+    * `reviewer_adapter` — the reviewing agent's identity atom (`:claude` / …),
+      resolved when the run routes into `:reviewing`; `nil` before review and for
+      runs whose reviewer module is unregistered. Distinct from `agent` (the
+      *implementer*) so the dashboard can name *who is reviewing*, not just that
+      the run reached `:reviewing`.
+    * `recovery_adapter` — the recovery agent's identity atom while the run is in
+      `:recovering`; `nil` otherwise. Not persisted on the settled record, so it
+      is populated only for live runs.
     * `review_verdict` — the reviewer's decision (`:approve` / `:reject`), or
       `nil` before the reviewer has written its verdict artifact.
     * `reason` — why the run settled or is failing, once known (see
@@ -62,6 +71,8 @@ defmodule Harness.Run.Status do
           worktree_path: String.t() | nil,
           agent_os_pid: non_neg_integer() | nil,
           agent_kind: Outcome.kind() | nil,
+          reviewer_adapter: atom() | nil,
+          recovery_adapter: atom() | nil,
           review_verdict: Review.verdict() | nil,
           reason: Result.reason() | nil,
           held?: boolean(),
@@ -79,6 +90,8 @@ defmodule Harness.Run.Status do
     :worktree_path,
     :agent_os_pid,
     :agent_kind,
+    :reviewer_adapter,
+    :recovery_adapter,
     :review_verdict,
     :reason,
     :hold_reason,
@@ -109,6 +122,11 @@ defmodule Harness.Run.Status do
       worktree_path: nil,
       agent_os_pid: nil,
       agent_kind: record.agent_outcome_kind,
+      # The record stores the reviewer as a *module*; convert to the identity
+      # atom for display parity with `agent`. recovery_adapter is not persisted,
+      # so it stays nil on a rehydrated (settled) status.
+      reviewer_adapter: agent_atom(Map.get(record, :reviewer_adapter)),
+      recovery_adapter: nil,
       review_verdict: Map.get(record, :verdict),
       reason: record.reason
     }
@@ -117,4 +135,14 @@ defmodule Harness.Run.Status do
   @spec state_from_log_record(LogRecord.t()) :: state()
   defp state_from_log_record(%LogRecord{state: state}) when state in [:done, :failed], do: state
   defp state_from_log_record(%LogRecord{}), do: :failed
+
+  @spec agent_atom(module() | nil) :: atom() | nil
+  defp agent_atom(nil), do: nil
+
+  defp agent_atom(module) when is_atom(module) do
+    case AgentRegistry.agent_for_module(module) do
+      {:ok, agent} -> agent
+      {:error, _} -> nil
+    end
+  end
 end

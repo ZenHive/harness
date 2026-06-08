@@ -50,6 +50,27 @@ defmodule Harness.Run.StatusTest do
       assert status.review_verdict == nil
     end
 
+    test "converts the record's reviewer module into the reviewer_adapter identity atom" do
+      record =
+        log_record("run-reviewed",
+          state: :done,
+          verdict: :approve,
+          reviewer_adapter: Harness.AgentAdapter.Claude
+        )
+
+      status = Status.from_log_record(record)
+
+      assert status.reviewer_adapter == :claude
+      # recovery_adapter is not persisted on the record — always nil here.
+      assert status.recovery_adapter == nil
+    end
+
+    test "leaves reviewer_adapter nil when the record carries no reviewer" do
+      status = Status.from_log_record(log_record("run-none", reviewer_adapter: nil))
+
+      assert status.reviewer_adapter == nil
+    end
+
     test "maps a non-terminal persisted state to :failed" do
       # A record persisted mid-flight (e.g. BEAM death during :reviewing) is
       # not a settled run — it classifies as :failed, never silently :done.
@@ -69,6 +90,7 @@ defmodule Harness.Run.StatusTest do
       state: Keyword.get(opts, :state, :done),
       reason: Keyword.get(opts, :reason, :approved),
       verdict: Keyword.get(opts, :verdict, :approve),
+      reviewer_adapter: Keyword.get(opts, :reviewer_adapter),
       duration_ms: 1_000,
       agent_outcome_kind: Keyword.get(opts, :agent_outcome_kind),
       agent_output: Keyword.get(opts, :agent_output, "")

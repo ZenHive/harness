@@ -528,6 +528,22 @@ defmodule Harness.Dashboard.LiveTest do
       assert Live.agent_label(nil, nil) == "—"
     end
 
+    test "stage_agent_label names the reviewer while reviewing, recovery while recovering, else implementer" do
+      base = %Status{run_id: "r", task_id: "1", state: :running, agent: :cursor}
+
+      # Non-stage states show the implementer.
+      assert Live.stage_agent_label(base) == "cursor"
+      assert Live.stage_agent_label(%{base | state: :done}) == "cursor"
+
+      # Reviewing shows the reviewer, not the implementer.
+      assert Live.stage_agent_label(%{base | state: :reviewing, reviewer_adapter: :claude}) == "claude"
+      # Recovering shows the recovery agent.
+      assert Live.stage_agent_label(%{base | state: :recovering, recovery_adapter: :codex}) == "codex"
+
+      # Reviewing with no reviewer resolved yet falls back to the implementer.
+      assert Live.stage_agent_label(%{base | state: :reviewing, reviewer_adapter: nil}) == "cursor"
+    end
+
     test "token_label parses the transcript and renders the total" do
       transcript = ~s({"type":"result","usage":{"input_tokens":7,"output_tokens":44}}\n)
       assert Live.token_label(:claude, transcript) == "51"

@@ -686,6 +686,10 @@ defmodule Harness.Dashboard.Live do
       <dd>{verdict_label(@run_status.review_verdict)}</dd>
       <dt>Agent</dt>
       <dd>{agent_label(@agent_kind, @run_status.agent)}</dd>
+      <dt :if={@run_status.reviewer_adapter}>Reviewer</dt>
+      <dd :if={@run_status.reviewer_adapter}>{agent_label(@run_status.reviewer_adapter, nil)}</dd>
+      <dt :if={@run_status.recovery_adapter}>Recovery</dt>
+      <dd :if={@run_status.recovery_adapter}>{agent_label(@run_status.recovery_adapter, nil)}</dd>
       <dt>Model</dt>
       <dd>{model_label(@agent_kind, @run_status.model, @transcript)}</dd>
       <dt>Tokens</dt>
@@ -832,7 +836,7 @@ defmodule Harness.Dashboard.Live do
           <td>{entry.status.task_id}</td>
           <td>{entry.status.project_name || "—"}</td>
           <td><.run_link run_id={entry.status.run_id} /></td>
-          <td><code>{agent_label(entry.status.agent, nil)}</code></td>
+          <td><code>{stage_agent_label(entry.status)}</code></td>
           <td>{model_label(entry.status.agent, entry.status.model, "")}</td>
           <td>
             <Components.bucket_badge bucket={entry.bucket} label={to_string(entry.status.state)} />
@@ -1119,6 +1123,21 @@ defmodule Harness.Dashboard.Live do
       kind -> to_string(kind)
     end
   end
+
+  # The agent active in the run's *current* stage: the reviewer while
+  # `:reviewing`, the recovery agent while `:recovering`, else the implementer.
+  # Without this the run tables show the implementer for the run's whole life,
+  # so a cross-family reviewer (or recovery) stage is invisible — the row reads
+  # as "still the implementer" even though a different agent is now working.
+  @doc false
+  @spec stage_agent_label(Status.t()) :: String.t()
+  def stage_agent_label(%Status{state: :reviewing, reviewer_adapter: reviewer}) when not is_nil(reviewer),
+    do: agent_label(reviewer, nil)
+
+  def stage_agent_label(%Status{state: :recovering, recovery_adapter: recovery}) when not is_nil(recovery),
+    do: agent_label(recovery, nil)
+
+  def stage_agent_label(%Status{agent: agent}), do: agent_label(agent, nil)
 
   # Token burn parsed from the captured transcript with the same per-adapter
   # parser the KPI ledger uses — works for a live (partial) or settled (full)
