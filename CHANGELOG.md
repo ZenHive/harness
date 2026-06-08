@@ -637,6 +637,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **Harness.TermCodec + legacy *.term import window closed (Task 213 capstone).**
+  Deleted `lib/harness/term_codec.ex`, `lib/harness/legacy_term_import.ex`,
+  `lib/mix/tasks/harness.import_results.ex` and tests (~810 LOC). Removed the
+  `LegacyTermImport` Application child, all `import_legacy` paths, and the
+  one-time cutover tooling now that ResultStore/Chat/Audit/Settings/ProjectRegistry
+  are Postgres-only (or ephemeral) with no remaining `*.term` readers. Inlined
+  minimal owned-payload `decode_term/1` (sobelow_skip) at the three internal
+  call sites. Test/config cleanups removed legacy_root plumbing. The 212
+  retirement bullet documented the cutover provision; this closes the window.
 - **The mechanical verification stack — deleted whole (agent-gate rebuild).**
   `Harness.Verification` (+ check/result/verdict modules),
   `Harness.CheckStack` (+ Elixir/Rust presets), the `:verifying` run state,
