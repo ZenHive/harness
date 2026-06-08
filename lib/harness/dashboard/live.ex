@@ -100,13 +100,7 @@ defmodule Harness.Dashboard.Live do
     if connected?(socket) do
       RunFeed.subscribe()
       schedule_meta_tick()
-      # Load the roadmap rollup OFF the mount render critical path: paint with an
-      # empty rollup now (`:roadmap` below), then fill it in when this fires after
-      # the connected mount. Its handler re-arms the recurring slow tick, so the
-      # N-project `rmap list` shell-outs never block the disconnected HTTP render
-      # or the connected mount — the regression that made `/harness` load in 12-15s
-      # under active-run load.
-      send(self(), :roadmap_tick)
+      schedule_roadmap_tick()
     end
 
     projects = ProjectRegistry.list()
@@ -119,7 +113,7 @@ defmodule Harness.Dashboard.Live do
     {:ok,
      socket
      |> assign(:projects, projects)
-     |> assign(:roadmap, %{})
+     |> assign(:roadmap, RoadmapSummary.for_projects(projects))
      |> assign(:show_landed, false)
      |> assign(:notice, nil)
      |> assign(:selected_project, nil)
