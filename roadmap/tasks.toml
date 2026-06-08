@@ -6401,9 +6401,10 @@ shipped_in = "d674ca97f9f814cc57a83bdcfa6b9feddccabcfc"
 id = "213"
 phase = 17
 bundle = "settings-pq"
-status = "pending"
+status = "in_progress"
 title = "Delete Harness.TermCodec + close the legacy *.term import window (capstone)"
 scores = { d = 2, b = 4, u = 4 }
+depends_on = ["208", "211", "212"]
 acceptance_criteria = ["After settings (208), audit watermarks, and ResultStore+Chat are Postgres-only, no module references Harness.TermCodec; the module is deleted.", "The Postgres backends' import_legacy paths and the harness.import_results mix task are removed (or gated off) once the migration window closes — no remaining reader of *.term files.", "ProjectRegistry.Persistence no longer uses TermCodec (folded into 208).", "mix compile --warnings-as-errors + full suite green with TermCodec absent."]
 out_of_scope = ["Does not itself migrate any data — purely removes the dead serializer + import paths once predecessors land."]
 files_to_modify = ["lib/harness/term_codec.ex", "lib/mix/tasks/harness.import_results.ex"]
@@ -6413,8 +6414,8 @@ assignee = "codex"
 module = "Harness.TermCodec"
 body = "TermCodec is the shared Erlang-term file serializer. Once its callers move to Postgres (settings 208, audit watermarks, ResultStore+Chat) and the one-time legacy-import window closes, TermCodec and the import_legacy paths are dead code. Capstone deletion — gated on the predecessor migrations; do not start until they land."
 created_at = "2026-06-05"
+started_at = "2026-06-08"
 scored_at = "2026-06-05"
-depends_on = ["208", "211", "212"]
 
 [[task]]
 id = "214"

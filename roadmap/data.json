@@ -8784,7 +8784,7 @@
       "id": "213",
       "phase": 17,
       "bundle": "settings-pq",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Delete Harness.TermCodec + close the legacy *.term import window (capstone)",
       "scores": {
         "d": 2,
@@ -8824,6 +8824,7 @@
       ],
       "body": "TermCodec is the shared Erlang-term file serializer. Once its callers move to Postgres (settings 208, audit watermarks, ResultStore+Chat) and the one-time legacy-import window closes, TermCodec and the import_legacy paths are dead code. Capstone deletion — gated on the predecessor migrations; do not start until they land.",
       "created_at": "2026-06-05",
+      "started_at": "2026-06-08",
       "scored_at": "2026-06-05",
       "cross_repo": []
     },
