@@ -2086,21 +2086,30 @@ defmodule Harness.Run do
     end
   end
 
+  # Reviewer-dispatchability is governed by reviewer_eligible? ALONE among the
+  # operator gates — deliberately NOT the implementer-level AgentSettings.enabled?
+  # flag. The two roles are orthogonal: `enabled?` answers "may this agent
+  # IMPLEMENT?", `reviewer_eligible?` answers "may it REVIEW?". Coupling them made
+  # "reviewer-only" (disabled implementer + eligible reviewer) unexpressable — a
+  # Claude pinned as the dedicated reviewer but disabled as an implementer was
+  # rejected as {:reviewer_unavailable, Claude}, settling every run :review_stuck.
+  # To bar an agent from BOTH roles, turn off both flags.
+  @doc false
   @spec reviewer_dispatchable?(module()) :: boolean()
-  defp reviewer_dispatchable?(module) do
+  def reviewer_dispatchable?(module) do
     AgentRegistry.available?(module) and
       AgentRegistry.installed?(module) and
-      reviewer_enabled?(module) and
       reviewer_eligible?(module)
   end
 
   # Reviewer-eligibility gate, distinct from the implementer-level
   # AgentSettings.enabled? flag: an ineligible agent may still implement, it just
-  # can't be picked (auto or explicit) as THE gate. Operator-set and persisted
-  # via AgentSettings (Task 182), seeded from its in-code default
-  # ([:pi]) on first boot — Pi/OSS models aren't yet trusted to run the checks +
-  # write a sound verdict (Task 181). Unknown module ⇒ eligible, matching
-  # reviewer_enabled?/1's default-allow shape.
+  # can't be picked (auto or explicit) as THE gate; conversely a disabled
+  # implementer that is reviewer-eligible CAN still be the gate (reviewer-only).
+  # Operator-set and persisted via AgentSettings (Task 182), seeded from its
+  # in-code default ([:pi]) on first boot — Pi/OSS models aren't yet trusted to
+  # run the checks + write a sound verdict (Task 181). Unknown module ⇒ eligible
+  # (default-allow).
   @spec reviewer_eligible?(module()) :: boolean()
   defp reviewer_eligible?(module) do
     case AgentRegistry.agent_for_module(module) do
@@ -2114,14 +2123,6 @@ defmodule Harness.Run do
     case AgentRegistry.agent_for_module(module) do
       {:ok, _agent} -> reviewer_dispatchable?(module)
       {:error, _reason} -> AgentRegistry.available?(module)
-    end
-  end
-
-  @spec reviewer_enabled?(module()) :: boolean()
-  defp reviewer_enabled?(module) do
-    case AgentRegistry.agent_for_module(module) do
-      {:ok, agent} -> AgentSettings.enabled?(agent)
-      {:error, _reason} -> true
     end
   end
 

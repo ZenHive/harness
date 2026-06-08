@@ -1,3 +1,4 @@
+alias Harness.AgentAdapter.Codex
 alias Harness.Landing.Settings, as: LandingSettings
 
 defmodule Harness.RunTest do
@@ -733,7 +734,7 @@ defmodule Harness.RunTest do
 
     test "a project-pinned reviewer-ineligible agent is refused" do
       project = ProjectFixture.from_repo(GitFixture.init_repo(), reviewer: :codex)
-      codex = Harness.AgentAdapter.Codex
+      codex = Codex
       SettingsStoreMemory.reset(scope: :test_default)
       assert :ok = AgentSettings.set_reviewer_eligible(:codex, false, "test")
       :sys.replace_state(Harness.AgentRegistry, &put_in(&1, [:installed, codex], true))
@@ -750,6 +751,35 @@ defmodule Harness.RunTest do
 
       assert report =~ "reviewer_unavailable"
       assert report =~ "Codex"
+    end
+
+    test "an implementer-disabled but reviewer-eligible agent IS reviewer-dispatchable (reviewer-only)" do
+      # Regression: a Claude pinned as the dedicated reviewer but disabled as an
+      # implementer (`enabled? == false`) settled every run :review_stuck with
+      # {:reviewer_unavailable, Claude} — reviewer_dispatchable?/1 wrongly ANDed
+      # in the implementer-level enabled? flag, making "reviewer-only" (disabled
+      # implementer + eligible reviewer) unexpressable. The two roles are
+      # orthogonal: reviewer selection is governed by reviewer_eligible? alone.
+      codex = Codex
+      SettingsStoreMemory.reset(scope: :test_default)
+      :sys.replace_state(Harness.AgentRegistry, &put_in(&1, [:installed, codex], true))
+
+      on_exit(fn ->
+        SettingsStoreMemory.reset(scope: :test_default)
+        Harness.AgentRegistry.reset()
+      end)
+
+      # Disabled as an implementer, still reviewer-eligible (the default).
+      assert :ok = AgentSettings.set_enabled(:codex, false, "test")
+      assert AgentSettings.reviewer_eligible?(:codex)
+      refute AgentSettings.enabled?(:codex)
+
+      # Dispatchable as a reviewer DESPITE the implementer disable.
+      assert Run.reviewer_dispatchable?(codex)
+
+      # Turning off reviewer-eligibility — the correct reviewer gate — bars it.
+      assert :ok = AgentSettings.set_reviewer_eligible(:codex, false, "test")
+      refute Run.reviewer_dispatchable?(codex)
     end
 
     test "prioritize_reviewers/2 sinks a high-rejection-rate reviewer below a cleaner one" do
