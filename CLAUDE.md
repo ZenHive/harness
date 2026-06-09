@@ -46,6 +46,8 @@ The `rmap` CLI (the roadmap substrate `roadmap/tasks.toml` uses) is a sibling Ru
 
 **AI driver surface (canonical for orchestrators):** `@skills/harness-driver/SKILL.md` — **load on demand** when driving harness as a consumer. Stable contract for delegation patterns, non-delegatable handling, result interpretation, sharp edges. Any change to public driver surfaces must update it.
 
+> **Two harness skills are canonical HERE, not in `~/.claude/includes` — propagate with `scripts/sync-harness-skills.sh`.** `priv/includes/harness-workflow.md` (the portfolio implement→review→land contract) and `skills/harness-driver/SKILL.md` (this driver surface) are the source of truth. The general marketplace sync (`claude-marketplace/scripts/sync-skills-from-includes.sh`) **deliberately excludes** them. After editing either, run `scripts/sync-harness-skills.sh` — it fans the workflow include out to `~/.claude/includes/` **and** both `plugins/harness/skills/*/SKILL.md` in the marketplace (frontmatter preserved, idempotent, `--dry-run` to preview). Skip it and the installed include + marketplace skills silently drift from the source.
+
 ## Commands
 
 Toolchain: **Elixir 1.20.0 / OTP 29** (asdf) — resolved from the global `~/.tool-versions` (`1.20.0-otp-29` / `erlang 29.0.1`), since the repo has no plain `.tool-versions`. `mix.exs` floors at `~> 1.18`; a repo-local `.tool-versions.1.18` (1.18.4/OTP27) pins the lower-bound compat target — `cp .tool-versions.1.18 .tool-versions` for a reproducible per-repo pin. Postgres required for the Oban dispatch layer.
@@ -61,6 +63,7 @@ Toolchain: **Elixir 1.20.0 / OTP 29** (asdf) — resolved from the global `~/.to
 | Fast gate | `mix check.fast` — `format --check-formatted` + `compile --warnings-as-errors` + `credo --strict`. |
 | Pre-commit gate | `mix precommit` — adds `doctor --raise`, `test.json --cover --cover-threshold 80 --exclude integration`, `sobelow`. Hook-bound (180s); **dialyzer is deliberately not here** (cold-PLT timeout). |
 | Before PR / handoff | `mix precommit.full` — `precommit` + `dialyzer.json`. (No CI workflow exists yet — this is the only mergeable-bar gate.) |
+| Sync harness skills | `scripts/sync-harness-skills.sh` (`--dry-run` to preview) — after editing `priv/includes/harness-workflow.md` or `skills/harness-driver/SKILL.md`, propagate to `~/.claude/includes/` + the marketplace `harness` plugin skills. The general marketplace sync excludes these two. |
 
 **Per-edit hooks already run this stack** (`format`, `compile`, `test.json`, `credo`, `dialyzer.json`, `sobelow`, `doctor`) on every touched file — don't re-run a check the hook just graded. Full-suite `precommit.full` earns its cost only before a PR/merge, after `mix deps.get`, or on a branch switch (see global CLAUDE.md § "Don't Re-Run Hook-Driven Checks").
 
