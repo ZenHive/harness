@@ -43,6 +43,21 @@ defmodule Harness.Dashboard.OpsFeedTest do
       assert byte_size(transcript) <= 16_000
       assert String.ends_with?(transcript, "TAIL")
     end
+
+    test "the capped tail is always valid UTF-8 even when the byte cut splits a codepoint" do
+      :ok = OpsFeed.subscribe()
+      # "€" is 3 bytes (0xE2 0x82 0xAC). Pad so the 16_000-byte tail boundary
+      # lands mid-codepoint; a raw binary_part would yield an invalid binary
+      # that LiveView refuses to render. The cap must trim the leading partial.
+      big = String.duplicate("€", 7_000) <> "TAIL"
+      op = Op.audit_settled("demo", "codex", "r", {:audited, "deadbeef"}, big)
+
+      :ok = OpsFeed.broadcast(op)
+      assert_receive {:harness_op, %Op{transcript: transcript}}
+      assert byte_size(transcript) <= 16_000
+      assert String.valid?(transcript)
+      assert String.ends_with?(transcript, "TAIL")
+    end
   end
 
   describe "unsubscribe/0" do

@@ -76,5 +76,24 @@ defmodule Harness.Dashboard.OpsFeed do
   @spec cap(String.t() | nil) :: String.t() | nil
   defp cap(nil), do: nil
   defp cap(text) when byte_size(text) <= @transcript_cap, do: text
-  defp cap(text), do: binary_part(text, byte_size(text) - @transcript_cap, @transcript_cap)
+
+  # Keep the last @transcript_cap bytes, then drop any leading bytes that form a
+  # split multi-byte UTF-8 codepoint: the tail slice can begin mid-codepoint, and
+  # a raw `binary_part/3` byte slice would yield an invalid binary that LiveView
+  # refuses to render (crashing the ops panel). Mirrors chat_live.ex's
+  # `trim_to_valid_utf8`; a codepoint is ≤4 bytes, so the trim drops at most 3.
+  defp cap(text) do
+    text
+    |> binary_part(byte_size(text) - @transcript_cap, @transcript_cap)
+    |> trim_leading_to_valid_utf8()
+  end
+
+  @spec trim_leading_to_valid_utf8(binary()) :: binary()
+  defp trim_leading_to_valid_utf8(bin) do
+    cond do
+      String.valid?(bin) -> bin
+      byte_size(bin) == 0 -> bin
+      true -> trim_leading_to_valid_utf8(binary_part(bin, 1, byte_size(bin) - 1))
+    end
+  end
 end
