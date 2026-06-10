@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (24 of 25 done · 0 in progress)
+**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (24 of 26 done · 0 in progress)
 
 **Last shipped:** Task 204 — Dashboard Resume + Re-land buttons: recover failed runs & blocked land-trains, Task 205 — Verify + declare auth_env_scrub for Cursor/Grok/Pi/Antigravity adapters, Task 206 — Scrub provider auth API keys from spawned agent CLIs (subscription billing), Task 207 — Configurable default dispatch agent (unassigned tasks → codex, not claude) on 2026-06-05
 
-**Up next:** Task 174 — Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:3/B:5/U:4 → Eff:1.5] 🚀
+**Up next:** Task 245 — Run-lifecycle in_progress claim survives concurrent tasks.toml writers [D:3/B:7/U:7 → Eff:2.33] 🎯
 <!-- FOCUS:END -->
 
 ---

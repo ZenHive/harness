@@ -10198,6 +10198,227 @@
       "implemented": "Removed per-row git fetch from ResultStore.landed_sha_for_run (local refs only; lander keeps origin/<target> fresh). Render-path RunFeed.landed_sha/3 is now pure (roadmap shipped_in witness || landed_cache map lookup); branch-reachability moved to cold-path RunFeed.branch_landed_cache/3 (local git, no fetch), refreshed on connect + roadmap_tick into a :landed_cache assign. /harness renders in 52ms (curl). run_feed_test rewritten to fetch locally + assert via the cache; +witness short-circuit test. precommit.full green.",
       "delivered_by": "claude",
       "cross_repo": []
+    },
+    {
+      "id": "245",
+      "phase": 16,
+      "bundle": "agent-gate",
+      "status": "pending",
+      "title": "Run-lifecycle in_progress claim survives concurrent tasks.toml writers",
+      "scores": {
+        "d": 3,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 2.33,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "claude",
+      "module": "Harness.Run.Worker",
+      "acceptance_criteria": [
+        "Concurrent in_progress claims from N simultaneous runs on the same project all persist (no lost-update) — test fires >=3 concurrent mark_in_progress writebacks and asserts every task ends in_progress.",
+        "A run that settles approved is never left at pending in tasks.toml due to a racing writer.",
+        "No new judgment in harness code; the fix is mechanical write-serialization/durability.",
+        "Existing Worker writeback semantics preserved (revert-to-pending on settled failure, stay in_progress on green-unlanded under manual policy)."
+      ],
+      "out_of_scope": [
+        "Mid-flight landing_policy change not reaching in-flight runs (55 captured manual at dispatch, parked despite auto enabled later) — separate concern."
+      ],
+      "files_to_modify": [
+        "lib/harness/run/worker.ex",
+        "lib/harness/roadmap.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "Observed 2026-06-09 during a live cron-autonomy test on onchain_aave: a 3-run wave dispatched concurrently. Each run's Worker.claim_in_progress/2 does a best-effort `rmap status <id> in_progress` writeback to the shared roadmap/tasks.toml. Under 3 simultaneous writers (plus concurrent reads), two of the three claims were lost — tasks 45 and 53 stayed `status = \"pending\"` even though their runs settled `:approved`. Only the lone task (55) whose claim won kept `in_progress`.\n\nConsequence is not cosmetic: the cron poller reads the LOCAL tasks.toml via Roadmap.ready/1. An approved-but-`pending` task is re-eligible, so the next tick re-dispatches already-finished (here, already-landed) work — a full implement->review->land cycle of wasted agent tokens, or a conflicting second copy.\n\nrmap's validate-then-write protects write VALIDITY, not against lost updates between two valid concurrent writers (documented hazard in rmap.md). The lander already solves the same class for its own roadmap writeback via the Durable path (detached worktree at target tip -> commit -> ff-push, Harness.Roadmap.Durable) so concurrent landers never clobber each other.\n\nTODO: make the start-of-run in_progress claim resilient to concurrent writers. Candidates: (a) route the claim through the lander's Durable/serialized writeback; (b) serialize per-project roadmap mutations through one GenServer/Oban-serialized queue; (c) lock-or-retry on the file in rmap status. Pick the one fitting the mechanical-substrate rule — git/file-IO serialization, not judgment.\n",
+      "created_at": "2026-06-09",
+      "scored_at": "2026-06-09",
+      "cross_repo": []
+    },
+    {
+      "id": "246",
+      "phase": 13,
+      "bundle": "kpi-routing",
+      "milestone": "v0_10",
+      "status": "pending",
+      "title": "ResultStore MCP read tools resolve configured() store when param omitted (KPIs read empty via MCP)",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "The api()-annotated ResultStore read tools (aggregate_by_agent, list_capability_scores — and any sibling whose Elixir default is `configured()` but whose api() `store` default is `nil`) resolve the configured store when the MCP/chat caller omits `store`, instead of hitting the `nil`/`false` disabled short-circuit that returns {:ok, %{}} / {:ok, []}.",
+        "Elixir-side behavior is unchanged: `false`/`nil` still explicitly short-circuits (disabled store), and an explicit store override still wins. Only the MISSING-param path changes from nil->disabled to nil->configured().",
+        "Fix is at the api() surface, not by deleting the disabled short-circuit: prefer an api() default sentinel that resolves configured() (or drop the `store` param from the tool schema and resolve internally), so `false`/`nil` overrides remain expressible.",
+        "Regression test: invoking each affected tool through the descripex/MCP dispatch path (Harness.Chat.Tools / Manifest) with no `store` arg returns the populated aggregate/list from the configured Postgres store, not the empty disabled value. A test with explicit store=false still returns the disabled value.",
+        "mix test.json green"
+      ],
+      "files_to_modify": [
+        "lib/harness/result_store.ex"
+      ],
+      "touches": [
+        "lib/harness/result_store.ex",
+        "test/harness/result_store_test.exs"
+      ],
+      "domains": [
+        "otp",
+        "mcp"
+      ],
+      "body": "Observed 2026-06-10 driving harness from an orchestrator: `result_store-aggregate_by_agent` returned {} and `list_capability_scores` returned [] over MCP, while the Postgres store held 118 run records and a fully-populated per-agent rollup (verified via tidewave: `Harness.ResultStore.aggregate_by_agent(configured())` returns real KPIs). KPIs ARE persisting and changing — the MCP surface just reads them as empty.\n\nRoot cause: the Elixir fns default `store \\ configured()` (lib/harness/result_store.ex), but their `api()` annotations declare the `store` param with `default: nil` (e.g. aggregate_by_agent at ~line 207-211, list_capability_scores). descripex passes the api default (nil) when the caller omits the param, which lands on the `aggregate_by_agent(nil)` / `aggregate_by_agent(false)` disabled-short-circuit clause -> {:ok, %{}}. So the two defaults diverge: Elixir callers get the configured store, MCP/chat callers get the disabled value.\n\nImpact: any orchestrator reading KPIs / capability scores over MCP to make routing or recommendation decisions sees a false \"no data\" signal — exactly the input dispatch-recommend's explore/exploit routing keys off. Misleading, not just cosmetic.\n\nOut of scope: the separate `list_run_records` MCP sharp edge (its `filters` param must be a keyword list, which JSON can't express — passing a JSON object raises a function-clause on the `is_list/1` guard). File separately if it bites; this task is only the store-default divergence on the no-arg aggregate/list reads.\n",
+      "created_at": "2026-06-10",
+      "scored_at": "2026-06-10",
+      "cross_repo": []
+    },
+    {
+      "id": "247",
+      "phase": 19,
+      "bundle": "self-heal",
+      "milestone": "v0_14",
+      "status": "pending",
+      "title": "Reviewer selection: AgentRegistry.available? must deprioritize, not eliminate, an installed cross-family reviewer (soft hint used as hard gate discards completed work)",
+      "scores": {
+        "d": 3,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 2.33,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "reviewer_dispatchable?/1 (run.ex:2100) no longer ANDs AgentRegistry.available?/1 as a hard eligibility gate. The real eligibility gates are installed? and reviewer_eligible? ALONE; availability moves to the ORDERING (prioritize_reviewers), not the filter — an installed, eligible, cross-family adapter is NEVER removed from the slate merely because the soft, TTL-less, restart-cleared availability hint says it's busy.",
+        "auto_reviewer_modules/1 returns a NON-EMPTY slate whenever at least one installed + reviewer_eligible? + cross-family adapter exists, regardless of every adapter's availability flag. Availability deprioritizes (sinks an unavailable reviewer in the rotation order) but never empties the slate. {:no_cross_family_reviewer, _} is reserved for the genuinely-empty case (nothing installed/eligible/cross-family), not a transient availability blip.",
+        "The same relaxation applies to the explicit-pin path: explicit_reviewer_dispatchable?/1 / resolve_single_reviewer/2 must not fail an installed, eligible, cross-family pinned reviewer with {:reviewer_unavailable, module} solely on the availability hint (it may still deprioritize / order). Same-family and not-installed pins still fail as today.",
+        "Regression test (the documented failure): an installed, reviewer-eligible, cross-family adapter that AgentRegistry.available?/1 reports false is still selected as the reviewer (settles :reviewing -> :done on approve), NOT discarded as {:review_stuck, {:reviewer_unavailable, _}} / {:no_cross_family_reviewer, _}. A second test: with NO installed cross-family adapter, the run still settles failed with the empty-slate reason (no regression of the legit-empty path).",
+        "Mantra check stated in the PR: availability-as-soft-hint is the documented contract (AgentRegistry @moduledoc: 'soft hint, not a contract... correctness lives in Oban'). This change makes reviewer selection honor that contract — it is mechanical filter/ordering, no judgment branch added.",
+        "mix test.json green; mix precommit green."
+      ],
+      "out_of_scope": [
+        "Reviewer rotation on spawn/idle TIMEOUT — already shipped (Task 228); this task is strictly about the slate being emptied at SELECTION time by the availability filter, which 228's rotation cannot recover (it rotates a non-empty slate).",
+        "AgentRegistry availability semantics themselves (TTL, persistence, what marks an agent unavailable) — unchanged; this task only stops reviewer selection from treating the hint as a hard gate.",
+        "reviewer_eligible? / per-agent reviewer toggle (Task 182) — that operator gate stays a real filter; only available? moves to ordering.",
+        "The KPI attribution of the resulting review_stuck runs — Task 249."
+      ],
+      "files_to_modify": [
+        "lib/harness/run.ex"
+      ],
+      "touches": [
+        "lib/harness/run.ex",
+        "lib/harness/agent_registry.ex",
+        "test/harness/run_test.exs"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "## Observation (KPI muster, 2026-06-10, over 118 post-agent-gate run records)\n8 of 13 non-approvals are reviewer-SELECTION failures where the implementer SUCCEEDED and its work was discarded:\n- 6 cursor + 1 grok runs: reason = {:review_stuck, \"No cross-family reviewer adapter available: {:reviewer_unavailable, Harness.AgentAdapter.Claude}\"}. agent_outcome_kind=exited, exit_status=0, real diffs (1551/1265/402/287 lines), MB of captured output — then discarded at reviewer selection.\n- 1 claude run: {:review_stuck, {:same_family_reviewer, :claude, Harness.AgentAdapter.Claude}} — only candidate left was same-family.\n- Clustered 2026-06-07/08 (six within 5 minutes, 01:20-01:25) — a single window where the soft availability hint had the whole cross-family slate marked unavailable. Across all 9 review_stuck records: reviewer_rotation_count=0, reviewer_reprompt_count=0, recovery_attempts=0 — no fallback fired.\n\nThis is the single biggest source of wasted agent tokens in the dataset: ~8 full implement cycles thrown away at the finish line for a reason unrelated to work quality.\n\n## Root cause (confirmed in run.ex:2100-2105)\nreviewer_dispatchable?/1 = available? AND installed? AND reviewer_eligible?. auto_reviewer_modules/1 (run.ex:2004) filters the cross-family slate by reviewer_dispatchable?, so when AgentRegistry.available?/1 (a soft latency hint — no persistence, no TTL, cleared on restart per the AgentRegistry @moduledoc) reports false for every adapter, the slate is EMPTY and the run is discarded. The comment at run.ex:2091-2097 documents fixing THIS EXACT failure mode once already — they decoupled the implementer-level enabled? flag from reviewer-dispatchability because coupling 'settled every run :review_stuck'. The identical bug survives through available? still being a hard AND.\n\n## The fix (mechanical, honors the documented soft-hint contract)\nMove available? out of the hard-gate AND in reviewer_dispatchable? and into prioritize_reviewers ordering: installed? + reviewer_eligible? + cross-family are the real gates; availability only sinks a busy reviewer lower in the rotation order. The slate is then non-empty whenever an installed eligible cross-family adapter exists, so completed implementer work is reviewed (possibly after a moment's wait / rotation) instead of discarded. This is the same shape as the enabled?-decoupling fix already in the file. No judgment added — pure filter/ordering mechanics.\n\nPairs with Task 228 (timeout-rotation of a non-empty slate) and Task 249 (count the residual review_stuck by cause so we can confirm this fix landed).\n",
+      "created_at": "2026-06-10",
+      "scored_at": "2026-06-10",
+      "cross_repo": []
+    },
+    {
+      "id": "248",
+      "phase": 19,
+      "bundle": "kpi-routing",
+      "milestone": "v0_14",
+      "status": "pending",
+      "title": "AgentKPI quality rollup reads legacy-empty review_ratings — repoint to review_skills so the quality signal isn't dark since the v0_13 rubric migration",
+      "scores": {
+        "d": 2,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 3.25,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "AgentKPI's per-agent quality rollup is computed from the reviewer's CURRENT scoring block — review_skills (the two-axis scored skills from Task 224/225), NOT the legacy review_ratings map that the reviewer stopped writing on 2026-06-06. record_ratings/1 (agent_kpi.ex:285) is repointed (or a new record_skills/1 added) to read review_skills, reducing the per-skill {score, note} entries to the per-agent quality mean(s) the KPI surfaces.",
+        "Back-compat: records that carry only the legacy review_ratings (pre-2026-06-06, ~52 runs) still contribute their scores — read review_skills when present, fall back to review_ratings when review_skills is empty. Neither a missing block nor a present-but-empty one crashes the rollup (=> %{} / no contribution, never an exception).",
+        "The two sibling stale reads are repointed consistently or explicitly justified: batch/agent_evaluation.ex:238 entry_ratings/1 and dispatch.ex:1223 (record.review_ratings -> ratings) — whichever feed a live quality surface. If one is intentionally legacy-only, say so in a code comment; do not silently leave a second dark read.",
+        "Verified against live data: after the change, the /harness/kpi quality column (and the AgentKPI aggregate the MCP tool returns) is NON-EMPTY for runs inserted on/after 2026-06-06 (50 approved runs that currently roll up to an empty quality mean because review_ratings is {} but review_skills is populated).",
+        "Tests cover: a record with populated review_skills yields a non-empty quality mean; a legacy record with only review_ratings still contributes (back-compat); an empty/missing both-blocks record contributes nothing without crashing. NEVER-HIDE-FAILURES assertions (flunk on unexpected), not assert-true-on-any-outcome.",
+        "mix test.json green."
+      ],
+      "out_of_scope": [
+        "Changing the reviewer prompt or the review.json skills/facets contract (shipped in Task 224/225).",
+        "Migrating historical review_ratings rows into review_skills — read both, don't backfill.",
+        "The /harness/kpi facet PIVOT itself (Task 225, done) — this is only about the quality metric INSIDE each agent row reading the right field.",
+        "Any routing/dispatch-recommend change consuming the corrected quality signal — separate."
+      ],
+      "files_to_modify": [
+        "lib/harness/agent_kpi.ex"
+      ],
+      "touches": [
+        "lib/harness/agent_kpi.ex",
+        "lib/harness/batch/agent_evaluation.ex",
+        "lib/harness/dispatch.ex",
+        "test/harness/agent_kpi_test.exs"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "## Observation (KPI muster, 2026-06-10)\nreview_ratings is populated on 52/118 run records, and ZERO of the 50 approved runs since 2026-06-06 have it. But review_skills + review_facets ARE populated on 100% of runs from 2026-06-06 on. The reviewer didn't stop scoring — Task 224/225 (v0_13 rubric foundation) REPLACED the flat 4-key review_ratings block (performance/truthfulness/code_quality/idiom) with the two-axis review_skills block (programming domains x cross-cutting qualities, each {score, note}). log_record.ex:18 literally calls review_ratings 'the legacy flat KPI block, kept for back-compat'.\n\n## The bug\nThe record WRITE migrated; the KPI READ did not. agent_kpi.ex:285:\n    defp record_ratings(record), do: Map.get(record, :review_ratings) || %{}\nAgentKPI's quality rollup still reads review_ratings, which is {} for every run in the last 5 days. So the quality column on /harness/kpi and the AgentKPI aggregate (surfaced via the MCP KPI tool, and the input Task 177 made load-bearing) compute over empty maps for all post-rubric-migration runs — the reviewer-judged quality signal has been dark since 2026-06-06 even though every run was scored. Same stale read at batch/agent_evaluation.ex:238 (entry_ratings) and dispatch.ex:1223.\n\n## Fix\nRepoint the quality rollup to review_skills (reduce per-skill scores to the agent's quality mean), falling back to review_ratings for legacy records so the ~52 older runs still count. Pure field-migration + back-compat read — mantra-clean fact counting, no judgment. Mirrors how Task 225 already pivots the page by review_facets; this fixes the per-agent quality metric inside each row to read the field the reviewer actually writes.\n",
+      "created_at": "2026-06-10",
+      "scored_at": "2026-06-10",
+      "cross_repo": []
+    },
+    {
+      "id": "249",
+      "phase": 19,
+      "bundle": "kpi-routing",
+      "milestone": "v0_14",
+      "status": "pending",
+      "title": "KPI: surface review_stuck by cause + count selection-time stuck (nil reviewer_adapter) as orchestration health",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "acceptance_criteria": [
+        "AgentKPI exposes a review_stuck-BY-CAUSE count, bucketed by parsing the already-persisted reason field's tag (the second element of the {:review_stuck, detail} tuple / reason atom): reviewer_unavailable, no_cross_family_reviewer, same_family_reviewer, reviewer_crashed (:killed), driver_crashed, timed_out, cancelled, other. Pure counting of an existing fact — no classifier/regex inferring fault beyond reading the tag harness itself wrote.",
+        "Selection-time stuck runs (reviewer_adapter IS NULL — no reviewer was ever assigned) are counted in this orchestration-health rollup. Task 231's per-reviewer no_verdict_rate is keyed on reviewer_adapter and therefore misses these (8 of 9 current review_stuck records have nil reviewer_adapter); this rollup is the home for them as a harness-health number, NOT attributed to any reviewer (correctly — no reviewer was at fault).",
+        "The signal is surfaced where AgentKPI already surfaces (the MCP KPI/reliability tool and/or /harness/kpi), consistent with existing presentation — a small orchestration-health line/section, no net-new design surface. Backend (AgentKPI struct + MCP) is the required deliverable; the dashboard line may ride along or be a thin follow-on if it needs LiveView hand-build.",
+        "Tests cover: by-cause bucketing from seeded reason values (incl. a nil-reviewer_adapter reviewer_unavailable run landing in the health rollup, not a per-reviewer bucket); an approve run contributes nothing to the stuck rollup. NEVER-HIDE-FAILURES assertions.",
+        "mix test.json green."
+      ],
+      "out_of_scope": [
+        "Reducing the review_stuck RATE — that is the fix (Task 247); this task only instruments it so the fix is confirmable and regressions are visible.",
+        "Re-attributing stuck runs to the implementer or to a reviewer — Task 231 already settled attribution (excluded from implementer denominator; per-reviewer no_verdict_rate keyed on reviewer_adapter). This adds the by-cause health view those leave out.",
+        "Persisting more reviewer diagnostics — Task 232 (done) already captures reviewer raw output/outcome."
+      ],
+      "files_to_modify": [
+        "lib/harness/agent_kpi.ex"
+      ],
+      "touches": [
+        "lib/harness/agent_kpi.ex",
+        "test/harness/agent_kpi_test.exs"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "## Why (KPI muster, 2026-06-10; user asked that reviewer-selection failures be tracked in KPIs)\nThe dominant non-approval class is review_stuck (8 of 13), and Task 247 will fix most of it — but crashes, cancellations, and any future selection regression will still produce stuck runs, and we currently can't SEE the rate by cause. Task 231 (done) handles attribution (review_stuck excluded from the implementer's success denominator; a per-reviewer no_verdict_rate keyed on reviewer_adapter). But 8 of the 9 current review_stuck records have reviewer_adapter = NULL (the run died at SELECTION, before any reviewer was assigned), so 231's per-reviewer ledger never counts them — they vanish into a nil bucket.\n\n## What to add\nA review_stuck-by-CAUSE orchestration-health count in AgentKPI, bucketed on the reason tag harness already wrote ({:review_stuck, {:reviewer_unavailable,_}} / {:no_cross_family_reviewer,_} / {:same_family_reviewer,_} / 'Reviewer crashed: :killed' / driver_crashed / timed_out / cancelled). This is the harness self-diagnostic that confirms Task 247 landed (reviewer_unavailable/no_cross_family counts should drop to ~0 after it) and catches regressions.\n\n## Mantra check\nPure counting of an existing persisted fact — the reason field already STATES the cause; this rollup only buckets and counts it. No 'whose fault' heuristic, no classifier beyond reading the tag. Counting, not judgment.\n",
+      "created_at": "2026-06-10",
+      "scored_at": "2026-06-10",
+      "cross_repo": []
     }
   ]
 }
