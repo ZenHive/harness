@@ -28,6 +28,8 @@ defmodule Harness.RunTest do
   alias Harness.TokenUsage
   alias Harness.Worktree
 
+  @executable_mode 0o755
+
   # An adapter whose build_command/1 raises — drives the run's driver-task-crash
   # path (the gen_statem must survive a crashing step task).
   defmodule CrashingAdapter do
@@ -728,8 +730,13 @@ defmodule Harness.RunTest do
   end
 
   describe "reviewer selection" do
-    test "no cross-family reviewer available settles failed without silently approving" do
-      Enum.each(Harness.AgentRegistry.all(), &Harness.AgentRegistry.mark_unavailable(&1, :test_unavailable))
+    test "no installed cross-family reviewer settles failed without silently approving" do
+      installed =
+        Map.new(Harness.AgentRegistry.all(), fn module ->
+          {module, module == Harness.AgentAdapter.Claude}
+        end)
+
+      :sys.replace_state(Harness.AgentRegistry, &%{&1 | installed: installed})
       on_exit(fn -> Harness.AgentRegistry.reset() end)
 
       result = run(reviewer: nil)
@@ -801,6 +808,26 @@ defmodule Harness.RunTest do
       assert report =~ "Codex"
     end
 
+    test "a project-pinned reviewer that is not installed is refused" do
+      project = ProjectFixture.from_repo(GitFixture.init_repo(), reviewer: :codex)
+      codex = Codex
+      SettingsStoreMemory.reset(scope: :test_default)
+      :sys.replace_state(Harness.AgentRegistry, &put_in(&1, [:installed, codex], false))
+
+      on_exit(fn ->
+        SettingsStoreMemory.reset(scope: :test_default)
+        Harness.AgentRegistry.reset()
+      end)
+
+      {run_id, pid} = start_with_project_reviewer(project, [])
+
+      assert %Result{state: :failed, reason: {:review_stuck, report}, reviewer_adapter: nil} =
+               await_result(run_id, pid)
+
+      assert report =~ "reviewer_unavailable"
+      assert report =~ "Codex"
+    end
+
     test "an implementer-disabled but reviewer-eligible agent IS reviewer-dispatchable (reviewer-only)" do
       # Regression: a Claude pinned as the dedicated reviewer but disabled as an
       # implementer (`enabled? == false`) settled every run :review_stuck with
@@ -828,6 +855,45 @@ defmodule Harness.RunTest do
       # Turning off reviewer-eligibility — the correct reviewer gate — bars it.
       assert :ok = AgentSettings.set_reviewer_eligible(:codex, false, "test")
       refute Run.reviewer_dispatchable?(codex)
+    end
+
+    test "auto-selection keeps an installed unavailable cross-family reviewer in the slate" do
+      codex = Codex
+      fake_bin = fake_codex_bin()
+      prepend_path(fake_bin)
+      installed = Map.new(Harness.AgentRegistry.all(), &{&1, &1 == codex})
+      SettingsStoreMemory.reset(scope: :test_default)
+      :sys.replace_state(Harness.AgentRegistry, &%{&1 | installed: installed})
+      assert :ok = Harness.AgentRegistry.mark_unavailable(codex, :soft_hint)
+
+      on_exit(fn ->
+        SettingsStoreMemory.reset(scope: :test_default)
+        Harness.AgentRegistry.reset()
+      end)
+
+      result = run(reviewer: nil)
+
+      assert %Result{state: :done, reason: :approved, reviewer_adapter: ^codex} = result
+      refute Harness.AgentRegistry.available?(codex)
+    end
+
+    test "an explicit unavailable reviewer pin still dispatches when installed and eligible" do
+      codex = Codex
+      fake_bin = fake_codex_bin()
+      prepend_path(fake_bin)
+      SettingsStoreMemory.reset(scope: :test_default)
+      :sys.replace_state(Harness.AgentRegistry, &put_in(&1, [:installed, codex], true))
+      assert :ok = Harness.AgentRegistry.mark_unavailable(codex, :soft_hint)
+
+      on_exit(fn ->
+        SettingsStoreMemory.reset(scope: :test_default)
+        Harness.AgentRegistry.reset()
+      end)
+
+      result = run(reviewer: :codex)
+
+      assert %Result{state: :done, reason: :approved, reviewer_adapter: ^codex} = result
+      refute Harness.AgentRegistry.available?(codex)
     end
 
     test "prioritize_reviewers/2 sinks a high-rejection-rate reviewer below a cleaner one" do
@@ -2125,6 +2191,29 @@ defmodule Harness.RunTest do
 
   defp item do
     %Item{id: "8", title: "Supervised run lifecycle", prompt: "do the thing", agent: :claude}
+  end
+
+  defp fake_codex_bin do
+    dir = Path.join(System.tmp_dir!(), "harness-fake-codex-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+
+    path = Path.join(dir, "codex")
+    json = Jason.encode!(%{verdict: "approve", report: "fake review: approve", ratings: FakeAdapter.review_ratings()})
+
+    File.write!(path, """
+    #!/bin/sh
+    mkdir -p .harness
+    printf '%s' '#{json}' > .harness/review.json
+    """)
+
+    File.chmod!(path, @executable_mode)
+    dir
+  end
+
+  defp prepend_path(dir) do
+    prior = System.get_env("PATH", "")
+    System.put_env("PATH", dir <> ":" <> prior)
+    on_exit(fn -> System.put_env("PATH", prior) end)
   end
 
   # Sets the per-agent :agent_model app-env override for the test and restores the

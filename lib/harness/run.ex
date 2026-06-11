@@ -1989,10 +1989,10 @@ defmodule Harness.Run do
     with {:ok, module} <- resolve_single_reviewer(data, reviewer), do: {:ok, [module]}
   end
 
-  # The full prioritized cross-family slate from the registry — every
-  # dispatchable agent that is not the implementer's family, deprioritized by
-  # historical rejection rate. The list is the rotation order on a reviewer
-  # timeout, not just the single auto-pick.
+  # The full prioritized cross-family slate from the registry — every installed,
+  # reviewer-eligible agent that is not the implementer's family, ordered by
+  # soft availability and historical rejection rate. The list is the rotation
+  # order on a reviewer timeout, not just the single auto-pick.
   @spec auto_reviewer_modules(data()) :: [module()]
   defp auto_reviewer_modules(data) do
     implementer = data.item.agent
@@ -2031,17 +2031,18 @@ defmodule Harness.Run do
     end
   end
 
-  # Orders dispatchable cross-family reviewer candidates, deprioritizing high
-  # rejection rates. A stable sort by each candidate's historical rejection rate
-  # AS a reviewer (`rates`, keyed by adapter module): a reviewer that rejects too
-  # freely sinks, while an unmeasured reviewer defaults to 0.0 and keeps its
-  # registry order. Advisory only — it reorders, never removes (no blacklist).
+  # Orders cross-family reviewer candidates, deprioritizing transiently
+  # unavailable adapters and high rejection rates. A stable sort by availability
+  # AS A SOFT HINT and each candidate's historical rejection rate AS a reviewer
+  # (`rates`, keyed by adapter module): a busy reviewer sinks below an available
+  # one, and a reviewer that rejects too freely sinks among equally available
+  # peers. Advisory only — it reorders, never removes (no blacklist).
   # `@doc false` public so the routing decision is unit-testable without a real
   # auto-selection run (which needs installed agent CLIs).
   @doc false
   @spec prioritize_reviewers([{atom(), module()}], %{optional(module()) => float()}) :: [{atom(), module()}]
   def prioritize_reviewers(candidates, rates) when is_list(candidates) and is_map(rates) do
-    Enum.sort_by(candidates, fn {_agent, module} -> Map.get(rates, module, 0.0) end)
+    Enum.sort_by(candidates, fn {_agent, module} -> {availability_rank(module), Map.get(rates, module, 0.0)} end)
   end
 
   # Advisory cross-family tiebreaker: among equally-dispatchable reviewers,
@@ -2086,19 +2087,27 @@ defmodule Harness.Run do
     end
   end
 
-  # Reviewer-dispatchability is governed by reviewer_eligible? ALONE among the
-  # operator gates — deliberately NOT the implementer-level AgentSettings.enabled?
-  # flag. The two roles are orthogonal: `enabled?` answers "may this agent
-  # IMPLEMENT?", `reviewer_eligible?` answers "may it REVIEW?". Coupling them made
-  # "reviewer-only" (disabled implementer + eligible reviewer) unexpressable — a
-  # Claude pinned as the dedicated reviewer but disabled as an implementer was
-  # rejected as {:reviewer_unavailable, Claude}, settling every run :review_stuck.
-  # To bar an agent from BOTH roles, turn off both flags.
+  @spec availability_rank(module()) :: 0 | 1
+  defp availability_rank(module), do: if(AgentRegistry.available?(module), do: 0, else: 1)
+
+  # Reviewer-dispatchability is governed by installed? and reviewer_eligible?.
+  # The implementer-level AgentSettings.enabled? flag is deliberately NOT a
+  # reviewer gate. The two roles are orthogonal: `enabled?` answers "may this
+  # agent IMPLEMENT?", `reviewer_eligible?` answers "may it REVIEW?". Coupling
+  # them made "reviewer-only" (disabled implementer + eligible reviewer)
+  # unexpressable — a Claude pinned as the dedicated reviewer but disabled as an
+  # implementer was rejected as {:reviewer_unavailable, Claude}, settling every
+  # run :review_stuck. To bar an agent from BOTH roles, turn off both flags.
+  #
+  # AgentRegistry.available?/1 is also deliberately NOT a reviewer gate. Its
+  # moduledoc defines availability as a restart-cleared soft latency hint, so it
+  # belongs in prioritize_reviewers/2 ordering only. Treating it as a hard
+  # eligibility filter can empty the whole cross-family slate and discard
+  # completed implementer work before any reviewer is tried.
   @doc false
   @spec reviewer_dispatchable?(module()) :: boolean()
   def reviewer_dispatchable?(module) do
-    AgentRegistry.available?(module) and
-      AgentRegistry.installed?(module) and
+    AgentRegistry.installed?(module) and
       reviewer_eligible?(module)
   end
 
