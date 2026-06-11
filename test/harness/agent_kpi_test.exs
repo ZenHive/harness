@@ -409,6 +409,38 @@ defmodule Harness.AgentKPITest do
 
       assert AgentKPI.aggregate_review_stuck_causes(records) == %{timed_out: 1}
     end
+
+    test "counts direct persisted detail tuple tags" do
+      records = [
+        record(
+          reviewer_adapter: nil,
+          verdict: nil,
+          reason: {:review_stuck, {:reviewer_unavailable, Claude}}
+        ),
+        record(
+          reviewer_adapter: nil,
+          verdict: nil,
+          reason: {:review_stuck, {:no_cross_family_reviewer, :codex}}
+        ),
+        record(
+          reviewer_adapter: nil,
+          verdict: nil,
+          reason: {:review_stuck, {:same_family_reviewer, :codex, Claude}}
+        ),
+        record(
+          reviewer_adapter: ClaudeReviewer,
+          verdict: nil,
+          reason: {:review_stuck, {:reviewer_crashed, :killed}}
+        )
+      ]
+
+      assert AgentKPI.aggregate_review_stuck_causes(records) == %{
+               reviewer_unavailable: 1,
+               no_cross_family_reviewer: 1,
+               same_family_reviewer: 1,
+               reviewer_crashed: 1
+             }
+    end
   end
 
   describe "aggregate/1 reviewer-flaked attribution" do
