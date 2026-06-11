@@ -10500,7 +10500,7 @@
       "id": "252",
       "phase": 19,
       "bundle": "agent-gate",
-      "status": "in_progress",
+      "status": "pending",
       "title": "Per-project warm_paths: seed a project's gitignored worktree inputs (source/corpus) so extractor runs don't fail review_stuck on a missing base",
       "scores": {
         "d": 3,
