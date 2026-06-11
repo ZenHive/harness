@@ -10331,7 +10331,7 @@
       "phase": 19,
       "bundle": "kpi-routing",
       "milestone": "v0_14",
-      "status": "pending",
+      "status": "in_progress",
       "title": "AgentKPI quality rollup reads legacy-empty review_ratings — repoint to review_skills so the quality signal isn't dark since the v0_13 rubric migration",
       "scores": {
         "d": 2,
@@ -10373,6 +10373,7 @@
       ],
       "body": "## Observation (KPI muster, 2026-06-10)\nreview_ratings is populated on 52/118 run records, and ZERO of the 50 approved runs since 2026-06-06 have it. But review_skills + review_facets ARE populated on 100% of runs from 2026-06-06 on. The reviewer didn't stop scoring — Task 224/225 (v0_13 rubric foundation) REPLACED the flat 4-key review_ratings block (performance/truthfulness/code_quality/idiom) with the two-axis review_skills block (programming domains x cross-cutting qualities, each {score, note}). log_record.ex:18 literally calls review_ratings 'the legacy flat KPI block, kept for back-compat'.\n\n## The bug\nThe record WRITE migrated; the KPI READ did not. agent_kpi.ex:285:\n    defp record_ratings(record), do: Map.get(record, :review_ratings) || %{}\nAgentKPI's quality rollup still reads review_ratings, which is {} for every run in the last 5 days. So the quality column on /harness/kpi and the AgentKPI aggregate (surfaced via the MCP KPI tool, and the input Task 177 made load-bearing) compute over empty maps for all post-rubric-migration runs — the reviewer-judged quality signal has been dark since 2026-06-06 even though every run was scored. Same stale read at batch/agent_evaluation.ex:238 (entry_ratings) and dispatch.ex:1223.\n\n## Fix\nRepoint the quality rollup to review_skills (reduce per-skill scores to the agent's quality mean), falling back to review_ratings for legacy records so the ~52 older runs still count. Pure field-migration + back-compat read — mantra-clean fact counting, no judgment. Mirrors how Task 225 already pivots the page by review_facets; this fixes the per-agent quality metric inside each row to read the field the reviewer actually writes.\n",
       "created_at": "2026-06-10",
+      "started_at": "2026-06-11",
       "scored_at": "2026-06-10",
       "cross_repo": []
     },

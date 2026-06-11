@@ -7251,7 +7251,7 @@ id = "248"
 phase = 19
 bundle = "kpi-routing"
 milestone = "v0_14"
-status = "pending"
+status = "in_progress"
 title = "AgentKPI quality rollup reads legacy-empty review_ratings — repoint to review_skills so the quality signal isn't dark since the v0_13 rubric migration"
 scores = { d = 2, b = 7, u = 6 }
 markers = ["bug"]
@@ -7274,6 +7274,7 @@ AgentKPI's quality rollup still reads review_ratings, which is {} for every run 
 Repoint the quality rollup to review_skills (reduce per-skill scores to the agent's quality mean), falling back to review_ratings for legacy records so the ~52 older runs still count. Pure field-migration + back-compat read — mantra-clean fact counting, no judgment. Mirrors how Task 225 already pivots the page by review_facets; this fixes the per-agent quality metric inside each row to read the field the reviewer actually writes.
 """
 created_at = "2026-06-10"
+started_at = "2026-06-11"
 scored_at = "2026-06-10"
 
 [[task]]
