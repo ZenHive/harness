@@ -78,6 +78,8 @@ defmodule Harness.Roadmap do
 
   @typep ctx :: %{root: String.t(), tasks_path: String.t(), rmap_bin: String.t()}
   @typep failure :: {integer(), String.t(), [String.t()]}
+  @roadmap_lock_retry_delay_ms 25
+  @roadmap_lock_timeout_ms 30_000
 
   api(:ingest, "Fetch a roadmap task via rmap and render it as a ready-to-dispatch agent prompt.",
     params: [
@@ -416,7 +418,57 @@ defmodule Harness.Roadmap do
         )
 
       :none ->
-        run_rmap(args, ctx)
+        with_roadmap_lock(ctx, fn -> run_rmap(args, ctx) end)
+    end
+  end
+
+  # Local rmap status writes are read/modify/write operations against one shared
+  # tasks.toml. Serialize that file I/O mechanically so concurrent run-lifecycle
+  # claims cannot each read the same stale snapshot and clobber the prior writer.
+  @spec with_roadmap_lock(ctx(), (-> {:ok, String.t()} | {:error, term()})) ::
+          {:ok, String.t()} | {:error, term()}
+  defp with_roadmap_lock(ctx, fun) do
+    lock_path = ctx.tasks_path <> ".lock"
+    _ = File.mkdir_p(Path.dirname(lock_path))
+
+    lock_path
+    |> acquire_roadmap_lock(System.monotonic_time(:millisecond) + @roadmap_lock_timeout_ms)
+    |> case do
+      {:ok, lock} ->
+        try do
+          fun.()
+        after
+          File.close(lock)
+          _ = File.rm(lock_path)
+        end
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  @spec acquire_roadmap_lock(String.t(), integer()) :: {:ok, File.io_device()} | {:error, term()}
+  defp acquire_roadmap_lock(lock_path, deadline_ms) do
+    case File.open(lock_path, [:write, :exclusive]) do
+      {:ok, lock} ->
+        IO.write(lock, "#{inspect(self())}\n")
+        {:ok, lock}
+
+      {:error, :eexist} ->
+        retry_roadmap_lock(lock_path, deadline_ms)
+
+      {:error, reason} ->
+        {:error, {:roadmap_lock_failed, lock_path, reason}}
+    end
+  end
+
+  @spec retry_roadmap_lock(String.t(), integer()) :: {:ok, File.io_device()} | {:error, term()}
+  defp retry_roadmap_lock(lock_path, deadline_ms) do
+    if System.monotonic_time(:millisecond) >= deadline_ms do
+      {:error, {:roadmap_lock_timeout, lock_path}}
+    else
+      Process.sleep(@roadmap_lock_retry_delay_ms)
+      acquire_roadmap_lock(lock_path, deadline_ms)
     end
   end
 

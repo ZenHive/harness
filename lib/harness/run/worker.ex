@@ -286,9 +286,10 @@ defmodule Harness.Run.Worker do
     checkpoint(job, "run_started")
     started_at_ms = System.monotonic_time(:millisecond)
 
-    # Best-effort claim (run-lifecycle owner per Task 131). Failure logs but does
-    # not abort the run; next cron tick's ready/next will skip this task while it
-    # is in_progress (or green-unlanded under manual landing_policy).
+    # Best-effort claim (run-lifecycle owner per Task 131). Roadmap serializes
+    # the file-backed status write; failure still logs but does not abort the run.
+    # The next cron tick's ready/next will skip this task while it is in_progress
+    # (or green-unlanded under manual landing_policy).
     _ = claim_in_progress(item, project)
 
     case start_run(item, project, adapter, run_opts(job, item)) do
