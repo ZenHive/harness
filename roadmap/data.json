@@ -10331,7 +10331,7 @@
       "phase": 19,
       "bundle": "kpi-routing",
       "milestone": "v0_14",
-      "status": "in_progress",
+      "status": "pending",
       "title": "AgentKPI quality rollup reads legacy-empty review_ratings — repoint to review_skills so the quality signal isn't dark since the v0_13 rubric migration",
       "scores": {
         "d": 2,
