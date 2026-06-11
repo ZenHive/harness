@@ -7652,3 +7652,25 @@ The plan file from this session (targeted-only fix, NOT what the user wants) is 
 '''
 created_at = "2026-06-11"
 scored_at = "2026-06-11"
+
+[[task]]
+id = "260"
+phase = 13
+bundle = "postgres-results"
+status = "pending"
+title = "Fix stale LandingSettings default-target_branch assertion in settings_store/postgres_test.exs:36"
+scores = { d = 1, b = 2, u = 2 }
+acceptance_criteria = ["settings_store/postgres_test.exs:28 passes with --include integration in isolation and in the full suite", 'The intended default for an unspecified target_branch (nil vs "main") is decided and made consistent across Project, ProjectFixture, LandingSettings.effective, and the test', "No other settings_store/landing test regresses"]
+out_of_scope = ["Any change to result_store / KPI aggregation (Task 258 territory)"]
+files_to_modify = ["test/harness/settings_store/postgres_test.exs"]
+domains = ["ecto"]
+assignee = "claude"
+body = """
+Pre-existing red on `development` (confirmed at d906c5a^ during Task 258 review, 2026-06-12): `test/harness/settings_store/postgres_test.exs:28` "domain readers return defaults when no settings row exists" fails at line 36.
+
+`LandingSettings.effective(ProjectFixture.from_repo(...))` returns `target_branch: nil` (the `%Harness.Project{}` struct default is `nil`, and `ProjectFixture.from_repo` only sets `target_branch` when the opt is passed), but the assertion still expects `target_branch: "main"` — a stale expectation from before the Project default was nil-ed. Fails in isolation (`mix test.json ...:28 --include integration`), so it is not test-ordering pollution; the harness_settings table is empty.
+
+Fix the assertion to expect `target_branch: nil` (or, if "main" is the intended registration default, fix `ProjectFixture.from_repo` / `Project` to default it and keep the test) — decide which is the intended default first. Unrelated to Task 258 (result_store/KPI), filed as a discovery so the integration suite goes green.
+"""
+created_at = "2026-06-11"
+scored_at = "2026-06-11"
