@@ -7165,7 +7165,7 @@ id = "245"
 phase = 16
 bundle = "agent-gate"
 milestone = "v0_14"
-status = "in_progress"
+status = "done"
 title = "Run-lifecycle in_progress claim survives concurrent tasks.toml writers"
 scores = { d = 3, b = 7, u = 7 }
 acceptance_criteria = ["Concurrent in_progress claims from N simultaneous runs on the same project all persist (no lost-update) — test fires >=3 concurrent mark_in_progress writebacks and asserts every task ends in_progress.", "A run that settles approved is never left at pending in tasks.toml due to a racing writer.", "No new judgment in harness code; the fix is mechanical write-serialization/durability.", "Existing Worker writeback semantics preserved (revert-to-pending on settled failure, stay in_progress on green-unlanded under manual policy)."]
@@ -7183,9 +7183,14 @@ rmap's validate-then-write protects write VALIDITY, not against lost updates bet
 
 TODO: make the start-of-run in_progress claim resilient to concurrent writers. Candidates: (a) route the claim through the lander's Durable/serialized writeback; (b) serialize per-project roadmap mutations through one GenServer/Oban-serialized queue; (c) lock-or-retry on the file in rmap status. Pick the one fitting the mechanical-substrate rule — git/file-IO serialization, not judgment.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781214716819-e787fd21, eb7202b23aa8246cc0accadd494782e7aafc111d)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-09"
 started_at = "2026-06-11"
 scored_at = "2026-06-09"
+done_at = "2026-06-11"
+shipped_in = "eb7202b23aa8246cc0accadd494782e7aafc111d"
 
 [[task]]
 id = "246"
