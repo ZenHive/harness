@@ -7197,7 +7197,7 @@ id = "246"
 phase = 13
 bundle = "kpi-routing"
 milestone = "v0_14"
-status = "in_progress"
+status = "done"
 title = "ResultStore MCP read tools resolve configured() store when param omitted (KPIs read empty via MCP)"
 scores = { d = 2, b = 4, u = 4 }
 acceptance_criteria = ["The api()-annotated ResultStore read tools (aggregate_by_agent, list_capability_scores — and any sibling whose Elixir default is `configured()` but whose api() `store` default is `nil`) resolve the configured store when the MCP/chat caller omits `store`, instead of hitting the `nil`/`false` disabled short-circuit that returns {:ok, %{}} / {:ok, []}.", "Elixir-side behavior is unchanged: `false`/`nil` still explicitly short-circuits (disabled store), and an explicit store override still wins. Only the MISSING-param path changes from nil->disabled to nil->configured().", "Fix is at the api() surface, not by deleting the disabled short-circuit: prefer an api() default sentinel that resolves configured() (or drop the `store` param from the tool schema and resolve internally), so `false`/`nil` overrides remain expressible.", "Regression test: invoking each affected tool through the descripex/MCP dispatch path (Harness.Chat.Tools / Manifest) with no `store` arg returns the populated aggregate/list from the configured Postgres store, not the empty disabled value. A test with explicit store=false still returns the disabled value.", "mix test.json green"]
@@ -7214,14 +7214,14 @@ Impact: any orchestrator reading KPIs / capability scores over MCP to make routi
 
 Out of scope: the separate `list_run_records` MCP sharp edge (its `filters` param must be a keyword list, which JSON can't express — passing a JSON object raises a function-clause on the `is_list/1` guard). File separately if it bites; this task is only the store-default divergence on the no-arg aggregate/list reads.
 '''
-implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781216080652-36aaa8a4, 41f54ac6150e21405508404f79b1e25ac2fe6b94)."
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781218593827-0ae63381, 000a4dda4f1042c9673003166caa4353f6e034cd)."
 delivered_by = "codex"
 verified = true
 created_at = "2026-06-10"
 started_at = "2026-06-11"
 scored_at = "2026-06-10"
 done_at = "2026-06-11"
-shipped_in = "41f54ac6150e21405508404f79b1e25ac2fe6b94"
+shipped_in = "000a4dda4f1042c9673003166caa4353f6e034cd"
 
 [[task]]
 id = "247"
