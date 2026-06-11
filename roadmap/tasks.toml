@@ -7350,7 +7350,7 @@ scored_at = "2026-06-10"
 id = "251"
 phase = 19
 bundle = "audit-agent"
-status = "pending"
+status = "in_progress"
 title = "Discovery-filing stage: implementer/reviewer/audit agents file follow-ups via rmap new, not lose them or bury them in TODO comments"
 scores = { d = 3, b = 5, u = 5 }
 acceptance_criteria = ["The audit-agent prompt instructs the agent that when it notices follow-up work during its commit-range review (tech debt, an orphaned code path, an uncovered edge case, a deferred decision), it files each as a real rmap task via `rmap new` against the project's roadmap_path — and names the filed task id(s) in its `.audit/<sha>.md` report.", "The reviewer prompt instructs the reviewer that genuine follow-ups it surfaces while gating (and chooses NOT to fix inline) are filed via `rmap new` in its worktree (riding the merge-train commit), not just mentioned in the prose verdict where they evaporate.", "rmap is available on PATH inside both worktrees (implementer/reviewer branch worktree AND the audit's detached origin/<target> worktree); if it is not already, harness ensures it is — this is mechanical plumbing, not judgment.", "Mantra-clean: harness does NOT classify what is a discovery, score it, or decide whether to file — the AGENT decides and runs `rmap new` itself; harness reads nothing back and recomputes no meaning. The only harness change is making the rmap CLI reachable + the prompt text.", "tasks.toml multi-writer safety is addressed: concurrent runs filing discoveries must not corrupt the file or collide on ids — rely on rmap's validate-then-write + let the merge-train rebase reconcile tasks.toml; document the residual conflict path (a rebase conflict on tasks.toml falls through to the existing Lander.Resolver), do not add a lock.", "Tests: a fixture audit/review prompt-render asserts the discovery-filing instruction is present; an integration-style assertion that a `rmap new` run inside a worktree produces a parseable task (no harness-side parsing of the result).", "mix precommit.full green"]
@@ -7389,6 +7389,7 @@ Cross-ref: Task 43 (TODO-comment dispatch-base reds — this supersedes its work
 bundle audit-agent (the post-merge audit role); the agent-gate workflow (docs/agent-gate-workflow.md).
 """
 created_at = "2026-06-10"
+started_at = "2026-06-11"
 scored_at = "2026-06-10"
 
 [[task]]

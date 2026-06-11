@@ -10479,7 +10479,7 @@
       "id": "251",
       "phase": 19,
       "bundle": "audit-agent",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Discovery-filing stage: implementer/reviewer/audit agents file follow-ups via rmap new, not lose them or bury them in TODO comments",
       "scores": {
         "d": 3,
@@ -10513,6 +10513,7 @@
       ],
       "body": "Surfaced 2026-06-10: dispatched runs (tapakly T90/T95) landed clean but filed ZERO follow-up\ntasks — not because there were none worth filing in general, but because no harness stage\nPROMPTS an agent to run `rmap new`. The implementer commits code, the reviewer gates+fixes and\nwrites .harness/review.json, the lander merges, the auditor writes .audit/<sha>.md — none is told\nto capture discoveries into the roadmap. So any tech-debt/edge-case/orphaned-path an agent notices\nlives (at best) in prose in a verdict/audit artifact and evaporates. This is the harness analogue\nof the global CLAUDE.md rule \"Capture Discoveries as Tasks\" — which today only humans honor.\n\nThe fix is a discovery-filing instruction added to the reviewer prompt and (primarily) the\naudit-agent prompt: when you notice follow-up work, FILE it via `rmap new` against the project's\nroadmap_path, and name the filed id(s) in your artifact. The audit agent is the natural primary\nhome — it is batch-scoped, post-merge, already reflects over a commit range, and already writes\nreport artifacts; per-run reviewer filing is the secondary channel for follow-ups the reviewer\ndeclines to fix inline.\n\nMantra discipline (non-negotiable): harness must NOT judge what counts as a discovery, score it,\nor decide to file. The agent decides and runs the CLI; harness's only change is mechanical —\nensure `rmap` is on PATH in the worktrees and add the prompt text. Harness reads nothing back.\n\nThis also resolves the ROOT CAUSE behind Task 43 (\"Dogfood verification reds on pre-existing TODO\ncomments in dispatch base\"): the audit agent currently records follow-ups by inserting\n`# TODO(Task NN):` source comments, which dispatched worktrees inherit and which trip `credo\n--strict` TagTODO, penalizing the next agent for debt that isn't theirs. A proper rmap task is\nstrictly better: it is the durable, queryable, dispatchable record a source comment can never be,\nand it leaves no TODO in the tree. Filing-as-rmap-task should REPLACE the TODO-comment habit in\nthe audit prompt.\n\nCross-ref: Task 43 (TODO-comment dispatch-base reds — this supersedes its workaround candidates);\nbundle audit-agent (the post-merge audit role); the agent-gate workflow (docs/agent-gate-workflow.md).\n",
       "created_at": "2026-06-10",
+      "started_at": "2026-06-11",
       "scored_at": "2026-06-10",
       "cross_repo": []
     },

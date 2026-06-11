@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 19 — Self-Healing Run Loop (14 of 18 done · 0 in progress)
+**Focus phase:** 19 — Self-Healing Run Loop (14 of 18 done · 1 in progress)
 
 **Last shipped:** Task 247 — Reviewer selection: AgentRegistry.available? must deprioritize, not eliminate, an installed cross-family reviewer (soft hint used as hard gate discards completed work), Task 248 — AgentKPI quality rollup reads legacy-empty review_ratings — repoint to review_skills so the quality signal isn't dark since the v0_13 rubric migration, Task 252 — Per-project warm_paths: pre-seed a project's gitignored worktree inputs (source/corpus) so agents don't relink/regenerate the corpus on every run on 2026-06-11
 
