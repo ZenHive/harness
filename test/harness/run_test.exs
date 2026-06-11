@@ -757,12 +757,22 @@ defmodule Harness.RunTest do
     end
 
     test "a runtime reviewer override wins over a registration default" do
+      # The override is applied at the ProjectRegistry read boundary (lookup/1),
+      # not inside the run — so register, flip, look up the *effective* project,
+      # then dispatch it. This is exactly how a real dispatch path resolves it.
       project = ProjectFixture.from_repo(GitFixture.init_repo(), reviewer: :codex)
       SettingsStoreMemory.reset(scope: :test_default)
-      on_exit(fn -> SettingsStoreMemory.reset(scope: :test_default) end)
-      assert :ok = LandingSettings.set_reviewer(project.name, :claude, "test")
+      :ok = ProjectRegistry.register(project)
 
-      {run_id, pid} = start_with_project_reviewer(project, [])
+      on_exit(fn ->
+        ProjectRegistry.unregister(project.name)
+        SettingsStoreMemory.reset(scope: :test_default)
+      end)
+
+      assert :ok = LandingSettings.set_reviewer(project.name, :claude, "test")
+      assert {:ok, %{reviewer: :claude} = effective} = ProjectRegistry.lookup(project.name)
+
+      {run_id, pid} = start_with_project_reviewer(effective, [])
 
       assert %Result{state: :failed, reason: {:review_stuck, report}, reviewer_adapter: nil} =
                await_result(run_id, pid)

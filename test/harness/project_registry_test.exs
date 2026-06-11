@@ -3,11 +3,13 @@ defmodule Harness.ProjectRegistryTest do
 
   alias Harness.Dispatch
   alias Harness.GitFixture
+  alias Harness.Landing.Settings, as: LandingSettings
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.Roadmap.Item
   alias Harness.Run.Result
   alias Harness.Run.Supervisor, as: RunSupervisor
+  alias Harness.Test.SettingsStoreMemory
 
   setup do
     ProjectRegistry.reset()
@@ -331,6 +333,67 @@ defmodule Harness.ProjectRegistryTest do
 
       assert %Result{task_id: "a", state: :done, reason: :approved} = result_a
       assert %Result{task_id: "b", state: :failed, reason: {:review_rejected, _report}} = result_b
+    end
+  end
+
+  describe "lookup/1 + list/0 return the landing-overlaid effective project (Task 257)" do
+    setup do
+      SettingsStoreMemory.reset(scope: :test_default)
+      on_exit(fn -> SettingsStoreMemory.reset(scope: :test_default) end)
+      :ok
+    end
+
+    test "lookup overlays a persisted :auto/branch override onto a :manual/nil registration default" do
+      project = %{sample_project("flip") | landing_policy: :manual, target_branch: nil}
+      assert :ok = ProjectRegistry.register(project)
+      assert :ok = LandingSettings.set("flip", :auto, "release", "test")
+
+      assert {:ok, effective} = ProjectRegistry.lookup("flip")
+      assert effective.landing_policy == :auto
+      assert effective.target_branch == "release"
+    end
+
+    test "list reflects the same overlay" do
+      project = %{sample_project("flip") | landing_policy: :manual, target_branch: nil}
+      assert :ok = ProjectRegistry.register(project)
+      assert :ok = LandingSettings.set("flip", :auto, "release", "test")
+
+      assert [effective] = ProjectRegistry.list()
+      assert effective.landing_policy == :auto
+      assert effective.target_branch == "release"
+    end
+
+    test "a reviewer override is overlaid too" do
+      project = sample_project("rev")
+      assert :ok = ProjectRegistry.register(project)
+      assert :ok = LandingSettings.set_reviewer("rev", :codex, "test")
+
+      assert {:ok, %{reviewer: :codex}} = ProjectRegistry.lookup("rev")
+    end
+
+    test "no override: the registration default stands unchanged (lookup and list)" do
+      project = %{sample_project("plain") | landing_policy: :manual, target_branch: nil}
+      assert :ok = ProjectRegistry.register(project)
+
+      assert {:ok, ^project} = ProjectRegistry.lookup("plain")
+      assert [^project] = ProjectRegistry.list()
+    end
+
+    test "overlay/1 is applied at exactly ONE read boundary — no stray per-call-site overlay" do
+      # The single-source guard: the only places that call Landing.Settings.overlay/1
+      # are the ProjectRegistry read boundary and Landing.Settings itself
+      # (effective/1). A re-introduced per-call-site overlay (the Task 171 trap)
+      # fails this immediately.
+      boundary = ["lib/harness/project_registry.ex", "lib/harness/landing/settings.ex"]
+
+      offenders =
+        "lib/**/*.ex"
+        |> Path.wildcard()
+        |> Enum.reject(&(&1 in boundary))
+        |> Enum.filter(&(File.read!(&1) =~ ~r/\.overlay\(/))
+
+      assert offenders == [],
+             "overlay/1 must be applied only at the ProjectRegistry read boundary; stray call sites: #{inspect(offenders)}"
     end
   end
 

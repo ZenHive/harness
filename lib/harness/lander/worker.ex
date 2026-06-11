@@ -4,10 +4,11 @@ defmodule Harness.Lander.Worker do
 
   Enqueued by `Harness.Run` when a run settles green under a `landing_policy:
   :auto` project, onto the serialized `landing_<name>` queue (limit 1). Resolves
-  the project from the registry **with the runtime landing override applied**
-  (`Harness.Landing.Settings.overlay/1` — the dashboard's auto-land flip; the
-  raw registry entry may still say `:manual` / no target branch), delegates to
-  `Harness.Lander.land/1`, and hands the structured outcome to
+  the project from `Harness.ProjectRegistry.lookup/1`, which returns the
+  **effective** project with the runtime landing override already applied (the
+  dashboard's auto-land flip; the registration default may still say `:manual` /
+  no target branch). Delegates to `Harness.Lander.land/1` and hands the
+  structured outcome to
   `Harness.Lander.Resilience.route/2`, which maps it to Oban's worker contract —
   landing the run, re-dispatching/re-landing under the attempt cap, or marking
   the task `blocked` at the cap. The worker stays thin: build the request, land,
@@ -18,7 +19,6 @@ defmodule Harness.Lander.Worker do
 
   alias Harness.Lander
   alias Harness.Lander.Resilience
-  alias Harness.Landing.Settings, as: LandingSettings
   alias Harness.ProjectRegistry
 
   @impl Oban.Worker
@@ -28,7 +28,7 @@ defmodule Harness.Lander.Worker do
          {:ok, branch} <- fetch_arg(args, "branch"),
          {:ok, project} <- ProjectRegistry.lookup(project_name) do
       %{
-        project: LandingSettings.overlay(project),
+        project: project,
         run_id: args["run_id"],
         task_id: args["task_id"],
         agent: args["agent"],

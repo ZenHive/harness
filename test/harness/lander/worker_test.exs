@@ -50,9 +50,10 @@ defmodule Harness.Lander.WorkerTest do
       assert sha(ctx.origin, "refs/heads/main") == ctx.branch_tip
     end
 
-    test "without an override the raw registry project still has nothing to land onto", ctx do
-      # Regression guard's control case: no override → the registry's
-      # :manual/no-target project surfaces :no_target_branch (Oban retries).
+    test "without an override the looked-up project still has nothing to land onto", ctx do
+      # Regression guard's control case: no override → lookup returns the
+      # registration default unchanged (:manual/no-target), so the worker
+      # surfaces :no_target_branch (Oban retries).
       assert {:error, :no_target_branch} = Worker.perform(%Oban.Job{args: land_args(ctx.project)})
     end
   end

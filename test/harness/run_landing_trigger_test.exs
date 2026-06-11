@@ -8,10 +8,13 @@ defmodule Harness.RunLandingTriggerTest do
 
   alias Harness.FakeAdapter
   alias Harness.GitFixture
+  alias Harness.Landing.Settings, as: LandingSettings
   alias Harness.ProjectFixture
+  alias Harness.ProjectRegistry
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.Result
+  alias Harness.Test.SettingsStoreMemory
 
   defp item, do: %Item{id: "42", title: "t", prompt: "p", agent: :claude}
 
@@ -94,6 +97,34 @@ defmodule Harness.RunLandingTriggerTest do
       assert %Result{state: :done, reason: :approved} = await_approved(run_id)
 
       refute_receive {:landing_insert, _changeset}, 500
+    end
+
+    test "a :manual-registered project flipped to :auto via the runtime override auto-lands through lookup (no per-call-site overlay)" do
+      capture_inserts()
+      repo = GitFixture.init_repo()
+      SettingsStoreMemory.reset(scope: :test_default)
+
+      project = %{ProjectFixture.from_repo(repo) | landing_policy: :manual, target_branch: nil}
+      :ok = ProjectRegistry.register(project)
+
+      on_exit(fn ->
+        ProjectRegistry.unregister(project.name)
+        SettingsStoreMemory.reset(scope: :test_default)
+      end)
+
+      :ok = LandingSettings.set(project.name, :auto, "main", "test")
+
+      # The run trusts the *effective* project the registry hands it; run.ex does
+      # not re-overlay. Resolving via lookup (as every real dispatch path does)
+      # must therefore drive the auto-land enqueue off the persisted override.
+      assert {:ok, %{landing_policy: :auto, target_branch: "main"} = effective} =
+               ProjectRegistry.lookup(project.name)
+
+      run_id = start_run(effective)
+      assert %Result{state: :done, reason: :approved} = await_approved(run_id)
+
+      assert_receive {:landing_insert, changeset}, 5_000
+      assert Ecto.Changeset.get_field(changeset, :queue) == "landing_" <> project.name
     end
   end
 end

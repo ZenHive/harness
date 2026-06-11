@@ -7,11 +7,26 @@ defmodule Harness.ProjectRegistry do
   `config :harness, :projects` is a one-time first-boot seed for missing names.
   Once a row exists, the Postgres row wins. When repo persistence is disabled,
   config projects remain the ephemeral bootstrap.
+
+  ## Effective projects — the single landing-policy read boundary
+
+  `lookup/1` and `list/0` return the **landing-overlaid effective project**:
+  `landing_policy` / `target_branch` / `reviewer` reflect the operator's
+  runtime overrides in `Harness.Landing.Settings` (the `harness_settings[:landing]`
+  store), never the stale value persisted in the projects payload. The persisted
+  payload's landing fields are a *registration-time seed* only — a project with no
+  override returns its registration default unchanged.
+
+  This is THE single place the overlay is applied. Callers must not re-overlay a
+  looked-up struct (the old per-call-site `Landing.Settings.overlay/1` in
+  `Harness.Run` / `Harness.Lander.Worker` is gone). Task 171 was a point-fix of one
+  forgetful call site; overlaying here makes "forgetting" structurally impossible.
   """
 
   use GenServer
   use Descripex, namespace: "/project_registry"
 
+  alias Harness.Landing.Settings, as: LandingSettings
   alias Harness.Project
   alias Harness.ProjectRegistry.Persistence
 
@@ -96,7 +111,10 @@ defmodule Harness.ProjectRegistry do
 
   @spec lookup(String.t()) :: {:ok, Project.t()} | {:error, error()}
   def lookup(name) when is_binary(name) do
-    GenServer.call(__MODULE__, {:lookup, name})
+    case GenServer.call(__MODULE__, {:lookup, name}) do
+      {:ok, project} -> {:ok, LandingSettings.overlay(project)}
+      error -> error
+    end
   end
 
   api(:list, "List every registered project, sorted by name.",
@@ -109,7 +127,9 @@ defmodule Harness.ProjectRegistry do
 
   @spec list() :: [Project.t()]
   def list do
-    GenServer.call(__MODULE__, :list)
+    __MODULE__
+    |> GenServer.call(:list)
+    |> Enum.map(&LandingSettings.overlay/1)
   end
 
   api(:unregister, "Remove a project from the registry by name.",
