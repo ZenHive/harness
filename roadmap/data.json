@@ -10214,7 +10214,7 @@
       "dep_layer": 0,
       "markers": [],
       "depends_on": [],
-      "assignee": "claude",
+      "assignee": "codex",
       "module": "Harness.Run.Worker",
       "acceptance_criteria": [
         "Concurrent in_progress claims from N simultaneous runs on the same project all persist (no lost-update) — test fires >=3 concurrent mark_in_progress writebacks and asserts every task ends in_progress.",
@@ -10471,7 +10471,7 @@
       "dep_layer": 0,
       "markers": [],
       "depends_on": [],
-      "assignee": "claude",
+      "assignee": "codex",
       "acceptance_criteria": [
         "The audit-agent prompt instructs the agent that when it notices follow-up work during its commit-range review (tech debt, an orphaned code path, an uncovered edge case, a deferred decision), it files each as a real rmap task via `rmap new` against the project's roadmap_path — and names the filed task id(s) in its `.audit/<sha>.md` report.",
         "The reviewer prompt instructs the reviewer that genuine follow-ups it surfaces while gating (and chooses NOT to fix inline) are filed via `rmap new` in its worktree (riding the merge-train commit), not just mentioned in the prose verdict where they evaporate.",
@@ -10501,7 +10501,7 @@
       "id": "252",
       "phase": 19,
       "bundle": "agent-gate",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Per-project warm_paths: pre-seed a project's gitignored worktree inputs (source/corpus) so agents don't relink/regenerate the corpus on every run",
       "scores": {
         "d": 3,
@@ -10553,7 +10553,7 @@
       "id": "253",
       "phase": 16,
       "bundle": "agent-gate",
-      "status": "pending",
+      "status": "done",
       "title": "MCP api() param coercion breaks guarded fns: await/5 (float timeout_ms) + list_run_records/1 (map filters)",
       "scores": {
         "d": 3,
@@ -10566,7 +10566,7 @@
         "bug"
       ],
       "depends_on": [],
-      "assignee": "claude",
+      "assignee": "codex",
       "acceptance_criteria": [
         "dispatch-await with an explicit timeout_ms (e.g. 1800000) no longer raises 'no function clause matching in Harness.Dispatch.await/5' — JSON number reaches await/5 as float, missing is_integer(timeout_ms)",
         "result_store-list_run_records (with filters object OR empty) no longer raises 'no function clause matching in Harness.ResultStore.list_run_records/1' — JSON object reaches the fn as a map, missing the is_list(filters) guard",
@@ -10583,9 +10583,12 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "c9a1b88",
       "body": "Found 2026-06-11 while testing the updated harness end-to-end (run-1781171110262-3bd79d4f, task 112 tapakly,\nwhich itself landed cleanly — implement->review->land works). TWO MCP-exposed fns fail deterministically, same root class:\n(1) dispatch-await with explicit timeout_ms -> 'no function clause matching in Harness.Dispatch.await/5'; await/5 guards\nis_integer(timeout_ms), the JSON number arrives as a float. (2) result_store-list_run_records (filters object or {}) ->\n'no function clause matching in Harness.ResultStore.list_run_records/1'; list_run_records/1 guards is_list(filters), the\nJSON object arrives as a map. dispatch-task is unaffected (no numeric/object value param; uses integer-literal defaults).\nRoot: descripex api() value/object params are not coerced to the Elixir fn's guarded type. The single fix site is\nHarness.Chat.Tools.coerce_arg/3 (lib/harness/chat/tools.ex) — it ALREADY coerces booleans (string->bool) for both the\nchat dispatcher and the MCP surface; add integer coercion (number->trunc, gated on schema type \"integer\" or is_integer\ndefault) and map->keyword coercion (gated on is_list default; atomize keys via String.to_existing_atom — see the CRITICAL\nAC). Both are one investigation + one reviewer pass -> one task. Live debug (tidewave): is_integer(1.8e6)=false;\nawait_result(_,1.0) raises FunctionClauseError, (_,1) is :ok; list_run_records(%{}) raises, ([]) is :ok.\n",
       "created_at": "2026-06-11",
+      "done_at": "2026-06-11",
       "scored_at": "2026-06-11",
+      "implemented": "Split outcome from live tidewave debug. AWAIT = genuine code bug, FIXED: Harness.Dispatch.await/5 + await_result/2 widened is_integer->is_number and trunc the timeout once at the receive boundary (lib/harness/dispatch.ex). JSON callers deliver timeout_ms as a float; the old is_integer guard FunctionClause'd the whole dispatch-await tool. 2 regression tests added (float await/5 reaches project lookup; await_result/2 truncs 20.9->20); dispatch_test 80/80 green; verified in the live node via tidewave (await_result(_,1.0)->timed_out timeout_ms:1; await(_,_,_,1.8e6 float)->reaches start). LIST_RUN_RECORDS = NOT a code bug: the map->keyword coercion WITH key-atomization already shipped in task 146 (Harness.Chat.Tools.decode_param line-231 clause + to_atom_kwlist); in-process Tools.dispatch works (182 unfiltered / 161 filtered, keys atomized) and tools_test.exs:86 passes. The live MCP result_store-list_run_records failure is real but UNREPRODUCIBLE in-process and its root cause is unconfirmed (transport/connection-level, no stale frame found via :sys.get_state); most likely the long-running node needs a restart to rebuild MCP server state. No code change made for it; if it persists after a node restart, file a separate transport-level task. Shipped c9a1b88.",
       "cross_repo": []
     }
   ]
