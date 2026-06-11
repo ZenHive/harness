@@ -7618,8 +7618,8 @@ out_of_scope = ["Changing what the aggregate functions compute — the data and 
 files_to_modify = ["lib/harness/chat/tools.ex", "test/harness/chat/tools_test.exs", "lib/harness/result_store.ex"]
 touches = ["lib/harness/chat/tools.ex", "lib/harness/result_store.ex", "lib/harness/manifest.ex", "deps/descripex/lib/descripex.ex", "/Users/efries/_DATA/code/descripex/lib/descripex.ex"]
 domains = ["elixir", "mcp"]
-assignee = "claude"
-model = "claude-opus-4-8"
+assignee = "cursor"
+model = "claude-opus-4-8-thinking-high"
 body = '''
 PREREQUISITE NOW MET (2026-06-12): the descripex 0.8.0 dep bump landed in harness commit 360dc65 (mix.exs `~> 0.8`), pulling the upstream @spec-derived typed-schema half (descripex Task 22 / commit 3a448e4: enrich_with_specs populates param schema from @spec). harness's MCP surface now advertises typed properties for kind:value params that have a usable @spec. THIS TASK is the remaining CONSUMER-SIDE half: Chat.Tools dispatch-boundary coercion (omitted-optional -> runtime default, atom params, module/tuple params) + the Manifest-wide sweep test. The descripex opts:-section residual (schema-less opts params still typeless) is tracked as descripex Task 23. Unblocked — ready to dispatch.
 
