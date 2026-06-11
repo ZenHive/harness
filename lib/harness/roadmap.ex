@@ -425,6 +425,7 @@ defmodule Harness.Roadmap do
   # Local rmap status writes are read/modify/write operations against one shared
   # tasks.toml. Serialize that file I/O mechanically so concurrent run-lifecycle
   # claims cannot each read the same stale snapshot and clobber the prior writer.
+  # sobelow_skip ["Traversal.FileModule"] — lock_path is ctx.tasks_path <> ".lock"
   @spec with_roadmap_lock(ctx(), (-> {:ok, String.t()} | {:error, term()})) ::
           {:ok, String.t()} | {:error, term()}
   defp with_roadmap_lock(ctx, fun) do
