@@ -10282,7 +10282,7 @@
       "phase": 19,
       "bundle": "self-heal",
       "milestone": "v0_14",
-      "status": "in_progress",
+      "status": "done",
       "title": "Reviewer selection: AgentRegistry.available? must deprioritize, not eliminate, an installed cross-family reviewer (soft hint used as hard gate discards completed work)",
       "scores": {
         "d": 3,
@@ -10321,10 +10321,15 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "9d40a31cbcfcafcb4182ef566e1f2302b3584709",
       "body": "## Observation (KPI muster, 2026-06-10, over 118 post-agent-gate run records)\n8 of 13 non-approvals are reviewer-SELECTION failures where the implementer SUCCEEDED and its work was discarded:\n- 6 cursor + 1 grok runs: reason = {:review_stuck, \"No cross-family reviewer adapter available: {:reviewer_unavailable, Harness.AgentAdapter.Claude}\"}. agent_outcome_kind=exited, exit_status=0, real diffs (1551/1265/402/287 lines), MB of captured output — then discarded at reviewer selection.\n- 1 claude run: {:review_stuck, {:same_family_reviewer, :claude, Harness.AgentAdapter.Claude}} — only candidate left was same-family.\n- Clustered 2026-06-07/08 (six within 5 minutes, 01:20-01:25) — a single window where the soft availability hint had the whole cross-family slate marked unavailable. Across all 9 review_stuck records: reviewer_rotation_count=0, reviewer_reprompt_count=0, recovery_attempts=0 — no fallback fired.\n\nThis is the single biggest source of wasted agent tokens in the dataset: ~8 full implement cycles thrown away at the finish line for a reason unrelated to work quality.\n\n## Root cause (confirmed in run.ex:2100-2105)\nreviewer_dispatchable?/1 = available? AND installed? AND reviewer_eligible?. auto_reviewer_modules/1 (run.ex:2004) filters the cross-family slate by reviewer_dispatchable?, so when AgentRegistry.available?/1 (a soft latency hint — no persistence, no TTL, cleared on restart per the AgentRegistry @moduledoc) reports false for every adapter, the slate is EMPTY and the run is discarded. The comment at run.ex:2091-2097 documents fixing THIS EXACT failure mode once already — they decoupled the implementer-level enabled? flag from reviewer-dispatchability because coupling 'settled every run :review_stuck'. The identical bug survives through available? still being a hard AND.\n\n## The fix (mechanical, honors the documented soft-hint contract)\nMove available? out of the hard-gate AND in reviewer_dispatchable? and into prioritize_reviewers ordering: installed? + reviewer_eligible? + cross-family are the real gates; availability only sinks a busy reviewer lower in the rotation order. The slate is then non-empty whenever an installed eligible cross-family adapter exists, so completed implementer work is reviewed (possibly after a moment's wait / rotation) instead of discarded. This is the same shape as the enabled?-decoupling fix already in the file. No judgment added — pure filter/ordering mechanics.\n\nPairs with Task 228 (timeout-rotation of a non-empty slate) and Task 249 (count the residual review_stuck by cause so we can confirm this fix landed).\n",
       "created_at": "2026-06-10",
       "started_at": "2026-06-11",
+      "done_at": "2026-06-11",
       "scored_at": "2026-06-10",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781183192271-4be69080, 9d40a31cbcfcafcb4182ef566e1f2302b3584709).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {

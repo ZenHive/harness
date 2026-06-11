@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 19 — Self-Healing Run Loop (13 of 18 done · 1 in progress)
+**Focus phase:** 19 — Self-Healing Run Loop (14 of 18 done · 0 in progress)
 
-**Last shipped:** Task 248 — AgentKPI quality rollup reads legacy-empty review_ratings — repoint to review_skills so the quality signal isn't dark since the v0_13 rubric migration, Task 252 — Per-project warm_paths: pre-seed a project's gitignored worktree inputs (source/corpus) so agents don't relink/regenerate the corpus on every run on 2026-06-11
+**Last shipped:** Task 247 — Reviewer selection: AgentRegistry.available? must deprioritize, not eliminate, an installed cross-family reviewer (soft hint used as hard gate discards completed work), Task 248 — AgentKPI quality rollup reads legacy-empty review_ratings — repoint to review_skills so the quality signal isn't dark since the v0_13 rubric migration, Task 252 — Per-project warm_paths: pre-seed a project's gitignored worktree inputs (source/corpus) so agents don't relink/regenerate the corpus on every run on 2026-06-11
 
 **Up next:** Task 249 — KPI: surface review_stuck by cause + count selection-time stuck (nil reviewer_adapter) as orchestration health [D:2/B:4/U:4 → Eff:2.0] 🎯
 <!-- FOCUS:END -->

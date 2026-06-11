@@ -7216,7 +7216,7 @@ id = "247"
 phase = 19
 bundle = "self-heal"
 milestone = "v0_14"
-status = "in_progress"
+status = "done"
 title = "Reviewer selection: AgentRegistry.available? must deprioritize, not eliminate, an installed cross-family reviewer (soft hint used as hard gate discards completed work)"
 scores = { d = 3, b = 7, u = 7 }
 markers = ["bug"]
@@ -7243,9 +7243,14 @@ Move available? out of the hard-gate AND in reviewer_dispatchable? and into prio
 
 Pairs with Task 228 (timeout-rotation of a non-empty slate) and Task 249 (count the residual review_stuck by cause so we can confirm this fix landed).
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781183192271-4be69080, 9d40a31cbcfcafcb4182ef566e1f2302b3584709)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-10"
 started_at = "2026-06-11"
 scored_at = "2026-06-10"
+done_at = "2026-06-11"
+shipped_in = "9d40a31cbcfcafcb4182ef566e1f2302b3584709"
 
 [[task]]
 id = "248"
