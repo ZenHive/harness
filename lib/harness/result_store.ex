@@ -41,6 +41,8 @@ defmodule Harness.ResultStore do
   @typedoc "Exact-match filters supported by `list_run_records/2`."
   @type filters :: keyword()
 
+  @configured_store :configured_result_store
+
   @doc "Persists one structured run record with implementation-specific options."
   @callback record_run(LogRecord.t(), keyword()) :: :ok | {:error, term()}
 
@@ -132,8 +134,9 @@ defmodule Harness.ResultStore do
       batch_id: [kind: :value, description: "Batch id string assigned at dispatch time."],
       store: [
         kind: :value,
-        default: nil,
-        description: "Configured store or override; `false`/`nil` returns {:error, :disabled}."
+        default: @configured_store,
+        description:
+          "Configured store from ResultStore.configured/0 when omitted, or override; `false`/`nil` returns {:error, :disabled}."
       ]
     ],
     returns: %{type: :tuple, description: "{:ok, %Harness.Batch.Result{}} or {:error, reason}."}
@@ -142,6 +145,7 @@ defmodule Harness.ResultStore do
   @spec load_batch(String.t(), store()) :: {:ok, BatchResult.t()} | {:error, term()}
   def load_batch(batch_id, store \\ configured())
 
+  def load_batch(batch_id, @configured_store) when is_binary(batch_id), do: load_batch(batch_id, configured())
   def load_batch(batch_id, false) when is_binary(batch_id), do: {:error, :disabled}
   def load_batch(batch_id, nil) when is_binary(batch_id), do: {:error, :disabled}
 
@@ -206,8 +210,9 @@ defmodule Harness.ResultStore do
     params: [
       store: [
         kind: :value,
-        default: nil,
-        description: "Configured store or override; `false`/`nil` returns {:ok, %{}}."
+        default: @configured_store,
+        description:
+          "Configured store from ResultStore.configured/0 when omitted, or override; `false`/`nil` returns {:ok, %{}}."
       ]
     ],
     returns: %{type: :tuple, description: "{:ok, AgentKPI.t()} or {:error, reason}."}
@@ -216,6 +221,7 @@ defmodule Harness.ResultStore do
   @spec aggregate_by_agent(store()) :: {:ok, AgentKPI.t()} | {:error, term()}
   def aggregate_by_agent(store \\ configured())
 
+  def aggregate_by_agent(@configured_store), do: aggregate_by_agent(configured())
   def aggregate_by_agent(false), do: {:ok, %{}}
   def aggregate_by_agent(nil), do: {:ok, %{}}
 
@@ -229,8 +235,9 @@ defmodule Harness.ResultStore do
     params: [
       store: [
         kind: :value,
-        default: nil,
-        description: "Configured store or override; `false`/`nil` returns {:ok, %{}}."
+        default: @configured_store,
+        description:
+          "Configured store from ResultStore.configured/0 when omitted, or override; `false`/`nil` returns {:ok, %{}}."
       ]
     ],
     returns: %{type: :tuple, description: "{:ok, AgentKPI.reviewer_ledger()} or {:error, reason}."}
@@ -239,6 +246,7 @@ defmodule Harness.ResultStore do
   @spec aggregate_reviewer_reliability(store()) :: {:ok, AgentKPI.reviewer_ledger()} | {:error, term()}
   def aggregate_reviewer_reliability(store \\ configured())
 
+  def aggregate_reviewer_reliability(@configured_store), do: aggregate_reviewer_reliability(configured())
   def aggregate_reviewer_reliability(false), do: {:ok, %{}}
   def aggregate_reviewer_reliability(nil), do: {:ok, %{}}
 
@@ -261,8 +269,9 @@ defmodule Harness.ResultStore do
       ],
       store: [
         kind: :value,
-        default: nil,
-        description: "Configured store or override; `false`/`nil` returns an empty ceremony_cost map."
+        default: @configured_store,
+        description:
+          "Configured store from ResultStore.configured/0 when omitted, or override; `false`/`nil` returns an empty ceremony_cost map."
       ]
     ],
     returns: %{
@@ -274,6 +283,7 @@ defmodule Harness.ResultStore do
   @spec aggregate_ceremony_cost(keyword(), store()) :: {:ok, AgentKPI.ceremony_cost()} | {:error, term()}
   def aggregate_ceremony_cost(opts \\ [], store \\ configured())
 
+  def aggregate_ceremony_cost(opts, @configured_store) when is_list(opts), do: aggregate_ceremony_cost(opts, configured())
   def aggregate_ceremony_cost(opts, false) when is_list(opts), do: {:ok, AgentKPI.aggregate_ceremony_cost([])}
   def aggregate_ceremony_cost(opts, nil) when is_list(opts), do: {:ok, AgentKPI.aggregate_ceremony_cost([])}
 
@@ -320,8 +330,9 @@ defmodule Harness.ResultStore do
       corpus_version: [kind: :value, description: "Corpus version fingerprint or caller-supplied version string."],
       store: [
         kind: :value,
-        default: nil,
-        description: "Configured store from ResultStore.configured/0, or override; `false`/`nil` returns :no_data."
+        default: @configured_store,
+        description:
+          "Configured store from ResultStore.configured/0 when omitted, or override; `false`/`nil` returns :no_data."
       ]
     ],
     returns: %{
@@ -333,6 +344,10 @@ defmodule Harness.ResultStore do
   @spec get_capability_score(atom(), atom(), String.t(), store()) ::
           {:ok, CapabilityScore.t()} | :no_data | {:error, term()}
   def get_capability_score(agent, domain, corpus_version, store \\ configured())
+
+  def get_capability_score(agent, domain, corpus_version, @configured_store)
+      when is_atom(agent) and is_atom(domain) and is_binary(corpus_version),
+      do: get_capability_score(agent, domain, corpus_version, configured())
 
   def get_capability_score(agent, domain, corpus_version, false)
       when is_atom(agent) and is_atom(domain) and is_binary(corpus_version), do: :no_data
@@ -349,8 +364,9 @@ defmodule Harness.ResultStore do
     params: [
       store: [
         kind: :value,
-        default: nil,
-        description: "Configured store from ResultStore.configured/0, or override; `false`/`nil` returns {:ok, []}."
+        default: @configured_store,
+        description:
+          "Configured store from ResultStore.configured/0 when omitted, or override; `false`/`nil` returns {:ok, []}."
       ]
     ],
     returns: %{
@@ -362,6 +378,7 @@ defmodule Harness.ResultStore do
   @spec list_capability_scores(store()) :: {:ok, [CapabilityScore.t()]} | {:error, term()}
   def list_capability_scores(store \\ configured())
 
+  def list_capability_scores(@configured_store), do: list_capability_scores(configured())
   def list_capability_scores(false), do: {:ok, []}
   def list_capability_scores(nil), do: {:ok, []}
 

@@ -1,7 +1,13 @@
 defmodule Harness.Chat.ToolsTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
+  alias Harness.AgentAdapter.Claude
+  alias Harness.Batch.Result, as: BatchResult
+  alias Harness.CapabilityScore.Legacy, as: CapabilityScore
   alias Harness.Chat.Tools
+  alias Harness.ResultStore
+  alias Harness.ResultStore.Memory, as: MemoryStore
+  alias Harness.ResultStoreContract
 
   test "build/0 resolves MCP tool names to MFAs" do
     registry = Tools.build()
@@ -139,4 +145,151 @@ defmodule Harness.Chat.ToolsTest do
     assert {:error, {:dispatch_failed, _msg}} =
              Tools.dispatch(registry, "result_store-list_run_records", %{"filters" => "not json"})
   end
+
+  describe "result store read tool store defaults" do
+    setup do
+      root =
+        Path.join(
+          System.tmp_dir!(),
+          "harness_chat_tools_result_store_#{System.unique_integer([:positive])}"
+        )
+
+      previous = Application.get_env(:harness, :result_store)
+      store = {MemoryStore, root: root}
+      Application.put_env(:harness, :result_store, store)
+      MemoryStore.reset(root: root)
+
+      on_exit(fn ->
+        restore_result_store(previous)
+        MemoryStore.reset(root: root)
+      end)
+
+      {:ok, store: store}
+    end
+
+    test "aggregate_by_agent dispatch without store reads the configured store", %{store: store} do
+      registry = Tools.build()
+      record = ResultStoreContract.log_record(run_id: "mcp-kpi-default", agent: :codex)
+
+      assert :ok = ResultStore.record_run(record, store)
+
+      assert {:ok, {:ok, ledger}} = Tools.dispatch(registry, "result_store-aggregate_by_agent", %{})
+      assert Map.has_key?(ledger, :codex)
+
+      assert {:ok, {:ok, %{}}} =
+               Tools.dispatch(registry, "result_store-aggregate_by_agent", %{"store" => false})
+    end
+
+    test "load_batch dispatch without store reads the configured store", %{store: store} do
+      registry = Tools.build()
+      batch = %BatchResult{batch_id: "mcp-batch-default", total: 0, max_concurrency: 1, results: []}
+
+      assert :ok = ResultStore.save_batch(batch, store)
+
+      assert {:ok, {:ok, loaded}} =
+               Tools.dispatch(registry, "result_store-load_batch", %{"batch_id" => "mcp-batch-default"})
+
+      assert loaded.batch_id == "mcp-batch-default"
+
+      assert {:ok, {:error, :disabled}} =
+               Tools.dispatch(
+                 registry,
+                 "result_store-load_batch",
+                 %{"batch_id" => "mcp-batch-default", "store" => false}
+               )
+    end
+
+    test "aggregate_reviewer_reliability dispatch without store reads the configured store", %{store: store} do
+      registry = Tools.build()
+
+      record =
+        ResultStoreContract.log_record(
+          run_id: "mcp-reviewer-default",
+          verdict: :reject,
+          reviewer_adapter: Claude
+        )
+
+      assert :ok = ResultStore.record_run(record, store)
+
+      assert {:ok, {:ok, ledger}} =
+               Tools.dispatch(registry, "result_store-aggregate_reviewer_reliability", %{})
+
+      assert %{reviewed_count: 1, rejection_count: 1} = ledger[Claude]
+
+      assert {:ok, {:ok, %{}}} =
+               Tools.dispatch(registry, "result_store-aggregate_reviewer_reliability", %{"store" => false})
+    end
+
+    test "aggregate_ceremony_cost dispatch without store reads the configured store", %{store: store} do
+      registry = Tools.build()
+      record = ResultStoreContract.log_record(run_id: "mcp-ceremony-default", verdict: :approve)
+
+      assert :ok = ResultStore.record_run(record, store)
+
+      assert {:ok, {:ok, ceremony_cost}} =
+               Tools.dispatch(registry, "result_store-aggregate_ceremony_cost", %{})
+
+      assert ceremony_cost.run_count == 1
+
+      assert {:ok, {:ok, disabled_cost}} =
+               Tools.dispatch(registry, "result_store-aggregate_ceremony_cost", %{"store" => false})
+
+      assert disabled_cost.run_count == 0
+    end
+
+    test "get_capability_score dispatch without store reads the configured store", %{store: store} do
+      registry = Tools.build()
+      score = capability_score()
+
+      assert :ok = ResultStore.save_capability_score(score, store)
+
+      args = %{"agent" => ":codex", "domain" => ":otp", "corpus_version" => "mcp-default"}
+
+      assert {:ok, {:ok, loaded}} =
+               Tools.dispatch(registry, "result_store-get_capability_score", args)
+
+      assert loaded.agent == :codex
+      assert loaded.domain == :otp
+      assert loaded.corpus_version == "mcp-default"
+
+      assert {:ok, :no_data} =
+               Tools.dispatch(registry, "result_store-get_capability_score", Map.put(args, "store", false))
+    end
+
+    test "list_capability_scores dispatch without store reads the configured store", %{store: store} do
+      registry = Tools.build()
+      score = capability_score()
+
+      assert :ok = ResultStore.save_capability_score(score, store)
+
+      assert {:ok, {:ok, [listed]}} =
+               Tools.dispatch(registry, "result_store-list_capability_scores", %{})
+
+      assert listed.agent == :codex
+      assert listed.domain == :otp
+      assert listed.corpus_version == "mcp-default"
+
+      assert {:ok, {:ok, []}} =
+               Tools.dispatch(registry, "result_store-list_capability_scores", %{"store" => false})
+    end
+  end
+
+  defp capability_score do
+    %CapabilityScore{
+      agent: :codex,
+      domain: :otp,
+      corpus_version: "mcp-default",
+      scored_at: ~U[2026-06-10 00:00:00Z],
+      run_count: 1,
+      success_rate: 1.0,
+      cost_to_green: 42.0,
+      mean_reviewer_diff_size: 0.0,
+      mean_ratings: %{"otp" => 9.0},
+      composite_score: 1.0,
+      raw_metrics: []
+    }
+  end
+
+  defp restore_result_store(nil), do: Application.delete_env(:harness, :result_store)
+  defp restore_result_store(value), do: Application.put_env(:harness, :result_store, value)
 end
