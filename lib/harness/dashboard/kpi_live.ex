@@ -18,6 +18,12 @@ defmodule Harness.Dashboard.KPILive do
   — the cross-family reviewer's verdict-write reliability, sorted
   worst-first.
 
+  A small *orchestration health* section renders
+  `Harness.ResultStore.aggregate_review_stuck_causes/0`, counting
+  `review_stuck` records by the persisted reason detail. This catches
+  selection-time failures where `reviewer_adapter` is nil, so they belong to
+  harness health rather than any reviewer ledger.
+
   The reviewer-ratings columns are derived from the union of rating keys present
   across the ledger (the reviewer's keys are free-form), so a reviewer that adds
   a new rating dimension surfaces a new column with no code change.
@@ -129,6 +135,7 @@ defmodule Harness.Dashboard.KPILive do
     |> assign(:rows, sort_rows(rows, socket.assigns.sort_by, socket.assigns.sort_dir))
     |> assign(:rating_keys, rating_keys(rows))
     |> assign(:reviewer_rows, reviewer_rows())
+    |> assign(:review_stuck_cause_rows, review_stuck_cause_rows())
   end
 
   # The per-reviewer-adapter reliability ledger: each reviewer's rejection and
@@ -142,6 +149,19 @@ defmodule Harness.Dashboard.KPILive do
         ledger
         |> Enum.map(fn {reviewer, kpi} -> Map.put(kpi, :reviewer, reviewer) end)
         |> Enum.sort_by(&{&1.no_verdict_rate, &1.rejection_rate}, :desc)
+
+      _error ->
+        []
+    end
+  end
+
+  @spec review_stuck_cause_rows() :: [map()]
+  defp review_stuck_cause_rows do
+    case ResultStore.aggregate_review_stuck_causes() do
+      {:ok, causes} ->
+        causes
+        |> Enum.map(fn {cause, count} -> %{cause: cause, count: count} end)
+        |> Enum.sort_by(&{-&1.count, to_string(&1.cause)})
 
       _error ->
         []
@@ -404,6 +424,30 @@ defmodule Harness.Dashboard.KPILive do
           <td>{format_pct(row.rejection_rate)}</td>
           <td>{row.no_verdict_count}</td>
           <td>{format_pct(row.no_verdict_rate)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div :if={@review_stuck_cause_rows != []} class="topbar">
+      <strong>Orchestration health</strong>
+      <span class="count">review_stuck by cause</span>
+    </div>
+
+    <p :if={@review_stuck_cause_rows != []}>
+      Selection/no-reviewer stuck runs are counted here, not in reviewer reliability.
+    </p>
+
+    <table :if={@review_stuck_cause_rows != []}>
+      <thead>
+        <tr>
+          <th>Cause</th>
+          <th>Count</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr :for={row <- @review_stuck_cause_rows}>
+          <td><code>{row.cause}</code></td>
+          <td>{row.count}</td>
         </tr>
       </tbody>
     </table>

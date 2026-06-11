@@ -350,6 +350,67 @@ defmodule Harness.AgentKPITest do
     end
   end
 
+  describe "aggregate_review_stuck_causes/1" do
+    test "counts review_stuck records by persisted cause without reviewer attribution" do
+      records = [
+        record(
+          reviewer_adapter: nil,
+          verdict: nil,
+          reason:
+            {:review_stuck, "No cross-family reviewer adapter available: {:reviewer_unavailable, #{inspect(Claude)}}"}
+        ),
+        record(
+          reviewer_adapter: nil,
+          verdict: nil,
+          reason: {:review_stuck, "No cross-family reviewer adapter available: {:no_cross_family_reviewer, :codex}"}
+        ),
+        record(
+          reviewer_adapter: nil,
+          verdict: nil,
+          reason:
+            {:review_stuck,
+             "No cross-family reviewer adapter available: {:same_family_reviewer, :claude, #{inspect(Claude)}}"}
+        ),
+        record(
+          reviewer_adapter: nil,
+          verdict: nil,
+          reason: {:review_stuck, "Reviewer crashed: :killed"}
+        ),
+        record(reviewer_adapter: ClaudeReviewer, verdict: nil, reason: {:review_stuck, :driver_crashed}),
+        record(reviewer_adapter: ClaudeReviewer, verdict: nil, reason: {:review_stuck, :timed_out}),
+        record(reviewer_adapter: ClaudeReviewer, verdict: nil, reason: {:review_stuck, :cancelled}),
+        record(reviewer_adapter: ClaudeReviewer, verdict: nil, reason: {:review_stuck, :unexpected})
+      ]
+
+      assert AgentKPI.aggregate_review_stuck_causes(records) == %{
+               reviewer_unavailable: 1,
+               no_cross_family_reviewer: 1,
+               same_family_reviewer: 1,
+               reviewer_crashed: 1,
+               driver_crashed: 1,
+               timed_out: 1,
+               cancelled: 1,
+               other: 1
+             }
+
+      reviewer_ledger = AgentKPI.aggregate_reviewer_rejections(records)
+
+      refute Map.has_key?(reviewer_ledger, nil)
+      assert reviewer_ledger[ClaudeReviewer].no_verdict_count == 4
+    end
+
+    test "ignores approved runs and non-stuck failures" do
+      records = [
+        record(verdict: :approve, reason: :approved),
+        record(verdict: :reject, reason: {:review_rejected, "broken"}),
+        record(verdict: nil, reason: :timed_out),
+        record(verdict: nil, reason: {:review_stuck, :timed_out})
+      ]
+
+      assert AgentKPI.aggregate_review_stuck_causes(records) == %{timed_out: 1}
+    end
+  end
+
   describe "aggregate/1 reviewer-flaked attribution" do
     test "a review_stuck run does not debit the implementer's success_rate" do
       records = [

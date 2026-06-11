@@ -38,6 +38,31 @@ defmodule Harness.ResultStore.MemoryTest do
     assert ledger == AgentKPI.aggregate(records)
   end
 
+  test "aggregate_review_stuck_causes matches AgentKPI over in-memory records", %{store: store} do
+    records = [
+      ResultStoreContract.log_record(
+        run_id: "mem-stuck-selection",
+        verdict: nil,
+        reason:
+          {:review_stuck,
+           "No cross-family reviewer adapter available: {:reviewer_unavailable, #{inspect(Harness.AgentAdapter.Claude)}}"},
+        reviewer_adapter: nil
+      ),
+      ResultStoreContract.log_record(
+        run_id: "mem-stuck-timeout",
+        verdict: nil,
+        reason: {:review_stuck, :timed_out},
+        reviewer_adapter: Harness.AgentAdapter.Codex
+      ),
+      ResultStoreContract.log_record(run_id: "mem-approved", verdict: :approve, reason: :approved)
+    ]
+
+    for record <- records, do: assert(:ok = ResultStore.record_run(record, store))
+
+    assert {:ok, causes} = ResultStore.aggregate_review_stuck_causes(store)
+    assert causes == AgentKPI.aggregate_review_stuck_causes(records)
+  end
+
   test "repo_enabled false selects ephemeral memory when no explicit override" do
     prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
     prior_result_store = Application.get_env(:harness, :result_store)

@@ -258,6 +258,25 @@ defmodule Harness.ResultStore do
   end
 
   api(
+    :aggregate_review_stuck_causes,
+    "Orchestration-health review_stuck counts by persisted cause, including selection-time stuck runs with no reviewer_adapter. Derived from list_run_records; no attribution to implementers or reviewers.",
+    returns: %{type: :tuple, description: "{:ok, AgentKPI.review_stuck_causes()} or {:error, reason}."}
+  )
+
+  @spec aggregate_review_stuck_causes(store()) :: {:ok, AgentKPI.review_stuck_causes()} | {:error, term()}
+  def aggregate_review_stuck_causes(store \\ configured())
+
+  def aggregate_review_stuck_causes(false), do: {:ok, %{}}
+  def aggregate_review_stuck_causes(nil), do: {:ok, %{}}
+
+  def aggregate_review_stuck_causes(store) do
+    case list_run_records(store, []) do
+      {:ok, records} -> {:ok, AgentKPI.aggregate_review_stuck_causes(records)}
+      {:error, _} = err -> err
+    end
+  end
+
+  api(
     :aggregate_ceremony_cost,
     "Per-run ceremony token facts over reviewer-approved runs: implementer + reviewer + audit (audit is 0 until audit capture lands). Raw median/p90 distribution only — no batching verdict.",
     params: [

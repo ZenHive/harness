@@ -151,6 +151,30 @@ defmodule Harness.Dashboard.KPILiveTest do
       assert html =~ "50%"
     end
 
+    test "renders orchestration-health review_stuck counts by persisted cause", %{conn: conn} do
+      seed("run-selection-stuck",
+        agent: :codex,
+        verdict: nil,
+        reason:
+          {:review_stuck, "No cross-family reviewer adapter available: {:reviewer_unavailable, #{inspect(FakeAdapter)}}"},
+        reviewer_adapter: nil
+      )
+
+      seed("run-driver-stuck",
+        agent: :codex,
+        verdict: nil,
+        reason: {:review_stuck, :driver_crashed},
+        reviewer_adapter: CursorReviewer
+      )
+
+      {:ok, _view, html} = live(conn, "/harness/kpi")
+
+      assert html =~ "Orchestration health"
+      assert html =~ "reviewer_unavailable"
+      assert html =~ "driver_crashed"
+      assert html =~ "Selection/no-reviewer stuck runs are counted here"
+    end
+
     test "columns are sortable — clicking a header reorders the rows", %{conn: conn} do
       {:ok, view, html} = live(conn, "/harness/kpi")
 

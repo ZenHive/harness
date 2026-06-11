@@ -7,6 +7,9 @@ defmodule Harness.Dashboard.MCPServerTest do
   alias Harness.Dashboard.MCPServer
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
+  alias Harness.ResultStore
+  alias Harness.ResultStore.Memory
+  alias Harness.ResultStoreContract
 
   setup do
     ProjectRegistry.reset()
@@ -32,6 +35,11 @@ defmodule Harness.Dashboard.MCPServerTest do
       assert schema["type"] == "object"
       assert schema["properties"] == %{}
       assert schema["required"] == []
+
+      health = Enum.find(tools, &(&1["name"] == "result_store-aggregate_review_stuck_causes"))
+      assert %{"description" => health_description, "inputSchema" => health_schema} = health
+      assert health_description =~ "Orchestration-health review_stuck counts"
+      assert health_schema["type"] == "object"
     end
   end
 
@@ -108,6 +116,39 @@ defmodule Harness.Dashboard.MCPServerTest do
 
         assert {:ok, ["error", "not_found"]} = Jason.decode(text)
       end
+    end
+
+    test "exposes review_stuck cause counts through the result-store MCP tool", %{frame: frame} do
+      scope = "mcp-review-stuck-#{System.unique_integer([:positive])}"
+      previous_store = Application.get_env(:harness, :result_store)
+      Application.put_env(:harness, :result_store, {Memory, scope: scope})
+
+      on_exit(fn ->
+        Memory.reset(scope: scope)
+        restore_result_store(previous_store)
+      end)
+
+      selection_stuck =
+        ResultStoreContract.log_record(
+          run_id: "mcp-stuck-selection",
+          verdict: nil,
+          reason:
+            {:review_stuck,
+             "No cross-family reviewer adapter available: {:reviewer_unavailable, Harness.AgentAdapter.Claude}"},
+          reviewer_adapter: nil
+        )
+
+      approved = ResultStoreContract.log_record(run_id: "mcp-approved", verdict: :approve, reason: :approved)
+
+      assert :ok = ResultStore.record_run(selection_stuck)
+      assert :ok = ResultStore.record_run(approved)
+
+      request = call_request("result_store-aggregate_review_stuck_causes", %{})
+
+      assert {:reply, %{"content" => [%{"text" => text}], "isError" => false}, ^frame} =
+               MCPServer.handle_request(request, frame)
+
+      assert {:ok, ["ok", %{"reviewer_unavailable" => 1}]} = Jason.decode(text)
     end
   end
 
@@ -192,4 +233,7 @@ defmodule Harness.Dashboard.MCPServerTest do
       "params" => %{"name" => name, "arguments" => arguments}
     }
   end
+
+  defp restore_result_store(nil), do: Application.delete_env(:harness, :result_store)
+  defp restore_result_store(store), do: Application.put_env(:harness, :result_store, store)
 end

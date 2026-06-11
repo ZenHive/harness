@@ -109,6 +109,20 @@ defmodule Harness.AgentKPI do
   @typedoc "Per-reviewer-adapter rejection ledger keyed by the reviewer module."
   @type reviewer_ledger :: %{optional(module()) => reviewer_rejection()}
 
+  @typedoc "Known orchestration-health causes for `{:review_stuck, detail}` records."
+  @type review_stuck_cause ::
+          :reviewer_unavailable
+          | :no_cross_family_reviewer
+          | :same_family_reviewer
+          | :reviewer_crashed
+          | :driver_crashed
+          | :timed_out
+          | :cancelled
+          | :other
+
+  @typedoc "Review-stuck orchestration-health counts by persisted cause."
+  @type review_stuck_causes :: %{optional(review_stuck_cause()) => non_neg_integer()}
+
   @typedoc "Per-agent ledger keyed by the record's `agent` atom (or `nil` for an unregistered adapter)."
   @type t :: %{optional(atom() | nil) => agent_kpi()}
 
@@ -259,6 +273,21 @@ defmodule Harness.AgentKPI do
   end
 
   @doc """
+  Counts `{:review_stuck, detail}` records by their persisted orchestration cause.
+
+  This is a harness-health rollup, not reviewer attribution: selection-time
+  stuck runs with `reviewer_adapter: nil` are included because the cause lives
+  in the persisted `reason` fact.
+  """
+  @spec aggregate_review_stuck_causes([LogRecord.t()]) :: review_stuck_causes()
+  def aggregate_review_stuck_causes(records) when is_list(records) do
+    records
+    |> Enum.map(&review_stuck_cause/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.frequencies()
+  end
+
+  @doc """
   Means each numeric rating key across a list of the reviewer's `ratings` maps.
 
   The reviewer's keys and scales are free-form, so every numeric-valued key is
@@ -332,6 +361,42 @@ defmodule Harness.AgentKPI do
   # on the persisted `reason` fact, no inference.
   @spec review_stuck?(LogRecord.t()) :: boolean()
   defp review_stuck?(record), do: match?({:review_stuck, _report}, Map.get(record, :reason))
+
+  @spec review_stuck_cause(LogRecord.t()) :: review_stuck_cause() | nil
+  defp review_stuck_cause(record) do
+    case Map.get(record, :reason) do
+      {:review_stuck, detail} -> stuck_cause(detail)
+      _other -> nil
+    end
+  end
+
+  @spec stuck_cause(term()) :: review_stuck_cause()
+  defp stuck_cause(detail) when is_tuple(detail) and tuple_size(detail) > 0 do
+    detail
+    |> elem(0)
+    |> stuck_cause()
+  end
+
+  defp stuck_cause(cause) when cause in [:reviewer_unavailable, :no_cross_family_reviewer, :same_family_reviewer] do
+    cause
+  end
+
+  defp stuck_cause("Reviewer crashed: :killed"), do: :reviewer_crashed
+
+  defp stuck_cause(report) when is_binary(report) do
+    cond do
+      String.contains?(report, "{:reviewer_unavailable,") -> :reviewer_unavailable
+      String.contains?(report, "{:no_cross_family_reviewer,") -> :no_cross_family_reviewer
+      String.contains?(report, "{:same_family_reviewer,") -> :same_family_reviewer
+      true -> :other
+    end
+  end
+
+  defp stuck_cause(:reviewer_crashed), do: :reviewer_crashed
+  defp stuck_cause(:driver_crashed), do: :driver_crashed
+  defp stuck_cause(:timed_out), do: :timed_out
+  defp stuck_cause(:cancelled), do: :cancelled
+  defp stuck_cause(_other), do: :other
 
   @spec reviewer_adapter(LogRecord.t()) :: module() | nil
   defp reviewer_adapter(record), do: Map.get(record, :reviewer_adapter)
