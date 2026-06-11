@@ -633,7 +633,7 @@ defmodule Harness.Run do
     data = %{data | task: nil, worktree: worktree}
 
     with :ok <- Worktree.activate(worktree),
-         :ok <- Worktree.warm(worktree),
+         :ok <- Worktree.warm(worktree, warm_paths: data.project.warm_paths),
          :ok <- maybe_validate_implementer_isolation(data) do
       # Crash reaper (Task 185): once the worktree is live, a hard crash of this
       # gen_statem before settle would leak it; the reaper monitors us and reaps

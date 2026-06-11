@@ -179,6 +179,47 @@ defmodule Harness.WorktreeTest do
       assert File.read!(Path.join(wt.path, "priv/plts/core.plt")) == "PLT"
     end
 
+    test "extends default warm dirs with project warm paths" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+      project = ProjectFixture.from_repo(repo, warm_paths: ["priv/foo"])
+
+      File.mkdir_p!(Path.join(repo, "deps/foo"))
+      File.write!(Path.join(repo, "deps/foo/mix.exs"), "compiled-dep")
+      File.mkdir_p!(Path.join(repo, "_build/test"))
+      File.write!(Path.join(repo, "_build/test/app.beam"), "compiled-app")
+      File.mkdir_p!(Path.join(repo, "priv/foo"))
+      File.write!(Path.join(repo, "priv/foo/corpus.json"), "{}")
+
+      assert {:ok, wt} = Worktree.create(project, base_dir: base)
+
+      assert :ok = Worktree.warm(wt, warm_paths: project.warm_paths)
+
+      assert File.read!(Path.join(wt.path, "deps/foo/mix.exs")) == "compiled-dep"
+      assert File.read!(Path.join(wt.path, "_build/test/app.beam")) == "compiled-app"
+      assert File.read!(Path.join(wt.path, "priv/foo/corpus.json")) == "{}"
+    end
+
+    test "uses the same default warm dirs when a project leaves warm paths unset" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+
+      File.mkdir_p!(Path.join(repo, "deps/foo"))
+      File.write!(Path.join(repo, "deps/foo/mix.exs"), "compiled-dep")
+      File.mkdir_p!(Path.join(repo, "_build/test"))
+      File.write!(Path.join(repo, "_build/test/app.beam"), "compiled-app")
+      File.mkdir_p!(Path.join(repo, "priv/plts"))
+      File.write!(Path.join(repo, "priv/plts/core.plt"), "PLT")
+
+      assert {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base)
+
+      assert :ok = Worktree.warm(wt)
+
+      assert File.read!(Path.join(wt.path, "deps/foo/mix.exs")) == "compiled-dep"
+      assert File.read!(Path.join(wt.path, "_build/test/app.beam")) == "compiled-app"
+      assert File.read!(Path.join(wt.path, "priv/plts/core.plt")) == "PLT"
+    end
+
     test "never clobbers a path the worktree already produced" do
       repo = GitFixture.init_repo()
       base = GitFixture.tmp_base()

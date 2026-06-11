@@ -17,6 +17,8 @@ defmodule Harness.Project do
   - `concurrency_cap` — per-project batch cap; `nil` inherits the global default.
   - `pollution_allowlist` — optional path patterns ignored by the main-checkout
     pollution diff (`Harness.Worktree.Isolation`); `nil` inherits app defaults.
+  - `warm_paths` — repo-relative gitignored directories to seed into fresh
+    worktrees in addition to the default warm paths.
   - `landing_policy` — `:manual` by default; `:auto` means reviewer-approved
     runs are eligible for autonomous landing.
   - `target_branch` — the branch the autonomous lander fast-forward-pushes an
@@ -37,6 +39,7 @@ defmodule Harness.Project do
     check_command: nil,
     concurrency_cap: nil,
     pollution_allowlist: nil,
+    warm_paths: [],
     landing_policy: :manual,
     target_branch: nil,
     reviewer: nil
@@ -56,6 +59,7 @@ defmodule Harness.Project do
           check_command: String.t() | nil,
           concurrency_cap: pos_integer() | nil,
           pollution_allowlist: [String.t()] | nil,
+          warm_paths: [String.t()],
           landing_policy: landing_policy(),
           target_branch: String.t() | nil,
           reviewer: atom() | nil

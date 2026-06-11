@@ -71,7 +71,8 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
         roadmap_path: "/tmp/#{name}/roadmap/tasks.toml",
         concurrency_cap: 4,
         landing_policy: :auto,
-        target_branch: "development"
+        target_branch: "development",
+        warm_paths: ["priv/foo", "priv/discoveries"]
       }
 
       assert :ok = ProjectRegistry.register(project)
@@ -84,6 +85,7 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
       assert restored.concurrency_cap == 4
       assert restored.landing_policy == :auto
       assert restored.target_branch == "development"
+      assert restored.warm_paths == ["priv/foo", "priv/discoveries"]
     end
   end
 

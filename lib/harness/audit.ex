@@ -133,7 +133,7 @@ defmodule Harness.Audit do
           # same way a run worktree is warmed — seed deps/_build/PLT from the
           # parent so the auditor doesn't cold-compile + cold-build the PLT. Only
           # done when there's a range to audit; a :noop checks nothing.
-          :ok = Worktree.warm(worktree)
+          :ok = Worktree.warm(worktree, warm_paths: project.warm_paths)
           run_auditor(worktree, repo, target, project, request, range)
 
         {:error, reason} ->

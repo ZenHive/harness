@@ -56,7 +56,7 @@ defmodule Harness.ProjectRegistry do
         kind: :exchange_data,
         source: "Harness.Dispatch.register_project/6 (the JSON-native scalar entry point)",
         description:
-          "%Harness.Project{} the caller constructs (name, source, check_command, roadmap_path, concurrency_cap, pollution_allowlist)."
+          "%Harness.Project{} the caller constructs (name, source, check_command, roadmap_path, concurrency_cap, pollution_allowlist, warm_paths)."
       ]
     ],
     returns: %{
@@ -220,6 +220,7 @@ defmodule Harness.ProjectRegistry do
          check_command: check_command,
          concurrency_cap: Map.get(entry, :concurrency_cap),
          pollution_allowlist: Map.get(entry, :pollution_allowlist),
+         warm_paths: Map.get(entry, :warm_paths, []),
          landing_policy: Map.get(entry, :landing_policy, :manual),
          target_branch: Map.get(entry, :target_branch),
          reviewer: Map.get(entry, :reviewer)

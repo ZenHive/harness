@@ -56,7 +56,7 @@ defmodule Harness.ProjectRegistry.Persistence do
     if enabled?() do
       payload = :erlang.term_to_binary(project)
 
-      attrs = %{name: name, payload: payload}
+      attrs = %{name: name, payload: payload, warm_paths: project.warm_paths}
       schema = %ProjectSchema{name: name}
       changeset = ProjectSchema.changeset(schema, attrs)
 
@@ -94,12 +94,19 @@ defmodule Harness.ProjectRegistry.Persistence do
   end
 
   @spec decode_row(ProjectSchema.t()) :: {:ok, Project.t()} | {:error, term()}
-  defp decode_row(%ProjectSchema{name: name, payload: payload}) when is_binary(payload) do
+  defp decode_row(%ProjectSchema{name: name, payload: payload, warm_paths: warm_paths}) when is_binary(payload) do
     case decode_term(payload) do
-      {:ok, %Project{name: ^name} = project} -> {:ok, rebuild_on_current_shape(project)}
-      {:ok, %Project{name: other}} -> {:error, {:name_mismatch, name, other}}
-      {:ok, _other} -> {:error, {:invalid_payload, name}}
-      {:error, reason} -> {:error, reason}
+      {:ok, %Project{name: ^name} = project} ->
+        {:ok, %{rebuild_on_current_shape(project) | warm_paths: warm_paths || []}}
+
+      {:ok, %Project{name: other}} ->
+        {:error, {:name_mismatch, name, other}}
+
+      {:ok, _other} ->
+        {:error, {:invalid_payload, name}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

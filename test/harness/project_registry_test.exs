@@ -45,7 +45,8 @@ defmodule Harness.ProjectRegistryTest do
                  source: {:local, "/tmp/kw"},
                  roadmap_path: "/tmp/kw",
                  check_command: "mix test",
-                 reviewer: :codex
+                 reviewer: :codex,
+                 warm_paths: ["priv/foo"]
                )
 
       assert {:ok, project} = ProjectRegistry.lookup("kw")
@@ -53,6 +54,7 @@ defmodule Harness.ProjectRegistryTest do
       assert project.source == {:local, "/tmp/kw"}
       assert project.check_command == "mix test"
       assert project.reviewer == :codex
+      assert project.warm_paths == ["priv/foo"]
       # build_project defaults landing_policy when attrs omit it.
       assert project.landing_policy == :manual
     end
@@ -199,6 +201,19 @@ defmodule Harness.ProjectRegistryTest do
       Application.put_env(:harness, :projects, [entry])
 
       assert {:ok, %{projects: %{"no-hint" => %Harness.Project{check_command: nil}}}} =
+               ProjectRegistry.init(:noargs)
+    end
+
+    test "warm_paths is optional and defaults to an empty list" do
+      entry = [
+        name: "no-warm-paths",
+        source: {:local, "/tmp/harness-no-warm-paths"},
+        roadmap_path: "/tmp/harness-no-warm-paths/roadmap/tasks.toml"
+      ]
+
+      Application.put_env(:harness, :projects, [entry])
+
+      assert {:ok, %{projects: %{"no-warm-paths" => %Harness.Project{warm_paths: []}}}} =
                ProjectRegistry.init(:noargs)
     end
 

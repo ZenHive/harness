@@ -16,6 +16,7 @@ defmodule Harness.ProjectFixture do
       landing_policy: Keyword.get(opts, :landing_policy, :manual),
       target_branch: Keyword.get(opts, :target_branch),
       pollution_allowlist: Keyword.get(opts, :pollution_allowlist),
+      warm_paths: Keyword.get(opts, :warm_paths, []),
       reviewer: Keyword.get(opts, :reviewer)
     }
   end

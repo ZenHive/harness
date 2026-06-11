@@ -80,8 +80,9 @@ defmodule Harness.Worktree do
   # These are absent in a `git worktree add` tree, so without warming the
   # implementer cold-fetches deps and the reviewer cold-compiles + cold-builds the
   # dialyzer PLT — minutes of work harness can skip by copying already-built bytes.
-  # Elixir-shaped by default; override per host via `:harness, :worktree,
-  # :warm_paths` (e.g. `["target"]` for a Rust target). Warming is a pure
+  # Elixir-shaped by default; override the cross-project fallback per host via
+  # `:harness, :worktree, :warm_paths` (e.g. `["target"]` for a Rust target).
+  # Per-project `warm_paths` extend that resolved base list. Warming is a pure
   # optimization — never a gate — so an unknown/empty list just means cold builds.
   @default_warm_paths ["deps", "_build", "priv/plts"]
 
@@ -216,8 +217,9 @@ defmodule Harness.Worktree do
   `:ok`. Only paths present in the parent and absent in the worktree are seeded,
   so it never clobbers agent-produced state.
 
-  Which directories to seed comes from `opts[:warm_paths]`, else the
-  `:harness, :worktree, :warm_paths` app config, else `#{inspect(@default_warm_paths)}`.
+  Which directories to seed starts with the `:harness, :worktree, :warm_paths`
+  app config, else `#{inspect(@default_warm_paths)}`. `opts[:warm_paths]` adds
+  project-specific directories to that base list.
   """
   @spec warm(t(), keyword()) :: :ok
   def warm(%__MODULE__{path: path, repo: repo}, opts \\ []) do
@@ -235,7 +237,12 @@ defmodule Harness.Worktree do
 
   @spec warm_paths(keyword()) :: [String.t()]
   defp warm_paths(opts) do
-    Keyword.get(opts, :warm_paths) || config(:warm_paths) || @default_warm_paths
+    Enum.uniq(resolved_default_warm_paths() ++ Keyword.get(opts, :warm_paths, []))
+  end
+
+  @spec resolved_default_warm_paths() :: [String.t()]
+  defp resolved_default_warm_paths do
+    config(:warm_paths) || @default_warm_paths
   end
 
   # A path is seedable when the parent checkout has it and the worktree does not —
