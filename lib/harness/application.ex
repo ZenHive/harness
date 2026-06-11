@@ -31,6 +31,7 @@ defmodule Harness.Application do
   @spec children() :: [Supervisor.child_spec() | {module(), term()} | module()]
   defp children do
     repo() ++
+      migration_guard() ++
       [
         Harness.Config,
         {Registry, keys: :unique, name: Harness.Run.Registry},
@@ -65,6 +66,21 @@ defmodule Harness.Application do
   defp repo do
     if Application.get_env(:harness, :repo_enabled, true) do
       [Harness.Repo]
+    else
+      []
+    end
+  end
+
+  # Fail-fast pending-migration check (Harness.Repo.MigrationGuard). Placed right
+  # after the Repo (so it can query `schema_migrations`) and before any child that
+  # reads Postgres-backed state (Harness.Config, ProjectRegistry), so a forgotten
+  # `mix ecto.migrate` aborts boot loudly instead of silently emptying the project
+  # registry via the persistence layer's soft rescues. Gated on `repo_enabled` —
+  # without a Repo there is nothing to guard.
+  @spec migration_guard() :: [module()]
+  defp migration_guard do
+    if Application.get_env(:harness, :repo_enabled, true) do
+      [Harness.Repo.MigrationGuard]
     else
       []
     end

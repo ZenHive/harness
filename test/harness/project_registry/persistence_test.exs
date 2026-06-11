@@ -143,6 +143,25 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
     end
   end
 
+  describe "structural schema drift is not swallowed" do
+    test "list/0 re-raises an undefined_column error instead of returning []" do
+      # Drop the column the schema references; the sandbox transaction rolls this
+      # back on exit. A blanket rescue would hide this as an empty registry — the
+      # exact 2026-06-11 warm_paths incident — so it must propagate.
+      Repo.query!("ALTER TABLE projects DROP COLUMN warm_paths")
+
+      assert_raise Postgrex.Error, fn -> Persistence.list() end
+    end
+
+    test "upsert/1 re-raises an undefined_column error instead of returning :ok" do
+      project = ProjectFixture.from_repo("/tmp/drift", name: "drift-#{System.unique_integer([:positive])}")
+
+      Repo.query!("ALTER TABLE projects DROP COLUMN warm_paths")
+
+      assert_raise Postgrex.Error, fn -> Persistence.upsert(project) end
+    end
+  end
+
   describe "restored registrations bootstrap Oban queues at boot" do
     setup do
       prev_oban = Application.get_env(:harness, Oban)
