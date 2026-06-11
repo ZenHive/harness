@@ -10203,7 +10203,7 @@
       "phase": 16,
       "bundle": "agent-gate",
       "milestone": "v0_14",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Run-lifecycle in_progress claim survives concurrent tasks.toml writers",
       "scores": {
         "d": 3,
@@ -10234,6 +10234,7 @@
       ],
       "body": "Observed 2026-06-09 during a live cron-autonomy test on onchain_aave: a 3-run wave dispatched concurrently. Each run's Worker.claim_in_progress/2 does a best-effort `rmap status <id> in_progress` writeback to the shared roadmap/tasks.toml. Under 3 simultaneous writers (plus concurrent reads), two of the three claims were lost — tasks 45 and 53 stayed `status = \"pending\"` even though their runs settled `:approved`. Only the lone task (55) whose claim won kept `in_progress`.\n\nConsequence is not cosmetic: the cron poller reads the LOCAL tasks.toml via Roadmap.ready/1. An approved-but-`pending` task is re-eligible, so the next tick re-dispatches already-finished (here, already-landed) work — a full implement->review->land cycle of wasted agent tokens, or a conflicting second copy.\n\nrmap's validate-then-write protects write VALIDITY, not against lost updates between two valid concurrent writers (documented hazard in rmap.md). The lander already solves the same class for its own roadmap writeback via the Durable path (detached worktree at target tip -> commit -> ff-push, Harness.Roadmap.Durable) so concurrent landers never clobber each other.\n\nTODO: make the start-of-run in_progress claim resilient to concurrent writers. Candidates: (a) route the claim through the lander's Durable/serialized writeback; (b) serialize per-project roadmap mutations through one GenServer/Oban-serialized queue; (c) lock-or-retry on the file in rmap status. Pick the one fitting the mechanical-substrate rule — git/file-IO serialization, not judgment.\n",
       "created_at": "2026-06-09",
+      "started_at": "2026-06-11",
       "scored_at": "2026-06-09",
       "cross_repo": []
     },
