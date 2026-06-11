@@ -7508,9 +7508,10 @@ shipped_in = "a702a54f"
 id = "255"
 phase = 16
 bundle = "agent-gate"
-status = "pending"
+status = "in_progress"
 title = "Per-role reviewer model — split the reviewer model from the implementer's per-agent default"
 scores = { d = 2, b = 3, u = 3 }
+depends_on = ["256"]
 acceptance_criteria = ["A per-role reviewer model override exists (e.g. `{:reviewer_model, agent}` Config entries, `:string`, ui_editable?), distinct from the shared `{:agent_model, agent}` default added in the base task", "Reviewer model resolution precedence: `{:reviewer_model, agent}` (if set) > `{:agent_model, agent}` > agent CLI ambient default — so an unset reviewer override falls back to the shared per-agent default exactly as today", "Implementer model resolution is unchanged: task `model` pin > `{:agent_model, agent}` > ambient (the reviewer override never touches the implementer path)", "A test proves cursor-implements-with-Composer + cursor-reviews-with-Opus: implementer Invocation.model and reviewer Invocation.model differ for the SAME agent when the reviewer override is set (extend the FakeAdapter :capture_model / :review_capture_model fixtures + a registered-reviewer path or a unit seam for the reviewer-agent resolution)", "Settings page (/harness/settings) renders the reviewer-model overrides alongside the existing Agent models card; blank = inherit the shared default", "mix precommit.full green"]
 out_of_scope = ["Per-PROJECT reviewer model (this is global per-agent-per-role; project-level pin is a separate task if ever needed)", "Validating model ids against `--list-models` (free-text, unvalidated — ids churn, matching the base task)", "Changing reviewer ADAPTER selection (cross-family auto-pick / rotation is untouched; this only sets the model the selected reviewer runs)"]
 files_to_modify = ["lib/harness/config.ex", "lib/harness/run.ex", "lib/harness/dashboard/settings_live.ex"]
@@ -7529,8 +7530,8 @@ MANTRA CHECK: this is pure mechanical config (counting/threading a string onto a
 TESTING NOTE: the base task could only prove the reviewer NEGATIVE case (FakeAdapter is unregistered → `agent_for_module` returns error → reviewer model nil), because `AgentRegistry.@agents` is a hardcoded compile-time map with no injection seam. To prove the POSITIVE asymmetry (reviewer override applied for a real reviewer agent) you will need either a registered-reviewer integration path or a small unit seam for the reviewer-agent→model resolution — decide which in the implementation and note the tradeoff.
 """
 created_at = "2026-06-11"
+started_at = "2026-06-11"
 scored_at = "2026-06-11"
-depends_on = ["256"]
 
 [[task]]
 id = "256"
