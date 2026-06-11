@@ -115,7 +115,7 @@ defmodule Harness.MixProject do
   defp deps do
     [
       # Core
-      {:descripex, "~> 0.7"},
+      {:descripex, "~> 0.8"},
       # Compile-time option-schema validation for the Harness.Dispatch.RunTool macro DSL.
       {:nimble_options, "~> 1.0"},
       {:ecto_sql, "~> 3.13"},
