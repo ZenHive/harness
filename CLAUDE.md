@@ -177,5 +177,5 @@ From the core loop onward, harness is developed *by* harness. **Once bootstrap i
 - **Hand-built exceptions:**
   - *Scaffolding that reshapes harness's own runtime* (supervision tree, dep stack, Endpoint) **while the run lifecycle itself is in flux**. A new phase that only adds features on stable surfaces does **not** earn a hand-build window.
   - *Tiny tasks* — ALL of (a) D≤2, (b) ≤30 LOC across ≤3 files, (c) no harness-surface change. Fail any → dispatch. When in doubt, dispatch.
-  - *UI / LiveView / heex / CSS work* — hand-build via tidewave + browser, not headless dispatch (headless agents idle-timeout with no visual reward signal).
+  - *Net-new visual identity with no spec* — exploratory look-and-feel / motion / brand work where distinctiveness is the goal and no design source-of-truth exists yet (the `frontend-design` skill's territory). **Incremental UI/LiveView/heex/CSS work against an existing design system or a frontend-design doc is normal dispatch** — the old blanket "hand-build all UI" rule is retired; an in-repo design spec gives the agent something to build against, so the reviewer AI gates it like any other task.
 - **Multi-project autonomy (46/48/51):** dogfooding extends to N registered projects, each with its own `check_command` + `roadmap_path`; with cron enabled it runs unattended.
