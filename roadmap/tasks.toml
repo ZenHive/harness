@@ -7604,3 +7604,49 @@ body = """
 """
 created_at = "2026-06-11"
 scored_at = "2026-06-11"
+
+[[task]]
+id = "259"
+phase = 13
+bundle = "chat-orchestrator"
+status = "pending"
+title = "Fix the MCP param boundary once and for all — typeless kind:value coercion silently returns empty/wrong"
+scores = { d = 3, b = 5, u = 5 }
+markers = ["bug"]
+acceptance_criteria = ["A single design decision is made and recorded (in the task's implemented field + a short note in the code or docs/): close the boundary class at the descripex typed-schema layer (emit JSON Schema `type` per param so clients serialize correctly), at the harness Chat.Tools coercion boundary (coerce by the function's declared param type/guard), or both — with the reasoning for the chosen layer. No quick/local patch of individual functions.", '''Failure mode 1 (omitted/null optional param overrides Elixir runtime default): dispatching ANY MCP tool with a trailing optional param omitted OR sent as JSON null lands on the function's `\ default` head (e.g. ResultStore aggregate_* resolve `store` to `configured()`), NOT on the disabled/empty guard. Verified live: mcp__harness__result_store-aggregate_by_agent with no args returns the real per-agent ledger (currently {}), aggregate_ceremony_cost returns run_count>0 (currently 0), aggregate_reviewer_reliability returns reviewers (currently {}).''', "Failure mode 2 (atom params): a tool whose param is an atom (get_capability_score agent/domain) accepts a plain JSON string ('codex','ecto') and coerces it to the atom the function guard requires — not only the ':'-prefixed form. No dispatch_failed from is_atom/1 guards on well-formed scalar input.", "Failure mode 3 (module/tuple/struct params): document and handle params that cannot be expressed as JSON scalars (store as {module,opts}; AgentEvaluation batch/adapters). Either accept a documented JSON encoding the boundary reconstructs, or mark the param non-MCP-exposable so the tool surface doesn't advertise an uncallable shape. No tool may advertise a param a JSON client provably cannot supply.", "false stays the explicit-disable sentinel for store (passed through, hits the disabled guard); only omitted/null resolves to configured().", "A coverage/property test sweeps EVERY tool in Harness.Manifest: for each, assert that omitting each optional param (and sending it as null) does not flip the result to a disabled/empty sentinel purely from the boundary, and that each declared scalar/atom param round-trips. This is the regression net that closes the class — a new tool with the same shape fails this test.", "The two prior partial fixes stay green: a702a54 (JSON-string-encoded keyword params) and list_run_records (no store param) behavior unchanged.", "File-backend / repo_enabled:false deployments unchanged; no scoring/judgment arithmetic added (the mantra — this is pure mechanical boundary coercion)."]
+out_of_scope = ["Changing what the aggregate functions compute — the data and the queries are already correct (verified: 186 healthy run_records, in-process aggregates return 4 agents / 165 ceremony runs / 4 reviewers when given the configured store). This task is ONLY the MCP/JSON param boundary.", "Task 258 (Postgres SQL fast paths for reviewer/facet) — orthogonal performance work, different layer.", "Re-keying or redesigning AgentKPI / CapabilityScore rollups (Task 248 already repointed the quality field)."]
+files_to_modify = ["lib/harness/chat/tools.ex", "test/harness/chat/tools_test.exs", "lib/harness/result_store.ex"]
+touches = ["lib/harness/chat/tools.ex", "lib/harness/result_store.ex", "lib/harness/manifest.ex", "deps/descripex/lib/descripex.ex", "/Users/efries/_DATA/code/descripex/lib/descripex.ex"]
+domains = ["elixir", "mcp"]
+assignee = "claude"
+model = "claude-opus-4-8"
+body = '''
+PREREQUISITE NOW MET (2026-06-12): the descripex 0.8.0 dep bump landed in harness commit 360dc65 (mix.exs `~> 0.8`), pulling the upstream @spec-derived typed-schema half (descripex Task 22 / commit 3a448e4: enrich_with_specs populates param schema from @spec). harness's MCP surface now advertises typed properties for kind:value params that have a usable @spec. THIS TASK is the remaining CONSUMER-SIDE half: Chat.Tools dispatch-boundary coercion (omitted-optional -> runtime default, atom params, module/tuple params) + the Manifest-wide sweep test. The descripex opts:-section residual (schema-less opts params still typeless) is tracked as descripex Task 23. Unblocked — ready to dispatch.
+
+SESSION CONTEXT (2026-06-12, context dirtied during a KPI analysis — file-and-defer, do NOT quick-patch). We sat down to read agent KPIs and found every ResultStore aggregate MCP tool returns empty. This is the SECOND empty-data finding at the MCP boundary; the user wants the whole class fixed once, not another instance patched.
+
+THE BUG IS NOT IN THE DATA OR THE AGGREGATES — IT IS THE MCP/JSON PARAM BOUNDARY.
+Ground truth already established this session:
+  - SQL on run_records: 186 rows, agent NULL on 0, 165 rows approve+done, 171 have a reviewer. Data is healthy.
+  - In-process with the configured store: aggregate_by_agent -> 4 agents, aggregate_ceremony_cost -> run_count 165, aggregate_reviewer_reliability -> 4 reviewers.
+  - With nil (what the MCP layer passes): all empty.
+
+ROOT CAUSE. descripex's api(...) declares optional params with a static schema default (e.g. `store: [default: nil]`) and `kind: :value` emits a TYPELESS JSON schema (description only, no "type"). At the dispatch boundary Harness.Chat.Tools.resolve_param/3 (lib/harness/chat/tools.ex:202-222) substitutes that static nil for an omitted/null param, and safe_apply/2 (tools.ex:262-267) always apply/3's the FULL param arity — so the Elixir `\ configured()` default head can never fire. nil reaches aggregate_by_agent(nil) -> disabled guard -> {:ok, %{}}. list_run_records works ONLY because its MCP schema exposes no store param, so it hits `\ configured()`.
+
+Lever for the omitted-default fix: descripex find_arity_and_defaults (deps/descripex/lib/descripex.ex:440-452) sets entry.defaults = max_arity - min_arity = count of trailing `\` params. tools.ex already captures it (entry.defaults, tools.ex:156) but build_apply_args/2 (tools.ex:191-200) ignores it. Truncating trailing nil optional args so apply/3 selects a lower-arity head is the mechanical fix for failure mode 1.
+
+THREE FAILURE MODES IN THE SAME TYPELESS BOUNDARY (the class to close):
+  1. Omitted/null optional param overrides the Elixir runtime default -> empty aggregates (today's finding).
+  2. Atom params: decode_param (tools.ex:249-257) only atomizes ':'-prefixed strings; a plain "codex" stays binary -> get_capability_score's is_atom/1 guard -> dispatch_failed.
+  3. Module/tuple/struct params: store is {module,opts}; confirmed live that passing it through MCP fails dispatch. AgentEvaluation.from_batch takes a %Batch.Result{} + [module] — inexpressible as JSON. The tool surface advertises params no JSON client can supply.
+
+PRIOR PARTIAL FIXES (same boundary, same family — this task generalizes them):
+  - a702a54 "fix(chat/tools): decode JSON-string-encoded keyword params from MCP clients" — fixed structured params arriving as a JSON *string*.
+  - 4706b1c / Task 248 — the FIRST empty-data finding (AgentKPI reading a legacy-empty field after a rubric migration). Same shape: a derived surface silently reading nothing.
+
+DECIDE THE LAYER, THEN CLOSE THE CLASS. descripex is OURS (local sibling /Users/efries/_DATA/code/descripex AND hex dep ~> 0.7) — so the durable fix MAY belong there: emit typed JSON Schema per param (scalar type, atom-as-string with an enum hint, structured params with a declared shape) so MCP clients serialize correctly and the boundary decodes by declared type instead of guessing. The alternative is a typed-coercion layer in Harness.Chat.Tools keyed on the function's param types/guards. Pick one (or both), justify it, and implement so the Manifest-wide sweep test passes. The primary harness consumer IS an AI orchestrator over MCP — a surface that silently returns empty/wrong for ordinary calls is a product-level defect, not a nit.
+
+The plan file from this session (targeted-only fix, NOT what the user wants) is at /Users/efries/.claude/plans/melodic-prancing-reef.md — read it for the code-site detail, but the user explicitly rejected the targeted scope: close the class.
+'''
+created_at = "2026-06-11"
+scored_at = "2026-06-11"
