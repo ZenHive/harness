@@ -376,6 +376,36 @@ defmodule Harness.Dashboard.SettingsLive do
         </form>
       </section>
 
+      <section class="setting-card">
+        <h2>Agent models</h2>
+        <p class="setting-desc">
+          Per-agent default model, threaded to the agent CLI's <code>--model</code> flag for
+          both implementer and reviewer runs. Blank falls back to the agent's own default.
+          A task's <code>model</code> pin overrides the implementer value; the reviewer has no
+          task pin, so this is its <strong>only</strong> model source. Model ids churn — verify
+          against the agent's <code>--list-models</code> before setting.
+        </p>
+        <form
+          :for={model <- @agent_models}
+          id={"agent-model-#{model.id}"}
+          class="reviewer-form"
+          phx-submit="set_config"
+        >
+          <div class="project-id">
+            <span class="project-name">{model.label}</span>
+          </div>
+          <input type="hidden" name="key" value={model.id} />
+          <input
+            type="text"
+            name="value"
+            value={model.input_value}
+            placeholder="agent default"
+            aria-label={"#{model.label} model"}
+          />
+          <button type="submit" class="btn-save">Save</button>
+        </form>
+      </section>
+
       <Components.config_form entries={@config_edit} />
 
       <Components.config_inspector sections={@config} />
@@ -420,6 +450,7 @@ defmodule Harness.Dashboard.SettingsLive do
     |> assign(:config, ConfigInspector.resolve())
     |> assign(:config_edit, config_edit_state())
     |> assign(:dispatch, dispatch_state())
+    |> assign(:agent_models, agent_models_state())
   end
 
   # The dispatch-default view-model: the configured no-data fallback agent plus
@@ -437,7 +468,7 @@ defmodule Harness.Dashboard.SettingsLive do
   @spec config_edit_state() :: [map()]
   defp config_edit_state do
     Config.editable_entries()
-    |> Enum.reject(&(&1.type == :agent))
+    |> Enum.reject(&(&1.type in [:agent, :string]))
     |> Enum.map(fn entry ->
       %{
         id: config_id(entry.key),
@@ -464,6 +495,20 @@ defmodule Harness.Dashboard.SettingsLive do
   @spec config_input_value(term()) :: String.t()
   defp config_input_value(nil), do: ""
   defp config_input_value(value) when is_integer(value), do: Integer.to_string(value)
+  defp config_input_value(value) when is_binary(value), do: value
+
+  # The Agent-models card view-model: one text-input row per `:string`
+  # `{:agent_model, agent}` entry, carrying its current resolved value (blank when
+  # unset → the agent CLI default). Reuses the `set_config` event + the same
+  # stable `config_id` round-trip as the number card, so no new event handler.
+  @spec agent_models_state() :: [map()]
+  defp agent_models_state do
+    Config.editable_entries()
+    |> Enum.filter(&(&1.type == :string))
+    |> Enum.map(fn entry ->
+      %{id: config_id(entry.key), label: entry.label, input_value: config_input_value(Config.get(entry.key))}
+    end)
+  end
 
   @spec config_placeholder(Config.Entry.t()) :: String.t()
   defp config_placeholder(%{type: :duration_ms, default: nil}), do: "unbounded"
@@ -496,6 +541,11 @@ defmodule Harness.Dashboard.SettingsLive do
       _unparseable -> :error
     end
   end
+
+  # A free-text model pin: blank clears it (falls back to the agent CLI default),
+  # any other string persists verbatim — model ids are unvalidated (they churn).
+  defp parse_config_value("", :string), do: {:ok, nil}
+  defp parse_config_value(raw, :string), do: {:ok, raw}
 
   defp parse_config_value(_raw, _type), do: :error
 

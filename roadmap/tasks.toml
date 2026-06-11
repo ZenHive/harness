@@ -7440,3 +7440,81 @@ created_at = "2026-06-11"
 scored_at = "2026-06-11"
 done_at = "2026-06-11"
 shipped_in = "c9a1b88"
+
+[[task]]
+id = "254"
+phase = 16
+bundle = "agent-gate"
+status = "done"
+title = "decode_param: JSON-string-encoded keyword/object params from MCP clients (completes 253's list_run_records AC)"
+scores = { d = 2, b = 6, u = 6 }
+markers = ["bug"]
+acceptance_criteria = ["""Harness.Chat.Tools.decode_param/2 decodes a JSON-string-encoded object/array (e.g. filters arriving as the literal string '{"agent": "cursor"}') into a keyword list for list-default value params, BEFORE the binary falls through to the target fn's is_list guard""", "result_store-list_run_records with a real MCP-client filters argument no longer raises 'no function clause matching in Harness.ResultStore.list_run_records/1' — verified live over the wire after BEAM restart (filtered query returned the filtered record set)", "A non-JSON string for a keyword param surfaces as {:error, {:dispatch_failed, _}} (the target guard rejects it) rather than being silently coerced to an empty filter set — no hide-the-failure no-op", "Regression test in test/harness/chat/tools_test.exs covers: stringified JSON object -> filtered list; stringified empty object -> list; non-JSON string -> dispatch_failed", "Fix is uniform across the whole MCP surface (any list-default value param: filters, env, opts), not point-patched for list_run_records"]
+out_of_scope = ["The map-shaped filters path — already handled by task 146/253's clause (decode_param map->keyword)", "The float-timeout await/5 fix — that is task 253, shipped c9a1b88", "Adding new filters to list_run_records or changing default timeout", "Declaring a JSON Schema type on descripex kind: :value params (descripex has no type option; dispatcher-level tolerance is the chosen layer)"]
+files_to_modify = ["lib/harness/chat/tools.ex", "test/harness/chat/tools_test.exs"]
+domains = ["otp"]
+assignee = "human"
+body = '''
+Found 2026-06-11 re-testing the MCP after the task-253 await fix. Task 253's AC claimed result_store-list_run_records (map filters) was fixed and shipped c9a1b88 — but that conclusion was incomplete: the in-process decode_param map->keyword clause (task 146, commit d667e66, line 231) handles filters arriving as a MAP, which is what in-process tests pass. The REAL MCP client (claude-code via anubis) does NOT send a JSON object for a typeless param — it serializes the value as a JSON STRING. Confirmed by tracing the live dispatch with :erlang.trace: anubis delivered %{"filters" => "{\"agent\": \"cursor\", \":limit\": 3}"} — filters is a binary, not a map.
+
+Root cause: descripex's api() kind: :value emits a schema property with description only and no "type", so an MCP client with no type hint stringifies a structured argument as JSON text. decode_param/2 only converted maps (clause 231) and atom-shorthand strings (clause 235); a JSON-string object fell through to the generic binary clause unchanged, so the raw binary reached list_run_records/1 and crashed its is_list(filters) guard. No-filters worked (default [] path); ANY filtered query failed.
+
+Lineage: task 91 added the original keyword-decode; 146 added per-key atomization (to_atom_kwlist); 253 claimed the list_run_records AC but only covered the map path. This task adds the missing clause: for a list-default value param, when the value is a binary, Jason.decode it first; a map decodes via to_atom_kwlist, a list passes through, a non-JSON/non-collection string falls through to value (the target guard then rejects it as dispatch_failed — surfaced, never silently no-op'd).
+
+Verified end-to-end: Tools.dispatch in-process (8/8 tools_test green incl. new regression), then live over MCP after the user restarted the BEAM — result_store-list_run_records {"agent":"cursor","limit":2} returned the 2 filtered cursor records. Hand-built + hand-tested (no cross-family reviewer), so not --verified.
+'''
+implemented = "decode_param/2 gained a clause for binary value + list-default param: Jason.decode the string, then map->to_atom_kwlist / list passthrough / non-JSON falls through to value (target guard rejects as dispatch_failed, never silent no-op). Completes task 253's list_run_records AC — 253 only covered map-shaped filters (in-process); the real MCP client serializes the typeless param as a JSON string (confirmed via :erlang.trace: anubis delivered filters as a binary). 8/8 tools_test green + new regression (string-object/empty/non-json); verified live over MCP after BEAM restart (filtered cursor query returned 2 filtered records). Hand-built, not cross-family reviewed -> not verified."
+created_at = "2026-06-11"
+scored_at = "2026-06-11"
+done_at = "2026-06-11"
+shipped_in = "a702a54f"
+
+[[task]]
+id = "255"
+phase = 16
+bundle = "agent-gate"
+status = "pending"
+title = "Per-role reviewer model — split the reviewer model from the implementer's per-agent default"
+scores = { d = 2, b = 3, u = 3 }
+acceptance_criteria = ["A per-role reviewer model override exists (e.g. `{:reviewer_model, agent}` Config entries, `:string`, ui_editable?), distinct from the shared `{:agent_model, agent}` default added in the base task", "Reviewer model resolution precedence: `{:reviewer_model, agent}` (if set) > `{:agent_model, agent}` > agent CLI ambient default — so an unset reviewer override falls back to the shared per-agent default exactly as today", "Implementer model resolution is unchanged: task `model` pin > `{:agent_model, agent}` > ambient (the reviewer override never touches the implementer path)", "A test proves cursor-implements-with-Composer + cursor-reviews-with-Opus: implementer Invocation.model and reviewer Invocation.model differ for the SAME agent when the reviewer override is set (extend the FakeAdapter :capture_model / :review_capture_model fixtures + a registered-reviewer path or a unit seam for the reviewer-agent resolution)", "Settings page (/harness/settings) renders the reviewer-model overrides alongside the existing Agent models card; blank = inherit the shared default", "mix precommit.full green"]
+out_of_scope = ["Per-PROJECT reviewer model (this is global per-agent-per-role; project-level pin is a separate task if ever needed)", "Validating model ids against `--list-models` (free-text, unvalidated — ids churn, matching the base task)", "Changing reviewer ADAPTER selection (cross-family auto-pick / rotation is untouched; this only sets the model the selected reviewer runs)"]
+files_to_modify = ["lib/harness/config.ex", "lib/harness/run.ex", "lib/harness/dashboard/settings_live.ex"]
+touches = ["lib/harness/config.ex", "lib/harness/run.ex", "lib/harness/dashboard/settings_live.ex", "test/harness/config_test.exs", "test/harness/run_test.exs"]
+domains = ["otp", "config"]
+assignee = "codex"
+body = """
+Follow-up to the base task that made per-agent default model configurable (`Config.agent_model/1` → `{:agent_model, agent}`, threaded onto both implementer and reviewer Invocations, plus the Agent-models settings card).
+
+THE GAP this closes: today the reviewer model comes from the SAME `{:agent_model, agent}` default as the implementer. So setting `cursor → claude-opus-4-8-thinking-high` forces Opus on BOTH cursor-implements and cursor-reviews runs — you cannot run the cheap tier for implementation and the strong tier for review on one agent. The asymmetry the operator actually wants (verified 2026-06-11: cursor's headless default is Composer 2.5 Fast; an Opus-grade reviewer needs an explicit pin) is "implement with Composer, REVIEW with Opus" — which a single per-agent model can't express.
+
+THE FIX (direction, not prescription): add a per-role reviewer override that, when set, wins for the reviewer path only; unset falls back to the shared per-agent default. Mirror exactly how a task's `model` overrides the implementer's per-agent default. Reviewer model is resolved in `Harness.Run.reviewer_model/1` (added in the base task) off the selected reviewer adapter's agent; implementer model is resolved at `requested_model` init off `item.agent`.
+
+MANTRA CHECK: this is pure mechanical config (counting/threading a string onto an Invocation), no judgment — clean.
+
+TESTING NOTE: the base task could only prove the reviewer NEGATIVE case (FakeAdapter is unregistered → `agent_for_module` returns error → reviewer model nil), because `AgentRegistry.@agents` is a hardcoded compile-time map with no injection seam. To prove the POSITIVE asymmetry (reviewer override applied for a real reviewer agent) you will need either a registered-reviewer integration path or a small unit seam for the reviewer-agent→model resolution — decide which in the implementation and note the tradeoff.
+"""
+created_at = "2026-06-11"
+scored_at = "2026-06-11"
+depends_on = ["256"]
+
+[[task]]
+id = "256"
+phase = 16
+bundle = "agent-gate"
+status = "done"
+title = "Per-agent default model — operator-configurable Config.agent_model, threaded onto implementer + reviewer Invocations"
+scores = { d = 2, b = 6, u = 6 }
+acceptance_criteria = ["Config.agent_model/1 resolves a per-agent free-text {:agent_model, agent} :string default (one ui_editable entry per implementer agent); unset or blank -> nil (falls through to the agent CLI default); an agent outside the schema -> nil, never raises", "Implementer model precedence: task `model` pin > {:agent_model, agent} > agent CLI ambient default (requested_model init off item.agent)", "Reviewer model comes solely from {:agent_model, agent} for the selected reviewer adapter's agent (Run.reviewer_model/1); an unregistered reviewer adapter -> nil", "/harness/settings renders an Agent models card editing the per-agent values live (blank clears to nil); :string entries route to this card, not the number card", "Tests cover unset->nil, put-through, blank-clear, out-of-schema->nil, non-binary reject, implementer-positive + reviewer-negative threading; mix precommit.full green"]
+out_of_scope = ["Per-role reviewer model override (implement-cheap / review-strong on one agent) -> Task 255", "Validating model ids against --list-models (free-text, unvalidated -- ids churn)", "Per-project model pin"]
+files_to_modify = ["lib/harness/config.ex", "lib/harness/run.ex", "lib/harness/dashboard/settings_live.ex"]
+touches = ["lib/harness/config.ex", "lib/harness/run.ex", "lib/harness/dashboard/settings_live.ex", "test/harness/config_test.exs", "test/harness/run_test.exs", "test/support/fake_adapter.ex"]
+domains = ["otp", "config"]
+assignee = "human"
+body = """
+Closes the gap between a task's explicit `model` pin and the agent CLI's ambient default: an operator-set per-agent default model, configurable from the dashboard. `Config.agent_model/1` reads a free-text `{:agent_model, agent}` `:string` entry (one per implementer agent), threaded onto BOTH the implementer Invocation (requested_model fallback off item.agent) and the reviewer Invocation (Run.reviewer_model/1 off the selected reviewer adapter's agent -- the reviewer has no task-pin axis, so this is its only model source). New "Agent models" settings card edits the values live (blank = inherit the agent default). Hand-built (config + LiveView surface); 255 builds the per-role reviewer split on top.
+"""
+implemented = "Config.agent_model/1 + {:agent_model, agent} :string schema entries (one per implementer agent, ui_editable); blank_to_nil + :string validate clause. Threaded onto implementer (requested_model || item.model || Config.agent_model(item.agent), run.ex:535) and reviewer (Run.reviewer_model/1 off AgentRegistry.agent_for_module, run.ex:2254 — unregistered adapter -> nil). New Agent models settings card (settings_live.ex) reusing set_config; :string entries rejected from the number card. Tests: 6 config_test cases (unset/put-through/blank-clear/out-of-schema/non-binary-reject/schema-shape) + 2 run_test (implementer-positive, reviewer-negative) + FakeAdapter :review_capture_model fixture. Hand-built (config+LiveView), not cross-family reviewed -> not verified."
+delivered_by = "human"
+created_at = "2026-06-11"
+scored_at = "2026-06-11"
+done_at = "2026-06-11"

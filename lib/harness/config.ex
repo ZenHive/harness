@@ -112,7 +112,20 @@ defmodule Harness.Config do
       e("Database", "database", {Harness.Repo, :database}, nil, :string, env_var: "HARNESS_DB_NAME"),
       e("Database", "username", {Harness.Repo, :username}, nil, :string, env_var: "HARNESS_DB_USER"),
       e("Database", "hostname", {Harness.Repo, :hostname}, nil, :string, env_var: "HARNESS_DB_HOST")
-    ]
+    ] ++ agent_model_entries()
+  end
+
+  # One free-text default-model pin per implementer agent — the fallback layer
+  # between a task's explicit `model` and the agent CLI's own ambient default
+  # (see `agent_model/1`). Free-text `:string` because model ids churn (re-run the
+  # agent's `--list-models` before trusting a literal); `nil` (unset) falls through
+  # to the CLI default. Read by both the implementer and the reviewer invocation
+  # builders — the reviewer has no task-pin axis, so this is its only model source.
+  @spec agent_model_entries() :: [Entry.t()]
+  defp agent_model_entries do
+    Enum.map(@implementer_agents, fn agent ->
+      e("Agent models", Atom.to_string(agent), {:agent_model, agent}, nil, :string, ui_editable?: true)
+    end)
   end
 
   @doc "The `ui_editable?` subset of the schema, in declaration order — the editable dashboard card's source."
@@ -122,6 +135,26 @@ defmodule Harness.Config do
   @doc "The implementer agents an unassigned task may default-route to — the dashboard select's option source and the `:agent`-type validation set."
   @spec dispatch_agents() :: [atom()]
   def dispatch_agents, do: @implementer_agents
+
+  @doc """
+  Resolves the operator-configured default model for `agent`, or `nil` when unset
+  (a blank persisted value counts as unset). The fallback layer between a task's
+  explicit `model` pin and the agent CLI's ambient default — read by both the
+  implementer and reviewer invocation builders. An agent outside the schema
+  yields `nil` rather than raising (unlike `get/1`), so a new adapter without a
+  model entry degrades to the CLI default instead of crashing a run.
+  """
+  @spec agent_model(atom()) :: String.t() | nil
+  def agent_model(agent) when is_atom(agent) do
+    case fetch_entry({:agent_model, agent}) do
+      {:ok, entry} -> blank_to_nil(read_env(entry.key, entry.default))
+      :error -> nil
+    end
+  end
+
+  @spec blank_to_nil(term()) :: term()
+  defp blank_to_nil(value) when value in [nil, ""], do: nil
+  defp blank_to_nil(value), do: value
 
   @doc """
   Resolves a schema key's effective value from app env, falling back to the
@@ -199,6 +232,7 @@ defmodule Harness.Config do
   defp validate(%Entry{type: :duration_ms}, value) when is_nil(value) or (is_integer(value) and value >= 0), do: :ok
   defp validate(%Entry{type: :integer}, value) when is_integer(value) and value > 0, do: :ok
   defp validate(%Entry{type: :agent}, value) when value in @implementer_agents, do: :ok
+  defp validate(%Entry{type: :string}, value) when is_nil(value) or is_binary(value), do: :ok
   defp validate(_entry, _value), do: {:error, :invalid_value}
 
   @spec read_env(Entry.key(), term()) :: term()

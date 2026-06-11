@@ -91,6 +91,9 @@ defmodule Harness.FakeAdapter do
   # {:review_capture_prompt, verdict}
   #                           — records the reviewer prompt into
   #                             reviewer_prompt.txt, then writes the artifact.
+  # {:review_capture_model, verdict}
+  #                           — records the reviewer invocation's model into
+  #                             reviewer_model.txt, then writes the artifact.
   # :review_malformed         — writes invalid JSON to the artifact path (the
   #                             review-stuck fixture).
   # {:review_by_task, reject_ids}
@@ -258,6 +261,14 @@ defmodule Harness.FakeAdapter do
   defp command({:review_capture_prompt, verdict}, %Invocation{prompt: prompt}) when verdict in ["approve", "reject"] do
     script = ~S(printf '%s' "$1" > reviewer_prompt.txt; mkdir -p .harness; printf '%s' "$2" > .harness/review.json)
     {"/bin/sh", ["-c", script, "harness-fake", prompt, review_json(verdict)], []}
+  end
+
+  # Records the reviewer invocation's model into reviewer_model.txt, then writes
+  # the approve artifact — the reviewer-model-threading fixture (model rides as a
+  # positional parameter, never interpolated).
+  defp command({:review_capture_model, verdict}, %Invocation{model: model}) when verdict in ["approve", "reject"] do
+    script = ~S(printf '%s' "$1" > reviewer_model.txt; mkdir -p .harness; printf '%s' "$2" > .harness/review.json)
+    {"/bin/sh", ["-c", script, "harness-fake", model || "", review_json(verdict)], []}
   end
 
   defp command(:review_malformed, _invocation) do

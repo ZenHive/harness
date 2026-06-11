@@ -535,7 +535,7 @@ defmodule Harness.Run do
       subscriber: Keyword.get(opts, :subscriber),
       result_store: Keyword.get(opts, :result_store, ResultStore.configured()),
       batch_id: Keyword.get(opts, :batch_id) || run_id,
-      requested_model: Keyword.get(opts, :requested_model) || item.model,
+      requested_model: Keyword.get(opts, :requested_model) || item.model || Config.agent_model(item.agent),
       started_at_ms: System.monotonic_time(:millisecond),
       total_timeout: run_timeout(opts, :total_timeout),
       idle_timeout: run_timeout(opts, :idle_timeout),
@@ -2240,11 +2240,26 @@ defmodule Harness.Run do
       prompt: reviewer_invocation_prompt(data),
       cwd: data.worktree.path,
       task_id: "#{data.item.id}-review",
+      model: reviewer_model(data.reviewer_adapter),
       permission_mode: :autonomous,
       adapter_opts: data.reviewer_adapter_opts,
       env: in_run_env(data)
     }
   end
+
+  # The reviewer has no task-pin model axis (the task's `model` pins the
+  # implementer), so its model comes solely from the per-agent `Config.agent_model`
+  # default for the selected reviewer adapter's agent — `nil` (unset) falls
+  # through to the agent CLI's ambient default, exactly like the implementer.
+  @spec reviewer_model(module() | nil) :: String.t() | nil
+  defp reviewer_model(reviewer_adapter) when is_atom(reviewer_adapter) and not is_nil(reviewer_adapter) do
+    case AgentRegistry.agent_for_module(reviewer_adapter) do
+      {:ok, agent} -> Config.agent_model(agent)
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp reviewer_model(_reviewer_adapter), do: nil
 
   @spec reviewer_driver_opts(data(), pid()) :: keyword()
   defp reviewer_driver_opts(data, parent) do

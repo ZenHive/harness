@@ -544,6 +544,44 @@ defmodule Harness.RunTest do
       assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_model.txt"]) == ""
     end
 
+    # An unpinned task falls back to the per-agent Config.agent_model default —
+    # the implementer-side half of the configurable-model surface. item().agent is
+    # :claude, so the :claude default resolves onto the implementer invocation.
+    test "an unpinned task falls back to the per-agent configured model" do
+      put_agent_model_env(claude: "claude-opus-4-8-thinking-high")
+
+      repo = GitFixture.init_repo()
+
+      {run_id, pid} =
+        start(project: ProjectFixture.from_repo(repo), adapter_opts: [command: :capture_model])
+
+      assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
+
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_model.txt"]) ==
+               "claude-opus-4-8-thinking-high"
+    end
+
+    # The reviewer's model comes from the reviewer adapter's OWN agent default,
+    # not the implementer's. FakeAdapter is unregistered (no agent mapping), so
+    # the reviewer model resolves to nil even with a :claude (the implementer
+    # agent) default set — guarding against the reviewer wrongly inheriting the
+    # implementer's config.
+    test "the reviewer invocation does not inherit the implementer's configured model" do
+      put_agent_model_env(claude: "claude-opus-4-8-thinking-high")
+
+      repo = GitFixture.init_repo()
+
+      {run_id, pid} =
+        start(
+          project: ProjectFixture.from_repo(repo),
+          reviewer_adapter_opts: [command: {:review_capture_model, "approve"}]
+        )
+
+      assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
+
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_model.txt"]) == ""
+    end
+
     test "in-run invocation env strips ambient GitHub auth for gh" do
       repo = GitFixture.init_repo()
 
@@ -2077,6 +2115,19 @@ defmodule Harness.RunTest do
 
   defp item do
     %Item{id: "8", title: "Supervised run lifecycle", prompt: "do the thing", agent: :claude}
+  end
+
+  # Sets the per-agent :agent_model app-env override for the test and restores the
+  # prior value (or deletes the key) on exit — the configured-model fixtures.
+  defp put_agent_model_env(kw) do
+    prior = Application.get_env(:harness, :agent_model)
+    Application.put_env(:harness, :agent_model, kw)
+
+    on_exit(fn ->
+      if prior,
+        do: Application.put_env(:harness, :agent_model, prior),
+        else: Application.delete_env(:harness, :agent_model)
+    end)
   end
 
   defp await_result(run_id, pid, timeout \\ 10_000) do

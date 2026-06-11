@@ -19,6 +19,7 @@ defmodule Harness.ConfigTest do
     prior_run = Application.get_env(:harness, :run)
     prior_dashboard = Application.get_env(:harness, :dashboard)
     prior_dispatch = Application.get_env(:harness, :dispatch)
+    prior_agent_model = Application.get_env(:harness, :agent_model)
     prior_store = Application.get_env(:harness, :settings_store)
 
     # Isolate persistence to a throwaway in-memory scope.
@@ -30,6 +31,7 @@ defmodule Harness.ConfigTest do
       restore(:run, prior_run)
       restore(:dashboard, prior_dashboard)
       restore(:dispatch, prior_dispatch)
+      restore(:agent_model, prior_agent_model)
       restore(:settings_store, prior_store)
       SettingsStoreMemory.reset(scope: scope)
     end)
@@ -145,6 +147,46 @@ defmodule Harness.ConfigTest do
       assert :claude in agents and :codex in agents and :cursor in agents
       refute :human in agents
       refute :droid in agents
+    end
+  end
+
+  describe "agent_model/1" do
+    test "schema declares one editable :string model entry per implementer agent" do
+      model_keys =
+        Config.editable_entries()
+        |> Enum.filter(&match?({:agent_model, _}, &1.key))
+        |> Enum.map(&elem(&1.key, 1))
+
+      assert Enum.sort(model_keys) == Enum.sort(Config.dispatch_agents())
+
+      assert Enum.all?(Config.schema(), fn e ->
+               match?({:agent_model, _}, e.key) == (e.type == :string and e.section == "Agent models")
+             end)
+    end
+
+    test "unset resolves to nil — falls through to the agent CLI default" do
+      assert Config.agent_model(:cursor) == nil
+    end
+
+    test "a put-through value resolves and hot-applies without restart" do
+      assert :ok = Config.put({:agent_model, :cursor}, "claude-opus-4-8-thinking-high", "test")
+      assert Config.agent_model(:cursor) == "claude-opus-4-8-thinking-high"
+    end
+
+    test "a blank value clears back to the CLI default (nil)" do
+      assert :ok = Config.put({:agent_model, :codex}, "gpt-5.3-codex", "test")
+      assert Config.agent_model(:codex) == "gpt-5.3-codex"
+      assert :ok = Config.put({:agent_model, :codex}, "", "test")
+      assert Config.agent_model(:codex) == nil
+    end
+
+    test "an agent outside the schema yields nil rather than raising" do
+      assert Config.agent_model(:droid) == nil
+    end
+
+    test "put validates :string — a non-binary, non-nil value is rejected" do
+      assert {:error, :invalid_value} = Config.put({:agent_model, :grok}, 42, "test")
+      assert Config.agent_model(:grok) == nil
     end
   end
 
