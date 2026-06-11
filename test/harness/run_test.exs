@@ -609,6 +609,25 @@ defmodule Harness.RunTest do
                GH_CONFIG_DIR=#{expected_gh_config_dir}
                """
     end
+
+    test "makes rmap reachable inside the implementer worktree even when PATH is scrubbed" do
+      repo = GitFixture.init_repo()
+      rmap_dir = fake_rmap_dir()
+
+      with_rmap_path_dirs([rmap_dir])
+
+      {run_id, pid} =
+        start(
+          project: ProjectFixture.from_repo(repo),
+          adapter_opts: [command: :capture_rmap_path],
+          env: %{"PATH" => "/usr/bin:/bin"}
+        )
+
+      assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
+
+      captured = GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_rmap_path.txt"])
+      assert String.trim(captured) == Path.join(rmap_dir, "rmap")
+    end
   end
 
   describe "the reviewer's own fixes" do
