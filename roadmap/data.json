@@ -10753,6 +10753,62 @@
       "implemented": "Config.agent_model/1 + {:agent_model, agent} :string schema entries (one per implementer agent, ui_editable); blank_to_nil + :string validate clause. Threaded onto implementer (requested_model || item.model || Config.agent_model(item.agent)) and reviewer (Run.reviewer_model/1 off AgentRegistry.agent_for_module — unregistered adapter -> nil). New Agent models settings card reusing set_config; :string rejected from the number card. Tests: 6 config_test + 2 run_test + FakeAdapter :review_capture_model fixture. Hand-built (config+LiveView), not cross-family reviewed -> not verified.",
       "delivered_by": "human",
       "cross_repo": []
+    },
+    {
+      "id": "257",
+      "phase": 17,
+      "bundle": "settings-pq",
+      "status": "done",
+      "title": "ProjectRegistry.lookup/list must return the landing-overlaid (effective) project — one observable source, not a raw payload field every caller must remember to overlay",
+      "scores": {
+        "d": 2,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 3.5,
+      "dep_layer": 1,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [
+        208
+      ],
+      "assignee": "codex",
+      "module": "Harness.ProjectRegistry",
+      "acceptance_criteria": [
+        "ProjectRegistry.lookup/1 and list/0 return the landing-overlaid EFFECTIVE project: landing_policy/target_branch/reviewer reflect Harness.Landing.Settings (the harness_settings[:landing] DB store), never the raw persisted projects-payload value. A project with no stored override returns its registration-time default unchanged.",
+        "The per-call-site overlay calls become redundant and are removed (run.ex:526 LandingSettings.overlay/1, and the Task 171 fix in lander/worker.ex) OR explicitly justified in a comment if a fresh-read-at-run-start is still required for staleness reasons; no call site reads a stale landing_policy off a looked-up struct.",
+        "landing_policy/target_branch are no longer persisted as an AUTHORITATIVE field in the projects payload — they are seed-only at registration (config .exs default seeds the settings store; the DB settings store is the single source of truth thereafter). Either drop them from the persisted payload, or keep the struct fields but guarantee no read path returns them un-overlaid.",
+        "A grep/test guard asserts there is exactly ONE readable source of effective landing policy: no code path outside Landing.Settings reads project.landing_policy as authoritative.",
+        "Regression tests (NEVER-HIDE-FAILURES, flunk on unexpected): a registered :manual/nil project with a persisted :auto+branch override -> lookup returns :auto/branch AND auto-land triggers with NO per-call-site overlay; control project with no override -> registration default stands; the Task 171 lander-lands-dashboard-flipped-project case still passes via lookup alone.",
+        "mix precommit.full green."
+      ],
+      "out_of_scope": [
+        "Changing the SettingsStore schema or the Landing.Settings.set/overlay/effective contract (Tasks 208/155) — this only moves WHERE overlay is applied (the read boundary) and removes the duplicate persisted authority.",
+        "The Cron/Agent settings domains — if they share the same raw-lookup trap, that is a sibling cleanup, filed separately.",
+        "Migrating/backfilling historical projects-payload landing values into the settings store."
+      ],
+      "files_to_modify": [
+        "lib/harness/project_registry.ex",
+        "lib/harness/project.ex"
+      ],
+      "touches": [
+        "lib/harness/run.ex",
+        "lib/harness/lander/worker.ex",
+        "lib/harness/landing/settings.ex",
+        "lib/harness/project_registry/persistence.ex"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "shipped_in": "d21f8ee7568984cd9cdb6fc62996f348fc80d939",
+      "body": "THE CONFUSION IS THE BUG. Task 208 collapsed harness's scattered settings into ONE Postgres store as the single source of truth for the LIVE landing DECISION (overlay applied at run.ex:526 before the auto-land match at run.ex:1623). But it left landing_policy/target_branch PERSISTED in the projects-table payload, and ProjectRegistry.lookup/1 + list/0 return that RAW, un-overlaid struct. So the value most readers reach for -- project.landing_policy -- is the stale registration default that the overlay silently supersedes.\n\nLive evidence (2026-06-10 session): the persisted harness projects row decodes to landing_policy: :manual (2026-06-04), while harness_settings[:landing] holds :auto. lookup returned :manual; the run path overlays to :auto and auto-lands correctly. A careful reader (and an operator reading the dashboard/DB) cannot tell which is authoritative without knowing overlay supersedes the field -- exactly the trap that cost a debugging session.\n\nThis is a RECURRENCE, not a new class: Task 171 already found Lander.Worker re-resolving via ProjectRegistry.lookup/1 WITHOUT the overlay -> saw raw :manual/nil -> every dashboard-flipped auto-land failed {:no_target_branch} -> discarded. 171 patched that ONE call site. The structural fix is to overlay at the SOURCE (lookup/list) so no call site can forget, and to stop persisting a second authoritative copy. Per the owner's standing principle: ONE data source -- the DB for runtime-flippable state, only elementary defaults in .exs.\n\nMantra-clean: this is mechanics (apply the existing overlay at the read boundary; remove a redundant persisted field). No judgment added. Depends on 208 (the store it reads). Cites 171 (the point-fix this generalizes).\n",
+      "created_at": "2026-06-11",
+      "done_at": "2026-06-11",
+      "scored_at": "2026-06-11",
+      "implemented": "Overlay applied at the single read boundary: ProjectRegistry.lookup/1 + list/0 now return the landing-overlaid effective project (landing_policy/target_branch/reviewer reflect Harness.Landing.Settings). Removed the redundant per-call-site overlays in Harness.Run.init and Harness.Lander.Worker (Task 171 generalized). Struct fields retained as registration-time seed (AC3 route b — no read path returns them un-overlaid). Grep-guard test enforces overlay is invoked only at the registry boundary. Regression tests cover override-wins/default-stands/reviewer-overlay/auto-land-via-lookup; existing lander/worker Task 171 case passes via lookup alone. precommit.full green.",
+      "delivered_by": "claude",
+      "cross_repo": []
     }
   ]
 }
