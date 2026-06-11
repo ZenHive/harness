@@ -108,4 +108,35 @@ defmodule Harness.Chat.ToolsTest do
 
     assert is_list(list3)
   end
+
+  # An object/keyword param can reach dispatch as a JSON-encoded *string* (not a
+  # JSON object): descripex emits a typeless schema for `kind: :value`, so an MCP
+  # client with no type hint serializes the value as JSON text. Reproduced over
+  # the wire — anubis delivered `%{"filters" => "{\"agent\": \"cursor\"}"}` and the
+  # binary fell through undecoded, crashing list_run_records/1's `is_list` guard.
+  test "dispatch/3 decodes a JSON-string-encoded keyword param (MCP clients stringify typeless object args)" do
+    registry = Tools.build()
+
+    # A stringified JSON object decodes to a keyword list, atomizing known keys.
+    assert {:ok, {:ok, list1}} =
+             Tools.dispatch(
+               registry,
+               "result_store-list_run_records",
+               %{"filters" => ~s({"run_id": "r-123", "bogus": true})}
+             )
+
+    assert is_list(list1)
+
+    # A stringified empty object is also accepted (no filters).
+    assert {:ok, {:ok, list2}} =
+             Tools.dispatch(registry, "result_store-list_run_records", %{"filters" => "{}"})
+
+    assert is_list(list2)
+
+    # A non-JSON string for a keyword param passes through unchanged; the target
+    # function's guard then rejects it as a dispatch failure rather than crashing
+    # the dispatcher — we don't silently coerce garbage into an empty filter set.
+    assert {:error, {:dispatch_failed, _msg}} =
+             Tools.dispatch(registry, "result_store-list_run_records", %{"filters" => "not json"})
+  end
 end

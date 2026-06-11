@@ -232,6 +232,20 @@ defmodule Harness.Chat.Tools do
     to_atom_kwlist(value)
   end
 
+  # The same object/keyword param can also arrive JSON-encoded as a *string*
+  # rather than a JSON object. descripex's `kind: :value` emits a typeless
+  # schema property (description only, no `"type"`), so an MCP client with no
+  # type hint serializes a structured argument as JSON text — e.g. filters as
+  # `"{\"agent\": \"cursor\"}"`. Parse it, then decode like the map clause; a
+  # non-JSON / non-collection string falls through to the plain-binary clause.
+  defp decode_param(value, %{kind: :value, default: default}) when is_binary(value) and is_list(default) do
+    case Jason.decode(value) do
+      {:ok, decoded} when is_map(decoded) -> to_atom_kwlist(decoded)
+      {:ok, decoded} when is_list(decoded) -> decoded
+      _other -> value
+    end
+  end
+
   defp decode_param(value, %{kind: :value}) when is_binary(value) do
     if String.starts_with?(value, ":") do
       value |> String.slice(1..-1//1) |> String.to_existing_atom()
