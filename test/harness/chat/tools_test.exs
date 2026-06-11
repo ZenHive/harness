@@ -180,6 +180,26 @@ defmodule Harness.Chat.ToolsTest do
                Tools.dispatch(registry, "result_store-aggregate_by_agent", %{"store" => false})
     end
 
+    test "aggregate_review_stuck_causes dispatch without store reads the configured store", %{store: store} do
+      registry = Tools.build()
+
+      stuck =
+        ResultStoreContract.log_record(
+          run_id: "mcp-stuck-default",
+          reason: {:review_stuck, :no_cross_family_reviewer}
+        )
+
+      assert :ok = ResultStore.record_run(stuck, store)
+
+      assert {:ok, {:ok, causes}} =
+               Tools.dispatch(registry, "result_store-aggregate_review_stuck_causes", %{})
+
+      assert causes[:no_cross_family_reviewer] == 1
+
+      assert {:ok, {:ok, %{}}} =
+               Tools.dispatch(registry, "result_store-aggregate_review_stuck_causes", %{"store" => false})
+    end
+
     test "load_batch dispatch without store reads the configured store", %{store: store} do
       registry = Tools.build()
       batch = %BatchResult{batch_id: "mcp-batch-default", total: 0, max_concurrency: 1, results: []}

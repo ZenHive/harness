@@ -260,12 +260,21 @@ defmodule Harness.ResultStore do
   api(
     :aggregate_review_stuck_causes,
     "Orchestration-health review_stuck counts by persisted cause, including selection-time stuck runs with no reviewer_adapter. Derived from list_run_records; no attribution to implementers or reviewers.",
+    params: [
+      store: [
+        kind: :value,
+        default: @configured_store,
+        description:
+          "Configured store from ResultStore.configured/0 when omitted, or override; `false`/`nil` returns {:ok, %{}}."
+      ]
+    ],
     returns: %{type: :tuple, description: "{:ok, AgentKPI.review_stuck_causes()} or {:error, reason}."}
   )
 
   @spec aggregate_review_stuck_causes(store()) :: {:ok, AgentKPI.review_stuck_causes()} | {:error, term()}
   def aggregate_review_stuck_causes(store \\ configured())
 
+  def aggregate_review_stuck_causes(@configured_store), do: aggregate_review_stuck_causes(configured())
   def aggregate_review_stuck_causes(false), do: {:ok, %{}}
   def aggregate_review_stuck_causes(nil), do: {:ok, %{}}
 
