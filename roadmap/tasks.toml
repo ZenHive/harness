@@ -7300,7 +7300,7 @@ id = "249"
 phase = 19
 bundle = "kpi-routing"
 milestone = "v0_14"
-status = "pending"
+status = "in_progress"
 title = "KPI: surface review_stuck by cause + count selection-time stuck (nil reviewer_adapter) as orchestration health"
 scores = { d = 2, b = 4, u = 4 }
 acceptance_criteria = ["AgentKPI exposes a review_stuck-BY-CAUSE count, bucketed by parsing the already-persisted reason field's tag (the second element of the {:review_stuck, detail} tuple / reason atom): reviewer_unavailable, no_cross_family_reviewer, same_family_reviewer, reviewer_crashed (:killed), driver_crashed, timed_out, cancelled, other. Pure counting of an existing fact — no classifier/regex inferring fault beyond reading the tag harness itself wrote.", "Selection-time stuck runs (reviewer_adapter IS NULL — no reviewer was ever assigned) are counted in this orchestration-health rollup. Task 231's per-reviewer no_verdict_rate is keyed on reviewer_adapter and therefore misses these (8 of 9 current review_stuck records have nil reviewer_adapter); this rollup is the home for them as a harness-health number, NOT attributed to any reviewer (correctly — no reviewer was at fault).", "The signal is surfaced where AgentKPI already surfaces (the MCP KPI/reliability tool and/or /harness/kpi), consistent with existing presentation — a small orchestration-health line/section, no net-new design surface. Backend (AgentKPI struct + MCP) is the required deliverable; the dashboard line may ride along or be a thin follow-on if it needs LiveView hand-build.", "Tests cover: by-cause bucketing from seeded reason values (incl. a nil-reviewer_adapter reviewer_unavailable run landing in the health rollup, not a per-reviewer bucket); an approve run contributes nothing to the stuck rollup. NEVER-HIDE-FAILURES assertions.", "mix test.json green."]
@@ -7320,6 +7320,7 @@ A review_stuck-by-CAUSE orchestration-health count in AgentKPI, bucketed on the 
 Pure counting of an existing persisted fact — the reason field already STATES the cause; this rollup only buckets and counts it. No 'whose fault' heuristic, no classifier beyond reading the tag. Counting, not judgment.
 """
 created_at = "2026-06-10"
+started_at = "2026-06-11"
 scored_at = "2026-06-10"
 
 [[task]]

@@ -10400,7 +10400,7 @@
       "phase": 19,
       "bundle": "kpi-routing",
       "milestone": "v0_14",
-      "status": "pending",
+      "status": "in_progress",
       "title": "KPI: surface review_stuck by cause + count selection-time stuck (nil reviewer_adapter) as orchestration health",
       "scores": {
         "d": 2,
@@ -10436,6 +10436,7 @@
       ],
       "body": "## Why (KPI muster, 2026-06-10; user asked that reviewer-selection failures be tracked in KPIs)\nThe dominant non-approval class is review_stuck (8 of 13), and Task 247 will fix most of it — but crashes, cancellations, and any future selection regression will still produce stuck runs, and we currently can't SEE the rate by cause. Task 231 (done) handles attribution (review_stuck excluded from the implementer's success denominator; a per-reviewer no_verdict_rate keyed on reviewer_adapter). But 8 of the 9 current review_stuck records have reviewer_adapter = NULL (the run died at SELECTION, before any reviewer was assigned), so 231's per-reviewer ledger never counts them — they vanish into a nil bucket.\n\n## What to add\nA review_stuck-by-CAUSE orchestration-health count in AgentKPI, bucketed on the reason tag harness already wrote ({:review_stuck, {:reviewer_unavailable,_}} / {:no_cross_family_reviewer,_} / {:same_family_reviewer,_} / 'Reviewer crashed: :killed' / driver_crashed / timed_out / cancelled). This is the harness self-diagnostic that confirms Task 247 landed (reviewer_unavailable/no_cross_family counts should drop to ~0 after it) and catches regressions.\n\n## Mantra check\nPure counting of an existing persisted fact — the reason field already STATES the cause; this rollup only buckets and counts it. No 'whose fault' heuristic, no classifier beyond reading the tag. Counting, not judgment.\n",
       "created_at": "2026-06-10",
+      "started_at": "2026-06-11",
       "scored_at": "2026-06-10",
       "cross_repo": []
     },
