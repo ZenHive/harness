@@ -10902,7 +10902,7 @@
       ],
       "depends_on": [],
       "assignee": "cursor",
-      "model": "claude-opus-4-8-thinking-high",
+      "model": "composer-2.5",
       "acceptance_criteria": [
         "A single design decision is made and recorded (in the task's implemented field + a short note in the code or docs/): close the boundary class at the descripex typed-schema layer (emit JSON Schema `type` per param so clients serialize correctly), at the harness Chat.Tools coercion boundary (coerce by the function's declared param type/guard), or both — with the reasoning for the chosen layer. No quick/local patch of individual functions.",
         "Failure mode 1 (omitted/null optional param overrides Elixir runtime default): dispatching ANY MCP tool with a trailing optional param omitted OR sent as JSON null lands on the function's `\\ default` head (e.g. ResultStore aggregate_* resolve `store` to `configured()`), NOT on the disabled/empty guard. Verified live: mcp__harness__result_store-aggregate_by_agent with no args returns the real per-agent ledger (currently {}), aggregate_ceremony_cost returns run_count>0 (currently 0), aggregate_reviewer_reliability returns reviewers (currently {}).",
