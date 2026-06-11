@@ -5,7 +5,9 @@ defmodule Harness.ResultStore.KPIParityTest do
   use Harness.DataCase, async: false
 
   alias Harness.AgentAdapter.Claude
+  alias Harness.AgentAdapter.Codex
   alias Harness.AgentKPI
+  alias Harness.CapabilityScore
   alias Harness.Repo
   alias Harness.ResultStore
   alias Harness.ResultStore.Memory, as: MemoryStore
@@ -108,6 +110,53 @@ defmodule Harness.ResultStore.KPIParityTest do
     assert byte_size(point.agent_output) == 50_000
   end
 
+  test "aggregate_reviewer_reliability matches Memory in-process rollup for the same records", %{root: root} do
+    file_store = {MemoryStore, root: root}
+    pg_store = {PostgresStore, repo: Repo}
+
+    records = seed_reviewer_records(file_store)
+    seed_reviewer_records(pg_store)
+
+    file_ledger = AgentKPI.aggregate_reviewer_rejections(records)
+    assert {:ok, pg_ledger} = ResultStore.aggregate_reviewer_reliability(pg_store)
+
+    assert pg_ledger |> Map.keys() |> Enum.sort() == file_ledger |> Map.keys() |> Enum.sort()
+
+    for reviewer <- Map.keys(file_ledger) do
+      assert_reviewer_equal(file_ledger[reviewer], pg_ledger[reviewer])
+    end
+  end
+
+  test "aggregate_by_facet matches Memory in-process rollup for the same records", %{root: root} do
+    file_store = {MemoryStore, root: root}
+    pg_store = {PostgresStore, repo: Repo}
+
+    records = seed_facet_records(file_store)
+    seed_facet_records(pg_store)
+
+    file_groups =
+      records
+      |> CapabilityScore.build_scout_context()
+      |> Enum.map(fn %{facet: facet, by_agent: agents} -> %{facet: facet, agents: agents} end)
+      |> Enum.sort_by(&Jason.encode!(Map.get(&1, :facet, %{})))
+
+    assert {:ok, pg_groups} = ResultStore.aggregate_by_facet(pg_store)
+    pg_groups = Enum.sort_by(pg_groups, &Jason.encode!(Map.get(&1, :facet, %{})))
+
+    assert length(pg_groups) == length(file_groups)
+
+    file_groups
+    |> Enum.zip(pg_groups)
+    |> Enum.each(fn {file_group, pg_group} ->
+      assert file_group.facet == pg_group.facet
+      assert file_group.agents |> Map.keys() |> Enum.sort() == pg_group.agents |> Map.keys() |> Enum.sort()
+
+      for agent <- Map.keys(file_group.agents) do
+        assert_kpi_equal(file_group.agents[agent], pg_group.agents[agent])
+      end
+    end)
+  end
+
   test "list_run_records respects :limit and inserted_at recency", %{} do
     pg_store = {PostgresStore, repo: Repo}
 
@@ -122,6 +171,58 @@ defmodule Harness.ResultStore.KPIParityTest do
              |> then(fn {:ok, rows} -> {:ok, Enum.map(rows, & &1.run_id)} end)
 
     assert ids == ["parity-new", "parity-mid"]
+  end
+
+  defp seed_reviewer_records(store) do
+    records = [
+      record("parity-rv1", agent: :codex, verdict: :approve, reviewer_adapter: Codex),
+      record("parity-rv2",
+        agent: :codex,
+        verdict: nil,
+        reason: {:review_stuck, "no artifact"},
+        reviewer_adapter: Codex
+      ),
+      record("parity-rv3", agent: :claude, verdict: :reject, reviewer_adapter: Claude)
+    ]
+
+    for rec <- records, do: assert(:ok = ResultStore.record_run(rec, store))
+    records
+  end
+
+  defp seed_facet_records(store) do
+    records = [
+      record("parity-f1",
+        agent: :codex,
+        verdict: :approve,
+        review_iterations: 0,
+        review_facets: %{"surface" => "otp", "language" => "elixir"},
+        token_usage: tokens(100, 50)
+      ),
+      record("parity-f2",
+        agent: :claude,
+        verdict: :reject,
+        review_iterations: 1,
+        review_facets: %{"surface" => "otp", "language" => "elixir"},
+        token_usage: tokens(80, 40)
+      ),
+      record("parity-f3",
+        agent: :grok,
+        verdict: :reject,
+        review_facets: %{},
+        token_usage: tokens(10, 5)
+      )
+    ]
+
+    for rec <- records, do: assert(:ok = ResultStore.record_run(rec, store))
+    records
+  end
+
+  defp assert_reviewer_equal(a, b) do
+    assert a.reviewed_count == b.reviewed_count
+    assert a.rejection_count == b.rejection_count
+    assert a.no_verdict_count == b.no_verdict_count
+    assert_in_delta(a.rejection_rate, b.rejection_rate, 1.0e-9)
+    assert_in_delta(a.no_verdict_rate, b.no_verdict_rate, 1.0e-9)
   end
 
   defp assert_kpi_equal(a, b) do

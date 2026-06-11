@@ -66,6 +66,29 @@ defmodule Harness.ResultStore do
   """
   @callback aggregate_by_agent(keyword(), keyword()) :: {:ok, AgentKPI.t()} | {:error, term()}
 
+  @doc """
+  Rolls persisted run records up into a per-reviewer-adapter reliability ledger.
+
+  Backends with SQL fast paths (Postgres) issue one aggregate query; others fall
+  back to `list_run_records/1` + `Harness.AgentKPI.aggregate_reviewer_rejections/1`.
+  """
+  @callback aggregate_reviewer_reliability(keyword(), keyword()) ::
+              {:ok, AgentKPI.reviewer_ledger()} | {:error, term()}
+
+  @typedoc "One facet group's per-agent KPI ledger for dashboard pivoting."
+  @type facet_group :: %{
+          facet: %{String.t() => term()},
+          agents: AgentKPI.t()
+        }
+
+  @doc """
+  Rolls persisted run records up by reviewer-assigned task facet.
+
+  Backends with SQL fast paths (Postgres) issue grouped aggregate queries; others
+  fall back to `list_run_records/1` + `Harness.CapabilityScore.build_scout_context/1`.
+  """
+  @callback aggregate_by_facet(keyword(), keyword()) :: {:ok, [facet_group()]} | {:error, term()}
+
   @doc "Persists one computed capability score."
   @callback save_capability_score(CapabilityScore.t(), keyword()) :: :ok | {:error, term()}
 
@@ -231,7 +254,7 @@ defmodule Harness.ResultStore do
 
   api(
     :aggregate_reviewer_reliability,
-    "Per-reviewer-adapter reliability ledger over all persisted run records: rejection_rate and no_verdict_rate (review_stuck — the reviewer gated the run but wrote no verdict). Derived from list_run_records; no SQL fast path.",
+    "Per-reviewer-adapter reliability ledger over all persisted run records: rejection_rate and no_verdict_rate (review_stuck — the reviewer gated the run but wrote no verdict). One aggregate query on Postgres.",
     params: [
       store: [
         kind: :value,
@@ -251,10 +274,32 @@ defmodule Harness.ResultStore do
   def aggregate_reviewer_reliability(nil), do: {:ok, %{}}
 
   def aggregate_reviewer_reliability(store) do
-    case list_run_records(store, []) do
-      {:ok, records} -> {:ok, AgentKPI.aggregate_reviewer_rejections(records)}
-      {:error, _} = err -> err
-    end
+    dispatch(store, :aggregate_reviewer_reliability, [[]])
+  end
+
+  api(
+    :aggregate_by_facet,
+    "Per-facet per-agent KPI ledger over all persisted run records (grouped aggregate on Postgres).",
+    params: [
+      store: [
+        kind: :value,
+        default: @configured_store,
+        description:
+          "Configured store from ResultStore.configured/0 when omitted, or override; `false`/`nil` returns {:ok, []}."
+      ]
+    ],
+    returns: %{type: :tuple, description: "{:ok, [facet_group()]} or {:error, reason}."}
+  )
+
+  @spec aggregate_by_facet(store()) :: {:ok, [facet_group()]} | {:error, term()}
+  def aggregate_by_facet(store \\ configured())
+
+  def aggregate_by_facet(@configured_store), do: aggregate_by_facet(configured())
+  def aggregate_by_facet(false), do: {:ok, []}
+  def aggregate_by_facet(nil), do: {:ok, []}
+
+  def aggregate_by_facet(store) do
+    dispatch(store, :aggregate_by_facet, [[]])
   end
 
   api(

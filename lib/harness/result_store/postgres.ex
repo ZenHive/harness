@@ -219,6 +219,33 @@ defmodule Harness.ResultStore.Postgres do
     end
   end
 
+  @impl Harness.ResultStore
+  @spec aggregate_reviewer_reliability(keyword(), keyword()) ::
+          {:ok, AgentKPI.reviewer_ledger()} | {:error, term()}
+  def aggregate_reviewer_reliability(_query_opts, opts) when is_list(opts) do
+    repo = Keyword.get(opts, :repo, Repo)
+
+    try do
+      rows = repo.all(aggregate_reviewer_reliability_query())
+      {:ok, reviewer_rows_to_ledger(rows)}
+    rescue
+      e -> {:error, e}
+    end
+  end
+
+  @impl Harness.ResultStore
+  @spec aggregate_by_facet(keyword(), keyword()) :: {:ok, [Harness.ResultStore.facet_group()]} | {:error, term()}
+  def aggregate_by_facet(_query_opts, opts) when is_list(opts) do
+    repo = Keyword.get(opts, :repo, Repo)
+
+    try do
+      rows = repo.all(aggregate_by_facet_query())
+      {:ok, facet_rows_to_groups(rows)}
+    rescue
+      e -> {:error, e}
+    end
+  end
+
   @spec aggregate_by_agent_query() :: Ecto.Query.t()
   defp aggregate_by_agent_query do
     from r in RunRecordSchema,
@@ -275,6 +302,164 @@ defmodule Harness.ResultStore.Postgres do
           )
       }
   end
+
+  @spec aggregate_reviewer_reliability_query() :: Ecto.Query.t()
+  defp aggregate_reviewer_reliability_query do
+    from r in RunRecordSchema,
+      where:
+        not is_nil(r.reviewer_adapter) and
+          (r.verdict in ["approve", "reject"] or
+             fragment("(?->'$tuple'->0->>'$atom') = 'review_stuck'", r.reason)),
+      group_by: r.reviewer_adapter,
+      select: %{
+        reviewer_adapter: r.reviewer_adapter,
+        reviewed_count: count(r.run_id),
+        rejection_count: r.run_id |> count() |> filter(r.verdict == "reject"),
+        no_verdict_count:
+          r.run_id
+          |> count()
+          |> filter(fragment("(?->'$tuple'->0->>'$atom') = 'review_stuck'", r.reason))
+      }
+  end
+
+  @spec reviewer_rows_to_ledger([map()]) :: AgentKPI.reviewer_ledger()
+  defp reviewer_rows_to_ledger(rows) do
+    Map.new(rows, fn row ->
+      reviewed_count = row.reviewed_count
+      rejection_count = row.rejection_count || 0
+      no_verdict_count = row.no_verdict_count || 0
+
+      kpi = %{
+        reviewed_count: reviewed_count,
+        rejection_count: rejection_count,
+        rejection_rate: safe_rate(rejection_count, reviewed_count),
+        no_verdict_count: no_verdict_count,
+        no_verdict_rate: safe_rate(no_verdict_count, reviewed_count)
+      }
+
+      {string_to_module(row.reviewer_adapter), kpi}
+    end)
+  end
+
+  @spec aggregate_by_facet_query() :: Ecto.Query.t()
+  defp aggregate_by_facet_query do
+    rows =
+      from r in RunRecordSchema,
+        select: %{
+          run_id: r.run_id,
+          agent: r.agent,
+          facet_json:
+            fragment(
+              "COALESCE((SELECT jsonb_object_agg(key, value ORDER BY key) FROM jsonb_each(COALESCE(?, '{}'::jsonb)) WHERE value IS NOT NULL AND value <> 'null'::jsonb), '{}'::jsonb)",
+              r.review_facets
+            ),
+          verdict: r.verdict,
+          reason: r.reason,
+          duration_ms: r.duration_ms,
+          review_iterations: r.review_iterations,
+          token_usage: r.token_usage,
+          review_skills: r.review_skills,
+          review_ratings: r.review_ratings
+        }
+
+    from b in subquery(rows),
+      group_by: [b.facet_json, b.agent],
+      select: %{
+        facet_json: b.facet_json,
+        agent: b.agent,
+        run_count: count(b.run_id),
+        pass_count: b.run_id |> count() |> filter(b.verdict == "approve"),
+        first_attempt_pass_count:
+          b.run_id |> count() |> filter(b.verdict == "approve" and coalesce(b.review_iterations, 0) == 0),
+        reviewer_flaked_count:
+          b.run_id
+          |> count()
+          |> filter(fragment("(?->'$tuple'->0->>'$atom') = 'review_stuck'", b.reason)),
+        durations: fragment("array_agg(? ORDER BY ?)", b.duration_ms, b.duration_ms),
+        review_iterations_mean: avg(coalesce(b.review_iterations, 0)),
+        input_mean:
+          avg(
+            fragment(
+              "coalesce((?->>'input')::float, 0)",
+              b.token_usage
+            )
+          ),
+        output_mean:
+          avg(
+            fragment(
+              "coalesce((?->>'output')::float, 0)",
+              b.token_usage
+            )
+          ),
+        total_mean:
+          avg(
+            fragment(
+              "coalesce((?->>'total')::float, 0)",
+              b.token_usage
+            )
+          ),
+        pass_count_for_cost: b.run_id |> count() |> filter(b.verdict == "approve"),
+        cost_to_green_mean:
+          "coalesce((?->>'total')::float, 0)"
+          |> fragment(b.token_usage)
+          |> avg()
+          |> filter(b.verdict == "approve"),
+        ratings:
+          fragment(
+            "array_agg(jsonb_build_object('review_skills', ?, 'review_ratings', ?))",
+            b.review_skills,
+            b.review_ratings
+          )
+      }
+  end
+
+  @spec facet_rows_to_groups([map()]) :: [Harness.ResultStore.facet_group()]
+  defp facet_rows_to_groups(rows) do
+    rows
+    |> Enum.group_by(& &1.facet_json)
+    |> Enum.map(fn {_facet_json, agent_rows} ->
+      facet = jsonb_to_facet_map(hd(agent_rows).facet_json)
+
+      agents =
+        Map.new(agent_rows, fn row ->
+          {string_to_atom(row.agent), facet_agent_row_to_kpi(row)}
+        end)
+
+      %{facet: facet, agents: agents}
+    end)
+    |> Enum.sort_by(&Jason.encode!(Map.get(&1, :facet, %{})))
+  end
+
+  @spec facet_agent_row_to_kpi(map()) :: AgentKPI.agent_kpi()
+  defp facet_agent_row_to_kpi(row) do
+    run_count = row.run_count
+    pass_count = row.pass_count || 0
+    reviewer_flaked = row.reviewer_flaked_count || 0
+    attributable_count = run_count - reviewer_flaked
+
+    cost_to_green =
+      if row.pass_count_for_cost > 0, do: float_or_nil(row.cost_to_green_mean)
+
+    %{
+      run_count: run_count,
+      reviewer_flaked: reviewer_flaked,
+      success_rate: safe_rate(pass_count, attributable_count),
+      first_attempt_pass_rate: safe_rate(row.first_attempt_pass_count || 0, attributable_count),
+      duration_ms: AgentKPI.duration_summary(row.durations || []),
+      tokens: %{
+        input: float_or_zero(row.input_mean),
+        output: float_or_zero(row.output_mean),
+        total: float_or_zero(row.total_mean)
+      },
+      review_iterations: float_or_zero(row.review_iterations_mean),
+      ratings: row.ratings |> normalize_rating_records() |> AgentKPI.rating_means(),
+      cost_to_green: cost_to_green
+    }
+  end
+
+  @spec jsonb_to_facet_map(map() | nil) :: %{String.t() => term()}
+  defp jsonb_to_facet_map(nil), do: %{}
+  defp jsonb_to_facet_map(map) when is_map(map), do: map
 
   @spec aggregate_rows_to_ledger([map()]) :: AgentKPI.t()
   defp aggregate_rows_to_ledger(rows) do

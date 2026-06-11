@@ -173,9 +173,9 @@ defmodule Harness.Dashboard.KPILive do
   # so a missing store / unwritten assessment renders the no-data state.
   @spec assign_facets(Socket.t()) :: Socket.t()
   defp assign_facets(socket) do
-    records =
-      case ResultStore.list_run_records([]) do
-        {:ok, recs} -> recs
+    facet_groups =
+      case ResultStore.aggregate_by_facet() do
+        {:ok, groups} -> groups
         _error -> []
       end
 
@@ -186,7 +186,7 @@ defmodule Harness.Dashboard.KPILive do
       end
 
     socket
-    |> assign(:facets, build_facets(records, assessment))
+    |> assign(:facets, build_facets(facet_groups, assessment))
     |> assign(:assessed_at, assessment && assessment.assessed_at)
   end
 
@@ -203,20 +203,17 @@ defmodule Harness.Dashboard.KPILive do
 
   # One card per facet group: its label, the scout's verdict entry (or nil), and
   # the per-agent fact rows. Sorted by label so the layout is stable across reads.
-  @spec build_facets([term()], Assessment.t() | nil) :: [map()]
-  defp build_facets(records, assessment) do
+  @spec build_facets([ResultStore.facet_group()], Assessment.t() | nil) :: [map()]
+  defp build_facets(facet_groups, assessment) do
     verdicts = verdict_index(assessment)
 
-    records
-    |> CapabilityScore.group_by_facet()
-    |> Enum.map(fn {_key, group} ->
-      facet = normalize_facet(hd(group).review_facets)
-
+    facet_groups
+    |> Enum.map(fn %{facet: facet, agents: ledger} ->
       %{
         facet: facet,
         label: facet_label(facet),
         verdict: Map.get(verdicts, facet),
-        agents: facet_rows(group)
+        agents: ledger |> to_rows() |> Enum.sort_by(& &1.run_count, :desc)
       }
     end)
     |> Enum.sort_by(& &1.label)
@@ -229,15 +226,6 @@ defmodule Harness.Dashboard.KPILive do
 
   defp verdict_index(%Assessment{entries: entries}) do
     Map.new(entries, fn %Entry{} = entry -> {normalize_facet(entry.facet), entry} end)
-  end
-
-  # Per-agent KPI rows for one facet group, busiest agent first.
-  @spec facet_rows([term()]) :: [map()]
-  defp facet_rows(records) do
-    records
-    |> AgentKPI.aggregate()
-    |> to_rows()
-    |> Enum.sort_by(& &1.run_count, :desc)
   end
 
   @spec normalize_facet(term()) :: %{String.t() => term()}

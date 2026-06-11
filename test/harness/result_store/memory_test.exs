@@ -1,7 +1,9 @@
 defmodule Harness.ResultStore.MemoryTest do
   use ExUnit.Case, async: true
 
+  alias Harness.AgentAdapter.Claude
   alias Harness.AgentKPI
+  alias Harness.CapabilityScore
   alias Harness.ResultStore
   alias Harness.ResultStore.Memory, as: Store
   alias Harness.ResultStoreContract
@@ -26,6 +28,51 @@ defmodule Harness.ResultStore.MemoryTest do
     end
   end
 
+  test "aggregate_reviewer_reliability matches AgentKPI over the in-memory records", %{store: store} do
+    records = [
+      ResultStoreContract.log_record(
+        run_id: "mem-rv1",
+        verdict: :reject,
+        reviewer_adapter: Claude
+      ),
+      ResultStoreContract.log_record(
+        run_id: "mem-rv2",
+        verdict: nil,
+        reason: {:review_stuck, "no artifact"},
+        reviewer_adapter: Claude
+      )
+    ]
+
+    for record <- records, do: assert(:ok = ResultStore.record_run(record, store))
+
+    assert {:ok, ledger} = ResultStore.aggregate_reviewer_reliability(store)
+    assert ledger == AgentKPI.aggregate_reviewer_rejections(records)
+  end
+
+  test "aggregate_by_facet matches CapabilityScore.build_scout_context/1", %{store: store} do
+    records = [
+      ResultStoreContract.log_record(
+        run_id: "mem-f1",
+        agent: :codex,
+        verdict: :approve,
+        review_facets: %{"surface" => "otp"}
+      ),
+      ResultStoreContract.log_record(run_id: "mem-f2", agent: :grok, verdict: :reject, review_facets: %{})
+    ]
+
+    for record <- records, do: assert(:ok = ResultStore.record_run(record, store))
+
+    expected =
+      records
+      |> CapabilityScore.build_scout_context()
+      |> Enum.map(fn %{facet: facet, by_agent: agents} -> %{facet: facet, agents: agents} end)
+
+    assert {:ok, groups} = ResultStore.aggregate_by_facet(store)
+
+    assert Enum.sort_by(groups, &Jason.encode!(Map.get(&1, :facet, %{}))) ==
+             Enum.sort_by(expected, &Jason.encode!(Map.get(&1, :facet, %{})))
+  end
+
   test "aggregate_by_agent matches AgentKPI over the in-memory records", %{store: store} do
     records = [
       ResultStoreContract.log_record(run_id: "mem-a", agent: :codex, verdict: :approve),
@@ -44,8 +91,7 @@ defmodule Harness.ResultStore.MemoryTest do
         run_id: "mem-stuck-selection",
         verdict: nil,
         reason:
-          {:review_stuck,
-           "No cross-family reviewer adapter available: {:reviewer_unavailable, #{inspect(Harness.AgentAdapter.Claude)}}"},
+          {:review_stuck, "No cross-family reviewer adapter available: {:reviewer_unavailable, #{inspect(Claude)}}"},
         reviewer_adapter: nil
       ),
       ResultStoreContract.log_record(

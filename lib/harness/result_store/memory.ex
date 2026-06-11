@@ -10,7 +10,8 @@ defmodule Harness.ResultStore.Memory do
 
   alias Harness.AgentKPI
   alias Harness.Batch.Result, as: BatchResult
-  alias Harness.CapabilityScore.Legacy, as: CapabilityScore
+  alias Harness.CapabilityScore
+  alias Harness.CapabilityScore.Legacy, as: CapabilityScoreLegacy
   alias Harness.Run.LogRecord
 
   @table __MODULE__
@@ -75,25 +76,46 @@ defmodule Harness.ResultStore.Memory do
   end
 
   @impl Harness.ResultStore
-  @spec save_capability_score(CapabilityScore.t(), keyword()) :: :ok
-  def save_capability_score(%CapabilityScore{} = score, opts) when is_list(opts) do
+  @spec aggregate_reviewer_reliability(keyword(), keyword()) :: {:ok, AgentKPI.reviewer_ledger()}
+  def aggregate_reviewer_reliability(_query_opts, opts) when is_list(opts) do
+    with {:ok, records} <- list_run_records([], opts) do
+      {:ok, AgentKPI.aggregate_reviewer_rejections(records)}
+    end
+  end
+
+  @impl Harness.ResultStore
+  @spec aggregate_by_facet(keyword(), keyword()) :: {:ok, [Harness.ResultStore.facet_group()]}
+  def aggregate_by_facet(_query_opts, opts) when is_list(opts) do
+    with {:ok, records} <- list_run_records([], opts) do
+      groups =
+        records
+        |> CapabilityScore.build_scout_context()
+        |> Enum.map(fn %{facet: facet, by_agent: agents} -> %{facet: facet, agents: agents} end)
+
+      {:ok, groups}
+    end
+  end
+
+  @impl Harness.ResultStore
+  @spec save_capability_score(CapabilityScoreLegacy.t(), keyword()) :: :ok
+  def save_capability_score(%CapabilityScoreLegacy{} = score, opts) when is_list(opts) do
     key = {score.agent, score.domain, score.corpus_version}
     update(opts, fn state -> %{state | capability_scores: Map.put(state.capability_scores, key, score)} end)
   end
 
   @impl Harness.ResultStore
   @spec get_capability_score(atom(), atom(), String.t(), keyword()) ::
-          {:ok, CapabilityScore.t()} | :no_data
+          {:ok, CapabilityScoreLegacy.t()} | :no_data
   def get_capability_score(agent, domain, corpus_version, opts)
       when is_atom(agent) and is_atom(domain) and is_binary(corpus_version) and is_list(opts) do
     case Map.fetch(read(opts).capability_scores, {agent, domain, corpus_version}) do
-      {:ok, %CapabilityScore{} = score} -> {:ok, score}
+      {:ok, %CapabilityScoreLegacy{} = score} -> {:ok, score}
       :error -> :no_data
     end
   end
 
   @impl Harness.ResultStore
-  @spec list_capability_scores(keyword()) :: {:ok, [CapabilityScore.t()]}
+  @spec list_capability_scores(keyword()) :: {:ok, [CapabilityScoreLegacy.t()]}
   def list_capability_scores(opts) when is_list(opts) do
     scores =
       opts
