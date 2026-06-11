@@ -7197,7 +7197,7 @@ id = "246"
 phase = 13
 bundle = "kpi-routing"
 milestone = "v0_14"
-status = "done"
+status = "in_progress"
 title = "ResultStore MCP read tools resolve configured() store when param omitted (KPIs read empty via MCP)"
 scores = { d = 2, b = 4, u = 4 }
 acceptance_criteria = ["The api()-annotated ResultStore read tools (aggregate_by_agent, list_capability_scores — and any sibling whose Elixir default is `configured()` but whose api() `store` default is `nil`) resolve the configured store when the MCP/chat caller omits `store`, instead of hitting the `nil`/`false` disabled short-circuit that returns {:ok, %{}} / {:ok, []}.", "Elixir-side behavior is unchanged: `false`/`nil` still explicitly short-circuits (disabled store), and an explicit store override still wins. Only the MISSING-param path changes from nil->disabled to nil->configured().", "Fix is at the api() surface, not by deleting the disabled short-circuit: prefer an api() default sentinel that resolves configured() (or drop the `store` param from the tool schema and resolve internally), so `false`/`nil` overrides remain expressible.", "Regression test: invoking each affected tool through the descripex/MCP dispatch path (Harness.Chat.Tools / Manifest) with no `store` arg returns the populated aggregate/list from the configured Postgres store, not the empty disabled value. A test with explicit store=false still returns the disabled value.", "mix test.json green"]

@@ -10248,7 +10248,7 @@
       "phase": 13,
       "bundle": "kpi-routing",
       "milestone": "v0_14",
-      "status": "done",
+      "status": "in_progress",
       "title": "ResultStore MCP read tools resolve configured() store when param omitted (KPIs read empty via MCP)",
       "scores": {
         "d": 2,
