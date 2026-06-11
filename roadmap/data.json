@@ -10548,6 +10548,42 @@
       "started_at": "2026-06-11",
       "scored_at": "2026-06-11",
       "cross_repo": []
+    },
+    {
+      "id": "253",
+      "phase": 16,
+      "bundle": "agent-gate",
+      "status": "pending",
+      "title": "dispatch-await MCP tool: timeout_ms float coercion breaks await/5 guard",
+      "scores": {
+        "d": 2,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 3.0,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "claude",
+      "acceptance_criteria": [
+        "Calling the dispatch-await MCP tool with an explicit timeout_ms (e.g. 1800000) no longer raises FunctionClauseError 'no function clause matching in Harness.Dispatch.await/5'",
+        "Root cause confirmed: MCP/JSON numeric params reach await/5 as float, missing the is_integer(timeout_ms) guard (dispatch-task works because it has no numeric value param and the integer-literal default matches)",
+        "Fix coerces the incoming timeout_ms to integer (trunc/round) at the api boundary OR relaxes the guard to is_number — whichever matches the descripex api() value-param contract; the default-path (no timeout_ms passed) must keep working",
+        "Regression test: await invoked with a float timeout_ms returns {:ok, _} (or :timed_out), not a FunctionClauseError"
+      ],
+      "out_of_scope": [
+        "dispatch-task / dispatch-compare / dispatch-bundle — only await carries a numeric value param",
+        "Changing the default timeout value"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "Found 2026-06-11 while testing the updated harness end-to-end. dispatch-await failed deterministically with\n'no function clause matching in Harness.Dispatch.await/5'; the same dispatch via dispatch-task succeeded\n(run-1781171110262-3bd79d4f, task 112 tapakly). await/5 guards on is_integer(timeout_ms) and timeout_ms > 0;\nthe MCP layer almost certainly delivers the JSON number as a float, so the guard never matches. dispatch-task\nhas no numeric value param and its callers use the integer-literal default, which is why it is unaffected.\nLikely fix at the descripex api() value-coercion boundary or by widening the guard to is_number/1 then trunc-ing.\n",
+      "created_at": "2026-06-11",
+      "scored_at": "2026-06-11",
+      "cross_repo": []
     }
   ]
 }
