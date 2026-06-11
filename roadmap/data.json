@@ -10405,7 +10405,7 @@
       "phase": 19,
       "bundle": "kpi-routing",
       "milestone": "v0_14",
-      "status": "done",
+      "status": "in_progress",
       "title": "KPI: surface review_stuck by cause + count selection-time stuck (nil reviewer_adapter) as orchestration health",
       "scores": {
         "d": 2,
