@@ -7376,7 +7376,7 @@ scored_at = "2026-06-10"
 id = "252"
 phase = 19
 bundle = "agent-gate"
-status = "in_progress"
+status = "done"
 title = "Per-project warm_paths: pre-seed a project's gitignored worktree inputs (source/corpus) so agents don't relink/regenerate the corpus on every run"
 scores = { d = 3, b = 8, u = 8 }
 depends_on = [226]
@@ -7398,9 +7398,14 @@ Operator side (out of scope here): run `mix ccxt_extract.update` on development 
 
 Extends Task 226 (the warm/2 mechanism). First implementer run (run-1781158655671-19a1b146) delivered the full diff (commit fb1f939, branch harness/run-1781158655671-19a1b146) but the reviewer died review_stuck (Opus capacity) — salvage via re-review, not re-implement.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781173212312-bd2a79a1, 840f689043b4b19bd99e503bbea96a1f16fd50ed)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-11"
 started_at = "2026-06-11"
 scored_at = "2026-06-11"
+done_at = "2026-06-11"
+shipped_in = "840f689043b4b19bd99e503bbea96a1f16fd50ed"
 
 [[task]]
 id = "253"

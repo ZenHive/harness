@@ -10501,7 +10501,7 @@
       "id": "252",
       "phase": 19,
       "bundle": "agent-gate",
-      "status": "in_progress",
+      "status": "done",
       "title": "Per-project warm_paths: pre-seed a project's gitignored worktree inputs (source/corpus) so agents don't relink/regenerate the corpus on every run",
       "scores": {
         "d": 3,
@@ -10543,10 +10543,15 @@
         "test/harness/worktree_test.exs",
         "test/harness/project_registry_test.exs"
       ],
+      "shipped_in": "840f689043b4b19bd99e503bbea96a1f16fd50ed",
       "body": "WHAT THIS IS (reframed 2026-06-11): a worktree-warming OPTIMIZATION, not a review_stuck root-cause fix. ccxt_extract's gitignored corpus (`/priv/ccxt` vendored CCXT TS source + `/priv/discoveries/*`, .gitignore lines 21/34-35; only class_hierarchy.json is tracked) is NOT materialized by `git worktree add`, which copies tracked files only. Agents work around that TODAY by running `mix ccxt_extract.link_corpus` (links the corpus from the main checkout) — confirmed in Task 121's verdict, where the reviewer ran link_corpus itself. So worktrees are NOT corpus-less to agents; they re-acquire it every run.\n\nThe cost this removes: that per-run relink/regenerate dance is manual and fragile. Task 121's reviewer linked a SCOPED/partial corpus and still hit 2 partial-corpus test failures (missing 4 ws_* discovery files). Pre-seeding the full corpus via Worktree.warm/2 makes the worktree corpus-complete by construction — agents skip link_corpus, and partial-corpus flakiness goes away.\n\nNOT the cause of the wave-5 review_stuck failures. 78f/63 (and 252's own first run) died `{:cancel, {:review_stuck, ...}}` because of Opus usage-limit/capacity, not a missing corpus — Task 121's implementer \"hit an Opus usage limit on its first turn and produced an empty worktree,\" same firing-13-at-once capacity wall. Those need plain re-dispatch when capacity frees, NOT this task.\n\nTHE MECHANISM: Worktree.warm/2 (Task 226) already CoW-seeds gitignored dirs from the parent checkout, but only @default_warm_paths = [\"deps\", \"_build\", \"priv/plts\"], with the only override the GLOBAL `:harness, :worktree, :warm_paths` app config. A global list is the wrong granularity (ccxt_extract wants priv/ccxt + priv/discoveries; harness's own runs want none). Add a per-project `warm_paths` field on %Harness.Project{}, threaded into warm/2 as an EXTENSION of the defaults, so each project declares its own corpus/source inputs.\n\nOperator side (out of scope here): run `mix ccxt_extract.update` on development to refresh local priv/ccxt + priv/discoveries (warm/2 copies FROM there), then register ccxt_extract with warm_paths = [\"priv/ccxt\", \"priv/discoveries\"].\n\nExtends Task 226 (the warm/2 mechanism). First implementer run (run-1781158655671-19a1b146) delivered the full diff (commit fb1f939, branch harness/run-1781158655671-19a1b146) but the reviewer died review_stuck (Opus capacity) — salvage via re-review, not re-implement.\n",
       "created_at": "2026-06-11",
       "started_at": "2026-06-11",
+      "done_at": "2026-06-11",
       "scored_at": "2026-06-11",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781173212312-bd2a79a1, 840f689043b4b19bd99e503bbea96a1f16fd50ed).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {

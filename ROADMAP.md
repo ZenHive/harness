@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 19 — Self-Healing Run Loop (11 of 18 done · 0 in progress)
+**Focus phase:** 19 — Self-Healing Run Loop (12 of 18 done · 0 in progress)
 
-**Last shipped:** Task 234 — MEASURE the fragmentation / ceremony tax — quantify per-task dispatch overhead from the per-run token facts already captured, Task 237 — Cron manual-approval dispatch mode — park autonomous dispatch for operator approval before enqueue, Task 238 — Fix MCP dispatch-hold boolean-arg coercion + document hold→steer→resume recovery in harness-driver SKILL, Task 239 — Implementer-phase idle watchdog — a wedged :running agent holds a queue slot up to the 90-min lifetime cap, Task 240 — Thread the pinned model into the agent Invocation — requested_model is captured but never reaches --model on 2026-06-07
+**Last shipped:** Task 252 — Per-project warm_paths: pre-seed a project's gitignored worktree inputs (source/corpus) so agents don't relink/regenerate the corpus on every run on 2026-06-11
 
 **Up next:** Task 248 — AgentKPI quality rollup reads legacy-empty review_ratings — repoint to review_skills so the quality signal isn't dark since the v0_13 rubric migration [D:2/B:7/U:6 → Eff:3.25] 🎯
 <!-- FOCUS:END -->
