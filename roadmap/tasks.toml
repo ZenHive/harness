@@ -7375,7 +7375,7 @@ scored_at = "2026-06-10"
 id = "252"
 phase = 19
 bundle = "agent-gate"
-status = "pending"
+status = "in_progress"
 title = "Per-project warm_paths: seed a project's gitignored worktree inputs (source/corpus) so extractor runs don't fail review_stuck on a missing base"
 scores = { d = 3, b = 8, u = 8 }
 depends_on = [226]
@@ -7396,4 +7396,5 @@ This is the harness-side half of the fix. The operator side: run `mix ccxt_extra
 Extends Task 226 (the warm/2 mechanism). Pairs with rescue of the already-built 78f/63/121 branches (re-review against a warmed base rather than re-implement).
 """
 created_at = "2026-06-11"
+started_at = "2026-06-11"
 scored_at = "2026-06-11"

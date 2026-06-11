@@ -10500,7 +10500,7 @@
       "id": "252",
       "phase": 19,
       "bundle": "agent-gate",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Per-project warm_paths: seed a project's gitignored worktree inputs (source/corpus) so extractor runs don't fail review_stuck on a missing base",
       "scores": {
         "d": 3,
@@ -10544,6 +10544,7 @@
       ],
       "body": "ROOT CAUSE (diagnosed 2026-06-11): every ccxt_extract extractor run in wave-5 (tasks 78f, 63, and the 121 in-flight) died `{:cancel, {:review_stuck, \"Reviewer wrote no .harness/review.json verdict artifact.\"}}`. The reviewer thrashes and never reaches a verdict because the worktree has NO corpus to check against.\n\nWhy the worktree is empty: ccxt_extract .gitignore lines 21/34-35 ignore `/priv/ccxt` (the vendored CCXT TypeScript source) and `/priv/discoveries/*` (the whole derived discovery corpus, except class_hierarchy.json). `git worktree add` only materializes TRACKED files, so a fresh harness worktree gets class_hierarchy.json and nothing else — no CCXT source, no corpus. The extractor tasks read/validate against `priv/discoveries/*.json` (ws_methods.json, etc.) and the cached/contract tests need the corpus; all of it is absent, so the check stack can't pass and the reviewer burns its budget then idle-times-out with no verdict.\n\nWorktree.warm/2 (Task 226) already CoW-seeds gitignored dirs from the parent checkout — but only @default_warm_paths = [\"deps\", \"_build\", \"priv/plts\"], and the only override is the GLOBAL `:harness, :worktree, :warm_paths` app config. A global list is the wrong granularity: different registered projects have different gitignored inputs (ccxt_extract needs priv/ccxt + priv/discoveries; harness's own runs need none). Add a per-project `warm_paths` field on %Harness.Project{} so each project declares its corpus/source inputs, threaded into warm/2 as an EXTENSION of the defaults.\n\nThis is the harness-side half of the fix. The operator side: run `mix ccxt_extract.update` on development to refresh the local priv/ccxt + priv/discoveries (warm/2 copies from there), then register ccxt_extract with warm_paths = [\"priv/ccxt\", \"priv/discoveries\"]. Immediate stopgap available without this task: set the global :harness,:worktree,:warm_paths to include those two paths (safe — seedable? no-ops where a path is absent in the parent, e.g. harness's own worktrees); this per-project field is the clean, multi-project-correct replacement.\n\nExtends Task 226 (the warm/2 mechanism). Pairs with rescue of the already-built 78f/63/121 branches (re-review against a warmed base rather than re-implement).\n",
       "created_at": "2026-06-11",
+      "started_at": "2026-06-11",
       "scored_at": "2026-06-11",
       "cross_repo": []
     }
