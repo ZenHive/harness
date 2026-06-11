@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 19 — Self-Healing Run Loop (15 of 18 done · 1 in progress)
+**Focus phase:** 19 — Self-Healing Run Loop (14 of 18 done · 2 in progress)
 
-**Last shipped:** Task 247 — Reviewer selection: AgentRegistry.available? must deprioritize, not eliminate, an installed cross-family reviewer (soft hint used as hard gate discards completed work), Task 248 — AgentKPI quality rollup reads legacy-empty review_ratings — repoint to review_skills so the quality signal isn't dark since the v0_13 rubric migration, Task 251 — Discovery-filing stage: implementer/reviewer/audit agents file follow-ups via rmap new, not lose them or bury them in TODO comments, Task 252 — Per-project warm_paths: pre-seed a project's gitignored worktree inputs (source/corpus) so agents don't relink/regenerate the corpus on every run on 2026-06-11
+**Last shipped:** Task 247 — Reviewer selection: AgentRegistry.available? must deprioritize, not eliminate, an installed cross-family reviewer (soft hint used as hard gate discards completed work), Task 248 — AgentKPI quality rollup reads legacy-empty review_ratings — repoint to review_skills so the quality signal isn't dark since the v0_13 rubric migration, Task 252 — Per-project warm_paths: pre-seed a project's gitignored worktree inputs (source/corpus) so agents don't relink/regenerate the corpus on every run on 2026-06-11
 
 **Up next:** Task 250 — Validate model↔resolved-adapter compatibility at dispatch — reject an incompatible pin pre-spawn, not a mid-run crash [D:3/B:5/U:5 → Eff:1.67] 🚀
 <!-- FOCUS:END -->
