@@ -10845,7 +10845,7 @@
       "id": "258",
       "phase": 13,
       "bundle": "postgres-results",
-      "status": "in_progress",
+      "status": "done",
       "title": "Reviewer-reliability + facet SQL fast paths — finish what Task 139 started",
       "scores": {
         "d": 2,
@@ -10880,10 +10880,15 @@
         "ecto",
         "dashboard"
       ],
+      "shipped_in": "21951d2910afdb7d45018b09e9e6b2bd5f6ac9ce",
       "body": "2026-06-11 /simplify review finding. Task 139 gave aggregate_by_agent a Postgres GROUP BY fast path, but the two siblings it left behind still full-table-scan on every KPI page mount/settle: ResultStore.aggregate_reviewer_reliability/1 (result_store.ex — the code comment admits 'no SQL fast path') and the facet pivot behind KPILive.assign_facets (kpi_live.ex), which calls list_run_records([]) and groups in Elixir. Follow Task 139's exact pattern: optional behaviour callback with a default that falls back to the in-memory path so the File backend stays first-class, Postgres impl in result_store/postgres.ex. Counting in SQL is mechanics, not judgment.\n",
       "created_at": "2026-06-11",
       "started_at": "2026-06-11",
+      "done_at": "2026-06-11",
       "scored_at": "2026-06-11",
+      "implemented": "Landed by cursor via merge-train; reviewer-approved (run run-1781221243915-103c0ff1, 21951d2910afdb7d45018b09e9e6b2bd5f6ac9ce).",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     },
     {
