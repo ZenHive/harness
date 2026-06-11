@@ -164,7 +164,7 @@ defmodule Harness.Lander.Resilience do
          {:ok, _job} <-
            args
            |> Map.put("land_attempt", attempt)
-           |> LanderWorker.new(queue: HarnessOban.landing_queue_name(project))
+           |> LanderWorker.new_for_project(project)
            |> HarnessOban.insert() do
       Logger.info("harness lander: re-landing task #{args["task_id"]} (attempt #{attempt})")
       :ok

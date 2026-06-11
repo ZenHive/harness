@@ -63,6 +63,7 @@ defmodule Harness.Cron.Orchestrator do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentRegistry
+  alias Harness.Artifact
   alias Harness.CapabilityScore
   alias Harness.Project
   alias Harness.Roadmap
@@ -260,12 +261,9 @@ defmodule Harness.Cron.Orchestrator do
   @doc """
   Reads and parses `.harness/cron-plan.json` from the orchestrator's working dir.
   """
-  # sobelow_skip ["Traversal.FileModule"]
   @spec read(String.t()) :: {:ok, t()} | {:error, error()}
   def read(dir) when is_binary(dir) do
-    path = Path.join(dir, @artifact_path)
-
-    case File.read(path) do
+    case Artifact.read(dir, @artifact_path) do
       {:ok, body} -> decode(body)
       {:error, _reason} -> {:error, :missing}
     end

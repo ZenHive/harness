@@ -38,6 +38,8 @@ defmodule Harness.Run.Review do
   from staging, so it never rides in the deliverable commit.
   """
 
+  alias Harness.Artifact
+
   @artifact_path ".harness/review.json"
 
   @enforce_keys [:verdict, :report]
@@ -82,14 +84,8 @@ defmodule Harness.Run.Review do
   `{:error, {:malformed, detail}}` when it is not valid verdict JSON.
   """
   @spec read(String.t()) :: {:ok, t()} | {:error, error()}
-  # sobelow_skip ["Traversal.FileModule"]
-  # worktree_path is harness-generated (Harness.Worktree.create/2), never user input.
   def read(worktree_path) when is_binary(worktree_path) do
-    case File.read(Path.join(worktree_path, @artifact_path)) do
-      {:ok, contents} -> parse(contents)
-      {:error, :enoent} -> {:error, :missing}
-      {:error, reason} -> {:error, {:malformed, {:unreadable, reason}}}
-    end
+    with {:ok, contents} <- Artifact.read(worktree_path, @artifact_path), do: parse(contents)
   end
 
   @doc """

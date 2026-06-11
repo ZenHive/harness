@@ -30,6 +30,8 @@ defmodule Harness.Run.MemoryGuard do
   so well-behaved concurrent trees cannot collectively OOM the host.
   """
 
+  alias Harness.AgentAdapter.OSProcess
+
   @typep ps_row :: {non_neg_integer(), non_neg_integer()}
 
   @doc """
@@ -62,7 +64,7 @@ defmodule Harness.Run.MemoryGuard do
   def kill_tree(os_pid) when is_integer(os_pid) do
     ps_table()
     |> descendants(os_pid)
-    |> Enum.each(fn pid -> System.cmd("kill", ["-KILL", Integer.to_string(pid)], stderr_to_stdout: true) end)
+    |> Enum.each(&OSProcess.sigkill/1)
   end
 
   @doc """

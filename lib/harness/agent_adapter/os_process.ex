@@ -70,8 +70,20 @@ defmodule Harness.AgentAdapter.OSProcess do
   """
   @spec kill(Run.t()) :: :ok
   def kill(%Run{port: port, os_pid: os_pid}) do
-    if os_pid, do: System.cmd("kill", ["-KILL", Integer.to_string(os_pid)], stderr_to_stdout: true)
+    if os_pid, do: sigkill(os_pid)
     close(port)
     flush(port)
+  end
+
+  @doc """
+  SIGKILLs `os_pid` directly — the raw signal shared by `kill/1` and
+  `Harness.Run.MemoryGuard`'s whole-tree reap.
+
+  Fire-and-forget: a pid that already exited makes `kill(1)` fail quietly.
+  """
+  @spec sigkill(non_neg_integer()) :: :ok
+  def sigkill(os_pid) when is_integer(os_pid) do
+    System.cmd("kill", ["-KILL", Integer.to_string(os_pid)], stderr_to_stdout: true)
+    :ok
   end
 end

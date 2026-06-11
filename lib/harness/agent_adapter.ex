@@ -333,6 +333,19 @@ defmodule Harness.AgentAdapter do
   end
 
   @doc """
+  Validates a permission `mode` against an adapter's `supported` list.
+
+  For adapters whose CLI takes no per-mode flag (Codex, Pi): the mode gates
+  `c:build_command/1` without contributing argv — use `permission_flag/2` when
+  the mode maps to a flag instead.
+  """
+  @spec check_permission_mode(atom(), [atom()]) ::
+          :ok | {:error, {:unsupported_permission_mode, atom()}}
+  def check_permission_mode(mode, supported) when is_list(supported) do
+    if mode in supported, do: :ok, else: {:error, {:unsupported_permission_mode, mode}}
+  end
+
+  @doc """
   Resolves the session token into argv for adapters whose headless CLI uses
   `--continue` to resume the most recent conversation in `cwd`.
 

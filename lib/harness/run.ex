@@ -114,6 +114,7 @@ defmodule Harness.Run do
   alias Harness.Run.RetryPolicy
   alias Harness.Run.Review
   alias Harness.Run.Status
+  alias Harness.Text
   alias Harness.TokenUsage
   alias Harness.TokenUsage.GrokSession
   alias Harness.Worktree
@@ -1630,7 +1631,7 @@ defmodule Harness.Run do
       "branch" => "harness/" <> data.run_id,
       "land_attempt" => data.land_attempt
     }
-    |> LanderWorker.new(queue: HarnessOban.landing_queue_name(project))
+    |> LanderWorker.new_for_project(project)
     |> HarnessOban.insert()
     |> log_landing_enqueue(data.run_id)
   end
@@ -2353,13 +2354,13 @@ defmodule Harness.Run do
     A missing or malformed #{Review.artifact_path()} fails this run for good.
 
     Project check hint (run these yourself if confirming; judge the output):
-    #{empty_placeholder(data.project.check_command)}
+    #{Text.placeholder(data.project.check_command)}
 
     Implementer: #{data.item.agent}
     Current commit: #{current_sha(data)}
 
     Task spec:
-    #{empty_placeholder(task_text(data))}
+    #{Text.placeholder(task_text(data))}
 
     Acceptance criteria:
     #{format_acceptance_criteria(data.item.acceptance_criteria)}
@@ -2435,22 +2436,22 @@ defmodule Harness.Run do
     A missing or malformed #{Review.artifact_path()} fails this run.
 
     Project check hint (run these yourself; judge the output):
-    #{empty_placeholder(data.project.check_command)}
+    #{Text.placeholder(data.project.check_command)}
 
     Implementer: #{data.item.agent}
     Current commit: #{current_sha(data)}
 
     Task spec:
-    #{empty_placeholder(task_text(data))}
+    #{Text.placeholder(task_text(data))}
 
     Acceptance criteria:
     #{format_acceptance_criteria(data.item.acceptance_criteria)}
 
     Implementer transcript tail:
-    #{empty_placeholder(transcript_tail(data.transcript))}
+    #{Text.placeholder(transcript_tail(data.transcript))}
 
     Diff stat:
-    #{empty_placeholder(diff_stat(data))}
+    #{Text.placeholder(diff_stat(data))}
     """
   end
 
@@ -2485,18 +2486,7 @@ defmodule Harness.Run do
         @reviewer_transcript_tail_bytes
       )
 
-    valid_utf8_tail(tail)
-  end
-
-  # binary_part/3 can slice mid-codepoint; drop leading bytes until the tail is
-  # valid UTF-8 again (at most 3 iterations for UTF-8 input).
-  @spec valid_utf8_tail(binary()) :: binary()
-  defp valid_utf8_tail(<<>>), do: <<>>
-
-  defp valid_utf8_tail(bin) do
-    if String.valid?(bin),
-      do: bin,
-      else: valid_utf8_tail(binary_part(bin, 1, byte_size(bin) - 1))
+    Text.valid_utf8_tail(tail)
   end
 
   @spec diff_stat(data()) :: String.t()
@@ -2698,16 +2688,16 @@ defmodule Harness.Run do
     Current commit: #{current_sha(data)}
 
     Task body:
-    #{empty_placeholder(data.item.body)}
+    #{Text.placeholder(data.item.body)}
 
     Acceptance criteria:
     #{format_acceptance_criteria(data.item.acceptance_criteria)}
 
     Partial live transcript:
-    #{empty_placeholder(truncate_semantic_diff(data.transcript))}
+    #{Text.placeholder(truncate_semantic_diff(data.transcript))}
 
     Current uncommitted diff, if any:
-    #{empty_placeholder(diff)}
+    #{Text.placeholder(diff)}
 
     Return one concise rationale line, then a final sentinel on its own line
     only when confident:
@@ -2724,22 +2714,8 @@ defmodule Harness.Run do
     head = binary_part(diff, 0, @semantic_diff_max_bytes)
 
     "[harness: showing the first #{@semantic_diff_max_bytes} of #{byte_size(diff)} bytes]\n" <>
-      valid_utf8_head(head)
+      Text.valid_utf8_head(head)
   end
-
-  @spec valid_utf8_head(binary()) :: binary()
-  defp valid_utf8_head(<<>>), do: <<>>
-
-  defp valid_utf8_head(bin) do
-    if String.valid?(bin),
-      do: bin,
-      else: valid_utf8_head(binary_part(bin, 0, byte_size(bin) - 1))
-  end
-
-  @spec empty_placeholder(String.t() | nil) :: String.t()
-  defp empty_placeholder(nil), do: "(none)"
-  defp empty_placeholder(""), do: "(none)"
-  defp empty_placeholder(text), do: text
 
   @spec format_acceptance_criteria([String.t()]) :: String.t()
   defp format_acceptance_criteria([]), do: "(none)"

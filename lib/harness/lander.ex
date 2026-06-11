@@ -144,7 +144,7 @@ defmodule Harness.Lander do
   defp insert_landing(%LogRecord{} = record, %Project{} = project) do
     record
     |> landing_args(project)
-    |> LanderWorker.new(queue: HarnessOban.landing_queue_name(project))
+    |> LanderWorker.new_for_project(project)
     |> HarnessOban.insert()
   end
 

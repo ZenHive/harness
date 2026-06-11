@@ -97,9 +97,13 @@ defmodule Harness.Dashboard.KPILive do
 
   def handle_info(_other, socket), do: {:noreply, socket}
 
+  # Re-sorts the rows already in assigns — a sort click changes only the order,
+  # so it never re-reads the store (assign_rows/1 does, on mount and settle).
   @impl Phoenix.LiveView
   def handle_event("sort", %{"col" => col}, socket) do
-    {:noreply, socket |> toggle_sort(col) |> assign_rows()}
+    socket = toggle_sort(socket, col)
+    rows = sort_rows(socket.assigns.rows, socket.assigns.sort_by, socket.assigns.sort_dir)
+    {:noreply, assign(socket, :rows, rows)}
   end
 
   # An empty key clears the filter (the "All" pill); any other selects one facet

@@ -37,6 +37,7 @@ defmodule Harness.Audit do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentRegistry
+  alias Harness.Artifact
   alias Harness.Dashboard.OpsFeed
   alias Harness.Dashboard.OpsFeed.Op
   alias Harness.Git
@@ -432,10 +433,9 @@ defmodule Harness.Audit do
   # Best-effort visibility: surface the agent's machine-readable summary in the
   # logs. A missing or malformed file is fine — the .audit/<sha>.md commit is
   # the durable report.
-  # sobelow_skip ["Traversal.FileModule"]
   @spec log_audit_report(String.t()) :: :ok
   defp log_audit_report(worktree_path) do
-    with {:ok, raw} <- File.read(Path.join(worktree_path, @audit_report_path)),
+    with {:ok, raw} <- Artifact.read(worktree_path, @audit_report_path),
          {:ok, report} <- Jason.decode(raw) do
       Logger.info("harness audit: #{inspect(report)}")
     else

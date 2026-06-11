@@ -86,7 +86,7 @@ defmodule Harness.AgentAdapter.Codex do
   @spec build_command(Invocation.t()) :: {:ok, AgentAdapter.command()} | {:error, term()}
   def build_command(%Invocation{} = invocation) do
     with {:ok, invocation} <- AgentAdapter.attach_rules(__MODULE__, invocation),
-         :ok <- check_permission_mode(invocation.permission_mode),
+         :ok <- AgentAdapter.check_permission_mode(invocation.permission_mode, @permission_modes),
          {:ok, resume_subcommand, resume_flag} <- session_args(invocation.session) do
       argv =
         ["exec", "--cd", invocation.cwd] ++
@@ -100,11 +100,6 @@ defmodule Harness.AgentAdapter.Codex do
       {:ok, {"codex", argv, env}}
     end
   end
-
-  @spec check_permission_mode(atom()) ::
-          :ok | {:error, {:unsupported_permission_mode, atom()}}
-  defp check_permission_mode(mode) when mode in @permission_modes, do: :ok
-  defp check_permission_mode(mode), do: {:error, {:unsupported_permission_mode, mode}}
 
   # The session value selects the resume subcommand and `--last` flag:
   # `nil` is a fresh run (no subcommand under `exec`), `:resume` reloads the

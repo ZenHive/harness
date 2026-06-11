@@ -19,7 +19,20 @@ defmodule Harness.Lander.Worker do
 
   alias Harness.Lander
   alias Harness.Lander.Resilience
+  alias Harness.Oban, as: HarnessOban
+  alias Harness.Project
   alias Harness.ProjectRegistry
+
+  @doc """
+  Builds this worker's Oban job for `args` on `project`'s serialized
+  `landing_<name>` queue (limit 1) — the queue that makes landing a merge
+  train. Every landing enqueue goes through here so no call site can target
+  the wrong queue.
+  """
+  @spec new_for_project(map(), Project.t()) :: Ecto.Changeset.t()
+  def new_for_project(args, %Project{} = project) when is_map(args) do
+    new(args, queue: HarnessOban.landing_queue_name(project))
+  end
 
   @impl Oban.Worker
   @spec perform(Oban.Job.t()) :: Oban.Worker.result()

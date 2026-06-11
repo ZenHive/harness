@@ -93,7 +93,7 @@ defmodule Harness.AgentAdapter.Pi do
   @spec build_command(Invocation.t()) :: {:ok, AgentAdapter.command()} | {:error, term()}
   def build_command(%Invocation{} = invocation) do
     with {:ok, invocation} <- AgentAdapter.attach_rules(__MODULE__, invocation),
-         :ok <- check_permission_mode(invocation.permission_mode),
+         :ok <- AgentAdapter.check_permission_mode(invocation.permission_mode, @permission_modes),
          {:ok, resume} <- AgentAdapter.resume_args(invocation.session) do
       argv =
         ["-p", "--mode", "json"] ++
@@ -105,9 +105,4 @@ defmodule Harness.AgentAdapter.Pi do
       {:ok, {"pi", argv, env}}
     end
   end
-
-  @spec check_permission_mode(atom()) ::
-          :ok | {:error, {:unsupported_permission_mode, atom()}}
-  defp check_permission_mode(mode) when mode in @permission_modes, do: :ok
-  defp check_permission_mode(mode), do: {:error, {:unsupported_permission_mode, mode}}
 end

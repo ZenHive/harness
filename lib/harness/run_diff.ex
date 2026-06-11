@@ -41,6 +41,7 @@ defmodule Harness.RunDiff do
   alias Harness.Git
   alias Harness.Project
   alias Harness.ProjectRegistry
+  alias Harness.Text
 
   @branch_prefix "harness/"
   @patch_cap_bytes 80_000
@@ -248,16 +249,7 @@ defmodule Harness.RunDiff do
   defp cap(patch) when byte_size(patch) <= @patch_cap_bytes, do: {patch, false}
 
   defp cap(patch) do
-    {valid_utf8_head(binary_part(patch, 0, @patch_cap_bytes)), true}
-  end
-
-  @spec valid_utf8_head(binary()) :: binary()
-  defp valid_utf8_head(<<>>), do: <<>>
-
-  defp valid_utf8_head(bin) do
-    if String.valid?(bin),
-      do: bin,
-      else: valid_utf8_head(binary_part(bin, 0, byte_size(bin) - 1))
+    {Text.valid_utf8_head(binary_part(patch, 0, @patch_cap_bytes)), true}
   end
 
   @spec summarize(String.t(), [file()], boolean()) :: t()

@@ -7556,3 +7556,21 @@ created_at = "2026-06-11"
 scored_at = "2026-06-11"
 done_at = "2026-06-11"
 shipped_in = "d21f8ee7568984cd9cdb6fc62996f348fc80d939"
+
+[[task]]
+id = "258"
+phase = 13
+bundle = "postgres-results"
+status = "pending"
+title = "Reviewer-reliability + facet SQL fast paths — finish what Task 139 started"
+scores = { d = 2, b = 3, u = 3 }
+acceptance_criteria = ["ResultStore.aggregate_reviewer_reliability/1 has a Postgres fast path: one GROUP BY reviewer-adapter SQL query computing rejection_rate and no_verdict_rate; the File backend keeps the in-memory fallback", "KPILive's facet aggregation no longer loads every run record on the Postgres backend — the store exposes a grouped/aggregated read it uses instead of list_run_records([])", "Golden parity test: KPILive renders identical reviewer and facet numbers against File and Postgres backends for the same seeded records", "Mechanical counting only — no scoring weights, thresholds, or judgment arithmetic added anywhere (the mantra)", "File-backend deployments (repo_enabled false) keep working unchanged"]
+out_of_scope = ["Changing facet semantics or CapabilityScore.group_by_facet's grouping rules — only where the grouping executes moves", "The scout assessment artifact read (CapabilityScore.read_assessment) — file read, already cheap", "aggregate_by_agent — done in Task 139"]
+touches = ["lib/harness/result_store.ex", "lib/harness/result_store/postgres.ex", "lib/harness/dashboard/kpi_live.ex", "test/harness/result_store_test.exs", "test/harness/dashboard/kpi_live_test.exs"]
+domains = ["ecto", "dashboard"]
+assignee = "cursor"
+body = """
+2026-06-11 /simplify review finding. Task 139 gave aggregate_by_agent a Postgres GROUP BY fast path, but the two siblings it left behind still full-table-scan on every KPI page mount/settle: ResultStore.aggregate_reviewer_reliability/1 (result_store.ex — the code comment admits 'no SQL fast path') and the facet pivot behind KPILive.assign_facets (kpi_live.ex), which calls list_run_records([]) and groups in Elixir. Follow Task 139's exact pattern: optional behaviour callback with a default that falls back to the in-memory path so the File backend stays first-class, Postgres impl in result_store/postgres.ex. Counting in SQL is mechanics, not judgment.
+"""
+created_at = "2026-06-11"
+scored_at = "2026-06-11"

@@ -30,6 +30,9 @@ defmodule Harness.Run.Recovery do
   it never rides in the deliverable commit.
   """
 
+  alias Harness.Artifact
+  alias Harness.Text
+
   @artifact_path ".harness/recovery.json"
 
   @enforce_keys [:outcome, :report]
@@ -77,14 +80,8 @@ defmodule Harness.Run.Recovery do
   `{:error, {:malformed, detail}}` when it is not valid recovery JSON.
   """
   @spec read(String.t()) :: {:ok, t()} | {:error, error()}
-  # sobelow_skip ["Traversal.FileModule"]
-  # worktree_path is harness-generated (Harness.Worktree.create/2), never user input.
   def read(worktree_path) when is_binary(worktree_path) do
-    case File.read(Path.join(worktree_path, @artifact_path)) do
-      {:ok, contents} -> parse(contents)
-      {:error, :enoent} -> {:error, :missing}
-      {:error, reason} -> {:error, {:malformed, {:unreadable, reason}}}
-    end
+    with {:ok, contents} <- Artifact.read(worktree_path, @artifact_path), do: parse(contents)
   end
 
   @doc """
@@ -133,13 +130,13 @@ defmodule Harness.Run.Recovery do
     Failure reason: #{inspect(Map.get(ctx, :reason))}
 
     Main checkout git status (the leak):
-    #{placeholder(Map.get(ctx, :check_output))}
+    #{Text.placeholder(Map.get(ctx, :check_output))}
 
     Worktree git status:
-    #{placeholder(Map.get(ctx, :git_status))}
+    #{Text.placeholder(Map.get(ctx, :git_status))}
 
     Implementer transcript tail:
-    #{placeholder(Map.get(ctx, :transcript_tail))}
+    #{Text.placeholder(Map.get(ctx, :transcript_tail))}
 
     Verdict artifact — write this LAST, then stop:
 
@@ -169,9 +166,4 @@ defmodule Harness.Run.Recovery do
   @spec repaired(map()) :: String.t() | nil
   defp repaired(%{"repaired" => repaired}) when is_binary(repaired), do: repaired
   defp repaired(_decoded), do: nil
-
-  @spec placeholder(String.t() | nil) :: String.t()
-  defp placeholder(nil), do: "(none)"
-  defp placeholder(""), do: "(none)"
-  defp placeholder(text) when is_binary(text), do: text
 end
