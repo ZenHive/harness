@@ -183,7 +183,7 @@ defmodule Harness.StatusView do
       _ ->
         header = Map.fetch!(@bucket_labels, bucket) <> " (#{length(entries)})"
         lines = Enum.map(entries, &render_run/1)
-        header <> "\n" <> Enum.join(lines, "\n")
+        Enum.join([header | lines], "\n")
     end
   end
 
@@ -207,7 +207,7 @@ defmodule Harness.StatusView do
         "  #{adapter_label(adapter)}  #{describe_unavailable(reason)}"
       end)
 
-    "UNAVAILABLE AGENTS (#{length(agents)})\n" <> Enum.join(lines, "\n")
+    Enum.join(["UNAVAILABLE AGENTS (#{length(agents)})" | lines], "\n")
   end
 
   @spec adapter_label(module()) :: String.t()

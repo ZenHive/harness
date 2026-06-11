@@ -149,7 +149,7 @@ defmodule Harness.MixProject do
       {:sobelow, "~> 0.14", only: [:dev, :test], runtime: false},
       {:ex_dna, "~> 1.5", only: [:dev, :test], runtime: false},
       {:ex_ast, "~> 0.12", only: [:dev, :test], runtime: false},
-      {:reach, "~> 2.5", only: [:dev, :test], runtime: false},
+      {:reach, "~> 2.7", only: [:dev, :test], runtime: false},
       {:boxart, "~> 0.3.3", only: [:dev, :test], runtime: false},
 
       # Tidewave (dev MCP + HTTP server for agent interface)

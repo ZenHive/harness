@@ -295,10 +295,8 @@ defmodule Harness.AgentAdapter do
   @spec scrub_auth_env(module(), [{String.t(), String.t() | false}]) :: [{String.t(), String.t() | false}]
   def scrub_auth_env(adapter, env) do
     scrub = adapter.capabilities().auth_env_scrub
-
-    env
-    |> Enum.reject(fn {key, _value} -> key in scrub end)
-    |> Enum.concat(Enum.map(scrub, &{&1, false}))
+    kept = Enum.reject(env, fn {key, _value} -> key in scrub end)
+    kept ++ Enum.map(scrub, &{&1, false})
   end
 
   @doc """

@@ -179,10 +179,7 @@ defmodule Harness.Cron.RoadmapPoller do
   # logged + skipped by `dispatch_decision` — never defaulted to an agent.
   @spec dispatchable?(map()) :: boolean()
   defp dispatchable?(task) do
-    case task_agent(task) do
-      agent when is_atom(agent) and agent not in [:human, :no_assignee] -> true
-      _other -> false
-    end
+    match?(agent when is_atom(agent) and agent not in [:human, :no_assignee], task_agent(task))
   end
 
   # The N==1 path: a lone task has no grouping to judge, so route by its assignee

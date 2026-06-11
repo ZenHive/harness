@@ -133,10 +133,9 @@ defmodule Harness.Landing.Settings do
 
   @spec overlay_reviewer(Project.t(), override()) :: Project.t()
   defp overlay_reviewer(project, override) do
-    if Map.has_key?(override, :reviewer) do
-      %{project | reviewer: Map.get(override, :reviewer)}
-    else
-      project
+    case Map.fetch(override, :reviewer) do
+      {:ok, reviewer} -> %{project | reviewer: reviewer}
+      :error -> project
     end
   end
 
