@@ -4,7 +4,7 @@
   "default_branch": "development",
   "vision": "An OTP-native task-execution engine an AI orchestrator drives end to end: it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent (implementer) running in an isolated worktree, gates the result with a cross-family reviewer AI that runs the target project's own checks itself and fixes inline, merges approved work (lander rebase + ff-push), and audits landed commits post-merge with a third agent. The agent-gate workflow (worktree -> implementer AI -> reviewer AI -> MERGE -> audit AI, docs/agent-gate-workflow.md) is THE architecture: judgment lives in agents, harness code is mechanical substrate only. Consumer surfaces: the BEAM-native Elixir API (IEx, tidewave, another process), the Phoenix LiveView dashboard, and the native MCP server — a long-running OTP node orchestrating N registered target projects (Elixir, Rust, anything an agent can check) concurrently. harness is itself developed by dogfooding — from the core loop (Task 8) onward, every pending roadmap task is delivered by dispatching it through harness rather than hand-building it (load-bearing runtime scaffolding is the documented exception).",
   "focus": {
-    "phase": 16
+    "phase": 19
   },
   "phases": {
     "1": {
@@ -25,7 +25,7 @@
     "12": {
       "name": "Workflow Substrate",
       "order": 12,
-      "status": "pending"
+      "status": "done"
     },
     "13": {
       "name": "Agent KPIs & Capability Routing",
@@ -35,7 +35,7 @@
     "14": {
       "name": "Agent Rule Injection & Prompt Provenance",
       "order": 14,
-      "status": "pending"
+      "status": "done"
     },
     "15": {
       "name": "Reviewer-Pair Lifecycle",
@@ -55,7 +55,7 @@
     "18": {
       "name": "Judgment Collapse",
       "order": 18,
-      "status": "in_progress"
+      "status": "done"
     },
     "19": {
       "name": "Self-Healing Run Loop",
@@ -95,7 +95,7 @@
     "8": {
       "name": "Closeout & Release Readiness",
       "order": 8,
-      "status": "in_progress"
+      "status": "done"
     },
     "9": {
       "name": "Chat Orchestrator",
@@ -303,14 +303,14 @@
       "name": "Judgment Collapse — count facts in code, write meaning with an AI",
       "description": "Tests the hypothesis that harness still COMPUTES meaning it has no business computing — KPI/capability composites, in-run stakes gating, grade-gaming blocklists, English-error classification — and that deleting this judgment-arithmetic (routing the meaning through an agent that reads raw facts instead) shrinks the codebase and removes a false-verdict bug class WITHOUT degrading routing quality. The empirical proof of the leitmotif: count facts in code; write the meaning of facts with an AI.",
       "order": 13,
-      "status": "active",
+      "status": "done",
       "target_version": "0.13.0"
     },
     "v0_14": {
       "name": "Self-Healing Run Loop — mechanical failures heal inline, not surface as stupid errors",
       "description": "Tests the hypothesis that the great majority of run failures are MECHANICAL (transient/structural — git locks, spawn races, malformed verdict files, checkout pollution, reviewer timeouts) and can self-heal inline so they never reach the operator, via a two-tier design — zero-token bounded mechanical retry for substrate ops + ONE bounded, witnessed AI-recovery seam for the interpretive minority — WITHOUT masking genuine rejections, and at a recovery token cost demonstrably lower than the hard-fail + manual-redispatch path it replaces. Same leitmotif applied to failure handling: count the failure facts (retries, recovery attempts, token spend) in code; let an AI write the meaning (repaired vs genuinely dead) into .harness/recovery.json.",
       "order": 14,
-      "status": "pending",
+      "status": "active",
       "target_version": "0.14.0"
     },
     "v0_2": {
@@ -7051,8 +7051,7 @@
       "depends_on": [
         173
       ],
-      "assignee": "cursor",
-      "model": "claude-sonnet-4-6",
+      "assignee": "human",
       "acceptance_criteria": [
         "Tagged both :integration and :live_agent — excluded from the default suite and mix precommit; run via mix test.json --include live_agent",
         "Fails loudly with flunk + setup instructions (CLI install command, auth step) when the agent CLI is missing or unauthenticated — never skips silently",
@@ -10203,6 +10202,7 @@
       "id": "245",
       "phase": 16,
       "bundle": "agent-gate",
+      "milestone": "v0_14",
       "status": "pending",
       "title": "Run-lifecycle in_progress claim survives concurrent tasks.toml writers",
       "scores": {
@@ -10241,7 +10241,7 @@
       "id": "246",
       "phase": 13,
       "bundle": "kpi-routing",
-      "milestone": "v0_10",
+      "milestone": "v0_14",
       "status": "pending",
       "title": "ResultStore MCP read tools resolve configured() store when param omitted (KPIs read empty via MCP)",
       "scores": {
@@ -10424,6 +10424,7 @@
       "id": "250",
       "phase": 19,
       "bundle": "agent-gate",
+      "milestone": "v0_14",
       "status": "pending",
       "title": "Validate model↔resolved-adapter compatibility at dispatch — reject an incompatible pin pre-spawn, not a mid-run crash",
       "scores": {
@@ -10501,7 +10502,7 @@
       "phase": 19,
       "bundle": "agent-gate",
       "status": "pending",
-      "title": "Per-project warm_paths: seed a project's gitignored worktree inputs (source/corpus) so extractor runs don't fail review_stuck on a missing base",
+      "title": "Per-project warm_paths: pre-seed a project's gitignored worktree inputs (source/corpus) so agents don't relink/regenerate the corpus on every run",
       "scores": {
         "d": 3,
         "b": 8,
@@ -10542,7 +10543,7 @@
         "test/harness/worktree_test.exs",
         "test/harness/project_registry_test.exs"
       ],
-      "body": "ROOT CAUSE (diagnosed 2026-06-11): every ccxt_extract extractor run in wave-5 (tasks 78f, 63, and the 121 in-flight) died `{:cancel, {:review_stuck, \"Reviewer wrote no .harness/review.json verdict artifact.\"}}`. The reviewer thrashes and never reaches a verdict because the worktree has NO corpus to check against.\n\nWhy the worktree is empty: ccxt_extract .gitignore lines 21/34-35 ignore `/priv/ccxt` (the vendored CCXT TypeScript source) and `/priv/discoveries/*` (the whole derived discovery corpus, except class_hierarchy.json). `git worktree add` only materializes TRACKED files, so a fresh harness worktree gets class_hierarchy.json and nothing else — no CCXT source, no corpus. The extractor tasks read/validate against `priv/discoveries/*.json` (ws_methods.json, etc.) and the cached/contract tests need the corpus; all of it is absent, so the check stack can't pass and the reviewer burns its budget then idle-times-out with no verdict.\n\nWorktree.warm/2 (Task 226) already CoW-seeds gitignored dirs from the parent checkout — but only @default_warm_paths = [\"deps\", \"_build\", \"priv/plts\"], and the only override is the GLOBAL `:harness, :worktree, :warm_paths` app config. A global list is the wrong granularity: different registered projects have different gitignored inputs (ccxt_extract needs priv/ccxt + priv/discoveries; harness's own runs need none). Add a per-project `warm_paths` field on %Harness.Project{} so each project declares its corpus/source inputs, threaded into warm/2 as an EXTENSION of the defaults.\n\nThis is the harness-side half of the fix. The operator side: run `mix ccxt_extract.update` on development to refresh the local priv/ccxt + priv/discoveries (warm/2 copies from there), then register ccxt_extract with warm_paths = [\"priv/ccxt\", \"priv/discoveries\"]. Immediate stopgap available without this task: set the global :harness,:worktree,:warm_paths to include those two paths (safe — seedable? no-ops where a path is absent in the parent, e.g. harness's own worktrees); this per-project field is the clean, multi-project-correct replacement.\n\nExtends Task 226 (the warm/2 mechanism). Pairs with rescue of the already-built 78f/63/121 branches (re-review against a warmed base rather than re-implement).\n",
+      "body": "WHAT THIS IS (reframed 2026-06-11): a worktree-warming OPTIMIZATION, not a review_stuck root-cause fix. ccxt_extract's gitignored corpus (`/priv/ccxt` vendored CCXT TS source + `/priv/discoveries/*`, .gitignore lines 21/34-35; only class_hierarchy.json is tracked) is NOT materialized by `git worktree add`, which copies tracked files only. Agents work around that TODAY by running `mix ccxt_extract.link_corpus` (links the corpus from the main checkout) — confirmed in Task 121's verdict, where the reviewer ran link_corpus itself. So worktrees are NOT corpus-less to agents; they re-acquire it every run.\n\nThe cost this removes: that per-run relink/regenerate dance is manual and fragile. Task 121's reviewer linked a SCOPED/partial corpus and still hit 2 partial-corpus test failures (missing 4 ws_* discovery files). Pre-seeding the full corpus via Worktree.warm/2 makes the worktree corpus-complete by construction — agents skip link_corpus, and partial-corpus flakiness goes away.\n\nNOT the cause of the wave-5 review_stuck failures. 78f/63 (and 252's own first run) died `{:cancel, {:review_stuck, ...}}` because of Opus usage-limit/capacity, not a missing corpus — Task 121's implementer \"hit an Opus usage limit on its first turn and produced an empty worktree,\" same firing-13-at-once capacity wall. Those need plain re-dispatch when capacity frees, NOT this task.\n\nTHE MECHANISM: Worktree.warm/2 (Task 226) already CoW-seeds gitignored dirs from the parent checkout, but only @default_warm_paths = [\"deps\", \"_build\", \"priv/plts\"], with the only override the GLOBAL `:harness, :worktree, :warm_paths` app config. A global list is the wrong granularity (ccxt_extract wants priv/ccxt + priv/discoveries; harness's own runs want none). Add a per-project `warm_paths` field on %Harness.Project{}, threaded into warm/2 as an EXTENSION of the defaults, so each project declares its own corpus/source inputs.\n\nOperator side (out of scope here): run `mix ccxt_extract.update` on development to refresh local priv/ccxt + priv/discoveries (warm/2 copies FROM there), then register ccxt_extract with warm_paths = [\"priv/ccxt\", \"priv/discoveries\"].\n\nExtends Task 226 (the warm/2 mechanism). First implementer run (run-1781158655671-19a1b146) delivered the full diff (commit fb1f939, branch harness/run-1781158655671-19a1b146) but the reviewer died review_stuck (Opus capacity) — salvage via re-review, not re-implement.\n",
       "created_at": "2026-06-11",
       "started_at": "2026-06-11",
       "scored_at": "2026-06-11",

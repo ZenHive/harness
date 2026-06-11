@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 16 — Agent-Gate Workflow & Post-Merge Audit (24 of 26 done · 0 in progress)
+**Focus phase:** 19 — Self-Healing Run Loop (11 of 18 done · 0 in progress)
 
-**Last shipped:** Task 204 — Dashboard Resume + Re-land buttons: recover failed runs & blocked land-trains, Task 205 — Verify + declare auth_env_scrub for Cursor/Grok/Pi/Antigravity adapters, Task 206 — Scrub provider auth API keys from spawned agent CLIs (subscription billing), Task 207 — Configurable default dispatch agent (unassigned tasks → codex, not claude) on 2026-06-05
+**Last shipped:** Task 234 — MEASURE the fragmentation / ceremony tax — quantify per-task dispatch overhead from the per-run token facts already captured, Task 237 — Cron manual-approval dispatch mode — park autonomous dispatch for operator approval before enqueue, Task 238 — Fix MCP dispatch-hold boolean-arg coercion + document hold→steer→resume recovery in harness-driver SKILL, Task 239 — Implementer-phase idle watchdog — a wedged :running agent holds a queue slot up to the 90-min lifetime cap, Task 240 — Thread the pinned model into the agent Invocation — requested_model is captured but never reaches --model on 2026-06-07
 
-**Up next:** Task 245 — Run-lifecycle in_progress claim survives concurrent tasks.toml writers [D:3/B:7/U:7 → Eff:2.33] 🎯
+**Up next:** Task 248 — AgentKPI quality rollup reads legacy-empty review_ratings — repoint to review_skills so the quality signal isn't dark since the v0_13 rubric migration [D:2/B:7/U:6 → Eff:3.25] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -105,10 +105,5 @@
 > deferred transport ideas out of the normal closeout queue.
 
 <!-- TASKS:BEGIN phase=8 -->
-| Task | Status | Notes |
-|------|--------|-------|
-| Task 71 | ✅ | 🎁 **closeout** · 🚀 **v0_6** · v0.6 closeout: doc + skill refresh, rmap doctor cleanup, Tidewave smoke [D:3/B:8/U:9 → Eff:2.83] 🎯 |
-| Task 72 | ✅ | 🎁 **closeout** · 🚀 **v0_6** · Register the harness checkout as a project on boot (dev default) [D:2/B:6/U:8 → Eff:3.5] 🎯 |
-| Task 73 | ✅ | 🎁 **closeout** · 🚀 **v0_6** · ResultStore.File.list_run_records skips undecodable term files instead of halting [D:2/B:5/U:7 → Eff:3.0] 🎯 |
-| Task 74 | ✅ | 🎁 **closeout** · 🚀 **v0_6** · Document cross-checkout consumer workflow (SKILL.md + README) [D:2/B:7/U:7 → Eff:3.5] 🎯 |
+> 4 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-8-closeout-release-readiness).
 <!-- TASKS:END -->
