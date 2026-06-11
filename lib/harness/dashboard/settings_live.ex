@@ -433,8 +433,7 @@ defmodule Harness.Dashboard.SettingsLive do
       phx-click={@event}
       phx-value-name={@value}
       data-confirm={@confirm}
-    >
-    </button>
+    ></button>
     """
   end
 
