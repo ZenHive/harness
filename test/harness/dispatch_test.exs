@@ -112,6 +112,14 @@ defmodule Harness.DispatchTest do
         Dispatch.await("any-project", "next", "claude", 0)
       end
     end
+
+    test "accepts a float timeout (MCP/JSON callers deliver one) and reaches project lookup" do
+      # Regression: the guard was is_integer, so a client-supplied timeout_ms
+      # (a JSON number -> float) FunctionClause'd the whole dispatch-await tool.
+      # is_number now accepts it; the unknown project errors before any run starts.
+      assert {:error, {:unknown_project, "__no_such_project__"}} =
+               Dispatch.await("__no_such_project__", "25", "claude", 1_800_000.0)
+    end
   end
 
   describe "start_opts/run_start_opts threading" do
@@ -212,6 +220,17 @@ defmodule Harness.DispatchTest do
       refute summary.passed
       assert summary.timeout_ms == 20
       assert is_binary(summary.note)
+    end
+
+    test "truncates a float timeout (MCP/JSON callers deliver one) before the receive" do
+      # Regression: is_integer guard + a float `after` clause both broke on a
+      # JSON-number timeout. is_number now accepts it; trunc(20.9) == 20 is the
+      # integer the timeout summary and `receive ... after` require.
+      assert {:ok, summary} = Dispatch.await_result("run-hung-float", 20.9)
+
+      assert summary.state == :timed_out
+      assert summary.timeout_ms == 20
+      assert is_integer(summary.timeout_ms)
     end
   end
 

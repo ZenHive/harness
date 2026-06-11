@@ -169,8 +169,11 @@ defmodule Harness.Dispatch do
     }
   )
 
-  @spec await(String.t(), String.t(), String.t(), pos_integer(), boolean()) ::
+  @spec await(String.t(), String.t(), String.t(), number(), boolean()) ::
           {:ok, map()} | {:error, error()}
+  # `timeout_ms` is guarded `is_number` (not `is_integer`): MCP/JSON callers deliver
+  # it as a float, which `await_result/2` truncates. A bare `is_integer` here would
+  # FunctionClause the whole dispatch-await tool on any client-supplied timeout.
   def await(
         project_name,
         task,
@@ -178,8 +181,8 @@ defmodule Harness.Dispatch do
         timeout_ms \\ @default_await_timeout_ms,
         scrub_anthropic_key \\ true
       )
-      when is_binary(project_name) and is_binary(task) and is_binary(adapter) and is_integer(timeout_ms) and
-             timeout_ms > 0 and is_boolean(scrub_anthropic_key) do
+      when is_number(timeout_ms) and timeout_ms > 0 and is_boolean(scrub_anthropic_key) and is_binary(project_name) and
+             is_binary(task) and is_binary(adapter) do
     with {:ok, run_id} <- start(project_name, task, adapter, scrub_anthropic_key, self()) do
       await_result(run_id, timeout_ms)
     end
@@ -191,12 +194,16 @@ defmodule Harness.Dispatch do
   # wait/summarise/timeout logic is testable without a live run (seed the mailbox
   # with a `{:harness_run, run_id, %Run.Result{}}` message).
   @doc false
-  @spec await_result(String.t(), pos_integer()) :: {:ok, map()}
-  def await_result(run_id, timeout_ms) when is_binary(run_id) and is_integer(timeout_ms) and timeout_ms > 0 do
+  @spec await_result(String.t(), number()) :: {:ok, map()}
+  def await_result(run_id, timeout_ms) when is_binary(run_id) and is_number(timeout_ms) and timeout_ms > 0 do
+    # MCP/JSON callers deliver the timeout as a float; `receive ... after` and the
+    # timeout summary both require an integer, so truncate once at the boundary.
+    wait_ms = trunc(timeout_ms)
+
     receive do
       {:harness_run, ^run_id, %Run.Result{} = result} -> {:ok, summarize(result)}
     after
-      timeout_ms -> {:ok, timeout_summary(run_id, timeout_ms)}
+      wait_ms -> {:ok, timeout_summary(run_id, wait_ms)}
     end
   end
 
