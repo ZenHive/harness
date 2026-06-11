@@ -264,9 +264,15 @@ defmodule Harness.ResultStore.Postgres do
           |> fragment(r.token_usage)
           |> avg()
           |> filter(r.verdict == "approve"),
-        # Collect each run's ratings jsonb; the per-key means are computed in
-        # Elixir (AgentKPI.rating_means) so Memory and Postgres share the rollup.
-        ratings: fragment("array_agg(?)", r.review_ratings)
+        # Collect each run's current + legacy quality blocks; the field fallback
+        # and per-key means are computed in Elixir so Memory and Postgres share
+        # the exact AgentKPI rollup.
+        ratings:
+          fragment(
+            "array_agg(jsonb_build_object('review_skills', ?, 'review_ratings', ?))",
+            r.review_skills,
+            r.review_ratings
+          )
       }
   end
 
@@ -295,7 +301,7 @@ defmodule Harness.ResultStore.Postgres do
           total: float_or_zero(row.total_mean)
         },
         review_iterations: float_or_zero(row.review_iterations_mean),
-        ratings: AgentKPI.rating_means(row.ratings || []),
+        ratings: row.ratings |> normalize_rating_records() |> AgentKPI.rating_means(),
         cost_to_green: cost_to_green
       }
 
@@ -307,6 +313,10 @@ defmodule Harness.ResultStore.Postgres do
   @spec safe_rate(non_neg_integer(), non_neg_integer()) :: float()
   defp safe_rate(_count, 0), do: 0.0
   defp safe_rate(count, total), do: count / total
+
+  @spec normalize_rating_records([map()] | nil) :: [map()]
+  defp normalize_rating_records(nil), do: []
+  defp normalize_rating_records(records), do: Enum.map(records, &AgentKPI.record_ratings/1)
 
   @spec float_or_zero(term()) :: float()
   defp float_or_zero(nil), do: 0.0

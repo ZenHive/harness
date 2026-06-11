@@ -455,6 +455,24 @@ defmodule Harness.DispatchTest do
       assert detail.ratings == %{"code_quality" => 2}
     end
 
+    test "surfaces current review_skills scores as ratings" do
+      record =
+        struct!(
+          LogRecord.from_result(rejected_result("run-vd-skills"), batch_id: "b", adapter: Claude, duration_ms: 1),
+          %{
+            review_skills: %{
+              "otp" => %{"score" => 8, "note" => "clean supervision"},
+              "truthfulness" => %{"score" => 9, "note" => "matched the diff"}
+            },
+            review_ratings: %{}
+          }
+        )
+
+      detail = Dispatch.summarize_verdict_detail(record)
+
+      assert detail.ratings == %{"otp" => 8, "truthfulness" => 9}
+    end
+
     test "returns :not_found for an unknown/unrecorded run_id" do
       assert {:error, :not_found} = Dispatch.verdict_detail("__no_such_run__")
     end

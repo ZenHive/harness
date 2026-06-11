@@ -198,6 +198,43 @@ defmodule Harness.AgentKPITest do
   end
 
   describe "aggregate/1 reviewer ratings" do
+    test "uses current review_skills scores for per-agent quality means" do
+      records = [
+        record(
+          agent: :claude,
+          verdict: :approve,
+          review_skills: %{
+            "otp" => %{"score" => 8, "note" => "supervision was correct"},
+            "truthfulness" => %{"score" => 9, "note" => "report matched diff"}
+          }
+        ),
+        record(
+          agent: :claude,
+          verdict: :approve,
+          review_skills: %{"otp" => %{"score" => 6, "note" => "minor callback issue"}}
+        )
+      ]
+
+      ratings = AgentKPI.aggregate(records)[:claude].ratings
+
+      assert ratings == %{"otp" => 7.0, "truthfulness" => 9.0}
+    end
+
+    test "prefers current review_skills over legacy review_ratings when both are present" do
+      records = [
+        record(
+          agent: :codex,
+          verdict: :approve,
+          review_skills: %{"test_rigor" => %{"score" => 9, "note" => "covered edge cases"}},
+          review_ratings: %{"performance" => 1}
+        )
+      ]
+
+      ratings = AgentKPI.aggregate(records)[:codex].ratings
+
+      assert ratings == %{"test_rigor" => 9.0}
+    end
+
     test "means each numeric rating key per agent over the records that report it" do
       records = [
         record(agent: :claude, verdict: :approve, review_ratings: %{"performance" => 8, "idiom" => 6}),
@@ -222,6 +259,15 @@ defmodule Harness.AgentKPITest do
 
       # "notes" (string) is dropped; "performance" means the two numbers it has.
       assert ratings == %{"performance" => 8.0}
+    end
+
+    test "empty current and legacy rating blocks contribute nothing without crashing" do
+      records = [
+        record(agent: :grok, verdict: :approve, review_skills: %{}, review_ratings: %{}),
+        record(agent: :grok, verdict: :approve, review_skills: nil, review_ratings: nil)
+      ]
+
+      assert AgentKPI.aggregate(records)[:grok].ratings == %{}
     end
 
     test "an agent with no ratings reports an empty map, not a crash" do

@@ -10,6 +10,7 @@ defmodule Harness.Batch.AgentEvaluation do
 
   use Descripex, namespace: "/batch/agent_evaluation"
 
+  alias Harness.AgentKPI
   alias Harness.Batch
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.Project
@@ -38,7 +39,7 @@ defmodule Harness.Batch.AgentEvaluation do
     reported no token counts.
 
     `ratings` is the reviewer AI's free-form quality scores for this attempt
-    (the `.harness/review.json` `ratings` block, persisted on the run record).
+    (`review_skills` scores, falling back to legacy `review_ratings`, persisted on the run record).
     The scout's per-facet assessment reads these facts grouped by reviewer
     `review_facets`; routing never fuses them into a composite scalar.
     """
@@ -232,10 +233,10 @@ defmodule Harness.Batch.AgentEvaluation do
     }
   end
 
-  # The reviewer's ratings live only on the persisted record (parsed from the
-  # verdict artifact). A pre-rating record (Map.get -> nil) yields `%{}`.
+  # The reviewer's quality scores live only on the persisted record. Current
+  # records use review_skills; legacy pre-rubric records use review_ratings.
   @spec entry_ratings(LogRecord.t() | nil) :: %{optional(String.t()) => term()}
-  defp entry_ratings(record), do: (record && Map.get(record, :review_ratings)) || %{}
+  defp entry_ratings(record), do: AgentKPI.record_ratings(record)
 
   # Prefers the persisted record's measured usage, falling back to the live
   # result's (always a `%TokenUsage{}`, empty when unmeasured). `Map.get/2`

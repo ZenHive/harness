@@ -53,7 +53,10 @@ defmodule Harness.ResultStore.KPIParityTest do
         review_iterations: 0,
         duration_ms: 50,
         token_usage: tokens(1000, 500),
-        review_ratings: %{"performance" => 9}
+        review_skills: %{
+          "otp" => %{"score" => 8, "note" => "clean process boundary"},
+          "truthfulness" => %{"score" => 9, "note" => "report matched evidence"}
+        }
       ),
       # A reviewer-flaked codex run: the SQL and in-memory rollups must agree that
       # this is excluded from codex's success denominator, not a non-pass.

@@ -3,7 +3,8 @@ defmodule Harness.AgentKPI do
   Per-agent KPI rollup over the run records `Harness.ResultStore` already persists.
 
   This context adds **no new capture** — every input field (`agent`, `verdict`,
-  `duration_ms`, `token_usage`, `review_iterations`, `review_ratings`,
+  `duration_ms`, `token_usage`, `review_iterations`, `review_skills` /
+  `review_ratings`,
   `reviewer_adapter`, `domains`) is already on `Harness.Run.LogRecord`. It is a
   read-only aggregation that makes the data we already have viewable at a
   glance: roll a record list up by `agent` into success rate,
@@ -75,7 +76,7 @@ defmodule Harness.AgentKPI do
   @typedoc "Mean tokens per run for an agent, by component."
   @type token_means :: %{input: float(), output: float(), total: float()}
 
-  @typedoc "Mean of each reviewer rating key (the keys are the reviewer's, free-form)."
+  @typedoc "Mean of each reviewer quality-score key (the keys are the reviewer's, free-form)."
   @type rating_means :: %{optional(String.t()) => float()}
 
   @typedoc "Rolled-up KPIs for one agent."
@@ -280,9 +281,46 @@ defmodule Harness.AgentKPI do
 
   defp numeric_ratings(_other), do: []
 
-  # Tolerates a pre-rating persisted record whose term predates the field.
-  @spec record_ratings(LogRecord.t()) :: map()
-  defp record_ratings(record), do: Map.get(record, :review_ratings) || %{}
+  @doc false
+  @spec record_ratings(LogRecord.t() | map() | nil) :: %{optional(String.t()) => number()}
+  def record_ratings(nil), do: %{}
+
+  def record_ratings(record) when is_map(record) do
+    skills = record_field(record, :review_skills)
+    ratings = record_field(record, :review_ratings)
+
+    if non_empty_map?(skills) do
+      rating_scores(skills)
+    else
+      rating_scores(ratings)
+    end
+  end
+
+  @spec record_field(map(), atom()) :: term()
+  defp record_field(record, field), do: Map.get(record, field) || Map.get(record, Atom.to_string(field))
+
+  @spec non_empty_map?(term()) :: boolean()
+  defp non_empty_map?(value), do: is_map(value) and map_size(value) > 0
+
+  @spec rating_scores(term()) :: %{optional(String.t()) => number()}
+  defp rating_scores(block) when is_map(block) do
+    for {key, value} <- block,
+        score = quality_score(value),
+        is_number(score),
+        into: %{},
+        do: {to_string(key), score}
+  end
+
+  defp rating_scores(_other), do: %{}
+
+  @spec quality_score(term()) :: number() | nil
+  defp quality_score(value) when is_number(value), do: value
+
+  defp quality_score(value) when is_map(value) do
+    Map.get(value, "score") || Map.get(value, :score)
+  end
+
+  defp quality_score(_other), do: nil
 
   @spec reviewed?(LogRecord.t()) :: boolean()
   defp reviewed?(record) do

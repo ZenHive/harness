@@ -303,6 +303,38 @@ defmodule Harness.Batch.AgentEvaluationTest do
     assert ratings == %{"performance" => 8, "idiom" => 7}
   end
 
+  test "from_batch surfaces current review_skills scores from the persisted record" do
+    store = file_store()
+    batch_id = batch_id()
+
+    result = %Harness.Run.Result{run_id: "run-skill-rate", task_id: "t", state: :done, reason: :approved}
+
+    record =
+      %LogRecord{
+        batch_id: batch_id,
+        run_id: "run-skill-rate",
+        task_id: "t",
+        adapter: GoodAdapter,
+        state: :done,
+        reason: :approved,
+        verdict: :approve,
+        duration_ms: 10,
+        review_skills: %{
+          "otp" => %{"score" => 8, "note" => "clean supervision"},
+          "truthfulness" => %{"score" => 7, "note" => "report matched checks"}
+        }
+      }
+
+    :ok = Harness.ResultStore.record_run(record, store)
+
+    batch = %Result{batch_id: batch_id, total: 1, max_concurrency: 1, results: [result], events: []}
+
+    comparison = AgentEvaluation.from_batch(batch, [GoodAdapter], store)
+    [%Entry{ratings: ratings}] = comparison.entries
+
+    assert ratings == %{"otp" => 8, "truthfulness" => 7}
+  end
+
   test "from_batch defaults ratings to an empty map when no record is stored" do
     result = %Harness.Run.Result{run_id: "run-norate", task_id: "t", state: :done, reason: :approved}
     batch = %Result{batch_id: "no-store", total: 1, max_concurrency: 1, results: [result], events: []}

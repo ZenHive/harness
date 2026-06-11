@@ -49,6 +49,7 @@ defmodule Harness.Dispatch do
   import Harness.Dispatch.RunTool
 
   alias Harness.AgentAdapter.Registry
+  alias Harness.AgentKPI
   alias Harness.Batch
   alias Harness.Batch.AgentEvaluation
   alias Harness.Batch.AgentEvaluation.Comparison
@@ -1217,8 +1218,9 @@ defmodule Harness.Dispatch do
   # Projects a settled run's LogRecord into the reviewer-verdict detail map.
   # Public (@doc false) so the projection is testable with a hand-built
   # %LogRecord{} — same testability seam as summarize_comparison/1 above. The
-  # record's review_report/review_ratings are persisted verbatim from the
-  # reviewer's .harness/review.json; this just surfaces them with the decision.
+  # record's review_report and quality scores are persisted from the reviewer's
+  # .harness/review.json; current records use review_skills, with review_ratings
+  # kept for legacy records.
   @doc false
   @spec summarize_verdict_detail(LogRecord.t()) :: map()
   def summarize_verdict_detail(%LogRecord{} = record) do
@@ -1227,7 +1229,7 @@ defmodule Harness.Dispatch do
       task_id: record.task_id,
       verdict: record.verdict,
       report: record.review_report,
-      ratings: record.review_ratings
+      ratings: AgentKPI.record_ratings(record)
     }
   end
 
