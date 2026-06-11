@@ -7302,3 +7302,98 @@ Pure counting of an existing persisted fact — the reason field already STATES 
 """
 created_at = "2026-06-10"
 scored_at = "2026-06-10"
+
+[[task]]
+id = "250"
+phase = 19
+bundle = "agent-gate"
+status = "pending"
+title = "Validate model↔resolved-adapter compatibility at dispatch — reject an incompatible pin pre-spawn, not a mid-run crash"
+scores = { d = 3, b = 5, u = 5 }
+markers = ["bug"]
+acceptance_criteria = ["Each AgentAdapter declares the models/families it can run (a capability field or model_supported?/1 predicate); Antigravity's existing {:unsupported_model,_} rejection folds into the same contract.", "The dispatch boundary validates the pinned model against the RESOLVED adapter (post assignee/override/recommend) BEFORE Port spawn; an incompatible pair settles loudly (e.g. {:invalid_model_for_adapter, adapter, model}), never a mid-run crash.", "Regression test reproduces the T75 case: dispatching a cursor-pinned opus model on the codex adapter is rejected pre-spawn with that reason.", "Unpinned tasks and compatible pairs (cursor+opus, codex+gpt-class) dispatch unchanged.", "Validation is family/prefix-based or sourced from each adapter's --list-models, not a brittle baked literal allowlist; the maintenance seam is documented.", "Tests cover incompatible-reject, compatible-pass, unpinned-pass, and antigravity-unsupported-model-still-handled."]
+out_of_scope = ["Reviewer-model pinning — reviewer is cross-family and unpinned by design.", "Auto-rerouting a mismatched dispatch to a compatible adapter — fail loud, do not guess operator intent."]
+assignee = "codex"
+body = """
+DISCOVERED 2026-06-10 dogfooding tapakly. Task 75 (assignee=cursor, model="claude-opus-4-8-thinking-high" — a VALID cursor pairing) was dispatched with an explicit codex adapter override. codex received the cursor-only opus pin and crashed instantly ("'claude-opus-4-8-thinking-high' not supported on a ChatGPT Codex account") before producing any diff — the implementer leg was wasted and the cross-family reviewer implemented T75 from scratch, collapsing implementer/reviewer separation (FX work shipped self-graded).
+
+The roadmap DATA was not wrong: all 7 opus-pinned tapakly tasks are assignee=cursor, and cursor is the multi-model front-end that runs opus. The mismatch was introduced at DISPATCH time — the resolved adapter (codex, via override/recommend) diverged from the model pin's compatible family, and nothing validates the {resolved_adapter, model} pair before spawn.
+
+SURFACE: harness task 7062 (done) now threads the pinned model into Invocation -> --model. Correct, but it converted a previously-silent no-op (bad pin ignored, adapter ran its default) into a hard mid-run crash: a pin the resolved adapter cannot run now reaches the CLI.
+
+PRIOR ART: the Antigravity adapter already rejects model overrides pre-spawn with {:error,{:unsupported_model,model}} (agy has no --model). Generalize into the contract: each adapter declares the models/families it can run (or a compat predicate); the dispatch boundary validates the pinned model against the RESOLVED adapter (after assignee/override/recommend resolution) BEFORE Port spawn, settling with a clear reason instead of crashing. Mechanical validation (family/prefix), not judgment. codex runs OpenAI/codex models, not anthropic opus; cursor runs opus/sonnet/gpt/gemini per --list-models; claude runs anthropic. Model IDs churn -> prefer family/prefix matching or the adapter's own --list-models over a baked literal allowlist.
+"""
+created_at = "2026-06-10"
+scored_at = "2026-06-10"
+
+[[task]]
+id = "251"
+phase = 19
+bundle = "audit-agent"
+status = "pending"
+title = "Discovery-filing stage: implementer/reviewer/audit agents file follow-ups via rmap new, not lose them or bury them in TODO comments"
+scores = { d = 3, b = 5, u = 5 }
+acceptance_criteria = ["The audit-agent prompt instructs the agent that when it notices follow-up work during its commit-range review (tech debt, an orphaned code path, an uncovered edge case, a deferred decision), it files each as a real rmap task via `rmap new` against the project's roadmap_path — and names the filed task id(s) in its `.audit/<sha>.md` report.", "The reviewer prompt instructs the reviewer that genuine follow-ups it surfaces while gating (and chooses NOT to fix inline) are filed via `rmap new` in its worktree (riding the merge-train commit), not just mentioned in the prose verdict where they evaporate.", "rmap is available on PATH inside both worktrees (implementer/reviewer branch worktree AND the audit's detached origin/<target> worktree); if it is not already, harness ensures it is — this is mechanical plumbing, not judgment.", "Mantra-clean: harness does NOT classify what is a discovery, score it, or decide whether to file — the AGENT decides and runs `rmap new` itself; harness reads nothing back and recomputes no meaning. The only harness change is making the rmap CLI reachable + the prompt text.", "tasks.toml multi-writer safety is addressed: concurrent runs filing discoveries must not corrupt the file or collide on ids — rely on rmap's validate-then-write + let the merge-train rebase reconcile tasks.toml; document the residual conflict path (a rebase conflict on tasks.toml falls through to the existing Lander.Resolver), do not add a lock.", "Tests: a fixture audit/review prompt-render asserts the discovery-filing instruction is present; an integration-style assertion that a `rmap new` run inside a worktree produces a parseable task (no harness-side parsing of the result).", "mix precommit.full green"]
+out_of_scope = ["Harness deciding/ranking which discoveries are worth filing — that is the agent's judgment (mantra). Harness only supplies the CLI + prompt.", "Auto-scoring filed discoveries (the agent supplies D/B/U or leaves them for a later scoring pass; harness computes no scores).", "A new Oban stage or worker — this is a prompt-surface + PATH change to the EXISTING reviewer and audit stages, not a new lifecycle node.", "Dedup of near-duplicate filed tasks across parallel runs (rmap.md's human dedupe gate covers it; agents filing a near-clone is acceptable churn, not a blocker)."]
+touches = ["lib/harness/audit/worker.ex", "priv/playbooks", "lib/harness/run.ex"]
+assignee = "claude"
+body = """
+Surfaced 2026-06-10: dispatched runs (tapakly T90/T95) landed clean but filed ZERO follow-up
+tasks — not because there were none worth filing in general, but because no harness stage
+PROMPTS an agent to run `rmap new`. The implementer commits code, the reviewer gates+fixes and
+writes .harness/review.json, the lander merges, the auditor writes .audit/<sha>.md — none is told
+to capture discoveries into the roadmap. So any tech-debt/edge-case/orphaned-path an agent notices
+lives (at best) in prose in a verdict/audit artifact and evaporates. This is the harness analogue
+of the global CLAUDE.md rule "Capture Discoveries as Tasks" — which today only humans honor.
+
+The fix is a discovery-filing instruction added to the reviewer prompt and (primarily) the
+audit-agent prompt: when you notice follow-up work, FILE it via `rmap new` against the project's
+roadmap_path, and name the filed id(s) in your artifact. The audit agent is the natural primary
+home — it is batch-scoped, post-merge, already reflects over a commit range, and already writes
+report artifacts; per-run reviewer filing is the secondary channel for follow-ups the reviewer
+declines to fix inline.
+
+Mantra discipline (non-negotiable): harness must NOT judge what counts as a discovery, score it,
+or decide to file. The agent decides and runs the CLI; harness's only change is mechanical —
+ensure `rmap` is on PATH in the worktrees and add the prompt text. Harness reads nothing back.
+
+This also resolves the ROOT CAUSE behind Task 43 ("Dogfood verification reds on pre-existing TODO
+comments in dispatch base"): the audit agent currently records follow-ups by inserting
+`# TODO(Task NN):` source comments, which dispatched worktrees inherit and which trip `credo
+--strict` TagTODO, penalizing the next agent for debt that isn't theirs. A proper rmap task is
+strictly better: it is the durable, queryable, dispatchable record a source comment can never be,
+and it leaves no TODO in the tree. Filing-as-rmap-task should REPLACE the TODO-comment habit in
+the audit prompt.
+
+Cross-ref: Task 43 (TODO-comment dispatch-base reds — this supersedes its workaround candidates);
+bundle audit-agent (the post-merge audit role); the agent-gate workflow (docs/agent-gate-workflow.md).
+"""
+created_at = "2026-06-10"
+scored_at = "2026-06-10"
+
+[[task]]
+id = "252"
+phase = 19
+bundle = "agent-gate"
+status = "pending"
+title = "Per-project warm_paths: seed a project's gitignored worktree inputs (source/corpus) so extractor runs don't fail review_stuck on a missing base"
+scores = { d = 3, b = 8, u = 8 }
+depends_on = [226]
+acceptance_criteria = ["Harness.Project gains a `warm_paths` field (list of repo-relative dir strings, default []); struct + @type updated; a project that omits it behaves byte-identically to today.", "Persisted in ProjectRegistry: `warm_paths` column added to lib/harness/project_registry/schema/project.ex + a migration; the field round-trips through register -> lookup (DB-is-truth), default [] when absent.", "Worktree.warm/2 seeds the UNION (de-duplicated) of @default_warm_paths (deps/_build/priv/plts) and the project's warm_paths — it EXTENDS, never REPLACES, the defaults: a project declaring `priv/ccxt` still warms deps/_build/PLT. The best-effort / always-:ok / seedable?(parent-present AND worktree-absent) semantics from Task 226 are unchanged.", "Threaded from the project into BOTH warm call sites: run.ex (implementer+reviewer worktree, ~line 636) and audit.ex (auditor worktree, ~line 136) pass `warm_paths: project.warm_paths`.", "Pure mechanics, mantra-clean: warming copies bytes and classifies nothing; no judgment/branch/regex added, and Harness.Verification is NOT reintroduced.", 'Tests: a project with warm_paths: ["priv/foo"] seeds priv/foo (parent-present + worktree-absent) into a fresh worktree AND still seeds deps/_build; an unset project warms byte-identically to before; the persisted warm_paths round-trips through the registry.', "mix precommit.full green"]
+out_of_scope = ['Registering ccxt_extract with warm_paths = ["priv/ccxt", "priv/discoveries"] — that is a post-land registration/config step (config/dev.local.exs), not part of this harness change.', "Regenerating the ccxt_extract discovery corpus (the operator runs `mix ccxt_extract.update` on development; warm/2 copies FROM that fresh local checkout).", "Committing the gitignored corpus or editing ccxt_extract's .gitignore — the corpus stays a derived artifact; warming is how worktrees get it.", "Removing/altering the global `:harness, :worktree, :warm_paths` config — per-project warm_paths EXTENDS the resolved defaults; the global config remains the cross-project fallback."]
+files_to_modify = ["lib/harness/project.ex", "lib/harness/project_registry/schema/project.ex", "lib/harness/worktree.ex", "lib/harness/run.ex", "lib/harness/audit.ex"]
+touches = ["lib/harness/project_registry.ex", "priv/repo/migrations", "test/harness/worktree_test.exs", "test/harness/project_registry_test.exs"]
+assignee = "codex"
+body = """
+ROOT CAUSE (diagnosed 2026-06-11): every ccxt_extract extractor run in wave-5 (tasks 78f, 63, and the 121 in-flight) died `{:cancel, {:review_stuck, "Reviewer wrote no .harness/review.json verdict artifact."}}`. The reviewer thrashes and never reaches a verdict because the worktree has NO corpus to check against.
+
+Why the worktree is empty: ccxt_extract .gitignore lines 21/34-35 ignore `/priv/ccxt` (the vendored CCXT TypeScript source) and `/priv/discoveries/*` (the whole derived discovery corpus, except class_hierarchy.json). `git worktree add` only materializes TRACKED files, so a fresh harness worktree gets class_hierarchy.json and nothing else — no CCXT source, no corpus. The extractor tasks read/validate against `priv/discoveries/*.json` (ws_methods.json, etc.) and the cached/contract tests need the corpus; all of it is absent, so the check stack can't pass and the reviewer burns its budget then idle-times-out with no verdict.
+
+Worktree.warm/2 (Task 226) already CoW-seeds gitignored dirs from the parent checkout — but only @default_warm_paths = ["deps", "_build", "priv/plts"], and the only override is the GLOBAL `:harness, :worktree, :warm_paths` app config. A global list is the wrong granularity: different registered projects have different gitignored inputs (ccxt_extract needs priv/ccxt + priv/discoveries; harness's own runs need none). Add a per-project `warm_paths` field on %Harness.Project{} so each project declares its corpus/source inputs, threaded into warm/2 as an EXTENSION of the defaults.
+
+This is the harness-side half of the fix. The operator side: run `mix ccxt_extract.update` on development to refresh the local priv/ccxt + priv/discoveries (warm/2 copies from there), then register ccxt_extract with warm_paths = ["priv/ccxt", "priv/discoveries"]. Immediate stopgap available without this task: set the global :harness,:worktree,:warm_paths to include those two paths (safe — seedable? no-ops where a path is absent in the parent, e.g. harness's own worktrees); this per-project field is the clean, multi-project-correct replacement.
+
+Extends Task 226 (the warm/2 mechanism). Pairs with rescue of the already-built 78f/63/121 branches (re-review against a warmed base rather than re-implement).
+"""
+created_at = "2026-06-11"
+scored_at = "2026-06-11"
