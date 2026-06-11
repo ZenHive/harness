@@ -1828,7 +1828,9 @@ defmodule Harness.Run do
 
   @spec in_run_env(data()) :: %{optional(String.t()) => String.t() | false}
   defp in_run_env(%{env: env, worktree: %Worktree{path: path}}) do
-    Map.put(env, "GH_CONFIG_DIR", Path.join(path, @gh_config_dir))
+    env
+    |> Map.put("GH_CONFIG_DIR", Path.join(path, @gh_config_dir))
+    |> Harness.RmapPath.ensure_agent_env()
   end
 
   @spec scrub_github_auth_env(%{optional(String.t()) => String.t() | false}) :: %{
@@ -2407,10 +2409,17 @@ defmodule Harness.Run do
     (an empty or unusable worktree, or work so destructive or off-task that redoing it from scratch
     is faster than fixing it).
 
-    Never touch the roadmap. Do not edit `roadmap/tasks.toml` or `ROADMAP.md`, and do not change the
-    task's status — harness writes the outcome back (`done` + `verified` + `shipped_in`) after you
-    approve and the work lands. If the implementer left a roadmap edit (e.g. a `status = "done"` flip
-    or a hand-edited `ROADMAP.md`), revert it as part of your fixes — it is corruption, not deliverable.
+    Never change the current task's roadmap state. Do not mark this task done, verified, shipped,
+    pending, or blocked — harness writes the outcome back (`done` + `verified` + `shipped_in`) after
+    you approve and the work lands. If the implementer left a roadmap edit (e.g. a `status = "done"`
+    flip or a hand-edited `ROADMAP.md`), revert it as part of your fixes — it is corruption, not
+    deliverable.
+
+    Discovery filing: if you surface genuine follow-up work while gating and choose NOT to fix it
+    inline, file it as a real rmap task in this worktree instead of only mentioning it in prose.
+    Use `rmap new --from-stdin --roadmap-path #{inspect(data.project.roadmap_path)}` and provide a
+    TOML `[[task]]` fragment. You decide what counts as a discovery; harness does not classify,
+    rank, score, or read back the filed task. In your verdict report, name the filed task id(s).
 
     Verdict artifact — REQUIRED final action, write it even when you reject:
 

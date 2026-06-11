@@ -76,6 +76,33 @@ defmodule Harness.AuditTest do
     :ok = ResultStore.record_run(record, store)
   end
 
+  defp fake_rmap_dir do
+    dir = Path.join(System.tmp_dir!(), "harness-audit-fake-rmap-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+
+    path = Path.join(dir, "rmap")
+    File.write!(path, "#!/bin/sh\necho fake-rmap\n")
+    File.chmod!(path, 0o755)
+    dir
+  end
+
+  defp with_rmap_path_dirs(dirs) do
+    prior = Application.get_env(:harness, :rmap_path_dirs)
+    Application.put_env(:harness, :rmap_path_dirs, dirs)
+
+    on_exit(fn ->
+      if prior,
+        do: Application.put_env(:harness, :rmap_path_dirs, prior),
+        else: Application.delete_env(:harness, :rmap_path_dirs)
+    end)
+  end
+
+  defp with_path(path) do
+    prior = System.get_env("PATH", "")
+    System.put_env("PATH", path)
+    on_exit(fn -> System.put_env("PATH", prior) end)
+  end
+
   setup do
     %{origin: origin, repo: repo} = GitFixture.init_with_origin()
     project = ProjectFixture.from_repo(repo, name: "audit-demo", target_branch: "main")
@@ -313,6 +340,53 @@ defmodule Harness.AuditTest do
       assert prompt =~ "stray debug IO left in handler"
       # Scoped to this project — the other repo's rejection is filtered out.
       refute prompt =~ "t.99"
+    end
+
+    test "discovery filing instructions ride into the audit prompt", ctx do
+      land_work!(ctx)
+      short = ctx.repo |> GitFixture.git!(["rev-parse", "--short", "HEAD"]) |> String.trim()
+
+      assert {:audited, _sha} =
+               Audit.run(%{
+                 project: ctx.project,
+                 base_sha: ctx.base_sha,
+                 auditor: FakeAdapter,
+                 auditor_opts: [command: {:audit_capture_prompt, short}],
+                 result_store: isolated_store()
+               })
+
+      GitFixture.git!(ctx.repo, ["fetch", "-q", "origin"])
+      prompt = GitFixture.git!(ctx.repo, ["show", "origin/main:.audit/#{short}.md"])
+
+      assert prompt =~ "Discovery filing"
+      assert prompt =~ "rmap new --from-stdin"
+      assert prompt =~ ctx.project.roadmap_path
+      assert prompt =~ "FILE it as a real rmap task"
+      assert prompt =~ "name the filed task id"
+      assert prompt =~ "Do not leave TODO"
+      assert prompt =~ "Harness does not decide what counts as a discovery"
+    end
+
+    test "makes rmap reachable inside the detached audit worktree even when PATH is scrubbed", ctx do
+      land_work!(ctx)
+      short = ctx.repo |> GitFixture.git!(["rev-parse", "--short", "HEAD"]) |> String.trim()
+      rmap_dir = fake_rmap_dir()
+
+      with_rmap_path_dirs([rmap_dir])
+      with_path("/usr/bin:/bin")
+
+      assert {:audited, _sha} =
+               Audit.run(%{
+                 project: ctx.project,
+                 base_sha: ctx.base_sha,
+                 auditor: FakeAdapter,
+                 auditor_opts: [command: {:audit_capture_rmap_path, short}]
+               })
+
+      GitFixture.git!(ctx.repo, ["fetch", "-q", "origin"])
+      captured = GitFixture.git!(ctx.repo, ["show", "origin/main:.audit/#{short}.md"])
+
+      assert String.trim(captured) == Path.join(rmap_dir, "rmap")
     end
 
     test "a project with no recorded rejections frames the section as empty", ctx do

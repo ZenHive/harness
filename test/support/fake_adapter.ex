@@ -94,6 +94,9 @@ defmodule Harness.FakeAdapter do
   # {:review_capture_model, verdict}
   #                           — records the reviewer invocation's model into
   #                             reviewer_model.txt, then writes the artifact.
+  # {:review_capture_rmap_path, verdict}
+  #                           — records `command -v rmap` from the reviewer
+  #                             process, then writes the artifact.
   # :review_malformed         — writes invalid JSON to the artifact path (the
   #                             review-stuck fixture).
   # {:review_by_task, reject_ids}
@@ -128,6 +131,9 @@ defmodule Harness.FakeAdapter do
   #                    back off origin after the ff-push (the audit-prompt
   #                    content fixture). The prompt rides as a positional
   #                    parameter ($2), never interpolated into the script.
+  # {:audit_capture_rmap_path, short_sha}
+  #                  — records `command -v rmap` into the committed
+  #                    `.audit/<short_sha>.md`.
   defp command_for(%Invocation{task_id: task_id}, opts) when is_binary(task_id) do
     if String.ends_with?(task_id, "-recovery") do
       Keyword.get(opts, :recovery_command, Keyword.get(opts, :command, :echo))
@@ -158,6 +164,14 @@ defmodule Harness.FakeAdapter do
         ~S|git add .audit; git -c user.email=audit@fake -c user.name=fake-audit commit -q -m "audit($1): captured prompt"|
 
     {"/bin/sh", ["-c", script, "harness-fake", short_sha, prompt], []}
+  end
+
+  defp command({:audit_capture_rmap_path, short_sha}, _invocation) when is_binary(short_sha) do
+    script =
+      ~S|mkdir -p .audit; command -v rmap > ".audit/$1.md"; | <>
+        ~S|git add .audit; git -c user.email=audit@fake -c user.name=fake-audit commit -q -m "audit($1): captured rmap path"|
+
+    {"/bin/sh", ["-c", script, "harness-fake", short_sha], []}
   end
 
   defp command({:audit, short_sha}, _invocation) when is_binary(short_sha) do
@@ -269,6 +283,11 @@ defmodule Harness.FakeAdapter do
   defp command({:review_capture_model, verdict}, %Invocation{model: model}) when verdict in ["approve", "reject"] do
     script = ~S(printf '%s' "$1" > reviewer_model.txt; mkdir -p .harness; printf '%s' "$2" > .harness/review.json)
     {"/bin/sh", ["-c", script, "harness-fake", model || "", review_json(verdict)], []}
+  end
+
+  defp command({:review_capture_rmap_path, verdict}, _invocation) when verdict in ["approve", "reject"] do
+    script = ~S(command -v rmap > reviewer_rmap_path.txt; mkdir -p .harness; printf '%s' "$1" > .harness/review.json)
+    {"/bin/sh", ["-c", script, "harness-fake", review_json(verdict)], []}
   end
 
   defp command(:review_malformed, _invocation) do

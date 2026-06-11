@@ -674,6 +674,33 @@ defmodule Harness.RunTest do
       assert prompt =~ "Implementer transcript tail:"
       assert prompt =~ "Diff stat:"
       assert prompt =~ Review.artifact_path()
+      assert prompt =~ "Discovery filing"
+      assert prompt =~ "rmap new --from-stdin"
+      assert prompt =~ project.roadmap_path
+      assert prompt =~ "file it as a real rmap task"
+      assert prompt =~ "name the filed task id"
+    end
+
+    test "makes rmap reachable inside the reviewer worktree even when PATH is scrubbed" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+      rmap_dir = fake_rmap_dir()
+
+      with_rmap_path_dirs([rmap_dir])
+
+      opts =
+        base
+        |> default_opts()
+        |> Keyword.merge(
+          env: %{"PATH" => "/usr/bin:/bin"},
+          reviewer_adapter_opts: [command: {:review_capture_rmap_path, "approve"}]
+        )
+
+      {:ok, run_id, pid} = Run.Supervisor.start_run(item(), ProjectFixture.from_repo(repo), FakeAdapter, opts)
+      assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
+
+      captured = GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_rmap_path.txt"])
+      assert String.trim(captured) == Path.join(rmap_dir, "rmap")
     end
 
     test "makes writing the verdict artifact the mandatory, unconditional FINAL action (Task 181)" do
@@ -2208,6 +2235,27 @@ defmodule Harness.RunTest do
 
     File.chmod!(path, @executable_mode)
     dir
+  end
+
+  defp fake_rmap_dir do
+    dir = Path.join(System.tmp_dir!(), "harness-fake-rmap-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+
+    path = Path.join(dir, "rmap")
+    File.write!(path, "#!/bin/sh\necho fake-rmap\n")
+    File.chmod!(path, @executable_mode)
+    dir
+  end
+
+  defp with_rmap_path_dirs(dirs) do
+    prior = Application.get_env(:harness, :rmap_path_dirs)
+    Application.put_env(:harness, :rmap_path_dirs, dirs)
+
+    on_exit(fn ->
+      if prior,
+        do: Application.put_env(:harness, :rmap_path_dirs, prior),
+        else: Application.delete_env(:harness, :rmap_path_dirs)
+    end)
   end
 
   defp prepend_path(dir) do

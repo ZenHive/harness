@@ -149,6 +149,14 @@ ones). A project without a `target_branch` (or a `{:github, _}` source) falls
 back to the historical local rmap write. Mechanical substrate only — no judgment
 branch added to harness code.
 
+Reviewer and audit agents may also file discoveries with `rmap new` from inside
+their worktrees. That remains agent judgment: harness only makes the CLI
+reachable and supplies the prompt instruction. `rmap new` uses rmap's
+validate-then-write path; concurrent discovery filings ride the same merge train
+as any other worktree change. If parallel runs both edit `roadmap/tasks.toml` and
+the rebase cannot auto-merge the generated task ids, the conflict falls through
+to the existing `Harness.Lander.Resolver` path. No extra lock is added.
+
 **Never blocks, never reverts.** A failed audit is logged and dropped; the merge stands.
 
 ## What is code vs what is judgment

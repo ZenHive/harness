@@ -276,6 +276,44 @@ defmodule Harness.RoadmapTest do
     end
   end
 
+  describe "rmap new discovery filing" do
+    @tag :tmp_dir
+    test "a task filed inside a worktree is parseable by rmap", %{tmp_dir: tmp_dir} do
+      File.mkdir_p!(Path.join(tmp_dir, "roadmap"))
+      tasks_path = Path.join(tmp_dir, "roadmap/tasks.toml")
+      File.cp!(Path.join(@sample, "roadmap/tasks.toml"), tasks_path)
+      File.write!(Path.join(tmp_dir, "ROADMAP.md"), "# Fixture Roadmap\n")
+
+      fragment_path = Path.join(tmp_dir, "followup.toml")
+
+      File.write!(fragment_path, """
+      [[task]]
+      phase = 1
+      bundle = "fixture"
+      title = "File discovered follow-up"
+      scores = { d = 2, b = 4, u = 4 }
+      body = "Follow-up filed by an agent during review or audit."
+      acceptance_criteria = ["The task is parseable after rmap new writes it"]
+      """)
+
+      assert {_output, 0} =
+               System.cmd(
+                 "/bin/sh",
+                 ["-c", ~S|rmap new --from-stdin --tasks-path "$1" < "$2"|, "harness-test", tasks_path, fragment_path],
+                 cd: tmp_dir,
+                 stderr_to_stdout: true
+               )
+
+      assert {json, 0} =
+               System.cmd("rmap", ["show", "3", "--json", "--tasks-path", tasks_path],
+                 cd: tmp_dir,
+                 stderr_to_stdout: true
+               )
+
+      assert {:ok, %{"id" => "3", "title" => "File discovered follow-up"}} = Jason.decode(json)
+    end
+  end
+
   describe "ready/1" do
     test "decodes the dispatchable set as a bare array of routing rows" do
       stub =

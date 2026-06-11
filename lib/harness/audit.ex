@@ -358,7 +358,8 @@ defmodule Harness.Audit do
       cwd: worktree.path,
       task_id: "audit-#{project.name}-#{range.short_sha}",
       permission_mode: :autonomous,
-      adapter_opts: request[:auditor_opts] || []
+      adapter_opts: request[:auditor_opts] || [],
+      env: Harness.RmapPath.ensure_agent_env(%{})
     }
   end
 
@@ -417,6 +418,14 @@ defmodule Harness.Audit do
     5. Write a machine-readable summary to `#{@audit_report_path}`:
        {"findings": <count>, "fixed": <count>, "report": "<one-paragraph summary>"}
        Do NOT commit this file — it is harness-internal.
+
+    Discovery filing: when you notice follow-up work during this commit-range review — tech debt,
+    an orphaned code path, an uncovered edge case, or a deferred decision — FILE it as a real rmap task
+    via `rmap new --from-stdin --roadmap-path #{inspect(project.roadmap_path)}`. Provide a TOML
+    `[[task]]` fragment. In `.audit/#{range.short_sha}.md`, name the filed task id(s). Do not leave TODO
+    comments in source for audit follow-ups; the rmap task is the durable record.
+    Harness does not decide what counts as a discovery; it does not score it, and reads nothing back — you decide
+    whether to file and run the CLI yourself.
 
     Reviewer-quality feedback loop — recent reviewer rejections for this project (a cross-family
     reviewer is THE gate, and rejection is rare by design). If a task in the landed range above also
