@@ -139,7 +139,7 @@ defmodule Harness.ModelAvailabilityTest do
 
   describe "reviewer-model gate" do
     test "rejects a blocked reviewer model before the reviewer Port spawns" do
-      assert :ok = Config.put({:agent_model, :claude}, "claude-opus-4-8-thinking-high", "test")
+      assert :ok = Config.put({:reviewer_model, :claude}, "claude-opus-4-8-thinking-high", "test")
 
       seed_static_catalog(:claude, [
         %{id: "claude-opus-4-8-thinking-high", label: "Opus", annotations: []},

@@ -2290,7 +2290,7 @@ defmodule Harness.Run do
   defp ensure_reviewer_model_available(%{reviewer_adapter: reviewer_adapter}) do
     case AgentRegistry.agent_for_module(reviewer_adapter) do
       {:ok, agent} ->
-        model = reviewer_model(reviewer_adapter)
+        model = Config.reviewer_model(agent)
 
         if ModelAvailability.available?(agent, model) do
           :ok
