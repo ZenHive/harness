@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 19 — Self-Healing Run Loop (22 of 28 done · 1 in progress)
+**Focus phase:** 19 — Self-Healing Run Loop (23 of 28 done · 0 in progress)
 
-**Last shipped:** Task 235 — Surface the self-heal recovery facts — KPI view over Task 229's persisted recovery_attempts + recovery token spend (tests the v0_14 hypothesis), Task 250 — Validate model↔resolved-adapter compatibility at dispatch — reject an incompatible pin pre-spawn, not a mid-run crash, Task 261 — Model/agent availability — block unavailable {agent,model} at dispatch + surface available models over MCP, Task 263 — Grok + codex catalog probes return catalog_unavailable — grok needs a bullet-format parse branch, codex needs a JSON-decode branch, Task 264 — Make a run's landed-state a PERSISTED FACT (landed_sha on the run record), written by the lander — kill the fragile rmap+git mergedness recompute, Task 265 — Unify the three model-catalog sources into one operator-editable, advisory resolution (dedupe probe / static / builtin) on 2026-06-12
+**Last shipped:** Task 235 — Surface the self-heal recovery facts — KPI view over Task 229's persisted recovery_attempts + recovery token spend (tests the v0_14 hypothesis), Task 250 — Validate model↔resolved-adapter compatibility at dispatch — reject an incompatible pin pre-spawn, not a mid-run crash, Task 261 — Model/agent availability — block unavailable {agent,model} at dispatch + surface available models over MCP, Task 263 — Grok + codex catalog probes return catalog_unavailable — grok needs a bullet-format parse branch, codex needs a JSON-decode branch, Task 264 — Make a run's landed-state a PERSISTED FACT (landed_sha on the run record), written by the lander — kill the fragile rmap+git mergedness recompute, Task 265 — Unify the three model-catalog sources into one operator-editable, advisory resolution (dedupe probe / static / builtin), Task 267 — Replace unconditional dwell Process.sleep with deterministic synchronization in the test suite on 2026-06-12
 
 **Up next:** Task 266 — Routing-brief: one MCP surface joining roster+availability+capability+KPI per {agent,model} (raw facts, no fused score) so the task-writer routes without reading lib/ [D:3/B:6/U:6 → Eff:2.0] 🎯
 <!-- FOCUS:END -->

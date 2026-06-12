@@ -11407,7 +11407,7 @@
       "id": "267",
       "phase": 19,
       "bundle": "test-suite-perf",
-      "status": "in_progress",
+      "status": "done",
       "title": "Replace unconditional dwell Process.sleep with deterministic synchronization in the test suite",
       "scores": {
         "d": 2,
@@ -11449,10 +11449,15 @@
         "otp",
         "testing"
       ],
+      "shipped_in": "65890232c36cf8deea24d7d177ca172a0722b832",
       "body": "The test suite carries unconditional fixed `Process.sleep` dwell that is paid on **every** green run (these are not retry-loop ceilings that early-exit — they always wait the full duration). Replace them with event-driven synchronization that returns the instant the condition holds.\n\nTargets (verified 2026-06-12):\n- `run_test.exs:1914` — `Process.sleep(600)` proving a `:held` run stays held. Replace with: assert `:held`, push one more transcript/event through the gen_statem, re-assert `:held`. The persistence claim is about *surviving an event*, not *surviving wall-clock*.\n- `run_test.exs:1084` & `:1188` — `for _ <- 1..6 do send(pid, {:transcript_chunk, \"tick\"}); Process.sleep(150); assert :running end` (~900ms each). Send all six chunks, then assert `:running` **once**. The interleaved dwell proves nothing the single post-assert doesn't.\n- `roadmap_summary_test.exs:160` & `:176` — `Process.sleep(500)` + `Process.sleep(100)` before reading summary state. Use `assert_receive`/`refute_receive` on the PubSub/telemetry message the summary path already broadcasts.\n\n**`oban_dispatch_test.exs` is a judgment call — do NOT blindly shrink its 8× `Process.sleep(100)` helper sleeps.** They live inside spawned helper jobs and simulate in-flight job duration measured against the Lifeline `@lifeline_rescue_after_ms` rescue window; cutting them races the rescue tests. Reduce only where the rescue semantics demonstrably still hold; otherwise leave them and write a one-line rationale in the verdict. (Listed in files_to_modify only so a careful reduction is in-scope if safe.)\n\nPrefer the synchronization primitives already used elsewhere in these files: `assert_receive` with a timeout, `Process.monitor` + `assert_receive {:DOWN, …}`, `start_supervised!` for lifecycle, and the existing `wait_until_running`/`await_*` poll helpers (leave those helpers' internals alone).\n\nThis is the Phase-1 quick win from the test-suite-perf plan; Tasks 268-271 do the structural async conversions and depend on this landing first where files overlap.\n",
       "created_at": "2026-06-12",
       "started_at": "2026-06-12",
+      "done_at": "2026-06-12",
       "scored_at": "2026-06-12",
+      "implemented": "Landed by cursor via merge-train; reviewer-approved (run run-1781254703139-342aab52, 65890232c36cf8deea24d7d177ca172a0722b832).",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     },
     {
