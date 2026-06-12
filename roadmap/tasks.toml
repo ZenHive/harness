@@ -7114,7 +7114,7 @@ shipped_in = "72edccd9b2e41cb31f0e8b0d46c29bee65462465"
 id = "242"
 phase = 17
 bundle = "dashboard-perf"
-status = "pending"
+status = "done"
 title = "Dashboard live_runs/0 fan-out: a busy run gen_statem must not stall the run feed (bounded Run.status read + skip)"
 scores = { d = 3, b = 4, u = 4 }
 depends_on = ["241"]
@@ -7126,9 +7126,14 @@ domains = ["otp"]
 assignee = "codex"
 module = "Harness.StatusView"
 body = "Secondary cause from the 2026-06-08 dashboard-slowness investigation. StatusView.live_runs/0 maps Run.status/1 (a synchronous gen_statem call) over every live run, and is invoked multiple times per page render (mount snapshot, handle_params apply_action, recompute_active) plus every 5s meta_tick and every run lifecycle event. When a run's gen_statem is busy (committing, driving its Port, lander rebasing) the call blocks behind that process's mailbox — fitting the 3.7-4.3s HANDLE PARAMS replies in the logs. Make the fan-out resilient: bound each status read and skip a non-responsive run, and trim redundant live_runs/0 calls per render. Lower confidence and smaller win than the sibling RoadmapSummary task — do this AFTER it and re-measure, since that fix alone may resolve the operator-visible pain. Touches the run-lifecycle module (Run.status read path), so it is deliberately split out from the pure dashboard-read-path change to keep that change low-risk."
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781229159913-ff2719aa, dbd63faad94e37eef4db707f429809b8793fa8f0)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-08"
 started_at = "2026-06-12"
 scored_at = "2026-06-08"
+done_at = "2026-06-12"
+shipped_in = "dbd63faad94e37eef4db707f429809b8793fa8f0"
 
 [[task]]
 id = "243"
