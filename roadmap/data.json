@@ -274,6 +274,11 @@
       "order": 1,
       "description": "Agent-shaped MCP/CLI surface, human status view, run logging"
     },
+    "test-suite-perf": {
+      "phase": 19,
+      "order": 6,
+      "description": "Cut the offline test-suite wall-clock (baseline 4:01 at 14% CPU — the serial-execution signature: ~65 of 131 files are async: false, so cores sit idle). Two fronts: (1) remove always-paid unconditional Process.sleep dwell (held-persists, tick-loops, summary waits) in favor of event-driven assert_receive; (2) the structural win — split the 2,509-line run_test.exs and convert the heavy async: false files (run_test, dashboard/live, oban_dispatch, long tail) to async: true by isolating their shared global state per test (Run/Supervisor names, ProjectRegistry/AgentRegistry singletons, app-env mutation, Ecto shared-sandbox). Success metric is total wall-clock reduction, not test count."
+    },
     "workflow-substrate": {
       "phase": 12,
       "order": 1,
@@ -11389,6 +11394,246 @@
         "descripex"
       ],
       "body": "THE 'orchestrator routes without reading code' loop, closed as one cheap MCP fact.\n\nOperator's point (2026-06-12): 'der rmap writer sollte alleine in der Lage sein ... nach Verfuegbarkeitscheck via MCP zu wissen, welche Agents mit welchem Model fuer welche Tasks' — 'es kann nicht sein, dass der Orchestrator den ganzen Code in den Context laedt, nur um zu entscheiden an wen zu dispatchen' — 'und mehr: wir haben KPIs, wir WISSEN wie die Agents performen, das sollte direkt bereitgestellt werden.'\n\nThe four routing fact-legs ALREADY exist as SEPARATE MCP surfaces; the gap is the JOIN + the contract, not the data:\n1. Roster      -> Harness.Agents agents-list (Task 262, done): installed/enabled/reviewer_eligible/capabilities/cost_tier/model.\n2. Availability -> ModelAvailability list_available_models (Task 148; cleaned by Task 265): un-blocked {agent,model} pairs.\n3. Capability  -> ResultStore.list_capability_scores / get_capability_score: per-{agent,domain} score (+ the scout/facet work).\n4. KPI         -> ResultStore.aggregate_by_agent (Task 139, done; reviewer ratings fed by 177/248): success_rate, first_attempt_pass, duration_p90, cost_to_approved.\n\nToday a writer would call four tools and join them in its head — or worse, grep lib/. routing-brief does the join in ONE call so the writer makes one cheap MCP read and decides. It is a dedicated curated read-surface module (Harness.Routing, mirroring the 262 pattern where short-name == tool prefix), returning plain maps, delegating to the existing accessors.\n\nMANTRA, non-negotiable: the brief returns RAW joined facts + the sample-count n behind each number. It NEVER fuses them into a best-pick score/ranking/route — that is judgment the writer-AI does, and dispatch-recommend already provides the advisory pick on top. We deleted ~1,400 LOC of composite-score arithmetic in v0_13 precisely so harness stops computing 'who is best'; this task must not smuggle it back in. The cold-start caveat is a FACT not a formula: surface n=0 for unmeasured cells so the writer knows when to explore.\n\nDepends on 262 (roster leg, done) and 265 (availability leg — build the join after the catalog is unified/advisory so the brief reads one clean availability source, not the pre-265 three-source mess). Builds on 75 (api annotation) + 79 (MCP server) + 139/177/248 (KPI) + 120/121 (capability routing). Verify state against origin before assuming. The primary harness consumer IS an AI orchestrator over MCP — a one-call routing brief is the product, not a nicety.\n",
+      "created_at": "2026-06-12",
+      "scored_at": "2026-06-12",
+      "cross_repo": []
+    },
+    {
+      "id": "267",
+      "phase": 19,
+      "bundle": "test-suite-perf",
+      "status": "pending",
+      "title": "Replace unconditional dwell Process.sleep with deterministic synchronization in the test suite",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "cursor",
+      "model": "claude-opus-4-8-thinking-high",
+      "acceptance_criteria": [
+        "test/harness/run_test.exs:1914 — the Process.sleep(600) 'held persists' dwell is removed; the test instead asserts :held, drives one more event through the Run gen_statem, and re-asserts :held (no fixed wall-clock dwell)",
+        "test/harness/run_test.exs:1084 and :1188 — the two `for _ <- 1..6 do ...Process.sleep(150)` loops are replaced by sending all six chunks then asserting :running once; the per-tick dwell is gone",
+        "test/harness/dashboard/roadmap_summary_test.exs:160 and :176 — the Process.sleep(500)/Process.sleep(100) waits become assert_receive/refute_receive on the PubSub/telemetry message the summary already emits",
+        "grep -nE 'Process\\.sleep\\([1-9][0-9]{2,}\\)' over the touched non-oban files returns nothing",
+        "The full offline suite stays green (mix test.json --exclude integration); record the wall-clock delta vs the pre-change baseline in `implemented`"
+      ],
+      "out_of_scope": [
+        "Flipping any file from async: false to async: true (that is Tasks 268-271)",
+        "Touching the 20ms poll granularity of the existing await_*/wait_until_running helpers in run_test.exs:2430-2490 — they already early-exit on success and are not the cost",
+        "Splitting run_test.exs (Task 268)"
+      ],
+      "files_to_modify": [
+        "test/harness/run_test.exs",
+        "test/harness/dashboard/roadmap_summary_test.exs",
+        "test/harness/oban_dispatch_test.exs"
+      ],
+      "touches": [
+        "test/harness/run_test.exs",
+        "test/harness/dashboard/roadmap_summary_test.exs",
+        "test/harness/oban_dispatch_test.exs",
+        "test/support/process_fixture.ex"
+      ],
+      "domains": [
+        "otp",
+        "testing"
+      ],
+      "body": "The test suite carries unconditional fixed `Process.sleep` dwell that is paid on **every** green run (these are not retry-loop ceilings that early-exit — they always wait the full duration). Replace them with event-driven synchronization that returns the instant the condition holds.\n\nTargets (verified 2026-06-12):\n- `run_test.exs:1914` — `Process.sleep(600)` proving a `:held` run stays held. Replace with: assert `:held`, push one more transcript/event through the gen_statem, re-assert `:held`. The persistence claim is about *surviving an event*, not *surviving wall-clock*.\n- `run_test.exs:1084` & `:1188` — `for _ <- 1..6 do send(pid, {:transcript_chunk, \"tick\"}); Process.sleep(150); assert :running end` (~900ms each). Send all six chunks, then assert `:running` **once**. The interleaved dwell proves nothing the single post-assert doesn't.\n- `roadmap_summary_test.exs:160` & `:176` — `Process.sleep(500)` + `Process.sleep(100)` before reading summary state. Use `assert_receive`/`refute_receive` on the PubSub/telemetry message the summary path already broadcasts.\n\n**`oban_dispatch_test.exs` is a judgment call — do NOT blindly shrink its 8× `Process.sleep(100)` helper sleeps.** They live inside spawned helper jobs and simulate in-flight job duration measured against the Lifeline `@lifeline_rescue_after_ms` rescue window; cutting them races the rescue tests. Reduce only where the rescue semantics demonstrably still hold; otherwise leave them and write a one-line rationale in the verdict. (Listed in files_to_modify only so a careful reduction is in-scope if safe.)\n\nPrefer the synchronization primitives already used elsewhere in these files: `assert_receive` with a timeout, `Process.monitor` + `assert_receive {:DOWN, …}`, `start_supervised!` for lifecycle, and the existing `wait_until_running`/`await_*` poll helpers (leave those helpers' internals alone).\n\nThis is the Phase-1 quick win from the test-suite-perf plan; Tasks 268-271 do the structural async conversions and depend on this landing first where files overlap.\n",
+      "created_at": "2026-06-12",
+      "scored_at": "2026-06-12",
+      "cross_repo": []
+    },
+    {
+      "id": "268",
+      "phase": 19,
+      "bundle": "test-suite-perf",
+      "status": "pending",
+      "title": "Split run_test.exs by describe-group and convert to async: true (per-test state isolation)",
+      "scores": {
+        "d": 4,
+        "b": 5,
+        "u": 4
+      },
+      "eff": 1.13,
+      "dep_layer": 1,
+      "markers": [],
+      "depends_on": [
+        267
+      ],
+      "assignee": "cursor",
+      "model": "claude-opus-4-8-thinking-high",
+      "acceptance_criteria": [
+        "run_test.exs (2,509 lines / ~129 tests, currently async: false) is split into focused files grouped by its existing `describe` blocks under test/harness/run/",
+        "Each resulting file runs with `async: true`, achieved by isolating the shared state — Run gen_statem / Run.Supervisor global names, FakeAdapter state, and worktree base dir — per test (start_supervised!/unique names/unique tmp dirs), NOT by leaving it serial",
+        "The full offline suite stays green across at least three seeds (mix test.json --exclude integration --seed 0, plus two random seeds) — proving no cross-test state bleed was introduced by the async flip",
+        "Wall-clock delta vs baseline recorded in `implemented`"
+      ],
+      "out_of_scope": [
+        "The Phase-1 sleep removals (Task 267 — must land first; this task rebases on the de-slept run_test.exs)",
+        "Other async:false files (Tasks 269/270/271)"
+      ],
+      "files_to_modify": [
+        "test/harness/run_test.exs"
+      ],
+      "touches": [
+        "test/harness/run_test.exs",
+        "test/support/fake_adapter.ex",
+        "test/support/git_fixture.ex",
+        "lib/harness/run.ex",
+        "lib/harness/run/supervisor.ex"
+      ],
+      "domains": [
+        "otp",
+        "testing"
+      ],
+      "body": "`run_test.exs` is the single biggest wall-clock sink: 2,509 lines, ~129 tests, `async: false`, so the whole file runs one test at a time. Split it by its existing `describe` groups into focused files under `test/harness/run/`, then flip each to `async: true`.\n\nThe split is the *means* to async (smaller files + isolated state parallelize), so split-and-convert is one coupled task, not two.\n\nThe blocker to async is shared global state — isolate each per test:\n- **Run gen_statem / Run.Supervisor** use global/registered names → start a fresh supervised instance per test (`start_supervised!`) or unique via_tuple names; never mutate a singleton.\n- **FakeAdapter** state (test/support/fake_adapter.ex) → ensure per-run/per-test scoping, no shared ETS/agent.\n- **Worktree base dir** (`/tmp/harness_worktrees_test`) → unique subdir per test to avoid collisions when tests run concurrently.\n\nVerification MUST run the **full** suite under multiple seeds after the flip — a file green in isolation but flaky in the async pool means the isolation is incomplete; fix the shared state, do not revert to serial. If a specific describe-group genuinely cannot be isolated, keep just that group in a small async:false file and document why — don't pin the whole split serial for one holdout.\n",
+      "created_at": "2026-06-12",
+      "scored_at": "2026-06-12",
+      "cross_repo": []
+    },
+    {
+      "id": "269",
+      "phase": 19,
+      "bundle": "test-suite-perf",
+      "status": "pending",
+      "title": "Convert dashboard/live_test.exs (59 LiveView tests) to async: true",
+      "scores": {
+        "d": 3,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 1.0,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "test/harness/dashboard/live_test.exs runs with async: true, or — if a concrete LiveView/PubSub shared-state blocker genuinely prevents it — the verdict documents the specific blocker and what was isolated",
+        "Shared state is isolated per test: PubSub topics namespaced/unique, in-memory result+settings stores scoped so concurrent tests don't read each other's writes",
+        "Full offline suite green across three seeds (mix test.json --exclude integration, --seed 0 + two random)",
+        "Wall-clock delta vs baseline recorded in `implemented`"
+      ],
+      "out_of_scope": [
+        "run_test.exs / oban_dispatch_test.exs (Tasks 268/270)",
+        "Changing the shared Dashboard.Endpoint started in test_helper.exs (server: false) — work within it"
+      ],
+      "files_to_modify": [
+        "test/harness/dashboard/live_test.exs"
+      ],
+      "touches": [
+        "test/harness/dashboard/live_test.exs",
+        "test/test_helper.exs",
+        "test/support"
+      ],
+      "domains": [
+        "phoenix",
+        "testing"
+      ],
+      "body": "`dashboard/live_test.exs` is 59 Phoenix.LiveViewTest tests running `async: false`. Convert to `async: true` by isolating the shared state these tests touch:\n- **PubSub topics** — namespace per test (e.g. unique suffix) so a broadcast from one test isn't observed by another.\n- **In-memory result/settings stores** (Harness.ResultStore.Memory, SettingsStoreMemory) — these are suite-shared ETS owned by test_helper; scope reads/writes per test or reset under the test's own ownership so concurrent tests don't cross-contaminate.\n\nThe `Dashboard.Endpoint` is started once in test_helper with `server: false` and is safe to share — don't restart it per test. If a genuine blocker (stateful singleton the LiveView reads) makes full async impossible, isolate what you can and document the residual in the verdict rather than silently leaving it serial. Verify the full suite under multiple seeds (state-bleed surfaces only in the async pool, not in isolation).\n",
+      "created_at": "2026-06-12",
+      "scored_at": "2026-06-12",
+      "cross_repo": []
+    },
+    {
+      "id": "270",
+      "phase": 19,
+      "bundle": "test-suite-perf",
+      "status": "pending",
+      "title": "Convert oban_dispatch_test.exs to async: true, or document why it must stay serial",
+      "scores": {
+        "d": 4,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 0.75,
+      "dep_layer": 1,
+      "markers": [],
+      "depends_on": [
+        267
+      ],
+      "assignee": "cursor",
+      "model": "claude-opus-4-8-thinking-high",
+      "acceptance_criteria": [
+        "test/harness/oban_dispatch_test.exs (35 tests, async: false) is either flipped to async: true with the Oban/queue/Lifeline shared state isolated per test, OR the verdict gives a concrete, specific reason it cannot be (Oban `testing: :inline` global, shared queue names, Lifeline plugin singleton) — a hand-wave is not acceptable",
+        "If converted: full offline suite green across three seeds",
+        "If kept serial: a `# async: false because …` comment names the exact blocker, and any easy sub-wins (per-test queue names, scoped helpers) are still taken",
+        "Wall-clock delta (or 'no change, kept serial') recorded in `implemented`"
+      ],
+      "out_of_scope": [
+        "The Phase-1 oban helper-sleep judgment (Task 267)",
+        "run_test.exs / dashboard (Tasks 268/269)"
+      ],
+      "files_to_modify": [
+        "test/harness/oban_dispatch_test.exs"
+      ],
+      "touches": [
+        "test/harness/oban_dispatch_test.exs",
+        "config/config.exs",
+        "lib/harness/run/worker.ex"
+      ],
+      "domains": [
+        "otp",
+        "ecto",
+        "testing"
+      ],
+      "body": "`oban_dispatch_test.exs` (35 tests, async: false) is the hardest conversion: Oban runs `testing: :inline` (a global app-env setting), queue names are shared, and the Lifeline plugin is a singleton with a rescue timer. Attempt `async: true` by isolating what can be isolated (per-test queue names, scoped helper processes, per-test ownership of the dispatch state), but this task is explicitly allowed to conclude **\"stays serial, here's the concrete blocker\"** — the value is a *grounded* decision, not a forced flip.\n\nDepends on Task 267 because both touch this file (the helper-sleep judgment lands first). If kept serial, still take any cheap sub-wins and name the exact reason in an inline comment so the next person doesn't re-investigate. If converted, verify the full suite under multiple seeds — Oban inline + shared queues are exactly the kind of state that passes in isolation and races in the async pool.\n",
+      "created_at": "2026-06-12",
+      "scored_at": "2026-06-12",
+      "cross_repo": []
+    },
+    {
+      "id": "271",
+      "phase": 19,
+      "bundle": "test-suite-perf",
+      "status": "pending",
+      "title": "Sweep the remaining async: false test files — classify the blocker per file, flip what can flip",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 3
+      },
+      "eff": 1.17,
+      "dep_layer": 2,
+      "markers": [],
+      "depends_on": [
+        268,
+        269,
+        270
+      ],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "Every remaining async: false test file (the long tail after Tasks 268-270) is classified by its real blocker: app-env mutation (e.g. :audit_review config), ProjectRegistry singleton, AgentRegistry.reset, or Ecto Sandbox shared-mode",
+        "Files whose blocker can be isolated are flipped to async: true with the isolation applied (per-test instance/name via start_supervised!, or per-test connection ownership for DB tests)",
+        "Files that genuinely must stay serial carry an inline `# async: false because …` comment naming the blocker; a global-env test does not get to pin a large file serial if it can be split into a tiny dedicated async:false file",
+        "Full offline suite green across three seeds; report the count of files flipped and final async:false count in `implemented`"
+      ],
+      "out_of_scope": [
+        "run_test.exs (268), dashboard/live_test.exs (269), oban_dispatch_test.exs (270) — handled separately",
+        "Rewriting fixtures (git_fixture/process_fixture) beyond what isolation requires"
+      ],
+      "files_to_modify": [
+        "test"
+      ],
+      "touches": [
+        "test",
+        "config/config.exs",
+        "lib/harness/project_registry.ex",
+        "lib/harness/agent_registry.ex"
+      ],
+      "domains": [
+        "otp",
+        "ecto",
+        "testing"
+      ],
+      "body": "After the three named heavyweights are converted (Tasks 268-270), ~60 async:false files remain. Sweep them: for each, identify the *real* reason it's serial and isolate it rather than accepting the flag.\n\nPer-blocker isolation patterns:\n- **App-env mutation** (e.g. `:audit_review` config) → thread the override through the function under test, or split the genuinely-global cases into a tiny dedicated async:false file so one global-env test doesn't pin a whole file serial.\n- **ProjectRegistry / AgentRegistry** → `start_supervised!` a fresh named instance per test instead of mutating the singleton / calling `reset`.\n- **Ecto Sandbox shared-mode** (`{:shared, self()}` forces async:false) → move DB tests to per-test manual checkout/ownership where the test owns its connection, enabling async.\n\nThis is a sweep, but keep each file's diff coherent — the reviewer verifies the batch as \"every remaining file is either justified-serial or isolated-and-async.\" Report the before/after async:false count. Verify the full suite under multiple seeds; the whole point is catching state-bleed the isolation was meant to prevent.\n",
       "created_at": "2026-06-12",
       "scored_at": "2026-06-12",
       "cross_repo": []
