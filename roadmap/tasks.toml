@@ -144,6 +144,11 @@ description = "Tiny tasks cost a full implement->review->audit ceremony each, so
 order = 2
 phase = 19
 
+[bundles.model-availability]
+description = "harness has no notion of which {agent, model} pairs are usable right now: a single roadmap task burned four routing attempts (claude -> cursor-opus -> codex -> composer) because cursor-opus was token-blocked and nothing knew. Adds the MODEL axis on top of Task 16's agent-axis AgentRegistry: per-{agent,model} pair, operator-declared and PERSISTENT (SettingsStore), plus a catalog probe (cursor/grok --list-models) and an MCP surface. Two outputs: (a) hard-reject a dispatch to a blocked pair with {:unavailable, agent, model, available: [...]}, (b) list available models per agent over MCP so the orchestrator routes right the first time. Mantra-clean: catalog membership + now<blocked_until are facts counted in code; failure-capture is structured-signal-only, never a free-text classifier."
+order = 3
+phase = 19
+
 [bundles.roadmap-durability]
 description = "Make harness's own roadmap mutations safe under the multi-writer reality rmap.md documents. harness's dispatch lifecycle mutates the canonical roadmap/tasks.toml (rmap status transitions) but treats them as uncommitted local writes — no fetch+rebase before write, no commit, no push — so every harness run silently races sibling Claude sessions and cloud agents against the same shared file. Make the transitions git-durable."
 order = 4
@@ -7684,3 +7689,38 @@ Fix the assertion to expect `target_branch: nil` (or, if "main" is the intended 
 """
 created_at = "2026-06-11"
 scored_at = "2026-06-11"
+
+[[task]]
+id = "261"
+phase = 19
+bundle = "model-availability"
+status = "pending"
+title = "Model/agent availability — block unavailable {agent,model} at dispatch + surface available models over MCP"
+scores = { d = 3, b = 4, u = 4 }
+markers = ["bug"]
+depends_on = [16]
+acceptance_criteria = ["New module Harness.ModelAvailability owns a mechanical query: available?(agent, model) :: boolean (catalog-member AND not blocked-now), blocked_until(agent, model) :: DateTime|nil, list_available(agent) :: [%{id, label, blocked_until}]. No scoring/weights/percentile/keyword-classifier — only set membership and now<until comparisons (the mantra: count facts, do not judge them).", """Operator-declared blocks persist via Harness.SettingsStore under key :model_blocks, keyed on the PAIR {agent, model} (model may be :all to block a whole agent). Survives restart (unlike AgentRegistry's transient state). Shape: %{{:cursor, "claude-opus-4-8-thinking-high"} => %{until: DateTime|nil, reason: String, source: :operator}}.""", "Catalog source: probe `cursor-agent --list-models` and `grok models` via System.cmd, parse `id - label` lines (strip (current)/(default)/(NO ZDR) annotations into metadata), cached with a TTL plus a refresh_catalog/1 MCP tool. For codex/claude/antigravity/pi (no CLI list command): operator-maintained static list from settings, else an explicit :catalog_unavailable marker — never a silent [].", "Five api()-annotated MCP tools on Harness.ModelAvailability, added to Harness.Manifest.@driver_surface so they auto-expose as model_availability-<fn>: list_available_models(agent, opts), block_model(agent, model, opts) (opts: until ISO8601, reason), unblock_model(agent, model), list_blocks(), refresh_catalog(agent). ALL params MUST be MCP-JSON-expressible — agent as plain string coerced to atom, model as string, until as ISO8601 string; NO atom/struct/tuple params (this repo has an active param-boundary bug, Task 259 — do not advertise an uncallable shape).", "Dispatch gate (a): in Harness.Dispatch.resolve_and_ingest/3, after {project,item,adapter_module} resolves and before RunWorker.enqueue, resolve the effective model (item.model -> Config.agent_model/1 -> CLI default) and reject a blocked pair with {:unavailable, agent, model, available: list_available(agent)}. Add {:unavailable, atom(), String.t()|nil, keyword()} to the Dispatch error union. When the model falls through to the CLI default (unknown), apply only the agent-level (:all) block; a pinned/configured model checks the exact pair. No run starts on a blocked pair.", "Reviewer-model gate: Run.reviewer_model/1 resolves the reviewer model from {:agent_model, reviewer_agent}; apply the same available?/2 check before spawning the reviewer Port so a blocked reviewer model fails fast with the same {:unavailable, ...} shape rather than mid-run.", "Failure-capture (Source 3) is structured-signal-ONLY and mantra-bounded: hook the existing failed-run settle path that calls AgentRegistry.mark_unavailable/2; when the failure carries an UNAMBIGUOUS STRUCTURED quota signal (HTTP 429 / retry-after in a JSON error envelope, or a documented quota exit signal the adapter already surfaces as a fact), also record_block(agent, model, until: now + retry_after, source: :failure). When the signal is NOT structured, NO-OP — do NOT regex/keyword-classify free-text transcript (that classification is an agent's job, deferred). The reviewer must confirm no ~r/rate.limit|quota|429/-style classifier on raw output was added to harness code.", "Tests in test/harness/model_availability_test.exs: catalog line-parse, block/unblock round-trip, expiry (a block with until in the past makes available?/2 true again with no manual unblock), the dispatch gate hard-rejects a blocked pair AND returns the available list, the reviewer-model gate, and failure-capture records on a synthesized structured-429 settle but adds NO block on an unstructured failure."]
+out_of_scope = ["Free-text failure classification (agent-routed; a possible v2 — not this task).", "Changing the model/assignee/delegate --to precedence (the three-axis adapter contract) — this gates the RESOLVED model, it does not change resolution.", "rmap-side validation of model pins — rmap is a generic substrate with no runtime availability knowledge; bad pins are caught at harness dispatch, not at file-time.", "Per-model token/quota accounting or predictive burn (Task 89 territory)."]
+files_to_modify = ["lib/harness/model_availability.ex", "lib/harness/manifest.ex", "lib/harness/dispatch.ex", "lib/harness/run.ex", "lib/harness/agent_registry.ex", "test/harness/model_availability_test.exs"]
+touches = ["lib/harness/model_availability.ex", "lib/harness/manifest.ex", "lib/harness/dispatch.ex", "lib/harness/run.ex", "lib/harness/agent_registry.ex", "lib/harness/settings_store.ex", "lib/harness/config.ex", "lib/harness/chat/tools.ex"]
+domains = ["otp", "elixir", "mcp"]
+assignee = "cursor"
+model = "composer-2.5"
+body = """
+Why now (2026-06-12): a single roadmap task (259) burned FOUR routing attempts (claude -> cursor-opus -> codex -> composer) because harness has no notion of which {agent, model} pairs are usable right now. cursor-opus was token-blocked; nothing in harness knew, so the orchestrator guessed repeatedly and the operator hand-corrected each time. This task closes that gap: (a) block dispatching to an unavailable {agent, model}; (b) surface over MCP which models are available per agent so the orchestrator routes right the first time.
+
+Empirical CLI findings (probed this session — these correct the original premise that "cursor tells us until which date opus/gpt are blocked", which is FALSE):
+- `cursor-agent --list-models` and `cursor-agent models` return an IDENTICAL flat catalog (`id - label`). No quota, no "blocked until", no reset date. `cursor-agent about` only adds Subscription Tier + current model. So there is NO queryable block schedule anywhere.
+- `grok models` exists (same shape). codex/claude have NO list command (only -m/--model; claude has --fallback-model). agy/pi minimal.
+- A block is observable only by (1) the operator declaring it, or (2) a dispatch FAILING with a rate-limit error whose response may carry retry-after. Hence the two locked sources: operator-declared + structured-failure-capture.
+
+Locked decisions (operator): block source = operator-declared + failure-capture; block action = HARD-REJECT with {:unavailable, agent, model, available: [...]} (no silent fallback — the orchestrator re-routes from the returned set). Fire a witness notification on a blocked dispatch (read-only, never a gate).
+
+Relationship to prior work: extends the AGENT axis (Task 16 Harness.AgentRegistry — transient, restart-clearing, agent-level quota fail-over within a batch) with a NEW MODEL axis: per-{agent,model} pair, operator-declared, PERSISTENT (SettingsStore), MCP-surfaced. The two compose at query time: dispatch allowed only if AgentRegistry says the adapter is up AND ModelAvailability says the pair is not blocked. Sibling store to AgentRegistry, not a field on it (different persistence semantics).
+
+Mantra check (reviewer will verify): catalog membership + now<blocked_until = counting/comparing facts -> code; operator block = an operator-supplied fact persisted verbatim; failure-capture restricted to a structured signal (a fact the adapter surfaces) and explicitly NOT a free-text classifier. No magic weights, no percentile gates.
+
+Full plan (approved): /Users/efries/.claude/plans/melodic-prancing-reef.md. Reuse SettingsStore (persistence), Config.agent_model/1 (model precedence), AgentRegistry (compose gates), AgentAdapter.model_args/1 pattern, Manifest->Chat.Tools registration. Route: non-frontier (composer-2.5 / codex) — mechanical OTP+MCP wiring, fully specced.
+"""
+created_at = "2026-06-12"
+scored_at = "2026-06-12"
