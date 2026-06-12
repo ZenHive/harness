@@ -11224,7 +11224,7 @@
       "id": "264",
       "phase": 19,
       "bundle": "dashboard-chrome",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Make a run's landed-state a PERSISTED FACT (landed_sha on the run record), written by the lander — kill the fragile rmap+git mergedness recompute",
       "scores": {
         "d": 3,
@@ -11277,6 +11277,7 @@
       ],
       "body": "The dashboard 'Run history — unmerged only' view shows ALL runs as unmerged whenever the landing witness is missing, because mergedness is RECOMPUTED on a cold tick instead of stored. Two fragile witnesses, neither a stored fact:\n\n1. `RunFeed.roadmap_landed_sha/2` — joins the run's `task_id` against a `task_id => shipped_in` map built from `rmap list` per registered project. Empty when `ProjectRegistry` is empty — exactly the DB-disconnect / schema-drift state (the registry boots empty, no project to query), so every run reads as unmerged.\n2. `RunFeed.branch_landed_cache/3` -> `ResultStore.landed_sha_for_run/2` — git branch-reachability (is the run's commit reachable from origin/<target>). Needs projects + local git; and per the reverted PARTIAL perf task, falling through to this path caused a per-render `git fetch origin` for every history row that HUNG the /harness render.\n\nNamed evidence:\n- Task 214 (done, phase 17) INTRODUCED the branch-reachability derivation to fix a 'false approved-but-not-landed' signal. This task supersedes that mechanism: replace the recompute with a fact the lander already knows.\n- The reverted perf task documents `RunFeed.landed_sha` falling through to `landed_sha_for_run` -> per-row `git fetch` hang.\n- Observed 2026-06-12: with the dashboard node degraded and the registry empty, the operator saw EVERY run as 'unmerged only'. Recurring operator-facing bug across multiple sessions.\n\nThe mantra fit: 'is this run landed?' is a FACT the lander produces at ff-push (it sets the task's `shipped_in` in the same motion) — it should be COUNTED/stored on the run record, not re-derived by the dashboard from rmap+git every 30s. This is mechanical substrate (a stored SHA + a NULL check), not judgment — correct to make a column.\n\nThe fix: add a nullable `landed_sha` to `run_records`; the lander writes it at successful push next to the existing rmap writeback; the dashboard filter reads `status.landed_sha != nil`; delete the rmap-summary + git-reachability recompute used only for this filter. The filter STAYS (operator's choice) — it just reads a robust fact.\n",
       "created_at": "2026-06-12",
+      "started_at": "2026-06-12",
       "scored_at": "2026-06-12",
       "cross_repo": []
     },
