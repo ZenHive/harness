@@ -9717,7 +9717,7 @@
       "phase": 19,
       "bundle": "self-heal",
       "milestone": "v0_14",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Surface the self-heal recovery facts — KPI view over Task 229's persisted recovery_attempts + recovery token spend (tests the v0_14 hypothesis)",
       "scores": {
         "d": 2,
@@ -9751,6 +9751,7 @@
       ],
       "body": "Task 229 persists recovery_attempts + recovery token spend as raw facts, but nothing surfaces them — yet the v0_14 milestone hypothesis is literally 'recovery token cost demonstrably lower than hard-fail + manual redispatch.' You cannot close v0_14 without seeing the data. Operator (2026-06-05): we have the data now, add this. Surface it as a KPI view (sibling to 225 /harness/kpi, also handbuild) plus an AI-synthesis path for 'is recovery worth it'. Raw facts in code; meaning written by an AI.",
       "created_at": "2026-06-05",
+      "started_at": "2026-06-12",
       "scored_at": "2026-06-05",
       "cross_repo": []
     },
