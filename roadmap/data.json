@@ -11174,6 +11174,45 @@
       "delivered_by": "codex",
       "verified": true,
       "cross_repo": []
+    },
+    {
+      "id": "263",
+      "phase": 19,
+      "bundle": "model-availability",
+      "status": "pending",
+      "title": "Grok catalog probe returns catalog_unavailable — parser only handles cursor's `id - label`, not grok's bullet format",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 5
+      },
+      "eff": 2.25,
+      "dep_layer": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "cursor",
+      "model": "composer-2.5",
+      "acceptance_criteria": [
+        "list_available_models(\"grok\") returns grok-build and grok-composer-2.5-fast (not catalog_unavailable) when the grok CLI is present and authed",
+        "Parser handles grok's bullet format: leading `- `/`* ` bullets and trailing `(default)`/`(current)` annotations stripped; id captured",
+        "cursor's existing `id - label` parse path is unchanged (regression test stays green)",
+        "Unit test feeds the real grok `models` sample block through the parser and asserts the two ids",
+        "Non-zero CLI exit degrades to catalog_unavailable instead of raising MatchError"
+      ],
+      "out_of_scope": [
+        "Adding an operator static catalog for codex/claude (their catalog_unavailable is by design — no CLI list command)",
+        "Changing the dispatch gate or block semantics from Task 261"
+      ],
+      "domains": [
+        "otp",
+        "elixir"
+      ],
+      "body": "`Harness.ModelAvailability` lists grok as a CLI-probeable catalog source (`@probeable_agents %{cursor: \"cursor-agent\", grok: \"grok\"}`, `@catalog_commands grok: [\"models\"]`), but `model_availability-list_available_models` / `refresh_catalog` return `{:ok, %{catalog_unavailable: true, models: []}}` for grok even though the `grok` binary is present and authenticated.\n\nRoot cause: `grok models` does NOT emit the `id - label` shape `parse_id_label_line/1` (lib/harness/model_availability.ex ~line 430) expects. Observed live output (grok 2026-06-12, exit 0):\n\n```\nYou are logged in with grok.com.\n\nDefault model: grok-build\n\nAvailable models:\n  - grok-composer-2.5-fast\n  * grok-build (default)\n```\n\n`catalog_lines_to_entries/1` splits each line on `\" - \"`; grok's bullet lines (`  - <id>`, `* <id> (default)`) and the header lines yield no `id - label` pair, so `models == []` → `{:error, :catalog_unavailable}`. The whole grok catalog is silently empty.\n\nFix: teach the grok probe (or a grok-specific parse branch) to read the bullet format — collect lines after the `Available models:` header, strip the leading `- ` / `* ` bullet and a trailing ` (default)`/`(current)` annotation, and take the token as the model id (label = id when grok gives no separate label). Keep cursor's `id - label` path unchanged. Confirm `list_available_models(\"grok\")` returns `[%{id: \"grok-build\", ...}, %{id: \"grok-composer-2.5-fast\", ...}]`.\n\nSecondary (note, not necessarily this task): `{output, 0} = System.cmd(...)` in `default_probe/2` hard-matches exit 0 inside the `with` body — a non-zero exit raises MatchError instead of falling through to `{:error, :catalog_unavailable}`. Consider matching the exit code as a `with` clause so a failed probe degrades gracefully.\n",
+      "created_at": "2026-06-12",
+      "scored_at": "2026-06-12",
+      "cross_repo": []
     }
   ]
 }
