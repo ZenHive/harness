@@ -8118,7 +8118,7 @@ shipped_in = "59fe38a0e31045970ab9b1f1a765232f8f77f1d0"
 id = "271"
 phase = 19
 bundle = "test-suite-perf"
-status = "in_progress"
+status = "done"
 title = "Sweep the remaining async: false test files — classify the blocker per file, flip what can flip"
 scores = { d = 3, b = 4, u = 3 }
 depends_on = [268, 269, 270]
@@ -8139,6 +8139,11 @@ Per-blocker isolation patterns:
 
 This is a sweep, but keep each file's diff coherent — the reviewer verifies the batch as "every remaining file is either justified-serial or isolated-and-async." Report the before/after async:false count. Verify the full suite under multiple seeds; the whole point is catching state-bleed the isolation was meant to prevent.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781260906297-eea4e87a, da7aba1ffc6f2298df6d00cb025415aad2e5082f)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-12"
 started_at = "2026-06-12"
 scored_at = "2026-06-12"
+done_at = "2026-06-12"
+shipped_in = "da7aba1ffc6f2298df6d00cb025415aad2e5082f"
