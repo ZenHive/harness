@@ -8074,7 +8074,7 @@ scored_at = "2026-06-12"
 id = "270"
 phase = 19
 bundle = "test-suite-perf"
-status = "in_progress"
+status = "done"
 title = "Convert oban_dispatch_test.exs to async: true, or document why it must stay serial"
 scores = { d = 4, b = 3, u = 3 }
 depends_on = [267]
@@ -8090,9 +8090,14 @@ body = """
 
 Depends on Task 267 because both touch this file (the helper-sleep judgment lands first). If kept serial, still take any cheap sub-wins and name the exact reason in an inline comment so the next person doesn't re-investigate. If converted, verify the full suite under multiple seeds — Oban inline + shared queues are exactly the kind of state that passes in isolation and races in the async pool.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781255819357-c6a2d369, 59fe38a0e31045970ab9b1f1a765232f8f77f1d0)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-12"
 started_at = "2026-06-12"
 scored_at = "2026-06-12"
+done_at = "2026-06-12"
+shipped_in = "59fe38a0e31045970ab9b1f1a765232f8f77f1d0"
 
 [[task]]
 id = "271"
