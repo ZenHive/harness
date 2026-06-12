@@ -221,7 +221,7 @@ defmodule Harness.Dispatch do
 
   api(
     :status,
-    "Snapshot one in-flight, queued, or lingering-terminal run by run_id: lifecycle state and the reviewer's verdict so far. The live/queued counterpart to result_store-list_run_records (settled runs). Returns {:error, :not_found} only when no live run or unfinished Oban job is known.",
+    "Snapshot one run by run_id at any lifecycle stage: live (in-flight/lingering), queued (unfinished Oban job), or SETTLED (rehydrated from the persisted record). State + the reviewer's verdict so far. Returns {:error, :not_found} only for a run_id with no live process, no queued job, AND no persisted record — i.e. genuinely unknown, not merely finished.",
     params: [
       run_id: [
         kind: :value,
@@ -232,15 +232,24 @@ defmodule Harness.Dispatch do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, map} carrying run_id, task_id, project_name, state, worktree_path, agent_os_pid, agent_kind, review_verdict, reason. {:error, :not_found} for stopped/unknown runs."
+        "{:ok, map} carrying run_id, task_id, project_name, state, worktree_path, agent_os_pid, agent_kind, review_verdict, reason. A settled run rehydrated from its record reports its terminal state (:done/:failed) with worktree_path/agent_os_pid nil. {:error, :not_found} only for a genuinely unknown run_id."
     }
   )
 
   @spec status(String.t()) :: {:ok, map()} | {:error, :not_found}
   def status(run_id) when is_binary(run_id) do
     case Run.status(run_id) do
-      {:ok, value} -> {:ok, summarize_status(value)}
-      {:error, :not_found} -> oban_job_status(run_id)
+      {:ok, value} ->
+        {:ok, summarize_status(value)}
+
+      # Not live: try an unfinished Oban job (queued/dispatched), then the
+      # persisted settled record. Without the last fallback a run that already
+      # SETTLED — done or failed, the common case for an aged-out run_id —
+      # answers :not_found for its own id, which reads as "no such run".
+      {:error, :not_found} ->
+        with {:error, :not_found} <- oban_job_status(run_id) do
+          settled_run_status(run_id)
+        end
     end
   end
 
@@ -1085,6 +1094,20 @@ defmodule Harness.Dispatch do
     case lookup_oban_run_job(run_id) do
       {:ok, %Job{} = job} -> {:ok, summarize_oban_job_status(job)}
       {:error, :not_found} = error -> error
+    end
+  end
+
+  # Last fallback for a run that is neither live nor queued: its persisted
+  # settled record. Rehydrates the same status shape from the LogRecord so a
+  # done/failed run reports its terminal state instead of :not_found.
+  @spec settled_run_status(String.t()) :: {:ok, map()} | {:error, :not_found}
+  defp settled_run_status(run_id) do
+    case ResultStore.list_run_records(run_id: run_id, limit: 1) do
+      {:ok, [%LogRecord{} = record | _]} ->
+        {:ok, record |> Status.from_log_record() |> summarize_status()}
+
+      _none ->
+        {:error, :not_found}
     end
   end
 

@@ -254,6 +254,40 @@ defmodule Harness.DispatchTest do
       assert {:ok, %{run_id: "__no_such_run__", cancelled: true}} =
                Dispatch.cancel("__no_such_run__")
     end
+
+    test "status rehydrates a SETTLED run from its persisted record (not :not_found)" do
+      # A run_id with no live process and no queued job, but a persisted
+      # terminal record — the common case for an aged-out id. Without the
+      # ResultStore fallback this answered :not_found for its own done run.
+      run_id = "run-settled-#{System.unique_integer([:positive])}"
+
+      record =
+        LogRecord.from_result(approved_result(run_id), batch_id: "b", adapter: Claude, duration_ms: 1)
+
+      :ok = ResultStore.record_run(record)
+
+      assert {:ok, summary} = Dispatch.status(run_id)
+      assert summary.run_id == run_id
+      assert summary.task_id == "25"
+      assert summary.state == :done
+      assert summary.review_verdict == :approve
+      # Rehydrated from a record: no live process, so these are nil.
+      assert summary.worktree_path == nil
+      assert summary.agent_os_pid == nil
+      refute Map.has_key?(summary, :__struct__)
+    end
+
+    test "status reports a settled FAILED run's terminal state from its record" do
+      run_id = "run-settled-fail-#{System.unique_integer([:positive])}"
+
+      record =
+        LogRecord.from_result(rejected_result(run_id), batch_id: "b", adapter: Claude, duration_ms: 1)
+
+      :ok = ResultStore.record_run(record)
+
+      assert {:ok, %{run_id: ^run_id, state: :failed, review_verdict: :reject}} =
+               Dispatch.status(run_id)
+    end
   end
 
   describe "run observe/control — live run summarizers" do
