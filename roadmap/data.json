@@ -9716,7 +9716,7 @@
       "phase": 19,
       "bundle": "self-heal",
       "milestone": "v0_14",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Surface the self-heal recovery facts — KPI view over Task 229's persisted recovery_attempts + recovery token spend (tests the v0_14 hypothesis)",
       "scores": {
         "d": 2,
