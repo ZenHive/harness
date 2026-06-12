@@ -8016,8 +8016,8 @@ out_of_scope = ["The Phase-1 sleep removals (Task 267 — must land first; this 
 files_to_modify = ["test/harness/run_test.exs"]
 touches = ["test/harness/run_test.exs", "test/support/fake_adapter.ex", "test/support/git_fixture.ex", "lib/harness/run.ex", "lib/harness/run/supervisor.ex"]
 domains = ["otp", "testing"]
-assignee = "cursor"
-model = "claude-opus-4-8-thinking-high"
+assignee = "codex"
+model = "gpt-5.5"
 body = """
 `run_test.exs` is the single biggest wall-clock sink: 2,509 lines, ~129 tests, `async: false`, so the whole file runs one test at a time. Split it by its existing `describe` groups into focused files under `test/harness/run/`, then flip each to `async: true`.
 
@@ -8070,8 +8070,8 @@ out_of_scope = ["The Phase-1 oban helper-sleep judgment (Task 267)", "run_test.e
 files_to_modify = ["test/harness/oban_dispatch_test.exs"]
 touches = ["test/harness/oban_dispatch_test.exs", "config/config.exs", "lib/harness/run/worker.ex"]
 domains = ["otp", "ecto", "testing"]
-assignee = "cursor"
-model = "claude-opus-4-8-thinking-high"
+assignee = "codex"
+model = "gpt-5.5"
 body = """
 `oban_dispatch_test.exs` (35 tests, async: false) is the hardest conversion: Oban runs `testing: :inline` (a global app-env setting), queue names are shared, and the Lifeline plugin is a singleton with a rescue timer. Attempt `async: true` by isolating what can be isolated (per-test queue names, scoped helper processes, per-test ownership of the dispatch state), but this task is explicitly allowed to conclude **"stays serial, here's the concrete blocker"** — the value is a *grounded* decision, not a forced flip.
 

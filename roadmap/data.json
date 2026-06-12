@@ -11467,8 +11467,8 @@
       "depends_on": [
         267
       ],
-      "assignee": "cursor",
-      "model": "claude-opus-4-8-thinking-high",
+      "assignee": "codex",
+      "model": "gpt-5.5",
       "acceptance_criteria": [
         "run_test.exs (2,509 lines / ~129 tests, currently async: false) is split into focused files grouped by its existing `describe` blocks under test/harness/run/",
         "Each resulting file runs with `async: true`, achieved by isolating the shared state — Run gen_statem / Run.Supervisor global names, FakeAdapter state, and worktree base dir — per test (start_supervised!/unique names/unique tmp dirs), NOT by leaving it serial",
@@ -11559,8 +11559,8 @@
       "depends_on": [
         267
       ],
-      "assignee": "cursor",
-      "model": "claude-opus-4-8-thinking-high",
+      "assignee": "codex",
+      "model": "gpt-5.5",
       "acceptance_criteria": [
         "test/harness/oban_dispatch_test.exs (35 tests, async: false) is either flipped to async: true with the Oban/queue/Lifeline shared state isolated per test, OR the verdict gives a concrete, specific reason it cannot be (Oban `testing: :inline` global, shared queue names, Lifeline plugin singleton) — a hand-wave is not acceptable",
         "If converted: full offline suite green across three seeds",
