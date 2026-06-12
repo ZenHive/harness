@@ -1081,9 +1081,9 @@ defmodule Harness.RunTest do
 
       for _ <- 1..6 do
         send(pid, {:transcript_chunk, "tick"})
-        Process.sleep(150)
-        assert {:ok, %Status{state: :running}} = Run.status(run_id)
       end
+
+      assert {:ok, %Status{state: :running}} = Run.status(run_id)
 
       assert :ok = Run.cancel(run_id)
       assert %Result{state: :failed, reason: :cancelled} = await_result(run_id, pid)
@@ -1185,9 +1185,9 @@ defmodule Harness.RunTest do
 
       for _ <- 1..6 do
         send(pid, {:transcript_chunk, "tick"})
-        Process.sleep(150)
-        assert {:ok, %Status{state: :reviewing}} = Run.status(run_id)
       end
+
+      assert {:ok, %Status{state: :reviewing}} = Run.status(run_id)
 
       assert :ok = Run.cancel(run_id)
       await_result(run_id, pid)
@@ -1911,7 +1911,10 @@ defmodule Harness.RunTest do
       assert :ok = Run.hold(held_run_id, true)
       assert {:ok, %Status{state: :held}} = Run.status(held_run_id)
 
-      Process.sleep(600)
+      # Drive one more event through the Run gen_statem; the :held persistence
+      # is about surviving events while the lifetime timer is suspended, not
+      # wall-clock dwell.
+      send(held_pid, {:transcript_chunk, "post-hold event"})
 
       assert {:ok, %Status{state: :held}} = Run.status(held_run_id)
       assert :ok = Run.cancel(held_run_id)

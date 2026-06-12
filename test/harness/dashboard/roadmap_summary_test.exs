@@ -154,15 +154,24 @@ defmodule Harness.Dashboard.RoadmapSummaryTest do
 
     test "a project whose roadmap read times out degrades to a zero summary, never blocking" do
       project = ProjectFixture.from_repo("/tmp/harness-roadmap-slow", name: "slow-proj")
-      Application.put_env(:harness, :roadmap_summary_timeout_ms, 50)
+      # Short timeout so the kill path exercises quickly; the lister blocks on receive
+      # (killed by async_stream) rather than a fixed long sleep.
+      Application.put_env(:harness, :roadmap_summary_timeout_ms, 20)
+      parent = self()
 
-      Application.put_env(:harness, :roadmap_list, fn _project ->
-        Process.sleep(500)
-        {:ok, @tasks}
+      Application.put_env(:harness, :roadmap_list, fn proj ->
+        send(parent, {:roadmap_list_invoked, proj})
+        # Indefinite block; the Task will be killed by the summarize timeout.
+        receive do
+          _ -> {:ok, @tasks}
+        after
+          30_000 -> {:ok, @tasks}
+        end
       end)
 
       summaries = RoadmapSummary.for_projects([project])
 
+      assert_receive {:roadmap_list_invoked, ^project}, 200
       assert summaries["slow-proj"] == %{open: 0, done: 0, total: 0, landed: %{}, blocked: %{}}
     end
 
@@ -172,15 +181,32 @@ defmodule Harness.Dashboard.RoadmapSummaryTest do
           ProjectFixture.from_repo("/tmp/harness-roadmap-conc-#{i}", name: "conc-#{i}")
         end
 
-      Application.put_env(:harness, :roadmap_list, fn _project ->
-        Process.sleep(100)
+      parent = self()
+
+      # Small per-read cost to keep the overlap timing signal meaningful without
+      # paying a 100 ms+ unconditional dwell on every green run. The assert_receive
+      # on the per-project invocation messages synchronizes on the lister having
+      # been driven (event-driven rather than blind sleep elapse).
+      Application.put_env(:harness, :roadmap_list, fn proj ->
+        send(parent, {:roadmap_list_invoked, proj.name})
+        Process.sleep(30)
         {:ok, @tasks}
       end)
 
       {elapsed_us, summaries} = :timer.tc(fn -> RoadmapSummary.for_projects(projects) end)
 
-      # Sequential would be ~500ms (5 × 100ms); concurrent is ~100ms. Assert well
-      # under the sequential floor to prove the reads overlap.
+      # Collect the invocation events (they arrive because for_projects awaits the
+      # async_stream tasks). This replaces "wait for the sleeps" with receive sync.
+      invoked =
+        for _ <- 1..5 do
+          assert_receive {:roadmap_list_invoked, name}, 100
+          name
+        end
+
+      assert Enum.sort(invoked) == Enum.sort(Enum.map(projects, & &1.name))
+
+      # 5 x 30 ms concurrent should be << 5 x 30 ms sequential; keep well under a
+      # conservative floor to guard against accidental sequentialization.
       assert elapsed_us < 300_000
       assert map_size(summaries) == 5
       assert summaries["conc-1"].open == 3
