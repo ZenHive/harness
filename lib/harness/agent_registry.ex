@@ -95,6 +95,7 @@ defmodule Harness.AgentRegistry do
   alias Harness.AgentAdapter.Cursor
   alias Harness.AgentAdapter.Grok
   alias Harness.AgentAdapter.Pi
+  alias Harness.ModelAvailability
 
   @agents %{
     claude: Claude,
@@ -197,9 +198,9 @@ defmodule Harness.AgentRegistry do
   @doc """
   Marks `adapter` unavailable for new work.
   """
-  @spec mark_unavailable(module(), term()) :: :ok
-  def mark_unavailable(adapter, reason) do
-    GenServer.call(__MODULE__, {:mark_unavailable, adapter, reason})
+  @spec mark_unavailable(module(), term(), keyword()) :: :ok
+  def mark_unavailable(adapter, reason, opts \\ []) when is_list(opts) do
+    GenServer.call(__MODULE__, {:mark_unavailable, adapter, reason, opts})
   end
 
   @doc """
@@ -348,7 +349,8 @@ defmodule Harness.AgentRegistry do
     {:reply, not Map.has_key?(state.unavailable, adapter), state}
   end
 
-  def handle_call({:mark_unavailable, adapter, reason}, _from, state) do
+  def handle_call({:mark_unavailable, adapter, reason, opts}, _from, state) when is_list(opts) do
+    :ok = ModelAvailability.capture_structured_failure(adapter, reason, opts)
     {:reply, :ok, put_in(state, [:unavailable, adapter], reason)}
   end
 

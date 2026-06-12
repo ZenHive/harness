@@ -20,7 +20,13 @@ defmodule Harness.Notification.Event do
   """
 
   @typedoc "Which merge-train (or dispatch-gate) transition fired."
-  @type type :: :landed | :blocked | :local_sync_skipped | :in_run_discernment | :dispatch_parked
+  @type type ::
+          :landed
+          | :blocked
+          | :local_sync_skipped
+          | :in_run_discernment
+          | :dispatch_parked
+          | :model_unavailable
 
   @typedoc """
   The raw outcome payload, keyed by `type`:
@@ -32,6 +38,8 @@ defmodule Harness.Notification.Event do
     * `:dispatch_parked` — a parked autonomous-dispatch decision (`%{adapter,
       pending_id}`), fired when a `:manual`-mode project holds an enqueue for
       operator approval instead of dispatching it.
+    * `:model_unavailable` — dispatch rejected a blocked `{agent, model}` pair
+      (`%{agent, model, available}`).
   """
   @type outcome :: String.t() | map()
 
@@ -86,4 +94,7 @@ defmodule Harness.Notification.Event do
 
   def summary(%__MODULE__{type: :dispatch_parked, task_id: id, outcome: %{adapter: adapter}}),
     do: "parked dispatch of task #{id} for #{adapter} (awaiting operator approval)"
+
+  def summary(%__MODULE__{type: :model_unavailable, task_id: id, outcome: %{agent: agent, model: model}}),
+    do: "blocked dispatch of task #{id} for #{agent}/#{model || "default"}"
 end

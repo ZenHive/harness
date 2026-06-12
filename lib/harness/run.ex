@@ -100,6 +100,7 @@ defmodule Harness.Run do
   alias Harness.Git
   alias Harness.Lander.Resilience
   alias Harness.Lander.Worker, as: LanderWorker
+  alias Harness.ModelAvailability
   alias Harness.Notification
   alias Harness.Notification.Event, as: NotificationEvent
   alias Harness.Oban, as: HarnessOban
@@ -895,12 +896,18 @@ defmodule Harness.Run do
   @doc false
   @spec reviewing(event(), term(), data()) :: handler_result()
   def reviewing(:enter, _old_state, data) do
-    RunFeed.broadcast_update(status_snapshot(:reviewing, data))
-    parent = self()
-    task = start_task(fn -> run_reviewer(data, parent) end)
+    case ensure_reviewer_model_available(data) do
+      :ok ->
+        RunFeed.broadcast_update(status_snapshot(:reviewing, data))
+        parent = self()
+        task = start_task(fn -> run_reviewer(data, parent) end)
 
-    {:keep_state, %{data | task: task, agent_run: nil, reviewer_run: nil},
-     [{:state_timeout, data.reviewer_spawn_timeout, :reviewer_spawn_timeout}]}
+        {:keep_state, %{data | task: task, agent_run: nil, reviewer_run: nil},
+         [{:state_timeout, data.reviewer_spawn_timeout, :reviewer_spawn_timeout}]}
+
+      {:error, reason} ->
+        {:next_state, :failed, %{data | reason: reason}}
+    end
   end
 
   def reviewing(:info, {:reviewer_handle, %AgentRun{} = run}, data) do
@@ -1600,6 +1607,7 @@ defmodule Harness.Run do
   # is still delivered, but subscribers do not race test/driver fixture cleanup.
   @spec settle(data(), Result.state()) :: data()
   defp settle(data, terminal_state) do
+    if terminal_state == :failed, do: maybe_capture_structured_failure(data)
     result = build_result(data, terminal_state)
     data = %{data | result: result}
     persist_run_record(data, result)
@@ -2271,6 +2279,42 @@ defmodule Harness.Run do
   end
 
   defp reviewer_model(_data), do: nil
+
+  @doc false
+  @spec reviewer_model_available?(data()) :: :ok | {:error, term()}
+  def reviewer_model_available?(%{reviewer_adapter: reviewer_adapter} = data) when is_atom(reviewer_adapter) do
+    ensure_reviewer_model_available(data)
+  end
+
+  @spec ensure_reviewer_model_available(data()) :: :ok | {:error, term()}
+  defp ensure_reviewer_model_available(%{reviewer_adapter: reviewer_adapter}) do
+    case AgentRegistry.agent_for_module(reviewer_adapter) do
+      {:ok, agent} ->
+        model = reviewer_model(reviewer_adapter)
+
+        if ModelAvailability.available?(agent, model) do
+          :ok
+        else
+          {:error, {:unavailable, agent, model, available: ModelAvailability.list_available_ids(agent)}}
+        end
+
+      {:error, _} ->
+        :ok
+    end
+  end
+
+  @spec maybe_capture_structured_failure(data()) :: :ok
+  defp maybe_capture_structured_failure(%{adapter: adapter, reason: reason} = data) when is_atom(adapter) do
+    case ModelAvailability.structured_quota_signal(reason) do
+      {:ok, _seconds, _model} ->
+        :ok = AgentRegistry.mark_unavailable(adapter, reason, model: data.requested_model)
+
+      :error ->
+        :ok
+    end
+  end
+
+  defp maybe_capture_structured_failure(_data), do: :ok
 
   @spec reviewer_driver_opts(data(), pid()) :: keyword()
   defp reviewer_driver_opts(data, parent) do

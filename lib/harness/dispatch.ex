@@ -55,8 +55,10 @@ defmodule Harness.Dispatch do
   alias Harness.Batch.AgentEvaluation.Comparison
   alias Harness.Batch.AgentEvaluation.Entry
   alias Harness.CapabilityScore
+  alias Harness.Config
   alias Harness.Cron.PendingDispatch
   alias Harness.Lander
+  alias Harness.ModelAvailability
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
@@ -82,6 +84,7 @@ defmodule Harness.Dispatch do
           {:unknown_adapter, String.t()}
           | {:non_delegatable_adapter, String.t()}
           | {:unknown_project, String.t()}
+          | {:unavailable, atom(), String.t() | nil, keyword()}
           | :no_adapters
           | Roadmap.error()
           | Batch.error()
@@ -928,7 +931,8 @@ defmodule Harness.Dispatch do
     with {:ok, project} <- lookup_project(project_name),
          {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: :claude),
          {:ok, {adapter_module, render_agent}} <- recommended_adapter_for_item(@recommended_adapter, item),
-         {:ok, item} <- rerender_for_agent(item, project, render_agent) do
+         {:ok, item} <- rerender_for_agent(item, project, render_agent),
+         :ok <- ensure_model_available(render_agent, item, task) do
       {:ok, {project, item, adapter_module}}
     end
   end
@@ -936,9 +940,29 @@ defmodule Harness.Dispatch do
   defp resolve_and_ingest(project_name, task, adapter) do
     with {:ok, {adapter_module, render_agent}} <- resolve_adapter(adapter),
          {:ok, project} <- lookup_project(project_name),
-         {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: render_agent) do
+         {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: render_agent),
+         :ok <- ensure_model_available(render_agent, item, task) do
       {:ok, {project, item, adapter_module}}
     end
+  end
+
+  @spec ensure_model_available(atom(), Item.t(), String.t()) :: :ok | {:error, error()}
+  defp ensure_model_available(agent, %Item{} = item, task) do
+    model = effective_model(item, agent)
+
+    if ModelAvailability.available?(agent, model) do
+      :ok
+    else
+      ModelAvailability.notify_blocked_dispatch(agent, model, task)
+      {:error, {:unavailable, agent, model, available: ModelAvailability.list_available_ids(agent)}}
+    end
+  end
+
+  @spec effective_model(Item.t(), atom()) :: String.t() | nil
+  defp effective_model(%Item{model: model}, _agent) when is_binary(model), do: model
+
+  defp effective_model(_item, agent) do
+    Config.agent_model(agent)
   end
 
   @doc false
