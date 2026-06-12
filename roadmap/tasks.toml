@@ -7626,7 +7626,7 @@ shipped_in = "21951d2910afdb7d45018b09e9e6b2bd5f6ac9ce"
 id = "259"
 phase = 13
 bundle = "chat-orchestrator"
-status = "pending"
+status = "in_progress"
 title = "Fix the MCP param boundary once and for all — typeless kind:value coercion silently returns empty/wrong"
 scores = { d = 3, b = 5, u = 5 }
 markers = ["bug"]
@@ -7666,6 +7666,7 @@ DECIDE THE LAYER, THEN CLOSE THE CLASS. descripex is OURS (local sibling /Users/
 The plan file from this session (targeted-only fix, NOT what the user wants) is at /Users/efries/.claude/plans/melodic-prancing-reef.md — read it for the code-site detail, but the user explicitly rejected the targeted scope: close the class.
 '''
 created_at = "2026-06-11"
+started_at = "2026-06-12"
 scored_at = "2026-06-11"
 
 [[task]]
