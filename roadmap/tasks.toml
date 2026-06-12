@@ -6352,21 +6352,22 @@ shipped_in = "67c75b25d2b42bc13d4068990a76d077df4dc815"
 id = "210"
 phase = 17
 bundle = "settings-pq"
-status = "pending"
+status = "in_progress"
 title = "Flash on ephemeral settings + refactor dashboard notices into a shared flash mechanism"
 scores = { d = 4, b = 5, u = 5 }
+depends_on = ["208"]
 acceptance_criteria = ["When settings are ephemeral (repo_enabled:false — writes are no-ops that vanish on restart), the dashboard shows a persistent flash/banner making it unmistakable that changes will NOT survive a restart.", "Existing ad-hoc dashboard notices are refactored into one shared flash component/helper (single source for transient + persistent operator notices) rather than per-LiveView bespoke markup.", "The ephemeral-state flash is driven by the actual store mode (no-op backend detected), not a hardcoded flag.", "Verified via Phoenix.LiveViewTest (the dashboard LiveViews' existing test path): the ephemeral banner renders under repo_enabled:false and is absent under :true."]
 out_of_scope = ["No change to the persistence backend selection itself (that is the consolidation task)."]
 files_to_modify = ["lib/harness/dashboard/components.ex", "lib/harness/dashboard/settings_live.ex", "lib/harness/dashboard/live.ex"]
 touches = ["lib/harness/dashboard/layouts.ex"]
 domains = ["otp"]
 assignee = "cursor"
-model = "gpt-5.5-high"
 module = "Harness.Dashboard"
+model = "gpt-5.5-high"
 body = "We agreed repo_enabled:false should make settings ephemeral (in-memory, lost on restart). That is only safe if the operator can SEE it is ephemeral — otherwise it is the same silent-divergence trap relocated. Add a persistent flash/banner surfacing ephemeral-settings mode, driven by the live store backend (no-op false backend = ephemeral). While here, consolidate the existing scattered dashboard notices into one shared flash mechanism. Depends on the settings consolidation defining the ephemeral mode."
 created_at = "2026-06-05"
+started_at = "2026-06-12"
 scored_at = "2026-06-05"
-depends_on = ["208"]
 
 [[task]]
 id = "211"

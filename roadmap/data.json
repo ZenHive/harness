@@ -8657,7 +8657,7 @@
       "id": "210",
       "phase": 17,
       "bundle": "settings-pq",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Flash on ephemeral settings + refactor dashboard notices into a shared flash mechanism",
       "scores": {
         "d": 4,
@@ -8695,6 +8695,7 @@
       ],
       "body": "We agreed repo_enabled:false should make settings ephemeral (in-memory, lost on restart). That is only safe if the operator can SEE it is ephemeral — otherwise it is the same silent-divergence trap relocated. Add a persistent flash/banner surfacing ephemeral-settings mode, driven by the live store backend (no-op false backend = ephemeral). While here, consolidate the existing scattered dashboard notices into one shared flash mechanism. Depends on the settings consolidation defining the ephemeral mode.",
       "created_at": "2026-06-05",
+      "started_at": "2026-06-12",
       "scored_at": "2026-06-05",
       "cross_repo": []
     },
