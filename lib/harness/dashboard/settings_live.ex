@@ -385,7 +385,7 @@ defmodule Harness.Dashboard.SettingsLive do
         <form
           :for={model <- @agent_models}
           id={"agent-model-#{model.id}"}
-          class="reviewer-form"
+          class="agent-model-form"
           phx-submit="set_config"
         >
           <div class="project-id">
