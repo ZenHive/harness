@@ -6352,7 +6352,7 @@ shipped_in = "67c75b25d2b42bc13d4068990a76d077df4dc815"
 id = "210"
 phase = 17
 bundle = "settings-pq"
-status = "in_progress"
+status = "pending"
 title = "Flash on ephemeral settings + refactor dashboard notices into a shared flash mechanism"
 scores = { d = 4, b = 5, u = 5 }
 depends_on = ["208"]
