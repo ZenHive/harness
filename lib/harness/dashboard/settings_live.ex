@@ -136,6 +136,38 @@ defmodule Harness.Dashboard.SettingsLive do
     {:noreply, socket |> assign(:notice, notice) |> refresh()}
   end
 
+  def handle_event("add_catalog_model", %{"agent" => agent, "model_id" => model_id}, socket) do
+    notice =
+      case ModelAvailability.add_catalog_model(agent, model_id) do
+        :ok -> {:ok, "Added #{String.trim(model_id)} to #{agent}."}
+        {:error, :empty_model} -> {:error, "Model id is required."}
+        {:error, _reason} -> {:error, "Unknown model catalog agent."}
+      end
+
+    {:noreply, socket |> assign(:notice, notice) |> refresh()}
+  end
+
+  def handle_event("remove_catalog_model", %{"agent" => agent, "model_id" => model_id}, socket) do
+    notice =
+      case ModelAvailability.remove_catalog_model(agent, model_id) do
+        :ok -> {:ok, "Removed #{model_id} from #{agent}."}
+        {:error, _reason} -> {:error, "Unknown model catalog agent."}
+      end
+
+    {:noreply, socket |> assign(:notice, notice) |> refresh()}
+  end
+
+  def handle_event("refresh_catalog", %{"agent" => agent}, socket) do
+    notice =
+      case ModelAvailability.refresh_catalog(agent) do
+        {:ok, _models} -> {:ok, "Refreshed #{agent} models."}
+        {:error, :catalog_unavailable} -> {:error, "No CLI catalog available for #{agent}."}
+        {:error, _reason} -> {:error, "Unknown model catalog agent."}
+      end
+
+    {:noreply, socket |> assign(:notice, notice) |> refresh()}
+  end
+
   def handle_event("set_default_agent", %{"agent" => raw}, socket) do
     notice =
       case dispatch_agent_atom(raw) do
@@ -416,6 +448,61 @@ defmodule Harness.Dashboard.SettingsLive do
         </form>
       </section>
 
+      <section class="setting-card">
+        <h2>Model catalog</h2>
+        <p class="setting-desc">
+          Operator-editable model ids for dropdowns. Refresh merges the agent CLI list when available.
+        </p>
+        <ul class="project-list">
+          <li :for={catalog <- @model_catalogs} class="project-row">
+            <div class="project-id">
+              <span class="project-name">{catalog.label}</span>
+              <span class="pill" data-state={if catalog.models == [], do: "off", else: "on"}>
+                {length(catalog.models)} models
+              </span>
+            </div>
+            <div class="agent-controls">
+              <form
+                id={"model-catalog-add-#{catalog.name}"}
+                class="agent-model-form"
+                phx-submit="add_catalog_model"
+              >
+                <input type="hidden" name="agent" value={catalog.name} />
+                <input
+                  type="text"
+                  name="model_id"
+                  placeholder="model id"
+                  aria-label={"Add #{catalog.label} model"}
+                />
+                <button type="submit" class="btn-save">Add</button>
+              </form>
+              <form
+                :if={catalog.refreshable}
+                id={"model-catalog-refresh-#{catalog.name}"}
+                class="reviewer-form"
+                phx-submit="refresh_catalog"
+              >
+                <input type="hidden" name="agent" value={catalog.name} />
+                <button type="submit" class="btn-save">Refresh from CLI</button>
+              </form>
+            </div>
+            <div class="agent-controls">
+              <form
+                :for={model <- catalog.models}
+                id={"model-catalog-remove-#{catalog.name}-#{model.dom_id}"}
+                class="reviewer-form"
+                phx-submit="remove_catalog_model"
+              >
+                <input type="hidden" name="agent" value={catalog.name} />
+                <input type="hidden" name="model_id" value={model.id} />
+                <span class="pill" data-state="on">{model.label}</span>
+                <button type="submit" class="btn-save">Remove</button>
+              </form>
+            </div>
+          </li>
+        </ul>
+      </section>
+
       <Components.config_form entries={@config_edit} />
 
       <Components.config_inspector sections={@config} />
@@ -493,6 +580,7 @@ defmodule Harness.Dashboard.SettingsLive do
     |> assign(:dispatch, dispatch_state())
     |> assign(:agent_models, agent_models_state())
     |> assign(:reviewer_models, reviewer_models_state())
+    |> assign(:model_catalogs, model_catalogs_state())
   end
 
   # The dispatch-default view-model: the configured no-data fallback agent plus
@@ -585,11 +673,41 @@ defmodule Harness.Dashboard.SettingsLive do
   # then renders a free-text input instead of a locked dropdown.
   @spec model_options(atom(), String.t()) :: [%{value: String.t(), label: String.t()}] | :none
   defp model_options(agent, current) do
-    case ModelAvailability.selectable_models(agent) do
-      [] -> :none
-      entries -> catalog_options(entries, current)
+    case ModelAvailability.list_available(agent) do
+      entries when is_list(entries) and entries != [] -> catalog_options(entries, current)
+      _unavailable_or_empty -> :none
     end
   end
+
+  @spec model_catalogs_state() :: [map()]
+  defp model_catalogs_state do
+    Enum.map(Config.dispatch_agents(), fn agent ->
+      models = catalog_models(agent)
+
+      %{
+        name: Atom.to_string(agent),
+        label: agent_label(agent),
+        refreshable: ModelAvailability.probeable?(agent),
+        models: models
+      }
+    end)
+  end
+
+  @spec catalog_models(atom()) :: [map()]
+  defp catalog_models(agent) do
+    case ModelAvailability.catalog(agent) do
+      {:ok, models} -> Enum.map(models, &catalog_model(&1))
+      {:error, :catalog_unavailable} -> []
+    end
+  end
+
+  @spec catalog_model(map()) :: map()
+  defp catalog_model(%{id: id} = model) do
+    %{id: id, label: option_label(model), dom_id: catalog_model_dom_id(id)}
+  end
+
+  @spec catalog_model_dom_id(String.t()) :: String.t()
+  defp catalog_model_dom_id(id), do: String.replace(id, ~r/[^a-zA-Z0-9_-]/, "_")
 
   @spec catalog_options([map()], String.t()) :: [%{value: String.t(), label: String.t()}]
   defp catalog_options(entries, current) do
@@ -734,7 +852,7 @@ defmodule Harness.Dashboard.SettingsLive do
     Enum.map(AgentRegistry.agents(), fn {agent, module} ->
       %{
         name: Atom.to_string(agent),
-        label: String.capitalize(Atom.to_string(agent)),
+        label: agent_label(agent),
         enabled: AgentSettings.enabled?(agent),
         reviewer_eligible: AgentSettings.reviewer_eligible?(agent),
         installed: AgentRegistry.installed?(module),
@@ -781,13 +899,16 @@ defmodule Harness.Dashboard.SettingsLive do
   defp reviewer_options do
     Enum.map(AgentRegistry.agents(), fn {agent, _module} ->
       name = Atom.to_string(agent)
-      %{agent: agent, name: name, label: String.capitalize(name)}
+      %{agent: agent, name: name, label: agent_label(agent)}
     end)
   end
 
   @spec reviewer_label(atom() | nil) :: String.t()
   defp reviewer_label(nil), do: "auto"
-  defp reviewer_label(reviewer), do: reviewer |> Atom.to_string() |> String.capitalize()
+  defp reviewer_label(reviewer), do: agent_label(reviewer)
+
+  @spec agent_label(atom()) :: String.t()
+  defp agent_label(agent), do: agent |> Atom.to_string() |> String.capitalize()
 
   # Resolves the autonomy view-model: the master flag, the poller's resolved cron
   # status, and per-project (own flag, effective = master AND own) rows.

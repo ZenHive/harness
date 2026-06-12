@@ -18,6 +18,12 @@ defmodule Harness.ModelAvailabilityTest do
   @sample Path.expand("../fixtures/sample_roadmap", __DIR__)
 
   setup do
+    prior_agent_model = Application.get_env(:harness, :agent_model)
+    prior_reviewer_model = Application.get_env(:harness, :reviewer_model)
+
+    Application.delete_env(:harness, :agent_model)
+    Application.delete_env(:harness, :reviewer_model)
+
     AgentRegistry.reset()
     SettingsStoreMemory.reset()
     SettingsStore.put(ModelAvailability.blocks_key(), %{})
@@ -29,6 +35,8 @@ defmodule Harness.ModelAvailabilityTest do
       Application.delete_env(:harness, :notification_sinks)
       Application.delete_env(:harness, :test_capture_pid)
       Application.delete_env(:harness, :oban_insert)
+      restore_env(:agent_model, prior_agent_model)
+      restore_env(:reviewer_model, prior_reviewer_model)
     end)
 
     :ok
@@ -142,6 +150,31 @@ defmodule Harness.ModelAvailabilityTest do
   end
 
   describe "list_available/1" do
+    test "resolves static before probe before builtin catalogs" do
+      install_catalog_probe(fn
+        :codex, _executables -> {:ok, [%{id: "gpt-probed", label: "Probed", annotations: []}]}
+        _agent, _executables -> {:error, :catalog_unavailable}
+      end)
+
+      assert {:ok, [%{id: "gpt-probed"}]} = ModelAvailability.catalog(:codex)
+
+      seed_static_catalog(:codex, [
+        %{id: "gpt-operator", label: "Operator", annotations: []}
+      ])
+
+      assert {:ok, [%{id: "gpt-operator"}]} = ModelAvailability.catalog(:codex)
+
+      SettingsStore.put(:model_catalog_static, %{})
+      SettingsStore.put(:model_catalogs, %{})
+      Application.put_env(:harness, :model_catalog_probe, fn _agent, _executables -> {:error, :catalog_unavailable} end)
+
+      assert {:ok, codex_models} = ModelAvailability.catalog(:codex)
+      assert "gpt-5.5" in Enum.map(codex_models, & &1.id)
+
+      assert {:ok, claude_models} = ModelAvailability.catalog(:claude)
+      assert "claude-opus-4-8" in Enum.map(claude_models, & &1.id)
+    end
+
     test "omits blocked ids from the catalog" do
       install_catalog_probe()
 
@@ -156,12 +189,33 @@ defmodule Harness.ModelAvailabilityTest do
     end
 
     test "returns catalog_unavailable for agents without a static list" do
-      # claude has no model-list CLI (not probeable) and no seeded static catalog.
-      assert {:error, :catalog_unavailable} = ModelAvailability.list_available(:claude)
+      assert {:error, :catalog_unavailable} = ModelAvailability.list_available(:antigravity)
     end
   end
 
   describe "dispatch gate" do
+    test "allows a pinned model absent from the advisory catalog" do
+      parent = self()
+      install_catalog_probe()
+
+      project = ProjectFixture.from_repo(@sample, name: "advisory-model-gate", roadmap_path: @sample)
+      assert :ok = ProjectRegistry.register(project)
+
+      seed_static_catalog(:cursor, [
+        %{id: "composer-2.5", label: "Composer", annotations: []}
+      ])
+
+      assert :ok = Config.put({:agent_model, :cursor}, "gpt-unlisted", "test")
+
+      Application.put_env(:harness, :oban_insert, fn changeset ->
+        send(parent, :oban_insert_called)
+        {:ok, Ecto.Changeset.apply_action!(changeset, :insert)}
+      end)
+
+      assert {:ok, _job} = Dispatch.task(project.name, "2", "cursor")
+      assert_receive :oban_insert_called
+    end
+
     test "hard-rejects a blocked pair and returns the available list" do
       parent = self()
       install_catalog_probe()
@@ -248,14 +302,18 @@ defmodule Harness.ModelAvailabilityTest do
     end
   end
 
-  defp install_catalog_probe do
-    Application.put_env(:harness, :model_catalog_probe, fn agent, _executables ->
+  defp install_catalog_probe(fun \\ nil)
+
+  defp install_catalog_probe(nil) do
+    install_catalog_probe(fn agent, _executables ->
       case SettingsStore.fetch(:model_catalog_static) do
         {:ok, %{^agent => models}} when is_list(models) and models != [] -> {:ok, models}
         _ -> {:error, :catalog_unavailable}
       end
     end)
   end
+
+  defp install_catalog_probe(fun), do: Application.put_env(:harness, :model_catalog_probe, fun)
 
   defp seed_static_catalog(agent, models) do
     current =
@@ -266,4 +324,7 @@ defmodule Harness.ModelAvailabilityTest do
 
     SettingsStore.put(:model_catalog_static, Map.put(current, agent, models))
   end
+
+  defp restore_env(key, nil), do: Application.delete_env(:harness, key)
+  defp restore_env(key, value), do: Application.put_env(:harness, key, value)
 end

@@ -1,11 +1,11 @@
 defmodule Harness.ModelAvailability do
   @moduledoc """
-  Per-`{agent, model}` availability — catalog membership and operator/failure blocks.
+  Per-`{agent, model}` availability — advisory model catalogs and operator/failure blocks.
 
   Composes with `Harness.AgentRegistry` at dispatch time: a run starts only when
   the adapter is agent-available **and** the resolved model pair is not blocked.
-  Blocks persist in `Harness.SettingsStore` (`:model_blocks`); catalogs are probed
-  for cursor/grok or operator-maintained static lists for other agents.
+  Blocks persist in `Harness.SettingsStore` (`:model_blocks`); catalogs layer an
+  operator-maintained static list, cached live probes, and built-in seeds.
   """
 
   use Descripex, namespace: "/model_availability"
@@ -20,32 +20,18 @@ defmodule Harness.ModelAvailability do
   @static_catalogs_key :model_catalog_static
   @default_catalog_ttl_ms 3_600_000
   @probeable_agents %{cursor: "cursor-agent", grok: "grok", pi: "pi", codex: "codex"}
-  @catalog_commands %{
-    cursor: ["--list-models"],
-    grok: ["models"],
-    pi: ["--list-models"],
-    codex: ["debug", "models"]
-  }
 
-  # UI-only seed catalogs for agents without a probeable `--list-models` surface,
-  # so the settings dropdown has options out of the box. Consumed *only* by
-  # `selectable_models/1` (the dashboard dropdown) — deliberately NOT by `catalog/1`
-  # / the dispatch gate, which stays permissive for these agents (a pinned id absent
-  # from this seed must still dispatch). The id set is a best-effort seed — edit
-  # here when the accepted ids change. A SettingsStore `@static_catalogs_key` entry
-  # still overrides at the gate, independent of this UI seed.
-  #
   # claude has no model-list CLI (`claude model list` is treated as a prompt —
   # anthropics/claude-code#12612), so its dropdown options come only from this seed.
   # codex IS probeable (`codex debug models` → JSON) and goes through
-  # `@probeable_agents`; its seed here is the UI fallback for when the probe fails
-  # (codex CLI absent/unauthed), so the dropdown still has options out of the box.
+  # `@probeable_agents`; its seed here is the fallback for when the probe fails
+  # (codex CLI absent/unauthed), so operators have options out of the box.
   #
   # Ids verified 2026-06-12:
   #   claude — https://support.claude.com/en/articles/11940350-claude-code-model-configuration
   #            https://code.claude.com/docs/en/model-config
   #   codex  — https://developers.openai.com/codex/models
-  @builtin_ui_catalogs %{
+  @builtin_catalogs %{
     claude: [
       %{id: "claude-opus-4-8", label: "Opus 4.8", annotations: []},
       %{id: "claude-opus-4-7", label: "Opus 4.7", annotations: []},
@@ -74,11 +60,20 @@ defmodule Harness.ModelAvailability do
   @spec blocks_key() :: atom()
   def blocks_key, do: @blocks_key
 
-  # Internal query (consumed by Dispatch/Run): catalog-listed AND not blocked-now.
+  @doc false
+  @spec static_catalogs_key() :: atom()
+  def static_catalogs_key, do: @static_catalogs_key
+
+  @doc false
+  @spec probeable?(atom()) :: boolean()
+  def probeable?(agent) when is_atom(agent), do: Map.has_key?(@probeable_agents, agent)
+
+  # Internal query (consumed by Dispatch/Run): catalog membership is advisory;
+  # only active operator/failure blocks hard-gate dispatch.
   @doc false
   @spec available?(atom(), String.t() | nil) :: boolean()
   def available?(agent, model) when is_atom(agent) do
-    not blocked_now?(agent, model) and catalog_allows?(agent, model)
+    not blocked_now?(agent, model)
   end
 
   # Internal query (consumed by Dispatch/Run): active block expiry, or nil.
@@ -106,30 +101,6 @@ defmodule Harness.ModelAvailability do
   @spec available_catalog_entry(atom(), catalog_entry()) :: [map()]
   defp available_catalog_entry(agent, %{id: id} = entry) do
     if blocked_now?(agent, id), do: [], else: [entry_map(entry, nil)]
-  end
-
-  # UI query (consumed by the settings dropdown): the agent's available catalog,
-  # falling back to the built-in seed when the agent has no probeable/static
-  # catalog. Distinct from `list_available/1` on purpose — this overlays
-  # `@builtin_ui_catalogs` so claude/codex get a dropdown, WITHOUT feeding the
-  # dispatch gate (which keeps treating them as catalog-free → permissive).
-  # Blocked-now ids are still dropped. Empty list ⇒ no options (render a text input).
-  @doc false
-  @spec selectable_models(atom()) :: [map()]
-  def selectable_models(agent) when is_atom(agent) do
-    case list_available(agent) do
-      entries when is_list(entries) and entries != [] -> entries
-      _ -> builtin_selectable(agent)
-    end
-  end
-
-  @spec builtin_selectable(atom()) :: [map()]
-  defp builtin_selectable(agent) do
-    @builtin_ui_catalogs
-    |> Map.get(agent, [])
-    |> Enum.flat_map(fn %{id: id} = entry ->
-      if blocked_now?(agent, id), do: [], else: [entry_map(entry, nil)]
-    end)
   end
 
   # Internal query (consumed by Dispatch/Run): available model ids for error tuples.
@@ -321,7 +292,7 @@ defmodule Harness.ModelAvailability do
 
   api(
     :refresh_catalog,
-    "Re-probe an agent CLI catalog (cursor/grok) or return the operator static list.",
+    "Re-probe an agent CLI catalog and merge it into the operator static list.",
     params: [agent: [kind: :value, description: "Agent name string."]],
     returns: %{
       type: :tuple,
@@ -334,6 +305,34 @@ defmodule Harness.ModelAvailability do
     with {:ok, agent_atom} <- coerce_agent(agent),
          {:ok, catalog} <- refresh_catalog_for(agent_atom) do
       {:ok, %{models: Enum.map(catalog, &Map.take(&1, [:id, :label]))}}
+    end
+  end
+
+  @doc false
+  @spec add_catalog_model(String.t(), String.t()) :: :ok | {:error, term()}
+  def add_catalog_model(agent, model) when is_binary(agent) and is_binary(model) do
+    with {:ok, agent_atom} <- coerce_agent(agent),
+         {:ok, model_id} <- normalize_model_id(model) do
+      models =
+        agent_atom
+        |> agent_static_seed()
+        |> merge_catalogs([%{id: model_id, label: model_id, annotations: []}])
+
+      persist_static_catalog(agent_atom, models)
+    end
+  end
+
+  @doc false
+  @spec remove_catalog_model(String.t(), String.t()) :: :ok | {:error, term()}
+  def remove_catalog_model(agent, model) when is_binary(agent) and is_binary(model) do
+    with {:ok, agent_atom} <- coerce_agent(agent),
+         {:ok, model_id} <- normalize_model_id(model) do
+      models =
+        agent_atom
+        |> agent_static_seed()
+        |> Enum.reject(&(&1.id == model_id))
+
+      persist_static_catalog(agent_atom, models)
     end
   end
 
@@ -376,23 +375,18 @@ defmodule Harness.ModelAvailability do
     end
   end
 
-  @spec catalog_allows?(atom(), String.t() | nil) :: boolean()
-  defp catalog_allows?(_agent, nil), do: true
-
-  defp catalog_allows?(agent, model) do
-    case catalog(agent) do
-      {:ok, entries} -> Enum.any?(entries, &(&1.id == model))
-      {:error, :catalog_unavailable} -> true
+  @doc false
+  @spec catalog(atom()) :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
+  def catalog(agent) when is_atom(agent) do
+    with {:error, :catalog_unavailable} <- static_catalog(agent),
+         {:error, :catalog_unavailable} <- probed_catalog(agent) do
+      builtin_catalog(agent)
     end
   end
 
-  @spec catalog(atom()) :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
-  defp catalog(agent) do
-    if Map.has_key?(@probeable_agents, agent) do
-      cached_or_probe(agent)
-    else
-      static_catalog(agent)
-    end
+  @spec probed_catalog(atom()) :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
+  defp probed_catalog(agent) do
+    if probeable?(agent), do: cached_or_probe(agent), else: {:error, :catalog_unavailable}
   end
 
   @spec cached_or_probe(atom()) :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
@@ -435,10 +429,14 @@ defmodule Harness.ModelAvailability do
 
   @spec refresh_catalog_for(atom()) :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
   defp refresh_catalog_for(agent) do
-    if Map.has_key?(@probeable_agents, agent) do
-      probe_and_cache(agent)
+    with true <- probeable?(agent),
+         {:ok, probed} <- probe_and_cache(agent) do
+      models = agent |> agent_static_seed() |> merge_catalogs(probed)
+      :ok = persist_static_catalog(agent, models)
+      {:ok, models}
     else
-      static_catalog(agent)
+      false -> catalog(agent)
+      {:error, :catalog_unavailable} = error -> error
     end
   end
 
@@ -457,9 +455,47 @@ defmodule Harness.ModelAvailability do
   @spec static_catalog(atom()) :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
   defp static_catalog(agent) do
     case SettingsStore.fetch(@static_catalogs_key) do
-      {:ok, %{^agent => models}} when is_list(models) and models != [] -> {:ok, models}
+      {:ok, %{^agent => models}} when is_list(models) -> {:ok, models}
       _ -> {:error, :catalog_unavailable}
     end
+  end
+
+  @spec builtin_catalog(atom()) :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
+  defp builtin_catalog(agent) do
+    case Map.get(@builtin_catalogs, agent, []) do
+      [] -> {:error, :catalog_unavailable}
+      models -> {:ok, models}
+    end
+  end
+
+  @spec agent_static_seed(atom()) :: [catalog_entry()]
+  defp agent_static_seed(agent) do
+    case static_catalog(agent) do
+      {:ok, models} -> models
+      {:error, :catalog_unavailable} -> seed_catalog(agent)
+    end
+  end
+
+  @spec seed_catalog(atom()) :: [catalog_entry()]
+  defp seed_catalog(agent) do
+    case catalog(agent) do
+      {:ok, models} -> models
+      {:error, :catalog_unavailable} -> []
+    end
+  end
+
+  @spec merge_catalogs([catalog_entry()], [catalog_entry()]) :: [catalog_entry()]
+  defp merge_catalogs(existing, incoming), do: Enum.uniq_by(existing ++ incoming, & &1.id)
+
+  @spec persist_static_catalog(atom(), [catalog_entry()]) :: :ok
+  defp persist_static_catalog(agent, models) do
+    catalogs =
+      case SettingsStore.fetch(@static_catalogs_key) do
+        {:ok, map} when is_map(map) -> map
+        _ -> %{}
+      end
+
+    SettingsStore.put(@static_catalogs_key, Map.put(catalogs, agent, models))
   end
 
   @spec probe_catalog(atom()) :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
@@ -469,20 +505,45 @@ defmodule Harness.ModelAvailability do
   end
 
   @spec default_probe(atom(), map()) :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
-  defp default_probe(agent, executables) do
-    with {:ok, executable} <- Map.fetch(executables, agent),
-         {:ok, args} <- Map.fetch(@catalog_commands, agent),
-         path when is_binary(path) <- System.find_executable(executable),
-         {output, 0} <- System.cmd(path, args, stderr_to_stdout: true) do
-      models = parse_catalog_output(agent, output)
+  defp default_probe(:cursor, _executables), do: run_cursor_probe()
+  defp default_probe(:grok, _executables), do: run_grok_probe()
+  defp default_probe(:pi, _executables), do: run_pi_probe()
+  defp default_probe(:codex, _executables), do: run_codex_probe()
+  defp default_probe(_agent, _executables), do: {:error, :catalog_unavailable}
 
-      if models == [], do: {:error, :catalog_unavailable}, else: {:ok, models}
-    else
-      # A missing/unauthed CLI exits non-zero — degrade to unavailable, never raise
-      # (the settings page probes on every mount; a MatchError here would 500 it).
-      _ -> {:error, :catalog_unavailable}
-    end
+  @spec run_cursor_probe() :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
+  defp run_cursor_probe do
+    probe_command(:cursor, fn -> System.cmd("cursor-agent", ["--list-models"], stderr_to_stdout: true) end)
   end
+
+  @spec run_grok_probe() :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
+  defp run_grok_probe, do: probe_command(:grok, fn -> System.cmd("grok", ["models"], stderr_to_stdout: true) end)
+
+  @spec run_pi_probe() :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
+  defp run_pi_probe, do: probe_command(:pi, fn -> System.cmd("pi", ["--list-models"], stderr_to_stdout: true) end)
+
+  @spec run_codex_probe() :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
+  defp run_codex_probe do
+    probe_command(:codex, fn -> System.cmd("codex", ["debug", "models"], stderr_to_stdout: true) end)
+  end
+
+  @spec probe_command(atom(), (-> {String.t(), non_neg_integer()})) ::
+          {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
+  defp probe_command(agent, command) do
+    parse_probe_result(command.(), agent)
+  rescue
+    # A missing CLI raises — degrade to unavailable, never crash the settings page.
+    ErlangError -> {:error, :catalog_unavailable}
+  end
+
+  @spec parse_probe_result({String.t(), non_neg_integer()}, atom()) ::
+          {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
+  defp parse_probe_result({output, 0}, agent) do
+    models = parse_catalog_output(agent, output)
+    if models == [], do: {:error, :catalog_unavailable}, else: {:ok, models}
+  end
+
+  defp parse_probe_result({_output, _status}, _agent), do: {:error, :catalog_unavailable}
 
   # `codex debug models` JSON: keep `visibility: "list"` slugs (drops internal "hide"
   # entries like codex-auto-review); label from display_name, id from slug.
@@ -614,6 +675,14 @@ defmodule Harness.ModelAvailability do
     case DateTime.from_iso8601(iso) do
       {:ok, dt, _offset} -> {:ok, dt}
       {:error, reason} -> {:error, {:invalid_until, reason}}
+    end
+  end
+
+  @spec normalize_model_id(String.t()) :: {:ok, String.t()} | {:error, :empty_model}
+  defp normalize_model_id(model) do
+    case String.trim(model) do
+      "" -> {:error, :empty_model}
+      id -> {:ok, id}
     end
   end
 

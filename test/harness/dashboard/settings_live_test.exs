@@ -19,8 +19,10 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   alias Harness.Cron.RoadmapPoller
   alias Harness.Cron.Settings
   alias Harness.Landing.Settings, as: LandingSettings
+  alias Harness.ModelAvailability
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
+  alias Harness.SettingsStore
   alias Harness.Test.SettingsStoreMemory
 
   setup %{conn: conn} do
@@ -39,6 +41,8 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     Application.put_env(:harness, :model_catalog_probe, fn _agent, _ -> {:error, :catalog_unavailable} end)
 
     SettingsStoreMemory.reset(scope: :test_default)
+    SettingsStore.put(:model_catalog_static, %{})
+    SettingsStore.put(:model_catalogs, %{})
 
     # Other async:false dashboard tests may leave projects registered; isolate this page.
     for %{name: name} <- ProjectRegistry.list() do
@@ -334,6 +338,65 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     assert html =~ "Cursor reviewer saved."
     assert Config.reviewer_model(:cursor) == "claude-opus-4-8-thinking-high"
+  end
+
+  test "adds and removes operator catalog models without a restart", %{conn: conn} do
+    {:ok, view, html} = live(conn, "/harness/settings")
+
+    assert html =~ "Model catalog"
+    assert html =~ "gpt-5.5"
+
+    html =
+      view
+      |> form("#model-catalog-add-codex", %{model_id: "gpt-operator-new"})
+      |> render_submit()
+
+    assert html =~ "Added gpt-operator-new to codex."
+    assert {:ok, models} = ModelAvailability.catalog(:codex)
+    assert "gpt-operator-new" in Enum.map(models, & &1.id)
+    assert html =~ "gpt-operator-new"
+
+    html =
+      view
+      |> form("#model-catalog-remove-codex-gpt-operator-new")
+      |> render_submit()
+
+    assert html =~ "Removed gpt-operator-new from codex."
+    assert {:ok, models} = ModelAvailability.catalog(:codex)
+    refute "gpt-operator-new" in Enum.map(models, & &1.id)
+    refute has_element?(view, "#model-catalog-remove-codex-gpt-operator-new")
+  end
+
+  test "refresh from CLI merges probed models into the editable catalog", %{conn: conn} do
+    SettingsStore.put(:model_catalog_static, %{
+      cursor: [%{id: "composer-operator", label: "Operator", annotations: []}]
+    })
+
+    Application.put_env(:harness, :model_catalog_probe, fn
+      :cursor, _executables ->
+        {:ok,
+         [
+           %{id: "composer-operator", label: "Probe duplicate", annotations: []},
+           %{id: "composer-probed", label: "Probed", annotations: []}
+         ]}
+
+      _agent, _executables ->
+        {:error, :catalog_unavailable}
+    end)
+
+    {:ok, view, html} = live(conn, "/harness/settings")
+    assert html =~ "composer-operator"
+    refute html =~ "composer-probed"
+
+    html =
+      view
+      |> form("#model-catalog-refresh-cursor")
+      |> render_submit()
+
+    assert html =~ "Refreshed cursor models."
+    assert {:ok, models} = ModelAvailability.catalog(:cursor)
+    assert Enum.map(models, & &1.id) == ["composer-operator", "composer-probed"]
+    assert html =~ "composer-probed"
   end
 
   test "renders the Landing card with a per-project policy control", %{conn: conn, project: project} do
