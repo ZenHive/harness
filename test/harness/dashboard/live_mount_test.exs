@@ -21,9 +21,17 @@ defmodule Harness.Dashboard.LiveMountTest do
   alias Harness.Run
 
   setup %{conn: conn} do
+    prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
+    prior_settings_store = Application.get_env(:harness, :settings_store)
     project = ProjectFixture.from_repo("/tmp/harness-livemount-demo", name: "livemount-demo")
     :ok = ProjectRegistry.register(project)
-    on_exit(fn -> ProjectRegistry.unregister(project.name) end)
+
+    on_exit(fn ->
+      ProjectRegistry.unregister(project.name)
+      restore_env(:repo_enabled, prior_repo_enabled)
+      restore_env(:settings_store, prior_settings_store)
+    end)
+
     {:ok, conn: conn, project: project}
   end
 
@@ -33,6 +41,16 @@ defmodule Harness.Dashboard.LiveMountTest do
 
       assert html =~ "Active runs"
       assert html =~ "livemount-demo"
+    end
+
+    test "renders a persistent no-op settings-store banner", %{conn: conn} do
+      Application.put_env(:harness, :repo_enabled, false)
+      Application.delete_env(:harness, :settings_store)
+
+      {:ok, _view, html} = live(conn, "/harness")
+
+      assert html =~ "Settings are ephemeral"
+      assert html =~ "will NOT survive a restart"
     end
 
     test "selecting a project pushes a filtering patch; clearing it patches back", %{conn: conn} do
@@ -180,4 +198,7 @@ defmodule Harness.Dashboard.LiveMountTest do
   defp item do
     %Item{id: "50", title: "Dashboard mount coverage", prompt: "do the thing", agent: :claude}
   end
+
+  defp restore_env(key, nil), do: Application.delete_env(:harness, key)
+  defp restore_env(key, value), do: Application.put_env(:harness, key, value)
 end

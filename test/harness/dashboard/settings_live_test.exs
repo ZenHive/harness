@@ -29,6 +29,8 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     prior_dispatch = Application.get_env(:harness, :dispatch)
     prior_agent_model = Application.get_env(:harness, :agent_model)
     prior_reviewer_model = Application.get_env(:harness, :reviewer_model)
+    prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
+    prior_settings_store = Application.get_env(:harness, :settings_store)
 
     SettingsStoreMemory.reset(scope: :test_default)
 
@@ -47,6 +49,8 @@ defmodule Harness.Dashboard.SettingsLiveTest do
       restore_env(:dispatch, prior_dispatch)
       restore_env(:agent_model, prior_agent_model)
       restore_env(:reviewer_model, prior_reviewer_model)
+      restore_env(:repo_enabled, prior_repo_enabled)
+      restore_env(:settings_store, prior_settings_store)
       SettingsStoreMemory.reset(scope: :test_default)
     end)
 
@@ -56,14 +60,34 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   test "renders the settings page with autonomy off by default", %{conn: conn, project: project} do
     {:ok, _view, html} = live(conn, "/harness/settings")
 
-    assert html =~ "result history"
-    assert html =~ "ephemeral"
     assert html =~ "Cron autonomy"
     assert html =~ "polling disabled"
     assert html =~ project.name
+    refute html =~ "will NOT survive a restart"
     # The master switch reads as off.
     assert html =~ ~s(role="switch")
     assert html =~ ~s(aria-checked="false")
+  end
+
+  test "renders a persistent no-op settings-store banner", %{conn: conn} do
+    Application.put_env(:harness, :repo_enabled, false)
+    Application.delete_env(:harness, :settings_store)
+
+    {:ok, _view, html} = live(conn, "/harness/settings")
+
+    assert html =~ ~s(data-persistent="true")
+    assert html =~ "Settings are ephemeral"
+    assert html =~ "will NOT survive a restart"
+  end
+
+  test "does not render the ephemeral banner when the settings store persists", %{conn: conn} do
+    Application.put_env(:harness, :repo_enabled, true)
+    Application.put_env(:harness, :settings_store, {SettingsStoreMemory, scope: :test_default})
+
+    {:ok, _view, html} = live(conn, "/harness/settings")
+
+    refute html =~ "Settings are ephemeral"
+    refute html =~ "will NOT survive a restart"
   end
 
   test "toggling master flips status and warns when no project is enabled", %{conn: conn} do

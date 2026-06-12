@@ -57,9 +57,9 @@ defmodule Harness.Dashboard.Live do
       project. The button is hidden until `target_branch` is set, so it appears
       exactly where landing can succeed (`landable_project_names/1`).
 
-  Both events set the `:notice` assign (`{kind, msg}`), rendered as a transient
-  `setting-notice` bar — the bare app layout has no Phoenix flash. Stream refresh
-  rides the normal `RunFeed` broadcast.
+  Both events set the `:notice` assign (`{kind, msg}`), rendered by
+  `Harness.Dashboard.Components.operator_flash/1`. Stream refresh rides the
+  normal `RunFeed` broadcast.
   """
 
   use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}
@@ -679,9 +679,7 @@ defmodule Harness.Dashboard.Live do
       <a href="/harness/oban">Open Oban Web →</a>
     </div>
 
-    <div :if={@notice} class="setting-notice" data-kind={elem(@notice, 0)} role="status">
-      {elem(@notice, 1)}
-    </div>
+    <Components.operator_flash notice={@notice} include_persistent={false} />
 
     <.roadmap_panel projects={@projects} summaries={@roadmap} />
 
@@ -727,6 +725,7 @@ defmodule Harness.Dashboard.Live do
     ~H"""
     <h1>Run {@run_id}</h1>
     <p><a href="/harness">← All runs</a></p>
+    <Components.operator_flash notice={@notice} include_persistent={false} />
 
     <p :if={@run_status == nil}>
       Run not found (already settled and unregistered, or never started in this BEAM).
@@ -790,7 +789,7 @@ defmodule Harness.Dashboard.Live do
   @spec project_switcher(map()) :: Rendered.t()
   defp project_switcher(assigns) do
     ~H"""
-    <form phx-change="select_project">
+    <form id="project-switcher-form" phx-change="select_project">
       <select name="project">
         <option value="">All projects</option>
         <option :for={project <- @projects} value={project.name} selected={@selected == project.name}>

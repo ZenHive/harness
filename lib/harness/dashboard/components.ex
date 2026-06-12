@@ -31,6 +31,7 @@ defmodule Harness.Dashboard.Components do
   use Phoenix.Component
 
   alias Harness.Dashboard.Transcript.Parser
+  alias Harness.SettingsStore
   alias Phoenix.LiveView.Rendered
 
   ## --- Chrome ---------------------------------------------------------------
@@ -51,6 +52,7 @@ defmodule Harness.Dashboard.Components do
     <div class="page-shell">
       <.navbar />
       <main class="page-main">
+        <.operator_flash />
         {render_slot(@inner_block)}
       </main>
       <.footer />
@@ -122,6 +124,34 @@ defmodule Harness.Dashboard.Components do
       <span class="bucket-glyph" aria-hidden="true">{@glyph}</span>
       <span class="bucket-label">{@label}</span>
     </span>
+    """
+  end
+
+  attr(:notice, :any, default: nil)
+  attr(:include_persistent, :boolean, default: true)
+
+  @doc """
+  Shared dashboard flash surface for operator notices.
+
+  Persistent notices are derived from live runtime state, such as the no-op
+  settings store. LiveViews pass transient `{kind, message}` tuples for event
+  feedback and keep the markup here.
+  """
+  @spec operator_flash(map()) :: Rendered.t()
+  def operator_flash(assigns) do
+    assigns = assign(assigns, :notices, operator_notices(assigns.notice, assigns.include_persistent))
+
+    ~H"""
+    <div :if={@notices != []} class="operator-flash" role="status" aria-live="polite">
+      <div
+        :for={notice <- @notices}
+        class="operator-notice"
+        data-kind={notice.kind}
+        data-persistent={to_string(notice.persistent?)}
+      >
+        {notice.message}
+      </div>
+    </div>
     """
   end
 
@@ -763,6 +793,37 @@ defmodule Harness.Dashboard.Components do
   defp provenance_text(:env), do: "env-set"
   defp provenance_text(:config), do: "config.exs"
   defp provenance_text(:default), do: "default"
+
+  @spec operator_notices(term(), boolean()) :: [map()]
+  defp operator_notices(notice, include_persistent) do
+    persistent_operator_notices(include_persistent) ++ transient_operator_notice(notice)
+  end
+
+  @spec persistent_operator_notices(boolean()) :: [map()]
+  defp persistent_operator_notices(false), do: []
+
+  defp persistent_operator_notices(true) do
+    if SettingsStore.configured() == false do
+      [
+        %{
+          kind: :warning,
+          persistent?: true,
+          message: "Settings are ephemeral: changes will NOT survive a restart because the settings store is no-op."
+        }
+      ]
+    else
+      []
+    end
+  end
+
+  @spec transient_operator_notice(term()) :: [map()]
+  defp transient_operator_notice(nil), do: []
+
+  defp transient_operator_notice({kind, message}) when kind in [:ok, :error] and is_binary(message) do
+    [%{kind: kind, persistent?: false, message: message}]
+  end
+
+  defp transient_operator_notice(_other), do: []
 
   # Drops pure header `:meta` lines (diff --git / index / +++ / ---) from a
   # file's rendered body — the file row already carries that context. Hunk +

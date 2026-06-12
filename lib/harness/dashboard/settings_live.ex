@@ -18,7 +18,7 @@ defmodule Harness.Dashboard.SettingsLive do
   runtime-flippable `manual` / `auto-land` + target-branch override that arms
   autonomous merge, and a **Dispatch now** button that fires an immediate
   roadmap poll instead of waiting for the cron tick. Transient operator feedback
-  rides a `:notice` assign (the bare app layout renders no flash).
+  rides a `:notice` assign rendered by `Harness.Dashboard.Components.operator_flash/1`.
 
   Designed as the home for further operator config (the Task 127 config
   inspector slots in here as a sibling card).
@@ -47,7 +47,7 @@ defmodule Harness.Dashboard.SettingsLive do
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     if connected?(socket), do: schedule_meta_tick()
-    {:ok, socket |> assign(:notice, initial_notice()) |> refresh()}
+    {:ok, socket |> assign(:notice, nil) |> refresh()}
   end
 
   @impl Phoenix.LiveView
@@ -160,9 +160,7 @@ defmodule Harness.Dashboard.SettingsLive do
         <p class="settings-sub">Operator controls for autonomous roadmap polling.</p>
       </header>
 
-      <div :if={@notice} class="setting-notice" data-kind={elem(@notice, 0)} role="status">
-        {elem(@notice, 1)}
-      </div>
+      <Components.operator_flash notice={@notice} include_persistent={false} />
 
       <section class="setting-card setting-master" data-on={to_string(@autonomy.master)}>
         <div class="setting-master-row">
@@ -189,7 +187,7 @@ defmodule Harness.Dashboard.SettingsLive do
           Master is on but no project is enabled — nothing will dispatch. Enable a project below.
         </p>
         <div class="setting-schedule">
-          <form phx-change="set_schedule">
+          <form id="cron-schedule-form" phx-change="set_schedule">
             <label for="cron-preset">Poll cadence</label>
             <select id="cron-preset" name="preset">
               <option
@@ -602,15 +600,6 @@ defmodule Harness.Dashboard.SettingsLive do
     do: "#{label} saved — applies on the next node restart."
 
   defp config_saved_notice(%{label: label}), do: "#{label} saved."
-
-  @spec initial_notice() :: {:ok, String.t()} | nil
-  defp initial_notice do
-    if Application.get_env(:harness, :repo_enabled, true) do
-      nil
-    else
-      {:ok, "Postgres is disabled — settings, result history, KPI scores, and chat sessions are ephemeral."}
-    end
-  end
 
   # The per-project landing view-model: the *effective* policy (project default
   # overlaid with the operator's persisted override) rendered as the Landing card.

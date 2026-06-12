@@ -227,6 +227,167 @@ defmodule Harness.Dashboard.ComponentsTest do
     end
   end
 
+  describe "json_tree/1" do
+    test "renders atom, nil, and opaque values as typed leaves" do
+      html = render_component(&Components.json_tree/1, value: %{atom: :ok, nil: nil, date: ~D[2026-06-12]})
+
+      assert html =~ ~s(class="leaf-atom")
+      assert html =~ ":ok"
+      assert html =~ ~s(class="leaf-nil")
+      assert html =~ "null"
+      assert html =~ ~s(class="leaf-other")
+      assert html =~ "~D[2026-06-12]"
+    end
+
+    test "renders list, number, and boolean leaves" do
+      html = render_component(&Components.json_tree/1, value: [1, true, []])
+
+      assert html =~ ~s(class="leaf-number")
+      assert html =~ ">1</span>"
+      assert html =~ ~s(class="leaf-bool")
+      assert html =~ "true"
+      assert html =~ "[]"
+    end
+  end
+
+  describe "edited_files_live/1" do
+    test "renders observed live edit paths as chips" do
+      html = render_component(&Components.edited_files_live/1, paths: ["lib/harness/dashboard/live.ex"])
+
+      assert html =~ "Files being edited"
+      assert html =~ "lib/harness/dashboard/"
+      assert html =~ "live.ex"
+    end
+  end
+
+  describe "run_diff_view/1" do
+    test "renders a populated diff with file statuses, totals, lines, and truncation note" do
+      diff = %{
+        added: 5,
+        deleted: 2,
+        branch: "harness/run-1",
+        truncated: true,
+        files: [
+          diff_file(:added, "lib/new.ex", 3, 0, [line(:add, "+new")]),
+          diff_file(:modified, "lib/edit.ex", 2, 1, [line(:meta, "index 1..2"), line(:context, "same")]),
+          diff_file(:deleted, "lib/old.ex", 0, 1, [line(:del, "-old")]),
+          %{diff_file(:renamed, "priv/static/logo.png", 0, 0, []) | binary: true}
+        ]
+      }
+
+      html = render_component(&Components.run_diff_view/1, diff: {:ok, diff})
+
+      assert html =~ "Changed files"
+      assert html =~ "+5"
+      assert html =~ "−2"
+      assert html =~ "A"
+      assert html =~ "M"
+      assert html =~ "D"
+      assert html =~ "R"
+      assert html =~ "binary"
+      assert html =~ "same"
+      refute html =~ "index 1..2"
+      assert html =~ "Diff truncated"
+      assert html =~ "harness/run-1"
+    end
+
+    test "renders empty and unavailable diff states" do
+      empty = %{added: 0, deleted: 0, branch: "harness/empty", truncated: false, files: []}
+
+      assert render_component(&Components.run_diff_view/1, diff: {:ok, empty}) =~
+               "No file changes recorded"
+
+      assert render_component(&Components.run_diff_view/1, diff: {:error, :branch_absent}) =~
+               "run branch was merged or cleaned up"
+
+      assert render_component(&Components.run_diff_view/1, diff: {:error, :git_failed}) =~
+               "No diff available"
+
+      assert render_component(&Components.run_diff_view/1, diff: nil) =~
+               ~s(class="changed-files")
+    end
+  end
+
+  describe "config_inspector/1" do
+    test "renders sections, rows, provenance pills, and env knobs" do
+      sections = [
+        %{
+          title: "Run timeouts",
+          rows: [
+            %{label: "idle_timeout", value: "5 min", env_var: "HARNESS_IDLE_TIMEOUT", provenance: :env},
+            %{label: "total_timeout", value: "", env_var: nil, provenance: :default}
+          ]
+        },
+        %{
+          title: "Dashboard",
+          rows: [%{label: "port", value: "4018", env_var: nil, provenance: :config}]
+        }
+      ]
+
+      html = render_component(&Components.config_inspector/1, sections: sections)
+
+      assert html =~ "Configuration"
+      assert html =~ "Run timeouts"
+      assert html =~ "idle_timeout"
+      assert html =~ "HARNESS_IDLE_TIMEOUT"
+      assert html =~ ~s(data-prov="env")
+      assert html =~ ~s(data-prov="default")
+      assert html =~ ~s(data-prov="config")
+    end
+  end
+
+  describe "config_form/1" do
+    test "renders editable config rows with restart pills and input metadata" do
+      entries = [
+        %{
+          id: "run__lifetime_timeout",
+          label: "lifetime_timeout",
+          unit: "ms",
+          input_value: "90000",
+          placeholder: "unbounded",
+          restart_required?: false
+        },
+        %{
+          id: "dashboard__port",
+          label: "dashboard port",
+          unit: "",
+          input_value: "4018",
+          placeholder: "4018",
+          restart_required?: true
+        }
+      ]
+
+      html = render_component(&Components.config_form/1, entries: entries)
+
+      assert html =~ "Run &amp; dashboard config"
+      assert html =~ ~s(id="config-form-run__lifetime_timeout")
+      assert html =~ ~s(name="value")
+      assert html =~ ~s(value="90000")
+      assert html =~ ~s(placeholder="unbounded")
+      assert html =~ "restart"
+    end
+  end
+
+  describe "landing_card/1" do
+    test "renders project landing forms and the empty state" do
+      projects = [
+        %{name: "manual-proj", label: "manual-proj", auto?: false, target_branch: nil},
+        %{name: "auto-proj", label: "auto-proj", auto?: true, target_branch: "development"}
+      ]
+
+      html = render_component(&Components.landing_card/1, projects: projects)
+
+      assert html =~ "Landing"
+      assert html =~ ~s(id="landing-form-manual-proj")
+      assert html =~ ~s(value="manual")
+      assert html =~ ~s(id="landing-form-auto-proj")
+      assert html =~ "auto-land"
+      assert html =~ ~s(value="development")
+
+      assert render_component(&Components.landing_card/1, projects: []) =~ "No projects registered."
+    end
+  end
+
   describe "page_shell/1" do
     test "wraps the inner block between the navbar and footer" do
       assigns = %{inner_block: inner_block(~s(<p id="page-body">content</p>))}
@@ -243,4 +404,10 @@ defmodule Harness.Dashboard.ComponentsTest do
   defp inner_block(html) do
     [%{inner_block: fn _changed, _arg -> Phoenix.HTML.raw(html) end}]
   end
+
+  defp diff_file(status, path, added, deleted, lines) do
+    %{status: status, path: path, added: added, deleted: deleted, binary: false, lines: lines}
+  end
+
+  defp line(kind, text), do: %{kind: kind, text: text}
 end

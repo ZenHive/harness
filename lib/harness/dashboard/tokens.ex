@@ -1218,17 +1218,24 @@ defmodule Harness.Dashboard.Tokens do
       }
       .config-legend li { display: inline-flex; align-items: center; gap: var(--space-2); }
 
-      /* Transient operator feedback bar (the bare app layout renders no flash). */
-      .setting-notice {
+      /* Shared operator feedback: persistent runtime warnings + transient event notices. */
+      .operator-flash {
+        display: grid;
+        gap: var(--space-2);
         margin: var(--space-3) 0 0;
+      }
+
+      .operator-notice {
         padding: var(--space-2) var(--space-3);
         border: 1px solid var(--rule);
         border-radius: 0.4rem;
         font-size: var(--text-sm);
         color: var(--text);
       }
-      .setting-notice[data-kind="ok"] { border-color: var(--verdict-pass); background: var(--surface-2); }
-      .setting-notice[data-kind="error"] { border-color: var(--accent); background: var(--accent-soft); }
+      .operator-notice[data-persistent="true"] { font-weight: 650; }
+      .operator-notice[data-kind="ok"] { border-color: var(--verdict-pass); background: var(--surface-2); }
+      .operator-notice[data-kind="error"],
+      .operator-notice[data-kind="warning"] { border-color: var(--accent); background: var(--accent-soft); }
 
       /* Cron schedule preset picker (boot-applied; Task 111). */
       .setting-schedule { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-4); flex-wrap: wrap; }
