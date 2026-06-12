@@ -7109,7 +7109,7 @@ shipped_in = "72edccd9b2e41cb31f0e8b0d46c29bee65462465"
 id = "242"
 phase = 17
 bundle = "dashboard-perf"
-status = "in_progress"
+status = "pending"
 title = "Dashboard live_runs/0 fan-out: a busy run gen_statem must not stall the run feed (bounded Run.status read + skip)"
 scores = { d = 3, b = 4, u = 4 }
 depends_on = ["241"]
