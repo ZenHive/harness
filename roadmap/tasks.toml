@@ -8018,7 +8018,7 @@ shipped_in = "65890232c36cf8deea24d7d177ca172a0722b832"
 id = "268"
 phase = 19
 bundle = "test-suite-perf"
-status = "pending"
+status = "in_progress"
 title = "Split run_test.exs by describe-group and convert to async: true (per-test state isolation)"
 scores = { d = 4, b = 5, u = 4 }
 depends_on = [267]
@@ -8042,6 +8042,7 @@ The blocker to async is shared global state — isolate each per test:
 Verification MUST run the **full** suite under multiple seeds after the flip — a file green in isolation but flaky in the async pool means the isolation is incomplete; fix the shared state, do not revert to serial. If a specific describe-group genuinely cannot be isolated, keep just that group in a small async:false file and document why — don't pin the whole split serial for one holdout.
 """
 created_at = "2026-06-12"
+started_at = "2026-06-12"
 scored_at = "2026-06-12"
 
 [[task]]
