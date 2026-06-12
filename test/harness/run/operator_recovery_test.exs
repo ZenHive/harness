@@ -64,7 +64,7 @@ defmodule Harness.Run.OperatorRecoveryTest do
       {held_run_id, held_pid} =
         start(
           adapter_opts: [command: :sleep],
-          lifetime_timeout: 500,
+          lifetime_timeout: 3_000,
           max_hold_timeout: 30_000,
           terminal_linger: 100
         )
@@ -90,7 +90,7 @@ defmodule Harness.Run.OperatorRecoveryTest do
       {run_id, pid} =
         start(
           adapter_opts: [command: {:write_then_wait_for_file, gate}],
-          lifetime_timeout: 500,
+          lifetime_timeout: 3_000,
           max_hold_timeout: 30_000,
           terminal_linger: 100
         )

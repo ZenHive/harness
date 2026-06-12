@@ -257,6 +257,9 @@ defmodule Harness.RunCase do
   end
 
   using do
+    # A test-suite template injects helpers — the long quote block is intrinsic,
+    # as it is for ExUnit.CaseTemplate and Phoenix's *Case modules.
+    # credo:disable-for-next-line Credo.Check.Refactor.LongQuoteBlocks
     quote do
       import ExUnit.CaptureLog
 
