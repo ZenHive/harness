@@ -133,6 +133,7 @@ defmodule Harness.Dashboard.Live do
      |> assign(:selected_project, nil)
      |> assign(:counts, bucket_counts(snapshot))
      |> assign(:history_all, snapshot.history)
+     |> assign(:live_runs_once, snapshot.runs)
      |> assign(:active_empty?, true)
      |> assign(:history_empty?, snapshot.history == [])
      |> assign(:transcript, "")
@@ -159,7 +160,7 @@ defmodule Harness.Dashboard.Live do
   @spec apply_action(Socket.t(), atom(), map()) :: Socket.t()
   defp apply_action(socket, :index, params) do
     selected = Map.get(params, "project")
-    runs = StatusView.live_runs()
+    {runs, socket} = take_live_runs(socket)
     active = runs |> reject_terminal() |> filter_runs(selected)
 
     socket
@@ -177,6 +178,7 @@ defmodule Harness.Dashboard.Live do
     socket =
       socket
       |> maybe_unsubscribe(socket.assigns[:run_id])
+      |> assign(:live_runs_once, nil)
       |> assign(:run_id, run_id)
       |> assign(:transcript, "")
       |> assign(:transcript_bytes, 0)
@@ -204,6 +206,13 @@ defmodule Harness.Dashboard.Live do
 
     maybe_load_diff(socket)
   end
+
+  @spec take_live_runs(Socket.t()) :: {[StatusView.run_entry()], Socket.t()}
+  defp take_live_runs(%{assigns: %{live_runs_once: runs}} = socket) when is_list(runs) do
+    {runs, assign(socket, :live_runs_once, nil)}
+  end
+
+  defp take_live_runs(socket), do: {StatusView.live_runs(), socket}
 
   # A terminal run (live-but-lingering or replayed from the store) has its work
   # committed on the `harness/<run_id>` branch — read the real diff from git on

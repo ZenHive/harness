@@ -193,6 +193,25 @@ defmodule Harness.StatusViewTest do
 
       assert :ok = Run.cancel(run_id)
     end
+
+    test "skips a registered run whose status call does not reply promptly" do
+      run_id = "sv-stuck-status"
+      start_supervised!({__MODULE__.SlowStatusRun, run_id})
+
+      task = Task.async(fn -> :timer.tc(StatusView, :live_runs, []) end)
+
+      assert {_elapsed_us, entries} = yield_or_flunk(task)
+      refute Enum.any?(entries, &(&1.status.run_id == run_id))
+    end
+  end
+
+  describe "Run.status/2" do
+    test "returns a timeout error when a registered run does not reply promptly" do
+      run_id = "sv-stuck-run-status"
+      start_supervised!({__MODULE__.SlowStatusRun, run_id})
+
+      assert {:error, :timeout} = Run.status(run_id, 10)
+    end
   end
 
   defp record(run_id, opts) do
@@ -253,5 +272,43 @@ defmodule Harness.StatusViewTest do
         Process.sleep(20)
         await_running(run_id, tries - 1)
     end
+  end
+
+  defp yield_or_flunk(task) do
+    case Task.yield(task, 500) do
+      {:ok, result} ->
+        result
+
+      nil ->
+        Task.shutdown(task, :brutal_kill)
+        flunk("live_runs/0 blocked on a non-responsive run status call")
+    end
+  end
+
+  defmodule SlowStatusRun do
+    @moduledoc false
+    @behaviour :gen_statem
+
+    @spec child_spec(String.t()) :: Supervisor.child_spec()
+    def child_spec(run_id) do
+      %{id: {__MODULE__, run_id}, start: {__MODULE__, :start_link, [run_id]}}
+    end
+
+    @spec start_link(String.t()) :: :gen_statem.start_ret()
+    def start_link(run_id) do
+      :gen_statem.start_link({:via, Registry, {Harness.Run.Registry, run_id}}, __MODULE__, nil, [])
+    end
+
+    @impl :gen_statem
+    @spec callback_mode() :: :handle_event_function
+    def callback_mode, do: :handle_event_function
+
+    @impl :gen_statem
+    @spec init(nil) :: {:ok, :running, nil}
+    def init(nil), do: {:ok, :running, nil}
+
+    @impl :gen_statem
+    @spec handle_event(:gen_statem.event_type(), term(), :running, nil) :: :gen_statem.event_handler_result(:running)
+    def handle_event({:call, _from}, :status, :running, nil), do: {:keep_state_and_data, []}
   end
 end

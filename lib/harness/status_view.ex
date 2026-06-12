@@ -35,6 +35,7 @@ defmodule Harness.StatusView do
   # Most-recent settled runs surfaced as dashboard history (newest-first via
   # store `inserted_at` / file mtime ordering, capped at query time).
   @history_limit 200
+  @run_status_timeout_ms 100
 
   @bucket_order [:in_flight, :repairing, :green, :red]
 
@@ -154,9 +155,9 @@ defmodule Harness.StatusView do
 
   @spec run_entry(String.t()) :: [run_entry()]
   defp run_entry(run_id) do
-    case Run.status(run_id) do
+    case Run.status(run_id, @run_status_timeout_ms) do
       {:ok, status} -> [run_entry_for(status)]
-      {:error, :not_found} -> []
+      {:error, reason} when reason in [:not_found, :timeout] -> []
     end
   end
 

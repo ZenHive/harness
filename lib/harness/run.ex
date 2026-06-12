@@ -323,11 +323,16 @@ defmodule Harness.Run do
   )
 
   @spec status(run()) :: {:ok, Status.t()} | {:error, :not_found}
-  def status(run) do
+  def status(run), do: status(run, :infinity)
+
+  @doc "Return a status snapshot, bounded by the caller-provided timeout."
+  @spec status(run(), timeout()) :: {:ok, Status.t()} | {:error, :not_found | :timeout}
+  def status(run, timeout) do
     with {:ok, pid} <- resolve(run) do
-      {:ok, :gen_statem.call(pid, :status)}
+      {:ok, :gen_statem.call(pid, :status, timeout)}
     end
   catch
+    :exit, {:timeout, _call} -> {:error, :timeout}
     :exit, _reason -> {:error, :not_found}
   end
 
