@@ -7117,7 +7117,7 @@ out_of_scope = ["The RoadmapSummary shell-out fix (the sibling task).", "No chan
 files_to_modify = ["lib/harness/status_view.ex", "lib/harness/run.ex"]
 touches = ["lib/harness/dashboard/live.ex"]
 domains = ["otp"]
-assignee = "human"
+assignee = "codex"
 module = "Harness.StatusView"
 body = "Secondary cause from the 2026-06-08 dashboard-slowness investigation. StatusView.live_runs/0 maps Run.status/1 (a synchronous gen_statem call) over every live run, and is invoked multiple times per page render (mount snapshot, handle_params apply_action, recompute_active) plus every 5s meta_tick and every run lifecycle event. When a run's gen_statem is busy (committing, driving its Port, lander rebasing) the call blocks behind that process's mailbox — fitting the 3.7-4.3s HANDLE PARAMS replies in the logs. Make the fan-out resilient: bound each status read and skip a non-responsive run, and trim redundant live_runs/0 calls per render. Lower confidence and smaller win than the sibling RoadmapSummary task — do this AFTER it and re-measure, since that fix alone may resolve the operator-visible pain. Touches the run-lifecycle module (Run.status read path), so it is deliberately split out from the pure dashboard-read-path change to keep that change low-risk."
 created_at = "2026-06-08"
@@ -7689,7 +7689,7 @@ shipped_in = "adb5e64f278546628f9ac87f2960a3055cd496aa"
 id = "260"
 phase = 13
 bundle = "postgres-results"
-status = "pending"
+status = "done"
 title = "Fix stale LandingSettings default-target_branch assertion in settings_store/postgres_test.exs:36"
 scores = { d = 1, b = 2, u = 2 }
 acceptance_criteria = ["settings_store/postgres_test.exs:28 passes with --include integration in isolation and in the full suite", 'The intended default for an unspecified target_branch (nil vs "main") is decided and made consistent across Project, ProjectFixture, LandingSettings.effective, and the test', "No other settings_store/landing test regresses"]
@@ -7704,8 +7704,12 @@ Pre-existing red on `development` (confirmed at d906c5a^ during Task 258 review,
 
 Fix the assertion to expect `target_branch: nil` (or, if "main" is the intended registration default, fix `ProjectFixture.from_repo` / `Project` to default it and keep the test) — decide which is the intended default first. Unrelated to Task 258 (result_store/KPI), filed as a discovery so the integration suite goes green.
 """
+implemented = "Fixed the stale assertion in postgres_test.exs:36 to expect target_branch: nil — the system-wide intended default (Project struct, LandingSettings manual path, ProjectFixture.from_repo all default nil; only :auto requires a non-nil branch). Test passes in isolation with --include integration."
+delivered_by = "claude"
 created_at = "2026-06-11"
 scored_at = "2026-06-11"
+done_at = "2026-06-12"
+shipped_in = "dccd1e2e50db398e739c8150e5638d043eabc83b"
 
 [[task]]
 id = "261"
