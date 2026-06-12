@@ -415,11 +415,12 @@ defmodule Harness.Dashboard.LiveTest do
 
   describe "show drill-down (settled-run fallback to ResultStore)" do
     test "rebuilds status and replays the transcript from the persisted record" do
+      run_id = persisted_run_id("drill-claude")
       output = ~s({"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}\n)
 
       :ok =
         ResultStore.record_run(
-          log_record("drill-claude",
+          log_record(run_id,
             state: :failed,
             reason: {:review_rejected, "fake review: reject"},
             verdict: :reject,
@@ -428,7 +429,7 @@ defmodule Harness.Dashboard.LiveTest do
           )
         )
 
-      {:noreply, socket} = Live.handle_params(%{"run_id" => "drill-claude"}, "/harness/runs/drill-claude", show_socket())
+      {:noreply, socket} = Live.handle_params(%{"run_id" => run_id}, "/harness/runs/#{run_id}", show_socket())
 
       assert %Status{state: :failed, review_verdict: :reject} = socket.assigns.run_status
       assert socket.assigns.transcript == output
@@ -437,19 +438,20 @@ defmodule Harness.Dashboard.LiveTest do
     end
 
     test "resolves the parser kind by reverse-mapping the adapter when agent is nil" do
+      run_id = persisted_run_id("drill-byadapter")
       [{agent, module} | _] = Map.to_list(AgentRegistry.agents())
 
-      :ok = ResultStore.record_run(log_record("drill-byadapter", agent: nil, adapter: module, agent_output: "x\n"))
+      :ok = ResultStore.record_run(log_record(run_id, agent: nil, adapter: module, agent_output: "x\n"))
 
-      {:noreply, socket} =
-        Live.handle_params(%{"run_id" => "drill-byadapter"}, "/harness/runs/drill-byadapter", show_socket())
+      {:noreply, socket} = Live.handle_params(%{"run_id" => run_id}, "/harness/runs/#{run_id}", show_socket())
 
       assert socket.assigns.agent_kind == agent
     end
 
     test "leaves run_status nil for a run with no live process and no record" do
-      {:noreply, socket} =
-        Live.handle_params(%{"run_id" => "no-such-run-xyz"}, "/harness/runs/no-such-run-xyz", show_socket())
+      run_id = unique_run_id("no-such-run")
+
+      {:noreply, socket} = Live.handle_params(%{"run_id" => run_id}, "/harness/runs/#{run_id}", show_socket())
 
       assert socket.assigns.run_status == nil
     end
@@ -469,6 +471,7 @@ defmodule Harness.Dashboard.LiveTest do
       name = "live-diff-#{System.unique_integer([:positive])}"
       :ok = ProjectRegistry.register(ProjectFixture.from_repo(repo, name: name))
       on_exit(fn -> ProjectRegistry.unregister(name) end)
+      on_exit(fn -> ResultStore.delete_run(run_id) end)
 
       :ok = ResultStore.record_run(log_record(run_id, project_name: name, agent: :claude, agent_output: "x\n"))
 
@@ -480,8 +483,9 @@ defmodule Harness.Dashboard.LiveTest do
     end
 
     test "leaves run_diff nil for a run with no live process and no record" do
-      {:noreply, socket} =
-        Live.handle_params(%{"run_id" => "absent-diff-xyz"}, "/harness/runs/absent-diff-xyz", show_socket())
+      run_id = unique_run_id("absent-diff")
+
+      {:noreply, socket} = Live.handle_params(%{"run_id" => run_id}, "/harness/runs/#{run_id}", show_socket())
 
       assert socket.assigns.run_diff == nil
     end
@@ -489,8 +493,9 @@ defmodule Harness.Dashboard.LiveTest do
 
   describe "run-lifecycle feed (show view)" do
     test "an update for the focused run refreshes its status" do
-      next = %Status{run_id: "focus-1", task_id: "1", state: :reviewing}
-      socket = show_lifecycle_socket("focus-1", %Status{run_id: "focus-1", task_id: "1", state: :running})
+      run_id = unique_run_id("focus")
+      next = %Status{run_id: run_id, task_id: "1", state: :reviewing}
+      socket = show_lifecycle_socket(run_id, %Status{run_id: run_id, task_id: "1", state: :running})
 
       {:noreply, socket} = Live.handle_info({:harness_run_update, next}, socket)
 
@@ -498,8 +503,9 @@ defmodule Harness.Dashboard.LiveTest do
     end
 
     test "a settled message for the focused run freezes its terminal status" do
-      settled = %Status{run_id: "focus-2", task_id: "1", state: :failed, reason: :cancelled}
-      socket = show_lifecycle_socket("focus-2", %Status{run_id: "focus-2", task_id: "1", state: :running})
+      run_id = unique_run_id("focus")
+      settled = %Status{run_id: run_id, task_id: "1", state: :failed, reason: :cancelled}
+      socket = show_lifecycle_socket(run_id, %Status{run_id: run_id, task_id: "1", state: :running})
 
       {:noreply, socket} = Live.handle_info({:harness_run_settled, settled}, socket)
 
@@ -507,8 +513,9 @@ defmodule Harness.Dashboard.LiveTest do
     end
 
     test "a lifecycle message for a different run is ignored" do
-      current = %Status{run_id: "focus-3", task_id: "1", state: :running}
-      socket = show_lifecycle_socket("focus-3", current)
+      run_id = unique_run_id("focus")
+      current = %Status{run_id: run_id, task_id: "1", state: :running}
+      socket = show_lifecycle_socket(run_id, current)
 
       other = %Status{run_id: "other", task_id: "9", state: :running}
       {:noreply, socket} = Live.handle_info({:harness_run_update, other}, socket)
@@ -612,6 +619,16 @@ defmodule Harness.Dashboard.LiveTest do
         projects: []
       }
     }
+  end
+
+  defp persisted_run_id(prefix) do
+    run_id = unique_run_id(prefix)
+    on_exit(fn -> ResultStore.delete_run(run_id) end)
+    run_id
+  end
+
+  defp unique_run_id(prefix) do
+    "#{prefix}-#{System.unique_integer([:positive, :monotonic])}"
   end
 
   defp log_record(run_id, opts) do
