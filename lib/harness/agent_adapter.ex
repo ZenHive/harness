@@ -318,17 +318,32 @@ defmodule Harness.AgentAdapter do
   @doc """
   Returns whether `adapter` can run `model`.
 
-  `nil` is always accepted: an unpinned invocation lets the adapter use its own
-  CLI default. Non-nil pins are checked against the adapter's declared
-  `Capabilities.model_families` using family prefixes maintained in this module,
-  not per-release literal model IDs.
+  A `nil` (unpinned) model is accepted **only** for adapters that declare no
+  model selection (`Capabilities.model_families: []`, e.g. antigravity, whose
+  `agy` CLI has no `--model` flag). For every model-capable adapter a `nil` is
+  rejected — harness never lets a real agent fall through to its CLI's ambient
+  default, the guard against a sticky premium default silently burning the token
+  budget on every later run. Non-nil pins are checked against the adapter's
+  declared `model_families` using family prefixes maintained in this module, not
+  per-release literal model IDs.
   """
   @spec model_supported?(module(), String.t() | nil) :: boolean()
-  def model_supported?(_adapter, nil), do: true
+  def model_supported?(adapter, nil), do: not model_capable?(adapter)
 
   def model_supported?(adapter, model) when is_binary(model) do
     model_supported_by_families?(adapter.capabilities().model_families, String.downcase(model))
   end
+
+  @doc """
+  Returns whether `adapter` requires an explicitly resolved model.
+
+  `true` for every model-capable adapter (declares `model_families: :any` or a
+  non-empty list); `false` only for adapters that declare `model_families: []`
+  (no `--model` flag, e.g. antigravity). The dispatch and reviewer fail-fast
+  checks read this to reject a `nil` model before a run starts.
+  """
+  @spec requires_model?(module()) :: boolean()
+  def requires_model?(adapter), do: model_capable?(adapter)
 
   @doc """
   Returns `["--model", model]` when `model` is a binary, `[]` otherwise.
@@ -500,14 +515,26 @@ defmodule Harness.AgentAdapter do
   defp capability_supported?(%Capabilities{}, {:cost_tier, _other}), do: false
 
   @spec validate_model(module(), String.t() | nil) ::
-          :ok | {:error, {:invalid_model_for_adapter, module(), String.t()}}
-  defp validate_model(adapter, model) do
+          :ok
+          | {:error, {:model_required, module()}}
+          | {:error, {:invalid_model_for_adapter, module(), String.t()}}
+  defp validate_model(adapter, nil) do
+    if model_capable?(adapter), do: {:error, {:model_required, adapter}}, else: :ok
+  end
+
+  defp validate_model(adapter, model) when is_binary(model) do
     if model_supported?(adapter, model) do
       :ok
     else
       {:error, {:invalid_model_for_adapter, adapter, model}}
     end
   end
+
+  # Model-capable iff the adapter declares it can run at least one model family
+  # (`:any` or a non-empty list). `[]` means "no `--model` flag" (antigravity) —
+  # the single case where a nil model is legitimate.
+  @spec model_capable?(module()) :: boolean()
+  defp model_capable?(adapter), do: adapter.capabilities().model_families != []
 
   @spec model_supported_by_families?(Capabilities.model_families(), String.t()) :: boolean()
   defp model_supported_by_families?(:any, _model), do: true

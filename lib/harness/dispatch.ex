@@ -48,6 +48,7 @@ defmodule Harness.Dispatch do
   import Ecto.Query, only: [from: 2]
   import Harness.Dispatch.RunTool
 
+  alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Registry
   alias Harness.AgentKPI
   alias Harness.Batch
@@ -941,7 +942,7 @@ defmodule Harness.Dispatch do
          {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: :claude),
          {:ok, {adapter_module, render_agent}} <- recommended_adapter_for_item(@recommended_adapter, item),
          {:ok, item} <- rerender_for_agent(item, project, render_agent),
-         :ok <- ensure_model_available(render_agent, item, task) do
+         :ok <- ensure_model_available(adapter_module, render_agent, item, task) do
       {:ok, {project, item, adapter_module}}
     end
   end
@@ -950,20 +951,30 @@ defmodule Harness.Dispatch do
     with {:ok, {adapter_module, render_agent}} <- resolve_adapter(adapter),
          {:ok, project} <- lookup_project(project_name),
          {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: render_agent),
-         :ok <- ensure_model_available(render_agent, item, task) do
+         :ok <- ensure_model_available(adapter_module, render_agent, item, task) do
       {:ok, {project, item, adapter_module}}
     end
   end
 
-  @spec ensure_model_available(atom(), Item.t(), String.t()) :: :ok | {:error, error()}
-  defp ensure_model_available(agent, %Item{} = item, task) do
+  # Fail fast before a run/worktree spins up: a model-capable agent with no
+  # resolved model (no task pin, no `{:agent_model, agent}` default) is rejected
+  # outright — harness never lets a real dispatch fall through to the agent
+  # CLI's ambient default. A model-incapable adapter (antigravity) skips the
+  # presence gate; nil is legitimate there.
+  @spec ensure_model_available(module(), atom(), Item.t(), String.t()) :: :ok | {:error, error()}
+  defp ensure_model_available(adapter, agent, %Item{} = item, task) do
     model = effective_model(item, agent)
 
-    if ModelAvailability.available?(agent, model) do
-      :ok
-    else
-      ModelAvailability.notify_blocked_dispatch(agent, model, task)
-      {:error, {:unavailable, agent, model, available: ModelAvailability.list_available_ids(agent)}}
+    cond do
+      is_nil(model) and AgentAdapter.requires_model?(adapter) ->
+        {:error, {:model_required, agent}}
+
+      ModelAvailability.available?(agent, model) ->
+        :ok
+
+      true ->
+        ModelAvailability.notify_blocked_dispatch(agent, model, task)
+        {:error, {:unavailable, agent, model, available: ModelAvailability.list_available_ids(agent)}}
     end
   end
 

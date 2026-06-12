@@ -73,7 +73,7 @@ defmodule Harness.AgentAdapter.AttachRulesTest do
   end
 
   test "invoke/2 attaches rules before build_command/1", %{cwd: cwd} do
-    inv = invocation(cwd)
+    inv = invocation(cwd, model: "claude-opus-4-8-thinking-high")
 
     assert {:ok, run} = AgentAdapter.invoke(Claude, inv)
     assert run.adapter == Claude

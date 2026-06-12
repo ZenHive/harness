@@ -87,6 +87,25 @@ defmodule Harness.DispatchTest do
       assert {:error, {:unknown_project, "__no_such_project__"}} =
                Dispatch.task("__no_such_project__", "25", "claude")
     end
+
+    # A model-capable agent with no task `model` pin and no configured per-agent
+    # default is rejected before a run/worktree spins up — harness never lets a
+    # real dispatch fall through to the agent CLI's ambient default. grok has no
+    # agent_model configured by any test, so the resolved model is genuinely nil.
+    test "rejects a model-capable dispatch that resolves to no model" do
+      repo = GitFixture.init_repo()
+
+      project =
+        ProjectFixture.from_repo(repo,
+          name: "model-required-#{System.unique_integer([:positive])}",
+          roadmap_path: Path.expand("../fixtures/sample_roadmap", __DIR__)
+        )
+
+      :ok = ProjectRegistry.register(project)
+      on_exit(fn -> ProjectRegistry.unregister(project.name) end)
+
+      assert {:error, {:model_required, :grok}} = Dispatch.task(project.name, "2", "grok")
+    end
   end
 
   describe "await/5 dispatch resolution" do

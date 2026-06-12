@@ -71,7 +71,11 @@ defmodule Harness.AgentAdapter.Capabilities do
     * `model_families` — provider families this adapter can run when a roadmap
       task pins `model`. Harness validates this against the resolved adapter
       before spawning; compatibility is family/prefix-based rather than a brittle
-      literal allowlist.
+      literal allowlist. Defaults to `[]` — the conservative baseline: an adapter
+      declares no model support (and so legitimately runs model-less) until it
+      opts in by listing families or `:any`. A model-capable adapter (non-`[]`)
+      is held to the model-required guard — `invoke/2` rejects a nil model so a
+      real agent never falls through to its CLI's ambient default.
   """
   @type t :: %__MODULE__{
           session_resume: boolean(),
@@ -89,5 +93,5 @@ defmodule Harness.AgentAdapter.Capabilities do
             worktree_isolation: true,
             cost_tier: :metered,
             auth_env_scrub: [],
-            model_families: :any
+            model_families: []
 end

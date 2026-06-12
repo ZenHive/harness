@@ -16,7 +16,12 @@ defmodule Harness.FakeAdapter do
 
   @impl AgentAdapter
   def capabilities do
-    %Capabilities{session_resume: true, permission_modes: [:autonomous, :plan]}
+    # `model_families: []` — this fake spawns shell builtins and ignores the
+    # invocation's model entirely, so it is honestly model-INCAPABLE (no
+    # `--model` flag). That keeps the model-required guard from rejecting the
+    # nil-model lifecycle/reviewer fixtures. The model-THREADING fixtures (which
+    # pass a real pinned model) use the capable twin `Harness.FakeModelAdapter`.
+    %Capabilities{session_resume: true, permission_modes: [:autonomous, :plan], model_families: []}
   end
 
   @impl AgentAdapter

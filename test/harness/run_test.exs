@@ -13,6 +13,7 @@ defmodule Harness.RunTest do
   alias Harness.Dashboard.Transcript
   alias Harness.Dashboard.Transcript.Parser
   alias Harness.FakeAdapter
+  alias Harness.FakeModelAdapter
   alias Harness.GitFixture
   alias Harness.ProcessFixture
   alias Harness.ProjectFixture
@@ -525,6 +526,7 @@ defmodule Harness.RunTest do
       {run_id, pid} =
         start(
           project: ProjectFixture.from_repo(repo),
+          adapter: FakeModelAdapter,
           adapter_opts: [command: :capture_model],
           requested_model: "claude-opus-4-8-thinking-high"
         )
@@ -555,7 +557,11 @@ defmodule Harness.RunTest do
       repo = GitFixture.init_repo()
 
       {run_id, pid} =
-        start(project: ProjectFixture.from_repo(repo), adapter_opts: [command: :capture_model])
+        start(
+          project: ProjectFixture.from_repo(repo),
+          adapter: FakeModelAdapter,
+          adapter_opts: [command: :capture_model]
+        )
 
       assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
 
@@ -576,6 +582,8 @@ defmodule Harness.RunTest do
       {run_id, pid} =
         start(
           project: ProjectFixture.from_repo(repo),
+          adapter: FakeModelAdapter,
+          adapter_opts: [command: :capture_model],
           reviewer_adapter_opts: [command: {:review_capture_model, "approve"}]
         )
 
@@ -595,8 +603,10 @@ defmodule Harness.RunTest do
         start(
           item: item,
           project: ProjectFixture.from_repo(repo),
+          adapter: FakeModelAdapter,
           adapter_opts: [command: :capture_model],
-          reviewer_agent_resolver: fn FakeAdapter -> {:ok, :cursor} end,
+          reviewer: FakeModelAdapter,
+          reviewer_agent_resolver: fn FakeModelAdapter -> {:ok, :cursor} end,
           reviewer_adapter_opts: [command: {:review_capture_model, "approve"}]
         )
 
@@ -935,6 +945,7 @@ defmodule Harness.RunTest do
       SettingsStoreMemory.reset(scope: :test_default)
       :sys.replace_state(Harness.AgentRegistry, &%{&1 | installed: installed})
       assert :ok = Harness.AgentRegistry.mark_unavailable(codex, :soft_hint)
+      put_reviewer_model_env(codex: "gpt-5-codex")
 
       on_exit(fn ->
         SettingsStoreMemory.reset(scope: :test_default)
@@ -954,6 +965,7 @@ defmodule Harness.RunTest do
       SettingsStoreMemory.reset(scope: :test_default)
       :sys.replace_state(Harness.AgentRegistry, &put_in(&1, [:installed, codex], true))
       assert :ok = Harness.AgentRegistry.mark_unavailable(codex, :soft_hint)
+      put_reviewer_model_env(codex: "gpt-5-codex")
 
       on_exit(fn ->
         SettingsStoreMemory.reset(scope: :test_default)

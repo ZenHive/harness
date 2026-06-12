@@ -61,7 +61,7 @@ defmodule Harness.AgentAdapterTest do
                worktree_isolation: true,
                cost_tier: :metered,
                auth_env_scrub: [],
-               model_families: :any
+               model_families: []
              } = %Capabilities{}
     end
   end
@@ -188,9 +188,14 @@ defmodule Harness.AgentAdapterTest do
   end
 
   describe "model_supported?/2" do
-    test "accepts unpinned invocations for every adapter" do
-      assert AgentAdapter.model_supported?(Codex, nil)
+    test "rejects an unpinned model for a model-capable adapter" do
+      refute AgentAdapter.model_supported?(Codex, nil)
+      refute AgentAdapter.model_supported?(Cursor, nil)
+    end
+
+    test "accepts an unpinned model only for a model-incapable adapter" do
       assert AgentAdapter.model_supported?(Antigravity, nil)
+      assert AgentAdapter.model_supported?(FakeAdapter, nil)
     end
 
     test "accepts compatible model families" do
@@ -204,6 +209,15 @@ defmodule Harness.AgentAdapterTest do
 
     test "keeps Antigravity model overrides unsupported" do
       refute AgentAdapter.model_supported?(Antigravity, "custom-model")
+    end
+  end
+
+  describe "requires_model?/1" do
+    test "true for model-capable adapters, false for model-incapable ones" do
+      assert AgentAdapter.requires_model?(Codex)
+      assert AgentAdapter.requires_model?(Cursor)
+      refute AgentAdapter.requires_model?(Antigravity)
+      refute AgentAdapter.requires_model?(FakeAdapter)
     end
   end
 
@@ -234,6 +248,14 @@ defmodule Harness.AgentAdapterTest do
 
     test "returns the adapter's build_command error without spawning" do
       assert {:error, :not_implemented} = AgentAdapter.invoke(MinimalAdapter, invocation())
+    end
+
+    test "rejects an unpinned model for a model-capable adapter before command build or spawn" do
+      assert {:error, {:model_required, Codex}} = AgentAdapter.invoke(Codex, invocation())
+    end
+
+    test "accepts an unpinned model for a model-incapable adapter" do
+      assert {:ok, %Run{}} = AgentAdapter.invoke(FakeAdapter, invocation())
     end
 
     test "returns an error when the executable is not on PATH" do

@@ -154,6 +154,11 @@ defmodule Harness.ModelAvailabilityTest do
 
       assert "claude-sonnet-4-6" in available
     end
+
+    test "rejects a model-capable reviewer with no configured model" do
+      assert {:error, {:model_required, :claude}} =
+               Run.reviewer_model_available?(%{reviewer_adapter: Claude})
+    end
   end
 
   describe "failure-capture" do

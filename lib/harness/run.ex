@@ -911,8 +911,15 @@ defmodule Harness.Run do
          [{:state_timeout, data.reviewer_spawn_timeout, :reviewer_spawn_timeout}]}
 
       {:error, reason} ->
-        {:next_state, :failed, %{data | reason: reason}}
+        # A `:enter` state callback may not return `{:next_state, …}`; defer the
+        # failure to an internal event so the run settles cleanly as `:failed`
+        # (the model-required reviewer guard is the first reachable error here).
+        {:keep_state, %{data | reason: reason}, [{:next_event, :internal, :reviewer_model_unavailable}]}
     end
+  end
+
+  def reviewing(:internal, :reviewer_model_unavailable, data) do
+    {:next_state, :failed, data}
   end
 
   def reviewing(:info, {:reviewer_handle, %AgentRun{} = run}, data) do
@@ -2273,7 +2280,9 @@ defmodule Harness.Run do
 
   # The reviewer has no task-pin model axis (the task's `model` pins only the
   # implementer), so it resolves from the selected reviewer adapter's agent:
-  # reviewer override > shared per-agent default > CLI ambient default.
+  # reviewer override > shared per-agent default. A nil result for a model-capable
+  # reviewer is rejected by ensure_reviewer_model_available/1, never silently
+  # passed to the reviewer CLI as its ambient default.
   @spec reviewer_model(data()) :: String.t() | nil
   defp reviewer_model(%{reviewer_adapter: reviewer_adapter, reviewer_agent_resolver: resolver})
        when is_atom(reviewer_adapter) and not is_nil(reviewer_adapter) and is_function(resolver, 1) do
@@ -2294,17 +2303,28 @@ defmodule Harness.Run do
   @spec ensure_reviewer_model_available(data()) :: :ok | {:error, term()}
   defp ensure_reviewer_model_available(%{reviewer_adapter: reviewer_adapter}) do
     case AgentRegistry.agent_for_module(reviewer_adapter) do
-      {:ok, agent} ->
-        model = Config.reviewer_model(agent)
+      {:ok, agent} -> check_reviewer_model(reviewer_adapter, agent)
+      {:error, _} -> :ok
+    end
+  end
 
-        if ModelAvailability.available?(agent, model) do
-          :ok
-        else
-          {:error, {:unavailable, agent, model, available: ModelAvailability.list_available_ids(agent)}}
-        end
+  # The reviewer is the most exposed model-less path — it has no task-pin axis,
+  # so a model-capable reviewer adapter with no configured reviewer/agent model
+  # is rejected before the reviewer is dispatched, never silently using the
+  # reviewer CLI's ambient default.
+  @spec check_reviewer_model(module(), atom()) :: :ok | {:error, term()}
+  defp check_reviewer_model(reviewer_adapter, agent) do
+    model = Config.reviewer_model(agent)
 
-      {:error, _} ->
+    cond do
+      is_nil(model) and AgentAdapter.requires_model?(reviewer_adapter) ->
+        {:error, {:model_required, agent}}
+
+      ModelAvailability.available?(agent, model) ->
         :ok
+
+      true ->
+        {:error, {:unavailable, agent, model, available: ModelAvailability.list_available_ids(agent)}}
     end
   end
 
