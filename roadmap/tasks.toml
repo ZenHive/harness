@@ -8182,3 +8182,33 @@ created_at = "2026-06-12"
 started_at = "2026-06-12"
 done_at = "2026-06-12"
 scored_at = "2026-06-12"
+
+[[task]]
+id = "273"
+phase = 19
+bundle = "kpi-routing"
+status = "done"
+title = "routing-brief: thin dispatchable-only index + agents/fields projection (payload fits context; aggregate_* is the drill-down)"
+scores = { d = 2, b = 4, u = 4 }
+depends_on = [266, 272]
+acceptance_criteria = ["routing-brief/0 DEFAULTS to dispatchable pairs only: a pair surfaces only when its agent roster is installed AND enabled AND the {agent,model} is currently available (un-blocked). The full catalog (e.g. cursor's ~139 selectable slugs, blocked/disabled agents) is EXCLUDED by default. Regression: the live payload drops from ~175 pairs / ~178KB to the handful of actually-dispatchable pairs and fits one MCP read.", "An include_all: true opt (brief/1 option) restores the current full-catalog behaviour verbatim — nothing is lost, the verbose view is opt-in. Default false.", 'brief/1 accepts an agents filter (list of agent-name strings, e.g. ["codex","cursor"]) that further restricts the returned pairs to the named agents; composes with the existing domains filter (domains still scopes/annotates KPI cells only). Unknown agent name => that agent contributes no pairs (not an error).', 'brief/1 accepts a fields projection (list of top-level pair keys, e.g. ["agent","model","availability","kpi"]) that returns only those keys per pair — token-cheap for an orchestrator that needs a subset, mirroring rmap ready --fields. Unknown field name => ignored or 400-class error, pick one and test it. Omitted => all legs.', "WRITER CONTRACT (skills/harness-driver/SKILL.md + docs/orchestrator-surface-inventory.md): routing-brief is THE thin routing index (list); for per-agent depth the writer drills into the EXISTING aggregate_* family (aggregate_by_agent / aggregate_by_facet / aggregate_reviewer_reliability / aggregate_ceremony_cost) — the list->get pattern. State explicitly: do NOT add new KPI tools for detail the aggregate_* lenses already provide. scripts/sync-harness-skills.sh run to propagate.", "Tests (no Process.sleep; assert specific values; @spec on every new def AND defp): default returns only dispatchable pairs (seed a blocked + a disabled agent, assert both absent); include_all restores them; agents filter narrows; fields projection returns exactly the named keys; domains still scopes KPI. mix precommit.full green; coverage >= 80% on the changed module."]
+out_of_scope = ["Any NEW KPI/aggregate MCP tool — the 6 aggregate_* lenses cover the depth; per-{agent,model} KPI does not exist because runs are logged per-agent not per-model (a data fact, surfaced as n/explore, NOT a tool gap)", "dispatch-recommend (the advisory scout pick) — stays the layer ON TOP of the brief, untouched", "Re-introducing any capability leg (removed in Task 272) — the brief stays 3 legs: roster + availability + KPI", "Changing block (operator/failure) semantics or the availability source"]
+files_to_modify = ["lib/harness/routing.ex", "lib/harness/manifest.ex", "skills/harness-driver/SKILL.md", "docs/orchestrator-surface-inventory.md", "test/harness/routing_test.exs"]
+touches = ["lib/harness/agents.ex", "lib/harness/model_availability.ex"]
+domains = ["mcp", "descripex", "otp", "elixir"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Discovered 2026-06-12 dogfooding the landed routing-brief over MCP: brief() returns all 175 {agent,model} pairs = ~178KB, which exceeds a single MCP read and blows the writer's context. Breakdown: cursor 139, pi 25, claude 5, codex 4, grok 2 — cursor alone enumerates its entire multi-model catalog. The irony: the surface built so the writer routes WITHOUT reading lib/ is itself too big to read. The domains filter only scopes KPI cells, it does not reduce the pair count.
+
+Fix = make it a THIN INDEX, not a fatter tool and not a pile of new tools. Default to dispatchable-only (available + enabled), add an agents filter and a fields projection (rmap-ready style), keep the full catalog as include_all opt-in. Depth already exists: the 6 aggregate_* lenses are the drill-down (list->get). We just deleted dead surface in Task 272 — do not recreate the vestige by adding speculative KPI tools; a new tool earns its place only when the routing flow has a concrete question none of the aggregate_* lenses answer.
+
+Routing rationale (dogfooded from routing-brief itself): cursor/Opus blocked until 2026-06-30; codex/gpt-5.5 free; codex mcp 9.0 / descripex 9.0 / truthfulness 8.5, success 0.96 over 82 runs — strongest fit for an MCP/descripex read-surface change. -> codex / gpt-5.5.
+"""
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781263371713-e2582efc, 4d1ceae33ccb38c083dfb33153a832894f29c885). routing-brief now defaults to dispatchable-only pairs (available+enabled), include_all opt restores full catalog, agents filter + fields projection added; writer-contract points to aggregate_* for depth. No new KPI tools."
+delivered_by = "codex"
+verified = true
+created_at = "2026-06-12"
+scored_at = "2026-06-12"
+done_at = "2026-06-12"
+shipped_in = "4d1ceae33ccb38c083dfb33153a832894f29c885"
