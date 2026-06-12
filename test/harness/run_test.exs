@@ -1125,6 +1125,25 @@ defmodule Harness.RunTest do
       assert Run.reviewing_idle_timeout(%{reviewing_idle_timeout: nil, idle_timeout: nil}) == 600_000
     end
 
+    test "REGRESSION: reviewing(:enter) with an unconfigured model-capable reviewer defers via a gen_statem-legal :state_timeout, never :next_event" do
+      # Codex is model-capable and has no reviewer/agent model configured in test
+      # env, so the model-required guard fires in the :enter callback. A
+      # gen_statem :enter callback may not emit a `{:next_event, …}` action —
+      # doing so crashed the run with :bad_state_enter_action_from_state_function.
+      # The error branch must instead defer via a zero-delay :state_timeout.
+      data = %{reviewer_adapter: Codex, reason: nil}
+
+      assert {:keep_state, %{reason: {:model_required, :codex}}, actions} =
+               Run.reviewing(:enter, :implementing, data)
+
+      assert actions == [{:state_timeout, 0, :reviewer_model_unavailable}]
+      refute Enum.any?(actions, &match?({:next_event, _, _}, &1))
+
+      # The deferred timeout settles the run as :failed.
+      assert {:next_state, :failed, _} =
+               Run.reviewing(:state_timeout, :reviewer_model_unavailable, data)
+    end
+
     test "a reviewer whose driver fails settles :failed as review_stuck without waiting for lifetime" do
       result =
         run(

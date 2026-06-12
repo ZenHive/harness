@@ -911,14 +911,18 @@ defmodule Harness.Run do
          [{:state_timeout, data.reviewer_spawn_timeout, :reviewer_spawn_timeout}]}
 
       {:error, reason} ->
-        # A `:enter` state callback may not return `{:next_state, …}`; defer the
-        # failure to an internal event so the run settles cleanly as `:failed`
-        # (the model-required reviewer guard is the first reachable error here).
-        {:keep_state, %{data | reason: reason}, [{:next_event, :internal, :reviewer_model_unavailable}]}
+        # A `:enter` state callback may return neither `{:next_state, …}` nor a
+        # `{:next_event, …}` action (gen_statem rejects both with
+        # `:bad_state_enter_action_from_state_function`). A zero-delay
+        # `:state_timeout` is allowed here and fires immediately, letting the run
+        # settle cleanly as `:failed` (the model-required reviewer guard is the
+        # first reachable error). The state_timeout is auto-cancelled on the
+        # transition out of `:reviewing`, so it never races the spawn timeout.
+        {:keep_state, %{data | reason: reason}, [{:state_timeout, 0, :reviewer_model_unavailable}]}
     end
   end
 
-  def reviewing(:internal, :reviewer_model_unavailable, data) do
+  def reviewing(:state_timeout, :reviewer_model_unavailable, data) do
     {:next_state, :failed, data}
   end
 
