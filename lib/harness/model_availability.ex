@@ -19,26 +19,32 @@ defmodule Harness.ModelAvailability do
   @catalogs_key :model_catalogs
   @static_catalogs_key :model_catalog_static
   @default_catalog_ttl_ms 3_600_000
-  @probeable_agents %{cursor: "cursor-agent", grok: "grok", pi: "pi"}
+  @probeable_agents %{cursor: "cursor-agent", grok: "grok", pi: "pi", codex: "codex"}
   @catalog_commands %{
     cursor: ["--list-models"],
     grok: ["models"],
-    pi: ["--list-models"]
+    pi: ["--list-models"],
+    codex: ["debug", "models"]
   }
 
   # UI-only seed catalogs for agents without a probeable `--list-models` surface,
   # so the settings dropdown has options out of the box. Consumed *only* by
   # `selectable_models/1` (the dashboard dropdown) — deliberately NOT by `catalog/1`
   # / the dispatch gate, which stays permissive for these agents (a pinned id absent
-  # from this seed must still dispatch). Both id sets are a best-effort seed — edit
+  # from this seed must still dispatch). The id set is a best-effort seed — edit
   # here when the accepted ids change. A SettingsStore `@static_catalogs_key` entry
   # still overrides at the gate, independent of this UI seed.
+  #
+  # claude has no model-list CLI (`claude model list` is treated as a prompt —
+  # anthropics/claude-code#12612), so its dropdown options come only from this seed.
+  # codex IS probeable (`codex debug models` → JSON) and goes through
+  # `@probeable_agents`; its seed here is the UI fallback for when the probe fails
+  # (codex CLI absent/unauthed), so the dropdown still has options out of the box.
   #
   # Ids verified 2026-06-12:
   #   claude — https://support.claude.com/en/articles/11940350-claude-code-model-configuration
   #            https://code.claude.com/docs/en/model-config
   #   codex  — https://developers.openai.com/codex/models
-  #            (gpt-5.5 default; gpt-5.2 / gpt-5.3-codex deprecated for ChatGPT sign-in)
   @builtin_ui_catalogs %{
     claude: [
       %{id: "claude-opus-4-8", label: "Opus 4.8", annotations: []},
@@ -185,9 +191,12 @@ defmodule Harness.ModelAvailability do
   def structured_quota_signal(reason), do: do_structured_quota_signal(reason)
 
   # Test/diagnostic entry point: parse a raw CLI catalog dump for an agent into
-  # deduped entries, exercising the per-agent line parser without shelling out.
+  # deduped entries, exercising the per-agent parser without shelling out. codex
+  # emits JSON, every other probeable CLI emits lines — so dispatch on agent.
   @doc false
   @spec parse_catalog_output(atom(), String.t()) :: [catalog_entry()]
+  def parse_catalog_output(:codex, output) when is_binary(output), do: parse_codex_json(output)
+
   def parse_catalog_output(agent, output) when is_atom(agent) and is_binary(output) do
     catalog_lines_to_entries(agent, output)
   end
@@ -465,7 +474,7 @@ defmodule Harness.ModelAvailability do
          {:ok, args} <- Map.fetch(@catalog_commands, agent),
          path when is_binary(path) <- System.find_executable(executable),
          {output, 0} <- System.cmd(path, args, stderr_to_stdout: true) do
-      models = catalog_lines_to_entries(agent, output)
+      models = parse_catalog_output(agent, output)
 
       if models == [], do: {:error, :catalog_unavailable}, else: {:ok, models}
     else
@@ -474,6 +483,26 @@ defmodule Harness.ModelAvailability do
       _ -> {:error, :catalog_unavailable}
     end
   end
+
+  # `codex debug models` JSON: keep `visibility: "list"` slugs (drops internal "hide"
+  # entries like codex-auto-review); label from display_name, id from slug.
+  @spec parse_codex_json(String.t()) :: [catalog_entry()]
+  defp parse_codex_json(output) do
+    case Jason.decode(output) do
+      {:ok, %{"models" => models}} when is_list(models) ->
+        models |> Enum.flat_map(&codex_model_entry/1) |> Enum.uniq_by(& &1.id)
+
+      _not_decodable ->
+        []
+    end
+  end
+
+  @spec codex_model_entry(map()) :: [catalog_entry()]
+  defp codex_model_entry(%{"slug" => slug, "visibility" => "list"} = model) when is_binary(slug) do
+    [%{id: slug, label: Map.get(model, "display_name", slug), annotations: []}]
+  end
+
+  defp codex_model_entry(_hidden_or_malformed), do: []
 
   # Each probeable CLI prints its model list in its own shape, so parsing dispatches
   # on agent. Entries are deduped by id (pi can list the same id under >1 provider).

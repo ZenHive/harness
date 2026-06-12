@@ -84,6 +84,28 @@ defmodule Harness.ModelAvailabilityTest do
       output = "  * grok-build (default)\n  - grok-build\n"
       assert [%{id: "grok-build"}] = ModelAvailability.parse_catalog_output(:grok, output)
     end
+
+    test "codex JSON yields visibility=list slugs, dropping hidden internal models" do
+      # Real `codex debug models` shape (trimmed to the parsed fields), 2026-06-12.
+      output =
+        ~s({"models":[) <>
+          ~s({"slug":"gpt-5.5","display_name":"GPT-5.5","visibility":"list"},) <>
+          ~s({"slug":"gpt-5.4","display_name":"GPT-5.4","visibility":"list"},) <>
+          ~s({"slug":"gpt-5.4-mini","display_name":"GPT-5.4-Mini","visibility":"list"},) <>
+          ~s({"slug":"gpt-5.3-codex-spark","display_name":"GPT-5.3-Codex-Spark","visibility":"list"},) <>
+          ~s({"slug":"codex-auto-review","display_name":"Codex Auto Review","visibility":"hide"}]})
+
+      assert [
+               %{id: "gpt-5.5", label: "GPT-5.5", annotations: []},
+               %{id: "gpt-5.4", label: "GPT-5.4", annotations: []},
+               %{id: "gpt-5.4-mini", label: "GPT-5.4-Mini", annotations: []},
+               %{id: "gpt-5.3-codex-spark", label: "GPT-5.3-Codex-Spark", annotations: []}
+             ] = ModelAvailability.parse_catalog_output(:codex, output)
+    end
+
+    test "codex non-JSON output degrades to an empty list, never raising" do
+      assert [] = ModelAvailability.parse_catalog_output(:codex, "error: not logged in\n")
+    end
   end
 
   describe "block/unblock round-trip" do
@@ -134,7 +156,8 @@ defmodule Harness.ModelAvailabilityTest do
     end
 
     test "returns catalog_unavailable for agents without a static list" do
-      assert {:error, :catalog_unavailable} = ModelAvailability.list_available(:codex)
+      # claude has no model-list CLI (not probeable) and no seeded static catalog.
+      assert {:error, :catalog_unavailable} = ModelAvailability.list_available(:claude)
     end
   end
 
