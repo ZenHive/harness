@@ -2,9 +2,13 @@ defmodule Harness.RoutingTest do
   # async: false because tests mutate AgentRegistry and global store application env.
   use ExUnit.Case, async: false
 
+  alias Harness.Agent.Settings, as: AgentSettings
+  alias Harness.AgentAdapter.Antigravity
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentAdapter.Cursor
+  alias Harness.AgentAdapter.Grok
+  alias Harness.AgentAdapter.Pi
   alias Harness.AgentRegistry
   alias Harness.Chat.Tools
   alias Harness.ModelAvailability
@@ -28,6 +32,7 @@ defmodule Harness.RoutingTest do
     SettingsStoreMemory.reset(scope: scope)
     AgentRegistry.reset()
     put_installed(%{Claude => true, Codex => true, Cursor => true})
+    enable_agents([:claude, :codex, :cursor])
     put_catalogs()
 
     on_exit(fn ->
@@ -45,7 +50,7 @@ defmodule Harness.RoutingTest do
     assert :ok = ResultStore.record_run(ResultStoreContract.log_record(run_id: "r1", agent: :codex), store)
     assert :ok = ResultStore.record_run(ResultStoreContract.log_record(run_id: "r2", agent: :codex), store)
 
-    assert {:ok, %{pairs: pairs}} = Routing.brief(["otp"])
+    assert {:ok, %{pairs: pairs}} = Routing.brief(include_all: true, domains: ["otp"])
     codex = pair!(pairs, "codex", "gpt-5.5")
 
     assert %{
@@ -73,7 +78,7 @@ defmodule Harness.RoutingTest do
   test "blocked model pairs are annotated instead of silently dropped" do
     assert :ok = ModelAvailability.block_model("cursor", "composer-2.5", reason: "operator quota")
 
-    assert {:ok, %{pairs: pairs}} = Routing.brief(["otp"])
+    assert {:ok, %{pairs: pairs}} = Routing.brief(include_all: true, domains: ["otp"])
     cursor = pair!(pairs, "cursor", "composer-2.5")
 
     assert %{
@@ -84,6 +89,70 @@ defmodule Harness.RoutingTest do
                source: "operator"
              }
            } = cursor
+  end
+
+  test "default brief returns only installed enabled available pairs" do
+    assert :ok = AgentSettings.set_enabled(:claude, false, "test")
+    assert :ok = ModelAvailability.block_model("cursor", "composer-2.5", reason: "operator quota")
+
+    assert {:ok, %{pairs: pairs}} = Routing.brief(domains: ["otp"])
+
+    assert Enum.map(pairs, &{&1.agent, &1.model}) == [{"codex", "gpt-5.5"}]
+  end
+
+  test "include_all restores blocked and disabled catalog pairs" do
+    assert :ok = AgentSettings.set_enabled(:claude, false, "test")
+    assert :ok = ModelAvailability.block_model("cursor", "composer-2.5", reason: "operator quota")
+
+    assert {:ok, %{pairs: pairs}} = Routing.brief(include_all: true, domains: ["otp"])
+
+    assert pair!(pairs, "claude", "claude-opus-4-8").roster.enabled == false
+    assert pair!(pairs, "cursor", "composer-2.5").availability.blocked == true
+    assert pair!(pairs, "codex", "gpt-5.5").availability.available == true
+  end
+
+  test "agents filter narrows the returned pairs and ignores unknown agents" do
+    assert {:ok, %{pairs: pairs}} = Routing.brief(agents: ["codex", "missing"])
+
+    assert Enum.map(pairs, & &1.agent) == ["codex"]
+    assert pair!(pairs, "codex", "gpt-5.5")
+  end
+
+  test "fields projection returns exactly known requested pair keys and ignores unknown fields" do
+    assert {:ok, %{pairs: pairs}} = Routing.brief(agents: ["codex"], fields: ["agent", "availability", "unknown"])
+
+    [pair] = pairs
+    assert pair |> Map.keys() |> Enum.sort() == [:agent, :availability]
+    assert pair.agent == "codex"
+    assert pair.availability.available == true
+  end
+
+  test "JSON map options use string keys from MCP callers" do
+    assert {:ok, %{domains: ["otp"], pairs: pairs}} =
+             Routing.brief(%{
+               "agents" => ["codex"],
+               "domains" => ["otp"],
+               "fields" => ["agent"],
+               "include_all" => false,
+               "unknown" => true
+             })
+
+    assert pairs == [%{agent: "codex"}]
+  end
+
+  test "top-level arguments support the direct MCP parameter order" do
+    assert {:ok, %{domains: ["otp"], pairs: pairs}} = Routing.brief(["otp"], ["codex"], ["agent", "kpi"], false)
+
+    [pair] = pairs
+    assert pair |> Map.keys() |> Enum.sort() == [:agent, :kpi]
+    assert pair.agent == "codex"
+    assert pair.kpi.domains == ["otp"]
+  end
+
+  test "domains option still scopes KPI cells" do
+    assert {:ok, %{domains: ["otp"], pairs: pairs}} = Routing.brief(domains: ["otp"], agents: ["codex"])
+
+    assert pair!(pairs, "codex", "gpt-5.5").kpi.domains == ["otp"]
   end
 
   test "domain cold-start surfaces n zero and explore candidate through KPI" do
@@ -110,6 +179,9 @@ defmodule Harness.RoutingTest do
     tool = Enum.find(Harness.Manifest.mcp_tools(), &(&1.name == "routing-brief"))
     assert tool
     assert Map.has_key?(tool.inputSchema.properties, :domains)
+    assert Map.has_key?(tool.inputSchema.properties, :agents)
+    assert Map.has_key?(tool.inputSchema.properties, :fields)
+    assert Map.has_key?(tool.inputSchema.properties, :include_all)
     assert tool.inputSchema.required == []
 
     assert %{module: Routing, function: :brief} = Tools.build()["routing-brief"]
@@ -145,14 +217,26 @@ defmodule Harness.RoutingTest do
   defp put_catalogs do
     SettingsStore.put(ModelAvailability.static_catalogs_key(), %{
       codex: [%{id: "gpt-5.5", label: "GPT-5.5", annotations: []}],
+      claude: [%{id: "claude-opus-4-8", label: "Opus 4.8", annotations: []}],
       cursor: [%{id: "composer-2.5", label: "Composer 2.5", annotations: []}]
     })
   end
 
   @spec put_installed(%{module() => boolean()}) :: :ok
   defp put_installed(installed) do
+    installed =
+      Map.merge(
+        %{Claude => false, Codex => false, Cursor => false, Grok => false, Antigravity => false, Pi => false},
+        installed
+      )
+
     :sys.replace_state(AgentRegistry, fn state -> %{state | installed: installed} end)
     :ok
+  end
+
+  @spec enable_agents([atom()]) :: :ok
+  defp enable_agents(agents) do
+    Enum.each(agents, &AgentSettings.set_enabled(&1, true, "test"))
   end
 
   @spec refute_fused_keys(term()) :: :ok
