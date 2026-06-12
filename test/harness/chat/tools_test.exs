@@ -4,7 +4,6 @@ defmodule Harness.Chat.ToolsTest do
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
   alias Harness.Batch.Result, as: BatchResult
-  alias Harness.CapabilityScore.Legacy, as: CapabilityScore
   alias Harness.Chat.Tools
   alias Harness.ResultStore
   alias Harness.ResultStore.Memory, as: MemoryStore
@@ -265,34 +264,6 @@ defmodule Harness.Chat.ToolsTest do
       assert disabled_cost.run_count == 0
     end
 
-    test "get_capability_score dispatch without store reads the configured store", %{store: store} do
-      registry = Tools.build()
-      score = capability_score()
-
-      assert :ok = ResultStore.save_capability_score(score, store)
-
-      args = %{"agent" => "codex", "domain" => "otp", "corpus_version" => "mcp-default"}
-
-      assert {:ok, {:ok, loaded}} =
-               Tools.dispatch(registry, "result_store-get_capability_score", args)
-
-      assert loaded.agent == :codex
-      assert loaded.domain == :otp
-      assert loaded.corpus_version == "mcp-default"
-
-      assert {:ok, {:ok, loaded_colon}} =
-               Tools.dispatch(
-                 registry,
-                 "result_store-get_capability_score",
-                 Map.merge(args, %{"agent" => ":codex", "domain" => ":otp"})
-               )
-
-      assert loaded_colon.agent == :codex
-
-      assert {:ok, :no_data} =
-               Tools.dispatch(registry, "result_store-get_capability_score", Map.put(args, "store", false))
-    end
-
     test "aggregate_ceremony_cost with store=false and omitted opts hits the disabled guard", %{store: store} do
       registry = Tools.build()
       record = ResultStoreContract.log_record(run_id: "mcp-ceremony-false", verdict: :approve)
@@ -310,21 +281,17 @@ defmodule Harness.Chat.ToolsTest do
       assert disabled_cost.run_count == 0
     end
 
-    test "list_capability_scores dispatch without store reads the configured store", %{store: store} do
+    test "legacy capability cell tools are absent from chat dispatch" do
       registry = Tools.build()
-      score = capability_score()
 
-      assert :ok = ResultStore.save_capability_score(score, store)
-
-      assert {:ok, {:ok, [listed]}} =
-               Tools.dispatch(registry, "result_store-list_capability_scores", %{})
-
-      assert listed.agent == :codex
-      assert listed.domain == :otp
-      assert listed.corpus_version == "mcp-default"
-
-      assert {:ok, {:ok, []}} =
-               Tools.dispatch(registry, "result_store-list_capability_scores", %{"store" => false})
+      for removed <- ~w(
+             result_store-save_capability_score
+             result_store-get_capability_score
+             result_store-list_capability_scores
+           ) do
+        refute Map.has_key?(registry, removed)
+        assert {:error, {:unknown_tool, ^removed}} = Tools.dispatch(registry, removed, %{})
+      end
     end
   end
 
@@ -350,9 +317,6 @@ defmodule Harness.Chat.ToolsTest do
         )
 
       assert :ok = ResultStore.record_run(record, store)
-
-      score = capability_score()
-      assert :ok = ResultStore.save_capability_score(score, store)
 
       on_exit(fn ->
         restore_result_store(previous)
@@ -383,7 +347,6 @@ defmodule Harness.Chat.ToolsTest do
              result_store-aggregate_by_agent
              result_store-aggregate_ceremony_cost
              result_store-aggregate_reviewer_reliability
-             result_store-list_capability_scores
            ) do
         assert {:ok, {:ok, with_omit}} = Tools.dispatch(registry, name, %{})
         refute empty_store_sentinel?(name, with_omit)
@@ -411,9 +374,6 @@ defmodule Harness.Chat.ToolsTest do
   defp minimal_required_args("config-get"), do: %{"key" => "run.idle_timeout"}
 
   defp minimal_required_args("describe-tool"), do: %{"name" => "agents-list"}
-
-  defp minimal_required_args("result_store-get_capability_score"),
-    do: %{"agent" => "codex", "domain" => "otp", "corpus_version" => "mcp-default"}
 
   defp minimal_required_args("result_store-load_batch"), do: %{"batch_id" => "missing-batch"}
 
@@ -495,26 +455,9 @@ defmodule Harness.Chat.ToolsTest do
       {"result_store-aggregate_by_agent", map} when map == %{} -> true
       {"result_store-aggregate_reviewer_reliability", map} when map == %{} -> true
       {"result_store-aggregate_review_stuck_causes", map} when map == %{} -> true
-      {"result_store-list_capability_scores", []} -> true
       {"result_store-aggregate_ceremony_cost", %{run_count: 0}} -> true
       _ -> false
     end
-  end
-
-  defp capability_score do
-    %CapabilityScore{
-      agent: :codex,
-      domain: :otp,
-      corpus_version: "mcp-default",
-      scored_at: ~U[2026-06-10 00:00:00Z],
-      run_count: 1,
-      success_rate: 1.0,
-      cost_to_green: 42.0,
-      mean_reviewer_diff_size: 0.0,
-      mean_ratings: %{"otp" => 9.0},
-      composite_score: 1.0,
-      raw_metrics: []
-    }
   end
 
   defp restore_result_store(nil), do: Application.delete_env(:harness, :result_store)

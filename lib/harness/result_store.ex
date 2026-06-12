@@ -27,7 +27,6 @@ defmodule Harness.ResultStore do
 
   alias Harness.AgentKPI
   alias Harness.Batch.Result, as: BatchResult
-  alias Harness.CapabilityScore.Legacy, as: CapabilityScore
   alias Harness.Run.LogRecord
 
   @typedoc "A configured result store module, with optional module-specific options."
@@ -90,16 +89,6 @@ defmodule Harness.ResultStore do
   fall back to `list_run_records/1` + `Harness.CapabilityScore.build_scout_context/1`.
   """
   @callback aggregate_by_facet(keyword(), keyword()) :: {:ok, [facet_group()]} | {:error, term()}
-
-  @doc "Persists one computed capability score."
-  @callback save_capability_score(CapabilityScore.t(), keyword()) :: :ok | {:error, term()}
-
-  @doc "Loads one persisted capability score cell, or returns :no_data when unmeasured."
-  @callback get_capability_score(atom(), atom(), String.t(), keyword()) ::
-              {:ok, CapabilityScore.t()} | :no_data | {:error, term()}
-
-  @doc "Lists persisted capability scores for routing and re-benchmark planning."
-  @callback list_capability_scores(keyword()) :: {:ok, [CapabilityScore.t()]} | {:error, term()}
 
   api(
     :record_run,
@@ -402,95 +391,6 @@ defmodule Harness.ResultStore do
       {:ok, records} -> {:ok, AgentKPI.aggregate_ceremony_cost(records)}
       {:error, _} = err -> err
     end
-  end
-
-  api(:save_capability_score, "Persist one computed capability score.",
-    params: [
-      score: [
-        kind: :value,
-        description:
-          "%Harness.CapabilityScore{} computed from AgentEvaluation comparisons, including retained raw metrics."
-      ],
-      store: [
-        kind: :value,
-        default: nil,
-        description: "Configured store from ResultStore.configured/0, or override; `false`/`nil` short-circuits."
-      ]
-    ],
-    returns: %{type: :tuple, description: ":ok or {:error, reason} from the backing store."}
-  )
-
-  @spec save_capability_score(CapabilityScore.t(), store()) :: :ok | {:error, term()}
-  def save_capability_score(score, store \\ configured())
-
-  def save_capability_score(%CapabilityScore{}, false), do: :ok
-  def save_capability_score(%CapabilityScore{}, nil), do: :ok
-
-  def save_capability_score(%CapabilityScore{} = score, store) do
-    dispatch(store, :save_capability_score, [score])
-  end
-
-  api(:get_capability_score, "Load one persisted capability score cell, returning :no_data when unmeasured.",
-    params: [
-      agent: [kind: :value, description: "Agent atom, e.g. :codex."],
-      domain: [kind: :value, description: "Capability domain atom, e.g. :ecto."],
-      corpus_version: [kind: :value, description: "Corpus version fingerprint or caller-supplied version string."],
-      store: [
-        kind: :value,
-        default: @configured_store,
-        description:
-          "Configured store from ResultStore.configured/0 when omitted, or override; `false`/`nil` returns :no_data."
-      ]
-    ],
-    returns: %{
-      type: :tuple,
-      description: "{:ok, %Harness.CapabilityScore{}} when measured, :no_data when absent, or {:error, reason}."
-    }
-  )
-
-  @spec get_capability_score(atom(), atom(), String.t(), store()) ::
-          {:ok, CapabilityScore.t()} | :no_data | {:error, term()}
-  def get_capability_score(agent, domain, corpus_version, store \\ configured())
-
-  def get_capability_score(agent, domain, corpus_version, @configured_store)
-      when is_atom(agent) and is_atom(domain) and is_binary(corpus_version),
-      do: get_capability_score(agent, domain, corpus_version, configured())
-
-  def get_capability_score(agent, domain, corpus_version, false)
-      when is_atom(agent) and is_atom(domain) and is_binary(corpus_version), do: :no_data
-
-  def get_capability_score(agent, domain, corpus_version, nil)
-      when is_atom(agent) and is_atom(domain) and is_binary(corpus_version), do: :no_data
-
-  def get_capability_score(agent, domain, corpus_version, store)
-      when is_atom(agent) and is_atom(domain) and is_binary(corpus_version) do
-    dispatch(store, :get_capability_score, [agent, domain, corpus_version])
-  end
-
-  api(:list_capability_scores, "List persisted capability score cells for routing and re-benchmark planning.",
-    params: [
-      store: [
-        kind: :value,
-        default: @configured_store,
-        description:
-          "Configured store from ResultStore.configured/0 when omitted, or override; `false`/`nil` returns {:ok, []}."
-      ]
-    ],
-    returns: %{
-      type: :tuple,
-      description: "{:ok, [%Harness.CapabilityScore{}]} or {:error, reason}."
-    }
-  )
-
-  @spec list_capability_scores(store()) :: {:ok, [CapabilityScore.t()]} | {:error, term()}
-  def list_capability_scores(store \\ configured())
-
-  def list_capability_scores(@configured_store), do: list_capability_scores(configured())
-  def list_capability_scores(false), do: {:ok, []}
-  def list_capability_scores(nil), do: {:ok, []}
-
-  def list_capability_scores(store) do
-    dispatch(store, :list_capability_scores, [])
   end
 
   api(:configured, "Return the configured result store, defaulting from :repo_enabled.",

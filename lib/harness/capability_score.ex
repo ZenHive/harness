@@ -9,9 +9,7 @@ defmodule Harness.CapabilityScore do
   with reasoning. `dispatch-recommend` matches an incoming task's facets against
   that artifact — never a recomputed composite scalar.
 
-  The legacy `{agent, domain, corpus_version}` persisted cell lives in
-  `Harness.CapabilityScore.Legacy` for term-import / ResultStore round-trip only;
-  active routing never reads or writes it.
+  Active routing never reads or writes legacy composite score cells.
   """
 
   alias Harness.AgentAdapter.Driver
@@ -31,50 +29,6 @@ defmodule Harness.CapabilityScore do
   @default_total_timeout 300_000
   @known_agents [:claude, :codex, :cursor, :grok, :antigravity, :pi]
   @known_agent_names Map.new(@known_agents, &{Atom.to_string(&1), &1})
-
-  defmodule Legacy do
-    @moduledoc false
-    @typedoc false
-    @type t :: %__MODULE__{
-            agent: atom() | module(),
-            domain: atom(),
-            corpus_version: String.t(),
-            scored_at: DateTime.t(),
-            run_count: pos_integer(),
-            success_rate: float(),
-            cost_to_green: float() | nil,
-            mean_reviewer_diff_size: float(),
-            mean_ratings: %{optional(String.t()) => float()},
-            composite_score: float(),
-            raw_metrics: [term()]
-          }
-
-    @enforce_keys [
-      :agent,
-      :domain,
-      :corpus_version,
-      :scored_at,
-      :run_count,
-      :success_rate,
-      :cost_to_green,
-      :mean_reviewer_diff_size,
-      :composite_score,
-      :raw_metrics
-    ]
-    defstruct [
-      :agent,
-      :domain,
-      :corpus_version,
-      :scored_at,
-      :run_count,
-      :success_rate,
-      :cost_to_green,
-      :mean_reviewer_diff_size,
-      :composite_score,
-      :raw_metrics,
-      mean_ratings: %{}
-    ]
-  end
 
   defmodule Assessment do
     @moduledoc false

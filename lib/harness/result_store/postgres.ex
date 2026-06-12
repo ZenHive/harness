@@ -14,10 +14,8 @@ defmodule Harness.ResultStore.Postgres do
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentKPI
   alias Harness.Batch.Result, as: BatchResult
-  alias Harness.CapabilityScore.Legacy, as: CapabilityScore
   alias Harness.Repo
   alias Harness.ResultStore.Schema.BatchResult, as: BatchResultSchema
-  alias Harness.ResultStore.Schema.CapabilityScore, as: CapabilityScoreSchema
   alias Harness.ResultStore.Schema.RunRecord, as: RunRecordSchema
   alias Harness.Run.LogRecord
   alias Harness.TokenUsage
@@ -585,120 +583,6 @@ defmodule Harness.ResultStore.Postgres do
         inserted_at: r.inserted_at,
         updated_at: r.updated_at
       }
-  end
-
-  @impl Harness.ResultStore
-  @spec save_capability_score(CapabilityScore.t(), keyword()) :: :ok | {:error, term()}
-  def save_capability_score(%CapabilityScore{} = score, opts) when is_list(opts) do
-    repo = Keyword.get(opts, :repo, Repo)
-
-    attrs = %{
-      agent: atom_or_string(score.agent),
-      domain: atom_or_string(score.domain),
-      corpus_version: score.corpus_version,
-      scored_at: score.scored_at,
-      composite_score: score.composite_score,
-      payload: :erlang.term_to_binary(score)
-    }
-
-    schema = %CapabilityScoreSchema{
-      agent: attrs.agent,
-      domain: attrs.domain,
-      corpus_version: attrs.corpus_version
-    }
-
-    changeset = CapabilityScoreSchema.changeset(schema, attrs)
-
-    try do
-      case repo.insert(
-             changeset,
-             on_conflict: :replace_all,
-             conflict_target: [:agent, :domain, :corpus_version]
-           ) do
-        {:ok, _} -> :ok
-        {:error, cs} -> {:error, {:changeset, cs.errors}}
-      end
-    rescue
-      e -> {:error, e}
-    end
-  end
-
-  @impl Harness.ResultStore
-  @spec get_capability_score(atom(), atom(), String.t(), keyword()) ::
-          {:ok, CapabilityScore.t()} | :no_data | {:error, term()}
-  def get_capability_score(agent, domain, corpus_version, opts)
-      when is_atom(agent) and is_atom(domain) and is_binary(corpus_version) and is_list(opts) do
-    repo = Keyword.get(opts, :repo, Repo)
-
-    try do
-      repo
-      |> fetch_capability_score_row(agent, domain, corpus_version)
-      |> decode_capability_score_row(agent, domain, corpus_version)
-    rescue
-      e -> {:error, e}
-    end
-  end
-
-  @impl Harness.ResultStore
-  @spec list_capability_scores(keyword()) :: {:ok, [CapabilityScore.t()]} | {:error, term()}
-  def list_capability_scores(opts) when is_list(opts) do
-    repo = Keyword.get(opts, :repo, Repo)
-
-    try do
-      rows =
-        CapabilityScoreSchema
-        |> order_by([s], asc: s.domain, asc: s.agent, asc: s.corpus_version)
-        |> repo.all()
-
-      rows
-      |> Enum.reduce_while({:ok, []}, fn row, {:ok, acc} ->
-        case decode_capability_score_row(row, :unknown, :unknown, "unknown") do
-          {:ok, %CapabilityScore{} = score} -> {:cont, {:ok, [score | acc]}}
-          :no_data -> {:cont, {:ok, acc}}
-          {:error, reason} -> {:halt, {:error, reason}}
-        end
-      end)
-      |> case do
-        {:ok, scores} -> {:ok, Enum.reverse(scores)}
-        {:error, _reason} = error -> error
-      end
-    rescue
-      e -> {:error, e}
-    end
-  end
-
-  @spec fetch_capability_score_row(module(), atom(), atom(), String.t()) :: CapabilityScoreSchema.t() | nil
-  defp fetch_capability_score_row(repo, agent, domain, corpus_version) do
-    repo.get_by(CapabilityScoreSchema,
-      agent: atom_or_string(agent),
-      domain: atom_or_string(domain),
-      corpus_version: corpus_version
-    )
-  end
-
-  @spec decode_capability_score_row(CapabilityScoreSchema.t() | nil, atom(), atom(), String.t()) ::
-          {:ok, CapabilityScore.t()} | :no_data | {:error, term()}
-  defp decode_capability_score_row(nil, _agent, _domain, _corpus_version), do: :no_data
-
-  defp decode_capability_score_row(%CapabilityScoreSchema{payload: payload}, agent, domain, corpus_version)
-       when is_binary(payload) do
-    case decode_binary_payload(payload) do
-      {:ok, %CapabilityScore{} = score} ->
-        {:ok, score}
-
-      {:ok, %{__struct__: mod} = score} when mod in [Harness.CapabilityScore, CapabilityScore] ->
-        {:ok, %{score | __struct__: CapabilityScore}}
-
-      {:ok, _other} ->
-        {:error, {:invalid_capability_score, agent, domain, corpus_version}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp decode_capability_score_row(_row, agent, domain, corpus_version) do
-    {:error, {:invalid_capability_score_row, agent, domain, corpus_version}}
   end
 
   # Payloads are harness-owned database blobs written by this store.

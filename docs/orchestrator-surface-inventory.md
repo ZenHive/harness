@@ -32,10 +32,9 @@ Reachable over MCP/chat (JSON scalars only). Grouped by orchestrator intent.
 | `dispatch-transcript` / `dispatch-transcript_events` | `Harness.Run` (flat) | Buffered raw / parsed transcript of a live run, with `seq` delta polling |
 | `dispatch-verdict_detail` | `Harness.ResultStore` | Settled-run reviewer verdict / report / ratings |
 | `result_store-list_run_records` | `Harness.ResultStore` | Settled run records (verdict, diff sizes, token usage, transcript) |
-| `routing-brief` | `Harness.Routing` | **Single task-writer routing fact source**: roster + availability/blocks + capability cells + KPI rollups per `{agent, model}`, with sample counts and no ranking |
+| `routing-brief` | `Harness.Routing` | **Single task-writer routing fact source**: roster + availability/blocks + KPI rollups per `{agent, model}`, with sample counts and no ranking |
 | `result_store-aggregate_by_agent` | `Harness.ResultStore` → `Harness.AgentKPI` | **Per-agent KPI rollup** (success, first-attempt-pass, duration p90, cost-to-green) |
 | `result_store-aggregate_ceremony_cost` | `Harness.ResultStore` → `Harness.AgentKPI` | **Per-approved-run ceremony token facts** (implementer + reviewer + audit=0; median/p90 distribution over raw per-run totals — no batching verdict) |
-| `result_store-get_capability_score` / `result_store-list_capability_scores` | `Harness.ResultStore` | **Legacy CapabilityScore cells** (import-only round-trip for historical term data; active routing uses the scout assessment) |
 | `dispatch-recommend` | `Harness.Dispatch.recommend/2` + `Harness.CapabilityScore.recommend/2` | Per-facet scout assessment match: returns scout's winner + reasoning for the task's `review_facets` (`:exploit`), or `:explore`/fallback when unmeasured or no assessment yet. `dispatch-assess_facets` triggers a fresh scout pass. |
 | `project_registry-list` / `project_registry-lookup` | `Harness.ProjectRegistry` | Discover registered projects + config |
 | `agents-list` / `agents-reviewers` | `Harness.Agents` | Read installed/available/enabled agent facts, reviewer eligibility, configured model pins, and the ordered reviewer slate |
@@ -69,7 +68,7 @@ driver surface (`Harness.Manifest.build/0` / `modules/0`).
 ## 2. Orchestrator-desired set vs. the gap
 
 The desired set (from the task): roadmap browse · run status/transcript · AgentKPI +
-CapabilityScore rollups · project/registry listing (read); dispatch · cancel ·
+scout routing facts · project/registry listing (read); dispatch · cancel ·
 hold/steer/resume · project registration (write).
 
 | Desired | Status before Task 184 | Gap |
@@ -77,8 +76,8 @@ hold/steer/resume · project registration (write).
 | Roadmap browse | ✅ `roadmap-list/ready/next_bundle` | none |
 | Run status / transcript | ✅ `dispatch-status/transcript/transcript_events` | none |
 | AgentKPI rollups | ✅ `result_store-aggregate_by_agent` (per-agent), `result_store-aggregate_ceremony_cost` (per-approved-run ceremony/implementer+reviewer+audit token overhead) | none |
-| Capability (scout) routing | ✅ `dispatch-recommend` + `dispatch-assess_facets` (scout per-facet assessment); legacy cells via `result_store-*_capability_score` for import | none |
-| Task-writer assignee/model routing facts | ✅ `routing-brief` joins roster, availability/blocks, capability cells, and KPI rollups per `{agent, model}` | none |
+| Capability (scout) routing | ✅ `dispatch-recommend` + `dispatch-assess_facets` (scout per-facet assessment) | none |
+| Task-writer assignee/model routing facts | ✅ `routing-brief` joins roster, availability/blocks, and KPI rollups per `{agent, model}` | none |
 | Project / registry listing | ✅ `project_registry-list/lookup` | none |
 | Operator agent/reviewer state | ✅ `agents-list` / `agents-reviewers` | none |
 | Cron autonomy state | ✅ `autonomy-status` | none |
@@ -96,11 +95,11 @@ do not compute a best reviewer, score, route, or verdict.
 
 **Task 266 update:** `routing-brief` is now THE single MCP/chat fact source for a
 task-writer deciding `assignee` + `model`. It exists so orchestrators do not read
-`lib/harness/*.ex` or call four separate tools just to route a task. The brief is the raw
+`lib/harness/*.ex` or call three separate tools just to route a task. The brief is the raw
 facts layer beneath `dispatch-recommend`: it joins roster, availability/block annotations,
-legacy capability cells, and KPI rollups per `{agent, model}`, with `n` on measured cells
-and `n: 0` / `explore_candidate: true` on cold-start domain cells. It returns no best pick,
-ranking, weighted score, or route verdict.
+and KPI rollups per `{agent, model}`, with `n` on measured KPI cells and `n: 0` /
+`explore_candidate: true` on cold-start KPI cells. It returns no best pick, ranking,
+weighted score, or route verdict.
 
 ---
 

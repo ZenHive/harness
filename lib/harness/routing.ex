@@ -9,9 +9,7 @@ defmodule Harness.Routing do
 
   use Descripex, namespace: "/routing"
 
-  alias Harness.AgentRegistry
   alias Harness.Agents
-  alias Harness.CapabilityScore.Legacy, as: CapabilityScore
   alias Harness.Config
   alias Harness.ModelAvailability
   alias Harness.ResultStore
@@ -25,7 +23,6 @@ defmodule Harness.Routing do
           label: String.t() | nil,
           roster: map(),
           availability: map(),
-          capability: map(),
           kpi: map()
         }
   @type routing_brief :: %{
@@ -35,20 +32,20 @@ defmodule Harness.Routing do
 
   api(
     :brief,
-    "Return raw routing facts per {agent, model}: roster, model availability, capability cells, and KPI rollups. No best-pick, ranking, route, or fused score is computed.",
+    "Return raw routing facts per {agent, model}: roster, model availability, and KPI rollups. No best-pick, ranking, route, or fused score is computed.",
     params: [
       domains: [
         kind: :value,
         default: [],
         description:
-          "Optional domain filter as strings, e.g. [\"otp\"]. Empty list returns all measured capability domains.",
+          "Optional domain filter as strings, e.g. [\"otp\"]. Preserved on KPI cells so task-writers can see the requested routing scope.",
         schema: [String.t()]
       ]
     ],
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %{domains: [String.t()], pairs: [%{agent, model, roster, availability, capability, kpi}]}} or {:error, reason}. Every metric cell carries n."
+        "{:ok, %{domains: [String.t()], pairs: [%{agent, model, roster, availability, kpi}]}} or {:error, reason}. Every metric cell carries n."
     }
   )
 
@@ -57,22 +54,21 @@ defmodule Harness.Routing do
     domains = normalize_domains(domains)
 
     with {:ok, kpi} <- ResultStore.aggregate_by_agent(),
-         {:ok, scores} <- ResultStore.list_capability_scores(),
          {:ok, %{blocks: blocks}} <- ModelAvailability.list_blocks() do
       roster = Agents.list()
       blocks = block_index(blocks)
 
       pairs =
         roster
-        |> Enum.flat_map(&agent_pairs(&1, domains, scores, kpi, blocks))
+        |> Enum.flat_map(&agent_pairs(&1, domains, kpi, blocks))
         |> Enum.sort_by(&{&1.agent, &1.model})
 
       {:ok, %{domains: domains, pairs: pairs}}
     end
   end
 
-  @spec agent_pairs(map(), [String.t()], [CapabilityScore.t()], map(), map()) :: [routing_pair()]
-  defp agent_pairs(roster, domains, scores, kpi, blocks) do
+  @spec agent_pairs(map(), [String.t()], map(), map()) :: [routing_pair()]
+  defp agent_pairs(roster, domains, kpi, blocks) do
     agent = roster.agent
 
     case agent_atom(agent) do
@@ -91,7 +87,6 @@ defmodule Harness.Routing do
             label: entry.label,
             roster: roster_facts,
             availability: Map.delete(entry, :label),
-            capability: %{domains: capability_cells(agent, domains, scores)},
             kpi: kpi_cell(Map.get(kpi, agent_atom), domains)
           }
         end)
@@ -155,54 +150,6 @@ defmodule Harness.Routing do
     end)
   end
 
-  @spec capability_cells(String.t(), [String.t()], [CapabilityScore.t()]) :: [map()]
-  defp capability_cells(agent, domains, scores) do
-    measured =
-      scores
-      |> Enum.filter(&(agent_name(&1.agent) == agent and domain_selected?(&1.domain, domains)))
-      |> Enum.map(&capability_cell/1)
-
-    cold_start_cells(measured, domains)
-  end
-
-  @spec capability_cell(CapabilityScore.t()) :: map()
-  defp capability_cell(%CapabilityScore{} = score) do
-    n = score.run_count
-
-    %{
-      domain: domain_name(score.domain),
-      corpus_version: score.corpus_version,
-      scored_at: DateTime.to_iso8601(score.scored_at),
-      n: n,
-      measured: true,
-      explore_candidate: false,
-      success_rate: metric(score.success_rate, n),
-      cost_to_green: metric(score.cost_to_green, n),
-      mean_reviewer_diff_size: metric(score.mean_reviewer_diff_size, n),
-      mean_ratings: rating_metrics(score.mean_ratings, n),
-      raw_metrics: score.raw_metrics
-    }
-  end
-
-  @spec cold_start_cells([map()], [String.t()]) :: [map()]
-  defp cold_start_cells(measured, []), do: measured
-
-  defp cold_start_cells(measured, domains) do
-    measured_domains = MapSet.new(measured, & &1.domain)
-    missing = domains |> Enum.reject(&MapSet.member?(measured_domains, &1)) |> Enum.map(&cold_start_cell/1)
-    measured ++ missing
-  end
-
-  @spec cold_start_cell(String.t()) :: map()
-  defp cold_start_cell(domain) do
-    %{
-      domain: domain,
-      n: @zero_samples,
-      measured: false,
-      explore_candidate: true
-    }
-  end
-
   @spec kpi_cell(map() | nil, [String.t()]) :: map()
   defp kpi_cell(nil, domains) do
     %{
@@ -256,10 +203,6 @@ defmodule Harness.Routing do
     Map.new(blocks, fn block -> {{block.agent, block.model}, block} end)
   end
 
-  @spec domain_selected?(atom(), [String.t()]) :: boolean()
-  defp domain_selected?(_domain, []), do: true
-  defp domain_selected?(domain, domains), do: domain_name(domain) in domains
-
   @spec normalize_domains([String.t() | atom()] | nil) :: [String.t()]
   defp normalize_domains(nil), do: []
   defp normalize_domains(domains) when is_list(domains), do: domains |> Enum.map(&domain_name/1) |> Enum.uniq()
@@ -268,19 +211,8 @@ defmodule Harness.Routing do
   defp domain_name(domain) when is_binary(domain), do: domain
   defp domain_name(domain) when is_atom(domain), do: Atom.to_string(domain)
 
-  @spec agent_name(atom()) :: String.t()
-  defp agent_name(agent) do
-    case AgentRegistry.agent_for_module(agent) do
-      {:ok, resolved} -> Atom.to_string(resolved)
-      {:error, _reason} -> Atom.to_string(agent)
-    end
-  end
-
   @spec metric(term(), non_neg_integer()) :: metric()
   defp metric(value, n), do: %{value: value, n: n}
-
-  @spec rating_metrics(%{optional(String.t()) => number()}, non_neg_integer()) :: map()
-  defp rating_metrics(ratings, n), do: Map.new(ratings, fn {key, value} -> {key, metric(value, n)} end)
 
   @spec label(map() | nil, String.t()) :: String.t()
   defp label(nil, model), do: model

@@ -11,7 +11,6 @@ defmodule Harness.ResultStore.Memory do
   alias Harness.AgentKPI
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.CapabilityScore
-  alias Harness.CapabilityScore.Legacy, as: CapabilityScoreLegacy
   alias Harness.Run.LogRecord
 
   @table __MODULE__
@@ -110,37 +109,6 @@ defmodule Harness.ResultStore.Memory do
     end
   end
 
-  @impl Harness.ResultStore
-  @spec save_capability_score(CapabilityScoreLegacy.t(), keyword()) :: :ok
-  def save_capability_score(%CapabilityScoreLegacy{} = score, opts) when is_list(opts) do
-    key = {score.agent, score.domain, score.corpus_version}
-    update(opts, fn state -> %{state | capability_scores: Map.put(state.capability_scores, key, score)} end)
-  end
-
-  @impl Harness.ResultStore
-  @spec get_capability_score(atom(), atom(), String.t(), keyword()) ::
-          {:ok, CapabilityScoreLegacy.t()} | :no_data
-  def get_capability_score(agent, domain, corpus_version, opts)
-      when is_atom(agent) and is_atom(domain) and is_binary(corpus_version) and is_list(opts) do
-    case Map.fetch(read(opts).capability_scores, {agent, domain, corpus_version}) do
-      {:ok, %CapabilityScoreLegacy{} = score} -> {:ok, score}
-      :error -> :no_data
-    end
-  end
-
-  @impl Harness.ResultStore
-  @spec list_capability_scores(keyword()) :: {:ok, [CapabilityScoreLegacy.t()]}
-  def list_capability_scores(opts) when is_list(opts) do
-    scores =
-      opts
-      |> read()
-      |> Map.fetch!(:capability_scores)
-      |> Map.values()
-      |> Enum.sort_by(&{&1.domain, &1.agent, &1.corpus_version})
-
-    {:ok, scores}
-  end
-
   @doc false
   @spec reset(keyword()) :: :ok
   def reset(opts) when is_list(opts) do
@@ -177,7 +145,7 @@ defmodule Harness.ResultStore.Memory do
 
   @spec empty() :: map()
   defp empty do
-    %{runs: %{}, batches: %{}, capability_scores: %{}, seq: 0}
+    %{runs: %{}, batches: %{}, seq: 0}
   end
 
   @spec mark_record_landed({LogRecord.t(), non_neg_integer()}, String.t()) ::

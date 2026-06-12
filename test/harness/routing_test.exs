@@ -5,7 +5,6 @@ defmodule Harness.RoutingTest do
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentAdapter.Cursor
   alias Harness.AgentRegistry
-  alias Harness.CapabilityScore.Legacy, as: CapabilityScore
   alias Harness.Chat.Tools
   alias Harness.ModelAvailability
   alias Harness.ResultStore
@@ -41,10 +40,9 @@ defmodule Harness.RoutingTest do
     {:ok, store: store}
   end
 
-  test "brief joins roster, availability, capability, and KPI facts per agent-model pair", %{store: store} do
+  test "brief joins roster, availability, and KPI facts per agent-model pair", %{store: store} do
     assert :ok = ResultStore.record_run(ResultStoreContract.log_record(run_id: "r1", agent: :codex), store)
     assert :ok = ResultStore.record_run(ResultStoreContract.log_record(run_id: "r2", agent: :codex), store)
-    assert :ok = ResultStore.save_capability_score(capability_score(:codex, :otp), store)
 
     assert {:ok, %{pairs: pairs}} = Routing.brief(["otp"])
     codex = pair!(pairs, "codex", "gpt-5.5")
@@ -58,7 +56,6 @@ defmodule Harness.RoutingTest do
                capabilities: %{worktree_isolation: true}
              },
              availability: %{available: true, blocked: false, reason: nil},
-             capability: %{domains: [capability]},
              kpi: %{
                n: 2,
                success_rate: %{n: 2, value: 1.0},
@@ -69,9 +66,7 @@ defmodule Harness.RoutingTest do
            } = codex
 
     assert cost_to_approved == 0.0
-
-    assert %{domain: "otp", n: 4, explore_candidate: false, success_rate: %{n: 4, value: 0.75}} =
-             capability
+    refute Map.has_key?(codex, :capability)
   end
 
   test "blocked model pairs are annotated instead of silently dropped" do
@@ -90,23 +85,12 @@ defmodule Harness.RoutingTest do
            } = cursor
   end
 
-  test "domain cold-start surfaces n zero and explore candidate" do
+  test "domain cold-start surfaces n zero and explore candidate through KPI" do
     assert {:ok, %{pairs: pairs}} = Routing.brief(["otp"])
     codex = pair!(pairs, "codex", "gpt-5.5")
 
-    assert %{
-             capability: %{
-               domains: [
-                 %{
-                   domain: "otp",
-                   n: 0,
-                   measured: false,
-                   explore_candidate: true
-                 }
-               ]
-             },
-             kpi: %{n: 0, explore_candidate: true}
-           } = codex
+    assert %{kpi: %{n: 0, explore_candidate: true}} = codex
+    refute Map.has_key?(codex, :capability)
   end
 
   test "omitted domains argument reads the configured result store" do
@@ -130,6 +114,20 @@ defmodule Harness.RoutingTest do
     assert %{module: Routing, function: :brief} = Tools.build()["routing-brief"]
   end
 
+  test "MCP and chat surfaces do not expose legacy capability cell tools" do
+    mcp_tool_names = Enum.map(Harness.Manifest.mcp_tools(), & &1.name)
+    chat_tools = Tools.build()
+
+    for removed <- ~w(
+           result_store-save_capability_score
+           result_store-get_capability_score
+           result_store-list_capability_scores
+         ) do
+      refute removed in mcp_tool_names
+      refute Map.has_key?(chat_tools, removed)
+    end
+  end
+
   test "brief contains no fused routing verdict or ranking keys" do
     assert {:ok, brief} = Routing.brief(["otp"])
 
@@ -148,23 +146,6 @@ defmodule Harness.RoutingTest do
       codex: [%{id: "gpt-5.5", label: "GPT-5.5", annotations: []}],
       cursor: [%{id: "composer-2.5", label: "Composer 2.5", annotations: []}]
     })
-  end
-
-  @spec capability_score(atom(), atom()) :: CapabilityScore.t()
-  defp capability_score(agent, domain) do
-    %CapabilityScore{
-      agent: agent,
-      domain: domain,
-      corpus_version: "routing-v1",
-      scored_at: ~U[2026-06-12 00:00:00Z],
-      run_count: 4,
-      success_rate: 0.75,
-      cost_to_green: 100.0,
-      mean_reviewer_diff_size: 2.5,
-      mean_ratings: %{"code_quality" => 8.0},
-      composite_score: 9.9,
-      raw_metrics: [%{run_id: "r-cap"}]
-    }
   end
 
   @spec put_installed(%{module() => boolean()}) :: :ok

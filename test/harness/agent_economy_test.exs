@@ -118,6 +118,8 @@ defmodule Harness.AgentEconomyTest do
              result_store-record_run
              result_store-save_batch
              result_store-save_capability_score
+             result_store-get_capability_score
+             result_store-list_capability_scores
              driver-run
            ) do
         refute excluded in names
