@@ -7974,7 +7974,7 @@ scored_at = "2026-06-12"
 id = "267"
 phase = 19
 bundle = "test-suite-perf"
-status = "pending"
+status = "in_progress"
 title = "Replace unconditional dwell Process.sleep with deterministic synchronization in the test suite"
 scores = { d = 2, b = 4, u = 4 }
 markers = ["bug"]
@@ -8000,6 +8000,7 @@ Prefer the synchronization primitives already used elsewhere in these files: `as
 This is the Phase-1 quick win from the test-suite-perf plan; Tasks 268-271 do the structural async conversions and depend on this landing first where files overlap.
 """
 created_at = "2026-06-12"
+started_at = "2026-06-12"
 scored_at = "2026-06-12"
 
 [[task]]
