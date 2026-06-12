@@ -71,7 +71,13 @@ defmodule Harness.AgentAdapter.Grok do
   # browser credentials." `GROK_CODE_XAI_API_KEY` appears only as a custom-model
   # endpoint fallback, not as the CLI login override.
   # https://docs.x.ai/build/overview
-  def capabilities, do: %Capabilities{session_resume: true, auth_env_scrub: ["XAI_API_KEY"]}
+  def capabilities do
+    %Capabilities{
+      session_resume: true,
+      auth_env_scrub: ["XAI_API_KEY"],
+      model_families: [:xai]
+    }
+  end
 
   @impl AgentAdapter
   @spec rule_channel() :: AgentAdapter.rule_channel()

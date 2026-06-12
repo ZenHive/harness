@@ -68,7 +68,13 @@ defmodule Harness.AgentAdapter.Codex do
   """
   @impl AgentAdapter
   @spec capabilities() :: Capabilities.t()
-  def capabilities, do: %Capabilities{session_resume: true, auth_env_scrub: ["OPENAI_API_KEY"]}
+  def capabilities do
+    %Capabilities{
+      session_resume: true,
+      auth_env_scrub: ["OPENAI_API_KEY"],
+      model_families: [:openai]
+    }
+  end
 
   @impl AgentAdapter
   @spec rule_channel() :: AgentAdapter.rule_channel()

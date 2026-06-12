@@ -60,7 +60,8 @@ defmodule Harness.AgentAdapterTest do
                streaming_output: true,
                worktree_isolation: true,
                cost_tier: :metered,
-               auth_env_scrub: []
+               auth_env_scrub: [],
+               model_families: :any
              } = %Capabilities{}
     end
   end
@@ -186,6 +187,26 @@ defmodule Harness.AgentAdapterTest do
     end
   end
 
+  describe "model_supported?/2" do
+    test "accepts unpinned invocations for every adapter" do
+      assert AgentAdapter.model_supported?(Codex, nil)
+      assert AgentAdapter.model_supported?(Antigravity, nil)
+    end
+
+    test "accepts compatible model families" do
+      assert AgentAdapter.model_supported?(Cursor, "claude-opus-4-8-thinking-high")
+      assert AgentAdapter.model_supported?(Codex, "gpt-5-codex")
+    end
+
+    test "rejects an incompatible cursor-only opus pin on the codex adapter" do
+      refute AgentAdapter.model_supported?(Codex, "claude-opus-4-8-thinking-high")
+    end
+
+    test "keeps Antigravity model overrides unsupported" do
+      refute AgentAdapter.model_supported?(Antigravity, "custom-model")
+    end
+  end
+
   describe "build_command/1" do
     test "is pure and returns the spawn recipe without spawning" do
       assert {:ok, {"/bin/echo", ["harness-test"], []}} = FakeAdapter.build_command(invocation())
@@ -193,6 +214,13 @@ defmodule Harness.AgentAdapterTest do
   end
 
   describe "invoke/2" do
+    test "rejects incompatible model pins before command build or spawn" do
+      model = "claude-opus-4-8-thinking-high"
+
+      assert {:error, {:invalid_model_for_adapter, Codex, ^model}} =
+               AgentAdapter.invoke(Codex, %{invocation() | model: model})
+    end
+
     test "spawns the agent and captures raw output through to termination" do
       assert {:ok, %Run{} = run} = AgentAdapter.invoke(FakeAdapter, invocation())
       assert run.adapter == FakeAdapter

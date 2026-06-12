@@ -61,7 +61,8 @@ defmodule Harness.AgentAdapter.Antigravity do
       session_resume: true,
       permission_modes: [:autonomous],
       streaming_output: true,
-      worktree_isolation: true
+      worktree_isolation: true,
+      model_families: []
     }
   end
 

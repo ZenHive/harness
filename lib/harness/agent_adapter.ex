@@ -80,6 +80,14 @@ defmodule Harness.AgentAdapter do
   @codex_agents_rel "AGENTS.md"
   @cursor_rules_rel ".cursor/rules/harness-operational.mdc"
   @system_prompt_file_flags ["--append-system-prompt-file", "--system-prompt-file"]
+  @model_family_prefixes %{
+    anthropic: ["anthropic/claude-", "claude-", "opus", "sonnet", "haiku"],
+    cursor: ["composer-"],
+    google: ["gemini-"],
+    kimi: ["kimi-"],
+    openai: ["chatgpt-", "codex-", "gpt-", "o1", "o3", "o4", "o5"],
+    xai: ["grok-", "xai/"]
+  }
 
   @doc false
   defmacro __using__(_opts \\ []) do
@@ -270,7 +278,8 @@ defmodule Harness.AgentAdapter do
   """
   @spec invoke(module(), Invocation.t()) :: {:ok, Run.t()} | {:error, term()}
   def invoke(adapter, %Invocation{} = invocation) do
-    with {:ok, invocation} <- attach_rules(adapter, invocation),
+    with :ok <- validate_model(adapter, invocation.model),
+         {:ok, invocation} <- attach_rules(adapter, invocation),
          {:ok, {executable, argv, env} = command} <- adapter.build_command(invocation) do
       input = composed_input(adapter, invocation, command)
       spawn_run(adapter, invocation, executable, argv, scrub_auth_env(adapter, env), input)
@@ -305,6 +314,21 @@ defmodule Harness.AgentAdapter do
   """
   @spec supports?(module(), capability()) :: boolean()
   def supports?(adapter, capability), do: capability_supported?(adapter.capabilities(), capability)
+
+  @doc """
+  Returns whether `adapter` can run `model`.
+
+  `nil` is always accepted: an unpinned invocation lets the adapter use its own
+  CLI default. Non-nil pins are checked against the adapter's declared
+  `Capabilities.model_families` using family prefixes maintained in this module,
+  not per-release literal model IDs.
+  """
+  @spec model_supported?(module(), String.t() | nil) :: boolean()
+  def model_supported?(_adapter, nil), do: true
+
+  def model_supported?(adapter, model) when is_binary(model) do
+    model_supported_by_families?(adapter.capabilities().model_families, String.downcase(model))
+  end
 
   @doc """
   Returns `["--model", model]` when `model` is a binary, `[]` otherwise.
@@ -474,6 +498,33 @@ defmodule Harness.AgentAdapter do
 
   defp capability_supported?(%Capabilities{cost_tier: tier}, {:cost_tier, tier}), do: true
   defp capability_supported?(%Capabilities{}, {:cost_tier, _other}), do: false
+
+  @spec validate_model(module(), String.t() | nil) ::
+          :ok | {:error, {:invalid_model_for_adapter, module(), String.t()}}
+  defp validate_model(adapter, model) do
+    if model_supported?(adapter, model) do
+      :ok
+    else
+      {:error, {:invalid_model_for_adapter, adapter, model}}
+    end
+  end
+
+  @spec model_supported_by_families?(Capabilities.model_families(), String.t()) :: boolean()
+  defp model_supported_by_families?(:any, _model), do: true
+
+  defp model_supported_by_families?(families, model) when is_list(families) do
+    Enum.any?(families, &model_supported_by_family?(&1, model))
+  end
+
+  @spec model_supported_by_family?(Capabilities.model_family(), String.t()) :: boolean()
+  defp model_supported_by_family?(family, model) do
+    family
+    |> model_family_prefixes()
+    |> Enum.any?(&String.starts_with?(model, &1))
+  end
+
+  @spec model_family_prefixes(Capabilities.model_family()) :: [String.t()]
+  defp model_family_prefixes(family), do: Map.fetch!(@model_family_prefixes, family)
 
   @spec prepare_rule_delivery(rule_channel(), Invocation.t()) ::
           {:ok, RuleDelivery.t()} | {:error, term()}

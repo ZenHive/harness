@@ -26,6 +26,25 @@ defmodule Harness.AgentAdapter.Capabilities do
   @type cost_tier :: :free | :metered
 
   @typedoc """
+  Model family an adapter can execute when `Invocation.model` pins a model.
+
+  The compatibility check is prefix-based in `Harness.AgentAdapter`, not a
+  literal model allowlist, because agent CLIs add and rename concrete model IDs.
+  Update the family prefix map there when a CLI's `--list-models` output adds a
+  new provider family.
+  """
+  @type model_family :: :anthropic | :openai | :google | :xai | :cursor | :kimi
+
+  @typedoc """
+  Model family declaration for adapter-level pin validation.
+
+    * `:any` — the adapter intentionally accepts arbitrary model strings.
+    * `[]` — the adapter exposes no command-line model override.
+    * `[family]` — model strings must match one of the family's known prefixes.
+  """
+  @type model_families :: :any | [model_family()]
+
+  @typedoc """
   Capability declaration.
 
     * `session_resume` — the agent can resume a prior session from a token.
@@ -49,6 +68,10 @@ defmodule Harness.AgentAdapter.Capabilities do
       instead of the subscription — and an empty-balance key fails the run
       ("Credit balance is too low"). `Harness.AgentAdapter.invoke/2` scrubs each
       listed key (`{key, false}`). Defaults to `[]` (no scrub).
+    * `model_families` — provider families this adapter can run when a roadmap
+      task pins `model`. Harness validates this against the resolved adapter
+      before spawning; compatibility is family/prefix-based rather than a brittle
+      literal allowlist.
   """
   @type t :: %__MODULE__{
           session_resume: boolean(),
@@ -56,7 +79,8 @@ defmodule Harness.AgentAdapter.Capabilities do
           streaming_output: boolean(),
           worktree_isolation: boolean(),
           cost_tier: cost_tier(),
-          auth_env_scrub: [String.t()]
+          auth_env_scrub: [String.t()],
+          model_families: model_families()
         }
 
   defstruct session_resume: false,
@@ -64,5 +88,6 @@ defmodule Harness.AgentAdapter.Capabilities do
             streaming_output: true,
             worktree_isolation: true,
             cost_tier: :metered,
-            auth_env_scrub: []
+            auth_env_scrub: [],
+            model_families: :any
 end

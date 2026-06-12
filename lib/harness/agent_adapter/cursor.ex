@@ -58,7 +58,13 @@ defmodule Harness.AgentAdapter.Cursor do
   # Source: Cursor CLI auth docs and `cursor-agent --help` declare two auth
   # methods: browser login and API-key auth via `CURSOR_API_KEY` / `--api-key`.
   # https://docs.cursor.com/en/cli/reference/authentication
-  def capabilities, do: %Capabilities{session_resume: true, auth_env_scrub: ["CURSOR_API_KEY"]}
+  def capabilities do
+    %Capabilities{
+      session_resume: true,
+      auth_env_scrub: ["CURSOR_API_KEY"],
+      model_families: [:anthropic, :openai, :google, :xai, :kimi, :cursor]
+    }
+  end
 
   @impl AgentAdapter
   @spec rule_channel() :: AgentAdapter.rule_channel()
