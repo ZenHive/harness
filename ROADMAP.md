@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 235 — Surface the self-heal recovery facts — KPI view over Task 229's persisted recovery_attempts + recovery token spend (tests the v0_14 hypothesis), Task 250 — Validate model↔resolved-adapter compatibility at dispatch — reject an incompatible pin pre-spawn, not a mid-run crash, Task 261 — Model/agent availability — block unavailable {agent,model} at dispatch + surface available models over MCP on 2026-06-12
 
-**Up next:** Task 263 — Grok catalog probe returns catalog_unavailable — parser only handles cursor's `id - label`, not grok's bullet format [D:2/B:4/U:5 → Eff:2.25] 🎯
+**Up next:** Task 263 — Grok + codex catalog probes return catalog_unavailable — grok needs a bullet-format parse branch, codex needs a JSON-decode branch [D:3/B:4/U:5 → Eff:1.5] 🚀
 <!-- FOCUS:END -->
 
 ---

@@ -11180,13 +11180,13 @@
       "phase": 19,
       "bundle": "model-availability",
       "status": "pending",
-      "title": "Grok catalog probe returns catalog_unavailable — parser only handles cursor's `id - label`, not grok's bullet format",
+      "title": "Grok + codex catalog probes return catalog_unavailable — grok needs a bullet-format parse branch, codex needs a JSON-decode branch",
       "scores": {
-        "d": 2,
+        "d": 3,
         "b": 4,
         "u": 5
       },
-      "eff": 2.25,
+      "eff": 1.5,
       "dep_layer": 0,
       "markers": [
         "bug"
@@ -11197,19 +11197,21 @@
       "acceptance_criteria": [
         "list_available_models(\"grok\") returns grok-build and grok-composer-2.5-fast (not catalog_unavailable) when the grok CLI is present and authed",
         "Parser handles grok's bullet format: leading `- `/`* ` bullets and trailing `(default)`/`(current)` annotations stripped; id captured",
+        "list_available_models(\"codex\") returns the codex catalog slugs (e.g. gpt-5.5, gpt-5.4, gpt-5.4-mini, gpt-5.3-codex-spark) — codex IS probeable via `codex debug models`, not catalog_unavailable",
+        "@probeable_agents and @catalog_commands wire codex -> [\"debug\", \"models\"]; the JSON output ({\"models\":[{\"slug\":...,\"display_name\":...}]}) is JSON-decoded (Jason), NOT line-parsed",
         "cursor's existing `id - label` parse path is unchanged (regression test stays green)",
-        "Unit test feeds the real grok `models` sample block through the parser and asserts the two ids",
-        "Non-zero CLI exit degrades to catalog_unavailable instead of raising MatchError"
+        "Unit tests feed the real grok bullet `models` sample AND a real `codex debug models` JSON sample, asserting the decoded ids for each",
+        "Non-zero CLI exit (any probed agent) degrades to catalog_unavailable instead of raising MatchError"
       ],
       "out_of_scope": [
-        "Adding an operator static catalog for codex/claude (their catalog_unavailable is by design — no CLI list command)",
+        "Adding an operator static catalog for claude (claude has NO model-list CLI command — `claude model list` is treated as a prompt; anthropics/claude-code#12612 is an open feature request — so its catalog_unavailable is genuinely by design)",
         "Changing the dispatch gate or block semantics from Task 261"
       ],
       "domains": [
         "otp",
         "elixir"
       ],
-      "body": "`Harness.ModelAvailability` lists grok as a CLI-probeable catalog source (`@probeable_agents %{cursor: \"cursor-agent\", grok: \"grok\"}`, `@catalog_commands grok: [\"models\"]`), but `model_availability-list_available_models` / `refresh_catalog` return `{:ok, %{catalog_unavailable: true, models: []}}` for grok even though the `grok` binary is present and authenticated.\n\nRoot cause: `grok models` does NOT emit the `id - label` shape `parse_id_label_line/1` (lib/harness/model_availability.ex ~line 430) expects. Observed live output (grok 2026-06-12, exit 0):\n\n```\nYou are logged in with grok.com.\n\nDefault model: grok-build\n\nAvailable models:\n  - grok-composer-2.5-fast\n  * grok-build (default)\n```\n\n`catalog_lines_to_entries/1` splits each line on `\" - \"`; grok's bullet lines (`  - <id>`, `* <id> (default)`) and the header lines yield no `id - label` pair, so `models == []` → `{:error, :catalog_unavailable}`. The whole grok catalog is silently empty.\n\nFix: teach the grok probe (or a grok-specific parse branch) to read the bullet format — collect lines after the `Available models:` header, strip the leading `- ` / `* ` bullet and a trailing ` (default)`/`(current)` annotation, and take the token as the model id (label = id when grok gives no separate label). Keep cursor's `id - label` path unchanged. Confirm `list_available_models(\"grok\")` returns `[%{id: \"grok-build\", ...}, %{id: \"grok-composer-2.5-fast\", ...}]`.\n\nSecondary (note, not necessarily this task): `{output, 0} = System.cmd(...)` in `default_probe/2` hard-matches exit 0 inside the `with` body — a non-zero exit raises MatchError instead of falling through to `{:error, :catalog_unavailable}`. Consider matching the exit code as a `with` clause so a failed probe degrades gracefully.\n",
+      "body": "`Harness.ModelAvailability` lists grok as a CLI-probeable catalog source (`@probeable_agents %{cursor: \"cursor-agent\", grok: \"grok\"}`, `@catalog_commands grok: [\"models\"]`), but `model_availability-list_available_models` / `refresh_catalog` return `{:ok, %{catalog_unavailable: true, models: []}}` for grok even though the `grok` binary is present and authenticated.\n\nRoot cause: `grok models` does NOT emit the `id - label` shape `parse_id_label_line/1` (lib/harness/model_availability.ex ~line 430) expects. Observed live output (grok 2026-06-12, exit 0):\n\n```\nYou are logged in with grok.com.\n\nDefault model: grok-build\n\nAvailable models:\n  - grok-composer-2.5-fast\n  * grok-build (default)\n```\n\n`catalog_lines_to_entries/1` splits each line on `\" - \"`; grok's bullet lines (`  - <id>`, `* <id> (default)`) and the header lines yield no `id - label` pair, so `models == []` → `{:error, :catalog_unavailable}`. The whole grok catalog is silently empty.\n\nFix: teach the grok probe (or a grok-specific parse branch) to read the bullet format — collect lines after the `Available models:` header, strip the leading `- ` / `* ` bullet and a trailing ` (default)`/`(current)` annotation, and take the token as the model id (label = id when grok gives no separate label). Keep cursor's `id - label` path unchanged. Confirm `list_available_models(\"grok\")` returns `[%{id: \"grok-build\", ...}, %{id: \"grok-composer-2.5-fast\", ...}]`.\n\nSecondary (now in-scope): `{output, 0} = System.cmd(...)` in `default_probe/2` hard-matches exit 0 inside the `with` body — a non-zero exit raises MatchError instead of falling through to `{:error, :catalog_unavailable}`. Match the exit code as a `with` clause so a failed probe degrades gracefully (covers grok AND codex).\n\n## Codex (widened 2026-06-12 — the original out_of_scope premise was wrong)\n\nCodex IS catalog-probeable: `codex debug models` (subcommand nested under `codex debug`, not top-level — easy to miss) renders the raw catalog as JSON, exit 0. Verified live (codex 2026-06-12):\n\n```\n{\"models\":[{\"slug\":\"gpt-5.5\",\"display_name\":\"GPT-5.5\",\"visibility\":\"list\",...},{\"slug\":\"gpt-5.4\",...}]}\n```\n\nSo wire `@probeable_agents` + `@catalog_commands` for codex (`codex -> [\"debug\", \"models\"]`) and add a **JSON-decode** parse branch — `Jason.decode/1` the output, map each `%{\"slug\" => id, \"display_name\" => label}` to `%{id: id, label: label, annotations: []}`. This is a DIFFERENT parse strategy than the grok/cursor line parsers (JSON vs text lines), so `default_probe/2` (or a per-agent parse dispatch) must select the parser by agent. Keep the grok bullet branch and cursor `id - label` branch intact.\n\nClaude stays out: `claude model list` is interpreted as a prompt (no such subcommand); anthropics/claude-code#12612 is an open feature request to add it. Its `catalog_unavailable` is by design — no static catalog for it here.\n",
       "created_at": "2026-06-12",
       "scored_at": "2026-06-12",
       "cross_repo": []
