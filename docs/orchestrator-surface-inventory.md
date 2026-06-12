@@ -32,6 +32,7 @@ Reachable over MCP/chat (JSON scalars only). Grouped by orchestrator intent.
 | `dispatch-transcript` / `dispatch-transcript_events` | `Harness.Run` (flat) | Buffered raw / parsed transcript of a live run, with `seq` delta polling |
 | `dispatch-verdict_detail` | `Harness.ResultStore` | Settled-run reviewer verdict / report / ratings |
 | `result_store-list_run_records` | `Harness.ResultStore` | Settled run records (verdict, diff sizes, token usage, transcript) |
+| `routing-brief` | `Harness.Routing` | **Single task-writer routing fact source**: roster + availability/blocks + capability cells + KPI rollups per `{agent, model}`, with sample counts and no ranking |
 | `result_store-aggregate_by_agent` | `Harness.ResultStore` → `Harness.AgentKPI` | **Per-agent KPI rollup** (success, first-attempt-pass, duration p90, cost-to-green) |
 | `result_store-aggregate_ceremony_cost` | `Harness.ResultStore` → `Harness.AgentKPI` | **Per-approved-run ceremony token facts** (implementer + reviewer + audit=0; median/p90 distribution over raw per-run totals — no batching verdict) |
 | `result_store-get_capability_score` / `result_store-list_capability_scores` | `Harness.ResultStore` | **Legacy CapabilityScore cells** (import-only round-trip for historical term data; active routing uses the scout assessment) |
@@ -77,6 +78,7 @@ hold/steer/resume · project registration (write).
 | Run status / transcript | ✅ `dispatch-status/transcript/transcript_events` | none |
 | AgentKPI rollups | ✅ `result_store-aggregate_by_agent` (per-agent), `result_store-aggregate_ceremony_cost` (per-approved-run ceremony/implementer+reviewer+audit token overhead) | none |
 | Capability (scout) routing | ✅ `dispatch-recommend` + `dispatch-assess_facets` (scout per-facet assessment); legacy cells via `result_store-*_capability_score` for import | none |
+| Task-writer assignee/model routing facts | ✅ `routing-brief` joins roster, availability/blocks, capability cells, and KPI rollups per `{agent, model}` | none |
 | Project / registry listing | ✅ `project_registry-list/lookup` | none |
 | Operator agent/reviewer state | ✅ `agents-list` / `agents-reviewers` | none |
 | Cron autonomy state | ✅ `autonomy-status` | none |
@@ -91,6 +93,14 @@ hold/steer/resume · project registration (write).
 `autonomy-status`, `config-*`, and `describe-*` expose mechanical facts only — installed?,
 enabled?, reviewer_eligible?, config values, cron toggles, and live schema metadata. They
 do not compute a best reviewer, score, route, or verdict.
+
+**Task 266 update:** `routing-brief` is now THE single MCP/chat fact source for a
+task-writer deciding `assignee` + `model`. It exists so orchestrators do not read
+`lib/harness/*.ex` or call four separate tools just to route a task. The brief is the raw
+facts layer beneath `dispatch-recommend`: it joins roster, availability/block annotations,
+legacy capability cells, and KPI rollups per `{agent, model}`, with `n` on measured cells
+and `n: 0` / `explore_candidate: true` on cold-start domain cells. It returns no best pick,
+ranking, weighted score, or route verdict.
 
 ---
 
@@ -148,6 +158,8 @@ validator instead of duplicating field logic.
 hold/steer/resume are gen_statem lifecycle transitions; register_project assembles and
 stores a struct. None decides is-this-done / is-this-good / whose-fault / should-this-merge
 — those remain the reviewer AI's job, surfaced (not computed) via `dispatch-verdict_detail`.
+`routing-brief` follows the same rule for routing: it joins facts and sample counts only;
+`dispatch-recommend` remains the separate advisory layer when an AI-written pick is wanted.
 
 **In-run agents get no harness-control surface (AC6).** The harness MCP server
 (`/harness/mcp`) is wired only into orchestrator contexts — the chat backend
