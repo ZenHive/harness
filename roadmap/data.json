@@ -11295,7 +11295,7 @@
       "id": "265",
       "phase": 19,
       "bundle": "model-availability",
-      "status": "in_progress",
+      "status": "done",
       "title": "Unify the three model-catalog sources into one operator-editable, advisory resolution (dedupe probe / static / builtin)",
       "scores": {
         "d": 3,
@@ -11327,10 +11327,15 @@
         "otp",
         "elixir"
       ],
+      "shipped_in": "572b7b8b3324cb474f5c050655211c7420b9c4d8",
       "body": "Model lists are configured in THREE disjoint places, and the dropdown vs the dispatch gate read different ones — operator complaint: \"it can not be that we have to configure/edit this at so many parts.\" Combine the strong points instead of picking one.\n\nThe three sources today (all in `Harness.ModelAvailability`):\n1. Live CLI probe — `@probeable_agents` / `@catalog_commands` shell out (`cursor-agent --list-models`, `grok models`, `pi --list-models`; codex via `codex debug models` is Task 263's remaining piece). Authoritative, never rots, but depends on the agent CLI being installed+authed.\n2. SettingsStore `:model_catalog_static` — operator-declared, persisted, currently the only override layer. FEEDS THE DISPATCH GATE (`catalog_allows?/2`).\n3. `@builtin_ui_catalogs` (added 2026-06-12) — hardcoded claude/codex defaults, UI-only so they don't gate dispatch. Read by `selectable_models/1`; the dropdown uses this, the gate uses `catalog/1`. This split is the smell.\n\nWHY the split exists: `catalog_allows?/2` makes catalog membership a dispatch gate — a pinned model not in the catalog is rejected pre-spawn. Seeding claude/codex into the gating catalog would block any unseeded id from dispatching, so the builtin was kept UI-only. That fork (selectable_models vs list_available) is the duplication.\n\nDIRECTION CONFIRMED (operator, 2026-06-12 — assignee flipped human->codex, advisory gate APPROVED):\n- ONE layered resolution `catalog(agent)` = operator-static (SettingsStore, editable in UI) -> live probe (refresh-on-demand, cached) -> code builtin defaults. Both the settings dropdown and every consumer read it — delete the `selectable_models` vs `list_available` split.\n- Make catalog membership ADVISORY: drop `catalog_allows?/2` from the dispatch gate so the ONLY hard gate is explicit operator/failure blocks (`blocked_now?`). The agent CLI already rejects a bad `--model`; harness deciding a model id is \"valid\" is judgment-in-code the MANTRA says belongs to the agent. With gating gone, the builtin folds into the single catalog layer (no UI-only parallel map).\n- Operator-editable per-agent list in /harness/settings (add/remove ids), persisted to `:model_catalog_static`. \"Refresh from CLI\" probes (where probeable) and merges into the editable list. This is the operator's stated want: \"set my models, not rely on agents\" — probe becomes a convenience to populate the list, not a dependency.\n- Builtins seed the initial editable list (claude, which has NO list CLI, lives here permanently; cursor/grok/pi/codex seed from probe).\n\nSHIPPED THIS SESSION (2026-06-12, commit pending) toward Task 263 + this one:\n- grok bullet-format parser (`parse_grok_line`) + pi table parser (`parse_pi_line`); per-agent parse dispatch (`parse_agent_line/2`); dedupe by id.\n- pi wired as probeable.\n- graceful non-zero-exit in `default_probe/2` (was a `{output, 0}=` MatchError that would 500 the settings page on an unauthed CLI).\n- claude + codex `@builtin_ui_catalogs` (UI-only) + `selectable_models/1`; settings dropdowns for claude/codex/cursor/grok/pi.\nRemaining from 263: codex via `codex debug models` JSON probe (this task may instead route codex through the operator-editable list — design decision).\n",
       "created_at": "2026-06-12",
       "started_at": "2026-06-12",
+      "done_at": "2026-06-12",
       "scored_at": "2026-06-12",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781252997927-628adc1d, 572b7b8b3324cb474f5c050655211c7420b9c4d8).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
