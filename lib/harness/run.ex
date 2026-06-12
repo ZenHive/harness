@@ -540,7 +540,7 @@ defmodule Harness.Run do
       subscriber: Keyword.get(opts, :subscriber),
       result_store: Keyword.get(opts, :result_store, ResultStore.configured()),
       batch_id: Keyword.get(opts, :batch_id) || run_id,
-      requested_model: Keyword.get(opts, :requested_model) || item.model || Config.agent_model(item.agent),
+      requested_model: requested_model(opts, item, adapter),
       started_at_ms: System.monotonic_time(:millisecond),
       total_timeout: run_timeout(opts, :total_timeout),
       idle_timeout: run_timeout(opts, :idle_timeout),
@@ -2305,6 +2305,14 @@ defmodule Harness.Run do
   end
 
   @spec ensure_reviewer_model_available(data()) :: :ok | {:error, term()}
+  defp ensure_reviewer_model_available(%{reviewer_adapter: reviewer_adapter, reviewer_agent_resolver: resolver})
+       when is_atom(reviewer_adapter) and is_function(resolver, 1) do
+    case resolver.(reviewer_adapter) do
+      {:ok, agent} -> check_reviewer_model(reviewer_adapter, agent)
+      {:error, _} -> :ok
+    end
+  end
+
   defp ensure_reviewer_model_available(%{reviewer_adapter: reviewer_adapter}) do
     case AgentRegistry.agent_for_module(reviewer_adapter) do
       {:ok, agent} -> check_reviewer_model(reviewer_adapter, agent)
@@ -3117,6 +3125,20 @@ defmodule Harness.Run do
   @spec run_timeout(keyword(), atom()) :: timeout() | nil
   defp run_timeout(opts, key) do
     Keyword.get(opts, key) || Config.get({:run, key})
+  end
+
+  @spec requested_model(keyword(), Item.t(), module()) :: String.t() | nil
+  defp requested_model(opts, item, adapter) do
+    if Keyword.has_key?(opts, :requested_model) do
+      Keyword.fetch!(opts, :requested_model)
+    else
+      item.model || configured_model(adapter, item.agent)
+    end
+  end
+
+  @spec configured_model(module(), atom()) :: String.t() | nil
+  defp configured_model(adapter, agent) do
+    if adapter.capabilities().model_families == [], do: nil, else: Config.agent_model(agent)
   end
 
   # Resolves the per-run memory watchdog ceiling + sample interval (Task 200):
