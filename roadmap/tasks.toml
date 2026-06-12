@@ -7943,7 +7943,7 @@ shipped_in = "572b7b8b3324cb474f5c050655211c7420b9c4d8"
 id = "266"
 phase = 19
 bundle = "kpi-routing"
-status = "pending"
+status = "in_progress"
 title = "Routing-brief: one MCP surface joining roster+availability+capability+KPI per {agent,model} (raw facts, no fused score) so the task-writer routes without reading lib/"
 scores = { d = 3, b = 6, u = 6 }
 markers = ["docs"]
@@ -7973,6 +7973,7 @@ MANTRA, non-negotiable: the brief returns RAW joined facts + the sample-count n 
 Depends on 262 (roster leg, done) and 265 (availability leg — build the join after the catalog is unified/advisory so the brief reads one clean availability source, not the pre-265 three-source mess). Builds on 75 (api annotation) + 79 (MCP server) + 139/177/248 (KPI) + 120/121 (capability routing). Verify state against origin before assuming. The primary harness consumer IS an AI orchestrator over MCP — a one-call routing brief is the product, not a nicety.
 """
 created_at = "2026-06-12"
+started_at = "2026-06-12"
 scored_at = "2026-06-12"
 
 [[task]]
