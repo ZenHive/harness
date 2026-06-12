@@ -7795,7 +7795,7 @@ shipped_in = "3f6bbff5c5f1b02581be7e9e38e5a95d311b2929"
 id = "263"
 phase = 19
 bundle = "model-availability"
-status = "in_progress"
+status = "pending"
 title = "Grok + codex catalog probes return catalog_unavailable — grok needs a bullet-format parse branch, codex needs a JSON-decode branch"
 scores = { d = 3, b = 4, u = 5 }
 markers = ["bug"]
