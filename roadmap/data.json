@@ -11303,7 +11303,8 @@
       "depends_on": [
         263
       ],
-      "assignee": "human",
+      "assignee": "codex",
+      "model": "gpt-5.5",
       "acceptance_criteria": [
         "A single `catalog(agent)` resolution returns the layered catalog; the settings dropdown and any other consumer read the SAME source — `selectable_models/1` vs `list_available/1` split is removed",
         "Catalog membership is advisory: `catalog_allows?/2` is removed from the dispatch gate; only operator/failure blocks (`blocked_now?`) hard-gate. Regression: a pinned model absent from the catalog still dispatches; a blocked {agent,model} pair still rejects",
@@ -11321,7 +11322,72 @@
         "otp",
         "elixir"
       ],
-      "body": "Model lists are configured in THREE disjoint places, and the dropdown vs the dispatch gate read different ones — operator complaint: \"it can not be that we have to configure/edit this at so many parts.\" Combine the strong points instead of picking one.\n\nThe three sources today (all in `Harness.ModelAvailability`):\n1. Live CLI probe — `@probeable_agents` / `@catalog_commands` shell out (`cursor-agent --list-models`, `grok models`, `pi --list-models`; codex via `codex debug models` is Task 263's remaining piece). Authoritative, never rots, but depends on the agent CLI being installed+authed.\n2. SettingsStore `:model_catalog_static` — operator-declared, persisted, currently the only override layer. FEEDS THE DISPATCH GATE (`catalog_allows?/2`).\n3. `@builtin_ui_catalogs` (added 2026-06-12) — hardcoded claude/codex defaults, UI-only so they don't gate dispatch. Read by `selectable_models/1`; the dropdown uses this, the gate uses `catalog/1`. This split is the smell.\n\nWHY the split exists: `catalog_allows?/2` makes catalog membership a dispatch gate — a pinned model not in the catalog is rejected pre-spawn. Seeding claude/codex into the gating catalog would block any unseeded id from dispatching, so the builtin was kept UI-only. That fork (selectable_models vs list_available) is the duplication.\n\nPROPOSED DIRECTION (confirm with operator first — assignee=human until then):\n- ONE layered resolution `catalog(agent)` = operator-static (SettingsStore, editable in UI) -> live probe (refresh-on-demand, cached) -> code builtin defaults. Both the settings dropdown and every consumer read it — delete the `selectable_models` vs `list_available` split.\n- Make catalog membership ADVISORY: drop `catalog_allows?/2` from the dispatch gate so the ONLY hard gate is explicit operator/failure blocks (`blocked_now?`). The agent CLI already rejects a bad `--model`; harness deciding a model id is \"valid\" is judgment-in-code the MANTRA says belongs to the agent. With gating gone, the builtin folds into the single catalog layer (no UI-only parallel map).\n- Operator-editable per-agent list in /harness/settings (add/remove ids), persisted to `:model_catalog_static`. \"Refresh from CLI\" probes (where probeable) and merges into the editable list. This is the operator's stated want: \"set my models, not rely on agents\" — probe becomes a convenience to populate the list, not a dependency.\n- Builtins seed the initial editable list (claude, which has NO list CLI, lives here permanently; cursor/grok/pi/codex seed from probe).\n\nSHIPPED THIS SESSION (2026-06-12, commit pending) toward Task 263 + this one:\n- grok bullet-format parser (`parse_grok_line`) + pi table parser (`parse_pi_line`); per-agent parse dispatch (`parse_agent_line/2`); dedupe by id.\n- pi wired as probeable.\n- graceful non-zero-exit in `default_probe/2` (was a `{output, 0}=` MatchError that would 500 the settings page on an unauthed CLI).\n- claude + codex `@builtin_ui_catalogs` (UI-only) + `selectable_models/1`; settings dropdowns for claude/codex/cursor/grok/pi.\nRemaining from 263: codex via `codex debug models` JSON probe (this task may instead route codex through the operator-editable list — design decision).\n",
+      "body": "Model lists are configured in THREE disjoint places, and the dropdown vs the dispatch gate read different ones — operator complaint: \"it can not be that we have to configure/edit this at so many parts.\" Combine the strong points instead of picking one.\n\nThe three sources today (all in `Harness.ModelAvailability`):\n1. Live CLI probe — `@probeable_agents` / `@catalog_commands` shell out (`cursor-agent --list-models`, `grok models`, `pi --list-models`; codex via `codex debug models` is Task 263's remaining piece). Authoritative, never rots, but depends on the agent CLI being installed+authed.\n2. SettingsStore `:model_catalog_static` — operator-declared, persisted, currently the only override layer. FEEDS THE DISPATCH GATE (`catalog_allows?/2`).\n3. `@builtin_ui_catalogs` (added 2026-06-12) — hardcoded claude/codex defaults, UI-only so they don't gate dispatch. Read by `selectable_models/1`; the dropdown uses this, the gate uses `catalog/1`. This split is the smell.\n\nWHY the split exists: `catalog_allows?/2` makes catalog membership a dispatch gate — a pinned model not in the catalog is rejected pre-spawn. Seeding claude/codex into the gating catalog would block any unseeded id from dispatching, so the builtin was kept UI-only. That fork (selectable_models vs list_available) is the duplication.\n\nDIRECTION CONFIRMED (operator, 2026-06-12 — assignee flipped human->codex, advisory gate APPROVED):\n- ONE layered resolution `catalog(agent)` = operator-static (SettingsStore, editable in UI) -> live probe (refresh-on-demand, cached) -> code builtin defaults. Both the settings dropdown and every consumer read it — delete the `selectable_models` vs `list_available` split.\n- Make catalog membership ADVISORY: drop `catalog_allows?/2` from the dispatch gate so the ONLY hard gate is explicit operator/failure blocks (`blocked_now?`). The agent CLI already rejects a bad `--model`; harness deciding a model id is \"valid\" is judgment-in-code the MANTRA says belongs to the agent. With gating gone, the builtin folds into the single catalog layer (no UI-only parallel map).\n- Operator-editable per-agent list in /harness/settings (add/remove ids), persisted to `:model_catalog_static`. \"Refresh from CLI\" probes (where probeable) and merges into the editable list. This is the operator's stated want: \"set my models, not rely on agents\" — probe becomes a convenience to populate the list, not a dependency.\n- Builtins seed the initial editable list (claude, which has NO list CLI, lives here permanently; cursor/grok/pi/codex seed from probe).\n\nSHIPPED THIS SESSION (2026-06-12, commit pending) toward Task 263 + this one:\n- grok bullet-format parser (`parse_grok_line`) + pi table parser (`parse_pi_line`); per-agent parse dispatch (`parse_agent_line/2`); dedupe by id.\n- pi wired as probeable.\n- graceful non-zero-exit in `default_probe/2` (was a `{output, 0}=` MatchError that would 500 the settings page on an unauthed CLI).\n- claude + codex `@builtin_ui_catalogs` (UI-only) + `selectable_models/1`; settings dropdowns for claude/codex/cursor/grok/pi.\nRemaining from 263: codex via `codex debug models` JSON probe (this task may instead route codex through the operator-editable list — design decision).\n",
+      "created_at": "2026-06-12",
+      "scored_at": "2026-06-12",
+      "cross_repo": []
+    },
+    {
+      "id": "266",
+      "phase": 19,
+      "bundle": "kpi-routing",
+      "status": "pending",
+      "title": "Routing-brief: one MCP surface joining roster+availability+capability+KPI per {agent,model} (raw facts, no fused score) so the task-writer routes without reading lib/",
+      "scores": {
+        "d": 3,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 2.0,
+      "dep_layer": 2,
+      "markers": [
+        "docs"
+      ],
+      "depends_on": [
+        262,
+        265
+      ],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "New Harness.Routing (use Descripex, dedicated curated read-surface like Harness.Agents/262) exposes routing-brief/0 returning, per currently-available {agent, model} pair, a JSON-safe map JOINING the four existing fact-legs: roster facts (installed/enabled/reviewer_eligible/capabilities/cost_tier from Harness.Agents), availability (from ModelAvailability — only un-blocked pairs surface, blocked pairs annotated with reason not silently dropped), capability scores by domain (ResultStore.list_capability_scores), and KPI rollups (ResultStore.aggregate_by_agent: success_rate, first_attempt_pass, duration_p90, cost_to_approved). It is a JOIN of existing accessors — no new aggregation logic, no re-counting.",
+        "Every capability/KPI cell carries its SAMPLE COUNT n (runs behind the number); unmeasured cells surface as n=0 / explore-candidate, never a fabricated score. The writer reads n to decide explore vs exploit. (dispatch-recommend already encodes explore/exploit; the brief exposes the raw n it keys off.)",
+        "routing-brief/1 accepts an optional domains filter (e.g. domains=[\"otp\"]) that scopes/annotates the capability+KPI legs to the relevant domain(s); omitted => all domains. The optional-param boundary resolves the configured store (the Task 248/251-class bug: an omitted arg must NOT short-circuit to a disabled/empty value).",
+        "MANTRA GATE: the brief computes NO verdict, ranking, weighted score, or route — it returns raw joined facts and the writer-AI picks. A reviewer can confirm no api()-returned value fuses facts into a single best-{agent,model} number (reuse Task 262's 'no JUDGMENT value' check). dispatch-recommend stays the advisory pick layer ON TOP; the brief is the raw facts UNDER it (cross-ref, do not duplicate or replace it).",
+        "Added to Harness.Manifest @driver_surface; routing-brief listed by mcp_tools/0 with a valid JSON Schema, not dropped by struct_arg_tool?/1; reachable via BOTH Harness.Chat.Tools and the MCP server.",
+        "WRITER CONTRACT documented: skills/harness-driver/SKILL.md + docs/orchestrator-surface-inventory.md state that the task-writer/orchestrator resolves assignee+model from routing-brief (MCP facts) and NEVER reads lib/harness/*.ex to make a routing decision; routing-brief is named THE single routing source. scripts/sync-harness-skills.sh run to propagate the skill.",
+        "Tests (no Process.sleep; assert specific values not 'any error passes'; @spec on every new def AND defp): join correctness (each of the four legs present per pair, blocked pair annotated not dropped); cold-start (an unmeasured {agent,domain} surfaces n=0/explore, not a fake score); the no-fused-score property (no api() value returns a ranking/best-pick); omitted-arg path returns the configured-store facts not the disabled empty. coverage >= 80% on the new module; mix precommit.full green."
+      ],
+      "out_of_scope": [
+        "Computing a recommendation/ranking/weighted route — dispatch-recommend (Tasks 120/121) is the advisory pick; this brief is the RAW facts beneath it. No magic weights, no composite scalar (the v0_13 deletion lesson).",
+        "The roster/KPI/capability surfaces THEMSELVES — Harness.Agents (262), aggregate_by_agent (139), reviewer-ratings rollup (177/248) already ship; this only JOINS them, it does not re-implement or re-count.",
+        "Changing model block/availability semantics — that is Task 265 (the availability leg this depends on); blocks stay the hard gate.",
+        "Per-task / per-project model pinning (Tasks 256/261 — separate axes).",
+        "Auto-routing inside the dispatch path / changing dispatch-recommend's algorithm — the brief feeds judgment to the writer-AI, it does not wire a new auto-route."
+      ],
+      "files_to_modify": [
+        "lib/harness/routing.ex",
+        "lib/harness/manifest.ex",
+        "skills/harness-driver/SKILL.md",
+        "docs/orchestrator-surface-inventory.md",
+        "CHANGELOG.md"
+      ],
+      "touches": [
+        "lib/harness/agents.ex",
+        "lib/harness/model_availability.ex",
+        "lib/harness/result_store.ex",
+        "lib/harness/capability_score.ex",
+        "lib/harness/chat/tools.ex",
+        "test/harness/routing_test.exs",
+        "test/harness/dashboard/mcp_server_test.exs"
+      ],
+      "domains": [
+        "otp",
+        "elixir",
+        "mcp",
+        "descripex"
+      ],
+      "body": "THE 'orchestrator routes without reading code' loop, closed as one cheap MCP fact.\n\nOperator's point (2026-06-12): 'der rmap writer sollte alleine in der Lage sein ... nach Verfuegbarkeitscheck via MCP zu wissen, welche Agents mit welchem Model fuer welche Tasks' — 'es kann nicht sein, dass der Orchestrator den ganzen Code in den Context laedt, nur um zu entscheiden an wen zu dispatchen' — 'und mehr: wir haben KPIs, wir WISSEN wie die Agents performen, das sollte direkt bereitgestellt werden.'\n\nThe four routing fact-legs ALREADY exist as SEPARATE MCP surfaces; the gap is the JOIN + the contract, not the data:\n1. Roster      -> Harness.Agents agents-list (Task 262, done): installed/enabled/reviewer_eligible/capabilities/cost_tier/model.\n2. Availability -> ModelAvailability list_available_models (Task 148; cleaned by Task 265): un-blocked {agent,model} pairs.\n3. Capability  -> ResultStore.list_capability_scores / get_capability_score: per-{agent,domain} score (+ the scout/facet work).\n4. KPI         -> ResultStore.aggregate_by_agent (Task 139, done; reviewer ratings fed by 177/248): success_rate, first_attempt_pass, duration_p90, cost_to_approved.\n\nToday a writer would call four tools and join them in its head — or worse, grep lib/. routing-brief does the join in ONE call so the writer makes one cheap MCP read and decides. It is a dedicated curated read-surface module (Harness.Routing, mirroring the 262 pattern where short-name == tool prefix), returning plain maps, delegating to the existing accessors.\n\nMANTRA, non-negotiable: the brief returns RAW joined facts + the sample-count n behind each number. It NEVER fuses them into a best-pick score/ranking/route — that is judgment the writer-AI does, and dispatch-recommend already provides the advisory pick on top. We deleted ~1,400 LOC of composite-score arithmetic in v0_13 precisely so harness stops computing 'who is best'; this task must not smuggle it back in. The cold-start caveat is a FACT not a formula: surface n=0 for unmeasured cells so the writer knows when to explore.\n\nDepends on 262 (roster leg, done) and 265 (availability leg — build the join after the catalog is unified/advisory so the brief reads one clean availability source, not the pre-265 three-source mess). Builds on 75 (api annotation) + 79 (MCP server) + 139/177/248 (KPI) + 120/121 (capability routing). Verify state against origin before assuming. The primary harness consumer IS an AI orchestrator over MCP — a one-call routing brief is the product, not a nicety.\n",
       "created_at": "2026-06-12",
       "scored_at": "2026-06-12",
       "cross_repo": []

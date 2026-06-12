@@ -226,6 +226,10 @@ defmodule Harness.Cron.RoadmapPollerTest do
     project = ProjectFixture.from_repo("/tmp/harness-cron-metered", name: "cron-metered", concurrency_cap: 10)
     assert :ok = ProjectRegistry.register(project)
 
+    # claude is reviewer/implementer-disabled by the in-code seed; this test is
+    # about scrub config for a metered agent, so enable claude explicitly.
+    assert :ok = Harness.Agent.Settings.set_enabled(:claude, true, "test")
+
     Application.put_env(:harness, :cron_polling, subscription_env_scrubs: %{claude: false, codex: %{}})
     enable_project("cron-metered")
 
@@ -410,7 +414,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
   test "reports the next tick from the configured schedule" do
     assert :ok = Settings.set_master(true, "test")
 
-    assert {:ok, ~U[2026-05-27 02:00:00Z]} =
+    assert {:ok, ~U[2026-05-27 01:00:00Z]} =
              RoadmapPoller.next_tick(~U[2026-05-27 00:15:00Z])
   end
 

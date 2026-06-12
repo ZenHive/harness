@@ -64,8 +64,10 @@ defmodule Harness.AgentsTest do
     assert :ok = Settings.set_reviewer_eligible(:pi, false, "test")
     assert :ok = AgentRegistry.mark_unavailable(Cursor, :busy)
 
-    assert Enum.map(Agents.reviewers("codex"), & &1.agent) == ~w(grok cursor)
-    assert Enum.map(Agents.reviewers(), & &1.agent) == ~w(codex grok cursor)
+    # grok is now reviewer-ineligible by the in-code seed, so the only installed,
+    # eligible reviewer left is cursor (codex is the implementer family here).
+    assert Enum.map(Agents.reviewers("codex"), & &1.agent) == ~w(cursor)
+    assert Enum.map(Agents.reviewers(), & &1.agent) == ~w(codex cursor)
   end
 
   defp put_installed(installed) do

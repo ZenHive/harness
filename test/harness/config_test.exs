@@ -167,7 +167,7 @@ defmodule Harness.ConfigTest do
   end
 
   describe "dispatch default agent" do
-    test "schema default is :codex — unassigned work avoids spending Claude tokens" do
+    test "schema default is :codex" do
       assert Config.get({:dispatch, :default_agent}) == :codex
     end
 
@@ -193,7 +193,7 @@ defmodule Harness.ConfigTest do
              end)
     end
 
-    test "unset resolves to nil — falls through to the agent CLI default" do
+    test "unset resolves to nil (CLI chooses its own default)" do
       assert Config.agent_model(:cursor) == nil
     end
 

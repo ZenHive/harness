@@ -159,7 +159,7 @@ defmodule Harness.Cron.SettingsTest do
                SettingsStore.put(:cron, %{master_enabled: false, project_autonomy: %{}, schedule: "*/7 * * * *"})
 
       # The non-whitelisted crontab is not surfaced; the default stands.
-      assert RoadmapPoller.schedule() == "0 */2 * * *"
+      assert RoadmapPoller.schedule() == "0 * * * *"
     end
   end
 

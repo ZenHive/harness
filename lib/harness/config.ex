@@ -113,7 +113,8 @@ defmodule Harness.Config do
   # One free-text default-model pin per implementer agent — the fallback layer
   # between a task's explicit `model` and the agent CLI's own ambient default
   # (see `agent_model/1`). Free-text `:string` because model ids churn; `nil`
-  # (unset) falls through to the CLI default.
+  # (unset) falls through to the CLI default. Operator preferences are seeded via
+  # priv/repo/seeds.exs rather than the schema default so tests see nil.
   @spec agent_model_entries() :: [Entry.t()]
   defp agent_model_entries do
     Enum.map(@implementer_agents, fn agent ->

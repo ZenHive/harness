@@ -37,7 +37,10 @@ defmodule Harness.Agent.Settings do
   require Logger
 
   @store_key :agent
-  @default_reviewer_ineligible [:pi]
+  # Code seeds: applied on first boot and when persistence is off (repo_enabled: false).
+  # Once the operator persists any value (even []), the stored list is authoritative.
+  @default_disabled [:claude, :pi, :antigravity]
+  @default_reviewer_ineligible [:grok, :claude, :antigravity, :pi]
 
   @typedoc """
   The persisted settings-store value: the operator-disabled set (implementer
@@ -54,10 +57,16 @@ defmodule Harness.Agent.Settings do
   @spec disabled?(atom()) :: boolean()
   def disabled?(agent) when is_atom(agent), do: agent in disabled_agents()
 
-  @doc "Returns the list of operator-disabled agent atoms (read from the store)."
+  @doc """
+  Returns the operator-disabled agent atoms. Falls back to the in-code seed
+  until an operator override is persisted — mirrors `reviewer_ineligible_agents/0`.
+  """
   @spec disabled_agents() :: [atom()]
   def disabled_agents do
-    record() |> Map.get(:disabled, []) |> Enum.filter(&is_atom/1)
+    case Map.fetch(record(), :disabled) do
+      {:ok, list} when is_list(list) -> Enum.filter(list, &is_atom/1)
+      _unset -> @default_disabled
+    end
   end
 
   @doc """

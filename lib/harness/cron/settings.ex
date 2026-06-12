@@ -46,7 +46,7 @@ defmodule Harness.Cron.Settings do
   require Logger
 
   @store_key :cron
-  @default_schedule "0 */2 * * *"
+  @default_schedule "0 * * * *"
   @valid_dispatch_modes [:auto, :manual]
 
   # The only crontabs that can reach Oban's Cron plugin — a closed

@@ -25,10 +25,15 @@ defmodule Harness.Agent.SettingsTest do
   end
 
   describe "enable/disable" do
-    test "agents are enabled by absence" do
-      assert Settings.enabled?(:claude)
-      refute Settings.disabled?(:claude)
-      assert Settings.disabled_agents() == []
+    test "code seed disables claude, pi, and antigravity on first boot; others enabled by absence" do
+      refute Settings.enabled?(:claude)
+      assert Settings.disabled?(:claude)
+      assert Settings.disabled?(:pi)
+      assert Settings.disabled?(:antigravity)
+      assert Settings.enabled?(:codex)
+      assert Settings.enabled?(:cursor)
+      assert Settings.enabled?(:grok)
+      assert Settings.disabled_agents() == [:claude, :pi, :antigravity]
     end
 
     test "set_enabled(false) disables and the choice survives a restart" do
@@ -39,51 +44,55 @@ defmodule Harness.Agent.SettingsTest do
       # No app-env cache to clear: the store is the source of truth, so a fresh
       # read (as a restarted node would do) still sees the persisted flip.
       assert Settings.disabled?(:cursor)
-      assert Settings.disabled_agents() == [:cursor]
+      assert :cursor in Settings.disabled_agents()
     end
 
     test "re-enabling removes the agent from the disabled set" do
       assert :ok = Settings.set_enabled(:grok, false, "test")
-      assert Settings.disabled_agents() == [:grok]
+      assert :grok in Settings.disabled_agents()
 
       assert :ok = Settings.set_enabled(:grok, true, "test")
-      assert Settings.disabled_agents() == []
+      refute :grok in Settings.disabled_agents()
       assert Settings.enabled?(:grok)
     end
 
     test "disabling is idempotent — no duplicate entries" do
-      assert :ok = Settings.set_enabled(:pi, false, "test")
-      assert :ok = Settings.set_enabled(:pi, false, "test")
-      assert Settings.disabled_agents() == [:pi]
+      assert :ok = Settings.set_enabled(:codex, false, "test")
+      assert :ok = Settings.set_enabled(:codex, false, "test")
+      assert Enum.count(Settings.disabled_agents(), &(&1 == :codex)) == 1
     end
 
-    test "disabling one agent leaves the others enabled" do
+    test "disabling one agent does not affect other non-seeded agents" do
       assert :ok = Settings.set_enabled(:codex, false, "test")
 
       assert Settings.disabled?(:codex)
-      assert Settings.enabled?(:claude)
       assert Settings.enabled?(:cursor)
+      assert Settings.enabled?(:grok)
     end
   end
 
   describe "ephemeral store" do
-    test "with repo disabled, a flip is a no-op and reads stay at the default" do
+    test "with repo disabled, a flip is a no-op and reads stay at the seed default" do
       prior = Application.get_env(:harness, :settings_store)
       Application.put_env(:harness, :settings_store, false)
       on_exit(fn -> restore_env(:settings_store, prior) end)
 
       assert :ok = Settings.set_enabled(:claude, false, "test")
-      # The no-op store discards the write; the read falls back to the default.
-      assert Settings.enabled?(:claude)
-      assert Settings.disabled_agents() == []
+      # The no-op store discards the write; the read falls back to the code seed.
+      assert Settings.disabled?(:claude)
+      assert Settings.disabled_agents() == [:claude, :pi, :antigravity]
     end
   end
 
   describe "reviewer eligibility" do
     test "seeds ineligibility from the in-code default before any override" do
       refute Settings.reviewer_eligible?(:pi)
-      assert Settings.reviewer_eligible?(:claude)
-      assert Settings.reviewer_ineligible_agents() == [:pi]
+      refute Settings.reviewer_eligible?(:claude)
+      refute Settings.reviewer_eligible?(:grok)
+      refute Settings.reviewer_eligible?(:antigravity)
+      assert Settings.reviewer_eligible?(:codex)
+      assert Settings.reviewer_eligible?(:cursor)
+      assert Settings.reviewer_ineligible_agents() == [:grok, :claude, :antigravity, :pi]
     end
 
     test "an agent can be enabled as implementer yet ineligible as reviewer" do
@@ -104,19 +113,20 @@ defmodule Harness.Agent.SettingsTest do
 
     test "a set_enabled toggle does not freeze the reviewer seed into the store" do
       # Disabling an implementer is not a reviewer override, so the persisted
-      # record must not materialize the [:pi] seed.
+      # record must not materialize the reviewer seed.
       assert :ok = Settings.set_enabled(:cursor, false, "test")
-      assert Settings.reviewer_ineligible_agents() == [:pi]
+      assert Settings.reviewer_ineligible_agents() == [:grok, :claude, :antigravity, :pi]
     end
 
-    test "a persisted empty set makes a seeded agent eligible and overrides the config seed" do
+    test "a persisted override makes a seeded agent eligible and persisted value wins over seed" do
       assert :ok = Settings.set_reviewer_eligible(:pi, true, "test")
-      assert Settings.reviewer_ineligible_agents() == []
+      refute :pi in Settings.reviewer_ineligible_agents()
       assert Settings.reviewer_eligible?(:pi)
 
-      # A fresh read (restarted node) still honours the persisted empty set.
+      # A fresh read (restarted node) still honours the persisted override.
       assert Settings.reviewer_eligible?(:pi)
-      assert Settings.reviewer_ineligible_agents() == []
+      # Other seeded agents remain ineligible via the persisted value.
+      assert :grok in Settings.reviewer_ineligible_agents()
     end
   end
 

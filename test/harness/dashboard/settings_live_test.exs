@@ -140,8 +140,8 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     assert html =~ ~s(phx-change="set_schedule")
     assert html =~ "Poll cadence"
-    # The default schedule (0 */2 * * *) is the "2h" preset, pre-selected.
-    assert html =~ ~r/<option value="2h"\s+selected/
+    # The default schedule (0 * * * *) is the "hourly" preset, pre-selected.
+    assert html =~ ~r/<option value="hourly"\s+selected/
   end
 
   test "choosing a preset persists the schedule and confirms", %{conn: conn} do
@@ -185,14 +185,16 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   test "toggling an agent disables it for dispatch", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/harness/settings")
 
+    # codex is enabled by default (claude is disabled by the in-code seed), so
+    # toggle it to exercise the enabled -> disabled transition.
     html =
       view
-      |> element("button[phx-click=toggle_agent][phx-value-name='claude']")
+      |> element("button[phx-click=toggle_agent][phx-value-name='codex']")
       |> render_click()
 
     assert html =~ "disabled"
-    assert AgentSettings.disabled?(:claude)
-    refute AgentSettings.disabled?(:codex)
+    assert AgentSettings.disabled?(:codex)
+    refute AgentSettings.disabled?(:cursor)
   end
 
   test "toggling reviewer-eligible flips an agent's review-gate eligibility (Task 182)", %{conn: conn} do
@@ -208,8 +210,9 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     assert html =~ "reviewer eligible"
     assert AgentSettings.reviewer_eligible?(:pi)
-    # The independent axis is untouched: Pi stays enabled as an implementer.
-    assert AgentSettings.enabled?(:pi)
+    # The independent axis is untouched: Pi stays disabled as an implementer
+    # (disabled by the in-code seed; the reviewer toggle does not flip it).
+    refute AgentSettings.enabled?(:pi)
   end
 
   test "a transiently-unavailable agent renders a paused pill (folded in from the dashboard)", %{conn: conn} do
