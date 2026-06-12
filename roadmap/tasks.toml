@@ -7508,7 +7508,7 @@ shipped_in = "a702a54f"
 id = "255"
 phase = 16
 bundle = "agent-gate"
-status = "in_progress"
+status = "done"
 title = "Per-role reviewer model — split the reviewer model from the implementer's per-agent default"
 scores = { d = 2, b = 3, u = 3 }
 depends_on = ["256"]
@@ -7529,9 +7529,14 @@ MANTRA CHECK: this is pure mechanical config (counting/threading a string onto a
 
 TESTING NOTE: the base task could only prove the reviewer NEGATIVE case (FakeAdapter is unregistered → `agent_for_module` returns error → reviewer model nil), because `AgentRegistry.@agents` is a hardcoded compile-time map with no injection seam. To prove the POSITIVE asymmetry (reviewer override applied for a real reviewer agent) you will need either a registered-reviewer integration path or a small unit seam for the reviewer-agent→model resolution — decide which in the implementation and note the tradeoff.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781221243552-309c9ead, d8261e4534ccb07182fdb14a61aa0c462cbc8295)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-11"
 started_at = "2026-06-11"
 scored_at = "2026-06-11"
+done_at = "2026-06-12"
+shipped_in = "d8261e4534ccb07182fdb14a61aa0c462cbc8295"
 
 [[task]]
 id = "256"

@@ -10682,7 +10682,7 @@
       "id": "255",
       "phase": 16,
       "bundle": "agent-gate",
-      "status": "in_progress",
+      "status": "done",
       "title": "Per-role reviewer model — split the reviewer model from the implementer's per-agent default",
       "scores": {
         "d": 2,
@@ -10725,10 +10725,15 @@
         "otp",
         "config"
       ],
+      "shipped_in": "d8261e4534ccb07182fdb14a61aa0c462cbc8295",
       "body": "Follow-up to the base task that made per-agent default model configurable (`Config.agent_model/1` → `{:agent_model, agent}`, threaded onto both implementer and reviewer Invocations, plus the Agent-models settings card).\n\nTHE GAP this closes: today the reviewer model comes from the SAME `{:agent_model, agent}` default as the implementer. So setting `cursor → claude-opus-4-8-thinking-high` forces Opus on BOTH cursor-implements and cursor-reviews runs — you cannot run the cheap tier for implementation and the strong tier for review on one agent. The asymmetry the operator actually wants (verified 2026-06-11: cursor's headless default is Composer 2.5 Fast; an Opus-grade reviewer needs an explicit pin) is \"implement with Composer, REVIEW with Opus\" — which a single per-agent model can't express.\n\nTHE FIX (direction, not prescription): add a per-role reviewer override that, when set, wins for the reviewer path only; unset falls back to the shared per-agent default. Mirror exactly how a task's `model` overrides the implementer's per-agent default. Reviewer model is resolved in `Harness.Run.reviewer_model/1` (added in the base task) off the selected reviewer adapter's agent; implementer model is resolved at `requested_model` init off `item.agent`.\n\nMANTRA CHECK: this is pure mechanical config (counting/threading a string onto an Invocation), no judgment — clean.\n\nTESTING NOTE: the base task could only prove the reviewer NEGATIVE case (FakeAdapter is unregistered → `agent_for_module` returns error → reviewer model nil), because `AgentRegistry.@agents` is a hardcoded compile-time map with no injection seam. To prove the POSITIVE asymmetry (reviewer override applied for a real reviewer agent) you will need either a registered-reviewer integration path or a small unit seam for the reviewer-agent→model resolution — decide which in the implementation and note the tradeoff.\n",
       "created_at": "2026-06-11",
       "started_at": "2026-06-11",
+      "done_at": "2026-06-12",
       "scored_at": "2026-06-11",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781221243552-309c9ead, d8261e4534ccb07182fdb14a61aa0c462cbc8295).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
