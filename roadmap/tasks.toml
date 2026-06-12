@@ -7758,7 +7758,7 @@ shipped_in = "e1b67245421d08b0f78c6ed0fdfe0904fcd9e081"
 id = "262"
 phase = 16
 bundle = "operator-surface"
-status = "in_progress"
+status = "pending"
 title = "Expose operator read-state (agents, reviewers, autonomy, config) + self-describe via descripex MCP surface"
 scores = { d = 3, b = 4, u = 4 }
 markers = ["docs"]

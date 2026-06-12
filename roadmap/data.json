@@ -11087,7 +11087,7 @@
       "id": "262",
       "phase": 16,
       "bundle": "operator-surface",
-      "status": "in_progress",
+      "status": "pending",
       "title": "Expose operator read-state (agents, reviewers, autonomy, config) + self-describe via descripex MCP surface",
       "scores": {
         "d": 3,
