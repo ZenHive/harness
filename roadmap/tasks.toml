@@ -7761,7 +7761,7 @@ shipped_in = "e1b67245421d08b0f78c6ed0fdfe0904fcd9e081"
 id = "262"
 phase = 16
 bundle = "operator-surface"
-status = "pending"
+status = "done"
 title = "Expose operator read-state (agents, reviewers, autonomy, config) + self-describe via descripex MCP surface"
 scores = { d = 3, b = 4, u = 4 }
 markers = ["docs"]
@@ -7772,6 +7772,11 @@ touches = ["lib/harness/agents.ex", "lib/harness/autonomy.ex", "lib/harness/desc
 domains = ["elixir", "mcp", "descripex"]
 assignee = "codex"
 body = "Trigger: 'which reviewers are enabled?' had no MCP answer. Reviewer-eligibility lives in Harness.Agent.Settings and the live slate in Harness.Run, neither api()-annotated nor on the driver surface, so an orchestrator over MCP cannot read it (had to grep + project_eval). Same gap covers agent enablement, installed/available adapters, cron autonomy toggles, operator config (timeouts, model pins), and there is no self-describe tool for the chat/project_eval drivers that never see protocol-level tools/list. All exposed values are COUNT FACTS per the MANTRA (installed?, enabled?, reviewer_eligible?, a config value, a cron toggle) — no verdict/score/route/weight computed; agents-reviewers returns the mechanically-filtered eligible set, not a best-reviewer judgment. Approach: dedicated thin read-surface modules whose short name == the desired MCP tool prefix (agents/autonomy/describe), each use Descripex, returning plain maps/lists, delegating to existing public accessors; Config extended in place. This avoids the settings-* prefix collision between Cron.Settings and Landing.Settings and keeps the surface curated. Return-shape precedent: lib/harness/dispatch/run_tool.ex summarize_status/1. Builds on Task 75 (api() annotation) + 79 (MCP server) + 148 (ModelAvailability MCP — different axis: models). Verify against origin before assuming state. Verification: agents-list reviewer-eligible set must match today's codex/cursor/grok; config-list must redact secret_key_base; describe-tools lists the full catalog and describe-tool agents-list returns its schema."
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781229151005-8bc9ff54, 3f6bbff5c5f1b02581be7e9e38e5a95d311b2929)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-12"
 started_at = "2026-06-12"
 scored_at = "2026-06-12"
+done_at = "2026-06-12"
+shipped_in = "3f6bbff5c5f1b02581be7e9e38e5a95d311b2929"
