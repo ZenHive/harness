@@ -167,6 +167,16 @@ defmodule Harness.ModelAvailabilityTest do
       assert block.model == "claude-opus-4-8-thinking-high"
     end
 
+    test "records a block on a string-keyed structured 429 payload" do
+      signal = %{"status" => 429, "retry_after_seconds" => 90, "model" => "composer-2.5"}
+
+      assert :ok = AgentRegistry.mark_unavailable(Cursor, {:structured_quota, signal})
+
+      assert {:ok, %{blocks: [block]}} = ModelAvailability.list_blocks()
+      assert block.source == "failure"
+      assert block.model == "composer-2.5"
+    end
+
     test "does not record a block on unstructured failure text" do
       assert :ok = AgentRegistry.mark_unavailable(Cursor, "429 rate limit")
       assert {:ok, %{blocks: []}} = ModelAvailability.list_blocks()

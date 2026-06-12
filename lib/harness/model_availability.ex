@@ -38,13 +38,15 @@ defmodule Harness.ModelAvailability do
   @spec blocks_key() :: atom()
   def blocks_key, do: @blocks_key
 
-  @doc "Returns whether `model` is catalog-listed and not blocked for `agent`."
+  # Internal query (consumed by Dispatch/Run): catalog-listed AND not blocked-now.
+  @doc false
   @spec available?(atom(), String.t() | nil) :: boolean()
   def available?(agent, model) when is_atom(agent) do
     not blocked_now?(agent, model) and catalog_allows?(agent, model)
   end
 
-  @doc "Returns the active block expiry for the pair, or nil when unblocked."
+  # Internal query (consumed by Dispatch/Run): active block expiry, or nil.
+  @doc false
   @spec blocked_until(atom(), String.t() | :all) :: DateTime.t() | nil
   def blocked_until(agent, model) when is_atom(agent) and (is_binary(model) or model == :all) do
     case active_block(agent, model) do
@@ -53,7 +55,8 @@ defmodule Harness.ModelAvailability do
     end
   end
 
-  @doc "Lists catalog entries not currently blocked."
+  # Internal query (consumed by Dispatch/Run): catalog entries not currently blocked.
+  @doc false
   @spec list_available(atom()) :: [map()] | {:error, :catalog_unavailable}
   def list_available(agent) when is_atom(agent) do
     with {:ok, catalog} <- catalog(agent), do: available_catalog_entries(agent, catalog)
@@ -69,7 +72,8 @@ defmodule Harness.ModelAvailability do
     if blocked_now?(agent, id), do: [], else: [entry_map(entry, nil)]
   end
 
-  @doc "Lists available model ids for error tuples."
+  # Internal query (consumed by Dispatch/Run): available model ids for error tuples.
+  @doc false
   @spec list_available_ids(atom()) :: [String.t()]
   def list_available_ids(agent) when is_atom(agent) do
     case list_available(agent) do
@@ -499,7 +503,7 @@ defmodule Harness.ModelAvailability do
   defp do_structured_quota_signal(_), do: :error
 
   @spec quota_from_map(map()) :: {:ok, pos_integer(), String.t() | nil} | :error
-  defp quota_from_map(%{"status" => 429} = map), do: quota_from_map(atomize_429_map(map))
+  defp quota_from_map(%{"status" => 429} = map), do: atomize_429_map(map)
   defp quota_from_map(%{status: 429} = map), do: extract_retry_after(map)
 
   defp quota_from_map(_), do: :error
