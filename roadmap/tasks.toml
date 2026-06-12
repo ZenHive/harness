@@ -7795,7 +7795,7 @@ shipped_in = "3f6bbff5c5f1b02581be7e9e38e5a95d311b2929"
 id = "263"
 phase = 19
 bundle = "model-availability"
-status = "pending"
+status = "in_progress"
 title = "Grok + codex catalog probes return catalog_unavailable — grok needs a bullet-format parse branch, codex needs a JSON-decode branch"
 scores = { d = 3, b = 4, u = 5 }
 markers = ["bug"]
@@ -7838,4 +7838,5 @@ So wire `@probeable_agents` + `@catalog_commands` for codex (`codex -> ["debug",
 Claude stays out: `claude model list` is interpreted as a prompt (no such subcommand); anthropics/claude-code#12612 is an open feature request to add it. Its `catalog_unavailable` is by design — no static catalog for it here.
 """
 created_at = "2026-06-12"
+started_at = "2026-06-12"
 scored_at = "2026-06-12"
