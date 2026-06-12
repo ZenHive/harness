@@ -31,6 +31,12 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     prior_reviewer_model = Application.get_env(:harness, :reviewer_model)
     prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
     prior_settings_store = Application.get_env(:harness, :settings_store)
+    prior_probe = Application.get_env(:harness, :model_catalog_probe)
+
+    # Keep the model dropdowns from shelling out to real agent CLIs on mount:
+    # probeable agents (cursor/grok) resolve to catalog_unavailable, so only the
+    # built-in claude/codex seeds render as a <select> and the rest stay text inputs.
+    Application.put_env(:harness, :model_catalog_probe, fn _agent, _ -> {:error, :catalog_unavailable} end)
 
     SettingsStoreMemory.reset(scope: :test_default)
 
@@ -51,6 +57,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
       restore_env(:reviewer_model, prior_reviewer_model)
       restore_env(:repo_enabled, prior_repo_enabled)
       restore_env(:settings_store, prior_settings_store)
+      restore_env(:model_catalog_probe, prior_probe)
       SettingsStoreMemory.reset(scope: :test_default)
     end)
 

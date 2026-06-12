@@ -49,6 +49,43 @@ defmodule Harness.ModelAvailabilityTest do
     end
   end
 
+  describe "parse_catalog_output/2 — per-agent formats" do
+    test "grok bullet rows yield ids, dropping the (default) annotation and the header noise" do
+      output = """
+      You are logged in with grok.com.
+
+      Default model: grok-build
+
+      Available models:
+        * grok-build (default)
+        - grok-composer-2.5-fast
+      """
+
+      assert [
+               %{id: "grok-build", label: "grok-build", annotations: ["default"]},
+               %{id: "grok-composer-2.5-fast", label: "grok-composer-2.5-fast"}
+             ] = ModelAvailability.parse_catalog_output(:grok, output)
+    end
+
+    test "pi table rows use the model column as id and the provider as label, skipping the header" do
+      output = """
+      provider   model                       context  max-out  thinking  images
+      anthropic  claude-haiku-4-5-20251001   200K     64K      yes       yes
+      openai     gpt-4o                      128K     16K      no        yes
+      """
+
+      assert [
+               %{id: "claude-haiku-4-5-20251001", label: "anthropic"},
+               %{id: "gpt-4o", label: "openai"}
+             ] = ModelAvailability.parse_catalog_output(:pi, output)
+    end
+
+    test "dedupes repeated ids" do
+      output = "  * grok-build (default)\n  - grok-build\n"
+      assert [%{id: "grok-build"}] = ModelAvailability.parse_catalog_output(:grok, output)
+    end
+  end
+
   describe "block/unblock round-trip" do
     test "operator block persists and list_blocks surfaces it" do
       assert :ok =

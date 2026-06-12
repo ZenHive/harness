@@ -19,10 +19,40 @@ defmodule Harness.ModelAvailability do
   @catalogs_key :model_catalogs
   @static_catalogs_key :model_catalog_static
   @default_catalog_ttl_ms 3_600_000
-  @probeable_agents %{cursor: "cursor-agent", grok: "grok"}
+  @probeable_agents %{cursor: "cursor-agent", grok: "grok", pi: "pi"}
   @catalog_commands %{
     cursor: ["--list-models"],
-    grok: ["models"]
+    grok: ["models"],
+    pi: ["--list-models"]
+  }
+
+  # UI-only seed catalogs for agents without a probeable `--list-models` surface,
+  # so the settings dropdown has options out of the box. Consumed *only* by
+  # `selectable_models/1` (the dashboard dropdown) — deliberately NOT by `catalog/1`
+  # / the dispatch gate, which stays permissive for these agents (a pinned id absent
+  # from this seed must still dispatch). Both id sets are a best-effort seed — edit
+  # here when the accepted ids change. A SettingsStore `@static_catalogs_key` entry
+  # still overrides at the gate, independent of this UI seed.
+  #
+  # Ids verified 2026-06-12:
+  #   claude — https://support.claude.com/en/articles/11940350-claude-code-model-configuration
+  #            https://code.claude.com/docs/en/model-config
+  #   codex  — https://developers.openai.com/codex/models
+  #            (gpt-5.5 default; gpt-5.2 / gpt-5.3-codex deprecated for ChatGPT sign-in)
+  @builtin_ui_catalogs %{
+    claude: [
+      %{id: "claude-opus-4-8", label: "Opus 4.8", annotations: []},
+      %{id: "claude-opus-4-7", label: "Opus 4.7", annotations: []},
+      %{id: "claude-fable-5", label: "Fable 5", annotations: []},
+      %{id: "claude-sonnet-4-6", label: "Sonnet 4.6", annotations: []},
+      %{id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", annotations: []}
+    ],
+    codex: [
+      %{id: "gpt-5.5", label: "GPT-5.5 (recommended)", annotations: []},
+      %{id: "gpt-5.4", label: "GPT-5.4", annotations: []},
+      %{id: "gpt-5.4-mini", label: "GPT-5.4 mini", annotations: []},
+      %{id: "gpt-5.3-codex-spark", label: "GPT-5.3 Codex Spark (Pro)", annotations: []}
+    ]
   }
 
   @type block_source :: :operator | :failure
@@ -70,6 +100,30 @@ defmodule Harness.ModelAvailability do
   @spec available_catalog_entry(atom(), catalog_entry()) :: [map()]
   defp available_catalog_entry(agent, %{id: id} = entry) do
     if blocked_now?(agent, id), do: [], else: [entry_map(entry, nil)]
+  end
+
+  # UI query (consumed by the settings dropdown): the agent's available catalog,
+  # falling back to the built-in seed when the agent has no probeable/static
+  # catalog. Distinct from `list_available/1` on purpose — this overlays
+  # `@builtin_ui_catalogs` so claude/codex get a dropdown, WITHOUT feeding the
+  # dispatch gate (which keeps treating them as catalog-free → permissive).
+  # Blocked-now ids are still dropped. Empty list ⇒ no options (render a text input).
+  @doc false
+  @spec selectable_models(atom()) :: [map()]
+  def selectable_models(agent) when is_atom(agent) do
+    case list_available(agent) do
+      entries when is_list(entries) and entries != [] -> entries
+      _ -> builtin_selectable(agent)
+    end
+  end
+
+  @spec builtin_selectable(atom()) :: [map()]
+  defp builtin_selectable(agent) do
+    @builtin_ui_catalogs
+    |> Map.get(agent, [])
+    |> Enum.flat_map(fn %{id: id} = entry ->
+      if blocked_now?(agent, id), do: [], else: [entry_map(entry, nil)]
+    end)
   end
 
   # Internal query (consumed by Dispatch/Run): available model ids for error tuples.
@@ -129,6 +183,14 @@ defmodule Harness.ModelAvailability do
   @doc false
   @spec structured_quota_signal(term()) :: {:ok, pos_integer(), String.t() | nil} | :error
   def structured_quota_signal(reason), do: do_structured_quota_signal(reason)
+
+  # Test/diagnostic entry point: parse a raw CLI catalog dump for an agent into
+  # deduped entries, exercising the per-agent line parser without shelling out.
+  @doc false
+  @spec parse_catalog_output(atom(), String.t()) :: [catalog_entry()]
+  def parse_catalog_output(agent, output) when is_atom(agent) and is_binary(output) do
+    catalog_lines_to_entries(agent, output)
+  end
 
   @doc false
   @spec parse_catalog_line(String.t()) :: catalog_entry() | :error
@@ -401,28 +463,62 @@ defmodule Harness.ModelAvailability do
   defp default_probe(agent, executables) do
     with {:ok, executable} <- Map.fetch(executables, agent),
          {:ok, args} <- Map.fetch(@catalog_commands, agent),
-         path when is_binary(path) <- System.find_executable(executable) do
-      {output, 0} = System.cmd(path, args, stderr_to_stdout: true)
-      models = catalog_lines_to_entries(output)
+         path when is_binary(path) <- System.find_executable(executable),
+         {output, 0} <- System.cmd(path, args, stderr_to_stdout: true) do
+      models = catalog_lines_to_entries(agent, output)
 
       if models == [], do: {:error, :catalog_unavailable}, else: {:ok, models}
     else
+      # A missing/unauthed CLI exits non-zero — degrade to unavailable, never raise
+      # (the settings page probes on every mount; a MatchError here would 500 it).
       _ -> {:error, :catalog_unavailable}
     end
   end
 
-  @spec catalog_lines_to_entries(String.t()) :: [catalog_entry()]
-  defp catalog_lines_to_entries(output) do
+  # Each probeable CLI prints its model list in its own shape, so parsing dispatches
+  # on agent. Entries are deduped by id (pi can list the same id under >1 provider).
+  @spec catalog_lines_to_entries(atom(), String.t()) :: [catalog_entry()]
+  defp catalog_lines_to_entries(agent, output) do
     output
     |> String.split("\n", trim: true)
-    |> Enum.flat_map(&catalog_line_entry/1)
+    |> Enum.flat_map(&catalog_line_entry(agent, &1))
+    |> Enum.uniq_by(& &1.id)
   end
 
-  @spec catalog_line_entry(String.t()) :: [catalog_entry()]
-  defp catalog_line_entry(line) do
-    case parse_catalog_line(line) do
+  @spec catalog_line_entry(atom(), String.t()) :: [catalog_entry()]
+  defp catalog_line_entry(agent, line) do
+    case parse_agent_line(agent, line) do
       :error -> []
       entry -> [entry]
+    end
+  end
+
+  # cursor: "id (ann) - Label" — the original `parse_catalog_line/1` shape.
+  # grok:   bullet rows "  * id (default)" / "  - id" with no label column.
+  # pi:     a whitespace-column table "provider  model  context …" (skip header).
+  @spec parse_agent_line(atom(), String.t()) :: catalog_entry() | :error
+  defp parse_agent_line(:grok, line), do: parse_grok_line(line)
+  defp parse_agent_line(:pi, line), do: parse_pi_line(line)
+  defp parse_agent_line(_cursor, line), do: parse_catalog_line(line)
+
+  @spec parse_grok_line(String.t()) :: catalog_entry() | :error
+  defp parse_grok_line(line) do
+    case Regex.run(~r/^\s*[*-]\s+(\S+)(.*)$/, line) do
+      [_full, id, rest] ->
+        {_stripped, annotations} = strip_annotations(rest)
+        %{id: id, label: id, annotations: annotations}
+
+      _no_bullet ->
+        :error
+    end
+  end
+
+  @spec parse_pi_line(String.t()) :: catalog_entry() | :error
+  defp parse_pi_line(line) do
+    case String.split(line, ~r/\s{2,}/, trim: true) do
+      ["provider", "model" | _header] -> :error
+      [provider, model | _rest] when model != "" -> %{id: model, label: provider, annotations: []}
+      _other -> :error
     end
   end
 

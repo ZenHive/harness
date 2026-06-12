@@ -34,6 +34,7 @@ defmodule Harness.Dashboard.SettingsLive do
   alias Harness.Dashboard.Components
   alias Harness.Dashboard.ConfigInspector
   alias Harness.Landing.Settings, as: LandingSettings
+  alias Harness.ModelAvailability
   alias Harness.Oban, as: HarnessOban
   alias Harness.Project
   alias Harness.ProjectRegistry
@@ -389,14 +390,7 @@ defmodule Harness.Dashboard.SettingsLive do
           <div class="project-id">
             <span class="project-name">{model.label}</span>
           </div>
-          <input type="hidden" name="key" value={model.id} />
-          <input
-            type="text"
-            name="value"
-            value={model.input_value}
-            placeholder="agent default"
-            aria-label={"#{model.label} model"}
-          />
+          <.model_field model={model} blank_label="agent default" />
           <button type="submit" class="btn-save">Save</button>
         </form>
       </section>
@@ -417,14 +411,7 @@ defmodule Harness.Dashboard.SettingsLive do
           <div class="project-id">
             <span class="project-name">{model.label}</span>
           </div>
-          <input type="hidden" name="key" value={model.id} />
-          <input
-            type="text"
-            name="value"
-            value={model.input_value}
-            placeholder={model.placeholder}
-            aria-label={"#{model.label} model"}
-          />
+          <.model_field model={model} blank_label="inherit" />
           <button type="submit" class="btn-save">Save</button>
         </form>
       </section>
@@ -457,6 +444,38 @@ defmodule Harness.Dashboard.SettingsLive do
       phx-value-name={@value}
       data-confirm={@confirm}
     ></button>
+    """
+  end
+
+  attr(:model, :map, required: true)
+  attr(:blank_label, :string, required: true)
+
+  # The model-pin control: a `<select>` sourced from the agent's resolved catalog
+  # (`ModelAvailability.list_available/1`) when one is available, falling back to a
+  # free-text input when the agent has no catalog (ids churn, so text stays valid).
+  # Both submit `name="value"` so the shared `set_config` handler is unchanged.
+  @spec model_field(map()) :: Rendered.t()
+  defp model_field(assigns) do
+    ~H"""
+    <input type="hidden" name="key" value={@model.id} />
+    <select :if={@model.options != :none} name="value" aria-label={"#{@model.label} model"}>
+      <option value="" selected={@model.input_value == ""}>{@blank_label}</option>
+      <option
+        :for={opt <- @model.options}
+        value={opt.value}
+        selected={opt.value == @model.input_value}
+      >
+        {opt.label}
+      </option>
+    </select>
+    <input
+      :if={@model.options == :none}
+      type="text"
+      name="value"
+      value={@model.input_value}
+      placeholder={@model.placeholder}
+      aria-label={"#{@model.label} model"}
+    />
     """
   end
 
@@ -528,7 +547,16 @@ defmodule Harness.Dashboard.SettingsLive do
     Config.editable_entries()
     |> Enum.filter(&match?({:agent_model, _}, &1.key))
     |> Enum.map(fn entry ->
-      %{id: config_id(entry.key), label: entry.label, input_value: config_input_value(Config.get(entry.key))}
+      {:agent_model, agent} = entry.key
+      value = config_input_value(Config.get(entry.key))
+
+      %{
+        id: config_id(entry.key),
+        label: entry.label,
+        input_value: value,
+        placeholder: "agent default",
+        options: model_options(agent, value)
+      }
     end)
   end
 
@@ -538,15 +566,48 @@ defmodule Harness.Dashboard.SettingsLive do
     |> Enum.filter(&match?({:reviewer_model, _}, &1.key))
     |> Enum.map(fn entry ->
       {:reviewer_model, agent} = entry.key
+      value = config_input_value(Config.get(entry.key))
 
       %{
         id: config_id(entry.key),
         label: entry.label,
-        input_value: config_input_value(Config.get(entry.key)),
-        placeholder: config_input_value(Config.agent_model(agent))
+        input_value: value,
+        placeholder: config_input_value(Config.agent_model(agent)),
+        options: model_options(agent, value)
       }
     end)
   end
+
+  # The dropdown option set for an agent's model pin: the agent's resolved catalog
+  # (probed CLI list / operator static list) mapped to `{value, label}`, with the
+  # currently-pinned value appended when it isn't in the catalog so an out-of-band
+  # pin survives a re-render. `:none` when the agent has no catalog — `model_field/1`
+  # then renders a free-text input instead of a locked dropdown.
+  @spec model_options(atom(), String.t()) :: [%{value: String.t(), label: String.t()}] | :none
+  defp model_options(agent, current) do
+    case ModelAvailability.selectable_models(agent) do
+      [] -> :none
+      entries -> catalog_options(entries, current)
+    end
+  end
+
+  @spec catalog_options([map()], String.t()) :: [%{value: String.t(), label: String.t()}]
+  defp catalog_options(entries, current) do
+    options = Enum.map(entries, &%{value: &1.id, label: option_label(&1)})
+
+    if current == "" or Enum.any?(options, &(&1.value == current)) do
+      options
+    else
+      options ++ [%{value: current, label: "#{current} (set)"}]
+    end
+  end
+
+  # A catalog entry renders as its id, with the human label appended when distinct —
+  # the id is what gets saved, the label is the recognizability hint.
+  @spec option_label(map()) :: String.t()
+  defp option_label(%{id: id, label: label}) when is_binary(label) and label != "" and label != id, do: "#{id} — #{label}"
+
+  defp option_label(%{id: id}), do: id
 
   @spec config_placeholder(Config.Entry.t()) :: String.t()
   defp config_placeholder(%{type: :duration_ms, default: nil}), do: "unbounded"
