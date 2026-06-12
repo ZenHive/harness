@@ -785,6 +785,18 @@ defmodule Harness.DispatchTest do
     test "excludes struct-arg tools a JSON orchestrator cannot drive" do
       names = Enum.map(Harness.Manifest.mcp_tools(), & &1.name)
 
+      for exposed <- ~w(
+             agents-list
+             agents-reviewers
+             autonomy-status
+             config-list
+             config-get
+             describe-tools
+             describe-tool
+           ) do
+        assert exposed in names, "#{exposed} should be on the MCP surface"
+      end
+
       for excluded <- ~w(
              supervisor-start_run
              batch-run

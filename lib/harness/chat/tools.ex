@@ -53,7 +53,7 @@ defmodule Harness.Chat.Tools do
     |> Keyword.take([:name_style])
     |> Harness.Manifest.mcp_tools()
     |> Map.new(fn tool ->
-      entry = resolve_tool!(tool, modules)
+      entry = Harness.Manifest.resolve_tool!(tool, modules)
       {tool.name, entry}
     end)
   end
@@ -161,62 +161,6 @@ defmodule Harness.Chat.Tools do
   defp coerce_boolean(%{"value" => value}), do: coerce_boolean(value)
   defp coerce_boolean(%{value: value}), do: coerce_boolean(value)
   defp coerce_boolean(value), do: value
-
-  @spec resolve_tool!(map(), [module()]) :: entry()
-  defp resolve_tool!(%{name: name, description: description, inputSchema: schema}, modules) do
-    delim = Harness.Manifest.tool_name_delimiter()
-
-    {prefix, func_name} =
-      case String.split(name, delim, parts: 2) do
-        [prefix, func_name] -> {prefix, func_name}
-        _ -> raise ArgumentError, "invalid MCP tool name #{inspect(name)}"
-      end
-
-    module = resolve_module!(modules, prefix)
-    function = String.to_existing_atom(func_name)
-    api_entry = module.__api__(function) || raise ArgumentError, "missing __api__ for #{name}"
-    params = api_entry.hints[:params] || %{}
-
-    %{
-      name: name,
-      description: description,
-      module: module,
-      function: function,
-      arity: api_entry.arity,
-      defaults: api_entry.defaults,
-      input_schema: schema,
-      # `param_order` (descripex >= 0.7) preserves declaration order; `Map.keys`
-      # was hash-ordered, so multi-required-param tools dispatched arguments to
-      # the wrong positions (e.g. roadmap-list got status as project_name).
-      param_keys: api_entry.param_order,
-      params: params
-    }
-  end
-
-  # Prefix comes from MCP tool names derived from the curated Manifest module list —
-  # not user-supplied free text.
-  # sobelow_skip ["DOS.StringToAtom"]
-  @spec resolve_module!([module()], String.t()) :: module()
-  defp resolve_module!(modules, prefix) do
-    short = String.to_atom(prefix)
-
-    case Enum.filter(modules, fn mod ->
-           mod
-           |> Module.split()
-           |> List.last()
-           |> Macro.underscore()
-           |> String.to_atom() == short
-         end) do
-      [module] ->
-        module
-
-      [] ->
-        raise ArgumentError, "no module for tool prefix #{inspect(prefix)}"
-
-      multiple ->
-        raise ArgumentError, "ambiguous tool prefix #{inspect(prefix)}: #{inspect(multiple)}"
-    end
-  end
 
   @spec build_apply_args(entry(), map()) :: {:ok, [term()]} | {:error, {:schema_validation_failed, [map()]}}
   defp build_apply_args(entry, arguments) do

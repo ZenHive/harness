@@ -19,11 +19,15 @@ defmodule Harness.Manifest do
   use Descripex, namespace: "/manifest"
 
   @driver_surface [
+    Harness.Agents,
+    Harness.Autonomy,
     Harness.Run.Supervisor,
     Harness.Batch,
     Harness.Batch.AgentEvaluation,
     Harness.Roadmap,
     Harness.Dispatch,
+    Harness.Config,
+    Harness.Describe,
     Harness.ModelAvailability,
     Harness.ProjectRegistry,
     Harness.Run,
@@ -111,8 +115,74 @@ defmodule Harness.Manifest do
     |> Enum.reject(&struct_arg_tool?/1)
   end
 
+  @doc false
+  @spec resolve_tool!(map(), [module()]) :: map()
+  def resolve_tool!(%{name: name, description: description, inputSchema: schema}, modules) do
+    delim = @tool_name_delimiter
+
+    {prefix, func_name} =
+      case String.split(name, delim, parts: 2) do
+        [prefix, func_name] -> {prefix, func_name}
+        _ -> raise ArgumentError, "invalid MCP tool name #{inspect(name)}"
+      end
+
+    module = resolve_module!(modules, prefix)
+    function = String.to_existing_atom(func_name)
+    api_entry = module.__api__(function) || raise ArgumentError, "missing __api__ for #{name}"
+    params = api_entry.hints[:params] || %{}
+
+    %{
+      name: name,
+      description: description,
+      module: module,
+      function: function,
+      arity: api_entry.arity,
+      defaults: api_entry.defaults,
+      input_schema: schema,
+      param_keys: api_entry.param_order,
+      params: params,
+      returns: api_entry.hints[:returns]
+    }
+  end
+
+  @doc "Describe one JSON-driveable MCP tool by name."
+  @spec describe_tool(String.t()) :: {:ok, map()} | {:error, {:unknown_tool, String.t()}}
+  def describe_tool(name) when is_binary(name) do
+    modules = modules()
+
+    case Enum.find(mcp_tools(), &(&1.name == name)) do
+      nil -> {:error, {:unknown_tool, name}}
+      tool -> {:ok, describe_resolved_tool(resolve_tool!(tool, modules))}
+    end
+  end
+
   defp transform_tool_name(%{name: name} = tool) do
     %{tool | name: String.replace(name, "__", @tool_name_delimiter)}
+  end
+
+  @spec describe_resolved_tool(map()) :: map()
+  defp describe_resolved_tool(entry) do
+    required = MapSet.new(entry.input_schema.required || [])
+
+    %{
+      name: entry.name,
+      description: entry.description,
+      params: Enum.map(entry.param_keys, &describe_param(&1, entry.params, required)),
+      returns: entry.returns
+    }
+  end
+
+  @spec describe_param(atom(), map(), MapSet.t(String.t())) :: map()
+  defp describe_param(key, params, required) do
+    details = Map.get(params, key, %{})
+
+    %{
+      name: Atom.to_string(key),
+      kind: details[:kind],
+      required: MapSet.member?(required, Atom.to_string(key)),
+      default: Map.get(details, :default),
+      description: Map.get(details, :description)
+    }
   end
 
   @spec struct_arg_tool?(map()) :: boolean()
@@ -170,4 +240,29 @@ defmodule Harness.Manifest do
 
   @spec adapter_module_list?(String.t()) :: boolean()
   defp adapter_module_list?(desc), do: Regex.match?(~r/\blist of adapter modules\b/i, desc)
+
+  # Prefix comes from MCP tool names derived from the curated Manifest module list —
+  # not user-supplied free text.
+  # sobelow_skip ["DOS.StringToAtom"]
+  @spec resolve_module!([module()], String.t()) :: module()
+  defp resolve_module!(modules, prefix) do
+    short = String.to_atom(prefix)
+
+    case Enum.filter(modules, fn mod ->
+           mod
+           |> Module.split()
+           |> List.last()
+           |> Macro.underscore()
+           |> String.to_atom() == short
+         end) do
+      [module] ->
+        module
+
+      [] ->
+        raise ArgumentError, "no module for tool prefix #{inspect(prefix)}"
+
+      multiple ->
+        raise ArgumentError, "ambiguous tool prefix #{inspect(prefix)}: #{inspect(multiple)}"
+    end
+  end
 end

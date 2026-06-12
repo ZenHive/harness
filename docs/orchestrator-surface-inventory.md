@@ -37,6 +37,10 @@ Reachable over MCP/chat (JSON scalars only). Grouped by orchestrator intent.
 | `result_store-get_capability_score` / `result_store-list_capability_scores` | `Harness.ResultStore` | **Legacy CapabilityScore cells** (import-only round-trip for historical term data; active routing uses the scout assessment) |
 | `dispatch-recommend` | `Harness.Dispatch.recommend/2` + `Harness.CapabilityScore.recommend/2` | Per-facet scout assessment match: returns scout's winner + reasoning for the task's `review_facets` (`:exploit`), or `:explore`/fallback when unmeasured or no assessment yet. `dispatch-assess_facets` triggers a fresh scout pass. |
 | `project_registry-list` / `project_registry-lookup` | `Harness.ProjectRegistry` | Discover registered projects + config |
+| `agents-list` / `agents-reviewers` | `Harness.Agents` | Read installed/available/enabled agent facts, reviewer eligibility, configured model pins, and the ordered reviewer slate |
+| `autonomy-status` | `Harness.Autonomy` | Read cron autonomy master/project toggles, dispatch mode, effective state, and schedule presets |
+| `config-list` / `config-get` | `Harness.Config` | Read operator config schema entries and effective values; secret values are redacted |
+| `describe-tools` / `describe-tool` | `Harness.Describe` | Self-describe the live MCP tool catalog and one tool's params/returns schema |
 | `playbooks-list` / `playbooks-get` | `Harness.Playbooks` | Orchestration recipes |
 
 ### Write / control
@@ -74,15 +78,19 @@ hold/steer/resume · project registration (write).
 | AgentKPI rollups | ✅ `result_store-aggregate_by_agent` (per-agent), `result_store-aggregate_ceremony_cost` (per-approved-run ceremony/implementer+reviewer+audit token overhead) | none |
 | Capability (scout) routing | ✅ `dispatch-recommend` + `dispatch-assess_facets` (scout per-facet assessment); legacy cells via `result_store-*_capability_score` for import | none |
 | Project / registry listing | ✅ `project_registry-list/lookup` | none |
+| Operator agent/reviewer state | ✅ `agents-list` / `agents-reviewers` | none |
+| Cron autonomy state | ✅ `autonomy-status` | none |
+| Operator config state | ✅ `config-list` / `config-get` | none |
+| Self-description for non-tools/list drivers | ✅ `describe-tools` / `describe-tool` | none |
 | Dispatch | ✅ `dispatch-task/await/bundle/compare` | none |
 | Cancel | ✅ `dispatch-cancel` | none |
 | **Hold / steer / resume** | ❌ annotated on `Harness.Run` but `:exchange_data`-filtered; **no flat JSON tool** | **GAP** |
 | **Project registration** | ⚠️ `project_registry-register` annotated `:value` but takes a `%Project{}` — **broken over JSON** (struct guard fails, surfaces as `dispatch_failed`) | **GAP** |
 
-**Finding: the read/observe surface was already complete.** The genuine gaps were both in
-the *write* subset — run recovery (hold/steer/resume) had no JSON-native path, and project
-registration was exposed-but-unusable over JSON. No new read tools were required; the
-inventory's job (per the task) was to discover the real gap rather than annotate blindly.
+**Task 262 update:** operator read-state is now complete too. `agents-*`,
+`autonomy-status`, `config-*`, and `describe-*` expose mechanical facts only — installed?,
+enabled?, reviewer_eligible?, config values, cron toggles, and live schema metadata. They
+do not compute a best reviewer, score, route, or verdict.
 
 ---
 
@@ -99,6 +107,10 @@ Rationale per tool (the "deliberate, not blanket" requirement):
 | `dispatch-steer` | `Harness.Run.steer/2` | Stash guidance for the next agent boundary — lets the orchestrator correct course without killing the worktree; records a note, does not judge. |
 | `dispatch-resume` | `Harness.Run.resume/1` | Resume a held run in the same worktree — the other half of hold; mechanical `:held → :running`. |
 | `dispatch-register_project` | `Harness.ProjectRegistry.register/1` (via the validated builder) | Register a project for dispatch from JSON scalars — the directly-requested ability to onboard a target without a human in IEx; assembles the struct through the same validator/path-expansion as a config entry. |
+| `agents-list` / `agents-reviewers` | `Harness.Agents` | Read operator agent/reviewer facts without grep or `project_eval`; reviewer slate reuses the run's mechanical eligibility/order helpers. |
+| `autonomy-status` | `Harness.Autonomy` | Read the cron autonomy switches and effective per-project state through the same settings registry the poller uses. |
+| `config-list` / `config-get` | `Harness.Config` | Read config schema/effective values over MCP with secret redaction. |
+| `describe-tools` / `describe-tool` | `Harness.Describe` | Let chat/project_eval drivers self-describe the live tool catalog when protocol-level `tools/list` is unavailable. |
 
 Plumbing: `Harness.ProjectRegistry.register/1`'s `project` param was re-marked
 `:exchange_data` (it genuinely takes a struct), which removes the broken

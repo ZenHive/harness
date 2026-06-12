@@ -88,6 +88,33 @@ defmodule Harness.ConfigTest do
     end
   end
 
+  describe "config MCP read surface" do
+    test "list/0 projects schema entries and redacts secret values" do
+      Application.put_env(:harness, Harness.Dashboard.Endpoint, secret_key_base: "super-secret")
+
+      rows = Config.list()
+      secret = Enum.find(rows, &(&1.key == "dashboard_endpoint.secret_key_base"))
+
+      assert %{
+               group: "Dashboard",
+               label: "secret_key_base",
+               key: "dashboard_endpoint.secret_key_base",
+               value: "***",
+               default: "***",
+               editable: false,
+               restart_required: true,
+               env_var: "HARNESS_SECRET_KEY_BASE",
+               secret: true
+             } = secret
+    end
+
+    test "get_config/1 accepts a dotted key and returns the projected entry" do
+      assert {:ok, %{key: "run.idle_timeout", value: nil, editable: true}} = Config.get_config("run.idle_timeout")
+      assert {:ok, %{key: "agent_model.codex", value: nil}} = Config.get_config("agent_model.codex")
+      assert {:error, {:unknown_key, "run.nope"}} = Config.get_config("run.nope")
+    end
+  end
+
   describe "put/3" do
     test "validates, persists, and hot-applies an editable non-restart key" do
       assert :ok = Config.put({:run, :lifetime_timeout}, 99_000, "test")

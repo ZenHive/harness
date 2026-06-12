@@ -40,6 +40,18 @@ defmodule Harness.Dashboard.MCPServerTest do
       assert %{"description" => health_description, "inputSchema" => health_schema} = health
       assert health_description =~ "Orchestration-health review_stuck counts"
       assert health_schema["type"] == "object"
+
+      for name <- ~w(
+             agents-list
+             agents-reviewers
+             autonomy-status
+             config-list
+             config-get
+             describe-tools
+             describe-tool
+           ) do
+        assert Enum.any?(tools, &(&1["name"] == name))
+      end
     end
   end
 
@@ -149,6 +161,27 @@ defmodule Harness.Dashboard.MCPServerTest do
                MCPServer.handle_request(request, frame)
 
       assert {:ok, ["ok", %{"reviewer_unavailable" => 1}]} = Jason.decode(text)
+    end
+
+    test "smokes new no-arg operator read tools", %{frame: frame} do
+      for name <- ~w(agents-list autonomy-status config-list describe-tools) do
+        request = call_request(name, %{})
+
+        assert {:reply, %{"content" => [%{"text" => text}], "isError" => false}, ^frame} =
+                 MCPServer.handle_request(request, frame)
+
+        assert {:ok, _decoded} = Jason.decode(text)
+      end
+    end
+
+    test "schema-validates new one-arg tools", %{frame: frame} do
+      request = call_request("config-get", %{})
+
+      assert {:reply, %{"content" => [%{"text" => text}], "isError" => true}, ^frame} =
+               MCPServer.handle_request(request, frame)
+
+      assert text =~ "Schema validation failed"
+      assert text =~ "#/key"
     end
   end
 

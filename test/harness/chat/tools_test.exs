@@ -406,6 +406,12 @@ defmodule Harness.Chat.ToolsTest do
 
   defp minimal_required_args("audit_review-default_grader"), do: %{"implementer" => "claude"}
 
+  defp minimal_required_args("agents-reviewers"), do: %{}
+
+  defp minimal_required_args("config-get"), do: %{"key" => "run.idle_timeout"}
+
+  defp minimal_required_args("describe-tool"), do: %{"name" => "agents-list"}
+
   defp minimal_required_args("result_store-get_capability_score"),
     do: %{"agent" => "codex", "domain" => "otp", "corpus_version" => "mcp-default"}
 

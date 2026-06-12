@@ -41,6 +41,8 @@ defmodule Harness.Config do
   deferred.
   """
 
+  use Descripex, namespace: "/config"
+
   alias Harness.Config.Entry
   alias Harness.SettingsStore
 
@@ -67,14 +69,7 @@ defmodule Harness.Config do
   # (minus `:human`, which is never an autonomous dispatch target).
   @implementer_agents [:claude, :codex, :cursor, :grok, :antigravity, :pi]
 
-  @doc """
-  The full declarative config schema — one `Entry` per operator-relevant key.
-
-  Computed/derived inspector rows (result store, settings store backend) are not
-  here: they are `*.configured/0` derivations, not simple keyed config, and stay
-  inspector-local. Test-injection seams (`:roadmap_list`, `:run_starter`, …) are
-  deliberately absent — they are seams, not operator config.
-  """
+  @doc false
   @spec schema() :: [Entry.t()]
   def schema do
     [
@@ -136,22 +131,15 @@ defmodule Harness.Config do
     end)
   end
 
-  @doc "The `ui_editable?` subset of the schema, in declaration order — the editable dashboard card's source."
+  @doc false
   @spec editable_entries() :: [Entry.t()]
   def editable_entries, do: Enum.filter(schema(), & &1.ui_editable?)
 
-  @doc "The implementer agents an unassigned task may default-route to — the dashboard select's option source and the `:agent`-type validation set."
+  @doc false
   @spec dispatch_agents() :: [atom()]
   def dispatch_agents, do: @implementer_agents
 
-  @doc """
-  Resolves the operator-configured default implementer model for `agent`, or
-  `nil` when unset (a blank persisted value counts as unset). The fallback layer
-  between a task's explicit `model` pin and the agent CLI's ambient default. An
-  agent outside the schema yields `nil` rather than raising (unlike `get/1`), so
-  a new adapter without a model entry degrades to the CLI default instead of
-  crashing a run.
-  """
+  @doc false
   @spec agent_model(atom()) :: String.t() | nil
   def agent_model(agent) when is_atom(agent) do
     case fetch_entry({:agent_model, agent}) do
@@ -160,10 +148,7 @@ defmodule Harness.Config do
     end
   end
 
-  @doc """
-  Resolves the reviewer model for `agent`: reviewer override first, then the
-  shared per-agent default, then `nil` for the agent CLI's ambient default.
-  """
+  @doc false
   @spec reviewer_model(atom()) :: String.t() | nil
   def reviewer_model(agent) when is_atom(agent) do
     case fetch_entry({:reviewer_model, agent}) do
@@ -182,7 +167,24 @@ defmodule Harness.Config do
   runtime condition). This is the read path code uses instead of a raw
   `Application.get_env/3` for schema-covered keys.
   """
-  @spec get(Entry.key()) :: term()
+  api(:get, "Return one operator config entry by dotted key, with secrets redacted.",
+    params: [
+      key: [
+        kind: :value,
+        description: ~s(Dotted config key from config-list, e.g. "run.idle_timeout" or "agent_model.codex".),
+        schema: String.t()
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{group, label, key, value, default, editable, restart_required, env_var, secret}} or {:error, {:unknown_key, key}}."
+    }
+  )
+
+  @spec get(Entry.key() | String.t()) :: term() | {:ok, map()} | {:error, {:unknown_key, String.t()}}
+  def get(key) when is_binary(key), do: get_config(key)
+
   def get(key) do
     case fetch_entry(key) do
       {:ok, entry} -> read_env(entry.key, entry.default)
@@ -190,14 +192,26 @@ defmodule Harness.Config do
     end
   end
 
-  @doc """
-  Sets a `ui_editable?` key at runtime: validates the value against the entry's
-  type, persists it as an override, applies it to app env live (unless the key is
-  `restart_required?`), and logs an audit line naming the actor.
+  @doc false
+  @spec get_config(String.t()) :: {:ok, map()} | {:error, {:unknown_key, String.t()}}
+  def get_config(key) when is_binary(key) do
+    case Enum.find(schema(), &(key_string(&1.key) == key)) do
+      %Entry{} = entry -> {:ok, project_entry(entry)}
+      nil -> {:error, {:unknown_key, key}}
+    end
+  end
 
-  Returns `{:error, :unknown_key | :not_editable | :invalid_value}` without
-  mutating anything on a bad request.
-  """
+  api(:list, "List operator config schema entries with effective values and secrets redacted.",
+    returns: %{
+      type: :list,
+      description: "[%{group, label, key, value, default, editable, restart_required, env_var, secret}] in schema order."
+    }
+  )
+
+  @spec list() :: [map()]
+  def list, do: Enum.map(schema(), &project_entry/1)
+
+  @doc false
   @spec put(Entry.key(), term(), String.t()) :: :ok | {:error, atom()}
   def put(key, value, actor) when is_binary(actor) do
     with {:ok, entry} <- fetch_editable(key),
@@ -209,11 +223,7 @@ defmodule Harness.Config do
     end
   end
 
-  @doc """
-  Seeds app env from persisted overrides. Called once on boot, before the runtime
-  reads any schema-covered key. A key whose `env_var` is set is skipped (the env
-  var wins); an override for a key no longer in the schema is ignored.
-  """
+  @doc false
   @spec load_into_env() :: :ok
   def load_into_env do
     Enum.each(overrides(), &apply_override/1)
@@ -302,4 +312,48 @@ defmodule Harness.Config do
       secret?: Keyword.get(opts, :secret?, false)
     }
   end
+
+  @spec project_entry(Entry.t()) :: map()
+  defp project_entry(%Entry{} = entry) do
+    %{
+      group: entry.section,
+      label: entry.label,
+      key: key_string(entry.key),
+      value: redact(entry, read_env(entry.key, entry.default)),
+      default: redact(entry, entry.default),
+      editable: entry.ui_editable?,
+      restart_required: entry.restart_required?,
+      env_var: entry.env_var,
+      secret: secret_entry?(entry)
+    }
+  end
+
+  @spec redact(Entry.t(), term()) :: term() | String.t()
+  defp redact(entry, value) do
+    if secret_entry?(entry), do: "***", else: value
+  end
+
+  @spec secret_entry?(Entry.t()) :: boolean()
+  defp secret_entry?(%Entry{secret?: true}), do: true
+  defp secret_entry?(%Entry{section: "Database"}), do: true
+  defp secret_entry?(%Entry{}), do: false
+
+  @spec key_string(Entry.key()) :: String.t()
+  defp key_string({namespace, subkey}), do: "#{namespace_string(namespace)}.#{Atom.to_string(subkey)}"
+  defp key_string(key) when is_atom(key), do: Atom.to_string(key)
+
+  @spec namespace_string(atom() | module()) :: String.t()
+  defp namespace_string(module) when is_atom(module) do
+    if module?(module) do
+      module
+      |> Module.split()
+      |> Enum.drop_while(&(&1 == "Elixir" or &1 == "Harness"))
+      |> Enum.map_join("_", &Macro.underscore/1)
+    else
+      Atom.to_string(module)
+    end
+  end
+
+  @spec module?(atom()) :: boolean()
+  defp module?(atom), do: atom |> Atom.to_string() |> String.starts_with?("Elixir.")
 end
