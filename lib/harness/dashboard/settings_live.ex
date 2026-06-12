@@ -379,11 +379,8 @@ defmodule Harness.Dashboard.SettingsLive do
       <section class="setting-card">
         <h2>Agent models</h2>
         <p class="setting-desc">
-          Per-agent default model, threaded to the agent CLI's <code>--model</code> flag for
-          both implementer and reviewer runs. Blank falls back to the agent's own default.
-          A task's <code>model</code> pin overrides the implementer value; the reviewer has no
-          task pin, so this is its <strong>only</strong> model source. Model ids churn — verify
-          against the agent's <code>--list-models</code> before setting.
+          Per-agent implementer model. Blank falls back to the agent's own default.
+          A task's <code>model</code> pin overrides this value.
         </p>
         <form
           :for={model <- @agent_models}
@@ -400,6 +397,34 @@ defmodule Harness.Dashboard.SettingsLive do
             name="value"
             value={model.input_value}
             placeholder="agent default"
+            aria-label={"#{model.label} model"}
+          />
+          <button type="submit" class="btn-save">Save</button>
+        </form>
+      </section>
+
+      <section class="setting-card">
+        <h2>Reviewer models</h2>
+        <p class="setting-desc">
+          Per-agent reviewer model override. Blank inherits the agent default above; if both are
+          blank, the reviewer uses the agent CLI's own default. Model ids churn — verify against
+          the agent's <code>--list-models</code> before setting.
+        </p>
+        <form
+          :for={model <- @reviewer_models}
+          id={"reviewer-model-#{model.id}"}
+          class="reviewer-form"
+          phx-submit="set_config"
+        >
+          <div class="project-id">
+            <span class="project-name">{model.label}</span>
+          </div>
+          <input type="hidden" name="key" value={model.id} />
+          <input
+            type="text"
+            name="value"
+            value={model.input_value}
+            placeholder={model.placeholder}
             aria-label={"#{model.label} model"}
           />
           <button type="submit" class="btn-save">Save</button>
@@ -450,6 +475,7 @@ defmodule Harness.Dashboard.SettingsLive do
     |> assign(:config_edit, config_edit_state())
     |> assign(:dispatch, dispatch_state())
     |> assign(:agent_models, agent_models_state())
+    |> assign(:reviewer_models, reviewer_models_state())
   end
 
   # The dispatch-default view-model: the configured no-data fallback agent plus
@@ -496,16 +522,31 @@ defmodule Harness.Dashboard.SettingsLive do
   defp config_input_value(value) when is_integer(value), do: Integer.to_string(value)
   defp config_input_value(value) when is_binary(value), do: value
 
-  # The Agent-models card view-model: one text-input row per `:string`
-  # `{:agent_model, agent}` entry, carrying its current resolved value (blank when
-  # unset → the agent CLI default). Reuses the `set_config` event + the same
-  # stable `config_id` round-trip as the number card, so no new event handler.
+  # The Agent-models card view-model: one text-input row per shared implementer
+  # `{:agent_model, agent}` entry. Reuses the `set_config` event + stable
+  # `config_id` round-trip as the number card, so no new event handler.
   @spec agent_models_state() :: [map()]
   defp agent_models_state do
     Config.editable_entries()
-    |> Enum.filter(&(&1.type == :string))
+    |> Enum.filter(&match?({:agent_model, _}, &1.key))
     |> Enum.map(fn entry ->
       %{id: config_id(entry.key), label: entry.label, input_value: config_input_value(Config.get(entry.key))}
+    end)
+  end
+
+  @spec reviewer_models_state() :: [map()]
+  defp reviewer_models_state do
+    Config.editable_entries()
+    |> Enum.filter(&match?({:reviewer_model, _}, &1.key))
+    |> Enum.map(fn entry ->
+      {:reviewer_model, agent} = entry.key
+
+      %{
+        id: config_id(entry.key),
+        label: entry.label,
+        input_value: config_input_value(Config.get(entry.key)),
+        placeholder: config_input_value(Config.agent_model(agent))
+      }
     end)
   end
 

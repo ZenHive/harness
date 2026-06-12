@@ -20,6 +20,7 @@ defmodule Harness.ConfigTest do
     prior_dashboard = Application.get_env(:harness, :dashboard)
     prior_dispatch = Application.get_env(:harness, :dispatch)
     prior_agent_model = Application.get_env(:harness, :agent_model)
+    prior_reviewer_model = Application.get_env(:harness, :reviewer_model)
     prior_store = Application.get_env(:harness, :settings_store)
 
     # Isolate persistence to a throwaway in-memory scope.
@@ -32,6 +33,7 @@ defmodule Harness.ConfigTest do
       restore(:dashboard, prior_dashboard)
       restore(:dispatch, prior_dispatch)
       restore(:agent_model, prior_agent_model)
+      restore(:reviewer_model, prior_reviewer_model)
       restore(:settings_store, prior_store)
       SettingsStoreMemory.reset(scope: scope)
     end)
@@ -160,7 +162,7 @@ defmodule Harness.ConfigTest do
       assert Enum.sort(model_keys) == Enum.sort(Config.dispatch_agents())
 
       assert Enum.all?(Config.schema(), fn e ->
-               match?({:agent_model, _}, e.key) == (e.type == :string and e.section == "Agent models")
+               match?({:agent_model, _}, e.key) == (e.section == "Agent models")
              end)
     end
 
@@ -187,6 +189,32 @@ defmodule Harness.ConfigTest do
     test "put validates :string — a non-binary, non-nil value is rejected" do
       assert {:error, :invalid_value} = Config.put({:agent_model, :grok}, 42, "test")
       assert Config.agent_model(:grok) == nil
+    end
+  end
+
+  describe "reviewer_model/1" do
+    test "schema declares one editable reviewer :string model entry per implementer agent" do
+      model_keys =
+        Config.editable_entries()
+        |> Enum.filter(&match?({:reviewer_model, _}, &1.key))
+        |> Enum.map(&elem(&1.key, 1))
+
+      assert Enum.sort(model_keys) == Enum.sort(Config.dispatch_agents())
+
+      assert Enum.all?(Config.schema(), fn e ->
+               match?({:reviewer_model, _}, e.key) == (e.section == "Reviewer models")
+             end)
+    end
+
+    test "reviewer override wins and blank inherits the shared agent default" do
+      assert :ok = Config.put({:agent_model, :cursor}, "composer-2.5-fast", "test")
+      assert Config.reviewer_model(:cursor) == "composer-2.5-fast"
+
+      assert :ok = Config.put({:reviewer_model, :cursor}, "claude-opus-4-8-thinking-high", "test")
+      assert Config.reviewer_model(:cursor) == "claude-opus-4-8-thinking-high"
+
+      assert :ok = Config.put({:reviewer_model, :cursor}, "", "test")
+      assert Config.reviewer_model(:cursor) == "composer-2.5-fast"
     end
   end
 

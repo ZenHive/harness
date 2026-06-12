@@ -223,6 +223,7 @@ defmodule Harness.Run do
            reviewer_adapter: module() | nil,
            reviewer_candidates: [module()],
            reviewer_adapter_opts: keyword(),
+           reviewer_agent_resolver: (module() -> {:ok, atom()} | {:error, term()}),
            reviewer_run: AgentRun.t() | nil,
            recovery_adapter: module() | nil,
            recovery_run: AgentRun.t() | nil,
@@ -546,6 +547,7 @@ defmodule Harness.Run do
       reviewer_adapter: nil,
       reviewer_candidates: [],
       reviewer_adapter_opts: Keyword.get(opts, :reviewer_adapter_opts, []),
+      reviewer_agent_resolver: Keyword.get(opts, :reviewer_agent_resolver, &AgentRegistry.agent_for_module/1),
       reviewer_run: nil,
       recovery_adapter: nil,
       recovery_run: nil,
@@ -2249,26 +2251,26 @@ defmodule Harness.Run do
       prompt: reviewer_invocation_prompt(data),
       cwd: data.worktree.path,
       task_id: "#{data.item.id}-review",
-      model: reviewer_model(data.reviewer_adapter),
+      model: reviewer_model(data),
       permission_mode: :autonomous,
       adapter_opts: data.reviewer_adapter_opts,
       env: in_run_env(data)
     }
   end
 
-  # The reviewer has no task-pin model axis (the task's `model` pins the
-  # implementer), so its model comes solely from the per-agent `Config.agent_model`
-  # default for the selected reviewer adapter's agent — `nil` (unset) falls
-  # through to the agent CLI's ambient default, exactly like the implementer.
-  @spec reviewer_model(module() | nil) :: String.t() | nil
-  defp reviewer_model(reviewer_adapter) when is_atom(reviewer_adapter) and not is_nil(reviewer_adapter) do
-    case AgentRegistry.agent_for_module(reviewer_adapter) do
-      {:ok, agent} -> Config.agent_model(agent)
+  # The reviewer has no task-pin model axis (the task's `model` pins only the
+  # implementer), so it resolves from the selected reviewer adapter's agent:
+  # reviewer override > shared per-agent default > CLI ambient default.
+  @spec reviewer_model(data()) :: String.t() | nil
+  defp reviewer_model(%{reviewer_adapter: reviewer_adapter, reviewer_agent_resolver: resolver})
+       when is_atom(reviewer_adapter) and not is_nil(reviewer_adapter) and is_function(resolver, 1) do
+    case resolver.(reviewer_adapter) do
+      {:ok, agent} -> Config.reviewer_model(agent)
       {:error, _reason} -> nil
     end
   end
 
-  defp reviewer_model(_reviewer_adapter), do: nil
+  defp reviewer_model(_data), do: nil
 
   @spec reviewer_driver_opts(data(), pid()) :: keyword()
   defp reviewer_driver_opts(data, parent) do

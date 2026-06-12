@@ -27,6 +27,8 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     prior_polling = Application.get_env(:harness, :cron_polling)
     prior_run = Application.get_env(:harness, :run)
     prior_dispatch = Application.get_env(:harness, :dispatch)
+    prior_agent_model = Application.get_env(:harness, :agent_model)
+    prior_reviewer_model = Application.get_env(:harness, :reviewer_model)
 
     SettingsStoreMemory.reset(scope: :test_default)
 
@@ -43,6 +45,8 @@ defmodule Harness.Dashboard.SettingsLiveTest do
       restore_env(:cron_polling, prior_polling)
       restore_env(:run, prior_run)
       restore_env(:dispatch, prior_dispatch)
+      restore_env(:agent_model, prior_agent_model)
+      restore_env(:reviewer_model, prior_reviewer_model)
       SettingsStoreMemory.reset(scope: :test_default)
     end)
 
@@ -276,6 +280,26 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     assert html =~ "Unknown dispatch agent."
     assert Config.get({:dispatch, :default_agent}) == :codex
+  end
+
+  test "renders and edits reviewer model overrides separately from agent defaults", %{conn: conn} do
+    Application.put_env(:harness, :agent_model, cursor: "composer-2.5-fast")
+
+    {:ok, view, html} = live(conn, "/harness/settings")
+
+    assert html =~ "Agent models"
+    assert html =~ "Reviewer models"
+    assert html =~ "Blank inherits the agent default"
+    assert html =~ ~s(id="reviewer-model-reviewer_model__cursor")
+    assert html =~ ~s(placeholder="composer-2.5-fast")
+
+    html =
+      view
+      |> form("#reviewer-model-reviewer_model__cursor", %{value: "claude-opus-4-8-thinking-high"})
+      |> render_submit()
+
+    assert html =~ "Cursor reviewer saved."
+    assert Config.reviewer_model(:cursor) == "claude-opus-4-8-thinking-high"
   end
 
   test "renders the Landing card with a per-project policy control", %{conn: conn, project: project} do

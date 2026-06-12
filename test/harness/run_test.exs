@@ -584,6 +584,30 @@ defmodule Harness.RunTest do
       assert GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_model.txt"]) == ""
     end
 
+    test "same agent can implement with the shared model and review with the reviewer override" do
+      put_agent_model_env(cursor: "composer-2.5-fast")
+      put_reviewer_model_env(cursor: "claude-opus-4-8-thinking-high")
+
+      repo = GitFixture.init_repo()
+      item = %{item() | agent: :cursor}
+
+      {run_id, pid} =
+        start(
+          item: item,
+          project: ProjectFixture.from_repo(repo),
+          adapter_opts: [command: :capture_model],
+          reviewer_agent_resolver: fn FakeAdapter -> {:ok, :cursor} end,
+          reviewer_adapter_opts: [command: {:review_capture_model, "approve"}]
+        )
+
+      assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
+
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_model.txt"]) == "composer-2.5-fast"
+
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_model.txt"]) ==
+               "claude-opus-4-8-thinking-high"
+    end
+
     test "in-run invocation env strips ambient GitHub auth for gh" do
       repo = GitFixture.init_repo()
 
@@ -1639,6 +1663,41 @@ defmodule Harness.RunTest do
       assert %Result{state: :failed, reason: :timed_out} = result
       assert result.agent_outcome == nil
     end
+
+    @tag :capture_log
+    test "interrupt hold before the agent handle arrives is recorded and still times out" do
+      {run_id, pid} = start(adapter: HangingAdapter, lifetime_timeout: 200)
+
+      wait_until_running(run_id, 50, 5_000)
+
+      assert :ok = Run.hold(run_id, true)
+      assert {:ok, %Status{state: :running}} = Run.status(run_id)
+
+      assert %Result{state: :failed, reason: :timed_out, agent_outcome: nil} = await_result(run_id, pid)
+    end
+
+    @tag :capture_log
+    test "duplicate graceful hold before the agent handle arrives is idempotent" do
+      {run_id, pid} = start(adapter: HangingAdapter, lifetime_timeout: 200)
+
+      wait_until_running(run_id, 50, 5_000)
+
+      assert :ok = Run.hold(run_id)
+      assert :ok = Run.hold(run_id)
+
+      assert %Result{state: :failed, reason: :timed_out, agent_outcome: nil} = await_result(run_id, pid)
+    end
+
+    @tag :capture_log
+    test "stale info messages are ignored while a run is active" do
+      {run_id, pid} = start(adapter: HangingAdapter, lifetime_timeout: 200)
+
+      wait_until_running(run_id, 50, 5_000)
+      send(pid, :stale_info_message)
+
+      assert {:ok, %Status{state: :running}} = Run.status(run_id)
+      assert %Result{state: :failed, reason: :timed_out, agent_outcome: nil} = await_result(run_id, pid)
+    end
   end
 
   describe "reflex floor" do
@@ -1975,6 +2034,20 @@ defmodule Harness.RunTest do
   end
 
   describe "transcript/1 (dashboard backfill snapshot)" do
+    test "public run APIs tolerate a pid that has already exited" do
+      pid = spawn(fn -> :ok end)
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
+
+      assert {:error, :not_found} = Run.status(pid)
+      assert {:error, :not_found} = Run.transcript(pid)
+      assert {:error, :not_found} = Run.transcript_events(pid)
+      assert :ok = Run.cancel(pid)
+      assert {:error, :not_found} = Run.hold(pid)
+      assert {:error, :not_found} = Run.steer(pid, "note")
+      assert {:error, :not_found} = Run.resume(pid)
+    end
+
     test "unknown run id resolves to :not_found" do
       assert {:error, :not_found} = Run.transcript("definitely-not-a-run")
     end
@@ -2033,6 +2106,21 @@ defmodule Harness.RunTest do
       assert {:ok, %{buffer: buffer, seq: seq}} = Run.transcript(run_id)
       assert byte_size(buffer) == cap
       assert seq == chunk_count
+    end
+  end
+
+  describe "state callback fallbacks" do
+    test "ignore stale and defensive events without changing state" do
+      from = {self(), make_ref()}
+
+      assert :keep_state_and_data = Run.running(:state_timeout, :implementer_idle_timeout, %{})
+      assert :keep_state_and_data = Run.recovering(:state_timeout, :recovery_spawn_timeout, %{recovery_run: :set})
+      assert :keep_state_and_data = Run.committing(:info, :stale_message, %{})
+      assert :keep_state_and_data = Run.committing(:cast, :unexpected, %{})
+      assert :keep_state_and_data = Run.done({:timeout, :lifetime}, :lifetime, %{})
+
+      assert {:keep_state_and_data, [{:reply, ^from, {:error, :invalid_state}}]} =
+               Run.committing({:call, from}, {:hold, true}, %{})
     end
   end
 
@@ -2198,9 +2286,10 @@ defmodule Harness.RunTest do
   defp start_with_project(project, overrides) do
     base = GitFixture.tmp_base()
     {adapter, overrides} = Keyword.pop(overrides, :adapter, FakeAdapter)
+    {item, overrides} = Keyword.pop(overrides, :item, item())
     opts = Keyword.merge(default_opts(base), overrides)
 
-    {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, adapter, opts)
+    {:ok, run_id, pid} = Run.Supervisor.start_run(item, project, adapter, opts)
     {run_id, pid}
   end
 
@@ -2293,6 +2382,17 @@ defmodule Harness.RunTest do
       if prior,
         do: Application.put_env(:harness, :agent_model, prior),
         else: Application.delete_env(:harness, :agent_model)
+    end)
+  end
+
+  defp put_reviewer_model_env(kw) do
+    prior = Application.get_env(:harness, :reviewer_model)
+    Application.put_env(:harness, :reviewer_model, kw)
+
+    on_exit(fn ->
+      if prior,
+        do: Application.put_env(:harness, :reviewer_model, prior),
+        else: Application.delete_env(:harness, :reviewer_model)
     end)
   end
 

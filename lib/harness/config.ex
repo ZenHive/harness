@@ -112,19 +112,27 @@ defmodule Harness.Config do
       e("Database", "database", {Harness.Repo, :database}, nil, :string, env_var: "HARNESS_DB_NAME"),
       e("Database", "username", {Harness.Repo, :username}, nil, :string, env_var: "HARNESS_DB_USER"),
       e("Database", "hostname", {Harness.Repo, :hostname}, nil, :string, env_var: "HARNESS_DB_HOST")
-    ] ++ agent_model_entries()
+    ] ++ agent_model_entries() ++ reviewer_model_entries()
   end
 
   # One free-text default-model pin per implementer agent — the fallback layer
   # between a task's explicit `model` and the agent CLI's own ambient default
-  # (see `agent_model/1`). Free-text `:string` because model ids churn (re-run the
-  # agent's `--list-models` before trusting a literal); `nil` (unset) falls through
-  # to the CLI default. Read by both the implementer and the reviewer invocation
-  # builders — the reviewer has no task-pin axis, so this is its only model source.
+  # (see `agent_model/1`). Free-text `:string` because model ids churn; `nil`
+  # (unset) falls through to the CLI default.
   @spec agent_model_entries() :: [Entry.t()]
   defp agent_model_entries do
     Enum.map(@implementer_agents, fn agent ->
       e("Agent models", Atom.to_string(agent), {:agent_model, agent}, nil, :string, ui_editable?: true)
+    end)
+  end
+
+  # Optional per-role reviewer model pins. Unset inherits the shared per-agent
+  # default so existing configs keep today's reviewer behavior until overridden.
+  @spec reviewer_model_entries() :: [Entry.t()]
+  defp reviewer_model_entries do
+    Enum.map(@implementer_agents, fn agent ->
+      label = "#{String.capitalize(Atom.to_string(agent))} reviewer"
+      e("Reviewer models", label, {:reviewer_model, agent}, nil, :string, ui_editable?: true)
     end)
   end
 
@@ -137,18 +145,30 @@ defmodule Harness.Config do
   def dispatch_agents, do: @implementer_agents
 
   @doc """
-  Resolves the operator-configured default model for `agent`, or `nil` when unset
-  (a blank persisted value counts as unset). The fallback layer between a task's
-  explicit `model` pin and the agent CLI's ambient default — read by both the
-  implementer and reviewer invocation builders. An agent outside the schema
-  yields `nil` rather than raising (unlike `get/1`), so a new adapter without a
-  model entry degrades to the CLI default instead of crashing a run.
+  Resolves the operator-configured default implementer model for `agent`, or
+  `nil` when unset (a blank persisted value counts as unset). The fallback layer
+  between a task's explicit `model` pin and the agent CLI's ambient default. An
+  agent outside the schema yields `nil` rather than raising (unlike `get/1`), so
+  a new adapter without a model entry degrades to the CLI default instead of
+  crashing a run.
   """
   @spec agent_model(atom()) :: String.t() | nil
   def agent_model(agent) when is_atom(agent) do
     case fetch_entry({:agent_model, agent}) do
       {:ok, entry} -> blank_to_nil(read_env(entry.key, entry.default))
       :error -> nil
+    end
+  end
+
+  @doc """
+  Resolves the reviewer model for `agent`: reviewer override first, then the
+  shared per-agent default, then `nil` for the agent CLI's ambient default.
+  """
+  @spec reviewer_model(atom()) :: String.t() | nil
+  def reviewer_model(agent) when is_atom(agent) do
+    case fetch_entry({:reviewer_model, agent}) do
+      {:ok, entry} -> blank_to_nil(read_env(entry.key, entry.default)) || agent_model(agent)
+      :error -> agent_model(agent)
     end
   end
 
