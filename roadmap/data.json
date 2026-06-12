@@ -11514,7 +11514,7 @@
       "id": "269",
       "phase": 19,
       "bundle": "test-suite-perf",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Convert dashboard/live_test.exs (59 LiveView tests) to async: true",
       "scores": {
         "d": 3,
@@ -11551,6 +11551,7 @@
       ],
       "body": "`dashboard/live_test.exs` is 59 Phoenix.LiveViewTest tests running `async: false`. Convert to `async: true` by isolating the shared state these tests touch:\n- **PubSub topics** — namespace per test (e.g. unique suffix) so a broadcast from one test isn't observed by another.\n- **In-memory result/settings stores** (Harness.ResultStore.Memory, SettingsStoreMemory) — these are suite-shared ETS owned by test_helper; scope reads/writes per test or reset under the test's own ownership so concurrent tests don't cross-contaminate.\n\nThe `Dashboard.Endpoint` is started once in test_helper with `server: false` and is safe to share — don't restart it per test. If a genuine blocker (stateful singleton the LiveView reads) makes full async impossible, isolate what you can and document the residual in the verdict rather than silently leaving it serial. Verify the full suite under multiple seeds (state-bleed surfaces only in the async pool, not in isolation).\n",
       "created_at": "2026-06-12",
+      "started_at": "2026-06-12",
       "scored_at": "2026-06-12",
       "cross_repo": []
     },
