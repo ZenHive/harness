@@ -492,6 +492,76 @@ defmodule Harness.AgentKPITest do
     end
   end
 
+  describe "aggregate_recovery_facts/1" do
+    test "surfaces attempted recovery outcomes, repair notes, and token spend as raw facts" do
+      records = [
+        record(
+          run_id: "run-repaired",
+          task_id: "42",
+          agent: :codex,
+          recovery_attempts: 1,
+          recovery_outcome: :repaired,
+          recovery_repaired: "moved leaked checkout file",
+          recovery_token_usage: tokens(20, 10)
+        ),
+        record(
+          run_id: "run-dead",
+          task_id: "43",
+          agent: :claude,
+          recovery_attempts: 2,
+          recovery_outcome: :dead,
+          recovery_repaired: nil,
+          recovery_token_usage: tokens(5, 5)
+        ),
+        record(run_id: "run-normal", recovery_attempts: 0)
+      ]
+
+      facts = AgentKPI.aggregate_recovery_facts(records)
+
+      assert facts.run_count == 3
+      assert facts.attempted_runs == 2
+      assert facts.total_attempts == 3
+      assert facts.repaired_runs == 1
+      assert facts.dead_runs == 1
+      assert facts.masked_failure_rate == 0.5
+      assert facts.tokens == %{input: 25, output: 15, total: 40}
+
+      assert facts.per_run == [
+               %{
+                 run_id: "run-repaired",
+                 task_id: "42",
+                 agent: :codex,
+                 attempts: 1,
+                 outcome: :repaired,
+                 repaired: "moved leaked checkout file",
+                 tokens: %{input: 20, output: 10, total: 30}
+               },
+               %{
+                 run_id: "run-dead",
+                 task_id: "43",
+                 agent: :claude,
+                 attempts: 2,
+                 outcome: :dead,
+                 repaired: nil,
+                 tokens: %{input: 5, output: 5, total: 10}
+               }
+             ]
+    end
+
+    test "empty input returns zero counts and no per-run entries" do
+      assert AgentKPI.aggregate_recovery_facts([]) == %{
+               run_count: 0,
+               attempted_runs: 0,
+               total_attempts: 0,
+               repaired_runs: 0,
+               dead_runs: 0,
+               masked_failure_rate: 0.0,
+               tokens: %{input: 0, output: 0, total: 0},
+               per_run: []
+             }
+    end
+  end
+
   describe "aggregate_ceremony_cost/1" do
     @reviewer_transcript ~s({"type":"result","usage":{"input_tokens":100,"output_tokens":40}}\n)
 

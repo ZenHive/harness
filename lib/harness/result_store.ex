@@ -335,6 +335,34 @@ defmodule Harness.ResultStore do
   end
 
   api(
+    :aggregate_recovery_facts,
+    "Raw bounded AI-recovery facts over persisted run records: attempts, repaired/dead outcomes, repair notes, and recovery token spend. Returns counts and per-run entries only — AI consumers synthesize whether recovery is worth it.",
+    params: [
+      store: [
+        kind: :value,
+        default: @configured_store,
+        description:
+          "Configured store from ResultStore.configured/0 when omitted, or override; `false`/`nil` returns zeroed recovery facts."
+      ]
+    ],
+    returns: %{type: :tuple, description: "{:ok, AgentKPI.recovery_facts()} or {:error, reason}."}
+  )
+
+  @spec aggregate_recovery_facts(store()) :: {:ok, AgentKPI.recovery_facts()} | {:error, term()}
+  def aggregate_recovery_facts(store \\ configured())
+
+  def aggregate_recovery_facts(@configured_store), do: aggregate_recovery_facts(configured())
+  def aggregate_recovery_facts(false), do: {:ok, AgentKPI.aggregate_recovery_facts([])}
+  def aggregate_recovery_facts(nil), do: {:ok, AgentKPI.aggregate_recovery_facts([])}
+
+  def aggregate_recovery_facts(store) do
+    case list_run_records(store, []) do
+      {:ok, records} -> {:ok, AgentKPI.aggregate_recovery_facts(records)}
+      {:error, _} = err -> err
+    end
+  end
+
+  api(
     :aggregate_ceremony_cost,
     "Per-run ceremony token facts over reviewer-approved runs: implementer + reviewer + audit (audit is 0 until audit capture lands). Raw median/p90 distribution only — no batching verdict.",
     params: [

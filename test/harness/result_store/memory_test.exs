@@ -85,6 +85,33 @@ defmodule Harness.ResultStore.MemoryTest do
     assert ledger == AgentKPI.aggregate(records)
   end
 
+  test "aggregate_recovery_facts matches AgentKPI over persisted records", %{store: store} do
+    records = [
+      ResultStoreContract.log_record(
+        run_id: "mem-recovery-repaired",
+        task_id: "42",
+        agent: :codex,
+        recovery_attempts: 1,
+        recovery_outcome: :repaired,
+        recovery_repaired: "moved leaked checkout file",
+        recovery_token_usage: %Harness.TokenUsage{input: 20, output: 10, total: 30}
+      ),
+      ResultStoreContract.log_record(
+        run_id: "mem-recovery-dead",
+        task_id: "43",
+        agent: :claude,
+        recovery_attempts: 1,
+        recovery_outcome: :dead,
+        recovery_token_usage: %Harness.TokenUsage{input: 5, output: 5, total: 10}
+      )
+    ]
+
+    for record <- records, do: assert(:ok = ResultStore.record_run(record, store))
+
+    assert {:ok, facts} = ResultStore.aggregate_recovery_facts(store)
+    assert sort_recovery_runs(facts) == records |> AgentKPI.aggregate_recovery_facts() |> sort_recovery_runs()
+  end
+
   test "aggregate_review_stuck_causes matches AgentKPI over in-memory records", %{store: store} do
     records = [
       ResultStoreContract.log_record(
@@ -134,4 +161,8 @@ defmodule Harness.ResultStore.MemoryTest do
 
   defp restore(key, nil), do: Application.delete_env(:harness, key)
   defp restore(key, value), do: Application.put_env(:harness, key, value)
+
+  defp sort_recovery_runs(facts) do
+    Map.update!(facts, :per_run, &Enum.sort_by(&1, fn row -> row.run_id end))
+  end
 end

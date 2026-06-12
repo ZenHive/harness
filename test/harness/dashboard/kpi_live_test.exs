@@ -175,6 +175,36 @@ defmodule Harness.Dashboard.KPILiveTest do
       assert html =~ "Selection/no-reviewer stuck runs are counted here"
     end
 
+    test "renders raw recovery facts with masked-failure rate and token cost", %{conn: conn} do
+      seed("run-recovery-repaired",
+        agent: :codex,
+        recovery_attempts: 1,
+        recovery_outcome: :repaired,
+        recovery_repaired: "moved leaked checkout file",
+        recovery_token_usage: tokens(20, 10)
+      )
+
+      seed("run-recovery-dead",
+        agent: :claude,
+        recovery_attempts: 1,
+        recovery_outcome: :dead,
+        recovery_token_usage: tokens(5, 5)
+      )
+
+      {:ok, _view, html} = live(conn, "/harness/kpi")
+
+      assert html =~ "Recovery facts"
+      assert html =~ "Masked-failure rate"
+      assert html =~ "50%"
+      assert html =~ "Recovery token cost"
+      assert html =~ "40"
+      assert html =~ "run-recovery-repaired"
+      assert html =~ "repaired"
+      assert html =~ "moved leaked checkout file"
+      assert html =~ "run-recovery-dead"
+      assert html =~ "dead"
+    end
+
     test "columns are sortable — clicking a header reorders the rows", %{conn: conn} do
       {:ok, view, html} = live(conn, "/harness/kpi")
 

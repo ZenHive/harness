@@ -64,6 +64,14 @@ defmodule Harness.Dashboard.KPILive do
   page never recomputes a routing verdict from the numbers. A facet with no
   assessment entry shows "no scout verdict yet"; an absent artifact degrades the
   whole column gracefully.
+
+  ## Recovery facts (Task 235)
+
+  The page also renders `Harness.ResultStore.aggregate_recovery_facts/0`: raw
+  recovery attempts, repaired/dead outcomes, repair notes, and recovery token
+  spend. It exposes the masked-failure rate and token cost the v0_14 hypothesis
+  needs, but leaves "is recovery worth it?" synthesis to the AI-facing
+  ResultStore API.
   """
 
   use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}
@@ -136,6 +144,7 @@ defmodule Harness.Dashboard.KPILive do
     |> assign(:rating_keys, rating_keys(rows))
     |> assign(:reviewer_rows, reviewer_rows())
     |> assign(:review_stuck_cause_rows, review_stuck_cause_rows())
+    |> assign(:recovery_facts, recovery_facts())
   end
 
   # The per-reviewer-adapter reliability ledger: each reviewer's rejection and
@@ -165,6 +174,14 @@ defmodule Harness.Dashboard.KPILive do
 
       _error ->
         []
+    end
+  end
+
+  @spec recovery_facts() :: AgentKPI.recovery_facts()
+  defp recovery_facts do
+    case ResultStore.aggregate_recovery_facts() do
+      {:ok, facts} -> facts
+      _error -> AgentKPI.aggregate_recovery_facts([])
     end
   end
 
@@ -436,6 +453,59 @@ defmodule Harness.Dashboard.KPILive do
         <tr :for={row <- @review_stuck_cause_rows}>
           <td><code>{row.cause}</code></td>
           <td>{row.count}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div :if={@recovery_facts.attempted_runs > 0} class="topbar">
+      <strong>Recovery facts</strong>
+      <span class="count">{@recovery_facts.attempted_runs} recovered runs</span>
+    </div>
+
+    <table :if={@recovery_facts.attempted_runs > 0}>
+      <thead>
+        <tr>
+          <th>Runs</th>
+          <th>Attempts</th>
+          <th>Repaired</th>
+          <th>Dead</th>
+          <th>Masked-failure rate</th>
+          <th>Recovery token cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>{@recovery_facts.attempted_runs}</td>
+          <td>{@recovery_facts.total_attempts}</td>
+          <td>{@recovery_facts.repaired_runs}</td>
+          <td>{@recovery_facts.dead_runs}</td>
+          <td>{format_pct(@recovery_facts.masked_failure_rate)}</td>
+          <td>{format_count(@recovery_facts.tokens.total)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <table :if={@recovery_facts.attempted_runs > 0}>
+      <thead>
+        <tr>
+          <th>Run</th>
+          <th>Task</th>
+          <th>Agent</th>
+          <th>Attempts</th>
+          <th>Outcome</th>
+          <th>Repaired</th>
+          <th>Tokens</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr :for={row <- @recovery_facts.per_run}>
+          <td><code>{row.run_id}</code></td>
+          <td><code>{row.task_id}</code></td>
+          <td><code>{row.agent || "—"}</code></td>
+          <td>{row.attempts}</td>
+          <td><code>{row.outcome || "—"}</code></td>
+          <td>{row.repaired || "—"}</td>
+          <td>{format_count(row.tokens.total)}</td>
         </tr>
       </tbody>
     </table>

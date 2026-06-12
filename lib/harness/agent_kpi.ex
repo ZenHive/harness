@@ -159,6 +159,36 @@ defmodule Harness.AgentKPI do
           distribution: ceremony_distribution()
         }
 
+  @typedoc "Recovery token spend for one run, by component."
+  @type recovery_tokens :: %{
+          input: non_neg_integer(),
+          output: non_neg_integer(),
+          total: non_neg_integer()
+        }
+
+  @typedoc "One run where the bounded AI-recovery seam ran at least once."
+  @type recovery_entry :: %{
+          run_id: String.t(),
+          task_id: String.t(),
+          agent: atom() | nil,
+          attempts: pos_integer(),
+          outcome: :repaired | :dead | nil,
+          repaired: String.t() | nil,
+          tokens: recovery_tokens()
+        }
+
+  @typedoc "Raw recovery facts over persisted run records — no worth-it verdict."
+  @type recovery_facts :: %{
+          run_count: non_neg_integer(),
+          attempted_runs: non_neg_integer(),
+          total_attempts: non_neg_integer(),
+          repaired_runs: non_neg_integer(),
+          dead_runs: non_neg_integer(),
+          masked_failure_rate: float(),
+          tokens: recovery_tokens(),
+          per_run: [recovery_entry()]
+        }
+
   @doc """
   Rolls a list of `Harness.Run.LogRecord` up into a per-agent KPI ledger.
 
@@ -288,6 +318,33 @@ defmodule Harness.AgentKPI do
   end
 
   @doc """
+  Counts raw facts from runs where the bounded AI-recovery seam ran.
+
+  `masked_failure_rate` is the mechanical repaired/attempted fraction the
+  v0_14 hypothesis needs visible; the function does not decide whether that
+  rate or the token spend is good enough. AI consumers can synthesize that from
+  the returned counts, repair notes, and token facts on demand.
+  """
+  @spec aggregate_recovery_facts([LogRecord.t()]) :: recovery_facts()
+  def aggregate_recovery_facts(records) when is_list(records) do
+    entries =
+      records
+      |> Enum.filter(&recovery_attempted?/1)
+      |> Enum.map(&recovery_entry/1)
+
+    %{
+      run_count: length(records),
+      attempted_runs: length(entries),
+      total_attempts: Enum.sum(Enum.map(entries, & &1.attempts)),
+      repaired_runs: Enum.count(entries, &(&1.outcome == :repaired)),
+      dead_runs: Enum.count(entries, &(&1.outcome == :dead)),
+      masked_failure_rate: rate(Enum.count(entries, &(&1.outcome == :repaired)), length(entries)),
+      tokens: recovery_token_totals(entries),
+      per_run: entries
+    }
+  end
+
+  @doc """
   Means each numeric rating key across a list of the reviewer's `ratings` maps.
 
   The reviewer's keys and scales are free-form, so every numeric-valued key is
@@ -397,6 +454,55 @@ defmodule Harness.AgentKPI do
   defp stuck_cause(:timed_out), do: :timed_out
   defp stuck_cause(:cancelled), do: :cancelled
   defp stuck_cause(_other), do: :other
+
+  @spec recovery_attempted?(LogRecord.t()) :: boolean()
+  defp recovery_attempted?(record) do
+    case Map.get(record, :recovery_attempts) do
+      attempts when is_integer(attempts) -> attempts > 0
+      _other -> false
+    end
+  end
+
+  @spec recovery_entry(LogRecord.t()) :: recovery_entry()
+  defp recovery_entry(record) do
+    %{
+      run_id: record.run_id,
+      task_id: record.task_id,
+      agent: record.agent,
+      attempts: record.recovery_attempts,
+      outcome: record.recovery_outcome,
+      repaired: record.recovery_repaired,
+      tokens: recovery_tokens(record.recovery_token_usage)
+    }
+  end
+
+  @spec recovery_tokens(TokenUsage.t() | nil) :: recovery_tokens()
+  defp recovery_tokens(%TokenUsage{} = usage) do
+    %{
+      input: token_component(usage, :input),
+      output: token_component(usage, :output),
+      total: token_total(usage)
+    }
+  end
+
+  defp recovery_tokens(_usage), do: %{input: 0, output: 0, total: 0}
+
+  @spec token_component(TokenUsage.t(), :input | :output) :: non_neg_integer()
+  defp token_component(%TokenUsage{} = usage, field) do
+    case Map.get(usage, field) do
+      count when is_integer(count) -> count
+      _other -> 0
+    end
+  end
+
+  @spec recovery_token_totals([recovery_entry()]) :: recovery_tokens()
+  defp recovery_token_totals(entries) do
+    %{
+      input: entries |> Enum.map(& &1.tokens.input) |> Enum.sum(),
+      output: entries |> Enum.map(& &1.tokens.output) |> Enum.sum(),
+      total: entries |> Enum.map(& &1.tokens.total) |> Enum.sum()
+    }
+  end
 
   @spec reviewer_adapter(LogRecord.t()) :: module() | nil
   defp reviewer_adapter(record), do: Map.get(record, :reviewer_adapter)
