@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 19 — Self-Healing Run Loop (18 of 19 done · 1 in progress)
+**Focus phase:** 19 — Self-Healing Run Loop (18 of 19 done · 0 in progress)
 
 **Last shipped:** Task 250 — Validate model↔resolved-adapter compatibility at dispatch — reject an incompatible pin pre-spawn, not a mid-run crash, Task 261 — Model/agent availability — block unavailable {agent,model} at dispatch + surface available models over MCP on 2026-06-12
 
-**Up next:** Task 174 — Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:3/B:5/U:4 → Eff:1.5] 🚀
+**Up next:** Task 235 — Surface the self-heal recovery facts — KPI view over Task 229's persisted recovery_attempts + recovery token spend (tests the v0_14 hypothesis) [D:2/B:3/U:3 → Eff:1.5] 🚀
 <!-- FOCUS:END -->
 
 ---
