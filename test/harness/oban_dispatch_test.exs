@@ -138,7 +138,7 @@ defmodule Harness.ObanDispatchTest do
     # Task "2" pins no model; give codex a per-agent default so the dispatch
     # clears the model-required guard (a model-capable agent never falls through
     # to the CLI's ambient default).
-    Harness.Config.put({:agent_model, :codex}, "gpt-5-codex", "test")
+    Harness.Config.put({:agent_model, :codex}, "gpt-5.5", "test")
     on_exit(fn -> Harness.Config.put({:agent_model, :codex}, "", "test") end)
 
     assert {:ok, %{run_id: run_id}} = Dispatch.task("interactive", "2", "codex", true)
