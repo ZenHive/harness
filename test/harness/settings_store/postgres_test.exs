@@ -33,7 +33,7 @@ defmodule Harness.SettingsStore.PostgresTest do
     refute CronSettings.master_enabled?()
     refute CronSettings.project_enabled?(project)
     assert CronSettings.active_preset() == "2h"
-    assert LandingSettings.effective(project) == %{landing_policy: :manual, target_branch: "main", reviewer: nil}
+    assert LandingSettings.effective(project) == %{landing_policy: :manual, target_branch: nil, reviewer: nil}
     assert Repo.aggregate(Setting, :count) == 0
   end
 
