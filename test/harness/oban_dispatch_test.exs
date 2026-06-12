@@ -1,4 +1,8 @@
 defmodule Harness.ObanDispatchTest do
+  # async: false because this module mutates process-global Application env seams
+  # and ProjectRegistry state in setup/test bodies; the DB-backed cases also rely
+  # on SQL Sandbox shared mode plus a named HarnessOban/Lifeline singleton. Oban's
+  # :inline testing mode does not isolate those globals between async tests.
   use ExUnit.Case, async: false
 
   import Ecto.Query, only: [from: 2]
@@ -547,7 +551,7 @@ defmodule Harness.ObanDispatchTest do
   end
 
   test "worker maps performed terminal failures to cancel" do
-    project = ProjectFixture.from_repo("/tmp/harness-worker", name: "worker-project")
+    project = ProjectFixture.from_repo("/tmp/harness-terminal-worker", name: "terminal-worker-project")
     assert :ok = ProjectRegistry.register(project)
 
     Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts ->
@@ -570,7 +574,7 @@ defmodule Harness.ObanDispatchTest do
 
     terminal_job =
       job(%{
-        "project_name" => "worker-project",
+        "project_name" => "terminal-worker-project",
         "item_id" => "49",
         "adapter_module" => "Elixir.Harness.AgentAdapter.Claude"
       })
