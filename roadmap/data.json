@@ -8670,9 +8670,8 @@
       "depends_on": [
         "208"
       ],
-      "assignee": "cursor",
+      "assignee": "codex",
       "module": "Harness.Dashboard",
-      "model": "gpt-5.5-high",
       "acceptance_criteria": [
         "When settings are ephemeral (repo_enabled:false — writes are no-ops that vanish on restart), the dashboard shows a persistent flash/banner making it unmistakable that changes will NOT survive a restart.",
         "Existing ad-hoc dashboard notices are refactored into one shared flash component/helper (single source for transient + persistent operator notices) rather than per-LiveView bespoke markup.",
@@ -9730,8 +9729,7 @@
       "depends_on": [
         229
       ],
-      "assignee": "cursor",
-      "model": "gpt-5.5-high",
+      "assignee": "codex",
       "acceptance_criteria": [
         "A read surface (AgentKPI / ResultStore read + dashboard view and/or chat/MCP tool) exposes the recovery facts Task 229 persists: recovery_attempts, outcome (repaired|dead), what was repaired, and recovery token spend — as raw facts, ranking/judging nothing.",
         "The masked-failure rate (how often recovery 'repaired') AND the recovery token cost are both visible, so the v0_14 hypothesis 'recovery cost demonstrably lower than hard-fail + manual redispatch' is testable from the surfaced data.",
