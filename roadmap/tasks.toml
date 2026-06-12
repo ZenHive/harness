@@ -7694,7 +7694,7 @@ scored_at = "2026-06-11"
 id = "261"
 phase = 19
 bundle = "model-availability"
-status = "pending"
+status = "done"
 title = "Model/agent availability — block unavailable {agent,model} at dispatch + surface available models over MCP"
 scores = { d = 3, b = 4, u = 4 }
 markers = ["bug"]
@@ -7722,5 +7722,10 @@ Mantra check (reviewer will verify): catalog membership + now<blocked_until = co
 
 Full plan (approved): /Users/efries/.claude/plans/melodic-prancing-reef.md. Reuse SettingsStore (persistence), Config.agent_model/1 (model precedence), AgentRegistry (compose gates), AgentAdapter.model_args/1 pattern, Manifest->Chat.Tools registration. Route: non-frontier (composer-2.5 / codex) — mechanical OTP+MCP wiring, fully specced.
 """
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1781223029732-44fb361f, e1b67245421d08b0f78c6ed0fdfe0904fcd9e081)."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-06-12"
 scored_at = "2026-06-12"
+done_at = "2026-06-12"
+shipped_in = "e1b67245421d08b0f78c6ed0fdfe0904fcd9e081"
