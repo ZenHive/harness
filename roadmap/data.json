@@ -11678,6 +11678,69 @@
       "delivered_by": "codex",
       "verified": true,
       "cross_repo": []
+    },
+    {
+      "id": "272",
+      "phase": 19,
+      "bundle": "kpi-routing",
+      "status": "done",
+      "title": "Prune dead CapabilityScore.Legacy surface + sweep result_store/manifest/descripex for other write-less accessors",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 3
+      },
+      "eff": 1.75,
+      "dep_layer": 3,
+      "markers": [],
+      "depends_on": [
+        266
+      ],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "The CapabilityScore.Legacy composite-cell surface is removed: the save_capability_score / get_capability_score / list_capability_score behaviour callbacks + result_store.ex public defs + their three api(...) MCP annotations, the Harness.CapabilityScore.Legacy struct/module, and the Memory + Postgres backend impls of those callbacks. Confirmed dead: the only caller of save_capability_score is its own wrapper (result_store.ex:430); no run/dispatch/audit flow ever writes a cell, so the store is permanently empty.",
+        "routing-brief (routing.ex, Task 266) drops the capability leg: routing_pair loses the :capability key, capability_cells/3 + the list_capability_scores join are removed, and the brief now joins THREE populated legs (roster + availability + KPI). skills/harness-driver/SKILL.md + docs/orchestrator-surface-inventory.md updated from four legs to three (the routing-brief description and the leg enumeration both).",
+        "SWEEP: audit every api(...)-annotated function in result_store.ex, every manifest MCP tool, and the descripex-api surface for accessors with NO live writer/caller (the same dead-hatch shape as save_capability_score). Enumerate each finding in the implemented note; remove each confirmed-dead one OR justify keeping it with a named live caller. Do not silently leave a found dead function in place.",
+        "The LIVE Harness.CapabilityScore (the scout used by dispatch-recommend: facets_from_domain/recommend/Assessment/refresh, dispatch.ex) is NOT touched — only the .Legacy composite vestige is removed. Verify dispatch-recommend still compiles and its tests pass.",
+        "mix precommit.full green; routing_test.exs updated to assert the 3-leg shape (no :capability key); no dialyzer unused_fun / no-return warnings from the removal."
+      ],
+      "out_of_scope": [
+        "Harness.CapabilityScore scout + dispatch-recommend (live — facet assessment, untouched)",
+        "The KPI rollups aggregate_by_agent / AgentKPI (live routing signal — untouched)",
+        "Adding any new functionality or new MCP surface — this is removal-only",
+        "TermCodec / *.term legacy-import deletion (separate capstone tasks 209/212-range)"
+      ],
+      "files_to_modify": [
+        "lib/harness/result_store.ex",
+        "lib/harness/result_store/memory.ex",
+        "lib/harness/routing.ex",
+        "lib/harness/manifest.ex",
+        "skills/harness-driver/SKILL.md",
+        "docs/orchestrator-surface-inventory.md",
+        "test/harness/routing_test.exs"
+      ],
+      "touches": [
+        "lib/harness/result_store/postgres.ex",
+        "lib/harness/capability_score/legacy.ex",
+        "test/harness/result_store_test.exs"
+      ],
+      "domains": [
+        "otp",
+        "mcp",
+        "descripex",
+        "elixir"
+      ],
+      "shipped_in": "f741caff7f22aa63bc466757f0bc20f012d98981",
+      "body": "Discovered 2026-06-12 while dogfooding routing-brief (Task 266): result_store-list_capability_scores returns a bare []. Root cause — v0_13 (Task 6513) deleted the CapabilityScore composite ARITHMETIC but left the .Legacy struct + the save/get/list_capability_score store accessors as a manual MCP import hatch. Nothing automatic writes a cell (grep: the sole caller of save_capability_score is its own wrapper at result_store.ex:430), so the leg is permanently empty and routing-brief carries a dead fourth leg.\n\nWhy remove rather than keep: the empty leg is redundant. The explore signal already comes from the KPI per-domain ratings (aggregate_by_agent), and the real routing pick comes from dispatch-recommend (the live scout). A surface that holds nothing is noise — mantra-aligned to delete (count facts in code; a leg that counts nothing is not a fact).\n\nTwo things named 'capability' — do NOT conflate: Harness.CapabilityScore (LIVE scout, dispatch-recommend) vs Harness.CapabilityScore.Legacy (DEAD composite cells, this task). routing.ex aliases the Legacy one as CapabilityScore (routing.ex:14) — that alias + leg go; the scout stays.\n\nScope widened by operator: not just the capability vestige — SWEEP the result_store/manifest/descripex api surface for OTHER write-less accessors of the same shape and remove or justify each. This is the dead-surface audit Task 6513 implied but didn't finish.\n\nRouting rationale (dogfooded from the live legs, routing-brief MCP not yet loaded on the running node): availability — cursor/Opus blocked until 2026-06-30, codex/gpt-5.5 free; KPI — codex descripex 9.0 / mcp 9.0 / deduplication 9.0 / truthfulness 8.5, success 0.96 over 82 runs, the strongest fit for a careful MCP/store/descripex removal; cursor repo_hygiene 5 / ci_tooling 4 is the worst fit. → codex / gpt-5.5.\n",
+      "created_at": "2026-06-12",
+      "started_at": "2026-06-12",
+      "done_at": "2026-06-12",
+      "scored_at": "2026-06-12",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781260088221-f900e57d, f741caff7f22aa63bc466757f0bc20f012d98981). Removed the CapabilityScore.Legacy store surface (result_store.ex -100 lines, capability_score schema + Postgres/Memory impls deleted), dropped the routing-brief capability leg (4 legs -> 3: roster + availability + KPI), updated SKILL.md + orchestrator-surface-inventory.md; swept result_store/manifest/descripex for further write-less accessors.",
+      "delivered_by": "codex",
+      "verified": true,
+      "cross_repo": []
     }
   ]
 }
