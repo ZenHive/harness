@@ -60,6 +60,8 @@ defmodule Harness.Run.Status do
     * `held?` — `true` while the run is operator-parked in `:held`.
     * `hold_reason` — `:graceful` or `:interrupt` when `held?` is true; `nil`
       otherwise.
+    * `landed_sha` — the durable landing witness written by the lander when the
+      run's commit is fast-forward-pushed; nil for unlanded and pre-column rows.
   """
   @type t :: %__MODULE__{
           run_id: String.t(),
@@ -76,7 +78,8 @@ defmodule Harness.Run.Status do
           review_verdict: Review.verdict() | nil,
           reason: Result.reason() | nil,
           held?: boolean(),
-          hold_reason: :graceful | :interrupt | nil
+          hold_reason: :graceful | :interrupt | nil,
+          landed_sha: String.t() | nil
         }
 
   @enforce_keys [:run_id, :task_id, :state]
@@ -94,6 +97,7 @@ defmodule Harness.Run.Status do
     :recovery_adapter,
     :review_verdict,
     :reason,
+    :landed_sha,
     :hold_reason,
     held?: false
   ]
@@ -128,7 +132,8 @@ defmodule Harness.Run.Status do
       reviewer_adapter: agent_atom(Map.get(record, :reviewer_adapter)),
       recovery_adapter: nil,
       review_verdict: Map.get(record, :verdict),
-      reason: record.reason
+      reason: record.reason,
+      landed_sha: Map.get(record, :landed_sha)
     }
   end
 

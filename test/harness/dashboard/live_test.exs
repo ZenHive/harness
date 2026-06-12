@@ -27,6 +27,7 @@ defmodule Harness.Dashboard.LiveTest do
       run_id: run_id,
       task_id: Keyword.get(opts, :task_id, "1"),
       project_name: Keyword.get(opts, :project_name),
+      landed_sha: Keyword.get(opts, :landed_sha),
       state: Keyword.get(opts, :state, :running),
       review_verdict: Keyword.get(opts, :review_verdict, nil)
     }
@@ -90,31 +91,26 @@ defmodule Harness.Dashboard.LiveTest do
     end
   end
 
-  describe "landed_label/2 + landed_entry?/2 (task-level merge join)" do
-    test "a run whose task carries a shipped_in renders the short sha and reads landed" do
-      summaries = %{"alpha" => %{open: 0, done: 1, total: 1, landed: %{"1" => "abc1234ff"}}}
-      entry = run_entry("r-1", project_name: "alpha", bucket: :green, task_id: "1")
+  describe "landed_label/2 + landed_entry?/2 (persisted run fact)" do
+    test "a run whose record carries landed_sha renders the short sha and reads landed" do
+      entry = run_entry("r-1", project_name: "alpha", bucket: :green, task_id: "1", landed_sha: "abc1234ff")
 
-      assert Live.landed_label(summaries, entry.status) == "✓ abc1234"
-      assert Live.landed_entry?(entry, summaries)
+      assert Live.landed_label(%{}, entry.status) == "✓ abc1234"
+      assert Live.landed_entry?(entry, %{})
     end
 
     test "an unlanded run renders a dash and reads not-landed" do
-      summaries = %{"alpha" => %{open: 1, done: 0, total: 1, landed: %{}}}
       entry = run_entry("r-2", project_name: "alpha", bucket: :red, task_id: "2")
 
-      assert Live.landed_label(summaries, entry.status) == "—"
-      refute Live.landed_entry?(entry, summaries)
+      assert Live.landed_label(%{}, entry.status) == "—"
+      refute Live.landed_entry?(entry, %{})
     end
 
-    test "merge tracks the task, not the run: a :failed run whose task landed reads merged" do
-      # The salvage case — the run ended :failed but its task picked up a
-      # shipped_in (code cherry-picked / a later run landed it).
-      summaries = %{"alpha" => %{open: 0, done: 1, total: 1, landed: %{"3" => "f00dcafe"}}}
-      entry = run_entry("r-3", project_name: "alpha", bucket: :red, task_id: "3", state: :failed)
+    test "empty registry or missing roadmap cannot hide a persisted landed fact" do
+      entry = run_entry("r-3", project_name: "alpha", bucket: :green, state: :done, landed_sha: "f00dcafe")
 
-      assert Live.landed_entry?(entry, summaries)
-      assert Live.landed_label(summaries, entry.status) == "✓ f00dcaf"
+      assert Live.landed_entry?(entry, %{})
+      assert Live.landed_label(%{}, entry.status) == "✓ f00dcaf"
     end
   end
 
@@ -207,6 +203,7 @@ defmodule Harness.Dashboard.LiveTest do
         run_id: "r",
         task_id: Keyword.get(opts, :task_id, "7"),
         project_name: Keyword.get(opts, :project_name, "proj"),
+        landed_sha: Keyword.get(opts, :landed_sha),
         state: Keyword.get(opts, :state, :done),
         review_verdict: Keyword.get(opts, :review_verdict, :approve)
       }
@@ -225,10 +222,10 @@ defmodule Harness.Dashboard.LiveTest do
       refute Live.landable?(done_approved(task_id: "7"), summaries, MapSet.new())
     end
 
-    test "an already-landed run hides the button (task carries a shipped_in)" do
-      summaries = %{"proj" => %{@unlanded | landed: %{"7" => "abc1234"}}}
+    test "an already-landed run hides the button" do
+      summaries = %{"proj" => @unlanded}
 
-      refute Live.landable?(done_approved(task_id: "7"), summaries, MapSet.new(["proj"]))
+      refute Live.landable?(done_approved(task_id: "7", landed_sha: "abc1234"), summaries, MapSet.new(["proj"]))
     end
 
     test "a blocked task is not landable — that is relandable?/2's case" do
@@ -381,6 +378,18 @@ defmodule Harness.Dashboard.LiveTest do
     test "a run_id that isn't present leaves the list unchanged" do
       entries = [run_entry("run-a", state: :done)]
       assert Live.prune_history(entries, "absent") == entries
+    end
+  end
+
+  describe "mark_history_landed/3" do
+    test "stores the landed sha on the matching history status only" do
+      target = run_entry("run-landed", state: :done)
+      other = run_entry("run-other", state: :done)
+
+      [updated, untouched] = Live.mark_history_landed([target, other], "run-landed", "abc1234ff")
+
+      assert updated.status.landed_sha == "abc1234ff"
+      assert untouched.status.landed_sha == nil
     end
   end
 
@@ -616,6 +625,7 @@ defmodule Harness.Dashboard.LiveTest do
       state: Keyword.get(opts, :state, :done),
       reason: Keyword.get(opts, :reason, :approved),
       verdict: Keyword.get(opts, :verdict, :approve),
+      landed_sha: Keyword.get(opts, :landed_sha),
       duration_ms: 1_000,
       review_iterations: 0,
       agent_outcome_kind: Keyword.get(opts, :agent_outcome_kind),

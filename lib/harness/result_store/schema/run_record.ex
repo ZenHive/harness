@@ -31,6 +31,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
     field :recovery_attempts, :integer
     field :recovery_outcome, :string
     field :recovery_repaired, :binary
+    field :landed_sha, :string
 
     field :reason, :map
     field :token_usage, :map
@@ -77,6 +78,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
       :recovery_attempts,
       :recovery_outcome,
       :recovery_repaired,
+      :landed_sha,
       :reason,
       :token_usage,
       :composed_inputs,

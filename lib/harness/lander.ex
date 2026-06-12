@@ -347,6 +347,8 @@ defmodule Harness.Lander do
   # --shipped-in flag not yet present) is logged but never un-lands the merge.
   @spec writeback(Project.t(), request(), String.t()) :: :ok
   defp writeback(%Project{} = project, request, sha) do
+    persist_landed_sha(request.run_id, sha)
+
     case Roadmap.mark_landed(request.task_id,
            project: project,
            sha: sha,
@@ -359,6 +361,21 @@ defmodule Harness.Lander do
       {:error, reason} ->
         Logger.warning(
           "harness lander: rmap writeback failed for task #{request.task_id} (landed #{sha}): #{inspect(reason)}"
+        )
+
+        :ok
+    end
+  end
+
+  @spec persist_landed_sha(String.t(), String.t()) :: :ok
+  defp persist_landed_sha(run_id, sha) do
+    case ResultStore.mark_landed(run_id, sha) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "harness lander: run-record landed_sha writeback failed for run #{run_id} (landed #{sha}): #{inspect(reason)}"
         )
 
         :ok

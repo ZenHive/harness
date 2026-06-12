@@ -19,8 +19,8 @@ defmodule Harness.ResultStore do
 
   Set `config :harness, :result_store, false` (or `nil`) to disable
   persistence entirely; both values short-circuit `record_run`, `save_batch`,
-  `load_batch`, `list_run_records`, and `delete_run` without dispatching to a
-  backend.
+  `load_batch`, `list_run_records`, `delete_run`, and `mark_landed` without
+  dispatching to a backend.
   """
 
   use Descripex, namespace: "/result_store"
@@ -28,12 +28,7 @@ defmodule Harness.ResultStore do
   alias Harness.AgentKPI
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.CapabilityScore.Legacy, as: CapabilityScore
-  alias Harness.Git
-  alias Harness.Project
   alias Harness.Run.LogRecord
-  alias Harness.Run.Status
-
-  @run_branch_prefix "harness/"
 
   @typedoc "A configured result store module, with optional module-specific options."
   @type store :: module() | {module(), keyword()} | nil | false
@@ -61,6 +56,9 @@ defmodule Harness.ResultStore do
 
   @doc "Deletes one persisted run record by id. Idempotent — an absent record returns :ok."
   @callback delete_run(String.t(), keyword()) :: :ok | {:error, term()}
+
+  @doc "Marks one persisted run record landed at the pushed commit SHA."
+  @callback mark_landed(String.t(), String.t(), keyword()) :: :ok | {:error, term()}
 
   @doc """
   Rolls persisted run records up into a per-agent KPI ledger (`Harness.AgentKPI.t/0`).
@@ -208,13 +206,6 @@ defmodule Harness.ResultStore do
     dispatch(store, :list_run_records, [filters])
   end
 
-  # Dashboard-only reconciliation helper, deliberately not exposed through the
-  # Descripex API surface.
-  @doc false
-  @spec landed_sha(LogRecord.t() | Status.t(), Project.t()) :: String.t() | nil
-  def landed_sha(%LogRecord{run_id: run_id}, %Project{} = project), do: landed_sha_for_run(run_id, project)
-  def landed_sha(%Status{run_id: run_id}, %Project{} = project), do: landed_sha_for_run(run_id, project)
-
   # Deliberately NOT api()-annotated: ResultStore is in the Manifest driver
   # surface, so an api() here would expose a destructive write to the orchestrator
   # MCP/chat tool list. delete_run is dashboard-operator cleanup (the run-history
@@ -229,6 +220,17 @@ defmodule Harness.ResultStore do
 
   def delete_run(run_id, store) when is_binary(run_id) do
     dispatch(store, :delete_run, [run_id])
+  end
+
+  @doc false
+  @spec mark_landed(String.t(), String.t(), store()) :: :ok | {:error, term()}
+  def mark_landed(run_id, sha, store \\ configured())
+
+  def mark_landed(run_id, sha, false) when is_binary(run_id) and is_binary(sha), do: :ok
+  def mark_landed(run_id, sha, nil) when is_binary(run_id) and is_binary(sha), do: :ok
+
+  def mark_landed(run_id, sha, store) when is_binary(run_id) and is_binary(sha) do
+    dispatch(store, :mark_landed, [run_id, sha])
   end
 
   api(
@@ -533,59 +535,5 @@ defmodule Harness.ResultStore do
 
   defp dispatch(module, function, args) when is_atom(module) do
     apply(module, function, args ++ [[]])
-  end
-
-  # Local-refs-only landed detection — NO network fetch. The lander keeps the
-  # shared `origin/<target>` remote-tracking ref fresh via its own fetch/push,
-  # so render/cold-path callers consult it directly. A `git fetch` here would put
-  # blocking network I/O on the (formerly per-row) read path — the task-244 hang.
-  @spec landed_sha_for_run(String.t(), Project.t()) :: String.t() | nil
-  defp landed_sha_for_run(run_id, %Project{target_branch: target} = project)
-       when is_binary(run_id) and run_id != "" and is_binary(target) and target != "" do
-    case Project.local_repo_path(project) do
-      {:ok, repo} ->
-        target_ref = "origin/" <> target
-        reachable_branch_sha(repo, run_id, target_ref) || logged_run_sha(repo, run_id, target_ref)
-
-      _reason ->
-        nil
-    end
-  end
-
-  defp landed_sha_for_run(_run_id, %Project{}), do: nil
-
-  @spec reachable_branch_sha(String.t(), String.t(), String.t()) :: String.t() | nil
-  defp reachable_branch_sha(repo, run_id, target_ref) do
-    branch = @run_branch_prefix <> run_id
-
-    with {:ok, sha} <- rev_parse(repo, branch),
-         true <- ancestor?(repo, sha, target_ref) do
-      sha
-    else
-      _reason -> nil
-    end
-  end
-
-  @spec logged_run_sha(String.t(), String.t(), String.t()) :: String.t() | nil
-  defp logged_run_sha(repo, run_id, target_ref) do
-    pattern = "(run #{run_id})"
-
-    case Git.run(["log", "--format=%H", "--fixed-strings", "--grep", pattern, "-n", "1", target_ref], repo) do
-      {:ok, output} -> output |> String.split("\n", trim: true) |> List.first()
-      {:error, _reason} -> nil
-    end
-  end
-
-  @spec rev_parse(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
-  defp rev_parse(repo, ref) do
-    case Git.run(["rev-parse", "--verify", "--quiet", ref <> "^{commit}"], repo) do
-      {:ok, output} -> {:ok, String.trim(output)}
-      {:error, _reason} = error -> error
-    end
-  end
-
-  @spec ancestor?(String.t(), String.t(), String.t()) :: boolean()
-  defp ancestor?(repo, maybe_ancestor, descendant) do
-    match?({:ok, _output}, Git.run(["merge-base", "--is-ancestor", maybe_ancestor, descendant], repo))
   end
 end

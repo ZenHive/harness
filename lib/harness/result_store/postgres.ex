@@ -69,6 +69,7 @@ defmodule Harness.ResultStore.Postgres do
           composed_inputs: fragment("EXCLUDED.composed_inputs"),
           updated_at: fragment("EXCLUDED.updated_at"),
           # rich evidence — incoming nil/empty never overwrites settled data
+          landed_sha: fragment("COALESCE(EXCLUDED.landed_sha, ?)", r.landed_sha),
           verdict: fragment("COALESCE(EXCLUDED.verdict, ?)", r.verdict),
           agent_outcome_kind: fragment("COALESCE(EXCLUDED.agent_outcome_kind, ?)", r.agent_outcome_kind),
           agent_exit_status: fragment("COALESCE(EXCLUDED.agent_exit_status, ?)", r.agent_exit_status),
@@ -200,6 +201,25 @@ defmodule Harness.ResultStore.Postgres do
     try do
       # delete_all is idempotent: a 0-row delete (absent run_id) still returns :ok.
       {_count, _} = repo.delete_all(from(r in RunRecordSchema, where: r.run_id == ^run_id))
+      :ok
+    rescue
+      e -> {:error, e}
+    end
+  end
+
+  @impl Harness.ResultStore
+  @spec mark_landed(String.t(), String.t(), keyword()) :: :ok | {:error, term()}
+  def mark_landed(run_id, sha, opts) when is_binary(run_id) and is_binary(sha) and is_list(opts) do
+    repo = Keyword.get(opts, :repo, Repo)
+    now = NaiveDateTime.utc_now(:microsecond)
+
+    try do
+      {_count, _result} =
+        repo.update_all(
+          from(r in RunRecordSchema, where: r.run_id == ^run_id),
+          set: [landed_sha: sha, updated_at: now]
+        )
+
       :ok
     rescue
       e -> {:error, e}
@@ -548,6 +568,7 @@ defmodule Harness.ResultStore.Postgres do
         review_report: r.review_report,
         reviewer_outcome_kind: r.reviewer_outcome_kind,
         reviewer_exit_status: r.reviewer_exit_status,
+        landed_sha: r.landed_sha,
         recovery_attempts: r.recovery_attempts,
         recovery_outcome: r.recovery_outcome,
         recovery_repaired: r.recovery_repaired,
@@ -745,6 +766,7 @@ defmodule Harness.ResultStore.Postgres do
       recovery_attempts: r.recovery_attempts,
       recovery_outcome: atom_or_string(r.recovery_outcome),
       recovery_repaired: r.recovery_repaired,
+      landed_sha: r.landed_sha,
       reason: encode_jsonb(r.reason),
       token_usage: encode_jsonb(r.token_usage),
       composed_inputs: encode_jsonb(r.composed_inputs),
@@ -794,7 +816,8 @@ defmodule Harness.ResultStore.Postgres do
       recovery_attempts: default(row.recovery_attempts, 0),
       recovery_outcome: string_to_atom(row.recovery_outcome),
       recovery_repaired: row.recovery_repaired,
-      recovery_token_usage: decode_token_usage(row.recovery_token_usage)
+      recovery_token_usage: decode_token_usage(row.recovery_token_usage),
+      landed_sha: row.landed_sha
     }
   end
 

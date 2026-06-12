@@ -55,6 +55,7 @@ defmodule Harness.ResultStoreContract do
     assert retrieved.run_id == "r1"
     assert retrieved.state == :done
     assert retrieved.verdict == :approve
+    assert retrieved.landed_sha == nil
     assert retrieved.domains == []
     # a record that omits the reviewer rubric reads back with empty-map defaults,
     # never nil — missing-block tolerance through the store layer (Task 224).
@@ -66,6 +67,17 @@ defmodule Harness.ResultStoreContract do
     assert :ok = ResultStore.record_run(rec_d, store)
     assert {:ok, [rd]} = ResultStore.list_run_records(store, run_id: "r-domains")
     assert rd.domains == [:otp, :oban]
+
+    rec_landed = log_record(run_id: "r-landed", landed_sha: "abc1234ff")
+    assert :ok = ResultStore.record_run(rec_landed, store)
+    assert {:ok, [rl]} = ResultStore.list_run_records(store, run_id: "r-landed")
+    assert rl.landed_sha == "abc1234ff"
+
+    rec_marked = log_record(run_id: "r-marked")
+    assert :ok = ResultStore.record_run(rec_marked, store)
+    assert :ok = ResultStore.mark_landed("r-marked", "def5678aa", store)
+    assert {:ok, [rm]} = ResultStore.list_run_records(store, run_id: "r-marked")
+    assert rm.landed_sha == "def5678aa"
 
     # non-match
     assert {:ok, []} = ResultStore.list_run_records(store, batch_id: "nope")

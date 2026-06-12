@@ -68,6 +68,20 @@ defmodule Harness.ResultStore.Memory do
   end
 
   @impl Harness.ResultStore
+  @spec mark_landed(String.t(), String.t(), keyword()) :: :ok
+  def mark_landed(run_id, sha, opts) when is_binary(run_id) and is_binary(sha) and is_list(opts) do
+    update(opts, fn state ->
+      runs =
+        case Map.fetch(state.runs, run_id) do
+          {:ok, record_with_seq} -> Map.put(state.runs, run_id, mark_record_landed(record_with_seq, sha))
+          :error -> state.runs
+        end
+
+      %{state | runs: runs}
+    end)
+  end
+
+  @impl Harness.ResultStore
   @spec aggregate_by_agent(keyword(), keyword()) :: {:ok, AgentKPI.t()}
   def aggregate_by_agent(_query_opts, opts) when is_list(opts) do
     with {:ok, records} <- list_run_records([], opts) do
@@ -165,6 +179,10 @@ defmodule Harness.ResultStore.Memory do
   defp empty do
     %{runs: %{}, batches: %{}, capability_scores: %{}, seq: 0}
   end
+
+  @spec mark_record_landed({LogRecord.t(), non_neg_integer()}, String.t()) ::
+          {LogRecord.t(), non_neg_integer()}
+  defp mark_record_landed({%LogRecord{} = record, seq}, sha), do: {%{record | landed_sha: sha}, seq}
 
   @spec scope(keyword()) :: term()
   defp scope(opts), do: Keyword.get(opts, :scope, Keyword.get(opts, :root, :default))

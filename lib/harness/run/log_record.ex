@@ -52,6 +52,12 @@ defmodule Harness.Run.LogRecord do
   spend. The token figure is the witness metric that proves two-tier recovery is
   cheaper than a hard fail plus manual re-dispatch. All default to "recovery never
   ran" (`0` / `nil` / empty usage) for the overwhelming majority of runs.
+
+  ## Landing witness (`landed_sha`)
+
+  `landed_sha` is the lander's durable witness for this run: nil until the run is
+  fast-forward-pushed, then the pushed commit SHA. Historical records created
+  before this field existed remain nil and render as unmerged until re-landed.
   """
 
   alias Harness.AgentAdapter
@@ -98,7 +104,8 @@ defmodule Harness.Run.LogRecord do
           recovery_attempts: non_neg_integer(),
           recovery_outcome: Recovery.outcome() | nil,
           recovery_repaired: String.t() | nil,
-          recovery_token_usage: TokenUsage.t()
+          recovery_token_usage: TokenUsage.t(),
+          landed_sha: String.t() | nil
         }
 
   @enforce_keys [
@@ -149,7 +156,8 @@ defmodule Harness.Run.LogRecord do
     recovery_attempts: 0,
     recovery_outcome: nil,
     recovery_repaired: nil,
-    recovery_token_usage: %TokenUsage{}
+    recovery_token_usage: %TokenUsage{},
+    landed_sha: nil
   ]
 
   @doc "Builds a structured record from a settled run result and batch metadata."

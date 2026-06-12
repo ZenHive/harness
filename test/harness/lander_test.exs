@@ -1,12 +1,15 @@
 defmodule Harness.LanderTest do
   use ExUnit.Case, async: false
 
+  alias Harness.AgentAdapter.Claude
   alias Harness.Dashboard.OpsFeed
   alias Harness.Dashboard.OpsFeed.Op
   alias Harness.GitFixture
   alias Harness.Lander
   alias Harness.Notification.Event
   alias Harness.Project
+  alias Harness.ResultStore
+  alias Harness.ResultStore.Memory
   alias Harness.Run.LogRecord
 
   @moduletag :tmp_dir
@@ -54,6 +57,14 @@ defmodule Harness.LanderTest do
       branch: "harness/run-x"
     }
 
+    store = {Memory, scope: {:lander_test, self(), System.unique_integer([:positive])}}
+    Application.put_env(:harness, :result_store, store)
+
+    on_exit(fn ->
+      Application.delete_env(:harness, :result_store)
+      Memory.reset(elem(store, 1))
+    end)
+
     %{origin: origin, repo: repo, base_sha: base_sha, branch_tip: branch_tip, project: project, request: request}
   end
 
@@ -62,6 +73,15 @@ defmodule Harness.LanderTest do
       assert {:landed, landed} = Lander.land(ctx.request)
       assert landed == ctx.branch_tip
       assert sha(ctx.origin, "refs/heads/main") == ctx.branch_tip
+    end
+
+    test "persists landed_sha on the run record", ctx do
+      assert :ok = ResultStore.record_run(log_record("run-x"))
+
+      assert {:landed, landed} = Lander.land(ctx.request)
+
+      assert {:ok, [record]} = ResultStore.list_run_records(run_id: "run-x")
+      assert record.landed_sha == landed
     end
 
     test "broadcasts started + settled(:landed) on the dashboard ops feed (task 243)", ctx do
@@ -274,7 +294,7 @@ defmodule Harness.LanderTest do
         batch_id: "b",
         run_id: "run-abc",
         task_id: "42",
-        adapter: Harness.AgentAdapter.Claude,
+        adapter: Claude,
         state: :done,
         reason: :approved,
         duration_ms: 1,
@@ -344,5 +364,19 @@ defmodule Harness.LanderTest do
     GitFixture.git!(clone, ["commit", "-q", "-m", "competing change"])
     GitFixture.git!(clone, ["push", "-q", "origin", "HEAD:refs/heads/hook-competing"])
     sha(clone, "HEAD")
+  end
+
+  @spec log_record(String.t()) :: LogRecord.t()
+  defp log_record(run_id) do
+    %LogRecord{
+      batch_id: "batch-#{run_id}",
+      run_id: run_id,
+      task_id: "1",
+      adapter: Claude,
+      state: :done,
+      reason: :approved,
+      verdict: :approve,
+      duration_ms: 1
+    }
   end
 end
