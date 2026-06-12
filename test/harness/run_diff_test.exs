@@ -1,5 +1,5 @@
 defmodule Harness.RunDiffTest do
-  # async: false — registers projects in the shared ProjectRegistry GenServer.
+  # async: false because tests register projects in the singleton ProjectRegistry.
   use ExUnit.Case, async: false
 
   alias Harness.GitFixture

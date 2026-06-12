@@ -1,4 +1,5 @@
 defmodule Mix.Tasks.Harness.InstallIncludesTest do
+  # async: false because Mix.Task run/reenable state is process-global.
   use ExUnit.Case, async: false
 
   import ExUnit.CaptureIO

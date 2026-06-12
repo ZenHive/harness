@@ -1,4 +1,5 @@
 defmodule Harness.Chat.SessionTest do
+  # async: false because cleanup kills all sessions in the global Chat.Registry.
   use ExUnit.Case, async: false
 
   alias Harness.Chat.FunBackend

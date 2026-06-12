@@ -10,6 +10,7 @@ defmodule Harness.Dashboard.CompareLiveTest do
   module reading the same globals.
   """
 
+  # async: false because tests mutate :result_store env and ProjectRegistry state.
   use Harness.Dashboard.ConnCase, async: false
 
   alias Harness.AgentAdapter.Claude

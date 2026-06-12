@@ -2,6 +2,7 @@ defmodule Harness.ResultStore.KPIParityTest do
   @moduledoc """
   Golden parity: Memory in-process rollup vs Postgres SQL aggregate (Task 139).
   """
+  # async: false because DataCase uses SQL Sandbox shared mode and :result_store env.
   use Harness.DataCase, async: false
 
   alias Harness.AgentAdapter.Claude

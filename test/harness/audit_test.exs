@@ -11,6 +11,7 @@ defmodule Harness.AuditTest do
   `async: false` — checkouts land under the globally configured worktree root.
   """
 
+  # async: false because tests mutate global app env seams such as :rmap_path_dirs.
   use ExUnit.Case, async: false
 
   alias Harness.Agent.Settings, as: AgentSettings

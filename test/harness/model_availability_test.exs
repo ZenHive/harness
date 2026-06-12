@@ -1,4 +1,5 @@
 defmodule Harness.ModelAvailabilityTest do
+  # async: false because tests mutate AgentRegistry, ProjectRegistry, and app env seams.
   use ExUnit.Case, async: false
 
   alias Harness.AgentAdapter.Claude

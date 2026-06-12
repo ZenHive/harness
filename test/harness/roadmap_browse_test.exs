@@ -1,7 +1,8 @@
 defmodule Harness.RoadmapBrowseTest do
-  # async: false — exercises the global ProjectRegistry, which list/2 and
+  # async: false because it exercises the global ProjectRegistry, which list/2 and
   # next_bundle/1 resolve project names against. Every registry-resetting test
   # in the suite is sync; this one joins them so it never overlaps an async run.
+  # async: false because Roadmap name resolution reads the singleton ProjectRegistry.
   use ExUnit.Case, async: false
 
   alias Harness.Chat.Tools

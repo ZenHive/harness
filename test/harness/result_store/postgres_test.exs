@@ -8,6 +8,7 @@ defmodule Harness.ResultStore.PostgresTest do
   Uses Harness.DataCase for sandboxed Repo + shared connection.
   Exercises the exact same contract as the ephemeral memory backend.
   """
+  # async: false because DataCase uses SQL Sandbox shared mode and :result_store env.
   use Harness.DataCase, async: false
 
   alias Harness.AgentAdapter.Claude

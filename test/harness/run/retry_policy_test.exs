@@ -1,5 +1,5 @@
 defmodule Harness.Run.RetryPolicyTest do
-  # async: false — the config-defaults tests mutate the :harness, :retry_policy app env.
+  # async: false because the config-defaults tests mutate the :retry_policy app env.
   use ExUnit.Case, async: false
 
   alias Harness.Run.RetryPolicy

@@ -10,6 +10,7 @@ defmodule Harness.Dashboard.ConfigInspectorTest do
   across parallel tests.
   """
 
+  # async: false because tests mutate global app env and singleton ProjectRegistry state.
   use ExUnit.Case, async: false
 
   alias Harness.Dashboard.ConfigInspector

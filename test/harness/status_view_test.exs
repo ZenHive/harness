@@ -1,4 +1,5 @@
 defmodule Harness.StatusViewTest do
+  # async: false because tests reset AgentRegistry and inspect shared run/result state.
   use ExUnit.Case, async: false
 
   alias Harness.AgentRegistry

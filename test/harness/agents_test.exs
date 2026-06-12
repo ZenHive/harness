@@ -1,4 +1,5 @@
 defmodule Harness.AgentsTest do
+  # async: false because tests mutate the singleton AgentRegistry state.
   use ExUnit.Case, async: false
 
   alias Harness.Agent.Settings

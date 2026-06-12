@@ -9,6 +9,7 @@ defmodule Harness.Dashboard.RoadmapSummaryTest do
   `:roadmap_list` application env, which would leak across parallel tests.
   """
 
+  # async: false because tests mutate the global :roadmap_list application env seam.
   use ExUnit.Case, async: false
 
   alias Harness.Dashboard.RoadmapSummary

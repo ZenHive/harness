@@ -1,4 +1,5 @@
 defmodule Harness.SettingsStoreTest do
+  # async: false because tests mutate global repo/settings application env.
   use ExUnit.Case, async: false
 
   alias Harness.SettingsStore

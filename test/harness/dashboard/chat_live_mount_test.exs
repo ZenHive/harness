@@ -12,6 +12,7 @@ defmodule Harness.Dashboard.ChatLiveMountTest do
   which would tear down a parallel async module's sessions mid-run.
   """
 
+  # async: false because cleanup kills every session in the global Chat.Registry.
   use Harness.Dashboard.ConnCase, async: false
 
   alias Harness.Chat.FunBackend

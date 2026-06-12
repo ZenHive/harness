@@ -8,6 +8,7 @@ defmodule Harness.AuditReviewConfigTest do
   that reads the same key (e.g. `tools_test.exs` asserts the live default
   pairing), so a mid-test override can't leak across processes.
   """
+  # async: false because tests mutate the global :audit_review application env.
   use ExUnit.Case, async: false
 
   alias Harness.AuditReview

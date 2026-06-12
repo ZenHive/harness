@@ -1,4 +1,5 @@
 defmodule Harness.Cron.OrchestratorTest do
+  # async: false because tests mutate the global :cron_orchestrator application env.
   use ExUnit.Case, async: false
 
   alias Harness.Cron.Orchestrator

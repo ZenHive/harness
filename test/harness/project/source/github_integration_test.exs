@@ -4,7 +4,7 @@ defmodule Harness.Project.Source.GithubIntegrationTest do
   # because it requires outbound network — run with `mix test --include
   # integration`.
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias Harness.GitFixture
   alias Harness.Project

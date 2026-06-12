@@ -1,4 +1,5 @@
 defmodule Harness.RoutingTest do
+  # async: false because tests mutate AgentRegistry and global store application env.
   use ExUnit.Case, async: false
 
   alias Harness.AgentAdapter.Claude

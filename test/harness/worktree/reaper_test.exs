@@ -1,4 +1,5 @@
 defmodule Harness.Worktree.ReaperTest do
+  # async: false because tests start the singleton Worktree.Reaper under its registered name.
   use ExUnit.Case, async: false
 
   alias Harness.GitFixture

@@ -5,6 +5,7 @@ defmodule Harness.ObanTrackedBranchesTest do
   `:integration` (a live DB), matching how the rest of the Postgres/Oban layer is
   tested here. Run with `mix test --include integration`.
   """
+  # async: false because tests start a Repo and own a SQL Sandbox connection.
   use ExUnit.Case, async: false
 
   alias Ecto.Adapters.SQL.Sandbox

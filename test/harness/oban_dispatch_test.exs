@@ -3,6 +3,7 @@ defmodule Harness.ObanDispatchTest do
   # and ProjectRegistry state in setup/test bodies; the DB-backed cases also rely
   # on SQL Sandbox shared mode plus a named HarnessOban/Lifeline singleton. Oban's
   # :inline testing mode does not isolate those globals between async tests.
+  # async: false because app env, ProjectRegistry, Sandbox shared mode, and Oban singletons are global.
   use ExUnit.Case, async: false
 
   import Ecto.Query, only: [from: 2]

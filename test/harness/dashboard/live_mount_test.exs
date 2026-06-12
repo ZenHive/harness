@@ -10,6 +10,7 @@ defmodule Harness.Dashboard.LiveMountTest do
   would otherwise leak across parallel tests.
   """
 
+  # async: false because tests read singleton ProjectRegistry and run registry state.
   use Harness.Dashboard.ConnCase, async: false
 
   alias Harness.Dashboard.Transcript

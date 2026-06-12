@@ -16,6 +16,7 @@ defmodule Harness.ObanQueueBootstrapTest do
   migrated test DB (`MIX_ENV=test mix ecto.create ecto.migrate`); run with
   `mix test --include integration`.
   """
+  # async: false because tests use SQL Sandbox shared mode and named Harness.Oban.
   use ExUnit.Case, async: false
 
   alias Ecto.Adapters.SQL.Sandbox

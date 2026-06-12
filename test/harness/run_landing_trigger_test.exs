@@ -4,6 +4,7 @@ defmodule Harness.RunLandingTriggerTest do
   a `target_branch` enqueues exactly one landing job onto the serialized
   `landing_<name>` queue; a `:manual` project enqueues nothing.
   """
+  # async: false because tests mutate ProjectRegistry and the :oban_insert app env seam.
   use ExUnit.Case, async: false
 
   alias Harness.FakeAdapter

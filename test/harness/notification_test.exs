@@ -4,6 +4,7 @@ defmodule Harness.NotificationTest do
   none are configured, and isolates a misbehaving sink so a broken witness can
   never crash a land.
   """
+  # async: false because tests mutate global notification sink application env.
   use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog

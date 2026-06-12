@@ -1,4 +1,5 @@
 defmodule Harness.Cron.PendingDispatchTest do
+  # async: false because tests reset PendingDispatch and the singleton ProjectRegistry.
   use ExUnit.Case, async: false
 
   alias Harness.AgentAdapter.Codex

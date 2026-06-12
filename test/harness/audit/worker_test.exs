@@ -8,6 +8,7 @@ defmodule Harness.Audit.WorkerTest do
   `async: false` — registers projects in the global `ProjectRegistry`.
   """
 
+  # async: false because tests register projects in the singleton ProjectRegistry.
   use ExUnit.Case, async: false
 
   alias Ecto.Adapters.SQL.Sandbox

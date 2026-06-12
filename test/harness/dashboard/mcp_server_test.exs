@@ -1,4 +1,5 @@
 defmodule Harness.Dashboard.MCPServerTest do
+  # async: false because tests reset the singleton ProjectRegistry and :result_store env.
   use ExUnit.Case, async: false
 
   alias Anubis.MCP.Error

@@ -1,5 +1,5 @@
 defmodule Harness.DispatchResolutionTest do
-  # async: false — these register a project in the global ProjectRegistry and
+  # async: false because these register a project in the global ProjectRegistry and
   # reset it in setup, mirroring Harness.Batch.AgentEvaluationTest.
   use ExUnit.Case, async: false
 

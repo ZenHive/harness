@@ -4,6 +4,7 @@ defmodule Harness.Lander.ResilienceTest do
   function (every outcome × {under-cap, at-cap}); `route/2`'s effects are checked
   through the `:oban_insert` capture seam and the live `ProjectRegistry`.
   """
+  # async: false because tests mutate ProjectRegistry and app env seams.
   use ExUnit.Case, async: false
 
   alias Harness.Lander.Resilience

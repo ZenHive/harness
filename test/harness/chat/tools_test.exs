@@ -1,4 +1,5 @@
 defmodule Harness.Chat.ToolsTest do
+  # async: false because tests mutate the global :result_store application env.
   use ExUnit.Case, async: false
 
   alias Harness.AgentAdapter.Claude

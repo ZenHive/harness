@@ -3,6 +3,7 @@ defmodule Harness.Notification.CommandSinkTest do
   The shipped sakshi sink: execs an operator-configured command with the event
   flattened into `HARNESS_NOTIFY_*` env vars; an unconfigured command is a no-op.
   """
+  # async: false because tests mutate CommandSink's global application env config.
   use ExUnit.Case, async: false
 
   alias Harness.Notification.CommandSink

@@ -3,6 +3,7 @@ defmodule Harness.ResultStore.KPILiveParityTest do
   Golden parity: KPILive reviewer + facet numbers match across Memory and Postgres
   backends for the same seeded records (Task 258).
   """
+  # async: false because DataCase uses SQL Sandbox shared mode and :result_store env.
   use Harness.DataCase, async: false
   use Harness.Dashboard.ConnCase, async: false
 

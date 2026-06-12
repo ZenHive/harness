@@ -1,4 +1,5 @@
 defmodule Harness.Batch.AgentEvaluationTest do
+  # async: false because tests reset the singleton AgentRegistry and ProjectRegistry.
   use ExUnit.Case, async: false
 
   alias Harness.AgentAdapter.Capabilities

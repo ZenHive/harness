@@ -20,6 +20,7 @@ defmodule Harness.PipelineE2ETest do
   mutates `:harness` app env seams.
   """
 
+  # async: false because tests mutate ProjectRegistry and app env seams.
   use ExUnit.Case, async: false
 
   alias Harness.FakeAdapter

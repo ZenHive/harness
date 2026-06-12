@@ -1,4 +1,5 @@
 defmodule Mix.Tasks.Harness.StatusTest do
+  # async: false because it reads shared AgentRegistry and Run supervisor state.
   use ExUnit.Case, async: false
 
   import ExUnit.CaptureIO

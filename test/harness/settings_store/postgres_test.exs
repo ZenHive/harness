@@ -1,4 +1,5 @@
 defmodule Harness.SettingsStore.PostgresTest do
+  # async: false because DataCase uses SQL Sandbox shared mode and settings app env.
   use Harness.DataCase, async: false
 
   alias Harness.Agent.Settings, as: AgentSettings

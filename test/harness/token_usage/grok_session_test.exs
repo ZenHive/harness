@@ -1,4 +1,5 @@
 defmodule Harness.TokenUsage.GrokSessionTest do
+  # async: false because tests mutate the global :grok_sessions_root application env.
   use ExUnit.Case, async: false
 
   alias Harness.TokenUsage

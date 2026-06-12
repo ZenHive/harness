@@ -10,6 +10,7 @@ defmodule Harness.Lander.WorkerTest do
   and points `:harness, :settings_store` at an isolated in-memory scope.
   """
 
+  # async: false because tests mutate ProjectRegistry and the global :settings_store env.
   use ExUnit.Case, async: false
 
   alias Harness.GitFixture

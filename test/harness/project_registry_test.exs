@@ -1,4 +1,5 @@
 defmodule Harness.ProjectRegistryTest do
+  # async: false because tests reset and mutate the singleton ProjectRegistry.
   use ExUnit.Case, async: false
 
   alias Harness.Dispatch

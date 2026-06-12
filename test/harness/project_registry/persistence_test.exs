@@ -5,6 +5,7 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
   Requires a migrated test DB: `MIX_ENV=test mix ecto.create ecto.migrate`
   Run with `mix test.json --include integration`.
   """
+  # async: false because tests use SQL Sandbox shared mode and ProjectRegistry reset/reload.
   use Harness.DataCase, async: false
 
   alias Harness.Oban, as: HarnessOban

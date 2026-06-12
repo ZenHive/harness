@@ -1,4 +1,5 @@
 defmodule Harness.AutonomyTest do
+  # async: false because tests reset the singleton ProjectRegistry.
   use ExUnit.Case, async: false
 
   alias Harness.Autonomy

@@ -3,6 +3,7 @@ defmodule Harness.RunFeedIntegrationTest do
   # the RunFeed topic: at least one non-terminal update, then a settled message
   # carrying the terminal status. This is the wiring the event-driven dashboard
   # depends on.
+  # async: false because it drives the shared Run supervisor/registry and PubSub topic.
   use ExUnit.Case, async: false
 
   alias Harness.Dashboard.RunFeed

@@ -6,6 +6,7 @@ defmodule Harness.AuditPostgresTest do
   operator settings.
   """
 
+  # async: false because DataCase uses SQL Sandbox shared mode for DB-backed collaborators.
   use Harness.DataCase, async: false
 
   alias Harness.Audit

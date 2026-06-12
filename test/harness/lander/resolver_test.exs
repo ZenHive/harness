@@ -8,7 +8,7 @@ defmodule Harness.Lander.ResolverTest do
   `Harness.LanderTest`'s injected-resolver tests, which never spawn a CLI.
   """
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex

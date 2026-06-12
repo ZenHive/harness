@@ -7,6 +7,7 @@ defmodule Harness.Agent.SettingsTest do
   `async: false` — shares the global test settings store scope, reset per test.
   """
 
+  # async: false because tests reset the shared in-memory settings store scope.
   use ExUnit.Case, async: false
 
   alias Harness.Agent.Settings

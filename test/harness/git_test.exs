@@ -1,5 +1,5 @@
 defmodule Harness.GitTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias Harness.Git
   alias Harness.GitFixture

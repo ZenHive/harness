@@ -9,6 +9,7 @@ defmodule Harness.Dashboard.KPILiveTest do
   records, which would race a parallel module reading the store.
   """
 
+  # async: false because tests mutate the global :result_store application env.
   use Harness.Dashboard.ConnCase, async: false
 
   alias Harness.CapabilityScore

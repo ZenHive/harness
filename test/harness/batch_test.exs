@@ -1,4 +1,5 @@
 defmodule Harness.BatchTest do
+  # async: false because tests mutate singleton AgentRegistry and ProjectRegistry state.
   use ExUnit.Case, async: false
 
   alias Harness.AgentAdapter.Capabilities

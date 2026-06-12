@@ -8,6 +8,7 @@ defmodule Harness.ConfigTest do
   which would leak across parallel tests.
   """
 
+  # async: false because tests read and mutate global :harness application env.
   use ExUnit.Case, async: false
 
   alias Harness.Config

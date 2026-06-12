@@ -1,4 +1,5 @@
 defmodule Harness.LanderTest do
+  # async: false because tests mutate app env seams and global notification sinks.
   use ExUnit.Case, async: false
 
   alias Harness.AgentAdapter.Claude

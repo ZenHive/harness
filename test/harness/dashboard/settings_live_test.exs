@@ -10,6 +10,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   store scope, reset per test.
   """
 
+  # async: false because tests mutate ProjectRegistry, AgentRegistry, settings, and app env.
   use Harness.Dashboard.ConnCase, async: false
 
   alias Harness.Agent.Settings, as: AgentSettings
