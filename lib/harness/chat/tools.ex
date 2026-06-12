@@ -4,6 +4,27 @@ defmodule Harness.Chat.Tools do
 
   Built from `Harness.Manifest` at session startup — each MCP tool name maps to
   an MFA plus its JSON Schema. Dispatch validates arguments before `apply/3`.
+
+  ## MCP / JSON param boundary
+
+  Descripex 0.8+ emits typed JSON Schema from `@spec` where possible; **this
+  module is the consumer-side coercion layer** that maps JSON arguments onto
+  Elixir `apply/3` heads:
+
+  - Omitted or JSON-`null` optional params become `:__omit__` and are dropped from
+    the trailing arity so the function's `\\ default` head runs (not the static
+    `api()` schema default, which may be a sentinel like `:configured_result_store`
+    or `nil` that would hit a disabled guard).
+  - Interior `:__omit__` gaps before explicit later args are filled from the
+    declared schema `default` (positional-default semantics).
+  - Atom-typed params (schema `"type": "string"` with an `atom` description
+    hint from descripex) accept plain JSON strings (`"codex"`) as well as
+    `":codex"`.
+  - Boolean and keyword-list params keep the existing targeted coercions.
+
+  Params a JSON client cannot construct (`%Struct{}`, `module()`, module lists)
+  are filtered off the MCP surface in `Harness.Manifest.mcp_tools/1`, not patched
+  per function here.
   """
 
   alias Harness.Chat.Schema
@@ -109,6 +130,15 @@ defmodule Harness.Chat.Tools do
     end)
   end
 
+  @spec atom_param?(map()) :: boolean()
+  defp atom_param?(details) when is_map(details) do
+    schema = Map.get(details, :schema, %{})
+    schema_type = if is_map(schema), do: Map.get(schema, "type", Map.get(schema, :type))
+    desc = Map.get(details, :description, "")
+
+    schema_type in ["string", :string] and Regex.match?(~r/\batom\b/i, desc)
+  end
+
   @spec boolean_param?(map()) :: boolean()
   defp boolean_param?(details) when is_map(details) do
     schema = Map.get(details, :schema, %{})
@@ -195,8 +225,33 @@ defmodule Harness.Chat.Tools do
     if Enum.any?(args, &(&1 == :__missing__)) do
       {:error, {:schema_validation_failed, [%{path: "#", message: "missing required arguments for #{entry.name}"}]}}
     else
-      {:ok, args}
+      {:ok, finalize_apply_args(args, entry)}
     end
+  end
+
+  # Drops trailing `:__omit__` markers so `apply/3` selects a lower-arity head
+  # with Elixir runtime defaults. Fills interior `:__omit__` gaps (optional
+  # params before explicit later args) from the declared schema default.
+  @spec finalize_apply_args([term()], entry()) :: [term()]
+  defp finalize_apply_args(args, %{params: params, param_keys: keys}) do
+    trailing_omit_count =
+      args
+      |> Enum.reverse()
+      |> Enum.take_while(&(&1 == :__omit__))
+      |> length()
+
+    keep_count = length(args) - trailing_omit_count
+
+    keys
+    |> Enum.zip(args)
+    |> Enum.take(keep_count)
+    |> Enum.map(fn {key, value} ->
+      if value == :__omit__ do
+        Map.get(params[key] || %{}, :default, :__omit__)
+      else
+        value
+      end
+    end)
   end
 
   @spec resolve_param(entry(), atom(), map()) :: term()
@@ -207,11 +262,8 @@ defmodule Harness.Chat.Tools do
 
     case Map.get(arguments, key_str, Map.get(arguments, key)) do
       nil ->
-        # A param with a default takes it (LLM callers routinely emit null for
-        # unset optional params). Otherwise distinguish an explicit null —
-        # honored as nil — from a truly absent key, which is `:__missing__`.
         case details do
-          %{default: default} -> default
+          %{default: _} -> :__omit__
           _ when present? -> nil
           _ -> :__missing__
         end
@@ -246,11 +298,19 @@ defmodule Harness.Chat.Tools do
     end
   end
 
-  defp decode_param(value, %{kind: :value}) when is_binary(value) do
-    if String.starts_with?(value, ":") do
-      value |> String.slice(1..-1//1) |> String.to_existing_atom()
-    else
-      value
+  defp decode_param(value, %{kind: :value} = details) when is_binary(value) do
+    cond do
+      String.starts_with?(value, ":") ->
+        value |> String.slice(1..-1//1) |> String.to_existing_atom()
+
+      atom_param?(details) ->
+        case safe_to_existing_atom(value) do
+          {:ok, atom} -> atom
+          :error -> value
+        end
+
+      true ->
+        value
     end
   rescue
     ArgumentError -> value

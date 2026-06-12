@@ -2,6 +2,7 @@ defmodule Harness.Chat.ToolsTest do
   use ExUnit.Case, async: false
 
   alias Harness.AgentAdapter.Claude
+  alias Harness.AgentAdapter.Codex
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.CapabilityScore.Legacy, as: CapabilityScore
   alias Harness.Chat.Tools
@@ -32,8 +33,15 @@ defmodule Harness.Chat.ToolsTest do
   test "dispatch/3 decodes atom params from colon-prefixed strings" do
     registry = Tools.build()
 
-    assert {:ok, {:ok, Harness.AgentAdapter.Codex}} =
+    assert {:ok, {:ok, Codex}} =
              Tools.dispatch(registry, "audit_review-default_grader", %{"implementer" => ":claude"})
+  end
+
+  test "dispatch/3 coerces plain JSON strings to atoms for atom-typed params" do
+    registry = Tools.build()
+
+    assert {:ok, {:ok, Codex}} =
+             Tools.dispatch(registry, "audit_review-default_grader", %{"implementer" => "claude"})
   end
 
   test "dispatch/3 returns unknown_tool for missing names" do
@@ -263,7 +271,7 @@ defmodule Harness.Chat.ToolsTest do
 
       assert :ok = ResultStore.save_capability_score(score, store)
 
-      args = %{"agent" => ":codex", "domain" => ":otp", "corpus_version" => "mcp-default"}
+      args = %{"agent" => "codex", "domain" => "otp", "corpus_version" => "mcp-default"}
 
       assert {:ok, {:ok, loaded}} =
                Tools.dispatch(registry, "result_store-get_capability_score", args)
@@ -272,8 +280,34 @@ defmodule Harness.Chat.ToolsTest do
       assert loaded.domain == :otp
       assert loaded.corpus_version == "mcp-default"
 
+      assert {:ok, {:ok, loaded_colon}} =
+               Tools.dispatch(
+                 registry,
+                 "result_store-get_capability_score",
+                 Map.merge(args, %{"agent" => ":codex", "domain" => ":otp"})
+               )
+
+      assert loaded_colon.agent == :codex
+
       assert {:ok, :no_data} =
                Tools.dispatch(registry, "result_store-get_capability_score", Map.put(args, "store", false))
+    end
+
+    test "aggregate_ceremony_cost with store=false and omitted opts hits the disabled guard", %{store: store} do
+      registry = Tools.build()
+      record = ResultStoreContract.log_record(run_id: "mcp-ceremony-false", verdict: :approve)
+
+      assert :ok = ResultStore.record_run(record, store)
+
+      assert {:ok, {:ok, ceremony_cost}} =
+               Tools.dispatch(registry, "result_store-aggregate_ceremony_cost", %{})
+
+      assert ceremony_cost.run_count == 1
+
+      assert {:ok, {:ok, disabled_cost}} =
+               Tools.dispatch(registry, "result_store-aggregate_ceremony_cost", %{"store" => false})
+
+      assert disabled_cost.run_count == 0
     end
 
     test "list_capability_scores dispatch without store reads the configured store", %{store: store} do
@@ -291,6 +325,173 @@ defmodule Harness.Chat.ToolsTest do
 
       assert {:ok, {:ok, []}} =
                Tools.dispatch(registry, "result_store-list_capability_scores", %{"store" => false})
+    end
+  end
+
+  describe "manifest optional-param boundary sweep" do
+    setup do
+      root =
+        Path.join(
+          System.tmp_dir!(),
+          "harness_chat_tools_sweep_#{System.unique_integer([:positive])}"
+        )
+
+      previous = Application.get_env(:harness, :result_store)
+      store = {MemoryStore, root: root}
+      Application.put_env(:harness, :result_store, store)
+      MemoryStore.reset(root: root)
+
+      record =
+        ResultStoreContract.log_record(
+          run_id: "sweep-agent",
+          agent: :codex,
+          verdict: :approve,
+          reviewer_adapter: Claude
+        )
+
+      assert :ok = ResultStore.record_run(record, store)
+
+      score = capability_score()
+      assert :ok = ResultStore.save_capability_score(score, store)
+
+      on_exit(fn ->
+        restore_result_store(previous)
+        MemoryStore.reset(root: root)
+      end)
+
+      {:ok, registry: Tools.build()}
+    end
+
+    test "every MCP tool omits/null optional params without a no-function-clause boundary failure", %{
+      registry: registry
+    } do
+      for tool <- Harness.Manifest.mcp_tools() do
+        optional = optional_param_keys(tool)
+        required = minimal_required_args(tool.name)
+
+        assert_boundary_dispatch(registry, tool.name, required)
+
+        for key <- optional do
+          assert_boundary_dispatch(registry, tool.name, required)
+          assert_boundary_dispatch(registry, tool.name, Map.put(required, key, nil))
+        end
+      end
+    end
+
+    test "result_store read aggregates return data when store is omitted or null", %{registry: registry} do
+      for name <- ~w(
+             result_store-aggregate_by_agent
+             result_store-aggregate_ceremony_cost
+             result_store-aggregate_reviewer_reliability
+             result_store-list_capability_scores
+           ) do
+        assert {:ok, {:ok, with_omit}} = Tools.dispatch(registry, name, %{})
+        refute empty_store_sentinel?(name, with_omit)
+
+        assert {:ok, {:ok, with_null}} = Tools.dispatch(registry, name, %{"store" => nil})
+        refute empty_store_sentinel?(name, with_null)
+      end
+    end
+  end
+
+  defp optional_param_keys(tool) do
+    schema = tool.inputSchema
+    properties = Map.keys(schema.properties || %{})
+    required = MapSet.new(schema.required || [])
+
+    properties
+    |> Enum.reject(&MapSet.member?(required, Atom.to_string(&1)))
+    |> Enum.map(&Atom.to_string/1)
+  end
+
+  defp minimal_required_args("audit_review-default_grader"), do: %{"implementer" => "claude"}
+
+  defp minimal_required_args("result_store-get_capability_score"),
+    do: %{"agent" => "codex", "domain" => "otp", "corpus_version" => "mcp-default"}
+
+  defp minimal_required_args("result_store-load_batch"), do: %{"batch_id" => "missing-batch"}
+
+  defp minimal_required_args("model_availability-block_model"), do: %{"agent" => "cursor", "model" => "composer-2.5"}
+
+  defp minimal_required_args("model_availability-unblock_model"), do: %{"agent" => "cursor", "model" => "composer-2.5"}
+
+  defp minimal_required_args("model_availability-list_available_models"), do: %{"agent" => "cursor"}
+
+  defp minimal_required_args("model_availability-refresh_catalog"), do: %{"agent" => "cursor"}
+
+  defp minimal_required_args("roadmap-list"), do: %{"project_name" => "harness"}
+
+  defp minimal_required_args("roadmap-next"), do: %{"project_name" => "harness"}
+
+  defp minimal_required_args("roadmap-next_bundle"), do: %{"project_name" => "harness"}
+
+  defp minimal_required_args("roadmap-show"), do: %{"project_name" => "harness", "item_id" => "1"}
+
+  defp minimal_required_args("roadmap-ready"), do: %{"project_name" => "harness"}
+
+  defp minimal_required_args("roadmap-ingest"), do: %{"project_name" => "harness", "selector" => "1"}
+
+  defp minimal_required_args("dispatch-task"), do: %{"project_name" => "harness", "task" => "1", "adapter" => "claude"}
+
+  defp minimal_required_args("dispatch-await"), do: %{"run_id" => "missing-run"}
+
+  defp minimal_required_args("dispatch-status"), do: %{"run_id" => "missing-run"}
+
+  defp minimal_required_args("dispatch-transcript"), do: %{"run_id" => "missing-run"}
+
+  defp minimal_required_args("dispatch-transcript_events"), do: %{"run_id" => "missing-run"}
+
+  defp minimal_required_args("dispatch-cancel"), do: %{"run_id" => "missing-run"}
+
+  defp minimal_required_args("dispatch-hold"), do: %{"run_id" => "missing-run"}
+
+  defp minimal_required_args("dispatch-steer"), do: %{"run_id" => "missing-run", "message" => "pause"}
+
+  defp minimal_required_args("dispatch-resume"), do: %{"run_id" => "missing-run"}
+
+  defp minimal_required_args("dispatch-resume_failed"), do: %{"run_id" => "missing-run"}
+
+  defp minimal_required_args("dispatch-rereview"), do: %{"run_id" => "missing-run"}
+
+  defp minimal_required_args("dispatch-reland"), do: %{"run_id" => "missing-run"}
+
+  defp minimal_required_args("dispatch-register_project"),
+    do: %{"name" => "sweep-project", "source_dir" => File.cwd!(), "roadmap_path" => "roadmap/tasks.toml"}
+
+  defp minimal_required_args("dispatch-bundle"), do: %{"project_name" => "harness", "bundle" => "chat-orchestrator"}
+
+  defp minimal_required_args("dispatch-compare"),
+    do: %{"project_name" => "harness", "task" => "1", "adapters" => ["claude", "codex"]}
+
+  defp minimal_required_args("dispatch-verdict_detail"), do: %{"run_id" => "missing-run"}
+
+  defp minimal_required_args("dispatch-recommend"), do: %{"project_name" => "harness", "task" => "1"}
+
+  defp minimal_required_args("dispatch-assess_facets"), do: %{"project_name" => "harness", "task" => "1"}
+
+  defp minimal_required_args("run-kill"), do: %{"run_id" => "missing-run"}
+
+  defp minimal_required_args(_name), do: %{}
+
+  defp assert_boundary_dispatch(registry, tool_name, args) do
+    case Tools.dispatch(registry, tool_name, args) do
+      {:error, {:dispatch_failed, msg}} ->
+        refute String.contains?(msg, "no function clause"),
+               "#{tool_name} #{inspect(args)} hit a guard boundary: #{msg}"
+
+      _other ->
+        :ok
+    end
+  end
+
+  defp empty_store_sentinel?(tool_name, result) do
+    case {tool_name, result} do
+      {"result_store-aggregate_by_agent", map} when map == %{} -> true
+      {"result_store-aggregate_reviewer_reliability", map} when map == %{} -> true
+      {"result_store-aggregate_review_stuck_causes", map} when map == %{} -> true
+      {"result_store-list_capability_scores", []} -> true
+      {"result_store-aggregate_ceremony_cost", %{run_count: 0}} -> true
+      _ -> false
     end
   end
 

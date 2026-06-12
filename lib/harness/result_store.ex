@@ -41,6 +41,10 @@ defmodule Harness.ResultStore do
   @typedoc "Exact-match filters supported by `list_run_records/2`."
   @type filters :: keyword()
 
+  # MCP/chat dispatch omits the `store` param (or sends JSON null) so
+  # `Harness.Chat.Tools` drops the trailing arity and `configured/0` runs via
+  # the function's `\\ configured()` default head — not via this sentinel.
+  # The sentinel remains for in-process callers that pass it explicitly.
   @configured_store :configured_result_store
 
   @doc "Persists one structured run record with implementation-specific options."

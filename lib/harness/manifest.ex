@@ -96,10 +96,13 @@ defmodule Harness.Manifest do
 
   # Only tools driveable over a stateless JSON boundary are returned: any tool
   # with an :exchange_data param (a struct a JSON caller cannot construct — e.g.
-  # supervisor-start_run, the batch-* / agent_evaluation-* tools) is excluded
-  # from the MCP/chat surface. They stay on the full Elixir driver surface
-  # (build/0, modules/0) for in-process callers. The flat dispatch-task tool is
-  # the JSON-native replacement for the struct-passing ingest → start_run flow.
+  # supervisor-start_run, the batch-* / agent_evaluation-* tools) or a
+  # `kind: :value` param whose description documents a struct / module() /
+  # module-list shape JSON cannot supply (e.g. agent_evaluation-from_batch,
+  # result_store-record_run) is excluded from the MCP/chat surface. They stay on
+  # the full Elixir driver surface (build/0, modules/0) for in-process callers.
+  # The flat dispatch-task tool is the JSON-native replacement for the
+  # struct-passing ingest → start_run flow.
   @spec mcp_tools(keyword()) :: [map()]
   def mcp_tools(opts \\ []) do
     @driver_surface
@@ -117,21 +120,54 @@ defmodule Harness.Manifest do
     delim = @tool_name_delimiter
 
     with [prefix, func] <- String.split(name, delim, parts: 2),
-         {:ok, module} <- Map.fetch(@prefix_to_module, prefix) do
-      exchange_data_params?(module, func)
+         {:ok, module} <- Map.fetch(@prefix_to_module, prefix),
+         entry when not is_nil(entry) <- module.__api__(String.to_existing_atom(func)) do
+      exchange_data_params?(entry) or unjsonifiable_params?(entry)
     else
       _ -> false
     end
   end
 
-  # `func` is the name of an api()-annotated function on a curated driver module,
-  # so the atom already exists — not user-supplied free text.
-  # sobelow_skip ["DOS.StringToAtom"]
-  @spec exchange_data_params?(module(), String.t()) :: boolean()
-  defp exchange_data_params?(module, func) do
-    case module.__api__(String.to_existing_atom(func)) do
-      nil -> false
-      entry -> Enum.any?(entry.hints[:params] || %{}, fn {_key, details} -> details[:kind] == :exchange_data end)
-    end
+  @spec exchange_data_params?(map()) :: boolean()
+  defp exchange_data_params?(%{hints: %{params: params}}) when is_map(params) do
+    Enum.any?(params, fn {_key, details} -> details[:kind] == :exchange_data end)
   end
+
+  defp exchange_data_params?(_entry), do: false
+
+  @spec unjsonifiable_params?(map()) :: boolean()
+  defp unjsonifiable_params?(%{hints: %{params: params}}) when is_map(params) do
+    Enum.any?(params, &unjsonifiable_param?/1)
+  end
+
+  defp unjsonifiable_params?(_entry), do: false
+
+  # Mechanical filter: if the api() description documents a struct, module(), or
+  # module list, a JSON MCP client cannot construct the param — drop the tool.
+  @spec unjsonifiable_param?(map()) :: boolean()
+  defp unjsonifiable_param?({:opts, _details}), do: false
+
+  defp unjsonifiable_param?({_name, details}) when is_map(details) do
+    desc = Map.get(details, :description, "")
+
+    primary_struct_description?(desc) or primary_module_type_description?(desc) or
+      adapter_module_list?(desc)
+  end
+
+  defp unjsonifiable_param?(_), do: false
+
+  # Only the param's own shape — not structs named inside an opts keyword list.
+  @spec primary_struct_description?(String.t()) :: boolean()
+  defp primary_struct_description?(desc) do
+    Regex.match?(~r/^%[A-Za-z0-9_.]+\{/, desc) or
+      Regex.match?(~r/\b[A-Za-z0-9_.]+ struct\b/i, desc)
+  end
+
+  @spec primary_module_type_description?(String.t()) :: boolean()
+  defp primary_module_type_description?(desc) do
+    Regex.match?(~r/^[^.]*\bmodule\(\)/, desc)
+  end
+
+  @spec adapter_module_list?(String.t()) :: boolean()
+  defp adapter_module_list?(desc), do: Regex.match?(~r/\blist of adapter modules\b/i, desc)
 end

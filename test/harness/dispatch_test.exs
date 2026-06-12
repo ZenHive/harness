@@ -751,7 +751,18 @@ defmodule Harness.DispatchTest do
     test "excludes struct-arg tools a JSON orchestrator cannot drive" do
       names = Enum.map(Harness.Manifest.mcp_tools(), & &1.name)
 
-      for excluded <- ~w(supervisor-start_run batch-run batch-run_pinned batch-dispatch agent_evaluation-compare) do
+      for excluded <- ~w(
+             supervisor-start_run
+             batch-run
+             batch-run_pinned
+             batch-dispatch
+             agent_evaluation-compare
+             agent_evaluation-from_batch
+             result_store-record_run
+             result_store-save_batch
+             result_store-save_capability_score
+             driver-run
+           ) do
         refute excluded in names, "#{excluded} must not be on the MCP surface"
       end
     end

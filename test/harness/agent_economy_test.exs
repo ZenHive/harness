@@ -110,6 +110,20 @@ defmodule Harness.AgentEconomyTest do
       assert names == Enum.uniq(names), "MCP tool names must be unique across the manifest"
     end
 
+    test "excludes tools whose params document struct or module shapes JSON cannot supply" do
+      names = Enum.map(Harness.Manifest.mcp_tools(), & &1.name)
+
+      for excluded <- ~w(
+             agent_evaluation-from_batch
+             result_store-record_run
+             result_store-save_batch
+             result_store-save_capability_score
+             driver-run
+           ) do
+        refute excluded in names
+      end
+    end
+
     test "exchange_data params declare a source hint" do
       # Cross-checks the structured hints: any param marked :exchange_data
       # MUST carry a `source:` hint pointing to the upstream lookup tool
