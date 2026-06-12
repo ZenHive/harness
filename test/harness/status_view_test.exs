@@ -203,6 +203,17 @@ defmodule Harness.StatusViewTest do
       assert {_elapsed_us, entries} = yield_or_flunk(task)
       refute Enum.any?(entries, &(&1.status.run_id == run_id))
     end
+
+    test "snapshot omits a slow run status read within the bounded timeout" do
+      run_id = "sv-stuck-snapshot"
+      start_supervised!({__MODULE__.SlowStatusRun, run_id})
+
+      task = Task.async(fn -> :timer.tc(StatusView, :snapshot, []) end)
+
+      assert {elapsed_us, snapshot} = yield_or_flunk(task)
+      assert elapsed_us < 400_000
+      refute Enum.any?(snapshot.runs, &(&1.status.run_id == run_id))
+    end
   end
 
   describe "Run.status/2" do
