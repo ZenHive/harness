@@ -181,17 +181,27 @@ defmodule Harness.Batch.AgentEvaluation do
     case model_override(adapter, models) do
       {:ok, model} -> {:ok, model}
       :error -> default_model(adapter)
+      {:error, _reason} = error -> error
     end
   end
 
-  @spec model_override(module(), map()) :: {:ok, term()} | :error
+  @spec model_override(module(), map()) :: {:ok, String.t()} | :error | {:error, term()}
   defp model_override(adapter, models) do
     adapter
     |> model_keys()
-    |> Enum.find_value(:error, fn key ->
-      if Map.has_key?(models, key), do: {:ok, Map.fetch!(models, key)}
-    end)
+    |> Enum.find_value(:error, &model_override_for_key(&1, models, adapter))
   end
+
+  @spec model_override_for_key(term(), map(), module()) ::
+          {:ok, String.t()} | :error | {:error, term()} | nil
+  defp model_override_for_key(key, models, adapter) do
+    if Map.has_key?(models, key), do: model_override_value(Map.fetch!(models, key), adapter)
+  end
+
+  @spec model_override_value(term(), module()) :: {:ok, String.t()} | {:error, term()}
+  defp model_override_value(model, _adapter) when is_binary(model), do: {:ok, model}
+
+  defp model_override_value(other, adapter), do: {:error, {:invalid_model, model_error_target(adapter), other}}
 
   @spec model_keys(module()) :: [term()]
   defp model_keys(adapter) do
@@ -225,8 +235,6 @@ defmodule Harness.Batch.AgentEvaluation do
       {:error, {:invalid_model_for_adapter, adapter, model}}
     end
   end
-
-  defp validate_model(adapter, model), do: {:error, {:invalid_model, model_error_target(adapter), model}}
 
   @spec model_error_target(module()) :: atom() | module()
   defp model_error_target(adapter) do

@@ -816,16 +816,6 @@ defmodule Harness.Dispatch do
   @spec compare(String.t(), String.t(), [String.t()]) :: {:ok, map()} | {:error, error()}
   @spec compare(String.t(), String.t(), [String.t()], boolean() | map()) :: {:ok, map()} | {:error, error()}
   @spec compare(String.t(), String.t(), [String.t()], map(), boolean()) :: {:ok, map()} | {:error, error()}
-  def compare(project_name, task, adapters), do: compare(project_name, task, adapters, %{}, true)
-
-  def compare(project_name, task, adapters, scrub_anthropic_key) when is_boolean(scrub_anthropic_key) do
-    compare(project_name, task, adapters, %{}, scrub_anthropic_key)
-  end
-
-  def compare(project_name, task, adapters, models) when is_map(models) do
-    compare(project_name, task, adapters, models, true)
-  end
-
   def compare(project_name, task, adapters, models, scrub_anthropic_key)
       when is_binary(project_name) and is_binary(task) and is_list(adapters) and is_map(models) and
              is_boolean(scrub_anthropic_key) do
@@ -839,6 +829,19 @@ defmodule Harness.Dispatch do
            AgentEvaluation.compare(item, project, modules, models: models, env: scrub_env(scrub_anthropic_key)) do
       {:ok, summarize_comparison(comparison)}
     end
+  end
+
+  @doc false
+  def compare(project_name, task, adapters), do: compare(project_name, task, adapters, %{}, true)
+
+  @doc false
+  def compare(project_name, task, adapters, scrub_anthropic_key) when is_boolean(scrub_anthropic_key) do
+    compare(project_name, task, adapters, %{}, scrub_anthropic_key)
+  end
+
+  @doc false
+  def compare(project_name, task, adapters, models) when is_map(models) do
+    compare(project_name, task, adapters, models, true)
   end
 
   # --- Settled-run review detail over JSON ---
