@@ -8212,3 +8212,28 @@ created_at = "2026-06-12"
 scored_at = "2026-06-12"
 done_at = "2026-06-12"
 shipped_in = "4d1ceae33ccb38c083dfb33153a832894f29c885"
+
+[[task]]
+id = "274"
+phase = 19
+bundle = "kpi-routing"
+status = "pending"
+title = "routing-brief default: collapse to the configured model per agent, not the whole available catalog (144 pairs still blows context)"
+scores = { d = 2, b = 4, u = 4 }
+depends_on = [273]
+acceptance_criteria = ["routing-brief/0 DEFAULT collapses to ONE pair per dispatchable agent: the agent's CONFIGURED model (Config.agent_model/1 — the model that agent actually runs without a task pin), not every available catalog slug. Regression: the live default payload drops from 144 pairs to ~one-per-enabled-agent (~5-6), i.e. an order of magnitude, and fits one MCP read comfortably. Measured before/after pair count reported in the implemented note.", "An agent with NO configured model (Config.agent_model/1 returns nil) still surfaces ONE row flagged model: nil / model_required: true (so the writer sees the agent exists but must pin a model) — it is NOT silently dropped and NOT expanded to its catalog.", "The full per-model catalog stays reachable, unchanged, two ways: include_all: true (every available {agent,model}, today's 144-pair behaviour) AND the agents filter (naming an agent returns ITS full available catalog so the writer can weigh that agent's model options). Only the unfiltered default collapses.", "antigravity (model-incapable, model_families: []) surfaces its single model-less row as today — the configured-model collapse must not break the no-model agent.", "WRITER CONTRACT updated (SKILL.md + orchestrator-surface-inventory.md): the default brief answers 'which AGENT, at its standing model' (the routing index); to compare model options for one agent, pass agents: [name] or include_all; for KPI depth, the aggregate_* family. scripts/sync-harness-skills.sh run.", "Tests (no Process.sleep; assert specific counts/values; @spec on every def AND defp): default yields one row per enabled agent keyed to its configured model; an agent with a configured model != its catalog default still shows the configured one; a no-configured-model agent shows the model_required row; include_all + agents:[x] still expand to the full catalog; antigravity row intact. mix precommit.full green."]
+out_of_scope = ["The agents/fields/domains/include_all params themselves (shipped in Task 273 — this only changes what the UNFILTERED default selects)", "Re-introducing a capability leg (removed Task 272) — stays 3 legs", "Any new KPI/aggregate tool — depth lives in the existing aggregate_* family", "Changing Config.agent_model resolution or block/availability semantics — read them as-is"]
+files_to_modify = ["lib/harness/routing.ex", "skills/harness-driver/SKILL.md", "docs/orchestrator-surface-inventory.md", "test/harness/routing_test.exs"]
+touches = ["lib/harness/config.ex", "lib/harness/agents.ex"]
+domains = ["mcp", "descripex", "otp", "elixir"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Follow-up to Task 273 (landed 4d1ceae). Dogfooding the recompiled node: brief() default returned 144 pairs, down from 175 but still ~146KB — it still blows the writer's context. Root cause: 273 defined dispatchable as available+enabled, but a multi-model frontend (cursor) has its ENTIRE ~139-slug catalog 'available' (only opus-4-8-thinking-high is blocked), so available+enabled barely slims it. 273's ACs were satisfied; the definition was too loose.
+
+Correct slim: the default is a ROUTING INDEX — one row per dispatchable agent at its STANDING model (Config.agent_model/1), the model it runs without a task pin. That collapses cursor's 139 rows to one (its configured model) and the whole default to ~5-6 rows. Model-OPTION exploration for a given agent stays opt-in via agents:[name] or include_all — the writer only reaches for the catalog when deliberately weighing one agent's tiers (e.g. cursor-on-Opus vs codex). An agent with no configured model surfaces a single model_required row so it is visible-but-flagged, never silently dropped or catalog-expanded.
+
+Routing rationale (dogfooded): codex/gpt-5.5 free, mcp 9.0 / descripex 9.0 / truthfulness 8.5, success 0.96/82 — strongest fit for this read-surface refinement. cursor/Opus blocked. -> codex / gpt-5.5.
+"""
+created_at = "2026-06-13"
+scored_at = "2026-06-13"
