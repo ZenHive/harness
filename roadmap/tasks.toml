@@ -8305,7 +8305,7 @@ scored_at = "2026-06-13"
 id = "277"
 phase = 19
 bundle = "model-availability"
-status = "in_progress"
+status = "done"
 title = "dispatch-compare: per-adapter model override (cross-family A/B is structurally broken)"
 scores = { d = 2, b = 6, u = 5 }
 acceptance_criteria = ["dispatch-compare accepts an optional models map (adapter-name -> model) and passes each adapter its own model.", "When an adapter is omitted from the map, its OWN default model is used; the task pinned model is never applied to a non-matching adapter family.", "cursor-vs-grok compare on a task pinned to composer-2.5-fast spawns BOTH adapters successfully (grok on grok-build).", "Invalid (adapter, model) pairs are rejected up front with a clear error, not a mid-run agent_spawn_failed.", "Test covers a two-family compare where the task pinned model is valid for only one of them."]
@@ -8330,6 +8330,11 @@ Fix: add an optional per-adapter model map to the compare entry point and thread
 - MCP surface dispatch-compare: add an optional models object param (adapter-name -> model string), documented as overriding the inherited task model per adapter. Keep current behaviour when omitted EXCEPT the per-family default fallback above (today's "inherit one pinned model for all" is the bug, not the contract).
 - Validate each (adapter, model) pair against the adapter's accepted models BEFORE spawning, so a bad pair is a clear up-front error, not an agent_spawn_failed mid-run.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781329708657-858e6f13, 45a941e3bdde4d0a5dcac52a44efdd7fa2ada78a)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-13"
 started_at = "2026-06-13"
 scored_at = "2026-06-13"
+done_at = "2026-06-13"
+shipped_in = "45a941e3bdde4d0a5dcac52a44efdd7fa2ada78a"
