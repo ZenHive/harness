@@ -8217,7 +8217,7 @@ shipped_in = "4d1ceae33ccb38c083dfb33153a832894f29c885"
 id = "274"
 phase = 19
 bundle = "kpi-routing"
-status = "pending"
+status = "in_progress"
 title = "routing-brief default: collapse to the configured model per agent, not the whole available catalog (144 pairs still blows context)"
 scores = { d = 2, b = 4, u = 4 }
 depends_on = [273]
@@ -8236,4 +8236,5 @@ Correct slim: the default is a ROUTING INDEX — one row per dispatchable agent 
 Routing rationale (dogfooded): codex/gpt-5.5 free, mcp 9.0 / descripex 9.0 / truthfulness 8.5, success 0.96/82 — strongest fit for this read-surface refinement. cursor/Opus blocked. -> codex / gpt-5.5.
 """
 created_at = "2026-06-13"
+started_at = "2026-06-13"
 scored_at = "2026-06-13"
