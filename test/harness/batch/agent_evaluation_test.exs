@@ -3,6 +3,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
   use ExUnit.Case, async: false
 
   alias Harness.AgentAdapter.Capabilities
+  alias Harness.AgentAdapter.Grok
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.OSProcess
   alias Harness.AgentAdapter.Run, as: AgentRun
@@ -145,6 +146,48 @@ defmodule Harness.Batch.AgentEvaluationTest do
            } = Enum.at(entries, 1)
 
     assert is_integer(red_diff) and red_diff > 0
+  end
+
+  test "compares real adapter families with per-adapter models instead of the task pin" do
+    repo = GitFixture.init_repo()
+    base = GitFixture.tmp_base()
+    item = %{item("model-ab") | model: "composer-2.5-fast"}
+    bin_dir = fake_agent_bin_dir()
+
+    with_path(bin_dir)
+    with_agent_models(grok: "grok-build")
+
+    assert {:ok, %Comparison{entries: entries}} =
+             AgentEvaluation.compare(
+               item,
+               ProjectFixture.from_repo(repo),
+               [Harness.AgentAdapter.Cursor, Grok],
+               eval_opts(base,
+                 max_concurrency: 2,
+                 result_store: false,
+                 models: %{"cursor" => "composer-2.5-fast"}
+               )
+             )
+
+    assert [%Entry{state: :done}, %Entry{state: :done}] = entries
+
+    cursor_run = Enum.at(entries, 0).run_id
+    grok_run = Enum.at(entries, 1).run_id
+
+    assert GitFixture.git!(repo, ["show", "harness/#{cursor_run}:agent_model.txt"]) == "composer-2.5-fast"
+    assert GitFixture.git!(repo, ["show", "harness/#{grok_run}:agent_model.txt"]) == "grok-build"
+  end
+
+  test "rejects invalid per-adapter model pairs before spawning" do
+    item = %{item("invalid-model") | model: "composer-2.5-fast"}
+
+    assert {:error, {:invalid_model_for_adapter, Grok, "composer-2.5-fast"}} =
+             AgentEvaluation.compare(
+               item,
+               ProjectFixture.from_repo(GitFixture.init_repo()),
+               [Grok],
+               eval_opts(GitFixture.tmp_base(), result_store: false, models: %{"grok" => "composer-2.5-fast"})
+             )
   end
 
   test "tolerates partial failure without aborting the comparison" do
@@ -387,6 +430,51 @@ defmodule Harness.Batch.AgentEvaluationTest do
 
   defp item(id) do
     %Item{id: id, title: "Task #{id}", prompt: "do task #{id}", agent: :claude}
+  end
+
+  defp fake_agent_bin_dir do
+    bin_dir = Path.join(System.tmp_dir!(), "harness-agent-bin-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(bin_dir)
+
+    script = Path.join(bin_dir, "agent")
+
+    File.write!(script, """
+    #!/bin/sh
+    model=""
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = "--model" ]; then
+        shift
+        model="$1"
+      fi
+      shift
+    done
+    printf '%s' "$model" > agent_model.txt
+    printf 'pass' > pass_marker.txt
+    """)
+
+    File.chmod!(script, 0o755)
+    File.ln_s!(script, Path.join(bin_dir, "cursor-agent"))
+    File.ln_s!(script, Path.join(bin_dir, "grok"))
+    bin_dir
+  end
+
+  defp with_path(dir) do
+    prior = System.get_env("PATH", "")
+    System.put_env("PATH", dir <> ":" <> prior)
+    on_exit(fn -> System.put_env("PATH", prior) end)
+  end
+
+  defp with_agent_models(models) do
+    prior = Application.get_env(:harness, :agent_model)
+    Application.put_env(:harness, :agent_model, models)
+
+    on_exit(fn ->
+      if prior do
+        Application.put_env(:harness, :agent_model, prior)
+      else
+        Application.delete_env(:harness, :agent_model)
+      end
+    end)
   end
 
   defp batch_id, do: "batch-#{System.unique_integer([:positive])}"

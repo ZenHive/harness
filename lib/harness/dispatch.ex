@@ -793,6 +793,12 @@ defmodule Harness.Dispatch do
         description:
           ~s{Non-empty list of executor names to compare head-to-head, e.g. ["claude", "codex"]. Each runs the same task in its own isolated worktree. claude | codex | cursor | grok | antigravity | pi.}
       ],
+      models: [
+        kind: :value,
+        default: %{},
+        description:
+          ~s|Optional object mapping adapter name to model id, e.g. {"grok": "grok-build", "cursor": "composer-2.5-fast"}. When an adapter is omitted, compare uses that adapter's configured default model, never the task's pinned model.|
+      ],
       scrub_anthropic_key: [
         kind: :value,
         default: true,
@@ -803,13 +809,26 @@ defmodule Harness.Dispatch do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %{batch_id, task_id, total, max_concurrency, entries}} where entries is a list of per-adapter maps (adapter, run_id, state, reason, verdict :approve|:reject|nil, reviewer_diff_size, duration_ms, agent_diff_size, token_usage). {:error, reason}: no_adapters, unknown_adapter, unknown_project, the rmap ingest reasons, or a Harness.Batch failure."
+        "{:ok, %{batch_id, task_id, total, max_concurrency, entries}} where entries is a list of per-adapter maps (adapter, run_id, state, reason, verdict :approve|:reject|nil, reviewer_diff_size, duration_ms, agent_diff_size, token_usage). {:error, reason}: no_adapters, unknown_adapter, unknown_project, invalid/model-required per-adapter models, the rmap ingest reasons, or a Harness.Batch failure."
     }
   )
 
-  @spec compare(String.t(), String.t(), [String.t()], boolean()) :: {:ok, map()} | {:error, error()}
-  def compare(project_name, task, adapters, scrub_anthropic_key \\ true)
-      when is_binary(project_name) and is_binary(task) and is_list(adapters) and is_boolean(scrub_anthropic_key) do
+  @spec compare(String.t(), String.t(), [String.t()]) :: {:ok, map()} | {:error, error()}
+  @spec compare(String.t(), String.t(), [String.t()], boolean() | map()) :: {:ok, map()} | {:error, error()}
+  @spec compare(String.t(), String.t(), [String.t()], map(), boolean()) :: {:ok, map()} | {:error, error()}
+  def compare(project_name, task, adapters), do: compare(project_name, task, adapters, %{}, true)
+
+  def compare(project_name, task, adapters, scrub_anthropic_key) when is_boolean(scrub_anthropic_key) do
+    compare(project_name, task, adapters, %{}, scrub_anthropic_key)
+  end
+
+  def compare(project_name, task, adapters, models) when is_map(models) do
+    compare(project_name, task, adapters, models, true)
+  end
+
+  def compare(project_name, task, adapters, models, scrub_anthropic_key)
+      when is_binary(project_name) and is_binary(task) and is_list(adapters) and is_map(models) and
+             is_boolean(scrub_anthropic_key) do
     with {:ok, modules} <- resolve_adapter_modules(adapters),
          {:ok, project} <- lookup_project(project_name),
          # Render once, for claude, on purpose: every adapter must run the
@@ -817,7 +836,7 @@ defmodule Harness.Dispatch do
          # old non-delegatable two-step (rmap now renders natively for all six).
          {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: :claude),
          {:ok, %Comparison{} = comparison} <-
-           AgentEvaluation.compare(item, project, modules, env: scrub_env(scrub_anthropic_key)) do
+           AgentEvaluation.compare(item, project, modules, models: models, env: scrub_env(scrub_anthropic_key)) do
       {:ok, summarize_comparison(comparison)}
     end
   end

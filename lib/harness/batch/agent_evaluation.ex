@@ -10,9 +10,12 @@ defmodule Harness.Batch.AgentEvaluation do
 
   use Descripex, namespace: "/batch/agent_evaluation"
 
+  alias Harness.AgentAdapter
   alias Harness.AgentKPI
+  alias Harness.AgentRegistry
   alias Harness.Batch
   alias Harness.Batch.Result, as: BatchResult
+  alias Harness.Config
   alias Harness.Project
   alias Harness.ResultStore
   alias Harness.Roadmap.Item
@@ -123,7 +126,8 @@ defmodule Harness.Batch.AgentEvaluation do
       opts: [
         kind: :value,
         default: [],
-        description: "Forwarded to Harness.Batch.run_pinned/3 (max_concurrency, required_capabilities, env)."
+        description:
+          "Forwarded to Harness.Batch.run_pinned/3 (max_concurrency, required_capabilities, env). Optional :models maps adapter names to per-adapter model pins."
       ]
     ],
     returns: %{
@@ -134,14 +138,101 @@ defmodule Harness.Batch.AgentEvaluation do
   )
 
   @spec compare(Item.t(), Project.t() | String.t(), [module()], keyword()) ::
-          {:ok, Comparison.t()} | {:error, Batch.error()}
+          {:ok, Comparison.t()} | {:error, Batch.error() | term()}
   def compare(%Item{} = item, project, adapters, opts \\ [])
       when is_list(adapters) and adapters != [] and is_list(opts) do
-    pairs = Enum.map(adapters, &{item, &1})
+    models = Keyword.get(opts, :models, %{})
+    run_opts = Keyword.delete(opts, :models)
     result_store = Keyword.get(opts, :result_store, ResultStore.configured())
 
-    with {:ok, %BatchResult{} = batch} <- Batch.run_pinned(pairs, project, opts) do
+    with {:ok, pairs} <- pairs_with_models(item, adapters, models),
+         {:ok, %BatchResult{} = batch} <- Batch.run_pinned(pairs, project, run_opts) do
       {:ok, from_batch(batch, adapters, result_store)}
+    end
+  end
+
+  @spec pairs_with_models(Item.t(), [module()], map()) :: {:ok, [{Item.t(), module()}]} | {:error, term()}
+  defp pairs_with_models(%Item{} = item, adapters, models) when is_map(models) do
+    adapters
+    |> Enum.reduce_while({:ok, []}, fn adapter, {:ok, pairs} ->
+      case item_with_model(item, adapter, models) do
+        {:ok, modeled} -> {:cont, {:ok, [{modeled, adapter} | pairs]}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, pairs} -> {:ok, Enum.reverse(pairs)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp pairs_with_models(%Item{}, _adapters, models), do: {:error, {:invalid_models, models}}
+
+  @spec item_with_model(Item.t(), module(), map()) :: {:ok, Item.t()} | {:error, term()}
+  defp item_with_model(%Item{} = item, adapter, models) do
+    with {:ok, model} <- compare_model(adapter, models),
+         :ok <- validate_model(adapter, model) do
+      {:ok, %{item | model: model}}
+    end
+  end
+
+  @spec compare_model(module(), map()) :: {:ok, String.t() | nil} | {:error, term()}
+  defp compare_model(adapter, models) do
+    case model_override(adapter, models) do
+      {:ok, model} -> {:ok, model}
+      :error -> default_model(adapter)
+    end
+  end
+
+  @spec model_override(module(), map()) :: {:ok, term()} | :error
+  defp model_override(adapter, models) do
+    adapter
+    |> model_keys()
+    |> Enum.find_value(:error, fn key ->
+      if Map.has_key?(models, key), do: {:ok, Map.fetch!(models, key)}
+    end)
+  end
+
+  @spec model_keys(module()) :: [term()]
+  defp model_keys(adapter) do
+    case AgentRegistry.agent_for_module(adapter) do
+      {:ok, agent} -> [Atom.to_string(agent), agent, adapter]
+      {:error, _reason} -> [adapter]
+    end
+  end
+
+  @spec default_model(module()) :: {:ok, String.t() | nil}
+  defp default_model(adapter) do
+    case AgentRegistry.agent_for_module(adapter) do
+      {:ok, agent} -> {:ok, Config.agent_model(agent)}
+      {:error, _reason} -> {:ok, nil}
+    end
+  end
+
+  @spec validate_model(module(), term()) :: :ok | {:error, term()}
+  defp validate_model(adapter, nil) do
+    if AgentAdapter.requires_model?(adapter) do
+      {:error, {:model_required, model_error_target(adapter)}}
+    else
+      :ok
+    end
+  end
+
+  defp validate_model(adapter, model) when is_binary(model) do
+    if AgentAdapter.model_supported?(adapter, model) do
+      :ok
+    else
+      {:error, {:invalid_model_for_adapter, adapter, model}}
+    end
+  end
+
+  defp validate_model(adapter, model), do: {:error, {:invalid_model, model_error_target(adapter), model}}
+
+  @spec model_error_target(module()) :: atom() | module()
+  defp model_error_target(adapter) do
+    case AgentRegistry.agent_for_module(adapter) do
+      {:ok, agent} -> agent
+      {:error, _reason} -> adapter
     end
   end
 

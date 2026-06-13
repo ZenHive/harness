@@ -910,9 +910,10 @@ defmodule Harness.DispatchTest do
       assert Map.has_key?(props, :project_name)
       assert Map.has_key?(props, :task)
       assert Map.has_key?(props, :adapters)
+      assert Map.has_key?(props, :models)
       assert Map.has_key?(props, :scrub_anthropic_key)
 
-      # scrub_anthropic_key defaults; the other three are required.
+      # models and scrub_anthropic_key default; the other three are required.
       assert Enum.sort(tool.inputSchema.required) == ["adapters", "project_name", "task"]
     end
 
