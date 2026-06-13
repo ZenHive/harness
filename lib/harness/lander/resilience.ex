@@ -9,8 +9,9 @@ defmodule Harness.Lander.Resilience do
   outcome and the current `land_attempt`, it returns an *action* — no git, no
   Oban, no rmap. `route/2` reads `land_attempt` from the worker args, calls
   `plan/2`, and applies the action's effects, returning an `Oban.Worker`
-  result. The split keeps the cap/routing logic unit-testable without spawning
-  runs or touching a repo.
+  result. Repair handoffs return `{:cancel, reason}` so Oban never records an
+  unlanded branch as a completed landing job. The split keeps the cap/routing
+  logic unit-testable without spawning runs or touching a repo.
 
   ## Routing table
 
@@ -142,16 +143,33 @@ defmodule Harness.Lander.Resilience do
   defp redispatch(args, attempt, tag) do
     with {:ok, project} <- ProjectRegistry.lookup(args["project_name"]),
          {:ok, {module, render_agent}} <- Registry.resolve(args["agent"]),
-         {:ok, item} <- Roadmap.ingest({:id, args["task_id"]}, project: project, agent: render_agent),
+         {:ok, item} <- ingest_roadmap({:id, args["task_id"]}, project: project, agent: render_agent),
          {:ok, run_id, _pid} <-
-           RunSupervisor.start_run(item, project, module, land_attempt: attempt, subscriber: nil) do
+           start_run(item, project, module, land_attempt: attempt, subscriber: nil) do
       Logger.info(
         "harness lander: re-dispatched task #{args["task_id"]} after #{tag} (attempt #{attempt}, run #{run_id})"
       )
 
-      :ok
+      {:cancel, {:redispatched, run_id}}
     else
       {:error, reason} -> {:error, {:redispatch_failed, reason}}
+    end
+  end
+
+  @spec ingest_roadmap(Roadmap.selector(), keyword()) :: {:ok, Roadmap.Item.t()} | {:error, term()}
+  defp ingest_roadmap(selector, opts) do
+    case Application.get_env(:harness, :roadmap_ingest) do
+      fun when is_function(fun, 2) -> fun.(selector, opts)
+      _other -> Roadmap.ingest(selector, opts)
+    end
+  end
+
+  @spec start_run(Roadmap.Item.t(), Harness.Project.t(), module(), keyword()) ::
+          {:ok, String.t(), pid()} | {:error, term()}
+  defp start_run(%Roadmap.Item{} = item, project, adapter, opts) do
+    case Application.get_env(:harness, :run_starter) do
+      fun when is_function(fun, 4) -> fun.(item, project, adapter, opts)
+      _other -> RunSupervisor.start_run(item, project, adapter, opts)
     end
   end
 
@@ -167,7 +185,7 @@ defmodule Harness.Lander.Resilience do
            |> LanderWorker.new_for_project(project)
            |> HarnessOban.insert() do
       Logger.info("harness lander: re-landing task #{args["task_id"]} (attempt #{attempt})")
-      :ok
+      {:cancel, {:reland_enqueued, attempt}}
     else
       {:error, reason} -> {:error, {:reland_failed, reason}}
     end

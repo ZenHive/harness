@@ -78,9 +78,11 @@ defmodule Harness.LanderTest do
   alias Harness.Dashboard.OpsFeed.Op
   alias Harness.GitFixture
   alias Harness.Lander
+  alias Harness.Lander.Worker, as: LanderWorker
   alias Harness.LanderTest.FlakyStore
   alias Harness.Notification.Event
   alias Harness.Project
+  alias Harness.ProjectRegistry
   alias Harness.ResultStore
   alias Harness.ResultStore.Memory
   alias Harness.Run.LogRecord
@@ -401,6 +403,30 @@ defmodule Harness.LanderTest do
       assert sha(ctx.origin, "refs/heads/main") == moved_main
       assert branch_exists?(ctx.repo, ctx.request.branch)
       assert File.dir?(ctx.run_worktree.path)
+    end
+
+    test "worker cancels a resolver-disabled conflict at the cap and leaves origin untouched", ctx do
+      moved_main = stage_conflict(ctx)
+      conflicting_tip = sha(ctx.run_worktree.path, "HEAD")
+      put_resolver(fn _worktree, _opts -> {:error, :no_resolver} end)
+      :ok = ProjectRegistry.register(ctx.project)
+      on_exit(fn -> ProjectRegistry.unregister(ctx.project.name) end)
+
+      args =
+        ctx.request
+        |> Map.take([:run_id, :task_id, :branch])
+        |> Map.new(fn {key, value} -> {Atom.to_string(key), value} end)
+        |> Map.merge(%{
+          "project_name" => ctx.project.name,
+          "agent" => "claude",
+          "reviewer" => "codex",
+          "land_attempt" => 2
+        })
+
+      assert {:cancel, {:blocked, reason}} = LanderWorker.perform(%Oban.Job{args: args})
+      assert reason =~ "land-cap exhausted after conflict"
+      assert sha(ctx.origin, "refs/heads/main") == moved_main
+      refute ancestor?(ctx.origin, conflicting_tip, "refs/heads/main")
     end
   end
 

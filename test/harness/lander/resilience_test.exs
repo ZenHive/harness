@@ -11,6 +11,7 @@ defmodule Harness.Lander.ResilienceTest do
   alias Harness.Notification.Event
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
+  alias Harness.Roadmap.Item
   alias Harness.Test.CaptureSink
 
   describe "plan/2 — pure routing (exhaustive over the outcome union)" do
@@ -70,10 +71,10 @@ defmodule Harness.Lander.ResilienceTest do
       {:ok, project: project}
     end
 
-    test "re-enqueues a landing job carrying land_attempt 2 on the serialized queue", %{project: project} do
+    test "re-enqueues a landing job without reporting the current job completed", %{project: project} do
       args = base_args(project.name, 1)
 
-      assert :ok = Resilience.route({:push_rejected, "non-fast-forward"}, args)
+      assert {:cancel, {:reland_enqueued, 2}} = Resilience.route({:push_rejected, "non-fast-forward"}, args)
 
       assert_receive {:landing_insert, changeset}, 1_000
       assert Ecto.Changeset.get_field(changeset, :queue) == "landing_" <> project.name
@@ -138,6 +139,31 @@ defmodule Harness.Lander.ResilienceTest do
   end
 
   describe "route/2 — redispatch effect (failure paths)" do
+    test "successful redispatch does not report the current landing job completed" do
+      project = register_project()
+      args = base_args(project.name, 1)
+      parent = self()
+
+      Application.put_env(:harness, :roadmap_ingest, fn {:id, "42"}, opts ->
+        send(parent, {:ingested_for, Keyword.fetch!(opts, :agent)})
+        {:ok, %Item{id: "42", title: "repair", prompt: "repair prompt", agent: Keyword.fetch!(opts, :agent)}}
+      end)
+
+      Application.put_env(:harness, :run_starter, fn %Item{id: "42"}, ^project, Harness.AgentAdapter.Claude, opts ->
+        send(parent, {:started_repair, Keyword.fetch!(opts, :land_attempt)})
+        {:ok, "repair-run", self()}
+      end)
+
+      on_exit(fn ->
+        Application.delete_env(:harness, :roadmap_ingest)
+        Application.delete_env(:harness, :run_starter)
+      end)
+
+      assert {:cancel, {:redispatched, "repair-run"}} = Resilience.route({:conflict, "CONFLICT"}, args)
+      assert_receive {:ingested_for, :claude}
+      assert_receive {:started_repair, 2}
+    end
+
     test "surfaces {:error, {:redispatch_failed, _}} when the project is unregistered" do
       args = base_args("ghost-#{System.unique_integer([:positive])}", 1)
 
