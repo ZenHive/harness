@@ -27,7 +27,11 @@ defmodule Harness.ResultStore do
 
   alias Harness.AgentKPI
   alias Harness.Batch.Result, as: BatchResult
+  alias Harness.Git
+  alias Harness.Project
   alias Harness.Run.LogRecord
+
+  require Logger
 
   @typedoc "A configured result store module, with optional module-specific options."
   @type store :: module() | {module(), keyword()} | nil | false
@@ -221,6 +225,26 @@ defmodule Harness.ResultStore do
   def mark_landed(run_id, sha, store) when is_binary(run_id) and is_binary(sha) do
     dispatch(store, :mark_landed, [run_id, sha])
   end
+
+  @doc false
+  @spec reconcile_landed_sha(String.t(), String.t() | nil, Project.t() | nil, store()) ::
+          {:ok, String.t()} | :unchanged
+  def reconcile_landed_sha(run_id, shipped_in, project, store \\ configured())
+
+  def reconcile_landed_sha(run_id, shipped_in, %Project{} = project, store) when is_binary(run_id) do
+    with {:ok, repo} <- Project.local_repo_path(project),
+         {:ok, target} <- reconcile_target(project),
+         target_ref = remote_ref(target),
+         :ok <- fetch_target(repo, target),
+         {:ok, sha} <- landed_candidate(repo, target_ref, run_id, shipped_in),
+         :ok <- mark_reconciled_landed(run_id, sha, store) do
+      {:ok, sha}
+    else
+      _not_proven -> :unchanged
+    end
+  end
+
+  def reconcile_landed_sha(_run_id, _shipped_in, _project, _store), do: :unchanged
 
   api(
     :aggregate_by_agent,
@@ -425,6 +449,65 @@ defmodule Harness.ResultStore do
     case Keyword.pop(filters, :limit) do
       {limit, rest} when is_integer(limit) and limit > 0 -> {limit, rest}
       {_absent_or_bad, rest} -> {nil, rest}
+    end
+  end
+
+  @spec reconcile_target(Project.t()) :: {:ok, String.t()} | :error
+  defp reconcile_target(%Project{target_branch: target}) when is_binary(target) and target != "", do: {:ok, target}
+  defp reconcile_target(%Project{}), do: :error
+
+  @spec fetch_target(String.t(), String.t()) :: :ok | {:error, Git.error()}
+  defp fetch_target(repo, target) do
+    ref = remote_ref(target)
+
+    case Git.run(["fetch", "origin", "+#{target}:#{ref}"], repo) do
+      {:ok, _output} -> :ok
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @spec landed_candidate(String.t(), String.t(), String.t(), String.t() | nil) :: {:ok, String.t()} | :error
+  defp landed_candidate(repo, target_ref, run_id, shipped_in) do
+    candidates = Enum.filter([shipped_in, "harness/#{run_id}"], &(is_binary(&1) and &1 != ""))
+
+    Enum.find_value(candidates, :error, fn candidate ->
+      with {:ok, sha} <- resolve_commit(repo, candidate),
+           true <- ancestor?(repo, sha, target_ref) do
+        {:ok, sha}
+      else
+        _not_landed -> false
+      end
+    end)
+  end
+
+  @spec resolve_commit(String.t(), String.t()) :: {:ok, String.t()} | :error
+  defp resolve_commit(repo, ref) do
+    case Git.run(["rev-parse", "--verify", "--quiet", "#{ref}^{commit}"], repo) do
+      {:ok, output} -> {:ok, String.trim(output)}
+      {:error, _reason} -> :error
+    end
+  end
+
+  @spec ancestor?(String.t(), String.t(), String.t()) :: boolean()
+  defp ancestor?(repo, maybe_ancestor, descendant) do
+    match?({:ok, _output}, Git.run(["merge-base", "--is-ancestor", maybe_ancestor, descendant], repo))
+  end
+
+  @spec remote_ref(String.t()) :: String.t()
+  defp remote_ref(target), do: "refs/remotes/origin/" <> target
+
+  @spec mark_reconciled_landed(String.t(), String.t(), store()) :: :ok | {:error, term()}
+  defp mark_reconciled_landed(run_id, sha, store) do
+    case mark_landed(run_id, sha, store) do
+      :ok ->
+        :ok
+
+      {:error, reason} = error ->
+        Logger.warning(
+          "harness result store: landed_sha reconcile writeback failed for run #{run_id} (landed #{sha}): #{inspect(reason)}"
+        )
+
+        error
     end
   end
 

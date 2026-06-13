@@ -1,3 +1,72 @@
+defmodule Harness.LanderTest.FlakyStore do
+  @moduledoc false
+
+  @behaviour Harness.ResultStore
+
+  alias Harness.AgentKPI
+  alias Harness.Batch.Result, as: BatchResult
+  alias Harness.Run.LogRecord
+
+  @type state :: %{record: LogRecord.t(), marks: non_neg_integer()}
+
+  @spec start_link(LogRecord.t()) :: {:ok, Agent.agent()}
+  def start_link(%LogRecord{} = record), do: Agent.start_link(fn -> %{record: record, marks: 0} end)
+
+  @spec mark_count(Agent.agent()) :: non_neg_integer()
+  def mark_count(agent), do: Agent.get(agent, & &1.marks)
+
+  @impl Harness.ResultStore
+  @spec record_run(LogRecord.t(), keyword()) :: :ok
+  def record_run(%LogRecord{} = record, opts), do: update(opts, &%{&1 | record: record})
+
+  @impl Harness.ResultStore
+  @spec save_batch(BatchResult.t(), keyword()) :: :ok
+  def save_batch(%BatchResult{}, _opts), do: :ok
+
+  @impl Harness.ResultStore
+  @spec load_batch(String.t(), keyword()) :: {:error, :not_found}
+  def load_batch(_batch_id, _opts), do: {:error, :not_found}
+
+  @impl Harness.ResultStore
+  @spec list_run_records(Harness.ResultStore.filters(), keyword()) :: {:ok, [LogRecord.t()]}
+  def list_run_records(filters, opts) do
+    record = Agent.get(fetch_agent!(opts), & &1.record)
+
+    if Keyword.get(filters, :run_id) in [nil, record.run_id], do: {:ok, [record]}, else: {:ok, []}
+  end
+
+  @impl Harness.ResultStore
+  @spec delete_run(String.t(), keyword()) :: :ok
+  def delete_run(_run_id, _opts), do: :ok
+
+  @impl Harness.ResultStore
+  @spec mark_landed(String.t(), String.t(), keyword()) :: :ok
+  def mark_landed(_run_id, sha, opts) do
+    update(opts, fn %{record: record, marks: marks} ->
+      landed_sha = if marks == 0, do: nil, else: sha
+      %{record: %{record | landed_sha: landed_sha}, marks: marks + 1}
+    end)
+  end
+
+  @impl Harness.ResultStore
+  @spec aggregate_by_agent(keyword(), keyword()) :: {:ok, AgentKPI.t()}
+  def aggregate_by_agent(_query_opts, _opts), do: {:ok, %{}}
+
+  @impl Harness.ResultStore
+  @spec aggregate_reviewer_reliability(keyword(), keyword()) :: {:ok, AgentKPI.reviewer_ledger()}
+  def aggregate_reviewer_reliability(_query_opts, _opts), do: {:ok, %{}}
+
+  @impl Harness.ResultStore
+  @spec aggregate_by_facet(keyword(), keyword()) :: {:ok, [Harness.ResultStore.facet_group()]}
+  def aggregate_by_facet(_query_opts, _opts), do: {:ok, []}
+
+  @spec update(keyword(), (state() -> state())) :: :ok
+  defp update(opts, fun), do: Agent.update(fetch_agent!(opts), fun)
+
+  @spec fetch_agent!(keyword()) :: Agent.agent()
+  defp fetch_agent!(opts), do: Keyword.fetch!(opts, :agent)
+end
+
 defmodule Harness.LanderTest do
   # async: false because tests mutate app env seams and global notification sinks.
   use ExUnit.Case, async: false
@@ -9,6 +78,7 @@ defmodule Harness.LanderTest do
   alias Harness.Dashboard.OpsFeed.Op
   alias Harness.GitFixture
   alias Harness.Lander
+  alias Harness.LanderTest.FlakyStore
   alias Harness.Notification.Event
   alias Harness.Project
   alias Harness.ResultStore
@@ -137,6 +207,16 @@ defmodule Harness.LanderTest do
       assert File.dir?(ctx.run_worktree.path)
     end
 
+    test "retries landed_sha write when a verification read still sees nil", ctx do
+      {:ok, agent} = FlakyStore.start_link(log_record("run-x"))
+      Application.put_env(:harness, :result_store, {FlakyStore, agent: agent})
+
+      assert {:landed, landed} = Lander.land(ctx.request)
+
+      assert FlakyStore.mark_count(agent) == 2
+      assert {:ok, [record]} = ResultStore.list_run_records(run_id: "run-x")
+      assert record.landed_sha == landed
+    end
     test "broadcasts started + settled(:landed) on the dashboard ops feed (task 243)", ctx do
       :ok = OpsFeed.subscribe()
 

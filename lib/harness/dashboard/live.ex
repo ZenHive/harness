@@ -114,21 +114,23 @@ defmodule Harness.Dashboard.Live do
     # The single disk read: seed sidebar + history at mount. Active runs and the
     # history/active stream contents are populated by apply_action(:index) from
     # in-memory state (live_runs/0) + the history_all assign — no further reads.
+    roadmap = RoadmapSummary.for_projects(projects)
     snapshot = StatusView.snapshot()
+    history = reconcile_history_landed(snapshot.history, projects, roadmap)
 
     {:ok,
      socket
      |> assign(:projects, projects)
-     |> assign(:roadmap, RoadmapSummary.for_projects(projects))
+     |> assign(:roadmap, roadmap)
      |> assign(:ops, [])
      |> assign(:show_landed, false)
      |> assign(:notice, nil)
      |> assign(:selected_project, nil)
      |> assign(:counts, bucket_counts(snapshot))
-     |> assign(:history_all, snapshot.history)
+     |> assign(:history_all, history)
      |> assign(:live_runs_once, snapshot.runs)
      |> assign(:active_empty?, true)
-     |> assign(:history_empty?, snapshot.history == [])
+     |> assign(:history_empty?, history == [])
      |> assign(:transcript, "")
      |> assign(:transcript_bytes, 0)
      |> assign(:transcript_events, [])
@@ -274,7 +276,13 @@ defmodule Harness.Dashboard.Live do
   # that depend on blocked-task state stay current.
   def handle_info(:roadmap_tick, socket) do
     schedule_roadmap_tick()
-    socket = assign(socket, :roadmap, RoadmapSummary.for_projects(socket.assigns.projects))
+    roadmap = RoadmapSummary.for_projects(socket.assigns.projects)
+
+    socket =
+      socket
+      |> assign(:roadmap, roadmap)
+      |> assign(:history_all, reconcile_history_landed(socket.assigns.history_all, socket.assigns.projects, roadmap))
+
     socket = if socket.assigns.live_action == :index, do: restream_history(socket), else: socket
     {:noreply, socket}
   end
@@ -445,6 +453,42 @@ defmodule Harness.Dashboard.Live do
       entry -> entry
     end)
   end
+
+  @doc false
+  @spec reconcile_history_landed(
+          [StatusView.run_entry()],
+          [Project.t()],
+          RoadmapSummary.summaries(),
+          ResultStore.store()
+        ) :: [StatusView.run_entry()]
+  def reconcile_history_landed(history_all, projects, roadmap, store \\ ResultStore.configured()) do
+    projects_by_name = Map.new(projects, &{&1.name, &1})
+
+    Enum.map(history_all, &reconcile_history_entry(&1, projects_by_name, roadmap, store))
+  end
+
+  @spec reconcile_history_entry(
+          StatusView.run_entry(),
+          %{optional(String.t()) => Project.t()},
+          RoadmapSummary.summaries(),
+          ResultStore.store()
+        ) :: StatusView.run_entry()
+  defp reconcile_history_entry(
+         %{status: %Status{landed_sha: nil, state: :done, review_verdict: :approve} = status} = entry,
+         projects_by_name,
+         roadmap,
+         store
+       ) do
+    project = Map.get(projects_by_name, status.project_name)
+    shipped_in = RoadmapSummary.landed_sha(roadmap, status.project_name, status.task_id)
+
+    case ResultStore.reconcile_landed_sha(status.run_id, shipped_in, project, store) do
+      {:ok, sha} -> %{entry | status: %{status | landed_sha: sha}}
+      :unchanged -> entry
+    end
+  end
+
+  defp reconcile_history_entry(entry, _projects_by_name, _roadmap, _store), do: entry
 
   @spec maybe_mark_history_landed(Socket.t(), Op.t()) :: Socket.t()
   defp maybe_mark_history_landed(socket, %Op{kind: :land, stage: :landed, run_id: run_id, sha: sha})

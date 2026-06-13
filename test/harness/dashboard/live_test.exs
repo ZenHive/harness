@@ -15,6 +15,7 @@ defmodule Harness.Dashboard.LiveTest do
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
+  alias Harness.ResultStore.Memory
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.LogRecord
@@ -390,6 +391,45 @@ defmodule Harness.Dashboard.LiveTest do
 
       assert updated.status.landed_sha == "abc1234ff"
       assert untouched.status.landed_sha == nil
+    end
+  end
+
+  describe "reconcile_history_landed/3" do
+    test "backfills a phantom-unmerged landed run before dashboard filtering" do
+      %{repo: repo} = GitFixture.init_with_origin()
+      project_name = "live-reconcile-#{System.unique_integer([:positive])}"
+      project = %Project{name: project_name, source: {:local, repo}, roadmap_path: repo, target_branch: "main"}
+      store = {Memory, scope: {:live_reconcile, self(), System.unique_integer([:positive])}}
+
+      on_exit(fn -> Memory.reset(elem(store, 1)) end)
+
+      File.write!(Path.join(repo, "landed.txt"), "landed\n")
+      GitFixture.git!(repo, ["add", "."])
+      GitFixture.git!(repo, ["commit", "-q", "-m", "landed"])
+      sha = repo |> GitFixture.git!(["rev-parse", "HEAD"]) |> String.trim()
+      GitFixture.git!(repo, ["push", "-q", "origin", "main"])
+
+      run_id = "live-reconcile-run"
+      task_id = "276"
+
+      entry =
+        run_entry(run_id,
+          project_name: project_name,
+          task_id: task_id,
+          state: :done,
+          bucket: :green,
+          review_verdict: :approve
+        )
+
+      roadmap = %{project_name => %{open: 0, done: 1, total: 1, landed: %{task_id => sha}, blocked: %{}}}
+
+      :ok = ResultStore.record_run(log_record(run_id, project_name: project_name, task_id: task_id), store)
+
+      [reconciled] = Live.reconcile_history_landed([entry], [project], roadmap, store)
+
+      assert Live.landed_entry?(reconciled, %{})
+      assert reconciled.status.landed_sha == sha
+      assert {:ok, [%{landed_sha: ^sha}]} = ResultStore.list_run_records(store, run_id: run_id)
     end
   end
 

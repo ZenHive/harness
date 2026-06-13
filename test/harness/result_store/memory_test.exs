@@ -1,11 +1,60 @@
+defmodule Harness.ResultStore.MemoryTest.FailingStore do
+  @moduledoc false
+
+  @behaviour Harness.ResultStore
+
+  alias Harness.Batch.Result, as: BatchResult
+  alias Harness.Run.LogRecord
+
+  @impl Harness.ResultStore
+  @spec record_run(LogRecord.t(), keyword()) :: {:error, :boom}
+  def record_run(%LogRecord{}, _opts), do: {:error, :boom}
+
+  @impl Harness.ResultStore
+  @spec save_batch(BatchResult.t(), keyword()) :: {:error, :boom}
+  def save_batch(%BatchResult{}, _opts), do: {:error, :boom}
+
+  @impl Harness.ResultStore
+  @spec load_batch(String.t(), keyword()) :: {:error, :boom}
+  def load_batch(_batch_id, _opts), do: {:error, :boom}
+
+  @impl Harness.ResultStore
+  @spec list_run_records(Harness.ResultStore.filters(), keyword()) :: {:error, :boom}
+  def list_run_records(_filters, _opts), do: {:error, :boom}
+
+  @impl Harness.ResultStore
+  @spec delete_run(String.t(), keyword()) :: {:error, :boom}
+  def delete_run(_run_id, _opts), do: {:error, :boom}
+
+  @impl Harness.ResultStore
+  @spec mark_landed(String.t(), String.t(), keyword()) :: {:error, :boom}
+  def mark_landed(_run_id, _sha, _opts), do: {:error, :boom}
+
+  @impl Harness.ResultStore
+  @spec aggregate_by_agent(keyword(), keyword()) :: {:error, :boom}
+  def aggregate_by_agent(_query_opts, _opts), do: {:error, :boom}
+
+  @impl Harness.ResultStore
+  @spec aggregate_reviewer_reliability(keyword(), keyword()) :: {:error, :boom}
+  def aggregate_reviewer_reliability(_query_opts, _opts), do: {:error, :boom}
+
+  @impl Harness.ResultStore
+  @spec aggregate_by_facet(keyword(), keyword()) :: {:error, :boom}
+  def aggregate_by_facet(_query_opts, _opts), do: {:error, :boom}
+end
+
 defmodule Harness.ResultStore.MemoryTest do
   use ExUnit.Case, async: true
 
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentKPI
+  alias Harness.Batch.Result, as: BatchResult
   alias Harness.CapabilityScore
+  alias Harness.GitFixture
+  alias Harness.Project
   alias Harness.ResultStore
   alias Harness.ResultStore.Memory, as: Store
+  alias Harness.ResultStore.MemoryTest.FailingStore
   alias Harness.ResultStoreContract
 
   setup do
@@ -136,6 +185,130 @@ defmodule Harness.ResultStore.MemoryTest do
     assert causes == AgentKPI.aggregate_review_stuck_causes(records)
   end
 
+  test "disabled stores return no-op values for write and read helpers" do
+    record = ResultStoreContract.log_record(run_id: "disabled-record")
+    batch = %BatchResult{batch_id: "disabled-batch", total: 0, max_concurrency: 1, results: []}
+
+    for disabled <- [false, nil] do
+      assert :ok = ResultStore.record_run(record, disabled)
+      assert :ok = ResultStore.save_batch(batch, disabled)
+      assert {:error, :disabled} = ResultStore.load_batch("disabled-batch", disabled)
+      assert {:ok, []} = ResultStore.list_run_records(disabled, run_id: "disabled-record")
+      assert :ok = ResultStore.delete_run("disabled-record", disabled)
+      assert :ok = ResultStore.mark_landed("disabled-record", "abc1234", disabled)
+      assert {:ok, %{}} = ResultStore.aggregate_by_agent(disabled)
+      assert {:ok, %{}} = ResultStore.aggregate_reviewer_reliability(disabled)
+      assert {:ok, []} = ResultStore.aggregate_by_facet(disabled)
+      assert {:ok, %{}} = ResultStore.aggregate_review_stuck_causes(disabled)
+      assert {:ok, facts} = ResultStore.aggregate_recovery_facts(disabled)
+      assert facts == AgentKPI.aggregate_recovery_facts([])
+      assert {:ok, ceremony} = ResultStore.aggregate_ceremony_cost([], disabled)
+      assert ceremony == AgentKPI.aggregate_ceremony_cost([])
+    end
+  end
+
+  test "default configured sentinel dispatches to the configured store", %{store: store} do
+    prior = Application.get_env(:harness, :result_store)
+    Application.put_env(:harness, :result_store, store)
+    on_exit(fn -> restore(:result_store, prior) end)
+
+    batch = %BatchResult{batch_id: "sentinel-batch", total: 0, max_concurrency: 1, results: []}
+
+    assert :ok = ResultStore.save_batch(batch)
+    assert {:ok, %BatchResult{batch_id: "sentinel-batch"}} = ResultStore.load_batch("sentinel-batch")
+    assert {:ok, %{}} = ResultStore.aggregate_by_agent()
+    assert {:ok, %{}} = ResultStore.aggregate_reviewer_reliability()
+    assert {:ok, []} = ResultStore.aggregate_by_facet()
+    assert {:ok, %{}} = ResultStore.aggregate_review_stuck_causes()
+    assert {:ok, facts} = ResultStore.aggregate_recovery_facts()
+    assert facts == AgentKPI.aggregate_recovery_facts([])
+    assert {:ok, ceremony} = ResultStore.aggregate_ceremony_cost()
+    assert ceremony == AgentKPI.aggregate_ceremony_cost([])
+  end
+
+  test "public defaults dispatch through configured store", %{store: store} do
+    prior = Application.get_env(:harness, :result_store)
+    Application.put_env(:harness, :result_store, store)
+    on_exit(fn -> restore(:result_store, prior) end)
+
+    record = ResultStoreContract.log_record(run_id: "configured-defaults")
+
+    assert :ok = ResultStore.record_run(record)
+    assert {:ok, [%{run_id: "configured-defaults"}]} = ResultStore.list_run_records()
+    assert :ok = ResultStore.mark_landed("configured-defaults", "abc1234")
+    assert {:ok, [%{landed_sha: "abc1234"}]} = ResultStore.list_run_records(run_id: "configured-defaults")
+    assert :ok = ResultStore.delete_run("configured-defaults")
+    assert {:ok, []} = ResultStore.list_run_records(run_id: "configured-defaults")
+  end
+
+  test "sentinel aggregate calls re-read configured store", %{store: store} do
+    prior = Application.get_env(:harness, :result_store)
+    Application.put_env(:harness, :result_store, store)
+    on_exit(fn -> restore(:result_store, prior) end)
+
+    assert {:ok, %{}} = ResultStore.aggregate_by_agent(:configured_result_store)
+    assert {:ok, %{}} = ResultStore.aggregate_reviewer_reliability(:configured_result_store)
+    assert {:ok, []} = ResultStore.aggregate_by_facet(:configured_result_store)
+    assert {:ok, %{}} = ResultStore.aggregate_review_stuck_causes(:configured_result_store)
+    assert {:ok, facts} = ResultStore.aggregate_recovery_facts(:configured_result_store)
+    assert facts == AgentKPI.aggregate_recovery_facts([])
+    assert {:ok, ceremony} = ResultStore.aggregate_ceremony_cost([], :configured_result_store)
+    assert ceremony == AgentKPI.aggregate_ceremony_cost([])
+  end
+
+  test "derived aggregates return list errors unchanged" do
+    assert {:error, :boom} = ResultStore.aggregate_review_stuck_causes(FailingStore)
+    assert {:error, :boom} = ResultStore.aggregate_recovery_facts(FailingStore)
+    assert {:error, :boom} = ResultStore.aggregate_ceremony_cost([], FailingStore)
+  end
+
+  describe "reconcile_landed_sha/4" do
+    test "fills landed_sha when shipped_in is an ancestor of origin target", %{store: store} do
+      %{repo: repo} = GitFixture.init_with_origin()
+      project = local_project(repo)
+      sha = commit_and_push(repo, "landed.txt", "landed\n")
+      run_id = "reconcile-ancestor"
+
+      assert :ok = ResultStore.record_run(ResultStoreContract.log_record(run_id: run_id), store)
+
+      assert {:ok, ^sha} = ResultStore.reconcile_landed_sha(run_id, sha, project, store)
+      assert {:ok, [%{landed_sha: ^sha}]} = ResultStore.list_run_records(store, run_id: run_id)
+    end
+
+    test "fills landed_sha from the run branch when shipped_in is absent", %{store: store} do
+      %{repo: repo} = GitFixture.init_with_origin()
+      project = local_project(repo)
+      run_id = "reconcile-branch"
+      branch = "harness/#{run_id}"
+
+      GitFixture.git!(repo, ["checkout", "-q", "-b", branch])
+      File.write!(Path.join(repo, "branch-landed.txt"), "landed\n")
+      GitFixture.git!(repo, ["add", "."])
+      GitFixture.git!(repo, ["commit", "-q", "-m", "branch landed"])
+      sha = repo |> GitFixture.git!(["rev-parse", "HEAD"]) |> String.trim()
+      GitFixture.git!(repo, ["checkout", "-q", "main"])
+      GitFixture.git!(repo, ["merge", "--ff-only", "-q", branch])
+      GitFixture.git!(repo, ["push", "-q", "origin", "main"])
+
+      assert :ok = ResultStore.record_run(ResultStoreContract.log_record(run_id: run_id), store)
+
+      assert {:ok, ^sha} = ResultStore.reconcile_landed_sha(run_id, nil, project, store)
+      assert {:ok, [%{landed_sha: ^sha}]} = ResultStore.list_run_records(store, run_id: run_id)
+    end
+
+    test "leaves landed_sha nil when shipped_in is not on origin target", %{store: store} do
+      %{repo: repo} = GitFixture.init_with_origin()
+      project = local_project(repo)
+      sha = commit_without_push(repo, "unlanded.txt", "not landed\n")
+      run_id = "reconcile-unlanded"
+
+      assert :ok = ResultStore.record_run(ResultStoreContract.log_record(run_id: run_id), store)
+
+      assert :unchanged = ResultStore.reconcile_landed_sha(run_id, sha, project, store)
+      assert {:ok, [%{landed_sha: nil}]} = ResultStore.list_run_records(store, run_id: run_id)
+    end
+  end
+
   test "repo_enabled false selects ephemeral memory when no explicit override" do
     prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
     prior_result_store = Application.get_env(:harness, :result_store)
@@ -164,5 +337,25 @@ defmodule Harness.ResultStore.MemoryTest do
 
   defp sort_recovery_runs(facts) do
     Map.update!(facts, :per_run, &Enum.sort_by(&1, fn row -> row.run_id end))
+  end
+
+  @spec local_project(String.t()) :: Project.t()
+  defp local_project(repo) do
+    %Project{name: "reconcile", source: {:local, repo}, roadmap_path: repo, target_branch: "main"}
+  end
+
+  @spec commit_and_push(String.t(), String.t(), String.t()) :: String.t()
+  defp commit_and_push(repo, file, contents) do
+    sha = commit_without_push(repo, file, contents)
+    GitFixture.git!(repo, ["push", "-q", "origin", "main"])
+    sha
+  end
+
+  @spec commit_without_push(String.t(), String.t(), String.t()) :: String.t()
+  defp commit_without_push(repo, file, contents) do
+    File.write!(Path.join(repo, file), contents)
+    GitFixture.git!(repo, ["add", "."])
+    GitFixture.git!(repo, ["commit", "-q", "-m", "test commit"])
+    repo |> GitFixture.git!(["rev-parse", "HEAD"]) |> String.trim()
   end
 end

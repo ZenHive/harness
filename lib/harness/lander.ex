@@ -369,7 +369,7 @@ defmodule Harness.Lander do
 
   @spec persist_landed_sha(String.t(), String.t()) :: :ok
   defp persist_landed_sha(run_id, sha) do
-    case ResultStore.mark_landed(run_id, sha) do
+    case mark_landed_verified(run_id, sha) do
       :ok ->
         :ok
 
@@ -379,6 +379,36 @@ defmodule Harness.Lander do
         )
 
         :ok
+    end
+  end
+
+  @spec mark_landed_verified(String.t(), String.t()) :: :ok | {:error, term()}
+  defp mark_landed_verified(run_id, sha) do
+    mark_landed_verified(run_id, sha, ResultStore.configured())
+  end
+
+  @spec mark_landed_verified(String.t(), String.t(), ResultStore.store()) :: :ok | {:error, term()}
+  defp mark_landed_verified(_run_id, _sha, store) when store in [false, nil], do: :ok
+
+  defp mark_landed_verified(run_id, sha, store) do
+    with :ok <- ResultStore.mark_landed(run_id, sha, store),
+         {:error, :landed_sha_missing} <- verify_landed_sha(run_id, sha, store),
+         :ok <- ResultStore.mark_landed(run_id, sha, store) do
+      verify_landed_sha(run_id, sha, store)
+    else
+      :ok -> :ok
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @spec verify_landed_sha(String.t(), String.t(), ResultStore.store()) :: :ok | {:error, term()}
+  defp verify_landed_sha(run_id, sha, store) do
+    case ResultStore.list_run_records(store, run_id: run_id) do
+      {:ok, [%LogRecord{landed_sha: ^sha} | _]} -> :ok
+      {:ok, [%LogRecord{landed_sha: nil} | _]} -> {:error, :landed_sha_missing}
+      {:ok, [%LogRecord{landed_sha: other} | _]} -> {:error, {:landed_sha_mismatch, other}}
+      {:ok, []} -> {:error, :run_record_not_found}
+      {:error, _reason} = error -> error
     end
   end
 
