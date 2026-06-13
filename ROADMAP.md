@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 19 — Self-Healing Run Loop (31 of 33 done · 0 in progress)
+**Focus phase:** 19 — Self-Healing Run Loop (31 of 33 done · 1 in progress)
 
 **Last shipped:** Task 274 — routing-brief default: collapse to the configured model per agent, not the whole available catalog (144 pairs still blows context) on 2026-06-13
 
-**Up next:** Task 275 — Lander prunes the run branch + worktree after a successful land (stop the harness/<run-id> + worktree accumulation) [D:2/B:3/U:3 → Eff:1.5] 🚀
+**Up next:** Task 276 — Harden landed_sha persistence: lander verify-after-write + mechanical reconcile so a landed run never shows as phantom-unmerged in the dashboard [D:3/B:4/U:4 → Eff:1.33] 📋
 <!-- FOCUS:END -->
 
 ---

@@ -8248,7 +8248,7 @@ shipped_in = "7ac4f60a22f81808309f5a4c96cc18f98472944a"
 id = "275"
 phase = 19
 bundle = "autolanding"
-status = "pending"
+status = "in_progress"
 title = "Lander prunes the run branch + worktree after a successful land (stop the harness/<run-id> + worktree accumulation)"
 scores = { d = 2, b = 3, u = 3 }
 markers = ["bug"]
@@ -8267,6 +8267,7 @@ The fix lives in the lander because the lander is the only component that knows 
 CRITICAL distinction the implementer must get right: there are TWO worktrees per landed run — (1) the implementer run worktree `<root>/.harness/<project>/<run-id>` (created by Harness.Run, this is the one to remove) and (2) the lander's OWN reusable detached worktree (the `landing/` dir it rebases in, which must persist for the next land). Remove only (1).
 """
 created_at = "2026-06-13"
+started_at = "2026-06-13"
 scored_at = "2026-06-13"
 
 [[task]]
