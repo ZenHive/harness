@@ -8347,7 +8347,7 @@ shipped_in = "45a941e3bdde4d0a5dcac52a44efdd7fa2ada78a"
 id = "278"
 phase = 19
 bundle = "autolanding"
-status = "pending"
+status = "in_progress"
 title = "Poller double-dispatch guard: skip a pending task that already has a live/queued run (mantra-clean dedup, not a re-dispatch)"
 scores = { d = 3, b = 4, u = 3 }
 markers = ["bug"]
@@ -8364,6 +8364,7 @@ Discovered 2026-06-13 during the task 275/276 land. The cron RoadmapPoller gates
 The fix is a mechanical dedup at enqueue time: count whether a live (Harness.Run.Registry) or queued/executing (Oban) run already targets {project_name, item_id}; if so, skip this tick's enqueue for that task. This is counting facts, not judging them — fully mantra-clean. Keying on {project, item_id} (not run_id) is essential because every re-dispatch mints a new run_id. The guard must NOT rely on the rmap status field alone (that is exactly the slow-writeback signal that failed here) — it consults live runtime/Oban state.
 """
 created_at = "2026-06-13"
+started_at = "2026-06-13"
 scored_at = "2026-06-13"
 
 [[task]]
