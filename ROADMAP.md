@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 19 — Self-Healing Run Loop (31 of 34 done · 3 in progress)
+**Focus phase:** 19 — Self-Healing Run Loop (32 of 34 done · 2 in progress)
 
-**Last shipped:** Task 274 — routing-brief default: collapse to the configured model per agent, not the whole available catalog (144 pairs still blows context) on 2026-06-13
+**Last shipped:** Task 274 — routing-brief default: collapse to the configured model per agent, not the whole available catalog (144 pairs still blows context), Task 275 — Lander prunes the run branch + worktree after a successful land (stop the harness/<run-id> + worktree accumulation) on 2026-06-13
 
 **Up next:** Task 174 — Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:3/B:5/U:4 → Eff:1.5] 🚀
 <!-- FOCUS:END -->

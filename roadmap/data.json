@@ -12139,7 +12139,7 @@
       "id": "275",
       "phase": 19,
       "bundle": "autolanding",
-      "status": "in_progress",
+      "status": "done",
       "title": "Lander prunes the run branch + worktree after a successful land (stop the harness/<run-id> + worktree accumulation)",
       "scores": {
         "d": 2,
@@ -12181,10 +12181,15 @@
         "elixir",
         "git"
       ],
+      "shipped_in": "469216bad537e27478e5e91438b09604651c2dac",
       "body": "Discovered 2026-06-13: the dashboard's \"unmerged runs\" list and the on-disk worktree dir both accumulate because the lander never prunes after a successful land. rmap had 31 stale `harness/run-*` branches and ~18 orphaned implementer worktrees under `~/_DATA/worktrees/.harness/rmap/`, all for runs that had cleanly landed (rebased copy on `development`). The branch is INTENTIONALLY retained after a run *settles* so dispatch-reland can recover an approved-unlanded run — but once the run has actually LANDED, recovery is moot and the branch + its implementer worktree are pure litter.\n\nThe fix lives in the lander because the lander is the only component that knows the land succeeded. After the ff-push + writeback (the same success path that calls enqueue_audit/3 in lib/harness/lander.ex ~line 350-399), delete the local `harness/<run-id>` branch and `git worktree remove` the implementer run worktree. Mirror the best-effort discipline already used for persist_landed_sha and the rmap writeback: log on failure, never un-land.\n\nCRITICAL distinction the implementer must get right: there are TWO worktrees per landed run — (1) the implementer run worktree `<root>/.harness/<project>/<run-id>` (created by Harness.Run, this is the one to remove) and (2) the lander's OWN reusable detached worktree (the `landing/` dir it rebases in, which must persist for the next land). Remove only (1).\n",
       "created_at": "2026-06-13",
       "started_at": "2026-06-13",
+      "done_at": "2026-06-13",
       "scored_at": "2026-06-13",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781328687804-3a2ad2d5, 469216bad537e27478e5e91438b09604651c2dac).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
