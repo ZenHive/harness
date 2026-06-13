@@ -12196,7 +12196,7 @@
       "id": "276",
       "phase": 19,
       "bundle": "autolanding",
-      "status": "in_progress",
+      "status": "done",
       "title": "Harden landed_sha persistence: lander verify-after-write + mechanical reconcile so a landed run never shows as phantom-unmerged in the dashboard",
       "scores": {
         "d": 3,
@@ -12242,10 +12242,14 @@
         "elixir",
         "ecto"
       ],
+      "shipped_in": "390c3c68fb08d0fe074f65eeb6aaafc17f63066c",
       "body": "Discovered 2026-06-13: the operator saw run-1781317513615-1e03e688 stuck as \"unmerged\" in the /harness dashboard even though it had landed (commit e8312bb on development, rmap task 48 done --verified --shipped-in e8312bb). The dashboard classifies unmerged purely off the persisted run-record field `status.landed_sha` (lib/harness/dashboard/live.ex landed_entry?/2 = landed_sha != nil) — NOT off git branches. This run's record had landed_sha = nil despite the lander having ff-pushed it.\n\nThe lander DOES call ResultStore.mark_landed/2 on the success path (lib/harness/lander.ex persist_landed_sha/2 ~line 370), but it is best-effort: a failed/clobbered write is only logged. Across 231 done+approve records exactly one had landed_sha=nil, so this is a rare lost write — most likely the run gen_statem's settle-time full-record persist racing the lander's read-modify-write and overwriting landed_sha back to nil. Manually backfilled via ResultStore.mark_landed on the live node on 2026-06-13; this task makes it self-healing.\n\nTwo layers: (1) verify-after-write in the lander (re-read, retry once) closes the common race; (2) a mechanical reconcile on the dashboard history load backfills landed_sha whenever the run's landed commit / task shipped_in is provably an ancestor of origin/<target> — so even a write lost for any reason heals on the next dashboard view. Both are mantra-clean: counting whether a commit is on a branch is mechanics, not judgment. The reconcile must be careful NOT to mark genuinely-unlanded approved runs (no ancestor on target) as landed — those stay unmerged and recover via dispatch-reland.\n",
       "created_at": "2026-06-13",
       "started_at": "2026-06-13",
+      "done_at": "2026-06-13",
       "scored_at": "2026-06-13",
+      "implemented": "Lander verify-after-write (re-read + retry once on mark_landed) + mechanical git-ancestry reconcile backfilling landed_sha on dashboard history load when the run commit is provably an ancestor of origin/<target>; never marks genuinely-unlanded approved runs. Landed via manual keep-both salvage of lander_test.exs conflict vs task 275.",
+      "verified": true,
       "cross_repo": []
     },
     {
