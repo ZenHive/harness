@@ -8295,3 +8295,35 @@ Two layers: (1) verify-after-write in the lander (re-read, retry once) closes th
 created_at = "2026-06-13"
 started_at = "2026-06-13"
 scored_at = "2026-06-13"
+
+[[task]]
+id = "277"
+phase = 19
+bundle = "model-availability"
+status = "pending"
+title = "dispatch-compare: per-adapter model override (cross-family A/B is structurally broken)"
+scores = { d = 2, b = 6, u = 5 }
+acceptance_criteria = ["dispatch-compare accepts an optional models map (adapter-name -> model) and passes each adapter its own model.", "When an adapter is omitted from the map, its OWN default model is used; the task pinned model is never applied to a non-matching adapter family.", "cursor-vs-grok compare on a task pinned to composer-2.5-fast spawns BOTH adapters successfully (grok on grok-build).", "Invalid (adapter, model) pairs are rejected up front with a clear error, not a mid-run agent_spawn_failed.", "Test covers a two-family compare where the task pinned model is valid for only one of them."]
+out_of_scope = ["No change to single-adapter dispatch-task / dispatch-await model resolution.", "No change to how tasks pin model at creation in rmap."]
+touches = ["lib/harness/batch/agent_evaluation.ex", "lib/harness/dashboard/mcp_server.ex"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+`dispatch-compare` cannot run a fair cross-family A/B (e.g. cursor vs grok) because it has no per-adapter `model` parameter. It ingests the task once and inherits the task's single pinned `model`, then applies that one model to EVERY adapter. Since `model` is now required at task creation and is always family-specific, the inherited model is valid for at most one adapter family — every other adapter fails at spawn.
+
+Observed (tapakly task 134, pinned assignee=cursor model=composer-2.5-fast, compared cursor vs grok):
+- cursor half ran and settled normally;
+- grok half failed immediately: agent_spawn_failed {:invalid_model_for_adapter, Harness.AgentAdapter.Grok, "composer-2.5-fast"}.
+
+So the comparison yielded only the adapter whose family matched the task's pinned model — i.e. no comparison at all. This blocks the entire purpose of cross-family agent evaluation (the cold-start problem: we cannot get a grok/codex data point on a task pinned to cursor without this).
+
+NOTE (not a separate bug — don't chase it): the dashboard/result-record `agent` field reads "claude" on BOTH compare runs. That is by design — dispatch-compare renders the prompt ONCE for claude (`rmap delegate --to claude`) so every adapter runs an identical prompt, and that render-agent is what lands in the `agent` column. The REAL executor is the `adapter` field (here AgentAdapter.Cursor vs AgentAdapter.Grok). So the three-way mismatch (agent=claude, model=composer-2.5-fast, adapter=Grok) is exactly two facts: render-agent=claude (fairness) + the actual cross-family-model bug above. Do not add per-adapter `agent`-field rewriting — leave the render-agent semantics alone; fix only the model threading.
+
+Fix: add an optional per-adapter model map to the compare entry point and thread it down to each run's spawn, falling back to each adapter's default model (NOT the task's pinned model) when unspecified.
+
+- Harness.Batch.AgentEvaluation.compare/4 (or its opts): accept models: %{"grok" => "grok-build", "cursor" => "composer-2.5-fast"} (adapter-name-keyed). For any adapter absent from the map, resolve that adapter's OWN default model — never reuse the task's pinned model across families.
+- MCP surface dispatch-compare: add an optional models object param (adapter-name -> model string), documented as overriding the inherited task model per adapter. Keep current behaviour when omitted EXCEPT the per-family default fallback above (today's "inherit one pinned model for all" is the bug, not the contract).
+- Validate each (adapter, model) pair against the adapter's accepted models BEFORE spawning, so a bad pair is a clear up-front error, not an agent_spawn_failed mid-run.
+"""
+created_at = "2026-06-13"
+scored_at = "2026-06-13"

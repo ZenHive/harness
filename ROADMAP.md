@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 19 — Self-Healing Run Loop (31 of 33 done · 2 in progress)
+**Focus phase:** 19 — Self-Healing Run Loop (31 of 34 done · 2 in progress)
 
 **Last shipped:** Task 274 — routing-brief default: collapse to the configured model per agent, not the whole available catalog (144 pairs still blows context) on 2026-06-13
 
-**Up next:** Task 174 — Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:3/B:5/U:4 → Eff:1.5] 🚀
+**Up next:** Task 277 — dispatch-compare: per-adapter model override (cross-family A/B is structurally broken) [D:2/B:6/U:5 → Eff:2.75] 🎯
 <!-- FOCUS:END -->
 
 ---
