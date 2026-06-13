@@ -8274,7 +8274,7 @@ scored_at = "2026-06-13"
 id = "276"
 phase = 19
 bundle = "autolanding"
-status = "pending"
+status = "in_progress"
 title = "Harden landed_sha persistence: lander verify-after-write + mechanical reconcile so a landed run never shows as phantom-unmerged in the dashboard"
 scores = { d = 3, b = 4, u = 4 }
 markers = ["bug"]
@@ -8293,4 +8293,5 @@ The lander DOES call ResultStore.mark_landed/2 on the success path (lib/harness/
 Two layers: (1) verify-after-write in the lander (re-read, retry once) closes the common race; (2) a mechanical reconcile on the dashboard history load backfills landed_sha whenever the run's landed commit / task shipped_in is provably an ancestor of origin/<target> — so even a write lost for any reason heals on the next dashboard view. Both are mantra-clean: counting whether a commit is on a branch is mechanics, not judgment. The reconcile must be careful NOT to mark genuinely-unlanded approved runs (no ancestor on target) as landed — those stay unmerged and recover via dispatch-reland.
 """
 created_at = "2026-06-13"
+started_at = "2026-06-13"
 scored_at = "2026-06-13"
