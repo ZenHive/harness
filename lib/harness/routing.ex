@@ -15,10 +15,10 @@ defmodule Harness.Routing do
   alias Harness.ResultStore
 
   @zero_samples 0
-  @all_fields [:agent, :model, :label, :roster, :availability, :kpi]
+  @all_fields [:agent, :model, :model_required, :label, :roster, :availability, :kpi]
 
   @type metric :: %{value: term(), n: non_neg_integer()}
-  @type field :: :agent | :model | :label | :roster | :availability | :kpi
+  @type field :: :agent | :model | :model_required | :label | :roster | :availability | :kpi
   @type brief_opts :: [
           domains: [String.t() | atom()],
           agents: [String.t() | atom()],
@@ -27,7 +27,8 @@ defmodule Harness.Routing do
         ]
   @type routing_pair :: %{
           agent: String.t(),
-          model: String.t(),
+          model: String.t() | nil,
+          model_required: boolean(),
           label: String.t() | nil,
           roster: map(),
           availability: map(),
@@ -40,7 +41,7 @@ defmodule Harness.Routing do
 
   api(
     :brief,
-    "Return a thin routing index per dispatchable {agent, model}: roster, model availability, and KPI rollups. No best-pick, ranking, route, or fused score is computed.",
+    "Return a thin routing index per dispatchable agent at its configured standing model: roster, model availability, and KPI rollups. No best-pick, ranking, route, or fused score is computed.",
     params: [
       domains: [
         kind: :value,
@@ -52,14 +53,15 @@ defmodule Harness.Routing do
       agents: [
         kind: :value,
         default: nil,
-        description: ~s(Optional agent-name filter as strings, e.g. ["codex", "cursor"]. Unknown names add no pairs.),
+        description:
+          ~s(Optional agent-name filter as strings, e.g. ["codex", "cursor"]. Unknown names add no pairs. When present, expands matching agents to their available model catalogs.),
         schema: [String.t()]
       ],
       fields: [
         kind: :value,
         default: nil,
         description:
-          ~s(Optional pair-key projection as strings, e.g. ["agent", "model", "availability", "kpi"]. Unknown fields are ignored.),
+          ~s(Optional pair-key projection as strings, e.g. ["agent", "model", "model_required", "availability", "kpi"]. Unknown fields are ignored.),
         schema: [String.t()]
       ],
       include_all: [
@@ -73,7 +75,7 @@ defmodule Harness.Routing do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %{domains: [String.t()], pairs: [%{agent, model, roster, availability, kpi}]}} or {:error, reason}. Every metric cell carries n."
+        "{:ok, %{domains: [String.t()], pairs: [%{agent, model, model_required, roster, availability, kpi}]}} or {:error, reason}. Every metric cell carries n."
     }
   )
 
@@ -115,8 +117,7 @@ defmodule Harness.Routing do
 
         if opts.include_all or dispatchable_roster?(roster_facts) do
           agent_atom
-          |> availability_entries(agent, blocks)
-          |> filter_availability(opts.include_all)
+          |> entries_for(agent, roster_facts, opts, blocks)
           |> Enum.map(&routing_pair(agent, &1, roster_facts, Map.get(kpi, agent_atom), opts.domains))
         else
           []
@@ -129,11 +130,45 @@ defmodule Harness.Routing do
     %{
       agent: agent,
       model: entry.model,
+      model_required: entry.model_required,
       label: entry.label,
       roster: roster_facts,
-      availability: Map.delete(entry, :label),
+      availability: Map.drop(entry, [:label, :model_required]),
       kpi: kpi_cell(kpi, domains)
     }
+  end
+
+  @spec entries_for(atom(), String.t(), map(), map(), map()) :: [map()]
+  defp entries_for(agent, agent_name, roster_facts, opts, blocks) do
+    if catalog_expansion?(opts) do
+      agent
+      |> availability_entries(agent_name, blocks)
+      |> model_less_catalog_entry(agent_name, roster_facts, blocks)
+      |> filter_availability(opts.include_all)
+    else
+      standing_model_entries(agent, agent_name, roster_facts, blocks)
+    end
+  end
+
+  @spec catalog_expansion?(map()) :: boolean()
+  defp catalog_expansion?(opts), do: opts.include_all or not is_nil(opts.agents)
+
+  @spec standing_model_entries(atom(), String.t(), map(), map()) :: [map()]
+  defp standing_model_entries(agent, agent_name, roster_facts, blocks) do
+    cond do
+      model_capable?(roster_facts) and is_nil(roster_facts.model) ->
+        [model_required_entry(agent_name, blocks)]
+
+      is_nil(roster_facts.model) ->
+        agent_name
+        |> model_less_entry(blocks)
+        |> available_entries()
+
+      true ->
+        agent
+        |> standing_model_entry(agent_name, roster_facts.model, blocks)
+        |> available_entries()
+    end
   end
 
   @spec dispatchable_roster?(map()) :: boolean()
@@ -144,6 +179,15 @@ defmodule Harness.Routing do
   @spec filter_availability([map()], boolean()) :: [map()]
   defp filter_availability(entries, true), do: entries
   defp filter_availability(entries, false), do: Enum.filter(entries, & &1.available)
+
+  @spec available_entries(map()) :: [map()]
+  defp available_entries(entry) do
+    cond do
+      entry.blocked -> []
+      is_nil(entry.model) -> if(entry.available, do: [entry], else: [])
+      true -> [entry]
+    end
+  end
 
   @spec agent_atom(String.t()) :: atom() | nil
   defp agent_atom(agent), do: Enum.find(Config.dispatch_agents(), &(Atom.to_string(&1) == agent))
@@ -166,6 +210,7 @@ defmodule Harness.Routing do
 
     %{
       model: model,
+      model_required: false,
       label: label(catalog_entry, model),
       available: is_nil(block) and Map.has_key?(available, model),
       blocked: not is_nil(block),
@@ -174,6 +219,54 @@ defmodule Harness.Routing do
       until: block && block.until
     }
   end
+
+  @spec standing_model_entry(atom(), String.t(), String.t(), map()) :: map()
+  defp standing_model_entry(agent, agent_name, model, blocks) do
+    catalog = catalog(agent)
+    available = available_model_index(agent_name)
+
+    availability_entry(agent_name, model, catalog, available, blocks)
+  end
+
+  @spec model_required_entry(String.t(), map()) :: map()
+  defp model_required_entry(agent, blocks) do
+    block = Map.get(blocks, {agent, "all"})
+
+    %{
+      model: nil,
+      model_required: true,
+      label: nil,
+      available: false,
+      blocked: not is_nil(block),
+      reason: block && block.reason,
+      source: block && block.source,
+      until: block && block.until
+    }
+  end
+
+  @spec model_less_catalog_entry([map()], String.t(), map(), map()) :: [map()]
+  defp model_less_catalog_entry(entries, agent, roster_facts, blocks) do
+    if model_capable?(roster_facts), do: entries, else: [model_less_entry(agent, blocks) | entries]
+  end
+
+  @spec model_less_entry(String.t(), map()) :: map()
+  defp model_less_entry(agent, blocks) do
+    block = Map.get(blocks, {agent, "all"})
+
+    %{
+      model: nil,
+      model_required: false,
+      label: nil,
+      available: is_nil(block),
+      blocked: not is_nil(block),
+      reason: block && block.reason,
+      source: block && block.source,
+      until: block && block.until
+    }
+  end
+
+  @spec model_capable?(map()) :: boolean()
+  defp model_capable?(roster_facts), do: roster_facts.capabilities.model_families != []
 
   @spec catalog(atom()) :: [map()]
   defp catalog(agent) do

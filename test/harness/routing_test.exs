@@ -11,6 +11,7 @@ defmodule Harness.RoutingTest do
   alias Harness.AgentAdapter.Pi
   alias Harness.AgentRegistry
   alias Harness.Chat.Tools
+  alias Harness.Config
   alias Harness.ModelAvailability
   alias Harness.ResultStore
   alias Harness.ResultStore.Memory, as: MemoryStore
@@ -25,15 +26,18 @@ defmodule Harness.RoutingTest do
     settings_store = {SettingsStoreMemory, scope: scope}
     previous_result_store = Application.get_env(:harness, :result_store)
     previous_settings_store = Application.get_env(:harness, :settings_store)
+    previous_agent_model = Application.get_env(:harness, :agent_model)
 
     Application.put_env(:harness, :result_store, store)
     Application.put_env(:harness, :settings_store, settings_store)
+    Application.put_env(:harness, :agent_model, [])
     MemoryStore.reset(scope: scope)
     SettingsStoreMemory.reset(scope: scope)
     AgentRegistry.reset()
     put_installed(%{Claude => true, Codex => true, Cursor => true})
     enable_agents([:claude, :codex, :cursor])
     put_catalogs()
+    put_agent_models(claude: "claude-opus-4-8", codex: "gpt-5.5", cursor: "composer-2.5")
 
     on_exit(fn ->
       AgentRegistry.reset()
@@ -41,6 +45,7 @@ defmodule Harness.RoutingTest do
       SettingsStoreMemory.reset(scope: scope)
       restore(:result_store, previous_result_store)
       restore(:settings_store, previous_settings_store)
+      restore(:agent_model, previous_agent_model)
     end)
 
     {:ok, store: store}
@@ -91,7 +96,57 @@ defmodule Harness.RoutingTest do
            } = cursor
   end
 
-  test "default brief returns only installed enabled available pairs" do
+  test "default brief returns one configured-model row per installed enabled available agent" do
+    assert {:ok, %{pairs: pairs}} = Routing.brief(domains: ["otp"])
+
+    assert Enum.map(pairs, &{&1.agent, &1.model, &1.model_required}) == [
+             {"claude", "claude-opus-4-8", false},
+             {"codex", "gpt-5.5", false},
+             {"cursor", "composer-2.5", false}
+           ]
+  end
+
+  test "default brief uses the configured model when it is not the first catalog model" do
+    put_catalogs(%{
+      cursor: [
+        %{id: "composer-2.5", label: "Composer 2.5", annotations: []},
+        %{id: "claude-opus-4-8-thinking-high", label: "Opus 4.8 high", annotations: []}
+      ]
+    })
+
+    assert :ok = Config.put({:agent_model, :cursor}, "claude-opus-4-8-thinking-high", "test")
+
+    assert {:ok, %{pairs: pairs}} = Routing.brief(agents: nil)
+
+    assert pair!(pairs, "cursor", "claude-opus-4-8-thinking-high").model_required == false
+    refute Enum.any?(pairs, &(&1.agent == "cursor" and &1.model == "composer-2.5"))
+  end
+
+  test "default brief surfaces a model-required row for model-capable agents without a configured model" do
+    put_installed(%{Grok => true})
+    enable_agents([:grok])
+    put_catalogs(%{grok: [%{id: "grok-4.3", label: "Grok 4.3", annotations: []}]})
+
+    assert {:ok, %{pairs: pairs}} = Routing.brief()
+    grok = pair!(pairs, "grok", nil)
+
+    assert grok.model_required == true
+    assert grok.availability.available == false
+    refute Enum.any?(pairs, &(&1.agent == "grok" and &1.model == "grok-4.3"))
+  end
+
+  test "default brief keeps antigravity as a single model-less available row" do
+    put_installed(%{Antigravity => true})
+    enable_agents([:antigravity])
+
+    assert {:ok, %{pairs: pairs}} = Routing.brief()
+    antigravity = pair!(pairs, "antigravity", nil)
+
+    assert antigravity.model_required == false
+    assert antigravity.availability.available == true
+  end
+
+  test "default brief returns only installed enabled available configured-model pairs" do
     assert :ok = AgentSettings.set_enabled(:claude, false, "test")
     assert :ok = ModelAvailability.block_model("cursor", "composer-2.5", reason: "operator quota")
 
@@ -116,6 +171,24 @@ defmodule Harness.RoutingTest do
 
     assert Enum.map(pairs, & &1.agent) == ["codex"]
     assert pair!(pairs, "codex", "gpt-5.5")
+  end
+
+  test "agents filter expands the selected agent to its full available catalog" do
+    put_catalogs(%{
+      cursor: [
+        %{id: "composer-2.5", label: "Composer 2.5", annotations: []},
+        %{id: "claude-opus-4-8-thinking-high", label: "Opus 4.8 high", annotations: []}
+      ]
+    })
+
+    assert :ok = Config.put({:agent_model, :cursor}, "composer-2.5", "test")
+
+    assert {:ok, %{pairs: pairs}} = Routing.brief(agents: ["cursor"])
+
+    assert Enum.map(pairs, &{&1.agent, &1.model}) == [
+             {"cursor", "claude-opus-4-8-thinking-high"},
+             {"cursor", "composer-2.5"}
+           ]
   end
 
   test "fields projection returns exactly known requested pair keys and ignores unknown fields" do
@@ -207,19 +280,25 @@ defmodule Harness.RoutingTest do
     refute_fused_keys(brief)
   end
 
-  @spec pair!([map()], String.t(), String.t()) :: map()
+  @spec pair!([map()], String.t(), String.t() | nil) :: map()
   defp pair!(pairs, agent, model) do
     Enum.find(pairs, &(&1.agent == agent and &1.model == model)) ||
       flunk("missing routing pair #{agent}/#{model}; got #{inspect(Enum.map(pairs, &{&1.agent, &1.model}))}")
   end
 
   @spec put_catalogs() :: :ok
-  defp put_catalogs do
-    SettingsStore.put(ModelAvailability.static_catalogs_key(), %{
-      codex: [%{id: "gpt-5.5", label: "GPT-5.5", annotations: []}],
-      claude: [%{id: "claude-opus-4-8", label: "Opus 4.8", annotations: []}],
-      cursor: [%{id: "composer-2.5", label: "Composer 2.5", annotations: []}]
-    })
+  defp put_catalogs(extra_catalogs \\ %{}) do
+    catalogs =
+      Map.merge(
+        %{
+          codex: [%{id: "gpt-5.5", label: "GPT-5.5", annotations: []}],
+          claude: [%{id: "claude-opus-4-8", label: "Opus 4.8", annotations: []}],
+          cursor: [%{id: "composer-2.5", label: "Composer 2.5", annotations: []}]
+        },
+        extra_catalogs
+      )
+
+    SettingsStore.put(ModelAvailability.static_catalogs_key(), catalogs)
   end
 
   @spec put_installed(%{module() => boolean()}) :: :ok
@@ -237,6 +316,11 @@ defmodule Harness.RoutingTest do
   @spec enable_agents([atom()]) :: :ok
   defp enable_agents(agents) do
     Enum.each(agents, &AgentSettings.set_enabled(&1, true, "test"))
+  end
+
+  @spec put_agent_models(keyword(String.t())) :: :ok
+  defp put_agent_models(models) do
+    Enum.each(models, fn {agent, model} -> Config.put({:agent_model, agent}, model, "test") end)
   end
 
   @spec refute_fused_keys(term()) :: :ok

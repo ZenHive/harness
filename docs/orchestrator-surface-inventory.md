@@ -32,7 +32,7 @@ Reachable over MCP/chat (JSON scalars only). Grouped by orchestrator intent.
 | `dispatch-transcript` / `dispatch-transcript_events` | `Harness.Run` (flat) | Buffered raw / parsed transcript of a live run, with `seq` delta polling |
 | `dispatch-verdict_detail` | `Harness.ResultStore` | Settled-run reviewer verdict / report / ratings |
 | `result_store-list_run_records` | `Harness.ResultStore` | Settled run records (verdict, diff sizes, token usage, transcript) |
-| `routing-brief` | `Harness.Routing` | **Thin task-writer routing index**: dispatchable roster + availability + KPI rollups per `{agent, model}` by default, with opt-in full catalog / agent filter / pair-field projection and no ranking |
+| `routing-brief` | `Harness.Routing` | **Thin task-writer routing index**: dispatchable roster + availability + KPI rollups per agent's standing model by default, with opt-in full catalog / agent filter / pair-field projection and no ranking |
 | `result_store-aggregate_by_agent` | `Harness.ResultStore` → `Harness.AgentKPI` | **Per-agent KPI rollup** (success, first-attempt-pass, duration p90, cost-to-green) |
 | `result_store-aggregate_ceremony_cost` | `Harness.ResultStore` → `Harness.AgentKPI` | **Per-approved-run ceremony token facts** (implementer + reviewer + audit=0; median/p90 distribution over raw per-run totals — no batching verdict) |
 | `dispatch-recommend` | `Harness.Dispatch.recommend/2` + `Harness.CapabilityScore.recommend/2` | Per-facet scout assessment match: returns scout's winner + reasoning for the task's `review_facets` (`:exploit`), or `:explore`/fallback when unmeasured or no assessment yet. `dispatch-assess_facets` triggers a fresh scout pass. |
@@ -77,7 +77,7 @@ hold/steer/resume · project registration (write).
 | Run status / transcript | ✅ `dispatch-status/transcript/transcript_events` | none |
 | AgentKPI rollups | ✅ `result_store-aggregate_by_agent` (per-agent), `result_store-aggregate_ceremony_cost` (per-approved-run ceremony/implementer+reviewer+audit token overhead) | none |
 | Capability (scout) routing | ✅ `dispatch-recommend` + `dispatch-assess_facets` (scout per-facet assessment) | none |
-| Task-writer assignee/model routing facts | ✅ `routing-brief` joins roster, availability/blocks, and KPI rollups per `{agent, model}` as a thin dispatchable-only index by default | none |
+| Task-writer assignee/model routing facts | ✅ `routing-brief` joins roster, availability/blocks, and KPI rollups per agent's configured standing model as a thin dispatchable-only index by default | none |
 | Project / registry listing | ✅ `project_registry-list/lookup` | none |
 | Operator agent/reviewer state | ✅ `agents-list` / `agents-reviewers` | none |
 | Cron autonomy state | ✅ `autonomy-status` | none |
@@ -97,16 +97,20 @@ do not compute a best reviewer, score, route, or verdict.
 task-writer deciding `assignee` + `model`. It exists so orchestrators do not read
 `lib/harness/*.ex` or call three separate tools just to route a task. The brief is the raw
 facts layer beneath `dispatch-recommend`: it joins roster, availability/block annotations,
-and KPI rollups per `{agent, model}`, with `n` on measured KPI cells and `n: 0` /
-`explore_candidate: true` on cold-start KPI cells. It returns no best pick, ranking,
-weighted score, or route verdict.
+and KPI rollups for the standing-model routing index, with `n` on measured KPI cells
+and `n: 0` / `explore_candidate: true` on cold-start KPI cells. It returns no best
+pick, ranking, weighted score, or route verdict.
 
-**Task 273 update:** `routing-brief` is the thin list surface, not the detail surface. By
-default it returns only pairs whose agent is installed, enabled, and currently available,
-and whose model pair is unblocked/available. Pass `include_all: true` only when you
-need the verbose full catalog, `agents: ["codex", "cursor"]` to narrow by agent, and
-`fields: ["agent", "model", "availability", "kpi"]` to project pair keys. For
-per-agent depth, drill into the existing aggregate lenses:
+**Task 274 update:** `routing-brief` is the thin routing index, not the model-catalog
+surface. By default it returns one row per dispatchable agent at that agent's configured
+standing model (`Config.agent_model/1`), the model it runs without a task pin. A
+model-capable agent with no configured standing model still appears once as
+`model: nil, model_required: true`; a model-incapable agent such as antigravity appears
+once as `model: nil, model_required: false`. Pass `agents: ["codex", "cursor"]` to expand
+only those agents to their available model catalogs, `include_all: true` when you need
+the verbose full catalog, and
+`fields: ["agent", "model", "model_required", "availability", "kpi"]` to project pair
+keys. For per-agent depth, drill into the existing aggregate lenses:
 `result_store-aggregate_by_agent`, `result_store-aggregate_by_facet`,
 `result_store-aggregate_reviewer_reliability`, and
 `result_store-aggregate_ceremony_cost`. Do not add new KPI tools for detail those lenses
