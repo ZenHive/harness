@@ -217,6 +217,7 @@ defmodule Harness.LanderTest do
       assert {:ok, [record]} = ResultStore.list_run_records(run_id: "run-x")
       assert record.landed_sha == landed
     end
+
     test "broadcasts started + settled(:landed) on the dashboard ops feed (task 243)", ctx do
       :ok = OpsFeed.subscribe()
 
