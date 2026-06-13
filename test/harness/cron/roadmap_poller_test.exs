@@ -2,14 +2,19 @@ defmodule Harness.Cron.RoadmapPollerTest do
   # async: false because tests mutate AgentRegistry, ProjectRegistry, and app env seams.
   use ExUnit.Case, async: false
 
+  alias Ecto.Adapters.SQL.Sandbox
+  alias Harness.AgentAdapter.Codex
   alias Harness.AgentRegistry
   alias Harness.Cron.Orchestrator
   alias Harness.Cron.PendingDispatch
   alias Harness.Cron.RoadmapPoller
   alias Harness.Cron.Settings
   alias Harness.Notification.Event
+  alias Harness.Oban, as: HarnessOban
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
+  alias Harness.Run.Status
+  alias Harness.Run.Worker
   alias Harness.Test.SettingsStoreMemory
   alias Oban.Plugins.Cron
 
@@ -30,6 +35,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
       Application.delete_env(:harness, :roadmap_ready)
       Application.delete_env(:harness, :cron_orchestrator)
       Application.delete_env(:harness, :test_capture_pid)
+      Application.delete_env(:harness, :live_run_statuses)
       PendingDispatch.reset()
     end)
 
@@ -41,8 +47,8 @@ defmodule Harness.Cron.RoadmapPollerTest do
     # (unconditional) from "tick dispatches" (the runtime master gate) is what
     # lets the dashboard toggle take effect with no restart.
     refute RoadmapPoller.enabled?()
-    assert Enum.any?(Harness.Oban.oban_opts()[:plugins], &cron_plugin?/1)
-    assert {:cron, 1} in Harness.Oban.oban_opts()[:queues]
+    assert Enum.any?(HarnessOban.oban_opts()[:plugins], &cron_plugin?/1)
+    assert {:cron, 1} in HarnessOban.oban_opts()[:queues]
   end
 
   test "cron plugin carries the configured schedule" do
@@ -50,7 +56,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
     assert :ok = Settings.set_schedule("hourly", "test")
 
     assert RoadmapPoller.enabled?()
-    assert {:cron, 1} in Harness.Oban.oban_opts()[:queues]
+    assert {:cron, 1} in HarnessOban.oban_opts()[:queues]
 
     crontab = cron_crontab()
 
@@ -285,6 +291,122 @@ defmodule Harness.Cron.RoadmapPollerTest do
     assert_received {:inserted, %{item_id: "52", adapter_module: "Elixir.Harness.AgentAdapter.Codex"}}
   end
 
+  describe "duplicate dispatch guard" do
+    test "two ticks inside one live-run window enqueue a task once" do
+      parent = self()
+      live? = start_supervised!({Agent, fn -> false end})
+      project = ProjectFixture.from_repo("/tmp/harness-cron-live-dedup", name: "cron-live-dedup", concurrency_cap: 10)
+      assert :ok = ProjectRegistry.register(project)
+
+      enable_project("cron-live-dedup")
+      Application.put_env(:harness, :roadmap_ready, fn _p -> {:ok, [task("52", "codex")]} end)
+
+      Application.put_env(:harness, :live_run_statuses, fn ->
+        if Agent.get(live?, & &1) do
+          [%Status{run_id: "run-live-52", project_name: "cron-live-dedup", task_id: "52", state: :running}]
+        else
+          []
+        end
+      end)
+
+      Application.put_env(:harness, :oban_insert, fn changeset ->
+        job = Ecto.Changeset.apply_action!(changeset, :insert)
+        send(parent, {:inserted, job.args})
+        Agent.update(live?, fn _ -> true end)
+        {:ok, job}
+      end)
+
+      assert :ok = RoadmapPoller.perform(%Oban.Job{})
+      assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+      assert_received {:inserted, %{project_name: "cron-live-dedup", item_id: "52"}}
+      refute_received {:inserted, %{project_name: "cron-live-dedup", item_id: "52"}}
+    end
+
+    test "a tick after the prior run settled dispatches the pending task again" do
+      parent = self()
+      project = ProjectFixture.from_repo("/tmp/harness-cron-settled-redo", name: "cron-settled-redo", concurrency_cap: 10)
+      assert :ok = ProjectRegistry.register(project)
+
+      enable_project("cron-settled-redo")
+      Application.put_env(:harness, :roadmap_ready, fn _p -> {:ok, [task("52", "codex")]} end)
+
+      Application.put_env(:harness, :live_run_statuses, fn ->
+        [%Status{run_id: "run-failed-52", project_name: "cron-settled-redo", task_id: "52", state: :failed}]
+      end)
+
+      Application.put_env(:harness, :oban_insert, fn changeset ->
+        job = Ecto.Changeset.apply_action!(changeset, :insert)
+        send(parent, {:inserted, job.args})
+        {:ok, job}
+      end)
+
+      assert :ok = RoadmapPoller.perform(%Oban.Job{})
+      assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+      assert_received {:inserted, %{project_name: "cron-settled-redo", item_id: "52"}}
+      assert_received {:inserted, %{project_name: "cron-settled-redo", item_id: "52"}}
+    end
+
+    test "a live run for one task does not block a different pending task" do
+      parent = self()
+
+      project =
+        ProjectFixture.from_repo("/tmp/harness-cron-different-task", name: "cron-different-task", concurrency_cap: 10)
+
+      assert :ok = ProjectRegistry.register(project)
+
+      enable_project("cron-different-task")
+      Application.put_env(:harness, :roadmap_ready, fn _p -> {:ok, [task("53", "codex")]} end)
+
+      Application.put_env(:harness, :live_run_statuses, fn ->
+        [%Status{run_id: "run-live-52", project_name: "cron-different-task", task_id: "52", state: :running}]
+      end)
+
+      Application.put_env(:harness, :oban_insert, fn changeset ->
+        job = Ecto.Changeset.apply_action!(changeset, :insert)
+        send(parent, {:inserted, job.args})
+        {:ok, job}
+      end)
+
+      assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+      assert_received {:inserted, %{project_name: "cron-different-task", item_id: "53"}}
+    end
+
+    test "an unfinished Oban run job blocks duplicate enqueue for the same task" do
+      start_supervised!(Harness.Repo)
+      :ok = Sandbox.checkout(Harness.Repo)
+
+      parent = self()
+      project = ProjectFixture.from_repo("/tmp/harness-cron-oban-dedup", name: "cron-oban-dedup", concurrency_cap: 10)
+      assert :ok = ProjectRegistry.register(project)
+
+      enable_project("cron-oban-dedup")
+      Application.put_env(:harness, :roadmap_ready, fn _p -> {:ok, [task("52", "codex")]} end)
+
+      args = %{
+        project_name: project.name,
+        item_id: "52",
+        adapter_module: Atom.to_string(Codex)
+      }
+
+      {:ok, %Oban.Job{state: "available"}} =
+        Harness.Repo.insert(Worker.new(args, queue: HarnessOban.queue_name(project)))
+
+      Application.put_env(:harness, :oban_insert, fn changeset ->
+        job = Ecto.Changeset.apply_action!(changeset, :insert)
+        send(parent, {:inserted, job.args})
+        {:ok, job}
+      end)
+
+      assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+      refute_received {:inserted, %{project_name: "cron-oban-dedup", item_id: "52"}}
+      assert HarnessOban.unfinished_run_job?(project, "52")
+    end
+  end
+
   test "a planned task routed to an unavailable agent is skipped; the rest of the wave dispatches" do
     parent = self()
     project = ProjectFixture.from_repo("/tmp/harness-cron-unavailable", name: "cron-unavailable", concurrency_cap: 10)
@@ -362,7 +484,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
       # Parked, not enqueued.
       refute_received {:inserted, _args}
 
-      assert [%PendingDispatch{task_id: "52", adapter: Harness.AgentAdapter.Codex, project_name: "cron-manual1"}] =
+      assert [%PendingDispatch{task_id: "52", adapter: Codex, project_name: "cron-manual1"}] =
                PendingDispatch.list()
 
       assert_received {:notify, %Event{type: :dispatch_parked, task_id: "52", project: "cron-manual1"}}
@@ -455,7 +577,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
   defp cron_plugin?(_plugin), do: false
 
   defp cron_crontab do
-    Harness.Oban.oban_opts()
+    HarnessOban.oban_opts()
     |> Keyword.get(:plugins, [])
     |> Enum.find_value([], fn
       {Cron, crontab: entries} -> entries

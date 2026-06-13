@@ -21,10 +21,9 @@ defmodule Harness.Cron.RoadmapPoller do
   Concurrency stays Oban's job — the `project_<name>` queue runs up to the
   project's `concurrency_cap` at once; the rest sit `available` and start as slots
   free. That queue limit is the mechanical ceiling the orchestrator's plan cannot
-  override. Inserts are unique over `{project_name, item_id}` across non-terminal
-  states, so a task already queued or running is not re-enqueued by a later tick —
-  which is also how wave-pacing falls out of the cron cadence with no
-  wave-tracking state in code.
+  override. Before enqueue, the poller counts whether `{project_name, item_id}` is
+  already live in the run registry or unfinished in Oban, so a later tick does not
+  start a concurrent duplicate; insert uniqueness remains the database backstop.
 
   Agent routing resolves against `Harness.AgentRegistry` — the single source of
   truth for the agent set, so a new adapter is dispatchable with zero edits here.
@@ -46,6 +45,7 @@ defmodule Harness.Cron.RoadmapPoller do
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.Roadmap
+  alias Harness.Run.Status
   alias Harness.Run.Worker, as: RunWorker
   alias Oban.Plugins.Cron
 
@@ -61,6 +61,8 @@ defmodule Harness.Cron.RoadmapPoller do
     claude: %{"ANTHROPIC_API_KEY" => false},
     codex: %{"OPENAI_API_KEY" => false}
   }
+  @in_flight_run_states [:dispatched, :running, :committing, :recovering, :reviewing, :held]
+  @live_status_timeout_ms 100
   # Dedup window: skip re-enqueueing a task that already has a job in any
   # non-terminal state. A completed/cancelled job does not block a later tick.
   @unique_opts [
@@ -248,9 +250,13 @@ defmodule Harness.Cron.RoadmapPoller do
 
   @spec auto_enqueue(Project.t(), String.t(), module()) :: :ok
   defp auto_enqueue(%Project{} = project, item_id, adapter) do
-    case enqueue_run(project, item_id, adapter) do
-      {:ok, _job} -> :ok
-      {:error, reason} -> log_dispatch_skip(project, item_id, reason)
+    if run_in_flight?(project, item_id) do
+      log_dispatch_skip(project, item_id, :run_already_in_flight)
+    else
+      case enqueue_run(project, item_id, adapter) do
+        {:ok, _job} -> :ok
+        {:error, reason} -> log_dispatch_skip(project, item_id, reason)
+      end
     end
   end
 
@@ -260,7 +266,7 @@ defmodule Harness.Cron.RoadmapPoller do
   # re-tick of an already-parked task does not re-notify.
   @spec park_for_approval(Project.t(), String.t(), module()) :: :ok
   defp park_for_approval(%Project{} = project, item_id, adapter) do
-    if Harness.Oban.unfinished_run_job?(project, item_id) do
+    if run_in_flight?(project, item_id) do
       :ok
     else
       case PendingDispatch.park(project.name, item_id, adapter, env_scrub_for_adapter(adapter)) do
@@ -348,6 +354,44 @@ defmodule Harness.Cron.RoadmapPoller do
     configured = Keyword.get(config(), :subscription_env_scrubs, %{})
 
     Map.merge(@default_subscription_env_scrubs, configured)
+  end
+
+  # Registry is authoritative for in-BEAM live runs; Oban is authoritative for
+  # persisted queued/executing jobs. Count both by dispatch identity, not run_id.
+  @spec run_in_flight?(Project.t(), String.t()) :: boolean()
+  defp run_in_flight?(%Project{} = project, item_id) do
+    live_run_in_flight?(project, item_id) or Harness.Oban.unfinished_run_job?(project, item_id)
+  end
+
+  @spec live_run_in_flight?(Project.t(), String.t()) :: boolean()
+  defp live_run_in_flight?(%Project{} = project, item_id) do
+    Enum.any?(live_run_statuses(), &matching_live_run?(&1, project, item_id))
+  end
+
+  @spec matching_live_run?(Status.t(), Project.t(), String.t()) :: boolean()
+  defp matching_live_run?(%Status{} = status, %Project{} = project, item_id) do
+    status.project_name == project.name and status.task_id == item_id and status.state in @in_flight_run_states
+  end
+
+  @spec live_run_statuses() :: [Status.t()]
+  defp live_run_statuses do
+    case Application.get_env(:harness, :live_run_statuses) do
+      fun when is_function(fun, 0) -> fun.()
+      _other -> live_run_statuses_from_registry()
+    end
+  end
+
+  @spec live_run_statuses_from_registry() :: [Status.t()]
+  defp live_run_statuses_from_registry do
+    Enum.flat_map(Harness.Run.Supervisor.list_runs(), &run_status/1)
+  end
+
+  @spec run_status(String.t()) :: [Status.t()]
+  defp run_status(run_id) do
+    case Harness.Run.status(run_id, @live_status_timeout_ms) do
+      {:ok, %Status{} = status} -> [status]
+      {:error, _reason} -> []
+    end
   end
 
   @spec ready_tasks(Project.t()) :: {:ok, [map()]} | {:error, term()}
