@@ -8217,7 +8217,7 @@ shipped_in = "4d1ceae33ccb38c083dfb33153a832894f29c885"
 id = "274"
 phase = 19
 bundle = "kpi-routing"
-status = "in_progress"
+status = "done"
 title = "routing-brief default: collapse to the configured model per agent, not the whole available catalog (144 pairs still blows context)"
 scores = { d = 2, b = 4, u = 4 }
 depends_on = [273]
@@ -8235,6 +8235,11 @@ Correct slim: the default is a ROUTING INDEX — one row per dispatchable agent 
 
 Routing rationale (dogfooded): codex/gpt-5.5 free, mcp 9.0 / descripex 9.0 / truthfulness 8.5, success 0.96/82 — strongest fit for this read-surface refinement. cursor/Opus blocked. -> codex / gpt-5.5.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781322755210-ff33c8e2, 7ac4f60a22f81808309f5a4c96cc18f98472944a)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-13"
 started_at = "2026-06-13"
 scored_at = "2026-06-13"
+done_at = "2026-06-13"
+shipped_in = "7ac4f60a22f81808309f5a4c96cc18f98472944a"

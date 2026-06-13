@@ -12078,7 +12078,7 @@
       "id": "274",
       "phase": 19,
       "bundle": "kpi-routing",
-      "status": "in_progress",
+      "status": "done",
       "title": "routing-brief default: collapse to the configured model per agent, not the whole available catalog (144 pairs still blows context)",
       "scores": {
         "d": 2,
@@ -12124,10 +12124,15 @@
         "otp",
         "elixir"
       ],
+      "shipped_in": "7ac4f60a22f81808309f5a4c96cc18f98472944a",
       "body": "Follow-up to Task 273 (landed 4d1ceae). Dogfooding the recompiled node: brief() default returned 144 pairs, down from 175 but still ~146KB — it still blows the writer's context. Root cause: 273 defined dispatchable as available+enabled, but a multi-model frontend (cursor) has its ENTIRE ~139-slug catalog 'available' (only opus-4-8-thinking-high is blocked), so available+enabled barely slims it. 273's ACs were satisfied; the definition was too loose.\n\nCorrect slim: the default is a ROUTING INDEX — one row per dispatchable agent at its STANDING model (Config.agent_model/1), the model it runs without a task pin. That collapses cursor's 139 rows to one (its configured model) and the whole default to ~5-6 rows. Model-OPTION exploration for a given agent stays opt-in via agents:[name] or include_all — the writer only reaches for the catalog when deliberately weighing one agent's tiers (e.g. cursor-on-Opus vs codex). An agent with no configured model surfaces a single model_required row so it is visible-but-flagged, never silently dropped or catalog-expanded.\n\nRouting rationale (dogfooded): codex/gpt-5.5 free, mcp 9.0 / descripex 9.0 / truthfulness 8.5, success 0.96/82 — strongest fit for this read-surface refinement. cursor/Opus blocked. -> codex / gpt-5.5.\n",
       "created_at": "2026-06-13",
       "started_at": "2026-06-13",
+      "done_at": "2026-06-13",
       "scored_at": "2026-06-13",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781322755210-ff33c8e2, 7ac4f60a22f81808309f5a4c96cc18f98472944a).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     }
   ]
