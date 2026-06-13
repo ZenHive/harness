@@ -410,7 +410,9 @@ defmodule Harness.Dashboard.SettingsLive do
       <section class="setting-card">
         <h2>Agent models</h2>
         <p class="setting-desc">
-          Per-agent implementer model. Blank falls back to the agent's own default.
+          Per-agent implementer model. Required for every model-capable agent — blank
+          rejects the dispatch as <code>model_required</code> (no silent CLI default).
+          Antigravity is exempt (its CLI has no <code>--model</code> flag).
           A task's <code>model</code> pin overrides this value.
         </p>
         <form
@@ -431,7 +433,8 @@ defmodule Harness.Dashboard.SettingsLive do
         <h2>Reviewer models</h2>
         <p class="setting-desc">
           Per-agent reviewer model override. Blank inherits the agent default above; if both are
-          blank, the reviewer uses the agent CLI's own default. Model ids churn — verify against
+          blank, the reviewer is rejected as <code>model_required</code> for model-capable agents —
+          never a silent CLI default (antigravity is exempt). Model ids churn — verify against
           the agent's <code>--list-models</code> before setting.
         </p>
         <form
@@ -759,7 +762,8 @@ defmodule Harness.Dashboard.SettingsLive do
     end
   end
 
-  # A free-text model pin: blank clears it (falls back to the agent CLI default),
+  # A free-text model pin: blank clears the override (the resolver then rejects a
+  # model-capable agent as model_required; only antigravity runs model-less),
   # any other string persists verbatim — model ids are unvalidated (they churn).
   defp parse_config_value("", :string), do: {:ok, nil}
   defp parse_config_value(raw, :string), do: {:ok, raw}
