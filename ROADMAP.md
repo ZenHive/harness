@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 19 — Self-Healing Run Loop (34 of 36 done · 2 in progress)
+**Focus phase:** 19 — Self-Healing Run Loop (35 of 36 done · 1 in progress)
 
-**Last shipped:** Task 274 — routing-brief default: collapse to the configured model per agent, not the whole available catalog (144 pairs still blows context), Task 275 — Lander prunes the run branch + worktree after a successful land (stop the harness/<run-id> + worktree accumulation), Task 276 — Harden landed_sha persistence: lander verify-after-write + mechanical reconcile so a landed run never shows as phantom-unmerged in the dashboard, Task 277 — dispatch-compare: per-adapter model override (cross-family A/B is structurally broken) on 2026-06-13
+**Last shipped:** Task 274 — routing-brief default: collapse to the configured model per agent, not the whole available catalog (144 pairs still blows context), Task 275 — Lander prunes the run branch + worktree after a successful land (stop the harness/<run-id> + worktree accumulation), Task 276 — Harden landed_sha persistence: lander verify-after-write + mechanical reconcile so a landed run never shows as phantom-unmerged in the dashboard, Task 277 — dispatch-compare: per-adapter model override (cross-family A/B is structurally broken), Task 278 — Poller double-dispatch guard: skip a pending task that already has a live/queued run (mantra-clean dedup, not a re-dispatch) on 2026-06-13
 
 **Up next:** Task 174 — Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:3/B:5/U:4 → Eff:1.5] 🚀
 <!-- FOCUS:END -->

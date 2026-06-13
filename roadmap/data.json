@@ -12300,7 +12300,7 @@
       "id": "278",
       "phase": 19,
       "bundle": "autolanding",
-      "status": "in_progress",
+      "status": "done",
       "title": "Poller double-dispatch guard: skip a pending task that already has a live/queued run (mantra-clean dedup, not a re-dispatch)",
       "scores": {
         "d": 3,
@@ -12343,10 +12343,15 @@
         "elixir",
         "oban"
       ],
+      "shipped_in": "ece1ed422d178e65f87727cab7e5c40197dab2ec",
       "body": "Discovered 2026-06-13 during the task 275/276 land. The cron RoadmapPoller gates dispatch on queue-headroom + adapter availability (Task 51) but NOT on 'is this exact task already being worked.' When a task is briefly pending (e.g. a land-conflict reverted it, or a cancelled run settled it back) and two cron ticks fall inside the window before mark_in_progress writes back, BOTH ticks see pending and each enqueues a fresh implementer run. Result: two concurrent runs re-implementing the same approved task = pure token waste (observed: 276 dispatched twice, both cancelled manually).\n\nThe fix is a mechanical dedup at enqueue time: count whether a live (Harness.Run.Registry) or queued/executing (Oban) run already targets {project_name, item_id}; if so, skip this tick's enqueue for that task. This is counting facts, not judging them — fully mantra-clean. Keying on {project, item_id} (not run_id) is essential because every re-dispatch mints a new run_id. The guard must NOT rely on the rmap status field alone (that is exactly the slow-writeback signal that failed here) — it consults live runtime/Oban state.\n",
       "created_at": "2026-06-13",
       "started_at": "2026-06-13",
+      "done_at": "2026-06-13",
       "scored_at": "2026-06-13",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781333043448-35b934bb, ece1ed422d178e65f87727cab7e5c40197dab2ec).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
