@@ -2,6 +2,8 @@ defmodule Harness.LanderTest do
   # async: false because tests mutate app env seams and global notification sinks.
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias Harness.AgentAdapter.Claude
   alias Harness.Dashboard.OpsFeed
   alias Harness.Dashboard.OpsFeed.Op
@@ -12,6 +14,7 @@ defmodule Harness.LanderTest do
   alias Harness.ResultStore
   alias Harness.ResultStore.Memory
   alias Harness.Run.LogRecord
+  alias Harness.Worktree
 
   @moduletag :tmp_dir
   @executable_file_mode 0o755
@@ -23,6 +26,17 @@ defmodule Harness.LanderTest do
 
   defp sha(repo, ref), do: repo |> GitFixture.git!(["rev-parse", ref]) |> String.trim()
 
+  @spec branch_exists?(String.t(), String.t()) :: boolean()
+  defp branch_exists?(repo, branch) do
+    {_output, status} = git(repo, ["show-ref", "--verify", "--quiet", "refs/heads/" <> branch])
+    status == 0
+  end
+
+  @spec landing_root(map()) :: String.t()
+  defp landing_root(ctx) do
+    Path.join([ctx.worktree_base, Path.basename(ctx.repo), "landing"])
+  end
+
   defp ancestor?(repo, maybe_ancestor, descendant) do
     {_output, status} = git(repo, ["merge-base", "--is-ancestor", maybe_ancestor, descendant])
     status == 0
@@ -30,17 +44,10 @@ defmodule Harness.LanderTest do
 
   setup %{tmp_dir: tmp_dir} do
     %{origin: origin, repo: repo} = GitFixture.init_with_origin()
+    worktree_base = Path.join(tmp_dir, "worktrees")
+    Application.put_env(:harness, :worktree, base_dir: worktree_base)
 
     base_sha = sha(repo, "HEAD")
-
-    # the settled run's deliverable: harness/<run-id> with one extra commit.
-    GitFixture.git!(repo, ["checkout", "-b", "harness/run-x"])
-    File.write!(Path.join(repo, "feature.txt"), "work\n")
-    GitFixture.git!(repo, ["add", "."])
-    GitFixture.git!(repo, ["commit", "-m", "agent work"])
-    branch_tip = sha(repo, "HEAD")
-    # leave HEAD on main so the branch is free for checkout_existing.
-    GitFixture.git!(repo, ["checkout", "main"])
 
     project = %Project{
       name: "demo",
@@ -48,6 +55,14 @@ defmodule Harness.LanderTest do
       roadmap_path: tmp_dir,
       target_branch: "main"
     }
+
+    # the settled run's deliverable: Harness.Run's retained implementer
+    # worktree on harness/<run-id>, with one extra commit.
+    {:ok, run_worktree} = Worktree.create(project, id: "run-x")
+    File.write!(Path.join(run_worktree.path, "feature.txt"), "work\n")
+    GitFixture.git!(run_worktree.path, ["add", "."])
+    GitFixture.git!(run_worktree.path, ["commit", "-m", "agent work"])
+    branch_tip = sha(run_worktree.path, "HEAD")
 
     request = %{
       project: project,
@@ -63,10 +78,20 @@ defmodule Harness.LanderTest do
 
     on_exit(fn ->
       Application.delete_env(:harness, :result_store)
+      Application.delete_env(:harness, :worktree)
       Memory.reset(elem(store, 1))
     end)
 
-    %{origin: origin, repo: repo, base_sha: base_sha, branch_tip: branch_tip, project: project, request: request}
+    %{
+      origin: origin,
+      repo: repo,
+      base_sha: base_sha,
+      branch_tip: branch_tip,
+      project: project,
+      request: request,
+      run_worktree: run_worktree,
+      worktree_base: worktree_base
+    }
   end
 
   describe "land/1 — fast-forward path (target unmoved)" do
@@ -76,6 +101,18 @@ defmodule Harness.LanderTest do
       assert sha(ctx.origin, "refs/heads/main") == ctx.branch_tip
     end
 
+    test "prunes the retained run branch and implementer worktree but leaves the landing root", ctx do
+      assert branch_exists?(ctx.repo, ctx.request.branch)
+      assert File.dir?(ctx.run_worktree.path)
+
+      assert {:landed, landed} = Lander.land(ctx.request)
+
+      assert landed == ctx.branch_tip
+      refute branch_exists?(ctx.repo, ctx.request.branch)
+      refute File.exists?(ctx.run_worktree.path)
+      assert File.dir?(landing_root(ctx))
+    end
+
     test "persists landed_sha on the run record", ctx do
       assert :ok = ResultStore.record_run(log_record("run-x"))
 
@@ -83,6 +120,21 @@ defmodule Harness.LanderTest do
 
       assert {:ok, [record]} = ResultStore.list_run_records(run_id: "run-x")
       assert record.landed_sha == landed
+    end
+
+    test "swallows run-prune refusal after the push and leaves landed state intact", ctx do
+      {:ok, _} = Registry.register(Harness.Run.Registry, ctx.request.run_id, nil)
+
+      log =
+        capture_log(fn ->
+          assert {:landed, landed} = Lander.land(ctx.request)
+          assert landed == ctx.branch_tip
+        end)
+
+      assert log =~ "run cleanup failed after landing run run-x"
+      assert sha(ctx.origin, "refs/heads/main") == ctx.branch_tip
+      assert branch_exists?(ctx.repo, ctx.request.branch)
+      assert File.dir?(ctx.run_worktree.path)
     end
 
     test "broadcasts started + settled(:landed) on the dashboard ops feed (task 243)", ctx do
@@ -211,11 +263,9 @@ defmodule Harness.LanderTest do
     # Stages a real rebase conflict on README.md: the branch and origin/main
     # both edit it from a shared base. Returns the moved-main sha for assertions.
     defp stage_conflict(ctx) do
-      GitFixture.git!(ctx.repo, ["checkout", "harness/run-x"])
-      File.write!(Path.join(ctx.repo, "README.md"), "branch side\n")
-      GitFixture.git!(ctx.repo, ["add", "."])
-      GitFixture.git!(ctx.repo, ["commit", "-m", "branch readme"])
-      GitFixture.git!(ctx.repo, ["checkout", "main"])
+      File.write!(Path.join(ctx.run_worktree.path, "README.md"), "branch side\n")
+      GitFixture.git!(ctx.run_worktree.path, ["add", "."])
+      GitFixture.git!(ctx.run_worktree.path, ["commit", "-m", "branch readme"])
 
       File.write!(Path.join(ctx.repo, "README.md"), "main side\n")
       GitFixture.git!(ctx.repo, ["add", "."])
@@ -268,6 +318,8 @@ defmodule Harness.LanderTest do
 
       assert {:conflict, _output} = Lander.land(ctx.request)
       assert sha(ctx.origin, "refs/heads/main") == moved_main
+      assert branch_exists?(ctx.repo, ctx.request.branch)
+      assert File.dir?(ctx.run_worktree.path)
     end
   end
 

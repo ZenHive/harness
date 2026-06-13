@@ -17,7 +17,8 @@ defmodule Harness.Lander do
        safe),
     4. writes the outcome back to rmap (`done` + `verified` + `shipped_in`),
     5. enqueues a post-merge audit job (`Harness.Audit.Worker`) for the landed
-       range — best-effort, never blocks the land.
+       range — best-effort, never blocks the land,
+    6. prunes the settled run's retained branch and implementer worktree.
 
   There is **no re-verification step**: the reviewer AI already gated the work
   (it ran the project's checks itself); the lander is pure git mechanics. The
@@ -85,9 +86,7 @@ defmodule Harness.Lander do
   @doc """
   Lands `request`'s approved branch onto the project's target branch.
 
-  See the module doc for the procedure and the outcome vocabulary. Idempotent:
-  re-running after a successful land re-pushes the same SHA (a git no-op) and
-  re-marks the task `done` (an rmap no-op), so an Oban retry is safe.
+  See the module doc for the procedure and the outcome vocabulary.
   """
   @spec land(request()) :: outcome()
   def land(%{project: %Project{} = project, branch: branch} = request) when is_binary(branch) do
@@ -187,6 +186,7 @@ defmodule Harness.Lander do
         sync_local_target(repo, target, project, request)
         writeback(project, request, pushed)
         enqueue_audit(project, request, base_sha)
+        prune_landed_run(repo, request)
         {:landed, pushed}
       else
         {:conflict, _output} = conflict -> conflict
@@ -440,6 +440,45 @@ defmodule Harness.Lander do
 
         :ok
     end
+  end
+
+  @spec prune_landed_run(String.t(), request()) :: :ok
+  defp prune_landed_run(repo, request) do
+    # The push is the point of no return. `Worktree.cleanup_for_run/2` carries
+    # the Harness.Run.Registry liveness guard, so a still-registered run keeps
+    # its branch and implementer worktree even on this best-effort cleanup path.
+    case Worktree.cleanup_for_run(repo, request.run_id) do
+      :ok ->
+        warn_on_prune_leftovers(repo, request)
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("harness lander: run cleanup failed after landing run #{request.run_id}: #{inspect(reason)}")
+
+        :ok
+    end
+  end
+
+  @spec warn_on_prune_leftovers(String.t(), request()) :: :ok
+  defp warn_on_prune_leftovers(repo, request) do
+    if branch_exists?(repo, request.branch) or File.exists?(run_worktree_path(request)) do
+      Logger.warning("harness lander: run cleanup left branch or worktree after landing run #{request.run_id}")
+    end
+
+    :ok
+  end
+
+  @spec branch_exists?(String.t(), String.t()) :: boolean()
+  defp branch_exists?(repo, branch) do
+    case Git.run(["show-ref", "--verify", "--quiet", "refs/heads/" <> branch], repo) do
+      {:ok, _output} -> true
+      {:error, _reason} -> false
+    end
+  end
+
+  @spec run_worktree_path(request()) :: String.t()
+  defp run_worktree_path(request) do
+    Path.join([Worktree.base_dir(), request.project.name, request.run_id])
   end
 
   @spec target_branch(Project.t()) :: {:ok, String.t()} | {:error, :no_target_branch}
