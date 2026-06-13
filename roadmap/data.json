@@ -12358,7 +12358,7 @@
       "id": "279",
       "phase": 19,
       "bundle": "autolanding",
-      "status": "in_progress",
+      "status": "done",
       "title": "Lander resolver regression: rebase conflict returns landing job completed WITHOUT invoking the resolver or landing (silent no-op)",
       "scores": {
         "d": 3,
@@ -12404,10 +12404,15 @@
         "elixir",
         "git"
       ],
+      "shipped_in": "fbab2b0fcdf69b4fd9d29fecfeb2c4b399f48259",
       "body": "Discovered 2026-06-13 during the task 275/276 land. Task 189 shipped a lander conflict-resolver: on a rebase conflict the lander is supposed to spawn a cross-family merge-resolver agent in the detached landing worktree, reconcile the markers, git add + rebase --continue, then ff-push; resolver failure falls back to block/re-dispatch. A still-conflicted tree must NEVER be reported as landed.\n\nWhat actually happened with 276: its approved branch conflicted with the just-landed 275 in test/harness/lander_test.exs (a clean keep-both — two independently-added test cases in the same region). Two landing-queue jobs (auto-land 1081, dispatch-reland 1082) both came back state=completed with errors=[], but 276 was not landed and the resolver agent never ran. The conflict had to be salvaged by hand. So the {:conflict,_} -> resolver branch is being bypassed and the landing job is silently completing as a no-op — the worst outcome (looks landed, isn't, and strands the approved branch so the poller re-dispatches it, see Task 278).\n\nInvestigate the lander's conflict detection + Resilience.plan/2 dispatch: does it detect the conflict at all? Does it classify the dirty rebase state as success? Is the resolver gated behind a config/eligibility check that silently no-ops? Fix so a conflict deterministically either resolves-and-lands or routes to the blocked/re-dispatch sink, and a landing job NEVER reports completed without an actual ff-push.\n",
       "created_at": "2026-06-13",
       "started_at": "2026-06-13",
+      "done_at": "2026-06-13",
       "scored_at": "2026-06-13",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781333031694-adc102e7, fbab2b0fcdf69b4fd9d29fecfeb2c4b399f48259).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     }
   ]

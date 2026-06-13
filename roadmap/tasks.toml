@@ -8376,7 +8376,7 @@ shipped_in = "ece1ed422d178e65f87727cab7e5c40197dab2ec"
 id = "279"
 phase = 19
 bundle = "autolanding"
-status = "in_progress"
+status = "done"
 title = "Lander resolver regression: rebase conflict returns landing job completed WITHOUT invoking the resolver or landing (silent no-op)"
 scores = { d = 3, b = 4, u = 4 }
 markers = ["bug"]
@@ -8395,6 +8395,11 @@ What actually happened with 276: its approved branch conflicted with the just-la
 
 Investigate the lander's conflict detection + Resilience.plan/2 dispatch: does it detect the conflict at all? Does it classify the dirty rebase state as success? Is the resolver gated behind a config/eligibility check that silently no-ops? Fix so a conflict deterministically either resolves-and-lands or routes to the blocked/re-dispatch sink, and a landing job NEVER reports completed without an actual ff-push.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781333031694-adc102e7, fbab2b0fcdf69b4fd9d29fecfeb2c4b399f48259)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-13"
 started_at = "2026-06-13"
 scored_at = "2026-06-13"
+done_at = "2026-06-13"
+shipped_in = "fbab2b0fcdf69b4fd9d29fecfeb2c4b399f48259"
