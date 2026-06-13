@@ -4019,7 +4019,7 @@
       },
       "eff": 2.33,
       "dep_layer": 0,
-      "unlocks": 11,
+      "unlocks": 12,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -4056,7 +4056,7 @@
       },
       "eff": 1.6,
       "dep_layer": 1,
-      "unlocks": 10,
+      "unlocks": 11,
       "markers": [],
       "depends_on": [
         "98"
@@ -4095,7 +4095,7 @@
       },
       "eff": 1.7,
       "dep_layer": 2,
-      "unlocks": 7,
+      "unlocks": 8,
       "markers": [],
       "depends_on": [
         "99"
@@ -4134,7 +4134,7 @@
       },
       "eff": 1.4,
       "dep_layer": 3,
-      "unlocks": 6,
+      "unlocks": 7,
       "markers": [],
       "depends_on": [
         "100"
@@ -7902,7 +7902,7 @@
       },
       "eff": 1.17,
       "dep_layer": 4,
-      "unlocks": 0,
+      "unlocks": 1,
       "markers": [],
       "depends_on": [
         101
@@ -12294,6 +12294,113 @@
       "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781329708657-858e6f13, 45a941e3bdde4d0a5dcac52a44efdd7fa2ada78a).",
       "delivered_by": "codex",
       "verified": true,
+      "cross_repo": []
+    },
+    {
+      "id": "278",
+      "phase": 19,
+      "bundle": "autolanding",
+      "status": "pending",
+      "title": "Poller double-dispatch guard: skip a pending task that already has a live/queued run (mantra-clean dedup, not a re-dispatch)",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 3
+      },
+      "eff": 1.17,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "Before enqueueing a Run.Worker job for a pending task, the poller skips it when a run for the SAME {project_name, item_id} is already live (Harness.Run.Registry / supervisor-list_runs) OR queued/executing on the project's Oban queue (an available/executing job with that run target). This is a mechanical COUNT-then-skip (mantra-clean: count existing runs, do not start another), never a judgment about run quality.",
+        "Root cause to fix (observed 2026-06-13): task 276's land-conflict reverted it to pending; the cron poller ticked twice before roadmap-mark_in_progress wrote back, so it dispatched two fresh implementer runs (run-1781330597715-52cea0a7 + run-1781330694166-6fb36d58, ~97s apart) that re-implemented already-approved work. The mark_in_progress writeback is too slow to be the only guard — the dedup must consult LIVE run/Oban state, not just the rmap status field.",
+        "The guard keys on {project_name, item_id} (the dispatch identity), not run_id (each re-dispatch mints a new run_id, so run_id can't dedup). Document which live-state source is authoritative (Registry vs Oban queue introspection) in a comment.",
+        "A genuinely failed/cancelled prior run (settled, no live process, task legitimately back to pending) is STILL dispatchable — the guard blocks only concurrent duplicates, never a sequential retry of a settled task. Assert both: two ticks within one in-flight window enqueue exactly once; a tick after the prior run settled enqueues again.",
+        "Tests (no Process.sleep; assert specific enqueue counts/Oban job state; @spec on every new def AND defp): simulate two poller ticks for the same pending task with a live run present -> exactly one enqueue; same task with the prior run settled -> enqueues; a different pending task is unaffected. mix precommit.full green; coverage >= 80% on the changed modules."
+      ],
+      "out_of_scope": [
+        "Changing how mark_in_progress writes back (that is a latency optimization, not the fix — the guard must not DEPEND on writeback speed).",
+        "Any global cross-queue concurrency cap (out of scope; open-source Oban has none and this guard is per-task identity, not a global limiter).",
+        "The lander-side resolver regression (separate task) — this task is purely the poller-side duplicate-dispatch guard."
+      ],
+      "files_to_modify": [
+        "lib/harness/cron/roadmap_poller.ex"
+      ],
+      "touches": [
+        "lib/harness/cron/roadmap_poller.ex",
+        "lib/harness/cron/orchestrator.ex",
+        "lib/harness/cron/pending_dispatch.ex",
+        "lib/harness/run/worker.ex",
+        "test/harness/cron/roadmap_poller_test.exs"
+      ],
+      "domains": [
+        "otp",
+        "elixir",
+        "oban"
+      ],
+      "body": "Discovered 2026-06-13 during the task 275/276 land. The cron RoadmapPoller gates dispatch on queue-headroom + adapter availability (Task 51) but NOT on 'is this exact task already being worked.' When a task is briefly pending (e.g. a land-conflict reverted it, or a cancelled run settled it back) and two cron ticks fall inside the window before mark_in_progress writes back, BOTH ticks see pending and each enqueues a fresh implementer run. Result: two concurrent runs re-implementing the same approved task = pure token waste (observed: 276 dispatched twice, both cancelled manually).\n\nThe fix is a mechanical dedup at enqueue time: count whether a live (Harness.Run.Registry) or queued/executing (Oban) run already targets {project_name, item_id}; if so, skip this tick's enqueue for that task. This is counting facts, not judging them — fully mantra-clean. Keying on {project, item_id} (not run_id) is essential because every re-dispatch mints a new run_id. The guard must NOT rely on the rmap status field alone (that is exactly the slow-writeback signal that failed here) — it consults live runtime/Oban state.\n",
+      "created_at": "2026-06-13",
+      "scored_at": "2026-06-13",
+      "cross_repo": []
+    },
+    {
+      "id": "279",
+      "phase": 19,
+      "bundle": "autolanding",
+      "status": "pending",
+      "title": "Lander resolver regression: rebase conflict returns landing job completed WITHOUT invoking the resolver or landing (silent no-op)",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 1.33,
+      "dep_layer": 5,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [
+        189
+      ],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "Reproduce + fix the silent no-op: a rebase conflict during land MUST route to the resolver path (Harness.Lander.Resolver, Task 189) OR, on resolver failure/disabled, to the block/re-dispatch resilience path — it must NEVER return the Oban landing job as state=completed with errors=[] while the run stays unlanded and the task stays in_progress. A landing job that did not land is not 'completed'.",
+        "Root cause to find (observed 2026-06-13): task 276 approved on branch harness/run-1781328687948-38d9a1d8, conflicted on test/harness/lander_test.exs against the just-landed task 275 (lander.ex auto-merged; the test file had a real keep-both content conflict). BOTH the auto-land job (1081) and a dispatch-reland job (1082) returned state=completed, errors=[], yet 276 never landed (c865fe7 not an ancestor of origin/development) and the resolver was never invoked. It was salvaged manually (keep-both) and ff-pushed as 390c3c6. Determine why the {:conflict,_} -> {:resolve,...} branch in Resilience.plan/2 (or its lander caller) did not fire.",
+        "If the resolver fired but failed silently, the fallback to block/re-dispatch must engage and the task must NOT be left in_progress with a stranded approved branch (which then triggers the poller double-dispatch in Task 278).",
+        "Tests (no Process.sleep; assert specific job outcome + branch/ancestry state; @spec on every new def AND defp): a land that hits a real rebase conflict either lands via resolver (branch becomes ancestor of target) or routes to blocked/re-dispatch — assert it is NEVER reported completed-but-unlanded; a resolver-disabled conflict routes to the resilience fallback, not a silent completion. mix precommit.full green; coverage >= 80% on lander.ex + resilience.ex."
+      ],
+      "out_of_scope": [
+        "Re-implementing the resolver agent itself (Task 189 shipped it; this task fixes why the conflict path bypassed it).",
+        "The poller-side duplicate-dispatch guard (Task 278) — although this regression is what stranded 276 and fed the double-dispatch, the poller guard is a separate change.",
+        "Changing the keep-both default resolution policy."
+      ],
+      "files_to_modify": [
+        "lib/harness/lander.ex",
+        "lib/harness/lander/resilience.ex"
+      ],
+      "touches": [
+        "lib/harness/lander.ex",
+        "lib/harness/lander/resilience.ex",
+        "lib/harness/lander/resolver.ex",
+        "lib/harness/lander/worker.ex",
+        "test/harness/lander_test.exs",
+        "test/harness/lander/resilience_test.exs"
+      ],
+      "domains": [
+        "otp",
+        "elixir",
+        "git"
+      ],
+      "body": "Discovered 2026-06-13 during the task 275/276 land. Task 189 shipped a lander conflict-resolver: on a rebase conflict the lander is supposed to spawn a cross-family merge-resolver agent in the detached landing worktree, reconcile the markers, git add + rebase --continue, then ff-push; resolver failure falls back to block/re-dispatch. A still-conflicted tree must NEVER be reported as landed.\n\nWhat actually happened with 276: its approved branch conflicted with the just-landed 275 in test/harness/lander_test.exs (a clean keep-both — two independently-added test cases in the same region). Two landing-queue jobs (auto-land 1081, dispatch-reland 1082) both came back state=completed with errors=[], but 276 was not landed and the resolver agent never ran. The conflict had to be salvaged by hand. So the {:conflict,_} -> resolver branch is being bypassed and the landing job is silently completing as a no-op — the worst outcome (looks landed, isn't, and strands the approved branch so the poller re-dispatches it, see Task 278).\n\nInvestigate the lander's conflict detection + Resilience.plan/2 dispatch: does it detect the conflict at all? Does it classify the dirty rebase state as success? Is the resolver gated behind a config/eligibility check that silently no-ops? Fix so a conflict deterministically either resolves-and-lands or routes to the blocked/re-dispatch sink, and a landing job NEVER reports completed without an actual ff-push.\n",
+      "created_at": "2026-06-13",
+      "scored_at": "2026-06-13",
       "cross_repo": []
     }
   ]
