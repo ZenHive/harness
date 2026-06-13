@@ -12134,6 +12134,112 @@
       "delivered_by": "codex",
       "verified": true,
       "cross_repo": []
+    },
+    {
+      "id": "275",
+      "phase": 19,
+      "bundle": "autolanding",
+      "status": "pending",
+      "title": "Lander prunes the run branch + worktree after a successful land (stop the harness/<run-id> + worktree accumulation)",
+      "scores": {
+        "d": 2,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 1.5,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "After a successful ff-push + writeback (the SAME success path that enqueues the audit), the lander deletes the local `harness/<run-id>` branch AND removes the implementer run worktree at `<worktrees_root>/.harness/<project>/<run-id>` (the dir Harness.Run created for the implementer; NOT the lander's own reusable detached `landing/` worktree, which must survive).",
+        "Prune is best-effort and ordered AFTER the push succeeds: a prune failure is logged (Logger.warning, same style as persist_landed_sha/writeback) and NEVER un-lands the merge or raises. The push is the point of no return; pruning is cleanup.",
+        "Prune fires ONLY on a confirmed successful land. The conflict / blocked / resolver-failure / land-cap paths retain the branch + worktree unchanged (dispatch-reland still needs them) — assert a rebase-conflict run keeps both.",
+        "Guard against pruning something a live run still owns: the branch is only deleted when its run is settled/landed (no in-flight Harness.Run for that run_id). Use the existing supervisor/registry check or the post-land invariant; document which in a comment.",
+        "Tests (no Process.sleep; assert specific filesystem/branch state; @spec on every new def AND defp): a happy-path land removes branch + run worktree and keeps the lander's reusable worktree; a conflict/blocked land retains both; a prune failure is swallowed (land still reported success). mix precommit.full green; coverage >= 80% on lander.ex."
+      ],
+      "out_of_scope": [
+        "Touching the landed_sha record writeback (that is Task 276 — this task is purely git/fs cleanup).",
+        "Remote branch deletion (harness only ff-pushes commits to <target>; it never pushes the harness/<run-id> branch to origin, so there is nothing remote to prune).",
+        "A periodic sweeper for already-accumulated orphans — this fixes the going-forward leak; a one-off backfill of pre-existing orphans is manual (already done for rmap on 2026-06-13)."
+      ],
+      "files_to_modify": [
+        "lib/harness/lander.ex"
+      ],
+      "touches": [
+        "lib/harness/lander.ex",
+        "lib/harness/worktree.ex",
+        "lib/harness/git.ex",
+        "test/harness/lander_test.exs"
+      ],
+      "domains": [
+        "otp",
+        "elixir",
+        "git"
+      ],
+      "body": "Discovered 2026-06-13: the dashboard's \"unmerged runs\" list and the on-disk worktree dir both accumulate because the lander never prunes after a successful land. rmap had 31 stale `harness/run-*` branches and ~18 orphaned implementer worktrees under `~/_DATA/worktrees/.harness/rmap/`, all for runs that had cleanly landed (rebased copy on `development`). The branch is INTENTIONALLY retained after a run *settles* so dispatch-reland can recover an approved-unlanded run — but once the run has actually LANDED, recovery is moot and the branch + its implementer worktree are pure litter.\n\nThe fix lives in the lander because the lander is the only component that knows the land succeeded. After the ff-push + writeback (the same success path that calls enqueue_audit/3 in lib/harness/lander.ex ~line 350-399), delete the local `harness/<run-id>` branch and `git worktree remove` the implementer run worktree. Mirror the best-effort discipline already used for persist_landed_sha and the rmap writeback: log on failure, never un-land.\n\nCRITICAL distinction the implementer must get right: there are TWO worktrees per landed run — (1) the implementer run worktree `<root>/.harness/<project>/<run-id>` (created by Harness.Run, this is the one to remove) and (2) the lander's OWN reusable detached worktree (the `landing/` dir it rebases in, which must persist for the next land). Remove only (1).\n",
+      "created_at": "2026-06-13",
+      "scored_at": "2026-06-13",
+      "cross_repo": []
+    },
+    {
+      "id": "276",
+      "phase": 19,
+      "bundle": "autolanding",
+      "status": "pending",
+      "title": "Harden landed_sha persistence: lander verify-after-write + mechanical reconcile so a landed run never shows as phantom-unmerged in the dashboard",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 1.33,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "Lander verify-after-write: after `ResultStore.mark_landed(run_id, sha)` on the success path, re-read the record and if `landed_sha` is still nil, retry once; a still-failing write is logged (never un-lands). Root cause is a rare lost write — a settle-time full-record persist racing the lander's mark_landed and clobbering landed_sha back to nil (observed as a 1-in-231 singleton: run-1781317513615-1e03e688 landed as e8312bb but recorded landed_sha=nil).",
+        "Mechanical reconcile (mantra-clean — a git-ancestry COUNT, not judgment): a pure function that, for a done+approve run record with landed_sha == nil, sets landed_sha when the run's delivery is provably on the project's target_branch — i.e. `git merge-base --is-ancestor` of the run's landed commit (or the task's rmap shipped_in) against origin/<target>. It only fills a fact already true on disk; it never decides whether work is 'good' or 'should land'.",
+        "Wire the reconcile into the dashboard history load (lib/harness/dashboard/live.ex, where history_all / landed_entry? is computed) so a phantom-unmerged landed run self-heals on mount/restream without a manual ResultStore.mark_landed call. Cheap: only runs for records with landed_sha == nil, and short-circuits when the project has no local source / target_branch.",
+        "landed_entry?/2 semantics are unchanged (landed_sha != nil); this task only makes landed_sha reliably reflect reality, it does NOT change how the dashboard classifies merged vs unmerged.",
+        "Tests (no Process.sleep; assert specific values; @spec on every new def AND defp): a simulated lost write (mark_landed clobbered by a later persist) is recovered by verify-after-write; the reconcile fills landed_sha for a record whose commit IS an ancestor of target and leaves it nil when it is NOT (genuinely-unlanded approved run stays unmerged); dashboard history of a phantom-unmerged landed run shows it as merged after reconcile. mix precommit.full green; coverage >= 80% on the changed modules."
+      ],
+      "out_of_scope": [
+        "Branch/worktree pruning (Task 275).",
+        "Re-landing genuinely-unlanded approved runs — those legitimately show as unmerged and are recovered via dispatch-reland; the reconcile must NOT mark them landed (assert this).",
+        "Any new judgment in harness — the reconcile is strictly a mechanical ancestry check that backfills a fact; it does not re-decide approval, success, or land-worthiness."
+      ],
+      "files_to_modify": [
+        "lib/harness/lander.ex",
+        "lib/harness/result_store.ex"
+      ],
+      "touches": [
+        "lib/harness/lander.ex",
+        "lib/harness/result_store.ex",
+        "lib/harness/result_store/postgres.ex",
+        "lib/harness/result_store/memory.ex",
+        "lib/harness/dashboard/live.ex",
+        "test/harness/lander_test.exs",
+        "test/harness/result_store_test.exs"
+      ],
+      "domains": [
+        "otp",
+        "elixir",
+        "ecto"
+      ],
+      "body": "Discovered 2026-06-13: the operator saw run-1781317513615-1e03e688 stuck as \"unmerged\" in the /harness dashboard even though it had landed (commit e8312bb on development, rmap task 48 done --verified --shipped-in e8312bb). The dashboard classifies unmerged purely off the persisted run-record field `status.landed_sha` (lib/harness/dashboard/live.ex landed_entry?/2 = landed_sha != nil) — NOT off git branches. This run's record had landed_sha = nil despite the lander having ff-pushed it.\n\nThe lander DOES call ResultStore.mark_landed/2 on the success path (lib/harness/lander.ex persist_landed_sha/2 ~line 370), but it is best-effort: a failed/clobbered write is only logged. Across 231 done+approve records exactly one had landed_sha=nil, so this is a rare lost write — most likely the run gen_statem's settle-time full-record persist racing the lander's read-modify-write and overwriting landed_sha back to nil. Manually backfilled via ResultStore.mark_landed on the live node on 2026-06-13; this task makes it self-healing.\n\nTwo layers: (1) verify-after-write in the lander (re-read, retry once) closes the common race; (2) a mechanical reconcile on the dashboard history load backfills landed_sha whenever the run's landed commit / task shipped_in is provably an ancestor of origin/<target> — so even a write lost for any reason heals on the next dashboard view. Both are mantra-clean: counting whether a commit is on a branch is mechanics, not judgment. The reconcile must be careful NOT to mark genuinely-unlanded approved runs (no ancestor on target) as landed — those stay unmerged and recover via dispatch-reland.\n",
+      "created_at": "2026-06-13",
+      "scored_at": "2026-06-13",
+      "cross_repo": []
     }
   ]
 }
