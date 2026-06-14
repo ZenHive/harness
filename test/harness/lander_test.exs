@@ -448,7 +448,8 @@ defmodule Harness.LanderTest do
       File.mkdir_p!(Path.dirname(tasks_path))
 
       roadmap_before =
-        roadmap_toml("1", "Manual reland task")
+        "1"
+        |> roadmap_toml("Manual reland task")
         |> String.replace(~s(status = "pending"), ~s(status = "in_progress"), global: false)
 
       File.write!(tasks_path, roadmap_before)
