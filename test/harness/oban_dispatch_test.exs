@@ -3,6 +3,7 @@ defmodule Harness.ObanDispatchTest do
   use ExUnit.Case, async: false
 
   import Ecto.Query, only: [from: 2]
+  import ExUnit.CaptureLog
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Harness.AgentAdapter.Claude
@@ -19,6 +20,7 @@ defmodule Harness.ObanDispatchTest do
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
   alias Harness.ResultStore.Memory
+  alias Harness.ResultStoreContract
   alias Harness.Roadmap.Item
   alias Harness.Run.Result
   alias Harness.Run.Supervisor, as: RunSupervisor
@@ -1278,6 +1280,89 @@ defmodule Harness.ObanDispatchTest do
       refute second_job.id == first_job.id
       assert second_job.conflict? == false
       assert length(run_jobs(project, item.id)) == 2
+    end
+
+    test "settled approved unlanded run with retained branch returns existing run id without duplicate work" do
+      start_supervised!(Harness.Repo)
+      :ok = Sandbox.checkout(Harness.Repo)
+
+      start_dispatch_oban!()
+
+      repo = GitFixture.init_repo()
+      project = ProjectFixture.from_repo(repo, name: "settled-unlanded")
+      item = item("287", :claude)
+      run_id = "run-settled-unlanded"
+
+      Application.put_env(:harness, :result_store, {Memory, root: GitFixture.tmp_base(name: "settled-store")})
+
+      GitFixture.git!(repo, ["branch", "harness/#{run_id}"])
+
+      assert :ok =
+               ResultStore.record_run(
+                 ResultStoreContract.log_record(
+                   run_id: run_id,
+                   task_id: item.id,
+                   project_name: project.name,
+                   landed_sha: nil
+                 )
+               )
+
+      log =
+        capture_log(fn ->
+          assert {:ok, ^run_id, %Oban.Job{} = existing} = Worker.enqueue(project, item, Claude)
+          assert existing.conflict? == true
+        end)
+
+      assert log =~ "dispatch-reland"
+      assert [] = run_jobs(project, item.id)
+      assert [] = RunSupervisor.list_runs()
+    end
+
+    test "landed or branchless settled runs do not block fresh dispatch" do
+      start_supervised!(Harness.Repo)
+      :ok = Sandbox.checkout(Harness.Repo)
+
+      start_dispatch_oban!()
+
+      repo = GitFixture.init_repo()
+      project = ProjectFixture.from_repo(repo, name: "settled-fresh-dispatch")
+      item = item("287b", :claude)
+
+      Application.put_env(:harness, :result_store, {Memory, root: GitFixture.tmp_base(name: "settled-fresh-store")})
+
+      GitFixture.git!(repo, ["branch", "harness/run-already-landed"])
+
+      assert :ok =
+               ResultStore.record_run(
+                 ResultStoreContract.log_record(
+                   run_id: "run-already-landed",
+                   task_id: item.id,
+                   project_name: project.name,
+                   landed_sha: "abc1234"
+                 )
+               )
+
+      assert :ok =
+               ResultStore.record_run(
+                 ResultStoreContract.log_record(
+                   run_id: "run-branch-deleted",
+                   task_id: item.id,
+                   project_name: project.name,
+                   landed_sha: nil
+                 )
+               )
+
+      assert {:ok, fresh_run_id, fresh_job} = Worker.enqueue(project, item, Claude)
+
+      refute fresh_run_id in ["run-already-landed", "run-branch-deleted"]
+      assert fresh_job.conflict? == false
+      assert [%Oban.Job{id: fresh_job_id}] = run_jobs(project, item.id)
+      assert fresh_job.id == fresh_job_id
+      assert [] = RunSupervisor.list_runs()
+
+      fresh_job
+      |> Ecto.Changeset.change(state: "completed")
+      |> Harness.Repo.update!()
     end
   end
 

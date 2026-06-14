@@ -26,6 +26,7 @@ defmodule Harness.Run.Worker do
 
   alias Harness.AgentRegistry
   alias Harness.Dashboard.RunFeed
+  alias Harness.Git
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
@@ -83,12 +84,18 @@ defmodule Harness.Run.Worker do
   """
   @spec enqueue(Project.t(), Item.t(), module(), keyword()) :: {:ok, String.t(), Oban.Job.t()} | {:error, term()}
   def enqueue(%Project{} = project, %Item{} = item, adapter, opts \\ []) when is_atom(adapter) and is_list(opts) do
-    {run_id, changeset} = new_dispatch_job(project, item, adapter, opts)
+    case recoverable_settled_run(project, item.id, adapter, opts) do
+      {:ok, run_id, job} ->
+        {:ok, run_id, job}
 
-    case Harness.Oban.insert(changeset) do
-      {:ok, %Oban.Job{conflict?: true} = job} -> return_existing_run(project, item.id, job)
-      {:ok, job} -> {:ok, run_id, job}
-      {:error, _reason} = error -> error
+      :error ->
+        {run_id, changeset} = new_dispatch_job(project, item, adapter, opts)
+
+        case Harness.Oban.insert(changeset) do
+          {:ok, %Oban.Job{conflict?: true} = job} -> return_existing_run(project, item.id, job)
+          {:ok, job} -> {:ok, run_id, job}
+          {:error, _reason} = error -> error
+        end
     end
   end
 
@@ -567,6 +574,84 @@ defmodule Harness.Run.Worker do
          :error <- live_run_id(project_name, item_id) do
       {:error, {:missing_conflict_run_id, project_name, item_id}}
     end
+  end
+
+  @spec recoverable_settled_run(Project.t(), String.t(), module(), keyword()) ::
+          {:ok, String.t(), Oban.Job.t()} | :error
+  defp recoverable_settled_run(%Project{} = project, item_id, adapter, opts)
+       when is_binary(item_id) and is_atom(adapter) and is_list(opts) do
+    with :error <- live_run_id(project.name, item_id),
+         false <- Harness.Oban.unfinished_run_job?(project, item_id),
+         {:ok, %LogRecord{} = record} <- recoverable_run_record(project, item_id) do
+      log_reland_steer(project.name, item_id, record.run_id)
+      {:ok, record.run_id, existing_settled_job(project, item_id, record.run_id, adapter, opts)}
+    else
+      _not_recoverable -> :error
+    end
+  end
+
+  @spec recoverable_run_record(Project.t(), String.t()) :: {:ok, LogRecord.t()} | :error
+  defp recoverable_run_record(%Project{} = project, item_id) do
+    case ResultStore.list_run_records(project_name: project.name, task_id: item_id) do
+      {:ok, records} -> find_recoverable_record(records, project, item_id)
+      {:error, reason} -> log_recoverable_lookup_error(project.name, item_id, reason)
+    end
+  end
+
+  @spec find_recoverable_record([LogRecord.t()], Project.t(), String.t()) :: {:ok, LogRecord.t()} | :error
+  defp find_recoverable_record(records, %Project{} = project, item_id) do
+    Enum.find_value(records, :error, fn
+      %LogRecord{run_id: run_id, task_id: ^item_id, state: :done, verdict: :approve, landed_sha: nil} = record ->
+        if retained_run_branch?(project, run_id), do: {:ok, record}, else: false
+
+      _other ->
+        false
+    end)
+  end
+
+  @spec retained_run_branch?(Project.t(), String.t()) :: boolean()
+  defp retained_run_branch?(%Project{} = project, run_id) when is_binary(run_id) do
+    with {:ok, repo} <- Project.local_repo_path(project),
+         {:ok, _output} <- Git.run(["rev-parse", "--verify", "--quiet", "refs/heads/harness/#{run_id}^{commit}"], repo) do
+      true
+    else
+      _not_present -> false
+    end
+  end
+
+  @spec existing_settled_job(Project.t(), String.t(), String.t(), module(), keyword()) :: Oban.Job.t()
+  defp existing_settled_job(%Project{} = project, item_id, run_id, adapter, opts) do
+    args =
+      Harness.Oban.put_env_arg(
+        %{project_name: project.name, item_id: item_id, adapter_module: Atom.to_string(adapter), run_id: run_id},
+        opts
+      )
+
+    %Oban.Job{
+      state: "completed",
+      queue: Harness.Oban.queue_name(project),
+      worker: Oban.Worker.to_string(__MODULE__),
+      args: args,
+      meta: @dispatch_meta,
+      conflict?: true
+    }
+  end
+
+  @spec log_reland_steer(String.t(), String.t(), String.t()) :: :ok
+  defp log_reland_steer(project_name, item_id, run_id) do
+    Logger.warning(
+      "harness run worker: refusing duplicate dispatch for #{project_name}/#{item_id}; " <>
+        "approved unlanded run #{run_id} still has branch harness/#{run_id}; use dispatch-reland"
+    )
+  end
+
+  @spec log_recoverable_lookup_error(String.t(), String.t(), term()) :: :error
+  defp log_recoverable_lookup_error(project_name, item_id, reason) do
+    Logger.warning(
+      "harness run worker: settled-run idempotency lookup failed for #{project_name}/#{item_id}: #{inspect(reason)}"
+    )
+
+    :error
   end
 
   @spec arg_run_id(map()) :: {:ok, String.t()} | :error
