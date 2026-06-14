@@ -40,36 +40,13 @@ Four setup steps the consuming repo needs:
 
 **2. Register `myapp` with harness.** Three paths:
 
-- **Host-local (preferred for personal projects):** create `~/_DATA/code/harness/config/dev.local.exs` (gitignored — template at `config/dev.local.exs.example`), then restart `iex -S mix`. The local file REPLACES the default `:projects` list, so include the `"harness"` self-entry alongside your own:
+- **Live dashboard (preferred):** open `http://localhost:4018/harness/settings` and add or edit the project there. The dashboard writes the Postgres project registry directly; no BEAM restart is needed.
 
-  ```elixir
-  # ~/_DATA/code/harness/config/dev.local.exs
-  import Config
+- **Seed script (fresh DB / reset path):** copy `priv/repo/seeds.exs.example` to `priv/repo/seeds.exs`, edit it, then run `mix harness.seed` in the harness checkout. The seed script upserts Postgres via `Harness.ProjectRegistry.upsert/1`; editing it alone does nothing to a running node. For a running node, use the dashboard or call `Harness.ProjectRegistry.upsert/1` from IEx.
 
-  config :harness, :projects, [
-    [
-      name: "harness",
-      source: {:local, Path.expand("..", __DIR__)},
-      check_command: "mix precommit.full",
-      roadmap_path: Path.expand("..", __DIR__)
-    ],
-    [
-      name: "myapp",
-      source: {:local, "/Users/efries/_DATA/code/myapp"},
-      # `check_command` is a free-text hint handed to the reviewer AI — the
-      # reviewer runs the project's checks itself and judges the output;
-      # harness never executes this command. For a multi-language monorepo,
-      # just describe both: "cd rust && cargo test; cd elixir && mix precommit".
-      check_command: "mix precommit",
-      roadmap_path: "/Users/efries/_DATA/code/myapp",
-      concurrency_cap: 2
-    ]
-  ]
-  ```
+- **IEx / MCP ad-hoc:** dispatch `Harness.ProjectRegistry.upsert/1` via IEx or the `project_eval` escape hatch (`mcp__harness_eval__project_eval`, wired in step 3). With Postgres enabled, the upsert persists across BEAM restarts.
 
-- **Shared / committed:** if the project belongs in the harness repo's tracked config (every contributor should see it), add the same entry to `config/dev.exs` instead and commit. Use this only when the registration is genuinely shared — host-specific paths belong in `dev.local.exs`.
-
-- **Ad-hoc (one-shot):** dispatch `Harness.ProjectRegistry.register/1` via the `project_eval` escape hatch (`mcp__harness_eval__project_eval`, wired in step 3). Cleared on next BEAM restart — fine for experiments, not for ongoing work.
+`check_command` is a free-text hint handed to the reviewer AI — the reviewer runs the project's checks itself and judges the output; harness never executes this command. For a multi-language monorepo, just describe both: `"cd rust && cargo test; cd elixir && mix precommit"`.
 
 **3. Add harness's MCP endpoints to `myapp`'s `.mcp.json`.** This is the load-bearing step that wires the driver (you) to harness. Add the native server (your primary surface) and, optionally, the eval escape hatch — alongside `myapp`'s own Tidewave (if it has one):
 
@@ -579,7 +556,7 @@ true = Harness.AgentAdapter.supports?(Harness.AgentAdapter.Pi, {:cost_tier, :fre
 - **Don't confuse the two MCP endpoints.** `mcp__tidewave__project_eval` runs inside *your repo's* BEAM (useful for inspecting your app's runtime state); `mcp__harness__project_eval` runs inside *harness's* `:4018` BEAM (this is the dispatch surface). Sending a `Harness.Run.Supervisor.start_run/4` call to your own Tidewave will fail with `undefined function` — harness modules aren't loaded there.
 - **`.mcp.json` changes need a Claude Code restart.** New MCP servers aren't hot-reloaded into the running session — restart after editing.
 - **`File.cwd!/0` is harness's cwd, not yours.** Inside an `mcp__harness__project_eval` snippet, any relative path resolves against `~/_DATA/code/harness/`, not `~/_DATA/code/myapp/`. Pass `:project` to `Roadmap.ingest/2` (carries `roadmap_path`), and pass explicit `cwd:` to `AuditReview.grade_fix/1` and ad-hoc `Driver.run/3` calls.
-- **Project registration persists across BEAM restarts only via `config/dev.exs` or `config/dev.local.exs`.** A runtime `ProjectRegistry.register/1` is gone on the next `iex -S mix` boot. For ongoing work, edit one of those files (host-local registrations belong in the gitignored `dev.local.exs`) and ask the operator to restart.
+- **Project registration persists across BEAM restarts via Postgres.** Use `/harness/settings` for a running node, or copy/edit `priv/repo/seeds.exs.example` to `priv/repo/seeds.exs` and run `mix harness.seed` for a fresh/reset DB. `config :harness, :projects` is seed-only compatibility and is shadowed by the Postgres table when repo persistence is enabled.
 
 **General (apply to both contexts):**
 
@@ -618,7 +595,7 @@ Changes that require an update to this skill:
 - New adapters or capability declarations
 - Changes to the renderable-vs-executable contract (`@valid_agents`, the adapter registry) or recommended dispatch paths
 - New result shapes or verdict semantics
-- **Changes to project-registration config shape** (`config :harness, :projects, [...]`)
+- **Changes to project-registration persistence or seed shape** (`/harness/settings`, `priv/repo/seeds.exs.example`, `Harness.ProjectRegistry.upsert/1`)
 - **Changes to the `.mcp.json` shape Tidewave expects, or harness's dashboard port (`:4018`)**
 - New or changed `Harness.Chat.Backend` callbacks, new backends, or changes to `Harness.Chat.Session`'s public surface (`start_link/2`, `user_message/3`, `snapshot/1`, `cancel/1`)
 - Changes to chat persistence (`Harness.Chat.Store` `save/3` / `load/2` / `list/1` shapes, the `config :harness, :chat_store` key), `Harness.Chat.Supervisor.list_sessions/0`, or the `/harness/chat` `:index` route

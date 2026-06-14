@@ -7,7 +7,7 @@ headless agent in an isolated worktree, then gated by a cross-family reviewer AI
 
 1. **Resolve the project.** Call `project_registry__list` to get the registered project
    names. Confirm the project the operator means is registered; if not, stop and tell them to
-   register it (`config/dev.local.exs` + restart, or `project_registry__register`).
+   register it (`/harness/settings`, `mix harness.seed`, or `project_registry__register`).
 
 2. **Pick the task.** If the operator named an id, skip to step 3. Otherwise browse:
    - `roadmap__list` with `project_name` (optionally `status: "pending"`) to see candidates, or

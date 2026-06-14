@@ -57,9 +57,8 @@ harness-*.tar
 .claude/scheduled_tasks.lock
 .claude/settings.local.json
 
-# Per-host project registrations imported by config/dev.exs.
-# Template lives in config/dev.local.exs.example (tracked).
-/config/dev.local.exs
+# Per-host project seed. Template lives in priv/repo/seeds.exs.example (tracked).
+/priv/repo/seeds.exs
 
 # mise / asdf — `.tool-versions` (canonical) IS committed to pin the
 # project's Erlang/Elixir for any contributor. Variant suffixes

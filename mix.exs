@@ -159,6 +159,9 @@ defmodule Harness.MixProject do
 
   defp aliases do
     [
+      "ecto.setup": ["ecto.create", "ecto.migrate", &run_seed_if_present/1],
+      "ecto.reset": ["ecto.drop", "ecto.setup"],
+      "harness.seed": &run_seed/1,
       # See ~/.claude/includes/elixir-setup.md § Standard Aliases for the three-tier model.
       # TagTODO/TagFIXME stay on in .credo.exs for visibility (`mix credo` shows them);
       # gate excludes them so the alias fails only on real regressions, not tracked debt.
@@ -191,5 +194,15 @@ defmodule Harness.MixProject do
       "precommit.full": ["precommit", "dialyzer.json --quiet"],
       "sobelow.baseline": ["sobelow --mark-skip-all"]
     ]
+  end
+
+  defp run_seed_if_present(_args) do
+    if File.exists?("priv/repo/seeds.exs") do
+      run_seed([])
+    end
+  end
+
+  defp run_seed(_args) do
+    Mix.Task.run("run", ["priv/repo/seeds.exs"])
   end
 end

@@ -64,6 +64,13 @@ result_store = Application.get_env(:harness, :result_store)
 # Harness.Run.Worker.
 config :harness, :run, max_hold_timeout: 1_800_000
 
+# Per-host run memory ceiling. This preserves the old local 18 GB tuning without
+# hiding it in a boot-read project config file: set
+# HARNESS_RUN_MEM_THRESHOLD_GB=18 to cap each spawned agent tree at 18 GiB RSS.
+if threshold_gb = System.get_env("HARNESS_RUN_MEM_THRESHOLD_GB") do
+  config :harness, :run, mem_threshold_kb: String.to_integer(threshold_gb) * 1024 * 1024
+end
+
 if is_nil(result_store) do
   repo_enabled = Application.get_env(:harness, :repo_enabled, true)
 

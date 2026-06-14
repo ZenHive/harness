@@ -247,6 +247,8 @@ defmodule Harness.ProjectRegistry do
 
   @spec load_projects() :: [Project.t()]
   defp load_projects do
+    warn_shadowed_config_projects()
+
     config_projects = load_config_projects()
 
     if Persistence.enabled?() do
@@ -290,7 +292,7 @@ defmodule Harness.ProjectRegistry do
   @spec load_config_projects() :: %{String.t() => Project.t()}
   defp load_config_projects do
     :harness
-    |> Application.get_env(:projects, [])
+    |> configured_project_entries()
     |> Enum.reduce(%{}, fn entry, acc ->
       case build_project(entry) do
         {:ok, project} ->
@@ -302,6 +304,22 @@ defmodule Harness.ProjectRegistry do
           acc
       end
     end)
+  end
+
+  @spec warn_shadowed_config_projects() :: :ok
+  defp warn_shadowed_config_projects do
+    if Persistence.enabled?() and configured_project_entries(:harness) != [] do
+      Logger.warning(
+        "harness project registry: config projects are seed-only and shadowed by the Postgres projects table; edit projects live in /harness/settings or upsert fresh/reset databases with priv/repo/seeds.exs via mix harness.seed"
+      )
+    end
+
+    :ok
+  end
+
+  @spec configured_project_entries(atom()) :: [term()]
+  defp configured_project_entries(app) do
+    Application.get_env(app, :projects, [])
   end
 
   @spec import_missing_config_projects(%{String.t() => Project.t()}, [Project.t()]) :: :ok

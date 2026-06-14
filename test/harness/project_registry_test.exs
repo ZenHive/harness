@@ -139,6 +139,39 @@ defmodule Harness.ProjectRegistryTest do
 
       assert {:error, {:unknown_project, ^name}} = ProjectRegistry.lookup(name)
     end
+
+    test "upsert/1 inserts and replaces projects in memory when persistence is disabled" do
+      name = "volatile-upsert-#{System.unique_integer([:positive])}"
+      original = sample_project(name)
+      replacement = %{original | check_command: "mix precommit", concurrency_cap: 2}
+
+      assert :ok = ProjectRegistry.upsert(original)
+      assert {:ok, ^original} = ProjectRegistry.lookup(name)
+
+      assert :ok = ProjectRegistry.upsert(replacement)
+      assert {:ok, ^replacement} = ProjectRegistry.lookup(name)
+      assert [^replacement] = ProjectRegistry.list()
+    end
+
+    test "reload_persisted_state/0 reloads config projects when persistence is disabled" do
+      name = "volatile-reload-#{System.unique_integer([:positive])}"
+      prior = Application.get_env(:harness, :projects)
+
+      on_exit(fn -> restore_projects_env(prior) end)
+
+      Application.put_env(:harness, :projects, [
+        [
+          name: name,
+          source: {:local, "/tmp/#{name}"},
+          roadmap_path: "/tmp/#{name}/roadmap/tasks.toml",
+          concurrency_cap: 5
+        ]
+      ])
+
+      assert :ok = ProjectRegistry.reload_persisted_state()
+      assert {:ok, project} = ProjectRegistry.lookup(name)
+      assert project.concurrency_cap == 5
+    end
   end
 
   describe "upsert/1 with persisted projects and live queues" do
@@ -384,6 +417,56 @@ defmodule Harness.ProjectRegistryTest do
         end)
 
       assert log =~ "skipping invalid config entry"
+    end
+
+    test "warns when repo-enabled boot sees config projects" do
+      prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
+
+      on_exit(fn -> Application.put_env(:harness, :repo_enabled, prior_repo_enabled) end)
+
+      Application.put_env(:harness, :repo_enabled, true)
+
+      Application.put_env(:harness, :projects, [
+        [
+          name: "shadowed-config",
+          source: {:local, "/tmp/shadowed-config"},
+          roadmap_path: "/tmp/shadowed-config/roadmap/tasks.toml"
+        ]
+      ])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _state} = ProjectRegistry.init(:noargs)
+        end)
+
+      assert log =~ "config projects are seed-only"
+      assert log =~ "/harness/settings"
+      assert log =~ "mix harness.seed"
+    end
+
+    test "does not warn when repo-enabled boot has no config projects" do
+      prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
+
+      on_exit(fn -> Application.put_env(:harness, :repo_enabled, prior_repo_enabled) end)
+
+      Application.put_env(:harness, :repo_enabled, true)
+      Application.put_env(:harness, :projects, [])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _state} = ProjectRegistry.init(:noargs)
+        end)
+
+      refute log =~ "config projects are seed-only"
+    end
+  end
+
+  describe "configuration guards" do
+    test "config/dev.exs no longer declares project registrations" do
+      config = File.read!("config/dev.exs")
+
+      refute config =~ ~r/config\s+:harness,\s+:projects/
+      refute config =~ "dev.local.exs"
     end
   end
 
