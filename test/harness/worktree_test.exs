@@ -541,6 +541,61 @@ defmodule Harness.WorktreeTest do
     end
   end
 
+  describe "commit/2 — harness artifact staging (Task 282)" do
+    test "commits the source change when an untracked, gitignored .harness/ is present" do
+      # State A: the target repo gitignores `.harness/` (harness's own shape). The
+      # reviewer's verdict artifact under it must not fatal `git add` (the
+      # review_stuck bug that bounced task 281) — the source change still commits.
+      {repo, wt} = create_worktree_gitignoring_harness()
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+      write_review_artifact(wt)
+
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
+
+      files = GitFixture.git!(repo, ["ls-tree", "-r", "--name-only", wt.branch])
+      assert files =~ "delivery.txt"
+      refute files =~ ".harness"
+    end
+
+    test "excludes an untracked .harness/ dir even when the repo does not gitignore it" do
+      # State B: no gitignore for `.harness/`. `git add -A` would stage the verdict
+      # artifact; the reset step must keep it out of the commit anyway.
+      {repo, wt} = create_worktree()
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+      write_review_artifact(wt)
+
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
+
+      files = GitFixture.git!(repo, ["ls-tree", "-r", "--name-only", wt.branch])
+      assert files =~ "delivery.txt"
+      refute files =~ ".harness"
+    end
+
+    test "never commits the .harness-retained marker (not gitignored, not under .harness/)" do
+      {repo, wt} = create_worktree()
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+      File.write!(Path.join(wt.path, ".harness-retained"), "branch=#{wt.branch}\n")
+
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
+
+      files = GitFixture.git!(repo, ["ls-tree", "-r", "--name-only", wt.branch])
+      assert files =~ "delivery.txt"
+      refute files =~ ".harness-retained"
+    end
+
+    test "diff_size measures only the source change, excluding the artifact family" do
+      # Source change is exactly 2 added lines; the artifacts add 1 line each. A
+      # leak would report 4 — asserting 2 proves the whole `.harness*` family is
+      # excluded, in the gitignored state, without fataling.
+      {_repo, wt} = create_worktree_gitignoring_harness()
+      File.write!(Path.join(wt.path, "delivery.txt"), "line one\nline two\n")
+      write_review_artifact(wt)
+      File.write!(Path.join(wt.path, ".harness-retained"), "branch=#{wt.branch}\n")
+
+      assert {:ok, 2} = Worktree.diff_size(wt)
+    end
+  end
+
   describe "finish/3" do
     test "tears the worktree down on :success, keeping the branch" do
       {repo, wt} = create_worktree()
@@ -659,6 +714,26 @@ defmodule Harness.WorktreeTest do
     base = GitFixture.tmp_base()
     {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base)
     {repo, wt}
+  end
+
+  # A worktree off a parent that gitignores `.harness/` — harness's own repo
+  # shape, where an untracked verdict artifact under the dir used to fatal staging.
+  @spec create_worktree_gitignoring_harness() :: {String.t(), Worktree.t()}
+  defp create_worktree_gitignoring_harness do
+    repo = GitFixture.init_repo()
+    File.write!(Path.join(repo, ".gitignore"), ".harness/\n")
+    GitFixture.git!(repo, ["add", ".gitignore"])
+    GitFixture.git!(repo, ["commit", "-q", "-m", "gitignore harness artifacts"])
+    base = GitFixture.tmp_base()
+    {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base)
+    {repo, wt}
+  end
+
+  # The reviewer's verdict artifact, under the run-local `.harness/` dir.
+  @spec write_review_artifact(Worktree.t()) :: :ok
+  defp write_review_artifact(%Worktree{path: path}) do
+    File.mkdir_p!(Path.join(path, ".harness"))
+    File.write!(Path.join([path, ".harness", "review.json"]), ~s({"verdict":"approve"}\n))
   end
 
   defp invocation(cwd) do

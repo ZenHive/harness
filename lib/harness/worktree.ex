@@ -63,10 +63,21 @@ defmodule Harness.Worktree do
 
   # The run-local agent-artifact directory (`.harness/review.json`,
   # `.harness/audit.json`). Verdict artifacts are read by harness mechanically
-  # and must NEVER ride in the deliverable commit — every staging call excludes
-  # the directory via this pathspec pair (positive root + exclude magic).
+  # and must NEVER ride in the deliverable commit.
   @artifact_dir ".harness"
-  @stage_pathspec [".", ":(exclude)#{@artifact_dir}"]
+
+  # The full harness-managed artifact family that must never be staged into an
+  # agent commit: the verdict dir plus the run-state markers. Staging excludes it
+  # in two moves (`stage_worktree/1`): a *bare* `git add -A` — no pathspec, so a
+  # gitignored `.harness/` is silently skipped instead of fataling git's
+  # ignored-path guard (`git add` exits 1 whenever ANY explicit pathspec, even an
+  # `:(exclude)`, matches a gitignored path) — then a `git reset` that unstages
+  # this family (covering both the markers and a *non*-gitignored `.harness/`).
+  @artifact_paths [@artifact_dir, @active_marker, @retained_marker]
+
+  # The same family as exclude pathspecs, for the read-only `status`/`diff` calls
+  # that filter (rather than stage) the artifacts out of the commit measurement.
+  @stage_exclude Enum.map(@artifact_paths, &":(exclude)#{&1}")
 
   # Ignored-but-load-bearing files the parent checkout carries that the verification
   # stack relies on but that .gitignore keeps out of the worktree-add. `.sobelow-skips`
@@ -468,13 +479,31 @@ defmodule Harness.Worktree do
   defp do_commit(%__MODULE__{path: path, branch: branch}, message) do
     with :ok <- prepare_for_staging(path),
          :ok <- reconcile_head_to_branch(path, branch),
-         {:ok, _added} <- Git.run(["add", "-A", "--"] ++ @stage_pathspec, path),
-         {:ok, status} <- Git.run(["status", "--porcelain", "--"] ++ @stage_pathspec, path) do
+         {:ok, _staged} <- stage_worktree(path),
+         {:ok, status} <- Git.run(["status", "--porcelain", "--"] ++ @stage_exclude, path) do
       if String.trim(status) == "" do
         {:ok, :no_changes}
       else
         commit_staged(path, message)
       end
+    end
+  end
+
+  # Stage every agent change while keeping the harness artifact family
+  # (`@artifact_paths`) out of the index. Two moves are required, not one:
+  # `git add` exits 1 whenever an *explicit* pathspec (even an `:(exclude)` one)
+  # matches a gitignored path, so a target repo that gitignores `.harness/` (with
+  # the reviewer's `.harness/review.json` present) fatals the whole stage. A
+  # *bare* `git add -A` carries no pathspec, so git silently skips the gitignored
+  # dir instead of erroring; the follow-up `git reset` then unstages the artifact
+  # family in the other repo state — where `.harness/` is *not* gitignored and
+  # `git add -A` would otherwise stage it (and always stages the un-ignored
+  # `.harness-retained`/`.harness-active` markers). `reset` never errors on an
+  # absent/unstaged path, so the call is a no-op when no artifact was staged.
+  @spec stage_worktree(String.t()) :: {:ok, String.t()} | {:error, error()}
+  defp stage_worktree(path) do
+    with {:ok, _added} <- Git.run(["add", "-A"], path) do
+      Git.run(["reset", "-q", "--" | @artifact_paths], path)
     end
   end
 
@@ -509,8 +538,8 @@ defmodule Harness.Worktree do
   @spec diff_size(t()) :: {:ok, non_neg_integer()} | {:error, error()}
   def diff_size(%__MODULE__{path: path}) do
     with :ok <- prepare_for_staging(path),
-         {:ok, _added} <- Git.run(["add", "-A", "--"] ++ @stage_pathspec, path),
-         {:ok, numstat} <- Git.run(["diff", "--cached", "--numstat", "HEAD", "--"], path) do
+         {:ok, _staged} <- stage_worktree(path),
+         {:ok, numstat} <- Git.run(["diff", "--cached", "--numstat", "HEAD", "--"] ++ @stage_exclude, path) do
       {:ok, parse_numstat_size(numstat)}
     end
   end
@@ -525,7 +554,7 @@ defmodule Harness.Worktree do
   @spec diff_size_since(t(), String.t()) :: {:ok, non_neg_integer()} | {:error, error()}
   def diff_size_since(%__MODULE__{path: path}, ref) when is_binary(ref) do
     with :ok <- assert_worktree_dir(path),
-         {:ok, numstat} <- Git.run(["diff", "--numstat", "#{ref}..HEAD", "--"] ++ @stage_pathspec, path) do
+         {:ok, numstat} <- Git.run(["diff", "--numstat", "#{ref}..HEAD", "--"] ++ @stage_exclude, path) do
       {:ok, parse_numstat_size(numstat)}
     end
   end
