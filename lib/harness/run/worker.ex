@@ -621,20 +621,11 @@ defmodule Harness.Run.Worker do
 
   @spec existing_settled_job(Project.t(), String.t(), String.t(), module(), keyword()) :: Oban.Job.t()
   defp existing_settled_job(%Project{} = project, item_id, run_id, adapter, opts) do
-    args =
-      Harness.Oban.put_env_arg(
-        %{project_name: project.name, item_id: item_id, adapter_module: Atom.to_string(adapter), run_id: run_id},
-        opts
-      )
+    {_run_id, changeset} = new_dispatch_job(project, item_id, adapter, Keyword.put(opts, :run_id, run_id))
+    conflict? = true
+    %Oban.Job{} = job = Ecto.Changeset.apply_changes(changeset)
 
-    %Oban.Job{
-      state: "completed",
-      queue: Harness.Oban.queue_name(project),
-      worker: Oban.Worker.to_string(__MODULE__),
-      args: args,
-      meta: @dispatch_meta,
-      conflict?: true
-    }
+    %Oban.Job{job | state: "completed", conflict?: conflict?}
   end
 
   @spec log_reland_steer(String.t(), String.t(), String.t()) :: :ok
