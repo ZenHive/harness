@@ -8606,3 +8606,32 @@ started_at = "2026-06-14"
 scored_at = "2026-06-14"
 done_at = "2026-06-14"
 shipped_in = "306016c240ddc5985fecf35f6f83db37fa437e09"
+
+[[task]]
+id = "286"
+phase = 19
+bundle = "resilience"
+status = "pending"
+title = "Dispatch in-flight idempotency: a second dispatch of {project, task_id} with a non-terminal run must return the existing run, not spawn a duplicate"
+scores = { d = 2, b = 4, u = 3 }
+acceptance_criteria = ["Both Oban enqueue sites — Harness.Run.Worker.enqueue/4 (worker.ex ~line 84) and Harness.Batch.enqueue_item/3 (batch.ex ~line 253) — set a `unique:` option on RunWorker.new/1 keyed on the job args identifying the task ({project_name, item_id}) over the NON-TERMINAL job states (:available, :scheduled, :executing, :retryable; period: :infinity). Centralize the unique spec in one helper so the two sites can't drift.", "When a dispatch is enqueued while a non-terminal Oban job for the SAME {project_name, item_id} already exists, Oban.insert returns the existing (conflict?: true) job and the dispatch path returns {:ok, <existing_run_id>, job} — NOT a second job and NOT an error. The caller gets the live run's handle (this also closes the 'error with no run_id, so I retried blind' gap).", "A terminal prior run (done/failed/cancelled/discarded/completed) does NOT block re-dispatch — the recovery verbs (dispatch-reland / dispatch-rereview / dispatch-resume_failed) and an honest fresh re-dispatch of a settled task still enqueue normally. Uniqueness applies ONLY to the in-flight window.", "Test (the repro, NEVER-HIDE-FAILURES): dispatch a task, then dispatch the SAME {project, task_id} again while the first job is still executing -> the second call returns the SAME run_id as the first, exactly ONE Oban job exists for that task, and no second Harness.Run gen_statem is spawned. Flunk on any unexpected error or on a second distinct run_id.", "Test: after the first run reaches a terminal state, a fresh dispatch of the same {project, task_id} enqueues a NEW job (uniqueness does not leak past terminal).", "mix precommit.full green."]
+out_of_scope = ["Any change to the recovery verbs (dispatch-reland / dispatch-rereview / dispatch-resume_failed) — they operate on settled runs, which terminal-state uniqueness already exempts.", "Cross-project dedup — task IDs are per-project; the unique key MUST include project_name (tapakly/146 and ccxt_extract/146 are unrelated and must both be dispatchable).", "Diagnosing the MCP transport 'Server unavailable' the dispatching client reported — that was a client-side MCP-session fault (the harness MCP HTTP server was verified healthy end-to-end), not a harness dispatch defect, and is not in scope here.", "task_fingerprint-based dedup of semantically-identical-but-different-id tasks — the key is the explicit {project, task_id}, not content similarity."]
+files_to_modify = ["lib/harness/run/worker.ex", "lib/harness/batch.ex", "test/harness/batch_test.exs"]
+touches = ["lib/harness/run/worker.ex", "lib/harness/batch.ex", "lib/harness/oban.ex"]
+domains = ["otp", "ecto"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+VERIFIED REPRO (2026-06-14, against the live node): ccxt_extract task 146 spawned TWO concurrent runs.
+- run-1781433844647-abc2f80c — started first, progressed implement -> review, healthy (:reviewing).
+- run-1781434039778-d9568c69 — started ~195s LATER for the SAME {ccxt_extract, 146}, ran 115s, then :cancelled.
+The second run burned ~115s of cursor/composer tokens before someone caught it and killed it. (A third record, tapakly/146, is a DIFFERENT project — IDs are per-project, not a duplicate.)
+
+Root cause (mechanical, mantra-clean): the dispatch path has no in-flight idempotency guard. Both enqueue sites build the Oban job via RunWorker.new(queue: ...) with NO `unique:` option (worker.ex ~84, batch.ex ~253), so a second dispatch of an already-live task enqueues a second job -> a second gen_statem -> a parallel duplicate run. This is a count/lookup ('does a non-terminal run for this {project, task_id} exist?'), not a judgment, so it belongs in harness code.
+
+Fix direction (Oban-native, idiomatic): add a `unique:` spec on the RunWorker job keyed on the task-identifying args over non-terminal states (:available/:scheduled/:executing/:retryable, period: :infinity), centralized in one helper shared by both enqueue sites. The worker keeps the Oban job `executing` for the whole run lifetime (it spawns the gen_statem and threads its terminal state back), so :executing covers the implement->review window. On conflict, Oban.insert returns the existing job with conflict?: true — surface its run_id back to the caller so a retry gets the LIVE run's handle instead of an error-with-no-handle (this folds in the agent's secondary 'non-atomic dispatch+respond' complaint: there is nothing to make atomic — the retry simply returns the existing run). Terminal jobs don't block, so the recovery verbs and honest re-dispatch of a settled task are unaffected.
+
+NOT a transport bug: the dispatching client also reported MCP 'Server unavailable', but the harness MCP HTTP server was verified healthy end-to-end (initialize -> initialized -> tools/call returning all 14 projects) — that was a client-side stale-session fault, out of scope (see out_of_scope). The only real harness defect is the missing dispatch dedup above.
+"""
+created_at = "2026-06-14"
+scored_at = "2026-06-14"
