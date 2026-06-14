@@ -825,6 +825,7 @@ defmodule Harness.Dashboard.Components do
               type="text"
               name="name"
               value={project.name}
+              readonly
               aria-label={"Project name #{project.label}"}
             />
             <select name="source_type" aria-label={"Source type for #{project.label}"}>

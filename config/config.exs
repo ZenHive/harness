@@ -113,9 +113,10 @@ config :harness, :retry_policy,
 # Each entry is a keyword list: name, source ({:local, path}), roadmap_path,
 # optional concurrency_cap, and an optional `check_command:` free-text hint the
 # reviewer AI receives in its prompt (e.g. "mix precommit") — the reviewer runs
-# the project's checks itself; harness never executes the command. Dev
-# self-registers the harness checkout via config/dev.exs; test/prod stay
-# un-opinionated.
+# the project's checks itself; harness never executes the command. Registrations
+# are seeded via `priv/repo/seeds.exs` (from the tracked .example) or the
+# dashboard `/harness/settings` (writes Postgres when enabled); test/prod stay
+# un-opinionated and `config/dev.exs` is now minimal.
 
 # Per-run git worktree lifecycle — see Harness.Worktree.
 config :harness, :worktree,

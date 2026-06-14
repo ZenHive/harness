@@ -35,28 +35,9 @@ The common case: you have a project (`myapp`) and want harness — running as a 
 
 Three setup steps:
 
-**1. Register `myapp` with harness.** Add an entry alongside the self-registered `"harness"` project in `config/dev.exs`, then restart `iex -S mix`:
+**1. Register `myapp` with harness.** Projects are registered via the live dashboard at `/harness/settings` (preferred for a running node) or via the seed script for fresh/reset DBs. Copy `priv/repo/seeds.exs.example` to `priv/repo/seeds.exs` (gitignored), edit the examples (including the harness self-entry if dogfooding), then run `mix harness.seed` (or `mix ecto.setup` which runs it). The script calls `Harness.ProjectRegistry.upsert/1` which writes Postgres (the source of truth) and wires the Oban queue. For ad-hoc use IEx or the MCP `dispatch-register_project` tool.
 
-```elixir
-# ~/_DATA/code/harness/config/dev.exs
-config :harness, :projects, [
-  [
-    name: "harness",
-    source: {:local, Path.expand("..", __DIR__)},
-    check_command: "mix precommit.full",
-    roadmap_path: Path.expand("..", __DIR__)
-  ],
-  [
-    name: "myapp",
-    source: {:local, "/Users/you/_DATA/code/myapp"},
-    check_command: "mix precommit",      # free-text hint for the reviewer AI
-    roadmap_path: "/Users/you/_DATA/code/myapp",
-    concurrency_cap: 2
-  ]
-]
-```
-
-`check_command` is a free-text hint handed to the reviewer AI — the reviewer runs the project's checks itself and judges the output; harness never executes the command. Point it at your project's mergeable bar (`mix precommit`, `cargo test && cargo clippy`, …); for a multi-language monorepo just describe each component's command in the hint. Omit it to let the reviewer discover the checks on its own.
+`check_command` (in the seed or dashboard form) is a free-text hint handed to the reviewer AI — the reviewer runs the project's checks itself and judges the output; harness never executes the command. Point it at your project's mergeable bar (`mix precommit`, `cargo test && cargo clippy`, …); for a multi-language monorepo just describe each component's command in the hint. Omit it to let the reviewer discover the checks on its own.
 
 **2. Add harness's MCP endpoints to `myapp/.mcp.json`** — alongside `myapp`'s own Tidewave if it has one. The `harness` entry (native flat tools) is your primary surface; the optional `harness_eval` entry is the `project_eval` escape hatch into harness's BEAM:
 
