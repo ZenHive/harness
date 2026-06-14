@@ -12678,7 +12678,7 @@
       "id": "285",
       "phase": 20,
       "bundle": "config-surface",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Retire config/dev.local.exs: strip dev.exs, run-to-apply seeds.exs.example, mem-threshold env var, boot guard, docs",
       "scores": {
         "d": 3,
@@ -12741,6 +12741,7 @@
       ],
       "body": "The payoff task: once the dashboard is the complete per-project edit surface (283 + 284), delete the config/dev.local.exs trap for good. Every AI agent (and the operator, repeatedly) edits that gitignored file to change a project's cap/paths, restarts, and nothing happens — Postgres is the source of truth; config only seeds ABSENT names, so an existing row ignores the file forever.\n\nSafety fact: the live Postgres projects table already holds all 9 projects, so removing the file/seed is lossless — on restart load_projects reads them from Postgres. The only non-DB value in dev.local.exs is mem_threshold_kb: 18 GB, which moves to a HARNESS_RUN_MEM_THRESHOLD_GB env var (matching the HARNESS_* pattern).\n\nReplace the read-at-boot-but-silently-shadowed file with a RUN-to-apply priv/repo/seeds.exs (gitignored; .example tracked) that upserts Postgres via ProjectRegistry.upsert/1 — editing it does nothing until you run `mix harness.seed`, and running it actually writes the source of truth. Add a boot guard that warns if anyone re-introduces a config :projects block under repo_enabled. Update the docs that currently send people to dev.local.exs.\n",
       "created_at": "2026-06-14",
+      "started_at": "2026-06-14",
       "scored_at": "2026-06-14",
       "cross_repo": []
     }
