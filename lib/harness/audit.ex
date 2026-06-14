@@ -38,6 +38,7 @@ defmodule Harness.Audit do
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentRegistry
   alias Harness.Artifact
+  alias Harness.Config
   alias Harness.Dashboard.OpsFeed
   alias Harness.Dashboard.OpsFeed.Op
   alias Harness.Git
@@ -263,7 +264,7 @@ defmodule Harness.Audit do
   @spec finalize_audit(Worktree.t(), String.t(), String.t(), Project.t(), request(), map(), module(), String.t()) ::
           {outcome(), audit_meta()}
   defp finalize_audit(worktree, repo, target, project, request, range, auditor, agent) do
-    case Driver.run(auditor, invocation(worktree, target, project, request, range), []) do
+    case Driver.run(auditor, invocation(worktree, target, project, request, range, auditor_model(auditor)), []) do
       {:ok, %Outcome{output: output}} ->
         finalize_after_run(worktree, repo, target, project, range, agent, output)
 
@@ -351,16 +352,34 @@ defmodule Harness.Audit do
     end
   end
 
-  @spec invocation(Worktree.t(), String.t(), Project.t(), request(), map()) :: Invocation.t()
-  defp invocation(worktree, target, project, request, range) do
+  @spec invocation(Worktree.t(), String.t(), Project.t(), request(), map(), String.t() | nil) :: Invocation.t()
+  defp invocation(worktree, target, project, request, range, model) do
     %Invocation{
       prompt: audit_prompt(target, project, range, rejection_history(project, request)),
       cwd: worktree.path,
       task_id: "audit-#{project.name}-#{range.short_sha}",
+      model: model,
       permission_mode: :autonomous,
       adapter_opts: request[:auditor_opts] || [],
       env: Harness.RmapPath.ensure_agent_env(%{})
     }
+  end
+
+  @doc false
+  # The auditor has no task-pin model axis (like the reviewer), so its model
+  # resolves solely from the chosen auditor agent's `{:agent_model, agent}`
+  # default. A module the registry can't reverse-map (test doubles via the
+  # explicit `:auditor` override) yields nil — those doubles are model-incapable,
+  # so `AgentAdapter.invoke/2` accepts nil; a model-capable real auditor with no
+  # configured default is rejected there with `{:model_required, _}`, never run
+  # on the CLI's ambient default. `@doc false` (not `defp`) so the resolution is
+  # unit-testable, mirroring `select_auditor/1`.
+  @spec auditor_model(module()) :: String.t() | nil
+  def auditor_model(module) do
+    case AgentRegistry.agent_for_module(module) do
+      {:ok, agent} -> Config.agent_model(agent)
+      {:error, _reason} -> nil
+    end
   end
 
   # Recent reviewer rejections for this project, from the run-records store. The

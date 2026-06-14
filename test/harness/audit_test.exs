@@ -513,4 +513,22 @@ defmodule Harness.AuditTest do
       end
     end
   end
+
+  describe "auditor_model/1 — model resolution for the audit invocation" do
+    test "resolves the chosen auditor agent's configured {:agent_model, agent} default" do
+      # Regression: the audit Invocation must thread a model, or a model-capable
+      # auditor (codex/claude/...) trips AgentAdapter.invoke/2's {:model_required}
+      # guard and every post-merge audit errors out.
+      Application.put_env(:harness, :agent_model, codex: "gpt-5.5")
+      on_exit(fn -> Application.delete_env(:harness, :agent_model) end)
+
+      assert Audit.auditor_model(Harness.AgentAdapter.Codex) == "gpt-5.5"
+    end
+
+    test "yields nil for a module the registry can't reverse-map (test double)" do
+      # FakeAdapter isn't a registered real adapter, so it has no agent to look up
+      # a model for — and it's model-incapable, so invoke/2 accepts the nil.
+      assert Audit.auditor_model(FakeAdapter) == nil
+    end
+  end
 end
