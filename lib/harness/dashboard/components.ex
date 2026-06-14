@@ -78,6 +78,7 @@ defmodule Harness.Dashboard.Components do
       </a>
       <nav class="navbar-links" aria-label="Primary">
         <a href="/harness">Dashboard</a>
+        <a href="/harness/roadmap">Roadmap</a>
         <a href="/harness/compare">Compare</a>
         <a href="/harness/chat">Chat</a>
         <a href="/harness/settings">Settings</a>

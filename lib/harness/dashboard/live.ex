@@ -709,8 +709,6 @@ defmodule Harness.Dashboard.Live do
 
     <Components.operator_flash notice={@notice} include_persistent={false} />
 
-    <.roadmap_panel projects={@projects} summaries={@roadmap} />
-
     <.ops_panel ops={@ops} />
 
     <h2>Active runs</h2>
@@ -824,59 +822,6 @@ defmodule Harness.Dashboard.Live do
       </select>
     </form>
     """
-  end
-
-  attr(:projects, :list, required: true)
-  attr(:summaries, :map, required: true)
-
-  # Per-project roadmap rollup: how much work is open vs done, and how many of a
-  # project's tasks the lander has landed. Sourced from the @roadmap assign (one
-  # `rmap list` per project, refreshed on the slow roadmap_tick), so the panel
-  # answers "how much is left / is anything shipping?" without a run drill-down.
-  @spec roadmap_panel(map()) :: Rendered.t()
-  defp roadmap_panel(assigns) do
-    ~H"""
-    <h2>Roadmap</h2>
-    <p :if={@projects == []}>No projects registered.</p>
-    <table :if={@projects != []}>
-      <thead>
-        <tr>
-          <th>Project</th>
-          <th>Open</th>
-          <th>Done</th>
-          <th>Total</th>
-          <th>Landed</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr :for={row <- roadmap_rows(@projects, @summaries)}>
-          <td>{row.name}</td>
-          <td>{row.open}</td>
-          <td>{row.done}</td>
-          <td>{row.total}</td>
-          <td>{row.landed}</td>
-        </tr>
-      </tbody>
-    </table>
-    """
-  end
-
-  # Flattens the projects + summaries assigns into render-ready rows so the
-  # component reads one precomputed value per cell instead of re-resolving the
-  # summary four times.
-  @spec roadmap_rows([map()], RoadmapSummary.summaries()) :: [map()]
-  defp roadmap_rows(projects, summaries) do
-    Enum.map(projects, fn project ->
-      summary = RoadmapSummary.summary_for(summaries, project.name)
-
-      %{
-        name: project.name,
-        open: summary.open,
-        done: summary.done,
-        total: summary.total,
-        landed: map_size(summary.landed)
-      }
-    end)
   end
 
   attr(:ops, :list, required: true)

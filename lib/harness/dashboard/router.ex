@@ -38,6 +38,7 @@ defmodule Harness.Dashboard.Router do
     pipe_through(:browser)
 
     live("/harness", Live, :index, as: :dashboard)
+    live("/harness/roadmap", RoadmapLive, :index, as: :dashboard_roadmap)
     live("/harness/settings", SettingsLive, :index, as: :dashboard_settings)
     live("/harness/kpi", KPILive, :index, as: :dashboard_kpi)
     live("/harness/compare", CompareLive, :index, as: :dashboard_compare)

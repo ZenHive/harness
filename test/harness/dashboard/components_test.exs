@@ -41,6 +41,7 @@ defmodule Harness.Dashboard.ComponentsTest do
 
       assert html =~ "harness"
       assert html =~ ~s(href="/harness")
+      assert html =~ ~s(href="/harness/roadmap")
       assert html =~ ~s(href="/harness/chat")
       assert html =~ ~s(href="/harness/oban")
     end

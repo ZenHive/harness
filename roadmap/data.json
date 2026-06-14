@@ -12864,6 +12864,53 @@
       "delivered_by": "codex",
       "verified": true,
       "cross_repo": []
+    },
+    {
+      "id": "288",
+      "phase": 19,
+      "bundle": "dashboard-chrome",
+      "status": "pending",
+      "title": "Enrich the /harness/roadmap page beyond the 4-column rollup",
+      "scores": {
+        "d": 3,
+        "b": 3,
+        "u": 2
+      },
+      "eff": 0.83,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "Each project row expands (or links) to show: next pending task (id + title), count of blocked tasks with their blocked_reason text, and the parallel-dispatchable set grouped by dep_layer (waves)",
+        "Roadmap data sourced through Harness.Roadmap / RoadmapSummary structured APIs, not new ad-hoc rmap shell-outs on the render path",
+        "Cold-path preserved: the existing 30s roadmap_tick (or an explicit operator refresh button) drives updates; no per-request disk fan-out beyond the existing summary read",
+        "No judgment computed in the LiveView — only rmap's own facts/fields are displayed (eff is fine to show; a bespoke importance score or routing pick is not)",
+        "Phoenix.LiveViewTest coverage: expanded drill-down renders next-task/blocked/wave data for a fixture project; empty + no-projects states explicit"
+      ],
+      "out_of_scope": [
+        "Roadmap MUTATION from the dashboard (status changes, mark done) — read-only view only",
+        "Agent-routing / capability recommendations — those live on KPILive and the scout artifact, not here",
+        "The runs dashboard @roadmap assign — it stays as-is; this task only touches the standalone roadmap page"
+      ],
+      "files_to_modify": [
+        "lib/harness/dashboard/roadmap_live.ex",
+        "test/harness/dashboard/roadmap_live_test.exs"
+      ],
+      "touches": [
+        "lib/harness/dashboard/roadmap_summary.ex",
+        "lib/harness/roadmap.ex"
+      ],
+      "domains": [
+        "liveview",
+        "ux"
+      ],
+      "body": "Follow-up to the inline 4-column roadmap extraction (RoadmapLive at /harness/roadmap, shipped alongside this task's creation). That move was deliberately minimal: it relocated the per-project open/done/total/landed rollup table to its own navbar page, nothing more. This task makes the page a real planning surface.\n\nAdd per-project drill-down so an operator can answer \"what's next / what's blocked / what's the parallel wave?\" without leaving the dashboard. Source structured roadmap data via Harness.Roadmap (list/2, next_bundle/1) and RoadmapSummary rather than re-shelling rmap ad hoc. Keep the cold-path discipline: a slow tick (already 30s) or an explicit refresh, no PubSub source invented for it.\n\nMantra check: this page COUNTS and DISPLAYS roadmap facts (open counts, next task id, blocked reason text, dep-layer/wave grouping) — all mechanical reads of rmap's own output. It must NOT compute any judgment (no \"which task is most important\" scoring beyond rmap's own eff, no agent-routing recommendation rendered here — that's KPILive/scout territory). Display rmap's computed fields; never recompute meaning from them.\n",
+      "created_at": "2026-06-14",
+      "scored_at": "2026-06-14",
+      "cross_repo": []
     }
   ]
 }
