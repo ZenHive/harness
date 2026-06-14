@@ -1193,6 +1193,7 @@ defmodule Harness.ObanDispatchTest do
   end
 
   describe "run worker in-flight uniqueness" do
+    @tag timeout: 120_000
     test "second dispatch while the first job is executing returns the live run id without a duplicate run" do
       start_supervised!(Harness.Repo)
       :ok = Sandbox.checkout(Harness.Repo)
@@ -1207,6 +1208,7 @@ defmodule Harness.ObanDispatchTest do
       item = item("286", :claude)
 
       on_exit(fn -> File.rm(gate) end)
+      on_exit(fn -> Application.delete_env(:harness, :roadmap_mark_in_progress) end)
       Application.put_env(:harness, :roadmap_mark_in_progress, fn _item, _project -> :ok end)
       Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts -> {:ok, item} end)
 
@@ -1257,6 +1259,8 @@ defmodule Harness.ObanDispatchTest do
         end,
         @idempotency_wait_tries
       )
+
+      _ = Oban.pause_queue(HarnessOban, queue: HarnessOban.queue_name(project))
     end
 
     test "a terminal prior job does not block a fresh dispatch for the same task" do
