@@ -444,6 +444,14 @@ defmodule Harness.LanderTest do
       conflicting_tip = sha(ctx.run_worktree.path, "HEAD")
       put_resolver(fn _worktree, _opts -> {:error, :no_resolver} end)
       put_capture_sink()
+      tasks_path = Path.join(ctx.project.roadmap_path, "roadmap/tasks.toml")
+      File.mkdir_p!(Path.dirname(tasks_path))
+
+      roadmap_before =
+        roadmap_toml("1", "Manual reland task")
+        |> String.replace(~s(status = "pending"), ~s(status = "in_progress"), global: false)
+
+      File.write!(tasks_path, roadmap_before)
       :ok = ProjectRegistry.register(ctx.project)
       parent = self()
 
@@ -494,6 +502,7 @@ defmodule Harness.LanderTest do
 
       refute_receive {:unexpected_ingest, _selector, _opts}, 300
       refute_receive {:unexpected_run_start, _item, _project, _adapter, _opts}, 300
+      assert File.read!(tasks_path) == roadmap_before
     end
 
     test "worker cancels a resolver-disabled conflict at the cap and leaves origin untouched", ctx do
