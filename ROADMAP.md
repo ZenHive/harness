@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 19 — Self-Healing Run Loop (39 of 41 done · 0 in progress)
+**Focus phase:** 19 — Self-Healing Run Loop (39 of 41 done · 1 in progress)
 
 **Last shipped:** Task 280 — Lander mis-marks reassigned task ids — run→task_id writeback + concurrent rmap-filing id collision corrupts roadmap status, Task 286 — Dispatch in-flight idempotency: a second dispatch of {project, task_id} with a non-terminal run must return the existing run, not spawn a duplicate, Task 287 — Dispatch idempotency: refuse a fresh run for a task with a settled, unlanded harness/<run-id> branch — return that run, steer to dispatch-reland on 2026-06-14
 

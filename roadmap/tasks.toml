@@ -8674,7 +8674,7 @@ shipped_in = "aa5bfabffa6517dc17aa0810322682ceda1667e5"
 id = "288"
 phase = 19
 bundle = "dashboard-chrome"
-status = "pending"
+status = "in_progress"
 title = "Enrich the /harness/roadmap page beyond the 4-column rollup"
 scores = { d = 3, b = 3, u = 2 }
 acceptance_criteria = ["Each project row expands (or links) to show: next pending task (id + title), count of blocked tasks with their blocked_reason text, and the parallel-dispatchable set grouped by dep_layer (waves)", "Roadmap data sourced through Harness.Roadmap / RoadmapSummary structured APIs, not new ad-hoc rmap shell-outs on the render path", "Cold-path preserved: the existing 30s roadmap_tick (or an explicit operator refresh button) drives updates; no per-request disk fan-out beyond the existing summary read", "No judgment computed in the LiveView — only rmap's own facts/fields are displayed (eff is fine to show; a bespoke importance score or routing pick is not)", "Phoenix.LiveViewTest coverage: expanded drill-down renders next-task/blocked/wave data for a fixture project; empty + no-projects states explicit"]
@@ -8692,6 +8692,7 @@ Add per-project drill-down so an operator can answer "what's next / what's block
 Mantra check: this page COUNTS and DISPLAYS roadmap facts (open counts, next task id, blocked reason text, dep-layer/wave grouping) — all mechanical reads of rmap's own output. It must NOT compute any judgment (no "which task is most important" scoring beyond rmap's own eff, no agent-routing recommendation rendered here — that's KPILive/scout territory). Display rmap's computed fields; never recompute meaning from them.
 """
 created_at = "2026-06-14"
+started_at = "2026-06-14"
 scored_at = "2026-06-14"
 
 [[task]]
