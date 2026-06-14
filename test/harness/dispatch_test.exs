@@ -1043,8 +1043,9 @@ defmodule Harness.DispatchTest do
       assert Map.has_key?(props, :roadmap_path)
       assert Map.has_key?(props, :check_command)
       assert Map.has_key?(props, :concurrency_cap)
+      assert Map.has_key?(props, :language)
 
-      # check_command and concurrency_cap default; the other four are required.
+      # check_command, concurrency_cap, and language default; the other four are required.
       assert Enum.sort(tool.inputSchema.required) ==
                ["name", "roadmap_path", "source_location", "source_type"]
 

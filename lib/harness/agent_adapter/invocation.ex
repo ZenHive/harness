@@ -23,8 +23,8 @@ defmodule Harness.AgentAdapter.Invocation do
       universal baseline every adapter must support; any other value must be
       listed in the adapter's `Harness.AgentAdapter.Capabilities`.
     * `model` — an optional model id, passed through to the agent.
-    * `language` — optional target language signal from the project's check
-      stack, used only to select language-specific injected rule sections.
+    * `language` — optional target language from `%Harness.Project{}`, used
+      only to select language-specific injected rule sections.
     * `adapter_opts` — an escape hatch for per-agent knobs the uniform fields do
       not cover.
     * `env` — caller-controlled environment for the spawned agent. Map of
