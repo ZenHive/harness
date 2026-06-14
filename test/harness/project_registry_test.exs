@@ -2,15 +2,22 @@ defmodule Harness.ProjectRegistryTest do
   # async: false because tests reset and mutate the singleton ProjectRegistry.
   use ExUnit.Case, async: false
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias Harness.Dispatch
   alias Harness.GitFixture
   alias Harness.Landing.Settings, as: LandingSettings
+  alias Harness.Oban, as: HarnessOban
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
+  alias Harness.ProjectRegistry.Schema.Project, as: ProjectSchema
+  alias Harness.Repo
   alias Harness.Roadmap.Item
   alias Harness.Run.Result
   alias Harness.Run.Supervisor, as: RunSupervisor
   alias Harness.Test.SettingsStoreMemory
+
+  @eventually_tries 100
+  @eventually_delay_ms 20
 
   setup do
     ProjectRegistry.reset()
@@ -131,6 +138,101 @@ defmodule Harness.ProjectRegistryTest do
       assert {:ok, %{projects: %{}}} = ProjectRegistry.init(:noargs)
 
       assert {:error, {:unknown_project, ^name}} = ProjectRegistry.lookup(name)
+    end
+  end
+
+  describe "upsert/1 with persisted projects and live queues" do
+    setup do
+      start_supervised!(Repo)
+      Sandbox.checkout(Repo)
+      Sandbox.mode(Repo, {:shared, self()})
+
+      prev_repo_enabled = Application.get_env(:harness, :repo_enabled)
+      prev_projects = Application.get_env(:harness, :projects)
+      prev_oban = Application.get_env(:harness, Oban)
+
+      Application.put_env(:harness, :repo_enabled, true)
+      Application.put_env(:harness, :projects, [])
+
+      Application.put_env(:harness, Oban,
+        name: HarnessOban,
+        repo: Repo,
+        notifier: Oban.Notifiers.Isolated,
+        stage_interval: :infinity,
+        queues: [],
+        plugins: false
+      )
+
+      start_supervised!({Oban, Application.get_env(:harness, Oban)})
+
+      on_exit(fn ->
+        Application.put_env(:harness, :repo_enabled, prev_repo_enabled)
+        restore_projects_env(prev_projects)
+        Application.put_env(:harness, Oban, prev_oban)
+      end)
+
+      Repo.delete_all(ProjectSchema)
+      ProjectRegistry.reset()
+
+      :ok
+    end
+
+    @tag :integration
+    test "replaces an existing project in memory and Postgres and scales its queue" do
+      name = "upsert-existing-#{System.unique_integer([:positive])}"
+      original = ProjectFixture.from_repo("/tmp/#{name}", name: name, concurrency_cap: 1)
+      replacement = %{original | concurrency_cap: 4, check_command: "mix precommit"}
+
+      assert :ok = ProjectRegistry.register(original)
+      assert_queue_limit(name, 1)
+
+      assert :ok = ProjectRegistry.upsert(replacement)
+
+      assert {:ok, ^replacement} = ProjectRegistry.lookup(name)
+      assert [^replacement] = ProjectRegistry.list()
+      assert_persisted_project(replacement)
+      assert_queue_limit(name, 4)
+    end
+
+    @tag :integration
+    test "inserts a brand-new attrs project, persists it, and starts its queues" do
+      name = "upsert-new-#{System.unique_integer([:positive])}"
+
+      assert :ok =
+               ProjectRegistry.upsert(
+                 name: name,
+                 source: {:local, "/tmp/#{name}"},
+                 roadmap_path: "/tmp/#{name}/roadmap/tasks.toml",
+                 concurrency_cap: 3
+               )
+
+      assert {:ok, project} = ProjectRegistry.lookup(name)
+      assert project.name == name
+      assert project.concurrency_cap == 3
+      assert ProjectRegistry.list() == [project]
+      assert_persisted_project(project)
+
+      assert_queue_limit(name, 3)
+      assert_queue_exists(HarnessOban.landing_queue_name(name))
+    end
+
+    @tag :integration
+    test "re-upserting identical attrs is idempotent" do
+      name = "upsert-idempotent-#{System.unique_integer([:positive])}"
+      project = ProjectFixture.from_repo("/tmp/#{name}", name: name, concurrency_cap: 2)
+
+      assert :ok = ProjectRegistry.upsert(project)
+      assert_persisted_project(project)
+      assert_queue_limit(name, 2)
+
+      case ProjectRegistry.upsert(project) do
+        :ok -> :ok
+        {:error, reason} -> flunk("Unexpected upsert error: #{inspect(reason)}")
+      end
+
+      assert {:ok, ^project} = ProjectRegistry.lookup(name)
+      assert_persisted_project(project)
+      assert_queue_limit(name, 2)
     end
   end
 
@@ -401,6 +503,39 @@ defmodule Harness.ProjectRegistryTest do
   defp sample_project(name) do
     ProjectFixture.from_repo("/tmp/#{name}", name: name)
   end
+
+  defp restore_projects_env(nil), do: Application.delete_env(:harness, :projects)
+  defp restore_projects_env(projects), do: Application.put_env(:harness, :projects, projects)
+
+  defp assert_persisted_project(project) do
+    assert %ProjectSchema{payload: payload} = Repo.get(ProjectSchema, project.name)
+    assert ^project = :erlang.binary_to_term(payload)
+  end
+
+  defp assert_queue_limit(project_name, expected_limit) do
+    assert_eventually(fn ->
+      assert %{limit: ^expected_limit} =
+               Oban.check_queue(HarnessOban, queue: HarnessOban.queue_name(project_name))
+    end)
+  end
+
+  defp assert_queue_exists(queue_name) do
+    assert_eventually(fn ->
+      assert %{queue: ^queue_name} = Oban.check_queue(HarnessOban, queue: queue_name)
+    end)
+  end
+
+  defp assert_eventually(fun, tries \\ @eventually_tries)
+
+  defp assert_eventually(fun, tries) when tries > 1 do
+    fun.()
+  rescue
+    ExUnit.AssertionError ->
+      Process.sleep(@eventually_delay_ms)
+      assert_eventually(fun, tries - 1)
+  end
+
+  defp assert_eventually(fun, 1), do: fun.()
 
   defp await_result(run_id, pid, timeout \\ 10_000) do
     ref = Process.monitor(pid)

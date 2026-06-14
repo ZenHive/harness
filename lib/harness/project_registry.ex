@@ -32,6 +32,8 @@ defmodule Harness.ProjectRegistry do
 
   require Logger
 
+  @default_queue_limit 1
+
   @type error ::
           {:duplicate, String.t()} | {:unknown_project, String.t()} | {:invalid_project, term()}
 
@@ -93,6 +95,34 @@ defmodule Harness.ProjectRegistry do
   def register(attrs) when is_list(attrs) or is_map(attrs) do
     with {:ok, project} <- build_project(attrs) do
       register(project)
+    end
+  end
+
+  api(
+    :upsert,
+    "Replace or insert a project registration under its name. Updates the in-memory registry, persists the row when :repo_enabled, and ensures/scales the project's Oban queues.",
+    params: [
+      project: [
+        kind: :exchange_data,
+        source: "Harness.ProjectRegistry.upsert/1 attrs map or Harness.Dispatch scalar tools",
+        description:
+          "%Harness.Project{} or attrs (name, source, roadmap_path, check_command, concurrency_cap, pollution_allowlist, warm_paths)."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description: ":ok on success. {:error, {:invalid_project, reason}} when attrs cannot build a project."
+    }
+  )
+
+  @spec upsert(Project.t() | keyword() | map()) :: :ok | {:error, error()}
+  def upsert(%Project{} = project) do
+    GenServer.call(__MODULE__, {:upsert, project})
+  end
+
+  def upsert(attrs) when is_list(attrs) or is_map(attrs) do
+    with {:ok, project} <- build_project(attrs) do
+      upsert(project)
     end
   end
 
@@ -169,6 +199,15 @@ defmodule Harness.ProjectRegistry do
       :ok = Persistence.upsert(project)
       {:reply, :ok, put_in(state.projects[name], project)}
     end
+  end
+
+  def handle_call({:upsert, %Project{name: name} = project}, _from, state) do
+    previous = Map.get(state.projects, name)
+
+    :ok = Persistence.upsert(project)
+    :ok = sync_project_queue(previous, project)
+
+    {:reply, :ok, put_in(state.projects[name], project)}
   end
 
   def handle_call({:lookup, name}, _from, state) do
@@ -287,6 +326,57 @@ defmodule Harness.ProjectRegistry do
         :ok
     end
   end
+
+  @spec sync_project_queue(Project.t() | nil, Project.t()) :: :ok
+  defp sync_project_queue(nil, %Project{} = project), do: ensure_project_queue(project)
+
+  defp sync_project_queue(%Project{} = previous, %Project{} = project) do
+    :ok = ensure_project_queue(project)
+
+    if queue_limit(previous) == queue_limit(project) do
+      :ok
+    else
+      scale_project_queue(project)
+    end
+  end
+
+  @spec scale_project_queue(Project.t()) :: :ok
+  defp scale_project_queue(%Project{} = project) do
+    if queues_enabled?() and oban_running?() do
+      case Oban.scale_queue(Harness.Oban,
+             queue: Harness.Oban.queue_name(project),
+             limit: queue_limit(project),
+             local_only: true
+           ) do
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          Logger.warning("harness project registry: failed to scale Oban queue for #{project.name}: #{inspect(reason)}")
+
+          :ok
+      end
+    else
+      :ok
+    end
+  end
+
+  @spec oban_running?() :: boolean()
+  defp oban_running? do
+    is_pid(Oban.whereis(Harness.Oban))
+  end
+
+  @spec queues_enabled?() :: boolean()
+  defp queues_enabled? do
+    :harness
+    |> Application.get_env(Oban, [])
+    |> Keyword.get(:testing, :disabled)
+    |> Kernel.==(:disabled)
+  end
+
+  @spec queue_limit(Project.t()) :: pos_integer()
+  defp queue_limit(%Project{concurrency_cap: cap}) when is_integer(cap) and cap > 0, do: cap
+  defp queue_limit(%Project{}), do: @default_queue_limit
 
   @spec fetch_required(map(), atom()) :: {:ok, term()} | {:error, {:invalid_project, term()}}
   defp fetch_required(entry, key) do
