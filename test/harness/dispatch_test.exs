@@ -3,6 +3,7 @@ defmodule Harness.DispatchTest do
 
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
+  alias Harness.AgentAdapter.Cursor
   alias Harness.Batch.AgentEvaluation
   alias Harness.CapabilityScore
   alias Harness.CapabilityScore.Assessment
@@ -779,6 +780,42 @@ defmodule Harness.DispatchTest do
                Dispatch.recommended_adapter_for_item("claude", item,
                  agents: [:claude, :codex],
                  assessment_root: root
+               )
+    end
+
+    test "a pinned assignee wins over the recommend fallback default", %{assessment_root: root} do
+      # No assessment saved → scoring's fallback would route to fallback_agent
+      # (:cursor here). The roadmap pin (:codex) must win, so the no-`adapter`
+      # dispatch never silently overrides an explicit assignee with the default.
+      item = %Item{
+        id: "44",
+        title: "t",
+        prompt: "p",
+        agent: :claude,
+        assignee: :codex,
+        model: "gpt-5.5",
+        domains: [:otp]
+      }
+
+      assert {:ok, {Codex, :codex}} =
+               Dispatch.recommended_adapter_for_item("recommend", item,
+                 agents: [:claude, :codex, :cursor],
+                 assessment_root: root,
+                 fallback_agent: :cursor
+               )
+    end
+
+    test "no pin falls through to the recommend fallback default", %{assessment_root: root} do
+      # Unpinned task with no assessment → capability scoring's explore/fallback
+      # picks fallback_agent, confirming the pin-wins branch only short-circuits
+      # when an assignee is actually present.
+      item = %Item{id: "45", title: "t", prompt: "p", agent: :claude, assignee: nil, domains: [:otp]}
+
+      assert {:ok, {Cursor, :cursor}} =
+               Dispatch.recommended_adapter_for_item("recommend", item,
+                 agents: [:claude, :codex, :cursor],
+                 assessment_root: root,
+                 fallback_agent: :cursor
                )
     end
   end

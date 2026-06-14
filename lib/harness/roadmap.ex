@@ -120,6 +120,7 @@ defmodule Harness.Roadmap do
          title: task["title"],
          prompt: prompt,
          agent: agent,
+         assignee: task_assignee(task),
          body: task["body"],
          acceptance_criteria: acceptance_criteria(task),
          domains: task_domains(task),
@@ -194,6 +195,21 @@ defmodule Harness.Roadmap do
   @spec task_model(map()) :: String.t() | nil
   defp task_model(%{"model" => model}) when is_binary(model) and model != "", do: model
   defp task_model(_task), do: nil
+
+  # rmap's `assignee` is the task's pinned dispatch agent — the operator's routing
+  # intent. Carried structurally (distinct from the render `agent`) so the recommend
+  # path honors the pin over the global default instead of overriding it. Only an
+  # executable dispatch agent qualifies: `human`, an empty pin, or an unknown agent
+  # yields nil, leaving the task to capability scoring / `dispatch.default_agent`.
+  @spec task_assignee(map()) :: atom() | nil
+  defp task_assignee(%{"assignee" => assignee}) when is_binary(assignee) and assignee != "" do
+    agent = String.to_existing_atom(assignee)
+    if agent in @valid_agents, do: agent
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp task_assignee(_task), do: nil
 
   api(:ready, "List the parallel-safe, headless-dispatchable task set via rmap ready --dispatchable.",
     params: [

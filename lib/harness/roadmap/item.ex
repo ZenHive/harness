@@ -22,6 +22,13 @@ defmodule Harness.Roadmap.Item do
       of `rmap delegate`, passed through untouched.
     * `agent` — the agent the prompt was rendered for. A prompt rendered for one
       agent is not interchangeable with another, so the pairing is carried.
+    * `assignee` — the task's roadmap-pinned dispatch agent (the operator's routing
+      intent at scoping time), or `nil` when the task carries no pin (or pins a
+      non-executable assignee like `human`). Distinct from `agent`: `agent` is who
+      the *prompt* was rendered for, `assignee` is who the task *should run on*. The
+      recommend path honors this pin over the global `dispatch.default_agent` so an
+      explicit assignee always wins; capability scoring/default only fill the gap
+      when it is `nil`.
     * `body` — the task's original `body` field (intent at scoping time), or
       `nil` when the task carries none. The rendered `prompt` already embeds the
       body, but it's carried structurally so the semantic gate and any triage
@@ -51,6 +58,7 @@ defmodule Harness.Roadmap.Item do
           title: String.t(),
           prompt: String.t(),
           agent: AgentRegistry.agent(),
+          assignee: AgentRegistry.agent() | nil,
           body: String.t() | nil,
           acceptance_criteria: [String.t()],
           domains: [CapabilityDomain.t()],
@@ -69,6 +77,7 @@ defmodule Harness.Roadmap.Item do
     :body,
     :d,
     acceptance_criteria: [],
+    assignee: nil,
     domains: [],
     markers: [],
     model: nil,

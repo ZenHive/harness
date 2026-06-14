@@ -1000,8 +1000,16 @@ defmodule Harness.Dispatch do
     end
   end
 
+  # A task's pinned model belongs to its pinned assignee. When a dispatch resolves
+  # to a DIFFERENT agent than the pin (an explicit-adapter override, or — before the
+  # precedence fix — a recommend/default override), carrying the pinned model yields
+  # an agent+model pair that's invalid or budget-capped (cursor + gpt-5.5, cursor +
+  # grok-build). So a pinned model applies only on its own assignee's adapter; a
+  # cross-agent dispatch uses the resolved agent's configured default instead. A
+  # model pin with no assignee has no agent to contradict it, so it carries through.
   @spec effective_model(Item.t(), atom()) :: String.t() | nil
-  defp effective_model(%Item{model: model}, _agent) when is_binary(model), do: model
+  defp effective_model(%Item{model: model, assignee: assignee}, agent)
+       when is_binary(model) and (is_nil(assignee) or assignee == agent), do: model
 
   defp effective_model(_item, agent) do
     Config.agent_model(agent)
@@ -1012,13 +1020,24 @@ defmodule Harness.Dispatch do
           {:ok, {module(), atom()}} | {:error, term()}
   def recommended_adapter_for_item(adapter, item, opts \\ [])
 
-  def recommended_adapter_for_item(@recommended_adapter, %Item{} = item, opts) when is_list(opts) do
-    item
-    |> predict_facets()
-    |> CapabilityScore.recommend(opts)
-    |> case do
-      {:ok, %{agent: agent}} -> resolve_adapter(Atom.to_string(agent))
-      {:error, _reason} = error -> error
+  def recommended_adapter_for_item(@recommended_adapter, %Item{assignee: assignee} = item, opts) when is_list(opts) do
+    # Precedence: a task's roadmap-pinned `assignee` ALWAYS wins over the global
+    # `dispatch.default_agent`. Capability scoring (and the default-agent fallback
+    # inside it) only fills the gap when the task carries no pin — otherwise a
+    # no-`adapter` dispatch would silently override an explicit codex/grok pin with
+    # the default cursor, carrying the pinned model onto the wrong adapter.
+    case assignee do
+      nil ->
+        item
+        |> predict_facets()
+        |> CapabilityScore.recommend(opts)
+        |> case do
+          {:ok, %{agent: agent}} -> resolve_adapter(Atom.to_string(agent))
+          {:error, _reason} = error -> error
+        end
+
+      agent ->
+        resolve_adapter(Atom.to_string(agent))
     end
   end
 
