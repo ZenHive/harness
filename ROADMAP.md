@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 280 — Lander mis-marks reassigned task ids — run→task_id writeback + concurrent rmap-filing id collision corrupts roadmap status on 2026-06-14
 
-**Up next:** Task 174 — Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:3/B:5/U:4 → Eff:1.5] 🚀
+**Up next:** Task 282 — Reviewer-stage git-add fatals on gitignored .harness/ → review_stuck blocks the gate; .harness-retained artifact leaks into commits [D:3/B:8/U:7 → Eff:2.5] 🎯
 <!-- FOCUS:END -->
 
 ---

@@ -8470,3 +8470,29 @@ Investigate Harness.Lander.land/1 (or the reland enqueue path) for the branch wh
 created_at = "2026-06-14"
 started_at = "2026-06-14"
 scored_at = "2026-06-14"
+
+[[task]]
+id = "282"
+phase = 11
+bundle = "autolanding"
+status = "pending"
+title = "Reviewer-stage git-add fatals on gitignored .harness/ → review_stuck blocks the gate; .harness-retained artifact leaks into commits"
+scores = { d = 3, b = 8, u = 7 }
+acceptance_criteria = ["Worktree.do_commit/diff_size staging no longer fatals (exit 1) when the worktree contains untracked, gitignored .harness/ content (e.g. the reviewer's .harness/review.json). Repro: in a repo whose .gitignore lists `.harness/`, with `.harness/review.json` present, the current `git add -A -- . :(exclude).harness` exits 1 with 'paths ignored: .harness' — this surfaced as run-1781425518611-74749b75 reason `review_stuck` and bounced task 281 back to pending. The reviewer must be able to stage its source fixes and have its verdict read.", "The `.harness-retained` artifact (NOT matched by the `.harness` exclude pathspec and NOT gitignored) is no longer staged/committed into agent work. Exclude the whole `.harness*` artifact family, not just the `.harness/` dir.", "The fix is verified across BOTH repo states: a target repo that gitignores `.harness/` (harness itself) AND one that does not — staging must succeed (exit 0) and never commit any `.harness`/`.harness-retained` artifact in either.", "Regression test (no Process.sleep; assert specific exit/staged-set, never 'any error passes'; @spec on every new def AND defp): a worktree with untracked `.harness/review.json` + `.harness-retained` stages the source change, excludes both artifacts, and commit/diff_size succeed."]
+out_of_scope = ["Changing what the reviewer writes into .harness/ or the verdict-file contract — this is purely the staging/exclude mechanics in Worktree.", "The dispatch-reland conflict-handling fix (Task 281) — separate concern; this bug merely blocked 281's reviewer from grading."]
+files_to_modify = ["lib/harness/worktree.ex"]
+touches = ["lib/harness/lander.ex", "test/harness/worktree_test.exs"]
+domains = ["otp", "elixir"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Observed 2026-06-14 dispatching harness task 281. Run run-1781425518611-74749b75: implementer delivered cleanly to branch harness/run-1781425518611-74749b75 (+173 lines, tests), but the run settled :failed with reason review_stuck: Reviewer failed to run {:git_failed, [add, -A, --, ., :(exclude).harness], 1, "paths ignored by .gitignore: .harness"}. The verdict was never read; task 281 bounced to pending.
+
+Root cause in lib/harness/worktree.ex:69 @stage_pathspec [".", ":(exclude).harness"] (@artifact_dir = ".harness"), used by do_commit/2 (L471) and diff_size/1 (L512). In a repo that gitignores `.harness/` (harness's own .gitignore:27 = `.harness/`), an untracked `.harness/review.json` makes `git add -A -- . :(exclude).harness` exit 1 (git treats the positive `.` matching an ignored path as a fatal use-f error; the exclude pathspec does not suppress the fatal). Confirmed by repro in the survived worktree.
+
+Second, coupled defect: a `.harness-retained` file (82 B) sits in the worktree, is NOT gitignored (the `.harness/` pattern doesn't match `.harness-retained`) and is NOT excluded by `:(exclude).harness`, so `git add -A` stages it — a harness artifact leaking into agent commits. Fix must exclude the whole `.harness*` family.
+
+This is a run-lifecycle mechanical bug (harness substrate, not agent judgment) and it intermittently blocks the reviewer gate — it is why 281 could not land despite good work.
+"""
+created_at = "2026-06-14"
+scored_at = "2026-06-14"
