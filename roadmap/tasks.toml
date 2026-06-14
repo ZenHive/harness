@@ -8646,7 +8646,7 @@ shipped_in = "cdd7fbace888b7cb65f2b1650734a62e2d50ee2c"
 id = "287"
 phase = 19
 bundle = "resilience"
-status = "in_progress"
+status = "done"
 title = "Dispatch idempotency: refuse a fresh run for a task with a settled, unlanded harness/<run-id> branch — return that run, steer to dispatch-reland"
 scores = { d = 2, b = 3, u = 2 }
 acceptance_criteria = ["Extend the dispatch ingestion guard (Harness.Run.Worker return_existing_run/3 path, around the live_run_id/2 lookup) so that when no live run and no non-terminal Oban job exist, it ALSO queries ResultStore.list_run_records(task_id:) for a SETTLED run with landed_sha == nil whose harness/<run-id> branch still exists (git branch existence check), and returns {:ok, <that_run_id>, <existing>} instead of spawning a duplicate.", "The returned shape matches the in-flight guard's contract (caller gets the existing run_id, not a second run and not an error) and the path logs/steers the caller toward dispatch-reland.", "A settled run that already LANDED (landed_sha set) or whose harness/<run-id> branch was deleted does NOT block a fresh dispatch — only an unlanded run WITH a retained branch does. This narrows task 286 AC#3 (which freely allowed re-dispatch of any terminal run) to exempt the recoverable-via-reland case.", "Test (NEVER-HIDE-FAILURES): settle a run done/approved, leave landed_sha nil + branch present, dispatch the same {project, task_id} -> returns the SAME run_id, exactly zero new Oban jobs/gen_statems; then set landed_sha (or delete the branch) and assert a fresh dispatch DOES enqueue. Flunk on any unexpected error.", "mix precommit.full green."]
@@ -8661,6 +8661,11 @@ The in-flight idempotency guard (task 286) only dedups against LIVE runs + non-t
 
 Defense-in-depth follow-up to the lander conflict-retain fix: the lander no longer re-dispatches on conflict (it retains the branch + marks the task blocked), so the autonomous duplicate is already closed. This task closes the remaining vector: a human/orchestrator re-dispatching the blocked task by hand. Extend the guard to detect the settled-unlanded-with-branch case and return the existing run_id, steering the caller to dispatch-reland (zero-token re-land) rather than redoing reviewed work — the "Recover, Don't Redo" contract enforced at the dispatch boundary.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781442064451-1999108f, aa5bfabffa6517dc17aa0810322682ceda1667e5)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-14"
 started_at = "2026-06-14"
 scored_at = "2026-06-14"
+done_at = "2026-06-14"
+shipped_in = "aa5bfabffa6517dc17aa0810322682ceda1667e5"
