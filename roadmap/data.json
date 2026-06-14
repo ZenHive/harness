@@ -12464,7 +12464,7 @@
       "id": "281",
       "phase": 11,
       "bundle": "autolanding",
-      "status": "pending",
+      "status": "in_progress",
       "title": "dispatch-reland on rebase-conflict re-dispatches a fresh implementer instead of retaining the branch",
       "scores": {
         "d": 5,
@@ -12502,6 +12502,7 @@
       ],
       "body": "Observed in ccxt_extract dogfooding (2026-06-14). dispatch-reland on an approved-but-unlanded run whose retained harness/<run-id> branch fails to rebase onto the target (here: a CHANGELOG.md [Unreleased] conflict — every task appends to the same region, so any branch that lands after a sibling conflicts) does NOT retain the branch for manual repair as the docs promise. Instead harness re-dispatches the task as a fresh implementer run.\n\nConcrete repro: ccxt_extract task 119, dispatch-reland run-1781420962974-a3f1506e (state done / verdict approve). The rebase hit a CHANGELOG.md conflict; instead of a retained-branch + conflict outcome, a brand-new implementer run run-1781423241832-15849dd4 (task 119, fresh agent PID) appeared seconds later. Root cause of an apparent 'rogue dispatcher' loop: every reland of a conflict-prone branch (119, 78c — both touch CHANGELOG) silently spawned a fresh implementer, burning tokens against an explicit operator pause. Autonomy was OFF (master_enabled false, project effective false) and the driving session had no cron, so this is purely the reland-on-conflict path.\n\nExpected (per harness-workflow.md): 'Conflict / push-rejected retains the branch for repair — never lands red.' A rebase conflict during reland must (a) leave the branch retained, (b) surface a conflict outcome via the witness sink, (c) NOT advance or reset roadmap status, and (d) spawn zero implementer runs. Operator resolves manually (the working fix here was a manual ff-land with a CHANGELOG union resolve).\n\nInvestigate Harness.Lander.land/1 (or the reland enqueue path) for the branch where a failed rebase falls through to re-dispatch rather than a retain+notify terminal state.\n\n---\n2026-06-14 (scope correction, pre-dispatch review): the original unconditional 'zero new runs on ANY conflict' framing contradicts a DELIBERATE design — resilience.ex:94 maps {:conflict,_} -> {:redispatch, attempt+1} (capped), and CLAUDE.md documents the merge-resolver -> re-dispatch fallback as intended autonomous recovery. Implementing the original ACs literally would delete load-bearing autonomous conflict-recovery for ALL projects. The real bug is NARROWER: an operator-invoked (manual) reland under an explicit autonomy pause must not inherit that autonomous redispatch — it should retain+notify. Scope the fix to the manual reland path; leave the autonomous merge-train resilience + resolver fallback intact (see out_of_scope). Also verify reland routes conflicts through the resolver like auto-land does — if it doesn't, the observed CHANGELOG union conflict should have auto-reconciled and never redispatched.\n",
       "created_at": "2026-06-14",
+      "started_at": "2026-06-14",
       "scored_at": "2026-06-14",
       "cross_repo": []
     }
