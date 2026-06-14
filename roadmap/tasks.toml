@@ -8445,7 +8445,7 @@ shipped_in = "5b82a9bcd2893b63568f4cbb9ae00735ddd4d885"
 id = "281"
 phase = 11
 bundle = "autolanding"
-status = "in_progress"
+status = "pending"
 title = "dispatch-reland on rebase-conflict re-dispatches a fresh implementer instead of retaining the branch"
 scores = { d = 5, b = 6, u = 6 }
 acceptance_criteria = ["A MANUAL, operator-invoked dispatch-reland whose harness/<run-id> branch hits a rebase conflict the merge-resolver cannot reconcile retains the branch, surfaces a conflict outcome via the witness sink, does NOT advance or reset roadmap status, and spawns ZERO fresh implementer runs. This is the operator-invoked reland path ONLY.", "Confirm whether the reland enqueue path routes a conflict through the merge-resolver (Harness.Lander.resolve_or_abort / Resolver, Task 189) the way the autonomous lander does. If reland BYPASSES the resolver, that inconsistency is the real defect (a CHANGELOG [Unreleased] union conflict should auto-reconcile, not redispatch) — fix it there. State the finding either way.", "Regression test (no Process.sleep; assert specific values, never 'any error passes'; @spec on every new def AND defp): a manual reland of an approved run whose branch conflicts on a since-modified target file leaves task status unchanged, retains the branch, emits a conflict witness event, and creates ZERO new runs. A SECOND test asserts the autonomous merge-train conflict path (resilience.ex plan/2) is UNCHANGED."]
