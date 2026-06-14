@@ -1544,5 +1544,4 @@ defmodule Harness.ObanDispatchTest do
       Process.sleep(@lifeline_wait_delay_ms)
       assert_eventually_lifeline(fun, tries - 1)
   end
-
 end

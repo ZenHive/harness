@@ -75,6 +75,11 @@ defmodule Harness.Run.Worker do
 
   @doc """
   Enqueues a restart-resilient run worker job and returns the run id it will use.
+
+  In-flight idempotency (Task 286): when a non-terminal Oban job for the same
+  {project_name, item_id} already exists, Oban returns the existing job with
+  `conflict?: true` and enqueue returns `{:ok, existing_run_id, job}` instead of
+  spawning a duplicate run. A terminal prior job does not block re-dispatch.
   """
   @spec enqueue(Project.t(), Item.t(), module(), keyword()) :: {:ok, String.t(), Oban.Job.t()} | {:error, term()}
   def enqueue(%Project{} = project, %Item{} = item, adapter, opts \\ []) when is_atom(adapter) and is_list(opts) do
