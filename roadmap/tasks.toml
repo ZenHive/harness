@@ -8520,7 +8520,7 @@ delivered_by = "claude"
 id = "283"
 phase = 20
 bundle = "config-surface"
-status = "in_progress"
+status = "done"
 title = "ProjectRegistry.upsert/1 — replace-or-insert with live Oban queue scaling (foundational)"
 scores = { d = 2, b = 4, u = 5 }
 acceptance_criteria = ["Public Harness.ProjectRegistry.upsert/1 (accepts a %Harness.Project{} or attrs keyword/map via build_project/1, like register/1) added with an api() annotation. Unlike register/1 (which returns {:error, {:duplicate, name}} on an existing name), upsert REPLACES an existing registration and INSERTS a new one — idempotent.", "On upsert: the in-memory state map entry is replaced, Harness.ProjectRegistry.Persistence.upsert/1 writes the row (on_conflict: :replace_all), the project's Oban queue is ensured, AND when concurrency_cap changed the queue limit is updated live via Oban.scale_queue (today Harness.Oban.ensure_project_queue only START_QUEUEs — extend it or scale within upsert). A cap change takes effect with no BEAM restart.", "Test: upsert on an existing project name replaces its fields (e.g. new concurrency_cap) in BOTH the in-memory list and the projects table, and the Oban queue limit reflects the new cap (assert via Oban queue state, not a sleep).", "Test: upsert on a brand-new name inserts the row and starts its queue; ProjectRegistry.list/0 then includes it.", "Test (NEVER-HIDE-FAILURES): a re-upsert with identical attrs is a clean no-op-equivalent (idempotent), flunking on any unexpected error.", "mix precommit.full green."]
@@ -8536,9 +8536,14 @@ Add a public, GenServer-routed upsert/1 that replaces-or-inserts in one shot: in
 
 Mechanics only (mantra-clean): replace a map entry, write a row, scale a queue to a number. No judgment.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781430398049-2ecc5136, 75404990f24177db6b40f125a742d9817df434ed)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-14"
 started_at = "2026-06-14"
 scored_at = "2026-06-14"
+done_at = "2026-06-14"
+shipped_in = "75404990f24177db6b40f125a742d9817df434ed"
 
 [[task]]
 id = "284"

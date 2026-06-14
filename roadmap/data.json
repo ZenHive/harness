@@ -12573,7 +12573,7 @@
       "id": "283",
       "phase": 20,
       "bundle": "config-surface",
-      "status": "in_progress",
+      "status": "done",
       "title": "ProjectRegistry.upsert/1 — replace-or-insert with live Oban queue scaling (foundational)",
       "scores": {
         "d": 2,
@@ -12609,10 +12609,15 @@
         "otp",
         "ecto"
       ],
+      "shipped_in": "75404990f24177db6b40f125a742d9817df434ed",
       "body": "Foundational primitive for the config-surface bundle (blocks 284 + 285). The recurring operator pain: editing config/dev.local.exs to change a project's concurrency_cap / paths does NOTHING because Postgres is the source of truth and config only seeds rows whose name is ABSENT (ProjectRegistry.import_missing_config_projects/2). The fix direction is to make the DB the live edit surface — but register/1 REJECTS an existing name ({:error, {:duplicate, name}}), and only the internal Persistence.upsert/1 (on_conflict: :replace_all) replaces, and it bypasses the GenServer's in-memory map + Oban queue.\n\nAdd a public, GenServer-routed upsert/1 that replaces-or-inserts in one shot: in-memory map, Postgres row, Oban queue (started if new, SCALED via Oban.scale_queue if the cap changed). This is the primitive both the dashboard cap-editor/register-form (284) and the reproducible seed script (285) call. The dev.local.exs rationale comments already wished for exactly 'an upsert'.\n\nMechanics only (mantra-clean): replace a map entry, write a row, scale a queue to a number. No judgment.\n",
       "created_at": "2026-06-14",
       "started_at": "2026-06-14",
+      "done_at": "2026-06-14",
       "scored_at": "2026-06-14",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781430398049-2ecc5136, 75404990f24177db6b40f125a742d9817df434ed).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
