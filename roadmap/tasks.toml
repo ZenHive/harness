@@ -8732,3 +8732,48 @@ This is the nicer-but-bigger half of the orchestrator-feedback pair (the pull-on
 """
 created_at = "2026-06-14"
 scored_at = "2026-06-14"
+
+[[task]]
+id = "291"
+phase = 19
+bundle = "dashboard-chrome"
+status = "pending"
+title = "Model catalog card: membership multi-select (probed universe + operator subset) replacing the flat removable list"
+scores = { d = 3, b = 4, u = 2 }
+markers = ["docs"]
+acceptance_criteria = ["The Model catalog card renders each agent's models as a TOGGLE/CHECKBOX membership list (built from the existing `.toggle`/`.pill` design-token vocabulary — NOT a native `<select multiple>`), where the CLI-probed catalog is the read-only UNIVERSE and the operator toggles which ids are SELECTED into the dropdown-feeding set. Clicking a model adds/removes membership in one interaction; no per-row Add-form + N Remove-buttons.", "A per-agent filter/search input narrows the universe so a large probed list (cursor lists many models) stays usable; filtering is client-or-server but must not lose unselected-but-filtered selections.", "ModelAvailability distinguishes the probed universe from the operator-selected subset: `catalog/1` (the source feeding the Agent/Reviewer model dropdowns) returns the SELECTED subset; a new query exposes the full universe (probed ∪ operator-added) for the card to render with selected-state. `refresh_catalog` no longer flattens the probe into one indistinguishable removable static list.", "Free-text ADD remains as a fallback for non-probeable agents (no CLI universe) and for ids the probe does not report — a typed id becomes both universe-member and selected.", "Tests: ModelAvailability universe-vs-selected round-trip (toggle membership, refresh merges into universe not selection, selected survives a refresh); settings_components render test for the membership list + filter; settings_live event test for toggle-membership and free-text add."]
+out_of_scope = ["Removing the catalog management surface entirely (the autocomplete-only 'option C' alternative) — this task keeps an explicit curation surface, just as a membership UI.", "Changing the {agent,model} BLOCK semantics (operator/failure blocks) — this is catalog membership, not availability blocking.", "Validating model ids against --list-models output (ids are free-text/unvalidated; they churn)."]
+files_to_modify = ["lib/harness/dashboard/settings_components.ex", "lib/harness/dashboard/settings_live.ex", "lib/harness/model_availability.ex", "lib/harness/dashboard/tokens.ex"]
+touches = ["test/harness/dashboard/settings_components_test.exs", "test/harness/dashboard/settings_live_test.exs", "test/harness/model_availability_test.exs"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+The Model catalog card (Harness.Dashboard.SettingsComponents.model_catalog_card)
+renders every model id per agent as a `<pill> + Remove` form. Because
+ModelAvailability.refresh_catalog MERGES the CLI probe into the operator static
+catalog and persists it, a single refresh dumps the entire CLI model list (dozens
+of ids for e.g. cursor) into the removable static set — so the card shows a bulk
+import with per-item curation UI meant for a handful of hand-picked ids. Visually a
+wall of pill+button rows; conceptually it conflates two sources.
+
+DECISION (2026-06-15, with the repo owner): redesign as a MEMBERSHIP MULTI-SELECT.
+The probed CLI list is the read-only UNIVERSE (source of truth for what an agent
+can run); the operator toggles which ids are SELECTED into the curated subset that
+actually feeds the Agent models / Reviewer models dropdowns. Add+remove collapse
+into one click; a filter box tames large universes. This is option B
+(provenance-aware: universe vs selected) realized as a membership UI rather than two
+stacked lists. Build it from the existing `.toggle`/`.pill` tokens — NOT a native
+`<select multiple>` (unstyleable, ugly). Keep the free-text ADD as the fallback for
+non-probeable agents and ids the probe omits.
+
+Mantra-clean: membership is a COUNTED FACT (id ∈ selected?), not a judgment — no
+scoring/weighting of models, just set toggling. The dropdowns read the selected
+set; the card reads the universe with selected-state overlaid.
+
+Context: settings page was just refactored into section tabs (Autonomy/Agents/
+Models/Projects/Advanced); this card lives under the Models tab. Select/input chrome
+was just unified (custom caret, no native dropdown) — match it. No daisyUI/Tailwind
+in this repo; styling is selector-explicit in tokens.ex.
+"""
+created_at = "2026-06-14"
+scored_at = "2026-06-14"
