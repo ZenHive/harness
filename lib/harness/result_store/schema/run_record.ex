@@ -9,6 +9,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
   schema "run_records" do
     field :batch_id, :string
     field :task_id, :string
+    field :task_fingerprint, :string
     field :project_name, :string
     field :agent, :string
     field :model, :string
@@ -57,6 +58,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
       :run_id,
       :batch_id,
       :task_id,
+      :task_fingerprint,
       :project_name,
       :agent,
       :model,

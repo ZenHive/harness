@@ -1612,6 +1612,7 @@ defmodule Harness.Run do
       "project_name" => data.project.name,
       "run_id" => data.run_id,
       "task_id" => to_string(data.item.id),
+      "task_fingerprint" => data.item.fingerprint,
       "agent" => to_string(data.item.agent),
       "branch" => "harness/" <> data.run_id,
       "land_attempt" => data.land_attempt
@@ -1652,6 +1653,7 @@ defmodule Harness.Run do
       "project_name" => project.name,
       "run_id" => data.run_id,
       "task_id" => to_string(data.item.id),
+      "task_fingerprint" => data.item.fingerprint,
       "agent" => to_string(data.item.agent),
       "reviewer" => reviewer_agent_name(data.reviewer_adapter),
       "branch" => "harness/" <> data.run_id,
@@ -1751,7 +1753,8 @@ defmodule Harness.Run do
       adapter: data.adapter,
       project_name: data.project.name,
       duration_ms: run_duration_ms(data),
-      domains: data.item.domains
+      domains: data.item.domains,
+      task_fingerprint: data.item.fingerprint
     )
     |> ResultStore.record_run(data.result_store)
     |> log_store_error(result.run_id)

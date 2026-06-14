@@ -73,6 +73,7 @@ defmodule Harness.Roadmap do
           | :no_pending_task
           | {:task_not_found, String.t()}
           | :roadmap_not_found
+          | {:roadmap_task_drift, String.t(), term()}
           | {:rmap_failed, [String.t()], integer(), String.t()}
           | {:rmap_bad_output, term()}
 
@@ -80,6 +81,7 @@ defmodule Harness.Roadmap do
   @typep failure :: {integer(), String.t(), [String.t()]}
   @roadmap_lock_retry_delay_ms 25
   @roadmap_lock_timeout_ms 30_000
+  @fingerprint_fields ["title", "body", "acceptance_criteria", "files_to_modify", "out_of_scope"]
 
   api(:ingest, "Fetch a roadmap task via rmap and render it as a ready-to-dispatch agent prompt.",
     params: [
@@ -123,9 +125,21 @@ defmodule Harness.Roadmap do
          domains: task_domains(task),
          d: task_d_score(task),
          markers: task_markers(task),
-         model: task_model(task)
+         model: task_model(task),
+         fingerprint: task_fingerprint(task)
        }}
     end
+  end
+
+  @doc false
+  @spec task_fingerprint(map()) :: String.t()
+  def task_fingerprint(task) when is_map(task) do
+    task
+    |> Map.take(@fingerprint_fields)
+    |> Enum.sort()
+    |> :erlang.term_to_binary()
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
   end
 
   # rmap emits `acceptance_criteria` as a JSON array of strings; a task that
@@ -285,6 +299,8 @@ defmodule Harness.Roadmap do
     * `:sha` — the landed commit SHA recorded as `shipped_in` (required).
     * `:delivered_by` — agent string for `--delivered-by` (optional).
     * `:implemented` — what shipped, for `--implemented` (optional).
+    * `:task_fingerprint` — dispatch-time stable task hash. When supplied,
+      writeback first verifies that the id still names the same task.
     * `:rmap_bin` — override the `rmap` binary name/path (intended for tests).
 
   Returns `{:ok, output}` or `{:error, {status, output, args}}`.
@@ -400,25 +416,57 @@ defmodule Harness.Roadmap do
   defp mutate(item_or_id, status_args, label, opts) do
     ctx = landing_ctx(opts)
     task_id = landing_task_id(item_or_id)
+    fingerprint = landing_fingerprint(item_or_id, opts)
     args = ["status", task_id | status_args]
 
     with :ok <- ensure_rmap(ctx.rmap_bin) do
-      apply_mutation(args, ctx, opts, task_id, label)
+      apply_mutation(args, ctx, opts, task_id, label, fingerprint)
     end
   end
 
-  @spec apply_mutation([String.t()], ctx(), keyword(), String.t(), String.t()) ::
+  @spec apply_mutation([String.t()], ctx(), keyword(), String.t(), String.t(), String.t() | nil) ::
           {:ok, String.t()} | {:error, term()}
-  defp apply_mutation(args, ctx, opts, task_id, label) do
+  defp apply_mutation(args, ctx, opts, task_id, label, fingerprint) do
     case durable_target(opts) do
       {:ok, repo, target} ->
         Durable.commit(repo, target,
           message: "roadmap: task #{task_id} -> #{label}",
-          apply: fn root -> run_rmap(args, durable_ctx(root, ctx.rmap_bin)) end
+          apply: fn root ->
+            run_verified_mutation(args, durable_ctx(root, ctx.rmap_bin), task_id, fingerprint)
+          end
         )
 
       :none ->
-        with_roadmap_lock(ctx, fn -> run_rmap(args, ctx) end)
+        with_roadmap_lock(ctx, fn ->
+          run_verified_mutation(args, ctx, task_id, fingerprint)
+        end)
+    end
+  end
+
+  @spec run_verified_mutation([String.t()], ctx(), String.t(), String.t() | nil) ::
+          {:ok, String.t()} | {:error, term()}
+  defp run_verified_mutation(args, ctx, task_id, fingerprint) do
+    with :ok <- verify_landing_target(task_id, fingerprint, ctx) do
+      run_rmap(args, ctx)
+    end
+  end
+
+  @spec verify_landing_target(String.t(), String.t() | nil, ctx()) :: :ok | {:error, term()}
+  defp verify_landing_target(_task_id, nil, _ctx), do: :ok
+
+  defp verify_landing_target(task_id, expected, ctx) do
+    case fetch_task({:id, task_id}, ctx) do
+      {:ok, task} ->
+        actual = task_fingerprint(task)
+
+        if actual == expected do
+          :ok
+        else
+          {:error, {:roadmap_task_drift, task_id, %{expected: expected, actual: actual, title: task["title"]}}}
+        end
+
+      {:error, reason} ->
+        {:error, {:roadmap_task_drift, task_id, reason}}
     end
   end
 
@@ -521,6 +569,10 @@ defmodule Harness.Roadmap do
   @spec landing_task_id(Item.t() | String.t()) :: String.t()
   defp landing_task_id(%Item{id: id}), do: to_string(id)
   defp landing_task_id(id) when is_binary(id), do: id
+
+  @spec landing_fingerprint(Item.t() | String.t(), keyword()) :: String.t() | nil
+  defp landing_fingerprint(%Item{fingerprint: fingerprint}, _opts) when is_binary(fingerprint), do: fingerprint
+  defp landing_fingerprint(_item_or_id, opts), do: Keyword.get(opts, :task_fingerprint)
 
   @spec append_flag([String.t()], String.t(), String.t() | nil) :: [String.t()]
   defp append_flag(args, _flag, nil), do: args

@@ -59,6 +59,7 @@ defmodule Harness.Lander do
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
   alias Harness.Roadmap
+  alias Harness.Roadmap.TaskIdRewriter
   alias Harness.Run.LogRecord
   alias Harness.Worktree
 
@@ -70,6 +71,7 @@ defmodule Harness.Lander do
           :run_id => String.t(),
           :task_id => String.t(),
           :branch => String.t(),
+          optional(:task_fingerprint) => String.t() | nil,
           optional(:agent) => atom() | String.t() | nil,
           optional(:reviewer) => atom() | String.t() | nil
         }
@@ -158,6 +160,7 @@ defmodule Harness.Lander do
       "project_name" => project.name,
       "run_id" => record.run_id,
       "task_id" => record.task_id,
+      "task_fingerprint" => record.task_fingerprint,
       "agent" => to_string(record.agent),
       "reviewer" => reviewer_name(record.reviewer_adapter),
       "branch" => "harness/" <> record.run_id,
@@ -181,7 +184,8 @@ defmodule Harness.Lander do
   @spec land_in_worktree(Worktree.t(), String.t(), String.t(), String.t(), Project.t(), request()) :: outcome()
   defp land_in_worktree(%Worktree{} = worktree, repo, target, base_sha, project, request) do
     result =
-      with {:ok, tip} <- integrate(worktree, target, base_sha, request),
+      with {:ok, integrated_tip} <- integrate(worktree, target, base_sha, request),
+           {:ok, tip} <- rewrite_colliding_roadmap_task_ids(worktree, base_sha, integrated_tip),
            {:ok, pushed} <- push(repo, tip, target) do
         sync_local_target(repo, target, project, request)
         writeback(project, request, pushed)
@@ -196,6 +200,87 @@ defmodule Harness.Lander do
 
     cleanup(worktree)
     result
+  end
+
+  @spec rewrite_colliding_roadmap_task_ids(Worktree.t(), String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  defp rewrite_colliding_roadmap_task_ids(%Worktree{path: path}, base_sha, tip) do
+    tasks_path = Path.join(path, "roadmap/tasks.toml")
+
+    if File.regular?(tasks_path) do
+      with {:ok, base_toml} <- base_tasks_toml(path, base_sha),
+           {:ok, head_toml} <- File.read(tasks_path) do
+        apply_task_id_rewrite(path, tasks_path, base_toml, head_toml, tip)
+      end
+    else
+      {:ok, tip}
+    end
+  end
+
+  @spec base_tasks_toml(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  defp base_tasks_toml(path, base_sha) do
+    case Git.run(["show", "#{base_sha}:roadmap/tasks.toml"], path) do
+      {:ok, toml} -> {:ok, toml}
+      {:error, {:git_failed, _args, _status, _output}} -> {:ok, ""}
+    end
+  end
+
+  @spec apply_task_id_rewrite(String.t(), String.t(), String.t(), String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, term()}
+  defp apply_task_id_rewrite(path, tasks_path, base_toml, head_toml, tip) do
+    case TaskIdRewriter.rewrite_collisions(base_toml, head_toml) do
+      :unchanged ->
+        {:ok, tip}
+
+      {:rewritten, rewritten, rewrites} ->
+        with :ok <- File.write(tasks_path, rewritten),
+             :ok <- render_roadmap(path, tasks_path),
+             {:ok, rewritten_tip} <- commit_roadmap_rewrite(path) do
+          Logger.info("harness lander: reassigned colliding roadmap task ids #{inspect(rewrites)}")
+          {:ok, rewritten_tip}
+        end
+    end
+  end
+
+  @spec commit_roadmap_rewrite(String.t()) :: {:ok, String.t()} | {:error, term()}
+  defp commit_roadmap_rewrite(path) do
+    with {:ok, _added} <- Git.run(["add", "-A", "roadmap/tasks.toml", "ROADMAP.md", "roadmap/data.json"], path),
+         {:ok, status} <- Git.run(["status", "--porcelain"], path),
+         :ok <- ensure_roadmap_rewrite_changes(status),
+         {:ok, _commit} <- git_commit(path, "roadmap: reassign colliding task ids") do
+      head_sha(path)
+    else
+      {:error, reason} -> {:error, {:roadmap_rewrite_commit_failed, reason}}
+    end
+  end
+
+  @spec ensure_roadmap_rewrite_changes(String.t()) :: :ok | {:error, :no_roadmap_rewrite_changes}
+  defp ensure_roadmap_rewrite_changes(status) do
+    if String.trim(status) == "", do: {:error, :no_roadmap_rewrite_changes}, else: :ok
+  end
+
+  @spec git_commit(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  defp git_commit(path, message) do
+    Git.run(
+      [
+        "-c",
+        "user.name=harness",
+        "-c",
+        "user.email=harness@localhost",
+        "commit",
+        "-q",
+        "-m",
+        message
+      ],
+      path
+    )
+  end
+
+  @spec render_roadmap(String.t(), String.t()) :: :ok | {:error, term()}
+  defp render_roadmap(path, tasks_path) do
+    case System.cmd("rmap", ["render", "--tasks-path", tasks_path], cd: path, stderr_to_stdout: true) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {:roadmap_render_failed, status, output}}
+    end
   end
 
   # origin/<target> already an ancestor of the branch tip -> ff-able as-is.
@@ -352,6 +437,7 @@ defmodule Harness.Lander do
     case Roadmap.mark_landed(request.task_id,
            project: project,
            sha: sha,
+           task_fingerprint: request[:task_fingerprint],
            delivered_by: delivered_by(request[:agent]),
            implemented: implemented_text(request, sha)
          ) do

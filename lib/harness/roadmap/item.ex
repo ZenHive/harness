@@ -42,6 +42,9 @@ defmodule Harness.Roadmap.Item do
     * `model` — the task's pinned `model` field from rmap when present (an LLM
       id like `claude-opus-4-7`, or an agent routing token like `codex`); carried
       through dispatch as the requested model when the agent does not self-report.
+    * `fingerprint` — a dispatch-time hash of stable task content. The lander
+      checks it before writing `done --shipped-in` so a reused numeric id cannot
+      silently mark a different task.
   """
   @type t :: %__MODULE__{
           id: String.t(),
@@ -53,7 +56,8 @@ defmodule Harness.Roadmap.Item do
           domains: [CapabilityDomain.t()],
           d: non_neg_integer() | nil,
           markers: [atom() | String.t()],
-          model: String.t() | nil
+          model: String.t() | nil,
+          fingerprint: String.t() | nil
         }
 
   @enforce_keys [:id, :title, :prompt, :agent]
@@ -67,6 +71,7 @@ defmodule Harness.Roadmap.Item do
     acceptance_criteria: [],
     domains: [],
     markers: [],
-    model: nil
+    model: nil,
+    fingerprint: nil
   ]
 end

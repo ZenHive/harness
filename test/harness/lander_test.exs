@@ -305,6 +305,40 @@ defmodule Harness.LanderTest do
       assert ancestor?(ctx.origin, moved_main, "refs/heads/main")
       {_out, 0} = git(ctx.origin, ["cat-file", "-e", landed <> ":feature.txt"])
     end
+
+    test "reassigns stale roadmap task ids filed concurrently before pushing", ctx do
+      File.mkdir_p!(Path.join(ctx.run_worktree.path, "roadmap"))
+      File.write!(Path.join(ctx.run_worktree.path, "roadmap/tasks.toml"), roadmap_toml("200", "Stale branch task"))
+      File.write!(Path.join(ctx.run_worktree.path, "ROADMAP.md"), roadmap_markers())
+      GitFixture.git!(ctx.run_worktree.path, ["add", "."])
+      GitFixture.git!(ctx.run_worktree.path, ["commit", "-m", "file stale roadmap task"])
+
+      File.mkdir_p!(Path.join(ctx.repo, "roadmap"))
+      File.write!(Path.join(ctx.repo, "roadmap/tasks.toml"), roadmap_toml("200", "Target task"))
+      File.write!(Path.join(ctx.repo, "ROADMAP.md"), roadmap_markers())
+      render_roadmap!(ctx.repo)
+      GitFixture.git!(ctx.repo, ["add", "."])
+      GitFixture.git!(ctx.repo, ["commit", "-m", "file target roadmap task"])
+      GitFixture.git!(ctx.repo, ["push", "origin", "main"])
+
+      put_resolver(fn %{path: path}, _opts ->
+        File.write!(
+          Path.join(path, "roadmap/tasks.toml"),
+          roadmap_toml("200", "Target task") <> "\n" <> task_toml("200", "Stale branch task")
+        )
+
+        File.write!(Path.join(path, "ROADMAP.md"), roadmap_markers())
+        :ok
+      end)
+
+      assert {:landed, landed} = Lander.land(ctx.request)
+
+      toml = GitFixture.git!(ctx.origin, ["show", landed <> ":roadmap/tasks.toml"])
+      assert toml =~ ~s(id = "200")
+      assert toml =~ ~s(title = "Target task")
+      assert toml =~ ~s(id = "201")
+      assert toml =~ ~s(title = "Stale branch task")
+    end
   end
 
   describe "land/1 — non-ff push race" do
@@ -454,6 +488,7 @@ defmodule Harness.LanderTest do
         batch_id: "b",
         run_id: "run-abc",
         task_id: "42",
+        task_fingerprint: "fp-42",
         adapter: Claude,
         state: :done,
         reason: :approved,
@@ -467,6 +502,7 @@ defmodule Harness.LanderTest do
                "project_name" => "demo",
                "run_id" => "run-abc",
                "task_id" => "42",
+               "task_fingerprint" => "fp-42",
                "agent" => "claude",
                "reviewer" => nil,
                "branch" => "harness/run-abc",
@@ -524,6 +560,58 @@ defmodule Harness.LanderTest do
     GitFixture.git!(clone, ["commit", "-q", "-m", "competing change"])
     GitFixture.git!(clone, ["push", "-q", "origin", "HEAD:refs/heads/hook-competing"])
     sha(clone, "HEAD")
+  end
+
+  @spec roadmap_markers() :: String.t()
+  defp roadmap_markers, do: "# Roadmap\n\n<!-- TASKS:BEGIN phase=1 -->\n<!-- TASKS:END -->\n"
+
+  @spec roadmap_toml(String.t(), String.t()) :: String.t()
+  defp roadmap_toml(id, title) do
+    """
+    schema_version = 2
+    project = "lander-roadmap"
+    default_branch = "main"
+    vision = "Fixture roadmap."
+
+    [phases.1]
+    name = "Fixture"
+    order = 1
+    status = "in_progress"
+
+    [bundles.fixture]
+    description = "Fixture"
+    order = 1
+    phase = 1
+
+    #{task_toml(id, title)}
+    """
+  end
+
+  @spec task_toml(String.t(), String.t()) :: String.t()
+  defp task_toml(id, title) do
+    """
+    [[task]]
+    id = "#{id}"
+    phase = 1
+    bundle = "fixture"
+    status = "pending"
+    title = "#{title}"
+    scores = { d = 2, b = 5, u = 5 }
+    body = "Body for #{title}."
+    files_to_modify = ["lib/#{String.downcase(String.replace(title, " ", "_"))}.ex"]
+    created_at = "2026-06-14"
+    """
+  end
+
+  @spec render_roadmap!(String.t()) :: :ok
+  defp render_roadmap!(repo) do
+    {_output, 0} =
+      System.cmd("rmap", ["render", "--tasks-path", Path.join(repo, "roadmap/tasks.toml")],
+        cd: repo,
+        stderr_to_stdout: true
+      )
+
+    :ok
   end
 
   @spec log_record(String.t()) :: LogRecord.t()

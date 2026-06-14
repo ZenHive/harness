@@ -58,6 +58,8 @@ defmodule Harness.Run.LogRecord do
   `landed_sha` is the lander's durable witness for this run: nil until the run is
   fast-forward-pushed, then the pushed commit SHA. Historical records created
   before this field existed remain nil and render as unmerged until re-landed.
+  `task_fingerprint` is the dispatch-time stable task-content hash the lander
+  uses to guard rmap writeback against numeric-id drift.
   """
 
   alias Harness.AgentAdapter
@@ -74,6 +76,7 @@ defmodule Harness.Run.LogRecord do
           batch_id: String.t(),
           run_id: String.t(),
           task_id: String.t(),
+          task_fingerprint: String.t() | nil,
           project_name: String.t() | nil,
           agent: atom() | nil,
           model: String.t() | nil,
@@ -126,6 +129,7 @@ defmodule Harness.Run.LogRecord do
     :batch_id,
     :run_id,
     :task_id,
+    :task_fingerprint,
     :project_name,
     :agent,
     :model,
@@ -167,6 +171,7 @@ defmodule Harness.Run.LogRecord do
       batch_id: Keyword.fetch!(meta, :batch_id),
       run_id: result.run_id,
       task_id: result.task_id,
+      task_fingerprint: Keyword.get(meta, :task_fingerprint),
       project_name: Keyword.get(meta, :project_name),
       agent: Keyword.get(meta, :agent),
       model: record_model(result, meta),

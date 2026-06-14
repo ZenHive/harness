@@ -59,6 +59,29 @@ defmodule Harness.RoadmapMarkLandedTest do
     script
   end
 
+  defp drift_check_rmap(tmp_dir) do
+    script = Path.join(tmp_dir, "drift-check-rmap")
+    status_marker = Path.join(tmp_dir, "status-called")
+
+    File.write!(script, """
+    #!/bin/sh
+    if [ "$1" = "show" ]; then
+      printf '%s\\n' '{"id":"7","title":"Reassigned task","body":"Different work.","acceptance_criteria":["different"],"files_to_modify":["lib/reassigned.ex"]}'
+      exit 0
+    fi
+
+    if [ "$1" = "status" ]; then
+      touch "#{status_marker}"
+      exit 0
+    fi
+
+    exit 42
+    """)
+
+    File.chmod!(script, 0o755)
+    {script, status_marker}
+  end
+
   describe "mark_landed/2" do
     test "builds the done + verified + shipped_in argv with delivered_by/implemented", %{tmp_dir: tmp_dir} do
       {script, args_file} = stub_rmap(tmp_dir)
@@ -112,6 +135,29 @@ defmodule Harness.RoadmapMarkLandedTest do
     test "returns {:error, {:rmap_not_found, _}} when the binary is absent", %{tmp_dir: tmp_dir} do
       assert {:error, {:rmap_not_found, _bin}} =
                Roadmap.mark_landed("1", root: tmp_dir, sha: "x", rmap_bin: Path.join(tmp_dir, "nope-rmap"))
+    end
+
+    test "aborts before status write when the id no longer names the dispatched task", %{tmp_dir: tmp_dir} do
+      {script, status_marker} = drift_check_rmap(tmp_dir)
+
+      fingerprint =
+        Roadmap.task_fingerprint(%{
+          "id" => "7",
+          "title" => "Original task",
+          "body" => "Build the original work.",
+          "acceptance_criteria" => ["original"],
+          "files_to_modify" => ["lib/original.ex"]
+        })
+
+      assert {:error, {:roadmap_task_drift, "7", _details}} =
+               Roadmap.mark_landed("7",
+                 root: tmp_dir,
+                 sha: "abc123",
+                 task_fingerprint: fingerprint,
+                 rmap_bin: script
+               )
+
+      refute File.exists?(status_marker)
     end
   end
 

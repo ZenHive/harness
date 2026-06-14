@@ -17,7 +17,7 @@ defmodule Harness.RunLandingTriggerTest do
   alias Harness.Run.Result
   alias Harness.Test.SettingsStoreMemory
 
-  defp item, do: %Item{id: "42", title: "t", prompt: "p", agent: :claude}
+  defp item, do: %Item{id: "42", title: "t", prompt: "p", agent: :claude, fingerprint: "fp-42"}
 
   defp capture_inserts do
     test_pid = self()
@@ -78,6 +78,7 @@ defmodule Harness.RunLandingTriggerTest do
       args = Ecto.Changeset.get_field(changeset, :args)
       assert args["project_name"] == project.name
       assert args["task_id"] == "42"
+      assert args["task_fingerprint"] == "fp-42"
       assert args["run_id"] == run_id
       assert args["agent"] == "claude"
       assert args["branch"] == "harness/" <> run_id

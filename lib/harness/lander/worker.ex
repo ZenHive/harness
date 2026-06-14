@@ -44,6 +44,7 @@ defmodule Harness.Lander.Worker do
         project: project,
         run_id: args["run_id"],
         task_id: args["task_id"],
+        task_fingerprint: args["task_fingerprint"],
         agent: args["agent"],
         reviewer: args["reviewer"],
         branch: branch
