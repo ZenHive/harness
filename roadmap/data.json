@@ -12759,7 +12759,7 @@
       "id": "286",
       "phase": 19,
       "bundle": "resilience",
-      "status": "in_progress",
+      "status": "done",
       "title": "Dispatch in-flight idempotency: a second dispatch of {project, task_id} with a non-terminal run must return the existing run, not spawn a duplicate",
       "scores": {
         "d": 2,
@@ -12801,10 +12801,15 @@
         "otp",
         "ecto"
       ],
+      "shipped_in": "cdd7fbace888b7cb65f2b1650734a62e2d50ee2c",
       "body": "VERIFIED REPRO (2026-06-14, against the live node): ccxt_extract task 146 spawned TWO concurrent runs.\n- run-1781433844647-abc2f80c — started first, progressed implement -> review, healthy (:reviewing).\n- run-1781434039778-d9568c69 — started ~195s LATER for the SAME {ccxt_extract, 146}, ran 115s, then :cancelled.\nThe second run burned ~115s of cursor/composer tokens before someone caught it and killed it. (A third record, tapakly/146, is a DIFFERENT project — IDs are per-project, not a duplicate.)\n\nRoot cause (mechanical, mantra-clean): the dispatch path has no in-flight idempotency guard. Both enqueue sites build the Oban job via RunWorker.new(queue: ...) with NO `unique:` option (worker.ex ~84, batch.ex ~253), so a second dispatch of an already-live task enqueues a second job -> a second gen_statem -> a parallel duplicate run. This is a count/lookup ('does a non-terminal run for this {project, task_id} exist?'), not a judgment, so it belongs in harness code.\n\nFix direction (Oban-native, idiomatic): add a `unique:` spec on the RunWorker job keyed on the task-identifying args over non-terminal states (:available/:scheduled/:executing/:retryable, period: :infinity), centralized in one helper shared by both enqueue sites. The worker keeps the Oban job `executing` for the whole run lifetime (it spawns the gen_statem and threads its terminal state back), so :executing covers the implement->review window. On conflict, Oban.insert returns the existing job with conflict?: true — surface its run_id back to the caller so a retry gets the LIVE run's handle instead of an error-with-no-handle (this folds in the agent's secondary 'non-atomic dispatch+respond' complaint: there is nothing to make atomic — the retry simply returns the existing run). Terminal jobs don't block, so the recovery verbs and honest re-dispatch of a settled task are unaffected.\n\nNOT a transport bug: the dispatching client also reported MCP 'Server unavailable', but the harness MCP HTTP server was verified healthy end-to-end (initialize -> initialized -> tools/call returning all 14 projects) — that was a client-side stale-session fault, out of scope (see out_of_scope). The only real harness defect is the missing dispatch dedup above.\n",
       "created_at": "2026-06-14",
       "started_at": "2026-06-14",
+      "done_at": "2026-06-14",
       "scored_at": "2026-06-14",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781435587994-2492d30b, cdd7fbace888b7cb65f2b1650734a62e2d50ee2c).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     }
   ]

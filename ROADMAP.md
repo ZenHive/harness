@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 19 — Self-Healing Run Loop (37 of 38 done · 1 in progress)
+**Focus phase:** 19 — Self-Healing Run Loop (38 of 38 done · 0 in progress)
 
-**Last shipped:** Task 280 — Lander mis-marks reassigned task ids — run→task_id writeback + concurrent rmap-filing id collision corrupts roadmap status on 2026-06-14
+**Last shipped:** Task 280 — Lander mis-marks reassigned task ids — run→task_id writeback + concurrent rmap-filing id collision corrupts roadmap status, Task 286 — Dispatch in-flight idempotency: a second dispatch of {project, task_id} with a non-terminal run must return the existing run, not spawn a duplicate on 2026-06-14
 
 **Up next:** Task 174 — Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:3/B:5/U:4 → Eff:1.5] 🚀
 <!-- FOCUS:END -->
