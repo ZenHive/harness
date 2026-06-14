@@ -12510,7 +12510,7 @@
       "id": "282",
       "phase": 11,
       "bundle": "autolanding",
-      "status": "pending",
+      "status": "done",
       "title": "Reviewer-stage git-add fatals on gitignored .harness/ → review_stuck blocks the gate; .harness-retained artifact leaks into commits",
       "scores": {
         "d": 3,
@@ -12545,9 +12545,13 @@
         "otp",
         "elixir"
       ],
+      "shipped_in": "bd6c3d461e2253d68e4cfba0804d6bbf65136261",
       "body": "Observed 2026-06-14 dispatching harness task 281. Run run-1781425518611-74749b75: implementer delivered cleanly to branch harness/run-1781425518611-74749b75 (+173 lines, tests), but the run settled :failed with reason review_stuck: Reviewer failed to run {:git_failed, [add, -A, --, ., :(exclude).harness], 1, \"paths ignored by .gitignore: .harness\"}. The verdict was never read; task 281 bounced to pending.\n\nRoot cause in lib/harness/worktree.ex:69 @stage_pathspec [\".\", \":(exclude).harness\"] (@artifact_dir = \".harness\"), used by do_commit/2 (L471) and diff_size/1 (L512). In a repo that gitignores `.harness/` (harness's own .gitignore:27 = `.harness/`), an untracked `.harness/review.json` makes `git add -A -- . :(exclude).harness` exit 1 (git treats the positive `.` matching an ignored path as a fatal use-f error; the exclude pathspec does not suppress the fatal). Confirmed by repro in the survived worktree.\n\nSecond, coupled defect: a `.harness-retained` file (82 B) sits in the worktree, is NOT gitignored (the `.harness/` pattern doesn't match `.harness-retained`) and is NOT excluded by `:(exclude).harness`, so `git add -A` stages it — a harness artifact leaking into agent commits. Fix must exclude the whole `.harness*` family.\n\nThis is a run-lifecycle mechanical bug (harness substrate, not agent judgment) and it intermittently blocks the reviewer gate — it is why 281 could not land despite good work.\n",
       "created_at": "2026-06-14",
+      "done_at": "2026-06-14",
       "scored_at": "2026-06-14",
+      "implemented": "Two-move staging in Worktree.stage_worktree/1: bare 'git add -A' (no pathspec, so a gitignored .harness/ is silently skipped instead of fataling git's ignored-path guard) then 'git reset' unstaging the @artifact_paths family (.harness dir + .harness-active/.harness-retained markers). status/diff filter the same family via @stage_exclude. 4 regression tests across both gitignore states; verified .harness/review.json + .harness-retained never commit and diff_size excludes them. Hand-built (run-lifecycle substrate / catch-22).",
+      "delivered_by": "claude",
       "cross_repo": []
     }
   ]
