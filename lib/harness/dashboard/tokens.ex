@@ -1177,6 +1177,14 @@ defmodule Harness.Dashboard.Tokens do
 
       /* Per-agent control matrix (Task 182): captioned enabled + reviewer toggles. */
       .agent-controls { display: flex; align-items: flex-end; gap: var(--space-4); flex: none; }
+      /* Removable-model list: wraps within the card instead of overflowing right. */
+      .catalog-models {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-2) var(--space-4);
+        flex-basis: 100%;
+      }
       .agent-control { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
       .agent-control-caption {
         font-family: var(--font-mono);

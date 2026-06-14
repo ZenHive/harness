@@ -404,7 +404,7 @@ defmodule Harness.Dashboard.SettingsComponents do
               <button type="submit" class="btn-save">Refresh from CLI</button>
             </form>
           </div>
-          <div class="agent-controls">
+          <div class="catalog-models">
             <form
               :for={model <- catalog.models}
               id={"model-catalog-remove-#{catalog.name}-#{model.dom_id}"}
