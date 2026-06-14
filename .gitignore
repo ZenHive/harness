@@ -23,6 +23,9 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 harness-*.tar
 
+# Per-run reviewer/audit verdict scratch written into the worktree by harness runs.
+.harness/
+
 # Temporary files, for example, from tests.
 /tmp/
 
