@@ -8641,3 +8641,25 @@ started_at = "2026-06-14"
 scored_at = "2026-06-14"
 done_at = "2026-06-14"
 shipped_in = "cdd7fbace888b7cb65f2b1650734a62e2d50ee2c"
+
+[[task]]
+id = "287"
+phase = 19
+bundle = "resilience"
+status = "pending"
+title = "Dispatch idempotency: refuse a fresh run for a task with a settled, unlanded harness/<run-id> branch — return that run, steer to dispatch-reland"
+scores = { d = 2, b = 3, u = 2 }
+acceptance_criteria = ["Extend the dispatch ingestion guard (Harness.Run.Worker return_existing_run/3 path, around the live_run_id/2 lookup) so that when no live run and no non-terminal Oban job exist, it ALSO queries ResultStore.list_run_records(task_id:) for a SETTLED run with landed_sha == nil whose harness/<run-id> branch still exists (git branch existence check), and returns {:ok, <that_run_id>, <existing>} instead of spawning a duplicate.", "The returned shape matches the in-flight guard's contract (caller gets the existing run_id, not a second run and not an error) and the path logs/steers the caller toward dispatch-reland.", "A settled run that already LANDED (landed_sha set) or whose harness/<run-id> branch was deleted does NOT block a fresh dispatch — only an unlanded run WITH a retained branch does. This narrows task 286 AC#3 (which freely allowed re-dispatch of any terminal run) to exempt the recoverable-via-reland case.", "Test (NEVER-HIDE-FAILURES): settle a run done/approved, leave landed_sha nil + branch present, dispatch the same {project, task_id} -> returns the SAME run_id, exactly zero new Oban jobs/gen_statems; then set landed_sha (or delete the branch) and assert a fresh dispatch DOES enqueue. Flunk on any unexpected error.", "mix precommit.full green."]
+out_of_scope = ["The lander conflict-retain fix (already shipped separately) — that stops the AUTONOMOUS duplicate; this guard covers a manual/orchestrator dispatch-task of an already-blocked task.", "task_fingerprint-based dedup of different-id-but-equivalent tasks — the key stays the explicit {project, task_id}.", "Any change to dispatch-reland / dispatch-rereview / dispatch-resume_failed themselves."]
+files_to_modify = ["lib/harness/run/worker.ex"]
+touches = ["lib/harness/run/worker.ex", "lib/harness/result_store.ex", "lib/harness/run/log_record.ex"]
+domains = ["otp", "ecto"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+The in-flight idempotency guard (task 286) only dedups against LIVE runs + non-terminal Oban jobs (Harness.Run.Worker live_run_id/2, return_existing_run/3). A run that settled :done/approved and then had its auto-land BLOCKED on a conflict leaves a settled ResultStore LogRecord with landed_sha == nil and a retained harness/<run-id> branch — invisible to that guard. A subsequent explicit dispatch-task of the same {project, task_id} therefore spawns a DUPLICATE implementer run instead of returning the existing approved-but-unlanded run.
+
+Defense-in-depth follow-up to the lander conflict-retain fix: the lander no longer re-dispatches on conflict (it retains the branch + marks the task blocked), so the autonomous duplicate is already closed. This task closes the remaining vector: a human/orchestrator re-dispatching the blocked task by hand. Extend the guard to detect the settled-unlanded-with-branch case and return the existing run_id, steering the caller to dispatch-reland (zero-token re-land) rather than redoing reviewed work — the "Recover, Don't Redo" contract enforced at the dispatch boundary.
+"""
+created_at = "2026-06-14"
+scored_at = "2026-06-14"
