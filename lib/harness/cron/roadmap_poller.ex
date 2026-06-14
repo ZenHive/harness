@@ -63,13 +63,6 @@ defmodule Harness.Cron.RoadmapPoller do
   }
   @in_flight_run_states [:dispatched, :running, :committing, :recovering, :reviewing, :held]
   @live_status_timeout_ms 100
-  # Dedup window: skip re-enqueueing a task that already has a job in any
-  # non-terminal state. A completed/cancelled job does not block a later tick.
-  @unique_opts [
-    keys: [:project_name, :item_id],
-    states: [:available, :scheduled, :executing, :retryable],
-    period: :infinity
-  ]
 
   @type cron_status ::
           :disabled
@@ -323,21 +316,10 @@ defmodule Harness.Cron.RoadmapPoller do
 
   @spec enqueue_run(Project.t(), String.t(), module()) :: {:ok, Oban.Job.t()} | {:error, term()}
   defp enqueue_run(%Project{} = project, item_id, adapter) when is_binary(item_id) and is_atom(adapter) do
-    args = %{
-      project_name: project.name,
-      item_id: item_id,
-      adapter_module: Atom.to_string(adapter)
-    }
-
-    args
-    |> put_env(env_scrub_for_adapter(adapter))
-    |> RunWorker.new(queue: Harness.Oban.queue_name(project), meta: @dispatch_meta, unique: @unique_opts)
-    |> Harness.Oban.insert()
+    opts = [env: env_scrub_for_adapter(adapter), meta: @dispatch_meta]
+    {_run_id, changeset} = RunWorker.new_dispatch_job(project, item_id, adapter, opts)
+    Harness.Oban.insert(changeset)
   end
-
-  @spec put_env(map(), map()) :: map()
-  defp put_env(args, env) when is_map(env) and map_size(env) > 0, do: Map.put(args, :env, env)
-  defp put_env(args, _empty), do: args
 
   @spec env_scrub_for_adapter(module()) :: %{optional(String.t()) => false}
   defp env_scrub_for_adapter(adapter) do

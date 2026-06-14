@@ -17,6 +17,7 @@ defmodule Harness.BatchTest do
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.Result
+  alias Harness.Run.Worker, as: RunWorker
 
   @eventually_tries 150
   @eventually_delay_ms 20
@@ -585,6 +586,26 @@ defmodule Harness.BatchTest do
     File.write!(gate, "go")
     assert {:ok, %BatchResult{max_concurrency: 1, results: results}} = Task.await(batch_task, @run_timeout_ms)
     assert length(results) == 2
+  end
+
+  test "dispatch applies the run worker in-flight uniqueness spec to every job" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-batch-unique", name: "batch-unique")
+
+    Application.put_env(:harness, :oban_insert, fn changeset ->
+      send(parent, {:unique, Ecto.Changeset.get_change(changeset, :unique)})
+      {:ok, Ecto.Changeset.apply_action!(changeset, :insert)}
+    end)
+
+    on_exit(fn -> Application.delete_env(:harness, :oban_insert) end)
+
+    assert {:ok, [_job]} =
+             Batch.dispatch(project, [%Item{id: "286", title: "Task 286", prompt: "do task 286", agent: :claude}])
+
+    assert_received {:unique, unique}
+    assert unique.keys == RunWorker.unique_opts()[:keys]
+    assert unique.states == RunWorker.unique_opts()[:states]
+    assert unique.period == RunWorker.unique_opts()[:period]
   end
 
   defp batch_opts(base, overrides) do

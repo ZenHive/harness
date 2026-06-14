@@ -35,6 +35,8 @@ defmodule Harness.ObanDispatchTest do
   @lifeline_wait_tries 50
   @lifeline_wait_delay_ms 20
   @stale_attempted_at_offset_ms @lifeline_rescue_after_ms + to_timeout(second: 1)
+  @idempotency_run_timeout_ms 30_000
+  @idempotency_wait_tries div(@idempotency_run_timeout_ms, @lifeline_wait_delay_ms)
 
   setup do
     result_store = Application.get_env(:harness, :result_store)
@@ -1192,6 +1194,97 @@ defmodule Harness.ObanDispatchTest do
     end
   end
 
+  describe "run worker in-flight uniqueness" do
+    test "second dispatch while the first job is executing returns the live run id without a duplicate run" do
+      start_supervised!(Harness.Repo)
+      :ok = Sandbox.checkout(Harness.Repo)
+      Sandbox.mode(Harness.Repo, {:shared, self()})
+
+      start_dispatch_oban!()
+
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+      gate = Path.join(System.tmp_dir!(), "harness-dispatch-idempotent-#{System.unique_integer([:positive])}")
+      project = ProjectFixture.from_repo(repo, name: "dispatch-idempotent", concurrency_cap: 10)
+      item = item("286", :claude)
+
+      on_exit(fn -> File.rm(gate) end)
+      Application.put_env(:harness, :roadmap_mark_in_progress, fn _item, _project -> :ok end)
+      Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts -> {:ok, item} end)
+
+      Application.put_env(:harness, :run_starter, fn %Item{} = run_item, run_project, _adapter, opts ->
+        RunSupervisor.start_run(
+          run_item,
+          run_project,
+          FakeAdapter,
+          opts ++
+            [
+              base_dir: base,
+              adapter_opts: [command: {:write_then_wait_for_file, gate}],
+              reviewer: FakeAdapter,
+              reviewer_adapter_opts: [command: {:review, "approve"}],
+              total_timeout: @idempotency_run_timeout_ms,
+              idle_timeout: @idempotency_run_timeout_ms,
+              lifetime_timeout: @idempotency_run_timeout_ms,
+              terminal_linger: 100
+            ]
+        )
+      end)
+
+      assert :ok = ProjectRegistry.register(project)
+      assert {:ok, first_run_id, first_job} = Worker.enqueue(project, item, Claude)
+
+      assert_eventually_lifeline(
+        fn ->
+          assert [%Oban.Job{state: "executing"}] = run_jobs(project, item.id)
+          assert [^first_run_id] = RunSupervisor.list_runs()
+        end,
+        @idempotency_wait_tries
+      )
+
+      assert {:ok, second_run_id, second_job} = Worker.enqueue(project, item, Claude)
+
+      assert second_run_id == first_run_id
+      assert second_job.id == first_job.id
+      assert second_job.conflict? == true
+      assert [%Oban.Job{}] = run_jobs(project, item.id)
+      assert [^first_run_id] = RunSupervisor.list_runs()
+
+      File.write!(gate, "go")
+
+      assert_eventually_lifeline(
+        fn ->
+          assert [%Oban.Job{state: "completed"}] = run_jobs(project, item.id)
+          assert [] = RunSupervisor.list_runs()
+        end,
+        @idempotency_wait_tries
+      )
+    end
+
+    test "a terminal prior job does not block a fresh dispatch for the same task" do
+      start_supervised!(Harness.Repo)
+      :ok = Sandbox.checkout(Harness.Repo)
+
+      start_dispatch_oban!()
+
+      project = ProjectFixture.from_repo("/tmp/harness-terminal-redo", name: "terminal-redo")
+      item = item("286", :claude)
+
+      assert {:ok, first_run_id, first_job} = Worker.enqueue(project, item, Claude)
+
+      first_job
+      |> Ecto.Changeset.change(state: "completed")
+      |> Harness.Repo.update!()
+
+      assert {:ok, second_run_id, second_job} = Worker.enqueue(project, item, Claude)
+
+      refute second_run_id == first_run_id
+      refute second_job.id == first_job.id
+      assert second_job.conflict? == false
+      assert length(run_jobs(project, item.id)) == 2
+    end
+  end
+
   describe "lifeline rescue for landing and audit jobs" do
     @tag :integration
     test "old executing landing and audit jobs become available while fresh executing jobs stay put" do
@@ -1373,6 +1466,36 @@ defmodule Harness.ObanDispatchTest do
     from(job in Oban.Job,
       where: job.queue == ^queue and job.worker == "Harness.Run.Worker" and job.args == ^stringify_keys(args)
     )
+  end
+
+  defp run_jobs(project, item_id) do
+    queue = HarnessOban.queue_name(project)
+
+    Harness.Repo.all(
+      from(job in Oban.Job,
+        where:
+          job.queue == ^queue and job.worker == "Harness.Run.Worker" and
+            fragment("?->>? = ?", job.args, "project_name", ^project.name) and
+            fragment("?->>? = ?", job.args, "item_id", ^item_id),
+        order_by: [asc: job.id]
+      )
+    )
+  end
+
+  defp start_dispatch_oban! do
+    previous_oban = Application.get_env(:harness, Oban)
+
+    Application.put_env(:harness, Oban,
+      repo: Harness.Repo,
+      queues: false,
+      plugins: false,
+      notifier: Isolated,
+      peer: Oban.Peers.Isolated
+    )
+
+    on_exit(fn -> Application.put_env(:harness, Oban, previous_oban) end)
+
+    start_supervised!({Oban, Keyword.put(Application.get_env(:harness, Oban), :name, HarnessOban)})
   end
 
   defp stringify_keys(map), do: Map.new(map, fn {key, value} -> {to_string(key), value} end)

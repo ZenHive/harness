@@ -62,6 +62,12 @@ defmodule Harness.Run.Worker do
   # snooze forever. Unified with the crash-only dispatch ceiling so both bound at
   # the same attempt count.
   @max_mechanical_attempts @max_dispatch_attempts
+  @dispatch_meta %{harness_stage: "dispatch"}
+  @unique_opts [
+    keys: [:project_name, :item_id],
+    states: [:available, :scheduled, :executing, :retryable],
+    period: :infinity
+  ]
 
   @type args :: %{
           required(String.t()) => String.t()
@@ -72,20 +78,43 @@ defmodule Harness.Run.Worker do
   """
   @spec enqueue(Project.t(), Item.t(), module(), keyword()) :: {:ok, String.t(), Oban.Job.t()} | {:error, term()}
   def enqueue(%Project{} = project, %Item{} = item, adapter, opts \\ []) when is_atom(adapter) and is_list(opts) do
+    {run_id, changeset} = new_dispatch_job(project, item, adapter, opts)
+
+    case Harness.Oban.insert(changeset) do
+      {:ok, %Oban.Job{conflict?: true} = job} -> return_existing_run(project, item.id, job)
+      {:ok, job} -> {:ok, run_id, job}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @doc false
+  @spec unique_opts() :: keyword()
+  def unique_opts, do: @unique_opts
+
+  @doc false
+  @spec new_dispatch_job(Project.t(), Item.t() | String.t(), module(), keyword()) :: {String.t(), Ecto.Changeset.t()}
+  def new_dispatch_job(%Project{} = project, %Item{id: item_id}, adapter, opts) when is_atom(adapter) and is_list(opts) do
+    new_dispatch_job(project, item_id, adapter, opts)
+  end
+
+  def new_dispatch_job(%Project{} = project, item_id, adapter, opts)
+      when is_binary(item_id) and is_atom(adapter) and is_list(opts) do
     run_id = Keyword.get(opts, :run_id) || generate_run_id()
 
     args =
       Harness.Oban.put_env_arg(
-        %{project_name: project.name, item_id: item.id, adapter_module: Atom.to_string(adapter), run_id: run_id},
+        %{project_name: project.name, item_id: item_id, adapter_module: Atom.to_string(adapter), run_id: run_id},
         opts
       )
 
-    case args
-         |> new(queue: Harness.Oban.queue_name(project), meta: %{harness_stage: "dispatch"})
-         |> Harness.Oban.insert() do
-      {:ok, job} -> {:ok, run_id, job}
-      {:error, _reason} = error -> error
-    end
+    changeset =
+      new(args,
+        queue: Harness.Oban.queue_name(project),
+        meta: Keyword.get(opts, :meta, @dispatch_meta),
+        unique: unique_opts()
+      )
+
+    {run_id, changeset}
   end
 
   @impl Oban.Worker
@@ -518,6 +547,40 @@ defmodule Harness.Run.Worker do
 
   @spec div_ceil(non_neg_integer(), pos_integer()) :: non_neg_integer()
   defp div_ceil(value, divisor), do: div(value + divisor - 1, divisor)
+
+  @spec return_existing_run(Project.t(), String.t(), Oban.Job.t()) :: {:ok, String.t(), Oban.Job.t()} | {:error, term()}
+  defp return_existing_run(%Project{} = project, item_id, %Oban.Job{} = job) do
+    case existing_run_id(job, project.name, item_id) do
+      {:ok, run_id} -> {:ok, run_id, job}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @spec existing_run_id(Oban.Job.t(), String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  defp existing_run_id(%Oban.Job{args: args}, project_name, item_id) do
+    with :error <- arg_run_id(args),
+         :error <- live_run_id(project_name, item_id) do
+      {:error, {:missing_conflict_run_id, project_name, item_id}}
+    end
+  end
+
+  @spec arg_run_id(map()) :: {:ok, String.t()} | :error
+  defp arg_run_id(args) do
+    case Map.get(args, "run_id") || Map.get(args, :run_id) do
+      run_id when is_binary(run_id) -> {:ok, run_id}
+      _other -> :error
+    end
+  end
+
+  @spec live_run_id(String.t(), String.t()) :: {:ok, String.t()} | :error
+  defp live_run_id(project_name, item_id) do
+    Enum.find_value(RunSupervisor.list_runs(), :error, fn run_id ->
+      case Harness.Run.status(run_id) do
+        {:ok, %{project_name: ^project_name, task_id: ^item_id}} -> {:ok, run_id}
+        _other -> false
+      end
+    end)
+  end
 
   @spec generate_run_id() :: String.t()
   defp generate_run_id do
