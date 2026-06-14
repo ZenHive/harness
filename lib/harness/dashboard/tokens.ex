@@ -1322,7 +1322,12 @@ defmodule Harness.Dashboard.Tokens do
         flex-wrap: wrap;
       }
       .landing-form .project-id, .reviewer-form .project-id { flex: 1 1 auto; }
-      .landing-form select, .landing-form input[type="text"], .reviewer-form select {
+      /* Shared control chrome for every settings form — selects + text inputs
+         alike — so a control never falls back to native browser styling.
+         (There is no utility framework here; styling is selector-explicit.) */
+      .landing-form select, .landing-form input[type="text"],
+      .reviewer-form select, .reviewer-form input[type="text"],
+      .agent-model-form select, .agent-model-form input[type="text"] {
         background: var(--surface);
         color: var(--text);
         border: 1px solid var(--rule);
@@ -1331,7 +1336,9 @@ defmodule Harness.Dashboard.Tokens do
         font-family: var(--font-mono);
         font-size: var(--text-sm);
       }
-      .landing-form select:focus, .landing-form input[type="text"]:focus, .reviewer-form select:focus {
+      .landing-form select:focus, .landing-form input[type="text"]:focus,
+      .reviewer-form select:focus, .reviewer-form input[type="text"]:focus,
+      .agent-model-form select:focus, .agent-model-form input[type="text"]:focus {
         outline: 1px solid var(--accent);
         outline-offset: 1px;
       }
