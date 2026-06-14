@@ -81,6 +81,14 @@ defmodule Harness.Run.Worker do
   {project_name, item_id} already exists, Oban returns the existing job with
   `conflict?: true` and enqueue returns `{:ok, existing_run_id, job}` instead of
   spawning a duplicate run. A terminal prior job does not block re-dispatch.
+
+  Settled-run idempotency (Task 287): when no live/unfinished job exists but
+  ResultStore has a prior `state: :done, verdict: :approve, landed_sha: nil`
+  record whose `harness/<run_id>` branch is still present on the project's
+  local repo, returns the same `{:ok, run_id, %Job{conflict?: true}}` shape
+  (synthetic completed job) and logs a steer to `dispatch-reland`. This is the
+  scenario produced by a land conflict retain (Lander.Resilience). Lookup
+  failure or absent branch falls through to normal dispatch. 
   """
   @spec enqueue(Project.t(), Item.t(), module(), keyword()) :: {:ok, String.t(), Oban.Job.t()} | {:error, term()}
   def enqueue(%Project{} = project, %Item{} = item, adapter, opts \\ []) when is_atom(adapter) and is_list(opts) do
@@ -625,7 +633,7 @@ defmodule Harness.Run.Worker do
     conflict? = true
     %Oban.Job{} = job = Ecto.Changeset.apply_changes(changeset)
 
-    %Oban.Job{job | state: "completed", conflict?: conflict?}
+    %{job | state: "completed", conflict?: conflict?}
   end
 
   @spec log_reland_steer(String.t(), String.t(), String.t()) :: :ok
