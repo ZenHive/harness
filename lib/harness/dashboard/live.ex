@@ -474,11 +474,12 @@ defmodule Harness.Dashboard.Live do
           ResultStore.store()
         ) :: StatusView.run_entry()
   defp reconcile_history_entry(
-         %{status: %Status{landed_sha: nil, state: :done, review_verdict: :approve} = status} = entry,
+         %{status: %Status{landed_sha: nil, state: state} = status} = entry,
          projects_by_name,
          roadmap,
          store
-       ) do
+       )
+       when state in [:done, :failed] do
     project = Map.get(projects_by_name, status.project_name)
     shipped_in = RoadmapSummary.landed_sha(roadmap, status.project_name, status.task_id)
 

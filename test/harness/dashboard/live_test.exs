@@ -431,6 +431,65 @@ defmodule Harness.Dashboard.LiveTest do
       assert reconciled.status.landed_sha == sha
       assert {:ok, [%{landed_sha: ^sha}]} = ResultStore.list_run_records(store, run_id: run_id)
     end
+
+    test "backfills a failed run whose task has since shipped (manual-merge / superseded trash)" do
+      %{repo: repo} = GitFixture.init_with_origin()
+      project_name = "live-reconcile-failed-#{System.unique_integer([:positive])}"
+      project = %Project{name: project_name, source: {:local, repo}, roadmap_path: repo, target_branch: "main"}
+      store = {Memory, scope: {:live_reconcile_failed, self(), System.unique_integer([:positive])}}
+
+      on_exit(fn -> Memory.reset(elem(store, 1)) end)
+
+      File.write!(Path.join(repo, "shipped.txt"), "shipped\n")
+      GitFixture.git!(repo, ["add", "."])
+      GitFixture.git!(repo, ["commit", "-q", "-m", "shipped"])
+      sha = repo |> GitFixture.git!(["rev-parse", "HEAD"]) |> String.trim()
+      GitFixture.git!(repo, ["push", "-q", "origin", "main"])
+
+      run_id = "live-reconcile-failed-run"
+      task_id = "281"
+
+      entry = run_entry(run_id, project_name: project_name, task_id: task_id, state: :failed, bucket: :red)
+      roadmap = %{project_name => %{open: 0, done: 1, total: 1, landed: %{task_id => sha}, blocked: %{}}}
+
+      :ok =
+        ResultStore.record_run(
+          log_record(run_id, project_name: project_name, task_id: task_id, state: :failed, verdict: nil),
+          store
+        )
+
+      [reconciled] = Live.reconcile_history_landed([entry], [project], roadmap, store)
+
+      assert Live.landed_entry?(reconciled, %{})
+      assert reconciled.status.landed_sha == sha
+      assert {:ok, [%{landed_sha: ^sha}]} = ResultStore.list_run_records(store, run_id: run_id)
+    end
+
+    test "leaves a genuinely-unmerged failed run untouched (task never shipped)" do
+      %{repo: repo} = GitFixture.init_with_origin()
+      project_name = "live-reconcile-open-#{System.unique_integer([:positive])}"
+      project = %Project{name: project_name, source: {:local, repo}, roadmap_path: repo, target_branch: "main"}
+      store = {Memory, scope: {:live_reconcile_open, self(), System.unique_integer([:positive])}}
+
+      on_exit(fn -> Memory.reset(elem(store, 1)) end)
+
+      run_id = "live-reconcile-open-run"
+      task_id = "119"
+
+      entry = run_entry(run_id, project_name: project_name, task_id: task_id, state: :failed, bucket: :red)
+      roadmap = %{project_name => %{open: 1, done: 0, total: 1, landed: %{}, blocked: %{}}}
+
+      :ok =
+        ResultStore.record_run(
+          log_record(run_id, project_name: project_name, task_id: task_id, state: :failed, verdict: nil),
+          store
+        )
+
+      [reconciled] = Live.reconcile_history_landed([entry], [project], roadmap, store)
+
+      refute Live.landed_entry?(reconciled, %{})
+      assert reconciled.status.landed_sha == nil
+    end
   end
 
   describe "handle_event(\"select_project\", ...)" do
