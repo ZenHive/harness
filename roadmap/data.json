@@ -12419,7 +12419,7 @@
       "id": "280",
       "phase": 19,
       "bundle": "autolanding",
-      "status": "in_progress",
+      "status": "done",
       "title": "Lander mis-marks reassigned task ids — run→task_id writeback + concurrent rmap-filing id collision corrupts roadmap status",
       "scores": {
         "d": 4,
@@ -12449,10 +12449,15 @@
         "lib/harness/roadmap.ex",
         "lib/harness/run.ex"
       ],
+      "shipped_in": "5b82a9bcd2893b63568f4cbb9ae00735ddd4d885",
       "body": "Observed in tapakly on 2026-06-14. Two roadmap-filing passes were dispatched concurrently into\nthe SAME 200-204 id space: an investor-tour browser pass (200=facet-bug, 202=seeds, 203=tour,\n204=LLM-spike) and a T169 persona gap-analysis run. The T169 run landed first and reassigned ids\n200-211 to persona tasks. The concurrently-dispatched investor-tour runs then landed, and\n`Harness.Lander` marked them done BY run.task_id — flipping the now-reassigned persona tasks\n(200=FSBO onboarding, 203=Developer LiveViews) to false-done, with `shipped_in` pointing at the\nunrelated facet-bug / tour-reground commits. Net: two tasks marked done that were never built,\ntheir real work shipped under a lost id, and the operator had to repair the ledger by hand.\n\nRoot cause is the run→task_id writeback assuming the numeric id is immutable across the\ndispatch→land window. It isn't, under concurrent rmap-filing. Fix both legs: collision-safe id\nallocation so parallel filings don't overlap, AND a drift-checked writeback so a stale id can\nnever silently mark the wrong task done. This is the rmap-skill 'tasks.toml is a machine-read\ncontract' hazard actually manifesting — harness acted on a reassigned id.\n",
       "created_at": "2026-06-14",
       "started_at": "2026-06-14",
+      "done_at": "2026-06-14",
       "scored_at": "2026-06-14",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781420466585-4cb4433f, 5b82a9bcd2893b63568f4cbb9ae00735ddd4d885).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     }
   ]
