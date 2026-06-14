@@ -46,7 +46,7 @@ Four setup steps the consuming repo needs:
 
 - **IEx / MCP ad-hoc:** dispatch `Harness.ProjectRegistry.upsert/1` via IEx or the `project_eval` escape hatch (`mcp__harness_eval__project_eval`, wired in step 3). With Postgres enabled, the upsert persists across BEAM restarts.
 
-`check_command` is a free-text hint handed to the reviewer AI — the reviewer runs the project's checks itself and judges the output; harness never executes this command. For a multi-language monorepo, just describe both: `"cd rust && cargo test; cd elixir && mix precommit"`.
+`check_command` is a free-text hint handed to the reviewer AI — the reviewer runs the project's checks itself and judges the output; harness never executes this command. For a multi-language monorepo, just describe both: `"cd rust && cargo test; cd elixir && mix precommit"`. `language` is an optional atom (`nil`/`:elixir` keeps Elixir injected rules; other atoms suppress Elixir-specific rule sections).
 
 **3. Add harness's MCP endpoints to `myapp`'s `.mcp.json`.** This is the load-bearing step that wires the driver (you) to harness. Add the native server (your primary surface) and, optionally, the eval escape hatch — alongside `myapp`'s own Tidewave (if it has one):
 
@@ -131,7 +131,7 @@ The cross-family reviewer AI's verdict — not the implementer's self-report —
 | `dispatch-reland` | Re-enqueue the landing job for a run whose land-train hit its cap and left the task `blocked`. Pure git, reviewer-approved branch — **zero agent tokens**. `Harness.Dispatch.reland/1` → `Harness.Lander.enqueue/1`. |
 | `dispatch-verdict_detail` | After settle, read the **reviewer's verdict / report / ratings** by `run_id` — loaded from the persisted record, so it works after the run process is gone. |
 | `dispatch-pending` / `dispatch-approve` | List / drain autonomous (cron) dispatch decisions parked for operator approval when a project's cron dispatch mode is `:manual` (Task 237). Only the cron poller path is gated; interactive `dispatch-task` / `dispatch-await` are never parked. |
-| `dispatch-register_project` | Register a project for dispatch from JSON scalars (`name`, `source_type` local/github, `source_location`, `roadmap_path`, optional `check_command` / `concurrency_cap`) — the JSON-native path for `Harness.ProjectRegistry.register/1` (which takes a struct). Runtime-only unless `:repo_enabled`; durable registration stays config + restart. |
+| `dispatch-register_project` | Register a project for dispatch from JSON scalars (`name`, `source_type` local/github, `source_location`, `roadmap_path`, optional `check_command` / `concurrency_cap` / `language`) — the JSON-native path for `Harness.ProjectRegistry.register/1` (which takes a struct). Runtime-only unless `:repo_enabled`; durable registration stays config + restart. |
 | `roadmap-list` / `roadmap-next_bundle` / `roadmap-ingest` | Browse / ingest a registered project's roadmap as structured data. |
 | `roadmap-ready` | The parallel-safe, headless-dispatchable task set (`rmap ready --dispatchable`) — every pending task with all deps done, `handbuild` excluded; returns `id`, `assignee`, and `markers` for autonomous routing; mutually independent, safe to fan out as one batch. |
 | `roadmap-mark_landed` / `roadmap-mark_blocked` | Write a run's outcome back to the roadmap: `done --verified --shipped-in <sha>` after a successful land; `blocked --reason "..."` as the terminal sink. |

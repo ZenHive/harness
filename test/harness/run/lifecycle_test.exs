@@ -1,6 +1,65 @@
 defmodule Harness.Run.LifecycleTest do
   use Harness.RunCase, async: true
 
+  defmodule LanguageCaptureAdapter do
+    @moduledoc false
+
+    use Harness.AgentAdapter
+
+    alias Harness.AgentAdapter
+    alias Harness.AgentAdapter.Capabilities
+    alias Harness.AgentAdapter.Invocation
+
+    @impl AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl AgentAdapter
+    def rule_channel, do: :none
+
+    @impl AgentAdapter
+    def build_command(%Invocation{} = invocation) do
+      command(invocation)
+    end
+
+    @spec command(Invocation.t()) :: {:ok, AgentAdapter.command()}
+    defp command(%Invocation{task_id: task_id} = invocation) do
+      cond do
+        String.ends_with?(task_id, "-recovery") -> recovery_command(invocation)
+        String.ends_with?(task_id, "-review") -> reviewer_command(invocation)
+        true -> implementer_command(invocation)
+      end
+    end
+
+    @spec implementer_command(Invocation.t()) :: {:ok, AgentAdapter.command()}
+    defp implementer_command(%Invocation{language: language}) do
+      {:ok, {"/bin/sh", ["-c", ~S(printf '%s' "$1" > agent_language.txt), "harness-fake", language_arg(language)], []}}
+    end
+
+    @spec recovery_command(Invocation.t()) :: {:ok, AgentAdapter.command()}
+    defp recovery_command(%Invocation{language: language}) do
+      json = Jason.encode!(%{outcome: "repaired", report: "cleaned fake checkout leak", repaired: "removed leaked.txt"})
+
+      script =
+        ~S|mkdir -p .harness; printf '%s' "$1" > recovery_language.txt; | <>
+          ~S|if [ -f "$HARNESS_RECOVERY_REPO/leaked.txt" ]; then mv "$HARNESS_RECOVERY_REPO/leaked.txt" .harness/recovered-leaked.txt; fi; | <>
+          ~S|printf '%s' "$2" > .harness/recovery.json|
+
+      {:ok, {"/bin/sh", ["-c", script, "harness-fake", language_arg(language), json], []}}
+    end
+
+    @spec reviewer_command(Invocation.t()) :: {:ok, AgentAdapter.command()}
+    defp reviewer_command(%Invocation{language: language}) do
+      json = Jason.encode!(%{verdict: "approve", report: "captured language", ratings: FakeAdapter.review_ratings()})
+
+      script = ~S(printf '%s' "$1" > reviewer_language.txt; mkdir -p .harness; printf '%s' "$2" > .harness/review.json)
+      {:ok, {"/bin/sh", ["-c", script, "harness-fake", language_arg(language), json], []}}
+    end
+
+    @spec language_arg(atom() | nil) :: String.t()
+    defp language_arg(nil), do: ""
+    defp language_arg(language), do: Atom.to_string(language)
+  end
+
   describe "lifecycle — settling on the reviewer's verdict" do
     test "settles :done and removes the worktree when the reviewer approves" do
       result = run([])
@@ -251,6 +310,40 @@ defmodule Harness.Run.LifecycleTest do
 
       assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_model.txt"]) ==
                "claude-opus-4-8-thinking-high"
+    end
+
+    test "threads project language onto implementer and reviewer invocations" do
+      repo = GitFixture.init_repo()
+      project = ProjectFixture.from_repo(repo, language: :typescript)
+
+      {run_id, pid} =
+        start(
+          project: project,
+          adapter: LanguageCaptureAdapter,
+          reviewer: LanguageCaptureAdapter
+        )
+
+      assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
+
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_language.txt"]) == "typescript"
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_language.txt"]) == "typescript"
+    end
+
+    test "threads project language onto recovery invocations" do
+      repo = GitFixture.init_repo()
+      project = ProjectFixture.from_repo(repo, language: :typescript)
+
+      {run_id, pid} =
+        start(
+          project: project,
+          checkout_pollution_check: true,
+          adapter_opts: [command: {:write_and_pollute_checkout, repo}],
+          reviewer: LanguageCaptureAdapter
+        )
+
+      assert %Result{state: :done, reason: :approved, recovery_outcome: :repaired} = await_result(run_id, pid)
+
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:recovery_language.txt"]) == "typescript"
     end
 
     test "the implementer invocation carries no model when the task is unpinned" do

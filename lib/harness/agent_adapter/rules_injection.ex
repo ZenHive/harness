@@ -62,8 +62,8 @@ defmodule Harness.AgentAdapter.RulesInjection do
   @spec render_opts(Invocation.t()) :: [AgentRules.render_opt()]
   defp render_opts(%Invocation{language: language}) do
     case language do
-      :rust -> [exclude: [:verification_gates, :elixir]]
-      _elixir_or_unknown -> []
+      elixir when elixir in [nil, :elixir] -> []
+      _non_elixir -> [exclude: [:verification_gates, :elixir]]
     end
   end
 end

@@ -693,6 +693,12 @@ defmodule Harness.Dispatch do
         kind: :value,
         default: nil,
         description: "Optional per-project max concurrent runs (the project's Oban queue limit). nil leaves the default."
+      ],
+      language: [
+        kind: :value,
+        default: nil,
+        description:
+          "Optional target-language atom for injected agent rules. nil/:elixir keeps Elixir guidance; other atoms suppress Elixir-specific sections."
       ]
     ],
     returns: %{
@@ -702,9 +708,25 @@ defmodule Harness.Dispatch do
     }
   )
 
-  @spec register_project(String.t(), String.t(), String.t(), String.t(), String.t() | nil, pos_integer() | nil) ::
+  @spec register_project(
+          String.t(),
+          String.t(),
+          String.t(),
+          String.t(),
+          String.t() | nil,
+          pos_integer() | nil,
+          atom() | nil
+        ) ::
           {:ok, %{name: String.t()}} | {:error, term()}
-  def register_project(name, source_type, source_location, roadmap_path, check_command \\ nil, concurrency_cap \\ nil)
+  def register_project(
+        name,
+        source_type,
+        source_location,
+        roadmap_path,
+        check_command \\ nil,
+        concurrency_cap \\ nil,
+        language \\ nil
+      )
       when is_binary(name) and is_binary(source_type) and is_binary(source_location) and is_binary(roadmap_path) do
     with {:ok, source} <- build_source(source_type, source_location),
          attrs = [
@@ -712,7 +734,8 @@ defmodule Harness.Dispatch do
            source: source,
            roadmap_path: roadmap_path,
            check_command: check_command,
-           concurrency_cap: concurrency_cap
+           concurrency_cap: concurrency_cap,
+           language: language
          ],
          :ok <- ProjectRegistry.register(attrs) do
       {:ok, %{name: name}}

@@ -379,7 +379,7 @@ defmodule Harness.DispatchTest do
     end
   end
 
-  describe "register_project/6 — input validation" do
+  describe "register_project/7 — input validation" do
     # An invalid source_type is rejected by build_source before any registry
     # interaction, so this stays async-safe (no global registry mutation). The
     # registration round-trip lives in the async: false ProjectRegistry test.

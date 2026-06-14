@@ -55,6 +55,7 @@ defmodule Harness.ProjectRegistryTest do
                  source: {:local, "/tmp/kw"},
                  roadmap_path: "/tmp/kw",
                  check_command: "mix test",
+                 language: :typescript,
                  reviewer: :codex,
                  warm_paths: ["priv/foo"]
                )
@@ -63,6 +64,7 @@ defmodule Harness.ProjectRegistryTest do
       assert project.name == "kw"
       assert project.source == {:local, "/tmp/kw"}
       assert project.check_command == "mix test"
+      assert project.language == :typescript
       assert project.reviewer == :codex
       assert project.warm_paths == ["priv/foo"]
       # build_project defaults landing_policy when attrs omit it.
@@ -75,15 +77,24 @@ defmodule Harness.ProjectRegistryTest do
     end
   end
 
-  describe "Dispatch.register_project/6 — JSON-native registration" do
+  describe "Dispatch.register_project/7 — JSON-native registration" do
     test "registers a local-source project and makes it lookup-resolvable" do
       assert {:ok, %{name: "reg-local"}} =
-               Dispatch.register_project("reg-local", "local", "/tmp/reg-local", "/tmp/reg-local", "mix test", 2)
+               Dispatch.register_project(
+                 "reg-local",
+                 "local",
+                 "/tmp/reg-local",
+                 "/tmp/reg-local",
+                 "mix test",
+                 2,
+                 :typescript
+               )
 
       assert {:ok, project} = ProjectRegistry.lookup("reg-local")
       assert project.source == {:local, "/tmp/reg-local"}
       assert project.check_command == "mix test"
       assert project.concurrency_cap == 2
+      assert project.language == :typescript
     end
 
     test "registers a github-source project with default optional fields" do
@@ -94,6 +105,7 @@ defmodule Harness.ProjectRegistryTest do
       assert project.source == {:github, "https://example.com/reg-gh.git"}
       assert project.check_command == nil
       assert project.concurrency_cap == nil
+      assert project.language == nil
     end
 
     test "surfaces a duplicate registration as an error" do

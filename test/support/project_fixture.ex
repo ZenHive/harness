@@ -11,6 +11,7 @@ defmodule Harness.ProjectFixture do
       name: name,
       source: {:local, repo},
       check_command: Keyword.get(opts, :check_command),
+      language: Keyword.get(opts, :language),
       roadmap_path: Keyword.get(opts, :roadmap_path, repo),
       concurrency_cap: Keyword.get(opts, :concurrency_cap),
       landing_policy: Keyword.get(opts, :landing_policy, :manual),

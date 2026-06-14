@@ -41,11 +41,18 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
     end
 
     test "excludes Elixir conventions for non-Elixir targets", %{cwd: cwd} do
-      assert {:ok, _flags} = RulesInjection.claude_flags(invocation(cwd, language: :rust))
+      assert {:ok, _flags} = RulesInjection.claude_flags(invocation(cwd, language: :typescript))
 
       body = File.read!(Path.join(cwd, AgentRules.system_prompt_rel_path()))
       refute body =~ elixir_conventions()
       refute body =~ verification_gates()
+    end
+
+    test "returns rule injection errors when the system prompt path cannot be written", %{cwd: cwd} do
+      File.write!(Path.join(cwd, ".harness"), "not a directory")
+
+      assert {:error, {:rule_injection_failed, reason}} = RulesInjection.claude_flags(invocation(cwd))
+      assert is_atom(reason)
     end
   end
 
@@ -63,8 +70,8 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
       refute body =~ verification_gates()
     end
 
-    test "keeps Elixir conventions when language is unrecognized", %{cwd: cwd} do
-      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, language: :unknown))
+    test "keeps Elixir conventions when language is explicit Elixir", %{cwd: cwd} do
+      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, language: :elixir))
 
       body = File.read!(Path.join(cwd, "AGENTS.md"))
       assert body =~ elixir_conventions()
@@ -77,6 +84,21 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
       body = File.read!(Path.join(cwd, "AGENTS.md"))
       refute body =~ elixir_conventions()
       refute body =~ verification_gates()
+    end
+
+    test "excludes Elixir conventions for TypeScript language", %{cwd: cwd} do
+      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, language: :typescript))
+
+      body = File.read!(Path.join(cwd, "AGENTS.md"))
+      refute body =~ elixir_conventions()
+      refute body =~ verification_gates()
+    end
+
+    test "returns rule injection errors when AGENTS.md cannot be read", %{cwd: cwd} do
+      File.mkdir_p!(Path.join(cwd, "AGENTS.md"))
+
+      assert {:error, {:rule_injection_failed, reason}} = RulesInjection.install_codex_rules(invocation(cwd))
+      assert is_atom(reason)
     end
   end
 
@@ -93,6 +115,21 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
       refute body =~ elixir_conventions()
       refute body =~ verification_gates()
     end
+
+    test "excludes Elixir conventions for TypeScript language", %{cwd: cwd} do
+      assert :ok = RulesInjection.install_cursor_rules(invocation(cwd, language: :typescript))
+
+      body = File.read!(Path.join(cwd, ".cursor/rules/harness-operational.mdc"))
+      refute body =~ elixir_conventions()
+      refute body =~ verification_gates()
+    end
+
+    test "returns rule injection errors when cursor rules cannot be written", %{cwd: cwd} do
+      File.write!(Path.join(cwd, ".cursor"), "not a directory")
+
+      assert {:error, {:rule_injection_failed, reason}} = RulesInjection.install_cursor_rules(invocation(cwd))
+      assert is_atom(reason)
+    end
   end
 
   describe "prepend_prompt/1" do
@@ -105,6 +142,14 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
 
     test "excludes Elixir conventions for Rust language", %{cwd: cwd} do
       prompt = RulesInjection.prepend_prompt("task body", invocation(cwd, language: :rust))
+
+      refute prompt =~ elixir_conventions()
+      refute prompt =~ verification_gates()
+      assert String.ends_with?(prompt, "task body")
+    end
+
+    test "excludes Elixir conventions for TypeScript language", %{cwd: cwd} do
+      prompt = RulesInjection.prepend_prompt("task body", invocation(cwd, language: :typescript))
 
       refute prompt =~ elixir_conventions()
       refute prompt =~ verification_gates()

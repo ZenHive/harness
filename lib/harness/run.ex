@@ -1849,6 +1849,7 @@ defmodule Harness.Run do
       task_id: data.item.id,
       session: session,
       model: data.requested_model,
+      language: data.project.language,
       permission_mode: :autonomous,
       adapter_opts: data.adapter_opts,
       env: in_run_env(data)
@@ -2185,6 +2186,7 @@ defmodule Harness.Run do
       cwd: data.worktree.path,
       task_id: "#{data.item.id}-recovery",
       model: data.requested_model,
+      language: data.project.language,
       permission_mode: :autonomous,
       adapter_opts: data.reviewer_adapter_opts,
       env: Map.put(in_run_env(data), "HARNESS_RECOVERY_REPO", repo_path)
@@ -2279,6 +2281,7 @@ defmodule Harness.Run do
       cwd: data.worktree.path,
       task_id: "#{data.item.id}-review",
       model: reviewer_model(data),
+      language: data.project.language,
       permission_mode: :autonomous,
       adapter_opts: data.reviewer_adapter_opts,
       env: in_run_env(data)

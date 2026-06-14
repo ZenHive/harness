@@ -13,6 +13,9 @@ defmodule Harness.Project do
     `"mix precommit"`, `"cargo test"`). The reviewer runs the project's checks
     itself and judges the result; harness never executes this command — it is
     prompt text, not a verification gate.
+  - `language` — optional target-language atom used to select injected agent
+    rule sections. `nil` defaults to Elixir-compatible rules; non-Elixir atoms
+    suppress Elixir-specific guidance.
   - `roadmap_path` — project root holding `roadmap/tasks.toml` for rmap ingestion.
   - `concurrency_cap` — per-project batch cap; `nil` inherits the global default.
   - `pollution_allowlist` — optional path patterns ignored by the main-checkout
@@ -37,6 +40,7 @@ defmodule Harness.Project do
     :source,
     :roadmap_path,
     check_command: nil,
+    language: nil,
     concurrency_cap: nil,
     pollution_allowlist: nil,
     warm_paths: [],
@@ -57,6 +61,7 @@ defmodule Harness.Project do
           source: source(),
           roadmap_path: String.t(),
           check_command: String.t() | nil,
+          language: atom() | nil,
           concurrency_cap: pos_integer() | nil,
           pollution_allowlist: [String.t()] | nil,
           warm_paths: [String.t()],

@@ -68,12 +68,12 @@ defmodule Harness.ProjectRegistry do
         # A %Harness.Project{} struct a stateless JSON caller cannot construct —
         # so this stays off the MCP/chat surface (Harness.Manifest drops
         # :exchange_data tools). JSON orchestrators register via the flat
-        # scalar tool Harness.Dispatch.register_project/6 (dispatch-register_project),
+        # scalar tool Harness.Dispatch.register_project/7 (dispatch-register_project),
         # which builds the struct through this module's validated builder.
         kind: :exchange_data,
-        source: "Harness.Dispatch.register_project/6 (the JSON-native scalar entry point)",
+        source: "Harness.Dispatch.register_project/7 (the JSON-native scalar entry point)",
         description:
-          "%Harness.Project{} the caller constructs (name, source, check_command, roadmap_path, concurrency_cap, pollution_allowlist, warm_paths)."
+          "%Harness.Project{} the caller constructs (name, source, check_command, language, roadmap_path, concurrency_cap, pollution_allowlist, warm_paths)."
       ]
     ],
     returns: %{
@@ -91,7 +91,7 @@ defmodule Harness.ProjectRegistry do
   # map) and register it. Shares fetch/validation/path-expansion with
   # config-declared projects via build_project/1, so a runtime registration
   # behaves identically to a config entry. This is the path the JSON-native
-  # Harness.Dispatch.register_project/6 routes through.
+  # Harness.Dispatch.register_project/7 routes through.
   def register(attrs) when is_list(attrs) or is_map(attrs) do
     with {:ok, project} <- build_project(attrs) do
       register(project)
@@ -106,7 +106,7 @@ defmodule Harness.ProjectRegistry do
         kind: :exchange_data,
         source: "Harness.ProjectRegistry.upsert/1 attrs map or Harness.Dispatch scalar tools",
         description:
-          "%Harness.Project{} or attrs (name, source, roadmap_path, check_command, concurrency_cap, pollution_allowlist, warm_paths)."
+          "%Harness.Project{} or attrs (name, source, roadmap_path, check_command, language, concurrency_cap, pollution_allowlist, warm_paths)."
       ]
     ],
     returns: %{
@@ -272,13 +272,15 @@ defmodule Harness.ProjectRegistry do
     with {:ok, name} <- fetch_required(entry, :name),
          {:ok, source} <- fetch_source(entry),
          {:ok, roadmap_path} <- fetch_roadmap_path(entry),
-         {:ok, check_command} <- fetch_check_command(entry) do
+         {:ok, check_command} <- fetch_check_command(entry),
+         {:ok, language} <- fetch_language(entry) do
       {:ok,
        %Project{
          name: name,
          source: source,
          roadmap_path: roadmap_path,
          check_command: check_command,
+         language: language,
          concurrency_cap: Map.get(entry, :concurrency_cap),
          pollution_allowlist: Map.get(entry, :pollution_allowlist),
          warm_paths: Map.get(entry, :warm_paths, []),
@@ -432,6 +434,15 @@ defmodule Harness.ProjectRegistry do
       nil -> {:ok, nil}
       command when is_binary(command) -> {:ok, command}
       other -> {:error, {:invalid_project, {:invalid_check_command, other}}}
+    end
+  end
+
+  @spec fetch_language(map()) :: {:ok, atom() | nil} | {:error, {:invalid_project, term()}}
+  defp fetch_language(entry) do
+    case Map.get(entry, :language) do
+      nil -> {:ok, nil}
+      language when is_atom(language) -> {:ok, language}
+      other -> {:error, {:invalid_project, {:invalid_language, other}}}
     end
   end
 end
