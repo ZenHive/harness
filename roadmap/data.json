@@ -12624,7 +12624,7 @@
       "id": "284",
       "phase": 20,
       "bundle": "config-surface",
-      "status": "in_progress",
+      "status": "done",
       "title": "Dashboard: concurrency_cap editor + project register/edit/unregister form (close the last config-surface holes)",
       "scores": {
         "d": 4,
@@ -12668,10 +12668,15 @@
         "phoenix",
         "liveview"
       ],
+      "shipped_in": "759f4a5ca1394edb7aceabdaa4ca5f8cd0763fb4",
       "body": "After Task 283 lands ProjectRegistry.upsert/1, close the two remaining per-project config holes that keep the operator editing config/dev.local.exs. Verified against SettingsLive: the dashboard ALREADY edits live -> Postgres for landing/cron/agent-models/reviewer/run-timeouts/default-agent/model-catalog. The ONLY gaps are (1) concurrency_cap (currently read-only in config_inspector as `cap=N`) and (2) project registration/editing of source path / roadmap_path / check_command (no form; only config-seed, the dispatch-register_project MCP tool, or IEx).\n\nAdd a concurrency_cap editor and a project register/edit/unregister form to /harness/settings, both routed through ProjectRegistry.upsert/1 (283) / unregister/1, so the dashboard becomes the COMPLETE per-project edit surface writing Postgres. This is what makes deleting config/dev.local.exs (285) lossless and the 'edit a file, restart, nothing happens' trap go away — there's a live UI that actually writes the source of truth.\n\nIncremental UI against the existing dashboard design system — match settings_live.ex / components.ex patterns, don't invent a new look.\n",
       "created_at": "2026-06-14",
       "started_at": "2026-06-14",
+      "done_at": "2026-06-14",
       "scored_at": "2026-06-14",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781431463618-c212e1a1, 759f4a5ca1394edb7aceabdaa4ca5f8cd0763fb4).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
