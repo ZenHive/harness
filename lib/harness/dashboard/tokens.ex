@@ -1006,6 +1006,41 @@ defmodule Harness.Dashboard.Tokens do
       .settings-head h1 { margin: 0 0 var(--space-1); }
       .settings-sub { margin: 0; color: var(--text-subtle); font-size: var(--text-sm); }
 
+      /* In-page section nav: one tab per card group, replacing the long scroll. */
+      .settings-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-1);
+        border-bottom: 1px solid var(--rule);
+      }
+      .settings-tab {
+        appearance: none;
+        background: transparent;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+        padding: var(--space-2) var(--space-3);
+        color: var(--text-subtle);
+        font: inherit;
+        font-size: var(--text-sm);
+        cursor: pointer;
+        transition: color var(--motion-fast) var(--ease-out),
+          border-color var(--motion-fast) var(--ease-out);
+      }
+      .settings-tab:hover { color: var(--text); }
+      .settings-tab[data-active="true"] {
+        color: var(--text);
+        border-bottom-color: var(--accent);
+      }
+
+      /* Panel = the card stack for one tab; hidden panels stay in the DOM. */
+      .settings-panel {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-5);
+      }
+      .settings-panel[hidden] { display: none; }
+
       .setting-card {
         background: var(--surface);
         border: 1px solid var(--rule);

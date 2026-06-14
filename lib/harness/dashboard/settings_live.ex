@@ -45,10 +45,29 @@ defmodule Harness.Dashboard.SettingsLive do
 
   @meta_tick_interval_ms 5_000
 
+  # Ordered tab definitions ({key, label}) for the in-page section nav. The key
+  # is matched against the `:tab` assign to toggle each panel's `hidden`. Panels
+  # stay in the DOM (toggled, not `:if`-removed) so the full page is one render.
+  @tabs [
+    {"autonomy", "Autonomy"},
+    {"agents", "Agents"},
+    {"models", "Models"},
+    {"projects", "Projects"},
+    {"advanced", "Advanced"}
+  ]
+  @default_tab "autonomy"
+  @valid_tabs Map.new(@tabs, fn {key, _label} -> {key, true} end)
+
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     if connected?(socket), do: schedule_meta_tick()
-    {:ok, socket |> assign(:notice, nil) |> refresh()}
+
+    {:ok,
+     socket
+     |> assign(:notice, nil)
+     |> assign(:tabs, @tabs)
+     |> assign(:tab, @default_tab)
+     |> refresh()}
   end
 
   @impl Phoenix.LiveView
@@ -60,6 +79,12 @@ defmodule Harness.Dashboard.SettingsLive do
   def handle_info(_other, socket), do: {:noreply, socket}
 
   @impl Phoenix.LiveView
+  def handle_event("set_tab", %{"tab" => tab}, socket) when is_map_key(@valid_tabs, tab) do
+    {:noreply, assign(socket, :tab, tab)}
+  end
+
+  def handle_event("set_tab", _params, socket), do: {:noreply, socket}
+
   def handle_event("toggle_master_autonomy", _params, socket) do
     Settings.set_master(not socket.assigns.autonomy.master, "dashboard")
     {:noreply, refresh(socket)}
@@ -231,20 +256,49 @@ defmodule Harness.Dashboard.SettingsLive do
         <p class="settings-sub">Operator controls for autonomous roadmap polling.</p>
       </header>
 
+      <nav class="settings-tabs" role="tablist" aria-label="Settings sections">
+        <button
+          :for={{key, label} <- @tabs}
+          type="button"
+          class="settings-tab"
+          role="tab"
+          data-active={to_string(@tab == key)}
+          aria-selected={to_string(@tab == key)}
+          phx-click="set_tab"
+          phx-value-tab={key}
+        >
+          {label}
+        </button>
+      </nav>
+
       <Components.operator_flash notice={@notice} include_persistent={false} />
 
-      <SettingsComponents.cron_autonomy_card autonomy={@autonomy} />
-      <SettingsComponents.project_autonomy_card autonomy={@autonomy} />
-      <SettingsComponents.agents_card agents={@agents} />
-      <Components.landing_card projects={@landing} />
-      <Components.project_settings_card projects={@projects} />
-      <SettingsComponents.project_reviewers_card reviewers={@reviewers} />
-      <SettingsComponents.dispatch_default_card dispatch={@dispatch} />
-      <SettingsComponents.agent_models_card agent_models={@agent_models} />
-      <SettingsComponents.reviewer_models_card reviewer_models={@reviewer_models} />
-      <SettingsComponents.model_catalog_card model_catalogs={@model_catalogs} />
-      <Components.config_form entries={@config_edit} />
-      <Components.config_inspector sections={@config} />
+      <section class="settings-panel" data-tab="autonomy" hidden={@tab != "autonomy"}>
+        <SettingsComponents.cron_autonomy_card autonomy={@autonomy} />
+        <SettingsComponents.project_autonomy_card autonomy={@autonomy} />
+      </section>
+
+      <section class="settings-panel" data-tab="agents" hidden={@tab != "agents"}>
+        <SettingsComponents.agents_card agents={@agents} />
+        <SettingsComponents.project_reviewers_card reviewers={@reviewers} />
+        <SettingsComponents.dispatch_default_card dispatch={@dispatch} />
+      </section>
+
+      <section class="settings-panel" data-tab="models" hidden={@tab != "models"}>
+        <SettingsComponents.agent_models_card agent_models={@agent_models} />
+        <SettingsComponents.reviewer_models_card reviewer_models={@reviewer_models} />
+        <SettingsComponents.model_catalog_card model_catalogs={@model_catalogs} />
+      </section>
+
+      <section class="settings-panel" data-tab="projects" hidden={@tab != "projects"}>
+        <Components.landing_card projects={@landing} />
+        <Components.project_settings_card projects={@projects} />
+      </section>
+
+      <section class="settings-panel" data-tab="advanced" hidden={@tab != "advanced"}>
+        <Components.config_form entries={@config_edit} />
+        <Components.config_inspector sections={@config} />
+      </section>
     </div>
     """
   end

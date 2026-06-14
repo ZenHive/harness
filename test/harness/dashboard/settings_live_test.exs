@@ -81,6 +81,26 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     assert html =~ ~s(aria-checked="false")
   end
 
+  test "renders the section tabs with Autonomy active by default", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    assert has_element?(view, ~s|button.settings-tab[data-active="true"]|, "Autonomy")
+    assert has_element?(view, ~s|button.settings-tab[phx-value-tab="models"]|, "Models")
+    # Inactive panels stay in the DOM (hidden), so their cards are still present.
+    assert has_element?(view, ~s|section.settings-panel[data-tab="models"][hidden]|)
+    assert has_element?(view, ~s|section.settings-panel[data-tab="autonomy"]:not([hidden])|)
+  end
+
+  test "clicking a tab reveals its panel and marks it active", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    view |> element(~s|button.settings-tab[phx-value-tab="models"]|) |> render_click()
+
+    assert has_element?(view, ~s|button.settings-tab[data-active="true"]|, "Models")
+    assert has_element?(view, ~s|section.settings-panel[data-tab="models"]:not([hidden])|)
+    assert has_element?(view, ~s|section.settings-panel[data-tab="autonomy"][hidden]|)
+  end
+
   test "renders a persistent no-op settings-store banner", %{conn: conn} do
     Application.put_env(:harness, :repo_enabled, false)
     Application.delete_env(:harness, :settings_store)
