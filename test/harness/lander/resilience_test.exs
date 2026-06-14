@@ -7,6 +7,7 @@ defmodule Harness.Lander.ResilienceTest do
   # async: false because tests mutate ProjectRegistry and app env seams.
   use ExUnit.Case, async: false
 
+  alias Harness.AgentAdapter.Claude
   alias Harness.Lander.Resilience
   alias Harness.Notification.Event
   alias Harness.ProjectFixture
@@ -149,7 +150,7 @@ defmodule Harness.Lander.ResilienceTest do
         {:ok, %Item{id: "42", title: "repair", prompt: "repair prompt", agent: Keyword.fetch!(opts, :agent)}}
       end)
 
-      Application.put_env(:harness, :run_starter, fn %Item{id: "42"}, ^project, Harness.AgentAdapter.Claude, opts ->
+      Application.put_env(:harness, :run_starter, fn %Item{id: "42"}, ^project, Claude, opts ->
         send(parent, {:started_repair, Keyword.fetch!(opts, :land_attempt)})
         {:ok, "repair-run", self()}
       end)
@@ -176,6 +177,53 @@ defmodule Harness.Lander.ResilienceTest do
 
       assert {:error, {:redispatch_failed, {:unknown_adapter, "not-an-agent"}}} =
                Resilience.route({:conflict, "CONFLICT (content)"}, args)
+    end
+  end
+
+  describe "route/2 — manual reland conflicts" do
+    setup do
+      Application.put_env(:harness, :notification_sinks, [CaptureSink])
+      Application.put_env(:harness, :test_capture_pid, self())
+
+      on_exit(fn ->
+        Application.delete_env(:harness, :notification_sinks)
+        Application.delete_env(:harness, :test_capture_pid)
+        Application.delete_env(:harness, :roadmap_ingest)
+        Application.delete_env(:harness, :run_starter)
+      end)
+
+      :ok
+    end
+
+    test "retains the branch and witnesses the conflict without starting a fresh run" do
+      project = register_project()
+      parent = self()
+      args = Map.put(base_args(project.name, 1), "manual_reland", true)
+
+      Application.put_env(:harness, :roadmap_ingest, fn {:id, "42"}, opts ->
+        send(parent, {:unexpected_ingest, opts})
+        {:ok, %Item{id: "42", title: "repair", prompt: "repair prompt", agent: :claude}}
+      end)
+
+      Application.put_env(:harness, :run_starter, fn %Item{id: "42"}, ^project, Claude, opts ->
+        send(parent, {:unexpected_run_start, opts})
+        {:ok, "unexpected-repair-run", self()}
+      end)
+
+      assert {:cancel, {:manual_reland_conflict, "CONFLICT"}} = Resilience.route({:conflict, "CONFLICT"}, args)
+
+      assert_receive {:notify,
+                      %Event{
+                        type: :conflict,
+                        task_id: "42",
+                        run_id: "run-x",
+                        branch: "harness/run-x",
+                        outcome: "CONFLICT",
+                        land_attempt: 1
+                      }}
+
+      refute_receive {:unexpected_ingest, _opts}, 300
+      refute_receive {:unexpected_run_start, _opts}, 300
     end
   end
 

@@ -20,12 +20,16 @@ defmodule Harness.Lander.Resilience do
       source the lander can't push to).
     * `{:error, reason}` → `{:error, reason}` (a transient fetch/checkout
       failure — Oban backs off and retries the *same* landing job).
-    * `{:conflict, _}` / non-command `{:reflex_halt, _}` → **fresh re-dispatch**
-      of the task against the current target HEAD (a new run branches off the
-      integrated tip by construction) while under the attempt cap; at the cap,
-      the task is marked `blocked`. A `{:conflict, _}` only reaches here *after*
-      the lander's in-worktree merge-resolver agent (Task 189) already tried and
-      failed to reconcile the markers — re-dispatch is the documented fallback.
+    * autonomous `{:conflict, _}` / non-command `{:reflex_halt, _}` → **fresh
+      re-dispatch** of the task against the current target HEAD (a new run
+      branches off the integrated tip by construction) while under the attempt
+      cap; at the cap, the task is marked `blocked`. A `{:conflict, _}` only
+      reaches here *after* the lander's in-worktree merge-resolver agent (Task
+      189) already tried and failed to reconcile the markers — re-dispatch is
+      the documented fallback.
+    * operator-invoked manual reland `{:conflict, _}` → retain the branch and
+      witness the conflict without changing roadmap status or starting a fresh
+      implementer run.
     * blocked-command `{:reflex_halt, {:blocked_command, _}}` → `blocked`
       immediately.
     * `{:push_rejected, _}` → **re-land** the retained branch (re-fetch / rebase
@@ -66,6 +70,7 @@ defmodule Harness.Lander.Resilience do
           | {:retry, term()}
           | {:redispatch, pos_integer(), reason_tag()}
           | {:reland, pos_integer()}
+          | {:manual_reland_conflict, String.t()}
           | {:block, reason_tag()}
 
   @doc """
@@ -110,6 +115,10 @@ defmodule Harness.Lander.Resilience do
   and returns the `Oban.Worker` result for `Harness.Lander.Worker`.
   """
   @spec route(Lander.outcome(), map()) :: Oban.Worker.result()
+  def route({:conflict, output}, %{"manual_reland" => true} = args) when is_binary(output) do
+    apply_action({:manual_reland_conflict, output}, args)
+  end
+
   def route(outcome, args) do
     attempt = Map.get(args, "land_attempt", 1)
 
@@ -133,6 +142,7 @@ defmodule Harness.Lander.Resilience do
   defp apply_action({:retry, reason}, _args), do: {:error, reason}
   defp apply_action({:redispatch, attempt, tag}, args), do: redispatch(args, attempt, tag)
   defp apply_action({:reland, attempt}, args), do: reland(args, attempt)
+  defp apply_action({:manual_reland_conflict, output}, args), do: manual_reland_conflict(args, output)
   defp apply_action({:block, tag}, args), do: block(args, tag)
 
   # A *fresh* run (not a session-resume): re-ingest the task and start a new run
@@ -189,6 +199,16 @@ defmodule Harness.Lander.Resilience do
     else
       {:error, reason} -> {:error, {:reland_failed, reason}}
     end
+  end
+
+  @spec manual_reland_conflict(map(), String.t()) :: Oban.Worker.result()
+  defp manual_reland_conflict(args, output) do
+    Logger.warning(
+      "harness lander: manual reland retained conflicted branch #{args["branch"]} for task #{args["task_id"]}"
+    )
+
+    Notification.notify(event(:conflict, output, args))
+    {:cancel, {:manual_reland_conflict, output}}
   end
 
   # Terminal: cap exhausted. Mark the task blocked with a structured reason; a

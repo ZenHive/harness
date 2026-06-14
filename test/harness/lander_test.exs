@@ -439,6 +439,63 @@ defmodule Harness.LanderTest do
       assert File.dir?(ctx.run_worktree.path)
     end
 
+    test "manual reland conflict retains the branch, notifies, and does not redispatch", ctx do
+      moved_main = stage_conflict(ctx)
+      conflicting_tip = sha(ctx.run_worktree.path, "HEAD")
+      put_resolver(fn _worktree, _opts -> {:error, :no_resolver} end)
+      put_capture_sink()
+      :ok = ProjectRegistry.register(ctx.project)
+      parent = self()
+
+      Application.put_env(:harness, :roadmap_ingest, fn selector, opts ->
+        send(parent, {:unexpected_ingest, selector, opts})
+        {:error, :unexpected_ingest}
+      end)
+
+      Application.put_env(:harness, :run_starter, fn item, project, adapter, opts ->
+        send(parent, {:unexpected_run_start, item, project, adapter, opts})
+        {:error, :unexpected_run_start}
+      end)
+
+      on_exit(fn ->
+        ProjectRegistry.unregister(ctx.project.name)
+        Application.delete_env(:harness, :roadmap_ingest)
+        Application.delete_env(:harness, :run_starter)
+      end)
+
+      args =
+        ctx.request
+        |> Map.take([:run_id, :task_id, :branch])
+        |> Map.new(fn {key, value} -> {Atom.to_string(key), value} end)
+        |> Map.merge(%{
+          "project_name" => ctx.project.name,
+          "agent" => "claude",
+          "reviewer" => "codex",
+          "land_attempt" => 1,
+          "manual_reland" => true
+        })
+
+      assert {:cancel, {:manual_reland_conflict, output}} = LanderWorker.perform(%Oban.Job{args: args})
+      assert output =~ "CONFLICT"
+      assert sha(ctx.origin, "refs/heads/main") == moved_main
+      assert branch_exists?(ctx.repo, ctx.request.branch)
+      assert File.dir?(ctx.run_worktree.path)
+      refute ancestor?(ctx.origin, conflicting_tip, "refs/heads/main")
+
+      assert_receive {:notify,
+                      %Event{
+                        type: :conflict,
+                        task_id: "1",
+                        run_id: "run-x",
+                        branch: "harness/run-x",
+                        land_attempt: 1,
+                        outcome: ^output
+                      }}
+
+      refute_receive {:unexpected_ingest, _selector, _opts}, 300
+      refute_receive {:unexpected_run_start, _item, _project, _adapter, _opts}, 300
+    end
+
     test "worker cancels a resolver-disabled conflict at the cap and leaves origin untouched", ctx do
       moved_main = stage_conflict(ctx)
       conflicting_tip = sha(ctx.run_worktree.path, "HEAD")
@@ -506,7 +563,8 @@ defmodule Harness.LanderTest do
                "agent" => "claude",
                "reviewer" => nil,
                "branch" => "harness/run-abc",
-               "land_attempt" => 1
+               "land_attempt" => 1,
+               "manual_reland" => true
              }
     end
 

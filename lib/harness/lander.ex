@@ -116,7 +116,9 @@ defmodule Harness.Lander do
   `task_id`, `project_name`, `agent`, reviewer family) and inserts a fresh
   `Harness.Lander.Worker` job at `land_attempt: 1` on the project's serialized
   `landing_<name>` queue — the same job shape the automatic train enqueues, so
-  it re-fetches, rebases onto the current target, and pushes.
+  it re-fetches, rebases onto the current target, and pushes. The job is marked
+  as an operator-invoked reland so a post-resolver conflict is retained and
+  witnessed instead of inheriting the autonomous merge-train redispatch fallback.
 
   Mechanical by design: it does **not** judge whether a re-land is warranted —
   the caller (operator clicking the dashboard button, or an orchestrator)
@@ -164,7 +166,8 @@ defmodule Harness.Lander do
       "agent" => to_string(record.agent),
       "reviewer" => reviewer_name(record.reviewer_adapter),
       "branch" => "harness/" <> record.run_id,
-      "land_attempt" => 1
+      "land_attempt" => 1,
+      "manual_reland" => true
     }
   end
 

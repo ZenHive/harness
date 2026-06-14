@@ -2,10 +2,11 @@ defmodule Harness.Notification.Event do
   @moduledoc """
   A merge-train lifecycle event handed to notification sinks.
 
-  Fired by `Harness.Lander.Resilience` when a run **lands** or a task is
-  **blocked** (landing-attempt cap exhausted), by `Harness.Lander` when the
-  operator's local target branch needs manual sync after a successful land, and
-  by `Harness.Run` when in-run discernment samples a partial transcript.
+  Fired by `Harness.Lander.Resilience` when a run **lands**, a task is
+  **blocked** (landing-attempt cap exhausted), or a manual reland retains a
+  conflicted branch; by `Harness.Lander` when the operator's local target branch
+  needs manual sync after a successful land; and by `Harness.Run` when in-run
+  discernment samples a partial transcript.
 
   ## The sakshi↔buddhi hinge
 
@@ -23,6 +24,7 @@ defmodule Harness.Notification.Event do
   @type type ::
           :landed
           | :blocked
+          | :conflict
           | :local_sync_skipped
           | :in_run_discernment
           | :dispatch_parked
@@ -33,6 +35,7 @@ defmodule Harness.Notification.Event do
 
     * `:landed` — the landed commit SHA (`String.t()`).
     * `:blocked` — the structured blocked reason (`String.t()`).
+    * `:conflict` — the raw rebase conflict output for a retained manual reland.
     * `:local_sync_skipped` — the manual-sync reason (`String.t()`).
     * `:in_run_discernment` — a sampled partial-transcript reviewer payload.
     * `:dispatch_parked` — a parked autonomous-dispatch decision (`%{adapter,
@@ -85,6 +88,8 @@ defmodule Harness.Notification.Event do
   def summary(%__MODULE__{type: :landed, task_id: id, outcome: sha}), do: "landed task #{id} at #{sha}"
 
   def summary(%__MODULE__{type: :blocked, task_id: id, outcome: reason}), do: "blocked task #{id}: #{reason}"
+
+  def summary(%__MODULE__{type: :conflict, task_id: id, outcome: output}), do: "conflict landing task #{id}: #{output}"
 
   def summary(%__MODULE__{type: :local_sync_skipped, task_id: id, outcome: reason}),
     do: "local sync skipped for task #{id}: #{reason}"

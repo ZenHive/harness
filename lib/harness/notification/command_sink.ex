@@ -7,7 +7,8 @@ defmodule Harness.Notification.CommandSink do
   execs a command the operator supplies, covering ntfy / desktop-notify / Slack /
   a curl webhook without harness knowing which. The event fields arrive as:
 
-    * `HARNESS_NOTIFY_TYPE` — `landed` | `blocked` | `in_run_discernment`
+    * `HARNESS_NOTIFY_TYPE` — `landed` | `blocked` | `conflict` |
+      `in_run_discernment`
     * `HARNESS_NOTIFY_TASK_ID`, `HARNESS_NOTIFY_RUN_ID`
     * `HARNESS_NOTIFY_PROJECT`, `HARNESS_NOTIFY_BRANCH`
     * `HARNESS_NOTIFY_LAND_ATTEMPT`

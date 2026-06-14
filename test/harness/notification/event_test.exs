@@ -43,4 +43,16 @@ defmodule Harness.Notification.EventTest do
       assert Event.summary(event) == "local sync skipped for task 197: local main behind origin by 1; sync manually"
     end
   end
+
+  describe "summary/1 — conflict" do
+    test "names the retained-branch conflict output" do
+      event = %Event{
+        type: :conflict,
+        task_id: "119",
+        outcome: "CONFLICT (content): Merge conflict in CHANGELOG.md"
+      }
+
+      assert Event.summary(event) == "conflict landing task 119: CONFLICT (content): Merge conflict in CHANGELOG.md"
+    end
+  end
 end
