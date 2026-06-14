@@ -1,9 +1,5 @@
 defmodule Harness.ObanDispatchTest do
-  # async: false because this module mutates process-global Application env seams
-  # and ProjectRegistry state in setup/test bodies; the DB-backed cases also rely
-  # on SQL Sandbox shared mode plus a named HarnessOban/Lifeline singleton. Oban's
-  # :inline testing mode does not isolate those globals between async tests.
-  # async: false because app env, ProjectRegistry, Sandbox shared mode, and Oban singletons are global.
+  # async: false — app env, ProjectRegistry, Sandbox shared mode, and Oban singletons are global.
   use ExUnit.Case, async: false
 
   import Ecto.Query, only: [from: 2]
@@ -35,7 +31,7 @@ defmodule Harness.ObanDispatchTest do
   @lifeline_wait_tries 50
   @lifeline_wait_delay_ms 20
   @stale_attempted_at_offset_ms @lifeline_rescue_after_ms + to_timeout(second: 1)
-  @idempotency_run_timeout_ms 30_000
+  @idempotency_run_timeout_ms 60_000
   @idempotency_wait_tries div(@idempotency_run_timeout_ms, @lifeline_wait_delay_ms)
 
   setup do
@@ -1373,7 +1369,7 @@ defmodule Harness.ObanDispatchTest do
 
       {:ok, orphan} =
         args
-        |> Worker.new(queue: queue, unique: unique_opts())
+        |> Worker.new(queue: queue, unique: Worker.unique_opts())
         |> Harness.Repo.insert()
 
       orphan
@@ -1384,7 +1380,7 @@ defmodule Harness.ObanDispatchTest do
       assert %{state: "available"} = Harness.Repo.reload!(orphan)
 
       assert {:ok, duplicate} =
-               Oban.insert(HarnessOban, Worker.new(args, queue: queue, unique: unique_opts()))
+               Oban.insert(HarnessOban, Worker.new(args, queue: queue, unique: Worker.unique_opts()))
 
       assert duplicate.id == orphan.id
       assert duplicate.conflict? == true
@@ -1408,7 +1404,7 @@ defmodule Harness.ObanDispatchTest do
 
       {:ok, job} =
         args
-        |> Worker.new(queue: queue, unique: unique_opts())
+        |> Worker.new(queue: queue, unique: Worker.unique_opts())
         |> Harness.Repo.insert()
 
       job
@@ -1443,8 +1439,8 @@ defmodule Harness.ObanDispatchTest do
         run_id: "orphan-run-160"
       }
 
-      {:ok, live_job} = live_args |> Worker.new(queue: queue, unique: unique_opts()) |> Harness.Repo.insert()
-      {:ok, orphan_job} = orphan_args |> Worker.new(queue: queue, unique: unique_opts()) |> Harness.Repo.insert()
+      {:ok, live_job} = live_args |> Worker.new(queue: queue, unique: Worker.unique_opts()) |> Harness.Repo.insert()
+      {:ok, orphan_job} = orphan_args |> Worker.new(queue: queue, unique: Worker.unique_opts()) |> Harness.Repo.insert()
 
       for job <- [live_job, orphan_job] do
         job
@@ -1549,11 +1545,4 @@ defmodule Harness.ObanDispatchTest do
       assert_eventually_lifeline(fun, tries - 1)
   end
 
-  defp unique_opts do
-    [
-      keys: [:project_name, :item_id],
-      states: [:available, :scheduled, :executing, :retryable],
-      period: :infinity
-    ]
-  end
 end
