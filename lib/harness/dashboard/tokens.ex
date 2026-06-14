@@ -1336,6 +1336,16 @@ defmodule Harness.Dashboard.Tokens do
         font-family: var(--font-mono);
         font-size: var(--text-sm);
       }
+      /* Replace the native OS dropdown widget with an on-brand caret so every
+         select matches the inputs instead of falling back to browser chrome. */
+      .landing-form select, .reviewer-form select, .agent-model-form select {
+        appearance: none;
+        -webkit-appearance: none;
+        padding-right: calc(var(--space-3) + 1rem);
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a90a0' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right var(--space-3) center;
+      }
       .landing-form select:focus, .landing-form input[type="text"]:focus,
       .reviewer-form select:focus, .reviewer-form input[type="text"]:focus,
       .agent-model-form select:focus, .agent-model-form input[type="text"]:focus {
