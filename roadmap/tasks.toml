@@ -105,9 +105,19 @@ name = "Self-Healing Run Loop"
 order = 19
 status = "pending"
 
+[phases.20]
+name = "Config Surface — Postgres is the only edit surface"
+order = 20
+status = "pending"
+
 # ----------------------------------------------------------------------------
 # Bundles
 # ----------------------------------------------------------------------------
+
+[bundles.config-surface]
+description = "Make Postgres the ONLY per-project config edit surface and retire the config/dev.local.exs trap. The dashboard already edits landing/cron/agent-models/reviewer/timeouts/catalog live; this bundle adds the two missing holes (concurrency_cap editor + project register/edit/unregister form via a new ProjectRegistry.upsert/1), then deletes dev.local.exs in favor of a run-to-apply priv/repo/seeds.exs (upserts Postgres) + a HARNESS_RUN_MEM_THRESHOLD_GB env var + a boot guard warning on re-introduced config :projects. Editing a config file no longer silently no-ops against the DB source of truth."
+order = 1
+phase = 20
 
 [bundles.agent-gate]
 description = "The agent-gate workflow rebuild (docs/agent-gate-workflow.md): worktree -> implementer AI -> reviewer AI (THE gate) -> MERGE -> audit AI, with no mechanical verification gate anywhere. The cross-family reviewer runs the project's checks itself, fixes inline, and writes .harness/review.json; harness reads it mechanically. Deletes Harness.Verification / CheckStack / presets / :verifying / review_green / the benchmark corpus."
@@ -8505,3 +8515,76 @@ scored_at = "2026-06-14"
 done_at = "2026-06-14"
 shipped_in = "bd6c3d461e2253d68e4cfba0804d6bbf65136261"
 delivered_by = "claude"
+
+[[task]]
+id = "283"
+phase = 20
+bundle = "config-surface"
+status = "pending"
+title = "ProjectRegistry.upsert/1 — replace-or-insert with live Oban queue scaling (foundational)"
+scores = { d = 2, b = 4, u = 5 }
+acceptance_criteria = ["Public Harness.ProjectRegistry.upsert/1 (accepts a %Harness.Project{} or attrs keyword/map via build_project/1, like register/1) added with an api() annotation. Unlike register/1 (which returns {:error, {:duplicate, name}} on an existing name), upsert REPLACES an existing registration and INSERTS a new one — idempotent.", "On upsert: the in-memory state map entry is replaced, Harness.ProjectRegistry.Persistence.upsert/1 writes the row (on_conflict: :replace_all), the project's Oban queue is ensured, AND when concurrency_cap changed the queue limit is updated live via Oban.scale_queue (today Harness.Oban.ensure_project_queue only START_QUEUEs — extend it or scale within upsert). A cap change takes effect with no BEAM restart.", "Test: upsert on an existing project name replaces its fields (e.g. new concurrency_cap) in BOTH the in-memory list and the projects table, and the Oban queue limit reflects the new cap (assert via Oban queue state, not a sleep).", "Test: upsert on a brand-new name inserts the row and starts its queue; ProjectRegistry.list/0 then includes it.", "Test (NEVER-HIDE-FAILURES): a re-upsert with identical attrs is a clean no-op-equivalent (idempotent), flunking on any unexpected error.", "mix precommit.full green."]
+files_to_modify = ["lib/harness/project_registry.ex", "lib/harness/oban.ex", "test/harness/project_registry_test.exs"]
+touches = ["lib/harness/project_registry.ex", "lib/harness/project_registry/persistence.ex", "lib/harness/oban.ex"]
+domains = ["otp", "ecto"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Foundational primitive for the config-surface bundle (blocks 284 + 285). The recurring operator pain: editing config/dev.local.exs to change a project's concurrency_cap / paths does NOTHING because Postgres is the source of truth and config only seeds rows whose name is ABSENT (ProjectRegistry.import_missing_config_projects/2). The fix direction is to make the DB the live edit surface — but register/1 REJECTS an existing name ({:error, {:duplicate, name}}), and only the internal Persistence.upsert/1 (on_conflict: :replace_all) replaces, and it bypasses the GenServer's in-memory map + Oban queue.
+
+Add a public, GenServer-routed upsert/1 that replaces-or-inserts in one shot: in-memory map, Postgres row, Oban queue (started if new, SCALED via Oban.scale_queue if the cap changed). This is the primitive both the dashboard cap-editor/register-form (284) and the reproducible seed script (285) call. The dev.local.exs rationale comments already wished for exactly 'an upsert'.
+
+Mechanics only (mantra-clean): replace a map entry, write a row, scale a queue to a number. No judgment.
+"""
+created_at = "2026-06-14"
+scored_at = "2026-06-14"
+
+[[task]]
+id = "284"
+phase = 20
+bundle = "config-surface"
+status = "pending"
+title = "Dashboard: concurrency_cap editor + project register/edit/unregister form (close the last config-surface holes)"
+scores = { d = 4, b = 5, u = 4 }
+depends_on = [283]
+acceptance_criteria = ["A `set_concurrency` LiveView event on /harness/settings (SettingsLive) sets a registered project's concurrency_cap via Harness.ProjectRegistry.upsert/1 — value persists to Postgres and scales the Oban queue live (no restart). Mirrors the existing `set_landing` handler pattern (settings_live.ex ~line 104) and per-project landing form (components.ex ~lines 730-774).", "A project register/edit form on the same page upserts a project via ProjectRegistry.upsert/1 with: name, source local path (rendered/stored as {:local, path}; a github url is acceptable as an optional alternative source), roadmap_path, check_command, target_branch, concurrency_cap. Editing an existing project pre-fills its current values; submitting an existing name UPDATES it (upsert), a new name CREATES it.", "An unregister/remove control per project calls ProjectRegistry.unregister/1 and the row disappears from the list.", "The config_inspector cap row is no longer the ONLY surface for concurrency_cap (it may remain as a read-only mirror, but the editable control lives in SettingsLive).", "UI matches the existing dashboard design system (the tokens/components already used by SettingsLive) — incremental, NOT a redesign.", "Tests (LiveViewTest, NEVER-HIDE-FAILURES — flunk on unexpected): page renders the cap editor + register form; set_concurrency on a registered project updates ProjectRegistry.list/0 + the projects table; register a NEW project via the form -> appears in list/0; edit an existing project's path -> reflected; unregister -> removed.", "mix precommit.full green."]
+out_of_scope = ["Editing settings already covered by SettingsLive today (landing policy/target, cron autonomy + schedule, agent enable, reviewer eligibility/pin, agent/reviewer models, run timeouts, default agent, model catalog) — those handlers exist; do not duplicate them.", "Deleting config/dev.local.exs or the config restructure — that is Task 285."]
+files_to_modify = ["lib/harness/dashboard/settings_live.ex", "lib/harness/dashboard/components.ex", "lib/harness/dashboard/config_inspector.ex", "test/harness/dashboard/settings_live_test.exs"]
+touches = ["lib/harness/dashboard/settings_live.ex", "lib/harness/dashboard/components.ex", "lib/harness/dashboard/config_inspector.ex"]
+domains = ["phoenix", "liveview"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+After Task 283 lands ProjectRegistry.upsert/1, close the two remaining per-project config holes that keep the operator editing config/dev.local.exs. Verified against SettingsLive: the dashboard ALREADY edits live -> Postgres for landing/cron/agent-models/reviewer/run-timeouts/default-agent/model-catalog. The ONLY gaps are (1) concurrency_cap (currently read-only in config_inspector as `cap=N`) and (2) project registration/editing of source path / roadmap_path / check_command (no form; only config-seed, the dispatch-register_project MCP tool, or IEx).
+
+Add a concurrency_cap editor and a project register/edit/unregister form to /harness/settings, both routed through ProjectRegistry.upsert/1 (283) / unregister/1, so the dashboard becomes the COMPLETE per-project edit surface writing Postgres. This is what makes deleting config/dev.local.exs (285) lossless and the 'edit a file, restart, nothing happens' trap go away — there's a live UI that actually writes the source of truth.
+
+Incremental UI against the existing dashboard design system — match settings_live.ex / components.ex patterns, don't invent a new look.
+"""
+created_at = "2026-06-14"
+scored_at = "2026-06-14"
+
+[[task]]
+id = "285"
+phase = 20
+bundle = "config-surface"
+status = "pending"
+title = "Retire config/dev.local.exs: strip dev.exs, run-to-apply seeds.exs.example, mem-threshold env var, boot guard, docs"
+scores = { d = 3, b = 5, u = 4 }
+depends_on = [283]
+acceptance_criteria = ['config/dev.exs no longer declares `config :harness, :projects, [...]` and no longer `import_config "dev.local.exs"` (the whole lines-13-35 block is removed). dev.exs evaluates cleanly with no :projects key set.', "config/dev.local.exs.example is DELETED and replaced by a tracked priv/repo/seeds.exs.example: an Elixir seed script that upserts the project registrations via Harness.ProjectRegistry.upsert/1, carrying the per-project rationale comments. It opens with a prominent header stating: NOT read at boot; Postgres is the source of truth; edit + run `mix harness.seed` to upsert OR use the dashboard /harness/settings; for a RUNNING node use the dashboard / IEx upsert — this script is the fresh-DB / reset path only.", ".gitignore drops `/config/dev.local.exs` and adds `/priv/repo/seeds.exs` (the real host seed stays gitignored; only the .example is tracked).", "mix.exs aliases gain: `ecto.setup` (ecto.create + ecto.migrate + run priv/repo/seeds.exs when present), `ecto.reset` (ecto.drop + ecto.setup), and `harness.seed` (run priv/repo/seeds.exs).", "config/runtime.exs adds a HARNESS_RUN_MEM_THRESHOLD_GB env-var override that sets `config :harness, :run, mem_threshold_kb` (GB*1024*1024), matching the existing HARNESS_* runtime-override pattern, preserving the per-host 18 GB tuning that lived at the bottom of dev.local.exs. Keep the rationale comment.", "Boot guard in Harness.ProjectRegistry: when Persistence.enabled?() (repo_enabled) AND `config :harness, :projects` is non-empty, Logger.warning that config projects are seed-only and shadowed by the Postgres projects table, naming the dashboard/seeds edit path. (It will not fire after this change, since dev.exs no longer sets :projects — it is a net for re-introduction.)", "import_missing_config_projects/2 and the config-seed read path are KEPT (library consumers with repo_enabled: false still source from config :projects).", "Docs updated: skills/harness-driver/SKILL.md (the dev.local.exs registration instructions ~lines 43-70 + 582 -> dashboard /harness/settings or the seed script), priv/playbooks/dispatch-single-task.md (~line 10), CLAUDE.md 'First-time DB' row -> `mix ecto.setup`. Historical references in roadmap/tasks.toml, roadmap/data.json, CHANGELOG.md are left untouched.", "Tests (NEVER-HIDE-FAILURES): boot guard emits the warning when repo_enabled and config :projects is non-empty, and is silent when empty; a guard/grep test asserts config/dev.exs sets no :projects key.", "mix precommit.full green."]
+out_of_scope = ["Physically removing the operator's untracked config/dev.local.exs from their main checkout, exporting HARNESS_RUN_MEM_THRESHOLD_GB, and restarting iex — those are host-local steps the operator does inline; the file is gitignored and not present in a worktree.", "Removing the config-seed mechanism (import_missing_config_projects) — library/repo_enabled:false consumers still need it.", "Changing the test/harness/worktree/isolation_test.exs fixture that writes a throwaway dev.local.exs (incidental filename in a temp worktree, not the real file)."]
+files_to_modify = ["config/dev.exs", "config/runtime.exs", "config/dev.local.exs.example", "priv/repo/seeds.exs.example", ".gitignore", "mix.exs", "lib/harness/project_registry.ex", "skills/harness-driver/SKILL.md", "priv/playbooks/dispatch-single-task.md", "CLAUDE.md", "test/harness/project_registry_test.exs"]
+touches = ["config/dev.exs", "config/runtime.exs", "config/config.exs", "mix.exs", ".gitignore", "lib/harness/project_registry.ex", "priv/repo", "skills/harness-driver/SKILL.md", "priv/playbooks/dispatch-single-task.md", "CLAUDE.md"]
+domains = ["elixir"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+The payoff task: once the dashboard is the complete per-project edit surface (283 + 284), delete the config/dev.local.exs trap for good. Every AI agent (and the operator, repeatedly) edits that gitignored file to change a project's cap/paths, restarts, and nothing happens — Postgres is the source of truth; config only seeds ABSENT names, so an existing row ignores the file forever.
+
+Safety fact: the live Postgres projects table already holds all 9 projects, so removing the file/seed is lossless — on restart load_projects reads them from Postgres. The only non-DB value in dev.local.exs is mem_threshold_kb: 18 GB, which moves to a HARNESS_RUN_MEM_THRESHOLD_GB env var (matching the HARNESS_* pattern).
+
+Replace the read-at-boot-but-silently-shadowed file with a RUN-to-apply priv/repo/seeds.exs (gitignored; .example tracked) that upserts Postgres via ProjectRegistry.upsert/1 — editing it does nothing until you run `mix harness.seed`, and running it actually writes the source of truth. Add a boot guard that warns if anyone re-introduces a config :projects block under repo_enabled. Update the docs that currently send people to dev.local.exs.
+"""
+created_at = "2026-06-14"
+scored_at = "2026-06-14"

@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 280 — Lander mis-marks reassigned task ids — run→task_id writeback + concurrent rmap-filing id collision corrupts roadmap status on 2026-06-14
 
-**Up next:** Task 174 — Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:3/B:5/U:4 → Eff:1.5] 🚀
+**Up next:** Task 283 — ProjectRegistry.upsert/1 — replace-or-insert with live Oban queue scaling (foundational) [D:2/B:4/U:5 → Eff:2.25] 🎯
 <!-- FOCUS:END -->
 
 ---
