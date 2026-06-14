@@ -12414,6 +12414,45 @@
       "delivered_by": "codex",
       "verified": true,
       "cross_repo": []
+    },
+    {
+      "id": "280",
+      "phase": 19,
+      "bundle": "autolanding",
+      "status": "pending",
+      "title": "Lander mis-marks reassigned task ids — run→task_id writeback + concurrent rmap-filing id collision corrupts roadmap status",
+      "scores": {
+        "d": 4,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 1.5,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "Lander writeback no longer keys solely on the mutable numeric task id: before flipping a task to done --shipped-in, it verifies the id still resolves to the SAME task it dispatched (immutable dispatch-time snapshot — title/content hash or a stable slug). On drift, the writeback ABORTS and surfaces a drift error rather than marking the reassigned task done.",
+        "Concurrent roadmap-filing dispatches cannot both claim the same numeric id range: ids allocated atomically at file/land time (or a per-dispatch id-range reservation), so two parallel `rmap new` passes can't both land 200-204.",
+        "Regression test reproducing the 2026-06-14 incident: dispatch run R for task id N; between dispatch and land, reassign id N to a DIFFERENT task (concurrent filing); assert R's land either writes back to the ORIGINAL task or aborts with a drift error — never a silent false-done on the reassigned task.",
+        "Mis-mark audit: a `done` task whose `shipped_in` commit diff touches none of its `files_to_modify` is flagged (detects this class of corruption in already-landed history)."
+      ],
+      "out_of_scope": [
+        "Re-architecting rmap id assignment to UUIDs — numeric ids stay; the fix is collision-safe allocation + drift-checked writeback.",
+        "Repairing the specific tapakly T200/T203 false-dones — already corrected manually (commit d67a0be in tapakly)."
+      ],
+      "touches": [
+        "lib/harness/lander.ex",
+        "lib/harness/dispatch.ex",
+        "lib/harness/roadmap.ex",
+        "lib/harness/run.ex"
+      ],
+      "body": "Observed in tapakly on 2026-06-14. Two roadmap-filing passes were dispatched concurrently into\nthe SAME 200-204 id space: an investor-tour browser pass (200=facet-bug, 202=seeds, 203=tour,\n204=LLM-spike) and a T169 persona gap-analysis run. The T169 run landed first and reassigned ids\n200-211 to persona tasks. The concurrently-dispatched investor-tour runs then landed, and\n`Harness.Lander` marked them done BY run.task_id — flipping the now-reassigned persona tasks\n(200=FSBO onboarding, 203=Developer LiveViews) to false-done, with `shipped_in` pointing at the\nunrelated facet-bug / tour-reground commits. Net: two tasks marked done that were never built,\ntheir real work shipped under a lost id, and the operator had to repair the ledger by hand.\n\nRoot cause is the run→task_id writeback assuming the numeric id is immutable across the\ndispatch→land window. It isn't, under concurrent rmap-filing. Fix both legs: collision-safe id\nallocation so parallel filings don't overlap, AND a drift-checked writeback so a stale id can\nnever silently mark the wrong task done. This is the rmap-skill 'tasks.toml is a machine-read\ncontract' hazard actually manifesting — harness acted on a reassigned id.\n",
+      "created_at": "2026-06-14",
+      "scored_at": "2026-06-14",
+      "cross_repo": []
     }
   ]
 }
