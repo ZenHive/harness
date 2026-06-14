@@ -777,6 +777,155 @@ defmodule Harness.Dashboard.Components do
     """
   end
 
+  @doc """
+  Per-project registration/editing plus the quick concurrency-cap editor.
+  """
+  attr(:projects, :list, required: true)
+
+  @spec project_settings_card(map()) :: Rendered.t()
+  def project_settings_card(assigns) do
+    ~H"""
+    <section class="setting-card">
+      <h2 class="setting-section-title">Projects</h2>
+      <p class="setting-desc">
+        Register, edit, or remove projects without changing boot config. Existing
+        names update in place; new names create projects.
+      </p>
+
+      <ul class="project-list">
+        <li :for={project <- @projects} class="project-row">
+          <form
+            id={"concurrency-form-#{project.name}"}
+            class="landing-form"
+            phx-submit="set_concurrency"
+          >
+            <input type="hidden" name="name" value={project.name} />
+            <div class="project-id">
+              <span class="project-name">{project.label}</span>
+              <span class="pill" data-state="on">cap {project.concurrency_label}</span>
+            </div>
+            <input
+              type="number"
+              name="concurrency_cap"
+              min="1"
+              value={project.concurrency_cap}
+              placeholder="default"
+              aria-label={"Concurrency cap for #{project.label}"}
+            />
+            <button type="submit" class="btn-save">Save</button>
+          </form>
+        </li>
+        <li :if={@projects == []} class="project-empty">No projects registered.</li>
+      </ul>
+
+      <ul class="project-list">
+        <li :for={project <- @projects} class="project-row">
+          <form id={"project-form-#{project.name}"} class="landing-form" phx-submit="save_project">
+            <input
+              type="text"
+              name="name"
+              value={project.name}
+              aria-label={"Project name #{project.label}"}
+            />
+            <select name="source_type" aria-label={"Source type for #{project.label}"}>
+              <option value="local" selected={project.source_type == "local"}>local</option>
+              <option value="github" selected={project.source_type == "github"}>github</option>
+            </select>
+            <input
+              type="text"
+              name="source_location"
+              value={project.source_location}
+              placeholder="source path or GitHub URL"
+              aria-label={"Source location for #{project.label}"}
+            />
+            <input
+              type="text"
+              name="roadmap_path"
+              value={project.roadmap_path}
+              placeholder="roadmap path"
+              aria-label={"Roadmap path for #{project.label}"}
+            />
+            <input
+              type="text"
+              name="check_command"
+              value={project.check_command}
+              placeholder="check command"
+              aria-label={"Check command for #{project.label}"}
+            />
+            <input
+              type="text"
+              name="target_branch"
+              value={project.target_branch}
+              placeholder="target branch"
+              aria-label={"Target branch for #{project.label}"}
+            />
+            <input
+              type="number"
+              name="concurrency_cap"
+              min="1"
+              value={project.concurrency_cap}
+              placeholder="cap"
+              aria-label={"Project form concurrency cap for #{project.label}"}
+            />
+            <button type="submit" class="btn-save">Save</button>
+            <button
+              id={"unregister-project-#{project.name}"}
+              type="button"
+              class="btn-save"
+              phx-click="unregister_project"
+              phx-value-name={project.name}
+              data-confirm={"Remove project #{project.label}?"}
+            >
+              Remove
+            </button>
+          </form>
+        </li>
+        <li class="project-row">
+          <form id="project-form-new" class="landing-form" phx-submit="save_project">
+            <input type="text" name="name" placeholder="name" aria-label="Project name" />
+            <select name="source_type" aria-label="Source type">
+              <option value="local">local</option>
+              <option value="github">github</option>
+            </select>
+            <input
+              type="text"
+              name="source_location"
+              placeholder="source path or GitHub URL"
+              aria-label="Source location"
+            />
+            <input
+              type="text"
+              name="roadmap_path"
+              placeholder="roadmap path"
+              aria-label="Roadmap path"
+            />
+            <input
+              type="text"
+              name="check_command"
+              placeholder="check command"
+              aria-label="Check command"
+            />
+            <input
+              type="text"
+              name="target_branch"
+              placeholder="target branch"
+              aria-label="Target branch"
+            />
+            <input
+              type="number"
+              name="concurrency_cap"
+              min="1"
+              placeholder="cap"
+              aria-label="Concurrency cap"
+            />
+            <button type="submit" class="btn-save">Save</button>
+          </form>
+        </li>
+      </ul>
+    </section>
+    """
+  end
+
   attr(:provenance, :atom, values: [:default, :config, :env], required: true)
 
   @doc false

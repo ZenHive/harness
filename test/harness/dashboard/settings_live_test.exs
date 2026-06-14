@@ -126,7 +126,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     html =
       view
-      |> element("button[phx-value-name='#{project.name}']")
+      |> element("button[phx-click=toggle_project_autonomy][phx-value-name='#{project.name}']")
       |> render_click()
 
     refute html =~ "no project is enabled"
@@ -411,6 +411,89 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     assert html =~ ~s(phx-submit="set_landing")
   end
 
+  test "renders project registration and concurrency controls", %{conn: conn, project: project} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    assert has_element?(view, "#concurrency-form-#{project.name} input[name=concurrency_cap]")
+    assert has_element?(view, "#project-form-#{project.name} input[name=source_location]")
+    assert has_element?(view, "#project-form-new")
+    assert has_element?(view, "#unregister-project-#{project.name}")
+  end
+
+  test "setting project concurrency updates the registry and inspector", %{conn: conn, project: project} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("#concurrency-form-#{project.name}", %{concurrency_cap: "4"})
+      |> render_submit()
+
+    assert html =~ "Concurrency updated for #{project.name}."
+    assert lookup_project!(project.name).concurrency_cap == 4
+    assert html =~ "cap=4"
+  end
+
+  test "registering a new project through the form adds it to the registry", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("#project-form-new", %{
+        name: "settings-new",
+        source_type: "local",
+        source_location: "/tmp/harness-settings-new",
+        roadmap_path: "/tmp/harness-settings-new/roadmap",
+        check_command: "mix precommit",
+        target_branch: "development",
+        concurrency_cap: "3"
+      })
+      |> render_submit()
+
+    assert html =~ "Project settings-new saved."
+    project = lookup_project!("settings-new")
+    assert project.source == {:local, "/tmp/harness-settings-new"}
+    assert project.roadmap_path == "/tmp/harness-settings-new/roadmap"
+    assert project.check_command == "mix precommit"
+    assert project.target_branch == "development"
+    assert project.concurrency_cap == 3
+
+    ProjectRegistry.unregister("settings-new")
+  end
+
+  test "editing an existing project path through the form updates it", %{conn: conn, project: project} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("#project-form-#{project.name}", %{
+        name: project.name,
+        source_type: "local",
+        source_location: "/tmp/harness-settings-edited",
+        roadmap_path: project.roadmap_path,
+        check_command: "",
+        target_branch: "",
+        concurrency_cap: ""
+      })
+      |> render_submit()
+
+    assert html =~ "Project #{project.name} saved."
+    assert lookup_project!(project.name).source == {:local, "/tmp/harness-settings-edited"}
+  end
+
+  test "unregistering a project removes it from the page and registry", %{conn: conn, project: project} do
+    name = project.name
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> element("#unregister-project-#{name}")
+      |> render_click()
+
+    assert html =~ "Project #{name} removed."
+    assert {:error, {:unknown_project, ^name}} = ProjectRegistry.lookup(name)
+    refute has_element?(view, "#project-form-#{name}")
+  end
+
   test "arming auto-land persists the override and confirms", %{conn: conn, project: project} do
     {:ok, view, _html} = live(conn, "/harness/settings")
 
@@ -542,4 +625,11 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
   defp restore_env(key, nil), do: Application.delete_env(:harness, key)
   defp restore_env(key, value), do: Application.put_env(:harness, key, value)
+
+  defp lookup_project!(name) do
+    case ProjectRegistry.lookup(name) do
+      {:ok, project} -> project
+      {:error, reason} -> flunk("Expected project #{name}, got #{inspect(reason)}")
+    end
+  end
 end

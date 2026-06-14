@@ -112,6 +112,44 @@ defmodule Harness.Dashboard.SettingsLive do
     {:noreply, socket |> assign(:notice, notice) |> refresh()}
   end
 
+  def handle_event("set_concurrency", %{"name" => name, "concurrency_cap" => raw_cap}, socket) do
+    notice =
+      with {:ok, project} <- ProjectRegistry.lookup(name),
+           {:ok, cap} <- parse_concurrency_cap(raw_cap),
+           :ok <- ProjectRegistry.upsert(%{project | concurrency_cap: cap}) do
+        {:ok, "Concurrency updated for #{name}."}
+      else
+        {:error, {:unknown_project, _name}} -> {:error, "Unknown project."}
+        :error -> {:error, "Concurrency cap must be a positive integer or blank."}
+        {:error, _reason} -> {:error, "Could not update concurrency for #{name}."}
+      end
+
+    {:noreply, socket |> assign(:notice, notice) |> refresh()}
+  end
+
+  def handle_event("save_project", params, socket) do
+    notice =
+      with {:ok, attrs} <- project_attrs(params),
+           :ok <- ProjectRegistry.upsert(attrs) do
+        {:ok, "Project #{attrs.name} saved."}
+      else
+        :error -> {:error, "Project name, source, and roadmap path are required."}
+        {:error, _reason} -> {:error, "Could not save project."}
+      end
+
+    {:noreply, socket |> assign(:notice, notice) |> refresh()}
+  end
+
+  def handle_event("unregister_project", %{"name" => name}, socket) do
+    notice =
+      case ProjectRegistry.unregister(name) do
+        :ok -> {:ok, "Project #{name} removed."}
+        {:error, {:unknown_project, _name}} -> {:error, "Unknown project."}
+      end
+
+    {:noreply, socket |> assign(:notice, notice) |> refresh()}
+  end
+
   def handle_event("set_project_reviewer", %{"name" => name, "reviewer" => reviewer}, socket) do
     notice =
       case reviewer_atom(reviewer) do
@@ -342,6 +380,8 @@ defmodule Harness.Dashboard.SettingsLive do
       </section>
 
       <Components.landing_card projects={@landing} />
+
+      <Components.project_settings_card projects={@projects} />
 
       <section class="setting-card">
         <h2 class="setting-section-title">Project reviewers</h2>
@@ -577,6 +617,7 @@ defmodule Harness.Dashboard.SettingsLive do
     |> assign(:autonomy, autonomy_state(projects))
     |> assign(:agents, agents_state())
     |> assign(:landing, landing_state(projects))
+    |> assign(:projects, project_state(projects))
     |> assign(:reviewers, reviewer_state(projects))
     |> assign(:config, ConfigInspector.resolve())
     |> assign(:config_edit, config_edit_state())
@@ -783,6 +824,109 @@ defmodule Harness.Dashboard.SettingsLive do
     do: "#{label} saved — applies on the next node restart."
 
   defp config_saved_notice(%{label: label}), do: "#{label} saved."
+
+  @spec project_state([Project.t()]) :: [map()]
+  defp project_state(projects) do
+    Enum.map(projects, fn project ->
+      {source_type, source_location} = project_source(project)
+      cap = config_input_value(project.concurrency_cap)
+
+      %{
+        name: project.name,
+        label: project.name,
+        source_type: source_type,
+        source_location: source_location,
+        roadmap_path: project.roadmap_path,
+        check_command: project.check_command || "",
+        target_branch: project.target_branch || "",
+        concurrency_cap: cap,
+        concurrency_label: if(cap == "", do: "default", else: cap)
+      }
+    end)
+  end
+
+  @spec project_source(Project.t()) :: {String.t(), String.t()}
+  defp project_source(%Project{source: {:local, path}}), do: {"local", path}
+  defp project_source(%Project{source: {:github, url}}), do: {"github", url}
+
+  @spec project_attrs(map()) :: {:ok, map()} | :error
+  defp project_attrs(params) do
+    with {:ok, name} <- required_param(params, "name"),
+         {:ok, source} <- source_param(params),
+         {:ok, roadmap_path} <- required_param(params, "roadmap_path"),
+         {:ok, cap} <- parse_concurrency_cap(Map.get(params, "concurrency_cap", "")) do
+      {:ok,
+       name
+       |> preserved_project_attrs()
+       |> Map.merge(%{
+         name: name,
+         source: source,
+         roadmap_path: roadmap_path,
+         check_command: optional_param(params, "check_command"),
+         target_branch: optional_param(params, "target_branch"),
+         concurrency_cap: cap
+       })}
+    end
+  end
+
+  @spec preserved_project_attrs(String.t()) :: map()
+  defp preserved_project_attrs(name) do
+    case ProjectRegistry.lookup(name) do
+      {:ok, project} ->
+        %{
+          landing_policy: project.landing_policy,
+          pollution_allowlist: project.pollution_allowlist,
+          reviewer: project.reviewer,
+          warm_paths: project.warm_paths
+        }
+
+      {:error, _reason} ->
+        %{}
+    end
+  end
+
+  @spec source_param(map()) :: {:ok, Project.source()} | :error
+  defp source_param(params) do
+    with {:ok, location} <- required_param(params, "source_location") do
+      case Map.get(params, "source_type") do
+        "local" -> {:ok, {:local, location}}
+        "github" -> {:ok, {:github, location}}
+        _other -> :error
+      end
+    end
+  end
+
+  @spec required_param(map(), String.t()) :: {:ok, String.t()} | :error
+  defp required_param(params, key) do
+    case optional_param(params, key) do
+      nil -> :error
+      value -> {:ok, value}
+    end
+  end
+
+  @spec optional_param(map(), String.t()) :: String.t() | nil
+  defp optional_param(params, key) do
+    case params |> Map.get(key, "") |> String.trim() do
+      "" -> nil
+      value -> value
+    end
+  end
+
+  @spec parse_concurrency_cap(String.t()) :: {:ok, pos_integer() | nil} | :error
+  defp parse_concurrency_cap(raw) do
+    case String.trim(raw) do
+      "" -> {:ok, nil}
+      value -> parse_positive_integer(value)
+    end
+  end
+
+  @spec parse_positive_integer(String.t()) :: {:ok, pos_integer()} | :error
+  defp parse_positive_integer(value) do
+    case Integer.parse(value) do
+      {integer, ""} when integer > 0 -> {:ok, integer}
+      _unparseable -> :error
+    end
+  end
 
   # The per-project landing view-model: the *effective* policy (project default
   # overlaid with the operator's persisted override) rendered as the Landing card.

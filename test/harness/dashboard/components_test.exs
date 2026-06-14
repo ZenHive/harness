@@ -388,6 +388,31 @@ defmodule Harness.Dashboard.ComponentsTest do
     end
   end
 
+  describe "project_settings_card/1" do
+    test "renders concurrency, edit, register, and remove controls" do
+      projects = [
+        %{
+          name: "demo",
+          label: "demo",
+          source_type: "local",
+          source_location: "/tmp/demo",
+          roadmap_path: "/tmp/demo",
+          check_command: "mix precommit",
+          target_branch: "development",
+          concurrency_cap: "2",
+          concurrency_label: "2"
+        }
+      ]
+
+      html = render_component(&Components.project_settings_card/1, projects: projects)
+
+      assert html =~ ~s(id="concurrency-form-demo")
+      assert html =~ ~s(id="project-form-demo")
+      assert html =~ ~s(id="project-form-new")
+      assert html =~ ~s(id="unregister-project-demo")
+    end
+  end
+
   describe "page_shell/1" do
     test "wraps the inner block between the navbar and footer" do
       assigns = %{inner_block: inner_block(~s(<p id="page-body">content</p>))}
