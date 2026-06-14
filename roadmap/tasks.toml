@@ -8549,7 +8549,7 @@ shipped_in = "75404990f24177db6b40f125a742d9817df434ed"
 id = "284"
 phase = 20
 bundle = "config-surface"
-status = "pending"
+status = "in_progress"
 title = "Dashboard: concurrency_cap editor + project register/edit/unregister form (close the last config-surface holes)"
 scores = { d = 4, b = 5, u = 4 }
 depends_on = [283]
@@ -8568,6 +8568,7 @@ Add a concurrency_cap editor and a project register/edit/unregister form to /har
 Incremental UI against the existing dashboard design system — match settings_live.ex / components.ex patterns, don't invent a new look.
 """
 created_at = "2026-06-14"
+started_at = "2026-06-14"
 scored_at = "2026-06-14"
 
 [[task]]
