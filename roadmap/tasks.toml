@@ -8580,7 +8580,7 @@ shipped_in = "759f4a5ca1394edb7aceabdaa4ca5f8cd0763fb4"
 id = "285"
 phase = 20
 bundle = "config-surface"
-status = "in_progress"
+status = "done"
 title = "Retire config/dev.local.exs: strip dev.exs, run-to-apply seeds.exs.example, mem-threshold env var, boot guard, docs"
 scores = { d = 3, b = 5, u = 4 }
 depends_on = [283]
@@ -8598,6 +8598,11 @@ Safety fact: the live Postgres projects table already holds all 9 projects, so r
 
 Replace the read-at-boot-but-silently-shadowed file with a RUN-to-apply priv/repo/seeds.exs (gitignored; .example tracked) that upserts Postgres via ProjectRegistry.upsert/1 — editing it does nothing until you run `mix harness.seed`, and running it actually writes the source of truth. Add a boot guard that warns if anyone re-introduces a config :projects block under repo_enabled. Update the docs that currently send people to dev.local.exs.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781431464240-5a4a1065, 306016c240ddc5985fecf35f6f83db37fa437e09)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-14"
 started_at = "2026-06-14"
 scored_at = "2026-06-14"
+done_at = "2026-06-14"
+shipped_in = "306016c240ddc5985fecf35f6f83db37fa437e09"
