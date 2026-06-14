@@ -506,7 +506,7 @@ defmodule Harness.LanderTest do
       assert File.read!(tasks_path) == roadmap_before
     end
 
-    test "worker cancels a resolver-disabled conflict at the cap and leaves origin untouched", ctx do
+    test "worker retains a resolver-disabled conflict (never re-dispatches), leaving origin untouched", ctx do
       moved_main = stage_conflict(ctx)
       conflicting_tip = sha(ctx.run_worktree.path, "HEAD")
       put_resolver(fn _worktree, _opts -> {:error, :no_resolver} end)
@@ -521,11 +521,11 @@ defmodule Harness.LanderTest do
           "project_name" => ctx.project.name,
           "agent" => "claude",
           "reviewer" => "codex",
-          "land_attempt" => 2
+          "land_attempt" => 1
         })
 
-      assert {:cancel, {:blocked, reason}} = LanderWorker.perform(%Oban.Job{args: args})
-      assert reason =~ "land-cap exhausted after conflict"
+      assert {:cancel, {:conflict_retained, reason}} = LanderWorker.perform(%Oban.Job{args: args})
+      assert reason =~ "dispatch-reland"
       assert sha(ctx.origin, "refs/heads/main") == moved_main
       refute ancestor?(ctx.origin, conflicting_tip, "refs/heads/main")
     end

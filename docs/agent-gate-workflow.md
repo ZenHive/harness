@@ -107,7 +107,13 @@ checkout is untouched. A successful push enqueues the audit job (base_sha = the 
 `origin/<target>` tip).
 
 Outcomes: `{:landed, sha}` · `{:conflict, out}` · `{:push_rejected, out}` · `{:reflex_halt, r}`
-· `{:skipped, r}` · `{:error, r}`.
+· `{:skipped, r}` · `{:error, r}`. `Harness.Lander.Resilience` routes each: a `{:conflict, _}`
+(returned only *after* the in-worktree merge-resolver agent already failed) retains the
+reviewer-approved `harness/<run-id>` branch, marks the task `blocked`, and witnesses the
+conflict — **never a fresh implementer run**; recovery is operator-driven `dispatch-reland`
+(zero-token re-land of the retained branch). `{:push_rejected, _}` re-lands the same branch
+under the attempt cap (the rebase succeeded, the push lost a race); a non-command
+`{:reflex_halt, _}` re-dispatches under the cap; all routes mark `blocked` at the cap.
 
 ### Audit AI — post-merge, batched, best-effort
 
@@ -128,7 +134,7 @@ committed nothing) · `{:push_rejected, out}` · `{:skipped, r}` · `{:error, r}
 Every rmap status transition the lifecycle makes on a project's *canonical*
 `roadmap/tasks.toml` — `in_progress` at dispatch start (`Harness.Run.Worker`),
 `pending` on terminal run failure, `done --verified --shipped-in` at land
-(`Harness.Lander`), `blocked` on land-cap exhaustion (`Harness.Lander.Resilience`)
+(`Harness.Lander`), `blocked` on a retained land conflict or land-cap exhaustion (`Harness.Lander.Resilience`)
 — is a **durable git operation**, not an uncommitted local-file write. All four
 funnel through `Harness.Roadmap.mark_*`, which (when the project carries a
 `target_branch` + local source) delegates to `Harness.Roadmap.Durable`: fetch the

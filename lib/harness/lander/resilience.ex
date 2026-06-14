@@ -20,16 +20,23 @@ defmodule Harness.Lander.Resilience do
       source the lander can't push to).
     * `{:error, reason}` → `{:error, reason}` (a transient fetch/checkout
       failure — Oban backs off and retries the *same* landing job).
-    * autonomous `{:conflict, _}` / non-command `{:reflex_halt, _}` → **fresh
-      re-dispatch** of the task against the current target HEAD (a new run
-      branches off the integrated tip by construction) while under the attempt
-      cap; at the cap, the task is marked `blocked`. A `{:conflict, _}` only
-      reaches here *after* the lander's in-worktree merge-resolver agent (Task
-      189) already tried and failed to reconcile the markers — re-dispatch is
-      the documented fallback.
+    * autonomous `{:conflict, _}` → **retain the reviewer-approved branch**,
+      mark the task `blocked`, and witness the conflict — never a fresh
+      implementer run. A `{:conflict, _}` only reaches here *after* the lander's
+      in-worktree merge-resolver agent (Task 189) already tried and failed to
+      reconcile the markers, so the committed, reviewed branch is paid for and
+      must be recovered, not redone. Recovery is operator-driven `dispatch-reland`
+      (a zero-token re-land of the retained branch once the conflicting change has
+      settled). This is attempt-independent: re-running the implementer would only
+      reproduce the same conflict at the cost of fresh tokens.
+    * non-command `{:reflex_halt, _}` → **fresh re-dispatch** of the task against
+      the current target HEAD (a new run branches off the integrated tip by
+      construction) while under the attempt cap; at the cap, the task is marked
+      `blocked`. (Distinct trigger from a conflict — the reflex floor halted the
+      land, there is no reviewed branch to re-land.)
     * operator-invoked manual reland `{:conflict, _}` → retain the branch and
       witness the conflict without changing roadmap status or starting a fresh
-      implementer run.
+      implementer run (the operator already decided to re-land).
     * blocked-command `{:reflex_halt, {:blocked_command, _}}` → `blocked`
       immediately.
     * `{:push_rejected, _}` → **re-land** the retained branch (re-fetch / rebase
@@ -70,6 +77,7 @@ defmodule Harness.Lander.Resilience do
           | {:retry, term()}
           | {:redispatch, pos_integer(), reason_tag()}
           | {:reland, pos_integer()}
+          | {:conflict_retain, String.t()}
           | {:manual_reland_conflict, String.t()}
           | {:block, reason_tag()}
 
@@ -86,17 +94,19 @@ defmodule Harness.Lander.Resilience do
       {:ok, {:landed, "abc123"}}
 
       iex> Harness.Lander.Resilience.plan({:conflict, "CONFLICT"}, 1)
-      {:redispatch, 2, :conflict}
+      {:conflict_retain, "CONFLICT"}
 
       iex> Harness.Lander.Resilience.plan({:conflict, "CONFLICT"}, 2)
-      {:block, :conflict}
+      {:conflict_retain, "CONFLICT"}
   """
   @spec plan(Lander.outcome(), pos_integer()) :: action()
   def plan({:landed, _sha} = landed, _attempt), do: {:ok, landed}
   def plan({:skipped, _reason} = skipped, _attempt), do: {:ok, skipped}
   def plan({:error, reason}, _attempt), do: {:retry, reason}
 
-  def plan({:conflict, _output}, attempt), do: cap(attempt, {:redispatch, attempt + 1, :conflict}, :conflict)
+  # A resolver-failed conflict never re-dispatches: the reviewed branch is
+  # retained, the task is blocked, and recovery is operator-driven dispatch-reland.
+  def plan({:conflict, output}, _attempt), do: {:conflict_retain, output}
 
   def plan({:push_rejected, _output}, attempt), do: cap(attempt, {:reland, attempt + 1}, :push_rejected)
 
@@ -142,6 +152,7 @@ defmodule Harness.Lander.Resilience do
   defp apply_action({:retry, reason}, _args), do: {:error, reason}
   defp apply_action({:redispatch, attempt, tag}, args), do: redispatch(args, attempt, tag)
   defp apply_action({:reland, attempt}, args), do: reland(args, attempt)
+  defp apply_action({:conflict_retain, output}, args), do: conflict_retain(args, output)
   defp apply_action({:manual_reland_conflict, output}, args), do: manual_reland_conflict(args, output)
   defp apply_action({:block, tag}, args), do: block(args, tag)
 
@@ -199,6 +210,33 @@ defmodule Harness.Lander.Resilience do
     else
       {:error, reason} -> {:error, {:reland_failed, reason}}
     end
+  end
+
+  # Autonomous conflict: the merge-resolver agent already tried and failed, so the
+  # reviewer-approved branch is retained, the task is marked blocked, and the conflict
+  # is witnessed — never a fresh implementer run. Recovery is operator-driven
+  # dispatch-reland. A mark-blocked failure is logged (mirrors block/2) but the job
+  # still cancels so the train never loops on a conflict it has refused.
+  @spec conflict_retain(map(), String.t()) :: Oban.Worker.result()
+  defp conflict_retain(args, output) do
+    reason =
+      "land conflict retained for repair (task #{args["task_id"]}, run #{args["run_id"]}, branch #{args["branch"]}); resolve the conflict then recover via dispatch-reland"
+
+    case mark_blocked(args["project_name"], args["task_id"], reason) do
+      {:ok, _output} ->
+        Logger.warning(
+          "harness lander: retained conflicted branch #{args["branch"]} for task #{args["task_id"]}: #{reason}"
+        )
+
+      {:error, mark_reason} ->
+        Logger.error(
+          "harness lander: failed to mark task #{args["task_id"]} blocked (#{inspect(mark_reason)}); reason was: #{reason}"
+        )
+    end
+
+    Notification.notify(event(:conflict, output, args))
+    OpsFeed.broadcast(Op.blocked(args, reason))
+    {:cancel, {:conflict_retained, reason}}
   end
 
   @spec manual_reland_conflict(map(), String.t()) :: Oban.Worker.result()

@@ -31,9 +31,9 @@ defmodule Harness.Lander.ResilienceTest do
       assert {:retry, :boom} = Resilience.plan({:error, :boom}, 2)
     end
 
-    test "conflict re-dispatches under the cap, blocks at it" do
-      assert {:redispatch, 2, :conflict} = Resilience.plan({:conflict, "CONFLICT (content)"}, 1)
-      assert {:block, :conflict} = Resilience.plan({:conflict, "CONFLICT (content)"}, 2)
+    test "conflict retains the reviewed branch at any attempt (never re-dispatches)" do
+      assert {:conflict_retain, "CONFLICT (content)"} = Resilience.plan({:conflict, "CONFLICT (content)"}, 1)
+      assert {:conflict_retain, "CONFLICT (content)"} = Resilience.plan({:conflict, "CONFLICT (content)"}, 2)
     end
 
     test "push_rejected re-lands the retained branch under the cap, blocks at it" do
@@ -101,16 +101,6 @@ defmodule Harness.Lander.ResilienceTest do
       {:ok, project: project}
     end
 
-    test "conflict at the cap cancels as blocked and enqueues nothing", %{project: project} do
-      args = base_args(project.name, 2)
-
-      assert {:cancel, {:blocked, reason}} = Resilience.route({:conflict, "CONFLICT (content)"}, args)
-      assert reason =~ "land-cap exhausted after conflict"
-      assert reason =~ "task " <> args["task_id"]
-
-      refute_receive {:landing_insert, _changeset}, 300
-    end
-
     test "push_rejected at the cap cancels as blocked (no reland)", %{project: project} do
       args = base_args(project.name, 2)
 
@@ -139,6 +129,8 @@ defmodule Harness.Lander.ResilienceTest do
     end
   end
 
+  # The redispatch effect is reached only via a non-command reflex_halt under the cap
+  # (a conflict no longer re-dispatches — see "autonomous conflict" below).
   describe "route/2 — redispatch effect (failure paths)" do
     test "successful redispatch does not report the current landing job completed" do
       project = register_project()
@@ -160,7 +152,7 @@ defmodule Harness.Lander.ResilienceTest do
         Application.delete_env(:harness, :run_starter)
       end)
 
-      assert {:cancel, {:redispatched, "repair-run"}} = Resilience.route({:conflict, "CONFLICT"}, args)
+      assert {:cancel, {:redispatched, "repair-run"}} = Resilience.route({:reflex_halt, :progress_stalled}, args)
       assert_receive {:ingested_for, :claude}
       assert_receive {:started_repair, 2}
     end
@@ -168,7 +160,7 @@ defmodule Harness.Lander.ResilienceTest do
     test "surfaces {:error, {:redispatch_failed, _}} when the project is unregistered" do
       args = base_args("ghost-#{System.unique_integer([:positive])}", 1)
 
-      assert {:error, {:redispatch_failed, _reason}} = Resilience.route({:conflict, "CONFLICT"}, args)
+      assert {:error, {:redispatch_failed, _reason}} = Resilience.route({:reflex_halt, :progress_stalled}, args)
     end
 
     test "surfaces {:error, {:redispatch_failed, {:unknown_adapter, _}}} for an unresolvable agent" do
@@ -176,7 +168,73 @@ defmodule Harness.Lander.ResilienceTest do
       args = %{base_args(project.name, 1) | "agent" => "not-an-agent"}
 
       assert {:error, {:redispatch_failed, {:unknown_adapter, "not-an-agent"}}} =
-               Resilience.route({:conflict, "CONFLICT (content)"}, args)
+               Resilience.route({:reflex_halt, :progress_stalled}, args)
+    end
+  end
+
+  describe "route/2 — autonomous conflict retains the branch (never re-dispatches)" do
+    setup do
+      Application.put_env(:harness, :notification_sinks, [CaptureSink])
+      Application.put_env(:harness, :test_capture_pid, self())
+
+      on_exit(fn ->
+        Application.delete_env(:harness, :notification_sinks)
+        Application.delete_env(:harness, :test_capture_pid)
+        Application.delete_env(:harness, :roadmap_ingest)
+        Application.delete_env(:harness, :run_starter)
+      end)
+
+      :ok
+    end
+
+    test "marks the task blocked, witnesses the conflict, and starts no fresh run" do
+      project = register_project()
+      parent = self()
+      capture_inserts()
+      args = base_args(project.name, 1)
+
+      Application.put_env(:harness, :roadmap_ingest, fn {:id, "42"}, opts ->
+        send(parent, {:unexpected_ingest, opts})
+        {:ok, %Item{id: "42", title: "repair", prompt: "repair prompt", agent: :claude}}
+      end)
+
+      Application.put_env(:harness, :run_starter, fn %Item{id: "42"}, ^project, Claude, opts ->
+        send(parent, {:unexpected_run_start, opts})
+        {:ok, "unexpected-repair-run", self()}
+      end)
+
+      assert {:cancel, {:conflict_retained, reason}} = Resilience.route({:conflict, "CONFLICT (content)"}, args)
+      assert reason =~ "task " <> args["task_id"]
+      assert reason =~ "dispatch-reland"
+
+      assert_receive {:notify,
+                      %Event{
+                        type: :conflict,
+                        task_id: "42",
+                        run_id: "run-x",
+                        branch: "harness/run-x",
+                        outcome: "CONFLICT (content)",
+                        land_attempt: 1
+                      }}
+
+      refute_receive {:unexpected_ingest, _opts}, 300
+      refute_receive {:unexpected_run_start, _opts}, 300
+      refute_receive {:landing_insert, _changeset}, 300
+    end
+
+    test "retains the branch at the cap too — never falls through to a fresh dispatch", %{} do
+      project = register_project()
+      parent = self()
+
+      Application.put_env(:harness, :run_starter, fn _item, _project, _adapter, _opts ->
+        send(parent, :unexpected_run_start)
+        {:ok, "unexpected-run", self()}
+      end)
+
+      assert {:cancel, {:conflict_retained, _reason}} =
+               Resilience.route({:conflict, "CONFLICT (content)"}, base_args(project.name, 2))
+
+      refute_receive :unexpected_run_start, 300
     end
   end
 
