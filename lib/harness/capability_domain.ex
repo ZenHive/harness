@@ -21,8 +21,11 @@ defmodule Harness.CapabilityDomain do
   # Elixir-stack starters; extend as new language stacks land (e.g. :rust).
   @elixir_domains [:otp, :genserver, :liveview, :phoenix, :ecto, :oban]
 
-  # Cross-language / general domains beyond the Elixir starter set.
-  @general_domains [:rust, :elixir]
+  # Cross-language / general domains beyond the Elixir starter set. Each atom must
+  # be pre-registered here so `String.to_existing_atom/1` (the rmap-`domains` →
+  # atom path in `Harness.Roadmap.task_domains/1`) resolves it instead of dropping
+  # it to the `:untagged` bucket — that is how JS/TS tasks get domain-sliced KPIs.
+  @general_domains [:rust, :elixir, :javascript, :typescript]
 
   @domains (@elixir_domains ++ @general_domains) |> Enum.uniq() |> Enum.sort()
 

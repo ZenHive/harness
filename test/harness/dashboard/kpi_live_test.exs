@@ -69,6 +69,9 @@ defmodule Harness.Dashboard.KPILiveTest do
 
       assert html =~ "No run records yet"
       refute html =~ "<tbody>"
+      # The fleet strip is gated on having rows, so the empty state never shows it.
+      # (The `.kpi-strip` *selector* is always in the stylesheet — match the element.)
+      refute html =~ ~s(class="kpi-strip")
     end
   end
 
@@ -95,6 +98,27 @@ defmodule Harness.Dashboard.KPILiveTest do
       # codex: 1/1 pass, mean tokens 1500, cost→green 1500 (thousands-grouped).
       assert html =~ "100%"
       assert html =~ "1,500"
+    end
+
+    test "renders the fleet summary strip with run-weighted headline numbers", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/harness/kpi")
+
+      assert html =~ ~s(class="kpi-strip")
+      assert html =~ "Total runs"
+      assert html =~ "Fleet success"
+      # 3 runs, 2 agents; success = (claude 0.5×2 + codex 1.0×1) / 3 attributable = 67%.
+      assert html =~ "67%"
+      # Total spend = claude mean 150 × 2 + codex mean 1500 × 1 = 1,800 (thousands-grouped).
+      assert html =~ "1,800"
+    end
+
+    test "renders rate columns as proportion bars with the value as the fill width", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/harness/kpi")
+
+      assert html =~ "kpi-bar-fill tone-pass"
+      # claude success 50% and codex success 100% become inline bar fill widths.
+      assert html =~ ~s(style="width: 50%")
+      assert html =~ ~s(style="width: 100%")
     end
 
     test "an agent with zero passes shows cost→green as a dash, not zero", %{conn: conn} do

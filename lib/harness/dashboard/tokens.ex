@@ -534,6 +534,88 @@ defmodule Harness.Dashboard.Tokens do
       .cf-statbar-add { background: var(--diff-add-edge); }
       .cf-statbar-del { background: var(--diff-del-edge); }
 
+      /* === Agent-KPI page (stat strip, section panels, proportion bars) === */
+      .kpi-strip {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+        gap: var(--space-3);
+        margin-block: var(--space-4);
+      }
+      .kpi-stat {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+        padding: var(--space-3) var(--space-4);
+        border: 1px solid var(--rule);
+        border-radius: 0.5rem;
+        background: var(--surface);
+      }
+      .kpi-stat-num { font-family: var(--font-mono); font-size: var(--text-lg); color: var(--text); }
+      .kpi-stat-label {
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .kpi-section {
+        margin-block: var(--space-5);
+        padding: var(--space-3) var(--space-4) var(--space-4);
+        border: 1px solid var(--rule);
+        border-radius: 0.5rem;
+        background: var(--surface);
+      }
+      .kpi-section > table { margin-top: 0; }
+
+      .kpi-cell { display: flex; align-items: center; gap: var(--space-2); }
+      .kpi-pct { font-family: var(--font-mono); min-width: 2.4rem; }
+      .kpi-bar {
+        display: inline-flex;
+        flex: 1;
+        min-width: 2.5rem;
+        max-width: 4.5rem;
+        height: 0.5rem;
+        border-radius: 999px;
+        overflow: hidden;
+        background: var(--surface-2);
+        border: 1px solid var(--rule);
+      }
+      .kpi-bar-fill { height: 100%; border-radius: 999px; transition: width var(--motion-fast) var(--ease-out); }
+
+      .tone-pass { color: var(--verdict-pass); }
+      .tone-info { color: var(--verdict-info); }
+      .tone-warn { color: var(--verdict-warn); }
+      .kpi-bar-fill.tone-pass { background: var(--verdict-pass); }
+      .kpi-bar-fill.tone-info { background: var(--verdict-info); }
+      .kpi-bar-fill.tone-warn { background: var(--verdict-warn); }
+
+      /* Jump-nav between the KPI sections; sticky under the navbar so it stays reachable */
+      .kpi-nav {
+        position: sticky;
+        top: var(--navbar-height);
+        z-index: 2;
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-block: var(--space-3);
+        padding-block: var(--space-2);
+        background: var(--bg);
+      }
+      .kpi-nav a {
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        text-decoration: none;
+        padding: 0.15em 0.7em;
+        border: 1px solid var(--rule);
+        border-radius: 999px;
+        color: var(--text-subtle);
+      }
+      .kpi-nav a:hover { color: var(--text); border-color: var(--accent); }
+
+      /* Wrap a wide table (the ledger's dynamic rating columns) so it scrolls in place */
+      .table-scroll { overflow-x: auto; }
+      .kpi-section { scroll-margin-top: calc(var(--navbar-height) + 3rem); }
+
       /* File rows */
       .cf-file {
         border: 1px solid var(--rule);

@@ -141,10 +141,46 @@ defmodule Harness.Dashboard.KPILive do
 
     socket
     |> assign(:rows, sort_rows(rows, socket.assigns.sort_by, socket.assigns.sort_dir))
+    |> assign(:summary, fleet_summary(rows))
     |> assign(:rating_keys, rating_keys(rows))
     |> assign(:reviewer_rows, reviewer_rows())
     |> assign(:review_stuck_cause_rows, review_stuck_cause_rows())
     |> assign(:recovery_facts, recovery_facts())
+  end
+
+  @typedoc "Fleet-wide headline rollup over the per-agent rows (counts, not verdicts)."
+  @type fleet_summary :: %{
+          total_runs: non_neg_integer(),
+          success_rate: float(),
+          first_pass_rate: float(),
+          total_tokens: non_neg_integer(),
+          agents: non_neg_integer()
+        }
+
+  # Fold the per-agent rows into the at-a-glance headline. Pure counting: sums of
+  # run counts/tokens and run-weighted rates — never a new verdict or score.
+  @spec fleet_summary([map()]) :: fleet_summary()
+  defp fleet_summary(rows) do
+    attributable = Enum.sum(Enum.map(rows, &(&1.run_count - &1.reviewer_flaked)))
+
+    %{
+      total_runs: Enum.sum(Enum.map(rows, & &1.run_count)),
+      success_rate: weighted_rate(rows, :success_rate, attributable),
+      first_pass_rate: weighted_rate(rows, :first_attempt_pass_rate, attributable),
+      total_tokens: round(Enum.sum(Enum.map(rows, &(&1.tokens.total * &1.run_count)))),
+      agents: length(rows)
+    }
+  end
+
+  # Σ(rate × attributable) / Σattributable — the fleet rate weighted by each agent's
+  # attributable run count, NOT a mean of per-agent rates (which would weight a
+  # one-run agent equal to a hundred-run one). 0.0 when nothing is attributable.
+  @spec weighted_rate([map()], atom(), non_neg_integer()) :: float()
+  defp weighted_rate(_rows, _key, 0), do: 0.0
+
+  defp weighted_rate(rows, key, attributable) do
+    Enum.sum(Enum.map(rows, &(Map.fetch!(&1, key) * (&1.run_count - &1.reviewer_flaked)))) /
+      attributable
   end
 
   # The per-reviewer-adapter reliability ledger: each reviewer's rejection and
@@ -365,212 +401,275 @@ defmodule Harness.Dashboard.KPILive do
       No run records yet — dispatch a task and its outcome will populate this ledger.
     </p>
 
-    <table :if={@rows != []}>
-      <thead>
-        <tr>
-          <.sort_th col="agent" label="Agent" sort_by={@sort_by} sort_dir={@sort_dir} />
-          <.sort_th col="run_count" label="Runs" sort_by={@sort_by} sort_dir={@sort_dir} />
-          <.sort_th col="reviewer_flaked" label="Rvw flaked" sort_by={@sort_by} sort_dir={@sort_dir} />
-          <.sort_th col="success_rate" label="Success" sort_by={@sort_by} sort_dir={@sort_dir} />
-          <.sort_th
-            col="first_attempt_pass_rate"
-            label="First-try"
-            sort_by={@sort_by}
-            sort_dir={@sort_dir}
-          />
-          <.sort_th col="review_iterations" label="Reviews" sort_by={@sort_by} sort_dir={@sort_dir} />
-          <.sort_th col="tokens" label="Mean tokens" sort_by={@sort_by} sort_dir={@sort_dir} />
-          <.sort_th col="cost_to_green" label="Cost→green" sort_by={@sort_by} sort_dir={@sort_dir} />
-          <.sort_th
-            :for={key <- @rating_keys}
-            col={"rating:#{key}"}
-            label={rating_label(key)}
-            sort_by={@sort_by}
-            sort_dir={@sort_dir}
-          />
-        </tr>
-      </thead>
-      <tbody>
-        <tr :for={row <- @rows}>
-          <td><code>{row.agent || "—"}</code></td>
-          <td>{row.run_count}</td>
-          <td>{row.reviewer_flaked}</td>
-          <td>{format_pct(row.success_rate)}</td>
-          <td>{format_pct(row.first_attempt_pass_rate)}</td>
-          <td>{format_float(row.review_iterations)}</td>
-          <td>{format_count(row.tokens.total)}</td>
-          <td>{format_count(row.cost_to_green)}</td>
-          <td :for={key <- @rating_keys}>{format_rating(Map.get(row_ratings(row), key))}</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <div :if={@reviewer_rows != []} class="topbar">
-      <strong>Reviewer reliability</strong>
-      <span class="count">{length(@reviewer_rows)} reviewers</span>
-    </div>
-
-    <table :if={@reviewer_rows != []}>
-      <thead>
-        <tr>
-          <th>Reviewer</th>
-          <th>Gated</th>
-          <th>Rejections</th>
-          <th>Reject rate</th>
-          <th>No verdict</th>
-          <th>No-verdict rate</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr :for={row <- @reviewer_rows}>
-          <td><code>{inspect(row.reviewer)}</code></td>
-          <td>{row.reviewed_count}</td>
-          <td>{row.rejection_count}</td>
-          <td>{format_pct(row.rejection_rate)}</td>
-          <td>{row.no_verdict_count}</td>
-          <td>{format_pct(row.no_verdict_rate)}</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <div :if={@review_stuck_cause_rows != []} class="topbar">
-      <strong>Orchestration health</strong>
-      <span class="count">review_stuck by cause</span>
-    </div>
-
-    <p :if={@review_stuck_cause_rows != []}>
-      Selection/no-reviewer stuck runs are counted here, not in reviewer reliability.
-    </p>
-
-    <table :if={@review_stuck_cause_rows != []}>
-      <thead>
-        <tr>
-          <th>Cause</th>
-          <th>Count</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr :for={row <- @review_stuck_cause_rows}>
-          <td><code>{row.cause}</code></td>
-          <td>{row.count}</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <div :if={@recovery_facts.attempted_runs > 0} class="topbar">
-      <strong>Recovery facts</strong>
-      <span class="count">{@recovery_facts.attempted_runs} recovered runs</span>
-    </div>
-
-    <table :if={@recovery_facts.attempted_runs > 0}>
-      <thead>
-        <tr>
-          <th>Runs</th>
-          <th>Attempts</th>
-          <th>Repaired</th>
-          <th>Dead</th>
-          <th>Masked-failure rate</th>
-          <th>Recovery token cost</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>{@recovery_facts.attempted_runs}</td>
-          <td>{@recovery_facts.total_attempts}</td>
-          <td>{@recovery_facts.repaired_runs}</td>
-          <td>{@recovery_facts.dead_runs}</td>
-          <td>{format_pct(@recovery_facts.masked_failure_rate)}</td>
-          <td>{format_count(@recovery_facts.tokens.total)}</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <table :if={@recovery_facts.attempted_runs > 0}>
-      <thead>
-        <tr>
-          <th>Run</th>
-          <th>Task</th>
-          <th>Agent</th>
-          <th>Attempts</th>
-          <th>Outcome</th>
-          <th>Repaired</th>
-          <th>Tokens</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr :for={row <- @recovery_facts.per_run}>
-          <td><code>{row.run_id}</code></td>
-          <td><code>{row.task_id}</code></td>
-          <td><code>{row.agent || "—"}</code></td>
-          <td>{row.attempts}</td>
-          <td><code>{row.outcome || "—"}</code></td>
-          <td>{row.repaired || "—"}</td>
-          <td>{format_count(row.tokens.total)}</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <div class="topbar">
-      <strong>By task-facet</strong>
-      <span class="count">{length(@facets)} facet groups</span>
-      <span :if={@assessed_at} class="count">scout assessed {format_ts(@assessed_at)}</span>
-    </div>
-
-    <p :if={@facets == []}>
-      No faceted records yet — the reviewer assigns task facets in <code>review.json</code>;
-      they appear here once runs settle.
-    </p>
-
-    <div :if={@facets != []} class="facet-filter">
-      <button type="button" class={pill_class(@facet_filter, nil)} phx-click="facet" phx-value-key="">
-        All
-      </button>
-      <button
-        :for={facet <- @facets}
-        type="button"
-        class={pill_class(@facet_filter, facet.label)}
-        phx-click="facet"
-        phx-value-key={facet.label}
-      >
-        {facet.label}
-      </button>
-    </div>
-
-    <div :for={facet <- visible_facets(@facets, @facet_filter)} class="facet-card">
-      <div class="facet-head">
-        <strong>{facet.label}</strong>
-        <span :if={facet.verdict} class="scout-winner">
-          scout → <code>{facet.verdict.winner}</code>
-        </span>
-        <span :if={is_nil(facet.verdict)} class="count">no scout verdict yet</span>
+    <div :if={@rows != []} class="kpi-strip">
+      <div class="kpi-stat">
+        <span class="kpi-stat-num">{format_count(@summary.total_runs)}</span>
+        <span class="kpi-stat-label">Total runs</span>
       </div>
-      <p :if={facet.verdict} class="scout-reasoning">{facet.verdict.reasoning}</p>
+      <div class="kpi-stat">
+        <span class="kpi-stat-num">{@summary.agents}</span>
+        <span class="kpi-stat-label">Agents</span>
+      </div>
+      <div class="kpi-stat">
+        <span class="kpi-stat-num tone-pass">{format_pct(@summary.success_rate)}</span>
+        <span class="kpi-stat-label">Fleet success</span>
+      </div>
+      <div class="kpi-stat">
+        <span class="kpi-stat-num tone-info">{format_pct(@summary.first_pass_rate)}</span>
+        <span class="kpi-stat-label">First-try</span>
+      </div>
+      <div class="kpi-stat">
+        <span class="kpi-stat-num">{format_count(@summary.total_tokens)}</span>
+        <span class="kpi-stat-label">Total tokens</span>
+      </div>
+    </div>
+
+    <nav :if={@rows != []} class="kpi-nav">
+      <a href="#agents">Agents</a>
+      <a :if={@reviewer_rows != []} href="#reviewers">Reviewers</a>
+      <a :if={@review_stuck_cause_rows != []} href="#orchestration">Orchestration</a>
+      <a :if={@recovery_facts.attempted_runs > 0} href="#recovery">Recovery</a>
+      <a href="#facets">Facets</a>
+    </nav>
+
+    <section :if={@rows != []} id="agents" class="kpi-section">
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <.sort_th col="agent" label="Agent" sort_by={@sort_by} sort_dir={@sort_dir} />
+              <.sort_th col="run_count" label="Runs" sort_by={@sort_by} sort_dir={@sort_dir} />
+              <.sort_th
+                col="reviewer_flaked"
+                label="Rvw flaked"
+                sort_by={@sort_by}
+                sort_dir={@sort_dir}
+              />
+              <.sort_th col="success_rate" label="Success" sort_by={@sort_by} sort_dir={@sort_dir} />
+              <.sort_th
+                col="first_attempt_pass_rate"
+                label="First-try"
+                sort_by={@sort_by}
+                sort_dir={@sort_dir}
+              />
+              <.sort_th
+                col="review_iterations"
+                label="Reviews"
+                sort_by={@sort_by}
+                sort_dir={@sort_dir}
+              />
+              <.sort_th col="tokens" label="Mean tokens" sort_by={@sort_by} sort_dir={@sort_dir} />
+              <.sort_th
+                col="cost_to_green"
+                label="Cost→green"
+                sort_by={@sort_by}
+                sort_dir={@sort_dir}
+              />
+              <.sort_th
+                :for={key <- @rating_keys}
+                col={"rating:#{key}"}
+                label={rating_label(key)}
+                sort_by={@sort_by}
+                sort_dir={@sort_dir}
+              />
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={row <- @rows}>
+              <td><code>{row.agent || "—"}</code></td>
+              <td>{row.run_count}</td>
+              <td>{row.reviewer_flaked}</td>
+              <.rate_cell value={row.success_rate} tone={:pass} />
+              <.rate_cell value={row.first_attempt_pass_rate} tone={:info} />
+              <td>{format_float(row.review_iterations)}</td>
+              <td>{format_count(row.tokens.total)}</td>
+              <td>{format_count(row.cost_to_green)}</td>
+              <td :for={key <- @rating_keys}>{format_rating(Map.get(row_ratings(row), key))}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section :if={@reviewer_rows != []} id="reviewers" class="kpi-section">
+      <div class="topbar">
+        <strong>Reviewer reliability</strong>
+        <span class="count">{length(@reviewer_rows)} reviewers</span>
+      </div>
 
       <table>
         <thead>
           <tr>
-            <th>Agent</th>
-            <th>Runs</th>
-            <th>Approve</th>
-            <th>First-try</th>
-            <th>Quality</th>
-            <th>Mean tokens</th>
-            <th>Cost→green</th>
+            <th>Reviewer</th>
+            <th>Gated</th>
+            <th>Rejections</th>
+            <th>Reject rate</th>
+            <th>No verdict</th>
+            <th>No-verdict rate</th>
           </tr>
         </thead>
         <tbody>
-          <tr :for={row <- facet.agents} class={winner_class(row, facet.verdict)}>
-            <td><code>{row.agent || "—"}</code></td>
-            <td>{row.run_count}</td>
-            <td>{format_pct(row.success_rate)}</td>
-            <td>{format_pct(row.first_attempt_pass_rate)}</td>
-            <td>{format_rating(quality(row))}</td>
-            <td>{format_count(row.tokens.total)}</td>
-            <td>{format_count(row.cost_to_green)}</td>
+          <tr :for={row <- @reviewer_rows}>
+            <td><code>{inspect(row.reviewer)}</code></td>
+            <td>{row.reviewed_count}</td>
+            <td>{row.rejection_count}</td>
+            <.rate_cell value={row.rejection_rate} tone={:warn} />
+            <td>{row.no_verdict_count}</td>
+            <.rate_cell value={row.no_verdict_rate} tone={:warn} />
           </tr>
         </tbody>
       </table>
-    </div>
+    </section>
+
+    <section :if={@review_stuck_cause_rows != []} id="orchestration" class="kpi-section">
+      <div class="topbar">
+        <strong>Orchestration health</strong>
+        <span class="count">review_stuck by cause</span>
+      </div>
+
+      <p>
+        Selection/no-reviewer stuck runs are counted here, not in reviewer reliability.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Cause</th>
+            <th>Count</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={row <- @review_stuck_cause_rows}>
+            <td><code>{row.cause}</code></td>
+            <td>{row.count}</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section :if={@recovery_facts.attempted_runs > 0} id="recovery" class="kpi-section">
+      <div class="topbar">
+        <strong>Recovery facts</strong>
+        <span class="count">{@recovery_facts.attempted_runs} recovered runs</span>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Runs</th>
+            <th>Attempts</th>
+            <th>Repaired</th>
+            <th>Dead</th>
+            <th>Masked-failure rate</th>
+            <th>Recovery token cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>{@recovery_facts.attempted_runs}</td>
+            <td>{@recovery_facts.total_attempts}</td>
+            <td>{@recovery_facts.repaired_runs}</td>
+            <td>{@recovery_facts.dead_runs}</td>
+            <.rate_cell value={@recovery_facts.masked_failure_rate} tone={:warn} />
+            <td>{format_count(@recovery_facts.tokens.total)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Run</th>
+            <th>Task</th>
+            <th>Agent</th>
+            <th>Attempts</th>
+            <th>Outcome</th>
+            <th>Repaired</th>
+            <th>Tokens</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={row <- @recovery_facts.per_run}>
+            <td><code>{row.run_id}</code></td>
+            <td><code>{row.task_id}</code></td>
+            <td><code>{row.agent || "—"}</code></td>
+            <td>{row.attempts}</td>
+            <td><code>{row.outcome || "—"}</code></td>
+            <td>{row.repaired || "—"}</td>
+            <td>{format_count(row.tokens.total)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="facets" class="kpi-section">
+      <div class="topbar">
+        <strong>By task-facet</strong>
+        <span class="count">{length(@facets)} facet groups</span>
+        <span :if={@assessed_at} class="count">scout assessed {format_ts(@assessed_at)}</span>
+      </div>
+
+      <p :if={@facets == []}>
+        No faceted records yet — the reviewer assigns task facets in <code>review.json</code>;
+        they appear here once runs settle.
+      </p>
+
+      <div :if={@facets != []} class="facet-filter">
+        <button
+          type="button"
+          class={pill_class(@facet_filter, nil)}
+          phx-click="facet"
+          phx-value-key=""
+        >
+          All
+        </button>
+        <button
+          :for={facet <- @facets}
+          type="button"
+          class={pill_class(@facet_filter, facet.label)}
+          phx-click="facet"
+          phx-value-key={facet.label}
+        >
+          {facet.label}
+        </button>
+      </div>
+
+      <div :for={facet <- visible_facets(@facets, @facet_filter)} class="facet-card">
+        <div class="facet-head">
+          <strong>{facet.label}</strong>
+          <span :if={facet.verdict} class="scout-winner">
+            scout → <code>{facet.verdict.winner}</code>
+          </span>
+          <span :if={is_nil(facet.verdict)} class="count">no scout verdict yet</span>
+        </div>
+        <p :if={facet.verdict} class="scout-reasoning">{facet.verdict.reasoning}</p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Agent</th>
+              <th>Runs</th>
+              <th>Approve</th>
+              <th>First-try</th>
+              <th>Quality</th>
+              <th>Mean tokens</th>
+              <th>Cost→green</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={row <- facet.agents} class={winner_class(row, facet.verdict)}>
+              <td><code>{row.agent || "—"}</code></td>
+              <td>{row.run_count}</td>
+              <.rate_cell value={row.success_rate} tone={:pass} />
+              <.rate_cell value={row.first_attempt_pass_rate} tone={:info} />
+              <td>{format_rating(quality(row))}</td>
+              <td>{format_count(row.tokens.total)}</td>
+              <td>{format_count(row.cost_to_green)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
     """
   end
 
@@ -600,6 +699,31 @@ defmodule Harness.Dashboard.KPILive do
       true -> " ▼"
     end
   end
+
+  attr(:value, :float, required: true)
+  attr(:tone, :atom, default: :pass)
+
+  # A rate cell: the percentage label beside a proportion bar whose fill width IS
+  # the value. `tone` is a per-column constant that only picks the fill colour — it
+  # is never derived from the value, so the bar encodes the count without judging it.
+  @spec rate_cell(map()) :: Rendered.t()
+  defp rate_cell(assigns) do
+    ~H"""
+    <td>
+      <div class="kpi-cell">
+        <span class="kpi-pct">{format_pct(@value)}</span>
+        <span class="kpi-bar">
+          <span class={"kpi-bar-fill tone-#{@tone}"} style={"width: #{bar_pct(@value)}%"}></span>
+        </span>
+      </div>
+    </td>
+    """
+  end
+
+  # Clamp a 0.0–1.0 rate to an integer 0–100 for a CSS bar width; nil → 0 (empty bar).
+  @spec bar_pct(number() | nil) :: non_neg_integer()
+  defp bar_pct(nil), do: 0
+  defp bar_pct(value), do: value |> Kernel.*(100) |> round() |> max(0) |> min(100)
 
   @spec format_pct(float()) :: String.t()
   defp format_pct(rate), do: "#{round(rate * 100)}%"
