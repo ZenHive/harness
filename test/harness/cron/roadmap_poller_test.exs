@@ -2,6 +2,8 @@ defmodule Harness.Cron.RoadmapPollerTest do
   # async: false because tests mutate AgentRegistry, ProjectRegistry, and app env seams.
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias Ecto.Adapters.SQL.Sandbox
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentRegistry
@@ -144,6 +146,39 @@ defmodule Harness.Cron.RoadmapPollerTest do
     # Deferred + undispatchable tasks are never enqueued.
     refute_received {:inserted, %Oban.Job{args: %{item_id: "54"}}}
     refute_received {:inserted, %Oban.Job{args: %{item_id: "51"}}}
+  end
+
+  test "write-set collisions serialize a ready set before parallel dispatch" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-cron-collision", name: "cron-collision", concurrency_cap: 10)
+    assert :ok = ProjectRegistry.register(project)
+
+    enable_project("cron-collision")
+
+    Application.put_env(:harness, :roadmap_ready, fn _p ->
+      {:ok,
+       [
+         Map.put(task("52", "codex"), "files_to_modify", ["src/x"]),
+         Map.put(task("53", "cursor"), "touches", ["src/x"]),
+         Map.put(task("54", "grok"), "files_to_modify", ["src/x"])
+       ]}
+    end)
+
+    Application.put_env(:harness, :cron_orchestrator, fn _p, _ready ->
+      send(parent, :orchestrator_called)
+      {:error, :should_not_plan_colliding_wave}
+    end)
+
+    capture_inserts(parent)
+
+    log = capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
+
+    assert log =~ "serialized tasks 52, 53, 54"
+    assert log =~ "src/x"
+    refute_received :orchestrator_called
+    assert_received {:inserted, %{item_id: "52"}}
+    refute_received {:inserted, %{item_id: "53"}}
+    refute_received {:inserted, %{item_id: "54"}}
   end
 
   test "exactly one dispatchable task is dispatched directly — the orchestrator is not woken" do

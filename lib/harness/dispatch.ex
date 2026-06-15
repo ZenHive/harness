@@ -58,6 +58,7 @@ defmodule Harness.Dispatch do
   alias Harness.CapabilityScore
   alias Harness.Config
   alias Harness.Cron.PendingDispatch
+  alias Harness.Dispatch.WriteSetPlan
   alias Harness.Lander
   alias Harness.ModelAvailability
   alias Harness.Project
@@ -71,6 +72,8 @@ defmodule Harness.Dispatch do
   alias Harness.Run.Status
   alias Harness.Run.Worker, as: RunWorker
   alias Oban.Job
+
+  require Logger
 
   # Default await budget: 30 minutes. A run is minutes-to-hours of work, but a
   # blocking tool call should not park a tool-equipped LLM indefinitely — the
@@ -752,7 +755,7 @@ defmodule Harness.Dispatch do
 
   api(
     :bundle,
-    "Fan out the next session-sized bundle of pending roadmap tasks for a registered project: ingest each task and enqueue one Oban-backed, restart-resilient run job per task on the chosen delegatable adapter (project-scoped queue, per-project concurrency cap). Fire-and-forget — returns the ingested task ids and Oban job ids; observe each run later via dispatch-status / result_store-list_run_records. The JSON-native counterpart to Harness.Roadmap.next_bundle/1 + Harness.Batch.dispatch/2.",
+    "Dispatch the first collision-free wave from the next session-sized bundle of pending roadmap tasks for a registered project: tasks whose `touches`/`files_to_modify` overlap are serialized into later waves instead of enqueued together. Fire-and-forget for the dispatched wave — returns the dispatched task ids, Oban job ids, and the serialized wave plan; observe each run later via dispatch-status / result_store-list_run_records. The JSON-native counterpart to Harness.Roadmap.next_bundle/1 + Harness.Batch.dispatch/2.",
     params: [
       project_name: [
         kind: :value,
@@ -775,7 +778,7 @@ defmodule Harness.Dispatch do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %{bundle: bundle_meta | nil, task_ids: [string], job_ids: [integer], dispatched: integer}}. {:error, reason}: unknown_adapter, non_delegatable_adapter, unknown_project, the rmap next_bundle reasons, or a Harness.Batch.dispatch failure."
+        "{:ok, %{bundle: bundle_meta | nil, task_ids: [string], job_ids: [integer], dispatched: integer, serialized: %{waves: [[string]], collisions: [%{task_ids, shared_files}]}}}. task_ids are only the tasks enqueued in this call. {:error, reason}: unknown_adapter, non_delegatable_adapter, unknown_project, the rmap next_bundle reasons, or a Harness.Batch.dispatch failure."
     }
   )
 
@@ -784,15 +787,19 @@ defmodule Harness.Dispatch do
       when is_binary(project_name) and is_binary(adapter) and is_boolean(scrub_anthropic_key) do
     with {:ok, {_module, render_agent}} <- resolve_delegatable_adapter(adapter),
          {:ok, project} <- lookup_project(project_name),
-         {:ok, %{bundle: bundle_meta, tasks: tasks}} <- Roadmap.next_bundle(project_name),
-         {:ok, items} <- ingest_bundle(tasks, project, render_agent),
+         {:ok, %{bundle: bundle_meta, tasks: tasks}} <- next_bundle(project_name),
+         plan = WriteSetPlan.plan(tasks),
+         dispatch_tasks = first_wave(plan),
+         :ok <- log_serialized_bundle(project, plan),
+         {:ok, items} <- ingest_bundle(dispatch_tasks, project, render_agent),
          {:ok, jobs} <- Batch.dispatch(project, items, env: scrub_env(scrub_anthropic_key)) do
       {:ok,
        %{
          bundle: bundle_meta,
          task_ids: Enum.map(items, & &1.id),
          job_ids: Enum.map(jobs, & &1.id),
-         dispatched: length(jobs)
+         dispatched: length(jobs),
+         serialized: serialized_plan(plan)
        }}
     end
   end
@@ -1292,7 +1299,7 @@ defmodule Harness.Dispatch do
   defp ingest_bundle(tasks, project, render_agent) do
     tasks
     |> Enum.reduce_while({:ok, []}, fn task, {:ok, items} ->
-      case Roadmap.ingest({:id, to_string(task["id"])}, project: project, agent: render_agent) do
+      case ingest_roadmap({:id, to_string(task["id"])}, project: project, agent: render_agent) do
         {:ok, item} -> {:cont, {:ok, [item | items]}}
         {:error, _reason} = error -> {:halt, error}
       end
@@ -1301,6 +1308,45 @@ defmodule Harness.Dispatch do
       {:ok, items} -> {:ok, Enum.reverse(items)}
       {:error, _reason} = error -> error
     end
+  end
+
+  @spec next_bundle(String.t()) :: {:ok, %{bundle: map() | nil, tasks: [map()]}} | {:error, error()}
+  defp next_bundle(project_name) do
+    case Application.get_env(:harness, :roadmap_next_bundle) do
+      fun when is_function(fun, 1) -> fun.(project_name)
+      _other -> Roadmap.next_bundle(project_name)
+    end
+  end
+
+  @spec ingest_roadmap(Roadmap.selector(), keyword()) :: {:ok, Item.t()} | {:error, error()}
+  defp ingest_roadmap(selector, opts) do
+    case Application.get_env(:harness, :roadmap_ingest) do
+      fun when is_function(fun, 2) -> fun.(selector, opts)
+      _other -> Roadmap.ingest(selector, opts)
+    end
+  end
+
+  @spec first_wave(WriteSetPlan.t()) :: [map()]
+  defp first_wave(%WriteSetPlan{waves: [wave | _rest]}), do: wave
+  defp first_wave(%WriteSetPlan{waves: []}), do: []
+
+  @spec serialized_plan(WriteSetPlan.t()) :: map()
+  defp serialized_plan(%WriteSetPlan{} = plan) do
+    %{
+      waves: WriteSetPlan.wave_ids(plan.waves),
+      collisions: plan.collisions
+    }
+  end
+
+  @spec log_serialized_bundle(Project.t(), WriteSetPlan.t()) :: :ok
+  defp log_serialized_bundle(%Project{} = _project, %WriteSetPlan{collisions: []}), do: :ok
+
+  defp log_serialized_bundle(%Project{} = project, %WriteSetPlan{} = plan) do
+    Enum.each(plan.collisions, fn collision ->
+      Logger.info(
+        "harness dispatch bundle: #{project.name} serialized tasks #{Enum.join(collision.task_ids, ", ")} on shared files #{Enum.join(collision.shared_files, ", ")}; dispatching wave #{inspect(hd(WriteSetPlan.wave_ids(plan.waves)))}"
+      )
+    end)
   end
 
   # Resolve a non-empty list of executor names to adapter modules for a same-task

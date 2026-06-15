@@ -40,6 +40,7 @@ defmodule Harness.Cron.RoadmapPoller do
   alias Harness.Cron.Orchestrator
   alias Harness.Cron.PendingDispatch
   alias Harness.Cron.Settings
+  alias Harness.Dispatch.WriteSetPlan
   alias Harness.Notification
   alias Harness.Notification.Event
   alias Harness.Project
@@ -162,11 +163,29 @@ defmodule Harness.Cron.RoadmapPoller do
     {dispatchable, undispatchable} = Enum.split_with(tasks, &dispatchable?/1)
     Enum.each(undispatchable, &log_undispatchable(project, &1))
 
-    case dispatchable do
+    plan = WriteSetPlan.plan(dispatchable)
+    log_serialized_ready_set(project, plan)
+
+    case first_wave(plan) do
       [] -> :ok
       [task] -> direct_dispatch(project, task)
       many -> orchestrate(project, many)
     end
+  end
+
+  @spec first_wave(WriteSetPlan.t()) :: [map()]
+  defp first_wave(%WriteSetPlan{waves: [wave | _rest]}), do: wave
+  defp first_wave(%WriteSetPlan{waves: []}), do: []
+
+  @spec log_serialized_ready_set(Project.t(), WriteSetPlan.t()) :: :ok
+  defp log_serialized_ready_set(%Project{} = _project, %WriteSetPlan{collisions: []}), do: :ok
+
+  defp log_serialized_ready_set(%Project{} = project, %WriteSetPlan{} = plan) do
+    Enum.each(plan.collisions, fn collision ->
+      Logger.info(
+        "harness cron poller: #{project.name} serialized tasks #{Enum.join(collision.task_ids, ", ")} on shared files #{Enum.join(collision.shared_files, ", ")}"
+      )
+    end)
   end
 
   # A task is autonomously dispatchable iff its assignee resolves to a real,
