@@ -13424,7 +13424,7 @@
       "id": "301",
       "phase": 19,
       "bundle": "model-availability",
-      "status": "in_progress",
+      "status": "done",
       "title": "list_available_models conflates 'no catalog' with 'probed-but-none-selected' — distinguish the two diagnostic states",
       "scores": {
         "d": 1,
@@ -13462,10 +13462,15 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "02beb85691270e6f92c9f6abfc7037cc5213614d",
       "body": "Reported 2026-06-15 via dogfooding: model_availability-list_available_models(\"cursor\") returns {:ok, %{catalog_unavailable: true, models: []}} even though the node holds a FULLY PROBED 150-model cursor catalog (:model_catalogs, fetched_at today). The diagnostic is misleading: \"unavailable\" reads as \"probe failed / CLI absent / no catalog\", but the real state is \"catalog probed, operator has selected zero models into the static subset\".\n\nVerified live: :model_catalog_static = :not_found (no selection persisted for ANY agent), cursor catalog_universe = 150 models all selected?: false, list_available(:cursor) = {:error, :catalog_unavailable}. The probe-cache key (:model_catalogs) and the read key (:model_catalog_static) are correctly disjoint by Task 291's design (catalog/1 returns the operator-SELECTED subset); the operator simply never toggled any cursor model in /harness/settings. That selection gate is intended. What is NOT intended is the response collapsing \"no universe\" and \"universe-but-nothing-selected\" into the same catalog_unavailable: true — the caller cannot tell \"go select some models\" from \"the CLI probe is broken / re-probe\".\n\nFix is diagnostic-only at the MCP boundary (list_available_models/2, lib/harness/model_availability.ex ~L212): when list_available returns :catalog_unavailable, consult catalog_universe/1 to emit catalog_status \"probed_none_selected\" (universe non-empty) vs \"unavailable\" (universe empty), keeping the legacy catalog_unavailable boolean for back-compat. Do not touch the dispatch gate, catalog/1, or the selection model.\n",
       "created_at": "2026-06-15",
       "started_at": "2026-06-15",
+      "done_at": "2026-06-15",
       "scored_at": "2026-06-15",
+      "implemented": "Landed by cursor via merge-train; reviewer-approved (run run-1781559700047-1e34bf14, 02beb85691270e6f92c9f6abfc7037cc5213614d).",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     }
   ]
