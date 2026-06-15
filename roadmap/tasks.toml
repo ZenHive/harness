@@ -8936,7 +8936,7 @@ shipped_in = "46ae5b27f8ed8d6b6406025ddbf000ec3a437a6b"
 id = "297"
 phase = 20
 bundle = "autolanding"
-status = "blocked"
+status = "done"
 title = "Lander resolver still fails 5/5 trivial additive CHANGELOG keep-both conflicts post-293; eliminate the additive-file conflict class mechanically"
 scores = { d = 3, b = 4, u = 2 }
 markers = ["bug"]
@@ -8944,7 +8944,6 @@ acceptance_criteria = ["Reproduce/confirm: in a parallel wave where N runs each 
 domains = ["otp", "git"]
 assignee = "codex"
 model = "gpt-5.5"
-blocked_reason = "land conflict retained for repair (task 297, run run-1781503652855-2dfd0cb1, branch harness/run-1781503652855-2dfd0cb1); resolver already attempted and the branch still conflicted. Repair: rebase the retained branch onto the target branch, resolve all conflict markers while keeping both reviewed intents, commit the resolved branch, move harness/run-1781503652855-2dfd0cb1 to that commit if you used a scratch branch, then run dispatch-reland run-1781503652855-2dfd0cb1."
 body = """
 Dogfooding evidence, 2026-06-15 (ccxt-distill Phase 5 domain wave). Tasks 9-14 dispatched in parallel under concurrency_cap=6 (each task designed disjoint-source-file per its PARALLEL-SAFETY CONTRACT: only its own src/extract/domains/<name>.ts + test, registered via Task 7 auto-discovery, no shared cli.ts/pipeline.ts edit). The disjoint-source design worked — the ONLY shared file was CHANGELOG.md.
 
@@ -8962,9 +8961,14 @@ Follow-up to the now-done Task 293 (which added the keep-both PROMPT guidance bu
 
 2026-06-15 (why-did-harness-never-hit-this verification): checked harness's own repo — it has NO .gitattributes and `git check-attr merge CHANGELOG.md` = unspecified, i.e. NO `merge=union` anywhere in the portfolio. harness avoided this class for two NON-mechanical reasons, neither of which generalizes: (1) it was never dogfooded as a wide parallel wave (the collision is purely N-branches-off-one-base appending the same region → N-1 guaranteed conflicts in ANY repo; ccxt-distill's cap=6 wave 9-14 was the first such wave in the whole portfolio), and (2) it shifts much CHANGELOG hygiene to the SERIAL post-merge audit stage (audit.ex:429 "CHANGELOG gaps"; ~half of recent CHANGELOG touches are `audit(...)` commits on the already-merged trunk, which can never conflict). But implementers DO also write CHANGELOG (canonical.md:10 "CHANGELOG edits inside the worktree are yours"; ~half of touches are deliveries) — so the serial-audit cushion only softens, it does not prevent: even cap=1, the post-merge audit worker is a SECOND committer that moves origin/<target> while the next run is in flight, which is exactly how ccxt-distill task 8 hit a CHANGELOG/test-file conflict under strict serial cap=1. CONCLUSION: the union-merge driver proposed above is genuinely net-new (no existing harness mechanism does this) and is the only fix that covers BOTH the parallel-wave AND the serial audit-race cases. Recommend also dropping a `CHANGELOG.md merge=union` .gitattributes into target repos (ccxt-distill first) as the cheap immediate mitigation, independent of the in-harness driver work here.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781503652855-2dfd0cb1, f857a4977f0503710c0444de57de0c681a1fe3aa)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-15"
 started_at = "2026-06-15"
 scored_at = "2026-06-15"
+done_at = "2026-06-15"
+shipped_in = "f857a4977f0503710c0444de57de0c681a1fe3aa"
 
 [[task]]
 id = "298"
