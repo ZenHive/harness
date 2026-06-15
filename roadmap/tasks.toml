@@ -8738,7 +8738,7 @@ scored_at = "2026-06-14"
 id = "291"
 phase = 19
 bundle = "dashboard-chrome"
-status = "in_progress"
+status = "done"
 title = "Model catalog card: membership multi-select (probed universe + operator subset) replacing the flat removable list"
 scores = { d = 3, b = 4, u = 2 }
 markers = ["docs"]
@@ -8776,6 +8776,11 @@ Models/Projects/Advanced); this card lives under the Models tab. Select/input ch
 was just unified (custom caret, no native dropdown) — match it. No daisyUI/Tailwind
 in this repo; styling is selector-explicit in tokens.ex.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781481156508-f3e35a8d, c9f8f13202bdf5741cc3a0735686a4fd256da90d)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-14"
 started_at = "2026-06-14"
 scored_at = "2026-06-14"
+done_at = "2026-06-15"
+shipped_in = "c9f8f13202bdf5741cc3a0735686a4fd256da90d"
