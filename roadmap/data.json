@@ -13210,6 +13210,43 @@
       "implemented": "Added a task_section/1 component + load_task_item/2 (read-only Roadmap.ingest, project via ProjectRegistry.lookup) to Harness.Dashboard.Live; live-read Task section on the run show page with graceful nil-degradation; .task-* CSS in tokens.ex; load_task_item/2 fallback tests. live_test.exs green (64 passed).",
       "delivered_by": "claude",
       "cross_repo": []
+    },
+    {
+      "id": "296",
+      "phase": 20,
+      "bundle": "dispatch-economy",
+      "status": "pending",
+      "title": "MCP transport 30s GenServer.call ceiling defeats every blocking dispatch tool",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 2
+      },
+      "eff": 1.0,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A dispatch-await_runs / dispatch-await call that blocks server-side longer than 30s completes and returns its summary instead of failing the MCP request with session_call_failed {:timeout, {GenServer, :call, ..., 30000}}",
+        "The fix raises or removes the transport-layer GenServer.call timeout for blocking tool requests so it tracks the tool's own timeout_ms (default 30 min), not a hardcoded 30s",
+        "dispatch-await, dispatch-await_runs, and dispatch-compare (all blocking) verified to hold a >30s wait over /harness/mcp without transport timeout",
+        "A regression test exercises a blocking tool whose server-side wait exceeds the old 30s ceiling (synthetic slow tool or a real run awaited past 30s)"
+      ],
+      "out_of_scope": [
+        "Push/callback delivery to the driver (Task 290 push-sink spike) - this is the pull/blocking path only",
+        "Changing the blocking tools' own timeout_ms semantics or default values"
+      ],
+      "domains": [
+        "mcp",
+        "otp"
+      ],
+      "body": "Observed 2026-06-15 calling dispatch-await_runs over MCP to await two in-flight ccxt-distill runs (tasks 4/5). The tool blocked server-side as designed, but the request failed at the transport layer:\n\n  MCP transport event: session_call_failed\n  reason: {:timeout, {GenServer, :call, [#PID, {:mcp_request, %{\"name\" => \"dispatch-await_runs\", ...}}, 30000]}}\n\nThe anubis StreamableHTTP transport handles each tools/call via a GenServer.call with a hardcoded 30_000ms timeout. Any blocking tool that waits longer than 30s exceeds this ceiling and the MCP request dies, even though the tool's own timeout_ms is 30 min and the run keeps going. This silently defeats the entire purpose of the blocking-await design:\n\n  - dispatch-await (Task ~ dispatch__await): blocks on one run\n  - dispatch-await_runs (Task 289): blocks on a set of runs\n  - dispatch-compare: blocks until all adapters settle\n\nAll three are unusable over MCP for any wait > 30s - i.e. essentially always, since implement->review->land cycles take minutes. The orchestrator is forced back to dispatch-status poll loops, which is exactly what 289 was filed to eliminate.\n\nInvestigation paths: the GenServer.call timeout lives in anubis_mcp's StreamableHTTP transport request dispatch (deps/anubis_mcp). Options: (a) configure/override the transport's call timeout for the harness MCP child spec; (b) make blocking tools return a progress/streaming response instead of holding one synchronous call; (c) cap harness blocking tools below 30s and document the ceiling (worst option - reintroduces polling). Prefer (a) if anubis exposes the timeout, else upstream it.\n\nDiscovered while dogfooding ccxt-distill dispatch; pairs with Task 289 (the tool that exposed the ceiling) and Task 290 (push transport, the async alternative).\n",
+      "created_at": "2026-06-15",
+      "scored_at": "2026-06-15",
+      "cross_repo": []
     }
   ]
 }
