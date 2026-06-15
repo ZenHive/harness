@@ -14,11 +14,26 @@ defmodule Harness.Dashboard.RoadmapLiveTest do
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
 
+  setup do
+    for project <- ProjectRegistry.list(), do: ProjectRegistry.unregister(project.name)
+
+    prev_list = Application.get_env(:harness, :roadmap_list)
+    prev_next_bundle = Application.get_env(:harness, :roadmap_next_bundle)
+    prev_ready = Application.get_env(:harness, :roadmap_ready)
+
+    on_exit(fn ->
+      restore(:roadmap_list, prev_list)
+      restore(:roadmap_next_bundle, prev_next_bundle)
+      restore(:roadmap_ready, prev_ready)
+
+      for project <- ProjectRegistry.list(), do: ProjectRegistry.unregister(project.name)
+    end)
+
+    :ok
+  end
+
   describe "mount + render" do
     test "renders the no-projects state when the registry is empty", %{conn: conn} do
-      # The registry is a singleton; ensure it's empty for this assertion.
-      for project <- ProjectRegistry.list(), do: ProjectRegistry.unregister(project.name)
-
       {:ok, _view, html} = live(conn, "/harness/roadmap")
 
       assert html =~ "Roadmap"
@@ -41,5 +56,79 @@ defmodule Harness.Dashboard.RoadmapLiveTest do
       assert html =~ "Landed"
       assert html =~ "1 projects"
     end
+
+    test "expands an empty project with explicit empty planning states", %{conn: conn} do
+      project = ProjectFixture.from_repo("/tmp/harness-roadmaplive-empty", name: "roadmaplive-empty")
+      :ok = ProjectRegistry.register(project)
+
+      Application.put_env(:harness, :roadmap_list, fn _project -> {:ok, []} end)
+      Application.put_env(:harness, :roadmap_next_bundle, fn _project -> {:ok, %{bundle: nil, tasks: []}} end)
+      Application.put_env(:harness, :roadmap_ready, fn _project -> {:ok, []} end)
+
+      {:ok, view, _html} = live(conn, "/harness/roadmap")
+
+      html = view |> element("button", "roadmaplive-empty") |> render_click()
+
+      assert html =~ "No next pending task."
+      assert html =~ "No blocked tasks."
+      assert html =~ "No dispatchable tasks."
+    end
+
+    test "expands a project with next task, blocked reasons, and dispatch waves", %{conn: conn} do
+      project = ProjectFixture.from_repo("/tmp/harness-roadmaplive-planning", name: "roadmaplive-planning")
+      :ok = ProjectRegistry.register(project)
+
+      Application.put_env(:harness, :roadmap_list, fn _project ->
+        {:ok,
+         [
+           %{"id" => "10", "status" => "pending", "title" => "Wire explicit refresh", "eff" => 1.25},
+           %{
+             "id" => "11",
+             "status" => "blocked",
+             "title" => "Repair branch drift",
+             "blocked_reason" => "waiting on target branch"
+           },
+           %{
+             "id" => "12",
+             "status" => "blocked",
+             "title" => "Unstick reviewer",
+             "blocked_reason" => "reviewer unavailable"
+           },
+           %{"id" => "13", "status" => "done", "title" => "Already landed", "shipped_in" => "abc123"}
+         ]}
+      end)
+
+      Application.put_env(:harness, :roadmap_next_bundle, fn _project ->
+        {:ok, %{bundle: %{"name" => "dashboard"}, tasks: [%{"id" => "10", "title" => "Wire explicit refresh"}]}}
+      end)
+
+      Application.put_env(:harness, :roadmap_ready, fn _project ->
+        {:ok,
+         [
+           %{"id" => "10", "title" => "Wire explicit refresh", "dep_layer" => 0, "eff" => 1.25},
+           %{"id" => "14", "title" => "Polish empty state", "dep_layer" => 0, "eff" => 0.83},
+           %{"id" => "15", "title" => "Follow-up wave", "dep_layer" => 1, "eff" => 1.5}
+         ]}
+      end)
+
+      {:ok, view, _html} = live(conn, "/harness/roadmap")
+
+      html = view |> element("button", "roadmaplive-planning") |> render_click()
+
+      assert html =~ "Next pending"
+      assert html =~ "#10"
+      assert html =~ "Wire explicit refresh"
+      assert html =~ "Blocked (2)"
+      assert html =~ "waiting on target branch"
+      assert html =~ "reviewer unavailable"
+      assert html =~ "Wave 0"
+      assert html =~ "Polish empty state"
+      assert html =~ "Wave 1"
+      assert html =~ "Follow-up wave"
+      assert html =~ "Eff 1.25"
+    end
   end
+
+  defp restore(key, nil), do: Application.delete_env(:harness, key)
+  defp restore(key, value), do: Application.put_env(:harness, key, value)
 end
