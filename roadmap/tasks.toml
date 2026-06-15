@@ -8794,7 +8794,7 @@ shipped_in = "c9f8f13202bdf5741cc3a0735686a4fd256da90d"
 id = "292"
 phase = 20
 bundle = "dispatch-economy"
-status = "pending"
+status = "in_progress"
 title = "Collision-aware dispatch: serialize ready-set tasks with overlapping write-sets instead of fanning them out"
 scores = { d = 3, b = 4, u = 3 }
 acceptance_criteria = ["dispatch-bundle / parallel dispatch computes (touches union files_to_modify) per task and refuses-or-serializes any subset whose write-sets intersect — colliding tasks dispatch as a chain (await land, then next), only disjoint write-sets fan out concurrently", "The collision check is independent of the depends_on graph: tasks that share a write target but have no dep edge are still detected as colliding", "A log/notification line names which tasks were serialized and on which shared files (no silent reordering)", "Regression test: a 3-task ready set all listing src/x in their write-set produces a serial dispatch plan, not a parallel wave", "Documented in the driver SKILL + harness-workflow: the dispatcher honors write-set collisions, callers no longer hand-dedupe"]
@@ -8807,6 +8807,7 @@ rmap.md already documents the collision rule — two tasks conflict iff (touches
 Mantra-clean: this is COUNTING file-set intersection (mechanical), not judging conflict content.
 """
 created_at = "2026-06-15"
+started_at = "2026-06-15"
 scored_at = "2026-06-15"
 
 [[task]]
