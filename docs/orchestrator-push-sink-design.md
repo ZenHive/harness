@@ -51,15 +51,15 @@ Harness appends one JSON object per line to a configured path (default
   dispatch” ordering constraint. The BEAM process only writes.
 - **Structured payload.** Nested `review` / `reason` fields stay intact (unlike
   `CommandSink` env flattening).
-- **Fast enough for inline fan-out.** A single `File.write!/3` append with `:append` mode
-  is microseconds — acceptable on the run settle hot path (same failure-isolation contract
-  as today’s `Notification.notify/1`).
+- **Fast enough for inline fan-out.** A single local `File.write!/3` append with
+  `:append` mode is bounded and small relative to a run settle (same failure-isolation
+  contract as today’s `Notification.notify/1`).
 - **Inspectable.** Operators can `tail -f` the same file humans and agents read.
 - **Portable.** macOS and Linux, no `terminal-notifier` / `notify-send` dependency.
 
 **Tradeoffs accepted:**
 
-- Not instantaneous sub-ms (tail/poll latency). Good enough vs multi-minute runs.
+- Tail/poll latency is not instantaneous. Good enough vs multi-minute runs.
 - Single-writer file — fine for one harness node; multi-node would need object storage
   (out of scope until federation is real).
 
