@@ -12954,7 +12954,7 @@
       "id": "290",
       "phase": 20,
       "bundle": "dispatch-economy",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Spike: out-of-band push sink so a settled run wakes the orchestrator",
       "scores": {
         "d": 2,
@@ -12978,6 +12978,7 @@
       ],
       "body": "Harness.Notification already fans witness events (land / blocked / red-post-merge) to configured sinks (lib/harness/notification/, read-only by construction). Two gaps for the \"harness tells me when my run is done\" feature:\n\n1. No sink reaches the DRIVING orchestrator session. A sink writes to a configured channel (CommandSink), but an MCP/chat driver has no inbound channel — it must poll. The transport is undecided: webhook to a local listener the driver tails, an OS notifier (terminal-notifier / notify-send), a file-drop the CLI watches, or extending CommandSink. Each trades immediacy vs. setup vs. survives-driver-restart.\n2. Events fire on land/blocked only. The orchestrator-wakeup case wants notification on EVERY run settle (approve, reject, failed, timed_out) — so this may need a new :settled event alongside the existing land/blocked ones.\n\nThis is the nicer-but-bigger half of the orchestrator-feedback pair (the pull-only multi-run await is the sibling). Decide the channel + payload + whether to add :settled, sketch the Sink, file the build. Don't ship a production sink in the spike.\n",
       "created_at": "2026-06-14",
+      "started_at": "2026-06-15",
       "scored_at": "2026-06-14",
       "cross_repo": []
     },
