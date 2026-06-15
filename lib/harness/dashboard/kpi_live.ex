@@ -102,6 +102,9 @@ defmodule Harness.Dashboard.KPILive do
      |> assign_facets()}
   end
 
+  @impl Phoenix.LiveView
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
   # Only a settled run mints a new LogRecord, so it is the only event that can
   # move the aggregates; in-flight updates are ignored to avoid needless re-reads.
   @impl Phoenix.LiveView
@@ -389,7 +392,11 @@ defmodule Harness.Dashboard.KPILive do
   defp sort_key(_other), do: @default_sort
 
   @impl Phoenix.LiveView
-  def render(assigns) do
+  def render(%{live_action: :agents} = assigns), do: render_agents(assigns)
+  def render(assigns), do: render_overview(assigns)
+
+  @spec render_overview(map()) :: Rendered.t()
+  defp render_overview(assigns) do
     ~H"""
     <div class="topbar">
       <strong>Agent KPIs</strong>
@@ -425,7 +432,7 @@ defmodule Harness.Dashboard.KPILive do
     </div>
 
     <nav :if={@rows != []} class="kpi-nav">
-      <a href="#agents">Agents</a>
+      <a href="/harness/kpi/agents">Agents</a>
       <a :if={@reviewer_rows != []} href="#reviewers">Reviewers</a>
       <a :if={@review_stuck_cause_rows != []} href="#orchestration">Orchestration</a>
       <a :if={@recovery_facts.attempted_runs > 0} href="#recovery">Recovery</a>
@@ -433,62 +440,14 @@ defmodule Harness.Dashboard.KPILive do
     </nav>
 
     <section :if={@rows != []} id="agents" class="kpi-section">
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <.sort_th col="agent" label="Agent" sort_by={@sort_by} sort_dir={@sort_dir} />
-              <.sort_th col="run_count" label="Runs" sort_by={@sort_by} sort_dir={@sort_dir} />
-              <.sort_th
-                col="reviewer_flaked"
-                label="Rvw flaked"
-                sort_by={@sort_by}
-                sort_dir={@sort_dir}
-              />
-              <.sort_th col="success_rate" label="Success" sort_by={@sort_by} sort_dir={@sort_dir} />
-              <.sort_th
-                col="first_attempt_pass_rate"
-                label="First-try"
-                sort_by={@sort_by}
-                sort_dir={@sort_dir}
-              />
-              <.sort_th
-                col="review_iterations"
-                label="Reviews"
-                sort_by={@sort_by}
-                sort_dir={@sort_dir}
-              />
-              <.sort_th col="tokens" label="Mean tokens" sort_by={@sort_by} sort_dir={@sort_dir} />
-              <.sort_th
-                col="cost_to_green"
-                label="Cost→green"
-                sort_by={@sort_by}
-                sort_dir={@sort_dir}
-              />
-              <.sort_th
-                :for={key <- @rating_keys}
-                col={"rating:#{key}"}
-                label={rating_label(key)}
-                sort_by={@sort_by}
-                sort_dir={@sort_dir}
-              />
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={row <- @rows}>
-              <td><code>{row.agent || "—"}</code></td>
-              <td>{row.run_count}</td>
-              <td>{row.reviewer_flaked}</td>
-              <.rate_cell value={row.success_rate} tone={:pass} />
-              <.rate_cell value={row.first_attempt_pass_rate} tone={:info} />
-              <td>{format_float(row.review_iterations)}</td>
-              <td>{format_count(row.tokens.total)}</td>
-              <td>{format_count(row.cost_to_green)}</td>
-              <td :for={key <- @rating_keys}>{format_rating(Map.get(row_ratings(row), key))}</td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="topbar">
+        <strong>Agent ledger</strong>
+        <span class="count">{length(@rows)} agents</span>
+        <a href="/harness/kpi/agents">Full ledger →</a>
       </div>
+      <p>
+        Per-agent runs, success rates, tokens, and reviewer ratings live on a dedicated page.
+      </p>
     </section>
 
     <section :if={@reviewer_rows != []} id="reviewers" class="kpi-section">
@@ -670,6 +629,86 @@ defmodule Harness.Dashboard.KPILive do
         </table>
       </div>
     </section>
+    """
+  end
+
+  @spec render_agents(map()) :: Rendered.t()
+  defp render_agents(assigns) do
+    ~H"""
+    <div class="topbar">
+      <strong>Agent ledger</strong>
+      <span class="count">{length(@rows)} agents</span>
+      <a href="/harness/kpi">← KPI overview</a>
+    </div>
+
+    <nav :if={@rows != []} class="kpi-nav">
+      <a href="/harness/kpi">Overview</a>
+      <a :if={@reviewer_rows != []} href="/harness/kpi#reviewers">Reviewers</a>
+      <a :if={@review_stuck_cause_rows != []} href="/harness/kpi#orchestration">Orchestration</a>
+      <a :if={@recovery_facts.attempted_runs > 0} href="/harness/kpi#recovery">Recovery</a>
+      <a href="/harness/kpi#facets">Facets</a>
+    </nav>
+
+    <p :if={@rows == []}>
+      No run records yet — dispatch a task and its outcome will populate this ledger.
+    </p>
+
+    <div :if={@rows != []} class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <.sort_th col="agent" label="Agent" sort_by={@sort_by} sort_dir={@sort_dir} />
+            <.sort_th col="run_count" label="Runs" sort_by={@sort_by} sort_dir={@sort_dir} />
+            <.sort_th
+              col="reviewer_flaked"
+              label="Rvw flaked"
+              sort_by={@sort_by}
+              sort_dir={@sort_dir}
+            />
+            <.sort_th col="success_rate" label="Success" sort_by={@sort_by} sort_dir={@sort_dir} />
+            <.sort_th
+              col="first_attempt_pass_rate"
+              label="First-try"
+              sort_by={@sort_by}
+              sort_dir={@sort_dir}
+            />
+            <.sort_th
+              col="review_iterations"
+              label="Reviews"
+              sort_by={@sort_by}
+              sort_dir={@sort_dir}
+            />
+            <.sort_th col="tokens" label="Mean tokens" sort_by={@sort_by} sort_dir={@sort_dir} />
+            <.sort_th
+              col="cost_to_green"
+              label="Cost→green"
+              sort_by={@sort_by}
+              sort_dir={@sort_dir}
+            />
+            <.sort_th
+              :for={key <- @rating_keys}
+              col={"rating:#{key}"}
+              label={rating_label(key)}
+              sort_by={@sort_by}
+              sort_dir={@sort_dir}
+            />
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={row <- @rows}>
+            <td><code>{row.agent || "—"}</code></td>
+            <td>{row.run_count}</td>
+            <td>{row.reviewer_flaked}</td>
+            <.rate_cell value={row.success_rate} tone={:pass} />
+            <.rate_cell value={row.first_attempt_pass_rate} tone={:info} />
+            <td>{format_float(row.review_iterations)}</td>
+            <td>{format_count(row.tokens.total)}</td>
+            <td>{format_count(row.cost_to_green)}</td>
+            <td :for={key <- @rating_keys}>{format_rating(Map.get(row_ratings(row), key))}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
     """
   end
 

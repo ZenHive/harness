@@ -64,7 +64,7 @@ defmodule Harness.Dashboard.KPILiveTest do
   end
 
   describe "no-data state" do
-    test "renders an explicit empty ledger, not a table of zeros", %{conn: conn} do
+    test "overview renders an explicit empty ledger, not a table of zeros", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/harness/kpi")
 
       assert html =~ "No run records yet"
@@ -72,6 +72,35 @@ defmodule Harness.Dashboard.KPILiveTest do
       # The fleet strip is gated on having rows, so the empty state never shows it.
       # (The `.kpi-strip` *selector* is always in the stylesheet — match the element.)
       refute html =~ ~s(class="kpi-strip")
+    end
+
+    test "agents page renders the same empty ledger message", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/harness/kpi/agents")
+
+      assert html =~ "No run records yet"
+      refute html =~ ~s(phx-value-col="agent")
+    end
+  end
+
+  describe "overview navigation" do
+    setup do
+      seed("run-c1", agent: :claude, verdict: :approve, review_iterations: 0, token_usage: tokens(100, 50))
+      :ok
+    end
+
+    test "overview links through to the full agent ledger page", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/harness/kpi")
+
+      assert html =~ ~s(href="/harness/kpi/agents")
+      assert html =~ "Full ledger"
+      refute html =~ ~s(phx-value-col="agent")
+    end
+
+    test "agents page links back to the KPI overview", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/harness/kpi/agents")
+
+      assert html =~ ~s(href="/harness/kpi")
+      assert html =~ "KPI overview"
     end
   end
 
@@ -83,8 +112,8 @@ defmodule Harness.Dashboard.KPILiveTest do
       :ok
     end
 
-    test "renders one row per agent with the rolled-up values", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/harness/kpi")
+    test "renders one row per agent with the rolled-up values on the agents page", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/harness/kpi/agents")
 
       assert html =~ "claude"
       assert html =~ "codex"
@@ -100,7 +129,7 @@ defmodule Harness.Dashboard.KPILiveTest do
       assert html =~ "1,500"
     end
 
-    test "renders the fleet summary strip with run-weighted headline numbers", %{conn: conn} do
+    test "renders the fleet summary strip with run-weighted headline numbers on the overview", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/harness/kpi")
 
       assert html =~ ~s(class="kpi-strip")
@@ -112,8 +141,8 @@ defmodule Harness.Dashboard.KPILiveTest do
       assert html =~ "1,800"
     end
 
-    test "renders rate columns as proportion bars with the value as the fill width", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/harness/kpi")
+    test "renders rate columns as proportion bars with the value as the fill width on the agents page", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/harness/kpi/agents")
 
       assert html =~ "kpi-bar-fill tone-pass"
       # claude success 50% and codex success 100% become inline bar fill widths.
@@ -123,7 +152,7 @@ defmodule Harness.Dashboard.KPILiveTest do
 
     test "an agent with zero passes shows cost→green as a dash, not zero", %{conn: conn} do
       seed("run-g1", agent: :grok, verdict: :reject, review_iterations: 1, token_usage: tokens(10, 5))
-      {:ok, _view, html} = live(conn, "/harness/kpi")
+      {:ok, _view, html} = live(conn, "/harness/kpi/agents")
 
       # grok has no passes — its cost→green cell renders the em-dash placeholder.
       assert html =~ "—"
@@ -134,7 +163,7 @@ defmodule Harness.Dashboard.KPILiveTest do
       seed("run-r1", agent: :grok, verdict: :approve, review_ratings: %{"performance" => 8, "idiom" => 6})
       seed("run-r2", agent: :grok, verdict: :approve, review_ratings: %{"performance" => 6, "idiom" => 10})
 
-      {:ok, _view, html} = live(conn, "/harness/kpi")
+      {:ok, _view, html} = live(conn, "/harness/kpi/agents")
 
       # The free-form rating keys surface as humanized column headers…
       assert html =~ "Performance"
@@ -150,7 +179,7 @@ defmodule Harness.Dashboard.KPILiveTest do
       # codex's review_stuck run must not drag its success below 100% (1/1 gated),
       # and the reviewer-flaked count surfaces as its own column value.
       seed("run-flaked", agent: :codex, verdict: nil, reason: {:review_stuck, "no artifact"})
-      {:ok, _view, html} = live(conn, "/harness/kpi")
+      {:ok, _view, html} = live(conn, "/harness/kpi/agents")
 
       assert html =~ "Rvw flaked"
       # codex: 1 approve + 1 flaked → 100% success over 1 attributable run, flaked = 1.
@@ -230,8 +259,8 @@ defmodule Harness.Dashboard.KPILiveTest do
       assert html =~ "dead"
     end
 
-    test "columns are sortable — clicking a header reorders the rows", %{conn: conn} do
-      {:ok, view, html} = live(conn, "/harness/kpi")
+    test "columns are sortable on the agents page — clicking a header reorders the rows", %{conn: conn} do
+      {:ok, view, html} = live(conn, "/harness/kpi/agents")
 
       # Default sort is run_count desc: claude (2 runs) leads codex (1 run).
       assert before?(html, "claude", "codex")
