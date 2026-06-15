@@ -8723,7 +8723,7 @@ scored_at = "2026-06-14"
 id = "290"
 phase = 20
 bundle = "dispatch-economy"
-status = "in_progress"
+status = "done"
 title = "Spike: out-of-band push sink so a settled run wakes the orchestrator"
 scores = { d = 2, b = 3, u = 3 }
 acceptance_criteria = ["A decision doc (concept doc or docs/) names the chosen push transport and the rejected alternatives with rationale", "The doc decides whether to add a per-run :settled witness event beside the existing :land/:blocked events (the orchestrator-wakeup case needs settle, not just land)", "The doc sketches the reference Sink impl (delivery channel, payload shape, failure isolation) so the follow-up build task is mechanical", "A follow-up build task is filed (or this task's out-of-scope names it) for the actual sink implementation"]
@@ -8736,9 +8736,14 @@ Harness.Notification already fans witness events (land / blocked / red-post-merg
 
 This is the nicer-but-bigger half of the orchestrator-feedback pair (the pull-only multi-run await is the sibling). Decide the channel + payload + whether to add :settled, sketch the Sink, file the build. Don't ship a production sink in the spike.
 """
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1781487644448-77f9a2c3, 13ea031c89aa5efa83c2b4bfffbf1bf44999fef1)."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-06-14"
 started_at = "2026-06-15"
 scored_at = "2026-06-14"
+done_at = "2026-06-15"
+shipped_in = "13ea031c89aa5efa83c2b4bfffbf1bf44999fef1"
 
 [[task]]
 id = "291"
