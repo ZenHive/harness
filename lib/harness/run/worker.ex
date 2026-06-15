@@ -545,7 +545,8 @@ defmodule Harness.Run.Worker do
   # A BEAM code-reload :undef on a gen_statem callback during :reviewing (etc.)
   # leaves committed work on harness/<run-id>. Keep the task in_progress and steer
   # to dispatch-rereview — never reset to pending and lose the salvage path.
-  @recoverable_code_reload_states [:reviewing, :recovering, :held]
+  # Shared source of truth: Harness.Run.recoverable_code_reload_states/0 (Task 300).
+  @recoverable_code_reload_states Harness.Run.recoverable_code_reload_states()
 
   @spec recoverable_crash?(Result.t(), Project.t()) :: boolean()
   defp recoverable_crash?(%Result{run_id: run_id, reason: reason}, %Project{} = project) do

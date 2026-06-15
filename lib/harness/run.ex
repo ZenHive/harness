@@ -174,7 +174,13 @@ defmodule Harness.Run do
 
   # Gen_statem states where implementer work is already on harness/<run-id> and a
   # BEAM code-reload :undef crash is recoverable via dispatch-rereview (Task 299).
+  # Single source of truth — Run.Worker derives its own compile-time guard
+  # constant from recoverable_code_reload_states/0 below (Task 300).
   @recoverable_code_reload_states [:reviewing, :recovering, :held]
+
+  @doc false
+  @spec recoverable_code_reload_states() :: [atom()]
+  def recoverable_code_reload_states, do: @recoverable_code_reload_states
 
   # Per-run memory watchdog (Task 200). The reviewer AI runs the project's
   # check_command itself; harness Ports the agent CLI and the agent forks `mix`/
