@@ -212,7 +212,10 @@ defmodule Harness.Dashboard.MCPServerTest do
   # `lib/harness/application.ex` by passing `start: true` on the transport opts.
   describe "supervised streamable_http transport (Task 83)" do
     setup do
-      start_supervised!({MCPServer, transport: {:streamable_http, start: true}})
+      start_supervised!(
+        {MCPServer, transport: {:streamable_http, start: true}, request_timeout: MCPServer.request_timeout_ms()}
+      )
+
       :ok
     end
 
@@ -240,7 +243,7 @@ defmodule Harness.Dashboard.MCPServerTest do
         |> Plug.Conn.put_req_header("content-type", "application/json")
         |> Plug.Conn.put_req_header("accept", "application/json")
 
-      plug_opts = StreamableHTTPPlug.init(server: MCPServer)
+      plug_opts = plug_opts()
       result = StreamableHTTPPlug.call(conn, plug_opts)
 
       assert result.status == 200
@@ -257,6 +260,159 @@ defmodule Harness.Dashboard.MCPServerTest do
                "capabilities" => %{"tools" => _}
              } = response["result"]
     end
+  end
+
+  # Task 296 regression. anubis StreamableHTTP used a hardcoded 30s GenServer.call
+  # timeout, killing blocking dispatch tools (await/await_runs/compare) whose own
+  # timeout_ms defaults to 30 min.
+  describe "blocking tool transport timeout (Task 296)" do
+    @blocking_wait_ms 31_000
+
+    setup do
+      start_supervised!(
+        {MCPServer, transport: {:streamable_http, start: true}, request_timeout: MCPServer.request_timeout_ms()}
+      )
+
+      :ok
+    end
+
+    test "request_timeout_ms matches the default blocking-tool budget (30 min)" do
+      assert MCPServer.request_timeout_ms() == 1_800_000
+    end
+
+    @tag timeout: 60_000
+    test "dispatch-await_runs blocking past the old 30s ceiling completes over StreamableHTTP" do
+      queued_id = "run-mcp-transport-#{System.unique_integer([:positive])}"
+
+      Application.put_env(:harness, :oban_run_job_lookup, fn
+        ^queued_id ->
+          {:ok,
+           %Oban.Job{
+             id: 296,
+             state: "executing",
+             queue: "project_interactive",
+             worker: "Harness.Run.Worker",
+             args: %{
+               "project_name" => "interactive",
+               "item_id" => "296",
+               "run_id" => queued_id
+             }
+           }}
+
+        _other ->
+          {:error, :not_found}
+      end)
+
+      on_exit(fn -> Application.delete_env(:harness, :oban_run_job_lookup) end)
+
+      started_at = System.monotonic_time(:millisecond)
+
+      assert {:ok, response, session_id} =
+               mcp_tools_call(
+                 "dispatch-await_runs",
+                 %{"run_ids" => [queued_id], "timeout_ms" => @blocking_wait_ms},
+                 session_id: initialize_mcp_session!()
+               )
+
+      elapsed_ms = System.monotonic_time(:millisecond) - started_at
+
+      assert elapsed_ms >= @blocking_wait_ms - 500
+      assert response["jsonrpc"] == "2.0"
+      assert response["id"] == 2
+
+      assert %{
+               "content" => [%{"type" => "text", "text" => text}],
+               "isError" => false
+             } = response["result"]
+
+      assert {:ok, ["ok", [summary]]} = Jason.decode(text)
+
+      assert summary == %{
+               "run_id" => queued_id,
+               "state" => "timed_out",
+               "reason" => "await_timeout",
+               "review_verdict" => "nil"
+             }
+
+      assert is_binary(session_id)
+    end
+  end
+
+  defp plug_opts do
+    StreamableHTTPPlug.init(
+      server: MCPServer,
+      request_timeout: MCPServer.request_timeout_ms()
+    )
+  end
+
+  defp initialize_mcp_session! do
+    body =
+      Jason.encode!(%{
+        "jsonrpc" => "2.0",
+        "id" => 0,
+        "method" => "initialize",
+        "params" => %{
+          "protocolVersion" => "2025-11-25",
+          "capabilities" => %{},
+          "clientInfo" => %{"name" => "harness-test", "version" => "1.0.0"}
+        }
+      })
+
+    conn =
+      :post
+      |> Plug.Test.conn("/", body)
+      |> Plug.Conn.put_req_header("content-type", "application/json")
+      |> Plug.Conn.put_req_header("accept", "application/json")
+
+    result = StreamableHTTPPlug.call(conn, plug_opts())
+    assert result.status == 200
+
+    [session_id] = Plug.Conn.get_resp_header(result, "mcp-session-id")
+
+    initialized_body =
+      Jason.encode!(%{
+        "jsonrpc" => "2.0",
+        "method" => "notifications/initialized",
+        "params" => %{}
+      })
+
+    initialized_conn =
+      :post
+      |> Plug.Test.conn("/", initialized_body)
+      |> Plug.Conn.put_req_header("content-type", "application/json")
+      |> Plug.Conn.put_req_header("accept", "application/json")
+      |> Plug.Conn.put_req_header("mcp-session-id", session_id)
+
+    initialized_result = StreamableHTTPPlug.call(initialized_conn, plug_opts())
+    assert initialized_result.status == 202
+
+    session_id
+  end
+
+  @spec mcp_tools_call(String.t(), map(), keyword()) :: {:ok, map(), String.t()} | no_return()
+  defp mcp_tools_call(name, arguments, opts) do
+    session_id = Keyword.fetch!(opts, :session_id)
+
+    body =
+      Jason.encode!(%{
+        "jsonrpc" => "2.0",
+        "id" => 2,
+        "method" => "tools/call",
+        "params" => %{"name" => name, "arguments" => arguments}
+      })
+
+    conn =
+      :post
+      |> Plug.Test.conn("/", body)
+      |> Plug.Conn.put_req_header("content-type", "application/json")
+      |> Plug.Conn.put_req_header("accept", "application/json")
+      |> Plug.Conn.put_req_header("mcp-session-id", session_id)
+
+    result = StreamableHTTPPlug.call(conn, plug_opts())
+    assert result.status == 200
+
+    assert {:ok, response} = Jason.decode(result.resp_body)
+    {:ok, response, session_id}
   end
 
   defp call_request(name, arguments) do

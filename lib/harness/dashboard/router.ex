@@ -12,6 +12,8 @@ defmodule Harness.Dashboard.Router do
   import Oban.Web.Router
   import Phoenix.LiveView.Router
 
+  alias Harness.Dashboard.MCPServer
+
   pipeline :browser do
     plug(:accepts, ["html"])
     plug(:fetch_session)
@@ -24,7 +26,10 @@ defmodule Harness.Dashboard.Router do
   # MCP endpoint (Task 79 rework): real JSON-RPC 2.0 over Streamable HTTP via
   # `anubis_mcp`. Tools come from `Harness.Manifest` — see
   # `Harness.Dashboard.MCPServer` for the dispatch wiring.
-  forward("/harness/mcp", Anubis.Server.Transport.StreamableHTTP.Plug, server: Harness.Dashboard.MCPServer)
+  forward("/harness/mcp", Anubis.Server.Transport.StreamableHTTP.Plug,
+    server: MCPServer,
+    request_timeout: MCPServer.request_timeout_ms()
+  )
 
   # Oban Web's scope must precede the LiveView scope so `/harness/oban`
   # routes to Oban Web rather than the dashboard LiveView.

@@ -33,6 +33,20 @@ defmodule Harness.Dashboard.MCPServer do
   alias Harness.Chat.Tools
   alias Harness.JSONSafe
 
+  # StreamableHTTP dispatches each tools/call via GenServer.call/3. The anubis
+  # default is 30s, which kills blocking dispatch tools (await/await_runs/compare)
+  # whose own timeout_ms defaults to 30 min. Keep transport >= tool budget.
+  @mcp_request_timeout_ms 1_800_000
+
+  @doc """
+  GenServer.call timeout for the StreamableHTTP transport (supervisor + Plug).
+
+  Matches `Harness.Dispatch`'s default blocking-tool `timeout_ms` so MCP callers
+  can hold a single tools/call for the full await/compare budget.
+  """
+  @spec request_timeout_ms() :: pos_integer()
+  def request_timeout_ms, do: @mcp_request_timeout_ms
+
   @impl Anubis.Server
   def init(_client_info, frame) do
     {:ok, Frame.assign(frame, :tool_registry, Tools.build())}

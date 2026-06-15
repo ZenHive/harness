@@ -5,6 +5,8 @@ defmodule Harness.Application do
 
   use Application
 
+  alias Harness.Dashboard.MCPServer
+
   @spec start(Application.start_type(), term()) :: {:ok, pid()} | {:error, term()}
   @impl true
   def start(_type, _args) do
@@ -161,7 +163,9 @@ defmodule Harness.Application do
     dashboard_config = Application.get_env(:harness, :dashboard, [])
 
     if Keyword.get(dashboard_config, :enabled, false) do
-      [{Harness.Dashboard.MCPServer, transport: {:streamable_http, start: true}}]
+      [
+        {MCPServer, transport: {:streamable_http, start: true}, request_timeout: MCPServer.request_timeout_ms()}
+      ]
     else
       []
     end
