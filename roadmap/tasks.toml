@@ -9011,7 +9011,7 @@ shipped_in = "99d5597ada85d7fa713ce787d31c69453862d2d2"
 id = "299"
 phase = 20
 bundle = "autolanding"
-status = "pending"
+status = "in_progress"
 title = "Run gen_statem crashed :undef on Harness.Run.reviewing/3 transcript_chunk path during node restart — reload-race or real gap?"
 scores = { d = 3, b = 2, u = 1 }
 markers = ["bug"]
@@ -9031,4 +9031,5 @@ Context that makes reload-race the leading hypothesis: this happened right after
 Filed per dogfooding mandate (harness bugs found while dogfooding -> rmap tasks). Re-dispatch of task 23 proceeds separately.
 """
 created_at = "2026-06-15"
+started_at = "2026-06-15"
 scored_at = "2026-06-15"

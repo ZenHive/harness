@@ -13358,7 +13358,7 @@
       "id": "299",
       "phase": 20,
       "bundle": "autolanding",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Run gen_statem crashed :undef on Harness.Run.reviewing/3 transcript_chunk path during node restart — reload-race or real gap?",
       "scores": {
         "d": 3,
@@ -13382,6 +13382,7 @@
       ],
       "body": "Observed 2026-06-15 dogfooding ccxt-distill task 23 (grok/grok-build). Run run-1781507309330-a1cdd28e: implementer finished, run entered :reviewing, then crashed:\n\n  {:cancel, {:run_crashed, {:undef, [{Harness.Run, :reviewing, [:info, {:transcript_chunk, \"<grok json>\"}, <data>]}]}}}\n\nOban job 1510 (queue project_ccxt-distill) -> state \"cancelled\" after attempt 1; harness reset task 23 to pending (commit \"roadmap: task 23 -> pending\", author harness). NO ResultStore record was written (result_store-list_run_records empty for the run_id) — the only trace is oban_jobs.errors. An orphan worktree was left at ~/_DATA/worktrees/.harness/ccxt-distill/run-1781507309330-a1cdd28e (cleaned manually this session).\n\nContext that makes reload-race the leading hypothesis: this happened right after a cluster of restarts/recompiles (tasks 294 witness-event, 297 lander union-merge, 298 KPI page all landing + a /mcp HTTP-500 then reconnect). The transcript_chunk that triggered it carried grok's own failed `npx tsx -e ... runPipeline` command (Top-level await not supported with cjs) — that's transcript noise, not the cause; the cause is the :undef on the state callback.\n\n:undef on a defined gen_statem state function is the classic signature of calling into a module mid-purge/reload, not a function_clause miss. So: reproduce under controlled reload before treating it as a state-machine bug. Cross-ref the agent-gate mantra — a real fix is mechanical substrate hardening (record-on-crash, reload safety), not judgment.\n\nFiled per dogfooding mandate (harness bugs found while dogfooding -> rmap tasks). Re-dispatch of task 23 proceeds separately.\n",
       "created_at": "2026-06-15",
+      "started_at": "2026-06-15",
       "scored_at": "2026-06-15",
       "cross_repo": []
     }
