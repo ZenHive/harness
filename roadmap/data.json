@@ -13034,6 +13034,70 @@
       "delivered_by": "codex",
       "verified": true,
       "cross_repo": []
+    },
+    {
+      "id": "292",
+      "phase": 20,
+      "bundle": "dispatch-economy",
+      "status": "pending",
+      "title": "Collision-aware dispatch: serialize ready-set tasks with overlapping write-sets instead of fanning them out",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 3
+      },
+      "eff": 1.17,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "dispatch-bundle / parallel dispatch computes (touches union files_to_modify) per task and refuses-or-serializes any subset whose write-sets intersect — colliding tasks dispatch as a chain (await land, then next), only disjoint write-sets fan out concurrently",
+        "The collision check is independent of the depends_on graph: tasks that share a write target but have no dep edge are still detected as colliding",
+        "A log/notification line names which tasks were serialized and on which shared files (no silent reordering)",
+        "Regression test: a 3-task ready set all listing src/x in their write-set produces a serial dispatch plan, not a parallel wave",
+        "Documented in the driver SKILL + harness-workflow: the dispatcher honors write-set collisions, callers no longer hand-dedupe"
+      ],
+      "out_of_scope": [
+        "Resolving conflicts that still occur (that is the resolver's job — separate task)",
+        "Inferring write-sets from task body when touches/files_to_modify are unset — the fields are the contract"
+      ],
+      "body": "Root cause of the 2026-06-15 ccxt-distill 2/3/19 land pile-up. Tasks 2, 3, 19 were dispatched in parallel because their depends_on graph said independent (all only depended on task 1) — but all three WROTE THE SAME FILES (src/cli.ts, test/cli.test.ts, CHANGELOG.md), each registering a CLI subcommand in the same function. Task 3 landed clean; 19 and 2 then hit real same-line content conflicts rebasing onto it, the merge-train blocked both, and recovery needed manual three-way merges + full re-verify per branch (runs run-1781478762049 / ...763383).\n\nrmap.md already documents the collision rule — two tasks conflict iff (touches union files_to_modify) intersect — but it's a CONSUMER-side dedupe that nothing enforced at dispatch time. Move it into the dispatcher: before fanning out a ready set / bundle, partition by write-set overlap and serialize the colliding groups (dispatch one, await its land, dispatch the next so it rebases onto landed work — exactly what dodges the conflict). The concurrency-cap bump during the incident made it worse: at cap=1 the three would have landed serially and conflict-free; raising the cap turned a safe serial chain into a collision. Serialization for file-coupled tasks is a feature, not a limit.\n\nMantra-clean: this is COUNTING file-set intersection (mechanical), not judging conflict content.\n",
+      "created_at": "2026-06-15",
+      "scored_at": "2026-06-15",
+      "cross_repo": []
+    },
+    {
+      "id": "293",
+      "phase": 20,
+      "bundle": "autolanding",
+      "status": "pending",
+      "title": "Lander resolver follow-up: same-function conflicts defeat the auto-resolver; manual reland bypasses it entirely",
+      "scores": {
+        "d": 3,
+        "b": 3,
+        "u": 2
+      },
+      "eff": 0.83,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Investigate why Lander.Resolver (Task 189) declined/failed the 2026-06-15 ccxt-distill task-19/task-2 conflicts (both auto-lands settled :conflict_retained) — pull the resolver transcripts and record the failure mode (markers left, agent declined, or bad context)",
+        "Decide + implement: either improve the resolver's success on same-function/same-list edits (e.g. richer both-intents context, keep-both strategy for additive list/registration edits) OR document the class as resolver-out-of-scope with a clear operator path",
+        "Decide whether manual dispatch-reland on a {:conflict,_} should optionally invoke the resolver instead of always routing to :manual_reland_conflict (resilience.ex:128) — today operator reland is plain-rebase-only, so a content conflict can never self-heal via reland",
+        "Whatever the decision, the blocked_reason / driver guidance tells the operator HOW to resolve (manual three-way merge steps or reland-with-resolver), not just 'resolve then dispatch-reland'",
+        "Covered by resilience_test.exs / resolver tests"
+      ],
+      "out_of_scope": [
+        "Preventing the collision in the first place (sibling collision-aware-dispatch task — that is the primary fix)",
+        "Re-verification on reland (the reviewer already approved both sides; resolver reconciles markers only)"
+      ],
+      "body": "Surfaced by the same 2026-06-15 incident. Findings so far: Task 189's Harness.Lander.Resolver exists and the AUTO-land path invokes it (lander.ex resolve_or_abort), but task 19 + task 2's first auto-lands BOTH settled :conflict_retained — i.e. the resolver agent ran and could not reconcile the conflicts (both sides edited the same buildCli function / SUBCOMMANDS list to register a new subcommand). Manual recovery required a human (this session) hand-merging src/cli.ts + test/cli.test.ts + CHANGELOG.md per branch, re-verifying npm run check (76 then 86 tests green), moving the harness/<run-id> branch ref to the resolved commit, then dispatch-reland (which, being a plain rebase onto the now-disjoint base, ff-pushed cleanly).\n\nTwo concrete gaps: (1) the resolver loses on same-function/same-list additive edits — exactly the case keep-both should win — so either its context/strategy needs work or the class is explicitly out of scope; (2) manual dispatch-reland routes {:conflict,_} straight to :manual_reland_conflict (lander/resilience.ex:128, manual_reland: true), deliberately skipping the resolver, so a real content conflict can never self-heal through reland — the operator must hand-merge and move the branch ref first (as done this session). Decide whether that bypass is right or whether reland should be able to call the resolver.\n",
+      "created_at": "2026-06-15",
+      "scored_at": "2026-06-15",
+      "cross_repo": []
     }
   ]
 }
