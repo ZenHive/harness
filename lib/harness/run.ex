@@ -97,6 +97,7 @@ defmodule Harness.Run do
   alias Harness.Dashboard.RunFeed
   alias Harness.Dashboard.Transcript
   alias Harness.Dashboard.Transcript.Parser
+  alias Harness.Dispatch
   alias Harness.Git
   alias Harness.Lander.Resilience
   alias Harness.Lander.Worker, as: LanderWorker
@@ -1632,6 +1633,7 @@ defmodule Harness.Run do
     # Worktree is finalized (removed on success / retained on failure) — stop the
     # crash reaper from monitoring this settled run.
     Reaper.untrack(data.run_id)
+    notify_settled(data, result)
     notify_subscriber(data.subscriber, data.run_id, result)
     RunFeed.broadcast_settled(status_snapshot(terminal_state, data))
     maybe_enqueue_landing(data, terminal_state)
@@ -1687,6 +1689,19 @@ defmodule Harness.Run do
   defp log_landing_enqueue({:error, reason}, run_id) do
     Logger.warning("harness run: failed to enqueue landing for run #{run_id}: #{inspect(reason)}")
     :ok
+  end
+
+  @spec notify_settled(data(), Result.t()) :: :ok
+  defp notify_settled(data, %Result{} = result) do
+    Notification.notify(%NotificationEvent{
+      type: :settled,
+      task_id: to_string(data.item.id),
+      run_id: data.run_id,
+      project: data.project.name,
+      branch: "harness/" <> data.run_id,
+      land_attempt: data.land_attempt,
+      outcome: Dispatch.summarize_result(result)
+    })
   end
 
   @spec build_result(data(), Result.state()) :: Result.t()

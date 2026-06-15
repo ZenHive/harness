@@ -172,6 +172,18 @@ defmodule Harness.DispatchTest do
   end
 
   describe "await_result/2 settle path" do
+    test "summarize_result/1 matches the await projection for an approved run" do
+      run_id = "run-summarize-approved"
+      result = approved_result(run_id)
+
+      summary = Dispatch.summarize_result(result)
+
+      assert summary.run_id == run_id
+      assert summary.state == :done
+      assert summary.passed
+      assert summary.review.verdict == :approve
+    end
+
     test "summarizes an approved settled run delivered to the subscriber" do
       run_id = "run-test-approved"
 

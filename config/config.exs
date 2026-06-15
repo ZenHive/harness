@@ -108,6 +108,15 @@ config :harness, :retry_policy,
 # config :harness, Harness.Notification.CommandSink,
 #   command: "/usr/local/bin/notify-train.sh",
 #   args: []
+#
+# config :harness, Harness.Notification.FileSink,
+#   path: Path.expand("~/.harness/settled.jsonl")
+#
+# Register sinks above in :notification_sinks, e.g.:
+# config :harness, :notification_sinks, [
+#   Harness.Notification.CommandSink,
+#   Harness.Notification.FileSink
+# ]
 
 # Registered orchestration targets — see Harness.Project and Harness.ProjectRegistry.
 # Each entry is a keyword list: name, source ({:local, path}), roadmap_path,

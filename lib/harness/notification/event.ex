@@ -29,6 +29,7 @@ defmodule Harness.Notification.Event do
           | :in_run_discernment
           | :dispatch_parked
           | :model_unavailable
+          | :settled
 
   @typedoc """
   The raw outcome payload, keyed by `type`:
@@ -43,6 +44,8 @@ defmodule Harness.Notification.Event do
       operator approval instead of dispatching it.
     * `:model_unavailable` — dispatch rejected a blocked `{agent, model}` pair
       (`%{agent, model, available}`).
+    * `:settled` — the compact settle map from `Harness.Dispatch.summarize_result/1`
+      for a terminal run (`:done` / `:failed`).
   """
   @type outcome :: String.t() | map()
 
@@ -102,4 +105,11 @@ defmodule Harness.Notification.Event do
 
   def summary(%__MODULE__{type: :model_unavailable, task_id: id, outcome: %{agent: agent, model: model}}),
     do: "blocked dispatch of task #{id} for #{agent}/#{model || "default"}"
+
+  def summary(%__MODULE__{type: :settled, run_id: run_id, task_id: id, outcome: %{state: state, reason: reason}}),
+    do: "settled run #{run_id} task #{id}: #{state}/#{settle_reason_label(reason)}"
+
+  @spec settle_reason_label(atom() | tuple()) :: String.t()
+  defp settle_reason_label({tag, _rest}), do: Atom.to_string(tag)
+  defp settle_reason_label(reason) when is_atom(reason), do: Atom.to_string(reason)
 end

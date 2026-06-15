@@ -55,4 +55,35 @@ defmodule Harness.Notification.EventTest do
       assert Event.summary(event) == "conflict landing task 119: CONFLICT (content): Merge conflict in CHANGELOG.md"
     end
   end
+
+  describe "summary/1 — settled" do
+    test "names the run, task, terminal state, and settle reason" do
+      event = %Event{
+        type: :settled,
+        task_id: "42",
+        run_id: "run-1781487644448-abc",
+        outcome: %{
+          run_id: "run-1781487644448-abc",
+          task_id: "42",
+          state: :done,
+          reason: :approved,
+          passed: true
+        }
+      }
+
+      assert Event.summary(event) ==
+               "settled run run-1781487644448-abc task 42: done/approved"
+    end
+
+    test "tuple settle reasons use the tag only" do
+      event = %Event{
+        type: :settled,
+        task_id: "9",
+        run_id: "run-fail",
+        outcome: %{state: :failed, reason: {:review_rejected, "nothing salvageable"}}
+      }
+
+      assert Event.summary(event) == "settled run run-fail task 9: failed/review_rejected"
+    end
+  end
 end

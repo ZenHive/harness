@@ -210,7 +210,7 @@ defmodule Harness.Dispatch do
     wait_ms = trunc(timeout_ms)
 
     receive do
-      {:harness_run, ^run_id, %Run.Result{} = result} -> {:ok, summarize(result)}
+      {:harness_run, ^run_id, %Run.Result{} = result} -> {:ok, summarize_result(result)}
     after
       wait_ms -> {:ok, timeout_summary(run_id, wait_ms)}
     end
@@ -1162,8 +1162,12 @@ defmodule Harness.Dispatch do
     end
   end
 
-  @spec summarize(Run.Result.t()) :: map()
-  defp summarize(%Run.Result{} = result) do
+  # Projects a settled `%Run.Result{}` into the compact map `dispatch-await`
+  # returns — shared by await tools and `:settled` witness events. Public
+  # (@doc false) so Run and tests can call it without duplicating the shape.
+  @doc false
+  @spec summarize_result(Run.Result.t()) :: map()
+  def summarize_result(%Run.Result{} = result) do
     %{
       run_id: result.run_id,
       task_id: result.task_id,
