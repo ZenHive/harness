@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 19 — Self-Healing Run Loop (40 of 41 done · 1 in progress)
+**Focus phase:** 19 — Self-Healing Run Loop (41 of 41 done · 0 in progress)
 
-**Last shipped:** Task 291 — Model catalog card: membership multi-select (probed universe + operator subset) replacing the flat removable list on 2026-06-15
+**Last shipped:** Task 288 — Enrich the /harness/roadmap page beyond the 4-column rollup, Task 291 — Model catalog card: membership multi-select (probed universe + operator subset) replacing the flat removable list on 2026-06-15
 
 **Up next:** Task 174 — Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:3/B:5/U:4 → Eff:1.5] 🚀
 <!-- FOCUS:END -->
