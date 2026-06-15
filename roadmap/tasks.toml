@@ -8704,7 +8704,7 @@ shipped_in = "cfaf5b33263e2ca6904c8185c86261ab1cf5dc99"
 id = "289"
 phase = 20
 bundle = "dispatch-economy"
-status = "in_progress"
+status = "done"
 title = "Blocking multi-run await: dispatch-await_runs MCP tool"
 scores = { d = 2, b = 3, u = 2 }
 acceptance_criteria = ["A new dispatch-await_runs MCP tool accepts a list of run_ids + timeout_ms and blocks until every run settles or the timeout expires", "Returns a compact per-run summary list (run_id, state, reason, review_verdict) — the same summary shape dispatch-await returns for one run", "On timeout it returns structured per-run summaries distinguishing settled from still-running, and never wedges the tool call (mirrors dispatch-await's :timed_out contract)", "Resolves each run across all lifecycle stages (live / queued Oban job / settled record) via the existing dispatch-status resolution path", "Tests cover: all-settle-before-timeout, partial-timeout, and an unknown run_id in the list; descripex api()/MCP annotation exposes the tool"]
@@ -8716,9 +8716,14 @@ Add dispatch-await_runs([run_id], timeout_ms): a blocking MCP tool that awaits s
 
 Discovered 2026-06-15 dispatching ccxt-distill tasks 2/3/19: three run_ids, three separate dispatch-status polls per check. One await over the set is the 80/20 fix.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781490184500-8c5d3b99, 55929c4cdc039f255b7c5868d889893c24035156)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-14"
 started_at = "2026-06-15"
 scored_at = "2026-06-14"
+done_at = "2026-06-15"
+shipped_in = "55929c4cdc039f255b7c5868d889893c24035156"
 
 [[task]]
 id = "290"
