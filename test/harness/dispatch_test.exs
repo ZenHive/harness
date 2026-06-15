@@ -254,6 +254,49 @@ defmodule Harness.DispatchTest do
     end
   end
 
+  describe "await_runs/2" do
+    test "returns compact summaries when every run is already settled" do
+      approved_id = "run-await-runs-ok-#{System.unique_integer([:positive])}"
+      rejected_id = "run-await-runs-reject-#{System.unique_integer([:positive])}"
+
+      approved_record =
+        LogRecord.from_result(approved_result(approved_id), batch_id: "b", adapter: Claude, duration_ms: 1)
+
+      rejected_record =
+        LogRecord.from_result(rejected_result(rejected_id), batch_id: "b", adapter: Claude, duration_ms: 1)
+
+      :ok = ResultStore.record_run(approved_record)
+      :ok = ResultStore.record_run(rejected_record)
+
+      assert {:ok, [approved, rejected]} = Dispatch.await_runs([approved_id, rejected_id], 1_000)
+
+      assert approved == %{
+               run_id: approved_id,
+               state: :done,
+               reason: :approved,
+               review_verdict: :approve
+             }
+
+      assert rejected == %{
+               run_id: rejected_id,
+               state: :failed,
+               reason: {:review_rejected, "nothing salvageable"},
+               review_verdict: :reject
+             }
+    end
+
+    test "returns a per-run not_found summary for an unknown run id" do
+      assert {:ok, [summary]} = Dispatch.await_runs(["__no_such_run__"], 30)
+
+      assert summary == %{
+               run_id: "__no_such_run__",
+               state: :not_found,
+               reason: :not_found,
+               review_verdict: nil
+             }
+    end
+  end
+
   describe "run observe/control — unknown run_id" do
     # The macro-generated tools and hand-written cancel all take a run_id
     # string. An unknown id exercises the delegate's {:error, :not_found} branch
@@ -900,10 +943,24 @@ defmodule Harness.DispatchTest do
       assert Enum.sort(tool.inputSchema.required) == ["project_name", "task"]
     end
 
+    test "dispatch-await_runs is exposed as a flat, JSON-passable tool" do
+      tool = Enum.find(Harness.Manifest.mcp_tools(), &(&1.name == "dispatch-await_runs"))
+      assert tool, "dispatch-await_runs should be on the MCP tool surface"
+
+      props = tool.inputSchema.properties
+      assert Map.has_key?(props, :run_ids)
+      assert Map.has_key?(props, :timeout_ms)
+      assert props.run_ids["type"] == "array"
+      assert props.run_ids["items"] == %{"type" => "string"}
+
+      assert Enum.sort(tool.inputSchema.required) == ["run_ids"]
+    end
+
     test "the in-process chat tool registry resolves both dispatch tools to Harness.Dispatch" do
       registry = Tools.build()
 
       assert %{module: Dispatch, function: :await} = registry["dispatch-await"]
+      assert %{module: Dispatch, function: :await_runs} = registry["dispatch-await_runs"]
       assert %{module: Dispatch, function: :task} = registry["dispatch-task"]
     end
 

@@ -194,6 +194,59 @@ defmodule Harness.ObanDispatchTest do
     assert status.queue == "project_interactive"
   end
 
+  test "dispatch-await_runs returns settled summaries plus timeout markers for unfinished Oban runs" do
+    settled_id = "run-await-runs-settled"
+    queued_id = "run-await-runs-queued"
+
+    Application.put_env(:harness, :result_store, {Memory, root: GitFixture.tmp_base(name: "await-runs-store")})
+
+    assert :ok =
+             ResultStore.record_run(
+               ResultStoreContract.log_record(
+                 run_id: settled_id,
+                 task_id: "1",
+                 state: :done,
+                 reason: :approved,
+                 verdict: :approve
+               )
+             )
+
+    Application.put_env(:harness, :oban_run_job_lookup, fn
+      ^queued_id ->
+        {:ok,
+         %Oban.Job{
+           id: 289,
+           state: "executing",
+           queue: "project_interactive",
+           worker: "Harness.Run.Worker",
+           args: %{
+             "project_name" => "interactive",
+             "item_id" => "2",
+             "run_id" => queued_id
+           }
+         }}
+
+      _other ->
+        {:error, :not_found}
+    end)
+
+    assert {:ok, [settled, running]} = Dispatch.await_runs([settled_id, queued_id], 30)
+
+    assert settled == %{
+             run_id: settled_id,
+             state: :done,
+             reason: :approved,
+             review_verdict: :approve
+           }
+
+    assert running == %{
+             run_id: queued_id,
+             state: :timed_out,
+             reason: :await_timeout,
+             review_verdict: nil
+           }
+  end
+
   test "registered project names resolve for dispatch" do
     parent = self()
     project = ProjectFixture.from_repo("/tmp/harness-dispatch", name: "registered", concurrency_cap: 1)

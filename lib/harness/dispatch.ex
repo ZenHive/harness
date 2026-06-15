@@ -79,6 +79,7 @@ defmodule Harness.Dispatch do
   # blocking tool call should not park a tool-equipped LLM indefinitely — the
   # caller can override per dispatch, and the run keeps going past the budget.
   @default_await_timeout_ms 1_800_000
+  @await_runs_poll_ms 250
   @recommended_adapter "recommend"
   @run_worker Oban.Worker.to_string(RunWorker)
   @unfinished_oban_states ~w(available scheduled executing retryable)
@@ -213,6 +214,38 @@ defmodule Harness.Dispatch do
     after
       wait_ms -> {:ok, timeout_summary(run_id, wait_ms)}
     end
+  end
+
+  api(
+    :await_runs,
+    "Block until an arbitrary set of already-started runs settles, returning compact per-run summaries. The wait is capped by timeout_ms; on expiry settled runs are returned as settled and unfinished runs are returned as :timed_out markers. Runs keep going and stay observable later via dispatch-status.",
+    params: [
+      run_ids: [
+        kind: :value,
+        description:
+          "List of run id strings returned by dispatch-task, dispatch-bundle, dispatch-await, or supervisor-list_runs."
+      ],
+      timeout_ms: [
+        kind: :value,
+        default: @default_await_timeout_ms,
+        description:
+          "Maximum milliseconds to block for all runs to settle (default 1_800_000 = 30 min). On expiry, unfinished runs return structured :timed_out summaries; they are NOT cancelled."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, [%{run_id, state, reason, review_verdict}]} where terminal runs keep their :done/:failed state, unknown ids report :not_found, and unfinished runs report state :timed_out with reason :await_timeout when the timeout expires."
+    }
+  )
+
+  @spec await_runs([String.t()], number()) :: {:ok, [map()]}
+  def await_runs(run_ids, timeout_ms \\ @default_await_timeout_ms)
+      when is_list(run_ids) and is_number(timeout_ms) and timeout_ms > 0 do
+    wait_ms = trunc(timeout_ms)
+    deadline_ms = System.monotonic_time(:millisecond) + wait_ms
+
+    await_runs_until(run_ids, deadline_ms)
   end
 
   # --- Run observation / control over JSON ---
@@ -1168,6 +1201,76 @@ defmodule Harness.Dispatch do
       agent_kind: status.agent_kind,
       review_verdict: status.review_verdict,
       reason: status.reason
+    }
+  end
+
+  @spec await_runs_until([String.t()], integer()) :: {:ok, [map()]}
+  defp await_runs_until(run_ids, deadline_ms) do
+    summaries = Enum.map(run_ids, &await_run_summary/1)
+
+    cond do
+      Enum.all?(summaries, &await_run_complete?/1) ->
+        {:ok, summaries}
+
+      System.monotonic_time(:millisecond) >= deadline_ms ->
+        {:ok, Enum.map(summaries, &timeout_unfinished_run/1)}
+
+      true ->
+        wait_for_next_poll(deadline_ms)
+        await_runs_until(run_ids, deadline_ms)
+    end
+  end
+
+  @spec await_run_summary(String.t()) :: map()
+  defp await_run_summary(run_id) do
+    case status(run_id) do
+      {:ok, summary} -> compact_run_summary(summary)
+      {:error, :not_found} -> not_found_summary(run_id)
+    end
+  end
+
+  @spec compact_run_summary(map()) :: map()
+  defp compact_run_summary(%{run_id: run_id, state: state} = summary) do
+    %{
+      run_id: run_id,
+      state: state,
+      reason: Map.get(summary, :reason),
+      review_verdict: Map.get(summary, :review_verdict)
+    }
+  end
+
+  @spec await_run_complete?(map()) :: boolean()
+  defp await_run_complete?(%{state: state}), do: state in [:done, :failed, :not_found]
+
+  @spec timeout_unfinished_run(map()) :: map()
+  defp timeout_unfinished_run(%{state: state} = summary) when state in [:done, :failed, :not_found], do: summary
+
+  defp timeout_unfinished_run(%{run_id: run_id, review_verdict: review_verdict}) do
+    %{
+      run_id: run_id,
+      state: :timed_out,
+      reason: :await_timeout,
+      review_verdict: review_verdict
+    }
+  end
+
+  @spec wait_for_next_poll(integer()) :: :ok
+  defp wait_for_next_poll(deadline_ms) do
+    remaining_ms = max(deadline_ms - System.monotonic_time(:millisecond), 0)
+
+    receive do
+    after
+      min(@await_runs_poll_ms, remaining_ms) -> :ok
+    end
+  end
+
+  @spec not_found_summary(String.t()) :: map()
+  defp not_found_summary(run_id) do
+    %{
+      run_id: run_id,
+      state: :not_found,
+      reason: :not_found,
+      review_verdict: nil
     }
   end
 
