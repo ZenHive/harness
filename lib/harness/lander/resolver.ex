@@ -26,6 +26,16 @@ defmodule Harness.Lander.Resolver do
   It does NOT re-run the project checks or re-grade the diff: the reviewer
   already approved both sides.
 
+  ## Known failure mode (2026-06-15 ccxt-distill)
+
+  Tasks 19 + 2 auto-landed with `:conflict_retained`: the resolver agent ran on
+  same-function `SUBCOMMANDS` / CLI-registration conflicts but left markers behind.
+  Durable evidence is the retained branch, not the agent transcript (resolver
+  output is not persisted). The gap was prompt context — file lists and commit
+  logs alone do not show the marker regions; same-list additive edits need
+  explicit keep-both guidance. Task 293 adds authoritative conflict excerpts
+  plus same-function/same-list instructions in `build_prompt/3`.
+
   ## Cross-family selection
 
   Same discipline as the reviewer gate — the resolver's family must differ from

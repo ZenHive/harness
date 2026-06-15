@@ -36,7 +36,11 @@ defmodule Harness.Lander.Resilience do
       land, there is no reviewed branch to re-land.)
     * operator-invoked manual reland `{:conflict, _}` → retain the branch and
       witness the conflict without changing roadmap status or starting a fresh
-      implementer run (the operator already decided to re-land).
+      implementer run (the operator already decided to re-land). The lander still
+      invokes the merge-resolver on a fresh rebase conflict before this route
+      fires; `:manual_reland_conflict` means that attempt also failed — recovery
+      is operator three-way merge + `dispatch-reland`, not a second resolver pass
+      from resilience.
     * blocked-command `{:reflex_halt, {:blocked_command, _}}` → `blocked`
       immediately.
     * `{:push_rejected, _}` → **re-land** the retained branch (re-fetch / rebase
