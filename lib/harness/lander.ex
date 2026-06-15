@@ -308,9 +308,11 @@ defmodule Harness.Lander do
   end
 
   # A clean rebase ff-lands as before. A conflict is NOT aborted up-front: the
-  # worktree is left mid-rebase (markers in place) and a cross-family resolver
-  # agent is given a chance to reconcile. Only if resolution fails do we abort
-  # and surface `{:conflict, _}` for the resilience layer's re-dispatch.
+  # worktree is left mid-rebase (markers in place); harness first tries a
+  # mechanical union for configured additive-only files (e.g. CHANGELOG appends),
+  # then gives a cross-family resolver agent a chance on any remaining conflicts.
+  # Only if resolution fails do we abort and surface `{:conflict, _}` for the
+  # resilience layer's re-dispatch.
   @spec rebase_onto(Worktree.t(), String.t(), String.t(), request()) ::
           {:ok, String.t()} | {:conflict, String.t()} | {:error, term()}
   defp rebase_onto(%Worktree{path: path} = worktree, origin_ref, base_sha, request) do
@@ -320,12 +322,17 @@ defmodule Harness.Lander do
     end
   end
 
-  # The agent edits the worktree (Resolver), then harness mechanically stages,
+  # On rebase conflict, first attempts a mechanical `git merge-file --union` for
+  # any files in the configured additive set (default: CHANGELOG.md). Pure appends
+  # on those files are resolved without an agent and the rebase continues. Remaining
+  # conflicts (or union error) fall through to the cross-family resolver agent:
+  # the agent edits the worktree (Resolver), then harness mechanically stages,
   # asserts zero leftover conflict markers, and continues the rebase. Any
   # failure — resolver unavailable, the agent declined, markers still present,
-  # or `rebase --continue` rejecting — aborts the rebase and falls back to the
-  # existing `{:conflict, _}` -> re-dispatch path. A still-conflicted tree is
-  # never landed. No re-verification: the reviewer already approved both sides.
+  # or `rebase --continue` rejecting — aborts the rebase, attaches a resolver
+  # witness, and surfaces `{:conflict, _}` for the resilience layer. A still-
+  # conflicted tree is never landed. No re-verification: the reviewer already
+  # approved both sides.
   @spec resolve_or_abort(Worktree.t(), String.t(), request(), String.t()) ::
           {:ok, String.t()} | {:conflict, String.t()}
   defp resolve_or_abort(%Worktree{path: path} = worktree, base_sha, request, conflict_output) do
