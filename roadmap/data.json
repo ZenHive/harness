@@ -13318,6 +13318,8 @@
         "parallel"
       ],
       "depends_on": [],
+      "assignee": "cursor",
+      "model": "composer-2.5-fast",
       "acceptance_criteria": [
         "A dedicated route + LiveView renders the full per-agent ledger (all columns incl. dynamic rating columns) as its own page, not crammed into /harness/kpi.",
         "The /harness/kpi overview links to the full agents page (and the agents page links back); the existing jump-nav stays coherent.",

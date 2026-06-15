@@ -8983,6 +8983,8 @@ acceptance_criteria = ["A dedicated route + LiveView renders the full per-agent 
 out_of_scope = ["Changing AgentKPI/ResultStore aggregation logic", "Time-series / trend charts", "The JS/TS capability-domain work (already shipped in a9c7c2d)"]
 files_to_modify = ["lib/harness/dashboard/kpi_live.ex", "lib/harness/dashboard/router.ex"]
 touches = ["lib/harness/dashboard/tokens.ex"]
+assignee = "cursor"
+model = "composer-2.5-fast"
 body = """
 Operator feedback (2026-06-15): the agent ledger table on /harness/kpi is very wide
 with all the sortable + dynamic reviewer-rating columns, and the single-page stack of
