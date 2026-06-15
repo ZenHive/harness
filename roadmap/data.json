@@ -13045,7 +13045,7 @@
       "id": "292",
       "phase": 20,
       "bundle": "dispatch-economy",
-      "status": "in_progress",
+      "status": "done",
       "title": "Collision-aware dispatch: serialize ready-set tasks with overlapping write-sets instead of fanning them out",
       "scores": {
         "d": 3,
@@ -13068,10 +13068,15 @@
         "Resolving conflicts that still occur (that is the resolver's job — separate task)",
         "Inferring write-sets from task body when touches/files_to_modify are unset — the fields are the contract"
       ],
+      "shipped_in": "f6a8f057b809f01a55a512ce53bbb9230d3d45a5",
       "body": "Root cause of the 2026-06-15 ccxt-distill 2/3/19 land pile-up. Tasks 2, 3, 19 were dispatched in parallel because their depends_on graph said independent (all only depended on task 1) — but all three WROTE THE SAME FILES (src/cli.ts, test/cli.test.ts, CHANGELOG.md), each registering a CLI subcommand in the same function. Task 3 landed clean; 19 and 2 then hit real same-line content conflicts rebasing onto it, the merge-train blocked both, and recovery needed manual three-way merges + full re-verify per branch (runs run-1781478762049 / ...763383).\n\nrmap.md already documents the collision rule — two tasks conflict iff (touches union files_to_modify) intersect — but it's a CONSUMER-side dedupe that nothing enforced at dispatch time. Move it into the dispatcher: before fanning out a ready set / bundle, partition by write-set overlap and serialize the colliding groups (dispatch one, await its land, dispatch the next so it rebases onto landed work — exactly what dodges the conflict). The concurrency-cap bump during the incident made it worse: at cap=1 the three would have landed serially and conflict-free; raising the cap turned a safe serial chain into a collision. Serialization for file-coupled tasks is a feature, not a limit.\n\nMantra-clean: this is COUNTING file-set intersection (mechanical), not judging conflict content.\n",
       "created_at": "2026-06-15",
       "started_at": "2026-06-15",
+      "done_at": "2026-06-15",
       "scored_at": "2026-06-15",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781487643377-6a4f4503, f6a8f057b809f01a55a512ce53bbb9230d3d45a5).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
