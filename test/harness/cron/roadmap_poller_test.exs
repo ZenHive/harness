@@ -409,6 +409,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
       assert_received {:inserted, %{project_name: "cron-different-task", item_id: "53"}}
     end
 
+    @tag :integration
     test "an unfinished Oban run job blocks duplicate enqueue for the same task" do
       start_supervised!(Harness.Repo)
       :ok = Sandbox.checkout(Harness.Repo)

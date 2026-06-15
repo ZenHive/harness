@@ -374,8 +374,6 @@ defmodule Harness.ObanDispatchTest do
             subscriber,
             {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :approved}}
           )
-
-          Process.sleep(100)
         end)
 
       {:ok, run_id, pid}
@@ -416,8 +414,6 @@ defmodule Harness.ObanDispatchTest do
             subscriber,
             {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :approved}}
           )
-
-          Process.sleep(100)
         end)
 
       {:ok, run_id, pid}
@@ -459,8 +455,6 @@ defmodule Harness.ObanDispatchTest do
             subscriber,
             {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :approved}}
           )
-
-          Process.sleep(100)
         end)
 
       {:ok, run_id, pid}
@@ -500,8 +494,6 @@ defmodule Harness.ObanDispatchTest do
             subscriber,
             {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :approved}}
           )
-
-          Process.sleep(50)
         end)
 
       {:ok, run_id, pid}
@@ -542,8 +534,6 @@ defmodule Harness.ObanDispatchTest do
             subscriber,
             {:harness_run, run_id, %Result{run_id: run_id, task_id: "48", state: :done, reason: :approved}}
           )
-
-          Process.sleep(100)
         end)
 
       {:ok, run_id, pid}
@@ -583,8 +573,6 @@ defmodule Harness.ObanDispatchTest do
             subscriber,
             {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :approved}}
           )
-
-          Process.sleep(100)
         end)
 
       {:ok, run_id, pid}
@@ -620,7 +608,6 @@ defmodule Harness.ObanDispatchTest do
       pid =
         spawn(fn ->
           send(subscriber, {:harness_run, run_id, %{result | task_id: item.id}})
-          Process.sleep(100)
         end)
 
       {:ok, run_id, pid}
@@ -780,8 +767,6 @@ defmodule Harness.ObanDispatchTest do
             subscriber,
             {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :approved}}
           )
-
-          Process.sleep(100)
         end)
 
       {:ok, run_id, pid}
@@ -870,8 +855,6 @@ defmodule Harness.ObanDispatchTest do
             subscriber,
             {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :approved}}
           )
-
-          Process.sleep(100)
         end)
 
       {:ok, run_id, pid}
@@ -1019,8 +1002,6 @@ defmodule Harness.ObanDispatchTest do
               subscriber,
               {:harness_run, run_id, %Result{run_id: run_id, task_id: it.id, state: :done, reason: :approved}}
             )
-
-            Process.sleep(50)
           end)
 
         {:ok, run_id, pid}
@@ -1069,8 +1050,6 @@ defmodule Harness.ObanDispatchTest do
               subscriber,
               {:harness_run, run_id, %Result{run_id: run_id, task_id: it.id, state: :done, reason: :approved}}
             )
-
-            Process.sleep(50)
           end)
 
         {:ok, run_id, pid}
@@ -1120,8 +1099,6 @@ defmodule Harness.ObanDispatchTest do
               {:harness_run, run_id,
                %Result{run_id: run_id, task_id: it.id, state: :failed, reason: {:review_rejected, "rejected"}}}
             )
-
-            Process.sleep(50)
           end)
 
         {:ok, run_id, pid}
@@ -1156,8 +1133,6 @@ defmodule Harness.ObanDispatchTest do
               {:harness_run, run_id,
                %Result{run_id: run_id, task_id: it.id, state: :failed, reason: {:worktree_failed, :boom}}}
             )
-
-            Process.sleep(50)
           end)
 
         {:ok, run_id, pid}
@@ -1219,6 +1194,7 @@ defmodule Harness.ObanDispatchTest do
       assert opts[:rescue_after] == to_timeout(minute: 30)
     end
 
+    @tag :integration
     test "unfinished_run_job? detects non-terminal run jobs for a project task" do
       start_supervised!(Harness.Repo)
       :ok = Sandbox.checkout(Harness.Repo)
@@ -1246,6 +1222,8 @@ defmodule Harness.ObanDispatchTest do
   end
 
   describe "run worker in-flight uniqueness" do
+    @describetag :integration
+
     @tag timeout: 120_000
     test "second dispatch while the first job is executing returns the live run id without a duplicate run" do
       start_supervised!(Harness.Repo)
