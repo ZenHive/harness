@@ -204,7 +204,13 @@ defmodule Harness.ModelAvailability do
     ],
     returns: %{
       type: :tuple,
-      description: "{:ok, %{models: [%{id, label, blocked_until}]}} or {:ok, %{catalog_unavailable: true, models: []}}."
+      description:
+        "{:ok, %{catalog_status: \"available\", catalog_unavailable: false, models: [%{id, label, blocked_until}]}} " <>
+          "when the operator-selected subset has dispatchable entries; " <>
+          "{:ok, %{catalog_status: \"probed_none_selected\", catalog_unavailable: true, models: [], universe_count: N}} " <>
+          "when catalog_universe/1 is non-empty but nothing is selected; " <>
+          "{:ok, %{catalog_status: \"unavailable\", catalog_unavailable: true, models: []}} " <>
+          "when no universe exists (probe failed / nothing declared / no builtin)."
     }
   )
 
@@ -213,11 +219,28 @@ defmodule Harness.ModelAvailability do
     with {:ok, agent_atom} <- coerce_agent(agent) do
       case list_available(agent_atom) do
         {:error, :catalog_unavailable} ->
-          {:ok, %{catalog_unavailable: true, models: []}}
+          list_available_models_unavailable(agent_atom)
 
         models ->
-          {:ok, %{catalog_unavailable: false, models: models}}
+          {:ok, %{catalog_status: "available", catalog_unavailable: false, models: models}}
       end
+    end
+  end
+
+  @spec list_available_models_unavailable(atom()) :: {:ok, map()}
+  defp list_available_models_unavailable(agent) do
+    case catalog_universe(agent) do
+      {:ok, universe} ->
+        {:ok,
+         %{
+           catalog_status: "probed_none_selected",
+           catalog_unavailable: true,
+           models: [],
+           universe_count: length(universe)
+         }}
+
+      {:error, :catalog_unavailable} ->
+        {:ok, %{catalog_status: "unavailable", catalog_unavailable: true, models: []}}
     end
   end
 

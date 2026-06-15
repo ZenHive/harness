@@ -150,6 +150,45 @@ defmodule Harness.ModelAvailabilityTest do
     end
   end
 
+  describe "list_available_models/2" do
+    test "returns available when a model is selected into the static subset" do
+      seed_static_catalog(:cursor, [
+        %{id: "composer-2.5", label: "Composer", annotations: []}
+      ])
+
+      assert {:ok,
+              %{
+                catalog_status: "available",
+                catalog_unavailable: false,
+                models: [%{id: "composer-2.5", label: "Composer"}]
+              }} = ModelAvailability.list_available_models("cursor")
+    end
+
+    test "returns probed_none_selected when the probe cache has models but nothing is selected" do
+      seed_probe_cache(:cursor, [
+        %{id: "composer-probed", label: "Probed", annotations: []},
+        %{id: "composer-next", label: "Next", annotations: []}
+      ])
+
+      assert {:ok,
+              %{
+                catalog_status: "probed_none_selected",
+                catalog_unavailable: true,
+                models: [],
+                universe_count: 2
+              }} = ModelAvailability.list_available_models("cursor")
+    end
+
+    test "returns unavailable when the agent has no builtin, static, or probe cache" do
+      assert {:ok,
+              %{
+                catalog_status: "unavailable",
+                catalog_unavailable: true,
+                models: []
+              }} = ModelAvailability.list_available_models("antigravity")
+    end
+  end
+
   describe "list_available/1" do
     test "resolves selected before builtin catalogs" do
       install_catalog_probe(fn
@@ -365,6 +404,18 @@ defmodule Harness.ModelAvailabilityTest do
       end
 
     SettingsStore.put(:model_catalog_static, Map.put(current, agent, models))
+  end
+
+  defp seed_probe_cache(agent, models) do
+    current =
+      case SettingsStore.fetch(:model_catalogs) do
+        {:ok, map} when is_map(map) -> map
+        _ -> %{}
+      end
+
+    entry = %{fetched_at: DateTime.utc_now(), models: models}
+
+    SettingsStore.put(:model_catalogs, Map.put(current, agent, entry))
   end
 
   defp selected_state(universe, id) do
