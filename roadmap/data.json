@@ -13436,8 +13436,8 @@
       "unlocks": 0,
       "markers": [],
       "depends_on": [],
-      "assignee": "codex",
-      "model": "gpt-5.5",
+      "assignee": "cursor",
+      "model": "composer-2.5-fast",
       "acceptance_criteria": [
         "list_available_models/2 returns THREE distinguishable shapes instead of two: (a) models present -> {:ok, %{catalog_status: \"available\", models: [...]}}; (b) a probed/declared universe EXISTS but the operator-selected subset is empty -> {:ok, %{catalog_status: \"probed_none_selected\", models: [], universe_count: N}}; (c) no universe at all (probe failed / nothing declared / no builtin) -> {:ok, %{catalog_status: \"unavailable\", models: []}}. The (b) vs (c) split is decided by consulting catalog_universe/1: non-empty universe + empty selection = probed_none_selected; empty universe = unavailable.",
         "Backward-compat: the existing catalog_unavailable boolean key stays present and is true for BOTH (b) and (c) so current callers do not break; catalog_status is the new precise field. Update the api() returns description to document all three statuses.",

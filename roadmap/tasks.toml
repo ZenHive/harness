@@ -9079,8 +9079,8 @@ out_of_scope = ["Reverting Task 291's universe-vs-selected split (catalog/1 must
 files_to_modify = ["lib/harness/model_availability.ex", "test/harness/model_availability_test.exs"]
 touches = ["lib/harness/model_availability.ex", "lib/harness/manifest.ex", "test/harness/model_availability_test.exs"]
 domains = ["otp"]
-assignee = "codex"
-model = "gpt-5.5"
+assignee = "cursor"
+model = "composer-2.5-fast"
 body = """
 Reported 2026-06-15 via dogfooding: model_availability-list_available_models("cursor") returns {:ok, %{catalog_unavailable: true, models: []}} even though the node holds a FULLY PROBED 150-model cursor catalog (:model_catalogs, fetched_at today). The diagnostic is misleading: "unavailable" reads as "probe failed / CLI absent / no catalog", but the real state is "catalog probed, operator has selected zero models into the static subset".
 
