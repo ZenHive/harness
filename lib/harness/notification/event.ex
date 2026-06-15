@@ -5,8 +5,9 @@ defmodule Harness.Notification.Event do
   Fired by `Harness.Lander.Resilience` when a run **lands**, a task is
   **blocked** (landing-attempt cap exhausted), or a manual reland retains a
   conflicted branch; by `Harness.Lander` when the operator's local target branch
-  needs manual sync after a successful land; and by `Harness.Run` when in-run
-  discernment samples a partial transcript.
+  needs manual sync after a successful land; by `Harness.Run` on every terminal
+  settle (`:settled` for `:done` / `:failed` runs); and by `Harness.Run` when
+  in-run discernment samples a partial transcript.
 
   ## The sakshi↔buddhi hinge
 

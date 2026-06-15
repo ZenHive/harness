@@ -1,8 +1,8 @@
 # Orchestrator push sink — design spike (Task 290)
 
-Status: **decision recorded, not yet built.** This spike picks the transport, the
-`:settled` witness event, and sketches the reference sink so the follow-up build
-(Task 294) is mechanical. Sibling pull-only path: Task 289 (`dispatch-await_runs`).
+Status: **implemented (Task 294, landed e47340c)**. This spike (Task 290) picked the
+transport, the `:settled` witness event, and sketched the reference sink; Task 294
+delivered the mechanical build. Sibling pull-only path: Task 289 (`dispatch-await_runs`).
 
 ## Problem
 
