@@ -13304,7 +13304,7 @@
       "id": "298",
       "phase": 19,
       "bundle": "dashboard-chrome",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Move the agent KPI ledger to its own full page (/harness/kpi/agents)",
       "scores": {
         "d": 2,
@@ -13338,6 +13338,7 @@
       ],
       "body": "Operator feedback (2026-06-15): the agent ledger table on /harness/kpi is very wide\nwith all the sortable + dynamic reviewer-rating columns, and the single-page stack of\nfive sections is hard to navigate even with the jump-nav (a9c7c2d). Give the ledger its\nown full page so it has room to breathe, and keep /harness/kpi as the at-a-glance\noverview (fleet strip + the narrower secondary tables + a link through to the full\nledger). Pure presentation/routing split — no KPI/aggregation logic changes.\n",
       "created_at": "2026-06-15",
+      "started_at": "2026-06-15",
       "scored_at": "2026-06-15",
       "cross_repo": []
     }

@@ -8975,7 +8975,7 @@ shipped_in = "f857a4977f0503710c0444de57de0c681a1fe3aa"
 id = "298"
 phase = 19
 bundle = "dashboard-chrome"
-status = "pending"
+status = "in_progress"
 title = "Move the agent KPI ledger to its own full page (/harness/kpi/agents)"
 scores = { d = 2, b = 2, u = 1 }
 markers = ["parallel"]
@@ -8992,4 +8992,5 @@ overview (fleet strip + the narrower secondary tables + a link through to the fu
 ledger). Pure presentation/routing split — no KPI/aggregation logic changes.
 """
 created_at = "2026-06-15"
+started_at = "2026-06-15"
 scored_at = "2026-06-15"
