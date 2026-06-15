@@ -156,10 +156,11 @@ defmodule Harness.Run.Worker do
          {:ok, agent} <- agent_for_adapter(adapter),
          {:ok, %Item{} = item} <- ingest_roadmap({:id, item_id}, project: project, agent: agent),
          {:ok, result} <- run_once(job, item, project, adapter) do
-      if settled_failure?(result) do
+      if settled_failure?(result) and not recoverable_crash?(result, project) do
         # Any settled failure reverts the task to pending so the next cron tick
         # can re-dispatch it as a FRESH run. Green (even unlanded under :manual)
-        # stays in_progress.
+        # stays in_progress. Code-reload crashes during :reviewing (etc.) with a
+        # retained branch stay in_progress — recover via dispatch-rereview (Task 299).
         _ = revert_to_pending(item, project)
       end
 
@@ -366,6 +367,14 @@ defmodule Harness.Run.Worker do
         }
 
         record_crashed_run(result, item, project, adapter, job, started_at_ms)
+
+        if recoverable_crash?(result, project) do
+          Logger.warning(
+            "harness run worker: run #{run_id} crashed during review with retained branch; " <>
+              "recover via dispatch-rereview instead of re-dispatching the implementer"
+          )
+        end
+
         result
     end
   end
@@ -532,6 +541,24 @@ defmodule Harness.Run.Worker do
   @spec settled_failure?(Result.t()) :: boolean()
   defp settled_failure?(%Result{state: :failed}), do: true
   defp settled_failure?(_), do: false
+
+  # A BEAM code-reload :undef on a gen_statem callback during :reviewing (etc.)
+  # leaves committed work on harness/<run-id>. Keep the task in_progress and steer
+  # to dispatch-rereview — never reset to pending and lose the salvage path.
+  @recoverable_code_reload_states [:reviewing, :recovering, :held]
+
+  @spec recoverable_crash?(Result.t(), Project.t()) :: boolean()
+  defp recoverable_crash?(%Result{run_id: run_id, reason: reason}, %Project{} = project) do
+    recoverable_crash_reason?(reason) and retained_run_branch?(project, run_id)
+  end
+
+  @spec recoverable_crash_reason?(Result.reason()) :: boolean()
+  defp recoverable_crash_reason?({:run_crashed, {:code_reload, state, _detail}})
+       when state in @recoverable_code_reload_states, do: true
+
+  defp recoverable_crash_reason?({:run_crashed, {:undef, _stack}}), do: true
+  defp recoverable_crash_reason?({:run_crashed, {:function_clause, _stack}}), do: true
+  defp recoverable_crash_reason?(_reason), do: false
 
   @spec fetch_arg(args(), String.t()) :: {:ok, String.t()} | {:error, {:missing_arg, String.t()}}
   defp fetch_arg(args, key) do

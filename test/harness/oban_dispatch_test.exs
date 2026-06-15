@@ -693,6 +693,63 @@ defmodule Harness.ObanDispatchTest do
     assert status.reason == {:run_crashed, :boom}
   end
 
+  test "worker keeps task in_progress on a code-reload crash with a retained harness branch (Task 299)" do
+    repo = GitFixture.init_repo()
+    project = ProjectFixture.from_repo(repo, name: "reload-crash-project")
+    assert :ok = ProjectRegistry.register(project)
+
+    run_id = "run-reload-crash-#{System.unique_integer([:positive])}"
+    GitFixture.git!(repo, ["branch", "harness/#{run_id}"])
+
+    pending_calls = :atomics.new(1, [])
+
+    Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts ->
+      {:ok, item("299", :claude)}
+    end)
+
+    Application.put_env(:harness, :roadmap_mark_in_progress, fn _item, _project -> :ok end)
+
+    Application.put_env(:harness, :roadmap_mark_pending, fn _item, _project ->
+      :atomics.add(pending_calls, 1, 1)
+      :ok
+    end)
+
+    on_exit(fn ->
+      Application.delete_env(:harness, :roadmap_mark_in_progress)
+      Application.delete_env(:harness, :roadmap_mark_pending)
+    end)
+
+    Application.put_env(:harness, :run_starter, fn %Item{} = item, _project, _adapter, opts ->
+      run_id = Keyword.fetch!(opts, :run_id)
+      subscriber = Keyword.get(opts, :subscriber)
+
+      result = %Result{
+        run_id: run_id,
+        task_id: item.id,
+        state: :failed,
+        reason: {:run_crashed, {:code_reload, :reviewing, {:undef, []}}}
+      }
+
+      if subscriber, do: send(subscriber, {:harness_run, run_id, result})
+
+      {:ok, run_id, spawn(fn -> Process.sleep(:infinity) end)}
+    end)
+
+    assert {:cancel, {:run_crashed, {:code_reload, :reviewing, {:undef, []}}}} =
+             Worker.perform(%Oban.Job{
+               id: 299,
+               attempt: 1,
+               args: %{
+                 "project_name" => "reload-crash-project",
+                 "item_id" => "299",
+                 "adapter_module" => "Elixir.Harness.AgentAdapter.Claude",
+                 "run_id" => run_id
+               }
+             })
+
+    assert :atomics.get(pending_calls, 1) == 0
+  end
+
   test "worker cancels a duplicate re-attempt while the run is in flight, off the retry/cleanup path" do
     project = ProjectFixture.from_repo("/tmp/harness-worker", name: "dup-project")
     assert :ok = ProjectRegistry.register(project)

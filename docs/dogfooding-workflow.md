@@ -80,6 +80,14 @@ fallback for dumping full diagnostics to your terminal in one blocking process.
 > Drive everything from one long-lived node — the `iex -S mix` you started for the
 > dashboard. This applies to both paths below.
 
+> **⚠ Never hot-reload/recompile the driver BEAM while runs are in flight.** A
+> `mix compile` or live code reload that lands while a run's gen_statem is mid-callback
+> can hit `:undef` on state functions — classic BEAM mid-purge behavior, not a missing
+> clause. Prior runs through `:reviewing` on the same code prove the path exists; the
+> crash is operational timing. If it happens, recover via `dispatch-rereview` on the
+> retained `harness/<run-id>` branch (Task 299: harness persists a crash record and
+> keeps the task `in_progress` instead of silently resetting to `pending`).
+
 ### Renderable vs executable agents
 
 `rmap delegate --to` renders a native prompt for all six harness adapters (`:claude`, `:codex`,

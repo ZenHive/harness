@@ -172,6 +172,10 @@ defmodule Harness.Run do
   # `git push`. Bounded to exactly one retry; a second miss fails as before.
   @reviewer_reprompt_limit 1
 
+  # Gen_statem states where implementer work is already on harness/<run-id> and a
+  # BEAM code-reload :undef crash is recoverable via dispatch-rereview (Task 299).
+  @recoverable_code_reload_states [:reviewing, :recovering, :held]
+
   # Per-run memory watchdog (Task 200). The reviewer AI runs the project's
   # check_command itself; harness Ports the agent CLI and the agent forks `mix`/
   # `cargo`/… as its own descendants — a tree harness spawns but never bounded.
@@ -615,6 +619,16 @@ defmodule Harness.Run do
        {{:timeout, :lifetime}, data.lifetime_timeout, :lifetime},
        {{:timeout, :mem_sample}, data.mem_sample_interval, :mem_sample}
      ]}
+  end
+
+  @doc false
+  @impl :gen_statem
+  @spec terminate(term(), state(), data()) :: term()
+  def terminate(_reason, _state, %{result: %Result{}}), do: :ok
+
+  def terminate(reason, state, data) do
+    crash_settle(data, state, reason)
+    :ok
   end
 
   # ── State: dispatched — carve the isolated worktree ──────────────────────
@@ -1617,6 +1631,61 @@ defmodule Harness.Run do
       "agent" => to_string(data.item.agent),
       "branch" => "harness/" <> data.run_id,
       "land_attempt" => data.land_attempt
+    }
+  end
+
+  # Abnormal gen_statem exit (callback crash, :undef mid-reload, supervisor stop)
+  # before a terminal state settled. Persists a minimal failed record, retains the
+  # worktree when salvage is possible, and notifies the subscriber so the Oban
+  # worker gets a Result instead of a bare {:DOWN, {:undef, _}}.
+  @spec crash_settle(data(), state(), term()) :: :ok
+  defp crash_settle(_data, state, _reason) when state in [:done, :failed], do: :ok
+
+  defp crash_settle(data, state, reason) do
+    crash_reason = {:run_crashed, normalize_crash_reason(state, reason)}
+    result = build_crash_result(data, crash_reason)
+    data = %{data | result: result, reason: crash_reason}
+    persist_run_record(data, result)
+    finish_worktree(data.worktree, :failed)
+    Reaper.untrack(data.run_id)
+    notify_subscriber(data.subscriber, data.run_id, result)
+    RunFeed.broadcast_settled(status_snapshot(:failed, data))
+    :ok
+  end
+
+  @spec normalize_crash_reason(state(), term()) :: term()
+  defp normalize_crash_reason(state, {:undef, _stack} = reason) when state in @recoverable_code_reload_states do
+    {:code_reload, state, reason}
+  end
+
+  defp normalize_crash_reason(state, {:function_clause, _stack} = reason) when state in @recoverable_code_reload_states do
+    {:code_reload, state, reason}
+  end
+
+  defp normalize_crash_reason(_state, reason), do: reason
+
+  @spec build_crash_result(data(), Result.reason()) :: Result.t()
+  defp build_crash_result(data, crash_reason) do
+    %Result{
+      run_id: data.run_id,
+      task_id: data.item.id,
+      state: :failed,
+      reason: crash_reason,
+      agent_outcome: data.agent_outcome,
+      review: data.review,
+      reviewer_outcome: data.reviewer_outcome,
+      worktree_path: data.worktree && data.worktree.path,
+      reviewer_adapter: data.reviewer_adapter,
+      agent_diff_size: data.agent_diff_size,
+      reviewer_diff_size: data.reviewer_diff_size,
+      token_usage: data.token_usage,
+      composed_inputs: data.composed_inputs,
+      reviewer_reprompt_count: data.reviewer_reprompt_count,
+      reviewer_rotation_count: data.reviewer_rotation_count,
+      recovery_attempts: data.recovery_attempts,
+      recovery_outcome: data.recovery_outcome,
+      recovery_repaired: data.recovery_repaired,
+      recovery_token_usage: data.recovery_token_usage
     }
   end
 

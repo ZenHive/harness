@@ -53,6 +53,10 @@ defmodule Harness.Run.Result do
       run branch. `{:worktree_missing, path}` means the run worktree directory
       disappeared before commit.
     * `{:run_crashed, r}` — the run process exited before delivering a result.
+      When `r` is `{:code_reload, state, detail}`, the gen_statem crashed during
+      a BEAM hot-code reload (`:undef` / `:function_clause` on a state callback)
+      while `state` was `:reviewing`, `:recovering`, or `:held` — recover via
+      `dispatch-rereview` on the retained `harness/<run-id>` branch.
     * `{:no_available_agent, r}` — the batch could not pick an adapter for the
       item; the item never produced a run.
   """
