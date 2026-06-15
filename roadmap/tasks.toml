@@ -9071,7 +9071,7 @@ shipped_in = "4b36aad667fd3508f9a3ed34b7c7a585ff94dcbb"
 id = "301"
 phase = 19
 bundle = "model-availability"
-status = "pending"
+status = "in_progress"
 title = "list_available_models conflates 'no catalog' with 'probed-but-none-selected' — distinguish the two diagnostic states"
 scores = { d = 1, b = 3, u = 2 }
 acceptance_criteria = ['list_available_models/2 returns THREE distinguishable shapes instead of two: (a) models present -> {:ok, %{catalog_status: "available", models: [...]}}; (b) a probed/declared universe EXISTS but the operator-selected subset is empty -> {:ok, %{catalog_status: "probed_none_selected", models: [], universe_count: N}}; (c) no universe at all (probe failed / nothing declared / no builtin) -> {:ok, %{catalog_status: "unavailable", models: []}}. The (b) vs (c) split is decided by consulting catalog_universe/1: non-empty universe + empty selection = probed_none_selected; empty universe = unavailable.', "Backward-compat: the existing catalog_unavailable boolean key stays present and is true for BOTH (b) and (c) so current callers do not break; catalog_status is the new precise field. Update the api() returns description to document all three statuses.", "No change to list_available/1 (the dispatch-gate read path), to catalog/1 (Task 291 deliberately returns the SELECTED subset — do NOT revert that), or to the block/availability semantics. This is a DIAGNOSTIC-LABEL fix at the MCP boundary only.", "Tests in test/harness/model_availability_test.exs cover all three states: available (a model selected into static), probed_none_selected (a non-empty universe via a seeded probe cache with empty static selection -> universe_count > 0, status probed_none_selected), and unavailable (an agent with no builtin, no static, no probe cache).", "mix precommit green on the touched files"]
@@ -9089,4 +9089,5 @@ Verified live: :model_catalog_static = :not_found (no selection persisted for AN
 Fix is diagnostic-only at the MCP boundary (list_available_models/2, lib/harness/model_availability.ex ~L212): when list_available returns :catalog_unavailable, consult catalog_universe/1 to emit catalog_status "probed_none_selected" (universe non-empty) vs "unavailable" (universe empty), keeping the legacy catalog_unavailable boolean for back-compat. Do not touch the dispatch gate, catalog/1, or the selection model.
 """
 created_at = "2026-06-15"
+started_at = "2026-06-15"
 scored_at = "2026-06-15"
