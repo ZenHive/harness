@@ -65,6 +65,7 @@ defmodule Harness.Dashboard.SettingsLive do
     {:ok,
      socket
      |> assign(:notice, nil)
+     |> assign(:model_catalog_filters, %{})
      |> assign(:tabs, @tabs)
      |> assign(:tab, @default_tab)
      |> refresh()}
@@ -220,6 +221,24 @@ defmodule Harness.Dashboard.SettingsLive do
     {:noreply, socket |> assign(:notice, notice) |> refresh()}
   end
 
+  def handle_event("toggle_catalog_model", %{"agent" => agent, "model_id" => model_id}, socket) do
+    selected? = catalog_selected?(agent, model_id)
+
+    notice =
+      case ModelAvailability.toggle_catalog_model(agent, model_id) do
+        :ok -> {:ok, catalog_toggle_notice(agent, model_id, selected?)}
+        {:error, _reason} -> {:error, "Unknown model catalog agent."}
+      end
+
+    {:noreply, socket |> assign(:notice, notice) |> refresh()}
+  end
+
+  def handle_event("filter_model_catalog", %{"agent" => agent, "query" => query}, socket) do
+    filters = Map.put(socket.assigns.model_catalog_filters, agent, query)
+
+    {:noreply, socket |> assign(:model_catalog_filters, filters) |> refresh()}
+  end
+
   def handle_event("refresh_catalog", %{"agent" => agent}, socket) do
     notice =
       case ModelAvailability.refresh_catalog(agent) do
@@ -318,7 +337,7 @@ defmodule Harness.Dashboard.SettingsLive do
     |> assign(:dispatch, dispatch_state())
     |> assign(:agent_models, agent_models_state())
     |> assign(:reviewer_models, reviewer_models_state())
-    |> assign(:model_catalogs, model_catalogs_state())
+    |> assign(:model_catalogs, model_catalogs_state(socket.assigns.model_catalog_filters))
   end
 
   # The dispatch-default view-model: the configured no-data fallback agent plus
@@ -417,35 +436,70 @@ defmodule Harness.Dashboard.SettingsLive do
     end
   end
 
-  @spec model_catalogs_state() :: [map()]
-  defp model_catalogs_state do
+  @spec model_catalogs_state(map()) :: [map()]
+  defp model_catalogs_state(filters) do
     Enum.map(Config.dispatch_agents(), fn agent ->
-      models = catalog_models(agent)
+      query = Map.get(filters, Atom.to_string(agent), "")
+      {models, universe_count, selected_count} = catalog_models(agent, query)
 
       %{
         name: Atom.to_string(agent),
         label: agent_label(agent),
         refreshable: ModelAvailability.probeable?(agent),
+        query: query,
+        universe_count: universe_count,
+        selected_count: selected_count,
         models: models
       }
     end)
   end
 
-  @spec catalog_models(atom()) :: [map()]
-  defp catalog_models(agent) do
-    case ModelAvailability.catalog(agent) do
-      {:ok, models} -> Enum.map(models, &catalog_model(&1))
-      {:error, :catalog_unavailable} -> []
+  @spec catalog_models(atom(), String.t()) :: {[map()], non_neg_integer(), non_neg_integer()}
+  defp catalog_models(agent, query) do
+    case ModelAvailability.catalog_universe(agent) do
+      {:ok, models} ->
+        filtered = Enum.filter(models, &catalog_model_matches?(&1, query))
+        {Enum.map(filtered, &catalog_model(&1)), length(models), Enum.count(models, & &1.selected?)}
+
+      {:error, :catalog_unavailable} ->
+        {[], 0, 0}
     end
   end
 
   @spec catalog_model(map()) :: map()
   defp catalog_model(%{id: id} = model) do
-    %{id: id, label: option_label(model), dom_id: catalog_model_dom_id(id)}
+    %{
+      id: id,
+      label: option_label(model),
+      dom_id: catalog_model_dom_id(id),
+      selected?: Map.get(model, :selected?, false)
+    }
+  end
+
+  @spec catalog_model_matches?(map(), String.t()) :: boolean()
+  defp catalog_model_matches?(_model, ""), do: true
+
+  defp catalog_model_matches?(model, query) do
+    haystack = String.downcase(option_label(model))
+    String.contains?(haystack, String.downcase(String.trim(query)))
   end
 
   @spec catalog_model_dom_id(String.t()) :: String.t()
   defp catalog_model_dom_id(id), do: String.replace(id, ~r/[^a-zA-Z0-9_-]/, "_")
+
+  @spec catalog_selected?(String.t(), String.t()) :: boolean()
+  defp catalog_selected?(agent, model_id) do
+    with {:ok, agent_atom} <- agent_atom(agent),
+         {:ok, models} <- ModelAvailability.catalog(agent_atom) do
+      Enum.any?(models, &(&1.id == model_id))
+    else
+      _ -> false
+    end
+  end
+
+  @spec catalog_toggle_notice(String.t(), String.t(), boolean()) :: String.t()
+  defp catalog_toggle_notice(agent, model_id, true), do: "Deselected #{model_id} for #{agent}."
+  defp catalog_toggle_notice(agent, model_id, false), do: "Selected #{model_id} for #{agent}."
 
   @spec catalog_options([map()], String.t()) :: [%{value: String.t(), label: String.t()}]
   defp catalog_options(entries, current) do

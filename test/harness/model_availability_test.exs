@@ -151,13 +151,11 @@ defmodule Harness.ModelAvailabilityTest do
   end
 
   describe "list_available/1" do
-    test "resolves static before probe before builtin catalogs" do
+    test "resolves selected before builtin catalogs" do
       install_catalog_probe(fn
         :codex, _executables -> {:ok, [%{id: "gpt-probed", label: "Probed", annotations: []}]}
         _agent, _executables -> {:error, :catalog_unavailable}
       end)
-
-      assert {:ok, [%{id: "gpt-probed"}]} = ModelAvailability.catalog(:codex)
 
       seed_static_catalog(:codex, [
         %{id: "gpt-operator", label: "Operator", annotations: []}
@@ -174,6 +172,49 @@ defmodule Harness.ModelAvailabilityTest do
 
       assert {:ok, claude_models} = ModelAvailability.catalog(:claude)
       assert "claude-opus-4-8" in Enum.map(claude_models, & &1.id)
+    end
+
+    test "round-trips selected membership separately from the probed universe" do
+      seed_static_catalog(:cursor, [
+        %{id: "composer-selected", label: "Selected", annotations: []}
+      ])
+
+      install_catalog_probe(fn
+        :cursor, _executables ->
+          {:ok,
+           [
+             %{id: "composer-probed", label: "Probed", annotations: []},
+             %{id: "composer-next", label: "Next", annotations: []}
+           ]}
+
+        _agent, _executables ->
+          {:error, :catalog_unavailable}
+      end)
+
+      assert {:ok, %{models: refreshed}} = ModelAvailability.refresh_catalog("cursor")
+      assert Enum.map(refreshed, & &1.id) == ["composer-selected"]
+
+      assert {:ok, selected} = ModelAvailability.catalog(:cursor)
+      assert Enum.map(selected, & &1.id) == ["composer-selected"]
+
+      assert {:ok, universe} = ModelAvailability.catalog_universe(:cursor)
+      assert selected_state(universe, "composer-selected")
+      refute selected_state(universe, "composer-probed")
+
+      assert :ok = ModelAvailability.toggle_catalog_model("cursor", "composer-probed")
+      assert {:ok, selected} = ModelAvailability.catalog(:cursor)
+      assert Enum.map(selected, & &1.id) == ["composer-selected", "composer-probed"]
+
+      assert {:ok, %{models: refreshed}} = ModelAvailability.refresh_catalog("cursor")
+      assert Enum.map(refreshed, & &1.id) == ["composer-selected", "composer-probed"]
+
+      assert {:ok, universe} = ModelAvailability.catalog_universe(:cursor)
+      assert selected_state(universe, "composer-probed")
+      refute selected_state(universe, "composer-next")
+
+      assert :ok = ModelAvailability.toggle_catalog_model("cursor", "composer-probed")
+      assert {:ok, selected} = ModelAvailability.catalog(:cursor)
+      assert Enum.map(selected, & &1.id) == ["composer-selected"]
     end
 
     test "omits blocked ids from the catalog" do
@@ -324,6 +365,12 @@ defmodule Harness.ModelAvailabilityTest do
       end
 
     SettingsStore.put(:model_catalog_static, Map.put(current, agent, models))
+  end
+
+  defp selected_state(universe, id) do
+    universe
+    |> Enum.find(&(&1.id == id))
+    |> Map.fetch!(:selected?)
   end
 
   defp restore_env(key, nil), do: Application.delete_env(:harness, key)

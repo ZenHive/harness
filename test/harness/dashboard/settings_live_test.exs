@@ -361,7 +361,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     assert Config.reviewer_model(:cursor) == "claude-opus-4-8-thinking-high"
   end
 
-  test "adds and removes operator catalog models without a restart", %{conn: conn} do
+  test "adds free-text catalog models and toggles membership without a restart", %{conn: conn} do
     {:ok, view, html} = live(conn, "/harness/settings")
 
     assert html =~ "Model catalog"
@@ -376,19 +376,20 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     assert {:ok, models} = ModelAvailability.catalog(:codex)
     assert "gpt-operator-new" in Enum.map(models, & &1.id)
     assert html =~ "gpt-operator-new"
+    assert has_element?(view, "#model-catalog-toggle-codex-gpt-operator-new[aria-checked=true]")
 
     html =
       view
-      |> form("#model-catalog-remove-codex-gpt-operator-new")
-      |> render_submit()
+      |> element("#model-catalog-toggle-codex-gpt-operator-new")
+      |> render_click()
 
-    assert html =~ "Removed gpt-operator-new from codex."
+    assert html =~ "Deselected gpt-operator-new for codex."
     assert {:ok, models} = ModelAvailability.catalog(:codex)
     refute "gpt-operator-new" in Enum.map(models, & &1.id)
-    refute has_element?(view, "#model-catalog-remove-codex-gpt-operator-new")
+    assert has_element?(view, "#model-catalog-toggle-codex-gpt-operator-new[aria-checked=false]")
   end
 
-  test "refresh from CLI merges probed models into the editable catalog", %{conn: conn} do
+  test "refresh from CLI adds probed models to the universe without selecting them", %{conn: conn} do
     SettingsStore.put(:model_catalog_static, %{
       cursor: [%{id: "composer-operator", label: "Operator", annotations: []}]
     })
@@ -407,7 +408,8 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     {:ok, view, html} = live(conn, "/harness/settings")
     assert html =~ "composer-operator"
-    refute html =~ "composer-probed"
+    assert html =~ "composer-probed"
+    assert has_element?(view, "#model-catalog-toggle-cursor-composer-probed[aria-checked=false]")
 
     html =
       view
@@ -416,8 +418,28 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     assert html =~ "Refreshed cursor models."
     assert {:ok, models} = ModelAvailability.catalog(:cursor)
-    assert Enum.map(models, & &1.id) == ["composer-operator", "composer-probed"]
+    assert Enum.map(models, & &1.id) == ["composer-operator"]
     assert html =~ "composer-probed"
+    assert has_element?(view, "#model-catalog-toggle-cursor-composer-probed[aria-checked=false]")
+
+    html =
+      view
+      |> element("#model-catalog-toggle-cursor-composer-probed")
+      |> render_click()
+
+    assert html =~ "Selected composer-probed for cursor."
+    assert {:ok, models} = ModelAvailability.catalog(:cursor)
+    assert Enum.map(models, & &1.id) == ["composer-operator", "composer-probed"]
+
+    html =
+      view
+      |> form("#model-catalog-filter-cursor", %{query: "operator"})
+      |> render_change()
+
+    assert html =~ "composer-operator"
+    refute has_element?(view, "#model-catalog-toggle-cursor-composer-probed")
+    assert {:ok, models} = ModelAvailability.catalog(:cursor)
+    assert Enum.map(models, & &1.id) == ["composer-operator", "composer-probed"]
   end
 
   test "renders the Landing card with a per-project policy control", %{conn: conn, project: project} do

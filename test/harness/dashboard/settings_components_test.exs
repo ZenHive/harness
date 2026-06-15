@@ -144,22 +144,32 @@ defmodule Harness.Dashboard.SettingsComponentsTest do
   end
 
   describe "model_catalog_card/1" do
-    test "renders add/remove forms and a model count pill" do
+    test "renders a filterable membership toggle list and a selected count pill" do
       catalogs = [
         %{
           name: "codex",
           label: "Codex",
           refreshable: true,
-          models: [%{id: "gpt-5.5", label: "gpt-5.5", dom_id: "gpt-5_5"}]
+          selected_count: 1,
+          universe_count: 2,
+          query: "gpt",
+          models: [
+            %{id: "gpt-5.5", label: "gpt-5.5", dom_id: "gpt-5_5", selected?: true},
+            %{id: "gpt-5.4", label: "gpt-5.4", dom_id: "gpt-5_4", selected?: false}
+          ]
         }
       ]
 
       html = render_component(&SettingsComponents.model_catalog_card/1, model_catalogs: catalogs)
 
       assert html =~ "Model catalog"
-      assert html =~ "1 models"
+      assert html =~ "1 / 2 selected"
+      assert html =~ ~s(phx-change="filter_model_catalog")
       assert html =~ ~s(phx-submit="add_catalog_model")
-      assert html =~ ~s(phx-submit="remove_catalog_model")
+      assert html =~ ~s(phx-click="toggle_catalog_model")
+      assert html =~ ~s(aria-checked="true")
+      assert html =~ ~s(aria-checked="false")
+      refute html =~ ~s(phx-submit="remove_catalog_model")
       assert html =~ "Refresh from CLI"
     end
   end

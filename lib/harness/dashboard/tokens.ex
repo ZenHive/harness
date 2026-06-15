@@ -1177,7 +1177,12 @@ defmodule Harness.Dashboard.Tokens do
 
       /* Per-agent control matrix (Task 182): captioned enabled + reviewer toggles. */
       .agent-controls { display: flex; align-items: flex-end; gap: var(--space-4); flex: none; }
-      /* Removable-model list: wraps within the card instead of overflowing right. */
+      .agent-model-form { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+      .catalog-row { align-items: flex-start; flex-wrap: wrap; }
+      .catalog-row > .project-id { flex: 1 1 14rem; }
+      .catalog-controls { justify-content: flex-end; flex-wrap: wrap; }
+      .catalog-filter { flex: 1 1 11rem; justify-content: flex-end; }
+      /* Model membership universe: wraps within the card instead of overflowing right. */
       .catalog-models {
         display: flex;
         flex-wrap: wrap;
@@ -1185,6 +1190,26 @@ defmodule Harness.Dashboard.Tokens do
         gap: var(--space-2) var(--space-4);
         flex-basis: 100%;
       }
+      .catalog-model-toggle {
+        appearance: none;
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+      }
+      .catalog-model-toggle .toggle {
+        width: 2.4rem;
+        height: 1.3rem;
+        pointer-events: none;
+      }
+      .catalog-model-toggle .toggle::after { width: 0.9rem; height: 0.9rem; }
+      .catalog-model-toggle .toggle[aria-checked="true"]::after { transform: translate(1.1rem, -50%); }
+      .catalog-model-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 0.35rem; }
       .agent-control { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
       .agent-control-caption {
         font-family: var(--font-mono);

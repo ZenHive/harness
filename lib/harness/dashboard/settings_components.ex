@@ -360,8 +360,8 @@ defmodule Harness.Dashboard.SettingsComponents do
   attr(:model_catalogs, :list, required: true)
 
   @doc """
-  Operator-editable model-id catalog per agent — add / remove ids and refresh
-  from the agent CLI list when one is available.
+  Operator-editable model-id membership per agent — the probed universe is
+  read-only, while toggles select which ids feed the model dropdowns.
   """
   @spec model_catalog_card(map()) :: Rendered.t()
   def model_catalog_card(assigns) do
@@ -369,17 +369,17 @@ defmodule Harness.Dashboard.SettingsComponents do
     <section class="setting-card">
       <h2>Model catalog</h2>
       <p class="setting-desc">
-        Operator-editable model ids for dropdowns. Refresh merges the agent CLI list when available.
+        Select which known model ids feed the Agent models and Reviewer models dropdowns.
       </p>
       <ul class="project-list">
-        <li :for={catalog <- @model_catalogs} class="project-row">
+        <li :for={catalog <- @model_catalogs} class="project-row catalog-row">
           <div class="project-id">
             <span class="project-name">{catalog.label}</span>
-            <span class="pill" data-state={if catalog.models == [], do: "off", else: "on"}>
-              {length(catalog.models)} models
+            <span class="pill" data-state={if catalog.selected_count == 0, do: "off", else: "on"}>
+              {catalog.selected_count} / {catalog.universe_count} selected
             </span>
           </div>
-          <div class="agent-controls">
+          <div class="agent-controls catalog-controls">
             <form
               id={"model-catalog-add-#{catalog.name}"}
               class="agent-model-form"
@@ -403,19 +403,39 @@ defmodule Harness.Dashboard.SettingsComponents do
               <input type="hidden" name="agent" value={catalog.name} />
               <button type="submit" class="btn-save">Refresh from CLI</button>
             </form>
-          </div>
-          <div class="catalog-models">
             <form
-              :for={model <- catalog.models}
-              id={"model-catalog-remove-#{catalog.name}-#{model.dom_id}"}
-              class="reviewer-form"
-              phx-submit="remove_catalog_model"
+              id={"model-catalog-filter-#{catalog.name}"}
+              class="agent-model-form catalog-filter"
+              phx-change="filter_model_catalog"
             >
               <input type="hidden" name="agent" value={catalog.name} />
-              <input type="hidden" name="model_id" value={model.id} />
-              <span class="pill" data-state="on">{model.label}</span>
-              <button type="submit" class="btn-save">Remove</button>
+              <input
+                type="text"
+                name="query"
+                value={catalog.query}
+                placeholder="filter"
+                aria-label={"Filter #{catalog.label} models"}
+              />
             </form>
+          </div>
+          <div id={"model-catalog-models-#{catalog.name}"} class="catalog-models">
+            <button
+              :for={model <- catalog.models}
+              id={"model-catalog-toggle-#{catalog.name}-#{model.dom_id}"}
+              type="button"
+              class="catalog-model-toggle"
+              role="switch"
+              aria-checked={to_string(model.selected?)}
+              phx-click="toggle_catalog_model"
+              phx-value-agent={catalog.name}
+              phx-value-model_id={model.id}
+            >
+              <span class="toggle" aria-hidden="true" aria-checked={to_string(model.selected?)}></span>
+              <span class="pill" data-state={if model.selected?, do: "on", else: "off"}>
+                {model.label}
+              </span>
+            </button>
+            <span :if={catalog.models == []} class="project-empty">No models match.</span>
           </div>
         </li>
       </ul>

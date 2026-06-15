@@ -4,8 +4,8 @@ defmodule Harness.ModelAvailability do
 
   Composes with `Harness.AgentRegistry` at dispatch time: a run starts only when
   the adapter is agent-available **and** the resolved model pair is not blocked.
-  Blocks persist in `Harness.SettingsStore` (`:model_blocks`); catalogs layer an
-  operator-maintained static list, cached live probes, and built-in seeds.
+  Blocks persist in `Harness.SettingsStore` (`:model_blocks`); catalogs keep the
+  operator-selected subset separate from cached live probes and manual ids.
   """
 
   use Descripex, namespace: "/model_availability"
@@ -18,6 +18,7 @@ defmodule Harness.ModelAvailability do
   @blocks_key :model_blocks
   @catalogs_key :model_catalogs
   @static_catalogs_key :model_catalog_static
+  @manual_catalogs_key :model_catalog_manual
   @default_catalog_ttl_ms 3_600_000
   @probeable_agents %{cursor: "cursor-agent", grok: "grok", pi: "pi", codex: "codex"}
 
@@ -292,7 +293,7 @@ defmodule Harness.ModelAvailability do
 
   api(
     :refresh_catalog,
-    "Re-probe an agent CLI catalog and merge it into the operator static list.",
+    "Re-probe an agent CLI catalog and cache it as the model universe.",
     params: [agent: [kind: :value, description: "Agent name string."]],
     returns: %{
       type: :tuple,
@@ -313,12 +314,10 @@ defmodule Harness.ModelAvailability do
   def add_catalog_model(agent, model) when is_binary(agent) and is_binary(model) do
     with {:ok, agent_atom} <- coerce_agent(agent),
          {:ok, model_id} <- normalize_model_id(model) do
-      models =
-        agent_atom
-        |> agent_static_seed()
-        |> merge_catalogs([%{id: model_id, label: model_id, annotations: []}])
+      model = %{id: model_id, label: model_id, annotations: []}
 
-      persist_static_catalog(agent_atom, models)
+      :ok = persist_manual_catalog(agent_atom, merge_catalogs(manual_catalog(agent_atom), [model]))
+      persist_static_catalog(agent_atom, merge_catalogs(selected_seed(agent_atom), [model]))
     end
   end
 
@@ -327,12 +326,16 @@ defmodule Harness.ModelAvailability do
   def remove_catalog_model(agent, model) when is_binary(agent) and is_binary(model) do
     with {:ok, agent_atom} <- coerce_agent(agent),
          {:ok, model_id} <- normalize_model_id(model) do
-      models =
-        agent_atom
-        |> agent_static_seed()
-        |> Enum.reject(&(&1.id == model_id))
+      persist_static_catalog(agent_atom, deselect_model(agent_atom, model_id))
+    end
+  end
 
-      persist_static_catalog(agent_atom, models)
+  @doc false
+  @spec toggle_catalog_model(String.t(), String.t()) :: :ok | {:error, term()}
+  def toggle_catalog_model(agent, model) when is_binary(agent) and is_binary(model) do
+    with {:ok, agent_atom} <- coerce_agent(agent),
+         {:ok, model_id} <- normalize_model_id(model) do
+      toggle_selected_model(agent_atom, model_id)
     end
   end
 
@@ -378,9 +381,26 @@ defmodule Harness.ModelAvailability do
   @doc false
   @spec catalog(atom()) :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
   def catalog(agent) when is_atom(agent) do
-    with {:error, :catalog_unavailable} <- static_catalog(agent),
-         {:error, :catalog_unavailable} <- probed_catalog(agent) do
+    with {:error, :catalog_unavailable} <- static_catalog(agent) do
       builtin_catalog(agent)
+    end
+  end
+
+  @doc false
+  @spec catalog_universe(atom()) :: {:ok, [map()]} | {:error, :catalog_unavailable}
+  def catalog_universe(agent) when is_atom(agent) do
+    selected = selected_seed(agent)
+    selected_ids = MapSet.new(selected, & &1.id)
+
+    universe =
+      selected
+      |> merge_catalogs(probed_seed(agent))
+      |> merge_catalogs(manual_catalog(agent))
+      |> Enum.map(&Map.put(&1, :selected?, MapSet.member?(selected_ids, &1.id)))
+
+    case universe do
+      [] -> {:error, :catalog_unavailable}
+      models -> {:ok, models}
     end
   end
 
@@ -430,10 +450,8 @@ defmodule Harness.ModelAvailability do
   @spec refresh_catalog_for(atom()) :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
   defp refresh_catalog_for(agent) do
     with true <- probeable?(agent),
-         {:ok, probed} <- probe_and_cache(agent) do
-      models = agent |> agent_static_seed() |> merge_catalogs(probed)
-      :ok = persist_static_catalog(agent, models)
-      {:ok, models}
+         {:ok, _probed} <- probe_and_cache(agent) do
+      catalog(agent)
     else
       false -> catalog(agent)
       {:error, :catalog_unavailable} = error -> error
@@ -460,6 +478,14 @@ defmodule Harness.ModelAvailability do
     end
   end
 
+  @spec manual_catalog(atom()) :: [catalog_entry()]
+  defp manual_catalog(agent) do
+    case SettingsStore.fetch(@manual_catalogs_key) do
+      {:ok, %{^agent => models}} when is_list(models) -> models
+      _ -> []
+    end
+  end
+
   @spec builtin_catalog(atom()) :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
   defp builtin_catalog(agent) do
     case Map.get(@builtin_catalogs, agent, []) do
@@ -468,17 +494,25 @@ defmodule Harness.ModelAvailability do
     end
   end
 
-  @spec agent_static_seed(atom()) :: [catalog_entry()]
-  defp agent_static_seed(agent) do
+  @spec selected_seed(atom()) :: [catalog_entry()]
+  defp selected_seed(agent) do
     case static_catalog(agent) do
       {:ok, models} -> models
-      {:error, :catalog_unavailable} -> seed_catalog(agent)
+      {:error, :catalog_unavailable} -> builtin_seed(agent)
     end
   end
 
-  @spec seed_catalog(atom()) :: [catalog_entry()]
-  defp seed_catalog(agent) do
-    case catalog(agent) do
+  @spec builtin_seed(atom()) :: [catalog_entry()]
+  defp builtin_seed(agent) do
+    case builtin_catalog(agent) do
+      {:ok, models} -> models
+      {:error, :catalog_unavailable} -> []
+    end
+  end
+
+  @spec probed_seed(atom()) :: [catalog_entry()]
+  defp probed_seed(agent) do
+    case probed_catalog(agent) do
       {:ok, models} -> models
       {:error, :catalog_unavailable} -> []
     end
@@ -497,6 +531,55 @@ defmodule Harness.ModelAvailability do
 
     SettingsStore.put(@static_catalogs_key, Map.put(catalogs, agent, models))
   end
+
+  @spec persist_manual_catalog(atom(), [catalog_entry()]) :: :ok
+  defp persist_manual_catalog(agent, models) do
+    catalogs =
+      case SettingsStore.fetch(@manual_catalogs_key) do
+        {:ok, map} when is_map(map) -> map
+        _ -> %{}
+      end
+
+    SettingsStore.put(@manual_catalogs_key, Map.put(catalogs, agent, models))
+  end
+
+  @spec toggle_selected_model(atom(), String.t()) :: :ok
+  defp toggle_selected_model(agent, model_id) do
+    if selected_model?(agent, model_id) do
+      persist_static_catalog(agent, deselect_model(agent, model_id))
+    else
+      select_model(agent, model_id)
+    end
+  end
+
+  @spec selected_model?(atom(), String.t()) :: boolean()
+  defp selected_model?(agent, model_id), do: Enum.any?(selected_seed(agent), &(&1.id == model_id))
+
+  @spec deselect_model(atom(), String.t()) :: [catalog_entry()]
+  defp deselect_model(agent, model_id), do: Enum.reject(selected_seed(agent), &(&1.id == model_id))
+
+  @spec select_model(atom(), String.t()) :: :ok
+  defp select_model(agent, model_id) do
+    found = universe_model(agent, model_id)
+    model = found || %{id: model_id, label: model_id, annotations: []}
+
+    if found == nil do
+      :ok = persist_manual_catalog(agent, merge_catalogs(manual_catalog(agent), [model]))
+    end
+
+    persist_static_catalog(agent, merge_catalogs(selected_seed(agent), [model]))
+  end
+
+  @spec universe_model(atom(), String.t()) :: catalog_entry() | nil
+  defp universe_model(agent, model_id) do
+    agent
+    |> universe_seed()
+    |> Enum.find(&(&1.id == model_id))
+  end
+
+  @spec universe_seed(atom()) :: [catalog_entry()]
+  defp universe_seed(agent),
+    do: agent |> selected_seed() |> merge_catalogs(probed_seed(agent)) |> merge_catalogs(manual_catalog(agent))
 
   @spec probe_catalog(atom()) :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
   defp probe_catalog(agent) do
