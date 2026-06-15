@@ -8896,7 +8896,7 @@ done_at = "2026-06-15"
 id = "296"
 phase = 20
 bundle = "dispatch-economy"
-status = "pending"
+status = "in_progress"
 title = "MCP transport 30s GenServer.call ceiling defeats every blocking dispatch tool"
 scores = { d = 3, b = 4, u = 2 }
 markers = ["bug"]
@@ -8924,6 +8924,7 @@ Investigation paths: the GenServer.call timeout lives in anubis_mcp's Streamable
 Discovered while dogfooding ccxt-distill dispatch; pairs with Task 289 (the tool that exposed the ceiling) and Task 290 (push transport, the async alternative).
 """
 created_at = "2026-06-15"
+started_at = "2026-06-15"
 scored_at = "2026-06-15"
 
 [[task]]
