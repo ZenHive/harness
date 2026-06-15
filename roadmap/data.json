@@ -13127,7 +13127,7 @@
       "id": "294",
       "phase": 20,
       "bundle": "dispatch-economy",
-      "status": "in_progress",
+      "status": "done",
       "title": "Settled witness event + FileSink for orchestrator wakeup",
       "scores": {
         "d": 2,
@@ -13170,10 +13170,15 @@
         "docs/orchestrator-push-sink-design.md",
         "skills/harness-driver/SKILL.md"
       ],
+      "shipped_in": "e47340c6d1083b6e35222a8aeb53ec22a6d0c743",
       "body": "Implement the Task 290 spike: docs/orchestrator-push-sink-design.md.\n\nAdd a :settled witness event fired from Harness.Run.settle/2 for every terminal run (:done/:failed — approve, reject, timed_out, etc.). The event outcome MUST be the same compact map dispatch-await returns (shared summarize_result/1 extracted from Dispatch).\n\nShip Harness.Notification.FileSink: append-only JSONL to a configured path (default ~/.harness/settled.jsonl). One envelope per notify/1 with ts, type, ids, outcome, summary. Unconfigured => no-op. Read-only sink behaviour unchanged.\n\nMantra-clean: mechanical settle facts only — no new routing or verdict logic in the sink.\n",
       "created_at": "2026-06-15",
       "started_at": "2026-06-15",
+      "done_at": "2026-06-15",
       "scored_at": "2026-06-15",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781506367005-8b414e0c, e47340c6d1083b6e35222a8aeb53ec22a6d0c743).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {

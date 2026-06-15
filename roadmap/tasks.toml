@@ -8854,7 +8854,7 @@ shipped_in = "d61d25d76712fd0d5b80e47da2a4f26efeb0a69a"
 id = "294"
 phase = 20
 bundle = "dispatch-economy"
-status = "in_progress"
+status = "done"
 title = "Settled witness event + FileSink for orchestrator wakeup"
 scores = { d = 2, b = 3, u = 3 }
 depends_on = [290]
@@ -8873,9 +8873,14 @@ Ship Harness.Notification.FileSink: append-only JSONL to a configured path (defa
 
 Mantra-clean: mechanical settle facts only — no new routing or verdict logic in the sink.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781506367005-8b414e0c, e47340c6d1083b6e35222a8aeb53ec22a6d0c743)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-15"
 started_at = "2026-06-15"
 scored_at = "2026-06-15"
+done_at = "2026-06-15"
+shipped_in = "e47340c6d1083b6e35222a8aeb53ec22a6d0c743"
 
 [[task]]
 id = "295"
