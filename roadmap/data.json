@@ -13229,8 +13229,8 @@
         "bug"
       ],
       "depends_on": [],
-      "assignee": "codex",
-      "model": "gpt-5.5",
+      "assignee": "cursor",
+      "model": "composer-2.5-fast",
       "acceptance_criteria": [
         "A dispatch-await_runs / dispatch-await call that blocks server-side longer than 30s completes and returns its summary instead of failing the MCP request with session_call_failed {:timeout, {GenServer, :call, ..., 30000}}",
         "The fix raises or removes the transport-layer GenServer.call timeout for blocking tool requests so it tracks the tool's own timeout_ms (default 30 min), not a hardcoded 30s",

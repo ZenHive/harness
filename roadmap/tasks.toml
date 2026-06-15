@@ -8903,8 +8903,8 @@ markers = ["bug"]
 acceptance_criteria = ["A dispatch-await_runs / dispatch-await call that blocks server-side longer than 30s completes and returns its summary instead of failing the MCP request with session_call_failed {:timeout, {GenServer, :call, ..., 30000}}", "The fix raises or removes the transport-layer GenServer.call timeout for blocking tool requests so it tracks the tool's own timeout_ms (default 30 min), not a hardcoded 30s", "dispatch-await, dispatch-await_runs, and dispatch-compare (all blocking) verified to hold a >30s wait over /harness/mcp without transport timeout", "A regression test exercises a blocking tool whose server-side wait exceeds the old 30s ceiling (synthetic slow tool or a real run awaited past 30s)"]
 out_of_scope = ["Push/callback delivery to the driver (Task 290 push-sink spike) - this is the pull/blocking path only", "Changing the blocking tools' own timeout_ms semantics or default values"]
 domains = ["mcp", "otp"]
-assignee = "codex"
-model = "gpt-5.5"
+assignee = "cursor"
+model = "composer-2.5-fast"
 body = """
 Observed 2026-06-15 calling dispatch-await_runs over MCP to await two in-flight ccxt-distill runs (tasks 4/5). The tool blocked server-side as designed, but the request failed at the transport layer:
 
