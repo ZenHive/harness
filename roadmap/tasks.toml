@@ -8936,7 +8936,7 @@ shipped_in = "46ae5b27f8ed8d6b6406025ddbf000ec3a437a6b"
 id = "297"
 phase = 20
 bundle = "autolanding"
-status = "in_progress"
+status = "blocked"
 title = "Lander resolver still fails 5/5 trivial additive CHANGELOG keep-both conflicts post-293; eliminate the additive-file conflict class mechanically"
 scores = { d = 3, b = 4, u = 2 }
 markers = ["bug"]
@@ -8944,6 +8944,7 @@ acceptance_criteria = ["Reproduce/confirm: in a parallel wave where N runs each 
 domains = ["otp", "git"]
 assignee = "codex"
 model = "gpt-5.5"
+blocked_reason = "land conflict retained for repair (task 297, run run-1781503652855-2dfd0cb1, branch harness/run-1781503652855-2dfd0cb1); resolver already attempted and the branch still conflicted. Repair: rebase the retained branch onto the target branch, resolve all conflict markers while keeping both reviewed intents, commit the resolved branch, move harness/run-1781503652855-2dfd0cb1 to that commit if you used a scratch branch, then run dispatch-reland run-1781503652855-2dfd0cb1."
 body = """
 Dogfooding evidence, 2026-06-15 (ccxt-distill Phase 5 domain wave). Tasks 9-14 dispatched in parallel under concurrency_cap=6 (each task designed disjoint-source-file per its PARALLEL-SAFETY CONTRACT: only its own src/extract/domains/<name>.ts + test, registered via Task 7 auto-discovery, no shared cli.ts/pipeline.ts edit). The disjoint-source design worked — the ONLY shared file was CHANGELOG.md.
 

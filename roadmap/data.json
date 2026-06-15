@@ -13260,7 +13260,7 @@
       "id": "297",
       "phase": 20,
       "bundle": "autolanding",
-      "status": "in_progress",
+      "status": "blocked",
       "title": "Lander resolver still fails 5/5 trivial additive CHANGELOG keep-both conflicts post-293; eliminate the additive-file conflict class mechanically",
       "scores": {
         "d": 3,
@@ -13292,6 +13292,7 @@
       "created_at": "2026-06-15",
       "started_at": "2026-06-15",
       "scored_at": "2026-06-15",
+      "blocked_reason": "land conflict retained for repair (task 297, run run-1781503652855-2dfd0cb1, branch harness/run-1781503652855-2dfd0cb1); resolver already attempted and the branch still conflicted. Repair: rebase the retained branch onto the target branch, resolve all conflict markers while keeping both reviewed intents, commit the resolved branch, move harness/run-1781503652855-2dfd0cb1 to that commit if you used a scratch branch, then run dispatch-reland run-1781503652855-2dfd0cb1.",
       "cross_repo": []
     },
     {
