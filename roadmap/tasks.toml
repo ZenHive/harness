@@ -9043,7 +9043,7 @@ shipped_in = "10c3e57c62db0f336d25b72c63c0ed2ba12b81eb"
 id = "300"
 phase = 20
 bundle = "autolanding"
-status = "pending"
+status = "done"
 title = "Consolidate @recoverable_code_reload_states (Run + Worker)"
 scores = { d = 2, b = 2, u = 2 }
 acceptance_criteria = ["Single definition (or predicate function) for the recoverable code-reload states used from both Run and Run.Worker.", "Worker still handles legacy bare {:undef,:function_clause} wrapped only as {:run_crashed, raw} for the DOWN path (or the unification makes the wrap always present).", "Comments cross-reference the shared source; no behavior change to crash recording, retention, or recovery verbs."]
@@ -9060,6 +9060,33 @@ Future additions of mid-review recoverable states, or a rename, would require sy
 Extract to a single source of truth (e.g. a @doc false `recoverable_code_reload_state?/1` predicate in `Harness.Run` or a value exported from `Harness.Run.Result`, or a small internal constant module) and update both sites. Preserve the worker's bare-reason fallbacks for the pre-Task-299 DOWN path shape until the crash record always carries the wrapped form.
 
 Pure maintenance / DRY follow-up surfaced during post-merge audit of a6dd6e3 (10c3e57 delivery). No behavior or wire change.
+"""
+implemented = "Extracted recoverable_code_reload_states/0 (@doc false) in Harness.Run as the single source; Run.Worker derives its compile-time guard constant from it. Guards unchanged, no behavior change."
+created_at = "2026-06-15"
+scored_at = "2026-06-15"
+done_at = "2026-06-15"
+shipped_in = "4b36aad667fd3508f9a3ed34b7c7a585ff94dcbb"
+
+[[task]]
+id = "301"
+phase = 19
+bundle = "model-availability"
+status = "pending"
+title = "list_available_models conflates 'no catalog' with 'probed-but-none-selected' — distinguish the two diagnostic states"
+scores = { d = 1, b = 3, u = 2 }
+acceptance_criteria = ['list_available_models/2 returns THREE distinguishable shapes instead of two: (a) models present -> {:ok, %{catalog_status: "available", models: [...]}}; (b) a probed/declared universe EXISTS but the operator-selected subset is empty -> {:ok, %{catalog_status: "probed_none_selected", models: [], universe_count: N}}; (c) no universe at all (probe failed / nothing declared / no builtin) -> {:ok, %{catalog_status: "unavailable", models: []}}. The (b) vs (c) split is decided by consulting catalog_universe/1: non-empty universe + empty selection = probed_none_selected; empty universe = unavailable.', "Backward-compat: the existing catalog_unavailable boolean key stays present and is true for BOTH (b) and (c) so current callers do not break; catalog_status is the new precise field. Update the api() returns description to document all three statuses.", "No change to list_available/1 (the dispatch-gate read path), to catalog/1 (Task 291 deliberately returns the SELECTED subset — do NOT revert that), or to the block/availability semantics. This is a DIAGNOSTIC-LABEL fix at the MCP boundary only.", "Tests in test/harness/model_availability_test.exs cover all three states: available (a model selected into static), probed_none_selected (a non-empty universe via a seeded probe cache with empty static selection -> universe_count > 0, status probed_none_selected), and unavailable (an agent with no builtin, no static, no probe cache).", "mix precommit green on the touched files"]
+out_of_scope = ["Reverting Task 291's universe-vs-selected split (catalog/1 must keep returning the selected subset)", "Auto-selecting / falling back to the probed universe in list_available (that would undo 291 and the operator-curation gate)", "Changing the settings Model-catalog UI card (that is Task 291, done)"]
+files_to_modify = ["lib/harness/model_availability.ex", "test/harness/model_availability_test.exs"]
+touches = ["lib/harness/model_availability.ex", "lib/harness/manifest.ex", "test/harness/model_availability_test.exs"]
+domains = ["otp"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Reported 2026-06-15 via dogfooding: model_availability-list_available_models("cursor") returns {:ok, %{catalog_unavailable: true, models: []}} even though the node holds a FULLY PROBED 150-model cursor catalog (:model_catalogs, fetched_at today). The diagnostic is misleading: "unavailable" reads as "probe failed / CLI absent / no catalog", but the real state is "catalog probed, operator has selected zero models into the static subset".
+
+Verified live: :model_catalog_static = :not_found (no selection persisted for ANY agent), cursor catalog_universe = 150 models all selected?: false, list_available(:cursor) = {:error, :catalog_unavailable}. The probe-cache key (:model_catalogs) and the read key (:model_catalog_static) are correctly disjoint by Task 291's design (catalog/1 returns the operator-SELECTED subset); the operator simply never toggled any cursor model in /harness/settings. That selection gate is intended. What is NOT intended is the response collapsing "no universe" and "universe-but-nothing-selected" into the same catalog_unavailable: true — the caller cannot tell "go select some models" from "the CLI probe is broken / re-probe".
+
+Fix is diagnostic-only at the MCP boundary (list_available_models/2, lib/harness/model_availability.ex ~L212): when list_available returns :catalog_unavailable, consult catalog_universe/1 to emit catalog_status "probed_none_selected" (universe non-empty) vs "unavailable" (universe empty), keeping the legacy catalog_unavailable boolean for back-compat. Do not touch the dispatch gate, catalog/1, or the selection model.
 """
 created_at = "2026-06-15"
 scored_at = "2026-06-15"
