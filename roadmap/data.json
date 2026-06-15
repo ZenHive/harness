@@ -13083,7 +13083,7 @@
       "id": "293",
       "phase": 20,
       "bundle": "autolanding",
-      "status": "in_progress",
+      "status": "done",
       "title": "Lander resolver follow-up: same-function conflicts defeat the auto-resolver; manual reland bypasses it entirely",
       "scores": {
         "d": 3,
@@ -13106,10 +13106,15 @@
         "Preventing the collision in the first place (sibling collision-aware-dispatch task — that is the primary fix)",
         "Re-verification on reland (the reviewer already approved both sides; resolver reconciles markers only)"
       ],
+      "shipped_in": "d61d25d76712fd0d5b80e47da2a4f26efeb0a69a",
       "body": "Surfaced by the same 2026-06-15 incident. Findings so far: Task 189's Harness.Lander.Resolver exists and the AUTO-land path invokes it (lander.ex resolve_or_abort), but task 19 + task 2's first auto-lands BOTH settled :conflict_retained — i.e. the resolver agent ran and could not reconcile the conflicts (both sides edited the same buildCli function / SUBCOMMANDS list to register a new subcommand). Manual recovery required a human (this session) hand-merging src/cli.ts + test/cli.test.ts + CHANGELOG.md per branch, re-verifying npm run check (76 then 86 tests green), moving the harness/<run-id> branch ref to the resolved commit, then dispatch-reland (which, being a plain rebase onto the now-disjoint base, ff-pushed cleanly).\n\nTwo concrete gaps: (1) the resolver loses on same-function/same-list additive edits — exactly the case keep-both should win — so either its context/strategy needs work or the class is explicitly out of scope; (2) manual dispatch-reland routes {:conflict,_} straight to :manual_reland_conflict (lander/resilience.ex:128, manual_reland: true), deliberately skipping the resolver, so a real content conflict can never self-heal through reland — the operator must hand-merge and move the branch ref first (as done this session). Decide whether that bypass is right or whether reland should be able to call the resolver.\n",
       "created_at": "2026-06-15",
       "started_at": "2026-06-15",
+      "done_at": "2026-06-15",
       "scored_at": "2026-06-15",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781487644297-68100b05, d61d25d76712fd0d5b80e47da2a4f26efeb0a69a).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
