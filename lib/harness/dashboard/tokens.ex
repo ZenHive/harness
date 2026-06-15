@@ -261,22 +261,23 @@ defmodule Harness.Dashboard.Tokens do
       th, td { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--rule); }
       th { font-weight: 600; color: var(--text-subtle); font-family: var(--font-display); font-size: var(--text-sm); }
 
-      /* Sortable column header — a bare button styled to read as the th label,
-         not a UA control (Harness.Dashboard.KPILive, Task 115). */
-      button.sort-th {
-        appearance: none;
-        background: none;
-        border: 0;
-        padding: 0;
-        margin: 0;
-        cursor: pointer;
-        color: inherit;
-        font: inherit;
-        letter-spacing: inherit;
-        transition: color var(--motion-fast) var(--ease-out);
+      /* Transposed agent ledger (Harness.Dashboard.KPILive :agents) — metrics
+         down the rows, one column per agent. The leading metric-name column is a
+         sticky row header so it stays visible while the agent columns scroll. */
+      .kpi-matrix th[scope="row"] {
+        text-align: left;
+        white-space: nowrap;
+        color: var(--text);
+        position: sticky;
+        left: 0;
+        background: var(--surface);
       }
-      button.sort-th:hover { color: var(--text); }
-      button.sort-th:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+      .kpi-matrix thead th[scope="col"] { text-align: left; }
+      .kpi-matrix thead th[scope="col"]:first-child {
+        position: sticky;
+        left: 0;
+        background: var(--surface);
+      }
 
       /* Bucket badges — glyph + label, classified per bucket */
       .bucket {

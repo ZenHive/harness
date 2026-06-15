@@ -2,7 +2,8 @@ defmodule Harness.Dashboard.KPILiveTest do
   @moduledoc """
   `Phoenix.LiveViewTest` coverage for `Harness.Dashboard.KPILive` (Task 115):
   the aggregated per-agent ledger renders, the empty state is explicit (not a
-  table of zeros), and the columns are sortable.
+  table of zeros), and the dedicated agents page renders the transposed matrix
+  (metrics down the rows, one column per agent).
 
   `async: false` — the setup overrides the global `:result_store` config to an
   isolated tmp root so the aggregate-all ledger reflects only this test's seeded
@@ -112,7 +113,7 @@ defmodule Harness.Dashboard.KPILiveTest do
       :ok
     end
 
-    test "renders one row per agent with the rolled-up values on the agents page", %{conn: conn} do
+    test "renders one column per agent with the rolled-up values on the agents page", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/harness/kpi/agents")
 
       assert html =~ "claude"
@@ -259,19 +260,17 @@ defmodule Harness.Dashboard.KPILiveTest do
       assert html =~ "dead"
     end
 
-    test "columns are sortable on the agents page — clicking a header reorders the rows", %{conn: conn} do
-      {:ok, view, html} = live(conn, "/harness/kpi/agents")
+    test "the agents page renders the transposed matrix — metrics as rows, agents as columns", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/harness/kpi/agents")
 
-      # Default sort is run_count desc: claude (2 runs) leads codex (1 run).
+      # Metrics are now row headers (scope="row"), not sortable column buttons.
+      assert html =~ ~s(<th scope="row">Runs</th>)
+      assert html =~ ~s(<th scope="row">Success</th>)
+      refute html =~ ~s(phx-value-col="agent")
+
+      # Column order is a stable run_count-desc default: claude (2 runs) before
+      # codex (1 run) in the header row.
       assert before?(html, "claude", "codex")
-
-      # Sort by agent (new column ⇒ desc): "codex" > "claude", so codex leads.
-      sorted = view |> element(~s|button[phx-value-col="agent"]|) |> render_click()
-      assert before?(sorted, "codex", "claude")
-
-      # Re-click flips to asc: claude leads again.
-      resorted = view |> element(~s|button[phx-value-col="agent"]|) |> render_click()
-      assert before?(resorted, "claude", "codex")
     end
   end
 
