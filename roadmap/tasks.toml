@@ -8814,7 +8814,7 @@ scored_at = "2026-06-15"
 id = "293"
 phase = 20
 bundle = "autolanding"
-status = "pending"
+status = "in_progress"
 title = "Lander resolver follow-up: same-function conflicts defeat the auto-resolver; manual reland bypasses it entirely"
 scores = { d = 3, b = 3, u = 2 }
 acceptance_criteria = ["Investigate why Lander.Resolver (Task 189) declined/failed the 2026-06-15 ccxt-distill task-19/task-2 conflicts (both auto-lands settled :conflict_retained) — pull the resolver transcripts and record the failure mode (markers left, agent declined, or bad context)", "Decide + implement: either improve the resolver's success on same-function/same-list edits (e.g. richer both-intents context, keep-both strategy for additive list/registration edits) OR document the class as resolver-out-of-scope with a clear operator path", "Decide whether manual dispatch-reland on a {:conflict,_} should optionally invoke the resolver instead of always routing to :manual_reland_conflict (resilience.ex:128) — today operator reland is plain-rebase-only, so a content conflict can never self-heal via reland", "Whatever the decision, the blocked_reason / driver guidance tells the operator HOW to resolve (manual three-way merge steps or reland-with-resolver), not just 'resolve then dispatch-reland'", "Covered by resilience_test.exs / resolver tests"]
@@ -8825,4 +8825,5 @@ Surfaced by the same 2026-06-15 incident. Findings so far: Task 189's Harness.La
 Two concrete gaps: (1) the resolver loses on same-function/same-list additive edits — exactly the case keep-both should win — so either its context/strategy needs work or the class is explicitly out of scope; (2) manual dispatch-reland routes {:conflict,_} straight to :manual_reland_conflict (lander/resilience.ex:128, manual_reland: true), deliberately skipping the resolver, so a real content conflict can never self-heal through reland — the operator must hand-merge and move the branch ref first (as done this session). Decide whether that bypass is right or whether reland should be able to call the resolver.
 """
 created_at = "2026-06-15"
+started_at = "2026-06-15"
 scored_at = "2026-06-15"
