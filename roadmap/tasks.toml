@@ -8975,7 +8975,7 @@ shipped_in = "f857a4977f0503710c0444de57de0c681a1fe3aa"
 id = "298"
 phase = 19
 bundle = "dashboard-chrome"
-status = "in_progress"
+status = "done"
 title = "Move the agent KPI ledger to its own full page (/harness/kpi/agents)"
 scores = { d = 2, b = 2, u = 1 }
 markers = ["parallel"]
@@ -8993,6 +8993,11 @@ own full page so it has room to breathe, and keep /harness/kpi as the at-a-glanc
 overview (fleet strip + the narrower secondary tables + a link through to the full
 ledger). Pure presentation/routing split — no KPI/aggregation logic changes.
 """
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1781506408375-30ba38e4, 99d5597ada85d7fa713ce787d31c69453862d2d2)."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-06-15"
 started_at = "2026-06-15"
 scored_at = "2026-06-15"
+done_at = "2026-06-15"
+shipped_in = "99d5597ada85d7fa713ce787d31c69453862d2d2"
