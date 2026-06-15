@@ -13215,7 +13215,7 @@
       "id": "296",
       "phase": 20,
       "bundle": "dispatch-economy",
-      "status": "in_progress",
+      "status": "done",
       "title": "MCP transport 30s GenServer.call ceiling defeats every blocking dispatch tool",
       "scores": {
         "d": 3,
@@ -13245,10 +13245,15 @@
         "mcp",
         "otp"
       ],
+      "shipped_in": "46ae5b27f8ed8d6b6406025ddbf000ec3a437a6b",
       "body": "Observed 2026-06-15 calling dispatch-await_runs over MCP to await two in-flight ccxt-distill runs (tasks 4/5). The tool blocked server-side as designed, but the request failed at the transport layer:\n\n  MCP transport event: session_call_failed\n  reason: {:timeout, {GenServer, :call, [#PID, {:mcp_request, %{\"name\" => \"dispatch-await_runs\", ...}}, 30000]}}\n\nThe anubis StreamableHTTP transport handles each tools/call via a GenServer.call with a hardcoded 30_000ms timeout. Any blocking tool that waits longer than 30s exceeds this ceiling and the MCP request dies, even though the tool's own timeout_ms is 30 min and the run keeps going. This silently defeats the entire purpose of the blocking-await design:\n\n  - dispatch-await (Task ~ dispatch__await): blocks on one run\n  - dispatch-await_runs (Task 289): blocks on a set of runs\n  - dispatch-compare: blocks until all adapters settle\n\nAll three are unusable over MCP for any wait > 30s - i.e. essentially always, since implement->review->land cycles take minutes. The orchestrator is forced back to dispatch-status poll loops, which is exactly what 289 was filed to eliminate.\n\nInvestigation paths: the GenServer.call timeout lives in anubis_mcp's StreamableHTTP transport request dispatch (deps/anubis_mcp). Options: (a) configure/override the transport's call timeout for the harness MCP child spec; (b) make blocking tools return a progress/streaming response instead of holding one synchronous call; (c) cap harness blocking tools below 30s and document the ceiling (worst option - reintroduces polling). Prefer (a) if anubis exposes the timeout, else upstream it.\n\nDiscovered while dogfooding ccxt-distill dispatch; pairs with Task 289 (the tool that exposed the ceiling) and Task 290 (push transport, the async alternative).\n",
       "created_at": "2026-06-15",
       "started_at": "2026-06-15",
+      "done_at": "2026-06-15",
       "scored_at": "2026-06-15",
+      "implemented": "Landed by cursor via merge-train; reviewer-approved (run run-1781503652517-ee28c43a, 46ae5b27f8ed8d6b6406025ddbf000ec3a437a6b).",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     },
     {
