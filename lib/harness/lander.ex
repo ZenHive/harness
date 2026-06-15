@@ -65,6 +65,9 @@ defmodule Harness.Lander do
 
   require Logger
 
+  @default_additive_conflict_files ["CHANGELOG.md"]
+  @resolver_witness_header "Harness resolver witness: "
+
   @typedoc "The settled run a landing job carries (built by the worker from Oban args)."
   @type request :: %{
           :project => Project.t(),
@@ -328,6 +331,35 @@ defmodule Harness.Lander do
   defp resolve_or_abort(%Worktree{path: path} = worktree, base_sha, request, conflict_output) do
     OpsFeed.broadcast(Op.land_stage(request, :resolving))
 
+    case resolve_additive_conflicts(path) do
+      :resolved_all ->
+        continue_mechanical_resolution(path, request, conflict_output)
+
+      {:remaining, _files} ->
+        resolve_with_agent(worktree, base_sha, request, conflict_output)
+
+      {:error, reason} ->
+        Logger.info("harness lander: additive conflict union failed for task #{request.task_id} (#{inspect(reason)})")
+        resolve_with_agent(worktree, base_sha, request, conflict_output)
+    end
+  end
+
+  @spec continue_mechanical_resolution(String.t(), request(), String.t()) :: {:ok, String.t()} | {:conflict, String.t()}
+  defp continue_mechanical_resolution(path, request, conflict_output) do
+    with :ok <- assert_resolved(path),
+         {:ok, tip} <- continue_rebase(path) do
+      Logger.info("harness lander: mechanically union-merged additive conflict for task #{request.task_id}")
+      {:ok, tip}
+    else
+      {:error, reason} ->
+        _ = Git.run(["rebase", "--abort"], path)
+        {:conflict, witness_conflict(conflict_output, "mechanical additive union failed: #{inspect(reason)}")}
+    end
+  end
+
+  @spec resolve_with_agent(Worktree.t(), String.t(), request(), String.t()) ::
+          {:ok, String.t()} | {:conflict, String.t()}
+  defp resolve_with_agent(%Worktree{path: path} = worktree, base_sha, request, conflict_output) do
     with :ok <- run_resolver(worktree, base_sha, request),
          :ok <- stage_all(path),
          :ok <- assert_resolved(path),
@@ -337,14 +369,106 @@ defmodule Harness.Lander do
     else
       {:error, reason} ->
         _ = Git.run(["rebase", "--abort"], path)
+        witness = resolver_witness(reason)
 
         Logger.info(
           "harness lander: merge-resolver fell back to re-dispatch for task #{request.task_id} (#{inspect(reason)})"
         )
 
-        {:conflict, conflict_output}
+        {:conflict, witness_conflict(conflict_output, witness)}
     end
   end
+
+  @spec resolve_additive_conflicts(String.t()) :: :resolved_all | {:remaining, [String.t()]} | {:error, term()}
+  defp resolve_additive_conflicts(path) do
+    with {:ok, files} <- conflicted_files(path),
+         :ok <- union_additive_files(path, Enum.filter(files, &additive_conflict_file?/1)),
+         {:ok, remaining} <- conflicted_files(path) do
+      if remaining == [], do: :resolved_all, else: {:remaining, remaining}
+    end
+  end
+
+  @spec union_additive_files(String.t(), [String.t()]) :: :ok | {:error, term()}
+  defp union_additive_files(path, files) do
+    Enum.reduce_while(files, :ok, fn file, :ok ->
+      case union_additive_file(path, file) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, {:additive_union_failed, file, reason}}}
+      end
+    end)
+  end
+
+  @spec additive_conflict_file?(String.t()) :: boolean()
+  defp additive_conflict_file?(file), do: file in additive_conflict_files()
+
+  @spec additive_conflict_files() :: [String.t()]
+  defp additive_conflict_files do
+    :harness
+    |> Application.get_env(:lander, [])
+    |> Keyword.get(:additive_conflict_files, @default_additive_conflict_files)
+  end
+
+  @spec union_additive_file(String.t(), String.t()) :: :ok | {:error, term()}
+  defp union_additive_file(path, file) do
+    tmp_dir = Path.join(System.tmp_dir!(), "harness-union-#{System.unique_integer([:positive])}")
+
+    try do
+      with :ok <- File.mkdir_p(tmp_dir),
+           {:ok, base} <- staged_blob(path, file, 1),
+           {:ok, ours} <- staged_blob(path, file, 2),
+           {:ok, theirs} <- staged_blob(path, file, 3),
+           :ok <- write_union_inputs(tmp_dir, base, ours, theirs),
+           :ok <- merge_union(path, tmp_dir),
+           {:ok, merged} <- File.read(Path.join(tmp_dir, "ours")),
+           :ok <- File.write(Path.join(path, file), merged),
+           {:ok, _output} <- Git.run(["add", "--", file], path) do
+        :ok
+      end
+    after
+      _ = File.rm_rf(tmp_dir)
+    end
+  end
+
+  @spec staged_blob(String.t(), String.t(), 1 | 2 | 3) :: {:ok, String.t()} | {:error, term()}
+  defp staged_blob(path, file, stage), do: Git.run(["show", ":#{stage}:#{file}"], path)
+
+  @spec write_union_inputs(String.t(), String.t(), String.t(), String.t()) :: :ok | {:error, term()}
+  defp write_union_inputs(tmp_dir, base, ours, theirs) do
+    with :ok <- File.write(Path.join(tmp_dir, "base"), base),
+         :ok <- File.write(Path.join(tmp_dir, "ours"), ours) do
+      File.write(Path.join(tmp_dir, "theirs"), theirs)
+    end
+  end
+
+  @spec merge_union(String.t(), String.t()) :: :ok | {:error, term()}
+  defp merge_union(path, tmp_dir) do
+    args = ["merge-file", "--union", Path.join(tmp_dir, "ours"), Path.join(tmp_dir, "base"), Path.join(tmp_dir, "theirs")]
+
+    case System.cmd("git", args, cd: path, stderr_to_stdout: true) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {:merge_file_failed, status, output}}
+    end
+  end
+
+  @spec conflicted_files(String.t()) :: {:ok, [String.t()]} | {:error, term()}
+  defp conflicted_files(path) do
+    case Git.run(["diff", "--name-only", "--diff-filter=U"], path) do
+      {:ok, output} -> {:ok, String.split(output, "\n", trim: true)}
+      {:error, reason} -> {:error, {:conflict_list_failed, reason}}
+    end
+  end
+
+  @spec resolver_witness(term()) :: String.t()
+  defp resolver_witness({:unresolved_markers, _output}), do: "agent spawned; unresolved conflict markers remain"
+  defp resolver_witness({:stage_failed, reason}), do: "agent spawned; staging failed: #{inspect(reason)}"
+
+  defp resolver_witness({:rebase_continue_failed, reason}),
+    do: "agent spawned; rebase continue failed: #{inspect(reason)}"
+
+  defp resolver_witness(reason), do: "selection/spawn failed: #{inspect(reason)}"
+
+  @spec witness_conflict(String.t(), String.t()) :: String.t()
+  defp witness_conflict(output, witness), do: output <> "\n\n" <> @resolver_witness_header <> witness <> "\n"
 
   @spec run_resolver(Worktree.t(), String.t(), request()) :: :ok | {:error, term()}
   defp run_resolver(%Worktree{} = worktree, base_sha, request) do

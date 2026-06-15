@@ -89,6 +89,7 @@ defmodule Harness.LanderTest do
   alias Harness.Worktree
 
   @moduletag :tmp_dir
+  @additive_changelog_wave_runs 3
   @executable_file_mode 0o755
 
   # ── git fixture: a bare `origin` + a working clone, so the lander's
@@ -396,6 +397,32 @@ defmodule Harness.LanderTest do
       on_exit(fn -> Application.delete_env(:harness, :lander_resolver) end)
     end
 
+    test "additive CHANGELOG wave lands every branch without invoking the resolver", ctx do
+      stage_changelog_base(ctx)
+
+      put_resolver(fn _worktree, opts ->
+        send(self(), {:unexpected_resolver, opts})
+        {:error, :resolver_should_not_run}
+      end)
+
+      requests =
+        for index <- 1..@additive_changelog_wave_runs do
+          stage_changelog_run(ctx, "changelog-run-#{index}", "- task #{index}\n")
+        end
+
+      for request <- requests do
+        assert {:landed, _landed} = Lander.land(request)
+      end
+
+      changelog = GitFixture.git!(ctx.origin, ["show", "refs/heads/main:CHANGELOG.md"])
+
+      for index <- 1..@additive_changelog_wave_runs do
+        assert changelog =~ "- task #{index}"
+      end
+
+      refute_receive {:unexpected_resolver, _opts}, 100
+    end
+
     test "a resolver that reconciles the markers lands both sides", ctx do
       moved_main = stage_conflict(ctx)
 
@@ -425,7 +452,8 @@ defmodule Harness.LanderTest do
         :ok
       end)
 
-      assert {:conflict, _output} = Lander.land(ctx.request)
+      assert {:conflict, output} = Lander.land(ctx.request)
+      assert output =~ "resolver witness: agent spawned; unresolved conflict markers remain"
       assert sha(ctx.origin, "refs/heads/main") == moved_main
     end
 
@@ -433,7 +461,8 @@ defmodule Harness.LanderTest do
       moved_main = stage_conflict(ctx)
       put_resolver(fn _worktree, _opts -> {:error, :no_resolver} end)
 
-      assert {:conflict, _output} = Lander.land(ctx.request)
+      assert {:conflict, output} = Lander.land(ctx.request)
+      assert output =~ "resolver witness: selection/spawn failed: :no_resolver"
       assert sha(ctx.origin, "refs/heads/main") == moved_main
       assert branch_exists?(ctx.repo, ctx.request.branch)
       assert File.dir?(ctx.run_worktree.path)
@@ -528,6 +557,7 @@ defmodule Harness.LanderTest do
 
       assert {:cancel, {:conflict_retained, reason}} = LanderWorker.perform(%Oban.Job{args: args})
       assert reason =~ "dispatch-reland"
+      assert reason =~ "resolver witness: selection/spawn failed: :no_resolver"
       assert sha(ctx.origin, "refs/heads/main") == moved_main
       refute ancestor?(ctx.origin, conflicting_tip, "refs/heads/main")
     end
@@ -593,6 +623,32 @@ defmodule Harness.LanderTest do
       Application.delete_env(:harness, :notification_sinks)
       Application.delete_env(:harness, :test_capture_pid)
     end)
+  end
+
+  @spec stage_changelog_base(map()) :: String.t()
+  defp stage_changelog_base(ctx) do
+    File.write!(Path.join(ctx.repo, "CHANGELOG.md"), "## [Unreleased]\n\n### Added\n")
+    GitFixture.git!(ctx.repo, ["add", "CHANGELOG.md"])
+    GitFixture.git!(ctx.repo, ["commit", "-m", "seed changelog"])
+    GitFixture.git!(ctx.repo, ["push", "origin", "main"])
+    sha(ctx.origin, "refs/heads/main")
+  end
+
+  @spec stage_changelog_run(map(), String.t(), String.t()) :: map()
+  defp stage_changelog_run(ctx, run_id, bullet) do
+    {:ok, run_worktree} = Worktree.create(ctx.project, id: run_id, base_ref: "origin/main")
+    File.write!(Path.join(run_worktree.path, "CHANGELOG.md"), "## [Unreleased]\n\n### Added\n#{bullet}")
+    GitFixture.git!(run_worktree.path, ["add", "CHANGELOG.md"])
+    GitFixture.git!(run_worktree.path, ["commit", "-m", "append #{run_id} changelog"])
+
+    %{
+      project: ctx.project,
+      run_id: run_id,
+      task_id: run_id,
+      agent: :claude,
+      reviewer: :codex,
+      branch: "harness/" <> run_id
+    }
   end
 
   @spec stage_origin_advancing_hook(String.t()) :: :ok
