@@ -13247,6 +13247,41 @@
       "created_at": "2026-06-15",
       "scored_at": "2026-06-15",
       "cross_repo": []
+    },
+    {
+      "id": "297",
+      "phase": 20,
+      "bundle": "autolanding",
+      "status": "pending",
+      "title": "Lander resolver still fails 5/5 trivial additive CHANGELOG keep-both conflicts post-293; eliminate the additive-file conflict class mechanically",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 2
+      },
+      "eff": 1.0,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Reproduce/confirm: in a parallel wave where N runs each append a CHANGELOG.md `### Added` bullet, the first lands clean and the rest auto-land-block with a CHANGELOG-only conflict the auto-resolver leaves :conflict_retained — despite resolver.ex:154-157 already instructing KEEP-BOTH for additive edits (added by Task 293).",
+        "Witness resolver attempts: record (best-effort, mantra-clean — count facts, not verdicts) whether the resolver agent was spawned, whether it left markers, or whether selection/spawn failed, so a :conflict_retained is diagnosable WITHOUT hand-inspecting the retained branch (resolver output is not persisted today — resolver.ex:33).",
+        "Eliminate the additive-file conflict class MECHANICALLY rather than via the agent: a union-merge path for provably-append-only files (e.g. a `merge=union` gitattributes driver applied in the landing worktree, or `git merge-file --union`) so CHANGELOG.md (and similar append-only artifacts) never reach the resolver. Union of an append-only changelog is counting/mechanics, not judgment — keep it in code.",
+        "The agent resolver stays for GENUINE same-region semantic conflicts (the Task 189/293 same-function/same-list case); the mechanical union path is tried first for the configured additive-file set and short-circuits the resolver on success.",
+        "Covered by lander/resilience tests: a wave fixture with N additive CHANGELOG appends lands all N with zero manual salvage; a genuine same-region conflict still routes to the resolver then block-on-failure.",
+        "CHANGELOG entry under [Unreleased]."
+      ],
+      "domains": [
+        "otp",
+        "git"
+      ],
+      "body": "Dogfooding evidence, 2026-06-15 (ccxt-distill Phase 5 domain wave). Tasks 9-14 dispatched in parallel under concurrency_cap=6 (each task designed disjoint-source-file per its PARALLEL-SAFETY CONTRACT: only its own src/extract/domains/<name>.ts + test, registered via Task 7 auto-discovery, no shared cli.ts/pipeline.ts edit). The disjoint-source design worked — the ONLY shared file was CHANGELOG.md.\n\nResult: task 14 landed clean (first to land); tasks 9, 10, 11, 12, 13 ALL auto-land-blocked with a conflict on CHANGELOG.md ONLY. Every conflict was a trivial diff3 additive append (HEAD = the previously-landed task's `### Added` bullet; incoming = this task's bullet; resolution = keep both). The post-293 resolver — which carries explicit \"Default to KEEPING BOTH sides when the changes are additive\" guidance (resolver.ex:154-157) plus authoritative conflict excerpts (Task 293's stated fix) — STILL left all 5 :conflict_retained.\n\nManual salvage (this session): a 5-line keep-both awk on CHANGELOG.md resolved every one; dispatch-reland then ff-pushed clean. Tasks 11/12/13 each had TWO CHANGELOG-touching commits (delivery + reviewer-fixes), so each needed two keep-both steps — still all trivial. 5 manual salvages for one wave.\n\nSo the resolver fails on the SIMPLEST possible additive conflict despite being explicitly instructed to keep-both. Two gaps:\n\n1. NOT DIAGNOSABLE: resolver output isn't persisted (resolver.ex:33), so we can't tell from the record whether the resolver agent ran-and-left-markers, declined, or was never spawned (selection/cross-family-availability failure → :conflict_retained without the agent ever running). Add minimal witnessing.\n\n2. WRONG TOOL for additive files: a CHANGELOG append conflict is not a judgment call — `git merge=union` / `git merge-file --union` resolves it deterministically. Per the harness mantra (count facts in code; write meaning with an AI), union-merging an append-only changelog is mechanics, NOT judgment, so it belongs in code, not in an agent prompt. A union-merge driver for a configured additive-file set (CHANGELOG.md by default) applied in the landing worktree would eliminate this entire recurring salvage class with zero agent involvement, leaving the agent resolver for genuine same-region semantic conflicts (the Task 189/293 same-function case).\n\nFollow-up to the now-done Task 293 (which added the keep-both PROMPT guidance but, per this evidence, did not make the additive case reliable). Cross-ref Task 189 (resolver origin), Task 293 (prompt-context fix).\n",
+      "created_at": "2026-06-15",
+      "scored_at": "2026-06-15",
+      "cross_repo": []
     }
   ]
 }
