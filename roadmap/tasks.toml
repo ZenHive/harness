@@ -8828,3 +8828,29 @@ Two concrete gaps: (1) the resolver loses on same-function/same-list additive ed
 created_at = "2026-06-15"
 started_at = "2026-06-15"
 scored_at = "2026-06-15"
+
+[[task]]
+id = "294"
+phase = 20
+bundle = "dispatch-economy"
+status = "pending"
+title = "Settled witness event + FileSink for orchestrator wakeup"
+scores = { d = 2, b = 3, u = 3 }
+depends_on = [290]
+acceptance_criteria = ["Harness.Notification.Event gains :settled; Event.summary/1 covers it", "Harness.Run.settle/2 fires Notification.notify/1 with type :settled and an outcome map identical to dispatch-await's summarize projection (extract a shared public summarize_result/1 — no duplicate shape)", "Harness.Notification.FileSink appends one JSON line per event to a configured path (default ~/.harness/settled.jsonl); unconfigured path is a silent no-op", "FileSink registered in config.exs comments alongside CommandSink; failure-isolated (local rescue, never raises through Notification.notify/1)", "Tests: Event summary for :settled; FileSink append + malformed-path rescue; Run settle fires :settled to CaptureSink; payload matches Dispatch.summarize_result/1 for done and failed paths", "docs/orchestrator-push-sink-design.md cross-linked from FileSink @moduledoc; harness-driver SKILL mentions the tail-jsonl driver pattern in one paragraph"]
+out_of_scope = ["Orchestrator-side tail/watch implementation (documented only)", "Webhook or OS-notifier reference sinks", "Filtering FileSink to :settled only — all notification events may append; drivers filter by type"]
+files_to_modify = ["lib/harness/notification/event.ex", "lib/harness/notification/file_sink.ex", "lib/harness/notification.ex", "lib/harness/run.ex", "lib/harness/dispatch.ex", "config/config.exs", "test/harness/notification/file_sink_test.exs", "test/harness/run_test.exs"]
+touches = ["docs/orchestrator-push-sink-design.md", "skills/harness-driver/SKILL.md"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Implement the Task 290 spike: docs/orchestrator-push-sink-design.md.
+
+Add a :settled witness event fired from Harness.Run.settle/2 for every terminal run (:done/:failed — approve, reject, timed_out, etc.). The event outcome MUST be the same compact map dispatch-await returns (shared summarize_result/1 extracted from Dispatch).
+
+Ship Harness.Notification.FileSink: append-only JSONL to a configured path (default ~/.harness/settled.jsonl). One envelope per notify/1 with ts, type, ids, outcome, summary. Unconfigured => no-op. Read-only sink behaviour unchanged.
+
+Mantra-clean: mechanical settle facts only — no new routing or verdict logic in the sink.
+"""
+created_at = "2026-06-15"
+scored_at = "2026-06-15"

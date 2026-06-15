@@ -12963,7 +12963,7 @@
       },
       "eff": 1.5,
       "dep_layer": 0,
-      "unlocks": 0,
+      "unlocks": 1,
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
@@ -13099,6 +13099,58 @@
       "body": "Surfaced by the same 2026-06-15 incident. Findings so far: Task 189's Harness.Lander.Resolver exists and the AUTO-land path invokes it (lander.ex resolve_or_abort), but task 19 + task 2's first auto-lands BOTH settled :conflict_retained — i.e. the resolver agent ran and could not reconcile the conflicts (both sides edited the same buildCli function / SUBCOMMANDS list to register a new subcommand). Manual recovery required a human (this session) hand-merging src/cli.ts + test/cli.test.ts + CHANGELOG.md per branch, re-verifying npm run check (76 then 86 tests green), moving the harness/<run-id> branch ref to the resolved commit, then dispatch-reland (which, being a plain rebase onto the now-disjoint base, ff-pushed cleanly).\n\nTwo concrete gaps: (1) the resolver loses on same-function/same-list additive edits — exactly the case keep-both should win — so either its context/strategy needs work or the class is explicitly out of scope; (2) manual dispatch-reland routes {:conflict,_} straight to :manual_reland_conflict (lander/resilience.ex:128, manual_reland: true), deliberately skipping the resolver, so a real content conflict can never self-heal through reland — the operator must hand-merge and move the branch ref first (as done this session). Decide whether that bypass is right or whether reland should be able to call the resolver.\n",
       "created_at": "2026-06-15",
       "started_at": "2026-06-15",
+      "scored_at": "2026-06-15",
+      "cross_repo": []
+    },
+    {
+      "id": "294",
+      "phase": 20,
+      "bundle": "dispatch-economy",
+      "status": "pending",
+      "title": "Settled witness event + FileSink for orchestrator wakeup",
+      "scores": {
+        "d": 2,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 1.5,
+      "dep_layer": 1,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [
+        290
+      ],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "Harness.Notification.Event gains :settled; Event.summary/1 covers it",
+        "Harness.Run.settle/2 fires Notification.notify/1 with type :settled and an outcome map identical to dispatch-await's summarize projection (extract a shared public summarize_result/1 — no duplicate shape)",
+        "Harness.Notification.FileSink appends one JSON line per event to a configured path (default ~/.harness/settled.jsonl); unconfigured path is a silent no-op",
+        "FileSink registered in config.exs comments alongside CommandSink; failure-isolated (local rescue, never raises through Notification.notify/1)",
+        "Tests: Event summary for :settled; FileSink append + malformed-path rescue; Run settle fires :settled to CaptureSink; payload matches Dispatch.summarize_result/1 for done and failed paths",
+        "docs/orchestrator-push-sink-design.md cross-linked from FileSink @moduledoc; harness-driver SKILL mentions the tail-jsonl driver pattern in one paragraph"
+      ],
+      "out_of_scope": [
+        "Orchestrator-side tail/watch implementation (documented only)",
+        "Webhook or OS-notifier reference sinks",
+        "Filtering FileSink to :settled only — all notification events may append; drivers filter by type"
+      ],
+      "files_to_modify": [
+        "lib/harness/notification/event.ex",
+        "lib/harness/notification/file_sink.ex",
+        "lib/harness/notification.ex",
+        "lib/harness/run.ex",
+        "lib/harness/dispatch.ex",
+        "config/config.exs",
+        "test/harness/notification/file_sink_test.exs",
+        "test/harness/run_test.exs"
+      ],
+      "touches": [
+        "docs/orchestrator-push-sink-design.md",
+        "skills/harness-driver/SKILL.md"
+      ],
+      "body": "Implement the Task 290 spike: docs/orchestrator-push-sink-design.md.\n\nAdd a :settled witness event fired from Harness.Run.settle/2 for every terminal run (:done/:failed — approve, reject, timed_out, etc.). The event outcome MUST be the same compact map dispatch-await returns (shared summarize_result/1 extracted from Dispatch).\n\nShip Harness.Notification.FileSink: append-only JSONL to a configured path (default ~/.harness/settled.jsonl). One envelope per notify/1 with ts, type, ids, outcome, summary. Unconfigured => no-op. Read-only sink behaviour unchanged.\n\nMantra-clean: mechanical settle facts only — no new routing or verdict logic in the sink.\n",
+      "created_at": "2026-06-15",
       "scored_at": "2026-06-15",
       "cross_repo": []
     }
