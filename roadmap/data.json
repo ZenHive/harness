@@ -13127,7 +13127,7 @@
       "id": "294",
       "phase": 20,
       "bundle": "dispatch-economy",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Settled witness event + FileSink for orchestrator wakeup",
       "scores": {
         "d": 2,
@@ -13172,6 +13172,7 @@
       ],
       "body": "Implement the Task 290 spike: docs/orchestrator-push-sink-design.md.\n\nAdd a :settled witness event fired from Harness.Run.settle/2 for every terminal run (:done/:failed — approve, reject, timed_out, etc.). The event outcome MUST be the same compact map dispatch-await returns (shared summarize_result/1 extracted from Dispatch).\n\nShip Harness.Notification.FileSink: append-only JSONL to a configured path (default ~/.harness/settled.jsonl). One envelope per notify/1 with ts, type, ids, outcome, summary. Unconfigured => no-op. Read-only sink behaviour unchanged.\n\nMantra-clean: mechanical settle facts only — no new routing or verdict logic in the sink.\n",
       "created_at": "2026-06-15",
+      "started_at": "2026-06-15",
       "scored_at": "2026-06-15",
       "cross_repo": []
     },

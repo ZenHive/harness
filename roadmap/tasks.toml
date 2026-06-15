@@ -8854,7 +8854,7 @@ shipped_in = "d61d25d76712fd0d5b80e47da2a4f26efeb0a69a"
 id = "294"
 phase = 20
 bundle = "dispatch-economy"
-status = "pending"
+status = "in_progress"
 title = "Settled witness event + FileSink for orchestrator wakeup"
 scores = { d = 2, b = 3, u = 3 }
 depends_on = [290]
@@ -8874,6 +8874,7 @@ Ship Harness.Notification.FileSink: append-only JSONL to a configured path (defa
 Mantra-clean: mechanical settle facts only — no new routing or verdict logic in the sink.
 """
 created_at = "2026-06-15"
+started_at = "2026-06-15"
 scored_at = "2026-06-15"
 
 [[task]]
