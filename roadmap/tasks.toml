@@ -8870,3 +8870,19 @@ Mantra-clean: mechanical settle facts only — no new routing or verdict logic i
 """
 created_at = "2026-06-15"
 scored_at = "2026-06-15"
+
+[[task]]
+id = "295"
+phase = 19
+bundle = "dashboard-chrome"
+status = "done"
+title = "Run show page: render the focused run's roadmap task details (title/score/markers/criteria/body)"
+scores = { d = 2, b = 3, u = 1 }
+acceptance_criteria = ["The run show page (/harness/runs/:run_id) renders a Task section showing the roadmap task the run is working on: title, D score, markers as pills, acceptance-criteria list, and the full body in a collapsed <details>.", "Data is a LIVE read of the current roadmap via the read-only Harness.Roadmap.ingest/2 (project resolved from Status.project_name via ProjectRegistry.lookup/1), fetched once on :show (task_id is stable for the run; live-update/tick paths reuse the cached :task_item).", "Graceful degradation: a blank task_id/project, an unregistered project, or a task that drifted out of the roadmap resolves to nil and renders no Task section (the existing metadata still shows the task id) — a roadmap read never crashes the run page.", "Each sub-block is conditional (no score / no markers / no criteria / no body renders only what the task has).", "Tests: load_task_item/2 returns nil for blank id/project and for an unregistered project (no shell-out); live_test.exs green."]
+files_to_modify = ["lib/harness/dashboard/live.ex", "lib/harness/dashboard/tokens.ex", "test/harness/dashboard/live_test.exs"]
+body = "Operator-visibility gap: the run show page showed the task id but nothing about WHAT the task is, forcing a context switch to the roadmap to learn the task's intent/criteria. Adds a Task section sourced live from the roadmap (decided with the operator: live read over dispatched-snapshot; full body in a collapsible). Reuses the existing flat run-show structure (.field dl, .config-pill) and design tokens — no new visual identity. Hand-built in-session (backfill record)."
+implemented = "Added a task_section/1 component + load_task_item/2 (read-only Roadmap.ingest, project via ProjectRegistry.lookup) to Harness.Dashboard.Live; live-read Task section on the run show page with graceful nil-degradation; .task-* CSS in tokens.ex; load_task_item/2 fallback tests. live_test.exs green (64 passed)."
+delivered_by = "claude"
+created_at = "2026-06-15"
+scored_at = "2026-06-15"
+done_at = "2026-06-15"

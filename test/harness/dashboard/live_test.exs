@@ -681,6 +681,20 @@ defmodule Harness.Dashboard.LiveTest do
     end
   end
 
+  describe "load_task_item/2 (graceful roadmap resolution)" do
+    test "returns nil for a blank or missing task id or project name" do
+      assert Live.load_task_item(nil, "demo") == nil
+      assert Live.load_task_item("", "demo") == nil
+      assert Live.load_task_item("1", nil) == nil
+      assert Live.load_task_item("1", "") == nil
+    end
+
+    test "returns nil when the project is not registered (no roadmap read)" do
+      absent = "unregistered-#{System.unique_integer([:positive])}"
+      assert Live.load_task_item("1", absent) == nil
+    end
+  end
+
   defp socket_with_run(run_id) do
     %Socket{assigns: %{__changed__: %{}, run_id: run_id, run_status: nil}}
   end
@@ -698,7 +712,8 @@ defmodule Harness.Dashboard.LiveTest do
         agent_kind: nil,
         raw_view: false,
         last_seq: 0,
-        events_last_seq: 0
+        events_last_seq: 0,
+        task_item: nil
       }
     }
   end

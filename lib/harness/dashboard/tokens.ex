@@ -457,6 +457,42 @@ defmodule Harness.Dashboard.Tokens do
       .field dt { color: var(--text-subtle); }
       .field dd { margin: 0; font-family: var(--font-mono); }
 
+      /* === Task details (the focused run's roadmap task) === */
+
+      .task-details { margin-block: var(--space-4); }
+      .task-details .config-pill { margin-right: var(--space-2); }
+      .task-subhead {
+        margin: var(--space-3) 0 var(--space-1);
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .task-criteria {
+        margin: 0;
+        padding-left: var(--space-5);
+        font-size: var(--text-sm);
+        color: var(--text-subtle);
+      }
+      .task-criteria li { margin-block: var(--space-1); }
+      .task-body { margin-top: var(--space-3); }
+      .task-body summary {
+        cursor: pointer;
+        font-size: var(--text-sm);
+        color: var(--accent);
+      }
+      .task-body pre {
+        margin-top: var(--space-2);
+        padding: var(--space-3);
+        background: var(--surface-2);
+        border: 1px solid var(--rule);
+        border-radius: 0.4rem;
+        font-size: var(--text-sm);
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
       /* === Changed files / run diff (Harness.RunDiff) === */
 
       .changed-files { margin-block: var(--space-4); }

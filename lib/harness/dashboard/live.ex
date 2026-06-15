@@ -75,6 +75,8 @@ defmodule Harness.Dashboard.Live do
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
+  alias Harness.Roadmap
+  alias Harness.Roadmap.Item
   alias Harness.Run.LogRecord
   alias Harness.Run.Status
   alias Harness.RunDiff
@@ -141,6 +143,7 @@ defmodule Harness.Dashboard.Live do
      |> assign(:run_status, nil)
      |> assign(:run_diff, nil)
      |> assign(:run_id, nil)
+     |> assign(:task_item, nil)
      |> stream_configure(:active_runs, dom_id: &"active-#{&1.status.run_id}")
      |> stream_configure(:history, dom_id: &"hist-#{&1.status.run_id}")
      |> stream(:active_runs, [])
@@ -199,8 +202,41 @@ defmodule Harness.Dashboard.Live do
           load_historical(socket, run_id)
       end
 
-    maybe_load_diff(socket)
+    socket
+    |> assign_task_item()
+    |> maybe_load_diff()
   end
+
+  # Live read of the focused run's roadmap task (title/body/criteria/score/markers)
+  # so the show view can render *what* the agent is working on, not just the task
+  # id. Fetched once here on `:show` — the run's task_id is stable for its
+  # lifetime, so the live-update path (`refresh_focused_run/2`) never refetches and
+  # the per-tick refreshes reuse the cached `:task_item`. Reads degrade to `nil`
+  # (no Task section) when the project/task can't be resolved.
+  @spec assign_task_item(Socket.t()) :: Socket.t()
+  defp assign_task_item(%{assigns: %{run_status: %Status{} = status}} = socket) do
+    assign(socket, :task_item, load_task_item(status.task_id, status.project_name))
+  end
+
+  defp assign_task_item(socket), do: assign(socket, :task_item, nil)
+
+  # Resolve a roadmap task to its `%Item{}` via the read-only `Roadmap.ingest/2`,
+  # or `nil` on any miss: blank id/project, an unregistered project, or a task that
+  # drifted out of the roadmap (edited/deleted) since dispatch. Never raises — a
+  # roadmap read must not crash the run page.
+  @doc false
+  @spec load_task_item(String.t() | nil, String.t() | nil) :: Item.t() | nil
+  def load_task_item(task_id, project_name)
+      when is_binary(task_id) and task_id != "" and is_binary(project_name) and project_name != "" do
+    with {:ok, %Project{} = project} <- ProjectRegistry.lookup(project_name),
+         {:ok, %Item{} = item} <- Roadmap.ingest({:id, task_id}, project: project) do
+      item
+    else
+      _ -> nil
+    end
+  end
+
+  def load_task_item(_task_id, _project_name), do: nil
 
   @spec take_live_runs(Socket.t()) :: {[StatusView.run_entry()], Socket.t()}
   defp take_live_runs(%{assigns: %{live_runs_once: runs}} = socket) when is_list(runs) do
@@ -783,6 +819,8 @@ defmodule Harness.Dashboard.Live do
       <.kill_button run_id={@run_id} />
     </p>
 
+    <.task_section :if={@task_item != nil} item={@task_item} />
+
     <div :if={@run_status != nil}>
       <h2>Changed files</h2>
       <Components.edited_files_live
@@ -803,6 +841,42 @@ defmodule Harness.Dashboard.Live do
     <div :if={@raw_view}>
       <p :if={@transcript == ""}>Waiting for output…</p>
       <pre :if={@transcript != ""} class="transcript">{@transcript}</pre>
+    </div>
+    """
+  end
+
+  attr(:item, :map, required: true)
+
+  # The roadmap task the focused run is working on: title + score + markers as a
+  # `.field` block (matching the run metadata above it), the acceptance criteria
+  # as a list, and the full body in a collapsed `<details>` so it never dominates
+  # the page. Each block is conditional — a task with no score / no markers / no
+  # criteria / no body renders only what it has.
+  @spec task_section(map()) :: Rendered.t()
+  defp task_section(assigns) do
+    ~H"""
+    <div class="task-details">
+      <h2>Task</h2>
+      <dl class="field">
+        <dt>Title</dt>
+        <dd>{@item.title}</dd>
+        <dt :if={@item.d != nil}>Score (D)</dt>
+        <dd :if={@item.d != nil}>{@item.d}</dd>
+        <dt :if={@item.markers != []}>Markers</dt>
+        <dd :if={@item.markers != []}>
+          <span :for={marker <- @item.markers} class="config-pill">{to_string(marker)}</span>
+        </dd>
+      </dl>
+      <div :if={@item.acceptance_criteria != []}>
+        <h3 class="task-subhead">Acceptance criteria</h3>
+        <ul class="task-criteria">
+          <li :for={criterion <- @item.acceptance_criteria}>{criterion}</li>
+        </ul>
+      </div>
+      <details :if={@item.body not in [nil, ""]} class="task-body">
+        <summary>Body</summary>
+        <pre>{@item.body}</pre>
+      </details>
     </div>
     """
   end
