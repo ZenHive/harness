@@ -13229,6 +13229,8 @@
         "bug"
       ],
       "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
       "acceptance_criteria": [
         "A dispatch-await_runs / dispatch-await call that blocks server-side longer than 30s completes and returns its summary instead of failing the MCP request with session_call_failed {:timeout, {GenServer, :call, ..., 30000}}",
         "The fix raises or removes the transport-layer GenServer.call timeout for blocking tool requests so it tracks the tool's own timeout_ms (default 30 min), not a hardcoded 30s",
@@ -13266,6 +13268,8 @@
         "bug"
       ],
       "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
       "acceptance_criteria": [
         "Reproduce/confirm: in a parallel wave where N runs each append a CHANGELOG.md `### Added` bullet, the first lands clean and the rest auto-land-block with a CHANGELOG-only conflict the auto-resolver leaves :conflict_retained — despite resolver.ex:154-157 already instructing KEEP-BOTH for additive edits (added by Task 293).",
         "Witness resolver attempts: record (best-effort, mantra-clean — count facts, not verdicts) whether the resolver agent was spawned, whether it left markers, or whether selection/spawn failed, so a :conflict_retained is diagnosable WITHOUT hand-inspecting the retained branch (resolver output is not persisted today — resolver.ex:33).",

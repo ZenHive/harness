@@ -8903,6 +8903,8 @@ markers = ["bug"]
 acceptance_criteria = ["A dispatch-await_runs / dispatch-await call that blocks server-side longer than 30s completes and returns its summary instead of failing the MCP request with session_call_failed {:timeout, {GenServer, :call, ..., 30000}}", "The fix raises or removes the transport-layer GenServer.call timeout for blocking tool requests so it tracks the tool's own timeout_ms (default 30 min), not a hardcoded 30s", "dispatch-await, dispatch-await_runs, and dispatch-compare (all blocking) verified to hold a >30s wait over /harness/mcp without transport timeout", "A regression test exercises a blocking tool whose server-side wait exceeds the old 30s ceiling (synthetic slow tool or a real run awaited past 30s)"]
 out_of_scope = ["Push/callback delivery to the driver (Task 290 push-sink spike) - this is the pull/blocking path only", "Changing the blocking tools' own timeout_ms semantics or default values"]
 domains = ["mcp", "otp"]
+assignee = "codex"
+model = "gpt-5.5"
 body = """
 Observed 2026-06-15 calling dispatch-await_runs over MCP to await two in-flight ccxt-distill runs (tasks 4/5). The tool blocked server-side as designed, but the request failed at the transport layer:
 
@@ -8934,6 +8936,8 @@ scores = { d = 3, b = 4, u = 2 }
 markers = ["bug"]
 acceptance_criteria = ["Reproduce/confirm: in a parallel wave where N runs each append a CHANGELOG.md `### Added` bullet, the first lands clean and the rest auto-land-block with a CHANGELOG-only conflict the auto-resolver leaves :conflict_retained — despite resolver.ex:154-157 already instructing KEEP-BOTH for additive edits (added by Task 293).", "Witness resolver attempts: record (best-effort, mantra-clean — count facts, not verdicts) whether the resolver agent was spawned, whether it left markers, or whether selection/spawn failed, so a :conflict_retained is diagnosable WITHOUT hand-inspecting the retained branch (resolver output is not persisted today — resolver.ex:33).", "Eliminate the additive-file conflict class MECHANICALLY rather than via the agent: a union-merge path for provably-append-only files (e.g. a `merge=union` gitattributes driver applied in the landing worktree, or `git merge-file --union`) so CHANGELOG.md (and similar append-only artifacts) never reach the resolver. Union of an append-only changelog is counting/mechanics, not judgment — keep it in code.", "The agent resolver stays for GENUINE same-region semantic conflicts (the Task 189/293 same-function/same-list case); the mechanical union path is tried first for the configured additive-file set and short-circuits the resolver on success.", "Covered by lander/resilience tests: a wave fixture with N additive CHANGELOG appends lands all N with zero manual salvage; a genuine same-region conflict still routes to the resolver then block-on-failure.", "CHANGELOG entry under [Unreleased]."]
 domains = ["otp", "git"]
+assignee = "codex"
+model = "gpt-5.5"
 body = """
 Dogfooding evidence, 2026-06-15 (ccxt-distill Phase 5 domain wave). Tasks 9-14 dispatched in parallel under concurrency_cap=6 (each task designed disjoint-source-file per its PARALLEL-SAFETY CONTRACT: only its own src/extract/domains/<name>.ts + test, registered via Task 7 auto-discovery, no shared cli.ts/pipeline.ts edit). The disjoint-source design worked — the ONLY shared file was CHANGELOG.md.
 
