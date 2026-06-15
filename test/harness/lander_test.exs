@@ -484,8 +484,10 @@ defmodule Harness.LanderTest do
           "manual_reland" => true
         })
 
-      assert {:cancel, {:manual_reland_conflict, output}} = LanderWorker.perform(%Oban.Job{args: args})
-      assert output =~ "CONFLICT"
+      assert {:cancel, {:manual_reland_conflict, reason}} = LanderWorker.perform(%Oban.Job{args: args})
+      assert reason =~ "manual reland conflict"
+      assert reason =~ "resolver already attempted"
+      assert reason =~ "dispatch-reland"
       assert sha(ctx.origin, "refs/heads/main") == moved_main
       assert branch_exists?(ctx.repo, ctx.request.branch)
       assert File.dir?(ctx.run_worktree.path)
@@ -498,7 +500,7 @@ defmodule Harness.LanderTest do
                         run_id: "run-x",
                         branch: "harness/run-x",
                         land_attempt: 1,
-                        outcome: ^output
+                        outcome: ^reason
                       }}
 
       refute_receive {:unexpected_ingest, _selector, _opts}, 300

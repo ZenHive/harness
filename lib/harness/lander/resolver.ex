@@ -42,6 +42,8 @@ defmodule Harness.Lander.Resolver do
   alias Harness.Git
   alias Harness.Worktree
 
+  @max_conflict_excerpt_chars 4_000
+
   @doc """
   Drives a cross-family agent to reconcile the conflict in `worktree`.
 
@@ -134,10 +136,16 @@ defmodule Harness.Lander.Resolver do
     Already on the target branch ("ours", landed since this run branched):
     #{our_intent(path, opts[:base_sha])}
 
+    Conflict excerpts (authoritative marker regions; resolve these in place):
+    #{conflict_excerpts(path, files)}
+
     How to resolve:
     - Open each conflicted file and reconcile every <<<<<<< / ======= / >>>>>>> region.
     - Default to KEEPING BOTH sides when the changes are additive (two new
       tests, two new clauses, adjacent edits) — "keep both" is the common case.
+    - For same function, same list, and same registration-block conflicts, assume they are often
+      additive too: keep every added command, test, clause, or list entry unless
+      the two sides are truly incompatible.
     - Preserve the intent of both sides; never drop either's work.
     - Remove every conflict marker. Do NOT stage or commit — just edit the files.
     - Do NOT run the project's tests or checks; do NOT re-review the diff.
@@ -145,6 +153,45 @@ defmodule Harness.Lander.Resolver do
     When every marker is reconciled, stop. Harness stages the result and
     continues the rebase.
     """
+  end
+
+  @spec conflict_excerpts(String.t(), [String.t()]) :: String.t()
+  defp conflict_excerpts(path, files) do
+    Enum.map_join(files, "\n", &conflict_excerpt(path, &1))
+  end
+
+  @spec conflict_excerpt(String.t(), String.t()) :: String.t()
+  defp conflict_excerpt(path, file) do
+    case File.read(Path.join(path, file)) do
+      {:ok, content} ->
+        format_conflict_excerpt(file, content)
+
+      {:error, reason} ->
+        "  - #{file}: unable to read conflicted file (#{inspect(reason)})"
+    end
+  end
+
+  @spec format_conflict_excerpt(String.t(), String.t()) :: String.t()
+  defp format_conflict_excerpt(file, content) do
+    case Regex.scan(~r/<<<<<<<[\s\S]*?>>>>>>>[^\n]*(?:\n|$)/, content) do
+      [] ->
+        "  - #{file}: no conflict markers found in current file snapshot"
+
+      matches ->
+        """
+          - #{file}:
+        #{matches |> Enum.map_join("\n", &hd/1) |> excerpt_limit()}
+        """
+    end
+  end
+
+  @spec excerpt_limit(String.t()) :: String.t()
+  defp excerpt_limit(content) do
+    if String.length(content) > @max_conflict_excerpt_chars do
+      String.slice(content, 0, @max_conflict_excerpt_chars) <> "\n...[truncated]"
+    else
+      content
+    end
   end
 
   # "theirs" during a rebase is the run's commit currently being replayed

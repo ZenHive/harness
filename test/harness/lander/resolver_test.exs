@@ -12,8 +12,12 @@ defmodule Harness.Lander.ResolverTest do
 
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
+  alias Harness.AgentRegistry
   alias Harness.GitFixture
   alias Harness.Lander.Resolver
+  alias Harness.Worktree
+
+  @long_conflict_payload_chars 4_100
 
   describe "select_resolver/2 — cross-family discipline" do
     test "never returns the implementer's own adapter (claude)" do
@@ -30,6 +34,14 @@ defmodule Harness.Lander.ResolverTest do
 
       refute match?({:ok, Codex}, result)
       assert match?({:ok, _module}, result) or result == {:error, :no_resolver}
+    end
+
+    test "returns :no_resolver when no cross-family resolver is installed" do
+      AgentRegistry.reset()
+      mark_all_installed(false)
+      on_exit(fn -> AgentRegistry.reset() end)
+
+      assert Resolver.select_resolver(nil, nil) == {:error, :no_resolver}
     end
   end
 
@@ -68,5 +80,81 @@ defmodule Harness.Lander.ResolverTest do
       # "ours" log resolves against the real base sha (the init commit subject).
       assert prompt =~ "init"
     end
+
+    test "includes conflict excerpts and same-list additive guidance", %{repo: repo, base_sha: base_sha} do
+      File.mkdir_p!(Path.join(repo, "src"))
+
+      File.write!(Path.join(repo, "src/cli.ts"), """
+      const SUBCOMMANDS = [
+      <<<<<<< HEAD
+        "update-ccxt",
+      =======
+        "validate",
+      >>>>>>> task-2
+      ];
+      """)
+
+      prompt = Resolver.build_prompt(repo, ["src/cli.ts"], task_id: "2", base_sha: base_sha)
+
+      assert prompt =~ "Conflict excerpts"
+      assert prompt =~ "src/cli.ts"
+      assert prompt =~ ~s("update-ccxt")
+      assert prompt =~ ~s("validate")
+      assert prompt =~ "same function, same list"
+      assert prompt =~ "keep every added command"
+    end
+
+    test "conflict excerpts handle marker-free and long marker snapshots", %{repo: repo, base_sha: base_sha} do
+      File.mkdir_p!(Path.join(repo, "src"))
+      File.write!(Path.join(repo, "src/no_markers.ts"), "const ok = true;\n")
+
+      long_payload = String.duplicate("x", @long_conflict_payload_chars)
+
+      File.write!(Path.join(repo, "src/long.ts"), """
+      <<<<<<< HEAD
+      #{long_payload}
+      =======
+      branch
+      >>>>>>> task
+      """)
+
+      prompt = Resolver.build_prompt(repo, ["src/no_markers.ts", "src/long.ts"], task_id: "293", base_sha: base_sha)
+
+      assert prompt =~ "src/no_markers.ts: no conflict markers found"
+      assert prompt =~ "src/long.ts"
+      assert prompt =~ "...[truncated]"
+    end
+
+    test "renders unavailable ours intent when base_sha is absent", %{repo: repo} do
+      prompt = Resolver.build_prompt(repo, ["lib/a.ex"], task_id: "293", base_sha: nil)
+
+      assert prompt =~ "Already on the target branch"
+      assert prompt =~ "(unavailable)"
+    end
+  end
+
+  describe "resolve/2" do
+    test "reports no conflicted files after selecting a resolver" do
+      AgentRegistry.reset()
+      mark_installed(Codex, true)
+      on_exit(fn -> AgentRegistry.reset() end)
+
+      repo = GitFixture.init_repo(name: "resolver-no-conflict")
+      worktree = %Worktree{id: "wt", path: repo, branch: "harness/wt", repo: repo, base_sha: "base"}
+
+      assert Resolver.resolve(worktree, implementer: "claude", reviewer: "codex", task_id: "293") ==
+               {:error, :no_conflicted_files}
+    end
+  end
+
+  @spec mark_installed(module(), boolean()) :: :ok
+  defp mark_installed(module, installed?) do
+    :sys.replace_state(AgentRegistry, fn state -> put_in(state, [:installed, module], installed?) end)
+    :ok
+  end
+
+  @spec mark_all_installed(boolean()) :: :ok
+  defp mark_all_installed(installed?) do
+    Enum.each(AgentRegistry.agents(), fn {_agent, module} -> mark_installed(module, installed?) end)
   end
 end

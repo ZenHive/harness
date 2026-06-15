@@ -205,6 +205,9 @@ defmodule Harness.Lander.ResilienceTest do
 
       assert {:cancel, {:conflict_retained, reason}} = Resilience.route({:conflict, "CONFLICT (content)"}, args)
       assert reason =~ "task " <> args["task_id"]
+      assert reason =~ "resolver already attempted"
+      assert reason =~ "rebase the retained branch onto the target branch"
+      assert reason =~ "commit the resolved branch"
       assert reason =~ "dispatch-reland"
 
       assert_receive {:notify,
@@ -268,7 +271,11 @@ defmodule Harness.Lander.ResilienceTest do
         {:ok, "unexpected-repair-run", self()}
       end)
 
-      assert {:cancel, {:manual_reland_conflict, "CONFLICT"}} = Resilience.route({:conflict, "CONFLICT"}, args)
+      assert {:cancel, {:manual_reland_conflict, reason}} = Resilience.route({:conflict, "CONFLICT"}, args)
+      assert reason =~ "manual reland conflict"
+      assert reason =~ "resolver already attempted"
+      assert reason =~ "rebase the retained branch onto the target branch"
+      assert reason =~ "dispatch-reland"
 
       assert_receive {:notify,
                       %Event{
@@ -276,7 +283,7 @@ defmodule Harness.Lander.ResilienceTest do
                         task_id: "42",
                         run_id: "run-x",
                         branch: "harness/run-x",
-                        outcome: "CONFLICT",
+                        outcome: ^reason,
                         land_attempt: 1
                       }}
 

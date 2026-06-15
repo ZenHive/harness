@@ -219,8 +219,7 @@ defmodule Harness.Lander.Resilience do
   # still cancels so the train never loops on a conflict it has refused.
   @spec conflict_retain(map(), String.t()) :: Oban.Worker.result()
   defp conflict_retain(args, output) do
-    reason =
-      "land conflict retained for repair (task #{args["task_id"]}, run #{args["run_id"]}, branch #{args["branch"]}); resolve the conflict then recover via dispatch-reland"
+    reason = conflict_repair_reason(args, "land conflict retained for repair")
 
     case mark_blocked(args["project_name"], args["task_id"], reason) do
       {:ok, _output} ->
@@ -240,13 +239,24 @@ defmodule Harness.Lander.Resilience do
   end
 
   @spec manual_reland_conflict(map(), String.t()) :: Oban.Worker.result()
-  defp manual_reland_conflict(args, output) do
+  defp manual_reland_conflict(args, _output) do
+    reason = conflict_repair_reason(args, "manual reland conflict retained for repair")
+
     Logger.warning(
-      "harness lander: manual reland retained conflicted branch #{args["branch"]} for task #{args["task_id"]}"
+      "harness lander: manual reland retained conflicted branch #{args["branch"]} for task #{args["task_id"]}: #{reason}"
     )
 
-    Notification.notify(event(:conflict, output, args))
-    {:cancel, {:manual_reland_conflict, output}}
+    Notification.notify(event(:conflict, reason, args))
+    {:cancel, {:manual_reland_conflict, reason}}
+  end
+
+  @spec conflict_repair_reason(map(), String.t()) :: String.t()
+  defp conflict_repair_reason(args, prefix) do
+    "#{prefix} (task #{args["task_id"]}, run #{args["run_id"]}, branch #{args["branch"]}); " <>
+      "resolver already attempted and the branch still conflicted. Repair: rebase the retained branch onto " <>
+      "the target branch, resolve all conflict markers while keeping both reviewed intents, commit the " <>
+      "resolved branch, move #{args["branch"]} to that commit if you used a scratch branch, then run " <>
+      "dispatch-reland #{args["run_id"]}."
   end
 
   # Terminal: cap exhausted. Mark the task blocked with a structured reason; a
