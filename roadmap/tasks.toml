@@ -8951,3 +8951,26 @@ Follow-up to the now-done Task 293 (which added the keep-both PROMPT guidance bu
 """
 created_at = "2026-06-15"
 scored_at = "2026-06-15"
+
+[[task]]
+id = "298"
+phase = 19
+bundle = "dashboard-chrome"
+status = "pending"
+title = "Move the agent KPI ledger to its own full page (/harness/kpi/agents)"
+scores = { d = 2, b = 2, u = 1 }
+markers = ["parallel"]
+acceptance_criteria = ["A dedicated route + LiveView renders the full per-agent ledger (all columns incl. dynamic rating columns) as its own page, not crammed into /harness/kpi.", "The /harness/kpi overview links to the full agents page (and the agents page links back); the existing jump-nav stays coherent.", "Sorting still works on the dedicated page; the empty state is preserved.", "Tests cover the new route mount + that the ledger renders there."]
+out_of_scope = ["Changing AgentKPI/ResultStore aggregation logic", "Time-series / trend charts", "The JS/TS capability-domain work (already shipped in a9c7c2d)"]
+files_to_modify = ["lib/harness/dashboard/kpi_live.ex", "lib/harness/dashboard/router.ex"]
+touches = ["lib/harness/dashboard/tokens.ex"]
+body = """
+Operator feedback (2026-06-15): the agent ledger table on /harness/kpi is very wide
+with all the sortable + dynamic reviewer-rating columns, and the single-page stack of
+five sections is hard to navigate even with the jump-nav (a9c7c2d). Give the ledger its
+own full page so it has room to breathe, and keep /harness/kpi as the at-a-glance
+overview (fleet strip + the narrower secondary tables + a link through to the full
+ledger). Pure presentation/routing split — no KPI/aggregation logic changes.
+"""
+created_at = "2026-06-15"
+scored_at = "2026-06-15"
