@@ -27,6 +27,7 @@ defmodule Harness.Manifest do
     Harness.Batch.AgentEvaluation,
     Harness.Roadmap,
     Harness.Dispatch,
+    Harness.CodeSearch,
     Harness.Config,
     Harness.Describe,
     Harness.ModelAvailability,
