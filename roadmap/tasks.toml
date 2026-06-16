@@ -9277,7 +9277,7 @@ shipped_in = "89200d230bb11e38e3beeb34ee5e1f5dcbd3d69a"
 id = "308"
 phase = 21
 bundle = "code-search"
-status = "pending"
+status = "in_progress"
 title = "CodeSearch: reuse a long-lived DuckDB server + dynamic repo instead of booting/tearing-down per query (project explorer ~800ms -> sub-150ms)"
 scores = { d = 4, b = 4, u = 3 }
 depends_on = [302]
@@ -9300,4 +9300,5 @@ Lineage: Task 302 built Harness.CodeSearch (the index lifecycle + query API), Ta
 Routing: codex/gpt-5.5 (OTP+Ecto lifecycle work; cursor-Opus is operator-blocked on monthly budget until 2026-07-05).
 """
 created_at = "2026-06-16"
+started_at = "2026-06-16"
 scored_at = "2026-06-16"

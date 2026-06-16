@@ -13770,7 +13770,7 @@
       "id": "308",
       "phase": 21,
       "bundle": "code-search",
-      "status": "pending",
+      "status": "in_progress",
       "title": "CodeSearch: reuse a long-lived DuckDB server + dynamic repo instead of booting/tearing-down per query (project explorer ~800ms -> sub-150ms)",
       "scores": {
         "d": 4,
@@ -13813,6 +13813,7 @@
       ],
       "body": "Discovered 2026-06-16 while timing the project explorer in the browser: a warm /harness/projects/:name/explore navigation takes ~814ms TTFB. Mount itself is cheap (ProjectRegistry.list()); the entire cost is handle_params -> load_elixir_project -> Harness.CodeSearch.definitions/1.\n\nHarness.CodeSearch.query/3 (lib/harness/code_search.ex:175) wraps every query in with_repo/2 (line 273), which on EACH call does: start_app(:ecto_sql), start_app(:quackdb), start_server(index_path) (boots a fresh QuackDB/DuckDB server process), start_repo (starts a dynamic Exograph.DuckDBRepo), runs the query, then tears the whole thing down via stop_pid in the after-block. So every explorer navigation -- and every select_project push_patch -- pays a full cold DuckDB-process boot + dynamic-repo start + teardown. There is no pooling or memoization across requests. If the index is also stale, refresh_index re-parses all source on top.\n\nFix: hold a long-lived, supervised server+repo and reuse it across queries instead of boot-query-teardown per request. The DuckDB connection isn't concurrently safe, so access must be serialized/pooled (a GenServer is the natural fit). Keep the existing dev/test gating (Code.ensure_loaded?(Exograph), mirroring the Bandit guard) and the source-mtime staleness check intact.\n\nLineage: Task 302 built Harness.CodeSearch (the index lifecycle + query API), Task 303 the ProjectExplorer LiveView, Task 304 the navbar link. This task makes that surface usable interactively by removing the per-request spin-up tax -- otherwise the whole exograph investment reads as sluggish.\n\nRouting: codex/gpt-5.5 (OTP+Ecto lifecycle work; cursor-Opus is operator-blocked on monthly budget until 2026-07-05).\n",
       "created_at": "2026-06-16",
+      "started_at": "2026-06-16",
       "scored_at": "2026-06-16",
       "cross_repo": []
     }
