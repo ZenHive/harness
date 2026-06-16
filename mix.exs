@@ -150,6 +150,11 @@ defmodule Harness.MixProject do
       {:ex_dna, "~> 1.5", only: [:dev, :test], runtime: false},
       {:ex_ast, "~> 0.12", only: [:dev, :test], runtime: false},
       {:reach, "~> 2.7", only: [:dev, :test], runtime: false},
+      {:exograph, github: "elixir-vibe/exograph", only: [:dev, :test], runtime: false},
+      {:hammer, "~> 7.3", only: [:dev, :test], runtime: false},
+      {:phoenix_iconify, "~> 0.1", only: [:dev, :test], runtime: false},
+      {:volt, "~> 0.11", only: [:dev, :test], runtime: false},
+      {:dune, "~> 0.3", only: [:dev, :test], runtime: false},
       {:boxart, "~> 0.3.3", only: [:dev, :test], runtime: false},
 
       # Tidewave (dev MCP + HTTP server for agent interface)
