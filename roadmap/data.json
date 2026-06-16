@@ -13543,7 +13543,7 @@
       "id": "303",
       "phase": 21,
       "bundle": "code-search",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Dashboard project-structure explorer: browse a registered Elixir project's modules/defs/callers via Harness.CodeSearch",
       "scores": {
         "d": 3,
@@ -13583,6 +13583,7 @@
       ],
       "body": "Operator-facing half of the exograph integration (Task 302 is the agent-facing capability + tool). A read-only dashboard panel so a human can \"see inside\" any registered Elixir project from /harness -- the operator analogue of the structural search the reviewer/audit agents get via CodeSearch.\n\nBuilt as a harness-native LiveView over Harness.CodeSearch's query API (NOT a mount of exograph's own web UI), matching the existing dashboard tokens/components. Depends on Task 302 for the index lifecycle + query functions. Mantra-clean: it only displays counted structural facts (modules, defs, caller/callee edges); no verdict or score is rendered.\n",
       "created_at": "2026-06-16",
+      "started_at": "2026-06-16",
       "scored_at": "2026-06-16",
       "cross_repo": []
     },
