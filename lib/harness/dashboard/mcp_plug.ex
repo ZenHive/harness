@@ -41,11 +41,27 @@ defmodule Harness.Dashboard.MCPPlug do
 
   @spec direct_post(Plug.Conn.t(), String.t()) :: Plug.Conn.t()
   defp direct_post(conn, session_header) do
-    with {:ok, body, conn} <- read_body(conn, length: @read_body_length),
+    case fetch_message(conn) do
+      {:ok, message} -> handle_direct_message(conn, session_header, message)
+      :error -> send_jsonrpc_error(conn, Error.protocol(:parse_error), nil)
+    end
+  end
+
+  # The dashboard endpoint runs `Plug.Parsers` (`:json`) before this plug, so the
+  # raw body is already drained — re-reading it here yields `""` and a bogus parse
+  # error. Trust the parsed `conn.body_params` map; fall back to `read_body/2` only
+  # when this plug is mounted without an upstream JSON parser.
+  @spec fetch_message(Plug.Conn.t()) :: {:ok, map()} | :error
+  defp fetch_message(%Plug.Conn{body_params: %{} = params}) when not is_struct(params) and map_size(params) > 0 do
+    {:ok, params}
+  end
+
+  defp fetch_message(conn) do
+    with {:ok, body, _conn} <- read_body(conn, length: @read_body_length),
          {:ok, message} <- Jason.decode(body) do
-      handle_direct_message(conn, session_header, message)
+      {:ok, message}
     else
-      _error -> send_jsonrpc_error(conn, Error.protocol(:parse_error), nil)
+      _error -> :error
     end
   end
 

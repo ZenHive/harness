@@ -262,6 +262,31 @@ defmodule Harness.Dashboard.MCPServerTest do
     end
   end
 
+  # Regression: the dashboard endpoint runs `Plug.Parsers` (`:json`) before the
+  # router forwards to MCPPlug, draining the raw body. The earlier direct_post
+  # re-read the body and got `""`, returning `{"error":{-32700},"id":null}` for
+  # every session-header request (tools/list, tools/call, ping) — which the MCP
+  # client rejects (error `id` must be string|number, never null), breaking /mcp.
+  describe "direct dispatch after endpoint Plug.Parsers has drained the body" do
+    test "tools/list with a session header returns the tool list, not an id:null parse error" do
+      conn =
+        :post
+        |> Plug.Test.conn("/", Jason.encode!(%{"jsonrpc" => "2.0", "id" => 1, "method" => "tools/list"}))
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+        |> Plug.Conn.put_req_header("accept", "application/json")
+        |> Plug.Conn.put_req_header("mcp-session-id", "session_regression")
+        |> parse_body()
+
+      result = MCPPlug.call(conn, plug_opts())
+
+      assert result.status == 200
+      assert {:ok, response} = Jason.decode(result.resp_body)
+      assert response["id"] == 1
+      refute Map.has_key?(response, "error")
+      assert %{"tools" => [_ | _]} = response["result"]
+    end
+  end
+
   # Task 296 regression. anubis StreamableHTTP used a hardcoded 30s GenServer.call
   # timeout, killing blocking dispatch tools (await/await_runs/compare) whose own
   # timeout_ms defaults to 30 min.
@@ -465,6 +490,15 @@ defmodule Harness.Dashboard.MCPServerTest do
     MCPPlug.init(
       server: MCPServer,
       request_timeout: MCPServer.request_timeout_ms()
+    )
+  end
+
+  # Mirror the dashboard endpoint's body parsing so tests exercise the same
+  # already-drained-body state MCPPlug sees in production.
+  defp parse_body(conn) do
+    Plug.Parsers.call(
+      conn,
+      Plug.Parsers.init(parsers: [:urlencoded, :multipart, :json], pass: ["*/*"], json_decoder: Jason)
     )
   end
 
