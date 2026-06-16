@@ -231,6 +231,21 @@ defmodule Harness.Dashboard.Transcript.ParserTest do
              ] = events
     end
 
+    test "tool_call metadata siblings do not hide the actual tool payload" do
+      transcript = """
+      {"type":"tool_call","subtype":"started","call_id":"tool_read","tool_call":{"readToolCall":{"args":{"path":"/repo/mix.exs","limit":30}},"hookAdditionalContexts":[],"toolCallId":"tool_read"}}
+      {"type":"tool_call","subtype":"completed","call_id":"tool_read","tool_call":{"readToolCall":{"args":{"path":"/repo/mix.exs","limit":30},"result":{"success":{"content":"app: :harness"}}},"hookAdditionalContexts":[],"toolCallId":"tool_read"}}
+      """
+
+      events = parse_full(:cursor, transcript)
+
+      assert [
+               {:assistant_tool_use,
+                %{id: "tool_read", name: "read", input: %{"path" => "/repo/mix.exs", "limit" => 30}}},
+               {:tool_result, %{tool_use_id: "tool_read", content: %{"success" => %{"content" => "app: :harness"}}}}
+             ] = events
+    end
+
     test "tool name derives from the inner key minus its ToolCall suffix" do
       for {inner, name} <- [
             {"readToolCall", "read"},
@@ -255,6 +270,38 @@ defmodule Harness.Dashboard.Transcript.ParserTest do
       assert [
                {:system, %{kind: :thought, data: %{text: "The failing test "}}},
                {:system, %{kind: :thought, data: %{text: "uses the old name."}}}
+             ] = events
+    end
+
+    test "system metadata and user tool_result events stay factual" do
+      transcript = """
+      {"type":"system","subtype":"notice","message":"checkpoint"}
+      {"type":"system","message":"heartbeat"}
+      {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"tool_a","content":"ok"}]}}
+      """
+
+      events = parse_full(:cursor, transcript)
+
+      assert [
+               {:system, %{kind: :other, data: %{"subtype" => "notice", "message" => "checkpoint"}}},
+               {:system, %{kind: :system, data: %{"message" => "heartbeat"}}},
+               {:tool_result, %{tool_use_id: "tool_a", content: "ok"}}
+             ] = events
+    end
+
+    test "decoded non-event JSON and malformed tool payloads remain safe" do
+      transcript = """
+      ["not","an","event"]
+      {"type":"tool_call","subtype":"started","call_id":"bad","tool_call":{"toolCallId":"bad"}}
+      {"type":"tool_call","subtype":"completed","call_id":"bad","tool_call":{"toolCallId":"bad"}}
+      """
+
+      events = parse_full(:cursor, transcript)
+
+      assert [
+               {:unknown, %{raw: ~s(["not","an","event"])}},
+               {:assistant_tool_use, %{id: "bad", name: "tool", input: %{}}},
+               {:tool_result, %{tool_use_id: "bad", content: %{"toolCallId" => "bad"}}}
              ] = events
     end
   end

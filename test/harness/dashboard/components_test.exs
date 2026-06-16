@@ -9,6 +9,7 @@ defmodule Harness.Dashboard.ComponentsTest do
   import Phoenix.LiveViewTest
 
   alias Harness.Dashboard.Components
+  alias Harness.Dashboard.Transcript.Parser
 
   describe "bucket_badge/1" do
     test "renders the bucket class, data attribute, glyph, and an explicit label" do
@@ -234,6 +235,43 @@ defmodule Harness.Dashboard.ComponentsTest do
       assert html |> String.split(~s(class="msg msg-assistant")) |> length() == 3
       assert html |> String.split(~s(class="transcript-thought")) |> length() == 2
       assert html =~ "reconsidering"
+    end
+
+    test "coalesces consecutive other and unknown events into one legible system row" do
+      events = [
+        {:system, %{kind: :other, data: %{"_type" => "message_delta", "text" => "alpha"}}},
+        {:system, %{kind: :other, data: %{"_type" => "tool_call_delta", "delta" => "beta"}}},
+        {:unknown, %{raw: ~s({"type":"broken","text":"gamma")}},
+        {:system, %{kind: :other, data: %{"_type" => "message_delta", "text" => "delta"}}}
+      ]
+
+      html = render_component(&Components.transcript_view/1, events: events, agent: :cursor)
+
+      assert html |> String.split(~s(class="eyebrow")) |> length() == 2
+      assert html =~ "4 events"
+      assert html =~ "message_delta"
+      assert html =~ "tool_call_delta"
+      assert html =~ "unknown"
+      assert html =~ "gamma"
+    end
+
+    test "cursor parser output round-trips through transcript_view with tool details intact" do
+      transcript = """
+      {"type":"tool_call","subtype":"started","call_id":"tool_read","tool_call":{"readToolCall":{"args":{"path":"/repo/mix.exs","limit":30}},"hookAdditionalContexts":[],"toolCallId":"tool_read"}}
+      {"type":"tool_call","subtype":"completed","call_id":"tool_read","tool_call":{"readToolCall":{"args":{"path":"/repo/mix.exs","limit":30},"result":{"success":{"content":"app: :harness"}}},"hookAdditionalContexts":[],"toolCallId":"tool_read"}}
+      {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"h"}]},"timestamp_ms":1781650952975}
+      {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"arness"}]},"timestamp_ms":1781650952976}
+      {"type":"connection","subtype":"reconnecting","session_id":"s","timestamp_ms":1781650953000}
+      """
+
+      events = Parser.replay(:cursor, transcript)
+      html = render_component(&Components.transcript_view/1, events: events, agent: :cursor)
+
+      assert html =~ ">read</span>"
+      assert html =~ "/repo/mix.exs"
+      assert html =~ "app: :harness"
+      assert html =~ "harness"
+      assert html =~ "connection"
     end
   end
 

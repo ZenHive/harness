@@ -34,6 +34,8 @@ defmodule Harness.Dashboard.Components do
   alias Harness.SettingsStore
   alias Phoenix.LiveView.Rendered
 
+  @system_snippet_chars 160
+
   ## --- Chrome ---------------------------------------------------------------
 
   slot(:inner_block, required: true)
@@ -515,6 +517,9 @@ defmodule Harness.Dashboard.Components do
       token-by-token) collapse into one collapsed `<details>` "reasoning" card
       carrying the concatenated text — without this a single thought renders as
       hundreds of empty eyebrow rows.
+    * Consecutive fallback `:system` events (`:other` / `:unknown`) collapse
+      into one counted eyebrow row that surfaces the raw `_type` values and
+      short snippets. Unknown wire edges stay visible without becoming a wall.
     * Other `:system` events render as `<.eyebrow>` metadata lines (init /
       result / thread_started / turn_started / message_end …).
     * `:plain_text` (antigravity passthrough) renders as `<pre
@@ -600,18 +605,58 @@ defmodule Harness.Dashboard.Components do
   The agent's lifecycle events (init / turn_started / message_end /
   rate_limit_event …) carry context that helps the reader follow the run but
   is not the assistant's reply. Renders as a single subdued line showing the
-  kind label (also mirrored into `data-kind` for styling). The `data` payload
-  is accepted but not surfaced in the markup — kept on the assign so a future
-  expand-on-click can reveal it without a signature change.
+  kind label (also mirrored into `data-kind` for styling). Fallback metadata
+  also surfaces its raw `_type` and a short payload snippet so unknown wire
+  edges remain legible.
   """
   @spec eyebrow(map()) :: Rendered.t()
   def eyebrow(assigns) do
+    assigns = assign(assigns, :summary, eyebrow_summary(assigns.data))
+
     ~H"""
     <p class="eyebrow" data-kind={@kind}>
       <span class="eyebrow-kind">{to_string(@kind)}</span>
+      <span :if={@summary} class="eyebrow-data">{@summary}</span>
     </p>
     """
   end
+
+  @spec eyebrow_summary(map()) :: String.t() | nil
+  defp eyebrow_summary(%{count: count, types: types, snippets: snippets}) do
+    [event_count_label(count), Enum.join(types, ", "), Enum.join(snippets, " | ")]
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join(" · ")
+  end
+
+  defp eyebrow_summary(%{"_type" => _type} = data), do: system_event_snippet(data)
+  defp eyebrow_summary(_data), do: nil
+
+  @spec event_count_label(non_neg_integer()) :: String.t()
+  defp event_count_label(1), do: "1 event"
+  defp event_count_label(count), do: "#{count} events"
+
+  @spec system_event_type(atom(), map()) :: String.t()
+  defp system_event_type(_kind, %{"_type" => type}) when is_binary(type), do: type
+  defp system_event_type(kind, _data), do: to_string(kind)
+
+  @spec system_event_snippet(map()) :: String.t()
+  defp system_event_snippet(%{"raw" => raw}) when is_binary(raw), do: truncate_system_snippet(raw)
+
+  defp system_event_snippet(data),
+    do: data |> inspect(limit: 20, printable_limit: @system_snippet_chars) |> truncate_system_snippet()
+
+  @spec truncate_system_snippet(String.t()) :: String.t()
+  defp truncate_system_snippet(snippet) do
+    if String.length(snippet) > @system_snippet_chars do
+      String.slice(snippet, 0, @system_snippet_chars) <> "..."
+    else
+      snippet
+    end
+  end
+
+  @spec unknown_raw(atom(), map()) :: String.t() | nil
+  defp unknown_raw(:unknown, %{"raw" => raw}) when is_binary(raw), do: raw
+  defp unknown_raw(_kind, _data), do: nil
 
   ## --- Config inspector (Task 127) -----------------------------------------
 
@@ -1090,7 +1135,7 @@ defmodule Harness.Dashboard.Components do
 
     case open do
       nil -> Enum.reverse(blocks)
-      msg -> Enum.reverse([msg | blocks])
+      msg -> Enum.reverse([finalize_open(msg) | blocks])
     end
   end
 
@@ -1111,6 +1156,14 @@ defmodule Harness.Dashboard.Components do
   defp reduce_event({:system, %{kind: :thought, data: %{text: text}}}, acc) do
     {blocks, id} = flush_open(acc)
     {blocks, %{kind: :thought, id: id, text: text}, id + 1}
+  end
+
+  defp reduce_event({:system, %{kind: :other, data: data}}, acc) do
+    reduce_fallback_system(:other, data, acc)
+  end
+
+  defp reduce_event({:system, %{kind: :unknown, data: data}}, acc) do
+    reduce_fallback_system(:unknown, data, acc)
   end
 
   defp reduce_event({:assistant_text, %{text: text}}, {blocks, %{kind: :assistant_message} = msg, id}) do
@@ -1154,7 +1207,7 @@ defmodule Harness.Dashboard.Components do
   end
 
   defp reduce_event({:unknown, %{raw: raw}}, acc) do
-    flush_and_emit(acc, fn id -> %{kind: :unknown, id: id, raw: raw} end)
+    reduce_fallback_system(:unknown, %{"_type" => "unknown", "raw" => raw}, acc)
   end
 
   # Flushes the open assistant message (if any) into the closed list before
@@ -1164,14 +1217,68 @@ defmodule Harness.Dashboard.Components do
   end
 
   defp flush_and_emit({blocks, msg, id}, build_block) do
-    {[build_block.(id) | [msg | blocks]], nil, id + 1}
+    {[build_block.(id) | [finalize_open(msg) | blocks]], nil, id + 1}
   end
 
   # Closes any currently-open block (assistant_message or thought) into the
   # closed list, returning `{blocks, next_id}` for the caller to open a fresh
   # block. The open block already owns its id, so the counter is untouched.
   defp flush_open({blocks, nil, id}), do: {blocks, id}
-  defp flush_open({blocks, open, id}), do: {[open | blocks], id}
+  defp flush_open({blocks, open, id}), do: {[finalize_open(open) | blocks], id}
+
+  @spec reduce_fallback_system(atom(), map(), {list(), map() | nil, non_neg_integer()}) ::
+          {list(), map(), non_neg_integer()}
+  defp reduce_fallback_system(kind, data, {blocks, %{kind: :system_group} = group, id}) do
+    {blocks, append_system_group(group, kind, data), id}
+  end
+
+  defp reduce_fallback_system(kind, data, acc) do
+    {blocks, id} = flush_open(acc)
+    {blocks, new_system_group(id, kind, data), id + 1}
+  end
+
+  @spec new_system_group(non_neg_integer(), atom(), map()) :: map()
+  defp new_system_group(id, kind, data) do
+    %{
+      kind: :system_group,
+      id: id,
+      count: 1,
+      types: [system_event_type(kind, data)],
+      snippets: [system_event_snippet(data)],
+      unknown_raw: unknown_raw(kind, data)
+    }
+  end
+
+  @spec append_system_group(map(), atom(), map()) :: map()
+  defp append_system_group(group, kind, data) do
+    %{
+      group
+      | count: group.count + 1,
+        types: [system_event_type(kind, data) | group.types],
+        snippets: [system_event_snippet(data) | group.snippets],
+        unknown_raw: group.unknown_raw || unknown_raw(kind, data)
+    }
+  end
+
+  @spec finalize_open(map()) :: map()
+  defp finalize_open(%{kind: :system_group, count: 1, id: id, unknown_raw: raw}) when is_binary(raw) do
+    %{kind: :unknown, id: id, raw: raw}
+  end
+
+  defp finalize_open(%{kind: :system_group} = group) do
+    %{
+      kind: :system,
+      id: group.id,
+      system_kind: :other,
+      data: %{
+        count: group.count,
+        types: group.types |> Enum.reverse() |> Enum.uniq(),
+        snippets: group.snippets |> Enum.reverse() |> Enum.uniq()
+      }
+    }
+  end
+
+  defp finalize_open(open), do: open
 
   defp new_message(id, fields) do
     Map.merge(%{kind: :assistant_message, id: id, text: "", tool_calls: []}, fields)

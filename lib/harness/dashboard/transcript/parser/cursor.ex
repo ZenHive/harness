@@ -55,7 +55,7 @@ defmodule Harness.Dashboard.Transcript.Parser.Cursor do
     [
       {:assistant_tool_use,
        %{
-         id: Map.get(event, "call_id", ""),
+         id: tool_call_id(event, tc),
          name: name,
          input: args
        }}
@@ -66,7 +66,7 @@ defmodule Harness.Dashboard.Transcript.Parser.Cursor do
     [
       {:tool_result,
        %{
-         tool_use_id: Map.get(event, "call_id", ""),
+         tool_use_id: tool_call_id(event, tc),
          content: tool_call_result(tc)
        }}
     ]
@@ -93,13 +93,14 @@ defmodule Harness.Dashboard.Transcript.Parser.Cursor do
   defp system_kind(%{"subtype" => sub}) when is_binary(sub), do: :other
   defp system_kind(_), do: :system
 
-  # Cursor wraps each tool call in a single-key map (`%{"readToolCall" => %{...}}`).
-  # The key minus its `ToolCall` suffix is the human tool name; `args` is the
-  # call's input. An unexpected shape degrades to a generic name + empty input
-  # rather than crashing the parser.
+  # Cursor wraps each tool call in a map keyed by the real tool payload
+  # (`%{"readToolCall" => %{...}}`) plus metadata siblings such as
+  # `hookAdditionalContexts` and `toolCallId`. The key minus its `ToolCall`
+  # suffix is the human tool name; `args` is the call's input. An unexpected
+  # shape degrades to a generic name + empty input rather than crashing.
   @spec tool_call_name_and_args(map()) :: {String.t(), map()}
   defp tool_call_name_and_args(tool_call) do
-    case Map.to_list(tool_call) do
+    case tool_call_entry(tool_call) do
       [{inner_key, %{} = body}] ->
         {String.replace_suffix(inner_key, @tool_call_suffix, ""), Map.get(body, "args", %{})}
 
@@ -113,9 +114,25 @@ defmodule Harness.Dashboard.Transcript.Parser.Cursor do
   # walks it). Falls back to the whole body when no `result` key is present.
   @spec tool_call_result(map()) :: term()
   defp tool_call_result(tool_call) do
-    case Map.to_list(tool_call) do
+    case tool_call_entry(tool_call) do
       [{_inner_key, %{} = body}] -> Map.get(body, "result", body)
       _ -> tool_call
     end
+  end
+
+  @spec tool_call_entry(map()) :: [{String.t(), map()}]
+  defp tool_call_entry(tool_call) do
+    tool_call
+    |> Map.to_list()
+    |> Enum.filter(fn
+      {key, %{} = _body} -> String.ends_with?(key, @tool_call_suffix)
+      _entry -> false
+    end)
+    |> Enum.take(1)
+  end
+
+  @spec tool_call_id(map(), map()) :: String.t()
+  defp tool_call_id(event, tool_call) do
+    Map.get(event, "call_id") || Map.get(event, "toolCallId") || Map.get(tool_call, "toolCallId") || ""
   end
 end
