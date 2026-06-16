@@ -140,7 +140,7 @@ defmodule Harness.Dispatch do
 
   api(
     :await,
-    "Dispatch one roadmap task and block until the run settles, returning a compact summary (state, reason, the reviewer AI's verdict) instead of a run_id to poll. The bounded blocking variant of dispatch-task — one call gets the answer. The wait is capped by timeout_ms; on timeout it returns a structured :timed_out summary (the run keeps going, observable later via run_id), never a wedged tool call.",
+    "Dispatch one roadmap task and block until the run settles, returning a compact summary (state, reason, the reviewer AI's verdict) instead of a run_id to poll. The bounded blocking variant of dispatch-task — one call gets the answer. Goes through the same Oban-guarded path as dispatch-task: an await for a task already in flight ATTACHES to the existing run (no duplicate dispatch) and awaits it. The wait is capped by timeout_ms; on timeout it returns a structured :timed_out summary (the run keeps going, observable later via run_id), never a wedged tool call.",
     params: [
       project_name: [
         kind: :value,
@@ -180,9 +180,15 @@ defmodule Harness.Dispatch do
 
   @spec await(String.t(), String.t(), String.t(), number(), boolean()) ::
           {:ok, map()} | {:error, error()}
-  # `timeout_ms` is guarded `is_number` (not `is_integer`): MCP/JSON callers deliver
-  # it as a float, which `await_result/2` truncates. A bare `is_integer` here would
-  # FunctionClause the whole dispatch-await tool on any client-supplied timeout.
+  # Goes through the SAME Oban-guarded path as dispatch-task (`enqueue_start/4`),
+  # so an await for a task already in flight attaches to the existing run — the
+  # unique guard returns its run_id — instead of starting a duplicate, and the
+  # worker writes rmap `in_progress`. The returned run_id is then awaited by
+  # polling to settle (`await_result/2`): there is no subscriber push to receive
+  # for a run this process did not start. `timeout_ms` is guarded `is_number`
+  # (not `is_integer`): MCP/JSON callers deliver it as a float, which
+  # `await_result/2` truncates; a bare `is_integer` would FunctionClause the whole
+  # dispatch-await tool on any client-supplied timeout.
   def await(
         project_name,
         task,
@@ -192,28 +198,120 @@ defmodule Harness.Dispatch do
       )
       when is_number(timeout_ms) and timeout_ms > 0 and is_boolean(scrub_anthropic_key) and is_binary(project_name) and
              is_binary(task) and is_binary(adapter) do
-    with {:ok, run_id} <- start(project_name, task, adapter, scrub_anthropic_key, self()) do
+    with {:ok, run_id} <- enqueue_start(project_name, task, adapter, scrub_anthropic_key) do
       await_result(run_id, timeout_ms)
     end
   end
 
-  # Blocks the calling process — which MUST be the run's subscriber — until the
-  # run delivers its `%Run.Result{}`, summarising it on arrival. On timeout it
-  # returns a structured :timed_out summary instead of wedging. Split out so the
-  # wait/summarise/timeout logic is testable without a live run (seed the mailbox
-  # with a `{:harness_run, run_id, %Run.Result{}}` message).
+  # Awaits an already-started/attached run by POLLING `status/1` until it settles,
+  # then projects the rich await summary from the persisted run record. await goes
+  # through the Oban-guarded enqueue path, so the awaited run_id may be one this
+  # process did not start (an attach on the unique-guard conflict) — there is no
+  # subscriber push to receive, so polling is the only mechanism that works for
+  # both a fresh and an attached run. On timeout it returns a structured
+  # :timed_out summary instead of wedging. Split out so the poll/settle/timeout
+  # logic is testable by stubbing the status + result-store seams.
   @doc false
   @spec await_result(String.t(), number()) :: {:ok, map()}
   def await_result(run_id, timeout_ms) when is_binary(run_id) and is_number(timeout_ms) and timeout_ms > 0 do
-    # MCP/JSON callers deliver the timeout as a float; `receive ... after` and the
+    # MCP/JSON callers deliver the timeout as a float; the poll deadline and the
     # timeout summary both require an integer, so truncate once at the boundary.
     wait_ms = trunc(timeout_ms)
+    poll_until_settled(run_id, System.monotonic_time(:millisecond) + wait_ms, wait_ms)
+  end
 
-    receive do
-      {:harness_run, ^run_id, %Run.Result{} = result} -> {:ok, summarize_result(result)}
-    after
-      wait_ms -> {:ok, timeout_summary(run_id, wait_ms)}
+  @spec poll_until_settled(String.t(), integer(), non_neg_integer()) :: {:ok, map()}
+  defp poll_until_settled(run_id, deadline_ms, wait_ms) do
+    case settled_await_summary(run_id) do
+      {:ok, summary} ->
+        {:ok, summary}
+
+      :in_flight ->
+        if System.monotonic_time(:millisecond) >= deadline_ms do
+          {:ok, timeout_summary(run_id, wait_ms)}
+        else
+          wait_for_next_poll(deadline_ms)
+          poll_until_settled(run_id, deadline_ms, wait_ms)
+        end
     end
+  end
+
+  # A run is settled once `status/1` reports a terminal state: `settle/2` persists
+  # the run record BEFORE the run lingers, so a terminal status guarantees the
+  # record is already readable — the rich summary (verdict/report/ratings + diff
+  # sizes) comes from it. A run that failed to start never persists a record and
+  # drops out of `status/1` as :not_found once its Oban job stops retrying — that
+  # is the terminal "vanished" signal, not a still-in-flight one.
+  @spec settled_await_summary(String.t()) :: {:ok, map()} | :in_flight
+  defp settled_await_summary(run_id) do
+    case status(run_id) do
+      {:ok, %{state: state} = snapshot} when state in [:done, :failed] ->
+        {:ok, settled_summary(run_id, snapshot)}
+
+      {:ok, _in_flight} ->
+        :in_flight
+
+      {:error, :not_found} ->
+        {:ok, vanished_summary(run_id)}
+    end
+  end
+
+  # Rebuilds summarize_result/1's shape from the persisted record (the poll-path
+  # equivalent of the subscriber-push %Run.Result{} projection). Falls back to the
+  # compact status snapshot only if the record is unexpectedly unreadable.
+  @spec settled_summary(String.t(), map()) :: map()
+  defp settled_summary(run_id, snapshot) do
+    case ResultStore.list_run_records(run_id: run_id, limit: 1) do
+      {:ok, [%LogRecord{} = record | _]} -> record_await_summary(record)
+      _none -> snapshot_await_summary(snapshot)
+    end
+  end
+
+  @spec record_await_summary(LogRecord.t()) :: map()
+  defp record_await_summary(%LogRecord{} = record) do
+    status = Status.from_log_record(record)
+
+    %{
+      run_id: record.run_id,
+      task_id: record.task_id,
+      state: status.state,
+      reason: status.reason,
+      passed: status.state == :done,
+      agent_diff_size: record.agent_diff_size,
+      reviewer_diff_size: record.reviewer_diff_size,
+      worktree_path: nil,
+      review: record_review_summary(record)
+    }
+  end
+
+  @spec record_review_summary(LogRecord.t()) :: map() | nil
+  defp record_review_summary(%LogRecord{verdict: nil}), do: nil
+
+  defp record_review_summary(%LogRecord{} = record) do
+    %{verdict: record.verdict, report: record.review_report, ratings: AgentKPI.record_ratings(record)}
+  end
+
+  # A terminal run whose record could not be read, and a run that vanished before
+  # persisting any record — both summarised from what status/1 still knows, with
+  # the review detail absent (it lived only on the missing record).
+  @spec snapshot_await_summary(map()) :: map()
+  defp snapshot_await_summary(%{run_id: run_id, state: state} = snapshot) do
+    %{
+      run_id: run_id,
+      task_id: Map.get(snapshot, :task_id),
+      state: state,
+      reason: Map.get(snapshot, :reason),
+      passed: state == :done,
+      agent_diff_size: nil,
+      reviewer_diff_size: nil,
+      worktree_path: nil,
+      review: nil
+    }
+  end
+
+  @spec vanished_summary(String.t()) :: map()
+  defp vanished_summary(run_id) do
+    snapshot_await_summary(%{run_id: run_id, state: :failed, reason: :not_found})
   end
 
   api(
@@ -993,24 +1091,6 @@ defmodule Harness.Dispatch do
     with {:ok, {project, item, adapter_module}} <- resolve_and_ingest(project_name, task, adapter),
          {:ok, run_id, _job} <-
            RunWorker.enqueue(project, item, adapter_module, run_start_opts(item, nil, scrub_anthropic_key)) do
-      {:ok, run_id}
-    end
-  end
-
-  # Blocking path for `await/5`: this keeps the in-memory subscriber contract so
-  # the tool call can receive the result directly. `dispatch-task` is the
-  # restart-resilient fire-and-forget MCP path.
-  @spec start(String.t(), String.t(), String.t(), boolean(), pid() | nil) ::
-          {:ok, String.t()} | {:error, error()}
-  defp start(project_name, task, adapter, scrub_anthropic_key, subscriber) do
-    with {:ok, {project, item, adapter_module}} <- resolve_and_ingest(project_name, task, adapter),
-         {:ok, run_id, _pid} <-
-           Run.Supervisor.start_run(
-             item,
-             project,
-             adapter_module,
-             run_start_opts(item, subscriber, scrub_anthropic_key)
-           ) do
       {:ok, run_id}
     end
   end

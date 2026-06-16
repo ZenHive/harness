@@ -184,10 +184,13 @@ defmodule Harness.DispatchTest do
       assert summary.review.verdict == :approve
     end
 
-    test "summarizes an approved settled run delivered to the subscriber" do
-      run_id = "run-test-approved"
+    test "polls an approved settled run and projects the persisted record" do
+      run_id = "run-await-approved-#{System.unique_integer([:positive])}"
 
-      send(self(), {:harness_run, run_id, approved_result(run_id)})
+      :ok =
+        ResultStore.record_run(
+          LogRecord.from_result(approved_result(run_id), batch_id: "b", adapter: Claude, duration_ms: 1)
+        )
 
       assert {:ok, summary} = Dispatch.await_result(run_id, 1_000)
 
@@ -198,16 +201,20 @@ defmodule Harness.DispatchTest do
       assert summary.passed
       assert summary.agent_diff_size == 12
       assert summary.reviewer_diff_size == 0
-      assert summary.worktree_path == "/tmp/wt/#{run_id}"
+      # worktree_path is gone post-settle — the poll path rebuilds from the record.
+      assert summary.worktree_path == nil
       assert summary.review.verdict == :approve
       assert summary.review.report == "looks good"
       assert summary.review.ratings == %{"code_quality" => 8}
     end
 
-    test "summarizes a rejected settled run with the reviewer's report" do
-      run_id = "run-test-rejected"
+    test "polls a rejected settled run and surfaces the reviewer's report" do
+      run_id = "run-await-rejected-#{System.unique_integer([:positive])}"
 
-      send(self(), {:harness_run, run_id, rejected_result(run_id)})
+      :ok =
+        ResultStore.record_run(
+          LogRecord.from_result(rejected_result(run_id), batch_id: "b", adapter: Claude, duration_ms: 1)
+        )
 
       assert {:ok, summary} = Dispatch.await_result(run_id, 1_000)
 
@@ -219,12 +226,17 @@ defmodule Harness.DispatchTest do
     end
 
     test "summarizes a settled run that carries no review" do
-      run_id = "run-no-review"
+      run_id = "run-await-no-review-#{System.unique_integer([:positive])}"
 
-      send(
-        self(),
-        {:harness_run, run_id, %Result{run_id: run_id, task_id: "9", state: :done, reason: :approved}}
-      )
+      :ok =
+        ResultStore.record_run(
+          LogRecord.from_result(
+            %Result{run_id: run_id, task_id: "9", state: :done, reason: :approved},
+            batch_id: "b",
+            adapter: Claude,
+            duration_ms: 1
+          )
+        )
 
       assert {:ok, summary} = Dispatch.await_result(run_id, 1_000)
 
@@ -234,16 +246,46 @@ defmodule Harness.DispatchTest do
       assert summary.state == :done
     end
 
-    test "ignores a result for a different run_id and times out" do
-      send(self(), {:harness_run, "some-other-run", approved_result("some-other-run")})
+    test "an unrecorded run that never started settles :failed (the vanished signal)" do
+      # No live process, no Oban job, no record: the run dropped out of status/1
+      # as :not_found, which the poll treats as a terminal vanish, not a hang —
+      # so await returns instead of blocking the full timeout.
+      run_id = "run-await-vanished-#{System.unique_integer([:positive])}"
 
-      assert {:ok, %{state: :timed_out, run_id: "run-awaited"}} =
-               Dispatch.await_result("run-awaited", 30)
+      assert {:ok, summary} = Dispatch.await_result(run_id, 1_000)
+
+      assert summary.run_id == run_id
+      assert summary.state == :failed
+      assert summary.reason == :not_found
+      refute summary.passed
+      assert summary.review == nil
     end
   end
 
   describe "await_result/2 timeout path" do
-    test "returns a structured timeout result when no result arrives" do
+    setup do
+      # A run that stays in flight: stub status/1's Oban-job lookup to report any
+      # "run-hung*" id as an unfinished (executing) job, so the poll loop spins to
+      # its deadline instead of vanishing. Scoped by prefix — every other id stays
+      # :not_found (the default-miss), so concurrent modules are unaffected.
+      prev = Application.get_env(:harness, :oban_run_job_lookup)
+
+      Application.put_env(:harness, :oban_run_job_lookup, fn run_id ->
+        if String.starts_with?(run_id, "run-hung"),
+          do: {:ok, in_flight_job(run_id)},
+          else: {:error, :not_found}
+      end)
+
+      on_exit(fn ->
+        if prev,
+          do: Application.put_env(:harness, :oban_run_job_lookup, prev),
+          else: Application.delete_env(:harness, :oban_run_job_lookup)
+      end)
+
+      :ok
+    end
+
+    test "returns a structured timeout result when the run stays in flight" do
       assert {:ok, summary} = Dispatch.await_result("run-hung", 20)
 
       assert summary.run_id == "run-hung"
@@ -254,10 +296,10 @@ defmodule Harness.DispatchTest do
       assert is_binary(summary.note)
     end
 
-    test "truncates a float timeout (MCP/JSON callers deliver one) before the receive" do
-      # Regression: is_integer guard + a float `after` clause both broke on a
-      # JSON-number timeout. is_number now accepts it; trunc(20.9) == 20 is the
-      # integer the timeout summary and `receive ... after` require.
+    test "truncates a float timeout (MCP/JSON callers deliver one) before the deadline" do
+      # Regression: is_integer guard + a float deadline both broke on a JSON-number
+      # timeout. is_number now accepts it; trunc(20.9) == 20 is the integer the
+      # timeout summary and the poll deadline require.
       assert {:ok, summary} = Dispatch.await_result("run-hung-float", 20.9)
 
       assert summary.state == :timed_out
@@ -1201,6 +1243,18 @@ defmodule Harness.DispatchTest do
       worktree_path: "/tmp/wt/#{run_id}",
       agent_diff_size: 5,
       reviewer_diff_size: 30
+    }
+  end
+
+  # A minimal unfinished Oban run job the status/1 lookup-seam returns so a poll
+  # reads the run as in-flight (summarize_oban_job_status maps it to :dispatched).
+  defp in_flight_job(run_id) do
+    %Oban.Job{
+      id: System.unique_integer([:positive]),
+      queue: "project_test",
+      worker: "Harness.Run.Worker",
+      state: "executing",
+      args: %{"run_id" => run_id, "item_id" => "25", "project_name" => "p"}
     }
   end
 
