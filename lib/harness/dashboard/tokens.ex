@@ -458,6 +458,20 @@ defmodule Harness.Dashboard.Tokens do
       .field dt { color: var(--text-subtle); }
       .field dd { margin: 0; font-family: var(--font-mono); }
 
+      /* Low-traffic run metadata (os pid / reason / worktree path) tucked behind
+         a disclosure so the high-signal rows above stay compact. */
+      .run-internals {
+        margin-block: var(--space-2);
+        font-size: var(--text-sm);
+      }
+      .run-internals > summary {
+        cursor: pointer;
+        color: var(--text-subtle);
+        font-family: var(--font-mono);
+      }
+      .run-internals > summary:hover { color: var(--text); }
+      .run-internals .field { margin-block-start: var(--space-2); }
+
       /* === Task details (the focused run's roadmap task) === */
 
       .task-details { margin-block: var(--space-4); }
@@ -590,8 +604,10 @@ defmodule Harness.Dashboard.Tokens do
       .kpi-bar-fill.tone-info { background: var(--verdict-info); }
       .kpi-bar-fill.tone-warn { background: var(--verdict-warn); }
 
-      /* Jump-nav between the KPI sections; sticky under the navbar so it stays reachable */
-      .kpi-nav {
+      /* Jump-nav between page sections (KPI + run-detail); sticky under the
+         navbar so it stays reachable while a long section scrolls */
+      .kpi-nav,
+      .run-detail-nav {
         position: sticky;
         top: var(--navbar-height);
         z-index: 2;
@@ -602,7 +618,8 @@ defmodule Harness.Dashboard.Tokens do
         padding-block: var(--space-2);
         background: var(--bg);
       }
-      .kpi-nav a {
+      .kpi-nav a,
+      .run-detail-nav a {
         font-family: var(--font-mono);
         font-size: var(--text-sm);
         text-decoration: none;
@@ -611,11 +628,13 @@ defmodule Harness.Dashboard.Tokens do
         border-radius: 999px;
         color: var(--text-subtle);
       }
-      .kpi-nav a:hover { color: var(--text); border-color: var(--accent); }
+      .kpi-nav a:hover,
+      .run-detail-nav a:hover { color: var(--text); border-color: var(--accent); }
 
       /* Wrap a wide table (the ledger's dynamic rating columns) so it scrolls in place */
       .table-scroll { overflow-x: auto; }
-      .kpi-section { scroll-margin-top: calc(var(--navbar-height) + 3rem); }
+      .kpi-section,
+      .run-section { scroll-margin-top: calc(var(--navbar-height) + 3rem); }
 
       /* File rows */
       .cf-file {
@@ -1026,6 +1045,9 @@ defmodule Harness.Dashboard.Tokens do
         flex-direction: column;
         gap: var(--space-3);
         margin-block: var(--space-3);
+        /* The transcript flows with the page — one natural scrollbar, no
+           scroll-within-scroll trap. Navigation back to the metadata/task/diff
+           is the sticky .run-detail-nav, not a bounded pane. */
       }
       .transcript-empty {
         color: var(--text-muted);

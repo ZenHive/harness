@@ -787,33 +787,47 @@ defmodule Harness.Dashboard.Live do
     <p><a href="/harness">← All runs</a></p>
     <Components.operator_flash notice={@notice} include_persistent={false} />
 
+    <nav :if={@run_status != nil} class="run-detail-nav">
+      <a href="#run-info">Run info</a>
+      <a :if={@task_item != nil} href="#run-task">Task</a>
+      <a href="#run-diff">Changed files</a>
+      <a href="#run-transcript">Transcript</a>
+    </nav>
+
     <p :if={@run_status == nil}>
       Run not found (already settled and unregistered, or never started in this BEAM).
     </p>
-    <dl :if={@run_status != nil} class="field">
-      <dt>Task</dt>
-      <dd>{@run_status.task_id}</dd>
-      <dt>State</dt>
-      <dd>{@run_status.state}</dd>
-      <dt>Verdict</dt>
-      <dd>{verdict_label(@run_status.review_verdict)}</dd>
-      <dt>Agent</dt>
-      <dd>{agent_label(@agent_kind, @run_status.agent)}</dd>
-      <dt :if={@run_status.reviewer_adapter}>Reviewer</dt>
-      <dd :if={@run_status.reviewer_adapter}>{agent_label(@run_status.reviewer_adapter, nil)}</dd>
-      <dt :if={@run_status.recovery_adapter}>Recovery</dt>
-      <dd :if={@run_status.recovery_adapter}>{agent_label(@run_status.recovery_adapter, nil)}</dd>
-      <dt>Model</dt>
-      <dd>{model_label(@agent_kind, @run_status.model, @transcript)}</dd>
-      <dt>Tokens</dt>
-      <dd>{token_label(@agent_kind, @transcript)}</dd>
-      <dt>Agent OS pid</dt>
-      <dd>{@run_status.agent_os_pid || "—"}</dd>
-      <dt>Reason</dt>
-      <dd>{inspect(@run_status.reason)}</dd>
-      <dt>Worktree path</dt>
-      <dd>{@run_status.worktree_path || "—"}</dd>
-    </dl>
+    <div :if={@run_status != nil} id="run-info" class="run-section">
+      <dl class="field">
+        <dt>Task</dt>
+        <dd>{@run_status.task_id}</dd>
+        <dt>State</dt>
+        <dd>{@run_status.state}</dd>
+        <dt>Verdict</dt>
+        <dd>{verdict_label(@run_status.review_verdict)}</dd>
+        <dt>Agent</dt>
+        <dd>{agent_label(@agent_kind, @run_status.agent)}</dd>
+        <dt :if={@run_status.reviewer_adapter}>Reviewer</dt>
+        <dd :if={@run_status.reviewer_adapter}>{agent_label(@run_status.reviewer_adapter, nil)}</dd>
+        <dt :if={@run_status.recovery_adapter}>Recovery</dt>
+        <dd :if={@run_status.recovery_adapter}>{agent_label(@run_status.recovery_adapter, nil)}</dd>
+        <dt>Model</dt>
+        <dd>{model_label(@agent_kind, @run_status.model, @transcript)}</dd>
+        <dt>Tokens</dt>
+        <dd>{token_label(@agent_kind, @transcript)}</dd>
+      </dl>
+      <details class="run-internals">
+        <summary>Run internals</summary>
+        <dl class="field">
+          <dt>Agent OS pid</dt>
+          <dd>{@run_status.agent_os_pid || "—"}</dd>
+          <dt>Reason</dt>
+          <dd>{inspect(@run_status.reason)}</dd>
+          <dt>Worktree path</dt>
+          <dd>{@run_status.worktree_path || "—"}</dd>
+        </dl>
+      </details>
+    </div>
 
     <p :if={killable?(@run_status)}>
       <.kill_button run_id={@run_id} />
@@ -821,7 +835,7 @@ defmodule Harness.Dashboard.Live do
 
     <.task_section :if={@task_item != nil} item={@task_item} />
 
-    <div :if={@run_status != nil}>
+    <div :if={@run_status != nil} id="run-diff" class="run-section">
       <h2>Changed files</h2>
       <Components.edited_files_live
         :if={killable?(@run_status)}
@@ -830,7 +844,7 @@ defmodule Harness.Dashboard.Live do
       <Components.run_diff_view :if={not killable?(@run_status)} diff={@run_diff} />
     </div>
 
-    <h2>Transcript</h2>
+    <h2 id="run-transcript" class="run-section">Transcript</h2>
     <p class="transcript-toggle">
       <a :if={!@raw_view} href={"/harness/runs/#{@run_id}?raw=1"}>view raw stream</a>
       <a :if={@raw_view} href={"/harness/runs/#{@run_id}"}>view parsed turns</a>
@@ -855,7 +869,7 @@ defmodule Harness.Dashboard.Live do
   @spec task_section(map()) :: Rendered.t()
   defp task_section(assigns) do
     ~H"""
-    <div class="task-details">
+    <div id="run-task" class="task-details run-section">
       <h2>Task</h2>
       <dl class="field">
         <dt>Title</dt>

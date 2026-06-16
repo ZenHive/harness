@@ -114,6 +114,29 @@ defmodule Harness.Dashboard.LiveMountTest do
       {:ok, _view, html} = live(conn, "/harness/runs/no-such-run")
 
       assert html =~ "Run not found"
+      refute html =~ ~s(class="run-detail-nav")
+    end
+
+    test "renders the sticky jump-nav and the collapsed run-internals disclosure", %{conn: conn} do
+      {run_id, _pid} = start_sleeping_run()
+
+      {:ok, _view, html} = live(conn, "/harness/runs/#{run_id}")
+
+      # Jump-nav with anchors to each section (the Task link is conditional on a
+      # resolved roadmap item, which this fixture run has none of).
+      assert html =~ ~s(class="run-detail-nav")
+      assert html =~ ~s(href="#run-info")
+      assert html =~ ~s(href="#run-diff")
+      assert html =~ ~s(href="#run-transcript")
+
+      # Section anchors carry the scroll-margin class.
+      assert html =~ ~s(id="run-info")
+      assert html =~ ~s(id="run-transcript")
+
+      # Low-traffic metadata moved behind the disclosure (still in the DOM).
+      assert html =~ ~s(class="run-internals")
+      assert html =~ "Run internals"
+      assert html =~ "Worktree path"
     end
 
     test "the ?raw=1 param renders the raw stream pane", %{conn: conn} do

@@ -161,6 +161,19 @@ defmodule Harness.Dashboard.ComponentsTest do
       assert html =~ ">result</span>"
     end
 
+    test "renders blocks newest-first (latest turn on top)" do
+      events = [
+        {:assistant_text, %{text: "oldest turn"}},
+        {:system, %{kind: :result, data: %{"status" => "ok"}}},
+        {:assistant_text, %{text: "newest turn"}}
+      ]
+
+      html = render_component(&Components.transcript_view/1, events: events, agent: :claude)
+
+      # The latest turn's text precedes the oldest turn's text in the rendered DOM.
+      assert :binary.match(html, "newest turn") < :binary.match(html, "oldest turn")
+    end
+
     test "drops a malformed :tool_result with no preceding :assistant_tool_use" do
       events = [{:tool_result, %{tool_use_id: "orphan", content: "nope"}}]
 

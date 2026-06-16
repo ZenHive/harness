@@ -527,7 +527,14 @@ defmodule Harness.Dashboard.Components do
   """
   @spec transcript_view(map()) :: Rendered.t()
   def transcript_view(%{events: events, agent: agent} = assigns) do
-    assigns = assign(assigns, :blocks, group_events(events, agent))
+    # Group chronologically (the tool_use→tool_result pairing + turn-flush logic
+    # depends on event order), then reverse the resulting BLOCKS so the newest
+    # turn renders on top. Reading lands on the latest activity without scrolling
+    # to the bottom — and for a live run, fresh output appears at the top where
+    # the operator is already looking, not below the fold. Order *within* a turn
+    # (text → its tool calls) is preserved.
+    blocks = events |> group_events(agent) |> Enum.reverse()
+    assigns = assign(assigns, :blocks, blocks)
 
     ~H"""
     <section class="transcript-view" data-agent={@agent}>
