@@ -339,7 +339,7 @@ defmodule Harness.Dashboard.MCPServerTest do
       assert is_binary(session_id)
     end
 
-    test "read tools respond on the same MCP session while dispatch-await is attached to an in-flight run" do
+    test "dispatch-await attach returns :timed_out and read tools stay responsive on the same MCP session (Task 310)" do
       queued_id = "run-mcp-concurrent-#{System.unique_integer([:positive])}"
       project_name = "mcp-await-#{System.unique_integer([:positive])}"
       parent = self()
@@ -419,19 +419,34 @@ defmodule Harness.Dashboard.MCPServerTest do
           mcp_tools_call("dispatch-status", %{"run_id" => queued_id}, session_id: session_id)
         end)
 
-      case Task.yield(status_task, @read_tool_timeout_ms) || Task.shutdown(status_task, :brutal_kill) do
-        {:ok, {:ok, response, ^session_id}} ->
-          assert %{
-                   "content" => [%{"type" => "text", "text" => text}],
-                   "isError" => false
-                 } = response["result"]
+      list_runs_task =
+        Task.async(fn ->
+          mcp_tools_call("supervisor-list_runs", %{}, session_id: session_id)
+        end)
 
-          assert {:ok, ["ok", %{"run_id" => ^queued_id, "state" => "dispatched"}]} =
-                   Jason.decode(text)
+      for {label, task} <- [
+            {"dispatch-status", status_task},
+            {"supervisor-list_runs", list_runs_task}
+          ] do
+        case Task.yield(task, @read_tool_timeout_ms) || Task.shutdown(task, :brutal_kill) do
+          {:ok, {:ok, response, ^session_id}} ->
+            assert %{"content" => [%{"type" => "text", "text" => text}], "isError" => false} =
+                     response["result"]
 
-        nil ->
-          Task.shutdown(await_task, :brutal_kill)
-          flunk("dispatch-status did not return while dispatch-await was pending")
+            assert {:ok, decoded} = Jason.decode(text)
+
+            case label do
+              "dispatch-status" ->
+                assert ["ok", %{"run_id" => ^queued_id, "state" => "dispatched"}] = decoded
+
+              "supervisor-list_runs" ->
+                assert is_list(decoded)
+            end
+
+          nil ->
+            Task.shutdown(await_task, :brutal_kill)
+            flunk("#{label} did not return while dispatch-await was pending")
+        end
       end
 
       assert {:ok, {:ok, await_response, ^session_id}} = Task.yield(await_task, @concurrent_wait_ms * 2)
