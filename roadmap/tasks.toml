@@ -9159,3 +9159,26 @@ Built as a harness-native LiveView over Harness.CodeSearch's query API (NOT a mo
 """
 created_at = "2026-06-16"
 scored_at = "2026-06-16"
+
+[[task]]
+id = "304"
+phase = 20
+bundle = "autolanding"
+status = "pending"
+title = "Cron poller: suppress re-dispatch of a task whose adapter is unavailable (no churn loop)"
+scores = { d = 3, b = 3, u = 1 }
+depends_on = [16]
+acceptance_criteria = ["When a cron-dispatched run for task T fails to START because its resolved adapter/model is unavailable ({:start_run_failed, {:no_available_agent, _}} → mechanical_retry_exhausted → job cancelled), the next poll tick does NOT immediately re-dispatch T against the same unavailable adapter", "Suppression keys off the existing ModelAvailability/AgentRegistry availability fact (Task 16) — a mechanical 'is this adapter available right now' check, NOT a new judgment/scoring branch in harness code", "A task suppressed only because its adapter is unavailable becomes dispatchable again automatically once the adapter is available (no manual unblock needed); availability is the gate, not a sticky blocklist", "The churn is observable-then-gone: a log/witness line names the suppressed (task, adapter, reason) so the operator sees why a ready task isn't dispatching", "Tests: a poll tick with an unavailable adapter for a ready task enqueues nothing and logs the suppression; once the adapter is marked available the same task dispatches"]
+out_of_scope = ["Marking a quota-exhausted/unavailable agent unavailable in the first place — that detection is Task 16; this task only consumes the availability fact at poll time", "In-run retry/backoff classification of a run that already STARTED then failed — that is Harness.Run.RetryPolicy (Tasks 10/41); this is the poller declining to (re-)START when the adapter can't run at all", "Any change to dispatch-await/dispatch-task interactive paths"]
+files_to_modify = ["lib/harness/cron/roadmap_poller.ex"]
+touches = ["lib/harness/cron/roadmap_poller.ex", "lib/harness/run/worker.ex", "lib/harness/model_availability.ex"]
+domains = ["otp", "oban"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Observed 2026-06-16: task 130/ccxt_client was re-enqueued by the cron poller every ~3 min (Oban jobs 1597-1600), each run cancelling ~22s later with no_available_agent for Codex. Codex was unavailable so the run never started; mechanical retry (5 attempts) exhausted, the Oban job cancelled, the task reverted to pending, and the next cron tick re-selected it — a tight re-dispatch loop with no agent-unavailable suppression at the poller. The existing run_in_flight? guard does not help: a cancelled job is terminal (not in-flight), so the task is legitimately ready again every tick.
+
+The fix is mechanical, not judgment: before enqueuing a ready task whose resolved adapter/model is currently unavailable (the same availability fact Task 16 computes), the poller declines and logs/witnesses the suppression — and resumes dispatching automatically once the adapter is available. No new scoring or is-this-worth-retrying classifier. Discovered while fixing the orthogonal dispatch-await duplicate-dispatch hole.
+"""
+created_at = "2026-06-16"
+scored_at = "2026-06-16"
