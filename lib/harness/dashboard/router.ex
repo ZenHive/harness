@@ -12,6 +12,7 @@ defmodule Harness.Dashboard.Router do
   import Oban.Web.Router
   import Phoenix.LiveView.Router
 
+  alias Harness.Dashboard.MCPPlug
   alias Harness.Dashboard.MCPServer
 
   pipeline :browser do
@@ -26,7 +27,7 @@ defmodule Harness.Dashboard.Router do
   # MCP endpoint (Task 79 rework): real JSON-RPC 2.0 over Streamable HTTP via
   # `anubis_mcp`. Tools come from `Harness.Manifest` — see
   # `Harness.Dashboard.MCPServer` for the dispatch wiring.
-  forward("/harness/mcp", Anubis.Server.Transport.StreamableHTTP.Plug,
+  forward("/harness/mcp", MCPPlug,
     server: MCPServer,
     request_timeout: MCPServer.request_timeout_ms()
   )

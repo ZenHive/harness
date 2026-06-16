@@ -4,7 +4,7 @@ defmodule Harness.Dashboard.MCPServerTest do
 
   alias Anubis.MCP.Error
   alias Anubis.Server.Frame
-  alias Anubis.Server.Transport.StreamableHTTP.Plug, as: StreamableHTTPPlug
+  alias Harness.Dashboard.MCPPlug
   alias Harness.Dashboard.MCPServer
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
@@ -244,7 +244,7 @@ defmodule Harness.Dashboard.MCPServerTest do
         |> Plug.Conn.put_req_header("accept", "application/json")
 
       plug_opts = plug_opts()
-      result = StreamableHTTPPlug.call(conn, plug_opts)
+      result = MCPPlug.call(conn, plug_opts)
 
       assert result.status == 200
       assert [session_id] = Plug.Conn.get_resp_header(result, "mcp-session-id")
@@ -267,6 +267,8 @@ defmodule Harness.Dashboard.MCPServerTest do
   # timeout_ms defaults to 30 min.
   describe "blocking tool transport timeout (Task 296)" do
     @blocking_wait_ms 31_000
+    @concurrent_wait_ms 1_000
+    @read_tool_timeout_ms 250
 
     setup do
       start_supervised!(
@@ -336,10 +338,116 @@ defmodule Harness.Dashboard.MCPServerTest do
 
       assert is_binary(session_id)
     end
+
+    test "read tools respond on the same MCP session while dispatch-await is attached to an in-flight run" do
+      queued_id = "run-mcp-concurrent-#{System.unique_integer([:positive])}"
+      project_name = "mcp-await-#{System.unique_integer([:positive])}"
+      parent = self()
+      project = ProjectFixture.from_repo("test/fixtures/sample_roadmap", name: project_name)
+      prior_agent_model = Application.get_env(:harness, :agent_model)
+
+      assert :ok = ProjectRegistry.register(project)
+
+      Application.put_env(:harness, :agent_model, codex: "gpt-5.5")
+
+      Application.put_env(:harness, :oban_insert, fn _changeset ->
+        {:ok,
+         %Oban.Job{
+           id: 310,
+           conflict?: true,
+           state: "executing",
+           queue: "project_interactive",
+           worker: "Harness.Run.Worker",
+           args: %{
+             "project_name" => project_name,
+             "item_id" => "2",
+             "run_id" => queued_id
+           }
+         }}
+      end)
+
+      Application.put_env(:harness, :oban_run_job_lookup, fn
+        ^queued_id ->
+          send(parent, {:job_lookup, queued_id})
+
+          {:ok,
+           %Oban.Job{
+             id: 310,
+             state: "executing",
+             queue: "project_interactive",
+             worker: "Harness.Run.Worker",
+             args: %{
+               "project_name" => project_name,
+               "item_id" => "2",
+               "run_id" => queued_id
+             }
+           }}
+
+        _other ->
+          {:error, :not_found}
+      end)
+
+      on_exit(fn -> Application.delete_env(:harness, :oban_insert) end)
+      on_exit(fn -> Application.delete_env(:harness, :oban_run_job_lookup) end)
+
+      on_exit(fn ->
+        if prior_agent_model,
+          do: Application.put_env(:harness, :agent_model, prior_agent_model),
+          else: Application.delete_env(:harness, :agent_model)
+      end)
+
+      session_id = initialize_mcp_session!()
+
+      await_task =
+        Task.async(fn ->
+          mcp_tools_call(
+            "dispatch-await",
+            %{
+              "project_name" => project_name,
+              "task" => "2",
+              "adapter" => "codex",
+              "timeout_ms" => @concurrent_wait_ms
+            },
+            session_id: session_id
+          )
+        end)
+
+      assert_receive {:job_lookup, ^queued_id}, @read_tool_timeout_ms
+
+      status_task =
+        Task.async(fn ->
+          mcp_tools_call("dispatch-status", %{"run_id" => queued_id}, session_id: session_id)
+        end)
+
+      case Task.yield(status_task, @read_tool_timeout_ms) || Task.shutdown(status_task, :brutal_kill) do
+        {:ok, {:ok, response, ^session_id}} ->
+          assert %{
+                   "content" => [%{"type" => "text", "text" => text}],
+                   "isError" => false
+                 } = response["result"]
+
+          assert {:ok, ["ok", %{"run_id" => ^queued_id, "state" => "dispatched"}]} =
+                   Jason.decode(text)
+
+        nil ->
+          Task.shutdown(await_task, :brutal_kill)
+          flunk("dispatch-status did not return while dispatch-await was pending")
+      end
+
+      assert {:ok, {:ok, await_response, ^session_id}} = Task.yield(await_task, @concurrent_wait_ms * 2)
+
+      assert %{
+               "content" => [%{"type" => "text", "text" => await_text}],
+               "isError" => false
+             } = await_response["result"]
+
+      assert {:ok, ["ok", %{"run_id" => ^queued_id, "state" => "timed_out", "timeout_ms" => @concurrent_wait_ms}]} =
+               Jason.decode(await_text)
+    end
   end
 
   defp plug_opts do
-    StreamableHTTPPlug.init(
+    MCPPlug.init(
       server: MCPServer,
       request_timeout: MCPServer.request_timeout_ms()
     )
@@ -364,7 +472,7 @@ defmodule Harness.Dashboard.MCPServerTest do
       |> Plug.Conn.put_req_header("content-type", "application/json")
       |> Plug.Conn.put_req_header("accept", "application/json")
 
-    result = StreamableHTTPPlug.call(conn, plug_opts())
+    result = MCPPlug.call(conn, plug_opts())
     assert result.status == 200
 
     [session_id] = Plug.Conn.get_resp_header(result, "mcp-session-id")
@@ -383,7 +491,7 @@ defmodule Harness.Dashboard.MCPServerTest do
       |> Plug.Conn.put_req_header("accept", "application/json")
       |> Plug.Conn.put_req_header("mcp-session-id", session_id)
 
-    initialized_result = StreamableHTTPPlug.call(initialized_conn, plug_opts())
+    initialized_result = MCPPlug.call(initialized_conn, plug_opts())
     assert initialized_result.status == 202
 
     session_id
@@ -408,7 +516,7 @@ defmodule Harness.Dashboard.MCPServerTest do
       |> Plug.Conn.put_req_header("accept", "application/json")
       |> Plug.Conn.put_req_header("mcp-session-id", session_id)
 
-    result = StreamableHTTPPlug.call(conn, plug_opts())
+    result = MCPPlug.call(conn, plug_opts())
     assert result.status == 200
 
     assert {:ok, response} = Jason.decode(result.resp_body)
