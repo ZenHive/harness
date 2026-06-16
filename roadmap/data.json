@@ -13877,7 +13877,7 @@
       "id": "310",
       "phase": 20,
       "bundle": "core-loop",
-      "status": "pending",
+      "status": "in_progress",
       "title": "dispatch-await attach-to-in-flight-run wedges the MCP transport instead of returning the structured :timed_out summary (and poisons subsequent dispatch-status/list_runs calls)",
       "scores": {
         "d": 3,
@@ -13910,6 +13910,7 @@
       ],
       "body": "Found 2026-06-16 from a ccxt-distill orchestration session (driving harness via the MCP dispatch tools to chain rmap tasks). Run-1781604067447-043d5fac (ccxt-distill task 47, codex/gpt-5.5) was in flight. To block until it settled I called dispatch-await {task: '47', project_name: 'ccxt-distill', timeout_ms: 1_800_000}. It returned a bare 'The operation timed out.' transport error after ~60s — not the structured :timed_out summary the tool doc guarantees ('never a wedged tool call'). Worse, the next three calls (dispatch-status on the run_id, then supervisor-list_runs twice) ALSO timed out, even though `ps` confirmed the BEAM phx.server, the postgres pool, and the codex exec child (pid 66034) were all alive and the run was still progressing (a watcher shell was counting toward its 40-min cap). So the attach path doesn't just fail to honor timeout_ms — it appears to wedge the MCP request handler so read-only status calls starve behind it.\n\nOperator workaround used: abandon the MCP await, poll run state out-of-band (ps / watch the worktree's .harness/review.json) instead. That defeats the point of dispatch-await as the 'one call gets the answer' bounded-blocking variant.\n\nThis blocks programmatic 'await this run, then dispatch the next ready task' orchestration loops — exactly the goal-driven chaining the dispatch MCP surface exists to support.\n",
       "created_at": "2026-06-16",
+      "started_at": "2026-06-16",
       "scored_at": "2026-06-16",
       "cross_repo": []
     }
