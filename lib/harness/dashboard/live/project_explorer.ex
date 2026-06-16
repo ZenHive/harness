@@ -26,41 +26,43 @@ defmodule Harness.Dashboard.Live.ProjectExplorer do
   @impl Phoenix.LiveView
   @spec mount(map(), map(), Socket.t()) ::
           {:ok, Socket.t()}
-  def mount(%{"name" => name}, _session, socket) do
-    projects = ProjectRegistry.list()
-
+  def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(:projects, projects)
+     |> assign(:projects, ProjectRegistry.list())
      |> assign(:selected_symbol, nil)
      |> assign(:callers, [])
-     |> assign(:callees, [])
-     |> load_project(name, projects)}
+     |> assign(:callees, [])}
+  end
+
+  @impl Phoenix.LiveView
+  @spec handle_params(map(), String.t(), Socket.t()) :: {:noreply, Socket.t()}
+  def handle_params(%{"name" => name}, _uri, socket) do
+    {:noreply, load_explorer(socket, name)}
   end
 
   @impl Phoenix.LiveView
   @spec handle_event(String.t(), map(), Socket.t()) ::
           {:noreply, Socket.t()}
   def handle_event("select_project", %{"project" => name}, socket) do
-    {:noreply,
-     socket
-     |> assign(:selected_symbol, nil)
-     |> assign(:callers, [])
-     |> assign(:callees, [])
-     |> load_project(name, socket.assigns.projects)}
+    {:noreply, push_patch(socket, to: "/harness/projects/#{name}/explore")}
   end
 
   def handle_event("select_symbol", %{"symbol" => symbol}, socket) do
-    project = socket.assigns.project
+    case socket.assigns do
+      %{state: :ready, project: %Project{} = project} ->
+        callers = edge_facts(:callers, project.name, symbol)
+        callees = edge_facts(:callees, project.name, symbol)
 
-    callers = edge_facts(:callers, project.name, symbol)
-    callees = edge_facts(:callees, project.name, symbol)
+        {:noreply,
+         socket
+         |> assign(:selected_symbol, symbol)
+         |> assign(:callers, callers)
+         |> assign(:callees, callees)}
 
-    {:noreply,
-     socket
-     |> assign(:selected_symbol, symbol)
-     |> assign(:callers, callers)
-     |> assign(:callees, callees)}
+      _other ->
+        {:noreply, socket}
+    end
   end
 
   @impl Phoenix.LiveView
@@ -180,6 +182,15 @@ defmodule Harness.Dashboard.Live.ProjectExplorer do
       </tbody>
     </table>
     """
+  end
+
+  @spec load_explorer(Socket.t(), String.t()) :: Socket.t()
+  defp load_explorer(socket, name) do
+    socket
+    |> assign(:selected_symbol, nil)
+    |> assign(:callers, [])
+    |> assign(:callees, [])
+    |> load_project(name, socket.assigns.projects)
   end
 
   @spec load_project(Socket.t(), String.t(), [Project.t()]) :: Socket.t()
