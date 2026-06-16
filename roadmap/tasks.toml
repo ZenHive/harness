@@ -9339,7 +9339,7 @@ shipped_in = "e9f3085fc9527330f54bcd26fa1eb051817fadad"
 id = "310"
 phase = 20
 bundle = "core-loop"
-status = "in_progress"
+status = "done"
 title = "dispatch-await attach-to-in-flight-run wedges the MCP transport instead of returning the structured :timed_out summary (and poisons subsequent dispatch-status/list_runs calls)"
 scores = { d = 3, b = 4, u = 3 }
 acceptance_criteria = ["REPRO (observed 2026-06-16, ccxt-distill task 47, run-1781604067447-043d5fac dispatched on codex/gpt-5.5): with a run already in flight, calling mcp__harness__dispatch-await {task: '47', project_name: 'ccxt-distill', timeout_ms: 1_800_000} returns a transport-level 'The operation timed out.' error after the MCP client's own (~60s) deadline — NOT the documented structured :timed_out summary. The tool doc promises 'on timeout it returns a structured :timed_out summary ... never a wedged tool call'; the attach path violates that promise.", "SECONDARY SYMPTOM: after that await call, the immediately-following mcp__harness__dispatch-status {run_id} and mcp__harness__supervisor-list_runs calls ALSO timed out (3x), while the BEAM (phx.server pid alive) and the dispatched codex exec process were both healthy and the run was genuinely still running. So the wedged await appears to block/serialize the MCP request handler (or hold a GenServer call) such that subsequent read-only dispatch tools hang too — not just the await itself.", "ROOT CAUSE to confirm: the attach-to-existing-run path (dispatch-await for a task already in flight ATTACHES rather than re-dispatching) does a blocking GenServer.call / receive whose own timeout is unbounded or >> the MCP transport deadline, so the MCP framing layer times out first and the call never honors timeout_ms. Whether the handler also holds a lock that starves status/list_runs must be verified.", "FIX: the await wait must be bounded by timeout_ms at a layer BELOW the MCP transport deadline semantics — i.e. honor timeout_ms (default 30min) by returning the structured :timed_out summary map {state: :timed_out, run_id, ...} as a normal tool result, and ensure attach uses a non-blocking/monitored wait that never holds a shared lock. Read-only tools (dispatch-status, supervisor-list_runs) must stay responsive while an await is in flight.", "TEST: a test that dispatches (or fakes) an in-flight run, then awaits with a short timeout_ms, asserts the structured :timed_out summary is returned (not an exception/transport error) and that a concurrent dispatch-status/list_runs returns promptly while the await is pending. flunk on a hang/raise.", "mix precommit.full green."]
@@ -9354,6 +9354,11 @@ Operator workaround used: abandon the MCP await, poll run state out-of-band (ps 
 
 This blocks programmatic 'await this run, then dispatch the next ready task' orchestration loops — exactly the goal-driven chaining the dispatch MCP surface exists to support.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781607673833-50f47009, d1596df90cd280cff095ba30fb7907598a2cd019)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-16"
 started_at = "2026-06-16"
 scored_at = "2026-06-16"
+done_at = "2026-06-16"
+shipped_in = "d1596df90cd280cff095ba30fb7907598a2cd019"
