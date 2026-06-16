@@ -150,6 +150,9 @@ defmodule Harness.MixProject do
       {:ex_dna, "~> 1.5", only: [:dev, :test], runtime: false},
       {:ex_ast, "~> 0.12", only: [:dev, :test], runtime: false},
       {:reach, "~> 2.7", only: [:dev, :test], runtime: false},
+      # TODO: pin to hex once a release > 0.8.0 ships — GitHub HEAD carries a fix we need
+      # that is NOT yet in hex 0.8.0; stay on the github dep until then. (Also: 0.8.0 still
+      # pins volt ~> 0.11.1, which is what holds volt back from 0.14.)
       {:exograph, github: "elixir-vibe/exograph", only: [:dev, :test], runtime: false},
       {:hammer, "~> 7.3", only: [:dev, :test], runtime: false},
       {:phoenix_iconify, "~> 0.1", only: [:dev, :test], runtime: false},
