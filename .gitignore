@@ -32,7 +32,6 @@ harness-*.tar
 # Dialyzer PLTs live outside _build/ so they survive `mix clean` and can be cached by CI
 /priv/plts/
 
-
 # Grok (xAI Grok Build TUI / agent)
 # Project-local config that is *meant* to be shared lives under .grok/
 # (config.toml for MCP, skills/, hooks/, agents/, plugins/, lsp.json, sandbox.toml).
