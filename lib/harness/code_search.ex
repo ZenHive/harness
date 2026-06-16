@@ -476,8 +476,12 @@ defmodule Harness.CodeSearch do
   end
 
   @spec source_cache_insert(term(), [map()]) :: true
-  defp source_cache_insert(key, facts) do
-    :ets.insert(source_cache_table(), {key, facts})
+  defp source_cache_insert({repo_path, _mtime} = key, facts) do
+    table = source_cache_table()
+    # Only the newest-mtime snapshot is ever looked up; evict prior mtimes for
+    # this repo so the table can't grow without bound on a long-lived node.
+    :ets.match_delete(table, {{repo_path, :_}, :_})
+    :ets.insert(table, {key, facts})
   end
 
   @spec source_cache_table() :: :ets.tid() | atom()
@@ -504,8 +508,12 @@ defmodule Harness.CodeSearch do
   end
 
   @spec definition_cache_insert(term(), [fact()]) :: true
-  defp definition_cache_insert(key, facts) do
-    :ets.insert(definition_cache_table(), {key, facts})
+  defp definition_cache_insert({repo_path, prefix, _mtime, limit} = key, facts) do
+    table = definition_cache_table()
+    # Distinct limits are legitimately distinct result sets; evict only prior
+    # mtimes for the same {repo, prefix, limit} so stale snapshots don't pile up.
+    :ets.match_delete(table, {{repo_path, prefix, :_, limit}, :_})
+    :ets.insert(table, {key, facts})
   end
 
   @spec definition_cache_table() :: :ets.tid() | atom()
@@ -837,9 +845,15 @@ defmodule Harness.CodeSearch.Server do
 
     with :ok <- ensure_module(:quackdb, opts[:quackdb_server_module] || QuackDB.Server),
          :ok <- ensure_module(:exograph_duckdb_repo, opts[:repo_module] || Exograph.DuckDBRepo),
-         {:ok, resource, state} <- resource_for(key, index_path, opts, state),
-         {:ok, reply, resource} <- with_cached_index(resource, opts, open_fun, fun) do
-      {:reply, reply, put_in(state.resources[key], resource)}
+         {:ok, resource, state} <- resource_for(key, index_path, opts, state) do
+      # Preserve the started server+repo even when the index fails to open: the
+      # `with`-rebound `state` is not visible in `else`, so replying there would
+      # orphan the live resource. Persist it (index stays nil) so close_all /
+      # terminate can reclaim it and the next query retries the open.
+      case with_cached_index(resource, opts, open_fun, fun) do
+        {:ok, reply, resource} -> {:reply, reply, put_in(state.resources[key], resource)}
+        {:error, reason} -> {:reply, {:error, reason}, put_in(state.resources[key], resource)}
+      end
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
       {:skip, reason, _project} -> {:reply, {:error, reason}, state}
@@ -1001,12 +1015,17 @@ defmodule Harness.CodeSearch.Server do
 
   @spec resource_key(String.t(), keyword()) :: term()
   defp resource_key(index_path, opts) do
+    # Every opt that changes the opened index/repo must be part of the key, or a
+    # cached resource gets reused for an incompatible query context (e.g. a
+    # different table prefix or exograph module against the same index_path).
     {
       index_path,
       Keyword.get(opts, :duckdb, :managed),
       Keyword.get(opts, :duckdb_options, []),
       opts[:quackdb_server_module] || QuackDB.Server,
-      opts[:repo_module] || Exograph.DuckDBRepo
+      opts[:repo_module] || Exograph.DuckDBRepo,
+      opts[:exograph_module] || Exograph,
+      opts[:prefix]
     }
   end
 

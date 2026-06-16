@@ -187,3 +187,7 @@ Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/code_search
 SQL.Query: SQL injection,lib/harness/code_search.ex:97,7447830
 DOS.BinToAtom: Unsafe atom interpolation,lib/harness/code_search.ex:217,76889CF
 SQL.Query: SQL injection,lib/harness/code_search.ex:130,C03F78
+DOS.BinToAtom: Unsafe atom interpolation,lib/harness/code_search.ex:938,267C1E9
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/harness/code_search.ex:756,36A4251
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/code_search.ex:536,43E147C
+DOS.BinToAtom: Unsafe atom interpolation,lib/harness/code_search.ex:1012,560A23E
