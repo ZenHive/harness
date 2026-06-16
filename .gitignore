@@ -32,8 +32,6 @@ harness-*.tar
 # Dialyzer PLTs live outside _build/ so they survive `mix clean` and can be cached by CI
 /priv/plts/
 
-# Sobelow baseline (auto-managed by audit-review on drift)
-/.sobelow-skips
 
 # Grok (xAI Grok Build TUI / agent)
 # Project-local config that is *meant* to be shared lives under .grok/

@@ -1,0 +1,180 @@
+# Sobelow skip baseline — managed by audit-review on line-fingerprint drift.
+# Do not hand-edit; the deferred audit pass regenerates this.
+[]
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/result_store/file.ex:97,11D242C
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/result_store/file.ex:98,19B6D5
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/agent_rules.ex:236,19D461B
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/agent_rules.ex:179,1DBCFA0
+CI.System: Command Injection via `System` function,lib/harness/verification/baseline_filter/credo.ex:165,247D8CC
+Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/harness/agent_rules.ex:234,2BAAD51
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:360,5BFD712
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/harness/agent_rules.ex:255,5CF61C0
+CI.System: Command Injection via `System` function,lib/harness/roadmap.ex:184,628BFDA
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/result_store/file.ex:107,6338A01
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/harness/result_store/file.ex:108,6FBDB04
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/agent_rules.ex:221,7D905EB
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/worktree/sweeper.ex:74,83C691
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/agent_rules.ex:268,A49728
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:270,1F2321B
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/harness/worktree.ex:455,42BCAC5
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/worktree/sweeper.ex:76,45CD659
+Traversal.FileModule: Directory Traversal in `File.cp_r!`,lib/harness/in_repo_template.ex:21,4DBB7B4
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/project/source/github.ex:102,57D0FDA
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/worktree.ex:464,5F0C72D
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:442,67995FB
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/worktree.ex:489,1FCF3A1
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:295,237D428
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/harness/worktree.ex:480,561DC6C
+Traversal.FileModule: Directory Traversal in `File.cp`,lib/harness/worktree.ex:167,79C845F
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:467,7D9E26D
+CI.System: Command Injection via `System` function,lib/harness/roadmap.ex:189,107B647
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/result_store/file.ex:96,1C2659B
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/result_store/file.ex:97,2388CC5
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/result_store/file.ex:106,3E33DF
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/harness/result_store/file.ex:107,8607A2
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/chat/tools.ex:120,1846D29
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/chat/claude.ex:153,448BAC9
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/chat/claude.ex:197,581EC54
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/chat/tools.ex:113,8F4232
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/harness/worktree.ex:488,6AFE35B
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:472,C9ADE6
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/worktree.ex:497,E82F11
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/worktree.ex:500,1766BE8
+CI.System: Command Injection via `System` function,lib/harness/verification/baseline_filter/credo.ex:172,53473AC
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:492,3536120
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/harness/result_store/file.ex:116,38B482B
+Traversal.FileModule: Directory Traversal in `File.cp`,lib/harness/worktree.ex:187,3A3C4CB
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/harness/worktree.ex:508,427E1B
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/worktree.ex:520,55775B5
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/chat/store.ex:184,55E34F2
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/chat/tools.ex:123,57C4FA6
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/result_store/file.ex:115,5C1B142
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:315,6352AED
+CI.System: Command Injection via `System` function,lib/harness/roadmap.ex:333,65D0E26
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/chat/store.ex:183,65E54C9
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/result_store/file.ex:104,6B4100
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/result_store/file.ex:105,6B69EB8
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/harness/chat/store.ex:194,70723E2
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/chat/store.ex:193,729A933
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/chat/tools.ex:116,B90885
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/agent_adapter.ex:418,882D9A
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/agent/settings.ex:134,54CE33B
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/chat/store.ex:197,4A9B7C1
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/cron/settings.ex:158,696FE2A
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/chat/tools.ex:125,CA21BB
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/cron/settings.ex:169,17C69
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/token_usage/grok_session.ex:50,1F599AE
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/worktree.ex:566,2E18510
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/cron/settings.ex:159,7708C
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/harness/result_store/file.ex:216,208E39D
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/chat/tools.ex:118,4FBF41F
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/agent_rules.ex:300,42CFFFD
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/result_store/postgres.ex:434,15883B0
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/result_store/file.ex:215,1093120
+CI.System: Command Injection via `System` function,lib/harness/roadmap.ex:529,184B35F
+Traversal.FileModule: Directory Traversal in `File.cp`,lib/harness/worktree.ex:230,6444CA5
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/harness/result_store/postgres.ex:529,52CD4
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/agent_rules.ex:253,50FE176
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/agent/settings.ex:124,BC13CC
+Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/harness/agent_rules.ex:266,D5784D
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/harness/chat/store.ex:198,586096B
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/agent_rules.ex:180,1F0A711
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:361,262CA85
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/harness/agent/settings.ex:135,5F8420B
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/result_store/file.ex:200,5B3E443
+CI.System: Command Injection via `System` function,lib/harness/notification/command_sink.ex:59,39F3B6E
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/agent/settings.ex:123,2694953
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/harness/agent_rules.ex:287,56B4C29
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/harness/cron/settings.ex:170,4C8EF37
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/result_store/postgres.ex:442,1967F1E
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/result_store/file.ex:201,4E110E2
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/result_store/postgres.ex:518,4A762F1
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:538,6353323
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/harness/worktree.ex:554,1180E42
+Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/harness/cron/orchestrator.ex:331,14D08CD
+Traversal.FileModule: Directory Traversal in `File.rm_rf`,lib/harness/cron/orchestrator.ex:130,168568D
+Traversal.FileModule: Directory Traversal in `File.cp`,lib/harness/worktree.ex:405,1D23C51
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/harness/result_store/postgres.ex:687,1E9D1F7
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/capability_score.ex:163,22C2E7B
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/capability_score.ex:438,24CAE9
+CI.System: Command Injection via `System` function,lib/harness/model_availability.ex:405,260C14
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/result_store/postgres.ex:810,263BCE6
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/result_store/postgres.ex:818,27F9A1C
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/roadmap.ex:433,2947E39
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/harness/settings_store/postgres.ex:58,2CC5736
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/chat/tools.ex:178,2D0E19E
+Traversal.FileModule: Directory Traversal in `File.rm_rf`,lib/harness/capability_score.ex:263,2D57BBF
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/worktree.ex:263,2E691AE
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/harness/worktree.ex:895,3211BEA
+Traversal.FileModule: Directory Traversal in `File.cp_r`,lib/harness/worktree.ex:297,34514C2
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/chat/tools.ex:171,39F3E1E
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:879,3B1AE60
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/capability_score.ex:178,40B47AC
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:582,43DFED6
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/worktree.ex:907,43EF5DB
+Traversal.FileModule: Directory Traversal in `File.open`,lib/harness/roadmap.ex:453,4B228B
+Traversal.FileModule: Directory Traversal in `File.rm_rf`,lib/harness/worktree.ex:295,501B331
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/harness/roadmap.ex:443,5410E95
+CI.System: Command Injection via `System` function,lib/harness/roadmap.ex:705,5928F74
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/artifact.ex:24,59786F3
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/result_store/postgres.ex:917,5D2AA35
+Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/harness/capability_score.ex:598,7031660
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/harness/project_registry/persistence.ex:148,7D1D75
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/agent_adapter.ex:453,877965
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/capability_score.ex:177,B5917E
+Traversal.FileModule: Directory Traversal in `File.rm_rf`,lib/harness/worktree.ex:271,DF4C50
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/manifest.ex:249,1958FEB
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/manifest.ex:256,341E391
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/agent_adapter.ex:492,7ACBAA1
+CI.System: Command Injection via `System` function,lib/harness/model_availability.ex:467,D55D42
+CI.System: Command Injection via `System` function,lib/harness/model_availability.ex:476,2E36E3C
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/lander/resolver.ex:175,119103B
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/capability_score.ex:131,16B99C3
+Traversal.FileModule: Directory Traversal in `File.cp`,lib/harness/worktree.ex:416,17DD81F
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/capability_score.ex:117,1E6016
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/roadmap.ex:497,1E6B31F
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:611,2178527
+CI.System: Command Injection via `System` function,lib/harness/notification/command_sink.ex:60,270D4DA
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/result_store/postgres.ex:721,2D656F1
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/result_store/postgres.ex:828,2E0908D
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/worktree.ex:936,3335624
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/capability_score.ex:392,38DFFDF
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/harness/roadmap.ex:507,3919177
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/lander.ex:215,3956A98
+Traversal.FileModule: Directory Traversal in `File.rm_rf`,lib/harness/worktree.ex:282,3A55B3C
+Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/harness/capability_score.ex:552,3BE6984
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/manifest.ex:257,3FA76A5
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:908,4055CFE
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/harness/result_store/postgres.ex:594,56E7BA0
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/capability_score.ex:132,5785BAA
+Traversal.FileModule: Directory Traversal in `File.cp_r`,lib/harness/worktree.ex:308,5F4CA7D
+Traversal.FileModule: Directory Traversal in `File.rm_rf`,lib/harness/capability_score.ex:217,61937B5
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/worktree.ex:274,7161AEF
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/harness/worktree.ex:924,71BF656
+Traversal.FileModule: Directory Traversal in `File.rm_rf`,lib/harness/worktree.ex:306,7592DE7
+Traversal.FileModule: Directory Traversal in `File.open`,lib/harness/roadmap.ex:517,7C21AF3
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/result_store/postgres.ex:729,7D190FE
+CI.System: Command Injection via `System` function,lib/harness/roadmap.ex:773,7D4D063
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/manifest.ex:250,AC8008
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/lander.ex:240,FF3A68
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/lander.ex:243,1E5270F
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/lander.ex:445,20801D6
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/lander.ex:430,340944E
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/lander.ex:444,35F23A0
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/lander.ex:423,372F6B0
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/lander.ex:429,410B342
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/lander.ex:446,494E914
+Traversal.FileModule: Directory Traversal in `File.rm_rf`,lib/harness/lander.ex:435,6948122
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/lander.ex:218,76B102E
+Traversal.FileModule: Directory Traversal in `File.write!`,lib/harness/notification/file_sink.ex:63,76BC27F
+Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/harness/notification/file_sink.ex:62,7979760
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/harness/code_search.ex:670,122FBAB
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/manifest.ex:258,1B1FFC1
+SQL.Query: SQL injection,lib/harness/code_search.ex:87,2023411
+DOS.BinToAtom: Unsafe atom interpolation,lib/harness/code_search.ex:339,2FF3A03
+Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/harness/code_search.ex:241,4DE3AF5
+DOS.BinToAtom: Unsafe atom interpolation,lib/harness/code_search.ex:212,535A55B
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/code_search.ex:450,636E389
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/manifest.ex:251,681F865
+SQL.Query: SQL injection,lib/harness/code_search.ex:125,6B7D513
+SQL.Query: SQL injection,lib/harness/code_search.ex:106,E3E996
