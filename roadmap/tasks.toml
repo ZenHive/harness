@@ -9307,3 +9307,52 @@ started_at = "2026-06-16"
 scored_at = "2026-06-16"
 done_at = "2026-06-16"
 shipped_in = "b400c1a9c1bbc07fa0ed8625cbef1b883481845e"
+
+[[task]]
+id = "309"
+phase = 20
+bundle = "config-surface"
+status = "done"
+title = "Expose warm_paths on the project-authoring surfaces (MCP register_project + dashboard form) — currently settable only via ProjectRegistry.upsert/1"
+scores = { d = 2, b = 5, u = 2 }
+acceptance_criteria = ["Harness.Dispatch.register_project/N gains an optional warm_paths param (list of repo-relative dir strings, default []); passed through to ProjectRegistry.register/upsert attrs. The api() annotation/description is updated so the MCP dispatch-register_project tool advertises and accepts warm_paths. Omitting it behaves byte-identically to today.", "Dashboard project register/edit form (components.ex project_settings_card + settings_live.ex project_attrs/1) gains a warm_paths input (newline- or comma-separated -> trimmed, de-blanked list); project_attrs/1 now PARSES warm_paths from params instead of only preserving the existing value via preserved_project_attrs/1. Editing a project with an empty warm_paths field clears it; a project that never sets it stays [].", "Round-trip: registering/editing a project with warm_paths through each surface persists to the projects.warm_paths column and survives a ProjectRegistry restart (lookup returns the same list).", "skills/harness-driver/SKILL.md (and any CLAUDE.md/driver doc listing register_project params) updated to document the new warm_paths param — public-surface change must update the driver contract.", "Tests: dispatch register_project with warm_paths persists + round-trips; dashboard save_project parses warm_paths from form params (set, edit, clear); unset path unchanged.", "Pure mechanics — no judgment/classification added; warm_paths is a verbatim string list. mix precommit.full green."]
+out_of_scope = ["Changing Worktree.warm/2 materialization (CoW copy via cp -cR / File.cp_r fallback) — Tasks 226/252, untouched here; this task only adds authoring surfaces for the already-shipped field.", "Registering any specific project (e.g. ccxt-distill) with warm_paths — that is an operator config step, not a harness change.", "Validation of warm_path strings against the filesystem — warm/2 already no-ops a parent-absent path (seedable?), so an invalid entry is harmless; no path-existence gate is added."]
+files_to_modify = ["lib/harness/dispatch.ex", "lib/harness/dashboard/settings_live.ex", "lib/harness/dashboard/components.ex", "skills/harness-driver/SKILL.md"]
+touches = ["lib/harness/project_registry.ex", "test/harness/dispatch_test.exs", "test/harness/dashboard/settings_live_test.exs"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+GAP (found 2026-06-16): warm_paths shipped on %Harness.Project{} + the projects.warm_paths Postgres column (Task 252), but NEITHER operator-authoring surface can set it:
+- MCP dispatch-register_project (Harness.Dispatch.register_project/7, dispatch.ex:855) has no warm_paths param.
+- Dashboard register/edit form (settings_live.ex project_attrs/1) only PRESERVES existing warm_paths via preserved_project_attrs/1 (line ~628) — no input field, no parse.
+
+So the only way to author warm_paths is Harness.ProjectRegistry.upsert/1 from IEx/tidewave or priv/repo/seeds.exs. Task 284 explicitly closed "the last per-project config surface holes" but left this one. Close it: add the param to the MCP tool and a field to the dashboard form, both routing through the existing ProjectRegistry.upsert path (Postgres-is-truth already works — only the authoring entry points are missing).
+"""
+implemented = "register_project/8 gains optional warm_paths param + api() MCP array schema; dashboard project_settings_card warm_paths textarea + project_attrs/1 parse_warm_paths (clears on empty, no longer preserve-only); harness-driver SKILL.md documented; tests cover MCP schema, dispatch set/default, dashboard set/edit/clear, Postgres round-trip. Reviewer approved, no fixes."
+verified = true
+created_at = "2026-06-16"
+scored_at = "2026-06-16"
+done_at = "2026-06-16"
+shipped_in = "e9f3085fc9527330f54bcd26fa1eb051817fadad"
+
+[[task]]
+id = "310"
+phase = 20
+bundle = "core-loop"
+status = "pending"
+title = "dispatch-await attach-to-in-flight-run wedges the MCP transport instead of returning the structured :timed_out summary (and poisons subsequent dispatch-status/list_runs calls)"
+scores = { d = 3, b = 4, u = 3 }
+acceptance_criteria = ["REPRO (observed 2026-06-16, ccxt-distill task 47, run-1781604067447-043d5fac dispatched on codex/gpt-5.5): with a run already in flight, calling mcp__harness__dispatch-await {task: '47', project_name: 'ccxt-distill', timeout_ms: 1_800_000} returns a transport-level 'The operation timed out.' error after the MCP client's own (~60s) deadline — NOT the documented structured :timed_out summary. The tool doc promises 'on timeout it returns a structured :timed_out summary ... never a wedged tool call'; the attach path violates that promise.", "SECONDARY SYMPTOM: after that await call, the immediately-following mcp__harness__dispatch-status {run_id} and mcp__harness__supervisor-list_runs calls ALSO timed out (3x), while the BEAM (phx.server pid alive) and the dispatched codex exec process were both healthy and the run was genuinely still running. So the wedged await appears to block/serialize the MCP request handler (or hold a GenServer call) such that subsequent read-only dispatch tools hang too — not just the await itself.", "ROOT CAUSE to confirm: the attach-to-existing-run path (dispatch-await for a task already in flight ATTACHES rather than re-dispatching) does a blocking GenServer.call / receive whose own timeout is unbounded or >> the MCP transport deadline, so the MCP framing layer times out first and the call never honors timeout_ms. Whether the handler also holds a lock that starves status/list_runs must be verified.", "FIX: the await wait must be bounded by timeout_ms at a layer BELOW the MCP transport deadline semantics — i.e. honor timeout_ms (default 30min) by returning the structured :timed_out summary map {state: :timed_out, run_id, ...} as a normal tool result, and ensure attach uses a non-blocking/monitored wait that never holds a shared lock. Read-only tools (dispatch-status, supervisor-list_runs) must stay responsive while an await is in flight.", "TEST: a test that dispatches (or fakes) an in-flight run, then awaits with a short timeout_ms, asserts the structured :timed_out summary is returned (not an exception/transport error) and that a concurrent dispatch-status/list_runs returns promptly while the await is pending. flunk on a hang/raise.", "mix precommit.full green."]
+out_of_scope = ["The happy-path await (run settles before timeout) — that works; this is the attach + timeout + concurrency-starvation path.", "Changing the default timeout_ms value.", "The MCP client's own transport deadline (client-side, not harness) — the fix is harness honoring timeout_ms server-side so the transport deadline is never the thing that fires first."]
+domains = ["otp", "mcp"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Found 2026-06-16 from a ccxt-distill orchestration session (driving harness via the MCP dispatch tools to chain rmap tasks). Run-1781604067447-043d5fac (ccxt-distill task 47, codex/gpt-5.5) was in flight. To block until it settled I called dispatch-await {task: '47', project_name: 'ccxt-distill', timeout_ms: 1_800_000}. It returned a bare 'The operation timed out.' transport error after ~60s — not the structured :timed_out summary the tool doc guarantees ('never a wedged tool call'). Worse, the next three calls (dispatch-status on the run_id, then supervisor-list_runs twice) ALSO timed out, even though `ps` confirmed the BEAM phx.server, the postgres pool, and the codex exec child (pid 66034) were all alive and the run was still progressing (a watcher shell was counting toward its 40-min cap). So the attach path doesn't just fail to honor timeout_ms — it appears to wedge the MCP request handler so read-only status calls starve behind it.
+
+Operator workaround used: abandon the MCP await, poll run state out-of-band (ps / watch the worktree's .harness/review.json) instead. That defeats the point of dispatch-await as the 'one call gets the answer' bounded-blocking variant.
+
+This blocks programmatic 'await this run, then dispatch the next ready task' orchestration loops — exactly the goal-driven chaining the dispatch MCP surface exists to support.
+"""
+created_at = "2026-06-16"
+scored_at = "2026-06-16"
