@@ -41,6 +41,10 @@ defmodule Harness.Dashboard.Live.ProjectExplorer do
     {:noreply, load_explorer(socket, name)}
   end
 
+  def handle_params(_params, _uri, socket) do
+    {:noreply, load_explorer(socket, default_project_name(socket.assigns.projects))}
+  end
+
   @impl Phoenix.LiveView
   @spec handle_event(String.t(), map(), Socket.t()) ::
           {:noreply, Socket.t()}
@@ -297,6 +301,10 @@ defmodule Harness.Dashboard.Live.ProjectExplorer do
       to_string(fact_value(fact, :name))
     }
   end
+
+  @spec default_project_name([Project.t()]) :: String.t()
+  defp default_project_name([%Project{name: name} | _rest]), do: name
+  defp default_project_name([]), do: ""
 
   @spec selected_project?(Project.t() | nil, Project.t()) :: boolean()
   defp selected_project?(%Project{name: selected}, %Project{name: name}), do: selected == name

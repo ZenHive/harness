@@ -117,6 +117,23 @@ defmodule Harness.Dashboard.ProjectExplorerTest do
       assert html =~ "Code search unavailable"
       assert html =~ "exograph"
     end
+
+    test "name-less landing defaults to the first registered project (Task 305)", %{conn: conn} do
+      register_project("alpha")
+      register_project("beta")
+      Application.put_env(:harness, :dashboard_code_search, fake_search(definitions: demo_definitions()))
+
+      {:ok, _view, html} = live(conn, "/harness/projects/explore")
+
+      assert html =~ "Project explorer"
+      assert html =~ "Demo.Search"
+    end
+
+    test "name-less landing degrades to the no-projects empty state (Task 305)", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/harness/projects/explore")
+
+      assert html =~ "No projects registered"
+    end
   end
 
   defp register_project(name, opts \\ []) do

@@ -46,6 +46,11 @@ defmodule Harness.Dashboard.ComponentsTest do
       assert html =~ ~s(href="/harness/oban")
     end
 
+    test "links to the project-structure explorer (Task 305)" do
+      html = render_component(&Components.navbar/1, %{})
+      assert html =~ ~s(href="/harness/projects/explore")
+    end
+
     test "does not link to the MCP transport endpoint (not an HTML page)" do
       html = render_component(&Components.navbar/1, %{})
       refute html =~ ~s(href="/harness/mcp")
