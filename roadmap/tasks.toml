@@ -110,6 +110,11 @@ name = "Config Surface — Postgres is the only edit surface"
 order = 20
 status = "pending"
 
+[phases.21]
+name = "Project Introspection — structural code search over registered projects"
+order = 21
+status = "pending"
+
 # ----------------------------------------------------------------------------
 # Bundles
 # ----------------------------------------------------------------------------
@@ -118,6 +123,11 @@ status = "pending"
 description = "Make Postgres the ONLY per-project config edit surface and retire the config/dev.local.exs trap. The dashboard already edits landing/cron/agent-models/reviewer/timeouts/catalog live; this bundle adds the two missing holes (concurrency_cap editor + project register/edit/unregister form via a new ProjectRegistry.upsert/1), then deletes dev.local.exs in favor of a run-to-apply priv/repo/seeds.exs (upserts Postgres) + a HARNESS_RUN_MEM_THRESHOLD_GB env var + a boot guard warning on re-introduced config :projects. Editing a config file no longer silently no-ops against the DB source of truth."
 order = 1
 phase = 20
+
+[bundles.code-search]
+description = "Let harness see inside the Elixir projects it federates via exograph (kept as a dev/test structural-search dep, f525368). A Harness.CodeSearch capability gives the reviewer/audit agents structural queries grep cannot do -- cross-module caller blast-radius for a changed signature, callees, definitions-by-name, ex_dna duplicate detection -- and an operator-facing dashboard explorer surfaces the same facts. In-process, dev/test-gated behind Code.ensure_loaded?(Exograph) (mirrors the Bandit guard); Elixir-only by construction. Mantra-clean: pure fact-retrieval (count/locate defs, callers, call-edges, duplicates); the agent reads the facts and writes the judgment."
+order = 1
+phase = 21
 
 [bundles.agent-gate]
 description = "The agent-gate workflow rebuild (docs/agent-gate-workflow.md): worktree -> implementer AI -> reviewer AI (THE gate) -> MERGE -> audit AI, with no mechanical verification gate anywhere. The cross-family reviewer runs the project's checks itself, fixes inline, and writes .harness/review.json; harness reads it mechanically. Deletes Harness.Verification / CheckStack / presets / :verifying / review_green / the benchmark corpus."
@@ -9096,3 +9106,48 @@ started_at = "2026-06-15"
 scored_at = "2026-06-15"
 done_at = "2026-06-15"
 shipped_in = "02beb85691270e6f92c9f6abfc7037cc5213614d"
+
+[[task]]
+id = "302"
+phase = 21
+bundle = "code-search"
+status = "pending"
+title = "Harness.CodeSearch: exograph-backed structural search over registered Elixir projects, exposed as a Chat/MCP tool"
+scores = { d = 3, b = 6, u = 5 }
+acceptance_criteria = ["Harness.CodeSearch builds and refreshes a per-project cached DuckDB index for a registered Elixir project, gated behind Code.ensure_loaded?(Exograph) (mirroring the dashboard's existing Code.ensure_loaded?(Bandit) guard). exograph absent (prod release) or Project.language not in [:elixir, nil] -> a clearly-logged graceful no-op, never a crash.", "Query API returns structured FACT maps only (file, line, kind, module, name, arity) and never a verdict/score/route: callers-of-symbol, callees-of-symbol, definitions-by-name, and duplicate-fragment (ex_dna mass) over a project's index.", "Manages its own QuackDB.Server + Exograph.DuckDBRepo lifecycle since exograph's application is runtime:false / not auto-started; index persisted per-project under ~/.harness with an explicit refresh entry point and a staleness check (re-index when source mtime newer than index).", "Exposed through Harness.Chat.Tools (the single source of truth) so BOTH the in-process chat dispatcher and the MCP server surface the tool; a reviewer/audit agent can invoke it for blast-radius and structural checks.", "Tests: index build/refresh lifecycle, each query shape against a fixture Elixir project, and the two guard paths (exograph-absent, non-Elixir project) asserting the logged no-op with flunk on any unexpected outcome (never a silent skip). >= 80% coverage on lib/harness/code_search.ex."]
+out_of_scope = ["Non-Elixir registered projects -- exograph is Elixir-only; they are explicitly and visibly skipped, not faked", "Promoting exograph to a runtime dep for prod-release support -- additive, deferred; the Code.ensure_loaded? guard makes this a later non-breaking change", "The dashboard project-structure explorer UI -- Task 303", "Any judgment/score/verdict derived from the structural facts -- agents interpret meaning; CodeSearch only retrieves facts (THE MANTRA)"]
+files_to_modify = ["lib/harness/code_search.ex", "lib/harness/chat/tools.ex"]
+touches = ["lib/harness/chat/tools.ex", "lib/harness/dashboard/mcp_server.ex", "lib/harness/project.ex", "test/harness/code_search_test.exs"]
+domains = ["otp", "ecto"]
+body = """
+Idea origin: this session's exograph investigation (exograph kept as a dev/test structural-search dep, commit f525368). Goal: let harness "see inside" the Elixir projects it federates -- give the reviewer/audit agents (and, via Task 303, the operator) structural queries grep cannot do: cross-module caller blast-radius for a changed signature, callees, definitions-by-name, and ex_dna duplicate detection.
+
+Architecture decided 2026-06-16 (vetoable): in-process, dev/test-gated. runtime:false only skips app-start + release inclusion -- in the dev node (iex -S mix, MIX_ENV=dev) exograph's modules ARE compiled and callable. So CodeSearch calls Exograph.{index,search_callers,search_callees,search_definitions} directly, guarded by Code.ensure_loaded?(Exograph) exactly like Harness.Dashboard.Endpoint guards Bandit. It starts the QuackDB.Server + Exograph.DuckDBRepo itself (the app is not auto-started) and caches a DuckDB file per project under ~/.harness. No runtime-dep promotion needed; prod-release support is a deferred additive change.
+
+Mantra-clean by construction: CodeSearch is pure fact-retrieval (it COUNTS/LOCATES defs, callers, call-edges, duplicates) and never computes meaning -- the reviewer/audit agent reads the facts and writes the judgment. Elixir-only is a hard boundary (exograph indexes Elixir AST via ExAST); other registered project languages are skipped with a visible log, never silently faked.
+
+Future (not in scope, noted for later): cross-project / hex-corpus precedent queries ("is this pattern used elsewhere?") to serve the library-first/precedent rule -- an additive extension once the per-project core lands.
+"""
+created_at = "2026-06-16"
+scored_at = "2026-06-16"
+
+[[task]]
+id = "303"
+phase = 21
+bundle = "code-search"
+status = "pending"
+title = "Dashboard project-structure explorer: browse a registered Elixir project's modules/defs/callers via Harness.CodeSearch"
+scores = { d = 3, b = 4, u = 2 }
+depends_on = [302]
+acceptance_criteria = ["A read-only LiveView surface (route under /harness, e.g. /harness/projects/:name/explore) lists a selected registered Elixir project's modules and their defs/defps, and on selecting a symbol shows its callers and callees via Harness.CodeSearch -- display only, no mutation.", "Matches the existing dashboard design system (Harness.Dashboard.Tokens + components.ex patterns; HEEx :if/:for special attrs) -- this is incremental UI against a design system, NOT net-new visual identity.", "Projects whose language is not Elixir, or when exograph is unavailable, render a clear empty-state explaining why (Elixir-only) rather than erroring.", "Tested via Phoenix.LiveViewTest: mount, project select, symbol drill-down rendering caller/callee facts, and the non-Elixir / exograph-absent empty-state."]
+out_of_scope = ["Embedding exograph's own Monaco/Phoenix web Endpoint -- this is a harness-native LiveView over the CodeSearch fact API, not a mount of Exograph.Web", "Write/edit operations on project source -- strictly read-only introspection", "Non-Elixir project structure (exograph is Elixir-only)"]
+files_to_modify = ["lib/harness/dashboard/live/project_explorer.ex", "lib/harness/dashboard/router.ex"]
+touches = ["lib/harness/dashboard/router.ex", "lib/harness/dashboard/tokens.ex", "lib/harness/dashboard/components.ex", "lib/harness/code_search.ex"]
+domains = ["liveview"]
+body = """
+Operator-facing half of the exograph integration (Task 302 is the agent-facing capability + tool). A read-only dashboard panel so a human can "see inside" any registered Elixir project from /harness -- the operator analogue of the structural search the reviewer/audit agents get via CodeSearch.
+
+Built as a harness-native LiveView over Harness.CodeSearch's query API (NOT a mount of exograph's own web UI), matching the existing dashboard tokens/components. Depends on Task 302 for the index lifecycle + query functions. Mantra-clean: it only displays counted structural facts (modules, defs, caller/callee edges); no verdict or score is rendered.
+"""
+created_at = "2026-06-16"
+scored_at = "2026-06-16"
