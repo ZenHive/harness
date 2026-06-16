@@ -13487,7 +13487,7 @@
       "id": "302",
       "phase": 21,
       "bundle": "code-search",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Harness.CodeSearch: exograph-backed structural search over registered Elixir projects, exposed as a Chat/MCP tool",
       "scores": {
         "d": 3,
@@ -13530,6 +13530,7 @@
       ],
       "body": "Idea origin: this session's exograph investigation (exograph kept as a dev/test structural-search dep, commit f525368). Goal: let harness \"see inside\" the Elixir projects it federates -- give the reviewer/audit agents (and, via Task 303, the operator) structural queries grep cannot do: cross-module caller blast-radius for a changed signature, callees, definitions-by-name, and ex_dna duplicate detection.\n\nArchitecture decided 2026-06-16 (vetoable): in-process, dev/test-gated. runtime:false only skips app-start + release inclusion -- in the dev node (iex -S mix, MIX_ENV=dev) exograph's modules ARE compiled and callable. So CodeSearch calls Exograph.{index,search_callers,search_callees,search_definitions} directly, guarded by Code.ensure_loaded?(Exograph) exactly like Harness.Dashboard.Endpoint guards Bandit. It starts the QuackDB.Server + Exograph.DuckDBRepo itself (the app is not auto-started) and caches a DuckDB file per project under ~/.harness. No runtime-dep promotion needed; prod-release support is a deferred additive change.\n\nMantra-clean by construction: CodeSearch is pure fact-retrieval (it COUNTS/LOCATES defs, callers, call-edges, duplicates) and never computes meaning -- the reviewer/audit agent reads the facts and writes the judgment. Elixir-only is a hard boundary (exograph indexes Elixir AST via ExAST); other registered project languages are skipped with a visible log, never silently faked.\n\nFuture (not in scope, noted for later): cross-project / hex-corpus precedent queries (\"is this pattern used elsewhere?\") to serve the library-first/precedent rule -- an additive extension once the per-project core lands.\n",
       "created_at": "2026-06-16",
+      "started_at": "2026-06-16",
       "scored_at": "2026-06-16",
       "cross_repo": []
     },
