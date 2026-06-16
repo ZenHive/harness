@@ -13717,7 +13717,7 @@
       "out_of_scope": [
         "Any functional change to the flagged modules beyond a genuine vuln fix surfaced during triage."
       ],
-      "shipped_in": "34122d3c0dfb4c2b90722624eddd8d3ad6491050",
+      "shipped_in": "89200d230bb11e38e3beeb34ee5e1f5dcbd3d69a",
       "body": "Filed by the post-merge audit of the d3d6ac3 range (run run-1781587226238-3042a824).\n\nThat audit hit the local precommit sobelow gate (no `.sobelow-skips` was ever tracked in the repo). To land its docs-only commit it added a MINIMAL `.sobelow-skips` covering only the 3 files the hook's blocking run flagged -- code_search.ex (SQL.Query on the local `query/3` helper; Traversal on the fixed ~/.harness index dir; BinToAtom on controlled module names), notification/file_sink.ex (Traversal on operator-configured notification path), and lander/resolver.ex (Traversal on a harness-controlled worktree path) -- all confirmed false positives.\n\nBut a project-wide `mix sobelow` reports 67 low + 3 HIGH-confidence findings. The 3 high-confidence ones are `Misc.BinToTerm: Unsafe binary_to_term` in the Postgres-backed stores (settings_store, result_store, project_registry) -- the standard Ecto trusted-DB term serialization pattern, almost certainly FP, but high-confidence binary_to_term deserves an explicit human confirm-the-source pass before suppression rather than a rushed `--mark-skip-all`. The audit deliberately did NOT blanket-skip these (the host CLAUDE.md warns `--mark-skip-all` can bury a real finding). This task does the full triage and persists the complete skip file so the local gate stops blocking unrelated commits.\n",
       "created_at": "2026-06-16",
       "done_at": "2026-06-16",
@@ -13757,7 +13757,7 @@
       "domains": [
         "security"
       ],
-      "shipped_in": "34122d3c0dfb4c2b90722624eddd8d3ad6491050",
+      "shipped_in": "89200d230bb11e38e3beeb34ee5e1f5dcbd3d69a",
       "body": "Filed by audit(d3d6ac3) 2026-06-16. The host commit hook honors only the hash-based .sobelow-skips file (not the inline `# sobelow_skip` comments the authors wrote), and this repo gitignores /.sobelow-skips (.gitignore:36), so the full-project Sobelow scan (~60 author-verified false positives) trips EVERY commit -- including doc-only ones -- and a freshly-created worktree must regenerate the skip file once before it can commit.\n\nThe audit fixed the one genuine finding (code_search.ex:339: dynamic Ecto repo named with a monotonic unique_integer minted a permanently-retained atom per query; changed to name: nil since the repo is pid-referenced) and generated .sobelow-skips locally to unblock its own commit, but did NOT override the deliberate .gitignore decision by force-committing it.\n\nRemaining decision (project policy, hence assignee=human): the host convention says track .sobelow-skips as the shared suppression record; this repo's .gitignore says don't. Pick one. If tracking: drop the .gitignore line and commit a current .sobelow-skips. If keeping it ignored: accept the once-per-worktree regeneration and close.\n",
       "created_at": "2026-06-16",
       "done_at": "2026-06-16",

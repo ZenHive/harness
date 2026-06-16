@@ -9245,7 +9245,7 @@ delivered_by = "claude"
 created_at = "2026-06-16"
 scored_at = "2026-06-16"
 done_at = "2026-06-16"
-shipped_in = "34122d3c0dfb4c2b90722624eddd8d3ad6491050"
+shipped_in = "89200d230bb11e38e3beeb34ee5e1f5dcbd3d69a"
 
 [[task]]
 id = "307"
@@ -9271,7 +9271,7 @@ delivered_by = "claude"
 created_at = "2026-06-16"
 scored_at = "2026-06-16"
 done_at = "2026-06-16"
-shipped_in = "34122d3c0dfb4c2b90722624eddd8d3ad6491050"
+shipped_in = "89200d230bb11e38e3beeb34ee5e1f5dcbd3d69a"
 
 [[task]]
 id = "308"
