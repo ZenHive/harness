@@ -218,12 +218,10 @@ defmodule Harness.CodeSearch do
     end
   end
 
-  @spec skip(Project.t() | nil, term()) :: {:ok, map()}
-  defp skip(project, reason) do
-    project_name = if is_nil(project), do: nil, else: project.name
-
-    Logger.warning("CodeSearch skipped project=#{inspect(project_name)} reason=#{inspect(reason)}")
-    {:ok, %{status: :skipped, project: project_name, reason: reason, facts: []}}
+  @spec skip(Project.t(), term()) :: {:ok, map()}
+  defp skip(%Project{} = project, reason) do
+    Logger.warning("CodeSearch skipped project=#{inspect(project.name)} reason=#{inspect(reason)}")
+    {:ok, %{status: :skipped, project: project.name, reason: reason, facts: []}}
   end
 
   @spec refresh_index(String.t(), String.t(), String.t(), keyword()) ::
