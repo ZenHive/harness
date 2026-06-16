@@ -115,6 +115,11 @@ name = "Project Introspection — structural code search over registered project
 order = 21
 status = "pending"
 
+[phases.22]
+name = "Live-Run Observability — stop flying blind while an agent works"
+order = 22
+status = "in_progress"
+
 # ----------------------------------------------------------------------------
 # Bundles
 # ----------------------------------------------------------------------------
@@ -128,6 +133,11 @@ phase = 20
 description = "Let harness see inside the Elixir projects it federates via exograph (kept as a dev/test structural-search dep, f525368). A Harness.CodeSearch capability gives the reviewer/audit agents structural queries grep cannot do -- cross-module caller blast-radius for a changed signature, callees, definitions-by-name, ex_dna duplicate detection -- and an operator-facing dashboard explorer surfaces the same facts. In-process, dev/test-gated behind Code.ensure_loaded?(Exograph) (mirrors the Bandit guard); Elixir-only by construction. Mantra-clean: pure fact-retrieval (count/locate defs, callers, call-edges, duplicates); the agent reads the facts and writes the judgment."
 order = 1
 phase = 21
+
+[bundles.live-run-legibility]
+description = "Stop flying blind while an agent works. Observed 2026-06-16 on a live `reviewing` run (run-1781649574472): the dashboard showed Tokens —, Verdict —, 'No file edits observed yet', and 500 transcript rows that all rendered the literal word 'OTHER' — the cursor reviewer's entire output was illegible because cursor.ex routes unrecognized event types to {:system, %{kind: :other}} and eyebrow/1 drops the data payload. This bundle makes a working run legible: (1) kill the content-less OTHER wall (parse cursor's real events; collapse/label the genuine-unknown fallthrough), then surface the live telemetry the page is missing — (2) a stage stepper + active-agent indicator + live token counter in the run header, (3) run timing (started_at + per-stage timestamps on Status/gen_statem -> live elapsed + per-stage durations), and (4) live transcript chrome (current-activity line, last-event heartbeat, per-file +/- chips, turn/tool/file summary). Mantra-clean throughout: every addition COUNTS a fact (state, token total, elapsed, event count) or RELAYS raw agent output verbatim — no run is judged stuck/healthy/done by a formula in code; that read stays with the operator/AI."
+order = 1
+phase = 22
 
 [bundles.agent-gate]
 description = "The agent-gate workflow rebuild (docs/agent-gate-workflow.md): worktree -> implementer AI -> reviewer AI (THE gate) -> MERGE -> audit AI, with no mechanical verification gate anywhere. The cross-family reviewer runs the project's checks itself, fixes inline, and writes .harness/review.json; harness reads it mechanically. Deletes Harness.Verification / CheckStack / presets / :verifying / review_green / the benchmark corpus."
@@ -408,8 +418,15 @@ target_version = "0.13.0"
 name = "Self-Healing Run Loop — mechanical failures heal inline, not surface as stupid errors"
 description = "Tests the hypothesis that the great majority of run failures are MECHANICAL (transient/structural — git locks, spawn races, malformed verdict files, checkout pollution, reviewer timeouts) and can self-heal inline so they never reach the operator, via a two-tier design — zero-token bounded mechanical retry for substrate ops + ONE bounded, witnessed AI-recovery seam for the interpretive minority — WITHOUT masking genuine rejections, and at a recovery token cost demonstrably lower than the hard-fail + manual-redispatch path it replaces. Same leitmotif applied to failure handling: count the failure facts (retries, recovery attempts, token spend) in code; let an AI write the meaning (repaired vs genuinely dead) into .harness/recovery.json."
 order = 14
-status = "active"
+status = "done"
 target_version = "0.14.0"
+
+[milestones.v0_15]
+name = "Live-Run Observability — stop flying blind while an agent works"
+description = "Tests the hypothesis that an operator (or driving AI) watching a live run can tell what the agent is doing, how far through the loop it is, and whether it's still progressing — from the /harness run-detail page alone, without reading raw JSON — and that closing this 'flying blind' gap is PURE mechanical fact-surfacing (legible reviewer transcript, stage stepper, live token total, elapsed/per-stage timers, activity heartbeat) that needs no judgment in code: the page counts and relays facts; the read of 'stuck vs working' stays with the human/AI, never a formula."
+order = 15
+status = "active"
+target_version = "0.15.0"
 
 # ----------------------------------------------------------------------------
 # Tasks
@@ -9362,3 +9379,109 @@ started_at = "2026-06-16"
 scored_at = "2026-06-16"
 done_at = "2026-06-16"
 shipped_in = "d1596df90cd280cff095ba30fb7907598a2cd019"
+
+[[task]]
+id = "311"
+phase = 22
+bundle = "live-run-legibility"
+milestone = "v0_15"
+status = "pending"
+title = "Transcript legibility — kill the content-less 'OTHER' wall (the flying-blind core)"
+scores = { d = 3, b = 5, u = 4 }
+acceptance_criteria = ["Viewing a live `reviewing` run at /harness/runs/<id> no longer renders a wall of identical content-less rows: consecutive `{:system, %{kind: :other}}` / `:unknown` events collapse into ONE block (reuse the existing consecutive-:thought collapse path in group_events/2) that shows a count AND the distinct underlying `_type` value(s) seen — never N blank 'OTHER' lines.", "cursor.ex maps the event `type`s its current stream-json actually emits but the parser drops to `:other` (enumerate them from a real cursor reviewer transcript — read Harness.Run.LogRecord.agent_output for a cursor-reviewed run via mcp__tidewave__execute_sql_query, or the raw stream): assistant text -> :assistant_text, tool calls -> :assistant_tool_use/:tool_result, reasoning -> :thought — so the reviewer's real work renders as chat turns, not eyebrows.", "The `:other`/`:unknown` fallthrough is RETAINED as a never-crash/never-drop safety net (the `when is_binary(other)` and final clauses stay), but its rendering surfaces the payload's `_type` + a short snippet, not a bare kind label.", "eyebrow/1 (or the block built for `:other` in group_events/2) carries enough of `data` to be legible — at minimum the `_type` — instead of dropping the payload.", "Tests: a fixture of N consecutive cursor `:other` events renders as one collapsed block carrying the count; each newly-recognized cursor type renders as the correct block kind; round-trip through transcript_view/1; the unknown-safety fixture still renders (nothing lost).", "Mantra-clean: pure parse + verbatim relay of raw agent output; no event is judged for importance, nothing classified by meaning."]
+out_of_scope = ["The run-header stage stepper / token / verdict surfacing (Task 312)", "Run timing / elapsed (Task 313)", "File-chip counters and activity heartbeat (Task 314)", "Rewriting the claude/codex/grok/pi/antigravity parsers beyond the shared eyebrow + :other-collapse fix that benefits all of them"]
+files_to_modify = ["lib/harness/dashboard/transcript/parser/cursor.ex", "lib/harness/dashboard/components.ex"]
+touches = ["lib/harness/dashboard/transcript/parser.ex", "lib/harness/dashboard/transcript/parser/cursor.ex", "lib/harness/dashboard/components.ex", "test/harness/dashboard/transcript/parser/cursor_test.exs", "test/harness/dashboard/components_test.exs"]
+domains = ["liveview", "elixir"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Observed live 2026-06-16 on run-1781649574472-0b0e5a80 (state `reviewing`, implementer codex, reviewer cursor). The run-detail page showed Tokens —, Verdict —, 'Files being edited: No file edits observed yet', and a transcript of 500 blocks that every one rendered the literal word 'OTHER'. The operator's words: 'we are flying blind.'
+
+Root cause is mechanical and two-part:
+1. lib/harness/dashboard/transcript/parser/cursor.ex:83 — `translate(%{"type" => other} = event) when is_binary(other)` routes EVERY unrecognized cursor event type to `{:system, %{kind: :other, data: ...}}`. Cursor's newer stream-json emits message/delta types the parser never learned, so the reviewer's entire output falls through here.
+2. lib/harness/dashboard/components.ex:608 eyebrow/1 renders a `:system` event as JUST `to_string(@kind)` — the `data` payload is deliberately dropped. So 500 `:other` events become 500 content-free 'other' lines (uppercased in display).
+
+Net: during the reviewing stage — exactly when the operator most needs to see what the cross-family reviewer is doing — the transcript is unreadable noise. This is task #1 of the live-run-legibility bundle because the richer header telemetry (312-314) is worthless if the transcript itself is illegible.
+
+Fix is pure mechanics: teach cursor.ex the real event types (read a live cursor transcript to enumerate them — do NOT guess the wire format), keep the `:other`/`:unknown` clauses as a safety net but make them carry their `_type`, and collapse consecutive unknown/other events into one counted block the way consecutive `:thought` events already collapse. Count and relay facts; never judge them.
+"""
+created_at = "2026-06-16"
+scored_at = "2026-06-16"
+
+[[task]]
+id = "312"
+phase = 22
+bundle = "live-run-legibility"
+milestone = "v0_15"
+status = "pending"
+title = "Live run header — stage stepper + active-agent indicator + live token counter"
+scores = { d = 3, b = 4, u = 4 }
+depends_on = [311]
+acceptance_criteria = ["The run-info region (live.ex render_show, the State row) renders a horizontal STAGE STEPPER mapping Harness.Run.Status.state — dispatched -> running -> committing -> reviewing -> done/failed, with recovering/held shown only when the run is in them — current stage emphasized, prior stages marked complete. It replaces the bare `<dd>{@run_status.state}</dd>` text. Pure render of the state fact; landing/audit (post-settle, separate workers) are explicitly NOT stages here.", "The agent active in the CURRENT stage is visually distinguished using the existing stage_agent_label/1 (reviewer while :reviewing, recovery while :recovering, else implementer) — the operator sees WHO is working now, not just Agent + Reviewer listed flat. Use the same pulsing-dot affordance the changed-files-live panel already uses (cf-live-dot).", "The Tokens field shows a LIVE running total parsed from the in-flight transcript (token_label/2 already extracts usage from the transcript string) instead of '—' while the run is in flight; '—' remains only when usage is genuinely unavailable for the agent/format.", "Smoke-tested via Phoenix.LiveViewTest: each state renders the right stepper position; the active-agent marker tracks state; a transcript carrying usage renders a non-'—' token total.", "Mantra-clean: stepper = the state fact rendered; token total = a counted fact; nothing judged."]
+out_of_scope = ["Elapsed / per-stage timers — needs backend timestamps, that is Task 313", "Dollar cost — no pricing source exists in the codebase; do not invent one", "Activity line / heartbeat / file counters (Task 314)", "The transcript-legibility / OTHER-collapse fix (Task 311)"]
+files_to_modify = ["lib/harness/dashboard/live.ex", "lib/harness/dashboard/components.ex"]
+touches = ["lib/harness/dashboard/live.ex", "lib/harness/dashboard/components.ex", "assets/css/app.css", "test/harness/dashboard/live_test.exs"]
+domains = ["liveview"]
+assignee = "cursor"
+model = "composer-2.5-fast"
+body = """
+From the flying-blind review (2026-06-16). The run-info `<dl>` shows State as bare text ('reviewing'), Tokens as '—' even mid-run, and lists Agent + Reviewer flat with no signal of which is active. Three pure-dashboard upgrades, all data-ready:
+- Stage stepper: Status.state is a mechanical fact (the gen_statem's current state) — render it as a pipeline instead of a word. State enum: :dispatched | :running | :committing | :recovering | :reviewing | :held | :done | :failed (lib/harness/run/status.ex).
+- Active-agent: stage_agent_label/1 already exists (live.ex:1287) and computes the active stage's agent — just give it visual weight.
+- Live tokens: token_label/2 already parses usage from the transcript (live.ex:1329); call it while running instead of showing '—'.
+Depends on 311 (both edit components.ex; legibility lands first as the bundle's priority and to avoid a live-file conflict).
+"""
+created_at = "2026-06-16"
+scored_at = "2026-06-16"
+
+[[task]]
+id = "313"
+phase = 22
+bundle = "live-run-legibility"
+milestone = "v0_15"
+status = "pending"
+title = "Run timing — Status/gen_statem timestamps -> live elapsed + per-stage durations"
+scores = { d = 4, b = 4, u = 3 }
+depends_on = [312]
+acceptance_criteria = ["Harness.Run.Status gains `started_at` and a per-state entered-at map (state -> timestamp); the Harness.Run gen_statem stamps started_at at run start and the entered-at on each state entry. Use a wall-clock source consistent with the rest of the codebase.", "Status.from_log_record/1 tolerates the new fields being absent (nil) on pre-field and settled records — never crashes, no migration of in-flight semantics required for replay.", "The run-detail header shows a LIVE elapsed timer since started_at (driven by the existing :meta_tick in live.ex — no new timer infra) and the time-in-current-stage; a settled run shows its final elapsed.", "Per-stage durations (e.g. implement vs review split) render from the entered-at map where present.", "Tests: the gen_statem stamps started_at + entered-at across transitions (assert via Run.status/1, no Process.sleep — drive events and assert ordering/presence); Status round-trips through from_log_record with AND without the fields; LiveView renders a non-empty elapsed for a started run.", "Mantra-clean: timestamps and durations are COUNTED facts. Do NOT compute a 'stuck'/'slow'/'healthy' verdict from them — that read belongs to the operator/AI, never a threshold in harness code."]
+out_of_scope = ["Any stuck/health/SLA judgment derived from the durations (forbidden — that is judgment-as-arithmetic; the mantra)", "Dollar cost", "Stage stepper / tokens (Task 312)", "Activity heartbeat (Task 314) — note heartbeat is a *last-event-arrival* stamp in the LiveView, distinct from these run-lifecycle timestamps"]
+files_to_modify = ["lib/harness/run/status.ex", "lib/harness/run.ex", "lib/harness/dashboard/live.ex", "lib/harness/dashboard/components.ex"]
+touches = ["lib/harness/run/status.ex", "lib/harness/run.ex", "lib/harness/dashboard/live.ex", "lib/harness/dashboard/components.ex", "test/harness/run_test.exs", "test/harness/dashboard/live_test.exs"]
+domains = ["otp", "liveview"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+From the flying-blind review (2026-06-16): the run-detail page has NO time signal at all — you cannot tell if a run started 10 seconds or 10 minutes ago, nor how long it has sat in `reviewing`. Unlike the other bundle tasks this one needs a backend change: Harness.Run.Status (lib/harness/run/status.ex) currently carries zero timestamps, so even a single elapsed clock requires adding started_at to the struct and stamping it from the Run gen_statem. Per-stage durations need a state->entered_at map stamped on each transition.
+
+This is the one task touching the run gen_statem surface, so it is its own dispatch (separate reviewer concern from the pure-dashboard 312/314). Keep the gen_statem change minimal and additive; from_log_record must stay tolerant of the fields' absence so BEAM-restart replay of old records is unaffected. Depends on 312 (both edit the run-info header region).
+"""
+created_at = "2026-06-16"
+scored_at = "2026-06-16"
+
+[[task]]
+id = "314"
+phase = 22
+bundle = "live-run-legibility"
+milestone = "v0_15"
+status = "pending"
+title = "Live transcript chrome — current-activity line, last-event heartbeat, file +/- chips, turn/tool summary"
+scores = { d = 3, b = 4, u = 3 }
+depends_on = [312]
+acceptance_criteria = ["A pinned 'current activity' line above the transcript names the latest tool call in plain language (e.g. 'editing js/src/coinbase.js', 'running mix test'), derived from the most recent tool_use in @transcript_events. Updates live as events stream.", "A last-event heartbeat ('last output Ns ago') ticks via the existing :meta_tick; the arrival time is stamped in the LiveView when a {:harness_transcript,...} / {:harness_transcript_events,...} message is received (no backend change). It shows the mechanical liveness fact ONLY — never a computed 'stuck' verdict.", "edited_files_live chips show per-file +/- line counts (or tool-call count) accumulated from the live file-editing tool events the chips already extract.", "A summary header above the transcript counts turns / tool calls / files touched from the current @transcript_events list — so a long run is scannable.", "Smoke-tested via Phoenix.LiveViewTest for the activity line, heartbeat tick, chip counts, and summary counts.", "Mantra-clean: every element COUNTS a fact (event age, +/-, turn/tool/file counts) or relays the latest raw tool call; no health/stuck/progress judgment computed."]
+out_of_scope = ["Stage stepper / tokens (Task 312)", "Run-lifecycle timing / elapsed (Task 313) — the heartbeat here is last-event-arrival age, not run start time", "Transcript-legibility / OTHER-collapse (Task 311)", "Any 'is this run stuck' verdict from the heartbeat (forbidden — operator/AI reads it)"]
+files_to_modify = ["lib/harness/dashboard/live.ex", "lib/harness/dashboard/components.ex"]
+touches = ["lib/harness/dashboard/live.ex", "lib/harness/dashboard/components.ex", "assets/css/app.css", "test/harness/dashboard/live_test.exs", "test/harness/dashboard/components_test.exs"]
+domains = ["liveview"]
+assignee = "cursor"
+model = "composer-2.5-fast"
+body = """
+From the flying-blind review (2026-06-16). Even with a legible transcript (311) and a richer header (312), the operator still has to read turns to know 'what is it doing right now' and 'is it still alive'. Four lightweight count/relay additions around the transcript, all derivable from data already on the socket (@transcript_events) with no backend change:
+- Current-activity line: surface the newest tool_use as a pinned status line.
+- Heartbeat: stamp arrival time on transcript PubSub receive, render 'Ns ago' ticking via :meta_tick. Mechanical liveness only — the mantra forbids computing a stuck verdict in code.
+- File chips: edited_files_live (components.ex:347) lists paths but no magnitude — add +/- per chip.
+- Summary header: 'N turns · M tool calls · K files' over the events list.
+Depends on 312 (shared live.ex render_show + components.ex transcript region; serialize on the live file).
+"""
+created_at = "2026-06-16"
+scored_at = "2026-06-16"
