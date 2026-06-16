@@ -9220,7 +9220,7 @@ delivered_by = "claude"
 created_at = "2026-06-16"
 scored_at = "2026-06-16"
 done_at = "2026-06-16"
-shipped_in = "a718dda97420d59fc62560699cecff365f81c513"
+shipped_in = "ee09cd21cc9132158a5901a63be3e1d257ed53e2"
 
 [[task]]
 id = "306"

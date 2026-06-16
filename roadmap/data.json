@@ -13680,7 +13680,7 @@
       "domains": [
         "liveview"
       ],
-      "shipped_in": "a718dda97420d59fc62560699cecff365f81c513",
+      "shipped_in": "ee09cd21cc9132158a5901a63be3e1d257ed53e2",
       "body": "Follow-up filed by the post-merge audit of Task 303 (run run-1781587226238-3042a824).\n\nTask 303 shipped the project-structure explorer LiveView at /harness/projects/:name/explore, but nothing in the dashboard links INTO it -- the shared navbar (Harness.Dashboard.Components.page_shell) lists Dashboard/Roadmap/Compare/Chat/Settings/Oban, and the explorer page only offers a 'Back to all runs' link out. Task 303's ACs required only that the route exist under /harness (satisfied), but its body intent was 'so a human can see inside any registered Elixir project from /harness' -- which the missing nav entry undercuts: the feature is effectively unreachable except by knowing the URL.\n\nAdd a navbar link. Note the route is project-scoped, so this needs a default-target or picker decision (KPI faces the same and is reachable via in-page links rather than the navbar -- pick whichever is consistent).\n",
       "created_at": "2026-06-16",
       "done_at": "2026-06-16",
