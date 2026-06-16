@@ -13499,6 +13499,8 @@
       "unlocks": 1,
       "markers": [],
       "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
       "acceptance_criteria": [
         "Harness.CodeSearch builds and refreshes a per-project cached DuckDB index for a registered Elixir project, gated behind Code.ensure_loaded?(Exograph) (mirroring the dashboard's existing Code.ensure_loaded?(Bandit) guard). exograph absent (prod release) or Project.language not in [:elixir, nil] -> a clearly-logged graceful no-op, never a crash.",
         "Query API returns structured FACT maps only (file, line, kind, module, name, arity) and never a verdict/score/route: callers-of-symbol, callees-of-symbol, definitions-by-name, and duplicate-fragment (ex_dna mass) over a project's index.",

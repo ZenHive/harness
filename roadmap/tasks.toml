@@ -9119,6 +9119,8 @@ out_of_scope = ["Non-Elixir registered projects -- exograph is Elixir-only; they
 files_to_modify = ["lib/harness/code_search.ex", "lib/harness/chat/tools.ex"]
 touches = ["lib/harness/chat/tools.ex", "lib/harness/dashboard/mcp_server.ex", "lib/harness/project.ex", "test/harness/code_search_test.exs"]
 domains = ["otp", "ecto"]
+assignee = "codex"
+model = "gpt-5.5"
 body = """
 Idea origin: this session's exograph investigation (exograph kept as a dev/test structural-search dep, commit f525368). Goal: let harness "see inside" the Elixir projects it federates -- give the reviewer/audit agents (and, via Task 303, the operator) structural queries grep cannot do: cross-module caller blast-radius for a changed signature, callees, definitions-by-name, and ex_dna duplicate detection.
 
