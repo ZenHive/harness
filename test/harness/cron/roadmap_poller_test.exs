@@ -11,12 +11,14 @@ defmodule Harness.Cron.RoadmapPollerTest do
   alias Harness.Cron.PendingDispatch
   alias Harness.Cron.RoadmapPoller
   alias Harness.Cron.Settings
+  alias Harness.ModelAvailability
   alias Harness.Notification.Event
   alias Harness.Oban, as: HarnessOban
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.Run.Status
   alias Harness.Run.Worker
+  alias Harness.Test.CaptureSink
   alias Harness.Test.SettingsStoreMemory
   alias Oban.Plugins.Cron
 
@@ -477,6 +479,76 @@ defmodule Harness.Cron.RoadmapPollerTest do
     assert_received {:inserted, %{item_id: "52", adapter_module: "Elixir.Harness.AgentAdapter.Codex"}}
   end
 
+  test "an adapter-unavailable task is suppressed until its adapter becomes available" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-cron-adapter-unavailable", name: "cron-adapter-unavailable")
+    assert :ok = ProjectRegistry.register(project)
+
+    enable_project("cron-adapter-unavailable")
+    Application.put_env(:harness, :roadmap_ready, fn _p -> {:ok, [task("130", "codex")]} end)
+
+    Application.put_env(:harness, :oban_insert, fn changeset ->
+      job = Ecto.Changeset.apply_action!(changeset, :insert)
+      send(parent, {:inserted, job.args})
+      {:ok, job}
+    end)
+
+    assert :ok = AgentRegistry.mark_unavailable(Codex, :quota)
+
+    log = capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
+
+    assert log =~ "task 130 dispatch suppressed"
+    assert log =~ "adapter=Harness.AgentAdapter.Codex"
+    assert log =~ "reason={:adapter_unavailable, :codex, {:no_available_agent, [Harness.AgentAdapter.Codex]}}"
+    refute_received {:inserted, %{item_id: "130"}}
+
+    assert :ok = AgentRegistry.mark_available(Codex)
+    assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+    assert_received {:inserted, %{item_id: "130", adapter_module: "Elixir.Harness.AgentAdapter.Codex"}}
+  end
+
+  test "a model-unavailable task is suppressed until its model becomes available" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-cron-model-unavailable", name: "cron-model-unavailable")
+    assert :ok = ProjectRegistry.register(project)
+
+    enable_project("cron-model-unavailable")
+    Application.put_env(:harness, :notification_sinks, [CaptureSink])
+    Application.put_env(:harness, :test_capture_pid, self())
+
+    Application.put_env(:harness, :roadmap_ready, fn _p ->
+      {:ok, ["130" |> task("codex") |> Map.put("model", "gpt-5.5")]}
+    end)
+
+    Application.put_env(:harness, :oban_insert, fn changeset ->
+      job = Ecto.Changeset.apply_action!(changeset, :insert)
+      send(parent, {:inserted, job.args})
+      {:ok, job}
+    end)
+
+    assert :ok = ModelAvailability.block_model("codex", "gpt-5.5", reason: "quota")
+
+    log = capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
+
+    assert log =~ "task 130 dispatch suppressed"
+    assert log =~ "adapter=Harness.AgentAdapter.Codex"
+    assert log =~ "reason={:model_unavailable, :codex, \"gpt-5.5\""
+    refute_received {:inserted, %{item_id: "130"}}
+
+    assert_receive {:notify,
+                    %Event{
+                      type: :model_unavailable,
+                      task_id: "130",
+                      outcome: %{agent: "codex", model: "gpt-5.5"}
+                    }}
+
+    assert :ok = ModelAvailability.unblock_model("codex", "gpt-5.5")
+    assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+    assert_received {:inserted, %{item_id: "130", adapter_module: "Elixir.Harness.AgentAdapter.Codex"}}
+  end
+
   test "master on dispatches only projects whose own autonomy flag is on" do
     parent = self()
     on_project = ProjectFixture.from_repo("/tmp/harness-cron-on", name: "cron-on", concurrency_cap: 10)
@@ -629,7 +701,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
   defp enable_manual(name) do
     enable_project(name)
     Settings.set_dispatch_mode(name, :manual, "test")
-    Application.put_env(:harness, :notification_sinks, [Harness.Test.CaptureSink])
+    Application.put_env(:harness, :notification_sinks, [CaptureSink])
     Application.put_env(:harness, :test_capture_pid, self())
   end
 

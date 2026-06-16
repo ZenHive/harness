@@ -37,10 +37,12 @@ defmodule Harness.Cron.RoadmapPoller do
   use Oban.Worker, queue: :cron, max_attempts: 1
 
   alias Harness.AgentRegistry
+  alias Harness.Config
   alias Harness.Cron.Orchestrator
   alias Harness.Cron.PendingDispatch
   alias Harness.Cron.Settings
   alias Harness.Dispatch.WriteSetPlan
+  alias Harness.ModelAvailability
   alias Harness.Notification
   alias Harness.Notification.Event
   alias Harness.Project
@@ -57,7 +59,7 @@ defmodule Harness.Cron.RoadmapPoller do
   @dispatch_meta %{harness_stage: "cron_poll"}
   # The orchestrator reasons about touch-disjointness, so the ready set is
   # projected with full task context (not just routing keys) when fetched here.
-  @orchestrator_ready_fields ~w(id assignee markers scores touches files_to_modify dep_layer title body)
+  @orchestrator_ready_fields ~w(id assignee model markers scores touches files_to_modify dep_layer title body)
   @default_subscription_env_scrubs %{
     claude: %{"ANTHROPIC_API_KEY" => false},
     codex: %{"OPENAI_API_KEY" => false}
@@ -200,7 +202,7 @@ defmodule Harness.Cron.RoadmapPoller do
   # and enqueue directly without paying the orchestrator round-trip.
   @spec direct_dispatch(Project.t(), map()) :: :ok
   defp direct_dispatch(%Project{} = project, task) do
-    route_and_enqueue(project, to_string(task["id"]), task_agent(task))
+    route_and_enqueue(project, to_string(task["id"]), task_agent(task), task)
   end
 
   # The N≥2 path: the orchestrator AI returns the dispatch plan; harness reads it
@@ -211,8 +213,8 @@ defmodule Harness.Cron.RoadmapPoller do
   defp orchestrate(%Project{} = project, tasks) do
     case Orchestrator.plan(project, tasks) do
       {:ok, %Orchestrator{dispatch: dispatch, skip: skip}} ->
-        ids = MapSet.new(tasks, &to_string(&1["id"]))
-        Enum.each(dispatch, &enqueue_planned(project, &1, ids))
+        tasks_by_id = Map.new(tasks, &{to_string(&1["id"]), &1})
+        Enum.each(dispatch, &enqueue_planned(project, &1, tasks_by_id))
         Enum.each(skip, &log_plan_skip(project, &1))
 
       {:error, reason} ->
@@ -223,13 +225,13 @@ defmodule Harness.Cron.RoadmapPoller do
   # The plan is the grouping JUDGMENT; harness validates only mechanically — the
   # task is in the woken set, the named adapter resolves, the agent is available —
   # then enqueues. Concurrency stays capped by the Oban queue limit.
-  @spec enqueue_planned(Project.t(), Orchestrator.dispatch_entry(), MapSet.t()) :: :ok
-  defp enqueue_planned(%Project{} = project, %{task_id: item_id, adapter: adapter}, ids) do
-    with true <- MapSet.member?(ids, item_id),
+  @spec enqueue_planned(Project.t(), Orchestrator.dispatch_entry(), %{optional(String.t()) => map()}) :: :ok
+  defp enqueue_planned(%Project{} = project, %{task_id: item_id, adapter: adapter}, tasks_by_id) do
+    with {:ok, task} <- Map.fetch(tasks_by_id, item_id),
          agent when is_atom(agent) <- resolve_assignee(adapter) do
-      route_and_enqueue(project, item_id, agent)
+      route_and_enqueue(project, item_id, agent, task)
     else
-      false -> log_dispatch_skip(project, item_id, :not_in_ready_set)
+      :error -> log_dispatch_skip(project, item_id, :not_in_ready_set)
       {:unsupported_assignee, raw} -> log_dispatch_skip(project, item_id, {:unsupported_adapter, raw})
     end
   end
@@ -239,15 +241,52 @@ defmodule Harness.Cron.RoadmapPoller do
   # availability gate, then enqueue OR park. A disabled or quota-exhausted agent
   # is logged and skipped, never dispatched. The mode gate keys solely off the
   # project's dispatch mode — no "is this run high-stakes" judgment in code.
-  @spec route_and_enqueue(Project.t(), String.t(), atom()) :: :ok
-  defp route_and_enqueue(%Project{} = project, item_id, agent) when is_atom(agent) do
+  @spec route_and_enqueue(Project.t(), String.t(), atom(), map()) :: :ok
+  defp route_and_enqueue(%Project{} = project, item_id, agent, task) when is_atom(agent) do
     with {:ok, adapter} <- AgentRegistry.delegatable_module_for_agent(agent),
-         {:ok, adapter} <- AgentRegistry.select(adapter) do
+         :ok <- ensure_adapter_available(agent, adapter),
+         :ok <- ensure_model_available(agent, adapter, task, item_id) do
       enqueue_or_park(project, item_id, adapter)
     else
       {:error, reason} -> log_dispatch_skip(project, item_id, reason)
+      {:suppress, reason, adapter} -> log_dispatch_suppression(project, item_id, adapter, reason)
     end
   end
+
+  @spec ensure_adapter_available(AgentRegistry.agent(), module()) :: :ok | {:suppress, term(), module()}
+  defp ensure_adapter_available(agent, adapter) do
+    case AgentRegistry.select(adapter) do
+      {:ok, ^adapter} ->
+        :ok
+
+      {:error, {:no_available_agent, _supported} = reason} ->
+        {:suppress, {:adapter_unavailable, agent, reason}, adapter}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @spec ensure_model_available(AgentRegistry.agent(), module(), map(), String.t()) ::
+          :ok | {:suppress, term(), module()}
+  defp ensure_model_available(agent, adapter, task, item_id) do
+    model = effective_model(task, agent)
+
+    if ModelAvailability.available?(agent, model) do
+      :ok
+    else
+      ModelAvailability.notify_blocked_dispatch(agent, model, item_id)
+      reason = {:model_unavailable, agent, model, available: ModelAvailability.list_available_ids(agent)}
+      {:suppress, reason, adapter}
+    end
+  end
+
+  @spec effective_model(map(), AgentRegistry.agent()) :: String.t() | nil
+  defp effective_model(%{"model" => model} = task, agent) when is_binary(model) and model != "" do
+    if task_agent(task) == agent, do: model, else: Config.agent_model(agent)
+  end
+
+  defp effective_model(_task, agent), do: Config.agent_model(agent)
 
   # The single enqueue boundary both autonomous paths share. Under `:manual` the
   # resolved decision is parked for operator approval; under `:auto` it is
@@ -441,6 +480,13 @@ defmodule Harness.Cron.RoadmapPoller do
   @spec log_dispatch_skip(Project.t(), String.t(), term()) :: :ok
   defp log_dispatch_skip(%Project{} = project, item_id, reason) do
     Logger.debug("harness cron poller: #{project.name} task #{item_id} dispatch skipped: #{inspect(reason)}")
+  end
+
+  @spec log_dispatch_suppression(Project.t(), String.t(), module(), term()) :: :ok
+  defp log_dispatch_suppression(%Project{} = project, item_id, adapter, reason) do
+    Logger.info(
+      "harness cron poller: #{project.name} task #{item_id} dispatch suppressed (adapter=#{inspect(adapter)}, reason=#{inspect(reason)})"
+    )
   end
 
   # Info-level so a parked decision is observable in the operator log — manual
