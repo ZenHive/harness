@@ -134,6 +134,16 @@ defmodule Harness.Dashboard.ProjectExplorerTest do
 
       assert html =~ "No projects registered"
     end
+
+    test "bare /harness/projects aliases the index action", %{conn: conn} do
+      register_project("alpha")
+      Application.put_env(:harness, :dashboard_code_search, fake_search(definitions: demo_definitions()))
+
+      {:ok, _view, html} = live(conn, "/harness/projects")
+
+      assert html =~ "Project explorer"
+      assert html =~ "Demo.Search"
+    end
   end
 
   defp register_project(name, opts \\ []) do
