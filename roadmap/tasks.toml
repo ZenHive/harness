@@ -9164,7 +9164,7 @@ scored_at = "2026-06-16"
 id = "304"
 phase = 20
 bundle = "autolanding"
-status = "in_progress"
+status = "done"
 title = "Cron poller: suppress re-dispatch of a task whose adapter is unavailable (no churn loop)"
 scores = { d = 3, b = 3, u = 1 }
 depends_on = [16]
@@ -9180,6 +9180,11 @@ Observed 2026-06-16: task 130/ccxt_client was re-enqueued by the cron poller eve
 
 The fix is mechanical, not judgment: before enqueuing a ready task whose resolved adapter/model is currently unavailable (the same availability fact Task 16 computes), the poller declines and logs/witnesses the suppression — and resumes dispatching automatically once the adapter is available. No new scoring or is-this-worth-retrying classifier. Discovered while fixing the orthogonal dispatch-await duplicate-dispatch hole.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781584197555-c8572550, 6d8ddb043e16f6e262ef789d21317a93df096517)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-16"
 started_at = "2026-06-16"
 scored_at = "2026-06-16"
+done_at = "2026-06-16"
+shipped_in = "6d8ddb043e16f6e262ef789d21317a93df096517"

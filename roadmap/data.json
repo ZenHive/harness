@@ -13590,7 +13590,7 @@
       "id": "304",
       "phase": 20,
       "bundle": "autolanding",
-      "status": "in_progress",
+      "status": "done",
       "title": "Cron poller: suppress re-dispatch of a task whose adapter is unavailable (no churn loop)",
       "scores": {
         "d": 3,
@@ -13630,10 +13630,15 @@
         "otp",
         "oban"
       ],
+      "shipped_in": "6d8ddb043e16f6e262ef789d21317a93df096517",
       "body": "Observed 2026-06-16: task 130/ccxt_client was re-enqueued by the cron poller every ~3 min (Oban jobs 1597-1600), each run cancelling ~22s later with no_available_agent for Codex. Codex was unavailable so the run never started; mechanical retry (5 attempts) exhausted, the Oban job cancelled, the task reverted to pending, and the next cron tick re-selected it — a tight re-dispatch loop with no agent-unavailable suppression at the poller. The existing run_in_flight? guard does not help: a cancelled job is terminal (not in-flight), so the task is legitimately ready again every tick.\n\nThe fix is mechanical, not judgment: before enqueuing a ready task whose resolved adapter/model is currently unavailable (the same availability fact Task 16 computes), the poller declines and logs/witnesses the suppression — and resumes dispatching automatically once the adapter is available. No new scoring or is-this-worth-retrying classifier. Discovered while fixing the orthogonal dispatch-await duplicate-dispatch hole.\n",
       "created_at": "2026-06-16",
       "started_at": "2026-06-16",
+      "done_at": "2026-06-16",
       "scored_at": "2026-06-16",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1781584197555-c8572550, 6d8ddb043e16f6e262ef789d21317a93df096517).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     }
   ]
