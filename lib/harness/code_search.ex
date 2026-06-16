@@ -9,6 +9,7 @@ defmodule Harness.CodeSearch do
 
   use Descripex, namespace: "/code_search"
 
+  alias Harness.CodeSearch.Server
   alias Harness.Project
   alias Harness.ProjectRegistry
 
@@ -19,10 +20,19 @@ defmodule Harness.CodeSearch do
   @default_min_occurrences 2
   @default_prefix "code_search"
   @duckdb_threads 1
-  @quackdb_wait_timeout_ms 30_000
-  @repo_queue_target_ms 60_000
-  @repo_queue_interval_ms 120_000
-  @repo_timeout_ms 120_000
+  @definition_cache_table :harness_code_search_definition_facts
+  @source_cache_table :harness_code_search_source_facts
+  @definition_kind_by_string %{
+    "module" => :module,
+    "def" => :def,
+    "defp" => :defp,
+    "defmacro" => :defmacro,
+    "defmacrop" => :defmacrop,
+    "defdelegate" => :defdelegate,
+    "defcallback" => :defcallback,
+    "defmacrocallback" => :defmacrocallback,
+    "attribute" => :attribute
+  }
 
   @type fact :: %{
           required(:file) => String.t() | nil,
@@ -84,12 +94,7 @@ defmodule Harness.CodeSearch do
 
   @spec definitions(String.t(), String.t(), keyword()) :: result()
   def definitions(project_name, name, opts \\ []) when is_binary(project_name) and is_binary(name) and is_list(opts) do
-    query(project_name, opts, fn index, ctx ->
-      case ctx.exograph.search_definitions(index, name, limit: limit(opts)) do
-        {:ok, []} -> {:ok, fallback_definitions(ctx.repo_path, name, opts)}
-        result -> map_query(result, &definition_fact(&1, ctx))
-      end
-    end)
+    query(project_name, opts, &definition_query(&1, name, &2, opts))
   end
 
   api(:callers, "Return call-edge facts for definitions that call the requested symbol.",
@@ -204,8 +209,8 @@ defmodule Harness.CodeSearch do
   @spec ensure_exograph(Project.t(), keyword()) :: :ok | {:skip, :exograph_unavailable, Project.t()}
   defp ensure_exograph(project, opts), do: ensure_module(:exograph, opts[:exograph_module] || Exograph, project)
 
-  @spec ensure_module(atom(), module(), Project.t() | nil) :: :ok | {:skip, atom(), Project.t() | nil}
-  defp ensure_module(reason_base, module, project \\ nil) do
+  @spec ensure_module(atom(), module(), Project.t()) :: :ok | {:skip, atom(), Project.t()}
+  defp ensure_module(reason_base, module, project) do
     if Code.ensure_loaded?(module) do
       :ok
     else
@@ -239,6 +244,7 @@ defmodule Harness.CodeSearch do
   @spec rebuild_index(String.t(), String.t(), keyword()) :: :ok | {:error, term()}
   defp rebuild_index(repo_path, index_path, opts) do
     File.mkdir_p!(Path.dirname(index_path))
+    Server.close(index_path, opts)
     clear_duckdb_files(index_path)
 
     index_path
@@ -262,90 +268,27 @@ defmodule Harness.CodeSearch do
 
   @spec with_index(String.t(), keyword(), (term(), map() -> term())) :: term()
   defp with_index(index_path, opts, fun) do
-    with_repo(index_path, opts, fn ctx ->
+    open_index = fn ctx ->
+      ctx = Map.put(ctx, :prefix, prefix(opts))
+
       case ctx.exograph.index([], index_opts(ctx, false, opts)) do
-        {:ok, index} -> fun.(index, ctx)
+        {:ok, index} -> {:ok, index}
         {:error, reason} -> {:error, reason}
       end
+    end
+
+    Server.with_index(index_path, opts, open_index, fn index, ctx ->
+      ctx = Map.put(ctx, :prefix, prefix(opts))
+      fun.(index, ctx)
     end)
   end
 
   @spec with_repo(String.t(), keyword(), (map() -> term())) :: term()
   defp with_repo(index_path, opts, fun) do
-    with :ok <- ensure_module(:quackdb, opts[:quackdb_server_module] || QuackDB.Server),
-         :ok <- ensure_module(:exograph_duckdb_repo, opts[:repo_module] || Exograph.DuckDBRepo),
-         :ok <- start_app(:ecto_sql),
-         :ok <- start_app(:quackdb),
-         {:ok, server} <- start_server(index_path, opts) do
-      case start_repo(server, opts) do
-        {:ok, dynamic_repo} ->
-          with_dynamic_repo(server, dynamic_repo, opts, fun)
-
-        {:error, reason} ->
-          stop_pid(server)
-          {:error, reason}
-      end
-    end
-  end
-
-  @spec with_dynamic_repo(pid(), pid(), keyword(), (map() -> term())) :: term()
-  defp with_dynamic_repo(server, dynamic_repo, opts, fun) do
-    previous = (opts[:repo_module] || Exograph.DuckDBRepo).get_dynamic_repo()
-    (opts[:repo_module] || Exograph.DuckDBRepo).put_dynamic_repo(dynamic_repo)
-
-    try do
-      exograph = opts[:exograph_module] || Exograph
-      repo = opts[:repo_module] || Exograph.DuckDBRepo
-      ctx = %{exograph: exograph, repo: repo, prefix: prefix(opts)}
-
+    Server.with_repo(index_path, opts, fn ctx ->
+      ctx = Map.put(ctx, :prefix, prefix(opts))
       fun.(ctx)
-    after
-      (opts[:repo_module] || Exograph.DuckDBRepo).put_dynamic_repo(previous)
-      stop_pid(dynamic_repo)
-      stop_pid(server)
-    end
-  end
-
-  @spec start_app(atom()) :: :ok | {:error, term()}
-  defp start_app(app) do
-    case Application.ensure_all_started(app) do
-      {:ok, _apps} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  @spec start_server(String.t(), keyword()) :: {:ok, pid()} | {:error, term()}
-  defp start_server(index_path, opts) do
-    server = opts[:quackdb_server_module] || QuackDB.Server
-    token = "harness-code-search-#{System.unique_integer([:positive])}"
-    endpoint = "quack:127.0.0.1:#{free_tcp_port!()}"
-
-    server.start_link(
-      duckdb: Keyword.get(opts, :duckdb, :managed),
-      database: index_path,
-      endpoint: endpoint,
-      token: token,
-      wait_timeout: @quackdb_wait_timeout_ms,
-      settings: [threads: @duckdb_threads]
-    )
-  end
-
-  @spec start_repo(pid(), keyword()) :: {:ok, pid()} | {:error, term()}
-  defp start_repo(server, opts) do
-    repo = opts[:repo_module] || Exograph.DuckDBRepo
-    server_module = opts[:quackdb_server_module] || QuackDB.Server
-
-    repo.start_link(
-      name: :"#{repo}_#{System.unique_integer([:positive])}",
-      uri: server_module.uri(server),
-      token: server_module.token(server),
-      pool_size: 1,
-      queue_target: @repo_queue_target_ms,
-      queue_interval: @repo_queue_interval_ms,
-      telemetry_prefix: [:harness, :code_search, :quackdb],
-      log: false,
-      timeout: @repo_timeout_ms
-    )
+    end)
   end
 
   @spec index_opts(map(), boolean(), keyword()) :: keyword()
@@ -418,6 +361,75 @@ defmodule Harness.CodeSearch do
     end)
   end
 
+  @spec definition_query(term(), String.t(), map(), keyword()) :: {:ok, [fact()]} | {:error, term()}
+  defp definition_query(_index, "", ctx, opts), do: all_definition_facts(ctx, opts)
+
+  defp definition_query(index, name, ctx, opts) do
+    case ctx.exograph.search_definitions(index, name, limit: limit(opts)) do
+      {:ok, []} -> {:ok, fallback_definitions(ctx.repo_path, name, opts)}
+      result -> map_query(result, &definition_fact(&1, ctx))
+    end
+  end
+
+  @spec all_definition_facts(map(), keyword()) :: {:ok, [fact()]} | {:error, term()}
+  defp all_definition_facts(ctx, opts) do
+    key = {ctx.repo_path, ctx.prefix, newest_source_mtime(ctx.repo_path), limit(opts)}
+
+    case definition_cache_lookup(key) do
+      {:ok, facts} -> {:ok, facts}
+      :error -> fetch_all_definition_facts(ctx, opts, key)
+    end
+  end
+
+  @spec fetch_all_definition_facts(map(), keyword(), term()) :: {:ok, [fact()]} | {:error, term()}
+  defp fetch_all_definition_facts(ctx, opts, cache_key) do
+    sql = ~s|
+      SELECT COALESCE(fragment_file.path, definition_file.path) AS file,
+             definition.line,
+             definition.kind,
+             definition.module,
+             definition.name,
+             definition.arity
+      FROM "#{ctx.prefix}_definitions" AS definition
+      LEFT JOIN "#{ctx.prefix}_fragments" AS fragment ON fragment.id = definition.fragment_id
+      LEFT JOIN "#{ctx.prefix}_files" AS fragment_file ON fragment_file.id = fragment.file_id
+      LEFT JOIN "#{ctx.prefix}_files" AS definition_file ON definition_file.id = definition.file_id
+      ORDER BY definition.module, definition.name, definition.arity, definition.line
+      LIMIT ?
+    |
+
+    case ctx.repo.query(sql, [limit(opts)], timeout: :infinity) do
+      {:ok, %{rows: []}} ->
+        facts = fallback_definitions(ctx.repo_path, "", opts)
+        definition_cache_insert(cache_key, facts)
+        {:ok, facts}
+
+      {:ok, %{rows: rows}} ->
+        facts = Enum.map(rows, &definition_row_fact/1)
+        definition_cache_insert(cache_key, facts)
+        {:ok, facts}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @spec definition_row_fact([term()]) :: fact()
+  defp definition_row_fact([file, line, kind, module, name, arity]) do
+    %{
+      file: file,
+      line: line,
+      kind: definition_kind(kind),
+      module: module,
+      name: name,
+      arity: arity
+    }
+  end
+
+  @spec definition_kind(atom() | String.t()) :: atom()
+  defp definition_kind(kind) when is_atom(kind), do: kind
+  defp definition_kind(kind), do: Map.fetch!(@definition_kind_by_string, kind)
+
   @spec fallback_definitions(String.t(), String.t(), keyword()) :: [fact()]
   defp fallback_definitions(repo_path, name, opts) do
     repo_path
@@ -440,9 +452,77 @@ defmodule Harness.CodeSearch do
 
   @spec source_facts(String.t()) :: [map()]
   defp source_facts(repo_path) do
-    repo_path
-    |> source_paths()
-    |> Enum.flat_map(&source_fact/1)
+    key = {repo_path, newest_source_mtime(repo_path)}
+
+    case source_cache_lookup(key) do
+      {:ok, facts} ->
+        facts
+
+      :error ->
+        facts =
+          repo_path
+          |> source_paths()
+          |> Enum.flat_map(&source_fact/1)
+
+        source_cache_insert(key, facts)
+        facts
+    end
+  end
+
+  @spec source_cache_lookup(term()) :: {:ok, [map()]} | :error
+  defp source_cache_lookup(key) do
+    case :ets.lookup(source_cache_table(), key) do
+      [{^key, facts}] -> {:ok, facts}
+      [] -> :error
+    end
+  end
+
+  @spec source_cache_insert(term(), [map()]) :: true
+  defp source_cache_insert(key, facts) do
+    :ets.insert(source_cache_table(), {key, facts})
+  end
+
+  @spec source_cache_table() :: :ets.tid() | atom()
+  defp source_cache_table do
+    case :ets.whereis(@source_cache_table) do
+      :undefined -> create_source_cache_table()
+      table -> table
+    end
+  end
+
+  @spec create_source_cache_table() :: :ets.tid() | atom()
+  defp create_source_cache_table do
+    :ets.new(@source_cache_table, [:named_table, :public, read_concurrency: true])
+  rescue
+    ArgumentError -> @source_cache_table
+  end
+
+  @spec definition_cache_lookup(term()) :: {:ok, [fact()]} | :error
+  defp definition_cache_lookup(key) do
+    case :ets.lookup(definition_cache_table(), key) do
+      [{^key, facts}] -> {:ok, facts}
+      [] -> :error
+    end
+  end
+
+  @spec definition_cache_insert(term(), [fact()]) :: true
+  defp definition_cache_insert(key, facts) do
+    :ets.insert(definition_cache_table(), {key, facts})
+  end
+
+  @spec definition_cache_table() :: :ets.tid() | atom()
+  defp definition_cache_table do
+    case :ets.whereis(@definition_cache_table) do
+      :undefined -> create_definition_cache_table()
+      table -> table
+    end
+  end
+
+  @spec create_definition_cache_table() :: :ets.tid() | atom()
+  defp create_definition_cache_table do
+    :ets.new(@definition_cache_table, [:named_table, :public, read_concurrency: true])
+  rescue
+    ArgumentError -> @definition_cache_table
   end
 
   @spec source_fact(String.t()) :: [map()]
@@ -670,22 +750,6 @@ defmodule Harness.CodeSearch do
     Enum.each([index_path, index_path <> ".wal"], &File.rm/1)
   end
 
-  @spec stop_pid(pid()) :: :ok
-  defp stop_pid(pid) when is_pid(pid) do
-    if Process.alive?(pid), do: GenServer.stop(pid, :normal, 5_000)
-    :ok
-  catch
-    :exit, _reason -> :ok
-  end
-
-  @spec free_tcp_port!() :: :inet.port_number()
-  defp free_tcp_port! do
-    {:ok, socket} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
-    {:ok, port} = :inet.port(socket)
-    :ok = :gen_tcp.close(socket)
-    port
-  end
-
   @spec safe_project_name(String.t()) :: String.t()
   defp safe_project_name(name) do
     String.replace(name, ~r/[^A-Za-z0-9_.-]/, "_")
@@ -699,4 +763,260 @@ defmodule Harness.CodeSearch do
 
   @spec min_occurrences(keyword()) :: pos_integer()
   defp min_occurrences(opts), do: Keyword.get(opts, :min_occurrences, @default_min_occurrences)
+end
+
+defmodule Harness.CodeSearch.Server do
+  @moduledoc """
+  Long-lived serialized owner for CodeSearch DuckDB resources.
+
+  The GenServer keeps one QuackDB server plus one dynamic Ecto repo per index
+  key. Executing query functions inside the mailbox serializes access to the
+  single DuckDB connection while avoiding per-query process boot.
+  """
+
+  use GenServer
+
+  @duckdb_threads 1
+  @quackdb_wait_timeout_ms 30_000
+  @repo_queue_target_ms 60_000
+  @repo_queue_interval_ms 120_000
+  @repo_timeout_ms 120_000
+  @stop_timeout_ms 5_000
+
+  @type resource :: %{server: pid(), repo: pid(), index: term() | nil}
+  @type state :: %{resources: %{term() => resource()}}
+
+  @doc "Starts the CodeSearch resource owner."
+  @spec start_link(keyword()) :: GenServer.on_start()
+  def start_link(opts \\ []) do
+    GenServer.start_link(__MODULE__, %{}, Keyword.put_new(opts, :name, __MODULE__))
+  end
+
+  @doc "Runs a function with the cached dynamic repo for an index path."
+  @spec with_repo(String.t(), keyword(), (map() -> term())) :: term()
+  def with_repo(index_path, opts, fun) when is_binary(index_path) and is_list(opts) and is_function(fun, 1) do
+    GenServer.call(__MODULE__, {:with_repo, index_path, opts, fun}, :infinity)
+  end
+
+  @doc "Runs a function with the cached Exograph index for an index path."
+  @spec with_index(String.t(), keyword(), (map() -> {:ok, term()} | {:error, term()}), (term(), map() -> term())) ::
+          term()
+  def with_index(index_path, opts, open_fun, fun)
+      when is_binary(index_path) and is_list(opts) and is_function(open_fun, 1) and is_function(fun, 2) do
+    GenServer.call(__MODULE__, {:with_index, index_path, opts, open_fun, fun}, :infinity)
+  end
+
+  @doc "Closes a cached resource for an index path."
+  @spec close(String.t(), keyword()) :: :ok
+  def close(index_path, opts \\ []) when is_binary(index_path) and is_list(opts) do
+    GenServer.call(__MODULE__, {:close, index_path, opts}, :infinity)
+  end
+
+  @doc "Closes all cached resources."
+  @spec close_all() :: :ok
+  def close_all, do: GenServer.call(__MODULE__, :close_all, :infinity)
+
+  @impl true
+  @spec init(map()) :: {:ok, state()}
+  def init(_opts), do: {:ok, %{resources: %{}}}
+
+  @impl true
+  def handle_call({:with_repo, index_path, opts, fun}, _from, state) do
+    key = resource_key(index_path, opts)
+
+    with :ok <- ensure_module(:quackdb, opts[:quackdb_server_module] || QuackDB.Server),
+         :ok <- ensure_module(:exograph_duckdb_repo, opts[:repo_module] || Exograph.DuckDBRepo),
+         {:ok, resource, state} <- resource_for(key, index_path, opts, state) do
+      {:reply, with_dynamic_repo(resource, opts, fun), state}
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+      {:skip, reason, _project} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:with_index, index_path, opts, open_fun, fun}, _from, state) do
+    key = resource_key(index_path, opts)
+
+    with :ok <- ensure_module(:quackdb, opts[:quackdb_server_module] || QuackDB.Server),
+         :ok <- ensure_module(:exograph_duckdb_repo, opts[:repo_module] || Exograph.DuckDBRepo),
+         {:ok, resource, state} <- resource_for(key, index_path, opts, state),
+         {:ok, reply, resource} <- with_cached_index(resource, opts, open_fun, fun) do
+      {:reply, reply, put_in(state.resources[key], resource)}
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+      {:skip, reason, _project} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:close, index_path, opts}, _from, state) do
+    key = resource_key(index_path, opts)
+    {resource, resources} = Map.pop(state.resources, key)
+    stop_resource(resource)
+
+    {:reply, :ok, %{state | resources: resources}}
+  end
+
+  def handle_call(:close_all, _from, state) do
+    Enum.each(state.resources, fn {_key, resource} -> stop_resource(resource) end)
+
+    {:reply, :ok, %{state | resources: %{}}}
+  end
+
+  @impl true
+  def terminate(_reason, state) do
+    Enum.each(state.resources, fn {_key, resource} -> stop_resource(resource) end)
+    :ok
+  end
+
+  @spec resource_for(term(), String.t(), keyword(), state()) :: {:ok, resource(), state()} | {:error, term()}
+  defp resource_for(key, index_path, opts, state) do
+    case Map.fetch(state.resources, key) do
+      {:ok, resource} ->
+        {:ok, resource, state}
+
+      :error ->
+        with :ok <- start_app(:ecto_sql),
+             :ok <- start_app(:quackdb),
+             {:ok, resource} <- start_resource(index_path, opts) do
+          {:ok, resource, put_in(state.resources[key], resource)}
+        end
+    end
+  end
+
+  @spec start_resource(String.t(), keyword()) :: {:ok, resource()} | {:error, term()}
+  defp start_resource(index_path, opts) do
+    case start_server(index_path, opts) do
+      {:ok, server} ->
+        case start_repo(server, opts) do
+          {:ok, repo} ->
+            {:ok, %{server: server, repo: repo, index: nil}}
+
+          {:error, reason} ->
+            stop_pid(server)
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @spec start_server(String.t(), keyword()) :: {:ok, pid()} | {:error, term()}
+  defp start_server(index_path, opts) do
+    server = opts[:quackdb_server_module] || QuackDB.Server
+    token = "harness-code-search-#{System.unique_integer([:positive])}"
+    endpoint = "quack:127.0.0.1:#{free_tcp_port!()}"
+
+    server.start_link(
+      duckdb: Keyword.get(opts, :duckdb, :managed),
+      database: index_path,
+      endpoint: endpoint,
+      token: token,
+      wait_timeout: @quackdb_wait_timeout_ms,
+      settings: [threads: @duckdb_threads]
+    )
+  end
+
+  @spec start_repo(pid(), keyword()) :: {:ok, pid()} | {:error, term()}
+  defp start_repo(server, opts) do
+    repo = opts[:repo_module] || Exograph.DuckDBRepo
+    server_module = opts[:quackdb_server_module] || QuackDB.Server
+
+    repo.start_link(
+      name: :"#{repo}_#{System.unique_integer([:positive])}",
+      uri: server_module.uri(server),
+      token: server_module.token(server),
+      pool_size: 1,
+      queue_target: @repo_queue_target_ms,
+      queue_interval: @repo_queue_interval_ms,
+      telemetry_prefix: [:harness, :code_search, :quackdb],
+      log: false,
+      timeout: @repo_timeout_ms
+    )
+  end
+
+  @spec with_dynamic_repo(resource(), keyword(), (map() -> term())) :: term()
+  defp with_dynamic_repo(resource, opts, fun) do
+    repo = opts[:repo_module] || Exograph.DuckDBRepo
+    previous = repo.get_dynamic_repo()
+    repo.put_dynamic_repo(resource.repo)
+
+    try do
+      fun.(%{exograph: opts[:exograph_module] || Exograph, repo: repo})
+    after
+      repo.put_dynamic_repo(previous)
+    end
+  end
+
+  @spec with_cached_index(
+          resource(),
+          keyword(),
+          (map() -> {:ok, term()} | {:error, term()}),
+          (term(), map() -> term())
+        ) ::
+          {:ok, term(), resource()} | {:error, term()}
+  defp with_cached_index(%{index: nil} = resource, opts, open_fun, fun) do
+    with_dynamic_repo(resource, opts, fn ctx ->
+      case open_fun.(ctx) do
+        {:ok, index} -> {:ok, fun.(index, ctx), %{resource | index: index}}
+        {:error, reason} -> {:error, reason}
+      end
+    end)
+  end
+
+  defp with_cached_index(%{index: index} = resource, opts, _open_fun, fun) do
+    {:ok, with_dynamic_repo(resource, opts, &fun.(index, &1)), resource}
+  end
+
+  @spec stop_resource(resource() | nil) :: :ok
+  defp stop_resource(nil), do: :ok
+
+  defp stop_resource(resource) do
+    stop_pid(resource.repo)
+    stop_pid(resource.server)
+  end
+
+  @spec stop_pid(pid()) :: :ok
+  defp stop_pid(pid) when is_pid(pid) do
+    if Process.alive?(pid), do: GenServer.stop(pid, :normal, @stop_timeout_ms)
+    :ok
+  catch
+    :exit, _reason -> :ok
+  end
+
+  @spec start_app(atom()) :: :ok | {:error, term()}
+  defp start_app(app) do
+    case Application.ensure_all_started(app) do
+      {:ok, _apps} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @spec ensure_module(atom(), module()) :: :ok | {:skip, atom(), nil}
+  defp ensure_module(reason_base, module) do
+    if Code.ensure_loaded?(module) do
+      :ok
+    else
+      {:skip, :"#{reason_base}_unavailable", nil}
+    end
+  end
+
+  @spec resource_key(String.t(), keyword()) :: term()
+  defp resource_key(index_path, opts) do
+    {
+      index_path,
+      Keyword.get(opts, :duckdb, :managed),
+      Keyword.get(opts, :duckdb_options, []),
+      opts[:quackdb_server_module] || QuackDB.Server,
+      opts[:repo_module] || Exograph.DuckDBRepo
+    }
+  end
+
+  @spec free_tcp_port!() :: :inet.port_number()
+  defp free_tcp_port! do
+    {:ok, socket} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
+    {:ok, port} = :inet.port(socket)
+    :ok = :gen_tcp.close(socket)
+    port
+  end
 end

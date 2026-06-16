@@ -6,6 +6,8 @@ defmodule Harness.CodeSearchTest do
   alias Harness.Chat.Tools
   alias Harness.CodeSearch
   alias Harness.CodeSearchTest.FakeExograph
+  alias Harness.CodeSearchTest.FakeRepo
+  alias Harness.CodeSearchTest.FakeServer
   alias Harness.CodeSearchTest.MissingExDNA
   alias Harness.CodeSearchTest.MissingExograph
   alias Harness.Project
@@ -13,6 +15,8 @@ defmodule Harness.CodeSearchTest do
 
   setup do
     ProjectRegistry.reset()
+    previous_test_pid = Application.get_env(:harness, :code_search_test_pid)
+    Application.put_env(:harness, :code_search_test_pid, self())
 
     cache_root =
       Path.join(
@@ -22,6 +26,8 @@ defmodule Harness.CodeSearchTest do
 
     on_exit(fn ->
       ProjectRegistry.reset()
+      restore(:code_search_test_pid, previous_test_pid)
+      close_code_search_server()
       File.rm_rf(cache_root)
     end)
 
@@ -69,6 +75,12 @@ defmodule Harness.CodeSearchTest do
 
     assert Enum.any?(definitions, &match?(%{kind: :def, module: "Demo.Search", name: "target", arity: 1}, &1))
     assert Enum.all?(definitions, &fact_shape?/1)
+
+    assert {:ok, %{facts: all_definitions}} =
+             CodeSearch.definitions(project.name, "", opts)
+
+    assert Enum.any?(all_definitions, &match?(%{kind: :def, module: "Demo.Search", name: "caller", arity: 1}, &1))
+    assert Enum.all?(all_definitions, &fact_shape?/1)
 
     assert {:ok, %{facts: callers}} =
              CodeSearch.callers(project.name, "Demo.Search.target/1", opts)
@@ -143,6 +155,42 @@ defmodule Harness.CodeSearchTest do
 
     assert {:ok, %{facts: [%{kind: :call_edge, module: "Fake", name: "target", arity: 0}]}} =
              CodeSearch.callees(project.name, "Fake.caller/0", opts)
+  end
+
+  test "queries reuse the same server and repo while the index is fresh", %{cache_root: cache_root} do
+    %{project: project} = fixture_project("code-search-reuse")
+    assert :ok = ProjectRegistry.register(project)
+
+    opts = fake_lifecycle_opts(cache_root)
+
+    assert {:ok, %{facts: [%{name: "found"}]}} = CodeSearch.definitions(project.name, "found", opts)
+    assert {:ok, %{facts: [%{name: "found"}]}} = CodeSearch.definitions(project.name, "found", opts)
+
+    assert_receive {:fake_server_started, server_pid}
+    assert_receive {:fake_repo_started, repo_pid}
+    refute_receive {:fake_server_started, _another_server_pid}
+    refute_receive {:fake_repo_started, _another_repo_pid}
+
+    assert_receive {:fake_index, ^repo_pid, true}
+    assert_receive {:fake_index, ^repo_pid, false}
+    refute_receive {:fake_index, ^repo_pid, false}
+    assert is_pid(server_pid)
+  end
+
+  test "queries rebuild a stale index before reusing it", %{cache_root: cache_root} do
+    %{project: project, source_file: source_file} = fixture_project("code-search-stale-query")
+    assert :ok = ProjectRegistry.register(project)
+
+    opts = fake_lifecycle_opts(cache_root)
+
+    assert {:ok, %{facts: [%{name: "found"}]}} = CodeSearch.definitions(project.name, "found", opts)
+
+    :timer.sleep(1_100)
+    File.write!(source_file, "\n\ndef changed(value), do: value\n", [:append])
+
+    assert {:ok, %{facts: [%{name: "found"}]}} = CodeSearch.definitions(project.name, "found", opts)
+
+    assert Enum.count(received_events(), &match?({:fake_index, _repo_pid, true}, &1)) == 2
   end
 
   test "duplicates logs and skips when ExDNA is unavailable", %{cache_root: cache_root} do
@@ -227,10 +275,42 @@ defmodule Harness.CodeSearchTest do
     end
   end
 
+  defp fake_lifecycle_opts(cache_root) do
+    [
+      cache_root: cache_root,
+      exograph_module: FakeExograph,
+      quackdb_server_module: FakeServer,
+      repo_module: FakeRepo
+    ]
+  end
+
+  defp received_events(events \\ []) do
+    receive do
+      event -> received_events([event | events])
+    after
+      0 -> Enum.reverse(events)
+    end
+  end
+
+  defp close_code_search_server do
+    module = Harness.CodeSearch.Server
+
+    if Code.ensure_loaded?(module) and function_exported?(module, :close_all, 0) do
+      module.close_all()
+    end
+  end
+
+  defp restore(key, nil), do: Application.delete_env(:harness, key)
+  defp restore(key, value), do: Application.put_env(:harness, key, value)
+
   defmodule FakeExograph do
     @moduledoc false
 
-    def index(_paths, _opts), do: {:ok, :fake_index}
+    def index(_paths, opts) do
+      repo = Keyword.fetch!(opts, :repo)
+      send_event({:fake_index, repo.get_dynamic_repo(), Keyword.fetch!(opts, :migrate?)})
+      {:ok, :fake_index}
+    end
 
     def search_definitions(:fake_index, _name, _opts) do
       {:ok,
@@ -257,5 +337,48 @@ defmodule Harness.CodeSearchTest do
     def search_callees(:fake_index, _symbol, _opts) do
       search_callers(:fake_index, nil, [])
     end
+
+    defp send_event(event), do: send(Application.fetch_env!(:harness, :code_search_test_pid), event)
+  end
+
+  defmodule FakeServer do
+    @moduledoc false
+
+    def start_link(_opts) do
+      fn -> :server end
+      |> Agent.start_link()
+      |> tap(fn
+        {:ok, pid} -> send_event({:fake_server_started, pid})
+        _other -> :ok
+      end)
+    end
+
+    def uri(pid), do: "http://fake-server/#{inspect(pid)}"
+    def token(pid), do: "fake-token-#{inspect(pid)}"
+
+    defp send_event(event), do: send(Application.fetch_env!(:harness, :code_search_test_pid), event)
+  end
+
+  defmodule FakeRepo do
+    @moduledoc false
+
+    def start_link(_opts) do
+      fn -> :repo end
+      |> Agent.start_link()
+      |> tap(fn
+        {:ok, pid} -> send_event({:fake_repo_started, pid})
+        _other -> :ok
+      end)
+    end
+
+    def get_dynamic_repo, do: Process.get({__MODULE__, :dynamic_repo}, __MODULE__)
+
+    def put_dynamic_repo(dynamic_repo) do
+      Process.put({__MODULE__, :dynamic_repo}, dynamic_repo) || __MODULE__
+    end
+
+    def query(_sql, _params), do: {:ok, %{rows: []}}
+
+    defp send_event(event), do: send(Application.fetch_env!(:harness, :code_search_test_pid), event)
   end
 end

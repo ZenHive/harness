@@ -39,6 +39,7 @@ defmodule Harness.Application do
         {Registry, keys: :unique, name: Harness.Run.Registry},
         {Registry, keys: :unique, name: Harness.Chat.Registry},
         Harness.AgentRegistry,
+        Harness.CodeSearch.Server,
         Harness.Cron.PendingDispatch,
         {Phoenix.PubSub, name: Harness.PubSub},
         Harness.Chat.Supervisor,
