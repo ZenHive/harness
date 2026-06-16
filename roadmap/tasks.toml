@@ -9111,7 +9111,7 @@ shipped_in = "02beb85691270e6f92c9f6abfc7037cc5213614d"
 id = "302"
 phase = 21
 bundle = "code-search"
-status = "in_progress"
+status = "done"
 title = "Harness.CodeSearch: exograph-backed structural search over registered Elixir projects, exposed as a Chat/MCP tool"
 scores = { d = 3, b = 6, u = 5 }
 acceptance_criteria = ["Harness.CodeSearch builds and refreshes a per-project cached DuckDB index for a registered Elixir project, gated behind Code.ensure_loaded?(Exograph) (mirroring the dashboard's existing Code.ensure_loaded?(Bandit) guard). exograph absent (prod release) or Project.language not in [:elixir, nil] -> a clearly-logged graceful no-op, never a crash.", "Query API returns structured FACT maps only (file, line, kind, module, name, arity) and never a verdict/score/route: callers-of-symbol, callees-of-symbol, definitions-by-name, and duplicate-fragment (ex_dna mass) over a project's index.", "Manages its own QuackDB.Server + Exograph.DuckDBRepo lifecycle since exograph's application is runtime:false / not auto-started; index persisted per-project under ~/.harness with an explicit refresh entry point and a staleness check (re-index when source mtime newer than index).", "Exposed through Harness.Chat.Tools (the single source of truth) so BOTH the in-process chat dispatcher and the MCP server surface the tool; a reviewer/audit agent can invoke it for blast-radius and structural checks.", "Tests: index build/refresh lifecycle, each query shape against a fixture Elixir project, and the two guard paths (exograph-absent, non-Elixir project) asserting the logged no-op with flunk on any unexpected outcome (never a silent skip). >= 80% coverage on lib/harness/code_search.ex."]
@@ -9130,9 +9130,14 @@ Mantra-clean by construction: CodeSearch is pure fact-retrieval (it COUNTS/LOCAT
 
 Future (not in scope, noted for later): cross-project / hex-corpus precedent queries ("is this pattern used elsewhere?") to serve the library-first/precedent rule -- an additive extension once the per-project core lands.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781573750078-ad41ca92, 1490e5fda9c0c9519402ab558e5aef14f4efa5ac)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-16"
 started_at = "2026-06-16"
 scored_at = "2026-06-16"
+done_at = "2026-06-16"
+shipped_in = "1490e5fda9c0c9519402ab558e5aef14f4efa5ac"
 
 [[task]]
 id = "303"
