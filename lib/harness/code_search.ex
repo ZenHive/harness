@@ -37,6 +37,7 @@ defmodule Harness.CodeSearch do
         }
 
   @type result :: {:ok, map()} | {:error, term()}
+  @type file_mtime :: :calendar.datetime()
 
   api(:refresh, "Build or refresh the Exograph DuckDB index for a registered Elixir project.",
     params: [
@@ -638,7 +639,7 @@ defmodule Harness.CodeSearch do
     end
   end
 
-  @spec newest_source_mtime(String.t()) :: File.time()
+  @spec newest_source_mtime(String.t()) :: file_mtime()
   defp newest_source_mtime(repo_path) do
     repo_path
     |> source_paths()
@@ -646,7 +647,7 @@ defmodule Harness.CodeSearch do
     |> Enum.max(fn -> {{1970, 1, 1}, {0, 0, 0}} end)
   end
 
-  @spec file_mtime(String.t()) :: File.time()
+  @spec file_mtime(String.t()) :: file_mtime()
   defp file_mtime(path) do
     case File.stat(path) do
       {:ok, stat} -> stat.mtime
@@ -669,15 +670,13 @@ defmodule Harness.CodeSearch do
     Enum.each([index_path, index_path <> ".wal"], &File.rm/1)
   end
 
-  @spec stop_pid(pid() | term()) :: :ok
+  @spec stop_pid(pid()) :: :ok
   defp stop_pid(pid) when is_pid(pid) do
     if Process.alive?(pid), do: GenServer.stop(pid, :normal, 5_000)
     :ok
   catch
     :exit, _reason -> :ok
   end
-
-  defp stop_pid(_other), do: :ok
 
   @spec free_tcp_port!() :: :inet.port_number()
   defp free_tcp_port! do
