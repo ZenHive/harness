@@ -49,6 +49,7 @@ defmodule Harness.Dashboard.Router do
     live("/harness/kpi", KPILive, :index, as: :dashboard_kpi)
     live("/harness/compare", CompareLive, :index, as: :dashboard_compare)
     live("/harness/compare/:comparison_id", CompareLive, :show, as: :dashboard_compare)
+    live("/harness/projects/:name/explore", Live.ProjectExplorer, :show, as: :dashboard_project_explorer)
     live("/harness/runs/:run_id", Live, :show, as: :dashboard)
     live("/harness/chat", ChatLive, :index, as: :dashboard_chat)
     live("/harness/chat/:session_id", ChatLive, :show, as: :dashboard_chat)
