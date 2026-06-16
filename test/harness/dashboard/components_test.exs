@@ -419,7 +419,8 @@ defmodule Harness.Dashboard.ComponentsTest do
           check_command: "mix precommit",
           target_branch: "development",
           concurrency_cap: "2",
-          concurrency_label: "2"
+          concurrency_label: "2",
+          warm_paths: "priv/discoveries\nsource"
         }
       ]
 
@@ -428,6 +429,8 @@ defmodule Harness.Dashboard.ComponentsTest do
       assert html =~ ~s(id="concurrency-form-demo")
       assert html =~ ~s(id="project-form-demo")
       assert html =~ ~s(id="project-form-new")
+      assert html =~ ~s(name="warm_paths")
+      assert html =~ "priv/discoveries"
       assert html =~ ~s(id="unregister-project-demo")
     end
   end

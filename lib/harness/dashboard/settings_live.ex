@@ -588,7 +588,8 @@ defmodule Harness.Dashboard.SettingsLive do
         check_command: project.check_command || "",
         target_branch: project.target_branch || "",
         concurrency_cap: cap,
-        concurrency_label: if(cap == "", do: "default", else: cap)
+        concurrency_label: if(cap == "", do: "default", else: cap),
+        warm_paths: Enum.join(project.warm_paths, "\n")
       }
     end)
   end
@@ -612,7 +613,8 @@ defmodule Harness.Dashboard.SettingsLive do
          roadmap_path: roadmap_path,
          check_command: optional_param(params, "check_command"),
          target_branch: optional_param(params, "target_branch"),
-         concurrency_cap: cap
+         concurrency_cap: cap,
+         warm_paths: parse_warm_paths(Map.get(params, "warm_paths", ""))
        })}
     end
   end
@@ -624,8 +626,7 @@ defmodule Harness.Dashboard.SettingsLive do
         %{
           landing_policy: project.landing_policy,
           pollution_allowlist: project.pollution_allowlist,
-          reviewer: project.reviewer,
-          warm_paths: project.warm_paths
+          reviewer: project.reviewer
         }
 
       {:error, _reason} ->
@@ -658,6 +659,14 @@ defmodule Harness.Dashboard.SettingsLive do
       "" -> nil
       value -> value
     end
+  end
+
+  @spec parse_warm_paths(String.t()) :: [String.t()]
+  defp parse_warm_paths(raw) do
+    raw
+    |> String.split(~r/[\n,]/)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
   end
 
   @spec parse_concurrency_cap(String.t()) :: {:ok, pos_integer() | nil} | :error

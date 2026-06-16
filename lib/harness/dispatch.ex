@@ -833,6 +833,12 @@ defmodule Harness.Dispatch do
         default: nil,
         description:
           "Optional target-language atom for injected agent rules. nil/:elixir keeps Elixir guidance; other atoms suppress Elixir-specific sections."
+      ],
+      warm_paths: [
+        kind: :value,
+        default: [],
+        description:
+          "Optional repo-relative gitignored directories to seed into fresh worktrees in addition to the default warm paths."
       ]
     ],
     returns: %{
@@ -849,7 +855,8 @@ defmodule Harness.Dispatch do
           String.t(),
           String.t() | nil,
           pos_integer() | nil,
-          atom() | nil
+          atom() | nil,
+          [String.t()]
         ) ::
           {:ok, %{name: String.t()}} | {:error, term()}
   def register_project(
@@ -859,7 +866,8 @@ defmodule Harness.Dispatch do
         roadmap_path,
         check_command \\ nil,
         concurrency_cap \\ nil,
-        language \\ nil
+        language \\ nil,
+        warm_paths \\ []
       )
       when is_binary(name) and is_binary(source_type) and is_binary(source_location) and is_binary(roadmap_path) do
     with {:ok, source} <- build_source(source_type, source_location),
@@ -869,7 +877,8 @@ defmodule Harness.Dispatch do
            roadmap_path: roadmap_path,
            check_command: check_command,
            concurrency_cap: concurrency_cap,
-           language: language
+           language: language,
+           warm_paths: warm_paths
          ],
          :ok <- ProjectRegistry.register(attrs) do
       {:ok, %{name: name}}

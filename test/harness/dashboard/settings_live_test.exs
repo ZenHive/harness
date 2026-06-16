@@ -487,7 +487,8 @@ defmodule Harness.Dashboard.SettingsLiveTest do
         roadmap_path: "/tmp/harness-settings-new/roadmap",
         check_command: "mix precommit",
         target_branch: "development",
-        concurrency_cap: "3"
+        concurrency_cap: "3",
+        warm_paths: ""
       })
       |> render_submit()
 
@@ -498,8 +499,32 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     assert project.check_command == "mix precommit"
     assert project.target_branch == "development"
     assert project.concurrency_cap == 3
+    assert project.warm_paths == []
 
     ProjectRegistry.unregister("settings-new")
+  end
+
+  test "registering a new project parses warm paths from the form", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("#project-form-new", %{
+        name: "settings-warm",
+        source_type: "local",
+        source_location: "/tmp/harness-settings-warm",
+        roadmap_path: "/tmp/harness-settings-warm/roadmap",
+        check_command: "",
+        target_branch: "",
+        concurrency_cap: "",
+        warm_paths: "priv/discoveries\nsource, tmp/cache\n\n"
+      })
+      |> render_submit()
+
+    assert html =~ "Project settings-warm saved."
+    assert lookup_project!("settings-warm").warm_paths == ["priv/discoveries", "source", "tmp/cache"]
+
+    ProjectRegistry.unregister("settings-warm")
   end
 
   test "editing an existing project path through the form updates it", %{conn: conn, project: project} do
@@ -514,12 +539,53 @@ defmodule Harness.Dashboard.SettingsLiveTest do
         roadmap_path: project.roadmap_path,
         check_command: "",
         target_branch: "",
-        concurrency_cap: ""
+        concurrency_cap: "",
+        warm_paths: ""
       })
       |> render_submit()
 
     assert html =~ "Project #{project.name} saved."
     assert lookup_project!(project.name).source == {:local, "/tmp/harness-settings-edited"}
+    assert lookup_project!(project.name).warm_paths == []
+  end
+
+  test "editing an existing project sets and clears warm paths", %{conn: conn, project: project} do
+    :ok = ProjectRegistry.upsert(%{project | warm_paths: ["old/cache"]})
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("#project-form-#{project.name}", %{
+        name: project.name,
+        source_type: "local",
+        source_location: "/tmp/harness-settings-live",
+        roadmap_path: project.roadmap_path,
+        check_command: "",
+        target_branch: "",
+        concurrency_cap: "",
+        warm_paths: "priv/discoveries, source\n"
+      })
+      |> render_submit()
+
+    assert html =~ "Project #{project.name} saved."
+    assert lookup_project!(project.name).warm_paths == ["priv/discoveries", "source"]
+
+    html =
+      view
+      |> form("#project-form-#{project.name}", %{
+        name: project.name,
+        source_type: "local",
+        source_location: "/tmp/harness-settings-live",
+        roadmap_path: project.roadmap_path,
+        check_command: "",
+        target_branch: "",
+        concurrency_cap: "",
+        warm_paths: ""
+      })
+      |> render_submit()
+
+    assert html =~ "Project #{project.name} saved."
+    assert lookup_project!(project.name).warm_paths == []
   end
 
   test "unregistering a project removes it from the page and registry", %{conn: conn, project: project} do

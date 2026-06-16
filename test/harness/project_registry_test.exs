@@ -77,7 +77,7 @@ defmodule Harness.ProjectRegistryTest do
     end
   end
 
-  describe "Dispatch.register_project/7 — JSON-native registration" do
+  describe "Dispatch.register_project/8 — JSON-native registration" do
     test "registers a local-source project and makes it lookup-resolvable" do
       assert {:ok, %{name: "reg-local"}} =
                Dispatch.register_project(
@@ -95,6 +95,24 @@ defmodule Harness.ProjectRegistryTest do
       assert project.check_command == "mix test"
       assert project.concurrency_cap == 2
       assert project.language == :typescript
+      assert project.warm_paths == []
+    end
+
+    test "registers warm_paths through the optional JSON-native argument" do
+      assert {:ok, %{name: "reg-warm"}} =
+               Dispatch.register_project(
+                 "reg-warm",
+                 "local",
+                 "/tmp/reg-warm",
+                 "/tmp/reg-warm",
+                 nil,
+                 nil,
+                 nil,
+                 ["priv/discoveries", "source"]
+               )
+
+      assert {:ok, project} = ProjectRegistry.lookup("reg-warm")
+      assert project.warm_paths == ["priv/discoveries", "source"]
     end
 
     test "registers a github-source project with default optional fields" do
@@ -106,6 +124,7 @@ defmodule Harness.ProjectRegistryTest do
       assert project.check_command == nil
       assert project.concurrency_cap == nil
       assert project.language == nil
+      assert project.warm_paths == []
     end
 
     test "surfaces a duplicate registration as an error" do
@@ -259,6 +278,33 @@ defmodule Harness.ProjectRegistryTest do
 
       assert_queue_limit(name, 3)
       assert_queue_exists(HarnessOban.landing_queue_name(name))
+    end
+
+    @tag :integration
+    test "dispatch registration persists warm_paths and reloads them from Postgres" do
+      name = "dispatch-warm-#{System.unique_integer([:positive])}"
+      warm_paths = ["priv/discoveries", "source"]
+
+      assert {:ok, %{name: ^name}} =
+               Dispatch.register_project(
+                 name,
+                 "local",
+                 "/tmp/#{name}",
+                 "/tmp/#{name}/roadmap/tasks.toml",
+                 nil,
+                 nil,
+                 nil,
+                 warm_paths
+               )
+
+      assert {:ok, project} = ProjectRegistry.lookup(name)
+      assert project.warm_paths == warm_paths
+      assert %ProjectSchema{warm_paths: ^warm_paths} = Repo.get(ProjectSchema, name)
+
+      assert :ok = ProjectRegistry.reset()
+      assert :ok = ProjectRegistry.reload_persisted_state()
+      assert {:ok, restored} = ProjectRegistry.lookup(name)
+      assert restored.warm_paths == warm_paths
     end
 
     @tag :integration

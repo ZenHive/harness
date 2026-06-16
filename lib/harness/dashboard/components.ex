@@ -877,6 +877,11 @@ defmodule Harness.Dashboard.Components do
               placeholder="cap"
               aria-label={"Project form concurrency cap for #{project.label}"}
             />
+            <textarea
+              name="warm_paths"
+              placeholder="warm paths"
+              aria-label={"Warm paths for #{project.label}"}
+            >{project.warm_paths}</textarea>
             <button type="submit" class="btn-save">Save</button>
             <button
               id={"unregister-project-#{project.name}"}
@@ -928,6 +933,7 @@ defmodule Harness.Dashboard.Components do
               placeholder="cap"
               aria-label="Concurrency cap"
             />
+            <textarea name="warm_paths" placeholder="warm paths" aria-label="Warm paths"></textarea>
             <button type="submit" class="btn-save">Save</button>
           </form>
         </li>
