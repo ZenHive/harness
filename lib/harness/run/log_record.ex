@@ -60,6 +60,13 @@ defmodule Harness.Run.LogRecord do
   before this field existed remain nil and render as unmerged until re-landed.
   `task_fingerprint` is the dispatch-time stable task-content hash the lander
   uses to guard rmap writeback against numeric-id drift.
+
+  ## Timing facts (`started_at`, `state_entered_at`)
+
+  `started_at` is the run-start wall-clock timestamp. `state_entered_at` stores
+  the latest wall-clock timestamp observed for each lifecycle state entered by
+  the run. Historical rows created before these fields existed carry `nil` /
+  `%{}`; consumers must treat them as optional facts.
   """
 
   alias Harness.AgentAdapter
@@ -80,6 +87,8 @@ defmodule Harness.Run.LogRecord do
           project_name: String.t() | nil,
           agent: atom() | nil,
           model: String.t() | nil,
+          started_at: DateTime.t() | nil,
+          state_entered_at: %{optional(atom()) => DateTime.t()},
           adapter: module(),
           state: RunResult.state(),
           reason: RunResult.reason(),
@@ -133,6 +142,7 @@ defmodule Harness.Run.LogRecord do
     :project_name,
     :agent,
     :model,
+    :started_at,
     :adapter,
     :state,
     :reason,
@@ -143,6 +153,7 @@ defmodule Harness.Run.LogRecord do
     :agent_outcome_kind,
     :agent_exit_status,
     token_usage: %TokenUsage{},
+    state_entered_at: %{},
     composed_inputs: [],
     agent_output: "",
     reviewer_outcome_kind: nil,
@@ -175,6 +186,8 @@ defmodule Harness.Run.LogRecord do
       project_name: Keyword.get(meta, :project_name),
       agent: Keyword.get(meta, :agent),
       model: record_model(result, meta),
+      started_at: Keyword.get(meta, :started_at),
+      state_entered_at: Keyword.get(meta, :state_entered_at, %{}),
       adapter: Keyword.fetch!(meta, :adapter),
       state: result.state,
       reason: result.reason,

@@ -125,6 +125,7 @@ defmodule Harness.Dashboard.Live do
      |> assign(:projects, projects)
      |> assign(:roadmap, roadmap)
      |> assign(:ops, [])
+     |> assign(:now, DateTime.utc_now(:millisecond))
      |> assign(:show_landed, false)
      |> assign(:notice, nil)
      |> assign(:selected_project, nil)
@@ -296,6 +297,7 @@ defmodule Harness.Dashboard.Live do
     # Sidebar-only refresh: registered projects. In-memory — no snapshot, no
     # store read, no run-stream touch. (Adapter/agent state lives on Settings.)
     socket = assign(socket, :projects, ProjectRegistry.list())
+    socket = assign(socket, :now, DateTime.utc_now(:millisecond))
 
     # On the index, also recompute the in-memory fleet counts + active-empty
     # flag. Lifecycle events drive these, but a settled run's terminal-linger
@@ -836,6 +838,7 @@ defmodule Harness.Dashboard.Live do
         <dd>{model_label(@agent_kind, @run_status.model, @transcript)}</dd>
         <dt>Tokens</dt>
         <dd>{token_label(stage_token_agent_kind(@run_status, @agent_kind), @transcript)}</dd>
+        <Components.run_timing status={@run_status} now={@now} />
       </dl>
       <details class="run-internals">
         <summary>Run internals</summary>

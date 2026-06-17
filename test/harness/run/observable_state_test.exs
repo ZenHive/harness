@@ -69,5 +69,35 @@ defmodule Harness.Run.ObservableStateTest do
       assert :ok = Run.cancel(run_id)
       await_result(run_id, pid)
     end
+
+    test "status/1 reports started_at and entered-at stamps across transitions" do
+      :ok = RunFeed.subscribe()
+
+      {run_id, pid} =
+        start(
+          adapter_opts: [command: :write],
+          reviewer_adapter_opts: [command: :sleep]
+        )
+
+      assert_receive {:harness_run_update, %Status{run_id: ^run_id, state: :dispatched}}, 10_000
+      assert_receive {:harness_run_update, %Status{run_id: ^run_id, state: :running}}, 10_000
+      assert_receive {:harness_run_update, %Status{run_id: ^run_id, state: :committing}}, 10_000
+      assert_receive {:harness_run_update, %Status{run_id: ^run_id, state: :reviewing}}, 10_000
+
+      assert {:ok, %Status{} = status} = Run.status(run_id)
+      assert %DateTime{} = status.started_at
+
+      for state <- [:dispatched, :running, :committing, :reviewing] do
+        assert %DateTime{} = Map.fetch!(status.state_entered_at, state)
+      end
+
+      assert DateTime.compare(status.started_at, status.state_entered_at.dispatched) in [:lt, :eq]
+      assert DateTime.compare(status.state_entered_at.dispatched, status.state_entered_at.running) in [:lt, :eq]
+      assert DateTime.compare(status.state_entered_at.running, status.state_entered_at.committing) in [:lt, :eq]
+      assert DateTime.compare(status.state_entered_at.committing, status.state_entered_at.reviewing) in [:lt, :eq]
+
+      assert :ok = Run.cancel(run_id)
+      await_result(run_id, pid)
+    end
   end
 end

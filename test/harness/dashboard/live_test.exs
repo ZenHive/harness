@@ -729,6 +729,58 @@ defmodule Harness.Dashboard.LiveTest do
       assert html =~ ~s(class="cf-live-dot")
       assert html =~ ">51<"
     end
+
+    test "shows a non-empty elapsed timer when started_at is present" do
+      started_at = ~U[2026-06-17 08:00:00.000Z]
+
+      status = %Status{
+        run_id: "r",
+        task_id: "1",
+        state: :running,
+        agent: :cursor,
+        started_at: started_at,
+        state_entered_at: %{running: started_at}
+      }
+
+      html =
+        status
+        |> show_render_assigns("")
+        |> Map.put(:now, DateTime.add(started_at, 5, :second))
+        |> Live.render()
+        |> rendered_to_string()
+
+      assert html =~ ~s(data-run-elapsed)
+      assert html =~ ">5s<"
+    end
+
+    test "renders the resolved roadmap task section" do
+      status = %Status{run_id: "r", task_id: "1", state: :running}
+
+      item = %Item{
+        id: "1",
+        title: "Run timing",
+        prompt: "prompt",
+        agent: :codex,
+        body: "Show elapsed clocks.",
+        acceptance_criteria: ["elapsed renders"],
+        d: 4,
+        markers: [:parallel]
+      }
+
+      html =
+        status
+        |> show_render_assigns("")
+        |> Map.put(:task_item, item)
+        |> Live.render()
+        |> rendered_to_string()
+
+      assert html =~ ~s(id="run-task")
+      assert html =~ "Run timing"
+      assert html =~ "Score (D)"
+      assert html =~ "parallel"
+      assert html =~ "elapsed renders"
+      assert html =~ "Show elapsed clocks."
+    end
   end
 
   describe "load_task_item/2 (graceful roadmap resolution)" do
@@ -758,7 +810,8 @@ defmodule Harness.Dashboard.LiveTest do
       run_diff: nil,
       task_item: nil,
       notice: nil,
-      raw_view: false
+      raw_view: false,
+      now: DateTime.utc_now(:millisecond)
     }
   end
 

@@ -32,6 +32,10 @@ defmodule Harness.Run.Status do
     * `run_id` — the run's unique id.
     * `task_id` — the rmap task id the run serves.
     * `state` — the current lifecycle state (see `t:state/0`).
+    * `started_at` — wall-clock timestamp captured when the run starts, or
+      `nil` for legacy settled records created before timing facts existed.
+    * `state_entered_at` — latest wall-clock timestamp observed for each
+      lifecycle state the run entered. Empty for legacy records.
     * `worktree_path` — the isolated worktree's path, or `nil` before it exists.
     * `agent_os_pid` — the agent's OS pid, captured once at spawn. `nil` before
       the agent has spawned and after a cancellation or failure clears the run
@@ -70,6 +74,8 @@ defmodule Harness.Run.Status do
           agent: atom() | nil,
           model: String.t() | nil,
           state: state(),
+          started_at: DateTime.t() | nil,
+          state_entered_at: %{optional(state()) => DateTime.t()},
           worktree_path: String.t() | nil,
           agent_os_pid: non_neg_integer() | nil,
           agent_kind: Outcome.kind() | nil,
@@ -90,6 +96,7 @@ defmodule Harness.Run.Status do
     :agent,
     :model,
     :state,
+    :started_at,
     :worktree_path,
     :agent_os_pid,
     :agent_kind,
@@ -99,6 +106,7 @@ defmodule Harness.Run.Status do
     :reason,
     :landed_sha,
     :hold_reason,
+    state_entered_at: %{},
     held?: false
   ]
 
@@ -112,8 +120,10 @@ defmodule Harness.Run.Status do
   as a terminal (and thus non-killable) run. `worktree_path` and `agent_os_pid`
   are not retained on the record, so both are `nil`.
   """
-  @spec from_log_record(LogRecord.t()) :: t()
-  def from_log_record(%LogRecord{} = record) do
+  @typep log_record_snapshot :: LogRecord.t() | %{required(:__struct__) => LogRecord}
+
+  @spec from_log_record(log_record_snapshot()) :: t()
+  def from_log_record(%{__struct__: LogRecord} = record) do
     %__MODULE__{
       run_id: record.run_id,
       task_id: record.task_id,
@@ -123,6 +133,8 @@ defmodule Harness.Run.Status do
       agent: Map.get(record, :agent),
       model: Map.get(record, :model),
       state: state_from_log_record(record),
+      started_at: Map.get(record, :started_at),
+      state_entered_at: Map.get(record, :state_entered_at) || %{},
       worktree_path: nil,
       agent_os_pid: nil,
       agent_kind: record.agent_outcome_kind,
@@ -137,9 +149,9 @@ defmodule Harness.Run.Status do
     }
   end
 
-  @spec state_from_log_record(LogRecord.t()) :: state()
-  defp state_from_log_record(%LogRecord{state: state}) when state in [:done, :failed], do: state
-  defp state_from_log_record(%LogRecord{}), do: :failed
+  @spec state_from_log_record(log_record_snapshot()) :: state()
+  defp state_from_log_record(%{state: state}) when state in [:done, :failed], do: state
+  defp state_from_log_record(%{__struct__: LogRecord}), do: :failed
 
   @spec agent_atom(module() | nil) :: atom() | nil
   defp agent_atom(nil), do: nil

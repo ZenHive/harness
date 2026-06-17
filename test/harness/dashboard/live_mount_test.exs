@@ -110,6 +110,8 @@ defmodule Harness.Dashboard.LiveMountTest do
       # "Run not found" branch).
       assert html =~ "Worktree path"
       assert html =~ "Verdict"
+      assert html =~ ~s(data-run-elapsed)
+      refute html =~ ~s(data-run-elapsed>—</dd>)
     end
 
     test "an unknown run id renders the not-found branch", %{conn: conn} do

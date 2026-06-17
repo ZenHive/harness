@@ -41,6 +41,30 @@ defmodule Harness.Run.StatusTest do
       assert status.agent_kind == nil
     end
 
+    test "round-trips run timing fields when the record carries them" do
+      started_at = ~U[2026-06-17 08:00:00.000Z]
+      entered_at = %{dispatched: started_at, done: DateTime.add(started_at, 7, :second)}
+      record = log_record("run-timed", started_at: started_at, state_entered_at: entered_at)
+
+      status = Status.from_log_record(record)
+
+      assert status.started_at == started_at
+      assert status.state_entered_at == entered_at
+    end
+
+    test "tolerates legacy records with no timing fields" do
+      record =
+        "run-legacy"
+        |> log_record([])
+        |> Map.delete(:started_at)
+        |> Map.delete(:state_entered_at)
+
+      status = Status.from_log_record(record)
+
+      assert status.started_at == nil
+      assert status.state_entered_at == %{}
+    end
+
     test "maps a record that never reached review with a nil verdict" do
       record = log_record("run-cancelled", state: :failed, reason: :cancelled, verdict: nil)
 
@@ -93,7 +117,9 @@ defmodule Harness.Run.StatusTest do
       reviewer_adapter: Keyword.get(opts, :reviewer_adapter),
       duration_ms: 1_000,
       agent_outcome_kind: Keyword.get(opts, :agent_outcome_kind),
-      agent_output: Keyword.get(opts, :agent_output, "")
+      agent_output: Keyword.get(opts, :agent_output, ""),
+      started_at: Keyword.get(opts, :started_at),
+      state_entered_at: Keyword.get(opts, :state_entered_at, %{})
     }
   end
 end

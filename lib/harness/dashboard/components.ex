@@ -337,6 +337,9 @@ defmodule Harness.Dashboard.Components do
   ## --- Run detail header (Task 312) ----------------------------------------
 
   @base_run_stages [:dispatched, :running, :committing, :reviewing]
+  @milliseconds_per_second 1_000
+  @seconds_per_minute 60
+  @minutes_per_hour 60
 
   attr(:state, :atom, required: true)
 
@@ -416,6 +419,163 @@ defmodule Harness.Dashboard.Components do
   defp stepper_step_class(:complete), do: "run-stage-step run-stage-step-complete"
   defp stepper_step_class(:current), do: "run-stage-step run-stage-step-current"
   defp stepper_step_class(:future), do: "run-stage-step run-stage-step-future"
+
+  attr(:status, :map, required: true)
+  attr(:now, :any, required: true)
+
+  @doc """
+  Renders run lifecycle timing facts for the run-detail header.
+  """
+  @spec run_timing(map()) :: Rendered.t()
+  def run_timing(assigns) do
+    status = assigns.status
+    now = assigns.now
+
+    assigns =
+      assigns
+      |> assign(:elapsed, elapsed_label(status, now))
+      |> assign(:current_stage, current_stage_label(status, now))
+      |> assign(:stage_durations, stage_duration_rows(status, now))
+
+    ~H"""
+    <dt>Elapsed</dt>
+    <dd data-run-elapsed>{@elapsed}</dd>
+    <dt>Current stage</dt>
+    <dd data-run-current-stage>{@current_stage}</dd>
+    <dt :if={@stage_durations != []}>Stage durations</dt>
+    <dd :if={@stage_durations != []} data-run-stage-durations>
+      <span :for={entry <- @stage_durations} class="config-pill" data-stage={entry.stage}>
+        {entry.label}: {entry.duration}
+      </span>
+    </dd>
+    """
+  end
+
+  @doc false
+  @spec elapsed_label(Status.t(), DateTime.t()) :: String.t()
+  def elapsed_label(%Status{started_at: nil}, _now), do: "—"
+
+  def elapsed_label(%Status{started_at: %DateTime{} = started_at} = status, %DateTime{} = now) do
+    status
+    |> elapsed_end_at(now)
+    |> duration_between(started_at)
+    |> duration_label()
+  end
+
+  @doc false
+  @spec current_stage_label(Status.t(), DateTime.t()) :: String.t()
+  def current_stage_label(%Status{state: state} = status, now) do
+    duration =
+      case state_duration_ms(status, state, now) do
+        nil -> "—"
+        ms -> duration_label(ms)
+      end
+
+    "#{stage_label(state)} · #{duration}"
+  end
+
+  @doc false
+  @spec stage_duration_rows(Status.t(), DateTime.t()) :: [
+          %{stage: Status.state(), label: String.t(), duration: String.t()}
+        ]
+  def stage_duration_rows(%Status{} = status, %DateTime{} = now) do
+    stages = stages_for(status.state)
+    timestamps = Enum.map(stages, fn stage -> {stage, entered_at(status, stage)} end)
+
+    timestamps
+    |> Enum.with_index()
+    |> Enum.flat_map(fn
+      {{stage, %DateTime{} = started_at}, index} ->
+        case stage_end_at(status, timestamps, index, now) do
+          %DateTime{} = ended_at ->
+            duration = ended_at |> duration_between(started_at) |> duration_label()
+            [%{stage: stage, label: stage_label(stage), duration: duration}]
+
+          nil ->
+            []
+        end
+
+      {_entry, _index} ->
+        []
+    end)
+  end
+
+  @spec elapsed_end_at(Status.t(), DateTime.t()) :: DateTime.t()
+  defp elapsed_end_at(%Status{state: state} = status, now) when state in [:done, :failed] do
+    entered_at(status, state) || now
+  end
+
+  defp elapsed_end_at(_status, now), do: now
+
+  @spec state_duration_ms(Status.t(), Status.state(), DateTime.t()) :: non_neg_integer() | nil
+  defp state_duration_ms(%Status{state: state}, stage, _now) when state in [:done, :failed] and stage == state, do: nil
+
+  defp state_duration_ms(%Status{} = status, stage, now) do
+    with %DateTime{} = started_at <- entered_at(status, stage),
+         %DateTime{} = ended_at <- state_end_at(status, stage, now) do
+      duration_between(ended_at, started_at)
+    end
+  end
+
+  @spec state_end_at(Status.t(), Status.state(), DateTime.t()) :: DateTime.t() | nil
+  defp state_end_at(%Status{state: stage} = status, stage, now), do: elapsed_end_at(status, now)
+
+  defp state_end_at(%Status{} = status, stage, _now) do
+    stages = stages_for(status.state)
+    timestamps = Enum.map(stages, fn known_stage -> {known_stage, entered_at(status, known_stage)} end)
+    index = Enum.find_index(stages, &(&1 == stage))
+
+    if index, do: next_entered_at(timestamps, index)
+  end
+
+  @spec stage_end_at(Status.t(), [{Status.state(), DateTime.t() | nil}], non_neg_integer(), DateTime.t()) ::
+          DateTime.t() | nil
+  defp stage_end_at(%Status{} = status, timestamps, index, now) do
+    next_entered_at(timestamps, index) || current_stage_end(status, Enum.at(timestamps, index), now)
+  end
+
+  @spec current_stage_end(Status.t(), {Status.state(), DateTime.t() | nil} | nil, DateTime.t()) :: DateTime.t() | nil
+  defp current_stage_end(%Status{state: state} = status, {state, %DateTime{}}, now), do: elapsed_end_at(status, now)
+  defp current_stage_end(_status, _entry, _now), do: nil
+
+  @spec next_entered_at([{Status.state(), DateTime.t() | nil}], non_neg_integer()) :: DateTime.t() | nil
+  defp next_entered_at(timestamps, index) do
+    timestamps
+    |> Enum.drop(index + 1)
+    |> Enum.find_value(fn
+      {_stage, %DateTime{} = entered_at} -> entered_at
+      _entry -> nil
+    end)
+  end
+
+  @spec entered_at(Status.t(), Status.state()) :: DateTime.t() | nil
+  defp entered_at(%Status{state_entered_at: entered_at}, state) when is_map(entered_at) do
+    Map.get(entered_at, state) || Map.get(entered_at, Atom.to_string(state))
+  end
+
+  defp entered_at(_status, _state), do: nil
+
+  @spec duration_between(DateTime.t(), DateTime.t()) :: non_neg_integer()
+  defp duration_between(%DateTime{} = ended_at, %DateTime{} = started_at) do
+    max(0, DateTime.diff(ended_at, started_at, :millisecond))
+  end
+
+  @spec duration_label(non_neg_integer()) :: String.t()
+  defp duration_label(ms) when ms < @milliseconds_per_second, do: "<1s"
+
+  defp duration_label(ms) do
+    total_seconds = div(ms, @milliseconds_per_second)
+    minutes = div(total_seconds, @seconds_per_minute)
+    seconds = rem(total_seconds, @seconds_per_minute)
+    hours = div(minutes, @minutes_per_hour)
+    minutes = rem(minutes, @minutes_per_hour)
+
+    cond do
+      hours > 0 -> "#{hours}h #{minutes}m"
+      minutes > 0 -> "#{minutes}m #{seconds}s"
+      true -> "#{seconds}s"
+    end
+  end
 
   ## --- Changed files / run diff --------------------------------------------
 

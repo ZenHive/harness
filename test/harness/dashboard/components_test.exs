@@ -10,6 +10,7 @@ defmodule Harness.Dashboard.ComponentsTest do
 
   alias Harness.Dashboard.Components
   alias Harness.Dashboard.Transcript.Parser
+  alias Harness.Run.Status
 
   describe "bucket_badge/1" do
     test "renders the bucket class, data attribute, glyph, and an explicit label" do
@@ -64,6 +65,58 @@ defmodule Harness.Dashboard.ComponentsTest do
 
       assert html =~ "footer-mark"
       assert html =~ "OTP-native task execution"
+    end
+  end
+
+  describe "run_timing/1" do
+    test "renders elapsed, current-stage time, and per-stage durations" do
+      started_at = ~U[2026-06-17 08:00:00.000Z]
+      running_at = DateTime.add(started_at, 2, :second)
+      committing_at = DateTime.add(started_at, 7, :second)
+      reviewing_at = DateTime.add(started_at, 9, :second)
+      now = DateTime.add(started_at, 12, :second)
+
+      status = %Status{
+        run_id: "run-timed",
+        task_id: "313",
+        state: :reviewing,
+        started_at: started_at,
+        state_entered_at: %{
+          dispatched: started_at,
+          running: running_at,
+          committing: committing_at,
+          reviewing: reviewing_at
+        }
+      }
+
+      html = render_component(&Components.run_timing/1, status: status, now: now)
+
+      assert html =~ ~s(data-run-elapsed)
+      assert html =~ ">12s<"
+      assert html =~ "Reviewing · 3s"
+      assert html =~ "Dispatched: 2s"
+      assert html =~ "Running: 5s"
+      assert html =~ "Committing: 2s"
+      assert html =~ "Reviewing: 3s"
+    end
+
+    test "freezes final elapsed at the terminal state entry" do
+      started_at = ~U[2026-06-17 08:00:00.000Z]
+      done_at = DateTime.add(started_at, 10, :second)
+      now = DateTime.add(started_at, 60, :second)
+
+      status = %Status{
+        run_id: "run-done",
+        task_id: "313",
+        state: :done,
+        started_at: started_at,
+        state_entered_at: %{dispatched: started_at, done: done_at}
+      }
+
+      html = render_component(&Components.run_timing/1, status: status, now: now)
+
+      assert html =~ ">10s<"
+      refute html =~ ">1m 0s<"
     end
   end
 

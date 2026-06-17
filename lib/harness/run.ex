@@ -223,6 +223,8 @@ defmodule Harness.Run do
            result_store: ResultStore.store(),
            batch_id: String.t(),
            requested_model: String.t() | nil,
+           started_at: DateTime.t(),
+           state_entered_at: %{optional(state()) => DateTime.t()},
            started_at_ms: integer(),
            total_timeout: timeout() | nil,
            idle_timeout: timeout() | nil,
@@ -543,6 +545,8 @@ defmodule Harness.Run do
     # struct it is handed — it does not re-derive policy (no per-call-site overlay).
     {mem_threshold_kb, mem_sample_interval} = mem_watchdog_config(opts)
 
+    started_at = DateTime.utc_now(:millisecond)
+
     data = %{
       run_id: run_id,
       item: item,
@@ -552,6 +556,8 @@ defmodule Harness.Run do
       result_store: Keyword.get(opts, :result_store, ResultStore.configured()),
       batch_id: Keyword.get(opts, :batch_id) || run_id,
       requested_model: requested_model(opts, item, adapter),
+      started_at: started_at,
+      state_entered_at: %{dispatched: started_at},
       started_at_ms: System.monotonic_time(:millisecond),
       total_timeout: run_timeout(opts, :total_timeout),
       idle_timeout: run_timeout(opts, :idle_timeout),
@@ -642,6 +648,7 @@ defmodule Harness.Run do
   @doc false
   @spec dispatched(event(), term(), data()) :: handler_result()
   def dispatched(:enter, _old_state, data) do
+    data = stamp_state_entry(:dispatched, data)
     RunFeed.broadcast_update(status_snapshot(:dispatched, data))
     task = start_task(fn -> Worktree.create(data.project, worktree_opts(data)) end)
     {:keep_state, %{data | task: task}}
@@ -698,6 +705,7 @@ defmodule Harness.Run do
   # reset so a stale handle from a prior attempt never misleads the cancel-defer
   # logic or a `status/1` snapshot.
   def running(:enter, _old_state, data) do
+    data = stamp_state_entry(:running, data)
     RunFeed.broadcast_update(status_snapshot(:running, data))
     parent = self()
     invocation = build_invocation(data)
@@ -807,6 +815,7 @@ defmodule Harness.Run do
   @doc false
   @spec committing(event(), term(), data()) :: handler_result()
   def committing(:enter, _old_state, data) do
+    data = stamp_state_entry(:committing, data)
     RunFeed.broadcast_update(status_snapshot(:committing, data))
     worktree = data.worktree
     message = commit_message(data)
@@ -847,6 +856,7 @@ defmodule Harness.Run do
   @doc false
   @spec recovering(event(), term(), data()) :: handler_result()
   def recovering(:enter, _old_state, data) do
+    data = stamp_state_entry(:recovering, data)
     RunFeed.broadcast_update(status_snapshot(:recovering, data))
 
     # Task 228 renamed select_reviewer/1 -> select_reviewers/1 ({:ok, [module, ...]}
@@ -922,6 +932,8 @@ defmodule Harness.Run do
   @doc false
   @spec reviewing(event(), term(), data()) :: handler_result()
   def reviewing(:enter, _old_state, data) do
+    data = stamp_state_entry(:reviewing, data)
+
     case ensure_reviewer_model_available(data) do
       :ok ->
         RunFeed.broadcast_update(status_snapshot(:reviewing, data))
@@ -997,6 +1009,7 @@ defmodule Harness.Run do
   @doc false
   @spec held(event(), term(), data()) :: handler_result()
   def held(:enter, _old_state, data) do
+    data = stamp_state_entry(:held, data)
     RunFeed.broadcast_update(status_snapshot(:held, data))
     {:keep_state, data, hold_enter_actions(data)}
   end
@@ -1014,6 +1027,7 @@ defmodule Harness.Run do
   @doc false
   @spec done(event(), term(), data()) :: handler_result()
   def done(:enter, _old_state, data) do
+    data = stamp_state_entry(:done, data)
     data = settle(data, :done)
     {:keep_state, data, [{:state_timeout, data.terminal_linger, :shutdown}]}
   end
@@ -1027,6 +1041,7 @@ defmodule Harness.Run do
   @doc false
   @spec failed(event(), term(), data()) :: handler_result()
   def failed(:enter, _old_state, data) do
+    data = stamp_state_entry(:failed, data)
     data = settle(data, :failed)
     {:keep_state, data, [{:state_timeout, data.terminal_linger, :shutdown}]}
   end
@@ -1650,7 +1665,7 @@ defmodule Harness.Run do
   defp crash_settle(data, state, reason) do
     crash_reason = {:run_crashed, normalize_crash_reason(state, reason)}
     result = build_crash_result(data, crash_reason)
-    data = %{data | result: result, reason: crash_reason}
+    data = stamp_state_entry(:failed, %{data | result: result, reason: crash_reason})
     persist_run_record(data, result)
     finish_worktree(data.worktree, :failed)
     Reaper.untrack(data.run_id)
@@ -1843,6 +1858,8 @@ defmodule Harness.Run do
       adapter: data.adapter,
       project_name: data.project.name,
       duration_ms: run_duration_ms(data),
+      started_at: data.started_at,
+      state_entered_at: data.state_entered_at,
       domains: data.item.domains,
       task_fingerprint: data.item.fingerprint
     )
@@ -1902,6 +1919,8 @@ defmodule Harness.Run do
       agent: data.agent_kind,
       model: data.requested_model,
       state: state,
+      started_at: data.started_at,
+      state_entered_at: data.state_entered_at,
       worktree_path: data.worktree && data.worktree.path,
       agent_os_pid: data.agent_run && data.agent_run.os_pid,
       agent_kind: data.agent_outcome && data.agent_outcome.kind,
@@ -1912,6 +1931,15 @@ defmodule Harness.Run do
       held?: state == :held,
       hold_reason: if(state == :held, do: data.hold_reason)
     }
+  end
+
+  @spec stamp_state_entry(state(), data()) :: data()
+  defp stamp_state_entry(state, data) do
+    Map.put(
+      data,
+      :state_entered_at,
+      Map.put(Map.get(data, :state_entered_at, %{}), state, DateTime.utc_now(:millisecond))
+    )
   end
 
   @spec start_task((-> term())) :: Task.t()
