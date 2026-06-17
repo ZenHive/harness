@@ -11,7 +11,6 @@ defmodule Harness.StatusView do
   alias Harness.ResultStore
   alias Harness.Run
   alias Harness.Run.LogRecord
-  alias Harness.Run.Result
   alias Harness.Run.Status
   alias Harness.Run.Supervisor, as: RunSupervisor
 
@@ -168,10 +167,24 @@ defmodule Harness.StatusView do
 
   defp detail(_), do: nil
 
-  @spec describe_reason(Result.reason()) :: String.t()
+  @spec describe_reason(term()) :: String.t()
   defp describe_reason(reason) when is_atom(reason), do: Atom.to_string(reason)
 
+  defp describe_reason({:unavailable, agent, model, opts}) when is_list(opts) do
+    available = Keyword.get(opts, :available, [])
+
+    suffix =
+      case available do
+        [] -> "none available"
+        ids -> "available: #{Enum.join(ids, ", ")}"
+      end
+
+    "#{agent} model #{inspect(model)} unavailable (#{suffix})"
+  end
+
   defp describe_reason({tag, inner}), do: "#{tag} #{inspect(inner)}"
+
+  defp describe_reason(other), do: inspect(other)
 
   @spec render_bucket(bucket(), [run_entry()]) :: String.t()
   defp render_bucket(bucket, runs) do

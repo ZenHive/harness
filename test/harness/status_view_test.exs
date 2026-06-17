@@ -95,6 +95,38 @@ defmodule Harness.StatusViewTest do
     assert output =~ "FakeAdapter  review stuck on task-7: implementer hit a usage limit"
   end
 
+  test "run_entry_for/1 renders an :unavailable model rejection without crashing" do
+    status = %Status{
+      run_id: "run-u",
+      task_id: "9",
+      state: :failed,
+      reason: {:unavailable, :cursor, "composer-2.5-fast", available: []}
+    }
+
+    entry = StatusView.run_entry_for(status)
+
+    assert entry.bucket == :red
+    assert entry.detail == "cursor model \"composer-2.5-fast\" unavailable (none available)"
+  end
+
+  test "run_entry_for/1 lists available ids when the rejected model has alternatives" do
+    status = %Status{
+      run_id: "run-u2",
+      task_id: "10",
+      state: :failed,
+      reason: {:unavailable, :cursor, "composer-2.5-fast", available: ["composer-2.5", "gemini-3.1-pro"]}
+    }
+
+    assert StatusView.run_entry_for(status).detail ==
+             "cursor model \"composer-2.5-fast\" unavailable (available: composer-2.5, gemini-3.1-pro)"
+  end
+
+  test "run_entry_for/1 falls back to inspect for an unrecognized failure reason" do
+    status = %Status{run_id: "run-x", task_id: "11", state: :failed, reason: {:weird, 1, 2, 3, 4}}
+
+    assert StatusView.run_entry_for(status).detail == "{:weird, 1, 2, 3, 4}"
+  end
+
   test "snapshot/1 collects live registered runs" do
     run_id = start_run(adapter_opts: [command: :sleep], terminal_linger: 5_000)
 
