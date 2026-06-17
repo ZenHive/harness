@@ -17,8 +17,8 @@
 | `mix test.json` flags / jq recipes | Skill `elixir:ex-unit-json` |
 | `mix dialyzer.json` flags / fix_hints | Skill `elixir:dialyzer-json` |
 | `mix` / `ex_dna` / `ex_ast` command surface | Skill `elixir:development-commands` |
-| rmap CLI: status/score/new/render/delegate | Skill `task-driver:rmap` |
-| D/B/U scoring, ceremony floor, task-writing | Skill `elixir:roadmap-planning` + `@~/.claude/includes/task-writing.md` |
+| rmap CLI: status/score/new/render/delegate | Skill `tasks:rmap` |
+| D/B/U scoring, ceremony floor, task-writing | Skill `tasks:roadmap-planning` + `@~/.claude/includes/task-writing.md` |
 | Session-per-phase / batched-execution / evaluator-separation rules | `@~/.claude/includes/workflow-philosophy.md` |
 | Worktree-per-branch workflow | `@~/.claude/includes/worktree-workflow.md` |
 | Harness delegate→verify→repair→land workflow (portfolio adoption) | `@~/.claude/includes/harness-workflow.md` |
@@ -42,7 +42,7 @@ The full include is verbose and mostly restates mainstream Elixir. These are the
 
 ## rmap is ours
 
-The `rmap` CLI (the roadmap substrate `roadmap/tasks.toml` uses) is a sibling Rust project we own at `../rmap/` (`/Users/efries/_DATA/code/rmap/`). If the roadmap workflow needs a CLI change — new field, query, render, or `delegate --to` target — edit it there; don't work around a gap in harness. The `task-driver:rmap` skill is the usage contract; `../rmap/` is the source.
+The `rmap` CLI (the roadmap substrate `roadmap/tasks.toml` uses) is a sibling Rust project we own at `../rmap/` (`/Users/efries/_DATA/code/rmap/`). If the roadmap workflow needs a CLI change — new field, query, render, or `delegate --to` target — edit it there; don't work around a gap in harness. The `tasks:rmap` skill is the usage contract; `../rmap/` is the source.
 
 **AI driver surface (canonical for orchestrators):** `@skills/harness-driver/SKILL.md` — **load on demand** when driving harness as a consumer. Stable contract for delegation patterns, non-delegatable handling, result interpretation, sharp edges. Any change to public driver surfaces must update it.
 
