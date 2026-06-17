@@ -381,7 +381,8 @@ defmodule Harness.Dashboard.ComponentsTest do
   describe "transcript chrome (Task 314)" do
     test "transcript_chrome renders summary, activity, and heartbeat" do
       events = [
-        {:assistant_tool_use, %{id: "1", name: "Edit", input: %{"file_path" => "lib/a.ex", "old_string" => "x", "new_string" => "y"}}}
+        {:assistant_tool_use,
+         %{id: "1", name: "Edit", input: %{"file_path" => "lib/a.ex", "old_string" => "x", "new_string" => "y"}}}
       ]
 
       last_at = ~U[2026-06-17 10:00:05.000Z]

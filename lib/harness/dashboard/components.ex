@@ -669,7 +669,7 @@ defmodule Harness.Dashboard.Components do
   def last_output_age_label(nil, _now), do: nil
 
   def last_output_age_label(%DateTime{} = last_at, %DateTime{} = now) do
-    seconds = max(0, DateTime.diff(now, last_at, :millisecond)) |> div(@milliseconds_per_second)
+    seconds = 0 |> max(DateTime.diff(now, last_at, :millisecond)) |> div(@milliseconds_per_second)
 
     if seconds < 1 do
       "<1s ago"
@@ -725,7 +725,11 @@ defmodule Harness.Dashboard.Components do
             <span :if={file.added > 0} class="cf-add">+{file.added}</span>
             <span :if={file.deleted > 0} class="cf-del">−{file.deleted}</span>
           </span>
-          <span :if={file.added == 0 and file.deleted == 0 and file.edits > 0} class="cf-edits" data-file-edits>
+          <span
+            :if={file.added == 0 and file.deleted == 0 and file.edits > 0}
+            class="cf-edits"
+            data-file-edits
+          >
             {file.edits} edits
           </span>
         </li>
@@ -1758,8 +1762,7 @@ defmodule Harness.Dashboard.Components do
         Enum.reduce(edits, {0, 0}, fn edit, {added, deleted} ->
           edit = normalize_map(edit)
 
-          {added + line_count(input_field(edit, :new_string)),
-           deleted + line_count(input_field(edit, :old_string))}
+          {added + line_count(input_field(edit, :new_string)), deleted + line_count(input_field(edit, :old_string))}
         end)
 
       input_field(input, :old_string) != nil ->
