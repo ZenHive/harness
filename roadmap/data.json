@@ -14175,6 +14175,61 @@
       "delivered_by": "cursor",
       "verified": true,
       "cross_repo": []
+    },
+    {
+      "id": "315",
+      "phase": 22,
+      "bundle": "live-run-legibility",
+      "status": "pending",
+      "title": "Run-detail tracks the verdict-recovery reviewer pass — surface its live pid/transcript/elapsed, not the prior pass's timed-out fields",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 3
+      },
+      "eff": 1.17,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "When a run enters the Task-204 verdict-recovery reviewer pass (re-prompt after a missing/invalid .harness/review.json), Harness.Run.Status reflects the LIVE recovery-reviewer invocation: its os_pid and a kind tag (e.g. :recovery_review) — NOT the prior timed-out reviewer pass's terminal agent_os_pid=nil / agent_kind=[:timed_out,:total].",
+        "dispatch-status for a run mid-recovery returns the live recovery reviewer's pid + a distinct stage label so an operator/driver can tell the recovery pass apart from the first review pass.",
+        "The /harness/runs/:run_id run-detail page renders the recovery-reviewer pass as a live, legible stage (active-agent label = recovery reviewer, its elapsed since recovery-pass start, and its transcript streaming) instead of looking frozen on the prior pass's stale 'output a few seconds ago'.",
+        "Pure mechanics only — count/relay facts (pid, kind, elapsed, transcript bytes); the read of 'stuck vs working' stays with the human/AI. No formula, no classifier deciding health.",
+        "Tests: a run_test asserts Status carries the recovery-reviewer pid/kind once the recovery pass starts; a live_test asserts the run-detail assigns surface the recovery stage (not the timed-out prior-pass fields).",
+        "mix precommit.full green"
+      ],
+      "out_of_scope": [
+        "Changing the recovery-pass behaviour itself (Task 204 owns spawning/limits/re-prompt) — this is observability only.",
+        "Any judgment in code about whether the recovery pass is 'stuck' — surface facts, the human decides.",
+        "The first-pass reviewer transcript legibility (Task 311, already landed)."
+      ],
+      "files_to_modify": [
+        "lib/harness/run.ex",
+        "lib/harness/run/status.ex",
+        "lib/harness/dashboard/live.ex"
+      ],
+      "touches": [
+        "lib/harness/run.ex",
+        "lib/harness/run/status.ex",
+        "lib/harness/dashboard/live.ex",
+        "lib/harness/dashboard/components.ex",
+        "test/harness/run_test.exs",
+        "test/harness/dashboard/live_test.exs"
+      ],
+      "domains": [
+        "otp",
+        "observability"
+      ],
+      "body": "Observability follow-up to phase-22 live-run-legibility (tasks 311-314, all landed) and Task 204 (the verdict-recovery reviewer feature). Surfaced 2026-06-17 watching ccxt-distill run-1781660224215-a0c2cde3: the first reviewer pass made fix commits but TIMED OUT before writing a valid .harness/review.json, so harness (Task 204) spawned a recovery reviewer (a live `claude -p`, real OS pid, actively editing the worktree to fix a failing `npm run check`). The run was genuinely progressing.\n\nBut dispatch-status and the run-detail page reported agent_os_pid=nil and agent_kind=[:timed_out,:total] — the PRIOR, timed-out pass's terminal fields. The live recovery-reviewer process is tracked NOWHERE in the status surface, so the page looks frozen ('output a few seconds ago') while a real process churns underneath. Operators misread this as a hang and may kill a live run. This is the exact 'flying blind' failure mode the 311-314 bundle fixed, one code path over — the recovery-reviewer pass.\n\nFix: thread the recovery-reviewer invocation's pid + a distinct kind through Harness.Run.Status (same way the normal reviewer is tracked) so dispatch-status and the run-detail page show the LIVE recovery pass — its pid, its elapsed-since-recovery-start, its streaming transcript — instead of the dead prior pass's fields.\n\nMantra: pure mechanical fact-surfacing. The page counts and relays (pid, kind, elapsed, transcript); 'stuck vs working' stays with the human/AI, never a formula. Cross-ref: Task 204 (recovery feature), bundle live-run-legibility.\n",
+      "created_at": "2026-06-17",
+      "scored_at": "2026-06-17",
+      "cross_repo": []
     }
   ]
 }
