@@ -38,9 +38,16 @@ defmodule Harness.Dashboard.MCPPlug do
     %{
       anubis: AnubisPlug.init(opts),
       session_header: Keyword.get(opts, :session_header, @default_session_header),
-      keepalive_interval_ms: Keyword.get(opts, :keepalive_interval_ms, @default_keepalive_interval_ms)
+      keepalive_interval_ms: keepalive_interval(Keyword.get(opts, :keepalive_interval_ms))
     }
   end
+
+  # `keepalive_interval_ms` is the `Task.yield/2` timeout in the keepalive loop, so a
+  # non-positive or non-integer value would spin a tight keepalive-spamming loop (or
+  # crash). Accept only a positive integer; fall back to the default otherwise.
+  @spec keepalive_interval(term()) :: pos_integer()
+  defp keepalive_interval(ms) when is_integer(ms) and ms > 0, do: ms
+  defp keepalive_interval(_invalid), do: @default_keepalive_interval_ms
 
   @impl Plug
   def call(%Plug.Conn{method: "POST"} = conn, %{session_header: session_header} = opts) do
