@@ -9541,3 +9541,34 @@ started_at = "2026-06-17"
 scored_at = "2026-06-17"
 done_at = "2026-06-17"
 shipped_in = "b945aaa660e776d0046278e239820547fa1b81bb"
+
+[[task]]
+id = "316"
+phase = 20
+bundle = "dispatch-economy"
+status = "done"
+title = "dispatch-bundle ignores per-task assignee — routes whole wave to one global adapter, and doesn't gate depends_on"
+scores = { d = 3, b = 7, u = 7 }
+markers = ["bug"]
+acceptance_criteria = ["dispatch-bundle resolves the adapter for each task from that task's own assignee (reusing recommended_adapter_for_item/3 or equivalent), not a single wave-wide render_agent", "Each task's model is resolved via effective_model/2 semantics: the rmap pin when it matches the resolved agent, else Config.agent_model(agent) — never a foreign pin handed to a mismatched adapter", "The `adapter` param is the fallback for tasks with no assignee, not an override of assigned tasks", "A mixed-roster bundle (tasks assigned codex/cursor/grok) enqueues three jobs with the matching Codex/Cursor/Grok adapters — regression test", "dispatch-bundle excludes or defers any task whose depends_on includes a non-done task in the dispatch set, matching roadmap-ready semantics; a dependent task is never placed in the same wave as a pending/in-flight dependency — regression test", "Existing single-family bundle dispatch behaviour is unchanged (no regression for the homogeneous-adapter calls that work today)"]
+out_of_scope = ["Changing WriteSetPlan's write-set collision semantics (Task 292 design — collision detection stays independent of the dep graph; this adds a separate dep gate, it does not alter collision behaviour)", "The cron RoadmapPoller routing (already on assignee via Task 130)", "New AgentAdapters or new rmap delegate --to targets"]
+touches = ["lib/harness/dispatch.ex", "lib/harness/dispatch/write_set_plan.ex", "lib/harness/batch.ex", "lib/harness/roadmap.ex"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+The dispatch-bundle MCP tool (Harness.Dispatch.bundle/3) ignores each task's per-task assignee/model and routes the ENTIRE wave to a single global adapter (the `adapter` param, defaulting to "claude"). bundle/3 resolves one {module, render_agent} and ingest_bundle/3 ingests every task with that same render_agent; the per-task Item.assignee is carried structurally but never consulted, and Batch.enqueue_item routes off Item.agent (the global render agent), not Item.assignee. Each task keeps its rmap-pinned `model`, so a task pinned to a non-claude model (e.g. gpt-5.5, composer-2.5, grok-composer-2.5-fast) gets the claude adapter + its foreign model and fails spawn with {:invalid_model_for_adapter, Claude, <model>} at AgentAdapter.validate_model/2.
+
+Confirmed in production 2026-06-17: a no-adapter-arg dispatch-bundle on delta_calc (tasks 27-34) + ccxt-distill (53) produced 9 failed runs, every one adapter=Claude paired with a foreign model. The reason it normally "works" is survivorship: callers dispatch one family at a time with a matching explicit `adapter`, so the single global adapter happens to match the tasks' pins. A genuinely mixed-roster bundle dispatched with any single adapter fails every off-family task.
+
+dispatch-task already does this correctly: its recommend path calls recommended_adapter_for_item/3 (reads Item.assignee) and effective_model/2 (falls back to Config.agent_model/1 when the pin doesn't match the agent). The bundle path calls neither. The fix is to make the bundle path resolve adapter+model PER TASK from each task's own assignee (reusing recommended_adapter_for_item/3 + effective_model/2), with the `adapter` param as the fallback for unassigned tasks rather than a wave-wide override.
+
+Secondary defect in the same path: WriteSetPlan (the only wave serializer) groups tasks purely by write-set collision (touches union files_to_modify) and never reads depends_on. So a dependent task can land in the SAME wave as its dependency (observed: task 33 depends_on [28-32], task 34 depends_on [26,28,30], all enqueued in wave 1), forking off pre-dep HEAD. roadmap-ready already excludes dep-unsatisfied tasks; the bundle path must match those semantics — exclude (or defer to a later wave) any task whose depends_on includes a non-done task in the dispatch set.
+"""
+implemented = "Codex/gpt-5.5 delivery (run-1781707166155-8772138d), cross-family reviewer Cursor approved. dispatch-bundle now resolves adapter+model per task from each task's assignee (falls back to the adapter param for unassigned tasks) instead of one wave-wide render_agent, and gates depends_on so dependent tasks aren't placed in a wave with non-done deps. Regression tests for mixed codex/cursor/grok roster + dep-gating. diff 326 LOC."
+delivered_by = "codex"
+verified = true
+created_at = "2026-06-17"
+started_at = "2026-06-17"
+scored_at = "2026-06-17"
+done_at = "2026-06-17"
+shipped_in = "05e1a95cf9cb426e2084bd7c467b438be71b72be"
