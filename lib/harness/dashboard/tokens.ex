@@ -775,6 +775,12 @@ defmodule Harness.Dashboard.Tokens do
       }
       .changed-files-live .cf-chips { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
       .cf-chip { border: 1px solid var(--rule); border-radius: 0.3rem; background: var(--surface); padding: var(--space-1) var(--space-3); }
+      .cf-edits {
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        margin-left: var(--space-2);
+      }
 
       @keyframes cf-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 
@@ -1099,6 +1105,35 @@ defmodule Harness.Dashboard.Tokens do
         text-underline-offset: 0.2rem;
       }
       .transcript-toggle a:hover { color: var(--text); }
+
+      .transcript-chrome {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+        margin-block: var(--space-2) var(--space-3);
+        padding: var(--space-2) var(--space-3);
+        border: 1px solid var(--rule);
+        border-radius: 0.35rem;
+        background: var(--surface);
+      }
+      .transcript-summary {
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        margin: 0;
+      }
+      .transcript-activity {
+        font-family: var(--font-display);
+        font-size: var(--text-sm);
+        color: var(--text);
+        margin: 0;
+      }
+      .transcript-heartbeat {
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        margin: 0;
+      }
 
       .eyebrow {
         font-family: var(--font-mono);

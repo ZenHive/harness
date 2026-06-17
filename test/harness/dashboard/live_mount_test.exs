@@ -232,6 +232,43 @@ defmodule Harness.Dashboard.LiveMountTest do
     end
   end
 
+  describe "transcript chrome (Task 314)" do
+    test "live run page surfaces activity, summary, heartbeat, and chip deltas", %{conn: conn} do
+      {run_id, _pid} = start_sleeping_run()
+      {:ok, view, _html} = live(conn, "/harness/runs/#{run_id}")
+
+      events = [
+        {:assistant_text, %{text: "working"}},
+        {:assistant_tool_use,
+         %{
+           id: "1",
+           name: "Edit",
+           input: %{"file_path" => "js/src/coinbase.js", "old_string" => "a", "new_string" => "b\nc"}
+         }},
+        {:assistant_tool_use, %{id: "2", name: "Bash", input: %{"command" => "mix test"}}}
+      ]
+
+      send(view.pid, {:harness_transcript_events, run_id, 1, events})
+      html = render(view)
+
+      assert html =~ ~s(data-transcript-activity)
+      assert html =~ "running mix test"
+      assert html =~ ~s(data-transcript-summary)
+      assert html =~ "1 turns"
+      assert html =~ "2 tool calls"
+      assert html =~ "1 files"
+      assert html =~ ~s(data-transcript-heartbeat)
+      assert html =~ "last output"
+      assert html =~ "ago"
+      assert html =~ "coinbase.js"
+      assert html =~ "+2"
+      assert html =~ "−1"
+
+      send(view.pid, :meta_tick)
+      assert render(view) =~ "last output"
+    end
+  end
+
   defp start_sleeping_run do
     base = GitFixture.tmp_base()
     repo = GitFixture.init_repo()

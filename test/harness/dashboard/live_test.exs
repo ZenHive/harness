@@ -807,6 +807,7 @@ defmodule Harness.Dashboard.LiveTest do
       transcript: transcript,
       transcript_bytes: byte_size(transcript),
       transcript_events: [],
+      last_transcript_at: nil,
       run_diff: nil,
       task_item: nil,
       notice: nil,

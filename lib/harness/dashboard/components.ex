@@ -577,17 +577,131 @@ defmodule Harness.Dashboard.Components do
     end
   end
 
+  ## --- Live transcript chrome (Task 314) ------------------------------------
+
+  attr(:events, :list, required: true)
+  attr(:agent, :atom, required: true)
+  attr(:last_event_at, :any, default: nil)
+  attr(:now, :any, required: true)
+  attr(:live, :boolean, default: false)
+
+  @doc """
+  Summary, current-activity, and last-output heartbeat above the transcript.
+
+  Counts turns / tool calls / files from the parsed event list; relays the
+  latest tool call in plain language; ticks last-event age via `now` (no stuck
+  verdict). Pure — `attr/3` + HEEx only.
+  """
+  @spec transcript_chrome(map()) :: Rendered.t()
+  def transcript_chrome(assigns) do
+    summary = transcript_summary_label(assigns.events, assigns.agent)
+    activity = current_activity_label(assigns.events)
+    heartbeat = last_output_age_label(assigns.last_event_at, assigns.now)
+    show_heartbeat = assigns.live && heartbeat != nil
+
+    assigns =
+      assigns
+      |> assign(:summary, summary)
+      |> assign(:activity, activity)
+      |> assign(:heartbeat, heartbeat)
+      |> assign(:show_heartbeat, show_heartbeat)
+
+    ~H"""
+    <div class="transcript-chrome" data-transcript-chrome>
+      <p class="transcript-summary" data-transcript-summary>{@summary}</p>
+      <p :if={@activity} class="transcript-activity" data-transcript-activity>{@activity}</p>
+      <p :if={@show_heartbeat} class="transcript-heartbeat" data-transcript-heartbeat>
+        last output {@heartbeat}
+      </p>
+    </div>
+    """
+  end
+
+  @doc false
+  @spec transcript_summary_label([Parser.event()], Parser.agent_kind()) :: String.t()
+  def transcript_summary_label(events, agent) do
+    counts = transcript_counts(events, agent)
+
+    "#{counts.turns} turns · #{counts.tool_calls} tool calls · #{counts.files} files"
+  end
+
+  @doc false
+  @spec transcript_counts([Parser.event()], Parser.agent_kind()) :: %{
+          turns: non_neg_integer(),
+          tool_calls: non_neg_integer(),
+          files: non_neg_integer()
+        }
+  def transcript_counts(events, agent) do
+    %{
+      turns: turn_count(events, agent),
+      tool_calls: tool_call_count(events),
+      files: length(edited_file_stats(events))
+    }
+  end
+
+  @doc false
+  @spec turn_count([Parser.event()], Parser.agent_kind()) :: non_neg_integer()
+  def turn_count(events, agent) do
+    events
+    |> group_events(agent)
+    |> Enum.count(&(&1.kind == :assistant_message))
+  end
+
+  @doc false
+  @spec tool_call_count([Parser.event()]) :: non_neg_integer()
+  def tool_call_count(events) do
+    Enum.count(events, &match?({:assistant_tool_use, _}, &1))
+  end
+
+  @doc false
+  @spec current_activity_label([Parser.event()]) :: String.t() | nil
+  def current_activity_label(events) do
+    events
+    |> Enum.reverse()
+    |> Enum.find_value(fn
+      {:assistant_tool_use, tool_use} -> activity_phrase(tool_use)
+      _other -> nil
+    end)
+  end
+
+  @doc false
+  @spec last_output_age_label(DateTime.t() | nil, DateTime.t()) :: String.t() | nil
+  def last_output_age_label(nil, _now), do: nil
+
+  def last_output_age_label(%DateTime{} = last_at, %DateTime{} = now) do
+    seconds = max(0, DateTime.diff(now, last_at, :millisecond)) |> div(@milliseconds_per_second)
+
+    if seconds < 1 do
+      "<1s ago"
+    else
+      "#{seconds}s ago"
+    end
+  end
+
+  @doc false
+  @spec edited_file_stats([Parser.event()]) :: [
+          %{path: String.t(), added: non_neg_integer(), deleted: non_neg_integer(), edits: non_neg_integer()}
+        ]
+  def edited_file_stats(events) do
+    events
+    |> Enum.reduce({[], %{}}, &accumulate_file_stat/2)
+    |> then(fn {order, stats} ->
+      Enum.map(order, fn path -> Map.put(stats[path], :path, path) end)
+    end)
+  end
+
   ## --- Changed files / run diff --------------------------------------------
 
-  attr(:paths, :list, required: true)
+  attr(:files, :list, default: [])
 
   @doc """
   In-progress edited-file list for a *live* run.
 
   A live run has no commit yet, so the change signal comes from the agent's
   own file-editing tool calls (extracted upstream from the parsed transcript
-  events). Renders each path as a chip with a pulsing live dot; an empty list
-  shows a waiting note. Pure — `attr/3` + HEEx only.
+  events). Renders each path as a chip with per-file +/- line counts (or an
+  edit-count when line deltas are unavailable). An empty list shows a waiting
+  note. Pure — `attr/3` + HEEx only.
   """
   @spec edited_files_live(map()) :: Rendered.t()
   def edited_files_live(assigns) do
@@ -599,10 +713,21 @@ defmodule Harness.Dashboard.Components do
           <span class="cf-live-dot" aria-hidden="true"></span>live
         </span>
       </header>
-      <p :if={@paths == []} class="cf-empty">No file edits observed yet.</p>
-      <ul :if={@paths != []} class="cf-chips">
-        <li :for={path <- @paths} class="cf-chip">
-          <.file_path path={path} />
+      <p :if={@files == []} class="cf-empty">No file edits observed yet.</p>
+      <ul :if={@files != []} class="cf-chips">
+        <li :for={file <- @files} class="cf-chip" data-file-path={file.path}>
+          <.file_path path={file.path} />
+          <span
+            :if={file.added > 0 or file.deleted > 0}
+            class="cf-file-counts"
+            data-file-delta
+          >
+            <span :if={file.added > 0} class="cf-add">+{file.added}</span>
+            <span :if={file.deleted > 0} class="cf-del">−{file.deleted}</span>
+          </span>
+          <span :if={file.added == 0 and file.deleted == 0 and file.edits > 0} class="cf-edits" data-file-edits>
+            {file.edits} edits
+          </span>
         </li>
       </ul>
     </section>
@@ -1538,4 +1663,142 @@ defmodule Harness.Dashboard.Components do
       tc -> tc
     end)
   end
+
+  @spec accumulate_file_stat(Parser.event(), {list(String.t()), map()}) ::
+          {list(String.t()), map()}
+  defp accumulate_file_stat({:assistant_tool_use, %{name: name, input: input}}, {order, stats}) do
+    case file_path_from_input(input) do
+      nil ->
+        {order, stats}
+
+      path ->
+        {added, deleted} = line_delta(name, input)
+        order = if path in order, do: order, else: order ++ [path]
+
+        stats =
+          Map.update(stats, path, blank_file_stat(added, deleted), fn entry ->
+            %{
+              entry
+              | added: entry.added + added,
+                deleted: entry.deleted + deleted,
+                edits: entry.edits + 1
+            }
+          end)
+
+        {order, stats}
+    end
+  end
+
+  defp accumulate_file_stat(_event, acc), do: acc
+
+  @spec blank_file_stat(non_neg_integer(), non_neg_integer()) :: %{
+          added: non_neg_integer(),
+          deleted: non_neg_integer(),
+          edits: non_neg_integer()
+        }
+  defp blank_file_stat(added, deleted), do: %{added: added, deleted: deleted, edits: 1}
+
+  @spec activity_phrase(%{name: String.t(), input: term()}) :: String.t()
+  defp activity_phrase(%{name: name, input: input}) do
+    path = file_path_from_input(input)
+    command = command_from_input(input)
+
+    cond do
+      path && edit_tool_name?(name) -> "editing #{path}"
+      path && write_tool_name?(name) -> "writing #{path}"
+      path -> "#{name} #{path}"
+      command -> "running #{truncate_command(command)}"
+      true -> "calling #{name}"
+    end
+  end
+
+  @spec edit_tool_name?(String.t()) :: boolean()
+  defp edit_tool_name?(name) do
+    down = String.downcase(name)
+    String.contains?(down, "edit") or down in ["search_replace", "strreplace", "replace"]
+  end
+
+  @spec write_tool_name?(String.t()) :: boolean()
+  defp write_tool_name?(name) do
+    down = String.downcase(name)
+    down in ["write", "create", "writefile"]
+  end
+
+  @spec file_path_from_input(term()) :: String.t() | nil
+  defp file_path_from_input(input) when is_map(input) do
+    input["file_path"] || input["path"] || input[:file_path] || input[:path]
+  end
+
+  defp file_path_from_input(_other), do: nil
+
+  @spec command_from_input(term()) :: String.t() | nil
+  defp command_from_input(input) when is_map(input) do
+    input["command"] || input[:command]
+  end
+
+  defp command_from_input(_other), do: nil
+
+  @spec truncate_command(String.t()) :: String.t()
+  defp truncate_command(command) do
+    command
+    |> String.trim()
+    |> String.split("\n", parts: 2)
+    |> hd()
+    |> String.slice(0, 80)
+  end
+
+  @spec line_delta(String.t(), map()) :: {non_neg_integer(), non_neg_integer()}
+  defp line_delta(name, input) do
+    down = String.downcase(name)
+
+    cond do
+      String.contains?(down, "multi") ->
+        edits = input_field(input, :edits) || []
+
+        Enum.reduce(edits, {0, 0}, fn edit, {added, deleted} ->
+          edit = normalize_map(edit)
+
+          {added + line_count(input_field(edit, :new_string)),
+           deleted + line_count(input_field(edit, :old_string))}
+        end)
+
+      input_field(input, :old_string) != nil ->
+        {line_count(input_field(input, :new_string)), line_count(input_field(input, :old_string))}
+
+      input_field(input, :new_string) != nil ->
+        {line_count(input_field(input, :new_string)), 0}
+
+      input_field(input, :contents) != nil ->
+        {line_count(input_field(input, :contents)), 0}
+
+      true ->
+        {0, 0}
+    end
+  end
+
+  @spec input_field(map(), atom()) :: term()
+  defp input_field(input, key) when is_map(input) do
+    input[key] || input[Atom.to_string(key)]
+  end
+
+  defp input_field(_input, _key), do: nil
+
+  @spec normalize_map(term()) :: map()
+  defp normalize_map(map) when is_map(map) do
+    Enum.reduce(map, %{}, fn {key, value}, acc ->
+      Map.put(acc, to_string(key), value)
+    end)
+  end
+
+  defp normalize_map(_other), do: %{}
+
+  @spec line_count(term()) :: non_neg_integer()
+  defp line_count(nil), do: 0
+  defp line_count(""), do: 0
+
+  defp line_count(text) when is_binary(text) do
+    text |> String.split("\n", trim: false) |> length()
+  end
+
+  defp line_count(_other), do: 0
 end

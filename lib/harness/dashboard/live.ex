@@ -140,8 +140,9 @@ defmodule Harness.Dashboard.Live do
      |> assign(:agent_kind, nil)
      |> assign(:raw_view, false)
      |> assign(:last_seq, 0)
-     |> assign(:events_last_seq, 0)
-     |> assign(:run_status, nil)
+      |> assign(:events_last_seq, 0)
+      |> assign(:last_transcript_at, nil)
+      |> assign(:run_status, nil)
      |> assign(:run_diff, nil)
      |> assign(:run_id, nil)
      |> assign(:task_item, nil)
@@ -186,6 +187,7 @@ defmodule Harness.Dashboard.Live do
       |> assign(:raw_view, raw_view_param?(params))
       |> assign(:last_seq, 0)
       |> assign(:events_last_seq, 0)
+      |> assign(:last_transcript_at, nil)
       |> assign(:run_diff, nil)
 
     # Resolve the source once: a live run streams over PubSub; a settled run is
@@ -273,22 +275,9 @@ defmodule Harness.Dashboard.Live do
   @spec live_edited_files([Parser.event()]) :: [String.t()]
   def live_edited_files(events) do
     events
-    |> Enum.flat_map(fn
-      {:assistant_tool_use, %{input: input}} -> List.wrap(edited_path(input))
-      _other -> []
-    end)
-    |> Enum.uniq()
+    |> Components.edited_file_stats()
+    |> Enum.map(& &1.path)
   end
-
-  @spec edited_path(term()) :: String.t() | nil
-  defp edited_path(input) when is_map(input) do
-    case input["file_path"] || input["path"] do
-      path when is_binary(path) -> path
-      _other -> nil
-    end
-  end
-
-  defp edited_path(_other), do: nil
 
   @impl Phoenix.LiveView
   def handle_info(:meta_tick, socket) do
@@ -369,7 +358,8 @@ defmodule Harness.Dashboard.Live do
      socket
      |> assign(:transcript, trimmed)
      |> assign(:transcript_bytes, trimmed_bytes)
-     |> assign(:last_seq, seq)}
+     |> assign(:last_seq, seq)
+     |> stamp_transcript_arrival()}
   end
 
   # Cross-run + seq-dedup guards mirror the raw transcript clauses above so a
@@ -397,10 +387,16 @@ defmodule Harness.Dashboard.Live do
     {:noreply,
      socket
      |> assign(:transcript_events, bounded)
-     |> assign(:events_last_seq, seq)}
+     |> assign(:events_last_seq, seq)
+     |> stamp_transcript_arrival()}
   end
 
   def handle_info(_other, socket), do: {:noreply, socket}
+
+  @spec stamp_transcript_arrival(Socket.t()) :: Socket.t()
+  defp stamp_transcript_arrival(socket) do
+    assign(socket, :last_transcript_at, DateTime.utc_now(:millisecond))
+  end
 
   # ── Run-lifecycle application ─────────────────────────────────────────────
 
@@ -863,7 +859,7 @@ defmodule Harness.Dashboard.Live do
       <h2>Changed files</h2>
       <Components.edited_files_live
         :if={killable?(@run_status)}
-        paths={live_edited_files(@transcript_events)}
+        files={Components.edited_file_stats(@transcript_events)}
       />
       <Components.run_diff_view :if={not killable?(@run_status)} diff={@run_diff} />
     </div>
@@ -874,6 +870,13 @@ defmodule Harness.Dashboard.Live do
       <a :if={@raw_view} href={"/harness/runs/#{@run_id}"}>view parsed turns</a>
     </p>
     <div :if={!@raw_view}>
+      <Components.transcript_chrome
+        events={@transcript_events}
+        agent={@agent_kind}
+        last_event_at={@last_transcript_at}
+        now={@now}
+        live={killable?(@run_status)}
+      />
       <Components.transcript_view events={@transcript_events} agent={@agent_kind} />
     </div>
     <div :if={@raw_view}>

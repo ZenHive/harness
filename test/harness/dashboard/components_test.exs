@@ -361,12 +361,88 @@ defmodule Harness.Dashboard.ComponentsTest do
   end
 
   describe "edited_files_live/1" do
-    test "renders observed live edit paths as chips" do
-      html = render_component(&Components.edited_files_live/1, paths: ["lib/harness/dashboard/live.ex"])
+    test "renders observed live edit paths as chips with +/- or edit counts" do
+      files = [
+        %{path: "lib/harness/dashboard/live.ex", added: 3, deleted: 1, edits: 2},
+        %{path: "lib/other.ex", added: 0, deleted: 0, edits: 1}
+      ]
+
+      html = render_component(&Components.edited_files_live/1, files: files)
 
       assert html =~ "Files being edited"
       assert html =~ "lib/harness/dashboard/"
       assert html =~ "live.ex"
+      assert html =~ "+3"
+      assert html =~ "−1"
+      assert html =~ "1 edits"
+    end
+  end
+
+  describe "transcript chrome (Task 314)" do
+    test "transcript_chrome renders summary, activity, and heartbeat" do
+      events = [
+        {:assistant_tool_use, %{id: "1", name: "Edit", input: %{"file_path" => "lib/a.ex", "old_string" => "x", "new_string" => "y"}}}
+      ]
+
+      last_at = ~U[2026-06-17 10:00:05.000Z]
+      now = ~U[2026-06-17 10:00:10.000Z]
+
+      html =
+        render_component(&Components.transcript_chrome/1,
+          events: events,
+          agent: :claude,
+          last_event_at: last_at,
+          now: now,
+          live: true
+        )
+
+      assert html =~ ~s(data-transcript-summary)
+      assert html =~ "1 turns · 1 tool calls · 1 files"
+      assert html =~ "editing lib/a.ex"
+      assert html =~ "5s ago"
+      assert html =~ "last output"
+    end
+
+    test "counts turns, tool calls, and files from the event list" do
+      events = [
+        {:assistant_text, %{text: "hi"}},
+        {:assistant_tool_use, %{id: "1", name: "Edit", input: %{"file_path" => "a.ex", "new_string" => "line1\nline2"}}},
+        {:assistant_tool_use, %{id: "2", name: "Read", input: %{"path" => "b.ex"}}}
+      ]
+
+      assert Components.transcript_counts(events, :claude) == %{turns: 1, tool_calls: 2, files: 2}
+      assert Components.current_activity_label(events) == "Read b.ex"
+    end
+
+    test "last_output_age_label reports mechanical seconds since last event" do
+      last_at = ~U[2026-06-17 10:00:00.000Z]
+
+      assert Components.last_output_age_label(last_at, DateTime.add(last_at, 3, :second)) == "3s ago"
+      assert Components.last_output_age_label(last_at, last_at) == "<1s ago"
+      assert Components.last_output_age_label(nil, last_at) == nil
+    end
+
+    test "edited_file_stats accumulates per-file line deltas and edit counts" do
+      events = [
+        {:assistant_tool_use,
+         %{
+           id: "1",
+           name: "Edit",
+           input: %{"file_path" => "lib/a.ex", "old_string" => "old", "new_string" => "new1\nnew2"}
+         }},
+        {:assistant_tool_use, %{id: "2", name: "Read", input: %{"path" => "lib/b.ex"}}}
+      ]
+
+      [a, b] = Components.edited_file_stats(events)
+
+      assert a.path == "lib/a.ex"
+      assert a.added == 2
+      assert a.deleted == 1
+      assert a.edits == 1
+      assert b.path == "lib/b.ex"
+      assert b.edits == 1
+      assert b.added == 0
+      assert b.deleted == 0
     end
   end
 
