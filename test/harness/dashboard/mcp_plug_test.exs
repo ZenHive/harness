@@ -12,7 +12,17 @@ defmodule Harness.Dashboard.MCPPlugTest do
   @session_header "mcp-session-id"
 
   setup do
-    on_exit(fn -> Application.delete_env(:harness, :oban_run_job_lookup) end)
+    # Capture-and-restore (not blind delete) so a value another test/config set
+    # survives this test's mutation of the global seam.
+    previous = Application.fetch_env(:harness, :oban_run_job_lookup)
+
+    on_exit(fn ->
+      case previous do
+        {:ok, value} -> Application.put_env(:harness, :oban_run_job_lookup, value)
+        :error -> Application.delete_env(:harness, :oban_run_job_lookup)
+      end
+    end)
+
     :ok
   end
 
@@ -113,11 +123,12 @@ defmodule Harness.Dashboard.MCPPlugTest do
       conn = call(post_conn(tools_call([run_id], 150), "text/event-stream"), keepalive_interval_ms: 20)
 
       assert conn.status == 200
-      # At least one keepalive comment frame precedes the final message event.
-      assert conn.resp_body =~ ": keepalive"
-      [keepalive_at | _] = String.split(conn.resp_body, ": keepalive")
-      assert String.contains?(conn.resp_body, "event: message")
-      assert byte_size(keepalive_at) < byte_size(conn.resp_body)
+      # At least one keepalive comment frame is emitted *before* the terminal
+      # message event — compare byte offsets so a regression that only emitted
+      # keepalives after the result (or none) fails deterministically.
+      keepalive_idx = conn.resp_body |> :binary.match(": keepalive") |> elem(0)
+      message_idx = conn.resp_body |> :binary.match("event: message") |> elem(0)
+      assert keepalive_idx < message_idx
 
       payload = last_event_payload(conn.resp_body)
       assert [summary] = tool_summaries(payload)
