@@ -7,6 +7,8 @@ defmodule Harness.Dashboard.LiveTest do
 
   use ExUnit.Case, async: true
 
+  import Phoenix.LiveViewTest, only: [rendered_to_string: 1]
+
   alias Harness.AgentRegistry
   alias Harness.Dashboard.Live
   alias Harness.FakeAdapter
@@ -669,6 +671,29 @@ defmodule Harness.Dashboard.LiveTest do
       assert Live.token_label(nil, "plain text") == "—"
     end
 
+    test "active_agent_role tracks the stage's working agent" do
+      base = %Status{run_id: "r", task_id: "1", state: :running, agent: :cursor}
+
+      assert Live.active_agent_role(base) == :implementer
+      assert Live.active_agent_role(%{base | state: :reviewing}) == :reviewer
+      assert Live.active_agent_role(%{base | state: :recovering}) == :recovery
+      assert Live.active_agent_role(%{base | state: :committing}) == nil
+    end
+
+    test "stage_token_agent_kind follows the active stage's adapter" do
+      base = %Status{
+        run_id: "r",
+        task_id: "1",
+        state: :reviewing,
+        agent: :cursor,
+        reviewer_adapter: :claude
+      }
+
+      assert Live.stage_token_agent_kind(base, :cursor) == :claude
+      assert Live.stage_token_agent_kind(%{base | state: :recovering, recovery_adapter: :codex}, :cursor) == :codex
+      assert Live.stage_token_agent_kind(%{base | state: :running}, :cursor) == :cursor
+    end
+
     test "model_label prefers the stored model, falls back to live transcript parse, then —" do
       transcript = ~s({"type":"system","subtype":"init","model":"Composer 2.5 Fast"}\n)
       # Stored value (settled record) wins.
@@ -678,6 +703,31 @@ defmodule Harness.Dashboard.LiveTest do
       # Agent that never reports a model → requested fallback with a hint.
       assert Live.model_label(:grok, "grok-3", ~s({"type":"text","data":"hi"}\n)) == "grok-3 (requested)"
       assert Live.model_label(:grok, nil, ~s({"type":"text","data":"hi"}\n)) == "—"
+    end
+  end
+
+  describe "render_show run header (Task 312)" do
+    test "shows stage stepper, active-agent dot, and live token total from transcript" do
+      status = %Status{
+        run_id: "r",
+        task_id: "1",
+        state: :reviewing,
+        agent: :cursor,
+        reviewer_adapter: :claude
+      }
+
+      transcript = ~s({"type":"result","usage":{"input_tokens":7,"output_tokens":44}}\n)
+
+      html =
+        status
+        |> show_render_assigns(transcript)
+        |> Live.render()
+        |> rendered_to_string()
+
+      assert html =~ ~s(data-stage="reviewing" data-status="current")
+      assert html =~ ~s(class="run-agent run-agent-active")
+      assert html =~ ~s(class="cf-live-dot")
+      assert html =~ ">51<"
     end
   end
 
@@ -693,6 +743,23 @@ defmodule Harness.Dashboard.LiveTest do
       absent = "unregistered-#{System.unique_integer([:positive])}"
       assert Live.load_task_item("1", absent) == nil
     end
+  end
+
+  defp show_render_assigns(%Status{run_id: run_id} = status, transcript) do
+    %{
+      __changed__: %{},
+      live_action: :show,
+      run_id: run_id,
+      run_status: status,
+      agent_kind: :claude,
+      transcript: transcript,
+      transcript_bytes: byte_size(transcript),
+      transcript_events: [],
+      run_diff: nil,
+      task_item: nil,
+      notice: nil,
+      raw_view: false
+    }
   end
 
   defp socket_with_run(run_id) do

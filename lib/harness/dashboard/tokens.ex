@@ -458,6 +458,38 @@ defmodule Harness.Dashboard.Tokens do
       .field dt { color: var(--text-subtle); }
       .field dd { margin: 0; font-family: var(--font-mono); }
 
+      /* Run stage stepper (Task 312) */
+      .run-stage-stepper {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-1);
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .run-stage-step {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1);
+        font-size: var(--text-xs);
+        letter-spacing: 0.02em;
+      }
+      .run-stage-sep { color: var(--text-subtle); margin-inline: var(--space-1); }
+      .run-stage-step-complete { color: var(--text-muted); }
+      .run-stage-step-complete .run-stage-label::before {
+        content: "✓ ";
+        color: var(--verdict-ok);
+      }
+      .run-stage-step-current { color: var(--accent); font-weight: 600; }
+      .run-stage-step-future { color: var(--text-subtle); opacity: 0.55; }
+      .run-agent {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
+      .run-agent-active { color: var(--accent); font-weight: 600; }
+
       /* Low-traffic run metadata (os pid / reason / worktree path) tucked behind
          a disclosure so the high-signal rows above stay compact. */
       .run-internals {

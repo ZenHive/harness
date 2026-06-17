@@ -18,8 +18,10 @@ defmodule Harness.Dashboard.LiveMountTest do
   alias Harness.GitFixture
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
+  alias Harness.ResultStore
   alias Harness.Roadmap.Item
   alias Harness.Run
+  alias Harness.Run.LogRecord
 
   setup %{conn: conn} do
     prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
@@ -137,6 +139,39 @@ defmodule Harness.Dashboard.LiveMountTest do
       assert html =~ ~s(class="run-internals")
       assert html =~ "Run internals"
       assert html =~ "Worktree path"
+
+      # Task 312 — stage stepper replaces bare state text.
+      assert html =~ ~s(data-run-stage-stepper)
+      assert html =~ ~s(data-status="current")
+      refute html =~ ~r{<dt>State</dt>\s*<dd>(?:running|dispatched|reviewing)</dd>}
+    end
+
+    test "a settled run replays transcript usage into the token row", %{conn: conn} do
+      run_id = "live-mount-tokens-#{System.unique_integer([:positive])}"
+      usage_line = ~s({"type":"result","usage":{"input_tokens":7,"output_tokens":44}}\n)
+
+      :ok =
+        ResultStore.record_run(%LogRecord{
+          batch_id: "batch-#{run_id}",
+          run_id: run_id,
+          task_id: "312",
+          project_name: "livemount-demo",
+          agent: :claude,
+          adapter: Harness.Adapters.Claude,
+          state: :done,
+          reason: :approved,
+          verdict: :approve,
+          duration_ms: 1_000,
+          review_iterations: 0,
+          agent_output: usage_line
+        })
+
+      on_exit(fn -> ResultStore.delete_run(run_id) end)
+
+      {:ok, _view, html} = live(conn, "/harness/runs/#{run_id}")
+
+      assert html =~ ~s(data-stage="done" data-status="current")
+      assert html =~ ">51<"
     end
 
     test "the ?raw=1 param renders the raw stream pane", %{conn: conn} do

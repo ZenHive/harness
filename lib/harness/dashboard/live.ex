@@ -802,19 +802,40 @@ defmodule Harness.Dashboard.Live do
         <dt>Task</dt>
         <dd>{@run_status.task_id}</dd>
         <dt>State</dt>
-        <dd>{@run_status.state}</dd>
+        <dd><Components.stage_stepper state={@run_status.state} /></dd>
         <dt>Verdict</dt>
         <dd>{verdict_label(@run_status.review_verdict)}</dd>
         <dt>Agent</dt>
-        <dd>{agent_label(@agent_kind, @run_status.agent)}</dd>
+        <dd class={run_agent_class(:implementer, @run_status)}>
+          <span
+            :if={active_agent_role(@run_status) == :implementer}
+            class="cf-live-dot"
+            aria-hidden="true"
+          ></span>
+          {agent_label(@agent_kind, @run_status.agent)}
+        </dd>
         <dt :if={@run_status.reviewer_adapter}>Reviewer</dt>
-        <dd :if={@run_status.reviewer_adapter}>{agent_label(@run_status.reviewer_adapter, nil)}</dd>
+        <dd :if={@run_status.reviewer_adapter} class={run_agent_class(:reviewer, @run_status)}>
+          <span
+            :if={active_agent_role(@run_status) == :reviewer}
+            class="cf-live-dot"
+            aria-hidden="true"
+          ></span>
+          {agent_label(@run_status.reviewer_adapter, nil)}
+        </dd>
         <dt :if={@run_status.recovery_adapter}>Recovery</dt>
-        <dd :if={@run_status.recovery_adapter}>{agent_label(@run_status.recovery_adapter, nil)}</dd>
+        <dd :if={@run_status.recovery_adapter} class={run_agent_class(:recovery, @run_status)}>
+          <span
+            :if={active_agent_role(@run_status) == :recovery}
+            class="cf-live-dot"
+            aria-hidden="true"
+          ></span>
+          {agent_label(@run_status.recovery_adapter, nil)}
+        </dd>
         <dt>Model</dt>
         <dd>{model_label(@agent_kind, @run_status.model, @transcript)}</dd>
         <dt>Tokens</dt>
-        <dd>{token_label(@agent_kind, @transcript)}</dd>
+        <dd>{token_label(stage_token_agent_kind(@run_status, @agent_kind), @transcript)}</dd>
       </dl>
       <details class="run-internals">
         <summary>Run internals</summary>
@@ -1291,6 +1312,32 @@ defmodule Harness.Dashboard.Live do
     do: agent_label(recovery, nil)
 
   def stage_agent_label(%Status{agent: agent}), do: agent_label(agent, nil)
+
+  # Which agent row gets the live pulsing dot on the run-detail header.
+  @doc false
+  @spec active_agent_role(Status.t()) :: :implementer | :reviewer | :recovery | nil
+  def active_agent_role(%Status{state: :running}), do: :implementer
+  def active_agent_role(%Status{state: :reviewing}), do: :reviewer
+  def active_agent_role(%Status{state: :recovering}), do: :recovery
+  def active_agent_role(_status), do: nil
+
+  @spec run_agent_class(:implementer | :reviewer | :recovery, Status.t()) :: String.t()
+  defp run_agent_class(role, status) do
+    if active_agent_role(status) == role, do: "run-agent run-agent-active", else: "run-agent"
+  end
+
+  # Parser kind for live token totals — follow the active stage's agent so a
+  # reviewing run parses the reviewer's stream, not the implementer's adapter.
+  @doc false
+  @spec stage_token_agent_kind(Status.t(), Parser.agent_kind() | nil) :: Parser.agent_kind() | nil
+  def stage_token_agent_kind(%Status{state: :reviewing, reviewer_adapter: reviewer}, _fallback) when not is_nil(reviewer),
+    do: reviewer
+
+  def stage_token_agent_kind(%Status{state: :recovering, recovery_adapter: recovery}, _fallback)
+      when not is_nil(recovery), do: recovery
+
+  def stage_token_agent_kind(%Status{agent: agent}, _fallback) when not is_nil(agent), do: agent
+  def stage_token_agent_kind(_status, fallback), do: fallback
 
   # Token burn parsed from the captured transcript with the same per-adapter
   # parser the KPI ledger uses — works for a live (partial) or settled (full)

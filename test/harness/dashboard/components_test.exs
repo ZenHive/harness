@@ -473,6 +473,54 @@ defmodule Harness.Dashboard.ComponentsTest do
     end
   end
 
+  describe "stage_stepper/1 (Task 312)" do
+    test "renders the base pipeline with the current stage emphasized" do
+      html = render_component(&Components.stage_stepper/1, state: :reviewing)
+
+      assert html =~ ~s(data-run-stage-stepper)
+      assert html =~ ~s(data-stage="reviewing" data-status="current")
+      assert html =~ ~s(data-stage="committing" data-status="complete")
+      assert html =~ ~s(data-stage="running" data-status="complete")
+      assert html =~ ~s(data-stage="dispatched" data-status="complete")
+    end
+
+    test "inserts recovering only while the run is recovering" do
+      html = render_component(&Components.stage_stepper/1, state: :recovering)
+
+      assert html =~ ~s(data-stage="recovering" data-status="current")
+      refute html =~ ~s(data-stage="held")
+    end
+
+    test "inserts held only while the run is held" do
+      html = render_component(&Components.stage_stepper/1, state: :held)
+
+      assert html =~ ~s(data-stage="held" data-status="current")
+      refute html =~ ~s(data-stage="recovering")
+    end
+
+    test "terminal done marks the full pipeline complete through Done" do
+      html = render_component(&Components.stage_stepper/1, state: :done)
+
+      assert html =~ ~s(data-stage="done" data-status="current")
+      assert html =~ ~s(data-stage="reviewing" data-status="complete")
+    end
+
+    test "stage_stepper_steps/1 maps each in-flight state to the right current step" do
+      for {state, current} <- [
+            dispatched: :dispatched,
+            running: :running,
+            committing: :committing,
+            reviewing: :reviewing,
+            recovering: :recovering,
+            held: :held
+          ] do
+        steps = Components.stage_stepper_steps(state)
+        current_step = Enum.find(steps, &(&1.status == :current))
+        assert current_step.stage == current, "expected #{state} to emphasize #{current}"
+      end
+    end
+  end
+
   describe "page_shell/1" do
     test "wraps the inner block between the navbar and footer" do
       assigns = %{inner_block: inner_block(~s(<p id="page-body">content</p>))}

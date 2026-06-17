@@ -31,6 +31,7 @@ defmodule Harness.Dashboard.Components do
   use Phoenix.Component
 
   alias Harness.Dashboard.Transcript.Parser
+  alias Harness.Run.Status
   alias Harness.SettingsStore
   alias Phoenix.LiveView.Rendered
 
@@ -332,6 +333,89 @@ defmodule Harness.Dashboard.Components do
     <span class="leaf-other">{@inspected}</span>
     """
   end
+
+  ## --- Run detail header (Task 312) ----------------------------------------
+
+  @base_run_stages [:dispatched, :running, :committing, :reviewing]
+
+  attr(:state, :atom, required: true)
+
+  @doc """
+  Horizontal pipeline for `Harness.Run.Status.state` on the run-detail page.
+
+  Renders dispatched → running → committing → reviewing → done/failed as a
+  mechanical fact; `:recovering` / `:held` steps appear only while the run is
+  in those states. Landing and audit are post-settle workers — not stages here.
+  """
+  @spec stage_stepper(map()) :: Rendered.t()
+  def stage_stepper(assigns) do
+    steps = stage_stepper_steps(assigns.state)
+    assigns = assign(assigns, :steps, steps)
+
+    ~H"""
+    <ol class="run-stage-stepper" data-run-stage-stepper aria-label="Run stage">
+      <li :for={{step, idx} <- Enum.with_index(@steps)} class={stepper_step_class(step.status)}>
+        <span :if={idx > 0} class="run-stage-sep" aria-hidden="true">→</span>
+        <span class="run-stage-label" data-stage={step.stage} data-status={step.status}>
+          {step.label}
+        </span>
+      </li>
+    </ol>
+    """
+  end
+
+  @doc false
+  @spec stage_stepper_steps(Status.state()) :: [
+          %{stage: Status.state(), label: String.t(), status: :complete | :current | :future}
+        ]
+  def stage_stepper_steps(state) do
+    stages = stages_for(state)
+    current_idx = Enum.find_index(stages, &(&1 == state)) || 0
+
+    Enum.map(stages, fn stage ->
+      %{
+        stage: stage,
+        label: stage_label(stage),
+        status: step_status(current_idx, stages, stage)
+      }
+    end)
+  end
+
+  @spec stages_for(Status.state()) :: [Status.state()]
+  defp stages_for(:recovering), do: [:dispatched, :running, :recovering, :committing, :reviewing]
+
+  defp stages_for(:held), do: [:dispatched, :running, :held, :committing, :reviewing]
+
+  defp stages_for(:done), do: @base_run_stages ++ [:done]
+  defp stages_for(:failed), do: @base_run_stages ++ [:failed]
+  defp stages_for(_state), do: @base_run_stages
+
+  @spec stage_label(Status.state()) :: String.t()
+  defp stage_label(:dispatched), do: "Dispatched"
+  defp stage_label(:running), do: "Running"
+  defp stage_label(:committing), do: "Committing"
+  defp stage_label(:reviewing), do: "Reviewing"
+  defp stage_label(:recovering), do: "Recovering"
+  defp stage_label(:held), do: "Held"
+  defp stage_label(:done), do: "Done"
+  defp stage_label(:failed), do: "Failed"
+
+  @spec step_status(non_neg_integer(), [Status.state()], Status.state()) ::
+          :complete | :current | :future
+  defp step_status(current_idx, stages, stage) do
+    idx = Enum.find_index(stages, &(&1 == stage))
+
+    cond do
+      idx == current_idx -> :current
+      idx < current_idx -> :complete
+      true -> :future
+    end
+  end
+
+  @spec stepper_step_class(:complete | :current | :future) :: String.t()
+  defp stepper_step_class(:complete), do: "run-stage-step run-stage-step-complete"
+  defp stepper_step_class(:current), do: "run-stage-step run-stage-step-current"
+  defp stepper_step_class(:future), do: "run-stage-step run-stage-step-future"
 
   ## --- Changed files / run diff --------------------------------------------
 
