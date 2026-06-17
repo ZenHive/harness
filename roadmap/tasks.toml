@@ -9451,7 +9451,7 @@ id = "313"
 phase = 22
 bundle = "live-run-legibility"
 milestone = "v0_15"
-status = "pending"
+status = "in_progress"
 title = "Run timing — Status/gen_statem timestamps -> live elapsed + per-stage durations"
 scores = { d = 4, b = 4, u = 3 }
 depends_on = [312]
@@ -9468,6 +9468,7 @@ From the flying-blind review (2026-06-16): the run-detail page has NO time signa
 This is the one task touching the run gen_statem surface, so it is its own dispatch (separate reviewer concern from the pure-dashboard 312/314). Keep the gen_statem change minimal and additive; from_log_record must stay tolerant of the fields' absence so BEAM-restart replay of old records is unaffected. Depends on 312 (both edit the run-info header region).
 """
 created_at = "2026-06-16"
+started_at = "2026-06-17"
 scored_at = "2026-06-16"
 
 [[task]]

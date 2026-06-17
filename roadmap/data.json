@@ -14057,7 +14057,7 @@
       "phase": 22,
       "bundle": "live-run-legibility",
       "milestone": "v0_15",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Run timing — Status/gen_statem timestamps -> live elapsed + per-stage durations",
       "scores": {
         "d": 4,
@@ -14107,6 +14107,7 @@
       ],
       "body": "From the flying-blind review (2026-06-16): the run-detail page has NO time signal at all — you cannot tell if a run started 10 seconds or 10 minutes ago, nor how long it has sat in `reviewing`. Unlike the other bundle tasks this one needs a backend change: Harness.Run.Status (lib/harness/run/status.ex) currently carries zero timestamps, so even a single elapsed clock requires adding started_at to the struct and stamping it from the Run gen_statem. Per-stage durations need a state->entered_at map stamped on each transition.\n\nThis is the one task touching the run gen_statem surface, so it is its own dispatch (separate reviewer concern from the pure-dashboard 312/314). Keep the gen_statem change minimal and additive; from_log_record must stay tolerant of the fields' absence so BEAM-restart replay of old records is unaffected. Depends on 312 (both edit the run-info header region).\n",
       "created_at": "2026-06-16",
+      "started_at": "2026-06-17",
       "scored_at": "2026-06-16",
       "cross_repo": []
     },
