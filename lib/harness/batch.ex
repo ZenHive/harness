@@ -244,10 +244,24 @@ defmodule Harness.Batch do
   @spec enqueue_item(Project.t(), Item.t(), keyword()) :: {:ok, Oban.Job.t()} | {:error, dispatch_error()}
   defp enqueue_item(%Project{} = project, %Item{} = item, opts) do
     with {:ok, adapter} <- adapter_for_agent(item.agent) do
-      {_run_id, changeset} = RunWorker.new_dispatch_job(project, item, adapter, opts)
+      {_run_id, changeset} = RunWorker.new_dispatch_job(project, item, adapter, dispatch_opts(item, opts))
       Harness.Oban.insert(changeset)
     end
   end
+
+  @spec dispatch_opts(Item.t(), keyword()) :: keyword()
+  defp dispatch_opts(%Item{model: model}, opts) do
+    if Keyword.get(opts, :persist_requested_model, false),
+      do: Keyword.put(opts, :requested_model, model),
+      else: put_binary_requested_model(opts, model)
+  end
+
+  @spec put_binary_requested_model(keyword(), term()) :: keyword()
+  defp put_binary_requested_model(opts, model) when is_binary(model) do
+    Keyword.put_new(opts, :requested_model, model)
+  end
+
+  defp put_binary_requested_model(opts, _model), do: opts
 
   @spec adapter_for_agent(term()) :: {:ok, module()} | {:error, {:invalid_item_agent, term()}}
   defp adapter_for_agent(agent) do

@@ -474,6 +474,46 @@ defmodule Harness.ObanDispatchTest do
     assert_received {:start_requested_model, "gpt-5.4", "48"}
   end
 
+  test "worker prefers a persisted requested_model over the re-ingested item's model" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-worker", name: "persisted-model-project")
+    assert :ok = ProjectRegistry.register(project)
+
+    Application.put_env(:harness, :roadmap_ingest, fn _selector, _opts ->
+      {:ok, item("48", :codex, "claude-opus-4-8")}
+    end)
+
+    Application.put_env(:harness, :run_starter, fn %Item{} = item, _run_project, _adapter, opts ->
+      send(parent, {:start_requested_model, Keyword.get(opts, :requested_model), item.id})
+      run_id = "run-persisted-model-ok"
+      subscriber = Keyword.fetch!(opts, :subscriber)
+
+      pid =
+        spawn(fn ->
+          send(
+            subscriber,
+            {:harness_run, run_id, %Result{run_id: run_id, task_id: item.id, state: :done, reason: :approved}}
+          )
+        end)
+
+      {:ok, run_id, pid}
+    end)
+
+    assert :ok =
+             Worker.perform(%Oban.Job{
+               id: 128,
+               attempt: 1,
+               args: %{
+                 "project_name" => "persisted-model-project",
+                 "item_id" => "48",
+                 "adapter_module" => "Elixir.Harness.AgentAdapter.Codex",
+                 "requested_model" => "gpt-5.5"
+               }
+             })
+
+    assert_received {:start_requested_model, "gpt-5.5", "48"}
+  end
+
   test "worker starts runs with the persisted run id from job args" do
     parent = self()
     project = ProjectFixture.from_repo("/tmp/harness-worker", name: "run-id-project")

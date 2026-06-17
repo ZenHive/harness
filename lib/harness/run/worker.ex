@@ -122,10 +122,9 @@ defmodule Harness.Run.Worker do
     run_id = Keyword.get(opts, :run_id) || generate_run_id()
 
     args =
-      Harness.Oban.put_env_arg(
-        %{project_name: project.name, item_id: item_id, adapter_module: Atom.to_string(adapter), run_id: run_id},
-        opts
-      )
+      %{project_name: project.name, item_id: item_id, adapter_module: Atom.to_string(adapter), run_id: run_id}
+      |> Harness.Oban.put_env_arg(opts)
+      |> put_requested_model_arg(opts)
 
     changeset =
       new(args,
@@ -135,6 +134,14 @@ defmodule Harness.Run.Worker do
       )
 
     {run_id, changeset}
+  end
+
+  @spec put_requested_model_arg(map(), keyword()) :: map()
+  defp put_requested_model_arg(args, opts) when is_map(args) and is_list(opts) do
+    case Keyword.fetch(opts, :requested_model) do
+      {:ok, model} when is_binary(model) or is_nil(model) -> Map.put(args, :requested_model, model)
+      _other -> args
+    end
   end
 
   @impl Oban.Worker
@@ -430,14 +437,25 @@ defmodule Harness.Run.Worker do
   defp run_opts(%Oban.Job{id: id, args: args} = job, %Item{} = item) when is_integer(id) do
     opts = [batch_id: batch_id(job), subscriber: self()]
 
-    opts =
-      case item.model do
-        model when is_binary(model) -> Keyword.put(opts, :requested_model, model)
-        _other -> opts
-      end
+    opts = requested_model_opt(args, item, opts)
 
     opts ++ run_id_opt(args) ++ env_opt(args)
   end
+
+  @spec requested_model_opt(map(), Item.t(), keyword()) :: keyword()
+  defp requested_model_opt(%{"requested_model" => model}, %Item{}, opts) when is_binary(model) or is_nil(model) do
+    Keyword.put(opts, :requested_model, model)
+  end
+
+  defp requested_model_opt(%{requested_model: model}, %Item{}, opts) when is_binary(model) or is_nil(model) do
+    Keyword.put(opts, :requested_model, model)
+  end
+
+  defp requested_model_opt(_args, %Item{model: model}, opts) when is_binary(model) do
+    Keyword.put(opts, :requested_model, model)
+  end
+
+  defp requested_model_opt(_args, %Item{}, opts), do: opts
 
   @spec run_id_opt(map()) :: keyword()
   defp run_id_opt(%{"run_id" => run_id}) when is_binary(run_id), do: [run_id: run_id]

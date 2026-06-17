@@ -925,14 +925,18 @@ defmodule Harness.Dispatch do
   @spec bundle(String.t(), String.t(), boolean()) :: {:ok, map()} | {:error, error()}
   def bundle(project_name, adapter \\ "claude", scrub_anthropic_key \\ true)
       when is_binary(project_name) and is_binary(adapter) and is_boolean(scrub_anthropic_key) do
-    with {:ok, {_module, render_agent}} <- resolve_delegatable_adapter(adapter),
+    with {:ok, fallback_pair} <- resolve_delegatable_adapter(adapter),
          {:ok, project} <- lookup_project(project_name),
          {:ok, %{bundle: bundle_meta, tasks: tasks}} <- next_bundle(project_name),
-         plan = WriteSetPlan.plan(tasks),
+         plan = tasks |> dependency_ready_tasks() |> WriteSetPlan.plan(),
          dispatch_tasks = first_wave(plan),
          :ok <- log_serialized_bundle(project, plan),
-         {:ok, items} <- ingest_bundle(dispatch_tasks, project, render_agent),
-         {:ok, jobs} <- Batch.dispatch(project, items, env: scrub_env(scrub_anthropic_key)) do
+         {:ok, items} <- ingest_bundle(dispatch_tasks, project, fallback_pair),
+         {:ok, jobs} <-
+           Batch.dispatch(project, items,
+             env: scrub_env(scrub_anthropic_key),
+             persist_requested_model: true
+           ) do
       {:ok,
        %{
          bundle: bundle_meta,
@@ -1491,11 +1495,11 @@ defmodule Harness.Dispatch do
   # Ingest each bundle task into a %Roadmap.Item{}, halting on the first failure.
   # rmap emits task ids as JSON (string or integer); coerce to the string id
   # `Roadmap.ingest({:id, _})` requires.
-  @spec ingest_bundle([map()], Project.t(), atom()) :: {:ok, [Item.t()]} | {:error, error()}
-  defp ingest_bundle(tasks, project, render_agent) do
+  @spec ingest_bundle([map()], Project.t(), {module(), atom()}) :: {:ok, [Item.t()]} | {:error, error()}
+  defp ingest_bundle(tasks, project, fallback_pair) do
     tasks
     |> Enum.reduce_while({:ok, []}, fn task, {:ok, items} ->
-      case ingest_roadmap({:id, to_string(task["id"])}, project: project, agent: render_agent) do
+      case ingest_bundle_task(task, project, fallback_pair) do
         {:ok, item} -> {:cont, {:ok, [item | items]}}
         {:error, _reason} = error -> {:halt, error}
       end
@@ -1505,6 +1509,61 @@ defmodule Harness.Dispatch do
       {:error, _reason} = error -> error
     end
   end
+
+  @spec ingest_bundle_task(map(), Project.t(), {module(), atom()}) :: {:ok, Item.t()} | {:error, error()}
+  defp ingest_bundle_task(task, project, fallback_pair) do
+    with {:ok, {adapter, render_agent}} <- bundle_adapter_for_task(task, fallback_pair),
+         {:ok, item} <- ingest_roadmap({:id, task_id(task)}, project: project, agent: render_agent) do
+      {:ok, %{item | model: effective_model_for_adapter(adapter, render_agent, item)}}
+    end
+  end
+
+  @spec bundle_adapter_for_task(map(), {module(), atom()}) ::
+          {:ok, {module(), atom()}} | {:error, error()}
+  defp bundle_adapter_for_task(%{"assignee" => assignee}, _fallback_pair)
+       when is_binary(assignee) and assignee not in ["", "human"] do
+    resolve_delegatable_adapter(assignee)
+  end
+
+  defp bundle_adapter_for_task(_task, fallback_pair), do: {:ok, fallback_pair}
+
+  @spec effective_model_for_adapter(module(), atom(), Item.t()) :: String.t() | nil
+  defp effective_model_for_adapter(adapter, agent, %Item{} = item) do
+    model = effective_model(item, agent)
+
+    if is_nil(model) or AgentAdapter.model_supported?(adapter, model),
+      do: model,
+      else: Config.agent_model(agent)
+  end
+
+  @spec dependency_ready_tasks([map()]) :: [map()]
+  defp dependency_ready_tasks(tasks) do
+    non_done_ids =
+      tasks
+      |> Enum.reject(&done_task?/1)
+      |> MapSet.new(&task_id/1)
+
+    Enum.reject(tasks, &depends_on_non_done_task?(&1, non_done_ids))
+  end
+
+  @spec depends_on_non_done_task?(map(), MapSet.t(String.t())) :: boolean()
+  defp depends_on_non_done_task?(task, non_done_ids) do
+    task
+    |> Map.get("depends_on", [])
+    |> string_values()
+    |> Enum.any?(&MapSet.member?(non_done_ids, &1))
+  end
+
+  @spec done_task?(map()) :: boolean()
+  defp done_task?(%{"status" => status}) when status in ["done", :done], do: true
+  defp done_task?(_task), do: false
+
+  @spec string_values(term()) :: [String.t()]
+  defp string_values(values) when is_list(values), do: Enum.map(values, &to_string/1)
+  defp string_values(_values), do: []
+
+  @spec task_id(map()) :: String.t()
+  defp task_id(task), do: task |> Map.get("id") |> to_string()
 
   @spec next_bundle(String.t()) :: {:ok, %{bundle: map() | nil, tasks: [map()]}} | {:error, error()}
   defp next_bundle(project_name) do
