@@ -9481,7 +9481,7 @@ id = "314"
 phase = 22
 bundle = "live-run-legibility"
 milestone = "v0_15"
-status = "pending"
+status = "in_progress"
 title = "Live transcript chrome — current-activity line, last-event heartbeat, file +/- chips, turn/tool summary"
 scores = { d = 3, b = 4, u = 3 }
 depends_on = [312]
@@ -9501,4 +9501,5 @@ From the flying-blind review (2026-06-16). Even with a legible transcript (311) 
 Depends on 312 (shared live.ex render_show + components.ex transcript region; serialize on the live file).
 """
 created_at = "2026-06-16"
+started_at = "2026-06-17"
 scored_at = "2026-06-16"

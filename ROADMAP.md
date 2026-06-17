@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 288 — Enrich the /harness/roadmap page beyond the 4-column rollup, Task 291 — Model catalog card: membership multi-select (probed universe + operator subset) replacing the flat removable list, Task 295 — Run show page: render the focused run's roadmap task details (title/score/markers/criteria/body), Task 298 — Move the agent KPI ledger to its own full page (/harness/kpi/agents), Task 301 — list_available_models conflates 'no catalog' with 'probed-but-none-selected' — distinguish the two diagnostic states on 2026-06-15
 
-**Up next:** Task 314 — Live transcript chrome — current-activity line, last-event heartbeat, file +/- chips, turn/tool summary [D:3/B:4/U:3 → Eff:1.17] 📋
+**Up next:** Task 174 — Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:3/B:5/U:4 → Eff:1.5] 🚀
 <!-- FOCUS:END -->
 
 ---
