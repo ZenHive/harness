@@ -13941,7 +13941,7 @@
       "phase": 22,
       "bundle": "live-run-legibility",
       "milestone": "v0_15",
-      "status": "pending",
+      "status": "done",
       "title": "Transcript legibility — kill the content-less 'OTHER' wall (the flying-blind core)",
       "scores": {
         "d": 3,
@@ -13984,9 +13984,14 @@
         "liveview",
         "elixir"
       ],
+      "shipped_in": "4f702d61110a2835b8be9926735039969f8c1da9",
       "body": "Observed live 2026-06-16 on run-1781649574472-0b0e5a80 (state `reviewing`, implementer codex, reviewer cursor). The run-detail page showed Tokens —, Verdict —, 'Files being edited: No file edits observed yet', and a transcript of 500 blocks that every one rendered the literal word 'OTHER'. The operator's words: 'we are flying blind.'\n\nRoot cause is mechanical and two-part:\n1. lib/harness/dashboard/transcript/parser/cursor.ex:83 — `translate(%{\"type\" => other} = event) when is_binary(other)` routes EVERY unrecognized cursor event type to `{:system, %{kind: :other, data: ...}}`. Cursor's newer stream-json emits message/delta types the parser never learned, so the reviewer's entire output falls through here.\n2. lib/harness/dashboard/components.ex:608 eyebrow/1 renders a `:system` event as JUST `to_string(@kind)` — the `data` payload is deliberately dropped. So 500 `:other` events become 500 content-free 'other' lines (uppercased in display).\n\nNet: during the reviewing stage — exactly when the operator most needs to see what the cross-family reviewer is doing — the transcript is unreadable noise. This is task #1 of the live-run-legibility bundle because the richer header telemetry (312-314) is worthless if the transcript itself is illegible.\n\nFix is pure mechanics: teach cursor.ex the real event types (read a live cursor transcript to enumerate them — do NOT guess the wire format), keep the `:other`/`:unknown` clauses as a safety net but make them carry their `_type`, and collapse consecutive unknown/other events into one counted block the way consecutive `:thought` events already collapse. Count and relay facts; never judge them.\n",
       "created_at": "2026-06-16",
+      "done_at": "2026-06-17",
       "scored_at": "2026-06-16",
+      "implemented": "Killed the content-less 'OTHER' wall: cursor.ex no longer routes unrecognized stream-json types to data-less :other; eyebrow/1 renders the :system data payload. Reviewer approved + landed.",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {

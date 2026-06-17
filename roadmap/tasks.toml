@@ -9385,7 +9385,7 @@ id = "311"
 phase = 22
 bundle = "live-run-legibility"
 milestone = "v0_15"
-status = "pending"
+status = "done"
 title = "Transcript legibility — kill the content-less 'OTHER' wall (the flying-blind core)"
 scores = { d = 3, b = 5, u = 4 }
 acceptance_criteria = ["Viewing a live `reviewing` run at /harness/runs/<id> no longer renders a wall of identical content-less rows: consecutive `{:system, %{kind: :other}}` / `:unknown` events collapse into ONE block (reuse the existing consecutive-:thought collapse path in group_events/2) that shows a count AND the distinct underlying `_type` value(s) seen — never N blank 'OTHER' lines.", "cursor.ex maps the event `type`s its current stream-json actually emits but the parser drops to `:other` (enumerate them from a real cursor reviewer transcript — read Harness.Run.LogRecord.agent_output for a cursor-reviewed run via mcp__tidewave__execute_sql_query, or the raw stream): assistant text -> :assistant_text, tool calls -> :assistant_tool_use/:tool_result, reasoning -> :thought — so the reviewer's real work renders as chat turns, not eyebrows.", "The `:other`/`:unknown` fallthrough is RETAINED as a never-crash/never-drop safety net (the `when is_binary(other)` and final clauses stay), but its rendering surfaces the payload's `_type` + a short snippet, not a bare kind label.", "eyebrow/1 (or the block built for `:other` in group_events/2) carries enough of `data` to be legible — at minimum the `_type` — instead of dropping the payload.", "Tests: a fixture of N consecutive cursor `:other` events renders as one collapsed block carrying the count; each newly-recognized cursor type renders as the correct block kind; round-trip through transcript_view/1; the unknown-safety fixture still renders (nothing lost).", "Mantra-clean: pure parse + verbatim relay of raw agent output; no event is judged for importance, nothing classified by meaning."]
@@ -9406,8 +9406,13 @@ Net: during the reviewing stage — exactly when the operator most needs to see 
 
 Fix is pure mechanics: teach cursor.ex the real event types (read a live cursor transcript to enumerate them — do NOT guess the wire format), keep the `:other`/`:unknown` clauses as a safety net but make them carry their `_type`, and collapse consecutive unknown/other events into one counted block the way consecutive `:thought` events already collapse. Count and relay facts; never judge them.
 """
+implemented = "Killed the content-less 'OTHER' wall: cursor.ex no longer routes unrecognized stream-json types to data-less :other; eyebrow/1 renders the :system data payload. Reviewer approved + landed."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-16"
 scored_at = "2026-06-16"
+done_at = "2026-06-17"
+shipped_in = "4f702d61110a2835b8be9926735039969f8c1da9"
 
 [[task]]
 id = "312"

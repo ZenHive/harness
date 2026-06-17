@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 288 — Enrich the /harness/roadmap page beyond the 4-column rollup, Task 291 — Model catalog card: membership multi-select (probed universe + operator subset) replacing the flat removable list, Task 295 — Run show page: render the focused run's roadmap task details (title/score/markers/criteria/body), Task 298 — Move the agent KPI ledger to its own full page (/harness/kpi/agents), Task 301 — list_available_models conflates 'no catalog' with 'probed-but-none-selected' — distinguish the two diagnostic states on 2026-06-15
 
-**Up next:** Task 311 — Transcript legibility — kill the content-less 'OTHER' wall (the flying-blind core) [D:3/B:5/U:4 → Eff:1.5] 🚀
+**Up next:** Task 312 — Live run header — stage stepper + active-agent indicator + live token counter [D:3/B:4/U:4 → Eff:1.33] 📋
 <!-- FOCUS:END -->
 
 ---
