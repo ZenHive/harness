@@ -118,7 +118,7 @@ status = "pending"
 [phases.22]
 name = "Live-Run Observability — stop flying blind while an agent works"
 order = 22
-status = "in_progress"
+status = "done"
 
 # ----------------------------------------------------------------------------
 # Bundles
@@ -425,7 +425,7 @@ target_version = "0.14.0"
 name = "Live-Run Observability — stop flying blind while an agent works"
 description = "Tests the hypothesis that an operator (or driving AI) watching a live run can tell what the agent is doing, how far through the loop it is, and whether it's still progressing — from the /harness run-detail page alone, without reading raw JSON — and that closing this 'flying blind' gap is PURE mechanical fact-surfacing (legible reviewer transcript, stage stepper, live token total, elapsed/per-stage timers, activity heartbeat) that needs no judgment in code: the page counts and relays facts; the read of 'stuck vs working' stays with the human/AI, never a formula."
 order = 15
-status = "active"
+status = "done"
 target_version = "0.15.0"
 
 # ----------------------------------------------------------------------------
