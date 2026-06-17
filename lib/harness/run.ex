@@ -2475,8 +2475,6 @@ defmodule Harness.Run do
     end
   end
 
-  defp maybe_capture_structured_failure(_data), do: :ok
-
   @spec reviewer_driver_opts(data(), pid()) :: keyword()
   defp reviewer_driver_opts(data, parent) do
     [
