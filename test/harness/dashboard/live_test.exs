@@ -645,7 +645,7 @@ defmodule Harness.Dashboard.LiveTest do
       assert Live.agent_label(nil, nil) == "—"
     end
 
-    test "stage_agent_label names the reviewer while reviewing, recovery while recovering, else implementer" do
+    test "stage_agent_label names the reviewer while reviewing, recovery-review while re-prompting, recovery while recovering, else implementer" do
       base = %Status{run_id: "r", task_id: "1", state: :running, agent: :cursor}
 
       # Non-stage states show the implementer.
@@ -654,6 +654,10 @@ defmodule Harness.Dashboard.LiveTest do
 
       # Reviewing shows the reviewer, not the implementer.
       assert Live.stage_agent_label(%{base | state: :reviewing, reviewer_adapter: :claude}) == "claude"
+
+      recovery_review = %{base | state: :reviewing, agent_kind: :recovery_review, reviewer_adapter: :claude}
+      assert Live.stage_agent_label(recovery_review) == "recovery reviewer: claude"
+
       # Recovering shows the recovery agent.
       assert Live.stage_agent_label(%{base | state: :recovering, recovery_adapter: :codex}) == "codex"
 
@@ -676,6 +680,7 @@ defmodule Harness.Dashboard.LiveTest do
 
       assert Live.active_agent_role(base) == :implementer
       assert Live.active_agent_role(%{base | state: :reviewing}) == :reviewer
+      assert Live.active_agent_role(%{base | state: :reviewing, agent_kind: :recovery_review}) == :recovery_review
       assert Live.active_agent_role(%{base | state: :recovering}) == :recovery
       assert Live.active_agent_role(%{base | state: :committing}) == nil
     end
@@ -690,6 +695,7 @@ defmodule Harness.Dashboard.LiveTest do
       }
 
       assert Live.stage_token_agent_kind(base, :cursor) == :claude
+      assert Live.stage_token_agent_kind(%{base | agent_kind: :recovery_review}, :cursor) == :claude
       assert Live.stage_token_agent_kind(%{base | state: :recovering, recovery_adapter: :codex}, :cursor) == :codex
       assert Live.stage_token_agent_kind(%{base | state: :running}, :cursor) == :cursor
     end
@@ -751,6 +757,42 @@ defmodule Harness.Dashboard.LiveTest do
 
       assert html =~ ~s(data-run-elapsed)
       assert html =~ ">5s<"
+    end
+
+    test "renders the recovery-reviewer pass as the active live stage" do
+      started_at = ~U[2026-06-17 08:00:00.000Z]
+      reviewing_at = DateTime.add(started_at, 5, :second)
+      recovery_review_at = DateTime.add(started_at, 10, :second)
+
+      status = %Status{
+        run_id: "r",
+        task_id: "1",
+        state: :reviewing,
+        agent: :cursor,
+        reviewer_adapter: :claude,
+        agent_kind: :recovery_review,
+        agent_os_pid: 12_345,
+        started_at: started_at,
+        state_entered_at: %{
+          dispatched: started_at,
+          reviewing: reviewing_at,
+          recovery_review: recovery_review_at
+        }
+      }
+
+      html =
+        status
+        |> show_render_assigns("recovery transcript")
+        |> Map.put(:now, DateTime.add(recovery_review_at, 3, :second))
+        |> Map.put(:raw_view, true)
+        |> Live.render()
+        |> rendered_to_string()
+
+      assert html =~ "recovery reviewer: claude"
+      assert html =~ "Recovery reviewer · 3s"
+      assert html =~ ">12345<"
+      assert html =~ "recovery transcript"
+      refute html =~ "Reviewing · 8s"
     end
 
     test "renders the resolved roadmap task section" do

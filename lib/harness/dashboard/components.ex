@@ -337,6 +337,7 @@ defmodule Harness.Dashboard.Components do
   ## --- Run detail header (Task 312) ----------------------------------------
 
   @base_run_stages [:dispatched, :running, :committing, :reviewing]
+  @typep timing_stage :: Status.state() | :recovery_review
   @milliseconds_per_second 1_000
   @seconds_per_minute 60
   @minutes_per_hour 60
@@ -403,6 +404,17 @@ defmodule Harness.Dashboard.Components do
   defp stage_label(:done), do: "Done"
   defp stage_label(:failed), do: "Failed"
 
+  @spec recovery_review_stage_label(Status.t(), DateTime.t()) :: String.t()
+  defp recovery_review_stage_label(status, now) do
+    duration =
+      case state_duration_ms(status, :recovery_review, now) do
+        nil -> "—"
+        ms -> duration_label(ms)
+      end
+
+    "Recovery reviewer · #{duration}"
+  end
+
   @spec step_status(non_neg_integer(), [Status.state()], Status.state()) ::
           :complete | :current | :future
   defp step_status(current_idx, stages, stage) do
@@ -464,6 +476,10 @@ defmodule Harness.Dashboard.Components do
 
   @doc false
   @spec current_stage_label(Status.t(), DateTime.t()) :: String.t()
+  def current_stage_label(%Status{state: :reviewing, agent_kind: :recovery_review} = status, now) do
+    recovery_review_stage_label(status, now)
+  end
+
   def current_stage_label(%Status{state: state} = status, now) do
     duration =
       case state_duration_ms(status, state, now) do
@@ -507,7 +523,7 @@ defmodule Harness.Dashboard.Components do
 
   defp elapsed_end_at(_status, now), do: now
 
-  @spec state_duration_ms(Status.t(), Status.state(), DateTime.t()) :: non_neg_integer() | nil
+  @spec state_duration_ms(Status.t(), timing_stage(), DateTime.t()) :: non_neg_integer() | nil
   defp state_duration_ms(%Status{state: state}, stage, _now) when state in [:done, :failed] and stage == state, do: nil
 
   defp state_duration_ms(%Status{} = status, stage, now) do
@@ -517,7 +533,9 @@ defmodule Harness.Dashboard.Components do
     end
   end
 
-  @spec state_end_at(Status.t(), Status.state(), DateTime.t()) :: DateTime.t() | nil
+  @spec state_end_at(Status.t(), timing_stage(), DateTime.t()) :: DateTime.t() | nil
+  defp state_end_at(%Status{state: :reviewing, agent_kind: :recovery_review}, :recovery_review, now), do: now
+
   defp state_end_at(%Status{state: stage} = status, stage, now), do: elapsed_end_at(status, now)
 
   defp state_end_at(%Status{} = status, stage, _now) do
@@ -538,7 +556,7 @@ defmodule Harness.Dashboard.Components do
   defp current_stage_end(%Status{state: state} = status, {state, %DateTime{}}, now), do: elapsed_end_at(status, now)
   defp current_stage_end(_status, _entry, _now), do: nil
 
-  @spec next_entered_at([{Status.state(), DateTime.t() | nil}], non_neg_integer()) :: DateTime.t() | nil
+  @spec next_entered_at([{timing_stage(), DateTime.t() | nil}], non_neg_integer()) :: DateTime.t() | nil
   defp next_entered_at(timestamps, index) do
     timestamps
     |> Enum.drop(index + 1)
@@ -548,7 +566,7 @@ defmodule Harness.Dashboard.Components do
     end)
   end
 
-  @spec entered_at(Status.t(), Status.state()) :: DateTime.t() | nil
+  @spec entered_at(Status.t(), timing_stage()) :: DateTime.t() | nil
   defp entered_at(%Status{state_entered_at: entered_at}, state) when is_map(entered_at) do
     Map.get(entered_at, state) || Map.get(entered_at, Atom.to_string(state))
   end

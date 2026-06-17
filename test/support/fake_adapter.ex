@@ -219,12 +219,23 @@ defmodule Harness.FakeAdapter do
   #     artifact (the missing-verdict miss); the second invocation, seeing the
   #     marker, writes the verdict. Drives the Task-203 missing -> re-prompt ->
   #     verdict recovery path with one real miss followed by a real verdict.
+  # {:review_miss_then_sleep, token}
+  #   — first invocation writes NO artifact, then the re-prompt emits `token`
+  #     and stays alive so live Status can be sampled mid-recovery-review.
   defp command({:review_miss_then, verdict}, _invocation) when verdict in ["approve", "reject"] do
     script =
       ~S(mkdir -p .harness; if [ -f .harness/.reprompt-marker ]; then printf '%s' "$1" > .harness/review.json; ) <>
         ~S(else : > .harness/.reprompt-marker; fi)
 
     {"/bin/sh", ["-c", script, "harness-fake", review_json(verdict)], []}
+  end
+
+  defp command({:review_miss_then_sleep, token}, _invocation) when is_binary(token) do
+    script =
+      ~S(mkdir -p .harness; if [ -f .harness/.reprompt-marker ]; then printf '%s\n' "$1"; exec sleep 30; ) <>
+        ~S(else : > .harness/.reprompt-marker; fi)
+
+    {"/bin/sh", ["-c", script, "harness-fake", token], []}
   end
 
   # {:review_malformed_then, verdict}

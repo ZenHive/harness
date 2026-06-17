@@ -224,7 +224,7 @@ defmodule Harness.Run do
            batch_id: String.t(),
            requested_model: String.t() | nil,
            started_at: DateTime.t(),
-           state_entered_at: %{optional(state()) => DateTime.t()},
+           state_entered_at: %{optional(state() | :recovery_review) => DateTime.t()},
            started_at_ms: integer(),
            total_timeout: timeout() | nil,
            idle_timeout: timeout() | nil,
@@ -1922,8 +1922,8 @@ defmodule Harness.Run do
       started_at: data.started_at,
       state_entered_at: data.state_entered_at,
       worktree_path: data.worktree && data.worktree.path,
-      agent_os_pid: data.agent_run && data.agent_run.os_pid,
-      agent_kind: data.agent_outcome && data.agent_outcome.kind,
+      agent_os_pid: active_agent_os_pid(state, data),
+      agent_kind: status_agent_kind(state, data),
       reviewer_adapter: agent_kind_for(data.reviewer_adapter),
       recovery_adapter: agent_kind_for(data.recovery_adapter),
       review_verdict: data.review && data.review.verdict,
@@ -1933,7 +1933,18 @@ defmodule Harness.Run do
     }
   end
 
-  @spec stamp_state_entry(state(), data()) :: data()
+  @spec active_agent_os_pid(state(), data()) :: non_neg_integer() | nil
+  defp active_agent_os_pid(:reviewing, %{reviewer_run: %AgentRun{os_pid: os_pid}}), do: os_pid
+  defp active_agent_os_pid(:recovering, %{recovery_run: %AgentRun{os_pid: os_pid}}), do: os_pid
+  defp active_agent_os_pid(_state, %{agent_run: %AgentRun{os_pid: os_pid}}), do: os_pid
+  defp active_agent_os_pid(_state, _data), do: nil
+
+  @spec status_agent_kind(state(), data()) :: Outcome.kind() | :recovery_review | nil
+  defp status_agent_kind(:reviewing, %{reviewer_reprompt_count: count}) when count > 0, do: :recovery_review
+  defp status_agent_kind(_state, %{agent_outcome: %Outcome{kind: kind}}), do: kind
+  defp status_agent_kind(_state, _data), do: nil
+
+  @spec stamp_state_entry(state() | :recovery_review, data()) :: data()
   defp stamp_state_entry(state, data) do
     Map.put(
       data,
@@ -2104,7 +2115,7 @@ defmodule Harness.Run do
         "re-prompting once (attempt #{count + 1})"
     )
 
-    {:repeat_state, %{data | reviewer_reprompt_count: count + 1, task: nil}}
+    {:repeat_state, %{stamp_state_entry(:recovery_review, data) | reviewer_reprompt_count: count + 1, task: nil}}
   end
 
   defp settle_review(data, {:error, :missing}) do

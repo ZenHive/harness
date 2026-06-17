@@ -815,11 +815,11 @@ defmodule Harness.Dashboard.Live do
         <dt :if={@run_status.reviewer_adapter}>Reviewer</dt>
         <dd :if={@run_status.reviewer_adapter} class={run_agent_class(:reviewer, @run_status)}>
           <span
-            :if={active_agent_role(@run_status) == :reviewer}
+            :if={active_agent_role(@run_status) in [:reviewer, :recovery_review]}
             class="cf-live-dot"
             aria-hidden="true"
           ></span>
-          {agent_label(@run_status.reviewer_adapter, nil)}
+          {reviewer_detail_label(@run_status)}
         </dd>
         <dt :if={@run_status.recovery_adapter}>Recovery</dt>
         <dd :if={@run_status.recovery_adapter} class={run_agent_class(:recovery, @run_status)}>
@@ -1311,6 +1311,9 @@ defmodule Harness.Dashboard.Live do
   # as "still the implementer" even though a different agent is now working.
   @doc false
   @spec stage_agent_label(Status.t()) :: String.t()
+  def stage_agent_label(%Status{state: :reviewing, agent_kind: :recovery_review, reviewer_adapter: reviewer})
+      when not is_nil(reviewer), do: "recovery reviewer: " <> agent_label(reviewer, nil)
+
   def stage_agent_label(%Status{state: :reviewing, reviewer_adapter: reviewer}) when not is_nil(reviewer),
     do: agent_label(reviewer, nil)
 
@@ -1321,16 +1324,27 @@ defmodule Harness.Dashboard.Live do
 
   # Which agent row gets the live pulsing dot on the run-detail header.
   @doc false
-  @spec active_agent_role(Status.t()) :: :implementer | :reviewer | :recovery | nil
+  @spec active_agent_role(Status.t()) :: :implementer | :reviewer | :recovery_review | :recovery | nil
   def active_agent_role(%Status{state: :running}), do: :implementer
+  def active_agent_role(%Status{state: :reviewing, agent_kind: :recovery_review}), do: :recovery_review
   def active_agent_role(%Status{state: :reviewing}), do: :reviewer
   def active_agent_role(%Status{state: :recovering}), do: :recovery
   def active_agent_role(_status), do: nil
 
-  @spec run_agent_class(:implementer | :reviewer | :recovery, Status.t()) :: String.t()
+  @spec run_agent_class(:implementer | :reviewer | :recovery_review | :recovery, Status.t()) :: String.t()
   defp run_agent_class(role, status) do
-    if active_agent_role(status) == role, do: "run-agent run-agent-active", else: "run-agent"
+    if active_agent_class?(role, status), do: "run-agent run-agent-active", else: "run-agent"
   end
+
+  @spec active_agent_class?(:implementer | :reviewer | :recovery_review | :recovery, Status.t()) :: boolean()
+  defp active_agent_class?(:reviewer, status), do: active_agent_role(status) in [:reviewer, :recovery_review]
+  defp active_agent_class?(role, status), do: active_agent_role(status) == role
+
+  @spec reviewer_detail_label(Status.t()) :: String.t()
+  defp reviewer_detail_label(%Status{state: :reviewing, agent_kind: :recovery_review} = status),
+    do: stage_agent_label(status)
+
+  defp reviewer_detail_label(%Status{reviewer_adapter: reviewer}), do: agent_label(reviewer, nil)
 
   # Parser kind for live token totals — follow the active stage's agent so a
   # reviewing run parses the reviewer's stream, not the implementer's adapter.

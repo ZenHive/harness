@@ -70,6 +70,32 @@ defmodule Harness.Run.ObservableStateTest do
       await_result(run_id, pid)
     end
 
+    test "status/1 reports the live recovery-reviewer pass after a missing verdict re-prompt" do
+      :ok = RunFeed.subscribe()
+
+      {run_id, pid} =
+        start(
+          adapter_opts: [command: :write],
+          reviewer_adapter_opts: [command: {:review_miss_then_sleep, "recovery-review-live"}]
+        )
+
+      :ok = Transcript.subscribe(run_id)
+      assert_receive {:harness_run_update, %Status{run_id: ^run_id, state: :reviewing}}, 10_000
+      assert_receive {:harness_transcript, ^run_id, _seq, "recovery-review-live\n"}, 10_000
+
+      assert {:ok, %Status{} = status} = Run.status(run_id)
+      assert status.state == :reviewing
+      assert status.agent_kind == :recovery_review
+      assert is_integer(status.agent_os_pid)
+
+      assert {:ok, summary} = Harness.Dispatch.status(run_id)
+      assert summary.agent_kind == :recovery_review
+      assert summary.agent_os_pid == status.agent_os_pid
+
+      assert :ok = Run.cancel(run_id)
+      await_result(run_id, pid)
+    end
+
     test "status/1 reports started_at and entered-at stamps across transitions" do
       :ok = RunFeed.subscribe()
 

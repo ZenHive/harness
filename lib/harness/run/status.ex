@@ -48,7 +48,8 @@ defmodule Harness.Run.Status do
       (claude / cursor self-report in their transcript), else the task's pinned
       requested model, else `nil`.
     * `agent_kind` — how the agent run ended (`t:Harness.AgentAdapter.Outcome.kind/0`),
-      or `nil` before the agent has finished.
+      the live stage tag `:recovery_review` while a verdict re-prompt reviewer
+      is running, or `nil` before the agent has finished.
     * `reviewer_adapter` — the reviewing agent's identity atom (`:claude` / …),
       resolved when the run routes into `:reviewing`; `nil` before review and for
       runs whose reviewer module is unregistered. Distinct from `agent` (the
@@ -75,10 +76,10 @@ defmodule Harness.Run.Status do
           model: String.t() | nil,
           state: state(),
           started_at: DateTime.t() | nil,
-          state_entered_at: %{optional(state()) => DateTime.t()},
+          state_entered_at: %{optional(state() | :recovery_review) => DateTime.t()},
           worktree_path: String.t() | nil,
           agent_os_pid: non_neg_integer() | nil,
-          agent_kind: Outcome.kind() | nil,
+          agent_kind: Outcome.kind() | :recovery_review | nil,
           reviewer_adapter: atom() | nil,
           recovery_adapter: atom() | nil,
           review_verdict: Review.verdict() | nil,
