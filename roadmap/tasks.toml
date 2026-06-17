@@ -9513,7 +9513,7 @@ shipped_in = "34eeb963695e2da6e856f61f79521f0b5f5d2f1c"
 id = "315"
 phase = 22
 bundle = "live-run-legibility"
-status = "pending"
+status = "in_progress"
 title = "Run-detail tracks the verdict-recovery reviewer pass — surface its live pid/transcript/elapsed, not the prior pass's timed-out fields"
 scores = { d = 3, b = 4, u = 3 }
 markers = ["bug"]
@@ -9534,4 +9534,5 @@ Fix: thread the recovery-reviewer invocation's pid + a distinct kind through Har
 Mantra: pure mechanical fact-surfacing. The page counts and relays (pid, kind, elapsed, transcript); 'stuck vs working' stays with the human/AI, never a formula. Cross-ref: Task 204 (recovery feature), bundle live-run-legibility.
 """
 created_at = "2026-06-17"
+started_at = "2026-06-17"
 scored_at = "2026-06-17"

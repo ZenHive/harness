@@ -14180,7 +14180,7 @@
       "id": "315",
       "phase": 22,
       "bundle": "live-run-legibility",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Run-detail tracks the verdict-recovery reviewer pass — surface its live pid/transcript/elapsed, not the prior pass's timed-out fields",
       "scores": {
         "d": 3,
@@ -14228,6 +14228,7 @@
       ],
       "body": "Observability follow-up to phase-22 live-run-legibility (tasks 311-314, all landed) and Task 204 (the verdict-recovery reviewer feature). Surfaced 2026-06-17 watching ccxt-distill run-1781660224215-a0c2cde3: the first reviewer pass made fix commits but TIMED OUT before writing a valid .harness/review.json, so harness (Task 204) spawned a recovery reviewer (a live `claude -p`, real OS pid, actively editing the worktree to fix a failing `npm run check`). The run was genuinely progressing.\n\nBut dispatch-status and the run-detail page reported agent_os_pid=nil and agent_kind=[:timed_out,:total] — the PRIOR, timed-out pass's terminal fields. The live recovery-reviewer process is tracked NOWHERE in the status surface, so the page looks frozen ('output a few seconds ago') while a real process churns underneath. Operators misread this as a hang and may kill a live run. This is the exact 'flying blind' failure mode the 311-314 bundle fixed, one code path over — the recovery-reviewer pass.\n\nFix: thread the recovery-reviewer invocation's pid + a distinct kind through Harness.Run.Status (same way the normal reviewer is tracked) so dispatch-status and the run-detail page show the LIVE recovery pass — its pid, its elapsed-since-recovery-start, its streaming transcript — instead of the dead prior pass's fields.\n\nMantra: pure mechanical fact-surfacing. The page counts and relays (pid, kind, elapsed, transcript); 'stuck vs working' stays with the human/AI, never a formula. Cross-ref: Task 204 (recovery feature), bundle live-run-legibility.\n",
       "created_at": "2026-06-17",
+      "started_at": "2026-06-17",
       "scored_at": "2026-06-17",
       "cross_repo": []
     }
