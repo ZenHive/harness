@@ -14121,7 +14121,7 @@
       "phase": 22,
       "bundle": "live-run-legibility",
       "milestone": "v0_15",
-      "status": "in_progress",
+      "status": "done",
       "title": "Live transcript chrome — current-activity line, last-event heartbeat, file +/- chips, turn/tool summary",
       "scores": {
         "d": 3,
@@ -14165,10 +14165,15 @@
       "domains": [
         "liveview"
       ],
+      "shipped_in": "34eeb963695e2da6e856f61f79521f0b5f5d2f1c",
       "body": "From the flying-blind review (2026-06-16). Even with a legible transcript (311) and a richer header (312), the operator still has to read turns to know 'what is it doing right now' and 'is it still alive'. Four lightweight count/relay additions around the transcript, all derivable from data already on the socket (@transcript_events) with no backend change:\n- Current-activity line: surface the newest tool_use as a pinned status line.\n- Heartbeat: stamp arrival time on transcript PubSub receive, render 'Ns ago' ticking via :meta_tick. Mechanical liveness only — the mantra forbids computing a stuck verdict in code.\n- File chips: edited_files_live (components.ex:347) lists paths but no magnitude — add +/- per chip.\n- Summary header: 'N turns · M tool calls · K files' over the events list.\nDepends on 312 (shared live.ex render_show + components.ex transcript region; serialize on the live file).\n",
       "created_at": "2026-06-16",
       "started_at": "2026-06-17",
+      "done_at": "2026-06-17",
       "scored_at": "2026-06-16",
+      "implemented": "Landed by cursor via merge-train; reviewer-approved (run run-1781659190563-c7f5c15d, 34eeb963695e2da6e856f61f79521f0b5f5d2f1c).",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     }
   ]
