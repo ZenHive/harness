@@ -9419,7 +9419,7 @@ id = "312"
 phase = 22
 bundle = "live-run-legibility"
 milestone = "v0_15"
-status = "in_progress"
+status = "done"
 title = "Live run header — stage stepper + active-agent indicator + live token counter"
 scores = { d = 3, b = 4, u = 4 }
 depends_on = [311]
@@ -9437,9 +9437,14 @@ From the flying-blind review (2026-06-16). The run-info `<dl>` shows State as ba
 - Live tokens: token_label/2 already parses usage from the transcript (live.ex:1329); call it while running instead of showing '—'.
 Depends on 311 (both edit components.ex; legibility lands first as the bundle's priority and to avoid a live-file conflict).
 """
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1781654997104-77c886c3, 05732cd08ba029aae2447fbedb7a1fb090ec17e5)."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-06-16"
 started_at = "2026-06-17"
 scored_at = "2026-06-16"
+done_at = "2026-06-17"
+shipped_in = "05732cd08ba029aae2447fbedb7a1fb090ec17e5"
 
 [[task]]
 id = "313"

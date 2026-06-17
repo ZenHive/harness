@@ -13999,7 +13999,7 @@
       "phase": 22,
       "bundle": "live-run-legibility",
       "milestone": "v0_15",
-      "status": "in_progress",
+      "status": "done",
       "title": "Live run header — stage stepper + active-agent indicator + live token counter",
       "scores": {
         "d": 3,
@@ -14041,10 +14041,15 @@
       "domains": [
         "liveview"
       ],
+      "shipped_in": "05732cd08ba029aae2447fbedb7a1fb090ec17e5",
       "body": "From the flying-blind review (2026-06-16). The run-info `<dl>` shows State as bare text ('reviewing'), Tokens as '—' even mid-run, and lists Agent + Reviewer flat with no signal of which is active. Three pure-dashboard upgrades, all data-ready:\n- Stage stepper: Status.state is a mechanical fact (the gen_statem's current state) — render it as a pipeline instead of a word. State enum: :dispatched | :running | :committing | :recovering | :reviewing | :held | :done | :failed (lib/harness/run/status.ex).\n- Active-agent: stage_agent_label/1 already exists (live.ex:1287) and computes the active stage's agent — just give it visual weight.\n- Live tokens: token_label/2 already parses usage from the transcript (live.ex:1329); call it while running instead of showing '—'.\nDepends on 311 (both edit components.ex; legibility lands first as the bundle's priority and to avoid a live-file conflict).\n",
       "created_at": "2026-06-16",
       "started_at": "2026-06-17",
+      "done_at": "2026-06-17",
       "scored_at": "2026-06-16",
+      "implemented": "Landed by cursor via merge-train; reviewer-approved (run run-1781654997104-77c886c3, 05732cd08ba029aae2447fbedb7a1fb090ec17e5).",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     },
     {
