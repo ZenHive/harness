@@ -124,6 +124,13 @@ registry order). Head is primary; tail are rotation fallbacks on timeout. Explic
 pins one; `reviewer: [A, B, C]` supplies a custom rotation order (validated cross-family + dispatchable).
 No reviewer available → `:review_stuck`.
 
+**False-green feedback:** when the post-merge audit AI reports a red `cold_check` for a run the
+reviewer approved, harness persists `approved_then_found_red` on that run record: reviewer
+adapter/model, facets/domains, and the raw `cold_check`. KPI/routing surfaces count the fact as a
+false-approval rate per reviewer/model. Harness does not parse audit prose and does not apply a
+score penalty, weight, percentile gate, or auto-exclusion; the scout/orchestrator AI judges reviewer
+routing from the counted facts.
+
 ### MERGE — the lander
 
 `Harness.Lander`, on the project's serialized `landing_<name>` Oban queue (limit 1):
@@ -237,8 +244,8 @@ The test for every line of harness code: **is it mechanical?**
 - **first_attempt_pass** = approved AND `reviewer_diff_size == 0` (implementer's work needed
   zero reviewer fixes).
 - The reviewer's **ratings** block + **reviewer_diff_size** are the implementer quality signal.
-- Reviewers get rated too: per-agent rejection rate is tracked; a high false-rejection rate
-  deprioritizes that agent as reviewer (capability routing).
+- Reviewers get counted too: rejection rate, no-verdict rate, and post-audit false-approval
+  rate are surfaced as facts. AI-written routing advice decides what those facts mean.
 
 ## Rejection writeback (pending rmap support)
 

@@ -28,10 +28,12 @@ defmodule Harness.Run.TestDbIsolationTest do
     end
 
     test "honors explicit opt-outs" do
-      assert TestDbIsolation.env(%{@project | test_db_isolation_env: false}, "run-a") == %{}
-      assert TestDbIsolation.env(%{@project | test_db_isolation_env: :none}, "run-a") == %{}
-      assert TestDbIsolation.env(%{@project | test_db_isolation_env: "none"}, "run-a") == %{}
-      assert TestDbIsolation.env(%{@project | test_db_isolation_env: " "}, "run-a") == %{}
+      scrub = %{"MIX_TEST_PARTITION" => false}
+
+      assert TestDbIsolation.env(%{@project | test_db_isolation_env: false}, "run-a") == scrub
+      assert TestDbIsolation.env(%{@project | test_db_isolation_env: :none}, "run-a") == scrub
+      assert TestDbIsolation.env(%{@project | test_db_isolation_env: "none"}, "run-a") == scrub
+      assert TestDbIsolation.env(%{@project | test_db_isolation_env: " "}, "run-a") == scrub
     end
   end
 

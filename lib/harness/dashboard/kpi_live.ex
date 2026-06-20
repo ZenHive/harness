@@ -14,8 +14,9 @@ defmodule Harness.Dashboard.KPILive do
 
   A second *reviewer reliability* table renders
   `Harness.ResultStore.aggregate_reviewer_reliability/0`, keyed by the reviewer
-  adapter that gated each run: rejection rate and no-verdict (review_stuck) rate
-  — the cross-family reviewer's verdict-write reliability, sorted
+  adapter that gated each run: rejection rate, no-verdict (review_stuck) rate,
+  and false-approval rate from approved-then-found-red audit facts — the
+  cross-family reviewer's reliability signals, sorted
   worst-first.
 
   A small *orchestration health* section renders
@@ -173,9 +174,9 @@ defmodule Harness.Dashboard.KPILive do
       attributable
   end
 
-  # The per-reviewer-adapter reliability ledger: each reviewer's rejection and
-  # verdict-write (review_stuck) rates. Sorted worst-reliability-first so a
-  # reviewer that flakes the mandatory verdict write surfaces at the top. A store
+  # The per-reviewer-adapter reliability ledger: each reviewer's rejection,
+  # verdict-write (review_stuck), and false-approval rates. Sorted
+  # worst-reliability-first so risky reviewer facts surface at the top. A store
   # read error degrades to an empty ledger (the no-data state).
   @spec reviewer_rows() :: [map()]
   defp reviewer_rows do
@@ -183,7 +184,7 @@ defmodule Harness.Dashboard.KPILive do
       {:ok, ledger} ->
         ledger
         |> Enum.map(fn {reviewer, kpi} -> Map.put(kpi, :reviewer, reviewer) end)
-        |> Enum.sort_by(&{&1.no_verdict_rate, &1.rejection_rate}, :desc)
+        |> Enum.sort_by(&{&1.false_approval_rate, &1.no_verdict_rate, &1.rejection_rate}, :desc)
 
       _error ->
         []
@@ -419,6 +420,8 @@ defmodule Harness.Dashboard.KPILive do
             <th>Reject rate</th>
             <th>No verdict</th>
             <th>No-verdict rate</th>
+            <th>False approvals</th>
+            <th>False-approval rate</th>
           </tr>
         </thead>
         <tbody>
@@ -429,6 +432,8 @@ defmodule Harness.Dashboard.KPILive do
             <.rate_cell value={row.rejection_rate} tone={:warn} />
             <td>{row.no_verdict_count}</td>
             <.rate_cell value={row.no_verdict_rate} tone={:warn} />
+            <td>{row.false_approval_count}</td>
+            <.rate_cell value={row.false_approval_rate} tone={:warn} />
           </tr>
         </tbody>
       </table>

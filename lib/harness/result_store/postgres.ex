@@ -91,6 +91,7 @@ defmodule Harness.ResultStore.Postgres do
               r.reviewer_rotation_count
             ),
           reviewer_adapter: fragment("COALESCE(EXCLUDED.reviewer_adapter, ?)", r.reviewer_adapter),
+          reviewer_model: fragment("COALESCE(EXCLUDED.reviewer_model, ?)", r.reviewer_model),
           review_report: fragment("COALESCE(EXCLUDED.review_report, ?)", r.review_report),
           reviewer_outcome_kind: fragment("COALESCE(EXCLUDED.reviewer_outcome_kind, ?)", r.reviewer_outcome_kind),
           reviewer_exit_status: fragment("COALESCE(EXCLUDED.reviewer_exit_status, ?)", r.reviewer_exit_status),
@@ -113,7 +114,9 @@ defmodule Harness.ResultStore.Postgres do
               "CASE WHEN jsonb_strip_nulls(EXCLUDED.recovery_token_usage) = '{}'::jsonb THEN ? ELSE EXCLUDED.recovery_token_usage END",
               r.recovery_token_usage
             ),
-          cold_check: fragment("COALESCE(NULLIF(EXCLUDED.cold_check, '{}'::jsonb), ?)", r.cold_check)
+          cold_check: fragment("COALESCE(NULLIF(EXCLUDED.cold_check, '{}'::jsonb), ?)", r.cold_check),
+          approved_then_found_red:
+            fragment("COALESCE(NULLIF(EXCLUDED.approved_then_found_red, '{}'::jsonb), ?)", r.approved_then_found_red)
         ]
       ]
   end
@@ -333,36 +336,78 @@ defmodule Harness.ResultStore.Postgres do
         not is_nil(r.reviewer_adapter) and
           (r.verdict in ["approve", "reject"] or
              fragment("(?->'$tuple'->0->>'$atom') = 'review_stuck'", r.reason)),
-      group_by: r.reviewer_adapter,
+      group_by: [r.reviewer_adapter, r.reviewer_model],
       select: %{
         reviewer_adapter: r.reviewer_adapter,
+        reviewer_model: r.reviewer_model,
         reviewed_count: count(r.run_id),
         rejection_count: r.run_id |> count() |> filter(r.verdict == "reject"),
         no_verdict_count:
           r.run_id
           |> count()
-          |> filter(fragment("(?->'$tuple'->0->>'$atom') = 'review_stuck'", r.reason))
+          |> filter(fragment("(?->'$tuple'->0->>'$atom') = 'review_stuck'", r.reason)),
+        false_approval_count:
+          r.run_id
+          |> count()
+          |> filter(
+            fragment(
+              "COALESCE(jsonb_typeof(?), '') = 'object' AND ? <> '{}'::jsonb",
+              r.approved_then_found_red,
+              r.approved_then_found_red
+            )
+          )
       }
   end
 
   @spec reviewer_rows_to_ledger([map()]) :: AgentKPI.reviewer_ledger()
   defp reviewer_rows_to_ledger(rows) do
-    Map.new(rows, fn row ->
-      reviewed_count = row.reviewed_count
-      rejection_count = row.rejection_count || 0
-      no_verdict_count = row.no_verdict_count || 0
-
-      kpi = %{
-        reviewed_count: reviewed_count,
-        rejection_count: rejection_count,
-        rejection_rate: safe_rate(rejection_count, reviewed_count),
-        no_verdict_count: no_verdict_count,
-        no_verdict_rate: safe_rate(no_verdict_count, reviewed_count)
-      }
-
-      {string_to_module(row.reviewer_adapter), kpi}
+    rows
+    |> Enum.group_by(& &1.reviewer_adapter)
+    |> Map.new(fn {reviewer_adapter, reviewer_rows} ->
+      {string_to_module(reviewer_adapter), summarize_reviewer_rows(reviewer_rows)}
     end)
   end
+
+  @spec summarize_reviewer_rows([map()]) :: AgentKPI.reviewer_rejection()
+  defp summarize_reviewer_rows(rows) do
+    reviewed_count = sum_rows(rows, :reviewed_count)
+    rejection_count = sum_rows(rows, :rejection_count)
+    no_verdict_count = sum_rows(rows, :no_verdict_count)
+    false_approval_count = sum_rows(rows, :false_approval_count)
+
+    %{
+      reviewed_count: reviewed_count,
+      rejection_count: rejection_count,
+      rejection_rate: safe_rate(rejection_count, reviewed_count),
+      no_verdict_count: no_verdict_count,
+      no_verdict_rate: safe_rate(no_verdict_count, reviewed_count),
+      false_approval_count: false_approval_count,
+      false_approval_rate: safe_rate(false_approval_count, reviewed_count),
+      by_model: Map.new(rows, &reviewer_model_row/1)
+    }
+  end
+
+  @spec reviewer_model_row(map()) :: {String.t() | nil, map()}
+  defp reviewer_model_row(row) do
+    reviewed_count = row.reviewed_count || 0
+    rejection_count = row.rejection_count || 0
+    no_verdict_count = row.no_verdict_count || 0
+    false_approval_count = row.false_approval_count || 0
+
+    {row.reviewer_model,
+     %{
+       reviewed_count: reviewed_count,
+       rejection_count: rejection_count,
+       rejection_rate: safe_rate(rejection_count, reviewed_count),
+       no_verdict_count: no_verdict_count,
+       no_verdict_rate: safe_rate(no_verdict_count, reviewed_count),
+       false_approval_count: false_approval_count,
+       false_approval_rate: safe_rate(false_approval_count, reviewed_count)
+     }}
+  end
+
+  @spec sum_rows([map()], atom()) :: non_neg_integer()
+  defp sum_rows(rows, key), do: rows |> Enum.map(&(Map.get(&1, key) || 0)) |> Enum.sum()
 
   @spec aggregate_by_facet_query() :: Ecto.Query.t()
   defp aggregate_by_facet_query do
@@ -569,6 +614,7 @@ defmodule Harness.ResultStore.Postgres do
         reviewer_reprompt_count: r.reviewer_reprompt_count,
         reviewer_rotation_count: r.reviewer_rotation_count,
         reviewer_adapter: r.reviewer_adapter,
+        reviewer_model: r.reviewer_model,
         review_report: r.review_report,
         reviewer_outcome_kind: r.reviewer_outcome_kind,
         reviewer_exit_status: r.reviewer_exit_status,
@@ -588,6 +634,7 @@ defmodule Harness.ResultStore.Postgres do
         domains: r.domains,
         recovery_token_usage: r.recovery_token_usage,
         cold_check: r.cold_check,
+        approved_then_found_red: r.approved_then_found_red,
         agent_output: type(^nil, :binary),
         reviewer_output: type(^nil, :binary),
         inserted_at: r.inserted_at,
@@ -655,6 +702,7 @@ defmodule Harness.ResultStore.Postgres do
       reviewer_reprompt_count: r.reviewer_reprompt_count,
       reviewer_rotation_count: r.reviewer_rotation_count,
       reviewer_adapter: module_or_string(r.reviewer_adapter),
+      reviewer_model: r.reviewer_model,
       review_report: r.review_report,
       reviewer_outcome_kind: kind_to_string(r.reviewer_outcome_kind),
       reviewer_exit_status: r.reviewer_exit_status,
@@ -674,6 +722,7 @@ defmodule Harness.ResultStore.Postgres do
       domains: encode_jsonb(r.domains),
       recovery_token_usage: encode_jsonb(r.recovery_token_usage),
       cold_check: r.cold_check,
+      approved_then_found_red: r.approved_then_found_red,
       agent_output: r.agent_output,
       reviewer_output: r.reviewer_output
     }
@@ -700,6 +749,7 @@ defmodule Harness.ResultStore.Postgres do
       reviewer_reprompt_count: default(row.reviewer_reprompt_count, 0),
       reviewer_rotation_count: default(row.reviewer_rotation_count, 0),
       reviewer_adapter: string_to_module(row.reviewer_adapter),
+      reviewer_model: row.reviewer_model,
       review_report: row.review_report,
       review_facets: decode_freeform_block(row.review_facets),
       review_skills: decode_freeform_block(row.review_skills),
@@ -721,7 +771,8 @@ defmodule Harness.ResultStore.Postgres do
       recovery_repaired: row.recovery_repaired,
       recovery_token_usage: decode_token_usage(row.recovery_token_usage),
       landed_sha: row.landed_sha,
-      cold_check: decode_optional_freeform_block(row.cold_check)
+      cold_check: decode_optional_freeform_block(row.cold_check),
+      approved_then_found_red: decode_freeform_block(row.approved_then_found_red)
     }
   end
 

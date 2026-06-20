@@ -293,10 +293,48 @@ defmodule Harness.AgentKPITest do
       ledger = AgentKPI.aggregate_reviewer_rejections(records)
 
       assert ledger[ClaudeReviewer] ==
-               %{reviewed_count: 4, rejection_count: 1, rejection_rate: 0.25, no_verdict_count: 0, no_verdict_rate: 0.0}
+               %{
+                 reviewed_count: 4,
+                 rejection_count: 1,
+                 rejection_rate: 0.25,
+                 no_verdict_count: 0,
+                 no_verdict_rate: 0.0,
+                 false_approval_count: 0,
+                 false_approval_rate: 0.0,
+                 by_model: %{
+                   nil => %{
+                     reviewed_count: 4,
+                     rejection_count: 1,
+                     rejection_rate: 0.25,
+                     no_verdict_count: 0,
+                     no_verdict_rate: 0.0,
+                     false_approval_count: 0,
+                     false_approval_rate: 0.0
+                   }
+                 }
+               }
 
       assert ledger[CodexReviewer] ==
-               %{reviewed_count: 2, rejection_count: 2, rejection_rate: 1.0, no_verdict_count: 0, no_verdict_rate: 0.0}
+               %{
+                 reviewed_count: 2,
+                 rejection_count: 2,
+                 rejection_rate: 1.0,
+                 no_verdict_count: 0,
+                 no_verdict_rate: 0.0,
+                 false_approval_count: 0,
+                 false_approval_rate: 0.0,
+                 by_model: %{
+                   nil => %{
+                     reviewed_count: 2,
+                     rejection_count: 2,
+                     rejection_rate: 1.0,
+                     no_verdict_count: 0,
+                     no_verdict_rate: 0.0,
+                     false_approval_count: 0,
+                     false_approval_rate: 0.0
+                   }
+                 }
+               }
 
       refute Map.has_key?(ledger, nil)
     end
@@ -319,7 +357,20 @@ defmodule Harness.AgentKPITest do
                rejection_count: 0,
                rejection_rate: 0.0,
                no_verdict_count: 2,
-               no_verdict_rate: 0.5
+               no_verdict_rate: 0.5,
+               false_approval_count: 0,
+               false_approval_rate: 0.0,
+               by_model: %{
+                 nil => %{
+                   reviewed_count: 4,
+                   rejection_count: 0,
+                   rejection_rate: 0.0,
+                   no_verdict_count: 2,
+                   no_verdict_rate: 0.5,
+                   false_approval_count: 0,
+                   false_approval_rate: 0.0
+                 }
+               }
              }
 
       assert ledger[ClaudeReviewer].no_verdict_count == 0
@@ -342,6 +393,45 @@ defmodule Harness.AgentKPITest do
 
     test "empty input returns an empty ledger" do
       assert AgentKPI.aggregate_reviewer_rejections([]) == %{}
+    end
+
+    test "false-approval rate counts approved runs later found red by audit, grouped by reviewer model" do
+      records = [
+        record(
+          reviewer_adapter: CodexReviewer,
+          reviewer_model: "gpt-5.5",
+          verdict: :approve,
+          approved_then_found_red: %{"cold_check" => %{"passed" => false}}
+        ),
+        record(reviewer_adapter: CodexReviewer, reviewer_model: "gpt-5.5", verdict: :approve),
+        record(reviewer_adapter: CodexReviewer, reviewer_model: "gpt-5.5", verdict: :reject),
+        record(
+          reviewer_adapter: CodexReviewer,
+          reviewer_model: "gpt-5.5-mini",
+          verdict: :approve,
+          approved_then_found_red: %{"cold_check" => %{"passed" => false}}
+        ),
+        record(reviewer_adapter: ClaudeReviewer, reviewer_model: "opus", verdict: :approve)
+      ]
+
+      ledger = AgentKPI.aggregate_reviewer_rejections(records)
+
+      assert ledger[CodexReviewer].false_approval_count == 2
+      assert ledger[CodexReviewer].false_approval_rate == 0.5
+
+      assert ledger[CodexReviewer].by_model["gpt-5.5"] == %{
+               reviewed_count: 3,
+               rejection_count: 1,
+               rejection_rate: 1 / 3,
+               no_verdict_count: 0,
+               no_verdict_rate: 0.0,
+               false_approval_count: 1,
+               false_approval_rate: 1 / 3
+             }
+
+      assert ledger[CodexReviewer].by_model["gpt-5.5-mini"].false_approval_rate == 1.0
+      assert ledger[ClaudeReviewer].false_approval_count == 0
+      assert ledger[ClaudeReviewer].false_approval_rate == 0.0
     end
 
     test "rating_means/1 is reusable over a bare list of ratings maps" do

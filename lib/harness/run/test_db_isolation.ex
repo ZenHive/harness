@@ -16,11 +16,11 @@ defmodule Harness.Run.TestDbIsolation do
   @drop_args ["ecto.drop", "--quiet"]
 
   @doc false
-  @spec env(Project.t(), String.t()) :: %{optional(String.t()) => String.t()}
+  @spec env(Project.t(), String.t()) :: %{optional(String.t()) => String.t() | false}
   def env(%Project{} = project, run_id) when is_binary(run_id) do
     case env_name(project) do
       {:ok, name} -> %{name => partition_suffix(run_id)}
-      :disabled -> %{}
+      :disabled -> %{@default_env => false}
     end
   end
 

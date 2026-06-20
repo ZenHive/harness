@@ -25,6 +25,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
     field :reviewer_reprompt_count, :integer
     field :reviewer_rotation_count, :integer
     field :reviewer_adapter, :string
+    field :reviewer_model, :string
     field :review_report, :binary
     field :reviewer_outcome_kind, :string
     field :reviewer_exit_status, :integer
@@ -46,6 +47,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
     field :domains, :map
     field :recovery_token_usage, :map
     field :cold_check, :map
+    field :approved_then_found_red, :map
 
     field :agent_output, :binary
     field :reviewer_output, :binary
@@ -78,6 +80,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
       :reviewer_reprompt_count,
       :reviewer_rotation_count,
       :reviewer_adapter,
+      :reviewer_model,
       :review_report,
       :reviewer_outcome_kind,
       :reviewer_exit_status,
@@ -97,6 +100,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
       :domains,
       :recovery_token_usage,
       :cold_check,
+      :approved_then_found_red,
       :agent_output,
       :reviewer_output
     ])

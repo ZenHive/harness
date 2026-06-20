@@ -108,6 +108,8 @@ defmodule Harness.Run.Result do
     * `composed_inputs` — prompt/rule artifacts captured for each dispatch.
     * `reviewer_adapter` — the cross-family reviewer adapter that gated the
       run, or `nil` if the run never entered review.
+    * `reviewer_model` — the model passed to that reviewer invocation, or `nil`
+      for legacy/model-less reviewers.
     * `reviewer_outcome` — the reviewer agent's settled
       `Harness.AgentAdapter.Outcome` (its raw transcript in `.output`, plus
       `.kind` / `.exit_status`), or `nil` when the run never produced a clean
@@ -145,6 +147,7 @@ defmodule Harness.Run.Result do
           token_usage: TokenUsage.t(),
           composed_inputs: [AgentAdapter.composed_input()],
           reviewer_adapter: module() | nil,
+          reviewer_model: String.t() | nil,
           reviewer_outcome: Outcome.t() | nil,
           reviewer_reprompt_count: non_neg_integer(),
           reviewer_rotation_count: non_neg_integer(),
@@ -168,6 +171,7 @@ defmodule Harness.Run.Result do
     token_usage: %TokenUsage{},
     composed_inputs: [],
     reviewer_adapter: nil,
+    reviewer_model: nil,
     reviewer_outcome: nil,
     reviewer_reprompt_count: 0,
     reviewer_rotation_count: 0,

@@ -187,7 +187,7 @@ defmodule Harness.Dashboard.KPILiveTest do
       assert html =~ "100%"
     end
 
-    test "renders the reviewer reliability table with rejection and no-verdict rates", %{conn: conn} do
+    test "renders the reviewer reliability table with rejection, no-verdict, and false-approval rates", %{conn: conn} do
       seed("run-rv1", agent: :codex, verdict: :approve, reviewer_adapter: CursorReviewer)
 
       seed("run-rv2",
@@ -197,13 +197,21 @@ defmodule Harness.Dashboard.KPILiveTest do
         reviewer_adapter: CursorReviewer
       )
 
+      seed("run-rv3",
+        agent: :codex,
+        verdict: :approve,
+        reviewer_adapter: CursorReviewer,
+        approved_then_found_red: %{"cold_check" => %{"passed" => false}}
+      )
+
       {:ok, _view, html} = live(conn, "/harness/kpi")
 
       assert html =~ "Reviewer reliability"
       assert html =~ "CursorReviewer"
       assert html =~ "No-verdict rate"
-      # Cursor gated 2, flaked 1 → 50% no-verdict rate.
-      assert html =~ "50%"
+      assert html =~ "False-approval rate"
+      # Cursor gated 3, flaked 1, false-approved 1 → both rates round to 33%.
+      assert html =~ "33%"
     end
 
     test "renders orchestration-health review_stuck counts by persisted cause", %{conn: conn} do

@@ -80,6 +80,37 @@ defmodule Harness.RoutingTest do
     refute Map.has_key?(codex, :capability)
   end
 
+  test "brief surfaces reviewer false-approval facts without scoring or routing on them", %{store: store} do
+    assert :ok =
+             ResultStore.record_run(
+               ResultStoreContract.log_record(
+                 run_id: "reviewer-false-approval",
+                 agent: :cursor,
+                 reviewer_adapter: Codex,
+                 reviewer_model: "gpt-5.5",
+                 verdict: :approve,
+                 approved_then_found_red: %{
+                   "reviewer_agent" => "codex",
+                   "reviewer_model" => "gpt-5.5",
+                   "cold_check" => %{"passed" => false}
+                 }
+               ),
+               store
+             )
+
+    assert {:ok, %{pairs: pairs} = brief} = Routing.brief(include_all: true)
+    codex = pair!(pairs, "codex", "gpt-5.5")
+
+    assert codex.kpi.reviewer_false_approval == %{value: 1.0, n: 1, count: 1}
+    assert codex.kpi.reviewer_rejection == %{value: 0.0, n: 1, count: 0}
+    assert codex.kpi.reviewer_no_verdict == %{value: 0.0, n: 1, count: 0}
+    refute Map.has_key?(codex.kpi, :reviewer_score)
+    refute Map.has_key?(codex.kpi, :reviewer_weight)
+    refute Map.has_key?(codex.kpi, :reviewer_penalty)
+    refute Map.has_key?(codex.kpi, :reviewer_excluded)
+    refute_fused_keys(brief)
+  end
+
   test "blocked model pairs are annotated instead of silently dropped" do
     assert :ok = ModelAvailability.block_model("cursor", "composer-2.5", reason: "operator quota")
 

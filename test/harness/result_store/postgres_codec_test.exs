@@ -150,6 +150,30 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       assert decoded.review_warning? == true
     end
 
+    test "approved-then-found-red fact round-trips as an open reviewer-keyed map" do
+      fact = %{
+        "reviewer_adapter" => Atom.to_string(Codex),
+        "reviewer_agent" => "codex",
+        "reviewer_model" => "gpt-5.5",
+        "review_facets" => %{"surface" => "otp"},
+        "domains" => ["otp"],
+        "cold_check" => %{"passed" => false, "command" => "mix precommit", "tail" => "red"}
+      }
+
+      record =
+        ResultStoreContract.log_record(
+          run_id: "jsonb-approved-then-found-red",
+          reviewer_adapter: Codex,
+          reviewer_model: "gpt-5.5",
+          approved_then_found_red: fact
+        )
+
+      decoded = roundtrip(record)
+
+      assert decoded.reviewer_model == "gpt-5.5"
+      assert decoded.approved_then_found_red == fact
+    end
+
     test "list-valued fields round-trip via the $list marker (composed_inputs, domains)" do
       composed = [%{phase: :initial, attempt: 0, argv: ["-p", "do it"]}]
 
@@ -239,9 +263,11 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       FakeRepo.put_rows([
         %{
           reviewer_adapter: Atom.to_string(Codex),
+          reviewer_model: "gpt-5.5",
           reviewed_count: 4,
           rejection_count: 1,
-          no_verdict_count: 1
+          no_verdict_count: 1,
+          false_approval_count: 1
         }
       ])
 
@@ -252,6 +278,9 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       assert kpi.rejection_rate == 0.25
       assert kpi.no_verdict_count == 1
       assert kpi.no_verdict_rate == 0.25
+      assert kpi.false_approval_count == 1
+      assert kpi.false_approval_rate == 0.25
+      assert kpi.by_model["gpt-5.5"].false_approval_count == 1
     end
 
     test "aggregate_by_facet groups facet rows and projects per-agent KPIs" do

@@ -538,11 +538,47 @@ defmodule Harness.Audit do
 
   @spec record_cold_check(LogRecord.t(), ResultStore.store(), map()) :: :ok
   defp record_cold_check(record, store, cold_check) do
-    case ResultStore.record_run(%{record | cold_check: cold_check}, store) do
+    record = %{record | cold_check: cold_check, approved_then_found_red: approved_then_found_red(record, cold_check)}
+
+    case ResultStore.record_run(record, store) do
       :ok -> :ok
       {:error, reason} -> log_cold_check_persist_failure(record.project_name, record.landed_sha, reason)
     end
   end
+
+  @spec approved_then_found_red(LogRecord.t(), map()) :: map()
+  defp approved_then_found_red(record, cold_check) do
+    if cold_check_failed?(cold_check) do
+      %{
+        "reviewer_adapter" => module_name(record.reviewer_adapter),
+        "reviewer_agent" => reviewer_agent(record.reviewer_adapter),
+        "reviewer_model" => record.reviewer_model,
+        "review_facets" => record.review_facets || %{},
+        "domains" => stringify_domains(record.domains),
+        "cold_check" => cold_check
+      }
+    else
+      record.approved_then_found_red || %{}
+    end
+  end
+
+  @spec module_name(module() | nil) :: String.t() | nil
+  defp module_name(nil), do: nil
+  defp module_name(module) when is_atom(module), do: Atom.to_string(module)
+
+  @spec reviewer_agent(module() | nil) :: String.t() | nil
+  defp reviewer_agent(nil), do: nil
+
+  defp reviewer_agent(module) when is_atom(module) do
+    case AgentRegistry.agent_for_module(module) do
+      {:ok, agent} -> Atom.to_string(agent)
+      {:error, _reason} -> nil
+    end
+  end
+
+  @spec stringify_domains(term()) :: [String.t()]
+  defp stringify_domains(domains) when is_list(domains), do: Enum.map(domains, &to_string/1)
+  defp stringify_domains(_domains), do: []
 
   @spec log_cold_check_persist_failure(Project.t() | String.t() | nil, String.t() | nil, term()) :: :ok
   defp log_cold_check_persist_failure(project, landed_sha, reason) do

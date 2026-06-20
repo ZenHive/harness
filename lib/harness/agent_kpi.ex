@@ -28,12 +28,14 @@ defmodule Harness.AgentKPI do
 
   `aggregate_reviewer_rejections/1` is the mirror-image view: keyed by
   `reviewer_adapter` (the cross-family reviewer that gated the run), it reports
-  each reviewer's rejection rate **and** its verdict-write reliability. Since
+  each reviewer's rejection rate, verdict-write reliability, and false-approval
+  rate from post-merge audit facts. Since
   rejection is near-never by design, a reviewer with an outlier rejection rate
-  is one signal; `no_verdict_rate` is the other — the fraction of gated runs
+  is one signal; `no_verdict_rate` is another — the fraction of gated runs
   the reviewer ended without writing `.harness/review.json` (a
-  `{:review_stuck, _}` reason). Both let cross-family selection deprioritize a
-  reviewer that rejects too freely or flakes on the mandatory final write.
+  `{:review_stuck, _}` reason). `false_approval_rate` counts reviewer-approved
+  runs later found red by audit (`approved_then_found_red` present). These are
+  raw facts for an AI to judge; harness applies no penalty or route decision.
 
   ## Reviewer-flaked attribution
 
@@ -96,14 +98,29 @@ defmodule Harness.AgentKPI do
   Rejection + verdict-write reliability metrics for one reviewer adapter acting
   AS the gate. `no_verdict_count` is the reviewer's `{:review_stuck, _}` runs
   (gated but no `.harness/review.json` written); `no_verdict_rate` is that over
-  the reviews it gated.
+  the reviews it gated. `false_approval_count` is approved-then-found-red facts;
+  `false_approval_rate` is that count over the same reviewed denominator.
   """
   @type reviewer_rejection :: %{
           reviewed_count: pos_integer(),
           rejection_count: non_neg_integer(),
           rejection_rate: float(),
           no_verdict_count: non_neg_integer(),
-          no_verdict_rate: float()
+          no_verdict_rate: float(),
+          false_approval_count: non_neg_integer(),
+          false_approval_rate: float(),
+          by_model: %{optional(String.t() | nil) => reviewer_model_rejection()}
+        }
+
+  @typedoc "Per-reviewer-model reliability facts nested under one reviewer adapter."
+  @type reviewer_model_rejection :: %{
+          reviewed_count: pos_integer(),
+          rejection_count: non_neg_integer(),
+          rejection_rate: float(),
+          no_verdict_count: non_neg_integer(),
+          no_verdict_rate: float(),
+          false_approval_count: non_neg_integer(),
+          false_approval_rate: float()
         }
 
   @typedoc "Per-reviewer-adapter rejection ledger keyed by the reviewer module."
@@ -292,7 +309,8 @@ defmodule Harness.AgentKPI do
   `{:review_stuck, _}` reason (the reviewer ran but wrote no verdict). A
   reviewer's `rejection_rate` is its `:reject` verdicts over those gated runs;
   `no_verdict_rate` is its `{:review_stuck, _}` runs over the same — its
-  verdict-write reliability. An empty input returns `%{}`.
+  verdict-write reliability. `false_approval_rate` counts approved-then-red
+  audit facts over the same reviewed denominator. An empty input returns `%{}`.
   """
   @spec aggregate_reviewer_rejections([LogRecord.t()]) :: reviewer_ledger()
   def aggregate_reviewer_rejections(records) when is_list(records) do
@@ -507,22 +525,50 @@ defmodule Harness.AgentKPI do
   @spec reviewer_adapter(LogRecord.t()) :: module() | nil
   defp reviewer_adapter(record), do: Map.get(record, :reviewer_adapter)
 
+  @spec reviewer_model(LogRecord.t()) :: String.t() | nil
+  defp reviewer_model(record), do: Map.get(record, :reviewer_model)
+
   @spec record_verdict(LogRecord.t()) :: atom() | nil
   defp record_verdict(record), do: Map.get(record, :verdict)
 
+  @spec false_approval?(LogRecord.t()) :: boolean()
+  defp false_approval?(record) do
+    case Map.get(record, :approved_then_found_red) do
+      map when is_map(map) -> map_size(map) > 0
+      _other -> false
+    end
+  end
+
   @spec summarize_reviewer([LogRecord.t()]) :: reviewer_rejection()
   defp summarize_reviewer(records) do
+    records
+    |> summarize_reviewer_basic()
+    |> Map.put(:by_model, summarize_reviewer_models(records))
+  end
+
+  @spec summarize_reviewer_basic([LogRecord.t()]) :: reviewer_model_rejection()
+  defp summarize_reviewer_basic(records) do
     reviewed_count = length(records)
     rejection_count = Enum.count(records, &(record_verdict(&1) == :reject))
     no_verdict_count = Enum.count(records, &review_stuck?/1)
+    false_approval_count = Enum.count(records, &false_approval?/1)
 
     %{
       reviewed_count: reviewed_count,
       rejection_count: rejection_count,
       rejection_rate: rejection_count / reviewed_count,
       no_verdict_count: no_verdict_count,
-      no_verdict_rate: no_verdict_count / reviewed_count
+      no_verdict_rate: no_verdict_count / reviewed_count,
+      false_approval_count: false_approval_count,
+      false_approval_rate: false_approval_count / reviewed_count
     }
+  end
+
+  @spec summarize_reviewer_models([LogRecord.t()]) :: %{optional(String.t() | nil) => reviewer_model_rejection()}
+  defp summarize_reviewer_models(records) do
+    records
+    |> Enum.group_by(&reviewer_model/1)
+    |> Map.new(fn {model, group} -> {model, summarize_reviewer_basic(group)} end)
   end
 
   @spec ceremony_eligible?(LogRecord.t()) :: boolean()

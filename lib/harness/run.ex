@@ -1698,6 +1698,7 @@ defmodule Harness.Run do
       reviewer_outcome: data.reviewer_outcome,
       worktree_path: data.worktree && data.worktree.path,
       reviewer_adapter: data.reviewer_adapter,
+      reviewer_model: reviewer_model(data),
       agent_diff_size: data.agent_diff_size,
       reviewer_diff_size: data.reviewer_diff_size,
       token_usage: data.token_usage,
@@ -1808,6 +1809,7 @@ defmodule Harness.Run do
       reviewer_outcome: data.reviewer_outcome,
       worktree_path: data.worktree && data.worktree.path,
       reviewer_adapter: data.reviewer_adapter,
+      reviewer_model: reviewer_model(data),
       agent_diff_size: data.agent_diff_size,
       reviewer_diff_size: data.reviewer_diff_size,
       token_usage: data.token_usage,
@@ -1863,7 +1865,8 @@ defmodule Harness.Run do
       started_at: data.started_at,
       state_entered_at: data.state_entered_at,
       domains: data.item.domains,
-      task_fingerprint: data.item.fingerprint
+      task_fingerprint: data.item.fingerprint,
+      reviewer_model: reviewer_model(data)
     )
     |> ResultStore.record_run(data.result_store)
     |> log_store_error(result.run_id)

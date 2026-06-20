@@ -9,6 +9,7 @@ defmodule Harness.Routing do
 
   use Descripex, namespace: "/routing"
 
+  alias Harness.AgentRegistry
   alias Harness.Agents
   alias Harness.Config
   alias Harness.ModelAvailability
@@ -89,6 +90,7 @@ defmodule Harness.Routing do
     opts = normalize_opts(opts)
 
     with {:ok, kpi} <- ResultStore.aggregate_by_agent(),
+         {:ok, reviewer_kpi} <- ResultStore.aggregate_reviewer_reliability(),
          {:ok, %{blocks: blocks}} <- ModelAvailability.list_blocks() do
       roster = Agents.list()
       blocks = block_index(blocks)
@@ -96,7 +98,7 @@ defmodule Harness.Routing do
       pairs =
         roster
         |> filter_agents(opts.agents)
-        |> Enum.flat_map(&agent_pairs(&1, opts, kpi, blocks))
+        |> Enum.flat_map(&agent_pairs(&1, opts, kpi, reviewer_kpi, blocks))
         |> Enum.sort_by(&{&1.agent, &1.model})
         |> project_pairs(opts.fields)
 
@@ -104,8 +106,8 @@ defmodule Harness.Routing do
     end
   end
 
-  @spec agent_pairs(map(), map(), map(), map()) :: [routing_pair()]
-  defp agent_pairs(roster, opts, kpi, blocks) do
+  @spec agent_pairs(map(), map(), map(), map(), map()) :: [routing_pair()]
+  defp agent_pairs(roster, opts, kpi, reviewer_kpi, blocks) do
     agent = roster.agent
 
     case agent_atom(agent) do
@@ -118,15 +120,15 @@ defmodule Harness.Routing do
         if opts.include_all or dispatchable_roster?(roster_facts) do
           agent_atom
           |> entries_for(agent, roster_facts, opts, blocks)
-          |> Enum.map(&routing_pair(agent, &1, roster_facts, Map.get(kpi, agent_atom), opts.domains))
+          |> Enum.map(&routing_pair(agent, &1, roster_facts, Map.get(kpi, agent_atom), reviewer_kpi, opts.domains))
         else
           []
         end
     end
   end
 
-  @spec routing_pair(String.t(), map(), map(), map() | nil, [String.t()]) :: routing_pair()
-  defp routing_pair(agent, entry, roster_facts, kpi, domains) do
+  @spec routing_pair(String.t(), map(), map(), map() | nil, map(), [String.t()]) :: routing_pair()
+  defp routing_pair(agent, entry, roster_facts, kpi, reviewer_kpi, domains) do
     %{
       agent: agent,
       model: entry.model,
@@ -134,7 +136,7 @@ defmodule Harness.Routing do
       label: entry.label,
       roster: roster_facts,
       availability: Map.drop(entry, [:label, :model_required]),
-      kpi: kpi_cell(kpi, domains)
+      kpi: kpi_cell(kpi, reviewer_model_kpi(agent, entry.model, reviewer_kpi), domains)
     }
   end
 
@@ -295,36 +297,72 @@ defmodule Harness.Routing do
     end)
   end
 
-  @spec kpi_cell(map() | nil, [String.t()]) :: map()
-  defp kpi_cell(nil, domains) do
-    %{
-      scope: "agent_all_domains",
-      domains: domains,
-      n: @zero_samples,
-      measured: false,
-      explore_candidate: true,
-      success_rate: metric(nil, @zero_samples),
-      first_attempt_pass: metric(nil, @zero_samples),
-      duration_p90: metric(nil, @zero_samples),
-      cost_to_approved: metric(nil, @zero_samples)
-    }
+  @spec kpi_cell(map() | nil, map() | nil, [String.t()]) :: map()
+  defp kpi_cell(nil, reviewer_kpi, domains) do
+    put_reviewer_kpi(
+      %{
+        scope: "agent_all_domains",
+        domains: domains,
+        n: @zero_samples,
+        measured: false,
+        explore_candidate: true,
+        success_rate: metric(nil, @zero_samples),
+        first_attempt_pass: metric(nil, @zero_samples),
+        duration_p90: metric(nil, @zero_samples),
+        cost_to_approved: metric(nil, @zero_samples)
+      },
+      reviewer_kpi
+    )
   end
 
-  defp kpi_cell(kpi, domains) do
+  defp kpi_cell(kpi, reviewer_kpi, domains) do
     n = kpi.run_count
 
-    %{
-      scope: "agent_all_domains",
-      domains: domains,
-      n: n,
-      measured: true,
-      explore_candidate: false,
-      reviewer_flaked: kpi.reviewer_flaked,
-      success_rate: metric(kpi.success_rate, n),
-      first_attempt_pass: metric(kpi.first_attempt_pass_rate, n),
-      duration_p90: metric(kpi.duration_ms.p90, n),
-      cost_to_approved: metric(kpi.cost_to_green, n)
-    }
+    put_reviewer_kpi(
+      %{
+        scope: "agent_all_domains",
+        domains: domains,
+        n: n,
+        measured: true,
+        explore_candidate: false,
+        reviewer_flaked: kpi.reviewer_flaked,
+        success_rate: metric(kpi.success_rate, n),
+        first_attempt_pass: metric(kpi.first_attempt_pass_rate, n),
+        duration_p90: metric(kpi.duration_ms.p90, n),
+        cost_to_approved: metric(kpi.cost_to_green, n)
+      },
+      reviewer_kpi
+    )
+  end
+
+  @spec put_reviewer_kpi(map(), map() | nil) :: map()
+  defp put_reviewer_kpi(cell, nil) do
+    cell
+    |> Map.put(:reviewer_rejection, count_metric(nil, @zero_samples, @zero_samples))
+    |> Map.put(:reviewer_no_verdict, count_metric(nil, @zero_samples, @zero_samples))
+    |> Map.put(:reviewer_false_approval, count_metric(nil, @zero_samples, @zero_samples))
+  end
+
+  defp put_reviewer_kpi(cell, reviewer_kpi) do
+    n = reviewer_kpi.reviewed_count
+
+    cell
+    |> Map.put(:reviewer_rejection, count_metric(reviewer_kpi.rejection_rate, n, reviewer_kpi.rejection_count))
+    |> Map.put(:reviewer_no_verdict, count_metric(reviewer_kpi.no_verdict_rate, n, reviewer_kpi.no_verdict_count))
+    |> Map.put(
+      :reviewer_false_approval,
+      count_metric(reviewer_kpi.false_approval_rate, n, reviewer_kpi.false_approval_count)
+    )
+  end
+
+  @spec reviewer_model_kpi(String.t(), String.t() | nil, map()) :: map() | nil
+  defp reviewer_model_kpi(agent, model, reviewer_kpi) do
+    with {:ok, module} <- AgentRegistry.module_for_agent(agent_atom(agent)),
+         %{by_model: by_model} <- Map.get(reviewer_kpi, module) do
+      Map.get(by_model, model)
+    else
+      _missing -> nil
+    end
   end
 
   @spec roster_facts(map()) :: map()
@@ -439,6 +477,9 @@ defmodule Harness.Routing do
 
   @spec metric(term(), non_neg_integer()) :: metric()
   defp metric(value, n), do: %{value: value, n: n}
+
+  @spec count_metric(term(), non_neg_integer(), non_neg_integer()) :: map()
+  defp count_metric(value, n, count), do: %{value: value, n: n, count: count}
 
   @spec label(map() | nil, String.t()) :: String.t()
   defp label(nil, model), do: model

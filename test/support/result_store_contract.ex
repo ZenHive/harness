@@ -65,6 +65,7 @@ defmodule Harness.ResultStoreContract do
     assert retrieved.review_concerns == []
     assert retrieved.review_warning? == false
     assert retrieved.cold_check == nil
+    assert retrieved.approved_then_found_red == %{}
 
     # domains roundtrip (added post-Task 116)
     rec_d = log_record(run_id: "r-domains", domains: [:otp, :oban])
@@ -169,6 +170,7 @@ defmodule Harness.ResultStoreContract do
         reviewer_reprompt_count: 1,
         reviewer_rotation_count: 2,
         reviewer_adapter: Codex,
+        reviewer_model: "gpt-5.5-review",
         review_report: "fixed a credo nit inline; approving",
         review_facets: %{"language" => "elixir", "surface" => "otp", "archetype" => "feature"},
         review_skills: %{"otp" => %{"score" => 8, "note" => "clean gen_statem"}},
@@ -183,7 +185,15 @@ defmodule Harness.ResultStoreContract do
         recovery_outcome: :repaired,
         recovery_repaired: "moved leaked file",
         recovery_token_usage: %TokenUsage{input: 10, output: 5, total: 15},
-        cold_check: %{"passed" => false, "command" => "mix precommit", "tail" => "cold compile failed"}
+        cold_check: %{"passed" => false, "command" => "mix precommit", "tail" => "cold compile failed"},
+        approved_then_found_red: %{
+          "reviewer_adapter" => Atom.to_string(Codex),
+          "reviewer_agent" => "codex",
+          "reviewer_model" => "gpt-5.5-review",
+          "review_facets" => %{"surface" => "otp"},
+          "domains" => ["otp"],
+          "cold_check" => %{"passed" => false}
+        }
       )
 
     assert :ok = ResultStore.record_run(rec_full, store)
@@ -197,6 +207,7 @@ defmodule Harness.ResultStoreContract do
     assert rf.reviewer_reprompt_count == 1
     assert rf.reviewer_rotation_count == 2
     assert rf.reviewer_adapter == Codex
+    assert rf.reviewer_model == "gpt-5.5-review"
     assert rf.review_report == "fixed a credo nit inline; approving"
     # facets (routing KEY) + skills (routing VALUE) round-trip verbatim, including
     # the nested {score, note} maps — free-form string keys preserved at every level.
@@ -214,6 +225,15 @@ defmodule Harness.ResultStoreContract do
     assert rf.recovery_repaired == "moved leaked file"
     assert rf.recovery_token_usage == %TokenUsage{input: 10, output: 5, total: 15}
     assert rf.cold_check == %{"passed" => false, "command" => "mix precommit", "tail" => "cold compile failed"}
+
+    assert rf.approved_then_found_red == %{
+             "reviewer_adapter" => Atom.to_string(Codex),
+             "reviewer_agent" => "codex",
+             "reviewer_model" => "gpt-5.5-review",
+             "review_facets" => %{"surface" => "otp"},
+             "domains" => ["otp"],
+             "cold_check" => %{"passed" => false}
+           }
 
     # tuple agent_outcome_kind roundtrip — regression for the
     # {:timed_out, :idle} FunctionClauseError that crashed Postgres.record_run

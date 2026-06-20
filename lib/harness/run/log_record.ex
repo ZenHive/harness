@@ -77,6 +77,14 @@ defmodule Harness.Run.LogRecord do
   after it runs the project check in an intentionally un-warmed audit worktree.
   Harness persists the agent-written map as a fact; it never derives the result
   from a local shell exit code.
+
+  ## False-approval witness (`approved_then_found_red`)
+
+  `approved_then_found_red` is written only when that post-merge audit reports a
+  red `cold_check` for a run the reviewer approved. It is an open map carrying
+  the reviewer adapter/model plus the run's facet/domain facts and the raw
+  `cold_check`. Missing/legacy rows read as `%{}`; harness counts its presence
+  later, never parses audit prose or computes reviewer quality from it.
   """
 
   alias Harness.AgentAdapter
@@ -116,6 +124,7 @@ defmodule Harness.Run.LogRecord do
           reviewer_output: binary(),
           domains: [CapabilityDomain.t()],
           reviewer_adapter: module() | nil,
+          reviewer_model: String.t() | nil,
           review_iterations: non_neg_integer(),
           reviewer_reprompt_count: non_neg_integer(),
           reviewer_rotation_count: non_neg_integer(),
@@ -131,7 +140,8 @@ defmodule Harness.Run.LogRecord do
           recovery_repaired: String.t() | nil,
           recovery_token_usage: TokenUsage.t(),
           landed_sha: String.t() | nil,
-          cold_check: %{optional(String.t()) => term()} | nil
+          cold_check: %{optional(String.t()) => term()} | nil,
+          approved_then_found_red: %{optional(String.t()) => term()}
         }
 
   @enforce_keys [
@@ -175,6 +185,7 @@ defmodule Harness.Run.LogRecord do
     reviewer_output: "",
     domains: [],
     reviewer_adapter: nil,
+    reviewer_model: nil,
     review_iterations: 0,
     reviewer_reprompt_count: 0,
     reviewer_rotation_count: 0,
@@ -190,7 +201,8 @@ defmodule Harness.Run.LogRecord do
     recovery_repaired: nil,
     recovery_token_usage: %TokenUsage{},
     landed_sha: nil,
-    cold_check: nil
+    cold_check: nil,
+    approved_then_found_red: %{}
   ]
 
   @doc "Builds a structured record from a settled run result and batch metadata."
@@ -216,6 +228,7 @@ defmodule Harness.Run.LogRecord do
       composed_inputs: result.composed_inputs,
       domains: domains_from_meta(meta),
       reviewer_adapter: result.reviewer_adapter,
+      reviewer_model: result.reviewer_model || Keyword.get(meta, :reviewer_model),
       review_iterations: review_iterations(result.reviewer_diff_size),
       reviewer_reprompt_count: result.reviewer_reprompt_count,
       reviewer_rotation_count: result.reviewer_rotation_count,

@@ -222,8 +222,25 @@ defmodule Harness.ResultStore.KPIParityTest do
     assert a.reviewed_count == b.reviewed_count
     assert a.rejection_count == b.rejection_count
     assert a.no_verdict_count == b.no_verdict_count
+    assert a.false_approval_count == b.false_approval_count
     assert_in_delta(a.rejection_rate, b.rejection_rate, 1.0e-9)
     assert_in_delta(a.no_verdict_rate, b.no_verdict_rate, 1.0e-9)
+    assert_in_delta(a.false_approval_rate, b.false_approval_rate, 1.0e-9)
+    assert Map.keys(a.by_model) == Map.keys(b.by_model)
+
+    for key <- Map.keys(a.by_model) do
+      assert_reviewer_model_equal(a.by_model[key], b.by_model[key])
+    end
+  end
+
+  defp assert_reviewer_model_equal(a, b) do
+    assert a.reviewed_count == b.reviewed_count
+    assert a.rejection_count == b.rejection_count
+    assert a.no_verdict_count == b.no_verdict_count
+    assert a.false_approval_count == b.false_approval_count
+    assert_in_delta(a.rejection_rate, b.rejection_rate, 1.0e-9)
+    assert_in_delta(a.no_verdict_rate, b.no_verdict_rate, 1.0e-9)
+    assert_in_delta(a.false_approval_rate, b.false_approval_rate, 1.0e-9)
   end
 
   defp assert_kpi_equal(a, b) do

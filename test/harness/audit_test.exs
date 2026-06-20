@@ -133,7 +133,7 @@ defmodule Harness.AuditTest do
     dir
   end
 
-  defp seed_landed_record(store, ctx, run_id, task_id, landed_sha) do
+  defp seed_landed_record(store, ctx, run_id, task_id, landed_sha, opts \\ []) do
     record =
       struct!(LogRecord, %{
         batch_id: "batch-audit",
@@ -146,6 +146,10 @@ defmodule Harness.AuditTest do
         duration_ms: 100,
         verdict: :approve,
         landed_sha: landed_sha,
+        reviewer_adapter: Keyword.get(opts, :reviewer_adapter),
+        reviewer_model: Keyword.get(opts, :reviewer_model),
+        review_facets: Keyword.get(opts, :review_facets, %{}),
+        domains: Keyword.get(opts, :domains, []),
         agent_output: "implementer transcript",
         reviewer_output: "reviewer transcript",
         token_usage: TokenUsage.empty()
@@ -304,7 +308,13 @@ defmodule Harness.AuditTest do
       File.mkdir_p!(Path.join(ctx.repo, "_build"))
 
       store = isolated_store()
-      seed_landed_record(store, ctx, "run-cold", "224", landed_sha)
+
+      seed_landed_record(store, ctx, "run-cold", "224", landed_sha,
+        reviewer_adapter: FakeAdapter,
+        reviewer_model: "gpt-5.5-review",
+        review_facets: %{"surface" => "otp"},
+        domains: [:otp]
+      )
 
       rmap_log = Path.join(System.tmp_dir!(), "harness-audit-rmap-#{System.unique_integer([:positive])}.log")
       rmap_dir = fake_blocking_rmap_dir(rmap_log)
@@ -339,6 +349,19 @@ defmodule Harness.AuditTest do
                "passed" => false,
                "command" => "mix precommit",
                "tail" => "mix compile failed cold: :nofile"
+             }
+
+      assert record.approved_then_found_red == %{
+               "reviewer_adapter" => Atom.to_string(FakeAdapter),
+               "reviewer_agent" => nil,
+               "reviewer_model" => "gpt-5.5-review",
+               "review_facets" => %{"surface" => "otp"},
+               "domains" => ["otp"],
+               "cold_check" => %{
+                 "passed" => false,
+                 "command" => "mix precommit",
+                 "tail" => "mix compile failed cold: :nofile"
+               }
              }
 
       assert record.agent_output == "implementer transcript"
