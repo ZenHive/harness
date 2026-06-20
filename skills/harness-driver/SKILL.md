@@ -301,7 +301,7 @@ Key fields you care about as driver (full struct: `lib/harness/run/result.ex`):
 
 Never trust `agent_outcome.exit_status` or the implementer's self-reported success.
 
-**Worktree provisioning.** A fresh `git worktree add` tree has no gitignored build inputs. `Harness.Worktree.warm/2` mechanically seeds the default warm paths (`deps`, `_build`, `priv/plts`) plus any per-project `warm_paths` (CoW-cloned from the parent checkout) before the implementer/reviewer/auditor runs — so Elixir projects usually start warm. Projects with other load-bearing gitignored dirs (e.g. an extractor `source/` corpus) register them on `%Harness.Project{warm_paths: [...]}`. When warming can't cover a gap, budget run timeouts for cold builds and write `check_command` hints accordingly.
+**Worktree provisioning.** A fresh `git worktree add` tree has no gitignored build inputs. `Harness.Worktree.warm/2` mechanically seeds the default warm paths (`deps`, `_build`, `priv/plts`) plus any per-project `warm_paths` (CoW-cloned from the parent checkout) before implementer/reviewer runs — so Elixir projects usually start warm. The post-merge **audit** worktree is intentionally **un-warmed** so the audit agent witnesses cold-only regressions; it reports `cold_check` in `.harness/audit.json` and harness persists that agent-written fact (never shells out the build). Projects with other load-bearing gitignored dirs (e.g. an extractor `source/` corpus) register them on `%Harness.Project{warm_paths: [...]}`. When warming can't cover a gap, budget run timeouts for cold builds and write `check_command` hints accordingly.
 
 ---
 

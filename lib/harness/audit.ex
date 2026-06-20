@@ -16,8 +16,16 @@ defmodule Harness.Audit do
        implementer's and the reviewer's families,
     4. run it — the agent reviews the range, fixes hygiene inline, commits
        `audit(<sha>): ...` with a `.audit/<sha>.md` report, and writes a
-       `.harness/audit.json` summary harness logs,
+       `.harness/audit.json` summary harness logs (including an agent-reported
+       `cold_check` fact from a clean build in the intentionally un-warmed tree),
     5. fast-forward-push whatever the agent committed back to the target.
+
+  The audit worktree is **not** warmed (`Worktree.warm/2` is skipped). The audit
+  agent runs the project's `check_command` in that cold tree and reports
+  `cold_check` in `.harness/audit.json`. Harness persists that fact on the run
+  record; a reported red files a blocked follow-up task and notifies — never a
+  revert, unmerge, or gate. Harness never shells out the build or reads an exit
+  code.
 
   Clean audits (`:no_changes`) intentionally do not write empty `audit(...)`
   marker commits to the shared branch. Instead, harness records the audited tip
