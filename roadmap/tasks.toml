@@ -9667,7 +9667,7 @@ scored_at = "2026-06-20"
 id = "320"
 phase = 20
 bundle = "core-loop"
-status = "pending"
+status = "in_progress"
 title = "Per-run test-DB isolation — concurrent worktree runs share one test DB and cross-contaminate (the verified root cause of tapakly's recurring 'environmental' red suites)"
 scores = { d = 4, b = 9, u = 6 }
 acceptance_criteria = ["Every dispatched run injects a per-run-unique, DB-name-safe env var (default MIX_TEST_PARTITION, derived from the run id) into the implementer AND reviewer Port environment via the existing :env threading — no two concurrent runs of the same project resolve the same test DB.", "A per-project override selects the env-var name (and an explicit opt-out) on %Harness.Project{}; an opted-out or non-DB project sees ZERO behavior change.", "Teardown of the per-run test DB is best-effort and never a gate (logged on failure, never blocks settle/land) — or, if deferred to the project, that decision is documented in the PR with the accumulation tradeoff named.", "A regression test proves two concurrent runs of the same project with divergent migrations do NOT contaminate each other's test DB (each resolves a distinct database name from its injected env).", "Documented in CLAUDE.md + docs/agent-gate-workflow.md: the reviewer runs checks in a per-run-isolated test DB; projects must honor the isolation env var (Phoenix default already does); the agent-gate rebuild's deletion of per-worktree DB provisioning is recorded as the regression this restores.", "Offline suite green; mix precommit green; CHANGELOG entry referencing the tapakly contamination (first observed run task 85, 2026-06-10)."]
@@ -9689,6 +9689,7 @@ DESIGN CALLS — SETTLED 2026-06-20 (build to these; they were the assignee=huma
 This is the highest-value of the gate-hardening batch: it removes the very "red suite that's actually environmental" signal that trained reviewers to rubber-stamp red — pairs with task 317 (reject-red rule) so that, once the DB noise is gone, a red suite is genuinely a defect.
 """
 created_at = "2026-06-20"
+started_at = "2026-06-20"
 scored_at = "2026-06-20"
 
 [[task]]
