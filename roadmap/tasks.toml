@@ -9577,7 +9577,7 @@ shipped_in = "05e1a95cf9cb426e2084bd7c467b438be71b72be"
 id = "317"
 phase = 20
 bundle = "reviewer-pair"
-status = "in_progress"
+status = "done"
 title = "Harden the reviewer verdict contract — reject-red-tree rule + structured `checks` claim + `concerns` field in review.json"
 scores = { d = 4, b = 9, u = 7 }
 depends_on = [320]
@@ -9609,9 +9609,14 @@ SETTLED 2026-06-20 (overfit analysis + codex cross-review converged — build to
 2. SOFTENED THE ABSOLUTE (AC[0] + body change #1 now reflect this) — the blanket "a red suite is NEVER environmental → MUST reject" is REPLACED by "a DISMISSED red must be recorded as a reproduced `checks`/`concerns` fact." The loud-surface mechanism (parts 2+3 — the structured claim + un-buryable caveat) does the real work; keep reviewer judgment, do not substitute prompt dogma. The `checks`/`concerns` structured-claim half is unchanged — it is the durable win.
 3. flag-loudly, NOT auto-block (out_of_scope already states this): a non-empty `concerns` / self-failing `checks` on an approve is surfaced loudly; the orchestrator/audit acts on it. Harness never auto-blocks an approve from the prose.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781948704735-f01045e9, 665c2e84b4f0387ed0815cab9eb7d29ac00b3fa9)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-20"
 started_at = "2026-06-20"
 scored_at = "2026-06-20"
+done_at = "2026-06-20"
+shipped_in = "665c2e84b4f0387ed0815cab9eb7d29ac00b3fa9"
 
 [[task]]
 id = "318"
