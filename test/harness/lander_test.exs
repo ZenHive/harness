@@ -613,6 +613,54 @@ defmodule Harness.LanderTest do
     test "enqueue/1 returns :not_found for an unrecorded run_id" do
       assert {:error, :not_found} = Lander.enqueue("__no_such_run__")
     end
+
+    test "enqueue/1 refuses a non-approved run — pushes nothing (Task 319)", ctx do
+      Application.put_env(:harness, :oban_insert, fn _changeset ->
+        flunk("enqueue/1 must not insert a landing job for a non-approved run")
+      end)
+
+      on_exit(fn -> Application.delete_env(:harness, :oban_insert) end)
+
+      rejected = %{log_record("run-reject") | project_name: ctx.project.name, verdict: :reject}
+
+      failed = %{
+        log_record("run-failed")
+        | project_name: ctx.project.name,
+          state: :failed,
+          verdict: nil,
+          reason: {:review_rejected, "nope"}
+      }
+
+      :ok = ResultStore.record_run(rejected)
+      :ok = ResultStore.record_run(failed)
+
+      assert {:error, {:not_approved, %{verdict: :reject, state: :done}}} = Lander.enqueue("run-reject")
+      assert {:error, {:not_approved, %{verdict: nil, state: :failed}}} = Lander.enqueue("run-failed")
+    end
+
+    test "enqueue/1 re-lands an approved run (Task 319)", ctx do
+      test_pid = self()
+
+      Application.put_env(:harness, :oban_insert, fn changeset ->
+        job = Ecto.Changeset.apply_action!(changeset, :insert)
+        send(test_pid, {:landing_insert, job})
+        {:ok, job}
+      end)
+
+      :ok = ProjectRegistry.register(ctx.project)
+
+      on_exit(fn ->
+        Application.delete_env(:harness, :oban_insert)
+        ProjectRegistry.unregister(ctx.project.name)
+      end)
+
+      :ok = ResultStore.record_run(%{log_record("run-ok") | project_name: ctx.project.name})
+
+      assert {:ok, %{run_id: "run-ok", task_id: "1"}} = Lander.enqueue("run-ok")
+
+      assert_receive {:landing_insert,
+                      %Oban.Job{worker: "Harness.Lander.Worker", args: %{"manual_reland" => true, "run_id" => "run-ok"}}}
+    end
   end
 
   defp put_capture_sink do

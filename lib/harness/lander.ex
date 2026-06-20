@@ -123,19 +123,36 @@ defmodule Harness.Lander do
   as an operator-invoked reland so a post-resolver conflict is retained and
   witnessed instead of inheriting the autonomous merge-train redispatch fallback.
 
-  Mechanical by design: it does **not** judge whether a re-land is warranted —
-  the caller (operator clicking the dashboard button, or an orchestrator)
-  decides; harness only re-enqueues.
+  Mechanical by design: it asserts only the reviewer-approved precondition (the
+  loaded record must have settled `:done` with `verdict: :approve` — a re-land
+  pushes the branch with no re-verification, so an un-approved record is refused
+  with `{:error, {:not_approved, _}}` and pushes nothing). It does **not** judge
+  whether re-landing *now* is warranted — the caller (operator clicking the
+  dashboard button, or an orchestrator) decides timing; harness only re-enqueues.
   """
   @spec enqueue(String.t()) ::
-          {:ok, %{run_id: String.t(), task_id: String.t()}} | {:error, :not_found | term()}
+          {:ok, %{run_id: String.t(), task_id: String.t()}}
+          | {:error, :not_found | {:not_approved, map()} | term()}
   def enqueue(run_id) when is_binary(run_id) do
     with {:ok, record} <- load_record(run_id),
+         :ok <- ensure_approved(record),
          {:ok, project} <- ProjectRegistry.lookup(record.project_name),
          {:ok, _job} <- insert_landing(record, project) do
       {:ok, %{run_id: run_id, task_id: record.task_id}}
     end
   end
+
+  # A re-land pushes the run's `harness/<run-id>` branch straight to the target
+  # with NO re-verification — so it must assert the run was reviewer-approved
+  # first (mirrors the auto-land path's `reason: :approved` gate). An approved run
+  # settles `:done` with `verdict: :approve`; any other record (a `:reject`
+  # verdict, a `:failed` state) is refused and pushes nothing. Mechanical: it
+  # checks two persisted facts, it does not judge whether re-landing is warranted.
+  @spec ensure_approved(LogRecord.t()) :: :ok | {:error, {:not_approved, map()}}
+  defp ensure_approved(%LogRecord{state: :done, verdict: :approve}), do: :ok
+
+  defp ensure_approved(%LogRecord{state: state, verdict: verdict}),
+    do: {:error, {:not_approved, %{state: state, verdict: verdict}}}
 
   @spec load_record(String.t()) :: {:ok, LogRecord.t()} | {:error, :not_found | term()}
   defp load_record(run_id) do

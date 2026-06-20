@@ -256,6 +256,28 @@ defmodule Harness.RunCase do
     end
   end
 
+  # Leak guard (Task 319): a fake adapter/reviewer writes its `.harness/review.json`
+  # relative to the Port cwd, which in a real run is the isolated worktree. A test
+  # that misconfigures that cwd leaks an auto-"approve" verdict file into the main
+  # checkout root — harmless in production (real runs read isolated worktrees) but
+  # a loaded gun in the repo. Catch any per-test leak, remove it, and fail loudly.
+  setup do
+    root_verdict = Path.join(File.cwd!(), ".harness/review.json")
+    preexisting? = File.exists?(root_verdict)
+
+    on_exit(fn ->
+      if not preexisting? and File.exists?(root_verdict) do
+        File.rm!(root_verdict)
+
+        raise "leaked #{root_verdict} into the repo root: a run wrote its verdict " <>
+                "artifact relative to the main checkout instead of its isolated " <>
+                "worktree. Removed it; fix the offending test's worktree cwd."
+      end
+    end)
+
+    :ok
+  end
+
   using do
     # A test-suite template injects helpers — the long quote block is intrinsic,
     # as it is for ExUnit.CaseTemplate and Phoenix's *Case modules.
