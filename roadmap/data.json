@@ -14286,6 +14286,191 @@
       "delivered_by": "codex",
       "verified": true,
       "cross_repo": []
+    },
+    {
+      "id": "317",
+      "phase": 20,
+      "bundle": "reviewer-pair",
+      "status": "pending",
+      "title": "Harden the reviewer verdict contract — reject-red-tree rule + structured `checks` claim + `concerns` field in review.json",
+      "scores": {
+        "d": 4,
+        "b": 9,
+        "u": 7
+      },
+      "eff": 2.0,
+      "dep_layer": 1,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [
+        320
+      ],
+      "assignee": "human",
+      "acceptance_criteria": [
+        "reviewer_prompt/1 AND reviewer_reprompt/1 both state, unambiguously: a red suite is never environmental/out-of-scope; red-after-fixes that can't be made green => MUST reject.",
+        "review.json contract extended with a `checks` field (commands run + the reviewer's own per-check pass/fail) and a `concerns` list (self-flagged caveats); reviewer prompt instructs the reviewer to emit both.",
+        "Harness.Run.Review parses `checks` + `concerns` verbatim; missing blocks => %{}/[] with no crash and no closed enum (same tolerance as facets/skills).",
+        "Both persist onto LogRecord + the Postgres run_record schema via one additive migration; a record carrying both reads back from ResultStore.",
+        "A non-empty `concerns` OR a reviewer-self-marked-failing `checks` claim on an `approve` verdict is surfaced loudly (run record flag + notification + dashboard) — harness only counts presence/fail-flag, never classifies prose; no regex/keyword classifier is added.",
+        "Tests cover: prompt asserts the reject-red + emit-checks/concerns language; checks/concerns parse+persist round-trip; missing-block tolerance; loud-surface on approve+non-empty-concerns. NEVER-HIDE-FAILURES assertions (flunk on unexpected), not assert-true-on-any-outcome.",
+        "Offline suite green; mix precommit green; CLAUDE.md + docs/agent-gate-workflow.md + skills/harness-driver/SKILL.md re-keyed to the extended contract; CHANGELOG entry."
+      ],
+      "out_of_scope": [
+        "Reintroducing Harness.Verification / CheckStack / presets / a mechanical check gate / lander re-verification.",
+        "Any prose classifier, keyword match, or harness-derived verdict from the report/checks text.",
+        "The post-merge cold-build witness (separate task) and the dispatch-reland guard (separate task).",
+        "Auto-blocking an approve on non-empty concerns — flag-loudly is the chosen default; blocking is explicitly deferred unless the design call above flips it."
+      ],
+      "body": "Origin: 2026-06-20 post-mortem of two post-rebuild false-green landings — task 241 (reviewer approved a roadmap-load optimization that hung every render) and the tapakly gettext incident (reviewer SAW the full suite red, judged it a warm-cache/environmental artifact, named the exact mechanism, and approved it \"out of scope\"). Both passed THE gate. The reviewer is told to run the project's checks (step 2 of reviewer_prompt/1) but is never forced to, never has to prove it, and the prompt's reject condition is so narrow (\"nothing to salvage\") plus its \"fixing is always cheaper than rejecting\" pressure that a red-but-rationalizable tree biases toward approve. Harness reads only the `verdict` word; whether checks ran / what they returned is invisible.\n\nVERIFIED EVIDENCE CASE (the canonical one — git-blame proven, 2026-06-20): tapakly task 225 was delivered by a dispatched agent in commit f7e6549 (\"Make precommit.full test failures diagnosable and stable\", 2026-06-19 06:12 UTC). The agent added a `preferred_envs` line to tapakly mix.exs for the fancy aliases (test.json / dialyzer.json / precommit.test) but FORGOT the boring path — classic \"fixed the fancy path, broke the boring path.\" The broken build-config produced a non-deterministic doctest doc-chunk failure (`could not retrieve the documentation for module … not compiled with documentation`, a different module each run). The reviewer of task 225 SAW the resulting red suite and mislabeled it \"protocol-consolidation / environmental instability,\" approved, and it landed. Then FOUR more reviewers (tapakly runs 227, 231, 232, 233, 2026-06-19→20) each hit the downstream doc-chunk red and ALSO waved it through as \"environmental\" — five consecutive false-greens on one real, boring config bug. This is exactly the rationalization this task removes: a hard reject-red rule stops run 225 from landing, and a mandatory `checks`/`concerns` claim turns \"I think this red is environmental\" from a buried prose excuse into a self-marked-failing fact harness surfaces loudly. (Note: the earlier gettext / warm-cache / shared-DB theories were separate or wrong-cause; the doc-chunk failure traces specifically to f7e6549.)\n\nThis is the agent-gate-compatible fix: harden what the reviewer must COMMIT TO as data, and make a self-flagged caveat un-buryable — no new mechanical gate, no harness judgment of meaning.\n\nThree coupled changes, all on the reviewer verdict contract (reviewer_prompt/1 AND reviewer_reprompt/1 are the same embedded prompt twice — change both in sync, per Task 224 note):\n\n1. Prompt rule, unambiguous: \"A red suite is NEVER 'environmental' or 'out of scope.' If the project's checks are still red after your fixes and you cannot make them green, you MUST reject and say why — do not approve a red tree.\" This directly kills the rationalization both incidents used, and overrides the fix-and-approve bias for the checks specifically.\n\n2. Extend the review.json contract (currently {verdict, report, facets, skills} after Task 224/225) with a structured `checks` claim the reviewer must emit: the command(s) it actually ran, and the reviewer's own pass/fail call on each. The reviewer commits to a claim-as-data separable from prose — \"I ran X, it was green\" becomes a field, not a sentence buried in `report`.\n\n3. Add an optional `concerns: []` list to review.json for the reviewer's self-flagged caveats (the 233 reviewer's \"this is the root cause, filing out of scope\" would have landed HERE as data). Harness surfaces a non-empty `concerns` — or a `checks` claim the reviewer itself marked failing — LOUDLY on an `approve` (run record + notification + dashboard), WITHOUT classifying the prose. No regex, no keyword match: harness only counts \"is `concerns` non-empty\" / \"did the reviewer's own checks-claim say fail\" — facts the reviewer wrote, not meaning harness derived.\n\nHarness.Run.Review must parse `checks`/`concerns` verbatim (free-form, missing → %{}/[], never a crash, never a closed enum — same tolerance as facets/skills). Persist onto LogRecord + the Postgres run_record schema (open :map columns + one additive migration); coordinate migration ordering with any pending run_record migration.\n\nDESIGN TENSION (why assignee=human — settle before building): this edges the agent-gate line. It stays mantra-clean because (a) the reject-red rule is reviewer JUDGMENT moved into the prompt, not a harness branch; (b) `checks`/`concerns` are facts the reviewer WRITES, and harness only counts presence/non-emptiness — it never interprets the prose or re-derives a verdict. It does NOT reintroduce Harness.Verification, a mechanical check gate, or harness judging pass/fail. Confirm that framing holds before implementing; if surfacing a non-empty `concerns` should BLOCK an approve vs merely flag it loudly, that is the one judgment call to decide here (recommendation: flag loudly + let the orchestrator/audit act, do not auto-block).\n\nREVIEW NOTE (2026-06-20, overfit analysis — settle these two BEFORE building):\n1. SEQUENCING — now gated `depends_on 320`. The reject-red rule \"a red suite is NEVER environmental → MUST reject\" is FALSE while shared-DB contamination (320) is live: shipped first, it forces reviewers to reject the genuine environmental reds → tasks bounce to queue → re-dispatch storm of FALSE-reds, strictly worse than today's silent false-greens. 320 must land first; this task only makes sense once a red is genuinely a defect.\n2. SOFTEN THE ABSOLUTE — once 320 lands, prefer \"any red you DISMISS must become a `concerns` entry naming the reproduced mechanism\" over the blanket \"red is NEVER environmental.\" The loud-surface mechanism (part b/c — the mantra-clean, general half) does the real work; the absolute is the overfit reaction to the specific incidents and papers over judgment with a blunt instruction. Keep the `checks`/`concerns` structured-claim half as-is — that part is the durable win.\n",
+      "created_at": "2026-06-20",
+      "scored_at": "2026-06-20",
+      "cross_repo": []
+    },
+    {
+      "id": "318",
+      "phase": 20,
+      "bundle": "reviewer-pair",
+      "status": "pending",
+      "title": "Post-merge cold-build witness in the audit — clean un-warmed checkout records build/check exit as a FACT, red => blocked task + loud notify (never revert)",
+      "scores": {
+        "d": 5,
+        "b": 8,
+        "u": 5
+      },
+      "eff": 1.3,
+      "dep_layer": 1,
+      "unlocks": 1,
+      "markers": [],
+      "depends_on": [
+        320
+      ],
+      "assignee": "human",
+      "acceptance_criteria": [
+        "The post-merge audit performs one cold build from a clean, UN-warmed checkout of the landed SHA (no deps/_build/plts seeded; Worktree.warm/2 explicitly bypassed for this step), running the project's clean-build/check command.",
+        "The cold-build exit code + output tail are persisted as a witnessed FACT on the run/audit record — counted, never interpreted into a verdict.",
+        "A red cold build files a `blocked` rmap task (naming landed SHA + failure tail) and fires a loud Harness.Notification; a green cold build is a silent recorded fact.",
+        "The audit NEVER reverts, unmerges, blocks the merge, or feeds the cold-build result back into any approve/reject decision — assert the no-gate/no-revert contract holds.",
+        "Optional per-project `clean_check_command` (free-text) selects the cold-build command; unset falls back to check_command; settable on %Harness.Project{} + surfaced on the registration surfaces.",
+        "A regression test simulates a cold-only failure (a config read at dep-compile time, or a fixture that compiles warm but fails cold) and asserts: blocked task filed + notification fired + NO revert + merge untouched.",
+        "Offline suite green; mix precommit green; docs (agent-gate-workflow.md, audit doc, CLAUDE.md) note the cold-build witness is a post-merge FACT, not a gate; CHANGELOG entry."
+      ],
+      "out_of_scope": [
+        "Any PRE-merge cold-build gate, lander re-verification, or blocking a land on cold-build red (explicitly the line we do not cross here).",
+        "Reverting / unmerging / auto-fixing the cold-broken base — the audit only files a task + notifies.",
+        "Catching runtime-side-effect regressions (task 241 class) — a cold build won't catch a hang-under-render; that's reviewer-exercise-runtime + test coverage, out of scope here.",
+        "Changing Worktree.warm/2 for the implementer/reviewer paths — they stay warm; only this audit cold-build step is un-warmed."
+      ],
+      "body": "Origin: 2026-06-20 post-mortem. The deepest structural finding: NO agent in the loop ever does a cold build. Worktree.warm/2 (Task ~219) deliberately CoW-copies the parent checkout's built deps/_build/plts into every implementer, reviewer, AND auditor worktree, so a dep-compile-time / cold-only regression is invisible to every judge in the chain. The tapakly gettext incident proves the class: task 224 put `config :gettext, :plural_forms` in config/config.exs, read at DEP-compile time before the app module exists => `:nofile` on a cold `mix compile`. The reviewer (warm _build) saw it as environmental and approved; the lander builds warm too; the breakage only appears on a fresh checkout / a contributor's machine. Witnessing the reviewer's output better would NOT have caught it — only a clean checkout reproduces it.\n\nAdd exactly ONE cold build per landed change, as a WITNESSED FACT, in the post-merge audit (the architecture-compatible placement — audit already runs checks, never gates, never reverts). The audit's own worktree is warmed by Worktree.warm/2, so this needs a SEPARATE un-warmed clean checkout (fresh clone/worktree off the landed SHA with no deps/_build/plts seeded; fresh `mix deps.get` + the project's check/clean-build command). Capture the cold-build exit code + output tail as a fact on the run/audit record. This is COUNTING a fact (an exit code, like a git ref), not judging — the mantra-clean half.\n\nOn a red cold build: file a `blocked` rmap task naming the landed SHA + the failure tail, and fire a loud Harness.Notification. NEVER revert, NEVER unmerge, NEVER block the merge (it already happened) — best-effort witness, consistent with the audit's existing no-gate contract. It catches the cold-only class one merge late, but LOUDLY instead of silently, so subsequent work doesn't keep building on a cold-broken base.\n\nAdd an optional per-project `clean_check_command` (free-text, like check_command) for the cold-build command when it differs from the warm check hint (e.g. a project that wants `mix deps.get && mix compile --warnings-as-errors` cold); default to the existing check_command when unset.\n\nDESIGN TENSION (assignee=human — settle first): this is the idea closest to reintroducing mechanical verification, so the boundary must be explicit and held. It is NOT a gate: it runs POST-merge, records a fact, and its only action is file-a-task + notify. It does not re-derive a verdict, does not revert, does not block landing, and does not feed back into the approve/reject decision. If that boundary can't be kept clean, do not build it — fall back to the prompt-side fix (the reject-red-tree task). Decide the boundary before implementing.\n\nREVIEW NOTE (2026-06-20, overfit analysis — this is the most overfit/heaviest of the batch; reframe BEFORE building):\n- Verified against source: the audit ALREADY creates a worktree (audit.ex:593) and warms it (audit.ex:138, the only warm calls are run.ex:670 implementer + here); the lander's checkout is ALREADY un-warmed, so a cold-worktree pattern exists — cold = simply don't call Worktree.warm. The audit AI is already told to run the project's checks (prompt ~line 432).\n- CLEANER, MANTRA-SAFER FORM (prefer over the as-authored version): do NOT add a `clean_check_command` subsystem and do NOT have harness shell out a cold build and record an exit code — \"harness runs the check + records pass/fail\" is the camel's nose back to mechanical verification (the exact class the 2026-06-03 rebuild deleted). Instead: STOP warming the audit worktree (or run one un-warmed audit pass) + one prompt line telling the audit AI to run the clean build and report it. Near-zero new code; judgment stays in the agent; harness still only counts the fact the agent reports.\n- Now gated `depends_on 320`: a cold red is only a real signal once shared-DB noise is gone.\n- Consider folding the \"audit witnesses what the reviewer missed\" mechanism with the new feedback-loop task (audit records approved-then-found-red → AgentKPI/CapabilityScore) — same audit surface; producer (this) / consumer (routing) split keeps them as two dispatches but one design.\n",
+      "created_at": "2026-06-20",
+      "scored_at": "2026-06-20",
+      "cross_repo": []
+    },
+    {
+      "id": "319",
+      "phase": 20,
+      "bundle": "reviewer-pair",
+      "status": "pending",
+      "title": "Close two reviewer-gate trust holes from the 2026-06-20 audit: dispatch-reland verdict guard + fake-reviewer artifact can't leak into a real checkout",
+      "scores": {
+        "d": 2,
+        "b": 6,
+        "u": 4
+      },
+      "eff": 2.5,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "human",
+      "acceptance_criteria": [
+        "dispatch-reland / Lander.enqueue asserts the loaded run record reached an approved (done) outcome before enqueuing the land; a reland of a rejected/failed/non-approved run is refused with a clear error and pushes nothing.",
+        "A test proves reland of a non-approved run_id is rejected (no push), and reland of an approved run still works.",
+        "The fake reviewer adapter + fake codex binary write `.harness/review.json` only inside the test's temp worktree, never the repository root; a guard/test asserts no stray verdict file lands in the repo root after the suite runs.",
+        "Offline suite green; mix precommit green; CHANGELOG note for both fixes."
+      ],
+      "out_of_scope": [
+        "The reviewer prompt / review.json contract changes (separate task).",
+        "The post-merge cold-build witness (separate task).",
+        "Any change to the auto-land path (already correctly gated on reason: :approved)."
+      ],
+      "body": "Two small, independent safety holes surfaced by the 2026-06-20 trust-chain audit. Both are inline-sized (≤30 LOC each, no public-surface redesign) and land together in one session; neither warrants its own dispatch cycle.\n\n1. dispatch-reland has no verdict guard. Lander.enqueue/1 -> load_record/1 (lib/harness/lander.ex ~141) loads the run record via ResultStore.list_run_records(run_id:) with NO filter on run state or verdict, then ff-pushes whatever is on harness/<run-id> to origin/<target>. The moduledoc says \"reviewer-approved,\" but the code never asserts it — an operator/orchestrator can reland a run whose verdict was `reject` or whose state is `:failed`, pushing un-approved work with zero checks. Fix: assert the loaded record reached an approved/done outcome before relanding; reject a reland of a non-approved run with a clear error. (The auto-land path in maybe_enqueue_landing/2 is already gated on reason: :approved — only this manual re-land path is missing the guard.)\n\n2. The fake reviewer artifact can leak a real auto-approve file. FakeAdapter.review_report/1 (test/support/fake_adapter.ex ~437) and the fake codex binary (test/support/run_case.ex ~388) do `mkdir -p .harness && printf ... > .harness/review.json` relative to CWD. On 2026-06-20 a `{\"verdict\":\"approve\",\"report\":\"fake review: approve\"}` file was found sitting in the MAIN checkout root (deleted by hand this session). Harmless in production (real runs read isolated worktrees), but a stray auto-approve file in a repo root is a loaded gun. Fix: make the fake adapter/codex write its verdict only inside the test's own temp worktree CWD (never the project root), and/or have the test harness assert no .harness/review.json escaped to the repo root after the suite.\n\nThese are unrelated files (lander.ex vs test/support) but share one motivating audit and one short session — bundled to avoid two manufactured dispatch cycles, not as a grab-bag.\n",
+      "created_at": "2026-06-20",
+      "scored_at": "2026-06-20",
+      "cross_repo": []
+    },
+    {
+      "id": "320",
+      "phase": 20,
+      "bundle": "core-loop",
+      "status": "pending",
+      "title": "Per-run test-DB isolation — concurrent worktree runs share one test DB and cross-contaminate (the verified root cause of tapakly's recurring 'environmental' red suites)",
+      "scores": {
+        "d": 4,
+        "b": 9,
+        "u": 6
+      },
+      "eff": 1.88,
+      "dep_layer": 0,
+      "unlocks": 3,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "human",
+      "acceptance_criteria": [
+        "Every dispatched run injects a per-run-unique, DB-name-safe env var (default MIX_TEST_PARTITION, derived from the run id) into the implementer AND reviewer Port environment via the existing :env threading — no two concurrent runs of the same project resolve the same test DB.",
+        "A per-project override selects the env-var name (and an explicit opt-out) on %Harness.Project{}; an opted-out or non-DB project sees ZERO behavior change.",
+        "Teardown of the per-run test DB is best-effort and never a gate (logged on failure, never blocks settle/land) — or, if deferred to the project, that decision is documented in the PR with the accumulation tradeoff named.",
+        "A regression test proves two concurrent runs of the same project with divergent migrations do NOT contaminate each other's test DB (each resolves a distinct database name from its injected env).",
+        "Documented in CLAUDE.md + docs/agent-gate-workflow.md: the reviewer runs checks in a per-run-isolated test DB; projects must honor the isolation env var (Phoenix default already does); the agent-gate rebuild's deletion of per-worktree DB provisioning is recorded as the regression this restores.",
+        "Offline suite green; mix precommit green; CHANGELOG entry referencing the tapakly contamination (first observed run task 85, 2026-06-10)."
+      ],
+      "out_of_scope": [
+        "Reintroducing Harness.Verification / CheckStack / a mechanical check gate — this only SETS an env var; the reviewer still runs the checks and remains the gate.",
+        "The reviewer prompt / verdict contract changes (task 317) and the post-merge cold-build witness (task 318) — separate.",
+        "Fixing any genuine (non-environmental) tapakly test failure that survives DB isolation — that is tapakly's own defect, verified separately.",
+        "Harness's OWN test-suite async/sandbox isolation (separate roadmap thread)."
+      ],
+      "body": "VERIFIED ROOT CAUSE (run_records evidence, 2026-06-20 investigation): every dispatched run for a project shares ONE test database (e.g. `tapakly_test`). The reviewer (and implementer) run `mix test` themselves inside the worktree, and the project's test config resolves the SAME DB name for every concurrent run. Parallel runs on different `harness/<run-id>` branches carry DIVERGENT migrations/schemas, so they stomp each other's DB → red suites that \"pass in isolation / on a clean DB.\" First observed tapakly run: task 85, 2026-06-10 13:25:42 — 3 SavedSearch tests failing `null value in column \"user_id\" of relation \"saved_searches\"`, the reviewer naming it \"contamination in the SHARED tapakly_test DB from a concurrent harness run on another branch\" with \"29 other sessions hold the DB.\" The same family of symptom (\"module not available,\" \"Postgrex connection-pool cascade,\" failure count scaling with --max-cases) recurred and was waved past as \"environmental\" ~16 times (tasks 85,87,143,169,192,194,195,197,205,221,227,231,232,233) through 2026-06-20. This is the ORIGINAL recurring failure — distinct from and older than the gettext cold-build (task 224, 19 Jun) and unrelated to the (falsified) warm/2 abs-path theory.\n\nREGRESSION CONTEXT: harness USED to provision a per-worktree DB — Task 145 (\"Check.env with {:harness, :test_database}, per-worktree HARNESS_DB_NAME, test-db-create/migrate setup\"). The agent-gate rebuild (2026-06-03) deleted Harness.Verification/CheckStack wholesale and took that per-worktree DB provisioning with it as collateral (same pattern as Worktree.warm). With the reviewer now running checks itself and no per-run DB isolation, the shared-DB contamination resurfaced one week later (10 Jun).\n\nFIX DIRECTION (mantra-clean — this is mechanical SUBSTRATE, env-setting, not judgment): give each run's worktree its OWN test database by threading a per-run-unique env var into the run's Port environment via the EXISTING `:env` plumbing (Run.start_run :env -> Oban args -> worker -> AgentAdapter port_env). The Ecto/Phoenix convention is `MIX_TEST_PARTITION` — generated `config/test.exs` reads `database: \"<app>_test#{System.get_env(\"MIX_TEST_PARTITION\")}\"`, and the default `test` alias (`ecto.create --quiet`, `ecto.migrate`) then creates the partitioned DB on demand, so simply setting a unique `MIX_TEST_PARTITION` per run is enough for any project that follows the Phoenix default. Set it by default for every run, derived from the run id (a short, DB-name-safe suffix).\n\nDESIGN CALLS TO SETTLE (why assignee=human):\n1. Env-var name: default to `MIX_TEST_PARTITION` (Phoenix/Ecto idiom), but make it a per-project override on %Harness.Project{} (optional `test_db_isolation_env` or similar) for projects that name their test DB differently or use a non-Elixir stack (Rust sqlx already does ephemeral per-test DBs — such projects opt out / no-op).\n2. Teardown: partitioned DBs accumulate. Decide between (a) leave drop to the project/periodic cleanup, (b) a best-effort post-run drop of the run's partition DB (mechanical, never a gate). Recommendation: (b) best-effort, logged, never blocks.\n3. Opt-out: a project that manages its own test isolation (or has no DB) must be able to disable this with zero behavior change.\n\nThis is the highest-value of the gate-hardening batch: it removes the very \"red suite that's actually environmental\" signal that trained reviewers to rubber-stamp red — pairs with task 317 (reject-red rule) so that, once the DB noise is gone, a red suite is genuinely a defect.\n",
+      "created_at": "2026-06-20",
+      "scored_at": "2026-06-20",
+      "cross_repo": []
+    },
+    {
+      "id": "321",
+      "phase": 20,
+      "bundle": "reviewer-pair",
+      "status": "pending",
+      "title": "Close the false-green loop: audit records approved-then-found-red as a structured reviewer fact; AgentKPI/CapabilityScore route reviewers on it",
+      "scores": {
+        "d": 4,
+        "b": 8,
+        "u": 6
+      },
+      "eff": 1.75,
+      "dep_layer": 2,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [
+        318
+      ],
+      "assignee": "human",
+      "acceptance_criteria": [
+        "The post-merge audit, when a cold check of the landed SHA is red (the task-318 witness), persists a STRUCTURED approved-then-found-red fact on the run/audit record keyed to the reviewer adapter + model + the run's facets/domains — never prose, never a closed enum, missing => empty with no crash.",
+        "AgentKPI exposes a reviewer false-approval rollup (rate per {reviewer-agent, model}) alongside the existing aggregate_reviewer_rejections rejection/no-verdict signals; pure read-only rollup over run records.",
+        "CapabilityScore / dispatch-recommend can read the false-approval signal when selecting a reviewer adapter; a reviewer with a high false-approval rate is surfaced/down-weighted for the review seat (not hard-excluded).",
+        "No harness branch classifies the audit report prose or re-derives 'good/bad reviewer' — harness only counts the structured red-fact the audit AI wrote (assert: no regex/keyword over report text).",
+        "Tests: approved-then-red fact parse+persist round-trip; rollup computes false-approval rate from seeded records; routing read returns the down-weight; NEVER-HIDE-FAILURES assertions (flunk on unexpected).",
+        "Offline suite green; mix precommit green; CLAUDE.md + docs/agent-gate-workflow.md + skills/harness-driver/SKILL.md document the false-green feedback loop; CHANGELOG entry."
+      ],
+      "out_of_scope": [
+        "Reintroducing Harness.Verification / a mechanical check gate / lander re-verification / any auto-revert.",
+        "The cold-build witness itself (task 318 — this consumes its structured red-fact).",
+        "The reviewer prompt / checks/concerns contract (task 317) and test-DB isolation (task 320).",
+        "Any prose classifier or harness-derived verdict from the audit report text."
+      ],
+      "body": "Origin: 2026-06-20 overfit analysis of the false-green batch (317/318/319/320). Every fix in that batch is PRE-LAND prevention; none makes the system LEARN when a reviewer was wrong. Today the only thing that catches a false-green is a human post-mortem ~2.5 weeks late. This task adds the missing feedback loop, using surfaces that already almost exist — the durable, in-architecture move the batch circles without naming.\n\nVERIFIED CONTEXT (source, 2026-06-20): AgentKPI/CapabilityScore key on IMPLEMENTER outcomes. aggregate_reviewer_rejections/1 tracks a reviewer's rejection-rate + no_verdict_rate, but there is NO false-APPROVAL signal. The audit prompt already instructs the audit AI to flag false REJECTIONS in its .audit/<sha>.md markdown (audit.ex ~449) — prose, never a structured field, never fed back into scoring. dispatch-recommend already reads CapabilityScore.recommend/2 for routing (dispatch.ex ~1189).\n\nThe loop (mantra-clean — harness COUNTS facts the agents WRITE, never judges): the post-merge audit (made a cold second judge by task 318) observes \"the reviewer of run X approved; a clean checkout of the landed SHA is red.\" Persist that as a STRUCTURED fact on the run/audit record — an approved-then-found-red flag keyed to {reviewer-agent, model, the run's facets/domains} — NOT prose. Then AgentKPI rolls it up into a reviewer-quality signal (false-approval rate alongside the existing rejection/no-verdict rates), and CapabilityScore/routing reads it so a reviewer that repeatedly approves work the audit later breaks is routed AWAY from the review seat. An AI judging an AI's judgment, on counted facts — exactly the architecture; no harness branch decides \"good reviewer,\" the data does.\n\nProducer/consumer split from task 318: 318 makes the audit a cold judge and witnesses the red as a fact (write side); THIS task adds the reviewer-keyed false-approval field, the AgentKPI rollup, and the routing read (read side). Two dispatches, one design.\n\nDESIGN CALLS TO SETTLE (why assignee=human):\n1. The new LogRecord/run_record field shape for the approved-then-red fact (open :map, additive migration, same tolerance as facets/skills) and how it keys to the reviewer adapter+model+domain.\n2. Whether routing should DOWN-WEIGHT a high-false-approval reviewer automatically or only SURFACE it for the orchestrator to act — recommendation: surface + let routing's explore/exploit consume it, no hard auto-exclude (consistent with the no-auto-block stance in 317).\n3. Confirm no prose classifier creeps in: harness counts presence of the audit's structured red-fact, never parses the audit's report text.\n",
+      "created_at": "2026-06-20",
+      "scored_at": "2026-06-20",
+      "cross_repo": []
     }
   ]
 }

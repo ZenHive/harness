@@ -13,7 +13,7 @@
 
 **Last shipped:** Task 288 — Enrich the /harness/roadmap page beyond the 4-column rollup, Task 291 — Model catalog card: membership multi-select (probed universe + operator subset) replacing the flat removable list, Task 295 — Run show page: render the focused run's roadmap task details (title/score/markers/criteria/body), Task 298 — Move the agent KPI ledger to its own full page (/harness/kpi/agents), Task 301 — list_available_models conflates 'no catalog' with 'probed-but-none-selected' — distinguish the two diagnostic states on 2026-06-15
 
-**Up next:** Task 174 — Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:3/B:5/U:4 → Eff:1.5] 🚀
+**Up next:** Task 319 — Close two reviewer-gate trust holes from the 2026-06-20 audit: dispatch-reland verdict guard + fake-reviewer artifact can't leak into a real checkout [D:2/B:6/U:4 → Eff:2.5] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -75,7 +75,7 @@
 <!-- TASKS:BEGIN phase=6 -->
 | Task | Status | Notes |
 |------|--------|-------|
-| Task 17 | ⛔ | 🎁 **deferred** · Agent-shaped surface — MCP tools + JSON CLI [D:6/B:8/U:8 → Eff:1.33] 📋 |
+| Task 17 | ⛔ | 🎁 **deferred** · Agent-shaped surface — MCP tools + JSON CLI [D:6/B:8/U:8 → Eff:1.33?] 📋 |
 | Task 21 | 🔶 | 🎁 **deferred** · ACP transport adapter [D:7/B:5/U:3 → Eff:0.57] ⚠️ ⛔ Deferred by subscription-auth blocker: revisit only when an ACP backend preserves Claude subscription OAuth, or API-billing dispatch is deliberately accepted for a specific workload. |
 | Task 80 | ⛔ | 🎁 **deferred** · Harness.Dashboard.RoadmapLive — multi-project rmap-next browser with 1-click dispatch [D:3/B:5/U:4 → Eff:1.5] 🚀 |
 | Task 81 | ✅ | 🎁 **dashboard-chrome** · Harness.Dashboard.CompareLive — A/B agent-evaluation view [D:3/B:4/U:3 → Eff:1.17] 📋 |
