@@ -191,3 +191,4 @@ DOS.BinToAtom: Unsafe atom interpolation,lib/harness/code_search.ex:938,267C1E9
 Traversal.FileModule: Directory Traversal in `File.rm`,lib/harness/code_search.ex:756,36A4251
 Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/code_search.ex:536,43E147C
 DOS.BinToAtom: Unsafe atom interpolation,lib/harness/code_search.ex:1012,560A23E
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/run/test_db_isolation.ex:100,156E3F7
