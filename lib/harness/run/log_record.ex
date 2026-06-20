@@ -70,6 +70,13 @@ defmodule Harness.Run.LogRecord do
   the latest wall-clock timestamp observed for each lifecycle state entered by
   the run. Historical rows created before these fields existed carry `nil` /
   `%{}`; consumers must treat them as optional facts.
+
+  ## Post-merge cold-check witness (`cold_check`)
+
+  `cold_check` is written by the post-merge audit AI in `.harness/audit.json`
+  after it runs the project check in an intentionally un-warmed audit worktree.
+  Harness persists the agent-written map as a fact; it never derives the result
+  from a local shell exit code.
   """
 
   alias Harness.AgentAdapter
@@ -123,7 +130,8 @@ defmodule Harness.Run.LogRecord do
           recovery_outcome: Recovery.outcome() | nil,
           recovery_repaired: String.t() | nil,
           recovery_token_usage: TokenUsage.t(),
-          landed_sha: String.t() | nil
+          landed_sha: String.t() | nil,
+          cold_check: %{optional(String.t()) => term()} | nil
         }
 
   @enforce_keys [
@@ -181,7 +189,8 @@ defmodule Harness.Run.LogRecord do
     recovery_outcome: nil,
     recovery_repaired: nil,
     recovery_token_usage: %TokenUsage{},
-    landed_sha: nil
+    landed_sha: nil,
+    cold_check: nil
   ]
 
   @doc "Builds a structured record from a settled run result and batch metadata."

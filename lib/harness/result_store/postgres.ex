@@ -112,7 +112,8 @@ defmodule Harness.ResultStore.Postgres do
             fragment(
               "CASE WHEN jsonb_strip_nulls(EXCLUDED.recovery_token_usage) = '{}'::jsonb THEN ? ELSE EXCLUDED.recovery_token_usage END",
               r.recovery_token_usage
-            )
+            ),
+          cold_check: fragment("COALESCE(NULLIF(EXCLUDED.cold_check, '{}'::jsonb), ?)", r.cold_check)
         ]
       ]
   end
@@ -586,6 +587,7 @@ defmodule Harness.ResultStore.Postgres do
         review_ratings: r.review_ratings,
         domains: r.domains,
         recovery_token_usage: r.recovery_token_usage,
+        cold_check: r.cold_check,
         agent_output: type(^nil, :binary),
         reviewer_output: type(^nil, :binary),
         inserted_at: r.inserted_at,
@@ -671,6 +673,7 @@ defmodule Harness.ResultStore.Postgres do
       review_ratings: encode_jsonb(r.review_ratings),
       domains: encode_jsonb(r.domains),
       recovery_token_usage: encode_jsonb(r.recovery_token_usage),
+      cold_check: r.cold_check,
       agent_output: r.agent_output,
       reviewer_output: r.reviewer_output
     }
@@ -717,7 +720,8 @@ defmodule Harness.ResultStore.Postgres do
       recovery_outcome: string_to_atom(row.recovery_outcome),
       recovery_repaired: row.recovery_repaired,
       recovery_token_usage: decode_token_usage(row.recovery_token_usage),
-      landed_sha: row.landed_sha
+      landed_sha: row.landed_sha,
+      cold_check: decode_optional_freeform_block(row.cold_check)
     }
   end
 
@@ -793,6 +797,10 @@ defmodule Harness.ResultStore.Postgres do
   @spec decode_freeform_block(map() | nil) :: %{optional(String.t()) => term()}
   defp decode_freeform_block(nil), do: %{}
   defp decode_freeform_block(map) when is_map(map), do: map
+
+  @spec decode_optional_freeform_block(map() | nil) :: %{optional(String.t()) => term()} | nil
+  defp decode_optional_freeform_block(nil), do: nil
+  defp decode_optional_freeform_block(map) when is_map(map), do: map
 
   @spec encode_freeform_list([term()]) :: map()
   defp encode_freeform_list(list) when is_list(list), do: %{"$list" => list}

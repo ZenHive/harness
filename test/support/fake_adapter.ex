@@ -139,6 +139,12 @@ defmodule Harness.FakeAdapter do
   # {:audit_capture_rmap_path, short_sha}
   #                  — records `command -v rmap` into the committed
   #                    `.audit/<short_sha>.md`.
+  # {:audit_cold_check_by_warm_marker, short_sha}
+  #                  — writes `.harness/audit.json` with a cold_check fact that
+  #                    is green when `_build` was warmed into the audit worktree
+  #                    and red when the audit worktree is truly cold.
+  # {:audit_cold_check_green, short_sha}
+  #                  — writes a passing cold_check fact without committing.
   defp command_for(%Invocation{task_id: task_id}, opts) when is_binary(task_id) do
     if String.ends_with?(task_id, "-recovery") do
       Keyword.get(opts, :recovery_command, Keyword.get(opts, :command, :echo))
@@ -186,6 +192,44 @@ defmodule Harness.FakeAdapter do
         ~S|git add .audit; git -c user.email=audit@fake -c user.name=fake-audit commit -q -m "audit($1): fake hygiene pass"|
 
     {"/bin/sh", ["-c", script, "harness-fake", short_sha], []}
+  end
+
+  defp command({:audit_cold_check_by_warm_marker, short_sha}, _invocation) when is_binary(short_sha) do
+    green =
+      Jason.encode!(%{
+        findings: 0,
+        fixed: 0,
+        report: "warm marker present",
+        cold_check: %{passed: true, command: "mix precommit", tail: ""}
+      })
+
+    red =
+      Jason.encode!(%{
+        findings: 0,
+        fixed: 0,
+        report: "cold marker absent",
+        cold_check: %{passed: false, command: "mix precommit", tail: "mix compile failed cold: :nofile"}
+      })
+
+    script =
+      ~S|mkdir -p .audit .harness; echo "cold witness" > ".audit/$1.md"; | <>
+        ~S|if [ -d _build ]; then printf '%s' "$2"; else printf '%s' "$3"; fi > .harness/audit.json|
+
+    {"/bin/sh", ["-c", script, "harness-fake", short_sha, green, red], []}
+  end
+
+  defp command({:audit_cold_check_green, short_sha}, _invocation) when is_binary(short_sha) do
+    json =
+      Jason.encode!(%{
+        findings: 0,
+        fixed: 0,
+        report: "cold check passed",
+        cold_check: %{passed: true, command: "mix precommit", tail: ""}
+      })
+
+    script = ~S|mkdir -p .audit .harness; echo "cold witness" > ".audit/$1.md"; printf '%s' "$2" > .harness/audit.json|
+
+    {"/bin/sh", ["-c", script, "harness-fake", short_sha, json], []}
   end
 
   defp command({:review_verdict_by_file, path}, _invocation) when is_binary(path) do

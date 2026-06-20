@@ -126,13 +126,13 @@ Core is textbook OTP (Port per run, `gen_statem` per run, `DynamicSupervisor` fo
 - **Implementer AI** — works in the isolated worktree, commits. Its self-report is never trusted.
 - **Reviewer AI (cross-family, mandatory, THE gate)** — gets worktree + task + acceptance criteria + implementer transcript + diff stat + the project's `check_command` hint. It reviews, **runs the checks itself**, fixes inline (own edits, own commits), then writes `.harness/review.json`: `{"verdict": "approve"|"reject", "report": "...", "checks": {...}, "concerns": [], "facets": {...}, "skills": {...}, "ratings": {...}}`. Harness mechanically reads the file: approve → `:done` → merge; reject/missing → `:failed`, task back to queue. The reviewer-authored `checks`/`concerns` surface warning facts on approve, never an auto-block; skills/ratings feed AgentKPI.
 - **MERGE** — lander: fetch → detached worktree → rebase onto `origin/<target>` → ff-push. No re-verification.
-- **Audit AI (post-merge, batched, best-effort)** — third-family agent audits the unaudited commit range on the target branch, fixes hygiene inline, commits `audit(...)`, pushes. Never blocks, never reverts.
+- **Audit AI (post-merge, batched, best-effort)** — third-family agent audits the unaudited commit range on an intentionally un-warmed target-branch worktree, runs the project's clean-build/check itself, writes the `cold_check` fact in `.harness/audit.json`, fixes hygiene inline, commits `audit(...)`, pushes. Harness never runs that build or reads an exit code. A red cold check files a blocked follow-up task + loud notification, never a revert, unmerge, or gate.
 
 **Rules for every session:**
 
 - A run-lifecycle bug is fixed by **moving judgment into an agent prompt or verdict artifact** — never by adding a branch/regex/filter/classifier to harness code.
 - Do not reintroduce: `Harness.Verification`, `Harness.CheckStack`, presets, verdicts, `:verifying`, baseline anything, repair loops, semantic gates, quota regexes, `review_green`, `max_review_iterations`, lander re-verification, the mechanical benchmark corpus.
-- What stays code (the test: is it mechanical?): worktrees, git, Ports, Oban persistence, counters, timers/watchdogs, reading `.harness/review.json` / `.harness/audit.json`.
+- What stays code (the test: is it mechanical?): worktrees, git, Ports, Oban persistence, counters, timers/watchdogs, reading `.harness/review.json` / `.harness/audit.json` facts such as `cold_check`.
 
 ## Agent Headless Entry Points (domain reference)
 

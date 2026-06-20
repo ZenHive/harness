@@ -64,6 +64,7 @@ defmodule Harness.ResultStoreContract do
     assert retrieved.review_checks == %{}
     assert retrieved.review_concerns == []
     assert retrieved.review_warning? == false
+    assert retrieved.cold_check == nil
 
     # domains roundtrip (added post-Task 116)
     rec_d = log_record(run_id: "r-domains", domains: [:otp, :oban])
@@ -181,7 +182,8 @@ defmodule Harness.ResultStoreContract do
         recovery_attempts: 1,
         recovery_outcome: :repaired,
         recovery_repaired: "moved leaked file",
-        recovery_token_usage: %TokenUsage{input: 10, output: 5, total: 15}
+        recovery_token_usage: %TokenUsage{input: 10, output: 5, total: 15},
+        cold_check: %{"passed" => false, "command" => "mix precommit", "tail" => "cold compile failed"}
       )
 
     assert :ok = ResultStore.record_run(rec_full, store)
@@ -211,6 +213,7 @@ defmodule Harness.ResultStoreContract do
     assert rf.recovery_outcome == :repaired
     assert rf.recovery_repaired == "moved leaked file"
     assert rf.recovery_token_usage == %TokenUsage{input: 10, output: 5, total: 15}
+    assert rf.cold_check == %{"passed" => false, "command" => "mix precommit", "tail" => "cold compile failed"}
 
     # tuple agent_outcome_kind roundtrip — regression for the
     # {:timed_out, :idle} FunctionClauseError that crashed Postgres.record_run

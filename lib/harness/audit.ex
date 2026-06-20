@@ -42,14 +42,23 @@ defmodule Harness.Audit do
   alias Harness.Dashboard.OpsFeed
   alias Harness.Dashboard.OpsFeed.Op
   alias Harness.Git
+  alias Harness.Notification
+  alias Harness.Notification.Event
   alias Harness.Project
   alias Harness.ResultStore
+  alias Harness.Run.LogRecord
   alias Harness.SettingsStore
   alias Harness.Worktree
 
   require Logger
 
   @audit_report_path ".harness/audit.json"
+  @cold_check_score_d 3
+  @cold_check_score_b 8
+  @cold_check_score_u 5
+  @cold_check_task_bundle "reviewer-pair"
+  @cold_check_task_phase 20
+  @cold_check_tail_limit 2_000
   @rejection_history_limit 20
   @rejection_summary_limit 500
 
@@ -131,11 +140,6 @@ defmodule Harness.Audit do
           {:noop, %{}}
 
         {:ok, range} ->
-          # The auditor runs the project's checks, so warm its fresh worktree the
-          # same way a run worktree is warmed — seed deps/_build/PLT from the
-          # parent so the auditor doesn't cold-compile + cold-build the PLT. Only
-          # done when there's a range to audit; a :noop checks nothing.
-          :ok = Worktree.warm(worktree, warm_paths: project.warm_paths)
           run_auditor(worktree, repo, target, project, request, range)
 
         {:error, reason} ->
@@ -266,21 +270,23 @@ defmodule Harness.Audit do
   defp finalize_audit(worktree, repo, target, project, request, range, auditor, agent) do
     case Driver.run(auditor, invocation(worktree, target, project, request, range, auditor_model(auditor)), []) do
       {:ok, %Outcome{output: output}} ->
-        finalize_after_run(worktree, repo, target, project, range, agent, output)
+        finalize_after_run(worktree, repo, target, project, request, range, agent, output)
 
       {:error, reason} ->
         {{:error, reason}, %{agent: agent, range: range.log}}
     end
   end
 
-  @spec finalize_after_run(Worktree.t(), String.t(), String.t(), Project.t(), map(), String.t(), binary()) ::
+  @spec finalize_after_run(Worktree.t(), String.t(), String.t(), Project.t(), request(), map(), String.t(), binary()) ::
           {outcome(), audit_meta()}
-  defp finalize_after_run(worktree, repo, target, project, range, agent, output) do
+  defp finalize_after_run(worktree, repo, target, project, request, range, agent, output) do
     meta = %{agent: agent, range: range.log, transcript: output}
 
     case head_sha(worktree.path) do
       {:ok, head} ->
-        log_audit_report(worktree.path)
+        report = audit_report(worktree.path)
+        log_audit_report(report)
+        witness_cold_check(report, project, request_store(request), worktree.base_sha)
         outcome = push_if_advanced(repo, worktree, target, head)
         record_watermark(project, target, head, outcome)
         {outcome, meta}
@@ -400,7 +406,7 @@ defmodule Harness.Audit do
     end
   end
 
-  @spec rejection_line(Harness.Run.LogRecord.t()) :: String.t()
+  @spec rejection_line(LogRecord.t()) :: String.t()
   defp rejection_line(record) do
     "- task #{record.task_id} (run #{record.run_id}): #{rejection_summary(record.review_report)}"
   end
@@ -455,22 +461,208 @@ defmodule Harness.Audit do
 
     Project check hint (run yourself if needed; judge the output):
     #{project.check_command || "(none provided)"}
+
+    Cold-build witness (required, post-merge fact, not a gate):
+    This audit worktree is intentionally UN-warmed: no copied deps, _build, or PLTs. Run the project's
+    clean-build/check command yourself in this cold tree using the project check hint above. Report the
+    result in `#{@audit_report_path}` as `cold_check`: {"passed": true|false, "command": "<command you ran>",
+    "tail": "<failing output tail, empty on pass>"}. Harness never runs this build itself and never reads
+    an exit code; it only persists the fact you write. A red cold_check must not make you revert, unmerge,
+    or block this already-landed merge.
     """
   end
 
   # Best-effort visibility: surface the agent's machine-readable summary in the
   # logs. A missing or malformed file is fine — the .audit/<sha>.md commit is
   # the durable report.
-  @spec log_audit_report(String.t()) :: :ok
-  defp log_audit_report(worktree_path) do
+  @spec audit_report(String.t()) :: map()
+  defp audit_report(worktree_path) do
     with {:ok, raw} <- Artifact.read(worktree_path, @audit_report_path),
-         {:ok, report} <- Jason.decode(raw) do
-      Logger.info("harness audit: #{inspect(report)}")
+         {:ok, report} when is_map(report) <- Jason.decode(raw) do
+      report
     else
-      _missing_or_malformed -> :ok
+      _missing_or_malformed -> %{}
+    end
+  end
+
+  @spec log_audit_report(map()) :: :ok
+  defp log_audit_report(report) when map_size(report) > 0 do
+    Logger.info("harness audit: #{inspect(report)}")
+
+    :ok
+  end
+
+  defp log_audit_report(_report), do: :ok
+
+  @spec request_store(request()) :: ResultStore.store()
+  defp request_store(request), do: Map.get(request, :result_store, ResultStore.configured())
+
+  @spec witness_cold_check(map(), Project.t(), ResultStore.store(), String.t()) :: :ok
+  defp witness_cold_check(%{"cold_check" => cold_check}, project, store, landed_sha) when is_map(cold_check) do
+    persist_cold_check(project, store, landed_sha, cold_check)
+
+    if cold_check_failed?(cold_check) do
+      reason = cold_check_reason(landed_sha, cold_check)
+      task_id = file_blocked_cold_check_task(project, landed_sha, cold_check, reason)
+      notify_cold_check_red(project, task_id, reason)
     end
 
     :ok
+  end
+
+  defp witness_cold_check(_report, _project, _store, _landed_sha), do: :ok
+
+  @spec persist_cold_check(Project.t(), ResultStore.store(), String.t(), map()) :: :ok
+  defp persist_cold_check(project, store, landed_sha, cold_check) do
+    case ResultStore.list_run_records(store, project_name: project.name, include_transcripts: true) do
+      {:ok, records} -> persist_matching_cold_check(records, store, landed_sha, cold_check)
+      {:error, reason} -> log_cold_check_persist_failure(project, landed_sha, reason)
+    end
+  end
+
+  @spec persist_matching_cold_check([LogRecord.t()], ResultStore.store(), String.t(), map()) :: :ok
+  defp persist_matching_cold_check(records, store, landed_sha, cold_check) do
+    case Enum.find(records, &(&1.landed_sha == landed_sha)) do
+      %LogRecord{} = record -> record_cold_check(record, store, cold_check)
+      nil -> :ok
+    end
+  end
+
+  @spec record_cold_check(LogRecord.t(), ResultStore.store(), map()) :: :ok
+  defp record_cold_check(record, store, cold_check) do
+    case ResultStore.record_run(%{record | cold_check: cold_check}, store) do
+      :ok -> :ok
+      {:error, reason} -> log_cold_check_persist_failure(record.project_name, record.landed_sha, reason)
+    end
+  end
+
+  @spec log_cold_check_persist_failure(Project.t() | String.t() | nil, String.t() | nil, term()) :: :ok
+  defp log_cold_check_persist_failure(project, landed_sha, reason) do
+    Logger.warning(
+      "harness audit: failed to persist cold_check fact for #{inspect(project)} landed #{landed_sha}: #{inspect(reason)}"
+    )
+
+    :ok
+  end
+
+  @spec cold_check_failed?(map()) :: boolean()
+  defp cold_check_failed?(%{"passed" => false}), do: true
+  defp cold_check_failed?(%{passed: false}), do: true
+  defp cold_check_failed?(_cold_check), do: false
+
+  @spec cold_check_reason(String.t(), map()) :: String.t()
+  defp cold_check_reason(landed_sha, cold_check) do
+    "post-merge cold check red for landed SHA #{landed_sha}: #{cold_check_tail(cold_check)}"
+  end
+
+  @spec cold_check_tail(map()) :: String.t()
+  defp cold_check_tail(cold_check) do
+    cold_check
+    |> Map.get("tail", Map.get(cold_check, :tail, "(no failing output tail reported)"))
+    |> to_string()
+    |> String.slice(0, @cold_check_tail_limit)
+  end
+
+  @spec file_blocked_cold_check_task(Project.t(), String.t(), map(), String.t()) :: String.t()
+  defp file_blocked_cold_check_task(project, landed_sha, cold_check, reason) do
+    with {:ok, output} <- rmap_new(project, cold_check_task_fragment(landed_sha, cold_check)),
+         {:ok, task_id} <- parse_created_task_id(output),
+         {:ok, _blocked} <- rmap_status_blocked(project, task_id, reason) do
+      task_id
+    else
+      failure ->
+        Logger.warning("harness audit: failed to file blocked cold-check task: #{inspect(failure)}")
+        "cold-check"
+    end
+  end
+
+  @spec cold_check_task_fragment(String.t(), map()) :: String.t()
+  defp cold_check_task_fragment(landed_sha, cold_check) do
+    title = "Fix post-merge cold-check red for #{short_sha(landed_sha)}"
+
+    body =
+      "The post-merge audit AI reported a red cold check for landed SHA #{landed_sha}.\n\n#{cold_check_tail(cold_check)}"
+
+    """
+    [[task]]
+    phase = #{@cold_check_task_phase}
+    bundle = #{Jason.encode!(@cold_check_task_bundle)}
+    title = #{Jason.encode!(title)}
+    scores = { d = #{@cold_check_score_d}, b = #{@cold_check_score_b}, u = #{@cold_check_score_u} }
+    markers = ["bug"]
+    body = #{Jason.encode!(body)}
+    acceptance_criteria = [#{Jason.encode!("The clean-build/check passes from a cold checkout at landed SHA #{landed_sha}.")}]
+    out_of_scope = ["Reverting or unmerging the already-landed SHA"]
+    """
+  end
+
+  @spec rmap_new(Project.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  defp rmap_new(project, fragment) do
+    run_rmap_with_input(tasks_path(project), fragment)
+  end
+
+  @spec rmap_status_blocked(Project.t(), String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  defp rmap_status_blocked(project, task_id, reason) do
+    run_rmap(["status", task_id, "blocked", "--reason", reason, "--tasks-path", tasks_path(project)], [])
+  end
+
+  @spec run_rmap([String.t()], keyword()) :: {:ok, String.t()} | {:error, term()}
+  # System.cmd/3 with an argv list spawns directly — no shell, no interpolation.
+  # sobelow_skip ["CI.System"]
+  defp run_rmap(args, opts) do
+    case System.cmd("rmap", args, Keyword.merge([stderr_to_stdout: true], opts)) do
+      {output, 0} -> {:ok, output}
+      {output, status} -> {:error, {status, output, args}}
+    end
+  rescue
+    e -> {:error, e}
+  end
+
+  @spec run_rmap_with_input(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  # The shell is used only for piping stdin; the task path is passed as argv.
+  # sobelow_skip ["CI.System"]
+  defp run_rmap_with_input(tasks_path, fragment) do
+    args = [
+      "-c",
+      ~S"""
+      printf '%s' "$HARNESS_RMAP_FRAGMENT" | rmap new --from-stdin --tasks-path "$1"
+      """,
+      "harness-audit",
+      tasks_path
+    ]
+
+    case System.cmd("/bin/sh", args, stderr_to_stdout: true, env: [{"HARNESS_RMAP_FRAGMENT", fragment}]) do
+      {output, 0} -> {:ok, output}
+      {output, status} -> {:error, {status, output, args}}
+    end
+  rescue
+    e -> {:error, e}
+  end
+
+  @spec parse_created_task_id(String.t()) :: {:ok, String.t()} | {:error, :created_task_id_missing}
+  defp parse_created_task_id(output) do
+    case Regex.run(~r/created task ([^\s]+)/, output) do
+      [_match, id] -> {:ok, id}
+      _other -> {:error, :created_task_id_missing}
+    end
+  end
+
+  @spec tasks_path(Project.t()) :: String.t()
+  defp tasks_path(%Project{roadmap_path: path}) do
+    if Path.basename(path) == "tasks.toml", do: path, else: Path.join([path, "roadmap", "tasks.toml"])
+  end
+
+  @spec short_sha(String.t()) :: String.t()
+  defp short_sha(sha) when is_binary(sha), do: String.slice(sha, 0, 7)
+
+  @spec notify_cold_check_red(Project.t(), String.t(), String.t()) :: :ok
+  defp notify_cold_check_red(project, task_id, reason) do
+    Notification.notify(%Event{
+      type: :blocked,
+      task_id: task_id,
+      project: project.name,
+      outcome: reason
+    })
   end
 
   @spec push_if_advanced(String.t(), Worktree.t(), String.t(), String.t()) :: outcome()

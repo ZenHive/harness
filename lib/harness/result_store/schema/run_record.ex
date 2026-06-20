@@ -45,6 +45,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
     field :review_ratings, :map
     field :domains, :map
     field :recovery_token_usage, :map
+    field :cold_check, :map
 
     field :agent_output, :binary
     field :reviewer_output, :binary
@@ -95,6 +96,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
       :review_ratings,
       :domains,
       :recovery_token_usage,
+      :cold_check,
       :agent_output,
       :reviewer_output
     ])

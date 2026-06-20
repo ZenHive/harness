@@ -525,6 +525,11 @@ scheduling are out of scope (post-Phase-7).
   and fixes what it can inline before deciding. Correct-but-not-pristine work doesn't
   fail — the reviewer fixes the nitpicks and approves (fix-and-approve is the near-absolute
   default; its fixes show up in `reviewer_diff_size`).
+- **the audit witnesses a cold build after merge.** The post-merge audit worktree is
+  intentionally un-warmed. The audit AI runs the clean-build/check itself and writes
+  `cold_check` in `.harness/audit.json`; harness persists that reported fact but never
+  runs the build or reads an exit code. Red files a blocked follow-up task and notifies;
+  it never reverts, unmerges, or gates the already-landed merge.
 - **cold dialyzer PLT.** `priv/plts` is gitignored, so a reviewer that runs dialyzer in
   the worktree builds a PLT from cold — the slowest part of its check run. This dominates
   review wall-clock; budget the `:lifetime_timeout` for it.

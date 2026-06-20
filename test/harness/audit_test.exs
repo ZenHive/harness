@@ -22,11 +22,13 @@ defmodule Harness.AuditTest do
   alias Harness.Dashboard.OpsFeed.Op
   alias Harness.FakeAdapter
   alias Harness.GitFixture
+  alias Harness.Notification.Event
   alias Harness.ProjectFixture
   alias Harness.ResultStore
   alias Harness.ResultStore.Memory, as: MemoryStore
   alias Harness.Run.LogRecord
   alias Harness.SettingsStore
+  alias Harness.Test.CaptureSink
   alias Harness.Test.SettingsStoreMemory
   alias Harness.TokenUsage
 
@@ -102,6 +104,54 @@ defmodule Harness.AuditTest do
     prior = System.get_env("PATH", "")
     System.put_env("PATH", path)
     on_exit(fn -> System.put_env("PATH", prior) end)
+  end
+
+  defp fake_blocking_rmap_dir(log_path) do
+    dir = Path.join(System.tmp_dir!(), "harness-audit-block-rmap-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+
+    path = Path.join(dir, "rmap")
+
+    File.write!(path, """
+    #!/bin/sh
+    printf 'ARGS:%s\\n' "$*" >> "#{log_path}"
+    if [ "$1" = "new" ]; then
+      cat >> "#{log_path}"
+      printf '\\nEND_NEW\\n' >> "#{log_path}"
+      echo "created task 77"
+      exit 0
+    fi
+    if [ "$1" = "status" ]; then
+      echo "blocked"
+      exit 0
+    fi
+    echo "unexpected rmap args: $*" >&2
+    exit 64
+    """)
+
+    File.chmod!(path, 0o755)
+    dir
+  end
+
+  defp seed_landed_record(store, ctx, run_id, task_id, landed_sha) do
+    record =
+      struct!(LogRecord, %{
+        batch_id: "batch-audit",
+        run_id: run_id,
+        task_id: task_id,
+        project_name: ctx.project.name,
+        adapter: FakeAdapter,
+        state: :done,
+        reason: :approved,
+        duration_ms: 100,
+        verdict: :approve,
+        landed_sha: landed_sha,
+        agent_output: "implementer transcript",
+        reviewer_output: "reviewer transcript",
+        token_usage: TokenUsage.empty()
+      })
+
+    :ok = ResultStore.record_run(record, store)
   end
 
   setup do
@@ -248,6 +298,89 @@ defmodule Harness.AuditTest do
       assert ctx.origin |> GitFixture.git!(["rev-parse", "main"]) |> String.trim() == landed_sha
     end
 
+    test "a red cold-check fact files a blocked rmap task, notifies, and leaves the merge untouched", ctx do
+      landed_sha = land_work!(ctx)
+      short = ctx.repo |> GitFixture.git!(["rev-parse", "--short", "HEAD"]) |> String.trim()
+      File.mkdir_p!(Path.join(ctx.repo, "_build"))
+
+      store = isolated_store()
+      seed_landed_record(store, ctx, "run-cold", "224", landed_sha)
+
+      rmap_log = Path.join(System.tmp_dir!(), "harness-audit-rmap-#{System.unique_integer([:positive])}.log")
+      rmap_dir = fake_blocking_rmap_dir(rmap_log)
+      with_path("#{rmap_dir}:#{System.get_env("PATH", "")}")
+
+      Application.put_env(:harness, :notification_sinks, [CaptureSink])
+      Application.put_env(:harness, :test_capture_pid, self())
+
+      on_exit(fn ->
+        Application.delete_env(:harness, :notification_sinks)
+        Application.delete_env(:harness, :test_capture_pid)
+      end)
+
+      assert :no_changes =
+               Audit.run(%{
+                 project: ctx.project,
+                 base_sha: ctx.base_sha,
+                 auditor: FakeAdapter,
+                 auditor_opts: [command: {:audit_cold_check_by_warm_marker, short}],
+                 result_store: store
+               })
+
+      assert_receive {:notify, %Event{type: :blocked, task_id: "77", project: "audit-demo", outcome: reason}}
+      assert reason =~ landed_sha
+      assert reason =~ "mix compile failed cold: :nofile"
+
+      assert ctx.origin |> GitFixture.git!(["rev-parse", "main"]) |> String.trim() == landed_sha
+
+      assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: "run-cold")
+
+      assert Map.fetch!(record, :cold_check) == %{
+               "passed" => false,
+               "command" => "mix precommit",
+               "tail" => "mix compile failed cold: :nofile"
+             }
+
+      assert record.agent_output == "implementer transcript"
+      assert record.reviewer_output == "reviewer transcript"
+
+      rmap_calls = File.read!(rmap_log)
+      assert rmap_calls =~ "ARGS:new --from-stdin"
+      assert rmap_calls =~ "landed SHA #{landed_sha}"
+      assert rmap_calls =~ "mix compile failed cold: :nofile"
+      assert rmap_calls =~ "ARGS:status 77 blocked --reason"
+    end
+
+    test "a green cold-check fact is persisted silently", ctx do
+      landed_sha = land_work!(ctx)
+      short = ctx.repo |> GitFixture.git!(["rev-parse", "--short", "HEAD"]) |> String.trim()
+
+      store = isolated_store()
+      seed_landed_record(store, ctx, "run-cold-green", "225", landed_sha)
+
+      Application.put_env(:harness, :notification_sinks, [CaptureSink])
+      Application.put_env(:harness, :test_capture_pid, self())
+
+      on_exit(fn ->
+        Application.delete_env(:harness, :notification_sinks)
+        Application.delete_env(:harness, :test_capture_pid)
+      end)
+
+      assert :no_changes =
+               Audit.run(%{
+                 project: ctx.project,
+                 base_sha: ctx.base_sha,
+                 auditor: FakeAdapter,
+                 auditor_opts: [command: {:audit_cold_check_green, short}],
+                 result_store: store
+               })
+
+      refute_receive {:notify, %Event{type: :blocked}}, 100
+
+      assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: "run-cold-green")
+      assert Map.fetch!(record, :cold_check) == %{"passed" => true, "command" => "mix precommit", "tail" => ""}
+    end
+
     test "repo_enabled false leaves clean audit watermarks ephemeral", ctx do
       Application.put_env(:harness, :repo_enabled, false)
       Application.delete_env(:harness, :settings_store)
@@ -366,6 +499,10 @@ defmodule Harness.AuditTest do
       assert prompt =~ "name the filed task id"
       assert prompt =~ "Do not leave TODO"
       assert prompt =~ "Harness does not decide what counts as a discovery"
+      assert prompt =~ "Cold-build witness"
+      assert prompt =~ "intentionally UN-warmed"
+      assert prompt =~ "`cold_check`: {\"passed\": true|false"
+      assert prompt =~ "Harness never runs this build itself"
     end
 
     test "makes rmap reachable inside the detached audit worktree even when PATH is scrubbed", ctx do

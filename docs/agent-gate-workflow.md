@@ -148,6 +148,12 @@ unique per project while available/scheduled). A third-family agent (∉ {implem
 gets a fresh detached worktree of `origin/<target>` and audits the **unaudited commit range**
 (last `audit(...)` commit on the branch, falling back to the land's base_sha → HEAD).
 
+The audit worktree is intentionally **un-warmed**. The audit AI runs the project's clean-build/check
+itself in that cold tree and reports `cold_check` in `.harness/audit.json` (`passed`, `command`,
+`tail`). Harness persists that agent-written fact and never shells out the build or reads an exit
+code. A reported red cold check files a blocked follow-up task and fires a notification; it never
+blocks the already-complete merge, reverts, unmerges, or changes an approve/reject decision.
+
 It reuses `staged-review:audit-review`'s proven conventions: `.audit/<short-sha>.md` report
 files committed in the repo, a single `audit(<short-sha>): ...` commit per pass, fix-forward
 hygiene fixes committed inline. Harness ff-pushes only if HEAD advanced.
@@ -202,7 +208,7 @@ The test for every line of harness code: **is it mechanical?**
 | Port spawn, raw output capture | What does an empty diff mean? |
 | Oban queues, persistence, retry backoff | Do the checks pass in a way that matters? |
 | Counters, timers, watchdogs (`Harness.Run.Reflex`) | Is a check failure the agent's fault or pre-existing debt? |
-| Reading `.harness/review.json` / `.harness/audit.json` | Whether to fix or reject |
+| Reading `.harness/review.json` / `.harness/audit.json` facts (`cold_check`, reports) | Whether to fix or reject |
 | Setting per-run test DB env + best-effort drop | Whether a red suite is acceptable |
 
 **Rules for every session:**
