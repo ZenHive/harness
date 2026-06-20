@@ -548,7 +548,7 @@ defmodule Harness.Audit do
 
   @spec approved_then_found_red(LogRecord.t(), map()) :: map()
   defp approved_then_found_red(record, cold_check) do
-    if cold_check_failed?(cold_check) do
+    if cold_check_failed?(cold_check) and Map.get(record, :verdict) == :approve do
       %{
         "reviewer_adapter" => module_name(record.reviewer_adapter),
         "reviewer_agent" => reviewer_agent(record.reviewer_adapter),
