@@ -9622,7 +9622,7 @@ shipped_in = "665c2e84b4f0387ed0815cab9eb7d29ac00b3fa9"
 id = "318"
 phase = 20
 bundle = "reviewer-pair"
-status = "pending"
+status = "in_progress"
 title = "Post-merge cold-build witness — un-warmed audit pass; the audit AI runs the clean build and reports red as an agent-written FACT, red => blocked task + loud notify (never revert)"
 scores = { d = 4, b = 8, u = 5 }
 depends_on = [317]
@@ -9650,6 +9650,7 @@ SEQUENCING: `depends_on 317` — NOT a logical dependency but a write-set serial
 PAIRS WITH task 321 (the consumer): this is the WRITE side — the audit witnesses a cold red as a fact. 321 is the READ side — it keys an approved-then-found-red fact to the reviewer and surfaces it in routing. Same audit surface, producer/consumer split, two dispatches, one design.
 """
 created_at = "2026-06-20"
+started_at = "2026-06-20"
 scored_at = "2026-06-20"
 
 [[task]]
