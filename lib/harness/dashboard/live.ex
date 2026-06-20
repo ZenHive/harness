@@ -803,6 +803,8 @@ defmodule Harness.Dashboard.Live do
         <dd><Components.stage_stepper state={@run_status.state} /></dd>
         <dt>Verdict</dt>
         <dd>{verdict_label(@run_status.review_verdict)}</dd>
+        <dt :if={@run_status.review_warning?}>Reviewer warning</dt>
+        <dd :if={@run_status.review_warning?}>approved with recorded checks/concerns</dd>
         <dt>Agent</dt>
         <dd class={run_agent_class(:implementer, @run_status)}>
           <span

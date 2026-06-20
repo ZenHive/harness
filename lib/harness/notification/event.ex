@@ -107,10 +107,18 @@ defmodule Harness.Notification.Event do
   def summary(%__MODULE__{type: :model_unavailable, task_id: id, outcome: %{agent: agent, model: model}}),
     do: "blocked dispatch of task #{id} for #{agent}/#{model || "default"}"
 
-  def summary(%__MODULE__{type: :settled, run_id: run_id, task_id: id, outcome: %{state: state, reason: reason}}),
-    do: "settled run #{run_id} task #{id}: #{state}/#{settle_reason_label(reason)}"
+  def summary(%__MODULE__{
+        type: :settled,
+        run_id: run_id,
+        task_id: id,
+        outcome: %{state: state, reason: reason} = outcome
+      }), do: "settled run #{run_id} task #{id}: #{state}/#{settle_reason_label(reason)}#{review_warning_suffix(outcome)}"
 
   @spec settle_reason_label(atom() | tuple()) :: String.t()
   defp settle_reason_label({tag, _rest}), do: Atom.to_string(tag)
   defp settle_reason_label(reason) when is_atom(reason), do: Atom.to_string(reason)
+
+  @spec review_warning_suffix(map()) :: String.t()
+  defp review_warning_suffix(%{review_warning: true}), do: " REVIEW-WARNING"
+  defp review_warning_suffix(_outcome), do: ""
 end

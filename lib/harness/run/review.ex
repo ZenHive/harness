@@ -9,6 +9,8 @@ defmodule Harness.Run.Review do
       {
         "verdict": "approve" | "reject",
         "report": "what was found, what was fixed, why the decision",
+        "checks": {"mix precommit": {"passed": true, "output": "..."}},
+        "concerns": [],
         "facets": {"language": "elixir", "surface": "otp", "archetype": "feature", ...},
         "skills": {"otp": {"score": 8, "note": "..."}, "concurrency": {"score": 7, "note": "..."}, ...}
       }
@@ -30,6 +32,11 @@ defmodule Harness.Run.Review do
   Legacy flat `ratings` is still parsed for back-compat with artifacts written
   before this change.
 
+  `checks` and `concerns` are the reviewer's structured self-claim about what it
+  ran and any caveats it is approving with. Harness preserves both verbatim and
+  only counts reviewer-written facts: non-empty concerns or a check with
+  `"passed": false` on an approve become a loud warning, never an auto-block.
+
   Harness never interprets the work itself — it only reads this file. An
   unreadable artifact (missing or malformed) is re-prompted once in the same
   worktree before failing as `{:review_stuck, ...}` on a second miss (Task 203
@@ -43,7 +50,7 @@ defmodule Harness.Run.Review do
   @artifact_path ".harness/review.json"
 
   @enforce_keys [:verdict, :report]
-  defstruct [:verdict, :report, facets: %{}, skills: %{}, ratings: %{}]
+  defstruct [:verdict, :report, facets: %{}, skills: %{}, checks: %{}, concerns: [], ratings: %{}]
 
   @typedoc "The reviewer's decision."
   @type verdict :: :approve | :reject
@@ -57,16 +64,22 @@ defmodule Harness.Run.Review do
       the task actually was, read from the spec + the real diff. Open vocabulary.
     * `skills` — the routing VALUE: free-form two-axis rubric (domains × qualities)
       of `{score, note}` maps for the skills the diff exercised. Open vocabulary.
+    * `checks` — free-form command claims keyed by command name, including the
+      reviewer's own boolean pass/fail claim when supplied.
+    * `concerns` — free-form list of caveats the reviewer is explicitly approving with.
     * `ratings` — legacy flat implementer KPI scores, kept for back-compat with
       artifacts written before the `skills` rubric. Persisted verbatim.
 
-  All three free-form blocks default to `%{}` when the reviewer omits them.
+  Free-form map blocks default to `%{}` and `concerns` defaults to `[]` when
+  the reviewer omits them.
   """
   @type t :: %__MODULE__{
           verdict: verdict(),
           report: String.t(),
           facets: %{optional(String.t()) => term()},
           skills: %{optional(String.t()) => term()},
+          checks: %{optional(String.t()) => term()},
+          concerns: [term()],
           ratings: %{optional(String.t()) => term()}
         }
 
@@ -106,6 +119,14 @@ defmodule Harness.Run.Review do
     end
   end
 
+  @doc """
+  Returns true when an approving review carries reviewer-written warning facts.
+  """
+  @spec warning?(t() | nil) :: boolean()
+  def warning?(%__MODULE__{verdict: :approve, concerns: concerns}) when concerns != [], do: true
+  def warning?(%__MODULE__{verdict: :approve, checks: checks}), do: failed_check?(checks)
+  def warning?(_review), do: false
+
   @spec build(term(), map()) :: {:ok, t()} | {:error, {:malformed, term()}}
   defp build("approve", decoded), do: {:ok, struct_for(:approve, decoded)}
   defp build("reject", decoded), do: {:ok, struct_for(:reject, decoded)}
@@ -118,6 +139,8 @@ defmodule Harness.Run.Review do
       report: report(decoded),
       facets: free_form_block(decoded, "facets"),
       skills: free_form_block(decoded, "skills"),
+      checks: free_form_block(decoded, "checks"),
+      concerns: free_form_list(decoded, "concerns"),
       ratings: free_form_block(decoded, "ratings")
     }
   end
@@ -136,4 +159,19 @@ defmodule Harness.Run.Review do
       _absent_or_non_map -> %{}
     end
   end
+
+  @spec free_form_list(map(), String.t()) :: [term()]
+  defp free_form_list(decoded, key) do
+    case Map.get(decoded, key) do
+      block when is_list(block) -> block
+      _absent_or_non_list -> []
+    end
+  end
+
+  @spec failed_check?(term()) :: boolean()
+  defp failed_check?(%{"passed" => false}), do: true
+  defp failed_check?(%{passed: false}), do: true
+  defp failed_check?(map) when is_map(map), do: Enum.any?(Map.values(map), &failed_check?/1)
+  defp failed_check?(list) when is_list(list), do: Enum.any?(list, &failed_check?/1)
+  defp failed_check?(_other), do: false
 end

@@ -126,6 +126,44 @@ defmodule Harness.Run.ReviewTest do
     end
   end
 
+  describe "parse/1 — checks and concerns" do
+    test "checks ride through verbatim as the reviewer's structured command claims" do
+      json =
+        ~s({"verdict": "approve", "report": "ok", "checks": ) <>
+          ~s({"mix precommit": {"passed": true, "output": "green"}, "mix test.json": {"passed": false, "output": "doctest doc chunk"}}})
+
+      assert {:ok, %Review{checks: checks}} = Review.parse(json)
+
+      assert checks == %{
+               "mix precommit" => %{"passed" => true, "output" => "green"},
+               "mix test.json" => %{"passed" => false, "output" => "doctest doc chunk"}
+             }
+    end
+
+    test "concerns ride through verbatim as a list of self-flagged caveats" do
+      json =
+        ~s({"verdict": "approve", "report": "ok", "concerns": ) <>
+          ~s([{"kind": "dismissed_red", "mechanism": "reproduced doc chunk config bug", "check": "mix precommit"}]})
+
+      assert {:ok, %Review{concerns: concerns}} = Review.parse(json)
+
+      assert concerns == [
+               %{
+                 "kind" => "dismissed_red",
+                 "mechanism" => "reproduced doc chunk config bug",
+                 "check" => "mix precommit"
+               }
+             ]
+    end
+
+    test "missing or wrong-shaped checks and concerns default without crashing" do
+      assert {:ok, %Review{checks: %{}, concerns: []}} = Review.parse(~s({"verdict": "approve"}))
+
+      assert {:ok, %Review{checks: %{}, concerns: []}} =
+               Review.parse(~s({"verdict": "approve", "checks": "none", "concerns": {"note": "bad shape"}}))
+    end
+  end
+
   describe "parse/1 — malformed contents" do
     test "invalid JSON is malformed with the decoder error" do
       assert {:error, {:malformed, {:invalid_json, %Jason.DecodeError{}}}} = Review.parse("not json at all")

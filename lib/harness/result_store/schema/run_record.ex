@@ -39,6 +39,9 @@ defmodule Harness.ResultStore.Schema.RunRecord do
     field :composed_inputs, :map
     field :review_facets, :map
     field :review_skills, :map
+    field :review_checks, :map
+    field :review_concerns, :map
+    field :review_warning?, :boolean, source: :review_warning
     field :review_ratings, :map
     field :domains, :map
     field :recovery_token_usage, :map
@@ -86,6 +89,9 @@ defmodule Harness.ResultStore.Schema.RunRecord do
       :composed_inputs,
       :review_facets,
       :review_skills,
+      :review_checks,
+      :review_concerns,
+      :review_warning?,
       :review_ratings,
       :domains,
       :recovery_token_usage,

@@ -61,6 +61,9 @@ defmodule Harness.ResultStoreContract do
     # never nil — missing-block tolerance through the store layer (Task 224).
     assert retrieved.review_facets == %{}
     assert retrieved.review_skills == %{}
+    assert retrieved.review_checks == %{}
+    assert retrieved.review_concerns == []
+    assert retrieved.review_warning? == false
 
     # domains roundtrip (added post-Task 116)
     rec_d = log_record(run_id: "r-domains", domains: [:otp, :oban])
@@ -168,6 +171,9 @@ defmodule Harness.ResultStoreContract do
         review_report: "fixed a credo nit inline; approving",
         review_facets: %{"language" => "elixir", "surface" => "otp", "archetype" => "feature"},
         review_skills: %{"otp" => %{"score" => 8, "note" => "clean gen_statem"}},
+        review_checks: %{"mix precommit" => %{"passed" => false, "output" => "doc chunk failure"}},
+        review_concerns: [%{"kind" => "dismissed_red", "mechanism" => "reproduced docs config"}],
+        review_warning?: true,
         review_ratings: %{"performance" => 8, "code_quality" => 7},
         reviewer_outcome_kind: :exited,
         reviewer_exit_status: 0,
@@ -194,6 +200,9 @@ defmodule Harness.ResultStoreContract do
     # the nested {score, note} maps — free-form string keys preserved at every level.
     assert rf.review_facets == %{"language" => "elixir", "surface" => "otp", "archetype" => "feature"}
     assert rf.review_skills == %{"otp" => %{"score" => 8, "note" => "clean gen_statem"}}
+    assert rf.review_checks == %{"mix precommit" => %{"passed" => false, "output" => "doc chunk failure"}}
+    assert rf.review_concerns == [%{"kind" => "dismissed_red", "mechanism" => "reproduced docs config"}]
+    assert rf.review_warning? == true
     assert rf.review_ratings == %{"performance" => 8, "code_quality" => 7}
     assert rf.reviewer_outcome_kind == :exited
     assert rf.reviewer_exit_status == 0

@@ -75,6 +75,21 @@ defmodule Harness.Notification.EventTest do
                "settled run run-1781487644448-abc task 42: done/approved"
     end
 
+    test "loudly flags approved runs with reviewer-recorded warnings" do
+      event = %Event{
+        type: :settled,
+        task_id: "42",
+        run_id: "run-warning",
+        outcome: %{
+          state: :done,
+          reason: :approved,
+          review_warning: true
+        }
+      }
+
+      assert Event.summary(event) == "settled run run-warning task 42: done/approved REVIEW-WARNING"
+    end
+
     test "tuple settle reasons use the tag only" do
       event = %Event{
         type: :settled,

@@ -288,7 +288,14 @@ defmodule Harness.Dispatch do
   defp record_review_summary(%LogRecord{verdict: nil}), do: nil
 
   defp record_review_summary(%LogRecord{} = record) do
-    %{verdict: record.verdict, report: record.review_report, ratings: AgentKPI.record_ratings(record)}
+    %{
+      verdict: record.verdict,
+      report: record.review_report,
+      ratings: AgentKPI.record_ratings(record),
+      checks: record.review_checks,
+      concerns: record.review_concerns,
+      review_warning: record.review_warning?
+    }
   end
 
   # A terminal run whose record could not be read, and a run that vanished before
@@ -1280,8 +1287,15 @@ defmodule Harness.Dispatch do
   @spec summarize_review(Review.t() | nil) :: map() | nil
   defp summarize_review(nil), do: nil
 
-  defp summarize_review(%Review{verdict: verdict, report: report, ratings: ratings}) do
-    %{verdict: verdict, report: report, ratings: ratings}
+  defp summarize_review(%Review{} = review) do
+    %{
+      verdict: review.verdict,
+      report: review.report,
+      ratings: review.ratings,
+      checks: review.checks,
+      concerns: review.concerns,
+      review_warning: Review.warning?(review)
+    }
   end
 
   # Summarizers for the macro-generated run-observation tools. Each projects a
@@ -1652,7 +1666,10 @@ defmodule Harness.Dispatch do
       task_id: record.task_id,
       verdict: record.verdict,
       report: record.review_report,
-      ratings: AgentKPI.record_ratings(record)
+      ratings: AgentKPI.record_ratings(record),
+      checks: record.review_checks,
+      concerns: record.review_concerns,
+      review_warning: record.review_warning?
     }
   end
 

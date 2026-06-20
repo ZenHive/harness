@@ -759,6 +759,33 @@ defmodule Harness.Dashboard.LiveTest do
       assert html =~ ">5s<"
     end
 
+    test "renders reviewer warnings loudly on an approved run" do
+      status = %Status{
+        run_id: "r",
+        task_id: "1",
+        state: :done,
+        review_verdict: :approve,
+        review_warning?: true
+      }
+
+      html =
+        status
+        |> show_render_assigns("")
+        |> Live.render()
+        |> rendered_to_string()
+
+      assert html =~ "Reviewer warning"
+      assert html =~ "checks/concerns"
+    end
+
+    test "rehydrates reviewer warnings from a stored run record" do
+      record = log_record("run-warning-status", review_warning?: true)
+
+      status = Status.from_log_record(record)
+
+      assert status.review_warning? == true
+    end
+
     test "renders the recovery-reviewer pass as the active live stage" do
       started_at = ~U[2026-06-17 08:00:00.000Z]
       reviewing_at = DateTime.add(started_at, 5, :second)
@@ -923,7 +950,8 @@ defmodule Harness.Dashboard.LiveTest do
       duration_ms: 1_000,
       review_iterations: 0,
       agent_outcome_kind: Keyword.get(opts, :agent_outcome_kind),
-      agent_output: Keyword.get(opts, :agent_output, "")
+      agent_output: Keyword.get(opts, :agent_output, ""),
+      review_warning?: Keyword.get(opts, :review_warning?, false)
     }
   end
 

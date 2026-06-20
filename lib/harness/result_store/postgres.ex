@@ -97,6 +97,9 @@ defmodule Harness.ResultStore.Postgres do
           reviewer_output: fragment("COALESCE(NULLIF(EXCLUDED.reviewer_output, ''::bytea), ?)", r.reviewer_output),
           review_facets: fragment("COALESCE(NULLIF(EXCLUDED.review_facets, '{}'::jsonb), ?)", r.review_facets),
           review_skills: fragment("COALESCE(NULLIF(EXCLUDED.review_skills, '{}'::jsonb), ?)", r.review_skills),
+          review_checks: fragment("COALESCE(NULLIF(EXCLUDED.review_checks, '{}'::jsonb), ?)", r.review_checks),
+          review_concerns: fragment("COALESCE(NULLIF(EXCLUDED.review_concerns, '{}'::jsonb), ?)", r.review_concerns),
+          review_warning?: fragment("(? OR COALESCE(EXCLUDED.review_warning, false))", r.review_warning?),
           review_ratings: fragment("COALESCE(NULLIF(EXCLUDED.review_ratings, '{}'::jsonb), ?)", r.review_ratings),
           recovery_attempts:
             fragment(
@@ -577,6 +580,9 @@ defmodule Harness.ResultStore.Postgres do
         composed_inputs: r.composed_inputs,
         review_facets: r.review_facets,
         review_skills: r.review_skills,
+        review_checks: r.review_checks,
+        review_concerns: r.review_concerns,
+        review_warning?: r.review_warning?,
         review_ratings: r.review_ratings,
         domains: r.domains,
         recovery_token_usage: r.recovery_token_usage,
@@ -659,6 +665,9 @@ defmodule Harness.ResultStore.Postgres do
       composed_inputs: encode_jsonb(r.composed_inputs),
       review_facets: encode_jsonb(r.review_facets),
       review_skills: encode_jsonb(r.review_skills),
+      review_checks: r.review_checks,
+      review_concerns: encode_freeform_list(r.review_concerns),
+      review_warning?: r.review_warning?,
       review_ratings: encode_jsonb(r.review_ratings),
       domains: encode_jsonb(r.domains),
       recovery_token_usage: encode_jsonb(r.recovery_token_usage),
@@ -691,6 +700,9 @@ defmodule Harness.ResultStore.Postgres do
       review_report: row.review_report,
       review_facets: decode_freeform_block(row.review_facets),
       review_skills: decode_freeform_block(row.review_skills),
+      review_checks: decode_freeform_block(row.review_checks),
+      review_concerns: decode_freeform_list(row.review_concerns),
+      review_warning?: default(row.review_warning?, false),
       review_ratings: decode_review_ratings(row.review_ratings),
       token_usage: decode_token_usage(row.token_usage),
       composed_inputs: default(decode_jsonb(row.composed_inputs), []),
@@ -781,6 +793,14 @@ defmodule Harness.ResultStore.Postgres do
   @spec decode_freeform_block(map() | nil) :: %{optional(String.t()) => term()}
   defp decode_freeform_block(nil), do: %{}
   defp decode_freeform_block(map) when is_map(map), do: map
+
+  @spec encode_freeform_list([term()]) :: map()
+  defp encode_freeform_list(list) when is_list(list), do: %{"$list" => list}
+
+  @spec decode_freeform_list(map() | nil) :: [term()]
+  defp decode_freeform_list(nil), do: []
+  defp decode_freeform_list(%{"$list" => list}) when is_list(list), do: list
+  defp decode_freeform_list(_other), do: []
 
   @spec encode_term(term()) :: term()
   defp encode_term(nil), do: nil

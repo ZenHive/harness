@@ -1929,6 +1929,7 @@ defmodule Harness.Run do
       reviewer_adapter: agent_kind_for(data.reviewer_adapter),
       recovery_adapter: agent_kind_for(data.recovery_adapter),
       review_verdict: data.review && data.review.verdict,
+      review_warning?: Review.warning?(data.review),
       reason: data.reason,
       held?: state == :held,
       hold_reason: if(state == :held, do: data.hold_reason)
@@ -2576,9 +2577,14 @@ defmodule Harness.Run do
     or contained invalid JSON, so harness is about to discard the entire run.
 
     This is your ONLY remaining job, nothing else: all prior fixes are already committed in this
-    worktree — assess its current state, run the project's checks below if you need to confirm, then
-    write a VALID verdict file NOW and stop. Do not re-do a full review or make new changes unless a
-    check is actually failing.
+    worktree — assess its current state, run the project's checks below, then write a VALID verdict
+    file NOW and stop. Do not re-do a full review or make new changes unless a check is actually
+    failing.
+
+    You MUST run the project's checks. If checks are still red after your fixes and you choose to
+    dismiss that red as environmental or out-of-scope, first reproduce the benign cause and record
+    that reproduced cause in `checks` and `concerns` (command, failing output, and mechanism). If you
+    cannot reproduce a benign cause, treat the red as a real defect.
 
     Verdict artifact — write this, then stop:
 
@@ -2586,9 +2592,15 @@ defmodule Harness.Run do
     {
       "verdict": "approve" | "reject",
       "report": "<what you found, what you fixed, why you decided>",
+      "checks": {"<command you ran>": {"passed": true | false, "output": "<short relevant output>", "mechanism": "<why a red is benign, if dismissed>"}},
+      "concerns": [],
       "facets": {"language": "...", "surface": "...", "archetype": "...", "difficulty": "...", "risk": "..."},
       "skills": {"<domain or quality the diff exercised>": {"score": <0-10>, "note": "<one line>"}}
     }
+
+    `checks` records the actual command(s) you ran and your own boolean pass/fail call for each.
+    `concerns` is a list of caveats you are explicitly approving with; leave it [] only when there
+    are none. A dismissed red is never a bare prose aside.
 
     `facets` characterizes what this task ACTUALLY was, read from the spec + the real diff (open
     vocabulary). `skills` scores ONLY the domains and qualities the diff genuinely exercised (otp,
@@ -2598,7 +2610,7 @@ defmodule Harness.Run do
     Fixing is cheaper than rejecting — approve anything salvageable; reject only if nothing is.
     A missing or malformed #{Review.artifact_path()} fails this run for good.
 
-    Project check hint (run these yourself if confirming; judge the output):
+    Project check hint (run these yourself; judge the output):
     #{Text.placeholder(data.project.check_command)}
 
     Implementer: #{data.item.agent}
@@ -2625,11 +2637,16 @@ defmodule Harness.Run do
 
     Your job, in order:
     1. Review the work against the task spec and acceptance criteria below.
-    2. Run the project's checks yourself (hint below) and judge the results.
+    2. You MUST run the project's checks yourself (hint below) and judge the results.
     3. Fix everything that needs fixing — your own edits, your own commits. Wrong approach, bugs,
        missing tests, failing checks, style: fix it all, then approve.
     4. LAST, after every fix and check is done: write your verdict to `#{Review.artifact_path()}`
        (format below). This is your FINAL action — write the file, then stop.
+
+    If checks are still red after your fixes and you choose to dismiss that red as environmental or
+    out-of-scope, first reproduce the benign cause and record that reproduced cause in `checks` and
+    `concerns` (command, failing output, and mechanism). If you cannot reproduce a benign cause,
+    treat the red as a real defect. A dismissed red is never a bare prose aside.
 
     ⚠️ Writing `#{Review.artifact_path()}` is mandatory and unconditional — it is the ONE thing
     harness reads. If you finish fixing and reviewing but exit WITHOUT writing it, your entire run is
@@ -2661,6 +2678,14 @@ defmodule Harness.Run do
     {
       "verdict": "approve" | "reject",
       "report": "<what you found, what you fixed, why you decided>",
+      "checks": {
+        "<command you ran>": {
+          "passed": true | false,
+          "output": "<short relevant output>",
+          "mechanism": "<why a red is benign, if dismissed>"
+        }
+      },
+      "concerns": [],
       "facets": {
         "language": "<elixir | rust | js | ...>",
         "surface": "<otp | ecto | phoenix | liveview | cli | migration | docs | ...>",
@@ -2684,6 +2709,11 @@ defmodule Harness.Run do
       docs, truthfulness (the implementer's self-report vs what you actually found)
     Each is a {"score": 0-10, "note": "..."} map; the note is your one-line evidence for the score.
     Open vocabulary — these are examples, not an enum.
+
+    `checks` records the actual command(s) you ran and your own boolean pass/fail call for each.
+    `concerns` is a list of caveats you are explicitly approving with; leave it [] only when there
+    are none. If you approve with a dismissed red, the reproduced mechanism belongs here, not only in
+    the report.
 
     A missing or malformed #{Review.artifact_path()} fails this run.
 

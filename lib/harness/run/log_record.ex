@@ -7,7 +7,8 @@ defmodule Harness.Run.LogRecord do
   post-run analysis can reconstruct rejections, fail-overs, quota blocks, and
   agent comparison metrics without needing the original process to still exist.
 
-  ## Reviewer verdict (`verdict`, `review_report`, `review_facets`, `review_skills`, `review_ratings`)
+  ## Reviewer verdict (`verdict`, `review_report`, `review_checks`, `review_concerns`,
+  `review_facets`, `review_skills`, `review_ratings`)
 
   The reviewer AI is the gate: `verdict` stores its decision (`:approve` /
   `:reject`, `nil` when the run never reached review) and `review_report` its
@@ -16,8 +17,10 @@ defmodule Harness.Run.LogRecord do
   VALUE (two-axis domains × qualities rubric of `{score, note}` maps) — both
   persisted verbatim as raw facts an AI synthesizes capability from later (Task
   224). `review_ratings` is the legacy flat KPI block, kept for back-compat with
-  pre-`skills` records. All three default to `%{}` and feed downstream KPI /
-  capability routing — harness never fuses them into a number.
+  pre-`skills` records. `review_checks` and `review_concerns` are the reviewer's
+  structured check claim and self-flagged caveats; `review_warning?` is true when
+  an approve carries non-empty concerns or a reviewer-authored `passed: false`
+  check fact. Harness never classifies prose or fuses these facts into a verdict.
 
   ## First-attempt pass (`reviewer_diff_size`, `review_iterations`)
 
@@ -112,6 +115,9 @@ defmodule Harness.Run.LogRecord do
           review_report: String.t() | nil,
           review_facets: %{optional(String.t()) => term()},
           review_skills: %{optional(String.t()) => term()},
+          review_checks: %{optional(String.t()) => term()},
+          review_concerns: [term()],
+          review_warning?: boolean(),
           review_ratings: %{optional(String.t()) => term()},
           recovery_attempts: non_neg_integer(),
           recovery_outcome: Recovery.outcome() | nil,
@@ -167,6 +173,9 @@ defmodule Harness.Run.LogRecord do
     review_report: nil,
     review_facets: %{},
     review_skills: %{},
+    review_checks: %{},
+    review_concerns: [],
+    review_warning?: false,
     review_ratings: %{},
     recovery_attempts: 0,
     recovery_outcome: nil,
@@ -273,6 +282,9 @@ defmodule Harness.Run.LogRecord do
         review_report: review.report,
         review_facets: review.facets,
         review_skills: review.skills,
+        review_checks: review.checks,
+        review_concerns: review.concerns,
+        review_warning?: Review.warning?(review),
         review_ratings: review.ratings
     }
   end

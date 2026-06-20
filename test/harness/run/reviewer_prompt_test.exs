@@ -24,6 +24,15 @@ defmodule Harness.Run.ReviewerPromptTest do
       assert prompt =~ "Reject ONLY if there is literally nothing to salvage"
       assert prompt =~ "Project check hint"
       assert prompt =~ "mix precommit"
+      assert prompt =~ "You MUST run the project's checks"
+      assert prompt =~ "If checks are still red"
+      assert prompt =~ "record"
+      assert prompt =~ "reproduced cause"
+      assert prompt =~ "`checks`"
+      assert prompt =~ "`concerns`"
+      assert prompt =~ ~s("checks":)
+      assert prompt =~ ~s("passed": true | false)
+      assert prompt =~ ~s("concerns": [])
       assert prompt =~ "Task spec:"
       assert prompt =~ "Acceptance criteria:"
       assert prompt =~ "Implementer transcript tail:"
@@ -34,6 +43,29 @@ defmodule Harness.Run.ReviewerPromptTest do
       assert prompt =~ project.roadmap_path
       assert prompt =~ "file it as a real rmap task"
       assert prompt =~ "name the filed task id"
+    end
+
+    test "the reviewer re-prompt preserves the checks and concerns verdict contract" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+
+      opts =
+        base
+        |> default_opts()
+        |> Keyword.put(:reviewer_adapter_opts, command: {:review_capture_reprompt, "approve"})
+
+      {:ok, run_id, pid} = Run.Supervisor.start_run(item(), ProjectFixture.from_repo(repo), FakeAdapter, opts)
+      result = await_result(run_id, pid)
+
+      assert %Result{state: :done, reason: :approved, reviewer_reprompt_count: 1} = result
+
+      prompt = GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_prompt.txt"])
+      assert prompt =~ "You MUST run the project's checks"
+      assert prompt =~ "reproduced cause"
+      assert prompt =~ "`checks`"
+      assert prompt =~ "`concerns`"
+      assert prompt =~ ~s("checks":)
+      assert prompt =~ ~s("concerns": [])
     end
 
     test "makes rmap reachable inside the reviewer worktree even when PATH is scrubbed" do

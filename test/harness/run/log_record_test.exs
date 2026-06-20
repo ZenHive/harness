@@ -146,21 +146,66 @@ defmodule Harness.Run.LogRecordTest do
       assert record.review_skills == %{"otp" => %{"score" => 8, "note" => "clean gen_statem"}}
     end
 
-    test "facets and skills default to empty maps when the reviewer omitted them (legacy artifact)" do
+    test "carries reviewer checks and concerns and flags approve-with-warning facts" do
+      review = %Review{
+        verdict: :approve,
+        report: "approved with recorded caveat",
+        checks: %{
+          "mix precommit" => %{
+            "passed" => false,
+            "output" => "doctest doc chunk failure",
+            "mechanism" => "reproduced missing docs config"
+          }
+        },
+        concerns: [
+          %{
+            "kind" => "dismissed_red",
+            "mechanism" => "reproduced missing docs config"
+          }
+        ]
+      }
+
+      record = LogRecord.from_result(result(review: review), meta())
+
+      assert record.review_checks == %{
+               "mix precommit" => %{
+                 "passed" => false,
+                 "output" => "doctest doc chunk failure",
+                 "mechanism" => "reproduced missing docs config"
+               }
+             }
+
+      assert record.review_concerns == [
+               %{
+                 "kind" => "dismissed_red",
+                 "mechanism" => "reproduced missing docs config"
+               }
+             ]
+
+      assert record.review_warning? == true
+    end
+
+    test "facets, skills, checks, and concerns default when the reviewer omitted them (legacy artifact)" do
       review = %Review{verdict: :approve, report: "ok", ratings: %{"performance" => 8}}
 
       record = LogRecord.from_result(result(review: review), meta())
 
       assert record.review_facets == %{}
       assert record.review_skills == %{}
+      assert record.review_checks == %{}
+      assert record.review_concerns == []
+      assert record.review_warning? == false
       assert record.review_ratings == %{"performance" => 8}
     end
 
-    test "leaves facets and skills at empty-map defaults when the run never produced a review" do
+    test "leaves reviewer free-form fields at defaults when the run never produced a review" do
       record = LogRecord.from_result(result(state: :failed, reason: :cancelled, review: nil), meta())
 
       assert record.review_facets == %{}
       assert record.review_skills == %{}
+      assert record.review_checks == %{}
+      assert record.review_concerns == []
+      assert record.review_warning? == false
     end
 
     test "carries a rejection verdict with the reviewer's report" do

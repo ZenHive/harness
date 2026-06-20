@@ -251,6 +251,14 @@ defmodule Harness.FakeAdapter do
     {"/bin/sh", ["-c", script, "harness-fake", review_json(verdict)], []}
   end
 
+  defp command({:review_capture_reprompt, verdict}, %Invocation{prompt: prompt}) when verdict in ["approve", "reject"] do
+    script =
+      ~S(mkdir -p .harness; if [ -f .harness/.reprompt-marker ]; then printf '%s' "$1" > reviewer_prompt.txt; printf '%s' "$2" > .harness/review.json; ) <>
+        ~S(else : > .harness/.reprompt-marker; echo '{not json' > .harness/review.json; fi)
+
+    {"/bin/sh", ["-c", script, "harness-fake", prompt, review_json(verdict)], []}
+  end
+
   # {:review_count_then, behavior}
   #   — appends one byte to the (excluded) `.harness/.invoke-count` on EVERY
   #     invocation so a test can count reviewer passes off the retained

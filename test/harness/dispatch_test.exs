@@ -624,6 +624,24 @@ defmodule Harness.DispatchTest do
       assert detail.ratings == %{"otp" => 8, "truthfulness" => 9}
     end
 
+    test "surfaces review checks, concerns, and warning flag" do
+      record =
+        struct!(
+          LogRecord.from_result(approved_result("run-vd-warning"), batch_id: "b", adapter: Claude, duration_ms: 1),
+          %{
+            review_checks: %{"mix precommit" => %{"passed" => false, "output" => "red"}},
+            review_concerns: [%{"kind" => "dismissed_red"}],
+            review_warning?: true
+          }
+        )
+
+      detail = Dispatch.summarize_verdict_detail(record)
+
+      assert detail.checks == %{"mix precommit" => %{"passed" => false, "output" => "red"}}
+      assert detail.concerns == [%{"kind" => "dismissed_red"}]
+      assert detail.review_warning == true
+    end
+
     test "returns :not_found for an unknown/unrecorded run_id" do
       assert {:error, :not_found} = Dispatch.verdict_detail("__no_such_run__")
     end
@@ -1228,7 +1246,13 @@ defmodule Harness.DispatchTest do
       task_id: "25",
       state: :done,
       reason: :approved,
-      review: %Review{verdict: :approve, report: "looks good", ratings: %{"code_quality" => 8}},
+      review: %Review{
+        verdict: :approve,
+        report: "looks good",
+        ratings: %{"code_quality" => 8},
+        checks: %{"mix test.json" => %{"passed" => true}},
+        concerns: []
+      },
       worktree_path: "/tmp/wt/#{run_id}",
       agent_diff_size: 12,
       reviewer_diff_size: 0

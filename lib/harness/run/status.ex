@@ -60,6 +60,8 @@ defmodule Harness.Run.Status do
       is populated only for live runs.
     * `review_verdict` — the reviewer's decision (`:approve` / `:reject`), or
       `nil` before the reviewer has written its verdict artifact.
+    * `review_warning?` — true when an approved verdict carried reviewer-written
+      warning facts (`concerns` or a `passed: false` check claim).
     * `reason` — why the run settled or is failing, once known (see
       `t:Harness.Run.Result.reason/0`); `nil` while the run is still in flight.
     * `held?` — `true` while the run is operator-parked in `:held`.
@@ -83,6 +85,7 @@ defmodule Harness.Run.Status do
           reviewer_adapter: atom() | nil,
           recovery_adapter: atom() | nil,
           review_verdict: Review.verdict() | nil,
+          review_warning?: boolean(),
           reason: Result.reason() | nil,
           held?: boolean(),
           hold_reason: :graceful | :interrupt | nil,
@@ -108,6 +111,7 @@ defmodule Harness.Run.Status do
     :landed_sha,
     :hold_reason,
     state_entered_at: %{},
+    review_warning?: false,
     held?: false
   ]
 
@@ -145,6 +149,7 @@ defmodule Harness.Run.Status do
       reviewer_adapter: agent_atom(Map.get(record, :reviewer_adapter)),
       recovery_adapter: nil,
       review_verdict: Map.get(record, :verdict),
+      review_warning?: Map.get(record, :review_warning?, false),
       reason: record.reason,
       landed_sha: Map.get(record, :landed_sha)
     }

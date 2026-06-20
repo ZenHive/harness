@@ -79,6 +79,12 @@ writes `.harness/review.json`:
 {
   "verdict": "approve" | "reject",
   "report": "prose — what it found, what it fixed, why the verdict",
+  "checks": {
+    "mix precommit": { "passed": true, "output": "short relevant output", "mechanism": "" }
+  },
+  "concerns": [],
+  "facets": { "language": "elixir", "surface": "otp", "archetype": "feature" },
+  "skills": { "otp": { "score": 1-10, "note": "one-line evidence" } },
   "ratings": { "performance": 1-10, "truthfulness": 1-10, "code_quality": 1-10, "idiom_usage": 1-10 }
 }
 ```
@@ -87,6 +93,9 @@ Harness reads the file mechanically (`Harness.Run.Review`):
 
 - `approve` → run settles `:done`, reason `:approved` → landing enqueued (if `landing_policy: :auto`)
 - `reject` → run settles `:failed`, reason `{:review_rejected, report}` → task back to the queue
+- approved `checks` containing a reviewer-authored `passed: false`, or non-empty `concerns`, surface as
+  `review_warning` facts on the run record / notification / dashboard. Harness flags them loudly but
+  never auto-blocks or classifies the prose.
 - unreadable (missing or malformed `.harness/review.json`) → re-prompted **once** in the same
   worktree (Task 203 generalized by 228); a second unreadable settles `:failed`, reason
   `{:review_stuck, report}`. Mechanical re-issue of the mandatory write — no judgment.

@@ -15,6 +15,7 @@ defmodule Harness.ResultStore.PostgresCodecTest do
   use ExUnit.Case, async: true
 
   alias Harness.AgentAdapter.Codex
+  alias Harness.Batch.Result, as: BatchResult
   alias Harness.ResultStore.Postgres
   alias Harness.ResultStoreContract
   alias Harness.Run.LogRecord
@@ -35,9 +36,26 @@ defmodule Harness.ResultStore.PostgresCodecTest do
     @spec all(Ecto.Query.t()) :: [struct()]
     def all(_query), do: rows()
 
+    @spec get(module(), String.t()) :: struct() | nil
+    def get(schema, id) do
+      Enum.find(rows(), &match?(%{__struct__: ^schema, batch_id: ^id}, &1))
+    end
+
+    @spec delete_all(Ecto.Query.t()) :: {non_neg_integer(), nil}
+    def delete_all(_query), do: {0, nil}
+
+    @spec update_all(Ecto.Query.t(), keyword()) :: {non_neg_integer(), nil}
+    def update_all(_query, _updates), do: {1, nil}
+
     @spec reset() :: :ok
     def reset do
       Process.put({__MODULE__, :rows}, [])
+      :ok
+    end
+
+    @spec put_rows([map() | struct()]) :: :ok
+    def put_rows(rows) when is_list(rows) do
+      Process.put({__MODULE__, :rows}, rows)
       :ok
     end
 
@@ -116,6 +134,22 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       assert roundtrip(record).review_ratings == ratings
     end
 
+    test "review checks, concerns, and warning flag round-trip as reviewer-written facts" do
+      record =
+        ResultStoreContract.log_record(
+          run_id: "jsonb-review-checks",
+          review_checks: %{"mix precommit" => %{"passed" => false, "output" => "red"}},
+          review_concerns: [%{"kind" => "dismissed_red", "mechanism" => "reproduced config bug"}],
+          review_warning?: true
+        )
+
+      decoded = roundtrip(record)
+
+      assert decoded.review_checks == %{"mix precommit" => %{"passed" => false, "output" => "red"}}
+      assert decoded.review_concerns == [%{"kind" => "dismissed_red", "mechanism" => "reproduced config bug"}]
+      assert decoded.review_warning? == true
+    end
+
     test "list-valued fields round-trip via the $list marker (composed_inputs, domains)" do
       composed = [%{phase: :initial, attempt: 0, argv: ["-p", "do it"]}]
 
@@ -166,6 +200,131 @@ defmodule Harness.ResultStore.PostgresCodecTest do
 
       assert {:error, %UndefinedFunctionError{}} =
                Postgres.record_run(record, repo: RepoModuleThatDoesNotExist)
+    end
+  end
+
+  describe "aggregate row projections" do
+    test "aggregate_by_agent projects DB rows through the shared KPI shape" do
+      FakeRepo.put_rows([
+        %{
+          agent: "codex",
+          run_count: 3,
+          pass_count: 2,
+          first_attempt_pass_count: 1,
+          reviewer_flaked_count: 1,
+          durations: [100, 200, 300],
+          review_iterations_mean: 0.5,
+          input_mean: 10,
+          output_mean: 5,
+          total_mean: 15,
+          pass_count_for_cost: 2,
+          cost_to_green_mean: 42,
+          ratings: [%{"review_skills" => %{"otp" => %{"score" => 8}}, "review_ratings" => %{}}]
+        }
+      ])
+
+      assert {:ok, %{codex: kpi}} = Postgres.aggregate_by_agent([], repo: FakeRepo)
+
+      assert kpi.run_count == 3
+      assert kpi.reviewer_flaked == 1
+      assert kpi.success_rate == 1.0
+      assert kpi.first_attempt_pass_rate == 0.5
+      assert kpi.tokens == %{input: 10.0, output: 5.0, total: 15.0}
+      assert kpi.review_iterations == 0.5
+      assert kpi.ratings == %{"otp" => 8.0}
+      assert kpi.cost_to_green == 42.0
+    end
+
+    test "aggregate_reviewer_reliability projects reviewer rows" do
+      FakeRepo.put_rows([
+        %{
+          reviewer_adapter: Atom.to_string(Codex),
+          reviewed_count: 4,
+          rejection_count: 1,
+          no_verdict_count: 1
+        }
+      ])
+
+      assert {:ok, %{Codex => kpi}} = Postgres.aggregate_reviewer_reliability([], repo: FakeRepo)
+
+      assert kpi.reviewed_count == 4
+      assert kpi.rejection_count == 1
+      assert kpi.rejection_rate == 0.25
+      assert kpi.no_verdict_count == 1
+      assert kpi.no_verdict_rate == 0.25
+    end
+
+    test "aggregate_by_facet groups facet rows and projects per-agent KPIs" do
+      FakeRepo.put_rows([
+        %{
+          facet_json: %{"surface" => "otp"},
+          agent: "codex",
+          run_count: 2,
+          pass_count: 1,
+          first_attempt_pass_count: 1,
+          reviewer_flaked_count: 0,
+          durations: [100, 200],
+          review_iterations_mean: 0,
+          input_mean: 10,
+          output_mean: 5,
+          total_mean: 15,
+          pass_count_for_cost: 1,
+          cost_to_green_mean: 15,
+          ratings: [%{"review_skills" => %{"test_rigor" => %{"score" => 9}}, "review_ratings" => %{}}]
+        },
+        %{
+          facet_json: %{"surface" => "otp"},
+          agent: "claude",
+          run_count: 1,
+          pass_count: 0,
+          first_attempt_pass_count: 0,
+          reviewer_flaked_count: 0,
+          durations: [300],
+          review_iterations_mean: 1,
+          input_mean: 20,
+          output_mean: 10,
+          total_mean: 30,
+          pass_count_for_cost: 0,
+          cost_to_green_mean: nil,
+          ratings: []
+        }
+      ])
+
+      assert {:ok, [%{facet: %{"surface" => "otp"}, agents: agents}]} =
+               Postgres.aggregate_by_facet([], repo: FakeRepo)
+
+      assert agents.codex.success_rate == 0.5
+      assert agents.codex.ratings == %{"test_rigor" => 9.0}
+      assert agents.claude.success_rate == 0.0
+      assert agents.claude.cost_to_green == nil
+    end
+  end
+
+  describe "batch and run mutators" do
+    test "save_batch and load_batch round-trip a serialized batch result" do
+      FakeRepo.reset()
+
+      result = %BatchResult{
+        batch_id: "batch-codec",
+        total: 2,
+        max_concurrency: 1,
+        results: [],
+        events: [%{event: :started}]
+      }
+
+      assert :ok = Postgres.save_batch(result, repo: FakeRepo)
+      assert {:ok, ^result} = Postgres.load_batch("batch-codec", repo: FakeRepo)
+    end
+
+    test "load_batch returns not_found for a missing batch" do
+      FakeRepo.reset()
+
+      assert {:error, :not_found} = Postgres.load_batch("missing-batch", repo: FakeRepo)
+    end
+
+    test "delete_run and mark_landed return ok through repo success responses" do
+      assert :ok = Postgres.delete_run("codec-run", repo: FakeRepo)
+      assert :ok = Postgres.mark_landed("codec-run", "abc123", repo: FakeRepo)
     end
   end
 
