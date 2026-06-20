@@ -9577,7 +9577,7 @@ shipped_in = "05e1a95cf9cb426e2084bd7c467b438be71b72be"
 id = "317"
 phase = 20
 bundle = "reviewer-pair"
-status = "pending"
+status = "in_progress"
 title = "Harden the reviewer verdict contract — reject-red-tree rule + structured `checks` claim + `concerns` field in review.json"
 scores = { d = 4, b = 9, u = 7 }
 depends_on = [320]
@@ -9610,6 +9610,7 @@ SETTLED 2026-06-20 (overfit analysis + codex cross-review converged — build to
 3. flag-loudly, NOT auto-block (out_of_scope already states this): a non-empty `concerns` / self-failing `checks` on an approve is surfaced loudly; the orchestrator/audit acts on it. Harness never auto-blocks an approve from the prose.
 """
 created_at = "2026-06-20"
+started_at = "2026-06-20"
 scored_at = "2026-06-20"
 
 [[task]]
