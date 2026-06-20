@@ -9645,7 +9645,7 @@ scored_at = "2026-06-20"
 id = "319"
 phase = 20
 bundle = "reviewer-pair"
-status = "pending"
+status = "done"
 title = "Close two reviewer-gate trust holes from the 2026-06-20 audit: dispatch-reland verdict guard + fake-reviewer artifact can't leak into a real checkout"
 scores = { d = 2, b = 6, u = 4 }
 acceptance_criteria = ["dispatch-reland / Lander.enqueue asserts the loaded run record reached an approved (done) outcome before enqueuing the land; a reland of a rejected/failed/non-approved run is refused with a clear error and pushes nothing.", "A test proves reland of a non-approved run_id is rejected (no push), and reland of an approved run still works.", "The fake reviewer adapter + fake codex binary write `.harness/review.json` only inside the test's temp worktree, never the repository root; a guard/test asserts no stray verdict file lands in the repo root after the suite runs.", "Offline suite green; mix precommit green; CHANGELOG note for both fixes."]
@@ -9660,8 +9660,11 @@ Two small, independent safety holes surfaced by the 2026-06-20 trust-chain audit
 
 These are unrelated files (lander.ex vs test/support) but share one motivating audit and one short session — bundled to avoid two manufactured dispatch cycles, not as a grab-bag.
 """
+implemented = "Hand-built. (1) Lander.enqueue/1 now asserts the loaded record settled :done with verdict :approve before relanding (ensure_approved/1); non-approved reland refused {:not_approved,_}, pushes nothing. (2) RunCase setup on_exit guard removes+flunks on any repo-root .harness/review.json leak. Tests: reland guard (reject/failed refused, approved re-lands) + 215 RunCase tests green. Lander 85.8% cov."
 created_at = "2026-06-20"
 scored_at = "2026-06-20"
+done_at = "2026-06-20"
+shipped_in = "13b1f18ef8a0d2711fe4bf0ef1e7a86def26c863"
 
 [[task]]
 id = "320"

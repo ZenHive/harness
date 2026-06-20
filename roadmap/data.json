@@ -14369,7 +14369,7 @@
       "id": "319",
       "phase": 20,
       "bundle": "reviewer-pair",
-      "status": "pending",
+      "status": "done",
       "title": "Close two reviewer-gate trust holes from the 2026-06-20 audit: dispatch-reland verdict guard + fake-reviewer artifact can't leak into a real checkout",
       "scores": {
         "d": 2,
@@ -14393,9 +14393,12 @@
         "The post-merge cold-build witness (separate task).",
         "Any change to the auto-land path (already correctly gated on reason: :approved)."
       ],
+      "shipped_in": "13b1f18ef8a0d2711fe4bf0ef1e7a86def26c863",
       "body": "Two small, independent safety holes surfaced by the 2026-06-20 trust-chain audit. Both are inline-sized (≤30 LOC each, no public-surface redesign) and land together in one session; neither warrants its own dispatch cycle.\n\n1. dispatch-reland has no verdict guard. Lander.enqueue/1 -> load_record/1 (lib/harness/lander.ex ~141) loads the run record via ResultStore.list_run_records(run_id:) with NO filter on run state or verdict, then ff-pushes whatever is on harness/<run-id> to origin/<target>. The moduledoc says \"reviewer-approved,\" but the code never asserts it — an operator/orchestrator can reland a run whose verdict was `reject` or whose state is `:failed`, pushing un-approved work with zero checks. Fix: assert the loaded record reached an approved/done outcome before relanding; reject a reland of a non-approved run with a clear error. (The auto-land path in maybe_enqueue_landing/2 is already gated on reason: :approved — only this manual re-land path is missing the guard.)\n\n2. The fake reviewer artifact can leak a real auto-approve file. FakeAdapter.review_report/1 (test/support/fake_adapter.ex ~437) and the fake codex binary (test/support/run_case.ex ~388) do `mkdir -p .harness && printf ... > .harness/review.json` relative to CWD. On 2026-06-20 a `{\"verdict\":\"approve\",\"report\":\"fake review: approve\"}` file was found sitting in the MAIN checkout root (deleted by hand this session). Harmless in production (real runs read isolated worktrees), but a stray auto-approve file in a repo root is a loaded gun. Fix: make the fake adapter/codex write its verdict only inside the test's own temp worktree CWD (never the project root), and/or have the test harness assert no .harness/review.json escaped to the repo root after the suite.\n\nThese are unrelated files (lander.ex vs test/support) but share one motivating audit and one short session — bundled to avoid two manufactured dispatch cycles, not as a grab-bag.\n",
       "created_at": "2026-06-20",
+      "done_at": "2026-06-20",
       "scored_at": "2026-06-20",
+      "implemented": "Hand-built. (1) Lander.enqueue/1 now asserts the loaded record settled :done with verdict :approve before relanding (ensure_approved/1); non-approved reland refused {:not_approved,_}, pushes nothing. (2) RunCase setup on_exit guard removes+flunks on any repo-root .harness/review.json leak. Tests: reland guard (reject/failed refused, approved re-lands) + 215 RunCase tests green. Lander 85.8% cov.",
       "cross_repo": []
     },
     {
