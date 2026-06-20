@@ -60,6 +60,54 @@ defmodule Harness.Run.LifecycleTest do
     defp language_arg(language), do: Atom.to_string(language)
   end
 
+  defmodule TestDbEnvCaptureAdapter do
+    @moduledoc false
+
+    use Harness.AgentAdapter
+
+    alias Harness.AgentAdapter
+    alias Harness.AgentAdapter.Capabilities
+    alias Harness.AgentAdapter.Invocation
+
+    @impl AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl AgentAdapter
+    def rule_channel, do: :none
+
+    @impl AgentAdapter
+    def build_command(%Invocation{env: env, adapter_opts: opts} = invocation) do
+      {exe, argv, _env} = command(invocation, Keyword.get(opts, :capture_env, "MIX_TEST_PARTITION"))
+      {:ok, {exe, argv, Map.to_list(env)}}
+    end
+
+    @spec command(Invocation.t(), String.t()) :: AgentAdapter.command()
+    defp command(%Invocation{task_id: task_id}, env_name) do
+      if String.ends_with?(task_id, "-review") do
+        reviewer_command(env_name)
+      else
+        implementer_command(env_name)
+      end
+    end
+
+    @spec implementer_command(String.t()) :: AgentAdapter.command()
+    defp implementer_command(env_name) do
+      script = ~S|partition=$(printenv "$1"); printf 'tapakly_test%s' "$partition" > agent_db.txt|
+      {"/bin/sh", ["-c", script, "harness-fake", env_name], []}
+    end
+
+    @spec reviewer_command(String.t()) :: AgentAdapter.command()
+    defp reviewer_command(env_name) do
+      json = Jason.encode!(%{verdict: "approve", report: "captured test DB", ratings: FakeAdapter.review_ratings()})
+
+      script =
+        ~S|partition=$(printenv "$1"); printf 'tapakly_test%s' "$partition" > reviewer_db.txt; | <>
+          ~S(mkdir -p .harness; printf '%s' "$2" > .harness/review.json)
+
+      {"/bin/sh", ["-c", script, "harness-fake", env_name, json], []}
+    end
+  end
+
   describe "lifecycle — settling on the reviewer's verdict" do
     test "settles :done and removes the worktree when the reviewer approves" do
       result = run([])
@@ -327,6 +375,79 @@ defmodule Harness.Run.LifecycleTest do
 
       assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_language.txt"]) == "typescript"
       assert GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_language.txt"]) == "typescript"
+    end
+
+    test "isolates same-project runs with distinct test DB partitions for implementer and reviewer" do
+      repo = GitFixture.init_repo()
+      project = ProjectFixture.from_repo(repo, name: "tapakly")
+
+      {run_a, pid_a} =
+        start(
+          project: project,
+          adapter: TestDbEnvCaptureAdapter,
+          reviewer: TestDbEnvCaptureAdapter,
+          run_id: "run-1781945210210-a54845d6"
+        )
+
+      {run_b, pid_b} =
+        start(
+          project: project,
+          adapter: TestDbEnvCaptureAdapter,
+          reviewer: TestDbEnvCaptureAdapter,
+          run_id: "run-1781945210211-b65f019a"
+        )
+
+      assert %Result{state: :done, reason: :approved} = await_result(run_a, pid_a)
+      assert %Result{state: :done, reason: :approved} = await_result(run_b, pid_b)
+
+      agent_db_a = GitFixture.git!(repo, ["show", "harness/#{run_a}:agent_db.txt"])
+      reviewer_db_a = GitFixture.git!(repo, ["show", "harness/#{run_a}:reviewer_db.txt"])
+      agent_db_b = GitFixture.git!(repo, ["show", "harness/#{run_b}:agent_db.txt"])
+      reviewer_db_b = GitFixture.git!(repo, ["show", "harness/#{run_b}:reviewer_db.txt"])
+
+      assert agent_db_a == "tapakly_test_h_a54845d6"
+      assert reviewer_db_a == agent_db_a
+      assert agent_db_b == "tapakly_test_h_b65f019a"
+      assert reviewer_db_b == agent_db_b
+      refute agent_db_a == agent_db_b
+    end
+
+    test "uses a project's test DB isolation env override" do
+      repo = GitFixture.init_repo()
+      project = ProjectFixture.from_repo(repo, test_db_isolation_env: "APP_TEST_PARTITION")
+
+      {run_id, pid} =
+        start(
+          project: project,
+          adapter: TestDbEnvCaptureAdapter,
+          adapter_opts: [capture_env: "APP_TEST_PARTITION"],
+          reviewer: TestDbEnvCaptureAdapter,
+          reviewer_adapter_opts: [capture_env: "APP_TEST_PARTITION"],
+          run_id: "run-1781945210212-c001d00d"
+        )
+
+      assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
+
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_db.txt"]) == "tapakly_test_h_c001d00d"
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_db.txt"]) == "tapakly_test_h_c001d00d"
+    end
+
+    test "does not inject a test DB partition when the project opts out" do
+      repo = GitFixture.init_repo()
+      project = ProjectFixture.from_repo(repo, test_db_isolation_env: false)
+
+      {run_id, pid} =
+        start(
+          project: project,
+          adapter: TestDbEnvCaptureAdapter,
+          reviewer: TestDbEnvCaptureAdapter,
+          run_id: "run-1781945210213-deadbeef"
+        )
+
+      assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
+
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_db.txt"]) == "tapakly_test"
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_db.txt"]) == "tapakly_test"
     end
 
     test "threads project language onto recovery invocations" do

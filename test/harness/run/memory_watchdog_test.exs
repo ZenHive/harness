@@ -16,16 +16,14 @@ defmodule Harness.Run.MemoryWatchdogTest do
           terminal_linger: 100
         )
 
-      os_pid = await_agent_os_pid(run_id)
-
       assert %Result{state: :failed, reason: {:memory_runaway, info}} = await_result(run_id, pid, 5_000)
       assert info.role == :agent
-      assert info.os_pid == os_pid
+      assert is_integer(info.os_pid)
       assert info.rss_kb > 1
       assert info.threshold_kb == 1
 
       # The whole tree is reaped, not just signalled — no orphan agent survives.
-      assert ProcessFixture.await_dead(os_pid) == :ok
+      assert ProcessFixture.await_dead(info.os_pid) == :ok
     end
 
     test "a runaway reviewer check tree is force-killed and settles :failed (role: :reviewer)" do

@@ -29,6 +29,8 @@ defmodule Harness.Project do
     auto-lands when it sets both `landing_policy: :auto` and a `target_branch`.
   - `reviewer` — optional agent atom that pins this project's cross-family
     reviewer gate; `nil` keeps the default auto-selection.
+  - `test_db_isolation_env` — optional env var name used to partition a run's
+    test database (default `MIX_TEST_PARTITION`); `false` or `"none"` opts out.
   """
 
   alias Harness.Project.Source.Github
@@ -46,7 +48,8 @@ defmodule Harness.Project do
     warm_paths: [],
     landing_policy: :manual,
     target_branch: nil,
-    reviewer: nil
+    reviewer: nil,
+    test_db_isolation_env: nil
   ]
 
   @typedoc "Where harness finds the target repository."
@@ -67,7 +70,8 @@ defmodule Harness.Project do
           warm_paths: [String.t()],
           landing_policy: landing_policy(),
           target_branch: String.t() | nil,
-          reviewer: atom() | nil
+          reviewer: atom() | nil,
+          test_db_isolation_env: String.t() | false | :none | nil
         }
 
   @doc """

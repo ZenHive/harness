@@ -286,7 +286,8 @@ defmodule Harness.ProjectRegistry do
          warm_paths: Map.get(entry, :warm_paths, []),
          landing_policy: Map.get(entry, :landing_policy, :manual),
          target_branch: Map.get(entry, :target_branch),
-         reviewer: Map.get(entry, :reviewer)
+         reviewer: Map.get(entry, :reviewer),
+         test_db_isolation_env: Map.get(entry, :test_db_isolation_env)
        }}
     end
   end

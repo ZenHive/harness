@@ -18,7 +18,8 @@ defmodule Harness.ProjectFixture do
       target_branch: Keyword.get(opts, :target_branch),
       pollution_allowlist: Keyword.get(opts, :pollution_allowlist),
       warm_paths: Keyword.get(opts, :warm_paths, []),
-      reviewer: Keyword.get(opts, :reviewer)
+      reviewer: Keyword.get(opts, :reviewer),
+      test_db_isolation_env: Keyword.get(opts, :test_db_isolation_env)
     }
   end
 end

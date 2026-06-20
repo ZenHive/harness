@@ -17,6 +17,7 @@ defmodule Harness.ModelAvailabilityTest do
   alias Harness.Test.SettingsStoreMemory
 
   @sample Path.expand("../fixtures/sample_roadmap", __DIR__)
+  @future_block_seconds 3_600
 
   setup do
     prior_agent_model = Application.get_env(:harness, :agent_model)
@@ -121,7 +122,7 @@ defmodule Harness.ModelAvailabilityTest do
     test "operator block persists and list_blocks surfaces it" do
       assert :ok =
                ModelAvailability.block_model("cursor", "claude-opus-4-8-thinking-high",
-                 until: "2026-06-20T00:00:00Z",
+                 until: DateTime.utc_now() |> DateTime.add(@future_block_seconds, :second) |> DateTime.to_iso8601(),
                  reason: "out of tokens"
                )
 

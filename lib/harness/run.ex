@@ -116,6 +116,7 @@ defmodule Harness.Run do
   alias Harness.Run.RetryPolicy
   alias Harness.Run.Review
   alias Harness.Run.Status
+  alias Harness.Run.TestDbIsolation
   alias Harness.Text
   alias Harness.TokenUsage
   alias Harness.TokenUsage.GrokSession
@@ -601,7 +602,7 @@ defmodule Harness.Run do
       base_dir: Keyword.get(opts, :base_dir),
       base_ref: Keyword.get(opts, :base_ref),
       adapter_opts: Keyword.get(opts, :adapter_opts, []),
-      env: scrub_github_auth_env(Keyword.get(opts, :env, %{})),
+      env: run_env(project, run_id, Keyword.get(opts, :env, %{})),
       land_attempt: Keyword.get(opts, :land_attempt, 1),
       worktree: nil,
       checkout_snapshot: nil,
@@ -1719,6 +1720,7 @@ defmodule Harness.Run do
     result = build_result(data, terminal_state)
     data = %{data | result: result}
     persist_run_record(data, result)
+    teardown_test_database(data)
     finish_worktree(data.worktree, terminal_state)
     # Worktree is finalized (removed on success / retained on failure) — stop the
     # crash reaper from monitoring this settled run.
@@ -1985,6 +1987,15 @@ defmodule Harness.Run do
     }
   end
 
+  @spec run_env(Project.t(), String.t(), %{optional(String.t()) => String.t() | false}) :: %{
+          optional(String.t()) => String.t() | false
+        }
+  defp run_env(%Project{} = project, run_id, env) when is_map(env) and is_binary(run_id) do
+    env
+    |> scrub_github_auth_env()
+    |> Map.merge(TestDbIsolation.env(project, run_id))
+  end
+
   @spec in_run_env(data()) :: %{optional(String.t()) => String.t() | false}
   defp in_run_env(%{env: env, worktree: %Worktree{path: path}}) do
     env
@@ -1998,6 +2009,13 @@ defmodule Harness.Run do
   defp scrub_github_auth_env(env) when is_map(env) do
     Enum.reduce(@github_auth_env_scrubs, env, fn key, acc -> Map.put(acc, key, false) end)
   end
+
+  @spec teardown_test_database(data()) :: :ok
+  defp teardown_test_database(%{project: %Project{} = project, worktree: %Worktree{path: path}, run_id: run_id}) do
+    TestDbIsolation.teardown(project, path, run_id)
+  end
+
+  defp teardown_test_database(_data), do: :ok
 
   @spec tag_composed_input(AgentRun.t(), data()) :: AgentAdapter.composed_input()
   defp tag_composed_input(%AgentRun{composed_input: input}, data) when is_map(input) do

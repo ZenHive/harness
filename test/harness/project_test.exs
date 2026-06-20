@@ -19,6 +19,7 @@ defmodule Harness.ProjectTest do
       assert project.target_branch == nil
       assert project.pollution_allowlist == nil
       assert project.reviewer == nil
+      assert project.test_db_isolation_env == nil
     end
 
     test "carries the reviewer's check-command hint as free text" do
@@ -30,6 +31,28 @@ defmodule Harness.ProjectTest do
       }
 
       assert project.check_command == "mix precommit"
+    end
+
+    test "carries an optional per-project test DB isolation env override" do
+      project = %Project{
+        name: "demo",
+        source: {:local, "/tmp/demo"},
+        roadmap_path: "/tmp/demo",
+        test_db_isolation_env: "APP_TEST_PARTITION"
+      }
+
+      assert project.test_db_isolation_env == "APP_TEST_PARTITION"
+    end
+
+    test "carries an explicit test DB isolation opt-out" do
+      project = %Project{
+        name: "demo",
+        source: {:local, "/tmp/demo"},
+        roadmap_path: "/tmp/demo",
+        test_db_isolation_env: false
+      }
+
+      assert project.test_db_isolation_env == false
     end
 
     test "accepts a {:github, url} source" do

@@ -38,6 +38,23 @@ Do the tests pass *in a way that matters*? — all judgment, all agent work.
 Harness code is mechanical substrate only: worktrees, git, Ports, Oban persistence, counters,
 timers/watchdogs, reading the reviewer's verdict file.
 
+One mechanical substrate duty is per-run test database isolation. Harness injects a
+run-unique, DB-name-safe suffix into the implementer and reviewer Port environment,
+defaulting to `MIX_TEST_PARTITION`. Phoenix/Ecto projects generated with the default
+`config/test.exs` database pattern already honor this by resolving names like
+`my_app_test_h_<run-suffix>`; projects with a different convention set
+`%Harness.Project{test_db_isolation_env: "NAME"}`, and non-DB/self-isolating projects
+set it to `false` or `"none"`.
+
+This restores the per-worktree test DB provisioning that Task 145 added and the
+2026-06-03 agent-gate rebuild deleted with `Harness.Verification` / `CheckStack`.
+Without it, concurrent worktree runs of the same project shared one test DB while
+their branches carried divergent migrations, which produced the tapakly
+shared-`tapakly_test` contamination first observed on task 85 at 2026-06-10
+13:25:42. Teardown is best-effort: if the worktree's `config/test.exs` references
+the isolation env, harness runs `MIX_ENV=test mix ecto.drop --quiet`; failure is
+logged and never gates settle or landing.
+
 **The evidence that settled it:** every run-lifecycle bug from 2026-05-26 → 06-03 (tasks 153–163,
 168, 169, 171, 172, the task-41 verifier crash, the task-172 failure) traced to the *harness
 verification/lifecycle machinery* — false reds, false greens, verifier crashes, timeout
@@ -177,6 +194,7 @@ The test for every line of harness code: **is it mechanical?**
 | Oban queues, persistence, retry backoff | Do the checks pass in a way that matters? |
 | Counters, timers, watchdogs (`Harness.Run.Reflex`) | Is a check failure the agent's fault or pre-existing debt? |
 | Reading `.harness/review.json` / `.harness/audit.json` | Whether to fix or reject |
+| Setting per-run test DB env + best-effort drop | Whether a red suite is acceptable |
 
 **Rules for every session:**
 
