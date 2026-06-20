@@ -9721,7 +9721,7 @@ shipped_in = "824466c53e8984f4798f17e50ec6d4e1386dfcc3"
 id = "321"
 phase = 20
 bundle = "reviewer-pair"
-status = "pending"
+status = "in_progress"
 title = "Close the false-green loop: audit records approved-then-found-red as a structured reviewer FACT; surface it for AI-judged reviewer routing (no score formula)"
 scores = { d = 4, b = 8, u = 6 }
 depends_on = [318]
@@ -9744,4 +9744,5 @@ DESIGN CALLS — SETTLED 2026-06-20 (overfit analysis + codex cross-review; buil
 3. No prose classifier: harness counts the presence of the audit AI's structured red-fact, never parses the audit report text (no regex/keyword over `report`).
 """
 created_at = "2026-06-20"
+started_at = "2026-06-20"
 scored_at = "2026-06-20"
