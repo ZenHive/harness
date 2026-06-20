@@ -9721,7 +9721,7 @@ shipped_in = "824466c53e8984f4798f17e50ec6d4e1386dfcc3"
 id = "321"
 phase = 20
 bundle = "reviewer-pair"
-status = "in_progress"
+status = "done"
 title = "Close the false-green loop: audit records approved-then-found-red as a structured reviewer FACT; surface it for AI-judged reviewer routing (no score formula)"
 scores = { d = 4, b = 8, u = 6 }
 depends_on = [318]
@@ -9743,6 +9743,11 @@ DESIGN CALLS — SETTLED 2026-06-20 (overfit analysis + codex cross-review; buil
 2. SURFACE ONLY — no auto-down-weight. The false-approval rate is exposed as a counted fact in routing-brief / the scout's inputs; the orchestrating AI decides. Any arithmetic down-weight, penalty, percentile gate, or auto-exclude over this number is FORBIDDEN — that is exactly the judgment-as-formula error the mantra deletes, "in new clothes" (codex 2026-06-20). This is the single most dangerous spot in the batch for formula-creep; the AC asserts no weight is applied.
 3. No prose classifier: harness counts the presence of the audit AI's structured red-fact, never parses the audit report text (no regex/keyword over `report`).
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1781956793364-ba1fbf5d, 9dcf6b9a3c78d03947d845930085f4cd2442ed15)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-20"
 started_at = "2026-06-20"
 scored_at = "2026-06-20"
+done_at = "2026-06-20"
+shipped_in = "9dcf6b9a3c78d03947d845930085f4cd2442ed15"
