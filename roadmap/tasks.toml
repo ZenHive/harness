@@ -9751,3 +9751,33 @@ started_at = "2026-06-20"
 scored_at = "2026-06-20"
 done_at = "2026-06-20"
 shipped_in = "9dcf6b9a3c78d03947d845930085f4cd2442ed15"
+
+[[task]]
+id = "322"
+phase = 22
+bundle = "model-availability"
+status = "pending"
+title = "Antigravity is no longer model-incapable — agy 1.0.10 gained --model + a multi-model catalog; make the adapter model-capable"
+scores = { d = 4, b = 6, u = 5 }
+acceptance_criteria = ["The exact accepted `agy --model` id strings are confirmed against the live CLI (positively — not by absence of error, since unknown ids are silently accepted) and recorded in the adapter (moduledoc or a catalog mapping)", "Antigravity capabilities/0 declares a non-empty model_families covering the families agy fronts (gemini/claude/gpt-oss); it is no longer the model_families: [] exemption", "build_command/1 threads Invocation.model to `agy --model <id>` and no longer returns {:error, {:unsupported_model, _}}; a model-less dispatch on antigravity is rejected as model_required like every other model-capable adapter (implementer and reviewer paths)", "An unknown/unresolved model pin fails fast (validated against the known agy catalog) BEFORE the agy port spawns, never silently running agy's default model", "Harness.ModelAvailability probes `agy models` and returns catalog entries for antigravity (no longer :catalog_unavailable), mapping display labels to dash-form ids", "Antigravity passes Harness.AgentAdapter.ConformanceCase unchanged, plus unit tests for model threading, the model-required reject, and the unknown-model fast-fail", "Stale 'antigravity is model-incapable / the lone exemption' copy is corrected in the adapter moduledoc, CLAUDE.md, and the dashboard settings copy", "mix precommit.full passes"]
+out_of_scope = ["Changing other adapters (claude/codex/cursor/grok/pi) — they already handle --model", "Routing policy / KPI changes for which antigravity model to prefer — this only makes the model axis work; routing is downstream", "Fixing agy's non-validating --model upstream — harness works with the CLI as shipped and guards around it", "Worktree isolation — already resolved (Task 32/198); antigravity stays worktree_isolation: true via --add-dir"]
+files_to_modify = ["lib/harness/agent_adapter/antigravity.ex", "lib/harness/model_availability.ex"]
+touches = ["lib/harness/agent_adapter/antigravity.ex", "lib/harness/agent_adapter/capabilities.ex", "lib/harness/model_availability.ex", "lib/harness/dashboard/settings_components.ex", "lib/harness/dashboard/settings_live.ex", "test/harness/agent_adapter/antigravity_test.exs", "CLAUDE.md"]
+domains = ["adapters", "routing"]
+assignee = "cursor"
+model = "composer-2.5"
+body = """
+The `agy` CLI (Antigravity) has evolved past the "lone model-incapable adapter" premise baked into harness. As of `agy` 1.0.10 it is a multi-model front-end like Cursor: it now exposes a `--model` flag and an `agy models` subcommand listing 8 models — Gemini 3.5 Flash (Low/Med/High), Gemini 3.1 Pro (Low/High), Claude Sonnet 4.6 (Thinking), Claude Opus 4.6 (Thinking), GPT-OSS 120B. The settings.json `model` key (default `gemini-3.5-flash`) confirms the accepted id format is the dash-form slug (e.g. `gemini-3.5-flash`, `gemini-3.1-pro`, `claude-opus-4-5`, `claude-sonnet-4-5`, `gpt-oss-120b` per the shipped binary), NOT the display names `agy models` prints.
+
+Make `Harness.AgentAdapter.Antigravity` model-capable: stop declaring `model_families: []`, stop hard-rejecting a model with `{:error, {:unsupported_model, model}}`, and thread `Invocation.model` through to `agy --model <id>` (use the shared `AgentAdapter.model_args/1` helper the other adapters use). Update `capabilities/0`'s `model_families` to the families agy actually fronts (gemini / claude / gpt-oss), matching the `Capabilities` family-prefix map convention. With this, antigravity stops being the model-incapable exemption and becomes a normal model-required adapter — including the reviewer path (`Run.reviewer_model/1`) and the `{:model_required, agent}` reject when no model resolves.
+
+Also wire antigravity into the model catalog: `Harness.ModelAvailability` currently routes antigravity into the `default_probe(_agent, _) -> {:error, :catalog_unavailable}` fallback. Add an `agy models` probe and parse its output into catalog entries, mapping each display label to its dash-form id (the display names carry reasoning-level suffixes like "(Thinking)"/"(High)" that are NOT part of the id — establish the label→id mapping).
+
+CRITICAL sharp edge — agy's `--model` is non-validating. Verified: `agy --model "__nope__" -p "hi"` returns exit 0 and silently runs the default model with no error. This directly contradicts harness's "reject an unknown/unresolved model, never silently run a CLI default" contract that exists to stop a sticky premium default burning budget while claiming a model it didn't run. Decide and implement the guard: the adapter (or the dispatch/catalog path) must validate the pinned model against the known agy catalog before spawning, failing fast on an unknown id rather than letting agy silently fall back. Document this CLI behavior in the adapter moduledoc as a sharp edge.
+
+Update the now-stale "antigravity is the model-incapable exemption" copy everywhere it asserts that: the adapter moduledoc's "Model Override" section, CLAUDE.md (the three-axis adapter-contract section + the harness-workflow notes that call antigravity the lone `model_families: []` exemption), and the dashboard settings copy in `settings_components.ex` / the `settings_live.ex` model_required logic that special-cases antigravity as exempt.
+
+Because the silent-fallback means a wrong id produces no error, positively confirm the accepted id strings against the live CLI before trusting them (e.g. set the model and verify via the statusline / a "which model are you" probe), since `agy --model <bogus>` will NOT tell you it was rejected.
+"""
+created_at = "2026-06-21"
+scored_at = "2026-06-21"
