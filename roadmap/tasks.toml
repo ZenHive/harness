@@ -9756,7 +9756,7 @@ shipped_in = "9dcf6b9a3c78d03947d845930085f4cd2442ed15"
 id = "322"
 phase = 22
 bundle = "model-availability"
-status = "pending"
+status = "done"
 title = "Antigravity is no longer model-incapable — agy 1.0.10 gained --model + a multi-model catalog; make the adapter model-capable"
 scores = { d = 4, b = 6, u = 5 }
 acceptance_criteria = ["The exact accepted `agy --model` id strings are confirmed against the live CLI (positively — not by absence of error, since unknown ids are silently accepted) and recorded in the adapter (moduledoc or a catalog mapping)", "Antigravity capabilities/0 declares a non-empty model_families covering the families agy fronts (gemini/claude/gpt-oss); it is no longer the model_families: [] exemption", "build_command/1 threads Invocation.model to `agy --model <id>` and no longer returns {:error, {:unsupported_model, _}}; a model-less dispatch on antigravity is rejected as model_required like every other model-capable adapter (implementer and reviewer paths)", "An unknown/unresolved model pin fails fast (validated against the known agy catalog) BEFORE the agy port spawns, never silently running agy's default model", "Harness.ModelAvailability probes `agy models` and returns catalog entries for antigravity (no longer :catalog_unavailable), mapping display labels to dash-form ids", "Antigravity passes Harness.AgentAdapter.ConformanceCase unchanged, plus unit tests for model threading, the model-required reject, and the unknown-model fast-fail", "Stale 'antigravity is model-incapable / the lone exemption' copy is corrected in the adapter moduledoc, CLAUDE.md, and the dashboard settings copy", "mix precommit.full passes"]
@@ -9779,9 +9779,14 @@ Update the now-stale "antigravity is the model-incapable exemption" copy everywh
 
 Because the silent-fallback means a wrong id produces no error, positively confirm the accepted id strings against the live CLI before trusting them (e.g. set the model and verify via the statusline / a "which model are you" probe), since `agy --model <bogus>` will NOT tell you it was rejected.
 """
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1782012325666-453c390c, a683468d15e669abe25d04fe2838e3d6de02cecd)."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-06-21"
 started_at = "2026-06-21"
 scored_at = "2026-06-21"
+done_at = "2026-06-21"
+shipped_in = "a683468d15e669abe25d04fe2838e3d6de02cecd"
 
 [[task]]
 id = "323"

@@ -14508,7 +14508,7 @@
       "id": "322",
       "phase": 22,
       "bundle": "model-availability",
-      "status": "pending",
+      "status": "done",
       "title": "Antigravity is no longer model-incapable — agy 1.0.10 gained --model + a multi-model catalog; make the adapter model-capable",
       "scores": {
         "d": 4,
@@ -14555,10 +14555,15 @@
         "adapters",
         "routing"
       ],
+      "shipped_in": "a683468d15e669abe25d04fe2838e3d6de02cecd",
       "body": "The `agy` CLI (Antigravity) has evolved past the \"lone model-incapable adapter\" premise baked into harness. As of `agy` 1.0.10 it is a multi-model front-end like Cursor: it now exposes a `--model` flag and an `agy models` subcommand listing 8 models — Gemini 3.5 Flash (Low/Med/High), Gemini 3.1 Pro (Low/High), Claude Sonnet 4.6 (Thinking), Claude Opus 4.6 (Thinking), GPT-OSS 120B. The settings.json `model` key (default `gemini-3.5-flash`) confirms the accepted id format is the dash-form slug (e.g. `gemini-3.5-flash`, `gemini-3.1-pro`, `claude-opus-4-5`, `claude-sonnet-4-5`, `gpt-oss-120b` per the shipped binary), NOT the display names `agy models` prints.\n\nMake `Harness.AgentAdapter.Antigravity` model-capable: stop declaring `model_families: []`, stop hard-rejecting a model with `{:error, {:unsupported_model, model}}`, and thread `Invocation.model` through to `agy --model <id>` (use the shared `AgentAdapter.model_args/1` helper the other adapters use). Update `capabilities/0`'s `model_families` to the families agy actually fronts (gemini / claude / gpt-oss), matching the `Capabilities` family-prefix map convention. With this, antigravity stops being the model-incapable exemption and becomes a normal model-required adapter — including the reviewer path (`Run.reviewer_model/1`) and the `{:model_required, agent}` reject when no model resolves.\n\nAlso wire antigravity into the model catalog: `Harness.ModelAvailability` currently routes antigravity into the `default_probe(_agent, _) -> {:error, :catalog_unavailable}` fallback. Add an `agy models` probe and parse its output into catalog entries, mapping each display label to its dash-form id (the display names carry reasoning-level suffixes like \"(Thinking)\"/\"(High)\" that are NOT part of the id — establish the label→id mapping).\n\nCRITICAL sharp edge — agy's `--model` is non-validating. Verified: `agy --model \"__nope__\" -p \"hi\"` returns exit 0 and silently runs the default model with no error. This directly contradicts harness's \"reject an unknown/unresolved model, never silently run a CLI default\" contract that exists to stop a sticky premium default burning budget while claiming a model it didn't run. Decide and implement the guard: the adapter (or the dispatch/catalog path) must validate the pinned model against the known agy catalog before spawning, failing fast on an unknown id rather than letting agy silently fall back. Document this CLI behavior in the adapter moduledoc as a sharp edge.\n\nUpdate the now-stale \"antigravity is the model-incapable exemption\" copy everywhere it asserts that: the adapter moduledoc's \"Model Override\" section, CLAUDE.md (the three-axis adapter-contract section + the harness-workflow notes that call antigravity the lone `model_families: []` exemption), and the dashboard settings copy in `settings_components.ex` / the `settings_live.ex` model_required logic that special-cases antigravity as exempt.\n\nBecause the silent-fallback means a wrong id produces no error, positively confirm the accepted id strings against the live CLI before trusting them (e.g. set the model and verify via the statusline / a \"which model are you\" probe), since `agy --model <bogus>` will NOT tell you it was rejected.\n",
       "created_at": "2026-06-21",
       "started_at": "2026-06-21",
+      "done_at": "2026-06-21",
       "scored_at": "2026-06-21",
+      "implemented": "Landed by cursor via merge-train; reviewer-approved (run run-1782012325666-453c390c, a683468d15e669abe25d04fe2838e3d6de02cecd).",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     },
     {
