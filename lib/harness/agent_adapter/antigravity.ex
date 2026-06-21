@@ -77,9 +77,17 @@ defmodule Harness.AgentAdapter.Antigravity do
     %{id: "gpt-oss-120b", label: "GPT-OSS 120B"}
   ]
 
-  @known_model_ids @verified_catalog |> Enum.map(& &1.id) |> MapSet.new()
+  @known_model_ids MapSet.new(@verified_catalog, & &1.id)
 
   @display_label_to_id Map.new(@verified_catalog, &{&1.label, &1.id})
+
+  # Reasoning-suffix-stripped fallback: `agy models` attaches `(Low|Medium|High|
+  # Thinking)` to every row, and the live binary can emit a level we didn't
+  # enumerate (e.g. `GPT-OSS 120B (Medium)`). Matching on the base label keeps the
+  # probe robust without enumerating every suffix variant.
+  @base_label_to_id Map.new(@verified_catalog, fn %{label: label, id: id} ->
+                      {label |> String.replace(~r/\s*\([^)]*\)\s*$/, "") |> String.trim(), id}
+                    end)
 
   @doc false
   @spec known_model_ids() :: [String.t()]
@@ -91,7 +99,12 @@ defmodule Harness.AgentAdapter.Antigravity do
 
   @doc false
   @spec display_label_to_id(String.t()) :: String.t() | nil
-  def display_label_to_id(label) when is_binary(label), do: Map.get(@display_label_to_id, String.trim(label))
+  def display_label_to_id(label) when is_binary(label) do
+    trimmed = String.trim(label)
+
+    Map.get(@display_label_to_id, trimmed) ||
+      Map.get(@base_label_to_id, trimmed |> String.replace(~r/\s*\([^)]*\)\s*$/, "") |> String.trim())
+  end
 
   @doc """
   Declares Antigravity's capabilities: session resume and streaming output,

@@ -10,11 +10,11 @@ defmodule Harness.ModelAvailability do
 
   use Descripex, namespace: "/model_availability"
 
+  alias Harness.AgentAdapter.Antigravity
   alias Harness.AgentRegistry
   alias Harness.Notification
   alias Harness.Notification.Event
   alias Harness.SettingsStore
-  alias Harness.AgentAdapter.Antigravity
 
   @blocks_key :model_blocks
   @catalogs_key :model_catalogs
@@ -744,21 +744,23 @@ defmodule Harness.ModelAvailability do
   @spec antigravity_catalog_entry(String.t()) :: catalog_entry() | :error
   defp antigravity_catalog_entry(line) do
     case Antigravity.display_label_to_id(line) do
-      id when is_binary(id) ->
-        %{id: id, label: line, annotations: []}
+      id when is_binary(id) -> %{id: id, label: line, annotations: []}
+      nil -> antigravity_id_fallback(line)
+    end
+  end
 
-      nil ->
-        case parse_id_label_line(line) do
-          %{id: id} = entry when is_binary(id) ->
-            if id in Antigravity.known_model_ids(), do: entry, else: :error
+  # No display-label match: accept the line only when it (or its parsed id) is
+  # itself a known dash-form id, otherwise drop it.
+  @spec antigravity_id_fallback(String.t()) :: catalog_entry() | :error
+  defp antigravity_id_fallback(line) do
+    case parse_id_label_line(line) do
+      %{id: id} = entry when is_binary(id) ->
+        if id in Antigravity.known_model_ids(), do: entry, else: :error
 
-          :error ->
-            if line in Antigravity.known_model_ids() do
-              %{id: line, label: line, annotations: []}
-            else
-              :error
-            end
-        end
+      :error ->
+        if line in Antigravity.known_model_ids(),
+          do: %{id: line, label: line, annotations: []},
+          else: :error
     end
   end
 

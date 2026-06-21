@@ -42,6 +42,20 @@ defmodule Harness.AgentAdapter.AntigravityTest do
     end
   end
 
+  describe "display_label_to_id/1" do
+    test "maps an enumerated display label to its dash-form id" do
+      assert Antigravity.display_label_to_id("Claude Sonnet 4.6 (Thinking)") == "claude-sonnet-4-5"
+    end
+
+    test "tolerates a reasoning suffix the catalog did not enumerate (live agy emits GPT-OSS 120B (Medium))" do
+      assert Antigravity.display_label_to_id("GPT-OSS 120B (Medium)") == "gpt-oss-120b"
+    end
+
+    test "returns nil for an unknown label" do
+      assert Antigravity.display_label_to_id("Totally Made Up 9000") == nil
+    end
+  end
+
   describe "build_command/1" do
     test "pins the run worktree via --add-dir (port cwd alone is insufficient — Task 32/198)", %{cwd: cwd} do
       assert {:ok, {"agy", argv, []}} =
