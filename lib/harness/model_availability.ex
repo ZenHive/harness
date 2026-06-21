@@ -637,7 +637,14 @@ defmodule Harness.ModelAvailability do
 
   @spec run_antigravity_probe() :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
   defp run_antigravity_probe do
-    probe_command(:antigravity, fn -> System.cmd("agy", ["models"], stderr_to_stdout: true) end)
+    # `agy models` prints its list and the foreground process exits, but `agy`
+    # leaves a background process attached to the inherited stdin, so a plain
+    # `System.cmd("agy", ["models"])` never sees EOF on the port and blocks the
+    # BEAM until the caller's timeout. Running through a shell with stdin from
+    # `/dev/null` detaches that process and the probe returns promptly. A missing
+    # `agy` makes the shell exit 127, which `parse_probe_result/2` maps to
+    # `:catalog_unavailable` like the other probes.
+    probe_command(:antigravity, fn -> System.cmd("sh", ["-c", "agy models </dev/null 2>&1"]) end)
   end
 
   @spec probe_command(atom(), (-> {String.t(), non_neg_integer()})) ::
