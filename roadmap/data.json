@@ -14617,7 +14617,7 @@
       "id": "324",
       "phase": 22,
       "bundle": "core-loop",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Stabilize cold precommit temp-worktree spawn flake observed by post-merge audit",
       "scores": {
         "d": 3,
@@ -14645,6 +14645,7 @@
       ],
       "body": "Discovered during the 2026-06-21 post-merge audit for landed range ending 1a2a52e. In a deliberately cold audit worktree, `mix deps.get` succeeded and `mix precommit.full` then exited nonzero: Credo and Doctor passed, coverage passed at 86.29% >= 80.0%, but ExUnit reported one failure out of 2012. The captured output included `spawn: Could not cd to /var/folders/.../harness-base-.../harness-repo-.../run-1782013466787-9af77ce8`, and an immediate focused rerun with `mix test.json --failed --max-failures 1` passed 1/1. Treat this as a flaky mechanical substrate bug around temporary worktree/cwd lifetime, not as a judgment failure or a reason to alter the cold-check witness contract.",
       "created_at": "2026-06-21",
+      "started_at": "2026-06-21",
       "scored_at": "2026-06-21",
       "cross_repo": []
     },
