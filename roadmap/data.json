@@ -14560,6 +14560,53 @@
       "started_at": "2026-06-21",
       "scored_at": "2026-06-21",
       "cross_repo": []
+    },
+    {
+      "id": "323",
+      "phase": 22,
+      "bundle": "core-loop",
+      "status": "pending",
+      "title": "Add an integration tripwire: each worktree_isolation:true adapter actually isolates to its run worktree (harness skips the pollution snapshot on trust)",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 1.33,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "cursor",
+      "model": "composer-2.5",
+      "acceptance_criteria": [
+        "An :integration-tagged test drives each worktree_isolation:true adapter (whose CLI is on PATH) through its real build_command/1 flags in a throwaway linked worktree and asserts the agent's write landed in the worktree, not the main checkout",
+        "The main checkout's porcelain status is asserted unchanged across the run (the exact invariant the skipped snapshot would have enforced)",
+        "Adapters whose CLI is absent are skipped with an explicit message naming them; a run that exercised zero adapters fails/flunks loudly rather than reporting a green no-op",
+        "Test is excluded from the default `mix test.json` run (integration tag) and documented as such",
+        "mix precommit.full passes (the new test does not run in the default suite)"
+      ],
+      "out_of_scope": [
+        "Changing the skip-on-trust design itself — keeping worktree_isolation:true adapters snapshot-free is intentional; this only adds an out-of-band tripwire",
+        "Fixing any adapter CLI upstream",
+        "Re-enabling the per-run pollution snapshot for isolating adapters"
+      ],
+      "files_to_modify": [
+        "test/harness/worktree/isolation_integration_test.exs"
+      ],
+      "touches": [
+        "test/harness/worktree/isolation_integration_test.exs",
+        "lib/harness/worktree/isolation.ex",
+        "lib/harness/run.ex"
+      ],
+      "domains": [
+        "adapters",
+        "otp"
+      ],
+      "body": "For any adapter declaring `worktree_isolation: true`, `Harness.Run.checkout_snapshot_for_run/1` returns nil, so `Harness.Worktree.Isolation.check_pollution/3` short-circuits to `:ok` and harness takes NO pollution snapshot. The entire main-checkout-safety net is therefore trust-only for all six shipped adapters — Task 32's regression guard only protects `worktree_isolation: false` adapters (which still get a snapshot). If a future CLI release (agy historically — Task 32/198 — but equally codex/cursor/grok/pi) regresses its workspace resolution and starts writing to the main checkout, harness will not catch it: the run settles normally and the pollution lands ungraded in the canonical checkout. There is currently no empirical test that any isolating adapter actually isolates.\n\nAdd an `:integration`-tagged regression test (excluded from the default suite, run on demand / CI with live CLIs) that, for each registered `worktree_isolation: true` adapter whose CLI is present on PATH, exercises the REAL isolation path: create a throwaway linked git worktree off HEAD, invoke the adapter via its actual `build_command/1` flags (the same Port + cwd + isolation flags a real run uses) with a minimal \"create one marker file\" prompt, then assert the marker landed inside the worktree AND the main checkout's `git status --porcelain` is byte-identical before/after (no pollution). Skip-with-a-clear-message (never silently) any adapter whose CLI is not installed, listing what was skipped — a suite that ran zero adapters must say so, not report green. Manually verified 2026-06-21 that agy 1.0.10 isolates correctly with `--add-dir <worktree>`; this test makes that a standing tripwire rather than a one-off check.\n",
+      "created_at": "2026-06-21",
+      "scored_at": "2026-06-21",
+      "cross_repo": []
     }
   ]
 }
