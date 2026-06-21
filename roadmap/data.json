@@ -14612,6 +14612,73 @@
       "created_at": "2026-06-21",
       "scored_at": "2026-06-21",
       "cross_repo": []
+    },
+    {
+      "id": "324",
+      "phase": 22,
+      "bundle": "core-loop",
+      "status": "pending",
+      "title": "Stabilize cold precommit temp-worktree spawn flake observed by post-merge audit",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 4
+      },
+      "eff": 1.5,
+      "dep_layer": 0,
+      "unlocks": 1,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "Reproduce or otherwise isolate the cold full-suite failure where `mix precommit.full` reports `spawn: Could not cd to /var/folders/.../harness-base.../harness-repo.../run-...` from a temporary worktree path, then the failed test passes under `mix test.json --failed --max-failures 1`.",
+        "Identify the temp worktree lifecycle race, stale cwd, or test fixture cleanup path responsible for the missing directory and fix it without sleeps or hidden skips.",
+        "Add a regression test that fails loudly if a process spawn is attempted after its cwd/worktree has been cleaned up.",
+        "Default `mix test.json` and `mix precommit.full` remain green after the fix."
+      ],
+      "out_of_scope": [
+        "Changing the post-merge cold-check contract or treating this red as a merge blocker",
+        "Broad test-suite serialization or adding sleeps to mask timing"
+      ],
+      "body": "Discovered during the 2026-06-21 post-merge audit for landed range ending 1a2a52e. In a deliberately cold audit worktree, `mix deps.get` succeeded and `mix precommit.full` then exited nonzero: Credo and Doctor passed, coverage passed at 86.29% >= 80.0%, but ExUnit reported one failure out of 2012. The captured output included `spawn: Could not cd to /var/folders/.../harness-base-.../harness-repo-.../run-1782013466787-9af77ce8`, and an immediate focused rerun with `mix test.json --failed --max-failures 1` passed 1/1. Treat this as a flaky mechanical substrate bug around temporary worktree/cwd lifetime, not as a judgment failure or a reason to alter the cold-check witness contract.",
+      "created_at": "2026-06-21",
+      "scored_at": "2026-06-21",
+      "cross_repo": []
+    },
+    {
+      "id": "325",
+      "phase": 20,
+      "bundle": "reviewer-pair",
+      "status": "blocked",
+      "title": "Fix post-merge cold-check red for 1a2a52e",
+      "scores": {
+        "d": 3,
+        "b": 8,
+        "u": 5
+      },
+      "eff": 2.17,
+      "dep_layer": 1,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [
+        "324"
+      ],
+      "acceptance_criteria": [
+        "The clean-build/check passes from a cold checkout at landed SHA 1a2a52ec4dd2c702718cc9c1efab11723af6aa74."
+      ],
+      "out_of_scope": [
+        "Reverting or unmerging the already-landed SHA"
+      ],
+      "body": "The post-merge audit AI reported a red cold check for landed SHA 1a2a52ec4dd2c702718cc9c1efab11723af6aa74.\n\nmix precommit.full exited 1 in the deliberately cold audit worktree. Credo and Doctor passed; coverage passed at 86.29% >= 80.0%; ExUnit reported 1 failure out of 2012 under seed 26561 with captured output including `spawn: Could not cd to /var/folders/.../harness-base-.../harness-repo-.../run-1782013466787-9af77ce8`. Focused rerun `mix test.json --failed --max-failures 1` passed 1/1, so this is recorded as a flaky cold-check red.",
+      "created_at": "2026-06-21",
+      "scored_at": "2026-06-21",
+      "blocked_reason": "post-merge cold check red for landed SHA 1a2a52ec4dd2c702718cc9c1efab11723af6aa74: mix precommit.full exited 1 in the deliberately cold audit worktree. Credo and Doctor passed; coverage passed at 86.29% >= 80.0%; ExUnit reported 1 failure out of 2012 under seed 26561 with captured output including `spawn: Could not cd to /var/folders/.../harness-base-.../harness-repo-.../run-1782013466787-9af77ce8`. Focused rerun `mix test.json --failed --max-failures 1` passed 1/1, so this is recorded as a flaky cold-check red.",
+      "cross_repo": []
     }
   ]
 }
