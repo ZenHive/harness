@@ -14,13 +14,14 @@ defmodule Harness.ModelAvailability do
   alias Harness.Notification
   alias Harness.Notification.Event
   alias Harness.SettingsStore
+  alias Harness.AgentAdapter.Antigravity
 
   @blocks_key :model_blocks
   @catalogs_key :model_catalogs
   @static_catalogs_key :model_catalog_static
   @manual_catalogs_key :model_catalog_manual
   @default_catalog_ttl_ms 3_600_000
-  @probeable_agents %{cursor: "cursor-agent", grok: "grok", pi: "pi", codex: "codex"}
+  @probeable_agents %{cursor: "cursor-agent", grok: "grok", pi: "pi", codex: "codex", antigravity: "agy"}
 
   # claude has no model-list CLI (`claude model list` is treated as a prompt —
   # anthropics/claude-code#12612), so its dropdown options come only from this seed.
@@ -615,6 +616,7 @@ defmodule Harness.ModelAvailability do
   defp default_probe(:grok, _executables), do: run_grok_probe()
   defp default_probe(:pi, _executables), do: run_pi_probe()
   defp default_probe(:codex, _executables), do: run_codex_probe()
+  defp default_probe(:antigravity, _executables), do: run_antigravity_probe()
   defp default_probe(_agent, _executables), do: {:error, :catalog_unavailable}
 
   @spec run_cursor_probe() :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
@@ -631,6 +633,11 @@ defmodule Harness.ModelAvailability do
   @spec run_codex_probe() :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
   defp run_codex_probe do
     probe_command(:codex, fn -> System.cmd("codex", ["debug", "models"], stderr_to_stdout: true) end)
+  end
+
+  @spec run_antigravity_probe() :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
+  defp run_antigravity_probe do
+    probe_command(:antigravity, fn -> System.cmd("agy", ["models"], stderr_to_stdout: true) end)
   end
 
   @spec probe_command(atom(), (-> {String.t(), non_neg_integer()})) ::
@@ -695,6 +702,7 @@ defmodule Harness.ModelAvailability do
   @spec parse_agent_line(atom(), String.t()) :: catalog_entry() | :error
   defp parse_agent_line(:grok, line), do: parse_grok_line(line)
   defp parse_agent_line(:pi, line), do: parse_pi_line(line)
+  defp parse_agent_line(:antigravity, line), do: parse_antigravity_line(line)
   defp parse_agent_line(_cursor, line), do: parse_catalog_line(line)
 
   @spec parse_grok_line(String.t()) :: catalog_entry() | :error
@@ -715,6 +723,42 @@ defmodule Harness.ModelAvailability do
       ["provider", "model" | _header] -> :error
       [provider, model | _rest] when model != "" -> %{id: model, label: provider, annotations: []}
       _other -> :error
+    end
+  end
+
+  # agy models prints display labels; map each to its dash-form id via the adapter
+  # catalog (reasoning suffixes like "(Thinking)" are label-only, not part of the id).
+  @spec parse_antigravity_line(String.t()) :: catalog_entry() | :error
+  defp parse_antigravity_line(line) do
+    line = String.trim(line)
+
+    cond do
+      line == "" -> :error
+      String.starts_with?(line, "#") -> :error
+      String.starts_with?(line, "Fetching") -> :error
+      String.starts_with?(line, "Available") -> :error
+      true -> antigravity_catalog_entry(line)
+    end
+  end
+
+  @spec antigravity_catalog_entry(String.t()) :: catalog_entry() | :error
+  defp antigravity_catalog_entry(line) do
+    case Antigravity.display_label_to_id(line) do
+      id when is_binary(id) ->
+        %{id: id, label: line, annotations: []}
+
+      nil ->
+        case parse_id_label_line(line) do
+          %{id: id} = entry when is_binary(id) ->
+            if id in Antigravity.known_model_ids(), do: entry, else: :error
+
+          :error ->
+            if line in Antigravity.known_model_ids() do
+              %{id: line, label: line, annotations: []}
+            else
+              :error
+            end
+        end
     end
   end
 

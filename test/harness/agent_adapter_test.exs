@@ -194,20 +194,25 @@ defmodule Harness.AgentAdapterTest do
     end
 
     test "accepts an unpinned model only for a model-incapable adapter" do
-      assert AgentAdapter.model_supported?(Antigravity, nil)
       assert AgentAdapter.model_supported?(FakeAdapter, nil)
+    end
+
+    test "rejects an unpinned model for antigravity now that it is model-capable" do
+      refute AgentAdapter.model_supported?(Antigravity, nil)
     end
 
     test "accepts compatible model families" do
       assert AgentAdapter.model_supported?(Cursor, "claude-opus-4-8-thinking-high")
       assert AgentAdapter.model_supported?(Codex, "gpt-5-codex")
+      assert AgentAdapter.model_supported?(Antigravity, "gemini-3.5-flash")
+      assert AgentAdapter.model_supported?(Antigravity, "gpt-oss-120b")
     end
 
     test "rejects an incompatible cursor-only opus pin on the codex adapter" do
       refute AgentAdapter.model_supported?(Codex, "claude-opus-4-8-thinking-high")
     end
 
-    test "keeps Antigravity model overrides unsupported" do
+    test "rejects an unknown antigravity pin at the family layer (catalog guard is in build_command)" do
       refute AgentAdapter.model_supported?(Antigravity, "custom-model")
     end
   end
@@ -216,7 +221,7 @@ defmodule Harness.AgentAdapterTest do
     test "true for model-capable adapters, false for model-incapable ones" do
       assert AgentAdapter.requires_model?(Codex)
       assert AgentAdapter.requires_model?(Cursor)
-      refute AgentAdapter.requires_model?(Antigravity)
+      assert AgentAdapter.requires_model?(Antigravity)
       refute AgentAdapter.requires_model?(FakeAdapter)
     end
   end

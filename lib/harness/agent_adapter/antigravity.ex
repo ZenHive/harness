@@ -31,10 +31,29 @@ defmodule Harness.AgentAdapter.Antigravity do
   field therefore carries the `:resume` sentinel, not a literal token; any other
   non-`nil` value is an error.
 
-  ## Model Override
+  ## Model override
 
-  The `agy` CLI does not expose a `--model` flag at the command line level. If a model
-  is specified in the invocation, the adapter will return `{:error, {:unsupported_model, model}}`.
+  `agy` 1.0.10+ accepts `--model <id>` (see `AgentAdapter.model_args/1`). Harness
+  validates every non-nil pin against `@verified_catalog` **before** spawning —
+  `agy --model` itself is non-validating and silently falls back to the CLI default
+  on unknown ids, which would violate harness's no-silent-default contract.
+
+  ### Verified `agy --model` ids (2026-06-21, agy 1.0.10)
+
+  Positively confirmed — not by absence of `--model` error (unknown ids are silently
+  accepted), but via the shipped binary's settings schema default (`gemini-3.5-flash`),
+  `fetchAvailableModels` label propagation (`Gemini 3.5 Flash (Medium)` →
+  `gemini-3.5-flash`), and task-scoped live CLI verification documented in Task 322.
+  Display labels from `agy models` carry reasoning suffixes `(Low)` / `(Medium)` /
+  `(High)` / `(Thinking)` that are **not** part of the id.
+
+  | Display label (`agy models`) | `--model` id |
+  | --- | --- |
+  | Gemini 3.5 Flash (Low/Medium/High) | `gemini-3.5-flash` |
+  | Gemini 3.1 Pro (Low/High) | `gemini-3.1-pro` |
+  | Claude Sonnet 4.6 (Thinking) | `claude-sonnet-4-5` |
+  | Claude Opus 4.6 (Thinking) | `claude-opus-4-5` |
+  | GPT-OSS 120B | `gpt-oss-120b` |
   """
 
   use Harness.AgentAdapter
@@ -44,6 +63,35 @@ defmodule Harness.AgentAdapter.Antigravity do
   alias Harness.AgentAdapter.Invocation
 
   @permission_modes %{autonomous: "--dangerously-skip-permissions"}
+
+  # Display labels from `agy models` → dash-form ids accepted by `agy --model`.
+  # Reasoning-level suffixes in the label are not part of the id.
+  @verified_catalog [
+    %{id: "gemini-3.5-flash", label: "Gemini 3.5 Flash (Low)"},
+    %{id: "gemini-3.5-flash", label: "Gemini 3.5 Flash (Medium)"},
+    %{id: "gemini-3.5-flash", label: "Gemini 3.5 Flash (High)"},
+    %{id: "gemini-3.1-pro", label: "Gemini 3.1 Pro (Low)"},
+    %{id: "gemini-3.1-pro", label: "Gemini 3.1 Pro (High)"},
+    %{id: "claude-sonnet-4-5", label: "Claude Sonnet 4.6 (Thinking)"},
+    %{id: "claude-opus-4-5", label: "Claude Opus 4.6 (Thinking)"},
+    %{id: "gpt-oss-120b", label: "GPT-OSS 120B"}
+  ]
+
+  @known_model_ids @verified_catalog |> Enum.map(& &1.id) |> MapSet.new()
+
+  @display_label_to_id Map.new(@verified_catalog, &{&1.label, &1.id})
+
+  @doc false
+  @spec known_model_ids() :: [String.t()]
+  def known_model_ids, do: MapSet.to_list(@known_model_ids)
+
+  @doc false
+  @spec catalog_entries() :: [map()]
+  def catalog_entries, do: @verified_catalog
+
+  @doc false
+  @spec display_label_to_id(String.t()) :: String.t() | nil
+  def display_label_to_id(label) when is_binary(label), do: Map.get(@display_label_to_id, String.trim(label))
 
   @doc """
   Declares Antigravity's capabilities: session resume and streaming output,
@@ -62,7 +110,7 @@ defmodule Harness.AgentAdapter.Antigravity do
       permission_modes: [:autonomous],
       streaming_output: true,
       worktree_isolation: true,
-      model_families: []
+      model_families: [:google, :anthropic, :openai]
     }
   end
 
@@ -73,19 +121,21 @@ defmodule Harness.AgentAdapter.Antigravity do
   @doc """
   Builds the `agy` headless command line for `invocation`.
 
-  Returns `{:error, {:unsupported_model, model}}` if a model is specified,
-  `{:error, {:unsupported_permission_mode, mode}}` for a permission mode outside `capabilities/0`,
-  and `{:error, {:unsupported_session_token, value}}` when `session` is neither `nil` nor `:resume`.
+  Returns `{:error, {:invalid_model_for_adapter, __MODULE__, model}}` when the
+  pinned model is absent from the verified catalog, `{:error, {:unsupported_permission_mode, mode}}`
+  for a permission mode outside `capabilities/0`, and `{:error, {:unsupported_session_token, value}}`
+  when `session` is neither `nil` nor `:resume`.
   """
   @impl AgentAdapter
   @spec build_command(Invocation.t()) :: {:ok, AgentAdapter.command()} | {:error, term()}
   def build_command(%Invocation{} = invocation) do
     with {:ok, invocation} <- AgentAdapter.attach_rules(__MODULE__, invocation),
-         :ok <- validate_model(invocation.model),
+         :ok <- validate_catalog_model(invocation.model),
          {:ok, permission} <- AgentAdapter.permission_flag(@permission_modes, invocation.permission_mode),
          {:ok, resume} <- AgentAdapter.resume_args(invocation.session) do
       argv =
         ["--add-dir", invocation.cwd, permission] ++
+          AgentAdapter.model_args(invocation.model) ++
           resume ++
           ["-p", AgentAdapter.task_prompt(invocation)]
 
@@ -94,7 +144,14 @@ defmodule Harness.AgentAdapter.Antigravity do
     end
   end
 
-  @spec validate_model(String.t() | nil) :: :ok | {:error, {:unsupported_model, String.t()}}
-  defp validate_model(nil), do: :ok
-  defp validate_model(model), do: {:error, {:unsupported_model, model}}
+  @spec validate_catalog_model(String.t() | nil) :: :ok | {:error, {:invalid_model_for_adapter, module(), String.t()}}
+  defp validate_catalog_model(nil), do: :ok
+
+  defp validate_catalog_model(model) when is_binary(model) do
+    if MapSet.member?(@known_model_ids, model) do
+      :ok
+    else
+      {:error, {:invalid_model_for_adapter, __MODULE__, model}}
+    end
+  end
 end

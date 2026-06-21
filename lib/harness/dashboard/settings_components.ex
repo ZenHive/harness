@@ -305,7 +305,6 @@ defmodule Harness.Dashboard.SettingsComponents do
       <p class="setting-desc">
         Per-agent implementer model. Required for every model-capable agent — blank
         rejects the dispatch as <code>model_required</code> (no silent CLI default).
-        Antigravity is exempt (its CLI has no <code>--model</code> flag).
         A task's <code>model</code> pin overrides this value.
       </p>
       <form
@@ -338,8 +337,8 @@ defmodule Harness.Dashboard.SettingsComponents do
       <p class="setting-desc">
         Per-agent reviewer model override. Blank inherits the agent default above; if both are
         blank, the reviewer is rejected as <code>model_required</code> for model-capable agents —
-        never a silent CLI default (antigravity is exempt). Model ids churn — verify against
-        the agent's <code>--list-models</code> before setting.
+        never a silent CLI default. Model ids churn — verify against
+        the agent's model catalog (<code>agy models</code> for antigravity) before setting.
       </p>
       <form
         :for={model <- @reviewer_models}

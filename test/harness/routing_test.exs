@@ -166,15 +166,15 @@ defmodule Harness.RoutingTest do
     refute Enum.any?(pairs, &(&1.agent == "grok" and &1.model == "grok-4.3"))
   end
 
-  test "default brief keeps antigravity as a single model-less available row" do
+  test "default brief surfaces model-required for antigravity without a configured model" do
     put_installed(%{Antigravity => true})
     enable_agents([:antigravity])
 
     assert {:ok, %{pairs: pairs}} = Routing.brief()
     antigravity = pair!(pairs, "antigravity", nil)
 
-    assert antigravity.model_required == false
-    assert antigravity.availability.available == true
+    assert antigravity.model_required == true
+    assert antigravity.availability.available == false
   end
 
   test "default brief returns only installed enabled available configured-model pairs" do

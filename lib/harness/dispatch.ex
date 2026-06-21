@@ -1143,9 +1143,7 @@ defmodule Harness.Dispatch do
 
   # Fail fast before a run/worktree spins up: a model-capable agent with no
   # resolved model (no task pin, no `{:agent_model, agent}` default) is rejected
-  # outright — harness never lets a real dispatch fall through to the agent
-  # CLI's ambient default. A model-incapable adapter (antigravity) skips the
-  # presence gate; nil is legitimate there.
+  # outright — harness never falls through to the agent CLI's ambient default.
   @spec ensure_model_available(module(), atom(), Item.t(), String.t()) :: :ok | {:error, error()}
   defp ensure_model_available(adapter, agent, %Item{} = item, task) do
     model = effective_model(item, agent)

@@ -95,6 +95,24 @@ defmodule Harness.ModelAvailabilityTest do
       assert [%{id: "grok-build"}] = ModelAvailability.parse_catalog_output(:grok, output)
     end
 
+    test "antigravity display labels map to dash-form ids and dedupe shared ids" do
+      output = """
+      Fetching available models...
+      Gemini 3.5 Flash (Low)
+      Gemini 3.5 Flash (Medium)
+      Gemini 3.1 Pro (High)
+      Claude Sonnet 4.6 (Thinking)
+      GPT-OSS 120B
+      """
+
+      assert [
+               %{id: "gemini-3.5-flash", label: "Gemini 3.5 Flash (Low)"},
+               %{id: "gemini-3.1-pro", label: "Gemini 3.1 Pro (High)"},
+               %{id: "claude-sonnet-4-5", label: "Claude Sonnet 4.6 (Thinking)"},
+               %{id: "gpt-oss-120b", label: "GPT-OSS 120B"}
+             ] = ModelAvailability.parse_catalog_output(:antigravity, output)
+    end
+
     test "codex JSON yields visibility=list slugs, dropping hidden internal models" do
       # Real `codex debug models` shape (trimmed to the parsed fields), 2026-06-12.
       output =
@@ -181,6 +199,8 @@ defmodule Harness.ModelAvailabilityTest do
     end
 
     test "returns unavailable when the agent has no builtin, static, or probe cache" do
+      install_catalog_probe(fn _agent, _executables -> {:error, :catalog_unavailable} end)
+
       assert {:ok,
               %{
                 catalog_status: "unavailable",
@@ -270,8 +290,29 @@ defmodule Harness.ModelAvailabilityTest do
       assert [%{id: "composer-2.5"}] = ModelAvailability.list_available(:cursor)
     end
 
-    test "returns catalog_unavailable for agents without a static list" do
+    test "returns catalog_unavailable for agents without a static list when probe fails" do
+      install_catalog_probe(fn _agent, _executables -> {:error, :catalog_unavailable} end)
       assert {:error, :catalog_unavailable} = ModelAvailability.list_available(:antigravity)
+    end
+
+    test "returns probed antigravity catalog entries when the agy models probe succeeds" do
+      install_catalog_probe(fn
+        :antigravity, _executables ->
+          {:ok,
+           [
+             %{id: "gemini-3.5-flash", label: "Gemini 3.5 Flash (Medium)", annotations: []},
+             %{id: "claude-opus-4-5", label: "Claude Opus 4.6 (Thinking)", annotations: []}
+           ]}
+
+        _agent, _executables ->
+          {:error, :catalog_unavailable}
+      end)
+
+      seed_static_catalog(:antigravity, [
+        %{id: "gemini-3.5-flash", label: "Gemini 3.5 Flash (Medium)", annotations: []}
+      ])
+
+      assert [%{id: "gemini-3.5-flash"}] = ModelAvailability.list_available(:antigravity)
     end
   end
 

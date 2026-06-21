@@ -552,7 +552,7 @@ defmodule Harness.Dashboard.SettingsLive do
   end
 
   # A free-text model pin: blank clears the override (the resolver then rejects a
-  # model-capable agent as model_required; only antigravity runs model-less),
+  # model-capable agent as model_required),
   # any other string persists verbatim — model ids are unvalidated (they churn).
   defp parse_config_value("", :string), do: {:ok, nil}
   defp parse_config_value(raw, :string), do: {:ok, raw}

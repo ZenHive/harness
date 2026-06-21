@@ -1,6 +1,7 @@
 defmodule Harness.AgentAdapter.AntigravityTest do
   use ExUnit.Case, async: true
 
+  alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Antigravity
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Invocation
@@ -18,19 +19,33 @@ defmodule Harness.AgentAdapter.AntigravityTest do
   end
 
   describe "capabilities/0" do
-    test "declares resume + streaming output, autonomous-only permission mode, and worktree isolation" do
+    test "declares resume + streaming output, autonomous-only permission mode, worktree isolation, and model families" do
       assert %Capabilities{
                session_resume: true,
                streaming_output: true,
                permission_modes: [:autonomous],
-               worktree_isolation: true
+               worktree_isolation: true,
+               model_families: [:google, :anthropic, :openai]
              } = Antigravity.capabilities()
+    end
+  end
+
+  describe "known_model_ids/0" do
+    test "lists the five verified dash-form ids" do
+      assert Enum.sort(Antigravity.known_model_ids()) == [
+               "claude-opus-4-5",
+               "claude-sonnet-4-5",
+               "gemini-3.1-pro",
+               "gemini-3.5-flash",
+               "gpt-oss-120b"
+             ]
     end
   end
 
   describe "build_command/1" do
     test "pins the run worktree via --add-dir (port cwd alone is insufficient — Task 32/198)", %{cwd: cwd} do
-      assert {:ok, {"agy", argv, []}} = Antigravity.build_command(invocation(cwd))
+      assert {:ok, {"agy", argv, []}} =
+               Antigravity.build_command(invocation(cwd, model: "gemini-3.5-flash"))
 
       add_dir_index = Enum.find_index(argv, &(&1 == "--add-dir"))
       assert add_dir_index, "argv must carry --add-dir"
@@ -39,30 +54,36 @@ defmodule Harness.AgentAdapter.AntigravityTest do
       assert add_dir_index < p_index, "--add-dir must precede -p"
     end
 
-    test "builds a headless run for the autonomous baseline", %{cwd: cwd} do
-      assert {:ok, {"agy", argv, []}} = Antigravity.build_command(invocation(cwd))
+    test "builds a headless run for the autonomous baseline with --model", %{cwd: cwd} do
+      assert {:ok, {"agy", argv, []}} =
+               Antigravity.build_command(invocation(cwd, model: "gemini-3.5-flash"))
 
       assert argv == [
                "--add-dir",
                cwd,
                "--dangerously-skip-permissions",
+               "--model",
+               "gemini-3.5-flash",
                "-p",
                RulesInjection.prepend_prompt("do the task")
              ]
     end
 
-    test "rejects any model override", %{cwd: cwd} do
-      assert {:error, {:unsupported_model, "custom-model"}} =
-               Antigravity.build_command(invocation(cwd, model: "custom-model"))
+    test "fast-fails an unknown model before spawn (agy --model is non-validating)", %{cwd: cwd} do
+      assert {:error, {:invalid_model_for_adapter, Antigravity, "__nope__"}} =
+               Antigravity.build_command(invocation(cwd, model: "__nope__"))
     end
 
     test "appends --continue for a :resume session", %{cwd: cwd} do
-      assert {:ok, {"agy", argv, []}} = Antigravity.build_command(invocation(cwd, session: :resume))
+      assert {:ok, {"agy", argv, []}} =
+               Antigravity.build_command(invocation(cwd, model: "gemini-3.5-flash", session: :resume))
 
       assert argv == [
                "--add-dir",
                cwd,
                "--dangerously-skip-permissions",
+               "--model",
+               "gemini-3.5-flash",
                "--continue",
                "-p",
                RulesInjection.prepend_prompt("do the task")
@@ -77,26 +98,38 @@ defmodule Harness.AgentAdapter.AntigravityTest do
       File.mkdir_p!(sibling)
       on_exit(fn -> File.rm_rf!(sibling) end)
 
-      assert {:ok, {"agy", argv_a, []}} = Antigravity.build_command(invocation(cwd))
-      assert {:ok, {"agy", argv_b, []}} = Antigravity.build_command(invocation(sibling))
+      assert {:ok, {"agy", argv_a, []}} =
+               Antigravity.build_command(invocation(cwd, model: "gemini-3.5-flash"))
+
+      assert {:ok, {"agy", argv_b, []}} =
+               Antigravity.build_command(invocation(sibling, model: "gemini-3.5-flash"))
 
       assert Enum.at(argv_a, Enum.find_index(argv_a, &(&1 == "--add-dir")) + 1) == cwd
       assert Enum.at(argv_b, Enum.find_index(argv_b, &(&1 == "--add-dir")) + 1) == sibling
     end
 
     test "omits the resume flag for a fresh run", %{cwd: cwd} do
-      assert {:ok, {"agy", argv, []}} = Antigravity.build_command(invocation(cwd))
+      assert {:ok, {"agy", argv, []}} =
+               Antigravity.build_command(invocation(cwd, model: "gemini-3.5-flash"))
+
       refute "--continue" in argv
     end
 
     test "rejects a permission mode outside its capabilities", %{cwd: cwd} do
       assert {:error, {:unsupported_permission_mode, :plan}} =
-               Antigravity.build_command(invocation(cwd, permission_mode: :plan))
+               Antigravity.build_command(invocation(cwd, model: "gemini-3.5-flash", permission_mode: :plan))
     end
 
     test "rejects a session value that is not the :resume sentinel", %{cwd: cwd} do
       assert {:error, {:unsupported_session_token, "abc-123"}} =
-               Antigravity.build_command(invocation(cwd, session: "abc-123"))
+               Antigravity.build_command(invocation(cwd, model: "gemini-3.5-flash", session: "abc-123"))
+    end
+  end
+
+  describe "invoke/2 — model-required guard" do
+    test "rejects a model-less dispatch before spawn", %{cwd: cwd} do
+      assert {:error, {:model_required, Antigravity}} =
+               AgentAdapter.invoke(Antigravity, invocation(cwd))
     end
   end
 end

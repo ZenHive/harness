@@ -85,7 +85,7 @@ defmodule Harness.AgentAdapter do
     cursor: ["composer-"],
     google: ["gemini-"],
     kimi: ["kimi-"],
-    openai: ["chatgpt-", "codex-", "gpt-", "o1", "o3", "o4", "o5"],
+    openai: ["chatgpt-", "codex-", "gpt-", "gpt-oss-", "o1", "o3", "o4", "o5"],
     xai: ["grok-", "xai/"]
   }
 
@@ -319,8 +319,8 @@ defmodule Harness.AgentAdapter do
   Returns whether `adapter` can run `model`.
 
   A `nil` (unpinned) model is accepted **only** for adapters that declare no
-  model selection (`Capabilities.model_families: []`, e.g. antigravity, whose
-  `agy` CLI has no `--model` flag). For every model-capable adapter a `nil` is
+  model selection (`Capabilities.model_families: []`). For every model-capable
+  adapter a `nil` is
   rejected — harness never lets a real agent fall through to its CLI's ambient
   default, the guard against a sticky premium default silently burning the token
   budget on every later run. Non-nil pins are checked against the adapter's
@@ -338,8 +338,8 @@ defmodule Harness.AgentAdapter do
   Returns whether `adapter` requires an explicitly resolved model.
 
   `true` for every model-capable adapter (declares `model_families: :any` or a
-  non-empty list); `false` only for adapters that declare `model_families: []`
-  (no `--model` flag, e.g. antigravity). The dispatch and reviewer fail-fast
+  non-empty list); `false` only for adapters that declare `model_families: []`.
+  The dispatch and reviewer fail-fast
   checks read this to reject a `nil` model before a run starts.
   """
   @spec requires_model?(module()) :: boolean()
@@ -531,8 +531,8 @@ defmodule Harness.AgentAdapter do
   end
 
   # Model-capable iff the adapter declares it can run at least one model family
-  # (`:any` or a non-empty list). `[]` means "no `--model` flag" (antigravity) —
-  # the single case where a nil model is legitimate.
+  # (`:any` or a non-empty list). `[]` means no `--model` flag — the single case
+  # where a nil model is legitimate.
   @spec model_capable?(module()) :: boolean()
   defp model_capable?(adapter), do: adapter.capabilities().model_families != []
 
