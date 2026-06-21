@@ -52,6 +52,17 @@ Precedent (cite, don't relitigate): harness Tasks 153–163 — every run-lifecy
 
 When designing or reviewing, ask: **"which parts would an AI do better than code?"**
 
+## 🚨 SURFACE THE OVERRIDE — DON'T DECIDE SILENTLY
+
+**When you make a judgment call that overrides the user's discernible intent — defer it, build it differently, skip it, "I know better" — make the call visible in one line *before* you act. Never act silently and rationalize afterward.**
+
+The failure mode: you disagree, act on your own read, and wrap it in fluent reasoning after the fact — so the user finds the override at discovery time, not decision time. A stronger model makes this *worse*: the rationalization is more eloquent, so the silent override is harder to spot, not easier.
+
+The check, before the trained pattern fires — is this **clarity**, or **habit / wanting-to-please / fear-of-being-wrong**? Only clarity earns a silent decision; the other three get surfaced.
+
+- **Surface ≠ block.** State it as an interruptible assumption — "doing X instead of Y because Z — say if wrong" — then proceed. Don't gate on a question (that's the *opposite* failure).
+- This is the override-form of "assumptions, don't gate on questions" (response-conventions), and the gap between input and output where you ask *where the response is coming from* before committing to it.
+
 ## 🚨 NEVER START THE PHOENIX SERVER
 
 The Phoenix server is always already running. Never run `mix phx.server` via Bash. Assume localhost:4000. User starts/stops manually. To verify behavior, ask the user to check the browser.
@@ -87,92 +98,21 @@ The gate is a "do I have a safety net before I touch this?" check; writing the m
 
 ## 🚨 NEVER HIDE TEST FAILURES
 
-**TESTS THAT HIDE ERRORS ARE WORSE THAN NO TESTS AT ALL.** Tests find bugs — a test that silently passes on errors is lying and will cause production bugs.
+**TESTS THAT HIDE ERRORS ARE WORSE THAN NO TESTS AT ALL.** A test that silently passes on errors is lying and ships the bug it was meant to catch.
 
-### ABSOLUTELY FORBIDDEN — NEVER WRITE THESE:
-
-```elixir
-# ❌ MAKES ANY OUTCOME PASS - COMPLETELY WORTHLESS
-case result do
-  {:ok, _} -> assert true
-  {:error, _} -> assert true  # ← This makes ALL failures pass silently!
-end
-
-# ❌ HIDES ALL ERRORS WITH COMMENTS - DANGEROUS
-{:error, _reason} ->
-  # This is acceptable for testnet
-  :ok  # ← NO! This silently passes EVERY error!
-
-# ❌ COMMENTS DON'T VALIDATE BEHAVIOR
-{:error, reason} ->
-  IO.puts("Error may be normal: #{inspect(reason)}")
-  assert true  # ← Still worthless!
-```
-
-### CORRECT PATTERNS — ALWAYS USE THESE:
+The anti-pattern in all its forms — `{:error, _} -> assert true`, a catch-all `{:error, _} -> :ok`, or `IO.puts(...)` then `assert true`: any clause that makes *every* outcome pass. The fix is always an explicit `flunk` on the unexpected:
 
 ```elixir
-# ✅ FAILS LOUDLY ON UNEXPECTED ERRORS
 case result do
   {:ok, data} -> assert is_map(data)
-  {:error, :specific_expected_error} -> :ok
+  {:error, :insufficient_balance} -> :ok          # this specific error is expected
   {:error, other} -> flunk("Unexpected error: #{inspect(other)}")
 end
-
-# ✅ EXPLICIT ABOUT WHAT'S ACCEPTABLE
-{:error, :insufficient_balance} ->
-  :ok  # This specific error is expected and valid
-{:error, other} ->
-  flunk("Expected :insufficient_balance, got #{inspect(other)}")
-
-# ✅ TEST SPECIFIC BEHAVIOR, NOT OUTCOMES
-test "returns not_found when account doesn't exist" do
-  assert {:error, :not_found} = get_account("invalid_id")
-end
-
-test "returns data when account exists" do
-  assert {:ok, %{balance: _}} = get_account("valid_id")
-end
 ```
 
-**THE RULE:** If you don't know what error to expect, DON'T write the test yet. Explore via Tidewave MCP first, understand the real error cases, THEN write assertions. A test should FAIL when the code is wrong.
+**THE RULE:** if you don't know what error to expect, DON'T write the test yet — explore via Tidewave first, then assert. A test must FAIL when the code is wrong.
 
-### INTEGRATION TESTS: NEVER SKIP SILENTLY ON MISSING CREDENTIALS
-
-Integration tests requiring API credentials must **fail loudly** with actionable setup instructions, not skip silently:
-
-```elixir
-# ❌ BAD: Silent skip - test appears to pass when it didn't run
-setup do
-  api_key = System.get_env("API_KEY")
-  if is_nil(api_key), do: :skip  # ← DANGEROUS! Test suite "passes" with 0 tests run
-  {:ok, api_key: api_key}
-end
-
-# ❌ BAD: Returns :ok on nil - same problem
-test "authenticated endpoint", %{credentials: nil} do
-  :ok  # ← Test silently passes without actually testing anything
-end
-
-# ✅ GOOD: Fails loudly with actionable instructions
-test "authenticated endpoint", %{credentials: credentials} do
-  if is_nil(credentials) do
-    flunk("""
-    Missing testnet credentials!
-
-    Set these environment variables:
-      export BINANCE_TESTNET_API_KEY="your_key"
-      export BINANCE_TESTNET_API_SECRET="your_secret"
-
-    Get credentials at: https://testnet.binance.vision
-    """)
-  end
-
-  # Actual test code...
-end
-```
-
-**Pattern:** let the test run (don't skip in setup), check credentials at test start, use `flunk()` with multi-line message listing missing env vars, exact export commands, and the URL to get them. A suite with "0 failures" that ran 0 tests is lying.
+**Integration tests — never skip silently on missing credentials.** A suite reporting "0 failures" that ran 0 tests is lying. Don't `:skip` in `setup`; let the test run and `flunk()` at the top with a multi-line message listing the missing env vars, the exact `export` commands, and the URL to get them.
 
 ## 🚨 FIX HOOK-FLAGGED ISSUES ON FILES YOU TOUCH
 
@@ -188,90 +128,22 @@ Applies to every hook-driven check (credo, format, dialyzer, doctor, sobelow, ex
 
 ## 🚨 READ TO THE ANSWER — DON'T USE THE RUNNER AS AN ORACLE
 
-**Reason to the fix by reading code; run once to CONFIRM — don't run to DISCOVER.**
-The recurring failure mode: change → run full suite → read one failure → fix one
-thing → run again, N times. Each cycle pays the suite-compile tax; N cycles for a
-problem one read would have surfaced whole.
+**Reason to the fix by reading code; run once to CONFIRM — don't run to DISCOVER.** The failure mode: change → run suite → read one failure → fix one thing → run again, N times, each cycle paying the compile tax for a problem one read surfaces whole.
 
-- **Read the code path before running the test that exercises it.** Front-load the
-  model; don't outsource it to the runner. A 10-line read of the function beats
-  learning its shape from a failing assertion three fixes later.
-- **Treat a failure as a SURVEY, not a single fix.** Enumerate every plausible
-  cause from the output + one read, fix them in a batch, then run once. Don't
-  fix-one-and-rerun.
-- **Verify handoffs/summaries against ground truth before building on them.** A
-  compaction summary or another session's claim ("X is already wired") is a
-  hypothesis. `grep` the load-bearing claim before you act on it.
-- **Trust the hooks** (pairs with FIX HOOK-FLAGGED + the host CLAUDE.md rerun rule):
-  per-edit checks already graded the file; re-running is wasted cycles.
-- **Under a flaky terminal, go sequential-and-simple by default** — one command →
-  write to a file → Read it. No parallel batches of *dependent* calls: one early
-  failure cancels the whole round.
-
-**Failure-mode tell — about to run the same test a 3rd time to find the *next*
-problem? STOP. Read the code path and the opts you're passing against a known-good
-sibling, list all the causes, fix them together, run once.**
+- **Read the code path before the test that exercises it** — front-load the model, don't learn the function's shape from a failing assertion three fixes later.
+- **Treat a failure as a SURVEY, not a single fix** — enumerate every plausible cause from the output + one read, fix them in a batch, run once.
+- **Verify handoffs/summaries against ground truth** — a compaction summary or another session's "X is already wired" is a hypothesis; `grep` the load-bearing claim before acting on it.
+- **Trust the hooks** — per-edit checks already graded the file; re-running is wasted cycles.
+- **Under a flaky terminal, go sequential-and-simple** — one command → write to a file → Read it; no parallel batches of *dependent* calls, one early failure cancels the round.
 
 ## 🚨 FLAKY TESTS & TEST-RUN TOKEN ECONOMY
 
-**Elixir suites are non-deterministic at the edges (async / GenServer / Port /
-LiveView / supervision tests), and `mix test` is the single biggest time/token sink
-in a session.** A flaky red believed-as-real, or an unbounded test run dumped to
-context, burns real money and wall-clock every time. Four disciplines:
+**Elixir suites are non-deterministic at the edges (async / GenServer / Port / LiveView / supervision), and `mix test` is the biggest time/token sink in a session.** Four disciplines:
 
-### A small red count is a flaky-test HYPOTHESIS, not a regression — until confirmed
-
-When a suite reports 1–2 failures out of hundreds, **don't believe the red yet** —
-especially in async/GenServer/Port/LiveView/supervision tests, which fail
-intermittently on timing.
-
-1. **Check the failing file against your diff.** Your change didn't touch it (or its
-   module under test)? → suspect flake, not your bug.
-2. **Re-run ONLY that test in isolation** — `mix test.json <file>:<line>` (or
-   `--failed`). Passes alone → flaky; proceed. Fails alone, deterministically → real;
-   fix it.
-3. **Never repair-loop or block a merge on an unconfirmed flake.** One isolated
-   re-run is the whole investigation — don't re-run the full suite to "make sure."
-
-### NEVER `Process.sleep` to "fix" a flaky test
-
-Timing sleeps mask non-determinism, slow every future run, and hide the real race.
-Fix the root cause with synchronization, not delay:
-
-- `assert_receive` / `refute_receive` with a timeout — not `Process.sleep` then `assert`
-- `Process.monitor` + `assert_receive {:DOWN, …}` for process death
-- `start_supervised!` for deterministic lifecycle; poll-until-condition for async state
-
-Hard line — it's the same lie as **NEVER HIDE TEST FAILURES**: a `sleep` that makes a
-race pass *most* of the time still ships the race.
-
-### Don't re-run a full suite to grade already-graded code
-
-(Extends **READ TO THE ANSWER** + the host CLAUDE.md rerun rule.) Per-edit hooks
-already ran `test.json` on touched files; a harness-dispatched run already ran the
-project's check stack green.
-
-- A **disjoint-file cherry-pick / clean merge** of already-verified code does **not**
-  need a `precommit.full` re-run — the verdict is already in hand.
-- Full suite only when files reached the tree through a **non-graded path**: manual
-  editor edits, a rebase with overlapping hunks, a branch switch, or after `mix deps.get`.
-- "Before a PR/merge" justifies the full suite **only when the merged code wasn't
-  already graded green** — not as a reflex on every merge.
-
-### Bound test output — NEVER let coverage hit context
-
-`mix test.json --cover` emits the **entire per-module coverage JSON** (tens to
-hundreds of KB) — one dump can eat most of a context window.
-
-- Always `--output /tmp/cov.json` + `jq` the summary; never let `--cover` land on
-  stdout/context.
-- Triage with `--max-failures 1`, `--failed`, or a single `file:line` to cap noise.
-- Only need pass/fail? Drop `--cover` entirely.
-
-**Failure-mode tell — about to trust a 1-of-1000 red, add a `sleep` to make a test
-pass, re-run `precommit.full` on a clean cherry-pick, or run `--cover` straight to
-your terminal? STOP. Triage the one test in isolation; fix races with `assert_receive`;
-trust the hook/dispatch verdict; pipe coverage to a file.**
+- **A small red count is a flaky HYPOTHESIS, not a regression — until confirmed.** 1–2 failures out of hundreds, in a file your diff didn't touch → suspect flake. Re-run ONLY that test in isolation (`mix test.json <file>:<line>` or `--failed`): passes alone → flaky, proceed; fails deterministically → real, fix it. One isolated re-run is the whole investigation — never repair-loop or block a merge on an unconfirmed flake.
+- **NEVER `Process.sleep` to "fix" a flake.** Sleeps mask the race, slow every future run, and still ship it (passing *most* of the time is the same lie as hiding a failure). Synchronize instead: `assert_receive`/`refute_receive` with a timeout, `Process.monitor` + `assert_receive {:DOWN, …}`, `start_supervised!`, or poll-until-condition.
+- **Don't re-run a full suite to grade already-graded code.** Per-edit hooks already ran `test.json` on touched files; a harness run already graded the stack green. A disjoint cherry-pick / clean merge of verified code needs no `precommit.full` re-run. Full suite only via a non-graded path — manual editor edits, a rebase with overlapping hunks, a branch switch, after `mix deps.get`.
+- **Bound test output — never let coverage hit context.** `mix test.json --cover` dumps the entire per-module JSON (tens–hundreds of KB). Always `--output /tmp/cov.json` + `jq`; triage with `--max-failures 1` / `--failed` / a single `file:line`; drop `--cover` if you only need pass/fail.
 
 ## 🛑 MINIMALIST APPROACH FIRST
 
@@ -318,9 +190,11 @@ You have no consumer telemetry. No usage counts. No signal about whether a featu
 - Minimalism = don't add features the user **didn't ask for**.
 - This rule = don't refuse / defer features the user **did ask for** by inventing evidence requirements.
 
+**Distinguish from dependency-gating (the *legitimate* "wait"):** parking work behind a **named technical / legal / market-scope trigger** with a concrete unblock path — a missing dep, an unactivated market, an **additive change that's migration-cheap to add later** — is NOT hedging. Hedging invents *demand* evidence you can't get ("wait until someone wants it"); dependency-gating cites a *structural fact* ("park until market MY activates — it's an additive `@by_country` member, so deferring forecloses nothing"). The STOP-list below targets the former, not the latter. **Build-now pressure is for *foreclosing* decisions** (annoying/migration-heavy to reverse — e.g. a geo dimension threaded through schema); an **additive** change carries no such pressure, so "build it now because one instance happens to be live" is overfit, not rigor. Reflexively reaching for build-now to avoid *looking* like you're hedging is the same theater inverted.
+
 **Failure-mode test — if you're about to write any of these, STOP:**
 - "Demand for X is unproven"
-- "We should wait until..."
+- "We should wait until..." *(unless it names a concrete technical/legal/market-scope trigger with an unblock path — that's dependency-gating, not hedging)*
 - "Is this widely needed?"
 - "Only worth doing if a Nth+ case is imminent"
 - "Bet on usage data before building"
@@ -384,31 +258,17 @@ False technical claims cascade into bad architectural decisions, wasted resource
 
 ## 🚨 RESEARCH BEFORE ASSERTING ON NICHE TECHNICAL CLAIMS
 
-**When the question lives outside reliable training coverage, do online research proactively — without being asked.** The default failure mode is asserting from training-bias confidence on specs/protocols/niche APIs that the model never deeply absorbed. Codex routinely fetches reference implementations to verify assumptions; Claude defaults to "answer from memory." Close the gap.
+**When the question lives outside reliable training coverage, research proactively — without being asked.** The failure mode is asserting from training-bias confidence on specs/protocols/niche APIs the model never deeply absorbed. Codex fetches reference implementations to verify; Claude defaults to "answer from memory." Close the gap.
 
-**Research proactively (use WebFetch on a known URL, WebSearch to discover one) when the topic is:**
+**Research (WebFetch a known URL, WebSearch to find one) when the topic is:**
+- **Wire formats / encodings** — RLP, ABI, SSZ, Protobuf, BLS, BIP-32/39/44, EIP-712, CBOR, ASN.1/DER. Fetch the spec or a reference impl before claiming byte order, length-prefix, padding, or canonical form.
+- **Protocol details** — EIPs, RFCs, JSON-RPC shapes/error codes, opcode gas, exchange API quirks (signature canonicalization, error envelopes, rate-limit headers).
+- **Niche / recent library APIs** — guessing signatures, return shapes, version-pinned breaking changes. If you'd write `# probably something like`, go fetch the docs.
+- **Cross-implementation edge cases** — "what does X do when Y is malformed?" → check ≥2 reference impls; one impl's behavior can be a bug, agreement across two is the spec in practice.
 
-- **Wire formats / encodings** — RLP, ABI, SSZ, Protobuf, MessagePack, BLS, BIP-32/39/44 paths, EIP-712 typed data, CBOR, ASN.1 / DER. Fetch the spec or a reference implementation (geth, reth, py-evm, libsecp256k1, official BIPs) before claiming byte order, length-prefix rules, padding, or canonical-form requirements.
-- **Protocol details** — EIPs, RFCs, JSON-RPC method shapes/error codes, opcode gas costs, P2P handshake messages, exchange API quirks (Binance/Deribit/OKX rate-limit headers, signature canonicalization, error envelopes).
-- **Niche / recent library APIs** — anything outside mainstream-framework training where you'd be guessing function signatures, return shapes, or version-pinned breaking changes. If you'd write `# probably something like` in a comment, that's the signal — go fetch the docs.
-- **Cross-implementation edge cases** — when "what does X do when Y is malformed?" matters, check **≥2 reference implementations**. One impl's behavior can be a bug; agreement across two is the spec in practice.
+**Don't research (use memory):** pure Elixir/OTP, stdlib, mainstream Phoenix/LiveView/Ecto/Ash, generic REST/HTTP/JSON/SQL/shell, anything already in the codebase / hex docs pulled this session / an imported CLAUDE.md.
 
-**Don't research (use training memory) when the topic is:**
-- Pure Elixir / OTP idioms, stdlib functions, mainstream Phoenix / LiveView / Ecto / Ash patterns
-- Generic REST, HTTP, JSON, SQL, shell — well-trodden ground
-- Anything already in the project's codebase or in hex docs you've already pulled in this session
-- Anything explicitly documented in a CLAUDE.md or include the user has imported
-
-Training-bias overconfidence on niche specs ships off-by-one byte-order bugs, wrong opcode gas costs, malformed RLP encodings, miscounted signature recovery IDs — exactly the class of bug a 30-second reference-impl check catches. Cite the source so the user can verify instead of trusting model authority.
-
-**How to apply:**
-1. Notice the trigger — you're about to assert behavior in one of the "research proactively" categories.
-2. Prefer **WebFetch** when the canonical URL is known (the EIP, RFC, hex package, or a reference-impl file path on GitHub). Use **WebSearch** to find one when it isn't.
-3. Cite what you fetched — link the EIP/RFC, the reference-impl file + line range, the hex doc URL. The citation is part of the answer, not optional.
-4. For cross-impl checks, name both implementations: *"geth's RLP encoder treats X as Y; reth agrees — see [link] and [link]."*
-5. If a fetch fails or returns ambiguous text, say so explicitly and lower confidence — don't fall back to "well, I think..." without flagging the downgrade.
-
-This rule complements **Integrity and Accuracy** above: that one says *don't fabricate*; this one says *go verify when training is thin*. The combined posture is "cite the source, fetch when needed, never assert with confidence you can't justify."
+**How to apply:** prefer WebFetch when the canonical URL is known (the EIP/RFC/hex doc/reference-impl path), WebSearch to find one; **cite what you fetched** — the citation is part of the answer, name both impls for cross-checks. If a fetch fails or is ambiguous, say so and lower confidence — don't fall back to "well, I think…" silently.
 
 ## 🚨 NO EVASION — SIT WITH THE HARD THING
 
@@ -491,22 +351,26 @@ This file is the **decision layer** — *which* command, *when*. The authoritati
 | Intent | Command |
 |---|---|
 | Read one task / many | `rmap show <id> [--json]` · `rmap list --status\|--phase\|--marker\|--bundle\|--milestone\|--delivered-by [--json]` |
+| Traverse the dependency graph | `rmap blocks <id> [--json]` (transitive dependents — what `<id>` unblocks) · `rmap deps <id> [--json]` (transitive dependencies — what `<id>` needs first) |
 | Pick the next task | `rmap next [--marker M] [--bundle B] [--milestone V] [--count N] [--json]` |
 | Pick a session-sized bundle | `rmap next-bundle [--json]` · `rmap bundles` to discover them |
 | Pick the parallel-safe dispatch set | `rmap ready [--bundle B] [--phase N] [--marker M] [--milestone V] [--count N] [--dispatchable] [--fields a,b,c] [--json]` |
+| See the parallel dispatch schedule | `rmap waves [--json]` — every pending/unblocked task grouped by `dep_layer`; wave 0 runs first, each wave gates the next |
 | List release lines / pin to a release | `rmap milestones [--has-next\|--status\|--json]` · `rmap milestone <id> <name\|none>` |
 | Change status | `rmap status <id> <pending\|in_progress\|blocked\|done\|superseded> [--implemented "..."] [--delivered-by <agent>] [--verified] [--shipped-in <sha>] [--reason "..."]` (bulk `1,2,3` atomic; `done` requires `implemented`; outcome flags settable only on `done`; `--reason` settable only on `blocked`) |
 | Toggle a marker | `rmap mark <id> +parallel -cx` |
+| Set/clear agent routing | `rmap assign <id> <assignee\|none\|human> [--model <m>]` — non-`human` live tasks require `--model`; `none`/`human` clear both fields |
 | Add a dependency | `rmap depend <id> on <id>` |
-| Create task(s) | `rmap new --from-stdin` (TOML on stdin, atomic batch, full field set per `rmap schema`) — see `task-writing.md`. Interactive `rmap new` covers the common subset; reach for `--from-stdin` when interactive doesn't prompt for a field you need. **`new` rejects `status` and every transition/outcome field** (`status`, `implemented`, `delivered_by`, `verified`, `shipped_in`, `started_at`, `done_at`) with `unknown field` — a created task is *always* `pending`; flip it afterward via `rmap status`. Creation-time fields only: `id phase bundle milestone title scores markers depends_on linear_id assignee module model acceptance_criteria out_of_scope files_to_modify touches cross_repo branch body created_at scored_at`. |
+| Create task(s) | `rmap new --from-stdin` (TOML on stdin, atomic batch, full field set per `rmap schema`) — see `task-writing.md`. Interactive `rmap new` covers the common subset; reach for `--from-stdin` when interactive doesn't prompt for a field you need. **A created task is *always* `pending`.** `new` accepts `status` only as `"pending"` (a tolerated no-op, so echoing the default isn't a rejected round-trip); any non-pending value is rejected with `creates pending tasks only` pointing at `rmap status`. Every other transition/outcome field (`implemented`, `delivered_by`, `verified`, `shipped_in`, `started_at`, `done_at`) is still rejected with `unknown field`. Flip to a non-pending state afterward via `rmap status`. Creation-time fields only: `id phase bundle milestone title scores markers depends_on linear_id assignee module model acceptance_criteria out_of_scope files_to_modify touches cross_repo branch body created_at scored_at`. |
 | Format a task as a cloud-agent prompt | `rmap delegate <id> [--to claude\|codex\|cursor\|grok\|antigravity\|pi\|droid]` — `--to` optional, defaults to the task's `assignee` |
 | Migrate a hand-edited ROADMAP.md | `rmap import` |
 | See what changed vs a git ref | `rmap diff [--verbose] [--json]` |
 | List stalled in-progress tasks | `rmap stale --over <dur>` (e.g. `30d`, `2w`; also folded into `doctor`) |
-| Health signals (soft, always exit 0) | `rmap doctor [--json]` |
+| Health signals (soft, always exit 0) | `rmap doctor [--json] [--bottleneck-min N]` |
 | Strict gates (pre-commit / CI) | `rmap validate` · `rmap validate --check-render` |
 | Render after editing tasks.toml directly | `rmap render` (or `rmap watch` for live re-render) |
 | Emit data.json to stdout (read-only) | `rmap export json` (`render` is what writes the file) |
+| Emit the dep graph as Graphviz (read-only) | `rmap export dot` — DOT digraph of the in-repo `depends_on` graph (edges dependency → dependent); pipe to `dot` |
 
 All mutators **validate-then-write**: an invalid mutation leaves `tasks.toml` byte-equal to its prior state. `--json` envelopes on the read commands are append-only stable surfaces.
 
@@ -516,7 +380,7 @@ All mutators **validate-then-write**: an invalid mutation leaves `tasks.toml` by
 
 Before any mutation, re-verify against the current file:
 
-- **Before `rmap status <id> …` / `rmap mark` / `rmap milestone` / `rmap depend`:** run `rmap show <id>` first and confirm the title/body matches the task you mean. An ID memorized earlier (or quoted by another session) may now point at a different or already-mutated task.
+- **Before `rmap status <id> …` / `rmap mark` / `rmap milestone` / `rmap assign` / `rmap depend`:** run `rmap show <id>` first and confirm the title/body matches the task you mean. An ID memorized earlier (or quoted by another session) may now point at a different or already-mutated task.
 - **Before `rmap new`:** never assume what ID the new task will get; read it from the command's output after creation, not from "last ID I saw + 1".
 - **Before hand-editing `tasks.toml` directly:** re-read the file immediately before the edit — never write from a stale in-context copy. Prefer the `rmap` mutators over hand edits; they re-read and validate-then-write atomically.
 - **Referencing tasks across sessions / handoffs:** quote the task *title* alongside the ID so the receiver can detect drift (`rmap show <id>` title mismatch ⇒ stop and re-resolve).
@@ -625,8 +489,9 @@ That's a grab-bag — keep them separate.**
 
 When you need *the set of tasks I can dispatch in parallel right now* — not "a session's worth" (`next-bundle`) and not "the single best" (`next`) — use **`rmap ready`**. It returns every `pending` task whose deps are all `done`, which is **mutually independent by construction** (a pending task with all deps done can't depend on another pending task), so the whole set is safe to fan out at once. `rmap ready --bundle <B>` is the dispatchable layer-0 of a bundle — the parallel batch `next-bundle`'s serial chain can't express. Five facts the orchestrator reads instead of re-parsing every task body:
 
-- **`assignee`** (creation-time field, validated against `human|claude|codex|cursor|grok|antigravity|pi|droid`): **THE agent-routing field** — which agent executes the task. Orchestrators route on it (`--fields id,assignee,markers`), and `rmap delegate` defaults `--to` from it. `assignee = "human"` means "not for autonomous dispatch" — consumers skip it. Don't overload `model` (a free-text LLM id) or the `cx`/`csr` markers (filter/discovery tags) for routing. **Set `assignee` at creation** (`rmap new` / `--from-stdin`) — it's easy to omit, but an unset assignee carries no routing intent, so the interactive `rmap delegate` errors (pass `--to`) and an autonomous consumer falls back to *its* configured default dispatch agent rather than your intent. Pick the agent when you file the task; leave it `human` only when the work genuinely isn't for headless dispatch.
+- **`assignee`** (creation-time field, validated against `human|claude|codex|cursor|grok|antigravity|pi|droid`): **THE agent-routing field** — which agent executes the task. Orchestrators route on it (`--fields id,assignee,markers`), and `rmap delegate` defaults `--to` from it. `assignee = "human"` means "not for autonomous dispatch" — consumers skip it. Don't overload `model` (a free-text LLM id) or the `cx`/`csr` markers (filter/discovery tags) for routing. **Set `assignee` at creation** (`rmap new` / `--from-stdin`) or **reassign later** via `rmap assign <id> <agent> [--model <m>]` — an unset assignee carries no routing intent, so the interactive `rmap delegate` errors (pass `--to`) and an autonomous consumer falls back to *its* configured default dispatch agent rather than your intent. Pick the agent when you file the task; use `rmap assign <id> none` when the work is genuinely for hand-build only.
 - **`dep_layer`** (computed, on every `--json`): longest-path depth over the in-repo dep graph. Within a result set the lowest `dep_layer` present is the current parallel wave; higher layers are later waves — makes `next-bundle`'s topo chain self-describing.
+- **`unlocks`** (computed, on every `--json`): count of tasks that transitively depend on this one — the size of its `rmap blocks <id>` set. Turns hand-guessed unlock leverage (the `U` score's leverage component) into a graph fact: a high-`unlocks` pending task gates a lot of downstream work. Like `dep_layer` / `eff`, computed at read time, never persisted. Use `rmap blocks <id>` to see *which* tasks, `unlocks` to rank by *how many*.
 - **`handbuild` marker + `--dispatchable`**: `--dispatchable` (on `ready` / `list`) drops `handbuild`-marked tasks. **UI/LiveView/CSS work is NOT handbuild by default** — incremental UI against an existing design system or a frontend-design doc is normal headless dispatch. Reserve `handbuild` for the genuine minority where a human-in-browser is required: net-new visual identity with no design spec to build against (exploratory look-and-feel / motion / brand). Everything else — backend and spec-anchored UI alike — is headless-dispatchable by default.
 - **`touches`** (creation-time field): the broader *involvement hint* — files a task may read or write, typically a superset of `files_to_modify` (the write target). Consumer collision rule (you dedupe; rmap doesn't enforce): two tasks conflict iff `(touches(A) ∪ files_to_modify(A)) ∩ (touches(B) ∪ files_to_modify(B)) ≠ ∅`. Unioning both fields keeps `files_to_modify` respected even when a task's `touches` isn't a perfect superset — `touches` is "typically," not guaranteed, a superset. Set it via `rmap new --from-stdin`.
 - **`--fields a,b,c`** (on `ready` / `list`): projects `--json` to a bare array of just the named keys per task — token-cheap for an orchestrator that only needs `id,status,eff,depends_on,dep_layer,touches`. Implies `--json`; unknown name exits 1.
@@ -676,11 +541,15 @@ Three optional transition-time fields next to `implemented`, all set by `rmap st
 - `verified = true` — independent evaluator confirmed the task. Two-state: `true` = a check separate from the implementer passed (verification stack green, code-review approved); absent = not yet graded (hand-built, bootstrap, merged directly). Settable via `--verified` presence flag on `done`; to clear, edit `tasks.toml` directly. Encodes evaluator-separation as a fact, not as a status — `done` means "an implementer said so", `verified` means "a grader agreed".
 - `shipped_in = "<sha>"` — where the work landed (commit SHA / PR ref, free-text, unvalidated). Settable via `--shipped-in <sha>` on `done` transitions; overwrites on re-set. No sha-shape validation, no git auto-derivation — the caller supplies it.
 
-All three surface in `rmap show`, `rmap list` JSON / `data.json` (via `ExportedTask`), and `rmap diff --verbose`. `rmap list --delivered-by <agent>` filters the roadmap into a per-agent delivery ledger (status-agnostic — matches the field, not just done tasks). `rmap doctor` emits a soft `ClaimedNotGraded` advisory for `done && verified.is_none()` ("claimed, not graded") — always exit 0, hand-built tasks are legitimate. All three stay off `StdinTask` / `NewTaskFields` on purpose; they are outcome facts, not creation-time intent.
+All three surface in `rmap show`, `rmap list` JSON / `data.json` (via `ExportedTask`), and `rmap diff --verbose`. `rmap list --delivered-by <agent>` filters the roadmap into a per-agent delivery ledger (status-agnostic — matches the field, not just done tasks). `rmap doctor` emits a soft `ClaimedNotGraded` advisory for `done && verified.is_none()` ("claimed, not graded") — always exit 0, hand-built tasks are legitimate. Graph-health advisories (`bottleneck`, `isolated_node`) flag high-leverage gating tasks and disconnected/off-milestone nodes — also soft, exit 0; tune the bottleneck cutoff with `--bottleneck-min` (default 3). All three stay off `StdinTask` / `NewTaskFields` on purpose; they are outcome facts, not creation-time intent.
 
 ### Pinning an LLM model per task
 
-`model = "<model-id>"` on a `[[task]]` records which LLM should do the work — free-text, unvalidated (model IDs churn). `rmap delegate` surfaces it as a `- Model:` bullet in the prompt's `## Context` so the target agent knows which model to run. Settable at creation via `rmap new` (interactive + `--from-stdin`) or a direct edit.
+`model = "<model-id>"` on a `[[task]]` records which LLM should do the work — the *value* is free-text and unvalidated (model IDs churn, so no closed set). `rmap delegate` surfaces it as a `- Model:` bullet in the prompt's `## Context` so the target agent knows which model to run. Settable at creation via `rmap new` (interactive + `--from-stdin`) or a direct edit.
+
+**`model` is required (presence, not value) on a live agent-assigned task.** `rmap validate` hard-errors (exit 1, agent-grep `missing model`) when a `pending`/`in_progress` task has `assignee` set and != `"human"` but no `model` — harness hard-rejects a dispatch that resolves to no model (it never falls through to the agent CLI's ambient default), so rmap refuses to author one. The mutators inherit this (validate-then-write): `rmap new --assignee <agent>` on a model-less task fails before write; `rmap assign <id> <agent>` without `--model` fails the same way. Pin a model whenever you set an agent assignee on a live task. Terminal tasks (`done`/`superseded`/`blocked`) and assignee-unset / `human` tasks are exempt.
+
+`rmap assign <id> <assignee> [--model <m>]` sets routing on an existing task (creation-time fields otherwise only writable via `rmap new` or hand edit). `rmap assign <id> none` or `rmap assign <id> human` clears both `assignee` and `model` for hand-build work — `--model` is forbidden on that path.
 
 The three-way split — don't conflate them:
 
@@ -710,8 +579,8 @@ Run `rmap import` — it emits a paste-ready prompt that walks an agent through 
 | `mix test.json` flags / jq recipes | Skill `elixir:ex-unit-json` |
 | `mix dialyzer.json` flags / fix_hints | Skill `elixir:dialyzer-json` |
 | `mix` / `ex_dna` / `ex_ast` command surface | Skill `elixir:development-commands` |
-| rmap CLI: status/score/new/render/delegate | Skill `task-driver:rmap` |
-| D/B/U scoring, ceremony floor, task-writing | Skill `elixir:roadmap-planning` + `@~/.claude/includes/task-writing.md` |
+| rmap CLI: status/score/new/render/delegate | Skill `tasks:rmap` |
+| D/B/U scoring, ceremony floor, task-writing | Skill `tasks:roadmap-planning` + `@~/.claude/includes/task-writing.md` |
 | Session-per-phase / batched-execution / evaluator-separation rules | `@~/.claude/includes/workflow-philosophy.md` |
 | Worktree-per-branch workflow | `@~/.claude/includes/worktree-workflow.md` |
 | Harness delegate→verify→repair→land workflow (portfolio adoption) | `@~/.claude/includes/harness-workflow.md` |
@@ -735,7 +604,7 @@ The full include is verbose and mostly restates mainstream Elixir. These are the
 
 ## rmap is ours
 
-The `rmap` CLI (the roadmap substrate `roadmap/tasks.toml` uses) is a sibling Rust project we own at `../rmap/` (`/Users/efries/_DATA/code/rmap/`). If the roadmap workflow needs a CLI change — new field, query, render, or `delegate --to` target — edit it there; don't work around a gap in harness. The `task-driver:rmap` skill is the usage contract; `../rmap/` is the source.
+The `rmap` CLI (the roadmap substrate `roadmap/tasks.toml` uses) is a sibling Rust project we own at `../rmap/` (`/Users/efries/_DATA/code/rmap/`). If the roadmap workflow needs a CLI change — new field, query, render, or `delegate --to` target — edit it there; don't work around a gap in harness. The `tasks:rmap` skill is the usage contract; `../rmap/` is the source.
 
 **AI driver surface (canonical for orchestrators):** `@skills/harness-driver/SKILL.md` — **load on demand** when driving harness as a consumer. Stable contract for delegation patterns, non-delegatable handling, result interpretation, sharp edges. Any change to public driver surfaces must update it.
 
@@ -743,14 +612,14 @@ The `rmap` CLI (the roadmap substrate `roadmap/tasks.toml` uses) is a sibling Ru
 
 ## Commands
 
-Toolchain: **Elixir 1.20.0 / OTP 29** (asdf) — resolved from the global `~/.tool-versions` (`1.20.0-otp-29` / `erlang 29.0.1`), since the repo has no plain `.tool-versions`. `mix.exs` floors at `~> 1.18`; a repo-local `.tool-versions.1.18` (1.18.4/OTP27) pins the lower-bound compat target — `cp .tool-versions.1.18 .tool-versions` for a reproducible per-repo pin. Postgres required for the Oban dispatch layer.
+Toolchain: **Elixir 1.20.0 / OTP 29** (asdf) — pinned by the repo-local `.tool-versions` (`elixir 1.20.0-otp-29` / `erlang 29.0.1`). `mix.exs` floors at `~> 1.18`; a repo-local `.tool-versions.1.18` (1.18.4/OTP27) pins the lower-bound compat target — `cp .tool-versions.1.18 .tool-versions` to build against it. Postgres required for the Oban dispatch layer.
 
 > **Sync `development` before committing when auto-land is on.** With `landing_policy: :auto`, the lander is a *second committer* to `origin/<target>` — it ff-pushes from a detached worktree and deliberately **never touches your checkout**, so your local `development` ref drifts behind origin after every autonomous land. **Before any commit/push, `git fetch origin development && git rebase origin/development`** (or `git pull --rebase origin development`) — rebase, because you'll often have local commits the lander doesn't. Skip it and you get a stale base / non-ff push reject. A clean rebase → `git push origin development` is the completing step; just do it. If the rebase still has unresolved conflicts or the push is non-ff, stop and surface it — don't force-push a shared branch.
 
 | Task | Command |
 |---|---|
 | Run the node | `iex -S mix` — boots the app, Oban (Postgres), and the dashboard on `http://localhost:4018` (routes `/harness`, `/harness/oban`, `/harness/mcp`, `/tidewave/mcp`). **Long-lived; the user starts it manually — don't boot it yourself.** |
-| First-time DB | `mix ecto.create && mix ecto.migrate` (one migration: the Oban jobs table). DB name/user overridable via `HARNESS_DB_NAME` / `HARNESS_DB_USER` (defaults `harness_dev`, `$USER`). |
+| First-time DB | `mix ecto.setup` (creates, migrates, and runs `priv/repo/seeds.exs` when present). DB name/user overridable via `HARNESS_DB_NAME` / `HARNESS_DB_USER` (defaults `harness_dev`, `$USER`). |
 | Tests | `mix test.json` — AI-friendly JSON output; **use over bare `mix test`** (load `elixir:ex-unit-json` for flags/jq). `:integration` tests (real agent CLIs, live DB) are **excluded by default** — add `--include integration`. |
 | Single test | `mix test.json test/harness/run_test.exs:42` · re-run only failures: `mix test.json --failed` · coverage: `--cover`. |
 | Fast gate | `mix check.fast` — `format --check-formatted` + `compile --warnings-as-errors` + `credo --strict`. |
@@ -775,10 +644,11 @@ Toolchain: **Elixir 1.20.0 / OTP 29** (asdf) — resolved from the global `~/.to
 - **Thin adapter pattern.** One adapter per agent: invocation + raw capture + capability declaration. Behaviour `Harness.AgentAdapter` — required callbacks `capabilities/0` + `rule_channel/0` + `build_command/1`; `classify_message/2` + `terminate/1` default via `use Harness.AgentAdapter` + defoverridable. `AgentAdapter.invoke/2` does the generic Port spawn. `build_command/1` threads caller-controlled env (`Invocation.env`, set/scrub pairs → Port, Task 25). Harness-owned rules delivered ahead of `build_command/1` by `AgentAdapter.attach_rules/2` (Task 39), dispatching on `c:rule_channel/0`: `:system_prompt_file` (Claude), `:codex_ephemeral_file` (Codex/Pi), `:cursor_ephemeral_file` (Cursor), `:prompt_preamble` (Grok/Antigravity), `:none` (test doubles). Every adapter must pass `Harness.AgentAdapter.ConformanceCase` **unchanged** — a leak gets fixed in the behaviour, not patched in the adapter.
 - **No agent-output parsing.** Raw passthrough is simpler *and* more robust — agents ship 40+ releases; a JSON-format change is absorbed by the AI reading the transcript, not by breaking a normalization layer.
 - **Path discipline:** raw-output capture is hot-path-adjacent (allocation-light); run/batch lifecycle is warm-path OTP state; dashboard / MCP is cold-path.
-- **Multi-project federation (shipped, v0_5; simplified by the agent-gate rebuild).** `%Harness.Project{}` (Task 46) carries `source` (`{:local, dir}` or `{:github, url}` — Task 47), `check_command` (free-text hint handed to the reviewer AI, e.g. `"mix precommit"` — the reviewer runs and judges it itself; multi-language monorepos just describe both commands in the hint), `language` (optional atom for language-aware injected agent rules; `nil`/`:elixir` keeps Elixir guidance, other atoms suppress it), `roadmap_path`, `concurrency_cap`, `landing_policy`, `target_branch`. `Harness.ProjectRegistry` GenServer holds them. The old declarative `check_stacks`/presets/`Harness.Verification` machinery is **deleted** — see "The Agent-Gate Workflow" below.
+- **🚨 Persistence is Ecto/Postgres, not config files or `~/.harness` terms.** `repo_enabled: true` is the **default**, and under it Postgres is the source of truth for all durable state: `Harness.SettingsStore` (operator/UI settings, cron-autonomy switches + schedule, agent/landing config — `harness_settings` table), `Harness.ProjectRegistry` (`projects` table), `Harness.ResultStore` (run records + batch results, KPI/reliability/facet aggregates), `Harness.Chat.Store` (chat sessions), and Oban's own job tables. Ecto schemas live under each store's `schema/` dir; migrations in `priv/repo/migrations/`. **`config :harness, …` is a seed + live-cache layer, NOT the store** — `Harness.Config` keeps app-env as a hot read cache that `SettingsStore` (Postgres) is the persistence layer behind, env-var-wins-over-UI-override; `config :harness, :projects` only seeds missing rows on first boot. With `repo_enabled: false` (library consumers mounting harness without a DB) the stores fall back to **in-memory ephemeral** — no file persistence either. The *only* legitimately file-based state is the per-worktree `.harness/*.json` artifacts (`review`/`audit`/`recovery`/`cron-plan`, mechanical read) and the `CapabilityScore` scout artifact under `~/.harness` — everything an agent would call "saved data" is a table. Reach for `mcp__tidewave__execute_sql_query` / Ecto, not a config read, when inspecting persisted state.
+- **Multi-project federation (shipped, v0_5; simplified by the agent-gate rebuild).** `%Harness.Project{}` (Task 46) carries `source` (`{:local, dir}` or `{:github, url}` — Task 47), `check_command` (free-text hint handed to the reviewer AI, e.g. `"mix precommit"` — the reviewer runs and judges it itself; multi-language monorepos just describe both commands in the hint), `language` (optional atom for language-aware injected agent rules; `nil`/`:elixir` keeps Elixir guidance, other atoms suppress it), `roadmap_path`, `concurrency_cap`, `landing_policy`, `target_branch`, and `test_db_isolation_env` (default `MIX_TEST_PARTITION`; `false` / `"none"` opts out). `Harness.ProjectRegistry` is the in-memory registry **backed by Postgres** (Ecto schema `project_registry/schema/project.ex`): with `repo_enabled: true` (the default), runtime `register/1`s persist to the `projects` table and are restored at boot, and **the Postgres row wins** — `config :harness, :projects` is **seed-only on first boot** (only seeds missing rows; edit live projects in `/harness/settings` or via `priv/repo/seeds.exs`/`mix harness.seed`, never by editing config and expecting it to take). The old declarative `check_stacks`/presets/`Harness.Verification` machinery is **deleted** — see "The Agent-Gate Workflow" below.
 - **Oban = dispatch layer** (Task 48): queue-per-project gives per-project concurrency caps + restart resilience (jobs survive BEAM death in Postgres). `Oban.Plugins.Cron` (Task 51) enables autonomous roadmap polling. Dashboard (Task 50): `Harness.Dashboard.Endpoint` standalone Bandit on **4018** (conditional behind `:dashboard, :enabled` + `Code.ensure_loaded?(Bandit)` so mountable consumers aren't forced into a 2nd HTTP server), Oban Web at `/harness/oban`, MCP at `/harness/mcp`, Tidewave MCP in dev — all on the one port.
-- **Autonomous landing (shipped, v0_9; simplified by the agent-gate rebuild).** `Harness.Lander` is the merge-train: a run the reviewer approved on a project with `landing_policy: :auto` + `target_branch` enqueues a landing job on the project's serialized `landing_<name>` Oban queue (limit 1). The lander rebases the run's `harness/<run-id>` branch onto `origin/<target>` in a fresh **detached** worktree and fast-forward-pushes (never `--force`; the operator's checkout is untouched; **no re-verification** — the reviewer already gated the work). A rebase **conflict** is the one MERGE-node judgment call: instead of a blind re-dispatch, the lander hands the conflicted worktree to a cross-family merge-resolver agent (`Harness.Lander.Resolver`, Task 189) that reconciles the markers (keep-both by default); harness then mechanically stages, asserts zero leftover markers, and `rebase --continue`s — resolver failure aborts and falls back to the existing re-dispatch path (a still-conflicted tree is never landed; the resolver never re-runs checks). A successful push enqueues the post-merge audit job. `Harness.Notification` fires witness events (land / blocked) to configured sinks — read-only by design, never a gate. Run recovery: `hold`/`steer`/`resume` on the gen_statem (Task 150). Cron autonomy: master + per-project toggles, persisted under `~/.harness` (Tasks 109/110).
-- **Agent KPIs + capability routing (shipped, v0_10; re-keyed to reviewer outcomes).** `Harness.ResultStore` (behaviour: File default, Postgres when `repo_enabled`) persists run records best-effort at settle time; `Harness.AgentKPI` is a pure read-only rollup (success = reviewer approved; first-attempt-pass = approved with zero reviewer fixes; duration p90; cost-to-approved); `Harness.CapabilityScore` (verdict + reviewer fix-diff size + the reviewer's ratings block) gives per-`{agent, domain}` scores that `dispatch-recommend` routes on (explore/exploit). The mechanical benchmark corpus is deleted — the reviewer's KPI ratings replaced it as the scoring input.
+- **Autonomous landing (shipped, v0_9; simplified by the agent-gate rebuild).** `Harness.Lander` is the merge-train: a run the reviewer approved on a project with `landing_policy: :auto` + `target_branch` enqueues a landing job on the project's serialized `landing_<name>` Oban queue (limit 1). The lander rebases the run's `harness/<run-id>` branch onto `origin/<target>` in a fresh **detached** worktree and fast-forward-pushes (never `--force`; the operator's checkout is untouched; **no re-verification** — the reviewer already gated the work). A rebase **conflict** is the one MERGE-node judgment call: instead of a blind re-dispatch, the lander hands the conflicted worktree to a cross-family merge-resolver agent (`Harness.Lander.Resolver`, Task 189) that reconciles the markers (keep-both by default); harness then mechanically stages, asserts zero leftover markers, and `rebase --continue`s — on **resolver failure the lander never re-dispatches**: the reviewer-approved `harness/<run-id>` branch is retained, the task is marked `blocked`, and the conflict is witnessed (a still-conflicted tree is never landed; the resolver never re-runs checks). Recovery is operator-driven `dispatch-reland` (a zero-token re-land once the conflicting change has settled) — committed, reviewed work is recovered, never thrown away and re-implemented. A successful push enqueues the post-merge audit job. `Harness.Notification` fires witness events (land / blocked) to configured sinks — read-only by design, never a gate. Run recovery: `hold`/`steer`/`resume` on the gen_statem (Task 150). Cron autonomy: master + per-project toggles, persisted in **`Harness.SettingsStore` (Postgres)** via `Harness.Cron.Settings` — switches, dispatch modes, and the cron schedule all live in one settings row, not a `~/.harness` file (Tasks 109/110).
+- **Agent KPIs + capability routing (shipped, v0_10; re-keyed to reviewer outcomes).** `Harness.ResultStore` (behaviour: **Postgres** by default — `repo_enabled` is `true` — falling back to an **in-memory ephemeral** store when `repo_enabled: false`; there is no file backend) persists run records best-effort at settle time; `Harness.AgentKPI` is a pure read-only rollup (success = reviewer approved; first-attempt-pass = approved with zero reviewer fixes; duration p90; cost-to-approved). Reviewer reliability also counts rejection, no-verdict, and `approved_then_found_red` false-approval facts per reviewer/model from post-merge audit `cold_check`; routing surfaces these facts but applies no penalty, weight, or auto-exclusion. `Harness.CapabilityScore` reads agent/scout-written assessment artifacts for `dispatch-recommend`; the mechanical benchmark corpus is deleted.
 
 ## Orchestration Library — Build a Thin Core (settled, Task 2)
 
@@ -797,6 +667,8 @@ Core is textbook OTP (Port per run, `gen_statem` per run, `DynamicSupervisor` fo
 
 > **Status:** rebuild landed 2026-06-03 (hand-built). `docs/agent-gate-workflow.md` is the spec.
 
+**Per-run test DB isolation (Task 320):** the implementer and reviewer Ports get a run-unique, DB-name-safe test partition env var. Default is `MIX_TEST_PARTITION`, matching Phoenix/Ecto's generated `config/test.exs` pattern; projects using another variable set `%Project{test_db_isolation_env: "NAME"}`, and projects with their own isolation set `false` or `"none"`. This restores the per-worktree DB isolation lost when the agent-gate rebuild deleted `Harness.Verification` / `CheckStack`; the reviewer still runs checks and remains the gate.
+
 **The principle (extends 2026-06-02's "Judgment Lives in Agents"):** *everything that interprets meaning* — is the work good, why a run failed, what an empty diff means, whether code satisfies acceptance criteria, whether the build/tests pass *in a way that matters* — **is an agent's job, never harness code.** Harness code is mechanical substrate only: worktrees, git, Ports, Oban persistence, counters, timers, reading the reviewer's verdict file.
 
 > ## 🧭 THE MANTRA — count facts in code; write the *meaning* of facts with an AI.
@@ -814,15 +686,15 @@ Core is textbook OTP (Port per run, `gen_statem` per run, `DynamicSupervisor` fo
 **The stages:**
 
 - **Implementer AI** — works in the isolated worktree, commits. Its self-report is never trusted.
-- **Reviewer AI (cross-family, mandatory, THE gate)** — gets worktree + task + acceptance criteria + implementer transcript + diff stat + the project's `check_command` hint. It reviews, **runs the checks itself**, fixes inline (own edits, own commits), then writes `.harness/review.json`: `{"verdict": "approve"|"reject", "report": "...", "ratings": {...}}`. Harness mechanically reads the file: approve → `:done` → merge; reject/missing → `:failed`, task back to queue. The ratings block scores the implementer (performance, truthfulness, code quality, idiom usage) and feeds AgentKPI.
+- **Reviewer AI (cross-family, mandatory, THE gate)** — gets worktree + task + acceptance criteria + implementer transcript + diff stat + the project's `check_command` hint. It reviews, **runs the checks itself**, fixes inline (own edits, own commits), then writes `.harness/review.json`: `{"verdict": "approve"|"reject", "report": "...", "checks": {...}, "concerns": [], "facets": {...}, "skills": {...}, "ratings": {...}}`. Harness mechanically reads the file: approve → `:done` → merge; reject/missing → `:failed`, task back to queue. The reviewer-authored `checks`/`concerns` surface warning facts on approve, never an auto-block; skills/ratings feed AgentKPI.
 - **MERGE** — lander: fetch → detached worktree → rebase onto `origin/<target>` → ff-push. No re-verification.
-- **Audit AI (post-merge, batched, best-effort)** — third-family agent audits the unaudited commit range on the target branch, fixes hygiene inline, commits `audit(...)`, pushes. Never blocks, never reverts.
+- **Audit AI (post-merge, batched, best-effort)** — third-family agent audits the unaudited commit range on an intentionally un-warmed target-branch worktree, runs the project's clean-build/check itself, writes the `cold_check` fact in `.harness/audit.json`, fixes hygiene inline, commits `audit(...)`, pushes. Harness never runs that build or reads an exit code. A red cold check files a blocked follow-up task + loud notification and records `approved_then_found_red` on the approved run for reviewer feedback, never a revert, unmerge, gate, or auto-down-weight.
 
 **Rules for every session:**
 
 - A run-lifecycle bug is fixed by **moving judgment into an agent prompt or verdict artifact** — never by adding a branch/regex/filter/classifier to harness code.
 - Do not reintroduce: `Harness.Verification`, `Harness.CheckStack`, presets, verdicts, `:verifying`, baseline anything, repair loops, semantic gates, quota regexes, `review_green`, `max_review_iterations`, lander re-verification, the mechanical benchmark corpus.
-- What stays code (the test: is it mechanical?): worktrees, git, Ports, Oban persistence, counters, timers/watchdogs, reading `.harness/review.json` / `.harness/audit.json`.
+- What stays code (the test: is it mechanical?): worktrees, git, Ports, Oban persistence, counters, timers/watchdogs, reading `.harness/review.json` / `.harness/audit.json` facts such as `cold_check`.
 
 ## Agent Headless Entry Points (domain reference)
 
@@ -838,7 +710,8 @@ Core is textbook OTP (Port per run, `gen_statem` per run, `DynamicSupervisor` fo
 All six driven over OTP Ports — uniform, no per-agent SDK. harness captures raw, never parses/normalizes. **Exit code is unreliable**: derive *termination* from Port close + timeout guard; derive *success* from the reviewer AI's `.harness/review.json` verdict — never `$?`, never the implementer's self-report.
 
 **Three-axis adapter contract** (don't conflate):
-- **Agent vs model — pin the model per run.** Each adapter threads `Invocation.model` → its CLI's `--model` flag (`AgentAdapter.model_args/1`), so the *agent* (`assignee`) and the *model that agent runs* (`model`) are orthogonal. This is most load-bearing for **Cursor: it is a multi-model front-end, not "the Composer agent."** `cursor-agent --list-models` (verified 2026-06-07, CLI `2026.06.04`) carries `composer-2.5`/`composer-2.5-fast` (its in-house default) **plus `claude-opus-4-8-thinking-high` / `claude-opus-4-8-max` (Opus 4.8 1M)**, Sonnet 4.6, GPT-5.5, Gemini 3.1 Pro, Grok 4.3, Kimi K2.5. So a `cursor` dispatch with `model = "claude-opus-4-8-thinking-high"` is a full Opus-tier implementer/reviewer — **route Opus-grade tasks to cursor, not just to claude.** Pin it on the rmap task (`model = "<id>"`); with no task pin, the operator-set per-agent default fills in (`Config.agent_model/1` ← the `{:agent_model, agent}` "Agent models" settings card), and only an unset default falls through to the agent's own CLI default (cursor → `composer-2.5-fast`). So the implementer precedence is **task `model` → `{:agent_model, agent}` → CLI default**; the **reviewer** has no task-pin axis, so its model comes *solely* from `{:agent_model, agent}` for the selected reviewer adapter's agent (`Run.reviewer_model/1`, Task 256 — an unregistered adapter → nil → CLI default). Model IDs churn — re-run `--list-models` before trusting a literal string. (Per the run ledger, cursor (10/63) and grok (2/63) are both underused vs codex (31) / claude (20); cursor-on-Opus is the cheapest way to rebalance.)
+- **Agent vs model — pin the model per run.** Each adapter threads `Invocation.model` → its CLI's `--model` flag (`AgentAdapter.model_args/1`), so the *agent* (`assignee`) and the *model that agent runs* (`model`) are orthogonal. This is most load-bearing for **Cursor: it is a multi-model front-end, not "the Composer agent."** Beyond its in-house `composer-*` default, `cursor-agent` fronts Opus-tier (Opus 4.8 1M), Sonnet, GPT, Gemini, Grok, and Kimi models — so a `cursor` dispatch pinned to an Opus 4.8 model id is a full Opus-tier implementer/reviewer — **route Opus-grade tasks to cursor, not just to claude.** Pin it on the rmap task (`model = "<id>"`); with no task pin, the operator-set per-agent default fills in (`Config.agent_model/1` ← the `{:agent_model, agent}` "Agent models" settings card), and an unset default is **rejected, never silently run on the agent's CLI default** — a model-capable adapter that resolves to no model fails the dispatch with `{:model_required, agent}` (`AgentAdapter.invoke/2` + the dispatch/reviewer fail-fasts; the guard against a sticky premium CLI default burning the budget on every later run). So the implementer precedence is **task `model` → `{:agent_model, agent}` → REJECT**; the **reviewer** has no task-pin axis, so its model comes *solely* from `{:agent_model, agent}` for the selected reviewer adapter's agent (`Run.reviewer_model/1`, Task 256 — a model-capable reviewer with no configured model → `{:model_required}`, rejected before the reviewer Port spawns). The single exemption is **antigravity** (`Capabilities.model_families: []`, its `agy` CLI has no `--model` flag): it declares itself model-*incapable* and so legitimately runs model-less. Model IDs churn — never trust a hardcoded roster; read the live per-agent catalog from the node (`model_availability-list_available_models`, `model_availability-refresh_catalog` to re-poll the CLIs, `model_availability-list_blocks` for what's blocked). For the live routing picture (per-agent load, success/first-pass rates, per-domain capability ratings, which premium models are blocked) read it from the running node — `result_store-aggregate_by_agent` + `agents-list` + `model_availability-list_blocks` — never a count hardcoded here.
+- **🚨 Dispatch routing — do NOT dispatch to the `claude` adapter; want gpt-5.5 → use `codex`.** The orchestrator already runs on the Claude Max subscription, so dispatching implementer/reviewer runs to the **`claude` adapter double-bills that same subscription and races its limits** — don't pin a dispatch task to `claude` to "get a strong model." For headless dispatch prefer **`codex`, `cursor`, `grok`**. **`codex` IS how you get gpt-5.5** → `assignee = "codex"`, `model = "gpt-5.5"`. Opus-grade without claude → `cursor` on `claude-opus-4-8-*` — **but cursor-Opus draws a *monthly* token budget that exhausts**, and when spent harness's catalog still lists it as available (no auto-block), so it will route and silently degrade/fail. **If cursor-Opus is exhausted: route the work to `codex`/gpt-5.5, and `model_availability-block_model` the cursor-Opus id** (with a `blocked_until` ≈ month end) so the cron poller can't pick it.
 - **Renderable vs executable**: `rmap delegate --to` now renders a native prompt for all six adapters (`claude`/`codex`/`cursor`/`grok`/`antigravity`/`pi`), so each is a first-class `Roadmap.ingest(agent: …)` target dispatched directly on its own adapter — the old non-delegatable two-step is gone. rmap can also render `droid`, but harness has **no Droid adapter**, so `:droid` is rejected at the ingest/dispatch boundary (`{:invalid_agent, :droid}` / `{:unknown_adapter, "droid"}`). Adding an executor is two-sided: an rmap-lib `--to` target (the rmap binary is ours, `../rmap/` — already done for `droid`) **plus** a harness `AgentAdapter` listed in `Roadmap`'s `@valid_agents`.
 - **Worktree isolation**: all six shipped adapters declare `worktree_isolation: true`. `agy` does **not** honor Port `cwd` alone (Task 32/198) — the adapter pins the run worktree via `--add-dir <cwd>` in `build_command/1`, mirroring Codex's `exec --cd` fix (Task 41). `Harness.Run` trusts declared isolation and skips the main-checkout pollution snapshot for isolating adapters.
 
