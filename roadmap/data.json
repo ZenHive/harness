@@ -14508,7 +14508,7 @@
       "id": "322",
       "phase": 22,
       "bundle": "model-availability",
-      "status": "in_progress",
+      "status": "pending",
       "title": "Antigravity is no longer model-incapable — agy 1.0.10 gained --model + a multi-model catalog; make the adapter model-capable",
       "scores": {
         "d": 4,
