@@ -121,10 +121,10 @@ defmodule Harness.StatusViewTest do
              "cursor model \"composer-2.5-fast\" unavailable (available: composer-2.5, gemini-3.1-pro)"
   end
 
-  test "run_entry_for/1 falls back to inspect for an unrecognized failure reason" do
-    status = %Status{run_id: "run-x", task_id: "11", state: :failed, reason: {:weird, 1, 2, 3, 4}}
+  test "run_entry_for/1 renders a model-required reviewer failure" do
+    status = %Status{run_id: "run-x", task_id: "11", state: :failed, reason: {:model_required, :codex}}
 
-    assert StatusView.run_entry_for(status).detail == "{:weird, 1, 2, 3, 4}"
+    assert StatusView.run_entry_for(status).detail == "model_required :codex"
   end
 
   test "snapshot/1 collects live registered runs" do

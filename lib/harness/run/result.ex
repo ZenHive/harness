@@ -59,6 +59,10 @@ defmodule Harness.Run.Result do
       `dispatch-rereview` on the retained `harness/<run-id>` branch.
     * `{:no_available_agent, r}` — the batch could not pick an adapter for the
       item; the item never produced a run.
+    * `{:model_required, agent}` — a model-capable reviewer had no configured
+      model, so the reviewer was never spawned.
+    * `{:unavailable, agent, model, opts}` — a configured reviewer model is
+      currently blocked or absent from the available model catalog.
   """
   @type reason ::
           :approved
@@ -77,6 +81,8 @@ defmodule Harness.Run.Result do
           | {:commit_failed, term()}
           | {:run_crashed, term()}
           | {:no_available_agent, term()}
+          | {:model_required, atom()}
+          | {:unavailable, atom(), String.t() | nil, keyword()}
 
   @typedoc """
   A settled run.

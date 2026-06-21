@@ -184,8 +184,6 @@ defmodule Harness.StatusView do
 
   defp describe_reason({tag, inner}), do: "#{tag} #{inspect(inner)}"
 
-  defp describe_reason(other), do: inspect(other)
-
   @spec render_bucket(bucket(), [run_entry()]) :: String.t()
   defp render_bucket(bucket, runs) do
     entries = Enum.filter(runs, &(&1.bucket == bucket))

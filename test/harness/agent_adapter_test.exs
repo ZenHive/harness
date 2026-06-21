@@ -267,6 +267,14 @@ defmodule Harness.AgentAdapterTest do
       assert {:error, {:executable_not_found, "definitely-not-a-real-binary-xyz"}} =
                AgentAdapter.invoke(FakeAdapter, invocation(command: :missing))
     end
+
+    test "fails loudly before spawn when the invocation cwd has been cleaned up" do
+      cwd = Path.join(System.tmp_dir!(), "harness-missing-cwd-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(cwd)
+      File.rm_rf!(cwd)
+
+      assert {:error, {:cwd_missing, ^cwd}} = AgentAdapter.invoke(FakeAdapter, %{invocation() | cwd: cwd})
+    end
   end
 
   describe "invoke/2 — Port-spawned agent stdin (Task 23)" do

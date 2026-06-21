@@ -428,31 +428,60 @@ defmodule Harness.AgentAdapter do
         ) ::
           {:ok, Run.t()} | {:error, term()}
   defp spawn_run(adapter, invocation, executable, argv, env, composed_input) do
+    with :ok <- ensure_cwd(invocation.cwd),
+         {:ok, path} <- find_executable(executable) do
+      open_run_port(adapter, invocation, path, argv, env, composed_input)
+    end
+  end
+
+  @spec ensure_cwd(String.t()) :: :ok | {:error, {:cwd_missing, String.t()}}
+  defp ensure_cwd(cwd) do
+    if File.dir?(cwd), do: :ok, else: {:error, {:cwd_missing, cwd}}
+  end
+
+  @spec find_executable(String.t()) :: {:ok, String.t()} | {:error, {:executable_not_found, String.t()}}
+  defp find_executable(executable) do
     case System.find_executable(executable) do
-      nil ->
-        {:error, {:executable_not_found, executable}}
+      nil -> {:error, {:executable_not_found, executable}}
+      path -> {:ok, path}
+    end
+  end
 
-      path ->
-        port =
-          Port.open({:spawn_executable, @sh}, [
-            :binary,
-            :exit_status,
-            :hide,
-            :stderr_to_stdout,
-            {:args, ["-c", @stdin_eof_script, path | argv]},
-            {:cd, invocation.cwd},
-            {:env, port_env(env)}
-          ])
+  @spec open_run_port(
+          module(),
+          Invocation.t(),
+          String.t(),
+          [String.t()],
+          [{String.t(), String.t() | false}],
+          composed_input()
+        ) :: {:ok, Run.t()} | {:error, {:cwd_missing, String.t()}}
+  defp open_run_port(adapter, invocation, executable, argv, env, composed_input) do
+    port =
+      Port.open({:spawn_executable, @sh}, [
+        :binary,
+        :exit_status,
+        :hide,
+        :stderr_to_stdout,
+        {:args, ["-c", @stdin_eof_script, executable | argv]},
+        {:cd, invocation.cwd},
+        {:env, port_env(env)}
+      ])
 
-        {:ok,
-         %Run{
-           ref: make_ref(),
-           adapter: adapter,
-           port: port,
-           os_pid: OSProcess.os_pid(port),
-           started_at: System.monotonic_time(),
-           composed_input: composed_input
-         }}
+    run = %Run{
+      ref: make_ref(),
+      adapter: adapter,
+      port: port,
+      os_pid: OSProcess.os_pid(port),
+      started_at: System.monotonic_time(),
+      composed_input: composed_input
+    }
+
+    if run.os_pid || File.dir?(invocation.cwd) do
+      {:ok, run}
+    else
+      OSProcess.close(port)
+      OSProcess.flush(port)
+      {:error, {:cwd_missing, invocation.cwd}}
     end
   end
 
