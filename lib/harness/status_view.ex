@@ -184,6 +184,11 @@ defmodule Harness.StatusView do
 
   defp describe_reason({tag, inner}), do: "#{tag} #{inspect(inner)}"
 
+  # Total-function fallback: `describe_reason/1` is spec'd over `term()` and may
+  # be handed a reason shape deserialized from an older persisted record. A
+  # display formatter must never crash the status render on an unexpected reason.
+  defp describe_reason(other), do: inspect(other)
+
   @spec render_bucket(bucket(), [run_entry()]) :: String.t()
   defp render_bucket(bucket, runs) do
     entries = Enum.filter(runs, &(&1.bucket == bucket))

@@ -127,6 +127,12 @@ defmodule Harness.StatusViewTest do
     assert StatusView.run_entry_for(status).detail == "model_required :codex"
   end
 
+  test "run_entry_for/1 falls back to inspect for an unrecognized reason shape" do
+    status = %Status{run_id: "run-x", task_id: "11", state: :failed, reason: {:weird, 1, 2, 3, 4}}
+
+    assert StatusView.run_entry_for(status).detail == "{:weird, 1, 2, 3, 4}"
+  end
+
   test "snapshot/1 collects live registered runs" do
     run_id = start_run(adapter_opts: [command: :sleep], terminal_linger: 5_000)
 

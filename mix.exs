@@ -207,7 +207,9 @@ defmodule Harness.MixProject do
       # heavyweight steps deliberately kept out of the fast inner loops:
       #   * dialyzer.json — cold-PLT cost; would blow precommit's 180s hook.
       #   * ex_dna --max-clones 0 — zero-tolerance AST clone gate (vibe_kit baseline).
-      #   * reach.check --arch --smells — architecture-policy + smell gate (.reach.exs).
+      #   * reach.check --arch --smells — --arch gates on the .reach.exs
+      #     architecture policy (non-zero exit on violation); --smells is
+      #     advisory (reports the smell surface, exits 0 without --strict).
       # No .github/workflows yet; this alias IS the CI bar. `mix ci` (below) is the
       # ecosystem-convention entry point and maps here so there is ONE gate, not two.
       "precommit.full": [

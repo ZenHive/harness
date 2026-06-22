@@ -476,7 +476,11 @@ defmodule Harness.AgentAdapter do
       composed_input: composed_input
     }
 
-    if run.os_pid || File.dir?(invocation.cwd) do
+    # The worktree cwd can be cleaned up between ensure_cwd/1 and Port.open/2
+    # (the cold-precommit temp-worktree spawn race). A failed `:cd` can still
+    # leave a truthy os_pid, so the directory's existence — not the pid — is the
+    # authoritative signal that the spawn landed in a live worktree.
+    if File.dir?(invocation.cwd) do
       {:ok, run}
     else
       OSProcess.close(port)
