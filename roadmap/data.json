@@ -14685,6 +14685,146 @@
       "scored_at": "2026-06-21",
       "blocked_reason": "post-merge cold check red for landed SHA 1a2a52ec4dd2c702718cc9c1efab11723af6aa74: mix precommit.full exited 1 in the deliberately cold audit worktree. Credo and Doctor passed; coverage passed at 86.29% >= 80.0%; ExUnit reported 1 failure out of 2012 under seed 26561 with captured output including `spawn: Could not cd to /var/folders/.../harness-base-.../harness-repo-.../run-1782013466787-9af77ce8`. Focused rerun `mix test.json --failed --max-failures 1` passed 1/1, so this is recorded as a flaky cold-check red.",
       "cross_repo": []
+    },
+    {
+      "id": "326",
+      "phase": 22,
+      "bundle": "core-loop",
+      "status": "pending",
+      "title": "Stabilize residual erl_child_setup spawn flake in worktree-heavy suite (Harness.AuditTest noop)",
+      "scores": {
+        "d": 4,
+        "b": 4,
+        "u": 3
+      },
+      "eff": 0.88,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "human",
+      "acceptance_criteria": [
+        "Identify why erl_child_setup intermittently fails with EPIPE under the full --summary-only suite run",
+        "Reduce or eliminate the flake so `MIX_ENV=test mix test.json --quiet --cover --cover-threshold 80 --summary-only --exclude integration` is green across repeated runs",
+        "No sleeps, no @tag :skip, no contract changes to the cold-check witness path"
+      ],
+      "out_of_scope": [
+        "Re-litigating task 324's AgentAdapter fix (already landed and correct)",
+        "Disabling ex_unit_json retry or weakening the precommit gate to hide the flake"
+      ],
+      "body": "Follow-up to task 324. After 324's AgentAdapter cwd-preflight fix landed, `mix precommit.full` still goes red intermittently (~1 in 3 full `--summary-only` runs; reproduced 2 of 4 times during 324 review). The failing test is `Harness.AuditTest` \"run/1 — unaudited-range computation the noop path removes its audit worktree\" (`test/harness/audit_test.exs`). The substrate signature is `erl_child_setup: failed with error 32 (EPIPE) on line 284` — the BEAM's shared fork helper losing its pipe under heavy concurrent external-process spawning (the suite shells out to git/rmap/sh via System.cmd thousands of times across 2013 tests).\n\nThis is a DIFFERENT spawn path than 324 fixed: 324 hardened `Harness.AgentAdapter.invoke` (the agent CLI Port), but this flake is in the System.cmd/git-fixture/worktree path. Normal `mix test.json` HEALS it via ex_unit_json auto-retry (reports `flaky: N`, exit 0); precommit's `--summary-only` disables retry, so it surfaces as a hard `failed: 1`, exit 2.\n\nInvestigate whether erl_child_setup EPIPE under spawn pressure can be mitigated (e.g. bounding concurrent external-process spawns in the worktree/git fixture layer, or reducing the suite's System.cmd fan-out), without sleeps or hidden skips and without altering the cold-check witness contract. Confirm the fix by running the project's precommit test command (`--summary-only`, retry disabled) repeatedly and observing zero failures.\n",
+      "created_at": "2026-06-21",
+      "scored_at": "2026-06-21",
+      "cross_repo": []
+    },
+    {
+      "id": "327",
+      "phase": 22,
+      "bundle": "contract",
+      "status": "pending",
+      "title": "Invert the rule-content seam + make Invocation agent-agnostic (AgentAdapter no longer names Harness.AgentRules)",
+      "scores": {
+        "d": 4,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.25,
+      "dep_layer": 0,
+      "unlocks": 1,
+      "markers": [
+        "parallel"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "lib/harness/agent_adapter/ has zero references to Harness.AgentRules (subsystem compiles with AgentRules absent from its alias graph)",
+        "Rule content reaches the adapter via caller-supplied input (string on Invocation or behaviour callback); the four rule_channel/0 delivery paths (system-prompt file, codex ephemeral AGENTS.md, cursor ephemeral .cursor/rules, prompt preamble) + cleanup_injected_rules still work unchanged",
+        "Invocation no longer carries `language`; `task_id` is an opaque tag with no rmap coupling; Harness.Run's implementer/reviewer/recovery builders supply rendered rules + section/language filtering caller-side",
+        "ConformanceCase passes for all 6 adapters asserting against injected fixture content, not AgentRules.render()",
+        "Full gate green: mix precommit.full (credo --strict, dialyzer 0, doctor 100%, sobelow, tests incl. conformance)"
+      ],
+      "out_of_scope": [
+        "Moving the subsystem to a separate repo/hex package (the decision-spike task)",
+        "Changing AgentRules content or its priv/agent_rules/canonical.md source",
+        "The Driver/Reflex watchdog cycle (the sibling task)"
+      ],
+      "body": "Cut the only content-coupling in the adapter subsystem so Harness.AgentAdapter.* no longer names Harness.AgentRules. Today Harness.AgentAdapter.RulesInjection calls AgentRules.write_system_prompt_file!/2, install_codex_rules!/2, install_cursor_rules!/2, and prompt_preamble/0,1 directly (rules_injection.ex:18/29/40/51/59) — binding the generic delivery mechanism to harness-specific rule prose (reviewer-gate, rmap, roadmap/tasks.toml, post-merge audit). Invert it: the delivery mechanism (which file path / argv flag / preamble each rule_channel/0 uses, plus the ephemeral-file write+cleanup lifecycle) stays in the subsystem; the rule content (rendered markdown + the :elixir/section filtering in render_opts/1) is supplied by the caller. Pass rule content into the subsystem (pre-rendered string(s) on Invocation, or a render/install callback on the behaviour) so harness injects its AgentRules output without the subsystem importing it. In the same change, make the Invocation struct agent-agnostic: relocate `language` (its sole consumer is the rule filtering in RulesInjection.render_opts/1, which moves caller-side) and generalize `task_id` to an opaque log tag with no rmap semantics. Update Harness.Run's three Invocation builders — implementer (invocation/3 ~run.ex:1979), reviewer (reviewer_invocation/1 ~run.ex:2428), recovery (recovery_invocation/1 ~run.ex:2331) — to supply the rendered content + section/language filtering caller-side, and update ConformanceCase (test/support/agent_adapter/conformance_case.ex, which currently asserts delivered rules equal AgentRules.render()) to assert against injected fixture content instead. After this, `grep -rE \"Harness\\.AgentRules\" lib/harness/agent_adapter` returns nothing. This is the first of two decoupling cuts that make the subsystem extraction-ready; the watchdog cycle is the sibling task.",
+      "created_at": "2026-06-22",
+      "scored_at": "2026-06-22",
+      "cross_repo": []
+    },
+    {
+      "id": "328",
+      "phase": 22,
+      "bundle": "contract",
+      "status": "pending",
+      "title": "Break the Driver -> Run.Reflex -> Worktree.Isolation -> AgentAdapter dependency cycle",
+      "scores": {
+        "d": 4,
+        "b": 6,
+        "u": 5
+      },
+      "eff": 1.38,
+      "dep_layer": 0,
+      "unlocks": 1,
+      "markers": [
+        "parallel"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "lib/harness/agent_adapter/ (incl. driver.ex) has zero references to Harness.Run.*",
+        "The Driver's idle/total/progress watchdog behaves identically (timeouts fire as before; existing Driver/Reflex tests green or updated to the new seam)",
+        "No module the Driver transitively depends on calls back into Harness.AgentAdapter — the Driver -> Reflex -> Isolation -> AgentAdapter cycle is gone (verify with mix reach / Reach.independent? or mix xref)",
+        "Checkout-pollution detection (Isolation.snapshot/check_pollution) still works for Run's pollution snapshot path",
+        "Full gate green: mix precommit.full"
+      ],
+      "out_of_scope": [
+        "Moving anything to a separate repo (the decision-spike task)",
+        "The rule-content seam (the sibling task)",
+        "Changing pollution-detection semantics or the worktree_isolation capability contract"
+      ],
+      "body": "The Port driver (Harness.AgentAdapter.Driver) reaches UP into the run-lifecycle layer: it aliases Harness.Run.Reflex (driver.ex:57) and calls new/3, expired/1, wait/1, on_output/2 for its idle/total/progress watchdog (driver.ex:134,154,159,173,190). Reflex (lib/harness/run/reflex.ex) is not a leaf: it pulls Harness.Worktree.Isolation -> Harness.Git, and Isolation.validate/1 calls BACK into Harness.AgentAdapter.supports?/2 — a dependency cycle and a layering violation (a low-level Port driver depending on a higher-level run module). Break it so the adapter subsystem depends on nothing above itself: abstract the watchdog behind a behaviour/callback the Driver invokes without naming Reflex (harness injects the Reflex-backed implementation), OR relocate the lifetime/idle/progress-timer machinery the Driver actually uses down into the subsystem and keep only checkout-pollution detection (snapshot/check_pollution, which the Driver does NOT use) up in Run. Either way: `grep -rE \"Harness\\.Run\" lib/harness/agent_adapter` returns nothing, and Isolation no longer calls back into AgentAdapter from a module the Driver transitively depends on. This is genuine architectural hygiene (a real module cycle) regardless of extraction; it is the second of two decoupling cuts that make the subsystem extraction-ready.",
+      "created_at": "2026-06-22",
+      "scored_at": "2026-06-22",
+      "cross_repo": []
+    },
+    {
+      "id": "329",
+      "phase": 22,
+      "bundle": "contract",
+      "status": "pending",
+      "title": "Decision spike: extract the decoupled AgentAdapter subsystem to its own hex package?",
+      "scores": {
+        "d": 2,
+        "b": 3,
+        "u": 3
+      },
+      "eff": 1.5,
+      "dep_layer": 1,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [
+        327,
+        328
+      ],
+      "assignee": "human",
+      "acceptance_criteria": [
+        "A written go/no-go (concept doc under ~/_DATA/concepts/ or docs/) naming the package boundary, setup cost, and the concrete unblock trigger (a named 2nd consumer)",
+        "Explicit default-verdict if no 2nd consumer: keep in-repo. No package is created in this task"
+      ],
+      "out_of_scope": [
+        "Actually creating the package, repo, or CI",
+        "Any code move (a follow-up the spike's verdict would file)"
+      ],
+      "body": "Once tasks 327 (rule-content seam inversion) and 328 (Driver/Reflex cycle break) land, the AgentAdapter subsystem is dependency-clean and COULD be lifted into a standalone hex package (harness_agent_adapter or similar): a uniform-OTP-Ports driver for the 6 headless coding-agent CLIs (claude/codex/cursor/grok/antigravity/pi), with caller-injected rules and a caller-injected watchdog. This is a DECISION, not a build — gate it on a concrete second consumer (a non-harness project that wants to drive these CLIs), per the repo's dependency-gating rule (don't extract on speculation; an extraction is migration-heavy to reverse). Produce a short go/no-go: name the would-be package boundary (which modules move — agent_adapter.ex + agent_adapter/ + the migrated watchdog; which stay — AgentRules, Run.*, Worktree), the repo/CI/mix.exs setup cost, the back-dependency harness would take ({:harness_agent_adapter, ...}), and the trigger that unblocks the move (a named 2nd consumer). Default verdict if no 2nd consumer exists: keep in-repo, decoupled — record that and close.",
+      "created_at": "2026-06-22",
+      "scored_at": "2026-06-22",
+      "cross_repo": []
     }
   ]
 }
