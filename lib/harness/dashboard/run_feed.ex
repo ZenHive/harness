@@ -29,6 +29,7 @@ defmodule Harness.Dashboard.RunFeed do
   subtree) never fails on a missing bus — mirrors `Harness.Dashboard.Transcript`.
   """
 
+  alias Harness.Dashboard.Feed
   alias Harness.Run.Status
 
   @pubsub Harness.PubSub
@@ -40,23 +41,11 @@ defmodule Harness.Dashboard.RunFeed do
 
   @doc "Subscribes the calling process to the fleet run-lifecycle feed. No-op if PubSub is not running."
   @spec subscribe() :: :ok | {:error, term()}
-  def subscribe do
-    if Process.whereis(@pubsub) do
-      Phoenix.PubSub.subscribe(@pubsub, @topic)
-    else
-      :ok
-    end
-  end
+  def subscribe, do: Feed.subscribe(@pubsub, @topic)
 
   @doc "Stops the calling process from receiving fleet run-lifecycle messages."
   @spec unsubscribe() :: :ok
-  def unsubscribe do
-    if Process.whereis(@pubsub) do
-      Phoenix.PubSub.unsubscribe(@pubsub, @topic)
-    else
-      :ok
-    end
-  end
+  def unsubscribe, do: Feed.unsubscribe(@pubsub, @topic)
 
   @doc """
   Broadcasts a non-terminal `status` update.

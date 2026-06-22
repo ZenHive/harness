@@ -300,277 +300,206 @@ False technical claims cascade into bad architectural decisions, wasted resource
 4. **Never write workarounds silently.** If tempted to add a fallback/default/nil-guard for missing data, ask: should this come from upstream? If yes, STOP and report it
 5. **Incomplete work gets a TODO.** If you must move on, leave a tracked TODO — not a silent gap
 
-<!-- @-import: ~/.claude/includes/code-style.md -->
-## Code Quality KPIs (Complexity-Based)
+<!-- @-import: ~/.claude/includes/harness-workflow.md -->
+## Harness Workflow
 
-**Simple Code** (utilities, helpers, data transforms):
-- Functions per module: 12 max
-- Lines per function: 10 max
-- Call depth: 2 max
-- Pattern match depth: 3 max
+OTP-native **implement → review → land** loop for roadmap-driven development. An AI orchestrator drives harness; harness dispatches headless implementer agents into isolated git worktrees, then a **cross-family reviewer AI** gates every deliverable (runs the project's checks itself, fixes inline, writes `.harness/review.json`). Optional auto-landing ff-merges approved work; a post-merge audit agent sweeps hygiene.
 
-**Standard Code** (business logic, controllers, contexts):
-- Functions per module: 8 max
-- Lines per function: 15 max
-- Call depth: 3 max
-- Pattern match depth: 4 max
+**Promoted from** `docs/dogfooding-workflow.md` in the harness repo — that file remains the **incubator runbook** for harness-specific history, driver-script templates, and per-batch run logs. This include is the **portfolio-wide contract**. Version-controlled source: `priv/includes/harness-workflow.md` in the harness repo; install to `~/.claude/includes/harness-workflow.md` via `mix harness.install_includes`.
 
-**Complex Code** (GenServers, supervisors, distributed systems):
-- Functions per module: 6 max
-- Lines per function: 20 max
-- Call depth: 4 max
-- Pattern match depth: 5 max
+### Relationship to Other Includes (Layered — No Supersession)
 
-**Universal Standards:**
-- Dialyzer warnings: 0 (mandatory)
-- Credo score: 8.0 minimum
-- Test coverage: 80% minimum (95% for critical business logic)
-- Documentation coverage: 100% for public APIs
-
-<!-- @-import: ~/.claude/includes/rmap.md -->
-## rmap — Roadmap Substrate
-
-`rmap` is a single-binary CLI that manages `roadmap/tasks.toml` as the typed source of truth for a project's roadmap, rendering `ROADMAP.md` (human view) and `roadmap/data.json` (agent view) from it. **Every project uses rmap** — `tasks.toml` is canonical, `ROADMAP.md` is generated. Hand-editing task tables in `ROADMAP.md` is legacy; migrate (see below).
-
-This file is the **decision layer** — *which* command, *when*. The authoritative command contract is `rmap --help` / `rmap schema` (the live `tasks.toml` field list, derived from the source) plus rmap's own CI-gated `SKILLS.md` in the rmap repo. Don't hand-maintain a parallel command reference here.
-
-### Project layout
-
-```
-<project_root>/
-├── ROADMAP.md         # rendered — hand-edited prose outside marker pairs is byte-preserved
-└── roadmap/
-    ├── tasks.toml     # canonical source — author this
-    └── data.json      # generated — agents read it for structured access
-```
-
-`rmap` walks ancestors of cwd to find `roadmap/tasks.toml`.
-
-### Command surface, by intent
-
-| Intent | Command |
+| Include | Role relative to harness-workflow |
 |---|---|
-| Read one task / many | `rmap show <id> [--json]` · `rmap list --status\|--phase\|--marker\|--bundle\|--milestone\|--delivered-by [--json]` |
-| Traverse the dependency graph | `rmap blocks <id> [--json]` (transitive dependents — what `<id>` unblocks) · `rmap deps <id> [--json]` (transitive dependencies — what `<id>` needs first) |
-| Pick the next task | `rmap next [--marker M] [--bundle B] [--milestone V] [--count N] [--json]` |
-| Pick a session-sized bundle | `rmap next-bundle [--json]` · `rmap bundles` to discover them |
-| Pick the parallel-safe dispatch set | `rmap ready [--bundle B] [--phase N] [--marker M] [--milestone V] [--count N] [--dispatchable] [--fields a,b,c] [--json]` |
-| See the parallel dispatch schedule | `rmap waves [--json]` — every pending/unblocked task grouped by `dep_layer`; wave 0 runs first, each wave gates the next |
-| List release lines / pin to a release | `rmap milestones [--has-next\|--status\|--json]` · `rmap milestone <id> <name\|none>` |
-| Change status | `rmap status <id> <pending\|in_progress\|blocked\|done\|superseded> [--implemented "..."] [--delivered-by <agent>] [--verified] [--shipped-in <sha>] [--reason "..."]` (bulk `1,2,3` atomic; `done` requires `implemented`; outcome flags settable only on `done`; `--reason` settable only on `blocked`) |
-| Toggle a marker | `rmap mark <id> +parallel -cx` |
-| Set/clear agent routing | `rmap assign <id> <assignee\|none\|human> [--model <m>]` — non-`human` live tasks require `--model`; `none`/`human` clear both fields |
-| Add a dependency | `rmap depend <id> on <id>` |
-| Create task(s) | `rmap new --from-stdin` (TOML on stdin, atomic batch, full field set per `rmap schema`) — see `task-writing.md`. Interactive `rmap new` covers the common subset; reach for `--from-stdin` when interactive doesn't prompt for a field you need. **A created task is *always* `pending`.** `new` accepts `status` only as `"pending"` (a tolerated no-op, so echoing the default isn't a rejected round-trip); any non-pending value is rejected with `creates pending tasks only` pointing at `rmap status`. Every other transition/outcome field (`implemented`, `delivered_by`, `verified`, `shipped_in`, `started_at`, `done_at`) is still rejected with `unknown field`. Flip to a non-pending state afterward via `rmap status`. Creation-time fields only: `id phase bundle milestone title scores markers depends_on linear_id assignee module model acceptance_criteria out_of_scope files_to_modify touches cross_repo branch body created_at scored_at`. |
-| Format a task as a cloud-agent prompt | `rmap delegate <id> [--to claude\|codex\|cursor\|grok\|antigravity\|pi\|droid]` — `--to` optional, defaults to the task's `assignee` |
-| Migrate a hand-edited ROADMAP.md | `rmap import` |
-| See what changed vs a git ref | `rmap diff [--verbose] [--json]` |
-| List stalled in-progress tasks | `rmap stale --over <dur>` (e.g. `30d`, `2w`; also folded into `doctor`) |
-| Health signals (soft, always exit 0) | `rmap doctor [--json] [--bottleneck-min N]` |
-| Strict gates (pre-commit / CI) | `rmap validate` · `rmap validate --check-render` |
-| Render after editing tasks.toml directly | `rmap render` (or `rmap watch` for live re-render) |
-| Emit data.json to stdout (read-only) | `rmap export json` (`render` is what writes the file) |
-| Emit the dep graph as Graphviz (read-only) | `rmap export dot` — DOT digraph of the in-repo `depends_on` graph (edges dependency → dependent); pipe to `dot` |
+| `workflow-philosophy.md` | **Foundation.** Evaluator separation, session-per-phase, verification-before-completion. Harness automates the loop while preserving these principles — the **reviewer AI** is the grader, never the implementer's self-report. |
+| `task-prioritization.md` | **Task selection.** D/B/U scoring, `rmap next`, parallel markers, refine-don't-duplicate. Harness executes whatever rmap returns; it does not replace prioritization. |
+| `worktree-workflow.md` | **Manual parallel sessions.** For hand-build work outside harness dispatch — operator-created worktrees, PR flow, post-merge audit. Harness manages its own per-run worktrees (`harness/<run-id>`); manual worktree rules still apply for hand-build sessions. |
+| `dev-lifecycle.md` | **Manual five-phase chain** (`task-driver → worktree → bots → merge → audit-review`). Use when *not* driving through harness. Harness is the automated alternative for dispatchable roadmap tasks; dev-lifecycle still governs plan-and-file, pre-commit review, and post-merge audit. |
+| `agent-dispatch.md` / cloud-delegation stack | **Linear/Codex/Cursor PR delegation** without a running harness BEAM. Orthogonal path — projects can use cloud delegation *or* harness; harness subsumes the dispatch+review loop when the OTP node is running. |
+| `skills/harness-driver/SKILL.md` (harness repo) | **API surface contract** — MCP tools, `project_eval` patterns, `%LogRecord{}` fields, sharp edges. Load on demand when driving harness; this include covers *workflow*, the skill covers *surfaces*. |
 
-All mutators **validate-then-write**: an invalid mutation leaves `tasks.toml` byte-equal to its prior state. `--json` envelopes on the read commands are append-only stable surfaces.
+**Adopt per repo:** `@~/.claude/includes/harness-workflow.md` in the project's `CLAUDE.md` (load-on-demand row — not eager; same pattern as `workflow-philosophy.md`).
 
-### Concurrent sessions write to rmap — verify task IDs before mutating
+### The Loop
 
-`roadmap/tasks.toml` is a **shared, multi-writer file**: parallel Claude sessions, harness dispatches, and cloud agents all create and mutate tasks concurrently. A task ID or task state read earlier in your session is a *snapshot*, not a lock — another writer may have created tasks (shifting "the next ID"), completed the task you're about to mark, or changed the very task you're targeting.
+```
+rmap task → implementer AI (worktree) → commit harness/<run-id> → reviewer AI (THE GATE) → done | failed
+                                                                              ↓ (done + auto policy)
+                                                              MERGE (lander: rebase + ff-push, no re-verify)
+                                                                              ↓
+                                                              AUDIT (post-merge audit agent, best-effort)
+```
 
-Before any mutation, re-verify against the current file:
+One run = one supervised `Harness.Run` gen_statem: fork worktree off target `HEAD`, dispatch implementer, commit diff to `harness/<run-id>`, dispatch cross-family reviewer into the same worktree. The reviewer runs the project's `check_command` hint, fixes what it can, writes `.harness/review.json`. **Success = reviewer `approve`** — never implementer exit code or self-report. There is **no mechanical verification gate** in harness; judgment lives in agents.
 
-- **Before `rmap status <id> …` / `rmap mark` / `rmap milestone` / `rmap assign` / `rmap depend`:** run `rmap show <id>` first and confirm the title/body matches the task you mean. An ID memorized earlier (or quoted by another session) may now point at a different or already-mutated task.
-- **Before `rmap new`:** never assume what ID the new task will get; read it from the command's output after creation, not from "last ID I saw + 1".
-- **Before hand-editing `tasks.toml` directly:** re-read the file immediately before the edit — never write from a stale in-context copy. Prefer the `rmap` mutators over hand edits; they re-read and validate-then-write atomically.
-- **Referencing tasks across sessions / handoffs:** quote the task *title* alongside the ID so the receiver can detect drift (`rmap show <id>` title mismatch ⇒ stop and re-resolve).
+Rejections put the task back in the queue for re-dispatch. Fix-and-approve is the near-absolute default for the reviewer.
 
-The validate-then-write guarantee protects against *invalid* writes, not *lost* ones — two valid writers can still silently overwrite each other's fields. The verification habit above is the consumer-side discipline that prevents it.
+### When to Dispatch vs Hand-Build
 
-### 🚨 Search existing tasks before `rmap new` — update beats duplicate
+**Default: dispatch every pending rmap task whose dependencies are satisfied.** Hand-build only what harness cannot yet do:
 
-A roadmap accretes near-duplicate tasks when each session files "the obvious next task" without first checking whether one already covers it. The result is two tasks the harness dispatches twice, scored inconsistently, drifting apart. **Before filing ANY new task, search the roadmap for prior coverage** — and prefer *updating* an existing task over creating a sibling.
+- Scaffolding that reshapes harness runtime (supervision tree, dep stack, Endpoint) **while the run lifecycle itself is in flux**
+- Tiny tasks — ALL of (a) D≤2, (b) ≤30 LOC across ≤3 files, (c) no harness-surface change
+- UI / LiveView / heex / CSS — headless agents idle-timeout without visual reward; use tidewave + browser
+- A harness gap — file via `rmap new`, fix harness, re-dispatch; do not work around by hand-building
 
-The gate, before every `rmap new`:
+### Running a Task
 
-1. **Search by concept, not just title.** `grep -niE "<keyword>|<synonym>" roadmap/tasks.toml` across titles *and* bodies (the overlap usually hides in an existing task's `acceptance_criteria`/`body`, not its title), plus `rmap list --bundle <b>` for the bundle the task would land in. One keyword misses it; search the 2–3 ways the idea could be phrased.
-2. **Read the candidates in full** — `rmap show <id>` for each near-match. A task whose ACs already imply your work is coverage, even if its title reads differently.
-3. **Classify the finding, then act:**
-   - **Already fully covered** → don't file. Note the existing ID back to whoever asked.
-   - **~80% covered, missing a facet** → *update the existing task* (add an AC + a dated body note naming the new facet) rather than file a near-clone. Hand-edit `tasks.toml`, then `rmap validate && rmap render`.
-   - **Genuinely new, but adjacent** → file it, and wire `depends_on` / a body cross-ref to the adjacent task so the relationship is explicit (`out_of_scope` is the right place to say "X belongs to Task N, not here").
-   - **Splits into build-now + decide-later** → file the buildable part and a separate *decision spike* (the `task-writing.md` spike shape), rather than one oversized task.
-4. **Report the verdict before writing** when the ask was "scope these tasks": say which are new, which fold into an existing ID, which are already done — so the human sees the dedupe, not just the result.
+**Prerequisites:** long-lived harness BEAM (`iex -S mix` in the harness checkout), target project registered in `Harness.ProjectRegistry`, clean `git status` on the target's dispatch branch (runs fork worktrees off `HEAD`).
 
-This pairs with the ID-safety rule above (that one stops you *colliding* on an ID; this one stops you *duplicating* the work) and with `task-writing.md`'s Pre-Creation Gate (add the dedupe search as the first gate question — content novelty precedes scoring).
+**Three dispatch paths** (prefer top to bottom):
 
-### 🚨 `tasks.toml` is a machine-read contract — corruption or missing outcome fields makes harness re-dispatch landed work
+1. **Native MCP — default.** `dispatch-task` (fire-and-forget) or `dispatch-await` (blocks until settle) against `http://localhost:4018/harness/mcp`. Observe via `dispatch-status`, `dispatch-transcript`, `dispatch-verdict_detail`. `scrub_anthropic_key: true` (default) forces subscription OAuth over inherited `ANTHROPIC_API_KEY`.
+2. **Tidewave `project_eval` — escape hatch.** Struct-level control the flat tools don't expose (`retry_policy`, fail-over adapter lists, `subscriber: self()`). Run persists to `Harness.ResultStore` even when the eval process exits.
+3. **`mix run` driver script — fallback.** Full transcript + reviewer report to terminal. See harness repo `docs/dogfooding-workflow.md` for the canonical template.
 
-`roadmap/tasks.toml` is not a human notes file. **Harness ingests it as the run queue** (`mcp__harness__roadmap-ingest` / `roadmap-ready`), and the landing pipeline writes back through it (`Harness.Lander` advances `done --verified --shipped-in <sha>` on a successful ff-push). The file is the *single source of truth for what has already landed.* When it's wrong, harness believes already-shipped tasks are still open and **re-dispatches work that is already in `development`** — burning a full implement→review→land cycle (and agent tokens) to redo a merged task, or worse, landing a conflicting second copy.
+> **Never start a second driver BEAM while runs are in flight.** Boot-time worktree sweeps can prune live sibling worktrees. Drive all parallel batches from one long-lived node.
 
-Two failure classes cause this, both observed in this repo:
+**In-flight idempotency (Task 286):** a second `dispatch-task` / `dispatch-bundle` of the same `{project, task_id}` while a non-terminal run exists returns the **existing** `run_id` (Oban `conflict?: true`), not a duplicate — a retried dispatch is safe and free.
 
-1. **Parse-breaking corruption** — a duplicate key in a `[[task]]` table, an invalid `status` enum (`"completed"` instead of `"done"`), a malformed value. `rmap` and every harness consumer that loads the file then **error out or skip the whole file**, so *every* task — including landed ones — reads as absent/pending. One bad table blinds the consumer to the entire roadmap.
-2. **Incomplete outcome layer on a landed task** — `status = "done"` but missing `shipped_in` / `done_at` / `verified`. The task parses, but a consumer keying landing-state off those fields can't tell it shipped, so it stays eligible for dispatch. `done` alone is "an implementer claimed it"; **`shipped_in` is the proof it's in the branch** — set both together.
+**Write-set serialization (Task 292):** `dispatch-bundle` and cron ready-set dispatch compute each task's `touches ∪ files_to_modify` before enqueue. Tasks with overlapping write-sets are logged and serialized into later waves instead of fanned out together. Callers no longer hand-dedupe ready sets; they must keep `touches` / `files_to_modify` accurate because harness does not infer paths from task prose.
 
-**The disciplines that prevent it:**
+**Renderable vs executable:** `rmap delegate --to` renders native prompts for all six harness adapters (`claude`, `codex`, `cursor`, `grok`, `antigravity`, `pi`). `droid` renders but has no harness adapter — rejected at ingest. All six shipped adapters declare `worktree_isolation: true`.
 
-- **Prefer the `rmap` mutators over hand-editing.** They re-read, validate-then-write atomically, and reject invalid status/missing-`implemented` transitions — exactly the corruption classes above. Reach for a hand-edit only when no mutator covers the field.
-- **After ANY hand-edit of `tasks.toml`, run `rmap validate` before you move on.** It is the gate that catches duplicate keys, bad enums, and `done`-without-`implemented` before a harness consumer trips over them. A hand-edit you didn't validate is a landmine for the next ingest.
-- **When work lands, write the full outcome layer in one motion** — `rmap status <id> done --implemented "…" --verified --shipped-in <sha>`. A `done` task without `shipped_in` is an incomplete record harness can misread as still-open. Use the full 40-char SHA, matching the existing rows.
-- **Never leave `tasks.toml` in a non-parsing state across a commit.** If `rmap list` errors, fix it *now* — a committed parse error means every concurrent session and every harness ingest is flying blind until someone notices.
+### Routing & Model Management
 
-This is the rmap-specific, high-stakes corollary of § "Concurrent sessions write to rmap": there the cost of a sloppy write is a lost field; here, because harness *acts* on the file, the cost is redundant or conflicting dispatch of already-shipped work.
+- **Resolve `assignee` + `model` from facts, not by reading code.** `routing-brief` is the thin task-writer index: dispatchable agent roster, each agent's standing model (`Config.agent_model/1`), model availability/blocks, and per-agent KPI rollups — every metric carries `n`, no ranking. A model-capable agent with no configured model shows `model: nil, model_required: true`.
+- **Scout routing (advisory).** `dispatch-recommend` returns the cross-family scout AI's per-facet `:exploit` pick (with rationale) or a safe `:explore` / `:fallback_no_data` when a facet is unmeasured; `dispatch-assess_facets` forces a fresh scout assessment. The caller decides whether to dispatch the pick — legacy composite scores are not used for routing.
+- **Model is required, never defaulted.** Implementer precedence: **task `model` → `{:agent_model, agent}` → REJECT** (`{:model_required, agent}`) — harness never falls through to the CLI's ambient default. The **reviewer has no task-pin axis**: its model comes solely from `{:agent_model, agent}` for the reviewer adapter's agent (`Run.reviewer_model/1`), and a model-capable reviewer with no configured model is rejected *before* the reviewer spawns. `antigravity` (no `--model` flag) is the lone model-incapable exemption.
+- **Block exhausted premium models.** A monthly budget can exhaust (e.g. cursor-Opus) while harness still lists the pair as available and routes to it. `model_availability-block_model` (with a `blocked_until` window) removes the pair from routing/cron; `model_availability-unblock_model` clears it.
+- **Cost-aware A/B.** `dispatch-compare` runs one task across N adapters (optional per-adapter model overrides) and returns per-adapter `verdict` / `reviewer_diff_size` / `duration_ms` / `token_usage` for selection.
 
-### rmap is cheap — set and complete inline; don't manufacture a session
+### Reading the Verdict
 
-A task's *existence in rmap* is decoupled from *how it gets executed*. Creating one
-(`rmap new`) and completing it (`rmap status <id> done`) are lightweight ledger
-writes — seconds, a handful of tokens. Neither warrants a separate session, a
-dispatch, or a round of "should this even be a task?" deliberation.
+| `state` / `reason` | Meaning | Action |
+|---|---|---|
+| `:done` / `:approved` | Reviewer AI approved (possibly after inline fixes — check `reviewer_diff_size`). | Deliverable on `harness/<run-id>`. Review diff, integrate (or let auto-lander handle it), `rmap status <id> done`. |
+| `:failed` / `{:review_rejected, report}` | Reviewer rejected (degenerate — near-never by design). | Read `report`. Task back in queue; re-dispatch. |
+| `:failed` / `{:review_stuck, report}` | No verdict: reviewer unavailable, crashed, or missing/malformed `.harness/review.json`. | Read `report`. Fix environment or re-dispatch. |
+| `:failed` / `{:worktree_failed,_}` `{:agent_spawn_failed,_}` `{:driver_crashed,_}` `{:commit_failed,_}` | Harness-side mechanical failure. | **Harness bug.** File via `rmap new`. |
+| `:failed` / `{:checkout_polluted, status}` | Agent wrote outside the run worktree into the main checkout — surfaces as `:failed` **only after bounded AI recovery was exhausted** (see "Self-healing recovery" below). | Recovery declared the run dead. Likely an agent/adapter isolation issue; re-dispatch with a worktree-honoring adapter. |
+| `:failed` / `{:checkout_pollution_check_failed, _}` | Post-run pollution `git status` errored. | Rare; transient git/IO. Re-run; inspect checkout if persistent. |
+| `:failed` / `:timed_out` | Lifetime budget elapsed. | Raise `:lifetime_timeout` or investigate hang. |
+| run process **crashed** (no settle) | gen_statem died. | **Harness bug.** File via `rmap new`. |
 
-When a task is small and you're already in the relevant code, the cheapest correct
-path is: **do it inline now, then `rmap status <id> done --implemented "…"` in the same
-motion.** Reserve a separate dispatched/cloud-agent session for work that genuinely
-earns it — large, risky, parallelizable, or (under a dogfooding mandate) a change to
-the orchestrator's own surface. Capturing a discovery as a *pending* task is also fine
-and cheap — but **capture ≠ dispatch, and a task ≠ a session.** Hand-done inline tasks
-honestly leave `verified` unset (no independent grader ran).
+Failed runs retain the worktree at `result.worktree_path` for inspection. Approved runs keep branch `harness/<run-id>` after worktree teardown. Use `dispatch-verdict_detail` for the reviewer report, ratings, checks, concerns, warning flag, and `reviewer_diff_size` — no harness-run mechanical per-check stdout.
 
-**Failure mode this kills:** treating every rmap entry as a dispatch-and-verify cycle,
-or looping in discussion over whether to file/dispatch, when setting + doing +
-marking-done inline costs less than the deliberation. Set it, do it (or defer it),
-mark it done — don't burn time, tokens, and circles on the ceremony around it.
+**The verdict artifact** `.harness/review.json` is `{verdict, report, checks, concerns, facets, skills, ratings}`: `verdict` (`approve`/`reject`) is the gate; `report` is the reviewer's prose; `checks` is the reviewer-written record of commands run and their pass/fail claim; `concerns` is the reviewer's self-flagged caveat list; **`facets`** (open-vocabulary routing KEY — the kind of task) and **`skills`** (v0_13 two-axis rubric, routing VALUE) feed per-facet capability routing; `ratings` is the legacy flat-score fallback. Approved runs with non-empty concerns or a reviewer-authored failed check surface a warning fact; harness never auto-blocks or classifies prose. The artifact lives under `.harness/` (excluded from staging) so it never rides in the deliverable commit.
 
-### 🚨 Right-size tasks — a task is a *dispatch unit*, not a *changelog line*
+**Self-healing recovery (the `:recovering` state).** Before settling `:failed` for an *interpretive* non-rejection failure — checkout pollution is currently the one wired call-site — the run spawns a **bounded cross-family recovery AI** (`:recovering` state, budget 1/run) with minimal context (the error term + the main checkout's `git status` + the implementer transcript tail + the failing-check output, never the full transcript). It writes `.harness/recovery.json` `{outcome: "repaired"|"dead", report, repaired}`; harness reads it mechanically and **decides nothing itself**: `repaired` resumes at `:committing` and **re-runs the reviewer gate** (never skips to `:done`); `dead` / missing / malformed settles `:failed` with the original reason. A genuine `verdict: reject` is never routed through recovery. The `Result` carries `recovery_attempts` / `recovery_outcome` / `recovery_repaired` / `recovery_token_usage`. (Tier-1 mechanical self-heal precedes it: the reviewer is re-prompted once on a missing/malformed `review.json` — `reviewer_reprompt_count`, capped at 1 — and rotates to the next cross-family candidate on a reviewer timeout — `reviewer_rotation_count`.)
 
-**The unit of an rmap task is one implement→review→land cycle's worth of coupled
-work — not the smallest namable edit.** Every dispatched task pays a full cycle's
-overhead (worktree, implementer run, cross-family reviewer, merge, audit). A task
-too small to justify that overhead is a manufactured session: it spends an entire
-loop to land a one-liner. The 223 lesson (a whole dispatchable task filed for a
-moduledoc edit) is the canonical anti-pattern — **that work gets done inline, the
-instant you spot it, never filed.**
+### 🚨 Recover, Don't Redo — Never Burn Tokens Re-Implementing Committed Work
 
-**Before creating OR splitting a task, apply the coupling test — split on coupling,
-never on size:**
+**A run that committed to `harness/<run-id>` already paid for the implementer. Recovering that branch costs a fraction of a fresh dispatch — re-dispatching from `pending` throws the work away and makes the agent redo all of it.** The reflex to "reset → pending → dispatch again" is a token bonfire whenever a retained branch with commits exists. Check for the branch *first*; pick the cheapest primitive that fits:
 
-1. **Does task B only delete / fix up / wire what task A orphans?** Then B is not a
-   task — it's the second half of A. Fold it in. (Tell: B `depends_on` A *and* B's
-   files are the ones A stops using; or A's own acceptance criteria already entail
-   B's deliverable. Worked example: the CapabilityScore-delete task was redundant —
-   its parent's criteria already said "no magic weights remain in the routing
-   path," which *is* the deletion. Merged.)
-2. **Would one reviewer naturally verify both in a single pass over a single diff?**
-   Then they're one dispatch. Don't make the merge train run twice for one logical
-   change.
-3. **Is it ALL of: D≤2, ≤30 LOC, ≤3 files, no public-surface change?** Then it's an
-   *inline* task, not a *dispatch* — do it now and `rmap status … done`, per "rmap
-   is cheap" above. Don't file it for later; don't route it through an agent.
+| Run state — committed `harness/<run-id>` branch exists | Recover with | Agent tokens |
+|---|---|---|
+| Approved but unlanded (land-cap, lander crash) | `dispatch-reland` | **zero** — pure git rebase + push |
+| Committed, review-stage failure (work is good) | `dispatch-rereview` | zero implementer — re-enters at the reviewer gate |
+| Committed, implement-stage incomplete/`:failed` | `dispatch-resume_failed` (`escalate: true` to re-route agent) | **re-spends implementer tokens** — a fresh implementer invocation branched off the retained commits with the failure report injected (contrast `rereview`, which re-runs only the reviewer) |
+| Live `:held` run (paused, not dead) | `dispatch-resume` | none — un-pauses in place |
+| **No commits / no retained branch** | reset → `pending` + fresh `dispatch-task` | full redo — **the only case where this is correct** |
 
-**The opposite anti-pattern is equally wrong — do NOT grab-bag.** Combine only
-*coupled* small tasks (shared files, one orphans the other, same atomic change).
-Two small tasks that are merely both small but touch disjoint files and unrelated
-concerns stay separate — bagging them creates a task a reviewer can't verify as one
-thing. **Coupling is the merge criterion; size is only the inline-vs-dispatch
-criterion.**
+**Live-run intervention (not recovery of a dead run):** `dispatch-hold` (optionally `interrupt: true`) parks a live run mid-turn, `dispatch-steer` stashes guidance applied on resume, `dispatch-resume` un-pauses in place, `dispatch-cancel` kills it (idempotent). Use hold → steer → resume to force-hand a grinding implementer to the reviewer gate instead of burning the lifetime budget.
 
-**Failure-mode tell — about to file/keep a task whose entire body is "delete the
-thing the previous task stopped using," or whose deliverable is already entailed by
-a sibling's acceptance criteria? STOP. Fold it into the sibling. About to merge two
-small tasks that share no files and no dependency just because both are small? STOP.
-That's a grab-bag — keep them separate.**
+**The gate before any reset-to-pending + re-dispatch:** `git branch -a | grep harness/<run-id>` and `git log --oneline origin/<target>..harness/<run-id>`. Commits present ⇒ recover, never redo.
 
-### Batches are derived, not declared
+**🚨 First, confirm the run actually *didn't* land — check `origin`, not your local checkout.** Under `landing_policy: :auto` the lander pushes to `origin/<target>` and **deliberately never touches your local checkout** (it ff-pushes from a detached worktree). So after an autonomous land your local `tasks.toml` is **stale**: it still reads `in_progress` for a task the lander already marked `done --shipped-in` on origin. **Reading that stale local status as "the run didn't land" is the trap** — it triggers a wasteful reset-to-`pending` + re-dispatch that *duplicate-lands already-shipped work*. Before concluding anything from task status, `git fetch origin <target> && git rebase origin/<target>` (the existing "Sync development before committing" rule) or read ground truth directly:
+- `git log --oneline origin/<target>` — does it already show `task <id> -> done (shipped …)` and the agent-delivery commit? Then it **landed**; your local view was just behind. Do nothing but rebase.
+- `dispatch-status <run-id>` / `result_store-list_run_records run_id:<id>` — a record with `state: done, verdict: approve` means the run succeeded; cross-check landing against origin before touching the roadmap.
 
-`rmap next-bundle` returns a session-sized **bundle** — a set of related pending tasks. A *batch* is a finer-grained slice of that bundle: the executor groups bundle tasks by `depends_on` into successive layers of disjoint work (per `workflow-philosophy.md` § "Batched Execution"). There is no `rmap batch` command — batch derivation is the executor's job, not the source-of-truth's. Hierarchy: phase ⊇ bundle ⊇ batch ⊇ task.
+> **Observed 2026-06-12 (the cautionary tale this section exists for):** three approved runs (246/249/251) landed cleanly to `origin/development` — `done --shipped-in`, audited. But the operator's local checkout hadn't rebased, so `rmap show` read stale `in_progress`. That was misread as "approved but didn't land," the tasks were reset to `pending` and re-dispatched, and task 246 **landed a second time** (duplicate delivery) before the mistake surfaced. Root cause: reading stale local state instead of rebasing on `origin` first. The lander was working perfectly the whole time.
 
-### Parallel-dispatch surface (`rmap ready` + the orchestration fields)
+The recovery primitives (`reland`/`rereview`/`resume_failed`) read the persisted `ResultStore` record, which **survives** worktree teardown and node restarts — so a genuinely approved-but-unlanded run (lander hit its land-cap, or a real rebase conflict retained the branch) is recoverable token-free via `dispatch-reland`. Reserve reset-to-`pending` for runs with **no committed branch and no settled record** — and only after confirming against `origin` that the work isn't already shipped.
 
-When you need *the set of tasks I can dispatch in parallel right now* — not "a session's worth" (`next-bundle`) and not "the single best" (`next`) — use **`rmap ready`**. It returns every `pending` task whose deps are all `done`, which is **mutually independent by construction** (a pending task with all deps done can't depend on another pending task), so the whole set is safe to fan out at once. `rmap ready --bundle <B>` is the dispatchable layer-0 of a bundle — the parallel batch `next-bundle`'s serial chain can't express. Five facts the orchestrator reads instead of re-parsing every task body:
+### Parallel Dispatch
 
-- **`assignee`** (creation-time field, validated against `human|claude|codex|cursor|grok|antigravity|pi|droid`): **THE agent-routing field** — which agent executes the task. Orchestrators route on it (`--fields id,assignee,markers`), and `rmap delegate` defaults `--to` from it. `assignee = "human"` means "not for autonomous dispatch" — consumers skip it. Don't overload `model` (a free-text LLM id) or the `cx`/`csr` markers (filter/discovery tags) for routing. **Set `assignee` at creation** (`rmap new` / `--from-stdin`) or **reassign later** via `rmap assign <id> <agent> [--model <m>]` — an unset assignee carries no routing intent, so the interactive `rmap delegate` errors (pass `--to`) and an autonomous consumer falls back to *its* configured default dispatch agent rather than your intent. Pick the agent when you file the task; use `rmap assign <id> none` when the work is genuinely for hand-build only.
-- **`dep_layer`** (computed, on every `--json`): longest-path depth over the in-repo dep graph. Within a result set the lowest `dep_layer` present is the current parallel wave; higher layers are later waves — makes `next-bundle`'s topo chain self-describing.
-- **`unlocks`** (computed, on every `--json`): count of tasks that transitively depend on this one — the size of its `rmap blocks <id>` set. Turns hand-guessed unlock leverage (the `U` score's leverage component) into a graph fact: a high-`unlocks` pending task gates a lot of downstream work. Like `dep_layer` / `eff`, computed at read time, never persisted. Use `rmap blocks <id>` to see *which* tasks, `unlocks` to rank by *how many*.
-- **`handbuild` marker + `--dispatchable`**: `--dispatchable` (on `ready` / `list`) drops `handbuild`-marked tasks. **UI/LiveView/CSS work is NOT handbuild by default** — incremental UI against an existing design system or a frontend-design doc is normal headless dispatch. Reserve `handbuild` for the genuine minority where a human-in-browser is required: net-new visual identity with no design spec to build against (exploratory look-and-feel / motion / brand). Everything else — backend and spec-anchored UI alike — is headless-dispatchable by default.
-- **`touches`** (creation-time field): the broader *involvement hint* — files a task may read or write, typically a superset of `files_to_modify` (the write target). Consumer collision rule (you dedupe; rmap doesn't enforce): two tasks conflict iff `(touches(A) ∪ files_to_modify(A)) ∩ (touches(B) ∪ files_to_modify(B)) ≠ ∅`. Unioning both fields keeps `files_to_modify` respected even when a task's `touches` isn't a perfect superset — `touches` is "typically," not guaranteed, a superset. Set it via `rmap new --from-stdin`.
-- **`--fields a,b,c`** (on `ready` / `list`): projects `--json` to a bare array of just the named keys per task — token-cheap for an orchestrator that only needs `id,status,eff,depends_on,dep_layer,touches`. Implies `--json`; unknown name exits 1.
+`Harness.Run.Supervisor` is a `DynamicSupervisor` — N crash-isolated runs, each with its own worktree.
 
-### D/B/U mapping
+- **Batch by dependency graph, then write-set.** Every pending task whose `depends_on` is satisfied can enter the ready set, but harness dispatches only the first wave whose `touches ∪ files_to_modify` are disjoint. Overlapping tasks wait for a later wave after the landed base moves forward.
+- **Keep write-set fields accurate.** The dispatcher counts declared path intersections; it does not infer paths from the task body. If two tasks really edit the same function, either let write-set serialization sequence them or fold the coupled work into one rmap task (`task-prioritization.md` § "Refine, Don't Duplicate").
+- **One driver BEAM** for all concurrent runs in a wave.
+- **Integration order (manual landing):** smallest/isolated diffs onto target first; rebase siblings; run the project's check command on target after last merge.
+- **While a wave is in flight:** do not run `rmap status` / `rmap mark` / `rmap new` in parallel sessions against the same checkout — triggers `:checkout_polluted` false-positive.
 
-rmap's scoring **is** the `task-prioritization.md` framework, executable:
+### Autonomous Landing
 
-- `scores = { d, b, u }` on each `[[task]]` ⇒ the `[D:X/B:Y/U:Z]` you'd otherwise hand-write
-- `eff = (b + u) / (2 × d)`, computed at read time, never stored — same formula, same tiers (`≥2.0 🎯 / ≥1.5 🚀 / ≥1.0 📋 / else ⚠️`)
-- `scored_at` older than 30 days renders an `Eff:W?` decay suffix
+Projects with `landing_policy: :auto` and `target_branch`:
 
-Set scores in `tasks.toml` (via `rmap new` or editing the file); never hand-format the bracket — `rmap render` produces it.
+1. Approved run enqueues one job on serialized `landing_<name>` Oban queue (limit 1)
+2. `Harness.Lander.land/1` rebases `harness/<run-id>` onto `origin/<target>` in a detached worktree
+3. **ff-pushes without re-verification** — the reviewer already gated the work
+4. Successful push enqueues post-merge audit; advances rmap (`done --verified --shipped-in <sha>`)
 
-### Status & marker vocabulary
+Conflict / push-rejected retains the branch for repair — never lands red. Witness notification (read-only sink) alerts the operator; it is **not** a merge gate.
 
-- **status:** `pending | in_progress | blocked | done | superseded` — transitions go through `rmap status`. `blocked` requires a `blocked_reason` (set inline via `--reason "..."`; free-text, blocked-only, overwrites, and **auto-cleared when the task leaves the blocked state** — it renders inline on the blocked row in `ROADMAP.md`); `done` requires `implemented` (set inline via `--implemented "..."`, or pre-populated in `tasks.toml`; on a TTY without the flag, `rmap status` prompts). For bulk `rmap status 1,2,3 done`: the mutation is atomic — if any task is missing `implemented` AND no `--implemented` flag is given AND we're not on a TTY, the whole batch is rejected; `--implemented "..."` applies the same string to every task in the batch.
-- **markers:** `parallel | cx | csr | bug | security | docs | handbuild` — `parallel` is the old `[P]`; `cx` / `csr` are the Codex / Cursor delegation markers; `handbuild` flags the narrow human-in-browser exception — net-new visual identity with no design spec (NOT routine UI/LiveView/CSS, which is dispatchable) — that `rmap ready --dispatchable` / `rmap list --dispatchable` exclude.
-- **milestone status:** `pending | active | done` — distinct vocabulary from task status. Flip by hand-editing `[milestones.<name>].status` (no mutator yet); `active` milestones sort first in `rmap milestones` and are the load-bearing affordance for the "what release am I cutting next?" query.
+**🚨 Settle ≠ landed — don't conflate the two signals.** `dispatch-await` / `dispatch-await_runs` block until **reviewer settle** (`state: :done, verdict: approve`, or `:failed`), which fires the *moment the reviewer approves* — **before** the serialized `landing_<name>` job rebases and ff-pushes. So an `approve` from `await_runs` means "approved and *queued* to land," **not** "on `origin/<target>`." There is **no blocking await-landed tool**; landing is async and surfaces via the witness sink (`Harness.Notification.FileSink` tailing `~/.harness/settled.jsonl`, or `CommandSink`). To gate a next wave on the base actually moving forward, await settle **then** confirm the land against origin once (`git fetch origin <target> && git log --oneline origin/<target>` for the `task <id> -> done (shipped …)` commit) or consume the witness event — never treat approval as landed. This is the same root cause as the duplicate-land trap above, seen from the dispatch side: a poll loop watching `origin` for the landing commit is a workaround for a *fixed* `await_runs`, not a substitute for it — await settles, origin confirms the land.
 
-### Milestones — first-class release lines
+**Cron manual-approval mode.** A per-project cron poller in `:auto` mode dispatches unattended; in `:manual` mode it **parks** each dispatch decision instead of enqueuing — drain the parked decisions with `dispatch-pending` and approve them with `dispatch-approve`, keeping the orchestrator in the loop for autonomous polling.
 
-`[milestones.<name>]` is a fourth top-level concept alongside phases / bundles / markers. **Phase** orders work, **bundle** groups topically, **markers** modify execution, **milestone** pins a task to a release line. Milestones cross phases by design: a `v1.0` cut typically pulls from several phases.
+### Orchestrator Loop — the Architect Seat the Per-Task Reviewer Can't Fill
 
-**Milestone `description` MUST state a hypothesis.** One sentence naming what the milestone tests (e.g., *"proves Bali professionals will pay for a Bali-specific material-price tool"*, not *"data platform complete"*). Feature-checklist descriptions break the Pre-Creation Gate's milestone-fit check (`task-writing.md` § 4): without a hypothesis, no pinned task can be classified as "tests hypothesis" vs "assumes hypothesis, builds on top", and heavy moat-building drifts onto early validation milestones.
+The sections above document the *mechanisms*; this is the **continuous loop** the driving AI runs across waves:
 
-**Default at session start: pick the next task via the active milestone.** Keep exactly one milestone at `status = "active"` (the MVP/release you're cutting); plain `rmap next` then auto-biases to it — no `--milestone` flag needed. Reach for `rmap next --milestone <name>` only to override to a different release line.
+```
+plan wave → dispatch → await settle → confirm land on origin → run integration suite on the landed base
+          ↑                                                     + review whole surface vs roadmap intent & domain invariants
+          └── reconcile rmap ← encode any whole-surface finding as a criterion/test ←┘
+```
 
-- Author the table in `tasks.toml`: `[milestones.v0_1] name = "..." order = N status = "active" target_version = "0.1.0"`. `target_version` is optional free-text.
-- Pin a task: `rmap milestone <id> v0_1` (or set `milestone = "v0_1"` directly). Unpin: `rmap milestone <id> none`. One milestone per task.
-- Discovery: `rmap milestones` (table view with done/total counts + next-task glyph + active-first sort); `rmap milestones --json` for the agent envelope.
-- Drive a release line: `rmap next --milestone v0_1` returns the next pending task in that release; composes with `--bundle`, `--phase`, `--marker`. Without an explicit `--milestone`, `rmap next` automatically biases toward tasks pinned to any `active` milestone — analogous to the existing focus-phase bias. **Focus phase dominates** milestone when the two diverge (4-tier lexicographic: focus-only > active-milestone-only); pass `--milestone <name>` to override the auto-bias to a different release.
-- `rmap delegate` surfaces the milestone in `## Context` as `- Milestone: v0_1 (target=0.1.0)` so the target agent knows which release ships their work.
-- `rmap render` adds a conditional `🚀 **<milestone>** ·` segment to the task row in `ROADMAP.md` — rows without a milestone render byte-identically to before.
-- `rmap render` also fills an optional `<!-- MILESTONES:BEGIN -->` / `<!-- MILESTONES:END -->` section when present. Body shape: one markdown block per declared milestone, sorted like `rmap milestones`; each block includes `### <key> — <name>`, `target_version` (`none` when absent), status glyph + status (`🔄 active`, `⬜ pending`, `✅ done`), the hypothesis from `milestone.description`, and `<done>/<total> done` pinned-task counts. Projects without the marker pair render byte-identically to before.
+Each arrow reuses an existing mechanism — don't restate them here: *await settle* (§ "Settle ≠ landed"), *confirm land on origin* (§ "Recover, Don't Redo" → the duplicate-land trap), *reconcile rmap* (the lander already advanced `done --shipped-in` under auto-land — verify, don't double-write), *next wave* (§ "Parallel Dispatch" + write-set serialization).
 
-### `body` vs `implemented`
+**🚨 Three review seats, each blind where the next sees — the orchestrator seat is mandatory, not optional.** The per-task reviewer gates *one diff against one task* and is **structurally blind** to two defect classes that land clean through it (worked evidence: delta_calc tasks 24/25/26, see its `## Review Blind Spots` / `## Domain Invariants`):
 
-- `body` = original task definition / intent (never mutated after creation — the spec at scoping time).
-- `implemented` = what was actually built and why (required when `status = "done"`; `rmap show` renders both side-by-side as `body (original intent):` / `implemented (what shipped):` when present together). For trivial tasks where delivery matched the spec, `implemented = "as specified in body"` is honest and durable.
+| Seat | What it sees | What it CANNOT see |
+|---|---|---|
+| **Per-task reviewer** (cross-family, the gate) | one diff vs one task's acceptance criteria + mechanical checks, in an isolated worktree off a base | the whole surface; domain ground truth |
+| **Post-merge audit AI** (best-effort) | cold build of the merged commit range; hygiene | whether a domain constant is *wrong*; roadmap-intent fit |
+| **Orchestrator** (the architect seat — you) | whole integrated surface vs roadmap intent + domain invariants across all landed waves | — (this is the seat of last resort) |
 
-### Outcome layer: `delivered_by` + `verified` + `shipped_in`
+The two blind classes, both real-correctness, both passing every per-task check:
 
-Three optional transition-time fields next to `implemented`, all set by `rmap status <id> done`. The triple answers who built it, whether a grader agreed, and where it landed:
+- **Domain ground truth** — a wrong venue constant (`@funding_periods_per_day 3`, overstating Deribit's hourly funding ~8×) is internally consistent and fully tested *because the golden was computed with the same wrong constant* — coverage ratifies the bug. The reviewer has no signal; that knowledge lives in the architect's head.
+- **Cross-module global invariants** — write-set-disjoint parallel dispatch means two worktrees can each define `project_payback_timeline` and neither review sees the other; the collision only exists once both have landed on the integrated base. Only a whole-surface seat catches it.
 
-- `delivered_by = "<agent>"` — which agent or instance actually shipped the task (free-text, unvalidated, like `model`). Answers "who built this?" as a queryable fact without parsing prose. Settable via `--delivered-by <agent>` on `done` transitions; overwrites on re-set.
-- `verified = true` — independent evaluator confirmed the task. Two-state: `true` = a check separate from the implementer passed (verification stack green, code-review approved); absent = not yet graded (hand-built, bootstrap, merged directly). Settable via `--verified` presence flag on `done`; to clear, edit `tasks.toml` directly. Encodes evaluator-separation as a fact, not as a status — `done` means "an implementer said so", `verified` means "a grader agreed".
-- `shipped_in = "<sha>"` — where the work landed (commit SHA / PR ref, free-text, unvalidated). Settable via `--shipped-in <sha>` on `done` transitions; overwrites on re-set. No sha-shape validation, no git auto-derivation — the caller supplies it.
+**🚨 Run the integration suite on the landed base — this is NOT redundant with per-task review.** After each wave lands, run the project's full check (`mix ci` / `mix precommit.full`) on the freshly-landed `origin/<target>`. The per-task reviewer ran its checks in an *isolated worktree off an earlier base, before sibling waves landed* — cross-module breakage doesn't exist until multiple landed diffs coexist. This generalizes the manual-landing-only "run the project's check command on target after last merge" (§ "Parallel Dispatch") into a standing per-wave step.
 
-All three surface in `rmap show`, `rmap list` JSON / `data.json` (via `ExportedTask`), and `rmap diff --verbose`. `rmap list --delivered-by <agent>` filters the roadmap into a per-agent delivery ledger (status-agnostic — matches the field, not just done tasks). `rmap doctor` emits a soft `ClaimedNotGraded` advisory for `done && verified.is_none()` ("claimed, not graded") — always exit 0, hand-built tasks are legitimate. Graph-health advisories (`bottleneck`, `isolated_node`) flag high-leverage gating tasks and disconnected/off-milestone nodes — also soft, exit 0; tune the bottleneck cutoff with `--bottleneck-min` (default 3). All three stay off `StdinTask` / `NewTaskFields` on purpose; they are outcome facts, not creation-time intent.
+**Two framing guards — keep this consistent with the harness mantra:**
 
-### Pinning an LLM model per task
+- **It's an agent seat, not harness code.** The mantra ("count facts in code; judge with an AI") forbids *harness* computing meaning — it does **not** forbid the orchestrator AI from reviewing the whole surface or running the suite. This adds no mechanical gate to harness; it's judgment in an agent, which is exactly where judgment belongs.
+- **The output crystallizes into encoded invariants — don't leave it a manual sweep.** When the architect seat catches a whole-surface or domain defect, the highest-value move is not the manual catch — it's pushing the rule into an **acceptance criterion or a manifest-wide CI test** (the delta_calc rule) so the per-task gate absorbs that class going forward. Orchestrator review *feeds* the criteria/CI; it must not become a permanent re-review of every diff. A finding caught twice by hand is a missing test.
 
-`model = "<model-id>"` on a `[[task]]` records which LLM should do the work — the *value* is free-text and unvalidated (model IDs churn, so no closed set). `rmap delegate` surfaces it as a `- Model:` bullet in the prompt's `## Context` so the target agent knows which model to run. Settable at creation via `rmap new` (interactive + `--from-stdin`) or a direct edit.
+### Portfolio Conventions
 
-**`model` is required (presence, not value) on a live agent-assigned task.** `rmap validate` hard-errors (exit 1, agent-grep `missing model`) when a `pending`/`in_progress` task has `assignee` set and != `"human"` but no `model` — harness hard-rejects a dispatch that resolves to no model (it never falls through to the agent CLI's ambient default), so rmap refuses to author one. The mutators inherit this (validate-then-write): `rmap new --assignee <agent>` on a model-less task fails before write; `rmap assign <id> <agent>` without `--model` fails the same way. Pin a model whenever you set an agent assignee on a live task. Terminal tasks (`done`/`superseded`/`blocked`) and assignee-unset / `human` tasks are exempt.
+- **Agent does not commit unless asked.** Staged-but-uncommitted is the default handoff between implementer and reviewer sessions (`workflow-philosophy.md` § "Implementer / Reviewer Handoff"). Harness runs commit agent work to `harness/<run-id>` automatically — that is harness's deliverable branch, not the operator's main checkout.
+- **Witness notification is sakshi (read-only).** Landing outcomes notify via configured command sink; the sink grants no merge capability. Human operator reviews blocked/conflict outcomes — harness does not silently force-push past conflicts.
+- **`check_command` is a hint to the reviewer.** Free text (e.g. `"mix precommit.full"`) — the reviewer runs and judges it; harness does not execute it mechanically.
+- **The cross-family reviewer reads `AGENTS.md`, not your Claude skills/includes.** `AGENTS.md` is generated from `CLAUDE.md` by `claude-marketplace/scripts/sync-agents-md.sh`, which recursively inlines every `@`-import. **Regenerate it after any `CLAUDE.md` change** (`bash ~/_DATA/code/claude-marketplace/scripts/sync-agents-md.sh`, or `--dry-run` to preview) so the reviewer gates against current rules — a stale `AGENTS.md` makes codex/cursor/grok judge against rules you've already changed. **`--check` is the freshness gate** — it re-renders in memory and exits non-zero if `AGENTS.md` has drifted (diffs rendered output, not mtimes, so it catches drift in transitive `@`-imports too); wire it into CI / a pre-commit hook / the `check_command` so staleness fails loudly instead of silently. Consequence under Opus-4.8 skill-on-demand: once `CLAUDE.md` slims to the eager floor, reviewer-critical facts that *were* carried by eager includes (the `check_command` gate; that `mix test.json` / `mix dialyzer.json` emit JSON **by design** — parse for real failures, never flag the envelope; plain `mix dialyzer` is authoritative when the JSON encoder can't serialize a warning) no longer reach `AGENTS.md` via those imports. Put them in a **self-contained `## Toolchain & check commands` section in `CLAUDE.md`** so they survive the slim-down and flow into `AGENTS.md` on regen (ref: `tapakly/CLAUDE.md`, `ccxt_extract/CLAUDE.md`).
+- **Delegation roster — opus last, and don't over-default to codex.** When assigning a dispatchable task to a harness adapter, prefer the external agents — **cursor, codex, grok** — and reserve the **claude/opus** adapter for work that genuinely needs it (harness-surface changes, judgment-heavy review, tasks the cheaper adapters keep bouncing). Opus tokens are precious: spend them last, not by default. Mix adapters across a wave for review coverage. A repo may override the roster in its own CLAUDE.md.
+  - **Observed failure mode: reflex-routing everything to `codex`.** Run ledgers skew heavily codex-over-cursor/grok. Actively spread `assignee` across all three; reserve codex for tasks it's genuinely scored best on, not as the default.
+  - **`cursor` runs on Composer (`composer-2.5`) by default — and that's the data-backed pick.** Pin `model = "composer-2.5"` for cursor work: it's the cheapest cost-to-green in the ledger, and **every cursor capability KPI is measured on Composer** (it's a multi-model front-end, but the scores you'd route on reflect Composer, not whatever you pin). The `composer-2.5-fast` variant is cheaper still, but its budget routinely exhausts and the operator blocks it — so **`composer-2.5` (non-fast) is the standing default**; confirm the live id with `cursor-agent --list-models` / `model_availability-list_available_models cursor`. A heavier cursor model exists (`cursor-agent --list-models` lists `claude-opus-4-8-thinking-high` etc.) but is **not** the default, carries **no** capability data, and draws a *monthly Opus token budget that exhausts* (when spent the operator blocks it and routes Opus-grade work to codex/gpt-5.5) — pinning it *claims performance the ledger doesn't show*, so reach for it only with a concrete, named reason, not as the "design-heavy/Opus-grade" reflex. Model IDs churn; confirm with `cursor-agent --list-models`. **`model` is REQUIRED at creation for any non-`human` assignee** (`rmap new` rejects a model-less dispatchable task — "a dispatchable task must pin the LLM it runs on"; see `rmap.md` § "Pinning an LLM model"); "leave `model` unset for the agent default" does NOT work. Set `assignee` **and** `model` at task creation per `rmap.md`.
 
-`rmap assign <id> <assignee> [--model <m>]` sets routing on an existing task (creation-time fields otherwise only writable via `rmap new` or hand edit). `rmap assign <id> none` or `rmap assign <id> human` clears both `assignee` and `model` for hand-build work — `--model` is forbidden on that path.
+### Known Sharp Edges
 
-The three-way split — don't conflate them:
+- **Fresh worktrees lack `deps/` / `_build/`.** Implementer and reviewer each run project bootstrap (e.g. `mix deps.get`) when needed — budget timeouts for cold worktrees.
+- **Reviewer runs the checks.** No mechanical check stack. Correct-but-not-pristine work → reviewer fixes and approves (`reviewer_diff_size` > 0).
+- **Cold dialyzer PLT** dominates first reviewer check run in Elixir worktrees.
+- **Nested Claude auth.** `ANTHROPIC_API_KEY` shadows subscription OAuth — scrub per run (`scrub_anthropic_key: true` or `env: %{"ANTHROPIC_API_KEY" => false}`).
+- **Parallel-session rmap mutations** during a run can false-positive `:checkout_polluted` — wait for the wave or use a separate worktree.
 
-- **`assignee`** = which *agent* executes the task (validated agent set; THE routing field consumers route on)
-- **`model`** = which *LLM* that agent runs (free-text pin; never an agent name)
-- **`delegate --to`** = explicit render-time override of `assignee` for one prompt (omit it to honor the stored routing intent)
+### Repo-Specific Detail
 
-A fourth, advisory dimension sits alongside these: **`domains`** = a free-text list of capability tags on a `[[task]]` (e.g. `domains = ["otp", "ecto"]`), unvalidated and no closed enum — the *downstream consumer* owns the vocabulary (harness maps them to its `CapabilityDomain` for per-`{agent, domain}` capability scoring). Unlike `assignee`/`model`/`--to`, `domains` does not route a single dispatch — it labels the task so a consumer can group outcomes by domain and move dispatch from explore to exploit. Settable at creation via `rmap new` (interactive + `--from-stdin`) or a direct edit; surfaces on every `--json` payload, in `data.json`, and as a `- Domains:` bullet in `rmap delegate`'s `## Context`.
-
-### Migrating a hand-edited ROADMAP.md
-
-Run `rmap import` — it emits a paste-ready prompt that walks an agent through converting one or more hand-edited `ROADMAP.md` files into `roadmap/tasks.toml` (schema, marker pairs, validate → render → diff-check). One-time, LLM-driven; the prompt carries the detail so this include doesn't have to.
-
-### Cross-references
-
-- `task-prioritization.md` — the D/B/U framework, tiers, ceremony floor, exclusions that rmap executes
-- `task-writing.md` — how to write a task's `body` / `acceptance_criteria`; the `rmap new --from-stdin` shape
-- `workflow-philosophy.md` § "Batched Execution" — canonical rule for the batch derivation referenced in § "Batches are derived, not declared"
+| Need | Where |
+|---|---|
+| Harness API surfaces, MCP tool shapes | `skills/harness-driver/SKILL.md` in harness repo |
+| Driver script template, cutover history, run log | `docs/dogfooding-workflow.md` in harness repo |
+| Agent-gate architecture spec | `docs/agent-gate-workflow.md` in harness repo |
+| Cross-checkout consumer setup | `skills/harness-driver/SKILL.md` § "Context A" |
+| D/B/U scoring, task writing | `task-prioritization.md`, `task-writing.md` |
+| Manual session/PR/audit chain | `dev-lifecycle.md`, `worktree-workflow.md` |
 
 
-> **Trimmed 2026-05-30.** The previous version `@`-imported 14 includes + the 43 KB harness-driver SKILL (~44k tokens always-on), which drove compulsive re-reading on Opus 4.8. The eager floor is now the three above — `critical-rules` (guardrails), `code-style` (KPIs), `rmap` (roadmap decision layer, used every session). Harness workflow (`harness-workflow.md`) is load-on-demand below — same adoption path as other repos: `@~/.claude/includes/harness-workflow.md`. `response-conventions` is inherited from `~/.claude/CLAUDE.md`, not re-imported here. Everything else is **load-on-demand** — pull it only when the trigger matches.
+> **Trimmed 2026-05-30; re-aligned 2026-06-22.** The original `@`-imported 14 includes + the 43 KB harness-driver SKILL (~44k tokens always-on), which drove compulsive re-reading on Opus 4.8. The eager floor is now the two above — `critical-rules` (guardrails, ambient by necessity) + `harness-workflow` (the implement→review→land loop + delegation roster, load-bearing every session in this dogfooding repo — the setup-guide's "second eager include for harness-registered repos"). `code-style` (KPIs) and `rmap` (roadmap decision layer) are now **load-on-demand skills** (`elixir:code-style` / `tasks:rmap`) — Opus 4.8 self-invokes them when the action calls for it. `response-conventions` is inherited from `~/.claude/CLAUDE.md`, not re-imported here. Everything else is **load-on-demand** — pull it only when the trigger matches.
 
 ## Load-on-demand (don't auto-load — read the file or invoke the skill when the trigger hits)
 
@@ -579,6 +508,7 @@ Run `rmap import` — it emits a paste-ready prompt that walks an agent through 
 | `mix test.json` flags / jq recipes | Skill `elixir:ex-unit-json` |
 | `mix dialyzer.json` flags / fix_hints | Skill `elixir:dialyzer-json` |
 | `mix` / `ex_dna` / `ex_ast` command surface | Skill `elixir:development-commands` |
+| Complexity KPIs / per-tier code budgets (functions·lines·depth) | Skill `elixir:code-style` |
 | rmap CLI: status/score/new/render/delegate | Skill `tasks:rmap` |
 | D/B/U scoring, ceremony floor, task-writing | Skill `tasks:roadmap-planning` + `@~/.claude/includes/task-writing.md` |
 | Session-per-phase / batched-execution / evaluator-separation rules | `@~/.claude/includes/workflow-philosophy.md` |
@@ -624,10 +554,21 @@ Toolchain: **Elixir 1.20.0 / OTP 29** (asdf) — pinned by the repo-local `.tool
 | Single test | `mix test.json test/harness/run_test.exs:42` · re-run only failures: `mix test.json --failed` · coverage: `--cover`. |
 | Fast gate | `mix check.fast` — `format --check-formatted` + `compile --warnings-as-errors` + `credo --strict`. |
 | Pre-commit gate | `mix precommit` — adds `doctor --raise`, `test.json --cover --cover-threshold 80 --exclude integration`, `sobelow`. Hook-bound (180s); **dialyzer is deliberately not here** (cold-PLT timeout). |
-| Before PR / handoff | `mix precommit.full` — `precommit` + `dialyzer.json`. (No CI workflow exists yet — this is the only mergeable-bar gate.) |
+| Before PR / handoff | `mix precommit.full` (alias `mix ci`) — `precommit` + `ex_dna --max-clones 0` (zero-tolerance clone gate) + `reach.check --arch --smells` (architecture policy in `.reach.exs`) + `dialyzer.json`. No `.github/workflows` yet — this alias **is** the mergeable bar. |
+| Ecosystem entry point | `mix ci` — vibe_kit-convention name; delegates to `precommit.full` (one gate, not two). |
 | Sync harness skills | `scripts/sync-harness-skills.sh` (`--dry-run` to preview) — after editing `priv/includes/harness-workflow.md` or `skills/harness-driver/SKILL.md`, propagate to `~/.claude/includes/` + the marketplace `harness` plugin skills. The general marketplace sync excludes these two. |
+| Regenerate AGENTS.md | `bash ~/_DATA/code/claude-marketplace/scripts/sync-agents-md.sh` (`--check` = freshness gate, exits non-zero on drift) — after any `CLAUDE.md` edit, so cross-family reviewers gate against current rules. **Never hand-edit `AGENTS.md`.** Operator/marketplace gate (path is the personal checkout) — not wired into `precommit.full`. |
 
 **Per-edit hooks already run this stack** (`format`, `compile`, `test.json`, `credo`, `dialyzer.json`, `sobelow`, `doctor`) on every touched file — don't re-run a check the hook just graded. Full-suite `precommit.full` earns its cost only before a PR/merge, after `mix deps.get`, or on a branch switch (see global CLAUDE.md § "Don't Re-Run Hook-Driven Checks").
+
+## Toolchain & check commands
+
+Self-contained so it reaches `AGENTS.md` (and the cross-family reviewer) even after the eager floor slimmed `code-style`/`rmap` to skills.
+
+- **The canonical gate is `mix precommit.full` (alias `mix ci`).** It bundles `format --check-formatted`, `compile --warnings-as-errors`, `credo --strict` (with the `ExSlop` AI-slop plugin), `doctor`, `test.json --cover --cover-threshold 80`, `sobelow`, `ex_dna --max-clones 0`, `reach.check --arch --smells`, and `dialyzer.json`. There is no `.github/workflows` — this alias is the mergeable bar. `check.fast` / `precommit` are the faster inner loops; dialyzer + clone + reach gates live only in `precommit.full` (cold-PLT / heavier-pass cost).
+- **`mix test.json` and `mix dialyzer.json` emit JSON by design** (ex_unit_json / dialyzer_json reporters). Parse the payload for *real* failures — never flag the JSON envelope itself as an error. When the dialyzer_json encoder can't serialize a particular warning, **plain `mix dialyzer` is authoritative** for that warning.
+- **`ex_dna --max-clones 0`** is a zero-tolerance AST-clone gate; **`reach.check --arch --smells`** validates the architecture policy in `.reach.exs` (forbidden cross-boundary calls + the `boundaries[:public]` facade list) plus the smell surface. A red here is real debt to fix or model honestly in `.reach.exs`, not to suppress.
+- **`AGENTS.md` is generated from `CLAUDE.md`** by `~/_DATA/code/claude-marketplace/scripts/sync-agents-md.sh` (recursively inlines every `@`-import; `--check` re-renders and exits non-zero on drift). Regenerate after any `CLAUDE.md` change so the reviewer gates against current rules — **never hand-edit `AGENTS.md`**.
 
 ## What This Is
 

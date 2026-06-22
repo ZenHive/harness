@@ -5,10 +5,9 @@
 ## Always-on includes (core only)
 
 @~/.claude/includes/critical-rules.md
-@~/.claude/includes/code-style.md
-@~/.claude/includes/rmap.md
+@~/.claude/includes/harness-workflow.md
 
-> **Trimmed 2026-05-30.** The previous version `@`-imported 14 includes + the 43 KB harness-driver SKILL (~44k tokens always-on), which drove compulsive re-reading on Opus 4.8. The eager floor is now the three above — `critical-rules` (guardrails), `code-style` (KPIs), `rmap` (roadmap decision layer, used every session). Harness workflow (`harness-workflow.md`) is load-on-demand below — same adoption path as other repos: `@~/.claude/includes/harness-workflow.md`. `response-conventions` is inherited from `~/.claude/CLAUDE.md`, not re-imported here. Everything else is **load-on-demand** — pull it only when the trigger matches.
+> **Trimmed 2026-05-30; re-aligned 2026-06-22.** The original `@`-imported 14 includes + the 43 KB harness-driver SKILL (~44k tokens always-on), which drove compulsive re-reading on Opus 4.8. The eager floor is now the two above — `critical-rules` (guardrails, ambient by necessity) + `harness-workflow` (the implement→review→land loop + delegation roster, load-bearing every session in this dogfooding repo — the setup-guide's "second eager include for harness-registered repos"). `code-style` (KPIs) and `rmap` (roadmap decision layer) are now **load-on-demand skills** (`elixir:code-style` / `tasks:rmap`) — Opus 4.8 self-invokes them when the action calls for it. `response-conventions` is inherited from `~/.claude/CLAUDE.md`, not re-imported here. Everything else is **load-on-demand** — pull it only when the trigger matches.
 
 ## Load-on-demand (don't auto-load — read the file or invoke the skill when the trigger hits)
 
@@ -17,6 +16,7 @@
 | `mix test.json` flags / jq recipes | Skill `elixir:ex-unit-json` |
 | `mix dialyzer.json` flags / fix_hints | Skill `elixir:dialyzer-json` |
 | `mix` / `ex_dna` / `ex_ast` command surface | Skill `elixir:development-commands` |
+| Complexity KPIs / per-tier code budgets (functions·lines·depth) | Skill `elixir:code-style` |
 | rmap CLI: status/score/new/render/delegate | Skill `tasks:rmap` |
 | D/B/U scoring, ceremony floor, task-writing | Skill `tasks:roadmap-planning` + `@~/.claude/includes/task-writing.md` |
 | Session-per-phase / batched-execution / evaluator-separation rules | `@~/.claude/includes/workflow-philosophy.md` |
@@ -62,10 +62,21 @@ Toolchain: **Elixir 1.20.0 / OTP 29** (asdf) — pinned by the repo-local `.tool
 | Single test | `mix test.json test/harness/run_test.exs:42` · re-run only failures: `mix test.json --failed` · coverage: `--cover`. |
 | Fast gate | `mix check.fast` — `format --check-formatted` + `compile --warnings-as-errors` + `credo --strict`. |
 | Pre-commit gate | `mix precommit` — adds `doctor --raise`, `test.json --cover --cover-threshold 80 --exclude integration`, `sobelow`. Hook-bound (180s); **dialyzer is deliberately not here** (cold-PLT timeout). |
-| Before PR / handoff | `mix precommit.full` — `precommit` + `dialyzer.json`. (No CI workflow exists yet — this is the only mergeable-bar gate.) |
+| Before PR / handoff | `mix precommit.full` (alias `mix ci`) — `precommit` + `ex_dna --max-clones 0` (zero-tolerance clone gate) + `reach.check --arch --smells` (architecture policy in `.reach.exs`) + `dialyzer.json`. No `.github/workflows` yet — this alias **is** the mergeable bar. |
+| Ecosystem entry point | `mix ci` — vibe_kit-convention name; delegates to `precommit.full` (one gate, not two). |
 | Sync harness skills | `scripts/sync-harness-skills.sh` (`--dry-run` to preview) — after editing `priv/includes/harness-workflow.md` or `skills/harness-driver/SKILL.md`, propagate to `~/.claude/includes/` + the marketplace `harness` plugin skills. The general marketplace sync excludes these two. |
+| Regenerate AGENTS.md | `bash ~/_DATA/code/claude-marketplace/scripts/sync-agents-md.sh` (`--check` = freshness gate, exits non-zero on drift) — after any `CLAUDE.md` edit, so cross-family reviewers gate against current rules. **Never hand-edit `AGENTS.md`.** Operator/marketplace gate (path is the personal checkout) — not wired into `precommit.full`. |
 
 **Per-edit hooks already run this stack** (`format`, `compile`, `test.json`, `credo`, `dialyzer.json`, `sobelow`, `doctor`) on every touched file — don't re-run a check the hook just graded. Full-suite `precommit.full` earns its cost only before a PR/merge, after `mix deps.get`, or on a branch switch (see global CLAUDE.md § "Don't Re-Run Hook-Driven Checks").
+
+## Toolchain & check commands
+
+Self-contained so it reaches `AGENTS.md` (and the cross-family reviewer) even after the eager floor slimmed `code-style`/`rmap` to skills.
+
+- **The canonical gate is `mix precommit.full` (alias `mix ci`).** It bundles `format --check-formatted`, `compile --warnings-as-errors`, `credo --strict` (with the `ExSlop` AI-slop plugin), `doctor`, `test.json --cover --cover-threshold 80`, `sobelow`, `ex_dna --max-clones 0`, `reach.check --arch --smells`, and `dialyzer.json`. There is no `.github/workflows` — this alias is the mergeable bar. `check.fast` / `precommit` are the faster inner loops; dialyzer + clone + reach gates live only in `precommit.full` (cold-PLT / heavier-pass cost).
+- **`mix test.json` and `mix dialyzer.json` emit JSON by design** (ex_unit_json / dialyzer_json reporters). Parse the payload for *real* failures — never flag the JSON envelope itself as an error. When the dialyzer_json encoder can't serialize a particular warning, **plain `mix dialyzer` is authoritative** for that warning.
+- **`ex_dna --max-clones 0`** is a zero-tolerance AST-clone gate; **`reach.check --arch --smells`** validates the architecture policy in `.reach.exs` (forbidden cross-boundary calls + the `boundaries[:public]` facade list) plus the smell surface. A red here is real debt to fix or model honestly in `.reach.exs`, not to suppress.
+- **`AGENTS.md` is generated from `CLAUDE.md`** by `~/_DATA/code/claude-marketplace/scripts/sync-agents-md.sh` (recursively inlines every `@`-import; `--check` re-renders and exits non-zero on drift). Regenerate after any `CLAUDE.md` change so the reviewer gates against current rules — **never hand-edit `AGENTS.md`**.
 
 ## What This Is
 

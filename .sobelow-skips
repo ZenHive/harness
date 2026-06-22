@@ -192,3 +192,29 @@ Traversal.FileModule: Directory Traversal in `File.rm`,lib/harness/code_search.e
 Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/code_search.ex:536,43E147C
 DOS.BinToAtom: Unsafe atom interpolation,lib/harness/code_search.ex:1012,560A23E
 Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/run/test_db_isolation.ex:100,156E3F7
+
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/capability_score.ex:118,1008E21
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/lander.ex:453,1314A3
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/agent_adapter.ex:521,132FA42
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/lander.ex:431,1F39F34
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/result_store/postgres.ex:772,2118CC6
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/worktree.ex:921,237B2D9
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/lander.ex:452,2A3878C
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:596,2B305FC
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/capability_score.ex:133,2F2FE63
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/capability_score.ex:393,32B4F1D
+Traversal.FileModule: Directory Traversal in `File.rm_rf`,lib/harness/capability_score.ex:218,35A0826
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/harness/worktree.ex:909,35D34C
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/harness/result_store/postgres.ex:625,4B5BBC6
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:893,5BD68B3
+Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/harness/capability_score.ex:547,5C52507
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/harness/capability_score.ex:132,5CECA47
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/lander/resolver.ex:167,5F3A765
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/lander.ex:226,6B5B7D4
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/lander.ex:251,6DDEEC
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/lander.ex:437,6F9C5A4
+Traversal.FileModule: Directory Traversal in `File.rm_rf`,lib/harness/lander.ex:443,71837C3
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/result_store/postgres.ex:764,73C4300
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/lander.ex:454,75FA06D
+Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/lander.ex:438,98164D
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/result_store/postgres.ex:883,E29477

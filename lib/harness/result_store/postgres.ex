@@ -490,7 +490,7 @@ defmodule Harness.ResultStore.Postgres do
 
       agents =
         Map.new(agent_rows, fn row ->
-          {string_to_atom(row.agent), facet_agent_row_to_kpi(row)}
+          {string_to_atom(row.agent), row_to_kpi(row)}
         end)
 
       %{facet: facet, agents: agents}
@@ -498,11 +498,15 @@ defmodule Harness.ResultStore.Postgres do
     |> Enum.sort_by(&Jason.encode!(Map.get(&1, :facet, %{})))
   end
 
-  @spec facet_agent_row_to_kpi(map()) :: AgentKPI.agent_kpi()
-  defp facet_agent_row_to_kpi(row) do
+  # Maps one aggregate SQL row to the AgentKPI summary shape. Shared by the
+  # per-facet and the flat ledger aggregations (both select the same columns).
+  @spec row_to_kpi(map()) :: AgentKPI.agent_kpi()
+  defp row_to_kpi(row) do
     run_count = row.run_count
     pass_count = row.pass_count || 0
     reviewer_flaked = row.reviewer_flaked_count || 0
+    # Mirror AgentKPI.summarize/1: a review_stuck run is the reviewer's failure,
+    # excluded from the implementer's success denominator (never run_count).
     attributable_count = run_count - reviewer_flaked
 
     cost_to_green =
@@ -531,35 +535,7 @@ defmodule Harness.ResultStore.Postgres do
 
   @spec aggregate_rows_to_ledger([map()]) :: AgentKPI.t()
   defp aggregate_rows_to_ledger(rows) do
-    Map.new(rows, fn row ->
-      run_count = row.run_count
-      pass_count = row.pass_count || 0
-      reviewer_flaked = row.reviewer_flaked_count || 0
-      # Mirror AgentKPI.summarize/1: a review_stuck run is the reviewer's failure,
-      # excluded from the implementer's success denominator (never run_count).
-      attributable_count = run_count - reviewer_flaked
-
-      cost_to_green =
-        if row.pass_count_for_cost > 0, do: float_or_nil(row.cost_to_green_mean)
-
-      kpi = %{
-        run_count: run_count,
-        reviewer_flaked: reviewer_flaked,
-        success_rate: safe_rate(pass_count, attributable_count),
-        first_attempt_pass_rate: safe_rate(row.first_attempt_pass_count || 0, attributable_count),
-        duration_ms: AgentKPI.duration_summary(row.durations || []),
-        tokens: %{
-          input: float_or_zero(row.input_mean),
-          output: float_or_zero(row.output_mean),
-          total: float_or_zero(row.total_mean)
-        },
-        review_iterations: float_or_zero(row.review_iterations_mean),
-        ratings: row.ratings |> normalize_rating_records() |> AgentKPI.rating_means(),
-        cost_to_green: cost_to_green
-      }
-
-      {string_to_atom(row.agent), kpi}
-    end)
+    Map.new(rows, fn row -> {string_to_atom(row.agent), row_to_kpi(row)} end)
   end
 
   # Zero attributable runs (every run reviewer-flaked) → 0.0, never a div-by-zero.

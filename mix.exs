@@ -143,6 +143,8 @@ defmodule Harness.MixProject do
       {:dialyzer_json, "~> 0.2", only: [:dev, :test], runtime: false},
       {:styler, "~> 1.11", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      # ExSlop: Credo plugin flagging AI-generated-code antipatterns (vibe_kit baseline).
+      {:ex_slop, "~> 0.4", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},
       {:doctor, "~> 0.23", only: [:dev, :test], runtime: false},
@@ -159,6 +161,10 @@ defmodule Harness.MixProject do
       {:volt, "~> 0.11", only: [:dev, :test], runtime: false},
       {:dune, "~> 0.3", only: [:dev, :test], runtime: false},
       {:boxart, "~> 0.3.3", only: [:dev, :test], runtime: false},
+      # Igniter powers `mix igniter.install vibe_kit`; vibe_kit keeps
+      # `mix vibe_kit.install` available for re-runs (installer, never runtime).
+      {:igniter, "~> 0.7", only: [:dev, :test]},
+      {:vibe_kit, "~> 0.1", only: [:dev, :test], runtime: false},
 
       # Tidewave (dev MCP + HTTP server for agent interface)
       {:tidewave, "~> 0.5", only: :dev}
@@ -197,9 +203,22 @@ defmodule Harness.MixProject do
         ~s|cmd sh -c "MIX_ENV=test mix test.json --quiet --cover --cover-threshold 80 --summary-only --exclude integration"|,
         "sobelow --exit --skip"
       ],
-      # CI mirror — adds dialyzer. Matches .github/workflows/harness.yml.
-      # Run before handing off to a reviewer / opening a PR.
-      "precommit.full": ["precommit", "dialyzer.json --quiet"],
+      # Mergeable bar — the full gate before a reviewer handoff / PR. Adds the
+      # heavyweight steps deliberately kept out of the fast inner loops:
+      #   * dialyzer.json — cold-PLT cost; would blow precommit's 180s hook.
+      #   * ex_dna --max-clones 0 — zero-tolerance AST clone gate (vibe_kit baseline).
+      #   * reach.check --arch --smells — architecture-policy + smell gate (.reach.exs).
+      # No .github/workflows yet; this alias IS the CI bar. `mix ci` (below) is the
+      # ecosystem-convention entry point and maps here so there is ONE gate, not two.
+      "precommit.full": [
+        "precommit",
+        "ex_dna --max-clones 0",
+        "reach.check --arch --smells",
+        "dialyzer.json --quiet"
+      ],
+      # Ecosystem-convention entry point (vibe_kit's `mix ci`) → the repo's richer
+      # gate. Delegates rather than duplicating so the two never diverge.
+      ci: ["precommit.full"],
       "sobelow.baseline": ["sobelow --mark-skip-all"]
     ]
   end

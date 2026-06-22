@@ -65,7 +65,7 @@ defmodule Harness.Lander.Resolver do
   @spec resolve(Worktree.t(), keyword()) :: :ok | {:error, term()}
   def resolve(%Worktree{path: path} = worktree, opts) do
     with {:ok, module} <- select_resolver(normalize(opts[:implementer]), normalize(opts[:reviewer])),
-         {:ok, [_ | _] = files} <- conflicted_files(path),
+         {:ok, [_ | _] = files} <- Git.conflicted_files(path),
          {:ok, _outcome} <- Driver.run(module, invocation(build_prompt(path, files, opts), worktree, opts)) do
       :ok
     else
@@ -116,14 +116,6 @@ defmodule Harness.Lander.Resolver do
   defp dispatchable?(agent, module) do
     AgentRegistry.installed?(module) and AgentRegistry.available?(module) and
       Settings.enabled?(agent) and Settings.reviewer_eligible?(agent)
-  end
-
-  @spec conflicted_files(String.t()) :: {:ok, [String.t()]} | {:error, term()}
-  defp conflicted_files(path) do
-    case Git.run(["diff", "--name-only", "--diff-filter=U"], path) do
-      {:ok, output} -> {:ok, String.split(output, "\n", trim: true)}
-      {:error, reason} -> {:error, {:conflict_list_failed, reason}}
-    end
   end
 
   @doc false

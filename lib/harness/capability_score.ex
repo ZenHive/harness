@@ -18,6 +18,7 @@ defmodule Harness.CapabilityScore do
   alias Harness.AgentKPI
   alias Harness.AgentRegistry
   alias Harness.Config
+  alias Harness.Facet
   alias Harness.ResultStore
   alias Harness.Run.LogRecord
 
@@ -514,13 +515,7 @@ defmodule Harness.CapabilityScore do
   defp datetime_iso(_other), do: nil
 
   @spec normalize_facet(term()) :: %{String.t() => term()}
-  defp normalize_facet(facet) when is_map(facet) do
-    facet
-    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-    |> Map.new(fn {k, v} -> {to_string(k), v} end)
-  end
-
-  defp normalize_facet(_other), do: %{}
+  defp normalize_facet(facet), do: Facet.normalize(facet)
 
   @spec facet_key(map()) :: String.t()
   defp facet_key(facet) do

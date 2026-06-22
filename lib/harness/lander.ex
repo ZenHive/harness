@@ -134,7 +134,7 @@ defmodule Harness.Lander do
           {:ok, %{run_id: String.t(), task_id: String.t()}}
           | {:error, :not_found | {:not_approved, map()} | term()}
   def enqueue(run_id) when is_binary(run_id) do
-    with {:ok, record} <- load_record(run_id),
+    with {:ok, record} <- ResultStore.fetch_run_record(run_id),
          :ok <- ensure_approved(record),
          {:ok, project} <- ProjectRegistry.lookup(record.project_name),
          {:ok, _job} <- insert_landing(record, project) do
@@ -153,15 +153,6 @@ defmodule Harness.Lander do
 
   defp ensure_approved(%LogRecord{state: state, verdict: verdict}),
     do: {:error, {:not_approved, %{state: state, verdict: verdict}}}
-
-  @spec load_record(String.t()) :: {:ok, LogRecord.t()} | {:error, :not_found | term()}
-  defp load_record(run_id) do
-    case ResultStore.list_run_records(run_id: run_id) do
-      {:ok, [%LogRecord{} = record | _]} -> {:ok, record}
-      {:ok, []} -> {:error, :not_found}
-      {:error, _reason} = error -> error
-    end
-  end
 
   @spec insert_landing(LogRecord.t(), Project.t()) :: {:ok, Oban.Job.t()} | {:error, term()}
   defp insert_landing(%LogRecord{} = record, %Project{} = project) do
@@ -405,9 +396,9 @@ defmodule Harness.Lander do
 
   @spec resolve_additive_conflicts(String.t()) :: :resolved_all | {:remaining, [String.t()]} | {:error, term()}
   defp resolve_additive_conflicts(path) do
-    with {:ok, files} <- conflicted_files(path),
+    with {:ok, files} <- Git.conflicted_files(path),
          :ok <- union_additive_files(path, Enum.filter(files, &additive_conflict_file?/1)),
-         {:ok, remaining} <- conflicted_files(path) do
+         {:ok, remaining} <- Git.conflicted_files(path) do
       if remaining == [], do: :resolved_all, else: {:remaining, remaining}
     end
   end
@@ -471,14 +462,6 @@ defmodule Harness.Lander do
     case System.cmd("git", args, cd: path, stderr_to_stdout: true) do
       {_output, 0} -> :ok
       {output, status} -> {:error, {:merge_file_failed, status, output}}
-    end
-  end
-
-  @spec conflicted_files(String.t()) :: {:ok, [String.t()]} | {:error, term()}
-  defp conflicted_files(path) do
-    case Git.run(["diff", "--name-only", "--diff-filter=U"], path) do
-      {:ok, output} -> {:ok, String.split(output, "\n", trim: true)}
-      {:error, reason} -> {:error, {:conflict_list_failed, reason}}
     end
   end
 

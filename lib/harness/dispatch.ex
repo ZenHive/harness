@@ -598,21 +598,12 @@ defmodule Harness.Dispatch do
           {:ok, %{run_id: String.t(), rereviewed_from: String.t(), agent: atom() | nil}}
           | {:error, error()}
   def rereview(run_id) when is_binary(run_id) do
-    with {:ok, record} <- load_record(run_id),
+    with {:ok, record} <- ResultStore.fetch_run_record(run_id),
          {:ok, project} <- lookup_record_project(record),
          {:ok, item} <- Roadmap.ingest(selector(record.task_id), project: project, agent: record_agent(record)),
          {:ok, new_run_id, _pid} <-
            Run.Supervisor.start_run(item, project, record.adapter, rereview_opts(item, record, run_id)) do
       {:ok, %{run_id: new_run_id, rereviewed_from: run_id, agent: item.agent}}
-    end
-  end
-
-  @spec load_record(String.t()) :: {:ok, LogRecord.t()} | {:error, :not_found | term()}
-  defp load_record(run_id) do
-    case ResultStore.list_run_records(run_id: run_id) do
-      {:ok, [%LogRecord{} = record | _]} -> {:ok, record}
-      {:ok, []} -> {:error, :not_found}
-      {:error, _reason} = error -> error
     end
   end
 

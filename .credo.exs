@@ -36,7 +36,10 @@
       #
       # Load and configure plugins here:
       #
-      plugins: [],
+      # ExSlop: Credo plugin flagging AI-generated-code antipatterns (vibe_kit
+      # baseline). Not relaxing AliasUsage / NarratorDoc as the installer would —
+      # this repo runs them on real (not generated) code and wants the signal.
+      plugins: [{ExSlop, []}],
       #
       # If you create your own checks, you must specify the source files for
       # them here, so they can be loaded by Credo before running the analysis.

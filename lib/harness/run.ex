@@ -3200,23 +3200,7 @@ defmodule Harness.Run do
 
   @spec retry_substrate(keyword(), (-> term())) :: term()
   defp retry_substrate(opts, fun) when is_function(fun, 0) do
-    policy = RetryPolicy.new(opts)
-    do_retry_substrate(fun, policy, 1)
-  end
-
-  @spec do_retry_substrate((-> term()), RetryPolicy.t(), pos_integer()) :: term()
-  defp do_retry_substrate(fun, %RetryPolicy{} = policy, attempt) do
-    case fun.() do
-      {:error, _reason} = error when attempt > policy.max_retries ->
-        error
-
-      {:error, _reason} ->
-        Process.sleep(RetryPolicy.backoff_ms(policy, attempt))
-        do_retry_substrate(fun, policy, attempt + 1)
-
-      other ->
-        other
-    end
+    RetryPolicy.retry(fun, RetryPolicy.new(opts))
   end
 
   @spec driver_opts(data(), pid()) :: keyword()

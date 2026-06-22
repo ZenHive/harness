@@ -12,6 +12,7 @@ defmodule Harness.ResultStore.Memory do
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.CapabilityScore
   alias Harness.Run.LogRecord
+  alias Harness.Store.EtsScope
 
   @table __MODULE__
 
@@ -111,37 +112,13 @@ defmodule Harness.ResultStore.Memory do
 
   @doc false
   @spec reset(keyword()) :: :ok
-  def reset(opts) when is_list(opts) do
-    ensure_table()
-    :ets.delete(@table, scope(opts))
-    :ok
-  end
+  def reset(opts) when is_list(opts), do: EtsScope.reset(@table, opts)
 
   @spec update(keyword(), (map() -> map())) :: :ok
-  defp update(opts, fun) do
-    ensure_table()
-    scope = scope(opts)
-    :ets.insert(@table, {scope, fun.(read(opts))})
-    :ok
-  end
+  defp update(opts, fun), do: EtsScope.update(@table, opts, empty(), fun)
 
   @spec read(keyword()) :: map()
-  defp read(opts) do
-    ensure_table()
-
-    case :ets.lookup(@table, scope(opts)) do
-      [{_scope, state}] -> state
-      [] -> empty()
-    end
-  end
-
-  @spec ensure_table() :: :ok
-  defp ensure_table do
-    _ = :ets.new(@table, [:named_table, :public, :set, read_concurrency: true, write_concurrency: true])
-    :ok
-  rescue
-    ArgumentError -> :ok
-  end
+  defp read(opts), do: EtsScope.read(@table, opts, empty())
 
   @spec empty() :: map()
   defp empty do
@@ -151,9 +128,6 @@ defmodule Harness.ResultStore.Memory do
   @spec mark_record_landed({LogRecord.t(), non_neg_integer()}, String.t()) ::
           {LogRecord.t(), non_neg_integer()}
   defp mark_record_landed({%LogRecord{} = record, seq}, sha), do: {%{record | landed_sha: sha}, seq}
-
-  @spec scope(keyword()) :: term()
-  defp scope(opts), do: Keyword.get(opts, :scope, Keyword.get(opts, :root, :default))
 
   @spec maybe_strip_agent_output(LogRecord.t(), boolean()) :: LogRecord.t()
   defp maybe_strip_agent_output(%LogRecord{} = record, true), do: record

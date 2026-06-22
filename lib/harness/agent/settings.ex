@@ -146,12 +146,7 @@ defmodule Harness.Agent.Settings do
   # `set_*` preserves the other axis by writing this map back with one key
   # replaced — so a `set_enabled` toggle never materializes the reviewer seed.
   @spec record() :: map()
-  defp record do
-    case SettingsStore.fetch(@store_key) do
-      {:ok, map} when is_map(map) -> map
-      _missing_or_invalid -> %{}
-    end
-  end
+  defp record, do: SettingsStore.fetch_map(@store_key)
 
   @spec persist(t()) :: :ok | {:error, term()}
   defp persist(record), do: SettingsStore.put(@store_key, record)

@@ -30,6 +30,22 @@ defmodule Harness.SettingsStore do
   @spec put(key(), term()) :: :ok | {:error, term()}
   def put(key, value), do: dispatch_put(configured(), normalize_key(key), value)
 
+  @doc """
+  Fetches a persisted **map** setting, returning `%{}` when the key is missing or
+  the stored value is not a map.
+
+  Convenience for the settings records that persist a single map keyed by one
+  store key (agent enablement, cron toggles): the caller writes the map back with
+  one key replaced, so a missing row reads as the empty record.
+  """
+  @spec fetch_map(key()) :: map()
+  def fetch_map(key) do
+    case fetch(key) do
+      {:ok, map} when is_map(map) -> map
+      _missing_or_invalid -> %{}
+    end
+  end
+
   @doc "Returns the configured backend: Postgres when `:repo_enabled`, the ephemeral no-op store otherwise."
   @spec configured() :: store()
   def configured do

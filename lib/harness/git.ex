@@ -32,6 +32,21 @@ defmodule Harness.Git do
   end
 
   @doc """
+  Lists the paths with unresolved merge conflicts (`--diff-filter=U`) in `repo`.
+
+  Used by the lander and its conflict resolver to enumerate the files a rebase
+  left conflicted. Returns `{:error, {:conflict_list_failed, reason}}` on a failed
+  git invocation.
+  """
+  @spec conflicted_files(String.t()) :: {:ok, [String.t()]} | {:error, {:conflict_list_failed, term()}}
+  def conflicted_files(repo) do
+    case run(["diff", "--name-only", "--diff-filter=U"], repo) do
+      {:ok, output} -> {:ok, String.split(output, "\n", trim: true)}
+      {:error, reason} -> {:error, {:conflict_list_failed, reason}}
+    end
+  end
+
+  @doc """
   Whether a failed `git push` of `pushed_ref` to `target` was rejected because it
   was **not a fast-forward** (the remote moved ahead under us), as opposed to any
   other push failure (auth, network, hook).

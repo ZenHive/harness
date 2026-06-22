@@ -59,6 +59,33 @@ defmodule Harness.Run.RetryPolicy do
     delay |> max(0) |> min(max_delay)
   end
 
+  @doc """
+  Runs `fun`, re-invoking it on an `{:error, _}` result with capped backoff
+  (`backoff_ms/2`) until `policy.max_retries` is exhausted, then returns the last
+  error. Any non-error result short-circuits and is returned as-is.
+
+  Mechanical infrastructure retry only — `fun` is expected to fail for
+  infrastructure reasons (a worktree race, a port spawn). It never inspects agent
+  output or a settled verdict.
+  """
+  @spec retry((-> result), t()) :: result when result: term()
+  def retry(fun, %__MODULE__{} = policy) when is_function(fun, 0), do: do_retry(fun, policy, 1)
+
+  @spec do_retry((-> term()), t(), pos_integer()) :: term()
+  defp do_retry(fun, %__MODULE__{} = policy, attempt) do
+    case fun.() do
+      {:error, _reason} = error when attempt > policy.max_retries ->
+        error
+
+      {:error, _reason} ->
+        Process.sleep(backoff_ms(policy, attempt))
+        do_retry(fun, policy, attempt + 1)
+
+      other ->
+        other
+    end
+  end
+
   @spec fetch(keyword(), keyword(), atom(), term()) :: term()
   defp fetch(opts, defaults, key, fallback) do
     Keyword.get(opts, key, Keyword.get(defaults, key, fallback))

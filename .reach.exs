@@ -46,7 +46,13 @@
       "Harness.Roadmap.*",
       "Harness.Run",
       "Harness.Run.*",
-      "Harness.StatusView"
+      "Harness.StatusView",
+      # The dashboard's template-facing render surface: heex layouts/templates
+      # (lowered by Reach's HEEx plugin to Reach.Templates.* pseudo-modules)
+      # legitimately render through these. Not external driver API — internal
+      # render entry points called across the template boundary.
+      "Harness.Dashboard.Components",
+      "Harness.Dashboard.Tokens"
     ]
   ],
   smells: [

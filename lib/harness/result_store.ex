@@ -199,6 +199,21 @@ defmodule Harness.ResultStore do
     dispatch(store, :list_run_records, [filters])
   end
 
+  # Convenience over `list_run_records(run_id: run_id)` for the recovery/landing
+  # paths that need exactly one record: returns `{:error, :not_found}` on an empty
+  # result and propagates any backend error unchanged. Deliberately NOT
+  # api()-annotated (mirrors `delete_run/2`) — it's an internal lookup, not an
+  # orchestrator MCP/chat tool, so it stays `@doc false` off the agent surface.
+  @doc false
+  @spec fetch_run_record(String.t()) :: {:ok, LogRecord.t()} | {:error, :not_found | term()}
+  def fetch_run_record(run_id) when is_binary(run_id) do
+    case list_run_records(run_id: run_id) do
+      {:ok, [%LogRecord{} = record | _]} -> {:ok, record}
+      {:ok, []} -> {:error, :not_found}
+      {:error, _reason} = error -> error
+    end
+  end
+
   # Deliberately NOT api()-annotated: ResultStore is in the Manifest driver
   # surface, so an api() here would expose a destructive write to the orchestrator
   # MCP/chat tool list. delete_run is dashboard-operator cleanup (the run-history

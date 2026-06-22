@@ -215,17 +215,23 @@ defmodule Harness.Oban do
     is_pid(Oban.whereis(__MODULE__))
   end
 
+  # Public (internal) so the sibling `ProjectRegistry` queue-bootstrap path shares
+  # this single definition instead of duplicating the testing-config check.
+  @doc false
   @spec queues_enabled?() :: boolean()
-  defp queues_enabled? do
+  def queues_enabled? do
     :harness
     |> Application.get_env(Oban, [])
     |> Keyword.get(:testing, :disabled)
     |> Kernel.==(:disabled)
   end
 
+  # Public (internal) so the sibling `ProjectRegistry` queue-bootstrap path shares
+  # this single definition instead of duplicating the cap → limit derivation.
+  @doc false
   @spec queue_limit(Project.t()) :: pos_integer()
-  defp queue_limit(%Project{concurrency_cap: cap}) when is_integer(cap) and cap > 0, do: cap
-  defp queue_limit(%Project{}), do: @default_queue_limit
+  def queue_limit(%Project{concurrency_cap: cap}) when is_integer(cap) and cap > 0, do: cap
+  def queue_limit(%Project{}), do: @default_queue_limit
 
   @spec queued_job_count(Project.t()) :: non_neg_integer()
   defp queued_job_count(%Project{} = project) do

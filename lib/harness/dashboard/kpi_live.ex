@@ -82,6 +82,7 @@ defmodule Harness.Dashboard.KPILive do
   alias Harness.CapabilityScore.Assessment
   alias Harness.CapabilityScore.Entry
   alias Harness.Dashboard.RunFeed
+  alias Harness.Facet
   alias Harness.ResultStore
   alias Harness.Run.Status
   alias Phoenix.LiveView.Rendered
@@ -273,13 +274,7 @@ defmodule Harness.Dashboard.KPILive do
   end
 
   @spec normalize_facet(term()) :: %{String.t() => term()}
-  defp normalize_facet(facet) when is_map(facet) do
-    facet
-    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-    |> Map.new(fn {k, v} -> {to_string(k), v} end)
-  end
-
-  defp normalize_facet(_other), do: %{}
+  defp normalize_facet(facet), do: Facet.normalize(facet)
 
   @spec facet_label(map()) :: String.t()
   defp facet_label(facet) when map_size(facet) == 0, do: "Unfaceted"

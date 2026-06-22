@@ -9,6 +9,7 @@ defmodule Harness.Chat.Store.Memory do
   @behaviour Harness.Chat.Store
 
   alias Harness.Chat.Store
+  alias Harness.Store.EtsScope
 
   @table __MODULE__
   @max_persisted_messages 200
@@ -48,38 +49,11 @@ defmodule Harness.Chat.Store.Memory do
 
   @doc false
   @spec reset(keyword()) :: :ok
-  def reset(opts) when is_list(opts) do
-    ensure_table()
-    :ets.delete(@table, scope(opts))
-    :ok
-  end
+  def reset(opts) when is_list(opts), do: EtsScope.reset(@table, opts)
 
   @spec update(keyword(), (map() -> map())) :: :ok
-  defp update(opts, fun) do
-    ensure_table()
-    scope = scope(opts)
-    :ets.insert(@table, {scope, fun.(read(opts))})
-    :ok
-  end
+  defp update(opts, fun), do: EtsScope.update(@table, opts, %{}, fun)
 
   @spec read(keyword()) :: map()
-  defp read(opts) do
-    ensure_table()
-
-    case :ets.lookup(@table, scope(opts)) do
-      [{_scope, state}] -> state
-      [] -> %{}
-    end
-  end
-
-  @spec ensure_table() :: :ok
-  defp ensure_table do
-    _ = :ets.new(@table, [:named_table, :public, :set, read_concurrency: true, write_concurrency: true])
-    :ok
-  rescue
-    ArgumentError -> :ok
-  end
-
-  @spec scope(keyword()) :: term()
-  defp scope(opts), do: Keyword.get(opts, :scope, Keyword.get(opts, :root, :default))
+  defp read(opts), do: EtsScope.read(@table, opts, %{})
 end

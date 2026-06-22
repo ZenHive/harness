@@ -26,6 +26,7 @@ defmodule Harness.Dashboard.OpsFeed do
   mirrors `RunFeed` and `Harness.Dashboard.Transcript`.
   """
 
+  alias Harness.Dashboard.Feed
   alias Harness.Dashboard.OpsFeed.Op
 
   @pubsub Harness.PubSub
@@ -42,15 +43,11 @@ defmodule Harness.Dashboard.OpsFeed do
 
   @doc "Subscribes the calling process to the ops feed. No-op if PubSub is not running."
   @spec subscribe() :: :ok | {:error, term()}
-  def subscribe do
-    if Process.whereis(@pubsub), do: Phoenix.PubSub.subscribe(@pubsub, @topic), else: :ok
-  end
+  def subscribe, do: Feed.subscribe(@pubsub, @topic)
 
   @doc "Stops the calling process from receiving ops events."
   @spec unsubscribe() :: :ok
-  def unsubscribe do
-    if Process.whereis(@pubsub), do: Phoenix.PubSub.unsubscribe(@pubsub, @topic), else: :ok
-  end
+  def unsubscribe, do: Feed.unsubscribe(@pubsub, @topic)
 
   @doc """
   Broadcasts an `Op` event, stamping its `id` and `at`.

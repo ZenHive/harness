@@ -65,6 +65,66 @@ defmodule Harness.Run.RetryPolicyTest do
     end
   end
 
+  describe "retry/2" do
+    test "returns a non-error result without retrying" do
+      policy = RetryPolicy.new(max_retries: 3, base_delay_ms: 0, max_delay_ms: 0)
+      counter = :counters.new(1, [])
+
+      result =
+        RetryPolicy.retry(
+          fn ->
+            :counters.add(counter, 1, 1)
+            {:ok, :done}
+          end,
+          policy
+        )
+
+      assert result == {:ok, :done}
+      assert :counters.get(counter, 1) == 1
+    end
+
+    test "retries on error until max_retries is exhausted, then returns the last error" do
+      # max_retries: 2 ⇒ attempts 1,2,3 all error (the third is attempt > max_retries).
+      policy = RetryPolicy.new(max_retries: 2, base_delay_ms: 0, max_delay_ms: 0)
+      counter = :counters.new(1, [])
+
+      result =
+        RetryPolicy.retry(
+          fn ->
+            :counters.add(counter, 1, 1)
+            {:error, :boom}
+          end,
+          policy
+        )
+
+      assert result == {:error, :boom}
+      assert :counters.get(counter, 1) == 3
+    end
+
+    test "stops retrying as soon as fun succeeds" do
+      policy = RetryPolicy.new(max_retries: 5, base_delay_ms: 0, max_delay_ms: 0)
+      counter = :counters.new(1, [])
+
+      result =
+        RetryPolicy.retry(
+          fn ->
+            case :counters.get(counter, 1) do
+              n when n < 2 ->
+                :counters.add(counter, 1, 1)
+                {:error, :retry}
+
+              _ ->
+                {:ok, :recovered}
+            end
+          end,
+          policy
+        )
+
+      assert result == {:ok, :recovered}
+      assert :counters.get(counter, 1) == 2
+    end
+  end
+
   defp restore_env(nil), do: Application.delete_env(:harness, :retry_policy)
   defp restore_env(value), do: Application.put_env(:harness, :retry_policy, value)
 end

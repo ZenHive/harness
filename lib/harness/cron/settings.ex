@@ -221,12 +221,7 @@ defmodule Harness.Cron.Settings do
   # The current persisted record, or an empty map (ephemeral store / no row yet).
   # `set_*` preserves the other keys by writing this map back with one replaced.
   @spec record() :: map()
-  defp record do
-    case SettingsStore.fetch(@store_key) do
-      {:ok, map} when is_map(map) -> map
-      _missing_or_invalid -> %{}
-    end
-  end
+  defp record, do: SettingsStore.fetch_map(@store_key)
 
   @spec persist(t()) :: :ok | {:error, term()}
   defp persist(record), do: SettingsStore.put(@store_key, record)

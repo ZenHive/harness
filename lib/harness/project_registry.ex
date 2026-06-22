@@ -32,8 +32,6 @@ defmodule Harness.ProjectRegistry do
 
   require Logger
 
-  @default_queue_limit 1
-
   @type error ::
           {:duplicate, String.t()} | {:unknown_project, String.t()} | {:invalid_project, term()}
 
@@ -354,7 +352,7 @@ defmodule Harness.ProjectRegistry do
   defp sync_project_queue(%Project{} = previous, %Project{} = project) do
     :ok = ensure_project_queue(project)
 
-    if queue_limit(previous) == queue_limit(project) do
+    if Harness.Oban.queue_limit(previous) == Harness.Oban.queue_limit(project) do
       :ok
     else
       scale_project_queue(project)
@@ -363,10 +361,10 @@ defmodule Harness.ProjectRegistry do
 
   @spec scale_project_queue(Project.t()) :: :ok
   defp scale_project_queue(%Project{} = project) do
-    if queues_enabled?() and oban_running?() do
+    if Harness.Oban.queues_enabled?() and oban_running?() do
       case Oban.scale_queue(Harness.Oban,
              queue: Harness.Oban.queue_name(project),
-             limit: queue_limit(project),
+             limit: Harness.Oban.queue_limit(project),
              local_only: true
            ) do
         :ok ->
@@ -386,18 +384,6 @@ defmodule Harness.ProjectRegistry do
   defp oban_running? do
     is_pid(Oban.whereis(Harness.Oban))
   end
-
-  @spec queues_enabled?() :: boolean()
-  defp queues_enabled? do
-    :harness
-    |> Application.get_env(Oban, [])
-    |> Keyword.get(:testing, :disabled)
-    |> Kernel.==(:disabled)
-  end
-
-  @spec queue_limit(Project.t()) :: pos_integer()
-  defp queue_limit(%Project{concurrency_cap: cap}) when is_integer(cap) and cap > 0, do: cap
-  defp queue_limit(%Project{}), do: @default_queue_limit
 
   @spec fetch_required(map(), atom()) :: {:ok, term()} | {:error, {:invalid_project, term()}}
   defp fetch_required(entry, key) do
