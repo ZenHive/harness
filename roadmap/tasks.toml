@@ -9836,13 +9836,12 @@ shipped_in = "60318549aead65144c985381977f8161234bab09"
 id = "325"
 phase = 20
 bundle = "reviewer-pair"
-status = "blocked"
+status = "superseded"
 title = "Fix post-merge cold-check red for 1a2a52e"
 scores = { d = 3, b = 8, u = 5 }
 markers = ["bug"]
 acceptance_criteria = ["The clean-build/check passes from a cold checkout at landed SHA 1a2a52ec4dd2c702718cc9c1efab11723af6aa74."]
 out_of_scope = ["Reverting or unmerging the already-landed SHA"]
-blocked_reason = "post-merge cold check red for landed SHA 1a2a52ec4dd2c702718cc9c1efab11723af6aa74: mix precommit.full exited 1 in the deliberately cold audit worktree. Credo and Doctor passed; coverage passed at 86.29% >= 80.0%; ExUnit reported 1 failure out of 2012 under seed 26561 with captured output including `spawn: Could not cd to /var/folders/.../harness-base-.../harness-repo-.../run-1782013466787-9af77ce8`. Focused rerun `mix test.json --failed --max-failures 1` passed 1/1, so this is recorded as a flaky cold-check red."
 body = """
 The post-merge audit AI reported a red cold check for landed SHA 1a2a52ec4dd2c702718cc9c1efab11723af6aa74.
 
