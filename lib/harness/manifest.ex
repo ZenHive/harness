@@ -177,11 +177,12 @@ defmodule Harness.Manifest do
   @spec describe_param(atom(), map(), MapSet.t(String.t())) :: map()
   defp describe_param(key, params, required) do
     details = Map.get(params, key, %{})
+    str_key = Atom.to_string(key)
 
     %{
-      name: Atom.to_string(key),
+      name: str_key,
       kind: details[:kind],
-      required: MapSet.member?(required, Atom.to_string(key)),
+      required: MapSet.member?(required, str_key),
       default: Map.get(details, :default),
       description: Map.get(details, :description)
     }

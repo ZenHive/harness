@@ -44,7 +44,7 @@ defmodule Harness.Dashboard.RoadmapSummary do
           done: non_neg_integer(),
           total: non_neg_integer(),
           landed: %{optional(String.t()) => String.t()},
-          blocked: %{optional(String.t()) => true}
+          blocked: MapSet.t(String.t())
         }
 
   @typedoc "Per-project summaries keyed by project name."
@@ -95,7 +95,7 @@ defmodule Harness.Dashboard.RoadmapSummary do
   """
   @spec blocked?(%{optional(String.t()) => summary()}, String.t() | nil, String.t() | nil) :: boolean()
   def blocked?(summaries, project_name, task_id) when is_binary(project_name) and is_binary(task_id) do
-    summaries |> summary_for(project_name) |> Map.fetch!(:blocked) |> Map.has_key?(task_id)
+    summaries |> summary_for(project_name) |> Map.fetch!(:blocked) |> MapSet.member?(task_id)
   end
 
   def blocked?(_summaries, _project_name, _task_id), do: false
@@ -144,11 +144,11 @@ defmodule Harness.Dashboard.RoadmapSummary do
 
   @spec bump_blocked(summary(), map()) :: summary()
   defp bump_blocked(acc, %{"id" => id, "status" => "blocked"}) do
-    %{acc | blocked: Map.put(acc.blocked, to_string(id), true)}
+    %{acc | blocked: MapSet.put(acc.blocked, to_string(id))}
   end
 
   defp bump_blocked(acc, _task), do: acc
 
   @spec empty() :: summary()
-  defp empty, do: %{open: 0, done: 0, total: 0, landed: %{}, blocked: %{}}
+  defp empty, do: %{open: 0, done: 0, total: 0, landed: %{}, blocked: MapSet.new()}
 end

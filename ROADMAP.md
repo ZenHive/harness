@@ -13,7 +13,7 @@
 
 **Last shipped:** no recent shipments
 
-**Up next:** Task 174 — Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:3/B:5/U:4 → Eff:1.5] 🚀
+**Up next:** Task 330 — Widen over-tight mix.exs dep constraints + guard against regression [D:3/B:5/U:6 → Eff:1.83] 🚀
 <!-- FOCUS:END -->
 
 ---

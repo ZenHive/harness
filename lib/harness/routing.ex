@@ -288,12 +288,10 @@ defmodule Harness.Routing do
 
   @spec blocked_model_ids(String.t(), map()) :: [String.t()]
   defp blocked_model_ids(agent, blocks) do
-    blocks
-    |> Map.keys()
-    |> Enum.flat_map(fn
-      {^agent, "all"} -> []
-      {^agent, model} -> [model]
-      _other -> []
+    Enum.flat_map(blocks, fn
+      {{^agent, "all"}, _} -> []
+      {{^agent, model}, _} -> [model]
+      _ -> []
     end)
   end
 

@@ -134,10 +134,10 @@ defmodule Harness.StatusView do
     body =
       case Enum.reject(sections ++ [render_unavailable(unavailable)], &(&1 == "")) do
         [] -> "  (no runs in flight or lingering)\n"
-        lines -> Enum.join(lines, "\n\n") <> "\n"
+        lines -> IO.iodata_to_binary([Enum.intersperse(lines, "\n\n"), "\n"])
       end
 
-    "Harness fleet status\n" <> render_cron_status(cron_status) <> "\n\n" <> body
+    IO.iodata_to_binary(["Harness fleet status\n", render_cron_status(cron_status), "\n\n", body])
   end
 
   @doc "Classifies a run status into a human-facing bucket."

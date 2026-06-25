@@ -153,13 +153,13 @@ defmodule Harness.Dashboard.KPILive do
   # run counts/tokens and run-weighted rates — never a new verdict or score.
   @spec fleet_summary([map()]) :: fleet_summary()
   defp fleet_summary(rows) do
-    attributable = Enum.sum(Enum.map(rows, &(&1.run_count - &1.reviewer_flaked)))
+    attributable = Enum.sum_by(rows, &(&1.run_count - &1.reviewer_flaked))
 
     %{
-      total_runs: Enum.sum(Enum.map(rows, & &1.run_count)),
+      total_runs: Enum.sum_by(rows, & &1.run_count),
       success_rate: weighted_rate(rows, :success_rate, attributable),
       first_pass_rate: weighted_rate(rows, :first_attempt_pass_rate, attributable),
-      total_tokens: round(Enum.sum(Enum.map(rows, &(&1.tokens.total * &1.run_count)))),
+      total_tokens: round(Enum.sum_by(rows, &(&1.tokens.total * &1.run_count))),
       agents: length(rows)
     }
   end
@@ -171,7 +171,7 @@ defmodule Harness.Dashboard.KPILive do
   defp weighted_rate(_rows, _key, 0), do: 0.0
 
   defp weighted_rate(rows, key, attributable) do
-    Enum.sum(Enum.map(rows, &(Map.fetch!(&1, key) * (&1.run_count - &1.reviewer_flaked)))) /
+    Enum.sum_by(rows, &(Map.fetch!(&1, key) * (&1.run_count - &1.reviewer_flaked))) /
       attributable
   end
 
@@ -295,7 +295,7 @@ defmodule Harness.Dashboard.KPILive do
   # routing verdict (the scout writes that); nil when the diff was never rated.
   @spec quality(map()) :: float() | nil
   defp quality(row) do
-    values = row |> row_ratings() |> Map.values() |> Enum.filter(&is_number/1)
+    values = for {_k, v} <- row_ratings(row), is_number(v), do: v
 
     case values do
       [] -> nil

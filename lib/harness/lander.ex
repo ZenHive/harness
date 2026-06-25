@@ -722,10 +722,7 @@ defmodule Harness.Lander do
 
   @spec branch_exists?(String.t(), String.t()) :: boolean()
   defp branch_exists?(repo, branch) do
-    case Git.run(["show-ref", "--verify", "--quiet", "refs/heads/" <> branch], repo) do
-      {:ok, _output} -> true
-      {:error, _reason} -> false
-    end
+    match?({:ok, _}, Git.run(["show-ref", "--verify", "--quiet", "refs/heads/" <> branch], repo))
   end
 
   @spec run_worktree_path(request()) :: String.t()

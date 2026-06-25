@@ -72,11 +72,24 @@ defmodule Harness.Dispatch.WriteSetPlan do
     |> Enum.map(&collision_summary(&1, pairs, tasks))
   end
 
-  @spec collision_pairs([task()]) :: [map()]
-  defp collision_pairs([]), do: []
+  # Accumulator-based rewrite of the original recursive ++ form. The prior version
+  # prepended each head's pairs and then appended the recursive result at every
+  # level, making the total list-building work O(n²) in the number of tasks.
+  #
+  # The new form prepends pairs in reverse order into `acc` at each level, then
+  # reverses once at the base case — identical output order, O(n) total list work.
+  # Output order is preserved: pairs are enumerated in the same left-to-right,
+  # outer-first order as before (verified: collision_components sorts its
+  # components and component_shared_files uses MapSet/uniq, so pair order is
+  # immaterial to callers, but we preserve it for referential transparency).
+  @spec collision_pairs([task()], [map()]) :: [map()]
+  defp collision_pairs(tasks, acc \\ [])
+  defp collision_pairs([], acc), do: Enum.reverse(acc)
 
-  defp collision_pairs([task | rest]) do
-    Enum.flat_map(rest, &collision_pair(task, &1)) ++ collision_pairs(rest)
+  defp collision_pairs([task | rest], acc) do
+    pairs = Enum.flat_map(rest, &collision_pair(task, &1))
+    # Enum.reverse(pairs, acc) = Enum.reverse(pairs) ++ acc — no intermediate ++ traversal.
+    collision_pairs(rest, Enum.reverse(pairs, acc))
   end
 
   @spec collision_pair(task(), task()) :: [map()]

@@ -9917,3 +9917,159 @@ assignee = "human"
 body = "Once tasks 327 (rule-content seam inversion) and 328 (Driver/Reflex cycle break) land, the AgentAdapter subsystem is dependency-clean and COULD be lifted into a standalone hex package (harness_agent_adapter or similar): a uniform-OTP-Ports driver for the 6 headless coding-agent CLIs (claude/codex/cursor/grok/antigravity/pi), with caller-injected rules and a caller-injected watchdog. This is a DECISION, not a build — gate it on a concrete second consumer (a non-harness project that wants to drive these CLIs), per the repo's dependency-gating rule (don't extract on speculation; an extraction is migration-heavy to reverse). Produce a short go/no-go: name the would-be package boundary (which modules move — agent_adapter.ex + agent_adapter/ + the migrated watchdog; which stay — AgentRules, Run.*, Worktree), the repo/CI/mix.exs setup cost, the back-dependency harness would take ({:harness_agent_adapter, ...}), and the trigger that unblocks the move (a named 2nd consumer). Default verdict if no 2nd consumer exists: keep in-repo, decoupled — record that and close."
 created_at = "2026-06-22"
 scored_at = "2026-06-22"
+
+[[task]]
+id = "330"
+phase = 22
+bundle = "operator-surface"
+status = "pending"
+title = "Widen over-tight mix.exs dep constraints + guard against regression"
+scores = { d = 3, b = 5, u = 6 }
+acceptance_criteria = ["Every three-part `~> x.y.z` dep constraint in mix.exs without a justifying inline comment is widened to two-part `~> x.y`", "mix deps.get and mix compile succeed after widening; mix.lock remains the source of exact resolved versions", "A guard (credo check or mix ci assertion) fails when a new over-tight three-part `~>` constraint is added without a justifying inline comment, and passes on the widened mix.exs", "A test covers the guard flagging an over-tight pin and accepting a justified one"]
+out_of_scope = ["Actually upgrading deps to newer versions (the dep-bump dispatch task owns that)", "Widening constraints in registered target projects — this is harness's own mix.exs only"]
+touches = ["mix.exs", ".credo.exs"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Harness's own mix.exs carries some three-part `~> x.y.z` dependency constraints (e.g. `{:plug, "~> 1.19.2"}`), which resolve to `>= x.y.z and < x.(y+1).0` and therefore exclude already-released compatible minors (1.20.1). This is a self-inflicted "can't update" block: the constraint, not hex, is what stops the bump, and a lazy agent reports the package as blocked instead of widening the pin.
+
+Sweep every over-tight three-part `~>` constraint in mix.exs to the idiomatic two-part `~> x.y` (resolving to `< (x+1).0.0`), letting mix.lock remain the real pin and `mix deps.update` + the reviewer suite control the exact resolved version. Then add a guard so over-tight pins cannot regress silently — a credo check or a `mix ci` assertion that flags any new three-part `~>` constraint UNLESS it carries an inline comment justifying the tight pin (the one narrow legitimate case: a dep with a real minor-bump breakage history). Do not widen a constraint that already carries such a justification comment.
+"""
+created_at = "2026-06-24"
+scored_at = "2026-06-24"
+
+[[task]]
+id = "331"
+phase = 22
+bundle = "operator-surface"
+status = "pending"
+title = "Dependency-freshness fact source (per-language provider; hex.outdated first) + dashboard panel"
+scores = { d = 4, b = 6, u = 7 }
+acceptance_criteria = ["An Oban cron job runs a per-language freshness provider (keyed on project.language) and records name / current / latest / constraint-allowed rows as durable facts (Postgres when repo_enabled, in-memory otherwise)", "The Elixir provider (mix hex.outdated) is implemented as provider #1; the store + dashboard schema are language-neutral so a Rust/cargo provider (Task 336) slots in without refactor or a parallel scanner", "A dashboard panel surfaces per-project outdated deps: the rows, an outdated count, and a last-checked timestamp", "Harness only counts and displays the raw provider facts — it never decides which to upgrade, never auto-updates, never gates a run on freshness", "Cold worktree / missing deps is tolerated (the job provisions or handles a project that needs deps fetched first)", "Tests cover the provider + fact-recording path and the dashboard render; an integration test runs the Elixir provider against a project and asserts rows are recorded"]
+out_of_scope = ["Performing the actual upgrade or opening a bump task (the dep-bump dispatch task)", "Over-tight-pin detection or widening (the constraint-widening task owns that)"]
+touches = ["lib/harness/dashboard", "lib/harness/cron", "priv/repo/migrations"]
+assignee = "cursor"
+model = "composer-2.5"
+body = """
+Add a dependency-freshness fact source to harness, surfaced in the dashboard, so the operator AND dispatched agents have ground truth about which registered projects have outdated deps — countering the recurring agent hallucination that a hex dep cannot be updated.
+
+On the existing Oban cron schedule (same pattern as the Task 51 roadmap poller / the audit poller), run a per-language freshness PROVIDER keyed on `project.language` and record the raw rows as facts: dependency name, current version, latest version, and whether the bump is allowed by the project current constraint. The Elixir provider (`mix hex.outdated`, reading the mix.exs constraint / update-possible status) is provider #1; design the store + dashboard schema language-neutral so a Rust provider (Task 336, `cargo outdated`) slots in without a refactor or a parallel scanner. Persist via the Postgres-backed store pattern (Ecto schema + migration under priv/repo/migrations), falling back to in-memory when repo_enabled is false. Render the facts in a dashboard panel per project: the rows, an outdated count, and a last-checked timestamp.
+
+This is pure mechanical fact-capture and display — count facts in code. No test running, no judgment, no auto-update, never a gate.
+"""
+created_at = "2026-06-24"
+scored_at = "2026-06-24"
+
+[[task]]
+id = "332"
+phase = 22
+bundle = "operator-surface"
+status = "pending"
+title = "Operator 'update deps' action: dispatch a dep-bump through the agent-gate"
+scores = { d = 5, b = 7, u = 7 }
+depends_on = [331]
+acceptance_criteria = ["A dashboard button and an MCP tool dispatch a dep-bump task per project through the agent-gate (not a mechanical deps.update in harness)", "The dispatched prompt embeds the dep-freshness facts as ground truth naming what is outdated and constraint-allowed", "The bump prompt is built per project.language (Elixir + Rust prompt providers) over one shared dispatch path, not a per-language dispatch fork", "Minor/patch bumps are batched into one task; each major bump is its own task", "The reviewer check_command for bump tasks runs the project full suite incl. integration (language-appropriate)", "For Elixir projects, the prompt instructs widening an over-tight pin to idiomatic `~> x.y` instead of declaring a dep blocked", "Harness performs no dep update or test run itself — verification is the reviewer's; tests cover the dispatch + prompt-injection path"]
+out_of_scope = ["Recording freshness facts (Task 331 owns that)", "Unattended or automatic dep upgrades — this action is operator-triggered"]
+touches = ["lib/harness/dispatch.ex", "lib/harness/chat/tools.ex", "lib/harness/dashboard", "lib/harness/run.ex"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Add an operator-triggered "update deps" action that dispatches a dependency-bump task through the normal agent-gate (implementer -> reviewer -> land), rather than mechanically running `mix deps.update` in harness (which would reintroduce the deleted mechanical verification path). Surface it as a dashboard button (per project) and an MCP tool.
+
+The dispatch plumbing is language-agnostic; the bump prompt is built per `project.language` (a prompt provider, not a new dispatch path) — the Elixir prompt covers mix.exs / `mix deps.update` / `mix test.json --include integration`, a Rust prompt covers Cargo.toml / `cargo update` / `cargo test`. The prompt is fed the dep-freshness facts (Task 331) as ground truth, so the implementer cannot claim a dep cannot be updated — the facts name exactly what is outdated and constraint-allowed. Batch all constraint-satisfiable minor/patch bumps into one task; give each major-version bump its own task. The reviewer check_command for these runs the project full suite incl. integration (language-appropriate) so the full suite — not just the default offline subset — verifies the upgrade.
+
+For Elixir projects specifically, when a dep is excluded only by an over-tight library-style pin, the prompt instructs the implementer to widen the constraint to idiomatic `~> x.y` (letting mix.lock + the reviewer suite control the resolved version) rather than declaring it blocked (Cargo is loose-by-default, so this rarely applies to Rust projects). The bump and verification ride the standard implement->review->land loop; harness runs no build or test itself.
+"""
+created_at = "2026-06-24"
+scored_at = "2026-06-24"
+
+[[task]]
+id = "333"
+phase = 22
+bundle = "operator-surface"
+status = "pending"
+title = "Scheduled full-suite (incl. integration) health check per project -> dashboard witness"
+scores = { d = 5, b = 6, u = 6 }
+acceptance_criteria = ["A daily Oban cron runs each registered project full suite incl. integration in a fresh detached worktree off origin/<target> HEAD", "The raw result is recorded as a witness fact: pass/fail, failing-test list, exit code, timestamp; surfaced per-project in the dashboard", "Harness never gates, blocks, routes, or down-weights any run on the health-check result, and never classifies red as broken — it only counts and displays the raw fact", "A red surfaces the failing tests + time raw; real-vs-flaky judgment is left to the operator or a dispatched triage agent (no harness classifier)", "Cold worktree bootstrap (deps.get / compile / test-db provisioning) is handled; tests cover the fact-recording path; an integration test runs the check against a project and asserts a witness fact is recorded"]
+out_of_scope = ["Auto-reacting to a red health check (revert, re-dispatch, gate) — strictly witness and display", "Replacing the reviewer in-run checks — this is independent monitoring, not a run-lifecycle gate"]
+touches = ["lib/harness/dashboard", "lib/harness/cron", "lib/harness/worktree.ex"]
+assignee = "cursor"
+model = "composer-2.5"
+body = """
+Add a scheduled full-suite health check per registered project, surfaced in the dashboard, so the operator can see when a project tests fail — including the normally-excluded integration tests that the default run skips.
+
+On a daily Oban cron, run the project-configured full-suite command WITH integration tests (e.g. `mix test.json --include integration` for Elixir, `cargo test` for Rust — language-derived, never a hardcoded mix invocation) in a fresh detached worktree off `origin/<target>` HEAD (cold, mirroring the post-merge audit worktree), and record the raw result as a witness fact: pass/fail, the failing-test list, exit code, and timestamp. Surface it per-project in the dashboard.
+
+CRITICAL — this is a witness / sakshi sink only: harness COUNTS the raw fact (exit code, which tests failed) and displays it; it never gates, blocks, routes, or down-weights a run on the result, and it never classifies the failure. Because integration tests are the flakiest surface, a red must surface raw (which tests, when) rather than as a harness verdict of broken — the real-vs-flaky judgment is deferred to the operator or a separately-dispatched triage agent, never a harness cond or classifier.
+"""
+created_at = "2026-06-24"
+scored_at = "2026-06-24"
+
+[[task]]
+id = "334"
+phase = 22
+bundle = "operator-surface"
+status = "pending"
+title = "Tooling-baseline conformance fact source (framework + Elixir provider) + dashboard"
+scores = { d = 4, b = 6, u = 7 }
+depends_on = [331]
+acceptance_criteria = ["An Oban cron job scans each registered `language: :elixir` project committed mix.exs + config files against the harness-shipped baseline manifest and records per-project drift as facts (extending the Task 331 store/panel, not a parallel one)", "The baseline covers required deps (credo+ex_slop, dialyxir, ex_dna, reach, sobelow, doctor, ex_unit_json, dialyzer_json, styler), the ci/precommit aliases, and .credo.exs/.reach.exs/.formatter.exs presence", "Non-Elixir projects are skipped entirely — no Elixir baseline applied to them", "A per-project override can opt a tool out with a recorded reason; the override surfaces as a fact, not a silent skip", "Non-committed surface (hooks, tidewave, local settings) is marked advisory / out of the enforceable set — not reported as enforced", "Harness never mutates a project, never auto-installs tooling, and never gates dispatch on conformance — it only counts and displays drift", "A dashboard panel surfaces per-project conformance: missing items, overrides, last-checked time; tests cover the scan + render and an integration test asserts drift facts are recorded against a project", "The conformance check is structured as a per-language baseline provider keyed on project.language (Elixir provider only now; Rust deferred), with a language-neutral framework + dashboard schema"]
+out_of_scope = ["Performing the fix / installing missing tooling (Task 335 owns that)", "Dep version freshness (Task 331 owns that — this checks presence of the baseline, not version currency)", "Enforcing operator-machine config (PostToolUse hooks, Tidewave, local settings.json)"]
+touches = ["lib/harness/dashboard", "lib/harness/cron", "lib/harness/project.ex", "priv/repo/migrations"]
+assignee = "cursor"
+model = "composer-2.5"
+body = """
+Add a tooling-baseline conformance fact source for registered Elixir projects, surfaced in the dashboard, so the operator can see which projects drift from the standard toolchain — strengthening the review gate (a project missing credo/dialyzer/ex_dna has a weaker check_command, so dispatched work there is less verified).
+
+Scope to projects with `language == :elixir` only — do not impose Elixir tooling on Rust or other-language projects. On the existing Oban cron, scan each Elixir project COMMITTED surface (mix.exs + config files) against a harness-shipped baseline manifest derived from the canonical bootstrap (vibe_kit + the elixir-setup committed extras): required deps (credo + ex_slop, dialyxir, ex_dna, reach, sobelow, doctor, ex_unit_json, dialyzer_json, styler), the `ci` / `precommit` mix aliases, and presence of `.credo.exs` / `.reach.exs` / `.formatter.exs`. Record the per-project drift as facts. Structure the conformance check as a per-language baseline PROVIDER keyed on `project.language` (mirroring Task 331 freshness provider): the Elixir provider defines this vibe_kit/elixir-setup baseline and is the only provider for now — a Rust baseline is deliberately deferred (no canonical spec yet), but keep the framework + dashboard language-neutral so one can be added without refactor. EXTEND Task 331 dependency panel/store rather than building a parallel project scanner or a second dashboard panel.
+
+Support a per-project override so a project can opt a tool out with a reason (the override is itself a recorded fact, not a silent skip). Only the committed surface is enforceable: PostToolUse hooks, Tidewave runtime, and local settings.json are operator-machine config harness cannot check — mark those advisory / out of the conformance set, do not claim to enforce them.
+
+Count-and-display only — harness records and shows the raw drift facts; it never mutates a project mix.exs, never auto-installs tooling, and never gates dispatching work to a non-conformant project.
+"""
+created_at = "2026-06-25"
+scored_at = "2026-06-25"
+
+[[task]]
+id = "335"
+phase = 22
+bundle = "operator-surface"
+status = "pending"
+title = "Dispatch 'bring project to tooling baseline' through the agent-gate"
+scores = { d = 5, b = 6, u = 6 }
+depends_on = [332, 334]
+acceptance_criteria = ["A dashboard button and an MCP tool dispatch a tooling-baseline task per project through the agent-gate (not a mechanical mix.exs edit in harness)", "The dispatched prompt embeds the Task 334 conformance-drift facts as ground truth naming the missing deps/aliases/config", "The prompt instructs preferring the vibe_kit installer then layering elixir-setup extras, and wiring the ci/precommit aliases + config files", "The reviewer gates that the project compiles and the newly-added gate runs green — verification is the reviewer's, harness installs/builds nothing itself", "Reuses Task 332 dispatch plumbing rather than a parallel dispatch path; tests cover the dispatch + prompt-injection path", "Inherits Task 332 language-agnostic dispatch path; the baseline prompt is built per project.language (Elixir provider only for now)"]
+out_of_scope = ["Recording conformance facts (Task 334 owns that)", "Dep version bumps (Task 332 owns that)", "Unattended / automatic tooling installs — this action is operator-triggered"]
+touches = ["lib/harness/dispatch.ex", "lib/harness/chat/tools.ex", "lib/harness/dashboard"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Add an operator-triggered action that dispatches a "bring this project to the tooling baseline" task through the normal agent-gate (implementer -> reviewer -> land), rather than harness mechanically editing the project mix.exs. Surface it as a dashboard button (per project) and an MCP tool. Reuse Task 332 dispatch plumbing — this is the same shape (dispatch an agent to edit mix.exs + verify), differing only in deliverable (add missing tooling vs bump versions). Like Task 332, the dispatch path is language-agnostic and the prompt is built per `project.language`; the Elixir provider builds the vibe_kit/elixir-setup prompt (the only baseline provider for now).
+
+Feed the dispatched task prompt the conformance-drift facts (from Task 334) as ground truth naming exactly what is missing (deps, aliases, config files). Instruct the implementer to add the missing baseline tooling — preferring the vibe_kit Igniter installer where applicable, then layering the elixir-setup extras — and to bring the `ci` / `precommit` aliases and `.credo.exs` / `.reach.exs` / `.formatter.exs` to the baseline. The reviewer gates that the project still compiles and the newly-wired gate runs green. The bump rides the standard implement->review->land loop; harness runs no build or install itself.
+"""
+created_at = "2026-06-25"
+scored_at = "2026-06-25"
+
+[[task]]
+id = "336"
+phase = 22
+bundle = "operator-surface"
+status = "pending"
+title = "Rust dependency-freshness provider (cargo outdated) for the freshness fact source"
+scores = { d = 4, b = 5, u = 6 }
+depends_on = [331]
+acceptance_criteria = ["A Rust freshness provider produces the same fact rows (name / current / latest / constraint-allowed) as the Elixir provider, keyed on project.language == :rust, on the existing Oban cron", "It extends the Task 331 store + dashboard panel + provider seam — no parallel scanner, no second panel", "The cargo freshness mechanism is confirmed to work headlessly in a cold worktree (cargo outdated install, or a documented fallback) — not assumed", "Non-Rust projects are unaffected; harness only counts and displays the raw facts, never auto-updates or gates", "Tests cover the Rust provider fact-recording; an integration test runs it against a Rust fixture project and asserts rows are recorded"]
+out_of_scope = ["Rust tooling-baseline conformance (deferred — no canonical Rust baseline spec)", "Performing the actual crate upgrade (the dep-bump dispatch task, language-aware per Task 332)"]
+touches = ["lib/harness/dashboard", "lib/harness/cron"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Add a Rust dependency-freshness provider to the per-language freshness fact source (Task 331 seam), so the operator sees out-of-date crates for registered `language == :rust` projects in the same dashboard panel as Elixir projects.
+
+Implement a Rust provider that produces the same fact rows as the Elixir provider — dependency name, current version, latest version, and whether the bump is allowed by the project current Cargo.toml constraint — by running a cargo freshness check per registered Rust project on the existing Oban cron. EXTEND Task 331 store + dashboard panel + provider seam; do not build a parallel scanner or a second panel.
+
+Known sharp edge (confirm headlessly, do not hardcode the assumption): Rust has no built-in hex.outdated equivalent. `cargo outdated` is a third-party subcommand (the cargo-outdated crate) that may not be installed in a fresh worktree — the provider may need to `cargo install cargo-outdated` first, or fall back to a `cargo update --dry-run` / Cargo.lock-vs-registry diff. The implementer confirms the mechanism that actually works in a cold worktree and documents it.
+"""
+created_at = "2026-06-25"
+scored_at = "2026-06-25"

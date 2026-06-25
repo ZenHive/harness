@@ -179,10 +179,10 @@ defmodule Harness.Chat.Tools do
   @spec finalize_apply_args([term()], entry()) :: [term()]
   defp finalize_apply_args(args, %{params: params, param_keys: keys}) do
     trailing_omit_count =
-      args
-      |> Enum.reverse()
-      |> Enum.take_while(&(&1 == :__omit__))
-      |> length()
+      Enum.reduce_while(Enum.reverse(args), 0, fn
+        :__omit__, n -> {:cont, n + 1}
+        _, n -> {:halt, n}
+      end)
 
     keep_count = length(args) - trailing_omit_count
 

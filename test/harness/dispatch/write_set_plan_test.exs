@@ -33,6 +33,33 @@ defmodule Harness.Dispatch.WriteSetPlanTest do
     end
   end
 
+  describe "collision_pairs output order (accumulator refactor regression)" do
+    # The recursive ++ form was replaced with an explicit accumulator +
+    # Enum.reverse/2. Collision component discovery (union-find) and shared-file
+    # deduplication are order-independent (MapSet ops + Enum.uniq), so the pair
+    # list order does not affect observable plan/1 output. This test asserts that
+    # plan/1 is stable across a 4-task graph where every pair collides, confirming
+    # the accumulator rewrite produces identical collision groupings to the prior form.
+    test "collision summary is identical for a fully-connected 4-task collision graph" do
+      tasks = [
+        task("a", files_to_modify: ["lib/x.ex"]),
+        task("b", touches: ["lib/x.ex"]),
+        task("c", files_to_modify: ["lib/x.ex"]),
+        task("d", touches: ["lib/x.ex"])
+      ]
+
+      %WriteSetPlan{waves: waves, collisions: collisions} = WriteSetPlan.plan(tasks)
+
+      # All four tasks collide on the same file — they serialize into 4 waves.
+      assert length(waves) == 4
+      assert Enum.map(waves, fn [t] -> t["id"] end) == ["a", "b", "c", "d"]
+
+      # One merged collision component covering all four task ids in input order.
+      assert [%{task_ids: task_ids, shared_files: ["lib/x.ex"]}] = collisions
+      assert task_ids == ["a", "b", "c", "d"]
+    end
+  end
+
   defp task(id, fields) do
     fields
     |> Map.new(fn {key, value} -> {to_string(key), value} end)

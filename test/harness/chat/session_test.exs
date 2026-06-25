@@ -22,6 +22,61 @@ defmodule Harness.Chat.SessionTest do
   end
 
   describe "tool-result happy path" do
+    # Regression guard for the dispatch_tools accumulator refactor (Fix 3):
+    # when a backend response contains multiple tool_use blocks, the tool_result
+    # messages must reach the next API call in the SAME ORDER as the tool uses —
+    # not reversed. The second backend call receives the full message history and
+    # we assert the two tool_result entries appear in tool-use declaration order.
+    test "multiple tool uses in one response are appended in declaration order" do
+      parent = self()
+
+      {:ok, agent} =
+        Agent.start_link(fn ->
+          [
+            fn _req, _cb, _opts ->
+              {:ok,
+               %{
+                 content: [
+                   %{type: "tool_use", id: "t1", name: "project_registry-list", input: %{}},
+                   %{type: "tool_use", id: "t2", name: "describe-tools", input: %{}}
+                 ],
+                 stop_reason: "tool_use"
+               }}
+            end,
+            fn req, _cb, _opts ->
+              send(parent, {:second_call_messages, req.messages})
+
+              {:ok,
+               %{
+                 content: [%{type: "text", text: "done"}],
+                 stop_reason: "end_turn"
+               }}
+            end
+          ]
+        end)
+
+      {:ok, session_id, _pid} =
+        Supervisor.start_session(
+          backend: FunBackend,
+          backend_opts: [fun: scripted_fun(agent)]
+        )
+
+      assert {:ok, _} = Session.user_message(session_id, "two tools")
+
+      assert_received {:second_call_messages, messages}
+
+      # Expected shape: [user, assistant(2 tools), tool_result(t1), tool_result(t2)]
+      assert length(messages) == 4
+      assert %{role: :user, content: "two tools"} = Enum.at(messages, 0)
+      assert %{role: :assistant} = Enum.at(messages, 1)
+
+      assert %{role: :user, content: [%{type: "tool_result", tool_use_id: "t1"}]} =
+               Enum.at(messages, 2)
+
+      assert %{role: :user, content: [%{type: "tool_result", tool_use_id: "t2"}]} =
+               Enum.at(messages, 3)
+    end
+
     test "user message → tool call → result → agent final response" do
       {:ok, agent} =
         Agent.start_link(fn ->

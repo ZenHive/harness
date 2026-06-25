@@ -171,7 +171,7 @@ defmodule Harness.Run.Review do
   @spec failed_check?(term()) :: boolean()
   defp failed_check?(%{"passed" => false}), do: true
   defp failed_check?(%{passed: false}), do: true
-  defp failed_check?(map) when is_map(map), do: Enum.any?(Map.values(map), &failed_check?/1)
+  defp failed_check?(map) when is_map(map), do: Enum.any?(map, fn {_k, v} -> failed_check?(v) end)
   defp failed_check?(list) when is_list(list), do: Enum.any?(list, &failed_check?/1)
   defp failed_check?(_other), do: false
 end

@@ -225,8 +225,17 @@ defmodule Harness.Chat.Session do
 
   @spec dispatch_tools(map(), [map()]) :: {:ok, map()} | {:error, terminal(), map()}
   defp dispatch_tools(state, tool_uses) do
+    # Accumulate new tool-result messages in a separate `new_msgs` list (prepend,
+    # O(1) per iteration), then apply a single Enum.reverse + ++ on the success
+    # path. The prior form used `acc.messages ++ [msg]` inside the reduce, which
+    # re-traversed the growing list every iteration — O(n²) over a long session.
+    #
+    # Error paths return `acc` without the pending new_msgs — a halt on tool N
+    # doesn't commit the partial tool-result messages for tools 1..N-1. This is
+    # acceptable: an aborted dispatch terminates the turn; the partial results have
+    # no meaningful consumer.
     tool_uses
-    |> Enum.reduce_while({:ok, state}, fn tool_use, {:ok, acc} ->
+    |> Enum.reduce_while({:ok, state, []}, fn tool_use, {:ok, acc, new_msgs} ->
       id = Map.fetch!(tool_use, :id)
       name = Map.fetch!(tool_use, :name)
       input = Map.get(tool_use, :input, %{})
@@ -239,14 +248,11 @@ defmodule Harness.Chat.Session do
         Stream.broadcast(acc.session_id, %{type: "tool_result", id: id, name: name, content: encoded})
 
         tool_result = %{type: "tool_result", tool_use_id: id, content: encoded}
+        msg = %{role: :user, content: [tool_result]}
 
-        updated = %{
-          acc
-          | tool_call_history: MapSet.put(acc.tool_call_history, fingerprint),
-            messages: acc.messages ++ [%{role: :user, content: [tool_result]}]
-        }
+        updated = %{acc | tool_call_history: MapSet.put(acc.tool_call_history, fingerprint)}
 
-        {:cont, {:ok, updated}}
+        {:cont, {:ok, updated, [msg | new_msgs]}}
       else
         {:error, {:unknown_tool, tool_name}} ->
           {:halt, abort(acc, :unknown_tool, "Unknown tool #{tool_name}", %{tool: tool_name})}
@@ -265,8 +271,11 @@ defmodule Harness.Chat.Session do
       end
     end)
     |> case do
-      {:ok, state} -> {:ok, state}
-      {:error, terminal, state} -> {:error, terminal, state}
+      {:ok, state, new_msgs} ->
+        {:ok, %{state | messages: state.messages ++ Enum.reverse(new_msgs)}}
+
+      {:error, terminal, state} ->
+        {:error, terminal, state}
     end
   end
 

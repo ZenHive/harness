@@ -350,13 +350,15 @@ defmodule Harness.AgentKPI do
       |> Enum.filter(&recovery_attempted?/1)
       |> Enum.map(&recovery_entry/1)
 
+    n = length(entries)
+
     %{
       run_count: length(records),
-      attempted_runs: length(entries),
-      total_attempts: Enum.sum(Enum.map(entries, & &1.attempts)),
+      attempted_runs: n,
+      total_attempts: Enum.sum_by(entries, & &1.attempts),
       repaired_runs: Enum.count(entries, &(&1.outcome == :repaired)),
       dead_runs: Enum.count(entries, &(&1.outcome == :dead)),
-      masked_failure_rate: rate(Enum.count(entries, &(&1.outcome == :repaired)), length(entries)),
+      masked_failure_rate: rate(Enum.count(entries, &(&1.outcome == :repaired)), n),
       tokens: recovery_token_totals(entries),
       per_run: entries
     }
@@ -516,9 +518,9 @@ defmodule Harness.AgentKPI do
   @spec recovery_token_totals([recovery_entry()]) :: recovery_tokens()
   defp recovery_token_totals(entries) do
     %{
-      input: entries |> Enum.map(& &1.tokens.input) |> Enum.sum(),
-      output: entries |> Enum.map(& &1.tokens.output) |> Enum.sum(),
-      total: entries |> Enum.map(& &1.tokens.total) |> Enum.sum()
+      input: Enum.sum_by(entries, & &1.tokens.input),
+      output: Enum.sum_by(entries, & &1.tokens.output),
+      total: Enum.sum_by(entries, & &1.tokens.total)
     }
   end
 

@@ -80,8 +80,15 @@ defmodule Harness.ModelAvailability do
 
   # Internal query (consumed by Dispatch/Run): active block expiry, or nil.
   @doc false
-  @spec blocked_until(atom(), String.t() | :all) :: DateTime.t() | nil
-  def blocked_until(agent, model) when is_atom(agent) and (is_binary(model) or model == :all) do
+  @spec blocked_until(atom(), :all) :: DateTime.t() | nil
+  def blocked_until(agent, :all) when is_atom(agent), do: do_blocked_until(agent, :all)
+
+  @doc false
+  @spec blocked_until(atom(), String.t()) :: DateTime.t() | nil
+  def blocked_until(agent, model) when is_atom(agent) and is_binary(model), do: do_blocked_until(agent, model)
+
+  @spec do_blocked_until(atom(), String.t() | :all) :: DateTime.t() | nil
+  defp do_blocked_until(agent, model) do
     case active_block(agent, model) do
       %{until: until} -> until
       nil -> nil

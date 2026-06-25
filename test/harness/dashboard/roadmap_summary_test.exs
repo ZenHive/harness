@@ -44,7 +44,7 @@ defmodule Harness.Dashboard.RoadmapSummaryTest do
     test "builds the blocked task set (the Re-land gate)" do
       summary = RoadmapSummary.tally(@tasks)
 
-      assert summary.blocked == %{"3" => true}
+      assert summary.blocked == MapSet.new(["3"])
     end
 
     test "ignores a blank or missing shipped_in" do
@@ -63,7 +63,7 @@ defmodule Harness.Dashboard.RoadmapSummaryTest do
     end
 
     test "an empty roadmap tallies to a zero summary" do
-      assert RoadmapSummary.tally([]) == %{open: 0, done: 0, total: 0, landed: %{}, blocked: %{}}
+      assert RoadmapSummary.tally([]) == %{open: 0, done: 0, total: 0, landed: %{}, blocked: MapSet.new()}
     end
   end
 
@@ -117,7 +117,7 @@ defmodule Harness.Dashboard.RoadmapSummaryTest do
 
   describe "summary_for/2" do
     test "returns a zero summary for an unregistered project name" do
-      assert RoadmapSummary.summary_for(%{}, "ghost") == %{open: 0, done: 0, total: 0, landed: %{}, blocked: %{}}
+      assert RoadmapSummary.summary_for(%{}, "ghost") == %{open: 0, done: 0, total: 0, landed: %{}, blocked: MapSet.new()}
     end
   end
 
@@ -150,7 +150,7 @@ defmodule Harness.Dashboard.RoadmapSummaryTest do
 
       summaries = RoadmapSummary.for_projects([project])
 
-      assert summaries["broken-proj"] == %{open: 0, done: 0, total: 0, landed: %{}, blocked: %{}}
+      assert summaries["broken-proj"] == %{open: 0, done: 0, total: 0, landed: %{}, blocked: MapSet.new()}
     end
 
     test "a project whose roadmap read times out degrades to a zero summary, never blocking" do
@@ -173,7 +173,7 @@ defmodule Harness.Dashboard.RoadmapSummaryTest do
       summaries = RoadmapSummary.for_projects([project])
 
       assert_receive {:roadmap_list_invoked, ^project}, 200
-      assert summaries["slow-proj"] == %{open: 0, done: 0, total: 0, landed: %{}, blocked: %{}}
+      assert summaries["slow-proj"] == %{open: 0, done: 0, total: 0, landed: %{}, blocked: MapSet.new()}
     end
 
     test "runs per-project reads concurrently — wall-clock is ~one read, not N" do

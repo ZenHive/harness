@@ -195,7 +195,15 @@ defmodule Harness.Batch.AgentEvaluation do
   @spec model_override_for_key(term(), map(), module()) ::
           {:ok, String.t()} | :error | {:error, term()} | nil
   defp model_override_for_key(key, models, adapter) do
-    if Map.has_key?(models, key), do: model_override_value(Map.fetch!(models, key), adapter)
+    # Single Map.fetch/2 replaces the prior has_key?/fetch! double lookup.
+    # MUST use case, not `with {:ok, v} <- Map.fetch(...)`: on a miss, Map.fetch
+    # returns :error (truthy), which Enum.find_value/3 (the caller) would treat as
+    # a found value and short-circuit on. The case form returns nil on a miss so
+    # find_value keeps searching.
+    case Map.fetch(models, key) do
+      {:ok, v} -> model_override_value(v, adapter)
+      :error -> nil
+    end
   end
 
   @spec model_override_value(term(), module()) :: {:ok, String.t()} | {:error, term()}

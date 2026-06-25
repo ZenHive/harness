@@ -52,8 +52,7 @@ defmodule Harness.Roadmap.TaskIdRewriter do
   defp task_blocks(toml) do
     ~r/(^|\n)\[\[task\]\].*?(?=\n\[\[task\]\]|\z)/s
     |> Regex.scan(toml)
-    |> Enum.map(&List.first/1)
-    |> Enum.flat_map(&block_with_id/1)
+    |> Enum.flat_map(&block_with_id(List.first(&1)))
   end
 
   @spec block_with_id(String.t()) :: [map()]
