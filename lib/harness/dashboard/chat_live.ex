@@ -666,7 +666,7 @@ defmodule Harness.Dashboard.ChatLive do
 
       <.playbook_bar playbooks={@playbooks} />
 
-      <form phx-submit="send" phx-change="input_change" class="composer">
+      <form id="chat-composer" phx-submit="send" phx-change="input_change" class="composer">
         <textarea
           name="text"
           aria-label="Message"

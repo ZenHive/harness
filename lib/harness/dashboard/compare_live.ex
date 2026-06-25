@@ -290,7 +290,7 @@ defmodule Harness.Dashboard.CompareLive do
 
       <p :if={@error} class="setting-warn">{@error}</p>
 
-      <form phx-submit="compare" class="compare-form">
+      <form id="compare-form" phx-submit="compare" class="compare-form">
         <label class="compare-field">
           <span>Project</span>
           <select name="project">
