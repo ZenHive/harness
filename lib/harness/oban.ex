@@ -11,6 +11,7 @@ defmodule Harness.Oban do
 
   import Ecto.Query, only: [from: 2]
 
+  alias Harness.Cron.DepFreshnessPoller
   alias Harness.Cron.RoadmapPoller
   alias Harness.Project
   alias Harness.ProjectRegistry
@@ -349,6 +350,9 @@ defmodule Harness.Oban do
 
   @spec cron_crontab() :: [{String.t(), module(), keyword()}]
   defp cron_crontab do
-    [RoadmapPoller.cron_entry()]
+    [
+      RoadmapPoller.cron_entry(),
+      DepFreshnessPoller.cron_entry()
+    ]
   end
 end

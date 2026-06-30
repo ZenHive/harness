@@ -84,6 +84,7 @@ defmodule Harness.Dashboard.Components do
         <a href="/harness/roadmap">Roadmap</a>
         <a href="/harness/compare">Compare</a>
         <a href="/harness/projects/explore">Explore</a>
+        <a href="/harness/deps">Deps</a>
         <a href="/harness/chat">Chat</a>
         <a href="/harness/settings">Settings</a>
         <a href="/harness/oban">Oban</a>
