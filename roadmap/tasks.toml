@@ -9922,7 +9922,7 @@ scored_at = "2026-06-22"
 id = "330"
 phase = 22
 bundle = "operator-surface"
-status = "in_progress"
+status = "done"
 title = "Widen over-tight mix.exs dep constraints + guard against regression"
 scores = { d = 3, b = 5, u = 6 }
 acceptance_criteria = ["Every three-part `~> x.y.z` dep constraint in mix.exs without a justifying inline comment is widened to two-part `~> x.y`", "mix deps.get and mix compile succeed after widening; mix.lock remains the source of exact resolved versions", "A guard (credo check or mix ci assertion) fails when a new over-tight three-part `~>` constraint is added without a justifying inline comment, and passes on the widened mix.exs", "A test covers the guard flagging an over-tight pin and accepting a justified one"]
@@ -9935,9 +9935,14 @@ Harness's own mix.exs carries some three-part `~> x.y.z` dependency constraints 
 
 Sweep every over-tight three-part `~>` constraint in mix.exs to the idiomatic two-part `~> x.y` (resolving to `< (x+1).0.0`), letting mix.lock remain the real pin and `mix deps.update` + the reviewer suite control the exact resolved version. Then add a guard so over-tight pins cannot regress silently — a credo check or a `mix ci` assertion that flags any new three-part `~>` constraint UNLESS it carries an inline comment justifying the tight pin (the one narrow legitimate case: a dep with a real minor-bump breakage history). Do not widen a constraint that already carries such a justification comment.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1782811091563-53f4bc02, 68b62593f883b681d07e6ffc27e1c2aa07981ec3)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-24"
 started_at = "2026-06-30"
 scored_at = "2026-06-24"
+done_at = "2026-06-30"
+shipped_in = "68b62593f883b681d07e6ffc27e1c2aa07981ec3"
 
 [[task]]
 id = "331"

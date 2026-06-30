@@ -14829,7 +14829,7 @@
       "id": "330",
       "phase": 22,
       "bundle": "operator-surface",
-      "status": "in_progress",
+      "status": "done",
       "title": "Widen over-tight mix.exs dep constraints + guard against regression",
       "scores": {
         "d": 3,
@@ -14857,10 +14857,15 @@
         "mix.exs",
         ".credo.exs"
       ],
+      "shipped_in": "68b62593f883b681d07e6ffc27e1c2aa07981ec3",
       "body": "Harness's own mix.exs carries some three-part `~> x.y.z` dependency constraints (e.g. `{:plug, \"~> 1.19.2\"}`), which resolve to `>= x.y.z and < x.(y+1).0` and therefore exclude already-released compatible minors (1.20.1). This is a self-inflicted \"can't update\" block: the constraint, not hex, is what stops the bump, and a lazy agent reports the package as blocked instead of widening the pin.\n\nSweep every over-tight three-part `~>` constraint in mix.exs to the idiomatic two-part `~> x.y` (resolving to `< (x+1).0.0`), letting mix.lock remain the real pin and `mix deps.update` + the reviewer suite control the exact resolved version. Then add a guard so over-tight pins cannot regress silently — a credo check or a `mix ci` assertion that flags any new three-part `~>` constraint UNLESS it carries an inline comment justifying the tight pin (the one narrow legitimate case: a dep with a real minor-bump breakage history). Do not widen a constraint that already carries such a justification comment.\n",
       "created_at": "2026-06-24",
       "started_at": "2026-06-30",
+      "done_at": "2026-06-30",
       "scored_at": "2026-06-24",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1782811091563-53f4bc02, 68b62593f883b681d07e6ffc27e1c2aa07981ec3).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
