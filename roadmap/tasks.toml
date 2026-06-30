@@ -9979,8 +9979,8 @@ bundle = "operator-surface"
 status = "pending"
 title = "Operator 'update deps' action: dispatch a dep-bump through the agent-gate"
 scores = { d = 5, b = 7, u = 7 }
-depends_on = [331]
-acceptance_criteria = ["A dashboard button and an MCP tool dispatch a dep-bump task per project through the agent-gate (not a mechanical deps.update in harness)", "The dispatched prompt embeds the dep-freshness facts as ground truth naming what is outdated and constraint-allowed", "The bump prompt is built per project.language (Elixir + Rust prompt providers) over one shared dispatch path, not a per-language dispatch fork", "Minor/patch bumps are batched into one task; each major bump is its own task", "The reviewer check_command for bump tasks runs the project full suite incl. integration (language-appropriate)", "For Elixir projects, the prompt instructs widening an over-tight pin to idiomatic `~> x.y` instead of declaring a dep blocked", "Harness performs no dep update or test run itself — verification is the reviewer's; tests cover the dispatch + prompt-injection path"]
+depends_on = [331, 340]
+acceptance_criteria = ["A dashboard button and an MCP tool dispatch a dep-bump task per project through the agent-gate (not a mechanical deps.update in harness)", "The dispatched prompt embeds the dep-freshness facts as ground truth naming what is outdated and constraint-allowed", "The bump prompt is built from `project.languages`, with one prompt provider per supported ecosystem over a shared dispatch path", "Mixed-language projects may produce one language-scoped bump task per ecosystem when the freshness facts differ", "Minor/patch bumps are batched into one task per ecosystem; each major bump is its own task", "The reviewer check_command for bump tasks runs the project full suite incl. integration (language-appropriate)", "For Elixir projects, the prompt instructs widening an over-tight pin to idiomatic `~> x.y` instead of declaring a dep blocked", "Harness performs no dep update or test run itself — verification is the reviewer's; tests cover the dispatch + prompt-injection path"]
 out_of_scope = ["Recording freshness facts (Task 331 owns that)", "Unattended or automatic dep upgrades — this action is operator-triggered"]
 touches = ["lib/harness/dispatch.ex", "lib/harness/chat/tools.ex", "lib/harness/dashboard", "lib/harness/run.ex"]
 assignee = "codex"
@@ -9988,7 +9988,7 @@ model = "gpt-5.5"
 body = """
 Add an operator-triggered "update deps" action that dispatches a dependency-bump task through the normal agent-gate (implementer -> reviewer -> land), rather than mechanically running `mix deps.update` in harness (which would reintroduce the deleted mechanical verification path). Surface it as a dashboard button (per project) and an MCP tool.
 
-The dispatch plumbing is language-agnostic; the bump prompt is built per `project.language` (a prompt provider, not a new dispatch path) — the Elixir prompt covers mix.exs / `mix deps.update` / `mix test.json --include integration`, a Rust prompt covers Cargo.toml / `cargo update` / `cargo test`. The prompt is fed the dep-freshness facts (Task 331) as ground truth, so the implementer cannot claim a dep cannot be updated — the facts name exactly what is outdated and constraint-allowed. Batch all constraint-satisfiable minor/patch bumps into one task; give each major-version bump its own task. The reviewer check_command for these runs the project full suite incl. integration (language-appropriate) so the full suite — not just the default offline subset — verifies the upgrade.
+The dispatch plumbing is language-agnostic; the bump prompt is built from `project.languages` (a prompt provider per supported ecosystem, not a new dispatch path) — the Elixir prompt covers mix.exs / `mix deps.update` / `mix test.json --include integration`, and later providers can cover Cargo.toml / npm/pnpm/yarn / go.mod. The prompt is fed the dep-freshness facts (Task 331 plus per-language providers) as ground truth, so the implementer cannot claim a dep cannot be updated — the facts name exactly what is outdated and constraint-allowed. Batch all constraint-satisfiable minor/patch bumps into one task per ecosystem; give each major-version bump its own task. The reviewer check_command for these runs the project full suite incl. integration (language-appropriate) so the full suite — not just the default offline subset — verifies the upgrade.
 
 For Elixir projects specifically, when a dep is excluded only by an over-tight library-style pin, the prompt instructs the implementer to widen the constraint to idiomatic `~> x.y` (letting mix.lock + the reviewer suite control the resolved version) rather than declaring it blocked (Cargo is loose-by-default, so this rarely applies to Rust projects). The bump and verification ride the standard implement->review->land loop; harness runs no build or test itself.
 """
@@ -10055,14 +10055,14 @@ bundle = "operator-surface"
 status = "pending"
 title = "Dispatch 'bring project to tooling baseline' through the agent-gate"
 scores = { d = 5, b = 6, u = 6 }
-depends_on = [332, 334]
-acceptance_criteria = ["A dashboard button and an MCP tool dispatch a tooling-baseline task per project through the agent-gate (not a mechanical mix.exs edit in harness)", "The dispatched prompt embeds the Task 334 conformance-drift facts as ground truth naming the missing deps/aliases/config", "The prompt instructs preferring the vibe_kit installer then layering elixir-setup extras, and wiring the ci/precommit aliases + config files", "The reviewer gates that the project compiles and the newly-added gate runs green — verification is the reviewer's, harness installs/builds nothing itself", "Reuses Task 332 dispatch plumbing rather than a parallel dispatch path; tests cover the dispatch + prompt-injection path", "Inherits Task 332 language-agnostic dispatch path; the baseline prompt is built per project.language (Elixir provider only for now)"]
+depends_on = [332, 334, 340]
+acceptance_criteria = ["A dashboard button and an MCP tool dispatch a tooling-baseline task per project through the agent-gate (not a mechanical mix.exs edit in harness)", "The dispatched prompt embeds conformance-drift facts as ground truth naming the missing deps/aliases/config for every language with a baseline provider", "The Elixir prompt instructs preferring the vibe_kit installer then layering elixir-setup extras, and wiring the ci/precommit aliases + config files", "The reviewer gates that the project compiles and the newly-added gate runs green — verification is the reviewer's, harness installs/builds nothing itself", "Reuses Task 332 dispatch plumbing rather than a parallel dispatch path; tests cover the dispatch + prompt-injection path", "The baseline prompt is built from `project.languages`; languages without baseline providers are visibly skipped, not silently treated as Elixir"]
 out_of_scope = ["Recording conformance facts (Task 334 owns that)", "Dep version bumps (Task 332 owns that)", "Unattended / automatic tooling installs — this action is operator-triggered"]
 touches = ["lib/harness/dispatch.ex", "lib/harness/chat/tools.ex", "lib/harness/dashboard"]
 assignee = "codex"
 model = "gpt-5.5"
 body = """
-Add an operator-triggered action that dispatches a "bring this project to the tooling baseline" task through the normal agent-gate (implementer -> reviewer -> land), rather than harness mechanically editing the project mix.exs. Surface it as a dashboard button (per project) and an MCP tool. Reuse Task 332 dispatch plumbing — this is the same shape (dispatch an agent to edit mix.exs + verify), differing only in deliverable (add missing tooling vs bump versions). Like Task 332, the dispatch path is language-agnostic and the prompt is built per `project.language`; the Elixir provider builds the vibe_kit/elixir-setup prompt (the only baseline provider for now).
+Add an operator-triggered action that dispatches a "bring this project to the tooling baseline" task through the normal agent-gate (implementer -> reviewer -> land), rather than harness mechanically editing the project mix.exs. Surface it as a dashboard button (per project) and an MCP tool. Reuse Task 332 dispatch plumbing — this is the same shape (dispatch an agent to edit mix.exs + verify), differing only in deliverable (add missing tooling vs bump versions). Like Task 332, the dispatch path is language-agnostic and the prompt is built from `project.languages`; the Elixir provider builds the vibe_kit/elixir-setup prompt (the only baseline provider for now), and unsupported languages are surfaced as skipped facts.
 
 Feed the dispatched task prompt the conformance-drift facts (from Task 334) as ground truth naming exactly what is missing (deps, aliases, config files). Instruct the implementer to add the missing baseline tooling — preferring the vibe_kit Igniter installer where applicable, then layering the elixir-setup extras — and to bring the `ci` / `precommit` aliases and `.credo.exs` / `.reach.exs` / `.formatter.exs` to the baseline. The reviewer gates that the project still compiles and the newly-wired gate runs green. The bump rides the standard implement->review->land loop; harness runs no build or install itself.
 """
@@ -10076,14 +10076,14 @@ bundle = "operator-surface"
 status = "pending"
 title = "Rust dependency-freshness provider (cargo outdated) for the freshness fact source"
 scores = { d = 4, b = 5, u = 6 }
-depends_on = [331]
-acceptance_criteria = ["A Rust freshness provider produces the same fact rows (name / current / latest / constraint-allowed) as the Elixir provider, keyed on project.language == :rust, on the existing Oban cron", "It extends the Task 331 store + dashboard panel + provider seam — no parallel scanner, no second panel", "The cargo freshness mechanism is confirmed to work headlessly in a cold worktree (cargo outdated install, or a documented fallback) — not assumed", "Non-Rust projects are unaffected; harness only counts and displays the raw facts, never auto-updates or gates", "Tests cover the Rust provider fact-recording; an integration test runs it against a Rust fixture project and asserts rows are recorded"]
+depends_on = [331, 340]
+acceptance_criteria = ["A Rust freshness provider produces the same fact rows (name / current / latest / constraint-allowed) as the Elixir provider for projects whose `languages` include `:rust`", "It extends the Task 331/340 store + dashboard panel + provider seam — no parallel scanner, no second panel", "The cargo freshness mechanism is confirmed to work headlessly in a cold worktree (cargo outdated install, or a documented fallback) — not assumed", "Non-Rust projects are unaffected; harness only counts and displays the raw facts, never auto-updates or gates", "Tests cover the Rust provider fact-recording; an integration test runs it against a Rust fixture project and asserts rows are recorded"]
 out_of_scope = ["Rust tooling-baseline conformance (deferred — no canonical Rust baseline spec)", "Performing the actual crate upgrade (the dep-bump dispatch task, language-aware per Task 332)"]
 touches = ["lib/harness/dashboard", "lib/harness/cron"]
 assignee = "codex"
 model = "gpt-5.5"
 body = """
-Add a Rust dependency-freshness provider to the per-language freshness fact source (Task 331 seam), so the operator sees out-of-date crates for registered `language == :rust` projects in the same dashboard panel as Elixir projects.
+Add a Rust dependency-freshness provider to the per-language freshness fact source (Task 331/340 seam), so the operator sees out-of-date crates for registered projects whose `languages` include `:rust` in the same dashboard panel as Elixir projects.
 
 Implement a Rust provider that produces the same fact rows as the Elixir provider — dependency name, current version, latest version, and whether the bump is allowed by the project current Cargo.toml constraint — by running a cargo freshness check per registered Rust project on the existing Oban cron. EXTEND Task 331 store + dashboard panel + provider seam; do not build a parallel scanner or a second panel.
 
@@ -10146,3 +10146,61 @@ started_at = "2026-06-30"
 scored_at = "2026-06-30"
 done_at = "2026-06-30"
 shipped_in = "6164e8d6093cb439e7e2fefa993bb39d4a4fd517"
+
+[[task]]
+id = "340"
+phase = 22
+bundle = "operator-surface"
+status = "pending"
+title = "Project languages invariant + multi-language provider substrate"
+scores = { d = 6, b = 8, u = 8 }
+depends_on = [334]
+acceptance_criteria = ["`%Harness.Project{}` uses explicit `languages` as a non-empty list of atoms; the old singular `language` field is removed from the runtime struct", "New ProjectRegistry and Dispatch registration without explicit non-empty languages fails loudly; there is no implicit Elixir default and no `:mixed` sentinel", "Existing persisted project payloads with old singular `language` are backfilled to explicit `languages` (`nil` -> `[:elixir]`, atom -> `[atom]`) and re-persisted so runtime callers do not keep seeing legacy nil", "Freshness and tooling-baseline provider resolution iterates `project.languages`, runs every available provider, and records unsupported languages as visible skipped facts rather than treating them as errors or Elixir", "Mixed projects such as `[:elixir, :rust]` run Elixir facts today and are structurally ready for Rust/JS/Go providers without another project-model migration", "Dashboard, MCP/dispatch registration, rule injection, CodeSearch, ProjectExplorer, and tests are updated to the explicit multi-language contract", "Existing Elixir-only behavior is preserved for `languages: [:elixir]`; non-Elixir-only projects do not receive Elixir conformance or Elixir-only code search", "Tests cover required-language rejection, single-language projects, mixed-language projects, legacy persistence backfill, provider skip facts, and dashboard language rendering"]
+out_of_scope = ["Implementing Rust, JavaScript/TypeScript, or Go dependency-freshness providers", "Defining Rust/JS/Go tooling-baseline manifests", "Changing dependency-bump or tooling-baseline dispatch actions beyond making them consume `project.languages`"]
+files_to_modify = ["lib/harness/project.ex", "lib/harness/project_registry.ex", "lib/harness/project_registry/persistence.ex", "lib/harness/dispatch.ex", "lib/harness/dep_freshness.ex", "lib/harness/dep_freshness/providers.ex", "lib/harness/tooling_baseline.ex", "lib/harness/tooling_baseline/providers.ex", "lib/harness/dashboard/dep_freshness_live.ex", "lib/harness/run.ex", "lib/harness/code_search.ex", "test/harness"]
+touches = ["lib/harness/project.ex", "lib/harness/project_registry.ex", "lib/harness/project_registry", "lib/harness/dispatch.ex", "lib/harness/dep_freshness", "lib/harness/tooling_baseline", "lib/harness/dashboard", "lib/harness/run.ex", "lib/harness/agent_adapter", "lib/harness/code_search.ex", "test/harness", "priv/repo/migrations"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Make the project language model explicit and future-proof before adding more ecosystem providers. The current singular `project.language` shape cannot model mixed repositories such as rexex, and treating `nil` as Elixir creates a hidden compatibility path that will keep biting later. Replace it with `project.languages`, a required non-empty list of atoms.
+
+New registration must be strict: attrs or JSON/MCP calls without `languages` fail; `:mixed` is not allowed because it erases the actual provider set. Existing persisted rows are data debt, not a runtime fallback: decode old payloads, convert `language: nil` to `languages: [:elixir]`, convert old singular atoms to one-element lists, and write the normalized payload back so runtime consumers only see explicit languages.
+
+Then update the existing provider substrate to iterate languages. Today only Elixir freshness/conformance providers exist, so mixed projects should produce Elixir facts plus visible skipped facts for unsupported languages. Future Rust/JavaScript/Go providers must be additive tasks plugged into this seam, not another project-model refactor.
+"""
+created_at = "2026-07-01"
+scored_at = "2026-07-01"
+
+[[task]]
+id = "341"
+phase = 22
+bundle = "operator-surface"
+status = "pending"
+title = "JavaScript/TypeScript dependency-freshness provider for npm/pnpm/yarn projects"
+scores = { d = 4, b = 5, u = 5 }
+depends_on = [340]
+acceptance_criteria = ["A JavaScript/TypeScript freshness provider records dependency facts for projects whose `languages` include `:javascript` or `:typescript`", "The provider supports the detected package manager among npm, pnpm, and yarn, or records a visible skipped fact when no supported lockfile/manifest is present", "It extends the existing freshness store + dashboard panel + provider seam — no parallel scanner and no second panel", "Rows include dependency name, current version, latest version, and whether the bump is allowed by the declared package constraint when that can be determined mechanically", "Harness only counts and displays raw facts; it never runs package updates, installs tooling into the project, or gates dispatch on freshness", "Tests cover provider detection, fact recording against a fixture project, and visible skip behavior for unsupported/missing package manager metadata"]
+out_of_scope = ["Automatic npm/pnpm/yarn upgrades", "JavaScript/TypeScript tooling-baseline conformance", "Changing the operator dep-bump action beyond consuming these facts when present"]
+touches = ["lib/harness/dep_freshness", "lib/harness/dashboard", "test/harness/dep_freshness"]
+assignee = "codex"
+model = "gpt-5.5"
+body = "Add the JavaScript/TypeScript provider to the multi-language freshness seam introduced by Task 340. The implementation should discover the package manager from committed project files, produce the same raw dependency-freshness facts as the Elixir provider, and surface unsupported cases visibly instead of guessing. Keep this provider-only: no update action, no baseline manifest, no new panel."
+created_at = "2026-07-01"
+scored_at = "2026-07-01"
+
+[[task]]
+id = "342"
+phase = 22
+bundle = "operator-surface"
+status = "pending"
+title = "Go dependency-freshness provider for go.mod projects"
+scores = { d = 4, b = 4, u = 5 }
+depends_on = [340]
+acceptance_criteria = ["A Go freshness provider records dependency facts for projects whose `languages` include `:go`", "The provider detects committed go.mod/go.sum metadata and records a visible skipped fact when the project has no Go module surface", "It extends the existing freshness store + dashboard panel + provider seam — no parallel scanner and no second panel", "Rows include module path, current version, latest version, and whether the bump is allowed by the declared module constraint when that can be determined mechanically", "Harness only counts and displays raw facts; it never runs `go get`, rewrites go.mod, or gates dispatch on freshness", "Tests cover provider fact recording against a Go fixture project and visible skip behavior for missing module metadata"]
+out_of_scope = ["Automatic Go module upgrades", "Go tooling-baseline conformance", "Changing the operator dep-bump action beyond consuming these facts when present"]
+touches = ["lib/harness/dep_freshness", "lib/harness/dashboard", "test/harness/dep_freshness"]
+assignee = "codex"
+model = "gpt-5.5"
+body = "Add the Go provider to the multi-language freshness seam introduced by Task 340. The implementation should inspect Go module metadata, produce the same raw dependency-freshness facts as the Elixir provider, and surface unsupported/missing module cases visibly instead of guessing. Keep this provider-only: no update action, no baseline manifest, no new panel."
+created_at = "2026-07-01"
+scored_at = "2026-07-01"
