@@ -45,6 +45,27 @@ defmodule Harness.DepFreshnessTest do
     assert {:ok, snapshot} = DepFreshness.fetch_snapshot("freshness-demo")
     assert snapshot.outdated_count == 1
     assert [%Row{name: "req"}] = snapshot.rows
+    assert snapshot.conformance == nil
+  end
+
+  test "scan_project records tooling baseline facts for explicit Elixir projects", %{tmp_dir: tmp_dir} do
+    File.write!(Path.join(tmp_dir, "mix.exs"), "Mix.install([])")
+    File.mkdir!(Path.join(tmp_dir, "deps"))
+
+    project = ProjectFixture.from_repo(tmp_dir, name: "baseline-demo", language: :elixir)
+    :ok = ProjectRegistry.register(project)
+
+    output = """
+    Dependency         Only      Current  Latest   Status
+    """
+
+    runner = fn "mix", ["hex.outdated"], ^tmp_dir -> {:ok, output} end
+
+    assert :ok = DepFreshness.scan_project(project, provider_opts: [runner: runner])
+
+    assert {:ok, snapshot} = DepFreshness.fetch_snapshot("baseline-demo")
+    assert snapshot.conformance.drift_count > 0
+    assert Enum.any?(snapshot.conformance.items, &(&1.status == :missing))
   end
 
   test "scan_project skips unsupported languages" do

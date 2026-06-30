@@ -9,6 +9,7 @@ defmodule Harness.DepFreshnessStore.Postgres do
   alias Harness.DepFreshness.Snapshot
   alias Harness.DepFreshnessStore.Schema.Snapshot, as: SnapshotSchema
   alias Harness.Repo
+  alias Harness.ToolingBaseline.Snapshot, as: ConformanceSnapshot
 
   @persistence_errors [
     RuntimeError,
@@ -83,9 +84,14 @@ defmodule Harness.DepFreshnessStore.Postgres do
       language: snapshot.language,
       checked_at: snapshot.checked_at,
       outdated_count: snapshot.outdated_count,
-      rows: Enum.map(snapshot.rows, &Row.to_map/1)
+      rows: Enum.map(snapshot.rows, &Row.to_map/1),
+      conformance: conformance_to_map(snapshot.conformance)
     }
   end
+
+  @spec conformance_to_map(ConformanceSnapshot.t() | nil) :: map() | nil
+  defp conformance_to_map(nil), do: nil
+  defp conformance_to_map(%ConformanceSnapshot{} = conformance), do: ConformanceSnapshot.to_map(conformance)
 
   @spec schema_to_snapshot(SnapshotSchema.t()) :: Snapshot.t()
   defp schema_to_snapshot(%SnapshotSchema{} = schema) do
@@ -99,7 +105,13 @@ defmodule Harness.DepFreshnessStore.Postgres do
       language: schema.language,
       checked_at: schema.checked_at,
       outdated_count: schema.outdated_count || Snapshot.outdated_count(rows),
-      rows: rows
+      rows: rows,
+      conformance: conformance_from_map(schema.conformance)
     }
   end
+
+  @spec conformance_from_map(map() | nil) :: ConformanceSnapshot.t() | nil
+  defp conformance_from_map(nil), do: nil
+  defp conformance_from_map(%{} = map), do: ConformanceSnapshot.from_map(map)
+  defp conformance_from_map(_other), do: nil
 end

@@ -19,7 +19,8 @@ defmodule Harness.ProjectFixture do
       pollution_allowlist: Keyword.get(opts, :pollution_allowlist),
       warm_paths: Keyword.get(opts, :warm_paths, []),
       reviewer: Keyword.get(opts, :reviewer),
-      test_db_isolation_env: Keyword.get(opts, :test_db_isolation_env)
+      test_db_isolation_env: Keyword.get(opts, :test_db_isolation_env),
+      tooling_baseline_overrides: Keyword.get(opts, :tooling_baseline_overrides, %{})
     }
   end
 end

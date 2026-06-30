@@ -1,9 +1,9 @@
 defmodule Harness.Dashboard.DepFreshnessLive do
   @moduledoc """
-  Per-project dependency freshness panel (`/harness/deps`).
+  Per-project dependency freshness and tooling-baseline panel (`/harness/deps`).
 
-  Displays raw provider facts — dependency rows, outdated count, and the last
-  scan timestamp. Harness counts and renders only; it never recommends upgrades.
+  Displays raw provider facts — dependency rows, baseline drift, overrides, and
+  advisory-only operator-machine surface. Harness counts and renders only.
   """
 
   use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}
@@ -13,6 +13,7 @@ defmodule Harness.Dashboard.DepFreshnessLive do
   alias Harness.DepFreshness.Snapshot
   alias Harness.Project
   alias Harness.ProjectRegistry
+  alias Harness.ToolingBaseline.Item, as: ConformanceItem
   alias Phoenix.LiveView.Rendered
   alias Phoenix.LiveView.Socket
 
@@ -64,7 +65,7 @@ defmodule Harness.Dashboard.DepFreshnessLive do
   def render(assigns) do
     ~H"""
     <div class="topbar">
-      <strong>Dependency freshness</strong>
+      <strong>Dependencies &amp; tooling</strong>
       <span class="count">{length(@projects)} projects</span>
       <a href="/harness">← All runs</a>
     </div>
@@ -120,6 +121,8 @@ defmodule Harness.Dashboard.DepFreshnessLive do
       {@snapshot.outdated_count} outdated · last checked {format_checked_at(@snapshot.checked_at)} · provider {@snapshot.language}
     </p>
 
+    <h3>Dependency freshness</h3>
+
     <table id="dep-freshness-rows">
       <thead>
         <tr>
@@ -138,6 +141,48 @@ defmodule Harness.Dashboard.DepFreshnessLive do
         </tr>
       </tbody>
     </table>
+
+    <.conformance_panel :if={@snapshot.conformance} conformance={@snapshot.conformance} />
+    """
+  end
+
+  attr(:conformance, :map, required: true)
+
+  @spec conformance_panel(map()) :: Rendered.t()
+  defp conformance_panel(assigns) do
+    ~H"""
+    <section id="tooling-baseline-panel">
+      <h3>Tooling baseline</h3>
+      <p class="count" id="tooling-baseline-summary">
+        {@conformance.drift_count} drift · last checked {format_checked_at(@conformance.checked_at)}
+      </p>
+
+      <table id="tooling-baseline-items">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Category</th>
+            <th>Status</th>
+            <th>Override reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={item <- @conformance.items} class={conformance_row_class(item)}>
+            <td><code>{item.label}</code></td>
+            <td>{conformance_category_label(item.category)}</td>
+            <td>{conformance_status_label(item.status)}</td>
+            <td>{item.override_reason || "—"}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4>Advisory (not enforced)</h4>
+      <ul id="tooling-baseline-advisory">
+        <li :for={entry <- @conformance.advisory}>
+          <strong>{entry.label}</strong> — {entry.description}
+        </li>
+      </ul>
+    </section>
     """
   end
 
@@ -177,4 +222,23 @@ defmodule Harness.Dashboard.DepFreshnessLive do
   @spec constraint_allowed_label(boolean()) :: String.t()
   defp constraint_allowed_label(true), do: "yes"
   defp constraint_allowed_label(false), do: "no"
+
+  @spec conformance_row_class(ConformanceItem.t()) :: String.t()
+  defp conformance_row_class(%ConformanceItem{} = item) do
+    case item.status do
+      :missing -> "tooling-baseline-missing"
+      :overridden -> "tooling-baseline-overridden"
+      _other -> ""
+    end
+  end
+
+  @spec conformance_category_label(ConformanceItem.category()) :: String.t()
+  defp conformance_category_label(:dep), do: "dep"
+  defp conformance_category_label(:alias), do: "alias"
+  defp conformance_category_label(:config_file), do: "config"
+
+  @spec conformance_status_label(ConformanceItem.status()) :: String.t()
+  defp conformance_status_label(:present), do: "present"
+  defp conformance_status_label(:missing), do: "missing"
+  defp conformance_status_label(:overridden), do: "overridden"
 end

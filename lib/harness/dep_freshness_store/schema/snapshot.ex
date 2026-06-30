@@ -11,6 +11,7 @@ defmodule Harness.DepFreshnessStore.Schema.Snapshot do
     field :checked_at, :utc_datetime_usec
     field :outdated_count, :integer
     field :rows, {:array, :map}, default: []
+    field :conformance, :map
 
     timestamps()
   end
@@ -19,7 +20,7 @@ defmodule Harness.DepFreshnessStore.Schema.Snapshot do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(%__MODULE__{} = snapshot, attrs) do
     snapshot
-    |> cast(attrs, [:project_name, :language, :checked_at, :outdated_count, :rows])
+    |> cast(attrs, [:project_name, :language, :checked_at, :outdated_count, :rows, :conformance])
     |> validate_required([:project_name, :language, :checked_at, :outdated_count, :rows])
   end
 

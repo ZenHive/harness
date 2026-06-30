@@ -31,6 +31,9 @@ defmodule Harness.Project do
     reviewer gate; `nil` keeps the default auto-selection.
   - `test_db_isolation_env` — optional env var name used to partition a run's
     test database (default `MIX_TEST_PARTITION`); `false` or `"none"` opts out.
+  - `tooling_baseline_overrides` — optional map of baseline item ids to opt-out
+    reasons (e.g. `%{"dep:credo" => "legacy project"}`); recorded as facts,
+    never a silent skip.
   """
 
   alias Harness.Project.Source.Github
@@ -49,7 +52,8 @@ defmodule Harness.Project do
     landing_policy: :manual,
     target_branch: nil,
     reviewer: nil,
-    test_db_isolation_env: nil
+    test_db_isolation_env: nil,
+    tooling_baseline_overrides: %{}
   ]
 
   @typedoc "Where harness finds the target repository."
@@ -71,7 +75,8 @@ defmodule Harness.Project do
           landing_policy: landing_policy(),
           target_branch: String.t() | nil,
           reviewer: atom() | nil,
-          test_db_isolation_env: String.t() | false | :none | nil
+          test_db_isolation_env: String.t() | false | :none | nil,
+          tooling_baseline_overrides: %{String.t() => String.t()}
         }
 
   @doc """

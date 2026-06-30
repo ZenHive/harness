@@ -1,0 +1,33 @@
+{
+  "deps": [
+    "credo",
+    "ex_slop",
+    "dialyxir",
+    "ex_dna",
+    "reach",
+    "sobelow",
+    "doctor",
+    "ex_unit_json",
+    "dialyzer_json",
+    "styler"
+  ],
+  "aliases": ["ci", "precommit"],
+  "config_files": [".credo.exs", ".reach.exs", ".formatter.exs"],
+  "advisory": [
+    {
+      "id": "post_tool_use_hooks",
+      "label": "PostToolUse hooks",
+      "description": "Operator-machine hook config; not in the committed project surface."
+    },
+    {
+      "id": "tidewave_runtime",
+      "label": "Tidewave runtime",
+      "description": "Dev-only MCP server wiring; not committed to the target repo."
+    },
+    {
+      "id": "local_settings_json",
+      "label": "Local settings.json",
+      "description": "Editor/CLI local settings; not in version control."
+    }
+  ]
+}

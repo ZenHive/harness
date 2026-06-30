@@ -7,6 +7,9 @@ defmodule Harness.Dashboard.DepFreshnessLiveTest do
   alias Harness.DepFreshnessStore.Memory, as: Store
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
+  alias Harness.ToolingBaseline.Advisory
+  alias Harness.ToolingBaseline.Item
+  alias Harness.ToolingBaseline.Snapshot, as: ConformanceSnapshot
 
   setup do
     prev = Application.get_env(:harness, :dep_freshness_store)
@@ -41,12 +44,32 @@ defmodule Harness.Dashboard.DepFreshnessLiveTest do
 
     {:ok, _view, html} = live(conn, "/harness/deps/deps-live")
 
-    assert html =~ "Dependency freshness"
+    assert html =~ "Dependencies &amp; tooling"
     assert html =~ "1 outdated"
     assert html =~ "req"
     assert html =~ "0.6.1"
     assert html =~ "0.6.2"
     assert html =~ "Constraint allowed"
+  end
+
+  test "renders tooling baseline conformance facts", %{conn: conn} do
+    project = ProjectFixture.from_repo("/tmp/harness-deps-conformance", name: "deps-conformance")
+    :ok = ProjectRegistry.register(project)
+
+    snapshot =
+      Snapshot.build("deps-conformance", "elixir", [], conformance: conformance_snapshot())
+
+    assert :ok = DepFreshnessStore.record_snapshot(snapshot, DepFreshnessStore.configured())
+
+    {:ok, _view, html} = live(conn, "/harness/deps/deps-conformance")
+
+    assert html =~ "Tooling baseline"
+    assert html =~ "1 drift"
+    assert html =~ "credo"
+    assert html =~ "missing"
+    assert html =~ "legacy stack"
+    assert html =~ "Advisory (not enforced)"
+    assert html =~ "PostToolUse hooks"
   end
 
   test "shows empty state before the first scan", %{conn: conn} do
@@ -111,5 +134,28 @@ defmodule Harness.Dashboard.DepFreshnessLiveTest do
         constraint_allowed: false
       }
     ])
+  end
+
+  @spec conformance_snapshot() :: ConformanceSnapshot.t()
+  defp conformance_snapshot do
+    ConformanceSnapshot.build(
+      [
+        %Item{id: "dep:credo", label: "credo", category: :dep, status: :missing},
+        %Item{
+          id: "dep:doctor",
+          label: "doctor",
+          category: :dep,
+          status: :overridden,
+          override_reason: "legacy stack"
+        }
+      ],
+      [
+        %Advisory{
+          id: "post_tool_use_hooks",
+          label: "PostToolUse hooks",
+          description: "Operator-machine hook config; not in the committed project surface."
+        }
+      ]
+    )
   end
 end

@@ -12,6 +12,7 @@ defmodule Harness.DepFreshness do
   alias Harness.DepFreshnessStore
   alias Harness.Project
   alias Harness.ProjectRegistry
+  alias Harness.ToolingBaseline
 
   require Logger
 
@@ -25,7 +26,8 @@ defmodule Harness.DepFreshness do
          {:ok, repo_path} <- repo_path(project),
          {:ok, rows} <- provider.scan(project, repo_path, provider_opts),
          language = language_label(project.language),
-         snapshot = Snapshot.build(project.name, language, rows),
+         conformance = scan_conformance(project, repo_path, provider_opts),
+         snapshot = Snapshot.build(project.name, language, rows, conformance: conformance),
          :ok <- DepFreshnessStore.record_snapshot(snapshot, store) do
       :ok
     else
@@ -74,4 +76,15 @@ defmodule Harness.DepFreshness do
   @spec language_label(atom() | nil) :: String.t()
   defp language_label(nil), do: "elixir"
   defp language_label(language) when is_atom(language), do: Atom.to_string(language)
+
+  @spec scan_conformance(Project.t(), String.t(), keyword()) ::
+          Harness.ToolingBaseline.Snapshot.t() | nil
+  defp scan_conformance(%Project{language: :elixir} = project, repo_path, provider_opts) do
+    case ToolingBaseline.scan_project(project, repo_path, provider_opts: provider_opts) do
+      {:ok, snapshot} -> snapshot
+      _other -> nil
+    end
+  end
+
+  defp scan_conformance(_project, _repo_path, _provider_opts), do: nil
 end

@@ -285,7 +285,8 @@ defmodule Harness.ProjectRegistry do
          landing_policy: Map.get(entry, :landing_policy, :manual),
          target_branch: Map.get(entry, :target_branch),
          reviewer: Map.get(entry, :reviewer),
-         test_db_isolation_env: Map.get(entry, :test_db_isolation_env)
+         test_db_isolation_env: Map.get(entry, :test_db_isolation_env),
+         tooling_baseline_overrides: Map.get(entry, :tooling_baseline_overrides, %{})
        }}
     end
   end
