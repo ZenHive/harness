@@ -47,6 +47,8 @@
       "Harness.Run",
       "Harness.Run.*",
       "Harness.StatusView",
+      # Dev/CI tooling: mix harness.deps.check reads mix.exs constraint pins.
+      "Harness.DependencyConstraintGuard",
       # The dashboard's template-facing render surface: heex layouts/templates
       # (lowered by Reach's HEEx plugin to Reach.Templates.* pseudo-modules)
       # legitimately render through these. Not external driver API — internal
