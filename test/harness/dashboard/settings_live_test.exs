@@ -486,6 +486,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
         source_location: "/tmp/harness-settings-new",
         roadmap_path: "/tmp/harness-settings-new/roadmap",
         check_command: "mix precommit",
+        languages: "elixir",
         target_branch: "development",
         concurrency_cap: "3",
         warm_paths: ""
@@ -499,6 +500,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     assert project.check_command == "mix precommit"
     assert project.target_branch == "development"
     assert project.concurrency_cap == 3
+    assert project.languages == [:elixir]
     assert project.warm_paths == []
 
     ProjectRegistry.unregister("settings-new")
@@ -515,6 +517,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
         source_location: "/tmp/harness-settings-warm",
         roadmap_path: "/tmp/harness-settings-warm/roadmap",
         check_command: "",
+        languages: "elixir",
         target_branch: "",
         concurrency_cap: "",
         warm_paths: "priv/discoveries\nsource, tmp/cache\n\n"
@@ -538,6 +541,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
         source_location: "/tmp/harness-settings-edited",
         roadmap_path: project.roadmap_path,
         check_command: "",
+        languages: "elixir",
         target_branch: "",
         concurrency_cap: "",
         warm_paths: ""
@@ -561,6 +565,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
         source_location: "/tmp/harness-settings-live",
         roadmap_path: project.roadmap_path,
         check_command: "",
+        languages: "elixir",
         target_branch: "",
         concurrency_cap: "",
         warm_paths: "priv/discoveries, source\n"
@@ -578,6 +583,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
         source_location: "/tmp/harness-settings-live",
         roadmap_path: project.roadmap_path,
         check_command: "",
+        languages: "elixir",
         target_branch: "",
         concurrency_cap: "",
         warm_paths: ""

@@ -44,6 +44,7 @@ defmodule Harness.Dashboard.SettingsLive do
   require Logger
 
   @meta_tick_interval_ms 5_000
+  @known_languages ~w(elixir rust javascript typescript go)a
 
   # Ordered tab definitions ({key, label}) for the in-page section nav. The key
   # is matched against the `:tab` assign to toggle each panel's `hidden`. Panels
@@ -589,7 +590,8 @@ defmodule Harness.Dashboard.SettingsLive do
         target_branch: project.target_branch || "",
         concurrency_cap: cap,
         concurrency_label: if(cap == "", do: "default", else: cap),
-        warm_paths: Enum.join(project.warm_paths, "\n")
+        warm_paths: Enum.join(project.warm_paths, "\n"),
+        languages: Enum.map_join(project.languages, ", ", &Atom.to_string/1)
       }
     end)
   end
@@ -603,6 +605,7 @@ defmodule Harness.Dashboard.SettingsLive do
     with {:ok, name} <- required_param(params, "name"),
          {:ok, source} <- source_param(params),
          {:ok, roadmap_path} <- required_param(params, "roadmap_path"),
+         {:ok, languages} <- parse_languages(Map.get(params, "languages", "")),
          {:ok, cap} <- parse_concurrency_cap(Map.get(params, "concurrency_cap", "")) do
       {:ok,
        name
@@ -612,6 +615,7 @@ defmodule Harness.Dashboard.SettingsLive do
          source: source,
          roadmap_path: roadmap_path,
          check_command: optional_param(params, "check_command"),
+         languages: languages,
          target_branch: optional_param(params, "target_branch"),
          concurrency_cap: cap,
          warm_paths: parse_warm_paths(Map.get(params, "warm_paths", ""))
@@ -659,6 +663,45 @@ defmodule Harness.Dashboard.SettingsLive do
       "" -> nil
       value -> value
     end
+  end
+
+  @spec parse_languages(String.t()) :: {:ok, [atom(), ...]} | :error
+  defp parse_languages(raw) do
+    raw
+    |> split_language_tokens()
+    |> normalize_language_tokens()
+  end
+
+  @spec split_language_tokens(String.t()) :: [String.t()]
+  defp split_language_tokens(raw) do
+    raw
+    |> String.split(~r/[\n,]/)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  @spec normalize_language_tokens([String.t()]) :: {:ok, [atom(), ...]} | :error
+  defp normalize_language_tokens([]), do: :error
+
+  defp normalize_language_tokens(parts) do
+    case Enum.reduce_while(parts, {:ok, []}, &accumulate_language/2) do
+      {:ok, languages} -> {:ok, Enum.reverse(languages)}
+      :error -> :error
+    end
+  end
+
+  @spec accumulate_language(String.t(), {:ok, [atom()]}) ::
+          {:cont, {:ok, [atom()]}} | {:halt, :error}
+  defp accumulate_language(part, {:ok, acc}) do
+    case language_atom(part) do
+      nil -> {:halt, :error}
+      language -> {:cont, {:ok, [language | acc]}}
+    end
+  end
+
+  @spec language_atom(String.t()) :: atom() | nil
+  defp language_atom(language) do
+    Enum.find(@known_languages, &(Atom.to_string(&1) == language))
   end
 
   @spec parse_warm_paths(String.t()) :: [String.t()]

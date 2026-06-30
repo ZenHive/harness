@@ -38,6 +38,7 @@ config :harness, :projects, [
     name: project_name,
     source: {:local, target_root},
     check_command: "cargo fmt --check && cargo clippy -- -D warnings && cargo test",
+    languages: [:rust],
     roadmap_path: harness_root,
     concurrency_cap: 1
   ]

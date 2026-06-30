@@ -1301,6 +1301,13 @@ defmodule Harness.Dashboard.Components do
             />
             <input
               type="text"
+              name="languages"
+              value={project.languages}
+              placeholder="languages (elixir, rust, …)"
+              aria-label={"Languages for #{project.label}"}
+            />
+            <input
+              type="text"
               name="target_branch"
               value={project.target_branch}
               placeholder="target branch"
@@ -1356,6 +1363,12 @@ defmodule Harness.Dashboard.Components do
               name="check_command"
               placeholder="check command"
               aria-label="Check command"
+            />
+            <input
+              type="text"
+              name="languages"
+              placeholder="languages (elixir, rust, …)"
+              aria-label="Languages"
             />
             <input
               type="text"

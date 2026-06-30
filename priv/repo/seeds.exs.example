@@ -24,6 +24,7 @@ editing it does nothing until you run it.
     name: "harness",
     source: {:local, Path.expand("../..", __DIR__)},
     check_command: "mix precommit.full",
+    languages: [:elixir],
     roadmap_path: Path.expand("../..", __DIR__),
     landing_policy: :auto,
     target_branch: "development",
@@ -39,6 +40,7 @@ editing it does nothing until you run it.
     name: "myapp",
     source: {:local, "/Users/me/_DATA/code/myapp"},
     check_command: "mix precommit",
+    languages: [:elixir],
     roadmap_path: "/Users/me/_DATA/code/myapp",
     concurrency_cap: 2
   )
@@ -50,5 +52,6 @@ editing it does nothing until you run it.
     name: "polyrepo",
     source: {:local, "/Users/me/_DATA/code/polyrepo"},
     check_command: "cd rust && cargo test; cd elixir && mix test",
+    languages: [:elixir, :rust],
     roadmap_path: "/Users/me/_DATA/code/polyrepo"
   )

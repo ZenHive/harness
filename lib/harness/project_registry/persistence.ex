@@ -59,17 +59,23 @@ defmodule Harness.ProjectRegistry.Persistence do
   @spec decode_rows([ProjectSchema.t()]) :: [Project.t()]
   defp decode_rows(rows) do
     rows
-    |> Enum.reduce([], fn row, acc ->
-      case decode_row(row) do
-        {:ok, %Project{} = project, backfill?} ->
-          if backfill?, do: upsert(project)
-          [project | acc]
-
-        {:error, reason} ->
-          skip_invalid_row(row, reason, acc)
-      end
-    end)
+    |> Enum.reduce([], &decode_row_acc/2)
     |> Enum.reverse()
+  end
+
+  @spec decode_row_acc(ProjectSchema.t(), [Project.t()]) :: [Project.t()]
+  defp decode_row_acc(row, acc) do
+    case decode_row(row) do
+      {:ok, %Project{} = project, true} ->
+        :ok = upsert(project)
+        [project | acc]
+
+      {:ok, %Project{} = project, false} ->
+        [project | acc]
+
+      {:error, reason} ->
+        skip_invalid_row(row, reason, acc)
+    end
   end
 
   @spec skip_invalid_row(ProjectSchema.t(), term(), [Project.t()]) :: [Project.t()]
