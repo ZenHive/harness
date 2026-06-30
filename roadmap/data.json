@@ -15126,6 +15126,114 @@
       "created_at": "2026-06-25",
       "scored_at": "2026-06-25",
       "cross_repo": []
+    },
+    {
+      "id": "337",
+      "phase": 22,
+      "bundle": "core-loop",
+      "status": "pending",
+      "title": "Clean up concrete Reach smell findings: narrow rescues, MapSet membership, direct map iteration",
+      "scores": {
+        "d": 3,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 1.33,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "Each Reach-flagged bare rescue site names the exception modules it intentionally handles, or is refactored so no catch-all rescue is needed; unexpected exceptions are not silently converted to success-shaped returns",
+        "The `lib/harness/run.ex` membership-tracking map flagged at line 2014 is represented with `MapSet` or an equally explicit membership structure without behavior change",
+        "The `lib/harness/capability_score.ex` `Map.keys/1 |> Enum.filter` pattern flagged at line 328 iterates the map directly as `{key, value}` pairs without behavior change",
+        "Tests cover any observable error-path behavior changed by rescue narrowing; existing behavior is preserved where a broad rescue was intentionally protecting a boundary",
+        "Before mutating each touched module, run the module coverage check and raise coverage first if it is below the repo tier; final `mix reach.check --arch --smells` no longer reports these concrete suboptimal/bare-rescue findings",
+        "Full gate green: mix precommit.full"
+      ],
+      "out_of_scope": [
+        "Repeated map-shape findings — the separate triage task owns those",
+        "The AgentAdapter behaviour-candidate warning — existing AgentAdapter contract tasks own that subsystem",
+        "Changing user-facing error copy unless required by narrowed exception handling"
+      ],
+      "touches": [
+        "lib/harness/agent_adapter/driver.ex",
+        "lib/harness/chat/claude.ex",
+        "lib/harness/dashboard/compare_live.ex",
+        "lib/harness/notification.ex",
+        "lib/harness/chat/tools.ex",
+        "lib/harness/worktree/sweeper.ex",
+        "lib/harness/run.ex",
+        "lib/harness/capability_score.ex",
+        "test/harness"
+      ],
+      "body": "`mix reach.check --arch --smells` on 2026-06-30 passed architecture policy but reported concrete, high-confidence code smells: seven bare `rescue` sites, one boolean-membership `Map.put/3` in `Harness.Run`, and one `Map.keys/1 |> Enum.filter` pattern in `Harness.CapabilityScore`. Clean only those concrete findings. For rescues, preserve the existing boundary intent while making the handled exception set explicit; do not hide unexpected exceptions behind success-shaped returns. For the two collection findings, make the data structure/iteration intent explicit without changing behavior.",
+      "created_at": "2026-06-30",
+      "scored_at": "2026-06-30",
+      "cross_repo": []
+    },
+    {
+      "id": "338",
+      "phase": 22,
+      "bundle": "core-loop",
+      "status": "pending",
+      "title": "Triage Reach repeated-map-shape findings into structs, explicit contracts, or documented suppressions",
+      "scores": {
+        "d": 4,
+        "b": 4,
+        "u": 4
+      },
+      "eff": 1.0,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "cursor",
+      "model": "composer-2.5",
+      "acceptance_criteria": [
+        "Audit every repeated map-shape finding reported by `mix reach.check --arch --smells` on 2026-06-30 and classify it as shared contract, local UI literal, external payload, or transient construction data",
+        "For shared contracts, introduce a struct or explicit contract module only where it reduces real drift risk and matches existing boundaries; update call sites and tests",
+        "For findings intentionally kept as maps, add a narrow Reach suppression or local explanatory comment at the relevant site so the decision is visible and future runs do not rediscover it as untriaged debt",
+        "The implemented note enumerates each 2026-06-30 repeated-shape finding and its disposition",
+        "Final `mix reach.check --arch --smells` has no untriaged repeated-map-shape findings; architecture policy still passes",
+        "Full gate green: mix precommit.full"
+      ],
+      "out_of_scope": [
+        "Blindly converting every repeated map literal into a struct",
+        "The bare-rescue and concrete collection-smell cleanup task",
+        "The AgentAdapter behaviour-candidate warning — existing AgentAdapter contract tasks own that subsystem",
+        "New dashboard features or payload shape changes beyond preserving existing behavior"
+      ],
+      "touches": [
+        "lib/harness/dashboard/transcript/parser/codex.ex",
+        "lib/harness/dashboard/transcript/parser.ex",
+        "lib/harness/chat/session.ex",
+        "lib/harness/dashboard/components.ex",
+        "lib/harness/dashboard/compare_live.ex",
+        "lib/harness/dashboard/chat_live.ex",
+        "lib/harness/oban.ex",
+        "lib/harness/chat/supervisor.ex",
+        "lib/harness/worktree/sweeper.ex",
+        "lib/harness/routing.ex",
+        "lib/harness/dispatch.ex",
+        "lib/harness/dashboard/live.ex",
+        "lib/harness/run.ex",
+        "lib/harness/code_search.ex",
+        "lib/harness/model_availability.ex",
+        "lib/harness/dashboard/config_inspector.ex",
+        "lib/harness/capability_score.ex",
+        "lib/harness/agent_kpi.ex",
+        "lib/harness/config.ex",
+        "lib/harness/repo/migration_guard.ex",
+        "lib/harness/dashboard/mcp_server.ex",
+        "test/harness"
+      ],
+      "body": "`mix reach.check --arch --smells` on 2026-06-30 reported repeated map shapes across dashboard payloads, transcript parsing, routing/model availability facts, dispatch summaries, code-search rows, KPI totals, and child specs. These are advisory findings, not automatic refactors: some maps may be the correct JSON-native boundary shape, while others are real drift-prone contracts. Triage the full list from that run, convert only the shared contracts that deserve names, and make every keep-as-map decision explicit so future Reach runs distinguish intentional maps from unexamined debt.",
+      "created_at": "2026-06-30",
+      "scored_at": "2026-06-30",
+      "cross_repo": []
     }
   ]
 }

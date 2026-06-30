@@ -54,6 +54,9 @@ harness-*.tar
 .claude/scheduled_tasks.lock
 .claude/settings.local.json
 
+# Codex — local runtime state / per-user settings.
+.codex/
+
 # Per-host project seed. Template lives in priv/repo/seeds.exs.example (tracked).
 /priv/repo/seeds.exs
 
