@@ -14867,7 +14867,7 @@
       "id": "331",
       "phase": 22,
       "bundle": "operator-surface",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Dependency-freshness fact source (per-language provider; hex.outdated first) + dashboard panel",
       "scores": {
         "d": 4,
@@ -14900,6 +14900,7 @@
       ],
       "body": "Add a dependency-freshness fact source to harness, surfaced in the dashboard, so the operator AND dispatched agents have ground truth about which registered projects have outdated deps — countering the recurring agent hallucination that a hex dep cannot be updated.\n\nOn the existing Oban cron schedule (same pattern as the Task 51 roadmap poller / the audit poller), run a per-language freshness PROVIDER keyed on `project.language` and record the raw rows as facts: dependency name, current version, latest version, and whether the bump is allowed by the project current constraint. The Elixir provider (`mix hex.outdated`, reading the mix.exs constraint / update-possible status) is provider #1; design the store + dashboard schema language-neutral so a Rust provider (Task 336, `cargo outdated`) slots in without a refactor or a parallel scanner. Persist via the Postgres-backed store pattern (Ecto schema + migration under priv/repo/migrations), falling back to in-memory when repo_enabled is false. Render the facts in a dashboard panel per project: the rows, an outdated count, and a last-checked timestamp.\n\nThis is pure mechanical fact-capture and display — count facts in code. No test running, no judgment, no auto-update, never a gate.\n",
       "created_at": "2026-06-24",
+      "started_at": "2026-06-30",
       "scored_at": "2026-06-24",
       "cross_repo": []
     },
