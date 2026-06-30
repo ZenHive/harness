@@ -168,6 +168,8 @@ defmodule Harness.CodeSearchTest do
 
     assert_receive {:fake_server_started, server_pid}
     assert_receive {:fake_repo_started, repo_pid}
+    assert_receive {:fake_repo_opts, opts}
+    assert Keyword.fetch!(opts, :name) == nil
     refute_receive {:fake_server_started, _another_server_pid}
     refute_receive {:fake_repo_started, _another_repo_pid}
 
@@ -191,6 +193,21 @@ defmodule Harness.CodeSearchTest do
     assert {:ok, %{facts: [%{name: "found"}]}} = CodeSearch.definitions(project.name, "found", opts)
 
     assert Enum.count(received_events(), &match?({:fake_index, _repo_pid, true}, &1)) == 2
+  end
+
+  test "sanitizes custom DuckDB table prefixes before querying", %{cache_root: cache_root} do
+    %{project: project} = fixture_project("code-search-prefix")
+    assert :ok = ProjectRegistry.register(project)
+
+    opts = Keyword.put(fake_lifecycle_opts(cache_root), :prefix, ~s|bad"; DROP TABLE files; --|)
+
+    assert {:ok, %{facts: facts}} = CodeSearch.definitions(project.name, "", opts)
+    assert Enum.any?(facts, &match?(%{module: "Demo.Search", name: "target"}, &1))
+
+    assert_receive {:fake_query, sql, [_limit], [timeout: :infinity]}
+    refute sql =~ ";"
+    refute sql =~ "DROP TABLE"
+    assert sql =~ ~s|FROM "bad___DROP_TABLE_files_____definitions"|
   end
 
   test "duplicates logs and skips when ExDNA is unavailable", %{cache_root: cache_root} do
@@ -362,12 +379,16 @@ defmodule Harness.CodeSearchTest do
   defmodule FakeRepo do
     @moduledoc false
 
-    def start_link(_opts) do
+    def start_link(opts) do
       fn -> :repo end
       |> Agent.start_link()
       |> tap(fn
-        {:ok, pid} -> send_event({:fake_repo_started, pid})
-        _other -> :ok
+        {:ok, pid} ->
+          send_event({:fake_repo_started, pid})
+          send_event({:fake_repo_opts, opts})
+
+        _other ->
+          :ok
       end)
     end
 
@@ -378,6 +399,10 @@ defmodule Harness.CodeSearchTest do
     end
 
     def query(_sql, _params), do: {:ok, %{rows: []}}
+
+    def query(sql, params, opts) do
+      tap({:ok, %{rows: []}}, fn _result -> send_event({:fake_query, sql, params, opts}) end)
+    end
 
     defp send_event(event), do: send(Application.fetch_env!(:harness, :code_search_test_pid), event)
   end

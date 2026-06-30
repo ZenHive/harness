@@ -23,6 +23,11 @@ defmodule Harness.CodeSearch do
   @duckdb_threads 1
   @definition_cache_table :harness_code_search_definition_facts
   @source_cache_table :harness_code_search_source_facts
+  @invalid_prefix_char ~r/[^A-Za-z0-9_]/
+  @module_unavailable_reason %{
+    exograph: :exograph_unavailable,
+    ex_dna: :ex_dna_unavailable
+  }
   @definition_kind_by_string %{
     "module" => :module,
     "def" => :def,
@@ -94,6 +99,7 @@ defmodule Harness.CodeSearch do
   )
 
   @spec definitions(String.t(), String.t(), keyword()) :: result()
+  # sobelow_skip ["SQL.Query"] - query SQL uses a sanitized DuckDB table prefix and positional parameters.
   def definitions(project_name, name, opts \\ []) when is_binary(project_name) and is_binary(name) and is_list(opts) do
     query(project_name, opts, &definition_query(&1, name, &2, opts))
   end
@@ -108,6 +114,7 @@ defmodule Harness.CodeSearch do
   )
 
   @spec callers(String.t(), String.t(), keyword()) :: result()
+  # sobelow_skip ["SQL.Query"] - query SQL uses a sanitized DuckDB table prefix and positional parameters.
   def callers(project_name, symbol, opts \\ []) when is_binary(project_name) and is_binary(symbol) and is_list(opts) do
     query(project_name, opts, fn index, ctx ->
       case ctx.exograph.search_callers(index, symbol, limit: limit(opts)) do
@@ -127,6 +134,7 @@ defmodule Harness.CodeSearch do
   )
 
   @spec callees(String.t(), String.t(), keyword()) :: result()
+  # sobelow_skip ["SQL.Query"] - query SQL uses a sanitized DuckDB table prefix and positional parameters.
   def callees(project_name, symbol, opts \\ []) when is_binary(project_name) and is_binary(symbol) and is_list(opts) do
     query(project_name, opts, fn index, ctx ->
       case ctx.exograph.search_callees(index, symbol, limit: limit(opts)) do
@@ -215,7 +223,7 @@ defmodule Harness.CodeSearch do
     if Code.ensure_loaded?(module) do
       :ok
     else
-      {:skip, :"#{reason_base}_unavailable", project}
+      {:skip, Map.fetch!(@module_unavailable_reason, reason_base), project}
     end
   end
 
@@ -242,6 +250,7 @@ defmodule Harness.CodeSearch do
 
   @spec rebuild_index(String.t(), String.t(), keyword()) :: :ok | {:error, term()}
   defp rebuild_index(repo_path, index_path, opts) do
+    # sobelow_skip ["Traversal.FileModule"] - index_path is built under the CodeSearch cache root.
     File.mkdir_p!(Path.dirname(index_path))
     Server.close(index_path, opts)
     clear_duckdb_files(index_path)
@@ -305,7 +314,17 @@ defmodule Harness.CodeSearch do
   end
 
   @spec prefix(keyword()) :: String.t()
-  defp prefix(opts), do: Keyword.get(opts, :prefix, @default_prefix)
+  defp prefix(opts) do
+    opts
+    |> Keyword.get(:prefix, @default_prefix)
+    |> to_string()
+    |> String.replace(@invalid_prefix_char, "_")
+    |> String.trim_leading("_")
+    |> case do
+      "" -> @default_prefix
+      sanitized -> sanitized
+    end
+  end
 
   @spec map_query({:ok, [term()]} | {:error, term()}, (term() -> fact())) :: {:ok, [fact()]} | {:error, term()}
   defp map_query({:ok, values}, mapper), do: {:ok, Enum.map(values, mapper)}
@@ -534,6 +553,7 @@ defmodule Harness.CodeSearch do
 
   @spec source_fact(String.t()) :: [map()]
   defp source_fact(path) do
+    # sobelow_skip ["Traversal.FileModule"] - path comes from source_paths/1's lib/test glob under a registered repo.
     with {:ok, source} <- File.read(path),
          {:ok, ast} <- Code.string_to_quoted(source, columns: true, token_metadata: true) do
       symbols_module = Module.concat([ExAST, Symbols])
@@ -750,6 +770,7 @@ defmodule Harness.CodeSearch do
 
   @spec clear_duckdb_files(String.t()) :: :ok
   defp clear_duckdb_files(index_path) do
+    # sobelow_skip ["Traversal.FileModule"] - removes only the cache index and its adjacent DuckDB WAL file.
     Enum.each([index_path, index_path <> ".wal"], &File.rm/1)
   end
 
@@ -785,6 +806,10 @@ defmodule Harness.CodeSearch.Server do
   @repo_queue_interval_ms 120_000
   @repo_timeout_ms 120_000
   @stop_timeout_ms 5_000
+  @module_unavailable_reason %{
+    quackdb: :quackdb_unavailable,
+    exograph_duckdb_repo: :exograph_duckdb_repo_unavailable
+  }
 
   @type resource :: %{server: pid(), repo: pid(), index: term() | nil}
   @type state :: %{resources: %{term() => resource()}}
@@ -932,7 +957,7 @@ defmodule Harness.CodeSearch.Server do
     server_module = opts[:quackdb_server_module] || QuackDB.Server
 
     repo.start_link(
-      name: :"#{repo}_#{System.unique_integer([:positive])}",
+      name: nil,
       uri: server_module.uri(server),
       token: server_module.token(server),
       pool_size: 1,
@@ -1006,7 +1031,7 @@ defmodule Harness.CodeSearch.Server do
     if Code.ensure_loaded?(module) do
       :ok
     else
-      {:skip, :"#{reason_base}_unavailable", nil}
+      {:skip, Map.fetch!(@module_unavailable_reason, reason_base), nil}
     end
   end
 

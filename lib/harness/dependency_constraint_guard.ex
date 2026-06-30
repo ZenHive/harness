@@ -23,9 +23,30 @@ defmodule Harness.DependencyConstraintGuard do
   @doc "Reads `path` and returns unjustified three-part `~> x.y.z` constraints."
   @spec violations(String.t()) :: {:ok, [violation()]} | {:error, File.posix()}
   def violations(path) when is_binary(path) do
-    with {:ok, content} <- File.read(path) do
+    with {:ok, safe_path} <- safe_repo_path(path),
+         {:ok, content} <- read_file(safe_path) do
       {:ok, violations_in(content)}
     end
+  end
+
+  @spec safe_repo_path(String.t()) :: {:ok, String.t()} | {:error, :eacces}
+  defp safe_repo_path(path) do
+    root = Path.expand(File.cwd!())
+    safe_prefix = root <> "/"
+    expanded = Path.expand(path)
+
+    if String.starts_with?(expanded, safe_prefix) do
+      {:ok, expanded}
+    else
+      {:error, :eacces}
+    end
+  end
+
+  @spec read_file(String.t()) :: {:ok, String.t()} | {:error, File.posix()}
+  defp read_file(path) do
+    path
+    |> String.to_charlist()
+    |> :file.read_file()
   end
 
   @spec line_violation({String.t(), pos_integer()}) :: [violation()]

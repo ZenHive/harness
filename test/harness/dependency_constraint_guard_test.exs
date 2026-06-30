@@ -15,4 +15,20 @@ defmodule Harness.DependencyConstraintGuardTest do
 
     assert [] = DependencyConstraintGuard.violations_in(content)
   end
+
+  test "reads repo-local files" do
+    path = Path.join(File.cwd!(), "dependency_constraint_guard_#{System.unique_integer([:positive])}.mix.exs")
+    File.write!(path, ~s({:plug, "~> 1.19.2"}))
+
+    on_exit(fn -> File.rm(path) end)
+
+    assert {:ok, [%{line: 1, constraint: "~> 1.19.2"}]} =
+             DependencyConstraintGuard.violations(path)
+  end
+
+  test "rejects paths outside the repo root" do
+    path = Path.join(System.tmp_dir!(), "dependency_constraint_guard.mix.exs")
+
+    assert {:error, :eacces} = DependencyConstraintGuard.violations(path)
+  end
 end
