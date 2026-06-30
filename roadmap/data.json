@@ -15001,7 +15001,7 @@
       "id": "334",
       "phase": 22,
       "bundle": "operator-surface",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Tooling-baseline conformance fact source (framework + Elixir provider) + dashboard",
       "scores": {
         "d": 4,
@@ -15040,6 +15040,7 @@
       ],
       "body": "Add a tooling-baseline conformance fact source for registered Elixir projects, surfaced in the dashboard, so the operator can see which projects drift from the standard toolchain — strengthening the review gate (a project missing credo/dialyzer/ex_dna has a weaker check_command, so dispatched work there is less verified).\n\nScope to projects with `language == :elixir` only — do not impose Elixir tooling on Rust or other-language projects. On the existing Oban cron, scan each Elixir project COMMITTED surface (mix.exs + config files) against a harness-shipped baseline manifest derived from the canonical bootstrap (vibe_kit + the elixir-setup committed extras): required deps (credo + ex_slop, dialyxir, ex_dna, reach, sobelow, doctor, ex_unit_json, dialyzer_json, styler), the `ci` / `precommit` mix aliases, and presence of `.credo.exs` / `.reach.exs` / `.formatter.exs`. Record the per-project drift as facts. Structure the conformance check as a per-language baseline PROVIDER keyed on `project.language` (mirroring Task 331 freshness provider): the Elixir provider defines this vibe_kit/elixir-setup baseline and is the only provider for now — a Rust baseline is deliberately deferred (no canonical spec yet), but keep the framework + dashboard language-neutral so one can be added without refactor. EXTEND Task 331 dependency panel/store rather than building a parallel project scanner or a second dashboard panel.\n\nSupport a per-project override so a project can opt a tool out with a reason (the override is itself a recorded fact, not a silent skip). Only the committed surface is enforceable: PostToolUse hooks, Tidewave runtime, and local settings.json are operator-machine config harness cannot check — mark those advisory / out of the conformance set, do not claim to enforce them.\n\nCount-and-display only — harness records and shows the raw drift facts; it never mutates a project mix.exs, never auto-installs tooling, and never gates dispatching work to a non-conformant project.\n",
       "created_at": "2026-06-25",
+      "started_at": "2026-06-30",
       "scored_at": "2026-06-25",
       "cross_repo": []
     },

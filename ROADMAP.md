@@ -13,7 +13,7 @@
 
 **Last shipped:** no recent shipments
 
-**Up next:** Task 334 — Tooling-baseline conformance fact source (framework + Elixir provider) + dashboard [D:4/B:6/U:7 → Eff:1.62] 🚀
+**Up next:** Task 174 — Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:3/B:5/U:4 → Eff:1.5] 🚀
 <!-- FOCUS:END -->
 
 ---
