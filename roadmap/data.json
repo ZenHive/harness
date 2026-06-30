@@ -15295,7 +15295,7 @@
       "id": "340",
       "phase": 22,
       "bundle": "operator-surface",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Project languages invariant + multi-language provider substrate",
       "scores": {
         "d": 6,
@@ -15356,6 +15356,7 @@
       ],
       "body": "Make the project language model explicit and future-proof before adding more ecosystem providers. The current singular `project.language` shape cannot model mixed repositories such as rexex, and treating `nil` as Elixir creates a hidden compatibility path that will keep biting later. Replace it with `project.languages`, a required non-empty list of atoms.\n\nNew registration must be strict: attrs or JSON/MCP calls without `languages` fail; `:mixed` is not allowed because it erases the actual provider set. Existing persisted rows are data debt, not a runtime fallback: decode old payloads, convert `language: nil` to `languages: [:elixir]`, convert old singular atoms to one-element lists, and write the normalized payload back so runtime consumers only see explicit languages.\n\nThen update the existing provider substrate to iterate languages. Today only Elixir freshness/conformance providers exist, so mixed projects should produce Elixir facts plus visible skipped facts for unsupported languages. Future Rust/JavaScript/Go providers must be additive tasks plugged into this seam, not another project-model refactor.\n",
       "created_at": "2026-07-01",
+      "started_at": "2026-06-30",
       "scored_at": "2026-07-01",
       "cross_repo": []
     },
