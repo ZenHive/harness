@@ -10117,3 +10117,20 @@ model = "composer-2.5"
 body = "`mix reach.check --arch --smells` on 2026-06-30 reported repeated map shapes across dashboard payloads, transcript parsing, routing/model availability facts, dispatch summaries, code-search rows, KPI totals, and child specs. These are advisory findings, not automatic refactors: some maps may be the correct JSON-native boundary shape, while others are real drift-prone contracts. Triage the full list from that run, convert only the shared contracts that deserve names, and make every keep-as-map decision explicit so future Reach runs distinguish intentional maps from unexamined debt."
 created_at = "2026-06-30"
 scored_at = "2026-06-30"
+
+[[task]]
+id = "339"
+phase = 22
+bundle = "operator-surface"
+status = "pending"
+title = "Clean up existing Sobelow findings in code_search"
+scores = { d = 3, b = 4, u = 5 }
+acceptance_criteria = ["`mix sobelow --exit --skip` no longer reports the existing low-confidence findings in `lib/harness/code_search.ex`, either because the code is made obviously safe or because justified project-standard skips are added at the narrowest safe scope.", "No Sobelow suppressions are added for the Task 331 dependency-freshness modules; those touched-file findings were fixed in the reviewer pass.", "`mix check.fast`, `mix sobelow --exit --skip`, and the relevant code_search tests pass."]
+out_of_scope = ["Changing dependency-freshness behavior or dashboard UI", "Broad security hardening outside the Sobelow findings in `lib/harness/code_search.ex`"]
+files_to_modify = ["lib/harness/code_search.ex", "test/harness/code_search_test.exs"]
+touches = ["lib/harness/code_search.ex", "test/harness/code_search_test.exs"]
+assignee = "codex"
+model = "gpt-5.5"
+body = "Sobelow currently fails `mix sobelow --exit --skip` on pre-existing low-confidence findings in `lib/harness/code_search.ex` (SQL.Query around definitions/callers/callees, traversal around file reads/removal/mkdir, and BinToAtom around dynamic module startup). Task 331's reviewer pass removed the new dependency-freshness Sobelow findings, but the remaining red is outside that task's files and should be cleaned up separately so `mix precommit.full` can be green without approving around a pre-existing security-scan red."
+created_at = "2026-06-30"
+scored_at = "2026-06-30"
