@@ -130,6 +130,7 @@ defmodule Harness.Dashboard.DepFreshnessLive do
           <th>Current</th>
           <th>Latest</th>
           <th>Constraint allowed</th>
+          <th>Status</th>
         </tr>
       </thead>
       <tbody>
@@ -138,6 +139,7 @@ defmodule Harness.Dashboard.DepFreshnessLive do
           <td><code>{row.current_version}</code></td>
           <td><code>{row.latest_version}</code></td>
           <td>{constraint_allowed_label(row.constraint_allowed)}</td>
+          <td>{row_status_label(row)}</td>
         </tr>
       </tbody>
     </table>
@@ -217,7 +219,12 @@ defmodule Harness.Dashboard.DepFreshnessLive do
   end
 
   @spec row_class(Row.t()) :: String.t()
+  defp row_class(%Row{status: :skipped}), do: "dep-skipped"
   defp row_class(%Row{} = row), do: if(Row.outdated?(row), do: "dep-outdated", else: "")
+
+  @spec row_status_label(Row.t()) :: String.t()
+  defp row_status_label(%Row{status: :skipped, reason: reason}), do: "skipped #{reason}"
+  defp row_status_label(%Row{}), do: "ok"
 
   @spec constraint_allowed_label(boolean()) :: String.t()
   defp constraint_allowed_label(true), do: "yes"
@@ -236,9 +243,11 @@ defmodule Harness.Dashboard.DepFreshnessLive do
   defp conformance_category_label(:dep), do: "dep"
   defp conformance_category_label(:alias), do: "alias"
   defp conformance_category_label(:config_file), do: "config"
+  defp conformance_category_label(:provider), do: "provider"
 
   @spec conformance_status_label(ConformanceItem.status()) :: String.t()
   defp conformance_status_label(:present), do: "present"
   defp conformance_status_label(:missing), do: "missing"
   defp conformance_status_label(:overridden), do: "overridden"
+  defp conformance_status_label(:skipped), do: "skipped"
 end

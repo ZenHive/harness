@@ -341,7 +341,7 @@ defmodule Harness.ResultStore.MemoryTest do
 
   @spec local_project(String.t()) :: Project.t()
   defp local_project(repo) do
-    %Project{name: "reconcile", source: {:local, repo}, roadmap_path: repo, target_branch: "main"}
+    %Project{name: "reconcile", source: {:local, repo}, roadmap_path: repo, languages: [:elixir], target_branch: "main"}
   end
 
   @spec commit_and_push(String.t(), String.t(), String.t()) :: String.t()

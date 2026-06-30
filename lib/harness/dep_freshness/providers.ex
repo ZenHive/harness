@@ -8,14 +8,19 @@ defmodule Harness.DepFreshness.Providers do
     elixir: ElixirProvider
   }
 
-  @doc "Resolves the freshness provider module for a project's language."
-  @spec resolve(Project.t()) :: {:ok, module()} | {:skipped, term()}
-  def resolve(%Project{} = project) do
-    language = project.language || :elixir
+  @type resolution :: {:ok, atom(), module()} | {:skipped, atom(), term()}
 
+  @doc "Resolves freshness provider modules for every project language."
+  @spec resolve(Project.t()) :: [resolution()]
+  def resolve(%Project{} = project) do
+    Enum.map(project.languages, &resolve_language/1)
+  end
+
+  @spec resolve_language(atom()) :: resolution()
+  defp resolve_language(language) do
     case Map.fetch(@providers, language) do
-      {:ok, provider} -> {:ok, provider}
-      :error -> {:skipped, {:unsupported_language, language}}
+      {:ok, provider} -> {:ok, language, provider}
+      :error -> {:skipped, language, {:unsupported_language, language}}
     end
   end
 end

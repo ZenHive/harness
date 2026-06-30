@@ -815,6 +815,11 @@ defmodule Harness.Dispatch do
         kind: :value,
         description: "Filesystem path to the project root containing roadmap/tasks.toml (resolves rmap browse/ingest)."
       ],
+      languages: [
+        kind: :value,
+        description:
+          "Required non-empty list of target-language atoms for provider selection and injected agent rules. :mixed is not accepted."
+      ],
       check_command: [
         kind: :value,
         default: nil,
@@ -825,12 +830,6 @@ defmodule Harness.Dispatch do
         kind: :value,
         default: nil,
         description: "Optional per-project max concurrent runs (the project's Oban queue limit). nil leaves the default."
-      ],
-      language: [
-        kind: :value,
-        default: nil,
-        description:
-          "Optional target-language atom for injected agent rules. nil/:elixir keeps Elixir guidance; other atoms suppress Elixir-specific sections."
       ],
       warm_paths: [
         kind: :value,
@@ -851,9 +850,9 @@ defmodule Harness.Dispatch do
           String.t(),
           String.t(),
           String.t(),
+          nonempty_list(atom() | String.t()),
           String.t() | nil,
           pos_integer() | nil,
-          atom() | nil,
           [String.t()]
         ) ::
           {:ok, %{name: String.t()}} | {:error, term()}
@@ -862,9 +861,9 @@ defmodule Harness.Dispatch do
         source_type,
         source_location,
         roadmap_path,
+        languages,
         check_command \\ nil,
         concurrency_cap \\ nil,
-        language \\ nil,
         warm_paths \\ []
       )
       when is_binary(name) and is_binary(source_type) and is_binary(source_location) and is_binary(roadmap_path) do
@@ -875,7 +874,7 @@ defmodule Harness.Dispatch do
            roadmap_path: roadmap_path,
            check_command: check_command,
            concurrency_cap: concurrency_cap,
-           language: language,
+           languages: languages,
            warm_paths: warm_paths
          ],
          :ok <- ProjectRegistry.register(attrs) do

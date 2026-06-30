@@ -209,10 +209,12 @@ defmodule Harness.CodeSearch do
   defp query_result({:error, reason}, _project_name), do: {:error, reason}
 
   @spec supported_project(Project.t()) :: :ok | {:skip, term(), Project.t()}
-  defp supported_project(%Project{language: language}) when language in [nil, :elixir], do: :ok
-
-  defp supported_project(%Project{} = project) do
-    {:skip, {:unsupported_language, project.language}, project}
+  defp supported_project(%Project{languages: languages} = project) do
+    if :elixir in languages do
+      :ok
+    else
+      {:skip, {:unsupported_languages, languages}, project}
+    end
   end
 
   @spec ensure_exograph(Project.t(), keyword()) :: :ok | {:skip, :exograph_unavailable, Project.t()}

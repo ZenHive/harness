@@ -23,8 +23,8 @@ defmodule Harness.AgentAdapter.Invocation do
       universal baseline every adapter must support; any other value must be
       listed in the adapter's `Harness.AgentAdapter.Capabilities`.
     * `model` — an optional model id, passed through to the agent.
-    * `language` — optional target language from `%Harness.Project{}`, used
-      only to select language-specific injected rule sections.
+    * `languages` — target languages from `%Harness.Project{}`, used only to
+      select language-specific injected rule sections.
     * `adapter_opts` — an escape hatch for per-agent knobs the uniform fields do
       not cover.
     * `env` — caller-controlled environment for the spawned agent. Map of
@@ -40,7 +40,7 @@ defmodule Harness.AgentAdapter.Invocation do
           session: term() | nil,
           permission_mode: atom(),
           model: String.t() | nil,
-          language: atom() | nil,
+          languages: nonempty_list(atom()),
           adapter_opts: keyword(),
           env: %{optional(String.t()) => String.t() | false},
           rules: Harness.AgentAdapter.RuleDelivery.t() | nil
@@ -54,7 +54,7 @@ defmodule Harness.AgentAdapter.Invocation do
     session: nil,
     permission_mode: :autonomous,
     model: nil,
-    language: nil,
+    languages: [:elixir],
     adapter_opts: [],
     env: %{},
     rules: nil

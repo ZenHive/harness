@@ -3,7 +3,7 @@ defmodule Harness.Cron.DepFreshnessPoller do
   Cron worker that records dependency freshness facts for registered projects.
 
   Runs on the shared `:cron` queue schedule. Each tick invokes the per-language
-  provider keyed on `project.language` and persists raw rows — no judgment,
+  providers keyed on `project.languages` and persists raw rows — no judgment,
   no auto-update, never a gate.
   """
 

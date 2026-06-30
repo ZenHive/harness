@@ -4,7 +4,7 @@ defmodule Harness.Run.TestDbIsolationTest do
   alias Harness.Project
   alias Harness.Run.TestDbIsolation
 
-  @project %Project{name: "tapakly", source: {:local, "/tmp/tapakly"}, roadmap_path: "/tmp/tapakly"}
+  @project %Project{name: "tapakly", source: {:local, "/tmp/tapakly"}, roadmap_path: "/tmp/tapakly", languages: [:elixir]}
 
   describe "env/2" do
     test "uses Phoenix's default MIX_TEST_PARTITION env with a DB-safe run suffix" do

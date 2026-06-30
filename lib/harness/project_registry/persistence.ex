@@ -61,8 +61,12 @@ defmodule Harness.ProjectRegistry.Persistence do
     rows
     |> Enum.reduce([], fn row, acc ->
       case decode_row(row) do
-        {:ok, %Project{} = project} -> [project | acc]
-        {:error, reason} -> skip_invalid_row(row, reason, acc)
+        {:ok, %Project{} = project, backfill?} ->
+          if backfill?, do: upsert(project)
+          [project | acc]
+
+        {:error, reason} ->
+          skip_invalid_row(row, reason, acc)
       end
     end)
     |> Enum.reverse()
@@ -130,13 +134,15 @@ defmodule Harness.ProjectRegistry.Persistence do
 
   defp reraise_structural!(_error, _stacktrace), do: :ok
 
-  @spec decode_row(ProjectSchema.t()) :: {:ok, Project.t()} | {:error, term()}
+  @spec decode_row(ProjectSchema.t()) :: {:ok, Project.t(), boolean()} | {:error, term()}
   defp decode_row(%ProjectSchema{name: name, payload: payload, warm_paths: warm_paths}) when is_binary(payload) do
     case decode_term(payload) do
-      {:ok, %Project{name: ^name} = project} ->
-        {:ok, %{rebuild_on_current_shape(project) | warm_paths: warm_paths || []}}
+      {:ok, %{__struct__: Project, name: ^name} = project} ->
+        with {:ok, rebuilt, backfill?} <- rebuild_on_current_shape(project) do
+          {:ok, %{rebuilt | warm_paths: warm_paths || []}, backfill?}
+        end
 
-      {:ok, %Project{name: other}} ->
+      {:ok, %{__struct__: Project, name: other}} ->
         {:error, {:name_mismatch, name, other}}
 
       {:ok, _other} ->
@@ -153,10 +159,65 @@ defmodule Harness.ProjectRegistry.Persistence do
   # (check_stacks, review_green) and lack newer ones (check_command). Rebuild on
   # the current struct shape: known fields survive, unknown fields drop, missing
   # fields take struct defaults — field access never raises.
-  @spec rebuild_on_current_shape(struct()) :: Project.t()
-  defp rebuild_on_current_shape(%Project{} = project) do
-    struct(Project, Map.from_struct(project))
+  @spec rebuild_on_current_shape(map()) :: {:ok, Project.t(), boolean()} | {:error, term()}
+  defp rebuild_on_current_shape(%{__struct__: Project} = project) do
+    attrs = project |> Map.from_struct() |> Map.new()
+
+    case normalize_languages(attrs) do
+      {:ok, languages, backfill?} ->
+        current_attrs =
+          attrs
+          |> Map.delete(:language)
+          |> Map.put(:languages, languages)
+
+        {:ok, struct(Project, current_attrs), backfill?}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
+
+  @spec normalize_languages(map()) :: {:ok, nonempty_list(atom()), boolean()} | {:error, term()}
+  defp normalize_languages(attrs) do
+    cond do
+      Map.has_key?(attrs, :languages) ->
+        normalize_current_languages(attrs)
+
+      Map.get(attrs, :language) == nil ->
+        {:ok, [:elixir], true}
+
+      Map.get(attrs, :language) == :mixed ->
+        {:error, {:invalid_languages, :mixed}}
+
+      is_atom(Map.get(attrs, :language)) ->
+        {:ok, [Map.fetch!(attrs, :language)], true}
+
+      true ->
+        {:error, {:missing, :languages}}
+    end
+  end
+
+  @spec normalize_current_languages(map()) :: {:ok, nonempty_list(atom()), boolean()} | {:error, term()}
+  defp normalize_current_languages(attrs) do
+    languages = Map.fetch!(attrs, :languages)
+
+    case validate_languages(languages) do
+      :ok -> {:ok, languages, Map.has_key?(attrs, :language)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @spec validate_languages(term()) :: :ok | {:error, term()}
+  defp validate_languages([_ | _] = languages) do
+    cond do
+      not Enum.all?(languages, &is_atom/1) -> {:error, {:invalid_languages, languages}}
+      Enum.member?(languages, :mixed) -> {:error, {:invalid_languages, :mixed}}
+      true -> :ok
+    end
+  end
+
+  defp validate_languages([]), do: {:error, {:empty, :languages}}
+  defp validate_languages(other), do: {:error, {:invalid_languages, other}}
 
   # Payloads are harness-owned database blobs written by upsert/1.
   # sobelow_skip ["Misc.BinToTerm"]

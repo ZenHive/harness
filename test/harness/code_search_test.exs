@@ -119,17 +119,25 @@ defmodule Harness.CodeSearchTest do
   end
 
   test "logs and skips non-Elixir projects", %{cache_root: cache_root} do
-    %{project: project} = fixture_project("code-search-rust", language: :rust)
+    %{project: project} = fixture_project("code-search-rust", languages: [:rust])
     assert :ok = ProjectRegistry.register(project)
 
     log =
       capture_log(fn ->
-        assert {:ok, %{status: :skipped, reason: {:unsupported_language, :rust}, facts: []}} =
+        assert {:ok, %{status: :skipped, reason: {:unsupported_languages, [:rust]}, facts: []}} =
                  CodeSearch.refresh(project.name, cache_root: cache_root)
       end)
 
     assert log =~ "CodeSearch skipped"
     assert log =~ "unsupported_language"
+  end
+
+  test "supports mixed projects that include Elixir", %{cache_root: cache_root} do
+    %{project: project} = fixture_project("code-search-mixed", languages: [:elixir, :rust])
+    assert :ok = ProjectRegistry.register(project)
+
+    assert {:ok, %{status: :refreshed}} =
+             CodeSearch.refresh(project.name, cache_root: cache_root, duckdb: duckdb())
   end
 
   test "CodeSearch tools are exposed through the chat/MCP registry" do
@@ -268,7 +276,7 @@ defmodule Harness.CodeSearchTest do
       name: name,
       source: {:local, root},
       roadmap_path: Path.join(root, "roadmap/tasks.toml"),
-      language: Keyword.get(opts, :language)
+      languages: Keyword.get(opts, :languages, [Keyword.get(opts, :language, :elixir)])
     }
 
     %{project: project, root: root, source_file: source_file}

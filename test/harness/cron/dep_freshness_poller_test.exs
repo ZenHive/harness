@@ -82,8 +82,11 @@ defmodule Harness.Cron.DepFreshnessPollerTest do
     end)
 
     assert :ok = DepFreshnessPoller.perform(%Oban.Job{})
-    assert {:error, :not_found} = DepFreshness.fetch_snapshot("cron-rust")
-    assert {:error, :not_found} = DepFreshness.fetch_snapshot("cron-failed")
+    assert {:ok, snapshot} = DepFreshness.fetch_snapshot("cron-rust")
+    assert snapshot.language == "rust"
+    assert Enum.any?(snapshot.rows, &(&1.name == "provider:rust" and &1.status == :skipped))
+    assert {:ok, failed_snapshot} = DepFreshness.fetch_snapshot("cron-failed")
+    assert Enum.any?(failed_snapshot.rows, &(&1.name == "provider:elixir" and &1.status == :skipped))
   end
 
   test "schedule/0 follows cron settings" do

@@ -33,7 +33,7 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
     end
 
     test "keeps Elixir conventions for Elixir-language targets", %{cwd: cwd} do
-      assert {:ok, _flags} = RulesInjection.claude_flags(invocation(cwd, language: :elixir))
+      assert {:ok, _flags} = RulesInjection.claude_flags(invocation(cwd, languages: [:elixir]))
 
       body = File.read!(Path.join(cwd, AgentRules.system_prompt_rel_path()))
       assert body =~ elixir_conventions()
@@ -41,7 +41,7 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
     end
 
     test "excludes Elixir conventions for non-Elixir targets", %{cwd: cwd} do
-      assert {:ok, _flags} = RulesInjection.claude_flags(invocation(cwd, language: :typescript))
+      assert {:ok, _flags} = RulesInjection.claude_flags(invocation(cwd, languages: [:typescript]))
 
       body = File.read!(Path.join(cwd, AgentRules.system_prompt_rel_path()))
       refute body =~ elixir_conventions()
@@ -62,7 +62,7 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
       assert File.exists?(Path.join(cwd, "AGENTS.md"))
     end
 
-    test "defaults unknown language to Elixir conventions", %{cwd: cwd} do
+    test "defaults to Elixir conventions for direct invocations", %{cwd: cwd} do
       assert :ok = RulesInjection.install_codex_rules(invocation(cwd))
 
       body = File.read!(Path.join(cwd, "AGENTS.md"))
@@ -71,7 +71,15 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
     end
 
     test "keeps Elixir conventions when language is explicit Elixir", %{cwd: cwd} do
-      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, language: :elixir))
+      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, languages: [:elixir]))
+
+      body = File.read!(Path.join(cwd, "AGENTS.md"))
+      assert body =~ elixir_conventions()
+      refute body =~ verification_gates()
+    end
+
+    test "keeps Elixir conventions for mixed projects that include Elixir", %{cwd: cwd} do
+      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, languages: [:elixir, :rust]))
 
       body = File.read!(Path.join(cwd, "AGENTS.md"))
       assert body =~ elixir_conventions()
@@ -79,7 +87,7 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
     end
 
     test "excludes Elixir conventions for Rust language", %{cwd: cwd} do
-      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, language: :rust))
+      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, languages: [:rust]))
 
       body = File.read!(Path.join(cwd, "AGENTS.md"))
       refute body =~ elixir_conventions()
@@ -87,7 +95,7 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
     end
 
     test "excludes Elixir conventions for TypeScript language", %{cwd: cwd} do
-      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, language: :typescript))
+      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, languages: [:typescript]))
 
       body = File.read!(Path.join(cwd, "AGENTS.md"))
       refute body =~ elixir_conventions()
@@ -109,7 +117,7 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
     end
 
     test "excludes Elixir conventions for Rust language", %{cwd: cwd} do
-      assert :ok = RulesInjection.install_cursor_rules(invocation(cwd, language: :rust))
+      assert :ok = RulesInjection.install_cursor_rules(invocation(cwd, languages: [:rust]))
 
       body = File.read!(Path.join(cwd, ".cursor/rules/harness-operational.mdc"))
       refute body =~ elixir_conventions()
@@ -117,7 +125,7 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
     end
 
     test "excludes Elixir conventions for TypeScript language", %{cwd: cwd} do
-      assert :ok = RulesInjection.install_cursor_rules(invocation(cwd, language: :typescript))
+      assert :ok = RulesInjection.install_cursor_rules(invocation(cwd, languages: [:typescript]))
 
       body = File.read!(Path.join(cwd, ".cursor/rules/harness-operational.mdc"))
       refute body =~ elixir_conventions()
@@ -141,7 +149,7 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
     end
 
     test "excludes Elixir conventions for Rust language", %{cwd: cwd} do
-      prompt = RulesInjection.prepend_prompt("task body", invocation(cwd, language: :rust))
+      prompt = RulesInjection.prepend_prompt("task body", invocation(cwd, languages: [:rust]))
 
       refute prompt =~ elixir_conventions()
       refute prompt =~ verification_gates()
@@ -149,7 +157,7 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
     end
 
     test "excludes Elixir conventions for TypeScript language", %{cwd: cwd} do
-      prompt = RulesInjection.prepend_prompt("task body", invocation(cwd, language: :typescript))
+      prompt = RulesInjection.prepend_prompt("task body", invocation(cwd, languages: [:typescript]))
 
       refute prompt =~ elixir_conventions()
       refute prompt =~ verification_gates()
@@ -163,13 +171,13 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
     } do
       canonical = AgentRules.render()
 
-      RulesInjection.claude_flags(invocation(cwd))
+      RulesInjection.claude_flags(invocation(cwd, languages: [:elixir]))
       claude_body = File.read!(Path.join(cwd, AgentRules.system_prompt_rel_path()))
 
-      RulesInjection.install_codex_rules(invocation(cwd))
+      RulesInjection.install_codex_rules(invocation(cwd, languages: [:elixir]))
       codex_body = File.read!(Path.join(cwd, "AGENTS.md"))
 
-      grok_prompt = RulesInjection.prepend_prompt("task")
+      grok_prompt = RulesInjection.prepend_prompt("task", invocation(cwd, languages: [:elixir]))
 
       assert claude_body == canonical
       assert codex_body =~ canonical

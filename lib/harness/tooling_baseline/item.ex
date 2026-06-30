@@ -16,8 +16,8 @@ defmodule Harness.ToolingBaseline.Item do
     "override_reason" => :override_reason
   }
 
-  @type category :: :dep | :alias | :config_file
-  @type status :: :present | :missing | :overridden
+  @type category :: :dep | :alias | :config_file | :provider
+  @type status :: :present | :missing | :overridden | :skipped
 
   @type t :: %__MODULE__{
           id: String.t(),
@@ -31,6 +31,18 @@ defmodule Harness.ToolingBaseline.Item do
   @spec drift?(t()) :: boolean()
   def drift?(%__MODULE__{status: :missing}), do: true
   def drift?(%__MODULE__{}), do: false
+
+  @doc "Builds a visible fact for a language provider that could not run."
+  @spec skipped(atom(), term()) :: t()
+  def skipped(language, reason) when is_atom(language) do
+    %__MODULE__{
+      id: "provider:#{language}",
+      label: Atom.to_string(language),
+      category: :provider,
+      status: :skipped,
+      override_reason: inspect(reason)
+    }
+  end
 
   @doc "Builds a persistence map."
   @spec to_map(t()) :: map()
@@ -79,6 +91,7 @@ defmodule Harness.ToolingBaseline.Item do
     case fetch_string(map, key) do
       "alias" -> :alias
       "config_file" -> :config_file
+      "provider" -> :provider
       _other -> :dep
     end
   end
@@ -88,6 +101,7 @@ defmodule Harness.ToolingBaseline.Item do
     case fetch_string(map, key) do
       "present" -> :present
       "overridden" -> :overridden
+      "skipped" -> :skipped
       _other -> :missing
     end
   end

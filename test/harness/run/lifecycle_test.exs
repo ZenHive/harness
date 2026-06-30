@@ -31,12 +31,12 @@ defmodule Harness.Run.LifecycleTest do
     end
 
     @spec implementer_command(Invocation.t()) :: {:ok, AgentAdapter.command()}
-    defp implementer_command(%Invocation{language: language}) do
-      {:ok, {"/bin/sh", ["-c", ~S(printf '%s' "$1" > agent_language.txt), "harness-fake", language_arg(language)], []}}
+    defp implementer_command(%Invocation{languages: languages}) do
+      {:ok, {"/bin/sh", ["-c", ~S(printf '%s' "$1" > agent_language.txt), "harness-fake", languages_arg(languages)], []}}
     end
 
     @spec recovery_command(Invocation.t()) :: {:ok, AgentAdapter.command()}
-    defp recovery_command(%Invocation{language: language}) do
+    defp recovery_command(%Invocation{languages: languages}) do
       json = Jason.encode!(%{outcome: "repaired", report: "cleaned fake checkout leak", repaired: "removed leaked.txt"})
 
       script =
@@ -44,20 +44,19 @@ defmodule Harness.Run.LifecycleTest do
           ~S|if [ -f "$HARNESS_RECOVERY_REPO/leaked.txt" ]; then mv "$HARNESS_RECOVERY_REPO/leaked.txt" .harness/recovered-leaked.txt; fi; | <>
           ~S|printf '%s' "$2" > .harness/recovery.json|
 
-      {:ok, {"/bin/sh", ["-c", script, "harness-fake", language_arg(language), json], []}}
+      {:ok, {"/bin/sh", ["-c", script, "harness-fake", languages_arg(languages), json], []}}
     end
 
     @spec reviewer_command(Invocation.t()) :: {:ok, AgentAdapter.command()}
-    defp reviewer_command(%Invocation{language: language}) do
+    defp reviewer_command(%Invocation{languages: languages}) do
       json = Jason.encode!(%{verdict: "approve", report: "captured language", ratings: FakeAdapter.review_ratings()})
 
       script = ~S(printf '%s' "$1" > reviewer_language.txt; mkdir -p .harness; printf '%s' "$2" > .harness/review.json)
-      {:ok, {"/bin/sh", ["-c", script, "harness-fake", language_arg(language), json], []}}
+      {:ok, {"/bin/sh", ["-c", script, "harness-fake", languages_arg(languages), json], []}}
     end
 
-    @spec language_arg(atom() | nil) :: String.t()
-    defp language_arg(nil), do: ""
-    defp language_arg(language), do: Atom.to_string(language)
+    @spec languages_arg([atom()]) :: String.t()
+    defp languages_arg(languages), do: Enum.map_join(languages, ",", &Atom.to_string/1)
   end
 
   defmodule TestDbEnvCaptureAdapter do

@@ -59,6 +59,7 @@ defmodule Harness.Audit.WorkerTest do
           name: "audit-drain-#{System.unique_integer([:positive])}",
           source: {:github, "https://github.com/zenhive/demo"},
           roadmap_path: "/tmp",
+          languages: [:elixir],
           target_branch: "main"
         })
 
@@ -112,6 +113,7 @@ defmodule Harness.Audit.WorkerTest do
           name: "audit-worker-github",
           source: {:github, "https://github.com/zenhive/demo"},
           roadmap_path: "/tmp",
+          languages: [:elixir],
           target_branch: "main"
         })
 

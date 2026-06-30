@@ -70,6 +70,7 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
         source: {:github, "https://github.com/example/demo.git"},
         check_command: "mix precommit",
         roadmap_path: "/tmp/#{name}/roadmap/tasks.toml",
+        languages: [:elixir],
         concurrency_cap: 4,
         landing_policy: :auto,
         target_branch: "development",
@@ -108,6 +109,7 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
         name: name,
         source: {:local, "/tmp/config-#{name}"},
         check_command: "mix precommit",
+        languages: [:elixir],
         roadmap_path: "/tmp/config-#{name}/roadmap/tasks.toml"
       ]
 
@@ -130,6 +132,7 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
         name: name,
         source: {:local, "/tmp/config-#{name}"},
         check_command: "mix precommit",
+        languages: [:elixir],
         roadmap_path: "/tmp/config-#{name}/roadmap/tasks.toml"
       ]
 

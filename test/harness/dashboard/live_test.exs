@@ -268,6 +268,7 @@ defmodule Harness.Dashboard.LiveTest do
         name: name,
         source: nil,
         roadmap_path: "/tmp/#{name}",
+        languages: [:elixir],
         landing_policy: Keyword.get(opts, :landing_policy, :manual),
         target_branch: Keyword.get(opts, :target_branch)
       }
@@ -400,7 +401,15 @@ defmodule Harness.Dashboard.LiveTest do
     test "backfills a phantom-unmerged landed run before dashboard filtering" do
       %{repo: repo} = GitFixture.init_with_origin()
       project_name = "live-reconcile-#{System.unique_integer([:positive])}"
-      project = %Project{name: project_name, source: {:local, repo}, roadmap_path: repo, target_branch: "main"}
+
+      project = %Project{
+        name: project_name,
+        source: {:local, repo},
+        roadmap_path: repo,
+        languages: [:elixir],
+        target_branch: "main"
+      }
+
       store = {Memory, scope: {:live_reconcile, self(), System.unique_integer([:positive])}}
 
       on_exit(fn -> Memory.reset(elem(store, 1)) end)
@@ -437,7 +446,15 @@ defmodule Harness.Dashboard.LiveTest do
     test "backfills a failed run whose task has since shipped (manual-merge / superseded trash)" do
       %{repo: repo} = GitFixture.init_with_origin()
       project_name = "live-reconcile-failed-#{System.unique_integer([:positive])}"
-      project = %Project{name: project_name, source: {:local, repo}, roadmap_path: repo, target_branch: "main"}
+
+      project = %Project{
+        name: project_name,
+        source: {:local, repo},
+        roadmap_path: repo,
+        languages: [:elixir],
+        target_branch: "main"
+      }
+
       store = {Memory, scope: {:live_reconcile_failed, self(), System.unique_integer([:positive])}}
 
       on_exit(fn -> Memory.reset(elem(store, 1)) end)
@@ -470,7 +487,15 @@ defmodule Harness.Dashboard.LiveTest do
     test "leaves a genuinely-unmerged failed run untouched (task never shipped)" do
       %{repo: repo} = GitFixture.init_with_origin()
       project_name = "live-reconcile-open-#{System.unique_integer([:positive])}"
-      project = %Project{name: project_name, source: {:local, repo}, roadmap_path: repo, target_branch: "main"}
+
+      project = %Project{
+        name: project_name,
+        source: {:local, repo},
+        roadmap_path: repo,
+        languages: [:elixir],
+        target_branch: "main"
+      }
+
       store = {Memory, scope: {:live_reconcile_open, self(), System.unique_integer([:positive])}}
 
       on_exit(fn -> Memory.reset(elem(store, 1)) end)

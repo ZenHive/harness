@@ -5,14 +5,16 @@ defmodule Harness.ProjectTest do
   alias Harness.Project
 
   describe "%Project{}" do
-    test "requires name, source, and roadmap_path; everything else defaults" do
+    test "requires name, source, roadmap_path, and languages; everything else defaults" do
       project = %Project{
         name: "demo",
         source: {:local, "/tmp/demo"},
-        roadmap_path: "/tmp/demo"
+        roadmap_path: "/tmp/demo",
+        languages: [:elixir]
       }
 
       assert project.name == "demo"
+      assert project.languages == [:elixir]
       assert project.check_command == nil
       assert project.concurrency_cap == nil
       assert project.landing_policy == :manual
@@ -27,6 +29,7 @@ defmodule Harness.ProjectTest do
         name: "demo",
         source: {:local, "/tmp/demo"},
         roadmap_path: "/tmp/demo",
+        languages: [:elixir],
         check_command: "mix precommit"
       }
 
@@ -38,6 +41,7 @@ defmodule Harness.ProjectTest do
         name: "demo",
         source: {:local, "/tmp/demo"},
         roadmap_path: "/tmp/demo",
+        languages: [:elixir],
         test_db_isolation_env: "APP_TEST_PARTITION"
       }
 
@@ -49,6 +53,7 @@ defmodule Harness.ProjectTest do
         name: "demo",
         source: {:local, "/tmp/demo"},
         roadmap_path: "/tmp/demo",
+        languages: [:elixir],
         test_db_isolation_env: false
       }
 
@@ -59,7 +64,8 @@ defmodule Harness.ProjectTest do
       project = %Project{
         name: "demo",
         source: {:github, "https://github.com/example/demo.git"},
-        roadmap_path: "/tmp/demo"
+        roadmap_path: "/tmp/demo",
+        languages: [:elixir]
       }
 
       assert project.source == {:github, "https://github.com/example/demo.git"}
@@ -69,7 +75,8 @@ defmodule Harness.ProjectTest do
       project = %Project{
         name: "demo",
         source: {:local, "relative/repo"},
-        roadmap_path: "relative/repo"
+        roadmap_path: "relative/repo",
+        languages: [:elixir]
       }
 
       assert Project.repo_path(project) == Path.expand("relative/repo")
@@ -79,7 +86,8 @@ defmodule Harness.ProjectTest do
       project = %Project{
         name: "demo",
         source: {:github, "https://github.com/example/demo.git"},
-        roadmap_path: "/tmp/demo"
+        roadmap_path: "/tmp/demo",
+        languages: [:elixir]
       }
 
       cache_root = GitFixture.tmp_base(name: "cache")
@@ -90,7 +98,8 @@ defmodule Harness.ProjectTest do
       project = %Project{
         name: "demo",
         source: {:local, "/tmp/demo"},
-        roadmap_path: "/tmp/demo"
+        roadmap_path: "/tmp/demo",
+        languages: [:elixir]
       }
 
       assert {:ok, "/tmp/demo"} = Project.ensure_local_repo(project)

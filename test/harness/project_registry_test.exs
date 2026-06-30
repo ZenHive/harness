@@ -55,7 +55,7 @@ defmodule Harness.ProjectRegistryTest do
                  source: {:local, "/tmp/kw"},
                  roadmap_path: "/tmp/kw",
                  check_command: "mix test",
-                 language: :typescript,
+                 languages: [:typescript],
                  reviewer: :codex,
                  warm_paths: ["priv/foo"]
                )
@@ -64,7 +64,7 @@ defmodule Harness.ProjectRegistryTest do
       assert project.name == "kw"
       assert project.source == {:local, "/tmp/kw"}
       assert project.check_command == "mix test"
-      assert project.language == :typescript
+      assert project.languages == [:typescript]
       assert project.reviewer == :codex
       assert project.warm_paths == ["priv/foo"]
       # build_project defaults landing_policy when attrs omit it.
@@ -74,6 +74,18 @@ defmodule Harness.ProjectRegistryTest do
     test "register/1 returns invalid_project for attrs missing a required field" do
       assert {:error, {:invalid_project, {:missing, :roadmap_path}}} =
                ProjectRegistry.register(name: "bad", source: {:local, "/tmp/bad"})
+    end
+
+    test "register/1 rejects attrs without explicit non-empty languages" do
+      attrs = [name: "bad-languages", source: {:local, "/tmp/bad"}, roadmap_path: "/tmp/bad"]
+
+      assert {:error, {:invalid_project, {:missing, :languages}}} = ProjectRegistry.register(attrs)
+
+      assert {:error, {:invalid_project, {:empty, :languages}}} =
+               ProjectRegistry.register(Keyword.put(attrs, :languages, []))
+
+      assert {:error, {:invalid_project, {:invalid_languages, :mixed}}} =
+               ProjectRegistry.register(Keyword.put(attrs, :languages, [:mixed]))
     end
   end
 
@@ -85,16 +97,16 @@ defmodule Harness.ProjectRegistryTest do
                  "local",
                  "/tmp/reg-local",
                  "/tmp/reg-local",
+                 [:typescript],
                  "mix test",
-                 2,
-                 :typescript
+                 2
                )
 
       assert {:ok, project} = ProjectRegistry.lookup("reg-local")
       assert project.source == {:local, "/tmp/reg-local"}
       assert project.check_command == "mix test"
       assert project.concurrency_cap == 2
-      assert project.language == :typescript
+      assert project.languages == [:typescript]
       assert project.warm_paths == []
     end
 
@@ -105,7 +117,7 @@ defmodule Harness.ProjectRegistryTest do
                  "local",
                  "/tmp/reg-warm",
                  "/tmp/reg-warm",
-                 nil,
+                 [:elixir],
                  nil,
                  nil,
                  ["priv/discoveries", "source"]
@@ -117,26 +129,37 @@ defmodule Harness.ProjectRegistryTest do
 
     test "registers a github-source project with default optional fields" do
       assert {:ok, %{name: "reg-gh"}} =
-               Dispatch.register_project("reg-gh", "github", "https://example.com/reg-gh.git", "/tmp/reg-gh")
+               Dispatch.register_project("reg-gh", "github", "https://example.com/reg-gh.git", "/tmp/reg-gh", [:elixir])
 
       assert {:ok, project} = ProjectRegistry.lookup("reg-gh")
       assert project.source == {:github, "https://example.com/reg-gh.git"}
       assert project.check_command == nil
       assert project.concurrency_cap == nil
-      assert project.language == nil
+      assert project.languages == [:elixir]
       assert project.warm_paths == []
     end
 
+    test "normalizes JSON string languages to atoms" do
+      assert {:ok, %{name: "reg-json-lang"}} =
+               Dispatch.register_project("reg-json-lang", "local", "/tmp/reg-json-lang", "/tmp/reg-json-lang", [
+                 "elixir",
+                 "rust"
+               ])
+
+      assert {:ok, project} = ProjectRegistry.lookup("reg-json-lang")
+      assert project.languages == [:elixir, :rust]
+    end
+
     test "surfaces a duplicate registration as an error" do
-      assert {:ok, _} = Dispatch.register_project("dup", "local", "/tmp/dup", "/tmp/dup")
+      assert {:ok, _} = Dispatch.register_project("dup", "local", "/tmp/dup", "/tmp/dup", [:elixir])
 
       assert {:error, {:duplicate, "dup"}} =
-               Dispatch.register_project("dup", "local", "/tmp/dup", "/tmp/dup")
+               Dispatch.register_project("dup", "local", "/tmp/dup", "/tmp/dup", [:elixir])
     end
 
     test "rejects an unknown source_type before touching the registry" do
       assert {:error, {:invalid_source_type, "svn"}} =
-               Dispatch.register_project("reg-bad", "svn", "/tmp/reg-bad", "/tmp/reg-bad")
+               Dispatch.register_project("reg-bad", "svn", "/tmp/reg-bad", "/tmp/reg-bad", [:elixir])
 
       assert {:error, {:unknown_project, "reg-bad"}} = ProjectRegistry.lookup("reg-bad")
     end
@@ -149,7 +172,8 @@ defmodule Harness.ProjectRegistryTest do
       project = %Harness.Project{
         name: "gh",
         source: {:github, "https://github.com/example/demo.git"},
-        roadmap_path: "/tmp/gh"
+        roadmap_path: "/tmp/gh",
+        languages: [:elixir]
       }
 
       assert :ok = ProjectRegistry.register(project)
@@ -195,6 +219,7 @@ defmodule Harness.ProjectRegistryTest do
           name: name,
           source: {:local, "/tmp/#{name}"},
           roadmap_path: "/tmp/#{name}/roadmap/tasks.toml",
+          languages: [:elixir],
           concurrency_cap: 5
         ]
       ])
@@ -267,6 +292,7 @@ defmodule Harness.ProjectRegistryTest do
                  name: name,
                  source: {:local, "/tmp/#{name}"},
                  roadmap_path: "/tmp/#{name}/roadmap/tasks.toml",
+                 languages: [:elixir],
                  concurrency_cap: 3
                )
 
@@ -291,7 +317,7 @@ defmodule Harness.ProjectRegistryTest do
                  "local",
                  "/tmp/#{name}",
                  "/tmp/#{name}/roadmap/tasks.toml",
-                 nil,
+                 [:elixir],
                  nil,
                  nil,
                  warm_paths
@@ -325,6 +351,19 @@ defmodule Harness.ProjectRegistryTest do
       assert_persisted_project(project)
       assert_queue_limit(name, 2)
     end
+
+    @tag :integration
+    test "reload backfills legacy singular language payloads and re-persists them" do
+      nil_name = "legacy-language-nil-#{System.unique_integer([:positive])}"
+      rust_name = "legacy-language-rust-#{System.unique_integer([:positive])}"
+
+      insert_legacy_project!(nil_name, nil)
+      insert_legacy_project!(rust_name, :rust)
+
+      assert :ok = ProjectRegistry.reload_persisted_state()
+      assert_backfilled_languages(nil_name, [:elixir])
+      assert_backfilled_languages(rust_name, [:rust])
+    end
   end
 
   describe "init/1 — config-driven project loading" do
@@ -350,6 +389,7 @@ defmodule Harness.ProjectRegistryTest do
         source: {:local, "/tmp/harness-configured"},
         check_command: "mix precommit",
         roadmap_path: "/tmp/harness-configured/roadmap/tasks.toml",
+        languages: [:elixir],
         reviewer: :codex
       ]
 
@@ -368,6 +408,7 @@ defmodule Harness.ProjectRegistryTest do
         source: {:local, "/tmp/harness-cm"},
         check_command: "cargo test",
         roadmap_path: "/tmp/harness-cm/roadmap/tasks.toml",
+        languages: [:rust],
         landing_policy: :auto,
         target_branch: "development"
       }
@@ -391,7 +432,8 @@ defmodule Harness.ProjectRegistryTest do
       entry = [
         name: "no-hint",
         source: {:local, "/tmp/harness-no-hint"},
-        roadmap_path: "/tmp/harness-no-hint/roadmap/tasks.toml"
+        roadmap_path: "/tmp/harness-no-hint/roadmap/tasks.toml",
+        languages: [:elixir]
       ]
 
       Application.put_env(:harness, :projects, [entry])
@@ -404,7 +446,8 @@ defmodule Harness.ProjectRegistryTest do
       entry = [
         name: "no-warm-paths",
         source: {:local, "/tmp/harness-no-warm-paths"},
-        roadmap_path: "/tmp/harness-no-warm-paths/roadmap/tasks.toml"
+        roadmap_path: "/tmp/harness-no-warm-paths/roadmap/tasks.toml",
+        languages: [:elixir]
       ]
 
       Application.put_env(:harness, :projects, [entry])
@@ -418,6 +461,7 @@ defmodule Harness.ProjectRegistryTest do
         name: "bad-check-command",
         source: {:local, "/tmp/x"},
         check_command: [:not, :a, :string],
+        languages: [:elixir],
         roadmap_path: "/tmp/x/tasks.toml"
       ]
 
@@ -432,7 +476,7 @@ defmodule Harness.ProjectRegistryTest do
     end
 
     test "skips an invalid entry (missing :name) and logs a warning" do
-      invalid = [source: {:local, "/tmp/x"}, roadmap_path: "/tmp/x/tasks.toml"]
+      invalid = [source: {:local, "/tmp/x"}, roadmap_path: "/tmp/x/tasks.toml", languages: [:elixir]]
       Application.put_env(:harness, :projects, [invalid])
 
       log =
@@ -447,6 +491,7 @@ defmodule Harness.ProjectRegistryTest do
       bad = [
         name: "bad-roadmap",
         source: {:local, "/tmp/x"},
+        languages: [:elixir],
         roadmap_path: :not_a_path
       ]
 
@@ -464,6 +509,7 @@ defmodule Harness.ProjectRegistryTest do
       bad = [
         name: "bad-source",
         source: {:remote, "https://example.com/repo"},
+        languages: [:elixir],
         roadmap_path: "/tmp/x/tasks.toml"
       ]
 
@@ -488,7 +534,8 @@ defmodule Harness.ProjectRegistryTest do
         [
           name: "shadowed-config",
           source: {:local, "/tmp/shadowed-config"},
-          roadmap_path: "/tmp/shadowed-config/roadmap/tasks.toml"
+          roadmap_path: "/tmp/shadowed-config/roadmap/tasks.toml",
+          languages: [:elixir]
         ]
       ])
 
@@ -643,6 +690,43 @@ defmodule Harness.ProjectRegistryTest do
 
   defp sample_project(name) do
     ProjectFixture.from_repo("/tmp/#{name}", name: name)
+  end
+
+  @spec insert_legacy_project!(String.t(), atom() | nil) :: :ok
+  defp insert_legacy_project!(name, language) do
+    legacy = %{
+      __struct__: Harness.Project,
+      name: name,
+      source: {:local, "/tmp/#{name}"},
+      roadmap_path: "/tmp/#{name}/roadmap/tasks.toml",
+      check_command: nil,
+      language: language,
+      concurrency_cap: nil,
+      pollution_allowlist: nil,
+      warm_paths: [],
+      landing_policy: :manual,
+      target_branch: nil,
+      reviewer: nil,
+      test_db_isolation_env: nil,
+      tooling_baseline_overrides: %{}
+    }
+
+    attrs = %{name: name, payload: :erlang.term_to_binary(legacy), warm_paths: []}
+    assert {:ok, _row} = Repo.insert(ProjectSchema.changeset(%ProjectSchema{name: name}, attrs))
+    :ok
+  end
+
+  @spec assert_backfilled_languages(String.t(), nonempty_list(atom())) :: :ok
+  defp assert_backfilled_languages(name, languages) do
+    assert {:ok, project} = ProjectRegistry.lookup(name)
+    assert project.languages == languages
+    refute Map.has_key?(Map.from_struct(project), :language)
+
+    %ProjectSchema{payload: payload} = Repo.get(ProjectSchema, name)
+    persisted = :erlang.binary_to_term(payload)
+    assert persisted.languages == languages
+    refute Map.has_key?(Map.from_struct(persisted), :language)
+    :ok
   end
 
   defp restore_projects_env(nil), do: Application.delete_env(:harness, :projects)

@@ -202,11 +202,12 @@ defmodule Harness.Dashboard.Live.ProjectExplorer do
 
   defp load_project(socket, name, projects) do
     case Enum.find(projects, &(&1.name == name)) do
-      %Project{language: language} = project when language in [nil, :elixir] ->
-        load_elixir_project(socket, project)
-
       %Project{} = project ->
-        empty(socket, :unsupported_language, project, {:unsupported_language, project.language})
+        if :elixir in project.languages do
+          load_elixir_project(socket, project)
+        else
+          empty(socket, :unsupported_language, project, {:unsupported_languages, project.languages})
+        end
 
       nil ->
         empty(socket, :unknown_project, nil, {:unknown_project, name})
@@ -362,8 +363,8 @@ defmodule Harness.Dashboard.Live.ProjectExplorer do
   defp empty_message(:no_projects, _project, _reason), do: "Register a project before exploring its structure."
   defp empty_message(:unknown_project, _project, {:unknown_project, name}), do: "#{name} is not registered."
 
-  defp empty_message(:unsupported_language, %Project{language: language}, _reason) do
-    "Harness.CodeSearch is Elixir-only; this project is #{language}."
+  defp empty_message(:unsupported_language, %Project{languages: languages}, _reason) do
+    "Harness.CodeSearch is Elixir-only; this project is #{language_list(languages)}."
   end
 
   defp empty_message(:code_search_unavailable, _project, :exograph_unavailable) do
@@ -373,6 +374,9 @@ defmodule Harness.Dashboard.Live.ProjectExplorer do
   defp empty_message(:code_search_unavailable, _project, reason) do
     "Structural facts could not be loaded: #{inspect(reason)}"
   end
+
+  @spec language_list([atom()]) :: String.t()
+  defp language_list(languages), do: Enum.map_join(languages, ", ", &Atom.to_string/1)
 
   @spec fact_value(map(), atom()) :: term()
   defp fact_value(fact, key), do: Map.get(fact, key) || Map.get(fact, Atom.to_string(key))

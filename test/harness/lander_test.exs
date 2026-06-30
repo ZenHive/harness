@@ -126,6 +126,7 @@ defmodule Harness.LanderTest do
       name: "demo",
       source: {:local, repo},
       roadmap_path: tmp_dir,
+      languages: [:elixir],
       target_branch: "main"
     }
 
@@ -569,6 +570,7 @@ defmodule Harness.LanderTest do
         name: "gh",
         source: {:github, "https://example.com/x.git"},
         roadmap_path: ctx.request.project.roadmap_path,
+        languages: [:elixir],
         target_branch: "main"
       }
 
@@ -595,7 +597,13 @@ defmodule Harness.LanderTest do
         agent: :claude
       }
 
-      project = %Project{name: "demo", source: {:local, "/tmp/x"}, roadmap_path: "/tmp", target_branch: "main"}
+      project = %Project{
+        name: "demo",
+        source: {:local, "/tmp/x"},
+        roadmap_path: "/tmp",
+        languages: [:elixir],
+        target_branch: "main"
+      }
 
       assert Lander.landing_args(record, project) == %{
                "project_name" => "demo",

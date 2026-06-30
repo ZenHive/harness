@@ -45,7 +45,7 @@ defmodule Harness.DepFreshnessTest do
     assert {:ok, snapshot} = DepFreshness.fetch_snapshot("freshness-demo")
     assert snapshot.outdated_count == 1
     assert [%Row{name: "req"}] = snapshot.rows
-    assert snapshot.conformance == nil
+    assert snapshot.conformance.drift_count > 0
   end
 
   test "scan_project records tooling baseline facts for explicit Elixir projects", %{tmp_dir: tmp_dir} do
@@ -77,20 +77,48 @@ defmodule Harness.DepFreshnessTest do
 
     runner = fn "mix", ["hex.outdated"], ^tmp_dir -> {:error, :hex_failed} end
 
-    assert {:error, :hex_failed} = DepFreshness.scan_project(project, provider_opts: [runner: runner])
+    assert {:error, {:provider_errors, [elixir: :hex_failed]}} =
+             DepFreshness.scan_project(project, provider_opts: [runner: runner])
 
     assert {:ok, snapshot} = DepFreshness.fetch_snapshot("baseline-despite-freshness-error")
-    assert snapshot.rows == []
+    assert [%Row{name: "provider:elixir", status: :skipped, reason: :hex_failed}] = snapshot.rows
     assert snapshot.conformance.drift_count > 0
     assert Enum.any?(snapshot.conformance.items, &(&1.id == "dep:credo" and &1.status == :missing))
   end
 
-  test "scan_project skips unsupported languages" do
+  test "scan_project records skipped facts for unsupported languages" do
     project = ProjectFixture.from_repo("/tmp/harness-rust-freshness", name: "rust-demo", language: :rust)
     :ok = ProjectRegistry.register(project)
 
-    assert {:skipped, {:unsupported_language, :rust}} = DepFreshness.scan_project(project)
-    assert {:error, :not_found} = DepFreshness.fetch_snapshot("rust-demo")
+    assert :ok = DepFreshness.scan_project(project)
+    assert {:ok, snapshot} = DepFreshness.fetch_snapshot("rust-demo")
+    assert snapshot.language == "rust"
+    assert snapshot.outdated_count == 0
+    assert [%Row{name: "provider:rust", status: :skipped, language: :rust}] = snapshot.rows
+  end
+
+  test "scan_project records Elixir rows and skipped facts for mixed projects", %{tmp_dir: tmp_dir} do
+    File.write!(Path.join(tmp_dir, "mix.exs"), "Mix.install([])")
+    File.mkdir!(Path.join(tmp_dir, "deps"))
+
+    project = ProjectFixture.from_repo(tmp_dir, name: "mixed-demo", languages: [:elixir, :rust])
+    :ok = ProjectRegistry.register(project)
+
+    output = """
+    Dependency         Only      Current  Latest   Status
+    req                          0.6.1    0.6.2    Update possible
+    """
+
+    runner = fn "mix", ["hex.outdated"], ^tmp_dir -> {:ok, output} end
+
+    assert :ok = DepFreshness.scan_project(project, provider_opts: [runner: runner])
+
+    assert {:ok, snapshot} = DepFreshness.fetch_snapshot("mixed-demo")
+    assert snapshot.language == "elixir,rust"
+    assert snapshot.outdated_count == 1
+    assert Enum.any?(snapshot.rows, &match?(%Row{name: "req", language: :elixir}, &1))
+    assert Enum.any?(snapshot.rows, &match?(%Row{name: "provider:rust", status: :skipped, language: :rust}, &1))
+    assert snapshot.conformance.drift_count > 0
   end
 
   test "scan_all records all registered Elixir projects", %{tmp_dir: tmp_dir} do
@@ -120,7 +148,8 @@ defmodule Harness.DepFreshnessTest do
     project = %Harness.Project{
       name: "github-demo",
       source: {:github, "https://github.com/example/demo.git"},
-      roadmap_path: "/tmp/github-demo"
+      roadmap_path: "/tmp/github-demo",
+      languages: [:elixir]
     }
 
     assert {:skipped, :github_source} = DepFreshness.scan_project(project)

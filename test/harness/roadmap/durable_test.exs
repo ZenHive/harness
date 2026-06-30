@@ -82,6 +82,7 @@ defmodule Harness.Roadmap.DurableTest do
       name: "durable-fixture",
       source: {:local, repo},
       roadmap_path: repo,
+      languages: [:elixir],
       target_branch: "main"
     }
 

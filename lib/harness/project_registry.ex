@@ -32,6 +32,8 @@ defmodule Harness.ProjectRegistry do
 
   require Logger
 
+  @known_languages ~w(elixir rust javascript typescript go)a
+
   @type error ::
           {:duplicate, String.t()} | {:unknown_project, String.t()} | {:invalid_project, term()}
 
@@ -71,7 +73,7 @@ defmodule Harness.ProjectRegistry do
         kind: :exchange_data,
         source: "Harness.Dispatch.register_project/8 (the JSON-native scalar entry point)",
         description:
-          "%Harness.Project{} the caller constructs (name, source, check_command, language, roadmap_path, concurrency_cap, pollution_allowlist, warm_paths)."
+          "%Harness.Project{} the caller constructs (name, source, check_command, languages, roadmap_path, concurrency_cap, pollution_allowlist, warm_paths)."
       ]
     ],
     returns: %{
@@ -104,7 +106,7 @@ defmodule Harness.ProjectRegistry do
         kind: :exchange_data,
         source: "Harness.ProjectRegistry.upsert/1 attrs map or Harness.Dispatch scalar tools",
         description:
-          "%Harness.Project{} or attrs (name, source, roadmap_path, check_command, language, concurrency_cap, pollution_allowlist, warm_paths)."
+          "%Harness.Project{} or attrs (name, source, roadmap_path, check_command, languages, concurrency_cap, pollution_allowlist, warm_paths)."
       ]
     ],
     returns: %{
@@ -190,22 +192,34 @@ defmodule Harness.ProjectRegistry do
   @doc false
   @impl GenServer
   def handle_call({:register, %Project{name: name} = project}, _from, state) do
-    if Map.has_key?(state.projects, name) do
-      {:reply, {:error, {:duplicate, name}}, state}
-    else
-      :ok = ensure_project_queue(project)
-      :ok = Persistence.upsert(project)
-      {:reply, :ok, put_in(state.projects[name], project)}
+    case validate_project(project) do
+      :ok ->
+        if Map.has_key?(state.projects, name) do
+          {:reply, {:error, {:duplicate, name}}, state}
+        else
+          :ok = ensure_project_queue(project)
+          :ok = Persistence.upsert(project)
+          {:reply, :ok, put_in(state.projects[name], project)}
+        end
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
     end
   end
 
   def handle_call({:upsert, %Project{name: name} = project}, _from, state) do
-    previous = Map.get(state.projects, name)
+    case validate_project(project) do
+      :ok ->
+        previous = Map.get(state.projects, name)
 
-    :ok = Persistence.upsert(project)
-    :ok = sync_project_queue(previous, project)
+        :ok = Persistence.upsert(project)
+        :ok = sync_project_queue(previous, project)
 
-    {:reply, :ok, put_in(state.projects[name], project)}
+        {:reply, :ok, put_in(state.projects[name], project)}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
   end
 
   def handle_call({:lookup, name}, _from, state) do
@@ -271,14 +285,14 @@ defmodule Harness.ProjectRegistry do
          {:ok, source} <- fetch_source(entry),
          {:ok, roadmap_path} <- fetch_roadmap_path(entry),
          {:ok, check_command} <- fetch_check_command(entry),
-         {:ok, language} <- fetch_language(entry) do
+         {:ok, languages} <- fetch_languages(entry) do
       {:ok,
        %Project{
          name: name,
          source: source,
          roadmap_path: roadmap_path,
          check_command: check_command,
-         language: language,
+         languages: languages,
          concurrency_cap: Map.get(entry, :concurrency_cap),
          pollution_allowlist: Map.get(entry, :pollution_allowlist),
          warm_paths: Map.get(entry, :warm_paths, []),
@@ -425,12 +439,52 @@ defmodule Harness.ProjectRegistry do
     end
   end
 
-  @spec fetch_language(map()) :: {:ok, atom() | nil} | {:error, {:invalid_project, term()}}
-  defp fetch_language(entry) do
-    case Map.get(entry, :language) do
-      nil -> {:ok, nil}
-      language when is_atom(language) -> {:ok, language}
-      other -> {:error, {:invalid_project, {:invalid_language, other}}}
+  @spec validate_project(Project.t()) :: :ok | {:error, {:invalid_project, term()}}
+  defp validate_project(%Project{languages: languages}) do
+    case validate_languages(languages) do
+      {:ok, ^languages} -> :ok
+      {:ok, _normalized} -> {:error, {:invalid_project, {:invalid_languages, languages}}}
+      {:error, _reason} = error -> error
     end
+  end
+
+  @spec fetch_languages(map()) :: {:ok, [atom(), ...]} | {:error, {:invalid_project, term()}}
+  defp fetch_languages(entry) do
+    case Map.fetch(entry, :languages) do
+      {:ok, languages} -> validate_languages(languages)
+      :error -> {:error, {:invalid_project, {:missing, :languages}}}
+    end
+  end
+
+  @spec validate_languages(term()) :: {:ok, [atom(), ...]} | {:error, {:invalid_project, term()}}
+  defp validate_languages([_ | _] = languages) do
+    case Enum.reduce_while(languages, {:ok, []}, &normalize_language/2) do
+      {:ok, normalized} -> {:ok, Enum.reverse(normalized)}
+      {:error, reason} -> {:error, {:invalid_project, reason}}
+    end
+  end
+
+  defp validate_languages([]), do: {:error, {:invalid_project, {:empty, :languages}}}
+  defp validate_languages(other), do: {:error, {:invalid_project, {:invalid_languages, other}}}
+
+  @spec normalize_language(term(), {:ok, [atom()]}) :: {:cont, {:ok, [atom()]}} | {:halt, {:error, term()}}
+  defp normalize_language(:mixed, _acc), do: {:halt, {:error, {:invalid_languages, :mixed}}}
+
+  defp normalize_language(language, {:ok, acc}) when is_atom(language) do
+    {:cont, {:ok, [language | acc]}}
+  end
+
+  defp normalize_language(language, {:ok, acc}) when is_binary(language) do
+    case language_atom(language) do
+      nil -> {:halt, {:error, {:invalid_languages, language}}}
+      atom -> {:cont, {:ok, [atom | acc]}}
+    end
+  end
+
+  defp normalize_language(language, _acc), do: {:halt, {:error, {:invalid_languages, language}}}
+
+  @spec language_atom(String.t()) :: atom() | nil
+  defp language_atom(language) do
+    Enum.find(@known_languages, &(Atom.to_string(&1) == language))
   end
 end

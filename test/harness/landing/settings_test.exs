@@ -141,7 +141,8 @@ defmodule Harness.Landing.SettingsTest do
     %Project{
       name: name,
       source: {:local, "/tmp/#{name}"},
-      roadmap_path: "/tmp/#{name}"
+      roadmap_path: "/tmp/#{name}",
+      languages: [:elixir]
     }
   end
 

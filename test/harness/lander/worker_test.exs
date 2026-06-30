@@ -97,6 +97,7 @@ defmodule Harness.Lander.WorkerTest do
       name: "worker-overlay-demo",
       source: {:local, repo},
       roadmap_path: tmp_dir,
+      languages: [:elixir],
       landing_policy: :manual,
       target_branch: nil
     }

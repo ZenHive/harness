@@ -250,6 +250,7 @@ defmodule Harness.Dashboard.ConfigInspector do
       Enum.join(
         [
           source_label(project.source),
+          "languages=#{language_list(project.languages)}",
           "roadmap=#{project.roadmap_path}",
           "cap=#{project.concurrency_cap || "∞"}",
           check_command_label(project.check_command)
@@ -259,6 +260,9 @@ defmodule Harness.Dashboard.ConfigInspector do
 
     %{label: project.name, value: summary, provenance: :config, env_var: nil}
   end
+
+  @spec language_list([atom()]) :: String.t()
+  defp language_list(languages), do: Enum.map_join(languages, ",", &Atom.to_string/1)
 
   @spec source_label(Project.Source.Local.t() | Project.Source.Github.t()) :: String.t()
   defp source_label({:local, dir}), do: "local:#{dir}"

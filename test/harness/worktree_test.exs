@@ -764,7 +764,8 @@ defmodule Harness.WorktreeTest do
     %Project{
       name: name,
       source: {:github, url},
-      roadmap_path: "/tmp/#{name}"
+      roadmap_path: "/tmp/#{name}",
+      languages: [:elixir]
     }
   end
 end

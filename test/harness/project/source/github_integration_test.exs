@@ -68,7 +68,8 @@ defmodule Harness.Project.Source.GithubIntegrationTest do
     %Project{
       name: name,
       source: {:github, @public_url},
-      roadmap_path: "/tmp/#{name}"
+      roadmap_path: "/tmp/#{name}",
+      languages: [:elixir]
     }
   end
 end
