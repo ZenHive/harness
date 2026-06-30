@@ -10021,7 +10021,7 @@ scored_at = "2026-06-24"
 id = "334"
 phase = 22
 bundle = "operator-surface"
-status = "in_progress"
+status = "done"
 title = "Tooling-baseline conformance fact source (framework + Elixir provider) + dashboard"
 scores = { d = 4, b = 6, u = 7 }
 depends_on = [331]
@@ -10039,9 +10039,14 @@ Support a per-project override so a project can opt a tool out with a reason (th
 
 Count-and-display only — harness records and shows the raw drift facts; it never mutates a project mix.exs, never auto-installs tooling, and never gates dispatching work to a non-conformant project.
 """
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1782817696726-e4854ca3, 36a26110db4165c747df1f9ed96cbcfcb6a5b0eb)."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-06-25"
 started_at = "2026-06-30"
 scored_at = "2026-06-25"
+done_at = "2026-06-30"
+shipped_in = "36a26110db4165c747df1f9ed96cbcfcb6a5b0eb"
 
 [[task]]
 id = "335"
