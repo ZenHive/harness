@@ -15239,7 +15239,7 @@
       "id": "339",
       "phase": 22,
       "bundle": "operator-surface",
-      "status": "in_progress",
+      "status": "done",
       "title": "Clean up existing Sobelow findings in code_search",
       "scores": {
         "d": 3,
@@ -15270,10 +15270,15 @@
         "lib/harness/code_search.ex",
         "test/harness/code_search_test.exs"
       ],
+      "shipped_in": "6164e8d6093cb439e7e2fefa993bb39d4a4fd517",
       "body": "Sobelow currently fails `mix sobelow --exit --skip` on pre-existing low-confidence findings in `lib/harness/code_search.ex` (SQL.Query around definitions/callers/callees, traversal around file reads/removal/mkdir, and BinToAtom around dynamic module startup). Task 331's reviewer pass removed the new dependency-freshness Sobelow findings, but the remaining red is outside that task's files and should be cleaned up separately so `mix precommit.full` can be green without approving around a pre-existing security-scan red.",
       "created_at": "2026-06-30",
       "started_at": "2026-06-30",
+      "done_at": "2026-06-30",
       "scored_at": "2026-06-30",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1782815754464-315d3fea, 6164e8d6093cb439e7e2fefa993bb39d4a4fd517).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     }
   ]
