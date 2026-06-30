@@ -10151,7 +10151,7 @@ shipped_in = "6164e8d6093cb439e7e2fefa993bb39d4a4fd517"
 id = "340"
 phase = 22
 bundle = "operator-surface"
-status = "in_progress"
+status = "done"
 title = "Project languages invariant + multi-language provider substrate"
 scores = { d = 6, b = 8, u = 8 }
 depends_on = [334]
@@ -10168,9 +10168,14 @@ New registration must be strict: attrs or JSON/MCP calls without `languages` fai
 
 Then update the existing provider substrate to iterate languages. Today only Elixir freshness/conformance providers exist, so mixed projects should produce Elixir facts plus visible skipped facts for unsupported languages. Future Rust/JavaScript/Go providers must be additive tasks plugged into this seam, not another project-model refactor.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1782856458922-6b8559b6, 41af6f274f4da62da87201a358e7ca80881e1d5b)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-07-01"
 started_at = "2026-06-30"
 scored_at = "2026-07-01"
+done_at = "2026-06-30"
+shipped_in = "41af6f274f4da62da87201a358e7ca80881e1d5b"
 
 [[task]]
 id = "341"
