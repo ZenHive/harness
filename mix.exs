@@ -139,7 +139,7 @@ defmodule Harness.MixProject do
       # Dev/test tooling — standard harness stack per global conventions
       # lazy_html: LiveView 1.x's DOM parser for Phoenix.LiveViewTest assertions.
       {:lazy_html, ">= 0.1.0", only: :test},
-      {:ex_unit_json, "~> 0.5", only: [:dev, :test], runtime: false},
+      {:ex_unit_json, "~> 0.6", only: [:dev, :test], runtime: false},
       {:dialyzer_json, "~> 0.2", only: [:dev, :test], runtime: false},
       {:styler, "~> 1.11", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
