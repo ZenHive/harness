@@ -54,4 +54,37 @@ defmodule Harness.DepFreshnessTest do
     assert {:skipped, {:unsupported_language, :rust}} = DepFreshness.scan_project(project)
     assert {:error, :not_found} = DepFreshness.fetch_snapshot("rust-demo")
   end
+
+  test "scan_all records all registered Elixir projects", %{tmp_dir: tmp_dir} do
+    one = Path.join(tmp_dir, "one")
+    two = Path.join(tmp_dir, "two")
+    File.mkdir_p!(Path.join(one, "deps"))
+    File.mkdir_p!(Path.join(two, "deps"))
+    File.write!(Path.join(one, "mix.exs"), "Mix.install([])")
+    File.write!(Path.join(two, "mix.exs"), "Mix.install([])")
+
+    :ok = ProjectRegistry.register(ProjectFixture.from_repo(one, name: "freshness-one", language: :elixir))
+    :ok = ProjectRegistry.register(ProjectFixture.from_repo(two, name: "freshness-two", language: :elixir))
+
+    output = """
+    Dependency         Only      Current  Latest   Status
+    req                          0.6.1    0.6.2    Update possible
+    """
+
+    runner = fn "mix", ["hex.outdated"], path when path in [one, two] -> {:ok, output} end
+
+    assert :ok = DepFreshness.scan_all(provider_opts: [runner: runner])
+    assert {:ok, [snapshot]} = DepFreshness.list_snapshots(project_name: "freshness-two")
+    assert snapshot.language == "elixir"
+  end
+
+  test "scan_project skips github sources" do
+    project = %Harness.Project{
+      name: "github-demo",
+      source: {:github, "https://github.com/example/demo.git"},
+      roadmap_path: "/tmp/github-demo"
+    }
+
+    assert {:skipped, :github_source} = DepFreshness.scan_project(project)
+  end
 end

@@ -45,8 +45,9 @@ defmodule Harness.DepFreshness.Row do
 
   @spec fetch_string(map(), String.t()) :: String.t()
   defp fetch_string(map, key) do
-    case Map.get(map, key) || Map.get(map, String.to_atom(key)) do
+    case fetch_value(map, key) do
       value when is_binary(value) -> value
+      nil -> ""
       value when is_atom(value) -> Atom.to_string(value)
       _other -> ""
     end
@@ -54,10 +55,24 @@ defmodule Harness.DepFreshness.Row do
 
   @spec fetch_bool(map(), String.t()) :: boolean()
   defp fetch_bool(map, key) do
-    case Map.get(map, key) || Map.get(map, String.to_atom(key)) do
+    case fetch_value(map, key) do
       true -> true
       false -> false
       _other -> false
     end
   end
+
+  @spec fetch_value(map(), String.t()) :: term()
+  defp fetch_value(map, key) do
+    case Map.fetch(map, key) do
+      {:ok, value} -> value
+      :error -> Map.get(map, atom_key(key))
+    end
+  end
+
+  @spec atom_key(String.t()) :: atom()
+  defp atom_key("name"), do: :name
+  defp atom_key("current_version"), do: :current_version
+  defp atom_key("latest_version"), do: :latest_version
+  defp atom_key("constraint_allowed"), do: :constraint_allowed
 end
