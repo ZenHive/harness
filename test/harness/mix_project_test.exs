@@ -12,4 +12,10 @@ defmodule Harness.MixProjectTest do
 
     assert Keyword.fetch!(aliases, :"sobelow.baseline") == ["sobelow --mark-skip-all"]
   end
+
+  test "precommit full checks dependency constraints" do
+    aliases = Keyword.fetch!(Harness.MixProject.project(), :aliases)
+
+    assert "harness.deps.check" in Keyword.fetch!(aliases, :"precommit.full")
+  end
 end

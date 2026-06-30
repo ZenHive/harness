@@ -139,7 +139,7 @@ defmodule Harness.MixProject do
       # Dev/test tooling — standard harness stack per global conventions
       # lazy_html: LiveView 1.x's DOM parser for Phoenix.LiveViewTest assertions.
       {:lazy_html, ">= 0.1.0", only: :test},
-      {:ex_unit_json, "~> 0.5.0", only: [:dev, :test], runtime: false},
+      {:ex_unit_json, "~> 0.5", only: [:dev, :test], runtime: false},
       {:dialyzer_json, "~> 0.2", only: [:dev, :test], runtime: false},
       {:styler, "~> 1.11", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
@@ -160,7 +160,7 @@ defmodule Harness.MixProject do
       {:phoenix_iconify, "~> 0.1", only: [:dev, :test], runtime: false},
       {:volt, "~> 0.11", only: [:dev, :test], runtime: false},
       {:dune, "~> 0.3", only: [:dev, :test], runtime: false},
-      {:boxart, "~> 0.3.3", only: [:dev, :test], runtime: false},
+      {:boxart, "~> 0.3", only: [:dev, :test], runtime: false},
       # Igniter powers `mix igniter.install vibe_kit`; vibe_kit keeps
       # `mix vibe_kit.install` available for re-runs (installer, never runtime).
       {:igniter, "~> 0.7", only: [:dev, :test]},
@@ -213,6 +213,7 @@ defmodule Harness.MixProject do
       # No .github/workflows yet; this alias IS the CI bar. `mix ci` (below) is the
       # ecosystem-convention entry point and maps here so there is ONE gate, not two.
       "precommit.full": [
+        "harness.deps.check",
         "precommit",
         "ex_dna --max-clones 0",
         "reach.check --arch --smells",
