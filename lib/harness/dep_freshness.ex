@@ -8,11 +8,13 @@ defmodule Harness.DepFreshness do
   """
 
   alias Harness.DepFreshness.Providers
+  alias Harness.DepFreshness.Row
   alias Harness.DepFreshness.Snapshot
   alias Harness.DepFreshnessStore
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.ToolingBaseline
+  alias Harness.ToolingBaseline.Snapshot, as: ConformanceSnapshot
 
   require Logger
 
@@ -23,21 +25,16 @@ defmodule Harness.DepFreshness do
     provider_opts = Keyword.get(opts, :provider_opts, [])
 
     with {:ok, provider} <- Providers.resolve(project),
-         {:ok, repo_path} <- repo_path(project),
-         {:ok, rows} <- provider.scan(project, repo_path, provider_opts),
-         language = language_label(project.language),
-         conformance = scan_conformance(project, repo_path, provider_opts),
-         snapshot = Snapshot.build(project.name, language, rows, conformance: conformance),
-         :ok <- DepFreshnessStore.record_snapshot(snapshot, store) do
-      :ok
+         {:ok, repo_path} <- repo_path(project) do
+      conformance = scan_conformance(project, repo_path, provider_opts)
+
+      project
+      |> scan_freshness(provider, repo_path, provider_opts)
+      |> record_scan_result(project, conformance, store)
     else
       {:skipped, reason} = skipped ->
         Logger.debug("harness dep freshness: skipped #{project.name}: #{inspect(reason)}")
         skipped
-
-      {:error, reason} = error ->
-        Logger.warning("harness dep freshness: failed #{project.name}: #{inspect(reason)}")
-        error
     end
   end
 
@@ -77,8 +74,50 @@ defmodule Harness.DepFreshness do
   defp language_label(nil), do: "elixir"
   defp language_label(language) when is_atom(language), do: Atom.to_string(language)
 
+  @spec scan_freshness(Project.t(), module(), String.t(), keyword()) ::
+          {:ok, [Row.t()]} | {:skipped, term()} | {:error, term()}
+  defp scan_freshness(%Project{} = project, provider, repo_path, provider_opts) do
+    provider.scan(project, repo_path, provider_opts)
+  end
+
+  @spec record_scan_result(
+          {:ok, [Row.t()]} | {:skipped, term()} | {:error, term()},
+          Project.t(),
+          ConformanceSnapshot.t() | nil,
+          keyword()
+        ) :: :ok | {:skipped, term()} | {:error, term()}
+  defp record_scan_result({:ok, rows}, %Project{} = project, conformance, store) do
+    project
+    |> build_snapshot(rows, conformance)
+    |> DepFreshnessStore.record_snapshot(store)
+  end
+
+  defp record_scan_result({:error, reason} = error, %Project{} = project, %ConformanceSnapshot{} = conformance, store) do
+    Logger.warning("harness dep freshness: failed #{project.name}: #{inspect(reason)}")
+
+    case project |> build_snapshot([], conformance) |> DepFreshnessStore.record_snapshot(store) do
+      :ok -> error
+      {:error, _reason} = store_error -> store_error
+    end
+  end
+
+  defp record_scan_result({:error, reason} = error, %Project{} = project, _conformance, _store) do
+    Logger.warning("harness dep freshness: failed #{project.name}: #{inspect(reason)}")
+    error
+  end
+
+  defp record_scan_result({:skipped, reason} = skipped, %Project{} = project, _conformance, _store) do
+    Logger.debug("harness dep freshness: skipped #{project.name}: #{inspect(reason)}")
+    skipped
+  end
+
+  @spec build_snapshot(Project.t(), [Row.t()], ConformanceSnapshot.t() | nil) :: Snapshot.t()
+  defp build_snapshot(%Project{} = project, rows, conformance) do
+    Snapshot.build(project.name, language_label(project.language), rows, conformance: conformance)
+  end
+
   @spec scan_conformance(Project.t(), String.t(), keyword()) ::
-          Harness.ToolingBaseline.Snapshot.t() | nil
+          ConformanceSnapshot.t() | nil
   defp scan_conformance(%Project{language: :elixir} = project, repo_path, provider_opts) do
     case ToolingBaseline.scan_project(project, repo_path, provider_opts: provider_opts) do
       {:ok, snapshot} -> snapshot

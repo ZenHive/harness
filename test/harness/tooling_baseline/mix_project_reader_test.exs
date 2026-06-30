@@ -27,10 +27,10 @@ defmodule Harness.ToolingBaseline.MixProjectReaderTest do
     path = write_mix!(mix_exs)
 
     assert {:ok, %{deps: deps, aliases: aliases}} = MixProjectReader.read(path)
-    assert MapSet.member?(deps, :credo)
-    assert MapSet.member?(deps, :req)
-    assert MapSet.member?(aliases, :precommit)
-    assert MapSet.member?(aliases, :ci)
+    assert MapSet.member?(deps, "credo")
+    assert MapSet.member?(deps, "req")
+    assert MapSet.member?(aliases, "precommit")
+    assert MapSet.member?(aliases, "ci")
   end
 
   test "reads deps from Mix.install scripts" do
@@ -44,8 +44,8 @@ defmodule Harness.ToolingBaseline.MixProjectReaderTest do
     path = write_mix!(mix_exs)
 
     assert {:ok, %{deps: deps}} = MixProjectReader.read(path)
-    assert MapSet.member?(deps, :credo)
-    assert MapSet.member?(deps, :req)
+    assert MapSet.member?(deps, "credo")
+    assert MapSet.member?(deps, "req")
   end
 
   @spec write_mix!(String.t()) :: String.t()

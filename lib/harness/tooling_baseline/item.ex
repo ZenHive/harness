@@ -8,6 +8,14 @@ defmodule Harness.ToolingBaseline.Item do
   @enforce_keys [:id, :label, :category, :status]
   defstruct [:id, :label, :category, :status, :override_reason]
 
+  @atom_keys %{
+    "id" => :id,
+    "label" => :label,
+    "category" => :category,
+    "status" => :status,
+    "override_reason" => :override_reason
+  }
+
   @type category :: :dep | :alias | :config_file
   @type status :: :present | :missing | :overridden
 
@@ -88,7 +96,7 @@ defmodule Harness.ToolingBaseline.Item do
   defp fetch_value(map, key) do
     case Map.fetch(map, key) do
       {:ok, value} -> value
-      :error -> Map.get(map, String.to_atom(key))
+      :error -> Map.get(map, Map.fetch!(@atom_keys, key))
     end
   end
 end

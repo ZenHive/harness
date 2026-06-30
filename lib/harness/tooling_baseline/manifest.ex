@@ -15,17 +15,18 @@ defmodule Harness.ToolingBaseline.Manifest do
           advisory: [Advisory.t()]
         }
 
+  @elixir_manifest_path Path.expand("../../../priv/tooling_baseline/elixir.json", __DIR__)
+  @external_resource @elixir_manifest_path
+
   @doc "Loads the Elixir baseline manifest from priv."
   @spec elixir() :: {:ok, t()} | {:error, term()}
   def elixir do
-    load_json("elixir.json")
+    load_json(@elixir_manifest_path)
   end
 
   @spec load_json(String.t()) :: {:ok, t()} | {:error, term()}
-  defp load_json(filename) do
-    path = Path.join([:code.priv_dir(:harness), "tooling_baseline", filename])
-
-    with {:ok, content} <- File.read(path),
+  defp load_json(path) do
+    with {:ok, content} <- :file.read_file(String.to_charlist(path)),
          {:ok, map} <- Jason.decode(content) do
       {:ok, decode_manifest(map)}
     end

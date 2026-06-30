@@ -40,7 +40,7 @@ defmodule Harness.ToolingBaseline.Provider.Elixir do
       config_items(manifest.config_files, repo_path, overrides)
   end
 
-  @spec dep_items([String.t()], MapSet.t(atom()), map()) :: [Item.t()]
+  @spec dep_items([String.t()], MapSet.t(String.t()), map()) :: [Item.t()]
   defp dep_items(required, present, overrides) do
     Enum.map(required, fn dep ->
       id = "dep:#{dep}"
@@ -49,13 +49,13 @@ defmodule Harness.ToolingBaseline.Provider.Elixir do
         id: id,
         label: dep,
         category: :dep,
-        status: item_status(id, MapSet.member?(present, String.to_atom(dep)), overrides),
-        override_reason: Map.get(overrides, id) || Map.get(overrides, String.to_atom(id))
+        status: item_status(id, MapSet.member?(present, dep), overrides),
+        override_reason: Map.get(overrides, id)
       }
     end)
   end
 
-  @spec alias_items([String.t()], MapSet.t(atom()), map()) :: [Item.t()]
+  @spec alias_items([String.t()], MapSet.t(String.t()), map()) :: [Item.t()]
   defp alias_items(required, present, overrides) do
     Enum.map(required, fn alias_name ->
       id = "alias:#{alias_name}"
@@ -64,8 +64,8 @@ defmodule Harness.ToolingBaseline.Provider.Elixir do
         id: id,
         label: alias_name,
         category: :alias,
-        status: item_status(id, MapSet.member?(present, String.to_atom(alias_name)), overrides),
-        override_reason: Map.get(overrides, id) || Map.get(overrides, String.to_atom(id))
+        status: item_status(id, MapSet.member?(present, alias_name), overrides),
+        override_reason: Map.get(overrides, id)
       }
     end)
   end
@@ -81,7 +81,7 @@ defmodule Harness.ToolingBaseline.Provider.Elixir do
         label: filename,
         category: :config_file,
         status: item_status(id, present?, overrides),
-        override_reason: Map.get(overrides, id) || Map.get(overrides, String.to_atom(id))
+        override_reason: Map.get(overrides, id)
       }
     end)
   end
@@ -97,6 +97,6 @@ defmodule Harness.ToolingBaseline.Provider.Elixir do
 
   @spec override?(String.t(), map()) :: boolean()
   defp override?(id, overrides) do
-    Map.has_key?(overrides, id) or Map.has_key?(overrides, String.to_atom(id))
+    Map.has_key?(overrides, id)
   end
 end

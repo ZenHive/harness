@@ -6,6 +6,12 @@ defmodule Harness.ToolingBaseline.Advisory do
   @enforce_keys [:id, :label, :description]
   defstruct [:id, :label, :description]
 
+  @atom_keys %{
+    "id" => :id,
+    "label" => :label,
+    "description" => :description
+  }
+
   @type t :: %__MODULE__{
           id: String.t(),
           label: String.t(),
@@ -36,7 +42,7 @@ defmodule Harness.ToolingBaseline.Advisory do
   defp fetch_string(map, key) do
     case Map.fetch(map, key) do
       {:ok, value} when is_binary(value) -> value
-      :error -> map |> Map.get(String.to_atom(key), "") |> to_string()
+      :error -> map |> Map.get(Map.fetch!(@atom_keys, key), "") |> to_string()
     end
   end
 end

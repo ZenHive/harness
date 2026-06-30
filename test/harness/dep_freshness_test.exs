@@ -68,6 +68,23 @@ defmodule Harness.DepFreshnessTest do
     assert Enum.any?(snapshot.conformance.items, &(&1.status == :missing))
   end
 
+  test "scan_project records tooling baseline facts when freshness scan fails", %{tmp_dir: tmp_dir} do
+    File.write!(Path.join(tmp_dir, "mix.exs"), "Mix.install([])")
+    File.mkdir!(Path.join(tmp_dir, "deps"))
+
+    project = ProjectFixture.from_repo(tmp_dir, name: "baseline-despite-freshness-error", language: :elixir)
+    :ok = ProjectRegistry.register(project)
+
+    runner = fn "mix", ["hex.outdated"], ^tmp_dir -> {:error, :hex_failed} end
+
+    assert {:error, :hex_failed} = DepFreshness.scan_project(project, provider_opts: [runner: runner])
+
+    assert {:ok, snapshot} = DepFreshness.fetch_snapshot("baseline-despite-freshness-error")
+    assert snapshot.rows == []
+    assert snapshot.conformance.drift_count > 0
+    assert Enum.any?(snapshot.conformance.items, &(&1.id == "dep:credo" and &1.status == :missing))
+  end
+
   test "scan_project skips unsupported languages" do
     project = ProjectFixture.from_repo("/tmp/harness-rust-freshness", name: "rust-demo", language: :rust)
     :ok = ProjectRegistry.register(project)
