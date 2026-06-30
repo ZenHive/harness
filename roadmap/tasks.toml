@@ -9948,7 +9948,7 @@ shipped_in = "68b62593f883b681d07e6ffc27e1c2aa07981ec3"
 id = "331"
 phase = 22
 bundle = "operator-surface"
-status = "in_progress"
+status = "done"
 title = "Dependency-freshness fact source (per-language provider; hex.outdated first) + dashboard panel"
 scores = { d = 4, b = 6, u = 7 }
 acceptance_criteria = ["An Oban cron job runs a per-language freshness provider (keyed on project.language) and records name / current / latest / constraint-allowed rows as durable facts (Postgres when repo_enabled, in-memory otherwise)", "The Elixir provider (mix hex.outdated) is implemented as provider #1; the store + dashboard schema are language-neutral so a Rust/cargo provider (Task 336) slots in without refactor or a parallel scanner", "A dashboard panel surfaces per-project outdated deps: the rows, an outdated count, and a last-checked timestamp", "Harness only counts and displays the raw provider facts — it never decides which to upgrade, never auto-updates, never gates a run on freshness", "Cold worktree / missing deps is tolerated (the job provisions or handles a project that needs deps fetched first)", "Tests cover the provider + fact-recording path and the dashboard render; an integration test runs the Elixir provider against a project and asserts rows are recorded"]
@@ -9963,9 +9963,14 @@ On the existing Oban cron schedule (same pattern as the Task 51 roadmap poller /
 
 This is pure mechanical fact-capture and display — count facts in code. No test running, no judgment, no auto-update, never a gate.
 """
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1782811096463-02e51cc0, 06e877dcc5024c334d072e6efbc1cb702a768c88)."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-06-24"
 started_at = "2026-06-30"
 scored_at = "2026-06-24"
+done_at = "2026-06-30"
+shipped_in = "06e877dcc5024c334d072e6efbc1cb702a768c88"
 
 [[task]]
 id = "332"
