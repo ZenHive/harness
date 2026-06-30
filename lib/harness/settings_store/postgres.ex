@@ -13,6 +13,19 @@ defmodule Harness.SettingsStore.Postgres do
   alias Harness.Repo
   alias Harness.SettingsStore.Schema.Setting
 
+  # DB FAILURES this store returns as {:error, _} (connection loss, sandbox
+  # ownership, Postgres-level error, param encoding). The `in` filter lets a
+  # programmer-error exception crash rather than be masked as a store failure.
+  @setting_errors [
+    # RuntimeError covers the repo-not-started lookup raise — a legitimate
+    # "DB unavailable" failure to swallow, not a bug.
+    RuntimeError,
+    DBConnection.ConnectionError,
+    DBConnection.OwnershipError,
+    Postgrex.Error,
+    ArgumentError
+  ]
+
   @impl Harness.SettingsStore
   @spec fetch(String.t(), keyword()) :: {:ok, term()} | :not_found | {:error, term()}
   def fetch(key, backend_opts) when is_binary(key) and is_list(backend_opts) do
@@ -23,7 +36,7 @@ defmodule Harness.SettingsStore.Postgres do
       %Setting{payload: payload} -> decode_payload(key, payload)
     end
   rescue
-    e -> {:error, e}
+    e in @setting_errors -> {:error, e}
   end
 
   @impl Harness.SettingsStore
@@ -38,7 +51,7 @@ defmodule Harness.SettingsStore.Postgres do
       {:error, cs} -> {:error, {:changeset, cs.errors}}
     end
   rescue
-    e -> {:error, e}
+    e in @setting_errors -> {:error, e}
   end
 
   @spec decode_payload(String.t(), term()) :: {:ok, term()} | {:error, term()}

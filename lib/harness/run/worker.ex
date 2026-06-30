@@ -483,7 +483,18 @@ defmodule Harness.Run.Worker do
       :ok
     end
   rescue
-    _error -> :ok
+    # A metadata checkpoint must never crash the worker over a transient DB
+    # failure. A genuine code bug stays unlisted so it still surfaces as a crash.
+    _error in [
+      RuntimeError,
+      DBConnection.ConnectionError,
+      DBConnection.OwnershipError,
+      Postgrex.Error,
+      Ecto.QueryError,
+      Ecto.StaleEntryError,
+      ArgumentError
+    ] ->
+      :ok
   end
 
   # Test seam: `:roadmap_ingest` and `:run_starter` Application env keys let

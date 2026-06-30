@@ -376,7 +376,7 @@ defmodule Harness.Chat.Claude do
     if Port.info(port), do: Port.close(port)
     :ok
   rescue
-    _ -> :ok
+    _e in ArgumentError -> :ok
   end
 
   # Drains any Port messages already in the mailbox after a cancel teardown so a

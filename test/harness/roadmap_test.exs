@@ -267,6 +267,20 @@ defmodule Harness.RoadmapTest do
                Roadmap.ingest({:id, "1"}, project_root: @sample, rmap_bin: stub)
     end
 
+    test "reports rmap_spawn_failed when the OS spawn itself raises" do
+      # A regular file that exists (so ensure_rmap passes) but isn't executable:
+      # System.cmd raises ErlangError (:eacces) on spawn rather than returning a
+      # status. run_rmap must rescue it into {:error, {:rmap_spawn_failed, ...}}
+      # — the contract break that crashed /harness when erl_child_setup died and
+      # every spawn_executable started failing :enoent node-wide.
+      stub = nonexecutable_stub()
+
+      assert {:error, {:rmap_spawn_failed, _args, reason}} =
+               Roadmap.ingest({:id, "1"}, project_root: @sample, rmap_bin: stub)
+
+      assert reason in [:eacces, :enoent]
+    end
+
     test "honors project.roadmap_path when given a project" do
       project = ProjectFixture.from_repo(@sample, roadmap_path: @sample)
 
@@ -360,6 +374,16 @@ defmodule Harness.RoadmapTest do
     path = Path.join(System.tmp_dir!(), "rmap_stub_#{System.unique_integer([:positive])}")
     File.write!(path, "#!/bin/sh\n#{body}\n")
     File.chmod!(path, 0o755)
+    on_exit(fn -> File.rm(path) end)
+    path
+  end
+
+  # A regular file at an explicit path (so ensure_rmap's executable_file?/1
+  # accepts it) without the execute bit — exec'ing it raises ErlangError(:eacces).
+  defp nonexecutable_stub do
+    path = Path.join(System.tmp_dir!(), "rmap_noexec_#{System.unique_integer([:positive])}")
+    File.write!(path, "not executable\n")
+    File.chmod!(path, 0o644)
     on_exit(fn -> File.rm(path) end)
     path
   end

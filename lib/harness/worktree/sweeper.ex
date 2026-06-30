@@ -38,6 +38,8 @@ defmodule Harness.Worktree.Sweeper do
     Logger.info("harness worktree boot sweep: #{inspect(summary)}")
     :ok
   rescue
+    # Bare by design: a boot sweep over filesystem + git must never crash boot,
+    # whatever the cause (File error, git failure, unexpected tree state).
     error ->
       Logger.error("harness worktree boot sweep crashed: #{Exception.message(error)}")
       :ok

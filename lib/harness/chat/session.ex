@@ -11,6 +11,7 @@ defmodule Harness.Chat.Session do
 
   alias Harness.Chat.Backend
   alias Harness.Chat.Store
+  alias Harness.Chat.Store.SessionRecord
   alias Harness.Chat.Stream
   alias Harness.Chat.Tools
   alias Harness.JSONSafe
@@ -400,7 +401,7 @@ defmodule Harness.Chat.Session do
   @spec rehydrate_messages(String.t()) :: [map()]
   defp rehydrate_messages(session_id) do
     case Store.load(session_id) do
-      {:ok, %{messages: messages}} -> messages
+      {:ok, %SessionRecord{messages: messages}} -> messages
       {:error, :not_found} -> []
     end
   end

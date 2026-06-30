@@ -659,7 +659,7 @@ defmodule Harness.Audit do
       {output, status} -> {:error, {status, output, args}}
     end
   rescue
-    e -> {:error, e}
+    e in ErlangError -> {:error, e}
   end
 
   @spec run_rmap_with_input(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
@@ -680,7 +680,7 @@ defmodule Harness.Audit do
       {output, status} -> {:error, {status, output, args}}
     end
   rescue
-    e -> {:error, e}
+    e in ErlangError -> {:error, e}
   end
 
   @spec parse_created_task_id(String.t()) :: {:ok, String.t()} | {:error, :created_task_id_missing}

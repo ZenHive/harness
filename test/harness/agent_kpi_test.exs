@@ -3,6 +3,7 @@ defmodule Harness.AgentKPITest do
 
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentKPI
+  alias Harness.AgentKPI.TokenMeans
   alias Harness.Run.LogRecord
   alias Harness.TokenUsage
 
@@ -48,7 +49,7 @@ defmodule Harness.AgentKPITest do
 
       kpi = AgentKPI.aggregate(records)
 
-      assert kpi[:antigravity].tokens == %{input: 0.0, output: 0.0, total: 0.0}
+      assert kpi[:antigravity].tokens == %TokenMeans{input: 0.0, output: 0.0, total: 0.0}
       assert kpi[:antigravity].cost_to_green == 0.0
     end
 
@@ -60,7 +61,7 @@ defmodule Harness.AgentKPITest do
 
       kpi = AgentKPI.aggregate(records)
 
-      assert kpi[:claude].tokens == %{input: 50.0, output: 50.0, total: 100.0}
+      assert kpi[:claude].tokens == %TokenMeans{input: 50.0, output: 50.0, total: 100.0}
       assert kpi[:claude].cost_to_green == 100.0
     end
   end
@@ -104,7 +105,7 @@ defmodule Harness.AgentKPITest do
       assert kpi.success_rate == 0.75
       assert kpi.first_attempt_pass_rate == 0.5
       assert kpi.duration_ms == %{median: 250.0, p90: 400}
-      assert kpi.tokens == %{input: 1500.0, output: 1000.0, total: 2500.0}
+      assert kpi.tokens == %TokenMeans{input: 1500.0, output: 1000.0, total: 2500.0}
       assert kpi.review_iterations == 0.5
       # mean total tokens across the 3 approved runs (1000 + 2000 + 4000) / 3
       assert kpi.cost_to_green == 7000 / 3

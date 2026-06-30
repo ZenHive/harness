@@ -1441,7 +1441,17 @@ defmodule Harness.Dispatch do
       nil -> {:error, :not_found}
     end
   rescue
-    _error -> {:error, :not_found}
+    # Repo/Oban not running (RuntimeError) or a DB query failure → treat as "no
+    # job". A genuine code bug stays unlisted so it crashes instead of vanishing.
+    _error in [
+      RuntimeError,
+      DBConnection.ConnectionError,
+      DBConnection.OwnershipError,
+      Postgrex.Error,
+      Ecto.QueryError,
+      ArgumentError
+    ] ->
+      {:error, :not_found}
   end
 
   @spec fetch_arg(map(), atom()) :: term()

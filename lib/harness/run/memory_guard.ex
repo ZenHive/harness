@@ -121,6 +121,12 @@ defmodule Harness.Run.MemoryGuard do
       {out, 0} -> out |> String.split("\n", trim: true) |> Enum.reduce(%{}, &parse_ps_line/2)
       _ -> %{}
     end
+  rescue
+    # System.cmd raises ErlangError when the OS spawn fails (a dead
+    # `erl_child_setup` makes every spawn_executable fail :enoent node-wide).
+    # `ps` unavailable means an empty table, per this function's contract — never
+    # a raise that crashes the per-run memory watchdog's gen_statem.
+    ErlangError -> %{}
   end
 
   @spec parse_ps_line(String.t(), %{non_neg_integer() => ps_row()}) :: %{non_neg_integer() => ps_row()}

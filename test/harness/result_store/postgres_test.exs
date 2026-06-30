@@ -19,6 +19,15 @@ defmodule Harness.ResultStore.PostgresTest do
 
   @moduletag :integration
 
+  defmodule RaisingRepo do
+    @moduledoc false
+    # Stands in for an unavailable DB: every op raises a connection failure, the
+    # kind the narrowed best-effort rescue swallows into {:error, _}.
+
+    @spec insert(Ecto.Changeset.t(), keyword()) :: no_return()
+    def insert(_changeset, _opts), do: raise(DBConnection.ConnectionError, "simulated connection loss")
+  end
+
   setup do
     # Point the facade at the Postgres backend with our test Repo for this test.
     # (test env forces Memory + repo_enabled false by default.)
@@ -120,17 +129,16 @@ defmodule Harness.ResultStore.PostgresTest do
   end
 
   describe "best-effort contract (never raises)" do
-    test "record_run returns {:error, _} when repo is unavailable (no crash)" do
-      # Use a deliberately bad repo name that won't be running.
-      bad_store = {Store, repo: BadRepoThatDoesNotExist}
+    test "record_run returns {:error, _} when the repo connection fails (no crash)" do
+      bad_store = {Store, repo: RaisingRepo}
 
       rec = ResultStoreContract.log_record(run_id: "bad-repo-1")
 
       assert {:error, _} = ResultStore.record_run(rec, bad_store)
     end
 
-    test "save_batch returns {:error, _} when repo is unavailable (no crash)" do
-      bad_store = {Store, repo: BadRepoThatDoesNotExist}
+    test "save_batch returns {:error, _} when the repo connection fails (no crash)" do
+      bad_store = {Store, repo: RaisingRepo}
       br = %Harness.Batch.Result{batch_id: "bad-b", total: 0, max_concurrency: 1, results: []}
 
       assert {:error, _} = ResultStore.save_batch(br, bad_store)

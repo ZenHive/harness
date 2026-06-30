@@ -56,6 +56,21 @@ defmodule Harness.Chat.Store.PostgresCodecTest do
     end
   end
 
+  defmodule RaisingRepo do
+    @moduledoc false
+    # Every op raises a genuine DB *failure* (a connection loss) → exercises the
+    # best-effort rescue, which the narrowed `@persistence_errors` swallows.
+
+    @spec insert(Ecto.Changeset.t(), keyword()) :: no_return()
+    def insert(_changeset, _opts), do: raise(DBConnection.ConnectionError, "simulated connection loss")
+
+    @spec get(module(), String.t()) :: no_return()
+    def get(_schema, _id), do: raise(DBConnection.ConnectionError, "simulated connection loss")
+
+    @spec all(Ecto.Query.t()) :: no_return()
+    def all(_query), do: raise(DBConnection.ConnectionError, "simulated connection loss")
+  end
+
   describe "save/3" do
     test "a successful insert returns :ok" do
       assert :ok = PostgresStore.save("chat-ok", [%{role: :user, content: "hi"}], repo: FakeRepo)
@@ -70,15 +85,21 @@ defmodule Harness.Chat.Store.PostgresCodecTest do
       assert is_list(errors)
     end
 
-    test "a repo that raises is rescued into {:error, exception}" do
-      assert {:error, %UndefinedFunctionError{}} =
-               PostgresStore.save("chat-boom", [%{role: :user, content: "x"}], repo: NoSuchRepoModule)
+    test "a DB failure is rescued into {:error, exception}" do
+      assert {:error, %DBConnection.ConnectionError{}} =
+               PostgresStore.save("chat-boom", [%{role: :user, content: "x"}], repo: RaisingRepo)
+    end
+
+    test "a programmer error (undefined repo fn) propagates rather than being masked" do
+      assert_raise UndefinedFunctionError, fn ->
+        PostgresStore.save("chat-bug", [%{role: :user, content: "x"}], repo: NoSuchRepoModule)
+      end
     end
   end
 
   describe "load/2 error + decode paths" do
-    test "a repo that raises is rescued into {:error, :not_found}" do
-      assert {:error, :not_found} = PostgresStore.load("chat-boom", repo: NoSuchRepoModule)
+    test "a DB failure is rescued into {:error, :not_found}" do
+      assert {:error, :not_found} = PostgresStore.load("chat-boom", repo: RaisingRepo)
     end
 
     test "an absent row is {:error, :not_found}" do
@@ -131,8 +152,8 @@ defmodule Harness.Chat.Store.PostgresCodecTest do
   end
 
   describe "list/1 error path" do
-    test "a repo that raises is rescued into []" do
-      assert [] = PostgresStore.list(repo: NoSuchRepoModule)
+    test "a DB failure is rescued into []" do
+      assert [] = PostgresStore.list(repo: RaisingRepo)
     end
 
     test "summarizes configured rows with decoded labels" do

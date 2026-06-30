@@ -52,6 +52,8 @@ defmodule Harness.Notification do
     sink.notify(event)
     :ok
   rescue
+    # Bare by design: a sink is caller-registered, arbitrary code with an
+    # unbounded exception surface — isolate the witness from any of it.
     error -> log_failure(sink, event, error)
   catch
     kind, value -> log_failure(sink, event, {kind, value})

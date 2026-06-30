@@ -657,7 +657,18 @@ defmodule Harness.Lander do
         log_audit_enqueue_failure(project, reason)
     end
   rescue
-    error -> log_audit_enqueue_failure(project, error)
+    # Oban/repo not running (RuntimeError) or a DB insert failure → log, never
+    # un-land. A genuine code bug stays unlisted so it crashes rather than hiding.
+    error in [
+      RuntimeError,
+      DBConnection.ConnectionError,
+      DBConnection.OwnershipError,
+      Postgrex.Error,
+      Ecto.ConstraintError,
+      Ecto.QueryError,
+      ArgumentError
+    ] ->
+      log_audit_enqueue_failure(project, error)
   end
 
   @spec log_audit_enqueue_failure(Project.t(), term()) :: :ok

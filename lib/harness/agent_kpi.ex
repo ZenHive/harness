@@ -67,6 +67,7 @@ defmodule Harness.AgentKPI do
       an agent with zero `:approve` runs reports `nil` (no divide-by-zero, not `0`).
   """
 
+  alias Harness.AgentKPI.TokenMeans
   alias Harness.AgentRegistry
   alias Harness.CapabilityDomain
   alias Harness.Run.LogRecord
@@ -76,7 +77,7 @@ defmodule Harness.AgentKPI do
   @type duration_summary :: %{median: number(), p90: non_neg_integer()}
 
   @typedoc "Mean tokens per run for an agent, by component."
-  @type token_means :: %{input: float(), output: float(), total: float()}
+  @type token_means :: TokenMeans.t()
 
   @typedoc "Mean of each reviewer quality-score key (the keys are the reviewer's, free-form)."
   @type rating_means :: %{optional(String.t()) => float()}
@@ -651,9 +652,9 @@ defmodule Harness.AgentKPI do
     Enum.count(records, &(&1.verdict == :approve and &1.review_iterations == 0))
   end
 
-  @spec token_means([LogRecord.t()], pos_integer()) :: token_means()
+  @spec token_means([LogRecord.t()], pos_integer()) :: TokenMeans.t()
   defp token_means(records, run_count) do
-    %{
+    %TokenMeans{
       input: mean(Enum.map(records, &token_field(&1, :input)), run_count),
       output: mean(Enum.map(records, &token_field(&1, :output)), run_count),
       total: mean(Enum.map(records, &token_field(&1, :total)), run_count)

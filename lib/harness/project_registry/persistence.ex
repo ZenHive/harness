@@ -22,6 +22,23 @@ defmodule Harness.ProjectRegistry.Persistence do
   # blip), which legitimately degrade to empty/no-op.
   @structural_pg_codes [:undefined_column, :undefined_table]
 
+  # DB FAILURES the soft rescue degrades over (connection blip, constraint, bad
+  # query, param encoding). Postgrex.Error MUST stay listed so reraise_structural!
+  # still sees schema-drift codes and fails loud. Programmer-error exceptions are
+  # absent, so a code bug crashes rather than silently degrading the registry.
+  @db_errors [
+    # RuntimeError covers the repo-not-started lookup raise — a legitimate
+    # "DB unavailable" failure to degrade over, not a bug. (Not a Postgrex.Error,
+    # so reraise_structural! lets it through to the soft degrade.)
+    RuntimeError,
+    DBConnection.ConnectionError,
+    DBConnection.OwnershipError,
+    Postgrex.Error,
+    Ecto.ConstraintError,
+    Ecto.QueryError,
+    ArgumentError
+  ]
+
   @doc false
   @spec list() :: [Project.t()]
   def list do
@@ -33,7 +50,7 @@ defmodule Harness.ProjectRegistry.Persistence do
       []
     end
   rescue
-    e ->
+    e in @db_errors ->
       reraise_structural!(e, __STACKTRACE__)
       Logger.warning("harness project registry: failed to load persisted projects: #{inspect(e)}")
       []
@@ -81,7 +98,7 @@ defmodule Harness.ProjectRegistry.Persistence do
       :ok
     end
   rescue
-    e ->
+    e in @db_errors ->
       reraise_structural!(e, __STACKTRACE__)
       Logger.warning("harness project registry: failed to persist #{project.name}: #{inspect(e)}")
       :ok
@@ -97,7 +114,7 @@ defmodule Harness.ProjectRegistry.Persistence do
       :ok
     end
   rescue
-    e ->
+    e in @db_errors ->
       reraise_structural!(e, __STACKTRACE__)
       Logger.warning("harness project registry: failed to delete #{name}: #{inspect(e)}")
       :ok

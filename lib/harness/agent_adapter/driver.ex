@@ -113,6 +113,8 @@ defmodule Harness.AgentAdapter.Driver do
     hook.(run)
     :ok
   rescue
+    # Bare by design: a caller-supplied hook is arbitrary code — never let it
+    # crash the driver; isolate every failure mode.
     _error -> :ok
   catch
     _kind, _value -> :ok
@@ -204,6 +206,8 @@ defmodule Harness.AgentAdapter.Driver do
     hook.(data)
     :ok
   rescue
+    # Bare by design: a caller-supplied hook is arbitrary code — never let it
+    # crash the driver; isolate every failure mode.
     _error -> :ok
   catch
     _kind, _value -> :ok

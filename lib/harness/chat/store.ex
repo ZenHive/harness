@@ -35,8 +35,10 @@ defmodule Harness.Chat.Store do
   available while the node runs and disappear on restart.
   """
 
+  alias Harness.Chat.Store.SessionRecord
+
   @typedoc "A loaded session record: the rehydration payload for `Harness.Chat.Session`."
-  @type session_record :: %{session_id: String.t(), messages: [map()], updated_at: DateTime.t()}
+  @type session_record :: SessionRecord.t()
 
   @typedoc "An index summary: the per-row payload `Harness.Dashboard.ChatLive` renders."
   @type summary :: %{

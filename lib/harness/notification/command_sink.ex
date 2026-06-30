@@ -60,7 +60,7 @@ defmodule Harness.Notification.CommandSink do
     System.cmd(command, args, env: env(event), stderr_to_stdout: true)
     :ok
   rescue
-    error ->
+    error in [ErlangError, ArgumentError] ->
       Logger.error("harness notify: command sink #{inspect(command)} raised: #{inspect(error)}")
       :ok
   end

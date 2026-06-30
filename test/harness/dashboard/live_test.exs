@@ -176,7 +176,7 @@ defmodule Harness.Dashboard.LiveTest do
 
   describe "relandable?/2 (re-land-button visibility guard)" do
     test "a run whose task is blocked in the summaries is re-landable" do
-      summaries = %{"proj" => %{open: 1, done: 0, total: 1, landed: %{}, blocked: %{"7" => true}}}
+      summaries = %{"proj" => %{open: 1, done: 0, total: 1, landed: %{}, blocked: MapSet.new(["7"])}}
 
       assert Live.relandable?(
                %Status{run_id: "r", task_id: "7", project_name: "proj", state: :done},
@@ -185,7 +185,7 @@ defmodule Harness.Dashboard.LiveTest do
     end
 
     test "a run whose task is not blocked is not re-landable" do
-      summaries = %{"proj" => %{open: 0, done: 1, total: 1, landed: %{}, blocked: %{}}}
+      summaries = %{"proj" => %{open: 0, done: 1, total: 1, landed: %{}, blocked: MapSet.new()}}
 
       refute Live.relandable?(
                %Status{run_id: "r", task_id: "7", project_name: "proj", state: :done},
@@ -199,7 +199,7 @@ defmodule Harness.Dashboard.LiveTest do
   end
 
   describe "landable?/3 (manual first-land button visibility guard)" do
-    @unlanded %{open: 1, done: 0, total: 1, landed: %{}, blocked: %{}}
+    @unlanded %{open: 1, done: 0, total: 1, landed: %{}, blocked: MapSet.new()}
 
     defp done_approved(opts) do
       %Status{
@@ -232,7 +232,7 @@ defmodule Harness.Dashboard.LiveTest do
     end
 
     test "a blocked task is not landable — that is relandable?/2's case" do
-      summaries = %{"proj" => %{@unlanded | blocked: %{"7" => true}}}
+      summaries = %{"proj" => %{@unlanded | blocked: MapSet.new(["7"])}}
 
       refute Live.landable?(done_approved(task_id: "7"), summaries, MapSet.new(["proj"]))
     end
@@ -423,7 +423,7 @@ defmodule Harness.Dashboard.LiveTest do
           review_verdict: :approve
         )
 
-      roadmap = %{project_name => %{open: 0, done: 1, total: 1, landed: %{task_id => sha}, blocked: %{}}}
+      roadmap = %{project_name => %{open: 0, done: 1, total: 1, landed: %{task_id => sha}, blocked: MapSet.new()}}
 
       :ok = ResultStore.record_run(log_record(run_id, project_name: project_name, task_id: task_id), store)
 
@@ -452,7 +452,7 @@ defmodule Harness.Dashboard.LiveTest do
       task_id = "281"
 
       entry = run_entry(run_id, project_name: project_name, task_id: task_id, state: :failed, bucket: :red)
-      roadmap = %{project_name => %{open: 0, done: 1, total: 1, landed: %{task_id => sha}, blocked: %{}}}
+      roadmap = %{project_name => %{open: 0, done: 1, total: 1, landed: %{task_id => sha}, blocked: MapSet.new()}}
 
       :ok =
         ResultStore.record_run(
@@ -479,7 +479,7 @@ defmodule Harness.Dashboard.LiveTest do
       task_id = "119"
 
       entry = run_entry(run_id, project_name: project_name, task_id: task_id, state: :failed, bucket: :red)
-      roadmap = %{project_name => %{open: 1, done: 0, total: 1, landed: %{}, blocked: %{}}}
+      roadmap = %{project_name => %{open: 1, done: 0, total: 1, landed: %{}, blocked: MapSet.new()}}
 
       :ok =
         ResultStore.record_run(

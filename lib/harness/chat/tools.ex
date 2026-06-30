@@ -267,6 +267,8 @@ defmodule Harness.Chat.Tools do
   defp safe_apply(%{module: module, function: function}, args) do
     {:ok, apply(module, function, args)}
   rescue
+    # Bare by design: a fully dynamic dispatch to a registered tool fn has an
+    # unbounded exception surface — capture all of it as a dispatch error.
     error -> {:error, {:dispatch_failed, Exception.message(error)}}
   end
 

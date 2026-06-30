@@ -9,11 +9,31 @@ defmodule Harness.Chat.Store.Postgres do
 
   alias Harness.Chat.Store
   alias Harness.Chat.Store.Postgres.ChatSession
+  alias Harness.Chat.Store.SessionRecord
   alias Harness.Repo
 
   require Logger
 
   @max_persisted_messages 200
+
+  # DB/serialization FAILURES this store swallows per its best-effort contract
+  # (connection loss, constraint, bad change, malformed query, jsonb encode of a
+  # message value). The `in` filter lets programmer-error exceptions (KeyError,
+  # FunctionClauseError, …) crash instead of being masked.
+  @persistence_errors [
+    # RuntimeError covers the repo-not-started lookup raise — a legitimate
+    # "DB unavailable" failure to swallow, not a bug.
+    RuntimeError,
+    DBConnection.ConnectionError,
+    DBConnection.OwnershipError,
+    Postgrex.Error,
+    Ecto.ConstraintError,
+    Ecto.ChangeError,
+    Ecto.QueryError,
+    ArgumentError,
+    Jason.EncodeError,
+    Protocol.UndefinedError
+  ]
 
   @impl Store
   @spec save(String.t(), [map()], keyword()) :: :ok | {:error, term()}
@@ -35,13 +55,16 @@ defmodule Harness.Chat.Store.Postgres do
         {:error, cs} -> {:error, {:changeset, cs.errors}}
       end
     rescue
-      e -> {:error, e}
+      e in @persistence_errors -> {:error, e}
     end
   end
 
   @doc false
   @spec import_session(Store.session_record(), keyword()) :: :ok | {:error, term()}
-  def import_session(%{session_id: session_id, messages: messages, updated_at: %DateTime{} = updated_at}, opts)
+  def import_session(
+        %SessionRecord{session_id: session_id, messages: messages, updated_at: %DateTime{} = updated_at},
+        opts
+      )
       when is_binary(session_id) and is_list(messages) and is_list(opts) do
     repo = Keyword.get(opts, :repo, Repo)
     naive = updated_at |> DateTime.to_naive() |> ensure_usec()
@@ -62,7 +85,7 @@ defmodule Harness.Chat.Store.Postgres do
         {:error, cs} -> {:error, {:changeset, cs.errors}}
       end
     rescue
-      e -> {:error, e}
+      e in @persistence_errors -> {:error, e}
     end
   end
 
@@ -83,10 +106,16 @@ defmodule Harness.Chat.Store.Postgres do
 
         %ChatSession{messages: messages, updated_at: updated_at} ->
           decoded = decode_messages(messages)
-          {:ok, %{session_id: session_id, messages: decoded, updated_at: DateTime.from_naive!(updated_at, "Etc/UTC")}}
+
+          {:ok,
+           %SessionRecord{
+             session_id: session_id,
+             messages: decoded,
+             updated_at: DateTime.from_naive!(updated_at, "Etc/UTC")
+           }}
       end
     rescue
-      _ -> {:error, :not_found}
+      _ in @persistence_errors -> {:error, :not_found}
     end
   end
 
@@ -113,7 +142,7 @@ defmodule Harness.Chat.Store.Postgres do
         }
       end)
     rescue
-      e ->
+      e in @persistence_errors ->
         Logger.warning("harness chat store: cannot list from db: #{inspect(e)}")
         []
     end

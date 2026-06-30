@@ -10,6 +10,7 @@ defmodule Harness.CodeSearch do
   use Descripex, namespace: "/code_search"
 
   alias Harness.CodeSearch.Server
+  alias Harness.CodeSearch.Symbol
   alias Harness.Project
   alias Harness.ProjectRegistry
 
@@ -682,20 +683,16 @@ defmodule Harness.CodeSearch do
   defp selected_symbol(edge, :caller), do: Map.get(edge, :caller_qualified_name)
   defp selected_symbol(edge, :callee), do: Map.get(edge, :callee_qualified_name)
 
-  @spec parse_symbol(String.t() | nil) :: %{
-          module: String.t() | nil,
-          name: String.t() | nil,
-          arity: non_neg_integer() | nil
-        }
-  defp parse_symbol(nil), do: %{module: nil, name: nil, arity: nil}
+  @spec parse_symbol(String.t() | nil) :: Symbol.t()
+  defp parse_symbol(nil), do: %Symbol{module: nil, name: nil, arity: nil}
 
   defp parse_symbol(symbol) do
     with [left, arity_text] <- String.split(symbol, "/", parts: 2),
          {arity, ""} <- Integer.parse(arity_text),
          [name | module_parts] <- left |> String.split(".") |> Enum.reverse() do
-      %{module: module_parts |> Enum.reverse() |> Enum.join("."), name: name, arity: arity}
+      %Symbol{module: module_parts |> Enum.reverse() |> Enum.join("."), name: name, arity: arity}
     else
-      _other -> %{module: nil, name: symbol, arity: nil}
+      _other -> %Symbol{module: nil, name: symbol, arity: nil}
     end
   end
 

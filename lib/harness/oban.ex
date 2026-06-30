@@ -22,6 +22,18 @@ defmodule Harness.Oban do
   @run_worker Oban.Worker.to_string(Harness.Run.Worker)
   @orphan_rescue_child_id Harness.Oban.OrphanedRunRescue
 
+  # The "is a job tracked?" reads degrade to an empty answer when the repo/Oban is
+  # not running (RuntimeError from the repo lookup) or a DB query fails. The `in`
+  # filter lets a genuine code bug crash instead of being hidden as false/[].
+  @query_degrade_errors [
+    RuntimeError,
+    DBConnection.ConnectionError,
+    DBConnection.OwnershipError,
+    Postgrex.Error,
+    Ecto.QueryError,
+    ArgumentError
+  ]
+
   @doc false
   @spec start_link(term()) :: Supervisor.on_start()
   def start_link(init_arg \\ []) do
@@ -72,7 +84,7 @@ defmodule Harness.Oban do
 
     Harness.Repo.exists?(query)
   rescue
-    _error -> false
+    _error in @query_degrade_errors -> false
   end
 
   @doc """
@@ -160,7 +172,7 @@ defmodule Harness.Oban do
     |> Enum.reject(&is_nil/1)
     |> Enum.uniq()
   rescue
-    _error -> []
+    _error in @query_degrade_errors -> []
   end
 
   @doc false

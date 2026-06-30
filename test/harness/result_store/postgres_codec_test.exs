@@ -15,6 +15,7 @@ defmodule Harness.ResultStore.PostgresCodecTest do
   use ExUnit.Case, async: true
 
   alias Harness.AgentAdapter.Codex
+  alias Harness.AgentKPI.TokenMeans
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.ResultStore.Postgres
   alias Harness.ResultStoreContract
@@ -61,6 +62,15 @@ defmodule Harness.ResultStore.PostgresCodecTest do
 
     @spec rows() :: [struct()]
     defp rows, do: Process.get({__MODULE__, :rows}, [])
+  end
+
+  defmodule RaisingRepo do
+    @moduledoc false
+    # insert/2 raises a genuine DB *failure* (connection loss) → exercises the
+    # best-effort rescue, which the narrowed `@persistence_errors` swallows.
+
+    @spec insert(Ecto.Changeset.t(), keyword()) :: no_return()
+    def insert(_changeset, _opts), do: raise(DBConnection.ConnectionError, "simulated connection loss")
   end
 
   describe "agent_outcome_kind codec" do
@@ -219,11 +229,19 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       assert {:error, %Protocol.UndefinedError{}} = Postgres.record_run(record, repo: FakeRepo)
     end
 
-    test "an unavailable repo module returns {:error, _}, never raises" do
+    test "a DB failure returns {:error, _}, never raises" do
+      record = ResultStoreContract.log_record(run_id: "db-down")
+
+      assert {:error, %DBConnection.ConnectionError{}} =
+               Postgres.record_run(record, repo: RaisingRepo)
+    end
+
+    test "a programmer error (undefined repo fn) propagates rather than being masked" do
       record = ResultStoreContract.log_record(run_id: "no-repo")
 
-      assert {:error, %UndefinedFunctionError{}} =
-               Postgres.record_run(record, repo: RepoModuleThatDoesNotExist)
+      assert_raise UndefinedFunctionError, fn ->
+        Postgres.record_run(record, repo: RepoModuleThatDoesNotExist)
+      end
     end
   end
 
@@ -253,7 +271,7 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       assert kpi.reviewer_flaked == 1
       assert kpi.success_rate == 1.0
       assert kpi.first_attempt_pass_rate == 0.5
-      assert kpi.tokens == %{input: 10.0, output: 5.0, total: 15.0}
+      assert kpi.tokens == %TokenMeans{input: 10.0, output: 5.0, total: 15.0}
       assert kpi.review_iterations == 0.5
       assert kpi.ratings == %{"otp" => 8.0}
       assert kpi.cost_to_green == 42.0

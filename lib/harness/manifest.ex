@@ -244,19 +244,13 @@ defmodule Harness.Manifest do
   @spec adapter_module_list?(String.t()) :: boolean()
   defp adapter_module_list?(desc), do: Regex.match?(~r/\blist of adapter modules\b/i, desc)
 
-  # Prefix comes from MCP tool names derived from the curated Manifest module list —
-  # not user-supplied free text.
-  # sobelow_skip ["DOS.StringToAtom"]
   @spec resolve_module!([module()], String.t()) :: module()
   defp resolve_module!(modules, prefix) do
-    short = String.to_atom(prefix)
-
     case Enum.filter(modules, fn mod ->
            mod
            |> Module.split()
            |> List.last()
-           |> Macro.underscore()
-           |> String.to_atom() == short
+           |> Macro.underscore() == prefix
          end) do
       [module] ->
         module

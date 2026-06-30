@@ -3,22 +3,51 @@ defmodule Harness.ResultStore.Postgres do
   Postgres-backed `Harness.ResultStore` implementation (Task 137).
 
   Uses the existing `Harness.Repo` (Oban dependency). All operations are
-  best-effort: return `{:error, _}` on any failure (connection, constraint,
-  serialization) and never raise, per the behaviour contract.
+  best-effort: a DB/Ecto/serialization *failure* (connection loss, constraint,
+  stale row, bad query/cast, param encoding, term/JSON serialization) is caught
+  and returned as `{:error, _}`, never raised, per the behaviour contract — see
+  `@persistence_errors` / `@serialization_errors`. A genuine *programmer error*
+  (`KeyError`, `FunctionClauseError`, `UndefinedFunctionError`, …) is deliberately
+  *not* on those lists, so a code bug surfaces as a crash instead of being masked
+  as `{:error, %KeyError{}}`.
   """
 
   @behaviour Harness.ResultStore
 
   import Ecto.Query
 
+  # DB/Ecto FAILURES the best-effort contract swallows into {:error, _}. The
+  # `in` filter (vs a bare `rescue e ->`) lets programmer-error exceptions
+  # propagate — a code bug must crash, not be logged as a phantom store failure.
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentKPI
+  alias Harness.AgentKPI.TokenMeans
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.Repo
   alias Harness.ResultStore.Schema.BatchResult, as: BatchResultSchema
   alias Harness.ResultStore.Schema.RunRecord, as: RunRecordSchema
   alias Harness.Run.LogRecord
   alias Harness.TokenUsage
+
+  @persistence_errors [
+    # RuntimeError covers the repo-not-started lookup raise — a legitimate
+    # "DB unavailable" failure the best-effort contract must swallow, not a bug.
+    RuntimeError,
+    DBConnection.ConnectionError,
+    DBConnection.OwnershipError,
+    Postgrex.Error,
+    Ecto.ConstraintError,
+    Ecto.StaleEntryError,
+    Ecto.Query.CastError,
+    Ecto.QueryError,
+    Ecto.SubQueryError,
+    Ecto.ChangeError,
+    ArgumentError
+  ]
+
+  # record_run/2 also serializes the LogRecord inside the rescue, so a value the
+  # term/JSON codec cannot encode must degrade the same way.
+  @serialization_errors @persistence_errors ++ [Jason.EncodeError, Protocol.UndefinedError]
 
   @impl Harness.ResultStore
   @spec record_run(LogRecord.t(), keyword()) :: :ok | {:error, term()}
@@ -38,7 +67,7 @@ defmodule Harness.ResultStore.Postgres do
       {:error, cs} -> {:error, {:changeset, cs.errors}}
     end
   rescue
-    e -> {:error, e}
+    e in @serialization_errors -> {:error, e}
   end
 
   # Same-run_id upsert that never lets a later write's MISSING data clobber a
@@ -144,7 +173,7 @@ defmodule Harness.ResultStore.Postgres do
         {:error, cs} -> {:error, {:changeset, cs.errors}}
       end
     rescue
-      e -> {:error, e}
+      e in @persistence_errors -> {:error, e}
     end
   end
 
@@ -169,7 +198,7 @@ defmodule Harness.ResultStore.Postgres do
           {:error, {:invalid_row, batch_id}}
       end
     rescue
-      e -> {:error, e}
+      e in @persistence_errors -> {:error, e}
     end
   end
 
@@ -195,7 +224,7 @@ defmodule Harness.ResultStore.Postgres do
       rows = repo.all(query)
       {:ok, Enum.map(rows, &row_to_log_record/1)}
     rescue
-      e -> {:error, e}
+      e in @persistence_errors -> {:error, e}
     end
   end
 
@@ -209,7 +238,7 @@ defmodule Harness.ResultStore.Postgres do
       {_count, _} = repo.delete_all(from(r in RunRecordSchema, where: r.run_id == ^run_id))
       :ok
     rescue
-      e -> {:error, e}
+      e in @persistence_errors -> {:error, e}
     end
   end
 
@@ -228,7 +257,7 @@ defmodule Harness.ResultStore.Postgres do
 
       :ok
     rescue
-      e -> {:error, e}
+      e in @persistence_errors -> {:error, e}
     end
   end
 
@@ -241,7 +270,7 @@ defmodule Harness.ResultStore.Postgres do
       rows = repo.all(aggregate_by_agent_query())
       {:ok, aggregate_rows_to_ledger(rows)}
     rescue
-      e -> {:error, e}
+      e in @persistence_errors -> {:error, e}
     end
   end
 
@@ -255,7 +284,7 @@ defmodule Harness.ResultStore.Postgres do
       rows = repo.all(aggregate_reviewer_reliability_query())
       {:ok, reviewer_rows_to_ledger(rows)}
     rescue
-      e -> {:error, e}
+      e in @persistence_errors -> {:error, e}
     end
   end
 
@@ -268,7 +297,7 @@ defmodule Harness.ResultStore.Postgres do
       rows = repo.all(aggregate_by_facet_query())
       {:ok, facet_rows_to_groups(rows)}
     rescue
-      e -> {:error, e}
+      e in @persistence_errors -> {:error, e}
     end
   end
 
@@ -518,7 +547,7 @@ defmodule Harness.ResultStore.Postgres do
       success_rate: safe_rate(pass_count, attributable_count),
       first_attempt_pass_rate: safe_rate(row.first_attempt_pass_count || 0, attributable_count),
       duration_ms: AgentKPI.duration_summary(row.durations || []),
-      tokens: %{
+      tokens: %TokenMeans{
         input: float_or_zero(row.input_mean),
         output: float_or_zero(row.output_mean),
         total: float_or_zero(row.total_mean)
@@ -757,19 +786,16 @@ defmodule Harness.ResultStore.Postgres do
   defp default(value, _default), do: value
 
   # Column values come from our own INSERTs (Atom.to_string in log_record_to_attrs)
-  # — never user-supplied. Matches manifest.ex / chat/tools.ex pattern.
-  # The String.to_atom clause must directly follow this comment for the skip to attach.
-  # sobelow_skip ["DOS.StringToAtom"]
+  # — the atom always already exists (the code that wrote it defines it), so
+  # to_existing_atom both decodes correctly and rejects stale/foreign strings.
   @spec string_to_atom(String.t() | nil) :: atom() | nil
-  defp string_to_atom(s) when is_binary(s), do: String.to_atom(s)
+  defp string_to_atom(s) when is_binary(s), do: String.to_existing_atom(s)
   defp string_to_atom(nil), do: nil
 
-  # Column values come from our own INSERTs (Atom.to_string in log_record_to_attrs)
-  # — never user-supplied. Matches manifest.ex / chat/tools.ex pattern.
-  # The String.to_atom clause must directly follow this comment for the skip to attach.
-  # sobelow_skip ["DOS.StringToAtom"]
+  # Module names come from our own INSERTs (Atom.to_string of a loaded adapter
+  # module) — the module atom is already loaded, so to_existing_atom is safe.
   @spec string_to_module(String.t() | nil) :: module() | nil
-  defp string_to_module(s) when is_binary(s), do: String.to_atom(s)
+  defp string_to_module(s) when is_binary(s), do: String.to_existing_atom(s)
   defp string_to_module(nil), do: nil
 
   # agent_outcome_kind is Outcome.kind(): :exited or a tagged tuple such as
@@ -877,10 +903,10 @@ defmodule Harness.ResultStore.Postgres do
   defp decode_term(other), do: other
 
   # Map keys come only from our encode_term (harness-controlled jsonb roundtrip)
-  # — not user-supplied free text. Matches manifest.ex / chat/tools.ex pattern.
-  # sobelow_skip ["DOS.StringToAtom"]
+  # — the key atom existed when encoded, so to_existing_atom restores it and
+  # rejects any stale/foreign key rather than minting a new atom.
   @spec decode_map_key(String.t() | term()) :: atom() | String.t()
-  defp decode_map_key(k) when is_binary(k), do: String.to_atom(k)
+  defp decode_map_key(k) when is_binary(k), do: String.to_existing_atom(k)
   defp decode_map_key(k), do: k
 
   # --- test helper: expose sandbox checkout for DataCase consumers ---

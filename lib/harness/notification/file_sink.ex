@@ -63,7 +63,7 @@ defmodule Harness.Notification.FileSink do
     File.write!(path, Jason.encode!(map) <> "\n", [:append])
     :ok
   rescue
-    error ->
+    error in [File.Error, Jason.EncodeError] ->
       Logger.error("harness notify: FileSink append failed: #{inspect(error)}")
       :ok
   end

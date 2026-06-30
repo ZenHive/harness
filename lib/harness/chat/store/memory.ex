@@ -9,6 +9,7 @@ defmodule Harness.Chat.Store.Memory do
   @behaviour Harness.Chat.Store
 
   alias Harness.Chat.Store
+  alias Harness.Chat.Store.SessionRecord
   alias Harness.Store.EtsScope
 
   @table __MODULE__
@@ -17,7 +18,7 @@ defmodule Harness.Chat.Store.Memory do
   @impl Store
   @spec save(String.t(), [map()], keyword()) :: :ok
   def save(session_id, messages, opts) when is_binary(session_id) and is_list(messages) and is_list(opts) do
-    record = %{
+    record = %SessionRecord{
       session_id: session_id,
       messages: Enum.take(messages, -@max_persisted_messages),
       updated_at: DateTime.utc_now()
@@ -42,7 +43,7 @@ defmodule Harness.Chat.Store.Memory do
     |> read()
     |> Map.values()
     |> Enum.sort_by(& &1.updated_at, {:desc, DateTime})
-    |> Enum.map(fn %{session_id: id, messages: messages, updated_at: updated_at} ->
+    |> Enum.map(fn %SessionRecord{session_id: id, messages: messages, updated_at: updated_at} ->
       %{session_id: id, label: Store.derive_label(messages), message_count: length(messages), updated_at: updated_at}
     end)
   end

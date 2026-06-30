@@ -46,11 +46,26 @@ defmodule Harness.Roadmap do
 
   use Descripex, namespace: "/roadmap"
 
+  alias __MODULE__.Ctx
   alias Harness.CapabilityDomain
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.Roadmap.Durable
   alias Harness.Roadmap.Item
+
+  defmodule Ctx do
+    @moduledoc false
+
+    @enforce_keys [:root, :tasks_path, :rmap_bin]
+    defstruct [:root, :tasks_path, :rmap_bin]
+
+    @typedoc "Internal rmap-invocation context threaded through private roadmap helpers."
+    @type t :: %__MODULE__{
+            root: String.t(),
+            tasks_path: String.t(),
+            rmap_bin: String.t()
+          }
+  end
 
   # The agents harness can both render (via `rmap delegate --to`) AND execute
   # (has an `AgentAdapter` for). rmap renders natively for all six, so each is
@@ -75,10 +90,10 @@ defmodule Harness.Roadmap do
           | :roadmap_not_found
           | {:roadmap_task_drift, String.t(), term()}
           | {:rmap_failed, [String.t()], integer(), String.t()}
+          | {:rmap_spawn_failed, [String.t()], term()}
           | {:rmap_bad_output, term()}
 
-  @typep ctx :: %{root: String.t(), tasks_path: String.t(), rmap_bin: String.t()}
-  @typep failure :: {integer(), String.t(), [String.t()]}
+  @typep failure :: {integer(), String.t(), [String.t()]} | {:spawn_error, term(), [String.t()]}
   @roadmap_lock_retry_delay_ms 25
   @roadmap_lock_timeout_ms 30_000
   @fingerprint_fields ["title", "body", "acceptance_criteria", "files_to_modify", "out_of_scope"]
@@ -440,7 +455,7 @@ defmodule Harness.Roadmap do
     end
   end
 
-  @spec apply_mutation([String.t()], ctx(), keyword(), String.t(), String.t(), String.t() | nil) ::
+  @spec apply_mutation([String.t()], Ctx.t(), keyword(), String.t(), String.t(), String.t() | nil) ::
           {:ok, String.t()} | {:error, term()}
   defp apply_mutation(args, ctx, opts, task_id, label, fingerprint) do
     case durable_target(opts) do
@@ -459,7 +474,7 @@ defmodule Harness.Roadmap do
     end
   end
 
-  @spec run_verified_mutation([String.t()], ctx(), String.t(), String.t() | nil) ::
+  @spec run_verified_mutation([String.t()], Ctx.t(), String.t(), String.t() | nil) ::
           {:ok, String.t()} | {:error, term()}
   defp run_verified_mutation(args, ctx, task_id, fingerprint) do
     with :ok <- verify_landing_target(task_id, fingerprint, ctx) do
@@ -467,7 +482,7 @@ defmodule Harness.Roadmap do
     end
   end
 
-  @spec verify_landing_target(String.t(), String.t() | nil, ctx()) :: :ok | {:error, term()}
+  @spec verify_landing_target(String.t(), String.t() | nil, Ctx.t()) :: :ok | {:error, term()}
   defp verify_landing_target(_task_id, nil, _ctx), do: :ok
 
   defp verify_landing_target(task_id, expected, ctx) do
@@ -490,7 +505,7 @@ defmodule Harness.Roadmap do
   # tasks.toml. Serialize that file I/O mechanically so concurrent run-lifecycle
   # claims cannot each read the same stale snapshot and clobber the prior writer.
   # sobelow_skip ["Traversal.FileModule"] — lock_path is ctx.tasks_path <> ".lock"
-  @spec with_roadmap_lock(ctx(), (-> {:ok, String.t()} | {:error, term()})) ::
+  @spec with_roadmap_lock(Ctx.t(), (-> {:ok, String.t()} | {:error, term()})) ::
           {:ok, String.t()} | {:error, term()}
   defp with_roadmap_lock(ctx, fun) do
     lock_path = ctx.tasks_path <> ".lock"
@@ -551,9 +566,9 @@ defmodule Harness.Roadmap do
     end
   end
 
-  @spec durable_ctx(String.t(), String.t()) :: ctx()
+  @spec durable_ctx(String.t(), String.t()) :: Ctx.t()
   defp durable_ctx(root, rmap_bin) do
-    %{root: root, tasks_path: Path.join(root, "roadmap/tasks.toml"), rmap_bin: rmap_bin}
+    %Ctx{root: root, tasks_path: Path.join(root, "roadmap/tasks.toml"), rmap_bin: rmap_bin}
   end
 
   @spec short_sha(String.t()) :: String.t()
@@ -562,11 +577,11 @@ defmodule Harness.Roadmap do
   # Builds the rmap context for the mark_* transitions. The local-write root is
   # an explicit `:root`, or `project.roadmap_path` when only `:project` is given
   # (unlike `build_ctx/1`, whose root resolution falls back to registry / cwd).
-  @spec landing_ctx(keyword()) :: ctx()
+  @spec landing_ctx(keyword()) :: Ctx.t()
   defp landing_ctx(opts) do
     root = landing_root(opts)
 
-    %{
+    %Ctx{
       root: root,
       tasks_path: Path.join(root, "roadmap/tasks.toml"),
       rmap_bin: Keyword.get(opts, :rmap_bin, "rmap")
@@ -594,11 +609,11 @@ defmodule Harness.Roadmap do
   defp append_flag(args, _flag, nil), do: args
   defp append_flag(args, flag, value) when is_binary(value), do: args ++ [flag, value]
 
-  @spec build_ctx(keyword()) :: {:ok, ctx()} | {:error, error()}
+  @spec build_ctx(keyword()) :: {:ok, Ctx.t()} | {:error, error()}
   defp build_ctx(opts) do
     with {:ok, root} <- resolve_root(opts) do
       {:ok,
-       %{
+       %Ctx{
          root: root,
          tasks_path: Path.join(root, "roadmap/tasks.toml"),
          rmap_bin: Keyword.get(opts, :rmap_bin, "rmap")
@@ -648,7 +663,7 @@ defmodule Harness.Roadmap do
 
   # rmap next has no "next" mode in `delegate`, so :next is resolved in two
   # steps: discover the id here, then render the prompt from it.
-  @spec fetch_task(selector(), ctx()) :: {:ok, map()} | {:error, error()}
+  @spec fetch_task(selector(), Ctx.t()) :: {:ok, map()} | {:error, error()}
   defp fetch_task(:next, ctx) do
     case run_rmap(["next", "--json"], ctx) do
       {:ok, output} -> decode_task(output)
@@ -682,7 +697,7 @@ defmodule Harness.Roadmap do
     end
   end
 
-  @spec render_prompt(String.t(), atom(), ctx()) :: {:ok, String.t()} | {:error, error()}
+  @spec render_prompt(String.t(), atom(), Ctx.t()) :: {:ok, String.t()} | {:error, error()}
   defp render_prompt(id, agent, ctx) do
     case run_rmap(["delegate", id, "--to", Atom.to_string(agent)], ctx) do
       {:ok, output} -> {:ok, output}
@@ -690,7 +705,7 @@ defmodule Harness.Roadmap do
     end
   end
 
-  @spec run_list(String.t() | nil, ctx()) :: {:ok, String.t()} | {:error, error()}
+  @spec run_list(String.t() | nil, Ctx.t()) :: {:ok, String.t()} | {:error, error()}
   defp run_list(status, ctx) do
     case run_rmap(["list", "--json"] ++ status_argv(status), ctx) do
       {:ok, output} -> {:ok, output}
@@ -705,7 +720,7 @@ defmodule Harness.Roadmap do
   # `--dispatchable` drops handbuild tasks; `--fields` projects to a bare JSON
   # array of just the requested keys (and implies --json). The caller picks the
   # projection: routing-only by default, or a richer set for full task context.
-  @spec run_ready(ctx(), [String.t()]) :: {:ok, String.t()} | {:error, error()}
+  @spec run_ready(Ctx.t(), [String.t()]) :: {:ok, String.t()} | {:error, error()}
   defp run_ready(ctx, fields) do
     case run_rmap(["ready", "--dispatchable", "--fields", Enum.join(fields, ",")], ctx) do
       {:ok, output} -> {:ok, output}
@@ -735,7 +750,7 @@ defmodule Harness.Roadmap do
     end
   end
 
-  @spec run_bundle(ctx()) :: {:ok, String.t()} | {:error, error()}
+  @spec run_bundle(Ctx.t()) :: {:ok, String.t()} | {:error, error()}
   defp run_bundle(ctx) do
     case run_rmap(["next-bundle", "--json"], ctx) do
       {:ok, output} -> {:ok, output}
@@ -761,7 +776,7 @@ defmodule Harness.Roadmap do
 
   # Every rmap call targets the roadmap with an explicit --tasks-path so it
   # never ancestor-walks into a different roadmap; `cd:` is belt-and-suspenders.
-  @spec run_rmap([String.t()], ctx()) :: {:ok, String.t()} | {:error, failure()}
+  @spec run_rmap([String.t()], Ctx.t()) :: {:ok, String.t()} | {:error, failure()}
   # System.cmd/3 with an argv list spawns directly — no shell, no interpolation.
   # rmap_bin and args are harness-constructed, not external input.
   # sobelow_skip ["CI.System"]
@@ -774,6 +789,12 @@ defmodule Harness.Roadmap do
       {output, 0} -> {:ok, output}
       {output, status} -> {:error, {status, output, args}}
     end
+  rescue
+    # System.cmd raises ErlangError when the OS spawn itself fails — a vanished
+    # binary, or (the case that crashed /harness) a dead `erl_child_setup` that
+    # makes every open_port/spawn_executable fail :enoent node-wide. Honor the
+    # {:ok,_}|{:error,_} contract instead of propagating the raise into callers.
+    e in ErlangError -> {:error, {:spawn_error, e.original, argv}}
   end
 
   # rmap (../rmap, ours) emits structured exit codes for the classifiable
@@ -790,6 +811,8 @@ defmodule Harness.Roadmap do
   defp classify_failure({@rmap_exit_task_not_found, _output, _args}, id) when is_binary(id), do: {:task_not_found, id}
 
   defp classify_failure({@rmap_exit_invalid_roadmap, _output, _args}, _id), do: :roadmap_not_found
+
+  defp classify_failure({:spawn_error, reason, args}, _id), do: {:rmap_spawn_failed, args, reason}
 
   defp classify_failure({status, output, args}, _id), do: {:rmap_failed, args, status, output}
 end
