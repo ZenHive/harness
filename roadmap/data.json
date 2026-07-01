@@ -14570,7 +14570,7 @@
       "id": "323",
       "phase": 22,
       "bundle": "core-loop",
-      "status": "in_progress",
+      "status": "done",
       "title": "Add an integration tripwire: each worktree_isolation:true adapter actually isolates to its run worktree (harness skips the pollution snapshot on trust)",
       "scores": {
         "d": 3,
@@ -14608,10 +14608,15 @@
         "adapters",
         "otp"
       ],
+      "shipped_in": "63131459b7b54362f6c145c242016bd7184b27e6",
       "body": "For any adapter declaring `worktree_isolation: true`, `Harness.Run.checkout_snapshot_for_run/1` returns nil, so `Harness.Worktree.Isolation.check_pollution/3` short-circuits to `:ok` and harness takes NO pollution snapshot. The entire main-checkout-safety net is therefore trust-only for all six shipped adapters — Task 32's regression guard only protects `worktree_isolation: false` adapters (which still get a snapshot). If a future CLI release (agy historically — Task 32/198 — but equally codex/cursor/grok/pi) regresses its workspace resolution and starts writing to the main checkout, harness will not catch it: the run settles normally and the pollution lands ungraded in the canonical checkout. There is currently no empirical test that any isolating adapter actually isolates.\n\nAdd an `:integration`-tagged regression test (excluded from the default suite, run on demand / CI with live CLIs) that, for each registered `worktree_isolation: true` adapter whose CLI is present on PATH, exercises the REAL isolation path: create a throwaway linked git worktree off HEAD, invoke the adapter via its actual `build_command/1` flags (the same Port + cwd + isolation flags a real run uses) with a minimal \"create one marker file\" prompt, then assert the marker landed inside the worktree AND the main checkout's `git status --porcelain` is byte-identical before/after (no pollution). Skip-with-a-clear-message (never silently) any adapter whose CLI is not installed, listing what was skipped — a suite that ran zero adapters must say so, not report green. Manually verified 2026-06-21 that agy 1.0.10 isolates correctly with `--add-dir <worktree>`; this test makes that a standing tripwire rather than a one-off check.\n",
       "created_at": "2026-06-21",
       "started_at": "2026-07-01",
+      "done_at": "2026-07-01",
       "scored_at": "2026-06-21",
+      "implemented": "Landed by cursor via merge-train; reviewer-approved (run run-1782867702467-12cb03a3, 63131459b7b54362f6c145c242016bd7184b27e6).",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     },
     {
