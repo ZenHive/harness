@@ -37,7 +37,7 @@ Three setup steps:
 
 **1. Register `myapp` with harness.** Projects are registered via the live dashboard at `/harness/settings` (preferred for a running node) or via the seed script for fresh/reset DBs. Copy `priv/repo/seeds.exs.example` to `priv/repo/seeds.exs` (gitignored), edit the examples (including the harness self-entry if dogfooding), then run `mix harness.seed` (or `mix ecto.setup` which runs it). The script calls `Harness.ProjectRegistry.upsert/1` which writes Postgres (the source of truth) and wires the Oban queue. For ad-hoc use IEx or the MCP `dispatch-register_project` tool.
 
-`check_command` (in the seed or dashboard form) is a free-text hint handed to the reviewer AI — the reviewer runs the project's checks itself and judges the output; harness never executes the command. For Elixir projects, point dispatches at the cheap gate (`mix check.dispatch`) and let the reviewer add focused `mix test.json ...` checks for touched behavior; run the full `mix precommit.full` / `mix ci` gate in the Architect/QA pass after a wave lands. New dispatches pause until the orchestrator marks that pass done with `architect_qa-mark_done`, so the landed-base review cannot be silently skipped. For a multi-language monorepo, describe each component's dispatch-scale command in the hint. Omit it to let the reviewer discover the checks on its own.
+`check_command` (in the seed or dashboard form) is a free-text hint handed to the reviewer AI — the reviewer runs the project's checks itself and judges the output; harness never executes the command. For Elixir projects, point dispatches at the cheap gate (`mix check.dispatch`) and let the reviewer add focused `mix test.json ...` checks for touched behavior; run the full `mix precommit.full` / `mix ci` gate manually in the Architect/QA pass after a wave lands. For a multi-language monorepo, describe each component's dispatch-scale command in the hint. Omit it to let the reviewer discover the checks on its own.
 
 **2. Add harness's MCP endpoints to `myapp/.mcp.json`** — alongside `myapp`'s own Tidewave if it has one. The `harness` entry (native flat tools) is your primary surface; the optional `harness_eval` entry is the `project_eval` escape hatch into harness's BEAM:
 
@@ -90,11 +90,8 @@ tail -200 "$LOG"
 # Pre-commit gate (no dialyzer — dialyzer lives in precommit.full)
 mix precommit
 
-# Full Architect/QA gate on the landed base — mirrors CI, includes dialyzer
+# Full Architect/QA pass on the landed base — mirrors CI, includes dialyzer
 mix precommit.full
-
-# Mark the landed-base Architect/QA pass complete
-# MCP: architect_qa-mark_done (omit sha to mark the newest landed SHA)
 
 # Focused checks
 mix test

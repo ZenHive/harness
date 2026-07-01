@@ -37,7 +37,6 @@ defmodule Harness.Cron.RoadmapPoller do
   use Oban.Worker, queue: :cron, max_attempts: 1
 
   alias Harness.AgentRegistry
-  alias Harness.ArchitectQA
   alias Harness.Config
   alias Harness.Cron.Orchestrator
   alias Harness.Cron.PendingDispatch
@@ -148,20 +147,11 @@ defmodule Harness.Cron.RoadmapPoller do
   defp poll_project(%Project{} = project) do
     if Settings.project_enabled?(project) do
       case ready_tasks(project) do
-        {:ok, tasks} -> architect_qa_then_dispatch(project, tasks)
+        {:ok, tasks} -> dispatch_decision(project, tasks)
         {:error, reason} -> log_ingest_error(project, reason)
       end
     else
       log_autonomy_skip(project)
-    end
-  end
-
-  @spec architect_qa_then_dispatch(Project.t(), [map()]) :: :ok
-  defp architect_qa_then_dispatch(%Project{} = project, tasks) do
-    case ArchitectQA.ensure_current(project) do
-      :ok -> dispatch_decision(project, tasks)
-      {:error, {:architect_qa_required, status}} -> log_architect_qa_skip(project, status)
-      {:error, reason} -> log_dispatch_skip(project, "cron", reason)
     end
   end
 
@@ -480,13 +470,6 @@ defmodule Harness.Cron.RoadmapPoller do
   @spec log_autonomy_skip(Project.t()) :: :ok
   defp log_autonomy_skip(%Project{} = project) do
     Logger.info("harness cron poller: #{project.name} autonomy disabled, skipped")
-  end
-
-  @spec log_architect_qa_skip(Project.t(), map()) :: :ok
-  defp log_architect_qa_skip(%Project{} = project, status) do
-    Logger.info(
-      "harness cron poller: #{project.name} dispatch paused pending Architect/QA for landed SHA #{inspect(status.latest_landed_sha)}"
-    )
   end
 
   @spec log_ingest_error(Project.t(), term()) :: :ok

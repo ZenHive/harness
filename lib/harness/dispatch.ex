@@ -51,7 +51,6 @@ defmodule Harness.Dispatch do
   alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Registry
   alias Harness.AgentKPI
-  alias Harness.ArchitectQA
   alias Harness.Batch
   alias Harness.Batch.AgentEvaluation
   alias Harness.Batch.AgentEvaluation.Comparison
@@ -925,7 +924,6 @@ defmodule Harness.Dispatch do
       when is_binary(project_name) and is_binary(adapter) and is_boolean(scrub_anthropic_key) do
     with {:ok, fallback_pair} <- resolve_delegatable_adapter(adapter),
          {:ok, project} <- lookup_project(project_name),
-         :ok <- ArchitectQA.ensure_current(project),
          {:ok, %{bundle: bundle_meta, tasks: tasks}} <- next_bundle(project_name),
          plan = tasks |> dependency_ready_tasks() |> WriteSetPlan.plan(),
          dispatch_tasks = first_wave(plan),
@@ -994,7 +992,6 @@ defmodule Harness.Dispatch do
              is_boolean(scrub_anthropic_key) do
     with {:ok, modules} <- resolve_adapter_modules(adapters),
          {:ok, project} <- lookup_project(project_name),
-         :ok <- ArchitectQA.ensure_current(project),
          # Render once, for claude, on purpose: every adapter must run the
          # identical prompt for the A/B comparison to be fair — this is not the
          # old non-delegatable two-step (rmap now renders natively for all six).
@@ -1117,7 +1114,6 @@ defmodule Harness.Dispatch do
           {:ok, {Project.t(), Item.t(), module()}} | {:error, error()}
   defp resolve_and_ingest(project_name, task, @recommended_adapter) do
     with {:ok, project} <- lookup_project(project_name),
-         :ok <- ArchitectQA.ensure_current(project),
          {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: :claude),
          {:ok, {adapter_module, render_agent}} <- recommended_adapter_for_item(@recommended_adapter, item),
          {:ok, item} <- rerender_for_agent(item, project, render_agent),
@@ -1129,7 +1125,6 @@ defmodule Harness.Dispatch do
   defp resolve_and_ingest(project_name, task, adapter) do
     with {:ok, {adapter_module, render_agent}} <- resolve_adapter(adapter),
          {:ok, project} <- lookup_project(project_name),
-         :ok <- ArchitectQA.ensure_current(project),
          {:ok, item} <- Roadmap.ingest(selector(task), project: project, agent: render_agent),
          :ok <- ensure_model_available(adapter_module, render_agent, item, task) do
       {:ok, {project, item, adapter_module}}

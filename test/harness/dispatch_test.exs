@@ -4,7 +4,6 @@ defmodule Harness.DispatchTest do
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentAdapter.Cursor
-  alias Harness.ArchitectQA
   alias Harness.Batch.AgentEvaluation
   alias Harness.CapabilityScore
   alias Harness.CapabilityScore.Assessment
@@ -107,40 +106,6 @@ defmodule Harness.DispatchTest do
       on_exit(fn -> ProjectRegistry.unregister(project.name) end)
 
       assert {:error, {:model_required, :grok}} = Dispatch.task(project.name, "2", "grok")
-    end
-
-    test "blocks new dispatch when landed work is pending Architect/QA" do
-      repo = GitFixture.init_repo()
-
-      project =
-        ProjectFixture.from_repo(repo,
-          name: "architect-qa-block-#{System.unique_integer([:positive])}",
-          roadmap_path: Path.expand("../fixtures/sample_roadmap", __DIR__)
-        )
-
-      :ok = ProjectRegistry.register(project)
-      on_exit(fn -> ProjectRegistry.unregister(project.name) end)
-
-      :ok =
-        "run-architect-qa-block"
-        |> approved_result()
-        |> LogRecord.from_result(
-          batch_id: "b",
-          project_name: project.name,
-          adapter: Claude,
-          duration_ms: 1
-        )
-        |> Map.put(:landed_sha, "sha-pending-qa")
-        |> ResultStore.record_run()
-
-      assert {:error, {:architect_qa_required, status}} =
-               Dispatch.task(project.name, "2", "grok")
-
-      assert status.project_name == project.name
-      assert status.required
-      assert status.latest_landed_sha == "sha-pending-qa"
-
-      assert {:ok, %{required: false}} = ArchitectQA.mark_done(project.name)
     end
   end
 

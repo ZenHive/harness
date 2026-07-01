@@ -457,9 +457,8 @@ let the rest rebase against it, resolve any same-file merges by hand. Run the
 project's own full check (`mix precommit.full`) on `development` after the
 last merge — if it goes red post-merge that's an integration failure, not a
 per-run failure. Per-dispatch reviewer checks should use the cheaper
-`mix check.dispatch` hint plus focused tests for touched behavior. After the
-full landed-base Architect/QA pass and any fixes, call `architect_qa-mark_done`;
-new dispatches pause until that marker matches the latest landed SHA. Capture
+`mix check.dispatch` hint plus focused tests for touched behavior. Run the full
+landed-base Architect/QA pass before dispatching the next wave. Capture
 verbose dispatch-check output to a unique `mktemp` log on the first run so
 parallel agents do not collide and nobody re-runs just to recover truncated
 output.

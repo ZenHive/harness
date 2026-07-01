@@ -163,7 +163,7 @@ The two blind classes, both real-correctness, both passing every per-task check:
 
 **Capture dispatch-check output once, to a unique tmp log.** Dispatch checks are normally verbose. The reviewer should capture the first run instead of re-running for readability: `LOG=$(mktemp -t harness-check-dispatch.XXXXXX.log)` then `mix check.dispatch > "$LOG" 2>&1`; inspect with `tail -200 "$LOG"` / `rg "error|failed|warning" "$LOG"` and record the log path in `.harness/review.json`. The random `mktemp` path prevents parallel agents from clobbering each other's logs.
 
-**🚨 Architect/QA completion is mechanically enforced.** Once a project has a newer `landed_sha` than its last Architect/QA marker, new dispatches for that project are paused with `{:architect_qa_required, status}` (cron pauses too). This is only a fact gate — latest landed SHA vs. last reviewed SHA — not a quality judgment. The orchestrator must run the full landed-base gate, review the integrated surface against roadmap intent/domain invariants, fix findings, then call `architect_qa-mark_done` (omit `sha` to mark the newest landed SHA). Use `architect_qa-status` to see what is blocking.
+**🚨 Architect/QA is a workflow responsibility, not a harness runtime gate.** After a wave lands, the orchestrator must run the full landed-base gate, review the integrated surface against roadmap intent/domain invariants, fix findings, and only then dispatch the next wave. Harness does not pause dispatches or store a completion marker for this step; this is the driving AI's seat.
 
 **Two framing guards — keep this consistent with the harness mantra:**
 
