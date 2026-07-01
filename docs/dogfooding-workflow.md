@@ -280,7 +280,7 @@ lifetime_timeout = 3_600_000
 project = %Harness.Project{
   name: "harness",
   source: {:local, repo},
-  check_command: "mix precommit.full",
+  check_command: "mix check.dispatch",
   roadmap_path: repo
 }
 
@@ -454,9 +454,15 @@ while another is in flight. Re-dispatch is fine; concurrent BEAMs are not.
 **Integration order.** Deliverable branches `harness/<run-id>` come back onto
 `development` one at a time. Bring in the smallest / most-isolated diff first,
 let the rest rebase against it, resolve any same-file merges by hand. Run the
-project's own check command (`mix precommit.full`) on `development` after the
+project's own full check (`mix precommit.full`) on `development` after the
 last merge — if it goes red post-merge that's an integration failure, not a
-per-run failure.
+per-run failure. Per-dispatch reviewer checks should use the cheaper
+`mix check.dispatch` hint plus focused tests for touched behavior. After the
+full landed-base Architect/QA pass and any fixes, call `architect_qa-mark_done`;
+new dispatches pause until that marker matches the latest landed SHA. Capture
+verbose dispatch-check output to a unique `mktemp` log on the first run so
+parallel agents do not collide and nobody re-runs just to recover truncated
+output.
 
 **Autonomous landing (Task 100, opt-in).** A project that sets both
 `landing_policy: :auto` and `target_branch` skips the manual merge above: an
@@ -521,8 +527,9 @@ scheduling are out of scope (post-Phase-7).
   each run `mix deps.get` themselves when they need to compile or test. The project's
   `check_command` hint should assume a cold worktree.
 - **the reviewer runs the checks.** There is no mechanical check stack. The reviewer AI
-  runs the project's own `check_command` (e.g. `mix precommit.full`), judges the output,
-  and fixes what it can inline before deciding. Correct-but-not-pristine work doesn't
+  runs the project's own dispatch-scale `check_command` (e.g. `mix check.dispatch`),
+  judges the output, adds focused tests for touched behavior, and fixes what it can
+  inline before deciding. Correct-but-not-pristine work doesn't
   fail — the reviewer fixes the nitpicks and approves (fix-and-approve is the near-absolute
   default; its fixes show up in `reviewer_diff_size`).
 - **the audit witnesses a cold build after merge.** The post-merge audit worktree is

@@ -184,6 +184,13 @@ defmodule Harness.MixProject do
         "compile --warnings-as-errors",
         "credo --strict --ignore TagTODO,TagFIXME"
       ],
+      "check.dispatch": [
+        "format --check-formatted",
+        "compile --warnings-as-errors",
+        "credo --strict --ignore TagTODO,TagFIXME",
+        "doctor --raise",
+        "sobelow --exit --skip"
+      ],
       # Hook-bound (180s). Dialyzer lives in `precommit.full` — on a cold PLT it
       # blows the marketplace pre-commit hook's 180s timeout and gets killed
       # mid-run, denying the commit with no clean error.

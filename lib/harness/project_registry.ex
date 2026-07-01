@@ -428,7 +428,7 @@ defmodule Harness.ProjectRegistry do
   end
 
   # `check_command` is a free-text hint the reviewer AI receives in its prompt
-  # (e.g. "mix precommit"). Optional — a project without one leaves the reviewer
+  # (e.g. "mix check.dispatch"). Optional — a project without one leaves the reviewer
   # to discover the project's checks itself. Harness never executes it.
   @spec fetch_check_command(map()) :: {:ok, String.t() | nil} | {:error, {:invalid_project, term()}}
   defp fetch_check_command(entry) do

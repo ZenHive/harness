@@ -12,6 +12,7 @@ defmodule Harness.Batch do
   use Descripex, namespace: "/batch"
 
   alias Harness.AgentRegistry
+  alias Harness.ArchitectQA
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.Project
   alias Harness.ProjectRegistry
@@ -96,7 +97,8 @@ defmodule Harness.Batch do
   @spec dispatch(Project.t() | String.t(), [Item.t()], keyword()) ::
           {:ok, [Oban.Job.t()]} | {:error, dispatch_error()}
   def dispatch(project, items, opts) when is_list(items) and is_list(opts) do
-    with {:ok, project} <- resolve_and_register_project(project) do
+    with {:ok, project} <- resolve_and_register_project(project),
+         :ok <- ArchitectQA.ensure_current(project) do
       enqueue_items(project, items, opts)
     end
   end
@@ -138,6 +140,7 @@ defmodule Harness.Batch do
     adapters = List.wrap(adapter)
 
     with {:ok, project} <- resolve_project(project),
+         :ok <- ArchitectQA.ensure_current(project),
          {:ok, max_concurrency} <- max_concurrency(project, opts),
          :ok <- ensure_dispatchable(items, adapters, opts) do
       batch_id = Keyword.get(opts, :batch_id) || generate_batch_id()

@@ -70,7 +70,7 @@ harness's mechanical `committing` step to commit. Its self-report is never trust
 ### Reviewer AI — cross-family, mandatory, THE gate
 
 Gets: worktree + task + acceptance criteria + implementer transcript tail + diff stat + the
-project's `check_command` hint (free text, e.g. `"mix precommit"`).
+project's `check_command` hint (free text, e.g. `"mix check.dispatch"` for Elixir).
 
 It reviews, **runs the checks itself**, fixes inline (its own edits, its own commits), then
 writes `.harness/review.json`:
@@ -80,7 +80,7 @@ writes `.harness/review.json`:
   "verdict": "approve" | "reject",
   "report": "prose — what it found, what it fixed, why the verdict",
   "checks": {
-    "mix precommit": { "passed": true, "output": "short relevant output", "mechanism": "" }
+    "mix check.dispatch": { "passed": true, "output": "short relevant output", "mechanism": "" }
   },
   "concerns": [],
   "facets": { "language": "elixir", "surface": "otp", "archetype": "feature" },

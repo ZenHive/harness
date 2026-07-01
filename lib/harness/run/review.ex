@@ -9,7 +9,7 @@ defmodule Harness.Run.Review do
       {
         "verdict": "approve" | "reject",
         "report": "what was found, what was fixed, why the decision",
-        "checks": {"mix precommit": {"passed": true, "output": "..."}},
+        "checks": {"mix check.dispatch": {"passed": true, "output": "..."}},
         "concerns": [],
         "facets": {"language": "elixir", "surface": "otp", "archetype": "feature", ...},
         "skills": {"otp": {"score": 8, "note": "..."}, "concurrency": {"score": 7, "note": "..."}, ...}

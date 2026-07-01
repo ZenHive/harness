@@ -121,7 +121,7 @@ config :harness, :retry_policy,
 # Registered orchestration targets — see Harness.Project and Harness.ProjectRegistry.
 # Each entry is a keyword list: name, source ({:local, path}), roadmap_path,
 # optional concurrency_cap, and an optional `check_command:` free-text hint the
-# reviewer AI receives in its prompt (e.g. "mix precommit") — the reviewer runs
+# reviewer AI receives in its prompt (e.g. "mix check.dispatch") — the reviewer runs
 # the project's checks itself; harness never executes the command. Registrations
 # are seeded via `priv/repo/seeds.exs` (from the tracked .example) or the
 # dashboard `/harness/settings` (writes Postgres when enabled); test/prod stay

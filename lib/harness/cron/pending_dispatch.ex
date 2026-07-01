@@ -30,6 +30,7 @@ defmodule Harness.Cron.PendingDispatch do
   use GenServer
 
   alias Harness.AgentRegistry
+  alias Harness.ArchitectQA
   alias Harness.ProjectRegistry
   alias Harness.Roadmap
   alias Harness.Run.Worker, as: RunWorker
@@ -168,6 +169,7 @@ defmodule Harness.Cron.PendingDispatch do
           | {:error, term()}
   defp enqueue(%__MODULE__{} = record) do
     with {:ok, project} <- lookup_project(record.project_name),
+         :ok <- ArchitectQA.ensure_current(project),
          {:ok, agent} <- AgentRegistry.agent_for_module(record.adapter),
          {:ok, item} <- ingest_roadmap({:id, record.task_id}, project: project, agent: agent),
          {:ok, run_id, _job} <- RunWorker.enqueue(project, item, record.adapter, env: record.env) do

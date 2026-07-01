@@ -140,7 +140,7 @@ defmodule Harness.Run do
   # reviewer selection — bounds the per-run store read (newest-first).
   @reviewer_rejection_sample 500
   # Idle-window floor for the reviewing phase. The reviewer runs the project's
-  # full check_command (`cargo test`, `mix precommit.full`) itself — a stretch
+  # dispatch check_command (`cargo test`, `mix check.dispatch`) itself — a stretch
   # that streams nothing for minutes while the check compiles/runs, so the
   # implementer-grade 5-min idle default can fire mid-check and lose the run to
   # :review_stuck before the verdict is written (Task 181, rmap run-…-b4d8528e:

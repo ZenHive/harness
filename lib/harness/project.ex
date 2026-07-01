@@ -9,10 +9,10 @@ defmodule Harness.Project do
       - `{:github, url}` — a GitHub URL harness clones (and `git fetch`es
         before each run) into `<cache_root>/<name>`. See
         `Harness.Project.Source.Github`.
-  - `check_command` — free-text hint handed to the reviewer AI (e.g.
-    `"mix precommit"`, `"cargo test"`). The reviewer runs the project's checks
-    itself and judges the result; harness never executes this command — it is
-    prompt text, not a verification gate.
+  - `check_command` — free-text dispatch-scale hint handed to the reviewer AI
+    (e.g. `"mix check.dispatch"`, `"cargo test"`). The reviewer runs the
+    project's checks itself and judges the result; harness never executes this
+    command — it is prompt text, not a verification gate.
   - `languages` — required non-empty list of target-language atoms used to
     select injected agent rule sections and per-language project facts.
   - `roadmap_path` — project root holding `roadmap/tasks.toml` for rmap ingestion.

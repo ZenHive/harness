@@ -16,14 +16,15 @@ editing it does nothing until you run it.
 ================================================================================
 """)
 
-# Keep the harness checkout itself registered. `mix precommit.full` is harness's
-# own mergeable bar (precommit + dialyzer). The auto-land keys below are the
-# dogfooding self-host config; drop them for a read-only registration.
+# Keep the harness checkout itself registered. `mix check.dispatch` is the
+# per-dispatch reviewer hint; run `mix precommit.full` / `mix ci` in Architect/QA
+# after a wave lands. The auto-land keys below are the dogfooding self-host
+# config; drop them for a read-only registration.
 :ok =
   ProjectRegistry.upsert(
     name: "harness",
     source: {:local, Path.expand("../..", __DIR__)},
-    check_command: "mix precommit.full",
+    check_command: "mix check.dispatch",
     languages: [:elixir],
     roadmap_path: Path.expand("../..", __DIR__),
     landing_policy: :auto,
@@ -39,7 +40,7 @@ editing it does nothing until you run it.
   ProjectRegistry.upsert(
     name: "myapp",
     source: {:local, "/Users/me/_DATA/code/myapp"},
-    check_command: "mix precommit",
+    check_command: "mix check.dispatch",
     languages: [:elixir],
     roadmap_path: "/Users/me/_DATA/code/myapp",
     concurrency_cap: 2
