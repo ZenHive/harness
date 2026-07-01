@@ -47,7 +47,7 @@ defmodule Harness.ToolingBaseline.MixProjectReader do
     aliases
   end
 
-  @spec names_from_dep_list(term()) :: MapSet.t(atom())
+  @spec names_from_dep_list(term()) :: MapSet.t(String.t())
   defp names_from_dep_list({:__block__, _, items}), do: names_from_dep_list(items)
 
   defp names_from_dep_list(list) when is_list(list),
@@ -55,7 +55,7 @@ defmodule Harness.ToolingBaseline.MixProjectReader do
 
   defp names_from_dep_list(other), do: names_from_dep_list(List.wrap(other))
 
-  @spec names_from_alias_list(term()) :: MapSet.t(atom())
+  @spec names_from_alias_list(term()) :: MapSet.t(String.t())
   defp names_from_alias_list({:__block__, _, items}), do: names_from_alias_list(items)
 
   defp names_from_alias_list(list) when is_list(list),
