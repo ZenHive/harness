@@ -13,7 +13,6 @@ defmodule Mix.Tasks.Harness.Projects.UseDispatchCheck do
 
   use Mix.Task
 
-  alias Harness.Project
   alias Harness.ProjectRegistry
 
   @dispatch_check_command "mix check.dispatch"
@@ -29,8 +28,8 @@ defmodule Mix.Tasks.Harness.Projects.UseDispatchCheck do
     |> print_summary()
   end
 
-  @spec update_project(Project.t(), map()) :: map()
-  defp update_project(%Project{} = project, acc) do
+  @spec update_project(map(), map()) :: map()
+  defp update_project(project, acc) do
     cond do
       :elixir not in project.languages ->
         Map.update!(acc, :skipped, &[project.name | &1])
