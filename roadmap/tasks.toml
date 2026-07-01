@@ -9792,7 +9792,7 @@ shipped_in = "a683468d15e669abe25d04fe2838e3d6de02cecd"
 id = "323"
 phase = 22
 bundle = "core-loop"
-status = "pending"
+status = "in_progress"
 title = "Add an integration tripwire: each worktree_isolation:true adapter actually isolates to its run worktree (harness skips the pollution snapshot on trust)"
 scores = { d = 3, b = 4, u = 4 }
 acceptance_criteria = ["An :integration-tagged test drives each worktree_isolation:true adapter (whose CLI is on PATH) through its real build_command/1 flags in a throwaway linked worktree and asserts the agent's write landed in the worktree, not the main checkout", "The main checkout's porcelain status is asserted unchanged across the run (the exact invariant the skipped snapshot would have enforced)", "Adapters whose CLI is absent are skipped with an explicit message naming them; a run that exercised zero adapters fails/flunks loudly rather than reporting a green no-op", "Test is excluded from the default `mix test.json` run (integration tag) and documented as such", "mix precommit.full passes (the new test does not run in the default suite)"]
@@ -9808,6 +9808,7 @@ For any adapter declaring `worktree_isolation: true`, `Harness.Run.checkout_snap
 Add an `:integration`-tagged regression test (excluded from the default suite, run on demand / CI with live CLIs) that, for each registered `worktree_isolation: true` adapter whose CLI is present on PATH, exercises the REAL isolation path: create a throwaway linked git worktree off HEAD, invoke the adapter via its actual `build_command/1` flags (the same Port + cwd + isolation flags a real run uses) with a minimal "create one marker file" prompt, then assert the marker landed inside the worktree AND the main checkout's `git status --porcelain` is byte-identical before/after (no pollution). Skip-with-a-clear-message (never silently) any adapter whose CLI is not installed, listing what was skipped — a suite that ran zero adapters must say so, not report green. Manually verified 2026-06-21 that agy 1.0.10 isolates correctly with `--add-dir <worktree>`; this test makes that a standing tripwire rather than a one-off check.
 """
 created_at = "2026-06-21"
+started_at = "2026-07-01"
 scored_at = "2026-06-21"
 
 [[task]]
