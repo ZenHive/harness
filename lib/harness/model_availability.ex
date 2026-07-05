@@ -38,6 +38,7 @@ defmodule Harness.ModelAvailability do
       %{id: "claude-opus-4-8", label: "Opus 4.8", annotations: []},
       %{id: "claude-opus-4-7", label: "Opus 4.7", annotations: []},
       %{id: "claude-fable-5", label: "Fable 5", annotations: []},
+      %{id: "claude-sonnet-5", label: "Sonnet 5", annotations: []},
       %{id: "claude-sonnet-4-6", label: "Sonnet 4.6", annotations: []},
       %{id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", annotations: []}
     ],
