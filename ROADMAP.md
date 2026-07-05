@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 19 — Self-Healing Run Loop (44 of 44 done · 0 in progress)
+**Focus phase:** 22 — Live-Run Observability — stop flying blind while an agent works (13 of 26 done · 0 in progress)
 
-**Last shipped:** no recent shipments
+**Last shipped:** Task 323 — Add an integration tripwire: each worktree_isolation:true adapter actually isolates to its run worktree (harness skips the pollution snapshot on trust) on 2026-07-01
 
-**Up next:** Task 344 — Land-conflict resolver AI cannot spawn: claude adapter has no configured agent_model [D:2/B:6/U:6 → Eff:3.0] 🎯
+**Up next:** Task 343 — Run gen_statem crashes with case_clause when cancel reason is {:redispatched, run_id} [D:3/B:6/U:5 → Eff:1.83] 🚀
 <!-- FOCUS:END -->
 
 ---
