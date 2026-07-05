@@ -9885,14 +9885,16 @@ status = "pending"
 title = "Invert the rule-content seam + make Invocation agent-agnostic (AgentAdapter no longer names Harness.AgentRules)"
 scores = { d = 4, b = 5, u = 5 }
 markers = ["parallel"]
-acceptance_criteria = ["lib/harness/agent_adapter/ has zero references to Harness.AgentRules (subsystem compiles with AgentRules absent from its alias graph)", "Rule content reaches the adapter via caller-supplied input (string on Invocation or behaviour callback); the four rule_channel/0 delivery paths (system-prompt file, codex ephemeral AGENTS.md, cursor ephemeral .cursor/rules, prompt preamble) + cleanup_injected_rules still work unchanged", "Invocation no longer carries `languages` (the actual field: nonempty_list(atom()), default [:elixir] — invocation.ex:43/57); `task_id` is an opaque tag with no rmap coupling; Harness.Run's implementer/reviewer/recovery builders supply rendered rules + section/language filtering caller-side", "ConformanceCase passes for all 6 adapters asserting against injected fixture content, not AgentRules.render()", "Full gate green: mix precommit.full (credo --strict, dialyzer 0, doctor 100%, sobelow, tests incl. conformance)"]
+acceptance_criteria = ["lib/harness/agent_adapter/ has zero references to Harness.AgentRules (subsystem compiles with AgentRules absent from its alias graph)", "Rule content reaches the adapter via caller-supplied input (string on Invocation or behaviour callback); the four rule_channel/0 delivery paths (system-prompt file, codex ephemeral AGENTS.md, cursor ephemeral .cursor/rules, prompt preamble) + cleanup_injected_rules still work unchanged", "Invocation no longer carries `languages` (the actual field: nonempty_list(atom()), default [:elixir] — invocation.ex:43/57); `task_id` is an opaque tag with no rmap coupling; Harness.Run's implementer/reviewer/recovery builders supply rendered rules + section/language filtering caller-side", "ConformanceCase passes for all 6 adapters asserting against injected fixture content, not AgentRules.render()", "RulesInjection.prepend_prompt/1 (arity-1) — public API with zero production callers (only tests use it as an expected-value baseline for the arity-2 variant) — is removed or folded into the reshaped caller-supplied-content API; tests construct expectations via the surviving surface", "Full gate green: mix precommit.full (credo --strict, dialyzer 0, doctor 100%, sobelow, tests incl. conformance)"]
 out_of_scope = ["Moving the subsystem to a separate repo/hex package (the decision-spike task)", "Changing AgentRules content or its priv/agent_rules/canonical.md source", "The Driver/Reflex watchdog cycle (the sibling task)"]
 touches = ["lib/harness/agent_adapter", "lib/harness/agent_rules.ex", "lib/harness/run.ex", "test/support/agent_adapter"]
 assignee = "codex"
 model = "gpt-5.5"
 body = '''Cut the only content-coupling in the adapter subsystem so Harness.AgentAdapter.* no longer names Harness.AgentRules. Today Harness.AgentAdapter.RulesInjection calls AgentRules.write_system_prompt_file!/2, install_codex_rules!/2, install_cursor_rules!/2, and prompt_preamble/0,1 directly (rules_injection.ex:18/29/40/51/59) — binding the generic delivery mechanism to harness-specific rule prose (reviewer-gate, rmap, roadmap/tasks.toml, post-merge audit). Invert it: the delivery mechanism (which file path / argv flag / preamble each rule_channel/0 uses, plus the ephemeral-file write+cleanup lifecycle) stays in the subsystem; the rule content (rendered markdown + the :elixir/section filtering in render_opts/1) is supplied by the caller. Pass rule content into the subsystem (pre-rendered string(s) on Invocation, or a render/install callback on the behaviour) so harness injects its AgentRules output without the subsystem importing it. In the same change, make the Invocation struct agent-agnostic: relocate `language` (its sole consumer is the rule filtering in RulesInjection.render_opts/1, which moves caller-side) and generalize `task_id` to an opaque log tag with no rmap semantics. Update Harness.Run's three Invocation builders — implementer (invocation/3 ~run.ex:1979), reviewer (reviewer_invocation/1 ~run.ex:2428), recovery (recovery_invocation/1 ~run.ex:2331) — to supply the rendered content + section/language filtering caller-side, and update ConformanceCase (test/support/agent_adapter/conformance_case.ex, which currently asserts delivered rules equal AgentRules.render()) to assert against injected fixture content instead. After this, `grep -rE "Harness\.AgentRules" lib/harness/agent_adapter` returns nothing. This is the first of two decoupling cuts that make the subsystem extraction-ready; the watchdog cycle is the sibling task.
 
-2026-07-06 content-review note — all cited sites verified against HEAD (rules_injection.ex:18/29/40/51/59, ConformanceCase asserting File.read! == AgentRules.render()). One naming correction: the Invocation field is `languages` (plural, nonempty_list(atom()), default [:elixir]; invocation.ex:43/57), not singular `language` — same relocation applies.'''
+2026-07-06 content-review note — all cited sites verified against HEAD (rules_injection.ex:18/29/40/51/59, ConformanceCase asserting File.read! == AgentRules.render()). One naming correction: the Invocation field is `languages` (plural, nonempty_list(atom()), default [:elixir]; invocation.ex:43/57), not singular `language` — same relocation applies.
+
+2026-07-06 codebase-review fold-in — RulesInjection.prepend_prompt/1 (rules_injection.ex:49) has no production caller (invoke/2 always routes through the invocation-aware arity-2; only test files call arity-1 as an expected-value baseline). Since this task reshapes exactly that API surface, retire or fold the arity-1 variant here rather than in a separate task.'''
 created_at = "2026-06-22"
 scored_at = "2026-06-22"
 
@@ -10271,5 +10273,156 @@ scores = { d = 2, b = 7, u = 7 }
 acceptance_criteria = ["Resolver spawn resolves the agent's configured model via the same lookup the reviewer spawn uses; a configured agent never yields {:model_required, _} from the resolver path", "A selected candidate without a configured model rotates to the next eligible cross-family candidate; only when no candidate has a model does the resolve fall back to the existing blocked/retained-branch path", "Resolver witness records which agent+model ran (or why none could)", "Regression test: conflict + configured reviewer models -> resolver actually spawns (no model_required); conflict + all candidates model-less -> clean fallback to blocked"]
 touches = ["lib/harness/lander/resolver.ex", "test/harness/lander"]
 body = "Observed twice on tapakly auto-lands (2026-07-05, task 348 and task 344 / run-1783226904876-5c5b2e99): on a rebase conflict the lander's cross-family resolver selection/spawn fails with {:model_required, Harness.AgentAdapter.Codex} resp. {:model_required, Harness.AgentAdapter.Claude}, so the resolve attempt never runs and the task goes straight to blocked for manual repair — even though both agents HAVE configured models (agents-reviewers shows claude-opus-4-8 / gpt-5.5). The Task 189 resolver reuses reviewer-eligibility for selection but apparently does not resolve {:agent_model, agent} (or the Run.reviewer_model equivalent) before spawning, and the adapters now reject model-less spawns per the model-required contract. Fix: resolve the model the same way the reviewer spawn does; if the selected candidate has no configured model, rotate to the next eligible cross-family candidate instead of failing the whole resolve. Existing fallback (blocked + retained branch) stays the terminal sink."
+created_at = "2026-07-05"
+scored_at = "2026-07-05"
+
+[[task]]
+id = "346"
+phase = 22
+bundle = "postgres-results"
+status = "pending"
+title = "Port the Task-163 evidence-preserving record_run merge to ResultStore.Memory"
+scores = { d = 2, b = 5, u = 4 }
+markers = ["bug", "parallel"]
+acceptance_criteria = ["Memory.record_run/2 preserves settled evidence fields when a later write for the same run_id carries nil/absent values, matching the Postgres conflict-merge semantics (bookkeeping always wins, evidence COALESCEs with existing)", "The same-run_id-upsert-never-loses-evidence scenario lives in the shared backend contract test and passes on BOTH backends", "No behavior change for the Postgres backend"]
+out_of_scope = ["Retention/pruning of run_records (sibling task in this bundle)", "Changing LogRecord fields"]
+touches = ["lib/harness/result_store/memory.ex", "test/harness/result_store/"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Memory.record_run/2 (memory.ex:21-26) blindly Map.put-overwrites the stored record for a run_id, while ResultStore.Postgres.record_run/2 COALESCE-merges via conflict_merge_query/0 (postgres.ex:79-151) — protection built for the 2026-06-02 Task-163 data-loss incident, where a later sparser same-run_id write clobbered a settled attempt's evidence (transcripts, verdict, ratings). Run.crash_settle/3 (run.ex:~1666) is exactly the caller shape that persists a minimal record after a gen_statem crash. With repo_enabled: false the Memory backend has none of this protection, and the divergence is untested: only postgres_test.exs has the "same-run_id upsert never loses settled evidence (Task 163)" describe block; memory_test.exs and the shared contract don't. Port the merge semantics into Memory.record_run/2 (or extract a shared merge helper both backends call) and move the scenario into the shared ResultStoreContract so both backends stay golden-tested for it. Found by codebase review 2026-07-06; sites verified against HEAD.
+"""
+created_at = "2026-07-05"
+scored_at = "2026-07-05"
+
+[[task]]
+id = "347"
+phase = 22
+bundle = "resilience"
+status = "pending"
+title = "Worktree sweeper is depth-blind: */* glob never finds leaked landing/audit worktrees after a crash mid-land"
+scores = { d = 2, b = 5, u = 4 }
+markers = ["bug", "parallel"]
+acceptance_criteria = ["A planted <base_dir>/<repo_slug>/landing/<id> orphan (worktree with a .git FILE marker) is discovered and removed by Sweeper.sweep/1, including its stale git-worktree registration via prune", "Existing two-level run-worktree orphans are still reaped; retained-on-failure and active-run-marker worktrees are still left untouched", "Sweep stays best-effort: a failure on one dir/repo is logged and skipped, never aborts the sweep"]
+out_of_scope = ["Reaper coverage of landing/audit worktrees during node lifetime (boot sweep is the backstop being fixed here)", "Changing the landing/audit worktree path layout"]
+touches = ["lib/harness/worktree/sweeper.ex", "test/harness/worktree/"]
+assignee = "cursor"
+model = "composer-2.5"
+body = """
+Sweeper.candidates/1 (sweeper.ex:69-71) discovers orphans with a fixed-depth Path.join(base_dir, "*/*") glob, but Worktree.checkout_existing/3 — used by the lander AND the post-merge audit for their detached worktrees — creates paths three levels deep: <base_dir>/<repo_slug>/landing/<id> (worktree.ex:352/368). If the BEAM crashes between checkout_existing and Worktree.remove/1 (the crash-mid-land class the Oban Lifeline work documented — Task 209, job 294), the leaked worktree is never found on any later boot: the glob matches .../landing itself, which has no .git marker, so parent_repo/1 returns nil and it is left in place; the actual <id> worktree one level deeper is never a candidate. Reaper only tracks Run-created worktrees (Reaper.track/4); Lifeline only rescues the Oban job row — nothing else covers this. Make discovery depth-agnostic (e.g. recursively find .git regular FILES under base_dir and reap their dirnames) rather than assuming the two-level shape. Add a sweeper test planting a checkout_existing-shaped orphan. Found by codebase review 2026-07-06; sites verified against HEAD.
+"""
+created_at = "2026-07-05"
+scored_at = "2026-07-05"
+
+[[task]]
+id = "348"
+phase = 22
+bundle = "chat-orchestrator"
+status = "pending"
+title = "Chat session lifecycle: broadcast the :busy terminal (silent message drop) + idle-reap immortal session processes"
+scores = { d = 2, b = 4, u = 4 }
+markers = ["bug", "parallel"]
+acceptance_criteria = ["A second user_message submitted while busy? surfaces a terminal event in the PubSub stream so ChatLive shows feedback instead of silently dropping the message — regression-tested at both the Session and ChatLive layers", "A session GenServer idle past a configurable bound terminates and transparently rehydrates from Chat.Store on the next message (existing rehydrate_messages path)", "chat_shell/1's declared-but-unused disabled? attr is either wired into the composer markup or removed along with its call-site computation"]
+out_of_scope = ["Chat history byte/message caps (already bounded)", "Auth on the chat/MCP surface (intentional loopback-only design)"]
+touches = ["lib/harness/chat/session.ex", "lib/harness/chat/supervisor.ex", "lib/harness/dashboard/chat_live.ex", "test/harness/chat/", "test/harness/dashboard/"]
+assignee = "cursor"
+model = "composer-2.5"
+body = """
+Three coupled fixes in the chat session surface, found by codebase review 2026-07-06 (sites verified against HEAD). (a) Silent drop: handle_call({:user_message, _}, ..., %{busy?: true}) (session.ex:124-127) replies {:error, terminal} directly without routing through emit_terminal/2 like every other abort path — but ChatLive fire-and-forgets Session.user_message via Task.Supervisor.start_child and never reads the return; PubSub is the only channel back. A racing second submit (double-click before the first text_delta arrives — @active is nil until then — or a second tab on the same session_id) renders the user message optimistically, then nothing: no reply, no error, composer stuck. Untested (no busy reference in session_test.exs or chat_live_test.exs). (b) Immortal sessions: session processes are restart: :temporary under a DynamicSupervisor and nothing ever terminates them — every session_id ever touched (including stray /harness/chat/<random> visits) holds a live GenServer + full in-memory history for the node's lifetime, on top of the persisted Chat.Store row that already supports rehydration. Add an idle-timeout reap. (c) chat_shell/1 (chat_live.ex:648, 742-765) declares and receives disabled?={@active != nil} but never references it in the template — a maintenance trap; wire it or drop it.
+"""
+created_at = "2026-07-05"
+scored_at = "2026-07-05"
+
+[[task]]
+id = "349"
+phase = 22
+bundle = "dashboard-perf"
+status = "pending"
+title = "ProjectRegistry.list/0 refetches landing settings once per project — batch the overlay to one read"
+scores = { d = 2, b = 4, u = 3 }
+markers = ["parallel"]
+acceptance_criteria = ["ProjectRegistry.list/0 issues exactly one landing-settings fetch regardless of project count (asserted with a counting store stub or query counter)", "Overlay semantics identical to per-project LandingSettings.overlay/1 — existing overlay tests stay green", "lookup/1 behavior unchanged"]
+out_of_scope = ["Caching settings across calls (one fetch per list/0 call is the target, not a TTL cache)"]
+touches = ["lib/harness/project_registry.ex", "lib/harness/landing/settings.ex", "test/harness/project_registry_test.exs", "test/harness/landing/"]
+assignee = "grok"
+model = "grok-build"
+body = """
+ProjectRegistry.list/0 (project_registry.ex:159-163) maps LandingSettings.overlay/1 over every project; overlay/1 calls the private overrides/0 (landing/settings.ex:156-161), which does SettingsStore.fetch(@store_key) — a full Postgres read — independently per project. P projects = P sequential reads of the identical harness_settings["landing"] row, on every call. list/0 sits on nearly every dashboard LiveView mount/refresh (dashboard/live.ex:114/288, roadmap_live, settings_live, compare_live, project_explorer, dep_freshness_live), every cron tick (cron/roadmap_poller.ex:79, cron/dep_freshness_poller.ex:24), and oban.ex:182 — the same mount-path class the phase-17 dashboard-perf bundle fixed. Add a batch-overlay API on LandingSettings (fetch overrides once, apply to all), keep per-project overlay/1 delegating to it. Found by codebase review 2026-07-06; sites verified against HEAD.
+"""
+created_at = "2026-07-05"
+scored_at = "2026-07-05"
+
+[[task]]
+id = "350"
+phase = 22
+bundle = "postgres-results"
+status = "pending"
+title = "AgentKPI.duration_summary/1 crashes with ArithmeticError on [] — reachable from the Postgres KPI rollup"
+scores = { d = 1, b = 3, u = 3 }
+markers = ["bug", "parallel"]
+acceptance_criteria = ["duration_summary([]) returns %{median: 0, p90: 0}, mirroring ceremony_distribution/1's existing empty-case default — no crash", "Unit tests for duration_summary/1: empty, single-element, odd and even lengths, and the nearest-rank p90"]
+out_of_scope = ["Any change to non-empty median/percentile arithmetic"]
+touches = ["lib/harness/agent_kpi.ex", "test/harness/agent_kpi_test.exs"]
+assignee = "grok"
+model = "grok-build"
+body = """
+median/1 (agent_kpi.ex:699-708) on an empty sorted list computes mid=0, takes the even-n branch, and evaluates (Enum.at([], -1) + Enum.at([], 0)) / 2 — nil + nil raises ArithmeticError. Directly reachable: result_store/postgres.ex:549 calls AgentKPI.duration_summary(row.durations || []) — the || [] nil-guard hands the crashing input straight in whenever the SQL-aggregated durations field is nil, so the KPI aggregation path crashes instead of degrading. ceremony_distribution/1 in the same module already special-cases [] with %{median: 0, p90: 0}, showing the empty case was a known need — duration_summary/1 just missed it, and it currently has zero direct test coverage. Add the empty clause + first unit tests. Found by codebase review 2026-07-06; verified against HEAD.
+"""
+created_at = "2026-07-05"
+scored_at = "2026-07-05"
+
+[[task]]
+id = "351"
+phase = 20
+bundle = "autolanding"
+status = "pending"
+title = "TaskIdRewriter misses unquoted integer task ids — collision reassignment silently no-ops for integer-id projects"
+scores = { d = 2, b = 5, u = 4 }
+markers = ["bug", "parallel"]
+acceptance_criteria = ["A bare `id = 25` task block is detected by block_with_id/1; an id collision in an integer-id tasks.toml is reassigned to the next free id, preserving the block's original unquoted style", "Quoted-id behavior unchanged; a mixed quoted/unquoted file is handled correctly", "Regression tests cover integer-only and mixed-style tasks.toml files"]
+out_of_scope = ["Any other tasks.toml schema variant (only the documented integer-id form)", "Changing the lander's rewriter invocation"]
+touches = ["lib/harness/roadmap/task_id_rewriter.ex", "test/harness/roadmap/"]
+assignee = "codex"
+model = "gpt-5.5"
+body = '''
+block_with_id/1 (task_id_rewriter.ex:58-64) matches only the quoted form id = "N" (regex ^\s*id\s*=\s*"(\d+)"\s*$), so rewrite_collisions/2 finds zero blocks — and reassigns nothing — for a project whose tasks.toml uses unquoted integer ids. That variant is real and documented in this codebase: roadmap.ex:685-688 explicitly notes a project keyed on integer ids (id = 25) yields a JSON integer. The lander invokes the rewriter generically for every landing project (lander.ex:220-258), so for an integer-id project two concurrently-filed colliding tasks land UN-reassigned — reintroducing exactly the false-done/lost-work corruption class Task 280 closed, for a schema variant the fix's regex doesn't cover. task_id_rewriter_test.exs only exercises quoted ids. Extend matching to bare integers, normalize both forms for comparison, preserve original quoting style on rewrite. Found by codebase review 2026-07-06; sites verified against HEAD.
+'''
+created_at = "2026-07-05"
+scored_at = "2026-07-05"
+
+[[task]]
+id = "352"
+phase = 22
+bundle = "postgres-results"
+status = "pending"
+title = "Bound run_records growth: blob retention that never touches the countable KPI facts"
+scores = { d = 3, b = 4, u = 3 }
+acceptance_criteria = ["An operator-configurable, documented retention mechanism bounds transcript-blob storage (e.g. age-based nulling of agent_output/reviewer_output on old rows); the mechanism and its default are documented in CHANGELOG + the settings surface", "Fact columns feeding aggregate_by_agent / aggregate_reviewer_reliability / aggregate_by_facet are NEVER deleted — aggregates return identical results before and after blob stripping (test)", "Point lookups of a stripped record still work, returning the record without the stripped blobs"]
+out_of_scope = ["Bounding/windowing the aggregate queries themselves (separate concern; file only if measured slow)", "Memory backend retention (ephemeral by design)"]
+touches = ["lib/harness/result_store/postgres.ex", "lib/harness/result_store/schema/run_record.ex", "priv/repo/migrations/", "test/harness/result_store/"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+run_records accretes full agent_output/reviewer_output transcript blobs per run (the backend parity test exercises 50KB blobs) and nothing anywhere prunes, archives, or TTLs rows — no delete_all/prune/retention path exists outside unrelated worktree cleanup. The three aggregate queries (aggregate_by_agent_query/0, aggregate_reviewer_reliability_query/0, aggregate_by_facet_query/0) scan the whole table on every dashboard/routing call. On the continuously-dogfooding node this grows without bound and every rollup pays for it forever. Implement a mechanical retention shape: age-based blob nulling that strips the heavyweight transcript columns from rows older than an operator-set bound while keeping every countable fact column forever, so KPI/reliability/facet history stays truthful. Mantra note: the bound is an operator-set config fact; stripping is pure mechanics — no judgment about which runs "matter". Found by codebase review 2026-07-06.
+"""
+created_at = "2026-07-05"
+scored_at = "2026-07-05"
+
+[[task]]
+id = "353"
+phase = 22
+bundle = "core-loop"
+status = "pending"
+title = "Decompose the 2,890-line Run gen_statem: extract per-state event handling into satellite modules"
+scores = { d = 4, b = 5, u = 5 }
+depends_on = [327, 343]
+acceptance_criteria = ["run.ex lands under ~1,200 lines; each extracted Harness.Run.States.* (or equivalent) module owns one state's event clauses, called from thin state-function delegators — gen_statem callback mode, state set, and event surface unchanged", "Behavior-preserving: the existing run lifecycle suite passes with no semantic changes (module-reference updates only)", "No new judgment/classification logic appears anywhere in the move (mantra: pure mechanical relocation)", "Full gate green: mix precommit.full"]
+out_of_scope = ["Any behavior change, state addition/removal, or timeout semantics change", "The rule-seam inversion (327) and Reflex dependency-cycle (328) work — coordinate through depends_on/write-set serialization"]
+touches = ["lib/harness/run.ex", "lib/harness/run/"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+run.ex is 2,890 lines / 322 functions — the largest file in the codebase by nearly 2x (next: dispatch.ex at 1,565) — concentrating every state (dispatched/running/committing/recovering/reviewing/held/done/failed) and its event clauses in one module. Every lifecycle change pays the monolith's blast radius, and the pending run-lifecycle tasks (327's invocation builders, 343's cancel fix) all queue edits to the same file. Continue the satellite pattern the module already established (Run.Recovery, Run.Review, Run.Result, Run.Status, Run.Reflex, Run.RetryPolicy) by extracting per-state event handling into per-state modules invoked from thin delegators in run.ex, without changing the :gen_statem callback surface or any observable behavior. depends_on 327 + 343 so the queued run.ex edits land first and this pure-move diff doesn't rebase-conflict them. Identified by cross-cutting codebase review 2026-07-06 as the codebase's single structural outlier (the review found zero correctness defects in this subsystem — this is maintainability debt, not a bug).
+"""
 created_at = "2026-07-05"
 scored_at = "2026-07-05"
