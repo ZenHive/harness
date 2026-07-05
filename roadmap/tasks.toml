@@ -10216,3 +10216,48 @@ model = "gpt-5.5"
 body = "Add the Go provider to the multi-language freshness seam introduced by Task 340. The implementation should inspect Go module metadata, produce the same raw dependency-freshness facts as the Elixir provider, and surface unsupported/missing module cases visibly instead of guessing. Keep this provider-only: no update action, no baseline manifest, no new panel."
 created_at = "2026-07-01"
 scored_at = "2026-07-01"
+
+[[task]]
+id = "343"
+phase = 22
+bundle = "resilience"
+status = "pending"
+title = "Run gen_statem crashes with case_clause when cancel reason is {:redispatched, run_id}"
+scores = { d = 3, b = 6, u = 5 }
+acceptance_criteria = ["Cancelling a run with a structured reason such as {:redispatched, run_id} settles the run without a gen_statem crash", "The settled record preserves the structured reason for verdict/status readers", "A regression test covers cancel-with-structured-reason during an in-flight run"]
+out_of_scope = ["Changing when the reflex decides to redispatch", "Reworking progress_stalled detection"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """Observed 2026-07-04 dispatching tapakly task 330 (run-1783129787191-c1482f84): the run settled failed with reason {:run_crashed, {:case_clause, {:cancel, {:redispatched, "run-1783130107972-4f577d15"}}}}. Something (the reflex redispatch path) cancelled the superseded run with a structured reason {:redispatched, new_run_id}, and a case/cond in the Run gen_statem's cancel handling only matches the plain :cancelled shape, so the process crashed instead of settling cleanly. The redispatched replacement run itself then halted with {:reflex_halted, :progress_stalled}, so the crash also cost the retry context. Find the cancel-reason case, accept structured cancel reasons (or normalize them before the match), and settle the superseded run as failed/cancelled without a crash."""
+created_at = "2026-07-04"
+scored_at = "2026-07-04"
+
+[[task]]
+id = "344"
+phase = 20
+bundle = "autolanding"
+status = "pending"
+title = "Land-conflict resolver AI cannot spawn: claude adapter has no configured agent_model"
+scores = { d = 2, b = 6, u = 6 }
+acceptance_criteria = ["A land conflict on a project whose first resolver candidate lacks an agent_model no longer settles blocked-without-resolver: it spawns on a configured candidate (rotation) or the config gap is closed and documented", "Test covers the model-less-candidate path"]
+assignee = "human"
+body = """
+Observed 2026-07-04 on tapakly run run-1783130780286-70e6a32b: the lander hit a rebase conflict (T329 vs T332 gettext catalogs) and the land-conflict resolver AI failed to spawn with {:model_required, Harness.AgentAdapter.Claude} — the claude adapter has no {:agent_model, agent} pin configured, and the resolver path (like the reviewer) resolves its model solely from agent_model config. The land stayed blocked and required manual worktree repair.
+
+Decide + fix: either (a) operator config — pin a standing model for the claude adapter (Config.agent_model) so recovery/resolver/reviewer seats can always spawn on it, and document that model-capable recovery seats require a pin at project-registration/onboarding time; or (b) code — have the resolver seat rotate to the next cross-family candidate with a configured model instead of failing the land when the first candidate is model-less (mirroring the reviewer-rotation behavior). Either way, a rebase-conflict land should degrade to another resolver candidate, not to a blocked task needing hand repair. Human decision spike on (a) vs (b); (b) becomes dispatchable once chosen.
+"""
+created_at = "2026-07-04"
+scored_at = "2026-07-04"
+
+[[task]]
+id = "345"
+phase = 11
+bundle = "autolanding"
+status = "pending"
+title = "Lander conflict-resolver spawns without resolving the agent model — every resolve fails {:model_required, adapter}"
+scores = { d = 2, b = 7, u = 7 }
+acceptance_criteria = ["Resolver spawn resolves the agent's configured model via the same lookup the reviewer spawn uses; a configured agent never yields {:model_required, _} from the resolver path", "A selected candidate without a configured model rotates to the next eligible cross-family candidate; only when no candidate has a model does the resolve fall back to the existing blocked/retained-branch path", "Resolver witness records which agent+model ran (or why none could)", "Regression test: conflict + configured reviewer models -> resolver actually spawns (no model_required); conflict + all candidates model-less -> clean fallback to blocked"]
+touches = ["lib/harness/lander/resolver.ex", "test/harness/lander"]
+body = "Observed twice on tapakly auto-lands (2026-07-05, task 348 and task 344 / run-1783226904876-5c5b2e99): on a rebase conflict the lander's cross-family resolver selection/spawn fails with {:model_required, Harness.AgentAdapter.Codex} resp. {:model_required, Harness.AgentAdapter.Claude}, so the resolve attempt never runs and the task goes straight to blocked for manual repair — even though both agents HAVE configured models (agents-reviewers shows claude-opus-4-8 / gpt-5.5). The Task 189 resolver reuses reviewer-eligibility for selection but apparently does not resolve {:agent_model, agent} (or the Run.reviewer_model equivalent) before spawning, and the adapters now reject model-less spawns per the model-required contract. Fix: resolve the model the same way the reviewer spawn does; if the selected candidate has no configured model, rotate to the next eligible cross-family candidate instead of failing the whole resolve. Existing fallback (blocked + retained branch) stays the terminal sink."
+created_at = "2026-07-05"
+scored_at = "2026-07-05"
