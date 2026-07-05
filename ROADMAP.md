@@ -13,7 +13,7 @@
 
 **Last shipped:** no recent shipments
 
-**Up next:** Task 345 — Lander conflict-resolver spawns without resolving the agent model — every resolve fails {:model_required, adapter} [D:2/B:7/U:7 → Eff:3.5] 🎯
+**Up next:** Task 344 — Land-conflict resolver AI cannot spawn: claude adapter has no configured agent_model [D:2/B:6/U:6 → Eff:3.0] 🎯
 <!-- FOCUS:END -->
 
 ---
