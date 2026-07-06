@@ -10426,3 +10426,33 @@ run.ex is 2,890 lines / 322 functions — the largest file in the codebase by ne
 """
 created_at = "2026-07-05"
 scored_at = "2026-07-05"
+
+[[task]]
+id = "354"
+phase = 22
+bundle = "resilience"
+status = "pending"
+title = "Run gen_statem crashes with case_clause on {:cancel, {:redispatched, run_id}} after reflex redispatch"
+scores = { d = 3, b = 6, u = 7 }
+acceptance_criteria = ["Reproducing test: a run that gets reflex-redispatched and then cancelled settles cleanly (no {:case_clause, ...} crash) with a reason naming the successor run_id", "The original run's run_record no longer reads :run_crashed when its task was successfully redispatched", "No change to genuine cancel (no successor) or genuine crash handling"]
+out_of_scope = ["Changing when reflex decides to redispatch", "Retry arithmetic / Oban attempt handling"]
+assignee = "cursor"
+model = "composer-2.5"
+body = """Observed 2026-07-07, tapakly task 359, run run-1783371223893-b56b7a77: the run settled :failed with reason {:run_crashed, {:case_clause, {:cancel, {:redispatched, "run-1783372378671-9ded6f01"}}}}. Sequence: the reflex/resilience path redispatched the task onto a new run (run-1783372378671-9ded6f01, which went on to complete and get approved), then the original run's gen_statem hit an unhandled case clause when processing the cancel carrying the {:redispatched, new_run_id} disposition. The redispatch itself worked end to end; only the originating run's teardown crashed, polluting the run ledger with a :run_crashed record for a task that actually succeeded. Task 220's review added cancel-wins precedence over reflex re-dispatch — this crash is evidence that seam still has an unhandled shape. Find the case expression that receives {:cancel, {:redispatched, run_id}} and handle it as a clean cancel-with-successor settle (not a crash); the settled record should carry a reason that names the successor run."""
+created_at = "2026-07-06"
+scored_at = "2026-07-06"
+
+[[task]]
+id = "355"
+phase = 22
+bundle = "autolanding"
+status = "pending"
+title = "Land-conflict resolver dies on {:model_required, Claude} — candidate selection must skip model-less agents"
+scores = { d = 2, b = 5, u = 6 }
+acceptance_criteria = ["Resolver candidate selection filters out model-capable agents with no configured model before spawn (mirrors reviewer-slate eligibility)", "A conflict with one model-less and one configured candidate spawns the configured one; witness records the skip", "All candidates model-less -> resolver reports a selection failure naming every skipped agent, and falls back to the existing block/manual-repair path"]
+out_of_scope = ["Auto-configuring models", "Changing the reviewer slate logic itself"]
+assignee = "cursor"
+model = "composer-2.5"
+body = "Observed 2026-07-07, tapakly task 362, run run-1783371226312-2655d89b: the lander hit a rebase conflict (gettext catalogs), and the conflict-resolver attempt failed before spawning with 'resolver witness: selection/spawn failed: {:model_required, Harness.AgentAdapter.Claude}' — the resolver selected the claude adapter, which had no configured {:agent_model, agent}, so the whole resolver attempt died and the task went to blocked for manual repair. The model-required contract is correct (never fall through to an ambient default); the bug is in resolver candidate SELECTION: an agent with no configured model is not a viable candidate and should be skipped in favor of the next cross-family candidate (same rotation semantics the reviewer slate already has). Only when NO candidate has a configured model should the resolver report selection failure. The manual repair (union-merge of .po catalogs + gettext.refresh + dispatch-reland) worked, but cost an operator cycle a configured resolver would have absorbed."
+created_at = "2026-07-06"
+scored_at = "2026-07-06"
