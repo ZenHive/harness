@@ -71,6 +71,7 @@ defmodule Harness.Landing.Settings do
     Enum.map(projects, &do_overlay(&1, ov))
   end
 
+  @spec do_overlay(Project.t(), t()) :: Project.t()
   defp do_overlay(%Project{name: name} = project, overrides) do
     case Map.get(overrides, name) do
       %{} = override ->
