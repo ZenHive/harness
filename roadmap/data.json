@@ -15582,7 +15582,7 @@
       "id": "346",
       "phase": 22,
       "bundle": "postgres-results",
-      "status": "in_progress",
+      "status": "done",
       "title": "Port the Task-163 evidence-preserving record_run merge to ResultStore.Memory",
       "scores": {
         "d": 2,
@@ -15612,10 +15612,15 @@
         "lib/harness/result_store/memory.ex",
         "test/harness/result_store/"
       ],
+      "shipped_in": "c92adbe04e078242c4e84d9c374c18a37c873c34",
       "body": "Memory.record_run/2 (memory.ex:21-26) blindly Map.put-overwrites the stored record for a run_id, while ResultStore.Postgres.record_run/2 COALESCE-merges via conflict_merge_query/0 (postgres.ex:79-151) — protection built for the 2026-06-02 Task-163 data-loss incident, where a later sparser same-run_id write clobbered a settled attempt's evidence (transcripts, verdict, ratings). Run.crash_settle/3 (run.ex:~1666) is exactly the caller shape that persists a minimal record after a gen_statem crash. With repo_enabled: false the Memory backend has none of this protection, and the divergence is untested: only postgres_test.exs has the \"same-run_id upsert never loses settled evidence (Task 163)\" describe block; memory_test.exs and the shared contract don't. Port the merge semantics into Memory.record_run/2 (or extract a shared merge helper both backends call) and move the scenario into the shared ResultStoreContract so both backends stay golden-tested for it. Found by codebase review 2026-07-06; sites verified against HEAD.\n",
       "created_at": "2026-07-05",
       "started_at": "2026-07-07",
+      "done_at": "2026-07-07",
       "scored_at": "2026-07-05",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1783390320470-6ecf6cd4, c92adbe04e078242c4e84d9c374c18a37c873c34).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
