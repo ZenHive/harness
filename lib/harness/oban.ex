@@ -13,6 +13,7 @@ defmodule Harness.Oban do
 
   alias Harness.Cron.DepFreshnessPoller
   alias Harness.Cron.RoadmapPoller
+  alias Harness.Cron.SuiteHealthPoller
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Oban.Plugins.Lifeline
@@ -352,7 +353,8 @@ defmodule Harness.Oban do
   defp cron_crontab do
     [
       RoadmapPoller.cron_entry(),
-      DepFreshnessPoller.cron_entry()
+      DepFreshnessPoller.cron_entry(),
+      SuiteHealthPoller.cron_entry()
     ]
   end
 end

@@ -52,6 +52,8 @@ defmodule Harness.Dashboard.Router do
     live("/harness/compare/:comparison_id", CompareLive, :show, as: :dashboard_compare)
     live("/harness/deps", DepFreshnessLive, :index, as: :dashboard_deps)
     live("/harness/deps/:name", DepFreshnessLive, :show, as: :dashboard_deps)
+    live("/harness/health", SuiteHealthLive, :index, as: :dashboard_health)
+    live("/harness/health/:name", SuiteHealthLive, :show, as: :dashboard_health)
     live("/harness/projects", Live.ProjectExplorer, :index, as: :dashboard_projects)
     live("/harness/projects/explore", Live.ProjectExplorer, :index, as: :dashboard_project_explorer_index)
     live("/harness/projects/:name/explore", Live.ProjectExplorer, :show, as: :dashboard_project_explorer)
