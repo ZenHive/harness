@@ -20,6 +20,22 @@ defmodule Harness.Worktree.SweeperTest do
       refute File.dir?(wt.path)
     end
 
+    test "reaps a checkout_existing-shaped orphan under landing/<id>" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+      {:ok, wt} = Worktree.checkout_existing(repo, "main", base_dir: base, id: "crash-mid-land")
+
+      assert wt.path =~ "/landing/crash-mid-land"
+      assert File.regular?(Path.join(wt.path, ".git"))
+
+      assert {:ok, summary} = Sweeper.sweep(base)
+
+      assert wt.path in summary.removed
+      assert summary.kept == []
+      assert summary.pruned == 1
+      refute File.dir?(wt.path)
+    end
+
     test "keeps a worktree carrying the retained marker" do
       repo = GitFixture.init_repo()
       base = GitFixture.tmp_base()

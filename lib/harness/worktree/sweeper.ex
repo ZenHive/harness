@@ -67,7 +67,12 @@ defmodule Harness.Worktree.Sweeper do
 
   @spec candidates(String.t()) :: [String.t()]
   defp candidates(base_dir) do
-    base_dir |> Path.join("*/*") |> Path.wildcard() |> Enum.filter(&File.dir?/1)
+    base_dir
+    |> Path.join("**/.git")
+    |> Path.wildcard(match_dot: true)
+    |> Enum.filter(&File.regular?/1)
+    |> Enum.map(&Path.dirname/1)
+    |> Enum.uniq()
   end
 
   @spec parent_repo(String.t()) :: String.t() | nil
