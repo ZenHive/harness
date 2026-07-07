@@ -10217,7 +10217,7 @@ shipped_in = "5d84b766a7cd04170674d8654156aaa324f17456"
 id = "342"
 phase = 22
 bundle = "operator-surface"
-status = "in_progress"
+status = "done"
 title = "Go dependency-freshness provider for go.mod projects"
 scores = { d = 4, b = 4, u = 5 }
 depends_on = [340]
@@ -10227,9 +10227,14 @@ touches = ["lib/harness/dep_freshness", "lib/harness/dashboard", "test/harness/d
 assignee = "codex"
 model = "gpt-5.5"
 body = "Add the Go provider to the multi-language freshness seam introduced by Task 340. The implementation should inspect Go module metadata, produce the same raw dependency-freshness facts as the Elixir provider, and surface unsupported/missing module cases visibly instead of guessing. Keep this provider-only: no update action, no baseline manifest, no new panel."
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1783393031761-f41bc4e6, c680dedf297b6967f8e80e985156850e1f77f028)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-07-01"
 started_at = "2026-07-07"
 scored_at = "2026-07-01"
+done_at = "2026-07-07"
+shipped_in = "c680dedf297b6967f8e80e985156850e1f77f028"
 
 [[task]]
 id = "343"
