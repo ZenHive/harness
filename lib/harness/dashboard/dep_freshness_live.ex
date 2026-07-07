@@ -12,6 +12,7 @@ defmodule Harness.Dashboard.DepFreshnessLive do
   alias Harness.DepFreshness
   alias Harness.DepFreshness.Row
   alias Harness.DepFreshness.Snapshot
+  alias Harness.Dispatch
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.ToolingBaseline.Item, as: ConformanceItem
@@ -55,6 +56,10 @@ defmodule Harness.Dashboard.DepFreshnessLive do
   @spec handle_event(String.t(), map(), Socket.t()) :: {:noreply, Socket.t()}
   def handle_event("select_project", %{"project" => name}, socket) do
     {:noreply, push_patch(socket, to: "/harness/deps/#{name}")}
+  end
+
+  def handle_event("update_deps", %{"project" => name}, socket) do
+    {:noreply, dispatch_update_deps(socket, name)}
   end
 
   @impl Phoenix.LiveView
@@ -119,6 +124,16 @@ defmodule Harness.Dashboard.DepFreshnessLive do
         @snapshot.checked_at
       )} · provider {@snapshot.language}
     </p>
+
+    <button
+      id="dep-update-button"
+      type="button"
+      phx-click="update_deps"
+      phx-value-project={@project.name}
+      disabled={@snapshot.outdated_count == 0}
+    >
+      Update deps
+    </button>
 
     <h3>Dependency freshness</h3>
 
@@ -202,6 +217,17 @@ defmodule Harness.Dashboard.DepFreshnessLive do
 
       {:error, _reason} ->
         %{}
+    end
+  end
+
+  @spec dispatch_update_deps(Socket.t(), String.t()) :: Socket.t()
+  defp dispatch_update_deps(%Socket{} = socket, project_name) when is_binary(project_name) do
+    case Dispatch.update_deps(project_name) do
+      {:ok, %{tasks: tasks}} ->
+        put_flash(socket, :info, "Dispatched #{length(tasks)} dependency bump run(s).")
+
+      {:error, reason} ->
+        put_flash(socket, :error, "Dependency bump dispatch failed: #{inspect(reason)}")
     end
   end
 

@@ -13,12 +13,19 @@ defmodule Harness.Dashboard.DepFreshnessLiveTest do
 
   setup do
     prev = Application.get_env(:harness, :dep_freshness_store)
+    prev_creator = Application.get_env(:harness, :dependency_bump_task_creator)
+    prev_enqueuer = Application.get_env(:harness, :dependency_bump_enqueuer)
+    prev_ingest = Application.get_env(:harness, :roadmap_ingest)
+
     Application.put_env(:harness, :dep_freshness_store, {Store, scope: :dep_freshness_live_test})
 
     for project <- ProjectRegistry.list(), do: ProjectRegistry.unregister(project.name)
 
     on_exit(fn ->
       Application.put_env(:harness, :dep_freshness_store, prev)
+      restore_env(:dependency_bump_task_creator, prev_creator)
+      restore_env(:dependency_bump_enqueuer, prev_enqueuer)
+      restore_env(:roadmap_ingest, prev_ingest)
 
       for project <- ProjectRegistry.list(), do: ProjectRegistry.unregister(project.name)
     end)
@@ -50,6 +57,37 @@ defmodule Harness.Dashboard.DepFreshnessLiveTest do
     assert html =~ "0.6.1"
     assert html =~ "0.6.2"
     assert html =~ "Constraint allowed"
+    assert html =~ "Update deps"
+  end
+
+  test "dispatches dependency bump runs from the update button", %{conn: conn} do
+    owner = self()
+    project = ProjectFixture.from_repo("/tmp/harness-deps-update", name: "deps-update")
+    :ok = ProjectRegistry.register(project)
+    :ok = DepFreshnessStore.record_snapshot(snapshot("deps-update", "req"), DepFreshnessStore.configured())
+
+    Application.put_env(:harness, :dependency_bump_task_creator, fn _project, specs, _adapter, _model ->
+      send(owner, {:created_specs, specs})
+      {:ok, ["701"]}
+    end)
+
+    Application.put_env(:harness, :roadmap_ingest, fn {:id, "701"}, opts ->
+      {:ok, %Harness.Roadmap.Item{id: "701", title: "deps", prompt: "prompt", agent: opts[:agent]}}
+    end)
+
+    Application.put_env(:harness, :dependency_bump_enqueuer, fn _project, item, _adapter, _opts ->
+      {:ok, "run-#{item.id}", %Oban.Job{id: 701}}
+    end)
+
+    {:ok, view, _html} = live(conn, "/harness/deps/deps-update")
+
+    view
+    |> element("#dep-update-button")
+    |> render_click()
+
+    assert_received {:created_specs, [spec]}
+    assert spec.body =~ "Ground-truth dependency freshness facts"
+    assert spec.body =~ "req"
   end
 
   test "renders tooling baseline conformance facts", %{conn: conn} do
@@ -158,4 +196,8 @@ defmodule Harness.Dashboard.DepFreshnessLiveTest do
       ]
     )
   end
+
+  @spec restore_env(atom(), term()) :: :ok
+  defp restore_env(key, nil), do: Application.delete_env(:harness, key)
+  defp restore_env(key, value), do: Application.put_env(:harness, key, value)
 end

@@ -58,6 +58,7 @@ defmodule Harness.Dispatch do
   alias Harness.CapabilityScore
   alias Harness.Config
   alias Harness.Cron.PendingDispatch
+  alias Harness.DependencyBump
   alias Harness.Dispatch.AwaitRunsSummary
   alias Harness.Dispatch.RunSummary
   alias Harness.Dispatch.WriteSetPlan
@@ -221,6 +222,49 @@ defmodule Harness.Dispatch do
     # timeout summary both require an integer, so truncate once at the boundary.
     wait_ms = trunc(timeout_ms)
     poll_until_settled(run_id, System.monotonic_time(:millisecond) + wait_ms, wait_ms)
+  end
+
+  api(
+    :update_deps,
+    "Operator-triggered dependency update: create dependency-bump roadmap task(s) from the latest dep-freshness facts and dispatch them through the normal implementer -> reviewer -> land agent gate. Harness does NOT run dependency update commands or tests itself.",
+    params: [
+      project_name: [
+        kind: :value,
+        description:
+          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1. SOURCE valid names from project_registry-list."
+      ],
+      adapter: [
+        kind: :value,
+        default: "codex",
+        description:
+          "Executor for the generated bump task(s): codex | cursor | grok | antigravity | pi | claude. The generated rmap task is also assigned to this adapter unless adapter is recommend."
+      ],
+      model: [
+        kind: :value,
+        default: nil,
+        description:
+          "Optional model id to pin on the generated bump task(s), e.g. gpt-5.5 for codex. nil leaves normal per-agent model configuration in control."
+      ],
+      scrub_anthropic_key: [
+        kind: :value,
+        default: true,
+        description:
+          "When true (default), scrubs ANTHROPIC_API_KEY from the agent's environment. Harmless for non-Claude adapters."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{project_name, tasks: [%{task_id, run_id, language, kind, dependencies, check_command}]}}. The tasks are generated from stored dep-freshness facts and enqueued through Harness.Run.Worker; harness performs no dep update or verification itself. {:error, reason}: unknown project/adapter, missing freshness snapshot, rmap failure, or enqueue failure."
+    }
+  )
+
+  @spec update_deps(String.t(), String.t(), String.t() | nil, boolean()) ::
+          {:ok, DependencyBump.result()} | {:error, DependencyBump.error()}
+  def update_deps(project_name, adapter \\ "codex", model \\ nil, scrub_anthropic_key \\ true)
+      when is_binary(project_name) and is_binary(adapter) and (is_binary(model) or is_nil(model)) and
+             is_boolean(scrub_anthropic_key) do
+    DependencyBump.dispatch(project_name, adapter, model, scrub_anthropic_key)
   end
 
   @spec poll_until_settled(String.t(), integer(), non_neg_integer()) :: {:ok, map()}

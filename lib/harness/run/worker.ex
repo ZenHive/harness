@@ -125,6 +125,7 @@ defmodule Harness.Run.Worker do
       %{project_name: project.name, item_id: item_id, adapter_module: Atom.to_string(adapter), run_id: run_id}
       |> Harness.Oban.put_env_arg(opts)
       |> put_requested_model_arg(opts)
+      |> put_check_command_arg(opts)
 
     changeset =
       new(args,
@@ -140,6 +141,14 @@ defmodule Harness.Run.Worker do
   defp put_requested_model_arg(args, opts) when is_map(args) and is_list(opts) do
     case Keyword.fetch(opts, :requested_model) do
       {:ok, model} when is_binary(model) or is_nil(model) -> Map.put(args, :requested_model, model)
+      _other -> args
+    end
+  end
+
+  @spec put_check_command_arg(map(), keyword()) :: map()
+  defp put_check_command_arg(args, opts) when is_map(args) and is_list(opts) do
+    case Keyword.fetch(opts, :check_command) do
+      {:ok, check_command} when is_binary(check_command) -> Map.put(args, :check_command, check_command)
       _other -> args
     end
   end
@@ -162,7 +171,7 @@ defmodule Harness.Run.Worker do
          {:ok, adapter} <- adapter_module(adapter_name),
          {:ok, agent} <- agent_for_adapter(adapter),
          {:ok, %Item{} = item} <- ingest_roadmap({:id, item_id}, project: project, agent: agent),
-         {:ok, result} <- run_once(job, item, project, adapter) do
+         {:ok, result} <- run_once(job, item, project_with_check_command(project, args), adapter) do
       if settled_failure?(result) and not recoverable_crash?(result, project) do
         # Any settled failure reverts the task to pending so the next cron tick
         # can re-dispatch it as a FRESH run. Green (even unlanded under :manual)
@@ -469,6 +478,18 @@ defmodule Harness.Run.Worker do
   @spec env_opt(map()) :: keyword()
   defp env_opt(%{"env" => env}) when is_map(env) and map_size(env) > 0, do: [env: env]
   defp env_opt(_args), do: []
+
+  @spec project_with_check_command(Project.t(), map()) :: Project.t()
+  defp project_with_check_command(%Project{} = project, %{"check_command" => check_command})
+       when is_binary(check_command) do
+    %{project | check_command: check_command}
+  end
+
+  defp project_with_check_command(%Project{} = project, %{check_command: check_command}) when is_binary(check_command) do
+    %{project | check_command: check_command}
+  end
+
+  defp project_with_check_command(%Project{} = project, _args), do: project
 
   @spec checkpoint(Oban.Job.t(), String.t()) :: :ok
   defp checkpoint(%Oban.Job{} = job, stage) do

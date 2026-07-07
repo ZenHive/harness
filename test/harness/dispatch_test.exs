@@ -1029,12 +1029,26 @@ defmodule Harness.DispatchTest do
       assert Enum.sort(tool.inputSchema.required) == ["run_ids"]
     end
 
+    test "dispatch-update_deps is exposed as the operator dep-bump tool" do
+      tool = Enum.find(Harness.Manifest.mcp_tools(), &(&1.name == "dispatch-update_deps"))
+      assert tool, "dispatch-update_deps should be on the MCP tool surface"
+
+      props = tool.inputSchema.properties
+      assert Map.has_key?(props, :project_name)
+      assert Map.has_key?(props, :adapter)
+      assert Map.has_key?(props, :model)
+      assert Map.has_key?(props, :scrub_anthropic_key)
+
+      assert tool.inputSchema.required == ["project_name"]
+    end
+
     test "the in-process chat tool registry resolves both dispatch tools to Harness.Dispatch" do
       registry = Tools.build()
 
       assert %{module: Dispatch, function: :await} = registry["dispatch-await"]
       assert %{module: Dispatch, function: :await_runs} = registry["dispatch-await_runs"]
       assert %{module: Dispatch, function: :task} = registry["dispatch-task"]
+      assert %{module: Dispatch, function: :update_deps} = registry["dispatch-update_deps"]
     end
 
     test "the run observe/control tools are on the MCP surface as run_id-string tools" do
