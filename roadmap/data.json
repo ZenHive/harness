@@ -15388,7 +15388,7 @@
       "id": "341",
       "phase": 22,
       "bundle": "operator-surface",
-      "status": "in_progress",
+      "status": "done",
       "title": "JavaScript/TypeScript dependency-freshness provider for npm/pnpm/yarn projects",
       "scores": {
         "d": 4,
@@ -15422,10 +15422,15 @@
         "lib/harness/dashboard",
         "test/harness/dep_freshness"
       ],
+      "shipped_in": "5d84b766a7cd04170674d8654156aaa324f17456",
       "body": "Add the JavaScript/TypeScript provider to the multi-language freshness seam introduced by Task 340. The implementation should discover the package manager from committed project files, produce the same raw dependency-freshness facts as the Elixir provider, and surface unsupported cases visibly instead of guessing. Keep this provider-only: no update action, no baseline manifest, no new panel.",
       "created_at": "2026-07-01",
       "started_at": "2026-07-07",
+      "done_at": "2026-07-07",
       "scored_at": "2026-07-01",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1783391790893-7747b566, 5d84b766a7cd04170674d8654156aaa324f17456).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
