@@ -10253,7 +10253,7 @@ shipped_in = "e3bb0a422cb6d7b45fe7a154339e5b9cdf983c54"
 id = "344"
 phase = 20
 bundle = "autolanding"
-status = "pending"
+status = "in_progress"
 title = "Land-conflict resolver AI cannot spawn: claude adapter has no configured agent_model"
 scores = { d = 2, b = 6, u = 6 }
 acceptance_criteria = ["Resolver spawn resolves the agent's configured model via the same lookup the reviewer spawn uses; a configured agent never yields {:model_required, _} from the resolver path", "A selected candidate without a configured model rotates to the next eligible cross-family candidate; only when no candidate has a model does the resolve fall back to the existing blocked/retained-branch path", "Resolver witness records which agent+model ran (or why none could)", "Regression test: conflict + configured reviewer models -> resolver actually spawns (no model_required); conflict + all candidates model-less -> clean fallback to blocked"]
@@ -10271,6 +10271,7 @@ Decide + fix: either (a) operator config — pin a standing model for the claude
 2026-07-07 dedupe note — fourth recurrence: tapakly task 362 (run-1783371226312-2655d89b), gettext-catalog rebase conflict, resolver witness "selection/spawn failed: {:model_required, Harness.AgentAdapter.Claude}"; operator repaired manually (union-merge .po catalogs + gettext.refresh + dispatch-reland). Live config re-check this date confirms agent_model.claude = "claude-opus-4-8" IS set, re-confirming decision (b): the resolver spawn path simply never resolves {:agent_model, agent}. Candidate selection must additionally skip genuinely model-less candidates (mirror reviewer-slate eligibility), per the folded-in duplicate task 355 (superseded into this one).
 """
 created_at = "2026-07-04"
+started_at = "2026-07-07"
 scored_at = "2026-07-04"
 
 [[task]]
