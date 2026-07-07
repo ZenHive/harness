@@ -18,6 +18,15 @@ defmodule Harness.Worktree.Sweeper do
 
   require Logger
 
+  @boot_sweep_exceptions [
+    ArgumentError,
+    ErlangError,
+    File.Error,
+    FunctionClauseError,
+    MatchError,
+    RuntimeError
+  ]
+
   @typedoc "What a sweep did: repos pruned, orphan dirs removed, retained or active dirs kept."
   @type summary :: %{
           pruned: non_neg_integer(),
@@ -38,9 +47,7 @@ defmodule Harness.Worktree.Sweeper do
     Logger.info("harness worktree boot sweep: #{inspect(summary)}")
     :ok
   rescue
-    # Bare by design: a boot sweep over filesystem + git must never crash boot,
-    # whatever the cause (File error, git failure, unexpected tree state).
-    error ->
+    error in @boot_sweep_exceptions ->
       Logger.error("harness worktree boot sweep crashed: #{Exception.message(error)}")
       :ok
   end

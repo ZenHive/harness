@@ -105,6 +105,37 @@ defmodule Harness.CapabilityScoreTest do
     assert recommendation.matched_facet == %{"language" => "elixir", "surface" => "otp"}
   end
 
+  test "recommend ranks only requested agents that have measurements", %{assessment_root: root} do
+    assert :ok =
+             CapabilityScore.save_assessment(
+               %Assessment{
+                 assessed_at: ~U[2026-06-06 12:00:00Z],
+                 record_count: 4,
+                 entries: [
+                   %Entry{
+                     facet: %{"surface" => "otp"},
+                     winner: :codex,
+                     reasoning: "Codex wins otp.",
+                     by_agent: %{claude: %{run_count: 1}, codex: %{run_count: 2}, grok: %{run_count: 1}}
+                   }
+                 ]
+               },
+               assessment_root: root
+             )
+
+    assert {:ok, recommendation} =
+             CapabilityScore.recommend(%{"surface" => "otp"},
+               agents: [:claude, :codex, :cursor],
+               assessment_root: root
+             )
+
+    assert [
+             %{agent: :codex, measurement: :measured, role: :winner},
+             %{agent: :claude, measurement: :measured, role: :runner_up},
+             %{agent: :cursor, measurement: :unmeasured}
+           ] = recommendation.ranked
+  end
+
   test "recommend explores when the facet is unmeasured", %{assessment_root: root} do
     assert :ok =
              CapabilityScore.save_assessment(

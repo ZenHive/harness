@@ -59,6 +59,20 @@ defmodule Harness.AgentAdapter.Driver do
   @default_total_timeout 1_800_000
   @default_idle_timeout 300_000
   @default_progress_timeout 300_000
+  @hook_exceptions [
+    ArgumentError,
+    BadArityError,
+    BadFunctionError,
+    CaseClauseError,
+    ErlangError,
+    FunctionClauseError,
+    KeyError,
+    MatchError,
+    Protocol.UndefinedError,
+    RuntimeError,
+    UndefinedFunctionError,
+    WithClauseError
+  ]
 
   api(:run, "Spawn the adapter for an invocation and drive it to completion under total + idle deadlines.",
     params: [
@@ -113,9 +127,9 @@ defmodule Harness.AgentAdapter.Driver do
     hook.(run)
     :ok
   rescue
-    # Bare by design: a caller-supplied hook is arbitrary code — never let it
-    # crash the driver; isolate every failure mode.
-    _error -> :ok
+    # Caller-supplied hooks are arbitrary code; isolate ordinary callback
+    # exceptions so they cannot crash the driver.
+    _error in @hook_exceptions -> :ok
   catch
     _kind, _value -> :ok
   end
@@ -206,9 +220,9 @@ defmodule Harness.AgentAdapter.Driver do
     hook.(data)
     :ok
   rescue
-    # Bare by design: a caller-supplied hook is arbitrary code — never let it
-    # crash the driver; isolate every failure mode.
-    _error -> :ok
+    # Caller-supplied hooks are arbitrary code; isolate ordinary callback
+    # exceptions so they cannot crash the driver.
+    _error in @hook_exceptions -> :ok
   catch
     _kind, _value -> :ok
   end

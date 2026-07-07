@@ -70,6 +70,20 @@ defmodule Harness.Dashboard.CompareLive do
     {:reviewer_diff_size, "reviewer fix size"},
     {:tokens, "tokens"}
   ]
+  @comparison_exceptions [
+    ArgumentError,
+    BadArityError,
+    BadFunctionError,
+    CaseClauseError,
+    ErlangError,
+    FunctionClauseError,
+    KeyError,
+    MatchError,
+    Protocol.UndefinedError,
+    RuntimeError,
+    UndefinedFunctionError,
+    WithClauseError
+  ]
 
   @impl Phoenix.LiveView
   @spec mount(map(), map(), Socket.t()) :: {:ok, Socket.t()}
@@ -176,9 +190,7 @@ defmodule Harness.Dashboard.CompareLive do
         try do
           AgentEvaluation.compare(item, project, modules, batch_id: id, max_concurrency: length(modules))
         rescue
-          # Bare by design: a comparison fans out over arbitrary adapter modules
-          # in a spawned process; surface any failure as an error for the UI.
-          error -> {:error, Exception.message(error)}
+          error in @comparison_exceptions -> {:error, Exception.message(error)}
         catch
           kind, reason -> {:error, Exception.format_banner(kind, reason)}
         end

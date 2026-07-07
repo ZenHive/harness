@@ -68,6 +68,20 @@ defmodule Harness.Chat.Claude do
   @default_mcp_url "http://localhost:4018/harness/mcp"
   @default_total_timeout 1_800_000
   @default_idle_timeout 300_000
+  @callback_exceptions [
+    ArgumentError,
+    BadArityError,
+    BadFunctionError,
+    CaseClauseError,
+    ErlangError,
+    FunctionClauseError,
+    KeyError,
+    MatchError,
+    Protocol.UndefinedError,
+    RuntimeError,
+    UndefinedFunctionError,
+    WithClauseError
+  ]
   @mcp_config_filename ".harness-mcp-config.json"
 
   @impl Backend
@@ -368,7 +382,7 @@ defmodule Harness.Chat.Claude do
     callback.(event)
     :ok
   rescue
-    _ -> :ok
+    _error in @callback_exceptions -> :ok
   end
 
   @spec close_port(port()) :: :ok

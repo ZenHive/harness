@@ -1093,6 +1093,8 @@ defmodule Harness.Run.Actions do
           optional(String.t()) => String.t() | false
         }
   def scrub_github_auth_env(env) when is_map(env) do
+    # Reach false positive triage: false is the Invocation env scrub payload,
+    # not boolean membership. Task 25's Port env contract is %{var => value | false}.
     Map.merge(env, @github_auth_env_scrubs)
   end
 

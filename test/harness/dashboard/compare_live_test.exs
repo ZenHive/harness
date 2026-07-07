@@ -15,10 +15,13 @@ defmodule Harness.Dashboard.CompareLiveTest do
 
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
+  alias Harness.Batch.AgentEvaluation.Comparison
+  alias Harness.Batch.AgentEvaluation.Entry
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
   alias Harness.Run.LogRecord
+  alias Harness.Run.Result, as: RunResult
   alias Harness.Run.Status
   alias Harness.TokenUsage
 
@@ -151,6 +154,58 @@ defmodule Harness.Dashboard.CompareLiveTest do
       send(view.pid, {:comparison_done, {:error, "adapter exploded"}})
 
       assert render(view) =~ "Comparison failed"
+    end
+
+    test "a comparison_done success reconciles final per-adapter metrics", %{conn: conn} do
+      seed(:claude, Claude, "r-s1", verdict: nil, state: :running, reason: :approved)
+      seed(:codex, Codex, "r-s2", verdict: nil, state: :running, reason: :approved)
+
+      {:ok, view, _html} = live(conn, "/harness/compare/#{@batch}")
+
+      result = %RunResult{run_id: "r-final", task_id: "t", state: :done, reason: :approved}
+
+      entry = %Entry{
+        adapter: Codex,
+        run_id: "r-final",
+        state: :done,
+        reason: :approved,
+        verdict: :approve,
+        duration_ms: 22,
+        agent_diff_size: 11,
+        reviewer_diff_size: 13,
+        token_usage: %TokenUsage{total: 17},
+        result: result
+      }
+
+      send(
+        view.pid,
+        {:comparison_done,
+         {:ok, %Comparison{batch_id: @batch, task_id: "t", total: 2, max_concurrency: 2, entries: [entry]}}}
+      )
+
+      html = render(view)
+      assert html =~ "22 ms"
+      assert html =~ "11 B"
+      assert html =~ "13 B"
+      assert html =~ ">17<"
+      assert html =~ ~s(data-verdict="pass")
+    end
+
+    test "settled status tracks a run and transcript updates are bounded by sequence", %{conn: conn} do
+      seed(:claude, Claude, "r-t1", verdict: nil, state: :running, reason: :approved)
+      seed(:codex, Codex, "r-t2", verdict: nil, state: :running, reason: :approved)
+
+      {:ok, view, _html} = live(conn, "/harness/compare/#{@batch}?tab=codex")
+
+      send(view.pid, {:harness_run_settled, %Status{run_id: "r-live", task_id: "t", agent: :codex, state: :reviewing}})
+      assert render(view) =~ "reviewing"
+
+      send(view.pid, {:harness_transcript_events, "r-live", 1, [{:assistant_text, %{text: "fresh output"}}]})
+      send(view.pid, {:harness_transcript_events, "r-live", 1, [{:assistant_text, %{text: "stale output"}}]})
+
+      html = render(view)
+      assert html =~ "fresh output"
+      refute html =~ "stale output"
     end
   end
 

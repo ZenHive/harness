@@ -49,6 +49,25 @@ defmodule Harness.Chat.ToolsTest do
     assert {:error, {:unknown_tool, "missing-tool"}} = Tools.dispatch(registry, "missing-tool", %{})
   end
 
+  test "dispatch/3 returns a dispatch_failed error when the tool raises" do
+    registry = %{
+      "raising-tool" => %{
+        name: "raising-tool",
+        description: "raises for boundary testing",
+        module: __MODULE__.RaisingTool,
+        function: :run,
+        arity: 0,
+        defaults: 0,
+        input_schema: %{"type" => "object", "additionalProperties" => false},
+        param_keys: [],
+        params: %{}
+      }
+    }
+
+    assert {:error, {:dispatch_failed, message}} = Tools.dispatch(registry, "raising-tool", %{})
+    assert message =~ "tool boom"
+  end
+
   # Review fix #9: an explicitly-passed `null` for an optional param with a
   # default coalesces to that default (LLM callers routinely emit null for
   # unset params) rather than being decoded as a literal nil value. Guards
@@ -463,4 +482,11 @@ defmodule Harness.Chat.ToolsTest do
 
   defp restore_result_store(nil), do: Application.delete_env(:harness, :result_store)
   defp restore_result_store(value), do: Application.put_env(:harness, :result_store, value)
+
+  defmodule RaisingTool do
+    @moduledoc false
+
+    @spec run() :: no_return()
+    def run, do: raise("tool boom")
+  end
 end

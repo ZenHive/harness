@@ -326,10 +326,13 @@ defmodule Harness.CapabilityScore do
 
   @spec ranked_from_entry(entry(), [atom()]) :: [map()]
   defp ranked_from_entry(%Entry{winner: winner, by_agent: by_agent}, agents) do
+    requested_agents = MapSet.new(agents)
+
     measured =
       by_agent
-      |> Map.keys()
-      |> Enum.filter(&(&1 in agents))
+      |> Enum.reduce([], fn {agent, _facts}, acc ->
+        if MapSet.member?(requested_agents, agent), do: [agent | acc], else: acc
+      end)
       |> Enum.sort()
 
     winner_row = %{agent: winner, measurement: :measured, role: :winner}

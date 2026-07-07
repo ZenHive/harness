@@ -168,6 +168,26 @@ defmodule Harness.AgentAdapter.DriverTest do
     end
   end
 
+  describe "run/3 — :on_output hook" do
+    test "a raising hook does not abort the run" do
+      assert {:ok, %Outcome{kind: :exited, exit_status: 0}} =
+               Driver.run(FakeAdapter, invocation(:echo),
+                 total_timeout: 10_000,
+                 idle_timeout: 5_000,
+                 on_output: fn _data -> raise "boom" end
+               )
+    end
+
+    test "a throwing hook does not abort the run" do
+      assert {:ok, %Outcome{kind: :exited, exit_status: 0}} =
+               Driver.run(FakeAdapter, invocation(:echo),
+                 total_timeout: 10_000,
+                 idle_timeout: 5_000,
+                 on_output: fn _data -> throw(:boom) end
+               )
+    end
+  end
+
   describe "run/3 — configuration" do
     test "falls back to :harness, :run config when no options are given" do
       Application.put_env(:harness, :run, total_timeout: 10_000, idle_timeout: 150)

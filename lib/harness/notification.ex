@@ -27,6 +27,21 @@ defmodule Harness.Notification do
 
   require Logger
 
+  @sink_exceptions [
+    ArgumentError,
+    BadArityError,
+    BadFunctionError,
+    CaseClauseError,
+    ErlangError,
+    FunctionClauseError,
+    KeyError,
+    MatchError,
+    Protocol.UndefinedError,
+    RuntimeError,
+    UndefinedFunctionError,
+    WithClauseError
+  ]
+
   @doc """
   Delivers `event` to every configured sink, returning `:ok` unconditionally.
 
@@ -52,9 +67,7 @@ defmodule Harness.Notification do
     sink.notify(event)
     :ok
   rescue
-    # Bare by design: a sink is caller-registered, arbitrary code with an
-    # unbounded exception surface — isolate the witness from any of it.
-    error -> log_failure(sink, event, error)
+    error in @sink_exceptions -> log_failure(sink, event, error)
   catch
     kind, value -> log_failure(sink, event, {kind, value})
   end
