@@ -16004,7 +16004,7 @@
       "id": "356",
       "phase": 22,
       "bundle": "chat-orchestrator",
-      "status": "in_progress",
+      "status": "done",
       "title": "Chat turn-worker crash must fail fast to the caller — monitor instead of bare receive; map ensure_session already_started",
       "scores": {
         "d": 2,
@@ -16036,10 +16036,15 @@
         "lib/harness/chat/supervisor.ex",
         "test/harness/chat/"
       ],
+      "shipped_in": "a4934311952de67dc07bcb04422a36dc0b25249e",
       "body": "Follow-on to task 348 (landed run run-1783390322257-fd5d8940). The turn now runs in a spawn_link'ed worker; an abnormal worker crash still kills the non-trapping session GenServer (same failure surface as before), but user_message/3 callers now park in a bare receive waiting for {:harness_chat_turn, ...} and only leave via their own after-timeout — previously GenServer.call exited immediately when the server died. ChatLive's fire-and-forget 600s Task therefore hangs 10 minutes on a crashed turn, and no :terminal reaches the stream, so the composer sticks. Flagged independently by the run's cross-family reviewer (review_warning concern) and the orchestrator architecture review 2026-07-07. Fix: have the caller monitor the session (receive {:DOWN, ...} -> immediate exit/return), or trap the worker exit in the session and emit_terminal a :crashed terminal + reply before stopping. Fold-in (same files, same seam): ChatSupervisor.ensure_session/1 currently returns the raw {:error, {:already_started, pid}} when two callers race the cold start — map it to {:ok, session_id, pid}.\n",
       "created_at": "2026-07-07",
       "started_at": "2026-07-07",
+      "done_at": "2026-07-07",
       "scored_at": "2026-07-07",
+      "implemented": "Landed by cursor via merge-train; reviewer-approved (run run-1783391791328-90a95fb6, a4934311952de67dc07bcb04422a36dc0b25249e).",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     }
   ]
