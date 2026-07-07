@@ -456,6 +456,46 @@ defmodule Harness.Chat.SessionTest do
     end
   end
 
+  describe "turn worker crash" do
+    test "returns immediately with :crashed terminal, not after caller timeout" do
+      crash = fn _req, _cb, _opts -> raise "backend crash" end
+
+      {:ok, session_id, pid} =
+        Supervisor.start_session(backend: FunBackend, backend_opts: [fun: crash])
+
+      assert :ok = Stream.subscribe(session_id)
+
+      started = System.monotonic_time(:millisecond)
+
+      assert {:error, %{type: :terminal, reason: :crashed}} =
+               Session.user_message(session_id, "boom", 60_000)
+
+      elapsed = System.monotonic_time(:millisecond) - started
+      assert elapsed < 5_000
+
+      assert_received {:harness_chat_stream, ^session_id, %{type: :terminal, reason: :crashed}}
+      assert Process.alive?(pid)
+    end
+
+    test "session survives a turn worker crash and accepts a later message" do
+      crash = fn _req, _cb, _opts -> raise "backend crash" end
+      ok = fn _req, _cb, _opts -> {:ok, %{content: [%{type: "text", text: "ok"}], stop_reason: "end_turn"}} end
+
+      {:ok, crash_id, crash_pid} =
+        Supervisor.start_session(backend: FunBackend, backend_opts: [fun: crash])
+
+      assert {:error, %{type: :terminal, reason: :crashed}} =
+               Session.user_message(crash_id, "boom", 5_000)
+
+      assert Process.alive?(crash_pid)
+
+      {:ok, stable_id, _stable_pid} =
+        Supervisor.start_session(backend: FunBackend, backend_opts: [fun: ok])
+
+      assert {:ok, _} = Session.user_message(stable_id, "still here")
+    end
+  end
+
   describe "supervision" do
     test "start_session registers a session under Harness.Chat.Registry" do
       noop = fn _, _, _ -> {:ok, %{content: [], stop_reason: "end_turn"}} end
@@ -468,22 +508,19 @@ defmodule Harness.Chat.SessionTest do
     end
 
     test "session crash does not affect a sibling session" do
-      crash = fn _req, _cb, _opts ->
-        raise "backend crash"
-      end
+      ok = fn _req, _cb, _opts -> {:ok, %{content: [], stop_reason: "end_turn"}} end
+      crash = fn _req, _cb, _opts -> raise "backend crash" end
 
       {:ok, stable_id, stable_pid} =
-        Supervisor.start_session(
-          backend: FunBackend,
-          backend_opts: [fun: fn _, _, _ -> {:ok, %{content: [], stop_reason: "end_turn"}} end]
-        )
+        Supervisor.start_session(backend: FunBackend, backend_opts: [fun: ok])
 
       {:ok, crash_id, crash_pid} =
         Supervisor.start_session(backend: FunBackend, backend_opts: [fun: crash])
 
-      assert catch_exit(Session.user_message(crash_id, "boom", 5_000))
-      refute Process.alive?(crash_pid)
+      assert {:error, %{type: :terminal, reason: :crashed}} =
+               Session.user_message(crash_id, "boom", 5_000)
 
+      assert Process.alive?(crash_pid)
       assert Process.alive?(stable_pid)
       assert {:ok, _} = Session.user_message(stable_id, "still here")
     end
@@ -531,6 +568,24 @@ defmodule Harness.Chat.SessionTest do
       {:ok, _id, pid2} = Supervisor.ensure_session(opts)
 
       assert pid1 == pid2
+    end
+
+    test "concurrent ensure_session cold start maps already_started to {:ok, id, pid}" do
+      noop = fn _, _, _ -> {:ok, %{content: [], stop_reason: "end_turn"}} end
+      id = "ensure-race-#{System.unique_integer([:positive])}"
+      opts = [id: id, backend: FunBackend, backend_opts: [fun: noop]]
+
+      tasks =
+        for _ <- 1..10 do
+          Task.async(fn -> Supervisor.ensure_session(opts) end)
+        end
+
+      results = Task.await_many(tasks, 5_000)
+
+      assert Enum.all?(results, &match?({:ok, ^id, _}, &1))
+
+      pids = for {:ok, _, pid} <- results, do: pid
+      assert length(Enum.uniq(pids)) == 1
     end
   end
 

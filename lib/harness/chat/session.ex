@@ -13,6 +13,7 @@ defmodule Harness.Chat.Session do
   alias Harness.Chat.Store
   alias Harness.Chat.Store.SessionRecord
   alias Harness.Chat.Stream
+  alias Harness.Chat.Supervisor, as: ChatSupervisor
   alias Harness.Chat.Tools
   alias Harness.JSONSafe
 
@@ -34,6 +35,7 @@ defmodule Harness.Chat.Session do
           | :dispatch_failed
           | :busy
           | :cancelled
+          | :crashed
 
   @type terminal :: %{
           required(:type) => :terminal,
@@ -58,18 +60,37 @@ defmodule Harness.Chat.Session do
         {:error, terminal}
 
       :accepted ->
-        receive do
-          {:harness_chat_turn, ^caller, result} -> result
-        after
-          timeout -> exit({:timeout, {__MODULE__, :user_message, [session_id, text, timeout]}})
-        end
+        session_ref =
+          case ChatSupervisor.whereis(session_id) do
+            pid when is_pid(pid) -> Process.monitor(pid)
+            nil -> nil
+          end
+
+        result =
+          receive do
+            {:harness_chat_turn, ^caller, turn_result} ->
+              turn_result
+
+            {:DOWN, ^session_ref, :process, _pid, reason} ->
+              {:error,
+               %{
+                 type: :terminal,
+                 reason: :crashed,
+                 message: "Chat session process exited: #{inspect(reason)}"
+               }}
+          after
+            timeout -> exit({:timeout, {__MODULE__, :user_message, [session_id, text, timeout]}})
+          end
+
+        if session_ref, do: Process.demonitor(session_ref, [:flush])
+        result
     end
   end
 
   @doc """
   Requests cancellation of an in-flight turn.
 
-  Forwards `:harness_cancel` to the linked turn worker when a message is in
+  Forwards `:harness_cancel` to the monitored turn worker when a message is in
   flight so backends that park in a `receive` (e.g. `Harness.Chat.Claude`'s Port
   drive loop) can tear down promptly. When the session is idle the signal is a
   no-op (see `handle_info/2`).
@@ -80,7 +101,7 @@ defmodule Harness.Chat.Session do
   """
   @spec cancel(String.t()) :: :ok
   def cancel(session_id) when is_binary(session_id) do
-    case Harness.Chat.Supervisor.whereis(session_id) do
+    case ChatSupervisor.whereis(session_id) do
       nil ->
         :ok
 
@@ -99,7 +120,7 @@ defmodule Harness.Chat.Session do
   """
   @spec snapshot(String.t()) :: {:ok, [map()]} | {:error, :not_found}
   def snapshot(session_id) when is_binary(session_id) do
-    case Harness.Chat.Supervisor.whereis(session_id) do
+    case ChatSupervisor.whereis(session_id) do
       nil -> {:error, :not_found}
       _pid -> {:ok, GenServer.call(via(session_id), :snapshot)}
     end
@@ -124,7 +145,9 @@ defmodule Harness.Chat.Session do
       idle_timer: nil,
       tool_call_history: MapSet.new(),
       busy?: false,
-      turn_pid: nil
+      turn_pid: nil,
+      turn_ref: nil,
+      turn_caller: nil
     }
 
     {:ok, arm_idle_timer(state)}
@@ -147,16 +170,24 @@ defmodule Harness.Chat.Session do
     busy_state =
       state
       |> cancel_idle_timer()
-      |> Map.merge(%{busy?: true, tool_call_history: MapSet.new(), turn_pid: nil})
+      |> Map.merge(%{
+        busy?: true,
+        tool_call_history: MapSet.new(),
+        turn_pid: nil,
+        turn_ref: nil,
+        turn_caller: caller
+      })
 
     turn_pid =
-      spawn_link(fn ->
+      spawn(fn ->
         {result, new_state} = run_turn(busy_state, text)
         persist(new_state)
         send(parent, {:turn_finished, caller, result, new_state})
       end)
 
-    {:reply, :accepted, %{busy_state | turn_pid: turn_pid}}
+    turn_ref = Process.monitor(turn_pid)
+
+    {:reply, :accepted, %{busy_state | turn_pid: turn_pid, turn_ref: turn_ref}}
   end
 
   @doc false
@@ -179,10 +210,24 @@ defmodule Harness.Chat.Session do
 
   def handle_info(:harness_cancel, state), do: {:noreply, state}
 
-  def handle_info({:turn_finished, caller, result, new_state}, _state) do
+  def handle_info({:turn_finished, caller, result, new_state}, state) do
+    if state.turn_ref, do: Process.demonitor(state.turn_ref, [:flush])
     send(caller, {:harness_chat_turn, caller, result})
-    {:noreply, new_state |> Map.put(:busy?, false) |> Map.put(:turn_pid, nil) |> arm_idle_timer()}
+    {:noreply, finish_turn(new_state)}
   end
+
+  def handle_info(
+        {:DOWN, ref, :process, turn_pid, reason},
+        %{turn_ref: ref, turn_pid: turn_pid, turn_caller: caller} = state
+      ) do
+    terminal =
+      emit_terminal(state.session_id, terminal(:crashed, turn_crash_message(reason)))
+
+    send(caller, {:harness_chat_turn, caller, {:error, terminal}})
+    {:noreply, finish_turn(state)}
+  end
+
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state), do: {:noreply, state}
 
   def handle_info(:session_idle_timeout, %{busy?: true} = state), do: {:noreply, state}
 
@@ -450,6 +495,20 @@ defmodule Harness.Chat.Session do
     ref = Process.send_after(self(), :session_idle_timeout, state.idle_timeout)
     %{state | idle_timer: ref}
   end
+
+  @spec finish_turn(map()) :: map()
+  defp finish_turn(state) do
+    state
+    |> Map.put(:busy?, false)
+    |> Map.put(:turn_pid, nil)
+    |> Map.put(:turn_ref, nil)
+    |> Map.put(:turn_caller, nil)
+    |> arm_idle_timer()
+  end
+
+  @spec turn_crash_message(term()) :: String.t()
+  defp turn_crash_message({:exit, reason}), do: "Turn worker crashed: #{inspect(reason)}"
+  defp turn_crash_message(reason), do: "Turn worker crashed: #{inspect(reason)}"
 
   @spec cancel_idle_timer(map()) :: map()
   defp cancel_idle_timer(%{idle_timer: ref} = state) when is_reference(ref) do
