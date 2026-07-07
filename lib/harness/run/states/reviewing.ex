@@ -1,7 +1,22 @@
 defmodule Harness.Run.States.Reviewing do
   @moduledoc false
 
-  import Harness.Run.Actions
+  import Harness.Run.Actions, only: [handle_common: 4]
+  import Harness.Run.Actions.Control, only: [terminate_reviewer: 1]
+
+  import Harness.Run.Actions.Reviewing,
+    only: [
+      clear_reviewer_run: 1,
+      ensure_reviewer_model_available: 1,
+      rotate_or_fail_review: 2,
+      run_reviewer: 2,
+      settle_review: 2
+    ]
+
+  import Harness.Run.Actions.Timeouts,
+    only: [reviewer_idle_timeout_report: 1, reviewer_spawn_timeout_report: 1, reviewing_idle_timeout: 1]
+
+  import Harness.Run.Actions.Transcript, only: [stamp_state_entry: 2, start_task: 1, status_snapshot: 2]
 
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Run, as: AgentRun

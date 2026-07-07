@@ -92,7 +92,12 @@ defmodule Harness.Run do
   alias Harness.Project
   alias Harness.ResultStore
   alias Harness.Roadmap.Item
-  alias Harness.Run.Actions
+  alias Harness.Run.Actions.Discernment, as: RunDiscernment
+  alias Harness.Run.Actions.Reviewing, as: RunReviewing
+  alias Harness.Run.Actions.Settlement, as: RunSettlement
+  alias Harness.Run.Actions.Timeouts, as: RunTimeouts
+  alias Harness.Run.Actions.Transcript, as: RunTranscript
+  alias Harness.Run.Actions.Worktree, as: RunWorktree
   alias Harness.Run.Recovery
   alias Harness.Run.Result
   alias Harness.Run.Review
@@ -444,7 +449,7 @@ defmodule Harness.Run do
     # it through `Harness.ProjectRegistry.lookup/1`, the single read boundary that
     # applies the operator's persisted override. The run trusts the effective
     # struct it is handed — it does not re-derive policy (no per-call-site overlay).
-    {mem_threshold_kb, mem_sample_interval} = Actions.mem_watchdog_config(opts)
+    {mem_threshold_kb, mem_sample_interval} = RunWorktree.mem_watchdog_config(opts)
 
     started_at = DateTime.utc_now(:millisecond)
 
@@ -456,18 +461,18 @@ defmodule Harness.Run do
       subscriber: Keyword.get(opts, :subscriber),
       result_store: Keyword.get(opts, :result_store, ResultStore.configured()),
       batch_id: Keyword.get(opts, :batch_id) || run_id,
-      requested_model: Actions.requested_model(opts, item, adapter),
+      requested_model: RunWorktree.requested_model(opts, item, adapter),
       started_at: started_at,
       state_entered_at: %{dispatched: started_at},
       started_at_ms: System.monotonic_time(:millisecond),
-      total_timeout: Actions.run_timeout(opts, :total_timeout),
-      idle_timeout: Actions.run_timeout(opts, :idle_timeout),
+      total_timeout: RunWorktree.run_timeout(opts, :total_timeout),
+      idle_timeout: RunWorktree.run_timeout(opts, :idle_timeout),
       implementer_idle_timeout: Keyword.get(opts, :implementer_idle_timeout),
       progress_timeout: Keyword.get(opts, :progress_timeout),
-      lifetime_timeout: Actions.run_timeout(opts, :lifetime_timeout),
-      max_hold_timeout: Actions.run_timeout(opts, :max_hold_timeout),
-      terminal_linger: Actions.run_timeout(opts, :terminal_linger),
-      reviewer: Keyword.get(opts, :reviewer, project.reviewer || Actions.configured(:reviewer, nil)),
+      lifetime_timeout: RunWorktree.run_timeout(opts, :lifetime_timeout),
+      max_hold_timeout: RunWorktree.run_timeout(opts, :max_hold_timeout),
+      terminal_linger: RunWorktree.run_timeout(opts, :terminal_linger),
+      reviewer: Keyword.get(opts, :reviewer, project.reviewer || RunWorktree.configured(:reviewer, nil)),
       reviewer_adapter: nil,
       reviewer_candidates: [],
       reviewer_adapter_opts: Keyword.get(opts, :reviewer_adapter_opts, []),
@@ -481,7 +486,7 @@ defmodule Harness.Run do
       recovery_outcome: nil,
       recovery_repaired: nil,
       recovery_token_usage: TokenUsage.empty(),
-      reviewer_spawn_timeout: Actions.run_timeout(opts, :reviewer_spawn_timeout),
+      reviewer_spawn_timeout: RunWorktree.run_timeout(opts, :reviewer_spawn_timeout),
       reviewing_idle_timeout: Keyword.get(opts, :reviewing_idle_timeout),
       mem_threshold_kb: mem_threshold_kb,
       mem_sample_interval: mem_sample_interval,
@@ -497,17 +502,17 @@ defmodule Harness.Run do
       hold_requested: false,
       hold_reason: nil,
       operator_feedback: nil,
-      in_run_discernment: Actions.in_run_discernment_opts(opts),
+      in_run_discernment: RunDiscernment.in_run_discernment_opts(opts),
       substrate_retry: Keyword.get(opts, :substrate_retry, []),
       base_dir: Keyword.get(opts, :base_dir),
       base_ref: Keyword.get(opts, :base_ref),
       adapter_opts: Keyword.get(opts, :adapter_opts, []),
-      env: Actions.run_env(project, run_id, Keyword.get(opts, :env, %{})),
+      env: RunWorktree.run_env(project, run_id, Keyword.get(opts, :env, %{})),
       land_attempt: Keyword.get(opts, :land_attempt, 1),
       worktree: nil,
       checkout_snapshot: nil,
       checkout_pollution_check?: Keyword.get(opts, :checkout_pollution_check, false),
-      pollution_allowlist: Actions.resolve_pollution_allowlist(project, opts),
+      pollution_allowlist: RunWorktree.resolve_pollution_allowlist(project, opts),
       agent_run: nil,
       agent_outcome: nil,
       composed_inputs: [],
@@ -522,9 +527,9 @@ defmodule Harness.Run do
       transcript: <<>>,
       transcript_bytes: 0,
       transcript_seq: 0,
-      agent_kind: Actions.agent_kind_for(adapter),
+      agent_kind: RunTranscript.agent_kind_for(adapter),
       transcript_events: [],
-      transcript_parser_state: Actions.init_parser_state(adapter)
+      transcript_parser_state: RunTranscript.init_parser_state(adapter)
     }
 
     {:ok, :dispatched, data,
@@ -540,41 +545,41 @@ defmodule Harness.Run do
   def terminate(_reason, _state, %{result: %Result{}}), do: :ok
 
   def terminate(reason, state, data) do
-    Actions.crash_settle(data, state, reason)
+    RunSettlement.crash_settle(data, state, reason)
     :ok
   end
 
   @doc false
   @spec recoverable_code_reload_states() :: [atom()]
-  defdelegate recoverable_code_reload_states, to: Actions
+  defdelegate recoverable_code_reload_states, to: RunSettlement
 
   @doc false
   @spec prioritize_reviewers([{atom(), module()}], %{optional(module()) => float()}) :: [{atom(), module()}]
-  defdelegate prioritize_reviewers(candidates, rates), to: Actions
+  defdelegate prioritize_reviewers(candidates, rates), to: RunReviewing
 
   @doc false
   @spec reviewer_dispatchable?(module()) :: boolean()
-  defdelegate reviewer_dispatchable?(module), to: Actions
+  defdelegate reviewer_dispatchable?(module), to: RunReviewing
 
   @doc false
   @spec reviewer_model_available?(data()) :: :ok | {:error, term()}
-  defdelegate reviewer_model_available?(data), to: Actions
+  defdelegate reviewer_model_available?(data), to: RunReviewing
 
   @doc false
   @spec implementer_idle_timeout(timeout() | nil) :: timeout()
-  defdelegate implementer_idle_timeout(idle), to: Actions
+  defdelegate implementer_idle_timeout(idle), to: RunTimeouts
 
   @doc false
   @spec reviewing_idle_timeout(data()) :: pos_integer()
-  defdelegate reviewing_idle_timeout(data), to: Actions
+  defdelegate reviewing_idle_timeout(data), to: RunTimeouts
 
   @doc false
   @spec reviewer_idle_timeout(timeout() | nil) :: timeout()
-  defdelegate reviewer_idle_timeout(idle), to: Actions
+  defdelegate reviewer_idle_timeout(idle), to: RunTimeouts
 
   @doc false
   @spec discernment_weight_passes?(data(), keyword(), integer()) :: boolean()
-  defdelegate discernment_weight_passes?(data, opts, now), to: Actions
+  defdelegate discernment_weight_passes?(data, opts, now), to: RunDiscernment
 
   # ── State callbacks — per-state handlers live under Harness.Run.States ────
 

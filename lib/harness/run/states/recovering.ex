@@ -1,7 +1,16 @@
 defmodule Harness.Run.States.Recovering do
   @moduledoc false
 
-  import Harness.Run.Actions
+  import Harness.Run.Actions, only: [handle_common: 4]
+  import Harness.Run.Actions.Control, only: [terminate_recovery: 1]
+
+  import Harness.Run.Actions.Recovery,
+    only: [clear_recovery_run: 1, fail_recovery_dead: 2, run_recovery: 2, settle_recovery: 2]
+
+  import Harness.Run.Actions.Reviewing, only: [select_reviewers: 1]
+  import Harness.Run.Actions.Settlement, only: [accumulate_recovery_token_usage: 2]
+  import Harness.Run.Actions.Timeouts, only: [reviewing_idle_timeout: 1]
+  import Harness.Run.Actions.Transcript, only: [stamp_state_entry: 2, start_task: 1, status_snapshot: 2]
 
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Run, as: AgentRun

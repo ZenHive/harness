@@ -1,7 +1,11 @@
 defmodule Harness.Run.States.Committing do
   @moduledoc false
 
-  import Harness.Run.Actions
+  import Harness.Run.Actions, only: [handle_common: 4]
+  import Harness.Run.Actions.Control, only: [fail: 2]
+  import Harness.Run.Actions.Reviewing, only: [route_to_review: 1]
+  import Harness.Run.Actions.Transcript, only: [stamp_state_entry: 2, start_task: 1, status_snapshot: 2]
+  import Harness.Run.Actions.Worktree, only: [commit_message: 1, commit_worktree: 3]
 
   alias Harness.Dashboard.RunFeed
 

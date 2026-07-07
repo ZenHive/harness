@@ -1,7 +1,11 @@
 defmodule Harness.Run.States.Dispatched do
   @moduledoc false
 
-  import Harness.Run.Actions
+  import Harness.Run.Actions, only: [handle_common: 4]
+  import Harness.Run.Actions.Control, only: [fail: 2]
+  import Harness.Run.Actions.Reviewing, only: [maybe_validate_implementer_isolation: 1, route_after_dispatch: 1]
+  import Harness.Run.Actions.Transcript, only: [stamp_state_entry: 2, start_task: 1, status_snapshot: 2]
+  import Harness.Run.Actions.Worktree, only: [worktree_opts: 1]
 
   alias Harness.Dashboard.RunFeed
   alias Harness.Worktree

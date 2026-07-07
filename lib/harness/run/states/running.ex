@@ -1,7 +1,25 @@
 defmodule Harness.Run.States.Running do
   @moduledoc false
 
-  import Harness.Run.Actions
+  import Harness.Run.Actions, only: [handle_common: 4, settle_implementer_outcome: 2]
+  import Harness.Run.Actions.Control, only: [cancel_task: 1, do_cancel: 3, do_hold: 2, fail: 2, terminate_agent: 1]
+
+  import Harness.Run.Actions.Discernment,
+    only: [discernment_failure_feedback: 1, handle_in_run_discernment_outcome: 3, notify_in_run_discernment: 4]
+
+  import Harness.Run.Actions.Recovery, only: [recover_checkout_pollution: 2]
+  import Harness.Run.Actions.Timeouts, only: [running_idle_timeout: 1]
+  import Harness.Run.Actions.Transcript, only: [stamp_state_entry: 2, start_task: 1, status_snapshot: 2]
+
+  import Harness.Run.Actions.Worktree,
+    only: [
+      build_invocation: 1,
+      checkout_pollution_reason: 1,
+      checkout_snapshot_for_run: 1,
+      driver_opts: 2,
+      run_driver: 4,
+      tag_composed_input: 2
+    ]
 
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Run, as: AgentRun

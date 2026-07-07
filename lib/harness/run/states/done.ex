@@ -1,7 +1,9 @@
 defmodule Harness.Run.States.Done do
   @moduledoc false
 
-  import Harness.Run.Actions
+  import Harness.Run.Actions, only: [handle_common: 4]
+  import Harness.Run.Actions.Settlement, only: [settle: 2]
+  import Harness.Run.Actions.Transcript, only: [stamp_state_entry: 2]
 
   @typep data :: map()
   @typep event :: term()

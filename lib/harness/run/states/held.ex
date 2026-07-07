@@ -1,7 +1,9 @@
 defmodule Harness.Run.States.Held do
   @moduledoc false
 
-  import Harness.Run.Actions
+  import Harness.Run.Actions, only: [handle_common: 4]
+  import Harness.Run.Actions.Control, only: [fail: 2, hold_enter_actions: 1]
+  import Harness.Run.Actions.Transcript, only: [stamp_state_entry: 2, status_snapshot: 2]
 
   alias Harness.Dashboard.RunFeed
 
