@@ -75,6 +75,7 @@ defmodule Harness.Dispatch do
   alias Harness.Run.Status
   alias Harness.Run.TranscriptSnapshot
   alias Harness.Run.Worker, as: RunWorker
+  alias Harness.ToolingBaseline.Dispatch, as: ToolingBaselineDispatch
   alias Oban.Job
 
   require Logger
@@ -265,6 +266,49 @@ defmodule Harness.Dispatch do
       when is_binary(project_name) and is_binary(adapter) and (is_binary(model) or is_nil(model)) and
              is_boolean(scrub_anthropic_key) do
     DependencyBump.dispatch(project_name, adapter, model, scrub_anthropic_key)
+  end
+
+  api(
+    :tooling_baseline,
+    "Operator-triggered tooling-baseline install: create a task from stored conformance-drift facts and dispatch it through the normal implementer -> reviewer -> land agent gate. Harness does NOT edit mix.exs, install deps, build, or verify the project itself.",
+    params: [
+      project_name: [
+        kind: :value,
+        description:
+          "Registered project name; resolved via Harness.ProjectRegistry.lookup/1. SOURCE valid names from project_registry-list."
+      ],
+      adapter: [
+        kind: :value,
+        default: "codex",
+        description:
+          "Executor for the generated tooling-baseline task: codex | cursor | grok | antigravity | pi | claude. The generated rmap task is also assigned to this adapter unless adapter is recommend."
+      ],
+      model: [
+        kind: :value,
+        default: nil,
+        description:
+          "Optional model id to pin on the generated tooling-baseline task, e.g. gpt-5.5 for codex. nil leaves normal per-agent model configuration in control."
+      ],
+      scrub_anthropic_key: [
+        kind: :value,
+        default: true,
+        description:
+          "When true (default), scrubs ANTHROPIC_API_KEY from the agent's environment. Harmless for non-Claude adapters."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{project_name, tasks: [%{task_id, run_id, language, kind, missing, skipped_languages, check_command}], skipped_languages}}. The task is generated from stored tooling-baseline conformance facts and enqueued through Harness.Run.Worker; harness performs no install or verification itself. {:error, reason}: unknown project/adapter, missing conformance snapshot, rmap failure, or enqueue failure."
+    }
+  )
+
+  @spec tooling_baseline(String.t(), String.t(), String.t() | nil, boolean()) ::
+          {:ok, ToolingBaselineDispatch.result()} | {:error, ToolingBaselineDispatch.error()}
+  def tooling_baseline(project_name, adapter \\ "codex", model \\ nil, scrub_anthropic_key \\ true)
+      when is_binary(project_name) and is_binary(adapter) and (is_binary(model) or is_nil(model)) and
+             is_boolean(scrub_anthropic_key) do
+    ToolingBaselineDispatch.dispatch(project_name, adapter, model, scrub_anthropic_key)
   end
 
   @spec poll_until_settled(String.t(), integer(), non_neg_integer()) :: {:ok, map()}

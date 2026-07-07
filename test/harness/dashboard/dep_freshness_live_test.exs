@@ -15,6 +15,8 @@ defmodule Harness.Dashboard.DepFreshnessLiveTest do
     prev = Application.get_env(:harness, :dep_freshness_store)
     prev_creator = Application.get_env(:harness, :dependency_bump_task_creator)
     prev_enqueuer = Application.get_env(:harness, :dependency_bump_enqueuer)
+    prev_baseline_creator = Application.get_env(:harness, :tooling_baseline_task_creator)
+    prev_baseline_enqueuer = Application.get_env(:harness, :tooling_baseline_enqueuer)
     prev_ingest = Application.get_env(:harness, :roadmap_ingest)
 
     Application.put_env(:harness, :dep_freshness_store, {Store, scope: :dep_freshness_live_test})
@@ -25,6 +27,8 @@ defmodule Harness.Dashboard.DepFreshnessLiveTest do
       Application.put_env(:harness, :dep_freshness_store, prev)
       restore_env(:dependency_bump_task_creator, prev_creator)
       restore_env(:dependency_bump_enqueuer, prev_enqueuer)
+      restore_env(:tooling_baseline_task_creator, prev_baseline_creator)
+      restore_env(:tooling_baseline_enqueuer, prev_baseline_enqueuer)
       restore_env(:roadmap_ingest, prev_ingest)
 
       for project <- ProjectRegistry.list(), do: ProjectRegistry.unregister(project.name)
@@ -108,6 +112,41 @@ defmodule Harness.Dashboard.DepFreshnessLiveTest do
     assert html =~ "legacy stack"
     assert html =~ "Advisory (not enforced)"
     assert html =~ "PostToolUse hooks"
+    assert html =~ "Bring to baseline"
+  end
+
+  test "dispatches tooling baseline runs from the baseline button", %{conn: conn} do
+    owner = self()
+    project = ProjectFixture.from_repo("/tmp/harness-baseline-dispatch", name: "baseline-dispatch", languages: [:elixir])
+    :ok = ProjectRegistry.register(project)
+
+    snapshot =
+      Snapshot.build("baseline-dispatch", "elixir", [], conformance: conformance_snapshot())
+
+    assert :ok = DepFreshnessStore.record_snapshot(snapshot, DepFreshnessStore.configured())
+
+    Application.put_env(:harness, :tooling_baseline_task_creator, fn _project, specs, _adapter, _model ->
+      send(owner, {:baseline_specs, specs})
+      {:ok, ["802"]}
+    end)
+
+    Application.put_env(:harness, :roadmap_ingest, fn {:id, "802"}, opts ->
+      {:ok, %Harness.Roadmap.Item{id: "802", title: "baseline", prompt: "prompt", agent: opts[:agent]}}
+    end)
+
+    Application.put_env(:harness, :tooling_baseline_enqueuer, fn _project, item, _adapter, _opts ->
+      {:ok, "run-#{item.id}", %Oban.Job{id: 802}}
+    end)
+
+    {:ok, view, _html} = live(conn, "/harness/deps/baseline-dispatch")
+
+    view
+    |> element("#tooling-baseline-button")
+    |> render_click()
+
+    assert_received {:baseline_specs, [spec]}
+    assert spec.body =~ "Ground-truth tooling baseline drift facts"
+    assert spec.body =~ "credo"
   end
 
   test "shows empty state before the first scan", %{conn: conn} do

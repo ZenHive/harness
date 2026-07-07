@@ -62,6 +62,10 @@ defmodule Harness.Dashboard.DepFreshnessLive do
     {:noreply, dispatch_update_deps(socket, name)}
   end
 
+  def handle_event("tooling_baseline", %{"project" => name}, socket) do
+    {:noreply, dispatch_tooling_baseline(socket, name)}
+  end
+
   @impl Phoenix.LiveView
   @spec render(map()) :: Rendered.t()
   def render(assigns) do
@@ -158,10 +162,15 @@ defmodule Harness.Dashboard.DepFreshnessLive do
       </tbody>
     </table>
 
-    <.conformance_panel :if={@snapshot.conformance} conformance={@snapshot.conformance} />
+    <.conformance_panel
+      :if={@snapshot.conformance}
+      project={@project}
+      conformance={@snapshot.conformance}
+    />
     """
   end
 
+  attr(:project, Project, required: true)
   attr(:conformance, :map, required: true)
 
   @spec conformance_panel(map()) :: Rendered.t()
@@ -174,6 +183,16 @@ defmodule Harness.Dashboard.DepFreshnessLive do
           @conformance.checked_at
         )}
       </p>
+
+      <button
+        id="tooling-baseline-button"
+        type="button"
+        phx-click="tooling_baseline"
+        phx-value-project={@project.name}
+        disabled={@conformance.drift_count == 0}
+      >
+        Bring to baseline
+      </button>
 
       <table id="tooling-baseline-items">
         <thead>
@@ -228,6 +247,17 @@ defmodule Harness.Dashboard.DepFreshnessLive do
 
       {:error, reason} ->
         put_flash(socket, :error, "Dependency bump dispatch failed: #{inspect(reason)}")
+    end
+  end
+
+  @spec dispatch_tooling_baseline(Socket.t(), String.t()) :: Socket.t()
+  defp dispatch_tooling_baseline(%Socket{} = socket, project_name) when is_binary(project_name) do
+    case Dispatch.tooling_baseline(project_name) do
+      {:ok, %{tasks: tasks}} ->
+        put_flash(socket, :info, "Dispatched #{length(tasks)} tooling baseline run(s).")
+
+      {:error, reason} ->
+        put_flash(socket, :error, "Tooling baseline dispatch failed: #{inspect(reason)}")
     end
   end
 

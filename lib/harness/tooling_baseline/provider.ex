@@ -8,8 +8,12 @@ defmodule Harness.ToolingBaseline.Provider do
 
   alias Harness.Project
   alias Harness.ToolingBaseline.Snapshot
+  alias Harness.ToolingBaseline.TaskSpec
 
   @doc "Scans one project checkout and returns raw baseline conformance facts."
   @callback scan(Project.t(), String.t(), keyword()) ::
               {:ok, Snapshot.t()} | {:error, term()} | {:skipped, term()}
+
+  @doc "Builds the operator-triggered install task from stored conformance facts."
+  @callback build_task_spec(Project.t(), Snapshot.t(), keyword()) :: TaskSpec.t() | nil
 end
