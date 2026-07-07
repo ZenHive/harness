@@ -15474,7 +15474,7 @@
       "id": "343",
       "phase": 22,
       "bundle": "resilience",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Run gen_statem crashes with case_clause when cancel reason is {:redispatched, run_id}",
       "scores": {
         "d": 3,
@@ -15504,6 +15504,7 @@
       ],
       "body": "Observed 2026-07-04 dispatching tapakly task 330 (run-1783129787191-c1482f84): the run settled failed with reason {:run_crashed, {:case_clause, {:cancel, {:redispatched, \"run-1783130107972-4f577d15\"}}}}. Something (the reflex redispatch path) cancelled the superseded run with a structured reason {:redispatched, new_run_id}, and a case/cond in the Run gen_statem's cancel handling only matches the plain :cancelled shape, so the process crashed instead of settling cleanly. The redispatched replacement run itself then halted with {:reflex_halted, :progress_stalled}, so the crash also cost the retry context. Find the cancel-reason case, accept structured cancel reasons (or normalize them before the match), and settle the superseded run as failed/cancelled without a crash.\n\n2026-07-06 content-review note — crash site located: Harness.Run.route_reflex_halt/2 (lib/harness/run.ex ~1631) case-matches only :ok | {:cancel, {:blocked, _}} | {:error, _} from Resilience.route/2, but the reflex-halt redispatch path (Harness.Lander.Resilience.redispatch/3, lib/harness/lander/resilience.ex:178) returns {:cancel, {:redispatched, run_id}} — the unmatched shape IS the case_clause. Fix belongs there (accept {:cancel, reason} generally and settle/witness the structured reason), not in the handle_common :cancel call handler, which already normalizes caller cancels to :cancelled.\n\n2026-07-07 dedupe note — recurred on tapakly task 359 (run-1783371223893-b56b7a77): same {:run_crashed, {:case_clause, {:cancel, {:redispatched, ...}}}} settle while the successor run completed and was approved, so the ledger records :run_crashed for a task that actually shipped. Duplicate task 354 (filed by a parallel session on the fresh evidence) superseded into this one; its ledger-hygiene criterion folded into the ACs above.",
       "created_at": "2026-07-04",
+      "started_at": "2026-07-07",
       "scored_at": "2026-07-04",
       "cross_repo": []
     },

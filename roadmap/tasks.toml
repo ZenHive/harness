@@ -10227,7 +10227,7 @@ scored_at = "2026-07-01"
 id = "343"
 phase = 22
 bundle = "resilience"
-status = "pending"
+status = "in_progress"
 title = "Run gen_statem crashes with case_clause when cancel reason is {:redispatched, run_id}"
 scores = { d = 3, b = 6, u = 5 }
 acceptance_criteria = ["Cancelling a run with a structured reason such as {:redispatched, run_id} settles the run without a gen_statem crash", "The settled record preserves the structured reason for verdict/status readers (naming the successor run_id)", "The original run's run_record no longer reads :run_crashed when its task was successfully redispatched (ledger hygiene)", "A regression test covers cancel-with-structured-reason during an in-flight run"]
@@ -10241,6 +10241,7 @@ body = """Observed 2026-07-04 dispatching tapakly task 330 (run-1783129787191-c1
 
 2026-07-07 dedupe note — recurred on tapakly task 359 (run-1783371223893-b56b7a77): same {:run_crashed, {:case_clause, {:cancel, {:redispatched, ...}}}} settle while the successor run completed and was approved, so the ledger records :run_crashed for a task that actually shipped. Duplicate task 354 (filed by a parallel session on the fresh evidence) superseded into this one; its ledger-hygiene criterion folded into the ACs above."""
 created_at = "2026-07-04"
+started_at = "2026-07-07"
 scored_at = "2026-07-04"
 
 [[task]]

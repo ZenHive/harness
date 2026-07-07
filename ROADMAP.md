@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 22 — Live-Run Observability — stop flying blind while an agent works (16 of 35 done · 2 in progress)
+**Focus phase:** 22 — Live-Run Observability — stop flying blind while an agent works (16 of 35 done · 3 in progress)
 
 **Last shipped:** Task 346 — Port the Task-163 evidence-preserving record_run merge to ResultStore.Memory, Task 347 — Worktree sweeper is depth-blind: */* glob never finds leaked landing/audit worktrees after a crash mid-land, Task 350 — AgentKPI.duration_summary/1 crashes with ArithmeticError on [] — reachable from the Postgres KPI rollup on 2026-07-07
 
-**Up next:** Task 343 — Run gen_statem crashes with case_clause when cancel reason is {:redispatched, run_id} [D:3/B:6/U:5 → Eff:1.83] 🚀
+**Up next:** Task 332 — Operator 'update deps' action: dispatch a dep-bump through the agent-gate [D:5/B:7/U:7 → Eff:1.4] 📋
 <!-- FOCUS:END -->
 
 ---
