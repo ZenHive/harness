@@ -15236,7 +15236,7 @@
       "id": "338",
       "phase": 22,
       "bundle": "core-loop",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Triage Reach repeated-map-shape findings into structs, explicit contracts, or documented suppressions",
       "scores": {
         "d": 4,
@@ -15290,6 +15290,7 @@
       ],
       "body": "`mix reach.check --arch --smells` on 2026-06-30 reported repeated map shapes across dashboard payloads, transcript parsing, routing/model availability facts, dispatch summaries, code-search rows, KPI totals, and child specs. These are advisory findings, not automatic refactors: some maps may be the correct JSON-native boundary shape, while others are real drift-prone contracts. Triage the full list from that run, convert only the shared contracts that deserve names, and make every keep-as-map decision explicit so future Reach runs distinguish intentional maps from unexamined debt.",
       "created_at": "2026-06-30",
+      "started_at": "2026-07-07",
       "scored_at": "2026-06-30",
       "cross_repo": []
     },
