@@ -50,6 +50,7 @@ defmodule Harness.Lander.Resolver do
   alias Harness.AgentAdapter.Driver
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentRegistry
+  alias Harness.AgentRules
   alias Harness.Config
   alias Harness.Git
   alias Harness.ModelAvailability
@@ -232,12 +233,35 @@ defmodule Harness.Lander.Resolver do
 
   @spec conflict_excerpt(String.t(), String.t()) :: String.t()
   defp conflict_excerpt(path, file) do
-    case File.read(Path.join(path, file)) do
-      {:ok, content} ->
-        format_conflict_excerpt(file, content)
-
+    with {:ok, file_path} <- conflict_file_path(path, file),
+         {:ok, content} <- read_conflict_file(file_path) do
+      format_conflict_excerpt(file, content)
+    else
       {:error, reason} ->
         "  - #{file}: unable to read conflicted file (#{inspect(reason)})"
+    end
+  end
+
+  @spec conflict_file_path(String.t(), String.t()) :: {:ok, String.t()} | {:error, :unsafe_path}
+  defp conflict_file_path(path, file) do
+    root = Path.expand(path)
+    file_path = Path.expand(file, root)
+
+    if String.starts_with?(file_path, root <> "/") do
+      {:ok, file_path}
+    else
+      {:error, :unsafe_path}
+    end
+  end
+
+  @spec read_conflict_file(String.t()) :: {:ok, String.t()} | {:error, File.posix()}
+  defp read_conflict_file(file_path) do
+    case File.read(file_path) do
+      {:ok, content} ->
+        {:ok, content}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -288,8 +312,9 @@ defmodule Harness.Lander.Resolver do
     %Invocation{
       prompt: prompt,
       cwd: path,
-      task_id: "#{opts[:task_id]}-resolve",
+      log_tag: "#{opts[:task_id]}-resolve",
       model: model,
+      rule_content: AgentRules.render(),
       permission_mode: :autonomous
     }
   end

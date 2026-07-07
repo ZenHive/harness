@@ -7,6 +7,8 @@ defmodule Harness.AgentAdapter.AntigravityTest do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.RulesInjection
 
+  @rule_content "antigravity rules fixture"
+
   setup do
     cwd = Path.join(System.tmp_dir!(), "harness-antigravity-#{System.unique_integer()}")
     File.mkdir_p!(cwd)
@@ -15,8 +17,10 @@ defmodule Harness.AgentAdapter.AntigravityTest do
   end
 
   defp invocation(cwd, attrs \\ []) do
-    struct!(%Invocation{prompt: "do the task", cwd: cwd, task_id: "26"}, attrs)
+    struct!(%Invocation{prompt: "do the task", cwd: cwd, log_tag: "26", rule_content: @rule_content}, attrs)
   end
+
+  defp expected_prompt, do: RulesInjection.prepend_prompt("do the task", @rule_content)
 
   describe "capabilities/0" do
     test "declares resume + streaming output, autonomous-only permission mode, worktree isolation, and model families" do
@@ -79,7 +83,7 @@ defmodule Harness.AgentAdapter.AntigravityTest do
                "--model",
                "gemini-3.5-flash",
                "-p",
-               RulesInjection.prepend_prompt("do the task")
+               expected_prompt()
              ]
     end
 
@@ -100,7 +104,7 @@ defmodule Harness.AgentAdapter.AntigravityTest do
                "gemini-3.5-flash",
                "--continue",
                "-p",
-               RulesInjection.prepend_prompt("do the task")
+               expected_prompt()
              ]
     end
 

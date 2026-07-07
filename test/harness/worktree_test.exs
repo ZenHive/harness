@@ -737,7 +737,7 @@ defmodule Harness.WorktreeTest do
   end
 
   defp invocation(cwd) do
-    %Invocation{prompt: "do nothing", cwd: cwd, task_id: "36"}
+    %Invocation{prompt: "do nothing", cwd: cwd, log_tag: "36"}
   end
 
   defp git_index_lock!(path) do

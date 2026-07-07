@@ -36,12 +36,12 @@ defmodule Harness.AgentAdapter do
       end
 
   Harness spawns the adapter with `invoke/2` — there is no per-adapter
-  invocation boilerplate. `invoke/2` attaches harness-owned rules (via
+  invocation boilerplate. `invoke/2` attaches caller-supplied rules (via
   `c:rule_channel/0`) before calling `c:build_command/1`.
 
   ## Run lifecycle
 
-  `invoke/2` attaches harness-owned rules (via `c:rule_channel/0`), builds the
+  `invoke/2` attaches caller-supplied rules (via `c:rule_channel/0`), builds the
   command via the adapter's `c:build_command/1`, and spawns the agent, returning
   a `Harness.AgentAdapter.Run`. The process that calls
   `invoke/2` becomes the port's connected process, so every subsequent port
@@ -169,7 +169,7 @@ defmodule Harness.AgentAdapter do
   @callback capabilities() :: Capabilities.t()
 
   @typedoc """
-  How harness-owned rules reach the agent at dispatch time.
+  How caller-supplied rules reach the agent at dispatch time.
 
     * `:system_prompt_file` — ephemeral file plus argv flags (Claude).
     * `:codex_ephemeral_file` — ephemeral `AGENTS.md` in the worktree.
@@ -185,7 +185,7 @@ defmodule Harness.AgentAdapter do
           | :none
 
   @doc """
-  Declares how harness-owned rules are delivered for this agent.
+  Declares how caller-supplied rules are delivered for this agent.
   """
   @callback rule_channel() :: rule_channel()
 
@@ -227,7 +227,7 @@ defmodule Harness.AgentAdapter do
   def terminate(%Run{} = run), do: OSProcess.kill(run)
 
   @doc """
-  Attaches harness-owned rules to `invocation` per the adapter's `c:rule_channel/0`.
+  Attaches caller-supplied rules to `invocation` per the adapter's `c:rule_channel/0`.
 
   Idempotent — a second call on an invocation that already carries `%RuleDelivery{}`
   is a no-op. Called by `invoke/2` before `c:build_command/1`; adapters may also
@@ -517,7 +517,7 @@ defmodule Harness.AgentAdapter do
 
   defp system_prompt_file_paths(_invocation), do: []
 
-  # Diagnostic capture of a harness-owned rule-delivery path (written by
+  # Diagnostic capture of a caller-supplied rule-delivery path (written by
   # attach_rules/2), not external input; a read miss is recorded, never fatal.
   # sobelow_skip ["Traversal.FileModule"]
   @spec read_rule_file(String.t()) :: rule_file()
@@ -612,6 +612,6 @@ defmodule Harness.AgentAdapter do
   end
 
   defp prepare_rule_delivery(:prompt_preamble, invocation) do
-    {:ok, %RuleDelivery{prompt: RulesInjection.prepend_prompt(invocation.prompt, invocation)}}
+    {:ok, %RuleDelivery{prompt: RulesInjection.prepend_prompt(invocation.prompt, invocation.rule_content)}}
   end
 end

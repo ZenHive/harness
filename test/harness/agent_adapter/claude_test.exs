@@ -4,7 +4,9 @@ defmodule Harness.AgentAdapter.ClaudeTest do
   alias Harness.AgentAdapter.Capabilities
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Invocation
-  alias Harness.AgentRules
+
+  @rule_content "claude rules fixture"
+  @system_prompt_rel ".harness/agent-rules.md"
 
   setup do
     cwd = Path.join(System.tmp_dir!(), "harness-claude-#{System.unique_integer()}")
@@ -14,7 +16,7 @@ defmodule Harness.AgentAdapter.ClaudeTest do
   end
 
   defp invocation(cwd, attrs \\ []) do
-    struct!(%Invocation{prompt: "do the task", cwd: cwd, task_id: "7"}, attrs)
+    struct!(%Invocation{prompt: "do the task", cwd: cwd, log_tag: "7", rule_content: @rule_content}, attrs)
   end
 
   describe "capabilities/0" do
@@ -39,12 +41,12 @@ defmodule Harness.AgentAdapter.ClaudeTest do
                "--permission-mode",
                "bypassPermissions",
                "--append-system-prompt-file",
-               Path.join(cwd, AgentRules.system_prompt_rel_path()),
+               Path.join(cwd, @system_prompt_rel),
                "--exclude-dynamic-system-prompt-sections",
                "do the task"
              ]
 
-      assert File.exists?(Path.join(cwd, AgentRules.system_prompt_rel_path()))
+      assert File.read!(Path.join(cwd, @system_prompt_rel)) == @rule_content
     end
 
     test "passes the model through as --model", %{cwd: cwd} do

@@ -12,39 +12,44 @@ defmodule Harness.AgentAdapter.ConformanceCase.RuleDelivery do
   import ExUnit.Assertions
 
   alias Harness.AgentAdapter.RulesInjection
-  alias Harness.AgentRules
+
+  @system_prompt_rel ".harness/agent-rules.md"
 
   @spec assert_delivered(Harness.AgentAdapter.rule_channel(), Path.t(), [String.t()], String.t()) :: :ok
   def assert_delivered(:none, _cwd, _argv, _prompt), do: :ok
 
-  def assert_delivered(:system_prompt_file, cwd, argv, _prompt) do
-    rules_path = Path.join(cwd, AgentRules.system_prompt_rel_path())
+  def assert_delivered(:system_prompt_file, cwd, argv, rule_payload) do
+    rules_path = Path.join(cwd, @system_prompt_rel)
     assert File.exists?(rules_path)
     assert "--append-system-prompt-file" in argv
     assert rules_path in argv
-    assert File.read!(rules_path) == AgentRules.render()
+    assert File.read!(rules_path) == rule_content(rule_payload)
     :ok
   end
 
-  def assert_delivered(:codex_ephemeral_file, cwd, _argv, _prompt) do
+  def assert_delivered(:codex_ephemeral_file, cwd, _argv, rule_payload) do
     agents_path = Path.join(cwd, "AGENTS.md")
     assert File.exists?(agents_path)
-    assert File.read!(agents_path) =~ AgentRules.render()
+    assert File.read!(agents_path) =~ rule_content(rule_payload)
     :ok
   end
 
-  def assert_delivered(:cursor_ephemeral_file, cwd, _argv, _prompt) do
+  def assert_delivered(:cursor_ephemeral_file, cwd, _argv, rule_payload) do
     cursor_path = Path.join(cwd, ".cursor/rules/harness-operational.mdc")
     assert File.exists?(cursor_path)
-    assert File.read!(cursor_path) =~ AgentRules.render()
+    assert File.read!(cursor_path) =~ rule_content(rule_payload)
     :ok
   end
 
-  def assert_delivered(:prompt_preamble, _cwd, argv, prompt) do
-    expected = RulesInjection.prepend_prompt(prompt)
+  def assert_delivered(:prompt_preamble, _cwd, argv, {prompt, rule_content}) do
+    expected = RulesInjection.prepend_prompt(prompt, rule_content)
     assert expected in argv
     :ok
   end
+
+  @spec rule_content(String.t() | {String.t(), String.t()}) :: String.t()
+  defp rule_content({_prompt, content}), do: content
+  defp rule_content(content), do: content
 end
 
 defmodule Harness.AgentAdapter.ConformanceCase do
@@ -70,7 +75,7 @@ defmodule Harness.AgentAdapter.ConformanceCase do
       every permission mode the adapter declares, and rejects an undeclared mode
       rather than falling back silently.
     * **Rule injection** — `c:Harness.AgentAdapter.rule_channel/0` declares how
-      harness-owned rules reach the agent; `build_command/1` output (argv and/or
+      caller-supplied rules reach the agent; `build_command/1` output (argv and/or
       worktree files) reflects that channel. Adapters with `rule_channel/0` other
       than `:none` must call `Harness.AgentAdapter.attach_rules/2` so direct unit
       tests and `invoke/2` share the same delivery path.
@@ -133,7 +138,12 @@ defmodule Harness.AgentAdapter.ConformanceCase do
       @spec invocation(keyword()) :: Invocation.t()
       defp invocation(attrs \\ []) do
         struct!(
-          %Invocation{prompt: "conformance probe", cwd: System.tmp_dir!(), task_id: "conformance"},
+          %Invocation{
+            prompt: "conformance probe",
+            cwd: System.tmp_dir!(),
+            log_tag: "conformance",
+            rule_content: "conformance fixture rules"
+          },
           attrs
         )
       end
@@ -185,7 +195,7 @@ defmodule Harness.AgentAdapter.ConformanceCase do
         end
       end
 
-      describe "rule_channel/0 — harness-owned rule injection" do
+      describe "rule_channel/0 — caller-supplied rule injection" do
         setup do
           cwd = Path.join(System.tmp_dir!(), "harness-rules-#{System.unique_integer()}-#{System.os_time(:nanosecond)}")
           File.mkdir_p!(cwd)
@@ -206,7 +216,7 @@ defmodule Harness.AgentAdapter.ConformanceCase do
         end
 
         @tag :requires_rule_injection
-        test "delivers harness-owned rules through build_command/1 output", %{cwd: cwd} do
+        test "delivers caller-supplied rules through build_command/1 output", %{cwd: cwd} do
           inv = invocation(cwd: cwd, prompt: "conformance rules probe")
 
           assert {:ok, {_executable, argv, _env}} = @adapter.build_command(inv)
@@ -215,7 +225,7 @@ defmodule Harness.AgentAdapter.ConformanceCase do
             @adapter.rule_channel(),
             cwd,
             argv,
-            "conformance rules probe"
+            {"conformance rules probe", inv.rule_content}
           )
         end
       end

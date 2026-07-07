@@ -13,7 +13,7 @@ defmodule Harness.AgentAdapter.PiTest do
   end
 
   defp invocation(cwd, attrs \\ []) do
-    struct!(%Invocation{prompt: "do the task", cwd: cwd, task_id: "52"}, attrs)
+    struct!(%Invocation{prompt: "do the task", cwd: cwd, log_tag: "52"}, attrs)
   end
 
   describe "capabilities/0" do

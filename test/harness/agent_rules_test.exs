@@ -43,6 +43,22 @@ defmodule Harness.AgentRulesTest do
     end
   end
 
+  describe "render_for_languages/1" do
+    test "keeps Elixir sections for Elixir projects" do
+      rendered = AgentRules.render_for_languages([:elixir])
+
+      assert rendered =~ "Elixir conventions"
+      refute rendered =~ "Coverage thresholds"
+    end
+
+    test "drops Elixir sections for non-Elixir projects" do
+      rendered = AgentRules.render_for_languages([:rust])
+
+      refute rendered =~ "Elixir conventions"
+      refute rendered =~ "Coverage thresholds"
+    end
+  end
+
   describe "write_system_prompt_file!/2" do
     test "writes rendered rules under .harness/ in the worktree", %{cwd: cwd} do
       path = AgentRules.write_system_prompt_file!(cwd)

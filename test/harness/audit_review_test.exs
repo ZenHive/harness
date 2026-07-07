@@ -218,10 +218,10 @@ defmodule Harness.AuditReviewTest do
                )
     end
 
-    test "synthetic task_id includes the sha", %{cwd: cwd} do
-      # The FakeAdapter doesn't expose task_id in its output, but build_invocation
+    test "synthetic log tag includes the sha", %{cwd: cwd} do
+      # The FakeAdapter doesn't expose log_tag in its output, but build_invocation
       # is a private helper — assert indirectly that dispatch with a sha succeeds
-      # (proves the Invocation was built with a non-empty task_id, which is
+      # (proves the Invocation was built with a non-empty log_tag, which is
       # required by Invocation's @enforce_keys).
       assert {:ok, %{verdict: :approve}} =
                AuditReview.grade_fix(

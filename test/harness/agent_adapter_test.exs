@@ -33,7 +33,7 @@ defmodule Harness.AgentAdapterTest do
   end
 
   defp invocation(adapter_opts \\ []) do
-    %Invocation{prompt: "do the task", cwd: "/tmp", task_id: "3", adapter_opts: adapter_opts}
+    %Invocation{prompt: "do the task", cwd: "/tmp", log_tag: "3", adapter_opts: adapter_opts}
   end
 
   # Drive a run the way the lifecycle process will: feed every received message
@@ -121,16 +121,16 @@ defmodule Harness.AgentAdapterTest do
   end
 
   describe "Invocation" do
-    test "enforces prompt, cwd and task_id" do
+    test "enforces prompt, cwd and log_tag" do
       assert_raise ArgumentError, fn -> struct!(Invocation, prompt: "p", cwd: "/tmp") end
     end
 
     test "defaults the how-to-run fields" do
-      invocation = %Invocation{prompt: "p", cwd: "/tmp", task_id: "3"}
+      invocation = %Invocation{prompt: "p", cwd: "/tmp", log_tag: "3"}
       assert invocation.session == nil
       assert invocation.permission_mode == :autonomous
       assert invocation.model == nil
-      assert invocation.languages == [:elixir]
+      assert invocation.rule_content == ""
       assert invocation.adapter_opts == []
       assert invocation.env == %{}
     end

@@ -45,6 +45,7 @@ defmodule Harness.Audit do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentRegistry
+  alias Harness.AgentRules
   alias Harness.Artifact
   alias Harness.Config
   alias Harness.Dashboard.OpsFeed
@@ -371,8 +372,9 @@ defmodule Harness.Audit do
     %Invocation{
       prompt: audit_prompt(target, project, range, rejection_history(project, request)),
       cwd: worktree.path,
-      task_id: "audit-#{project.name}-#{range.short_sha}",
+      log_tag: "audit-#{project.name}-#{range.short_sha}",
       model: model,
+      rule_content: AgentRules.render_for_languages(project.languages),
       permission_mode: :autonomous,
       adapter_opts: request[:auditor_opts] || [],
       env: Harness.RmapPath.ensure_agent_env(%{})

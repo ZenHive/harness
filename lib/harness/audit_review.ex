@@ -53,6 +53,7 @@ defmodule Harness.AuditReview do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentRegistry
+  alias Harness.AgentRules
 
   @sentinel_approve "<<<VERDICT:APPROVE>>>"
   @sentinel_reject "<<<VERDICT:REJECT>>>"
@@ -242,8 +243,9 @@ defmodule Harness.AuditReview do
     %Invocation{
       prompt: prompt,
       cwd: Keyword.get(opts, :cwd, File.cwd!()),
-      task_id: "audit-#{sha}-grader",
+      log_tag: "audit-#{sha}-grader",
       model: Keyword.get(opts, :model),
+      rule_content: AgentRules.render(),
       adapter_opts: Keyword.get(opts, :adapter_opts, [])
     }
   end

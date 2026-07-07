@@ -116,7 +116,7 @@ defmodule Harness.Worktree.IsolationIntegrationTest do
       invocation = %Invocation{
         prompt: isolation_prompt(),
         cwd: worktree,
-        task_id: "isolation-tripwire",
+        log_tag: "isolation-tripwire",
         model: tripwire_model(adapter)
       }
 

@@ -70,7 +70,7 @@ defmodule Harness.AgentAdapter.Driver do
       invocation: [
         kind: :value,
         description:
-          "Harness.AgentAdapter.Invocation struct. Caller-constructed: cwd, prompt, task_id, env scrub map, adapter_opts, model."
+          "Harness.AgentAdapter.Invocation struct. Caller-constructed: cwd, prompt, log_tag, env scrub map, adapter_opts, model, rule_content."
       ],
       opts: [
         kind: :value,

@@ -13,7 +13,7 @@ defmodule Harness.AgentAdapter.Invocation do
 
     * `prompt` — the task rendered as a prompt for the agent.
     * `cwd` — absolute path of the isolated working directory (a git worktree).
-    * `task_id` — the rmap task id this run serves; used for logging.
+    * `log_tag` — opaque caller label for logs and test doubles.
     * `session` — an opaque resume signal, or `nil` for a fresh run. Harness
       round-trips it without interpreting it; each adapter decides what a
       non-`nil` value means. An adapter that resumes the most recent
@@ -23,8 +23,8 @@ defmodule Harness.AgentAdapter.Invocation do
       universal baseline every adapter must support; any other value must be
       listed in the adapter's `Harness.AgentAdapter.Capabilities`.
     * `model` — an optional model id, passed through to the agent.
-    * `languages` — target languages from `%Harness.Project{}`, used only to
-      select language-specific injected rule sections.
+    * `rule_content` — caller-rendered markdown rules. The adapter subsystem
+      only chooses the delivery channel; it never renders or filters content.
     * `adapter_opts` — an escape hatch for per-agent knobs the uniform fields do
       not cover.
     * `env` — caller-controlled environment for the spawned agent. Map of
@@ -36,25 +36,25 @@ defmodule Harness.AgentAdapter.Invocation do
   @type t :: %__MODULE__{
           prompt: String.t(),
           cwd: String.t(),
-          task_id: String.t(),
+          log_tag: String.t(),
           session: term() | nil,
           permission_mode: atom(),
           model: String.t() | nil,
-          languages: nonempty_list(atom()),
+          rule_content: String.t(),
           adapter_opts: keyword(),
           env: %{optional(String.t()) => String.t() | false},
           rules: Harness.AgentAdapter.RuleDelivery.t() | nil
         }
 
-  @enforce_keys [:prompt, :cwd, :task_id]
+  @enforce_keys [:prompt, :cwd, :log_tag]
   defstruct [
     :prompt,
     :cwd,
-    :task_id,
+    :log_tag,
     session: nil,
     permission_mode: :autonomous,
     model: nil,
-    languages: [:elixir],
+    rule_content: "",
     adapter_opts: [],
     env: %{},
     rules: nil

@@ -3,7 +3,10 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
 
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.RulesInjection
-  alias Harness.AgentRules
+
+  @rule_content "caller supplied rule fixture"
+  @other_rule_content "language-filtered caller fixture"
+  @system_prompt_rel ".harness/agent-rules.md"
 
   setup do
     cwd = Path.join(System.tmp_dir!(), "harness-inject-#{System.unique_integer()}")
@@ -13,11 +16,8 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
   end
 
   defp invocation(cwd, attrs \\ []) do
-    struct!(%Invocation{prompt: "do the task", cwd: cwd, task_id: "22"}, attrs)
+    struct!(%Invocation{prompt: "do the task", cwd: cwd, log_tag: "22", rule_content: @rule_content}, attrs)
   end
-
-  defp elixir_conventions, do: "Every public function gets a `@spec`"
-  defp verification_gates, do: "Coverage thresholds"
 
   describe "claude_flags/1" do
     test "returns append-system-prompt flags pointing at an ephemeral file", %{cwd: cwd} do
@@ -25,27 +25,17 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
 
       assert flags == [
                "--append-system-prompt-file",
-               Path.join(cwd, AgentRules.system_prompt_rel_path()),
+               Path.join(cwd, @system_prompt_rel),
                "--exclude-dynamic-system-prompt-sections"
              ]
 
-      assert File.exists?(Path.join(cwd, AgentRules.system_prompt_rel_path()))
+      assert File.read!(Path.join(cwd, @system_prompt_rel)) == @rule_content
     end
 
-    test "keeps Elixir conventions for Elixir-language targets", %{cwd: cwd} do
-      assert {:ok, _flags} = RulesInjection.claude_flags(invocation(cwd, languages: [:elixir]))
+    test "writes the caller-supplied content without rendering it", %{cwd: cwd} do
+      assert {:ok, _flags} = RulesInjection.claude_flags(invocation(cwd, rule_content: @other_rule_content))
 
-      body = File.read!(Path.join(cwd, AgentRules.system_prompt_rel_path()))
-      assert body =~ elixir_conventions()
-      refute body =~ verification_gates()
-    end
-
-    test "excludes Elixir conventions for non-Elixir targets", %{cwd: cwd} do
-      assert {:ok, _flags} = RulesInjection.claude_flags(invocation(cwd, languages: [:typescript]))
-
-      body = File.read!(Path.join(cwd, AgentRules.system_prompt_rel_path()))
-      refute body =~ elixir_conventions()
-      refute body =~ verification_gates()
+      assert File.read!(Path.join(cwd, @system_prompt_rel)) == @other_rule_content
     end
 
     test "returns rule injection errors when the system prompt path cannot be written", %{cwd: cwd} do
@@ -59,47 +49,26 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
   describe "install_codex_rules/1" do
     test "writes AGENTS.md into the worktree", %{cwd: cwd} do
       assert :ok = RulesInjection.install_codex_rules(invocation(cwd))
-      assert File.exists?(Path.join(cwd, "AGENTS.md"))
+
+      body = File.read!(Path.join(cwd, "AGENTS.md"))
+      assert body =~ @rule_content
     end
 
-    test "defaults to Elixir conventions for direct invocations", %{cwd: cwd} do
+    test "writes the caller-supplied content without rendering it", %{cwd: cwd} do
+      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, rule_content: @other_rule_content))
+
+      body = File.read!(Path.join(cwd, "AGENTS.md"))
+      assert body =~ @other_rule_content
+      refute body =~ @rule_content
+    end
+
+    test "preserves an existing AGENTS.md after the injected block", %{cwd: cwd} do
+      File.write!(Path.join(cwd, "AGENTS.md"), "project instructions")
       assert :ok = RulesInjection.install_codex_rules(invocation(cwd))
 
       body = File.read!(Path.join(cwd, "AGENTS.md"))
-      assert body =~ elixir_conventions()
-      refute body =~ verification_gates()
-    end
-
-    test "keeps Elixir conventions when language is explicit Elixir", %{cwd: cwd} do
-      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, languages: [:elixir]))
-
-      body = File.read!(Path.join(cwd, "AGENTS.md"))
-      assert body =~ elixir_conventions()
-      refute body =~ verification_gates()
-    end
-
-    test "keeps Elixir conventions for mixed projects that include Elixir", %{cwd: cwd} do
-      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, languages: [:elixir, :rust]))
-
-      body = File.read!(Path.join(cwd, "AGENTS.md"))
-      assert body =~ elixir_conventions()
-      refute body =~ verification_gates()
-    end
-
-    test "excludes Elixir conventions for Rust language", %{cwd: cwd} do
-      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, languages: [:rust]))
-
-      body = File.read!(Path.join(cwd, "AGENTS.md"))
-      refute body =~ elixir_conventions()
-      refute body =~ verification_gates()
-    end
-
-    test "excludes Elixir conventions for TypeScript language", %{cwd: cwd} do
-      assert :ok = RulesInjection.install_codex_rules(invocation(cwd, languages: [:typescript]))
-
-      body = File.read!(Path.join(cwd, "AGENTS.md"))
-      refute body =~ elixir_conventions()
-      refute body =~ verification_gates()
+      assert body =~ @rule_content
+      assert String.ends_with?(body, "project instructions")
     end
 
     test "returns rule injection errors when AGENTS.md cannot be read", %{cwd: cwd} do
@@ -113,23 +82,17 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
   describe "install_cursor_rules/1" do
     test "writes a cursor rules file into the worktree", %{cwd: cwd} do
       assert :ok = RulesInjection.install_cursor_rules(invocation(cwd))
-      assert File.exists?(Path.join(cwd, ".cursor/rules/harness-operational.mdc"))
-    end
-
-    test "excludes Elixir conventions for Rust language", %{cwd: cwd} do
-      assert :ok = RulesInjection.install_cursor_rules(invocation(cwd, languages: [:rust]))
 
       body = File.read!(Path.join(cwd, ".cursor/rules/harness-operational.mdc"))
-      refute body =~ elixir_conventions()
-      refute body =~ verification_gates()
+      assert body =~ @rule_content
     end
 
-    test "excludes Elixir conventions for TypeScript language", %{cwd: cwd} do
-      assert :ok = RulesInjection.install_cursor_rules(invocation(cwd, languages: [:typescript]))
+    test "writes the caller-supplied content without rendering it", %{cwd: cwd} do
+      assert :ok = RulesInjection.install_cursor_rules(invocation(cwd, rule_content: @other_rule_content))
 
       body = File.read!(Path.join(cwd, ".cursor/rules/harness-operational.mdc"))
-      refute body =~ elixir_conventions()
-      refute body =~ verification_gates()
+      assert body =~ @other_rule_content
+      refute body =~ @rule_content
     end
 
     test "returns rule injection errors when cursor rules cannot be written", %{cwd: cwd} do
@@ -140,48 +103,38 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
     end
   end
 
-  describe "prepend_prompt/1" do
-    test "prepends the same canonical rules used for file delivery" do
-      prompt = RulesInjection.prepend_prompt("task body")
+  describe "prepend_prompt/2" do
+    test "prepends caller-supplied rules to the task body" do
+      prompt = RulesInjection.prepend_prompt("task body", @rule_content)
 
-      assert prompt =~ AgentRules.render()
+      assert prompt =~ @rule_content
       assert String.ends_with?(prompt, "task body")
     end
 
-    test "excludes Elixir conventions for Rust language", %{cwd: cwd} do
-      prompt = RulesInjection.prepend_prompt("task body", invocation(cwd, languages: [:rust]))
+    test "does not render or filter the supplied content" do
+      prompt = RulesInjection.prepend_prompt("task body", @other_rule_content)
 
-      refute prompt =~ elixir_conventions()
-      refute prompt =~ verification_gates()
-      assert String.ends_with?(prompt, "task body")
-    end
-
-    test "excludes Elixir conventions for TypeScript language", %{cwd: cwd} do
-      prompt = RulesInjection.prepend_prompt("task body", invocation(cwd, languages: [:typescript]))
-
-      refute prompt =~ elixir_conventions()
-      refute prompt =~ verification_gates()
+      assert prompt =~ @other_rule_content
+      refute prompt =~ @rule_content
       assert String.ends_with?(prompt, "task body")
     end
   end
 
-  describe "canonical parity across delivery channels" do
-    test "Claude file, Codex AGENTS.md, and Grok preamble share the same rendered rules", %{
+  describe "content parity across delivery channels" do
+    test "Claude file, Codex AGENTS.md, and prompt preamble share the same caller content", %{
       cwd: cwd
     } do
-      canonical = AgentRules.render()
+      RulesInjection.claude_flags(invocation(cwd))
+      claude_body = File.read!(Path.join(cwd, @system_prompt_rel))
 
-      RulesInjection.claude_flags(invocation(cwd, languages: [:elixir]))
-      claude_body = File.read!(Path.join(cwd, AgentRules.system_prompt_rel_path()))
-
-      RulesInjection.install_codex_rules(invocation(cwd, languages: [:elixir]))
+      RulesInjection.install_codex_rules(invocation(cwd))
       codex_body = File.read!(Path.join(cwd, "AGENTS.md"))
 
-      grok_prompt = RulesInjection.prepend_prompt("task", invocation(cwd, languages: [:elixir]))
+      grok_prompt = RulesInjection.prepend_prompt("task", @rule_content)
 
-      assert claude_body == canonical
-      assert codex_body =~ canonical
-      assert grok_prompt =~ canonical
+      assert claude_body == @rule_content
+      assert codex_body =~ @rule_content
+      assert grok_prompt =~ @rule_content
     end
   end
 end

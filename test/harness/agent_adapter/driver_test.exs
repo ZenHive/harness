@@ -39,7 +39,7 @@ defmodule Harness.AgentAdapter.DriverTest do
     cwd = Path.join(System.tmp_dir!(), "harness-driver-#{System.unique_integer([:positive])}")
     File.mkdir_p!(cwd)
 
-    %Invocation{prompt: "p", cwd: cwd, task_id: "7", adapter_opts: [command: command]}
+    %Invocation{prompt: "p", cwd: cwd, log_tag: "7", adapter_opts: [command: command]}
   end
 
   describe "run/3 — completion" do

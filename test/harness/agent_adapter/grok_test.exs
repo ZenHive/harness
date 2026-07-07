@@ -6,6 +6,8 @@ defmodule Harness.AgentAdapter.GrokTest do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.RulesInjection
 
+  @rule_content "grok rules fixture"
+
   setup do
     cwd = Path.join(System.tmp_dir!(), "harness-grok-#{System.unique_integer()}")
     File.mkdir_p!(cwd)
@@ -14,8 +16,10 @@ defmodule Harness.AgentAdapter.GrokTest do
   end
 
   defp invocation(cwd, attrs \\ []) do
-    struct!(%Invocation{prompt: "do the task", cwd: cwd, task_id: "15"}, attrs)
+    struct!(%Invocation{prompt: "do the task", cwd: cwd, log_tag: "15", rule_content: @rule_content}, attrs)
   end
+
+  defp expected_prompt, do: RulesInjection.prepend_prompt("do the task", @rule_content)
 
   describe "capabilities/0" do
     test "declares resume + streaming output, autonomous-only permission mode" do
@@ -40,7 +44,7 @@ defmodule Harness.AgentAdapter.GrokTest do
                prompt
              ] = argv
 
-      assert prompt == RulesInjection.prepend_prompt("do the task")
+      assert prompt == expected_prompt()
     end
 
     test "passes the model through as --model", %{cwd: cwd} do
@@ -50,13 +54,13 @@ defmodule Harness.AgentAdapter.GrokTest do
       model_idx = Enum.find_index(argv, &(&1 == "--model"))
       assert model_idx
       assert Enum.at(argv, model_idx + 1) == "grok-code-fast-1"
-      assert List.last(argv) == RulesInjection.prepend_prompt("do the task")
+      assert List.last(argv) == expected_prompt()
     end
 
     test "appends --continue for a :resume session", %{cwd: cwd} do
       assert {:ok, {"grok", argv, []}} = Grok.build_command(invocation(cwd, session: :resume))
       assert Enum.at(argv, -3) == "--continue"
-      assert List.last(argv) == RulesInjection.prepend_prompt("do the task")
+      assert List.last(argv) == expected_prompt()
     end
 
     test "omits the resume flag for a fresh run", %{cwd: cwd} do
@@ -73,7 +77,7 @@ defmodule Harness.AgentAdapter.GrokTest do
                "grok-code-fast-1",
                "--continue",
                "-p",
-               RulesInjection.prepend_prompt("do the task")
+               expected_prompt()
              ]
     end
 

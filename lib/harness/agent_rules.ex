@@ -44,6 +44,16 @@ defmodule Harness.AgentRules do
   end
 
   @doc """
+  Renders the canonical rule set for a project's languages.
+  """
+  @spec render_for_languages(nonempty_list(atom())) :: String.t()
+  def render_for_languages(languages) when is_list(languages) do
+    languages
+    |> render_opts_for_languages()
+    |> render()
+  end
+
+  @doc """
   Preamble prepended to the task prompt for agents without a native rule channel.
   """
   @spec prompt_preamble([render_opt()]) :: String.t()
@@ -108,6 +118,15 @@ defmodule Harness.AgentRules do
     @raw_rules
     |> parse_sections()
     |> Enum.map(&elem(&1, 0))
+  end
+
+  @spec render_opts_for_languages(nonempty_list(atom())) :: [render_opt()]
+  defp render_opts_for_languages(languages) do
+    if :elixir in languages do
+      []
+    else
+      [exclude: [:verification_gates, :elixir]]
+    end
   end
 
   @spec parse_sections(String.t()) :: [{section_id(), String.t()}]
@@ -232,7 +251,10 @@ defmodule Harness.AgentRules do
   defp cleanup_marker_prefixed_agents(path, body) do
     if String.starts_with?(body, @codex_agents_marker) and String.contains?(body, @codex_agents_separator) do
       [_harness_block, remainder] = String.split(body, @codex_agents_separator, parts: 2)
-      write_path(path, remainder)
+
+      remainder
+      |> String.trim_leading()
+      |> write_codex_agents_remainder(path)
     else
       :ok
     end

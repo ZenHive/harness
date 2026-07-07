@@ -63,6 +63,7 @@ defmodule Harness.Cron.Orchestrator do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentRegistry
+  alias Harness.AgentRules
   alias Harness.Artifact
   alias Harness.CapabilityScore
   alias Harness.Project
@@ -148,7 +149,8 @@ defmodule Harness.Cron.Orchestrator do
     %Invocation{
       prompt: prompt(context(project, ready)),
       cwd: scratch,
-      task_id: "cron-orchestrator-#{project.name}",
+      log_tag: "cron-orchestrator-#{project.name}",
+      rule_content: AgentRules.render_for_languages(project.languages),
       permission_mode: :autonomous,
       env: Map.get(@subscription_scrubs, agent, %{})
     }

@@ -92,6 +92,7 @@ defmodule Harness.Run do
   alias Harness.AgentAdapter.Run, as: AgentRun
   alias Harness.AgentKPI
   alias Harness.AgentRegistry
+  alias Harness.AgentRules
   alias Harness.AuditReview
   alias Harness.Config
   alias Harness.Dashboard.RunFeed
@@ -1987,10 +1988,10 @@ defmodule Harness.Run do
     %Invocation{
       prompt: prompt,
       cwd: data.worktree.path,
-      task_id: data.item.id,
+      log_tag: data.item.id,
       session: session,
       model: data.requested_model,
-      languages: data.project.languages,
+      rule_content: agent_rule_content(data.project),
       permission_mode: :autonomous,
       adapter_opts: data.adapter_opts,
       env: in_run_env(data)
@@ -2341,9 +2342,9 @@ defmodule Harness.Run do
     %Invocation{
       prompt: Recovery.prompt(recovery_context(data, repo_path)),
       cwd: data.worktree.path,
-      task_id: "#{data.item.id}-recovery",
+      log_tag: "#{data.item.id}-recovery",
       model: data.requested_model,
-      languages: data.project.languages,
+      rule_content: agent_rule_content(data.project),
       permission_mode: :autonomous,
       adapter_opts: data.reviewer_adapter_opts,
       env: Map.put(in_run_env(data), "HARNESS_RECOVERY_REPO", repo_path)
@@ -2436,14 +2437,17 @@ defmodule Harness.Run do
     %Invocation{
       prompt: reviewer_invocation_prompt(data),
       cwd: data.worktree.path,
-      task_id: "#{data.item.id}-review",
+      log_tag: "#{data.item.id}-review",
       model: reviewer_model(data),
-      languages: data.project.languages,
+      rule_content: agent_rule_content(data.project),
       permission_mode: :autonomous,
       adapter_opts: data.reviewer_adapter_opts,
       env: in_run_env(data)
     }
   end
+
+  @spec agent_rule_content(Project.t()) :: String.t()
+  defp agent_rule_content(%Project{languages: languages}), do: AgentRules.render_for_languages(languages)
 
   # The reviewer has no task-pin model axis (the task's `model` pins only the
   # implementer), so it resolves from the selected reviewer adapter's agent:

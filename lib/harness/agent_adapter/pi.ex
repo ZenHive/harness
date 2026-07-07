@@ -27,9 +27,8 @@ defmodule Harness.AgentAdapter.Pi do
   pi auto-discovers `AGENTS.md` from cwd (walking up parent directories and
   reading `~/.pi/agent/AGENTS.md` for global preferences), the same mechanism
   Codex uses. `rule_channel/0` therefore returns `:codex_ephemeral_file`: the
-  canonical harness rule set is written into the run worktree by
-  `Harness.AgentAdapter.attach_rules/2` and cleaned up by
-  `Harness.AgentRules.cleanup_injected_rules/1` before delivery.
+  caller-supplied rule content is written into the run worktree by
+  `Harness.AgentAdapter.attach_rules/2` and cleaned up before delivery.
 
   ## Session resume
 

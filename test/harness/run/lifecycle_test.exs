@@ -22,41 +22,38 @@ defmodule Harness.Run.LifecycleTest do
     end
 
     @spec command(Invocation.t()) :: {:ok, AgentAdapter.command()}
-    defp command(%Invocation{task_id: task_id} = invocation) do
+    defp command(%Invocation{log_tag: log_tag} = invocation) do
       cond do
-        String.ends_with?(task_id, "-recovery") -> recovery_command(invocation)
-        String.ends_with?(task_id, "-review") -> reviewer_command(invocation)
+        String.ends_with?(log_tag, "-recovery") -> recovery_command(invocation)
+        String.ends_with?(log_tag, "-review") -> reviewer_command(invocation)
         true -> implementer_command(invocation)
       end
     end
 
     @spec implementer_command(Invocation.t()) :: {:ok, AgentAdapter.command()}
-    defp implementer_command(%Invocation{languages: languages}) do
-      {:ok, {"/bin/sh", ["-c", ~S(printf '%s' "$1" > agent_language.txt), "harness-fake", languages_arg(languages)], []}}
+    defp implementer_command(%Invocation{rule_content: rule_content}) do
+      {:ok, {"/bin/sh", ["-c", ~S(printf '%s' "$1" > agent_rules.txt), "harness-fake", rule_content], []}}
     end
 
     @spec recovery_command(Invocation.t()) :: {:ok, AgentAdapter.command()}
-    defp recovery_command(%Invocation{languages: languages}) do
+    defp recovery_command(%Invocation{rule_content: rule_content}) do
       json = Jason.encode!(%{outcome: "repaired", report: "cleaned fake checkout leak", repaired: "removed leaked.txt"})
 
       script =
-        ~S|mkdir -p .harness; printf '%s' "$1" > recovery_language.txt; | <>
+        ~S|mkdir -p .harness; printf '%s' "$1" > recovery_rules.txt; | <>
           ~S|if [ -f "$HARNESS_RECOVERY_REPO/leaked.txt" ]; then mv "$HARNESS_RECOVERY_REPO/leaked.txt" .harness/recovered-leaked.txt; fi; | <>
           ~S|printf '%s' "$2" > .harness/recovery.json|
 
-      {:ok, {"/bin/sh", ["-c", script, "harness-fake", languages_arg(languages), json], []}}
+      {:ok, {"/bin/sh", ["-c", script, "harness-fake", rule_content, json], []}}
     end
 
     @spec reviewer_command(Invocation.t()) :: {:ok, AgentAdapter.command()}
-    defp reviewer_command(%Invocation{languages: languages}) do
-      json = Jason.encode!(%{verdict: "approve", report: "captured language", ratings: FakeAdapter.review_ratings()})
+    defp reviewer_command(%Invocation{rule_content: rule_content}) do
+      json = Jason.encode!(%{verdict: "approve", report: "captured rules", ratings: FakeAdapter.review_ratings()})
 
-      script = ~S(printf '%s' "$1" > reviewer_language.txt; mkdir -p .harness; printf '%s' "$2" > .harness/review.json)
-      {:ok, {"/bin/sh", ["-c", script, "harness-fake", languages_arg(languages), json], []}}
+      script = ~S(printf '%s' "$1" > reviewer_rules.txt; mkdir -p .harness; printf '%s' "$2" > .harness/review.json)
+      {:ok, {"/bin/sh", ["-c", script, "harness-fake", rule_content, json], []}}
     end
-
-    @spec languages_arg([atom()]) :: String.t()
-    defp languages_arg(languages), do: Enum.map_join(languages, ",", &Atom.to_string/1)
   end
 
   defmodule TestDbEnvCaptureAdapter do
@@ -81,8 +78,8 @@ defmodule Harness.Run.LifecycleTest do
     end
 
     @spec command(Invocation.t(), String.t()) :: AgentAdapter.command()
-    defp command(%Invocation{task_id: task_id}, env_name) do
-      if String.ends_with?(task_id, "-review") do
+    defp command(%Invocation{log_tag: log_tag}, env_name) do
+      if String.ends_with?(log_tag, "-review") do
         reviewer_command(env_name)
       else
         implementer_command(env_name)
@@ -359,9 +356,10 @@ defmodule Harness.Run.LifecycleTest do
                "claude-opus-4-8-thinking-high"
     end
 
-    test "threads project language onto implementer and reviewer invocations" do
+    test "threads language-filtered rule content onto implementer and reviewer invocations" do
       repo = GitFixture.init_repo()
       project = ProjectFixture.from_repo(repo, language: :typescript)
+      expected = Harness.AgentRules.render_for_languages([:typescript])
 
       {run_id, pid} =
         start(
@@ -372,8 +370,8 @@ defmodule Harness.Run.LifecycleTest do
 
       assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
 
-      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_language.txt"]) == "typescript"
-      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_language.txt"]) == "typescript"
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:agent_rules.txt"]) == expected
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_rules.txt"]) == expected
     end
 
     test "isolates same-project runs with distinct test DB partitions for implementer and reviewer" do
@@ -449,9 +447,10 @@ defmodule Harness.Run.LifecycleTest do
       assert GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_db.txt"]) == "tapakly_test"
     end
 
-    test "threads project language onto recovery invocations" do
+    test "threads language-filtered rule content onto recovery invocations" do
       repo = GitFixture.init_repo()
       project = ProjectFixture.from_repo(repo, language: :typescript)
+      expected = Harness.AgentRules.render_for_languages([:typescript])
 
       {run_id, pid} =
         start(
@@ -463,7 +462,7 @@ defmodule Harness.Run.LifecycleTest do
 
       assert %Result{state: :done, reason: :approved, recovery_outcome: :repaired} = await_result(run_id, pid)
 
-      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:recovery_language.txt"]) == "typescript"
+      assert GitFixture.git!(repo, ["show", "harness/#{run_id}:recovery_rules.txt"]) == expected
     end
 
     test "the implementer invocation carries no model when the task is unpinned" do

@@ -37,7 +37,7 @@ defmodule Harness.BatchTest do
 
     @impl Harness.AgentAdapter
     def build_command(%Invocation{} = invocation) do
-      {:ok, {"/bin/echo", ["subscription quota exhausted for #{invocation.task_id}"], []}}
+      {:ok, {"/bin/echo", ["subscription quota exhausted for #{invocation.log_tag}"], []}}
     end
 
     @impl Harness.AgentAdapter
@@ -90,8 +90,8 @@ defmodule Harness.BatchTest do
     def rule_channel, do: :none
 
     @impl Harness.AgentAdapter
-    def build_command(%Invocation{task_id: task_id}) do
-      attempt = :ets.update_counter(@table, task_id, {2, 1}, {task_id, 0})
+    def build_command(%Invocation{log_tag: log_tag}) do
+      attempt = :ets.update_counter(@table, log_tag, {2, 1}, {log_tag, 0})
 
       script =
         if attempt == 1 do

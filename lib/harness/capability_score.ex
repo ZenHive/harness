@@ -17,6 +17,7 @@ defmodule Harness.CapabilityScore do
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentKPI
   alias Harness.AgentRegistry
+  alias Harness.AgentRules
   alias Harness.Config
   alias Harness.Facet
   alias Harness.ResultStore
@@ -224,7 +225,8 @@ defmodule Harness.CapabilityScore do
     %Invocation{
       prompt: scout_prompt(context),
       cwd: scratch,
-      task_id: "facet-scout",
+      log_tag: "facet-scout",
+      rule_content: AgentRules.render(),
       permission_mode: :autonomous
     }
   end

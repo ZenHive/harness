@@ -145,8 +145,8 @@ defmodule Harness.FakeAdapter do
   #                    and red when the audit worktree is truly cold.
   # {:audit_cold_check_green, short_sha}
   #                  — writes a passing cold_check fact without committing.
-  defp command_for(%Invocation{task_id: task_id}, opts) when is_binary(task_id) do
-    if String.ends_with?(task_id, "-recovery") do
+  defp command_for(%Invocation{log_tag: log_tag}, opts) when is_binary(log_tag) do
+    if String.ends_with?(log_tag, "-recovery") do
       Keyword.get(opts, :recovery_command, Keyword.get(opts, :command, :echo))
     else
       Keyword.get(opts, :command, :echo)
@@ -239,8 +239,8 @@ defmodule Harness.FakeAdapter do
     {"/bin/sh", ["-c", script, "harness-fake", review_json("approve"), review_json("reject"), path], []}
   end
 
-  defp command({:review_by_task, reject_ids}, %Invocation{task_id: task_id}) when is_list(reject_ids) do
-    item_id = String.replace_suffix(task_id, "-review", "")
+  defp command({:review_by_task, reject_ids}, %Invocation{log_tag: log_tag}) when is_list(reject_ids) do
+    item_id = String.replace_suffix(log_tag, "-review", "")
     verdict = if item_id in reject_ids, do: "reject", else: "approve"
     command({:review, verdict}, nil)
   end
@@ -444,8 +444,8 @@ defmodule Harness.FakeAdapter do
     {"/bin/sh", ["-c", script], []}
   end
 
-  defp command({:write_status_by_task, red_ids}, %Invocation{task_id: task_id}) when is_list(red_ids) do
-    status = if task_id in red_ids, do: "fail", else: "pass"
+  defp command({:write_status_by_task, red_ids}, %Invocation{log_tag: log_tag}) when is_list(red_ids) do
+    status = if log_tag in red_ids, do: "fail", else: "pass"
     {"/bin/sh", ["-c", "echo agent-output > agent_output.txt; echo #{status} > status.txt"], []}
   end
 

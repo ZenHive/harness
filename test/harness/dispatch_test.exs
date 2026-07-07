@@ -39,11 +39,11 @@ defmodule Harness.DispatchTest do
     def rule_channel, do: :none
 
     @impl AgentAdapter
-    def build_command(%Invocation{adapter_opts: opts, task_id: task_id}) do
+    def build_command(%Invocation{adapter_opts: opts, log_tag: log_tag}) do
       owner = Keyword.get(opts, :owner) || Application.get_env(:harness, :rereview_counting_owner)
-      if owner, do: send(owner, {:rereview_adapter_invoked, task_id})
+      if owner, do: send(owner, {:rereview_adapter_invoked, log_tag})
 
-      if String.ends_with?(task_id, "-review") do
+      if String.ends_with?(log_tag, "-review") do
         review = Jason.encode!(%{verdict: "approve", report: "review-only approved"})
 
         {:ok,

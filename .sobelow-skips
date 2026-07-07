@@ -221,3 +221,5 @@ Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.e
 Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:879,3B1AE60
 Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:893,5BD68B3
 Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:908,4055CFE
+
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/lander/resolver.ex:259,41A1F4D
