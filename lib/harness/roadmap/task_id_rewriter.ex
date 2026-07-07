@@ -12,6 +12,8 @@ defmodule Harness.Roadmap.TaskIdRewriter do
   @type rewrite :: %{from: String.t(), to: String.t()}
   @type result :: :unchanged | {:rewritten, String.t(), [rewrite()]}
 
+  @id_line_regex ~r/^(\s*id\s*=\s*)("?)(\d+)\2\s*$/m
+
   @doc """
   Rewrites new task blocks in `head_toml` whose ids collide with `base_toml`.
   """
@@ -57,8 +59,8 @@ defmodule Harness.Roadmap.TaskIdRewriter do
 
   @spec block_with_id(String.t()) :: [map()]
   defp block_with_id(block) do
-    case Regex.run(~r/^\s*id\s*=\s*"(\d+)"\s*$/m, block, capture: :all_but_first) do
-      [id] -> [%{id: id, body: block}]
+    case Regex.run(@id_line_regex, block, capture: :all_but_first) do
+      [_prefix, _quote, id] -> [%{id: id, body: block}]
       _other -> []
     end
   end
@@ -77,6 +79,13 @@ defmodule Harness.Roadmap.TaskIdRewriter do
 
   @spec rewrite_block_id(String.t(), String.t()) :: String.t()
   defp rewrite_block_id(block, id) do
-    Regex.replace(~r/^(\s*id\s*=\s*)"\d+"/m, block, "\\1\"#{id}\"", global: false)
+    Regex.replace(
+      @id_line_regex,
+      block,
+      fn _match, prefix, quote, _old_id ->
+        "#{prefix}#{quote}#{id}#{quote}"
+      end,
+      global: false
+    )
   end
 end
