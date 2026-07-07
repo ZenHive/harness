@@ -75,6 +75,10 @@ defmodule Harness.ResultStore.MemoryTest do
     test "delete_run removes one record idempotently", %{store: store} do
       assert :ok = ResultStoreContract.assert_delete_run(store)
     end
+
+    test "same-run_id upsert preserves settled evidence", %{store: store} do
+      assert :ok = ResultStoreContract.assert_same_run_id_upsert_preserves_settled_evidence(store)
+    end
   end
 
   test "aggregate_reviewer_reliability matches AgentKPI over the in-memory records", %{store: store} do

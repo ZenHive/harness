@@ -13,6 +13,7 @@ defmodule Harness.ResultStore.Memory do
   alias Harness.CapabilityScore
   alias Harness.Run.LogRecord
   alias Harness.Store.EtsScope
+  alias Harness.TokenUsage
 
   @table __MODULE__
 
@@ -21,7 +22,9 @@ defmodule Harness.ResultStore.Memory do
   def record_run(%LogRecord{} = record, opts) when is_list(opts) do
     update(opts, fn state ->
       seq = state.seq + 1
-      %{state | seq: seq, runs: Map.put(state.runs, record.run_id, {record, seq})}
+      runs = Map.update(state.runs, record.run_id, {record, seq}, &merge_record(&1, record, seq))
+
+      %{state | seq: seq, runs: runs}
     end)
   end
 
@@ -128,6 +131,67 @@ defmodule Harness.ResultStore.Memory do
   @spec mark_record_landed({LogRecord.t(), non_neg_integer()}, String.t()) ::
           {LogRecord.t(), non_neg_integer()}
   defp mark_record_landed({%LogRecord{} = record, seq}, sha), do: {%{record | landed_sha: sha}, seq}
+
+  @spec merge_record({LogRecord.t(), non_neg_integer()}, LogRecord.t(), non_neg_integer()) ::
+          {LogRecord.t(), non_neg_integer()}
+  defp merge_record({%LogRecord{} = existing, _old_seq}, %LogRecord{} = incoming, seq) do
+    {%{
+       incoming
+       | landed_sha: present(incoming.landed_sha, existing.landed_sha),
+         verdict: present(incoming.verdict, existing.verdict),
+         agent_outcome_kind: present(incoming.agent_outcome_kind, existing.agent_outcome_kind),
+         agent_exit_status: present(incoming.agent_exit_status, existing.agent_exit_status),
+         agent_diff_size: present(incoming.agent_diff_size, existing.agent_diff_size),
+         reviewer_diff_size: present(incoming.reviewer_diff_size, existing.reviewer_diff_size),
+         agent_output: non_empty_binary(incoming.agent_output, existing.agent_output),
+         review_iterations: max_count(incoming.review_iterations, existing.review_iterations),
+         reviewer_reprompt_count: max_count(incoming.reviewer_reprompt_count, existing.reviewer_reprompt_count),
+         reviewer_rotation_count: max_count(incoming.reviewer_rotation_count, existing.reviewer_rotation_count),
+         reviewer_adapter: present(incoming.reviewer_adapter, existing.reviewer_adapter),
+         reviewer_model: present(incoming.reviewer_model, existing.reviewer_model),
+         review_report: present(incoming.review_report, existing.review_report),
+         reviewer_outcome_kind: present(incoming.reviewer_outcome_kind, existing.reviewer_outcome_kind),
+         reviewer_exit_status: present(incoming.reviewer_exit_status, existing.reviewer_exit_status),
+         reviewer_output: non_empty_binary(incoming.reviewer_output, existing.reviewer_output),
+         review_facets: non_empty_map(incoming.review_facets, existing.review_facets),
+         review_skills: non_empty_map(incoming.review_skills, existing.review_skills),
+         review_checks: non_empty_map(incoming.review_checks, existing.review_checks),
+         review_concerns: non_empty_list(incoming.review_concerns, existing.review_concerns),
+         review_warning?: incoming.review_warning? or existing.review_warning?,
+         review_ratings: non_empty_map(incoming.review_ratings, existing.review_ratings),
+         recovery_attempts: max_count(incoming.recovery_attempts, existing.recovery_attempts),
+         recovery_outcome: present(incoming.recovery_outcome, existing.recovery_outcome),
+         recovery_repaired: present(incoming.recovery_repaired, existing.recovery_repaired),
+         recovery_token_usage: measured_usage(incoming.recovery_token_usage, existing.recovery_token_usage),
+         cold_check: non_empty_map(incoming.cold_check, existing.cold_check),
+         approved_then_found_red: non_empty_map(incoming.approved_then_found_red, existing.approved_then_found_red)
+     }, seq}
+  end
+
+  @spec present(term(), term()) :: term()
+  defp present(nil, existing), do: existing
+  defp present(incoming, _existing), do: incoming
+
+  @spec non_empty_binary(binary(), binary()) :: binary()
+  defp non_empty_binary("", existing), do: existing
+  defp non_empty_binary(incoming, _existing), do: incoming
+
+  @spec non_empty_map(map() | nil, map() | nil) :: map() | nil
+  defp non_empty_map(nil, existing), do: existing
+  defp non_empty_map(map, existing) when map == %{}, do: existing
+  defp non_empty_map(incoming, _existing), do: incoming
+
+  @spec non_empty_list([term()], [term()]) :: [term()]
+  defp non_empty_list([], existing), do: existing
+  defp non_empty_list(incoming, _existing), do: incoming
+
+  @spec max_count(non_neg_integer() | nil, non_neg_integer() | nil) :: non_neg_integer()
+  defp max_count(incoming, existing), do: max(incoming || 0, existing || 0)
+
+  @spec measured_usage(TokenUsage.t(), TokenUsage.t()) :: TokenUsage.t()
+  defp measured_usage(%TokenUsage{} = incoming, %TokenUsage{} = existing) do
+    if TokenUsage.measured?(incoming), do: incoming, else: existing
+  end
 
   @spec maybe_strip_agent_output(LogRecord.t(), boolean()) :: LogRecord.t()
   defp maybe_strip_agent_output(%LogRecord{} = record, true), do: record

@@ -120,6 +120,95 @@ defmodule Harness.ResultStoreContract do
     :ok
   end
 
+  @doc "Same-run_id upserts preserve settled evidence while latest bookkeeping wins."
+  @spec assert_same_run_id_upsert_preserves_settled_evidence(ResultStore.store()) :: :ok
+  def assert_same_run_id_upsert_preserves_settled_evidence(store) do
+    rich =
+      log_record(
+        run_id: "r-upsert",
+        state: :failed,
+        reason: {:review_rejected, "not salvageable"},
+        duration_ms: 4321,
+        verdict: :reject,
+        landed_sha: "abc1234ff",
+        agent_output: "rich transcript",
+        agent_outcome_kind: :exited,
+        agent_exit_status: 0,
+        agent_diff_size: 12,
+        reviewer_diff_size: 30,
+        review_iterations: 1,
+        reviewer_reprompt_count: 1,
+        reviewer_rotation_count: 2,
+        reviewer_adapter: Claude,
+        reviewer_model: "review-model",
+        review_report: "not salvageable",
+        review_facets: %{"surface" => "otp"},
+        review_skills: %{"otp" => %{"score" => 8}},
+        review_checks: %{"mix check.dispatch" => %{"passed" => false}},
+        review_warning?: true,
+        review_ratings: %{"code_quality" => 2},
+        reviewer_outcome_kind: :exited,
+        reviewer_exit_status: 0,
+        reviewer_output: "reviewer transcript: checks pass, no verdict written",
+        recovery_attempts: 1,
+        recovery_outcome: :dead,
+        recovery_repaired: "documented unrecoverable checkout leak",
+        recovery_token_usage: %TokenUsage{input: 20, output: 10, total: 30},
+        cold_check: %{"passed" => false, "command" => "mix precommit"},
+        approved_then_found_red: %{"cold_check" => %{"passed" => false}}
+      )
+
+    assert :ok = ResultStore.record_run(rich, store)
+
+    sparse =
+      log_record(
+        run_id: "r-upsert",
+        state: :done,
+        reason: :approved,
+        duration_ms: 5,
+        verdict: nil,
+        review_ratings: %{}
+      )
+
+    assert :ok = ResultStore.record_run(sparse, store)
+
+    assert {:ok, [rec]} = ResultStore.list_run_records(store, run_id: "r-upsert")
+
+    assert rec.state == :done
+    assert rec.reason == :approved
+    assert rec.duration_ms == 5
+
+    assert rec.verdict == :reject
+    assert rec.landed_sha == "abc1234ff"
+    assert rec.agent_output == "rich transcript"
+    assert rec.agent_outcome_kind == :exited
+    assert rec.agent_exit_status == 0
+    assert rec.agent_diff_size == 12
+    assert rec.reviewer_diff_size == 30
+    assert rec.review_iterations == 1
+    assert rec.reviewer_reprompt_count == 1
+    assert rec.reviewer_rotation_count == 2
+    assert rec.reviewer_adapter == Claude
+    assert rec.reviewer_model == "review-model"
+    assert rec.review_report == "not salvageable"
+    assert rec.review_facets == %{"surface" => "otp"}
+    assert rec.review_skills == %{"otp" => %{"score" => 8}}
+    assert rec.review_checks == %{"mix check.dispatch" => %{"passed" => false}}
+    assert rec.review_warning? == true
+    assert rec.review_ratings == %{"code_quality" => 2}
+    assert rec.reviewer_outcome_kind == :exited
+    assert rec.reviewer_exit_status == 0
+    assert rec.reviewer_output == "reviewer transcript: checks pass, no verdict written"
+    assert rec.recovery_attempts == 1
+    assert rec.recovery_outcome == :dead
+    assert rec.recovery_repaired == "documented unrecoverable checkout leak"
+    assert rec.recovery_token_usage == %TokenUsage{input: 20, output: 10, total: 30}
+    assert rec.cold_check == %{"passed" => false, "command" => "mix precommit"}
+    assert rec.approved_then_found_red == %{"cold_check" => %{"passed" => false}}
+
+    :ok
+  end
+
   @doc "Roundtrip a record with tuple reason (e.g. {:agent_spawn_failed, :enoent}) and non-UTF8 agent_output."
   @spec assert_complex_fields(ResultStore.store()) :: :ok
   def assert_complex_fields(store) do

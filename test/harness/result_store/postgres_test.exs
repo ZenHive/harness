@@ -11,11 +11,9 @@ defmodule Harness.ResultStore.PostgresTest do
   # async: false because DataCase uses SQL Sandbox shared mode and :result_store env.
   use Harness.DataCase, async: false
 
-  alias Harness.AgentAdapter.Claude
   alias Harness.ResultStore
   alias Harness.ResultStore.Postgres, as: Store
   alias Harness.ResultStoreContract
-  alias Harness.TokenUsage
 
   @moduletag :integration
 
@@ -51,80 +49,9 @@ defmodule Harness.ResultStore.PostgresTest do
     test "delete_run removes one record idempotently via contract" do
       assert :ok = ResultStoreContract.assert_delete_run(ResultStore.configured())
     end
-  end
 
-  describe "same-run_id upsert never loses settled evidence (Task 163)" do
-    test "a later write with missing data keeps the rich fields and updates bookkeeping" do
-      store = ResultStore.configured()
-
-      rich =
-        ResultStoreContract.log_record(
-          run_id: "r-upsert",
-          state: :failed,
-          reason: {:review_rejected, "not salvageable"},
-          duration_ms: 4321,
-          verdict: :reject,
-          agent_output: "rich transcript",
-          agent_outcome_kind: :exited,
-          agent_diff_size: 12,
-          reviewer_diff_size: 30,
-          review_iterations: 1,
-          reviewer_reprompt_count: 1,
-          reviewer_rotation_count: 2,
-          reviewer_adapter: Claude,
-          review_report: "not salvageable",
-          review_ratings: %{"code_quality" => 2},
-          reviewer_outcome_kind: :exited,
-          reviewer_exit_status: 0,
-          reviewer_output: "reviewer transcript: checks pass, no verdict written",
-          recovery_attempts: 1,
-          recovery_outcome: :dead,
-          recovery_repaired: "documented unrecoverable checkout leak",
-          recovery_token_usage: %TokenUsage{input: 20, output: 10, total: 30}
-        )
-
-      assert :ok = ResultStore.record_run(rich, store)
-
-      # Re-record the same run_id with the empty defaults a retry/no-op attempt
-      # produces: nil verdict, empty output, zero iterations, no reviewer.
-      sparse =
-        ResultStoreContract.log_record(
-          run_id: "r-upsert",
-          state: :done,
-          reason: :approved,
-          duration_ms: 5,
-          verdict: nil,
-          review_ratings: %{}
-        )
-
-      assert :ok = ResultStore.record_run(sparse, store)
-
-      assert {:ok, [rec]} = ResultStore.list_run_records(store, run_id: "r-upsert")
-
-      # bookkeeping: the latest write wins
-      assert rec.state == :done
-      assert rec.reason == :approved
-      assert rec.duration_ms == 5
-
-      # rich evidence: the settled attempt's data survives the sparse write
-      assert rec.verdict == :reject
-      assert rec.agent_output == "rich transcript"
-      assert rec.agent_outcome_kind == :exited
-      assert rec.agent_diff_size == 12
-      assert rec.reviewer_diff_size == 30
-      assert rec.review_iterations == 1
-      assert rec.reviewer_reprompt_count == 1
-      assert rec.reviewer_rotation_count == 2
-      assert rec.reviewer_adapter == Claude
-      assert rec.review_report == "not salvageable"
-      assert rec.review_ratings == %{"code_quality" => 2}
-      assert rec.reviewer_outcome_kind == :exited
-      assert rec.reviewer_exit_status == 0
-      assert rec.reviewer_output == "reviewer transcript: checks pass, no verdict written"
-      assert rec.recovery_attempts == 1
-      assert rec.recovery_outcome == :dead
-      assert rec.recovery_repaired == "documented unrecoverable checkout leak"
-      assert rec.recovery_token_usage == %TokenUsage{input: 20, output: 10, total: 30}
+    test "same-run_id upsert preserves settled evidence via contract" do
+      assert :ok = ResultStoreContract.assert_same_run_id_upsert_preserves_settled_evidence(ResultStore.configured())
     end
   end
 
