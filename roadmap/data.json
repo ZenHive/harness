@@ -16120,7 +16120,7 @@
       "id": "357",
       "phase": 22,
       "bundle": "core-loop",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Decompose Harness.Run.Actions (2,575 lines) by lifecycle concern",
       "scores": {
         "d": 3,
@@ -16152,6 +16152,7 @@
       ],
       "body": "Task 353 extracted per-state event clauses out of run.ex into Harness.Run.States.*, relocating the shared lifecycle helpers into Harness.Run.Actions. Actions is now 2,575 lines — the codebase's new second-largest file, a near-outlier of the same maintainability class the 353 decomposition targeted. Split Actions along its internal seams (worktree/isolation, reviewer selection + rejection sampling, recovery, notification/witness, transcript/discernment, timeout floors) into focused helper modules the States.* modules import, without changing behavior or the gen_statem surface. Pure mechanical relocation like 353; no new judgment/classification logic. First consumer: every future run-lifecycle edit that currently pays the Actions monolith's blast radius (the same motivation as 353).",
       "created_at": "2026-07-07",
+      "started_at": "2026-07-07",
       "scored_at": "2026-07-07",
       "cross_repo": []
     }
