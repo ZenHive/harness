@@ -10227,7 +10227,7 @@ scored_at = "2026-07-01"
 id = "343"
 phase = 22
 bundle = "resilience"
-status = "in_progress"
+status = "done"
 title = "Run gen_statem crashes with case_clause when cancel reason is {:redispatched, run_id}"
 scores = { d = 3, b = 6, u = 5 }
 acceptance_criteria = ["Cancelling a run with a structured reason such as {:redispatched, run_id} settles the run without a gen_statem crash", "The settled record preserves the structured reason for verdict/status readers (naming the successor run_id)", "The original run's run_record no longer reads :run_crashed when its task was successfully redispatched (ledger hygiene)", "A regression test covers cancel-with-structured-reason during an in-flight run"]
@@ -10240,9 +10240,14 @@ body = """Observed 2026-07-04 dispatching tapakly task 330 (run-1783129787191-c1
 2026-07-06 content-review note — crash site located: Harness.Run.route_reflex_halt/2 (lib/harness/run.ex ~1631) case-matches only :ok | {:cancel, {:blocked, _}} | {:error, _} from Resilience.route/2, but the reflex-halt redispatch path (Harness.Lander.Resilience.redispatch/3, lib/harness/lander/resilience.ex:178) returns {:cancel, {:redispatched, run_id}} — the unmatched shape IS the case_clause. Fix belongs there (accept {:cancel, reason} generally and settle/witness the structured reason), not in the handle_common :cancel call handler, which already normalizes caller cancels to :cancelled.
 
 2026-07-07 dedupe note — recurred on tapakly task 359 (run-1783371223893-b56b7a77): same {:run_crashed, {:case_clause, {:cancel, {:redispatched, ...}}}} settle while the successor run completed and was approved, so the ledger records :run_crashed for a task that actually shipped. Duplicate task 354 (filed by a parallel session on the fresh evidence) superseded into this one; its ledger-hygiene criterion folded into the ACs above."""
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1783390323075-ed7fcd81, e3bb0a422cb6d7b45fe7a154339e5b9cdf983c54)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-07-04"
 started_at = "2026-07-07"
 scored_at = "2026-07-04"
+done_at = "2026-07-07"
+shipped_in = "e3bb0a422cb6d7b45fe7a154339e5b9cdf983c54"
 
 [[task]]
 id = "344"
