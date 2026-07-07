@@ -218,3 +218,5 @@ DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/result_store/postgres.ex:7
 Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/lander.ex:454,75FA06D
 Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/lander.ex:438,98164D
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/harness/result_store/postgres.ex:883,E29477
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/dep_freshness/provider/javascript.ex:83,2A0FC40
+CI.System: Command Injection via `System` function,lib/harness/dep_freshness/provider/javascript.ex:142,78B2855
