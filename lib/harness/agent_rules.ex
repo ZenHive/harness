@@ -3,9 +3,9 @@ defmodule Harness.AgentRules do
   Canonical harness-owned rule set rendered for agent invocations.
 
   - **One source** — `priv/agent_rules/canonical.md`, section-tagged for filtering.
-  - **Curated subset** — methodology and harness operational instructions; verification
-    numeric gates live in a tagged section excluded from injection (harness's
-    verification runner enforces those, not agent prose).
+  - **Curated subset** — methodology and harness operational instructions; numeric
+    check gates live in a tagged section excluded from injection because the
+    reviewer runs and judges project checks.
   - **Content only** — this module renders markdown. Delivery into worktree
     files / prompt preambles (and their cleanup) is owned by the agent-adapter
     subsystem (`Harness.AgentAdapter.RulesInjection`); callers pass the rendered
