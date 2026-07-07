@@ -15097,7 +15097,7 @@
       "id": "335",
       "phase": 22,
       "bundle": "operator-surface",
-      "status": "in_progress",
+      "status": "done",
       "title": "Dispatch 'bring project to tooling baseline' through the agent-gate",
       "scores": {
         "d": 5,
@@ -15133,10 +15133,15 @@
         "lib/harness/chat/tools.ex",
         "lib/harness/dashboard"
       ],
+      "shipped_in": "c45c263e837521f3de14eda5eec60e5ad2cba3d1",
       "body": "Add an operator-triggered action that dispatches a \"bring this project to the tooling baseline\" task through the normal agent-gate (implementer -> reviewer -> land), rather than harness mechanically editing the project mix.exs. Surface it as a dashboard button (per project) and an MCP tool. Reuse Task 332 dispatch plumbing — this is the same shape (dispatch an agent to edit mix.exs + verify), differing only in deliverable (add missing tooling vs bump versions). Like Task 332, the dispatch path is language-agnostic and the prompt is built from `project.languages`; the Elixir provider builds the vibe_kit/elixir-setup prompt (the only baseline provider for now), and unsupported languages are surfaced as skipped facts.\n\nFeed the dispatched task prompt the conformance-drift facts (from Task 334) as ground truth naming exactly what is missing (deps, aliases, config files). Instruct the implementer to add the missing baseline tooling — preferring the vibe_kit Igniter installer where applicable, then layering the elixir-setup extras — and to bring the `ci` / `precommit` aliases and `.credo.exs` / `.reach.exs` / `.formatter.exs` to the baseline. The reviewer gates that the project still compiles and the newly-wired gate runs green. The bump rides the standard implement->review->land loop; harness runs no build or install itself.\n",
       "created_at": "2026-06-25",
       "started_at": "2026-07-07",
+      "done_at": "2026-07-07",
       "scored_at": "2026-06-25",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1783407438668-cce1a80b, c45c263e837521f3de14eda5eec60e5ad2cba3d1).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
