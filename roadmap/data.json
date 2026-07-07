@@ -15136,7 +15136,7 @@
       "id": "336",
       "phase": 22,
       "bundle": "operator-surface",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Rust dependency-freshness provider (cargo outdated) for the freshness fact source",
       "scores": {
         "d": 4,
@@ -15170,6 +15170,7 @@
       ],
       "body": "Add a Rust dependency-freshness provider to the per-language freshness fact source (Task 331/340 seam), so the operator sees out-of-date crates for registered projects whose `languages` include `:rust` in the same dashboard panel as Elixir projects.\n\nImplement a Rust provider that produces the same fact rows as the Elixir provider — dependency name, current version, latest version, and whether the bump is allowed by the project current Cargo.toml constraint — by running a cargo freshness check per registered Rust project on the existing Oban cron. EXTEND Task 331 store + dashboard panel + provider seam; do not build a parallel scanner or a second panel.\n\nKnown sharp edge (confirm headlessly, do not hardcode the assumption): Rust has no built-in hex.outdated equivalent. `cargo outdated` is a third-party subcommand (the cargo-outdated crate) that may not be installed in a fresh worktree — the provider may need to `cargo install cargo-outdated` first, or fall back to a `cargo update --dry-run` / Cargo.lock-vs-registry diff. The implementer confirms the mechanism that actually works in a cold worktree and documents it.\n",
       "created_at": "2026-06-25",
+      "started_at": "2026-07-07",
       "scored_at": "2026-06-25",
       "cross_repo": []
     },
