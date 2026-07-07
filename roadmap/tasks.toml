@@ -10304,7 +10304,7 @@ scored_at = "2026-07-05"
 id = "347"
 phase = 22
 bundle = "resilience"
-status = "pending"
+status = "in_progress"
 title = "Worktree sweeper is depth-blind: */* glob never finds leaked landing/audit worktrees after a crash mid-land"
 scores = { d = 2, b = 5, u = 4 }
 markers = ["bug", "parallel"]
@@ -10317,6 +10317,7 @@ body = """
 Sweeper.candidates/1 (sweeper.ex:69-71) discovers orphans with a fixed-depth Path.join(base_dir, "*/*") glob, but Worktree.checkout_existing/3 — used by the lander AND the post-merge audit for their detached worktrees — creates paths three levels deep: <base_dir>/<repo_slug>/landing/<id> (worktree.ex:352/368). If the BEAM crashes between checkout_existing and Worktree.remove/1 (the crash-mid-land class the Oban Lifeline work documented — Task 209, job 294), the leaked worktree is never found on any later boot: the glob matches .../landing itself, which has no .git marker, so parent_repo/1 returns nil and it is left in place; the actual <id> worktree one level deeper is never a candidate. Reaper only tracks Run-created worktrees (Reaper.track/4); Lifeline only rescues the Oban job row — nothing else covers this. Make discovery depth-agnostic (e.g. recursively find .git regular FILES under base_dir and reap their dirnames) rather than assuming the two-level shape. Add a sweeper test planting a checkout_existing-shaped orphan. Found by codebase review 2026-07-06; sites verified against HEAD.
 """
 created_at = "2026-07-05"
+started_at = "2026-07-07"
 scored_at = "2026-07-05"
 
 [[task]]

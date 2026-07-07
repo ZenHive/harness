@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 22 — Live-Run Observability — stop flying blind while an agent works (13 of 35 done · 3 in progress)
+**Focus phase:** 22 — Live-Run Observability — stop flying blind while an agent works (13 of 35 done · 4 in progress)
 
 **Last shipped:** Task 323 — Add an integration tripwire: each worktree_isolation:true adapter actually isolates to its run worktree (harness skips the pollution snapshot on trust) on 2026-07-01
 
-**Up next:** Task 347 — Worktree sweeper is depth-blind: */* glob never finds leaked landing/audit worktrees after a crash mid-land [D:2/B:5/U:4 → Eff:2.25] 🎯
+**Up next:** Task 343 — Run gen_statem crashes with case_clause when cancel reason is {:redispatched, run_id} [D:3/B:6/U:5 → Eff:1.83] 🚀
 <!-- FOCUS:END -->
 
 ---
