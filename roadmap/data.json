@@ -15861,7 +15861,7 @@
       "id": "352",
       "phase": 22,
       "bundle": "postgres-results",
-      "status": "in_progress",
+      "status": "done",
       "title": "Bound run_records growth: blob retention that never touches the countable KPI facts",
       "scores": {
         "d": 3,
@@ -15890,10 +15890,15 @@
         "priv/repo/migrations/",
         "test/harness/result_store/"
       ],
+      "shipped_in": "128166edc7180675579c386bc6db47219263f8b2",
       "body": "run_records accretes full agent_output/reviewer_output transcript blobs per run (the backend parity test exercises 50KB blobs) and nothing anywhere prunes, archives, or TTLs rows — no delete_all/prune/retention path exists outside unrelated worktree cleanup. The three aggregate queries (aggregate_by_agent_query/0, aggregate_reviewer_reliability_query/0, aggregate_by_facet_query/0) scan the whole table on every dashboard/routing call. On the continuously-dogfooding node this grows without bound and every rollup pays for it forever. Implement a mechanical retention shape: age-based blob nulling that strips the heavyweight transcript columns from rows older than an operator-set bound while keeping every countable fact column forever, so KPI/reliability/facet history stays truthful. Mantra note: the bound is an operator-set config fact; stripping is pure mechanics — no judgment about which runs \"matter\". Found by codebase review 2026-07-06.\n",
       "created_at": "2026-07-05",
       "started_at": "2026-07-07",
+      "done_at": "2026-07-07",
       "scored_at": "2026-07-05",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1783391790416-f6716a0a, 128166edc7180675579c386bc6db47219263f8b2).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
