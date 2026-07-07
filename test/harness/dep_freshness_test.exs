@@ -80,6 +80,66 @@ defmodule Harness.DepFreshnessTest do
            ] = snapshot.rows
   end
 
+  test "scan_project records Go freshness rows for Go projects", %{tmp_dir: tmp_dir} do
+    File.write!(Path.join(tmp_dir, "go.mod"), "module example.test/app\n\nrequire github.com/acme/lib v1.2.0\n")
+    File.write!(Path.join(tmp_dir, "go.sum"), "github.com/acme/lib v1.2.0 h1:fixture\n")
+
+    project = ProjectFixture.from_repo(tmp_dir, name: "go-freshness-demo", language: :go)
+    :ok = ProjectRegistry.register(project)
+
+    output = """
+    {
+      "Path": "example.test/app",
+      "Main": true
+    }
+    {
+      "Path": "github.com/acme/lib",
+      "Version": "v1.2.3",
+      "Update": {
+        "Path": "github.com/acme/lib",
+        "Version": "v1.3.0"
+      }
+    }
+    """
+
+    runner = fn "go", ["list", "-mod=readonly", "-m", "-u", "-json", "all"], ^tmp_dir -> {:ok, output} end
+
+    assert :ok = DepFreshness.scan_project(project, provider_opts: [runner: runner])
+
+    assert {:ok, snapshot} = DepFreshness.fetch_snapshot("go-freshness-demo")
+    assert snapshot.language == "go"
+    assert snapshot.outdated_count == 1
+
+    assert [
+             %Row{
+               name: "github.com/acme/lib",
+               current_version: "v1.2.3",
+               latest_version: "v1.3.0",
+               constraint_allowed: true,
+               language: :go
+             }
+           ] = snapshot.rows
+  end
+
+  test "scan_project records skipped Go facts when module metadata is missing", %{tmp_dir: tmp_dir} do
+    project = ProjectFixture.from_repo(tmp_dir, name: "missing-go-module", language: :go)
+    :ok = ProjectRegistry.register(project)
+
+    assert :ok =
+             DepFreshness.scan_project(project, provider_opts: [runner: fn _, _, _ -> flunk("runner should not run") end])
+
+    assert {:ok, snapshot} = DepFreshness.fetch_snapshot("missing-go-module")
+
+    assert [
+             %Row{
+               name: "provider:go",
+               status: :skipped,
+               reason: :missing_go_mod,
+               language: :go
+             }
+           ] = snapshot.rows
+  end
+
   test "scan_project records skipped JavaScript facts when manager metadata is missing", %{tmp_dir: tmp_dir} do
     File.write!(Path.join(tmp_dir, "package.json"), Jason.encode!(%{"dependencies" => %{"react" => "^18.2.0"}}))
 

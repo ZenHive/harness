@@ -2,12 +2,14 @@ defmodule Harness.DepFreshness.Providers do
   @moduledoc false
 
   alias Harness.DepFreshness.Provider.Elixir, as: ElixirProvider
+  alias Harness.DepFreshness.Provider.Go, as: GoProvider
   alias Harness.DepFreshness.Provider.JavaScript, as: JavaScriptProvider
   alias Harness.LanguageProviders
   alias Harness.Project
 
   @providers %{
     elixir: ElixirProvider,
+    go: GoProvider,
     javascript: JavaScriptProvider,
     typescript: JavaScriptProvider
   }
