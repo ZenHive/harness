@@ -485,10 +485,6 @@ defmodule Harness.Run.Worker do
     %{project | check_command: check_command}
   end
 
-  defp project_with_check_command(%Project{} = project, %{check_command: check_command}) when is_binary(check_command) do
-    %{project | check_command: check_command}
-  end
-
   defp project_with_check_command(%Project{} = project, _args), do: project
 
   @spec checkpoint(Oban.Job.t(), String.t()) :: :ok

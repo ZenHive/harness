@@ -2,7 +2,7 @@
   # Macro-only modules: doctor can't see @doc/@spec on defmacro (doc entries are
   # :macro not :function; specs are stored as MACRO-<name>/N), so it false-flags
   # 0% even when fully documented. Verified documented in the source.
-  ignore_modules: [Harness.Dispatch.RunTool],
+  ignore_modules: [Harness.Dispatch.RunTool, Harness.DependencyBump.Provider],
   ignore_paths: [],
 
   # Project standard: 100% documentation coverage on all public modules

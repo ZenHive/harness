@@ -3,25 +3,9 @@ defmodule Harness.DependencyBump.Provider.Elixir do
   Elixir dependency-bump prompt provider.
   """
 
-  @behaviour Harness.DependencyBump.Provider
-
-  alias Harness.DependencyBump.Provider.Common
-  alias Harness.DepFreshness.Row
-
-  @check_command "mix test.json --quiet --all --include integration"
-  @files_to_modify ["mix.exs", "mix.lock"]
-
-  @impl Harness.DependencyBump.Provider
-  @spec build(atom(), [Row.t()]) :: [Harness.DependencyBump.TaskSpec.t()]
-  def build(language, rows) when is_atom(language) and is_list(rows) do
-    Common.specs(language, rows,
-      title: & &1,
-      body: &body/2,
-      acceptance_criteria: &acceptance_criteria/1,
-      files_to_modify: @files_to_modify,
-      check_command: @check_command
-    )
-  end
+  use Harness.DependencyBump.Provider,
+    check_command: "mix test.json --quiet --all --include integration",
+    files_to_modify: ["mix.exs", "mix.lock"]
 
   @spec body([Row.t()], :minor_patch | :major) :: String.t()
   defp body(rows, kind) do

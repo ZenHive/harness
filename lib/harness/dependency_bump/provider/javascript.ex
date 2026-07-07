@@ -3,25 +3,9 @@ defmodule Harness.DependencyBump.Provider.JavaScript do
   JavaScript and TypeScript dependency-bump prompt provider.
   """
 
-  @behaviour Harness.DependencyBump.Provider
-
-  alias Harness.DependencyBump.Provider.Common
-  alias Harness.DepFreshness.Row
-
-  @check_command "npm test"
-  @files_to_modify ["package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"]
-
-  @impl Harness.DependencyBump.Provider
-  @spec build(atom(), [Row.t()]) :: [Harness.DependencyBump.TaskSpec.t()]
-  def build(language, rows) when is_atom(language) and is_list(rows) do
-    Common.specs(language, rows,
-      title: & &1,
-      body: &body/2,
-      acceptance_criteria: &acceptance_criteria/1,
-      files_to_modify: @files_to_modify,
-      check_command: @check_command
-    )
-  end
+  use Harness.DependencyBump.Provider,
+    check_command: "npm test",
+    files_to_modify: ["package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"]
 
   @spec body([Row.t()], :minor_patch | :major) :: String.t()
   defp body(rows, kind) do
