@@ -54,11 +54,9 @@ defmodule Harness.Dashboard.Transcript.Parser.Codex do
   defp translate(%{"type" => "item.started", "item" => %{"type" => "command_execution"} = item}) do
     [
       {:assistant_tool_use,
-       %{
-         id: Map.get(item, "id", ""),
-         name: "command_execution",
-         input: %{command: Map.get(item, "command", "")}
-       }}
+       Parser.assistant_tool_use_payload(Map.get(item, "id", ""), "command_execution", %{
+         command: Map.get(item, "command", "")
+       })}
     ]
   end
 

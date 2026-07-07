@@ -14,6 +14,7 @@ defmodule Harness.Routing do
   alias Harness.Config
   alias Harness.ModelAvailability
   alias Harness.ResultStore
+  alias Harness.Routing.Availability
 
   @zero_samples 0
   @all_fields [:agent, :model, :model_required, :label, :roster, :availability, :kpi]
@@ -210,7 +211,7 @@ defmodule Harness.Routing do
     block = Map.get(blocks, {agent, model}) || Map.get(blocks, {agent, "all"})
     catalog_entry = Enum.find(catalog, &(&1.id == model))
 
-    %{
+    Availability.new(
       model: model,
       model_required: false,
       label: label(catalog_entry, model),
@@ -219,7 +220,7 @@ defmodule Harness.Routing do
       reason: block && block.reason,
       source: block && block.source,
       until: block && block.until
-    }
+    )
   end
 
   @spec standing_model_entry(atom(), String.t(), String.t(), map()) :: map()
@@ -234,7 +235,7 @@ defmodule Harness.Routing do
   defp model_required_entry(agent, blocks) do
     block = Map.get(blocks, {agent, "all"})
 
-    %{
+    Availability.new(
       model: nil,
       model_required: true,
       label: nil,
@@ -243,7 +244,7 @@ defmodule Harness.Routing do
       reason: block && block.reason,
       source: block && block.source,
       until: block && block.until
-    }
+    )
   end
 
   @spec model_less_catalog_entry([map()], String.t(), map(), map()) :: [map()]
@@ -255,7 +256,7 @@ defmodule Harness.Routing do
   defp model_less_entry(agent, blocks) do
     block = Map.get(blocks, {agent, "all"})
 
-    %{
+    Availability.new(
       model: nil,
       model_required: false,
       label: nil,
@@ -264,7 +265,7 @@ defmodule Harness.Routing do
       reason: block && block.reason,
       source: block && block.source,
       until: block && block.until
-    }
+    )
   end
 
   @spec model_capable?(map()) :: boolean()

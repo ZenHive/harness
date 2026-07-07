@@ -15,6 +15,7 @@ defmodule Harness.Chat.Session do
   alias Harness.Chat.Stream
   alias Harness.Chat.Supervisor, as: ChatSupervisor
   alias Harness.Chat.Tools
+  alias Harness.Dashboard.Transcript.Parser
   alias Harness.JSONSafe
 
   require Logger
@@ -430,10 +431,10 @@ defmodule Harness.Chat.Session do
   defp extract_tool_uses(content) do
     Enum.flat_map(content, fn
       %{type: "tool_use", id: id, name: name} = block ->
-        [%{id: id, name: name, input: Map.get(block, :input, %{})}]
+        [Parser.assistant_tool_use_payload(id, name, Map.get(block, :input, %{}))]
 
       %{"type" => "tool_use", "id" => id, "name" => name} = block ->
-        [%{id: id, name: name, input: Map.get(block, "input", %{})}]
+        [Parser.assistant_tool_use_payload(id, name, Map.get(block, "input", %{}))]
 
       _ ->
         []

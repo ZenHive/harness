@@ -79,6 +79,7 @@ defmodule Harness.Dashboard.Live do
   alias Harness.Roadmap.Item
   alias Harness.Run.LogRecord
   alias Harness.Run.Status
+  alias Harness.Run.TranscriptSnapshot
   alias Harness.RunDiff
   alias Harness.StatusView
   alias Harness.TokenUsage.GrokSession
@@ -708,7 +709,7 @@ defmodule Harness.Dashboard.Live do
   @spec backfill_transcript_events(Socket.t(), String.t()) :: Socket.t()
   defp backfill_transcript_events(socket, run_id) do
     case Harness.Run.transcript_events(run_id) do
-      {:ok, %{events: events, agent_kind: agent_kind, seq: seq}} ->
+      {:ok, %TranscriptSnapshot{events: events, agent_kind: agent_kind, seq: seq}} ->
         socket
         |> assign(:transcript_events, events)
         |> assign(:agent_kind, agent_kind)

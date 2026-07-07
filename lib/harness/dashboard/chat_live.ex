@@ -188,7 +188,7 @@ defmodule Harness.Dashboard.ChatLive do
   end
 
   defp apply_event(socket, %{type: "tool_call", id: id, name: name, arguments: args}) do
-    tool = %{id: to_string(id), name: to_string(name), args: args, result: nil, status: :pending}
+    tool = ui_tool_call(to_string(id), to_string(name), args)
 
     socket
     |> ensure_active()
@@ -226,14 +226,7 @@ defmodule Harness.Dashboard.ChatLive do
     message = Map.get(event, :message) || Atom.to_string(reason)
     msg_id = "term-#{System.unique_integer([:positive])}"
 
-    item = %{
-      id: msg_id,
-      role: :terminal,
-      text: message,
-      streaming?: false,
-      tool_calls: [],
-      reason: reason
-    }
+    item = stream_message(id: msg_id, role: :terminal, text: message, reason: reason)
 
     socket
     |> flush_active_if_any()
@@ -262,7 +255,7 @@ defmodule Harness.Dashboard.ChatLive do
     case socket.assigns.active do
       nil ->
         id = "asst-#{System.unique_integer([:positive])}"
-        active = %{id: id, role: :assistant, text: "", tool_calls: [], streaming?: true}
+        active = stream_message(id: id, role: :assistant, streaming?: true)
 
         socket
         |> assign(:active, active)
@@ -300,7 +293,7 @@ defmodule Harness.Dashboard.ChatLive do
 
       {:ok, trimmed, session_id} ->
         msg_id = "user-#{System.unique_integer([:positive])}"
-        item = %{id: msg_id, role: :user, text: trimmed, streaming?: false, tool_calls: []}
+        item = stream_message(id: msg_id, role: :user, text: trimmed)
 
         ChatSupervisor.ensure_session(session_start_opts(session_id))
 
@@ -370,13 +363,7 @@ defmodule Harness.Dashboard.ChatLive do
       Enum.reduce(messages, {[], 0}, fn msg, {acc, idx} ->
         case msg do
           %{role: :user, content: text} when is_binary(text) ->
-            entry = %{
-              id: "snap-user-#{idx}",
-              role: :user,
-              text: text,
-              streaming?: false,
-              tool_calls: []
-            }
+            entry = stream_message(id: "snap-user-#{idx}", role: :user, text: text)
 
             {[entry | acc], idx + 1}
 
@@ -408,22 +395,15 @@ defmodule Harness.Dashboard.ChatLive do
       blocks
       |> Enum.filter(&block_tool_use?/1)
       |> Enum.map(fn b ->
-        %{
-          id: block_field(b, :id, "id"),
-          name: block_field(b, :name, "name"),
-          args: block_field(b, :input, "input") || %{},
-          result: nil,
-          status: :pending
-        }
+        ui_tool_call(block_field(b, :id, "id"), block_field(b, :name, "name"), block_field(b, :input, "input") || %{})
       end)
 
-    %{
+    stream_message(
       id: "snap-asst-#{idx}",
       role: :assistant,
       text: text,
-      streaming?: false,
       tool_calls: tool_calls
-    }
+    )
   end
 
   @spec merge_tool_results([map()], [map()], non_neg_integer()) :: {[map()], non_neg_integer()}
@@ -733,6 +713,17 @@ defmodule Harness.Dashboard.ChatLive do
       </button>
     </div>
     """
+  end
+
+  # LiveView stream item maps — intentional UI literals, not shared domain contracts.
+  @spec stream_message(keyword()) :: map()
+  defp stream_message(fields) do
+    Map.merge(%{streaming?: false, tool_calls: [], text: ""}, Map.new(fields))
+  end
+
+  @spec ui_tool_call(String.t(), String.t(), map()) :: map()
+  defp ui_tool_call(id, name, args) do
+    %{id: id, name: name, args: args, result: nil, status: :pending}
   end
 
   attr(:session_id, :string, default: nil)

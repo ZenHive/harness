@@ -12,6 +12,7 @@ defmodule Harness.ModelAvailability do
 
   alias Harness.AgentAdapter.Antigravity
   alias Harness.AgentRegistry
+  alias Harness.ModelAvailability.CatalogEntry
   alias Harness.Notification
   alias Harness.Notification.Event
   alias Harness.SettingsStore
@@ -35,18 +36,18 @@ defmodule Harness.ModelAvailability do
   #   codex  — https://developers.openai.com/codex/models
   @builtin_catalogs %{
     claude: [
-      %{id: "claude-opus-4-8", label: "Opus 4.8", annotations: []},
-      %{id: "claude-opus-4-7", label: "Opus 4.7", annotations: []},
-      %{id: "claude-fable-5", label: "Fable 5", annotations: []},
-      %{id: "claude-sonnet-5", label: "Sonnet 5", annotations: []},
-      %{id: "claude-sonnet-4-6", label: "Sonnet 4.6", annotations: []},
-      %{id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", annotations: []}
+      CatalogEntry.new("claude-opus-4-8", "Opus 4.8"),
+      CatalogEntry.new("claude-opus-4-7", "Opus 4.7"),
+      CatalogEntry.new("claude-fable-5", "Fable 5"),
+      CatalogEntry.new("claude-sonnet-5", "Sonnet 5"),
+      CatalogEntry.new("claude-sonnet-4-6", "Sonnet 4.6"),
+      CatalogEntry.new("claude-haiku-4-5-20251001", "Haiku 4.5")
     ],
     codex: [
-      %{id: "gpt-5.5", label: "GPT-5.5 (recommended)", annotations: []},
-      %{id: "gpt-5.4", label: "GPT-5.4", annotations: []},
-      %{id: "gpt-5.4-mini", label: "GPT-5.4 mini", annotations: []},
-      %{id: "gpt-5.3-codex-spark", label: "GPT-5.3 Codex Spark (Pro)", annotations: []}
+      CatalogEntry.new("gpt-5.5", "GPT-5.5 (recommended)"),
+      CatalogEntry.new("gpt-5.4", "GPT-5.4"),
+      CatalogEntry.new("gpt-5.4-mini", "GPT-5.4 mini"),
+      CatalogEntry.new("gpt-5.3-codex-spark", "GPT-5.3 Codex Spark (Pro)")
     ]
   }
 
@@ -57,7 +58,7 @@ defmodule Harness.ModelAvailability do
           source: block_source()
         }
   @type blocks :: %{{atom(), String.t() | :all} => block_entry()}
-  @type catalog_entry :: %{id: String.t(), label: String.t(), annotations: [String.t()]}
+  @type catalog_entry :: CatalogEntry.t()
 
   @doc false
   @spec blocks_key() :: atom()
@@ -346,7 +347,7 @@ defmodule Harness.ModelAvailability do
   def add_catalog_model(agent, model) when is_binary(agent) and is_binary(model) do
     with {:ok, agent_atom} <- coerce_agent(agent),
          {:ok, model_id} <- normalize_model_id(model) do
-      model = %{id: model_id, label: model_id, annotations: []}
+      model = CatalogEntry.new(model_id, model_id)
 
       :ok = persist_manual_catalog(agent_atom, merge_catalogs(manual_catalog(agent_atom), [model]))
       persist_static_catalog(agent_atom, merge_catalogs(selected_seed(agent_atom), [model]))
@@ -593,7 +594,7 @@ defmodule Harness.ModelAvailability do
   @spec select_model(atom(), String.t()) :: :ok
   defp select_model(agent, model_id) do
     found = universe_model(agent, model_id)
-    model = found || %{id: model_id, label: model_id, annotations: []}
+    model = found || CatalogEntry.new(model_id, model_id)
 
     if found == nil do
       :ok = persist_manual_catalog(agent, merge_catalogs(manual_catalog(agent), [model]))
@@ -688,7 +689,7 @@ defmodule Harness.ModelAvailability do
 
   @spec codex_model_entry(map()) :: [catalog_entry()]
   defp codex_model_entry(%{"slug" => slug, "visibility" => "list"} = model) when is_binary(slug) do
-    [%{id: slug, label: Map.get(model, "display_name", slug), annotations: []}]
+    [CatalogEntry.new(slug, Map.get(model, "display_name", slug))]
   end
 
   defp codex_model_entry(_hidden_or_malformed), do: []
@@ -725,7 +726,7 @@ defmodule Harness.ModelAvailability do
     case Regex.run(~r/^\s*[*-]\s+(\S+)(.*)$/, line) do
       [_full, id, rest] ->
         {_stripped, annotations} = strip_annotations(rest)
-        %{id: id, label: id, annotations: annotations}
+        CatalogEntry.new(id, id, annotations)
 
       _no_bullet ->
         :error
@@ -736,7 +737,7 @@ defmodule Harness.ModelAvailability do
   defp parse_pi_line(line) do
     case String.split(line, ~r/\s{2,}/, trim: true) do
       ["provider", "model" | _header] -> :error
-      [provider, model | _rest] when model != "" -> %{id: model, label: provider, annotations: []}
+      [provider, model | _rest] when model != "" -> CatalogEntry.new(model, provider)
       _other -> :error
     end
   end
@@ -759,7 +760,7 @@ defmodule Harness.ModelAvailability do
   @spec antigravity_catalog_entry(String.t()) :: catalog_entry() | :error
   defp antigravity_catalog_entry(line) do
     case Antigravity.display_label_to_id(line) do
-      id when is_binary(id) -> %{id: id, label: line, annotations: []}
+      id when is_binary(id) -> CatalogEntry.new(id, line)
       nil -> antigravity_id_fallback(line)
     end
   end
@@ -774,7 +775,7 @@ defmodule Harness.ModelAvailability do
 
       :error ->
         if line in Antigravity.known_model_ids(),
-          do: %{id: line, label: line, annotations: []},
+          do: CatalogEntry.new(line, line),
           else: :error
     end
   end
@@ -789,7 +790,7 @@ defmodule Harness.ModelAvailability do
           :error
         else
           label = label_part |> strip_annotations() |> elem(0) |> String.trim()
-          %{id: id, label: label, annotations: annotations}
+          CatalogEntry.new(id, label, annotations)
         end
 
       _ ->

@@ -68,6 +68,7 @@ defmodule Harness.AgentKPI do
   """
 
   alias Harness.AgentKPI.TokenMeans
+  alias Harness.AgentKPI.TokenTotals
   alias Harness.AgentRegistry
   alias Harness.CapabilityDomain
   alias Harness.Run.LogRecord
@@ -178,11 +179,7 @@ defmodule Harness.AgentKPI do
         }
 
   @typedoc "Recovery token spend for one run, by component."
-  @type recovery_tokens :: %{
-          input: non_neg_integer(),
-          output: non_neg_integer(),
-          total: non_neg_integer()
-        }
+  @type recovery_tokens :: TokenTotals.t()
 
   @typedoc "One run where the bounded AI-recovery seam ran at least once."
   @type recovery_entry :: %{
@@ -498,27 +495,13 @@ defmodule Harness.AgentKPI do
   end
 
   @spec recovery_tokens(TokenUsage.t() | nil) :: recovery_tokens()
-  defp recovery_tokens(%TokenUsage{} = usage) do
-    %{
-      input: token_component(usage, :input),
-      output: token_component(usage, :output),
-      total: token_total(usage)
-    }
-  end
+  defp recovery_tokens(%TokenUsage{} = usage), do: TokenTotals.from_usage(usage)
 
-  defp recovery_tokens(_usage), do: %{input: 0, output: 0, total: 0}
-
-  @spec token_component(TokenUsage.t(), :input | :output) :: non_neg_integer()
-  defp token_component(%TokenUsage{} = usage, field) do
-    case Map.get(usage, field) do
-      count when is_integer(count) -> count
-      _other -> 0
-    end
-  end
+  defp recovery_tokens(_usage), do: TokenTotals.zero()
 
   @spec recovery_token_totals([recovery_entry()]) :: recovery_tokens()
   defp recovery_token_totals(entries) do
-    %{
+    %TokenTotals{
       input: Enum.sum_by(entries, & &1.tokens.input),
       output: Enum.sum_by(entries, & &1.tokens.output),
       total: Enum.sum_by(entries, & &1.tokens.total)

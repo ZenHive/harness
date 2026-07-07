@@ -56,6 +56,7 @@ defmodule Harness.Config do
   @doc false
   @spec child_spec(term()) :: Supervisor.child_spec()
   def child_spec(_arg) do
+    # reach:disable-next-line fixed_shape_map — standard OTP Supervisor.child_spec/1 literal
     %{id: __MODULE__, start: {__MODULE__, :start_link, []}, restart: :temporary, type: :worker}
   end
 

@@ -60,6 +60,7 @@ defmodule Harness.Chat.Supervisor do
 
   @spec do_start_session(String.t(), keyword()) :: {:ok, String.t(), pid()} | {:error, term()}
   defp do_start_session(session_id, opts) do
+    # reach:disable-next-line fixed_shape_map — DynamicSupervisor child spec literal
     child = %{
       id: {Session, session_id},
       start: {Session, :start_link, [session_id, opts]},

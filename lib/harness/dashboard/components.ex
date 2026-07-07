@@ -1692,7 +1692,12 @@ defmodule Harness.Dashboard.Components do
   end
 
   defp build_tool_call(%{id: id, name: name, input: input}) do
-    %{id: id, name: name, args: input, result: nil, status: :pending}
+    ui_tool_call(id, name, input)
+  end
+
+  @spec ui_tool_call(String.t(), String.t(), map()) :: map()
+  defp ui_tool_call(id, name, args) do
+    %{id: id, name: name, args: args, result: nil, status: :pending}
   end
 
   defp fill_tool_result(tool_calls, tool_use_id, content) do

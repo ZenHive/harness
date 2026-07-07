@@ -76,12 +76,12 @@ defmodule Harness.Dashboard.ConfigInspector do
   defp schema_row(%Entry{} = entry) do
     resolved = Config.get(entry.key)
 
-    %{
-      label: entry.label,
-      value: schema_value(entry, resolved),
-      provenance: provenance(entry.env_var, resolved, entry.default),
-      env_var: entry.env_var
-    }
+    inspector_row(
+      entry.label,
+      schema_value(entry, resolved),
+      provenance(entry.env_var, resolved, entry.default),
+      entry.env_var
+    )
   end
 
   # Secret entries never render their value; everything else is formatted by type.
@@ -118,12 +118,7 @@ defmodule Harness.Dashboard.ConfigInspector do
   defp build_row(field) do
     resolved = field.read.()
 
-    %{
-      label: field.label,
-      value: row_value(field, resolved),
-      provenance: provenance(nil, resolved, field.default),
-      env_var: nil
-    }
+    inspector_row(field.label, row_value(field, resolved), provenance(nil, resolved, field.default))
   end
 
   @spec row_value(map(), term()) :: String.t()
@@ -258,7 +253,7 @@ defmodule Harness.Dashboard.ConfigInspector do
         " · "
       )
 
-    %{label: project.name, value: summary, provenance: :config, env_var: nil}
+    inspector_row(project.name, summary, :config)
   end
 
   @spec language_list([atom()]) :: String.t()
@@ -275,5 +270,10 @@ defmodule Harness.Dashboard.ConfigInspector do
   defp check_command_label(command), do: "check=#{command}"
 
   @spec empty_row(String.t()) :: row()
-  defp empty_row(text), do: %{label: text, value: "", provenance: :default, env_var: nil}
+  defp empty_row(text), do: inspector_row(text, "", :default)
+
+  @spec inspector_row(String.t(), String.t(), provenance(), String.t() | nil) :: row()
+  defp inspector_row(label, value, provenance, env_var \\ nil) do
+    %{label: label, value: value, provenance: provenance, env_var: env_var}
+  end
 end

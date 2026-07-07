@@ -572,14 +572,17 @@ defmodule Harness.Dashboard.CompareLive do
   defp column_bucket(_), do: :in_flight
 
   @spec verdict_label(map() | nil) :: %{tone: String.t(), glyph: String.t(), text: String.t()}
-  defp verdict_label(%{verdict: :approve}), do: %{tone: "pass", glyph: "●", text: "approved"}
-  defp verdict_label(%{verdict: :reject}), do: %{tone: "fail", glyph: "✗", text: "rejected"}
-  defp verdict_label(%{state: :failed}), do: %{tone: "fail", glyph: "✗", text: "failed"}
+  defp verdict_label(%{verdict: :approve}), do: verdict_badge("pass", "●", "approved")
+  defp verdict_label(%{verdict: :reject}), do: verdict_badge("fail", "✗", "rejected")
+  defp verdict_label(%{state: :failed}), do: verdict_badge("fail", "✗", "failed")
 
   defp verdict_label(%{state: state}) when state in [:running, :committing, :recovering, :reviewing, :dispatched],
-    do: %{tone: "pending", glyph: "◌", text: to_string(state)}
+    do: verdict_badge("pending", "◌", to_string(state))
 
-  defp verdict_label(_), do: %{tone: "pending", glyph: "◌", text: "queued"}
+  defp verdict_label(_), do: verdict_badge("pending", "◌", "queued")
+
+  @spec verdict_badge(String.t(), String.t(), String.t()) :: %{tone: String.t(), glyph: String.t(), text: String.t()}
+  defp verdict_badge(tone, glyph, text), do: %{tone: tone, glyph: glyph, text: text}
 
   @spec metric(map() | nil, atom()) :: String.t()
   defp metric(nil, _key), do: "—"

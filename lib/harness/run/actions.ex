@@ -34,6 +34,7 @@ defmodule Harness.Run.Actions do
   alias Harness.Run.Review
   alias Harness.Run.Status
   alias Harness.Run.TestDbIsolation
+  alias Harness.Run.TranscriptSnapshot
   alias Harness.Text
   alias Harness.TokenUsage
   alias Harness.TokenUsage.GrokSession
@@ -83,12 +84,12 @@ defmodule Harness.Run.Actions do
   end
 
   def handle_common({:call, from}, :transcript, _state, data) do
-    snapshot = %{buffer: data.transcript, seq: data.transcript_seq}
+    snapshot = TranscriptSnapshot.buffer_only(data.transcript, data.transcript_seq)
     {:keep_state_and_data, [{:reply, from, snapshot}]}
   end
 
   def handle_common({:call, from}, :transcript_events, _state, data) do
-    snapshot = %{
+    snapshot = %TranscriptSnapshot{
       events: data.transcript_events,
       agent_kind: data.agent_kind,
       seq: data.transcript_seq

@@ -18,6 +18,7 @@ defmodule Harness.CapabilityScore do
   alias Harness.AgentKPI
   alias Harness.AgentRegistry
   alias Harness.AgentRules
+  alias Harness.CapabilityScore.Recommendation
   alias Harness.Config
   alias Harness.Facet
   alias Harness.ResultStore
@@ -276,7 +277,7 @@ defmodule Harness.CapabilityScore do
 
     case find_matching_entry(assessment, facets) do
       %Entry{} = entry ->
-        %{
+        Recommendation.new(
           agent: entry.winner,
           facets: facets,
           strategy: :exploit,
@@ -284,7 +285,7 @@ defmodule Harness.CapabilityScore do
           scout_reasoning: entry.reasoning,
           matched_facet: entry.facet,
           ranked: ranked_from_entry(entry, agents)
-        }
+        )
 
       nil ->
         explore_recommendation(facets, agents, opts)
@@ -296,7 +297,7 @@ defmodule Harness.CapabilityScore do
     fallback = Keyword.get(opts, :fallback_agent, Config.get({:dispatch, :default_agent}))
     agent = Enum.find(agents, &(&1 == fallback)) || hd(agents)
 
-    %{
+    Recommendation.new(
       agent: agent,
       facets: facets,
       strategy: :explore,
@@ -304,7 +305,7 @@ defmodule Harness.CapabilityScore do
       scout_reasoning: nil,
       matched_facet: nil,
       ranked: Enum.map(agents, &%{agent: &1, measurement: :unmeasured})
-    }
+    )
   end
 
   @spec fallback_recommendation(map(), keyword()) :: map()
@@ -313,7 +314,7 @@ defmodule Harness.CapabilityScore do
     fallback = Keyword.get(opts, :fallback_agent, Config.get({:dispatch, :default_agent}))
     agent = Enum.find(agents, &(&1 == fallback)) || hd(agents)
 
-    %{
+    Recommendation.new(
       agent: agent,
       facets: facets,
       strategy: :fallback_no_data,
@@ -321,7 +322,7 @@ defmodule Harness.CapabilityScore do
       scout_reasoning: nil,
       matched_facet: nil,
       ranked: Enum.map(agents, &%{agent: &1, measurement: :unmeasured})
-    }
+    )
   end
 
   @spec ranked_from_entry(entry(), [atom()]) :: [map()]

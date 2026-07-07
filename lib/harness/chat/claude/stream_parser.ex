@@ -19,6 +19,7 @@ defmodule Harness.Chat.Claude.StreamParser do
   fragments.
   """
 
+  alias Harness.Dashboard.Transcript.Parser
   alias Harness.LineParser
 
   defstruct buffer: ""
@@ -91,11 +92,11 @@ defmodule Harness.Chat.Claude.StreamParser do
   defp translate_assistant_block(%{"type" => "tool_use"} = block) do
     [
       {:assistant_tool_use,
-       %{
-         id: Map.get(block, "id", ""),
-         name: Map.get(block, "name", ""),
-         input: Map.get(block, "input", %{})
-       }}
+       Parser.assistant_tool_use_payload(
+         Map.get(block, "id", ""),
+         Map.get(block, "name", ""),
+         Map.get(block, "input", %{})
+       )}
     ]
   end
 

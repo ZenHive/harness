@@ -53,12 +53,7 @@ defmodule Harness.Dashboard.Transcript.Parser.Cursor do
     {name, args} = tool_call_name_and_args(tc)
 
     [
-      {:assistant_tool_use,
-       %{
-         id: tool_call_id(event, tc),
-         name: name,
-         input: args
-       }}
+      {:assistant_tool_use, Parser.assistant_tool_use_payload(tool_call_id(event, tc), name, args)}
     ]
   end
 

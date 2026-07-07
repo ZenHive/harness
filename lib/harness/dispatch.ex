@@ -58,6 +58,8 @@ defmodule Harness.Dispatch do
   alias Harness.CapabilityScore
   alias Harness.Config
   alias Harness.Cron.PendingDispatch
+  alias Harness.Dispatch.AwaitRunsSummary
+  alias Harness.Dispatch.RunSummary
   alias Harness.Dispatch.WriteSetPlan
   alias Harness.Lander
   alias Harness.ModelAvailability
@@ -70,6 +72,7 @@ defmodule Harness.Dispatch do
   alias Harness.Run.LogRecord
   alias Harness.Run.Review
   alias Harness.Run.Status
+  alias Harness.Run.TranscriptSnapshot
   alias Harness.Run.Worker, as: RunWorker
   alias Oban.Job
 
@@ -267,11 +270,11 @@ defmodule Harness.Dispatch do
     end
   end
 
-  @spec record_await_summary(LogRecord.t()) :: map()
+  @spec record_await_summary(LogRecord.t()) :: RunSummary.t()
   defp record_await_summary(%LogRecord{} = record) do
     status = Status.from_log_record(record)
 
-    %{
+    %RunSummary{
       run_id: record.run_id,
       task_id: record.task_id,
       state: status.state,
@@ -301,9 +304,9 @@ defmodule Harness.Dispatch do
   # A terminal run whose record could not be read, and a run that vanished before
   # persisting any record — both summarised from what status/1 still knows, with
   # the review detail absent (it lived only on the missing record).
-  @spec snapshot_await_summary(map()) :: map()
+  @spec snapshot_await_summary(map()) :: RunSummary.t()
   defp snapshot_await_summary(%{run_id: run_id, state: state} = snapshot) do
-    %{
+    %RunSummary{
       run_id: run_id,
       task_id: Map.get(snapshot, :task_id),
       state: state,
@@ -1254,9 +1257,9 @@ defmodule Harness.Dispatch do
   # returns — shared by await tools and `:settled` witness events. Public
   # (@doc false) so Run and tests can call it without duplicating the shape.
   @doc false
-  @spec summarize_result(Run.Result.t()) :: map()
+  @spec summarize_result(Run.Result.t()) :: RunSummary.t()
   def summarize_result(%Run.Result{} = result) do
-    %{
+    %RunSummary{
       run_id: result.run_id,
       task_id: result.task_id,
       state: result.state,
@@ -1328,14 +1331,14 @@ defmodule Harness.Dispatch do
     end
   end
 
-  @spec compact_run_summary(map()) :: map()
+  @spec compact_run_summary(map()) :: AwaitRunsSummary.t()
   defp compact_run_summary(%{run_id: run_id, state: state} = summary) do
-    %{
-      run_id: run_id,
-      state: state,
-      reason: Map.get(summary, :reason),
-      review_verdict: Map.get(summary, :review_verdict)
-    }
+    AwaitRunsSummary.new(
+      run_id,
+      state,
+      Map.get(summary, :reason),
+      Map.get(summary, :review_verdict)
+    )
   end
 
   @spec await_run_complete?(map()) :: boolean()
@@ -1345,12 +1348,7 @@ defmodule Harness.Dispatch do
   defp timeout_unfinished_run(%{state: state} = summary) when state in [:done, :failed, :not_found], do: summary
 
   defp timeout_unfinished_run(%{run_id: run_id, review_verdict: review_verdict}) do
-    %{
-      run_id: run_id,
-      state: :timed_out,
-      reason: :await_timeout,
-      review_verdict: review_verdict
-    }
+    AwaitRunsSummary.new(run_id, :timed_out, :await_timeout, review_verdict)
   end
 
   @spec wait_for_next_poll(integer()) :: :ok
@@ -1363,14 +1361,9 @@ defmodule Harness.Dispatch do
     end
   end
 
-  @spec not_found_summary(String.t()) :: map()
+  @spec not_found_summary(String.t()) :: AwaitRunsSummary.t()
   defp not_found_summary(run_id) do
-    %{
-      run_id: run_id,
-      state: :not_found,
-      reason: :not_found,
-      review_verdict: nil
-    }
+    AwaitRunsSummary.new(run_id, :not_found, :not_found, nil)
   end
 
   @spec oban_job_status(String.t()) :: {:ok, map()} | {:error, :not_found}
@@ -1459,12 +1452,8 @@ defmodule Harness.Dispatch do
   @spec summarize_transcript(%{buffer: binary(), seq: non_neg_integer()}) :: map()
   defp summarize_transcript(%{buffer: buffer, seq: seq}), do: %{transcript: buffer, seq: seq}
 
-  @spec summarize_transcript_events(%{
-          events: [{atom(), map()}],
-          agent_kind: atom() | nil,
-          seq: non_neg_integer()
-        }) :: map()
-  defp summarize_transcript_events(%{events: events, agent_kind: agent_kind, seq: seq}) do
+  @spec summarize_transcript_events(TranscriptSnapshot.t()) :: map()
+  defp summarize_transcript_events(%TranscriptSnapshot{events: events, agent_kind: agent_kind, seq: seq}) do
     %{events: Enum.map(events, &event_to_map/1), agent_kind: agent_kind, seq: seq}
   end
 

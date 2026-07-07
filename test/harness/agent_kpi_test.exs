@@ -4,6 +4,7 @@ defmodule Harness.AgentKPITest do
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentKPI
   alias Harness.AgentKPI.TokenMeans
+  alias Harness.AgentKPI.TokenTotals
   alias Harness.Run.LogRecord
   alias Harness.TokenUsage
 
@@ -615,7 +616,7 @@ defmodule Harness.AgentKPITest do
       assert facts.repaired_runs == 1
       assert facts.dead_runs == 1
       assert facts.masked_failure_rate == 0.5
-      assert facts.tokens == %{input: 25, output: 15, total: 40}
+      assert facts.tokens == %TokenTotals{input: 25, output: 15, total: 40}
 
       assert facts.per_run == [
                %{
@@ -625,7 +626,7 @@ defmodule Harness.AgentKPITest do
                  attempts: 1,
                  outcome: :repaired,
                  repaired: "moved leaked checkout file",
-                 tokens: %{input: 20, output: 10, total: 30}
+                 tokens: %TokenTotals{input: 20, output: 10, total: 30}
                },
                %{
                  run_id: "run-dead",
@@ -634,7 +635,7 @@ defmodule Harness.AgentKPITest do
                  attempts: 2,
                  outcome: :dead,
                  repaired: nil,
-                 tokens: %{input: 5, output: 5, total: 10}
+                 tokens: %TokenTotals{input: 5, output: 5, total: 10}
                }
              ]
     end
@@ -647,7 +648,7 @@ defmodule Harness.AgentKPITest do
                repaired_runs: 0,
                dead_runs: 0,
                masked_failure_rate: 0.0,
-               tokens: %{input: 0, output: 0, total: 0},
+               tokens: %TokenTotals{input: 0, output: 0, total: 0},
                per_run: []
              }
     end

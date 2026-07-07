@@ -11,6 +11,7 @@ defmodule Harness.ObanDispatchTest do
   alias Harness.Batch
   alias Harness.Dashboard.RunFeed
   alias Harness.Dispatch
+  alias Harness.Dispatch.AwaitRunsSummary
   alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.Lander.Worker, as: LanderWorker
@@ -232,14 +233,14 @@ defmodule Harness.ObanDispatchTest do
 
     assert {:ok, [settled, running]} = Dispatch.await_runs([settled_id, queued_id], 30)
 
-    assert settled == %{
+    assert settled == %AwaitRunsSummary{
              run_id: settled_id,
              state: :done,
              reason: :approved,
              review_verdict: :approve
            }
 
-    assert running == %{
+    assert running == %AwaitRunsSummary{
              run_id: queued_id,
              state: :timed_out,
              reason: :await_timeout,

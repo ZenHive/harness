@@ -9,6 +9,7 @@ defmodule Harness.CodeSearch do
 
   use Descripex, namespace: "/code_search"
 
+  alias Harness.CodeSearch.Fact
   alias Harness.CodeSearch.Server
   alias Harness.CodeSearch.Symbol
   alias Harness.Project
@@ -40,17 +41,7 @@ defmodule Harness.CodeSearch do
     "attribute" => :attribute
   }
 
-  @type fact :: %{
-          required(:file) => String.t() | nil,
-          required(:line) => pos_integer() | nil,
-          required(:kind) => atom(),
-          required(:module) => String.t() | nil,
-          required(:name) => String.t() | nil,
-          required(:arity) => non_neg_integer() | nil,
-          optional(:caller) => String.t(),
-          optional(:callee) => String.t(),
-          optional(:mass) => pos_integer()
-        }
+  @type fact :: Fact.t()
 
   @type result :: {:ok, map()} | {:error, term()}
   @type file_mtime :: :calendar.datetime()
@@ -337,14 +328,14 @@ defmodule Harness.CodeSearch do
     definition = Map.get(hit, :definition) || Map.get(hit, "definition")
     fragment = Map.get(hit, :fragment) || Map.get(hit, "fragment")
 
-    %{
+    Fact.new(
       file: file_for(definition, fragment, ctx),
       line: Map.get(definition, :line),
       kind: Map.get(definition, :kind),
       module: Map.get(definition, :module),
       name: Map.get(definition, :name),
       arity: Map.get(definition, :arity)
-    }
+    )
   end
 
   @spec call_edge_fact(term(), :caller | :callee, map()) :: fact()
@@ -352,7 +343,7 @@ defmodule Harness.CodeSearch do
     selected = selected_symbol(edge, side)
     parsed = parse_symbol(selected)
 
-    %{
+    Fact.new(
       file: file_by_id(Map.get(edge, :file_id), ctx),
       line: Map.get(edge, :line),
       kind: :call_edge,
@@ -361,7 +352,7 @@ defmodule Harness.CodeSearch do
       arity: parsed.arity,
       caller: Map.get(edge, :caller_qualified_name),
       callee: Map.get(edge, :callee_qualified_name)
-    }
+    )
   end
 
   @spec duplicate_facts(term()) :: [fact()]
@@ -436,14 +427,14 @@ defmodule Harness.CodeSearch do
 
   @spec definition_row_fact([term()]) :: fact()
   defp definition_row_fact([file, line, kind, module, name, arity]) do
-    %{
+    Fact.new(
       file: file,
       line: line,
       kind: definition_kind(kind),
       module: module,
       name: name,
       arity: arity
-    }
+    )
   end
 
   @spec definition_kind(atom() | String.t()) :: atom()
@@ -649,14 +640,14 @@ defmodule Harness.CodeSearch do
 
   @spec definition_symbol_fact(term()) :: fact()
   defp definition_symbol_fact(definition) do
-    %{
+    Fact.new(
       file: Map.get(definition, :file),
       line: Map.get(definition, :line),
       kind: Map.get(definition, :kind),
       module: Map.get(definition, :module),
       name: Map.get(definition, :name),
       arity: Map.get(definition, :arity)
-    }
+    )
   end
 
   @spec call_edge_match?(map(), String.t(), :caller | :callee) :: boolean()

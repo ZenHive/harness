@@ -76,6 +76,16 @@ defmodule Harness.Dashboard.Transcript.Parser do
   alias Harness.Dashboard.Transcript.Parser.Passthrough
   alias Harness.Dashboard.Transcript.Parser.Pi
 
+  @doc false
+  @spec assistant_tool_use_payload(String.t(), String.t(), map()) :: %{
+          id: String.t(),
+          name: String.t(),
+          input: map()
+        }
+  def assistant_tool_use_payload(id, name, input) do
+    %{id: id, name: name, input: input}
+  end
+
   @typedoc "Agent atom keys mirror `Harness.AgentRegistry.agents/0`."
   @type agent_kind :: :claude | :codex | :cursor | :grok | :pi | :antigravity
 
@@ -157,11 +167,11 @@ defmodule Harness.Dashboard.Transcript.Parser do
   def translate_assistant_block(%{"type" => "tool_use"} = block) do
     [
       {:assistant_tool_use,
-       %{
-         id: Map.get(block, "id", ""),
-         name: Map.get(block, "name", ""),
-         input: Map.get(block, "input", %{})
-       }}
+       assistant_tool_use_payload(
+         Map.get(block, "id", ""),
+         Map.get(block, "name", ""),
+         Map.get(block, "input", %{})
+       )}
     ]
   end
 

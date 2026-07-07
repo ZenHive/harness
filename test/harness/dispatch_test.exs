@@ -10,6 +10,7 @@ defmodule Harness.DispatchTest do
   alias Harness.CapabilityScore.Entry
   alias Harness.Chat.Tools
   alias Harness.Dispatch
+  alias Harness.Dispatch.AwaitRunsSummary
   alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
@@ -324,14 +325,14 @@ defmodule Harness.DispatchTest do
 
       assert {:ok, [approved, rejected]} = Dispatch.await_runs([approved_id, rejected_id], 1_000)
 
-      assert approved == %{
+      assert approved == %AwaitRunsSummary{
                run_id: approved_id,
                state: :done,
                reason: :approved,
                review_verdict: :approve
              }
 
-      assert rejected == %{
+      assert rejected == %AwaitRunsSummary{
                run_id: rejected_id,
                state: :failed,
                reason: {:review_rejected, "nothing salvageable"},
@@ -342,7 +343,7 @@ defmodule Harness.DispatchTest do
     test "returns a per-run not_found summary for an unknown run id" do
       assert {:ok, [summary]} = Dispatch.await_runs(["__no_such_run__"], 30)
 
-      assert summary == %{
+      assert summary == %AwaitRunsSummary{
                run_id: "__no_such_run__",
                state: :not_found,
                reason: :not_found,

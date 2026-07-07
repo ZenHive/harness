@@ -262,6 +262,7 @@ defmodule Harness.Oban do
 
   @spec orphan_rescue_child() :: Supervisor.child_spec()
   defp orphan_rescue_child do
+    # reach:disable-next-line fixed_shape_map — standard OTP Supervisor.child_spec/1 literal
     %{
       id: @orphan_rescue_child_id,
       start: {Task, :start_link, [&rescue_orphaned_run_jobs/0]},
