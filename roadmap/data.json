@@ -15523,7 +15523,7 @@
       "id": "344",
       "phase": 20,
       "bundle": "autolanding",
-      "status": "in_progress",
+      "status": "blocked",
       "title": "Land-conflict resolver AI cannot spawn: claude adapter has no configured agent_model",
       "scores": {
         "d": 2,
@@ -15558,6 +15558,7 @@
       "created_at": "2026-07-04",
       "started_at": "2026-07-07",
       "scored_at": "2026-07-04",
+      "blocked_reason": "land conflict retained for repair (task 344, run run-1783391790006-d02f1634, branch harness/run-1783391790006-d02f1634); resolver already attempted and the branch still conflicted. resolver witness: selection/spawn failed: {:model_required, Harness.AgentAdapter.Claude}. Repair: rebase the retained branch onto the target branch, resolve all conflict markers while keeping both reviewed intents, commit the resolved branch, move harness/run-1783391790006-d02f1634 to that commit if you used a scratch branch, then run dispatch-reland run-1783391790006-d02f1634.",
       "cross_repo": []
     },
     {
