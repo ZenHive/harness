@@ -53,8 +53,26 @@ defmodule Harness.Landing.Settings do
   registration-time `landing_policy` / `target_branch` stand.
   """
   @spec overlay(Project.t()) :: Project.t()
-  def overlay(%Project{name: name} = project) do
-    case Map.get(overrides(), name) do
+  def overlay(%Project{} = project) do
+    [overlaid] = overlay_many([project])
+    overlaid
+  end
+
+  @doc """
+  Overlays persisted landing overrides (fetched once) onto the given projects.
+
+  Callers such as `ProjectRegistry.list/0` use this to issue exactly one
+  `SettingsStore.fetch/1` for the landing key regardless of project count.
+  Per-project `overlay/1` delegates here (one-element batch).
+  """
+  @spec overlay_many([Project.t()]) :: [Project.t()]
+  def overlay_many(projects) when is_list(projects) do
+    ov = overrides()
+    Enum.map(projects, &do_overlay(&1, ov))
+  end
+
+  defp do_overlay(%Project{name: name} = project, overrides) do
+    case Map.get(overrides, name) do
       %{} = override ->
         project
         |> overlay_landing(override)

@@ -159,7 +159,7 @@ defmodule Harness.ProjectRegistry do
   def list do
     __MODULE__
     |> GenServer.call(:list)
-    |> Enum.map(&LandingSettings.overlay/1)
+    |> LandingSettings.overlay_many()
   end
 
   api(:unregister, "Remove a project from the registry by name.",

@@ -57,6 +57,31 @@ defmodule Harness.Landing.SettingsTest do
     end
   end
 
+  describe "overlay_many/1" do
+    test "returns [] for empty input", %{project: _project} do
+      assert LandingSettings.overlay_many([]) == []
+    end
+
+    test "produces identical results to mapping overlay/1 (semantics preserved)", %{project: project} do
+      p2 = project("batch2")
+      :ok = LandingSettings.set(project.name, :auto, "release", "test")
+      :ok = LandingSettings.set_reviewer("batch2", :codex, "test")
+
+      batched = LandingSettings.overlay_many([project, p2])
+      mapped = [LandingSettings.overlay(project), LandingSettings.overlay(p2)]
+
+      assert batched == mapped
+      assert hd(batched).landing_policy == :auto
+      assert hd(batched).target_branch == "release"
+      assert List.last(batched).reviewer == :codex
+    end
+
+    test "no overrides: returns projects unchanged (order preserved)", %{project: project} do
+      p2 = project("plain2")
+      assert LandingSettings.overlay_many([project, p2]) == [project, p2]
+    end
+  end
+
   describe "set/4" do
     test "refuses :auto without a target branch", %{project: project} do
       assert {:error, :target_branch_required} = LandingSettings.set(project.name, :auto, nil, "test")

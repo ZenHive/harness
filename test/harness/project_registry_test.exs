@@ -1,3 +1,30 @@
+defmodule Harness.ProjectRegistryTest.CountingSettingsStore do
+  @moduledoc false
+  @behaviour Harness.SettingsStore
+
+  alias Harness.Test.SettingsStoreMemory
+
+  @impl Harness.SettingsStore
+  @spec fetch(String.t(), keyword()) :: {:ok, term()} | :not_found
+  def fetch(key, backend_opts) when is_binary(key) and is_list(backend_opts) do
+    owner = Keyword.get(backend_opts, :owner)
+
+    if key == "landing" and owner do
+      send(owner, :landing_fetch)
+    end
+
+    # Delegate storage to the memory impl (same scope key) so data is shared
+    # regardless of which backend name is configured for the test.
+    SettingsStoreMemory.fetch(key, Keyword.delete(backend_opts, :owner))
+  end
+
+  @impl Harness.SettingsStore
+  @spec put(String.t(), term(), keyword()) :: :ok
+  def put(key, value, backend_opts) when is_binary(key) and is_list(backend_opts) do
+    SettingsStoreMemory.put(key, value, Keyword.delete(backend_opts, :owner))
+  end
+end
+
 defmodule Harness.ProjectRegistryTest do
   # async: false because tests reset and mutate the singleton ProjectRegistry.
   use ExUnit.Case, async: false
@@ -686,10 +713,63 @@ defmodule Harness.ProjectRegistryTest do
       assert offenders == [],
              "overlay/1 must be applied only at the ProjectRegistry read boundary; stray call sites: #{inspect(offenders)}"
     end
+
+    test "list/0 issues exactly one landing-settings fetch regardless of project count" do
+      owner = self()
+      scope = :"one_fetch_#{System.unique_integer([:positive])}"
+      SettingsStoreMemory.reset(scope: scope)
+
+      # Seed data using the memory backend (no owner -> no count messages).
+      prev = Application.get_env(:harness, :settings_store)
+      Application.put_env(:harness, :settings_store, {SettingsStoreMemory, scope: scope})
+
+      on_exit(fn ->
+        SettingsStoreMemory.reset(scope: scope)
+        Application.put_env(:harness, :settings_store, prev)
+      end)
+
+      p1 = %{sample_project("batch1") | landing_policy: :manual, target_branch: nil}
+      p2 = %{sample_project("batch2") | landing_policy: :manual, target_branch: nil}
+      assert :ok = ProjectRegistry.register(p1)
+      assert :ok = ProjectRegistry.register(p2)
+      assert :ok = LandingSettings.set("batch1", :auto, "main", "test")
+
+      # Now swap to counting backend (shares ETS data via scope).
+      counting = {Harness.ProjectRegistryTest.CountingSettingsStore, scope: scope, owner: owner}
+      Application.put_env(:harness, :settings_store, counting)
+
+      flush_messages()
+
+      assert [e1, e2] = ProjectRegistry.list()
+      assert e1.landing_policy == :auto
+      assert e1.target_branch == "main"
+      assert e2.landing_policy == :manual
+
+      fetches = drain_landing_fetches()
+
+      assert fetches == 1,
+             "ProjectRegistry.list/0 with #{length([e1, e2])} projects must issue exactly 1 landing fetch, got #{fetches}"
+    end
   end
 
   defp sample_project(name) do
     ProjectFixture.from_repo("/tmp/#{name}", name: name)
+  end
+
+  defp flush_messages do
+    receive do
+      _ -> flush_messages()
+    after
+      0 -> :ok
+    end
+  end
+
+  defp drain_landing_fetches(acc \\ 0) do
+    receive do
+      :landing_fetch -> drain_landing_fetches(acc + 1)
+    after
+      0 -> acc
+    end
   end
 
   @spec insert_legacy_project!(String.t(), atom() | nil) :: :ok
