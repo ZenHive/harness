@@ -765,6 +765,28 @@ defmodule Harness.AgentKPITest do
     end
   end
 
+  describe "duration_summary/1" do
+    test "empty list returns the zero default (no crash), mirroring ceremony_distribution/1" do
+      assert AgentKPI.duration_summary([]) == %{median: 0, p90: 0}
+    end
+
+    test "single-element list" do
+      assert AgentKPI.duration_summary([42]) == %{median: 42, p90: 42}
+    end
+
+    test "odd length" do
+      assert AgentKPI.duration_summary([100, 200, 300]) == %{median: 200, p90: 300}
+    end
+
+    test "even length" do
+      assert AgentKPI.duration_summary([100, 200, 300, 400]) == %{median: 250.0, p90: 400}
+    end
+
+    test "nearest-rank p90 (lands before the final element for n=10)" do
+      assert AgentKPI.duration_summary(Enum.to_list(1..10)) == %{median: 5.5, p90: 9}
+    end
+  end
+
   defp tokens(input, output) do
     %TokenUsage{input: input, output: output, total: input + output}
   end

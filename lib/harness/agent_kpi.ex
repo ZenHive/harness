@@ -691,6 +691,7 @@ defmodule Harness.AgentKPI do
 
   @doc false
   @spec duration_summary([non_neg_integer()]) :: duration_summary()
+  def duration_summary([]), do: %{median: 0, p90: 0}
   def duration_summary(durations) when is_list(durations) do
     sorted = Enum.sort(durations)
     %{median: median(sorted), p90: percentile(sorted, 90)}
