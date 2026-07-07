@@ -14948,7 +14948,7 @@
       "id": "332",
       "phase": 22,
       "bundle": "operator-surface",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Operator 'update deps' action: dispatch a dep-bump through the agent-gate",
       "scores": {
         "d": 5,
@@ -14987,6 +14987,7 @@
       ],
       "body": "Add an operator-triggered \"update deps\" action that dispatches a dependency-bump task through the normal agent-gate (implementer -> reviewer -> land), rather than mechanically running `mix deps.update` in harness (which would reintroduce the deleted mechanical verification path). Surface it as a dashboard button (per project) and an MCP tool.\n\nThe dispatch plumbing is language-agnostic; the bump prompt is built from `project.languages` (a prompt provider per supported ecosystem, not a new dispatch path) — the Elixir prompt covers mix.exs / `mix deps.update` / `mix test.json --include integration`, and later providers can cover Cargo.toml / npm/pnpm/yarn / go.mod. The prompt is fed the dep-freshness facts (Task 331 plus per-language providers) as ground truth, so the implementer cannot claim a dep cannot be updated — the facts name exactly what is outdated and constraint-allowed. Batch all constraint-satisfiable minor/patch bumps into one task per ecosystem; give each major-version bump its own task. The reviewer check_command for these runs the project full suite incl. integration (language-appropriate) so the full suite — not just the default offline subset — verifies the upgrade.\n\nFor Elixir projects specifically, when a dep is excluded only by an over-tight library-style pin, the prompt instructs the implementer to widen the constraint to idiomatic `~> x.y` (letting mix.lock + the reviewer suite control the resolved version) rather than declaring it blocked (Cargo is loose-by-default, so this rarely applies to Rust projects). The bump and verification ride the standard implement->review->land loop; harness runs no build or test itself.\n",
       "created_at": "2026-06-24",
+      "started_at": "2026-07-07",
       "scored_at": "2026-06-24",
       "cross_repo": []
     },
