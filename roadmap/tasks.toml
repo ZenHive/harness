@@ -9908,7 +9908,7 @@ shipped_in = "922dc49cd53f65046ce9f2f60fa2d3a71498e20b"
 id = "328"
 phase = 22
 bundle = "contract"
-status = "pending"
+status = "done"
 title = "Break the Driver -> Run.Reflex -> Worktree.Isolation -> AgentAdapter dependency cycle"
 scores = { d = 4, b = 6, u = 5 }
 markers = ["parallel"]
@@ -9918,9 +9918,13 @@ touches = ["lib/harness/agent_adapter", "lib/harness/run/reflex.ex", "lib/harnes
 assignee = "codex"
 model = "gpt-5.5"
 body = 'The Port driver (Harness.AgentAdapter.Driver) reaches UP into the run-lifecycle layer: it aliases Harness.Run.Reflex (driver.ex:57) and calls new/3, expired/1, wait/1, on_output/2 for its idle/total/progress watchdog (driver.ex:134,154,159,173,190). Reflex (lib/harness/run/reflex.ex) is not a leaf: it pulls Harness.Worktree.Isolation -> Harness.Git, and Isolation.validate/1 calls BACK into Harness.AgentAdapter.supports?/2 — a dependency cycle and a layering violation (a low-level Port driver depending on a higher-level run module). Break it so the adapter subsystem depends on nothing above itself: abstract the watchdog behind a behaviour/callback the Driver invokes without naming Reflex (harness injects the Reflex-backed implementation), OR relocate the lifetime/idle/progress-timer machinery the Driver actually uses down into the subsystem and keep only checkout-pollution detection (snapshot/check_pollution, which the Driver does NOT use) up in Run. Either way: `grep -rE "Harness\.Run" lib/harness/agent_adapter` returns nothing, and Isolation no longer calls back into AgentAdapter from a module the Driver transitively depends on. This is genuine architectural hygiene (a real module cycle) regardless of extraction; it is the second of two decoupling cuts that make the subsystem extraction-ready.'
+implemented = "Relocated driver watchdog machinery to leaf Harness.AgentAdapter.Watchdog; inverted Isolation.validate to validate/3 (Run computes isolation+limitation at call site); Isolation no longer names AgentAdapter — cycle verified gone via xref. Reviewer approved (run run-1783395390954-6e2b5024); landed manually after BEAM restart killed the run post-verdict."
+verified = true
 created_at = "2026-06-22"
 started_at = "2026-07-07"
 scored_at = "2026-06-22"
+done_at = "2026-07-07"
+shipped_in = "aae797b43366ee2b2a0c1b98ca72068f6307bdde"
 
 [[task]]
 id = "329"
