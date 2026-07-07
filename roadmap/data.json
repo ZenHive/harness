@@ -15944,7 +15944,7 @@
       "id": "353",
       "phase": 22,
       "bundle": "core-loop",
-      "status": "in_progress",
+      "status": "done",
       "title": "Decompose the 2,890-line Run gen_statem: extract per-state event handling into satellite modules",
       "scores": {
         "d": 4,
@@ -15975,10 +15975,15 @@
         "lib/harness/run.ex",
         "lib/harness/run/"
       ],
+      "shipped_in": "b3105df7892d4bc862968aa92a92bf5b7ab838da",
       "body": "run.ex is 2,890 lines / 322 functions — the largest file in the codebase by nearly 2x (next: dispatch.ex at 1,565) — concentrating every state (dispatched/running/committing/recovering/reviewing/held/done/failed) and its event clauses in one module. Every lifecycle change pays the monolith's blast radius, and the pending run-lifecycle tasks (327's invocation builders, 343's cancel fix) all queue edits to the same file. Continue the satellite pattern the module already established (Run.Recovery, Run.Review, Run.Result, Run.Status, Run.Reflex, Run.RetryPolicy) by extracting per-state event handling into per-state modules invoked from thin delegators in run.ex, without changing the :gen_statem callback surface or any observable behavior. depends_on 327 + 343 so the queued run.ex edits land first and this pure-move diff doesn't rebase-conflict them. Identified by cross-cutting codebase review 2026-07-06 as the codebase's single structural outlier (the review found zero correctness defects in this subsystem — this is maintainability debt, not a bug).\n",
       "created_at": "2026-07-05",
       "started_at": "2026-07-07",
+      "done_at": "2026-07-07",
       "scored_at": "2026-07-05",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1783397866364-db4dc956, b3105df7892d4bc862968aa92a92bf5b7ab838da).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
