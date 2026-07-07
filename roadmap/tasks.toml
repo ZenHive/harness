@@ -9999,7 +9999,7 @@ shipped_in = "06e877dcc5024c334d072e6efbc1cb702a768c88"
 id = "332"
 phase = 22
 bundle = "operator-surface"
-status = "in_progress"
+status = "done"
 title = "Operator 'update deps' action: dispatch a dep-bump through the agent-gate"
 scores = { d = 5, b = 7, u = 7 }
 depends_on = [331, 340]
@@ -10015,9 +10015,14 @@ The dispatch plumbing is language-agnostic; the bump prompt is built from `proje
 
 For Elixir projects specifically, when a dep is excluded only by an over-tight library-style pin, the prompt instructs the implementer to widen the constraint to idiomatic `~> x.y` (letting mix.lock + the reviewer suite control the resolved version) rather than declaring it blocked (Cargo is loose-by-default, so this rarely applies to Rust projects). The bump and verification ride the standard implement->review->land loop; harness runs no build or test itself.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1783405138130-dbd42b8b, bdbb73e3ebb095b9981469264811f87570a06042)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-24"
 started_at = "2026-07-07"
 scored_at = "2026-06-24"
+done_at = "2026-07-07"
+shipped_in = "bdbb73e3ebb095b9981469264811f87570a06042"
 
 [[task]]
 id = "333"
