@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 22 — Live-Run Observability — stop flying blind while an agent works (16 of 35 done · 3 in progress)
+**Focus phase:** 22 — Live-Run Observability — stop flying blind while an agent works (17 of 35 done · 2 in progress)
 
-**Last shipped:** Task 346 — Port the Task-163 evidence-preserving record_run merge to ResultStore.Memory, Task 347 — Worktree sweeper is depth-blind: */* glob never finds leaked landing/audit worktrees after a crash mid-land, Task 350 — AgentKPI.duration_summary/1 crashes with ArithmeticError on [] — reachable from the Postgres KPI rollup on 2026-07-07
+**Last shipped:** Task 346 — Port the Task-163 evidence-preserving record_run merge to ResultStore.Memory, Task 347 — Worktree sweeper is depth-blind: */* glob never finds leaked landing/audit worktrees after a crash mid-land, Task 349 — ProjectRegistry.list/0 refetches landing settings once per project — batch the overlay to one read, Task 350 — AgentKPI.duration_summary/1 crashes with ArithmeticError on [] — reachable from the Postgres KPI rollup on 2026-07-07
 
 **Up next:** Task 332 — Operator 'update deps' action: dispatch a dep-bump through the agent-gate [D:5/B:7/U:7 → Eff:1.4] 📋
 <!-- FOCUS:END -->
