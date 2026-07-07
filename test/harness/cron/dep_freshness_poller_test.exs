@@ -84,7 +84,7 @@ defmodule Harness.Cron.DepFreshnessPollerTest do
     assert :ok = DepFreshnessPoller.perform(%Oban.Job{})
     assert {:ok, snapshot} = DepFreshness.fetch_snapshot("cron-rust")
     assert snapshot.language == "rust"
-    assert Enum.any?(snapshot.rows, &(&1.name == "provider:rust" and &1.status == :skipped))
+    assert Enum.any?(snapshot.rows, &(&1.name == "provider:rust" and &1.reason == :missing_cargo_toml))
     assert {:ok, failed_snapshot} = DepFreshness.fetch_snapshot("cron-failed")
     assert Enum.any?(failed_snapshot.rows, &(&1.name == "provider:elixir" and &1.status == :skipped))
   end

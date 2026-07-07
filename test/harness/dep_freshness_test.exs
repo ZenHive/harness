@@ -199,20 +199,69 @@ defmodule Harness.DepFreshnessTest do
     assert Enum.any?(snapshot.conformance.items, &(&1.id == "dep:credo" and &1.status == :missing))
   end
 
-  test "scan_project records skipped facts for unsupported languages" do
-    project = ProjectFixture.from_repo("/tmp/harness-rust-freshness", name: "rust-demo", language: :rust)
+  test "scan_project records Rust freshness rows for Rust projects", %{tmp_dir: tmp_dir} do
+    File.write!(Path.join(tmp_dir, "Cargo.toml"), cargo_toml())
+
+    project = ProjectFixture.from_repo(tmp_dir, name: "rust-freshness-demo", language: :rust)
     :ok = ProjectRegistry.register(project)
 
-    assert :ok = DepFreshness.scan_project(project)
-    assert {:ok, snapshot} = DepFreshness.fetch_snapshot("rust-demo")
+    output =
+      Jason.encode!(%{
+        "crate_name" => "rust_freshness_demo",
+        "dependencies" => [
+          %{"name" => "serde", "project" => "1.0.0", "compat" => "---", "latest" => "1.0.228"}
+        ]
+      })
+
+    runner = fn
+      "cargo", ["outdated", "--version"], ^tmp_dir -> {:ok, "cargo-outdated-outdated 0.19.0"}
+      "cargo", ["outdated", "--format", "json", "-R"], ^tmp_dir -> {:ok, output}
+    end
+
+    assert :ok = DepFreshness.scan_project(project, provider_opts: [runner: runner])
+
+    assert {:ok, snapshot} = DepFreshness.fetch_snapshot("rust-freshness-demo")
     assert snapshot.language == "rust"
-    assert snapshot.outdated_count == 0
-    assert [%Row{name: "provider:rust", status: :skipped, language: :rust}] = snapshot.rows
+    assert snapshot.outdated_count == 1
+
+    assert [
+             %Row{
+               name: "serde",
+               current_version: "1.0.0",
+               latest_version: "1.0.228",
+               constraint_allowed: false,
+               language: :rust
+             }
+           ] = snapshot.rows
   end
 
-  test "scan_project records Elixir rows and skipped facts for mixed projects", %{tmp_dir: tmp_dir} do
+  test "scan_project records skipped facts for unsupported languages" do
+    project = ProjectFixture.from_repo("/tmp/harness-python-freshness", name: "python-demo", language: :python)
+
+    assert :ok = DepFreshness.scan_project(project)
+    assert {:ok, snapshot} = DepFreshness.fetch_snapshot("python-demo")
+    assert snapshot.language == "python"
+    assert snapshot.outdated_count == 0
+    assert [%Row{name: "provider:python", status: :skipped, language: :python}] = snapshot.rows
+  end
+
+  test "scan_project records skipped Rust facts when Cargo metadata is missing", %{tmp_dir: tmp_dir} do
+    project = ProjectFixture.from_repo(tmp_dir, name: "rust-missing-cargo", language: :rust)
+    :ok = ProjectRegistry.register(project)
+
+    assert :ok =
+             DepFreshness.scan_project(project, provider_opts: [runner: fn _, _, _ -> flunk("runner should not run") end])
+
+    assert {:ok, snapshot} = DepFreshness.fetch_snapshot("rust-missing-cargo")
+    assert snapshot.language == "rust"
+    assert snapshot.outdated_count == 0
+    assert [%Row{name: "provider:rust", status: :skipped, reason: :missing_cargo_toml, language: :rust}] = snapshot.rows
+  end
+
+  test "scan_project records Elixir and Rust rows for mixed projects", %{tmp_dir: tmp_dir} do
     File.write!(Path.join(tmp_dir, "mix.exs"), "Mix.install([])")
     File.mkdir!(Path.join(tmp_dir, "deps"))
+    File.write!(Path.join(tmp_dir, "Cargo.toml"), cargo_toml())
 
     project = ProjectFixture.from_repo(tmp_dir, name: "mixed-demo", languages: [:elixir, :rust])
     :ok = ProjectRegistry.register(project)
@@ -222,15 +271,27 @@ defmodule Harness.DepFreshnessTest do
     req                          0.6.1    0.6.2    Update possible
     """
 
-    runner = fn "mix", ["hex.outdated"], ^tmp_dir -> {:ok, output} end
+    rust_output =
+      Jason.encode!(%{
+        "crate_name" => "mixed_demo",
+        "dependencies" => [
+          %{"name" => "serde", "project" => "1.0.0", "compat" => "1.0.228", "latest" => "1.0.228"}
+        ]
+      })
+
+    runner = fn
+      "mix", ["hex.outdated"], ^tmp_dir -> {:ok, output}
+      "cargo", ["outdated", "--version"], ^tmp_dir -> {:ok, "cargo-outdated-outdated 0.19.0"}
+      "cargo", ["outdated", "--format", "json", "-R"], ^tmp_dir -> {:ok, rust_output}
+    end
 
     assert :ok = DepFreshness.scan_project(project, provider_opts: [runner: runner])
 
     assert {:ok, snapshot} = DepFreshness.fetch_snapshot("mixed-demo")
     assert snapshot.language == "elixir,rust"
-    assert snapshot.outdated_count == 1
+    assert snapshot.outdated_count == 2
     assert Enum.any?(snapshot.rows, &match?(%Row{name: "req", language: :elixir}, &1))
-    assert Enum.any?(snapshot.rows, &match?(%Row{name: "provider:rust", status: :skipped, language: :rust}, &1))
+    assert Enum.any?(snapshot.rows, &match?(%Row{name: "serde", language: :rust}, &1))
     assert snapshot.conformance.drift_count > 0
   end
 
@@ -266,5 +327,18 @@ defmodule Harness.DepFreshnessTest do
     }
 
     assert {:skipped, :github_source} = DepFreshness.scan_project(project)
+  end
+
+  @spec cargo_toml() :: String.t()
+  defp cargo_toml do
+    """
+    [package]
+    name = "rust_freshness_demo"
+    version = "0.1.0"
+    edition = "2021"
+
+    [dependencies]
+    serde = "=1.0.0"
+    """
   end
 end

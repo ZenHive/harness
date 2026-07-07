@@ -1,6 +1,6 @@
 defmodule Harness.DepFreshness.IntegrationTest do
   @moduledoc """
-  Runs the Elixir provider against this repo and persists rows to Postgres.
+  Runs dependency freshness providers against local fixtures and persists rows to Postgres.
   """
 
   use Harness.DataCase, async: false
@@ -40,5 +40,21 @@ defmodule Harness.DepFreshness.IntegrationTest do
     assert snapshot.language == "elixir"
     assert [%{name: name} | _] = Enum.map(snapshot.rows, &Map.from_struct/1)
     assert is_binary(name)
+  end
+
+  test "records cargo outdated rows for the Rust fixture project" do
+    repo_root = Path.expand("../../support/fixtures/rust_project", __DIR__)
+    project = ProjectFixture.from_repo(repo_root, name: "rust-fixture-self-scan", language: :rust)
+    :ok = ProjectRegistry.register(project)
+
+    assert :ok = DepFreshness.scan_project(project)
+
+    assert {:ok, snapshot} = DepFreshness.fetch_snapshot("rust-fixture-self-scan")
+    assert snapshot.language == "rust"
+    assert snapshot.outdated_count <= length(snapshot.rows)
+
+    assert Enum.any?(snapshot.rows, fn row ->
+             row.name == "serde" and row.current_version == "1.0.0" and is_binary(row.latest_version)
+           end)
   end
 end

@@ -4,6 +4,7 @@ defmodule Harness.DepFreshness.Providers do
   alias Harness.DepFreshness.Provider.Elixir, as: ElixirProvider
   alias Harness.DepFreshness.Provider.Go, as: GoProvider
   alias Harness.DepFreshness.Provider.JavaScript, as: JavaScriptProvider
+  alias Harness.DepFreshness.Provider.Rust, as: RustProvider
   alias Harness.LanguageProviders
   alias Harness.Project
 
@@ -11,6 +12,7 @@ defmodule Harness.DepFreshness.Providers do
     elixir: ElixirProvider,
     go: GoProvider,
     javascript: JavaScriptProvider,
+    rust: RustProvider,
     typescript: JavaScriptProvider
   }
 

@@ -106,7 +106,7 @@ defmodule Harness.Dashboard.DepFreshnessLive do
       <strong>No freshness facts yet</strong>
       <p>
         {@project.name} has not been scanned. The cron dep-freshness poller records raw
-        `mix hex.outdated` rows when it next runs.
+        language-provider rows when it next runs.
       </p>
     </div>
     """
