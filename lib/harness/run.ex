@@ -1209,8 +1209,7 @@ defmodule Harness.Run do
         do_hold(data, hold)
 
       {false, nil, {:reflex_halted, reason}, nil} ->
-        route_reflex_halt(data, reason)
-        fail(data, {:reflex_halted, reason})
+        fail(data, route_reflex_halt(data, reason))
 
       {false, nil, _kind, nil} ->
         {:next_state, :committing, data}
@@ -1627,20 +1626,27 @@ defmodule Harness.Run do
     "Reviewer made no progress within #{reviewing_idle_timeout(data)}ms."
   end
 
-  @spec route_reflex_halt(data(), term()) :: :ok
+  @spec route_reflex_halt(data(), term()) :: Result.reason()
   defp route_reflex_halt(data, reason) do
-    case Resilience.route({:reflex_halt, reason}, resilience_args(data)) do
-      :ok ->
-        :ok
+    terminal_reason =
+      case Resilience.route({:reflex_halt, reason}, resilience_args(data)) do
+        :ok ->
+          {:reflex_halted, reason}
 
-      {:cancel, {:blocked, blocked_reason}} ->
-        Logger.warning("harness run: reflex halt blocked task #{data.item.id}: #{blocked_reason}")
+        {:cancel, {:blocked, blocked_reason} = cancel_reason} ->
+          Logger.warning("harness run: reflex halt blocked task #{data.item.id}: #{blocked_reason}")
+          cancel_reason
 
-      {:error, route_reason} ->
-        Logger.warning("harness run: reflex halt route failed for task #{data.item.id}: #{inspect(route_reason)}")
-    end
+        {:cancel, cancel_reason} ->
+          Logger.info("harness run: reflex halt cancelled task #{data.item.id}: #{inspect(cancel_reason)}")
+          cancel_reason
 
-    :ok
+        {:error, route_reason} ->
+          Logger.warning("harness run: reflex halt route failed for task #{data.item.id}: #{inspect(route_reason)}")
+          {:reflex_halted, reason}
+      end
+
+    terminal_reason
   end
 
   @spec resilience_args(data()) :: map()

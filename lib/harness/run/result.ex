@@ -46,6 +46,10 @@ defmodule Harness.Run.Result do
     * `:hold_expired` — an operator-held run outlived the hold safeguard.
     * `{:reflex_halted, r}` — the deterministic mid-run reflex layer killed the
       agent for a mechanical liveness or blocked-command reason.
+    * `{:redispatched, run_id}` — the reflex resilience path superseded this run
+      with a fresh successor run.
+    * `{:blocked, r}` — the reflex resilience path refused further retries and
+      recorded the task as blocked.
     * `{:worktree_failed, r}` — the isolated worktree could not be created.
     * `{:agent_spawn_failed, r}` — the agent never spawned (e.g. not on `PATH`).
     * `{:driver_crashed, r}` — the agent-driver task crashed.
@@ -75,6 +79,8 @@ defmodule Harness.Run.Result do
           | {:memory_runaway, map()}
           | :hold_expired
           | {:reflex_halted, term()}
+          | {:redispatched, String.t()}
+          | {:blocked, term()}
           | {:worktree_failed, term()}
           | {:agent_spawn_failed, term()}
           | {:driver_crashed, term()}
