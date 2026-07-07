@@ -43,7 +43,7 @@ defmodule Harness.Worktree do
       Default `true`.
   """
 
-  alias Harness.AgentRules
+  alias Harness.AgentAdapter.RulesInjection
   alias Harness.Git
   alias Harness.Project
   alias Harness.Run.RetryPolicy
@@ -811,7 +811,7 @@ defmodule Harness.Worktree do
 
   @spec cleanup_injected_rules(String.t()) :: :ok | {:error, error()}
   defp cleanup_injected_rules(path) do
-    AgentRules.cleanup_injected_rules(path)
+    RulesInjection.cleanup_injected_rules(path)
   rescue
     error in ArgumentError ->
       if File.dir?(path), do: reraise(error, __STACKTRACE__), else: {:error, {:worktree_missing, path}}

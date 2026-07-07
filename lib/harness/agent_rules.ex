@@ -1,13 +1,15 @@
 defmodule Harness.AgentRules do
   @moduledoc """
-  Canonical harness-owned rule set injected into agent invocations.
+  Canonical harness-owned rule set rendered for agent invocations.
 
   - **One source** — `priv/agent_rules/canonical.md`, section-tagged for filtering.
   - **Curated subset** — methodology and harness operational instructions; verification
     numeric gates live in a tagged section excluded from injection (harness's
     verification runner enforces those, not agent prose).
-  - **Ephemeral delivery** — adapters render from here into throwaway worktree files
-    or prompt preambles; nothing is committed to target repos.
+  - **Content only** — this module renders markdown. Delivery into worktree
+    files / prompt preambles (and their cleanup) is owned by the agent-adapter
+    subsystem (`Harness.AgentAdapter.RulesInjection`); callers pass the rendered
+    string on `Harness.AgentAdapter.Invocation.rule_content`.
   """
 
   @rules_path Path.join([__DIR__, "..", "..", "priv", "agent_rules", "canonical.md"])
@@ -15,12 +17,6 @@ defmodule Harness.AgentRules do
   @raw_rules File.read!(@rules_path)
 
   @default_exclude [:verification_gates]
-
-  @system_prompt_rel ".harness/agent-rules.md"
-  @cursor_rules_rel ".cursor/rules/harness-operational.mdc"
-  @codex_agents_filename "AGENTS.md"
-  @codex_agents_marker "<!-- harness-injected: canonical agent rules — ephemeral, do not commit -->"
-  @codex_agents_separator "\n\n---\n\n"
 
   @section_body ~r/<!-- @section (\w+) -->\s*(.*?)(?=<!-- @section |\z)/s
 
@@ -51,65 +47,6 @@ defmodule Harness.AgentRules do
     languages
     |> render_opts_for_languages()
     |> render()
-  end
-
-  @doc """
-  Preamble prepended to the task prompt for agents without a native rule channel.
-  """
-  @spec prompt_preamble([render_opt()]) :: String.t()
-  def prompt_preamble(opts \\ []) do
-    rules = render(opts)
-
-    """
-    # Harness operational rules
-
-    #{rules}
-
-    ---
-
-    """
-  end
-
-  @doc "Relative path (within `cwd`) of the Claude `--append-system-prompt-file` target."
-  @spec system_prompt_rel_path() :: String.t()
-  def system_prompt_rel_path, do: @system_prompt_rel
-
-  @doc "Writes the rendered rules for Claude's system-prompt append channel."
-  @spec write_system_prompt_file!(String.t(), [render_opt()]) :: String.t()
-  def write_system_prompt_file!(cwd, opts \\ []) when is_binary(cwd) do
-    root = worktree_root!(cwd)
-    write_file!(root, @system_prompt_rel, render(opts))
-    worktree_file!(root, @system_prompt_rel)
-  end
-
-  @doc "Installs harness rules for Codex via an ephemeral `AGENTS.md` in the worktree."
-  @spec install_codex_rules!(String.t(), [render_opt()]) :: :ok
-  def install_codex_rules!(cwd, opts \\ []) when is_binary(cwd) do
-    root = worktree_root!(cwd)
-    existing = read_optional(root, @codex_agents_filename)
-    harness_block = codex_agents_block(render(opts))
-    body = merge_agents_md(harness_block, existing)
-    write_file!(root, @codex_agents_filename, body)
-    :ok
-  end
-
-  @doc "Installs harness rules for Cursor via an ephemeral `.cursor/rules/` file."
-  @spec install_cursor_rules!(String.t(), [render_opt()]) :: :ok
-  def install_cursor_rules!(cwd, opts \\ []) when is_binary(cwd) do
-    root = worktree_root!(cwd)
-    write_file!(root, @cursor_rules_rel, cursor_rules_body(render(opts)))
-    :ok
-  end
-
-  @doc "Removes harness-injected rule files from a run worktree before delivery."
-  @spec cleanup_injected_rules(String.t()) :: :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
-  def cleanup_injected_rules(cwd) when is_binary(cwd) do
-    root = worktree_root!(cwd)
-
-    with :ok <- remove_file(root, @system_prompt_rel),
-         :ok <- remove_file(root, @cursor_rules_rel) do
-      cleanup_codex_agents(root)
-    end
   end
 
   @doc "Section ids present in the canonical source."
@@ -156,195 +93,4 @@ defmodule Harness.AgentRules do
   @spec keep_only([{section_id(), String.t()}], :all | [section_id()]) :: [{section_id(), String.t()}]
   defp keep_only(sections, :all), do: sections
   defp keep_only(sections, only), do: Enum.filter(sections, fn {id, _} -> id in only end)
-
-  @spec codex_agents_block(String.t()) :: String.t()
-  defp codex_agents_block(rules) do
-    String.trim("""
-    #{@codex_agents_marker}
-    #{rules}
-    """)
-  end
-
-  @spec cursor_rules_body(String.t()) :: String.t()
-  defp cursor_rules_body(rules) do
-    String.trim("""
-    ---
-    description: Harness operational rules injected at dispatch time
-    alwaysApply: true
-    ---
-
-    #{rules}
-    """)
-  end
-
-  @spec merge_agents_md(String.t(), String.t() | nil) :: String.t()
-  defp merge_agents_md(harness_block, nil), do: harness_block
-
-  defp merge_agents_md(harness_block, existing) do
-    if String.contains?(existing, @codex_agents_marker) do
-      existing
-    else
-      harness_block <> @codex_agents_separator <> existing
-    end
-  end
-
-  @spec cleanup_codex_agents(String.t()) ::
-          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
-  # `@codex_agents_filename` is a fixed harness-owned path; `cwd` is the run
-  # worktree root validated by `worktree_file!/2`.
-  # sobelow_skip ["Traversal.FileModule"]
-  defp cleanup_codex_agents(cwd) do
-    path = worktree_file!(cwd, @codex_agents_filename)
-
-    case File.read(path) do
-      {:ok, body} -> cleanup_codex_agents_body(path, body)
-      {:error, :enoent} -> :ok
-      {:error, reason} -> {:error, {:rule_cleanup_failed, path, reason}}
-    end
-  end
-
-  @spec cleanup_codex_agents_body(String.t(), String.t()) ::
-          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
-  defp cleanup_codex_agents_body(path, body) do
-    case matching_codex_agents_block(body) do
-      nil ->
-        cleanup_marker_prefixed_agents(path, body)
-
-      harness_block ->
-        cleanup_codex_agents_block(path, body, harness_block)
-    end
-  end
-
-  @spec matching_codex_agents_block(String.t()) :: String.t() | nil
-  defp matching_codex_agents_block(body) do
-    Enum.find(codex_agents_blocks(), &String.starts_with?(body, &1))
-  end
-
-  @spec codex_agents_blocks() :: [String.t()]
-  defp codex_agents_blocks do
-    [
-      codex_agents_block(render()),
-      codex_agents_block(render(exclude: [:verification_gates, :elixir]))
-    ]
-  end
-
-  @spec cleanup_codex_agents_block(String.t(), String.t(), String.t()) ::
-          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
-  defp cleanup_codex_agents_block(path, body, harness_block) do
-    cond do
-      body == harness_block ->
-        remove_path(path)
-
-      String.starts_with?(body, harness_block <> @codex_agents_separator) ->
-        write_path(path, String.replace_prefix(body, harness_block <> @codex_agents_separator, ""))
-
-      String.starts_with?(body, harness_block) ->
-        body
-        |> String.replace_prefix(harness_block, "")
-        |> String.trim_leading()
-        |> write_codex_agents_remainder(path)
-    end
-  end
-
-  @spec cleanup_marker_prefixed_agents(String.t(), String.t()) ::
-          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
-  defp cleanup_marker_prefixed_agents(path, body) do
-    if String.starts_with?(body, @codex_agents_marker) and String.contains?(body, @codex_agents_separator) do
-      [_harness_block, remainder] = String.split(body, @codex_agents_separator, parts: 2)
-
-      remainder
-      |> String.trim_leading()
-      |> write_codex_agents_remainder(path)
-    else
-      :ok
-    end
-  end
-
-  @spec write_codex_agents_remainder(String.t(), String.t()) ::
-          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
-  defp write_codex_agents_remainder("", path), do: remove_path(path)
-  defp write_codex_agents_remainder(body, path), do: write_path(path, body)
-
-  @spec read_optional(String.t(), String.t()) :: String.t() | nil
-  # `rel` is one of this module's fixed harness-owned paths; `cwd` is the run
-  # worktree root validated by `worktree_file!/2`.
-  # sobelow_skip ["Traversal.FileModule"]
-  defp read_optional(cwd, rel) do
-    path = worktree_file!(cwd, rel)
-
-    case File.read(path) do
-      {:ok, body} -> body
-      {:error, :enoent} -> nil
-      {:error, reason} -> raise File.Error, reason: reason, action: "read", path: path
-    end
-  end
-
-  @spec write_file!(String.t(), String.t(), String.t()) :: :ok
-  # `rel` is one of this module's fixed harness-owned paths; `cwd` is the run
-  # worktree root validated by `worktree_file!/2`.
-  # sobelow_skip ["Traversal.FileModule"]
-  defp write_file!(cwd, rel, body) do
-    path = worktree_file!(cwd, rel)
-    path |> Path.dirname() |> File.mkdir_p!()
-
-    case File.write(path, body) do
-      :ok -> :ok
-      {:error, reason} -> raise File.Error, reason: reason, action: "write", path: path
-    end
-  end
-
-  @spec remove_file(String.t(), String.t()) ::
-          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
-  defp remove_file(cwd, rel) do
-    cwd
-    |> worktree_file!(rel)
-    |> remove_path()
-  end
-
-  @spec remove_path(String.t()) :: :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
-  # `path` is always constructed via `worktree_file!/2`, which validates the
-  # path stays under the run worktree root.
-  # sobelow_skip ["Traversal.FileModule"]
-  defp remove_path(path) do
-    case File.rm(path) do
-      :ok -> :ok
-      {:error, :enoent} -> :ok
-      {:error, reason} -> {:error, {:rule_cleanup_failed, path, reason}}
-    end
-  end
-
-  @spec write_path(String.t(), String.t()) ::
-          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
-  # `path` is always constructed via `worktree_file!/2`, which validates the
-  # path stays under the run worktree root.
-  # sobelow_skip ["Traversal.FileModule"]
-  defp write_path(path, body) do
-    case File.write(path, body) do
-      :ok -> :ok
-      {:error, reason} -> {:error, {:rule_cleanup_failed, path, reason}}
-    end
-  end
-
-  @spec worktree_root!(String.t()) :: String.t()
-  defp worktree_root!(cwd) do
-    expanded = Path.expand(cwd)
-
-    if !File.dir?(expanded) do
-      raise ArgumentError, "worktree cwd is not a directory: #{cwd}"
-    end
-
-    expanded
-  end
-
-  @spec worktree_file!(String.t(), String.t()) :: String.t()
-  defp worktree_file!(cwd, rel) do
-    root = worktree_root!(cwd)
-    path = Path.expand(Path.join(root, rel))
-
-    if path == root or String.starts_with?(path, root <> "/") do
-      path
-    else
-      raise ArgumentError, "path escapes worktree: #{rel}"
-    end
-  end
 end

@@ -61,6 +61,99 @@ defmodule Harness.AgentAdapter.RulesInjection do
     prompt_preamble(rule_content) <> prompt
   end
 
+  @doc """
+  Removes previously injected rule files from a run worktree.
+
+  Callers (worktree reuse / pre-delivery reset) invoke this so a stale
+  injection from an earlier attempt never leaks into the next agent. The
+  Claude system-prompt file and Cursor rules file live at fixed harness-owned
+  paths and are simply removed; Codex's `AGENTS.md` may hold merged repo
+  content after the injected block, so only the marker-prefixed harness block
+  is stripped and any remainder is preserved. A marker-prefixed file with no
+  separator is entirely harness-written and is removed.
+  """
+  @spec cleanup_injected_rules(String.t()) :: :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  def cleanup_injected_rules(cwd) when is_binary(cwd) do
+    root = worktree_root!(cwd)
+
+    with :ok <- remove_file(root, @system_prompt_rel),
+         :ok <- remove_file(root, @cursor_rules_rel) do
+      cleanup_codex_agents(root)
+    end
+  end
+
+  @spec cleanup_codex_agents(String.t()) ::
+          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  # `@codex_agents_filename` is a fixed rule-delivery path; `cwd` is validated
+  # by `worktree_file!/2`.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp cleanup_codex_agents(cwd) do
+    path = worktree_file!(cwd, @codex_agents_filename)
+
+    case File.read(path) do
+      {:ok, body} -> cleanup_codex_agents_body(path, body)
+      {:error, :enoent} -> :ok
+      {:error, reason} -> {:error, {:rule_cleanup_failed, path, reason}}
+    end
+  end
+
+  @spec cleanup_codex_agents_body(String.t(), String.t()) ::
+          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  defp cleanup_codex_agents_body(path, body) do
+    cond do
+      not String.starts_with?(body, @codex_agents_marker) ->
+        :ok
+
+      String.contains?(body, @codex_agents_separator) ->
+        [_harness_block, remainder] = String.split(body, @codex_agents_separator, parts: 2)
+
+        remainder
+        |> String.trim_leading()
+        |> write_codex_agents_remainder(path)
+
+      true ->
+        # Marker-prefixed with no separator: the whole file is the injected block.
+        remove_path(path)
+    end
+  end
+
+  @spec write_codex_agents_remainder(String.t(), String.t()) ::
+          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  defp write_codex_agents_remainder("", path), do: remove_path(path)
+  defp write_codex_agents_remainder(body, path), do: write_path(path, body)
+
+  @spec remove_file(String.t(), String.t()) ::
+          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  defp remove_file(cwd, rel) do
+    cwd
+    |> worktree_file!(rel)
+    |> remove_path()
+  end
+
+  @spec remove_path(String.t()) :: :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  # `path` is always constructed via `worktree_file!/2`, which validates the
+  # path stays under the run worktree root.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp remove_path(path) do
+    case File.rm(path) do
+      :ok -> :ok
+      {:error, :enoent} -> :ok
+      {:error, reason} -> {:error, {:rule_cleanup_failed, path, reason}}
+    end
+  end
+
+  @spec write_path(String.t(), String.t()) ::
+          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  # `path` is always constructed via `worktree_file!/2`, which validates the
+  # path stays under the run worktree root.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp write_path(path, body) do
+    case File.write(path, body) do
+      :ok -> :ok
+      {:error, reason} -> {:error, {:rule_cleanup_failed, path, reason}}
+    end
+  end
+
   @spec prompt_preamble(String.t()) :: String.t()
   defp prompt_preamble(rule_content) do
     """

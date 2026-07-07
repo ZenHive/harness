@@ -137,4 +137,60 @@ defmodule Harness.AgentAdapter.RulesInjectionTest do
       assert grok_prompt =~ @rule_content
     end
   end
+
+  describe "cleanup_injected_rules/1" do
+    test "removes the Claude system-prompt and Cursor rules files", %{cwd: cwd} do
+      assert {:ok, _flags} = RulesInjection.claude_flags(invocation(cwd))
+      assert :ok = RulesInjection.install_cursor_rules(invocation(cwd))
+
+      assert :ok = RulesInjection.cleanup_injected_rules(cwd)
+
+      refute File.exists?(Path.join(cwd, @system_prompt_rel))
+      refute File.exists?(Path.join(cwd, ".cursor/rules/harness-operational.mdc"))
+    end
+
+    test "strips the injected AGENTS.md block and preserves repo content", %{cwd: cwd} do
+      agents = Path.join(cwd, "AGENTS.md")
+      File.write!(agents, "target repo instructions")
+
+      assert :ok = RulesInjection.install_codex_rules(invocation(cwd))
+      assert :ok = RulesInjection.cleanup_injected_rules(cwd)
+
+      assert File.read!(agents) == "target repo instructions"
+    end
+
+    test "removes an AGENTS.md that is entirely the injected block", %{cwd: cwd} do
+      assert :ok = RulesInjection.install_codex_rules(invocation(cwd))
+
+      assert :ok = RulesInjection.cleanup_injected_rules(cwd)
+
+      refute File.exists?(Path.join(cwd, "AGENTS.md"))
+    end
+
+    test "removes a marker-prefixed AGENTS.md with no separator (legacy whole-block file)", %{cwd: cwd} do
+      agents = Path.join(cwd, "AGENTS.md")
+
+      File.write!(
+        agents,
+        "<!-- harness-injected: canonical agent rules — ephemeral, do not commit -->\nlegacy block body"
+      )
+
+      assert :ok = RulesInjection.cleanup_injected_rules(cwd)
+
+      refute File.exists?(agents)
+    end
+
+    test "leaves a repo-owned AGENTS.md without the marker untouched", %{cwd: cwd} do
+      agents = Path.join(cwd, "AGENTS.md")
+      File.write!(agents, "repo instructions, never injected")
+
+      assert :ok = RulesInjection.cleanup_injected_rules(cwd)
+
+      assert File.read!(agents) == "repo instructions, never injected"
+    end
+
+    test "is a no-op when nothing was injected", %{cwd: cwd} do
+      assert :ok = RulesInjection.cleanup_injected_rules(cwd)
+    end
+  end
 end
