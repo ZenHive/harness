@@ -373,7 +373,6 @@ defmodule Harness.Chat.SessionTest do
       Process.sleep(200)
       refute Supervisor.whereis(id)
 
-      noop = fn _, _, _ -> {:ok, %{content: [], stop_reason: "end_turn"}} end
       {:ok, ^id, new_pid} = Supervisor.ensure_session(opts)
       refute new_pid == pid
 
