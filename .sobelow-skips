@@ -223,3 +223,4 @@ Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.e
 Traversal.FileModule: Directory Traversal in `File.write`,lib/harness/worktree.ex:908,4055CFE
 
 Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/lander/resolver.ex:259,41A1F4D
+CI.System: Command Injection via `System` function,lib/harness/dep_freshness/provider/rust.ex:103,704F635
