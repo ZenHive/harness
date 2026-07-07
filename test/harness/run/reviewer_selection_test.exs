@@ -1,5 +1,9 @@
 defmodule Harness.Run.ReviewerSelectionTest do
-  use Harness.RunCase, async: true
+  # async: false — several tests mutate the global Harness.AgentRegistry
+  # singleton (:sys.replace_state / mark_unavailable), which leaks the mutated
+  # installed/availability map into concurrently running files (observed as
+  # order-dependent full-suite failures, 2026-07-07).
+  use Harness.RunCase, async: false
 
   describe "reviewer selection" do
     test "no installed cross-family reviewer settles failed without silently approving" do

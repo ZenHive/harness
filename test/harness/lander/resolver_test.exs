@@ -8,7 +8,10 @@ defmodule Harness.Lander.ResolverTest do
   `Harness.LanderTest`'s injected-resolver tests, which never spawn a CLI.
   """
 
-  use ExUnit.Case, async: true
+  # async: false — set_installed/2 mutates the global Harness.AgentRegistry
+  # singleton via :sys.replace_state, which leaks into concurrently running
+  # files (same class as ReviewerSelectionTest; observed 2026-07-07).
+  use ExUnit.Case, async: false
 
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
