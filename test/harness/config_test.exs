@@ -16,8 +16,13 @@ defmodule Harness.ConfigTest do
   alias Harness.SettingsStore
   alias Harness.Test.SettingsStoreMemory
 
+  @hours_per_day 24
+  @default_transcript_retention_days 30
+  @default_transcript_retention_ms to_timeout(hour: @hours_per_day) * @default_transcript_retention_days
+
   setup do
     prior_run = Application.get_env(:harness, :run)
+    prior_run_records = Application.get_env(:harness, :run_records)
     prior_dashboard = Application.get_env(:harness, :dashboard)
     prior_dispatch = Application.get_env(:harness, :dispatch)
     prior_agent_model = Application.get_env(:harness, :agent_model)
@@ -31,6 +36,7 @@ defmodule Harness.ConfigTest do
 
     on_exit(fn ->
       restore(:run, prior_run)
+      restore(:run_records, prior_run_records)
       restore(:dashboard, prior_dashboard)
       restore(:dispatch, prior_dispatch)
       restore(:agent_model, prior_agent_model)
@@ -77,6 +83,7 @@ defmodule Harness.ConfigTest do
       Application.delete_env(:harness, :run)
       assert Config.get({:run, :lifetime_timeout}) == 5_400_000
       assert Config.get({:run, :total_timeout}) == nil
+      assert Config.get({:run_records, :transcript_retention_ms}) == @default_transcript_retention_ms
     end
 
     test "returns the live app-env value when set" do

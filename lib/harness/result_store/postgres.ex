@@ -10,6 +10,11 @@ defmodule Harness.ResultStore.Postgres do
   (`KeyError`, `FunctionClauseError`, `UndefinedFunctionError`, …) is deliberately
   *not* on those lists, so a code bug surfaces as a crash instead of being masked
   as `{:error, %KeyError{}}`.
+
+  Transcript blob retention is mechanical: after each successful write, rows
+  older than `Harness.Config.get({:run_records, :transcript_retention_ms})` have
+  only `agent_output` and `reviewer_output` nulled. Countable KPI/reliability/facet
+  columns are never deleted or rewritten by retention.
   """
 
   @behaviour Harness.ResultStore
@@ -23,11 +28,14 @@ defmodule Harness.ResultStore.Postgres do
   alias Harness.AgentKPI
   alias Harness.AgentKPI.TokenMeans
   alias Harness.Batch.Result, as: BatchResult
+  alias Harness.Config
   alias Harness.Repo
   alias Harness.ResultStore.Schema.BatchResult, as: BatchResultSchema
   alias Harness.ResultStore.Schema.RunRecord, as: RunRecordSchema
   alias Harness.Run.LogRecord
   alias Harness.TokenUsage
+
+  require Logger
 
   @persistence_errors [
     # RuntimeError covers the repo-not-started lookup raise — a legitimate
@@ -63,8 +71,12 @@ defmodule Harness.ResultStore.Postgres do
     changeset = RunRecordSchema.changeset(schema, attrs)
 
     case repo.insert(changeset, on_conflict: conflict_merge_query(), conflict_target: :run_id) do
-      {:ok, _} -> :ok
-      {:error, cs} -> {:error, {:changeset, cs.errors}}
+      {:ok, _} ->
+        maybe_strip_old_transcript_blobs(opts)
+        :ok
+
+      {:error, cs} ->
+        {:error, {:changeset, cs.errors}}
     end
   rescue
     e in @serialization_errors -> {:error, e}
@@ -241,6 +253,54 @@ defmodule Harness.ResultStore.Postgres do
       e in @persistence_errors -> {:error, e}
     end
   end
+
+  @doc """
+  Nulls heavyweight transcript blobs on run records older than the configured age.
+
+  The row stays in place, and every countable fact column used by KPI, reviewer
+  reliability, and facet rollups is left untouched. `nil` retention means
+  unbounded retention. Returns the number of rows updated.
+  """
+  @spec strip_old_transcript_blobs(keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def strip_old_transcript_blobs(opts \\ []) when is_list(opts) do
+    repo = Keyword.get(opts, :repo, Repo)
+    retention_ms = Keyword.get(opts, :retention_ms, Config.get({:run_records, :transcript_retention_ms}))
+    now = Keyword.get(opts, :now, NaiveDateTime.utc_now(:microsecond))
+
+    strip_old_transcript_blobs(repo, retention_ms, now)
+  rescue
+    e in @persistence_errors -> {:error, e}
+  end
+
+  @spec maybe_strip_old_transcript_blobs(keyword()) :: :ok
+  defp maybe_strip_old_transcript_blobs(opts) do
+    case strip_old_transcript_blobs(opts) do
+      {:ok, _count} -> :ok
+      {:error, reason} -> Logger.warning("run_records transcript retention failed: #{inspect(reason)}")
+    end
+  end
+
+  @spec strip_old_transcript_blobs(module(), non_neg_integer() | nil | term(), NaiveDateTime.t()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  defp strip_old_transcript_blobs(_repo, nil, %NaiveDateTime{}), do: {:ok, 0}
+
+  defp strip_old_transcript_blobs(repo, retention_ms, %NaiveDateTime{} = now)
+       when is_integer(retention_ms) and retention_ms >= 0 do
+    cutoff = NaiveDateTime.add(now, -retention_ms, :millisecond)
+
+    {count, _result} =
+      repo.update_all(
+        from(r in RunRecordSchema,
+          where: r.inserted_at < ^cutoff and (not is_nil(r.agent_output) or not is_nil(r.reviewer_output))
+        ),
+        set: [agent_output: nil, reviewer_output: nil, updated_at: now]
+      )
+
+    {:ok, count}
+  end
+
+  defp strip_old_transcript_blobs(_repo, retention_ms, %NaiveDateTime{}),
+    do: {:error, {:invalid_retention_ms, retention_ms}}
 
   @impl Harness.ResultStore
   @spec mark_landed(String.t(), String.t(), keyword()) :: :ok | {:error, term()}

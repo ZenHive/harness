@@ -103,6 +103,9 @@ config :harness, :retry_policy,
 # Default is chosen at runtime based on :repo_enabled (Postgres when true for
 # the harness self-host; memory when false for library consumers). An explicit
 # :result_store config value always wins over the repo_enabled heuristic.
+# Postgres run-record transcript blobs are retained for 30 days by default via
+# :run_records, :transcript_retention_ms; older rows keep every countable fact
+# column, while only agent_output/reviewer_output are nulled.
 # (The concrete default lives in config/runtime.exs so the flip is in one place.)
 
 # config :harness, Harness.Notification.CommandSink,

@@ -26,9 +26,15 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   alias Harness.SettingsStore
   alias Harness.Test.SettingsStoreMemory
 
+  @hours_per_day 24
+  @default_transcript_retention_days 30
+  @default_transcript_retention_ms to_timeout(hour: @hours_per_day) * @default_transcript_retention_days
+  @one_day_ms to_timeout(hour: @hours_per_day)
+
   setup %{conn: conn} do
     prior_polling = Application.get_env(:harness, :cron_polling)
     prior_run = Application.get_env(:harness, :run)
+    prior_run_records = Application.get_env(:harness, :run_records)
     prior_dispatch = Application.get_env(:harness, :dispatch)
     prior_agent_model = Application.get_env(:harness, :agent_model)
     prior_reviewer_model = Application.get_env(:harness, :reviewer_model)
@@ -57,6 +63,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
       ProjectRegistry.unregister(project.name)
       restore_env(:cron_polling, prior_polling)
       restore_env(:run, prior_run)
+      restore_env(:run_records, prior_run_records)
       restore_env(:dispatch, prior_dispatch)
       restore_env(:agent_model, prior_agent_model)
       restore_env(:reviewer_model, prior_reviewer_model)
@@ -258,6 +265,9 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     # A run-timeout row and the restart-required dashboard port row both render.
     assert html =~ ~s(id="config-form-run__lifetime_timeout")
     assert html =~ ~s(id="config-form-dashboard__port")
+    assert html =~ ~s(id="config-form-run_records__transcript_retention_ms")
+    assert html =~ "ResultStore transcript retention defaults"
+    assert html =~ "to 30 days"
     # The port carries the restart pill; run timeouts don't.
     assert html =~ "restart"
   end
@@ -274,6 +284,20 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     assert html =~ "lifetime_timeout saved."
     assert Config.get({:run, :lifetime_timeout}) == 99_000
+  end
+
+  test "editing transcript retention persists through Harness.Config and confirms", %{conn: conn} do
+    Application.put_env(:harness, :run_records, transcript_retention_ms: @default_transcript_retention_ms)
+
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("#config-form-run_records__transcript_retention_ms", %{value: Integer.to_string(@one_day_ms)})
+      |> render_submit()
+
+    assert html =~ "transcript_retention_ms saved."
+    assert Config.get({:run_records, :transcript_retention_ms}) == @one_day_ms
   end
 
   test "a restart-required edit is persisted but not hot-applied, and says so (Task 167)", %{conn: conn} do

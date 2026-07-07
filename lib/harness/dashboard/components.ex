@@ -1132,7 +1132,8 @@ defmodule Harness.Dashboard.Components do
       <h2 class="setting-section-title">Run &amp; dashboard config</h2>
       <p class="setting-desc">
         Live-editable config. Run timeouts take effect on the next run; an empty
-        timeout means <em>unbounded</em>. Keys marked
+        timeout means <em>unbounded</em>. ResultStore transcript retention defaults
+        to 30 days and strips only old transcript blobs, never KPI facts. Keys marked
         <span class="pill" data-state="off">restart</span>
         are persisted but apply only on the next node boot. Other keys (env vars,
         paths, secrets) stay read-only in the inspector below.

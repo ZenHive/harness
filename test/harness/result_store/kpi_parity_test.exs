@@ -5,6 +5,8 @@ defmodule Harness.ResultStore.KPIParityTest do
   # async: false because DataCase uses SQL Sandbox shared mode and :result_store env.
   use Harness.DataCase, async: false
 
+  import Ecto.Query
+
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentKPI
@@ -18,6 +20,12 @@ defmodule Harness.ResultStore.KPIParityTest do
   alias Harness.TokenUsage
 
   @moduletag :integration
+  @hours_per_day 24
+  @retention_ms to_timeout(hour: @hours_per_day)
+  @old_record_age_retention_periods 2
+  @old_record_age_ms @retention_ms * @old_record_age_retention_periods
+  @fresh_record_age_divisor 2
+  @fresh_record_age_ms div(@retention_ms, @fresh_record_age_divisor)
 
   setup do
     Repo.delete_all(RunRecordSchema)
@@ -109,6 +117,74 @@ defmodule Harness.ResultStore.KPIParityTest do
 
     assert {:ok, [point]} = ResultStore.list_run_records(pg_store, run_id: "parity-huge")
     assert byte_size(point.agent_output) == 50_000
+  end
+
+  test "transcript retention strips only blobs while aggregates and point lookups keep working", %{} do
+    pg_store = {PostgresStore, repo: Repo}
+
+    records = [
+      record("retention-old-approve",
+        agent: :codex,
+        verdict: :approve,
+        reviewer_adapter: Codex,
+        reviewer_model: "gpt-5.5",
+        review_facets: %{"surface" => "otp"},
+        token_usage: tokens(100, 50),
+        agent_output: "old implementer transcript",
+        reviewer_output: "old reviewer transcript"
+      ),
+      record("retention-old-reject",
+        agent: :claude,
+        verdict: :reject,
+        reviewer_adapter: Claude,
+        reviewer_model: "opus",
+        review_facets: %{"surface" => "otp"},
+        token_usage: tokens(80, 40),
+        agent_output: "older implementer transcript",
+        reviewer_output: "older reviewer transcript"
+      ),
+      record("retention-fresh",
+        agent: :codex,
+        verdict: nil,
+        reason: {:review_stuck, "no artifact"},
+        reviewer_adapter: Codex,
+        reviewer_model: "gpt-5.5",
+        review_facets: %{"surface" => "ui"},
+        token_usage: tokens(20, 10),
+        agent_output: "fresh implementer transcript",
+        reviewer_output: "fresh reviewer transcript"
+      )
+    ]
+
+    for rec <- records, do: assert(:ok = ResultStore.record_run(rec, pg_store))
+
+    now = ~N[2026-07-07 12:00:00.000000]
+    old_at = NaiveDateTime.add(now, -@old_record_age_ms, :millisecond)
+    fresh_at = NaiveDateTime.add(now, -@fresh_record_age_ms, :millisecond)
+
+    set_inserted_at(["retention-old-approve", "retention-old-reject"], old_at)
+    set_inserted_at(["retention-fresh"], fresh_at)
+
+    before_strip = aggregate_snapshot(pg_store)
+
+    assert {:ok, 2} =
+             PostgresStore.strip_old_transcript_blobs(
+               repo: Repo,
+               retention_ms: @retention_ms,
+               now: now
+             )
+
+    assert aggregate_snapshot(pg_store) == before_strip
+
+    assert {:ok, [stripped]} = ResultStore.list_run_records(pg_store, run_id: "retention-old-approve")
+    assert stripped.agent_output == ""
+    assert stripped.reviewer_output == ""
+    assert stripped.verdict == :approve
+    assert stripped.review_facets == %{"surface" => "otp"}
+
+    assert {:ok, [fresh]} = ResultStore.list_run_records(pg_store, run_id: "retention-fresh")
+    assert fresh.agent_output == "fresh implementer transcript"
+    assert fresh.reviewer_output == "fresh reviewer transcript"
   end
 
   test "aggregate_reviewer_reliability matches Memory in-process rollup for the same records", %{root: root} do
@@ -216,6 +292,21 @@ defmodule Harness.ResultStore.KPIParityTest do
 
     for rec <- records, do: assert(:ok = ResultStore.record_run(rec, store))
     records
+  end
+
+  defp aggregate_snapshot(store) do
+    assert {:ok, by_agent} = ResultStore.aggregate_by_agent(store)
+    assert {:ok, reviewers} = ResultStore.aggregate_reviewer_reliability(store)
+    assert {:ok, facets} = ResultStore.aggregate_by_facet(store)
+
+    %{by_agent: by_agent, reviewers: reviewers, facets: facets}
+  end
+
+  defp set_inserted_at(run_ids, inserted_at) do
+    Repo.update_all(
+      from(r in RunRecordSchema, where: r.run_id in ^run_ids),
+      set: [inserted_at: inserted_at, updated_at: inserted_at]
+    )
   end
 
   defp assert_reviewer_equal(a, b) do

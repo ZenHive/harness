@@ -49,6 +49,9 @@ defmodule Harness.Config do
   require Logger
 
   @store_key :config
+  @hours_per_day 24
+  @default_transcript_retention_days 30
+  @default_transcript_retention_ms to_timeout(hour: @hours_per_day) * @default_transcript_retention_days
 
   @doc false
   @spec child_spec(term()) :: Supervisor.child_spec()
@@ -104,6 +107,14 @@ defmodule Harness.Config do
       e("Retry policy", "base_delay_ms", {:retry_policy, :base_delay_ms}, 1_000, :duration_ms),
       e("Retry policy", "max_delay_ms", {:retry_policy, :max_delay_ms}, 60_000, :duration_ms),
       e("Retry policy", "multiplier", {:retry_policy, :multiplier}, 2.0, :float),
+      e(
+        "ResultStore",
+        "transcript_retention_ms",
+        {:run_records, :transcript_retention_ms},
+        @default_transcript_retention_ms,
+        :duration_ms,
+        ui_editable?: true
+      ),
       e("Database", "database", {Harness.Repo, :database}, nil, :string, env_var: "HARNESS_DB_NAME"),
       e("Database", "username", {Harness.Repo, :username}, nil, :string, env_var: "HARNESS_DB_USER"),
       e("Database", "hostname", {Harness.Repo, :hostname}, nil, :string, env_var: "HARNESS_DB_HOST")
