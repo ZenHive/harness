@@ -10022,7 +10022,7 @@ scored_at = "2026-06-24"
 id = "333"
 phase = 22
 bundle = "operator-surface"
-status = "pending"
+status = "done"
 title = "Scheduled full-suite (incl. integration) health check per project -> dashboard witness"
 scores = { d = 5, b = 6, u = 6 }
 acceptance_criteria = ["A daily Oban cron runs each registered project full suite incl. integration in a fresh detached worktree off origin/<target> HEAD", "The raw result is recorded as a witness fact: pass/fail, failing-test list, exit code, timestamp; surfaced per-project in the dashboard", "Harness never gates, blocks, routes, or down-weights any run on the health-check result, and never classifies red as broken — it only counts and displays the raw fact", "A red surfaces the failing tests + time raw; real-vs-flaky judgment is left to the operator or a dispatched triage agent (no harness classifier)", "Cold worktree bootstrap (deps.get / compile / test-db provisioning) is handled; tests cover the fact-recording path; an integration test runs the check against a project and asserts a witness fact is recorded"]
@@ -10037,9 +10037,14 @@ On a daily Oban cron, run the project-configured full-suite command WITH integra
 
 CRITICAL — this is a witness / sakshi sink only: harness COUNTS the raw fact (exit code, which tests failed) and displays it; it never gates, blocks, routes, or down-weights a run on the result, and it never classifies the failure. Because integration tests are the flakiest surface, a red must surface raw (which tests, when) rather than as a harness verdict of broken — the real-vs-flaky judgment is deferred to the operator or a separately-dispatched triage agent, never a harness cond or classifier.
 """
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1783396497942-220aff27, 59ff4c9360a566e58421653eff735deb3735a624)."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-06-24"
 started_at = "2026-07-07"
 scored_at = "2026-06-24"
+done_at = "2026-07-07"
+shipped_in = "59ff4c9360a566e58421653eff735deb3735a624"
 
 [[task]]
 id = "334"

@@ -14994,7 +14994,7 @@
       "id": "333",
       "phase": 22,
       "bundle": "operator-surface",
-      "status": "pending",
+      "status": "done",
       "title": "Scheduled full-suite (incl. integration) health check per project -> dashboard witness",
       "scores": {
         "d": 5,
@@ -15024,10 +15024,15 @@
         "lib/harness/cron",
         "lib/harness/worktree.ex"
       ],
+      "shipped_in": "59ff4c9360a566e58421653eff735deb3735a624",
       "body": "Add a scheduled full-suite health check per registered project, surfaced in the dashboard, so the operator can see when a project tests fail — including the normally-excluded integration tests that the default run skips.\n\nOn a daily Oban cron, run the project-configured full-suite command WITH integration tests (e.g. `mix test.json --include integration` for Elixir, `cargo test` for Rust — language-derived, never a hardcoded mix invocation) in a fresh detached worktree off `origin/<target>` HEAD (cold, mirroring the post-merge audit worktree), and record the raw result as a witness fact: pass/fail, the failing-test list, exit code, and timestamp. Surface it per-project in the dashboard.\n\nCRITICAL — this is a witness / sakshi sink only: harness COUNTS the raw fact (exit code, which tests failed) and displays it; it never gates, blocks, routes, or down-weights a run on the result, and it never classifies the failure. Because integration tests are the flakiest surface, a red must surface raw (which tests, when) rather than as a harness verdict of broken — the real-vs-flaky judgment is deferred to the operator or a separately-dispatched triage agent, never a harness cond or classifier.\n",
       "created_at": "2026-06-24",
       "started_at": "2026-07-07",
+      "done_at": "2026-07-07",
       "scored_at": "2026-06-24",
+      "implemented": "Landed by cursor via merge-train; reviewer-approved (run run-1783396497942-220aff27, 59ff4c9360a566e58421653eff735deb3735a624).",
+      "delivered_by": "cursor",
+      "verified": true,
       "cross_repo": []
     },
     {
