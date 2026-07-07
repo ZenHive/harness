@@ -9908,7 +9908,7 @@ shipped_in = "922dc49cd53f65046ce9f2f60fa2d3a71498e20b"
 id = "328"
 phase = 22
 bundle = "contract"
-status = "in_progress"
+status = "pending"
 title = "Break the Driver -> Run.Reflex -> Worktree.Isolation -> AgentAdapter dependency cycle"
 scores = { d = 4, b = 6, u = 5 }
 markers = ["parallel"]
