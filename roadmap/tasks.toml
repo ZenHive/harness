@@ -10230,14 +10230,16 @@ bundle = "resilience"
 status = "pending"
 title = "Run gen_statem crashes with case_clause when cancel reason is {:redispatched, run_id}"
 scores = { d = 3, b = 6, u = 5 }
-acceptance_criteria = ["Cancelling a run with a structured reason such as {:redispatched, run_id} settles the run without a gen_statem crash", "The settled record preserves the structured reason for verdict/status readers", "A regression test covers cancel-with-structured-reason during an in-flight run"]
+acceptance_criteria = ["Cancelling a run with a structured reason such as {:redispatched, run_id} settles the run without a gen_statem crash", "The settled record preserves the structured reason for verdict/status readers (naming the successor run_id)", "The original run's run_record no longer reads :run_crashed when its task was successfully redispatched (ledger hygiene)", "A regression test covers cancel-with-structured-reason during an in-flight run"]
 out_of_scope = ["Changing when the reflex decides to redispatch", "Reworking progress_stalled detection"]
 touches = ["lib/harness/run.ex", "test/harness/run_test.exs"]
 assignee = "codex"
 model = "gpt-5.5"
 body = """Observed 2026-07-04 dispatching tapakly task 330 (run-1783129787191-c1482f84): the run settled failed with reason {:run_crashed, {:case_clause, {:cancel, {:redispatched, "run-1783130107972-4f577d15"}}}}. Something (the reflex redispatch path) cancelled the superseded run with a structured reason {:redispatched, new_run_id}, and a case/cond in the Run gen_statem's cancel handling only matches the plain :cancelled shape, so the process crashed instead of settling cleanly. The redispatched replacement run itself then halted with {:reflex_halted, :progress_stalled}, so the crash also cost the retry context. Find the cancel-reason case, accept structured cancel reasons (or normalize them before the match), and settle the superseded run as failed/cancelled without a crash.
 
-2026-07-06 content-review note — crash site located: Harness.Run.route_reflex_halt/2 (lib/harness/run.ex ~1631) case-matches only :ok | {:cancel, {:blocked, _}} | {:error, _} from Resilience.route/2, but the reflex-halt redispatch path (Harness.Lander.Resilience.redispatch/3, lib/harness/lander/resilience.ex:178) returns {:cancel, {:redispatched, run_id}} — the unmatched shape IS the case_clause. Fix belongs there (accept {:cancel, reason} generally and settle/witness the structured reason), not in the handle_common :cancel call handler, which already normalizes caller cancels to :cancelled."""
+2026-07-06 content-review note — crash site located: Harness.Run.route_reflex_halt/2 (lib/harness/run.ex ~1631) case-matches only :ok | {:cancel, {:blocked, _}} | {:error, _} from Resilience.route/2, but the reflex-halt redispatch path (Harness.Lander.Resilience.redispatch/3, lib/harness/lander/resilience.ex:178) returns {:cancel, {:redispatched, run_id}} — the unmatched shape IS the case_clause. Fix belongs there (accept {:cancel, reason} generally and settle/witness the structured reason), not in the handle_common :cancel call handler, which already normalizes caller cancels to :cancelled.
+
+2026-07-07 dedupe note — recurred on tapakly task 359 (run-1783371223893-b56b7a77): same {:run_crashed, {:case_clause, {:cancel, {:redispatched, ...}}}} settle while the successor run completed and was approved, so the ledger records :run_crashed for a task that actually shipped. Duplicate task 354 (filed by a parallel session on the fresh evidence) superseded into this one; its ledger-hygiene criterion folded into the ACs above."""
 created_at = "2026-07-04"
 scored_at = "2026-07-04"
 
@@ -10259,6 +10261,8 @@ Observed 2026-07-04 on tapakly run run-1783130780286-70e6a32b: the lander hit a 
 Decide + fix: either (a) operator config — pin a standing model for the claude adapter (Config.agent_model) so recovery/resolver/reviewer seats can always spawn on it, and document that model-capable recovery seats require a pin at project-registration/onboarding time; or (b) code — have the resolver seat rotate to the next cross-family candidate with a configured model instead of failing the land when the first candidate is model-less (mirroring the reviewer-rotation behavior). Either way, a rebase-conflict land should degrade to another resolver candidate, not to a blocked task needing hand repair. Human decision spike on (a) vs (b); (b) becomes dispatchable once chosen.
 
 2026-07-05 update — decision resolved to (b) by new evidence: the failure recurred twice on tapakly auto-lands (task 348: {:model_required, Harness.AgentAdapter.Codex}; task 344 / run-1783226904876-5c5b2e99: {:model_required, Harness.AgentAdapter.Claude}) while agents-reviewers showed BOTH adapters with configured models (claude-opus-4-8 / gpt-5.5). Config pins exist, so this is not the (a) config gap — the resolver spawn path does not resolve {:agent_model, agent} (or the Run.reviewer_model equivalent) before spawning. Fix per (b): resolve the model the same way the reviewer spawn does; rotate to the next eligible cross-family candidate when the selected one is model-less; blocked + retained branch stays the terminal sink. Witness which agent+model ran (or why none could).
+
+2026-07-07 dedupe note — fourth recurrence: tapakly task 362 (run-1783371226312-2655d89b), gettext-catalog rebase conflict, resolver witness "selection/spawn failed: {:model_required, Harness.AgentAdapter.Claude}"; operator repaired manually (union-merge .po catalogs + gettext.refresh + dispatch-reland). Live config re-check this date confirms agent_model.claude = "claude-opus-4-8" IS set, re-confirming decision (b): the resolver spawn path simply never resolves {:agent_model, agent}. Candidate selection must additionally skip genuinely model-less candidates (mirror reviewer-slate eligibility), per the folded-in duplicate task 355 (superseded into this one).
 """
 created_at = "2026-07-04"
 scored_at = "2026-07-04"
@@ -10431,7 +10435,7 @@ scored_at = "2026-07-05"
 id = "354"
 phase = 22
 bundle = "resilience"
-status = "pending"
+status = "superseded"
 title = "Run gen_statem crashes with case_clause on {:cancel, {:redispatched, run_id}} after reflex redispatch"
 scores = { d = 3, b = 6, u = 7 }
 acceptance_criteria = ["Reproducing test: a run that gets reflex-redispatched and then cancelled settles cleanly (no {:case_clause, ...} crash) with a reason naming the successor run_id", "The original run's run_record no longer reads :run_crashed when its task was successfully redispatched", "No change to genuine cancel (no successor) or genuine crash handling"]
@@ -10446,7 +10450,7 @@ scored_at = "2026-07-06"
 id = "355"
 phase = 22
 bundle = "autolanding"
-status = "pending"
+status = "superseded"
 title = "Land-conflict resolver dies on {:model_required, Claude} — candidate selection must skip model-less agents"
 scores = { d = 2, b = 5, u = 6 }
 acceptance_criteria = ["Resolver candidate selection filters out model-capable agents with no configured model before spawn (mirrors reviewer-slate eligibility)", "A conflict with one model-less and one configured candidate spawns the configured one; witness records the skip", "All candidates model-less -> resolver reports a selection failure naming every skipped agent, and falls back to the existing block/manual-repair path"]
