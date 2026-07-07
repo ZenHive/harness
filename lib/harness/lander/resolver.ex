@@ -46,28 +46,42 @@ defmodule Harness.Lander.Resolver do
   """
 
   alias Harness.Agent.Settings
+  alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Driver
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentRegistry
+  alias Harness.Config
   alias Harness.Git
+  alias Harness.ModelAvailability
   alias Harness.Worktree
 
   @max_conflict_excerpt_chars 4_000
+
+  @type candidate :: %{
+          agent: atom(),
+          module: module(),
+          model: String.t() | nil
+        }
 
   @doc """
   Drives a cross-family agent to reconcile the conflict in `worktree`.
 
   `opts`: `:implementer` / `:reviewer` (agent atoms or strings — routing),
   `:task_id` (the run's task, for prompt context), `:base_sha` (origin/<target>
-  tip, for the "ours" intent log). Returns `:ok` when the agent ran, or
-  `{:error, reason}` when no resolver could be selected or spawned.
+  tip, for the "ours" intent log). Returns the resolver candidate when the
+  agent ran, or `{:error, reason}` when no resolver could be selected or
+  spawned.
   """
-  @spec resolve(Worktree.t(), keyword()) :: :ok | {:error, term()}
+  @spec resolve(Worktree.t(), keyword()) :: {:ok, candidate()} | {:error, term()}
   def resolve(%Worktree{path: path} = worktree, opts) do
-    with {:ok, module} <- select_resolver(normalize(opts[:implementer]), normalize(opts[:reviewer])),
+    with {:ok, candidate} <- select_resolver_candidate(normalize(opts[:implementer]), normalize(opts[:reviewer])),
          {:ok, [_ | _] = files} <- Git.conflicted_files(path),
-         {:ok, _outcome} <- Driver.run(module, invocation(build_prompt(path, files, opts), worktree, opts)) do
-      :ok
+         {:ok, _outcome} <-
+           driver_fun(opts).(
+             candidate.module,
+             invocation(build_prompt(path, files, opts), worktree, opts, candidate.model)
+           ) do
+      {:ok, candidate}
     else
       {:ok, []} -> {:error, :no_conflicted_files}
       {:error, _reason} = error -> error
@@ -77,36 +91,90 @@ defmodule Harness.Lander.Resolver do
   @doc false
   @spec select_resolver(atom() | nil, atom() | nil) :: {:ok, module()} | {:error, :no_resolver}
   def select_resolver(implementer, reviewer) do
-    case reviewer_resolver(reviewer, implementer) do
-      {:ok, module} -> {:ok, module}
-      :error -> first_cross_family(implementer)
+    case select_resolver_candidate(implementer, reviewer) do
+      {:ok, %{module: module}} -> {:ok, module}
+      {:error, _reason} -> {:error, :no_resolver}
     end
+  end
+
+  @doc false
+  @spec select_resolver_candidate(atom() | nil, atom() | nil) :: {:ok, candidate()} | {:error, term()}
+  def select_resolver_candidate(implementer, reviewer) do
+    implementer
+    |> ordered_candidates(reviewer)
+    |> choose_spawnable()
   end
 
   # The run's reviewer already approved both sides and is cross-family — prefer
   # it. `:error` when there is no recorded reviewer, it equals the implementer,
   # or it is no longer dispatchable, so selection falls through to the registry.
-  @spec reviewer_resolver(atom() | nil, atom() | nil) :: {:ok, module()} | :error
+  @spec reviewer_resolver(atom() | nil, atom() | nil) :: {:ok, {atom(), module()}} | :error
   defp reviewer_resolver(nil, _implementer), do: :error
 
   defp reviewer_resolver(reviewer, implementer) do
     with true <- reviewer != implementer,
          {:ok, module} <- AgentRegistry.module_for_agent(reviewer),
          true <- dispatchable?(reviewer, module) do
-      {:ok, module}
+      {:ok, {reviewer, module}}
     else
       _other -> :error
     end
   end
 
-  @spec first_cross_family(atom() | nil) :: {:ok, module()} | {:error, :no_resolver}
-  defp first_cross_family(implementer) do
-    AgentRegistry.agents()
-    |> Enum.reject(fn {agent, _module} -> agent == implementer end)
-    |> Enum.find(fn {agent, module} -> dispatchable?(agent, module) end)
+  @spec ordered_candidates(atom() | nil, atom() | nil) :: [{atom(), module()}]
+  defp ordered_candidates(implementer, reviewer) do
+    preferred =
+      case reviewer_resolver(reviewer, implementer) do
+        {:ok, candidate} -> [candidate]
+        :error -> []
+      end
+
+    fallback =
+      AgentRegistry.agents()
+      |> Enum.reject(fn {agent, _module} -> agent in [implementer, reviewer] end)
+      |> Enum.filter(fn {agent, module} -> dispatchable?(agent, module) end)
+
+    preferred ++ fallback
+  end
+
+  @spec choose_spawnable([{atom(), module()}]) :: {:ok, candidate()} | {:error, term()}
+  defp choose_spawnable(candidates) do
+    candidates
+    |> Enum.reduce_while([], fn {agent, module}, skipped ->
+      case resolver_model(agent, module) do
+        {:ok, model} -> {:halt, {:ok, %{agent: agent, module: module, model: model}}}
+        {:error, reason} -> {:cont, [{agent, reason} | skipped]}
+      end
+    end)
     |> case do
-      {_agent, module} -> {:ok, module}
-      nil -> {:error, :no_resolver}
+      {:ok, candidate} -> {:ok, candidate}
+      [] -> {:error, :no_resolver}
+      skipped -> skipped_reason(Enum.reverse(skipped))
+    end
+  end
+
+  @spec skipped_reason([{atom(), term()}]) :: {:error, term()}
+  defp skipped_reason(skipped) do
+    if Enum.all?(skipped, fn {_agent, reason} -> match?({:model_required, _agent}, reason) end) do
+      {:error, {:no_resolver_model, skipped}}
+    else
+      {:error, {:no_spawnable_resolver, skipped}}
+    end
+  end
+
+  @spec resolver_model(atom(), module()) :: {:ok, String.t() | nil} | {:error, term()}
+  defp resolver_model(agent, module) do
+    model = Config.reviewer_model(agent)
+
+    cond do
+      is_nil(model) and AgentAdapter.requires_model?(module) ->
+        {:error, {:model_required, agent}}
+
+      ModelAvailability.available?(agent, model) ->
+        {:ok, model}
+
+      true ->
+        {:error, {:unavailable, agent, model, available: ModelAvailability.list_available_ids(agent)}}
     end
   end
 
@@ -215,15 +283,19 @@ defmodule Harness.Lander.Resolver do
     end
   end
 
-  @spec invocation(String.t(), Worktree.t(), keyword()) :: Invocation.t()
-  defp invocation(prompt, %Worktree{path: path}, opts) do
+  @spec invocation(String.t(), Worktree.t(), keyword(), String.t() | nil) :: Invocation.t()
+  defp invocation(prompt, %Worktree{path: path}, opts, model) do
     %Invocation{
       prompt: prompt,
       cwd: path,
       task_id: "#{opts[:task_id]}-resolve",
+      model: model,
       permission_mode: :autonomous
     }
   end
+
+  @spec driver_fun(keyword()) :: (module(), Invocation.t() -> {:ok, term()} | {:error, term()})
+  defp driver_fun(opts), do: Keyword.get(opts, :driver, &Driver.run/2)
 
   # Unknown strings (no matching agent atom) normalize to nil rather than
   # raising — an unrecognized implementer/reviewer just means "no preferred

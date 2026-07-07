@@ -375,23 +375,33 @@ defmodule Harness.Lander do
   @spec resolve_with_agent(Worktree.t(), String.t(), request(), String.t()) ::
           {:ok, String.t()} | {:conflict, String.t()}
   defp resolve_with_agent(%Worktree{path: path} = worktree, base_sha, request, conflict_output) do
-    with :ok <- run_resolver(worktree, base_sha, request),
-         :ok <- stage_all(path),
-         :ok <- assert_resolved(path),
-         {:ok, tip} <- continue_rebase(path) do
-      Logger.info("harness lander: merge-resolver reconciled rebase conflict for task #{request.task_id}")
-      {:ok, tip}
-    else
+    case run_resolver(worktree, base_sha, request) do
+      {:ok, resolver} ->
+        with :ok <- stage_all(path),
+             :ok <- assert_resolved(path),
+             {:ok, tip} <- continue_rebase(path) do
+          Logger.info("harness lander: merge-resolver reconciled rebase conflict for task #{request.task_id}")
+          {:ok, tip}
+        else
+          {:error, reason} ->
+            conflict_after_resolver(path, request, conflict_output, reason, resolver)
+        end
+
       {:error, reason} ->
-        _ = Git.run(["rebase", "--abort"], path)
-        witness = resolver_witness(reason)
-
-        Logger.info(
-          "harness lander: merge-resolver fell back to re-dispatch for task #{request.task_id} (#{inspect(reason)})"
-        )
-
-        {:conflict, witness_conflict(conflict_output, witness)}
+        conflict_after_resolver(path, request, conflict_output, reason, nil)
     end
+  end
+
+  @spec conflict_after_resolver(String.t(), request(), String.t(), term(), map() | nil) :: {:conflict, String.t()}
+  defp conflict_after_resolver(path, request, conflict_output, reason, resolver) do
+    _ = Git.run(["rebase", "--abort"], path)
+    witness = resolver_witness(reason, resolver)
+
+    Logger.info(
+      "harness lander: merge-resolver fell back to re-dispatch for task #{request.task_id} (#{inspect(reason)})"
+    )
+
+    {:conflict, witness_conflict(conflict_output, witness)}
   end
 
   @spec resolve_additive_conflicts(String.t()) :: :resolved_all | {:remaining, [String.t()]} | {:error, term()}
@@ -465,31 +475,45 @@ defmodule Harness.Lander do
     end
   end
 
-  @spec resolver_witness(term()) :: String.t()
-  defp resolver_witness({:unresolved_markers, _output}), do: "agent spawned; unresolved conflict markers remain"
-  defp resolver_witness({:stage_failed, reason}), do: "agent spawned; staging failed: #{inspect(reason)}"
+  @spec resolver_witness(term(), map() | nil) :: String.t()
+  defp resolver_witness({:unresolved_markers, _output}, resolver),
+    do: "#{resolver_spawned(resolver)}; unresolved conflict markers remain"
 
-  defp resolver_witness({:rebase_continue_failed, reason}),
-    do: "agent spawned; rebase continue failed: #{inspect(reason)}"
+  defp resolver_witness({:stage_failed, reason}, resolver),
+    do: "#{resolver_spawned(resolver)}; staging failed: #{inspect(reason)}"
 
-  defp resolver_witness(reason), do: "selection/spawn failed: #{inspect(reason)}"
+  defp resolver_witness({:rebase_continue_failed, reason}, resolver),
+    do: "#{resolver_spawned(resolver)}; rebase continue failed: #{inspect(reason)}"
+
+  defp resolver_witness(reason, _resolver), do: "selection/spawn failed: #{inspect(reason)}"
+
+  @spec resolver_spawned(map() | nil) :: String.t()
+  defp resolver_spawned(%{agent: agent, model: model}) when is_atom(agent) and is_binary(model),
+    do: "agent spawned: #{agent} model=#{model}"
+
+  defp resolver_spawned(%{agent: agent}) when is_atom(agent), do: "agent spawned: #{agent} model=nil"
+  defp resolver_spawned(_resolver), do: "agent spawned"
 
   @spec witness_conflict(String.t(), String.t()) :: String.t()
   defp witness_conflict(output, witness), do: output <> "\n\n" <> @resolver_witness_header <> witness <> "\n"
 
-  @spec run_resolver(Worktree.t(), String.t(), request()) :: :ok | {:error, term()}
+  @spec run_resolver(Worktree.t(), String.t(), request()) :: {:ok, map() | nil} | {:error, term()}
   defp run_resolver(%Worktree{} = worktree, base_sha, request) do
-    resolver_fun().(worktree,
-      implementer: request[:agent],
-      reviewer: request[:reviewer],
-      task_id: request.task_id,
-      base_sha: base_sha
-    )
+    case resolver_fun().(worktree,
+           implementer: request[:agent],
+           reviewer: request[:reviewer],
+           task_id: request.task_id,
+           base_sha: base_sha
+         ) do
+      :ok -> {:ok, nil}
+      {:ok, resolver} when is_map(resolver) -> {:ok, resolver}
+      {:error, _reason} = error -> error
+    end
   end
 
   # Injectable (mirrors `:oban_insert`) so the suite exercises the git finalize
   # without spawning a real agent. Default is the live cross-family resolver.
-  @spec resolver_fun() :: (Worktree.t(), keyword() -> :ok | {:error, term()})
+  @spec resolver_fun() :: (Worktree.t(), keyword() -> :ok | {:ok, map()} | {:error, term()})
   defp resolver_fun, do: Application.get_env(:harness, :lander_resolver, &Resolver.resolve/2)
 
   @spec stage_all(String.t()) :: :ok | {:error, term()}

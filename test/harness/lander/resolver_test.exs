@@ -15,6 +15,7 @@ defmodule Harness.Lander.ResolverTest do
 
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
+  alias Harness.AgentAdapter.Cursor
   alias Harness.AgentRegistry
   alias Harness.GitFixture
   alias Harness.Lander.Resolver
@@ -45,6 +46,29 @@ defmodule Harness.Lander.ResolverTest do
       on_exit(fn -> AgentRegistry.reset() end)
 
       assert Resolver.select_resolver(nil, nil) == {:error, :no_resolver}
+    end
+
+    test "skips a model-less preferred reviewer and rotates to the next configured candidate" do
+      AgentRegistry.reset()
+      mark_all_installed(false)
+      mark_installed(Codex, true)
+      mark_installed(Cursor, true)
+      put_model_env(agent_model: [cursor: "composer-2.5"], reviewer_model: [])
+      on_exit(fn -> AgentRegistry.reset() end)
+
+      assert {:ok, %{agent: :cursor, module: Cursor, model: "composer-2.5"}} =
+               Resolver.select_resolver_candidate(:claude, :codex)
+    end
+
+    test "reports every eligible candidate as model-less when none has a configured model" do
+      AgentRegistry.reset()
+      mark_all_installed(false)
+      mark_installed(Codex, true)
+      put_model_env(agent_model: [], reviewer_model: [])
+      on_exit(fn -> AgentRegistry.reset() end)
+
+      assert {:error, {:no_resolver_model, [codex: {:model_required, :codex}]}} =
+               Resolver.select_resolver_candidate(:claude, :codex)
     end
   end
 
@@ -137,9 +161,37 @@ defmodule Harness.Lander.ResolverTest do
   end
 
   describe "resolve/2" do
+    test "threads the configured reviewer model into the resolver invocation" do
+      AgentRegistry.reset()
+      mark_all_installed(false)
+      mark_installed(Codex, true)
+      put_model_env(agent_model: [], reviewer_model: [codex: "gpt-5.5"])
+      on_exit(fn -> AgentRegistry.reset() end)
+
+      repo = conflicted_repo("resolver-spawn-model")
+      worktree = %Worktree{id: "wt", path: repo, branch: "harness/wt", repo: repo, base_sha: "base"}
+      parent = self()
+
+      driver = fn module, invocation ->
+        send(parent, {:resolver_spawn, module, invocation.model})
+        {:ok, :spawned}
+      end
+
+      assert {:ok, %{agent: :codex, module: Codex, model: "gpt-5.5"}} =
+               Resolver.resolve(worktree,
+                 implementer: "claude",
+                 reviewer: "codex",
+                 task_id: "293",
+                 driver: driver
+               )
+
+      assert_receive {:resolver_spawn, Codex, "gpt-5.5"}
+    end
+
     test "reports no conflicted files after selecting a resolver" do
       AgentRegistry.reset()
       mark_installed(Codex, true)
+      put_model_env(agent_model: [codex: "gpt-5.5"], reviewer_model: [])
       on_exit(fn -> AgentRegistry.reset() end)
 
       repo = GitFixture.init_repo(name: "resolver-no-conflict")
@@ -159,5 +211,41 @@ defmodule Harness.Lander.ResolverTest do
   @spec mark_all_installed(boolean()) :: :ok
   defp mark_all_installed(installed?) do
     Enum.each(AgentRegistry.agents(), fn {_agent, module} -> mark_installed(module, installed?) end)
+  end
+
+  @spec put_model_env(keyword()) :: :ok
+  defp put_model_env(env) do
+    previous_agent_model = Application.get_env(:harness, :agent_model)
+    previous_reviewer_model = Application.get_env(:harness, :reviewer_model)
+
+    Application.put_env(:harness, :agent_model, Keyword.fetch!(env, :agent_model))
+    Application.put_env(:harness, :reviewer_model, Keyword.fetch!(env, :reviewer_model))
+
+    on_exit(fn ->
+      restore_env(:agent_model, previous_agent_model)
+      restore_env(:reviewer_model, previous_reviewer_model)
+    end)
+
+    :ok
+  end
+
+  @spec restore_env(atom(), term()) :: :ok
+  defp restore_env(key, nil), do: Application.delete_env(:harness, key)
+  defp restore_env(key, value), do: Application.put_env(:harness, key, value)
+
+  @spec conflicted_repo(String.t()) :: String.t()
+  defp conflicted_repo(name) do
+    repo = GitFixture.init_repo(name: name)
+    GitFixture.git!(repo, ["checkout", "-q", "-b", "feature"])
+    File.write!(Path.join(repo, "README.md"), "feature side\n")
+    GitFixture.git!(repo, ["add", "README.md"])
+    GitFixture.git!(repo, ["commit", "-q", "-m", "feature readme"])
+    GitFixture.git!(repo, ["checkout", "-q", "main"])
+    File.write!(Path.join(repo, "README.md"), "main side\n")
+    GitFixture.git!(repo, ["add", "README.md"])
+    GitFixture.git!(repo, ["commit", "-q", "-m", "main readme"])
+    GitFixture.git!(repo, ["checkout", "-q", "feature"])
+    {_output, _status} = System.cmd("git", ["-C", repo, "rebase", "main"], stderr_to_stdout: true)
+    repo
   end
 end

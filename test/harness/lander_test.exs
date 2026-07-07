@@ -74,6 +74,8 @@ defmodule Harness.LanderTest do
   import ExUnit.CaptureLog
 
   alias Harness.AgentAdapter.Claude
+  alias Harness.AgentAdapter.Codex
+  alias Harness.AgentRegistry
   alias Harness.Dashboard.OpsFeed
   alias Harness.Dashboard.OpsFeed.Op
   alias Harness.GitFixture
@@ -458,12 +460,43 @@ defmodule Harness.LanderTest do
       assert sha(ctx.origin, "refs/heads/main") == moved_main
     end
 
+    test "a spawned resolver witness records the resolver agent and model", ctx do
+      moved_main = stage_conflict(ctx)
+
+      put_resolver(fn %{path: path}, _opts ->
+        File.write!(Path.join(path, "README.md"), "<<<<<<< HEAD\nmain side\n=======\nbranch side\n>>>>>>> x\n")
+        {:ok, %{agent: :codex, module: Codex, model: "gpt-5.5"}}
+      end)
+
+      assert {:conflict, output} = Lander.land(ctx.request)
+      assert output =~ "resolver witness: agent spawned: codex model=gpt-5.5; unresolved conflict markers remain"
+      assert sha(ctx.origin, "refs/heads/main") == moved_main
+    end
+
     test "an unavailable/declining resolver falls back to {:conflict, _}, origin untouched", ctx do
       moved_main = stage_conflict(ctx)
       put_resolver(fn _worktree, _opts -> {:error, :no_resolver} end)
 
       assert {:conflict, output} = Lander.land(ctx.request)
       assert output =~ "resolver witness: selection/spawn failed: :no_resolver"
+      assert sha(ctx.origin, "refs/heads/main") == moved_main
+      assert branch_exists?(ctx.repo, ctx.request.branch)
+      assert File.dir?(ctx.run_worktree.path)
+    end
+
+    test "the live resolver falls back cleanly when every eligible candidate is model-less", ctx do
+      AgentRegistry.reset()
+      mark_all_installed(false)
+      mark_installed(Codex, true)
+      put_model_env(agent_model: [], reviewer_model: [])
+      on_exit(fn -> AgentRegistry.reset() end)
+
+      moved_main = stage_conflict(ctx)
+
+      assert {:conflict, output} = Lander.land(ctx.request)
+      assert output =~ "resolver witness: selection/spawn failed:"
+      assert output =~ "no_resolver_model"
+      assert output =~ "model_required"
       assert sha(ctx.origin, "refs/heads/main") == moved_main
       assert branch_exists?(ctx.repo, ctx.request.branch)
       assert File.dir?(ctx.run_worktree.path)
@@ -743,6 +776,37 @@ defmodule Harness.LanderTest do
     GitFixture.git!(clone, ["push", "-q", "origin", "HEAD:refs/heads/hook-competing"])
     sha(clone, "HEAD")
   end
+
+  @spec mark_installed(module(), boolean()) :: :ok
+  defp mark_installed(module, installed?) do
+    :sys.replace_state(AgentRegistry, fn state -> put_in(state, [:installed, module], installed?) end)
+    :ok
+  end
+
+  @spec mark_all_installed(boolean()) :: :ok
+  defp mark_all_installed(installed?) do
+    Enum.each(AgentRegistry.agents(), fn {_agent, module} -> mark_installed(module, installed?) end)
+  end
+
+  @spec put_model_env(keyword()) :: :ok
+  defp put_model_env(env) do
+    previous_agent_model = Application.get_env(:harness, :agent_model)
+    previous_reviewer_model = Application.get_env(:harness, :reviewer_model)
+
+    Application.put_env(:harness, :agent_model, Keyword.fetch!(env, :agent_model))
+    Application.put_env(:harness, :reviewer_model, Keyword.fetch!(env, :reviewer_model))
+
+    on_exit(fn ->
+      restore_env(:agent_model, previous_agent_model)
+      restore_env(:reviewer_model, previous_reviewer_model)
+    end)
+
+    :ok
+  end
+
+  @spec restore_env(atom(), term()) :: :ok
+  defp restore_env(key, nil), do: Application.delete_env(:harness, key)
+  defp restore_env(key, value), do: Application.put_env(:harness, key, value)
 
   @spec roadmap_markers() :: String.t()
   defp roadmap_markers, do: "# Roadmap\n\n<!-- TASKS:BEGIN phase=1 -->\n<!-- TASKS:END -->\n"
