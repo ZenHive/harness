@@ -2,11 +2,14 @@ defmodule Harness.DepFreshness.Providers do
   @moduledoc false
 
   alias Harness.DepFreshness.Provider.Elixir, as: ElixirProvider
+  alias Harness.DepFreshness.Provider.JavaScript, as: JavaScriptProvider
   alias Harness.LanguageProviders
   alias Harness.Project
 
   @providers %{
-    elixir: ElixirProvider
+    elixir: ElixirProvider,
+    javascript: JavaScriptProvider,
+    typescript: JavaScriptProvider
   }
 
   @type resolution :: LanguageProviders.resolution()
@@ -14,6 +17,12 @@ defmodule Harness.DepFreshness.Providers do
   @doc "Resolves freshness provider modules for every project language."
   @spec resolve(Project.t()) :: [resolution()]
   def resolve(%Project{} = project) do
-    LanguageProviders.resolve(project.languages, @providers)
+    project.languages
+    |> LanguageProviders.resolve(@providers)
+    |> Enum.uniq_by(&provider_key/1)
   end
+
+  @spec provider_key(resolution()) :: term()
+  defp provider_key({:ok, _language, provider}), do: provider
+  defp provider_key({:skipped, language, _reason}), do: {:skipped, language}
 end

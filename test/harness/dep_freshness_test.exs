@@ -48,6 +48,59 @@ defmodule Harness.DepFreshnessTest do
     assert snapshot.conformance.drift_count > 0
   end
 
+  test "scan_project records JavaScript freshness rows for TypeScript projects", %{tmp_dir: tmp_dir} do
+    File.write!(
+      Path.join(tmp_dir, "package.json"),
+      Jason.encode!(%{"devDependencies" => %{"typescript" => "^5.4.0"}})
+    )
+
+    File.write!(Path.join(tmp_dir, "package-lock.json"), "{}")
+
+    project = ProjectFixture.from_repo(tmp_dir, name: "typescript-freshness-demo", language: :typescript)
+    :ok = ProjectRegistry.register(project)
+
+    runner = fn "npm", ["outdated", "--json"], ^tmp_dir ->
+      {:ok, Jason.encode!(%{"typescript" => %{"current" => "5.4.0", "wanted" => "5.5.4", "latest" => "5.5.4"}})}
+    end
+
+    assert :ok = DepFreshness.scan_project(project, provider_opts: [runner: runner])
+
+    assert {:ok, snapshot} = DepFreshness.fetch_snapshot("typescript-freshness-demo")
+    assert snapshot.language == "typescript"
+    assert snapshot.outdated_count == 1
+
+    assert [
+             %Row{
+               name: "typescript",
+               current_version: "5.4.0",
+               latest_version: "5.5.4",
+               constraint_allowed: true,
+               language: :typescript
+             }
+           ] = snapshot.rows
+  end
+
+  test "scan_project records skipped JavaScript facts when manager metadata is missing", %{tmp_dir: tmp_dir} do
+    File.write!(Path.join(tmp_dir, "package.json"), Jason.encode!(%{"dependencies" => %{"react" => "^18.2.0"}}))
+
+    project = ProjectFixture.from_repo(tmp_dir, name: "missing-js-manager", language: :javascript)
+    :ok = ProjectRegistry.register(project)
+
+    assert :ok =
+             DepFreshness.scan_project(project, provider_opts: [runner: fn _, _, _ -> flunk("runner should not run") end])
+
+    assert {:ok, snapshot} = DepFreshness.fetch_snapshot("missing-js-manager")
+
+    assert [
+             %Row{
+               name: "provider:javascript",
+               status: :skipped,
+               reason: :missing_package_manager_metadata,
+               language: :javascript
+             }
+           ] = snapshot.rows
+  end
+
   test "scan_project records tooling baseline facts for explicit Elixir projects", %{tmp_dir: tmp_dir} do
     File.write!(Path.join(tmp_dir, "mix.exs"), "Mix.install([])")
     File.mkdir!(Path.join(tmp_dir, "deps"))
