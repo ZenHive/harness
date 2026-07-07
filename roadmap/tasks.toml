@@ -10499,7 +10499,7 @@ shipped_in = "128166edc7180675579c386bc6db47219263f8b2"
 id = "353"
 phase = 22
 bundle = "core-loop"
-status = "pending"
+status = "in_progress"
 title = "Decompose the 2,890-line Run gen_statem: extract per-state event handling into satellite modules"
 scores = { d = 4, b = 5, u = 5 }
 depends_on = [327, 343]
@@ -10512,6 +10512,7 @@ body = """
 run.ex is 2,890 lines / 322 functions — the largest file in the codebase by nearly 2x (next: dispatch.ex at 1,565) — concentrating every state (dispatched/running/committing/recovering/reviewing/held/done/failed) and its event clauses in one module. Every lifecycle change pays the monolith's blast radius, and the pending run-lifecycle tasks (327's invocation builders, 343's cancel fix) all queue edits to the same file. Continue the satellite pattern the module already established (Run.Recovery, Run.Review, Run.Result, Run.Status, Run.Reflex, Run.RetryPolicy) by extracting per-state event handling into per-state modules invoked from thin delegators in run.ex, without changing the :gen_statem callback surface or any observable behavior. depends_on 327 + 343 so the queued run.ex edits land first and this pure-move diff doesn't rebase-conflict them. Identified by cross-cutting codebase review 2026-07-06 as the codebase's single structural outlier (the review found zero correctness defects in this subsystem — this is maintainability debt, not a bug).
 """
 created_at = "2026-07-05"
+started_at = "2026-07-07"
 scored_at = "2026-07-05"
 
 [[task]]
