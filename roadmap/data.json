@@ -14728,7 +14728,7 @@
       "id": "327",
       "phase": 22,
       "bundle": "contract",
-      "status": "in_progress",
+      "status": "done",
       "title": "Invert the rule-content seam + make Invocation agent-agnostic (AgentAdapter no longer names Harness.AgentRules)",
       "scores": {
         "d": 4,
@@ -14763,10 +14763,15 @@
         "lib/harness/run.ex",
         "test/support/agent_adapter"
       ],
+      "shipped_in": "922dc49cd53f65046ce9f2f60fa2d3a71498e20b",
       "body": "Cut the only content-coupling in the adapter subsystem so Harness.AgentAdapter.* no longer names Harness.AgentRules. Today Harness.AgentAdapter.RulesInjection calls AgentRules.write_system_prompt_file!/2, install_codex_rules!/2, install_cursor_rules!/2, and prompt_preamble/0,1 directly (rules_injection.ex:18/29/40/51/59) — binding the generic delivery mechanism to harness-specific rule prose (reviewer-gate, rmap, roadmap/tasks.toml, post-merge audit). Invert it: the delivery mechanism (which file path / argv flag / preamble each rule_channel/0 uses, plus the ephemeral-file write+cleanup lifecycle) stays in the subsystem; the rule content (rendered markdown + the :elixir/section filtering in render_opts/1) is supplied by the caller. Pass rule content into the subsystem (pre-rendered string(s) on Invocation, or a render/install callback on the behaviour) so harness injects its AgentRules output without the subsystem importing it. In the same change, make the Invocation struct agent-agnostic: relocate `language` (its sole consumer is the rule filtering in RulesInjection.render_opts/1, which moves caller-side) and generalize `task_id` to an opaque log tag with no rmap semantics. Update Harness.Run's three Invocation builders — implementer (invocation/3 ~run.ex:1979), reviewer (reviewer_invocation/1 ~run.ex:2428), recovery (recovery_invocation/1 ~run.ex:2331) — to supply the rendered content + section/language filtering caller-side, and update ConformanceCase (test/support/agent_adapter/conformance_case.ex, which currently asserts delivered rules equal AgentRules.render()) to assert against injected fixture content instead. After this, `grep -rE \"Harness\\.AgentRules\" lib/harness/agent_adapter` returns nothing. This is the first of two decoupling cuts that make the subsystem extraction-ready; the watchdog cycle is the sibling task.\n\n2026-07-06 content-review note — all cited sites verified against HEAD (rules_injection.ex:18/29/40/51/59, ConformanceCase asserting File.read! == AgentRules.render()). One naming correction: the Invocation field is `languages` (plural, nonempty_list(atom()), default [:elixir]; invocation.ex:43/57), not singular `language` — same relocation applies.\n\n2026-07-06 codebase-review fold-in — RulesInjection.prepend_prompt/1 (rules_injection.ex:49) has no production caller (invoke/2 always routes through the invocation-aware arity-2; only test files call arity-1 as an expected-value baseline). Since this task reshapes exactly that API surface, retire or fold the arity-1 variant here rather than in a separate task.",
       "created_at": "2026-06-22",
       "started_at": "2026-07-07",
+      "done_at": "2026-07-07",
       "scored_at": "2026-06-22",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1783393031483-e05fb78b, 922dc49cd53f65046ce9f2f60fa2d3a71498e20b).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {

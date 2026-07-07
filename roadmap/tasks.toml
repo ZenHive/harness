@@ -9881,7 +9881,7 @@ scored_at = "2026-06-21"
 id = "327"
 phase = 22
 bundle = "contract"
-status = "in_progress"
+status = "done"
 title = "Invert the rule-content seam + make Invocation agent-agnostic (AgentAdapter no longer names Harness.AgentRules)"
 scores = { d = 4, b = 5, u = 5 }
 markers = ["parallel"]
@@ -9895,9 +9895,14 @@ body = '''Cut the only content-coupling in the adapter subsystem so Harness.Agen
 2026-07-06 content-review note — all cited sites verified against HEAD (rules_injection.ex:18/29/40/51/59, ConformanceCase asserting File.read! == AgentRules.render()). One naming correction: the Invocation field is `languages` (plural, nonempty_list(atom()), default [:elixir]; invocation.ex:43/57), not singular `language` — same relocation applies.
 
 2026-07-06 codebase-review fold-in — RulesInjection.prepend_prompt/1 (rules_injection.ex:49) has no production caller (invoke/2 always routes through the invocation-aware arity-2; only test files call arity-1 as an expected-value baseline). Since this task reshapes exactly that API surface, retire or fold the arity-1 variant here rather than in a separate task.'''
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1783393031483-e05fb78b, 922dc49cd53f65046ce9f2f60fa2d3a71498e20b)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-22"
 started_at = "2026-07-07"
 scored_at = "2026-06-22"
+done_at = "2026-07-07"
+shipped_in = "922dc49cd53f65046ce9f2f60fa2d3a71498e20b"
 
 [[task]]
 id = "328"
