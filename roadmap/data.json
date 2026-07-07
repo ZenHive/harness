@@ -15523,7 +15523,7 @@
       "id": "344",
       "phase": 20,
       "bundle": "autolanding",
-      "status": "blocked",
+      "status": "done",
       "title": "Land-conflict resolver AI cannot spawn: claude adapter has no configured agent_model",
       "scores": {
         "d": 2,
@@ -15554,11 +15554,15 @@
         "lib/harness/run.ex",
         "test/harness/lander/resolver_test.exs"
       ],
+      "shipped_in": "80dc931bf7e025debefa1d5d9dca1bb076217133",
       "body": "Observed 2026-07-04 on tapakly run run-1783130780286-70e6a32b: the lander hit a rebase conflict (T329 vs T332 gettext catalogs) and the land-conflict resolver AI failed to spawn with {:model_required, Harness.AgentAdapter.Claude} — the claude adapter has no {:agent_model, agent} pin configured, and the resolver path (like the reviewer) resolves its model solely from agent_model config. The land stayed blocked and required manual worktree repair.\n\nDecide + fix: either (a) operator config — pin a standing model for the claude adapter (Config.agent_model) so recovery/resolver/reviewer seats can always spawn on it, and document that model-capable recovery seats require a pin at project-registration/onboarding time; or (b) code — have the resolver seat rotate to the next cross-family candidate with a configured model instead of failing the land when the first candidate is model-less (mirroring the reviewer-rotation behavior). Either way, a rebase-conflict land should degrade to another resolver candidate, not to a blocked task needing hand repair. Human decision spike on (a) vs (b); (b) becomes dispatchable once chosen.\n\n2026-07-05 update — decision resolved to (b) by new evidence: the failure recurred twice on tapakly auto-lands (task 348: {:model_required, Harness.AgentAdapter.Codex}; task 344 / run-1783226904876-5c5b2e99: {:model_required, Harness.AgentAdapter.Claude}) while agents-reviewers showed BOTH adapters with configured models (claude-opus-4-8 / gpt-5.5). Config pins exist, so this is not the (a) config gap — the resolver spawn path does not resolve {:agent_model, agent} (or the Run.reviewer_model equivalent) before spawning. Fix per (b): resolve the model the same way the reviewer spawn does; rotate to the next eligible cross-family candidate when the selected one is model-less; blocked + retained branch stays the terminal sink. Witness which agent+model ran (or why none could).\n\n2026-07-07 dedupe note — fourth recurrence: tapakly task 362 (run-1783371226312-2655d89b), gettext-catalog rebase conflict, resolver witness \"selection/spawn failed: {:model_required, Harness.AgentAdapter.Claude}\"; operator repaired manually (union-merge .po catalogs + gettext.refresh + dispatch-reland). Live config re-check this date confirms agent_model.claude = \"claude-opus-4-8\" IS set, re-confirming decision (b): the resolver spawn path simply never resolves {:agent_model, agent}. Candidate selection must additionally skip genuinely model-less candidates (mirror reviewer-slate eligibility), per the folded-in duplicate task 355 (superseded into this one).\n",
       "created_at": "2026-07-04",
       "started_at": "2026-07-07",
+      "done_at": "2026-07-07",
       "scored_at": "2026-07-04",
-      "blocked_reason": "land conflict retained for repair (task 344, run run-1783391790006-d02f1634, branch harness/run-1783391790006-d02f1634); resolver already attempted and the branch still conflicted. resolver witness: selection/spawn failed: {:model_required, Harness.AgentAdapter.Claude}. Repair: rebase the retained branch onto the target branch, resolve all conflict markers while keeping both reviewed intents, commit the resolved branch, move harness/run-1783391790006-d02f1634 to that commit if you used a scratch branch, then run dispatch-reland run-1783391790006-d02f1634.",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1783391790006-d02f1634, 80dc931bf7e025debefa1d5d9dca1bb076217133).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
