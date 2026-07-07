@@ -10087,7 +10087,7 @@ shipped_in = "36a26110db4165c747df1f9ed96cbcfcb6a5b0eb"
 id = "335"
 phase = 22
 bundle = "operator-surface"
-status = "pending"
+status = "in_progress"
 title = "Dispatch 'bring project to tooling baseline' through the agent-gate"
 scores = { d = 5, b = 6, u = 6 }
 depends_on = [332, 334, 340]
@@ -10102,6 +10102,7 @@ Add an operator-triggered action that dispatches a "bring this project to the to
 Feed the dispatched task prompt the conformance-drift facts (from Task 334) as ground truth naming exactly what is missing (deps, aliases, config files). Instruct the implementer to add the missing baseline tooling — preferring the vibe_kit Igniter installer where applicable, then layering the elixir-setup extras — and to bring the `ci` / `precommit` aliases and `.credo.exs` / `.reach.exs` / `.formatter.exs` to the baseline. The reviewer gates that the project still compiles and the newly-wired gate runs green. The bump rides the standard implement->review->land loop; harness runs no build or install itself.
 """
 created_at = "2026-06-25"
+started_at = "2026-07-07"
 scored_at = "2026-06-25"
 
 [[task]]
