@@ -10502,3 +10502,22 @@ model = "composer-2.5"
 body = "Observed 2026-07-07, tapakly task 362, run run-1783371226312-2655d89b: the lander hit a rebase conflict (gettext catalogs), and the conflict-resolver attempt failed before spawning with 'resolver witness: selection/spawn failed: {:model_required, Harness.AgentAdapter.Claude}' — the resolver selected the claude adapter, which had no configured {:agent_model, agent}, so the whole resolver attempt died and the task went to blocked for manual repair. The model-required contract is correct (never fall through to an ambient default); the bug is in resolver candidate SELECTION: an agent with no configured model is not a viable candidate and should be skipped in favor of the next cross-family candidate (same rotation semantics the reviewer slate already has). Only when NO candidate has a configured model should the resolver report selection failure. The manual repair (union-merge of .po catalogs + gettext.refresh + dispatch-reland) worked, but cost an operator cycle a configured resolver would have absorbed."
 created_at = "2026-07-06"
 scored_at = "2026-07-06"
+
+[[task]]
+id = "356"
+phase = 22
+bundle = "chat-orchestrator"
+status = "pending"
+title = "Chat turn-worker crash must fail fast to the caller — monitor instead of bare receive; map ensure_session already_started"
+scores = { d = 2, b = 3, u = 4 }
+markers = ["bug", "parallel"]
+acceptance_criteria = ["A turn-worker crash surfaces to a blocked user_message/3 caller immediately (test: crashing backend -> caller returns/exits well before its timeout, never the full-timeout hang)", "A :terminal event is emitted on the session stream for the crashed turn so ChatLive un-sticks the composer", "ChatSupervisor.ensure_session/1 returns {:ok, id, pid} when the session was concurrently started ({:error, {:already_started, pid}} race)", "Existing busy-terminal, idle-reap, and mid-turn cancel semantics unchanged (existing tests green)"]
+out_of_scope = ["Changing turn execution back into the GenServer", "Restart semantics of session processes (restart: :temporary stays)"]
+touches = ["lib/harness/chat/session.ex", "lib/harness/chat/supervisor.ex", "test/harness/chat/"]
+assignee = "cursor"
+model = "composer-2.5"
+body = """
+Follow-on to task 348 (landed run run-1783390322257-fd5d8940). The turn now runs in a spawn_link'ed worker; an abnormal worker crash still kills the non-trapping session GenServer (same failure surface as before), but user_message/3 callers now park in a bare receive waiting for {:harness_chat_turn, ...} and only leave via their own after-timeout — previously GenServer.call exited immediately when the server died. ChatLive's fire-and-forget 600s Task therefore hangs 10 minutes on a crashed turn, and no :terminal reaches the stream, so the composer sticks. Flagged independently by the run's cross-family reviewer (review_warning concern) and the orchestrator architecture review 2026-07-07. Fix: have the caller monitor the session (receive {:DOWN, ...} -> immediate exit/return), or trap the worker exit in the session and emit_terminal a :crashed terminal + reply before stopping. Fold-in (same files, same seam): ChatSupervisor.ensure_session/1 currently returns the raw {:error, {:already_started, pid}} when two callers race the cold start — map it to {:ok, session_id, pid}.
+"""
+created_at = "2026-07-07"
+scored_at = "2026-07-07"
