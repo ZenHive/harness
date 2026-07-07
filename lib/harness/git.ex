@@ -25,6 +25,15 @@ defmodule Harness.Git do
     end
   end
 
+  @doc "Fetches `origin` in `repo`, wrapping failure as `{:fetch_failed, reason}`."
+  @spec fetch_origin(String.t()) :: :ok | {:error, {:fetch_failed, error()}}
+  def fetch_origin(repo) do
+    case run(["fetch", "origin"], repo) do
+      {:ok, _output} -> :ok
+      {:error, reason} -> {:error, {:fetch_failed, reason}}
+    end
+  end
+
   @doc "Whether `repo` is inside a git working tree."
   @spec work_tree?(String.t()) :: boolean()
   def work_tree?(repo) do

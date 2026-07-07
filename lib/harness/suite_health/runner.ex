@@ -99,7 +99,7 @@ defmodule Harness.SuiteHealth.Runner do
     runner.(cmd, args, worktree_path, env)
   end
 
-  @spec command_env(Project.t(), String.t()) :: keyword()
+  @spec command_env(Project.t(), String.t()) :: [{String.t(), String.t()}]
   defp command_env(%Project{} = project, "mix") do
     base = [{"MIX_ENV", "test"}]
 

@@ -203,6 +203,7 @@ defmodule Harness.Oban do
 
     base
     |> enable_cron_queue()
+    |> enable_suite_health_queue()
     |> enable_audit_queue()
     |> enable_lifeline_plugin()
     |> enable_cron_plugin()
@@ -310,6 +311,19 @@ defmodule Harness.Oban do
   @spec enable_cron_queue(keyword()) :: keyword()
   defp enable_cron_queue(opts) do
     {queue, limit} = RoadmapPoller.cron_queue_config()
+
+    Keyword.update(opts, :queues, [{queue, limit}], fn
+      queues when is_list(queues) -> Keyword.put_new(queues, queue, limit)
+      _other -> [{queue, limit}]
+    end)
+  end
+
+  # The suite-health queue: its own limit-1 queue so a long full-suite run
+  # (all projects, integration included) never occupies the shared :cron slot
+  # the roadmap and dep-freshness pollers tick on.
+  @spec enable_suite_health_queue(keyword()) :: keyword()
+  defp enable_suite_health_queue(opts) do
+    {queue, limit} = SuiteHealthPoller.queue_config()
 
     Keyword.update(opts, :queues, [{queue, limit}], fn
       queues when is_list(queues) -> Keyword.put_new(queues, queue, limit)

@@ -77,7 +77,7 @@ defmodule Harness.SuiteHealth.Bootstrap do
     end
   end
 
-  @spec test_env(Project.t()) :: keyword()
+  @spec test_env(Project.t()) :: [{String.t(), String.t()}]
   defp test_env(%Project{} = project) do
     base = [{"MIX_ENV", "test"}]
 

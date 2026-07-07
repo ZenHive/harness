@@ -105,4 +105,30 @@ defmodule Harness.ProjectTest do
       assert {:ok, "/tmp/demo"} = Project.ensure_local_repo(project)
     end
   end
+
+  describe "target_branch/1" do
+    test "resolves a configured target branch" do
+      project = %Project{
+        name: "demo",
+        source: {:local, "/tmp/demo"},
+        roadmap_path: "/tmp/demo",
+        languages: [:elixir],
+        target_branch: "development"
+      }
+
+      assert {:ok, "development"} = Project.target_branch(project)
+    end
+
+    test "signals a skip when unset or empty" do
+      base = %Project{
+        name: "demo",
+        source: {:local, "/tmp/demo"},
+        roadmap_path: "/tmp/demo",
+        languages: [:elixir]
+      }
+
+      assert {:skipped, :no_target_branch} = Project.target_branch(base)
+      assert {:skipped, :no_target_branch} = Project.target_branch(%{base | target_branch: ""})
+    end
+  end
 end

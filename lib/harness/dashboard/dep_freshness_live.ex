@@ -8,6 +8,7 @@ defmodule Harness.Dashboard.DepFreshnessLive do
 
   use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}
 
+  alias Harness.Dashboard.ProjectSelection
   alias Harness.DepFreshness
   alias Harness.DepFreshness.Row
   alias Harness.DepFreshness.Snapshot
@@ -34,12 +35,8 @@ defmodule Harness.Dashboard.DepFreshnessLive do
 
   @impl Phoenix.LiveView
   @spec handle_params(map(), String.t(), Socket.t()) :: {:noreply, Socket.t()}
-  def handle_params(%{"name" => name}, _uri, socket) do
-    {:noreply, assign(socket, :selected_project, name)}
-  end
-
-  def handle_params(_params, _uri, socket) do
-    {:noreply, assign(socket, :selected_project, default_project_name(socket.assigns.projects))}
+  def handle_params(params, _uri, socket) do
+    ProjectSelection.handle_params(params, socket)
   end
 
   @impl Phoenix.LiveView
@@ -92,7 +89,7 @@ defmodule Harness.Dashboard.DepFreshnessLive do
 
     <section :if={@projects != []} id="dep-freshness-panel">
       <.project_panel
-        project={selected_project(@projects, @selected_project)}
+        project={ProjectSelection.selected_project(@projects, @selected_project)}
         snapshot={Map.get(@snapshots, @selected_project)}
       />
     </section>
@@ -118,7 +115,9 @@ defmodule Harness.Dashboard.DepFreshnessLive do
   defp project_panel(assigns) do
     ~H"""
     <p class="count" id="dep-freshness-summary">
-      {@snapshot.outdated_count} outdated · last checked {format_checked_at(@snapshot.checked_at)} · provider {@snapshot.language}
+      {@snapshot.outdated_count} outdated · last checked {ProjectSelection.format_checked_at(
+        @snapshot.checked_at
+      )} · provider {@snapshot.language}
     </p>
 
     <h3>Dependency freshness</h3>
@@ -156,7 +155,9 @@ defmodule Harness.Dashboard.DepFreshnessLive do
     <section id="tooling-baseline-panel">
       <h3>Tooling baseline</h3>
       <p class="count" id="tooling-baseline-summary">
-        {@conformance.drift_count} drift · last checked {format_checked_at(@conformance.checked_at)}
+        {@conformance.drift_count} drift · last checked {ProjectSelection.format_checked_at(
+          @conformance.checked_at
+        )}
       </p>
 
       <table id="tooling-baseline-items">
@@ -202,20 +203,6 @@ defmodule Harness.Dashboard.DepFreshnessLive do
       {:error, _reason} ->
         %{}
     end
-  end
-
-  @spec default_project_name([Project.t()]) :: String.t()
-  defp default_project_name([%Project{name: name} | _rest]), do: name
-  defp default_project_name([]), do: ""
-
-  @spec selected_project([Project.t()], String.t()) :: Project.t() | nil
-  defp selected_project(projects, name) do
-    Enum.find(projects, &(&1.name == name)) || List.first(projects)
-  end
-
-  @spec format_checked_at(DateTime.t()) :: String.t()
-  defp format_checked_at(%DateTime{} = checked_at) do
-    Calendar.strftime(checked_at, "%Y-%m-%d %H:%M:%S UTC")
   end
 
   @spec row_class(Row.t()) :: String.t()

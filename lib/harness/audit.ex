@@ -123,8 +123,8 @@ defmodule Harness.Audit do
     # a real third-family agent run. Pre-worktree short-circuits carry empty meta.
     {outcome, meta} =
       with {:ok, repo} <- Project.local_repo_path(project),
-           {:ok, target} <- target_branch(project),
-           :ok <- fetch_origin(repo),
+           {:ok, target} <- Project.target_branch(project),
+           :ok <- Git.fetch_origin(repo),
            {:ok, worktree} <- checkout(repo, target) do
         audit_in_worktree(worktree, repo, target, project, request)
       else
@@ -811,18 +811,6 @@ defmodule Harness.Audit do
         Logger.warning("harness audit: failed to remove audit worktree #{worktree.path}: #{inspect(reason)}")
 
         :ok
-    end
-  end
-
-  @spec target_branch(Project.t()) :: {:ok, String.t()} | {:skipped, :no_target_branch}
-  defp target_branch(%Project{target_branch: tb}) when is_binary(tb) and tb != "", do: {:ok, tb}
-  defp target_branch(%Project{}), do: {:skipped, :no_target_branch}
-
-  @spec fetch_origin(String.t()) :: :ok | {:error, term()}
-  defp fetch_origin(repo) do
-    case Git.run(["fetch", "origin"], repo) do
-      {:ok, _output} -> :ok
-      {:error, reason} -> {:error, {:fetch_failed, reason}}
     end
   end
 

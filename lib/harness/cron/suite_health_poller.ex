@@ -2,12 +2,13 @@ defmodule Harness.Cron.SuiteHealthPoller do
   @moduledoc """
   Daily cron worker that records full-suite health-check witness facts per project.
 
-  Runs on the shared `:cron` queue at a fixed daily schedule, independent of the
-  roadmap-poller cadence. Harness counts exit codes and failing tests only —
-  never gates dispatch on the result.
+  Runs on its own `:suite_health` queue (limit 1) at a fixed daily schedule so
+  long full-suite runs never occupy the shared `:cron` queue slot the roadmap
+  and dep-freshness pollers tick on. Harness counts exit codes and failing
+  tests only — never gates dispatch on the result.
   """
 
-  use Oban.Worker, queue: :cron, max_attempts: 1
+  use Oban.Worker, queue: :suite_health, max_attempts: 1
 
   alias Harness.ProjectRegistry
   alias Harness.SuiteHealth
@@ -15,7 +16,8 @@ defmodule Harness.Cron.SuiteHealthPoller do
 
   require Logger
 
-  @cron_queue :cron
+  @queue :suite_health
+  @queue_limit 1
   @daily_schedule "0 0 * * *"
 
   @impl Oban.Worker
@@ -34,8 +36,12 @@ defmodule Harness.Cron.SuiteHealthPoller do
   @doc false
   @spec cron_entry() :: {String.t(), module(), keyword()}
   def cron_entry do
-    {schedule(), __MODULE__, [queue: @cron_queue, max_attempts: 1]}
+    {schedule(), __MODULE__, [queue: @queue, max_attempts: 1]}
   end
+
+  @doc false
+  @spec queue_config() :: {atom(), pos_integer()}
+  def queue_config, do: {@queue, @queue_limit}
 
   @doc false
   @spec cron_plugin() :: {module(), keyword()}

@@ -11,18 +11,7 @@ defmodule Harness.DepFreshnessStore.Postgres do
   alias Harness.Repo
   alias Harness.ToolingBaseline.Snapshot, as: ConformanceSnapshot
 
-  @persistence_errors [
-    RuntimeError,
-    DBConnection.ConnectionError,
-    DBConnection.OwnershipError,
-    Postgrex.Error,
-    Ecto.ConstraintError,
-    Ecto.StaleEntryError,
-    Ecto.Query.CastError,
-    Ecto.QueryError,
-    Ecto.ChangeError,
-    ArgumentError
-  ]
+  @persistence_errors Harness.Store.persistence_errors()
 
   @impl Harness.DepFreshnessStore
   @spec record_snapshot(Snapshot.t(), keyword()) :: :ok | {:error, term()}

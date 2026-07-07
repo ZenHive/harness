@@ -9,18 +9,7 @@ defmodule Harness.SuiteHealthStore.Postgres do
   alias Harness.SuiteHealth.Result
   alias Harness.SuiteHealthStore.Schema.Result, as: ResultSchema
 
-  @persistence_errors [
-    RuntimeError,
-    DBConnection.ConnectionError,
-    DBConnection.OwnershipError,
-    Postgrex.Error,
-    Ecto.ConstraintError,
-    Ecto.StaleEntryError,
-    Ecto.Query.CastError,
-    Ecto.QueryError,
-    Ecto.ChangeError,
-    ArgumentError
-  ]
+  @persistence_errors Harness.Store.persistence_errors()
 
   @impl Harness.SuiteHealthStore
   @spec record_result(Result.t(), keyword()) :: :ok | {:error, term()}

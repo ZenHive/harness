@@ -36,7 +36,16 @@ defmodule Harness.Cron.SuiteHealthPollerTest do
 
     entry = SuiteHealthPoller.cron_entry()
     assert entry in crontab
-    assert {"0 0 * * *", SuiteHealthPoller, [queue: :cron, max_attempts: 1]} = entry
+    assert {"0 0 * * *", SuiteHealthPoller, [queue: :suite_health, max_attempts: 1]} = entry
+  end
+
+  test "runs on its own queue so long suites never occupy the shared :cron slot" do
+    assert {:suite_health, 1} = SuiteHealthPoller.queue_config()
+
+    queues = Keyword.fetch!(HarnessOban.oban_opts(), :queues)
+
+    assert Keyword.get(queues, :suite_health) == 1
+    assert Keyword.get(queues, :cron) == 1
   end
 
   test "perform/1 checks registered projects" do

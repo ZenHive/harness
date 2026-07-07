@@ -99,8 +99,8 @@ defmodule Harness.SuiteHealth do
           {:ok, Worktree.t()} | {:skipped, term()} | {:error, term()}
   defp checkout_cold(%Project{} = project, opts) do
     with {:ok, repo} <- Project.local_repo_path(project),
-         {:ok, target} <- target_branch(project),
-         :ok <- fetch_origin(repo) do
+         {:ok, target} <- Project.target_branch(project),
+         :ok <- Git.fetch_origin(repo) do
       checkout(repo, target, opts)
     end
   end
@@ -120,18 +120,6 @@ defmodule Harness.SuiteHealth do
     case Worktree.checkout_existing(repo, "origin/" <> target, checkout_opts) do
       {:ok, worktree} -> {:ok, worktree}
       {:error, reason} -> {:error, {:checkout_failed, reason}}
-    end
-  end
-
-  @spec target_branch(Project.t()) :: {:ok, String.t()} | {:skipped, :no_target_branch}
-  defp target_branch(%Project{target_branch: tb}) when is_binary(tb) and tb != "", do: {:ok, tb}
-  defp target_branch(%Project{}), do: {:skipped, :no_target_branch}
-
-  @spec fetch_origin(String.t()) :: :ok | {:error, term()}
-  defp fetch_origin(repo) do
-    case Git.run(["fetch", "origin"], repo) do
-      {:ok, _output} -> :ok
-      {:error, reason} -> {:error, {:fetch_failed, reason}}
     end
   end
 

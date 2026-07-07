@@ -122,4 +122,12 @@ defmodule Harness.Project do
   @spec local_repo_path(t()) :: {:ok, String.t()} | {:skipped, :github_source}
   def local_repo_path(%__MODULE__{source: {:local, _}} = project), do: {:ok, repo_path(project)}
   def local_repo_path(%__MODULE__{source: {:github, _}}), do: {:skipped, :github_source}
+
+  @doc """
+  Resolves the project's configured target branch, or signals that flows
+  needing one (post-merge audit, suite health) should skip this project.
+  """
+  @spec target_branch(t()) :: {:ok, String.t()} | {:skipped, :no_target_branch}
+  def target_branch(%__MODULE__{target_branch: tb}) when is_binary(tb) and tb != "", do: {:ok, tb}
+  def target_branch(%__MODULE__{}), do: {:skipped, :no_target_branch}
 end

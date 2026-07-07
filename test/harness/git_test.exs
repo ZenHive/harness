@@ -8,6 +8,24 @@ defmodule Harness.GitTest do
   @git_push_failed 1
   @git_push_ok 0
 
+  describe "fetch_origin/1" do
+    test "fetches origin in a clone" do
+      %{repo: repo} = GitFixture.init_with_origin()
+
+      assert :ok = Git.fetch_origin(repo)
+    end
+
+    test "wraps a failed fetch as {:fetch_failed, reason}" do
+      dir = GitFixture.tmp_base(name: "no-origin")
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf(dir) end)
+      GitFixture.git!(dir, ["init", "-q"])
+
+      assert {:error, {:fetch_failed, {:git_failed, ["fetch", "origin"], _status, _out}}} =
+               Git.fetch_origin(dir)
+    end
+  end
+
   describe "non_fast_forward?/5 — deterministic ancestry signal" do
     setup do
       # A bare origin + working clone, both at the same `main` tip. Tests then

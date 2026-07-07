@@ -7,8 +7,9 @@ defmodule Harness.DepFreshnessStore do
   """
 
   alias Harness.DepFreshness.Snapshot
+  alias Harness.Store
 
-  @type store :: module() | {module(), keyword()} | false
+  @type store :: Store.store()
 
   @doc "Persists the latest snapshot for a project, replacing any prior rows."
   @callback record_snapshot(Snapshot.t(), keyword()) :: :ok | {:error, term()}
@@ -22,19 +23,19 @@ defmodule Harness.DepFreshnessStore do
   @doc "Persists the latest snapshot for a project, replacing any prior rows."
   @spec record_snapshot(Snapshot.t(), store()) :: :ok | {:error, term()}
   def record_snapshot(%Snapshot{} = snapshot, store \\ configured()) do
-    dispatch(store, :record_snapshot, [snapshot])
+    Store.dispatch(store, :record_snapshot, [snapshot])
   end
 
   @doc "Fetches the latest snapshot for one project."
   @spec fetch_snapshot(String.t(), store()) :: {:ok, Snapshot.t()} | {:error, :not_found | term()}
   def fetch_snapshot(project_name, store \\ configured()) when is_binary(project_name) do
-    dispatch(store, :fetch_snapshot, [project_name])
+    Store.dispatch(store, :fetch_snapshot, [project_name])
   end
 
   @doc "Lists the latest snapshot per project, optionally filtered by project name."
   @spec list_snapshots(keyword(), store()) :: {:ok, [Snapshot.t()]} | {:error, term()}
   def list_snapshots(filters \\ [], store \\ configured()) when is_list(filters) do
-    dispatch(store, :list_snapshots, [filters])
+    Store.dispatch(store, :list_snapshots, [filters])
   end
 
   @doc "Returns the configured backend."
@@ -51,16 +52,5 @@ defmodule Harness.DepFreshnessStore do
       store ->
         store
     end
-  end
-
-  @spec dispatch(store(), atom(), [term()]) :: term()
-  defp dispatch(false, _function, _args), do: :ok
-
-  defp dispatch({module, opts}, function, args) when is_atom(module) and is_list(opts) do
-    apply(module, function, args ++ [opts])
-  end
-
-  defp dispatch(module, function, args) when is_atom(module) do
-    apply(module, function, args ++ [[]])
   end
 end

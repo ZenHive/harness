@@ -8,6 +8,7 @@ defmodule Harness.Dashboard.SuiteHealthLive do
 
   use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}
 
+  alias Harness.Dashboard.ProjectSelection
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.SuiteHealth
@@ -32,12 +33,8 @@ defmodule Harness.Dashboard.SuiteHealthLive do
 
   @impl Phoenix.LiveView
   @spec handle_params(map(), String.t(), Socket.t()) :: {:noreply, Socket.t()}
-  def handle_params(%{"name" => name}, _uri, socket) do
-    {:noreply, assign(socket, :selected_project, name)}
-  end
-
-  def handle_params(_params, _uri, socket) do
-    {:noreply, assign(socket, :selected_project, default_project_name(socket.assigns.projects))}
+  def handle_params(params, _uri, socket) do
+    ProjectSelection.handle_params(params, socket)
   end
 
   @impl Phoenix.LiveView
@@ -90,7 +87,7 @@ defmodule Harness.Dashboard.SuiteHealthLive do
 
     <section :if={@projects != []} id="suite-health-panel">
       <.project_panel
-        project={selected_project(@projects, @selected_project)}
+        project={ProjectSelection.selected_project(@projects, @selected_project)}
         result={Map.get(@results, @selected_project)}
       />
     </section>
@@ -116,7 +113,7 @@ defmodule Harness.Dashboard.SuiteHealthLive do
   defp project_panel(%{result: %Result{skip_reason: reason}} = assigns) when is_binary(reason) do
     ~H"""
     <p class="count" id="suite-health-summary">
-      Skipped · last checked {format_checked_at(@result.checked_at)} · {@result.languages}
+      Skipped · last checked {ProjectSelection.format_checked_at(@result.checked_at)} · {@result.languages}
     </p>
     <p id="suite-health-skip-reason"><code>{@result.skip_reason}</code></p>
     """
@@ -125,7 +122,7 @@ defmodule Harness.Dashboard.SuiteHealthLive do
   defp project_panel(assigns) do
     ~H"""
     <p class="count" id="suite-health-summary">
-      {pass_label(@result.passed)} · exit {@result.exit_code} · last checked {format_checked_at(
+      {pass_label(@result.passed)} · exit {@result.exit_code} · last checked {ProjectSelection.format_checked_at(
         @result.checked_at
       )} · {@result.languages}
     </p>
@@ -167,20 +164,6 @@ defmodule Harness.Dashboard.SuiteHealthLive do
       {:error, _reason} ->
         %{}
     end
-  end
-
-  @spec default_project_name([Project.t()]) :: String.t()
-  defp default_project_name([%Project{name: name} | _rest]), do: name
-  defp default_project_name([]), do: ""
-
-  @spec selected_project([Project.t()], String.t()) :: Project.t() | nil
-  defp selected_project(projects, name) do
-    Enum.find(projects, &(&1.name == name)) || List.first(projects)
-  end
-
-  @spec format_checked_at(DateTime.t()) :: String.t()
-  defp format_checked_at(%DateTime{} = dt) do
-    Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
   end
 
   @spec pass_label(boolean() | nil) :: String.t()
