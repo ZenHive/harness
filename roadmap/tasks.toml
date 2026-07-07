@@ -10349,7 +10349,7 @@ scored_at = "2026-07-05"
 id = "349"
 phase = 22
 bundle = "dashboard-perf"
-status = "pending"
+status = "in_progress"
 title = "ProjectRegistry.list/0 refetches landing settings once per project — batch the overlay to one read"
 scores = { d = 2, b = 4, u = 3 }
 markers = ["parallel"]
@@ -10362,6 +10362,7 @@ body = """
 ProjectRegistry.list/0 (project_registry.ex:159-163) maps LandingSettings.overlay/1 over every project; overlay/1 calls the private overrides/0 (landing/settings.ex:156-161), which does SettingsStore.fetch(@store_key) — a full Postgres read — independently per project. P projects = P sequential reads of the identical harness_settings["landing"] row, on every call. list/0 sits on nearly every dashboard LiveView mount/refresh (dashboard/live.ex:114/288, roadmap_live, settings_live, compare_live, project_explorer, dep_freshness_live), every cron tick (cron/roadmap_poller.ex:79, cron/dep_freshness_poller.ex:24), and oban.ex:182 — the same mount-path class the phase-17 dashboard-perf bundle fixed. Add a batch-overlay API on LandingSettings (fetch overrides once, apply to all), keep per-project overlay/1 delegating to it. Found by codebase review 2026-07-06; sites verified against HEAD.
 """
 created_at = "2026-07-05"
+started_at = "2026-07-07"
 scored_at = "2026-07-05"
 
 [[task]]

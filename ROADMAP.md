@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 22 — Live-Run Observability — stop flying blind while an agent works (14 of 35 done · 3 in progress)
+**Focus phase:** 22 — Live-Run Observability — stop flying blind while an agent works (14 of 35 done · 4 in progress)
 
 **Last shipped:** Task 347 — Worktree sweeper is depth-blind: */* glob never finds leaked landing/audit worktrees after a crash mid-land on 2026-07-07
 
