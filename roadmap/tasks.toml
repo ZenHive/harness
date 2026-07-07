@@ -10335,7 +10335,7 @@ shipped_in = "f1bd2fafc024b7915b777db0c8174b952b7cfe78"
 id = "348"
 phase = 22
 bundle = "chat-orchestrator"
-status = "in_progress"
+status = "done"
 title = "Chat session lifecycle: broadcast the :busy terminal (silent message drop) + idle-reap immortal session processes"
 scores = { d = 2, b = 4, u = 4 }
 markers = ["bug", "parallel"]
@@ -10347,9 +10347,14 @@ model = "composer-2.5"
 body = """
 Three coupled fixes in the chat session surface, found by codebase review 2026-07-06 (sites verified against HEAD). (a) Silent drop: handle_call({:user_message, _}, ..., %{busy?: true}) (session.ex:124-127) replies {:error, terminal} directly without routing through emit_terminal/2 like every other abort path — but ChatLive fire-and-forgets Session.user_message via Task.Supervisor.start_child and never reads the return; PubSub is the only channel back. A racing second submit (double-click before the first text_delta arrives — @active is nil until then — or a second tab on the same session_id) renders the user message optimistically, then nothing: no reply, no error, composer stuck. Untested (no busy reference in session_test.exs or chat_live_test.exs). (b) Immortal sessions: session processes are restart: :temporary under a DynamicSupervisor and nothing ever terminates them — every session_id ever touched (including stray /harness/chat/<random> visits) holds a live GenServer + full in-memory history for the node's lifetime, on top of the persisted Chat.Store row that already supports rehydration. Add an idle-timeout reap. (c) chat_shell/1 (chat_live.ex:648, 742-765) declares and receives disabled?={@active != nil} but never references it in the template — a maintenance trap; wire it or drop it.
 """
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1783390322257-fd5d8940, f633005d657838b777bceea67c821cbf083caeb6)."
+delivered_by = "cursor"
+verified = true
 created_at = "2026-07-05"
 started_at = "2026-07-07"
 scored_at = "2026-07-05"
+done_at = "2026-07-07"
+shipped_in = "f633005d657838b777bceea67c821cbf083caeb6"
 
 [[task]]
 id = "349"
