@@ -131,15 +131,9 @@ defmodule Harness.Dashboard.ChatLive do
 
   @spec ensure_session(Socket.t(), String.t()) :: Socket.t()
   defp ensure_session(socket, id) do
-    case ChatSupervisor.whereis(id) do
-      nil ->
-        case ChatSupervisor.start_session(session_start_opts(id)) do
-          {:ok, ^id, _pid} -> socket
-          {:error, _reason} -> socket
-        end
-
-      _pid ->
-        socket
+    case ChatSupervisor.ensure_session(session_start_opts(id)) do
+      {:ok, ^id, _pid} -> socket
+      {:error, _reason} -> socket
     end
   end
 
@@ -307,6 +301,8 @@ defmodule Harness.Dashboard.ChatLive do
       {:ok, trimmed, session_id} ->
         msg_id = "user-#{System.unique_integer([:positive])}"
         item = %{id: msg_id, role: :user, text: trimmed, streaming?: false, tool_calls: []}
+
+        ChatSupervisor.ensure_session(session_start_opts(session_id))
 
         Task.Supervisor.start_child(Harness.Chat.TaskSupervisor, fn ->
           Session.user_message(session_id, trimmed, 600_000)
@@ -645,7 +641,7 @@ defmodule Harness.Dashboard.ChatLive do
 
   def render(assigns) do
     ~H"""
-    <.chat_shell session_id={@session_id} disabled?={@active != nil}>
+    <.chat_shell session_id={@session_id}>
       <:empty>
         <div :if={@empty?} class="empty-state">
           New chat session. Type a message below — the agent will use harness tools
@@ -740,7 +736,6 @@ defmodule Harness.Dashboard.ChatLive do
   end
 
   attr(:session_id, :string, default: nil)
-  attr(:disabled?, :boolean, default: false)
   slot(:empty)
   slot(:inner_block, required: true)
 

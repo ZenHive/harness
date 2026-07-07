@@ -319,6 +319,92 @@ defmodule Harness.Chat.SessionTest do
 
       assert_received {:harness_chat_stream, ^session_id, %{type: :terminal, reason: :max_history_bytes}}
     end
+
+    test ":busy is broadcast to subscribers, not only returned" do
+      test_pid = self()
+      {:ok, gate} = Agent.start_link(fn -> false end)
+
+      parking = fn _req, _cb, _opts ->
+        Agent.update(gate, fn _ ->
+          send(test_pid, :turn_started)
+          true
+        end)
+
+        receive do
+          :harness_cancel -> {:ok, %{content: [%{type: "text", text: "done"}], stop_reason: "end_turn"}}
+        after
+          5_000 -> {:error, %{message: "test timeout"}}
+        end
+      end
+
+      {:ok, session_id, _pid} =
+        Supervisor.start_session(backend: FunBackend, backend_opts: [fun: parking])
+
+      assert :ok = Stream.subscribe(session_id)
+
+      turn = Task.async(fn -> Session.user_message(session_id, "first", 10_000) end)
+      assert_receive :turn_started, 2_000
+
+      assert {:error, %{type: :terminal, reason: :busy, message: message}} =
+               Session.user_message(session_id, "second", 5_000)
+
+      assert message =~ "already processing"
+
+      assert_received {:harness_chat_stream, ^session_id, %{type: :terminal, reason: :busy}}
+
+      assert :ok = Session.cancel(session_id)
+      assert {:ok, _} = Task.await(turn, 5_000)
+    end
+  end
+
+  describe "idle reap" do
+    test "an idle session terminates after idle_timeout and rehydrates on ensure_session" do
+      done = fn _req, _cb, _opts ->
+        {:ok, %{content: [%{type: "text", text: "ack"}], stop_reason: "end_turn"}}
+      end
+
+      id = "idle-reap-#{System.unique_integer([:positive])}"
+      opts = [id: id, backend: FunBackend, backend_opts: [fun: done], idle_timeout: 100]
+
+      {:ok, ^id, pid} = Supervisor.start_session(opts)
+      assert {:ok, _} = Session.user_message(id, "remember me")
+      assert Process.alive?(pid)
+
+      Process.sleep(200)
+      refute Supervisor.whereis(id)
+
+      noop = fn _, _, _ -> {:ok, %{content: [], stop_reason: "end_turn"}} end
+      {:ok, ^id, new_pid} = Supervisor.ensure_session(opts)
+      refute new_pid == pid
+
+      assert {:ok, messages} = Session.snapshot(id)
+      assert Enum.any?(messages, &match?(%{role: :user, content: "remember me"}, &1))
+    end
+
+    test "idle timer is not armed while a turn is in flight" do
+      parking = fn _req, _cb, _opts ->
+        receive do
+          :harness_cancel -> {:ok, %{content: [], stop_reason: "end_turn"}}
+        after
+          5_000 -> {:error, %{message: "test timeout"}}
+        end
+      end
+
+      id = "idle-busy-#{System.unique_integer([:positive])}"
+      opts = [id: id, backend: FunBackend, backend_opts: [fun: parking], idle_timeout: 50]
+
+      {:ok, ^id, pid} = Supervisor.start_session(opts)
+      turn = Task.async(fn -> Session.user_message(id, "hold", 10_000) end)
+
+      Process.sleep(150)
+      assert Process.alive?(pid)
+
+      assert :ok = Session.cancel(id)
+      assert {:ok, _} = Task.await(turn, 5_000)
+
+      Process.sleep(150)
+      refute Supervisor.whereis(id)
+    end
   end
 
   describe "cancel/1" do
@@ -436,6 +522,16 @@ defmodule Harness.Chat.SessionTest do
 
       assert pid1 == pid2
       assert Supervisor.whereis("dup-cover-1") == pid1
+    end
+
+    test "ensure_session/1 returns an existing pid without spawning a duplicate" do
+      noop = fn _, _, _ -> {:ok, %{content: [], stop_reason: "end_turn"}} end
+      opts = [id: "ensure-cover-1", backend: FunBackend, backend_opts: [fun: noop]]
+
+      {:ok, _id, pid1} = Supervisor.start_session(opts)
+      {:ok, _id, pid2} = Supervisor.ensure_session(opts)
+
+      assert pid1 == pid2
     end
   end
 

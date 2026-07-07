@@ -21,6 +21,7 @@ defmodule Harness.Chat.Session do
   @registry Harness.Chat.Registry
   @default_max_iterations 16
   @default_max_history_bytes 256 * 1024
+  @default_idle_timeout 1_800_000
 
   @typedoc "Structured terminal event broadcast when the loop aborts."
   @type terminal_reason ::
@@ -50,20 +51,28 @@ defmodule Harness.Chat.Session do
   @doc "Sends a user message and waits for the session loop to finish."
   @spec user_message(String.t(), String.t(), timeout()) :: {:ok, map()} | {:error, terminal()}
   def user_message(session_id, text, timeout \\ 60_000) when is_binary(session_id) and is_binary(text) do
-    GenServer.call(via(session_id), {:user_message, text}, timeout)
+    caller = self()
+
+    case GenServer.call(via(session_id), {:submit_user_message, text, caller}, timeout) do
+      {:error, %{} = terminal} ->
+        {:error, terminal}
+
+      :accepted ->
+        receive do
+          {:harness_chat_turn, ^caller, result} -> result
+        after
+          timeout -> exit({:timeout, {__MODULE__, :user_message, [session_id, text, timeout]}})
+        end
+    end
   end
 
   @doc """
   Requests cancellation of an in-flight turn.
 
-  The session GenServer is parked inside the backend's stream loop for the
-  duration of a turn (the whole `{:user_message, _}` call runs synchronously),
-  so cancellation cannot be a `GenServer.cast` — the mailbox would not be read
-  until the turn ended. Instead we `send/2` the bare `:harness_cancel` signal
-  to the session pid: a backend whose `stream/3` parks in a `receive` (e.g.
-  `Harness.Chat.Claude`'s Port drive loop) matches it, tears down its work, and
-  returns `{:error, %{type: :cancelled}}`, which surfaces as a `:cancelled`
-  terminal. When the session is idle the signal is a no-op (see `handle_info/2`).
+  Forwards `:harness_cancel` to the linked turn worker when a message is in
+  flight so backends that park in a `receive` (e.g. `Harness.Chat.Claude`'s Port
+  drive loop) can tear down promptly. When the session is idle the signal is a
+  no-op (see `handle_info/2`).
 
   Always returns `:ok` — cancelling an unknown or idle session is harmless. The
   prior conversation history is preserved (only the cancelled turn's partial
@@ -102,35 +111,52 @@ defmodule Harness.Chat.Session do
   def init({session_id, opts}) do
     tools = Tools.build(Keyword.take(opts, [:modules, :name_style]))
 
-    {:ok,
-     %{
-       session_id: session_id,
-       backend: Keyword.fetch!(opts, :backend),
-       backend_opts: Keyword.get(opts, :backend_opts, []),
-       tools: tools,
-       tool_schemas: Tools.schemas(tools),
-       messages: rehydrate_messages(session_id),
-       max_iterations: Keyword.get(opts, :max_iterations, @default_max_iterations),
-       max_history_bytes: Keyword.get(opts, :max_history_bytes, @default_max_history_bytes),
-       tool_call_history: MapSet.new(),
-       busy?: false
-     }}
+    state = %{
+      session_id: session_id,
+      backend: Keyword.fetch!(opts, :backend),
+      backend_opts: Keyword.get(opts, :backend_opts, []),
+      tools: tools,
+      tool_schemas: Tools.schemas(tools),
+      messages: rehydrate_messages(session_id),
+      max_iterations: Keyword.get(opts, :max_iterations, @default_max_iterations),
+      max_history_bytes: Keyword.get(opts, :max_history_bytes, @default_max_history_bytes),
+      idle_timeout: idle_timeout(opts),
+      idle_timer: nil,
+      tool_call_history: MapSet.new(),
+      busy?: false,
+      turn_pid: nil
+    }
+
+    {:ok, arm_idle_timer(state)}
   end
 
   @doc false
   @impl GenServer
-  @spec handle_call({:user_message, String.t()}, GenServer.from(), map()) ::
-          {:reply, {:ok, map()} | {:error, terminal()}, map()}
-  def handle_call({:user_message, _text}, _from, %{busy?: true} = state) do
-    terminal = terminal(:busy, "Session is already processing a message")
+  @spec handle_call({:submit_user_message, String.t(), pid()}, GenServer.from(), map()) ::
+          {:reply, :accepted | {:error, terminal()}, map()} | {:noreply, map()}
+  def handle_call({:submit_user_message, _text, _caller}, _from, %{busy?: true} = state) do
+    terminal =
+      emit_terminal(state.session_id, terminal(:busy, "Session is already processing a message"))
+
     {:reply, {:error, terminal}, state}
   end
 
-  def handle_call({:user_message, text}, _from, state) do
-    state = %{state | busy?: true, tool_call_history: MapSet.new()}
-    {result, state} = run_turn(state, text)
-    persist(state)
-    {:reply, result, %{state | busy?: false}}
+  def handle_call({:submit_user_message, text, caller}, _from, state) do
+    parent = self()
+
+    busy_state =
+      state
+      |> cancel_idle_timer()
+      |> Map.merge(%{busy?: true, tool_call_history: MapSet.new(), turn_pid: nil})
+
+    turn_pid =
+      spawn_link(fn ->
+        {result, new_state} = run_turn(busy_state, text)
+        persist(new_state)
+        send(parent, {:turn_finished, caller, result, new_state})
+      end)
+
+    {:reply, :accepted, %{busy_state | turn_pid: turn_pid}}
   end
 
   @doc false
@@ -143,11 +169,25 @@ defmodule Harness.Chat.Session do
   @doc false
   @impl GenServer
   @spec handle_info(term(), map()) :: {:noreply, map()}
-  # `:harness_cancel` only reaches here when the session is idle — during a turn
-  # the backend's stream `receive` consumes it first (see `cancel/1`). Idle =
-  # nothing to cancel, so drop it. The catch-all also absorbs any late Port
-  # message left over after a mid-turn cancel teardown without log noise.
+  # `:harness_cancel` is forwarded to the linked turn worker when a turn is in
+  # flight; idle sessions drop it. The catch-all absorbs any late Port message
+  # left over after a mid-turn cancel teardown without log noise.
+  def handle_info(:harness_cancel, %{turn_pid: turn_pid} = state) when is_pid(turn_pid) do
+    send(turn_pid, :harness_cancel)
+    {:noreply, state}
+  end
+
   def handle_info(:harness_cancel, state), do: {:noreply, state}
+
+  def handle_info({:turn_finished, caller, result, new_state}, _state) do
+    send(caller, {:harness_chat_turn, caller, result})
+    {:noreply, new_state |> Map.put(:busy?, false) |> Map.put(:turn_pid, nil) |> arm_idle_timer()}
+  end
+
+  def handle_info(:session_idle_timeout, %{busy?: true} = state), do: {:noreply, state}
+
+  def handle_info(:session_idle_timeout, state), do: {:stop, :normal, state}
+
   def handle_info(_msg, state), do: {:noreply, state}
 
   @spec run_turn(map(), String.t()) :: {{:ok, map()} | {:error, terminal()}, map()}
@@ -394,6 +434,30 @@ defmodule Harness.Chat.Session do
 
   @spec via(String.t()) :: {:via, Registry, {module(), String.t()}}
   defp via(session_id), do: {:via, Registry, {@registry, session_id}}
+
+  @spec idle_timeout(keyword()) :: pos_integer()
+  defp idle_timeout(opts) do
+    Keyword.get_lazy(opts, :idle_timeout, fn ->
+      :harness
+      |> Application.get_env(:chat, [])
+      |> Keyword.get(:idle_timeout, @default_idle_timeout)
+    end)
+  end
+
+  @spec arm_idle_timer(map()) :: map()
+  defp arm_idle_timer(state) do
+    state = cancel_idle_timer(state)
+    ref = Process.send_after(self(), :session_idle_timeout, state.idle_timeout)
+    %{state | idle_timer: ref}
+  end
+
+  @spec cancel_idle_timer(map()) :: map()
+  defp cancel_idle_timer(%{idle_timer: ref} = state) when is_reference(ref) do
+    Process.cancel_timer(ref)
+    %{state | idle_timer: nil}
+  end
+
+  defp cancel_idle_timer(state), do: state
 
   # Loads any saved transcript for this session id so a reopened session (after
   # a BEAM restart, or a deep-link to a session whose GenServer died) resumes

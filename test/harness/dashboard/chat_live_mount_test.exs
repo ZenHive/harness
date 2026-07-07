@@ -135,6 +135,18 @@ defmodule Harness.Dashboard.ChatLiveMountTest do
       assert html =~ "boom"
     end
 
+    test "a :busy terminal surfaces feedback instead of silently dropping the message", %{view: view, sid: sid} do
+      send(
+        view.pid,
+        {:harness_chat_stream, sid, %{type: :terminal, reason: :busy, message: "Session is already processing a message"}}
+      )
+
+      html = render(view)
+      assert html =~ "already processing"
+      assert html =~ "msg-terminal"
+      refute html =~ ~s(data-streaming="true")
+    end
+
     test "an unknown event type is ignored without crashing", %{view: view, sid: sid} do
       send(view.pid, {:harness_chat_stream, sid, %{type: "mystery"}})
       # Unmatched non-stream messages hit the catch-all handle_info too.
@@ -148,6 +160,45 @@ defmodule Harness.Dashboard.ChatLiveMountTest do
       sid = start_fun_session(fn _req, _cb, _opts -> {:ok, %{content: [], stop_reason: "end_turn"}} end)
       {:ok, view, _html} = live(conn, "/harness/chat/#{sid}")
       %{view: view, sid: sid}
+    end
+
+    test "a second submit while the session is busy shows a terminal via PubSub", %{conn: conn} do
+      test_pid = self()
+      {:ok, gate} = Agent.start_link(fn -> false end)
+
+      parking = fn _req, _cb, _opts ->
+        Agent.update(gate, fn _ ->
+          send(test_pid, :turn_started)
+          true
+        end)
+
+        receive do
+          :harness_cancel -> {:ok, %{content: [%{type: "text", text: "done"}], stop_reason: "end_turn"}}
+        after
+          5_000 -> {:error, %{message: "test timeout"}}
+        end
+      end
+
+      {:ok, sid, _pid} =
+        ChatSupervisor.start_session(backend: FunBackend, backend_opts: [fun: parking])
+
+      {:ok, view, _html} = live(conn, "/harness/chat/#{sid}")
+
+      view
+      |> form("form.composer", %{"text" => "first message"})
+      |> render_submit()
+
+      assert_receive :turn_started, 2_000
+
+      view
+      |> form("form.composer", %{"text" => "racing second"})
+      |> render_submit()
+
+      html = render(view)
+      assert html =~ "racing second"
+      assert html =~ "already processing"
+
+      assert :ok = Session.cancel(sid)
     end
 
     test "input_change tracks the composer text", %{view: view} do

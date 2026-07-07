@@ -37,7 +37,29 @@ defmodule Harness.Chat.Supervisor do
   @spec start_session(keyword()) :: {:ok, String.t(), pid()} | {:error, term()}
   def start_session(opts \\ []) do
     session_id = Keyword.get(opts, :id, generate_session_id())
+    opts = Keyword.put_new(opts, :id, session_id)
+    do_start_session(session_id, opts)
+  end
 
+  @doc """
+  Returns an existing session pid or starts one when idle-reaped or never created.
+
+  `opts` match `start_session/1` — required when the session must be cold-started
+  (e.g. `:backend` for `Session.init/1`).
+  """
+  @spec ensure_session(keyword()) :: {:ok, String.t(), pid()} | {:error, term()}
+  def ensure_session(opts \\ []) do
+    session_id = Keyword.get(opts, :id, generate_session_id())
+    opts = Keyword.put_new(opts, :id, session_id)
+
+    case whereis(session_id) do
+      pid when is_pid(pid) -> {:ok, session_id, pid}
+      nil -> do_start_session(session_id, opts)
+    end
+  end
+
+  @spec do_start_session(String.t(), keyword()) :: {:ok, String.t(), pid()} | {:error, term()}
+  defp do_start_session(session_id, opts) do
     child = %{
       id: {Session, session_id},
       start: {Session, :start_link, [session_id, opts]},
