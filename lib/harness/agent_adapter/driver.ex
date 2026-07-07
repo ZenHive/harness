@@ -54,7 +54,7 @@ defmodule Harness.AgentAdapter.Driver do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Run
-  alias Harness.Run.Reflex
+  alias Harness.AgentAdapter.Watchdog
 
   @default_total_timeout 1_800_000
   @default_idle_timeout 300_000
@@ -76,7 +76,7 @@ defmodule Harness.AgentAdapter.Driver do
         kind: :value,
         default: [],
         description:
-          "Keyword list. :total_timeout / :idle_timeout / :progress_timeout (ms overrides). :on_spawn (1-arity hook called with the Run handle the moment the agent spawns — used by Harness.Run to capture the handle for cancellation). :on_output (1-arity hook called with each iodata chunk — used by Harness.Run to fan transcripts to the dashboard PubSub topic). Hook exceptions are swallowed."
+          "Keyword list. :total_timeout / :idle_timeout / :progress_timeout (ms overrides). :on_spawn (1-arity hook called with the Run handle the moment the agent spawns). :on_output (1-arity hook called with each iodata chunk). Hook exceptions are swallowed."
       ]
     ],
     returns: %{
@@ -132,15 +132,15 @@ defmodule Harness.AgentAdapter.Driver do
           (iodata() -> any()) | nil
         ) :: Outcome.t()
   defp drive(adapter, run, invocation, total, idle, progress, on_output) do
-    reflex =
-      Reflex.new(run, invocation,
+    watchdog =
+      Watchdog.new(run, invocation,
         total_timeout: total,
         idle_timeout: idle,
         progress_timeout: progress,
         worktree_path: invocation.cwd
       )
 
-    loop(adapter, run, reflex, [], on_output)
+    loop(adapter, run, watchdog, [], on_output)
   end
 
   # Drains the port until the run terminates or a deadline passes. `after` waits
@@ -151,20 +151,20 @@ defmodule Harness.AgentAdapter.Driver do
   # `on_output` hook (when set) fans each chunk to the dashboard transcript
   # stream — invoked inline so a subscriber sees output at the same cadence the
   # accumulator does.
-  @spec loop(module(), Run.t(), Reflex.t(), iodata(), (iodata() -> any()) | nil) :: Outcome.t()
-  defp loop(adapter, run, reflex, acc, on_output) do
-    case Reflex.expired(reflex) do
-      {:halt, kind, _reflex} ->
+  @spec loop(module(), Run.t(), Watchdog.t(), iodata(), (iodata() -> any()) | nil) :: Outcome.t()
+  defp loop(adapter, run, watchdog, acc, on_output) do
+    case Watchdog.expired(watchdog) do
+      {:halt, kind, _watchdog} ->
         expire(adapter, run, acc, kind)
 
-      {:cont, reflex} ->
-        receive_next(adapter, run, reflex, acc, on_output, Reflex.wait(reflex))
+      {:cont, watchdog} ->
+        receive_next(adapter, run, watchdog, acc, on_output, Watchdog.wait(watchdog))
     end
   end
 
-  @spec receive_next(module(), Run.t(), Reflex.t(), iodata(), (iodata() -> any()) | nil, non_neg_integer()) ::
+  @spec receive_next(module(), Run.t(), Watchdog.t(), iodata(), (iodata() -> any()) | nil, non_neg_integer()) ::
           Outcome.t()
-  defp receive_next(adapter, run, reflex, acc, on_output, wait) do
+  defp receive_next(adapter, run, watchdog, acc, on_output, wait) do
     receive do
       message ->
         case adapter.classify_message(message, run) do
@@ -172,9 +172,9 @@ defmodule Harness.AgentAdapter.Driver do
             notify_output(on_output, data)
             acc = [acc, data]
 
-            case Reflex.on_output(reflex, data) do
-              {:cont, next_reflex} -> loop(adapter, next_run, next_reflex, acc, on_output)
-              {:halt, kind, _next_reflex} -> expire(adapter, next_run, acc, kind)
+            case Watchdog.on_output(watchdog, data) do
+              {:cont, next_watchdog} -> loop(adapter, next_run, next_watchdog, acc, on_output)
+              {:halt, kind, _next_watchdog} -> expire(adapter, next_run, acc, kind)
             end
 
           {:terminated, next_run, status} ->
@@ -185,13 +185,13 @@ defmodule Harness.AgentAdapter.Driver do
             outcome(next_run, acc, nil, {:error, reason})
 
           :ignore ->
-            loop(adapter, run, reflex, acc, on_output)
+            loop(adapter, run, watchdog, acc, on_output)
         end
     after
       wait ->
-        case Reflex.expired(reflex) do
-          {:halt, kind, _reflex} -> expire(adapter, run, acc, kind)
-          {:cont, next_reflex} -> loop(adapter, run, next_reflex, acc, on_output)
+        case Watchdog.expired(watchdog) do
+          {:halt, kind, _watchdog} -> expire(adapter, run, acc, kind)
+          {:cont, next_watchdog} -> loop(adapter, run, next_watchdog, acc, on_output)
         end
     end
   end

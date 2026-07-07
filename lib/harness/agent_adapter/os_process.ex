@@ -77,7 +77,7 @@ defmodule Harness.AgentAdapter.OSProcess do
 
   @doc """
   SIGKILLs `os_pid` directly — the raw signal shared by `kill/1` and
-  `Harness.Run.MemoryGuard`'s whole-tree reap.
+  whole-process-tree reap callers.
 
   Fire-and-forget: a pid that already exited makes `kill(1)` fail quietly.
   """

@@ -54,7 +54,7 @@ defmodule Harness.AgentAdapter.Capabilities do
       rather than a single blob at the end.
     * `worktree_isolation` — the agent's headless mode edits only the port
       `cwd` (the run worktree), never the main checkout the worktree was carved
-      from. When `false`, `Harness.Run` rejects dispatch up front.
+      from. When `false`, dispatch rejects the adapter up front.
     * `cost_tier` — `:free` for adapters whose dispatch consumes no metered
       quota (e.g. pi.dev with a local LLM); `:metered` (the default) for every
       adapter backed by paid quota or a subscription. Used by

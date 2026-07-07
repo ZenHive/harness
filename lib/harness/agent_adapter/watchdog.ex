@@ -1,16 +1,14 @@
-defmodule Harness.Run.Reflex do
+defmodule Harness.AgentAdapter.Watchdog do
   @moduledoc """
-  Deterministic mid-run watchdog for mechanical run halts.
+  Deterministic mid-run watchdog for adapter driver halts.
 
-  The reflex layer owns byte-idle/total deadlines, progress stalls, checkout
-  porcelain checks, and blocked command detection. It is deliberately mechanical:
-  timers, filesystem fingerprints, and pattern matches only.
+  Owns byte-idle deadlines, total deadlines, progress stalls, and blocked
+  command detection. It stays inside the adapter subsystem so the Port driver
+  does not depend on the supervised run lifecycle.
   """
 
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Run
-  alias Harness.Git
-  alias Harness.Worktree.Isolation
 
   @default_progress_timeout 300_000
 
@@ -38,7 +36,7 @@ defmodule Harness.Run.Reflex do
     :edit_fingerprint
   ]
 
-  @doc "Builds the reflex state for a freshly spawned agent run."
+  @doc "Builds watchdog state for a freshly spawned adapter run."
   @spec new(Run.t(), Invocation.t(), keyword()) :: t()
   def new(%Run{} = run, %Invocation{} = invocation, opts) do
     now = System.monotonic_time(:millisecond)
@@ -59,64 +57,50 @@ defmodule Harness.Run.Reflex do
     }
   end
 
-  @doc "Returns the receive wait until the next reflex deadline."
+  @doc "Returns the receive wait until the next watchdog deadline."
   @spec wait(t()) :: non_neg_integer()
-  def wait(%__MODULE__{progress_deadline: nil} = reflex) do
-    min(remaining(reflex.total_deadline), remaining(reflex.idle_deadline))
+  def wait(%__MODULE__{progress_deadline: nil} = watchdog) do
+    min(remaining(watchdog.total_deadline), remaining(watchdog.idle_deadline))
   end
 
-  def wait(%__MODULE__{} = reflex) do
-    reflex.total_deadline
+  def wait(%__MODULE__{} = watchdog) do
+    watchdog.total_deadline
     |> remaining()
-    |> min(remaining(reflex.idle_deadline))
-    |> min(remaining(reflex.progress_deadline))
+    |> min(remaining(watchdog.idle_deadline))
+    |> min(remaining(watchdog.progress_deadline))
   end
 
-  @doc "Checks whether any reflex deadline has fired."
+  @doc "Checks whether any watchdog deadline has fired."
   @spec expired(t()) :: {:cont, t()} | {:halt, halt_kind(), t()}
-  def expired(%__MODULE__{} = reflex) do
+  def expired(%__MODULE__{} = watchdog) do
     cond do
-      remaining(reflex.idle_deadline) == 0 ->
-        {:halt, {:timed_out, :idle}, reflex}
+      remaining(watchdog.idle_deadline) == 0 ->
+        {:halt, {:timed_out, :idle}, watchdog}
 
-      remaining(reflex.total_deadline) == 0 ->
-        {:halt, {:timed_out, :total}, reflex}
+      remaining(watchdog.total_deadline) == 0 ->
+        {:halt, {:timed_out, :total}, watchdog}
 
-      progress_expired?(reflex) ->
-        expire_progress(reflex)
+      progress_expired?(watchdog) ->
+        expire_progress(watchdog)
 
       true ->
-        {:cont, reflex}
+        {:cont, watchdog}
     end
   end
 
   @doc "Folds one output chunk through idle, progress, and command guards."
   @spec on_output(t(), iodata()) :: {:cont, t()} | {:halt, halt_kind(), t()}
-  def on_output(%__MODULE__{} = reflex, chunk) do
+  def on_output(%__MODULE__{} = watchdog, chunk) do
     now = System.monotonic_time(:millisecond)
-    reflex = %{reflex | idle_deadline: now + reflex.idle_timeout}
+    watchdog = %{watchdog | idle_deadline: now + watchdog.idle_timeout}
     binary = IO.iodata_to_binary(chunk)
 
-    case blocked_command_in(binary, reflex.worktree_path) do
+    case blocked_command_in(binary, watchdog.worktree_path) do
       nil ->
-        {:cont, maybe_note_progress(reflex, binary, now)}
+        {:cont, maybe_note_progress(watchdog, binary, now)}
 
       {:blocked_command, command} = reason ->
-        {:halt, {:reflex_halted, reason}, maybe_note_progress(reflex, command, now)}
-    end
-  end
-
-  @doc "Captures checkout porcelain through the unified reflex layer."
-  @spec checkout_snapshot(String.t()) :: {:ok, String.t()} | {:error, Git.error()}
-  def checkout_snapshot(repo), do: Isolation.snapshot(repo)
-
-  @doc "Returns a run-failure reason when checkout porcelain changed."
-  @spec checkout_pollution_reason(String.t(), String.t() | nil, keyword()) ::
-          {:checkout_polluted, String.t()} | {:checkout_pollution_check_failed, term()} | nil
-  def checkout_pollution_reason(repo, snapshot, opts) do
-    case Isolation.check_pollution(repo, snapshot, opts) do
-      :ok -> nil
-      {:error, reason} -> reason
+        {:halt, {:reflex_halted, reason}, maybe_note_progress(watchdog, command, now)}
     end
   end
 
@@ -160,27 +144,27 @@ defmodule Harness.Run.Reflex do
   defp progress_expired?(%__MODULE__{progress_deadline: deadline}), do: remaining(deadline) == 0
 
   @spec expire_progress(t()) :: {:cont, t()} | {:halt, halt_kind(), t()}
-  defp expire_progress(%__MODULE__{} = reflex) do
+  defp expire_progress(%__MODULE__{} = watchdog) do
     now = System.monotonic_time(:millisecond)
-    fingerprint = edit_fingerprint(reflex.worktree_path)
+    fingerprint = edit_fingerprint(watchdog.worktree_path)
 
-    if fingerprint == reflex.edit_fingerprint do
-      {:halt, {:reflex_halted, :progress_stalled}, reflex}
+    if fingerprint == watchdog.edit_fingerprint do
+      {:halt, {:reflex_halted, :progress_stalled}, watchdog}
     else
-      {:cont, reset_progress(%{reflex | edit_fingerprint: fingerprint}, now)}
+      {:cont, reset_progress(%{watchdog | edit_fingerprint: fingerprint}, now)}
     end
   end
 
   @spec maybe_note_progress(t(), binary(), integer()) :: t()
-  defp maybe_note_progress(%__MODULE__{} = reflex, binary, now) do
-    if tool_call?(binary), do: reset_progress(reflex, now), else: reflex
+  defp maybe_note_progress(%__MODULE__{} = watchdog, binary, now) do
+    if tool_call?(binary), do: reset_progress(watchdog, now), else: watchdog
   end
 
   @spec reset_progress(t(), integer()) :: t()
-  defp reset_progress(%__MODULE__{progress_timeout: nil} = reflex, _now), do: reflex
+  defp reset_progress(%__MODULE__{progress_timeout: nil} = watchdog, _now), do: watchdog
 
-  defp reset_progress(%__MODULE__{progress_timeout: timeout} = reflex, now) do
-    %{reflex | progress_deadline: now + timeout}
+  defp reset_progress(%__MODULE__{progress_timeout: timeout} = watchdog, now) do
+    %{watchdog | progress_deadline: now + timeout}
   end
 
   @spec blocked_command_in(binary(), String.t()) :: {:blocked_command, String.t()} | nil
@@ -197,9 +181,6 @@ defmodule Harness.Run.Reflex do
     |> Enum.flat_map(&commands_from_line/1)
   end
 
-  # Only decode lines that could carry a command key — a quoted "command"/"cmd"
-  # substring is present in the raw JSON iff such a key could be. Skips the
-  # Jason.decode on the content-delta lines that dominate a stream.
   @spec commands_from_line(binary()) :: [String.t()]
   defp commands_from_line(line) do
     if String.contains?(line, [~s("command"), ~s("cmd")]) do
@@ -264,9 +245,6 @@ defmodule Harness.Run.Reflex do
       end)
 
     if recursive_force? do
-      # Operands belong to THIS rm only — stop at the first shell separator so a
-      # later command's path token (e.g. `git worktree add ../sibling`) isn't
-      # swept in as a phantom delete target.
       rest
       |> Enum.take_while(&(not shell_separator?(&1)))
       |> Enum.reject(&String.starts_with?(&1, "-"))
@@ -278,8 +256,6 @@ defmodule Harness.Run.Reflex do
   @spec shell_separator?(String.t()) :: boolean()
   defp shell_separator?(token), do: String.contains?(token, ["&", ";", "|", "<", ">"])
 
-  # `expanded_worktree` is pre-expanded by the caller (once per command), so the
-  # per-target loop never re-runs Path.expand on the worktree root.
   @spec outside_worktree?([String.t()], String.t()) :: boolean()
   defp outside_worktree?([], _expanded_worktree), do: false
 
@@ -287,10 +263,6 @@ defmodule Harness.Run.Reflex do
     Enum.any?(targets, &(not inside_safe_zone?(&1, expanded_worktree)))
   end
 
-  # Safe to `rm -rf`: resolves inside the run worktree, or strictly inside an OS
-  # temp root (ephemeral scratch — test fixtures, throwaway git repos). The temp
-  # root itself is NOT safe (only sub-paths), so `rm -rf /tmp` stays blocked;
-  # catastrophic targets ($HOME, repo root, /) stay blocked too.
   @spec inside_safe_zone?(String.t(), String.t()) :: boolean()
   defp inside_safe_zone?(target, expanded_worktree) do
     expanded_target = Path.expand(target, expanded_worktree)

@@ -112,7 +112,6 @@ defmodule Harness.Run do
   alias Harness.Run.LogRecord
   alias Harness.Run.MemoryGuard
   alias Harness.Run.Recovery
-  alias Harness.Run.Reflex
   alias Harness.Run.Result
   alias Harness.Run.RetryPolicy
   alias Harness.Run.Review
@@ -2114,7 +2113,13 @@ defmodule Harness.Run do
           :ok | {:error, {:worktree_isolation_unsupported, module(), String.t()}}
   defp maybe_validate_implementer_isolation(%{review_only?: true}), do: :ok
 
-  defp maybe_validate_implementer_isolation(data), do: Isolation.validate(data.adapter)
+  defp maybe_validate_implementer_isolation(data) do
+    Isolation.validate(
+      data.adapter,
+      AgentAdapter.supports?(data.adapter, :worktree_isolation),
+      worktree_isolation_limitation(data.adapter)
+    )
+  end
 
   # The verdict artifact is read mechanically — approve settles :done, reject
   # settles :failed with the reviewer's report, an unreadable artifact settles
@@ -3259,7 +3264,7 @@ defmodule Harness.Run do
 
   @spec checkout_snapshot(String.t()) :: String.t() | nil
   defp checkout_snapshot(repo) when is_binary(repo) do
-    case Reflex.checkout_snapshot(repo) do
+    case Isolation.snapshot(repo) do
       {:ok, snapshot} ->
         snapshot
 
@@ -3273,7 +3278,17 @@ defmodule Harness.Run do
   defp checkout_pollution_reason(data) do
     opts = [pollution_allowlist: data.pollution_allowlist]
 
-    Reflex.checkout_pollution_reason(Project.repo_path(data.project), data.checkout_snapshot, opts)
+    case Isolation.check_pollution(Project.repo_path(data.project), data.checkout_snapshot, opts) do
+      :ok -> nil
+      {:error, reason} -> reason
+    end
+  end
+
+  @spec worktree_isolation_limitation(module()) :: String.t() | nil
+  defp worktree_isolation_limitation(adapter) do
+    if function_exported?(adapter, :worktree_isolation_limitation, 0) do
+      adapter.worktree_isolation_limitation()
+    end
   end
 
   @spec resolve_pollution_allowlist(Project.t(), keyword()) :: [String.t()]

@@ -2,7 +2,7 @@ defmodule Harness.Worktree.Isolation do
   @moduledoc """
   Guards harness runs against agents that write outside their isolated worktree.
 
-  Adapters declare `worktree_isolation` in `Harness.AgentAdapter.Capabilities`.
+  Adapters declare whether their headless mode is worktree-isolated.
   When `false`, `Harness.Run` fails before spawn. When `true` (the default),
   `Harness.Run` trusts the capability and skips main-checkout pollution
   detection, so unrelated operator activity in the source checkout cannot
@@ -29,7 +29,6 @@ defmodule Harness.Worktree.Isolation do
     * `"README.md"` — exact path match
   """
 
-  alias Harness.AgentAdapter
   alias Harness.Git
 
   @default_pollution_allowlist [
@@ -65,25 +64,19 @@ defmodule Harness.Worktree.Isolation do
   end
 
   @doc """
-  Returns `:ok` when `adapter` declares headless worktree isolation support.
+  Returns `:ok` when the caller confirms headless worktree isolation support.
 
   Otherwise returns `{:error, {:worktree_isolation_unsupported, adapter, message}}`
   so dispatch fails before the agent can pollute the canonical checkout.
   """
-  @spec validate(module()) :: :ok | {:error, {:worktree_isolation_unsupported, module(), String.t()}}
-  def validate(adapter) do
-    if AgentAdapter.supports?(adapter, :worktree_isolation) do
-      :ok
-    else
-      message =
-        if function_exported?(adapter, :worktree_isolation_limitation, 0) do
-          adapter.worktree_isolation_limitation()
-        else
-          "#{inspect(adapter)} declares worktree_isolation: false — see its @moduledoc"
-        end
+  @spec validate(module(), boolean(), String.t() | nil) ::
+          :ok | {:error, {:worktree_isolation_unsupported, module(), String.t()}}
+  def validate(adapter, isolated?, limitation \\ nil)
+  def validate(_adapter, true, _limitation), do: :ok
 
-      {:error, {:worktree_isolation_unsupported, adapter, message}}
-    end
+  def validate(adapter, false, limitation) do
+    message = limitation || "#{inspect(adapter)} declares worktree_isolation: false — see its @moduledoc"
+    {:error, {:worktree_isolation_unsupported, adapter, message}}
   end
 
   @doc "Captures the main checkout's porcelain status for a later pollution check."

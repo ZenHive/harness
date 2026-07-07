@@ -2,16 +2,36 @@ defmodule Harness.Worktree.IsolationTest do
   use ExUnit.Case, async: true
 
   alias Harness.AgentAdapter.Antigravity
+  alias Harness.AgentAdapter.Capabilities
   alias Harness.GitFixture
   alias Harness.Worktree.Isolation
 
-  describe "validate/1" do
+  defmodule UnisolatedAdapter do
+    @moduledoc false
+
+    @spec capabilities() :: Capabilities.t()
+    def capabilities, do: %Capabilities{worktree_isolation: false}
+
+    @spec worktree_isolation_limitation() :: String.t()
+    def worktree_isolation_limitation, do: "legacy cwd leak"
+  end
+
+  describe "validate/3" do
     test "accepts adapters that declare worktree isolation" do
-      assert :ok = Isolation.validate(Harness.FakeAdapter)
+      assert :ok = Isolation.validate(Harness.FakeAdapter, true, nil)
     end
 
     test "accepts Antigravity when worktree isolation is declared (cwd pinned via --add-dir in build_command/1)" do
-      assert :ok = Isolation.validate(Antigravity)
+      assert :ok = Isolation.validate(Antigravity, true, nil)
+    end
+
+    test "rejects unsupported adapters with the caller-provided limitation" do
+      assert {:error, {:worktree_isolation_unsupported, UnisolatedAdapter, "legacy cwd leak"}} =
+               Isolation.validate(
+                 UnisolatedAdapter,
+                 UnisolatedAdapter.capabilities().worktree_isolation,
+                 UnisolatedAdapter.worktree_isolation_limitation()
+               )
     end
   end
 
