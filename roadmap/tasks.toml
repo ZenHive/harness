@@ -10102,7 +10102,7 @@ scored_at = "2026-06-25"
 id = "336"
 phase = 22
 bundle = "operator-surface"
-status = "in_progress"
+status = "done"
 title = "Rust dependency-freshness provider (cargo outdated) for the freshness fact source"
 scores = { d = 4, b = 5, u = 6 }
 depends_on = [331, 340]
@@ -10118,9 +10118,14 @@ Implement a Rust provider that produces the same fact rows as the Elixir provide
 
 Known sharp edge (confirm headlessly, do not hardcode the assumption): Rust has no built-in hex.outdated equivalent. `cargo outdated` is a third-party subcommand (the cargo-outdated crate) that may not be installed in a fresh worktree — the provider may need to `cargo install cargo-outdated` first, or fall back to a `cargo update --dry-run` / Cargo.lock-vs-registry diff. The implementer confirms the mechanism that actually works in a cold worktree and documents it.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1783397866613-bca145ea, 7e75d6d92fab733d50fce7a7c2fe0a6ae1157d79)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-06-25"
 started_at = "2026-07-07"
 scored_at = "2026-06-25"
+done_at = "2026-07-07"
+shipped_in = "7e75d6d92fab733d50fce7a7c2fe0a6ae1157d79"
 
 [[task]]
 id = "337"
