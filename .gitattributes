@@ -1,0 +1,7 @@
+# .sobelow-skips is an append-only list of independent suppression lines
+# (FindingType,file:line,HASH). Parallel harness lands each append entries,
+# which made it the repo's most frequent rebase-conflict file (observed
+# 2026-07-07: task 344 land + four manual tapakly repairs). The built-in
+# union merge driver keeps both sides' lines — order is irrelevant to
+# `mix sobelow --skip`, so a keep-both union is always the correct merge.
+.sobelow-skips merge=union
