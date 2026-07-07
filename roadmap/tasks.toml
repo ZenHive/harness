@@ -10369,7 +10369,7 @@ scored_at = "2026-07-05"
 id = "350"
 phase = 22
 bundle = "postgres-results"
-status = "in_progress"
+status = "done"
 title = "AgentKPI.duration_summary/1 crashes with ArithmeticError on [] — reachable from the Postgres KPI rollup"
 scores = { d = 1, b = 3, u = 3 }
 markers = ["bug", "parallel"]
@@ -10381,9 +10381,14 @@ model = "grok-build"
 body = """
 median/1 (agent_kpi.ex:699-708) on an empty sorted list computes mid=0, takes the even-n branch, and evaluates (Enum.at([], -1) + Enum.at([], 0)) / 2 — nil + nil raises ArithmeticError. Directly reachable: result_store/postgres.ex:549 calls AgentKPI.duration_summary(row.durations || []) — the || [] nil-guard hands the crashing input straight in whenever the SQL-aggregated durations field is nil, so the KPI aggregation path crashes instead of degrading. ceremony_distribution/1 in the same module already special-cases [] with %{median: 0, p90: 0}, showing the empty case was a known need — duration_summary/1 just missed it, and it currently has zero direct test coverage. Add the empty clause + first unit tests. Found by codebase review 2026-07-06; verified against HEAD.
 """
+implemented = "Landed by grok via merge-train; reviewer-approved (run run-1783390320047-69aad2ef, 7e0c16b56073379c8afa8697561706ce75374fbc)."
+delivered_by = "grok"
+verified = true
 created_at = "2026-07-05"
 started_at = "2026-07-07"
 scored_at = "2026-07-05"
+done_at = "2026-07-07"
+shipped_in = "7e0c16b56073379c8afa8697561706ce75374fbc"
 
 [[task]]
 id = "351"
