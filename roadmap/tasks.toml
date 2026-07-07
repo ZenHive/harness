@@ -10405,7 +10405,7 @@ shipped_in = "7e0c16b56073379c8afa8697561706ce75374fbc"
 id = "351"
 phase = 20
 bundle = "autolanding"
-status = "in_progress"
+status = "done"
 title = "TaskIdRewriter misses unquoted integer task ids — collision reassignment silently no-ops for integer-id projects"
 scores = { d = 2, b = 5, u = 4 }
 markers = ["bug", "parallel"]
@@ -10417,9 +10417,14 @@ model = "gpt-5.5"
 body = '''
 block_with_id/1 (task_id_rewriter.ex:58-64) matches only the quoted form id = "N" (regex ^\s*id\s*=\s*"(\d+)"\s*$), so rewrite_collisions/2 finds zero blocks — and reassigns nothing — for a project whose tasks.toml uses unquoted integer ids. That variant is real and documented in this codebase: roadmap.ex:685-688 explicitly notes a project keyed on integer ids (id = 25) yields a JSON integer. The lander invokes the rewriter generically for every landing project (lander.ex:220-258), so for an integer-id project two concurrently-filed colliding tasks land UN-reassigned — reintroducing exactly the false-done/lost-work corruption class Task 280 closed, for a schema variant the fix's regex doesn't cover. task_id_rewriter_test.exs only exercises quoted ids. Extend matching to bare integers, normalize both forms for comparison, preserve original quoting style on rewrite. Found by codebase review 2026-07-06; sites verified against HEAD.
 '''
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1783390322807-03426bef, 34b1c6deb9a79939b72552e8d4a150733c13c7f1)."
+delivered_by = "codex"
+verified = true
 created_at = "2026-07-05"
 started_at = "2026-07-07"
 scored_at = "2026-07-05"
+done_at = "2026-07-07"
+shipped_in = "34b1c6deb9a79939b72552e8d4a150733c13c7f1"
 
 [[task]]
 id = "352"
