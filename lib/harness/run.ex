@@ -98,6 +98,7 @@ defmodule Harness.Run do
   alias Harness.Run.Review
   alias Harness.Run.States
   alias Harness.Run.Status
+  alias Harness.Run.TranscriptSnapshot
   alias Harness.TokenUsage
   alias Harness.Worktree
 
@@ -300,14 +301,7 @@ defmodule Harness.Run do
     }
   )
 
-  @spec transcript_events(run()) ::
-          {:ok,
-           %{
-             events: [Parser.event()],
-             agent_kind: Parser.agent_kind() | nil,
-             seq: non_neg_integer()
-           }}
-          | {:error, :not_found}
+  @spec transcript_events(run()) :: {:ok, TranscriptSnapshot.t()} | {:error, :not_found}
   def transcript_events(run) do
     with {:ok, pid} <- resolve(run) do
       {:ok, :gen_statem.call(pid, :transcript_events)}

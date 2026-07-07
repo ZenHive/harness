@@ -360,7 +360,7 @@ defmodule Harness.CodeSearch do
     clone
     |> Map.fetch!(:fragments)
     |> Enum.map(fn fragment ->
-      %{
+      Fact.new(
         file: Map.get(fragment, :file),
         line: Map.get(fragment, :line),
         kind: :duplicate_fragment,
@@ -368,7 +368,7 @@ defmodule Harness.CodeSearch do
         name: nil,
         arity: nil,
         mass: Map.get(fragment, :mass) || Map.get(clone, :mass)
-      }
+      )
     end)
   end
 
@@ -659,7 +659,7 @@ defmodule Harness.CodeSearch do
     selected = if side == :caller, do: edge.caller, else: edge.callee
     parsed = parse_symbol(selected)
 
-    %{
+    Fact.new(
       file: edge.file,
       line: edge.line,
       kind: :call_edge,
@@ -668,7 +668,7 @@ defmodule Harness.CodeSearch do
       arity: parsed.arity,
       caller: edge.caller,
       callee: edge.callee
-    }
+    )
   end
 
   @spec file_for(term(), term(), map()) :: String.t() | nil

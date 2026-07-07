@@ -1,4 +1,48 @@
 defmodule Harness.MapContractsTest do
+  @moduledoc """
+  Triage note for the `mix reach.check --arch --smells` repeated-map-shape
+  (`fixed_shape_map`) findings reported on 2026-06-30 (Task 338).
+
+  Each finding was classified as a shared contract, a local UI literal, an
+  external/JSON-native payload, or transient construction data, then given the
+  disposition below. This module tests the structs introduced for the shared
+  contracts so future Reach runs can distinguish intentional maps from untriaged
+  debt.
+
+  Shared contracts → named struct (drift-prone, crosses module boundaries):
+
+    * code-search rows (`Harness.CodeSearch` definition/call-edge/duplicate facts)
+      → `Harness.CodeSearch.Fact`
+    * KPI recovery token totals (`Harness.AgentKPI`)
+      → `Harness.AgentKPI.TokenTotals`
+    * dispatch summaries (`Harness.Dispatch` run + await-runs rows)
+      → `Harness.Dispatch.RunSummary` and `Harness.Dispatch.AwaitRunsSummary`
+    * routing-brief availability cells (`Harness.Routing`)
+      → `Harness.Routing.Availability`
+    * model-availability catalog rows (`Harness.ModelAvailability`)
+      → `Harness.ModelAvailability.CatalogEntry` (with `coerce/1` for persisted rows)
+    * dispatch-recommend payload (`Harness.CapabilityScore`)
+      → `Harness.CapabilityScore.Recommendation`
+    * parsed transcript snapshot (`Harness.Dashboard.Transcript.Parser`)
+      → `Harness.Run.TranscriptSnapshot`
+
+  Kept as maps (disposition made explicit at the site):
+
+    * transcript assistant tool-use blocks → JSON-native payload, centralized in
+      `Harness.Dashboard.Transcript.Parser.assistant_tool_use_payload/3` (one
+      constructor, one shape) rather than restructured away from the wire form.
+    * dashboard UI literals — LiveView stream items and tool-call cards
+      (`Harness.Dashboard.ChatLive`, `Harness.Dashboard.Components`), verdict
+      badges (`Harness.Dashboard.CompareLive`), and config-inspector rows
+      (`Harness.Dashboard.ConfigInspector`) — de-duplicated behind single private
+      constructors (`stream_message/1`, `ui_tool_call/3`, `verdict_badge/3`,
+      `inspector_row/4`) with explanatory comments; view-local, not shared domain.
+    * `Supervisor` / `DynamicSupervisor` child-spec literals (config, run, oban,
+      chat supervisor, worktree sweeper, dashboard MCP server, migration guard) →
+      transient framework construction data, suppressed with
+      `# reach:disable-next-line fixed_shape_map` and a one-line rationale.
+  """
+
   use ExUnit.Case, async: true
 
   alias Harness.AgentKPI.TokenTotals
