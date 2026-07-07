@@ -14990,7 +14990,7 @@
       "id": "333",
       "phase": 22,
       "bundle": "operator-surface",
-      "status": "in_progress",
+      "status": "pending",
       "title": "Scheduled full-suite (incl. integration) health check per project -> dashboard witness",
       "scores": {
         "d": 5,
