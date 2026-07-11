@@ -1059,7 +1059,7 @@ defmodule Harness.Dispatch do
         kind: :value,
         default: %{},
         description:
-          ~s|Optional object mapping adapter name to model id, e.g. {"grok": "grok-build", "cursor": "composer-2.5-fast"}. When an adapter is omitted, compare uses that adapter's configured default model, never the task's pinned model.|
+          ~s|Optional object mapping adapter name to model id, e.g. {"grok": "grok-4.5", "cursor": "composer-2.5"}. When an adapter is omitted, compare uses that adapter's configured default model, never the task's pinned model.|
       ],
       scrub_anthropic_key: [
         kind: :value,
@@ -1246,7 +1246,7 @@ defmodule Harness.Dispatch do
   # to a DIFFERENT agent than the pin (an explicit-adapter override, or — before the
   # precedence fix — a recommend/default override), carrying the pinned model yields
   # an agent+model pair that's invalid or budget-capped (cursor + gpt-5.5, cursor +
-  # grok-build). So a pinned model applies only on its own assignee's adapter; a
+  # grok-4.5). So a pinned model applies only on its own assignee's adapter; a
   # cross-agent dispatch uses the resolved agent's configured default instead. A
   # model pin with no assignee has no agent to contradict it, so it carries through.
   @spec effective_model(Item.t(), atom()) :: String.t() | nil

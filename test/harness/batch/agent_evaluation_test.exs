@@ -155,7 +155,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
     bin_dir = fake_agent_bin_dir()
 
     with_path(bin_dir)
-    with_agent_models(grok: "grok-build")
+    with_agent_models(grok: "grok-4.5")
 
     assert {:ok, %Comparison{entries: entries}} =
              AgentEvaluation.compare(
@@ -175,7 +175,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
     grok_run = Enum.at(entries, 1).run_id
 
     assert GitFixture.git!(repo, ["show", "harness/#{cursor_run}:agent_model.txt"]) == "composer-2.5-fast"
-    assert GitFixture.git!(repo, ["show", "harness/#{grok_run}:agent_model.txt"]) == "grok-build"
+    assert GitFixture.git!(repo, ["show", "harness/#{grok_run}:agent_model.txt"]) == "grok-4.5"
   end
 
   test "rejects invalid per-adapter model pairs before spawning" do

@@ -30,10 +30,11 @@ defmodule Harness.ModelAvailability do
   # `@probeable_agents`; its seed here is the fallback for when the probe fails
   # (codex CLI absent/unauthed), so operators have options out of the box.
   #
-  # Ids verified 2026-06-12:
+  # Ids verified 2026-06-12 (codex 5.6 family added 2026-07-10):
   #   claude — https://support.claude.com/en/articles/11940350-claude-code-model-configuration
   #            https://code.claude.com/docs/en/model-config
   #   codex  — https://developers.openai.com/codex/models
+  #            GPT-5.6 Sol/Terra/Luna — https://openai.com/index/previewing-gpt-5-6-sol/
   @builtin_catalogs %{
     claude: [
       CatalogEntry.new("claude-opus-4-8", "Opus 4.8"),
@@ -44,7 +45,10 @@ defmodule Harness.ModelAvailability do
       CatalogEntry.new("claude-haiku-4-5-20251001", "Haiku 4.5")
     ],
     codex: [
-      CatalogEntry.new("gpt-5.5", "GPT-5.5 (recommended)"),
+      CatalogEntry.new("gpt-5.6-sol", "GPT-5.6 Sol (frontier)"),
+      CatalogEntry.new("gpt-5.6-terra", "GPT-5.6 Terra (balanced)"),
+      CatalogEntry.new("gpt-5.6-luna", "GPT-5.6 Luna (fast/cheap)"),
+      CatalogEntry.new("gpt-5.5", "GPT-5.5"),
       CatalogEntry.new("gpt-5.4", "GPT-5.4"),
       CatalogEntry.new("gpt-5.4-mini", "GPT-5.4 mini"),
       CatalogEntry.new("gpt-5.3-codex-spark", "GPT-5.3 Codex Spark (Pro)")
