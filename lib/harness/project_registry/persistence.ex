@@ -229,7 +229,7 @@ defmodule Harness.ProjectRegistry.Persistence do
   # sobelow_skip ["Misc.BinToTerm"]
   @spec decode_term(binary()) :: {:ok, term()} | {:error, :invalid_term}
   defp decode_term(payload) do
-    {:ok, :erlang.binary_to_term(payload)}
+    {:ok, :erlang.binary_to_term(payload, [:safe])}
   rescue
     ArgumentError -> {:error, :invalid_term}
   end

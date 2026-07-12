@@ -53,6 +53,10 @@ defmodule Harness.ResultStore.PostgresTest do
     test "same-run_id upsert preserves settled evidence via contract" do
       assert :ok = ResultStoreContract.assert_same_run_id_upsert_preserves_settled_evidence(ResultStore.configured())
     end
+
+    test "task_id and landed_sha filters scope results via contract" do
+      assert :ok = ResultStoreContract.assert_scoped_filters(ResultStore.configured())
+    end
   end
 
   describe "best-effort contract (never raises)" do

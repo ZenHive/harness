@@ -524,7 +524,11 @@ defmodule Harness.Audit do
 
   @spec persist_cold_check(Project.t(), ResultStore.store(), String.t(), map()) :: :ok
   defp persist_cold_check(project, store, landed_sha, cold_check) do
-    case ResultStore.list_run_records(store, project_name: project.name, include_transcripts: true) do
+    # Scope to the single landed_sha row (include_transcripts: true so record_run/2
+    # rewrites its blobs intact, not to ""); avoids pulling every historical transcript.
+    filters = [project_name: project.name, landed_sha: landed_sha, include_transcripts: true]
+
+    case ResultStore.list_run_records(store, filters) do
       {:ok, records} -> persist_matching_cold_check(records, store, landed_sha, cold_check)
       {:error, reason} -> log_cold_check_persist_failure(project, landed_sha, reason)
     end

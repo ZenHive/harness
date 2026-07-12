@@ -711,27 +711,32 @@ defmodule Harness.ResultStore.Postgres do
   # sobelow_skip ["Misc.BinToTerm"]
   @spec decode_binary_payload(binary()) :: {:ok, term()} | {:error, :invalid_term}
   defp decode_binary_payload(payload) do
-    {:ok, :erlang.binary_to_term(payload)}
+    {:ok, :erlang.binary_to_term(payload, [:safe])}
   rescue
     ArgumentError -> {:error, :invalid_term}
   end
 
   # --- filter translation (documented keys only; others ignored for forward compat) ---
 
+  # Filter keys whose value is a plain string equality on the same-named column.
+  @direct_filter_fields ~w(run_id batch_id project_name task_id task_fingerprint landed_sha)a
+
   @spec apply_filters(Ecto.Query.t(), Harness.ResultStore.filters()) :: Ecto.Query.t()
   defp apply_filters(query, filters) do
-    Enum.reduce(filters, query, fn {key, value}, q ->
-      case key do
-        :run_id -> where(q, [r], r.run_id == ^value)
-        :batch_id -> where(q, [r], r.batch_id == ^value)
-        :agent -> where(q, [r], r.agent == ^atom_or_string(value))
-        :adapter -> where(q, [r], r.adapter == ^module_or_string(value))
-        :verdict -> where(q, [r], r.verdict == ^atom_or_string(value))
-        :project_name -> where(q, [r], r.project_name == ^value)
-        _ -> q
-      end
-    end)
+    Enum.reduce(filters, query, &apply_filter/2)
   end
+
+  @spec apply_filter({atom(), term()}, Ecto.Query.t()) :: Ecto.Query.t()
+  defp apply_filter({:agent, value}, q), do: where(q, [r], r.agent == ^atom_or_string(value))
+  defp apply_filter({:adapter, value}, q), do: where(q, [r], r.adapter == ^module_or_string(value))
+  defp apply_filter({:verdict, value}, q), do: where(q, [r], r.verdict == ^atom_or_string(value))
+
+  defp apply_filter({key, value}, q) when key in @direct_filter_fields do
+    where(q, [r], field(r, ^key) == ^value)
+  end
+
+  # Unknown keys are ignored for forward compat (documented keys only).
+  defp apply_filter({_key, _value}, q), do: q
 
   @spec atom_or_string(atom() | String.t() | nil) :: String.t() | nil
   defp atom_or_string(nil), do: nil

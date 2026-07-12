@@ -339,4 +339,42 @@ defmodule Harness.ResultStoreContract do
 
     :ok
   end
+
+  @doc """
+  The `:task_id` and `:landed_sha` filters must scope results to matching rows.
+
+  Regression for the Postgres backend silently dropping `:task_id` (the recovery
+  lookup `Run.Worker.recoverable_run_record/2` relies on) and `:landed_sha` (the
+  post-merge `Audit.persist_cold_check/4` lookup). The Memory backend filtered
+  these generically all along, so this contract — run against BOTH backends —
+  catches any future divergence where one honours a filter the other ignores.
+  """
+  @spec assert_scoped_filters(ResultStore.store()) :: :ok
+  def assert_scoped_filters(store) do
+    proj = "proj-scoped"
+    a1 = log_record(run_id: "r-a1", task_id: "task-A", project_name: proj)
+    a2 = log_record(run_id: "r-a2", task_id: "task-A", project_name: proj)
+    b1 = log_record(run_id: "r-b1", task_id: "task-B", project_name: proj)
+    for rec <- [a1, a2, b1], do: assert(:ok = ResultStore.record_run(rec, store))
+
+    # :task_id must return only the two task-A rows, never the whole project.
+    assert {:ok, task_a} = ResultStore.list_run_records(store, project_name: proj, task_id: "task-A")
+    assert task_a |> Enum.map(& &1.run_id) |> Enum.sort() == ["r-a1", "r-a2"]
+
+    assert {:ok, task_b} = ResultStore.list_run_records(store, project_name: proj, task_id: "task-B")
+    assert Enum.map(task_b, & &1.run_id) == ["r-b1"]
+
+    assert {:ok, []} = ResultStore.list_run_records(store, task_id: "task-absent")
+
+    # :landed_sha must scope to the single landed row.
+    landed = log_record(run_id: "r-landed-scoped", task_id: "task-A", project_name: proj, landed_sha: "sha-9f9f")
+    assert :ok = ResultStore.record_run(landed, store)
+
+    assert {:ok, [only]} = ResultStore.list_run_records(store, project_name: proj, landed_sha: "sha-9f9f")
+    assert only.run_id == "r-landed-scoped"
+
+    assert {:ok, []} = ResultStore.list_run_records(store, landed_sha: "sha-absent")
+
+    :ok
+  end
 end

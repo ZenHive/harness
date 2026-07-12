@@ -171,11 +171,11 @@ defmodule Harness.Cron.PendingDispatch do
          {:ok, agent} <- AgentRegistry.agent_for_module(record.adapter),
          {:ok, item} <- ingest_roadmap({:id, record.task_id}, project: project, agent: agent),
          {:ok, run_id, _job} <- RunWorker.enqueue(project, item, record.adapter, env: record.env) do
-      GenServer.call(__MODULE__, {:complete, record.id})
+      :ok = GenServer.call(__MODULE__, {:complete, record.id})
       {:ok, %{run_id: run_id, task_id: record.task_id, project_name: record.project_name, adapter: record.adapter}}
     else
       {:error, _reason} = error ->
-        GenServer.call(__MODULE__, {:repark, record})
+        :ok = GenServer.call(__MODULE__, {:repark, record})
         error
     end
   end

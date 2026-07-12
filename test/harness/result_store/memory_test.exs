@@ -79,6 +79,10 @@ defmodule Harness.ResultStore.MemoryTest do
     test "same-run_id upsert preserves settled evidence", %{store: store} do
       assert :ok = ResultStoreContract.assert_same_run_id_upsert_preserves_settled_evidence(store)
     end
+
+    test "task_id and landed_sha filters scope results", %{store: store} do
+      assert :ok = ResultStoreContract.assert_scoped_filters(store)
+    end
   end
 
   test "aggregate_reviewer_reliability matches AgentKPI over the in-memory records", %{store: store} do

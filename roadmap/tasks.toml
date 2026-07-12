@@ -120,9 +120,34 @@ name = "Live-Run Observability — stop flying blind while an agent works"
 order = 22
 status = "done"
 
+[phases.23]
+name = "Audit Hardening — findings from the 2026-07-12 project health audit"
+order = 23
+status = "pending"
+
 # ----------------------------------------------------------------------------
 # Bundles
 # ----------------------------------------------------------------------------
+
+[bundles.audit-perf]
+description = "Result-store / dashboard read-efficiency findings from the 2026-07-12 health audit (perf-audit.md). The system is correct at today's data volumes; every finding here is unbounded/unindexed work that degrades the dashboard + audit/recovery paths as run history accumulates. Mantra-clean: pure mechanics (bound, index, scope, memoize)."
+order = 1
+phase = 23
+
+[bundles.audit-architecture]
+description = "Coupling/layering findings from the 2026-07-12 health audit (arch-review.md): the 1821-line Harness.Dispatch god module and the 71-module (~30% of the codebase) strongly-connected cycle with no enforced layering between driver-surface core and its dashboard/MCP/chat/cron consumers."
+order = 2
+phase = 23
+
+[bundles.audit-tests]
+description = "Test-health findings from the 2026-07-12 health audit (test-audit.md): merge-critical modules with zero unit tests and a known-but-unfixed cross-test global-state flake class."
+order = 3
+phase = 23
+
+[bundles.audit-hygiene]
+description = "Lower-severity hygiene from the 2026-07-12 health audit: a mountable-consumer auth-boundary doc gap (security-audit.md) and an LGPL-3.0 runtime-dependency licensing decision (deps-audit.md)."
+order = 4
+phase = 23
 
 [bundles.config-surface]
 description = "Make Postgres the ONLY per-project config edit surface and retire the config/dev.local.exs trap. The dashboard already edits landing/cron/agent-models/reviewer/timeouts/catalog live; this bundle adds the two missing holes (concurrency_cap editor + project register/edit/unregister form via a new ProjectRegistry.upsert/1), then deletes dev.local.exs in favor of a run-to-apply priv/repo/seeds.exs (upserts Postgres) + a HARNESS_RUN_MEM_THRESHOLD_GB env var + a boot guard warning on re-introduced config :projects. Editing a config file no longer silently no-ops against the DB source of truth."
@@ -10626,3 +10651,290 @@ started_at = "2026-07-07"
 scored_at = "2026-07-07"
 done_at = "2026-07-07"
 shipped_in = "4d0e07ce13f257cda41ebedd9ac50bc7c1767f61"
+
+[[task]]
+id = "358"
+phase = 23
+bundle = "audit-perf"
+status = "pending"
+title = "Bound dashboard fleet-wide and per-call reads — unindexed aggregates, per-run git fetch, per-chunk buffer copy, uncached lookup"
+scores = { d = 4, b = 6, u = 5 }
+acceptance_criteria = ["KPI aggregates no longer fire five full-table reads on every fleet-wide settle across every open tab (debounced or project-scoped, with a bounded window/limit on the two unbounded aggregates)", "Landed-sha reconciliation fetches each project's target ref at most once per reconciliation pass, not once per unlanded row", "Transcript append is O(chunk) per chunk, not O(buffer); the 200 KiB cap behaviour is unchanged", "ProjectRegistry.lookup/1 does not issue a fresh Postgres round-trip on every call for rarely-changing landing overrides", "mix check.dispatch green + focused mix test.json for the dashboard/registry behaviour touched"]
+out_of_scope = ["The separate dashboard-load-time task (RoadmapSummary N shell-outs + StatusView fan-out) already tracked at phase 20 — different mechanism", "Adding indexes (already landed inline in migration 20260712120000)", "Pre-normalizing review_facets at write time (L1 — noted, deferred)"]
+files_to_modify = ["lib/harness/dashboard/kpi_live.ex", "lib/harness/dashboard/live.ex", "lib/harness/dashboard/transcript.ex", "lib/harness/project_registry.ex", "lib/harness/landing/settings.ex"]
+touches = ["lib/harness/dashboard/", "lib/harness/result_store.ex", "lib/harness/project_registry.ex"]
+domains = ["ecto", "phoenix", "otp"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Surfaced by the 2026-07-12 project health audit (perf-audit.md). The system is correct
+at today's data volumes; these are unbounded/unindexed/redundant reads that degrade the
+dashboard and audit/recovery paths as run history grows. Mantra-clean: pure mechanics
+(bound, scope, memoize) — no judgment moves into code.
+
+Fix the four cold-path read inefficiencies:
+
+1. (H1) `Harness.Dashboard.KpiLive` recomputes five fleet-wide aggregates on EVERY run
+   settlement anywhere in the fleet, for every connected /harness/kpi tab, none scoped or
+   LIMITed (`kpi_live.ex:107` handle_info → assign_rows/assign_facets). Two of the five
+   (`aggregate_review_stuck_causes/0`, `aggregate_recovery_facts/0`) call
+   `list_run_records([])` with no limit — full-table each time. Debounce the fleet-wide
+   recompute (slow tick, or scope to the settling/selected project) and add a recency
+   window / :limit to the unbounded aggregates.
+
+2. (H2) Landed-sha reconciliation issues one real `git fetch origin` PER unlanded history
+   row instead of once per project, on mount and every 30s :roadmap_tick
+   (`live.ex:499` reconcile_history_landed/4 → ResultStore.reconcile_landed_sha/4 →
+   fetch_target/2), synchronously inside the LiveView process. Memoize the target-ref
+   fetch per project_name for one reconciliation pass.
+
+3. (M2) `Harness.Dashboard.Transcript.append/3` (`transcript.ex:139`) does a full-buffer
+   copy per port chunk (`buffer <> chunk_bin`, up to the 200 KiB cap), replicated per
+   connected viewer. Accumulate as an iolist/rope (mirror the driver's `acc = [acc, data]`
+   in agent_adapter/driver.ex) and materialize once.
+
+4. (M3) `ProjectRegistry.lookup/1` (`project_registry.ex:142`) issues a live Postgres read
+   per call via LandingSettings.overlay/1 (single-element, uncached), on hot paths like
+   Dashboard.Live.load_task_item/2. `list/0` already batches to one fetch; give `lookup/1`
+   the same one-fetch path or cache the landing overrides in the GenServer state
+   (invalidated on write).
+
+Missing indexes (verdict, reviewer_adapter, task_id, landed_sha) were already added inline
+(migration 20260712120000) — this task consumes them, does not re-add them.
+"""
+created_at = "2026-07-12"
+scored_at = "2026-07-12"
+
+[[task]]
+id = "359"
+phase = 23
+bundle = "audit-architecture"
+status = "pending"
+title = "Split the 1821-line Harness.Dispatch god module into per-concern modules behind a thin facade"
+scores = { d = 5, b = 5, u = 4 }
+acceptance_criteria = ["Harness.Dispatch's public function/arity set and its MCP tool names are unchanged (Manifest + generated tool list identical)", "Dispatch delegates to per-concern modules; no single module carries all five concern groups", "Presentation/formatting helpers no longer sit inline with orchestration control flow", "mix check.dispatch green (Credo module-length/complexity included) + full dispatch/chat/manifest test files pass"]
+out_of_scope = ["Breaking the 71-module cycle (separate architecture task — this only reduces Dispatch's own surface)", "Any change to dispatch behaviour, routing decisions, or the reviewer gate"]
+files_to_modify = ["lib/harness/dispatch.ex"]
+touches = ["lib/harness/dispatch.ex", "lib/harness/manifest.ex"]
+domains = ["otp"]
+assignee = "cursor"
+model = "composer-2.5"
+body = """
+Surfaced by the 2026-07-12 project health audit (arch-review.md #2). `lib/harness/dispatch.ex`
+is 1821 lines and the second-highest outgoing-coupling module in the project. It is the
+MCP/driver-surface facade but does not stay thin — it houses five-plus distinct concern
+groups at different abstraction levels and for different audiences:
+
+- run dispatch + await (task/4, await/3, await_runs/2, await_result/2)
+- lifecycle control (cancel/1, hold/2, steer/2, resume/1, resume_failed/2, rereview/1, reland/1)
+- project administration (register_project/6)
+- cron/manual-approval admin (pending/1, approve/1)
+- cross-adapter benchmarking + verdict detail (compare/3..5, verdict_detail/1)
+- capability routing (recommend/2, assess_facets/1)
+- adapter/model resolution internals + await-summary presentation helpers
+
+Extract into per-concern modules (e.g. Dispatch.Lifecycle, Dispatch.Admin, Dispatch.Compare)
+that Dispatch delegates to, keeping Dispatch itself a thin re-export facade IF the descripex
+`api()` / MCP tool-naming convention requires one flat namespace (verify against
+Harness.Manifest's @driver_surface and the generated MCP tool list before moving anything —
+the MCP surface names must not change). Also lift the presentation helpers (turning a
+%LogRecord{} into human-readable await/review prose) out of the orchestration path.
+
+Mantra check: this is pure structure — no judgment logic is added or removed; every extracted
+function keeps its exact behaviour. The MCP tool surface and every public arity must be
+byte-for-byte preserved.
+"""
+created_at = "2026-07-12"
+scored_at = "2026-07-12"
+
+[[task]]
+id = "360"
+phase = 23
+bundle = "audit-architecture"
+status = "pending"
+title = "Establish one-way core → consumer layering and break the 71-module strongly-connected cycle"
+scores = { d = 7, b = 6, u = 5 }
+acceptance_criteria = ["`mix xref graph --format cycles` no longer reports the 71-module component (idiomatic behaviour↔impl + parser dispatch cycles may remain)", "Driver-surface core modules have no compile/export edge back into Manifest, Chat.*, or Dashboard.*", "A `.reach.exs` architecture boundary encodes core → consumer one-way layering and `mix reach.check --arch` exits non-zero on a re-introduced reverse edge", "No behaviour change: mix precommit.full (mix ci) green on the landed base"]
+out_of_scope = ["The four behaviour↔impl store cycles and the transcript parser dispatch cycle (idiomatic, not defects)", "Splitting Harness.Dispatch (separate architecture task; may land first and ease this one)"]
+files_to_modify = [".reach.exs", "lib/harness/manifest.ex"]
+touches = ["lib/harness/", ".reach.exs"]
+domains = ["otp"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+Surfaced by the 2026-07-12 project health audit (arch-review.md #1). `mix xref graph --format
+cycles` reports ONE strongly-connected cycle of 71 modules (~30% of the codebase) spanning
+run-lifecycle internals, the lander, the entire dashboard/* tree, chat/*, cron/*, MCP
+surface, roadmap, manifest, result_store, and more. The codebase has no enforced layering:
+you cannot compile or reason about any one of these modules independently of the rest.
+
+A chunk of the cycle traces to `Harness.Manifest`'s @driver_surface list (curated module
+atoms consumed by descripex to build the MCP/chat tool manifest) creating export/compile
+edges back into Dispatch/Run/Roadmap, while dashboard LiveViews and Describe/Chat.Tools read
+Manifest in the reverse direction — folding the whole app into one component instead of
+`core → manifest → {chat, mcp, dashboard}` one-way layering.
+
+Do the work in two moves:
+1. AUDIT which edges in the 71-cycle are genuine bidirectional business logic vs accidental
+   doc/alias/`@driver_surface` references pulling a cold-path module into the warm-path
+   compile graph. The driver-surface core (Run, Roadmap, Dispatch, ResultStore, Lander, …)
+   must never depend on Manifest, Chat.*, or Dashboard.* — only the reverse.
+2. Break the reverse edges and ENCODE the layering as a boundary policy in `.reach.exs`
+   (`boundaries[:public]` facade + forbidden cross-boundary calls) so `mix reach.check --arch`
+   gates it going forward — a re-introduced reverse edge becomes a CI failure, not a
+   whole-surface discovery.
+
+This is the highest-blast-radius task in the audit set; keep behaviour identical and lean on
+the full suite. Ignore the four idiomatic behaviour↔impl store cycles and the parser
+dispatch-table cycle (arch-review #5/#6) — those are the standard behaviour+default-impl
+pattern, not the target here.
+"""
+created_at = "2026-07-12"
+scored_at = "2026-07-12"
+
+[[task]]
+id = "361"
+phase = 23
+bundle = "audit-tests"
+status = "pending"
+title = "Unit-test the untested merge-critical modules Harness.Git.TargetSync and Harness.Store.EtsScope"
+scores = { d = 3, b = 7, u = 5 }
+acceptance_criteria = ["TargetSync has a test file exercising all three branches (ff-merge, ref-only fetch, dirty/diverged skip) plus the behind_count drift message, using local git fixtures", "EtsScope has a direct unit test covering create/lookup and table ownership on owner process exit", "No Process.sleep-before-assert synchronization; no {:error, _} -> assert true error-hiding", "mix check.dispatch green + both new test files pass"]
+out_of_scope = ["Refactoring either module — coverage only, behaviour unchanged"]
+files_to_modify = ["test/harness/git/target_sync_test.exs", "test/harness/store/ets_scope_test.exs"]
+touches = ["lib/harness/git/target_sync.ex", "lib/harness/store/ets_scope.ex"]
+domains = ["otp", "ecto"]
+assignee = "grok"
+model = "grok-4.5"
+body = """
+Surfaced by the 2026-07-12 project health audit (test-audit.md #2/#3). Two modules have zero
+dedicated test coverage:
+
+1. `Harness.Git.TargetSync` (lib/harness/git/target_sync.ex) — load-bearing for BOTH the
+   autonomous lander and durable roadmap writes (per its own moduledoc: "skip it and
+   roadmap/tasks.toml drifts behind origin and a later merge conflicts or silently loses the
+   harness transition"). It has three real branches (clean checked-out `merge --ff-only`,
+   unchecked-out ref-only fetch, dirty/diverged skip) plus a behind_count drift-message
+   helper — all currently unverified. Cover each branch with local git fixtures (the repo's
+   existing worktree/git test helpers show the pattern); assert the ff-merge, the ref-only
+   fetch, the dirty-skip, and the drift message.
+
+2. `Harness.Store.EtsScope` (lib/harness/store/ets_scope.ex) — ETS lifecycle/ownership is
+   easy to get subtly wrong (table ownership on process death, race on create). Add a direct
+   unit test for create/lookup/ownership-on-owner-exit.
+
+Follow the project's test conventions (mix test.json, no error-hiding, synchronize with
+assert_receive / monitor / start_supervised! rather than Process.sleep).
+"""
+created_at = "2026-07-12"
+scored_at = "2026-07-12"
+
+[[task]]
+id = "362"
+phase = 23
+bundle = "audit-tests"
+status = "pending"
+title = "De-flake the AgentRegistry global-state cross-test pollution class (resolver_test + reviewer-selection)"
+scores = { d = 4, b = 6, u = 5 }
+markers = ["bug"]
+acceptance_criteria = ["resolver_test.exs:51 and the reviewer-selection test pass deterministically across repeated runs / varied seeds (no first-attempt empty-registry failure)", "The AgentRegistry global-state mutation is either serialized suite-wide or isolated to a supervised per-test instance — the pollution class is fixed, not just the one assertion", "No :sys.replace_state race remains between concurrently-running test files that touch AgentRegistry", "mix check.dispatch green + the affected test files pass"]
+out_of_scope = ["Changing AgentRegistry's production behaviour (it is intentionally a soft, non-persistent hint per its moduledoc) — this is test-isolation only"]
+files_to_modify = ["test/harness/lander/resolver_test.exs", "lib/harness/agent_registry.ex"]
+touches = ["test/harness/", "lib/harness/agent_registry.ex", "test/support/"]
+domains = ["otp"]
+assignee = "cursor"
+model = "composer-2.5"
+body = """
+Surfaced by the 2026-07-12 project health audit (test-audit.md #1) — observed LIVE this run:
+`test/harness/lander/resolver_test.exs:51` failed on first attempt with `available: []`
+(empty registry) then passed on retry. The file's own top-of-module comment documents the
+cause: `AgentRegistry.set_installed/2` mutates the global `Harness.AgentRegistry` singleton
+via `:sys.replace_state` — "same class as ReviewerSelectionTest; observed 2026-07-07". This
+is a known, previously-observed cross-test pollution class that has only been ANNOTATED, not
+fixed. `async: false` on the file prevents intra-file races but not another concurrently-
+running file (or a stale registry restart timing) observing/mutating the same singleton
+mid-test.
+
+Fix the class, not just the one test. Either:
+- serialize every `AgentRegistry.set_installed/2`-mutating test file onto one enforced-
+  serial group/tag (e.g. a shared :global_state tag, async:false suite-wide), OR
+- refactor the test-time AgentRegistry mutation to a supervised per-test instance
+  (start_supervised!) instead of `:sys.replace_state` on the shared singleton.
+
+Whichever path, the resolver_test and reviewer-selection flake must be gone under repeated
+seeds, and no new global-state coupling introduced.
+"""
+created_at = "2026-07-12"
+scored_at = "2026-07-12"
+
+[[task]]
+id = "363"
+phase = 23
+bundle = "audit-hygiene"
+status = "pending"
+title = "Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router"
+scores = { d = 1, b = 5, u = 4 }
+markers = ["docs", "security"]
+acceptance_criteria = ["Endpoint and/or Router moduledoc states the no-auth posture and the loopback-only safety assumption explicitly", "skills/harness-driver/SKILL.md's mountable-consumer guidance warns that consumers embedding the router into a public endpoint must add their own auth in front of the browser pipeline AND the /harness/mcp forward", "No auth plug is added and the dev-mode/loopback out-of-scope decision is preserved", "AGENTS.md regenerated if any CLAUDE.md-imported surface changed (else n/a); mix check.dispatch green"]
+out_of_scope = ["Adding authentication/authorization to harness itself (standing out-of-scope decision — Tasks 79/83)", "The binary_to_term [:safe] hardening (already landed inline)"]
+files_to_modify = ["lib/harness/dashboard/endpoint.ex", "lib/harness/dashboard/router.ex", "skills/harness-driver/SKILL.md"]
+touches = ["lib/harness/dashboard/", "skills/harness-driver/SKILL.md", "README.md"]
+domains = ["phoenix"]
+assignee = "grok"
+model = "grok-4.5"
+body = """
+Surfaced by the 2026-07-12 project health audit (security-audit.md #1). NOTE THE STANDING
+DECISION FIRST: dashboard/Oban Web/MCP authentication is deliberately OUT OF SCOPE for
+harness (documented dev-mode, single-user, loopback posture — Tasks 79/83 out_of_scope,
+config hardcodes ip: {127,0,0,1}). Do NOT add an auth plug or re-litigate that call.
+
+The real residual gap is a DOCS one: the Endpoint moduledoc documents mountable consumers
+replicating the /harness/* routes into their OWN Phoenix endpoint — and at that point the
+zero-auth posture (no auth plug on the :browser pipeline; the /harness/mcp forward sits
+outside :browser entirely with no auth of any kind) is silently inherited by the consuming
+app unless it adds its own protection. A consumer mounting this router into a public-facing
+endpoint would expose full unauthenticated dispatch/kill/settings/MCP control.
+
+Add a prominent, explicit warning at the mount/consumer boundary: in the Endpoint (or Router)
+moduledoc AND in skills/harness-driver/SKILL.md's mountable-consumer setup section, state
+that harness ships NO auth on these routes (safe only at its default loopback bind) and that
+any consumer mounting them into a non-loopback / public endpoint MUST put its own
+authentication/authorization plug in front of both the browser pipeline and the /harness/mcp
+forward. Pure documentation — no code behaviour change.
+"""
+created_at = "2026-07-12"
+scored_at = "2026-07-12"
+
+[[task]]
+id = "364"
+phase = 23
+bundle = "audit-hygiene"
+status = "pending"
+title = "Decision: resolve the anubis_mcp LGPL-3.0 runtime-dependency licensing exposure on the public repo"
+scores = { d = 2, b = 5, u = 4 }
+acceptance_criteria = ["A recorded decision (accept-with-rationale / upstream-ask / replace) on the anubis_mcp LGPL-3.0 runtime exposure, documented in the repo (e.g. NOTICE or SECURITY.md)", "If accept: the rationale is written down so future audits do not re-flag it as open"]
+out_of_scope = ["Any code change until the licensing decision is made — this task is the decision itself"]
+touches = ["mix.exs"]
+domains = ["otp"]
+assignee = "human"
+body = """
+Surfaced by the 2026-07-12 project health audit (deps-audit.md #1). `{:anubis_mcp, "~> 1.6"}`
+(locked 1.6.2) is a HARD RUNTIME dependency — it backs Harness.Dashboard.MCPServer, not an
+optional/dev tool — and its license is GNU LGPL-3.0 (confirmed from upstream LICENSE at
+github.com/zoedsoupe/anubis-mcp). Every other runtime dep (Phoenix/Ecto/Postgrex/Oban/Req/
+Bandit family) is permissive (MIT/Apache-2.0).
+
+LGPL is copyleft-lite: the BEAM release model (compiling a dependency straight into a
+mix release / escript) makes the "dynamic linking" boundary LGPL relies on ambiguous, and
+LGPL still requires that users of the combined work be able to relink/modify the LGPL'd
+component. harness is a PUBLIC repo, so this warrants a one-time licensing decision rather
+than a silent accept.
+
+This is a HUMAN decision task (not a code dispatch). Decide one of: (a) accept the LGPL
+exposure with a documented rationale in SECURITY.md / NOTICE, (b) contribute to / request a
+license change upstream, or (c) evaluate an alternative MCP library / vendor the minimal
+surface under a compatible license. Whichever, record the decision so it does not resurface
+each audit.
+"""
+created_at = "2026-07-12"
+scored_at = "2026-07-12"
