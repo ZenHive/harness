@@ -16503,6 +16503,35 @@
       "created_at": "2026-07-12",
       "scored_at": "2026-07-12",
       "cross_repo": []
+    },
+    {
+      "id": "365",
+      "phase": 23,
+      "bundle": "run-history",
+      "status": "pending",
+      "title": "ResultStore.Postgres list/aggregate path fails whole query on atom decode — tolerant row decode like the File store",
+      "scores": {
+        "d": 3,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 2.33,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "list_run_records/0-2 on the Postgres store returns every decodable record even when one or more rows reference atoms not loaded in the current BEAM",
+        "Skipped/degraded rows surface as one aggregated Logger.debug line per scan, not a per-row warning and not a whole-query error",
+        "A regression test inserts a row whose jsonb references an unknown atom-like key and asserts healthy siblings are still returned",
+        "Live repro path re-checked: result_store-list_run_records MCP tool returns records against the dev BEAM instead of ArgumentError"
+      ],
+      "body": "Observed 2026-07-14 against the live dev BEAM (store configured as {Harness.ResultStore.Postgres, []}):\n`Harness.ResultStore.list_run_records()` — no filters, and every filtered variant — returns\n`{:error, %ArgumentError{message: \"... not an already existing atom\"}}`, and the flat MCP tool\n`result_store-list_run_records` surfaces the same error. The Postgres backend's read path atomizes\nstored string keys/values (check_output/ratings/facets jsonb or filter translation) via\nString.to_existing_atom, so a row referencing an atom not loaded in the current BEAM fails — and one\nbad row (or field) kills the ENTIRE listing, exactly the File-store halt bug fixed for term files\n(ResultStore.File tolerant read: skip + aggregate-log). Point lookups by run_id via SQL still work,\nwhich is how the data was recovered (blockwatch tasks 2-22 reviewer provenance).\n\nFix in the File store's spirit: decode rows tolerantly — a row (or jsonb field) that fails atom-safe\ndecode is skipped (or decoded with string keys preserved) and counted in one aggregated debug log,\nnever failing the whole query. Audit ResultStore.Postgres for String.to_existing_atom /\nbinary_to_term(:safe) sites on the read path; the never-raise best-effort contract already holds\n(error tuple, not raise) but an all-or-nothing error tuple is still an unusable query surface for\norchestrators and the dashboard.\n",
+      "created_at": "2026-07-14",
+      "scored_at": "2026-07-14",
+      "cross_repo": []
     }
   ]
 }
