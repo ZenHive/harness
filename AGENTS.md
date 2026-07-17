@@ -79,6 +79,9 @@ Every feature MUST have tests, even if the spec doesn't mention them. Unit tests
 - **Cheap, and a time *saver* — not expensive.** A real call plus one assertion costs less than a debug loop against a wrong mental model. The integration test surfaces the actual error envelope, field names, and edge shapes up front, so the code is right the first time.
 - **Tidewave to explore, integration test to pin.** Use `project_eval` to see the live shape (per "NEVER HIDE TEST FAILURES": don't know what error to expect → explore via Tidewave first), then write the `@moduletag :integration` test that asserts it — helper module, flunk-on-missing-creds, never skip silently (`integration-testing` skill).
 - **No real signal → don't fake one.** Can't reach the API (missing creds, market not live)? Say so and `flunk` loudly per the credentials rule — never paper over it with a mock that ratifies a guess.
+- **Authority order is explicit:** live API / observed traffic > official docs > existing code > assumptions. Docs may guide the call; only observed behavior grounds the contract.
+- **Observe both sides of the boundary.** Pin at least one real success and one relevant real error, assert domain semantics rather than only status/shape, and exercise stateful setup/cleanup/idempotency where writes are involved.
+- **Verification needs provenance.** A green claim names the independent evaluator and points to durable evidence when available (harness run, CI URL, review artifact); implementer self-report is not independent verification.
 
 ## 🚨 RAISE COVERAGE BEFORE MUTATING
 
@@ -215,7 +218,7 @@ You don't have data either way. The honest framing is: *"I don't know if you'll 
 - Cite **concrete precedents** when scoring complexity (see `development-philosophy.md` "Cite Ecosystem Precedents Before Crying Complexity"). Generic "this could grow" without naming a specific failure pattern is the same hedging by another name.
 - If the task genuinely scores low on benefit/usefulness, score it that way honestly — don't smuggle a demand-speculation into the U/B numbers and pretend it came from analysis.
 
-**Scope extends to task `body` fields and scoring justifications, not just live responses.** Same hedge phrases written into a task's `body` to justify B/U — "table-stakes", "increasingly expected", "now standard", "buyers expect", "competitors are starting to", "modern apps all do" — inflate the score the same way they inflate a response. Required instead: named consumer evidence (named partner asked, named competitor lever, measured conversion uplift) OR honest low score. Enforced at task-creation time by `task-writing.md` § Pre-Creation Gate (question 5).
+**Scope extends to task `body` fields and scoring justifications, not just live responses.** Same hedge phrases written into a task's `body` to justify B/U — "table-stakes", "increasingly expected", "now standard", "buyers expect", "competitors are starting to", "modern apps all do" — inflate the score the same way they inflate a response. Required instead: a concrete named reason — the user asked for it (the developer IS the demand signal), a named technical/legal trigger, a named competitor lever — OR an honest low score. Enforced at task-creation time by `task-writing.md` § Pre-Creation Gate (question 4).
 
 ## Git Commit / Push / PR-Create — Allowed by Default
 
@@ -274,6 +277,10 @@ The rule:
 - Most "corrupt cache" issues are transient glitches
 
 Ask before running any destructive command.
+
+## 🚨 NO SCOPE-SEQUENCING QUALIFIERS IN DURABLE ARTIFACTS
+
+**Never write positioning/sequencing qualifiers — "X first", "starting with X", "initially", "for now", "MVP: X" — into durable artifacts:** repo descriptions, READMEs, moduledocs, code comments, config comments, commit messages, vision one-liners. These phrases metastasize (every future session copies them into new files and defends them as intent) and become practically unremovable. Scope sequencing lives in ONE place: the roadmap (milestones, task bodies, `out_of_scope`). Everywhere else, describe what the system IS, not what it will be next: "Coverage: Robinhood Chain tokenized equities" states a fact; "starting with Robinhood Chain" bakes a forecast into the artifact.
 
 ## 🚨 Integrity and Accuracy
 
@@ -416,6 +423,8 @@ Failed runs retain the worktree at `result.worktree_path` for inspection. Approv
 
 **The verdict artifact** `.harness/review.json` is `{verdict, report, checks, concerns, facets, skills, ratings}`: `verdict` (`approve`/`reject`) is the gate; `report` is the reviewer's prose; `checks` is the reviewer-written record of commands run and their pass/fail claim; `concerns` is the reviewer's self-flagged caveat list; **`facets`** (open-vocabulary routing KEY — the kind of task) and **`skills`** (v0_13 two-axis rubric, routing VALUE) feed per-facet capability routing; `ratings` is the legacy flat-score fallback. Approved runs with non-empty concerns or a reviewer-authored failed check surface a warning fact; harness never auto-blocks or classifies prose. The artifact lives under `.harness/` (excluded from staging) so it never rides in the deliverable commit.
 
+**External-system evidence is reviewer-owned judgment.** When acceptance criteria touch an API or external service, the reviewer must look for reality rather than plausibility: a live success call, a relevant live error, and an integration test pinning the observed domain semantics. Docs, mocks, fixtures, and the implementer's self-report are not independent evidence. Missing credentials or an unreachable sandbox are surfaced as a failed check/concern (or rejection when the criterion cannot be verified), never silently treated as green. The lander records the reviewer identity plus `harness-run:<run-id>` as rmap verification provenance.
+
 **Self-healing recovery (the `:recovering` state).** Before settling `:failed` for an *interpretive* non-rejection failure — checkout pollution is currently the one wired call-site — the run spawns a **bounded cross-family recovery AI** (`:recovering` state, budget 1/run) with minimal context (the error term + the main checkout's `git status` + the implementer transcript tail + the failing-check output, never the full transcript). It writes `.harness/recovery.json` `{outcome: "repaired"|"dead", report, repaired}`; harness reads it mechanically and **decides nothing itself**: `repaired` resumes at `:committing` and **re-runs the reviewer gate** (never skips to `:done`); `dead` / missing / malformed settles `:failed` with the original reason. A genuine `verdict: reject` is never routed through recovery. The `Result` carries `recovery_attempts` / `recovery_outcome` / `recovery_repaired` / `recovery_token_usage`. (Tier-1 mechanical self-heal precedes it: the reviewer is re-prompted once on a missing/malformed `review.json` — `reviewer_reprompt_count`, capped at 1 — and rotates to the next cross-family candidate on a reviewer timeout — `reviewer_rotation_count`.)
 
 ### 🚨 Recover, Don't Redo — Never Burn Tokens Re-Implementing Committed Work
@@ -459,7 +468,7 @@ Projects with `landing_policy: :auto` and `target_branch`:
 1. Approved run enqueues one job on serialized `landing_<name>` Oban queue (limit 1)
 2. `Harness.Lander.land/1` rebases `harness/<run-id>` onto `origin/<target>` in a detached worktree
 3. **ff-pushes without re-verification** — the reviewer already gated the work
-4. Successful push enqueues post-merge audit; advances rmap (`done --verified --shipped-in <sha>`)
+4. Successful push enqueues post-merge audit; advances rmap (`done --verified --verified-by <reviewer> --verification-ref harness-run:<run-id> --shipped-in <sha>`)
 
 Conflict / push-rejected retains the branch for repair — never lands red. Witness notification (read-only sink) alerts the operator; it is **not** a merge gate.
 

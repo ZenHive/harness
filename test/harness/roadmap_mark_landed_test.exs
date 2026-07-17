@@ -90,6 +90,8 @@ defmodule Harness.RoadmapMarkLandedTest do
                Roadmap.mark_landed("7",
                  root: tmp_dir,
                  sha: "abc123",
+                 verified_by: "codex",
+                 verification_ref: "harness-run:run-123",
                  delivered_by: "claude",
                  implemented: "did it",
                  rmap_bin: script
@@ -102,8 +104,12 @@ defmodule Harness.RoadmapMarkLandedTest do
                "7",
                "done",
                "--verified",
+               "--verified-by",
+               "codex",
                "--shipped-in",
                "abc123",
+               "--verification-ref",
+               "harness-run:run-123",
                "--delivered-by",
                "claude",
                "--implemented",
@@ -116,7 +122,13 @@ defmodule Harness.RoadmapMarkLandedTest do
     test "omits optional flags when not supplied", %{tmp_dir: tmp_dir} do
       {script, args_file} = stub_rmap(tmp_dir)
 
-      assert {:ok, _output} = Roadmap.mark_landed("9", root: tmp_dir, sha: "deadbeef", rmap_bin: script)
+      assert {:ok, _output} =
+               Roadmap.mark_landed("9",
+                 root: tmp_dir,
+                 sha: "deadbeef",
+                 verified_by: "cursor",
+                 rmap_bin: script
+               )
 
       recorded = args_file |> File.read!() |> String.split("\n", trim: true)
 
@@ -125,6 +137,8 @@ defmodule Harness.RoadmapMarkLandedTest do
                "9",
                "done",
                "--verified",
+               "--verified-by",
+               "cursor",
                "--shipped-in",
                "deadbeef",
                "--tasks-path",
@@ -134,7 +148,12 @@ defmodule Harness.RoadmapMarkLandedTest do
 
     test "returns {:error, {:rmap_not_found, _}} when the binary is absent", %{tmp_dir: tmp_dir} do
       assert {:error, {:rmap_not_found, _bin}} =
-               Roadmap.mark_landed("1", root: tmp_dir, sha: "x", rmap_bin: Path.join(tmp_dir, "nope-rmap"))
+               Roadmap.mark_landed("1",
+                 root: tmp_dir,
+                 sha: "x",
+                 verified_by: "codex",
+                 rmap_bin: Path.join(tmp_dir, "nope-rmap")
+               )
     end
 
     test "aborts before status write when the id no longer names the dispatched task", %{tmp_dir: tmp_dir} do
@@ -153,6 +172,7 @@ defmodule Harness.RoadmapMarkLandedTest do
                Roadmap.mark_landed("7",
                  root: tmp_dir,
                  sha: "abc123",
+                 verified_by: "codex",
                  task_fingerprint: fingerprint,
                  rmap_bin: script
                )

@@ -315,7 +315,8 @@ defmodule Harness.Roadmap do
   Writes the outcome of a successful autonomous land back to rmap.
 
   Transitions the task to `done` with `verified=true` and the landed commit SHA
-  as `shipped_in`, via `rmap status <id> done --verified --shipped-in <sha>`
+  as `shipped_in`, via `rmap status <id> done --verified --verified-by
+  <reviewer> --verification-ref harness-run:<run-id> --shipped-in <sha>`
   (plus `--delivered-by` / `--implemented` when supplied). This is the
   merge-train lander's writeback step; the implementer dispatched the work, the
   verification stack graded it green post-integration, so `verified` is honest.
@@ -328,6 +329,8 @@ defmodule Harness.Roadmap do
     * `:root` — the project root holding `roadmap/tasks.toml`. Required unless
       `:project` is given (then `project.roadmap_path` is used).
     * `:sha` — the landed commit SHA recorded as `shipped_in` (required).
+    * `:verified_by` — independent reviewer identity for `--verified-by` (required).
+    * `:verification_ref` — durable evidence pointer for `--verification-ref` (optional).
     * `:delivered_by` — agent string for `--delivered-by` (optional).
     * `:implemented` — what shipped, for `--implemented` (optional).
     * `:task_fingerprint` — dispatch-time stable task hash. When supplied,
@@ -350,9 +353,11 @@ defmodule Harness.Roadmap do
   @spec mark_landed(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def mark_landed(item_or_id, opts) do
     sha = Keyword.fetch!(opts, :sha)
+    verified_by = Keyword.fetch!(opts, :verified_by)
 
     status_args =
-      ["done", "--verified", "--shipped-in", sha]
+      ["done", "--verified", "--verified-by", verified_by, "--shipped-in", sha]
+      |> append_flag("--verification-ref", opts[:verification_ref])
       |> append_flag("--delivered-by", opts[:delivered_by])
       |> append_flag("--implemented", opts[:implemented])
 

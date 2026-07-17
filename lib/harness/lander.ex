@@ -599,6 +599,8 @@ defmodule Harness.Lander do
            sha: sha,
            task_fingerprint: request[:task_fingerprint],
            delivered_by: delivered_by(request[:agent]),
+           verified_by: verified_by(request[:reviewer]),
+           verification_ref: "harness-run:" <> request.run_id,
            implemented: implemented_text(request, sha)
          ) do
       {:ok, _output} ->
@@ -709,6 +711,9 @@ defmodule Harness.Lander do
 
   @spec delivered_by(atom() | String.t() | nil) :: String.t() | nil
   defp delivered_by(agent), do: agent_name(agent)
+
+  @spec verified_by(atom() | String.t() | nil) :: String.t()
+  defp verified_by(reviewer), do: agent_name(reviewer) || "harness:independent-reviewer"
 
   @spec implemented_text(request(), String.t()) :: String.t()
   defp implemented_text(request, sha) do
