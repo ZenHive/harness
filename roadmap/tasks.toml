@@ -11005,3 +11005,91 @@ auth_env_scrub declaration, and cite the doc or observed behavior either way.
 """
 created_at = "2026-07-17"
 scored_at = "2026-07-17"
+
+[[task]]
+id = "367"
+phase = 9
+bundle = "agent-gate"
+status = "pending"
+title = "Reviewer task filings become review.json proposals; orchestrator files them post-land"
+scores = { d = 6, b = 8, u = 8 }
+markers = ["parallel"]
+acceptance_criteria = ["review.json schema gains an optional proposed_tasks array (title, body, suggested scores/markers, evidence); Run.Result carries it and dispatch-verdict_detail exposes it", "Reviewer prompt/rules instruct the reviewer to propose discoveries via proposed_tasks and to never edit roadmap/tasks.toml, roadmap/data.json, ROADMAP.md, or CHANGELOG.md in the worktree", "Run staging excludes roadmap/tasks.toml, roadmap/data.json, ROADMAP.md, and CHANGELOG.md from the deliverable commit (same mechanism as the .harness/ exclusion), so a run diff contains only code", "A run whose reviewer proposes tasks lands cleanly with the proposals readable from the persisted record after worktree teardown", "Docs updated: skills/harness-driver/SKILL.md and priv/includes/harness-workflow.md describe the proposal flow and that the ORCHESTRATOR files proposals through its own task-writing gate (dedupe/merge against the live pending set) after the land; sync script run"]
+out_of_scope = ["Harness auto-filing proposals into any roadmap (judgment about filing stays with the orchestrator AI, per the mantra)", "Changing how the lander advances the dispatched task's own status (done --shipped-in stays)", "CHANGELOG generation from verdicts (separate concern; exclusion alone is in scope)"]
+assignee = "codex"
+model = "gpt-5.6-terra"
+body = """
+Observed in ccxt_client dispatch (2026-07-19): reviewers file discovery tasks by
+editing roadmap/tasks.toml inside their run worktree. The worktree forks from an
+older base, so the reviewer assigns the next task id of ITS fork while origin has
+moved on — producing id collisions that block the lander (task 433 land blocked:
+its reviewer filed id 437, already taken on origin), orphaned data.json-only
+renders, and singleton tasks that never pass the one-session=one-task merge gate
+because the reviewer cannot see the live pending set. Roadmap and CHANGELOG files
+are also a universal write-set overlap that defeats write-set-disjoint parallel
+dispatch: every run touches them, so "disjoint" waves still conflict at landing.
+
+Fix the channel, not the judgment: the reviewer keeps proposing tasks (that
+judgment is valuable), but as structured data in the verdict artifact instead of
+roadmap commits. Harness mechanically carries the proposals through Result and
+the persisted record; the driving orchestrator files them centrally after the
+land, where it can dedupe, merge, and gate them against the real roadmap state.
+"""
+created_at = "2026-07-19"
+scored_at = "2026-07-19"
+
+[[task]]
+id = "368"
+phase = 9
+bundle = "core-loop"
+status = "pending"
+title = "Coalesce-dispatch: run N small same-bundle tasks as one implementer run"
+scores = { d = 5, b = 7, u = 6 }
+markers = ["parallel"]
+acceptance_criteria = ["A dispatch surface (dispatch-bundle option or new tool) accepts an explicit list of task ids and runs them as ONE Harness.Run: one worktree, one implementer invocation with all task prompts, one reviewer gate, one land", "The reviewer verdict records per-task outcomes so the lander can advance each coalesced task's roadmap status individually (all done --shipped-in the same sha, or the run fails as a unit)", "Write-set union of the coalesced tasks is what enters wave serialization", "In-flight idempotency still holds: re-dispatching any member task while the coalesced run is live returns the existing run", "Docs: harness-driver SKILL + harness-workflow include describe when to coalesce (small tasks sharing a bundle/surface) vs parallelize; sync script run"]
+out_of_scope = ["Automatic selection of which tasks to coalesce (the orchestrator picks; harness executes)", "Partial landing of a subset of coalesced tasks (unit semantics for v1)"]
+assignee = "codex"
+model = "gpt-5.6-terra"
+body = """
+Pipeline fixed costs (worktree fork, deps bootstrap, cold checks, reviewer boot)
+are ~20-40 min per run regardless of task size, so a D3 task pays the same
+overhead as a D7 one. Observed in ccxt_client 2026-07-19: several sub-hour tasks
+each consumed a full run's fixed costs; the operator called for bundling. The
+one-session=one-task rule catches this at filing time when one author sees both
+tasks, but reviewer/sweep discoveries arrive as separate valid tasks whose merge
+window has passed. Give the orchestrator a dispatch-time coalesce primitive: one
+implementer session lands N small related tasks under one review, matching what a
+human session would naturally do.
+"""
+created_at = "2026-07-19"
+scored_at = "2026-07-19"
+
+[[task]]
+id = "369"
+phase = 9
+bundle = "autolanding"
+status = "pending"
+title = "Lander fallback: mechanically resolve additive-only tasks.toml conflicts by renumbering"
+scores = { d = 3, b = 5, u = 5 }
+acceptance_criteria = ["When the landing rebase conflicts ONLY in roadmap/tasks.toml (plus its data.json/ROADMAP.md renders) and both sides' changes are purely additive [[task]] blocks, the lander renumbers the branch-side new tasks to the next free ids on the target, re-renders via rmap, and completes the land", "Any non-additive conflict (edits to existing task blocks, code files) still retains the branch and blocks as today", "String references to the renumbered id inside the same branch diff (CHANGELOG lines, code comments, test names) are either rewritten with the renumber or the land is left blocked with a report naming them - silent broken references are not acceptable", "A test covers: clean renumber, non-additive conflict left blocked, and in-diff reference rewrite/refusal"]
+out_of_scope = ["Semantic dedupe/merge of the added tasks against the target roadmap (orchestrator judgment)", "Conflicts in files other than the roadmap render set"]
+assignee = "codex"
+model = "gpt-5.6-terra"
+body = """
+Sequential integer task ids plus parallel worktrees make additive tasks.toml
+collisions structural: two runs filing discoveries both claim the next id, the
+second one to land conflicts, and today the lander retains the branch and blocks
+the task - a purely mechanical repair (renumber the additive block, re-render,
+push) that currently costs an operator/orchestrator session (observed ccxt_client
+task 433, 2026-07-19: reviewer filed id 437, origin had taken it; hand repair
+took cherry-pick + renumber + reland). Renumbering additive blocks is counting,
+not judgment, so it belongs in the lander per the mantra.
+
+Note: the reviewer-proposals task (same date, agent-gate bundle) removes the
+MAIN source of these conflicts by taking reviewers out of tasks.toml entirely;
+this fallback covers the residual class (operator or parallel-session filings
+racing a land). If that task lands first and the residual rate is ~zero, honor
+an honest re-score downward instead of building on momentum.
+"""
+created_at = "2026-07-19"
+scored_at = "2026-07-19"
