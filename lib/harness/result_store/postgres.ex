@@ -140,9 +140,13 @@ defmodule Harness.ResultStore.Postgres do
           review_facets: fragment("COALESCE(NULLIF(EXCLUDED.review_facets, '{}'::jsonb), ?)", r.review_facets),
           review_skills: fragment("COALESCE(NULLIF(EXCLUDED.review_skills, '{}'::jsonb), ?)", r.review_skills),
           review_checks: fragment("COALESCE(NULLIF(EXCLUDED.review_checks, '{}'::jsonb), ?)", r.review_checks),
-          review_concerns: fragment("COALESCE(NULLIF(EXCLUDED.review_concerns, '{}'::jsonb), ?)", r.review_concerns),
+          review_concerns:
+            fragment("COALESCE(NULLIF(EXCLUDED.review_concerns, '{\"$list\": []}'::jsonb), ?)", r.review_concerns),
           review_proposed_tasks:
-            fragment("COALESCE(NULLIF(EXCLUDED.review_proposed_tasks, '[]'::jsonb), ?)", r.review_proposed_tasks),
+            fragment(
+              "COALESCE(NULLIF(EXCLUDED.review_proposed_tasks, '{\"$list\": []}'::jsonb), ?)",
+              r.review_proposed_tasks
+            ),
           review_warning?: fragment("(? OR COALESCE(EXCLUDED.review_warning, false))", r.review_warning?),
           review_ratings: fragment("COALESCE(NULLIF(EXCLUDED.review_ratings, '{}'::jsonb), ?)", r.review_ratings),
           recovery_attempts:

@@ -602,6 +602,39 @@ defmodule Harness.WorktreeTest do
       refute files =~ "CHANGELOG.md"
     end
 
+    # The production shape: the target repo already tracks these files, so the
+    # exclusion has to drop a *modification* rather than skip an untracked add.
+    # A `refute ls-tree` assertion cannot see that difference — the path is in the
+    # tree either way — so this asserts the committed content is still the base.
+    test "drops modifications to already-tracked roadmap and changelog files" do
+      {repo, wt} = create_worktree()
+      GitFixture.git!(repo, ["config", "user.email", "fixture@example.com"])
+      GitFixture.git!(repo, ["config", "user.name", "fixture"])
+
+      File.mkdir_p!(Path.join(wt.path, "roadmap"))
+      File.write!(Path.join(wt.path, "roadmap/tasks.toml"), "[[task]]\nid = 1\n")
+      File.write!(Path.join(wt.path, "ROADMAP.md"), "base render\n")
+      File.write!(Path.join(wt.path, "CHANGELOG.md"), "base history\n")
+      GitFixture.git!(wt.path, ["add", "roadmap/tasks.toml", "ROADMAP.md", "CHANGELOG.md"])
+      GitFixture.git!(wt.path, ["commit", "-q", "-m", "base roadmap"])
+
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+      File.write!(Path.join(wt.path, "roadmap/tasks.toml"), "[[task]]\nid = 999\n")
+      File.write!(Path.join(wt.path, "ROADMAP.md"), "stale render\n")
+      File.write!(Path.join(wt.path, "CHANGELOG.md"), "stale history\n")
+
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
+
+      changed = GitFixture.git!(wt.path, ["diff", "--name-only", "HEAD~1", "HEAD"])
+      assert changed =~ "delivery.txt"
+      refute changed =~ "roadmap/tasks.toml"
+      refute changed =~ "ROADMAP.md"
+      refute changed =~ "CHANGELOG.md"
+
+      assert GitFixture.git!(wt.path, ["show", "HEAD:ROADMAP.md"]) =~ "base render"
+      assert GitFixture.git!(wt.path, ["show", "HEAD:roadmap/tasks.toml"]) =~ "id = 1"
+    end
+
     test "diff_size measures only the source change, excluding the artifact family" do
       # Source change is exactly 2 added lines; the artifacts add 1 line each. A
       # leak would report 4 — asserting 2 proves the whole `.harness*` family is
