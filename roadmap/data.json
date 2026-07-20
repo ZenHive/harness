@@ -16259,8 +16259,8 @@
       "unlocks": 0,
       "markers": [],
       "depends_on": [],
-      "assignee": "cursor",
-      "model": "composer-2.5",
+      "assignee": "codex",
+      "model": "gpt-5.5",
       "acceptance_criteria": [
         "Harness.Dispatch's public function/arity set and its MCP tool names are unchanged (Manifest + generated tool list identical)",
         "Dispatch delegates to per-concern modules; no single module carries all five concern groups",
@@ -16392,8 +16392,8 @@
         "bug"
       ],
       "depends_on": [],
-      "assignee": "cursor",
-      "model": "composer-2.5",
+      "assignee": "grok",
+      "model": "grok-4.5",
       "acceptance_criteria": [
         "resolver_test.exs:51 and the reviewer-selection test pass deterministically across repeated runs / varied seeds (no first-attempt empty-registry failure)",
         "The AgentRegistry global-state mutation is either serialized suite-wide or isolated to a supervised per-test instance — the pollution class is fixed, not just the one assertion",
@@ -16561,8 +16561,8 @@
         "parallel"
       ],
       "depends_on": [],
-      "assignee": "cursor",
-      "model": "composer-2.5",
+      "assignee": "codex",
+      "model": "gpt-5.5",
       "acceptance_criteria": [
         "Harness.AgentAdapter.Kimi implements capabilities/0, rule_channel/0, and build_command/1; defaults from `use Harness.AgentAdapter` cover the rest; the shared Harness.AgentAdapter.ConformanceCase passes unchanged",
         "build_command/1 assembles the headless invocation verified against the installed CLI (kimi 0.26.0) and https://moonshotai.github.io/kimi-code/ — prompt mode (-p/--prompt takes the prompt as an option argument, not positional), --output-format stream-json, model_args via -m, unattended permission mode via --yolo; unsupported permission modes and session tokens error rather than silently fall back",

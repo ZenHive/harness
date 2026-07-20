@@ -10717,8 +10717,8 @@ out_of_scope = ["Breaking the 71-module cycle (separate architecture task — th
 files_to_modify = ["lib/harness/dispatch.ex"]
 touches = ["lib/harness/dispatch.ex", "lib/harness/manifest.ex"]
 domains = ["otp"]
-assignee = "cursor"
-model = "composer-2.5"
+assignee = "codex"
+model = "gpt-5.5"
 body = """
 Surfaced by the 2026-07-12 project health audit (arch-review.md #2). `lib/harness/dispatch.ex`
 is 1821 lines and the second-highest outgoing-coupling module in the project. It is the
@@ -10842,8 +10842,8 @@ out_of_scope = ["Changing AgentRegistry's production behaviour (it is intentiona
 files_to_modify = ["test/harness/lander/resolver_test.exs", "lib/harness/agent_registry.ex"]
 touches = ["test/harness/", "lib/harness/agent_registry.ex", "test/support/"]
 domains = ["otp"]
-assignee = "cursor"
-model = "composer-2.5"
+assignee = "grok"
+model = "grok-4.5"
 body = """
 Surfaced by the 2026-07-12 project health audit (test-audit.md #1) — observed LIVE this run:
 `test/harness/lander/resolver_test.exs:51` failed on first attempt with `available: []`
@@ -10990,8 +10990,8 @@ markers = ["parallel"]
 acceptance_criteria = ["Harness.AgentAdapter.Kimi implements capabilities/0, rule_channel/0, and build_command/1; defaults from `use Harness.AgentAdapter` cover the rest; the shared Harness.AgentAdapter.ConformanceCase passes unchanged", "build_command/1 assembles the headless invocation verified against the installed CLI (kimi 0.26.0) and https://moonshotai.github.io/kimi-code/ — prompt mode (-p/--prompt takes the prompt as an option argument, not positional), --output-format stream-json, model_args via -m, unattended permission mode via --yolo; unsupported permission modes and session tokens error rather than silently fall back", ":kimi joins every roster surface: Harness.Roadmap @valid_agents, AgentRegistry @delegatable_agents + name map + agent type, Config @implementer_agents, AgentAdapter.Registry lookup map, and the dashboard agent-settings roster", "model_availability probes kimi's model catalog with a non-interactive command verified against the live CLI (authority: kimi --help / docs; kimi provider list exists — the implementer pins the actual model-listing surface), or documents loudly why kimi is not probeable", "Transcript parser maps :kimi to a parser (reuse an existing stream-json/NDJSON parser or passthrough — implementer judges from real captured output of one live kimi -p run; a live invocation is required evidence, not just docs)", "CLAUDE.md § Agent Headless Entry Points gains a kimi row; skills/harness-driver/SKILL.md and priv/includes/harness-workflow.md adapter rosters updated; scripts/sync-harness-skills.sh run", "Unit tests cover build_command permutations (model pin, resume, permission mode, env threading, rules injection)"]
 out_of_scope = ["The rmap-side --to kimi render target (rmap repo task 53 — must land and the installed rmap binary be rebuilt before a kimi-assigned task can dispatch, since harness shells out to rmap delegate)", "Operator auth (kimi login device-code flow is a one-time host step, not code)", "Promoting kimi into the cross-family reviewer trust defaults (operator decision after dispatch data exists)", "Parsing kimi's event stream beyond the transcript-parser mapping (raw passthrough stays the contract)"]
 touches = ["lib/harness/agent_adapter/kimi.ex", "test/harness/agent_adapter/kimi_test.exs", "test/harness/agent_adapter/kimi_conformance_test.exs", "lib/harness/roadmap.ex", "lib/harness/agent_registry.ex", "lib/harness/config.ex", "lib/harness/agent_adapter/registry.ex", "lib/harness/model_availability.ex", "lib/harness/dashboard/transcript/parser.ex", "CLAUDE.md", "skills/harness-driver/SKILL.md", "priv/includes/harness-workflow.md"]
-assignee = "cursor"
-model = "composer-2.5"
+assignee = "codex"
+model = "gpt-5.5"
 body = """
 Add a Harness.AgentAdapter for Kimi Code (Moonshot's coding CLI, installed at
 ~/.kimi-code/bin/kimi, v0.26.0, docs https://moonshotai.github.io/kimi-code/).
