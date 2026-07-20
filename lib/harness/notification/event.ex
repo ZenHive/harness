@@ -31,6 +31,7 @@ defmodule Harness.Notification.Event do
           | :dispatch_parked
           | :model_unavailable
           | :settled
+          | :persist_failed
 
   @typedoc """
   The raw outcome payload, keyed by `type`:
@@ -47,6 +48,9 @@ defmodule Harness.Notification.Event do
       (`%{agent, model, available}`).
     * `:settled` — the compact settle map from `Harness.Dispatch.summarize_result/1`
       for a terminal run (`:done` / `:failed`).
+    * `:persist_failed` — settle-time `run_records` insert failed; outcome is a map
+      with `reason`, optional `spilled_path`, and optional `pending_migrations`
+      labels (Task 370 — schema/DB drift must not be silent).
   """
   @type outcome :: String.t() | map()
 
@@ -114,6 +118,10 @@ defmodule Harness.Notification.Event do
         outcome: %{state: state, reason: reason} = outcome
       }), do: "settled run #{run_id} task #{id}: #{state}/#{settle_reason_label(reason)}#{review_warning_suffix(outcome)}"
 
+  def summary(%__MODULE__{type: :persist_failed, run_id: run_id, task_id: id, outcome: outcome}) do
+    "persist failed for run #{run_id || "unknown"} task #{id}: #{persist_failed_detail(outcome)}"
+  end
+
   @spec settle_reason_label(atom() | tuple()) :: String.t()
   defp settle_reason_label({tag, _rest}), do: Atom.to_string(tag)
   defp settle_reason_label(reason) when is_atom(reason), do: Atom.to_string(reason)
@@ -121,4 +129,41 @@ defmodule Harness.Notification.Event do
   @spec review_warning_suffix(map()) :: String.t()
   defp review_warning_suffix(%{review_warning: true}), do: " REVIEW-WARNING"
   defp review_warning_suffix(_outcome), do: ""
+
+  @spec persist_failed_detail(map() | term()) :: String.t()
+  defp persist_failed_detail(%{} = outcome) do
+    parts =
+      [
+        Map.get(outcome, :reason) || Map.get(outcome, "reason"),
+        spill_part(outcome),
+        pending_part(outcome)
+      ]
+      |> Enum.reject(&is_nil/1)
+
+    case parts do
+      [] -> "spilled for replay"
+      list -> Enum.join(list, "; ")
+    end
+  end
+
+  defp persist_failed_detail(other), do: inspect(other)
+
+  @spec spill_part(map()) :: String.t() | nil
+  defp spill_part(outcome) do
+    case Map.get(outcome, :spilled_path) || Map.get(outcome, "spilled_path") do
+      path when is_binary(path) and path != "" -> "spilled to #{path}"
+      _absent -> nil
+    end
+  end
+
+  @spec pending_part(map()) :: String.t() | nil
+  defp pending_part(outcome) do
+    case Map.get(outcome, :pending_migrations) || Map.get(outcome, "pending_migrations") do
+      labels when is_list(labels) and labels != [] ->
+        "pending migrations: " <> Enum.join(labels, ", ")
+
+      _absent ->
+        nil
+    end
+  end
 end

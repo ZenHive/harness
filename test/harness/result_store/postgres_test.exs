@@ -15,10 +15,12 @@ defmodule Harness.ResultStore.PostgresTest do
 
   alias Ecto.Adapters.SQL
   alias Harness.ResultStore
+  alias Harness.ResultStore.DeadLetter
   alias Harness.ResultStore.Postgres, as: Store
   alias Harness.ResultStoreContract
 
   @moduletag :integration
+  @moduletag :tmp_dir
 
   defmodule RaisingRepo do
     @moduledoc false
@@ -29,13 +31,21 @@ defmodule Harness.ResultStore.PostgresTest do
     def insert(_changeset, _opts), do: raise(DBConnection.ConnectionError, "simulated connection loss")
   end
 
-  setup do
+  setup %{tmp_dir: tmp_dir} do
     # Point the facade at the Postgres backend with our test Repo for this test.
     # (test env forces Memory + repo_enabled false by default.)
     prev = Application.get_env(:harness, :result_store)
+    prev_dl = Application.get_env(:harness, :result_store_dead_letter)
     Application.put_env(:harness, :result_store, {Store, repo: Harness.Repo})
+    Application.put_env(:harness, :result_store_dead_letter, root: Path.join(tmp_dir, "dead_letter"))
 
-    on_exit(fn -> Application.put_env(:harness, :result_store, prev) end)
+    on_exit(fn ->
+      Application.put_env(:harness, :result_store, prev)
+
+      if prev_dl,
+        do: Application.put_env(:harness, :result_store_dead_letter, prev_dl),
+        else: Application.delete_env(:harness, :result_store_dead_letter)
+    end)
 
     :ok
   end
@@ -76,6 +86,62 @@ defmodule Harness.ResultStore.PostgresTest do
       br = %Harness.Batch.Result{batch_id: "bad-b", total: 0, max_concurrency: 1, results: []}
 
       assert {:error, _} = ResultStore.save_batch(br, bad_store)
+    end
+  end
+
+  describe "schema drift — undefined_column spill and replay (Task 370)" do
+    setup do
+      %{store: {Store, repo: Repo}}
+    end
+
+    test "pins observed undefined_column semantics against a drifted test schema", %{store: store} do
+      # Reproduce the 2026-07-20 class: code references a column the table lacks.
+      # Sandbox rolls the DROP back at test end.
+      SQL.query!(Repo, "ALTER TABLE run_records DROP COLUMN review_proposed_tasks", [])
+
+      err =
+        assert_raise Postgrex.Error, fn ->
+          SQL.query!(Repo, "SELECT review_proposed_tasks FROM run_records LIMIT 0", [])
+        end
+
+      assert err.postgres.code == :undefined_column
+      assert err.postgres.pg_code == "42703"
+
+      record =
+        ResultStoreContract.log_record(
+          run_id: "run-drift-undefined-col",
+          task_id: "370",
+          verdict: :approve,
+          review_proposed_tasks: [%{"title" => "follow-up"}]
+        )
+
+      # Backend surfaces the exact Postgrex code (no raise out of record_run).
+      assert {:error, %Postgrex.Error{postgres: %{code: :undefined_column, pg_code: "42703"}}} =
+               Store.record_run(record, repo: Repo)
+
+      # Facade spills + logs loudly (operator surface).
+      log =
+        capture_log(fn ->
+          assert {:error, %Postgrex.Error{postgres: %{code: :undefined_column}}} =
+                   ResultStore.record_run(record, store)
+        end)
+
+      assert log =~ "FAILED to persist run record run-drift-undefined-col"
+      assert DeadLetter.exists?("run-drift-undefined-col")
+
+      # Restore the column (schema fixed) and replay — record must recover.
+      SQL.query!(Repo, "ALTER TABLE run_records ADD COLUMN review_proposed_tasks jsonb", [])
+
+      assert {:ok, %{replayed: 1, remaining: 0}} = ResultStore.replay_spilled(store)
+      refute DeadLetter.exists?("run-drift-undefined-col")
+
+      assert {:ok, [%{run_id: "run-drift-undefined-col", verdict: :approve}]} =
+               ResultStore.list_run_records(store, run_id: "run-drift-undefined-col")
+    end
+
+    test "mark_landed on a missing row returns not_found without raising", %{store: store} do
+      assert {:error, :run_record_not_found} =
+               ResultStore.mark_landed("never-inserted-run", "abc123", store)
     end
   end
 

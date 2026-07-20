@@ -71,17 +71,19 @@ defmodule Harness.ResultStore.Memory do
   end
 
   @impl Harness.ResultStore
-  @spec mark_landed(String.t(), String.t(), keyword()) :: :ok
+  @spec mark_landed(String.t(), String.t(), keyword()) :: :ok | {:error, :run_record_not_found}
   def mark_landed(run_id, sha, opts) when is_binary(run_id) and is_binary(sha) and is_list(opts) do
-    update(opts, fn state ->
-      runs =
-        case Map.fetch(state.runs, run_id) do
-          {:ok, record_with_seq} -> Map.put(state.runs, run_id, mark_record_landed(record_with_seq, sha))
-          :error -> state.runs
-        end
+    case Map.fetch(read(opts).runs, run_id) do
+      {:ok, _record_with_seq} ->
+        update(opts, fn state ->
+          runs = Map.update!(state.runs, run_id, &mark_record_landed(&1, sha))
+          %{state | runs: runs}
+        end)
 
-      %{state | runs: runs}
-    end)
+      :error ->
+        # Mirror Postgres: missing row is not a silent success (Task 370).
+        {:error, :run_record_not_found}
+    end
   end
 
   @impl Harness.ResultStore

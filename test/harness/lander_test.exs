@@ -67,6 +67,54 @@ defmodule Harness.LanderTest.FlakyStore do
   defp fetch_agent!(opts), do: Keyword.fetch!(opts, :agent)
 end
 
+defmodule Harness.LanderTest.MissingRecordStore do
+  @moduledoc false
+  # Simulates the Task 370 incident class: settle insert never persisted, so every
+  # mark_landed / list for the run is not_found — the lander must still land.
+
+  @behaviour Harness.ResultStore
+
+  alias Harness.AgentKPI
+  alias Harness.Batch.Result, as: BatchResult
+  alias Harness.Run.LogRecord
+
+  @impl Harness.ResultStore
+  @spec record_run(LogRecord.t(), keyword()) :: :ok
+  def record_run(%LogRecord{}, _opts), do: :ok
+
+  @impl Harness.ResultStore
+  @spec save_batch(BatchResult.t(), keyword()) :: :ok
+  def save_batch(%BatchResult{}, _opts), do: :ok
+
+  @impl Harness.ResultStore
+  @spec load_batch(String.t(), keyword()) :: {:error, :not_found}
+  def load_batch(_batch_id, _opts), do: {:error, :not_found}
+
+  @impl Harness.ResultStore
+  @spec list_run_records(Harness.ResultStore.filters(), keyword()) :: {:ok, []}
+  def list_run_records(_filters, _opts), do: {:ok, []}
+
+  @impl Harness.ResultStore
+  @spec delete_run(String.t(), keyword()) :: :ok
+  def delete_run(_run_id, _opts), do: :ok
+
+  @impl Harness.ResultStore
+  @spec mark_landed(String.t(), String.t(), keyword()) :: {:error, :run_record_not_found}
+  def mark_landed(_run_id, _sha, _opts), do: {:error, :run_record_not_found}
+
+  @impl Harness.ResultStore
+  @spec aggregate_by_agent(keyword(), keyword()) :: {:ok, AgentKPI.t()}
+  def aggregate_by_agent(_query_opts, _opts), do: {:ok, %{}}
+
+  @impl Harness.ResultStore
+  @spec aggregate_reviewer_reliability(keyword(), keyword()) :: {:ok, AgentKPI.reviewer_ledger()}
+  def aggregate_reviewer_reliability(_query_opts, _opts), do: {:ok, %{}}
+
+  @impl Harness.ResultStore
+  @spec aggregate_by_facet(keyword(), keyword()) :: {:ok, [Harness.ResultStore.facet_group()]}
+  def aggregate_by_facet(_query_opts, _opts), do: {:ok, []}
+end
+
 defmodule Harness.LanderTest do
   # async: false because tests mutate app env seams and global notification sinks.
   use ExUnit.Case, async: false
@@ -82,6 +130,7 @@ defmodule Harness.LanderTest do
   alias Harness.Lander
   alias Harness.Lander.Worker, as: LanderWorker
   alias Harness.LanderTest.FlakyStore
+  alias Harness.LanderTest.MissingRecordStore
   alias Harness.Notification.Event
   alias Harness.Project
   alias Harness.ProjectRegistry
@@ -222,6 +271,21 @@ defmodule Harness.LanderTest do
       assert FlakyStore.mark_count(agent) == 2
       assert {:ok, [record]} = ResultStore.list_run_records(run_id: "run-x")
       assert record.landed_sha == landed
+    end
+
+    test "lander landed_sha writeback failure does not crash the landing (Task 370)", ctx do
+      # Settle insert never landed in the store (missing run row) — the same class
+      # as schema-drift drop of the settle insert. Land must still succeed.
+      Application.put_env(:harness, :result_store, MissingRecordStore)
+
+      log =
+        capture_log(fn ->
+          assert {:landed, landed} = Lander.land(ctx.request)
+          assert landed == ctx.branch_tip
+        end)
+
+      assert log =~ "landed_sha writeback failed" or log =~ "mark_landed failed"
+      assert sha(ctx.origin, "refs/heads/main") == ctx.branch_tip
     end
 
     test "broadcasts started + settled(:landed) on the dashboard ops feed (task 243)", ctx do

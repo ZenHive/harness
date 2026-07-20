@@ -56,6 +56,26 @@ defmodule Harness.Notification.EventTest do
     end
   end
 
+  describe "summary/1 — persist_failed (Task 370)" do
+    test "names the run, spill path, and pending migrations" do
+      event = %Event{
+        type: :persist_failed,
+        task_id: "370",
+        run_id: "run-1784509159980-54c2a6b7",
+        outcome: %{
+          reason: "postgrex undefined_column: column \"review_proposed_tasks\" does not exist",
+          spilled_path: "/tmp/dead_letter/run-1784509159980-54c2a6b7.etf",
+          pending_migrations: ["20260720120000 add_review_proposed_tasks_to_run_records"]
+        }
+      }
+
+      summary = Event.summary(event)
+      assert summary =~ "persist failed for run run-1784509159980-54c2a6b7 task 370"
+      assert summary =~ "spilled to /tmp/dead_letter/run-1784509159980-54c2a6b7.etf"
+      assert summary =~ "pending migrations: 20260720120000 add_review_proposed_tasks_to_run_records"
+    end
+  end
+
   describe "summary/1 — settled" do
     test "names the run, task, terminal state, and settle reason" do
       event = %Event{

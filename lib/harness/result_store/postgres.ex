@@ -315,13 +315,16 @@ defmodule Harness.ResultStore.Postgres do
     now = NaiveDateTime.utc_now(:microsecond)
 
     try do
-      {_count, _result} =
+      {count, _result} =
         repo.update_all(
           from(r in RunRecordSchema, where: r.run_id == ^run_id),
           set: [landed_sha: sha, updated_at: now]
         )
 
-      :ok
+      # Zero rows means the settle insert never landed (or was spilled). Surface
+      # not_found so the facade can patch the dead-letter and the lander can log
+      # without treating a silent no-op as success (Task 370).
+      if count == 0, do: {:error, :run_record_not_found}, else: :ok
     rescue
       e in @persistence_errors -> {:error, e}
     end

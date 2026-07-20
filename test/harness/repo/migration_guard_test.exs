@@ -1,7 +1,7 @@
 defmodule Harness.Repo.MigrationGuardTest do
   @moduledoc """
-  Unit tests for the fail-fast pending-migration check. `check!/1` takes the
-  `Ecto.Migrator.migrations/1` status list directly, so these need no DB.
+  Unit tests for the fail-fast pending-migration check. `check!/1` / `pending_from/1`
+  take the `Ecto.Migrator.migrations/1` status list directly, so these need no DB.
   """
   use ExUnit.Case, async: true
 
@@ -44,6 +44,26 @@ defmodule Harness.Repo.MigrationGuardTest do
       assert error.message =~ "20260611120000 add_warm_paths_to_projects"
       assert error.message =~ "20260612000000 add_something_else"
       assert error.message =~ "mix ecto.migrate"
+    end
+  end
+
+  describe "pending_from/1 (Task 370 soft listing)" do
+    test "returns only :down entries as {version, name}" do
+      migrations = [
+        {:up, 20_260_602_141_000, "add_projects"},
+        {:down, 20_260_720_120_000, "add_review_proposed_tasks_to_run_records"},
+        {:down, 20_260_721_000_000, "another"}
+      ]
+
+      assert MigrationGuard.pending_from(migrations) == [
+               {20_260_720_120_000, "add_review_proposed_tasks_to_run_records"},
+               {20_260_721_000_000, "another"}
+             ]
+    end
+
+    test "returns [] when every migration is applied" do
+      assert MigrationGuard.pending_from([{:up, 1, "a"}]) == []
+      assert MigrationGuard.pending_from([]) == []
     end
   end
 end

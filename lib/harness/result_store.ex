@@ -12,10 +12,18 @@ defmodule Harness.ResultStore do
   `record_run/2` and `save_batch/2` on the configured store at settle time,
   log any `{:error, _}` via `Logger.warning/1`, and continue. Neither a
   failed `record_run` nor a failed `save_batch` crashes the run or flips
-  `Harness.Batch.run/4`'s `{:ok, result}` to `{:error, _}`. Treat a missing
-  record as a degraded observability surface, not a missing verdict —
-  verdicts come from the reviewer AI's `.harness/review.json` artifact
-  (`Harness.Run.Review`), not the store.
+  `Harness.Batch.run/4`'s `{:ok, result}` to `{:error, _}`. Verdicts come from
+  the reviewer AI's `.harness/review.json` artifact (`Harness.Run.Review`), not
+  the store.
+
+  **No silent single-shot loss (Task 370).** When a settle-time `record_run`
+  fails (schema/DB drift such as Postgrex `undefined_column` from a pending
+  migration after hot reload is the motivating class), the full `%LogRecord{}`
+  is spilled to `Harness.ResultStore.DeadLetter`, a loud
+  `:persist_failed` notification names any unapplied migrations, and
+  `replay_spilled/1` re-inserts automatically once the insert path works again
+  (opportunistically after a successful write, and once at boot after
+  `MigrationGuard` passes). Best-effort policy stays; silent loss does not.
 
   Set `config :harness, :result_store, false` (or `nil`) to disable
   persistence entirely; both values short-circuit `record_run`, `save_batch`,
@@ -28,7 +36,11 @@ defmodule Harness.ResultStore do
   alias Harness.AgentKPI
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.Git
+  alias Harness.Notification
+  alias Harness.Notification.Event, as: NotificationEvent
   alias Harness.Project
+  alias Harness.Repo.MigrationGuard
+  alias Harness.ResultStore.DeadLetter
   alias Harness.Run.LogRecord
 
   require Logger
@@ -119,7 +131,15 @@ defmodule Harness.ResultStore do
   def record_run(%LogRecord{}, nil), do: :ok
 
   def record_run(%LogRecord{} = record, store) do
-    dispatch(store, :record_run, [record])
+    case dispatch(store, :record_run, [record]) do
+      :ok ->
+        _ = replay_spilled(store)
+        :ok
+
+      {:error, reason} = error ->
+        handle_record_run_failure(record, reason)
+        error
+    end
   end
 
   api(:save_batch, "Persist the aggregate result for a finished batch. Best-effort.",
@@ -238,7 +258,53 @@ defmodule Harness.ResultStore do
   def mark_landed(run_id, sha, nil) when is_binary(run_id) and is_binary(sha), do: :ok
 
   def mark_landed(run_id, sha, store) when is_binary(run_id) and is_binary(sha) do
-    dispatch(store, :mark_landed, [run_id, sha])
+    case dispatch(store, :mark_landed, [run_id, sha]) do
+      :ok ->
+        :ok
+
+      {:error, reason} = error ->
+        # If the settle insert was spilled, keep the lander's SHA on the spill so
+        # a later replay restores the full landed witness — never crash the land.
+        _ = DeadLetter.patch_landed_sha(run_id, sha)
+        Logger.warning("harness result store: mark_landed failed for run #{run_id}: #{inspect(reason)}")
+        error
+    end
+  end
+
+  @doc """
+  Replays every spilled settle-time run record against `store`.
+
+  Called opportunistically after a successful `record_run/2` and once at boot
+  after `MigrationGuard` passes. A still-failing insert leaves the spill in place
+  and does **not** re-fire the loud persist-failed notification (operator already
+  heard it). Returns `{:ok, %{replayed: n, remaining: m}}`.
+  """
+  @spec replay_spilled(store()) :: {:ok, %{replayed: non_neg_integer(), remaining: non_neg_integer()}}
+  def replay_spilled(store \\ configured())
+
+  def replay_spilled(store) when store in [false, nil] do
+    {:ok, %{replayed: 0, remaining: length(DeadLetter.list())}}
+  end
+
+  def replay_spilled(store) do
+    {replayed, remaining} =
+      Enum.reduce(DeadLetter.list(), {0, 0}, fn entry, {ok_count, fail_count} ->
+        case dispatch(store, :record_run, [entry.record]) do
+          :ok ->
+            DeadLetter.delete(entry.run_id)
+            Logger.info("harness result store: replayed spilled run record #{entry.run_id}")
+            {ok_count + 1, fail_count}
+
+          {:error, reason} ->
+            Logger.debug(
+              "harness result store: spill replay still failing for #{entry.run_id}: #{inspect(reason)}"
+            )
+
+            {ok_count, fail_count + 1}
+        end
+      end)
+
+    {:ok, %{replayed: replayed, remaining: remaining}}
   end
 
   @doc false
@@ -525,6 +591,67 @@ defmodule Harness.ResultStore do
         error
     end
   end
+
+  @spec handle_record_run_failure(LogRecord.t(), term()) :: :ok
+  defp handle_record_run_failure(%LogRecord{} = record, reason) do
+    pending = MigrationGuard.pending()
+    pending_labels = Enum.map(pending, fn {version, name} -> "#{version} #{name}" end)
+
+    case DeadLetter.spill(record, reason, pending_migrations: pending) do
+      {:ok, entry} ->
+        Logger.error(
+          "harness result store: FAILED to persist run record #{record.run_id} " <>
+            "(spilled to #{entry.path}" <>
+            pending_suffix(pending_labels) <>
+            "): #{inspect(reason)}"
+        )
+
+        notify_persist_failed(record, reason, entry.path, pending_labels)
+
+      {:error, spill_reason} ->
+        Logger.error(
+          "harness result store: FAILED to persist run record #{record.run_id} " <>
+            "AND dead-letter spill failed (#{inspect(spill_reason)}): #{inspect(reason)}" <>
+            pending_suffix(pending_labels)
+        )
+
+        notify_persist_failed(record, reason, nil, pending_labels)
+    end
+  end
+
+  @spec pending_suffix([String.t()]) :: String.t()
+  defp pending_suffix([]), do: ""
+  defp pending_suffix(labels), do: "; pending migrations: " <> Enum.join(labels, ", ")
+
+  @spec notify_persist_failed(LogRecord.t(), term(), String.t() | nil, [String.t()]) :: :ok
+  defp notify_persist_failed(%LogRecord{} = record, reason, spilled_path, pending_labels) do
+    Notification.notify(%NotificationEvent{
+      type: :persist_failed,
+      task_id: task_id_string(record.task_id),
+      run_id: record.run_id,
+      project: record.project_name,
+      outcome: %{
+        reason: reason_label(reason),
+        spilled_path: spilled_path,
+        pending_migrations: pending_labels
+      }
+    })
+  end
+
+  @spec task_id_string(term()) :: String.t()
+  defp task_id_string(nil), do: "unknown"
+  defp task_id_string(id) when is_binary(id), do: id
+  defp task_id_string(id), do: to_string(id)
+
+  @spec reason_label(term()) :: String.t()
+  defp reason_label(%Postgrex.Error{postgres: %{code: code}} = error) when not is_nil(code) do
+    "postgrex #{code}: #{Exception.message(error)}"
+  end
+
+  defp reason_label(%{__exception__: true} = error), do: Exception.message(error)
+  defp reason_label(reason) when is_atom(reason), do: Atom.to_string(reason)
+  defp reason_label(reason) when is_binary(reason), do: reason
+  defp reason_label(reason), do: inspect(reason)
 
   @spec dispatch(module() | {module(), keyword()}, atom(), [term()]) :: term()
   defp dispatch({module, opts}, function, args) when is_atom(module) and is_list(opts) do
