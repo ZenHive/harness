@@ -11018,6 +11018,7 @@ acceptance_criteria = ["review.json schema gains an optional proposed_tasks arra
 out_of_scope = ["Harness auto-filing proposals into any roadmap (judgment about filing stays with the orchestrator AI, per the mantra)", "Changing how the lander advances the dispatched task's own status (done --shipped-in stays)", "CHANGELOG generation from verdicts (separate concern; exclusion alone is in scope)"]
 assignee = "codex"
 model = "gpt-5.6-terra"
+touches = ["lib/harness/run/review.ex", "lib/harness/run/result.ex", "lib/harness/run.ex", "lib/harness/artifact.ex", "lib/harness/agent_rules.ex", "lib/harness/dispatch.ex", "skills/harness-driver/SKILL.md", "priv/includes/harness-workflow.md"]
 body = """
 Observed in ccxt_client dispatch (2026-07-19): reviewers file discovery tasks by
 editing roadmap/tasks.toml inside their run worktree. The worktree forks from an
@@ -11050,6 +11051,7 @@ acceptance_criteria = ["A dispatch surface (dispatch-bundle option or new tool) 
 out_of_scope = ["Automatic selection of which tasks to coalesce (the orchestrator picks; harness executes)", "Partial landing of a subset of coalesced tasks (unit semantics for v1)"]
 assignee = "codex"
 model = "gpt-5.6-terra"
+touches = ["lib/harness/dispatch.ex", "lib/harness/dispatch/write_set_plan.ex", "lib/harness/run.ex", "lib/harness/roadmap.ex", "lib/harness/lander.ex", "skills/harness-driver/SKILL.md", "priv/includes/harness-workflow.md"]
 body = """
 Pipeline fixed costs (worktree fork, deps bootstrap, cold checks, reviewer boot)
 are ~20-40 min per run regardless of task size, so a D3 task pays the same
@@ -11075,6 +11077,7 @@ acceptance_criteria = ["When the landing rebase conflicts ONLY in roadmap/tasks.
 out_of_scope = ["Semantic dedupe/merge of the added tasks against the target roadmap (orchestrator judgment)", "Conflicts in files other than the roadmap render set"]
 assignee = "codex"
 model = "gpt-5.6-terra"
+touches = ["lib/harness/lander.ex", "lib/harness/lander/resolver.ex", "test/harness/lander_test.exs"]
 body = """
 Sequential integer task ids plus parallel worktrees make additive tasks.toml
 collisions structural: two runs filing discoveries both claim the next id, the

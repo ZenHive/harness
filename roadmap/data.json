@@ -16619,6 +16619,16 @@
         "Changing how the lander advances the dispatched task's own status (done --shipped-in stays)",
         "CHANGELOG generation from verdicts (separate concern; exclusion alone is in scope)"
       ],
+      "touches": [
+        "lib/harness/run/review.ex",
+        "lib/harness/run/result.ex",
+        "lib/harness/run.ex",
+        "lib/harness/artifact.ex",
+        "lib/harness/agent_rules.ex",
+        "lib/harness/dispatch.ex",
+        "skills/harness-driver/SKILL.md",
+        "priv/includes/harness-workflow.md"
+      ],
       "body": "Observed in ccxt_client dispatch (2026-07-19): reviewers file discovery tasks by\nediting roadmap/tasks.toml inside their run worktree. The worktree forks from an\nolder base, so the reviewer assigns the next task id of ITS fork while origin has\nmoved on — producing id collisions that block the lander (task 433 land blocked:\nits reviewer filed id 437, already taken on origin), orphaned data.json-only\nrenders, and singleton tasks that never pass the one-session=one-task merge gate\nbecause the reviewer cannot see the live pending set. Roadmap and CHANGELOG files\nare also a universal write-set overlap that defeats write-set-disjoint parallel\ndispatch: every run touches them, so \"disjoint\" waves still conflict at landing.\n\nFix the channel, not the judgment: the reviewer keeps proposing tasks (that\njudgment is valuable), but as structured data in the verdict artifact instead of\nroadmap commits. Harness mechanically carries the proposals through Result and\nthe persisted record; the driving orchestrator files them centrally after the\nland, where it can dedupe, merge, and gate them against the real roadmap state.\n",
       "created_at": "2026-07-19",
       "scored_at": "2026-07-19",
@@ -16655,6 +16665,15 @@
         "Automatic selection of which tasks to coalesce (the orchestrator picks; harness executes)",
         "Partial landing of a subset of coalesced tasks (unit semantics for v1)"
       ],
+      "touches": [
+        "lib/harness/dispatch.ex",
+        "lib/harness/dispatch/write_set_plan.ex",
+        "lib/harness/run.ex",
+        "lib/harness/roadmap.ex",
+        "lib/harness/lander.ex",
+        "skills/harness-driver/SKILL.md",
+        "priv/includes/harness-workflow.md"
+      ],
       "body": "Pipeline fixed costs (worktree fork, deps bootstrap, cold checks, reviewer boot)\nare ~20-40 min per run regardless of task size, so a D3 task pays the same\noverhead as a D7 one. Observed in ccxt_client 2026-07-19: several sub-hour tasks\neach consumed a full run's fixed costs; the operator called for bundling. The\none-session=one-task rule catches this at filing time when one author sees both\ntasks, but reviewer/sweep discoveries arrive as separate valid tasks whose merge\nwindow has passed. Give the orchestrator a dispatch-time coalesce primitive: one\nimplementer session lands N small related tasks under one review, matching what a\nhuman session would naturally do.\n",
       "created_at": "2026-07-19",
       "scored_at": "2026-07-19",
@@ -16687,6 +16706,11 @@
       "out_of_scope": [
         "Semantic dedupe/merge of the added tasks against the target roadmap (orchestrator judgment)",
         "Conflicts in files other than the roadmap render set"
+      ],
+      "touches": [
+        "lib/harness/lander.ex",
+        "lib/harness/lander/resolver.ex",
+        "test/harness/lander_test.exs"
       ],
       "body": "Sequential integer task ids plus parallel worktrees make additive tasks.toml\ncollisions structural: two runs filing discoveries both claim the next id, the\nsecond one to land conflicts, and today the lander retains the branch and blocks\nthe task - a purely mechanical repair (renumber the additive block, re-render,\npush) that currently costs an operator/orchestrator session (observed ccxt_client\ntask 433, 2026-07-19: reviewer filed id 437, origin had taken it; hand repair\ntook cherry-pick + renumber + reland). Renumbering additive blocks is counting,\nnot judgment, so it belongs in the lander per the mantra.\n\nNote: the reviewer-proposals task (same date, agent-gate bundle) removes the\nMAIN source of these conflicts by taking reviewers out of tasks.toml entirely;\nthis fallback covers the residual class (operator or parallel-session filings\nracing a land). If that task lands first and the residual rate is ~zero, honor\nan honest re-score downward instead of building on momentum.\n",
       "created_at": "2026-07-19",
