@@ -11,6 +11,9 @@ defmodule Harness.ResultStore.PostgresTest do
   # async: false because DataCase uses SQL Sandbox shared mode and :result_store env.
   use Harness.DataCase, async: false
 
+  import ExUnit.CaptureLog
+
+  alias Ecto.Adapters.SQL
   alias Harness.ResultStore
   alias Harness.ResultStore.Postgres, as: Store
   alias Harness.ResultStoreContract
@@ -103,6 +106,61 @@ defmodule Harness.ResultStore.PostgresTest do
 
       assert {:ok, [%{run_id: "pg-survives-reload"}]} =
                ResultStore.list_run_records({Store, repo: Repo}, run_id: "pg-survives-reload")
+    end
+  end
+
+  describe "tolerant row decode (Task 365)" do
+    test "a real jsonb row referencing an unknown atom is skipped, healthy siblings still return" do
+      project = "tolerant-decode-#{System.unique_integer([:positive])}"
+      unknown_key = "unknown_atom_key_#{System.unique_integer([:positive])}"
+
+      # Guard the premise: the key must genuinely not be a loaded atom, otherwise
+      # the decode would succeed and the test would pass for the wrong reason.
+      assert_raise ArgumentError, fn -> String.to_existing_atom(unknown_key) end
+
+      store = {Store, repo: Repo}
+
+      for run_id <- ["healthy-1", "poisoned", "healthy-2"] do
+        assert :ok =
+                 ResultStore.record_run(
+                   ResultStoreContract.log_record(run_id: run_id, project_name: project),
+                   store
+                 )
+      end
+
+      # Simulate a row persisted by an older/other BEAM: its jsonb reason carries a
+      # key whose atom is not loaded here, so decode_map_key/1 raises ArgumentError.
+      SQL.query!(
+        Repo,
+        "UPDATE run_records SET reason = jsonb_build_object($1::text, 'value') WHERE run_id = $2",
+        [unknown_key, "poisoned"]
+      )
+
+      log =
+        capture_log([level: :debug], fn ->
+          assert {:ok, records} = ResultStore.list_run_records(store, project_name: project)
+
+          assert records |> Enum.map(& &1.run_id) |> Enum.sort() == ["healthy-1", "healthy-2"]
+        end)
+
+      assert log =~ "skipped 1 undecodable run_records row(s) during list_run_records scan"
+    end
+
+    test "a point lookup of the undecodable row degrades to an empty list, never an error tuple" do
+      unknown_key = "unknown_atom_key_#{System.unique_integer([:positive])}"
+      assert_raise ArgumentError, fn -> String.to_existing_atom(unknown_key) end
+
+      store = {Store, repo: Repo}
+
+      assert :ok = ResultStore.record_run(ResultStoreContract.log_record(run_id: "poisoned-solo"), store)
+
+      SQL.query!(
+        Repo,
+        "UPDATE run_records SET reason = jsonb_build_object($1::text, 'value') WHERE run_id = $2",
+        [unknown_key, "poisoned-solo"]
+      )
+
+      assert {:ok, []} = ResultStore.list_run_records(store, run_id: "poisoned-solo")
     end
   end
 
