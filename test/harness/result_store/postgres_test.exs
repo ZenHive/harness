@@ -14,6 +14,7 @@ defmodule Harness.ResultStore.PostgresTest do
   import ExUnit.CaptureLog
 
   alias Ecto.Adapters.SQL
+  alias Harness.Repo.MigrationGuard
   alias Harness.ResultStore
   alias Harness.ResultStore.DeadLetter
   alias Harness.ResultStore.Postgres, as: Store
@@ -21,6 +22,8 @@ defmodule Harness.ResultStore.PostgresTest do
 
   @moduletag :integration
   @moduletag :tmp_dir
+
+  @review_proposed_tasks_migration 20_260_720_120_000
 
   defmodule RaisingRepo do
     @moduledoc false
@@ -36,8 +39,10 @@ defmodule Harness.ResultStore.PostgresTest do
     # (test env forces Memory + repo_enabled false by default.)
     prev = Application.get_env(:harness, :result_store)
     prev_dl = Application.get_env(:harness, :result_store_dead_letter)
+    prev_repo_enabled = Application.get_env(:harness, :repo_enabled)
     Application.put_env(:harness, :result_store, {Store, repo: Harness.Repo})
     Application.put_env(:harness, :result_store_dead_letter, root: Path.join(tmp_dir, "dead_letter"))
+    Application.put_env(:harness, :repo_enabled, true)
 
     on_exit(fn ->
       Application.put_env(:harness, :result_store, prev)
@@ -45,6 +50,10 @@ defmodule Harness.ResultStore.PostgresTest do
       if prev_dl,
         do: Application.put_env(:harness, :result_store_dead_letter, prev_dl),
         else: Application.delete_env(:harness, :result_store_dead_letter)
+
+      if is_nil(prev_repo_enabled),
+        do: Application.delete_env(:harness, :repo_enabled),
+        else: Application.put_env(:harness, :repo_enabled, prev_repo_enabled)
     end)
 
     :ok
@@ -92,6 +101,10 @@ defmodule Harness.ResultStore.PostgresTest do
   describe "schema drift — undefined_column spill and replay (Task 370)" do
     setup do
       %{store: {Store, repo: Repo}}
+    end
+
+    test "boot migration guard accepts the fully migrated schema" do
+      assert :ignore = MigrationGuard.start_link()
     end
 
     test "pins observed undefined_column semantics against a drifted test schema", %{store: store} do
@@ -142,6 +155,14 @@ defmodule Harness.ResultStore.PostgresTest do
     test "mark_landed on a missing row returns not_found without raising", %{store: store} do
       assert {:error, :run_record_not_found} =
                ResultStore.mark_landed("never-inserted-run", "abc123", store)
+    end
+
+    test "pending migration warning names an unapplied migration" do
+      SQL.query!(Repo, "DELETE FROM schema_migrations WHERE version = $1", [@review_proposed_tasks_migration])
+
+      assert {@review_proposed_tasks_migration, "add_review_proposed_tasks_to_run_records"} in MigrationGuard.pending()
+
+      assert "#{@review_proposed_tasks_migration} add_review_proposed_tasks_to_run_records" in MigrationGuard.pending_labels()
     end
   end
 

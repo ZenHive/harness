@@ -3,9 +3,31 @@ defmodule Harness.Repo.MigrationGuardTest do
   Unit tests for the fail-fast pending-migration check. `check!/1` / `pending_from/1`
   take the `Ecto.Migrator.migrations/1` status list directly, so these need no DB.
   """
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Harness.Repo.MigrationGuard
+
+  test "child spec is a temporary one-shot guard" do
+    assert %{id: MigrationGuard, restart: :temporary, type: :worker} = MigrationGuard.child_spec([])
+  end
+
+  test "soft pending helpers return empty when the Repo is disabled or absent" do
+    previous = Application.get_env(:harness, :repo_enabled)
+
+    on_exit(fn ->
+      if is_nil(previous),
+        do: Application.delete_env(:harness, :repo_enabled),
+        else: Application.put_env(:harness, :repo_enabled, previous)
+    end)
+
+    Application.put_env(:harness, :repo_enabled, false)
+    assert MigrationGuard.pending() == []
+    assert MigrationGuard.pending_labels() == []
+
+    Application.put_env(:harness, :repo_enabled, true)
+    assert Process.whereis(Harness.Repo) == nil
+    assert MigrationGuard.pending() == []
+  end
 
   describe "check!/1" do
     test "returns :ok when no migrations are pending" do

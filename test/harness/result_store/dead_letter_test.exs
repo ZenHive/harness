@@ -8,6 +8,7 @@ defmodule Harness.ResultStore.DeadLetterTest do
   alias Harness.ResultStoreContract
 
   @moduletag :tmp_dir
+  @lock_probe_timeout_ms 50
 
   setup %{tmp_dir: tmp_dir} do
     root = Path.join(tmp_dir, "dead_letter")
@@ -15,7 +16,9 @@ defmodule Harness.ResultStore.DeadLetterTest do
     Application.put_env(:harness, :result_store_dead_letter, root: root)
 
     on_exit(fn ->
-      if prev, do: Application.put_env(:harness, :result_store_dead_letter, prev), else: Application.delete_env(:harness, :result_store_dead_letter)
+      if prev,
+        do: Application.put_env(:harness, :result_store_dead_letter, prev),
+        else: Application.delete_env(:harness, :result_store_dead_letter)
     end)
 
     %{root: root}
@@ -75,6 +78,34 @@ defmodule Harness.ResultStore.DeadLetterTest do
       assert Path.basename(entry.path) == "___escape.etf"
       # Resolved path must still live under root (no directory traversal).
       assert String.starts_with?(Path.expand(entry.path), Path.expand(root))
+    end
+
+    test "serializes spill operations for the same run id" do
+      parent = self()
+
+      holder =
+        Task.async(fn ->
+          DeadLetter.with_run_lock("run-locked", fn ->
+            send(parent, :lock_held)
+
+            receive do
+              :release_lock -> :ok
+            end
+          end)
+        end)
+
+      assert_receive :lock_held
+
+      waiter =
+        Task.async(fn ->
+          DeadLetter.with_run_lock("run-locked", fn -> send(parent, :waiter_entered) end)
+        end)
+
+      refute_receive :waiter_entered, @lock_probe_timeout_ms
+      send(holder.pid, :release_lock)
+      assert_receive :waiter_entered
+      assert :ok = Task.await(holder)
+      assert :waiter_entered = Task.await(waiter)
     end
   end
 end

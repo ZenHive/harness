@@ -74,16 +74,14 @@ defmodule Harness.Application do
     end
   end
 
-  # Fail-fast pending-migration check (Harness.Repo.MigrationGuard). Placed right
-  # after the Repo (so it can query `schema_migrations`) and before any child that
-  # reads Postgres-backed state (Harness.Config, ProjectRegistry), so a forgotten
-  # `mix ecto.migrate` aborts boot loudly instead of silently emptying the project
-  # registry via the persistence layer's soft rescues. Gated on `repo_enabled` —
-  # without a Repo there is nothing to guard.
+  # Fail-fast pending-migration check plus durable run-record replay. Placed right
+  # after the Repo (so both can query Postgres) and before any child that reads
+  # Postgres-backed state. Gated on `repo_enabled` — without a Repo there is
+  # nothing to guard or replay into.
   @spec migration_guard() :: [module()]
   defp migration_guard do
     if Application.get_env(:harness, :repo_enabled, true) do
-      [Harness.Repo.MigrationGuard]
+      [Harness.Repo.MigrationGuard, Harness.ResultStore.Replayer]
     else
       []
     end

@@ -133,12 +133,10 @@ defmodule Harness.Notification.Event do
   @spec persist_failed_detail(map() | term()) :: String.t()
   defp persist_failed_detail(%{} = outcome) do
     parts =
-      [
-        Map.get(outcome, :reason) || Map.get(outcome, "reason"),
-        spill_part(outcome),
-        pending_part(outcome)
-      ]
-      |> Enum.reject(&is_nil/1)
+      Enum.reject(
+        [Map.get(outcome, :reason) || Map.get(outcome, "reason"), spill_part(outcome), pending_part(outcome)],
+        &is_nil/1
+      )
 
     case parts do
       [] -> "spilled for replay"

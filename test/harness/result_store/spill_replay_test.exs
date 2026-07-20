@@ -15,6 +15,7 @@ defmodule Harness.ResultStore.SpillReplayTest do
   alias Harness.ResultStore
   alias Harness.ResultStore.DeadLetter
   alias Harness.ResultStore.Memory
+  alias Harness.ResultStore.Replayer
   alias Harness.ResultStoreContract
   alias Harness.Run.LogRecord
 
@@ -41,16 +42,16 @@ defmodule Harness.ResultStore.SpillReplayTest do
 
   defmodule FlakyBackend do
     @moduledoc false
-    @behaviour Harness.ResultStore
+    @behaviour ResultStore
 
     alias Harness.Batch.Result, as: BatchResult
-    alias Harness.Run.LogRecord
 
     @spec start_link(keyword()) :: {:ok, pid()}
     def start_link(opts \\ []) do
       Agent.start_link(fn ->
         %{
           fail_remaining: Keyword.get(opts, :fail_times, 1),
+          notify: Keyword.get(opts, :notify),
           runs: %{}
         }
       end)
@@ -65,16 +66,22 @@ defmodule Harness.ResultStore.SpillReplayTest do
       agent = Keyword.fetch!(opts, :agent)
 
       Agent.get_and_update(agent, fn state ->
-        cond do
-          state.fail_remaining > 0 ->
-            {{:error, :simulated_undefined_column},
-             %{state | fail_remaining: state.fail_remaining - 1}}
-
-          true ->
-            {:ok, %{state | runs: Map.put(state.runs, record.run_id, record)}}
+        if state.fail_remaining > 0 do
+          {{:error, :simulated_undefined_column}, %{state | fail_remaining: state.fail_remaining - 1}}
+        else
+          notify_recorded(state.notify, record.run_id)
+          {:ok, %{state | runs: Map.put(state.runs, record.run_id, record)}}
         end
       end)
     end
+
+    @spec notify_recorded(pid() | nil, String.t()) :: :ok
+    defp notify_recorded(pid, run_id) when is_pid(pid) do
+      send(pid, {:recorded, run_id})
+      :ok
+    end
+
+    defp notify_recorded(nil, _run_id), do: :ok
 
     @impl true
     @spec save_batch(BatchResult.t(), keyword()) :: :ok
@@ -179,6 +186,7 @@ defmodule Harness.ResultStore.SpillReplayTest do
       # Backend now accepts inserts (fail_remaining exhausted). Replay restores the row.
       assert {:ok, %{replayed: 1, remaining: 0}} = ResultStore.replay_spilled(store)
       refute DeadLetter.exists?("run-recover-1")
+
       assert {:ok, [%LogRecord{run_id: "run-recover-1", verdict: :approve}]} =
                ResultStore.list_run_records(store, run_id: "run-recover-1")
     end
@@ -203,6 +211,25 @@ defmodule Harness.ResultStore.SpillReplayTest do
       assert {:ok, [%{run_id: "run-opp-2"}]} = ResultStore.list_run_records(store, run_id: "run-opp-2")
     end
 
+    test "periodic replayer recovers a spill without a restart or later settle" do
+      {:ok, agent} = FlakyBackend.start_link(fail_times: 1, notify: self())
+      store = {FlakyBackend, agent: agent}
+      record = ResultStoreContract.log_record(run_id: "run-periodic-1", task_id: "370")
+
+      capture_log(fn ->
+        assert {:error, :simulated_undefined_column} = ResultStore.record_run(record, store)
+      end)
+
+      assert DeadLetter.exists?(record.run_id)
+
+      replayer = start_supervised!({Replayer, interval_ms: 10, name: :task_370_replayer, store: store})
+
+      assert_receive {:recorded, "run-periodic-1"}, 500
+      assert %{store: ^store} = :sys.get_state(replayer)
+      refute DeadLetter.exists?(record.run_id)
+      assert {:ok, [%{run_id: "run-periodic-1"}]} = ResultStore.list_run_records(store, run_id: record.run_id)
+    end
+
     test "mark_landed on a missing row patches the spill's landed_sha" do
       {:ok, agent} = FlakyBackend.start_link(fail_times: 1)
       store = {FlakyBackend, agent: agent}
@@ -219,6 +246,7 @@ defmodule Harness.ResultStore.SpillReplayTest do
       assert {:ok, %{record: %{landed_sha: "landedsha1"}}} = DeadLetter.load("run-land-patch")
 
       assert {:ok, %{replayed: 1, remaining: 0}} = ResultStore.replay_spilled(store)
+
       assert {:ok, [%{landed_sha: "landedsha1"}]} =
                ResultStore.list_run_records(store, run_id: "run-land-patch")
     end

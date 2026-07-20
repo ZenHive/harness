@@ -16,17 +16,12 @@ defmodule Harness.Repo.MigrationGuard do
   project registry (warm_paths, 2026-06-11) is the motivating incident. A hard
   boot failure makes the drift impossible to miss.
 
-  After a clean boot check, spilled settle-time run records
-  (`Harness.ResultStore.DeadLetter`) are replayed once so a prior drift window
-  recovers automatically without waiting for the next settle.
-
   Long-lived nodes can still drift *after* boot (code reload of a newly landed
   schema while the DB is unmigrated). `pending/0` / `pending_labels/0` name the
   unapplied migrations for loud persist-failure warnings; they never auto-migrate.
   """
 
   alias Harness.Repo
-  alias Harness.ResultStore
 
   require Logger
 
@@ -44,9 +39,6 @@ defmodule Harness.Repo.MigrationGuard do
   @spec start_link() :: :ignore
   def start_link do
     check!(Ecto.Migrator.migrations(Repo))
-    # Best-effort: recover any settle-time records spilled during a prior drift
-    # window now that the schema matches code again.
-    _ = ResultStore.replay_spilled()
     :ignore
   end
 

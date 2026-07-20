@@ -63,27 +63,48 @@ defmodule Harness.ResultStore.DeadLetter do
   same `run_id` (last settle attempt wins). Returns `{:ok, entry}` or
   `{:error, reason}` on filesystem failure.
   """
+  # sobelow_skip ["Traversal.FileModule"] — root is operator config; path_for/1 sanitizes the run id.
   @spec spill(LogRecord.t(), term(), keyword()) :: {:ok, entry()} | {:error, term()}
-  def spill(%LogRecord{run_id: run_id} = record, reason, opts \\ [])
-      when is_binary(run_id) and is_list(opts) do
-    pending = Keyword.get(opts, :pending_migrations, [])
-    path = path_for(run_id)
+  def spill(%LogRecord{run_id: run_id} = record, reason, opts \\ []) when is_binary(run_id) and is_list(opts) do
+    with_run_lock(run_id, fn ->
+      pending = Keyword.get(opts, :pending_migrations, [])
+      path = path_for(run_id)
 
-    entry = %{
-      v: @entry_version,
-      run_id: run_id,
-      record: record,
-      reason: encode_reason(reason),
-      failed_at: DateTime.utc_now() |> DateTime.truncate(:second),
-      pending_migrations: normalize_pending(pending),
-      path: path
-    }
+      entry = %{
+        v: @entry_version,
+        run_id: run_id,
+        record: record,
+        reason: encode_reason(reason),
+        failed_at: DateTime.truncate(DateTime.utc_now(), :second),
+        pending_migrations: normalize_pending(pending),
+        path: path
+      }
 
-    with :ok <- File.mkdir_p(root()),
-         :ok <- File.write(path, :erlang.term_to_binary(entry)) do
-      {:ok, entry}
-    else
-      {:error, fs_reason} -> {:error, fs_reason}
+      with :ok <- File.mkdir_p(root()),
+           :ok <- atomic_write(path, :erlang.term_to_binary(entry)) do
+        {:ok, entry}
+      end
+    end)
+  end
+
+  @doc false
+  @spec with_run_lock(String.t(), (-> term())) :: term()
+  def with_run_lock(run_id, fun) when is_binary(run_id) and is_function(fun, 0) do
+    :global.trans({{__MODULE__, run_id}, self()}, fun)
+  end
+
+  @doc false
+  @spec patch_landed_sha_locked(String.t(), String.t()) :: :ok | {:error, term()}
+  def patch_landed_sha_locked(run_id, sha) when is_binary(run_id) and is_binary(sha) do
+    case load(run_id) do
+      {:ok, %{record: %LogRecord{} = record} = entry} ->
+        atomic_write(entry.path, :erlang.term_to_binary(%{entry | record: %{record | landed_sha: sha}}))
+
+      {:error, :not_found} ->
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -94,24 +115,11 @@ defmodule Harness.ResultStore.DeadLetter do
   """
   @spec patch_landed_sha(String.t(), String.t()) :: :ok | {:error, term()}
   def patch_landed_sha(run_id, sha) when is_binary(run_id) and is_binary(sha) do
-    case load(run_id) do
-      {:ok, %{record: %LogRecord{} = record} = entry} ->
-        updated = %{entry | record: %{record | landed_sha: sha}}
-
-        case File.write(entry.path, :erlang.term_to_binary(updated)) do
-          :ok -> :ok
-          {:error, reason} -> {:error, reason}
-        end
-
-      {:error, :not_found} ->
-        :ok
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    with_run_lock(run_id, fn -> patch_landed_sha_locked(run_id, sha) end)
   end
 
   @doc "Loads one spill by `run_id`."
+  # sobelow_skip ["Traversal.FileModule"] — path_for/1 confines a sanitized run id to the configured root.
   @spec load(String.t()) :: {:ok, entry()} | {:error, :not_found | term()}
   def load(run_id) when is_binary(run_id) do
     path = path_for(run_id)
@@ -130,15 +138,14 @@ defmodule Harness.ResultStore.DeadLetter do
   end
 
   @doc "Deletes the spill for `run_id` after a successful replay. Idempotent."
-  @spec delete(String.t()) :: :ok
+  # sobelow_skip ["Traversal.FileModule"] — path_for/1 confines a sanitized run id to the configured root.
+  @spec delete(String.t()) :: :ok | {:error, term()}
   def delete(run_id) when is_binary(run_id) do
     case File.rm(path_for(run_id)) do
       :ok -> :ok
       {:error, :enoent} -> :ok
-      {:error, reason} -> Logger.warning("harness dead-letter: failed to delete #{run_id}: #{inspect(reason)}")
+      {:error, reason} -> {:error, reason}
     end
-
-    :ok
   end
 
   @doc "Lists every readable spill entry under the dead-letter root (unsorted)."
@@ -161,6 +168,7 @@ defmodule Harness.ResultStore.DeadLetter do
     end
   end
 
+  # sobelow_skip ["Traversal.FileModule"] — path is returned by File.ls/1 under the operator-configured root.
   @spec load_list_entry(String.t()) :: [entry()]
   defp load_list_entry(path) do
     case File.read(path) do
@@ -183,6 +191,30 @@ defmodule Harness.ResultStore.DeadLetter do
 
   @spec expand_root(String.t()) :: String.t()
   defp expand_root(path), do: Path.expand(path)
+
+  # sobelow_skip ["Traversal.FileModule"] — caller paths come from path_for/1 or decoded entries rooted by load/1.
+  @spec atomic_write(String.t(), binary()) :: :ok | {:error, term()}
+  defp atomic_write(path, binary) do
+    temp_path = path <> ".#{System.unique_integer([:positive, :monotonic])}.tmp"
+
+    case File.write(temp_path, binary, [:binary, :sync]) do
+      :ok -> rename_temp(temp_path, path)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # sobelow_skip ["Traversal.FileModule"] — both paths are generated by atomic_write/2 under the configured root.
+  @spec rename_temp(String.t(), String.t()) :: :ok | {:error, term()}
+  defp rename_temp(temp_path, path) do
+    case File.rename(temp_path, path) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        _ = File.rm(temp_path)
+        {:error, reason}
+    end
+  end
 
   # run_ids are harness-minted (`run-<ms>-<hex>`); strip path separators / `..`
   # so a malicious/corrupt id cannot escape the dead-letter root.
@@ -218,7 +250,11 @@ defmodule Harness.ResultStore.DeadLetter do
   end
 
   defp encode_reason(%{__exception__: true} = error) do
-    %{"class" => "exception", "type" => error.__struct__ |> Module.split() |> List.last(), "message" => Exception.message(error)}
+    %{
+      "class" => "exception",
+      "type" => error.__struct__ |> Module.split() |> List.last(),
+      "message" => Exception.message(error)
+    }
   end
 
   defp encode_reason(reason) when is_atom(reason) or is_binary(reason) or is_number(reason), do: reason
