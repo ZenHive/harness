@@ -225,6 +225,36 @@ defmodule Harness.DispatchBundleCollisionTest do
                      }}
   end
 
+  test "coalesce dispatches explicit task ids in one Oban job with their shared run identity" do
+    parent = self()
+    project_name = "coalesce-#{System.unique_integer([:positive])}"
+    project = ProjectFixture.from_repo("/tmp/harness-dispatch", name: project_name)
+
+    :ok = ProjectRegistry.register(project)
+
+    Application.put_env(:harness, :roadmap_ingest, fn {:id, id}, opts ->
+      {:ok, %Item{id: id, title: "Task #{id}", prompt: "do #{id}", agent: Keyword.fetch!(opts, :agent)}}
+    end)
+
+    Application.put_env(:harness, :oban_insert, fn changeset ->
+      job = Ecto.Changeset.apply_action!(changeset, :insert)
+      send(parent, {:inserted, job.args})
+      {:ok, %{job | id: System.unique_integer([:positive])}}
+    end)
+
+    assert {:ok, %{run_id: run_id, task_ids: ["41", "42"]}} =
+             Dispatch.coalesce(project_name, ["41", "42"], "codex", false)
+
+    assert is_binary(run_id)
+
+    assert_received {:inserted,
+                     %{
+                       item_id: "41",
+                       item_ids: ["41", "42"],
+                       adapter_module: "Elixir.Harness.AgentAdapter.Codex"
+                     }}
+  end
+
   defp task(id, fields \\ []) do
     fields
     |> Map.new(fn {key, value} -> {to_string(key), value} end)

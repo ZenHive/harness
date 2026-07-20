@@ -51,7 +51,17 @@ defmodule Harness.Run.Review do
   @artifact_path ".harness/review.json"
 
   @enforce_keys [:verdict, :report]
-  defstruct [:verdict, :report, facets: %{}, skills: %{}, checks: %{}, concerns: [], proposed_tasks: [], ratings: %{}]
+  defstruct [
+    :verdict,
+    :report,
+    facets: %{},
+    skills: %{},
+    checks: %{},
+    concerns: [],
+    proposed_tasks: [],
+    ratings: %{},
+    task_outcomes: %{}
+  ]
 
   @typedoc "The reviewer's decision."
   @type verdict :: :approve | :reject
@@ -85,7 +95,8 @@ defmodule Harness.Run.Review do
           checks: %{optional(String.t()) => term()},
           concerns: [term()],
           proposed_tasks: [term()],
-          ratings: %{optional(String.t()) => term()}
+          ratings: %{optional(String.t()) => term()},
+          task_outcomes: %{optional(String.t()) => term()}
         }
 
   @typedoc "Why an artifact could not be read."
@@ -147,7 +158,8 @@ defmodule Harness.Run.Review do
       checks: free_form_block(decoded, "checks"),
       concerns: free_form_list(decoded, "concerns"),
       proposed_tasks: free_form_list(decoded, "proposed_tasks"),
-      ratings: free_form_block(decoded, "ratings")
+      ratings: free_form_block(decoded, "ratings"),
+      task_outcomes: free_form_block(decoded, "task_outcomes")
     }
   end
 

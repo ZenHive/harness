@@ -65,7 +65,9 @@ defmodule Harness.Roadmap.Item do
           d: non_neg_integer() | nil,
           markers: [atom() | String.t()],
           model: String.t() | nil,
-          fingerprint: String.t() | nil
+          fingerprint: String.t() | nil,
+          task_ids: [String.t()],
+          task_fingerprints: %{optional(String.t()) => String.t() | nil}
         }
 
   @enforce_keys [:id, :title, :prompt, :agent]
@@ -81,6 +83,25 @@ defmodule Harness.Roadmap.Item do
     domains: [],
     markers: [],
     model: nil,
-    fingerprint: nil
+    fingerprint: nil,
+    task_ids: [],
+    task_fingerprints: %{}
   ]
+
+  @doc false
+  @spec coalesce([t()]) :: t()
+  def coalesce([%__MODULE__{} = first | rest]) do
+    items = [first | rest]
+
+    %{
+      first
+      | title: "Coalesced tasks: " <> Enum.map_join(items, ", ", & &1.title),
+        prompt: Enum.map_join(items, "\n\n---\n\n", & &1.prompt),
+        body: Enum.map_join(items, "\n\n---\n\n", &(&1.body || "")),
+        acceptance_criteria: Enum.flat_map(items, & &1.acceptance_criteria),
+        domains: items |> Enum.flat_map(& &1.domains) |> Enum.uniq(),
+        task_ids: Enum.map(items, & &1.id),
+        task_fingerprints: Map.new(items, &{&1.id, &1.fingerprint})
+    }
+  end
 end

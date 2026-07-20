@@ -1038,6 +1038,41 @@ defmodule Harness.Dispatch do
   end
 
   api(
+    :coalesce,
+    "Dispatch an explicit list of small, related roadmap tasks as one implementer run, one reviewer gate, and one landing unit. Use this only when the tasks share a bundle or surface; use dispatch-bundle to parallelize independent tasks.",
+    params: [
+      project_name: [kind: :value, description: "Registered project name."],
+      task_ids: [kind: :value, description: ~s|At least two explicit roadmap task ids, e.g. ["368", "369"].|],
+      adapter: [
+        kind: :value,
+        default: @recommended_adapter,
+        description: "Executor: recommend | claude | codex | cursor | grok | antigravity | pi."
+      ],
+      scrub_anthropic_key: [kind: :value, default: true, description: "Scrub ANTHROPIC_API_KEY from the run environment."]
+    ],
+    returns: %{type: :tuple, description: "{:ok, %{run_id, task_ids}} for one coalesced run, or {:error, reason}."}
+  )
+
+  @spec coalesce(String.t(), [String.t()], String.t(), boolean()) :: {:ok, map()} | {:error, error() | :invalid_task_ids}
+  def coalesce(project_name, task_ids, adapter \\ @recommended_adapter, scrub_anthropic_key \\ true)
+      when is_binary(project_name) and is_list(task_ids) and is_binary(adapter) and is_boolean(scrub_anthropic_key) do
+    ids = task_ids |> Enum.filter(&is_binary/1) |> Enum.uniq()
+
+    with true <- length(ids) > 1 || {:error, :invalid_task_ids},
+         {:ok, {adapter_module, render_agent}} <- resolve_delegatable_adapter(adapter),
+         {:ok, project} <- lookup_project(project_name),
+         {:ok, items} <- ingest_coalesced(ids, project, render_agent),
+         item = Item.coalesce(items),
+         {:ok, run_id, _job} <-
+           RunWorker.enqueue_coalesced(project, item, adapter_module,
+             env: scrub_env(scrub_anthropic_key),
+             requested_model: effective_model(item, render_agent)
+           ) do
+      {:ok, %{run_id: run_id, task_ids: item.task_ids}}
+    end
+  end
+
+  api(
     :compare,
     "Same-task A/B agent evaluation over JSON: ingest one roadmap task once — rendered once (for claude) so every adapter runs an identical prompt, which is what makes the comparison fair — and run it concurrently across N adapters in isolated worktrees, returning side-by-side per-adapter metrics. Supports all six executors (claude | codex | cursor | grok | antigravity | pi), each running that shared prompt directly. In-process and blocking: returns once every adapter's run has settled. The JSON-native counterpart to Harness.Batch.AgentEvaluation.compare/4.",
     params: [
@@ -1590,6 +1625,21 @@ defmodule Harness.Dispatch do
     tasks
     |> Enum.reduce_while({:ok, []}, fn task, {:ok, items} ->
       case ingest_bundle_task(task, project, fallback_pair) do
+        {:ok, item} -> {:cont, {:ok, [item | items]}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, items} -> {:ok, Enum.reverse(items)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @spec ingest_coalesced([String.t()], Project.t(), atom()) :: {:ok, [Item.t()]} | {:error, error()}
+  defp ingest_coalesced(ids, project, render_agent) do
+    ids
+    |> Enum.reduce_while({:ok, []}, fn id, {:ok, items} ->
+      case ingest_roadmap({:id, id}, project: project, agent: render_agent) do
         {:ok, item} -> {:cont, {:ok, [item | items]}}
         {:error, _reason} = error -> {:halt, error}
       end

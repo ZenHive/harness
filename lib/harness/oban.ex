@@ -89,6 +89,26 @@ defmodule Harness.Oban do
     _error in @query_degrade_errors -> false
   end
 
+  @doc false
+  @spec coalesced_run_job(Project.t(), String.t()) :: {:ok, Oban.Job.t()} | :error
+  def coalesced_run_job(%Project{} = project, item_id) when is_binary(item_id) do
+    query =
+      from(job in Oban.Job,
+        where:
+          job.queue == ^queue_name(project) and job.worker == ^@run_worker and job.state in ^@headroom_states and
+            fragment("?->>? = ?", job.args, "project_name", ^project.name) and
+            fragment("?->'item_ids' @> ?::jsonb", job.args, ^Jason.encode!([item_id])),
+        limit: 1
+      )
+
+    case Harness.Repo.one(query) do
+      %Oban.Job{} = job -> {:ok, job}
+      nil -> :error
+    end
+  rescue
+    _error in @query_degrade_errors -> :error
+  end
+
   @doc """
   Starts or scales the queues for `project` when Oban is running normally.
 

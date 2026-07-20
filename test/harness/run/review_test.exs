@@ -68,6 +68,14 @@ defmodule Harness.Run.ReviewTest do
     end
   end
 
+  describe "parse/1 — coalesced task outcomes" do
+    test "preserves each member outcome from a coalesced review" do
+      json = ~s({"verdict": "approve", "task_outcomes": {"41": "approved", "42": "approved"}})
+
+      assert {:ok, %Review{task_outcomes: %{"41" => "approved", "42" => "approved"}}} = Review.parse(json)
+    end
+  end
+
   describe "parse/1 — facets (the routing KEY)" do
     test "the facets block rides through verbatim as a free-form string-keyed map" do
       json =

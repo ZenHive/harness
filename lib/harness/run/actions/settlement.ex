@@ -65,6 +65,8 @@ defmodule Harness.Run.Actions.Settlement do
       "run_id" => data.run_id,
       "task_id" => to_string(data.item.id),
       "task_fingerprint" => data.item.fingerprint,
+      "task_ids" => data.item.task_ids,
+      "task_fingerprints" => data.item.task_fingerprints,
       "agent" => to_string(data.item.agent),
       "branch" => "harness/" <> data.run_id,
       "land_attempt" => data.land_attempt
@@ -170,6 +172,8 @@ defmodule Harness.Run.Actions.Settlement do
       "run_id" => data.run_id,
       "task_id" => to_string(data.item.id),
       "task_fingerprint" => data.item.fingerprint,
+      "task_ids" => data.item.task_ids,
+      "task_fingerprints" => data.item.task_fingerprints,
       "agent" => to_string(data.item.agent),
       "reviewer" => reviewer_agent_name(data.reviewer_adapter),
       "branch" => "harness/" <> data.run_id,

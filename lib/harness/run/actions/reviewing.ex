@@ -158,6 +158,15 @@ defmodule Harness.Run.Actions.Reviewing do
   # this function only routes on what it wrote.
   @doc false
   @spec settle_review(data(), {:ok, Review.t()} | {:error, Review.error()}) :: handler_result()
+  def settle_review(%{item: %{task_ids: [_first | _rest] = ids}} = data, {:ok, %Review{verdict: :approve} = review}) do
+    if Enum.all?(ids, &(Map.get(review.task_outcomes, &1) == "approved")) do
+      {:next_state, :done, clear_operator_steer(%{data | review: review, reason: :approved})}
+    else
+      {:next_state, :failed,
+       %{data | review: review, reason: {:review_rejected, "coalesced verdict omitted an approved member outcome"}}}
+    end
+  end
+
   def settle_review(data, {:ok, %Review{verdict: :approve} = review}) do
     {:next_state, :done, clear_operator_steer(%{data | review: review, reason: :approved})}
   end
@@ -561,6 +570,7 @@ defmodule Harness.Run.Actions.Reviewing do
       "report": "<what you found, what you fixed, why you decided>",
       "checks": {"<command you ran>": {"passed": true | false, "output": "<short relevant output>", "mechanism": "<why a red is benign, if dismissed>"}},
       "concerns": [],
+      "task_outcomes": {"<task id>": "approved" | "rejected"},
       "facets": {"language": "...", "surface": "...", "archetype": "...", "difficulty": "...", "risk": "..."},
       "skills": {"<domain or quality the diff exercised>": {"score": <0-10>, "note": "<one line>"}}
     }
@@ -588,6 +598,7 @@ defmodule Harness.Run.Actions.Reviewing do
 
     Acceptance criteria:
     #{format_acceptance_criteria(data.item.acceptance_criteria)}
+    #{coalesced_task_outcome_instruction(data)}
     """
   end
 
@@ -708,6 +719,7 @@ defmodule Harness.Run.Actions.Reviewing do
 
     Acceptance criteria:
     #{format_acceptance_criteria(data.item.acceptance_criteria)}
+    #{coalesced_task_outcome_instruction(data)}
 
     Implementer transcript tail:
     #{Text.placeholder(transcript_tail(data.transcript))}
@@ -715,6 +727,15 @@ defmodule Harness.Run.Actions.Reviewing do
     Diff stat:
     #{Text.placeholder(diff_stat(data))}
     """
+  end
+
+  @spec coalesced_task_outcome_instruction(data()) :: String.t()
+  defp coalesced_task_outcome_instruction(%{item: %{task_ids: [_single]}}), do: ""
+  defp coalesced_task_outcome_instruction(%{item: %{task_ids: []}}), do: ""
+
+  defp coalesced_task_outcome_instruction(%{item: %{task_ids: ids}}) do
+    "This is a coalesced run. In the verdict JSON, include `task_outcomes` with every task id marked `approved` or `rejected`; this run lands only as one unit. Required ids: " <>
+      Enum.join(ids, ", ")
   end
 
   # The one piece of situational framing the reviewer needs: whether the

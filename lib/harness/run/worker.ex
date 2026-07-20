@@ -92,6 +92,15 @@ defmodule Harness.Run.Worker do
   """
   @spec enqueue(Project.t(), Item.t(), module(), keyword()) :: {:ok, String.t(), Oban.Job.t()} | {:error, term()}
   def enqueue(%Project{} = project, %Item{} = item, adapter, opts \\ []) when is_atom(adapter) and is_list(opts) do
+    case Harness.Oban.coalesced_run_job(project, item.id) do
+      {:ok, job} -> return_existing_run(project, item.id, job)
+      :error -> enqueue_unclaimed(project, item, adapter, opts)
+    end
+  end
+
+  @spec enqueue_unclaimed(Project.t(), Item.t(), module(), keyword()) ::
+          {:ok, String.t(), Oban.Job.t()} | {:error, term()}
+  defp enqueue_unclaimed(%Project{} = project, %Item{} = item, adapter, opts) do
     case recoverable_settled_run(project, item.id, adapter, opts) do
       {:ok, run_id, job} ->
         {:ok, run_id, job}
@@ -108,13 +117,40 @@ defmodule Harness.Run.Worker do
   end
 
   @doc false
+  @spec enqueue_coalesced(Project.t(), Item.t(), module(), keyword()) ::
+          {:ok, String.t(), Oban.Job.t()} | {:error, term()}
+  def enqueue_coalesced(%Project{} = project, %Item{task_ids: task_ids} = item, adapter, opts \\ [])
+      when is_list(task_ids) and length(task_ids) > 1 and is_atom(adapter) and is_list(opts) do
+    {run_id, changeset} = new_dispatch_job(project, item, adapter, opts)
+
+    case Harness.Oban.insert(changeset) do
+      {:ok, %Oban.Job{conflict?: true} = job} -> return_existing_run(project, item.id, job)
+      {:ok, job} -> {:ok, run_id, job}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @doc false
   @spec unique_opts() :: keyword()
   def unique_opts, do: @unique_opts
 
   @doc false
   @spec new_dispatch_job(Project.t(), Item.t() | String.t(), module(), keyword()) :: {String.t(), Ecto.Changeset.t()}
-  def new_dispatch_job(%Project{} = project, %Item{id: item_id}, adapter, opts) when is_atom(adapter) and is_list(opts) do
-    new_dispatch_job(project, item_id, adapter, opts)
+  def new_dispatch_job(%Project{} = project, %Item{id: item_id, task_ids: task_ids}, adapter, opts)
+      when is_atom(adapter) and is_list(opts) do
+    {run_id, changeset} = new_dispatch_job(project, item_id, adapter, opts)
+
+    case task_ids do
+      [_single] ->
+        {run_id, changeset}
+
+      [_first | _rest] ->
+        args = Ecto.Changeset.get_change(changeset, :args, %{})
+        {run_id, Ecto.Changeset.put_change(changeset, :args, Map.put(args, :item_ids, task_ids))}
+
+      [] ->
+        {run_id, changeset}
+    end
   end
 
   def new_dispatch_job(%Project{} = project, item_id, adapter, opts)
@@ -170,7 +206,7 @@ defmodule Harness.Run.Worker do
          {:ok, project} <- ProjectRegistry.lookup(project_name),
          {:ok, adapter} <- adapter_module(adapter_name),
          {:ok, agent} <- agent_for_adapter(adapter),
-         {:ok, %Item{} = item} <- ingest_roadmap({:id, item_id}, project: project, agent: agent),
+         {:ok, %Item{} = item} <- ingest_job_items(args, item_id, project, agent),
          {:ok, result} <- run_once(job, item, project_with_check_command(project, args), adapter) do
       if settled_failure?(result) and not recoverable_crash?(result, project) do
         # Any settled failure reverts the task to pending so the next cron tick
@@ -185,6 +221,24 @@ defmodule Harness.Run.Worker do
       {:error, reason} -> setup_failure_disposition(reason, job)
     end
   end
+
+  @spec ingest_job_items(map(), String.t(), Project.t(), atom()) :: {:ok, Item.t()} | {:error, term()}
+  defp ingest_job_items(%{"item_ids" => ids}, _item_id, project, agent) when is_list(ids) do
+    ids
+    |> Enum.reduce_while({:ok, []}, fn id, {:ok, items} ->
+      case ingest_roadmap({:id, id}, project: project, agent: agent) do
+        {:ok, item} -> {:cont, {:ok, [item | items]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, items} -> {:ok, Item.coalesce(Enum.reverse(items))}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp ingest_job_items(_args, item_id, project, agent),
+    do: ingest_roadmap({:id, item_id}, project: project, agent: agent)
 
   # Mechanical node-pressure admission gate (Task 202): the aggregate companion to
   # the per-run MemoryGuard watchdog. Before a NEW run's gen_statem is spawned,
@@ -540,18 +594,37 @@ defmodule Harness.Run.Worker do
   # Best-effort claim + revert seams (default to real Roadmap calls + log).
   @spec claim_in_progress(Item.t(), Project.t()) :: :ok
   defp claim_in_progress(%Item{} = item, %Project{} = project) do
+    item |> member_items() |> Enum.each(&claim_one_in_progress(&1, project))
+    :ok
+  end
+
+  @spec revert_to_pending(Item.t(), Project.t()) :: :ok
+  defp revert_to_pending(%Item{} = item, %Project{} = project) do
+    item |> member_items() |> Enum.each(&revert_one_to_pending(&1, project))
+    :ok
+  end
+
+  @spec claim_one_in_progress(Item.t(), Project.t()) :: :ok
+  defp claim_one_in_progress(item, project) do
     case Application.get_env(:harness, :roadmap_mark_in_progress) do
       fun when is_function(fun, 2) -> fun.(item, project)
       _ -> do_mark_in_progress(item, project)
     end
   end
 
-  @spec revert_to_pending(Item.t(), Project.t()) :: :ok
-  defp revert_to_pending(%Item{} = item, %Project{} = project) do
+  @spec revert_one_to_pending(Item.t(), Project.t()) :: :ok
+  defp revert_one_to_pending(item, project) do
     case Application.get_env(:harness, :roadmap_mark_pending) do
       fun when is_function(fun, 2) -> fun.(item, project)
       _ -> do_mark_pending(item, project)
     end
+  end
+
+  @spec member_items(Item.t()) :: [Item.t()]
+  defp member_items(%Item{task_ids: []} = item), do: [item]
+
+  defp member_items(%Item{task_ids: ids} = item) do
+    Enum.map(ids, fn id -> %{item | id: id, task_ids: [id], fingerprint: Map.get(item.task_fingerprints, id)} end)
   end
 
   @spec do_mark_in_progress(Item.t(), Project.t()) :: :ok

@@ -74,6 +74,7 @@ defmodule Harness.Lander do
           :project => Project.t(),
           :run_id => String.t(),
           :task_id => String.t(),
+          optional(:task_ids) => [String.t()],
           :branch => String.t(),
           optional(:task_fingerprint) => String.t() | nil,
           optional(:agent) => atom() | String.t() | nil,
@@ -693,10 +694,25 @@ defmodule Harness.Lander do
   defp writeback(%Project{} = project, request, sha) do
     persist_landed_sha(request.run_id, sha)
 
-    case Roadmap.mark_landed(request.task_id,
+    request
+    |> landed_task_ids()
+    |> Enum.each(&writeback_task(project, request, sha, &1))
+
+    :ok
+  end
+
+  @spec landed_task_ids(request()) :: [String.t()]
+  defp landed_task_ids(%{task_ids: ids}) when is_list(ids) and ids != [], do: ids
+  defp landed_task_ids(request), do: [request.task_id]
+
+  @spec writeback_task(Project.t(), request(), String.t(), String.t()) :: :ok
+  defp writeback_task(project, request, sha, task_id) do
+    fingerprint = Map.get(request[:task_fingerprints] || %{}, task_id, request[:task_fingerprint])
+
+    case Roadmap.mark_landed(task_id,
            project: project,
            sha: sha,
-           task_fingerprint: request[:task_fingerprint],
+           task_fingerprint: fingerprint,
            delivered_by: delivered_by(request[:agent]),
            verified_by: verified_by(request[:reviewer]),
            verification_ref: "harness-run:" <> request.run_id,
@@ -706,11 +722,7 @@ defmodule Harness.Lander do
         :ok
 
       {:error, reason} ->
-        Logger.warning(
-          "harness lander: rmap writeback failed for task #{request.task_id} (landed #{sha}): #{inspect(reason)}"
-        )
-
-        :ok
+        Logger.warning("harness lander: rmap writeback failed for task #{task_id} (landed #{sha}): #{inspect(reason)}")
     end
   end
 
