@@ -11071,14 +11071,14 @@ scored_at = "2026-07-19"
 id = "369"
 phase = 9
 bundle = "autolanding"
-status = "pending"
+status = "in_progress"
 title = "Lander fallback: mechanically resolve additive-only tasks.toml conflicts by renumbering"
 scores = { d = 3, b = 5, u = 5 }
 acceptance_criteria = ["When the landing rebase conflicts ONLY in roadmap/tasks.toml (plus its data.json/ROADMAP.md renders) and both sides' changes are purely additive [[task]] blocks, the lander renumbers the branch-side new tasks to the next free ids on the target, re-renders via rmap, and completes the land", "Any non-additive conflict (edits to existing task blocks, code files) still retains the branch and blocks as today", "String references to the renumbered id inside the same branch diff (CHANGELOG lines, code comments, test names) are either rewritten with the renumber or the land is left blocked with a report naming them - silent broken references are not acceptable", "A test covers: clean renumber, non-additive conflict left blocked, and in-diff reference rewrite/refusal"]
 out_of_scope = ["Semantic dedupe/merge of the added tasks against the target roadmap (orchestrator judgment)", "Conflicts in files other than the roadmap render set"]
+touches = ["lib/harness/lander.ex", "lib/harness/lander/resolver.ex", "test/harness/lander_test.exs"]
 assignee = "codex"
 model = "gpt-5.6-terra"
-touches = ["lib/harness/lander.ex", "lib/harness/lander/resolver.ex", "test/harness/lander_test.exs"]
 body = """
 Sequential integer task ids plus parallel worktrees make additive tasks.toml
 collisions structural: two runs filing discoveries both claim the next id, the
@@ -11096,4 +11096,5 @@ racing a land). If that task lands first and the residual rate is ~zero, honor
 an honest re-score downward instead of building on momentum.
 """
 created_at = "2026-07-19"
+started_at = "2026-07-20"
 scored_at = "2026-07-19"
