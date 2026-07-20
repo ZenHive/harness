@@ -10948,6 +10948,8 @@ title = "ResultStore.Postgres list/aggregate path fails whole query on atom deco
 scores = { d = 3, b = 7, u = 7 }
 markers = ["bug"]
 acceptance_criteria = ["list_run_records/0-2 on the Postgres store returns every decodable record even when one or more rows reference atoms not loaded in the current BEAM", "Skipped/degraded rows surface as one aggregated Logger.debug line per scan, not a per-row warning and not a whole-query error", "A regression test inserts a row whose jsonb references an unknown atom-like key and asserts healthy siblings are still returned", "Live repro path re-checked: result_store-list_run_records MCP tool returns records against the dev BEAM instead of ArgumentError"]
+assignee = "codex"
+model = "gpt-5.5"
 body = """
 Observed 2026-07-14 against the live dev BEAM (store configured as {Harness.ResultStore.Postgres, []}):
 `Harness.ResultStore.list_run_records()` — no filters, and every filtered variant — returns

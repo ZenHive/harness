@@ -16522,6 +16522,8 @@
         "bug"
       ],
       "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
       "acceptance_criteria": [
         "list_run_records/0-2 on the Postgres store returns every decodable record even when one or more rows reference atoms not loaded in the current BEAM",
         "Skipped/degraded rows surface as one aggregated Logger.debug line per scan, not a per-row warning and not a whole-query error",
