@@ -11010,15 +11010,15 @@ scored_at = "2026-07-17"
 id = "367"
 phase = 9
 bundle = "agent-gate"
-status = "pending"
+status = "in_progress"
 title = "Reviewer task filings become review.json proposals; orchestrator files them post-land"
 scores = { d = 6, b = 8, u = 8 }
 markers = ["parallel"]
 acceptance_criteria = ["review.json schema gains an optional proposed_tasks array (title, body, suggested scores/markers, evidence); Run.Result carries it and dispatch-verdict_detail exposes it", "Reviewer prompt/rules instruct the reviewer to propose discoveries via proposed_tasks and to never edit roadmap/tasks.toml, roadmap/data.json, ROADMAP.md, or CHANGELOG.md in the worktree", "Run staging excludes roadmap/tasks.toml, roadmap/data.json, ROADMAP.md, and CHANGELOG.md from the deliverable commit (same mechanism as the .harness/ exclusion), so a run diff contains only code", "A run whose reviewer proposes tasks lands cleanly with the proposals readable from the persisted record after worktree teardown", "Docs updated: skills/harness-driver/SKILL.md and priv/includes/harness-workflow.md describe the proposal flow and that the ORCHESTRATOR files proposals through its own task-writing gate (dedupe/merge against the live pending set) after the land; sync script run"]
 out_of_scope = ["Harness auto-filing proposals into any roadmap (judgment about filing stays with the orchestrator AI, per the mantra)", "Changing how the lander advances the dispatched task's own status (done --shipped-in stays)", "CHANGELOG generation from verdicts (separate concern; exclusion alone is in scope)"]
+touches = ["lib/harness/run/review.ex", "lib/harness/run/result.ex", "lib/harness/run.ex", "lib/harness/artifact.ex", "lib/harness/agent_rules.ex", "lib/harness/dispatch.ex", "skills/harness-driver/SKILL.md", "priv/includes/harness-workflow.md"]
 assignee = "codex"
 model = "gpt-5.6-terra"
-touches = ["lib/harness/run/review.ex", "lib/harness/run/result.ex", "lib/harness/run.ex", "lib/harness/artifact.ex", "lib/harness/agent_rules.ex", "lib/harness/dispatch.ex", "skills/harness-driver/SKILL.md", "priv/includes/harness-workflow.md"]
 body = """
 Observed in ccxt_client dispatch (2026-07-19): reviewers file discovery tasks by
 editing roadmap/tasks.toml inside their run worktree. The worktree forks from an
@@ -11037,6 +11037,7 @@ the persisted record; the driving orchestrator files them centrally after the
 land, where it can dedupe, merge, and gate them against the real roadmap state.
 """
 created_at = "2026-07-19"
+started_at = "2026-07-20"
 scored_at = "2026-07-19"
 
 [[task]]
