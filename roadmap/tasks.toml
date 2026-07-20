@@ -11135,7 +11135,7 @@ shipped_in = "2f3ed81476802c8fade2fe480f78902737aab44d"
 id = "370"
 phase = 9
 bundle = "core-loop"
-status = "in_progress"
+status = "done"
 title = "Settle-persist must survive schema/DB drift: never silently lose a run record on a failed insert"
 scores = { d = 4, b = 7, u = 6 }
 markers = ["bug"]
@@ -11165,6 +11165,13 @@ auto-judgment about the migration itself.
 Evidence: node log 09:15:19-09:27 2026-07-20 (+08) — failed INSERT with full
 payload, failed landed_sha writeback, repeated status-view failures.
 """
+implemented = "Landed by grok via merge-train; reviewer-approved (run run-1784511918221-3e50ab9e, b23554754bad84318cbffb0df3c675da625ff124)."
+delivered_by = "grok"
+verified = true
+verified_by = "codex"
+verification_ref = "harness-run:run-1784511918221-3e50ab9e"
 created_at = "2026-07-20"
 started_at = "2026-07-20"
 scored_at = "2026-07-20"
+done_at = "2026-07-20"
+shipped_in = "b23554754bad84318cbffb0df3c675da625ff124"
