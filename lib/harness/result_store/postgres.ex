@@ -240,7 +240,7 @@ defmodule Harness.ResultStore.Postgres do
       query = if limit, do: limit(query, ^limit), else: query
 
       rows = repo.all(query)
-      {:ok, Enum.map(rows, &row_to_log_record/1)}
+      {:ok, rows_to_log_records(rows)}
     rescue
       e in @persistence_errors -> {:error, e}
     end
@@ -458,9 +458,21 @@ defmodule Harness.ResultStore.Postgres do
   defp reviewer_rows_to_ledger(rows) do
     rows
     |> Enum.group_by(& &1.reviewer_adapter)
-    |> Map.new(fn {reviewer_adapter, reviewer_rows} ->
-      {string_to_module(reviewer_adapter), summarize_reviewer_rows(reviewer_rows)}
+    |> Enum.reduce({%{}, 0}, fn {reviewer_adapter, reviewer_rows}, {ledger, skipped_count} ->
+      case safe_reviewer_row_to_entry(reviewer_adapter, reviewer_rows) do
+        {:ok, {reviewer, summary}} -> {Map.put(ledger, reviewer, summary), skipped_count}
+        {:error, _reason} -> {ledger, skipped_count + 1}
+      end
     end)
+    |> finalize_tolerant_scan("aggregate_reviewer_reliability")
+  end
+
+  @spec safe_reviewer_row_to_entry(String.t() | nil, [map()]) ::
+          {:ok, {module() | nil, AgentKPI.reviewer_rejection()}} | {:error, Exception.t()}
+  defp safe_reviewer_row_to_entry(reviewer_adapter, reviewer_rows) do
+    {:ok, {string_to_module(reviewer_adapter), summarize_reviewer_rows(reviewer_rows)}}
+  rescue
+    e in ArgumentError -> {:error, e}
   end
 
   @spec summarize_reviewer_rows([map()]) :: AgentKPI.reviewer_rejection()
@@ -580,17 +592,28 @@ defmodule Harness.ResultStore.Postgres do
   defp facet_rows_to_groups(rows) do
     rows
     |> Enum.group_by(& &1.facet_json)
-    |> Enum.map(fn {_facet_json, agent_rows} ->
-      facet = jsonb_to_facet_map(hd(agent_rows).facet_json)
-
-      agents =
-        Map.new(agent_rows, fn row ->
-          {string_to_atom(row.agent), row_to_kpi(row)}
-        end)
-
-      %{facet: facet, agents: agents}
+    |> Enum.reduce({[], 0}, fn {_facet_json, agent_rows}, {groups, skipped_count} ->
+      case safe_facet_rows_to_group(agent_rows) do
+        {:ok, group} -> {[group | groups], skipped_count}
+        {:error, _reason} -> {groups, skipped_count + 1}
+      end
     end)
+    |> finalize_tolerant_scan("aggregate_by_facet")
     |> Enum.sort_by(&Jason.encode!(Map.get(&1, :facet, %{})))
+  end
+
+  @spec safe_facet_rows_to_group([map()]) :: {:ok, Harness.ResultStore.facet_group()} | {:error, Exception.t()}
+  defp safe_facet_rows_to_group(agent_rows) do
+    facet = jsonb_to_facet_map(hd(agent_rows).facet_json)
+
+    agents =
+      Map.new(agent_rows, fn row ->
+        {string_to_atom(row.agent), row_to_kpi(row)}
+      end)
+
+    {:ok, %{facet: facet, agents: agents}}
+  rescue
+    e in ArgumentError -> {:error, e}
   end
 
   # Maps one aggregate SQL row to the AgentKPI summary shape. Shared by the
@@ -630,7 +653,21 @@ defmodule Harness.ResultStore.Postgres do
 
   @spec aggregate_rows_to_ledger([map()]) :: AgentKPI.t()
   defp aggregate_rows_to_ledger(rows) do
-    Map.new(rows, fn row -> {string_to_atom(row.agent), row_to_kpi(row)} end)
+    rows
+    |> Enum.reduce({%{}, 0}, fn row, {ledger, skipped_count} ->
+      case safe_aggregate_row_to_entry(row) do
+        {:ok, {agent, kpi}} -> {Map.put(ledger, agent, kpi), skipped_count}
+        {:error, _reason} -> {ledger, skipped_count + 1}
+      end
+    end)
+    |> finalize_tolerant_scan("aggregate_by_agent")
+  end
+
+  @spec safe_aggregate_row_to_entry(map()) :: {:ok, {atom(), AgentKPI.agent_kpi()}} | {:error, Exception.t()}
+  defp safe_aggregate_row_to_entry(row) do
+    {:ok, {string_to_atom(row.agent), row_to_kpi(row)}}
+  rescue
+    e in ArgumentError -> {:error, e}
   end
 
   # Zero attributable runs (every run reviewer-flaked) → 0.0, never a div-by-zero.
@@ -853,6 +890,40 @@ defmodule Harness.ResultStore.Postgres do
       cold_check: decode_optional_freeform_block(row.cold_check),
       approved_then_found_red: decode_freeform_block(row.approved_then_found_red)
     }
+  end
+
+  @spec rows_to_log_records([RunRecordSchema.t()]) :: [LogRecord.t()]
+  defp rows_to_log_records(rows) do
+    {records, skipped_count} =
+      Enum.reduce(rows, {[], 0}, fn row, {records, skipped_count} ->
+        case safe_row_to_log_record(row) do
+          {:ok, record} -> {[record | records], skipped_count}
+          {:error, _reason} -> {records, skipped_count + 1}
+        end
+      end)
+
+    log_skipped_scan("list_run_records", skipped_count)
+    Enum.reverse(records)
+  end
+
+  @spec safe_row_to_log_record(RunRecordSchema.t()) :: {:ok, LogRecord.t()} | {:error, Exception.t()}
+  defp safe_row_to_log_record(%RunRecordSchema{} = row) do
+    {:ok, row_to_log_record(row)}
+  rescue
+    e in ArgumentError -> {:error, e}
+  end
+
+  @spec finalize_tolerant_scan({result, non_neg_integer()}, String.t()) :: result when result: term()
+  defp finalize_tolerant_scan({result, skipped_count}, scan) do
+    log_skipped_scan(scan, skipped_count)
+    result
+  end
+
+  @spec log_skipped_scan(String.t(), non_neg_integer()) :: :ok
+  defp log_skipped_scan(_scan, 0), do: :ok
+
+  defp log_skipped_scan(scan, count) do
+    Logger.debug("ResultStore.Postgres skipped #{count} undecodable run_records row(s) during #{scan} scan")
   end
 
   @spec default(any(), any()) :: any()

@@ -14,10 +14,13 @@ defmodule Harness.ResultStore.PostgresCodecTest do
 
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentKPI.TokenMeans
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.ResultStore.Postgres
+  alias Harness.ResultStore.Schema.RunRecord, as: RunRecordSchema
   alias Harness.ResultStoreContract
   alias Harness.Run.LogRecord
   alias Harness.TokenUsage
@@ -61,7 +64,7 @@ defmodule Harness.ResultStore.PostgresCodecTest do
     end
 
     @spec rows() :: [struct()]
-    defp rows, do: Process.get({__MODULE__, :rows}, [])
+    def rows, do: Process.get({__MODULE__, :rows}, [])
   end
 
   defmodule RaisingRepo do
@@ -236,6 +239,42 @@ defmodule Harness.ResultStore.PostgresCodecTest do
   end
 
   describe "never-raise contract (codec failures)" do
+    test "list_run_records skips one row with unknown jsonb atom keys and returns healthy siblings" do
+      FakeRepo.reset()
+
+      unknown_key = "unknown_atom_key_#{System.unique_integer([:positive])}"
+
+      assert_raise ArgumentError, fn ->
+        String.to_existing_atom(unknown_key)
+      end
+
+      assert :ok =
+               Postgres.record_run(ResultStoreContract.log_record(run_id: "healthy-a"), repo: FakeRepo)
+
+      assert :ok =
+               Postgres.record_run(ResultStoreContract.log_record(run_id: "healthy-b"), repo: FakeRepo)
+
+      bad_row = %RunRecordSchema{
+        run_id: "bad-jsonb-key",
+        agent: "codex",
+        adapter: Atom.to_string(Codex),
+        state: "done",
+        verdict: "approve",
+        duration_ms: 1,
+        reason: %{unknown_key => "value"}
+      }
+
+      FakeRepo.put_rows([bad_row | FakeRepo.rows()])
+
+      log =
+        capture_log([level: :debug], fn ->
+          assert {:ok, records} = Postgres.list_run_records([], repo: FakeRepo)
+          assert records |> Enum.map(& &1.run_id) |> Enum.sort() == ["healthy-a", "healthy-b"]
+        end)
+
+      assert log =~ "ResultStore.Postgres skipped 1 undecodable run_records row(s)"
+    end
+
     test "an unencodable kind returns {:error, _}, never raises into the caller" do
       # A pid inside the kind tuple has no JSON representation — Jason raises,
       # record_run's rescue must convert it to {:error, _} (behaviour contract).
@@ -293,6 +332,23 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       assert kpi.cost_to_green == 42.0
     end
 
+    test "aggregate_by_agent skips rows with unknown agent atoms and keeps healthy rows" do
+      unknown_agent = "unknown_agent_#{System.unique_integer([:positive])}"
+
+      FakeRepo.put_rows([
+        aggregate_row("codex"),
+        aggregate_row(unknown_agent)
+      ])
+
+      log =
+        capture_log([level: :debug], fn ->
+          assert {:ok, %{codex: kpi}} = Postgres.aggregate_by_agent([], repo: FakeRepo)
+          assert kpi.run_count == 1
+        end)
+
+      assert log =~ "ResultStore.Postgres skipped 1 undecodable run_records row(s) during aggregate_by_agent scan"
+    end
+
     test "aggregate_reviewer_reliability projects reviewer rows" do
       FakeRepo.put_rows([
         %{
@@ -315,6 +371,22 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       assert kpi.false_approval_count == 1
       assert kpi.false_approval_rate == 0.25
       assert kpi.by_model["gpt-5.5"].false_approval_count == 1
+    end
+
+    test "aggregate_reviewer_reliability skips unknown reviewer modules and keeps healthy rows" do
+      FakeRepo.put_rows([
+        reviewer_row(Atom.to_string(Codex)),
+        reviewer_row("Elixir.UnknownReviewer#{System.unique_integer([:positive])}")
+      ])
+
+      log =
+        capture_log([level: :debug], fn ->
+          assert {:ok, %{Codex => kpi}} = Postgres.aggregate_reviewer_reliability([], repo: FakeRepo)
+          assert kpi.reviewed_count == 1
+        end)
+
+      assert log =~
+               "ResultStore.Postgres skipped 1 undecodable run_records row(s) during aggregate_reviewer_reliability scan"
     end
 
     test "aggregate_by_facet groups facet rows and projects per-agent KPIs" do
@@ -399,5 +471,34 @@ defmodule Harness.ResultStore.PostgresCodecTest do
              Postgres.list_run_records([run_id: record.run_id], repo: FakeRepo)
 
     decoded
+  end
+
+  defp aggregate_row(agent) do
+    %{
+      agent: agent,
+      run_count: 1,
+      pass_count: 1,
+      first_attempt_pass_count: 1,
+      reviewer_flaked_count: 0,
+      durations: [100],
+      review_iterations_mean: 0,
+      input_mean: 10,
+      output_mean: 5,
+      total_mean: 15,
+      pass_count_for_cost: 1,
+      cost_to_green_mean: 15,
+      ratings: []
+    }
+  end
+
+  defp reviewer_row(reviewer_adapter) do
+    %{
+      reviewer_adapter: reviewer_adapter,
+      reviewer_model: "gpt-5.5",
+      reviewed_count: 1,
+      rejection_count: 0,
+      no_verdict_count: 0,
+      false_approval_count: 0
+    }
   end
 end
