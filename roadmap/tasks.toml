@@ -11142,8 +11142,8 @@ markers = ["bug"]
 acceptance_criteria = ["A run whose settle-time run_records insert fails (e.g. Postgrex undefined_column from a pending migration) still ends with a durable record: the payload is spilled to a durable dead-letter (file or table) and replayed automatically once the insert path works again, or an equivalent no-loss mechanism", "The failure is surfaced loudly to the operator (notification sink / dashboard warning), not only a log warning", "Pending-migration drift is detectable: a boot-time or persist-failure-time check names the unapplied migrations in the warning", "Test covers: insert failure -> record recovered after the schema is fixed; lander landed_sha writeback failure on the same run does not crash the landing", "Integration evidence: reproduce the undefined_column class against a test schema and pin observed error semantics"]
 out_of_scope = ["Auto-running migrations on the live node (operator decision)", "Read-side tolerant row decode (task 365 owns that)", "Reconstructing historical lost records (operator judgment)"]
 touches = ["lib/harness/result_store/postgres.ex", "lib/harness/run/actions/settlement.ex", "lib/harness/lander.ex"]
-assignee = "cursor"
-model = "composer-2.5"
+assignee = "grok"
+model = "grok-4.5"
 body = """
 Observed 2026-07-20 on the harness node itself: task 367 auto-landed a migration
 (add_review_proposed_tasks_to_run_records); the long-lived dev node hot-reloaded

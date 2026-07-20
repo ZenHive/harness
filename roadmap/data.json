@@ -16769,8 +16769,8 @@
         "bug"
       ],
       "depends_on": [],
-      "assignee": "cursor",
-      "model": "composer-2.5",
+      "assignee": "grok",
+      "model": "grok-4.5",
       "acceptance_criteria": [
         "A run whose settle-time run_records insert fails (e.g. Postgrex undefined_column from a pending migration) still ends with a durable record: the payload is spilled to a durable dead-letter (file or table) and replayed automatically once the insert path works again, or an equivalent no-loss mechanism",
         "The failure is surfaced loudly to the operator (notification sink / dashboard warning), not only a log warning",
