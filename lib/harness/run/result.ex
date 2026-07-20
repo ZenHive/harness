@@ -105,6 +105,8 @@ defmodule Harness.Run.Result do
       failed before the agent ran.
     * `review` — the reviewer's parsed `.harness/review.json` verdict artifact
       (`Harness.Run.Review`), or `nil` if the run never produced one.
+    * `proposed_tasks` — reviewer discovery proposals carried from the verdict
+      artifact for the orchestrator to consider after landing.
     * `worktree_path` — the isolated worktree's path, or `nil` if it was never
       created. On a `:failed` run the directory may have been retained for
       inspection.
@@ -153,6 +155,7 @@ defmodule Harness.Run.Result do
           reason: reason(),
           agent_outcome: Outcome.t() | nil,
           review: Review.t() | nil,
+          proposed_tasks: [term()],
           worktree_path: String.t() | nil,
           agent_diff_size: non_neg_integer() | nil,
           reviewer_diff_size: non_neg_integer() | nil,
@@ -178,6 +181,7 @@ defmodule Harness.Run.Result do
     :agent_outcome,
     :review,
     :worktree_path,
+    proposed_tasks: [],
     agent_diff_size: nil,
     reviewer_diff_size: nil,
     token_usage: %TokenUsage{},

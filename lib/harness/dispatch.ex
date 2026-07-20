@@ -385,6 +385,7 @@ defmodule Harness.Dispatch do
       ratings: AgentKPI.record_ratings(record),
       checks: record.review_checks,
       concerns: record.review_concerns,
+      proposed_tasks: record.review_proposed_tasks,
       review_warning: record.review_warning?
     }
   end
@@ -1121,7 +1122,7 @@ defmodule Harness.Dispatch do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %{run_id, task_id, verdict :approve|:reject|nil, report: string|nil, ratings: map}}. {:error, :not_found} for an unknown/unrecorded run_id, or {:error, reason} on a store failure."
+        "{:ok, %{run_id, task_id, verdict :approve|:reject|nil, report: string|nil, ratings: map, proposed_tasks: list}}. {:error, :not_found} for an unknown/unrecorded run_id, or {:error, reason} on a store failure."
     }
   )
 
@@ -1744,6 +1745,7 @@ defmodule Harness.Dispatch do
       ratings: AgentKPI.record_ratings(record),
       checks: record.review_checks,
       concerns: record.review_concerns,
+      proposed_tasks: record.review_proposed_tasks,
       review_warning: record.review_warning?
     }
   end

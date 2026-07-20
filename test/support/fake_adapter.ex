@@ -340,6 +340,20 @@ defmodule Harness.FakeAdapter do
     {"/bin/sh", ["-c", script, "harness-fake", review_json(verdict)], []}
   end
 
+  defp command({:review_with_proposals, verdict}, _invocation) when verdict in ["approve", "reject"] do
+    proposal = %{
+      title: "Add reviewer proposal persistence",
+      body: "Carry reviewer discovery proposals through the result store.",
+      suggested_scores: %{difficulty: 3, benefit: 8, urgency: 7},
+      suggested_markers: ["parallel"],
+      evidence: "The reviewer found a missing durable handoff."
+    }
+
+    json = Jason.encode!(Map.put(Jason.decode!(review_json(verdict)), "proposed_tasks", [proposal]))
+    script = ~S(mkdir -p .harness; printf '%s' "$1" > .harness/review.json)
+    {"/bin/sh", ["-c", script, "harness-fake", json], []}
+  end
+
   defp command({:review_capture_prompt, verdict}, %Invocation{prompt: prompt}) when verdict in ["approve", "reject"] do
     script = ~S(printf '%s' "$1" > reviewer_prompt.txt; mkdir -p .harness; printf '%s' "$2" > .harness/review.json)
     {"/bin/sh", ["-c", script, "harness-fake", prompt, review_json(verdict)], []}

@@ -119,6 +119,19 @@ defmodule Harness.Run.LifecycleTest do
       refute File.dir?(result.worktree_path)
     end
 
+    test "persists reviewer task proposals after the approved worktree is removed" do
+      result = run(reviewer_adapter_opts: [command: {:review_with_proposals, "approve"}])
+
+      assert %Result{state: :done, proposed_tasks: [proposal]} = result
+      refute File.dir?(result.worktree_path)
+      assert proposal["title"] == "Add reviewer proposal persistence"
+
+      assert {:ok, [record]} = ResultStore.list_run_records(run_id: result.run_id)
+      assert record.review_proposed_tasks == [proposal]
+      assert {:ok, detail} = Harness.Dispatch.verdict_detail(result.run_id)
+      assert detail.proposed_tasks == [proposal]
+    end
+
     test "retries a transient adapter spawn failure before settling the run" do
       {:ok, counter} = Agent.start_link(fn -> 0 end)
 

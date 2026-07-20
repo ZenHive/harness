@@ -160,6 +160,22 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       assert decoded.review_warning? == true
     end
 
+    test "reviewer proposed tasks round-trip as a free-form proposal list" do
+      proposals = [
+        %{
+          "title" => "Add event tracing",
+          "body" => "Record dispatch handoffs.",
+          "suggested_scores" => %{"difficulty" => 4, "benefit" => 8},
+          "suggested_markers" => ["parallel"],
+          "evidence" => "The reviewer could not inspect the handoff."
+        }
+      ]
+
+      record = ResultStoreContract.log_record(run_id: "jsonb-review-proposals", review_proposed_tasks: proposals)
+
+      assert roundtrip(record).review_proposed_tasks == proposals
+    end
+
     test "approved-then-found-red fact round-trips as an open reviewer-keyed map" do
       fact = %{
         "reviewer_adapter" => Atom.to_string(Codex),

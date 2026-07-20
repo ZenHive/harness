@@ -164,6 +164,30 @@ defmodule Harness.Run.ReviewTest do
     end
   end
 
+  describe "parse/1 — proposed_tasks" do
+    test "preserves structured discovery proposals for the orchestrator" do
+      json =
+        ~s({"verdict": "approve", "proposed_tasks": [{"title": "Add observer", "body": "Capture events.", ) <>
+          ~s("suggested_scores": {"difficulty": 3, "benefit": 8}, "suggested_markers": ["parallel"], ) <>
+          ~s("evidence": "Reviewer found an unobservable failure path."}]})
+
+      assert {:ok, %Review{proposed_tasks: [proposal]}} = Review.parse(json)
+
+      assert proposal == %{
+               "title" => "Add observer",
+               "body" => "Capture events.",
+               "suggested_scores" => %{"difficulty" => 3, "benefit" => 8},
+               "suggested_markers" => ["parallel"],
+               "evidence" => "Reviewer found an unobservable failure path."
+             }
+    end
+
+    test "missing or wrong-shaped proposed_tasks defaults to an empty list" do
+      assert {:ok, %Review{proposed_tasks: []}} = Review.parse(~s({"verdict": "approve"}))
+      assert {:ok, %Review{proposed_tasks: []}} = Review.parse(~s({"verdict": "approve", "proposed_tasks": {}}))
+    end
+  end
+
   describe "parse/1 — malformed contents" do
     test "invalid JSON is malformed with the decoder error" do
       assert {:error, {:malformed, {:invalid_json, %Jason.DecodeError{}}}} = Review.parse("not json at all")

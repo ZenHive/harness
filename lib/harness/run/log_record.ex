@@ -8,7 +8,7 @@ defmodule Harness.Run.LogRecord do
   agent comparison metrics without needing the original process to still exist.
 
   ## Reviewer verdict (`verdict`, `review_report`, `review_checks`, `review_concerns`,
-  `review_facets`, `review_skills`, `review_ratings`)
+  `review_proposed_tasks`, `review_facets`, `review_skills`, `review_ratings`)
 
   The reviewer AI is the gate: `verdict` stores its decision (`:approve` /
   `:reject`, `nil` when the run never reached review) and `review_report` its
@@ -20,7 +20,9 @@ defmodule Harness.Run.LogRecord do
   pre-`skills` records. `review_checks` and `review_concerns` are the reviewer's
   structured check claim and self-flagged caveats; `review_warning?` is true when
   an approve carries non-empty concerns or a reviewer-authored `passed: false`
-  check fact. Harness never classifies prose or fuses these facts into a verdict.
+  check fact. `review_proposed_tasks` is the reviewer's raw discovery-proposal
+  list, for the orchestrator to dedupe and file after landing. Harness never
+  classifies prose or fuses these facts into a verdict.
 
   ## First-attempt pass (`reviewer_diff_size`, `review_iterations`)
 
@@ -133,6 +135,7 @@ defmodule Harness.Run.LogRecord do
           review_skills: %{optional(String.t()) => term()},
           review_checks: %{optional(String.t()) => term()},
           review_concerns: [term()],
+          review_proposed_tasks: [term()],
           review_warning?: boolean(),
           review_ratings: %{optional(String.t()) => term()},
           recovery_attempts: non_neg_integer(),
@@ -194,6 +197,7 @@ defmodule Harness.Run.LogRecord do
     review_skills: %{},
     review_checks: %{},
     review_concerns: [],
+    review_proposed_tasks: [],
     review_warning?: false,
     review_ratings: %{},
     recovery_attempts: 0,
@@ -306,6 +310,7 @@ defmodule Harness.Run.LogRecord do
         review_skills: review.skills,
         review_checks: review.checks,
         review_concerns: review.concerns,
+        review_proposed_tasks: review.proposed_tasks,
         review_warning?: Review.warning?(review),
         review_ratings: review.ratings
     }

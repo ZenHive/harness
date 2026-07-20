@@ -583,6 +583,25 @@ defmodule Harness.WorktreeTest do
       refute files =~ ".harness-retained"
     end
 
+    test "excludes reviewer-edited roadmap and changelog files from the delivery commit" do
+      {repo, wt} = create_worktree()
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+      File.mkdir_p!(Path.join(wt.path, "roadmap"))
+      File.write!(Path.join(wt.path, "roadmap/tasks.toml"), "[[task]]\nid = 999\n")
+      File.write!(Path.join(wt.path, "roadmap/data.json"), "{}\n")
+      File.write!(Path.join(wt.path, "ROADMAP.md"), "stale render\n")
+      File.write!(Path.join(wt.path, "CHANGELOG.md"), "stale history\n")
+
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
+
+      files = GitFixture.git!(repo, ["ls-tree", "-r", "--name-only", wt.branch])
+      assert files =~ "delivery.txt"
+      refute files =~ "roadmap/tasks.toml"
+      refute files =~ "roadmap/data.json"
+      refute files =~ "ROADMAP.md"
+      refute files =~ "CHANGELOG.md"
+    end
+
     test "diff_size measures only the source change, excluding the artifact family" do
       # Source change is exactly 2 added lines; the artifacts add 1 line each. A
       # leak would report 4 — asserting 2 proves the whole `.harness*` family is

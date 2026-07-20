@@ -157,6 +157,7 @@ defmodule Harness.ResultStore.Memory do
          review_skills: non_empty_map(incoming.review_skills, existing.review_skills),
          review_checks: non_empty_map(incoming.review_checks, existing.review_checks),
          review_concerns: non_empty_list(incoming.review_concerns, existing.review_concerns),
+         review_proposed_tasks: non_empty_list(incoming.review_proposed_tasks, existing.review_proposed_tasks),
          review_warning?: incoming.review_warning? or existing.review_warning?,
          review_ratings: non_empty_map(incoming.review_ratings, existing.review_ratings),
          recovery_attempts: max_count(incoming.recovery_attempts, existing.recovery_attempts),

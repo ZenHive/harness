@@ -11,6 +11,7 @@ defmodule Harness.Run.Review do
         "report": "what was found, what was fixed, why the decision",
         "checks": {"mix check.dispatch": {"passed": true, "output": "..."}},
         "concerns": [],
+        "proposed_tasks": [{"title": "...", "body": "...", "suggested_scores": {}, "suggested_markers": [], "evidence": "..."}],
         "facets": {"language": "elixir", "surface": "otp", "archetype": "feature", ...},
         "skills": {"otp": {"score": 8, "note": "..."}, "concurrency": {"score": 7, "note": "..."}, ...}
       }
@@ -50,7 +51,7 @@ defmodule Harness.Run.Review do
   @artifact_path ".harness/review.json"
 
   @enforce_keys [:verdict, :report]
-  defstruct [:verdict, :report, facets: %{}, skills: %{}, checks: %{}, concerns: [], ratings: %{}]
+  defstruct [:verdict, :report, facets: %{}, skills: %{}, checks: %{}, concerns: [], proposed_tasks: [], ratings: %{}]
 
   @typedoc "The reviewer's decision."
   @type verdict :: :approve | :reject
@@ -67,6 +68,9 @@ defmodule Harness.Run.Review do
     * `checks` — free-form command claims keyed by command name, including the
       reviewer's own boolean pass/fail claim when supplied.
     * `concerns` — free-form list of caveats the reviewer is explicitly approving with.
+    * `proposed_tasks` — free-form discovery proposals for the orchestrator to
+      dedupe and file after the run lands. Each proposal names its title, body,
+      suggested scores/markers, and evidence.
     * `ratings` — legacy flat implementer KPI scores, kept for back-compat with
       artifacts written before the `skills` rubric. Persisted verbatim.
 
@@ -80,6 +84,7 @@ defmodule Harness.Run.Review do
           skills: %{optional(String.t()) => term()},
           checks: %{optional(String.t()) => term()},
           concerns: [term()],
+          proposed_tasks: [term()],
           ratings: %{optional(String.t()) => term()}
         }
 
@@ -141,6 +146,7 @@ defmodule Harness.Run.Review do
       skills: free_form_block(decoded, "skills"),
       checks: free_form_block(decoded, "checks"),
       concerns: free_form_list(decoded, "concerns"),
+      proposed_tasks: free_form_list(decoded, "proposed_tasks"),
       ratings: free_form_block(decoded, "ratings")
     }
   end

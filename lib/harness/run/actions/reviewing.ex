@@ -628,17 +628,17 @@ defmodule Harness.Run.Actions.Reviewing do
     (an empty or unusable worktree, or work so destructive or off-task that redoing it from scratch
     is faster than fixing it).
 
-    Never change the current task's roadmap state. Do not mark this task done, verified, shipped,
-    pending, or blocked — harness writes the outcome back (`done` + `verified` + `shipped_in`) after
-    you approve and the work lands. If the implementer left a roadmap edit (e.g. a `status = "done"`
-    flip or a hand-edited `ROADMAP.md`), revert it as part of your fixes — it is corruption, not
+    Never edit `roadmap/tasks.toml`, `roadmap/data.json`, `ROADMAP.md`, or `CHANGELOG.md` in this
+    worktree. Do not mark the current task done, verified, shipped, pending, or blocked — harness
+    writes the outcome back (`done` + `verified` + `shipped_in`) after you approve and the work lands.
+    If the implementer left one of those files edited, revert it as part of your fixes — it is not
     deliverable.
 
-    Discovery filing: if you surface genuine follow-up work while gating and choose NOT to fix it
-    inline, file it as a real rmap task in this worktree instead of only mentioning it in prose.
-    Use `rmap new --from-stdin --roadmap-path #{inspect(data.project.roadmap_path)}` and provide a
-    TOML `[[task]]` fragment. You decide what counts as a discovery; harness does not classify,
-    rank, score, or read back the filed task. In your verdict report, name the filed task id(s).
+    Discovery proposals: if you surface genuine follow-up work while gating and choose NOT to fix it
+    inline, put a structured proposal in `proposed_tasks` in the verdict artifact. You decide what
+    counts as a discovery; harness preserves the proposals but does not classify, rank, dedupe, merge,
+    or file them. After the run lands, the orchestrator evaluates the proposals against the live
+    pending set and files any warranted task through its own task-writing gate.
 
     Verdict artifact — REQUIRED final action, write it even when you reject:
 
@@ -654,6 +654,15 @@ defmodule Harness.Run.Actions.Reviewing do
         }
       },
       "concerns": [],
+      "proposed_tasks": [
+        {
+          "title": "<short task title>",
+          "body": "<what to accomplish and success criteria>",
+          "suggested_scores": {"difficulty": 1-10, "benefit": 1-10, "urgency": 1-10},
+          "suggested_markers": ["parallel"],
+          "evidence": "<what in this review revealed the follow-up>"
+        }
+      ],
       "facets": {
         "language": "<elixir | rust | js | ...>",
         "surface": "<otp | ecto | phoenix | liveview | cli | migration | docs | ...>",
@@ -682,6 +691,9 @@ defmodule Harness.Run.Actions.Reviewing do
     `concerns` is a list of caveats you are explicitly approving with; leave it [] only when there
     are none. If you approve with a dismissed red, the reproduced mechanism belongs here, not only in
     the report.
+    `proposed_tasks` is a list of zero or more discovery proposals. Each entry needs `title`, `body`,
+    `suggested_scores`, `suggested_markers`, and `evidence`; use [] when you found no follow-up work.
+    Propose them here only — never file or edit roadmap/history files in this worktree.
 
     A missing or malformed #{Review.artifact_path()} fails this run.
 

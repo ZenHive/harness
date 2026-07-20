@@ -75,9 +75,16 @@ defmodule Harness.Worktree do
   # this family (covering both the markers and a *non*-gitignored `.harness/`).
   @artifact_paths [@artifact_dir, @active_marker, @retained_marker]
 
+  # Reviewers communicate discoveries through `.harness/review.json`, never by
+  # modifying the target project's roadmap or history. Those shared files are
+  # excluded mechanically so a stale run worktree cannot commit a colliding task
+  # id or documentation render.
+  @roadmap_paths ["roadmap/tasks.toml", "roadmap/data.json", "ROADMAP.md", "CHANGELOG.md"]
+  @excluded_paths @artifact_paths ++ @roadmap_paths
+
   # The same family as exclude pathspecs, for the read-only `status`/`diff` calls
   # that filter (rather than stage) the artifacts out of the commit measurement.
-  @stage_exclude Enum.map(@artifact_paths, &":(exclude)#{&1}")
+  @stage_exclude Enum.map(@excluded_paths, &":(exclude)#{&1}")
 
   # Ignored-but-load-bearing files the parent checkout carries that the verification
   # stack relies on but that .gitignore keeps out of the worktree-add. `.sobelow-skips`
@@ -490,7 +497,7 @@ defmodule Harness.Worktree do
   end
 
   # Stage every agent change while keeping the harness artifact family
-  # (`@artifact_paths`) out of the index. Two moves are required, not one:
+  # (`@excluded_paths`) out of the index. Two moves are required, not one:
   # `git add` exits 1 whenever an *explicit* pathspec (even an `:(exclude)` one)
   # matches a gitignored path, so a target repo that gitignores `.harness/` (with
   # the reviewer's `.harness/review.json` present) fatals the whole stage. A
@@ -503,7 +510,7 @@ defmodule Harness.Worktree do
   @spec stage_worktree(String.t()) :: {:ok, String.t()} | {:error, error()}
   defp stage_worktree(path) do
     with {:ok, _added} <- Git.run(["add", "-A"], path) do
-      Git.run(["reset", "-q", "--" | @artifact_paths], path)
+      Git.run(["reset", "-q", "--" | @excluded_paths], path)
     end
   end
 

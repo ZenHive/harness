@@ -18,6 +18,7 @@ defmodule Harness.Run.Actions.Settlement do
   alias Harness.ResultStore
   alias Harness.Run.LogRecord
   alias Harness.Run.Result
+  alias Harness.Run.Review
   alias Harness.TokenUsage
   alias Harness.TokenUsage.GrokSession
   alias Harness.Worktree
@@ -112,6 +113,7 @@ defmodule Harness.Run.Actions.Settlement do
       reason: crash_reason,
       agent_outcome: data.agent_outcome,
       review: data.review,
+      proposed_tasks: proposed_tasks(data.review),
       reviewer_outcome: data.reviewer_outcome,
       worktree_path: data.worktree && data.worktree.path,
       reviewer_adapter: data.reviewer_adapter,
@@ -229,6 +231,7 @@ defmodule Harness.Run.Actions.Settlement do
       reason: data.reason,
       agent_outcome: data.agent_outcome,
       review: data.review,
+      proposed_tasks: proposed_tasks(data.review),
       reviewer_outcome: data.reviewer_outcome,
       worktree_path: data.worktree && data.worktree.path,
       reviewer_adapter: data.reviewer_adapter,
@@ -245,6 +248,10 @@ defmodule Harness.Run.Actions.Settlement do
       recovery_token_usage: data.recovery_token_usage
     }
   end
+
+  @spec proposed_tasks(Review.t() | nil) :: [term()]
+  defp proposed_tasks(%Review{proposed_tasks: proposed_tasks}), do: proposed_tasks
+  defp proposed_tasks(nil), do: []
 
   # Parses the just-settled attempt's transcript for token usage and sums it into
   # the run's running total, so a multi-attempt run's burn is attributable.

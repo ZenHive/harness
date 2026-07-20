@@ -63,6 +63,7 @@ defmodule Harness.ResultStoreContract do
     assert retrieved.review_skills == %{}
     assert retrieved.review_checks == %{}
     assert retrieved.review_concerns == []
+    assert retrieved.review_proposed_tasks == []
     assert retrieved.review_warning? == false
     assert retrieved.cold_check == nil
     assert retrieved.approved_then_found_red == %{}
@@ -145,6 +146,7 @@ defmodule Harness.ResultStoreContract do
         review_facets: %{"surface" => "otp"},
         review_skills: %{"otp" => %{"score" => 8}},
         review_checks: %{"mix check.dispatch" => %{"passed" => false}},
+        review_proposed_tasks: [%{"title" => "Add handoff trace"}],
         review_warning?: true,
         review_ratings: %{"code_quality" => 2},
         reviewer_outcome_kind: :exited,
@@ -194,6 +196,7 @@ defmodule Harness.ResultStoreContract do
     assert rec.review_facets == %{"surface" => "otp"}
     assert rec.review_skills == %{"otp" => %{"score" => 8}}
     assert rec.review_checks == %{"mix check.dispatch" => %{"passed" => false}}
+    assert rec.review_proposed_tasks == [%{"title" => "Add handoff trace"}]
     assert rec.review_warning? == true
     assert rec.review_ratings == %{"code_quality" => 2}
     assert rec.reviewer_outcome_kind == :exited

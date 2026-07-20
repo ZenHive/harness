@@ -38,11 +38,16 @@ defmodule Harness.Run.ReviewerPromptTest do
       assert prompt =~ "Implementer transcript tail:"
       assert prompt =~ "Diff stat:"
       assert prompt =~ Review.artifact_path()
-      assert prompt =~ "Discovery filing"
-      assert prompt =~ "rmap new --from-stdin"
-      assert prompt =~ project.roadmap_path
-      assert prompt =~ "file it as a real rmap task"
-      assert prompt =~ "name the filed task id"
+      assert prompt =~ "Discovery proposals"
+      assert prompt =~ "`proposed_tasks`"
+      assert prompt =~ ~s("suggested_scores":)
+      assert prompt =~ ~s("suggested_markers":)
+      assert prompt =~ "Never edit `roadmap/tasks.toml`"
+      assert prompt =~ "`roadmap/data.json`"
+      assert prompt =~ "`ROADMAP.md`"
+      assert prompt =~ "`CHANGELOG.md`"
+      assert prompt =~ "orchestrator evaluates the proposals against the live"
+      refute prompt =~ "rmap new --from-stdin"
     end
 
     test "the reviewer re-prompt preserves the checks and concerns verdict contract" do

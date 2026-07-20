@@ -141,6 +141,8 @@ defmodule Harness.ResultStore.Postgres do
           review_skills: fragment("COALESCE(NULLIF(EXCLUDED.review_skills, '{}'::jsonb), ?)", r.review_skills),
           review_checks: fragment("COALESCE(NULLIF(EXCLUDED.review_checks, '{}'::jsonb), ?)", r.review_checks),
           review_concerns: fragment("COALESCE(NULLIF(EXCLUDED.review_concerns, '{}'::jsonb), ?)", r.review_concerns),
+          review_proposed_tasks:
+            fragment("COALESCE(NULLIF(EXCLUDED.review_proposed_tasks, '[]'::jsonb), ?)", r.review_proposed_tasks),
           review_warning?: fragment("(? OR COALESCE(EXCLUDED.review_warning, false))", r.review_warning?),
           review_ratings: fragment("COALESCE(NULLIF(EXCLUDED.review_ratings, '{}'::jsonb), ?)", r.review_ratings),
           recovery_attempts:
@@ -694,6 +696,7 @@ defmodule Harness.ResultStore.Postgres do
         review_skills: r.review_skills,
         review_checks: r.review_checks,
         review_concerns: r.review_concerns,
+        review_proposed_tasks: r.review_proposed_tasks,
         review_warning?: r.review_warning?,
         review_ratings: r.review_ratings,
         domains: r.domains,
@@ -787,6 +790,7 @@ defmodule Harness.ResultStore.Postgres do
       review_skills: encode_jsonb(r.review_skills),
       review_checks: r.review_checks,
       review_concerns: encode_freeform_list(r.review_concerns),
+      review_proposed_tasks: encode_freeform_list(r.review_proposed_tasks),
       review_warning?: r.review_warning?,
       review_ratings: encode_jsonb(r.review_ratings),
       domains: encode_jsonb(r.domains),
@@ -825,6 +829,7 @@ defmodule Harness.ResultStore.Postgres do
       review_skills: decode_freeform_block(row.review_skills),
       review_checks: decode_freeform_block(row.review_checks),
       review_concerns: decode_freeform_list(row.review_concerns),
+      review_proposed_tasks: decode_freeform_list(row.review_proposed_tasks),
       review_warning?: default(row.review_warning?, false),
       review_ratings: decode_review_ratings(row.review_ratings),
       token_usage: decode_token_usage(row.token_usage),
