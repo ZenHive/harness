@@ -430,6 +430,43 @@ defmodule Harness.LanderTest do
       assert output =~ "notes.md"
       refute File.exists?(Path.join(ctx.repo, "notes.md"))
     end
+
+    test "refuses when the old id is referenced by an earlier commit on the same branch", ctx do
+      base = roadmap_toml("200", "Base task")
+      File.mkdir_p!(Path.join(ctx.repo, "roadmap"))
+      File.write!(Path.join(ctx.repo, "roadmap/tasks.toml"), base)
+      File.write!(Path.join(ctx.repo, "ROADMAP.md"), roadmap_markers())
+      render_roadmap!(ctx.repo)
+      GitFixture.git!(ctx.repo, ["add", "."])
+      GitFixture.git!(ctx.repo, ["commit", "-m", "add base roadmap"])
+      GitFixture.git!(ctx.repo, ["push", "origin", "main"])
+
+      GitFixture.git!(ctx.run_worktree.path, ["rebase", "origin/main"])
+
+      # The reference lands in its OWN commit, ahead of the roadmap commit that
+      # conflicts — a shape harness produces routinely (implementer commit plus
+      # reviewer follow-up commit). Scanning only the conflicting commit would
+      # miss it and land a silently broken reference.
+      File.write!(Path.join(ctx.run_worktree.path, "notes.md"), "Task 201 is documented here.\n")
+      GitFixture.git!(ctx.run_worktree.path, ["add", "."])
+      GitFixture.git!(ctx.run_worktree.path, ["commit", "-m", "document branch task"])
+
+      File.write!(Path.join(ctx.run_worktree.path, "roadmap/tasks.toml"), base <> task_toml("201", "Branch task"))
+      render_roadmap!(ctx.run_worktree.path)
+      GitFixture.git!(ctx.run_worktree.path, ["add", "."])
+      GitFixture.git!(ctx.run_worktree.path, ["commit", "-m", "add branch task"])
+
+      File.write!(Path.join(ctx.repo, "roadmap/tasks.toml"), base <> task_toml("201", "Target task"))
+      render_roadmap!(ctx.repo)
+      GitFixture.git!(ctx.repo, ["add", "."])
+      GitFixture.git!(ctx.repo, ["commit", "-m", "add target task"])
+      GitFixture.git!(ctx.repo, ["push", "origin", "main"])
+
+      assert {:conflict, output} = Lander.land(ctx.request)
+      assert output =~ "roadmap task-id renumber refused"
+      assert output =~ "notes.md"
+      refute File.exists?(Path.join(ctx.repo, "notes.md"))
+    end
   end
 
   describe "land/1 — non-ff push race" do

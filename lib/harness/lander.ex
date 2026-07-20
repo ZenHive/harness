@@ -347,7 +347,7 @@ defmodule Harness.Lander do
   defp resolve_or_abort(%Worktree{path: path} = worktree, base_sha, request, conflict_output) do
     OpsFeed.broadcast(Op.land_stage(request, :resolving))
 
-    case resolve_roadmap_task_id_conflict(path) do
+    case resolve_roadmap_task_id_conflict(path, branch_diff_range(base_sha, request)) do
       :resolved_all ->
         continue_mechanical_resolution(path, request, conflict_output)
 
@@ -376,8 +376,16 @@ defmodule Harness.Lander do
     end
   end
 
-  @spec resolve_roadmap_task_id_conflict(String.t()) :: :resolved_all | :not_applicable | {:blocked, String.t()}
-  defp resolve_roadmap_task_id_conflict(path) do
+  # The branch's full replayed range (merge-base of the target tip and the branch
+  # tip, to the branch tip). Mid-rebase the branch ref still names the original
+  # tip, so this covers EVERY commit being replayed - not just the one that
+  # conflicted - which is the range in-diff id references must be checked over.
+  @spec branch_diff_range(String.t(), request()) :: String.t()
+  defp branch_diff_range(base_sha, request), do: "#{base_sha}...#{request.branch}"
+
+  @spec resolve_roadmap_task_id_conflict(String.t(), String.t()) ::
+          :resolved_all | :not_applicable | {:blocked, String.t()}
+  defp resolve_roadmap_task_id_conflict(path, diff_range) do
     with {:ok, files} <- Git.conflicted_files(path),
          true <- "roadmap/tasks.toml" in files,
          true <- Enum.all?(files, &(&1 in @roadmap_conflict_files)),
@@ -385,7 +393,7 @@ defmodule Harness.Lander do
          {:ok, target} <- staged_blob(path, "roadmap/tasks.toml", 2),
          {:ok, branch} <- staged_blob(path, "roadmap/tasks.toml", 3),
          {:ok, resolved, rewrites} <- TaskIdRewriter.resolve_additive_conflict(base, target, branch),
-         :ok <- ensure_no_renumbered_references(path, rewrites),
+         :ok <- ensure_no_renumbered_references(path, diff_range, rewrites),
          :ok <- File.write(Path.join(path, "roadmap/tasks.toml"), resolved),
          :ok <- render_roadmap(path, Path.join(path, "roadmap/tasks.toml")),
          :ok <- stage_roadmap_files(path) do
@@ -416,24 +424,24 @@ defmodule Harness.Lander do
     end
   end
 
-  @spec ensure_no_renumbered_references(String.t(), [TaskIdRewriter.rewrite()]) :: :ok | {:error, term()}
-  defp ensure_no_renumbered_references(_path, []), do: :ok
+  @spec ensure_no_renumbered_references(String.t(), String.t(), [TaskIdRewriter.rewrite()]) :: :ok | {:error, term()}
+  defp ensure_no_renumbered_references(_path, _diff_range, []), do: :ok
 
-  defp ensure_no_renumbered_references(path, rewrites) do
-    with {:ok, changed_files} <- Git.run(["diff", "--name-only", "REBASE_HEAD^", "REBASE_HEAD"], path) do
+  defp ensure_no_renumbered_references(path, diff_range, rewrites) do
+    with {:ok, changed_files} <- Git.run(["diff", "--name-only", diff_range], path) do
       references =
         changed_files
         |> String.split("\n", trim: true)
         |> Enum.reject(&(&1 in @roadmap_conflict_files))
-        |> Enum.filter(&renumbered_reference?(path, &1, rewrites))
+        |> Enum.filter(&renumbered_reference?(path, diff_range, &1, rewrites))
 
       if references == [], do: :ok, else: {:error, {:renumbered_references, references}}
     end
   end
 
-  @spec renumbered_reference?(String.t(), String.t(), [TaskIdRewriter.rewrite()]) :: boolean()
-  defp renumbered_reference?(path, file, rewrites) do
-    case Git.run(["diff", "--unified=0", "REBASE_HEAD^", "REBASE_HEAD", "--", file], path) do
+  @spec renumbered_reference?(String.t(), String.t(), String.t(), [TaskIdRewriter.rewrite()]) :: boolean()
+  defp renumbered_reference?(path, diff_range, file, rewrites) do
+    case Git.run(["diff", "--unified=0", diff_range, "--", file], path) do
       {:ok, diff} ->
         added =
           diff
