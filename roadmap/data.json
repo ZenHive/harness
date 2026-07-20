@@ -16646,7 +16646,7 @@
       "id": "368",
       "phase": 9,
       "bundle": "core-loop",
-      "status": "in_progress",
+      "status": "done",
       "title": "Coalesce-dispatch: run N small same-bundle tasks as one implementer run",
       "scores": {
         "d": 5,
@@ -16682,10 +16682,17 @@
         "skills/harness-driver/SKILL.md",
         "priv/includes/harness-workflow.md"
       ],
+      "shipped_in": "aacf879fe4e55668a905cd83020e116be025943a",
       "body": "Pipeline fixed costs (worktree fork, deps bootstrap, cold checks, reviewer boot)\nare ~20-40 min per run regardless of task size, so a D3 task pays the same\noverhead as a D7 one. Observed in ccxt_client 2026-07-19: several sub-hour tasks\neach consumed a full run's fixed costs; the operator called for bundling. The\none-session=one-task rule catches this at filing time when one author sees both\ntasks, but reviewer/sweep discoveries arrive as separate valid tasks whose merge\nwindow has passed. Give the orchestrator a dispatch-time coalesce primitive: one\nimplementer session lands N small related tasks under one review, matching what a\nhuman session would naturally do.\n",
       "created_at": "2026-07-19",
       "started_at": "2026-07-20",
+      "done_at": "2026-07-20",
       "scored_at": "2026-07-19",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1784509159980-54c2a6b7, aacf879fe4e55668a905cd83020e116be025943a).",
+      "delivered_by": "codex",
+      "verified": true,
+      "verified_by": "claude",
+      "verification_ref": "harness-run:run-1784509159980-54c2a6b7",
       "cross_repo": []
     },
     {
