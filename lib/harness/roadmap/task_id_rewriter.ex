@@ -11,6 +11,7 @@ defmodule Harness.Roadmap.TaskIdRewriter do
 
   @type rewrite :: %{from: String.t(), to: String.t()}
   @type result :: :unchanged | {:rewritten, String.t(), [rewrite()]}
+  @type conflict_result :: {:ok, String.t(), [rewrite()]} | {:error, :non_additive}
 
   @id_line_regex ~r/^(\s*id\s*=\s*)("?)(\d+)\2\s*$/m
 
@@ -19,34 +20,32 @@ defmodule Harness.Roadmap.TaskIdRewriter do
   """
   @spec rewrite_collisions(String.t(), String.t()) :: result()
   def rewrite_collisions(base_toml, head_toml) when is_binary(base_toml) and is_binary(head_toml) do
-    base_blocks = task_blocks(base_toml)
-    head_blocks = task_blocks(head_toml)
-    base_by_id = Map.new(base_blocks, &{&1.id, &1.body})
-    used_ids = used_ids(base_blocks ++ head_blocks)
+    case appended_task_blocks(base_toml, head_toml) do
+      {:ok, additions} ->
+        {rewritten, rewrites} = rewrite_branch_collisions(base_toml, additions)
+        if rewrites == [], do: :unchanged, else: {:rewritten, base_toml <> rewritten, rewrites}
 
-    {rewritten, rewrites, _used} =
-      Enum.reduce(head_blocks, {head_toml, [], used_ids}, fn block, {text, acc, used} ->
-        if colliding_new_block?(block, base_by_id) do
-          next = next_id(used)
-          updated = rewrite_block_id(block.body, next)
-          {String.replace(text, block.body, updated, global: false), [%{from: block.id, to: next} | acc], [next | used]}
-        else
-          {text, acc, used}
-        end
-      end)
-
-    case Enum.reverse(rewrites) do
-      [] -> :unchanged
-      changed -> {:rewritten, rewritten, changed}
+      :error ->
+        :unchanged
     end
   end
 
-  @spec colliding_new_block?(map(), map()) :: boolean()
-  defp colliding_new_block?(%{id: id, body: body}, base_by_id) do
-    case Map.fetch(base_by_id, id) do
-      {:ok, ^body} -> false
-      {:ok, _other} -> true
-      :error -> false
+  @doc """
+  Combines target and branch task additions from one conflicted task file.
+
+  Both sides must retain `base_toml` byte-for-byte and append only complete
+  `[[task]]` blocks. Branch additions that reuse a target id are reassigned to
+  the next available integer id.
+  """
+  @spec resolve_additive_conflict(String.t(), String.t(), String.t()) :: conflict_result()
+  def resolve_additive_conflict(base_toml, target_toml, branch_toml)
+      when is_binary(base_toml) and is_binary(target_toml) and is_binary(branch_toml) do
+    with {:ok, _target_additions} <- appended_task_blocks(base_toml, target_toml),
+         {:ok, branch_additions} <- appended_task_blocks(base_toml, branch_toml) do
+      {rewritten_branch, rewrites} = rewrite_branch_collisions(target_toml, branch_additions)
+      {:ok, target_toml <> rewritten_branch, rewrites}
+    else
+      :error -> {:error, :non_additive}
     end
   end
 
@@ -87,5 +86,40 @@ defmodule Harness.Roadmap.TaskIdRewriter do
       end,
       global: false
     )
+  end
+
+  @spec appended_task_blocks(String.t(), String.t()) :: {:ok, String.t()} | :error
+  defp appended_task_blocks(base_toml, side_toml) do
+    if String.starts_with?(side_toml, base_toml) do
+      additions = String.replace_prefix(side_toml, base_toml, "")
+
+      if additions == "" or complete_task_blocks?(additions), do: {:ok, additions}, else: :error
+    else
+      :error
+    end
+  end
+
+  @spec complete_task_blocks?(String.t()) :: boolean()
+  defp complete_task_blocks?(text) do
+    blocks = task_blocks(text)
+    blocks != [] and Enum.map_join(blocks, "", & &1.body) == text
+  end
+
+  @spec rewrite_branch_collisions(String.t(), String.t()) :: {String.t(), [rewrite()]}
+  defp rewrite_branch_collisions(target_toml, branch_additions) do
+    target_ids = target_toml |> task_blocks() |> used_ids()
+
+    {rewritten, rewrites, _used} =
+      Enum.reduce(task_blocks(branch_additions), {branch_additions, [], target_ids}, fn block, {text, acc, used} ->
+        if block.id in used do
+          next = next_id(used)
+          updated = rewrite_block_id(block.body, next)
+          {String.replace(text, block.body, updated, global: false), [%{from: block.id, to: next} | acc], [next | used]}
+        else
+          {text, acc, [block.id | used]}
+        end
+      end)
+
+    {rewritten, Enum.reverse(rewrites)}
   end
 end

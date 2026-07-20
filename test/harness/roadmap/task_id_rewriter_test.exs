@@ -139,6 +139,27 @@ defmodule Harness.Roadmap.TaskIdRewriterTest do
     refute duplicate_ids?(rewritten)
   end
 
+  test "combines additive sides and renumbers the branch-side collision" do
+    base = task_toml("200", "Base task")
+    target = base <> task_toml("201", "Target task")
+    branch = base <> task_toml("201", "Branch task")
+
+    assert {:ok, resolved, [%{from: "201", to: "202"}]} =
+             TaskIdRewriter.resolve_additive_conflict(base, target, branch)
+
+    assert resolved =~ ~s(title = "Target task")
+    assert resolved =~ ~s(id = "202")
+    assert resolved =~ ~s(title = "Branch task")
+  end
+
+  test "refuses a side that edits an existing task block" do
+    base = task_toml("200", "Base task")
+    target = String.replace(base, "Base task", "Edited task")
+
+    assert {:error, :non_additive} =
+             TaskIdRewriter.resolve_additive_conflict(base, target, base <> task_toml("201", "Branch task"))
+  end
+
   defp duplicate_ids?(toml) do
     ids =
       ~r/^\s*id\s*=\s*"(\d+)"\s*$/m
@@ -151,5 +172,13 @@ defmodule Harness.Roadmap.TaskIdRewriterTest do
       )
 
     length(ids) != length(Enum.uniq(ids))
+  end
+
+  defp task_toml(id, title) do
+    """
+    [[task]]
+    id = "#{id}"
+    title = "#{title}"
+    """
   end
 end

@@ -66,6 +66,7 @@ defmodule Harness.Lander do
   require Logger
 
   @default_additive_conflict_files ["CHANGELOG.md"]
+  @roadmap_conflict_files ["roadmap/tasks.toml", "roadmap/data.json", "ROADMAP.md"]
   @resolver_witness_header "Harness resolver witness: "
 
   @typedoc "The settled run a landing job carries (built by the worker from Oban args)."
@@ -346,6 +347,22 @@ defmodule Harness.Lander do
   defp resolve_or_abort(%Worktree{path: path} = worktree, base_sha, request, conflict_output) do
     OpsFeed.broadcast(Op.land_stage(request, :resolving))
 
+    case resolve_roadmap_task_id_conflict(path) do
+      :resolved_all ->
+        continue_mechanical_resolution(path, request, conflict_output)
+
+      {:blocked, reason} ->
+        _ = Git.run(["rebase", "--abort"], path)
+        {:conflict, witness_conflict(conflict_output, reason)}
+
+      :not_applicable ->
+        resolve_remaining_conflicts(worktree, base_sha, request, conflict_output)
+    end
+  end
+
+  @spec resolve_remaining_conflicts(Worktree.t(), String.t(), request(), String.t()) ::
+          {:ok, String.t()} | {:conflict, String.t()}
+  defp resolve_remaining_conflicts(%Worktree{path: path} = worktree, base_sha, request, conflict_output) do
     case resolve_additive_conflicts(path) do
       :resolved_all ->
         continue_mechanical_resolution(path, request, conflict_output)
@@ -356,6 +373,80 @@ defmodule Harness.Lander do
       {:error, reason} ->
         Logger.info("harness lander: additive conflict union failed for task #{request.task_id} (#{inspect(reason)})")
         resolve_with_agent(worktree, base_sha, request, conflict_output)
+    end
+  end
+
+  @spec resolve_roadmap_task_id_conflict(String.t()) :: :resolved_all | :not_applicable | {:blocked, String.t()}
+  defp resolve_roadmap_task_id_conflict(path) do
+    with {:ok, files} <- Git.conflicted_files(path),
+         true <- "roadmap/tasks.toml" in files,
+         true <- Enum.all?(files, &(&1 in @roadmap_conflict_files)),
+         {:ok, base} <- staged_blob(path, "roadmap/tasks.toml", 1),
+         {:ok, target} <- staged_blob(path, "roadmap/tasks.toml", 2),
+         {:ok, branch} <- staged_blob(path, "roadmap/tasks.toml", 3),
+         {:ok, resolved, rewrites} <- TaskIdRewriter.resolve_additive_conflict(base, target, branch),
+         :ok <- ensure_no_renumbered_references(path, rewrites),
+         :ok <- File.write(Path.join(path, "roadmap/tasks.toml"), resolved),
+         :ok <- render_roadmap(path, Path.join(path, "roadmap/tasks.toml")),
+         :ok <- stage_roadmap_files(path) do
+      :resolved_all
+    else
+      false ->
+        :not_applicable
+
+      {:error, :non_additive} ->
+        :not_applicable
+
+      {:error, {:git_failed, _args, 128, _output}} ->
+        :not_applicable
+
+      {:error, {:renumbered_references, files}} ->
+        {:blocked, "roadmap task-id renumber refused; branch references #{Enum.join(files, ", ")}"}
+
+      {:error, reason} ->
+        {:blocked, "roadmap task-id renumber failed: #{inspect(reason)}"}
+    end
+  end
+
+  @spec stage_roadmap_files(String.t()) :: :ok | {:error, term()}
+  defp stage_roadmap_files(path) do
+    case Git.run(["add", "--" | @roadmap_conflict_files], path) do
+      {:ok, _output} -> :ok
+      {:error, reason} -> {:error, {:roadmap_stage_failed, reason}}
+    end
+  end
+
+  @spec ensure_no_renumbered_references(String.t(), [TaskIdRewriter.rewrite()]) :: :ok | {:error, term()}
+  defp ensure_no_renumbered_references(_path, []), do: :ok
+
+  defp ensure_no_renumbered_references(path, rewrites) do
+    with {:ok, changed_files} <- Git.run(["diff", "--name-only", "REBASE_HEAD^", "REBASE_HEAD"], path) do
+      references =
+        changed_files
+        |> String.split("\n", trim: true)
+        |> Enum.reject(&(&1 in @roadmap_conflict_files))
+        |> Enum.filter(&renumbered_reference?(path, &1, rewrites))
+
+      if references == [], do: :ok, else: {:error, {:renumbered_references, references}}
+    end
+  end
+
+  @spec renumbered_reference?(String.t(), String.t(), [TaskIdRewriter.rewrite()]) :: boolean()
+  defp renumbered_reference?(path, file, rewrites) do
+    case Git.run(["diff", "--unified=0", "REBASE_HEAD^", "REBASE_HEAD", "--", file], path) do
+      {:ok, diff} ->
+        added =
+          diff
+          |> String.split("\n")
+          |> Enum.filter(&String.starts_with?(&1, "+"))
+          |> Enum.reject(&String.starts_with?(&1, "+++"))
+
+        Enum.any?(rewrites, fn %{from: id} ->
+          Enum.any?(added, &Regex.match?(~r/(^|\D)#{Regex.escape(id)}(\D|$)/, &1))
+        end)
+
+      {:error, _reason} ->
+        true
     end
   end
 

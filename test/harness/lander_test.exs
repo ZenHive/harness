@@ -343,6 +343,93 @@ defmodule Harness.LanderTest do
       assert toml =~ ~s(id = "201")
       assert toml =~ ~s(title = "Stale branch task")
     end
+
+    test "mechanically resolves additive roadmap conflicts without invoking the resolver", ctx do
+      base = roadmap_toml("200", "Base task")
+      File.mkdir_p!(Path.join(ctx.repo, "roadmap"))
+      File.write!(Path.join(ctx.repo, "roadmap/tasks.toml"), base)
+      File.write!(Path.join(ctx.repo, "ROADMAP.md"), roadmap_markers())
+      render_roadmap!(ctx.repo)
+      GitFixture.git!(ctx.repo, ["add", "."])
+      GitFixture.git!(ctx.repo, ["commit", "-m", "add base roadmap"])
+      GitFixture.git!(ctx.repo, ["push", "origin", "main"])
+
+      GitFixture.git!(ctx.run_worktree.path, ["rebase", "origin/main"])
+      File.write!(Path.join(ctx.run_worktree.path, "roadmap/tasks.toml"), base <> task_toml("201", "Branch task"))
+      render_roadmap!(ctx.run_worktree.path)
+      GitFixture.git!(ctx.run_worktree.path, ["add", "."])
+      GitFixture.git!(ctx.run_worktree.path, ["commit", "-m", "add branch task"])
+
+      File.write!(Path.join(ctx.repo, "roadmap/tasks.toml"), base <> task_toml("201", "Target task"))
+      render_roadmap!(ctx.repo)
+      GitFixture.git!(ctx.repo, ["add", "."])
+      GitFixture.git!(ctx.repo, ["commit", "-m", "add target task"])
+      GitFixture.git!(ctx.repo, ["push", "origin", "main"])
+
+      put_resolver(fn _worktree, _opts -> flunk("resolver must not run for additive roadmap tasks") end)
+
+      assert {:landed, landed} = Lander.land(ctx.request)
+      toml = GitFixture.git!(ctx.origin, ["show", landed <> ":roadmap/tasks.toml"])
+      assert toml =~ ~s(id = "202")
+      assert toml =~ ~s(title = "Branch task")
+      refute toml =~ ~s(id = "203")
+    end
+
+    test "leaves a roadmap conflict that edits an existing task for the resolver path", ctx do
+      base = roadmap_toml("200", "Base task")
+      File.mkdir_p!(Path.join(ctx.repo, "roadmap"))
+      File.write!(Path.join(ctx.repo, "roadmap/tasks.toml"), base)
+      File.write!(Path.join(ctx.repo, "ROADMAP.md"), roadmap_markers())
+      render_roadmap!(ctx.repo)
+      GitFixture.git!(ctx.repo, ["add", "."])
+      GitFixture.git!(ctx.repo, ["commit", "-m", "add base roadmap"])
+      GitFixture.git!(ctx.repo, ["push", "origin", "main"])
+
+      GitFixture.git!(ctx.run_worktree.path, ["rebase", "origin/main"])
+      File.write!(Path.join(ctx.run_worktree.path, "roadmap/tasks.toml"), base <> task_toml("201", "Branch task"))
+      render_roadmap!(ctx.run_worktree.path)
+      GitFixture.git!(ctx.run_worktree.path, ["add", "."])
+      GitFixture.git!(ctx.run_worktree.path, ["commit", "-m", "add branch task"])
+
+      File.write!(Path.join(ctx.repo, "roadmap/tasks.toml"), String.replace(base, "Base task", "Edited target task"))
+      render_roadmap!(ctx.repo)
+      GitFixture.git!(ctx.repo, ["add", "."])
+      GitFixture.git!(ctx.repo, ["commit", "-m", "edit target task"])
+      GitFixture.git!(ctx.repo, ["push", "origin", "main"])
+      put_resolver(fn _worktree, _opts -> {:error, :no_resolver} end)
+
+      assert {:conflict, output} = Lander.land(ctx.request)
+      assert output =~ "resolver witness: selection/spawn failed: :no_resolver"
+    end
+
+    test "refuses additive task-id renumbering when the branch diff references the old id", ctx do
+      base = roadmap_toml("200", "Base task")
+      File.mkdir_p!(Path.join(ctx.repo, "roadmap"))
+      File.write!(Path.join(ctx.repo, "roadmap/tasks.toml"), base)
+      File.write!(Path.join(ctx.repo, "ROADMAP.md"), roadmap_markers())
+      render_roadmap!(ctx.repo)
+      GitFixture.git!(ctx.repo, ["add", "."])
+      GitFixture.git!(ctx.repo, ["commit", "-m", "add base roadmap"])
+      GitFixture.git!(ctx.repo, ["push", "origin", "main"])
+
+      GitFixture.git!(ctx.run_worktree.path, ["rebase", "origin/main"])
+      File.write!(Path.join(ctx.run_worktree.path, "roadmap/tasks.toml"), base <> task_toml("201", "Branch task"))
+      File.write!(Path.join(ctx.run_worktree.path, "notes.md"), "Task 201 is documented here.\n")
+      render_roadmap!(ctx.run_worktree.path)
+      GitFixture.git!(ctx.run_worktree.path, ["add", "."])
+      GitFixture.git!(ctx.run_worktree.path, ["commit", "-m", "add branch task"])
+
+      File.write!(Path.join(ctx.repo, "roadmap/tasks.toml"), base <> task_toml("201", "Target task"))
+      render_roadmap!(ctx.repo)
+      GitFixture.git!(ctx.repo, ["add", "."])
+      GitFixture.git!(ctx.repo, ["commit", "-m", "add target task"])
+      GitFixture.git!(ctx.repo, ["push", "origin", "main"])
+
+      assert {:conflict, output} = Lander.land(ctx.request)
+      assert output =~ "roadmap task-id renumber refused"
+      assert output =~ "notes.md"
+      refute File.exists?(Path.join(ctx.repo, "notes.md"))
+    end
   end
 
   describe "land/1 — non-ff push race" do
