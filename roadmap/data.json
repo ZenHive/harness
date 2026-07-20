@@ -16740,6 +16740,48 @@
       "verified_by": "claude",
       "verification_ref": "harness-run:run-1784507322519-810e046e",
       "cross_repo": []
+    },
+    {
+      "id": "370",
+      "phase": 9,
+      "bundle": "core-loop",
+      "status": "pending",
+      "title": "Settle-persist must survive schema/DB drift: never silently lose a run record on a failed insert",
+      "scores": {
+        "d": 4,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 1.63,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "cursor",
+      "model": "composer-2.5",
+      "acceptance_criteria": [
+        "A run whose settle-time run_records insert fails (e.g. Postgrex undefined_column from a pending migration) still ends with a durable record: the payload is spilled to a durable dead-letter (file or table) and replayed automatically once the insert path works again, or an equivalent no-loss mechanism",
+        "The failure is surfaced loudly to the operator (notification sink / dashboard warning), not only a log warning",
+        "Pending-migration drift is detectable: a boot-time or persist-failure-time check names the unapplied migrations in the warning",
+        "Test covers: insert failure -> record recovered after the schema is fixed; lander landed_sha writeback failure on the same run does not crash the landing",
+        "Integration evidence: reproduce the undefined_column class against a test schema and pin observed error semantics"
+      ],
+      "out_of_scope": [
+        "Auto-running migrations on the live node (operator decision)",
+        "Read-side tolerant row decode (task 365 owns that)",
+        "Reconstructing historical lost records (operator judgment)"
+      ],
+      "touches": [
+        "lib/harness/result_store/postgres.ex",
+        "lib/harness/run/actions/settlement.ex",
+        "lib/harness/lander.ex"
+      ],
+      "body": "Observed 2026-07-20 on the harness node itself: task 367 auto-landed a migration\n(add_review_proposed_tasks_to_run_records); the long-lived dev node hot-reloaded\nthe new schema module via code reloading while the DB was still unmigrated. From\nthat moment every run_records statement failed with Postgrex undefined_column\n(pg_code 42703): the settle-time insert for run-1784509159980-54c2a6b7 (task 368,\nreviewer-approved and successfully landed at aacf879f) was dropped after a single\nattempt, the lander's landed_sha writeback updated zero rows, and the status view\nwent blind — while the land itself succeeded. Result: an approved, landed run with\nNO persisted record (dispatch-status not_found), which breaks the recovery\nprimitives (reland/rereview read the record), KPI rollups, and the token ledger.\n\nBest-effort persistence is fine as a policy; silent single-shot loss is not.\nUnder dogfooding this drift class is structural: harness lands migrations into\nits own running host, and nobody has run ecto.migrate yet. Keep the fix\nmechanical per the mantra: spill-and-replay plus loud drift surfacing, no\nauto-judgment about the migration itself.\n\nEvidence: node log 09:15:19-09:27 2026-07-20 (+08) — failed INSERT with full\npayload, failed landed_sha writeback, repeated status-view failures.\n",
+      "created_at": "2026-07-20",
+      "scored_at": "2026-07-20",
+      "cross_repo": []
     }
   ]
 }
