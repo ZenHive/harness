@@ -121,13 +121,33 @@ defmodule Harness.Run.Worker do
           {:ok, String.t(), Oban.Job.t()} | {:error, term()}
   def enqueue_coalesced(%Project{} = project, %Item{task_ids: task_ids} = item, adapter, opts \\ [])
       when is_list(task_ids) and length(task_ids) > 1 and is_atom(adapter) and is_list(opts) do
-    {run_id, changeset} = new_dispatch_job(project, item, adapter, opts)
+    # Oban's unique key is {project_name, item_id}, which only covers the FIRST
+    # member. Any other member may already have a live run of its own — landing
+    # it twice is the duplicate-delivery trap — so every member is checked before
+    # a second run is spawned.
+    case live_member_job(project, task_ids) do
+      {:ok, job} ->
+        return_existing_run(project, item.id, job)
 
-    case Harness.Oban.insert(changeset) do
-      {:ok, %Oban.Job{conflict?: true} = job} -> return_existing_run(project, item.id, job)
-      {:ok, job} -> {:ok, run_id, job}
-      {:error, _reason} = error -> error
+      :error ->
+        {run_id, changeset} = new_dispatch_job(project, item, adapter, opts)
+
+        case Harness.Oban.insert(changeset) do
+          {:ok, %Oban.Job{conflict?: true} = job} -> return_existing_run(project, item.id, job)
+          {:ok, job} -> {:ok, run_id, job}
+          {:error, _reason} = error -> error
+        end
     end
+  end
+
+  @spec live_member_job(Project.t(), [String.t()]) :: {:ok, Oban.Job.t()} | :error
+  defp live_member_job(%Project{} = project, task_ids) do
+    Enum.reduce_while(task_ids, :error, fn id, acc ->
+      case Harness.Oban.member_run_job(project, id) do
+        {:ok, _job} = found -> {:halt, found}
+        :error -> {:cont, acc}
+      end
+    end)
   end
 
   @doc false

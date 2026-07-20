@@ -92,15 +92,44 @@ defmodule Harness.Oban do
   @doc false
   @spec coalesced_run_job(Project.t(), String.t()) :: {:ok, Oban.Job.t()} | :error
   def coalesced_run_job(%Project{} = project, item_id) when is_binary(item_id) do
-    query =
-      from(job in Oban.Job,
-        where:
-          job.queue == ^queue_name(project) and job.worker == ^@run_worker and job.state in ^@headroom_states and
-            fragment("?->>? = ?", job.args, "project_name", ^project.name) and
-            fragment("?->'item_ids' @> ?::jsonb", job.args, ^Jason.encode!([item_id])),
-        limit: 1
+    one_job(
+      from(job in live_run_jobs(project),
+        where: fragment("?->'item_ids' @> ?::jsonb", job.args, ^Jason.encode!([item_id]))
       )
+    )
+  end
 
+  @doc """
+  Returns a non-terminal run job that already covers `item_id`, whether it was
+  dispatched as that task's own run or as a member of a coalesced run.
+
+  Broader than `coalesced_run_job/2`: a coalesce request must not spawn a second
+  concurrent run over a task that already has a live single-task run, because
+  both would land the same task (the duplicate-delivery trap).
+  """
+  @spec member_run_job(Project.t(), String.t()) :: {:ok, Oban.Job.t()} | :error
+  def member_run_job(%Project{} = project, item_id) when is_binary(item_id) do
+    one_job(
+      from(job in live_run_jobs(project),
+        where:
+          fragment("?->>? = ?", job.args, "item_id", ^item_id) or
+            fragment("?->'item_ids' @> ?::jsonb", job.args, ^Jason.encode!([item_id]))
+      )
+    )
+  end
+
+  @spec live_run_jobs(Project.t()) :: Ecto.Query.t()
+  defp live_run_jobs(%Project{} = project) do
+    from(job in Oban.Job,
+      where:
+        job.queue == ^queue_name(project) and job.worker == ^@run_worker and job.state in ^@headroom_states and
+          fragment("?->>? = ?", job.args, "project_name", ^project.name),
+      limit: 1
+    )
+  end
+
+  @spec one_job(Ecto.Query.t()) :: {:ok, Oban.Job.t()} | :error
+  defp one_job(query) do
     case Harness.Repo.one(query) do
       %Oban.Job{} = job -> {:ok, job}
       nil -> :error

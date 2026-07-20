@@ -11,6 +11,7 @@ defmodule Harness.DispatchBundleCollisionTest do
       agent_model: Application.get_env(:harness, :agent_model),
       oban_insert: Application.get_env(:harness, :oban_insert),
       roadmap_ingest: Application.get_env(:harness, :roadmap_ingest),
+      roadmap_list: Application.get_env(:harness, :roadmap_list),
       roadmap_next_bundle: Application.get_env(:harness, :roadmap_next_bundle)
     }
 
@@ -21,6 +22,7 @@ defmodule Harness.DispatchBundleCollisionTest do
       restore_env(:agent_model, env.agent_model)
       restore_env(:oban_insert, env.oban_insert)
       restore_env(:roadmap_ingest, env.roadmap_ingest)
+      restore_env(:roadmap_list, env.roadmap_list)
       restore_env(:roadmap_next_bundle, env.roadmap_next_bundle)
     end)
 
@@ -253,6 +255,71 @@ defmodule Harness.DispatchBundleCollisionTest do
                        item_ids: ["41", "42"],
                        adapter_module: "Elixir.Harness.AgentAdapter.Codex"
                      }}
+  end
+
+  test "coalesce returns the write-set UNION of its members, not any single member's" do
+    project_name = "coalesce-ws-#{System.unique_integer([:positive])}"
+    project = ProjectFixture.from_repo("/tmp/harness-dispatch", name: project_name)
+
+    :ok = ProjectRegistry.register(project)
+    stub_ingest()
+    stub_insert()
+
+    Application.put_env(:harness, :roadmap_list, fn ^project ->
+      {:ok,
+       [
+         task("41", touches: ["lib/a.ex"], files_to_modify: ["lib/shared.ex"]),
+         task("42", touches: ["lib/b.ex", "lib/shared.ex"]),
+         task("99", touches: ["lib/unrelated.ex"])
+       ]}
+    end)
+
+    assert {:ok, %{write_set: write_set}} = Dispatch.coalesce(project_name, ["41", "42"], "codex", false)
+
+    # Union of both members across BOTH write-set fields, deduped and sorted —
+    # and never the non-member task's files.
+    assert write_set == ["lib/a.ex", "lib/b.ex", "lib/shared.ex"]
+  end
+
+  test "coalesce degrades to an empty write-set when the roadmap cannot be read" do
+    project_name = "coalesce-ws-err-#{System.unique_integer([:positive])}"
+    project = ProjectFixture.from_repo("/tmp/harness-dispatch", name: project_name)
+
+    :ok = ProjectRegistry.register(project)
+    stub_ingest()
+    stub_insert()
+
+    Application.put_env(:harness, :roadmap_list, fn ^project -> {:error, :rmap_failed} end)
+
+    # The run is already enqueued, so an rmap read failure must not fail the
+    # dispatch — it degrades the advisory write-set only.
+    assert {:ok, %{run_id: run_id, write_set: []}} = Dispatch.coalesce(project_name, ["41", "42"], "codex", false)
+    assert is_binary(run_id)
+  end
+
+  test "coalesce rejects a list that does not name at least two distinct tasks" do
+    project_name = "coalesce-bad-#{System.unique_integer([:positive])}"
+    project = ProjectFixture.from_repo("/tmp/harness-dispatch", name: project_name)
+
+    :ok = ProjectRegistry.register(project)
+    stub_ingest()
+
+    assert {:error, :invalid_task_ids} = Dispatch.coalesce(project_name, ["41"], "codex", false)
+    assert {:error, :invalid_task_ids} = Dispatch.coalesce(project_name, ["41", "41"], "codex", false)
+    assert {:error, :invalid_task_ids} = Dispatch.coalesce(project_name, [], "codex", false)
+  end
+
+  defp stub_ingest do
+    Application.put_env(:harness, :roadmap_ingest, fn {:id, id}, opts ->
+      {:ok, %Item{id: id, title: "Task #{id}", prompt: "do #{id}", agent: Keyword.fetch!(opts, :agent)}}
+    end)
+  end
+
+  defp stub_insert do
+    Application.put_env(:harness, :oban_insert, fn changeset ->
+      job = Ecto.Changeset.apply_action!(changeset, :insert)
+      {:ok, %{job | id: System.unique_integer([:positive])}}
+    end)
   end
 
   defp task(id, fields \\ []) do

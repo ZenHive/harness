@@ -1050,10 +1050,15 @@ defmodule Harness.Dispatch do
       ],
       scrub_anthropic_key: [kind: :value, default: true, description: "Scrub ANTHROPIC_API_KEY from the run environment."]
     ],
-    returns: %{type: :tuple, description: "{:ok, %{run_id, task_ids}} for one coalesced run, or {:error, reason}."}
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, %{run_id, task_ids, write_set}} for one coalesced run — write_set is the union of every member's `touches`/`files_to_modify`, i.e. the footprint the caller must serialize the next wave against. {:error, reason}: invalid_task_ids (fewer than two distinct ids), unknown_adapter, non_delegatable_adapter, unknown_project, or an rmap ingest reason."
+    }
   )
 
-  @spec coalesce(String.t(), [String.t()], String.t(), boolean()) :: {:ok, map()} | {:error, error() | :invalid_task_ids}
+  @spec coalesce(String.t(), [String.t()], String.t(), boolean()) ::
+          {:ok, map()} | {:error, error() | :invalid_task_ids}
   def coalesce(project_name, task_ids, adapter \\ @recommended_adapter, scrub_anthropic_key \\ true)
       when is_binary(project_name) and is_list(task_ids) and is_binary(adapter) and is_boolean(scrub_anthropic_key) do
     ids = task_ids |> Enum.filter(&is_binary/1) |> Enum.uniq()
@@ -1068,7 +1073,7 @@ defmodule Harness.Dispatch do
              env: scrub_env(scrub_anthropic_key),
              requested_model: effective_model(item, render_agent)
            ) do
-      {:ok, %{run_id: run_id, task_ids: item.task_ids}}
+      {:ok, %{run_id: run_id, task_ids: item.task_ids, write_set: coalesced_write_set(project, item.task_ids)}}
     end
   end
 
@@ -1632,6 +1637,41 @@ defmodule Harness.Dispatch do
     |> case do
       {:ok, items} -> {:ok, Enum.reverse(items)}
       {:error, _reason} = error -> error
+    end
+  end
+
+  # A coalesced run is ONE landing unit, so its write-set footprint is the union
+  # of its members' — that union, not any single member's, is what the caller
+  # must serialize the next wave against (harness never auto-selects what to
+  # coalesce, so the orchestrator does the serializing and needs the union back).
+  # Best-effort: an rmap read failure degrades to [] rather than failing a run
+  # that is already enqueued, and logs so a silent [] is never mistaken for
+  # "these tasks declare no files".
+  @spec coalesced_write_set(Project.t(), [String.t()]) :: [String.t()]
+  defp coalesced_write_set(%Project{} = project, task_ids) do
+    case roadmap_list(project) do
+      {:ok, tasks} ->
+        ids = MapSet.new(task_ids)
+
+        tasks
+        |> Enum.filter(&MapSet.member?(ids, task_id(&1)))
+        |> Enum.reduce(MapSet.new(), &MapSet.union(WriteSetPlan.write_set(&1), &2))
+        |> Enum.sort()
+
+      {:error, reason} ->
+        Logger.warning(
+          "harness dispatch coalesce: #{project.name} could not read the roadmap for the write-set union of tasks #{Enum.join(task_ids, ", ")}: #{inspect(reason)}"
+        )
+
+        []
+    end
+  end
+
+  @spec roadmap_list(Project.t()) :: {:ok, [map()]} | {:error, term()}
+  defp roadmap_list(%Project{name: name} = project) do
+    case Application.get_env(:harness, :roadmap_list) do
+      fun when is_function(fun, 1) -> fun.(project)
+      _other -> Roadmap.list(name)
     end
   end
 

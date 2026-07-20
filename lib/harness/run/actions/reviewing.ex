@@ -158,7 +158,13 @@ defmodule Harness.Run.Actions.Reviewing do
   # this function only routes on what it wrote.
   @doc false
   @spec settle_review(data(), {:ok, Review.t()} | {:error, Review.error()}) :: handler_result()
-  def settle_review(%{item: %{task_ids: [_first | _rest] = ids}} = data, {:ok, %Review{verdict: :approve} = review}) do
+  # Only a genuinely multi-member run is gated on `task_outcomes`; a one-element
+  # `task_ids` is a single-task run, matching what the reviewer prompt asked for
+  # and what new_dispatch_job/4 enqueues.
+  def settle_review(
+        %{item: %{task_ids: [_first, _second | _rest] = ids}} = data,
+        {:ok, %Review{verdict: :approve} = review}
+      ) do
     if Enum.all?(ids, &(Map.get(review.task_outcomes, &1) == "approved")) do
       {:next_state, :done, clear_operator_steer(%{data | review: review, reason: :approved})}
     else

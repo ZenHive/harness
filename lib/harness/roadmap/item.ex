@@ -97,11 +97,21 @@ defmodule Harness.Roadmap.Item do
       first
       | title: "Coalesced tasks: " <> Enum.map_join(items, ", ", & &1.title),
         prompt: Enum.map_join(items, "\n\n---\n\n", & &1.prompt),
-        body: Enum.map_join(items, "\n\n---\n\n", &(&1.body || "")),
+        body: coalesced_body(items),
         acceptance_criteria: Enum.flat_map(items, & &1.acceptance_criteria),
         domains: items |> Enum.flat_map(& &1.domains) |> Enum.uniq(),
         task_ids: Enum.map(items, & &1.id),
         task_fingerprints: Map.new(items, &{&1.id, &1.fingerprint})
     }
+  end
+
+  # `body` stays nil when no member declares one, rather than degrading to a
+  # string of bare separators that reads as "there is a body" to the gate.
+  @spec coalesced_body([t()]) :: String.t() | nil
+  defp coalesced_body(items) do
+    case Enum.reject(Enum.map(items, & &1.body), &(&1 in [nil, ""])) do
+      [] -> nil
+      bodies -> Enum.join(bodies, "\n\n---\n\n")
+    end
   end
 end
