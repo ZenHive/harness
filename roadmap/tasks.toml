@@ -10943,7 +10943,7 @@ scored_at = "2026-07-12"
 id = "365"
 phase = 23
 bundle = "run-history"
-status = "pending"
+status = "in_progress"
 title = "ResultStore.Postgres list/aggregate path fails whole query on atom decode — tolerant row decode like the File store"
 scores = { d = 3, b = 7, u = 7 }
 markers = ["bug"]
@@ -10969,6 +10969,7 @@ binary_to_term(:safe) sites on the read path; the never-raise best-effort contra
 orchestrators and the dashboard.
 """
 created_at = "2026-07-14"
+started_at = "2026-07-20"
 scored_at = "2026-07-14"
 
 [[task]]
