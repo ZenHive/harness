@@ -11051,15 +11051,15 @@ shipped_in = "5f5038c087c1054a46526e20e6a70a6f596604b4"
 id = "368"
 phase = 9
 bundle = "core-loop"
-status = "pending"
+status = "in_progress"
 title = "Coalesce-dispatch: run N small same-bundle tasks as one implementer run"
 scores = { d = 5, b = 7, u = 6 }
 markers = ["parallel"]
 acceptance_criteria = ["A dispatch surface (dispatch-bundle option or new tool) accepts an explicit list of task ids and runs them as ONE Harness.Run: one worktree, one implementer invocation with all task prompts, one reviewer gate, one land", "The reviewer verdict records per-task outcomes so the lander can advance each coalesced task's roadmap status individually (all done --shipped-in the same sha, or the run fails as a unit)", "Write-set union of the coalesced tasks is what enters wave serialization", "In-flight idempotency still holds: re-dispatching any member task while the coalesced run is live returns the existing run", "Docs: harness-driver SKILL + harness-workflow include describe when to coalesce (small tasks sharing a bundle/surface) vs parallelize; sync script run"]
 out_of_scope = ["Automatic selection of which tasks to coalesce (the orchestrator picks; harness executes)", "Partial landing of a subset of coalesced tasks (unit semantics for v1)"]
+touches = ["lib/harness/dispatch.ex", "lib/harness/dispatch/write_set_plan.ex", "lib/harness/run.ex", "lib/harness/roadmap.ex", "lib/harness/lander.ex", "skills/harness-driver/SKILL.md", "priv/includes/harness-workflow.md"]
 assignee = "codex"
 model = "gpt-5.6-terra"
-touches = ["lib/harness/dispatch.ex", "lib/harness/dispatch/write_set_plan.ex", "lib/harness/run.ex", "lib/harness/roadmap.ex", "lib/harness/lander.ex", "skills/harness-driver/SKILL.md", "priv/includes/harness-workflow.md"]
 body = """
 Pipeline fixed costs (worktree fork, deps bootstrap, cold checks, reviewer boot)
 are ~20-40 min per run regardless of task size, so a D3 task pays the same
@@ -11072,6 +11072,7 @@ implementer session lands N small related tasks under one review, matching what 
 human session would naturally do.
 """
 created_at = "2026-07-19"
+started_at = "2026-07-20"
 scored_at = "2026-07-19"
 
 [[task]]
