@@ -10943,7 +10943,7 @@ scored_at = "2026-07-12"
 id = "365"
 phase = 23
 bundle = "run-history"
-status = "in_progress"
+status = "done"
 title = "ResultStore.Postgres list/aggregate path fails whole query on atom decode — tolerant row decode like the File store"
 scores = { d = 3, b = 7, u = 7 }
 markers = ["bug"]
@@ -10968,9 +10968,16 @@ binary_to_term(:safe) sites on the read path; the never-raise best-effort contra
 (error tuple, not raise) but an all-or-nothing error tuple is still an unusable query surface for
 orchestrators and the dashboard.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1784511189599-662ff40c, 0da4d9fed6f9796e2f910de1d891cdf20b17854d)."
+delivered_by = "codex"
+verified = true
+verified_by = "claude"
+verification_ref = "harness-run:run-1784511189599-662ff40c"
 created_at = "2026-07-14"
 started_at = "2026-07-20"
 scored_at = "2026-07-14"
+done_at = "2026-07-20"
+shipped_in = "0da4d9fed6f9796e2f910de1d891cdf20b17854d"
 
 [[task]]
 id = "366"
