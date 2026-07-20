@@ -11010,7 +11010,7 @@ scored_at = "2026-07-17"
 id = "367"
 phase = 9
 bundle = "agent-gate"
-status = "in_progress"
+status = "done"
 title = "Reviewer task filings become review.json proposals; orchestrator files them post-land"
 scores = { d = 6, b = 8, u = 8 }
 markers = ["parallel"]
@@ -11036,9 +11036,16 @@ roadmap commits. Harness mechanically carries the proposals through Result and
 the persisted record; the driving orchestrator files them centrally after the
 land, where it can dedupe, merge, and gate them against the real roadmap state.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1784507322166-ad090494, 5f5038c087c1054a46526e20e6a70a6f596604b4)."
+delivered_by = "codex"
+verified = true
+verified_by = "claude"
+verification_ref = "harness-run:run-1784507322166-ad090494"
 created_at = "2026-07-19"
 started_at = "2026-07-20"
 scored_at = "2026-07-19"
+done_at = "2026-07-20"
+shipped_in = "5f5038c087c1054a46526e20e6a70a6f596604b4"
 
 [[task]]
 id = "368"

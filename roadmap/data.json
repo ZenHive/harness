@@ -16591,7 +16591,7 @@
       "id": "367",
       "phase": 9,
       "bundle": "agent-gate",
-      "status": "in_progress",
+      "status": "done",
       "title": "Reviewer task filings become review.json proposals; orchestrator files them post-land",
       "scores": {
         "d": 6,
@@ -16629,10 +16629,17 @@
         "skills/harness-driver/SKILL.md",
         "priv/includes/harness-workflow.md"
       ],
+      "shipped_in": "5f5038c087c1054a46526e20e6a70a6f596604b4",
       "body": "Observed in ccxt_client dispatch (2026-07-19): reviewers file discovery tasks by\nediting roadmap/tasks.toml inside their run worktree. The worktree forks from an\nolder base, so the reviewer assigns the next task id of ITS fork while origin has\nmoved on — producing id collisions that block the lander (task 433 land blocked:\nits reviewer filed id 437, already taken on origin), orphaned data.json-only\nrenders, and singleton tasks that never pass the one-session=one-task merge gate\nbecause the reviewer cannot see the live pending set. Roadmap and CHANGELOG files\nare also a universal write-set overlap that defeats write-set-disjoint parallel\ndispatch: every run touches them, so \"disjoint\" waves still conflict at landing.\n\nFix the channel, not the judgment: the reviewer keeps proposing tasks (that\njudgment is valuable), but as structured data in the verdict artifact instead of\nroadmap commits. Harness mechanically carries the proposals through Result and\nthe persisted record; the driving orchestrator files them centrally after the\nland, where it can dedupe, merge, and gate them against the real roadmap state.\n",
       "created_at": "2026-07-19",
       "started_at": "2026-07-20",
+      "done_at": "2026-07-20",
       "scored_at": "2026-07-19",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1784507322166-ad090494, 5f5038c087c1054a46526e20e6a70a6f596604b4).",
+      "delivered_by": "codex",
+      "verified": true,
+      "verified_by": "claude",
+      "verification_ref": "harness-run:run-1784507322166-ad090494",
       "cross_repo": []
     },
     {
