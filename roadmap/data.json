@@ -16684,7 +16684,7 @@
       "id": "369",
       "phase": 9,
       "bundle": "autolanding",
-      "status": "in_progress",
+      "status": "done",
       "title": "Lander fallback: mechanically resolve additive-only tasks.toml conflicts by renumbering",
       "scores": {
         "d": 3,
@@ -16713,10 +16713,17 @@
         "lib/harness/lander/resolver.ex",
         "test/harness/lander_test.exs"
       ],
+      "shipped_in": "2f3ed81476802c8fade2fe480f78902737aab44d",
       "body": "Sequential integer task ids plus parallel worktrees make additive tasks.toml\ncollisions structural: two runs filing discoveries both claim the next id, the\nsecond one to land conflicts, and today the lander retains the branch and blocks\nthe task - a purely mechanical repair (renumber the additive block, re-render,\npush) that currently costs an operator/orchestrator session (observed ccxt_client\ntask 433, 2026-07-19: reviewer filed id 437, origin had taken it; hand repair\ntook cherry-pick + renumber + reland). Renumbering additive blocks is counting,\nnot judgment, so it belongs in the lander per the mantra.\n\nNote: the reviewer-proposals task (same date, agent-gate bundle) removes the\nMAIN source of these conflicts by taking reviewers out of tasks.toml entirely;\nthis fallback covers the residual class (operator or parallel-session filings\nracing a land). If that task lands first and the residual rate is ~zero, honor\nan honest re-score downward instead of building on momentum.\n",
       "created_at": "2026-07-19",
       "started_at": "2026-07-20",
+      "done_at": "2026-07-20",
       "scored_at": "2026-07-19",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1784507322519-810e046e, 2f3ed81476802c8fade2fe480f78902737aab44d).",
+      "delivered_by": "codex",
+      "verified": true,
+      "verified_by": "claude",
+      "verification_ref": "harness-run:run-1784507322519-810e046e",
       "cross_repo": []
     }
   ]

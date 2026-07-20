@@ -11071,7 +11071,7 @@ scored_at = "2026-07-19"
 id = "369"
 phase = 9
 bundle = "autolanding"
-status = "in_progress"
+status = "done"
 title = "Lander fallback: mechanically resolve additive-only tasks.toml conflicts by renumbering"
 scores = { d = 3, b = 5, u = 5 }
 acceptance_criteria = ["When the landing rebase conflicts ONLY in roadmap/tasks.toml (plus its data.json/ROADMAP.md renders) and both sides' changes are purely additive [[task]] blocks, the lander renumbers the branch-side new tasks to the next free ids on the target, re-renders via rmap, and completes the land", "Any non-additive conflict (edits to existing task blocks, code files) still retains the branch and blocks as today", "String references to the renumbered id inside the same branch diff (CHANGELOG lines, code comments, test names) are either rewritten with the renumber or the land is left blocked with a report naming them - silent broken references are not acceptable", "A test covers: clean renumber, non-additive conflict left blocked, and in-diff reference rewrite/refusal"]
@@ -11095,6 +11095,13 @@ this fallback covers the residual class (operator or parallel-session filings
 racing a land). If that task lands first and the residual rate is ~zero, honor
 an honest re-score downward instead of building on momentum.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1784507322519-810e046e, 2f3ed81476802c8fade2fe480f78902737aab44d)."
+delivered_by = "codex"
+verified = true
+verified_by = "claude"
+verification_ref = "harness-run:run-1784507322519-810e046e"
 created_at = "2026-07-19"
 started_at = "2026-07-20"
 scored_at = "2026-07-19"
+done_at = "2026-07-20"
+shipped_in = "2f3ed81476802c8fade2fe480f78902737aab44d"
