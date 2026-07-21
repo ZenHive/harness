@@ -33,12 +33,29 @@ Rejections put the task back in the queue for re-dispatch. Fix-and-approve is th
 
 ### When to Dispatch vs Hand-Build
 
-**Default: dispatch every pending rmap task whose dependencies are satisfied.** Hand-build only what harness cannot yet do:
+**An rmap task is not automatically a harness run.** Dispatch only when the full
+implement→review→land cycle buys meaningful safety, independent verification, or
+parallel throughput. Historical run cost stays material even for D≤2 work, so the
+old D≤2 / 30-LOC conjunctive exception was too narrow.
+
+**Work inline by default when it is bounded and local:** one coherent surface,
+typically D≤4, roughly ≤100 LOC across ≤5 files, focused-testable, and no positive
+dispatch trigger below. These are routing hints, not an ALL-of gate — a risky D2
+task can earn dispatch, while a routine D4 task can stay inline.
+
+Positive dispatch triggers:
+
+- Signing, money handling, cryptography, security, or authorization
+- A public API/schema/contract change or a migration
+- Harness runtime, CI/check infrastructure, or a repo-wide invariant
+- Live/external-system semantics that need independent evidence
+- Multiple subsystems, or genuinely useful parallel execution
+
+Hand-build when harness cannot perform or judge the work:
 
 - Scaffolding that reshapes harness runtime (supervision tree, dep stack, Endpoint) **while the run lifecycle itself is in flux**
-- Tiny tasks — ALL of (a) D≤2, (b) ≤30 LOC across ≤3 files, (c) no harness-surface change
-- UI / LiveView / heex / CSS — headless agents idle-timeout without visual reward; use tidewave + browser
-- A harness gap — file via `rmap new`, fix harness, re-dispatch; do not work around by hand-building
+- Work requiring live human/browser judgment, such as exploratory visual identity; routine spec-anchored UI remains dispatchable
+- A harness gap — file via `rmap new`, fix harness, re-dispatch; do not work around the gap inside the target task
 
 ### Running a Task
 
