@@ -99,16 +99,17 @@ So in this context the names collapse: the native dispatch tools are `mcp__harne
 
 ## Core Principle
 
-**Never hand-build what harness can dispatch.**
+**Use harness when the work earns the full implement→review→land cycle.**
 
-- **Consuming-repo context (A):** dispatching is the default. You're not the implementer at all — you dispatch and read verified results. Hand-building from inside your own session defeats the whole role split.
-- **Dogfooding context (B):** dispatching is the default for anything that isn't trivial. Hand-build only when harness genuinely cannot yet do it (rare, and only after filing via `rmap new`).
+- **Both contexts:** work inline when it is bounded and local — one coherent surface, typically D≤4, roughly ≤100 LOC across ≤5 files, focused-testable, and with no positive dispatch trigger. These are routing hints, not an ALL-of gate.
+- **Dispatch triggers:** signing/money/security, public contracts or migrations, harness/CI/repo-wide invariants, live external semantics, multiple subsystems, or genuinely useful parallel execution. A risky D2 task can earn dispatch; a routine D4 task can stay inline.
+- **Dogfooding context (B):** foundational scaffolding may also require hand-build while the run lifecycle itself is in flux; a real harness gap is filed and fixed before the target task is re-dispatched.
 
-The cross-family reviewer AI's verdict — not the implementer's self-report — is always the source of truth.
+For every dispatched task, the cross-family reviewer AI's verdict — not the implementer's self-report — is the source of truth. Fix-and-approve remains intentional: the reviewer may correct implementer gaps inline and rerun the relevant gates before deciding.
 
 **Always reach for the native flat MCP tools first** (next section). The Elixir struct surface (`start_run`, `Batch`, `compare`) over `project_eval` is the escape hatch for the handful of ops the flat tools deliberately omit — not the default.
 
-**Token-economy carve-out (dogfooding only).** Inside the harness checkout, a task with all of D≤2 + ≤30 LOC across ≤3 files + no harness-surface change (no new adapter / behaviour callback / supervision-tree / run-lifecycle edit) may be hand-built. Two ~15-LOC fixes burn more orchestration tokens through `Batch.dispatch/2` than they save in integration signal — the dispatch lifecycle isn't meaningfully exercised at that size. This carve-out does NOT apply in the consuming-repo context: there you have no in-checkout option, and the orchestration token cost is offset by the role split (you'd otherwise context-switch into the consuming repo's BEAM yourself). Full rationale and the matching policy bullet live in `CLAUDE.md` § Dogfooding.
+**Token economy is portfolio-wide.** A task's existence in rmap is decoupled from how it executes. Bounded local work may be done inline in either context and marked done without independent verification; work that earns dispatch pays the full loop because the stronger reviewer is expected to find and fix gaps, not merely rubber-stamp the implementer. Full routing criteria live in `@~/.claude/includes/harness-workflow.md` § "When to Dispatch vs Hand-Build" and `rmap.md` § "Right-size tasks".
 
 ---
 
@@ -580,15 +581,16 @@ true = Harness.AgentAdapter.supports?(Harness.AgentAdapter.Pi, {:cost_tier, :fre
 
 ---
 
-## When to Bypass Harness (rare)
+## When to Work Inline / Bypass Harness
 
-Only for:
+Use the inline path for:
+- Bounded local work under the routing criteria above.
 - Foundational scaffolding that changes harness's own supervision tree, dep stack, or Endpoint while the run lifecycle itself is in flux (the v0_5 precedent — dogfooding context only).
 - True emergencies where the harness path is broken and you have filed the gap.
 
 A new phase that only adds features on stable surfaces does **not** earn a hand-build window.
 
-In the consuming-repo context (A), you never have "in-checkout" as an option — your own session isn't holding the harness BEAM. The bypass case there is "hand-edit `myapp` files directly without going through harness" — only valid for emergencies where harness can't dispatch and you've filed the blocker.
+In consuming-repo context (A), inline means editing the consuming repo directly in the orchestrator's current session. This is a normal routing choice for bounded local work, not an emergency workaround; tasks with a positive dispatch trigger still go through harness.
 
 ---
 
