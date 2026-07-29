@@ -4,7 +4,7 @@
   "default_branch": "development",
   "vision": "An OTP-native task-execution engine an AI orchestrator drives end to end: it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent (implementer) running in an isolated worktree, gates the result with a cross-family reviewer AI that runs the target project's own checks itself and fixes inline, merges approved work (lander rebase + ff-push), and audits landed commits post-merge with a third agent. The agent-gate workflow (worktree -> implementer AI -> reviewer AI -> MERGE -> audit AI, docs/agent-gate-workflow.md) is THE architecture: judgment lives in agents, harness code is mechanical substrate only. Consumer surfaces: the BEAM-native Elixir API (IEx, tidewave, another process), the Phoenix LiveView dashboard, and the native MCP server — a long-running OTP node orchestrating N registered target projects (Elixir, Rust, anything an agent can check) concurrently. harness is itself developed by dogfooding — from the core loop (Task 8) onward, every pending roadmap task is delivered by dispatching it through harness rather than hand-building it (load-bearing runtime scaffolding is the documented exception).",
   "focus": {
-    "phase": 22
+    "phase": 23
   },
   "phases": {
     "1": {
@@ -50,7 +50,7 @@
     "17": {
       "name": "Settings Consolidation & Resilience",
       "order": 17,
-      "status": "in_progress"
+      "status": "done"
     },
     "18": {
       "name": "Judgment Collapse",
@@ -60,7 +60,7 @@
     "19": {
       "name": "Self-Healing Run Loop",
       "order": 19,
-      "status": "pending"
+      "status": "done"
     },
     "2": {
       "name": "Core Loop & Contract Proof",
@@ -75,12 +75,12 @@
     "21": {
       "name": "Project Introspection — structural code search over registered projects",
       "order": 21,
-      "status": "pending"
+      "status": "done"
     },
     "22": {
       "name": "Live-Run Observability — stop flying blind while an agent works",
       "order": 22,
-      "status": "done"
+      "status": "in_progress"
     },
     "23": {
       "name": "Audit Hardening — findings from the 2026-07-12 project health audit",
@@ -142,7 +142,7 @@
     "audit-architecture": {
       "phase": 23,
       "order": 2,
-      "description": "Coupling/layering findings from the 2026-07-12 health audit (arch-review.md): the 1821-line Harness.Dispatch god module and the 71-module (~30% of the codebase) strongly-connected cycle with no enforced layering between driver-surface core and its dashboard/MCP/chat/cron consumers."
+      "description": "Coupling/layering findings from the 2026-07-12 health audit (arch-review.md): the ~1900-line Harness.Dispatch god module and the 71-module (~30% of the codebase) strongly-connected cycle with no enforced layering between driver-surface core and its dashboard/MCP/chat/cron consumers."
     },
     "audit-hygiene": {
       "phase": 23,
@@ -389,6 +389,20 @@
       "order": 15,
       "status": "done",
       "target_version": "0.15.0"
+    },
+    "v0_16": {
+      "name": "Audit Hardening — close the 2026-07-12 health-audit findings",
+      "description": "Tests the hypothesis that the 2026-07-12 project health audit's structural findings — unbounded/redundant dashboard reads, the ~1900-line Dispatch god module, the 71-module strongly-connected cycle, zero-coverage merge-critical modules, the AgentRegistry cross-test pollution flake, and the undocumented mountable-consumer auth boundary — are closable with NO behaviour change (structure, bounds, coverage, and docs only), and that encoding the layering as a .reach.exs boundary turns whole-surface architecture drift into a CI failure instead of a future audit discovery.",
+      "order": 16,
+      "status": "active",
+      "target_version": "0.16.0"
+    },
+    "v0_17": {
+      "name": "Unified Event Substrate — one durable stream of lifecycle facts",
+      "description": "Tests the hypothesis that scattering lifecycle facts across ResultStore records, witness sink files, Oban rows, and in-memory state is the next operability bottleneck as multi-project autonomy grows — and that ONE append-only harness_events stream (all lifecycle writers append; witness sinks write through it; per-actor seat attribution rides on every event) makes cross-project questions one query instead of N store-specific stitches, while staying pure fact-counting: no scoring, classification, or judgment arithmetic moves into harness code.",
+      "order": 17,
+      "status": "pending",
+      "target_version": "0.17.0"
     },
     "v0_2": {
       "name": "Batch & resilience",
@@ -14720,6 +14734,7 @@
       "id": "326",
       "phase": 22,
       "bundle": "core-loop",
+      "milestone": "v0_16",
       "status": "pending",
       "title": "Stabilize residual erl_child_setup spawn flake in worktree-heavy suite (Harness.AuditTest noop)",
       "scores": {
@@ -14855,10 +14870,10 @@
       "title": "Decision spike: extract the decoupled AgentAdapter subsystem to its own hex package?",
       "scores": {
         "d": 2,
-        "b": 3,
-        "u": 3
+        "b": 5,
+        "u": 4
       },
-      "eff": 1.5,
+      "eff": 2.25,
       "dep_layer": 1,
       "unlocks": 0,
       "markers": [],
@@ -14868,16 +14883,16 @@
       ],
       "assignee": "human",
       "acceptance_criteria": [
-        "A written go/no-go (concept doc under ~/_DATA/concepts/ or docs/) naming the package boundary, setup cost, and the concrete unblock trigger (a named 2nd consumer)",
-        "Explicit default-verdict if no 2nd consumer: keep in-repo. No package is created in this task"
+        "A written go/no-go (concept doc under ~/_DATA/concepts/ or docs/) naming the package boundary, setup cost, and the migration plan, evaluated against the named 2nd consumer: Personas OS (~/_DATA/code/personas, DESIGN.md §5/§8)",
+        "If the Personas consumer's needs diverge from the harness adapter surface, the doc names the divergence and the verdict (adapt vs no-go). No package is created in this task"
       ],
       "out_of_scope": [
         "Actually creating the package, repo, or CI",
         "Any code move (a follow-up the spike's verdict would file)"
       ],
-      "body": "Once tasks 327 (rule-content seam inversion) and 328 (Driver/Reflex cycle break) land, the AgentAdapter subsystem is dependency-clean and COULD be lifted into a standalone hex package (harness_agent_adapter or similar): a uniform-OTP-Ports driver for the 6 headless coding-agent CLIs (claude/codex/cursor/grok/antigravity/pi), with caller-injected rules and a caller-injected watchdog. This is a DECISION, not a build — gate it on a concrete second consumer (a non-harness project that wants to drive these CLIs), per the repo's dependency-gating rule (don't extract on speculation; an extraction is migration-heavy to reverse). Produce a short go/no-go: name the would-be package boundary (which modules move — agent_adapter.ex + agent_adapter/ + the migrated watchdog; which stay — AgentRules, Run.*, Worktree), the repo/CI/mix.exs setup cost, the back-dependency harness would take ({:harness_agent_adapter, ...}), and the trigger that unblocks the move (a named 2nd consumer). Default verdict if no 2nd consumer exists: keep in-repo, decoupled — record that and close. UPDATE 2026-07-29: the named 2nd consumer EXISTS — the Personas OS (~/_DATA/code/personas, DESIGN.md §5/§8) registered as consumer by founder decision: it needs exactly this uniform-Ports CLI driver as the cross-family runtime layer for its Operator seat, without harness's Run/worktree/lander machinery. The spike's gate condition is met; produce the go/no-go against this concrete consumer.",
+      "body": "Once tasks 327 (rule-content seam inversion) and 328 (Driver/Reflex cycle break) land, the AgentAdapter subsystem is dependency-clean and COULD be lifted into a standalone hex package (harness_agent_adapter or similar): a uniform-OTP-Ports driver for the 6 headless coding-agent CLIs (claude/codex/cursor/grok/antigravity/pi), with caller-injected rules and a caller-injected watchdog. This is a DECISION, not a build — gate it on a concrete second consumer (a non-harness project that wants to drive these CLIs), per the repo's dependency-gating rule (don't extract on speculation; an extraction is migration-heavy to reverse). Produce a short go/no-go: name the would-be package boundary (which modules move — agent_adapter.ex + agent_adapter/ + the migrated watchdog; which stay — AgentRules, Run.*, Worktree), the repo/CI/mix.exs setup cost, the back-dependency harness would take ({:harness_agent_adapter, ...}), and the trigger that unblocks the move (a named 2nd consumer). Default verdict if no 2nd consumer exists: keep in-repo, decoupled — record that and close. UPDATE 2026-07-29: the named 2nd consumer EXISTS — the Personas OS (~/_DATA/code/personas, DESIGN.md §5/§8) registered as consumer by founder decision: it needs exactly this uniform-Ports CLI driver as the cross-family runtime layer for its Operator seat, without harness's Run/worktree/lander machinery. The spike's gate condition is met; produce the go/no-go against this concrete consumer. Rescored 2026-07-29 (b3→5, u3→4): the consumer trigger is met, so benefit is no longer hypothetical.",
       "created_at": "2026-06-22",
-      "scored_at": "2026-06-22",
+      "scored_at": "2026-07-29",
       "cross_repo": []
     },
     {
@@ -16195,6 +16210,7 @@
       "id": "358",
       "phase": 23,
       "bundle": "audit-perf",
+      "milestone": "v0_16",
       "status": "pending",
       "title": "Bound dashboard fleet-wide and per-call reads — unindexed aggregates, per-run git fetch, per-chunk buffer copy, uncached lookup",
       "scores": {
@@ -16247,8 +16263,9 @@
       "id": "359",
       "phase": 23,
       "bundle": "audit-architecture",
+      "milestone": "v0_16",
       "status": "pending",
-      "title": "Split the 1821-line Harness.Dispatch god module into per-concern modules behind a thin facade",
+      "title": "Split the ~1900-line Harness.Dispatch god module into per-concern modules behind a thin facade",
       "scores": {
         "d": 5,
         "b": 5,
@@ -16281,7 +16298,7 @@
       "domains": [
         "otp"
       ],
-      "body": "Surfaced by the 2026-07-12 project health audit (arch-review.md #2). `lib/harness/dispatch.ex`\nis 1821 lines and the second-highest outgoing-coupling module in the project. It is the\nMCP/driver-surface facade but does not stay thin — it houses five-plus distinct concern\ngroups at different abstraction levels and for different audiences:\n\n- run dispatch + await (task/4, await/3, await_runs/2, await_result/2)\n- lifecycle control (cancel/1, hold/2, steer/2, resume/1, resume_failed/2, rereview/1, reland/1)\n- project administration (register_project/6)\n- cron/manual-approval admin (pending/1, approve/1)\n- cross-adapter benchmarking + verdict detail (compare/3..5, verdict_detail/1)\n- capability routing (recommend/2, assess_facets/1)\n- adapter/model resolution internals + await-summary presentation helpers\n\nExtract into per-concern modules (e.g. Dispatch.Lifecycle, Dispatch.Admin, Dispatch.Compare)\nthat Dispatch delegates to, keeping Dispatch itself a thin re-export facade IF the descripex\n`api()` / MCP tool-naming convention requires one flat namespace (verify against\nHarness.Manifest's @driver_surface and the generated MCP tool list before moving anything —\nthe MCP surface names must not change). Also lift the presentation helpers (turning a\n%LogRecord{} into human-readable await/review prose) out of the orchestration path.\n\nMantra check: this is pure structure — no judgment logic is added or removed; every extracted\nfunction keeps its exact behaviour. The MCP tool surface and every public arity must be\nbyte-for-byte preserved.\n",
+      "body": "Surfaced by the 2026-07-12 project health audit (arch-review.md #2). `lib/harness/dispatch.ex`\nis ~1900 lines (1913 as of 2026-07-29, growing) and the second-highest outgoing-coupling module in the project. It is the\nMCP/driver-surface facade but does not stay thin — it houses five-plus distinct concern\ngroups at different abstraction levels and for different audiences:\n\n- run dispatch + await (task/4, await/3, await_runs/2, await_result/2)\n- lifecycle control (cancel/1, hold/2, steer/2, resume/1, resume_failed/2, rereview/1, reland/1)\n- project administration (register_project/6)\n- cron/manual-approval admin (pending/1, approve/1)\n- cross-adapter benchmarking + verdict detail (compare/3..5, verdict_detail/1)\n- capability routing (recommend/2, assess_facets/1)\n- adapter/model resolution internals + await-summary presentation helpers\n\nExtract into per-concern modules (e.g. Dispatch.Lifecycle, Dispatch.Admin, Dispatch.Compare)\nthat Dispatch delegates to, keeping Dispatch itself a thin re-export facade IF the descripex\n`api()` / MCP tool-naming convention requires one flat namespace (verify against\nHarness.Manifest's @driver_surface and the generated MCP tool list before moving anything —\nthe MCP surface names must not change). Also lift the presentation helpers (turning a\n%LogRecord{} into human-readable await/review prose) out of the orchestration path.\n\nMantra check: this is pure structure — no judgment logic is added or removed; every extracted\nfunction keeps its exact behaviour. The MCP tool surface and every public arity must be\nbyte-for-byte preserved.\n",
       "created_at": "2026-07-12",
       "scored_at": "2026-07-12",
       "cross_repo": []
@@ -16290,6 +16307,7 @@
       "id": "360",
       "phase": 23,
       "bundle": "audit-architecture",
+      "milestone": "v0_16",
       "status": "pending",
       "title": "Establish one-way core → consumer layering and break the 71-module strongly-connected cycle",
       "scores": {
@@ -16334,6 +16352,7 @@
       "id": "361",
       "phase": 23,
       "bundle": "audit-tests",
+      "milestone": "v0_16",
       "status": "pending",
       "title": "Unit-test the untested merge-critical modules Harness.Git.TargetSync and Harness.Store.EtsScope",
       "scores": {
@@ -16378,6 +16397,7 @@
       "id": "362",
       "phase": 23,
       "bundle": "audit-tests",
+      "milestone": "v0_16",
       "status": "pending",
       "title": "De-flake the AgentRegistry global-state cross-test pollution class (resolver_test + reviewer-selection)",
       "scores": {
@@ -16424,6 +16444,7 @@
       "id": "363",
       "phase": 23,
       "bundle": "audit-hygiene",
+      "milestone": "v0_16",
       "status": "pending",
       "title": "Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router",
       "scores": {
@@ -16439,8 +16460,6 @@
         "security"
       ],
       "depends_on": [],
-      "assignee": "grok",
-      "model": "grok-4.5",
       "acceptance_criteria": [
         "Endpoint and/or Router moduledoc states the no-auth posture and the loopback-only safety assumption explicitly",
         "skills/harness-driver/SKILL.md's mountable-consumer guidance warns that consumers embedding the router into a public endpoint must add their own auth in front of the browser pipeline AND the /harness/mcp forward",
@@ -16487,7 +16506,8 @@
       "depends_on": [],
       "assignee": "human",
       "acceptance_criteria": [
-        "A recorded decision (accept-with-rationale / upstream-ask / replace) on the anubis_mcp LGPL-3.0 runtime exposure, documented in the repo (e.g. NOTICE or SECURITY.md)",
+        "A recorded decision (accept-with-rationale / upstream-ask / replace) on the anubis_mcp LGPL-3.0 runtime exposure, documented in the repo (NOTICE / THIRD_PARTY_LICENSES preferred over SECURITY.md — it is a licensing record, not a security posture)",
+        "The write-up frames the BEAM-release/LGPL relink question as a compliance question that was answered (with the reasoning), not as pre-established legal fact",
         "If accept: the rationale is written down so future audits do not re-flag it as open"
       ],
       "out_of_scope": [
@@ -16499,7 +16519,7 @@
       "domains": [
         "otp"
       ],
-      "body": "Surfaced by the 2026-07-12 project health audit (deps-audit.md #1). `{:anubis_mcp, \"~> 1.6\"}`\n(locked 1.6.2) is a HARD RUNTIME dependency — it backs Harness.Dashboard.MCPServer, not an\noptional/dev tool — and its license is GNU LGPL-3.0 (confirmed from upstream LICENSE at\ngithub.com/zoedsoupe/anubis-mcp). Every other runtime dep (Phoenix/Ecto/Postgrex/Oban/Req/\nBandit family) is permissive (MIT/Apache-2.0).\n\nLGPL is copyleft-lite: the BEAM release model (compiling a dependency straight into a\nmix release / escript) makes the \"dynamic linking\" boundary LGPL relies on ambiguous, and\nLGPL still requires that users of the combined work be able to relink/modify the LGPL'd\ncomponent. harness is a PUBLIC repo, so this warrants a one-time licensing decision rather\nthan a silent accept.\n\nThis is a HUMAN decision task (not a code dispatch). Decide one of: (a) accept the LGPL\nexposure with a documented rationale in SECURITY.md / NOTICE, (b) contribute to / request a\nlicense change upstream, or (c) evaluate an alternative MCP library / vendor the minimal\nsurface under a compatible license. Whichever, record the decision so it does not resurface\neach audit.\n",
+      "body": "Surfaced by the 2026-07-12 project health audit (deps-audit.md #1). `{:anubis_mcp, \"~> 1.6\"}`\n(locked 1.6.2) is a HARD RUNTIME dependency — it backs Harness.Dashboard.MCPServer, not an\noptional/dev tool — and its license is GNU LGPL-3.0 (confirmed from upstream LICENSE at\ngithub.com/zoedsoupe/anubis-mcp). Every other runtime dep (Phoenix/Ecto/Postgrex/Oban/Req/\nBandit family) is permissive (MIT/Apache-2.0).\n\nLGPL is copyleft-lite: LGPL-3.0 attaches relink/replacement conditions to combined works,\nand whether a BEAM mix release / escript (compiling the dependency straight in) satisfies\nthe \"dynamic linking\" boundary LGPL relies on is an OPEN COMPLIANCE QUESTION for this\ndecision to answer, not established legal fact — premise unverified, resolve it as part of\nthe decision (upstream guidance, Erlang Ecosystem Foundation / hex licensing discussions,\nor counsel if it matters enough). harness is a PUBLIC repo, so this warrants a one-time\nlicensing decision rather than a silent accept.\n\nThis is a HUMAN decision task (not a code dispatch). Decide one of: (a) accept the LGPL\nexposure with a documented rationale in SECURITY.md / NOTICE, (b) contribute to / request a\nlicense change upstream, or (c) evaluate an alternative MCP library / vendor the minimal\nsurface under a compatible license. Whichever, record the decision so it does not resurface\neach audit.\n",
       "created_at": "2026-07-12",
       "scored_at": "2026-07-12",
       "cross_repo": []
@@ -16547,7 +16567,7 @@
       "id": "366",
       "phase": 4,
       "bundle": "multi-agent",
-      "status": "pending",
+      "status": "blocked",
       "title": "Add Kimi Code headless adapter + full roster wiring",
       "scores": {
         "d": 5,
@@ -16595,6 +16615,7 @@
       "body": "Add a Harness.AgentAdapter for Kimi Code (Moonshot's coding CLI, installed at\n~/.kimi-code/bin/kimi, v0.26.0, docs https://moonshotai.github.io/kimi-code/).\nParallels Task 52 (pi.dev) — thin adapter, uniform OTP Port, raw output captured\nverbatim, reviewer AI is the gate.\n\nKnown CLI facts (verify against the installed binary before coding; authority order:\nlive CLI > docs > this body): headless mode is `kimi -p/--prompt <prompt>` with\n`--output-format stream-json`; `-m/--model <model>` pins the model; `--yolo`\nauto-approves all actions (the :autonomous permission mode); `-c/--continue` resumes\nthe working directory's previous session and `-S/--session <id>` resumes by id —\npick the resume channel per the Claude/Pi precedent (worktree-per-run makes\n--continue unambiguous). Kimi consumes AGENTS.md (its system-prompt template embeds\na KIMI_AGENTS_MD block), so rule_channel is likely :codex_ephemeral_file — verify\nthe discovery semantics (cwd walk-up vs explicit) before choosing the channel.\nKimi-specific extras (--skills-dir, --add-dir, --plan, acp/server subcommands) stay\nout of the four-callback contract per the Pi precedent. Auth is subscription-style\nkimi login (device-code) with providers configurable via `kimi provider`; check\nwhether an ambient API-key env var can shadow the login before deciding on an\nauth_env_scrub declaration, and cite the doc or observed behavior either way.\n",
       "created_at": "2026-07-17",
       "scored_at": "2026-07-17",
+      "blocked_reason": "dispatch precondition: rmap repo task 53 (--to kimi render target) must land and the installed rmap binary be rebuilt (harness shells out to rmap delegate); before dispatch also verify -p/--prompt + --yolo combination against installed kimi 0.26.0 — current web docs suggest prompt mode auto-runs without --yolo (codex review 2026-07-29); live CLI is the authority",
       "cross_repo": []
     },
     {
@@ -16805,7 +16826,7 @@
       "id": "371",
       "phase": 9,
       "bundle": "agent-gate",
-      "status": "pending",
+      "status": "superseded",
       "title": "Close the post-land CHANGELOG gap: no workflow step owns writing entries",
       "scores": {
         "d": 3,
@@ -16834,7 +16855,7 @@
         "Generating release notes or version cutting",
         "Changing how the lander advances task status (done --shipped-in stays)"
       ],
-      "body": "Twelve consecutive landed tasks (332, 335, 336, 337, 338, 353, 357, 365, 367, 368, 369, 370) shipped with zero CHANGELOG entries; the last documented task was 352. The post-merge audit for range 2865076 wrote all twelve entries by hand as a fix-forward, which is the symptom, not the fix.\n\nRoot cause: no step in the implement -> review -> land loop owns the CHANGELOG. Task 367 deliberately excluded CHANGELOG.md from delivery commits (so a reviewer filing from a stale fork cannot collide on it) and explicitly listed \"CHANGELOG generation from verdicts\" as out_of_scope. The orchestrator was left as the implicit owner, and in practice it does not do it - the gap ran twelve tasks deep before an audit caught it.\n\nDecide where the ownership lands and make it structural rather than a convention nobody executes. Candidate seams, in rough preference order: (a) the lander writes an entry from the verdict/task metadata as part of the same writeback that already does `done --shipped-in`; (b) the post-merge audit agent owns it as a standing responsibility with a check that fails when a landed task has no entry; (c) an explicit orchestrator step with a mechanical detector so the omission is loud.\n\nNote the mantra constraint: harness may mechanically assemble an entry from facts it already holds (task title, id, shipped sha, acceptance criteria), but it must not judge prose quality or classify an entry into Added/Changed/Fixed by keyword regex. If the entry needs authored prose, an agent writes it; harness only counts and detects the absence.\n",
+      "body": "Twelve consecutive landed tasks (332, 335, 336, 337, 338, 353, 357, 365, 367, 368, 369, 370) shipped with zero CHANGELOG entries; the last documented task was 352. The post-merge audit for range 2865076 wrote all twelve entries by hand as a fix-forward, which is the symptom, not the fix.\n\nRoot cause: no step in the implement -> review -> land loop owns the CHANGELOG. Task 367 deliberately excluded CHANGELOG.md from delivery commits (so a reviewer filing from a stale fork cannot collide on it) and explicitly listed \"CHANGELOG generation from verdicts\" as out_of_scope. The orchestrator was left as the implicit owner, and in practice it does not do it - the gap ran twelve tasks deep before an audit caught it.\n\nDecide where the ownership lands and make it structural rather than a convention nobody executes. Candidate seams, in rough preference order: (a) the lander writes an entry from the verdict/task metadata as part of the same writeback that already does `done --shipped-in`; (b) the post-merge audit agent owns it as a standing responsibility with a check that fails when a landed task has no entry; (c) an explicit orchestrator step with a mechanical detector so the omission is loud.\n\nNote the mantra constraint: harness may mechanically assemble an entry from facts it already holds (task title, id, shipped sha, acceptance criteria), but it must not judge prose quality or classify an entry into Added/Changed/Fixed by keyword regex. If the entry needs authored prose, an agent writes it; harness only counts and detects the absence.\n\nSUPERSEDED 2026-07-29 (roadmap review): contradicts the canonical CHANGELOG policy (task-prioritization.md: \"CHANGELOG.md is release notes, not a task archive... No per-task entries\"). A per-task-entry detector mechanizes the wrong invariant — the 12-entry audit backfill was itself the policy violation, not the gap. Release-worthiness is orchestrator judgment at release time; no replacement task filed.\n",
       "created_at": "2026-07-20",
       "scored_at": "2026-07-20",
       "cross_repo": []
@@ -16843,7 +16864,7 @@
       "id": "372",
       "phase": 23,
       "bundle": "dashboard-observability",
-      "status": "pending",
+      "status": "superseded",
       "title": "Persist witness events as a shared, queryable human+agent timeline",
       "scores": {
         "d": 3,
@@ -16873,7 +16894,7 @@
         "lib/harness/manifest.ex",
         "priv/repo/migrations"
       ],
-      "body": "Inspired by Block's Buzz (https://github.com/block/buzz): a unified event log where humans and agents share one searchable timeline of everything that happened. Harness already counts the facts — Harness.Notification fires Event structs (landed / blocked / post_merge_red / in_run_discernment / persist_failed) to configured sinks — but delivery is fire-and-forget: FileSink appends jsonl, CommandSink execs a command, and no durable queryable store exists (verified: lib/harness/notification/ holds only event/sink/file_sink/command_sink). Orchestrator agents tail ~/.harness/settled.jsonl while the dashboard sees a different feed.\n\nAdd a Postgres-backed sink that persists every Notification.Event, plus a read/query surface over MCP so any agent (and the operator) reads the same timeline. Mechanical facts only — the sink records and relays outcomes, never classifies or judges them (THE MANTRA). Persistence follows the repo rule: durable state is Ecto/Postgres under repo_enabled: true; repo_enabled: false degrades per store convention (ephemeral), never a new file store.\n",
+      "body": "Inspired by Block's Buzz (https://github.com/block/buzz): a unified event log where humans and agents share one searchable timeline of everything that happened. Harness already counts the facts — Harness.Notification fires Event structs (landed / blocked / post_merge_red / in_run_discernment / persist_failed) to configured sinks — but delivery is fire-and-forget: FileSink appends jsonl, CommandSink execs a command, and no durable queryable store exists (verified: lib/harness/notification/ holds only event/sink/file_sink/command_sink). Orchestrator agents tail ~/.harness/settled.jsonl while the dashboard sees a different feed.\n\nAdd a Postgres-backed sink that persists every Notification.Event, plus a read/query surface over MCP so any agent (and the operator) reads the same timeline. Mechanical facts only — the sink records and relays outcomes, never classifies or judges them (THE MANTRA). Persistence follows the repo rule: durable state is Ecto/Postgres under repo_enabled: true; repo_enabled: false degrades per store convention (ephemeral), never a new file store.\n\nSUPERSEDED 2026-07-29 (roadmap review): folded into task 374 — its harness_events stream explicitly unifies the witness sink (\"no second parallel event path\"), so building this standalone Postgres sink first would be rework 374 immediately replaces. 374's ACs carry this task's deliverable (persisted witness timeline + MCP query) as part of the one stream.\n",
       "created_at": "2026-07-27",
       "scored_at": "2026-07-27",
       "cross_repo": []
@@ -16882,6 +16903,7 @@
       "id": "373",
       "phase": 23,
       "bundle": "run-history",
+      "milestone": "v0_17",
       "status": "pending",
       "title": "Durable agent identity — per-actor audit trail across runs and seats",
       "scores": {
@@ -16890,17 +16912,20 @@
         "u": 6
       },
       "eff": 1.2,
-      "dep_layer": 0,
+      "dep_layer": 1,
       "unlocks": 0,
       "markers": [],
-      "depends_on": [],
-      "assignee": "human",
+      "depends_on": [
+        "374"
+      ],
+      "assignee": "grok",
+      "model": "grok-4.5",
       "acceptance_criteria": [
         "Given an agent id (optionally a model), a query returns the chronological per-actor trail: implementer runs, reviewer verdicts rendered, recovery attempts, audit runs — each entry carrying run_id, project, seat, timestamp, and persisted outcome facts",
-        "All recorded seats are covered (implementer, reviewer, recovery, audit); a seat with no records for the actor is an empty list, never an error",
+        "All seats the substrate attributes are covered (implementer and reviewer from run records; recovery and audit from harness_events actor/seat fields once task 374 lands); a seat with no records for the actor is an empty list, never an error",
         "Facts only: no computed score, ranking, or verdict beyond relaying persisted fields — the reviewer confirms no judgment arithmetic was added",
         "Exposed both as an Elixir API and an api()-annotated MCP tool (Manifest-registered), MCP-JSON-expressible params only",
-        "Works against the Postgres ResultStore; repo_enabled: false degrades per store convention; tests cover multi-seat attribution for one actor and the empty-trail case"
+        "Works against the Postgres stores; repo_enabled: false degrades per store convention; tests cover multi-seat attribution for one actor and the empty-trail case"
       ],
       "out_of_scope": [
         "Permission/capability enforcement per actor — follow-up once identity exists (Buzz's scoped-permissions half)",
@@ -16912,7 +16937,7 @@
         "lib/harness/result_store",
         "lib/harness/manifest.ex"
       ],
-      "body": "Inspired by Block's Buzz (https://github.com/block/buzz): agents are workspace members with persistent identity, scoped permissions, and their own audit trail. Harness today knows agents as adapter+model pairs: per-run facts sit on ResultStore run records (agent, model, reviewer identity, recovery/audit facts) and AgentKPI aggregates them, but no surface answers the member-shaped question: what has actor X done — in which seat (implementer / reviewer / recovery / audit), in which project, when, landing where.\n\nIntroduce the identity/audit-trail half of the membership idea: a query surface (Elixir API + MCP tool) that, given an agent (optionally narrowed by model), returns its chronological action trail across all seats, assembled from persisted run records. Counting facts only — the trail enumerates and relays what is persisted; meaning (who is good at what, who to route to) stays with the AIs that read it (THE MANTRA). Permissions/scoped capabilities are the explicit second step and out of scope here; extraction to a standalone lib waits for a second consumer (baseline before optimization).\n",
+      "body": "Inspired by Block's Buzz (https://github.com/block/buzz): agents are workspace members with persistent identity, scoped permissions, and their own audit trail. Harness today knows agents as adapter+model pairs: per-run facts sit on ResultStore run records (agent, model, reviewer identity, recovery/audit facts) and AgentKPI aggregates them, but no surface answers the member-shaped question: what has actor X done — in which seat (implementer / reviewer / recovery / audit), in which project, when, landing where.\n\nIntroduce the identity/audit-trail half of the membership idea: a query surface (Elixir API + MCP tool) that, given an agent (optionally narrowed by model), returns its chronological action trail across all seats. NOTE (2026-07-29 schema check): run_records persist implementer and reviewer identity (agent/model, reviewer_adapter/reviewer_model) but NOT the recovery or audit actor — only their outcome facts (recovery_outcome, cold_check). Per-seat attribution for recovery/audit therefore comes from the harness_events stream (task 374, now a hard dependency), which carries actor/seat on every event; run records supply the implementer/reviewer trail. Counting facts only — the trail enumerates and relays what is persisted; meaning (who is good at what, who to route to) stays with the AIs that read it (THE MANTRA). Permissions/scoped capabilities are the explicit second step and out of scope here; extraction to a standalone lib waits for a second consumer (baseline before optimization).\n",
       "created_at": "2026-07-27",
       "scored_at": "2026-07-27",
       "cross_repo": []
@@ -16921,26 +16946,28 @@
       "id": "374",
       "phase": 23,
       "bundle": "run-history",
+      "milestone": "v0_17",
       "status": "pending",
       "title": "Unified append-only lifecycle event log (harness_events) — every run action becomes a durable, queryable fact",
       "scores": {
-        "d": 5,
-        "b": 6,
+        "d": 8,
+        "b": 7,
         "u": 4
       },
-      "eff": 1.0,
+      "eff": 0.69,
       "dep_layer": 0,
-      "unlocks": 0,
+      "unlocks": 1,
       "markers": [],
       "depends_on": [],
-      "assignee": "human",
+      "assignee": "codex",
+      "model": "gpt-5.5",
       "acceptance_criteria": [
         "One append-only harness_events table (Ecto, under repo_enabled: true) that every lifecycle writer appends to: dispatch enqueue, hold/steer/resume, reviewer verdict, recovery outcome, land/blocked/conflict, post-merge audit, approval park/approve — each event carries project, run_id (when applicable), actor/seat, timestamp, and the raw fact payload",
-        "Approval decisions become durable: PendingDispatch park/approve survives a BEAM restart as events (today the store is explicitly in-memory — lib/harness/cron/pending_dispatch.ex moduledoc)",
+        "Park/approve decisions are recorded as events (a durable trace for the timeline); PendingDispatch's documented soft-state contract is UNCHANGED — parked records still clear on restart and re-park on the next cron tick (lib/harness/cron/pending_dispatch.ex moduledoc explains why persisting the queue itself would be wrong)",
         "A cross-project query surface (Elixir API + api()-annotated MCP tool) filters events by project, event type, actor, time range, and text over payloads — e.g. 'all reject verdicts mentioning X across all projects' is one call, not N store-specific tools",
-        "Witness sinks (Notification) are fed from or write through the same event stream — no second parallel event path; if a sink legitimately stays separate, the moduledoc says why",
+        "Witness sinks (Notification) are fed from or write through the same event stream — no second parallel event path; if a sink legitimately stays separate, the moduledoc says why (absorbs superseded task 372: the persisted-witness-timeline sink and its MCP query surface are delivered here, as one stream)",
         "Facts only (MANTRA check): the log records and relays; no scoring, classification, or judgment arithmetic is added — reviewer confirms",
-        "repo_enabled: false degrades per store convention (in-memory ephemeral); tests cover multi-writer append, restart-durability of an approval, and the cross-project text query"
+        "repo_enabled: false degrades per store convention (in-memory ephemeral); tests cover multi-writer append, the park/approve event trace, and the cross-project text query"
       ],
       "out_of_scope": [
         "Cryptographic signing / per-agent keypairs (Buzz's Schnorr identity) — separate decision, only relevant beyond single-operator",
@@ -16948,9 +16975,14 @@
         "Task 373's per-actor trail query surface — that task can consume this substrate but ships independently",
         "Nostr/relay protocol compatibility"
       ],
-      "body": "Inspired by Block's Buzz (https://github.com/block/buzz): every action — message, patch, review, approval, git event — is one signed event in a single log, making the whole workspace auditable and searchable. Harness scatters its lifecycle facts across ResultStore run records, the Notification witness sinks (settled.jsonl), Oban job rows, .harness/*.json artifacts, and in-memory state — with two concrete gaps: (a) approval decisions are lost on restart (PendingDispatch is an in-memory GenServer by design, lib/harness/cron/pending_dispatch.ex), and (b) a cross-project question like 'all rejects with concern X' requires stitching multiple store-specific MCP tools. Introduce ONE append-only harness_events stream all lifecycle writers append to, generalizing the witness sink rather than paralleling it. Pure fact-counting, no judgment (THE MANTRA) — meaning stays with the AIs that read the log. Sibling of Task 373 (buzz-inspired per-actor trail): 373 is the read-side query over persisted facts; this task is the write-side substrate that makes those facts complete. U honest-low: no orchestrator query is missing TODAY — the score rises when multi-project autonomy makes cross-store stitching a per-session cost.",
+      "touches": [
+        "lib/harness/",
+        "priv/repo/migrations",
+        "test/harness/"
+      ],
+      "body": "Inspired by Block's Buzz (https://github.com/block/buzz): every action — message, patch, review, approval, git event — is one signed event in a single log, making the whole workspace auditable and searchable. Harness scatters its lifecycle facts across ResultStore run records, the Notification witness sinks (settled.jsonl), Oban job rows, .harness/*.json artifacts, and in-memory state — with two concrete gaps: (a) lifecycle decisions like park/approve leave no durable trace anywhere (NOTE: PendingDispatch's in-memory queue is soft state BY DOCUMENTED DESIGN — unapproved entries re-park on the next cron tick, approved ones go to Oban; the gap is the missing trace/timeline, NOT a durability bug in the queue, and this task must not change that contract), and (b) a cross-project question like 'all rejects with concern X' requires stitching multiple store-specific MCP tools. Introduce ONE append-only harness_events stream all lifecycle writers append to, generalizing the witness sink rather than paralleling it — this ABSORBS superseded task 372 (persisted witness timeline): the notification sink writes through this stream instead of getting its own store. Pure fact-counting, no judgment (THE MANTRA) — meaning stays with the AIs that read the log. Sibling of Task 373 (buzz-inspired per-actor trail): 373 is the read-side query over persisted facts and now depends on this substrate for recovery/audit actor attribution. Dispatch trigger (routing gate): repo-wide invariant — every lifecycle writer plus a migration and the Notification sink seam; dispatch as a solo/exclusive wave (touches is deliberately broad). Rescored 2026-07-29 (d5→8, b6→7): the writer-sweep + sink unification is the real scope, and absorbing 372 folds its benefit in. U honest-low: no orchestrator query is missing TODAY — the score rises when multi-project autonomy makes cross-store stitching a per-session cost.",
       "created_at": "2026-07-28",
-      "scored_at": "2026-07-28",
+      "scored_at": "2026-07-29",
       "cross_repo": []
     }
   ]
