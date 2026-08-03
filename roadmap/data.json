@@ -16984,6 +16984,43 @@
       "created_at": "2026-07-28",
       "scored_at": "2026-07-29",
       "cross_repo": []
+    },
+    {
+      "id": "375",
+      "phase": 20,
+      "bundle": "config-surface",
+      "status": "pending",
+      "title": "Validate optional %Harness.Project{} fields at registration — an uncast concurrency_cap silently kills batch dispatch",
+      "scores": {
+        "d": 2,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 3.0,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Registering a project whose concurrency_cap is not a positive integer (string \"4\", 0, -1, a float) is rejected with an error result — the row is never persisted",
+        "The same validation holds for every registration entry point, not just the dashboard form: ProjectRegistry.upsert/1 and register/1 with an attrs map, and config-seeded entries",
+        "Every other optional field build_project/1 currently reads with a bare Map.get is validated to its @type: landing_policy, target_branch, reviewer, pollution_allowlist, warm_paths, test_db_isolation_env, tooling_baseline_overrides — or the moduledoc states why a given field is deliberately unvalidated",
+        "An already-persisted row that violates the type is reported at load time (Persistence.decode_rows already has a skip_invalid_row path) instead of being handed to callers",
+        "Tests cover the rejection of a string cap through upsert/1, and that a valid integer cap still round-trips through persist -> restart -> load"
+      ],
+      "out_of_scope": [
+        "Changing the dashboard forms — settings_live.ex already casts correctly via parse_concurrency_cap/1; the hole is the programmatic path behind it",
+        "Any change to how concurrency_cap is consumed (Oban.queue_limit/1, Batch.max_concurrency/2 stay as they are)",
+        "Migrating or rewriting existing rows beyond making an invalid one visible"
+      ],
+      "touches": [
+        "lib/harness/project_registry.ex",
+        "lib/harness/project_registry/persistence.ex"
+      ],
+      "body": "Found 2026-08-03 while auditing all 19 registrations against reality. Three projects — onchain_evm, onchain_js, onchain_tempo — carried `concurrency_cap: \"4\"` as a STRING. Consequence: `Harness.Batch.max_concurrency/2` guards on `is_integer(cap) and cap > 0`, but the string is truthy so it survives the `||` chain and lands in the guard, returning `{:error, {:invalid_max_concurrency, \"4\"}}` — batch dispatch was dead for those three projects. `Harness.Oban.queue_limit/1` separately fell through its own `is_integer` guard to the default limit, silently ignoring the operator's intent. Neither failure named the registration as the cause.\n\nThe dashboard cannot produce this: `settings_live.ex` casts via `parse_concurrency_cap/1`, which returns `:error` on anything non-integer. The value came in through the programmatic path — `ProjectRegistry.build_project/1` reads every optional field with a bare `Map.get(entry, :concurrency_cap)` and no cast or type check, while the required fields (name, source, roadmap_path, check_command, languages) all go through `fetch_*` validators. So the struct's `@type` is enforced on one half of its fields and merely documented on the other.\n\nFix the seam, not the one field: validate the whole optional set at build time so a registration that cannot work is rejected where it is created, not discovered as an unrelated error at dispatch time. The three bad rows were repaired by hand in Postgres on 2026-08-03; this task closes the hole that let them in.\n",
+      "created_at": "2026-08-03",
+      "scored_at": "2026-08-03",
+      "cross_repo": []
     }
   ]
 }

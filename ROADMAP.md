@@ -368,6 +368,7 @@
 | Task 325 | ⛔ | 🎁 **reviewer-pair** · 🐛 Fix post-merge cold-check red for 1a2a52e [D:3/B:8/U:5 → Eff:2.17?] 🎯 |
 | Task 344 | ✅ | 🎁 **autolanding** · Land-conflict resolver AI cannot spawn: claude adapter has no configured agent_model [D:2/B:6/U:6 → Eff:3.0] 🎯 |
 | Task 351 `[P]` | ✅ | 🎁 **autolanding** · 🐛 TaskIdRewriter misses unquoted integer task ids — collision reassignment silently no-ops for integer-id projects [D:2/B:5/U:4 → Eff:2.25] 🎯 |
+| Task 375 | ⬜ | 🎁 **config-surface** · Validate optional %Harness.Project{} fields at registration — an uncast concurrency_cap silently kills batch dispatch [D:2/B:6/U:6 → Eff:3.0] 🎯 |
 <!-- TASKS:END -->
 
 ---
@@ -404,12 +405,12 @@
 | Task 334 | ✅ | 🎁 **operator-surface** · Tooling-baseline conformance fact source (framework + Elixir provider) + dashboard [D:4/B:6/U:7 → Eff:1.62?] 🚀 |
 | Task 335 | ✅ | 🎁 **operator-surface** · Dispatch 'bring project to tooling baseline' through the agent-gate [D:5/B:6/U:6 → Eff:1.2?] 📋 |
 | Task 336 | ✅ | 🎁 **operator-surface** · Rust dependency-freshness provider (cargo outdated) for the freshness fact source [D:4/B:5/U:6 → Eff:1.38?] 📋 |
-| Task 337 | ✅ | 🎁 **core-loop** · Clean up concrete Reach smell findings: narrow rescues, MapSet membership, direct map iteration [D:3/B:4/U:4 → Eff:1.33] 📋 |
-| Task 338 | ✅ | 🎁 **core-loop** · Triage Reach repeated-map-shape findings into structs, explicit contracts, or documented suppressions [D:4/B:4/U:4 → Eff:1.0] 📋 |
-| Task 339 | ✅ | 🎁 **operator-surface** · Clean up existing Sobelow findings in code_search [D:3/B:4/U:5 → Eff:1.5] 🚀 |
-| Task 340 | ✅ | 🎁 **operator-surface** · Project languages invariant + multi-language provider substrate [D:6/B:8/U:8 → Eff:1.33] 📋 |
-| Task 341 | ✅ | 🎁 **operator-surface** · JavaScript/TypeScript dependency-freshness provider for npm/pnpm/yarn projects [D:4/B:5/U:5 → Eff:1.25] 📋 |
-| Task 342 | ✅ | 🎁 **operator-surface** · Go dependency-freshness provider for go.mod projects [D:4/B:4/U:5 → Eff:1.12] 📋 |
+| Task 337 | ✅ | 🎁 **core-loop** · Clean up concrete Reach smell findings: narrow rescues, MapSet membership, direct map iteration [D:3/B:4/U:4 → Eff:1.33?] 📋 |
+| Task 338 | ✅ | 🎁 **core-loop** · Triage Reach repeated-map-shape findings into structs, explicit contracts, or documented suppressions [D:4/B:4/U:4 → Eff:1.0?] 📋 |
+| Task 339 | ✅ | 🎁 **operator-surface** · Clean up existing Sobelow findings in code_search [D:3/B:4/U:5 → Eff:1.5?] 🚀 |
+| Task 340 | ✅ | 🎁 **operator-surface** · Project languages invariant + multi-language provider substrate [D:6/B:8/U:8 → Eff:1.33?] 📋 |
+| Task 341 | ✅ | 🎁 **operator-surface** · JavaScript/TypeScript dependency-freshness provider for npm/pnpm/yarn projects [D:4/B:5/U:5 → Eff:1.25?] 📋 |
+| Task 342 | ✅ | 🎁 **operator-surface** · Go dependency-freshness provider for go.mod projects [D:4/B:4/U:5 → Eff:1.12?] 📋 |
 | Task 343 | ✅ | 🎁 **resilience** · Run gen_statem crashes with case_clause when cancel reason is {:redispatched, run_id} [D:3/B:6/U:5 → Eff:1.83] 🚀 |
 | Task 346 `[P]` | ✅ | 🎁 **postgres-results** · 🐛 Port the Task-163 evidence-preserving record_run merge to ResultStore.Memory [D:2/B:5/U:4 → Eff:2.25] 🎯 |
 | Task 347 `[P]` | ✅ | 🎁 **resilience** · 🐛 Worktree sweeper is depth-blind: */* glob never finds leaked landing/audit worktrees after a crash mid-land [D:2/B:5/U:4 → Eff:2.25] 🎯 |
