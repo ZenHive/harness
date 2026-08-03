@@ -24,7 +24,7 @@ defmodule Harness.Project do
   - `landing_policy` — `:manual` by default; `:auto` means reviewer-approved
     runs are eligible for autonomous landing.
   - `target_branch` — the branch the autonomous lander fast-forward-pushes an
-    approved run onto (e.g. `"development"`). `nil` by default; a project only
+    approved run onto (e.g. `"main"`). `nil` by default; a project only
     auto-lands when it sets both `landing_policy: :auto` and a `target_branch`.
   - `reviewer` — optional agent atom that pins this project's cross-family
     reviewer gate; `nil` keeps the default auto-selection.

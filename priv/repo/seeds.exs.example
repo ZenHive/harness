@@ -28,7 +28,7 @@ editing it does nothing until you run it.
     languages: [:elixir],
     roadmap_path: Path.expand("../..", __DIR__),
     landing_policy: :auto,
-    target_branch: "development",
+    target_branch: "main",
     # The cron poller can dispatch a wide `rmap ready --dispatchable` batch.
     # Keep this low so concurrent self-host runs do not pile up stale-base
     # rebases and reviewer quota cliffs.

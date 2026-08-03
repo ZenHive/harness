@@ -1,6 +1,6 @@
 schema_version = 2
 project = "harness"
-default_branch = "development"
+default_branch = "main"
 vision = "An OTP-native task-execution engine an AI orchestrator drives end to end: it pulls tasks from the rmap roadmap, dispatches each to a headless coding agent (implementer) running in an isolated worktree, gates the result with a cross-family reviewer AI that runs the target project's own checks itself and fixes inline, merges approved work (lander rebase + ff-push), and audits landed commits post-merge with a third agent. The agent-gate workflow (worktree -> implementer AI -> reviewer AI -> MERGE -> audit AI, docs/agent-gate-workflow.md) is THE architecture: judgment lives in agents, harness code is mechanical substrate only. Consumer surfaces: the BEAM-native Elixir API (IEx, tidewave, another process), the Phoenix LiveView dashboard, and the native MCP server — a long-running OTP node orchestrating N registered target projects (Elixir, Rust, anything an agent can check) concurrently. harness is itself developed by dogfooding — from the core loop (Task 8) onward, every pending roadmap task is delivered by dispatching it through harness rather than hand-building it (load-bearing runtime scaffolding is the documented exception)."
 
 [focus]

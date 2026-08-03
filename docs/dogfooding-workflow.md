@@ -234,7 +234,7 @@ The run starts with `subscriber: nil`; observe it afterward by `run_id`.
 - **`rec.verdict` is a plain atom** (`:approve` / `:reject`), *not* a struct — read it directly;
   the reviewer's prose lives in `rec.review_report`, the ratings in `rec.review_ratings`.
 - **`agent_diff_size` is unreliable** — it under-reported a 320-insertion diff as `3` on
-  Task 103. For true diff size use `git diff --stat development...<branch>`, not the field.
+  Task 103. For true diff size use `git diff --stat main...<branch>`, not the field.
 - **A record file appearing under `~/.harness/results/runs/<base64url(run_id)>.term` is the
   settle signal** — arm an event-shaped `Monitor` (`until [ -f "$f" ]; do sleep 5; done`)
   on it rather than polling, which the PreToolUse hook blocks.
@@ -393,7 +393,7 @@ end
 
 | `state` / `reason` | Meaning | Action |
 |---|---|---|
-| `:done` / `:approved` | The reviewer AI approved the work (possibly after fixing it inline — check `reviewer_diff_size`). | Deliverable is the commit(s) on `harness/<run-id>` (implementer's + any reviewer fixes). Review the diff, bring it onto `development` (or let auto-landing do it), `rmap status <id> done`, update docs. |
+| `:done` / `:approved` | The reviewer AI approved the work (possibly after fixing it inline — check `reviewer_diff_size`). | Deliverable is the commit(s) on `harness/<run-id>` (implementer's + any reviewer fixes). Review the diff, bring it onto `main` (or let auto-landing do it), `rmap status <id> done`, update docs. |
 | `:failed` / `{:review_rejected, report}` | The reviewer found nothing salvageable (degenerate case — rejection is near-never by design). | Read `report` (the reviewer's prose). The task went back to the queue; re-dispatch — possibly with a different implementer. |
 | `:failed` / `{:review_stuck, report}` | The gate could not produce a verdict: no cross-family reviewer available, reviewer crashed, or it exited without writing a readable `.harness/review.json`. | Read `report`. If no reviewer was available → environment/availability issue. If the reviewer ran but wrote nothing → inspect its transcript; re-dispatch. |
 | `:failed` / `{:worktree_failed,_}` `{:agent_spawn_failed,_}` `{:driver_crashed,_}` `{:commit_failed,_}` | Harness-side mechanical failure. | **Harness bug.** File via `rmap new`, fix harness, re-dogfood. Do not work around by hand-building. |
@@ -452,9 +452,9 @@ from one long-lived driver BEAM** — do not start a second `mix run /tmp/dogfoo
 while another is in flight. Re-dispatch is fine; concurrent BEAMs are not.
 
 **Integration order.** Deliverable branches `harness/<run-id>` come back onto
-`development` one at a time. Bring in the smallest / most-isolated diff first,
+`main` one at a time. Bring in the smallest / most-isolated diff first,
 let the rest rebase against it, resolve any same-file merges by hand. Run the
-project's own full check (`mix precommit.full`) on `development` after the
+project's own full check (`mix precommit.full`) on `main` after the
 last merge — if it goes red post-merge that's an integration failure, not a
 per-run failure. Per-dispatch reviewer checks should use the cheaper
 `mix check.dispatch` hint plus focused tests for touched behavior. Run the full
@@ -473,7 +473,7 @@ the reviewer already gated the work) and advances the rmap task
 (`rmap status <id> done --verified --shipped-in <sha>`). A successful push enqueues
 the post-merge audit job. The push touches `origin`, never your local checkout —
 after a land, `git switch <target> && git pull`. The harness self-project stays
-`:manual` (no auto-push to `origin/development`). Conflict / push-rejected outcomes
+`:manual` (no auto-push to `origin/main`). Conflict / push-rejected outcomes
 retain the branch and return a typed seam for Task 101.
 
 ## HIGH-tier audit grader dispatch (`Harness.AuditReview`)
