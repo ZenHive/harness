@@ -11303,3 +11303,66 @@ Fix the seam, not the one field: validate the whole optional set at build time s
 """
 created_at = "2026-08-03"
 scored_at = "2026-08-03"
+
+[[task]]
+id = "376"
+phase = 23
+bundle = "test-suite-perf"
+status = "pending"
+title = "Landing tests leak an empty temp repo dir per run into the shared worktree root"
+scores = { d = 2, b = 4, u = 5 }
+acceptance_criteria = ["Running the full suite twice leaves the same number of entries in the worktree root as before the first run", "No new `harness-repo-*` directory exists after the suite finishes", "The existing 2369 leaked directories are removable by a documented one-liner, and the docs say what it is"]
+out_of_scope = ["Stale harness/run-* branches and orphaned run worktrees — separate task", "Changing the production worktree root location"]
+body = """
+Running the suite leaves a `harness-repo-<pid>-<nanotime>/` directory behind in
+the shared harness worktree root (`~/_DATA/worktrees/.harness/` on the dev host),
+each containing only an empty `landing/` subdir. 2369 of them had accumulated as
+of 2026-08-03, spanning 2026-06-13 to 2026-07-30 — i.e. every suite run since
+mid-June has added more, and nothing has ever removed them.
+
+They are empty, so this is not a disk problem; it is a signal problem. The
+directory they pollute is the same root that holds real run worktrees, so
+`ls` there no longer tells an operator anything, and any future sweep that walks
+that root has to filter thousands of decoys first.
+
+Find where the landing tests create that scratch root and make cleanup part of
+the test lifecycle (ExUnit `tmp_dir` or an `on_exit` removal), so a suite run is
+net-zero on the filesystem. Also decide whether test scratch belongs under the
+*shared operator* worktree root at all — a dedicated tmp root would make the
+leak self-evident instead of camouflaged.
+"""
+created_at = "2026-08-03"
+scored_at = "2026-08-03"
+
+[[task]]
+id = "377"
+phase = 23
+bundle = "resilience"
+status = "pending"
+title = "No GC for landed run branches or orphaned run worktrees — 272 branches accumulated"
+scores = { d = 4, b = 5, u = 5 }
+acceptance_criteria = ["A landed, verified run's branch and worktree are removed automatically, and a test proves the branch's commits were reachable from the target before removal", "An unlanded or failed run's branch and worktree survive the same pass", "A maintenance entrypoint reports what would be removed before removing it, and can be run against the existing 272-branch backlog", "Orphaned worktree directories with no git registration are detected and reported, not silently ignored"]
+out_of_scope = ["Test-suite temp directory leakage — separate task", "Rewriting the lander's ff-push path"]
+body = """
+After a run lands, its `harness/run-<id>` branch is never deleted. 272 such
+branches exist across 10 repos (tapakly 134, harness 57, ccxt_client 24, onchain
+20, ccxt-distill 18, delta_calc 9, cartouche 4, trading_dashboard 3, onchain_aave
+2, blockwatch 1), all now showing `[origin/development: gone]` after the
+2026-08-02 fleet branch rename — which is what made them visible, not what caused
+them.
+
+Separately, 135 run worktree directories exist on disk while only 117 are
+registered with git, so 18 are orphaned: `git worktree list` cannot see them and
+`git worktree prune` will not touch them, because the directory outlived its
+registration.
+
+Decide the retention policy and enforce it, rather than leaving cleanup to an
+operator who has no way to know it is needed. A landed run's branch is
+recoverable from the target branch history, so the default should probably be to
+delete it once the run's commits are provably reachable from `origin/<target>` —
+but a failed or unlanded run's branch is the only copy of that work and must be
+kept. Make the distinction explicit and testable; a policy that cannot tell the
+two apart is worse than none.
+"""
+created_at = "2026-08-03"
+scored_at = "2026-08-03"
