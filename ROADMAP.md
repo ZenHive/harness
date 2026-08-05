@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (1 of 13 done · 0 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (1 of 14 done · 0 in progress)
 
 **Last shipped:** no recent shipments
 
@@ -204,7 +204,7 @@
 | Task 189 | ✅ | 🎁 **autolanding** · *Harness.Lander.Resilience* · Lander conflict-resolver agent: on rebase conflict, spawn a cross-family merge AI to resolve in-place instead of re-dispatching [D:3/B:4/U:3 → Eff:1.17?] 📋 |
 | Task 281 | ✅ | 🎁 **autolanding** · dispatch-reland on rebase-conflict re-dispatches a fresh implementer instead of retaining the branch [D:5/B:6/U:6 → Eff:1.2?] 📋 |
 | Task 282 | ✅ | 🎁 **autolanding** · Reviewer-stage git-add fatals on gitignored .harness/ → review_stuck blocks the gate; .harness-retained artifact leaks into commits [D:3/B:8/U:7 → Eff:2.5?] 🎯 |
-| Task 345 | ⛔ | 🎁 **autolanding** · Lander conflict-resolver spawns without resolving the agent model — every resolve fails {:model_required, adapter} [D:2/B:7/U:7 → Eff:3.5] 🎯 |
+| Task 345 | ⛔ | 🎁 **autolanding** · Lander conflict-resolver spawns without resolving the agent model — every resolve fails {:model_required, adapter} [D:2/B:7/U:7 → Eff:3.5?] 🎯 |
 <!-- TASKS:END -->
 
 ---
@@ -366,8 +366,8 @@
 | Task 320 | ✅ | 🎁 **core-loop** · Per-run test-DB isolation — concurrent worktree runs share one test DB and cross-contaminate (the verified root cause of tapakly's recurring 'environmental' red suites) [D:4/B:9/U:6 → Eff:1.88?] 🚀 |
 | Task 321 | ✅ | 🎁 **reviewer-pair** · Close the false-green loop: audit records approved-then-found-red as a structured reviewer FACT; surface it for AI-judged reviewer routing (no score formula) [D:4/B:8/U:6 → Eff:1.75?] 🚀 |
 | Task 325 | ⛔ | 🎁 **reviewer-pair** · 🐛 Fix post-merge cold-check red for 1a2a52e [D:3/B:8/U:5 → Eff:2.17?] 🎯 |
-| Task 344 | ✅ | 🎁 **autolanding** · Land-conflict resolver AI cannot spawn: claude adapter has no configured agent_model [D:2/B:6/U:6 → Eff:3.0] 🎯 |
-| Task 351 `[P]` | ✅ | 🎁 **autolanding** · 🐛 TaskIdRewriter misses unquoted integer task ids — collision reassignment silently no-ops for integer-id projects [D:2/B:5/U:4 → Eff:2.25] 🎯 |
+| Task 344 | ✅ | 🎁 **autolanding** · Land-conflict resolver AI cannot spawn: claude adapter has no configured agent_model [D:2/B:6/U:6 → Eff:3.0?] 🎯 |
+| Task 351 `[P]` | ✅ | 🎁 **autolanding** · 🐛 TaskIdRewriter misses unquoted integer task ids — collision reassignment silently no-ops for integer-id projects [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
 | Task 375 | ⬜ | 🎁 **config-surface** · Validate optional %Harness.Project{} fields at registration — an uncast concurrency_cap silently kills batch dispatch [D:2/B:6/U:6 → Eff:3.0] 🎯 |
 <!-- TASKS:END -->
 
@@ -411,14 +411,14 @@
 | Task 340 | ✅ | 🎁 **operator-surface** · Project languages invariant + multi-language provider substrate [D:6/B:8/U:8 → Eff:1.33?] 📋 |
 | Task 341 | ✅ | 🎁 **operator-surface** · JavaScript/TypeScript dependency-freshness provider for npm/pnpm/yarn projects [D:4/B:5/U:5 → Eff:1.25?] 📋 |
 | Task 342 | ✅ | 🎁 **operator-surface** · Go dependency-freshness provider for go.mod projects [D:4/B:4/U:5 → Eff:1.12?] 📋 |
-| Task 343 | ✅ | 🎁 **resilience** · Run gen_statem crashes with case_clause when cancel reason is {:redispatched, run_id} [D:3/B:6/U:5 → Eff:1.83] 🚀 |
-| Task 346 `[P]` | ✅ | 🎁 **postgres-results** · 🐛 Port the Task-163 evidence-preserving record_run merge to ResultStore.Memory [D:2/B:5/U:4 → Eff:2.25] 🎯 |
-| Task 347 `[P]` | ✅ | 🎁 **resilience** · 🐛 Worktree sweeper is depth-blind: */* glob never finds leaked landing/audit worktrees after a crash mid-land [D:2/B:5/U:4 → Eff:2.25] 🎯 |
-| Task 348 `[P]` | ✅ | 🎁 **chat-orchestrator** · 🐛 Chat session lifecycle: broadcast the :busy terminal (silent message drop) + idle-reap immortal session processes [D:2/B:4/U:4 → Eff:2.0] 🎯 |
-| Task 349 `[P]` | ✅ | 🎁 **dashboard-perf** · ProjectRegistry.list/0 refetches landing settings once per project — batch the overlay to one read [D:2/B:4/U:3 → Eff:1.75] 🚀 |
-| Task 350 `[P]` | ✅ | 🎁 **postgres-results** · 🐛 AgentKPI.duration_summary/1 crashes with ArithmeticError on [] — reachable from the Postgres KPI rollup [D:1/B:3/U:3 → Eff:3.0] 🎯 |
-| Task 352 | ✅ | 🎁 **postgres-results** · Bound run_records growth: blob retention that never touches the countable KPI facts [D:3/B:4/U:3 → Eff:1.17] 📋 |
-| Task 353 | ✅ | 🎁 **core-loop** · Decompose the 2,890-line Run gen_statem: extract per-state event handling into satellite modules [D:4/B:5/U:5 → Eff:1.25] 📋 |
+| Task 343 | ✅ | 🎁 **resilience** · Run gen_statem crashes with case_clause when cancel reason is {:redispatched, run_id} [D:3/B:6/U:5 → Eff:1.83?] 🚀 |
+| Task 346 `[P]` | ✅ | 🎁 **postgres-results** · 🐛 Port the Task-163 evidence-preserving record_run merge to ResultStore.Memory [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
+| Task 347 `[P]` | ✅ | 🎁 **resilience** · 🐛 Worktree sweeper is depth-blind: */* glob never finds leaked landing/audit worktrees after a crash mid-land [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
+| Task 348 `[P]` | ✅ | 🎁 **chat-orchestrator** · 🐛 Chat session lifecycle: broadcast the :busy terminal (silent message drop) + idle-reap immortal session processes [D:2/B:4/U:4 → Eff:2.0?] 🎯 |
+| Task 349 `[P]` | ✅ | 🎁 **dashboard-perf** · ProjectRegistry.list/0 refetches landing settings once per project — batch the overlay to one read [D:2/B:4/U:3 → Eff:1.75?] 🚀 |
+| Task 350 `[P]` | ✅ | 🎁 **postgres-results** · 🐛 AgentKPI.duration_summary/1 crashes with ArithmeticError on [] — reachable from the Postgres KPI rollup [D:1/B:3/U:3 → Eff:3.0?] 🎯 |
+| Task 352 | ✅ | 🎁 **postgres-results** · Bound run_records growth: blob retention that never touches the countable KPI facts [D:3/B:4/U:3 → Eff:1.17?] 📋 |
+| Task 353 | ✅ | 🎁 **core-loop** · Decompose the 2,890-line Run gen_statem: extract per-state event handling into satellite modules [D:4/B:5/U:5 → Eff:1.25?] 📋 |
 | Task 354 | ⛔ | 🎁 **resilience** · Run gen_statem crashes with case_clause on {:cancel, {:redispatched, run_id}} after reflex redispatch [D:3/B:6/U:7 → Eff:2.17] 🎯 |
 | Task 355 | ⛔ | 🎁 **autolanding** · Land-conflict resolver dies on {:model_required, Claude} — candidate selection must skip model-less agents [D:2/B:5/U:6 → Eff:2.75] 🎯 |
 | Task 356 `[P]` | ✅ | 🎁 **chat-orchestrator** · 🐛 Chat turn-worker crash must fail fast to the caller — monitor instead of bare receive; map ensure_session already_started [D:2/B:3/U:4 → Eff:1.75] 🚀 |
@@ -445,4 +445,5 @@
 | Task 374 | ⬜ | 🎁 **run-history** · 🚀 **v0_17** · Unified append-only lifecycle event log (harness_events) — every run action becomes a durable, queryable fact [D:8/B:7/U:4 → Eff:0.69] ⚠️ |
 | Task 376 | ⬜ | 🎁 **test-suite-perf** · Landing tests leak an empty temp repo dir per run into the shared worktree root [D:2/B:4/U:5 → Eff:2.25] 🎯 |
 | Task 377 | ⬜ | 🎁 **resilience** · No GC for landed run branches or orphaned run worktrees — 272 branches accumulated [D:4/B:5/U:5 → Eff:1.25] 📋 |
+| Task 378 `[P]` | ⬜ | 🎁 **roadmap-durability** · Durable roadmap writes ignore roadmap_path and push tasks.toml into the source repo [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 <!-- TASKS:END -->

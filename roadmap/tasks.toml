@@ -11366,3 +11366,65 @@ two apart is worse than none.
 """
 created_at = "2026-08-03"
 scored_at = "2026-08-03"
+
+[[task]]
+id = "378"
+phase = 23
+bundle = "roadmap-durability"
+status = "pending"
+title = "Durable roadmap writes ignore roadmap_path and push tasks.toml into the source repo"
+scores = { d = 4, b = 7, u = 7 }
+markers = ["parallel"]
+acceptance_criteria = ["For a project whose roadmap_path and source resolve to two different git repositories, a mark_* transition commits and pushes the roadmap change in the ROADMAP repository; the source repository's branches, worktrees and working tree are untouched by it", "For that same project, code delivery is unaffected: the run worktree still forks from source and the lander still ff-pushes the delivery commit to source's target_branch", "When roadmap_path and source resolve to the same repository, behavior is unchanged — the existing durability tests pass without being edited", "The branch the roadmap commit is pushed to is explicit rather than inferred from the code target: either a validated project field or a stated derivation, documented on %Harness.Project{}", "A roadmap repository with no resolvable push target, and a roadmap_path outside any git repository, both fall back to the plain local rmap write and return an error or a documented degraded result rather than pushing to a guessed branch or raising", "The local-checkout fast-forward that follows a durable write targets the roadmap repository, not the source repository", "A test using two separate temporary repositories proves the roadmap commit is reachable in the roadmap repo and absent from the source repo after a mark_landed transition", "%Harness.Project{}'s docs state, per field, which repository it governs — enough that an operator registering a split project cannot guess wrong"]
+out_of_scope = ["The rmap-side per-task target repo (rmap task 54). That field says where WORK lands; this task is only about where the roadmap WRITE goes. Renderable is not executable — do not build consumption of an rmap field that does not exist yet", "Where the implementer worktree forks from. Code work continues to fork off source; nothing about dispatch or delivery changes", "The read path. ingest/list/next_bundle already resolve through roadmap_path and are correct", "landing_policy semantics, the lander's conflict/retry behavior, and the audit worker"]
+touches = ["lib/harness/roadmap.ex", "lib/harness/roadmap/durable.ex", "lib/harness/project.ex"]
+assignee = "codex"
+model = "gpt-5.6-sol"
+body = """
+`%Harness.Project{}` carries `source` (where the repository lives) and
+`roadmap_path` (the directory holding `roadmap/tasks.toml`) as two independent
+enforced keys, and the read path honors that separation — `resolve_root/1`
+expands `project.roadmap_path`, so ingest, list and next_bundle all read the
+right file. The **durable write path does not**, and it is the write that has
+side effects.
+
+`Harness.Roadmap.apply_mutation/6` is the chokepoint every `mark_*` transition
+funnels through. It asks `durable_target/1` where to write, and that function
+resolves the repository from `Project.local_repo_path/1` — i.e. from **`source`**
+— pairing it with `target_branch`. `Durable.commit/3` then forks a detached
+worktree at that repo's freshly-fetched `origin/<target>`, runs the rmap
+mutation against `<worktree>/roadmap/tasks.toml`, commits `roadmap: task N ->
+done`, ff-pushes it, and finally fast-forwards the operator's local checkout of
+that same repo via `Harness.Git.TargetSync`. `roadmap_path` appears nowhere in
+that sequence; it is consulted only by `landing_root/1`, which serves the
+`:none` fallback — the branch taken when a project has no `target_branch` or no
+operable local checkout.
+
+Every federated project has a `target_branch`, so in practice the durable path
+always wins and `roadmap_path` is silently dead for writes. That is invisible
+while both fields point at one repository, which is true of all 19 registrations
+today. It stops being invisible the moment they diverge: harness would fork a
+worktree of the code repository, look for `roadmap/tasks.toml` where there is
+none, and — depending on how the rmap shell-out fails — either error out on
+every landing or push a roadmap commit into a repository that has no roadmap.
+
+The concrete case that surfaced it: `bourse` was split on 2026-08-04 into a
+public client repository that is published to hex, and a private workbench that
+keeps the 500+ task roadmap, the scoring, the assignees and the consumer bug
+queue. The intended registration is `roadmap_path` = workbench, `source` =
+client. The registered project still points both at the workbench, because
+pointing `source` at the client would fork worktrees where the roadmap does not
+exist. So the split is currently un-dispatchable, and the field that was
+supposed to express it does not carry.
+
+Make the durable write go where the roadmap actually is. The read path already
+shows the intended shape; this is making the write agree with it. Note that the
+roadmap repository needs its own push target — `target_branch` names the branch
+*code* lands on, and there is no reason a separate roadmap repository shares its
+name. Decide how that is expressed and make the failure mode conservative: when
+harness cannot determine a roadmap push target with certainty, it must fall back
+to the local write it already has rather than push a roadmap commit to a branch
+it guessed.
+"""
+created_at = "2026-08-05"
+scored_at = "2026-08-05"
