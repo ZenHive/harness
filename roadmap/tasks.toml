@@ -11371,7 +11371,7 @@ scored_at = "2026-08-03"
 id = "378"
 phase = 23
 bundle = "roadmap-durability"
-status = "pending"
+status = "done"
 title = "Durable roadmap writes ignore roadmap_path and push tasks.toml into the source repo"
 scores = { d = 4, b = 7, u = 7 }
 markers = ["parallel"]
@@ -11426,5 +11426,12 @@ harness cannot determine a roadmap push target with certainty, it must fall back
 to the local write it already has rather than push a roadmap commit to a branch
 it guessed.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1785889900340-3393925d, b4d525e8beeaf3b3557bea84c0d586ac773d60b3)."
+delivered_by = "codex"
+verified = true
+verified_by = "claude"
+verification_ref = "harness-run:run-1785889900340-3393925d"
 created_at = "2026-08-05"
 scored_at = "2026-08-05"
+done_at = "2026-08-05"
+shipped_in = "b4d525e8beeaf3b3557bea84c0d586ac773d60b3"

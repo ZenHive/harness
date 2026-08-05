@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (1 of 14 done · 0 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (2 of 14 done · 0 in progress)
 
-**Last shipped:** no recent shipments
+**Last shipped:** Task 378 — Durable roadmap writes ignore roadmap_path and push tasks.toml into the source repo on 2026-08-05
 
 **Up next:** Task 363 — Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router [D:1/B:5/U:4 → Eff:4.5] 🎯
 <!-- FOCUS:END -->
@@ -445,5 +445,5 @@
 | Task 374 | ⬜ | 🎁 **run-history** · 🚀 **v0_17** · Unified append-only lifecycle event log (harness_events) — every run action becomes a durable, queryable fact [D:8/B:7/U:4 → Eff:0.69] ⚠️ |
 | Task 376 | ⬜ | 🎁 **test-suite-perf** · Landing tests leak an empty temp repo dir per run into the shared worktree root [D:2/B:4/U:5 → Eff:2.25] 🎯 |
 | Task 377 | ⬜ | 🎁 **resilience** · No GC for landed run branches or orphaned run worktrees — 272 branches accumulated [D:4/B:5/U:5 → Eff:1.25] 📋 |
-| Task 378 `[P]` | ⬜ | 🎁 **roadmap-durability** · Durable roadmap writes ignore roadmap_path and push tasks.toml into the source repo [D:4/B:7/U:7 → Eff:1.75] 🚀 |
+| Task 378 `[P]` | ✅ | 🎁 **roadmap-durability** · Durable roadmap writes ignore roadmap_path and push tasks.toml into the source repo [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 <!-- TASKS:END -->
