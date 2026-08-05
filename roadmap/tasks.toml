@@ -149,6 +149,11 @@ description = "Lower-severity hygiene from the 2026-07-12 health audit: a mounta
 order = 4
 phase = 23
 
+[bundles.roadmap-writeback]
+description = "Roadmap writeback correctness on the live dispatch path. Bundle roadmap-durability (phase 17) built the git-durable transition machinery; this bundle covers cases where that machinery runs but the transition never reaches the target branch — and does so silently."
+order = 5
+phase = 23
+
 [bundles.config-surface]
 description = "Make Postgres the ONLY per-project config edit surface and retire the config/dev.local.exs trap. The dashboard already edits landing/cron/agent-models/reviewer/timeouts/catalog live; this bundle adds the two missing holes (concurrency_cap editor + project register/edit/unregister form via a new ProjectRegistry.upsert/1), then deletes dev.local.exs in favor of a run-to-apply priv/repo/seeds.exs (upserts Postgres) + a HARNESS_RUN_MEM_THRESHOLD_GB env var + a boot guard warning on re-introduced config :projects. Editing a config file no longer silently no-ops against the DB source of truth."
 order = 1
@@ -11004,7 +11009,7 @@ shipped_in = "0da4d9fed6f9796e2f910de1d891cdf20b17854d"
 id = "366"
 phase = 4
 bundle = "multi-agent"
-status = "blocked"
+status = "pending"
 title = "Add Kimi Code headless adapter + full roster wiring"
 scores = { d = 5, b = 7, u = 6 }
 markers = ["parallel"]
@@ -11013,7 +11018,6 @@ out_of_scope = ["The rmap-side --to kimi render target (rmap repo task 53 — mu
 touches = ["lib/harness/agent_adapter/kimi.ex", "test/harness/agent_adapter/kimi_test.exs", "test/harness/agent_adapter/kimi_conformance_test.exs", "lib/harness/roadmap.ex", "lib/harness/agent_registry.ex", "lib/harness/config.ex", "lib/harness/agent_adapter/registry.ex", "lib/harness/model_availability.ex", "lib/harness/dashboard/transcript/parser.ex", "CLAUDE.md", "skills/harness-driver/SKILL.md", "priv/includes/harness-workflow.md"]
 assignee = "codex"
 model = "gpt-5.5"
-blocked_reason = "dispatch precondition: rmap repo task 53 (--to kimi render target) must land and the installed rmap binary be rebuilt (harness shells out to rmap delegate); before dispatch also verify -p/--prompt + --yolo combination against installed kimi 0.26.0 — current web docs suggest prompt mode auto-runs without --yolo (codex review 2026-07-29); live CLI is the authority"
 body = """
 Add a Harness.AgentAdapter for Kimi Code (Moonshot's coding CLI, installed at
 ~/.kimi-code/bin/kimi, v0.26.0, docs https://moonshotai.github.io/kimi-code/).
@@ -11435,3 +11439,58 @@ created_at = "2026-08-05"
 scored_at = "2026-08-05"
 done_at = "2026-08-05"
 shipped_in = "b4d525e8beeaf3b3557bea84c0d586ac773d60b3"
+
+[[task]]
+id = "379"
+phase = 23
+bundle = "roadmap-writeback"
+status = "pending"
+title = "Durable roadmap writeback silently produced no commit — dispatch-start and post-land transitions both lost"
+scores = { d = 4, b = 7, u = 7 }
+markers = ["bug"]
+acceptance_criteria = ["A durable roadmap write that does not land its commit on the target branch surfaces at warn level or higher, naming the transition, task id, run id, and the concrete Durable error reason — a silent no-op is no longer a reachable outcome.", "An integration test drives both transitions (dispatch-start in_progress, post-land done) against a fixture project whose operator checkout is dirty AND ahead of origin, and asserts the target branch receives a roadmap commit for each.", "After a successful land in that test, the target branch's tasks.toml shows the task done carrying verified, verified_by, verification_ref and shipped_in, and started_at set by the earlier dispatch-start transition.", "The root cause of the two lost transitions in run-1785889534260-fc424f54 is named explicitly in the implemented field — not just patched around.", "Behavior on a clean, in-sync operator checkout is unchanged, and no force-push is introduced on any path."]
+out_of_scope = ["Changing rmap's validate-then-write contract or its implemented-required-on-done invariant (that is the rmap repo's surface)", "Committing or stashing the operator's unrelated dirty working-tree files", "Reworking the landing train, the reviewer gate, or the run lifecycle beyond the writeback call sites"]
+files_to_modify = ["lib/harness/roadmap/durable.ex", "lib/harness/run/worker.ex", "lib/harness/lander.ex"]
+touches = ["lib/harness/roadmap/durable.ex", "lib/harness/roadmap.ex", "lib/harness/git/target_sync.ex"]
+domains = ["otp", "git"]
+assignee = "codex"
+model = "gpt-5.5"
+body = """
+A full green run wrote nothing back to the roadmap, and nothing said so.
+
+Evidence — run `run-1785889534260-fc424f54`, project `rmap`, task 53. The run was
+approved by the reviewer gate and landed on the target branch (`origin/main`, sha
+`8f88d25`, two harness delivery commits). But NEITHER roadmap transition took
+effect: task 53 never went `in_progress` (no `started_at` was ever written) and
+never went `done` after landing (no `shipped_in`, no `verified`). It read `pending`
+both in the operator checkout and in `origin/main`'s own `roadmap/tasks.toml`, and
+`origin/main` carries no `roadmap:` commit for the run at all. The operator had to
+write the outcome by hand.
+
+`Harness.Roadmap.Durable` is supposed to make this impossible: mutate in a throwaway
+detached worktree at the freshly-fetched origin tip, commit, ff-push, then ff-sync
+the operator's local target. The push half is what failed — there is no commit on
+origin to sync from.
+
+Two candidate causes are already ruled out, do not re-derive them:
+
+  * It is NOT rmap's `implemented`-required-on-`done` gate. `Harness.Lander` does
+    pass `implemented:` into `Roadmap.mark_landed/2` (lib/harness/lander.ex:719),
+    and `--implemented` is appended when supplied (lib/harness/roadmap.ex:362).
+    That gate would also not explain the missing `in_progress` transition, which
+    has no such requirement.
+  * The step-5 local ff-sync skip is NOT sufficient. `Durable`'s moduledoc
+    documents that `Harness.Git.TargetSync` deliberately leaves a dirty or diverged
+    operator checkout alone — and the checkout WAS both dirty and one unpushed
+    commit ahead at the time. But that only explains a stale local copy; it does
+    not explain the absent commit on origin.
+
+Find out what actually happened to those two transitions, fix it, and — the part
+that matters as much as the fix — make this failure mode loud. A durable write that
+cannot land its commit must not look identical to one that succeeded. Today the
+writeback is best-effort by design (a failed transition logs and never fails the
+run, which is the right call), but "never fails the run" has become "never reaches
+the operator either".
+"""
+created_at = "2026-08-05"
+scored_at = "2026-08-05"

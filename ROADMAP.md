@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (2 of 14 done · 0 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (2 of 15 done · 0 in progress)
 
 **Last shipped:** Task 378 — Durable roadmap writes ignore roadmap_path and push tasks.toml into the source repo on 2026-08-05
 
@@ -446,4 +446,5 @@
 | Task 376 | ⬜ | 🎁 **test-suite-perf** · Landing tests leak an empty temp repo dir per run into the shared worktree root [D:2/B:4/U:5 → Eff:2.25] 🎯 |
 | Task 377 | ⬜ | 🎁 **resilience** · No GC for landed run branches or orphaned run worktrees — 272 branches accumulated [D:4/B:5/U:5 → Eff:1.25] 📋 |
 | Task 378 `[P]` | ✅ | 🎁 **roadmap-durability** · Durable roadmap writes ignore roadmap_path and push tasks.toml into the source repo [D:4/B:7/U:7 → Eff:1.75] 🚀 |
+| Task 379 | ⬜ | 🎁 **roadmap-writeback** · 🐛 Durable roadmap writeback silently produced no commit — dispatch-start and post-land transitions both lost [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 <!-- TASKS:END -->
