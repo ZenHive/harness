@@ -4,7 +4,8 @@ defmodule Harness.Project do
   optional per-project concurrency cap, and optional reviewer pin.
 
   - `name` — unique slug; worktrees are rooted at `<base_dir>/<name>/<run-id>`.
-  - `source` — where the repo lives:
+  - `source` — where the code repository lives. Run worktrees fork here and
+    delivery commits land here:
       - `{:local, path}` — an already-checked-out working tree on disk.
       - `{:github, url}` — a GitHub URL harness clones (and `git fetch`es
         before each run) into `<cache_root>/<name>`. See
@@ -15,7 +16,14 @@ defmodule Harness.Project do
     command — it is prompt text, not a verification gate.
   - `languages` — required non-empty list of target-language atoms used to
     select injected agent rule sections and per-language project facts.
-  - `roadmap_path` — project root holding `roadmap/tasks.toml` for rmap ingestion.
+  - `roadmap_path` — root holding `roadmap/tasks.toml`. All rmap reads and
+    writes use this root; durable writes use its containing Git repository,
+    which may differ from the code repository named by `source`.
+  - `roadmap_target_branch` — explicit branch for durable roadmap commits.
+    Required when `roadmap_path` and `source` belong to different repositories.
+    When they are the same repository, `nil` derives this from `target_branch`
+    for backward compatibility. With neither an explicit branch nor that
+    same-repository derivation, roadmap mutations stay local and do not push.
   - `concurrency_cap` — per-project batch cap; `nil` inherits the global default.
   - `pollution_allowlist` — optional path patterns ignored by the main-checkout
     pollution diff (`Harness.Worktree.Isolation`); `nil` inherits app defaults.
@@ -23,9 +31,10 @@ defmodule Harness.Project do
     worktrees in addition to the default warm paths.
   - `landing_policy` — `:manual` by default; `:auto` means reviewer-approved
     runs are eligible for autonomous landing.
-  - `target_branch` — the branch the autonomous lander fast-forward-pushes an
-    approved run onto (e.g. `"main"`). `nil` by default; a project only
-    auto-lands when it sets both `landing_policy: :auto` and a `target_branch`.
+  - `target_branch` — branch in the code repository (`source`) where the
+    autonomous lander fast-forward-pushes an approved run (e.g. `"main"`).
+    `nil` by default; a project only auto-lands when it sets both
+    `landing_policy: :auto` and a `target_branch`.
   - `reviewer` — optional agent atom that pins this project's cross-family
     reviewer gate; `nil` keeps the default auto-selection.
   - `test_db_isolation_env` — optional env var name used to partition a run's
@@ -43,6 +52,7 @@ defmodule Harness.Project do
     :name,
     :source,
     :roadmap_path,
+    :roadmap_target_branch,
     :languages,
     check_command: nil,
     concurrency_cap: nil,
@@ -66,6 +76,7 @@ defmodule Harness.Project do
           name: String.t(),
           source: source(),
           roadmap_path: String.t(),
+          roadmap_target_branch: String.t() | nil,
           check_command: String.t() | nil,
           languages: nonempty_list(atom()),
           concurrency_cap: pos_integer() | nil,

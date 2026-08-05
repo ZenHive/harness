@@ -2,6 +2,7 @@ defmodule Harness.GitTest do
   use ExUnit.Case, async: true
 
   alias Harness.Git
+  alias Harness.Git.TargetSync
   alias Harness.GitFixture
 
   @moduletag :tmp_dir
@@ -23,6 +24,16 @@ defmodule Harness.GitTest do
 
       assert {:error, {:fetch_failed, {:git_failed, ["fetch", "origin"], _status, _out}}} =
                Git.fetch_origin(dir)
+    end
+  end
+
+  describe "TargetSync.ff_local/2" do
+    test "returns a conservative skip when the remote branch does not exist" do
+      %{repo: repo} = GitFixture.init_with_origin()
+
+      assert {:skipped, reason} = TargetSync.ff_local(repo, "missing-roadmap-branch")
+      assert reason =~ "fetch_remote_target_failed"
+      assert reason =~ "sync manually"
     end
   end
 

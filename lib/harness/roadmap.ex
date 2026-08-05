@@ -48,6 +48,7 @@ defmodule Harness.Roadmap do
 
   alias __MODULE__.Ctx
   alias Harness.CapabilityDomain
+  alias Harness.Git
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.Roadmap.Durable
@@ -323,9 +324,10 @@ defmodule Harness.Roadmap do
 
   Options:
 
-    * `:project` — a `%Harness.Project{}`. When it carries a `target_branch`
-      and a local source, the transition is pushed durably to that branch (see
-      "Durability" below); otherwise this supplies the local-write root.
+    * `:project` — a `%Harness.Project{}`. The transition is pushed durably in
+      the Git repository containing `roadmap_path` when its roadmap branch is
+      explicit or safely derived (see "Durability" below); otherwise this
+      supplies the local-write root.
     * `:root` — the project root holding `roadmap/tasks.toml`. Required unless
       `:project` is given (then `project.roadmap_path` is used).
     * `:sha` — the landed commit SHA recorded as `shipped_in` (required).
@@ -341,11 +343,14 @@ defmodule Harness.Roadmap do
 
   ## Durability
 
-  When `:project` carries a `target_branch` + local source, the transition is a
-  durable git operation — fetch the target, mutate a fresh detached worktree at
-  its tip, commit, and ff-push (`Harness.Roadmap.Durable`) — so concurrent
-  writers never clobber each other's roadmap edits. Lacking such a project it
-  falls back to a plain local rmap write.
+  The Git repository containing `project.roadmap_path` owns durable roadmap
+  commits. `project.roadmap_target_branch` names its branch explicitly; when
+  roadmap and source are the same repository, `project.target_branch` is the
+  backward-compatible default. If the repository or branch cannot be resolved
+  without guessing, the transition falls back to a plain local rmap write.
+  A successful fallback keeps the existing `{:ok, output}` result because the
+  local rmap mutation succeeded, but it is not durable until the operator
+  commits and pushes that checkout.
 
   > Depends on rmap's `--shipped-in` status flag (rmap roadmap Task 33).
   """)
@@ -376,9 +381,8 @@ defmodule Harness.Roadmap do
 
   Options:
 
-    * `:project` — a `%Harness.Project{}`; with a `target_branch` + local source
-      the transition is pushed durably to that branch, else supplies the
-      local-write root (see `mark_landed/2` § Durability).
+    * `:project` — a `%Harness.Project{}`; supplies both the roadmap durability
+      configuration and the local-write root (see `mark_landed/2` § Durability).
     * `:root` — the project root holding `roadmap/tasks.toml`. Required unless
       `:project` is given.
     * `:reason` — the structured blocked reason (required; rmap mandates a
@@ -408,9 +412,8 @@ defmodule Harness.Roadmap do
 
   Options:
 
-    * `:project` — a `%Harness.Project{}`; with a `target_branch` + local source
-      the transition is pushed durably to that branch, else supplies the
-      local-write root (see `mark_landed/2` § Durability).
+    * `:project` — a `%Harness.Project{}`; supplies both the roadmap durability
+      configuration and the local-write root (see `mark_landed/2` § Durability).
     * `:root` — the project root holding `roadmap/tasks.toml`. Required unless
       `:project` is given.
     * `:rmap_bin` — override the `rmap` binary name/path (intended for tests).
@@ -429,9 +432,9 @@ defmodule Harness.Roadmap do
 
   Only for ordinary run failures — lander terminal exhaustion uses `mark_blocked`.
 
-  Options: `:project` (durable push when it has a `target_branch` + local source,
-  see `mark_landed/2` § Durability), `:root` (required unless `:project` is
-  given), `:rmap_bin` (for tests).
+  Options: `:project` (durability configuration and local-write root; see
+  `mark_landed/2` § Durability), `:root` (required unless `:project` is given),
+  `:rmap_bin` (for tests).
 
   Returns `{:ok, output}` or `{:error, {status, output, args}}`.
   """)
@@ -442,8 +445,8 @@ defmodule Harness.Roadmap do
   end
 
   # The single chokepoint every mark_* transition funnels through. Builds the
-  # rmap `status` argv, then either pushes it durably to the project's target
-  # branch (when a usable %Project{} is supplied — see `durable_target/1`) or
+  # rmap `status` argv, then either pushes it durably to the roadmap repository
+  # (when a usable %Project{} is supplied — see `durable_target/1`) or
   # falls back to a plain local rmap write (the historical best-effort path,
   # kept for callers that pass only `:root`, e.g. tests and target-branch-less
   # projects).
@@ -464,10 +467,11 @@ defmodule Harness.Roadmap do
           {:ok, String.t()} | {:error, term()}
   defp apply_mutation(args, ctx, opts, task_id, label, fingerprint) do
     case durable_target(opts) do
-      {:ok, repo, target} ->
+      {:ok, repo, target, relative_root} ->
         Durable.commit(repo, target,
           message: "roadmap: task #{task_id} -> #{label}",
-          apply: fn root ->
+          apply: fn worktree ->
+            root = durable_root(worktree, relative_root)
             run_verified_mutation(args, durable_ctx(root, ctx.rmap_bin), task_id, fingerprint)
           end
         )
@@ -557,19 +561,70 @@ defmodule Harness.Roadmap do
     end
   end
 
-  # A durable write needs a local repo to push from and a branch to push to. A
-  # project missing either — no `target_branch`, or a `{:github, _}` source with
-  # no operable local checkout — falls back to the plain local rmap write.
-  @spec durable_target(keyword()) :: {:ok, String.t(), String.t()} | :none
+  # An explicit roadmap branch is authoritative. Reusing the code target is safe
+  # only when both paths resolve to the same Git repository; every ambiguous or
+  # non-Git shape falls back to the plain local rmap write.
+  @spec durable_target(keyword()) :: {:ok, String.t(), String.t(), String.t()} | :none
   defp durable_target(opts) do
-    with %Project{target_branch: target} = project when is_binary(target) and target != "" <-
-           Keyword.get(opts, :project),
-         {:ok, repo} <- Project.local_repo_path(project) do
-      {:ok, repo, target}
+    with %Project{} = project <- Keyword.get(opts, :project),
+         {:ok, repo} <- git_root(project.roadmap_path),
+         {:ok, relative_root} <- git_relative_root(project.roadmap_path),
+         {:ok, target} <- roadmap_target_branch(project, repo),
+         :ok <- validate_branch(repo, target) do
+      {:ok, repo, target, relative_root}
     else
       _ -> :none
     end
   end
+
+  @spec git_root(String.t()) :: {:ok, String.t()} | :none
+  defp git_root(path) do
+    case Git.run(["rev-parse", "--show-toplevel"], Path.expand(path)) do
+      {:ok, output} -> {:ok, output |> String.trim() |> Path.expand()}
+      {:error, _reason} -> :none
+    end
+  end
+
+  @spec git_relative_root(String.t()) :: {:ok, String.t()} | :none
+  defp git_relative_root(path) do
+    case Git.run(["rev-parse", "--show-prefix"], Path.expand(path)) do
+      {:ok, output} -> {:ok, output |> String.trim() |> String.trim_trailing("/") |> empty_as_dot()}
+      {:error, _reason} -> :none
+    end
+  end
+
+  @spec empty_as_dot(String.t()) :: String.t()
+  defp empty_as_dot(""), do: "."
+  defp empty_as_dot(path), do: path
+
+  @spec roadmap_target_branch(Project.t(), String.t()) :: {:ok, String.t()} | :none
+  defp roadmap_target_branch(%Project{roadmap_target_branch: target}, _repo) when is_binary(target) and target != "",
+    do: {:ok, target}
+
+  defp roadmap_target_branch(%Project{target_branch: target} = project, roadmap_repo)
+       when is_binary(target) and target != "" do
+    with {:ok, source_repo} <- Project.local_repo_path(project),
+         {:ok, source_root} <- git_root(source_repo),
+         true <- source_root == roadmap_repo do
+      {:ok, target}
+    else
+      _ -> :none
+    end
+  end
+
+  defp roadmap_target_branch(%Project{}, _repo), do: :none
+
+  @spec validate_branch(String.t(), String.t()) :: :ok | :none
+  defp validate_branch(repo, target) do
+    case Git.run(["check-ref-format", "--branch", target], repo) do
+      {:ok, _output} -> :ok
+      {:error, _reason} -> :none
+    end
+  end
+
+  @spec durable_root(String.t(), String.t()) :: String.t()
+  defp durable_root(worktree, "."), do: worktree
+  defp durable_root(worktree, relative_root), do: Path.join(worktree, relative_root)
 
   @spec durable_ctx(String.t(), String.t()) :: Ctx.t()
   defp durable_ctx(root, rmap_bin) do

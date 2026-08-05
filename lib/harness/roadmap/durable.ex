@@ -12,7 +12,8 @@ defmodule Harness.Roadmap.Durable do
   agent against the same shared file. This module closes that gap. For each
   transition it:
 
-    1. fetches the project's `target_branch` so it never writes from a stale copy,
+    1. fetches the roadmap repository's configured branch so it never writes
+       from a stale copy,
     2. applies the rmap mutation against a fresh **detached** worktree at the
        freshly-fetched `origin/<target>` tip (rmap auto-renders `tasks.toml`,
        `data.json`, and `ROADMAP.md` on success),
@@ -64,7 +65,8 @@ defmodule Harness.Roadmap.Durable do
           | term()
 
   @doc """
-  Applies an rmap mutation durably against `repo`'s `target` branch.
+  Applies an rmap mutation durably against `repo`'s explicitly resolved roadmap
+  branch.
 
   `apply_fun` receives the detached worktree's root and must run the actual rmap
   `status` mutation there, so it writes the freshly-fetched copy rather than a
@@ -161,7 +163,9 @@ defmodule Harness.Roadmap.Durable do
 
   @spec fetch(String.t(), String.t()) :: :ok | {:error, error()}
   defp fetch(repo, target) do
-    case Git.run(["fetch", "origin", "#{target}:refs/remotes/origin/#{target}"], repo) do
+    refspec = "refs/heads/#{target}:refs/remotes/origin/#{target}"
+
+    case Git.run(["fetch", "origin", refspec], repo) do
       {:ok, _output} -> :ok
       {:error, reason} -> {:error, {:roadmap_fetch_failed, reason}}
     end

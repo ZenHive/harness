@@ -70,6 +70,7 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
         source: {:github, "https://github.com/example/demo.git"},
         check_command: "mix precommit",
         roadmap_path: "/tmp/#{name}/roadmap/tasks.toml",
+        roadmap_target_branch: "roadmap-main",
         languages: [:elixir],
         concurrency_cap: 4,
         landing_policy: :auto,
@@ -84,6 +85,7 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
       assert {:ok, restored} = ProjectRegistry.lookup(name)
       assert restored.source == project.source
       assert restored.check_command == "mix precommit"
+      assert restored.roadmap_target_branch == "roadmap-main"
       assert restored.concurrency_cap == 4
       assert restored.landing_policy == :auto
       assert restored.target_branch == "development"

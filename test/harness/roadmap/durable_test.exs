@@ -154,6 +154,68 @@ defmodule Harness.Roadmap.DurableTest do
       assert origin_tip(ctx.repo) == tip_before
       assert File.read!(Path.join(ctx.repo, "roadmap/tasks.toml")) =~ "in_progress"
     end
+
+    test "mark_landed commits a split roadmap in its repository and leaves the source untouched", ctx do
+      %{repo: source_repo} = GitFixture.init_with_origin(name: "durable-source")
+      source_tip = origin_tip(source_repo)
+      source_head = local_tip(source_repo)
+      source_worktrees = worktrees(source_repo)
+
+      project =
+        ctx.project
+        |> Map.put(:source, {:local, source_repo})
+        |> Map.replace!(:roadmap_target_branch, "main")
+        |> Map.replace!(:target_branch, "code-release")
+
+      assert {:ok, _output} =
+               Roadmap.mark_landed("2",
+                 project: project,
+                 sha: "0123456789abcdef0123456789abcdef01234567",
+                 verified_by: "codex",
+                 implemented: "Split-repository roadmap write"
+               )
+
+      assert origin_task_status(ctx.repo, "2") == "done"
+      assert local_task_status(ctx.repo, "2") == "done"
+      assert origin_log(ctx.repo) =~ "roadmap: task 2 -> done (shipped 0123456789ab)"
+      assert origin_tip(source_repo) == source_tip
+      assert local_tip(source_repo) == source_head
+      assert worktrees(source_repo) == source_worktrees
+      assert GitFixture.git!(source_repo, ["status", "--porcelain"]) == ""
+      refute origin_log(source_repo) =~ "roadmap: task"
+    end
+
+    test "a split roadmap without an explicit roadmap branch falls back to a local write", ctx do
+      %{repo: source_repo} = GitFixture.init_with_origin(name: "durable-source-no-roadmap-target")
+      roadmap_tip = origin_tip(ctx.repo)
+      source_tip = origin_tip(source_repo)
+      project = %{ctx.project | source: {:local, source_repo}}
+
+      assert {:ok, _output} = Roadmap.mark_in_progress("2", project: project)
+
+      assert local_task_status(ctx.repo, "2") == "in_progress"
+      assert origin_tip(ctx.repo) == roadmap_tip
+      assert origin_tip(source_repo) == source_tip
+      refute origin_log(source_repo) =~ "roadmap: task"
+    end
+
+    test "a roadmap path outside git falls back to a local write", ctx do
+      roadmap_root = GitFixture.tmp_base(name: "durable-non-git-roadmap")
+      File.mkdir_p!(roadmap_root)
+      File.cp_r!(Path.join(ctx.repo, "roadmap"), Path.join(roadmap_root, "roadmap"))
+      File.cp!(Path.join(ctx.repo, "ROADMAP.md"), Path.join(roadmap_root, "ROADMAP.md"))
+      source_tip = origin_tip(ctx.repo)
+
+      project =
+        ctx.project
+        |> Map.put(:roadmap_path, roadmap_root)
+        |> Map.replace!(:roadmap_target_branch, "main")
+
+      assert {:ok, _output} = Roadmap.mark_in_progress("2", project: project)
+
+      assert local_task_status(roadmap_root, "2") == "in_progress"
+      assert origin_tip(ctx.repo) == source_tip
+    end
   end
 
   describe "Durable.commit/3 — non-ff retry" do
@@ -260,5 +322,13 @@ defmodule Harness.Roadmap.DurableTest do
   defp origin_tip(repo) do
     GitFixture.git!(repo, ["fetch", "-q", "origin", "main"])
     repo |> GitFixture.git!(["rev-parse", "origin/main"]) |> String.trim()
+  end
+
+  defp local_tip(repo) do
+    repo |> GitFixture.git!(["rev-parse", "HEAD"]) |> String.trim()
+  end
+
+  defp worktrees(repo) do
+    GitFixture.git!(repo, ["worktree", "list", "--porcelain"])
   end
 end

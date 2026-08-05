@@ -18,6 +18,7 @@ defmodule Harness.ProjectTest do
       assert project.check_command == nil
       assert project.concurrency_cap == nil
       assert project.landing_policy == :manual
+      assert project.roadmap_target_branch == nil
       assert project.target_branch == nil
       assert project.pollution_allowlist == nil
       assert project.reviewer == nil
@@ -46,6 +47,20 @@ defmodule Harness.ProjectTest do
       }
 
       assert project.test_db_isolation_env == "APP_TEST_PARTITION"
+    end
+
+    test "carries an explicit roadmap repository branch independently of the code branch" do
+      project = %Project{
+        name: "demo",
+        source: {:local, "/tmp/code"},
+        roadmap_path: "/tmp/workbench",
+        roadmap_target_branch: "roadmap-main",
+        languages: [:elixir],
+        target_branch: "release"
+      }
+
+      assert project.roadmap_target_branch == "roadmap-main"
+      assert project.target_branch == "release"
     end
 
     test "carries an explicit test DB isolation opt-out" do

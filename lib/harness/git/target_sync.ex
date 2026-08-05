@@ -51,7 +51,9 @@ defmodule Harness.Git.TargetSync do
 
   @spec fetch_remote_target(String.t(), String.t()) :: :ok | {:error, term()}
   defp fetch_remote_target(repo, target) do
-    case Git.run(["fetch", "origin", "#{target}:refs/remotes/origin/#{target}"], repo) do
+    refspec = "refs/heads/#{target}:refs/remotes/origin/#{target}"
+
+    case Git.run(["fetch", "origin", refspec], repo) do
       {:ok, _output} -> :ok
       {:error, reason} -> {:error, {:fetch_remote_target_failed, reason}}
     end
@@ -88,7 +90,9 @@ defmodule Harness.Git.TargetSync do
   # so a diverged local branch surfaces as a skip rather than a clobber.
   @spec sync_unchecked_out(String.t(), String.t()) :: result()
   defp sync_unchecked_out(repo, target) do
-    case Git.run(["fetch", "origin", "#{target}:#{target}"], repo) do
+    refspec = "refs/heads/#{target}:refs/heads/#{target}"
+
+    case Git.run(["fetch", "origin", refspec], repo) do
       {:ok, _output} -> :synced
       {:error, _reason} -> {:skipped, drift_message(repo, target)}
     end

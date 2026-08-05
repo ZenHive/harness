@@ -284,6 +284,7 @@ defmodule Harness.ProjectRegistry do
     with {:ok, name} <- fetch_required(entry, :name),
          {:ok, source} <- fetch_source(entry),
          {:ok, roadmap_path} <- fetch_roadmap_path(entry),
+         {:ok, roadmap_target_branch} <- fetch_roadmap_target_branch(entry),
          {:ok, check_command} <- fetch_check_command(entry),
          {:ok, languages} <- fetch_languages(entry) do
       {:ok,
@@ -291,6 +292,7 @@ defmodule Harness.ProjectRegistry do
          name: name,
          source: source,
          roadmap_path: roadmap_path,
+         roadmap_target_branch: roadmap_target_branch,
          check_command: check_command,
          languages: languages,
          concurrency_cap: Map.get(entry, :concurrency_cap),
@@ -427,6 +429,24 @@ defmodule Harness.ProjectRegistry do
     end
   end
 
+  @spec fetch_roadmap_target_branch(map()) ::
+          {:ok, String.t() | nil} | {:error, {:invalid_project, term()}}
+  defp fetch_roadmap_target_branch(entry) do
+    case Map.get(entry, :roadmap_target_branch) do
+      nil -> {:ok, nil}
+      branch when is_binary(branch) -> validate_roadmap_target_branch_value(branch)
+      other -> {:error, {:invalid_project, {:invalid_roadmap_target_branch, other}}}
+    end
+  end
+
+  @spec validate_roadmap_target_branch_value(String.t()) ::
+          {:ok, String.t()} | {:error, {:invalid_project, term()}}
+  defp validate_roadmap_target_branch_value(branch) do
+    if valid_branch_name?(branch),
+      do: {:ok, branch},
+      else: {:error, {:invalid_project, {:invalid_roadmap_target_branch, branch}}}
+  end
+
   # `check_command` is a free-text hint the reviewer AI receives in its prompt
   # (e.g. "mix check.dispatch"). Optional — a project without one leaves the reviewer
   # to discover the project's checks itself. Harness never executes it.
@@ -440,11 +460,32 @@ defmodule Harness.ProjectRegistry do
   end
 
   @spec validate_project(Project.t()) :: :ok | {:error, {:invalid_project, term()}}
-  defp validate_project(%Project{languages: languages}) do
-    case validate_languages(languages) do
-      {:ok, ^languages} -> :ok
+  defp validate_project(%Project{languages: languages, roadmap_target_branch: branch}) do
+    with {:ok, ^languages} <- validate_languages(languages),
+         :ok <- validate_roadmap_target_branch(branch) do
+      :ok
+    else
       {:ok, _normalized} -> {:error, {:invalid_project, {:invalid_languages, languages}}}
       {:error, _reason} = error -> error
+    end
+  end
+
+  @spec validate_roadmap_target_branch(term()) :: :ok | {:error, {:invalid_project, term()}}
+  defp validate_roadmap_target_branch(nil), do: :ok
+
+  defp validate_roadmap_target_branch(branch) when is_binary(branch) do
+    if valid_branch_name?(branch),
+      do: :ok,
+      else: {:error, {:invalid_project, {:invalid_roadmap_target_branch, branch}}}
+  end
+
+  defp validate_roadmap_target_branch(other), do: {:error, {:invalid_project, {:invalid_roadmap_target_branch, other}}}
+
+  @spec valid_branch_name?(String.t()) :: boolean()
+  defp valid_branch_name?(branch) do
+    case System.find_executable("git") do
+      nil -> false
+      _path -> match?({_output, 0}, System.cmd("git", ["check-ref-format", "--branch", branch], stderr_to_stdout: true))
     end
   end
 

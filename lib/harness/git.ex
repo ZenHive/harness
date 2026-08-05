@@ -91,8 +91,9 @@ defmodule Harness.Git do
           :diverged | :fast_forwardable | :inconclusive
   defp remote_divergence(repo, pushed_ref, target) do
     remote_ref = "refs/remotes/origin/" <> target
+    remote_branch = "refs/heads/" <> target
 
-    with {:ok, _fetched} <- run(["fetch", "origin", "+#{target}:#{remote_ref}"], repo),
+    with {:ok, _fetched} <- run(["fetch", "origin", "+#{remote_branch}:#{remote_ref}"], repo),
          {:ok, _remote} <- run(["rev-parse", "--verify", "--quiet", remote_ref <> "^{commit}"], repo),
          {:ok, _pushed} <- run(["rev-parse", "--verify", "--quiet", pushed_ref <> "^{commit}"], repo) do
       if ancestor?(repo, remote_ref, pushed_ref), do: :fast_forwardable, else: :diverged

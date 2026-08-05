@@ -437,6 +437,7 @@ defmodule Harness.ProjectRegistryTest do
         roadmap_path: "/tmp/harness-cm/roadmap/tasks.toml",
         languages: [:rust],
         landing_policy: :auto,
+        roadmap_target_branch: "roadmap-main",
         target_branch: "development"
       }
 
@@ -448,6 +449,7 @@ defmodule Harness.ProjectRegistryTest do
                   "configured-map" => %Harness.Project{
                     check_command: "cargo test",
                     landing_policy: :auto,
+                    roadmap_target_branch: "roadmap-main",
                     target_branch: "development"
                   }
                 }
@@ -530,6 +532,25 @@ defmodule Harness.ProjectRegistryTest do
         end)
 
       assert log =~ "skipping invalid config entry"
+    end
+
+    test "rejects an invalid roadmap_target_branch" do
+      bad = [
+        name: "bad-roadmap-target",
+        source: {:local, "/tmp/x"},
+        languages: [:elixir],
+        roadmap_path: "/tmp/x",
+        roadmap_target_branch: "bad branch"
+      ]
+
+      Application.put_env(:harness, :projects, [bad])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, %{projects: %{}}} = ProjectRegistry.init(:noargs)
+        end)
+
+      assert log =~ "invalid_roadmap_target_branch"
     end
 
     test "rejects an unsupported source shape" do
