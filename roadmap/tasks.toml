@@ -11315,7 +11315,7 @@ bundle = "test-suite-perf"
 status = "pending"
 title = "Landing tests leak an empty temp repo dir per run into the shared worktree root"
 scores = { d = 2, b = 4, u = 5 }
-acceptance_criteria = ["Running the full suite twice leaves the same number of entries in the worktree root as before the first run", "No new `harness-repo-*` directory exists after the suite finishes", "The existing 2369 leaked directories are removable by a documented one-liner, and the docs say what it is"]
+acceptance_criteria = ["Running the full suite twice leaves the same number of entries in the worktree root as before the first run", "No new `harness-repo-*` directory exists after the suite finishes", "The documented cleanup one-liner exists and is exercised, so the next backlog does not need a manual sweep to clear"]
 out_of_scope = ["Stale harness/run-* branches and orphaned run worktrees — separate task", "Changing the production worktree root location"]
 body = """
 Running the suite leaves a `harness-repo-<pid>-<nanotime>/` directory behind in
@@ -11334,6 +11334,19 @@ the test lifecycle (ExUnit `tmp_dir` or an `on_exit` removal), so a suite run is
 net-zero on the filesystem. Also decide whether test scratch belongs under the
 *shared operator* worktree root at all — a dedicated tmp root would make the
 leak self-evident instead of camouflaged.
+
+**Update 2026-08-07 — backlog cleared by hand; the leak itself is untouched.**
+The count had reached 2405 (plus ~60 `harness-suite-health-*` and one
+`harness-warmtest`), newest stamped 2026-08-06 08:11 — so roughly 36 more
+accumulated in the four days after this task was filed, confirming every suite
+run still adds to it. All 2459 were removed manually during an unrelated
+worktree-root cleanup, so the operator-visible symptom is gone and the root
+now holds only real entries. That removes the pressure but not the defect: the
+next suite run starts the pile over. Scope is therefore purely "stop the leak"
+plus documenting the sweep — do not treat the empty root as evidence of a fix.
+Note the leak is not confined to `harness-repo-*`; the `harness-suite-health-*`
+prefixes leak identically, so fix the shared scratch-root helper rather than
+one test's cleanup.
 """
 created_at = "2026-08-03"
 scored_at = "2026-08-03"
@@ -11345,7 +11358,7 @@ bundle = "resilience"
 status = "pending"
 title = "No GC for landed run branches or orphaned run worktrees — 272 branches accumulated"
 scores = { d = 4, b = 5, u = 5 }
-acceptance_criteria = ["A landed, verified run's branch and worktree are removed automatically, and a test proves the branch's commits were reachable from the target before removal", "An unlanded or failed run's branch and worktree survive the same pass", "A maintenance entrypoint reports what would be removed before removing it, and can be run against the existing 272-branch backlog", "Orphaned worktree directories with no git registration are detected and reported, not silently ignored"]
+acceptance_criteria = ["A landed, verified run's branch and worktree are removed automatically, and a test proves the branch's commits were reachable from the target before removal", "An unlanded or failed run's branch and worktree survive the same pass", "A maintenance entrypoint reports what would be removed before removing it, and can be run against the existing 272-branch backlog", "Orphaned worktree directories with no git registration are detected and reported, not silently ignored", "A worktree whose gitdir points at a moved or renamed main checkout is detected and reported, even though `git worktree prune` finds nothing prunable and `git worktree remove` refuses it"]
 out_of_scope = ["Test-suite temp directory leakage — separate task", "Rewriting the lander's ff-push path"]
 body = """
 After a run lands, its `harness/run-<id>` branch is never deleted. 272 such
@@ -11367,6 +11380,30 @@ delete it once the run's commits are provably reachable from `origin/<target>` �
 but a failed or unlanded run's branch is the only copy of that work and must be
 kept. Make the distinction explicit and testable; a policy that cannot tell the
 two apart is worse than none.
+
+**Update 2026-08-07 — a third orphan class, invisible to both git primitives.**
+Beyond the 18 directories that outlived their registration, there is a class
+where the registration is intact but the *back-link* is broken: the worktree's
+`.git` file names `<old-checkout>/.git/worktrees/<id>`, and the main checkout has
+since been renamed or moved. `git worktree prune` reports **0 prunable** (the
+main-side `gitdir` still resolves to an existing directory), and
+`git worktree remove` refuses with `validation failed ... is not a .git file`,
+so neither primitive can clear it and neither reports it as wrong. Only reading
+each worktree's `.git` file and testing the path it names surfaces them.
+
+Hit twice on the dev host, both from ordinary directory moves: renaming
+`~/_DATA/code/ccxt_client` to `bourse_workbench` stranded 27, and moving
+`~/_DATA/code/ccxt_extract` into `code/archive/` stranded 16. Removal required
+`rm -rf` on the directories followed by `git worktree prune`, which only then
+reported them. `git worktree repair` is the git-native alternative and is the
+right primitive when the checkout moved but the runs are still wanted — a GC
+pass should distinguish repair-vs-remove rather than assuming removal.
+
+Worth noting for scoping: the full worktree-directory backlog was cleared by
+hand on 2026-08-07 (all registered run worktrees across 12 repos, plus the
+stranded and unregistered ones), while every branch was preserved —
+`git worktree remove` does not delete branches. So the on-disk half of this task
+has no live backlog; the 272-branch half and the missing policy both remain.
 """
 created_at = "2026-08-03"
 scored_at = "2026-08-03"

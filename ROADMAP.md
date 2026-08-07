@@ -419,10 +419,10 @@
 | Task 350 `[P]` | ✅ | 🎁 **postgres-results** · 🐛 AgentKPI.duration_summary/1 crashes with ArithmeticError on [] — reachable from the Postgres KPI rollup [D:1/B:3/U:3 → Eff:3.0?] 🎯 |
 | Task 352 | ✅ | 🎁 **postgres-results** · Bound run_records growth: blob retention that never touches the countable KPI facts [D:3/B:4/U:3 → Eff:1.17?] 📋 |
 | Task 353 | ✅ | 🎁 **core-loop** · Decompose the 2,890-line Run gen_statem: extract per-state event handling into satellite modules [D:4/B:5/U:5 → Eff:1.25?] 📋 |
-| Task 354 | ⛔ | 🎁 **resilience** · Run gen_statem crashes with case_clause on {:cancel, {:redispatched, run_id}} after reflex redispatch [D:3/B:6/U:7 → Eff:2.17] 🎯 |
-| Task 355 | ⛔ | 🎁 **autolanding** · Land-conflict resolver dies on {:model_required, Claude} — candidate selection must skip model-less agents [D:2/B:5/U:6 → Eff:2.75] 🎯 |
-| Task 356 `[P]` | ✅ | 🎁 **chat-orchestrator** · 🐛 Chat turn-worker crash must fail fast to the caller — monitor instead of bare receive; map ensure_session already_started [D:2/B:3/U:4 → Eff:1.75] 🚀 |
-| Task 357 | ✅ | 🎁 **core-loop** · Decompose Harness.Run.Actions (2,575 lines) by lifecycle concern [D:3/B:4/U:4 → Eff:1.33] 📋 |
+| Task 354 | ⛔ | 🎁 **resilience** · Run gen_statem crashes with case_clause on {:cancel, {:redispatched, run_id}} after reflex redispatch [D:3/B:6/U:7 → Eff:2.17?] 🎯 |
+| Task 355 | ⛔ | 🎁 **autolanding** · Land-conflict resolver dies on {:model_required, Claude} — candidate selection must skip model-less agents [D:2/B:5/U:6 → Eff:2.75?] 🎯 |
+| Task 356 `[P]` | ✅ | 🎁 **chat-orchestrator** · 🐛 Chat turn-worker crash must fail fast to the caller — monitor instead of bare receive; map ensure_session already_started [D:2/B:3/U:4 → Eff:1.75?] 🚀 |
+| Task 357 | ✅ | 🎁 **core-loop** · Decompose Harness.Run.Actions (2,575 lines) by lifecycle concern [D:3/B:4/U:4 → Eff:1.33?] 📋 |
 <!-- TASKS:END -->
 
 ---
