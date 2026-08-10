@@ -15,12 +15,12 @@
     "10": {
       "name": "Dashboard Operator UX",
       "order": 10,
-      "status": "pending"
+      "status": "done"
     },
     "11": {
       "name": "Autonomous Landing",
       "order": 11,
-      "status": "pending"
+      "status": "done"
     },
     "12": {
       "name": "Workflow Substrate",
@@ -30,7 +30,7 @@
     "13": {
       "name": "Agent KPIs & Capability Routing",
       "order": 13,
-      "status": "pending"
+      "status": "done"
     },
     "14": {
       "name": "Agent Rule Injection & Prompt Provenance",
@@ -45,7 +45,7 @@
     "16": {
       "name": "Agent-Gate Workflow & Post-Merge Audit",
       "order": 16,
-      "status": "in_progress"
+      "status": "done"
     },
     "17": {
       "name": "Settings Consolidation & Resilience",
@@ -95,7 +95,7 @@
     "4": {
       "name": "Multi-Agent & Quota Fail-over",
       "order": 4,
-      "status": "done"
+      "status": "pending"
     },
     "5": {
       "name": "Surface & Observability",
@@ -120,7 +120,7 @@
     "9": {
       "name": "Chat Orchestrator",
       "order": 9,
-      "status": "pending"
+      "status": "done"
     }
   },
   "bundles": {
@@ -397,14 +397,14 @@
     },
     "v0_16": {
       "name": "Audit Hardening — close the 2026-07-12 health-audit findings",
-      "description": "Tests the hypothesis that the 2026-07-12 project health audit's structural findings — unbounded/redundant dashboard reads, the ~1900-line Dispatch god module, the 71-module strongly-connected cycle, zero-coverage merge-critical modules, the AgentRegistry cross-test pollution flake, and the undocumented mountable-consumer auth boundary — are closable with NO behaviour change (structure, bounds, coverage, and docs only), and that encoding the layering as a .reach.exs boundary turns whole-surface architecture drift into a CI failure instead of a future audit discovery.",
+      "description": "Closes the verified structural, correctness, test-isolation, and operability findings still open from the 2026-07-12 health audit and later live failures. The work stays mechanical: bound redundant reads, preserve public contracts while splitting large surfaces, encode architecture boundaries, pin flaky behavior to its demonstrated cause, and make durable write failures observable.",
       "order": 16,
       "status": "active",
       "target_version": "0.16.0"
     },
     "v0_17": {
       "name": "Unified Event Substrate — one durable stream of lifecycle facts",
-      "description": "Tests the hypothesis that scattering lifecycle facts across ResultStore records, witness sink files, Oban rows, and in-memory state is the next operability bottleneck as multi-project autonomy grows — and that ONE append-only harness_events stream (all lifecycle writers append; witness sinks write through it; per-actor seat attribution rides on every event) makes cross-project questions one query instead of N store-specific stitches, while staying pure fact-counting: no scoring, classification, or judgment arithmetic moves into harness code.",
+      "description": "Adds a versioned, append-only lifecycle event stream beside ResultStore's per-run projection. Lifecycle writers emit idempotent, ordered facts; witness delivery consumes the same stream; bounded queries answer cross-project and per-adapter/model activity questions without adding scoring, classification, or judgment arithmetic to harness code.",
       "order": 17,
       "status": "pending",
       "target_version": "0.17.0"
@@ -7324,21 +7324,22 @@
       "assignee": "human",
       "acceptance_criteria": [
         "Tagged both :integration and :live_agent — excluded from the default suite and mix precommit; run via mix test.json --include live_agent",
-        "Fails loudly with flunk + setup instructions (CLI install command, auth step) when the agent CLI is missing or unauthenticated — never skips silently",
-        "Drives one real headless agent (default Claude, adapter selectable via env var) through the same chain as Task 173: trivial fixture task → dispatch → worktree → real agent commit → reviewer AI gate (writes .harness/review.json) → land to a local bare origin",
+        "Fails loudly with flunk + setup instructions (CLI install command, auth step, required environment variables) when either selected CLI is missing or unauthenticated — never skips silently",
+        "Drives one real headless implementer (default codex with gpt-5.5, adapter and model selectable via environment variables) through the same chain as Task 173: trivial fixture task → dispatch → worktree → real agent commit → cross-family reviewer AI gate (writes .harness/review.json) → land to a local bare origin",
+        "The selected reviewer is from a different agent family than the implementer and its adapter/model are explicit rather than inherited from an ambient CLI default",
         "Wall-clock bounded: trivial prompt + per-test total_timeout override so a hung CLI cannot stall the run beyond ~5 minutes"
       ],
       "out_of_scope": [
         "Running in CI or the default suite",
-        "Cross-adapter matrix (all six agents) — one adapter proves the live seam; per-adapter scoring is owned by AgentKPI/CapabilityScore re-keyed to reviewer outcomes",
+        "Cross-adapter matrix — one implementer/reviewer pair proves the live seam; production routing measurements remain on the existing KPI surfaces",
         "Asserting anything about the agent's code quality — the reviewer's .harness/review.json verdict is the only assertion"
       ],
       "touches": [
         "test/harness/pipeline_live_agent_test.exs"
       ],
-      "body": "The deterministic pipeline E2E (Task 173) proves every harness seam with a scripted agent; this task adds the one seam it cannot prove — a real agent CLI invoked over a Port produces a commit that flows through the reviewer gate and landing. User-requested 2026-06-03 alongside Task 173.\n\nThis formalizes what daily dogfooding runs prove ad hoc into a repeatable, on-demand check: run it when upgrading an agent CLI version, changing an adapter's build_command, or validating a new host. It is hand-run by design (quota cost, host CLI + auth required), which is why it carries the handbuild marker and lives outside the default suite.\n\nReuses Task 173's fixture/wiring; the only new surface is the live-CLI invocation path and the missing-credential flunk guard (per the integration-test never-skip-silently rule).\n",
+      "body": "The deterministic pipeline E2E (Task 173) proves every harness seam with a scripted agent; this task adds the one seam it cannot prove — a real agent CLI invoked over a Port produces a commit that flows through the reviewer gate and landing. User-requested 2026-06-03 alongside Task 173.\n\nThis formalizes what daily dogfooding runs prove ad hoc into a repeatable, on-demand check: run it when upgrading an agent CLI version, changing an adapter's build_command, or validating a new host. It is hand-run by design (quota cost, host CLI + auth required), which is why it carries the handbuild marker and lives outside the default suite.\n\nReuses Task 173's fixture/wiring; the only new surface is the live-CLI invocation path and the missing-credential flunk guard (per the integration-test never-skip-silently rule). The old Claude default contradicted the standing dispatch policy: the operator session already consumes the Claude subscription. Default to Codex/gpt-5.5 and require the reviewer to be cross-family; environment variables may select another explicit adapter/model pair.\n",
       "created_at": "2026-06-03",
-      "scored_at": "2026-06-03",
+      "scored_at": "2026-08-07",
       "cross_repo": []
     },
     {
@@ -14756,17 +14757,17 @@
       "depends_on": [],
       "assignee": "human",
       "acceptance_criteria": [
-        "Identify why erl_child_setup intermittently fails with EPIPE under the full --summary-only suite run",
-        "Reduce or eliminate the flake so `MIX_ENV=test mix test.json --quiet --cover --cover-threshold 80 --summary-only --exclude integration` is green across repeated runs",
-        "No sleeps, no @tag :skip, no contract changes to the cold-check witness path"
+        "Reproduce the historical erl_child_setup EPIPE on the current pinned Elixir/OTP toolchain with a bounded repeated-run probe, or record durable non-reproduction evidence before changing production code",
+        "If reproduced, identify the actual spawn-pressure/interleaving path and eliminate or bound it so `MIX_ENV=test mix test.json --quiet --cover --cover-threshold 80 --summary-only --exclude integration` is green across repeated runs",
+        "No sleeps, no @tag :skip, no retry/gate weakening, and no contract changes to the cold-check witness path"
       ],
       "out_of_scope": [
         "Re-litigating task 324's AgentAdapter fix (already landed and correct)",
         "Disabling ex_unit_json retry or weakening the precommit gate to hide the flake"
       ],
-      "body": "Follow-up to task 324. After 324's AgentAdapter cwd-preflight fix landed, `mix precommit.full` still goes red intermittently (~1 in 3 full `--summary-only` runs; reproduced 2 of 4 times during 324 review). The failing test is `Harness.AuditTest` \"run/1 — unaudited-range computation the noop path removes its audit worktree\" (`test/harness/audit_test.exs`). The substrate signature is `erl_child_setup: failed with error 32 (EPIPE) on line 284` — the BEAM's shared fork helper losing its pipe under heavy concurrent external-process spawning (the suite shells out to git/rmap/sh via System.cmd thousands of times across 2013 tests).\n\nThis is a DIFFERENT spawn path than 324 fixed: 324 hardened `Harness.AgentAdapter.invoke` (the agent CLI Port), but this flake is in the System.cmd/git-fixture/worktree path. Normal `mix test.json` HEALS it via ex_unit_json auto-retry (reports `flaky: N`, exit 0); precommit's `--summary-only` disables retry, so it surfaces as a hard `failed: 1`, exit 2.\n\nInvestigate whether erl_child_setup EPIPE under spawn pressure can be mitigated (e.g. bounding concurrent external-process spawns in the worktree/git fixture layer, or reducing the suite's System.cmd fan-out), without sleeps or hidden skips and without altering the cold-check witness contract. Confirm the fix by running the project's precommit test command (`--summary-only`, retry disabled) repeatedly and observing zero failures.\n",
+      "body": "Follow-up to task 324. During that review, `mix precommit.full` went red intermittently (2 of 4 full `--summary-only` runs). The failing test was `Harness.AuditTest` \"run/1 — unaudited-range computation the noop path removes its audit worktree\" (`test/harness/audit_test.exs`), with `erl_child_setup: failed with error 32 (EPIPE) on line 284`. That is historical evidence, not a current root-cause proof: re-run a bounded probe on the current pinned toolchain before selecting a fix.\n\nThis is a DIFFERENT spawn path than 324 fixed: 324 hardened `Harness.AgentAdapter.invoke` (the agent CLI Port), but this flake is in the System.cmd/git-fixture/worktree path. Normal `mix test.json` HEALS it via ex_unit_json auto-retry (reports `flaky: N`, exit 0); precommit's `--summary-only` disables retry, so it surfaces as a hard `failed: 1`, exit 2.\n\nIf the failure still reproduces, trace the concrete spawn/interleaving path before changing it; bounding concurrent external-process spawns is one possible outcome, not a preselected solution. Confirm any fix with the project's precommit test command (`--summary-only`, retry disabled) across repeated runs.\n",
       "created_at": "2026-06-21",
-      "scored_at": "2026-06-21",
+      "scored_at": "2026-08-07",
       "cross_repo": []
     },
     {
@@ -16217,13 +16218,13 @@
       "bundle": "audit-perf",
       "milestone": "v0_16",
       "status": "pending",
-      "title": "Bound dashboard fleet-wide and per-call reads — unindexed aggregates, per-run git fetch, per-chunk buffer copy, uncached lookup",
+      "title": "Bound KPI dashboard fleet-wide aggregate reads on run settlement",
       "scores": {
-        "d": 4,
-        "b": 6,
-        "u": 5
+        "d": 3,
+        "b": 5,
+        "u": 4
       },
-      "eff": 1.38,
+      "eff": 1.5,
       "dep_layer": 0,
       "unlocks": 0,
       "markers": [],
@@ -16231,11 +16232,10 @@
       "assignee": "codex",
       "model": "gpt-5.5",
       "acceptance_criteria": [
-        "KPI aggregates no longer fire five full-table reads on every fleet-wide settle across every open tab (debounced or project-scoped, with a bounded window/limit on the two unbounded aggregates)",
-        "Landed-sha reconciliation fetches each project's target ref at most once per reconciliation pass, not once per unlanded row",
-        "Transcript append is O(chunk) per chunk, not O(buffer); the 200 KiB cap behaviour is unchanged",
-        "ProjectRegistry.lookup/1 does not issue a fresh Postgres round-trip on every call for rarely-changing landing overrides",
-        "mix check.dispatch green + focused mix test.json for the dashboard/registry behaviour touched"
+        "A run settlement does not trigger five immediate fleet-wide aggregate reads for every connected /harness/kpi tab; refresh work is debounced or scoped without losing settled-run visibility",
+        "aggregate_review_stuck_causes/0 and aggregate_recovery_facts/0 use an explicit bounded window/limit instead of list_run_records([])",
+        "Tests assert the refresh coalescing/scope and the aggregate query bounds",
+        "mix check.dispatch green + focused mix test.json for KpiLive and ResultStore aggregate behavior"
       ],
       "out_of_scope": [
         "The separate dashboard-load-time task (RoadmapSummary N shell-outs + StatusView fan-out) already tracked at phase 20 — different mechanism",
@@ -16244,24 +16244,19 @@
       ],
       "files_to_modify": [
         "lib/harness/dashboard/kpi_live.ex",
-        "lib/harness/dashboard/live.ex",
-        "lib/harness/dashboard/transcript.ex",
-        "lib/harness/project_registry.ex",
-        "lib/harness/landing/settings.ex"
+        "lib/harness/result_store.ex"
       ],
       "touches": [
-        "lib/harness/dashboard/",
-        "lib/harness/result_store.ex",
-        "lib/harness/project_registry.ex"
+        "lib/harness/dashboard/kpi_live.ex",
+        "lib/harness/result_store/"
       ],
       "domains": [
         "ecto",
-        "phoenix",
-        "otp"
+        "phoenix"
       ],
-      "body": "Surfaced by the 2026-07-12 project health audit (perf-audit.md). The system is correct\nat today's data volumes; these are unbounded/unindexed/redundant reads that degrade the\ndashboard and audit/recovery paths as run history grows. Mantra-clean: pure mechanics\n(bound, scope, memoize) — no judgment moves into code.\n\nFix the four cold-path read inefficiencies:\n\n1. (H1) `Harness.Dashboard.KpiLive` recomputes five fleet-wide aggregates on EVERY run\n   settlement anywhere in the fleet, for every connected /harness/kpi tab, none scoped or\n   LIMITed (`kpi_live.ex:107` handle_info → assign_rows/assign_facets). Two of the five\n   (`aggregate_review_stuck_causes/0`, `aggregate_recovery_facts/0`) call\n   `list_run_records([])` with no limit — full-table each time. Debounce the fleet-wide\n   recompute (slow tick, or scope to the settling/selected project) and add a recency\n   window / :limit to the unbounded aggregates.\n\n2. (H2) Landed-sha reconciliation issues one real `git fetch origin` PER unlanded history\n   row instead of once per project, on mount and every 30s :roadmap_tick\n   (`live.ex:499` reconcile_history_landed/4 → ResultStore.reconcile_landed_sha/4 →\n   fetch_target/2), synchronously inside the LiveView process. Memoize the target-ref\n   fetch per project_name for one reconciliation pass.\n\n3. (M2) `Harness.Dashboard.Transcript.append/3` (`transcript.ex:139`) does a full-buffer\n   copy per port chunk (`buffer <> chunk_bin`, up to the 200 KiB cap), replicated per\n   connected viewer. Accumulate as an iolist/rope (mirror the driver's `acc = [acc, data]`\n   in agent_adapter/driver.ex) and materialize once.\n\n4. (M3) `ProjectRegistry.lookup/1` (`project_registry.ex:142`) issues a live Postgres read\n   per call via LandingSettings.overlay/1 (single-element, uncached), on hot paths like\n   Dashboard.Live.load_task_item/2. `list/0` already batches to one fetch; give `lookup/1`\n   the same one-fetch path or cache the landing overrides in the GenServer state\n   (invalidated on write).\n\nMissing indexes (verdict, reviewer_adapter, task_id, landed_sha) were already added inline\n(migration 20260712120000) — this task consumes them, does not re-add them.\n",
+      "body": "Surfaced by the 2026-07-12 project health audit (perf-audit.md H1). `Harness.Dashboard.KpiLive`\nrecomputes five fleet-wide aggregates on every run settlement anywhere in the fleet, once per\nconnected KPI tab (`handle_info` → `assign_rows/assign_facets`). Two aggregates —\n`aggregate_review_stuck_causes/0` and `aggregate_recovery_facts/0` — call\n`list_run_records([])` without a limit. Bound the queries and coalesce or scope settlement\nrefreshes while keeping newly settled runs visible. This task is one coherent query/LiveView\nsurface; the three independent mechanisms previously bundled here are separate tasks.\n",
       "created_at": "2026-07-12",
-      "scored_at": "2026-07-12",
+      "scored_at": "2026-08-07",
       "cross_repo": []
     },
     {
@@ -16278,7 +16273,7 @@
       },
       "eff": 0.9,
       "dep_layer": 0,
-      "unlocks": 0,
+      "unlocks": 1,
       "markers": [],
       "depends_on": [],
       "assignee": "codex",
@@ -16294,11 +16289,16 @@
         "Any change to dispatch behaviour, routing decisions, or the reviewer gate"
       ],
       "files_to_modify": [
-        "lib/harness/dispatch.ex"
+        "lib/harness/dispatch.ex",
+        "lib/harness/dispatch/"
       ],
       "touches": [
         "lib/harness/dispatch.ex",
-        "lib/harness/manifest.ex"
+        "lib/harness/dispatch/",
+        "lib/harness/manifest.ex",
+        "test/harness/dispatch_test.exs",
+        "test/harness/chat/tools_test.exs",
+        "test/harness/manifest_test.exs"
       ],
       "domains": [
         "otp"
@@ -16321,10 +16321,12 @@
         "u": 5
       },
       "eff": 0.79,
-      "dep_layer": 0,
+      "dep_layer": 1,
       "unlocks": 0,
       "markers": [],
-      "depends_on": [],
+      "depends_on": [
+        359
+      ],
       "assignee": "codex",
       "model": "gpt-5.5",
       "acceptance_criteria": [
@@ -16359,7 +16361,7 @@
       "bundle": "audit-tests",
       "milestone": "v0_16",
       "status": "pending",
-      "title": "Unit-test the untested merge-critical modules Harness.Git.TargetSync and Harness.Store.EtsScope",
+      "title": "Expand direct coverage of merge-critical Harness.Git.TargetSync and Harness.Store.EtsScope behavior",
       "scores": {
         "d": 3,
         "b": 7,
@@ -16373,19 +16375,22 @@
       "assignee": "grok",
       "model": "grok-4.5",
       "acceptance_criteria": [
-        "TargetSync has a test file exercising all three branches (ff-merge, ref-only fetch, dirty/diverged skip) plus the behind_count drift message, using local git fixtures",
-        "EtsScope has a direct unit test covering create/lookup and table ownership on owner process exit",
-        "No Process.sleep-before-assert synchronization; no {:error, _} -> assert true error-hiding",
-        "mix check.dispatch green + both new test files pass"
+        "TargetSync coverage includes the clean checked-out ff-merge, unchecked-out ref-only fetch, dirty/diverged skip, and behind_count drift message, using local git fixtures; preserve the existing missing-remote error assertion",
+        "EtsScope has direct coverage for create/lookup and table ownership on owner-process exit",
+        "No Process.sleep-before-assert synchronization and no error-hiding assertions",
+        "mix check.dispatch green + the focused Git/TargetSync and EtsScope tests pass"
       ],
       "out_of_scope": [
         "Refactoring either module — coverage only, behaviour unchanged"
       ],
       "files_to_modify": [
-        "test/harness/git/target_sync_test.exs",
+        "test/harness/git_test.exs",
         "test/harness/store/ets_scope_test.exs"
       ],
       "touches": [
+        "test/harness/git_test.exs",
+        "test/harness/git/",
+        "test/harness/store/",
         "lib/harness/git/target_sync.ex",
         "lib/harness/store/ets_scope.ex"
       ],
@@ -16393,9 +16398,9 @@
         "otp",
         "ecto"
       ],
-      "body": "Surfaced by the 2026-07-12 project health audit (test-audit.md #2/#3). Two modules have zero\ndedicated test coverage:\n\n1. `Harness.Git.TargetSync` (lib/harness/git/target_sync.ex) — load-bearing for BOTH the\n   autonomous lander and durable roadmap writes (per its own moduledoc: \"skip it and\n   roadmap/tasks.toml drifts behind origin and a later merge conflicts or silently loses the\n   harness transition\"). It has three real branches (clean checked-out `merge --ff-only`,\n   unchecked-out ref-only fetch, dirty/diverged skip) plus a behind_count drift-message\n   helper — all currently unverified. Cover each branch with local git fixtures (the repo's\n   existing worktree/git test helpers show the pattern); assert the ff-merge, the ref-only\n   fetch, the dirty-skip, and the drift message.\n\n2. `Harness.Store.EtsScope` (lib/harness/store/ets_scope.ex) — ETS lifecycle/ownership is\n   easy to get subtly wrong (table ownership on process death, race on create). Add a direct\n   unit test for create/lookup/ownership-on-owner-exit.\n\nFollow the project's test conventions (mix test.json, no error-hiding, synchronize with\nassert_receive / monitor / start_supervised! rather than Process.sleep).\n",
+      "body": "Surfaced by the 2026-07-12 project health audit (test-audit.md #2/#3). The original\n\"zero coverage\" premise is stale: `test/harness/git_test.exs` already exercises\nTargetSync's missing-remote error path. The merge/ref-selection branches and EtsScope's\nownership behavior remain uncovered directly.\n\n1. `Harness.Git.TargetSync` (lib/harness/git/target_sync.ex) — load-bearing for BOTH the\n   autonomous lander and durable roadmap writes (per its own moduledoc: \"skip it and\n   roadmap/tasks.toml drifts behind origin and a later merge conflicts or silently loses the\n   harness transition\"). It has three real branches (clean checked-out `merge --ff-only`,\n   unchecked-out ref-only fetch, dirty/diverged skip) plus a behind_count drift-message\n   helper. Extend the existing Git test surface or add a focused file, using local git\n   fixtures; assert the ff-merge, ref-only fetch, dirty/diverged skip, and drift message.\n\n2. `Harness.Store.EtsScope` (lib/harness/store/ets_scope.ex) — ETS lifecycle/ownership is\n   easy to get subtly wrong (table ownership on process death, race on create). Add a direct\n   unit test for create/lookup/ownership-on-owner-exit.\n\nFollow the project's test conventions (mix test.json, no error-hiding, synchronize with\nassert_receive / monitor / start_supervised! rather than Process.sleep).\n",
       "created_at": "2026-07-12",
-      "scored_at": "2026-07-12",
+      "scored_at": "2026-08-07",
       "cross_repo": []
     },
     {
@@ -16404,7 +16409,7 @@
       "bundle": "audit-tests",
       "milestone": "v0_16",
       "status": "pending",
-      "title": "De-flake the AgentRegistry global-state cross-test pollution class (resolver_test + reviewer-selection)",
+      "title": "Diagnose and eliminate the AgentRegistry empty-registry test flake",
       "scores": {
         "d": 4,
         "b": 6,
@@ -16420,17 +16425,14 @@
       "assignee": "grok",
       "model": "grok-4.5",
       "acceptance_criteria": [
-        "resolver_test.exs:51 and the reviewer-selection test pass deterministically across repeated runs / varied seeds (no first-attempt empty-registry failure)",
-        "The AgentRegistry global-state mutation is either serialized suite-wide or isolated to a supervised per-test instance — the pollution class is fixed, not just the one assertion",
-        "No :sys.replace_state race remains between concurrently-running test files that touch AgentRegistry",
-        "mix check.dispatch green + the affected test files pass"
+        "A bounded repeated-run/varied-seed probe reproduces the empty-registry failure or captures equivalent durable evidence before a fix is selected",
+        "The implemented field names the actual interleaving, restart, reset, or ownership path that caused the observed failure; it does not repeat the unverified suite-wide async premise",
+        "The demonstrated cause is removed across every affected AgentRegistry-mutating test surface, without changing AgentRegistry's production contract",
+        "resolver_test and reviewer-selection coverage pass repeatedly with no sleeps, skips, or hidden retry",
+        "mix check.dispatch green + the affected focused tests pass"
       ],
       "out_of_scope": [
         "Changing AgentRegistry's production behaviour (it is intentionally a soft, non-persistent hint per its moduledoc) — this is test-isolation only"
-      ],
-      "files_to_modify": [
-        "test/harness/lander/resolver_test.exs",
-        "lib/harness/agent_registry.ex"
       ],
       "touches": [
         "test/harness/",
@@ -16440,9 +16442,9 @@
       "domains": [
         "otp"
       ],
-      "body": "Surfaced by the 2026-07-12 project health audit (test-audit.md #1) — observed LIVE this run:\n`test/harness/lander/resolver_test.exs:51` failed on first attempt with `available: []`\n(empty registry) then passed on retry. The file's own top-of-module comment documents the\ncause: `AgentRegistry.set_installed/2` mutates the global `Harness.AgentRegistry` singleton\nvia `:sys.replace_state` — \"same class as ReviewerSelectionTest; observed 2026-07-07\". This\nis a known, previously-observed cross-test pollution class that has only been ANNOTATED, not\nfixed. `async: false` on the file prevents intra-file races but not another concurrently-\nrunning file (or a stale registry restart timing) observing/mutating the same singleton\nmid-test.\n\nFix the class, not just the one test. Either:\n- serialize every `AgentRegistry.set_installed/2`-mutating test file onto one enforced-\n  serial group/tag (e.g. a shared :global_state tag, async:false suite-wide), OR\n- refactor the test-time AgentRegistry mutation to a supervised per-test instance\n  (start_supervised!) instead of `:sys.replace_state` on the shared singleton.\n\nWhichever path, the resolver_test and reviewer-selection flake must be gone under repeated\nseeds, and no new global-state coupling introduced.\n",
+      "body": "Surfaced by the 2026-07-12 project health audit (test-audit.md #1) — observed live once:\n`test/harness/lander/resolver_test.exs:51` failed on first attempt with `available: []`\n(empty registry) then passed on retry. `AgentRegistry.set_installed/2` does mutate the global\nsingleton through `:sys.replace_state`, but the prior causal claim was too strong: a current\nscan shows the direct AgentRegistry mutators, including Resolver and ReviewerSelection, are\nalready in `async: false` modules. That leaves restart/reset timing, ownership, indirect\nmutation, or another interleaving as hypotheses rather than facts.\n\nReproduce first under varied seeds/repeated focused and suite runs, identify the concrete\nstate transition that empties the registry, then fix that class. Do not preselect global\nserialization or a production AgentRegistry refactor until the evidence points there.\n",
       "created_at": "2026-07-12",
-      "scored_at": "2026-07-12",
+      "scored_at": "2026-08-07",
       "cross_repo": []
     },
     {
@@ -16516,15 +16518,17 @@
         "If accept: the rationale is written down so future audits do not re-flag it as open"
       ],
       "out_of_scope": [
-        "Any code change until the licensing decision is made — this task is the decision itself"
+        "Any dependency/code change until the licensing decision is made — this task is the decision itself"
       ],
       "touches": [
-        "mix.exs"
+        "mix.exs",
+        "NOTICE",
+        "THIRD_PARTY_LICENSES"
       ],
       "domains": [
         "otp"
       ],
-      "body": "Surfaced by the 2026-07-12 project health audit (deps-audit.md #1). `{:anubis_mcp, \"~> 1.6\"}`\n(locked 1.6.2) is a HARD RUNTIME dependency — it backs Harness.Dashboard.MCPServer, not an\noptional/dev tool — and its license is GNU LGPL-3.0 (confirmed from upstream LICENSE at\ngithub.com/zoedsoupe/anubis-mcp). Every other runtime dep (Phoenix/Ecto/Postgrex/Oban/Req/\nBandit family) is permissive (MIT/Apache-2.0).\n\nLGPL is copyleft-lite: LGPL-3.0 attaches relink/replacement conditions to combined works,\nand whether a BEAM mix release / escript (compiling the dependency straight in) satisfies\nthe \"dynamic linking\" boundary LGPL relies on is an OPEN COMPLIANCE QUESTION for this\ndecision to answer, not established legal fact — premise unverified, resolve it as part of\nthe decision (upstream guidance, Erlang Ecosystem Foundation / hex licensing discussions,\nor counsel if it matters enough). harness is a PUBLIC repo, so this warrants a one-time\nlicensing decision rather than a silent accept.\n\nThis is a HUMAN decision task (not a code dispatch). Decide one of: (a) accept the LGPL\nexposure with a documented rationale in SECURITY.md / NOTICE, (b) contribute to / request a\nlicense change upstream, or (c) evaluate an alternative MCP library / vendor the minimal\nsurface under a compatible license. Whichever, record the decision so it does not resurface\neach audit.\n",
+      "body": "Surfaced by the 2026-07-12 project health audit (deps-audit.md #1). `{:anubis_mcp, \"~> 1.6\"}`\n(locked 1.6.2) is a HARD RUNTIME dependency — it backs Harness.Dashboard.MCPServer, not an\noptional/dev tool — and its license is GNU LGPL-3.0 (confirmed from upstream LICENSE at\ngithub.com/zoedsoupe/anubis-mcp). Every other runtime dep (Phoenix/Ecto/Postgrex/Oban/Req/\nBandit family) is permissive (MIT/Apache-2.0).\n\nLGPL is copyleft-lite: LGPL-3.0 attaches relink/replacement conditions to combined works,\nand whether a BEAM mix release / escript (compiling the dependency straight in) satisfies\nthe \"dynamic linking\" boundary LGPL relies on is an OPEN COMPLIANCE QUESTION for this\ndecision to answer, not established legal fact — premise unverified, resolve it as part of\nthe decision (upstream guidance, Erlang Ecosystem Foundation / hex licensing discussions,\nor counsel if it matters enough). harness is a PUBLIC repo, so this warrants a one-time\nlicensing decision rather than a silent accept.\n\nThis is a HUMAN decision task (not a code dispatch). Decide one of: (a) accept the LGPL\nexposure with a documented rationale in NOTICE / THIRD_PARTY_LICENSES, (b) contribute to / request a\nlicense change upstream, or (c) evaluate an alternative MCP library / vendor the minimal\nsurface under a compatible license. Whichever, record the decision so it does not resurface\neach audit.\n",
       "created_at": "2026-07-12",
       "scored_at": "2026-07-12",
       "cross_repo": []
@@ -16590,12 +16594,14 @@
       "model": "gpt-5.5",
       "acceptance_criteria": [
         "Harness.AgentAdapter.Kimi implements capabilities/0, rule_channel/0, and build_command/1; defaults from `use Harness.AgentAdapter` cover the rest; the shared Harness.AgentAdapter.ConformanceCase passes unchanged",
-        "build_command/1 assembles the headless invocation verified against the installed CLI (kimi 0.26.0) and https://moonshotai.github.io/kimi-code/ — prompt mode (-p/--prompt takes the prompt as an option argument, not positional), --output-format stream-json, model_args via -m, unattended permission mode via --yolo; unsupported permission modes and session tokens error rather than silently fall back",
+        "build_command/1 is verified against the installed Kimi CLI and current official command reference: prompt mode passes -p/--prompt as an option argument with --output-format stream-json and model_args via -m; it does not combine prompt mode with --yolo, --auto, or --plan because prompt mode already uses autonomous permissions",
+        "Permission/resume combinations are derived from the live CLI contract for the installed version; unsupported combinations and session tokens error rather than silently falling back",
         ":kimi joins every roster surface: Harness.Roadmap @valid_agents, AgentRegistry @delegatable_agents + name map + agent type, Config @implementer_agents, AgentAdapter.Registry lookup map, and the dashboard agent-settings roster",
-        "model_availability probes kimi's model catalog with a non-interactive command verified against the live CLI (authority: kimi --help / docs; kimi provider list exists — the implementer pins the actual model-listing surface), or documents loudly why kimi is not probeable",
-        "Transcript parser maps :kimi to a parser (reuse an existing stream-json/NDJSON parser or passthrough — implementer judges from real captured output of one live kimi -p run; a live invocation is required evidence, not just docs)",
+        "model_availability probes Kimi's actual non-interactive model-catalog surface after checking the installed version's provider/catalog help; it does not assume `provider list` lists models when that command only lists providers, and fails loudly if no machine-readable catalog is available",
+        "Transcript parser maps :kimi from real captured stream-json/NDJSON output of one live `kimi -p` run; the raw-passthrough contract remains",
+        "The selected rule channel is proved against Kimi's actual AGENTS.md discovery semantics, including the run worktree path",
         "CLAUDE.md § Agent Headless Entry Points gains a kimi row; skills/harness-driver/SKILL.md and priv/includes/harness-workflow.md adapter rosters updated; scripts/sync-harness-skills.sh run",
-        "Unit tests cover build_command permutations (model pin, resume, permission mode, env threading, rules injection)"
+        "Unit tests cover build_command permutations (model pin, resume, permission mode, env threading, rules injection) and reject command combinations the installed CLI rejects"
       ],
       "out_of_scope": [
         "The rmap-side --to kimi render target (rmap repo task 53 — must land and the installed rmap binary be rebuilt before a kimi-assigned task can dispatch, since harness shells out to rmap delegate)",
@@ -16617,9 +16623,9 @@
         "skills/harness-driver/SKILL.md",
         "priv/includes/harness-workflow.md"
       ],
-      "body": "Add a Harness.AgentAdapter for Kimi Code (Moonshot's coding CLI, installed at\n~/.kimi-code/bin/kimi, v0.26.0, docs https://moonshotai.github.io/kimi-code/).\nParallels Task 52 (pi.dev) — thin adapter, uniform OTP Port, raw output captured\nverbatim, reviewer AI is the gate.\n\nKnown CLI facts (verify against the installed binary before coding; authority order:\nlive CLI > docs > this body): headless mode is `kimi -p/--prompt <prompt>` with\n`--output-format stream-json`; `-m/--model <model>` pins the model; `--yolo`\nauto-approves all actions (the :autonomous permission mode); `-c/--continue` resumes\nthe working directory's previous session and `-S/--session <id>` resumes by id —\npick the resume channel per the Claude/Pi precedent (worktree-per-run makes\n--continue unambiguous). Kimi consumes AGENTS.md (its system-prompt template embeds\na KIMI_AGENTS_MD block), so rule_channel is likely :codex_ephemeral_file — verify\nthe discovery semantics (cwd walk-up vs explicit) before choosing the channel.\nKimi-specific extras (--skills-dir, --add-dir, --plan, acp/server subcommands) stay\nout of the four-callback contract per the Pi precedent. Auth is subscription-style\nkimi login (device-code) with providers configurable via `kimi provider`; check\nwhether an ambient API-key env var can shadow the login before deciding on an\nauth_env_scrub declaration, and cite the doc or observed behavior either way.\n",
+      "body": "Add a Harness.AgentAdapter for Kimi Code (Moonshot's coding CLI, installed at\n~/.kimi-code/bin/kimi, v0.26.0, docs https://moonshotai.github.io/kimi-code/).\nParallels Task 52 (pi.dev) — thin adapter, uniform OTP Port, raw output captured\nverbatim, reviewer AI is the gate.\n\nKnown CLI facts (verify again against the installed binary before coding; authority order:\nlive CLI > current official docs > this body): headless mode is\n`kimi -p/--prompt <prompt>` with `--output-format stream-json`; `-m/--model <model>`\npins the model. Installed v0.26.0 and the current command reference disagree with the old\ntask premise: prompt mode cannot be combined with `--yolo`, `--auto`, or `--plan`, and\nalready uses autonomous permissions. Do not emit `--yolo` on the prompt path. Probe\n`kimi provider --help` and its catalog subcommands for this installed version before\nchoosing the model-list command; `provider list` may list providers rather than models.\n`-c/--continue` resumes the working directory's previous session and `-S/--session <id>`\nresumes by id — pick only combinations the live CLI accepts. Kimi consumes AGENTS.md\n(its system-prompt template embeds a KIMI_AGENTS_MD block), so\n`:codex_ephemeral_file` is a hypothesis; prove the discovery semantics (cwd walk-up vs\nexplicit) before choosing the channel.\nKimi-specific extras (--skills-dir, --add-dir, --plan, acp/server subcommands) stay\nout of the four-callback contract per the Pi precedent. Auth is subscription-style\nkimi login (device-code) with providers configurable via `kimi provider`; check\nwhether an ambient API-key env var can shadow the login before deciding on an\nauth_env_scrub declaration, and cite the doc or observed behavior either way.\n",
       "created_at": "2026-07-17",
-      "scored_at": "2026-07-17",
+      "scored_at": "2026-08-07",
       "cross_repo": []
     },
     {
@@ -16909,7 +16915,7 @@
       "bundle": "run-history",
       "milestone": "v0_17",
       "status": "pending",
-      "title": "Durable agent identity — per-actor audit trail across runs and seats",
+      "title": "Per-adapter/model activity trail across runs and agent seats",
       "scores": {
         "d": 5,
         "b": 6,
@@ -16925,25 +16931,27 @@
       "assignee": "grok",
       "model": "grok-4.5",
       "acceptance_criteria": [
-        "Given an agent id (optionally a model), a query returns the chronological per-actor trail: implementer runs, reviewer verdicts rendered, recovery attempts, audit runs — each entry carrying run_id, project, seat, timestamp, and persisted outcome facts",
-        "All seats the substrate attributes are covered (implementer and reviewer from run records; recovery and audit from harness_events actor/seat fields once task 374 lands); a seat with no records for the actor is an empty list, never an error",
-        "Facts only: no computed score, ranking, or verdict beyond relaying persisted fields — the reviewer confirms no judgment arithmetic was added",
-        "Exposed both as an Elixir API and an api()-annotated MCP tool (Manifest-registered), MCP-JSON-expressible params only",
-        "Works against the Postgres stores; repo_enabled: false degrades per store convention; tests cover multi-seat attribution for one actor and the empty-trail case"
+        "Given an adapter and optional model, a bounded chronological query returns the persisted activity trail across implementer, reviewer, recovery, audit, and operator-triggered lifecycle seats, carrying run_id/project/seat/timestamp/outcome facts when present",
+        "New events use harness_events as the canonical read source after Task 374; ResultStore may supply clearly labelled historical compatibility rows only where pre-event history would otherwise disappear",
+        "A seat with no matching records is an empty list, never an error; pagination or a caller-supplied limit prevents an unbounded all-history read",
+        "Facts only: no computed score, ranking, route, or identity claim beyond relaying persisted adapter/model fields",
+        "Exposed as an Elixir API and api()-annotated MCP tool with JSON-expressible filters; tests cover multi-seat attribution, historical-source labelling when used, bounds, and the empty trail"
       ],
       "out_of_scope": [
-        "Permission/capability enforcement per actor — follow-up once identity exists (Buzz's scoped-permissions half)",
-        "Extraction to a standalone library — the extraction trigger is a second consumer outside harness",
+        "Stable human/member identity, keypairs, or identity continuity across adapter/model changes",
+        "Permission/capability enforcement",
+        "Extraction to a standalone library",
         "Any change to routing, KPI computation, or reviewer selection",
         "Nostr/Buzz integration"
       ],
       "touches": [
-        "lib/harness/result_store",
+        "lib/harness/event_store/",
+        "lib/harness/result_store/",
         "lib/harness/manifest.ex"
       ],
-      "body": "Inspired by Block's Buzz (https://github.com/block/buzz): agents are workspace members with persistent identity, scoped permissions, and their own audit trail. Harness today knows agents as adapter+model pairs: per-run facts sit on ResultStore run records (agent, model, reviewer identity, recovery/audit facts) and AgentKPI aggregates them, but no surface answers the member-shaped question: what has actor X done — in which seat (implementer / reviewer / recovery / audit), in which project, when, landing where.\n\nIntroduce the identity/audit-trail half of the membership idea: a query surface (Elixir API + MCP tool) that, given an agent (optionally narrowed by model), returns its chronological action trail across all seats. NOTE (2026-07-29 schema check): run_records persist implementer and reviewer identity (agent/model, reviewer_adapter/reviewer_model) but NOT the recovery or audit actor — only their outcome facts (recovery_outcome, cold_check). Per-seat attribution for recovery/audit therefore comes from the harness_events stream (task 374, now a hard dependency), which carries actor/seat on every event; run records supply the implementer/reviewer trail. Counting facts only — the trail enumerates and relays what is persisted; meaning (who is good at what, who to route to) stays with the AIs that read it (THE MANTRA). Permissions/scoped capabilities are the explicit second step and out of scope here; extraction to a standalone lib waits for a second consumer (baseline before optimization).\n",
+      "body": "Inspired by Block's Buzz audit trail, but deliberately narrower: harness has adapter/model\nattribution, not a durable member identity. Build the query that the persisted facts support.\nGiven an adapter and optional model, return its bounded chronological activity across seats\nand projects. Task 374's harness_events stream is the canonical source for newly recorded\nseat facts; ResultStore is only a labelled compatibility source for history created before\nthat stream exists. Do not present an adapter/model pair as a stable person, member, or\ncryptographic identity. The trail relays facts; routing and capability judgment stay with\nthe AIs reading them.\n",
       "created_at": "2026-07-27",
-      "scored_at": "2026-07-27",
+      "scored_at": "2026-08-07",
       "cross_repo": []
     },
     {
@@ -16966,12 +16974,14 @@
       "assignee": "codex",
       "model": "gpt-5.5",
       "acceptance_criteria": [
-        "One append-only harness_events table (Ecto, under repo_enabled: true) that every lifecycle writer appends to: dispatch enqueue, hold/steer/resume, reviewer verdict, recovery outcome, land/blocked/conflict, post-merge audit, approval park/approve — each event carries project, run_id (when applicable), actor/seat, timestamp, and the raw fact payload",
-        "Park/approve decisions are recorded as events (a durable trace for the timeline); PendingDispatch's documented soft-state contract is UNCHANGED — parked records still clear on restart and re-park on the next cron tick (lib/harness/cron/pending_dispatch.ex moduledoc explains why persisting the queue itself would be wrong)",
-        "A cross-project query surface (Elixir API + api()-annotated MCP tool) filters events by project, event type, actor, time range, and text over payloads — e.g. 'all reject verdicts mentioning X across all projects' is one call, not N store-specific tools",
-        "Witness sinks (Notification) are fed from or write through the same event stream — no second parallel event path; if a sink legitimately stays separate, the moduledoc says why (absorbs superseded task 372: the persisted-witness-timeline sink and its MCP query surface are delivered here, as one stream)",
-        "Facts only (MANTRA check): the log records and relays; no scoring, classification, or judgment arithmetic is added — reviewer confirms",
-        "repo_enabled: false degrades per store convention (in-memory ephemeral); tests cover multi-writer append, the park/approve event trace, and the cross-project text query"
+        "A versioned append-only harness_events table/store records the closed lifecycle taxonomy after an explicit writer audit: dispatch enqueue, hold, steer, resume, cancel, resume_failed, rereview, reland, reviewer verdict, recovery outcome, land/blocked/conflict, post-merge audit, and approval park/approve; each event carries project, run_id when applicable, actor/seat, occurred_at, sequence/ordering metadata, schema version, and raw fact payload",
+        "Every writer supplies a stable idempotency key so Oban retries, repeated callbacks, and recovery re-entry cannot duplicate the same lifecycle fact; tests exercise duplicate append and ordering semantics",
+        "Append failure is surfaced at warn level or higher with event type/project/run id, never recursively writes another event, and does not silently claim a durable trace; existing run/landing outcome semantics remain unchanged",
+        "Park/approve decisions are recorded while PendingDispatch's documented soft-state contract remains unchanged",
+        "A bounded/index-backed cross-project Elixir + MCP query filters by project, event type, adapter/model actor, time range, and payload text, with pagination/limit and deterministic ordering",
+        "Notification witness sinks consume or write through the same persisted event path; any deliberately separate delivery seam is documented as a projection of the stream, not a competing source of lifecycle truth",
+        "ResultStore remains the per-run aggregate/projection and harness_events the fine-grained lifecycle history; no migration pretends to reconstruct actor/seat facts that were never persisted",
+        "Facts only: no scoring, classification, or judgment arithmetic; repo_enabled: false degrades to the documented in-memory ephemeral store; tests cover every taxonomy member, multi-writer append, idempotency, append failure, park/approve trace, and bounded cross-project text query"
       ],
       "out_of_scope": [
         "Cryptographic signing / per-agent keypairs (Buzz's Schnorr identity) — separate decision, only relevant beyond single-operator",
@@ -16984,15 +16994,16 @@
         "priv/repo/migrations",
         "test/harness/"
       ],
-      "body": "Inspired by Block's Buzz (https://github.com/block/buzz): every action — message, patch, review, approval, git event — is one signed event in a single log, making the whole workspace auditable and searchable. Harness scatters its lifecycle facts across ResultStore run records, the Notification witness sinks (settled.jsonl), Oban job rows, .harness/*.json artifacts, and in-memory state — with two concrete gaps: (a) lifecycle decisions like park/approve leave no durable trace anywhere (NOTE: PendingDispatch's in-memory queue is soft state BY DOCUMENTED DESIGN — unapproved entries re-park on the next cron tick, approved ones go to Oban; the gap is the missing trace/timeline, NOT a durability bug in the queue, and this task must not change that contract), and (b) a cross-project question like 'all rejects with concern X' requires stitching multiple store-specific MCP tools. Introduce ONE append-only harness_events stream all lifecycle writers append to, generalizing the witness sink rather than paralleling it — this ABSORBS superseded task 372 (persisted witness timeline): the notification sink writes through this stream instead of getting its own store. Pure fact-counting, no judgment (THE MANTRA) — meaning stays with the AIs that read the log. Sibling of Task 373 (buzz-inspired per-actor trail): 373 is the read-side query over persisted facts and now depends on this substrate for recovery/audit actor attribution. Dispatch trigger (routing gate): repo-wide invariant — every lifecycle writer plus a migration and the Notification sink seam; dispatch as a solo/exclusive wave (touches is deliberately broad). Rescored 2026-07-29 (d5→8, b6→7): the writer-sweep + sink unification is the real scope, and absorbing 372 folds its benefit in. U honest-low: no orchestrator query is missing TODAY — the score rises when multi-project autonomy makes cross-store stitching a per-session cost.",
+      "body": "Inspired by Block's Buzz event history, but without importing its signed-identity claim: harness currently scatters lifecycle facts across ResultStore projections, Notification sinks, Oban rows, artifacts, and soft process state. Add one versioned append-only harness_events history beside ResultStore. The task is a repo-wide writer audit, not a suggestive sample: define a closed taxonomy, instrument every lifecycle mutation including operator recovery controls, and pin idempotency, ordering, append-failure, and query-bound contracts. Notification becomes a delivery projection of the same persisted facts; PendingDispatch stays intentionally soft state; ResultStore stays the per-run aggregate. Facts only — meaning remains with the agents that query them. Dispatch as a solo/exclusive wave because the write-set spans the lifecycle surface.",
       "created_at": "2026-07-28",
-      "scored_at": "2026-07-29",
+      "scored_at": "2026-08-07",
       "cross_repo": []
     },
     {
       "id": "375",
       "phase": 20,
       "bundle": "config-surface",
+      "milestone": "v0_16",
       "status": "pending",
       "title": "Validate optional %Harness.Project{} fields at registration — an uncast concurrency_cap silently kills batch dispatch",
       "scores": {
@@ -17003,7 +17014,9 @@
       "eff": 3.0,
       "dep_layer": 0,
       "unlocks": 0,
-      "markers": [],
+      "markers": [
+        "bug"
+      ],
       "depends_on": [],
       "acceptance_criteria": [
         "Registering a project whose concurrency_cap is not a positive integer (string \"4\", 0, -1, a float) is rejected with an error result — the row is never persisted",
@@ -17043,17 +17056,24 @@
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
-        "Running the full suite twice leaves the same number of entries in the worktree root as before the first run",
-        "No new `harness-repo-*` directory exists after the suite finishes",
-        "The documented cleanup one-liner exists and is exercised, so the next backlog does not need a manual sweep to clear"
+        "Running the full suite twice leaves the same number of entries in the configured test worktree root as before the first run",
+        "No new `harness-repo-*` or `harness-suite-health-*` directory remains after the suite exits",
+        "Scratch repositories use a test-dedicated temporary root or a shared fixture with guaranteed on_exit cleanup; production worktree-root behavior is unchanged",
+        "Focused regression coverage proves cleanup on both successful and failing test paths without Process.sleep"
       ],
       "out_of_scope": [
         "Stale harness/run-* branches and orphaned run worktrees — separate task",
         "Changing the production worktree root location"
       ],
-      "body": "Running the suite leaves a `harness-repo-<pid>-<nanotime>/` directory behind in\nthe shared harness worktree root (`~/_DATA/worktrees/.harness/` on the dev host),\neach containing only an empty `landing/` subdir. 2369 of them had accumulated as\nof 2026-08-03, spanning 2026-06-13 to 2026-07-30 — i.e. every suite run since\nmid-June has added more, and nothing has ever removed them.\n\nThey are empty, so this is not a disk problem; it is a signal problem. The\ndirectory they pollute is the same root that holds real run worktrees, so\n`ls` there no longer tells an operator anything, and any future sweep that walks\nthat root has to filter thousands of decoys first.\n\nFind where the landing tests create that scratch root and make cleanup part of\nthe test lifecycle (ExUnit `tmp_dir` or an `on_exit` removal), so a suite run is\nnet-zero on the filesystem. Also decide whether test scratch belongs under the\n*shared operator* worktree root at all — a dedicated tmp root would make the\nleak self-evident instead of camouflaged.\n\n**Update 2026-08-07 — backlog cleared by hand; the leak itself is untouched.**\nThe count had reached 2405 (plus ~60 `harness-suite-health-*` and one\n`harness-warmtest`), newest stamped 2026-08-06 08:11 — so roughly 36 more\naccumulated in the four days after this task was filed, confirming every suite\nrun still adds to it. All 2459 were removed manually during an unrelated\nworktree-root cleanup, so the operator-visible symptom is gone and the root\nnow holds only real entries. That removes the pressure but not the defect: the\nnext suite run starts the pile over. Scope is therefore purely \"stop the leak\"\nplus documenting the sweep — do not treat the empty root as evidence of a fix.\nNote the leak is not confined to `harness-repo-*`; the `harness-suite-health-*`\nprefixes leak identically, so fix the shared scratch-root helper rather than\none test's cleanup.\n",
+      "touches": [
+        "test/support/git_fixture.ex",
+        "test/harness/lander_test.exs",
+        "test/harness/audit_test.exs",
+        "test/harness/suite_health/"
+      ],
+      "body": "Running the suite leaves a `harness-repo-<pid>-<nanotime>/` directory behind in\nthe shared harness worktree root (`~/_DATA/worktrees/.harness/` on the dev host),\neach containing only an empty `landing/` subdir. 2369 of them had accumulated as\nof 2026-08-03, spanning 2026-06-13 to 2026-07-30 — i.e. every suite run since\nmid-June has added more, and nothing has ever removed them.\n\nThey are empty, so this is not a disk problem; it is a signal problem. The\ndirectory they pollute is the same root that holds real run worktrees, so\n`ls` there no longer tells an operator anything, and any future sweep that walks\nthat root has to filter thousands of decoys first.\n\nFind where the landing tests create that scratch root and make cleanup part of\nthe test lifecycle (ExUnit `tmp_dir` or an `on_exit` removal), so a suite run is\nnet-zero on the filesystem. Also decide whether test scratch belongs under the\n*shared operator* worktree root at all — a dedicated tmp root would make the\nleak self-evident instead of camouflaged.\n\n**Update 2026-08-07 — backlog cleared by hand; the leak itself is untouched.**\nThe count had reached 2405 (plus ~60 `harness-suite-health-*` and one\n`harness-warmtest`), newest stamped 2026-08-06 08:11 — so roughly 36 more\naccumulated in the four days after this task was filed, confirming every suite\nrun still adds to it. All 2459 were removed manually during an unrelated\nworktree-root cleanup, so the operator-visible symptom is gone and the root\nnow holds only real entries. That removes the pressure but not the defect: the\nnext suite run starts the pile over. Scope is therefore purely \"stop the leak\"\n— do not treat the empty root as evidence of a fix or add a manual-cleanup deliverable.\nNote the leak is not confined to `harness-repo-*`; the `harness-suite-health-*`\nprefixes leak identically, so fix the shared scratch-root helper rather than\none test's cleanup.\n",
       "created_at": "2026-08-03",
-      "scored_at": "2026-08-03",
+      "scored_at": "2026-08-07",
       "cross_repo": []
     },
     {
@@ -17061,7 +17081,7 @@
       "phase": 23,
       "bundle": "resilience",
       "status": "pending",
-      "title": "No GC for landed run branches or orphaned run worktrees — 272 branches accumulated",
+      "title": "Retry safe post-land cleanup and reclaim historical run branches/worktree orphans",
       "scores": {
         "d": 4,
         "b": 5,
@@ -17073,19 +17093,27 @@
       "markers": [],
       "depends_on": [],
       "acceptance_criteria": [
-        "A landed, verified run's branch and worktree are removed automatically, and a test proves the branch's commits were reachable from the target before removal",
-        "An unlanded or failed run's branch and worktree survive the same pass",
-        "A maintenance entrypoint reports what would be removed before removing it, and can be run against the existing 272-branch backlog",
-        "Orphaned worktree directories with no git registration are detected and reported, not silently ignored",
-        "A worktree whose gitdir points at a moved or renamed main checkout is detected and reported, even though `git worktree prune` finds nothing prunable and `git worktree remove` refuses it"
+        "A regression test demonstrates the residual path by which the existing post-land prune can refuse cleanup while a run is still live, then proves a later bounded retry removes the landed branch/worktree once the commit is reachable from the target and the run is no longer live",
+        "Unlanded, failed, held, or otherwise sole-copy run branches/worktrees survive both automatic and maintenance passes",
+        "A dry-run maintenance entrypoint reports only landed branches whose commits are reachable from the configured target; its apply mode can reclaim the historical branch backlog without touching retained work",
+        "Unregistered orphan directories and worktrees whose .git back-link names a moved/renamed main checkout are detected; the report distinguishes git-native repair from safe removal",
+        "Existing successful-land cleanup and boot-sweeper behavior remain covered; cleanup/refusal errors are surfaced rather than silently discarded"
       ],
       "out_of_scope": [
         "Test-suite temp directory leakage — separate task",
         "Rewriting the lander's ff-push path"
       ],
-      "body": "After a run lands, its `harness/run-<id>` branch is never deleted. 272 such\nbranches exist across 10 repos (tapakly 134, harness 57, ccxt_client 24, onchain\n20, ccxt-distill 18, delta_calc 9, cartouche 4, trading_dashboard 3, onchain_aave\n2, blockwatch 1), all now showing `[origin/development: gone]` after the\n2026-08-02 fleet branch rename — which is what made them visible, not what caused\nthem.\n\nSeparately, 135 run worktree directories exist on disk while only 117 are\nregistered with git, so 18 are orphaned: `git worktree list` cannot see them and\n`git worktree prune` will not touch them, because the directory outlived its\nregistration.\n\nDecide the retention policy and enforce it, rather than leaving cleanup to an\noperator who has no way to know it is needed. A landed run's branch is\nrecoverable from the target branch history, so the default should probably be to\ndelete it once the run's commits are provably reachable from `origin/<target>` —\nbut a failed or unlanded run's branch is the only copy of that work and must be\nkept. Make the distinction explicit and testable; a policy that cannot tell the\ntwo apart is worse than none.\n\n**Update 2026-08-07 — a third orphan class, invisible to both git primitives.**\nBeyond the 18 directories that outlived their registration, there is a class\nwhere the registration is intact but the *back-link* is broken: the worktree's\n`.git` file names `<old-checkout>/.git/worktrees/<id>`, and the main checkout has\nsince been renamed or moved. `git worktree prune` reports **0 prunable** (the\nmain-side `gitdir` still resolves to an existing directory), and\n`git worktree remove` refuses with `validation failed ... is not a .git file`,\nso neither primitive can clear it and neither reports it as wrong. Only reading\neach worktree's `.git` file and testing the path it names surfaces them.\n\nHit twice on the dev host, both from ordinary directory moves: renaming\n`~/_DATA/code/ccxt_client` to `bourse_workbench` stranded 27, and moving\n`~/_DATA/code/ccxt_extract` into `code/archive/` stranded 16. Removal required\n`rm -rf` on the directories followed by `git worktree prune`, which only then\nreported them. `git worktree repair` is the git-native alternative and is the\nright primitive when the checkout moved but the runs are still wanted — a GC\npass should distinguish repair-vs-remove rather than assuming removal.\n\nWorth noting for scoping: the full worktree-directory backlog was cleared by\nhand on 2026-08-07 (all registered run worktrees across 12 repos, plus the\nstranded and unregistered ones), while every branch was preserved —\n`git worktree remove` does not delete branches. So the on-disk half of this task\nhas no live backlog; the 272-branch half and the missing policy both remain.\n",
+      "touches": [
+        "lib/harness/lander.ex",
+        "lib/harness/worktree.ex",
+        "lib/harness/worktree/sweeper.ex",
+        "test/harness/lander_test.exs",
+        "test/harness/worktree_test.exs",
+        "test/harness/worktree/sweeper_test.exs"
+      ],
+      "body": "The original task premise was wrong: successful landing cleanup already exists.\n`Harness.Lander` calls `prune_landed_run/3`, which delegates to\n`Worktree.cleanup_for_run/2`; `lander_test.exs` proves successful lands remove the\nbranch/worktree, and `Harness.Worktree.Sweeper` performs a boot sweep. Task 275 and\ncommit 469216b introduced that behavior.\n\nThe residual defect is that cleanup may be refused while the run is still considered live,\nwith no later retry after liveness clears. Historical branches therefore accumulate even\nthough the happy path is implemented. Diagnose and close that timing/retry gap, then provide\na conservative maintenance path for the backlog: delete only when the run's commits are\nprovably reachable from the configured target; retain the sole copy of failed/unlanded work.\n\nTwo filesystem orphan classes also need observable handling. Some directories outlive git\nregistration, so `git worktree list/prune` cannot see them. Others keep a `.git` file whose\nback-link names a moved or renamed main checkout; prune reports nothing and remove refuses\nthe worktree. Inspect the back-link and report whether `git worktree repair` can preserve the\nrun or whether landed/reachable data is safe to remove. The directory backlog was cleared by\nhand on 2026-08-07; the retained branch backlog and missing later-retry policy remain.\n",
       "created_at": "2026-08-03",
-      "scored_at": "2026-08-03",
+      "scored_at": "2026-08-07",
       "cross_repo": []
     },
     {
@@ -17145,6 +17173,7 @@
       "id": "379",
       "phase": 23,
       "bundle": "roadmap-writeback",
+      "milestone": "v0_16",
       "status": "pending",
       "title": "Durable roadmap writeback silently produced no commit — dispatch-start and post-land transitions both lost",
       "scores": {
@@ -17189,7 +17218,147 @@
       ],
       "body": "A full green run wrote nothing back to the roadmap, and nothing said so.\n\nEvidence — run `run-1785889534260-fc424f54`, project `rmap`, task 53. The run was\napproved by the reviewer gate and landed on the target branch (`origin/main`, sha\n`8f88d25`, two harness delivery commits). But NEITHER roadmap transition took\neffect: task 53 never went `in_progress` (no `started_at` was ever written) and\nnever went `done` after landing (no `shipped_in`, no `verified`). It read `pending`\nboth in the operator checkout and in `origin/main`'s own `roadmap/tasks.toml`, and\n`origin/main` carries no `roadmap:` commit for the run at all. The operator had to\nwrite the outcome by hand.\n\n`Harness.Roadmap.Durable` is supposed to make this impossible: mutate in a throwaway\ndetached worktree at the freshly-fetched origin tip, commit, ff-push, then ff-sync\nthe operator's local target. The push half is what failed — there is no commit on\norigin to sync from.\n\nTwo candidate causes are already ruled out, do not re-derive them:\n\n  * It is NOT rmap's `implemented`-required-on-`done` gate. `Harness.Lander` does\n    pass `implemented:` into `Roadmap.mark_landed/2` (lib/harness/lander.ex:719),\n    and `--implemented` is appended when supplied (lib/harness/roadmap.ex:362).\n    That gate would also not explain the missing `in_progress` transition, which\n    has no such requirement.\n  * The step-5 local ff-sync skip is NOT sufficient. `Durable`'s moduledoc\n    documents that `Harness.Git.TargetSync` deliberately leaves a dirty or diverged\n    operator checkout alone — and the checkout WAS both dirty and one unpushed\n    commit ahead at the time. But that only explains a stale local copy; it does\n    not explain the absent commit on origin.\n\nFind out what actually happened to those two transitions, fix it, and — the part\nthat matters as much as the fix — make this failure mode loud. A durable write that\ncannot land its commit must not look identical to one that succeeded. Today the\nwriteback is best-effort by design (a failed transition logs and never fails the\nrun, which is the right call), but \"never fails the run\" has become \"never reaches\nthe operator either\".\n",
       "created_at": "2026-08-05",
-      "scored_at": "2026-08-05",
+      "scored_at": "2026-08-07",
+      "cross_repo": []
+    },
+    {
+      "id": "380",
+      "phase": 23,
+      "bundle": "audit-perf",
+      "milestone": "v0_16",
+      "status": "pending",
+      "title": "Fetch each project target once per landed-sha reconciliation pass",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 4
+      },
+      "eff": 1.5,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "One dashboard reconciliation pass fetches each project's target ref at most once regardless of the number of unlanded history rows",
+        "Rows for different projects resolve against their own fetched target and preserve existing landed-sha semantics",
+        "Fetch failures remain observable and do not reuse another project's ref",
+        "Focused tests count fetches for multiple rows/projects; mix check.dispatch is green"
+      ],
+      "out_of_scope": [
+        "Changing the 30-second roadmap tick",
+        "KPI aggregate bounding, transcript buffering, or ProjectRegistry caching"
+      ],
+      "files_to_modify": [
+        "lib/harness/dashboard/live.ex",
+        "lib/harness/result_store.ex"
+      ],
+      "touches": [
+        "lib/harness/dashboard/live.ex",
+        "lib/harness/result_store/"
+      ],
+      "domains": [
+        "git",
+        "phoenix",
+        "ecto"
+      ],
+      "body": "The dashboard reconciles unlanded run-history rows on mount and each roadmap tick. The current path calls ResultStore.reconcile_landed_sha/4 per row, which reaches fetch_target/2 and performs a real git fetch each time. Change the reconciliation pass so target-ref retrieval is shared only within one project/pass, while row-level landed-sha decisions and failure visibility remain unchanged. This is the former H2 part of Task 358, split because it has a separate git/dashboard seam and verification surface.\n",
+      "created_at": "2026-08-07",
+      "scored_at": "2026-08-07",
+      "cross_repo": []
+    },
+    {
+      "id": "381",
+      "phase": 23,
+      "bundle": "audit-perf",
+      "milestone": "v0_16",
+      "status": "pending",
+      "title": "Make capped dashboard transcript append linear in incoming chunk size",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 3
+      },
+      "eff": 1.75,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "Appending a port chunk no longer copies the complete retained transcript buffer on every call",
+        "The existing 200 KiB cap, parsing output, event ordering, and connected-viewer behavior are unchanged",
+        "Focused tests cover incremental append, cap truncation, and chunk boundaries without relying on timing",
+        "mix check.dispatch is green"
+      ],
+      "out_of_scope": [
+        "Changing transcript parsing or presentation",
+        "Changing the retained-byte cap",
+        "Other dashboard query work"
+      ],
+      "files_to_modify": [
+        "lib/harness/dashboard/transcript.ex"
+      ],
+      "touches": [
+        "lib/harness/dashboard/transcript.ex",
+        "test/harness/dashboard/transcript_test.exs"
+      ],
+      "domains": [
+        "phoenix"
+      ],
+      "body": "Harness.Dashboard.Transcript.append/3 currently evaluates buffer <> chunk for each port chunk, copying the retained buffer repeatedly up to the 200 KiB cap for every connected viewer. Preserve the public behavior and cap while making incremental accumulation linear in the new chunk size, materializing only at the existing parse/render boundary. This is the former M2 part of Task 358, split because it is an isolated data-structure change.\n",
+      "created_at": "2026-08-07",
+      "scored_at": "2026-08-07",
+      "cross_repo": []
+    },
+    {
+      "id": "382",
+      "phase": 23,
+      "bundle": "audit-perf",
+      "milestone": "v0_16",
+      "status": "pending",
+      "title": "Remove the per-lookup Postgres landing-settings round trip from ProjectRegistry",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 4
+      },
+      "eff": 1.5,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.5",
+      "acceptance_criteria": [
+        "ProjectRegistry.lookup/1 does not query Postgres for landing overrides on every call",
+        "Writes to landing/project settings invalidate or refresh the read path so lookup and list return the same current project view",
+        "repo_enabled: false preserves the documented in-memory behavior",
+        "Focused tests count persistence reads across repeated lookup and verify update visibility; mix check.dispatch is green"
+      ],
+      "out_of_scope": [
+        "Changing project registration semantics",
+        "Caching unrelated stores",
+        "Other dashboard performance work"
+      ],
+      "files_to_modify": [
+        "lib/harness/project_registry.ex",
+        "lib/harness/landing/settings.ex"
+      ],
+      "touches": [
+        "lib/harness/project_registry.ex",
+        "lib/harness/landing/settings.ex",
+        "test/harness/project_registry_test.exs"
+      ],
+      "domains": [
+        "otp",
+        "ecto"
+      ],
+      "body": "ProjectRegistry.lookup/1 overlays landing settings with a fresh single-project Postgres read on each call, including dashboard task-detail hot paths, while list/0 already batches the overlay. Give lookup the same bounded read behavior or keep the rarely-changing overrides in registry state with explicit invalidation on writes. Preserve the persisted source of truth and current lookup/list results. This is the former M3 part of Task 358, split because it changes registry/cache coherence rather than dashboard rendering.\n",
+      "created_at": "2026-08-07",
+      "scored_at": "2026-08-07",
       "cross_repo": []
     }
   ]

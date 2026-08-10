@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (2 of 15 done · 0 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (2 of 18 done · 0 in progress)
 
 **Last shipped:** Task 378 — Durable roadmap writes ignore roadmap_path and push tasks.toml into the source repo on 2026-08-05
 
@@ -53,7 +53,30 @@
 > Breadth on the proven contract — the Cursor and Grok adapters behind the same behaviour, held to the conformance suite — and a capability + availability registry that fails a job over to another agent when one hits its subscription quota.
 
 <!-- TASKS:BEGIN phase=4 -->
-> 22 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-4-multi-agent-quota-fail-over).
+| Task | Status | Notes |
+|------|--------|-------|
+| Task 13 `[P]` | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Cursor headless adapter [D:6/B:6/U:6 → Eff:1.0?] 📋 |
+| Task 15 `[P]` | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Grok headless adapter [D:4/B:5/U:5 → Eff:1.25?] 📋 |
+| Task 16 | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Capability + availability registry with quota fail-over [D:5/B:7/U:6 → Eff:1.3?] 📋 |
+| Task 22 | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Inject a harness-owned rule set into agent invocations [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
+| Task 23 | ✅ | 🎁 **multi-agent** · 🐛 Give Port-spawned agents an immediate-EOF stdin [D:3/B:3/U:3 → Eff:1.0?] 📋 |
+| Task 25 | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Caller-controlled agent environment in the AgentAdapter contract [D:4/B:5/U:5 → Eff:1.25?] 📋 |
+| Task 26 | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Antigravity headless adapter [D:3/B:4/U:4 → Eff:1.33?] 📋 |
+| Task 31 | ✅ | 🎁 **multi-agent** · Resolve the rmap-delegate ingest gap for the Grok and Antigravity adapters [D:2/B:3/U:4 → Eff:1.75?] 🚀 |
+| Task 32 | ✅ | 🎁 **multi-agent** · 🐛 Antigravity adapter does not isolate to its run worktree [D:4/B:6/U:5 → Eff:1.38?] 📋 |
+| Task 36 | ✅ | 🎁 **multi-agent** · Audit-surfaced: Harness-injected rule files get committed by Worktree.commit [D:4/B:7/U:6 → Eff:1.62?] 🚀 |
+| Task 39 | ✅ | 🎁 **multi-agent** · Audit-surfaced: Hoist rule injection into the AgentAdapter behaviour [D:4/B:5/U:5 → Eff:1.25?] 📋 |
+| Task 40 | ✅ | 🎁 **multi-agent** · Audit-surfaced: AgentRegistry availability lost on GenServer restart [D:3/B:4/U:4 → Eff:1.33?] 📋 |
+| Task 41 | ✅ | 🎁 **multi-agent** · 🐛 Codex adapter — worktree isolation breaks intermittently (cwd ignored, agent edits main checkout) [D:5/B:7/U:7 → Eff:1.4?] 📋 |
+| Task 43 | ✅ | 🎁 **multi-agent** · 🐛 Dogfood verification reds on pre-existing TODO comments in dispatch base [D:3/B:6/U:7 → Eff:2.17?] 🎯 |
+| Task 52 `[P]` | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Add pi.dev headless adapter [D:5/B:8/U:7 → Eff:1.5?] 🚀 |
+| Task 53 `[P]` | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Smoke-test pi-via-local-LLM on a low-D rmap task [D:2/B:4/U:4 → Eff:2.0?] 🎯 |
+| Task 54 `[P]` | ✅ | 🎁 **multi-agent** · 🚀 **v0_3** · Cost-aware agent capability declaration (:free vs :metered) [D:3/B:5/U:5 → Eff:1.67?] 🚀 |
+| Task 55 | ✅ | 🎁 **multi-agent** · 🐛 Audit-surfaced: BaselineFilter.Credo content-blind matching causes false-pass / false-red [D:3/B:7/U:7 → Eff:2.33?] 🎯 |
+| Task 59 | ✅ | 🎁 **multi-agent** · Cross-agent grader as a repair-loop move (gated, asymmetric, budgeted) [D:5/B:5/U:4 → Eff:0.9?] ⚠️ |
+| Task 67 | ✅ | 🎁 **multi-agent** · 🐛 Audit-surfaced: Batch.run_pinned settles entire pinned queue on one adapter's pre-dispatch unavailability [D:3/B:5/U:5 → Eff:1.67?] 🚀 |
+| Task 187 | ✅ | 🎁 **multi-agent** · Flip Antigravity worktree_isolation to true — agy 1.0.5 honors port cwd (Task 32 finding is stale) [D:2/B:5/U:5 → Eff:2.5?] 🎯 |
+| Task 366 `[P]` | ⬜ | 🎁 **multi-agent** · Add Kimi Code headless adapter + full roster wiring [D:5/B:7/U:6 → Eff:1.3] 📋 |
 <!-- TASKS:END -->
 
 ---
@@ -113,24 +136,7 @@
 ## Phase 9: Chat Orchestrator
 
 <!-- TASKS:BEGIN phase=9 -->
-| Task | Status | Notes |
-|------|--------|-------|
-| Task 75 | ✅ | 🎁 **chat-orchestrator** · 🚀 **v0_7** · Annotate harness driver surface with descripex api() macros [D:4/B:8/U:8 → Eff:2.0?] 🎯 |
-| Task 76 | ✅ | 🎁 **chat-orchestrator** · 🚀 **v0_7** · Harness.Chat.Session GenServer with multi-turn tool-call loop [D:5/B:8/U:7 → Eff:1.5?] 🚀 |
-| Task 77 | ⛔ | 🎁 **chat-orchestrator** · 🚀 **v0_7** · Harness.Chat.Anthropic backend — Req + streaming + prompt caching + tool-use [D:3/B:6/U:6 → Eff:2.0?] 🎯 |
-| Task 78 | ✅ | 🎁 **chat-orchestrator** · 🚀 **v0_7** · Harness.Dashboard.ChatLive — LiveView UI for chat orchestrator [D:4/B:8/U:6 → Eff:1.75?] 🚀 |
-| Task 79 | ✅ | 🎁 **chat-orchestrator** · 🚀 **v0_7** · Headless MCP endpoint — /harness/mcp/tools + /harness/mcp/call [D:2/B:7/U:8 → Eff:3.75?] 🎯 |
-| Task 82 | ✅ | 🎁 **chat-orchestrator** · 🚀 **v0_7** · 🐛 Harness.Chat.Claude headless subscription backend (default) [D:3/B:8/U:8 → Eff:2.67?] 🎯 |
-| Task 83 | ✅ | 🎁 **chat-orchestrator** · 🐛 Fix anubis StreamableHTTP transport — initialize crashes with :badarg, blocks all MCP tool exposure to claude -p [D:4/B:8/U:8 → Eff:2.0?] 🎯 |
-| Task 84 | ✅ | 🎁 **chat-orchestrator** · 🐛 Add Harness.Dashboard.ErrorHTML so dashboard 500s don't cascade into Phoenix.Template crashes [D:1/B:3/U:3 → Eff:3.0?] 🎯 |
-| Task 93 | ✅ | 🎁 **chat-orchestrator** · Chat session persistence + index page — survive restart, list & reopen past chats [D:5/B:6/U:5 → Eff:1.1?] 📋 |
-| Task 95 | ✅ | 🎁 **chat-orchestrator** · Chat UI: add stop/cancel control to streaming session [D:2/B:6/U:6 → Eff:3.0?] 🎯 |
-| Task 96 | ✅ | 🎁 **chat-orchestrator** · Chat: clear streaming indicator on :terminal events, not only :done [D:1/B:4/U:5 → Eff:4.5?] 🎯 |
-| Task 367 `[P]` | ✅ | 🎁 **agent-gate** · Reviewer task filings become review.json proposals; orchestrator files them post-land [D:6/B:8/U:8 → Eff:1.33] 📋 |
-| Task 368 `[P]` | ✅ | 🎁 **core-loop** · Coalesce-dispatch: run N small same-bundle tasks as one implementer run [D:5/B:7/U:6 → Eff:1.3] 📋 |
-| Task 369 | ✅ | 🎁 **autolanding** · Lander fallback: mechanically resolve additive-only tasks.toml conflicts by renumbering [D:3/B:5/U:5 → Eff:1.67] 🚀 |
-| Task 370 | ✅ | 🎁 **core-loop** · 🐛 Settle-persist must survive schema/DB drift: never silently lose a run record on a failed insert [D:4/B:7/U:6 → Eff:1.62] 🚀 |
-| Task 371 `[P]` | ⛔ | 🎁 **agent-gate** · Close the post-land CHANGELOG gap: no workflow step owns writing entries [D:3/B:6/U:7 → Eff:2.17] 🎯 |
+> 16 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-9-chat-orchestrator).
 <!-- TASKS:END -->
 
 ---
@@ -138,24 +144,7 @@
 ## Phase 10: Dashboard Operator UX
 
 <!-- TASKS:BEGIN phase=10 -->
-| Task | Status | Notes |
-|------|--------|-------|
-| Task 85 | ✅ | 🎁 **dashboard-chrome** · 🚀 **v0_8** · Harness.Dashboard.Components + Tokens overhaul + persistent navbar/footer chrome [D:5/B:8/U:8 → Eff:1.6?] 🚀 |
-| Task 86 | ✅ | 🎁 **dashboard-chrome** · 🚀 **v0_8** · Transcript parser dispatch + per-agent parsers (5 structured + 1 passthrough) with unified event vocabulary [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
-| Task 87 | ✅ | 🎁 **dashboard-chrome** · 🚀 **v0_8** · Run-detail transcript rework — parsed event list + <.transcript_view> component, ?raw=1 fallback [D:5/B:9/U:9 → Eff:1.8?] 🚀 |
-| Task 88 | ✅ | 🎁 **chat-orchestrator** · 🚀 **v0_8** · Harness.Roadmap browse tools (roadmap__list / roadmap__next_bundle) + descripex 0.7 param_order dispatch fix [D:4/B:7/U:8 → Eff:1.88?] 🚀 |
-| Task 89 | ✅ | 🎁 **chat-orchestrator** · 🚀 **v0_8** · Harness.Playbooks — orchestration recipe tools (playbooks__list / playbooks__get) [D:3/B:7/U:7 → Eff:2.33?] 🎯 |
-| Task 90 | ✅ | 🎁 **chat-orchestrator** · 🚀 **v0_8** · Dashboard playbook prefill buttons — chip row over the chat composer [D:2/B:6/U:6 → Eff:3.0?] 🎯 |
-| Task 91 | ✅ | 🎁 **chat-orchestrator** · 🚀 **v0_8** · Flat MCP-native dispatch tool — make the chat orchestrator able to dispatch a task for any project [D:4/B:8/U:8 → Eff:2.0?] 🎯 |
-| Task 94 | ✅ | 🎁 **dashboard-chrome** · 🚀 **v0_8** · Kill button for in-flight runs on the dashboard [D:2/B:6/U:6 → Eff:3.0?] 🎯 |
-| Task 105 | ✅ | 🎁 **run-history** · Surface persisted run history in the dashboard (index list + drill-down replay) [D:3/B:6/U:7 → Eff:2.17?] 🎯 |
-| Task 107 | ✅ | 🎁 **run-history** · Event-driven dashboard run tables (RunFeed) + per-project history filtering [D:5/B:6/U:6 → Eff:1.2?] 📋 |
-| Task 126 | ✅ | 🎁 **dashboard** · Run change-set view on the run-detail page (live edited-files + settled git diff) [D:3/B:5/U:5 → Eff:1.67?] 🚀 |
-| Task 165 | ✅ | 🎁 **config-centralization** · Consolidate the Cron/Agent/Landing settings term files into one Postgres-backed settings store (file fallback) [D:3/B:5/U:5 → Eff:1.67?] 🚀 |
-| Task 166 | ⛔ | 🎁 **config-centralization** · ConfigInspector reads defaults from owning modules; drop sections deleted by the reviewer-pair pass [D:2/B:4/U:3 → Eff:1.75?] 🚀 |
-| Task 167 | ✅ | 🎁 **config-centralization** · Harness.Config declarative schema + UI-editable operational knobs (run timeouts) [D:5/B:6/U:6 → Eff:1.2?] 📋 |
-| Task 178 | ✅ | 🎁 **dashboard-chrome** · Formalize Harness.Dashboard.Transcript.Parser as a behaviour (@callback new/feed/finalize) [D:2/B:4/U:4 → Eff:2.0?] 🎯 |
-| Task 193 | ✅ | 🎁 **config-centralization** · Per-project reviewer override (%Harness.Project{reviewer}) + Run.init overlay + select_reviewer consults it + Settings-page runtime override [D:2/B:4/U:4 → Eff:2.0?] 🎯 |
+> 16 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-10-dashboard-operator-ux).
 <!-- TASKS:END -->
 
 ---
@@ -163,48 +152,7 @@
 ## Phase 11: Autonomous Landing
 
 <!-- TASKS:BEGIN phase=11 -->
-| Task | Status | Notes |
-|------|--------|-------|
-| Task 20 | ✅ | 🎁 **autolanding** · Per-run token capture — efficiency signal + predictive quota fail-over [D:4/B:6/U:6 → Eff:1.5?] 🚀 |
-| Task 98 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Thread body + acceptance_criteria onto %Roadmap.Item{} through ingestion [D:3/B:6/U:8 → Eff:2.33?] 🎯 |
-| Task 99 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Cross-family adversarial semantic gate on green verdicts [D:5/B:8/U:8 → Eff:1.6?] 🚀 |
-| Task 100 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Autonomous merge-train — serialized lander (happy path) [D:5/B:8/U:9 → Eff:1.7?] 🚀 |
-| Task 101 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Merge-train resilience — post-merge repair, conflict re-dispatch, blocked sink [D:5/B:7/U:7 → Eff:1.4?] 📋 |
-| Task 102 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Witness notification sink (read-only, hard to become a gate) [D:2/B:6/U:7 → Eff:3.25?] 🎯 |
-| Task 103 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · dispatch__await — blocking dispatch tool for chat/MCP [D:3/B:5/U:6 → Eff:1.83?] 🚀 |
-| Task 108 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Thread env scrubbing through Oban Run.Worker so dispatch__bundle honors scrub_anthropic_key [D:2/B:3/U:3 → Eff:1.5?] 🚀 |
-| Task 109 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Cron autonomy master toggle — runtime enable/disable from the dashboard, persisted [D:3/B:4/U:4 → Eff:1.33?] 📋 |
-| Task 110 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Per-project cron autonomy flag — pause/resume autonomy per registered project [D:2/B:3/U:3 → Eff:1.5?] 🚀 |
-| Task 111 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Cron schedule editing from the UI — boot-applied presets, optional live reconfig [D:4/B:2/U:2 → Eff:0.5?] ⚠️ |
-| Task 112 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Mid-run reflex floor — progress-stall detector + unified deterministic watchdog [D:3/B:7/U:7 → Eff:2.33?] 🎯 |
-| Task 113 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Continuous in-run discernment — sampled cross-family Buddhi on the witness stream [D:6/B:7/U:6 → Eff:1.08?] 📋 |
-| Task 123 | ✅ | 🎁 **autolanding** · Decouple semantic gate from auto-land so dogfooding dispatches get green-verdict scrutiny [D:2/B:6/U:6 → Eff:3.0?] 🎯 |
-| Task 127 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Configuration inspector LiveView — read-only operator view of the resolved harness config [D:2/B:3/U:3 → Eff:1.5?] 🚀 |
-| Task 128 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Per-agent enable/disable from the Settings page [D:2/B:3/U:3 → Eff:1.5?] 🚀 |
-| Task 129 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Cron poller: dispatch the parallel-safe ready batch, skip handbuild [D:2/B:4/U:4 → Eff:2.0?] 🎯 |
-| Task 130 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Route autonomous dispatch on assignee — consume rmap's formalized agent-routing field, stop overloading model [D:2/B:4/U:4 → Eff:2.0?] 🎯 |
-| Task 131 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Cron poller: mark dispatched tasks in_progress to stop re-dispatch of completed-but-unlanded work [D:2/B:4/U:4 → Eff:2.0?] 🎯 |
-| Task 133 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Project dispatch queues not started at boot — enqueued runs sit 'available' forever [D:2/B:5/U:5 → Eff:2.5?] 🎯 |
-| Task 134 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Dashboard run feed is stale: no live-update for out-of-band runs + no persistent history [D:2/B:4/U:4 → Eff:2.0?] 🎯 |
-| Task 143 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · 🐛 Verification bootstraps the worktree (deps seed / setup step) — stop grading on a missing-deps environment [D:4/B:7/U:8 → Eff:1.88?] 🚀 |
-| Task 147 | ✅ | 🎁 **core-loop** · 🚀 **v0_9** · Warm worktree at provision time — run check-stack setup (deps.get + deps.compile) before agent dispatch [D:2/B:5/U:5 → Eff:2.5?] 🎯 |
-| Task 148 | ✅ | 🎁 **autolanding** · 🐛 StatusView.classify/1 missing :consulting — concurrent suite crashes poison every dispatched run's verification [D:1/B:5/U:4 → Eff:4.5?] 🎯 |
-| Task 150 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Run recovery — hold/steer/resume gen_statem API (operator-mediated mid-run recovery) [D:3/B:6/U:5 → Eff:1.83?] 🚀 |
-| Task 152 | ✅ | 🎁 **autolanding** · 🐛 Flaky 150 test: cancel/1-from-:held times out under full-suite load (run_test.exs:750) [D:2/B:3/U:3 → Eff:1.5?] 🚀 |
-| Task 153 | ✅ | 🎁 **autolanding** · 🐛 Verification can't attribute red to the agent — a pre-existing red base yields false-red verdicts [D:4/B:7/U:6 → Eff:1.62?] 🚀 |
-| Task 154 `[CX]` | ✅ | 🎁 **autolanding** · 🐛 Cron dispatch leaks provider API keys (ANTHROPIC/OPENAI) — subscription agents bypass their login (Task 108 follow-through) [D:2/B:8/U:7 → Eff:3.75?] 🎯 |
-| Task 155 | ✅ | 🎁 **autolanding** · 🚀 **v0_9** · Per-project landing policy + Dispatch now from the Settings page [D:2/B:3/U:3 → Eff:1.5?] 🚀 |
-| Task 156 | ✅ | 🎁 **autolanding** · 🐛 MCP dispatch-task runs are not restart-resilient — a node restart silently kills in-flight runs with no record [D:4/B:6/U:5 → Eff:1.38?] 📋 |
-| Task 157 | ✅ | 🎁 **autolanding** · 🐛 Resume/rescue orphaned in-flight runs after a BEAM restart (Oban executing-row zombie) [D:3/B:8/U:8 → Eff:2.67?] 🎯 |
-| Task 158 | ✅ | 🎁 **autolanding** · 🐛 Post-green semantic gate rejects green runs when the grader is unavailable (no auto-pair OR disabled grader == reject; Task-59 parity gap) [D:3/B:8/U:8 → Eff:2.67?] 🎯 |
-| Task 159 | ✅ | 🎁 **autolanding** · 🐛 `:no_changes` cancels before verifying — an already-implemented task wedges in_progress instead of being graded/landed [D:3/B:6/U:6 → Eff:2.0?] 🎯 |
-| Task 160 | ✅ | 🎁 **autolanding** · 🐛 Baseline run skips diff-aware post_process — agent-caused credo findings masked as :base_red, repair loop never fires [D:2/B:7/U:7 → Eff:3.5?] 🎯 |
-| Task 171 | ✅ | 🎁 **autolanding** · 🐛 Lander.Worker ignores the runtime landing override — dashboard auto-land fails with :no_target_branch [D:1/B:8/U:8 → Eff:8.0?] 🎯 |
-| Task 172 | ⛔ | 🎁 **autolanding** · 🐛 Lander: land a branch that is checked out in a retained run worktree (worktree add --detach) [D:2/B:5/U:5 → Eff:2.5?] 🎯 |
-| Task 189 | ✅ | 🎁 **autolanding** · *Harness.Lander.Resilience* · Lander conflict-resolver agent: on rebase conflict, spawn a cross-family merge AI to resolve in-place instead of re-dispatching [D:3/B:4/U:3 → Eff:1.17?] 📋 |
-| Task 281 | ✅ | 🎁 **autolanding** · dispatch-reland on rebase-conflict re-dispatches a fresh implementer instead of retaining the branch [D:5/B:6/U:6 → Eff:1.2?] 📋 |
-| Task 282 | ✅ | 🎁 **autolanding** · Reviewer-stage git-add fatals on gitignored .harness/ → review_stuck blocks the gate; .harness-retained artifact leaks into commits [D:3/B:8/U:7 → Eff:2.5?] 🎯 |
-| Task 345 | ⛔ | 🎁 **autolanding** · Lander conflict-resolver spawns without resolving the agent model — every resolve fails {:model_required, adapter} [D:2/B:7/U:7 → Eff:3.5?] 🎯 |
+> 40 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-11-autonomous-landing).
 <!-- TASKS:END -->
 
 ---
@@ -220,28 +168,7 @@
 ## Phase 13: Agent KPIs & Capability Routing
 
 <!-- TASKS:BEGIN phase=13 -->
-| Task | Status | Notes |
-|------|--------|-------|
-| Task 114 | ✅ | 🎁 **production-kpis** · 🚀 **v0_10** · Harness.AgentKPI — per-agent KPI aggregation over result_store run records [D:4/B:8/U:8 → Eff:2.0?] 🎯 |
-| Task 115 | ✅ | 🎁 **production-kpis** · 🚀 **v0_10** · Per-agent KPI dashboard LiveView — the at-a-glance trust ledger [D:4/B:6/U:6 → Eff:1.5?] 🚀 |
-| Task 116 | ✅ | 🎁 **capability-bench** · 🚀 **v0_10** · Capability domain taxonomy + per-run domain tagging (the lynchpin) [D:4/B:8/U:10 → Eff:2.25?] 🎯 |
-| Task 117 | ✅ | 🎁 **capability-bench** · 🚀 **v0_10** · Benchmark corpus structure + loader — fixed, versioned eval set separate from the live roadmap [D:6/B:8/U:8 → Eff:1.33?] 📋 |
-| Task 118 | ✅ | 🎁 **capability-bench** · 🚀 **v0_10** · Initial Elixir-domain benchmark corpus content (OTP / LiveView / Oban / Ecto) [D:6/B:8/U:8 → Eff:1.33?] 📋 |
-| Task 119 | ✅ | 🎁 **capability-bench** · 🚀 **v0_10** · Capability scoring + persistence — per-(agent,domain) score from AgentEvaluation comparisons [D:6/B:10/U:10 → Eff:1.67?] 🚀 |
-| Task 120 | ✅ | 🎁 **capability-bench** · 🚀 **v0_10** · Capability score staleness / decay + re-benchmark-needed signal [D:2/B:6/U:8 → Eff:3.5?] 🎯 |
-| Task 121 | ✅ | 🎁 **kpi-routing** · 🚀 **v0_10** · recommend-agent-per-domain routing surface (explore/exploit) in the dispatch path [D:6/B:10/U:10 → Eff:1.67?] 🚀 |
-| Task 122 | ✅ | 🎁 **kpi-routing** · 🚀 **v0_10** · Oban cron capability-benchmark scheduler — fill unmeasured/stale cells autonomously [D:6/B:8/U:8 → Eff:1.33?] 📋 |
-| Task 137 | ✅ | 🎁 **postgres-results** · 🚀 **v0_10** · Postgres-backed result store — run_records/batch_results schemas + ResultStore.Postgres backend + repo_enabled config flip [D:4/B:5/U:5 → Eff:1.25?] 📋 |
-| Task 138 `[P]` | ✅ | 🎁 **postgres-results** · mix harness.import_results — one-shot file-store to Postgres importer [D:2/B:2/U:2 → Eff:1.0?] 📋 |
-| Task 139 `[P]` | ✅ | 🎁 **postgres-results** · 🚀 **v0_10** · Dashboard/KPI SQL fast paths — aggregate in Postgres instead of loading every run record into memory [D:3/B:4/U:5 → Eff:1.5?] 🚀 |
-| Task 144 | ✅ | 🎁 **production-kpis** · 🚀 **v0_10** · Capture requested model through dispatch so codex/grok runs show a model on the dashboard [D:3/B:4/U:3 → Eff:1.17?] 📋 |
-| Task 145 | ✅ | 🎁 **postgres-results** · 🚀 **v0_10** · 🐛 Verification can't grade :integration-tagged tests — DB-backed code passes green while broken against real Postgres [D:4/B:6/U:5 → Eff:1.38?] 📋 |
-| Task 146 | ✅ | 🎁 **postgres-results** · 🚀 **v0_10** · 🐛 MCP result_store-list_run_records rejects JSON-caller filters (no function clause matching) [D:2/B:3/U:3 → Eff:1.5?] 🚀 |
-| Task 151 | ⛔ | 🎁 **capability-bench** · 🚀 **v0_10** · Agent evaluation corpus — stand up the Elixir corpus repo + prove Mode-B hidden-grader isolation [D:4/B:5/U:4 → Eff:1.12?] 📋 |
-| Task 246 | ✅ | 🎁 **kpi-routing** · 🚀 **v0_14** · ResultStore MCP read tools resolve configured() store when param omitted (KPIs read empty via MCP) [D:2/B:4/U:4 → Eff:2.0?] 🎯 |
-| Task 258 | ✅ | 🎁 **postgres-results** · Reviewer-reliability + facet SQL fast paths — finish what Task 139 started [D:2/B:3/U:3 → Eff:1.5?] 🚀 |
-| Task 259 | ✅ | 🎁 **chat-orchestrator** · 🐛 Fix the MCP param boundary once and for all — typeless kind:value coercion silently returns empty/wrong [D:3/B:5/U:5 → Eff:1.67?] 🚀 |
-| Task 260 | ✅ | 🎁 **postgres-results** · Fix stale LandingSettings default-target_branch assertion in settings_store/postgres_test.exs:36 [D:1/B:2/U:2 → Eff:2.0?] 🎯 |
+> 20 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-13-agent-kpis-capability-routing).
 <!-- TASKS:END -->
 
 ---
@@ -266,7 +193,7 @@
 | Task 168 | ⛔ | 🎁 **reviewer-pair** · Worktree/branch collision wedges Oban retries — clean up retained worktree+branch before a same-run_id re-attempt [D:3/B:8/U:8 → Eff:2.67?] 🎯 |
 | Task 169 | ⛔ | 🎁 **reviewer-pair** · Agent compile errors surfacing in verification SETUP are misclassified as environment failures — route them to the reviewer [D:4/B:8/U:8 → Eff:2.0?] 🎯 |
 | Task 173 | ✅ | 🎁 **reviewer-pair** · 🚀 **v0_11** · Deterministic full-pipeline E2E test: roadmap task → Oban dispatch → run → verify → review → land → writeback in one flow [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
-| Task 174 | ⬜ | 🎁 **reviewer-pair** · Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:3/B:5/U:4 → Eff:1.5?] 🚀 |
+| Task 174 | ⬜ | 🎁 **reviewer-pair** · Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:3/B:5/U:4 → Eff:1.5] 🚀 |
 | Task 179 | ⛔ | 🎁 **reviewer-pair** · SMOKE: add a one-sentence summary line to Harness.LineBuffer @moduledoc [D:1/B:1/U:1 → Eff:1.0?] 📋 |
 | Task 183 | ⛔ | 🎁 **agent-gate** · Smoke test (throwaway): add Harness.LineBuffer.empty?/1 predicate + test [D:1/B:1/U:1 → Eff:1.0?] 📋 |
 | Task 186 | ✅ | 🎁 **agent-gate** · 🔒 Neuter the push remote in harness-created worktrees so in-run agents can't push/PR past landing_policy [D:3/B:6/U:5 → Eff:1.83?] 🚀 |
@@ -278,39 +205,7 @@
 ## Phase 16: Agent-Gate Workflow & Post-Merge Audit
 
 <!-- TASKS:BEGIN phase=16 -->
-| Task | Status | Notes |
-|------|--------|-------|
-| Task 170 | ⛔ | 🎁 **audit-agent** · 🚀 **v0_12** · Post-merge audit agent: cron-triggered batch audit of the unaudited commit range, verified by the check stack, landed by the merge-train [D:5/B:7/U:7 → Eff:1.4?] 📋 |
-| Task 175 | ✅ | 🎁 **agent-gate** · 🚀 **v0_12** · Agent-gate workflow rebuild: reviewer AI is THE gate, no mechanical verification anywhere [D:8/B:10/U:10 → Eff:1.25?] 📋 |
-| Task 176 | ✅ | 🎁 **audit-agent** · 🚀 **v0_12** · Post-merge audit agent: per-land enqueue, third-family auditor, audit(...) commits ff-pushed [D:5/B:7/U:7 → Eff:1.4?] 📋 |
-| Task 177 | ✅ | 🎁 **agent-gate** · 🚀 **v0_12** · Reviewer KPI ratings feed AgentKPI/CapabilityScore rollups + reviewer rejection-rate tracking [D:3/B:6/U:5 → Eff:1.83?] 🚀 |
-| Task 180 | ✅ | 🎁 **agent-gate** · 🚀 **v0_12** · 🐛 Settled-:failed run teardown kills the Oban worker before {:cancel} returns -> wrongful retry storm (up to max_attempts=20) [D:4/B:8/U:8 → Eff:2.0?] 🎯 |
-| Task 181 | ✅ | 🎁 **agent-gate** · 🚀 **v0_12** · 🐛 Reviewer can finish work but skip writing .harness/review.json and idle-timeout -> run lost to :review_stuck [D:3/B:6/U:6 → Eff:2.0?] 🎯 |
-| Task 182 | ✅ | 🎁 **agent-gate** · 🚀 **v0_12** · Settings page: per-agent reviewer-eligibility toggle (distinct from implementer enable) + select_reviewer consults it [D:3/B:6/U:6 → Eff:2.0?] 🎯 |
-| Task 185 | ✅ | 🎁 **agent-gate** · 🚀 **v0_12** · 🐛 Same-BEAM :DOWN reaper reclaims the worktree+branch a live-run cleanup-refusal leaks when that run later crashes [D:3/B:4/U:4 → Eff:1.33?] 📋 |
-| Task 190 | ✅ | 🎁 **audit-agent** · *Harness.Oban* · Start the global :audit Oban queue so the post-merge audit AI actually runs [D:1/B:3/U:3 → Eff:3.0?] 🎯 |
-| Task 191 | ✅ | 🎁 **agent-gate** · Audit-surfaced: Worktree reaper vs Run.Registry unregister ordering race [D:3/B:4/U:3 → Eff:1.17?] 📋 |
-| Task 192 | ✅ | 🎁 **audit-agent** · Audit-surfaced: Task 190 — add real insert-and-drain test for the :audit Oban queue [D:2/B:3/U:4 → Eff:1.75?] 🚀 |
-| Task 194 | ✅ | 🎁 **audit-agent** · Clean (:no_changes) post-merge audit leaves no watermark — range re-audited every land [D:3/B:2/U:3 → Eff:0.83?] ⚠️ |
-| Task 195 | ✅ | 🎁 **resilience** · 🐛 Run.Worker crash-recovery: idempotent worktree setup so an Oban retry after BEAM restart reuses the run's branch instead of colliding [D:3/B:4/U:3 → Eff:1.17?] 📋 |
-| Task 196 | ✅ | 🎁 **resilience** · 🐛 Runs branch from origin/<target>, not operator-checkout HEAD — fetch origin before worktree create so dispatched runs always build on the latest landed code [D:3/B:7/U:7 → Eff:2.33?] 🎯 |
-| Task 197 | ✅ | 🎁 **resilience** · Lander auto-fast-forwards the operator's local target ref when safe, so a land does not leave local development drifting behind origin [D:4/B:6/U:6 → Eff:1.5?] 🚀 |
-| Task 198 | ✅ | 🎁 **resilience** · 🐛 Antigravity (agy) adapter leaks writes into the operator checkout instead of the run worktree — worktree isolation regression [D:5/B:8/U:4 → Eff:1.2?] 📋 |
-| Task 199 | ✅ | 🎁 **resilience** · 🐛 Run wedges in :reviewing when the reviewer process is never tracked (reviewer=nil) — add an idle/progress watchdog so a lost reviewer fails fast instead of holding a queue slot to the 90-min lifetime cap [D:5/B:6/U:5 → Eff:1.1?] 📋 |
-| Task 200 | ✅ | 🎁 **resilience** · Bound spawned-run process memory: kill a run whose agent/check_command process tree runs away (it OOM'd the host twice) [D:4/B:5/U:5 → Eff:1.25?] 📋 |
-| Task 201 | ✅ | 🎁 **resilience** · 🐛 Reorder terminate_reviewer/terminate_agent before cancel_task in the general cancel/lifetime/fail handlers [D:2/B:3/U:3 → Eff:1.5?] 🚀 |
-| Task 202 | ✅ | 🎁 **resilience** · Node-pressure dispatch gate: hold new run admission under high host memory (AC3 follow-up to task 200) [D:4/B:2/U:3 → Eff:0.62?] ⚠️ |
-| Task 203 | ✅ | 🎁 **agent-gate** · Reviewer missing-verdict recovery: re-prompt the reviewer once before discarding the run [D:4/B:6/U:6 → Eff:1.5?] 🚀 |
-| Task 204 | ✅ | 🎁 **agent-gate** · Dashboard Resume + Re-land buttons: recover failed runs & blocked land-trains [D:3/B:4/U:3 → Eff:1.17?] 📋 |
-| Task 205 | ✅ | 🎁 **agent-gate** · 🐛 Verify + declare auth_env_scrub for Cursor/Grok/Pi/Antigravity adapters [D:2/B:2/U:2 → Eff:1.0?] 📋 |
-| Task 206 | ✅ | 🎁 **agent-gate** · 🐛 Scrub provider auth API keys from spawned agent CLIs (subscription billing) [D:2/B:7/U:6 → Eff:3.25?] 🎯 |
-| Task 207 | ✅ | 🎁 **agent-gate** · *Harness.Config* · Configurable default dispatch agent (unassigned tasks → codex, not claude) [D:2/B:3/U:3 → Eff:1.5?] 🚀 |
-| Task 245 | ✅ | 🎁 **agent-gate** · 🚀 **v0_14** · *Harness.Run.Worker* · Run-lifecycle in_progress claim survives concurrent tasks.toml writers [D:3/B:7/U:7 → Eff:2.33?] 🎯 |
-| Task 253 | ✅ | 🎁 **agent-gate** · 🐛 MCP api() param coercion breaks guarded fns: await/5 (float timeout_ms) + list_run_records/1 (map filters) [D:3/B:7/U:7 → Eff:2.33?] 🎯 |
-| Task 254 | ✅ | 🎁 **agent-gate** · 🐛 decode_param: JSON-string-encoded keyword/object params from MCP clients (completes 253's list_run_records AC) [D:2/B:6/U:6 → Eff:3.0?] 🎯 |
-| Task 255 | ✅ | 🎁 **agent-gate** · Per-role reviewer model — split the reviewer model from the implementer's per-agent default [D:2/B:3/U:3 → Eff:1.5?] 🚀 |
-| Task 256 | ✅ | 🎁 **agent-gate** · Per-agent default model — operator-configurable Config.agent_model, threaded onto implementer + reviewer Invocations [D:2/B:6/U:6 → Eff:3.0?] 🎯 |
-| Task 262 | ✅ | 🎁 **operator-surface** · 📝 Expose operator read-state (agents, reviewers, autonomy, config) + self-describe via descripex MCP surface [D:3/B:4/U:4 → Eff:1.33?] 📋 |
+> 31 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-16-agent-gate-workflow-post-merge-audit).
 <!-- TASKS:END -->
 
 ---
@@ -368,7 +263,7 @@
 | Task 325 | ⛔ | 🎁 **reviewer-pair** · 🐛 Fix post-merge cold-check red for 1a2a52e [D:3/B:8/U:5 → Eff:2.17?] 🎯 |
 | Task 344 | ✅ | 🎁 **autolanding** · Land-conflict resolver AI cannot spawn: claude adapter has no configured agent_model [D:2/B:6/U:6 → Eff:3.0?] 🎯 |
 | Task 351 `[P]` | ✅ | 🎁 **autolanding** · 🐛 TaskIdRewriter misses unquoted integer task ids — collision reassignment silently no-ops for integer-id projects [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
-| Task 375 | ⬜ | 🎁 **config-surface** · Validate optional %Harness.Project{} fields at registration — an uncast concurrency_cap silently kills batch dispatch [D:2/B:6/U:6 → Eff:3.0] 🎯 |
+| Task 375 | ⬜ | 🎁 **config-surface** · 🚀 **v0_16** · 🐛 Validate optional %Harness.Project{} fields at registration — an uncast concurrency_cap silently kills batch dispatch [D:2/B:6/U:6 → Eff:3.0] 🎯 |
 <!-- TASKS:END -->
 
 ---
@@ -394,7 +289,7 @@
 | Task 322 | ✅ | 🎁 **model-availability** · Antigravity is no longer model-incapable — agy 1.0.10 gained --model + a multi-model catalog; make the adapter model-capable [D:4/B:6/U:5 → Eff:1.38?] 📋 |
 | Task 323 | ✅ | 🎁 **core-loop** · Add an integration tripwire: each worktree_isolation:true adapter actually isolates to its run worktree (harness skips the pollution snapshot on trust) [D:3/B:4/U:4 → Eff:1.33?] 📋 |
 | Task 324 | ✅ | 🎁 **core-loop** · 🐛 Stabilize cold precommit temp-worktree spawn flake observed by post-merge audit [D:3/B:5/U:4 → Eff:1.5?] 🚀 |
-| Task 326 | ⬜ | 🎁 **core-loop** · 🚀 **v0_16** · 🐛 Stabilize residual erl_child_setup spawn flake in worktree-heavy suite (Harness.AuditTest noop) [D:4/B:4/U:3 → Eff:0.88?] ⚠️ |
+| Task 326 | ⬜ | 🎁 **core-loop** · 🚀 **v0_16** · 🐛 Stabilize residual erl_child_setup spawn flake in worktree-heavy suite (Harness.AuditTest noop) [D:4/B:4/U:3 → Eff:0.88] ⚠️ |
 | Task 327 `[P]` | ✅ | 🎁 **contract** · Invert the rule-content seam + make Invocation agent-agnostic (AgentAdapter no longer names Harness.AgentRules) [D:4/B:5/U:5 → Eff:1.25?] 📋 |
 | Task 328 `[P]` | ✅ | 🎁 **contract** · Break the Driver -> Run.Reflex -> Worktree.Isolation -> AgentAdapter dependency cycle [D:4/B:6/U:5 → Eff:1.38?] 📋 |
 | Task 329 | ⬜ | 🎁 **contract** · Decision spike: extract the decoupled AgentAdapter subsystem to its own hex package? [D:2/B:5/U:4 → Eff:2.25] 🎯 |
@@ -432,19 +327,22 @@
 <!-- TASKS:BEGIN phase=23 -->
 | Task | Status | Notes |
 |------|--------|-------|
-| Task 358 | ⬜ | 🎁 **audit-perf** · 🚀 **v0_16** · Bound dashboard fleet-wide and per-call reads — unindexed aggregates, per-run git fetch, per-chunk buffer copy, uncached lookup [D:4/B:6/U:5 → Eff:1.38] 📋 |
+| Task 358 | ⬜ | 🎁 **audit-perf** · 🚀 **v0_16** · Bound KPI dashboard fleet-wide aggregate reads on run settlement [D:3/B:5/U:4 → Eff:1.5] 🚀 |
 | Task 359 | ⬜ | 🎁 **audit-architecture** · 🚀 **v0_16** · Split the ~1900-line Harness.Dispatch god module into per-concern modules behind a thin facade [D:5/B:5/U:4 → Eff:0.9] ⚠️ |
 | Task 360 | ⬜ | 🎁 **audit-architecture** · 🚀 **v0_16** · Establish one-way core → consumer layering and break the 71-module strongly-connected cycle [D:7/B:6/U:5 → Eff:0.79] ⚠️ |
-| Task 361 | ⬜ | 🎁 **audit-tests** · 🚀 **v0_16** · Unit-test the untested merge-critical modules Harness.Git.TargetSync and Harness.Store.EtsScope [D:3/B:7/U:5 → Eff:2.0] 🎯 |
-| Task 362 | ⬜ | 🎁 **audit-tests** · 🚀 **v0_16** · 🐛 De-flake the AgentRegistry global-state cross-test pollution class (resolver_test + reviewer-selection) [D:4/B:6/U:5 → Eff:1.38] 📋 |
+| Task 361 | ⬜ | 🎁 **audit-tests** · 🚀 **v0_16** · Expand direct coverage of merge-critical Harness.Git.TargetSync and Harness.Store.EtsScope behavior [D:3/B:7/U:5 → Eff:2.0] 🎯 |
+| Task 362 | ⬜ | 🎁 **audit-tests** · 🚀 **v0_16** · 🐛 Diagnose and eliminate the AgentRegistry empty-registry test flake [D:4/B:6/U:5 → Eff:1.38] 📋 |
 | Task 363 | ⬜ | 🎁 **audit-hygiene** · 🚀 **v0_16** · 📝 🔒 Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router [D:1/B:5/U:4 → Eff:4.5] 🎯 |
 | Task 364 | ⬜ | 🎁 **audit-hygiene** · Decision: resolve the anubis_mcp LGPL-3.0 runtime-dependency licensing exposure on the public repo [D:2/B:5/U:4 → Eff:2.25] 🎯 |
 | Task 365 | ✅ | 🎁 **run-history** · 🐛 ResultStore.Postgres list/aggregate path fails whole query on atom decode — tolerant row decode like the File store [D:3/B:7/U:7 → Eff:2.33] 🎯 |
 | Task 372 | ⛔ | 🎁 **dashboard-observability** · Persist witness events as a shared, queryable human+agent timeline [D:3/B:5/U:4 → Eff:1.5] 🚀 |
-| Task 373 | ⬜ | 🎁 **run-history** · 🚀 **v0_17** · Durable agent identity — per-actor audit trail across runs and seats [D:5/B:6/U:6 → Eff:1.2] 📋 |
+| Task 373 | ⬜ | 🎁 **run-history** · 🚀 **v0_17** · Per-adapter/model activity trail across runs and agent seats [D:5/B:6/U:6 → Eff:1.2] 📋 |
 | Task 374 | ⬜ | 🎁 **run-history** · 🚀 **v0_17** · Unified append-only lifecycle event log (harness_events) — every run action becomes a durable, queryable fact [D:8/B:7/U:4 → Eff:0.69] ⚠️ |
 | Task 376 | ⬜ | 🎁 **test-suite-perf** · Landing tests leak an empty temp repo dir per run into the shared worktree root [D:2/B:4/U:5 → Eff:2.25] 🎯 |
-| Task 377 | ⬜ | 🎁 **resilience** · No GC for landed run branches or orphaned run worktrees — 272 branches accumulated [D:4/B:5/U:5 → Eff:1.25] 📋 |
+| Task 377 | ⬜ | 🎁 **resilience** · Retry safe post-land cleanup and reclaim historical run branches/worktree orphans [D:4/B:5/U:5 → Eff:1.25] 📋 |
 | Task 378 `[P]` | ✅ | 🎁 **roadmap-durability** · Durable roadmap writes ignore roadmap_path and push tasks.toml into the source repo [D:4/B:7/U:7 → Eff:1.75] 🚀 |
-| Task 379 | ⬜ | 🎁 **roadmap-writeback** · 🐛 Durable roadmap writeback silently produced no commit — dispatch-start and post-land transitions both lost [D:4/B:7/U:7 → Eff:1.75] 🚀 |
+| Task 379 | ⬜ | 🎁 **roadmap-writeback** · 🚀 **v0_16** · 🐛 Durable roadmap writeback silently produced no commit — dispatch-start and post-land transitions both lost [D:4/B:7/U:7 → Eff:1.75] 🚀 |
+| Task 380 | ⬜ | 🎁 **audit-perf** · 🚀 **v0_16** · Fetch each project target once per landed-sha reconciliation pass [D:3/B:5/U:4 → Eff:1.5] 🚀 |
+| Task 381 | ⬜ | 🎁 **audit-perf** · 🚀 **v0_16** · Make capped dashboard transcript append linear in incoming chunk size [D:2/B:4/U:3 → Eff:1.75] 🚀 |
+| Task 382 | ⬜ | 🎁 **audit-perf** · 🚀 **v0_16** · Remove the per-lookup Postgres landing-settings round trip from ProjectRegistry [D:3/B:5/U:4 → Eff:1.5] 🚀 |
 <!-- TASKS:END -->
