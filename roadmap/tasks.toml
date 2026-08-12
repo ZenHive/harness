@@ -11484,6 +11484,19 @@ cannot land its commit must not look identical to one that succeeded. Today the
 writeback is best-effort by design (a failed transition logs and never fails the
 run, which is the right call), but "never fails the run" has become "never reaches
 the operator either".
+
+Second instance, 2026-08-12 — run `run-1786522856472-c6cebe49`, project
+`trading_dashboard`, task 59. Narrower shape than the first: the in_progress
+transition DID land, and the delivery itself landed on origin/main (5309118 +
+reviewer-fix 924e059; ResultStore record carries landed_sha=924e0594b5e4), but the
+post-land done transition never produced a roadmap commit AND the lander's own
+"harness lander: landed task 59" info line is absent from the node log — while the
+very next landing on the same serialized queue (task 53, run
+run-1786522854280-f22c65ba, ~minutes later) completed fully, writeback and log line
+included. So whatever fails is per-landing, not environmental, and it can kill both
+the mark_landed writeback and the success log of one landing while its neighbor
+succeeds — consistent with the landing job dying between ff-push and writeback.
+Operator repaired by hand (trading_dashboard commit 7319255).
 """
 created_at = "2026-08-05"
 scored_at = "2026-08-07"
