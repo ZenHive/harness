@@ -11580,3 +11580,25 @@ Find where the delivery staging computes its exclusion set and why agent-rules.m
 """
 created_at = "2026-08-10"
 scored_at = "2026-08-10"
+
+[[task]]
+id = "384"
+phase = 23
+bundle = "deferred"
+status = "pending"
+title = "Migrate anubis_mcp 1.x -> 2.0.0 (Application callback removal, transport/supervision rewrite)"
+scores = { d = 5, b = 3, u = 2 }
+acceptance_criteria = ["mix.exs constraint for anubis_mcp raised to allow 2.0.0 and mix.lock resolves it", "Harness.Application explicitly starts/supervises whatever anubis_mcp 2.0.0 requires now that its own Application callback + bundled CLI are removed (harness already declares its own child spec today, per Task 79/83 — confirm the new API keeps the same explicit-start shape or adapt it)", "The Streamable HTTP transport at /harness/mcp keeps working end to end (initialize, tools/list, tools/call) against a real claude -p client, per the Task 83 smoke-test pattern", "Resource blob encoding change (v2.0.0 standardizes to base64) does not break any harness MCP tool response consumed by the dashboard or a headless client", "mix check.dispatch is green and existing MCP server tests (test/harness/dashboard/mcp_server_test.exs and related) pass unmodified in behavior, or are updated to match the new API with equivalent coverage"]
+out_of_scope = ["Re-adding HTTP+SSE transport support (removed upstream, harness already uses Streamable HTTP only)", "Any change to which MCP tools harness exposes (Harness.Chat.Tools stays the source of truth)", "The anubis_mcp LGPL licensing decision (tracked separately, Task with title 'Decision: resolve the anubis_mcp LGPL-3.0 ...')"]
+files_to_modify = ["mix.exs", "mix.lock", "lib/harness/application.ex", "lib/harness/dashboard/mcp_server.ex"]
+touches = ["mix.exs", "mix.lock", "lib/harness/application.ex", "lib/harness/dashboard/mcp_server.ex", "test/harness/dashboard/mcp_server_test.exs"]
+domains = ["otp", "phoenix"]
+assignee = "codex"
+model = "gpt-5.6-sol"
+body = """
+2026-08-13 hex-lib upgrade pass: mix.exs pins {:anubis_mcp, "~> 1.6"} (currently locked at 1.14.0); hex.pm's latest is 2.0.0, blocked purely by that constraint (mix hex.outdated confirms: no transitive pin involved). anubis_mcp's own changelog (https://anubis-mcp.hexdocs.pm/changelog.html) documents real breaking changes for 2.0.0: removal of the HTTP+SSE client/server transports (harness already uses Streamable HTTP, so likely unaffected), a raised minimum MCP protocol version floor (2024-11-05 -> 2025-03-26), removal of the Application callback + bundled CLI (carried forward from 1.8.0 - "applications no longer automatically start supervision trees... developers must explicitly start relevant components in their own supervision tree"), and standardized base64 resource blob encoding.
+
+harness's Harness.Dashboard.MCPServer (Task 79/83) already supervises its own child spec explicitly (Harness.Application starts {Harness.Dashboard.MCPServer, transport: {:streamable_http, start: true}}), so the Application-callback removal may be a non-event here -- but this needs verifying against the 2.0.0 API surface, not assumed. Left un-upgraded in the 2026-08-13 bulk dependency bump specifically because it is a breaking major touching harness's own MCP driver surface (the surface skills/harness-driver/SKILL.md and CLAUDE.md's "MCP (Harness.Dashboard.MCPServer, on anubis_mcp)" describe as load-bearing), not a mechanical hex.lock bump -- it deserves its own reviewed diff and a live claude -p smoke test, per the Task 83 precedent (a supervision/transport-start mismatch there caused a silent :badarg on every MCP request).
+"""
+created_at = "2026-08-13"
+scored_at = "2026-08-13"
