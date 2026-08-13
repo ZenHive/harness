@@ -113,6 +113,19 @@ defmodule Harness.ModelAvailabilityTest do
              ] = ModelAvailability.parse_catalog_output(:antigravity, output)
     end
 
+    test "antigravity surfaces a live model id outside the verified catalog instead of dropping it (overlay regression)" do
+      output = """
+      Fetching available models...
+      Gemini 3.5 Flash (Low)
+      claude-opus-5
+      """
+
+      assert [
+               %{id: "gemini-3.5-flash", label: "Gemini 3.5 Flash (Low)"},
+               %{id: "claude-opus-5", label: "claude-opus-5"}
+             ] = ModelAvailability.parse_catalog_output(:antigravity, output)
+    end
+
     test "codex JSON yields visibility=list slugs, dropping hidden internal models" do
       # Real `codex debug models` shape (trimmed to the parsed fields), 2026-07-10 —
       # includes the GPT-5.6 Sol/Terra/Luna frontier family.
@@ -282,6 +295,21 @@ defmodule Harness.ModelAvailabilityTest do
       assert :ok = ModelAvailability.toggle_catalog_model("cursor", "composer-probed")
       assert {:ok, selected} = ModelAvailability.catalog(:cursor)
       assert Enum.map(selected, & &1.id) == ["composer-selected"]
+    end
+
+    test "surfaces unselected builtin models even after the operator has already selected some (claude, no probe)" do
+      seed_static_catalog(:claude, [
+        %{id: "claude-sonnet-5", label: "Sonnet 5", annotations: []}
+      ])
+
+      assert {:ok, selected} = ModelAvailability.catalog(:claude)
+      assert Enum.map(selected, & &1.id) == ["claude-sonnet-5"]
+
+      assert {:ok, universe} = ModelAvailability.catalog_universe(:claude)
+      universe_ids = Enum.map(universe, & &1.id)
+      assert "claude-opus-5" in universe_ids
+      assert selected_state(universe, "claude-sonnet-5")
+      refute selected_state(universe, "claude-opus-5")
     end
 
     test "omits blocked ids from the catalog" do

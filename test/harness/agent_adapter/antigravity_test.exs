@@ -87,9 +87,13 @@ defmodule Harness.AgentAdapter.AntigravityTest do
              ]
     end
 
-    test "fast-fails an unknown model before spawn (agy --model is non-validating)", %{cwd: cwd} do
-      assert {:error, {:invalid_model_for_adapter, Antigravity, "__nope__"}} =
-               Antigravity.build_command(invocation(cwd, model: "__nope__"))
+    test "passes through a model outside the verified catalog but within a declared family (overlay regression — a new Claude/Gemini/GPT generation must not be hard-blocked)",
+         %{cwd: cwd} do
+      assert {:ok, {"agy", argv, []}} =
+               Antigravity.build_command(invocation(cwd, model: "claude-opus-5"))
+
+      assert "--model" in argv
+      assert "claude-opus-5" in argv
     end
 
     test "appends --continue for a :resume session", %{cwd: cwd} do
@@ -148,6 +152,12 @@ defmodule Harness.AgentAdapter.AntigravityTest do
     test "rejects a model-less dispatch before spawn", %{cwd: cwd} do
       assert {:error, {:model_required, Antigravity}} =
                AgentAdapter.invoke(Antigravity, invocation(cwd))
+    end
+
+    test "rejects a model outside every declared family before spawn (agy --model is non-validating)",
+         %{cwd: cwd} do
+      assert {:error, {:invalid_model_for_adapter, Antigravity, "__nope__"}} =
+               AgentAdapter.invoke(Antigravity, invocation(cwd, model: "__nope__"))
     end
   end
 end

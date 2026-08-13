@@ -30,13 +30,14 @@ defmodule Harness.ModelAvailability do
   # `@probeable_agents`; its seed here is the fallback for when the probe fails
   # (codex CLI absent/unauthed), so operators have options out of the box.
   #
-  # Ids verified 2026-06-12 (codex 5.6 family added 2026-07-10):
+  # Ids verified 2026-08-13 (claude-opus-5 added; codex 5.6 family added 2026-07-10):
   #   claude — https://support.claude.com/en/articles/11940350-claude-code-model-configuration
   #            https://code.claude.com/docs/en/model-config
   #   codex  — https://developers.openai.com/codex/models
   #            GPT-5.6 Sol/Terra/Luna — https://openai.com/index/previewing-gpt-5-6-sol/
   @builtin_catalogs %{
     claude: [
+      CatalogEntry.new("claude-opus-5", "Opus 5"),
       CatalogEntry.new("claude-opus-4-8", "Opus 4.8"),
       CatalogEntry.new("claude-opus-4-7", "Opus 4.7"),
       CatalogEntry.new("claude-fable-5", "Fable 5"),
@@ -429,10 +430,15 @@ defmodule Harness.ModelAvailability do
     selected = selected_seed(agent)
     selected_ids = MapSet.new(selected, & &1.id)
 
+    # builtin_seed merges unconditionally (not just as selected_seed's no-static-catalog
+    # fallback) so a builtin id added after the operator's first selection — e.g. a new
+    # Claude generation — still surfaces as a togglable, unselected universe entry instead
+    # of staying invisible forever once any static catalog has been persisted.
     universe =
       selected
       |> merge_catalogs(probed_seed(agent))
       |> merge_catalogs(manual_catalog(agent))
+      |> merge_catalogs(builtin_seed(agent))
       |> Enum.map(&Map.put(&1, :selected?, MapSet.member?(selected_ids, &1.id)))
 
     case universe do
@@ -769,18 +775,20 @@ defmodule Harness.ModelAvailability do
     end
   end
 
-  # No display-label match: accept the line only when it (or its parsed id) is
-  # itself a known dash-form id, otherwise drop it.
+  # No display-label match: accept whatever id the line parses to. A dash-form
+  # id/label pair parses via parse_id_label_line/1; a bare id-only line falls
+  # back to using the raw line as both id and label. Model *support* is gated
+  # once (family-prefix, in AgentAdapter.validate_model/2) — filtering the
+  # probe result through Antigravity's known-id set here as well is the same
+  # overlay shape as ModelAvailability.catalog_universe/1's old builtin-only-
+  # as-fallback bug: it would silently drop every live model the hardcoded
+  # catalog hasn't enumerated yet, before it can even surface as an unselected
+  # candidate.
   @spec antigravity_id_fallback(String.t()) :: catalog_entry() | :error
   defp antigravity_id_fallback(line) do
     case parse_id_label_line(line) do
-      %{id: id} = entry when is_binary(id) ->
-        if id in Antigravity.known_model_ids(), do: entry, else: :error
-
-      :error ->
-        if line in Antigravity.known_model_ids(),
-          do: CatalogEntry.new(line, line),
-          else: :error
+      %{id: id} = entry when is_binary(id) -> entry
+      :error -> CatalogEntry.new(line, line)
     end
   end
 

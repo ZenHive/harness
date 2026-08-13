@@ -143,7 +143,6 @@ defmodule Harness.AgentAdapter.Antigravity do
   @spec build_command(Invocation.t()) :: {:ok, AgentAdapter.command()} | {:error, term()}
   def build_command(%Invocation{} = invocation) do
     with {:ok, invocation} <- AgentAdapter.attach_rules(__MODULE__, invocation),
-         :ok <- validate_catalog_model(invocation.model),
          {:ok, permission} <- AgentAdapter.permission_flag(@permission_modes, invocation.permission_mode),
          {:ok, resume} <- AgentAdapter.resume_args(invocation.session) do
       argv =
@@ -154,17 +153,6 @@ defmodule Harness.AgentAdapter.Antigravity do
 
       env = Map.to_list(invocation.env)
       {:ok, {"agy", argv, env}}
-    end
-  end
-
-  @spec validate_catalog_model(String.t() | nil) :: :ok | {:error, {:invalid_model_for_adapter, module(), String.t()}}
-  defp validate_catalog_model(nil), do: :ok
-
-  defp validate_catalog_model(model) when is_binary(model) do
-    if MapSet.member?(@known_model_ids, model) do
-      :ok
-    else
-      {:error, {:invalid_model_for_adapter, __MODULE__, model}}
     end
   end
 end
