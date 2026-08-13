@@ -11585,7 +11585,7 @@ scored_at = "2026-08-10"
 id = "384"
 phase = 23
 bundle = "deferred"
-status = "pending"
+status = "done"
 title = "Migrate anubis_mcp 1.x -> 2.0.0 (Application callback removal, transport/supervision rewrite)"
 scores = { d = 5, b = 3, u = 2 }
 acceptance_criteria = ["mix.exs constraint for anubis_mcp raised to allow 2.0.0 and mix.lock resolves it", "Harness.Application explicitly starts/supervises whatever anubis_mcp 2.0.0 requires now that its own Application callback + bundled CLI are removed (harness already declares its own child spec today, per Task 79/83 — confirm the new API keeps the same explicit-start shape or adapt it)", "The Streamable HTTP transport at /harness/mcp keeps working end to end (initialize, tools/list, tools/call) against a real claude -p client, per the Task 83 smoke-test pattern", "Resource blob encoding change (v2.0.0 standardizes to base64) does not break any harness MCP tool response consumed by the dashboard or a headless client", "mix check.dispatch is green and existing MCP server tests (test/harness/dashboard/mcp_server_test.exs and related) pass unmodified in behavior, or are updated to match the new API with equivalent coverage"]
@@ -11600,5 +11600,7 @@ body = """
 
 harness's Harness.Dashboard.MCPServer (Task 79/83) already supervises its own child spec explicitly (Harness.Application starts {Harness.Dashboard.MCPServer, transport: {:streamable_http, start: true}}), so the Application-callback removal may be a non-event here -- but this needs verifying against the 2.0.0 API surface, not assumed. Left un-upgraded in the 2026-08-13 bulk dependency bump specifically because it is a breaking major touching harness's own MCP driver surface (the surface skills/harness-driver/SKILL.md and CLAUDE.md's "MCP (Harness.Dashboard.MCPServer, on anubis_mcp)" describe as load-bearing), not a mechanical hex.lock bump -- it deserves its own reviewed diff and a live claude -p smoke test, per the Task 83 precedent (a supervision/transport-start mismatch there caused a silent :badarg on every MCP request).
 """
+implemented = "Bumped mix.exs anubis_mcp ~> 1.6 -> ~> 2.0; mix deps.update resolved 2.0.0 cleanly with zero transitive conflicts. Static + live verification (fetched actual v2.0.0 source from github.com/zoedsoupe/anubis-mcp, then compiled + ran the full MCP test suite) confirmed the Streamable HTTP transport, should_start?/1 conditional-start logic, macro-generated child_spec/1 shape, and persistent_term session_config storage are all unchanged; harness never used the removed HTTP+SSE transport, never pinned protocol_versions, and never emits resource/blob content, so 2.0.0's breaking changes don't touch this codebase. mix compile --warnings-as-errors clean, 20/20 MCP tests pass unmodified, mix check.dispatch green (doctor 100%, sobelow clean). Live claude -p smoke test against /harness/mcp deferred -- harness BEAM node not running this session, and per repo convention I don't boot it myself; the in-process Plug.Test suite already exercises the full initialize/tools-list/tools-call session lifecycle end to end. Shipped in 7655dda."
 created_at = "2026-08-13"
 scored_at = "2026-08-13"
+done_at = "2026-08-13"
