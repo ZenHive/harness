@@ -122,7 +122,7 @@ defmodule Harness.MixProject do
       {:postgrex, ">= 0.0.0"},
       {:oban, "~> 2.22"},
       {:req, "~> 0.5"},
-      {:anubis_mcp, "~> 1.6"},
+      {:anubis_mcp, "~> 2.0"},
 
       # Dashboard (Task 50) — Phoenix LiveView + embedded Oban Web. Bandit is
       # optional so mountable consumers with their own Phoenix endpoint do not
