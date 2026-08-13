@@ -43,7 +43,7 @@ defmodule Harness.Run.StatusTest do
 
     test "round-trips run timing fields when the record carries them" do
       started_at = ~U[2026-06-17 08:00:00.000Z]
-      entered_at = %{dispatched: started_at, done: DateTime.add(started_at, 7, :second)}
+      entered_at = %{dispatched: started_at, done: DateTime.shift(started_at, second: 7)}
       record = log_record("run-timed", started_at: started_at, state_entered_at: entered_at)
 
       status = Status.from_log_record(record)

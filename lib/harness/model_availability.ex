@@ -160,7 +160,7 @@ defmodule Harness.ModelAvailability do
     with {:ok, agent} <- AgentRegistry.agent_for_module(adapter),
          {:ok, seconds, model} <- structured_quota_signal(reason) do
       model = model || Keyword.get(opts, :model)
-      until = DateTime.add(DateTime.utc_now(), seconds, :second)
+      until = DateTime.shift(DateTime.utc_now(), second: seconds)
 
       record_block(agent, model || :all,
         until: until,

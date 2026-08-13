@@ -1591,7 +1591,7 @@ defmodule Harness.ObanDispatchTest do
         |> Harness.Repo.insert()
 
       orphan
-      |> Ecto.Changeset.change(state: "executing", attempted_at: DateTime.add(DateTime.utc_now(), -120, :second))
+      |> Ecto.Changeset.change(state: "executing", attempted_at: DateTime.shift(DateTime.utc_now(), minute: -2))
       |> Harness.Repo.update!()
 
       assert :ok = HarnessOban.rescue_orphaned_run_jobs()
@@ -1626,7 +1626,7 @@ defmodule Harness.ObanDispatchTest do
         |> Harness.Repo.insert()
 
       job
-      |> Ecto.Changeset.change(state: "executing", attempted_at: DateTime.add(DateTime.utc_now(), -120, :second))
+      |> Ecto.Changeset.change(state: "executing", attempted_at: DateTime.shift(DateTime.utc_now(), minute: -2))
       |> Harness.Repo.update!()
 
       {:ok, _} = Registry.register(Harness.Run.Registry, "live-run-158", nil)
@@ -1662,7 +1662,7 @@ defmodule Harness.ObanDispatchTest do
 
       for job <- [live_job, orphan_job] do
         job
-        |> Ecto.Changeset.change(state: "executing", attempted_at: DateTime.add(DateTime.utc_now(), -120, :second))
+        |> Ecto.Changeset.change(state: "executing", attempted_at: DateTime.shift(DateTime.utc_now(), minute: -2))
         |> Harness.Repo.update!()
       end
 

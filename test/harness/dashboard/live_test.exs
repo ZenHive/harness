@@ -776,7 +776,7 @@ defmodule Harness.Dashboard.LiveTest do
       html =
         status
         |> show_render_assigns("")
-        |> Map.put(:now, DateTime.add(started_at, 5, :second))
+        |> Map.put(:now, DateTime.shift(started_at, second: 5))
         |> Live.render()
         |> rendered_to_string()
 
@@ -813,8 +813,8 @@ defmodule Harness.Dashboard.LiveTest do
 
     test "renders the recovery-reviewer pass as the active live stage" do
       started_at = ~U[2026-06-17 08:00:00.000Z]
-      reviewing_at = DateTime.add(started_at, 5, :second)
-      recovery_review_at = DateTime.add(started_at, 10, :second)
+      reviewing_at = DateTime.shift(started_at, second: 5)
+      recovery_review_at = DateTime.shift(started_at, second: 10)
 
       status = %Status{
         run_id: "r",
@@ -835,7 +835,7 @@ defmodule Harness.Dashboard.LiveTest do
       html =
         status
         |> show_render_assigns("recovery transcript")
-        |> Map.put(:now, DateTime.add(recovery_review_at, 3, :second))
+        |> Map.put(:now, DateTime.shift(recovery_review_at, second: 3))
         |> Map.put(:raw_view, true)
         |> Live.render()
         |> rendered_to_string()

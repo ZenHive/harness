@@ -71,10 +71,10 @@ defmodule Harness.Dashboard.ComponentsTest do
   describe "run_timing/1" do
     test "renders elapsed, current-stage time, and per-stage durations" do
       started_at = ~U[2026-06-17 08:00:00.000Z]
-      running_at = DateTime.add(started_at, 2, :second)
-      committing_at = DateTime.add(started_at, 7, :second)
-      reviewing_at = DateTime.add(started_at, 9, :second)
-      now = DateTime.add(started_at, 12, :second)
+      running_at = DateTime.shift(started_at, second: 2)
+      committing_at = DateTime.shift(started_at, second: 7)
+      reviewing_at = DateTime.shift(started_at, second: 9)
+      now = DateTime.shift(started_at, second: 12)
 
       status = %Status{
         run_id: "run-timed",
@@ -102,8 +102,8 @@ defmodule Harness.Dashboard.ComponentsTest do
 
     test "freezes final elapsed at the terminal state entry" do
       started_at = ~U[2026-06-17 08:00:00.000Z]
-      done_at = DateTime.add(started_at, 10, :second)
-      now = DateTime.add(started_at, 60, :second)
+      done_at = DateTime.shift(started_at, second: 10)
+      now = DateTime.shift(started_at, minute: 1)
 
       status = %Status{
         run_id: "run-done",
@@ -418,7 +418,7 @@ defmodule Harness.Dashboard.ComponentsTest do
     test "last_output_age_label reports mechanical seconds since last event" do
       last_at = ~U[2026-06-17 10:00:00.000Z]
 
-      assert Components.last_output_age_label(last_at, DateTime.add(last_at, 3, :second)) == "3s ago"
+      assert Components.last_output_age_label(last_at, DateTime.shift(last_at, second: 3)) == "3s ago"
       assert Components.last_output_age_label(last_at, last_at) == "<1s ago"
       assert Components.last_output_age_label(nil, last_at) == nil
     end

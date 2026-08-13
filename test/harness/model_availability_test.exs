@@ -147,7 +147,7 @@ defmodule Harness.ModelAvailabilityTest do
     test "operator block persists and list_blocks surfaces it" do
       assert :ok =
                ModelAvailability.block_model("cursor", "claude-opus-4-8-thinking-high",
-                 until: DateTime.utc_now() |> DateTime.add(@future_block_seconds, :second) |> DateTime.to_iso8601(),
+                 until: DateTime.utc_now() |> DateTime.shift(second: @future_block_seconds) |> DateTime.to_iso8601(),
                  reason: "out of tokens"
                )
 
@@ -166,7 +166,7 @@ defmodule Harness.ModelAvailabilityTest do
 
   describe "expiry" do
     test "a block with until in the past makes available?/2 true again" do
-      past = DateTime.utc_now() |> DateTime.add(-60, :second) |> DateTime.to_iso8601()
+      past = DateTime.utc_now() |> DateTime.shift(minute: -1) |> DateTime.to_iso8601()
 
       assert :ok =
                ModelAvailability.block_model("cursor", "composer-2.5", until: past, reason: "expired test")
