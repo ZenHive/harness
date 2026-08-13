@@ -16373,7 +16373,7 @@
       "markers": [],
       "depends_on": [],
       "assignee": "grok",
-      "model": "grok-4.5",
+      "model": "grok-4.6",
       "acceptance_criteria": [
         "TargetSync coverage includes the clean checked-out ff-merge, unchecked-out ref-only fetch, dirty/diverged skip, and behind_count drift message, using local git fixtures; preserve the existing missing-remote error assertion",
         "EtsScope has direct coverage for create/lookup and table ownership on owner-process exit",
@@ -16423,7 +16423,7 @@
       ],
       "depends_on": [],
       "assignee": "grok",
-      "model": "grok-4.5",
+      "model": "grok-4.6",
       "acceptance_criteria": [
         "A bounded repeated-run/varied-seed probe reproduces the empty-registry failure or captures equivalent durable evidence before a fix is selected",
         "The implemented field names the actual interleaving, restart, reset, or ownership path that caused the observed failure; it does not repeat the unverified suite-wide async premise",
@@ -16929,7 +16929,7 @@
         "374"
       ],
       "assignee": "grok",
-      "model": "grok-4.5",
+      "model": "grok-4.6",
       "acceptance_criteria": [
         "Given an adapter and optional model, a bounded chronological query returns the persisted activity trail across implementer, reviewer, recovery, audit, and operator-triggered lifecycle seats, carrying run_id/project/seat/timestamp/outcome facts when present",
         "New events use harness_events as the canonical read source after Task 374; ResultStore may supply clearly labelled historical compatibility rows only where pre-event history would otherwise disappear",

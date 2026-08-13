@@ -10803,7 +10803,7 @@ files_to_modify = ["test/harness/git_test.exs", "test/harness/store/ets_scope_te
 touches = ["test/harness/git_test.exs", "test/harness/git/", "test/harness/store/", "lib/harness/git/target_sync.ex", "lib/harness/store/ets_scope.ex"]
 domains = ["otp", "ecto"]
 assignee = "grok"
-model = "grok-4.5"
+model = "grok-4.6"
 body = """
 Surfaced by the 2026-07-12 project health audit (test-audit.md #2/#3). The original
 "zero coverage" premise is stale: `test/harness/git_test.exs` already exercises
@@ -10842,7 +10842,7 @@ out_of_scope = ["Changing AgentRegistry's production behaviour (it is intentiona
 touches = ["test/harness/", "lib/harness/agent_registry.ex", "test/support/"]
 domains = ["otp"]
 assignee = "grok"
-model = "grok-4.5"
+model = "grok-4.6"
 body = """
 Surfaced by the 2026-07-12 project health audit (test-audit.md #1) — observed live once:
 `test/harness/lander/resolver_test.exs:51` failed on first attempt with `available: []`
@@ -11233,7 +11233,7 @@ acceptance_criteria = ["Given an adapter and optional model, a bounded chronolog
 out_of_scope = ["Stable human/member identity, keypairs, or identity continuity across adapter/model changes", "Permission/capability enforcement", "Extraction to a standalone library", "Any change to routing, KPI computation, or reviewer selection", "Nostr/Buzz integration"]
 touches = ["lib/harness/event_store/", "lib/harness/result_store/", "lib/harness/manifest.ex"]
 assignee = "grok"
-model = "grok-4.5"
+model = "grok-4.6"
 body = """
 Inspired by Block's Buzz audit trail, but deliberately narrower: harness has adapter/model
 attribution, not a durable member identity. Build the query that the persisted facts support.
