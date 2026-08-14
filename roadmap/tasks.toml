@@ -11644,6 +11644,8 @@ Two asks:
 2. Make dispatch-reland usable for this state: job 6902 (manual_reland) discarded with {:checkout_failed, {:git_failed, ... "invalid reference: harness/run-1786680419733-0929c71f"}} because the branch was already deleted by the successful code landing. When the persisted record has a landed_sha and the branch is gone, reland should degrade to advance-only (re-run the rmap advance + push) instead of discarding on worktree checkout.
 
 Premise verified: Oban job rows 6898/6900/6902 and the ResultStore record were read live on 2026-08-14; trading_dashboard origin/main history 36537ec..9b6f4ab shows the gap.
+
+Second occurrence, same day: trading_dashboard task 101 (run run-1786691814297-f2b6f148, grok/codex) — landing job completed, landed_sha ce880b3 recorded, delivery + review commits and even the post-merge audit landed on origin, but the "task 101 -> done" advance was again never pushed and was hand-written by the orchestrator (trading_dashboard 717addf). The bug is reproducible, not a one-off.
 """
 created_at = "2026-08-14"
 scored_at = "2026-08-14"
