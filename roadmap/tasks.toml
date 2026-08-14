@@ -11624,3 +11624,26 @@ The commit step must guarantee the injected content never rides in a delivery: r
 """
 created_at = "2026-08-14"
 scored_at = "2026-08-14"
+
+[[task]]
+id = "386"
+phase = 22
+bundle = "core-loop"
+status = "pending"
+title = "Lander: landing job can complete (landed_sha recorded) without the roadmap advance ever reaching origin"
+scores = { d = 5, b = 7, u = 6 }
+acceptance_criteria = ["A landing whose rmap-advance commit or push fails does not settle the Oban job as completed: it retries or errors loudly, and never records landed_sha while origin lacks the advance", "A regression test covers the delivery-pushed-but-advance-failed path", "dispatch-reland on a run with a recorded landed_sha and no surviving branch performs an advance-only reland instead of discarding with checkout_failed (test)"]
+out_of_scope = ["Changing the witness sink or notification format"]
+assignee = "codex"
+model = "gpt-5.6-sol"
+body = """
+Observed trading_dashboard 2026-08-14: task 64's landing job (Oban job 6898, queue landing_trading_dashboard) finished state=completed at 05:02:16Z, the ResultStore record carries landed_sha 92d18a91f0d4 (delivery 36537ec + two reviewer commits, all on origin/main), the run branch was cleaned up — but NO "roadmap: task 64 -> done" commit ever reached origin. The next landing on the same queue (task 56, job 6900, 25s later) pushed delivery AND advance normally. Consequence: origin diverged from the lander's own record — rmap still said in_progress for landed work, which is exactly the duplicate-land trap the workflow include warns about, except this time the STALE side was origin itself, so no amount of fetch/rebase could disprove "didn't land". The orchestrator had to hand-write the advance (trading_dashboard 9b6f4ab) with provenance copied from the ResultStore.
+
+Two asks:
+1. Find and fix the path where Lander.Worker returns :ok after pushing the delivery but before (or despite) the rmap-advance commit/push failing — the advance must be part of the landing's success criterion, or the job must retry/fail loudly instead of completing.
+2. Make dispatch-reland usable for this state: job 6902 (manual_reland) discarded with {:checkout_failed, {:git_failed, ... "invalid reference: harness/run-1786680419733-0929c71f"}} because the branch was already deleted by the successful code landing. When the persisted record has a landed_sha and the branch is gone, reland should degrade to advance-only (re-run the rmap advance + push) instead of discarding on worktree checkout.
+
+Premise verified: Oban job rows 6898/6900/6902 and the ResultStore record were read live on 2026-08-14; trading_dashboard origin/main history 36537ec..9b6f4ab shows the gap.
+"""
+created_at = "2026-08-14"
+scored_at = "2026-08-14"

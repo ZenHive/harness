@@ -17441,6 +17441,73 @@
       "scored_at": "2026-08-13",
       "implemented": "Bumped mix.exs anubis_mcp ~> 1.6 -> ~> 2.0; mix deps.update resolved 2.0.0 cleanly, zero transitive conflicts. Compiled clean, 20/20 MCP tests pass unmodified, mix check.dispatch green (doctor 100%, sobelow clean) -- no lib/ or test/ changes needed. Live verification: user restarted the harness BEAM node; ran a full session over the real /harness/mcp Streamable HTTP endpoint on 2.0.0 -- initialize (negotiated protocolVersion 2025-11-25, mcp-session-id issued) -> notifications/initialized (202) -> tools/list (full catalog returned) -> tools/call agents-list (real result payload). Driven via curl with clientInfo spoofed as claude-code/2.1.153, not the actual claude -p binary -- close to but not identical to the AC's literal 'real claude -p client' wording; the wire-level MCP session lifecycle is nonetheless fully exercised end to end against the live server. Shipped in 7655dda + 2bc1623.",
       "cross_repo": []
+    },
+    {
+      "id": "385",
+      "phase": 22,
+      "bundle": "core-loop",
+      "status": "pending",
+      "title": "Strip the harness-injected ephemeral AGENTS.md header before committing the delivery",
+      "scores": {
+        "d": 3,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.6-sol",
+      "acceptance_criteria": [
+        "A run whose worktree carries the injected '<!-- harness-injected: canonical agent rules — ephemeral, do not commit -->' AGENTS.md block never includes that block in the delivery commit: the injected content is reverted/excluded at the commit step regardless of whether the implementer or reviewer touched AGENTS.md otherwise",
+        "A test pins the invariant: given a worktree where AGENTS.md differs from the base only by the injected header, the delivery commit leaves AGENTS.md byte-identical to the base; given a worktree where AGENTS.md has both the header and a legitimate regen, the commit carries the regen but not the header",
+        "Existing exclusion list behavior (.harness/, roadmap files, CHANGELOG) is unchanged"
+      ],
+      "out_of_scope": [
+        "Changing what the injected block says or when it is injected",
+        "AGENTS.md freshness checking (sync-agents-md --check remains the consumer-side gate)"
+      ],
+      "domains": [
+        "git",
+        "run-lifecycle"
+      ],
+      "body": "Harness prepends an ephemeral agent-rules block to the target project's AGENTS.md when dispatching ('harness-injected: canonical agent rules — ephemeral, do not commit'). That block leaked into a landed delivery commit: trading_dashboard run run-1786673501096-c9939b07 (task 68) landed commit 2132b41 whose AGENTS.md diff is exactly the 32-line injected header — despite the reviewer explicitly noting AGENTS.md was 'excluded from this delivery'. The parallel run for task 58 saw the same stale-AGENTS.md red in mix check.dispatch; the orchestrator had to strip the header manually on the landed base (trading_dashboard commit 'AGENTS.md regen: strip harness-injected ephemeral header leaked by task 68 delivery').\n\nThe commit step must guarantee the injected content never rides in a delivery: restore/revert the injected block before git add (the same way .harness/ and roadmap files are excluded), so downstream sync-agents-md --check and cross-family reviewers do not chase phantom AGENTS.md drift. Evidence: trading_dashboard commits 2132b41 (leak) and the follow-up regen commit; reviewer reports of runs run-1786673501096-c9939b07 and run-1786673495073-4130d146 both document the mechanism.\n",
+      "created_at": "2026-08-14",
+      "scored_at": "2026-08-14",
+      "cross_repo": []
+    },
+    {
+      "id": "386",
+      "phase": 22,
+      "bundle": "core-loop",
+      "status": "pending",
+      "title": "Lander: landing job can complete (landed_sha recorded) without the roadmap advance ever reaching origin",
+      "scores": {
+        "d": 5,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 1.3,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.6-sol",
+      "acceptance_criteria": [
+        "A landing whose rmap-advance commit or push fails does not settle the Oban job as completed: it retries or errors loudly, and never records landed_sha while origin lacks the advance",
+        "A regression test covers the delivery-pushed-but-advance-failed path",
+        "dispatch-reland on a run with a recorded landed_sha and no surviving branch performs an advance-only reland instead of discarding with checkout_failed (test)"
+      ],
+      "out_of_scope": [
+        "Changing the witness sink or notification format"
+      ],
+      "body": "Observed trading_dashboard 2026-08-14: task 64's landing job (Oban job 6898, queue landing_trading_dashboard) finished state=completed at 05:02:16Z, the ResultStore record carries landed_sha 92d18a91f0d4 (delivery 36537ec + two reviewer commits, all on origin/main), the run branch was cleaned up — but NO \"roadmap: task 64 -> done\" commit ever reached origin. The next landing on the same queue (task 56, job 6900, 25s later) pushed delivery AND advance normally. Consequence: origin diverged from the lander's own record — rmap still said in_progress for landed work, which is exactly the duplicate-land trap the workflow include warns about, except this time the STALE side was origin itself, so no amount of fetch/rebase could disprove \"didn't land\". The orchestrator had to hand-write the advance (trading_dashboard 9b6f4ab) with provenance copied from the ResultStore.\n\nTwo asks:\n1. Find and fix the path where Lander.Worker returns :ok after pushing the delivery but before (or despite) the rmap-advance commit/push failing — the advance must be part of the landing's success criterion, or the job must retry/fail loudly instead of completing.\n2. Make dispatch-reland usable for this state: job 6902 (manual_reland) discarded with {:checkout_failed, {:git_failed, ... \"invalid reference: harness/run-1786680419733-0929c71f\"}} because the branch was already deleted by the successful code landing. When the persisted record has a landed_sha and the branch is gone, reland should degrade to advance-only (re-run the rmap advance + push) instead of discarding on worktree checkout.\n\nPremise verified: Oban job rows 6898/6900/6902 and the ResultStore record were read live on 2026-08-14; trading_dashboard origin/main history 36537ec..9b6f4ab shows the gap.\n",
+      "created_at": "2026-08-14",
+      "scored_at": "2026-08-14",
+      "cross_repo": []
     }
   ]
 }

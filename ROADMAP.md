@@ -319,6 +319,7 @@
 | Task 356 `[P]` | ✅ | 🎁 **chat-orchestrator** · 🐛 Chat turn-worker crash must fail fast to the caller — monitor instead of bare receive; map ensure_session already_started [D:2/B:3/U:4 → Eff:1.75?] 🚀 |
 | Task 357 | ✅ | 🎁 **core-loop** · Decompose Harness.Run.Actions (2,575 lines) by lifecycle concern [D:3/B:4/U:4 → Eff:1.33?] 📋 |
 | Task 385 | ⬜ | 🎁 **core-loop** · Strip the harness-injected ephemeral AGENTS.md header before committing the delivery [D:3/B:6/U:6 → Eff:2.0] 🎯 |
+| Task 386 | ⬜ | 🎁 **core-loop** · Lander: landing job can complete (landed_sha recorded) without the roadmap advance ever reaching origin [D:5/B:7/U:6 → Eff:1.3] 📋 |
 <!-- TASKS:END -->
 
 ---
