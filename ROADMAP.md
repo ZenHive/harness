@@ -318,6 +318,7 @@
 | Task 355 | ⛔ | 🎁 **autolanding** · Land-conflict resolver dies on {:model_required, Claude} — candidate selection must skip model-less agents [D:2/B:5/U:6 → Eff:2.75?] 🎯 |
 | Task 356 `[P]` | ✅ | 🎁 **chat-orchestrator** · 🐛 Chat turn-worker crash must fail fast to the caller — monitor instead of bare receive; map ensure_session already_started [D:2/B:3/U:4 → Eff:1.75?] 🚀 |
 | Task 357 | ✅ | 🎁 **core-loop** · Decompose Harness.Run.Actions (2,575 lines) by lifecycle concern [D:3/B:4/U:4 → Eff:1.33?] 📋 |
+| Task 385 | ⬜ | 🎁 **core-loop** · Strip the harness-injected ephemeral AGENTS.md header before committing the delivery [D:3/B:6/U:6 → Eff:2.0] 🎯 |
 <!-- TASKS:END -->
 
 ---
@@ -334,7 +335,7 @@
 | Task 362 | ⬜ | 🎁 **audit-tests** · 🚀 **v0_16** · 🐛 Diagnose and eliminate the AgentRegistry empty-registry test flake [D:4/B:6/U:5 → Eff:1.38] 📋 |
 | Task 363 | ⬜ | 🎁 **audit-hygiene** · 🚀 **v0_16** · 📝 🔒 Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router [D:1/B:5/U:4 → Eff:4.5?] 🎯 |
 | Task 364 | ⬜ | 🎁 **audit-hygiene** · Decision: resolve the anubis_mcp LGPL-3.0 runtime-dependency licensing exposure on the public repo [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
-| Task 365 | ✅ | 🎁 **run-history** · 🐛 ResultStore.Postgres list/aggregate path fails whole query on atom decode — tolerant row decode like the File store [D:3/B:7/U:7 → Eff:2.33] 🎯 |
+| Task 365 | ✅ | 🎁 **run-history** · 🐛 ResultStore.Postgres list/aggregate path fails whole query on atom decode — tolerant row decode like the File store [D:3/B:7/U:7 → Eff:2.33?] 🎯 |
 | Task 372 | ⛔ | 🎁 **dashboard-observability** · Persist witness events as a shared, queryable human+agent timeline [D:3/B:5/U:4 → Eff:1.5] 🚀 |
 | Task 373 | ⬜ | 🎁 **run-history** · 🚀 **v0_17** · Per-adapter/model activity trail across runs and agent seats [D:5/B:6/U:6 → Eff:1.2] 📋 |
 | Task 374 | ⬜ | 🎁 **run-history** · 🚀 **v0_17** · Unified append-only lifecycle event log (harness_events) — every run action becomes a durable, queryable fact [D:8/B:7/U:4 → Eff:0.69] ⚠️ |
