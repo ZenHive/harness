@@ -5,6 +5,13 @@ defmodule Harness.Dashboard.Router do
   Mounts the LiveView at `/harness/*path` and the embedded Oban Web queue view
   at `/harness/oban`. Mountable consumers replicate the same two routes in
   their own router (see `Harness.Dashboard` for the snippet).
+
+  This router deliberately has no authentication or authorization plug; its
+  routes assume the standalone endpoint's default loopback bind. Consumers
+  mounting the routes in a non-loopback or public endpoint must protect both
+  the browser pipeline and the separate `/harness/mcp` forward with their own
+  authentication and authorization plug. Protecting only the browser pipeline
+  leaves MCP control unauthenticated.
   """
 
   use Phoenix.Router

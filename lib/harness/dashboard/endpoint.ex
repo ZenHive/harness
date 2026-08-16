@@ -9,6 +9,15 @@ defmodule Harness.Dashboard.Endpoint do
   configured under the `:harness, :dashboard` key; runtime override via
   `HARNESS_DASHBOARD_PORT`) and uses the shared `Harness.PubSub` bus so the
   per-run transcript broadcast (also Task 50) is reachable from the LiveView.
+
+  ## Authentication boundary
+
+  Harness ships no authentication or authorization for the dashboard, Oban
+  Web, or `/harness/mcp` routes. That posture is safe only with the standalone
+  endpoint's default loopback bind. A consumer mounting these routes in a
+  non-loopback or public Phoenix endpoint must put its own authentication and
+  authorization plug in front of both the browser pipeline and the separate
+  `/harness/mcp` forward.
   """
 
   use Phoenix.Endpoint, otp_app: :harness
