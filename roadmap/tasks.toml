@@ -11711,3 +11711,46 @@ model = "gpt-5.6-sol"
 body = "Add separate operator Inbox and Activity dashboard surfaces over the lifecycle contracts delivered by Tasks 374 and 373. The Inbox is an explicit queue of interventions supported by existing Harness operations; Activity is a bounded chronological view of persisted lifecycle facts. Reuse the Dispatch facade and event-query APIs rather than reimplementing action eligibility, storage, or meaning in LiveView code."
 created_at = "2026-08-15"
 scored_at = "2026-08-15"
+
+[[task]]
+id = "389"
+phase = 23
+bundle = "config-surface"
+milestone = "v0_16"
+status = "pending"
+title = "Expose roadmap_target_branch on the operator registration surfaces"
+scores = { d = 3, b = 6, u = 5 }
+acceptance_criteria = ["dispatch-register_project accepts an optional roadmap_target_branch scalar and persists it on the registered %Harness.Project{}", "The /harness/settings project create/edit form reads and writes roadmap_target_branch (blank stays nil)", "priv/repo/seeds.exs.example documents the field next to target_branch, including that it is required when roadmap_path and source are different repositories", "skills/harness-driver/SKILL.md names the field on dispatch-register_project and on the Project struct", "An invalid branch name is rejected at registration with {:invalid_roadmap_target_branch, _} — same rule ProjectRegistry already applies on the programmatic path", "Existing same-repo registrations that omit the field still derive the durable branch from target_branch"]
+out_of_scope = ["Changing durable-write resolution itself (Task 378 already shipped that)", "Task 375's broader optional-field validation sweep — this task only wires the new field onto the operator surfaces; 375 still owns the rest of the optional set", "Changing lander/code-delivery target_branch semantics"]
+touches = ["lib/harness/dispatch.ex", "lib/harness/dashboard/settings_live.ex", "priv/repo/seeds.exs.example", "skills/harness-driver/SKILL.md"]
+assignee = "grok"
+model = "grok-4.6"
+body = """
+Task 378 added `%Harness.Project{roadmap_target_branch}` so durable `mark_*`
+writes can target a roadmap repository that is not the code `source`. The
+field is load-bearing for any split-repo registration (the bourse
+public-client / private-workbench case that motivated 378): without an
+explicit branch, a split project falls back to a local rmap write and the
+roadmap never advances on origin.
+
+Evidence (read 2026-08-16, this audit of 31cfd94):
+- `Harness.Dispatch.register_project/8` has no `roadmap_target_branch` param
+  (`lib/harness/dispatch.ex`).
+- `/harness/settings` create/edit form has no mention of the field
+  (`lib/harness/dashboard/` grep is empty).
+- `priv/repo/seeds.exs.example` only documents `target_branch`.
+
+So the only way to set the field today is a keyword/struct
+`ProjectRegistry.upsert/1` from IEx. An operator following the dashboard or
+MCP registration path cannot express the split 378 was built to support.
+
+Do not fold this into Task 375. 375 is a validation sweep of the *pre-378*
+optional set and explicitly leaves dashboard forms out of scope. This task
+is the missing authoring surface for one new field.
+
+The seeds example in this audit already carries a one-line comment pointing
+at the field; keep or expand that rather than treating the comment as the
+deliverable.
+"""
+created_at = "2026-08-16"
+scored_at = "2026-08-16"

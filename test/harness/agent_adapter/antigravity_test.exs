@@ -34,18 +34,6 @@ defmodule Harness.AgentAdapter.AntigravityTest do
     end
   end
 
-  describe "known_model_ids/0" do
-    test "lists the five verified dash-form ids" do
-      assert Enum.sort(Antigravity.known_model_ids()) == [
-               "claude-opus-4-5",
-               "claude-sonnet-4-5",
-               "gemini-3.1-pro",
-               "gemini-3.5-flash",
-               "gpt-oss-120b"
-             ]
-    end
-  end
-
   describe "display_label_to_id/1" do
     test "maps an enumerated display label to its dash-form id" do
       assert Antigravity.display_label_to_id("Claude Sonnet 4.6 (Thinking)") == "claude-sonnet-4-5"

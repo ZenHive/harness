@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (4 of 20 done · 0 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (4 of 21 done · 0 in progress)
 
 **Last shipped:** Task 363 — Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router on 2026-08-16
 
@@ -349,4 +349,5 @@
 | Task 382 | ⬜ | 🎁 **audit-perf** · 🚀 **v0_16** · Remove the per-lookup Postgres landing-settings round trip from ProjectRegistry [D:3/B:5/U:4 → Eff:1.5] 🚀 |
 | Task 383 | ⬜ | 🎁 **resilience** · 🐛 Delivery commit exclusion missed .harness/agent-rules.md — harness's own scaffolding rode in a deliverable [D:3/B:6/U:5 → Eff:1.83] 🚀 |
 | Task 384 | ✅ | 🎁 **deferred** · Migrate anubis_mcp 1.x -> 2.0.0 (Application callback removal, transport/supervision rewrite) [D:5/B:3/U:2 → Eff:0.5] ⚠️ |
+| Task 389 | ⬜ | 🎁 **config-surface** · 🚀 **v0_16** · Expose roadmap_target_branch on the operator registration surfaces [D:3/B:6/U:5 → Eff:1.83] 🚀 |
 <!-- TASKS:END -->

@@ -29,6 +29,9 @@ editing it does nothing until you run it.
     roadmap_path: Path.expand("../..", __DIR__),
     landing_policy: :auto,
     target_branch: "main",
+    # When roadmap_path and source are different git repositories, also set
+    # roadmap_target_branch: "…" — durable mark_* writes use that branch in
+    # the roadmap repo. Same-repo registrations derive it from target_branch.
     # The cron poller can dispatch a wide `rmap ready --dispatchable` batch.
     # Keep this low so concurrent self-host runs do not pile up stale-base
     # rebases and reviewer quota cliffs.

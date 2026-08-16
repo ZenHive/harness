@@ -27,7 +27,7 @@ Boots the OTP application, Postgres-backed Oban, and the standalone dashboard en
 | `http://localhost:4018/harness/mcp` | **Native MCP server** — flat JSON-RPC tools (`dispatch__*`, `roadmap__*`, …); the primary surface for a JSON/MCP orchestrator |
 | `http://localhost:4018/tidewave/mcp` | Tidewave MCP endpoint (dev only) — `project_eval` escape hatch for arbitrary eval + struct-surface ops |
 
-The standalone Bandit endpoint is gated by `config :harness, :dashboard, enabled: true` AND `Bandit` being in the dep stack. Mountable consumers (their own Phoenix endpoint) leave `enabled: false` and route `live "/harness/*path", Harness.Dashboard.Live` themselves.
+The standalone Bandit endpoint is gated by `config :harness, :dashboard, enabled: true` AND `Bandit` being in the dep stack. Mountable consumers (their own Phoenix endpoint) leave `enabled: false` and route `live "/harness/*path", Harness.Dashboard.Live` themselves. Harness ships no authentication on the dashboard, Oban Web, or `/harness/mcp`; that is safe only at the standalone endpoint's default loopback bind. A consumer mounting these routes in a non-loopback or public endpoint must put its own auth in front of both the browser pipeline and the separate MCP forward.
 
 ## Use harness from another repo
 

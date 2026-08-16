@@ -34,9 +34,11 @@ defmodule Harness.AgentAdapter.Antigravity do
   ## Model override
 
   `agy` 1.0.10+ accepts `--model <id>` (see `AgentAdapter.model_args/1`). Harness
-  validates every non-nil pin against `@verified_catalog` **before** spawning —
-  `agy --model` itself is non-validating and silently falls back to the CLI default
-  on unknown ids, which would violate harness's no-silent-default contract.
+  validates every non-nil pin by declared family prefix in
+  `AgentAdapter.validate_model/2` **before** spawning — `agy --model` itself is
+  non-validating and silently falls back to the CLI default on unknown ids, which
+  would violate harness's no-silent-default contract. `@verified_catalog` is a
+  probe-label map for `agy models` output, not a spawn allowlist.
 
   ### Verified `agy --model` ids (2026-06-21, agy 1.0.10)
 
@@ -77,8 +79,6 @@ defmodule Harness.AgentAdapter.Antigravity do
     %{id: "gpt-oss-120b", label: "GPT-OSS 120B"}
   ]
 
-  @known_model_ids MapSet.new(@verified_catalog, & &1.id)
-
   @display_label_to_id Map.new(@verified_catalog, &{&1.label, &1.id})
 
   # Reasoning-suffix-stripped fallback: `agy models` attaches `(Low|Medium|High|
@@ -88,10 +88,6 @@ defmodule Harness.AgentAdapter.Antigravity do
   @base_label_to_id Map.new(@verified_catalog, fn %{label: label, id: id} ->
                       {label |> String.replace(~r/\s*\([^)]*\)\s*$/, "") |> String.trim(), id}
                     end)
-
-  @doc false
-  @spec known_model_ids() :: [String.t()]
-  def known_model_ids, do: MapSet.to_list(@known_model_ids)
 
   @doc false
   @spec catalog_entries() :: [map()]
@@ -134,10 +130,10 @@ defmodule Harness.AgentAdapter.Antigravity do
   @doc """
   Builds the `agy` headless command line for `invocation`.
 
-  Returns `{:error, {:invalid_model_for_adapter, __MODULE__, model}}` when the
-  pinned model is absent from the verified catalog, `{:error, {:unsupported_permission_mode, mode}}`
-  for a permission mode outside `capabilities/0`, and `{:error, {:unsupported_session_token, value}}`
-  when `session` is neither `nil` nor `:resume`.
+  Returns `{:error, {:unsupported_permission_mode, mode}}` for a permission mode
+  outside `capabilities/0`, and `{:error, {:unsupported_session_token, value}}`
+  when `session` is neither `nil` nor `:resume`. Family-prefix model validation
+  happens in `AgentAdapter.invoke/2`, not here.
   """
   @impl AgentAdapter
   @spec build_command(Invocation.t()) :: {:ok, AgentAdapter.command()} | {:error, term()}
