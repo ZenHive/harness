@@ -125,6 +125,11 @@ name = "Audit Hardening — findings from the 2026-07-12 project health audit"
 order = 23
 status = "pending"
 
+[phases.24]
+name = "Operator Cockpit — Tasks, Actions, Activity"
+order = 24
+status = "pending"
+
 # ----------------------------------------------------------------------------
 # Bundles
 # ----------------------------------------------------------------------------
@@ -153,6 +158,11 @@ phase = 23
 description = "Roadmap writeback correctness on the live dispatch path. Bundle roadmap-durability (phase 17) built the git-durable transition machinery; this bundle covers cases where that machinery runs but the transition never reaches the target branch — and does so silently."
 order = 5
 phase = 23
+
+[bundles.operator-cockpit]
+description = "Human operator cockpit over existing task and lifecycle facts: a fleet task board, direct action inbox, and durable activity history. rmap remains the source of durable task status; Harness remains the source of run and landing state; the dashboard composes those facts without scoring, classification, or a second workflow state model."
+order = 1
+phase = 24
 
 [bundles.config-surface]
 description = "Make Postgres the ONLY per-project config edit surface and retire the config/dev.local.exs trap. The dashboard already edits landing/cron/agent-models/reviewer/timeouts/catalog live; this bundle adds the two missing holes (concurrency_cap editor + project register/edit/unregister form via a new ProjectRegistry.upsert/1), then deletes dev.local.exs in favor of a run-to-apply priv/repo/seeds.exs (upserts Postgres) + a HARNESS_RUN_MEM_THRESHOLD_GB env var + a boot guard warning on re-introduced config :projects. Editing a config file no longer silently no-ops against the DB source of truth."
@@ -471,6 +481,13 @@ description = "Adds a versioned, append-only lifecycle event stream beside Resul
 order = 17
 status = "pending"
 target_version = "0.17.0"
+
+[milestones.v0_18]
+name = "Operator Cockpit — Tasks, Actions, Activity"
+description = "Tests the hypothesis that composing rmap task status with Harness lifecycle facts into a fleet Kanban, explicit action inbox, and bounded activity view lets an operator understand and act on the queue from the dashboard without inventing a second workflow state model or consulting separate run-detail surfaces."
+order = 18
+status = "pending"
+target_version = "0.18.0"
 
 # ----------------------------------------------------------------------------
 # Tasks
@@ -11259,7 +11276,7 @@ acceptance_criteria = ["A versioned append-only harness_events table/store recor
 out_of_scope = ["Cryptographic signing / per-agent keypairs (Buzz's Schnorr identity) — separate decision, only relevant beyond single-operator", "Replacing ResultStore run records — they stay the per-run aggregate; the event log is the fine-grained stream beside them", "Task 373's per-actor trail query surface — that task can consume this substrate but ships independently", "Nostr/relay protocol compatibility"]
 touches = ["lib/harness/", "priv/repo/migrations", "test/harness/"]
 assignee = "codex"
-model = "gpt-5.5"
+model = "gpt-5.6-sol"
 body = "Inspired by Block's Buzz event history, but without importing its signed-identity claim: harness currently scatters lifecycle facts across ResultStore projections, Notification sinks, Oban rows, artifacts, and soft process state. Add one versioned append-only harness_events history beside ResultStore. The task is a repo-wide writer audit, not a suggestive sample: define a closed taxonomy, instrument every lifecycle mutation including operator recovery controls, and pin idempotency, ordering, append-failure, and query-bound contracts. Notification becomes a delivery projection of the same persisted facts; PendingDispatch stays intentionally soft state; ResultStore stays the per-run aggregate. Facts only — meaning remains with the agents that query them. Dispatch as a solo/exclusive wave because the write-set spans the lifecycle surface."
 created_at = "2026-07-28"
 scored_at = "2026-08-07"
@@ -11649,3 +11666,40 @@ Second occurrence, same day: trading_dashboard task 101 (run run-1786691814297-f
 """
 created_at = "2026-08-14"
 scored_at = "2026-08-14"
+
+[[task]]
+id = "387"
+phase = 24
+bundle = "operator-cockpit"
+milestone = "v0_18"
+status = "pending"
+title = "Build a fleet task Kanban from rmap and Harness lifecycle facts"
+scores = { d = 5, b = 8, u = 7 }
+markers = ["parallel"]
+depends_on = [374]
+acceptance_criteria = ["The existing /harness/roadmap route presents Pending, Implementing, Reviewing, Landing, Blocked, and Done lanes across registered projects, with a project filter and a bounded recent-Done result set", "Pending, Blocked, and Done placement comes from rmap; Pending cards expose dependency readiness, while Implementing, Reviewing, and Landing placement comes from persisted or live Harness lifecycle facts", "Each card shows the available project, task id, title, assignee/model, active run stage, elapsed-time, and cost/token facts without fabricating missing values", "Eligible cards expose only existing dispatch, hold/resume, review-recovery, and landing actions; the board refreshes after success and presents the existing operation error without silently changing task state", "A failed or held run is relayed as a factual badge and action state; code does not compute urgency, health, stuckness, or priority from those facts", "No new rmap status, lifecycle store, or duplicate task projection becomes authoritative", "LiveView tests cover every lane, dependency-ready and dependency-waiting Pending cards, project filtering, bounded Done history, successful and rejected actions, empty states, and multiple projects", "Operator-facing route or dashboard documentation that enumerates the roadmap surface remains accurate"]
+out_of_scope = ["Drag-and-drop or free-form lane movement", "Creating or editing rmap tasks from the dashboard", "New lifecycle event types or persistence", "Cost, runner, files, or knowledge-management dashboards"]
+touches = ["lib/harness/dashboard/", "test/harness/dashboard/"]
+assignee = "cursor"
+model = "composer-2.5"
+body = "Turn the existing read-only RoadmapLive surface into a project-spanning task board. rmap remains authoritative for durable task status, while Harness run, result, and lifecycle-event facts provide execution and landing context. Present the workflow as factual lanes with direct actions that reuse existing dispatch and recovery contracts; do not add drag-and-drop or a second task-state model."
+created_at = "2026-08-15"
+scored_at = "2026-08-15"
+
+[[task]]
+id = "388"
+phase = 24
+bundle = "operator-cockpit"
+milestone = "v0_18"
+status = "pending"
+title = "Add an operator Action Inbox and durable Activity view"
+scores = { d = 7, b = 8, u = 7 }
+depends_on = [373]
+acceptance_criteria = ["Separate /harness/inbox and /harness/activity routes appear in dashboard navigation; Inbox displays the current count of unresolved supported actions", "Inbox includes parked manual dispatch approvals, held runs, failed committed runs eligible for resume or rereview, and approved runs eligible for land or reland, using existing eligibility facts and guards", "Approve, Resume, Resume Failed, Rereview, Land, and Reland invoke the existing Harness operation contracts directly; success updates or removes the row without a full reload, and errors remain visible without being treated as success", "Activity presents deterministic, paginated lifecycle history with bounded filters for project, run, event type, adapter/model, time range, and payload text using the Task 374 and Task 373 query surfaces", "Activity clearly labels any historical compatibility rows supplied by ResultStore and shows an empty result as an empty list rather than an error", "When repository persistence is disabled, the views identify the event history as ephemeral without claiming durability", "The UI relays facts and available operations only; it does not compute severity, urgency, stuckness, health, ranking, or routing judgments", "LiveView and supporting context tests cover every direct action and guard failure, live count updates, filters, pagination, deterministic ordering, ephemeral mode, empty states, and operation errors", "Operator-facing documentation that enumerates dashboard routes and controls remains accurate"]
+out_of_scope = ["Creating, editing, reprioritizing, or dragging rmap tasks", "A new event store, event taxonomy, or notification channel", "Acknowledgement state for informational warnings", "Automated action prioritization, severity scoring, or lifecycle diagnosis", "Cost, runner, files, or knowledge-management dashboards"]
+touches = ["lib/harness/dashboard/", "test/harness/dashboard/"]
+assignee = "codex"
+model = "gpt-5.6-sol"
+body = "Add separate operator Inbox and Activity dashboard surfaces over the lifecycle contracts delivered by Tasks 374 and 373. The Inbox is an explicit queue of interventions supported by existing Harness operations; Activity is a bounded chronological view of persisted lifecycle facts. Reuse the Dispatch facade and event-query APIs rather than reimplementing action eligibility, storage, or meaning in LiveView code."
+created_at = "2026-08-15"
+scored_at = "2026-08-15"
