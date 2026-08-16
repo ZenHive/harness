@@ -16469,7 +16469,7 @@
       "phase": 23,
       "bundle": "audit-hygiene",
       "milestone": "v0_16",
-      "status": "in_progress",
+      "status": "done",
       "title": "Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router",
       "scores": {
         "d": 1,
@@ -16507,10 +16507,17 @@
       "domains": [
         "phoenix"
       ],
+      "shipped_in": "5579a1aea4e3dba89bd1d32434a234c7f4d9fa16",
       "body": "Surfaced by the 2026-07-12 project health audit (security-audit.md #1). NOTE THE STANDING\nDECISION FIRST: dashboard/Oban Web/MCP authentication is deliberately OUT OF SCOPE for\nharness (documented dev-mode, single-user, loopback posture — Tasks 79/83 out_of_scope,\nconfig hardcodes ip: {127,0,0,1}). Do NOT add an auth plug or re-litigate that call.\n\nThe real residual gap is a DOCS one: the Endpoint moduledoc documents mountable consumers\nreplicating the /harness/* routes into their OWN Phoenix endpoint — and at that point the\nzero-auth posture (no auth plug on the :browser pipeline; the /harness/mcp forward sits\noutside :browser entirely with no auth of any kind) is silently inherited by the consuming\napp unless it adds its own protection. A consumer mounting this router into a public-facing\nendpoint would expose full unauthenticated dispatch/kill/settings/MCP control.\n\nAdd a prominent, explicit warning at the mount/consumer boundary: in the Endpoint (or Router)\nmoduledoc AND in skills/harness-driver/SKILL.md's mountable-consumer setup section, state\nthat harness ships NO auth on these routes (safe only at its default loopback bind) and that\nany consumer mounting them into a non-loopback / public endpoint MUST put its own\nauthentication/authorization plug in front of both the browser pipeline and the /harness/mcp\nforward. Pure documentation — no code behaviour change.\n",
       "created_at": "2026-07-12",
       "started_at": "2026-08-16",
+      "done_at": "2026-08-16",
       "scored_at": "2026-07-12",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1786839506031-19c6ff1f, 5579a1aea4e3dba89bd1d32434a234c7f4d9fa16).",
+      "delivered_by": "codex",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1786839506031-19c6ff1f",
       "cross_repo": []
     },
     {

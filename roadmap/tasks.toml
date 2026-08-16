@@ -10881,7 +10881,7 @@ id = "363"
 phase = 23
 bundle = "audit-hygiene"
 milestone = "v0_16"
-status = "in_progress"
+status = "done"
 title = "Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router"
 scores = { d = 1, b = 5, u = 4 }
 markers = ["docs", "security"]
@@ -10910,9 +10910,16 @@ any consumer mounting them into a non-loopback / public endpoint MUST put its ow
 authentication/authorization plug in front of both the browser pipeline and the /harness/mcp
 forward. Pure documentation — no code behaviour change.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1786839506031-19c6ff1f, 5579a1aea4e3dba89bd1d32434a234c7f4d9fa16)."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1786839506031-19c6ff1f"
 created_at = "2026-07-12"
 started_at = "2026-08-16"
 scored_at = "2026-07-12"
+done_at = "2026-08-16"
+shipped_in = "5579a1aea4e3dba89bd1d32434a234c7f4d9fa16"
 
 [[task]]
 id = "364"
