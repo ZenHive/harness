@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (3 of 20 done · 0 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (3 of 20 done · 1 in progress)
 
 **Last shipped:** Task 384 — Migrate anubis_mcp 1.x -> 2.0.0 (Application callback removal, transport/supervision rewrite) on 2026-08-13
 
-**Up next:** Task 363 — Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router [D:1/B:5/U:4 → Eff:4.5] 🎯
+**Up next:** Task 361 — Expand direct coverage of merge-critical Harness.Git.TargetSync and Harness.Store.EtsScope behavior [D:3/B:7/U:5 → Eff:2.0] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -334,7 +334,7 @@
 | Task 360 | ⬜ | 🎁 **audit-architecture** · 🚀 **v0_16** · Establish one-way core → consumer layering and break the 71-module strongly-connected cycle [D:7/B:6/U:5 → Eff:0.79?] ⚠️ |
 | Task 361 | ⬜ | 🎁 **audit-tests** · 🚀 **v0_16** · Expand direct coverage of merge-critical Harness.Git.TargetSync and Harness.Store.EtsScope behavior [D:3/B:7/U:5 → Eff:2.0] 🎯 |
 | Task 362 | ⬜ | 🎁 **audit-tests** · 🚀 **v0_16** · 🐛 Diagnose and eliminate the AgentRegistry empty-registry test flake [D:4/B:6/U:5 → Eff:1.38] 📋 |
-| Task 363 | ⬜ | 🎁 **audit-hygiene** · 🚀 **v0_16** · 📝 🔒 Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router [D:1/B:5/U:4 → Eff:4.5?] 🎯 |
+| Task 363 | 🔄 | 🎁 **audit-hygiene** · 🚀 **v0_16** · 📝 🔒 Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router [D:1/B:5/U:4 → Eff:4.5?] 🎯 |
 | Task 364 | ⬜ | 🎁 **audit-hygiene** · Decision: resolve the anubis_mcp LGPL-3.0 runtime-dependency licensing exposure on the public repo [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
 | Task 365 | ✅ | 🎁 **run-history** · 🐛 ResultStore.Postgres list/aggregate path fails whole query on atom decode — tolerant row decode like the File store [D:3/B:7/U:7 → Eff:2.33?] 🎯 |
 | Task 372 | ⛔ | 🎁 **dashboard-observability** · Persist witness events as a shared, queryable human+agent timeline [D:3/B:5/U:4 → Eff:1.5] 🚀 |
