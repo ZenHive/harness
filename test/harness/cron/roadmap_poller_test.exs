@@ -62,6 +62,11 @@ defmodule Harness.Cron.RoadmapPollerTest do
     assert RoadmapPoller.enabled?()
     assert {:cron, 1} in HarnessOban.oban_opts()[:queues]
 
+    assert {Cron, cron_opts} =
+             Enum.find(HarnessOban.oban_opts()[:plugins], &cron_plugin?/1)
+
+    assert cron_opts[:timezone] == HarnessOban.cron_timezone()
+
     crontab = cron_crontab()
 
     assert {"0 * * * *", RoadmapPoller, [queue: :cron, max_attempts: 1]} in crontab
@@ -684,11 +689,15 @@ defmodule Harness.Cron.RoadmapPollerTest do
   defp cron_plugin?({Cron, _opts}), do: true
   defp cron_plugin?(_plugin), do: false
 
+  # Reads the crontab out of whatever options the Cron plugin carries. Matching
+  # the option list exactly (`{Cron, crontab: entries}`) silently degraded to []
+  # the moment `Harness.Oban` added `:timezone`, turning a real assertion into a
+  # vacuous one against an empty list.
   defp cron_crontab do
     HarnessOban.oban_opts()
     |> Keyword.get(:plugins, [])
     |> Enum.find_value([], fn
-      {Cron, crontab: entries} -> entries
+      {Cron, opts} when is_list(opts) -> Keyword.get(opts, :crontab, [])
       _ -> false
     end)
   end

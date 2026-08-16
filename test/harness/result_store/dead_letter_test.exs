@@ -103,9 +103,9 @@ defmodule Harness.ResultStore.DeadLetterTest do
 
       refute_receive :waiter_entered, @lock_probe_timeout_ms
       send(holder.pid, :release_lock)
-      assert_receive :waiter_entered
       assert :ok = Task.await(holder)
       assert :waiter_entered = Task.await(waiter)
+      assert_receive :waiter_entered
     end
   end
 end

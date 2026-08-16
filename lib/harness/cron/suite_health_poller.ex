@@ -46,10 +46,18 @@ defmodule Harness.Cron.SuiteHealthPoller do
   @doc false
   @spec cron_plugin() :: {module(), keyword()}
   def cron_plugin do
-    {Cron, crontab: [cron_entry()]}
+    {Cron, crontab: [cron_entry()], timezone: Harness.Oban.cron_timezone()}
   end
 
-  @doc "Returns the fixed daily cron expression for suite-health checks."
+  @doc """
+  Returns the fixed daily cron expression for suite-health checks.
+
+  Evaluated in `Harness.Oban.cron_timezone/0`, so midnight here is the
+  operator's midnight. Under Oban's `"Etc/UTC"` default this same expression
+  lands mid-morning for anyone east of Greenwich — the sweep runs a full test
+  suite per project, so firing it inside the working day is the difference
+  between an overnight job and a laptop that throttles while you use it.
+  """
   @spec schedule() :: String.t()
   def schedule, do: @daily_schedule
 end

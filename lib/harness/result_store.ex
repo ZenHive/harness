@@ -565,8 +565,9 @@ defmodule Harness.ResultStore do
   @spec fetch_target(String.t(), String.t()) :: :ok | {:error, Git.error()}
   defp fetch_target(repo, target) do
     ref = remote_ref(target)
+    branch_ref = "refs/heads/" <> target
 
-    case Git.run(["fetch", "origin", "+#{target}:#{ref}"], repo) do
+    case Git.run(["fetch", "origin", "+#{branch_ref}:#{ref}"], repo) do
       {:ok, _output} -> :ok
       {:error, _reason} = error -> error
     end

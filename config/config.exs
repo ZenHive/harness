@@ -3,6 +3,12 @@ import Config
 alias Harness.Dashboard.Endpoint
 alias Harness.Dashboard.ErrorHTML
 
+# Elixir ships `Calendar.UTCOnlyTimeZoneDatabase` by default, under which any
+# zone name raises. Oban's Cron plugin needs a real database to honour the
+# `:timezone` below — without it `Harness.Cron.SuiteHealthPoller`'s
+# "0 0 * * *" fires at UTC midnight, which is 08:00 in UTC+8.
+config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
+
 config :harness, Endpoint,
   adapter: Bandit.PhoenixAdapter,
   url: [host: "localhost"],
@@ -48,6 +54,12 @@ config :harness, :cron_polling,
     claude: %{"ANTHROPIC_API_KEY" => false},
     codex: %{"OPENAI_API_KEY" => false}
   }
+
+# The zone every human-facing daily schedule is expressed in — the cron plugin
+# (`Harness.Oban`) reads it, so "Daily (midnight)" in the dashboard preset
+# picker means local midnight rather than UTC midnight. Override per host when
+# the operator is not in this zone.
+config :harness, :cron_timezone, "Asia/Kuala_Lumpur"
 
 # Phoenix LiveView dashboard (Task 50) — Harness.Dashboard.Endpoint + Live.
 # `enabled` toggles the supervised standalone Endpoint; mountable consumers
@@ -140,6 +152,13 @@ config :harness, :worktree,
 config :harness, ecto_repos: [Harness.Repo]
 
 config :phoenix, :json_library, Jason
+
+# Autoupdate would have tzdata's background process fetch new IANA releases
+# over HTTP for the lifetime of the node. Harness is a local dev daemon, not a
+# long-lived server that must track leap-second releases unattended; the
+# release vendored with the dep is enough, and `mix deps.update tzdata` is the
+# refresh path.
+config :tzdata, :autoupdate, :disabled
 
 if config_env() == :dev do
   import_config "dev.exs"

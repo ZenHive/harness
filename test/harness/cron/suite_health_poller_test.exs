@@ -26,14 +26,17 @@ defmodule Harness.Cron.SuiteHealthPollerTest do
   end
 
   test "cron plugin registers with a daily schedule" do
-    crontab =
+    plugin_opts =
       HarnessOban.oban_opts()
       |> Keyword.fetch!(:plugins)
       |> Enum.find_value([], fn
-        {Cron, opts} -> Keyword.get(opts, :crontab, [])
+        {Cron, opts} -> opts
         _other -> nil
       end)
 
+    assert plugin_opts[:timezone] == HarnessOban.cron_timezone()
+
+    crontab = Keyword.get(plugin_opts, :crontab, [])
     entry = SuiteHealthPoller.cron_entry()
     assert entry in crontab
     assert {"0 0 * * *", SuiteHealthPoller, [queue: :suite_health, max_attempts: 1]} = entry

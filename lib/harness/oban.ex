@@ -405,13 +405,25 @@ defmodule Harness.Oban do
 
   @spec enable_cron_plugin(keyword()) :: keyword()
   defp enable_cron_plugin(opts) do
-    plugin = {Oban.Plugins.Cron, crontab: cron_crontab()}
+    plugin = {Oban.Plugins.Cron, crontab: cron_crontab(), timezone: cron_timezone()}
 
     Keyword.update(opts, :plugins, [plugin], fn
       plugins when is_list(plugins) -> plugins ++ [plugin]
       _other -> [plugin]
     end)
   end
+
+  @doc """
+  The IANA zone every cron schedule is evaluated in.
+
+  Oban's Cron plugin defaults to `"Etc/UTC"`, which makes a daily `"0 0 * * *"`
+  entry fire at UTC midnight regardless of where the operator is — 08:00 local
+  in UTC+8, i.e. squarely inside the working day for a sweep meant to run
+  overnight. Reading the zone from config keeps the schedule strings honest:
+  midnight means the operator's midnight.
+  """
+  @spec cron_timezone() :: String.t()
+  def cron_timezone, do: Application.get_env(:harness, :cron_timezone, "Etc/UTC")
 
   @spec cron_crontab() :: [{String.t(), module(), keyword()}]
   defp cron_crontab do

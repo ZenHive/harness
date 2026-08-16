@@ -2,9 +2,9 @@ defmodule Harness.Dashboard.Router do
   @moduledoc """
   Router for the standalone harness dashboard endpoint (Task 50).
 
-  Mounts the LiveView at `/harness/*path` and the embedded Oban Web queue view
-  at `/harness/oban`. Mountable consumers replicate the same two routes in
-  their own router (see `Harness.Dashboard` for the snippet).
+  Mounts the native MCP server at `/harness/mcp`, the embedded Oban Web queue
+  view at `/harness/oban`, and the LiveViews under `/harness`. Mountable
+  consumers reproduce the required routes in their own router.
 
   This router deliberately has no authentication or authorization plug; its
   routes assume the standalone endpoint's default loopback bind. Consumers

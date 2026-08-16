@@ -121,6 +121,10 @@ defmodule Harness.MixProject do
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
       {:oban, "~> 2.22"},
+      # Time-zone database for Oban's Cron plugin. Without it Elixir ships only
+      # `Calendar.UTCOnlyTimeZoneDatabase`, so a `timezone:` cron entry raises
+      # and every daily schedule silently means UTC midnight.
+      {:tzdata, "~> 1.1"},
       {:req, "~> 0.5"},
       {:anubis_mcp, "~> 2.0"},
 
