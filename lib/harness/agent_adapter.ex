@@ -82,7 +82,11 @@ defmodule Harness.AgentAdapter do
   @system_prompt_file_flags ["--append-system-prompt-file", "--system-prompt-file"]
   @model_family_prefixes %{
     anthropic: ["anthropic/claude-", "claude-", "opus", "sonnet", "haiku"],
-    cursor: ["composer-"],
+    # Cursor brands the models it hosts itself under a `cursor-` prefix
+    # (`cursor-grok-4.6-high`), so the family covers more than Composer. Keeping
+    # them here rather than in `:xai` is deliberate: the id only exists on the
+    # Cursor CLI, so it must not validate for the standalone grok adapter.
+    cursor: ["composer-", "cursor-"],
     google: ["gemini-"],
     kimi: ["kimi-"],
     openai: ["chatgpt-", "codex-", "gpt-", "gpt-oss-", "o1", "o3", "o4", "o5"],

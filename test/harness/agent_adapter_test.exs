@@ -208,6 +208,16 @@ defmodule Harness.AgentAdapterTest do
       assert AgentAdapter.model_supported?(Antigravity, "gpt-oss-120b")
     end
 
+    test "accepts cursor's own branded grok ids, which carry a cursor- prefix" do
+      assert AgentAdapter.model_supported?(Cursor, "cursor-grok-4.6-high")
+      assert AgentAdapter.model_supported?(Cursor, "composer-2.5")
+    end
+
+    test "rejects a cursor-branded grok id on the standalone grok adapter" do
+      refute AgentAdapter.model_supported?(Grok, "cursor-grok-4.6-high")
+      assert AgentAdapter.model_supported?(Grok, "grok-4.6")
+    end
+
     test "rejects an incompatible cursor-only opus pin on the codex adapter" do
       refute AgentAdapter.model_supported?(Codex, "claude-opus-4-8-thinking-high")
     end
