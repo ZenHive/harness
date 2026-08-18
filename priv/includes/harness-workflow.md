@@ -68,7 +68,7 @@ Hand-build when harness cannot perform or judge the work:
 
 **Three dispatch paths** (prefer top to bottom):
 
-1. **Native MCP — default.** `dispatch-task` (fire-and-forget) or `dispatch-await` (blocks until settle) against `http://localhost:4018/harness/mcp`. Observe via `dispatch-status`, `dispatch-transcript`, `dispatch-verdict_detail`. `scrub_anthropic_key: true` (default) forces subscription OAuth over inherited `ANTHROPIC_API_KEY`.
+1. **Native MCP — default.** `dispatch-task` (fire-and-forget) against `http://localhost:4018/harness/mcp`; wait for the wave by watching `origin/<target>` for the lander's commits, never by blocking on `dispatch-await` / `dispatch-await_runs` (§ "Never block on `dispatch-await*`"). Observe via `dispatch-status`, `dispatch-transcript`, `dispatch-verdict_detail`. `scrub_anthropic_key: true` (default) forces subscription OAuth over inherited `ANTHROPIC_API_KEY`.
 2. **Tidewave `project_eval` — escape hatch.** Struct-level control the flat tools don't expose (`retry_policy`, fail-over adapter lists, `subscriber: self()`). Run persists to `Harness.ResultStore` even when the eval process exits.
 3. **`mix run` driver script — fallback.** Full transcript + reviewer report to terminal. See harness repo `docs/dogfooding-workflow.md` for the canonical template.
 
@@ -158,7 +158,52 @@ Projects with `landing_policy: :auto` and `target_branch`:
 
 Conflict / push-rejected retains the branch for repair — never lands red. Witness notification (read-only sink) alerts the operator; it is **not** a merge gate.
 
-**🚨 Settle ≠ landed — don't conflate the two signals.** `dispatch-await` / `dispatch-await_runs` block until **reviewer settle** (`state: :done, verdict: approve`, or `:failed`), which fires the *moment the reviewer approves* — **before** the serialized `landing_<name>` job rebases and ff-pushes. So an `approve` from `await_runs` means "approved and *queued* to land," **not** "on `origin/<target>`." There is **no blocking await-landed tool**; landing is async and surfaces via the witness sink (`Harness.Notification.FileSink` tailing `~/.harness/settled.jsonl`, or `CommandSink`). To gate a next wave on the base actually moving forward, await settle **then** confirm the land against origin once (`git fetch origin <target> && git log --oneline origin/<target>` for the `task <id> -> done (shipped …)` commit) or consume the witness event — never treat approval as landed. This is the same root cause as the duplicate-land trap above, seen from the dispatch side: a poll loop watching `origin` for the landing commit is a workaround for a *fixed* `await_runs`, not a substitute for it — await settles, origin confirms the land.
+**🚨 Never block on `dispatch-await*` — monitor `origin` for the landing commit instead.**
+This is the standing rule for waiting on a wave, not a fallback. `dispatch-await` /
+`dispatch-await_runs` hold an MCP request open for the entire run, and an MCP client
+kills a tool call that emits no progress for its idle timeout (Claude Code's default is
+300s — far shorter than any real run). The call dies, the orchestrator learns nothing,
+and the runs keep going regardless. Worse, awaiting the wrong signal: **await returns at
+reviewer settle, which fires BEFORE the serialized `landing_<name>` job rebases and
+ff-pushes** — so even a successful `approve` means "approved and *queued* to land," never
+"on `origin/<target>`."
+
+**The primitive that actually works — watch the target branch for the lander's own
+commits.** The lander pushes `task <id> -> done (shipped <sha>)` to `origin/<target>`;
+that commit IS the landed signal, it is durable, and it survives a dead MCP call, a
+restarted session, and a node bounce. Arm one background watcher per wave and keep
+working:
+
+```bash
+# one notification per landed task, exits when the whole wave is in
+cd <source-checkout>
+WAVE="615 623 569 619"; seen=""
+while true; do
+  git fetch -q origin <target> || true
+  for t in $WAVE; do
+    case " $seen " in *" $t "*) continue;; esac
+    if git log --oneline origin/<target> | grep -q "task $t -> done"; then
+      echo "LANDED task $t"; seen="$seen $t"
+    fi
+  done
+  [ "$(echo $seen | wc -w)" -eq "$(echo $WAVE | wc -w)" ] && { echo "WAVE COMPLETE"; break; }
+  sleep 60
+done
+```
+
+Poll `dispatch-status <run-id>` only to diagnose a run that the watcher shows as *not*
+landing — a `:failed` verdict, a rebase conflict that retained the branch, a hung
+implementer. Status is for diagnosis; git is for waiting.
+
+**Silence is not success** — a run that fails review or blocks on a land conflict never
+produces a landing commit, so a watcher greping only for `-> done` stays quiet forever.
+Bound every wave watch with a deadline, and when it expires without `WAVE COMPLETE`,
+reconcile the missing tasks through `dispatch-status` / `result_store-list_run_records`
+before assuming anything.
+
+Same root cause as the duplicate-land trap above, seen from the dispatch side: **origin is
+the source of truth for what landed** — not an await return value, not a local
+`tasks.toml`, not a transcript.
 
 **Cron manual-approval mode.** A per-project cron poller in `:auto` mode dispatches unattended; in `:manual` mode it **parks** each dispatch decision instead of enqueuing — drain the parked decisions with `dispatch-pending` and approve them with `dispatch-approve`, keeping the orchestrator in the loop for autonomous polling.
 
@@ -167,12 +212,12 @@ Conflict / push-rejected retains the branch for repair — never lands red. Witn
 The sections above document the *mechanisms*; this is the **continuous loop** the driving AI runs across waves:
 
 ```
-plan wave → dispatch → await settle → confirm land on origin → run integration suite on the landed base
+plan wave → dispatch → watch origin for the landing commits → run integration suite on the landed base
           ↑                                                     + review whole surface vs roadmap intent & domain invariants
           └── reconcile rmap ← encode any whole-surface finding as a criterion/test ←┘
 ```
 
-Each arrow reuses an existing mechanism — don't restate them here: *await settle* (§ "Settle ≠ landed"), *confirm land on origin* (§ "Recover, Don't Redo" → the duplicate-land trap), *reconcile rmap* (the lander already advanced `done --shipped-in` under auto-land — verify, don't double-write), *next wave* (§ "Parallel Dispatch" + write-set serialization).
+Each arrow reuses an existing mechanism — don't restate them here: *watch origin for the landing commits* (§ "Never block on `dispatch-await*`", and § "Recover, Don't Redo" → the duplicate-land trap), *reconcile rmap* (the lander already advanced `done --shipped-in` under auto-land — verify, don't double-write), *next wave* (§ "Parallel Dispatch" + write-set serialization).
 
 **🚨 Three review seats, each blind where the next sees — the orchestrator seat is mandatory, not optional.** The per-task reviewer gates *one diff against one task* and is **structurally blind** to two defect classes that land clean through it (worked evidence: delta_calc tasks 24/25/26, see its `## Review Blind Spots` / `## Domain Invariants`):
 
