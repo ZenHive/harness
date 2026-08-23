@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (4 of 23 done · 0 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (4 of 22 done · 0 in progress)
 
 **Last shipped:** Task 363 — Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router on 2026-08-16
 
@@ -318,8 +318,10 @@
 | Task 355 | ⛔ | 🎁 **autolanding** · Land-conflict resolver dies on {:model_required, Claude} — candidate selection must skip model-less agents [D:2/B:5/U:6 → Eff:2.75?] 🎯 |
 | Task 356 `[P]` | ✅ | 🎁 **chat-orchestrator** · 🐛 Chat turn-worker crash must fail fast to the caller — monitor instead of bare receive; map ensure_session already_started [D:2/B:3/U:4 → Eff:1.75?] 🚀 |
 | Task 357 | ✅ | 🎁 **core-loop** · Decompose Harness.Run.Actions (2,575 lines) by lifecycle concern [D:3/B:4/U:4 → Eff:1.33?] 📋 |
-| Task 385 | ⬜ | 🎁 **core-loop** · Strip the harness-injected ephemeral AGENTS.md header before committing the delivery [D:3/B:6/U:6 → Eff:2.0] 🎯 |
+| Task 385 | ⬜ | 🎁 **core-loop** · 🐛 Strip the harness-injected ephemeral AGENTS.md header before committing the delivery [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 | Task 386 | ⬜ | 🎁 **core-loop** · Lander: landing job can complete (landed_sha recorded) without the roadmap advance ever reaching origin [D:5/B:7/U:6 → Eff:1.3] 📋 |
+| Task 392 | ⬜ | 🎁 **core-loop** · 🐛 Terminate the agent process tree, not just the direct PID — orphaned children outlive the kill and share the worktree [D:5/B:9/U:8 → Eff:1.7] 🚀 |
+| Task 393 | ⬜ | 🎁 **core-loop** · 🐛 Fence .harness/review.json to the reviewer that wrote it — a killed reviewer's stale approve can settle the run :done [D:3/B:9/U:8 → Eff:2.83] 🎯 |
 <!-- TASKS:END -->
 
 ---
@@ -350,6 +352,5 @@
 | Task 383 | ⬜ | 🎁 **resilience** · 🐛 Delivery commit exclusion missed .harness/agent-rules.md — harness's own scaffolding rode in a deliverable [D:3/B:6/U:5 → Eff:1.83] 🚀 |
 | Task 384 | ✅ | 🎁 **deferred** · Migrate anubis_mcp 1.x -> 2.0.0 (Application callback removal, transport/supervision rewrite) [D:5/B:3/U:2 → Eff:0.5] ⚠️ |
 | Task 389 | ⬜ | 🎁 **config-surface** · 🚀 **v0_16** · Expose roadmap_target_branch on the operator registration surfaces [D:3/B:6/U:5 → Eff:1.83] 🚀 |
-| Task 390 | ⬜ | 🎁 **roadmap-writeback** · 🐛 Regression: harness-injected agent rule block lands in the delivery commit again (Task 36 criterion violated) [D:3/B:7/U:5 → Eff:2.0] 🎯 |
 | Task 391 | ⬜ | 🎁 **surface** · Four `roadmap-mark_*` MCP tools expose zero parameters — declare their params, then guard the class [D:3/B:6/U:6 → Eff:2.0] 🎯 |
 <!-- TASKS:END -->

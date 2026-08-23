@@ -92,6 +92,11 @@
       "order": 24,
       "status": "pending"
     },
+    "25": {
+      "name": "Check & Doc Infrastructure — machine-readable gates, bounded standing docs",
+      "order": 25,
+      "status": "pending"
+    },
     "3": {
       "name": "Batch & Resilience",
       "order": 3,
@@ -248,6 +253,16 @@
       "phase": 19,
       "order": 2,
       "description": "Tiny tasks cost a full implement->review->audit ceremony each, so a pile of fragments is token-expensive. Two outputs: MEASURE the per-task ceremony/fragmentation tax from the per-run token facts already captured (raw aggregation, no verdict), and replace roadmap_poller.ex's code-driven next-task/grouping selection with a full-context orchestrator AI gated by a mechanical upside-count (counting decides WHETHER to wake the smart layer; the AI decides the grouping). Mantra-clean: count facts in code, write the batching meaning with an AI."
+    },
+    "doc-governance": {
+      "phase": 25,
+      "order": 2,
+      "description": "The eager floor pays for every word on every cross-family reviewer run (rendered AGENTS.md: 14,038 words on 2026-08-23). Separate the three tiers CLAUDE.md currently carries inline — standing orders, settled-decision rationale, incident postmortems — into a decision-record tier with mandatory alternatives and a postmortem tier, and enforce the discipline with a portable format + word-ceiling check instead of periodic hand-trimming."
+    },
+    "gate-runner": {
+      "phase": 25,
+      "order": 1,
+      "description": "Turn the check aggregates from serial alias lists into a declared gate graph: dependencies, bounded parallelism for independent gates, one captured log per gate, and a machine-readable status summary the reviewer can record as structured `checks` facts instead of prose about a hand-rolled mktemp path. Counting only — status, duration, exit code; the reviewer AI stays the gate."
     },
     "judgment-collapse": {
       "phase": 18,
@@ -16623,6 +16638,7 @@
         "Permission/resume combinations are derived from the live CLI contract for the installed version; unsupported combinations and session tokens error rather than silently falling back",
         ":kimi joins every roster surface: Harness.Roadmap @valid_agents, AgentRegistry @delegatable_agents + name map + agent type, Config @implementer_agents, AgentAdapter.Registry lookup map, and the dashboard agent-settings roster",
         "model_availability probes Kimi's actual non-interactive model-catalog surface after checking the installed version's provider/catalog help; it does not assume `provider list` lists models when that command only lists providers, and fails loudly if no machine-readable catalog is available",
+        "Roster symmetry is asserted as a whole-surface invariant, not per-instance: a test proves every Harness.Roadmap @valid_agents member resolves to a registered adapter module and every registered adapter appears in the roster surfaces, with :droid pinned as the one documented render-only exception",
         "Transcript parser maps :kimi from real captured stream-json/NDJSON output of one live `kimi -p` run; the raw-passthrough contract remains",
         "The selected rule channel is proved against Kimi's actual AGENTS.md discovery semantics, including the run worktree path",
         "CLAUDE.md § Agent Headless Entry Points gains a kimi row; skills/harness-driver/SKILL.md and priv/includes/harness-workflow.md adapter rosters updated; scripts/sync-harness-skills.sh run",
@@ -17003,7 +17019,7 @@
         "Every writer supplies a stable idempotency key so Oban retries, repeated callbacks, and recovery re-entry cannot duplicate the same lifecycle fact; tests exercise duplicate append and ordering semantics",
         "Append failure is surfaced at warn level or higher with event type/project/run id, never recursively writes another event, and does not silently claim a durable trace; existing run/landing outcome semantics remain unchanged",
         "Park/approve decisions are recorded while PendingDispatch's documented soft-state contract remains unchanged",
-        "A bounded/index-backed cross-project Elixir + MCP query filters by project, event type, adapter/model actor, time range, and payload text, with pagination/limit and deterministic ordering",
+        "A bounded/index-backed cross-project Elixir + MCP query filters by project, event type, adapter/model actor, time range, and payload text, with pagination/limit and deterministic ordering. Payload text explicitly covers reviewer report and concerns prose on verdict events, so \"which run raised this concern?\" is one bounded query instead of per-run verdict_detail calls",
         "Notification witness sinks consume or write through the same persisted event path; any deliberately separate delivery seam is documented as a projection of the stream, not a competing source of lifecycle truth",
         "ResultStore remains the per-run aggregate/projection and harness_events the fine-grained lifecycle history; no migration pretends to reconstruct actor/seat facts that were never persisted",
         "Facts only: no scoring, classification, or judgment arithmetic; repo_enabled: false degrades to the documented in-memory ephemeral store; tests cover every taxonomy member, multi-writer append, idempotency, append failure, park/approve trace, and bounded cross-project text query"
@@ -17475,20 +17491,25 @@
       "title": "Strip the harness-injected ephemeral AGENTS.md header before committing the delivery",
       "scores": {
         "d": 3,
-        "b": 6,
+        "b": 7,
         "u": 6
       },
-      "eff": 2.0,
+      "eff": 2.17,
       "dep_layer": 0,
       "unlocks": 0,
-      "markers": [],
+      "markers": [
+        "bug"
+      ],
       "depends_on": [],
       "assignee": "codex",
       "model": "gpt-5.6-sol",
       "acceptance_criteria": [
         "A run whose worktree carries the injected '<!-- harness-injected: canonical agent rules — ephemeral, do not commit -->' AGENTS.md block never includes that block in the delivery commit: the injected content is reverted/excluded at the commit step regardless of whether the implementer or reviewer touched AGENTS.md otherwise",
         "A test pins the invariant: given a worktree where AGENTS.md differs from the base only by the injected header, the delivery commit leaves AGENTS.md byte-identical to the base; given a worktree where AGENTS.md has both the header and a legitimate regen, the commit carries the regen but not the header",
-        "Existing exclusion list behavior (.harness/, roadmap files, CHANGELOG) is unchanged"
+        "Existing exclusion list behavior (.harness/, roadmap files, CHANGELOG) is unchanged",
+        "A target repo that tracks its own AGENTS.md has that file byte-identical before and after a run whose agent did not intentionally edit it",
+        "Coverage is per-adapter, not per-instance: a regression test reproduces the leak against the adapter that produced the second occurrence (cursor) before the fix, and every adapter's injection path is covered",
+        "The reason Task 36's criterion did not hold for this path is named explicitly in the implemented field, rather than the leak simply being re-patched"
       ],
       "out_of_scope": [
         "Changing what the injected block says or when it is injected",
@@ -17498,7 +17519,7 @@
         "git",
         "run-lifecycle"
       ],
-      "body": "Harness prepends an ephemeral agent-rules block to the target project's AGENTS.md when dispatching ('harness-injected: canonical agent rules — ephemeral, do not commit'). That block leaked into a landed delivery commit: trading_dashboard run run-1786673501096-c9939b07 (task 68) landed commit 2132b41 whose AGENTS.md diff is exactly the 32-line injected header — despite the reviewer explicitly noting AGENTS.md was 'excluded from this delivery'. The parallel run for task 58 saw the same stale-AGENTS.md red in mix check.dispatch; the orchestrator had to strip the header manually on the landed base (trading_dashboard commit 'AGENTS.md regen: strip harness-injected ephemeral header leaked by task 68 delivery').\n\nThe commit step must guarantee the injected content never rides in a delivery: restore/revert the injected block before git add (the same way .harness/ and roadmap files are excluded), so downstream sync-agents-md --check and cross-family reviewers do not chase phantom AGENTS.md drift. Evidence: trading_dashboard commits 2132b41 (leak) and the follow-up regen commit; reviewer reports of runs run-1786673501096-c9939b07 and run-1786673495073-4130d146 both document the mechanism.\n",
+      "body": "Harness prepends an ephemeral agent-rules block to the target project's AGENTS.md when dispatching ('harness-injected: canonical agent rules — ephemeral, do not commit'). That block leaked into a landed delivery commit: trading_dashboard run run-1786673501096-c9939b07 (task 68) landed commit 2132b41 whose AGENTS.md diff is exactly the 32-line injected header — despite the reviewer explicitly noting AGENTS.md was 'excluded from this delivery'. The parallel run for task 58 saw the same stale-AGENTS.md red in mix check.dispatch; the orchestrator had to strip the header manually on the landed base (trading_dashboard commit 'AGENTS.md regen: strip harness-injected ephemeral header leaked by task 68 delivery').\n\nThe commit step must guarantee the injected content never rides in a delivery: restore/revert the injected block before git add (the same way .harness/ and roadmap files are excluded), so downstream sync-agents-md --check and cross-family reviewers do not chase phantom AGENTS.md drift. Evidence: trading_dashboard commits 2132b41 (leak) and the follow-up regen commit; reviewer reports of runs run-1786673501096-c9939b07 and run-1786673495073-4130d146 both document the mechanism.\n\nSECOND OCCURRENCE, different repo and adapter (folded in from the duplicate Task 390, 2026-08-21): onchain_aave commit cfb58b1 — agent delivery for its task 50, run run-1787296526753-07002de8, adapter cursor — added the same 32-line block to that repo's tracked AGENTS.md and reached origin/main. It surfaced only afterwards, when the consuming repo's own mix ci failed its AGENTS.md-freshness gate; a repo without such a gate would never notice. Task 36 closed with the criterion \"Existing AGENTS.md in the target repo (if any) is not modified by the harness-injected block ending up in the run's delivery commit\" — that criterion is violated again, so the fix must explain why the earlier one did not cover this path.\n\nWorth checking during diagnosis, as a hypothesis and not a confirmed root cause: Harness.AgentAdapter documents the AGENTS.md channel as Codex's (@codex_agents_rel), while the observed leak came from a cursor run — so either the per-adapter channel mapping does not hold at runtime, or the cross-family reviewer (codex) wrote into the worktree before the delivery commit was taken. Confirm before building on it.\n",
       "created_at": "2026-08-14",
       "scored_at": "2026-08-14",
       "cross_repo": []
@@ -17674,46 +17695,6 @@
       "cross_repo": []
     },
     {
-      "id": "390",
-      "phase": 23,
-      "bundle": "roadmap-writeback",
-      "status": "pending",
-      "title": "Regression: harness-injected agent rule block lands in the delivery commit again (Task 36 criterion violated)",
-      "scores": {
-        "d": 3,
-        "b": 7,
-        "u": 5
-      },
-      "eff": 2.0,
-      "dep_layer": 0,
-      "unlocks": 0,
-      "markers": [
-        "bug"
-      ],
-      "depends_on": [],
-      "assignee": "grok",
-      "model": "grok-4.6",
-      "acceptance_criteria": [
-        "A delivery commit produced by any adapter contains no harness-injected rule content — specifically no block carrying the 'harness-injected: canonical agent rules — ephemeral, do not commit' marker",
-        "A target repo that tracks its own AGENTS.md has that file byte-identical before and after a run whose agent did not intentionally edit it",
-        "A regression test reproduces the leak against the adapter that produced it before the fix, and covers each adapter's injection path",
-        "The reason Task 36's fix did not hold for this path is named explicitly in the implemented field, rather than the leak simply being re-patched"
-      ],
-      "out_of_scope": [
-        "Changing which rules are injected or how they are rendered — this is about the file never reaching the commit, not its content",
-        "Reworking the landing train or the reviewer gate"
-      ],
-      "touches": [
-        "lib/harness/worktree.ex",
-        "lib/harness/agent_adapter.ex",
-        "lib/harness/agent_adapter/rules_injection.ex"
-      ],
-      "body": "Task 36 closed with the criterion \"Existing AGENTS.md in the target repo (if any) is not modified by the harness-injected block ending up in the run's delivery commit\". That criterion is violated again.\n\nEvidence: onchain_aave commit cfb58b1 (agent delivery for task 50, run run-1787296526753-07002de8, adapter cursor, 2026-08-21) added a 32-line block to the repo's tracked AGENTS.md, headed exactly `<!-- harness-injected: canonical agent rules — ephemeral, do not commit -->`. It reached origin/main and only surfaced afterwards, when the consuming repo's own `mix ci` failed its AGENTS.md-freshness gate (that repo regenerates AGENTS.md from CLAUDE.md, so any foreign content reads as drift). Repos without such a gate would not notice at all.\n\nWorth checking during diagnosis: `Harness.AgentAdapter` documents the AGENTS.md channel as Codex's (`@codex_agents_rel`), while the observed leak came from a cursor run — so either the per-adapter channel mapping does not hold at runtime, or the reviewer's adapter (codex, cross-family) wrote into the worktree before the delivery commit was taken. That is a hypothesis from reading the commit and the adapter module, not a confirmed root cause; confirm before building on it.\n",
-      "created_at": "2026-08-21",
-      "scored_at": "2026-08-21",
-      "cross_repo": []
-    },
-    {
       "id": "391",
       "phase": 23,
       "bundle": "surface",
@@ -17745,6 +17726,199 @@
         "test/harness/roadmap_test.exs"
       ],
       "body": "`Harness.Roadmap` declares seven MCP tools. Three (`ingest`, `ready`, `list`) use descripex's `api/3` and pass a parameter list. The four `mark_*` tools use `api/2`, which accumulates the declaration with `opts = []` — so the generated MCP schema is `{\"properties\": {}, \"required\": []}` even though each function's moduledoc documents `:project` / `:root` / `:reason` / `:rmap_bin`, and each Elixir function is `arity 2` and `Keyword.fetch!`es a required option.\n\nObserved from onchain_evm on 2026-08-22: calling `mcp__harness__roadmap-mark_blocked` fails with `Harness.Roadmap.mark_blocked/0 is undefined or private`. The tool is advertised, documented, and unusable. The other three are declared identically and so are broken the same way; only `mark_blocked` has been exercised.\n\nBlast radius is bounded — `Harness.Lander.Resilience` calls `Roadmap.mark_blocked/2` in-process, so autonomous landing is unaffected. What is broken is the orchestrator's ability to park or re-route a task over MCP, which is exactly the seat that needs it when a wave goes sideways.\n\nFix the four declarations, and then close the class rather than the four instances: the failure mode is that an `api/2` declaration on a function that takes arguments compiles cleanly, documents itself correctly, and only fails at call time from a client. A module-level test over the declaration accumulator turns that into a compile-or-test failure.\n",
+      "created_at": "2026-08-23",
+      "scored_at": "2026-08-23",
+      "cross_repo": []
+    },
+    {
+      "id": "392",
+      "phase": 22,
+      "bundle": "core-loop",
+      "status": "pending",
+      "title": "Terminate the agent process tree, not just the direct PID — orphaned children outlive the kill and share the worktree",
+      "scores": {
+        "d": 5,
+        "b": 9,
+        "u": 8
+      },
+      "eff": 1.7,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.6-sol",
+      "acceptance_criteria": [
+        "Every termination path kills the whole descendant process tree of the agent, not only the immediate OS pid: the AgentAdapter terminate/1 default, OSProcess.kill/1, reviewer timeout and rotation, dispatch-cancel, hold with interrupt, and idle/lifetime/total timeout expiry",
+        "Termination escalates rather than going straight to SIGKILL: tree SIGTERM, then a bounded grace window, then tree SIGKILL. The grace window is an operator-visible configuration fact with a documented default; agent CLIs flush their transcript tail on SIGTERM, so the ordering is load-bearing",
+        "A caller that tears down or REUSES a worktree waits for tree quiescence first: after a kill returns, no descendant of the agent pid is still alive before the worktree is torn down or a replacement reviewer is spawned into it",
+        "Harness.Run.MemoryGuard.kill_tree/1 stops being the sole owner of tree-kill: the implementation lives on the shared process-lifecycle surface and MemoryGuard consumes it, so a future termination path cannot silently regress to single-pid kill",
+        "Tests spawn an agent stand-in that forks a long-lived grandchild and assert, per termination path, that the grandchild is gone; that SIGTERM precedes SIGKILL; and that quiescence holds before worktree teardown and before a rotation reviewer is spawned",
+        "OSProcess's moduledoc no longer documents orphaning as accepted behavior with the boot-time Worktree.Sweeper as the backstop"
+      ],
+      "out_of_scope": [
+        "Adding termination fields to Outcome or Result — kind (:exited / {:timed_out, :idle|:total} / {:reflex_halted,_} / {:error,_}) and the advisory exit_status already carry these facts orthogonally",
+        "Parsing agent output to infer that a run is stuck",
+        "Changing timeout durations or the watchdog policy",
+        "Windows process-tree support",
+        "Removing the boot-time Worktree.Sweeper — it stays as a backstop for crashed nodes"
+      ],
+      "touches": [
+        "lib/harness/agent_adapter/os_process.ex",
+        "lib/harness/run/memory_guard.ex",
+        "lib/harness/run/actions/control.ex",
+        "lib/harness/run/actions/reviewing.ex",
+        "test/harness/"
+      ],
+      "domains": [
+        "run-lifecycle",
+        "otp"
+      ],
+      "body": "Harness.AgentAdapter.OSProcess.kill/1 SIGKILLs only the immediate OS pid; its own moduledoc states the consequence: \"tool subprocesses the agent itself spawned can be orphaned by that.\" An agent CLI is never a leaf — it spawns mix test, dialyzer, rg, node. Harness.Run.MemoryGuard.kill_tree/1 already implements the correct behavior (ps table -> descendants -> kill each) but is wired only to the memory watchdog via Run.Actions.Control; every other termination path leaks the tree.\n\nThe sharpest instance is reviewer rotation. In lib/harness/run/actions/reviewing.ex, a reviewer idle-timeout calls terminate_reviewer/1 — single-pid kill — and then :repeat_state spawns the NEXT reviewer into the SAME worktree. Reviewer A's orphaned `mix test` keeps running against the tree that reviewer B is now checking: concurrent writes to _build, a shared test database, and lock files, from a process harness believes it killed. That is a false-red/false-green generator in exactly the bug class the agent-gate rebuild set out to end, and it is pure substrate — no judgment involved.\n\nIdea confirmed against DeepSeek Harness (packages/subprocess: terminate() is tree-scoped on every platform, escalates SIGTERM -> grace -> SIGKILL, is idempotent, and is paired with a waitForExit that observes whole-tree liveness) and its docs/defensive-patterns.md rule \"Dispose must reach quiescence, not just request it\": a teardown that issues kills and returns before the work stops leaves orphans.\n",
+      "created_at": "2026-08-23",
+      "scored_at": "2026-08-23",
+      "cross_repo": []
+    },
+    {
+      "id": "393",
+      "phase": 22,
+      "bundle": "core-loop",
+      "status": "pending",
+      "title": "Fence .harness/review.json to the reviewer that wrote it — a killed reviewer's stale approve can settle the run :done",
+      "scores": {
+        "d": 3,
+        "b": 9,
+        "u": 8
+      },
+      "eff": 2.83,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "grok",
+      "model": "grok-4.6",
+      "acceptance_criteria": [
+        "The verdict artifact is removed before EVERY reviewer spawn — primary, re-prompt, rotation, and dispatch-rereview — so a read after a spawn can never return an earlier reviewer's file",
+        "Each reviewer invocation carries run identity and review-attempt number in its Port environment; the reviewer prompt requires echoing both into the artifact, and a mismatch is treated as {:error, :missing}, routing into the existing re-prompt/rotation ladder instead of settling the run",
+        "The implementer transcript handed to the reviewer states when it is a tail: the elided byte count and the total, so the reviewer knows it is not seeing the whole run. The 40 KB @reviewer_transcript_tail_bytes slice is currently unlabelled, and the recovery prompt's transcript_tail has the same gap",
+        "Tests pin the false-approve path: reviewer A writes verdict approve and is then killed, reviewer B is rotated in and writes nothing — the run must NOT settle :done on A's artifact. Separate tests cover attempt-identity mismatch routing to re-prompt, and the truncation marker appearing only when the transcript actually exceeded the tail size"
+      ],
+      "out_of_scope": [
+        "Changing task_outcomes gating — reviewing.ex already fails closed: a malformed block parses to %{} and Enum.all?(ids, &(Map.get(...) == \"approved\")) then rejects with an explicit reason, so there is no false-green there",
+        "Changing free-form block parsing — facets/skills/ratings/checks/concerns stay fail-open by design (open vocabulary, persisted verbatim)",
+        "Adding a schema version to the artifact — speculative while the one gating field is already fail-closed",
+        "Changing the tail size, or the dashboard's 200 KiB buffer cap (Task 381 owns that buffer; the Driver's own accumulation is unbounded and complete)",
+        "Reworking reviewer rotation or the re-prompt limit themselves"
+      ],
+      "touches": [
+        "lib/harness/run/review.ex",
+        "lib/harness/run/actions/reviewing.ex",
+        "test/harness/"
+      ],
+      "domains": [
+        "run-lifecycle"
+      ],
+      "body": "Harness.Run.Review.read/1 (lib/harness/run/review.ex:117) is a bare Artifact.read of .harness/review.json plus a JSON decode. Nothing removes the file before a reviewer spawns, and nothing binds it to the reviewer instance that wrote it. Three live paths reuse the same worktree and can therefore hand harness a verdict from a reviewer that is no longer the one being waited on: rotation on reviewer timeout, the capped re-prompt (@reviewer_reprompt_limit 1), and dispatch-rereview against a retained branch.\n\nThe concrete false-green: reviewer A writes {\"verdict\": \"approve\"}, then hangs mid-check and is idle-killed; rotation spawns reviewer B into the same worktree; B crashes or writes nothing; harness reads A's file and settles :done. The run lands on an approve from a reviewer that never finished checking. Both fixes are pure mechanics — deleting a file before a spawn, and comparing two strings — and the mismatch case routes into recovery machinery that already exists.\n\nFolded in from the same surface (reviewing.ex, reviewer-spawn path): the transcript handed to the reviewer is a deliberate 40 KB tail via transcript_tail/1, but it is presented without any marker saying so. The reviewer cannot tell a short complete transcript from the last 40 KB of a long one, and neither can the recovery AI, which is given \"minimal context\" it has no way to know is incomplete. Counting the elided bytes and stating the number is mechanics.\n\nIdea confirmed against DeepSeek Harness packages/feedback: every stored row carries the inspected session's header identity and \"a mismatch is treated as absence\", which fences a reused session id whose identity differs.\n",
+      "created_at": "2026-08-23",
+      "scored_at": "2026-08-23",
+      "cross_repo": []
+    },
+    {
+      "id": "394",
+      "phase": 25,
+      "bundle": "gate-runner",
+      "status": "pending",
+      "title": "Gate runner: declare check dependencies, run independent gates in parallel, capture one log per gate",
+      "scores": {
+        "d": 5,
+        "b": 6,
+        "u": 7
+      },
+      "eff": 1.3,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "cursor",
+      "model": "cursor-grok-4.6-high",
+      "acceptance_criteria": [
+        "A gate is declared with an id, a label, the command to run, its dependencies, and an optional allow-failure flag; the check aggregates (check.fast, check.dispatch, precommit, precommit.full/ci) are expressed as gate sets over that declaration instead of serial alias lists",
+        "Independent gates within one aggregate run concurrently under a bounded concurrency limit while declared dependencies are respected; precommit.full's ex_dna, reach.check, and dialyzer.json are independent of each other and must no longer run strictly serially",
+        "Each gate's stdout and stderr are captured to its own per-run log file; terminal output is a status table of gate, status, duration, and log path rather than interleaved streams",
+        "A machine-readable summary maps each gate to its status, duration, and log path, so a reviewer records the checks block from structured data instead of prose about a hand-rolled mktemp path",
+        "The existing alias names remain the entry points and behave the same from a caller's view; the aggregate exits non-zero when any gate that is not marked allow-failure fails",
+        "Tests cover dependency ordering, concurrent execution of independent gates, failure propagation to the aggregate exit status, and one log file per gate"
+      ],
+      "out_of_scope": [
+        "Any verdict or judgment logic — the runner counts status, duration, and exit code; the reviewer AI remains the gate and decides what a failure means",
+        "Changing which checks belong to which aggregate",
+        "Replacing mix aliases as the operator-facing entry point",
+        "CI provider configuration — there is no .github/workflows yet and this task does not add one",
+        "Retrofitting the log format onto consumer projects' own check commands"
+      ],
+      "touches": [
+        "mix.exs",
+        "lib/harness/gates.ex",
+        "lib/mix/tasks/",
+        "test/harness/"
+      ],
+      "domains": [
+        "tooling"
+      ],
+      "body": "Two separate documents — this repo's CLAUDE.md (\"Capture dispatch-gate output on the first run\") and the portfolio harness-workflow include (\"Capture dispatch-check output once, to a unique tmp log\") — instruct every agent to hand-roll LOG=$(mktemp -t ...) and report the path in the reviewer's checks entry. That is a convention standing in for a mechanism: it depends on each agent remembering, it produces prose instead of data, and it silently fails when an agent forgets and re-runs a verbose gate just to read it.\n\nSeparately, precommit.full runs harness.deps.check -> precommit -> ex_dna -> reach.check -> dialyzer.json strictly serially even though the last three are mutually independent, so the pre-PR gate is longer than it needs to be.\n\nIdea from DeepSeek Harness scripts/run-gates.ts: package scripts own the names, the runner owns the graph. Each gate carries {id, label, command, needs, allowFailure}, gates run under bounded in-process parallelism, and each gate's output is captured into its own chunk list instead of being interleaved. The transferable part is the declaration plus captured-log-per-gate plus status table; the closed Mode union and the npm-script plumbing are not.\n",
+      "created_at": "2026-08-23",
+      "scored_at": "2026-08-23",
+      "cross_repo": []
+    },
+    {
+      "id": "395",
+      "phase": 25,
+      "bundle": "doc-governance",
+      "status": "pending",
+      "title": "Move settled rationale and postmortems out of the eager floor into decision records, with a portable word-ceiling gate",
+      "scores": {
+        "d": 4,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 1.75,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "grok",
+      "model": "grok-4.6",
+      "acceptance_criteria": [
+        "A decision-record tier exists whose path encodes lifecycle (proposed / implemented / rejected) and class, and whose format requires an explicit alternatives-considered section — a decision recorded without what it beat invites the re-litigation the tier exists to prevent",
+        "Each settled decision currently narrated inline in CLAUDE.md is represented as a record: the agent-gate workflow ('THE architecture, do not re-litigate'), the build-thin-core orchestration-library choice, and the inline-vs-dispatch routing rule",
+        "Postmortems are a separate tier from decision records; the incident narratives currently inline — the 2026-06-12 duplicate-land misread and the backlog-churn observation in the harness-workflow include — move there",
+        "CLAUDE.md and priv/includes/harness-workflow.md keep a one-line standing order plus a link per moved item; the behavioral force of every moved rule is unchanged and no standing order loses its imperative",
+        "A check validates decision-record format (folder lifecycle agrees with the declared status, required sections present, relative links resolve) and enforces per-file word ceilings from a manifest. The ceiling for the reviewer-facing surface is measured on the RENDERED AGENTS.md, because that is the artifact every cross-family reviewer pays for on every run",
+        "The check runs from a clone of this repo without depending on a personal checkout path, and is wired into the pre-PR gate; the current rendered baseline (15,062 words, measured 2026-08-23 after a regen that pulled in new eager critical-rules sections) is recorded in the manifest as the starting ceiling",
+        "Ceilings are guardrails, not reduction targets: the failure message names the remedy order (relocate, condense, raise) and raising a ceiling with a stated reason is a legitimate outcome, not a gate bypass"
+      ],
+      "out_of_scope": [
+        "A mutating auto-regen hook for AGENTS.md — regeneration stays an explicit step and --check stays the gate; a hook that rewrites and re-stages a generated file during a commit is not wanted here",
+        "Bilingual or i18n doc pairing",
+        "Rewriting the substance of the moved rationale — this is relocation plus a gate, not an edit of the arguments",
+        "Trimming the eager floor beyond moving the narrative sections named above",
+        "Changing which includes are eager versus load-on-demand"
+      ],
+      "touches": [
+        "CLAUDE.md",
+        "priv/includes/harness-workflow.md",
+        "docs/",
+        "scripts/",
+        "test/harness/"
+      ],
+      "domains": [
+        "docs"
+      ],
+      "body": "CLAUDE.md currently carries three different tiers in one eager-loaded file: standing orders (imperative, must stay ambient), settled-decision rationale ('do not re-litigate' plus the argument that settled it), and incident postmortems (the duplicate-land story, the backlog-churn story). The rationale and the postmortems are the longest passages and the least load-bearing per session — but they are eager, and AGENTS.md is generated from them, so every cross-family reviewer on every run pays for them. Measured 2026-08-23: the rendered AGENTS.md is 15,062 words — and it grew ~1,000 words during the very session that measured it, purely from upstream edits to an eager include, without anyone in this repo touching CLAUDE.md. The file has already been hand-trimmed twice (2026-05-30, 2026-06-22) and grown back both times, which is the argument for a gate rather than a third trim.\n\nIdea from DeepSeek Harness: .agents/notes uses {lifecycle}/{class}/date-title.md with a mandatory '## Alternatives considered' section and a machine-checked format, kept deliberately separate from docs/postmortem (incidents, written only when a bug is subtle AND systemic AND costly to rediscover). docs/AGENTS.md adds per-file word ceilings from a manifest with the stated policy that a too-low ceiling is a budget bug, not a mandate to cut. Skipping their archive tier and their bilingual pairing machinery — dsh-scale ceremony for a problem this repo does not have.\n\nNote on the check's home: sync-agents-md.sh currently lives in a personal marketplace checkout, so the freshness gate is not runnable from a clone. This task's check must be portable; making the existing --check portable is the natural place to fix that.\n",
       "created_at": "2026-08-23",
       "scored_at": "2026-08-23",
       "cross_repo": []
