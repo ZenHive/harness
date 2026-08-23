@@ -279,6 +279,8 @@ One run = one supervised `Harness.Run` gen_statem: fork worktree off target `HEA
 
 Rejections put the task back in the queue for re-dispatch. Fix-and-approve is the near-absolute default for the reviewer.
 
+**🚨 "Cross-family" is routing doctrine, not a mechanical guarantee.** Harness excludes only the *identical* agent from the reviewer slate (`Harness.Agents.reviewers/1` → `reject_implementer/2`); there is **no family concept in harness code**, so a `cursor` implementer can draw a `grok` reviewer even though both run SpaceXAI weights. The orchestrator owns the separation when it matters. This is deliberate, not an oversight: measured 2026-08-23 over 1,627 harness reviews, controlling for reviewer identity leaves no per-pair signal — review intervention is a **per-reviewer** trait (median `reviewer_diff_size`: Codex 96, Cursor 4, Claude 1, Grok 0), and the most capable reviewer in the ledger finds median 0 in the same work a heavier reviewer rewrites. Don't add a family scheduler to make the code match the older wording.
+
 ### When to Dispatch vs Hand-Build
 
 **An rmap task is not automatically a harness run.** Dispatch only when the full
@@ -667,6 +669,8 @@ Core is textbook OTP (Port per run, `gen_statem` per run, `DynamicSupervisor` fo
 - **Reviewer AI (cross-family, mandatory, THE gate)** — gets worktree + task + acceptance criteria + implementer transcript + diff stat + the project's `check_command` hint. It reviews, **runs the checks itself**, fixes inline (own edits, own commits), then writes `.harness/review.json`: `{"verdict": "approve"|"reject", "report": "...", "checks": {...}, "concerns": [], "facets": {...}, "skills": {...}, "ratings": {...}}`. Harness mechanically reads the file: approve → `:done` → merge; reject/missing → `:failed`, task back to queue. The reviewer-authored `checks`/`concerns` surface warning facts on approve, never an auto-block; skills/ratings feed AgentKPI.
 - **MERGE** — lander: fetch → detached worktree → rebase onto `origin/<target>` → ff-push. No re-verification.
 - **Audit AI (post-merge, batched, best-effort)** — third-family agent audits the unaudited commit range on an intentionally un-warmed target-branch worktree, runs the project's clean-build/check itself, writes the `cold_check` fact in `.harness/audit.json`, fixes hygiene inline, commits `audit(...)`, pushes. Harness never runs that build or reads an exit code. A red cold check files a blocked follow-up task + loud notification and records `approved_then_found_red` on the approved run for reviewer feedback, never a revert, unmerge, gate, or auto-down-weight.
+
+> **🚨 "Cross-family" is routing doctrine, not a mechanical guarantee — no family concept exists in harness code.** `Harness.Agents.reviewers/1` excludes only the *identical* agent (`reject_implementer/2`, `lib/harness/agents.ex`); nothing prevents a `cursor` implementer from drawing a `grok` reviewer, though both run SpaceXAI weights. Whoever picks the reviewer owns the separation. Measured 2026-08-23 over 1,627 reviews, that gap shows no effect: controlling for reviewer identity, review intervention is a **per-reviewer** trait (median `reviewer_diff_size` — Codex 96, Cursor 4, Claude 1, Grok 0) and no per-pair signal survives. Left unenforced deliberately; don't "fix" the code to match the old wording.
 
 **Rules for every session:**
 

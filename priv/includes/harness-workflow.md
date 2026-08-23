@@ -31,6 +31,8 @@ One run = one supervised `Harness.Run` gen_statem: fork worktree off target `HEA
 
 Rejections put the task back in the queue for re-dispatch. Fix-and-approve is the near-absolute default for the reviewer.
 
+**🚨 "Cross-family" is routing doctrine, not a mechanical guarantee.** Harness excludes only the *identical* agent from the reviewer slate (`Harness.Agents.reviewers/1` → `reject_implementer/2`); there is **no family concept in harness code**, so a `cursor` implementer can draw a `grok` reviewer even though both run SpaceXAI weights. The orchestrator owns the separation when it matters. This is deliberate, not an oversight: measured 2026-08-23 over 1,627 harness reviews, controlling for reviewer identity leaves no per-pair signal — review intervention is a **per-reviewer** trait (median `reviewer_diff_size`: Codex 96, Cursor 4, Claude 1, Grok 0), and the most capable reviewer in the ledger finds median 0 in the same work a heavier reviewer rewrites. Don't add a family scheduler to make the code match the older wording.
+
 ### When to Dispatch vs Hand-Build
 
 **An rmap task is not automatically a harness run.** Dispatch only when the full
