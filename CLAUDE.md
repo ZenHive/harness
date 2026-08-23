@@ -23,6 +23,7 @@
 | Worktree-per-branch workflow | `@~/.claude/includes/worktree-workflow.md` |
 | Harness delegate→verify→repair→land workflow (portfolio adoption) | `@~/.claude/includes/harness-workflow.md` |
 | Driving harness as a consumer (dispatch patterns, result shapes) | `@skills/harness-driver/SKILL.md` |
+| Deployment target hardware, server sizing, worktree storage (reflink vs VDO), rent-vs-build | `docs/hardware.md` — **adjudicated; cite, don't re-derive** |
 | Phoenix project setup / gen.auth | Skill `phoenix:phoenix-setup` |
 | Net-new / redesign frontend surface (distinctiveness IS the goal) | Skill `frontend-design:frontend-design` — **not** for incremental work in the existing dashboard design system (match `tokens.ex` + `components.ex` patterns instead; skill is at most a reference) |
 | The "message across instances" (philosophical anchor) | `@~/.claude/includes/across-instances.md` |
