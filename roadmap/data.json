@@ -16247,7 +16247,7 @@
       "markers": [],
       "depends_on": [],
       "assignee": "codex",
-      "model": "gpt-5.5",
+      "model": "gpt-5.6-sol",
       "acceptance_criteria": [
         "A run settlement does not trigger five immediate fleet-wide aggregate reads for every connected /harness/kpi tab; refresh work is debounced or scoped without losing settled-run visibility",
         "aggregate_review_stuck_causes/0 and aggregate_recovery_facts/0 use an explicit bounded window/limit instead of list_run_records([])",
@@ -16294,7 +16294,7 @@
       "markers": [],
       "depends_on": [],
       "assignee": "codex",
-      "model": "gpt-5.5",
+      "model": "gpt-5.6-sol",
       "acceptance_criteria": [
         "Harness.Dispatch's public function/arity set and its MCP tool names are unchanged (Manifest + generated tool list identical)",
         "Dispatch delegates to per-concern modules; no single module carries all five concern groups",
@@ -16345,7 +16345,7 @@
         359
       ],
       "assignee": "codex",
-      "model": "gpt-5.5",
+      "model": "gpt-5.6-sol",
       "acceptance_criteria": [
         "`mix xref graph --format cycles` no longer reports the 71-module component (idiomatic behaviour↔impl + parser dispatch cycles may remain)",
         "Driver-surface core modules have no compile/export edge back into Manifest, Chat.*, or Dashboard.*",
@@ -16616,7 +16616,7 @@
       ],
       "depends_on": [],
       "assignee": "codex",
-      "model": "gpt-5.5",
+      "model": "gpt-5.6-sol",
       "acceptance_criteria": [
         "Harness.AgentAdapter.Kimi implements capabilities/0, rule_channel/0, and build_command/1; defaults from `use Harness.AgentAdapter` cover the rest; the shared Harness.AgentAdapter.ConformanceCase passes unchanged",
         "build_command/1 is verified against the installed Kimi CLI and current official command reference: prompt mode passes -p/--prompt as an option argument with --output-format stream-json and model_args via -m; it does not combine prompt mode with --yolo, --auto, or --plan because prompt mode already uses autonomous permissions",
@@ -17214,7 +17214,7 @@
       ],
       "depends_on": [],
       "assignee": "codex",
-      "model": "gpt-5.5",
+      "model": "gpt-5.6-sol",
       "acceptance_criteria": [
         "A durable roadmap write that does not land its commit on the target branch surfaces at warn level or higher, naming the transition, task id, run id, and the concrete Durable error reason — a silent no-op is no longer a reachable outcome.",
         "An integration test drives both transitions (dispatch-start in_progress, post-land done) against a fixture project whose operator checkout is dirty AND ahead of origin, and asserts the target branch receives a roadmap commit for each.",
@@ -17264,7 +17264,7 @@
       "markers": [],
       "depends_on": [],
       "assignee": "codex",
-      "model": "gpt-5.5",
+      "model": "gpt-5.6-sol",
       "acceptance_criteria": [
         "One dashboard reconciliation pass fetches each project's target ref at most once regardless of the number of unlanded history rows",
         "Rows for different projects resolve against their own fetched target and preserve existing landed-sha semantics",
@@ -17311,7 +17311,7 @@
       "markers": [],
       "depends_on": [],
       "assignee": "codex",
-      "model": "gpt-5.5",
+      "model": "gpt-5.6-sol",
       "acceptance_criteria": [
         "Appending a port chunk no longer copies the complete retained transcript buffer on every call",
         "The existing 200 KiB cap, parsing output, event ordering, and connected-viewer behavior are unchanged",
@@ -17356,7 +17356,7 @@
       "markers": [],
       "depends_on": [],
       "assignee": "codex",
-      "model": "gpt-5.5",
+      "model": "gpt-5.6-sol",
       "acceptance_criteria": [
         "ProjectRegistry.lookup/1 does not query Postgres for landing overrides on every call",
         "Writes to landing/project settings invalidate or refresh the read path so lookup and list return the same current project view",
@@ -17556,7 +17556,7 @@
         374
       ],
       "assignee": "cursor",
-      "model": "composer-2.5",
+      "model": "cursor-grok-4.6-high",
       "acceptance_criteria": [
         "The existing /harness/roadmap route presents Pending, Implementing, Reviewing, Landing, Blocked, and Done lanes across registered projects, with a project filter and a bounded recent-Done result set",
         "Pending, Blocked, and Done placement comes from rmap; Pending cards expose dependency readiness, while Implementing, Reviewing, and Landing placement comes from persisted or live Harness lifecycle facts",
@@ -17671,6 +17671,82 @@
       "body": "Task 378 added `%Harness.Project{roadmap_target_branch}` so durable `mark_*`\nwrites can target a roadmap repository that is not the code `source`. The\nfield is load-bearing for any split-repo registration (the bourse\npublic-client / private-workbench case that motivated 378): without an\nexplicit branch, a split project falls back to a local rmap write and the\nroadmap never advances on origin.\n\nEvidence (read 2026-08-16, this audit of 31cfd94):\n- `Harness.Dispatch.register_project/8` has no `roadmap_target_branch` param\n  (`lib/harness/dispatch.ex`).\n- `/harness/settings` create/edit form has no mention of the field\n  (`lib/harness/dashboard/` grep is empty).\n- `priv/repo/seeds.exs.example` only documents `target_branch`.\n\nSo the only way to set the field today is a keyword/struct\n`ProjectRegistry.upsert/1` from IEx. An operator following the dashboard or\nMCP registration path cannot express the split 378 was built to support.\n\nDo not fold this into Task 375. 375 is a validation sweep of the *pre-378*\noptional set and explicitly leaves dashboard forms out of scope. This task\nis the missing authoring surface for one new field.\n\nThe seeds example in this audit already carries a one-line comment pointing\nat the field; keep or expand that rather than treating the comment as the\ndeliverable.\n",
       "created_at": "2026-08-16",
       "scored_at": "2026-08-16",
+      "cross_repo": []
+    },
+    {
+      "id": "390",
+      "phase": 23,
+      "bundle": "roadmap-writeback",
+      "status": "pending",
+      "title": "Regression: harness-injected agent rule block lands in the delivery commit again (Task 36 criterion violated)",
+      "scores": {
+        "d": 3,
+        "b": 7,
+        "u": 5
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "grok",
+      "model": "grok-4.6",
+      "acceptance_criteria": [
+        "A delivery commit produced by any adapter contains no harness-injected rule content — specifically no block carrying the 'harness-injected: canonical agent rules — ephemeral, do not commit' marker",
+        "A target repo that tracks its own AGENTS.md has that file byte-identical before and after a run whose agent did not intentionally edit it",
+        "A regression test reproduces the leak against the adapter that produced it before the fix, and covers each adapter's injection path",
+        "The reason Task 36's fix did not hold for this path is named explicitly in the implemented field, rather than the leak simply being re-patched"
+      ],
+      "out_of_scope": [
+        "Changing which rules are injected or how they are rendered — this is about the file never reaching the commit, not its content",
+        "Reworking the landing train or the reviewer gate"
+      ],
+      "touches": [
+        "lib/harness/worktree.ex",
+        "lib/harness/agent_adapter.ex",
+        "lib/harness/agent_adapter/rules_injection.ex"
+      ],
+      "body": "Task 36 closed with the criterion \"Existing AGENTS.md in the target repo (if any) is not modified by the harness-injected block ending up in the run's delivery commit\". That criterion is violated again.\n\nEvidence: onchain_aave commit cfb58b1 (agent delivery for task 50, run run-1787296526753-07002de8, adapter cursor, 2026-08-21) added a 32-line block to the repo's tracked AGENTS.md, headed exactly `<!-- harness-injected: canonical agent rules — ephemeral, do not commit -->`. It reached origin/main and only surfaced afterwards, when the consuming repo's own `mix ci` failed its AGENTS.md-freshness gate (that repo regenerates AGENTS.md from CLAUDE.md, so any foreign content reads as drift). Repos without such a gate would not notice at all.\n\nWorth checking during diagnosis: `Harness.AgentAdapter` documents the AGENTS.md channel as Codex's (`@codex_agents_rel`), while the observed leak came from a cursor run — so either the per-adapter channel mapping does not hold at runtime, or the reviewer's adapter (codex, cross-family) wrote into the worktree before the delivery commit was taken. That is a hypothesis from reading the commit and the adapter module, not a confirmed root cause; confirm before building on it.\n",
+      "created_at": "2026-08-21",
+      "scored_at": "2026-08-21",
+      "cross_repo": []
+    },
+    {
+      "id": "391",
+      "phase": 23,
+      "bundle": "surface",
+      "status": "pending",
+      "title": "Four `roadmap-mark_*` MCP tools expose zero parameters — declare their params, then guard the class",
+      "scores": {
+        "d": 3,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.6-sol",
+      "acceptance_criteria": [
+        "`roadmap-mark_landed`, `roadmap-mark_blocked`, `roadmap-mark_in_progress` and `roadmap-mark_pending` each expose their documented arguments in the MCP tool schema, and each is callable end to end over MCP against a registered project",
+        "A test asserts the invariant for the whole module, not the four instances: every `@descripex_api_declarations` entry in `Harness.Roadmap` whose backing function has arity > 0 declares a non-empty parameter set",
+        "The moduledoc'd option lists and the declared parameter sets agree — a documented option that is not declared fails the new test"
+      ],
+      "out_of_scope": [
+        "Changing what the mark_* functions do, or their Elixir arities — the lander calls them directly and is unaffected",
+        "Auditing api/2 declarations in modules other than `Harness.Roadmap`"
+      ],
+      "touches": [
+        "lib/harness/roadmap.ex",
+        "test/harness/roadmap_test.exs"
+      ],
+      "body": "`Harness.Roadmap` declares seven MCP tools. Three (`ingest`, `ready`, `list`) use descripex's `api/3` and pass a parameter list. The four `mark_*` tools use `api/2`, which accumulates the declaration with `opts = []` — so the generated MCP schema is `{\"properties\": {}, \"required\": []}` even though each function's moduledoc documents `:project` / `:root` / `:reason` / `:rmap_bin`, and each Elixir function is `arity 2` and `Keyword.fetch!`es a required option.\n\nObserved from onchain_evm on 2026-08-22: calling `mcp__harness__roadmap-mark_blocked` fails with `Harness.Roadmap.mark_blocked/0 is undefined or private`. The tool is advertised, documented, and unusable. The other three are declared identically and so are broken the same way; only `mark_blocked` has been exercised.\n\nBlast radius is bounded — `Harness.Lander.Resilience` calls `Roadmap.mark_blocked/2` in-process, so autonomous landing is unaffected. What is broken is the orchestrator's ability to park or re-route a task over MCP, which is exactly the seat that needs it when a wave goes sideways.\n\nFix the four declarations, and then close the class rather than the four instances: the failure mode is that an `api/2` declaration on a function that takes arguments compiles cleanly, documents itself correctly, and only fails at call time from a client. A module-level test over the declaration accumulator turns that into a compile-or-test failure.\n",
+      "created_at": "2026-08-23",
+      "scored_at": "2026-08-23",
       "cross_repo": []
     }
   ]

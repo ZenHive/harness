@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (4 of 21 done · 0 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (4 of 23 done · 0 in progress)
 
 **Last shipped:** Task 363 — Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router on 2026-08-16
 
@@ -350,4 +350,6 @@
 | Task 383 | ⬜ | 🎁 **resilience** · 🐛 Delivery commit exclusion missed .harness/agent-rules.md — harness's own scaffolding rode in a deliverable [D:3/B:6/U:5 → Eff:1.83] 🚀 |
 | Task 384 | ✅ | 🎁 **deferred** · Migrate anubis_mcp 1.x -> 2.0.0 (Application callback removal, transport/supervision rewrite) [D:5/B:3/U:2 → Eff:0.5] ⚠️ |
 | Task 389 | ⬜ | 🎁 **config-surface** · 🚀 **v0_16** · Expose roadmap_target_branch on the operator registration surfaces [D:3/B:6/U:5 → Eff:1.83] 🚀 |
+| Task 390 | ⬜ | 🎁 **roadmap-writeback** · 🐛 Regression: harness-injected agent rule block lands in the delivery commit again (Task 36 criterion violated) [D:3/B:7/U:5 → Eff:2.0] 🎯 |
+| Task 391 | ⬜ | 🎁 **surface** · Four `roadmap-mark_*` MCP tools expose zero parameters — declare their params, then guard the class [D:3/B:6/U:6 → Eff:2.0] 🎯 |
 <!-- TASKS:END -->

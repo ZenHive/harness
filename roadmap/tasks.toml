@@ -10703,7 +10703,7 @@ files_to_modify = ["lib/harness/dashboard/kpi_live.ex", "lib/harness/result_stor
 touches = ["lib/harness/dashboard/kpi_live.ex", "lib/harness/result_store/"]
 domains = ["ecto", "phoenix"]
 assignee = "codex"
-model = "gpt-5.5"
+model = "gpt-5.6-sol"
 body = """
 Surfaced by the 2026-07-12 project health audit (perf-audit.md H1). `Harness.Dashboard.KpiLive`
 recomputes five fleet-wide aggregates on every run settlement anywhere in the fleet, once per
@@ -10730,7 +10730,7 @@ files_to_modify = ["lib/harness/dispatch.ex", "lib/harness/dispatch/"]
 touches = ["lib/harness/dispatch.ex", "lib/harness/dispatch/", "lib/harness/manifest.ex", "test/harness/dispatch_test.exs", "test/harness/chat/tools_test.exs", "test/harness/manifest_test.exs"]
 domains = ["otp"]
 assignee = "codex"
-model = "gpt-5.5"
+model = "gpt-5.6-sol"
 body = """
 Surfaced by the 2026-07-12 project health audit (arch-review.md #2). `lib/harness/dispatch.ex`
 is ~1900 lines (1913 as of 2026-07-29, growing) and the second-highest outgoing-coupling module in the project. It is the
@@ -10774,7 +10774,7 @@ files_to_modify = [".reach.exs", "lib/harness/manifest.ex"]
 touches = ["lib/harness/", ".reach.exs"]
 domains = ["otp"]
 assignee = "codex"
-model = "gpt-5.5"
+model = "gpt-5.6-sol"
 body = """
 Surfaced by the 2026-07-12 project health audit (arch-review.md #1). `mix xref graph --format
 cycles` reports ONE strongly-connected cycle of 71 modules (~30% of the codebase) spanning
@@ -11009,7 +11009,7 @@ acceptance_criteria = ["Harness.AgentAdapter.Kimi implements capabilities/0, rul
 out_of_scope = ["The rmap-side --to kimi render target (rmap repo task 53 — must land and the installed rmap binary be rebuilt before a kimi-assigned task can dispatch, since harness shells out to rmap delegate)", "Operator auth (kimi login device-code flow is a one-time host step, not code)", "Promoting kimi into the cross-family reviewer trust defaults (operator decision after dispatch data exists)", "Parsing kimi's event stream beyond the transcript-parser mapping (raw passthrough stays the contract)"]
 touches = ["lib/harness/agent_adapter/kimi.ex", "test/harness/agent_adapter/kimi_test.exs", "test/harness/agent_adapter/kimi_conformance_test.exs", "lib/harness/roadmap.ex", "lib/harness/agent_registry.ex", "lib/harness/config.ex", "lib/harness/agent_adapter/registry.ex", "lib/harness/model_availability.ex", "lib/harness/dashboard/transcript/parser.ex", "CLAUDE.md", "skills/harness-driver/SKILL.md", "priv/includes/harness-workflow.md"]
 assignee = "codex"
-model = "gpt-5.5"
+model = "gpt-5.6-sol"
 body = """
 Add a Harness.AgentAdapter for Kimi Code (Moonshot's coding CLI, installed at
 ~/.kimi-code/bin/kimi, v0.26.0, docs https://moonshotai.github.io/kimi-code/).
@@ -11472,7 +11472,7 @@ files_to_modify = ["lib/harness/roadmap/durable.ex", "lib/harness/run/worker.ex"
 touches = ["lib/harness/roadmap/durable.ex", "lib/harness/roadmap.ex", "lib/harness/git/target_sync.ex"]
 domains = ["otp", "git"]
 assignee = "codex"
-model = "gpt-5.5"
+model = "gpt-5.6-sol"
 body = """
 A full green run wrote nothing back to the roadmap, and nothing said so.
 
@@ -11540,7 +11540,7 @@ files_to_modify = ["lib/harness/dashboard/live.ex", "lib/harness/result_store.ex
 touches = ["lib/harness/dashboard/live.ex", "lib/harness/result_store/"]
 domains = ["git", "phoenix", "ecto"]
 assignee = "codex"
-model = "gpt-5.5"
+model = "gpt-5.6-sol"
 body = """
 The dashboard reconciles unlanded run-history rows on mount and each roadmap tick. The current path calls ResultStore.reconcile_landed_sha/4 per row, which reaches fetch_target/2 and performs a real git fetch each time. Change the reconciliation pass so target-ref retrieval is shared only within one project/pass, while row-level landed-sha decisions and failure visibility remain unchanged. This is the former H2 part of Task 358, split because it has a separate git/dashboard seam and verification surface.
 """
@@ -11561,7 +11561,7 @@ files_to_modify = ["lib/harness/dashboard/transcript.ex"]
 touches = ["lib/harness/dashboard/transcript.ex", "test/harness/dashboard/transcript_test.exs"]
 domains = ["phoenix"]
 assignee = "codex"
-model = "gpt-5.5"
+model = "gpt-5.6-sol"
 body = """
 Harness.Dashboard.Transcript.append/3 currently evaluates buffer <> chunk for each port chunk, copying the retained buffer repeatedly up to the 200 KiB cap for every connected viewer. Preserve the public behavior and cap while making incremental accumulation linear in the new chunk size, materializing only at the existing parse/render boundary. This is the former M2 part of Task 358, split because it is an isolated data-structure change.
 """
@@ -11582,7 +11582,7 @@ files_to_modify = ["lib/harness/project_registry.ex", "lib/harness/landing/setti
 touches = ["lib/harness/project_registry.ex", "lib/harness/landing/settings.ex", "test/harness/project_registry_test.exs"]
 domains = ["otp", "ecto"]
 assignee = "codex"
-model = "gpt-5.5"
+model = "gpt-5.6-sol"
 body = """
 ProjectRegistry.lookup/1 overlays landing settings with a fresh single-project Postgres read on each call, including dashboard task-detail hot paths, while list/0 already batches the overlay. Give lookup the same bounded read behavior or keep the rarely-changing overrides in registry state with explicit invalidation on writes. Preserve the persisted source of truth and current lookup/list results. This is the former M3 part of Task 358, split because it changes registry/cache coherence rather than dashboard rendering.
 """
@@ -11689,7 +11689,7 @@ acceptance_criteria = ["The existing /harness/roadmap route presents Pending, Im
 out_of_scope = ["Drag-and-drop or free-form lane movement", "Creating or editing rmap tasks from the dashboard", "New lifecycle event types or persistence", "Cost, runner, files, or knowledge-management dashboards"]
 touches = ["lib/harness/dashboard/", "test/harness/dashboard/"]
 assignee = "cursor"
-model = "composer-2.5"
+model = "cursor-grok-4.6-high"
 body = "Turn the existing read-only RoadmapLive surface into a project-spanning task board. rmap remains authoritative for durable task status, while Harness run, result, and lifecycle-event facts provide execution and landing context. Present the workflow as factual lanes with direct actions that reuse existing dispatch and recovery contracts; do not add drag-and-drop or a second task-state model."
 created_at = "2026-08-15"
 scored_at = "2026-08-15"
@@ -11754,3 +11754,50 @@ deliverable.
 """
 created_at = "2026-08-16"
 scored_at = "2026-08-16"
+
+[[task]]
+id = "390"
+phase = 23
+bundle = "roadmap-writeback"
+status = "pending"
+title = "Regression: harness-injected agent rule block lands in the delivery commit again (Task 36 criterion violated)"
+scores = { d = 3, b = 7, u = 5 }
+markers = ["bug"]
+acceptance_criteria = ["A delivery commit produced by any adapter contains no harness-injected rule content — specifically no block carrying the 'harness-injected: canonical agent rules — ephemeral, do not commit' marker", "A target repo that tracks its own AGENTS.md has that file byte-identical before and after a run whose agent did not intentionally edit it", "A regression test reproduces the leak against the adapter that produced it before the fix, and covers each adapter's injection path", "The reason Task 36's fix did not hold for this path is named explicitly in the implemented field, rather than the leak simply being re-patched"]
+out_of_scope = ["Changing which rules are injected or how they are rendered — this is about the file never reaching the commit, not its content", "Reworking the landing train or the reviewer gate"]
+touches = ["lib/harness/worktree.ex", "lib/harness/agent_adapter.ex", "lib/harness/agent_adapter/rules_injection.ex"]
+assignee = "grok"
+model = "grok-4.6"
+body = """
+Task 36 closed with the criterion "Existing AGENTS.md in the target repo (if any) is not modified by the harness-injected block ending up in the run's delivery commit". That criterion is violated again.
+
+Evidence: onchain_aave commit cfb58b1 (agent delivery for task 50, run run-1787296526753-07002de8, adapter cursor, 2026-08-21) added a 32-line block to the repo's tracked AGENTS.md, headed exactly `<!-- harness-injected: canonical agent rules — ephemeral, do not commit -->`. It reached origin/main and only surfaced afterwards, when the consuming repo's own `mix ci` failed its AGENTS.md-freshness gate (that repo regenerates AGENTS.md from CLAUDE.md, so any foreign content reads as drift). Repos without such a gate would not notice at all.
+
+Worth checking during diagnosis: `Harness.AgentAdapter` documents the AGENTS.md channel as Codex's (`@codex_agents_rel`), while the observed leak came from a cursor run — so either the per-adapter channel mapping does not hold at runtime, or the reviewer's adapter (codex, cross-family) wrote into the worktree before the delivery commit was taken. That is a hypothesis from reading the commit and the adapter module, not a confirmed root cause; confirm before building on it.
+"""
+created_at = "2026-08-21"
+scored_at = "2026-08-21"
+
+[[task]]
+id = "391"
+phase = 23
+bundle = "surface"
+status = "pending"
+title = "Four `roadmap-mark_*` MCP tools expose zero parameters — declare their params, then guard the class"
+scores = { d = 3, b = 6, u = 6 }
+acceptance_criteria = ["`roadmap-mark_landed`, `roadmap-mark_blocked`, `roadmap-mark_in_progress` and `roadmap-mark_pending` each expose their documented arguments in the MCP tool schema, and each is callable end to end over MCP against a registered project", "A test asserts the invariant for the whole module, not the four instances: every `@descripex_api_declarations` entry in `Harness.Roadmap` whose backing function has arity > 0 declares a non-empty parameter set", "The moduledoc'd option lists and the declared parameter sets agree — a documented option that is not declared fails the new test"]
+out_of_scope = ["Changing what the mark_* functions do, or their Elixir arities — the lander calls them directly and is unaffected", "Auditing api/2 declarations in modules other than `Harness.Roadmap`"]
+touches = ["lib/harness/roadmap.ex", "test/harness/roadmap_test.exs"]
+assignee = "codex"
+model = "gpt-5.6-sol"
+body = """
+`Harness.Roadmap` declares seven MCP tools. Three (`ingest`, `ready`, `list`) use descripex's `api/3` and pass a parameter list. The four `mark_*` tools use `api/2`, which accumulates the declaration with `opts = []` — so the generated MCP schema is `{"properties": {}, "required": []}` even though each function's moduledoc documents `:project` / `:root` / `:reason` / `:rmap_bin`, and each Elixir function is `arity 2` and `Keyword.fetch!`es a required option.
+
+Observed from onchain_evm on 2026-08-22: calling `mcp__harness__roadmap-mark_blocked` fails with `Harness.Roadmap.mark_blocked/0 is undefined or private`. The tool is advertised, documented, and unusable. The other three are declared identically and so are broken the same way; only `mark_blocked` has been exercised.
+
+Blast radius is bounded — `Harness.Lander.Resilience` calls `Roadmap.mark_blocked/2` in-process, so autonomous landing is unaffected. What is broken is the orchestrator's ability to park or re-route a task over MCP, which is exactly the seat that needs it when a wave goes sideways.
+
+Fix the four declarations, and then close the class rather than the four instances: the failure mode is that an `api/2` declaration on a function that takes arguments compiles cleanly, documents itself correctly, and only fails at call time from a client. A module-level test over the declaration accumulator turns that into a compile-or-test failure.
+"""
+created_at = "2026-08-23"
+scored_at = "2026-08-23"
