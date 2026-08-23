@@ -292,7 +292,7 @@
 | Task 326 | ⬜ | 🎁 **core-loop** · 🚀 **v0_16** · 🐛 Stabilize residual erl_child_setup spawn flake in worktree-heavy suite (Harness.AuditTest noop) [D:4/B:4/U:3 → Eff:0.88] ⚠️ |
 | Task 327 `[P]` | ✅ | 🎁 **contract** · Invert the rule-content seam + make Invocation agent-agnostic (AgentAdapter no longer names Harness.AgentRules) [D:4/B:5/U:5 → Eff:1.25?] 📋 |
 | Task 328 `[P]` | ✅ | 🎁 **contract** · Break the Driver -> Run.Reflex -> Worktree.Isolation -> AgentAdapter dependency cycle [D:4/B:6/U:5 → Eff:1.38?] 📋 |
-| Task 329 | ⬜ | 🎁 **contract** · Decision spike: extract the decoupled AgentAdapter subsystem to its own hex package? [D:2/B:5/U:4 → Eff:2.25] 🎯 |
+| Task 329 | ⛔ | 🎁 **contract** · Decision spike: extract the decoupled AgentAdapter subsystem to its own hex package? [D:2/B:5/U:4 → Eff:2.25] 🎯 |
 | Task 330 | ✅ | 🎁 **operator-surface** · Widen over-tight mix.exs dep constraints + guard against regression [D:3/B:5/U:6 → Eff:1.83?] 🚀 |
 | Task 331 | ✅ | 🎁 **operator-surface** · Dependency-freshness fact source (per-language provider; hex.outdated first) + dashboard panel [D:4/B:6/U:7 → Eff:1.62?] 🚀 |
 | Task 332 | ✅ | 🎁 **operator-surface** · Operator 'update deps' action: dispatch a dep-bump through the agent-gate [D:5/B:7/U:7 → Eff:1.4?] 📋 |
@@ -322,6 +322,9 @@
 | Task 386 | ⬜ | 🎁 **core-loop** · Lander: landing job can complete (landed_sha recorded) without the roadmap advance ever reaching origin [D:5/B:7/U:6 → Eff:1.3] 📋 |
 | Task 392 | ⬜ | 🎁 **core-loop** · 🐛 Terminate the agent process tree, not just the direct PID — orphaned children outlive the kill and share the worktree [D:5/B:9/U:8 → Eff:1.7] 🚀 |
 | Task 393 | ⬜ | 🎁 **core-loop** · 🐛 Fence .harness/review.json to the reviewer that wrote it — a killed reviewer's stale approve can settle the run :done [D:3/B:9/U:8 → Eff:2.83] 🎯 |
+| Task 396 | ⬜ | 🎁 **contract** · Create the harness_agent_adapter package — move the AgentAdapter subsystem into its own repo [D:5/B:6/U:5 → Eff:1.1] 📋 |
+| Task 397 | ⬜ | 🎁 **contract** · harness consumes harness_agent_adapter as a dependency — delete the in-repo AgentAdapter subsystem [D:5/B:5/U:4 → Eff:0.9] ⚠️ |
+| Task 398 | ⬜ | 🎁 **agent-gate** · Injected agent rules must never be visible in a tracked file while an agent runs the project's checks [D:4/B:7/U:8 → Eff:1.88] 🚀 |
 <!-- TASKS:END -->
 
 ---

@@ -10007,7 +10007,7 @@ shipped_in = "aae797b43366ee2b2a0c1b98ca72068f6307bdde"
 id = "329"
 phase = 22
 bundle = "contract"
-status = "pending"
+status = "superseded"
 title = "Decision spike: extract the decoupled AgentAdapter subsystem to its own hex package?"
 scores = { d = 2, b = 5, u = 4 }
 depends_on = [327, 328]
@@ -11891,6 +11891,89 @@ CLAUDE.md currently carries three different tiers in one eager-loaded file: stan
 Idea from DeepSeek Harness: .agents/notes uses {lifecycle}/{class}/date-title.md with a mandatory '## Alternatives considered' section and a machine-checked format, kept deliberately separate from docs/postmortem (incidents, written only when a bug is subtle AND systemic AND costly to rediscover). docs/AGENTS.md adds per-file word ceilings from a manifest with the stated policy that a too-low ceiling is a budget bug, not a mandate to cut. Skipping their archive tier and their bilingual pairing machinery — dsh-scale ceremony for a problem this repo does not have.
 
 Note on the check's home: sync-agents-md.sh currently lives in a personal marketplace checkout, so the freshness gate is not runnable from a clone. This task's check must be portable; making the existing --check portable is the natural place to fix that.
+"""
+created_at = "2026-08-23"
+scored_at = "2026-08-23"
+
+[[task]]
+id = "396"
+phase = 22
+bundle = "contract"
+target_repo = "harness_agent_adapter"
+status = "pending"
+title = "Create the harness_agent_adapter package — move the AgentAdapter subsystem into its own repo"
+scores = { d = 5, b = 6, u = 5 }
+acceptance_criteria = ["A new repo/package exists (mix.exs, README, LICENSE, formatter/credo/dialyzer config, a check alias) holding the subsystem verbatim: lib/harness/agent_adapter.ex (621 LOC) + the 16 modules under lib/harness/agent_adapter/ (1,928 LOC) — behaviour, invoke/2, attach_rules/2, Driver, Watchdog, RulesInjection, Registry, OsProcess, the structs, and the six CLI adapters (claude/codex/cursor/grok/antigravity/pi)", "The package's own test suite is green and self-contained: the 20 test/harness/agent_adapter/* files, test/support/agent_adapter/conformance_case.ex, and the fake adapters (fake_adapter.ex, fake_model_adapter.ex, noncompliant_adapter.ex) move with it; ConformanceCase is part of the package's public test surface so a downstream consumer can run it against its own adapters", "The package names nothing from harness: no Harness.Run.*, no Harness.AgentRules, no Harness.Worktree, no Harness.Config. Verified by grep plus a clean compile in a checkout that has no harness dependency", "The package's public API is written down (module list + the caller-supplied rule-content and watchdog seams that tasks 327/328 created), so harness and Personas OS both program against a named contract rather than against internals", "Nothing is deleted from harness in this task — harness keeps compiling against its in-repo copy until the consuming task lands"]
+out_of_scope = ["Any change inside the harness repo (the sibling consuming task owns that)", "Publishing to hex.pm — a git or path dependency is enough to prove the boundary; a hex release can follow once the API has settled", "Wiring Personas OS to the package", "Changing adapter behaviour, the rule-injection contract, or the watchdog semantics — this is a move, not a redesign"]
+touches = ["lib/harness/agent_adapter.ex", "lib/harness/agent_adapter", "test/harness/agent_adapter", "test/support/agent_adapter", "test/support/fake_adapter.ex"]
+assignee = "human"
+body = """
+Supersedes task 329 (the decision spike): the extraction decision is settled — it is a go. Personas OS (~/_DATA/code/personas, DESIGN.md §5/§8) is the named second consumer; it needs the uniform-Ports driver for the six headless coding-agent CLIs without harness's Run/worktree/lander machinery. No further go/no-go document is required.
+
+Tasks 327 and 328 already did the hard part: the rule-content seam is inverted (the subsystem no longer names Harness.AgentRules) and the Driver -> Run.Reflex -> Worktree.Isolation -> AgentAdapter cycle is broken (the watchdog is a leaf module, Isolation.validate/3 takes its inputs from the caller). The subsystem is therefore dependency-clean, and this task is a mechanical move plus new-repo scaffolding, not a refactor.
+
+Size: 2,549 lib LOC and roughly 2,768 test LOC move; about 5% of harness's lib surface.
+
+Hand-build rather than dispatch: creating the repo and its remote is an operator-gated step, and the work lands in a repo that does not exist yet, so a harness worktree dispatch cannot perform it.
+"""
+created_at = "2026-08-23"
+scored_at = "2026-08-23"
+
+[[task]]
+id = "397"
+phase = 22
+bundle = "contract"
+status = "pending"
+title = "harness consumes harness_agent_adapter as a dependency — delete the in-repo AgentAdapter subsystem"
+scores = { d = 5, b = 5, u = 4 }
+depends_on = [396]
+acceptance_criteria = ["mix.exs takes the harness_agent_adapter dependency (git or path is acceptable) and lib/harness/agent_adapter.ex plus the whole lib/harness/agent_adapter/ directory are deleted from harness — harness's lib LOC drops by about 2,549", "Every caller is repointed at the package namespace: 38 lib files outside the subsystem reference AgentAdapter today, concentrated in agent_registry.ex (17 references), run/actions/worktree.ex (8), audit_review.ex (6), run/result.ex, run/actions/reviewing.ex, dispatch.ex, chat/claude.ex (5 each)", "The moved tests are deleted from harness; harness keeps only the tests that exercise harness-side behaviour, and test/support/run_case.ex links against the package's fake adapters instead of local copies", "Harness-owned pieces stay in harness and still work: Harness.AgentRules (rule content), Harness.AgentRegistry (availability hints), Harness.Run.*, Harness.Worktree.Isolation", "mix precommit.full green on the landed base, including the six adapters' conformance tests now run from the package"]
+out_of_scope = ["Creating the package (task 396)", "Changing adapter behaviour, rule injection, or watchdog semantics", "Renaming or reshaping the harness-side surfaces that merely alias the package", "Publishing the package to hex.pm"]
+files_to_modify = ["mix.exs", "lib/harness/agent_registry.ex", "lib/harness/run/actions/worktree.ex", "lib/harness/audit_review.ex", "lib/harness/run/result.ex", "lib/harness/run/actions/reviewing.ex", "lib/harness/dispatch.ex", "lib/harness/chat/claude.ex", "lib/harness/run.ex"]
+touches = ["mix.exs", "mix.lock", "lib/harness/agent_adapter.ex", "lib/harness/agent_adapter", "lib/harness/agent_registry.ex", "lib/harness/run", "lib/harness/audit_review.ex", "lib/harness/dispatch.ex", "lib/harness/chat/claude.ex", "test/harness/agent_adapter", "test/support"]
+assignee = "codex"
+model = "gpt-5.6-sol"
+body = """
+Second half of the extraction. Once the package exists (task 396), harness stops carrying its own copy: take the dependency, delete lib/harness/agent_adapter.ex and lib/harness/agent_adapter/, and repoint every caller.
+
+The cost of the extraction lives here, not in the move: 38 lib files outside the subsystem name AgentAdapter today, so the alias sweep is the bulk of the diff. It is mechanical and single-repo, which is why this half is dispatchable while task 396 is not.
+
+This is a repo-wide invariant change — dispatch it as a solo wave with nothing landing in parallel, since any sibling land that adds a new AgentAdapter reference after the fork reddens it at landing time.
+"""
+created_at = "2026-08-23"
+scored_at = "2026-08-23"
+
+[[task]]
+id = "398"
+phase = 22
+bundle = "agent-gate"
+status = "pending"
+title = "Injected agent rules must never be visible in a tracked file while an agent runs the project's checks"
+scores = { d = 4, b = 7, u = 8 }
+acceptance_criteria = ["No harness-injected rule content is present in any tracked, repo-owned file at any point where an agent could run the project's check command. The codex/pi channel currently prepends a marker block to the repo's tracked AGENTS.md (RulesInjection.install_codex_rules/1) and only restores it on the delivery-commit path, so implementer, reviewer and audit agents all see a modified AGENTS.md while they run checks", "The invariant holds for the AUDIT run specifically: Harness.Audit builds its invocation with rule_content (lib/harness/audit.ex:377) and nothing in the audit path calls cleanup_injected_rules/1 — today the only call site is lib/harness/worktree.ex:810. The audit agent runs the project's clean-build/check itself, so harness cannot sequence a strip-then-check; the injection must not be observable in the first place", "A regression test proves it with a project fixture that owns a tracked AGENTS.md plus a freshness check comparing AGENTS.md against CLAUDE.md: the check passes while a codex-channel agent is running. A test asserting only that cleanup restores the file afterwards does not satisfy this criterion — the failure happens mid-run, not after", "The rule content still reaches codex and pi agents; this is a change of delivery channel or location, not a removal of rule injection. The six adapters still pass Harness.AgentAdapter.ConformanceCase unchanged", "The existing run records whose approved_then_found_red was produced by this bug are corrected in Postgres, with the correcting statement and its selection predicate recorded in the task's implemented note. As of 2026-08-23 every populated approved_then_found_red in run_records — 16 of 16, all project bourse, dates 2026-08-14 through 2026-08-22 — carries an AGENTS.md STALE cold_check tail. Records with an independent real failure (two also cite priv/authority/deribit/contract-baselines.json SHA-256 mismatches) keep their fact; only the AGENTS.md-only ones are cleared", "mix check.dispatch green plus focused tests for the rule-injection and audit paths"]
+out_of_scope = ["Changing what the rules say (Harness.AgentRules content) or which languages get which guidance", "The Claude (.harness/agent-rules.md), Cursor (.cursor/rules/) and prompt-preamble channels — those write harness-owned or untracked paths and do not collide with a repo's own files", "Making the consumer repo's AGENTS.md freshness test tolerant of an injected header — the test is correct and harness is at fault; a workaround in the consumer is the wrong repo", "Any change to routing weights, penalties or auto-exclusion based on approved_then_found_red — routing surfaces the fact and applies no penalty, and that stays true", "Reviewer-family or implementer/reviewer pairing rules"]
+files_to_modify = ["lib/harness/agent_adapter/rules_injection.ex", "lib/harness/audit.ex"]
+touches = ["lib/harness/agent_adapter/rules_injection.ex", "lib/harness/agent_adapter.ex", "lib/harness/audit.ex", "lib/harness/worktree.ex", "test/harness/agent_adapter", "test/harness/audit_test.exs"]
+domains = ["tooling"]
+assignee = "codex"
+model = "gpt-5.6-sol"
+body = """
+harness poisons its own reviewer-reliability ledger, and has been doing so since at least 2026-08-14.
+
+The mechanism, verified end to end. RulesInjection.install_codex_rules/1 delivers rules to codex and pi by prepending a marker block plus a separator to the repo's tracked AGENTS.md, merging the repo's own content below it. cleanup_injected_rules/1 restores the file correctly — but its only call site is Worktree.commit's staging path (lib/harness/worktree.ex:810). Between injection and delivery-commit the tracked AGENTS.md is modified, and that is exactly the window in which every agent runs the project's checks.
+
+Consumer repos gate on this file. bourse's test/mix/tasks/ccxt_agents_md_test.exs:407 ("the committed tree is currently fresh") asserts AgentsMd.check("CLAUDE.md", "AGENTS.md", ...) returns :ok against the working tree; the portfolio harness-workflow include actively recommends wiring sync-agents-md.sh --check into the check_command, so any repo following that advice inherits the same fault.
+
+The damage lands in the wrong ledger. Harness.Audit builds its invocation with rule_content (lib/harness/audit.ex:377) into a deliberately un-warmed worktree; the audit agent runs the clean check, sees AGENTS.md drift, and writes cold_check.passed = false. witness_cold_check then records approved_then_found_red on the APPROVED RUN — charging a false approval to the run's reviewer for a file the AUDIT agent's own injection modified. The reviewer never saw it.
+
+Evidence, 2026-08-23, all 16 populated approved_then_found_red rows in run_records:
+- 16 of 16 are project bourse, dated 2026-08-14 to 2026-08-22, still accruing
+- 16 of 16 carry an AGENTS.md STALE tail. Several audit agents diagnosed it in the artifact themselves: "because harness prepended its ephemeral header", "the harness-injected worktree copy differs from", "harness had injected an uncommitted ephemeral AGENTS.md overlay"
+- 2 of 16 additionally cite real deribit contract-baselines.json SHA-256 mismatches — those runs have a genuine finding underneath and must keep it
+
+The cost is not just noise. A peer orchestrator session read this ledger, saw the false approvals concentrate on cursor and grok reviewers, and proposed mechanical family-based blocking of implementer/reviewer pairs — a routing change built on an artifact. Controlling for reviewer identity via reviewer_diff_size (untouched by this bug) shows no family effect at all: intervention is a per-reviewer trait (Codex median 96 lines and 81 percent of runs touched; Cursor 4; Claude 1; Grok 0), and Claude/Opus finds median 0 in the same cursor work that codex rewrites. The bug did not just produce bad numbers, it produced a bad architectural proposal.
+
+Suggested direction, not binding: do not deliver rules by modifying a tracked file at all. When the repo owns an AGENTS.md, route that run's rule content through the prompt-preamble channel instead of merging into the file. Alternatives worth weighing are a nested AGENTS.md at a path the CLI reads but the repo does not track, or an untracked overlay. Whatever is chosen must satisfy criterion 3 — the check has to pass DURING the run, because the agent decides when to run it.
 """
 created_at = "2026-08-23"
 scored_at = "2026-08-23"
