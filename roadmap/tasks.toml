@@ -11927,7 +11927,7 @@ done_at = "2026-08-24"
 id = "397"
 phase = 22
 bundle = "contract"
-status = "in_progress"
+status = "done"
 title = "harness consumes harness_agent_adapter as a dependency — delete the in-repo AgentAdapter subsystem"
 scores = { d = 5, b = 5, u = 4 }
 depends_on = [396]
@@ -11950,9 +11950,16 @@ Also new: harness must mirror the three run timeouts into config :harness_agent_
 
 Still a repo-wide invariant change — dispatch it as a solo wave with nothing landing in parallel.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1787573863891-de8e3178, 6596acda67fd37d11d68c1baff6010520c17ce93)."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1787573863891-de8e3178"
 created_at = "2026-08-23"
 started_at = "2026-08-24"
 scored_at = "2026-08-23"
+done_at = "2026-08-24"
+shipped_in = "6596acda67fd37d11d68c1baff6010520c17ce93"
 
 [[task]]
 id = "398"

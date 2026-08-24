@@ -17974,7 +17974,7 @@
       "id": "397",
       "phase": 22,
       "bundle": "contract",
-      "status": "in_progress",
+      "status": "done",
       "title": "harness consumes harness_agent_adapter as a dependency — delete the in-repo AgentAdapter subsystem",
       "scores": {
         "d": 5,
@@ -18023,10 +18023,17 @@
         "test/support",
         "test/harness"
       ],
+      "shipped_in": "6596acda67fd37d11d68c1baff6010520c17ce93",
       "body": "Second half of the extraction. Once the package exists (task 396), harness stops carrying its own copy: take the dependency, delete lib/harness/agent_adapter.ex and lib/harness/agent_adapter/, delete the moved tests, and repoint the test-support names.\n\nRevised 2026-08-24 after task 396 was built. Two corrections to the original scoping:\n\n1. The package KEPT the Harness.AgentAdapter.* namespace (package name -> module name, the phoenix_live_view -> Phoenix.LiveView convention). The feared alias sweep across 38 lib files does not exist — those files compile unchanged. The real repoint is much smaller and lives entirely in test/: the four test-support modules the package now ships from lib/ were renamed under Harness.AgentAdapter.Testing.*, which touches about 30 test files plus run_case.ex.\n\n2. The deletion is larger than first measured: 2,549 lib LOC plus 2,768 test LOC, because test/harness/agent_adapter_test.exs sits one level above the subsystem directory and was missed in the first count.\n\nAlso new: harness must mirror the three run timeouts into config :harness_agent_adapter, :run. The package stopped reading :harness, :run so that harness can keep that key for Harness.Run's memory guard, which shares it.\n\nStill a repo-wide invariant change — dispatch it as a solo wave with nothing landing in parallel.\n",
       "created_at": "2026-08-23",
       "started_at": "2026-08-24",
+      "done_at": "2026-08-24",
       "scored_at": "2026-08-23",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1787573863891-de8e3178, 6596acda67fd37d11d68c1baff6010520c17ce93).",
+      "delivered_by": "codex",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1787573863891-de8e3178",
       "cross_repo": []
     },
     {
