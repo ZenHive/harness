@@ -18081,6 +18081,53 @@
       "created_at": "2026-08-23",
       "scored_at": "2026-08-23",
       "cross_repo": []
+    },
+    {
+      "id": "399",
+      "phase": 22,
+      "bundle": "core-loop",
+      "status": "pending",
+      "title": "Agent-initiated question channel — implementer parks the run with .harness/question.json, orchestrator answers via steer/resume",
+      "scores": {
+        "d": 5,
+        "b": 6,
+        "u": 5
+      },
+      "eff": 1.1,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "cursor",
+      "model": "cursor-grok-4.6-high",
+      "acceptance_criteria": [
+        "An implementer run whose worktree contains .harness/question.json (documented schema: at minimum a question string, optionally context) at the agent-invocation boundary does NOT proceed to commit/review: it parks in :held (or an equivalent observable held state) and emits a witness notification event carrying the question verbatim to configured sinks — a test observes the FileSink JSONL line",
+        "The harness-injected agent rules document the protocol: file path, schema, and that it is for genuinely ambiguous acceptance criteria only — so a dispatched agent knows the channel exists without any consumer-repo setup",
+        "The answer path reuses existing primitives, not new ones: dispatch-steer with the answer text + dispatch-resume re-enters the run in the same worktree, and a test proves the question and answer both reach the re-invoked agent's prompt/context",
+        "Harness reads question.json mechanically only — no classifier, regex, or branching on question content anywhere in harness code (the mantra: count facts, never judge them). A malformed or empty question.json is ignored-and-logged, never a crash",
+        "Timeout semantics are explicit and tested: what happens to lifetime_timeout while a run is parked on an unanswered question is a documented, deliberate choice, not an accident",
+        "skills/harness-driver/SKILL.md and priv/includes/harness-workflow.md document the channel (anti-staleness contract), propagated via scripts/sync-harness-skills.sh; mix check.dispatch green plus focused tests for the run-lifecycle and notification paths"
+      ],
+      "out_of_scope": [
+        "Reviewer or audit questions — the reviewer already has the concerns channel; baseline is the implementer path only",
+        "Peer-to-peer agent-to-agent messaging between concurrent runs",
+        "A dashboard/LiveView answer UI — answering happens via the existing dispatch-steer/dispatch-resume MCP tools",
+        "Auto-answering questions with an AI inside harness — the orchestrator (or operator) is the answerer",
+        "Changing the task-as-prompt doctrine: acceptance criteria remain the primary contract; the channel is an escape hatch, not a substitute for well-written tasks"
+      ],
+      "touches": [
+        "lib/harness/run.ex",
+        "lib/harness/agent_rules.ex",
+        "lib/harness/notification.ex",
+        "lib/harness/notification",
+        "test/harness/run_test.exs",
+        "skills/harness-driver/SKILL.md",
+        "priv/includes/harness-workflow.md"
+      ],
+      "body": "Today a headless implementer has no way to ask back: it guesses on ambiguous acceptance criteria, and the miss surfaces only post-hoc as reviewer concerns or a reject — a full run's tokens spent on a wrong guess. The operator asked for a Rueckfrage channel (2026-08-24 session).\n\nAll building blocks exist; only the agent-side trigger is missing. Premises, each verified against the harness-driver SKILL and CLAUDE.md (documented shipped surfaces): the :held state plus dispatch-steer (stash guidance for the next agent boundary) and dispatch-resume (re-enter :running in the same worktree) shipped in v0_9 (Task 150); the write-a-json-artifact-harness-reads-it-mechanically pattern is established (review.json, audit.json, recovery.json); Harness.Notification sinks (FileSink/CommandSink) are the shipped push channel for witness events.\n\nSuggested direction, not binding: avoid mid-turn file watching entirely — the natural detection point is the agent-invocation boundary. The agent writes .harness/question.json and ends its invocation; harness, before treating the run as complete, checks for the file and routes to :held + notification instead of commit/review. The answer rides the existing steer note; resume re-invokes the agent in the same worktree with question + answer injected (the resume_failed report-injection pattern). Whatever is chosen must keep judgment out of harness: parking, notifying, and threading text are mechanics; deciding what the question means and what to answer belongs to the orchestrator AI.\n\nDispatch trigger: harness runtime / run-lifecycle change (gen_statem states, notification surface) — per the routing gate this earns the full implement-review-land cycle rather than inline work.\n",
+      "created_at": "2026-08-24",
+      "scored_at": "2026-08-24",
+      "cross_repo": []
     }
   ]
 }
