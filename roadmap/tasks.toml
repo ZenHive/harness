@@ -12019,3 +12019,66 @@ Dispatch trigger: harness runtime / run-lifecycle change (gen_statem states, not
 """
 created_at = "2026-08-24"
 scored_at = "2026-08-24"
+
+[[task]]
+id = "400"
+phase = 22
+bundle = "autolanding"
+status = "pending"
+title = "Self-land must not mutate the running harness node's own checkout — Git.TargetSync needs a self-host guard"
+scores = { d = 4, b = 7, u = 7 }
+acceptance_criteria = ["A landing (or durable roadmap write) whose target project's local source directory IS the source tree of the currently running harness node does not advance that checkout's working tree. It resolves to a skip carrying a reason that names the self-host case, exactly like the existing dirty-tree and non-ff skips — never a silent no-op and never a --force.", """The self-host case is detected from a fact, not a name match on the string "harness": the check compares the project's resolved local source path against the running node's own source path (e.g. the application's compiled source root / File.cwd! at boot), so a differently-named clone of harness and a rename of the registered project both still trip the guard.""", "The skip is witnessed the same way the other skips are, so the operator learns their local target is behind origin and syncs manually; the landing itself still succeeds (the ff-push to origin is unaffected and must not be gated on the local sync).", "Every non-self-host project keeps today's behaviour byte-for-byte: operator off target -> ff the branch ref; operator on target with a clean tree -> merge --ff-only; dirty or non-ff -> the existing skip. Tests pin all three plus the new fourth case.", "A test proves the guard from the caller side, not only from Git.TargetSync: a lander/durable-write path invoked for a self-host project leaves the checkout's HEAD where it was.", "CLAUDE.md's claim that the lander 'deliberately never touches your checkout' is corrected to describe what TargetSync actually does and when it now declines, and AGENTS.md is regenerated from it.", "mix check.dispatch green plus focused mix test.json runs for the TargetSync, lander and durable-roadmap paths."]
+out_of_scope = ["Making the running node survive its own source tree changing (hot code loading, a recompile guard, refusing to self-land file deletions) — the guard here is to stop harness mutating that tree in the first place.", "Changing the ff-push to origin, the rebase, or any other part of the landing sequence.", "A dashboard control to re-enable the local sync for a self-host project.", "Auto-restarting the node after a self-land."]
+touches = ["lib/harness/git/target_sync.ex", "lib/harness/lander.ex", "lib/harness/roadmap/durable.ex", "lib/harness/notification.ex", "test/harness/git/target_sync_test.exs"]
+assignee = "cursor"
+model = "cursor-grok-4.6-high"
+body = """
+Harness landed its own task 397 on 2026-08-24 and killed the node that was running the land.
+
+Observed facts, all from ground truth rather than recollection:
+
+- The delivery commit 6596acd deleted 18 files under lib/harness/agent_adapter/ and moved that code to a git dependency, so mix.exs and mix.lock both changed.
+- `git reflog` in the operator's live harness checkout records two entries, `merge origin/main: Fast-forward` at 21:07:22 and 21:07:30 local time. Nothing in the session ran those by hand: they are Harness.Git.TargetSync, which the lander calls after its ff-push and durable roadmap writes call after theirs (lib/harness/git/target_sync.ex, extracted in task 6614's durable-roadmap work).
+- Fifteen seconds later, at 13:07:45 UTC, the running node lost its own modules. oban_jobs rows 8103 and 8106 (Harness.Audit.Worker) failed with `function Harness.Audit.run/1 is undefined (module Harness.Audit is not available)`; row 8104 (Harness.Run.Worker) failed with `(EXIT) :undef` and then `module is not a worker: Harness.Run.Worker`. Two post-merge audits were discarded and one live zen_websocket run was thrown back to attempt 3.
+
+Premise unverified — confirm before building on it: the exact step that purged the beam files is not established. The old node's logs are gone with it, and deleting .ex files does not by itself unload loaded modules, so something recompiled or wiped _build/dev/lib/harness/ebin in the window between the ff-merge and the failures. Establish that mechanism first; it may change what the right guard is. What IS established is that TargetSync mutated the working tree of the node performing the land, at the second the land happened.
+
+TargetSync is correct and wanted for every other registered project — an operator whose local target drifts behind origin hits the merge conflicts that motivated durable roadmap writes in the first place. Its three documented skip cases (operator off target, clean tree on target, dirty/non-ff) all reason about the operator's state and none of them reason about whether the repo being advanced is the one currently executing the code. Under dogfooding that is the common case, and the failure is silent until a job dies.
+
+Dispatch trigger: harness runtime and a self-hosting invariant — the lander/roadmap-durability path that every autonomous land walks.
+"""
+created_at = "2026-08-24"
+scored_at = "2026-08-24"
+
+[[task]]
+id = "401"
+phase = 22
+bundle = "audit-hygiene"
+status = "pending"
+title = "mix ci is red on main: one ex_dna clone and four dialyzer warnings, all pre-dating the 397 extraction"
+scores = { d = 4, b = 7, u = 6 }
+acceptance_criteria = ["mix ci exits 0 on the landed base with no threshold lowered, no check dropped from an alias, no clone budget raised above 0, and no warning added to .dialyzer_ignore.exs unless the entry names why the warning is a dialyzer limitation rather than a defect.", "Harness.Run.Worker offline test coverage (mix test.json --cover --exclude integration) is at or above 80 percent before any of its code is changed. It measured 75.53 percent on 2026-08-24, so the missing coverage is written first, in this task, per the raise-coverage-before-mutating rule. Report the before and after percentages in the implemented note.", "The ex_dna clone at lib/harness/run/worker.ex:108 and :132 is gone. Both call sites keep behaviour identical: an insert that comes back conflict? true still returns the existing run, a plain ok still returns the new run id, an error still propagates. Tests cover the unique-conflict path for both the single-task and the coalesced-member path.", "The four dialyzer findings are resolved at the source, not suppressed: lib/harness/lander/worker.ex:43 (the land/1 call will not succeed), lib/harness/result_store.ex:668 (pattern can never match binary()) and :670 (clause covered by a previous clause), lib/harness/run/worker.ex:246 (guard clause can never succeed). Each fix states in the diff or the implemented note whether the dead code was a stale contract or a genuine bug that was silently unreachable.", "No behaviour change to dispatch idempotency: the Oban unique key, the coalesced member checks, and the settled-run recovery path are untouched.", "mix check.dispatch green, plus the full mix ci run captured to a single mktemp log and its path recorded in the review checks."]
+out_of_scope = ["Enabling the :integration tests in the precommit test step or raising precommit's 80 coverage threshold back to the project default of 85 — that is task 1736's deferred follow-up, not this one.", "The 22 advisory reach --smells findings; --smells exits 0 by design.", "Refactoring Run.Worker beyond removing the clone and the dead guard (task 353 owns decomposing the run lifecycle).", "The credo ExSlop plugin warning printed at the top of every run — separate config concern."]
+touches = ["lib/harness/run/worker.ex", "lib/harness/lander/worker.ex", "lib/harness/result_store.ex", "test/harness/run/worker_test.exs"]
+assignee = "codex"
+model = "gpt-5.6-sol"
+body = """
+mix ci is the repo's mergeable bar and there is no GitHub CI behind it, so a red ci is the only gate there is. It is currently red on origin/main and has been for a while: both findings reproduce on parent 4fddc2f, before the task 397 extraction landed.
+
+Measured on the landed base 2026-08-24 (full mix ci run, then the two steps ci aborted before reaching, run separately):
+
+- format, compile --warnings-as-errors, credo --strict, doctor (100/100/100), the offline suite with --cover-threshold 80, and sobelow all pass.
+- ex_dna --max-clones 0 fails on exactly one clone, 49 nodes / ~24 duplicated lines: the `{run_id, changeset} = new_dispatch_job(...)` plus `case Harness.Oban.insert(changeset)` block appears verbatim in enqueue_unclaimed/4 at lib/harness/run/worker.ex:108 and in enqueue_coalesced/4 at :132.
+- reach.check --arch --smells passes (architecture policy OK; 22 advisory smell findings).
+- dialyzer.json reports 4 warnings: lander/worker.ex:43 "The function call land will not succeed", result_store.ex:668 "The pattern can never match the type binary()", result_store.ex:670 "The pattern variable _id@1 can never match the type, because it is covered by previous clauses", run/worker.ex:246 "The guard clause can never succeed".
+
+The dialyzer findings are the interesting half. Three of the four are dialyzer telling us a clause is unreachable, which means either a contract drifted or a branch someone believed was live has been dead. Fix each at the source and say which it was; do not reach for .dialyzer_ignore.exs to make the gate green.
+
+The coverage constraint is the reason this is not a five-minute inline edit. Harness.Run.Worker sits at 75.53 percent offline coverage because most of it is exercised by :integration tests that need a live Postgres, and 58 lines are uncovered — including lines 94, 96, 106, 122, 130, 136, 138 and 147, which is precisely the enqueue path the clone lives on. Mutating it below tier is not allowed, so the offline coverage comes first.
+
+Standing cost of leaving it red: the task 397 reviewer spent real effort establishing that both reds were pre-existing (empty diff versus parent, last touch on worker.ex was aacf879 from task 368) before it could approve. Every future reviewer that runs the full gate repeats that derivation.
+
+Dispatch trigger: repo-wide check infrastructure — mix ci is the mergeable bar for every landed run.
+"""
+created_at = "2026-08-24"
+scored_at = "2026-08-24"
