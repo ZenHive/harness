@@ -625,7 +625,7 @@ Changes that require an update to this skill:
 
 Either way it does not auto-load on its own — the CLAUDE.md import is what brings it into session context.
 
-When in doubt, read the current moduledocs for `Harness.AgentAdapter`, `Harness.Run`, `Harness.Batch`, `Harness.ProjectRegistry`, and `Harness.Roadmap`, then make this skill match reality. Tidewave `project_eval` is the fastest verifier: `function_exported?/3`, `__info__(:functions)`, `Map.keys(Struct.__struct__())`, and `get_docs` will catch most drift in seconds.
+When in doubt, read the current moduledocs for `Harness.AgentAdapter`, `Harness.Run`, `Harness.Batch`, `Harness.ProjectRegistry`, and `Harness.Roadmap`, then make this skill match reality. The adapter subsystem lives in the `harness_agent_adapter` git dependency (Task 397); the `Harness.AgentAdapter.*` namespace is unchanged, and the conformance suite is `Harness.AgentAdapter.Testing.ConformanceCase`. Tidewave `project_eval` is the fastest verifier: `function_exported?/3`, `__info__(:functions)`, `Map.keys(Struct.__struct__())`, and `get_docs` will catch most drift in seconds.
 
 ---
 

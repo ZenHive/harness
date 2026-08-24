@@ -77,6 +77,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Adapter subsystem extracted to `harness_agent_adapter` (Task 397).** `mix.exs` takes the ZenHive git dependency; `lib/harness/agent_adapter.ex` and `lib/harness/agent_adapter/` (2,549 lib LOC) plus the moved tests (2,768 LOC) are deleted. The package kept the `Harness.AgentAdapter.*` namespace, so harness call sites compile unchanged. Agent process timeouts (`total_timeout` / `idle_timeout` / `progress_timeout`) now live under `config :harness_agent_adapter, :run` so `:harness, :run` can stay owned by `Harness.Run`'s lifetime/memory guards; the dashboard timeout card still writes `:harness, :run` and Run forwards those values as Driver opts. Test doubles moved to `Harness.AgentAdapter.Testing.*`. The extracted package already carries the 722f97d `cursor-` family prefix (`cursor-grok-4.6-*`).
+
 - **`anubis_mcp` 1.14.0 → 2.0.0 (Task 384).** `mix.exs` constraint raised from `~> 1.6` to `~> 2.0`. Confirmed against the 2.0.0 source that Streamable HTTP, `should_start?/1`, the macro-generated `child_spec/1`, and persistent_term session config are unchanged; harness never used the removed HTTP+SSE transport, never pinned a protocol-versions floor, and never emits resource/blob content, so no `lib/` or test changes were required.
 
 - **`Harness.Run` gen_statem decomposed into per-state satellite modules (Task 353).** `run.ex` went from 2,890 lines — the largest file in the codebase by nearly 2× — to 617, with each state's event clauses moved into a `Harness.Run.States.*` module (`dispatched`, `running`, `committing`, `recovering`, `reviewing`, `held`, `done`, `failed`) called from thin state-function delegators. The gen_statem callback mode, state set, and event surface are unchanged; the diff is a pure mechanical relocation with no new judgment or classification logic, continuing the satellite pattern the module already established (`Run.Recovery`, `Run.Review`, `Run.Result`, `Run.Status`, `Run.Reflex`, `Run.RetryPolicy`). Maintainability debt, not a bug — the 2026-07-06 cross-cutting review found zero correctness defects in this subsystem.
@@ -89,11 +91,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **`bandit` 1.12.4 → 1.12.5.** Hex 1.12.5 is the fix for `EEF-CVE-2026-74836` (HIGH) and `EEF-CVE-2026-75484` on 1.12.4. Same lock bump also took `phoenix` 1.8.12, `phoenix_live_view` 1.2.10, `descripex` 0.13.0, and `ex_unit_json` 0.6.1.
+
 - **Mountable-consumer auth boundary documented (Task 363).** Endpoint and Router moduledocs, plus `skills/harness-driver/SKILL.md`, now state that harness ships no authentication for the dashboard, Oban Web, or `/harness/mcp`. That is safe only at the standalone endpoint's default loopback bind; a consumer mounting these routes in a non-loopback or public Phoenix endpoint must put its own auth in front of both the browser pipeline and the separate MCP forward. No auth plug was added.
 
 - **ETF payload decoding hardened with `binary_to_term(payload, [:safe])`.** `Harness.ProjectRegistry.Persistence`, `Harness.ResultStore.Postgres`, and `Harness.SettingsStore.Postgres` now decode persisted Erlang terms in `:safe` mode, so a tampered or corrupt row can't create new atoms or resource-embedding terms during decode. Malformed payloads still degrade to `{:error, :invalid_term}` through the existing `ArgumentError` rescue.
 
 ### Fixed
+
+- **Daily cron schedules honour the operator timezone.** Oban's Cron plugin defaulted to `"Etc/UTC"`, so `SuiteHealthPoller`'s `"0 0 * * *"` fired at 08:00 in UTC+8 — inside the working day for a full-suite sweep meant to run overnight. `config :harness, :cron_timezone` (default `"Asia/Kuala_Lumpur"`) plus `tzdata` as the Elixir time-zone database make midnight mean the operator's midnight.
 
 - **Durable roadmap writes now target the repo that holds `roadmap_path`, not `source` (Task 378).** `mark_*` commits were pushing `tasks.toml` into the code repository whenever `roadmap_path` and `source` diverged (the bourse public-client / private-workbench split). Writes now use the Git repo containing `roadmap_path`, with an explicit `roadmap_target_branch` (or the code `target_branch` only when both paths are the same repository). Unresolvable repo/branch pairs fall back to a local rmap write instead of guessing a push target.
 

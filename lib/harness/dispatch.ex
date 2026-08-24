@@ -1100,7 +1100,7 @@ defmodule Harness.Dispatch do
         kind: :value,
         default: %{},
         description:
-          ~s|Optional object mapping adapter name to model id, e.g. {"grok": "grok-4.5", "cursor": "composer-2.5"}. When an adapter is omitted, compare uses that adapter's configured default model, never the task's pinned model.|
+          ~s|Optional object mapping adapter name to model id, e.g. {"grok": "grok-4.6", "cursor": "cursor-grok-4.6-high"}. When an adapter is omitted, compare uses that adapter's configured default model, never the task's pinned model.|
       ],
       scrub_anthropic_key: [
         kind: :value,
