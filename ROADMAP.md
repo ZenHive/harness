@@ -11,7 +11,7 @@
 <!-- FOCUS:BEGIN -->
 **Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (4 of 22 done · 0 in progress)
 
-**Last shipped:** Task 363 — Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router on 2026-08-16
+**Last shipped:** no recent shipments
 
 **Up next:** Task 361 — Expand direct coverage of merge-critical Harness.Git.TargetSync and Harness.Store.EtsScope behavior [D:3/B:7/U:5 → Eff:2.0] 🎯
 <!-- FOCUS:END -->
@@ -322,7 +322,7 @@
 | Task 386 | ⬜ | 🎁 **core-loop** · Lander: landing job can complete (landed_sha recorded) without the roadmap advance ever reaching origin [D:5/B:7/U:6 → Eff:1.3] 📋 |
 | Task 392 | ⬜ | 🎁 **core-loop** · 🐛 Terminate the agent process tree, not just the direct PID — orphaned children outlive the kill and share the worktree [D:5/B:9/U:8 → Eff:1.7] 🚀 |
 | Task 393 | ⬜ | 🎁 **core-loop** · 🐛 Fence .harness/review.json to the reviewer that wrote it — a killed reviewer's stale approve can settle the run :done [D:3/B:9/U:8 → Eff:2.83] 🎯 |
-| Task 396 | ⬜ | 🎁 **contract** · Create the harness_agent_adapter package — move the AgentAdapter subsystem into its own repo [D:5/B:6/U:5 → Eff:1.1] 📋 |
+| Task 396 | ✅ | 🎁 **contract** · Create the harness_agent_adapter package — move the AgentAdapter subsystem into its own repo [D:5/B:6/U:5 → Eff:1.1] 📋 |
 | Task 397 | ⬜ | 🎁 **contract** · harness consumes harness_agent_adapter as a dependency — delete the in-repo AgentAdapter subsystem [D:5/B:5/U:4 → Eff:0.9] ⚠️ |
 | Task 398 | ⬜ | 🎁 **agent-gate** · Injected agent rules must never be visible in a tracked file while an agent runs the project's checks [D:4/B:7/U:8 → Eff:1.88] 🚀 |
 <!-- TASKS:END -->

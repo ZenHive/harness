@@ -17928,7 +17928,7 @@
       "phase": 22,
       "bundle": "contract",
       "target_repo": "harness_agent_adapter",
-      "status": "pending",
+      "status": "done",
       "title": "Create the harness_agent_adapter package — move the AgentAdapter subsystem into its own repo",
       "scores": {
         "d": 5,
@@ -17963,7 +17963,11 @@
       ],
       "body": "Supersedes task 329 (the decision spike): the extraction decision is settled — it is a go. Personas OS (~/_DATA/code/personas, DESIGN.md §5/§8) is the named second consumer; it needs the uniform-Ports driver for the six headless coding-agent CLIs without harness's Run/worktree/lander machinery. No further go/no-go document is required.\n\nTasks 327 and 328 already did the hard part: the rule-content seam is inverted (the subsystem no longer names Harness.AgentRules) and the Driver -> Run.Reflex -> Worktree.Isolation -> AgentAdapter cycle is broken (the watchdog is a leaf module, Isolation.validate/3 takes its inputs from the caller). The subsystem is therefore dependency-clean, and this task is a mechanical move plus new-repo scaffolding, not a refactor.\n\nSize: 2,549 lib LOC and roughly 2,768 test LOC move; about 5% of harness's lib surface.\n\nHand-build rather than dispatch: creating the repo and its remote is an operator-gated step, and the work lands in a repo that does not exist yet, so a harness worktree dispatch cannot perform it.\n",
       "created_at": "2026-08-23",
+      "started_at": "2026-08-24",
+      "done_at": "2026-08-24",
       "scored_at": "2026-08-23",
+      "implemented": "Created ZenHive/harness_agent_adapter (public, main @ d869805): 23 lib files / 3,809 LOC + 24 test files, full setup-guide kit (mix.exs with portable ci + precommit.full, .credo.exs/.reach.exs/.doctor.exs/.formatter.exs/.dialyzer_ignore.exs, MIT LICENSE, README with the written public API, CHANGELOG, SECURITY, CLAUDE.md with a self-contained Toolchain section, generated AGENTS.md, roadmap/tasks.toml, dependabot without workflows) and four-family MCP config on tidewave port 4034. Namespace kept as Harness.AgentAdapter.* per Hex convention. Test-support (ConformanceCase, 3 fakes, ProcessFixture, GitFixture) promoted into lib/harness/agent_adapter/testing/ so downstream consumers can actually run the conformance suite; app-env key moved to :harness_agent_adapter, :run; the four foreign moduledoc mentions reworded. mix ci green: 336 tests (329 pass / 7 :integration excluded), coverage 90.99% against an 85 floor, credo 98 checks, doctor 100/100/100, ex_dna 0 clones, reach --arch OK + --smells clean, sobelow clean, dialyzer 0 errors. Registered in ProjectRegistry (local, mix check.dispatch, landing_policy :auto, target main, cap 2). harness itself untouched — that is task 397.",
+      "delivered_by": "human",
       "cross_repo": []
     },
     {
@@ -17987,43 +17991,39 @@
       "assignee": "codex",
       "model": "gpt-5.6-sol",
       "acceptance_criteria": [
-        "mix.exs takes the harness_agent_adapter dependency (git or path is acceptable) and lib/harness/agent_adapter.ex plus the whole lib/harness/agent_adapter/ directory are deleted from harness — harness's lib LOC drops by about 2,549",
-        "Every caller is repointed at the package namespace: 38 lib files outside the subsystem reference AgentAdapter today, concentrated in agent_registry.ex (17 references), run/actions/worktree.ex (8), audit_review.ex (6), run/result.ex, run/actions/reviewing.ex, dispatch.ex, chat/claude.ex (5 each)",
-        "The moved tests are deleted from harness; harness keeps only the tests that exercise harness-side behaviour, and test/support/run_case.ex links against the package's fake adapters instead of local copies",
+        "mix.exs takes the harness_agent_adapter dependency (git: ZenHive/harness_agent_adapter) and lib/harness/agent_adapter.ex plus the whole lib/harness/agent_adapter/ directory are deleted from harness — a drop of 2,549 lib LOC",
+        "No Harness.AgentAdapter.* reference is rewritten: the package kept the namespace verbatim, so the 38 lib files that name AgentAdapter today compile unchanged against the dependency. A diff that renames them is wrong",
+        "The moved tests are deleted from harness (test/harness/agent_adapter/, test/harness/agent_adapter_test.exs, test/support/agent_adapter/conformance_case.ex, test/support/fake_adapter.ex, test/support/fake_model_adapter.ex, test/support/noncompliant_adapter.ex — 2,768 LOC). test/support/process_fixture.ex and test/support/git_fixture.ex STAY: 45 and 6 harness test files outside the subsystem use them",
+        "The only rename sweep is the test-support surface the package now ships from lib/: Harness.FakeAdapter -> Harness.AgentAdapter.Testing.FakeAdapter, Harness.FakeModelAdapter -> ...Testing.FakeModelAdapter, Harness.NoncompliantAdapter -> ...Testing.NoncompliantAdapter, Harness.AgentAdapter.ConformanceCase -> ...Testing.ConformanceCase. About 30 test files plus test/support/run_case.ex (70 references, including the FakeAdapter.review_ratings/0 call and the :adapter / :reviewer defaults)",
+        "harness mirrors the three run timeouts into the package's own config key: config :harness_agent_adapter, :run, total_timeout:/idle_timeout:/progress_timeout:. The package no longer reads :harness, :run, and harness keeps that key for Harness.Run's memory guard",
         "Harness-owned pieces stay in harness and still work: Harness.AgentRules (rule content), Harness.AgentRegistry (availability hints), Harness.Run.*, Harness.Worktree.Isolation",
         "mix precommit.full green on the landed base, including the six adapters' conformance tests now run from the package"
       ],
       "out_of_scope": [
         "Creating the package (task 396)",
         "Changing adapter behaviour, rule injection, or watchdog semantics",
-        "Renaming or reshaping the harness-side surfaces that merely alias the package",
+        "Renaming the Harness.AgentAdapter.* core modules — the namespace is deliberately unchanged",
         "Publishing the package to hex.pm"
       ],
       "files_to_modify": [
         "mix.exs",
-        "lib/harness/agent_registry.ex",
-        "lib/harness/run/actions/worktree.ex",
-        "lib/harness/audit_review.ex",
-        "lib/harness/run/result.ex",
-        "lib/harness/run/actions/reviewing.ex",
-        "lib/harness/dispatch.ex",
-        "lib/harness/chat/claude.ex",
-        "lib/harness/run.ex"
+        "mix.lock",
+        "config/config.exs",
+        "test/support/run_case.ex"
       ],
       "touches": [
         "mix.exs",
         "mix.lock",
+        "config/config.exs",
+        "config/runtime.exs",
         "lib/harness/agent_adapter.ex",
         "lib/harness/agent_adapter",
-        "lib/harness/agent_registry.ex",
-        "lib/harness/run",
-        "lib/harness/audit_review.ex",
-        "lib/harness/dispatch.ex",
-        "lib/harness/chat/claude.ex",
         "test/harness/agent_adapter",
-        "test/support"
+        "test/harness/agent_adapter_test.exs",
+        "test/support",
+        "test/harness"
       ],
-      "body": "Second half of the extraction. Once the package exists (task 396), harness stops carrying its own copy: take the dependency, delete lib/harness/agent_adapter.ex and lib/harness/agent_adapter/, and repoint every caller.\n\nThe cost of the extraction lives here, not in the move: 38 lib files outside the subsystem name AgentAdapter today, so the alias sweep is the bulk of the diff. It is mechanical and single-repo, which is why this half is dispatchable while task 396 is not.\n\nThis is a repo-wide invariant change — dispatch it as a solo wave with nothing landing in parallel, since any sibling land that adds a new AgentAdapter reference after the fork reddens it at landing time.\n",
+      "body": "Second half of the extraction. Once the package exists (task 396), harness stops carrying its own copy: take the dependency, delete lib/harness/agent_adapter.ex and lib/harness/agent_adapter/, delete the moved tests, and repoint the test-support names.\n\nRevised 2026-08-24 after task 396 was built. Two corrections to the original scoping:\n\n1. The package KEPT the Harness.AgentAdapter.* namespace (package name -> module name, the phoenix_live_view -> Phoenix.LiveView convention). The feared alias sweep across 38 lib files does not exist — those files compile unchanged. The real repoint is much smaller and lives entirely in test/: the four test-support modules the package now ships from lib/ were renamed under Harness.AgentAdapter.Testing.*, which touches about 30 test files plus run_case.ex.\n\n2. The deletion is larger than first measured: 2,549 lib LOC plus 2,768 test LOC, because test/harness/agent_adapter_test.exs sits one level above the subsystem directory and was missed in the first count.\n\nAlso new: harness must mirror the three run timeouts into config :harness_agent_adapter, :run. The package stopped reading :harness, :run so that harness can keep that key for Harness.Run's memory guard, which shares it.\n\nStill a repo-wide invariant change — dispatch it as a solo wave with nothing landing in parallel.\n",
       "created_at": "2026-08-23",
       "scored_at": "2026-08-23",
       "cross_repo": []
