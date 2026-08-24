@@ -7,12 +7,12 @@ defmodule Harness.ObanDispatchTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Harness.AgentAdapter.Claude
+  alias Harness.AgentAdapter.Testing.FakeAdapter
   alias Harness.Audit.Worker, as: AuditWorker
   alias Harness.Batch
   alias Harness.Dashboard.RunFeed
   alias Harness.Dispatch
   alias Harness.Dispatch.AwaitRunsSummary
-  alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.Lander.Worker, as: LanderWorker
   alias Harness.Oban, as: HarnessOban

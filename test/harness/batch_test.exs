@@ -6,10 +6,10 @@ defmodule Harness.BatchTest do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.OSProcess
   alias Harness.AgentAdapter.Run, as: AgentRun
+  alias Harness.AgentAdapter.Testing.FakeAdapter
   alias Harness.AgentRegistry
   alias Harness.Batch
   alias Harness.Batch.Result, as: BatchResult
-  alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry

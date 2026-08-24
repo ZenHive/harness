@@ -2,6 +2,7 @@ defmodule Harness.AuditReviewTest do
   use ExUnit.Case, async: true
 
   alias Harness.AgentAdapter.Outcome
+  alias Harness.AgentAdapter.Testing.FakeAdapter
   alias Harness.AuditReview
 
   # Generous ceilings for the end-to-end dispatch tests below. Each spawns a
@@ -157,10 +158,10 @@ defmodule Harness.AuditReviewTest do
     end
 
     test "extracts :approve verdict from a grader that emits the approve sentinel", %{cwd: cwd} do
-      assert {:ok, %{verdict: :approve, outcome: %Outcome{kind: :exited}, grader: Harness.FakeAdapter}} =
+      assert {:ok, %{verdict: :approve, outcome: %Outcome{kind: :exited}, grader: FakeAdapter}} =
                AuditReview.grade_fix(
                  implementer: :claude,
-                 grader: Harness.FakeAdapter,
+                 grader: FakeAdapter,
                  sha: "abc1234",
                  prompt: "review this fix",
                  cwd: cwd,
@@ -174,7 +175,7 @@ defmodule Harness.AuditReviewTest do
       assert {:ok, %{verdict: :reject, outcome: %Outcome{kind: :exited}}} =
                AuditReview.grade_fix(
                  implementer: :claude,
-                 grader: Harness.FakeAdapter,
+                 grader: FakeAdapter,
                  sha: "abc1234",
                  prompt: "review this fix",
                  cwd: cwd,
@@ -194,7 +195,7 @@ defmodule Harness.AuditReviewTest do
       assert {:ok, %{verdict: :unclear, outcome: %Outcome{kind: {:timed_out, :idle}}}} =
                AuditReview.grade_fix(
                  implementer: :claude,
-                 grader: Harness.FakeAdapter,
+                 grader: FakeAdapter,
                  sha: "abc1234",
                  prompt: "review this fix",
                  cwd: cwd,
@@ -208,7 +209,7 @@ defmodule Harness.AuditReviewTest do
       assert {:ok, %{verdict: :unclear, outcome: %Outcome{kind: :exited}}} =
                AuditReview.grade_fix(
                  implementer: :claude,
-                 grader: Harness.FakeAdapter,
+                 grader: FakeAdapter,
                  sha: "abc1234",
                  prompt: "review this fix",
                  cwd: cwd,
@@ -226,7 +227,7 @@ defmodule Harness.AuditReviewTest do
       assert {:ok, %{verdict: :approve}} =
                AuditReview.grade_fix(
                  implementer: :claude,
-                 grader: Harness.FakeAdapter,
+                 grader: FakeAdapter,
                  sha: "deadbeef",
                  prompt: "review",
                  cwd: cwd,
@@ -243,7 +244,7 @@ defmodule Harness.AuditReviewTest do
       assert {:error, _reason} =
                AuditReview.grade_fix(
                  implementer: :claude,
-                 grader: Harness.FakeAdapter,
+                 grader: FakeAdapter,
                  sha: "abc1234",
                  prompt: "review",
                  cwd: cwd,
@@ -265,7 +266,7 @@ defmodule Harness.AuditReviewTest do
       assert {:ok, %{outcome: %Outcome{kind: :exited}}} =
                AuditReview.grade_fix(
                  implementer: :claude,
-                 grader: Harness.FakeAdapter,
+                 grader: FakeAdapter,
                  sha: "abc1234",
                  prompt: "review",
                  cwd: tmp_dir,

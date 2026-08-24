@@ -2,8 +2,8 @@ defmodule Harness.StatusViewTest do
   # async: false because tests reset AgentRegistry and inspect shared run/result state.
   use ExUnit.Case, async: false
 
+  alias Harness.AgentAdapter.Testing.FakeAdapter
   alias Harness.AgentRegistry
-  alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
   alias Harness.ResultStore

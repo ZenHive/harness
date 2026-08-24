@@ -79,6 +79,19 @@ defmodule Harness.ConfigTest do
   end
 
   describe "get/1" do
+    test "keeps agent process timeouts under the extracted package key" do
+      assert [
+               total_timeout: 1_800_000,
+               idle_timeout: 300_000,
+               progress_timeout: 300_000
+             ] = Application.fetch_env!(:harness_agent_adapter, :run)
+
+      harness_run = Application.get_env(:harness, :run, [])
+      refute Keyword.has_key?(harness_run, :total_timeout)
+      refute Keyword.has_key?(harness_run, :idle_timeout)
+      refute Keyword.has_key?(harness_run, :progress_timeout)
+    end
+
     test "returns the schema default when nothing overrides it" do
       Application.delete_env(:harness, :run)
       assert Config.get({:run, :lifetime_timeout}) == 5_400_000

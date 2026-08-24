@@ -115,6 +115,7 @@ defmodule Harness.MixProject do
   defp deps do
     [
       # Core
+      {:harness_agent_adapter, git: "https://github.com/ZenHive/harness_agent_adapter.git"},
       {:descripex, "~> 0.8"},
       # Compile-time option-schema validation for the Harness.Dispatch.RunTool macro DSL.
       {:nimble_options, "~> 1.0"},

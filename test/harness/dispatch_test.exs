@@ -4,6 +4,7 @@ defmodule Harness.DispatchTest do
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentAdapter.Cursor
+  alias Harness.AgentAdapter.Testing.FakeAdapter
   alias Harness.Batch.AgentEvaluation
   alias Harness.CapabilityScore
   alias Harness.CapabilityScore.Assessment
@@ -11,7 +12,6 @@ defmodule Harness.DispatchTest do
   alias Harness.Chat.Tools
   alias Harness.Dispatch
   alias Harness.Dispatch.AwaitRunsSummary
-  alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry

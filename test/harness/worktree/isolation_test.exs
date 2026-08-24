@@ -18,7 +18,7 @@ defmodule Harness.Worktree.IsolationTest do
 
   describe "validate/3" do
     test "accepts adapters that declare worktree isolation" do
-      assert :ok = Isolation.validate(Harness.FakeAdapter, true, nil)
+      assert :ok = Isolation.validate(Harness.AgentAdapter.Testing.FakeAdapter, true, nil)
     end
 
     test "accepts Antigravity when worktree isolation is declared (cwd pinned via --add-dir in build_command/1)" do

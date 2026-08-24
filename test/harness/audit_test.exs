@@ -16,12 +16,14 @@ defmodule Harness.AuditTest do
 
   alias Harness.Agent.Settings, as: AgentSettings
   alias Harness.AgentAdapter.Pi
+  alias Harness.AgentAdapter.Testing.FakeAdapter
   alias Harness.AgentRegistry
   alias Harness.Audit
   alias Harness.Dashboard.OpsFeed
   alias Harness.Dashboard.OpsFeed.Op
-  alias Harness.FakeAdapter
   alias Harness.GitFixture
+  # ── git fixture: bare origin + working clone, mirroring the post-land state
+  #    (everything the audit reviews is already on origin/main). ─────────────
   alias Harness.Notification.Event
   alias Harness.ProjectFixture
   alias Harness.ResultStore
@@ -31,9 +33,6 @@ defmodule Harness.AuditTest do
   alias Harness.Test.CaptureSink
   alias Harness.Test.SettingsStoreMemory
   alias Harness.TokenUsage
-
-  # ── git fixture: bare origin + working clone, mirroring the post-land state
-  #    (everything the audit reviews is already on origin/main). ─────────────
 
   defp sha(repo, ref), do: repo |> GitFixture.git!(["rev-parse", ref]) |> String.trim()
 

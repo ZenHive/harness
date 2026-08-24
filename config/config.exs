@@ -95,11 +95,8 @@ config :harness, :retry_policy,
   max_delay_ms: 60_000,
   multiplier: 2.0
 
-# Run lifecycle & agent timeouts — see Harness.AgentAdapter.Driver and Harness.Run.
+# Run lifecycle — see Harness.Run.
 # All keys are optional; defaults live in code.
-#   :total_timeout       — agent total-run budget in ms; defaults to 1_800_000 (30 min).
-#   :idle_timeout        — kill the agent after this many ms with no output; defaults
-#                          to 300_000 (5 min).
 #   :lifetime_timeout    — whole-job wall budget (worktree + implementer + reviewer) in
 #                          ms; defaults to 5_400_000 (90 min).
 #   :terminal_linger     — how long a settled run stays observable before it stops, in
@@ -150,6 +147,14 @@ config :harness, :worktree,
   reap_on_crash: true
 
 config :harness, ecto_repos: [Harness.Repo]
+
+# Agent process timeouts — see Harness.AgentAdapter.Driver. Keep these under the
+# dependency's application key; `config :harness, :run` remains owned by
+# Harness.Run's lifecycle and memory guards.
+config :harness_agent_adapter, :run,
+  total_timeout: 1_800_000,
+  idle_timeout: 300_000,
+  progress_timeout: 300_000
 
 config :phoenix, :json_library, Jason
 

@@ -289,11 +289,11 @@ defmodule Harness.RunCase do
       alias Harness.AgentAdapter.Antigravity
       alias Harness.AgentAdapter.Codex
       alias Harness.AgentAdapter.Outcome
+      alias Harness.AgentAdapter.Testing.FakeAdapter
+      alias Harness.AgentAdapter.Testing.FakeModelAdapter
       alias Harness.Dashboard.RunFeed
       alias Harness.Dashboard.Transcript
       alias Harness.Dashboard.Transcript.Parser
-      alias Harness.FakeAdapter
-      alias Harness.FakeModelAdapter
       alias Harness.GitFixture
       alias Harness.Landing.Settings, as: LandingSettings
       alias Harness.ProcessFixture
@@ -307,6 +307,9 @@ defmodule Harness.RunCase do
       alias Harness.Run.Status
       alias Harness.RunCase.CrashingAdapter
       alias Harness.RunCase.DriverCrashAdapter
+
+      # ── helpers ─────────────────────────────────────────────────────────────
+
       alias Harness.RunCase.HangingAdapter
       alias Harness.RunCase.NoResumeAdapter
       alias Harness.RunCase.PidFileAdapter
@@ -329,8 +332,6 @@ defmodule Harness.RunCase do
         _ = Antigravity
         :ok
       end
-
-      # ── helpers ─────────────────────────────────────────────────────────────
 
       defp run(overrides) do
         {run_id, pid} = start(overrides)

@@ -13,10 +13,10 @@ defmodule Harness.Dashboard.KPILiveTest do
   # async: false because tests mutate the global :result_store application env.
   use Harness.Dashboard.ConnCase, async: false
 
+  alias Harness.AgentAdapter.Testing.FakeAdapter
   alias Harness.CapabilityScore
   alias Harness.CapabilityScore.Assessment
   alias Harness.CapabilityScore.Entry
-  alias Harness.FakeAdapter
   alias Harness.ResultStore
   alias Harness.Run.LogRecord
   alias Harness.TokenUsage

@@ -30,6 +30,7 @@ defmodule Harness.ProjectRegistryTest do
   use ExUnit.Case, async: false
 
   alias Ecto.Adapters.SQL.Sandbox
+  alias Harness.AgentAdapter.Testing.FakeAdapter
   alias Harness.Dispatch
   alias Harness.GitFixture
   alias Harness.Landing.Settings, as: LandingSettings
@@ -643,7 +644,7 @@ defmodule Harness.ProjectRegistryTest do
         [
           base_dir: base,
           adapter_opts: [command: :write],
-          reviewer: Harness.FakeAdapter,
+          reviewer: FakeAdapter,
           reviewer_adapter_opts: [command: {:review, verdict}],
           total_timeout: 30_000,
           idle_timeout: 10_000,
@@ -661,7 +662,7 @@ defmodule Harness.ProjectRegistryTest do
           fn {project, id, verdict} ->
             Task.async(fn ->
               {:ok, run_id, pid} =
-                RunSupervisor.start_run(item.(id), project, Harness.FakeAdapter, opts.(verdict))
+                RunSupervisor.start_run(item.(id), project, FakeAdapter, opts.(verdict))
 
               await_result(run_id, pid)
             end)

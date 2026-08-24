@@ -11,7 +11,7 @@ defmodule Harness.PipelineE2ETest do
 
   No Postgres and no real agent CLIs: Oban interaction is seam-captured
   (`:oban_insert`) and both the implementer and the reviewer are
-  `Harness.FakeAdapter` doubles — but everything else is real. Real git repos
+  `Harness.AgentAdapter.Testing.FakeAdapter` doubles — but everything else is real. Real git repos
   with a bare origin, real worktrees, a real `.harness/review.json` verdict
   artifact, and real rmap against a fixture roadmap seeded on `origin/main`
   (durable writeback requires `roadmap/tasks.toml` on the target branch).
@@ -23,7 +23,7 @@ defmodule Harness.PipelineE2ETest do
   # async: false because tests mutate ProjectRegistry and app env seams.
   use ExUnit.Case, async: false
 
-  alias Harness.FakeAdapter
+  alias Harness.AgentAdapter.Testing.FakeAdapter
   alias Harness.GitFixture
   alias Harness.Lander.Worker, as: LanderWorker
   alias Harness.ProjectFixture

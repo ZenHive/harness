@@ -2,7 +2,7 @@ defmodule Harness.Run.SupervisorTest do
   use ExUnit.Case, async: true
 
   alias Harness.AgentAdapter.Capabilities
-  alias Harness.FakeAdapter
+  alias Harness.AgentAdapter.Testing.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
   alias Harness.Roadmap.Item

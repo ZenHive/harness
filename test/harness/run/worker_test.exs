@@ -2,7 +2,7 @@ defmodule Harness.Run.WorkerTest do
   use ExUnit.Case, async: true
 
   alias Ecto.Changeset
-  alias Harness.FakeAdapter
+  alias Harness.AgentAdapter.Testing.FakeAdapter
   alias Harness.ProjectFixture
   alias Harness.Roadmap.Item
   alias Harness.Run.Worker

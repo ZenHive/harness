@@ -9,8 +9,8 @@ defmodule Harness.AuditPostgresTest do
   # async: false because DataCase uses SQL Sandbox shared mode for DB-backed collaborators.
   use Harness.DataCase, async: false
 
+  alias Harness.AgentAdapter.Testing.FakeAdapter
   alias Harness.Audit
-  alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
   alias Harness.SettingsStore

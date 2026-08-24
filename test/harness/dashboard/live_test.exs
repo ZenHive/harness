@@ -9,9 +9,9 @@ defmodule Harness.Dashboard.LiveTest do
 
   import Phoenix.LiveViewTest, only: [rendered_to_string: 1]
 
+  alias Harness.AgentAdapter.Testing.FakeAdapter
   alias Harness.AgentRegistry
   alias Harness.Dashboard.Live
-  alias Harness.FakeAdapter
   alias Harness.GitFixture
   alias Harness.Project
   alias Harness.ProjectFixture
