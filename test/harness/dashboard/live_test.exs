@@ -116,6 +116,13 @@ defmodule Harness.Dashboard.LiveTest do
       assert flights == Live.track_audit_flights(flights, settled)
     end
 
+    test "a settled op with a different project and the same range leaves the in-flight entry" do
+      flights = [{"demo", "abc"}]
+      settled = Op.audit_settled("other", "codex", "abc", :no_changes, "out")
+
+      assert flights == Live.track_audit_flights(flights, settled)
+    end
+
     test "a settled op with no matching start is a no-op" do
       settled = Op.audit_settled("demo", "codex", "abc", :noop, nil)
 
