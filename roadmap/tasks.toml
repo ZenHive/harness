@@ -10709,7 +10709,7 @@ id = "358"
 phase = 23
 bundle = "audit-perf"
 milestone = "v0_16"
-status = "pending"
+status = "in_progress"
 title = "Bound KPI dashboard fleet-wide aggregate reads on run settlement"
 scores = { d = 3, b = 5, u = 4 }
 acceptance_criteria = ["A run settlement does not trigger five immediate fleet-wide aggregate reads for every connected /harness/kpi tab; refresh work is debounced or scoped without losing settled-run visibility", "aggregate_review_stuck_causes/0 and aggregate_recovery_facts/0 use an explicit bounded window/limit instead of list_run_records([])", "Tests assert the refresh coalescing/scope and the aggregate query bounds", "mix check.dispatch green + focused mix test.json for KpiLive and ResultStore aggregate behavior"]
@@ -10729,6 +10729,7 @@ refreshes while keeping newly settled runs visible. This task is one coherent qu
 surface; the three independent mechanisms previously bundled here are separate tasks.
 """
 created_at = "2026-07-12"
+started_at = "2026-08-25"
 scored_at = "2026-08-07"
 
 [[task]]

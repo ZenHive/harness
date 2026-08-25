@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (4 of 24 done · 1 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (4 of 24 done · 2 in progress)
 
 **Last shipped:** no recent shipments
 
@@ -338,7 +338,7 @@
 <!-- TASKS:BEGIN phase=23 -->
 | Task | Status | Notes |
 |------|--------|-------|
-| Task 358 | ⬜ | 🎁 **audit-perf** · 🚀 **v0_16** · Bound KPI dashboard fleet-wide aggregate reads on run settlement [D:3/B:5/U:4 → Eff:1.5] 🚀 |
+| Task 358 | 🔄 | 🎁 **audit-perf** · 🚀 **v0_16** · Bound KPI dashboard fleet-wide aggregate reads on run settlement [D:3/B:5/U:4 → Eff:1.5] 🚀 |
 | Task 359 | ⬜ | 🎁 **audit-architecture** · 🚀 **v0_16** · Split the ~1900-line Harness.Dispatch god module into per-concern modules behind a thin facade [D:5/B:5/U:4 → Eff:0.9?] ⚠️ |
 | Task 360 | ⬜ | 🎁 **audit-architecture** · 🚀 **v0_16** · Establish one-way core → consumer layering and break the 71-module strongly-connected cycle [D:7/B:6/U:5 → Eff:0.79?] ⚠️ |
 | Task 361 | ⬜ | 🎁 **audit-tests** · 🚀 **v0_16** · Add direct coverage for Harness.Store.EtsScope create/lookup and owner-exit table ownership [D:2/B:5/U:4 → Eff:2.25] 🎯 |
