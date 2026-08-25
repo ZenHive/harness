@@ -2,12 +2,17 @@ import Config
 
 alias Harness.Dashboard.Endpoint
 alias Harness.Dashboard.ErrorHTML
+alias Harness.Notification.CommandSink
 
 # Elixir ships `Calendar.UTCOnlyTimeZoneDatabase` by default, under which any
 # zone name raises. Oban's Cron plugin needs a real database to honour the
 # `:timezone` below — without it `Harness.Cron.SuiteHealthPoller`'s
 # "0 0 * * *" fires at UTC midnight, which is 08:00 in UTC+8.
 config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
+
+config :harness, CommandSink,
+  command: Path.expand("~/.claude/scripts/harness-herdr-notify.sh"),
+  args: []
 
 config :harness, Endpoint,
   adapter: Bandit.PhoenixAdapter,
@@ -75,7 +80,10 @@ config :harness, :dashboard, enabled: true, port: 4018
 # configure to enable). Custom sinks implement the Harness.Notification.Sink
 # behaviour; a discerning (buddhi) sink consumes the event struct and acts
 # *through* the train, never by hand-merging a tracked branch.
-config :harness, :notification_sinks, []
+# The configured command is host-specific (like :cron_timezone above): it fans
+# events into the operator's Herdr session and silently no-ops when the node
+# wasn't started inside Herdr or the script is absent — safe on other hosts.
+config :harness, :notification_sinks, [CommandSink]
 
 # Project source cache — see Harness.Project.Source.Github.
 # `cache_root` is where harness clones GitHub-source projects on first run
