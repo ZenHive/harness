@@ -156,6 +156,21 @@ defmodule Harness.StatusViewTest do
       assert buckets["sv-hist-002"] == :failed
     end
 
+    test "copies reviewer concerns onto history entries without rewriting them" do
+      :ok =
+        ResultStore.record_run(
+          record("sv-hist-concerns",
+            state: :done,
+            verdict: :approve,
+            review_concerns: ["verbatim caveat from the reviewer"]
+          )
+        )
+
+      entry = Enum.find(StatusView.snapshot().history, &(&1.status.run_id == "sv-hist-concerns"))
+
+      assert entry.review_concerns == ["verbatim caveat from the reviewer"]
+    end
+
     test "excludes a run that is still live (the live entry wins)" do
       run_id = start_run(adapter_opts: [command: :sleep], terminal_linger: 5_000)
       assert await_running(run_id)
@@ -184,7 +199,7 @@ defmodule Harness.StatusViewTest do
 
     test "render/1 ignores history so `mix harness.status` stays current-fleet" do
       history = [
-        %{status: %Status{run_id: "sv-hist-x", task_id: "hist-task", state: :done}, bucket: :green, detail: nil}
+        %{status: %Status{run_id: "sv-hist-x", task_id: "hist-task", state: :done}, bucket: :done, detail: nil}
       ]
 
       output = StatusView.render(%{runs: [], unavailable_agents: [], history: history, cron_polling: :disabled})
@@ -197,7 +212,7 @@ defmodule Harness.StatusViewTest do
   describe "run_entry_for/1" do
     test "wraps a status into a classified, detailed entry" do
       entry = StatusView.run_entry_for(%Status{run_id: "e-1", task_id: "1", state: :running})
-      assert %{status: %Status{run_id: "e-1"}, bucket: :running, detail: nil} = entry
+      assert %{status: %Status{run_id: "e-1"}, bucket: :running, detail: nil, review_concerns: []} = entry
 
       failed =
         StatusView.run_entry_for(%Status{run_id: "e-2", task_id: "1", state: :failed, reason: :cancelled})
@@ -343,7 +358,8 @@ defmodule Harness.StatusViewTest do
       verdict: Keyword.get(opts, :verdict, :approve),
       duration_ms: 1_000,
       agent_outcome_kind: Keyword.get(opts, :agent_outcome_kind),
-      agent_output: Keyword.get(opts, :agent_output, "")
+      agent_output: Keyword.get(opts, :agent_output, ""),
+      review_concerns: Keyword.get(opts, :review_concerns, [])
     }
   end
 

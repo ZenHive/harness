@@ -189,12 +189,14 @@ defmodule Harness.Dashboard.Tokens do
       .page-shell {
         display: grid;
         grid-template-rows: var(--navbar-height) 1fr auto;
+        grid-template-columns: minmax(0, 1fr);
         min-height: 100vh;
       }
 
       .page-main {
         max-width: var(--page-max-width);
         width: 100%;
+        min-width: 0;
         margin-inline: auto;
         padding: var(--space-5) var(--space-5) var(--space-6);
         box-sizing: border-box;
@@ -212,6 +214,9 @@ defmodule Harness.Dashboard.Tokens do
         align-items: center;
         justify-content: space-between;
         height: var(--navbar-height);
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
         padding-inline: var(--space-5);
         background: rgba(11, 12, 16, 0.85);
         backdrop-filter: blur(12px) saturate(140%);
@@ -801,7 +806,7 @@ defmodule Harness.Dashboard.Tokens do
       .run-detail-nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
       /* Wrap a wide table (the ledger's dynamic rating columns) so it scrolls in place */
-      .table-scroll { overflow-x: auto; max-width: 100%; }
+      .table-scroll { overflow-x: auto; max-width: 100%; min-width: 0; width: 100%; }
       .run-detail-disclosure { max-width: 24rem; }
       .run-detail-disclosure summary {
         max-width: 24rem;
@@ -1890,8 +1895,9 @@ defmodule Harness.Dashboard.Tokens do
       }
 
       @media (max-width: 900px) {
-        .navbar { height: auto; min-height: var(--navbar-height); gap: var(--space-2); padding: var(--space-2) var(--space-3); }
-        .navbar-links { flex: 1 1 100%; justify-content: flex-start; }
+        .page-shell { grid-template-rows: auto 1fr auto; }
+        .navbar { height: auto; min-height: var(--navbar-height); flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2) var(--space-3); }
+        .navbar-links { flex: 1 1 100%; justify-content: flex-start; max-width: 100%; }
         .navbar-links a { padding: var(--space-2); }
         .page-main { padding-inline: var(--space-3); }
         .run-table-scroll { overflow: visible; }

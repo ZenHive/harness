@@ -882,12 +882,14 @@ defmodule Harness.Dashboard.LiveTest do
       assert html =~ "Reviewer testimony"
       assert html =~ "96 changed lines"
       assert html =~ "release caveat exactly as written"
+      refute html =~ ~s(["release caveat exactly as written"])
       assert html =~ "mix check"
       assert html =~ "/tmp/review.log"
       assert html =~ "truthfulness"
       assert html =~ "liveview"
       assert html =~ "accessibility"
       assert html =~ "Follow-up witness"
+      assert html =~ "has-review-warning"
       refute html =~ "average"
       refute html =~ "composite"
     end
@@ -903,6 +905,58 @@ defmodule Harness.Dashboard.LiveTest do
 
       refute html =~ "Reviewer testimony"
       refute html =~ "Reviewer diff size"
+    end
+
+    test "an empty persisted review record does not invent a testimony heading" do
+      status = %Status{run_id: "r", task_id: "1", state: :done, review_verdict: :approve}
+
+      record = %LogRecord{
+        batch_id: "b",
+        run_id: "r",
+        task_id: "1",
+        adapter: FakeAdapter,
+        state: :done,
+        reason: :approved,
+        duration_ms: 1,
+        verdict: :approve
+      }
+
+      html =
+        status
+        |> show_render_assigns("")
+        |> Map.put(:review_record, record)
+        |> Live.render()
+        |> rendered_to_string()
+
+      refute html =~ "Reviewer testimony"
+      refute html =~ "Reviewer diff size"
+      refute html =~ "n/a"
+    end
+
+    test "zero reviewer diff size is rendered as a fact, not omitted as empty" do
+      status = %Status{run_id: "r", task_id: "1", state: :done, review_verdict: :approve}
+
+      record = %LogRecord{
+        batch_id: "b",
+        run_id: "r",
+        task_id: "1",
+        adapter: FakeAdapter,
+        state: :done,
+        reason: :approved,
+        duration_ms: 1,
+        verdict: :approve,
+        reviewer_diff_size: 0
+      }
+
+      html =
+        status
+        |> show_render_assigns("")
+        |> Map.put(:review_record, record)
+        |> Live.render()
+        |> rendered_to_string()
+
+      assert html =~ "Reviewer testimony"
+      assert html =~ "0 changed lines"
     end
 
     test "renders the recovery-reviewer pass as the active live stage" do

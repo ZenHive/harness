@@ -4,8 +4,8 @@ defmodule Harness.Dashboard.Live do
 
   Renders two views off the same module:
 
-    * `:index` (`/harness`) — project switcher, per-bucket run counts, and two
-      `Phoenix.LiveView` streams: "Active runs" (in-flight / repairing runs) and
+    * `:index` (`/harness`) — project switcher, per-state run counts, and two
+      `Phoenix.LiveView` streams: "Active runs" (live lifecycle states) and
       "Run history" (settled runs). One row per run with state and verdict.
     * `:show` (`/harness/runs/:run_id`) — drill-down on a single run with its
       live `Harness.Run.Status` fields and a streaming transcript pane fed by
@@ -772,7 +772,7 @@ defmodule Harness.Dashboard.Live do
     <div class="kpi-strip fleet-counts" aria-label="Run state counts">
       <div
         :for={{state, count} <- count_tiles(@counts)}
-        class={[~c"kpi-stat", count == 0 && ~c"is-zero"]}
+        class={["kpi-stat", count == 0 && "is-zero"]}
       >
         <span class="kpi-stat-num">{count}</span>
         <span class="kpi-stat-label">{bucket_label(state)}</span>
@@ -849,7 +849,7 @@ defmodule Harness.Dashboard.Live do
     <nav :if={@run_status != nil} class="run-detail-nav">
       <a href="#run-info">Run info</a>
       <a :if={@task_item != nil} href="#run-task">Task</a>
-      <a :if={@review_record != nil} href="#review-testimony">Review</a>
+      <a :if={review_testimony_present?(@review_record)} href="#review-testimony">Review</a>
       <a href="#run-diff">Changed files</a>
       <a href="#run-transcript">Transcript</a>
     </nav>
@@ -924,7 +924,7 @@ defmodule Harness.Dashboard.Live do
       </details>
     </div>
 
-    <.review_testimony :if={@review_record != nil} record={@review_record} />
+    <.review_testimony :if={review_testimony_present?(@review_record)} record={@review_record} />
 
     <.task_section :if={@task_item != nil} item={@task_item} />
 
@@ -1120,7 +1120,7 @@ defmodule Harness.Dashboard.Live do
               <span
                 :if={entry.status.review_warning? and entry.review_concerns == []}
                 class="review-warning-mark"
-              >review warning</span>
+              >failed check</span>
             </td>
             <td data-label="Landed">{landed_label(entry.status)}</td>
             <td data-label="Detail">
@@ -1151,9 +1151,9 @@ defmodule Harness.Dashboard.Live do
     <section
       id="review-testimony"
       class={[
-        ~c"run-section",
-        ~c"review-testimony",
-        @record.review_warning? && ~c"has-review-warning"
+        "run-section",
+        "review-testimony",
+        @record.review_warning? && "has-review-warning"
       ]}
     >
       <h2>Reviewer testimony</h2>
@@ -1517,12 +1517,42 @@ defmodule Harness.Dashboard.Live do
   defp badge_bucket(:done), do: :green
   defp badge_bucket(:failed), do: :red
 
+  @spec review_testimony_present?(LogRecord.t() | nil) :: boolean()
+  defp review_testimony_present?(nil), do: false
+
+  defp review_testimony_present?(%LogRecord{} = record) do
+    is_integer(record.reviewer_diff_size) or
+      present_review_fact?(record.review_concerns) or
+      present_review_fact?(record.review_checks) or
+      present_review_fact?(record.review_ratings) or
+      present_review_fact?(record.review_facets) or
+      present_review_fact?(record.review_skills) or
+      present_review_fact?(record.review_proposed_tasks)
+  end
+
   @spec present_review_fact?(term()) :: boolean()
   defp present_review_fact?(value), do: value not in [nil, "", [], %{}]
 
   @spec review_fact_text(term()) :: String.t()
   defp review_fact_text(value) when is_binary(value), do: value
-  defp review_fact_text(value), do: inspect(value, pretty: true, limit: :infinity)
+
+  defp review_fact_text(values) when is_list(values) do
+    Enum.map_join(values, "\n", &review_fact_item/1)
+  end
+
+  defp review_fact_text(value), do: encode_review_fact(value)
+
+  @spec review_fact_item(term()) :: String.t()
+  defp review_fact_item(item) when is_binary(item), do: item
+  defp review_fact_item(item), do: encode_review_fact(item)
+
+  @spec encode_review_fact(term()) :: String.t()
+  defp encode_review_fact(value) do
+    case Jason.encode(value, pretty: true) do
+      {:ok, json} -> json
+      {:error, _reason} -> inspect(value, pretty: true, limit: :infinity)
+    end
+  end
 
   @doc false
   @spec filter_runs([StatusView.run_entry()], String.t() | nil) :: [StatusView.run_entry()]

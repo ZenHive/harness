@@ -71,6 +71,10 @@ defmodule Harness.Dashboard.LiveMountTest do
       assert html =~ "The fleet is idle — no run is executing."
       assert html =~ "No merge or audit step has been reported since this page was opened."
       refute html =~ ~s(<tbody id="active-runs")
+      assert html =~ ~s(class="kpi-strip fleet-counts")
+      assert html =~ ~s(class="kpi-stat is-zero")
+      assert html =~ ~s(<span class="kpi-stat-label">reviewing</span>)
+      assert html =~ ~s(<span class="kpi-stat-label">held</span>)
 
       # Under a project filter the idle claim narrows to that project — the rest
       # of the fleet is out of the table's scope and so out of the sentence.
@@ -203,6 +207,14 @@ defmodule Harness.Dashboard.LiveMountTest do
 
       assert html =~ run_id
       assert html =~ "Kill run"
+      assert html =~ ~s(class="table-scroll run-table-scroll")
+      assert html =~ ~s(class="run-table")
+      assert html =~ ~s(data-label="Action")
+      assert html =~ ~s(data-label="Detail")
+
+      assert [_, badge] = Regex.run(~r/<span class="bucket-label">\s*([^<]+?)\s*<\/span>/, html)
+      assert badge in ["dispatched", "running"]
+      assert html =~ ~s(<span class="kpi-stat-label">#{badge}</span>)
 
       # Click the run's kill button — routes through handle_event("kill_run", …)
       # → Harness.Run.cancel/1. Idempotent; settles the run :failed.
@@ -211,6 +223,65 @@ defmodule Harness.Dashboard.LiveMountTest do
       |> render_click()
 
       assert Run.cancel(run_id) == :ok
+    end
+  end
+
+  describe "index reviewer warning facts on settled rows" do
+    setup %{conn: conn} do
+      root =
+        Path.join(System.tmp_dir!(), "harness_review_row_test_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(root)
+      prev = Application.get_env(:harness, :result_store)
+      Application.put_env(:harness, :result_store, {MemoryStore, root: root})
+
+      on_exit(fn ->
+        Application.put_env(:harness, :result_store, prev)
+        File.rm_rf(root)
+      end)
+
+      {:ok, conn: conn}
+    end
+
+    test "a history row with reviewer concerns is marked on the index", %{conn: conn} do
+      seed_history("row-concerns",
+        task_id: "409",
+        project_name: "livemount-demo",
+        state: :done,
+        reason: :approved,
+        verdict: :approve,
+        review_warning?: true,
+        review_concerns: ["release caveat exactly as written"]
+      )
+
+      {:ok, _view, html} = live(conn, "/harness")
+
+      assert html =~ "concerns"
+      assert html =~ "has-review-warning"
+      assert html =~ ~s(class="table-scroll run-table-scroll")
+    end
+
+    test "an approved run with a failed check and no concerns is distinguishable", %{conn: conn} do
+      seed_history("row-failed-check",
+        task_id: "409",
+        project_name: "livemount-demo",
+        state: :done,
+        reason: :approved,
+        verdict: :approve,
+        review_warning?: true,
+        review_checks: %{"mix check.dispatch" => %{"passed" => false, "log_path" => "/tmp/review.log"}}
+      )
+
+      {:ok, _view, html} = live(conn, "/harness")
+
+      assert html =~ "failed check"
+      assert html =~ "has-review-warning"
+      refute html =~ "concerns"
+
+      {:ok, _detail, detail_html} = live(conn, "/harness/runs/row-failed-check")
+      assert detail_html =~ "Reviewer testimony"
+      assert detail_html =~ "mix check.dispatch"
+      assert detail_html =~ "/tmp/review.log"
     end
   end
 
@@ -396,10 +467,14 @@ defmodule Harness.Dashboard.LiveMountTest do
       task_id: Keyword.get(fields, :task_id, "t"),
       project_name: Keyword.get(fields, :project_name),
       adapter: FakeAdapter,
-      state: :failed,
-      reason: :cancelled,
+      state: Keyword.get(fields, :state, :failed),
+      reason: Keyword.get(fields, :reason, :cancelled),
+      verdict: Keyword.get(fields, :verdict),
       duration_ms: 100,
-      landed_sha: Keyword.get(fields, :landed_sha)
+      landed_sha: Keyword.get(fields, :landed_sha),
+      review_warning?: Keyword.get(fields, :review_warning?, false),
+      review_concerns: Keyword.get(fields, :review_concerns, []),
+      review_checks: Keyword.get(fields, :review_checks, %{})
     }
 
     :ok = ResultStore.record_run(struct!(LogRecord, base))
