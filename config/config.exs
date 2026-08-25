@@ -167,9 +167,14 @@ config :harness_agent_adapter, :run,
 # Logger's own default is :debug, and `Harness.Repo` logs every query at that
 # level. On a long-lived node that turns an idle BEAM into a steady journal
 # writer — measured 19 lines in three minutes with nothing dispatched, and far
-# more once the cron poller runs. Dev keeps :debug because that is where the
-# queries are worth reading.
-config :logger, level: if(config_env() == :dev, do: :debug, else: :info)
+# more once the cron poller runs. That is a per-HOST decision, not a per-env
+# one: the deployed node runs MIX_ENV=dev on purpose (see mix.exs), so quieting
+# it lives behind HARNESS_LOG_LEVEL in runtime.exs.
+# Test must stay :debug. `ExUnit.CaptureLog.capture_log([level: :debug], fn ...)`
+# only filters its own handler; it cannot raise the *primary* level, so an :info
+# primary silently drops the `Logger.debug` in ResultStore.Postgres's never-raise
+# path and the codec tests assert against an empty log.
+config :logger, level: if(config_env() in [:dev, :test], do: :debug, else: :info)
 
 config :phoenix, :json_library, Jason
 

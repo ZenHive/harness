@@ -22,6 +22,22 @@ database_config =
 
 config :harness, Harness.Repo, database_config
 
+# Per-host log level. The deployed node runs MIX_ENV=dev (see mix.exs), where
+# :debug makes Harness.Repo log every query and an idle BEAM a steady journal
+# writer. Set HARNESS_LOG_LEVEL=info on a long-lived host to quiet it without
+# changing the env default (which test depends on — see config.exs). An invalid
+# value fails the boot loudly rather than being silently ignored.
+case System.get_env("HARNESS_LOG_LEVEL") do
+  nil ->
+    :ok
+
+  level when level in ~w(emergency alert critical error warning notice info debug all none) ->
+    config :logger, level: String.to_existing_atom(level)
+
+  other ->
+    raise "HARNESS_LOG_LEVEL=#{inspect(other)} is not a valid Logger level"
+end
+
 # Operators can relocate the worktree root without recompiling.
 if base = System.get_env("HARNESS_WORKTREE_ROOT") do
   config :harness, :worktree, base_dir: Path.expand(base)
