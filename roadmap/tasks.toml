@@ -12421,7 +12421,7 @@ scored_at = "2026-08-25"
 id = "408"
 phase = 24
 bundle = "witness-legibility"
-status = "pending"
+status = "in_progress"
 title = "Responsive strategy for the dashboard"
 scores = { d = 3, b = 6, u = 5 }
 markers = ["parallel"]
@@ -12456,6 +12456,7 @@ precisely where an operator checks on an autonomous run they are not sitting in 
 recovery actions are the first thing to disappear.
 """
 created_at = "2026-08-25"
+started_at = "2026-08-25"
 scored_at = "2026-08-25"
 
 [[task]]

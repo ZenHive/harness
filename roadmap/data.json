@@ -18599,7 +18599,7 @@
       "id": "408",
       "phase": 24,
       "bundle": "witness-legibility",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Responsive strategy for the dashboard",
       "scores": {
         "d": 3,
@@ -18644,6 +18644,7 @@
       ],
       "body": "Observed 2026-08-25 in a dual-agent design critique of `/harness` (snapshot:\n`.impeccable/critique/2026-08-25T03-32-34Z__lib-harness-dashboard-live-ex.md`, scored 19/40).\n\nCause, read on 2026-08-25: `lib/harness/dashboard/tokens.ex` is the only stylesheet in the\nproject — 1742 lines — and contains exactly ONE `@media` block, at line 1732, and that one is\n`prefers-reduced-motion`. There is no viewport breakpoint anywhere in the codebase. The dashboard\nhas never had a responsive strategy; it has a desktop layout that degrades by overflowing.\n\nMeasured in the browser during the critique, at a 500px viewport: `document.scrollWidth` 1189\nagainst `window.innerWidth` 500. The 10-column run table sets that width, `.navbar-links`\nmeasures 641px on its own, and the `Action` column — the buttons that resume, reland, and delete\na run — sits off-screen with no horizontal scroll affordance to reach it. The `Detail` cell is\nunbounded, so a single long failure reason widens the table for every other row.\n\n`.table-scroll { overflow-x: auto; }` already exists at tokens.ex:667 and already solves the\ncontainment half of this. It is used by `kpi_live.ex:624` and `project_explorer.ex:141` — every\ntable surface EXCEPT the two that matter most.\n\nConsequences: the fleet dashboard is unusable on a phone or a narrow split-pane, which is\nprecisely where an operator checks on an autonomous run they are not sitting in front of. The\nrecovery actions are the first thing to disappear.\n",
       "created_at": "2026-08-25",
+      "started_at": "2026-08-25",
       "scored_at": "2026-08-25",
       "cross_repo": []
     },
