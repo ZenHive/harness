@@ -12127,7 +12127,7 @@ id = "403"
 phase = 23
 bundle = "audit-hygiene"
 milestone = "v0_16"
-status = "pending"
+status = "in_progress"
 title = "Make the loopback posture true: Origin/Host guard on /harness/mcp + source-URL validation before git clone"
 scores = { d = 2, b = 9, u = 7 }
 markers = ["security"]
@@ -12171,6 +12171,7 @@ audit and one attack chain, and a reviewer verifies them in a single security pa
 the same bundling rationale Task 319 recorded, not a grab-bag.
 """
 created_at = "2026-08-25"
+started_at = "2026-08-25"
 scored_at = "2026-08-25"
 
 [[task]]
