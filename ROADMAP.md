@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (7 of 25 done · 0 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (7 of 25 done · 1 in progress)
 
 **Last shipped:** Task 358 — Bound KPI dashboard fleet-wide aggregate reads on run settlement, Task 403 — Make the loopback posture true: Origin/Host guard on /harness/mcp + source-URL validation before git clone, Task 404 — Take the uncached SettingsStore reads and the synchronous CLI catalog probes off the 5s settings tick on 2026-08-25
 
-**Up next:** Task 361 — Add direct coverage for Harness.Store.EtsScope create/lookup and owner-exit table ownership [D:2/B:5/U:4 → Eff:2.25] 🎯
+**Up next:** Task 405 — Audit discovery filing writes into the operator's live checkout and is never committed [D:3/B:7/U:6 → Eff:2.17] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -344,7 +344,7 @@
 | Task 358 | ✅ | 🎁 **audit-perf** · 🚀 **v0_16** · Bound KPI dashboard fleet-wide aggregate reads on run settlement [D:3/B:5/U:4 → Eff:1.5] 🚀 |
 | Task 359 | ⬜ | 🎁 **audit-architecture** · 🚀 **v0_16** · Split the ~1900-line Harness.Dispatch god module into per-concern modules behind a thin facade [D:5/B:5/U:4 → Eff:0.9?] ⚠️ |
 | Task 360 | ⬜ | 🎁 **audit-architecture** · 🚀 **v0_16** · Establish one-way core → consumer layering and break the 71-module strongly-connected cycle [D:7/B:6/U:5 → Eff:0.79?] ⚠️ |
-| Task 361 | ⬜ | 🎁 **audit-tests** · 🚀 **v0_16** · Add direct coverage for Harness.Store.EtsScope create/lookup and owner-exit table ownership [D:2/B:5/U:4 → Eff:2.25] 🎯 |
+| Task 361 | 🔄 | 🎁 **audit-tests** · 🚀 **v0_16** · Add direct coverage for Harness.Store.EtsScope create/lookup and owner-exit table ownership [D:2/B:5/U:4 → Eff:2.25] 🎯 |
 | Task 362 | ⬜ | 🎁 **audit-tests** · 🚀 **v0_16** · 🐛 Diagnose and eliminate the AgentRegistry empty-registry test flake [D:4/B:6/U:5 → Eff:1.38] 📋 |
 | Task 363 | ✅ | 🎁 **audit-hygiene** · 🚀 **v0_16** · 📝 🔒 Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router [D:1/B:5/U:4 → Eff:4.5?] 🎯 |
 | Task 364 | ⬜ | 🎁 **audit-hygiene** · Decision: resolve the anubis_mcp LGPL-3.0 runtime-dependency licensing exposure on the public repo [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
