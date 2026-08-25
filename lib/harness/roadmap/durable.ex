@@ -21,8 +21,8 @@ defmodule Harness.Roadmap.Durable do
     4. on a non-ff push (a concurrent writer landed first) re-fetches, replays
        the mutation on the new tip, and retries — **never** `--force`,
     5. fast-forwards the operator's *local* target to the pushed commit
-       (`Harness.Git.TargetSync`, ff-only, never touching a dirty/diverged
-       checkout) so the on-disk `tasks.toml` doesn't drift behind origin.
+       (`Harness.Git.TargetSync`, ff-only, never touching a dirty, diverged, or
+       self-host checkout) so the on-disk `tasks.toml` doesn't drift behind origin.
 
   The mutation itself runs in a throwaway detached worktree (the operator's
   checkout is never the scratch tree); step 5 then syncs that checkout forward so
@@ -148,7 +148,7 @@ defmodule Harness.Roadmap.Durable do
   # Keep the operator's local target current with the roadmap commit we just
   # pushed — otherwise the on-disk tasks.toml drifts behind origin and the
   # operator's next edit/merge conflicts. ff-only and best-effort: a skip
-  # (dirty/diverged checkout) logs and never fails the transition.
+  # (dirty/diverged/self-host checkout) logs and never fails the transition.
   @spec sync_local(String.t(), String.t()) :: :ok
   defp sync_local(repo, target) do
     case TargetSync.ff_local(repo, target) do

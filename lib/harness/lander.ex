@@ -12,9 +12,9 @@ defmodule Harness.Lander do
     2. checks out the settled run's `harness/<run-id>` branch into a fresh
        **detached** worktree and, if `origin/<target>` has moved past it,
        rebases onto it,
-    3. fast-forward-pushes the tip to `origin/<target_branch>` (never `--force`;
-       then fast-forwards the operator's local target ref when Git says it is
-       safe),
+       3. fast-forward-pushes the tip to `origin/<target_branch>` (never `--force`;
+       then fast-forwards the operator's local target via `Git.TargetSync` when
+       that is safe — skipped and witnessed when dirty, non-ff, or self-host),
     4. writes the outcome back to rmap (`done` + `verified` + `shipped_in`),
     5. enqueues a post-merge audit job (`Harness.Audit.Worker`) for the landed
        range — best-effort, never blocks the land,
@@ -30,8 +30,9 @@ defmodule Harness.Lander do
   target is the *remote* branch. After that succeeds, harness attempts a local
   ff-only sync: an unchecked-out local target ref is updated by fetch, while a
   clean checked-out target is advanced by `git merge --ff-only origin/<target>`.
-  Dirty or non-ff local state is left alone and surfaced as a notification.
-  `shipped_in` is the pushed SHA.
+  Dirty, non-ff, or self-host local state (the project's source *is* this node's
+  source tree) is left alone and surfaced as a notification. The origin push is
+  not gated on that local sync. `shipped_in` is the pushed SHA.
 
   ## Failure routing (Task 101 seam)
 
@@ -664,8 +665,8 @@ defmodule Harness.Lander do
   end
 
   # After the code ff-push, fast-forward the operator's local target too (shared
-  # ff-only sync, never forcing a dirty/diverged checkout) so it doesn't drift
-  # behind origin. A skip is surfaced as a witness event.
+  # ff-only sync, never forcing a dirty/diverged/self-host checkout) so it
+  # doesn't drift behind origin. A skip is surfaced as a witness event.
   @spec sync_local_target(String.t(), String.t(), Project.t(), request()) :: :ok
   defp sync_local_target(repo, target, project, request) do
     case TargetSync.ff_local(repo, target) do

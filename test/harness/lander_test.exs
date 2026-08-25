@@ -353,6 +353,32 @@ defmodule Harness.LanderTest do
       assert reason =~ "local main behind origin by 1"
       assert reason =~ "sync manually"
     end
+
+    test "skips local sync when the target is this node's own source tree", ctx do
+      put_capture_sink()
+      previous = Application.get_env(:harness, :node_source_root)
+      Application.put_env(:harness, :node_source_root, ctx.repo)
+
+      on_exit(fn ->
+        if is_nil(previous) do
+          Application.delete_env(:harness, :node_source_root)
+        else
+          Application.put_env(:harness, :node_source_root, previous)
+        end
+      end)
+
+      head_before = sha(ctx.repo, "HEAD")
+
+      assert {:landed, landed} = Lander.land(ctx.request)
+
+      assert landed == ctx.branch_tip
+      assert sha(ctx.origin, "refs/heads/main") == landed
+      assert sha(ctx.repo, "HEAD") == head_before
+      refute File.exists?(Path.join(ctx.repo, "feature.txt"))
+      assert_receive {:notify, %Event{type: :local_sync_skipped, outcome: reason}}
+      assert reason =~ "self-host:"
+      assert reason =~ "sync manually"
+    end
   end
 
   describe "land/1 — rebase path (target moved under the branch)" do

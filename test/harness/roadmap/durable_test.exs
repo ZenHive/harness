@@ -1,5 +1,5 @@
 defmodule Harness.Roadmap.DurableTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Harness.GitFixture
   alias Harness.Project
@@ -106,6 +106,31 @@ defmodule Harness.Roadmap.DurableTest do
       assert {:ok, _output} = Roadmap.mark_in_progress("2", project: ctx.project)
 
       assert local_task_status(ctx.repo, "2") == "in_progress"
+    end
+
+    test "skips the local sync when the roadmap repo is this node's own source tree", ctx do
+      previous = Application.get_env(:harness, :node_source_root)
+      Application.put_env(:harness, :node_source_root, ctx.repo)
+
+      on_exit(fn ->
+        if is_nil(previous) do
+          Application.delete_env(:harness, :node_source_root)
+        else
+          Application.put_env(:harness, :node_source_root, previous)
+        end
+      end)
+
+      head_before = local_tip(ctx.repo)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _output} = Roadmap.mark_in_progress("2", project: ctx.project)
+        end)
+
+      assert origin_task_status(ctx.repo, "2") == "in_progress"
+      assert local_task_status(ctx.repo, "2") == "pending"
+      assert local_tip(ctx.repo) == head_before
+      assert log =~ "self-host"
     end
 
     test "skips the local sync without clobbering a dirty operator checkout", ctx do

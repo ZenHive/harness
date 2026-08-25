@@ -1,7 +1,8 @@
 defmodule Harness.Git.TargetSync do
   @moduledoc """
   Fast-forwards a repo's *local* target branch to its freshly-pushed `origin`
-  tip — ff-only, never forcing, never touching a dirty or non-ff checkout.
+  tip — ff-only, never forcing, never touching a dirty, non-ff, or self-host
+  checkout.
 
   Both the autonomous lander (after it ff-pushes code) and durable roadmap
   writes (after they push a `roadmap: …` commit) push to `origin/<target>` but
@@ -13,12 +14,15 @@ defmodule Harness.Git.TargetSync do
   sync; callers decide how to surface a `{:skipped, reason}` (the lander emits a
   witness event, durable writes log).
 
-  Mechanical only — three cases:
+  Mechanical only — four cases:
 
     * operator off `<target>` → ff the local branch ref (working tree untouched),
     * operator on `<target>` with a clean tree → `merge --ff-only`,
     * operator on `<target>` with a dirty tree, or a non-ff local divergence →
-      `{:skipped, reason}`; the operator syncs manually.
+      `{:skipped, reason}`; the operator syncs manually,
+    * `repo` *is* this running node's source tree (self-host, path identity, not
+      the registered project name) → `{:skipped, reason}` naming that case, so a
+      self-land cannot mutate the checkout the node is executing from.
   """
 
   alias Harness.Git
@@ -31,21 +35,23 @@ defmodule Harness.Git.TargetSync do
 
   Returns `:synced` when the local branch (or checked-out working tree) was
   advanced, or `{:skipped, reason}` when it was deliberately left alone — a dirty
-  checked-out tree, a non-ff local divergence, or a git step that failed. The
-  reason is a human-readable string (`"local <target> behind origin by N; sync
-  manually"`); a caller surfaces it however it likes. Never `--force`, never
-  touches a dirty working tree.
+  checked-out tree, a non-ff local divergence, a self-host checkout, or a git
+  step that failed. The reason is a human-readable string (`"local <target>
+  behind origin by N; sync manually"`, prefixed `self-host: ` for the self-host
+  skip); a caller surfaces it however it likes. Never `--force`, never touches a
+  dirty or self-host working tree.
   """
   @spec ff_local(String.t(), String.t()) :: result()
   def ff_local(repo, target) when is_binary(repo) and is_binary(target) do
     with :ok <- fetch_remote_target(repo, target),
+         :ok <- reject_self_host(repo, target),
          {:ok, branch} <- current_branch(repo) do
       if branch == target,
         do: sync_checked_out(repo, target),
         else: sync_unchecked_out(repo, target)
     else
-      {:error, reason} ->
-        {:skipped, "local #{target} sync skipped: #{inspect(reason)}; sync manually"}
+      {:skipped, _reason} = skipped -> skipped
+      {:error, reason} -> {:skipped, "local #{target} sync skipped: #{inspect(reason)}; sync manually"}
     end
   end
 
@@ -96,6 +102,41 @@ defmodule Harness.Git.TargetSync do
       {:ok, _output} -> :synced
       {:error, _reason} -> {:skipped, drift_message(repo, target)}
     end
+  end
+
+  # Path identity against the running node's source tree (Mix project root, else
+  # cwd) — a renamed clone and a renamed registered project both still trip.
+  @spec reject_self_host(String.t(), String.t()) :: :ok | {:skipped, String.t()}
+  defp reject_self_host(repo, target) do
+    if same_tree?(Path.expand(repo), Path.expand(node_source_root())) do
+      {:skipped, "self-host: " <> drift_message(repo, target)}
+    else
+      :ok
+    end
+  end
+
+  @spec node_source_root() :: String.t()
+  defp node_source_root do
+    case Application.get_env(:harness, :node_source_root) do
+      path when is_binary(path) and path != "" ->
+        path
+
+      _ ->
+        if Code.ensure_loaded?(Mix.Project) and function_exported?(Mix.Project, :project_file, 0) and Mix.Project.get() do
+          Mix.Project.project_file() |> Path.expand() |> Path.dirname()
+        else
+          File.cwd!()
+        end
+    end
+  end
+
+  @spec same_tree?(String.t(), String.t()) :: boolean()
+  defp same_tree?(left, right) do
+    left == right or
+      match?(
+        {{:ok, %{major_device: device, inode: inode}}, {:ok, %{major_device: device, inode: inode}}},
+        {File.stat(left), File.stat(right)}
+      )
   end
 
   @spec drift_message(String.t(), String.t()) :: String.t()
