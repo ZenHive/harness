@@ -10839,7 +10839,7 @@ id = "361"
 phase = 23
 bundle = "audit-tests"
 milestone = "v0_16"
-status = "in_progress"
+status = "done"
 title = "Add direct coverage for Harness.Store.EtsScope create/lookup and owner-exit table ownership"
 scores = { d = 2, b = 5, u = 4 }
 acceptance_criteria = ["EtsScope has direct coverage for create/lookup and for what happens to the table when the owner process exits", "No Process.sleep-before-assert synchronization and no error-hiding assertions", "mix check.dispatch green + the focused EtsScope tests pass"]
@@ -10866,9 +10866,16 @@ fetch, dirty/diverged skip and behind_count drift-message cases.
 Follow the project's test conventions (mix test.json, no error-hiding, synchronize with
 assert_receive / monitor / start_supervised! rather than Process.sleep).
 """
+implemented = "Landed by grok via merge-train; reviewer-approved (run run-1787661768326-6be5f461, dfb955a5a0a195ad4c2fa4eceea51d1c90805f8f)."
+delivered_by = "grok"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1787661768326-6be5f461"
 created_at = "2026-07-12"
 started_at = "2026-08-25"
 scored_at = "2026-08-07"
+done_at = "2026-08-25"
+shipped_in = "dfb955a5a0a195ad4c2fa4eceea51d1c90805f8f"
 
 [[task]]
 id = "362"

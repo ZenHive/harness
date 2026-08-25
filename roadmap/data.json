@@ -16405,7 +16405,7 @@
       "phase": 23,
       "bundle": "audit-tests",
       "milestone": "v0_16",
-      "status": "in_progress",
+      "status": "done",
       "title": "Add direct coverage for Harness.Store.EtsScope create/lookup and owner-exit table ownership",
       "scores": {
         "d": 2,
@@ -16439,10 +16439,17 @@
         "otp",
         "ecto"
       ],
+      "shipped_in": "dfb955a5a0a195ad4c2fa4eceea51d1c90805f8f",
       "body": "Surfaced by the 2026-07-12 project health audit (test-audit.md #3).\n\n`Harness.Store.EtsScope` (lib/harness/store/ets_scope.ex) has no direct test. ETS\nlifecycle and ownership are easy to get subtly wrong — who owns the table, what happens\nto it when the owner process dies, whether a concurrent create races. Add a focused unit\ntest for create/lookup and for table ownership when the owner exits.\n\nRescoped 2026-08-25: this task originally also covered `Harness.Git.TargetSync`. Task 400\nchanges TargetSync (self-host guard) and its acceptance criteria already require pinning\nall of that module's branches, so the coverage half moved there rather than being written\ntwice against the same file. Nothing was dropped: 400 carries the ff-merge, ref-only\nfetch, dirty/diverged skip and behind_count drift-message cases.\n\nFollow the project's test conventions (mix test.json, no error-hiding, synchronize with\nassert_receive / monitor / start_supervised! rather than Process.sleep).\n",
       "created_at": "2026-07-12",
       "started_at": "2026-08-25",
+      "done_at": "2026-08-25",
       "scored_at": "2026-08-07",
+      "implemented": "Landed by grok via merge-train; reviewer-approved (run run-1787661768326-6be5f461, dfb955a5a0a195ad4c2fa4eceea51d1c90805f8f).",
+      "delivered_by": "grok",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1787661768326-6be5f461",
       "cross_repo": []
     },
     {
