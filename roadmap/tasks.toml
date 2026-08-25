@@ -169,6 +169,11 @@ description = "Human operator cockpit over existing task and lifecycle facts: a 
 order = 1
 phase = 24
 
+[bundles.witness-legibility]
+description = "The dashboard is the human's WITNESS of what the agents did — the same read-only sakshi role the notification sinks play. A dual-agent design critique on 2026-08-25 scored the /harness index 19/40 and found the witness failing at its only job: the central testimony of a failed run is a raw Erlang term (`inspect/1` at live.ex:848), the topbar reports \"1 repairing\" over a run whose own badge reads `reviewing` (status_view.ex:150-153 folds two states into one bucket), the run-detail page offers no recovery action, and the reviewer's `concerns`/`checks`/`ratings` — written into every `.harness/review.json` — are never rendered at all. This bundle makes the witness legible and accurate. Mantra-clean by construction: every task RENDERS facts the system already records; none computes urgency, health, severity, or ranking from them."
+order = 2
+phase = 24
+
 [bundles.config-surface]
 description = "Make Postgres the ONLY per-project config edit surface and retire the config/dev.local.exs trap. The dashboard already edits landing/cron/agent-models/reviewer/timeouts/catalog live; this bundle adds the two missing holes (concurrency_cap editor + project register/edit/unregister form via a new ProjectRegistry.upsert/1), then deletes dev.local.exs in favor of a run-to-apply priv/repo/seeds.exs (upserts Postgres) + a HARNESS_RUN_MEM_THRESHOLD_GB env var + a boot guard warning on re-introduced config :projects. Editing a config file no longer silently no-ops against the DB source of truth."
 order = 1
@@ -12286,6 +12291,199 @@ Consequences, in ascending severity: the discovery is invisible to everyone but 
 happens to `git status`; the operator's checkout is left dirty, so the next dispatch can trip
 `:checkout_polluted`; and a rebase over the same region corrupts `tasks.toml` until someone
 resolves it by hand.
+"""
+created_at = "2026-08-25"
+scored_at = "2026-08-25"
+
+[[task]]
+id = "406"
+phase = 24
+bundle = "witness-legibility"
+status = "pending"
+title = "Run-detail becomes where a failure is diagnosed and acted on"
+scores = { d = 3, b = 8, u = 6 }
+markers = ["parallel"]
+acceptance_criteria = ["""A `run_failure/1` function component renders a failed run's reason as operator language: a headline mapped mechanically from the reason tuple's head (a fixed `:review_stuck` -> "Reviewer produced no verdict" style lookup, one clause per known head, `inspect/1` only in the final fallback), one consequence line, and the recommended recovery primitive named by name. The raw term stays reachable behind a disclosure, never as the primary text.""", "For any run whose branch was retained, the consequence line states that the implementer's commits on the run's `harness/` branch are retained — the single most reassuring true fact in the system and currently absent from the surface where it matters. Whether the branch was retained is read from the existing run record, not inferred from prose.", "The failure block renders above the fold in `render_show/1`, before `Run internals`.", "The index cell and the run-detail page render the SAME failure text for the same reason term. Today they disagree: the index uses `StatusView.describe_reason/1` (readable prose, live.ex:1035) while run-detail uses raw `inspect/1` (live.ex:848). A test asserts both call sites produce identical output for at least three distinct reason shapes, including one unmapped shape that falls through to the raw term.", "The `Run internals` block (live.ex:842-852) fills `Verdict`, `Elapsed`, and `Worktree path` from the run record where those facts exist, instead of rendering em-dash placeholders for facts already recorded.", "The same `.row-actions` button group the index rows render (live.ex:1037) also renders under `Run info` on the detail page, each button gated by the existing `resumable?` / `relandable?` / `landable?` / `deletable?` predicates — reusing those predicates, not duplicating their logic.", "The code renders facts; it does not compute urgency, health, severity, or ranking from them. The headline lookup is a total mapping from reason head to a fixed string, with no scoring, no keyword matching over free text, and no ordering by inferred importance.", "mix check.dispatch green plus focused `mix test.json` for the dashboard live and status-view surfaces."]
+out_of_scope = ["The composed action list on `/harness/inbox` — that is Task 388's surface. This task adds the actions to the EXISTING run-detail page only.", "Adding any new recovery primitive to harness. The buttons invoke `dispatch-reland` / `dispatch-rereview` / `dispatch-resume_failed` / cancel as they already exist.", "Changing `StatusView.classify/1`'s bucket vocabulary — that is the sibling task in this bundle.", "Interpreting the reviewer's prose report to decide which recovery to recommend. The recommendation is a fixed mapping from the reason head; any judgment beyond that belongs to the operator or an agent."]
+files_to_modify = ["lib/harness/dashboard/live.ex", "lib/harness/status_view.ex"]
+touches = ["lib/harness/dashboard/live.ex", "lib/harness/status_view.ex", "lib/harness/dashboard/tokens.ex", "test/harness/dashboard/live_mount_test.exs"]
+domains = ["liveview", "phoenix"]
+assignee = "cursor"
+model = "cursor-grok-4.6-high"
+body = """
+Observed 2026-08-25 in a dual-agent design critique of `/harness` (snapshot:
+`.impeccable/critique/2026-08-25T03-32-34Z__lib-harness-dashboard-live-ex.md`, scored 19/40).
+The operator framing that decides how to weigh this: the dashboard is the human's WITNESS of
+what the agents did. A witness whose central testimony is unreadable fails at its only job.
+
+Cause, read on 2026-08-25: `live.ex:848` renders a failed run's reason as
+`<dd>{inspect(@run_status.reason)}</dd>`, inside a `<details>` block titled `Run internals`
+(live.ex:842-852) that is collapsed by default and sits below the fold. So the operator asking
+the only question that matters — what happened and what do I do now — is shown a raw Erlang
+term, in a drawer, after everything else. In the same block `Verdict`, `Elapsed`, and
+`Worktree path` render as em-dashes even where the run record carries those facts.
+
+The sharper finding: the two render sites DISAGREE. The index cell at `live.ex:1035` renders
+`entry.detail`, fed by `StatusView.describe_reason/1` (status_view.ex:170-190) — four clauses of
+readable prose with an `inspect/1` fallback. The detail page, the surface a human navigates to
+specifically to understand one run, is strictly WORSE than the list it came from for the exact
+same fact.
+
+Second half of the same job: the page names no way forward. Harness has four recovery primitives
+for exactly this moment (`dispatch-reland`, `dispatch-rereview`, `dispatch-resume_failed`,
+cancel), and `harness-workflow.md` documents that reset-to-pending on a run with a committed
+branch is a token bonfire. The index rows already render those actions (`.row-actions`,
+live.ex:1037, gated by `resumable?` / `relandable?` / `landable?` / `deletable?`); the detail
+page renders none of them. The most consequential fact available — that the implementer's
+commits on `harness/<run-id>` survived and are cheap to recover — appears nowhere in the UI.
+
+Consequences, in ascending severity: the operator reads a tuple instead of a sentence; they
+navigate back to the index to act on what they just diagnosed; and, not knowing the branch was
+retained, they reach for reset-to-pending and pay a second implementer run for work already
+committed.
+"""
+created_at = "2026-08-25"
+scored_at = "2026-08-25"
+
+[[task]]
+id = "407"
+phase = 24
+bundle = "witness-legibility"
+status = "pending"
+title = "Split the run-state bucket vocabulary and recompose the index around it"
+scores = { d = 3, b = 7, u = 6 }
+markers = ["parallel", "bug"]
+acceptance_criteria = ["`StatusView.classify/1` no longer folds `:reviewing` into `:repairing`, and `:held` no longer counts as in-flight. Each surfaced bucket corresponds to states an operator would describe with one word, and a test asserts the bucket for every `Status.state` value the run gen_statem can hold.", "Every count label in the topbar uses the SAME word as the per-row badge for the runs it counts. A test asserts the label/badge agreement for at least `:reviewing`, `:recovering`, and `:held` — the three states that disagree today.", "`render_index/1` orders sections Active runs -> Run history -> Audit & land ops. Ops is currently rendered first (live.ex:955) above the live fleet.", "The index page has exactly one top-level `h1` heading naming the surface, and section headings descend from it without skipping a level. Today the index's highest heading is an `h2`; the file's only `h1` is `live.ex:785` on run-detail.", "The four fleet counts render as `.kpi-stat` tiles (tokens.ex:596) rather than 12.8px `--text-subtle` runover, with non-zero counts at full `--text` weight and zero counts visibly recessive. Recession is a fixed rule on the value being zero — not a computed importance.", 'Neither `run_table` render emits a bare 10-column header row when its stream is empty. `ops_panel/1` already gates correctly (live.ex:956-957); copy that `:if` pattern, and note that the streamed tbody container needs gating too, not just the table element.', "The code renders facts; it does not compute urgency, health, severity, or ranking from them. Section order is fixed in the template, and the bucket mapping is total over the state enum with no weighting.", "mix check.dispatch green plus focused `mix test.json` for the status-view and dashboard live surfaces."]
+out_of_scope = ["The lane vocabulary on `/harness/roadmap` — that is Task 387's surface. This task changes the shared `StatusView` buckets and the EXISTING index only; if 387 lands first, it consumes the corrected vocabulary rather than defining its own.", "Adding new run states to the gen_statem. This splits how existing states are REPORTED, not what states exist.", "Any scoring, health index, or ordering of runs by inferred importance.", "Responsive/breakpoint behaviour of the recomposed index — sibling task in this bundle."]
+files_to_modify = ["lib/harness/status_view.ex", "lib/harness/dashboard/live.ex"]
+touches = ["lib/harness/status_view.ex", "lib/harness/dashboard/live.ex", "lib/harness/dashboard/tokens.ex", "test/harness/dashboard/live_mount_test.exs"]
+domains = ["liveview", "phoenix"]
+assignee = "codex"
+model = "gpt-5.6-sol"
+body = """
+Observed 2026-08-25 in a dual-agent design critique of `/harness` (snapshot:
+`.impeccable/critique/2026-08-25T03-32-34Z__lib-harness-dashboard-live-ex.md`, scored 19/40).
+On a surface whose job is accurate report, a false report is the worst defect class available.
+
+Cause, read on 2026-08-25 in `lib/harness/status_view.ex:145-153`: `classify/1` maps
+`:recovering` AND `:reviewing` both to `:repairing`, and folds `:held` in with `:dispatched` /
+`:running` / `:committing` as `:in_flight`. The topbar therefore reports "1 repairing" over a
+run whose own row badge, two inches below, reads `reviewing` — and a run an operator
+deliberately PAUSED is counted among the runs that are working. The comment above the clause is
+honest about the merge ("a recovering/reviewing run IS red work being fixed"), but reviewing is
+the normal, expected, healthy majority path of every single run: it is the gate, not a repair.
+Counting the common case as the alarm state trains the operator to ignore the count.
+
+Two composition findings ride the same diff, because one reviewer verifies them in one pass over
+the same template:
+
+Priority inversion. `render_index/1` (live.ex:732-780) renders `Audit & land ops` first
+(live.ex:955), then `Active runs`, then `Run history`. The first thing on a fleet dashboard is
+the settled past; live work is below it. The four fleet counts that summarise the whole fleet
+render as 12.8px `--text-subtle` runover text while `.kpi-stat` tile styling already exists
+unused at tokens.ex:596.
+
+Heading structure. The index's highest heading is `<h2>` — there is no `<h1>` anywhere on it;
+the file's only `<h1>` is `live.ex:785` on run-detail. A screen-reader user landing on the fleet
+view gets no document title in the heading tree.
+
+Empty-state artifact. Both `run_table` renders (live.ex:751-756 `active-runs`, live.ex:773-778
+`run-history`) emit the `<table>` and its 10-column `<thead>` unconditionally (live.ex:1008-1023),
+so an empty fleet shows a full header row over nothing, directly beneath a sentence that already
+said the list is empty. `ops_panel/1` gets this right at live.ex:956-957 and is the pattern to
+copy — with the wrinkle that the `phx-update="stream"` tbody needs gating too.
+
+Consequences: the operator cannot trust the topbar against the rows, so the summary stops being
+read; the live fleet is buried under settled history; and the page announces emptiness twice, in
+the least readable way available.
+"""
+created_at = "2026-08-25"
+scored_at = "2026-08-25"
+
+[[task]]
+id = "408"
+phase = 24
+bundle = "witness-legibility"
+status = "pending"
+title = "Responsive strategy for the dashboard"
+scores = { d = 3, b = 6, u = 5 }
+markers = ["parallel"]
+acceptance_criteria = ["Both `run_table` renders are wrapped in `.table-scroll` (already defined at tokens.ex:667, currently used only by kpi_live.ex:624 and project_explorer.ex:141), so a table wider than the viewport scrolls within its own container instead of the page.", "At a viewport narrower than the table's natural width, no horizontal page scroll is required to reach any column, and no interactive control is clipped off-screen. Verified at 390px and at 500px, the widths measured in the critique.", "A breakpoint around 900px collapses each run row to a card whose fields are labelled, rather than a row whose header is off-screen.", "`.navbar-links` no longer overflows the viewport at 500px (measured 641px wide at a 500px viewport).", "The `Detail` cell truncates to one line at any viewport with the full text reachable via a disclosure, so a long failure reason cannot set the table's width.", "The code renders facts; it does not compute urgency, health, severity, or ranking from them. No column is hidden by inferred importance — narrow layouts relabel and reflow, they do not silently drop data.", "mix check.dispatch green plus focused `mix test.json` for the dashboard live surface."]
+out_of_scope = ["Changing what the tables contain, the order of sections, or the bucket vocabulary — sibling tasks in this bundle own those.", "Responsive work on `/harness/kpi`, `/harness/settings`, `/harness/compare`, or the project explorer. This task covers the `/harness` index and run-detail; the shared `.table-scroll` and breakpoint tokens it lands are available to those surfaces later.", "A mobile-specific navigation pattern (drawer, hamburger). Making `.navbar-links` fit is in scope; redesigning navigation is not."]
+files_to_modify = ["lib/harness/dashboard/tokens.ex", "lib/harness/dashboard/live.ex"]
+touches = ["lib/harness/dashboard/tokens.ex", "lib/harness/dashboard/live.ex", "lib/harness/dashboard/components.ex"]
+domains = ["liveview", "phoenix"]
+assignee = "grok"
+model = "grok-4.6"
+body = """
+Observed 2026-08-25 in a dual-agent design critique of `/harness` (snapshot:
+`.impeccable/critique/2026-08-25T03-32-34Z__lib-harness-dashboard-live-ex.md`, scored 19/40).
+
+Cause, read on 2026-08-25: `lib/harness/dashboard/tokens.ex` is the only stylesheet in the
+project — 1742 lines — and contains exactly ONE `@media` block, at line 1732, and that one is
+`prefers-reduced-motion`. There is no viewport breakpoint anywhere in the codebase. The dashboard
+has never had a responsive strategy; it has a desktop layout that degrades by overflowing.
+
+Measured in the browser during the critique, at a 500px viewport: `document.scrollWidth` 1189
+against `window.innerWidth` 500. The 10-column run table sets that width, `.navbar-links`
+measures 641px on its own, and the `Action` column — the buttons that resume, reland, and delete
+a run — sits off-screen with no horizontal scroll affordance to reach it. The `Detail` cell is
+unbounded, so a single long failure reason widens the table for every other row.
+
+`.table-scroll { overflow-x: auto; }` already exists at tokens.ex:667 and already solves the
+containment half of this. It is used by `kpi_live.ex:624` and `project_explorer.ex:141` — every
+table surface EXCEPT the two that matter most.
+
+Consequences: the fleet dashboard is unusable on a phone or a narrow split-pane, which is
+precisely where an operator checks on an autonomous run they are not sitting in front of. The
+recovery actions are the first thing to disappear.
+"""
+created_at = "2026-08-25"
+scored_at = "2026-08-25"
+
+[[task]]
+id = "409"
+phase = 24
+bundle = "witness-legibility"
+status = "pending"
+title = "Surface the reviewer's testimony on the run row and detail"
+scores = { d = 4, b = 7, u = 5 }
+markers = ["parallel"]
+acceptance_criteria = ["A run whose reviewer wrote non-empty `concerns` shows that fact on its index row, and the concern text itself on the run-detail page, rendered verbatim as the reviewer wrote it.", "The reviewer's `checks` entries (the commands it claims to have run and their claimed pass/fail) render on run-detail, verbatim, including the log path when the reviewer recorded one.", "The reviewer's `ratings` and `facets` / `skills` render on run-detail as the reviewer wrote them, without harness deriving a composite, an average, or an ordering from them.", '`reviewer_diff_size` is visible on run-detail — the fact that distinguishes "approved as written" from "approved after the reviewer rewrote it", which the surface currently cannot express.', "An approved run carrying non-empty concerns or a reviewer-authored failed check is visually distinguishable from an approved run carrying neither. The distinction is driven by the emptiness of those fields, nothing more.", "A run with no verdict artifact, or an artifact missing any of these fields, renders without error and without inventing a placeholder value that reads as data.", "The code renders facts; it does not compute urgency, health, severity, or ranking from them. No concern is scored, sorted by inferred severity, keyword-matched, or summarised — the reviewer's words reach the operator unmediated.", "mix check.dispatch green plus focused `mix test.json` for the dashboard live and verdict-reading surfaces."]
+out_of_scope = ["Computing a severity, priority, or ranking from `concerns`, `checks`, or `ratings`. That is the mantra's central prohibition and the reason this task is scoped to rendering only.", "Filing the reviewer's `proposed_tasks`. Harness persists them verbatim and the ORCHESTRATOR files the warranted ones post-land (harness-workflow.md); displaying them read-only is in scope, acting on them is not.", "Changing what the reviewer is prompted to write into `.harness/review.json`.", "Aggregating these facts across runs — `Harness.AgentKPI` and `result_store-aggregate_*` already own the rollup surfaces."]
+files_to_modify = ["lib/harness/dashboard/live.ex"]
+touches = ["lib/harness/dashboard/live.ex", "lib/harness/dashboard/components.ex", "lib/harness/dashboard/tokens.ex", "lib/harness/status_view.ex"]
+domains = ["liveview", "phoenix"]
+assignee = "cursor"
+model = "cursor-grok-4.6-high"
+body = """
+Observed 2026-08-25 in a dual-agent design critique of `/harness` (snapshot:
+`.impeccable/critique/2026-08-25T03-32-34Z__lib-harness-dashboard-live-ex.md`, scored 19/40).
+Framing that makes this a defect rather than a feature request: the dashboard is the human's
+WITNESS of what the agents did. The reviewer AI is the gate — it is the agent whose judgment
+decides everything — and the witness surface currently relays one bit of what it said.
+
+Cause, read on 2026-08-25: every reviewer writes `.harness/review.json` as
+`{verdict, report, checks, concerns, proposed_tasks, facets, skills, ratings}`. Harness reads and
+persists all of it; `dispatch-verdict_detail` returns all of it. The dashboard renders `verdict`.
+The reviewer's own account of which commands it ran and whether they passed, the caveats it
+flagged on its own approval, the per-facet capability ratings, and the size of the diff it had to
+write before it could approve — none of it reaches the surface a human actually looks at. An
+operator wanting the reviewer's reasoning has to leave the dashboard and query MCP.
+
+`reviewer_diff_size` is the sharpest omission. Measured across 1,627 reviews on 2026-08-23, review
+intervention is a per-reviewer trait with medians spanning 0 to 96 lines — so "approved" means
+something categorically different depending on who approved and how much they rewrote first. The
+UI collapses all of it to one word.
+
+Scoring d=4 rather than d=3 because the fields are open-vocabulary and optional: `facets` and
+`skills` are deliberately unbounded, `ratings` is a legacy flat-score fallback, and older records
+predate several of them. Rendering them faithfully without inventing structure — and without
+harness deciding what any of it MEANS — is the difficult half.
+
+Consequences: an approval that required 96 lines of reviewer repair looks identical to a clean
+one; a reviewer's explicit caveat on its own approval is invisible; and the operator's mental
+model of "the gate passed" carries none of the gate's own reservations.
 """
 created_at = "2026-08-25"
 scored_at = "2026-08-25"

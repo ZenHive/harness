@@ -56,6 +56,24 @@ defmodule Harness.Dashboard.LiveMountTest do
       assert html =~ "will NOT survive a restart"
     end
 
+    test "empty states report the fleet's condition, not a list's length", %{conn: conn} do
+      {:ok, view, html} = live(conn, "/harness")
+
+      assert html =~ ~s(class="empty-state")
+      assert html =~ "The fleet is idle — no run is executing."
+      assert html =~ "No merge or audit step has been reported since this page was opened."
+
+      # Under a project filter the idle claim narrows to that project — the rest
+      # of the fleet is out of the table's scope and so out of the sentence.
+      view
+      |> element("form[phx-change=select_project]")
+      |> render_change(%{"project" => "livemount-demo"})
+
+      filtered = render(view)
+      assert filtered =~ "livemount-demo is idle — no run is executing."
+      refute filtered =~ "The fleet is idle"
+    end
+
     test "selecting a project pushes a filtering patch; clearing it patches back", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/harness")
 

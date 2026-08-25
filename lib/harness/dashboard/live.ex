@@ -564,23 +564,23 @@ defmodule Harness.Dashboard.Live do
   @spec filter_landed([StatusView.run_entry()], boolean()) :: [StatusView.run_entry()]
   defp filter_landed(runs, true), do: runs
 
-  defp filter_landed(runs, false), do: Enum.reject(runs, &landed_entry?(&1, %{}))
+  defp filter_landed(runs, false), do: Enum.reject(runs, &landed_entry?/1)
 
   @spec show_in_history?(StatusView.run_entry(), Socket.t()) :: boolean()
   defp show_in_history?(entry, socket) do
     passes_filter?(entry, socket.assigns.selected_project) and
-      (socket.assigns.show_landed or not landed_entry?(entry, socket.assigns.roadmap))
+      (socket.assigns.show_landed or not landed_entry?(entry))
   end
 
   @doc false
-  @spec landed_entry?(StatusView.run_entry(), RoadmapSummary.summaries()) :: boolean()
-  def landed_entry?(%{status: %Status{landed_sha: sha}}, _summaries), do: sha != nil
+  @spec landed_entry?(StatusView.run_entry()) :: boolean()
+  def landed_entry?(%{status: %Status{landed_sha: sha}}), do: sha != nil
 
   # Count of landed (merged) runs hidden from the unmerged default view, shown on
   # the toggle so mergedness is legible at a glance without expanding the view.
   @spec landed_toggle_label([StatusView.run_entry()], String.t() | nil) :: String.t()
   defp landed_toggle_label(history_all, selected) do
-    hidden = history_all |> filter_runs(selected) |> Enum.count(&landed_entry?(&1, %{}))
+    hidden = history_all |> filter_runs(selected) |> Enum.count(&landed_entry?/1)
     "Show landed runs (#{hidden})"
   end
 
@@ -747,37 +747,58 @@ defmodule Harness.Dashboard.Live do
     <.ops_panel ops={@ops} />
 
     <h2>Active runs</h2>
-    <p :if={@active_empty?}>No runs in flight or lingering.</p>
+    <p :if={@active_empty?} class="empty-state">{active_empty_line(@selected_project)}</p>
     <.run_table
       id="active-runs"
       rows={@streams.active_runs}
       summaries={@roadmap}
       landable_projects={landable_project_names(@projects)}
+      caption="Active runs"
     />
 
     <h2>
       Run history <span :if={!@show_landed}> — unmerged only</span>
     </h2>
     <p class="history-toggle">
-      <button type="button" phx-click="toggle_landed">
+      <button type="button" class="history-toggle-btn" phx-click="toggle_landed">
         {if @show_landed,
           do: "Hide landed runs",
           else: landed_toggle_label(@history_all, @selected_project)}
       </button>
     </p>
-    <p :if={@history_empty?}>
-      {if @show_landed,
-        do: "No persisted runs.",
-        else: "No unmerged runs — every settled run has landed."}
+    <p :if={@history_empty?} class="empty-state">
+      {history_empty_line(@selected_project, @history_all)}
     </p>
     <.run_table
       id="run-history"
       rows={@streams.history}
       summaries={@roadmap}
       landable_projects={landable_project_names(@projects)}
+      caption="Run history"
     />
     """
   end
+
+  # The two index empty-states report the fleet's condition, not a list's
+  # length. Both are scope-aware because both tables honor the project filter:
+  # "the fleet is idle" would be false while another project is mid-run.
+  @spec active_empty_line(String.t() | nil) :: String.t()
+  defp active_empty_line(nil), do: "The fleet is idle — no run is executing."
+  defp active_empty_line(project), do: "#{project} is idle — no run is executing."
+
+  # Keyed on the real condition rather than on the landed toggle: with nothing
+  # settled in scope, "every settled run has landed" is only vacuously true.
+  @spec history_empty_line(String.t() | nil, [StatusView.run_entry()]) :: String.t()
+  defp history_empty_line(selected, history_all) do
+    history_empty_reason(selected, filter_runs(history_all, selected))
+  end
+
+  @spec history_empty_reason(String.t() | nil, [StatusView.run_entry()]) :: String.t()
+  defp history_empty_reason(nil, []), do: "No run has settled yet — the result ledger is empty."
+
+  defp history_empty_reason(project, []), do: "No run has settled yet for #{project} — the result ledger holds none."
+
+  defp history_empty_reason(_selected, _settled), do: "Every settled run has landed — none is waiting to merge."
 
   @spec render_show(map()) :: Rendered.t()
   defp render_show(assigns) do
@@ -853,7 +874,11 @@ defmodule Harness.Dashboard.Live do
     </div>
 
     <p :if={killable?(@run_status)}>
-      <.kill_button run_id={@run_id} />
+      <.kill_button
+        run_id={@run_id}
+        task_id={@run_status.task_id}
+        project_name={@run_status.project_name}
+      />
     </p>
 
     <.task_section :if={@task_item != nil} item={@task_item} />
@@ -932,7 +957,7 @@ defmodule Harness.Dashboard.Live do
   defp project_switcher(assigns) do
     ~H"""
     <form id="project-switcher-form" phx-change="select_project">
-      <select name="project">
+      <select name="project" aria-label="Project">
         <option value="">All projects</option>
         <option :for={project <- @projects} value={project.name} selected={@selected == project.name}>
           {project.name}
@@ -953,17 +978,20 @@ defmodule Harness.Dashboard.Live do
   defp ops_panel(assigns) do
     ~H"""
     <h2>Audit &amp; land ops</h2>
-    <p :if={@ops == []}>No audit or land activity yet.</p>
+    <p :if={@ops == []} class="empty-state">
+      No merge or audit step has been reported since this page was opened.
+    </p>
     <table :if={@ops != []}>
+      <caption>Audit and land operations</caption>
       <thead>
         <tr>
-          <th>Kind</th>
-          <th>Stage</th>
-          <th>Project</th>
-          <th>Agent</th>
-          <th>Run / Range</th>
-          <th>SHA</th>
-          <th>Detail</th>
+          <th scope="col">Kind</th>
+          <th scope="col">Stage</th>
+          <th scope="col">Project</th>
+          <th scope="col">Agent</th>
+          <th scope="col">Run / Range</th>
+          <th scope="col">SHA</th>
+          <th scope="col">Detail</th>
         </tr>
       </thead>
       <tbody>
@@ -995,6 +1023,7 @@ defmodule Harness.Dashboard.Live do
   attr(:rows, :any, required: true)
   attr(:summaries, :map, default: %{})
   attr(:landable_projects, :any, default: MapSet.new())
+  attr(:caption, :string, required: true)
 
   # Shared by the "Active runs" and "Run history" tables. `rows` is a
   # `Phoenix.LiveView` stream; the `<tbody>` carries `phx-update="stream"` and a
@@ -1006,18 +1035,19 @@ defmodule Harness.Dashboard.Live do
   defp run_table(assigns) do
     ~H"""
     <table>
+      <caption>{@caption}</caption>
       <thead>
         <tr>
-          <th>Task</th>
-          <th>Project</th>
-          <th>Run</th>
-          <th>Agent</th>
-          <th>Model</th>
-          <th>State</th>
-          <th>Verdict</th>
-          <th>Landed</th>
-          <th>Detail</th>
-          <th>Action</th>
+          <th scope="col">Task</th>
+          <th scope="col">Project</th>
+          <th scope="col">Run</th>
+          <th scope="col">Agent</th>
+          <th scope="col">Model</th>
+          <th scope="col">State</th>
+          <th scope="col">Verdict</th>
+          <th scope="col">Landed</th>
+          <th scope="col">Detail</th>
+          <th scope="col">Action</th>
         </tr>
       </thead>
       <tbody id={@id} phx-update="stream">
@@ -1031,23 +1061,48 @@ defmodule Harness.Dashboard.Live do
             <Components.bucket_badge bucket={entry.bucket} label={to_string(entry.status.state)} />
           </td>
           <td>{verdict_label(entry.status.review_verdict)}</td>
-          <td>{landed_label(@summaries, entry.status)}</td>
+          <td>{landed_label(entry.status)}</td>
           <td>{entry.detail || ""}</td>
           <td>
             <div class="row-actions">
-              <.kill_button :if={killable?(entry.status)} run_id={entry.status.run_id} />
-              <.resume_button :if={resumable?(entry.status)} run_id={entry.status.run_id} />
-              <.resume_button :if={resumable?(entry.status)} run_id={entry.status.run_id} escalate />
+              <.kill_button
+                :if={killable?(entry.status)}
+                run_id={entry.status.run_id}
+                task_id={entry.status.task_id}
+                project_name={entry.status.project_name}
+              />
+              <.resume_button
+                :if={resumable?(entry.status)}
+                run_id={entry.status.run_id}
+                task_id={entry.status.task_id}
+                project_name={entry.status.project_name}
+              />
+              <.resume_button
+                :if={resumable?(entry.status)}
+                run_id={entry.status.run_id}
+                task_id={entry.status.task_id}
+                project_name={entry.status.project_name}
+                escalate
+              />
               <.reland_button
                 :if={relandable?(entry.status, @summaries)}
                 run_id={entry.status.run_id}
+                task_id={entry.status.task_id}
+                project_name={entry.status.project_name}
               />
               <.reland_button
                 :if={landable?(entry.status, @summaries, @landable_projects)}
                 run_id={entry.status.run_id}
+                task_id={entry.status.task_id}
+                project_name={entry.status.project_name}
                 first_land
               />
-              <.delete_button :if={deletable?(entry.status)} run_id={entry.status.run_id} />
+              <.delete_button
+                :if={deletable?(entry.status)}
+                run_id={entry.status.run_id}
+                task_id={entry.status.task_id}
+                project_name={entry.status.project_name}
+              />
             </div>
           </td>
         </tr>
@@ -1066,6 +1121,8 @@ defmodule Harness.Dashboard.Live do
   end
 
   attr(:run_id, :string, required: true)
+  attr(:task_id, :string, default: nil)
+  attr(:project_name, :string, default: nil)
 
   # Confirm-gated kill affordance shared by the index row and the run-detail
   # view. A misfire settles the run :failed, so the `data-confirm` prompt is
@@ -1079,6 +1136,7 @@ defmodule Harness.Dashboard.Live do
       phx-click="kill_run"
       phx-value-run_id={@run_id}
       data-confirm={"Kill run #{@run_id}? This settles it :failed."}
+      aria-label={row_action_aria_label("Kill run", @run_id, @task_id, @project_name)}
     >
       Kill run
     </button>
@@ -1086,6 +1144,8 @@ defmodule Harness.Dashboard.Live do
   end
 
   attr(:run_id, :string, required: true)
+  attr(:task_id, :string, default: nil)
+  attr(:project_name, :string, default: nil)
 
   # Settled-only affordance: discards the run's persisted history record (e.g. a
   # throwaway smoke run). Confirm-gated since the record is gone for good; routes
@@ -1100,6 +1160,7 @@ defmodule Harness.Dashboard.Live do
       phx-click="delete_run"
       phx-value-run_id={@run_id}
       data-confirm={"Delete run #{@run_id} from history? This removes its record permanently."}
+      aria-label={row_action_aria_label("Delete run", @run_id, @task_id, @project_name)}
     >
       Delete
     </button>
@@ -1107,6 +1168,8 @@ defmodule Harness.Dashboard.Live do
   end
 
   attr(:run_id, :string, required: true)
+  attr(:task_id, :string, default: nil)
+  attr(:project_name, :string, default: nil)
   attr(:escalate, :boolean, default: false)
 
   # Failed-only affordance: re-dispatch the run's task on a NEW run branched off
@@ -1124,6 +1187,7 @@ defmodule Harness.Dashboard.Live do
       phx-value-run_id={@run_id}
       phx-value-escalate="true"
       data-confirm={"Escalate run #{@run_id} to a capability-recommended agent? Starts a new run off the failed branch with a different agent."}
+      aria-label={row_action_aria_label("Escalate run", @run_id, @task_id, @project_name)}
     >
       Escalate
     </button>
@@ -1138,6 +1202,7 @@ defmodule Harness.Dashboard.Live do
       phx-click="resume_run"
       phx-value-run_id={@run_id}
       data-confirm={"Resume run #{@run_id}? Starts a new run off the retained failed branch with the same agent."}
+      aria-label={row_action_aria_label("Resume run", @run_id, @task_id, @project_name)}
     >
       Resume
     </button>
@@ -1145,6 +1210,8 @@ defmodule Harness.Dashboard.Live do
   end
 
   attr(:run_id, :string, required: true)
+  attr(:task_id, :string, default: nil)
+  attr(:project_name, :string, default: nil)
   attr(:first_land, :boolean, default: false)
 
   # Offered when the run's task is blocked (a land-cap-exhausted train). Re-enqueues
@@ -1161,6 +1228,7 @@ defmodule Harness.Dashboard.Live do
       phx-click="reland_run"
       phx-value-run_id={@run_id}
       data-confirm={"Land run #{@run_id}? Enqueues the landing job (no agent run)."}
+      aria-label={row_action_aria_label("Land run", @run_id, @task_id, @project_name)}
     >
       Land
     </button>
@@ -1175,11 +1243,25 @@ defmodule Harness.Dashboard.Live do
       phx-click="reland_run"
       phx-value-run_id={@run_id}
       data-confirm={"Re-land run #{@run_id}? Re-enqueues the landing job (no agent run)."}
+      aria-label={row_action_aria_label("Re-land run", @run_id, @task_id, @project_name)}
     >
       Re-land
     </button>
     """
   end
+
+  # Builds an unambiguous per-row accessible name for a row action button,
+  # since the visible label (e.g. "Delete") repeats identically down every
+  # row of the runs table. Task/project are appended only when known — the
+  # run-detail page's single-run context has no `task_id`/`project_name` to
+  # pass.
+  @spec row_action_aria_label(String.t(), String.t(), String.t() | nil, String.t() | nil) :: String.t()
+  defp row_action_aria_label(verb, run_id, nil, _project_name), do: "#{verb} #{run_id}"
+
+  defp row_action_aria_label(verb, run_id, task_id, nil), do: "#{verb} #{run_id} (task #{task_id})"
+
+  defp row_action_aria_label(verb, run_id, task_id, project_name),
+    do: "#{verb} #{run_id} (task #{task_id}, project #{project_name})"
 
   @impl Phoenix.LiveView
   def handle_event("select_project", %{"project" => project_name}, socket) do
@@ -1283,8 +1365,8 @@ defmodule Harness.Dashboard.Live do
 
   # "Merged" is the run record carrying a landed_sha written by the lander.
   @doc false
-  @spec landed_label(RoadmapSummary.summaries(), Status.t()) :: String.t()
-  def landed_label(_summaries, %Status{} = status) do
+  @spec landed_label(Status.t()) :: String.t()
+  def landed_label(%Status{} = status) do
     case status.landed_sha do
       nil -> "—"
       sha -> "✓ " <> short_sha(sha)
@@ -1400,10 +1482,21 @@ defmodule Harness.Dashboard.Live do
     usage = token_usage(agent_kind, transcript)
 
     if Harness.TokenUsage.measured?(usage) do
-      Integer.to_string(usage.total)
+      usage.total
+      |> Integer.to_string()
+      |> delimit()
     else
       "—"
     end
+  end
+
+  # Group an integer string into thousands so a 27M-token count reads at a glance.
+  @spec delimit(String.t()) :: String.t()
+  defp delimit(digits) do
+    digits
+    |> String.reverse()
+    |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
+    |> String.reverse()
   end
 
   # Grok omits usage on stdout; recover its cumulative total from the on-disk

@@ -16,6 +16,17 @@ defmodule Harness.Dashboard.Tokens do
   `--accent` reserved for terminal-state cues — verdict pass/fail, error,
   stream-finished. The accent never appears on neutral controls.
 
+  Connection witness: the stylesheet reads LiveView's own container classes
+  (`phx-connected` / `phx-loading` / `phx-error` + `phx-client-error` |
+  `phx-server-error`) through `:has()` on `.page-shell`, dims `.page-main`
+  when the socket is not live, and pins `.page-footer` to the viewport to
+  carry the statement. `:has()` is load-bearing here — the classes land on
+  the LiveView root container *inside* `.page-main`, so the chrome can only
+  see them by ancestor query. Every line, including "Connected", is keyed
+  positively off its own `phx-*` class rather than off the absence of one —
+  before JS boots (or if it never does), none of the four is revealed, so
+  the footer sits empty instead of asserting a connection that isn't there.
+
   Motion tokens (`--motion-fast`, `--motion-base`, `--motion-slow`) plus
   easing variables; a single bottom-of-stylesheet
   `@media (prefers-reduced-motion: reduce)` block silences decorative
@@ -93,9 +104,10 @@ defmodule Harness.Dashboard.Tokens do
         --surface: #15171d;
         --surface-2: #1c1f27;
         --rule: #2a2e38;
+        --rule-strong: #555e72;
         --text: #e8e5dd;
         --text-subtle: #8a8e98;
-        --text-muted: #5c606a;
+        --text-muted: #808694;
 
         /* Single signal accent — terminal-state cues only */
         --accent: #e6a14b;
@@ -181,6 +193,9 @@ defmodule Harness.Dashboard.Tokens do
         margin-inline: auto;
         padding: var(--space-5) var(--space-5) var(--space-6);
         box-sizing: border-box;
+        /* Goes inert while the socket is down — see "Connection witness" below. */
+        transition: opacity var(--motion-base) var(--ease-out),
+                    filter var(--motion-base) var(--ease-out);
       }
 
       /* Navbar */
@@ -230,14 +245,21 @@ defmodule Harness.Dashboard.Tokens do
         color: var(--text);
         background: var(--surface);
       }
-      .navbar-links a[data-active="true"] {
-        color: var(--text);
-        background: var(--surface-2);
-        box-shadow: inset 0 -1px 0 var(--accent);
-      }
+      .navbar-links a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-      /* Footer */
+      /* Footer — the page's visual stop AND the connection witness. */
       .page-footer {
+        width: 100%;
+        box-sizing: border-box;
+        font-family: var(--font-display);
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        border-top: 1px solid var(--rule);
+        background: var(--bg);
+        transition: background-color var(--motion-base) var(--ease-out),
+                    border-color var(--motion-base) var(--ease-out);
+      }
+      .footer-inner {
         max-width: var(--page-max-width);
         width: 100%;
         margin-inline: auto;
@@ -246,19 +268,84 @@ defmodule Harness.Dashboard.Tokens do
         display: flex;
         align-items: baseline;
         gap: var(--space-3);
-        font-family: var(--font-display);
-        font-size: var(--text-xs);
-        color: var(--text-muted);
-        border-top: 1px solid var(--rule);
         min-height: var(--footer-height);
       }
       .footer-mark { font-weight: 600; color: var(--text-subtle); }
-      .footer-tag { letter-spacing: 0.02em; }
+
+      /* === Connection witness ==========================================
+         LiveView stamps exactly one class set on the LiveView ROOT CONTAINER
+         (`View#setContainerClasses`, deps/phoenix_live_view/assets/js/
+         phoenix_live_view/view.ts; names in constants.ts): `phx-connected`
+         when joined, `phx-loading` while (re)joining, and on a drop
+         `phx-loading phx-error phx-client-error` (socket down) or
+         `... phx-server-error` (join/crash). An error therefore ALSO carries
+         `phx-loading`, hence the `:not(.phx-error)` guard on the joining
+         state. That container sits inside `.page-main`, so the chrome reads
+         it with `:has()`.
+
+         The 400ms `transition-delay` is the blip debounce: a drop shorter
+         than that never reaches a painted frame. It gates the loud part
+         (dimming) even under `prefers-reduced-motion`, which zeroes
+         durations but not delays. */
+
+      .conn-witness { display: grid; }
+      .conn-state {
+        grid-area: 1 / 1;
+        letter-spacing: 0.02em;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity var(--motion-base) var(--ease-out),
+                    visibility var(--motion-base);
+      }
+      .conn-state-joining { color: var(--text-subtle); }
+      .conn-state-dropped, .conn-state-unresponsive { color: var(--accent); }
+
+      .page-shell:has(.phx-loading:not(.phx-error)) .page-main {
+        opacity: 0.72;
+        transition-delay: 400ms;
+      }
+      .page-shell:has(.phx-error) .page-main {
+        opacity: 0.45;
+        filter: grayscale(0.9);
+        transition-delay: 400ms;
+      }
+
+      /* The statement must stay legible while the plane behind it is dimmed,
+         so the footer leaves the dimmed column and pins to the viewport. */
+      .page-shell:has(.phx-loading) .page-footer,
+      .page-shell:has(.phx-error) .page-footer {
+        position: fixed;
+        inset-inline: 0;
+        bottom: 0;
+        z-index: 60;
+        background: var(--surface);
+        border-top-color: var(--rule-strong);
+      }
+
+      /* Connected is keyed positively off phx-connected, not off the
+         absence of a phx class — before JS boots, no line is revealed at
+         all, never a false "Connected" claim (the base `.conn-state` rule
+         above already leaves it opacity:0/hidden). No debounce delay here:
+         phx-connected and phx-loading/phx-error are mutually exclusive
+         (LiveView stamps exactly one set), so unlike the loud states below
+         there is no blip to guard against — real signal, shown as soon as
+         it's true. */
+      .page-shell:has(.phx-connected) .conn-state-connected {
+        opacity: 1;
+        visibility: visible;
+      }
+      .page-shell:has(.phx-loading:not(.phx-error)) .conn-state-joining,
+      .page-shell:has(.phx-client-error) .conn-state-dropped,
+      .page-shell:has(.phx-server-error) .conn-state-unresponsive {
+        opacity: 1;
+        visibility: visible;
+        transition-delay: 400ms;
+      }
 
       /* === Operator dashboard (Harness.Dashboard.Live) — rehome === */
 
       table { border-collapse: collapse; width: 100%; margin-block: var(--space-3); }
-      th, td { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--rule); }
+      th, td { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--rule-strong); }
       th { font-weight: 600; color: var(--text-subtle); font-family: var(--font-display); font-size: var(--text-sm); }
 
       /* Transposed agent ledger (Harness.Dashboard.KPILive :agents) — metrics
@@ -310,20 +397,26 @@ defmodule Harness.Dashboard.Tokens do
       .topbar a {
         text-decoration: none;
         padding: var(--space-1) var(--space-3);
-        border: 1px solid var(--rule);
+        border: 1px solid var(--rule-strong);
         border-radius: 0.25rem;
         font-size: var(--text-sm);
       }
       .topbar select {
         background: var(--surface);
         color: var(--text);
-        border: 1px solid var(--rule);
+        border: 1px solid var(--rule-strong);
         padding: var(--space-1) var(--space-2);
         font-family: var(--font-mono);
         font-size: var(--text-sm);
         border-radius: 0.25rem;
       }
+      .topbar a:focus-visible,
+      .topbar select:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
       .count { font-size: var(--text-sm); color: var(--text-subtle); }
+      .history-toggle-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
       /* Task-facet pivot (Harness.Dashboard.KPILive, Task 225) — facet filter
          pills, per-facet cards, and the scout's verdict beside the fact ledger. */
@@ -388,7 +481,7 @@ defmodule Harness.Dashboard.Tokens do
       .delete-btn {
         background: transparent;
         color: var(--text-muted);
-        border: 1px solid var(--rule);
+        border: 1px solid var(--rule-strong);
         border-radius: 0.25rem;
         padding: var(--space-1) var(--space-3);
         font-family: var(--font-display);
@@ -432,6 +525,13 @@ defmodule Harness.Dashboard.Tokens do
         transition: background-color var(--motion-fast) var(--ease-out);
       }
       .reland-btn:hover { background: rgba(79, 155, 106, 0.16); }
+      .kill-btn:focus-visible,
+      .delete-btn:focus-visible,
+      .resume-btn:focus-visible,
+      .reland-btn:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
 
       /* Action cell can stack up to three affordances on a failed/blocked row
          (Resume · Escalate · Delete) — flex-gap keeps them from butting together. */
@@ -662,6 +762,8 @@ defmodule Harness.Dashboard.Tokens do
       }
       .kpi-nav a:hover,
       .run-detail-nav a:hover { color: var(--text); border-color: var(--accent); }
+      .kpi-nav a:focus-visible,
+      .run-detail-nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
       /* Wrap a wide table (the ledger's dynamic rating columns) so it scrolls in place */
       .table-scroll { overflow-x: auto; }
@@ -1343,7 +1445,7 @@ defmodule Harness.Dashboard.Tokens do
         height: 1.6rem;
         margin: 0;
         padding: 0;
-        border: 1px solid var(--rule);
+        border: 1px solid var(--rule-strong);
         border-radius: 999px;
         background: var(--surface-2);
         cursor: pointer;
@@ -1499,6 +1601,10 @@ defmodule Harness.Dashboard.Tokens do
         display: grid;
         gap: var(--space-2);
         margin: var(--space-3) 0 0;
+      }
+      .operator-flash:empty {
+        margin: 0;
+        gap: 0;
       }
 
       .operator-notice {

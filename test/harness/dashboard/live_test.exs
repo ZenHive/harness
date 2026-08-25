@@ -94,26 +94,26 @@ defmodule Harness.Dashboard.LiveTest do
     end
   end
 
-  describe "landed_label/2 + landed_entry?/2 (persisted run fact)" do
+  describe "landed_label/1 + landed_entry?/1 (persisted run fact)" do
     test "a run whose record carries landed_sha renders the short sha and reads landed" do
       entry = run_entry("r-1", project_name: "alpha", bucket: :green, task_id: "1", landed_sha: "abc1234ff")
 
-      assert Live.landed_label(%{}, entry.status) == "✓ abc1234"
-      assert Live.landed_entry?(entry, %{})
+      assert Live.landed_label(entry.status) == "✓ abc1234"
+      assert Live.landed_entry?(entry)
     end
 
     test "an unlanded run renders a dash and reads not-landed" do
       entry = run_entry("r-2", project_name: "alpha", bucket: :red, task_id: "2")
 
-      assert Live.landed_label(%{}, entry.status) == "—"
-      refute Live.landed_entry?(entry, %{})
+      assert Live.landed_label(entry.status) == "—"
+      refute Live.landed_entry?(entry)
     end
 
     test "empty registry or missing roadmap cannot hide a persisted landed fact" do
       entry = run_entry("r-3", project_name: "alpha", bucket: :green, state: :done, landed_sha: "f00dcafe")
 
-      assert Live.landed_entry?(entry, %{})
-      assert Live.landed_label(%{}, entry.status) == "✓ f00dcaf"
+      assert Live.landed_entry?(entry)
+      assert Live.landed_label(entry.status) == "✓ f00dcaf"
     end
   end
 
@@ -438,7 +438,7 @@ defmodule Harness.Dashboard.LiveTest do
 
       [reconciled] = Live.reconcile_history_landed([entry], [project], roadmap, store)
 
-      assert Live.landed_entry?(reconciled, %{})
+      assert Live.landed_entry?(reconciled)
       assert reconciled.status.landed_sha == sha
       assert {:ok, [%{landed_sha: ^sha}]} = ResultStore.list_run_records(store, run_id: run_id)
     end
@@ -479,7 +479,7 @@ defmodule Harness.Dashboard.LiveTest do
 
       [reconciled] = Live.reconcile_history_landed([entry], [project], roadmap, store)
 
-      assert Live.landed_entry?(reconciled, %{})
+      assert Live.landed_entry?(reconciled)
       assert reconciled.status.landed_sha == sha
       assert {:ok, [%{landed_sha: ^sha}]} = ResultStore.list_run_records(store, run_id: run_id)
     end
@@ -514,7 +514,7 @@ defmodule Harness.Dashboard.LiveTest do
 
       [reconciled] = Live.reconcile_history_landed([entry], [project], roadmap, store)
 
-      refute Live.landed_entry?(reconciled, %{})
+      refute Live.landed_entry?(reconciled)
       assert reconciled.status.landed_sha == nil
     end
   end
@@ -698,6 +698,11 @@ defmodule Harness.Dashboard.LiveTest do
     test "token_label renders — for an agent that reports no usage" do
       assert Live.token_label(:grok, ~s({"type":"text","data":"hi"}\n)) == "—"
       assert Live.token_label(nil, "plain text") == "—"
+    end
+
+    test "token_label formats thousands with commas" do
+      transcript = ~s({"type":"result","usage":{"input_tokens":500,"output_tokens":600}}\n)
+      assert Live.token_label(:claude, transcript) == "1,100"
     end
 
     test "active_agent_role tracks the stage's working agent" do

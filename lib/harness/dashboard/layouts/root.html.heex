@@ -17,7 +17,16 @@
     </script>
     <script>
       const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content");
-      const liveSocket = new LiveView.LiveSocket("/live", Phoenix.Socket, { params: { _csrf_token: csrfToken } });
+      // LiveView's LOADER_TIMEOUT default is 1ms, so `phx-loading` lands on the
+      // container on every join — including the initial one. 400ms keeps the
+      // "Connecting" witness off the screen for joins that succeed promptly.
+      // It does NOT gate the error classes: View#displayError calls showLoader()
+      // with no timeout, so a real drop is announced immediately and the CSS
+      // transition-delay debounces that half.
+      const liveSocket = new LiveView.LiveSocket("/live", Phoenix.Socket, {
+        params: { _csrf_token: csrfToken },
+        loaderTimeout: 400
+      });
       liveSocket.connect();
       window.liveSocket = liveSocket;
     </script>

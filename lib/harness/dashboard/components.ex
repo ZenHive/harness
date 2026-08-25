@@ -70,7 +70,8 @@ defmodule Harness.Dashboard.Components do
   was deliberately omitted from the v0_8 first pass — Phoenix LiveView's
   root layout doesn't have access to socket assigns, so threading
   `current_path` would require either a conn-pipeline plug or the app
-  layout, neither of which earns the complexity for a hover-styling decoration.
+  layout, neither of which earns the complexity for an active-state
+  decoration. No `data-active` styling exists on these links.
   """
   @spec navbar(map()) :: Rendered.t()
   def navbar(assigns) do
@@ -95,17 +96,42 @@ defmodule Harness.Dashboard.Components do
   end
 
   @doc """
-  Persistent bottom chrome.
+  Persistent bottom chrome — brand wordmark plus the connection witness.
 
-  Intentionally minimal: brand wordmark + a one-line tagline. Page content
-  carries the real density; the footer is the visual stop.
+  The witness states whether what the operator is looking at is current. All
+  four lines are always in the DOM; `Harness.Dashboard.Tokens` reveals at
+  most one of them from LiveView's own container classes (`phx-connected` /
+  `phx-loading` / `phx-client-error` / `phx-server-error`), so the LiveView
+  never has to assign socket state it cannot observe. Each line — including
+  "Connected" — is keyed positively off its own class; before JS boots (or
+  if it never does), none is revealed and the slot sits empty rather than
+  asserting a connection that isn't there. In a non-live state the
+  stylesheet also pins this footer to the viewport and dims `.page-main`
+  behind it.
+
+  The `aria-live="polite"` region announces the transition without
+  interrupting; the hidden lines carry `visibility: hidden`, so screen readers
+  see only the current one.
   """
   @spec footer(map()) :: Rendered.t()
   def footer(assigns) do
     ~H"""
     <footer class="page-footer">
-      <span class="footer-mark">harness</span>
-      <span class="footer-tag">OTP-native task execution · localhost:4018</span>
+      <div class="footer-inner">
+        <span class="footer-mark">harness</span>
+        <span class="conn-witness" role="status" aria-live="polite">
+          <span class="conn-state conn-state-connected">Connected · localhost:4018</span>
+          <span class="conn-state conn-state-joining">
+            Connecting — this view is not receiving updates yet.
+          </span>
+          <span class="conn-state conn-state-dropped">
+            Not live — the connection dropped. You are looking at a snapshot, not current state. Retrying.
+          </span>
+          <span class="conn-state conn-state-unresponsive">
+            Not live — the server stopped responding. You are looking at a snapshot, not current state. Retrying.
+          </span>
+        </span>
+      </div>
     </footer>
     """
   end
@@ -149,7 +175,7 @@ defmodule Harness.Dashboard.Components do
     assigns = assign(assigns, :notices, operator_notices(assigns.notice, assigns.include_persistent))
 
     ~H"""
-    <div :if={@notices != []} class="operator-flash" role="status" aria-live="polite">
+    <div class="operator-flash" role="status" aria-live="polite">
       <div
         :for={notice <- @notices}
         class="operator-notice"
@@ -617,6 +643,7 @@ defmodule Harness.Dashboard.Components do
     summary = transcript_summary_label(assigns.events, assigns.agent)
     activity = current_activity_label(assigns.events)
     heartbeat = last_output_age_label(assigns.last_event_at, assigns.now)
+    show_activity = assigns.live && activity != nil
     show_heartbeat = assigns.live && heartbeat != nil
 
     assigns =
@@ -624,12 +651,13 @@ defmodule Harness.Dashboard.Components do
       |> assign(:summary, summary)
       |> assign(:activity, activity)
       |> assign(:heartbeat, heartbeat)
+      |> assign(:show_activity, show_activity)
       |> assign(:show_heartbeat, show_heartbeat)
 
     ~H"""
     <div class="transcript-chrome" data-transcript-chrome>
       <p class="transcript-summary" data-transcript-summary>{@summary}</p>
-      <p :if={@activity} class="transcript-activity" data-transcript-activity>{@activity}</p>
+      <p :if={@show_activity} class="transcript-activity" data-transcript-activity>{@activity}</p>
       <p :if={@show_heartbeat} class="transcript-heartbeat" data-transcript-heartbeat>
         last output {@heartbeat}
       </p>

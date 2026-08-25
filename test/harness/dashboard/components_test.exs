@@ -60,11 +60,28 @@ defmodule Harness.Dashboard.ComponentsTest do
   end
 
   describe "footer/1" do
-    test "renders the brand mark and tagline" do
+    test "renders the brand mark" do
       html = render_component(&Components.footer/1, %{})
 
       assert html =~ "footer-mark"
-      assert html =~ "OTP-native task execution"
+    end
+
+    test "carries every connection-state line the stylesheet reveals" do
+      html = render_component(&Components.footer/1, %{})
+
+      assert html =~ ~s(aria-live="polite")
+      assert html =~ "conn-state-connected"
+      assert html =~ "conn-state-joining"
+      assert html =~ "conn-state-dropped"
+      assert html =~ "conn-state-unresponsive"
+    end
+
+    test "states plainly that a dropped view is a snapshot, not live state" do
+      html = render_component(&Components.footer/1, %{})
+
+      assert html =~ "Not live — the connection dropped."
+      assert html =~ "Not live — the server stopped responding."
+      assert html =~ "You are looking at a snapshot, not current state."
     end
   end
 
@@ -402,6 +419,27 @@ defmodule Harness.Dashboard.ComponentsTest do
       assert html =~ "editing lib/a.ex"
       assert html =~ "5s ago"
       assert html =~ "last output"
+    end
+
+    test "settled (non-live) run never displays a present-tense activity line" do
+      events = [
+        {:assistant_tool_use,
+         %{id: "1", name: "Edit", input: %{"file_path" => "lib/a.ex", "old_string" => "x", "new_string" => "y"}}}
+      ]
+
+      last_at = ~U[2026-06-17 10:00:05.000Z]
+      now = ~U[2026-06-17 10:00:10.000Z]
+
+      html =
+        render_component(&Components.transcript_chrome/1,
+          events: events,
+          agent: :claude,
+          last_event_at: last_at,
+          now: now,
+          live: false
+        )
+
+      refute html =~ ~s(data-transcript-activity)
     end
 
     test "counts turns, tool calls, and files from the event list" do
