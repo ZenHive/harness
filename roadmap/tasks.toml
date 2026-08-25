@@ -12462,7 +12462,7 @@ scored_at = "2026-08-25"
 id = "409"
 phase = 24
 bundle = "witness-legibility"
-status = "pending"
+status = "in_progress"
 title = "Surface the reviewer's testimony on the run row and detail"
 scores = { d = 4, b = 7, u = 5 }
 markers = ["parallel"]
@@ -12503,6 +12503,7 @@ one; a reviewer's explicit caveat on its own approval is invisible; and the oper
 model of "the gate passed" carries none of the gate's own reservations.
 """
 created_at = "2026-08-25"
+started_at = "2026-08-25"
 scored_at = "2026-08-25"
 
 [[task]]

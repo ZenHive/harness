@@ -18651,7 +18651,7 @@
       "id": "409",
       "phase": 24,
       "bundle": "witness-legibility",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Surface the reviewer's testimony on the run row and detail",
       "scores": {
         "d": 4,
@@ -18698,6 +18698,7 @@
       ],
       "body": "Observed 2026-08-25 in a dual-agent design critique of `/harness` (snapshot:\n`.impeccable/critique/2026-08-25T03-32-34Z__lib-harness-dashboard-live-ex.md`, scored 19/40).\nFraming that makes this a defect rather than a feature request: the dashboard is the human's\nWITNESS of what the agents did. The reviewer AI is the gate — it is the agent whose judgment\ndecides everything — and the witness surface currently relays one bit of what it said.\n\nCause, read on 2026-08-25: every reviewer writes `.harness/review.json` as\n`{verdict, report, checks, concerns, proposed_tasks, facets, skills, ratings}`. Harness reads and\npersists all of it; `dispatch-verdict_detail` returns all of it. The dashboard renders `verdict`.\nThe reviewer's own account of which commands it ran and whether they passed, the caveats it\nflagged on its own approval, the per-facet capability ratings, and the size of the diff it had to\nwrite before it could approve — none of it reaches the surface a human actually looks at. An\noperator wanting the reviewer's reasoning has to leave the dashboard and query MCP.\n\n`reviewer_diff_size` is the sharpest omission. Measured across 1,627 reviews on 2026-08-23, review\nintervention is a per-reviewer trait with medians spanning 0 to 96 lines — so \"approved\" means\nsomething categorically different depending on who approved and how much they rewrote first. The\nUI collapses all of it to one word.\n\nScoring d=4 rather than d=3 because the fields are open-vocabulary and optional: `facets` and\n`skills` are deliberately unbounded, `ratings` is a legacy flat-score fallback, and older records\npredate several of them. Rendering them faithfully without inventing structure — and without\nharness deciding what any of it MEANS — is the difficult half.\n\nConsequences: an approval that required 96 lines of reviewer repair looks identical to a clean\none; a reviewer's explicit caveat on its own approval is invisible; and the operator's mental\nmodel of \"the gate passed\" carries none of the gate's own reservations.\n",
       "created_at": "2026-08-25",
+      "started_at": "2026-08-25",
       "scored_at": "2026-08-25",
       "cross_repo": []
     },
