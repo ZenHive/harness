@@ -1,267 +1,250 @@
-# harness — Performance Audit
+# Harness Performance Audit — 2026-08-25
 
-Scope: Ecto/Postgres query patterns (`result_store`, `project_registry`, `settings_store`,
-`chat/store`), OTP hot-path (agent-output capture / `AgentAdapter` Port handling), LiveView
-dashboard, Oban queue config. Raw-passthrough (no agent-output parsing) is by design — not
-flagged. Simple counters/sums are "counting facts" per project convention — not flagged unless
-the counting itself is unbounded/unindexed at scale.
-
-Findings are ranked by severity; each cites `file:line`.
+Static analysis only (no app boot). Scope: Ecto query patterns, DB indexes, hot-path
+allocation, GenServer bottlenecks, LiveView data handling, Oban config. Issues only;
+clean areas get one line at the end.
 
 ---
 
-## CRITICAL
+## 1. Ecto query patterns
 
-### C1. Post-merge audit fetches every historical transcript blob in the project to find one row
+### H1 — HIGH · Full-table run-record loads on every KPI refresh, twice, per client
+`lib/harness/result_store.ex:451` and `:479` — `aggregate_review_stuck_causes/1` and
+`aggregate_recovery_facts/1` are implemented as `list_run_records(store, [])`: **no
+limit**, every `run_records` row loaded, decoded through `row_to_log_record/1`
+(jsonb → term codec per column) into `%LogRecord{}` structs, then folded in Elixir.
+`lib/harness/dashboard/kpi_live.ex:127-141` calls both inside `assign_rows/1`, which
+runs on mount **and on every `{:harness_run_settled, _}` PubSub event**
+(`kpi_live.ex:108-110`) — so one settling wave of N runs triggers N × (2 full-table
+loads + 3 full-table SQL aggregates) × connected-KPI-clients. Row count is unbounded
+(retention nulls transcripts but never deletes rows; ledger is already 1,600+ runs
+and grows per dispatch).
 
-`lib/harness/audit.ex:526-538` (`persist_cold_check/4` / `persist_matching_cold_check/4`):
+**Fix:** push both rollups into SQL (`GROUP BY` on the `reason->'$tuple'->0->>'$atom'`
+cause / recovery columns — the store already does exactly this pattern in
+`aggregate_reviewer_reliability_query/0`), and debounce the settled-event refresh
+(e.g. `Process.send_after` coalescing 2–5 s) so a wave costs one recompute.
 
-```elixir
-defp persist_cold_check(project, store, landed_sha, cold_check) do
-  case ResultStore.list_run_records(store, project_name: project.name, include_transcripts: true) do
-    {:ok, records} -> persist_matching_cold_check(records, store, landed_sha, cold_check)
-    ...
-  end
-end
+Same unbounded `list_run_records(store, [])` at `lib/harness/capability_score.ex:149`
+(scout assessment input) — bound it (`limit:`) or aggregate in SQL.
 
-defp persist_matching_cold_check(records, store, landed_sha, cold_check) do
-  case Enum.find(records, &(&1.landed_sha == landed_sha)) do
-    ...
-```
+### H2 — HIGH · ModelAvailability N+1 against Postgres-backed SettingsStore
+`Harness.SettingsStore` has **no cache** — every `fetch/1` is a `Repo.get` +
+`binary_to_term` (`lib/harness/settings_store.ex:27`, `settings_store/postgres.ex`).
+`lib/harness/model_availability.ex` re-fetches the whole blocks map per predicate:
 
-This runs on **every** post-merge audit job (`Harness.Audit.Worker`). It requests
-`include_transcripts: true` with **no `:limit`**, which forces
-`Harness.ResultStore.Postgres.list_run_records/2` (`lib/harness/result_store/postgres.ex:218-241`)
-to skip `select_without_agent_output/1` and pull the full `agent_output` +
-`reviewer_output` binary blobs for **every run record ever persisted for the project**,
-transfers them over the wire, then does a linear `Enum.find/2` in Elixir to locate the one
-row matching `landed_sha`. There is no `:landed_sha` filter option in `apply_filters/2`
-(see C2/M1), so this can't be pushed into the `WHERE` clause even if desired. Cost grows
-without bound as a project accumulates run history, and every audit re-pays the full
-blob-transfer cost. Fix: add a `:landed_sha` filter to `apply_filters/2` (and an index,
-see M1), and never pass `include_transcripts: true` for a scan whose only use is an
-equality match.
+- `active_block/2` → `blocks()` → `SettingsStore.fetch(:model_blocks)` — one DB
+  round-trip per call (`model_availability.ex:405-417`).
+- `blocked_now?/2` calls it up to twice (agent-wide `:all` + pair) — 2 queries per check.
+- `list_available/1` (`:113-120`) runs `blocked_now?` once per catalog entry → **1 + 2M
+  queries for an M-model catalog**.
+- `list_blocks/0` (`:316-318`) fetches `blocks()` once, then calls `active_block/2`
+  inside the `Enum.filter` — which re-fetches the same row **once more per block entry**.
 
-### C2. `Harness.ResultStore.Postgres.apply_filters/2` silently drops the `:task_id` filter — a correctness/perf divergence between backends
+Amplifier: `SettingsLive.refresh/1` (`lib/harness/dashboard/settings_live.ex:326-342`)
+runs `model_options/2` (→ `list_available`) for every agent-model + reviewer-model row
+and `model_catalogs_state/1` (→ `catalog_universe`, itself 3–4 fetches per agent) for
+all 6 agents — **on a 5-second `:meta_tick`** (`settings_live.ex:47,76-79`) and after
+every event, per connected client. Order of 50–150 identical `harness_settings` point
+reads every 5 s while the settings page is open.
 
-`lib/harness/result_store/postgres.ex:721-734`:
+**Fix:** load `blocks()` (and the three catalog maps) once per public entry point and
+thread them through the private predicates; and/or give SettingsStore the same
+app-env/`:persistent_term` write-through cache `Harness.Config` already uses — the
+table is tiny and single-writer.
 
-```elixir
-defp apply_filters(query, filters) do
-  Enum.reduce(filters, query, fn {key, value}, q ->
-    case key do
-      :run_id -> where(q, [r], r.run_id == ^value)
-      :batch_id -> where(q, [r], r.batch_id == ^value)
-      :agent -> where(q, [r], r.agent == ^atom_or_string(value))
-      :adapter -> where(q, [r], r.adapter == ^module_or_string(value))
-      :verdict -> where(q, [r], r.verdict == ^atom_or_string(value))
-      :project_name -> where(q, [r], r.project_name == ^value)
-      _ -> q
-    end
-  end)
-end
-```
+### H3 — HIGH · Synchronous CLI catalog probes inside a LiveView 5 s tick
+`catalog_universe/1` → `probed_seed/1` → `cached_or_probe/1`: when the cached probe is
+older than the 1 h TTL, `probe_and_cache/1` shells out **synchronously** —
+`System.cmd("cursor-agent", ["--list-models"])`, `grok models`, `pi --list-models`,
+`codex debug models`, `agy models` (`lib/harness/model_availability.ex:456-491,
+634-667`) — serially inside `SettingsLive.refresh/1` on the LiveView process, driven
+by the 5 s meta tick. One TTL-expiry tick blocks the settings LiveView for the summed
+CLI startup latency (each probe is a full node/agent CLI boot; seconds each, five in a
+row), and every connected client independently pays it (first-past-the-post caches for
+the rest, but concurrent ticks race and probe redundantly).
 
-`Harness.Run.Worker.recoverable_run_record/2` (`lib/harness/run/worker.ex:677`) calls:
+**Fix:** never probe from the render path — serve stale-while-revalidate: return the
+cached (even expired) catalog and kick an async `Task`/Oban job to re-probe and
+broadcast; or move probing entirely to the existing cron surface.
 
-```elixir
-ResultStore.list_run_records(project_name: project.name, task_id: item_id)
-```
+### M1 — MEDIUM · Chat session list loads every message of every session
+`lib/harness/chat/store/postgres.ex` `list/1`: `Repo.all` of all `chat_sessions` rows
+including the full `messages` jsonb array (capped at 200 messages/session, but each
+message can carry long content), then `decode_messages/1` walks every message just to
+produce `label` (first user message) + `message_count`. Called by the chat sidebar.
+**Fix:** `select: %{session_id: s.session_id, updated_at: s.updated_at,
+count: fragment("jsonb_array_length(?)", s.messages), first: fragment("?->0", s.messages)}`.
 
-expecting task-scoped filtering (this is the `dispatch-resume_failed` / recovery
-idempotency check, called on essentially every dispatch attempt whose run isn't already
-live). Because `:task_id` has no clause in `apply_filters/2`, the `_ -> q` fallback
-silently ignores it — Postgres returns **every** run record for the whole project (no
-`:limit` is passed either), and the caller's `find_recoverable_record/3`
-(`lib/harness/run/worker.ex:683-692`) then filters client-side by
-`%LogRecord{task_id: ^item_id}`. Correctness is saved by the client-side pattern match, but
-the query itself is an unbounded per-project full scan on a hot dispatch path, and it
-diverges from `Harness.ResultStore.Memory.match_filters?/2`
-(`lib/harness/result_store/memory.ex:204-207`), which filters generically by
-`Map.get(record, key) == value` and so *does* filter by `task_id` correctly in-memory.
-Tests running against the Memory backend will not catch this Postgres-only gap. Fix: add a
-`:task_id` (and ideally `:task_fingerprint`) clause to `apply_filters/2`, back it with an
-index (M1), and pass a `:limit`.
+### M2 — MEDIUM · Retention sweep runs on every run-record insert
+`lib/harness/result_store/postgres.ex:75` — every successful `record_run/2` fires
+`maybe_strip_old_transcript_blobs/1` → an `update_all` whose predicate
+(`inserted_at < cutoff AND (agent_output IS NOT NULL OR reviewer_output IS NOT
+NULL)`, `:297-306`) range-scans the `inserted_at` index over **all rows older than 30
+days** (nearly the whole table) and heap-checks each for the not-null condition —
+per settle, and re-run on every upsert of the same run (record_run fires at multiple
+lifecycle points). **Fix:** a partial index
+(`CREATE INDEX ... ON run_records (inserted_at) WHERE agent_output IS NOT NULL OR
+reviewer_output IS NOT NULL` — stripped rows leave the index, making the sweep
+O(rows-actually-strippable)); better, move retention to a daily Oban cron job instead
+of the insert path.
 
----
+### M3 — MEDIUM · KPI aggregates ship unbounded arrays out of Postgres
+`aggregate_by_agent_query/0` (`postgres.ex:389, 421-427`) and
+`aggregate_by_facet_query/0` (`:556, 585-590`) build
+`array_agg(duration_ms ORDER BY duration_ms)` and
+`array_agg(jsonb_build_object('review_skills', ?, 'review_ratings', ?))` over **every
+row in history** — the result payload grows linearly with total runs (one jsonb pair
+per run, per agent row), decoded into Elixir on each KPI refresh (see H1 for
+frequency). The facet variant additionally wraps a full-table subquery. **Fix:** bound
+to a time window (e.g. `where: r.inserted_at > ago(90, "day")`), or compute p50/p90
+via `percentile_cont` and the rating means in SQL so only scalars cross the wire.
 
-## HIGH
-
-### H1. Fleet-wide KPI aggregates are unindexed full-table scans, recomputed on every settle across every open dashboard tab
-
-`lib/harness/dashboard/kpi_live.ex:107-110`:
-
-```elixir
-def handle_info({:harness_run_settled, %Status{}}, socket) do
-  {:noreply, socket |> assign_rows() |> assign_facets()}
-end
-```
-
-`assign_rows/1` (kpi_live.ex:126-141) and `assign_facets/1` (kpi_live.ex:219-236) together
-issue five separate reads on **every single run settlement anywhere in the fleet**, for
-**every connected `/harness/kpi` browser tab** (not scoped to the settling run's project):
-
-- `ResultStore.aggregate_by_agent/0` → `aggregate_by_agent_query/0`
-  (`lib/harness/result_store/postgres.ex:364-419`) — `group_by: r.agent` with no `WHERE`,
-  full sequential scan.
-- `ResultStore.aggregate_reviewer_reliability/0` → `aggregate_reviewer_reliability_query/0`
-  (postgres.ex:421-449) — `where: not is_nil(reviewer_adapter) and (...)`, unindexed
-  (see M1).
-- `ResultStore.aggregate_review_stuck_causes/0` → `list_run_records(store, [])`
-  (postgres.ex:360-365 via `ResultStore.aggregate_review_stuck_causes/1`,
-  `lib/harness/result_store.ex:360-365`) — **no `:limit`**, full table.
-- `ResultStore.aggregate_recovery_facts/0` → `list_run_records(store, [])`
-  (`lib/harness/result_store.ex:388-393`) — **no `:limit`**, full table.
-- `ResultStore.aggregate_by_facet/0` → `aggregate_by_facet_query/0` (postgres.ex:501-571) —
-  per-row correlated `jsonb_each` subquery (see L1) plus a full scan.
-
-None of the five have a time bound or a `LIMIT`. As `run_records` grows into the tens of
-thousands of rows this becomes 5 full scans per settle event, multiplied by every open KPI
-tab. Fix: at minimum add a `:limit`/recency window to the unbounded two, and consider
-debouncing the fleet-wide recompute (e.g. only refresh on a slow tick, or scope by the
-viewing operator's selected project) instead of firing on every settle.
-
-### H2. Landed-sha reconciliation issues one `git fetch` per unlanded run instead of once per project
-
-`lib/harness/dashboard/live.ex:499-527` (`reconcile_history_landed/4` /
-`reconcile_history_entry/4`) calls `ResultStore.reconcile_landed_sha/4`
-(`lib/harness/result_store.ex:247-260`) once per history row with `landed_sha == nil` and
-state `:done`/`:failed`. That function's `fetch_target/2`
-(`lib/harness/result_store.ex:474-482`) does:
-
-```elixir
-Git.run(["fetch", "origin", "+#{target}:#{ref}"], repo)
-```
-
-— a real `git fetch` from `origin` — with no dedup by project. `reconcile_history_landed/4`
-runs at LiveView `mount/3` (live.ex:122) and again on **every** 30-second `:roadmap_tick`
-(live.ex:305-316) for as long as any row stays unlanded. A project with N still-unmerged
-history rows (capped at `@history_limit = 200`, live.ex:99) triggers **N redundant
-identical fetches of the same ref**, synchronously, inside the LiveView process, blocking
-that render — repeating forever every 30s until every row lands. Fix: fetch each
-project's target ref once per reconciliation pass (memoize on `project_name`) before
-iterating its rows, rather than once per run.
+### L1 — LOW · Point lookups drag MB transcript blobs they don't need
+`list_run_records(run_id: id)` retains `agent_output`/`reviewer_output`
+unconditionally (`postgres.ex:231-239`), so `dispatch-verdict_detail`
+(`lib/harness/dispatch.ex:1171`) loads both full transcripts to render verdict prose
+only. `aggregate_ceremony_cost` (`result_store.ex:516-521`) loads **200 records with
+transcripts** (potentially hundreds of MB) per MCP call by design. Fix: a
+`columns:`/`:only` option on the point lookup; document/lower the ceremony default.
 
 ---
 
-## MEDIUM
+## 2. Missing DB indexes
 
-### M1. Missing indexes for columns actually queried on `run_records`
+- **LOW** — `run_records.adapter` and `run_records.task_fingerprint` are declared
+  filterable (`@direct_filter_fields` / `:adapter` clause,
+  `lib/harness/result_store/postgres.ex:769-786`) but unindexed
+  (`priv/repo/migrations/20260712120000_add_run_records_lookup_indexes.exs` covers
+  task_id/landed_sha/verdict/reviewer_adapter only). Sequential scan on those filters;
+  currently rare call paths, so low.
+- **LOW** — `chat_sessions` is listed `order_by: [desc: s.updated_at]`
+  (`chat/store/postgres.ex`) with no `updated_at` index
+  (`20260604100000_add_chat_sessions.exs`). Trivial at current volumes.
+- **MEDIUM** — the retention-sweep partial index from M2 above (the one index gap with
+  a per-write cost attached).
 
-`priv/repo/migrations/20260602000000_add_run_records_and_batch_results.exs` creates indexes
-only on `batch_id`, `agent`, `project_name`, `inserted_at`. No index exists for:
-
-- `verdict` — filtered in `apply_filters/2` (`:verdict` clause, postgres.ex:729) and used in
-  every `filter(r.verdict == "approve")` aggregate predicate.
-- `reviewer_adapter` — the `WHERE not is_nil(reviewer_adapter)` + `GROUP BY` in
-  `aggregate_reviewer_reliability_query/0` (postgres.ex:422-427).
-- `task_id` / `task_fingerprint` — needed once C2 is fixed to add the `:task_id` filter
-  clause; the recovery-lookup path is otherwise an unindexed scan even after the filter
-  bug is corrected.
-- `landed_sha` — needed once C1 is fixed to add a `:landed_sha` filter clause.
-
-Given the full-scan aggregates in H1 already force a sequential scan regardless, these
-indexes matter most for the point-lookup paths (C1, C2, `reconcile_landed_sha`) once those
-filters are wired up.
-
-### M2. Per-chunk full-buffer copy in the transcript pane, replicated per viewer
-
-`lib/harness/dashboard/transcript.ex:139-145` (`append/3`):
-
-```elixir
-def append(buffer, bytes, chunk) when is_binary(buffer) and is_integer(bytes) and bytes >= 0 do
-  chunk_bin = IO.iodata_to_binary(chunk)
-  combined = buffer <> chunk_bin
-  ...
-```
-
-Every single port output chunk triggers a full copy of the existing buffer (up to the
-200 KiB cap, `@buffer_bytes`) via `buffer <> chunk_bin`, instead of an O(chunk-size)
-append. This helper is shared by the producer (`Harness.Run` gen_statem's own snapshot
-buffer) **and** every connected dashboard viewer's `Harness.Dashboard.Live`
-`handle_info({:harness_transcript, ...})` (`lib/harness/dashboard/live.ex:354-364`) — so
-for a long streaming run watched by multiple operators, the O(buffer_size) copy repeats
-once per chunk per viewer. Bounded by the 200 KiB cap (not unbounded growth), but still an
-avoidable O(n·k) cost where an iolist/rope accumulation (mirroring the driver's own
-`acc = [acc, data]` pattern in `agent_adapter/driver.ex:187`) would be O(k).
-
-### M3. `ProjectRegistry.lookup/1` performs a live Postgres round-trip per call; `list/0` batches, `lookup/1` doesn't
-
-`lib/harness/project_registry.ex:142-148` (`lookup/1`) calls
-`LandingSettings.overlay/1` (`lib/harness/landing/settings.ex:56-59`), which is a
-single-element wrapper around `overlay_many/1` — i.e. every `lookup/1` call issues its own
-`SettingsStore.fetch/1` (`lib/harness/settings_store.ex:26-27`), a live Postgres read with
-no caching layer (`SettingsStore` has no cache — moduledoc confirms "no app-env overlay
-cache"). By contrast `ProjectRegistry.list/0` (project_registry.ex:158-163) explicitly
-batches to **one** fetch regardless of project count (documented at
-`landing/settings.ex:61-66`: "Callers such as `ProjectRegistry.list/0` use this to issue
-exactly one `SettingsStore.fetch/1`... Per-project `overlay/1` delegates here"). `lookup/1`
-sits on hot paths — e.g. `Harness.Dashboard.Live.load_task_item/2`
-(`lib/harness/dashboard/live.ex:232-241`) calls it on every run-detail page load — each
-paying a DB round trip for a value (landing policy overrides) that changes rarely. Fix:
-either cache the overrides in `ProjectRegistry`'s own GenServer state (invalidated on
-write) or have `lookup/1` route through the same one-fetch-per-call machinery `list/0`
-uses when looking up a single name.
+Otherwise index coverage matches the query paths (batch_id/agent/project_name/
+inserted_at from the base migration; the 2026-07-12 lookup migration closes the
+recovery/lander/aggregate predicates; the small stores are PK-only point tables).
 
 ---
 
-## LOW
+## 3. Hot-path allocation (raw capture / parsing)
 
-### L1. Per-row correlated `jsonb_each` subquery in the facet aggregate
+### M4 — MEDIUM · `LineBuffer.split/2` re-scans and re-copies the whole partial-line buffer per chunk; buffer is unbounded
+`lib/harness/line_buffer.ex:48-55`: every chunk does
+`combined = buffer <> IO.iodata_to_binary(chunk)` then `String.split(combined, "\n")`.
+Two compounding costs, paid inside the `Harness.Run` gen_statem per port chunk
+(`run/actions.ex:62-82` → parser state) and in every transcript parser:
 
-`lib/harness/result_store/postgres.ex:501-521` (`aggregate_by_facet_query/0`) computes, in
-the inner `select`, a correlated subquery per row:
+1. The returned remainder is a **sub-binary** of `combined` (`List.last(many)`), so
+   the next `buffer <> chunk` can never use the BEAM's in-place append optimization —
+   a long line split across K chunks costs O(line²) total copying, and the sub-binary
+   pins the full `combined` parent binary in memory until the next chunk.
+2. `String.split` re-scans the already-scanned buffer prefix on every chunk — O(line²)
+   scanning for the same pathological case.
+3. **No cap**: an agent emitting one giant line (MB-scale JSON events are real for
+   file-read tool results; Antigravity is plain text) grows the parser buffer without
+   bound — the 200 KiB raw-buffer cap does not apply to parser state.
 
-```sql
-COALESCE((SELECT jsonb_object_agg(key, value ORDER BY key) FROM jsonb_each(COALESCE(review_facets, '{}'::jsonb)) WHERE value IS NOT NULL AND value <> 'null'::jsonb), '{}'::jsonb)
-```
+**Fix:** scan only the incoming chunk for `"\n"` (`:binary.matches(chunk, "\n")`),
+keep the carried buffer as an iodata list joined only when a newline arrives,
+`:binary.copy/1` the remainder to release the parent, and cap the partial-line buffer
+(drop-with-marker beyond, say, 1 MB).
 
-This normalizes `review_facets` before grouping. It runs once per row of the already
-full-scanned (H1) table, adding row-by-row JSON processing on top of the sequential scan.
-Not a bug, but a compounding cost as the table grows — a candidate for pre-normalizing
-`review_facets` at write time (`record_run/2`) instead of at every aggregate read.
+### L2 — LOW · `Transcript.append/3` steady-state copies ~200 KiB per chunk
+`lib/harness/dashboard/transcript.ex:140-145, 208-217`: once the raw buffer hits the
+200 KiB cap, every chunk appends (copying buffer+chunk, since the post-trim buffer is
+a `binary_part/3` sub-binary) then re-trims. Bounded, but a chatty multi-hour run pays
+a 200 KiB copy per chunk in the gen_statem. **Fix:** trim lazily — only when
+`combined_bytes > 2 * @buffer_bytes` — amortizing to O(1)/byte; `:binary.copy/1` the
+trimmed tail to drop the parent reference.
 
-### L2. Progress-watchdog fingerprint walks the whole worktree synchronously in the driver loop
+### L3 — LOW · Event-list append is O(cap) per chunk
+`transcript.ex:172-206`: `events ++ delta` copies the whole ≤500-event list, and
+`trim_events/1` walks it again with `length/1`, per chunk. Cheap in absolute terms but
+in the per-chunk path; carry the count in state or hold the list reversed
+(prepend + `Enum.take/2`) and reverse at read.
 
-`lib/harness/agent_adapter/watchdog.ex:295-321` (`edit_fingerprint/1` /
-`file_fingerprints/1`) recursively lists and `stat`s every file in the run's worktree
-(excluding `.git`) to build a progress-stall fingerprint. This only fires when the
-progress deadline actually expires (default every 5 minutes, reset on each detected tool
-call — `lib/harness/agent_adapter/watchdog.ex:83-89, 158-161`), so it is not a per-chunk
-hot-path cost, but it is a synchronous, unbounded (in worktree file count) filesystem walk
-executing inside the blocking `Harness.AgentAdapter.Driver` receive loop
-(`lib/harness/agent_adapter/driver.ex`) — on a large monorepo worktree this could itself
-approach or exceed typical progress-timeout windows.
-
----
-
-## Not flagged (by design, per project convention)
-
-- Raw agent-output passthrough (no parsing/normalization) — deliberate architecture.
-- `Harness.AgentAdapter.Driver`'s `acc = [acc, data]` iodata accumulation
-  (`lib/harness/agent_adapter/driver.ex:187`) — correct O(1)-per-chunk iolist growth, only
-  materialized once via `IO.iodata_to_binary/1` at the end (`outcome/4`).
-- `Harness.Dashboard.Live`'s `:active_runs` / `:history` tables already use
-  `Phoenix.LiveView.stream/3` (bounded to `@history_limit = 200`) rather than plain assigns
-  — correctly follows the streams-for-large-lists rule.
-- `Harness.ProjectRegistry` and `Harness.Oban`'s per-project queue model (in-memory
-  GenServer state seeded once from Postgres; `Oban.Plugins.Pruner` bounds the jobs table) —
-  well-designed, no N+1 concerns found.
-- `dep_freshness_snapshots` / `suite_health_results` — one row per project
-  (`project_name` primary key), no scaling concern.
+Clean: `Harness.TokenUsage.parse/2` is a single settle-time pass; mailbox growth on
+the run gen_statem is bounded in practice by the port's chunking plus the
+`MemoryGuard` sampler; per-chunk PubSub broadcasts are no-subscriber cheap.
 
 ---
 
-## Summary
+## 4. GenServer bottlenecks
 
-5 real findings beyond nitpicks: 2 critical (unbounded full-blob project scan on every
-post-merge audit; a silently-ignored filter that turns a task-scoped recovery lookup into
-an unbounded per-project scan, diverging from the Memory backend's behavior), 2 high
-(fleet-wide unindexed aggregate recompute fired by every settle across every open KPI tab;
-redundant per-run `git fetch` instead of per-project), plus indexing gaps and smaller
-per-chunk/per-call inefficiencies. Nothing here is an active outage — the system is
-correct at today's data volumes — but every unbounded-query finding scales with run-history
-growth and will visibly degrade the dashboard and audit/recovery paths as the fleet
-accumulates history.
+### L4 — LOW · Notification sinks run inline in the serialized landing job, no timeout
+`lib/harness/notification.ex:53-55` delivers to each sink inline;
+`CommandSink` execs the operator script via `System.cmd` with no timeout
+(`notification/command_sink.ex:60`). A slow/hung notify script stalls the
+`landing_<project>` queue (limit 1) — the merge train — for its full runtime. Wrap
+delivery in a supervised `Task` with a bounded await (fire-and-forget is fine: sinks
+are witness-only by contract).
 
-**Performance health score: 58/100**
+Clean otherwise: `AgentRegistry` calls are map lookups (the one `System.find_executable`
+probe is memoized); `Harness.Config` reads are app-env (no DB); `ModelAvailability`
+holds no process (its problem is H2/H3, not serialization); chat sessions are
+process-per-session with per-turn persistence.
+
+---
+
+## 5. LiveView
+
+### M5 — MEDIUM · Roadmap shell-outs run unconditionally in mount and per-client on tick
+`Harness.Dashboard.Live.mount/3` (`live.ex:107-125`) runs
+`RoadmapSummary.for_projects/1` — one `rmap list --json` **shell-out per registered
+project** (`roadmap_summary.ex:63-72`, concurrent but each a full process spawn) —
+unconditionally, so it executes twice per page load (dead render + connected mount),
+and again every 30 s per connected client (`:roadmap_tick`, `live.ex:305-317`).
+`RoadmapLive` is worse: mount + 30 s tick also runs `drilldowns_for_projects/1`
+(`roadmap_live.ex:160-175`) — `next_bundle` + `blocked` + `ready_waves` ≈ 3 more rmap
+invocations per project per tick per client. Nothing is shared between clients.
+**Fix:** a single cached refresher (GenServer/ETS, one tick for the node, PubSub to
+clients) and `connected?/1`-gate (or `assign_async`) the mount read so the dead render
+serves the cache.
+
+### L5 — LOW · Full history re-stream every 30 s
+`live.ex:561` — the roadmap tick calls `restream_history/1` →
+`stream(:history, rows, reset: true)` re-sending all ≤200 history rows to the client
+even when nothing landed. Diff the landed-set first and only re-stream on change.
+
+Clean otherwise: active/history/chat use streams with dom-id keys and caps
+(`@history_limit 200`, ops list 40, transcript events 500, raw pane 200 KiB with
+UTF-8-safe truncation in OpsFeed); `compare_live` documents and enforces its bounded
+per-lane assigns; `connected?/1` guards every PubSub subscribe and tick scheduler;
+KpiLive's problem is the query side (H1), not socket payload.
+
+---
+
+## 6. Oban
+
+Clean: queue-per-project with `concurrency_cap`-derived limits, landing queues fixed
+at limit 1, worker uniqueness on `{project, task}` with `conflict?: true` in-flight
+idempotency (`run/worker.ex:67-136`), Pruner at 24 h, cron queue registered
+unconditionally but gated by the persisted master toggle. Audit/lander reads are
+filtered + bounded (`audit.ex:409` limit, `:531` landed_sha-scoped with an explicit
+anti-full-scan comment). No unbounded work found inside job `perform`s beyond the
+store issues already covered in H1.
+
+---
+
+## Priority fix order
+
+1. **H2/H3** — settings-store blocks cache + async catalog probes (biggest steady-state
+   DB + latency win; touches every dispatch-time `available?` too).
+2. **H1** — SQL-side stuck-cause/recovery rollups + settled-event debounce in KpiLive.
+3. **M2** — retention partial index or cron-ify the sweep (per-settle write-path cost).
+4. **M5** — shared roadmap-summary cache; connected?-gate the mounts.
+5. **M4** — LineBuffer chunk-scan + remainder copy + cap (correctness-adjacent: unbounded).
+6. Rest as convenient (M1, M3, L1-L5, index nits).
+
+---
+
+**Performance score: 66/100**
+Justification: the run-execution core (Ports, gen_statem, Oban, git) is disciplined and
+bounded, but the observability surfaces undermine it — uncached Postgres settings reads
+multiplied by 5 s LiveView ticks (with synchronous CLI probes on the render path) and
+full-table run-record loads re-run per settle event will degrade visibly as the run
+ledger and project count grow, even for a single-operator node.

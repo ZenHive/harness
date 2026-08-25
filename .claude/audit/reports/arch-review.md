@@ -1,141 +1,58 @@
-# Harness Architecture Audit — `lib/harness/`
+# harness Architecture Audit — 2026-08-25
 
-Scope: module structure, coupling/cohesion, supervision topology, boundary discipline.
-Method: `mix xref graph` (cycles + stats), `mix reach.otp`, targeted reads.
-Excluded by design (see CLAUDE.md — not defects): absence of scoring formulas/classifiers,
-raw agent-output passthrough, one-run-one-gen_statem + Oban wrapping.
+Scope: `lib/harness/**` (229 files). `mix reach.check --arch --smells`: architecture policy **OK** (no forbidden-call violations against `.reach.exs`). `mix xref graph --format stats`: 227 nodes, 497 runtime edges, **8 cycles**.
 
-## Findings, ranked by severity
+## Findings
 
-### 1. [HIGH] One giant strongly-connected component — 71 of ~237 modules (≈30%) form a single cycle
+### 1. One 71-module runtime cycle spans nearly the entire namespace — MEDIUM
+`mix xref graph --format cycles` reports a single cycle of length 71 pulling in almost every top-level module and subtree (`dispatch.ex`, `run.ex`, `run/actions/*`, `lander.ex`, `audit.ex`, `batch.ex`, `dashboard/*`, `cron/*`, `oban.ex`, `roadmap.ex`, `result_store*`, `routing.ex`, etc — full list in cycle output). `.reach.exs` explicitly documents harness as "hub-and-spoke... not a layered architecture" and accepts this instead of a `layers:`/`deps:` policy, so this is not a fresh discovery — but it does mean `mix xref graph` itself is useless as a coupling signal here (any two modules in the cycle are mutually reachable through some path), and the only enforced boundary is the forbidden-calls + facade list, which is comparatively thin (2 forbidden-call rules, ~25 public-boundary entries for ~229 files). Net effect: the *documented* architecture invariant (dashboard never calls `AgentAdapter` directly; adapters never reach dashboard/dispatch/batch/oban/lander) is checked, but nothing prevents new incidental coupling between, say, `Harness.Cron.RoadmapPoller` and `Harness.Dashboard.Live` internals, since both already sit inside the one giant cycle and neither is named in a forbidden-call rule. Not asking to "fix the cycle" (that's the acknowledged shape of the app) — flagging that the safety net is narrower than the cycle size suggests, and a smell/arch-policy addition naming a few more forbidden pairs (e.g. `Harness.Cron.* -> Harness.Dashboard.*`) would close real gaps cheaply.
 
-`mix xref graph --format cycles` reports one cycle of length 71 spanning nearly every
-subsystem: `dispatch.ex`, `run.ex` + all `run/states/*` + `run/actions/*`, `lander.ex` +
-`lander/*`, `roadmap.ex`, `manifest.ex`, `oban.ex`, the entire `dashboard/*` tree (endpoint,
-router, every LiveView, MCP plug/server), `chat/*`, `audit.ex`, `batch.ex`,
-`capability_score.ex`, `cron/*`, `result_store.ex`, `agents.ex`, `config.ex`, `describe.ex`,
-`code_search.ex`, `dependency_bump.ex`, `dep_freshness.ex`, `routing.ex`, `status_view.ex`,
-`suite_health.ex`, `tooling_baseline/dispatch.ex`.
+### 2. `Harness.Dashboard.Live` mixes render templates, domain reconciliation, and transcript parsing in one 1488-line module — MEDIUM
+`lib/harness/dashboard/live.ex:1-1488`. Function inventory: `mount/3`, `handle_params/3`, seven `handle_info/2` clauses (meta tick, roadmap tick, run update/settle, ops feed, transcript chunk/event delta), six `handle_event/3` clauses, then ~300 lines of inline heex render helpers (`render_index/1` at :732, `render_show/1` at :783, `task_section/1`, `project_switcher/1`, `ops_panel/1`, `run_table/1`, plus button partials), *and* separately a block of pure history/reconciliation logic that talks to `ResultStore` directly (`reconcile_history_landed/4` :499, `reconcile_history_entry/4` :511, `mark_history_landed/3` :485, `landed_entry?/2` :577) plus transcript backfill/replay logic (`replay_transcript/2` :628, `backfill_transcript/2` :688, `backfill_transcript_events/2` :710, `agent_kind_for/2` :650). The `ResultStore`-querying reconciliation code is a LiveView-boundary violation in kind (not in `.reach.exs` calls terms, since `ResultStore` is public) — it's business logic (deciding whether a history entry counts as "landed" by cross-referencing project/roadmap/store state) living inside the presentation module rather than in `Harness.StatusView` or a dedicated `Harness.Dashboard.HistoryReconciler`. Recommend splitting: keep `mount/handle_params/handle_event/render` in `Live`; move `reconcile_history_*` / `mark_history_landed` / `landed_entry?` into a plain module callable from both the LiveView and tests without a socket.
 
-This means the codebase has **no enforced layering**: run-lifecycle internals, the dashboard
-UI, the MCP surface, and cron pollers are all mutually reachable. You cannot compile or
-reason about any one of these 71 modules independently of the rest. A chunk of the cycle
-traces to `Harness.Manifest`'s `@driver_surface` list (a curated module-atom list consumed by
-`descripex` to build the MCP/chat tool manifest) creating export/compile edges back into
-`Dispatch`, `Run`, `Roadmap`, etc., while those same modules' docs/specs reference back
-through `Describe`/`Chat.Tools`/dashboard LiveViews that also read `Manifest`. The manifest
-pattern is a legitimate "curated facade" concept, but nothing stops the reverse edges (e.g.
-`dashboard/roadmap_live.ex` depending on `run/actions/worktree.ex`-adjacent internals) from
-folding the whole app into one component instead of `core → manifest → {chat, mcp, dashboard}`
-one-way layering.
+### 3. `Harness.Dispatch` (1913 lines, largest module in the tree, 28 outgoing xref edges — highest fan-out) — LOW/MEDIUM
+`lib/harness/dispatch.ex`. Moduledoc frames it as "flat, JSON-native dispatch surface for the chat/MCP orchestrator" — a deliberate single-entry-point facade (consistent with the `Harness.Dispatch.*` public-boundary entry in `.reach.exs`), so the size itself is expected for a facade fronting ~25 MCP-exposed operations (`task/4`, `await/*`, `update_deps/4`, `tooling_baseline/4`, `status/1`, `cancel/1`, `hold/2`, `steer/2`, `resume/1`, `resume_failed/2`, `rereview/1`, `reland/1`, `pending/1`, `approve/1`, `register_project/*`, `bundle/3`, `coalesce/4`, `compare/5`, `verdict_detail/1`, `recommend/2`, `assess_facets/1`, ...). What pushes it from "big facade" to "worth a second look": several functions carry real logic, not thin delegation — `poll_until_settled/3` (:315), `settled_await_summary/1` (:337), `record_await_summary/1` (:362), `snapshot_await_summary/1` (:397), `vanished_summary/1` (:412), `ensure_model_available/4` (:1270), `effective_model/2` (:1294) are polling/summarization/validation logic co-located with the dispatch facade rather than factored into `Harness.Run` / a `Harness.Dispatch.Await` helper. Given it's also the module other cross-family reviewers/agents read most (highest incoming call surface for the driver contract), a future split of the await-polling/summary-building helpers into a sibling module would reduce blast radius without changing the public API shape.
 
-**Fix direction:** the driver-surface modules (`Run`, `Roadmap`, `Dispatch`, `ResultStore`,
-etc.) should never depend on `Manifest`, `Chat.*`, or `Dashboard.*` — only the reverse. Audit
-which edges in the 71-cycle are genuinely bidirectional business logic vs. accidental
-doc/alias references pulling a cold-path module into the warm-path's compile graph.
+### 4. Two-child cycle: `Harness.AgentRegistry` ↔ `Harness.ModelAvailability` — LOW
+`lib/harness/agent_registry.ex` ↔ `lib/harness/model_availability.ex` (length-2 xref cycle). `ModelAvailability`'s moduledoc states it "composes with `Harness.AgentRegistry` at dispatch time" — mutual reference is plausible by design (registry asks availability whether a model is usable; availability may reference registry's known agent set), but a length-2 cycle between two otherwise-independent stores is the cheapest kind of coupling to break (extract a shared type/behaviour, or make the dependency one-directional) if either module is ever split for testability. Not urgent — flagged for completeness since it's outside the big documented hub-and-spoke cycle.
 
-### 2. [HIGH] `Harness.Dispatch` is a 1821-line god module mixing 5+ distinct concern groups
+### 5. Boot-sequence race: `Harness.Worktree.Sweeper` starts (list-order) *after* `Harness.Run.Supervisor`, and its `Task.start_link` doesn't block `Application.start/2` — LOW
+`lib/harness/application.ex:49` builds children as `... ++ [Harness.Run.Supervisor] ++ oban() ++ sweeper() ++ dashboard() ++ mcp_server()`. `Harness.Worktree.Sweeper.child_spec/1` (`lib/harness/worktree/sweeper.ex:39-41`) is `{Task, :start_link, [__MODULE__, :run, []]}` with `restart: :transient` — `Task.start_link` returns as soon as the task process is spawned, not when `run/0` finishes, so the boot-time orphan sweep executes concurrently with `oban()`'s cron plugin and the dashboard/MCP endpoints coming up, both of which can originate new runs (autonomous cron dispatch, or an MCP client calling `dispatch-task` the instant the endpoint is reachable). The moduledoc's own framing ("sweeps orphans once at boot... within-session crash cleanup is the run lifecycle's own concern") assumes the sweep completes before new runs can start, but nothing in the supervision tree enforces that ordering — `Run.Supervisor` is already live and accepting `start_child` calls while the sweep's `reap/1` loop (`sweeper.ex:116-121`) is still walking the filesystem. The sweep does guard via `Worktree.active?(dir)` before reaping (a legitimate mitigation, not a false safety claim), but that check is a filesystem-marker read with no atomicity guarantee against a worktree whose directory was just created and whose "active" marker hasn't been written yet — a narrow window, not exercised by design, worth a comment/test rather than a redesign.
 
-`lib/harness/dispatch.ex` (1821 lines, 15 outgoing xref edges — 2nd-highest in the project)
-is the MCP/driver-surface facade, but it does not stay a thin facade. It houses, in one
-module:
+### 6. No violations of the `.reach.exs` facade list found
+Checked call sites into non-public modules (`Harness.Dispatch.AgentGate` from `Harness.ToolingBaseline.Dispatch` and `Harness.DependencyBump`): both resolve to `Harness.Dispatch.*`, which is explicitly public in `.reach.exs`, so these are compliant, not violations. No calls from `lib/harness/dashboard/**` into `Harness.AgentAdapter.*` were found (only a moduledoc prose reference in `dashboard/transcript.ex:7`, not a call).
 
-- run dispatch + await (`task/4`, `await/3`, `await_runs/2`, `await_result/2`)
-- lifecycle control (`cancel/1`, `hold/2`, `steer/2`, `resume/1`, `resume_failed/2`,
-  `rereview/1`, `reland/1`)
-- project administration (`register_project/6`)
-- cron/manual-approval admin (`pending/1`, `approve/1`)
-- cross-adapter benchmarking (`compare/3..5`, `verdict_detail/1`)
-- capability routing (`recommend/2`, `assess_facets/1`)
-- adapter/model resolution internals (`ensure_model_available/4`, `effective_model/2`,
-  `recommended_adapter_for_item/3`)
+### 7. Supervision tree — restart strategy and ordering otherwise sound
+`Harness.Application` (`application.ex`) uses `:one_for_one` at the top level and documents *why* each child is ordered where it is (Repo → migration guard → Config seed → registries → PubSub → ProjectRegistry → reaper → Run.Supervisor → Oban → sweeper → dashboard → MCP). `Harness.Run.Supervisor` (`run/supervisor.ex`) is a `DynamicSupervisor` with `:one_for_one` and `:temporary` children (correct: a crashed run is a reported outcome, never auto-retried — matches the documented "no mechanical verification/retry" design). No child-ordering defect found beyond finding 5 above.
 
-Each group is a different abstraction level and a different audience (an orchestrator
-dispatching work vs. an operator approving parked decisions vs. a scout doing A/B routing).
-A single module this wide has no cohesive single responsibility — it reads as "everything the
-MCP surface exposes," which is a real organizing principle for an *index*, but the
-implementation bodies belong in per-concern modules that `Dispatch` delegates to.
+### 8. God-module scan (`wc -l`, threshold ~500)
+| File | Lines | Verdict |
+|---|---|---|
+| `dispatch.ex` | 1913 | Facade by design; see finding 3 (partial extraction candidate, not a rewrite) |
+| `dashboard/components.ex` | 1846 | Design-system component library — cohesive by nature (one function per UI primitive); styling excluded from scope per prompt |
+| `dashboard/tokens.ex` | 1742 | Design tokens — cohesive, same reasoning |
+| `dashboard/live.ex` | 1488 | Not cohesive — see finding 2 |
+| `result_store/postgres.ex` | 1067 | Cohesive: single-purpose `Harness.ResultStore` Postgres adapter (109 functions, all CRUD/query variants for one behaviour) |
+| `code_search.ex` | 1054 | Cohesive: "fact-only" DuckDB/Exograph cache module, single moduledoc-stated purpose |
+| `worktree.ex` | 947 | Cohesive: per-run git worktree lifecycle, single domain |
+| `model_availability.ex` | 929 | Cohesive per moduledoc; also implicated in finding 4's 2-cycle |
+| `lander.ex` | 923 | Cohesive: merge-train lifecycle, single domain |
+| `dashboard/settings_live.ex` | 890 | Not inspected in detail — settings-domain LiveView; lower risk than `live.ex` since it's one bounded concern (settings CRUD), not flagged |
+| `roadmap.ex` | 878 | Not inspected in detail; single-domain name, no evidence of grab-bag |
+| `run/worker.ex` | 846 | Cohesive: Oban worker wrapping one `Harness.Run` lifecycle, highest xref fan-out (17) is expected for a dispatch-layer adapter |
+| `audit.ex` | 836 | Cohesive: post-merge audit pass, single domain |
+| `run/actions/reviewing.ex` | 797 | Cohesive: one `Harness.Run` state's action set |
+| `batch.ex` | 754 | Cohesive: fan-out/dispatch facade, single domain |
+| `dashboard/chat_live.ex` | 752 | Not inspected in detail; LiveView for one bounded feature (chat) |
 
-**Fix direction:** split into `Dispatch.Lifecycle` (cancel/hold/steer/resume/rereview/reland),
-`Dispatch.Admin` (register_project/pending/approve), `Dispatch.Compare`
-(compare/verdict_detail/recommend/assess_facets), keeping `Dispatch` itself as a thin
-re-export facade for the `descripex api()` annotations if the MCP tool-naming convention
-requires one flat namespace.
+Everything else under `lib/harness/` is below the ~500-line threshold.
 
-### 2b. [MEDIUM] Mixed abstraction levels inside `Dispatch`
+## Clean areas (one line each)
+- `mix reach.check --arch` — zero forbidden-call violations against the documented policy.
+- `mix reach.check --smells` — 22 advisory findings, all micro-level (O(n²) accumulator patterns, string concat, one false-success return in `suite_health.ex:74`, two trivial forwarders) — no architecture-level smells; not itemized further per scope (styling/micro-opt excluded).
+- `Harness.Run.Supervisor` / `Harness.Batch.Supervisor` pattern — correct `:temporary` + `:one_for_one` DynamicSupervisor usage, matches the "failed run is a reported outcome, never retried" design intent.
+- The five other length-2/3 xref cycles (`suite_health_store` ↔ `.Memory`/`.Postgres`, `project.ex` ↔ `project/source/*`, `dep_freshness_store` ↔ `.Memory`/`.Postgres`, `chat/store` ↔ `.Memory`/`.Postgres`, `settings_store` ↔ `.Postgres`) are all the standard behaviour-module ↔ implementation-module pattern (the behaviour references its own `@type`/dispatch, the implementation `use`s or `@behaviour`s it back) — expected shape, not coupling debt.
+- Dashboard transcript parser family (`dashboard/transcript/parser/{claude,codex,cursor,grok,pi,passthrough}.ex`) — clean per-agent strategy pattern behind `dashboard/transcript/parser.ex`, all well under size threshold.
 
-Within the same module, `task/4` operates at "start a run" granularity while
-`poll_until_settled/3`, `settled_await_summary/1`, `snapshot_await_summary/1`,
-`vanished_summary/1` are low-level polling/formatting helpers for `await/3`'s human-readable
-output. The formatting helpers (`record_await_summary`, `record_review_summary`,
-`resume_reason_text`, `prior_attempt_section`) are presentation logic (turning a `LogRecord`
-into prose) sitting next to orchestration control flow — a different concern from "dispatch a
-run," and a candidate for extraction regardless of the god-module split above.
-
-### 3. [MEDIUM] `Harness.AgentRegistry` ↔ `Harness.ModelAvailability` — tight 2-module cycle
-
-`agent_registry.ex` calls `ModelAvailability.capture_structured_failure/3`;
-`model_availability.ex` calls `AgentRegistry.agent_for_module/1` and `AgentRegistry.agents/0`.
-Both are legitimately related domains (which agent can run this / which models are available
-for it), but the mutual dependency means neither module can be understood, tested, or
-reasoned about without the other, and neither can be the "lower" layer. If the coupling is
-intentional, it should be documented as such; otherwise pull the shared surface (agent↔model
-capability lookups) into a third module both depend on one-way.
-
-### 4. [LOW] Dead GenServer replies in `Harness.Cron.PendingDispatch`
-
-`mix reach.otp` flags two discarded `GenServer.call` replies in the private `enqueue/1`
-helper (`lib/harness/cron/pending_dispatch.ex:174` and `:178`):
-
-```elixir
-GenServer.call(__MODULE__, {:complete, record.id})   # reply discarded
-...
-GenServer.call(__MODULE__, {:repark, record})         # reply discarded
-```
-
-Both always reply `:ok`, so this is not a live bug today, but the pattern silently swallows
-the outcome of the completion/repark write — a future change that makes either handler
-capable of failing (e.g. a validation branch) would have its error dropped on the floor with
-no signal at the call site. Low severity, but a one-line `:ok = GenServer.call(...)` (already
-partially done for `:complete`'s sibling pattern elsewhere in the module) or explicit match
-closes the gap cheaply.
-
-### 5. [LOW] Repeated behaviour↔impl cycle pattern (4 instances) — idiomatic but worth naming
-
-`SettingsStore` ↔ `SettingsStore.Postgres`, `Chat.Store` ↔ `Chat.Store.{Memory,Postgres}`,
-`SuiteHealthStore` ↔ `SuiteHealthStore.{Memory,Postgres}`, `DepFreshnessStore` ↔
-`DepFreshnessStore.{Memory,Postgres}` each form a 2–3-node xref cycle: the behaviour module
-declares `@callback`s and its impls declare `@behaviour Harness.XStore`, while the behaviour
-module also references the impl module name (as a default `configured/0` target or in
-moduledoc). This is the standard Elixir behaviour+default-impl pattern, not a design flaw —
-noted only because it inflates the raw cycle count (4 of the 8 reported cycles are this same
-shape) and is worth distinguishing from the real coupling issues above (#1, #3) when triaging
-`mix xref graph --format cycles` output going forward.
-
-### 6. [LOW] `dashboard/transcript/parser.ex` ↔ per-agent parser modules — cycle of 7
-
-`parser.ex` and its five per-agent parsers (`claude.ex`, `codex.ex`, `cursor.ex`, `grok.ex`,
-`pi.ex`, plus `passthrough.ex`) form a 7-node cycle: the dispatcher module calls out to each
-per-agent parser, and each per-agent parser presumably aliases the dispatcher for shared
-types/behaviour. Same shape as #5 — a dispatch-table pattern, not obviously a defect, but
-confirm the per-agent modules don't need anything from `parser.ex` beyond a shared struct/type
-that could live in a separate `Parser.Types` module to break the cycle if it ever matters for
-compile-time isolation.
-
-## Clean areas (one line each, not re-litigated)
-
-- `Harness.Project` — 133-line pure struct + 3 tiny predicate helpers; its 48 incoming edges
-  are expected fan-in for the app's central data type (same shape as an Ecto schema), not a
-  god-module symptom.
-- Supervision tree in `application.ex` is legible and well-commented (explicit boot ordering
-  rationale for Repo → MigrationGuard → Config → registries → PubSub → Run.Supervisor →
-  Oban → dashboard/MCP); all long-lived GenServers/gen_statems found by `mix reach.otp`
-  (`AgentRegistry`, `CodeSearch.Server`, `Cron.PendingDispatch`, `Worktree.Reaper`,
-  `ProjectRegistry`, `Chat.Supervisor`/`Chat.Session`, `Run`/`Run.Supervisor`, `Oban`,
-  `Dashboard.MCPPlug`) are supervised, none orphaned.
-- Hot/warm/cold path split is respected structurally: raw Port capture stays allocation-light
-  in the adapter layer, `Run`/`Batch` lifecycle is warm-path OTP state, dashboard/MCP/Oban Web
-  are cold-path on a separate Bandit endpoint — no violations found crossing these boundaries.
-- Judgment-vs-mechanics discipline (the project's core mandate) holds up under this pass — no
-  scoring formula, keyword classifier, or normalization layer was found masquerading as
-  mechanical code; `.harness/*.json` verdict reads stay mechanical as designed.
+## Architecture Score: 78/100
+Solid, intentional hub-and-spoke design with an enforced (if narrow) forbidden-call boundary and zero violations found; the score is held back by one LiveView module mixing render/business-logic concerns (finding 2) and a facade module carrying more embedded logic than its "flat surface" framing suggests (finding 3), both fixable without touching the accepted cyclic-hub shape.
