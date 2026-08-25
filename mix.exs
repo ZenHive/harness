@@ -7,7 +7,11 @@ defmodule Harness.MixProject do
       version: "0.1.0",
       elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
-      start_permanent: Mix.env() == :prod,
+      # Not `== :prod`: the deployed node runs MIX_ENV=dev on purpose (it is an
+      # operator-only box behind an SSH tunnel, and Tidewave is dev-gated), but
+      # it is still supervised by systemd. Without start_permanent a crashed
+      # supervision tree leaves a live-but-dead BEAM that `Restart=` never sees.
+      start_permanent: Mix.env() != :test,
       deps: deps(),
       aliases: aliases(),
       listeners: [Phoenix.CodeReloader],

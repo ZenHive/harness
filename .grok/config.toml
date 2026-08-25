@@ -2,6 +2,11 @@
 #
 # This complements .mcp.json (used by Claude Code / Tidewave).
 # Only the [mcp_servers] section is supported in project-level files.
+#
+# Two nodes, deliberately distinct names: the *-server pair is the deployed
+# node, reached on 4019 through the operator's forward-only SSH tunnel (it
+# listens on 4018 there). The unsuffixed pair is a local `iex -S mix` node.
+# The suffix is how you tell from the tool name which node you are driving.
 
 [mcp_servers.tidewave]
 # Tidewave project_eval escape hatch on the harness dashboard endpoint.
@@ -12,5 +17,15 @@ startup_timeout_sec = 15
 [mcp_servers.harness]
 # Native flat harness driver tools.
 url = "http://localhost:4018/harness/mcp"
+enabled = true
+startup_timeout_sec = 15
+
+[mcp_servers.tidewave-server]
+url = "http://127.0.0.1:4019/tidewave/mcp"
+enabled = true
+startup_timeout_sec = 15
+
+[mcp_servers.harness-server]
+url = "http://127.0.0.1:4019/harness/mcp"
 enabled = true
 startup_timeout_sec = 15
