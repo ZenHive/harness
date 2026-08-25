@@ -12150,7 +12150,7 @@ shipped_in = "ff631d0"
 id = "402"
 phase = 22
 bundle = "audit-hygiene"
-status = "in_progress"
+status = "done"
 title = "Activate the registered ExSlop Credo checks instead of discarding them from the explicit enabled list"
 scores = { d = 1, b = 4, u = 3 }
 acceptance_criteria = ["The explicit checks.enabled list in .credo.exs includes ExSlop.recommended_checks/0 without disabling or weakening any existing Credo check", "mix credo --strict emits no warning that ExSlop is registered with none of its checks active; any ExSlop findings are fixed at their source rather than suppressing the plugin", "mix check.dispatch exits 0"]
@@ -12164,9 +12164,16 @@ The cold post-merge check for audit 69b24aa reproduced Credo's warning that ExSl
 
 Task 401 explicitly records this warning as a separate configuration concern and excludes it from its full-suite repair. Preserve task 401's scope: activate the plugin here, fix any newly surfaced findings, and leave its ex_dna/Dialyzer work untouched.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1787661727853-cb6349a5, 78314893a1495e22658a97bd6b527512a9d25f39)."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1787661727853-cb6349a5"
 created_at = "2026-08-25"
 started_at = "2026-08-25"
 scored_at = "2026-08-25"
+done_at = "2026-08-25"
+shipped_in = "78314893a1495e22658a97bd6b527512a9d25f39"
 
 [[task]]
 id = "403"

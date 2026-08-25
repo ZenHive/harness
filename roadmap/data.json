@@ -18281,7 +18281,7 @@
       "id": "402",
       "phase": 22,
       "bundle": "audit-hygiene",
-      "status": "in_progress",
+      "status": "done",
       "title": "Activate the registered ExSlop Credo checks instead of discarding them from the explicit enabled list",
       "scores": {
         "d": 1,
@@ -18311,10 +18311,17 @@
         ".credo.exs",
         "mix.exs"
       ],
+      "shipped_in": "78314893a1495e22658a97bd6b527512a9d25f39",
       "body": "The cold post-merge check for audit 69b24aa reproduced Credo's warning that ExSlop is registered as a plugin but none of its checks are active. The repository's .credo.exs declares an explicit checks.enabled list, which discards plugin defaults unless ExSlop.recommended_checks/0 is appended. This means the comment claiming the AI-antipattern checks are enabled is false and the dependency currently adds no lint signal.\n\nTask 401 explicitly records this warning as a separate configuration concern and excludes it from its full-suite repair. Preserve task 401's scope: activate the plugin here, fix any newly surfaced findings, and leave its ex_dna/Dialyzer work untouched.\n",
       "created_at": "2026-08-25",
       "started_at": "2026-08-25",
+      "done_at": "2026-08-25",
       "scored_at": "2026-08-25",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1787661727853-cb6349a5, 78314893a1495e22658a97bd6b527512a9d25f39).",
+      "delivered_by": "codex",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1787661727853-cb6349a5",
       "cross_repo": []
     },
     {
