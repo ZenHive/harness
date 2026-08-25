@@ -12180,7 +12180,7 @@ id = "404"
 phase = 23
 bundle = "audit-perf"
 milestone = "v0_16"
-status = "pending"
+status = "in_progress"
 title = "Take the uncached SettingsStore reads and the synchronous CLI catalog probes off the 5s settings tick"
 scores = { d = 3, b = 5, u = 5 }
 acceptance_criteria = ["One :meta_tick of Harness.Dashboard.SettingsLive performs a bounded, asserted number of harness_settings reads instead of one per agent/model question; a focused test counts the reads across a tick and pins the bound", "A stale model catalog never shells out to an agent CLI from inside the LiveView process: the tick serves the stale entry and the refresh happens out of band, so render latency is independent of CLI response time", "A write through SettingsStore.put/2 is visible to the very next read — the cache is write-through or explicitly invalidated, never eventually consistent", "repo_enabled: false keeps the documented in-memory ephemeral behavior", "mix check.dispatch green + focused mix test.json for ModelAvailability, SettingsStore, and SettingsLive"]
@@ -12212,4 +12212,5 @@ be visible to the next get: these keys drive routing and operator blocks, so a s
 dispatch to a model the operator just blocked.
 """
 created_at = "2026-08-25"
+started_at = "2026-08-25"
 scored_at = "2026-08-25"
