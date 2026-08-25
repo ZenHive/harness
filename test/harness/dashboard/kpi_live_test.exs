@@ -149,16 +149,28 @@ defmodule Harness.Dashboard.KPILiveTest do
       flush_store_reads()
 
       seed("newly-settled", agent: :codex, verdict: :approve)
-      status = %Status{run_id: "newly-settled", task_id: "t", agent: :codex, state: :done}
+      first = %Status{run_id: "newly-settled", task_id: "t", agent: :codex, state: :done}
 
-      send(view.pid, {:harness_run_settled, status})
-      send(view.pid, {:harness_run_settled, status})
+      send(view.pid, {:harness_run_settled, first})
+      send(view.pid, {:harness_run_settled, first})
 
       refute_receive {:kpi_store_read, _read}, @before_refresh_ms
       assert_refresh_reads()
 
-      assert render(view) =~ "codex"
+      html = render(view)
+      assert html =~ "codex"
+      refute html =~ "No run records yet"
       refute_receive {:kpi_store_read, _read}, @post_refresh_quiet_ms
+
+      # Clearing the timer on refresh must reopen the window; otherwise a later
+      # settlement would be ignored forever and vanish from the ledger.
+      seed("later-settled", agent: :claude, verdict: :approve)
+      later = %Status{run_id: "later-settled", task_id: "t", agent: :claude, state: :done}
+      send(view.pid, {:harness_run_settled, later})
+
+      refute_receive {:kpi_store_read, _read}, @before_refresh_ms
+      assert_refresh_reads()
+      assert render(view) =~ "claude"
     end
   end
 
