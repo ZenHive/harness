@@ -327,7 +327,7 @@
 | Task 398 | ⬜ | 🎁 **agent-gate** · Injected agent rules must never be visible in a tracked file while an agent runs the project's checks [D:4/B:7/U:8 → Eff:1.88] 🚀 |
 | Task 399 | ⬜ | 🎁 **core-loop** · Agent-initiated question channel — implementer parks the run with .harness/question.json, orchestrator answers via steer/resume [D:5/B:6/U:5 → Eff:1.1] 📋 |
 | Task 400 | 🔄 | 🎁 **autolanding** · Self-land must not mutate the running harness node's own checkout — Git.TargetSync needs a self-host guard [D:4/B:7/U:7 → Eff:1.75] 🚀 |
-| Task 401 | ⬜ | 🎁 **audit-hygiene** · mix ci is red on main: one ex_dna clone and four dialyzer warnings, all pre-dating the 397 extraction [D:4/B:7/U:6 → Eff:1.62] 🚀 |
+| Task 401 | 🔄 | 🎁 **audit-hygiene** · mix ci is red on main: one ex_dna clone and four dialyzer warnings, all pre-dating the 397 extraction [D:4/B:7/U:6 → Eff:1.62] 🚀 |
 <!-- TASKS:END -->
 
 ---
