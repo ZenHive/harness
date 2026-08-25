@@ -599,6 +599,30 @@ Toolchain: **Elixir 1.20.3 / OTP 29** (asdf) — pinned by the repo-local `.tool
 
 **Per-edit hooks already run this stack** (`format`, `compile`, `test.json`, `credo`, `dialyzer.json`, `sobelow`, `doctor`) on every touched file — don't re-run a check the hook just graded. Full-suite `precommit.full` earns its cost only before a PR/merge, after `mix deps.get`, or on a branch switch (see global CLAUDE.md § "Don't Re-Run Hook-Driven Checks").
 
+## 🚨 ADJUDICATED: the `hackney` advisories on this repo are DECIDED — do not re-investigate
+
+`mix deps.get` / `mix hex.audit` report four published advisories against locked
+**hackney 1.25.0** (`EEF-CVE-2026-47075` CR/LF in query, `-47071` HIGH SOCKS5 TLS upgrade
+ignores caller timeout, `-47069` CRLF in cookie domain/path, `-47076` SSRF allowlist bypass
+via percent-encoded host). Every cold worktree runs `deps.get`, so every dispatched agent
+sees this. Verdict, read 2026-08-25 — **not reachable, and not fixable by a bump:**
+
+- hackney is **transitive only**: `mix.exs` takes `{:tzdata, "~> 1.1"}`, and tzdata requires
+  `hackney ~> 1.17` solely to download IANA releases. No harness module calls hackney.
+- `config/config.exs` sets `config :tzdata, :autoupdate, :disabled`, so that one call site
+  never runs. All four advisories sit in the HTTP request path.
+- **1.25.0 is the newest 1.x release** — the fixes land in hackney 4.x, which tzdata's
+  `~> 1.17` constraint excludes. There is no smallest-compatible bump; "make the audit clean"
+  is unachievable without replacing or forking tzdata.
+
+Suppression lever: harness declares no `mix_audit`, so there is no `.mix_audit_ignore` here —
+the reporter is Hex core, silenced only by global `mix hex.config ignore_advisories` /
+`HEX_IGNORE_ADVISORIES`. Suppress **per id**, never wholesale.
+
+**Re-adjudicate if:** tzdata's autoupdate is enabled anywhere; a tzdata release widens its
+hackney constraint to 4.x; hackney becomes a direct dependency; or a new hackney advisory
+appears that is not one of the four ids above.
+
 ## Toolchain & check commands
 
 Self-contained so it reaches `AGENTS.md` (and the cross-family reviewer) even after the eager floor slimmed `code-style`/`rmap` to skills.
