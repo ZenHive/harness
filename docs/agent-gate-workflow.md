@@ -78,6 +78,8 @@ writes `.harness/review.json`:
 ```json
 {
   "verdict": "approve" | "reject",
+  "run_id": "<HARNESS_RUN_ID>",
+  "review_attempt": "<HARNESS_REVIEW_ATTEMPT>",
   "report": "prose — what it found, what it fixed, why the verdict",
   "checks": {
     "mix check.dispatch": { "passed": true, "output": "short relevant output", "mechanism": "" }
@@ -99,6 +101,10 @@ Harness reads the file mechanically (`Harness.Run.Review`):
 - unreadable (missing or malformed `.harness/review.json`) → re-prompted **once** in the same
   worktree (Task 203 generalized by 228); a second unreadable settles `:failed`, reason
   `{:review_stuck, report}`. Mechanical re-issue of the mandatory write — no judgment.
+- identity mismatch (`run_id` / `review_attempt` not this invocation) is treated as missing
+  (Task 393). The artifact is removed before every reviewer spawn — primary, re-prompt,
+  rotation, and dispatch-rereview — so a killed reviewer's stale approve cannot settle the
+  run, and an implementer-written approve cannot pass the gate.
 - reviewer spawn/idle timeout → rotate to next eligible cross-family reviewer from the finite
   slate (rejection-rate prioritized; explicit list pins order); exhausts → `:review_stuck`.
   Also mechanical (no content inspection).

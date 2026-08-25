@@ -7,7 +7,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.OSProcess
   alias Harness.AgentAdapter.Run, as: AgentRun
-  alias Harness.AgentAdapter.Testing.FakeAdapter
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.AgentRegistry
   alias Harness.Batch
   alias Harness.Batch.AgentEvaluation

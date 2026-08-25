@@ -211,34 +211,72 @@ defmodule Harness.Run.ReviewTest do
     end
   end
 
-  describe "read/1 — filesystem layer" do
+  describe "read/2 — filesystem layer" do
     setup do
       worktree = Path.join(System.tmp_dir!(), "harness_review_test_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(worktree)
+      on_exit(fn -> File.rm_rf!(worktree) end)
+      {:ok, worktree: worktree, identity: Review.identity("run-1", 1)}
+    end
+
+    test "reads and parses an artifact at .harness/review.json", %{worktree: worktree, identity: identity} do
+      write_artifact(
+        worktree,
+        ~s({"verdict": "approve", "report": "all green", "run_id": "run-1", "review_attempt": "1"})
+      )
+
+      assert {:ok, %Review{verdict: :approve, report: "all green"}} = Review.read(worktree, identity)
+    end
+
+    test "a worktree with no artifact reads as :missing", %{worktree: worktree, identity: identity} do
+      assert {:error, :missing} = Review.read(worktree, identity)
+    end
+
+    test "an artifact with garbage contents reads as malformed", %{worktree: worktree, identity: identity} do
+      write_artifact(worktree, "{{{{")
+
+      assert {:error, {:malformed, {:invalid_json, _}}} = Review.read(worktree, identity)
+    end
+
+    test "an identity mismatch is treated as missing, not as a verdict", %{worktree: worktree, identity: identity} do
+      write_artifact(
+        worktree,
+        ~s({"verdict": "approve", "report": "stale", "run_id": "other-run", "review_attempt": "1"})
+      )
+
+      assert {:error, :missing} = Review.read(worktree, identity)
+    end
+
+    test "a missing identity field is treated as missing", %{worktree: worktree, identity: identity} do
+      write_artifact(worktree, ~s({"verdict": "approve", "report": "all green"}))
+
+      assert {:error, :missing} = Review.read(worktree, identity)
+    end
+
+    test "an integer review_attempt still matches the string identity", %{worktree: worktree, identity: identity} do
+      write_artifact(worktree, ~s({"verdict": "approve", "report": "ok", "run_id": "run-1", "review_attempt": 1}))
+
+      assert {:ok, %Review{verdict: :approve}} = Review.read(worktree, identity)
+    end
+  end
+
+  describe "clear/1" do
+    setup do
+      worktree = Path.join(System.tmp_dir!(), "harness_review_clear_#{System.unique_integer([:positive])}")
       File.mkdir_p!(worktree)
       on_exit(fn -> File.rm_rf!(worktree) end)
       {:ok, worktree: worktree}
     end
 
-    test "reads and parses an artifact at .harness/review.json", %{worktree: worktree} do
-      File.mkdir_p!(Path.join(worktree, ".harness"))
+    test "removes a present verdict artifact", %{worktree: worktree} do
+      write_artifact(worktree, ~s({"verdict": "approve", "run_id": "run-1", "review_attempt": "1"}))
 
-      File.write!(
-        Path.join(worktree, Review.artifact_path()),
-        ~s({"verdict": "approve", "report": "all green"})
-      )
-
-      assert {:ok, %Review{verdict: :approve, report: "all green"}} = Review.read(worktree)
+      assert :ok = Review.clear(worktree)
+      refute File.exists?(Path.join(worktree, Review.artifact_path()))
     end
 
-    test "a worktree with no artifact reads as :missing", %{worktree: worktree} do
-      assert {:error, :missing} = Review.read(worktree)
-    end
-
-    test "an artifact with garbage contents reads as malformed", %{worktree: worktree} do
-      File.mkdir_p!(Path.join(worktree, ".harness"))
-      File.write!(Path.join(worktree, Review.artifact_path()), "{{{{")
-
-      assert {:error, {:malformed, {:invalid_json, _}}} = Review.read(worktree)
+    test "is ok when the artifact was never written", %{worktree: worktree} do
+      assert :ok = Review.clear(worktree)
     end
   end
 
@@ -246,5 +284,19 @@ defmodule Harness.Run.ReviewTest do
     test "is the .harness-scoped path Worktree.commit/2 excludes from staging" do
       assert Review.artifact_path() == ".harness/review.json"
     end
+  end
+
+  describe "identity env names" do
+    test "are the Port env keys the reviewer is told to echo" do
+      assert Review.run_id_env() == "HARNESS_RUN_ID"
+      assert Review.review_attempt_env() == "HARNESS_REVIEW_ATTEMPT"
+      assert Review.identity("run-9", 3) == %{run_id: "run-9", review_attempt: "3"}
+    end
+  end
+
+  @spec write_artifact(String.t(), String.t()) :: :ok
+  defp write_artifact(worktree, contents) do
+    File.mkdir_p!(Path.join(worktree, ".harness"))
+    File.write!(Path.join(worktree, Review.artifact_path()), contents)
   end
 end

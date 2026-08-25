@@ -1,7 +1,7 @@
 defmodule Harness.Run.StatusTest do
   use ExUnit.Case, async: true
 
-  alias Harness.AgentAdapter.Testing.FakeAdapter
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.Run.LogRecord
   alias Harness.Run.Status
 

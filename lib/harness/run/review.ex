@@ -8,6 +8,8 @@ defmodule Harness.Run.Review do
 
       {
         "verdict": "approve" | "reject",
+        "run_id": "<HARNESS_RUN_ID>",
+        "review_attempt": "<HARNESS_REVIEW_ATTEMPT>",
         "report": "what was found, what was fixed, why the decision",
         "checks": {"mix check.dispatch": {"passed": true, "output": "..."}},
         "concerns": [],
@@ -41,14 +43,19 @@ defmodule Harness.Run.Review do
   Harness never interprets the work itself — it only reads this file. An
   unreadable artifact (missing or malformed) is re-prompted once in the same
   worktree before failing as `{:review_stuck, ...}` on a second miss (Task 203
-  generalized by Task 228, `Harness.Run`); the gate cannot pass silently. The
-  artifact lives under `.harness/`, which `Harness.Worktree.commit/2` excludes
-  from staging, so it never rides in the deliverable commit.
+  generalized by Task 228, `Harness.Run`); the gate cannot pass silently. A
+  readable verdict whose `run_id` / `review_attempt` do not match this
+  invocation is treated as missing (Task 393) — the file is fenced to the
+  reviewer that wrote it. The artifact lives under `.harness/`, which
+  `Harness.Worktree.commit/2` excludes from staging, so it never rides in the
+  deliverable commit.
   """
 
   alias Harness.Artifact
 
   @artifact_path ".harness/review.json"
+  @run_id_env "HARNESS_RUN_ID"
+  @review_attempt_env "HARNESS_REVIEW_ATTEMPT"
 
   @enforce_keys [:verdict, :report]
   defstruct [
@@ -102,19 +109,57 @@ defmodule Harness.Run.Review do
   @typedoc "Why an artifact could not be read."
   @type error :: :missing | {:malformed, term()}
 
+  @typedoc "Run identity the current reviewer invocation must echo into the artifact."
+  @type identity :: %{run_id: String.t(), review_attempt: String.t()}
+
   @doc "Relative path of the verdict artifact inside a run worktree."
   @spec artifact_path() :: String.t()
   def artifact_path, do: @artifact_path
 
+  @doc "Port env var carrying the run id the reviewer must echo into the artifact."
+  @spec run_id_env() :: String.t()
+  def run_id_env, do: @run_id_env
+
+  @doc "Port env var carrying the review-attempt number the reviewer must echo into the artifact."
+  @spec review_attempt_env() :: String.t()
+  def review_attempt_env, do: @review_attempt_env
+
+  @doc "Builds the identity map a later `read/2` compares against the artifact."
+  @spec identity(String.t(), String.t() | integer()) :: identity()
+  def identity(run_id, attempt) when is_binary(run_id) do
+    %{run_id: run_id, review_attempt: to_string(attempt)}
+  end
+
+  @doc """
+  Removes the verdict artifact at `worktree_path` if it is present.
+
+  Called immediately before every reviewer spawn so a later `read/2` cannot
+  return a prior attempt's file.
+  """
+  @spec clear(String.t()) :: :ok | {:error, term()}
+  def clear(worktree_path) when is_binary(worktree_path) do
+    Artifact.remove(worktree_path, @artifact_path)
+  end
+
   @doc """
   Reads and parses the reviewer's verdict artifact from `worktree_path`.
+
+  `identity` is the run id and review-attempt number this invocation handed the
+  reviewer. A readable approve/reject whose echoed identity does not match is
+  treated as `{:error, :missing}` — same as the reviewer writing nothing — so
+  the existing re-prompt/rotation ladder runs instead of settling the run.
 
   Returns `{:error, :missing}` when the reviewer never wrote the file, or
   `{:error, {:malformed, detail}}` when it is not valid verdict JSON.
   """
-  @spec read(String.t()) :: {:ok, t()} | {:error, error()}
-  def read(worktree_path) when is_binary(worktree_path) do
-    with {:ok, contents} <- Artifact.read(worktree_path, @artifact_path), do: parse(contents)
+  @spec read(String.t(), identity()) :: {:ok, t()} | {:error, error()}
+  def read(worktree_path, %{run_id: run_id, review_attempt: attempt} = _identity)
+      when is_binary(worktree_path) and is_binary(run_id) and is_binary(attempt) do
+    with {:ok, contents} <- Artifact.read(worktree_path, @artifact_path),
+         {:ok, review} <- parse(contents),
+         :ok <- match_identity(contents, run_id, attempt) do
+      {:ok, review}
+    end
   end
 
   @doc """
@@ -192,4 +237,32 @@ defmodule Harness.Run.Review do
   defp failed_check?(map) when is_map(map), do: Enum.any?(map, fn {_k, v} -> failed_check?(v) end)
   defp failed_check?(list) when is_list(list), do: Enum.any?(list, &failed_check?/1)
   defp failed_check?(_other), do: false
+
+  # Identity mismatch is absence, not malformation: the existing re-prompt /
+  # rotation ladder already handles `{:error, :missing}`. Two strings compared
+  # as strings; a missing field is a mismatch.
+  @spec match_identity(binary(), String.t(), String.t()) :: :ok | {:error, :missing}
+  defp match_identity(contents, run_id, attempt) do
+    case Jason.decode(contents) do
+      {:ok, decoded} when is_map(decoded) ->
+        if identity_string(decoded, "run_id") == run_id and
+             identity_string(decoded, "review_attempt") == attempt do
+          :ok
+        else
+          {:error, :missing}
+        end
+
+      _other ->
+        {:error, :missing}
+    end
+  end
+
+  @spec identity_string(map(), String.t()) :: String.t() | nil
+  defp identity_string(decoded, key) do
+    case Map.get(decoded, key) do
+      value when is_binary(value) -> value
+      value when is_integer(value) -> Integer.to_string(value)
+      _other -> nil
+    end
+  end
 end

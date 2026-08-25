@@ -298,7 +298,7 @@ Always read `Harness.Run.Result` (or the `Outcome` from the cheap path). The ver
 
 Key fields you care about as driver (full struct: `lib/harness/run/result.ex`):
 - `state` + `reason` — `:done`/`:approved`, or `:failed` with `{:review_rejected, report}` / `{:review_stuck, report}` / a mechanical reason
-- `review` — the parsed `.harness/review.json` artifact (`%Harness.Run.Review{verdict, report, checks, concerns, facets, skills, ratings}`)
+- `review` — the parsed `.harness/review.json` artifact (`%Harness.Run.Review{verdict, report, checks, concerns, facets, skills, ratings}`). The file is removed before every reviewer spawn and must echo `run_id` / `review_attempt` from `HARNESS_RUN_ID` / `HARNESS_REVIEW_ATTEMPT`; a mismatch is treated as missing.
 - `agent_outcome` (raw implementer transcript + kind + exit_status)
 - `reviewer_outcome` (raw reviewer transcript + kind + exit_status, or `nil` if the run never produced a clean reviewer outcome — killed by an idle/spawn timeout, crashed, or no reviewer available). On a `{:review_stuck, _}` run this is the diagnostic of *why* the gate produced no verdict; the dominant stuck mode is a clean reviewer exit that simply omitted the verdict file.
 - `worktree_path` (the deliverable; the branch name is conventionally `"harness/" <> run_id` — not stored on `Result`)

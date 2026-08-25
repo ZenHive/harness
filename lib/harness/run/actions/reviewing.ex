@@ -407,14 +407,15 @@ defmodule Harness.Run.Actions.Reviewing do
     # guards the degenerate nil (a run that reached review without routing).
     pre_review_sha = data.reviewer_pre_review_sha || current_sha(data)
 
-    with {:ok, %Outcome{} = outcome} <-
+    with :ok <- Review.clear(data.worktree.path),
+         {:ok, %Outcome{} = outcome} <-
            run_driver(data, data.reviewer_adapter, reviewer_invocation(data), reviewer_driver_opts(data, parent)),
          {:ok, _status, _total_diff_size} <- commit_worktree(data, data.worktree, reviewer_commit_message(data)) do
       {:ok,
        %{
          outcome: outcome,
          reviewer_diff_size: measure_reviewer_diff(data, pre_review_sha),
-         review: Review.read(data.worktree.path)
+         review: Review.read(data.worktree.path, Review.identity(data.run_id, data.reviewer_attempt))
        }}
     end
   end
@@ -447,8 +448,16 @@ defmodule Harness.Run.Actions.Reviewing do
       rule_content: agent_rule_content(data.project),
       permission_mode: :autonomous,
       adapter_opts: data.reviewer_adapter_opts,
-      env: in_run_env(data)
+      env: reviewer_env(data)
     }
+  end
+
+  @spec reviewer_env(data()) :: %{optional(String.t()) => String.t() | false}
+  defp reviewer_env(data) do
+    data
+    |> in_run_env()
+    |> Map.put(Review.run_id_env(), data.run_id)
+    |> Map.put(Review.review_attempt_env(), to_string(data.reviewer_attempt))
   end
 
   # The reviewer has no task-pin model axis (the task's `model` pins only the
@@ -568,11 +577,14 @@ defmodule Harness.Run.Actions.Reviewing do
     that reproduced cause in `checks` and `concerns` (command, failing output, and mechanism). If you
     cannot reproduce a benign cause, treat the red as a real defect.
 
+    #{reviewer_identity_instruction(data)}
     Verdict artifact — write this, then stop:
 
     #{Review.artifact_path()}
     {
       "verdict": "approve" | "reject",
+      "run_id": "<#{Review.run_id_env()}>",
+      "review_attempt": "<#{Review.review_attempt_env()}>",
       "report": "<what you found, what you fixed, why you decided>",
       "checks": {"<command you ran>": {"passed": true | false, "output": "<short relevant output>", "mechanism": "<why a red is benign, if dismissed>"}},
       "concerns": [],
@@ -657,11 +669,14 @@ defmodule Harness.Run.Actions.Reviewing do
     or file them. After the run lands, the orchestrator evaluates the proposals against the live
     pending set and files any warranted task through its own task-writing gate.
 
+    #{reviewer_identity_instruction(data)}
     Verdict artifact — REQUIRED final action, write it even when you reject:
 
     #{Review.artifact_path()}
     {
       "verdict": "approve" | "reject",
+      "run_id": "<#{Review.run_id_env()}>",
+      "review_attempt": "<#{Review.review_attempt_env()}>",
       "report": "<what you found, what you fixed, why you decided>",
       "checks": {
         "<command you ran>": {
@@ -735,6 +750,19 @@ defmodule Harness.Run.Actions.Reviewing do
     """
   end
 
+  @spec reviewer_identity_instruction(data()) :: String.t()
+  defp reviewer_identity_instruction(data) do
+    """
+    Bind this verdict to THIS invocation. Echo these two strings into the artifact; a mismatch is
+    treated as no verdict:
+
+      "run_id": "#{data.run_id}"
+      "review_attempt": "#{data.reviewer_attempt}"
+
+    They are also in the Port environment as `#{Review.run_id_env()}` and `#{Review.review_attempt_env()}`.
+    """
+  end
+
   @spec coalesced_task_outcome_instruction(data()) :: String.t()
   defp coalesced_task_outcome_instruction(%{item: %{task_ids: [_single]}}), do: ""
   defp coalesced_task_outcome_instruction(%{item: %{task_ids: []}}), do: ""
@@ -770,14 +798,22 @@ defmodule Harness.Run.Actions.Reviewing do
   def transcript_tail(transcript) when byte_size(transcript) <= @reviewer_transcript_tail_bytes, do: transcript
 
   def transcript_tail(transcript) do
+    total = byte_size(transcript)
+    elided = total - @reviewer_transcript_tail_bytes
+
     tail =
       binary_part(
         transcript,
-        byte_size(transcript) - @reviewer_transcript_tail_bytes,
+        elided,
         @reviewer_transcript_tail_bytes
       )
 
-    Text.valid_utf8_tail(tail)
+    truncation_marker(elided, total) <> Text.valid_utf8_tail(tail)
+  end
+
+  @spec truncation_marker(non_neg_integer(), non_neg_integer()) :: String.t()
+  defp truncation_marker(elided, total) do
+    "[transcript truncated: #{elided} bytes elided of #{total} total]\n"
   end
 
   @doc false

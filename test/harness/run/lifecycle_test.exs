@@ -1,6 +1,8 @@
 defmodule Harness.Run.LifecycleTest do
   use Harness.RunCase, async: true
 
+  alias Harness.Test.IdentityFakeAdapter
+
   defmodule LanguageCaptureAdapter do
     @moduledoc false
 
@@ -48,8 +50,11 @@ defmodule Harness.Run.LifecycleTest do
     end
 
     @spec reviewer_command(Invocation.t()) :: {:ok, AgentAdapter.command()}
-    defp reviewer_command(%Invocation{rule_content: rule_content}) do
-      json = Jason.encode!(%{verdict: "approve", report: "captured rules", ratings: FakeAdapter.review_ratings()})
+    defp reviewer_command(%Invocation{rule_content: rule_content, env: env}) do
+      json =
+        %{"verdict" => "approve", "report" => "captured rules", "ratings" => FakeAdapter.review_ratings()}
+        |> IdentityFakeAdapter.bind_fields(env)
+        |> Jason.encode!()
 
       script = ~S(printf '%s' "$1" > reviewer_rules.txt; mkdir -p .harness; printf '%s' "$2" > .harness/review.json)
       {:ok, {"/bin/sh", ["-c", script, "harness-fake", rule_content, json], []}}
@@ -78,9 +83,9 @@ defmodule Harness.Run.LifecycleTest do
     end
 
     @spec command(Invocation.t(), String.t()) :: AgentAdapter.command()
-    defp command(%Invocation{log_tag: log_tag}, env_name) do
+    defp command(%Invocation{log_tag: log_tag} = invocation, env_name) do
       if String.ends_with?(log_tag, "-review") do
-        reviewer_command(env_name)
+        reviewer_command(invocation, env_name)
       else
         implementer_command(env_name)
       end
@@ -92,9 +97,12 @@ defmodule Harness.Run.LifecycleTest do
       {"/bin/sh", ["-c", script, "harness-fake", env_name], []}
     end
 
-    @spec reviewer_command(String.t()) :: AgentAdapter.command()
-    defp reviewer_command(env_name) do
-      json = Jason.encode!(%{verdict: "approve", report: "captured test DB", ratings: FakeAdapter.review_ratings()})
+    @spec reviewer_command(Invocation.t(), String.t()) :: AgentAdapter.command()
+    defp reviewer_command(%Invocation{env: env}, env_name) do
+      json =
+        %{"verdict" => "approve", "report" => "captured test DB", "ratings" => FakeAdapter.review_ratings()}
+        |> IdentityFakeAdapter.bind_fields(env)
+        |> Jason.encode!()
 
       script =
         ~S|partition=$(printenv "$1"); printf 'tapakly_test%s' "$partition" > reviewer_db.txt; | <>

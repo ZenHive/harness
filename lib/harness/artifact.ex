@@ -27,4 +27,21 @@ defmodule Harness.Artifact do
       {:error, reason} -> {:error, {:malformed, {:unreadable, reason}}}
     end
   end
+
+  @doc """
+  Removes the artifact at `relative_path` under `root`.
+
+  `:ok` when the path is gone — deleted, or never present. Any other filesystem
+  error is returned so a caller that must not read a stale file can fail closed.
+  """
+  @spec remove(String.t(), String.t()) :: :ok | {:error, term()}
+  # sobelow_skip ["Traversal.FileModule"]
+  # root is harness-generated (run worktree / scratch dir), never user input.
+  def remove(root, relative_path) when is_binary(root) and is_binary(relative_path) do
+    case File.rm(Path.join(root, relative_path)) do
+      :ok -> :ok
+      {:error, :enoent} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
 end

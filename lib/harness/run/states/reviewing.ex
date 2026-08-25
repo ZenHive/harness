@@ -35,6 +35,7 @@ defmodule Harness.Run.States.Reviewing do
 
     case ensure_reviewer_model_available(data) do
       :ok ->
+        data = %{data | reviewer_attempt: data.reviewer_attempt + 1}
         RunFeed.broadcast_update(status_snapshot(:reviewing, data))
         parent = self()
         task = start_task(fn -> run_reviewer(data, parent) end)

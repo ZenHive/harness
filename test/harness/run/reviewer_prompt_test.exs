@@ -38,6 +38,11 @@ defmodule Harness.Run.ReviewerPromptTest do
       assert prompt =~ "Implementer transcript tail:"
       assert prompt =~ "Diff stat:"
       assert prompt =~ Review.artifact_path()
+      assert prompt =~ Review.run_id_env()
+      assert prompt =~ Review.review_attempt_env()
+      assert prompt =~ ~s("run_id":)
+      assert prompt =~ ~s("review_attempt":)
+      assert prompt =~ "treated as no verdict"
       assert prompt =~ "Discovery proposals"
       assert prompt =~ "`proposed_tasks`"
       assert prompt =~ ~s("suggested_scores":)
@@ -71,6 +76,9 @@ defmodule Harness.Run.ReviewerPromptTest do
       assert prompt =~ "`concerns`"
       assert prompt =~ ~s("checks":)
       assert prompt =~ ~s("concerns": [])
+      assert prompt =~ Review.run_id_env()
+      assert prompt =~ ~s("run_id":)
+      assert prompt =~ ~s("review_attempt":)
     end
 
     test "makes rmap reachable inside the reviewer worktree even when PATH is scrubbed" do

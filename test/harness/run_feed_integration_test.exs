@@ -6,7 +6,7 @@ defmodule Harness.RunFeedIntegrationTest do
   # async: false because it drives the shared Run supervisor/registry and PubSub topic.
   use ExUnit.Case, async: false
 
-  alias Harness.AgentAdapter.Testing.FakeAdapter
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.Dashboard.RunFeed
   alias Harness.GitFixture
   alias Harness.ProjectFixture

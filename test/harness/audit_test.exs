@@ -16,7 +16,7 @@ defmodule Harness.AuditTest do
 
   alias Harness.Agent.Settings, as: AgentSettings
   alias Harness.AgentAdapter.Pi
-  alias Harness.AgentAdapter.Testing.FakeAdapter
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.AgentRegistry
   alias Harness.Audit
   alias Harness.Dashboard.OpsFeed

@@ -2,7 +2,7 @@ defmodule Harness.AuditReviewTest do
   use ExUnit.Case, async: true
 
   alias Harness.AgentAdapter.Outcome
-  alias Harness.AgentAdapter.Testing.FakeAdapter
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.AuditReview
 
   # Generous ceilings for the end-to-end dispatch tests below. Each spawns a

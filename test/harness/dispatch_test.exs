@@ -4,7 +4,6 @@ defmodule Harness.DispatchTest do
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentAdapter.Cursor
-  alias Harness.AgentAdapter.Testing.FakeAdapter
   alias Harness.Batch.AgentEvaluation
   alias Harness.CapabilityScore
   alias Harness.CapabilityScore.Assessment
@@ -22,6 +21,7 @@ defmodule Harness.DispatchTest do
   alias Harness.Run.LogRecord
   alias Harness.Run.Result
   alias Harness.Run.Review
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.TokenUsage
 
   defmodule RereviewCountingAdapter do
@@ -40,12 +40,15 @@ defmodule Harness.DispatchTest do
     def rule_channel, do: :none
 
     @impl AgentAdapter
-    def build_command(%Invocation{adapter_opts: opts, log_tag: log_tag}) do
+    def build_command(%Invocation{adapter_opts: opts, log_tag: log_tag, env: env}) do
       owner = Keyword.get(opts, :owner) || Application.get_env(:harness, :rereview_counting_owner)
       if owner, do: send(owner, {:rereview_adapter_invoked, log_tag})
 
       if String.ends_with?(log_tag, "-review") do
-        review = Jason.encode!(%{verdict: "approve", report: "review-only approved"})
+        review =
+          %{"verdict" => "approve", "report" => "review-only approved"}
+          |> FakeAdapter.bind_fields(env)
+          |> Jason.encode!()
 
         {:ok,
          {"/bin/sh",

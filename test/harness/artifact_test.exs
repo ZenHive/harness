@@ -25,4 +25,20 @@ defmodule Harness.ArtifactTest do
                {:error, {:malformed, {:unreadable, :eisdir}}}
     end
   end
+
+  describe "remove/2" do
+    @tag :tmp_dir
+    test "deletes an existing artifact", %{tmp_dir: tmp_dir} do
+      File.mkdir_p!(Path.join(tmp_dir, ".harness"))
+      File.write!(Path.join(tmp_dir, ".harness/review.json"), ~s({"verdict": "approve"}))
+
+      assert Artifact.remove(tmp_dir, ".harness/review.json") == :ok
+      refute File.exists?(Path.join(tmp_dir, ".harness/review.json"))
+    end
+
+    @tag :tmp_dir
+    test "is ok when the artifact was never written", %{tmp_dir: tmp_dir} do
+      assert Artifact.remove(tmp_dir, ".harness/review.json") == :ok
+    end
+  end
 end

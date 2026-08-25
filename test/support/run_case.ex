@@ -138,6 +138,94 @@ defmodule Harness.RunCase do
     def terminate(run), do: OSProcess.kill(run)
   end
 
+  # Writes an approve verdict for THIS invocation, then idles. Drives the
+  # stale-approve fence: if the file is not cleared (and identity-fenced)
+  # before the next reviewer spawn, a silent rotator would settle :done on it.
+  defmodule WriteApproveThenIdleReviewer do
+    @moduledoc false
+    @behaviour Harness.AgentAdapter
+
+    alias Harness.AgentAdapter.Capabilities
+    alias Harness.AgentAdapter.Invocation
+    alias Harness.AgentAdapter.OSProcess
+    alias Harness.AgentAdapter.Testing.FakeAdapter
+    alias Harness.Test.IdentityFakeAdapter
+
+    @impl Harness.AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl Harness.AgentAdapter
+    def rule_channel, do: :none
+
+    @impl Harness.AgentAdapter
+    def build_command(%Invocation{env: env}) do
+      json =
+        %{
+          "verdict" => "approve",
+          "report" => FakeAdapter.review_report("approve"),
+          "ratings" => FakeAdapter.review_ratings()
+        }
+        |> IdentityFakeAdapter.bind_fields(env)
+        |> Jason.encode!()
+
+      script = ~S(mkdir -p .harness; printf '%s' "$1" > .harness/review.json; exec sleep 30)
+      {:ok, {"/bin/sh", ["-c", script, "harness-fake", json], Map.to_list(env)}}
+    end
+
+    @impl Harness.AgentAdapter
+    def classify_message(_message, _run), do: :ignore
+
+    @impl Harness.AgentAdapter
+    def terminate(run), do: OSProcess.kill(run)
+  end
+
+  # First pass writes a valid approve bound to the WRONG run identity; the
+  # re-prompt (seeing the marker) writes a matching identity. Drives mismatch
+  # → {:error, :missing} → re-prompt rather than settling :done.
+  defmodule MismatchThenBindReviewer do
+    @moduledoc false
+    use Harness.AgentAdapter
+
+    alias Harness.AgentAdapter
+    alias Harness.AgentAdapter.Capabilities
+    alias Harness.AgentAdapter.Invocation
+    alias Harness.AgentAdapter.Testing.FakeAdapter
+    alias Harness.Test.IdentityFakeAdapter
+
+    @impl AgentAdapter
+    def capabilities, do: %Capabilities{}
+
+    @impl AgentAdapter
+    def rule_channel, do: :none
+
+    @impl AgentAdapter
+    def build_command(%Invocation{env: env}) do
+      good =
+        %{
+          "verdict" => "approve",
+          "report" => FakeAdapter.review_report("approve"),
+          "ratings" => FakeAdapter.review_ratings()
+        }
+        |> IdentityFakeAdapter.bind_fields(env)
+        |> Jason.encode!()
+
+      stale =
+        Jason.encode!(%{
+          "verdict" => "approve",
+          "report" => FakeAdapter.review_report("approve"),
+          "ratings" => FakeAdapter.review_ratings(),
+          "run_id" => "stale-run",
+          "review_attempt" => "1"
+        })
+
+      script =
+        ~S(mkdir -p .harness; if [ -f .harness/.reprompt-marker ]; then printf '%s' "$1" > .harness/review.json; ) <>
+          ~S(else : > .harness/.reprompt-marker; printf '%s' "$2" > .harness/review.json; fi)
+
+      {:ok, {"/bin/sh", ["-c", script, "harness-fake", good, stale], Map.to_list(env)}}
+    end
+  end
+
   # An adapter that spawns a real agent but declares session_resume: false —
   # drives the steer-unsupported path.
   defmodule NoResumeAdapter do
@@ -289,9 +377,9 @@ defmodule Harness.RunCase do
       alias Harness.AgentAdapter.Antigravity
       alias Harness.AgentAdapter.Codex
       alias Harness.AgentAdapter.Outcome
-      alias Harness.AgentAdapter.Testing.FakeAdapter
-      alias Harness.AgentAdapter.Testing.FakeModelAdapter
       alias Harness.Dashboard.RunFeed
+
+      # ── helpers ─────────────────────────────────────────────────────────────
       alias Harness.Dashboard.Transcript
       alias Harness.Dashboard.Transcript.Parser
       alias Harness.GitFixture
@@ -307,17 +395,18 @@ defmodule Harness.RunCase do
       alias Harness.Run.Status
       alias Harness.RunCase.CrashingAdapter
       alias Harness.RunCase.DriverCrashAdapter
-
-      # ── helpers ─────────────────────────────────────────────────────────────
-
       alias Harness.RunCase.HangingAdapter
+      alias Harness.RunCase.MismatchThenBindReviewer
       alias Harness.RunCase.NoResumeAdapter
       alias Harness.RunCase.PidFileAdapter
       alias Harness.RunCase.PollutingCrashAdapter
       alias Harness.RunCase.ReportingTerminateAdapter
       alias Harness.RunCase.SpawnThenIdleReviewer
       alias Harness.RunCase.TransientSpawnAdapter
+      alias Harness.RunCase.WriteApproveThenIdleReviewer
       alias Harness.Test.CaptureSink
+      alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
+      alias Harness.Test.IdentityFakeModelAdapter, as: FakeModelAdapter
       alias Harness.Test.SettingsStoreMemory
       alias Harness.TokenUsage
       alias Harness.Worktree
@@ -408,12 +497,12 @@ defmodule Harness.RunCase do
         File.mkdir_p!(dir)
 
         path = Path.join(dir, "codex")
-        json = Jason.encode!(%{verdict: "approve", report: "fake review: approve", ratings: FakeAdapter.review_ratings()})
 
         File.write!(path, """
         #!/bin/sh
         mkdir -p .harness
-        printf '%s' '#{json}' > .harness/review.json
+        printf '{"verdict":"approve","report":"fake review: approve","ratings":{"performance":8,"truthfulness":9,"code_quality":7,"idiom":8},"run_id":"%s","review_attempt":"%s"}' \\
+          "$HARNESS_RUN_ID" "$HARNESS_REVIEW_ATTEMPT" > .harness/review.json
         """)
 
         File.chmod!(path, @executable_mode)

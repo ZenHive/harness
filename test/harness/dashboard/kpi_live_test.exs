@@ -56,7 +56,7 @@ defmodule Harness.Dashboard.KPILiveTest do
   use Harness.Dashboard.ConnCase, async: false
 
   alias __MODULE__.InstrumentedStore
-  alias Harness.AgentAdapter.Testing.FakeAdapter
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.CapabilityScore
   alias Harness.CapabilityScore.Assessment
   alias Harness.CapabilityScore.Entry

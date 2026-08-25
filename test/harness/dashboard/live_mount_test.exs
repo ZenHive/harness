@@ -13,7 +13,7 @@ defmodule Harness.Dashboard.LiveMountTest do
   # async: false because tests read singleton ProjectRegistry and run registry state.
   use Harness.Dashboard.ConnCase, async: false
 
-  alias Harness.AgentAdapter.Testing.FakeAdapter
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.Dashboard.Transcript
   alias Harness.GitFixture
   alias Harness.ProjectFixture
