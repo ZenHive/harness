@@ -18542,7 +18542,7 @@
       "id": "407",
       "phase": 24,
       "bundle": "witness-legibility",
-      "status": "in_progress",
+      "status": "done",
       "title": "Split the run-state bucket vocabulary and recompose the index around it",
       "scores": {
         "d": 3,
@@ -18589,10 +18589,17 @@
         "liveview",
         "phoenix"
       ],
+      "shipped_in": "ec7451e86a61f54742d92da913f952ccd3603cfe",
       "body": "Observed 2026-08-25 in a dual-agent design critique of `/harness` (snapshot:\n`.impeccable/critique/2026-08-25T03-32-34Z__lib-harness-dashboard-live-ex.md`, scored 19/40).\nOn a surface whose job is accurate report, a false report is the worst defect class available.\n\nCause, read on 2026-08-25 in `lib/harness/status_view.ex:145-153`: `classify/1` maps\n`:recovering` AND `:reviewing` both to `:repairing`, and folds `:held` in with `:dispatched` /\n`:running` / `:committing` as `:in_flight`. The topbar therefore reports \"1 repairing\" over a\nrun whose own row badge, two inches below, reads `reviewing` — and a run an operator\ndeliberately PAUSED is counted among the runs that are working. The comment above the clause is\nhonest about the merge (\"a recovering/reviewing run IS red work being fixed\"), but reviewing is\nthe normal, expected, healthy majority path of every single run: it is the gate, not a repair.\nCounting the common case as the alarm state trains the operator to ignore the count.\n\nTwo composition findings ride the same diff, because one reviewer verifies them in one pass over\nthe same template:\n\nPriority inversion. `render_index/1` (live.ex:732-780) renders `Audit & land ops` first\n(live.ex:955), then `Active runs`, then `Run history`. The first thing on a fleet dashboard is\nthe settled past; live work is below it. The four fleet counts that summarise the whole fleet\nrender as 12.8px `--text-subtle` runover text while `.kpi-stat` tile styling already exists\nunused at tokens.ex:596.\n\nHeading structure. The index's highest heading is `<h2>` — there is no `<h1>` anywhere on it;\nthe file's only `<h1>` is `live.ex:785` on run-detail. A screen-reader user landing on the fleet\nview gets no document title in the heading tree.\n\nEmpty-state artifact. Both `run_table` renders (live.ex:751-756 `active-runs`, live.ex:773-778\n`run-history`) emit the `<table>` and its 10-column `<thead>` unconditionally (live.ex:1008-1023),\nso an empty fleet shows a full header row over nothing, directly beneath a sentence that already\nsaid the list is empty. `ops_panel/1` gets this right at live.ex:956-957 and is the pattern to\ncopy — with the wrinkle that the `phx-update=\"stream\"` tbody needs gating too.\n\nConsequences: the operator cannot trust the topbar against the rows, so the summary stops being\nread; the live fleet is buried under settled history; and the page announces emptiness twice, in\nthe least readable way available.\n",
       "created_at": "2026-08-25",
       "started_at": "2026-08-25",
+      "done_at": "2026-08-25",
       "scored_at": "2026-08-25",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1787658240434-b9625ebf, ec7451e86a61f54742d92da913f952ccd3603cfe).",
+      "delivered_by": "codex",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1787658240434-b9625ebf",
       "cross_repo": []
     },
     {
