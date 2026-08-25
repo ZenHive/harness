@@ -300,7 +300,7 @@ defmodule Harness.Worktree do
   defp clone_copy(src, dst), do: clone_copy(src, dst, clone_copy_flag(:os.type()))
 
   @doc false
-  @spec clone_copy_flag(:os.os_type()) :: [String.t()] | :fallback
+  @spec clone_copy_flag({:unix | :win32, atom()}) :: [String.t()] | :fallback
   def clone_copy_flag({:unix, :darwin}), do: ["-cR"]
   def clone_copy_flag({:unix, :linux}), do: ["--reflink=auto", "-R"]
   def clone_copy_flag(_other), do: :fallback

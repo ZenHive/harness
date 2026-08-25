@@ -466,7 +466,7 @@ defmodule Harness.Dashboard.Live do
   defp settled_entry(%Status{} = status) do
     concerns =
       case load_review_record(status.run_id) do
-        %LogRecord{review_concerns: concerns} -> concerns || []
+        %LogRecord{review_concerns: concerns} -> concerns
         nil -> []
       end
 
