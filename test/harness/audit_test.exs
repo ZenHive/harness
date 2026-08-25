@@ -114,13 +114,22 @@ defmodule Harness.AuditTest do
     File.write!(path, """
     #!/bin/sh
     printf 'ARGS:%s\\n' "$*" >> "#{log_path}"
+    tasks_path=''
+    previous=''
+    for argument in "$@"; do
+      if [ "$previous" = "--tasks-path" ]; then tasks_path="$argument"; fi
+      previous="$argument"
+    done
     if [ "$1" = "new" ]; then
-      cat >> "#{log_path}"
+      fragment=$(cat)
+      printf '%s' "$fragment" >> "#{log_path}"
       printf '\\nEND_NEW\\n' >> "#{log_path}"
+      printf '\\n%s\\n' "$fragment" >> "$tasks_path"
       echo "created task 77"
       exit 0
     fi
     if [ "$1" = "status" ]; then
+      printf '\\n# status blocked\\n' >> "$tasks_path"
       echo "blocked"
       exit 0
     fi
@@ -159,6 +168,8 @@ defmodule Harness.AuditTest do
 
   setup do
     %{origin: origin, repo: repo} = GitFixture.init_with_origin()
+    commit!(repo, "roadmap/tasks.toml", "# audit fixture tasks")
+    GitFixture.git!(repo, ["push", "-q", "origin", "main"])
     project = ProjectFixture.from_repo(repo, name: "audit-demo", target_branch: "main")
     prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
     prior_settings_store = Application.get_env(:harness, :settings_store)
@@ -272,6 +283,28 @@ defmodule Harness.AuditTest do
       assert subject =~ "audit(#{short})"
     end
 
+    test "an auditor discovery reaches the target without dirtying the source checkout", ctx do
+      land_work!(ctx)
+      short = ctx.repo |> GitFixture.git!(["rev-parse", "--short", "HEAD"]) |> String.trim()
+      rmap_log = Path.join(System.tmp_dir!(), "harness-audit-discovery-#{System.unique_integer([:positive])}.log")
+      rmap_dir = fake_blocking_rmap_dir(rmap_log)
+      with_path("#{rmap_dir}:#{System.get_env("PATH", "")}")
+      before_status = GitFixture.git!(ctx.repo, ["status", "--porcelain"])
+
+      assert {:audited, _sha} =
+               Audit.run(%{
+                 project: ctx.project,
+                 base_sha: ctx.base_sha,
+                 auditor: FakeAdapter,
+                 auditor_opts: [command: {:audit_file_discovery, short}]
+               })
+
+      assert GitFixture.git!(ctx.repo, ["status", "--porcelain"]) == before_status
+      GitFixture.git!(ctx.repo, ["fetch", "-q", "origin"])
+      tasks = GitFixture.git!(ctx.repo, ["show", "origin/main:roadmap/tasks.toml"])
+      assert tasks =~ "Audit discovery"
+    end
+
     test "the audited tip is the next audit's base — re-running is a :noop", ctx do
       land_work!(ctx)
       short = ctx.repo |> GitFixture.git!(["rev-parse", "--short", "HEAD"]) |> String.trim()
@@ -327,7 +360,9 @@ defmodule Harness.AuditTest do
         Application.delete_env(:harness, :test_capture_pid)
       end)
 
-      assert :no_changes =
+      before_status = GitFixture.git!(ctx.repo, ["status", "--porcelain"])
+
+      assert {:audited, audited_sha} =
                Audit.run(%{
                  project: ctx.project,
                  base_sha: ctx.base_sha,
@@ -340,7 +375,12 @@ defmodule Harness.AuditTest do
       assert reason =~ landed_sha
       assert reason =~ "mix compile failed cold: :nofile"
 
-      assert ctx.origin |> GitFixture.git!(["rev-parse", "main"]) |> String.trim() == landed_sha
+      assert ctx.origin |> GitFixture.git!(["rev-parse", "main"]) |> String.trim() == audited_sha
+      assert GitFixture.git!(ctx.repo, ["status", "--porcelain"]) == before_status
+      GitFixture.git!(ctx.repo, ["fetch", "-q", "origin"])
+      tasks = GitFixture.git!(ctx.repo, ["show", "origin/main:roadmap/tasks.toml"])
+      assert tasks =~ "landed SHA #{landed_sha}"
+      assert tasks =~ "# status blocked"
 
       assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: "run-cold")
 
@@ -516,7 +556,8 @@ defmodule Harness.AuditTest do
 
       assert prompt =~ "Discovery filing"
       assert prompt =~ "rmap new --from-stdin"
-      assert prompt =~ ctx.project.roadmap_path
+      assert prompt =~ "--tasks-path"
+      refute prompt =~ ctx.project.roadmap_path
       assert prompt =~ "FILE it as a real rmap task"
       assert prompt =~ "name the filed task id"
       assert prompt =~ "Do not leave TODO"

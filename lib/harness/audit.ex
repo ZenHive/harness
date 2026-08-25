@@ -20,6 +20,12 @@ defmodule Harness.Audit do
        `cold_check` fact from a clean build in the intentionally un-warmed tree),
     5. fast-forward-push whatever the agent committed back to the target.
 
+  Discovery tasks are written inside that detached audit worktree, never the
+  project's registered source checkout. Agent-filed tasks ride the agent's
+  `audit(<sha>)` commit; a red cold-check task filed by harness is committed in
+  the same worktree before the audit push. Thus both filing channels become
+  reachable on the target branch through the audit's existing merge train.
+
   The audit worktree is **not** warmed (`Worktree.warm/2` is skipped). The audit
   agent runs the project's `check_command` in that cold tree and reports
   `cold_check` in `.harness/audit.json`. Harness persists that fact on the run
@@ -290,18 +296,17 @@ defmodule Harness.Audit do
           {outcome(), audit_meta()}
   defp finalize_after_run(worktree, repo, target, project, request, range, agent, output) do
     meta = %{agent: agent, range: range.log, transcript: output}
+    report = audit_report(worktree.path)
+    log_audit_report(report)
+    witness_cold_check(report, project, request_store(request), worktree.base_sha, worktree.path, repo)
 
-    case head_sha(worktree.path) do
-      {:ok, head} ->
-        report = audit_report(worktree.path)
-        log_audit_report(report)
-        witness_cold_check(report, project, request_store(request), worktree.base_sha)
-        outcome = push_if_advanced(repo, worktree, target, head)
-        record_watermark(project, target, head, outcome)
-        {outcome, meta}
-
-      {:error, reason} ->
-        {{:error, reason}, meta}
+    with :ok <- commit_cold_check_discovery(worktree.path),
+         {:ok, final_head} <- head_sha(worktree.path) do
+      outcome = push_if_advanced(repo, worktree, target, final_head)
+      record_watermark(project, target, final_head, outcome)
+      {outcome, meta}
+    else
+      {:error, reason} -> {{:error, reason}, meta}
     end
   end
 
@@ -370,7 +375,8 @@ defmodule Harness.Audit do
   @spec invocation(Worktree.t(), String.t(), Project.t(), request(), map(), String.t() | nil) :: Invocation.t()
   defp invocation(worktree, target, project, request, range, model) do
     %Invocation{
-      prompt: audit_prompt(target, project, range, rejection_history(project, request)),
+      prompt:
+        audit_prompt(target, project, range, rejection_history(project, request), worktree.path, project_repo(project)),
       cwd: worktree.path,
       log_tag: "audit-#{project.name}-#{range.short_sha}",
       model: model,
@@ -431,8 +437,8 @@ defmodule Harness.Audit do
   # The audit agent's instructions. The judgment (what is a hygiene issue, what
   # matters, what to fix) lives entirely in the agent; harness only frames the
   # range and pushes whatever it commits.
-  @spec audit_prompt(String.t(), Project.t(), map(), String.t()) :: String.t()
-  defp audit_prompt(target, project, range, rejections) do
+  @spec audit_prompt(String.t(), Project.t(), map(), String.t(), String.t(), String.t()) :: String.t()
+  defp audit_prompt(target, project, range, rejections, worktree_path, repo) do
     """
     You are the post-merge audit agent for project #{project.name} — a best-effort hygiene pass over
     commits that already landed on `#{target}`. The merge is settled: you never revert, unmerge, or
@@ -456,7 +462,7 @@ defmodule Harness.Audit do
 
     Discovery filing: when you notice follow-up work during this commit-range review — tech debt,
     an orphaned code path, an uncovered edge case, or a deferred decision — FILE it as a real rmap task
-    via `rmap new --from-stdin --roadmap-path #{inspect(project.roadmap_path)}`. Provide a TOML
+    via `rmap new --from-stdin --tasks-path #{inspect(tasks_path_in_worktree(project, worktree_path, repo))}`. Provide a TOML
     `[[task]]` fragment. In `.audit/#{range.short_sha}.md`, name the filed task id(s). Do not leave TODO
     comments in source for audit follow-ups; the rmap task is the durable record.
     Harness does not decide what counts as a discovery; it does not score it, and reads nothing back — you decide
@@ -507,20 +513,21 @@ defmodule Harness.Audit do
   @spec request_store(request()) :: ResultStore.store()
   defp request_store(request), do: Map.get(request, :result_store, ResultStore.configured())
 
-  @spec witness_cold_check(map(), Project.t(), ResultStore.store(), String.t()) :: :ok
-  defp witness_cold_check(%{"cold_check" => cold_check}, project, store, landed_sha) when is_map(cold_check) do
+  @spec witness_cold_check(map(), Project.t(), ResultStore.store(), String.t(), String.t(), String.t()) :: :ok
+  defp witness_cold_check(%{"cold_check" => cold_check}, project, store, landed_sha, worktree_path, repo)
+       when is_map(cold_check) do
     persist_cold_check(project, store, landed_sha, cold_check)
 
     if cold_check_failed?(cold_check) do
       reason = cold_check_reason(landed_sha, cold_check)
-      task_id = file_blocked_cold_check_task(project, landed_sha, cold_check, reason)
+      task_id = file_blocked_cold_check_task(project, landed_sha, cold_check, reason, worktree_path, repo)
       notify_cold_check_red(project, task_id, reason)
     end
 
     :ok
   end
 
-  defp witness_cold_check(_report, _project, _store, _landed_sha), do: :ok
+  defp witness_cold_check(_report, _project, _store, _landed_sha, _worktree_path, _repo), do: :ok
 
   @spec persist_cold_check(Project.t(), ResultStore.store(), String.t(), map()) :: :ok
   defp persist_cold_check(project, store, landed_sha, cold_check) do
@@ -613,11 +620,13 @@ defmodule Harness.Audit do
     |> String.slice(0, @cold_check_tail_limit)
   end
 
-  @spec file_blocked_cold_check_task(Project.t(), String.t(), map(), String.t()) :: String.t()
-  defp file_blocked_cold_check_task(project, landed_sha, cold_check, reason) do
-    with {:ok, output} <- rmap_new(project, cold_check_task_fragment(landed_sha, cold_check)),
+  @spec file_blocked_cold_check_task(Project.t(), String.t(), map(), String.t(), String.t(), String.t()) :: String.t()
+  defp file_blocked_cold_check_task(project, landed_sha, cold_check, reason, worktree_path, repo) do
+    tasks_path = tasks_path_in_worktree(project, worktree_path, repo)
+
+    with {:ok, output} <- rmap_new(tasks_path, cold_check_task_fragment(landed_sha, cold_check)),
          {:ok, task_id} <- parse_created_task_id(output),
-         {:ok, _blocked} <- rmap_status_blocked(project, task_id, reason) do
+         {:ok, _blocked} <- rmap_status_blocked(tasks_path, task_id, reason) do
       task_id
     else
       failure ->
@@ -646,14 +655,14 @@ defmodule Harness.Audit do
     """
   end
 
-  @spec rmap_new(Project.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
-  defp rmap_new(project, fragment) do
-    run_rmap_with_input(tasks_path(project), fragment)
+  @spec rmap_new(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  defp rmap_new(tasks_path, fragment) do
+    run_rmap_with_input(tasks_path, fragment)
   end
 
-  @spec rmap_status_blocked(Project.t(), String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
-  defp rmap_status_blocked(project, task_id, reason) do
-    run_rmap(["status", task_id, "blocked", "--reason", reason, "--tasks-path", tasks_path(project)], [])
+  @spec rmap_status_blocked(String.t(), String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  defp rmap_status_blocked(tasks_path, task_id, reason) do
+    run_rmap(["status", task_id, "blocked", "--reason", reason, "--tasks-path", tasks_path], [])
   end
 
   @spec run_rmap([String.t()], keyword()) :: {:ok, String.t()} | {:error, term()}
@@ -700,6 +709,58 @@ defmodule Harness.Audit do
   @spec tasks_path(Project.t()) :: String.t()
   defp tasks_path(%Project{roadmap_path: path}) do
     if Path.basename(path) == "tasks.toml", do: path, else: Path.join([path, "roadmap", "tasks.toml"])
+  end
+
+  @spec tasks_path_in_worktree(Project.t(), String.t(), String.t()) :: String.t()
+  defp tasks_path_in_worktree(project, worktree_path, repo) do
+    Path.join(worktree_path, Path.relative_to(tasks_path(project), repo))
+  end
+
+  @spec project_repo(Project.t()) :: String.t()
+  defp project_repo(project) do
+    {:ok, repo} = Project.local_repo_path(project)
+    repo
+  end
+
+  @spec commit_cold_check_discovery(String.t()) :: :ok | {:error, term()}
+  defp commit_cold_check_discovery(path) do
+    if File.dir?(Path.join(path, "roadmap")) do
+      case Git.run(["add", "--", "roadmap"], path) do
+        {:ok, _output} -> commit_staged_discovery(path)
+        {:error, reason} -> {:error, {:cold_check_discovery_stage_failed, reason}}
+      end
+    else
+      :ok
+    end
+  end
+
+  @spec commit_staged_discovery(String.t()) :: :ok | {:error, term()}
+  defp commit_staged_discovery(path) do
+    case Git.run(["diff", "--cached", "--quiet"], path) do
+      {:ok, _output} ->
+        :ok
+
+      {:error, {:git_failed, _args, 1, _output}} ->
+        case Git.run(
+               [
+                 "-c",
+                 "user.name=harness",
+                 "-c",
+                 "user.email=harness@localhost",
+                 "commit",
+                 "-q",
+                 "-m",
+                 "audit: file cold-check discovery"
+               ],
+               path
+             ) do
+          {:ok, _output} -> :ok
+          {:error, reason} -> {:error, {:cold_check_discovery_commit_failed, reason}}
+        end
+
+      {:error, reason} ->
+        {:error, {:cold_check_discovery_diff_failed, reason}}
+    end
   end
 
   @spec short_sha(String.t()) :: String.t()

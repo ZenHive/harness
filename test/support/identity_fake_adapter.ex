@@ -23,6 +23,21 @@ defmodule Harness.Test.IdentityFakeAdapter do
 
   @impl AgentAdapter
   @spec build_command(Invocation.t()) :: {:ok, AgentAdapter.command()} | {:error, term()}
+  def build_command(%Invocation{adapter_opts: [command: {:audit_file_discovery, short_sha}]}) do
+    script =
+      ~S(mkdir -p .audit; printf '%s' "$2" | rmap new --from-stdin --tasks-path roadmap/tasks.toml; ) <>
+        ~S|echo discovery > ".audit/$1.md"; git add roadmap .audit; | <>
+        ~S|git -c user.email=audit@fake -c user.name=fake-audit commit -q -m "audit($1): filed discovery"|
+
+    fragment = ~S|[[task]]
+phase = 23
+title = "Audit discovery"
+scores = { d = 1, b = 1, u = 1 }
+|
+
+    {:ok, {"/bin/sh", ["-c", script, "harness-fake", short_sha, fragment], []}}
+  end
+
   def build_command(%Invocation{} = invocation) do
     with {:ok, {exe, argv, env}} <- FakeAdapter.build_command(invocation) do
       {:ok, {exe, bind_argv(argv, invocation.env), env}}
