@@ -455,19 +455,6 @@ Same root cause as the duplicate-land trap above, seen from the dispatch side: *
 the source of truth for what landed** — not an await return value, not a local
 `tasks.toml`, not a transcript.
 
-**Herdr panes are an optional operator convenience for watching, never a harness
-surface.** When the orchestrator session runs inside Herdr (`HERDR_ENV=1` — the
-operator's default), the wave watcher above and ad-hoc run babysitting can run
-*visibly*: `herdr pane split --current --no-focus` + `pane run` for the watcher
-loop, an attach pane tailing `dispatch-transcript` for a run under scrutiny,
-`herdr worktree open --path <retained-worktree>` to inspect a failed run, and
-`herdr notification show "…" --sound done` as a configured witness-notification
-sink. Strictly operator-side: dispatched agents stay headless over Ports, and
-Herdr's `idle`/`blocked` classification is never a harness signal (adjudicated —
-harness repo `docs/orchestration-library-evaluation.md`, Addendum 2026-08-25,
-incl. the deliberately unmitigated `HERDR_*` env-inheritance risk for dispatched
-agents).
-
 **Cron manual-approval mode.** A per-project cron poller in `:auto` mode dispatches unattended; in `:manual` mode it **parks** each dispatch decision instead of enqueuing — drain the parked decisions with `dispatch-pending` and approve them with `dispatch-approve`, keeping the orchestrator in the loop for autonomous polling.
 
 ### Orchestrator Loop — the Architect Seat the Per-Task Reviewer Can't Fill
@@ -591,7 +578,7 @@ The `rmap` CLI (the roadmap substrate `roadmap/tasks.toml` uses) is a sibling Ru
 
 ## Commands
 
-Toolchain: **Elixir 1.20.0 / OTP 29** (asdf) — pinned by the repo-local `.tool-versions` (`elixir 1.20.0-otp-29` / `erlang 29.0.1`). `mix.exs` floors at `~> 1.18`; a repo-local `.tool-versions.1.18` (1.18.4/OTP27) pins the lower-bound compat target — `cp .tool-versions.1.18 .tool-versions` to build against it. Postgres required for the Oban dispatch layer.
+Toolchain: **Elixir 1.20.3 / OTP 29** (asdf) — pinned by the repo-local `.tool-versions` (`elixir 1.20.3-otp-29` / `erlang 29.0.5`). `mix.exs` floors at `~> 1.18`; a repo-local `.tool-versions.1.18` (1.18.4/OTP27) pins the lower-bound compat target — `cp .tool-versions.1.18 .tool-versions` to build against it. Postgres required for the Oban dispatch layer.
 
 > **Sync `main` before committing when auto-land is on.** With `landing_policy: :auto`, the lander is a *second committer* to `origin/<target>`: it ff-pushes from a detached worktree, then `Harness.Git.TargetSync` may fast-forward the operator's local target (off-target → ff the branch ref; on-target + clean tree → `merge --ff-only`). It **skips** — with a witnessed reason, never `--force` — when the tree is dirty, the update is not a fast-forward, or the target **is this running node's own source tree** (self-host: path identity, not the project name `"harness"`). A self-host skip leaves the node's checkout untouched so a land cannot mutate the tree the BEAM is running from. **Before any commit/push, `git fetch origin main && git rebase origin/main`** (or `git pull --rebase origin main`) — rebase, because you'll often have local commits the lander doesn't, and under dogfooding the self-host skip means the live checkout *always* drifts. Skip it and you get a stale base / non-ff push reject. A clean rebase → `git push origin main` is the completing step; just do it. If the rebase still has unresolved conflicts or the push is non-ff, stop and surface it — don't force-push a shared branch.
 
