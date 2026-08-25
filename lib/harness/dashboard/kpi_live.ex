@@ -31,7 +31,7 @@ defmodule Harness.Dashboard.KPILive do
 
   ## Relationship to Task 81 (`CompareLive`) — deliberate siblings
 
-  `CompareLive` (Task 81, pending) is a *per-comparison A/B* surface: launch N
+  `CompareLive` (Task 81) is a *per-comparison A/B* surface: launch N
   adapters against one task, then read their side-by-side metrics + transcripts
   for that single comparison. This view is the *fleet-wide aggregate* over every
   run ever persisted. Different data (one transient comparison vs the whole

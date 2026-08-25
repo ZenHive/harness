@@ -10,9 +10,9 @@ defmodule Harness.Project.Source.Github do
   deleted between runs, the next call transparently re-clones rather than
   failing.
 
-  Credentials piggyback on the host's existing `gh` CLI and SSH config — if a
-  shell `git clone` of the URL succeeds for the user, harness's `System.cmd`
-  shell-out will too. No auth layer lives inside harness.
+  Harness accepts HTTP(S), SSH, `git://`, and `git@host:path` clone addresses.
+  Credentials piggyback on the host's existing `gh` CLI and SSH config; no auth
+  layer lives inside harness.
 
   ## Cache root
 

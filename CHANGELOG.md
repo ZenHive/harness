@@ -77,6 +77,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **KPI settlement refreshes are coalesced and bounded (Task 358).** `/harness/kpi` now batches a burst of `:harness_run_settled` events into one deferred aggregate refresh per LiveView, then reopens the window for later settlements. The record-derived review-stuck and recovery aggregates read only the 1,000 newest runs instead of scanning the full ledger; tests pin both the refresh lifecycle and query limit.
+
+- **Settings reads are cached and model-catalog probes revalidate out of band (Task 404).** `Harness.SettingsStore` now fronts persistent settings with a write-through ETS cache, preserving a completed `put/2` ahead of an older in-flight fetch. Stale model catalogs are served immediately while a deduplicated background task probes the agent CLI, so `/harness/settings` ticks no longer block on synchronous catalog commands. The `repo_enabled: false` no-op path remains uncached.
+
 - **Adapter subsystem extracted to `harness_agent_adapter` (Task 397).** `mix.exs` takes the ZenHive git dependency; `lib/harness/agent_adapter.ex` and `lib/harness/agent_adapter/` (2,549 lib LOC) plus the moved tests (2,768 LOC) are deleted. The package kept the `Harness.AgentAdapter.*` namespace, so harness call sites compile unchanged. Agent process timeouts (`total_timeout` / `idle_timeout` / `progress_timeout`) now live under `config :harness_agent_adapter, :run` so `:harness, :run` can stay owned by `Harness.Run`'s lifetime/memory guards; the dashboard timeout card still writes `:harness, :run` and Run forwards those values as Driver opts. Test doubles moved to `Harness.AgentAdapter.Testing.*`. The extracted package already carries the 722f97d `cursor-` family prefix (`cursor-grok-4.6-*`).
 
 - **`anubis_mcp` 1.14.0 → 2.0.0 (Task 384).** `mix.exs` constraint raised from `~> 1.6` to `~> 2.0`. Confirmed against the 2.0.0 source that Streamable HTTP, `should_start?/1`, the macro-generated `child_spec/1`, and persistent_term session config are unchanged; harness never used the removed HTTP+SSE transport, never pinned a protocol-versions floor, and never emits resource/blob content, so no `lib/` or test changes were required.
@@ -91,6 +95,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Loopback MCP requests and GitHub-source clone URLs are guarded (Task 403).** `/harness/mcp` rejects browser requests whose `Origin` is not HTTP(S) loopback before either session creation or direct tool dispatch. `Harness.Project.Source.Github` accepts only HTTP(S), SSH, `git://`, or scp-style `git@host:path` clone addresses, rejects leading-dash operands, and passes `--` before the URL and destination so Git cannot reinterpret either as an option.
+
 - **`bandit` 1.12.4 → 1.12.5.** Hex 1.12.5 is the fix for `EEF-CVE-2026-74836` (HIGH) and `EEF-CVE-2026-75484` on 1.12.4. Same lock bump also took `phoenix` 1.8.12, `phoenix_live_view` 1.2.10, `descripex` 0.13.0, and `ex_unit_json` 0.6.1.
 
 - **Mountable-consumer auth boundary documented (Task 363).** Endpoint and Router moduledocs, plus `skills/harness-driver/SKILL.md`, now state that harness ships no authentication for the dashboard, Oban Web, or `/harness/mcp`. That is safe only at the standalone endpoint's default loopback bind; a consumer mounting these routes in a non-loopback or public Phoenix endpoint must put its own auth in front of both the browser pipeline and the separate MCP forward. No auth plug was added.
@@ -98,6 +104,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ETF payload decoding hardened with `binary_to_term(payload, [:safe])`.** `Harness.ProjectRegistry.Persistence`, `Harness.ResultStore.Postgres`, and `Harness.SettingsStore.Postgres` now decode persisted Erlang terms in `:safe` mode, so a tampered or corrupt row can't create new atoms or resource-embedding terms during decode. Malformed payloads still degrade to `{:error, :invalid_term}` through the existing `ArgumentError` rescue.
 
 ### Fixed
+
+- **The full project gate is green again (Task 401).** The duplicated Oban dispatch-insert path in `Harness.Run.Worker` is one helper with regression coverage for single, coalesced, conflict, success, and error outcomes. Four Dialyzer dead-clause warnings were resolved at their stale contracts without ignores, and offline worker coverage rose above the required 80% tier; the zero-clone gate and full `mix ci` pass again.
 
 - **Daily cron schedules honour the operator timezone.** Oban's Cron plugin defaulted to `"Etc/UTC"`, so `SuiteHealthPoller`'s `"0 0 * * *"` fired at 08:00 in UTC+8 — inside the working day for a full-suite sweep meant to run overnight. `config :harness, :cron_timezone` (default `"Asia/Kuala_Lumpur"`) plus `tzdata` as the Elixir time-zone database make midnight mean the operator's midnight.
 
