@@ -1,6 +1,24 @@
+defmodule Harness.CapabilityScoreTest.FilterProbeStore do
+  @moduledoc false
+
+  alias Harness.ResultStore
+  alias Harness.ResultStore.Memory
+  alias Harness.Run.LogRecord
+
+  @spec record_run(LogRecord.t(), keyword()) :: :ok
+  def record_run(record, opts), do: Memory.record_run(record, opts)
+
+  @spec list_run_records(ResultStore.filters(), keyword()) :: {:ok, [LogRecord.t()]}
+  def list_run_records(filters, opts) do
+    send(Keyword.fetch!(opts, :test_pid), {:list_run_records, filters})
+    Memory.list_run_records(Keyword.delete(filters, :test_pid), opts)
+  end
+end
+
 defmodule Harness.CapabilityScoreTest do
   use ExUnit.Case, async: true
 
+  alias __MODULE__.FilterProbeStore
   alias Harness.AgentAdapter.Claude
   alias Harness.CapabilityScore
   alias Harness.CapabilityScore.Assessment
@@ -321,6 +339,33 @@ defmodule Harness.CapabilityScoreTest do
     assert assessment.entries |> hd() |> Map.fetch!(:by_agent) |> Map.has_key?(:codex)
     assert {:ok, loaded} = CapabilityScore.read_assessment(assessment_root: root)
     assert loaded.entries |> hd() |> Map.fetch!(:by_agent) |> Map.has_key?(:codex)
+  end
+
+  test "refresh reads a bounded newest-first window instead of the whole ledger",
+       %{store: {MemoryStore, store_opts}, assessment_root: root} do
+    store = {FilterProbeStore, Keyword.put(store_opts, :test_pid, self())}
+
+    assert :ok = ResultStore.record_run(record(review_facets: %{"surface" => "otp"}), store)
+
+    scout = fn context ->
+      {:ok,
+       %Assessment{
+         assessed_at: ~U[2026-06-06 12:00:00Z],
+         record_count: context.record_count,
+         entries: []
+       }}
+    end
+
+    prev = Application.get_env(:harness, :capability_scout)
+    on_exit(fn -> restore_scout(prev) end)
+    Application.put_env(:harness, :capability_scout, scout)
+
+    assert {:ok, _assessment} =
+             CapabilityScore.refresh(result_store: store, assessment_root: root)
+
+    assert_receive {:list_run_records, filters}
+    assert is_integer(Keyword.fetch!(filters, :limit))
+    assert Keyword.fetch!(filters, :limit) > 0
   end
 
   defp sample_assessment do

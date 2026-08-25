@@ -30,6 +30,11 @@ defmodule Harness.CapabilityScore do
   @default_adapter :codex
   @default_idle_timeout 120_000
   @default_total_timeout 300_000
+  # Newest-first window handed to the scout. `run_records` grows without bound
+  # (transcript retention nulls blobs, it never deletes rows), so an unfiltered
+  # read decodes the whole table on every refresh. Matches the bound
+  # `ResultStore`'s KPI aggregates already use.
+  @scout_record_limit 1_000
   @known_agents [:claude, :codex, :cursor, :grok, :antigravity, :pi]
   @known_agent_names Map.new(@known_agents, &{Atom.to_string(&1), &1})
 
@@ -139,6 +144,9 @@ defmodule Harness.CapabilityScore do
   @doc """
   Refreshes the per-facet assessment: group records, spawn the scout AI, persist.
 
+  Reads the newest #{@scout_record_limit} run records; `record_count` on the
+  returned assessment is the size of that window, not the whole ledger.
+
   Injectable via `config :harness, :capability_scout` (`fun(context) ::
   {:ok, assessment} | {:error, term()}`) for tests.
   """
@@ -146,7 +154,7 @@ defmodule Harness.CapabilityScore do
   def refresh(opts \\ []) when is_list(opts) do
     store = Keyword.get(opts, :result_store, ResultStore.configured())
 
-    with {:ok, records} <- ResultStore.list_run_records(store, []),
+    with {:ok, records} <- ResultStore.list_run_records(store, limit: @scout_record_limit),
          context = %{record_count: length(records), groups: build_scout_context(records)},
          {:ok, assessment} <- run_scout(context, opts),
          assessment =
