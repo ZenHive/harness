@@ -207,6 +207,19 @@ Same root cause as the duplicate-land trap above, seen from the dispatch side: *
 the source of truth for what landed** — not an await return value, not a local
 `tasks.toml`, not a transcript.
 
+**Herdr panes are an optional operator convenience for watching, never a harness
+surface.** When the orchestrator session runs inside Herdr (`HERDR_ENV=1` — the
+operator's default), the wave watcher above and ad-hoc run babysitting can run
+*visibly*: `herdr pane split --current --no-focus` + `pane run` for the watcher
+loop, an attach pane tailing `dispatch-transcript` for a run under scrutiny,
+`herdr worktree open --path <retained-worktree>` to inspect a failed run, and
+`herdr notification show "…" --sound done` as a configured witness-notification
+sink. Strictly operator-side: dispatched agents stay headless over Ports, and
+Herdr's `idle`/`blocked` classification is never a harness signal (adjudicated —
+harness repo `docs/orchestration-library-evaluation.md`, Addendum 2026-08-25,
+incl. the deliberately unmitigated `HERDR_*` env-inheritance risk for dispatched
+agents).
+
 **Cron manual-approval mode.** A per-project cron poller in `:auto` mode dispatches unattended; in `:manual` mode it **parks** each dispatch decision instead of enqueuing — drain the parked decisions with `dispatch-pending` and approve them with `dispatch-approve`, keeping the orchestrator in the loop for autonomous polling.
 
 ### Orchestrator Loop — the Architect Seat the Per-Task Reviewer Can't Fill

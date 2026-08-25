@@ -111,6 +111,47 @@ Recorded so a future instance knows what was deliberately copied vs. invented.
 | Run/turn **lifecycle hooks** (`pre_run`/`post_run` vs `pre_turn`/`post_turn`) — the naming symmetry | `gen_agent` | harness's analog is per-batch vs per-run hooks. |
 | Name runs in a **`Registry`** rather than tracking bare PIDs | `gen_agent` (Registry-registered agents) | Standard OTP, but a good reminder for the run layer. |
 
+## Addendum 2026-08-25 — Herdr (terminal multiplexer for coding agents)
+
+> Adjudicated 2026-08-25 (code analysis + full roadmap sweep). Cite this; don't
+> re-derive it.
+
+**Herdr** (`herdr` CLI) organizes terminals into workspaces/tabs/panes,
+recognizes *interactive* coding agents inside panes (claude/codex/cursor/grok/…),
+classifies their lifecycle (`idle`/`working`/`blocked`/`done`/`unknown`), and can
+start/prompt/read them (`herdr agent start|prompt|wait|read`, `pane split|run|read`,
+`worktree create|open`, `notification show`).
+
+**Verdict: no harness integration — neither as execution backend nor as
+observability layer. Herdr's value is entirely operator-side.**
+
+| Considered role | Verdict | Why |
+|---|---|---|
+| Execution backend (agents in visible panes instead of headless Ports) | **No** | `AgentAdapter.invoke/2` is built on a synchronous OTP Port (`build_command/1` → `{executable, argv, env}`, termination = Port close); a Herdr adapter would replace that with polled pane reads — a second, structurally different execution model, breaking the settled "uniform Ports for every adapter" decision above. Task 23 (done) deliberately gives every agent Port immediate stdin-EOF: the architectural commitment *against* interactive agents. Server-side cron autonomy (Tasks 48/51) has no visible terminal session at all. |
+| Mid-flight steering via `agent send-keys`/`prompt` | **No** | Tasks 150/113 (done) explicitly settle boundary-only steering ("there is NO live mid-flight stdin steering"); hold/steer/resume applies operator input at invocation boundaries. |
+| Question/approval detection via Herdr's `blocked` state | **No** | Herdr's `blocked` is a UI-dialog classifier — meaning inferred from terminal content, exactly the judgment-in-code class deleted in the agent-gate rebuild (Tasks 153–163). The sanctioned design is Task 399's mechanical `.harness/question.json` → `:held` → steer/resume file check. |
+| Run observability (pane transcript reads) | **No** | Duplicates the dashboard surface (Tasks 18, 50, 105, 107, 134, 242/243) and the in-flight `live-run-legibility` bundle (311–315), with worse persistence than `ResultStore`/`dispatch-transcript`. |
+| Operator-side tooling (no harness code) | **Yes** | (1) `herdr notification show … --sound done` as a configured witness-notification sink; (2) orchestrator-spawned attach/debug panes tailing `dispatch-transcript` for a run being babysat (see `priv/includes/harness-workflow.md`); (3) `herdr worktree open --path <retained-worktree>` to inspect failed-run worktrees. Operator Claude sessions now run inside Herdr by default, so these are standing conveniences — dispatched agents themselves stay headless and Herdr-free. |
+
+### Known, deliberately unmitigated risk — `HERDR_*` env inheritance
+
+When the harness node (and therefore every dispatched agent Port) is started
+from inside a Herdr pane, dispatched agents inherit `HERDR_ENV=1` plus the
+caller's `HERDR_WORKSPACE_ID`/`HERDR_TAB_ID`/`HERDR_PANE_ID`. A dispatched
+Claude implementer loads user-level CLAUDE.md (which imports the Herdr skill),
+so it *could* pass the skill's env gate and issue `herdr` pane/agent commands
+against the **operator's live session** — splitting panes, prompting the
+operator's agents, reading operator scrollback. The skill's second gate ("act
+only when the user explicitly names Herdr") makes this unlikely for normal task
+prompts.
+
+**Operator decision 2026-08-25: do NOT scrub — observe first.** The fix, if it
+ever fires, is one line at dispatch time: add `"HERDR_ENV" => false` (and the
+other `HERDR_*` keys) to the `Invocation.env` scrub pairs (Task 25 mechanism) —
+no adapter code change. Symptoms that mean "it fired": unexplained pane
+splits/prompts in the operator session during a run, or `herdr` commands in a
+dispatched implementer transcript that the task prompt never asked for.
+
 ## Acceptance criteria — status
 
 - [x] Each candidate skimmed for whether it offers anything the thin OTP core doesn't — none does.

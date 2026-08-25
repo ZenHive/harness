@@ -106,7 +106,7 @@ Self-contained so it reaches `AGENTS.md` (and the cross-family reviewer) even af
 
 ## Orchestration Library — Build a Thin Core (settled, Task 2)
 
-Core is textbook OTP (Port per run, `gen_statem` per run, `DynamicSupervisor` for batches). Adopting a niche orchestration lib adds risk, not leverage. Evaluated `opal`, `gen_agent(_ensemble)`, `altar_ai`, `ex_mcp`, and SDKs `claude_code`/`codex_sdk` — **outcome: build thin core, adopt none, uniform Ports.** Full rationale: `docs/orchestration-library-evaluation.md`.
+Core is textbook OTP (Port per run, `gen_statem` per run, `DynamicSupervisor` for batches). Adopting a niche orchestration lib adds risk, not leverage. Evaluated `opal`, `gen_agent(_ensemble)`, `altar_ai`, `ex_mcp`, and SDKs `claude_code`/`codex_sdk` — **outcome: build thin core, adopt none, uniform Ports.** Also adjudicated 2026-08-25: **Herdr** (terminal multiplexer for coding agents) — no integration as execution backend or observability layer (collides with headless stdin-EOF Task 23, boundary-only steering 150/113, the mantra, and server autonomy); operator-side tooling only, incl. a deliberately unmitigated `HERDR_*` env-inheritance risk. Full rationale: `docs/orchestration-library-evaluation.md`.
 
 - **None of the orchestration libs spawns/supervises an external OS process** — no Port in any of them; they coordinate *in-process* LLM agents, harness orchestrates *external* headless CLIs.
 - **`claude_code` / `codex_sdk` are CLI wrappers**, not native reimplementations. An SDK's headline value is a normalized event model, which harness's raw-passthrough design deliberately discards. So **uniform Ports for every adapter**.

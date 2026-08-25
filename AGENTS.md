@@ -455,6 +455,19 @@ Same root cause as the duplicate-land trap above, seen from the dispatch side: *
 the source of truth for what landed** — not an await return value, not a local
 `tasks.toml`, not a transcript.
 
+**Herdr panes are an optional operator convenience for watching, never a harness
+surface.** When the orchestrator session runs inside Herdr (`HERDR_ENV=1` — the
+operator's default), the wave watcher above and ad-hoc run babysitting can run
+*visibly*: `herdr pane split --current --no-focus` + `pane run` for the watcher
+loop, an attach pane tailing `dispatch-transcript` for a run under scrutiny,
+`herdr worktree open --path <retained-worktree>` to inspect a failed run, and
+`herdr notification show "…" --sound done` as a configured witness-notification
+sink. Strictly operator-side: dispatched agents stay headless over Ports, and
+Herdr's `idle`/`blocked` classification is never a harness signal (adjudicated —
+harness repo `docs/orchestration-library-evaluation.md`, Addendum 2026-08-25,
+incl. the deliberately unmitigated `HERDR_*` env-inheritance risk for dispatched
+agents).
+
 **Cron manual-approval mode.** A per-project cron poller in `:auto` mode dispatches unattended; in `:manual` mode it **parks** each dispatch decision instead of enqueuing — drain the parked decisions with `dispatch-pending` and approve them with `dispatch-approve`, keeping the orchestrator in the loop for autonomous polling.
 
 ### Orchestrator Loop — the Architect Seat the Per-Task Reviewer Can't Fill
@@ -633,7 +646,7 @@ Self-contained so it reaches `AGENTS.md` (and the cross-family reviewer) even af
 
 ## Orchestration Library — Build a Thin Core (settled, Task 2)
 
-Core is textbook OTP (Port per run, `gen_statem` per run, `DynamicSupervisor` for batches). Adopting a niche orchestration lib adds risk, not leverage. Evaluated `opal`, `gen_agent(_ensemble)`, `altar_ai`, `ex_mcp`, and SDKs `claude_code`/`codex_sdk` — **outcome: build thin core, adopt none, uniform Ports.** Full rationale: `docs/orchestration-library-evaluation.md`.
+Core is textbook OTP (Port per run, `gen_statem` per run, `DynamicSupervisor` for batches). Adopting a niche orchestration lib adds risk, not leverage. Evaluated `opal`, `gen_agent(_ensemble)`, `altar_ai`, `ex_mcp`, and SDKs `claude_code`/`codex_sdk` — **outcome: build thin core, adopt none, uniform Ports.** Also adjudicated 2026-08-25: **Herdr** (terminal multiplexer for coding agents) — no integration as execution backend or observability layer (collides with headless stdin-EOF Task 23, boundary-only steering 150/113, the mantra, and server autonomy); operator-side tooling only, incl. a deliberately unmitigated `HERDR_*` env-inheritance risk. Full rationale: `docs/orchestration-library-evaluation.md`.
 
 - **None of the orchestration libs spawns/supervises an external OS process** — no Port in any of them; they coordinate *in-process* LLM agents, harness orchestrates *external* headless CLIs.
 - **`claude_code` / `codex_sdk` are CLI wrappers**, not native reimplementations. An SDK's headline value is a normalized event model, which harness's raw-passthrough design deliberately discards. So **uniform Ports for every adapter**.
