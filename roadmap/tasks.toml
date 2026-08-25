@@ -11831,7 +11831,7 @@ scored_at = "2026-08-23"
 id = "393"
 phase = 22
 bundle = "core-loop"
-status = "in_progress"
+status = "blocked"
 title = "Fence .harness/review.json to the reviewer that wrote it — a killed reviewer's stale approve can settle the run :done"
 scores = { d = 3, b = 9, u = 8 }
 markers = ["bug"]
@@ -11841,6 +11841,7 @@ touches = ["lib/harness/run/review.ex", "lib/harness/run/actions/reviewing.ex", 
 domains = ["run-lifecycle"]
 assignee = "grok"
 model = "grok-4.6"
+blocked_reason = '''land conflict retained for repair (task 393, run run-1787622462968-be93518a, branch harness/run-1787622462968-be93518a); resolver already attempted and the branch still conflicted. resolver witness: agent spawned: cursor model=cursor-grok-4.6-xhigh; rebase continue failed: "Recorded resolution for 'test/harness/dashboard/kpi_live_test.exs'.\n[detached HEAD 09c1c20] harness: agent delivery — task 393 Fence .harness/review.json to the reviewer that wrote it — a killed reviewer's stale approve can settle the run :done (run run-1787622462968-be93518a)\n Author: harness <harness@localhost>\n 34 files changed, 572 insertions(+), 65 deletions(-)\n create mode 100644 .cursor/rules/harness-operational.mdc\n create mode 100644 test/harness/run/review_fence_test.exs\n create mode 100644 test/support/identity_fake_adapter.ex\nRebasing (2/3)\rAuto-merging test/harness/dashboard/kpi_live_test.exs\nCONFLICT (content): Merge conflict in test/harness/dashboard/kpi_live_test.exs\nerror: could not apply 5254d08... harness: reviewer fixes — task 393 Fence .harness/review.json to the reviewer that wrote it — a killed reviewer's stale approve can settle the run :done (run run-1787622462968-be93518a)\nhint: Resolve all conflicts manually, mark them as resolved with\nhint: \"git add/rm <conflicted_files>\", then run \"git rebase --continue\".\nhint: You can instead skip this commit: run \"git rebase --skip\".\nhint: To abort and get back to the state before \"git rebase\", run \"git rebase --abort\".\nhint: Disable this message with \"git config set advice.mergeConflict false\"\nRecorded preimage for 'test/harness/dashboard/kpi_live_test.exs'\nCould not apply 5254d08... # harness: reviewer fixes — task 393 Fence .harness/review.json to the reviewer that wrote it — a killed reviewer's stale approve can settle the run :done (run run-1787622462968-be93518a)\n". Repair: rebase the retained branch onto the target branch, resolve all conflict markers while keeping both reviewed intents, commit the resolved branch, move harness/run-1787622462968-be93518a to that commit if you used a scratch branch, then run dispatch-reland run-1787622462968-be93518a.'''
 body = """
 Harness.Run.Review.read/1 (lib/harness/run/review.ex:117) is a bare Artifact.read of .harness/review.json plus a JSON decode. Nothing removes the file before a reviewer spawns, and nothing binds it to the reviewer instance that wrote it. Three live paths reuse the same worktree and can therefore hand harness a verdict from a reviewer that is no longer the one being waited on: rotation on reviewer timeout, the capped re-prompt (@reviewer_reprompt_limit 1), and dispatch-rereview against a retained branch.
 
