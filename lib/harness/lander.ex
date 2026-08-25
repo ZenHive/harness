@@ -78,6 +78,7 @@ defmodule Harness.Lander do
           optional(:task_ids) => [String.t()],
           :branch => String.t(),
           optional(:task_fingerprint) => String.t() | nil,
+          optional(:task_fingerprints) => %{optional(String.t()) => String.t() | nil},
           optional(:agent) => atom() | String.t() | nil,
           optional(:reviewer) => atom() | String.t() | nil
         }

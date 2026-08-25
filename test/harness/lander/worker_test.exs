@@ -32,6 +32,18 @@ defmodule Harness.Lander.WorkerTest do
       assert {:cancel, {:missing_arg, "branch"}} =
                Worker.perform(%Oban.Job{args: %{"project_name" => "demo"}})
     end
+
+    test "cancels when run_id is missing" do
+      assert {:cancel, {:missing_arg, "run_id"}} =
+               Worker.perform(%Oban.Job{args: %{"project_name" => "demo", "branch" => "harness/x"}})
+    end
+
+    test "cancels when task_id is missing" do
+      assert {:cancel, {:missing_arg, "task_id"}} =
+               Worker.perform(%Oban.Job{
+                 args: %{"project_name" => "demo", "branch" => "harness/x", "run_id" => "x"}
+               })
+    end
   end
 
   describe "perform/1 — runtime landing override (dashboard auto-land)" do

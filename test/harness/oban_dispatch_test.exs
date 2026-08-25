@@ -1256,6 +1256,15 @@ defmodule Harness.ObanDispatchTest do
     %Item{id: id, title: "Task #{id}", prompt: "do #{id}", agent: agent, model: model}
   end
 
+  defp stub_insert_conflict(existing_run_id) do
+    Application.put_env(:harness, :oban_insert, fn changeset ->
+      job = Ecto.Changeset.apply_action!(changeset, :insert)
+      args = Map.put(job.args, :run_id, existing_run_id)
+
+      {:ok, %{job | args: args, conflict?: true}}
+    end)
+  end
+
   # Merge keys into the :harness :run config (runtime.exs seeds it with
   # max_hold_timeout) and restore the original on exit, so node-pressure gate
   # tests can set mem_highwater_kb / mem_pressure_snooze without clobbering it.
@@ -1316,6 +1325,114 @@ defmodule Harness.ObanDispatchTest do
       |> Harness.Repo.update!()
 
       refute HarnessOban.unfinished_run_job?(project, "237")
+    end
+  end
+
+  describe "run worker offline enqueue contract" do
+    setup do
+      Application.put_env(:harness, :result_store, false)
+      :ok
+    end
+
+    test "single-task unique conflict returns the existing run id" do
+      project = ProjectFixture.from_repo("/tmp/harness-single-conflict", name: "single-conflict")
+      item = item("401-single", :claude)
+
+      stub_insert_conflict("existing-single-run")
+
+      assert {:ok, "existing-single-run", %Oban.Job{conflict?: true} = job} =
+               Worker.enqueue(project, item, Claude, run_id: "new-single-run")
+
+      assert job.args.run_id == "existing-single-run"
+    end
+
+    test "coalesced unique conflict returns the existing member run id" do
+      project = ProjectFixture.from_repo("/tmp/harness-coalesced-conflict", name: "coalesced-conflict")
+      coalesced = Item.coalesce([item("401-a", :claude), item("401-b", :claude)])
+
+      stub_insert_conflict("existing-coalesced-run")
+
+      assert {:ok, "existing-coalesced-run", %Oban.Job{conflict?: true} = job} =
+               Worker.enqueue_coalesced(project, coalesced, Claude, run_id: "new-coalesced-run")
+
+      assert job.args.run_id == "existing-coalesced-run"
+      assert job.args.item_ids == ["401-a", "401-b"]
+    end
+
+    test "plain insert returns the new run id" do
+      project = ProjectFixture.from_repo("/tmp/harness-plain-insert", name: "plain-insert")
+      item = item("401-plain", :claude)
+
+      Application.put_env(:harness, :oban_insert, fn changeset ->
+        {:ok, Ecto.Changeset.apply_action!(changeset, :insert)}
+      end)
+
+      assert {:ok, "new-plain-run", %Oban.Job{conflict?: false}} =
+               Worker.enqueue(project, item, Claude, run_id: "new-plain-run")
+    end
+
+    test "insert error propagates unchanged" do
+      project = ProjectFixture.from_repo("/tmp/harness-insert-error", name: "insert-error")
+      item = item("401-error", :claude)
+
+      Application.put_env(:harness, :oban_insert, fn _changeset -> {:error, :insert_failed} end)
+
+      assert {:error, :insert_failed} = Worker.enqueue(project, item, Claude, run_id: "new-error-run")
+    end
+
+    test "conflict without any recoverable run id fails loudly" do
+      project = ProjectFixture.from_repo("/tmp/harness-missing-conflict-id", name: "missing-conflict-id")
+      item = item("401-missing", :claude)
+
+      Application.put_env(:harness, :oban_insert, fn changeset ->
+        job = Ecto.Changeset.apply_action!(changeset, :insert)
+        {:ok, %{job | args: Map.delete(job.args, :run_id), conflict?: true}}
+      end)
+
+      assert {:error, {:missing_conflict_run_id, "missing-conflict-id", "401-missing"}} =
+               Worker.enqueue(project, item, Claude, run_id: "discarded-run-id")
+    end
+
+    test "approved unlanded record with a retained branch returns a synthetic conflict" do
+      repo = GitFixture.init_repo()
+      project = ProjectFixture.from_repo(repo, name: "offline-settled-unlanded")
+      item = item("401-settled", :claude)
+      run_id = "offline-retained-run"
+
+      Application.put_env(:harness, :result_store, {Memory, root: GitFixture.tmp_base(name: "offline-settled-store")})
+      GitFixture.git!(repo, ["branch", "harness/#{run_id}"])
+
+      assert :ok =
+               ResultStore.record_run(
+                 ResultStoreContract.log_record(
+                   run_id: run_id,
+                   task_id: item.id,
+                   project_name: project.name,
+                   landed_sha: nil
+                 )
+               )
+
+      log =
+        capture_log(fn ->
+          assert {:ok, ^run_id, %Oban.Job{state: "completed", conflict?: true}} =
+                   Worker.enqueue(project, item, Claude)
+        end)
+
+      assert log =~ "dispatch-reland"
+    end
+
+    test "malformed adapter name cancels before roadmap ingestion" do
+      project = ProjectFixture.from_repo("/tmp/harness-invalid-adapter", name: "invalid-adapter")
+      assert :ok = ProjectRegistry.register(project)
+
+      assert {:cancel, {:invalid_adapter_module, "Elixir.Harness.DoesNotExist401"}} =
+               Worker.perform(
+                 job(%{
+                   "project_name" => project.name,
+                   "item_id" => "401-invalid-adapter",
+                   "adapter_module" => "Elixir.Harness.DoesNotExist401"
+                 })
+               )
     end
   end
 

@@ -39,11 +39,13 @@ defmodule Harness.Lander.Worker do
   def perform(%Oban.Job{args: args}) do
     with {:ok, project_name} <- fetch_arg(args, "project_name"),
          {:ok, branch} <- fetch_arg(args, "branch"),
+         {:ok, run_id} <- fetch_arg(args, "run_id"),
+         {:ok, task_id} <- fetch_arg(args, "task_id"),
          {:ok, project} <- ProjectRegistry.lookup(project_name) do
       %{
         project: project,
-        run_id: args["run_id"],
-        task_id: args["task_id"],
+        run_id: run_id,
+        task_id: task_id,
         task_fingerprint: args["task_fingerprint"],
         task_ids: args["task_ids"],
         task_fingerprints: args["task_fingerprints"],

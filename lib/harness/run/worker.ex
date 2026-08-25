@@ -70,9 +70,7 @@ defmodule Harness.Run.Worker do
     period: :infinity
   ]
 
-  @type args :: %{
-          required(String.t()) => String.t()
-        }
+  @type args :: map()
 
   @doc """
   Enqueues a restart-resilient run worker job and returns the run id it will use.
@@ -106,13 +104,7 @@ defmodule Harness.Run.Worker do
         {:ok, run_id, job}
 
       :error ->
-        {run_id, changeset} = new_dispatch_job(project, item, adapter, opts)
-
-        case Harness.Oban.insert(changeset) do
-          {:ok, %Oban.Job{conflict?: true} = job} -> return_existing_run(project, item.id, job)
-          {:ok, job} -> {:ok, run_id, job}
-          {:error, _reason} = error -> error
-        end
+        insert_dispatch_job(project, item, adapter, opts)
     end
   end
 
@@ -130,13 +122,19 @@ defmodule Harness.Run.Worker do
         return_existing_run(project, item.id, job)
 
       :error ->
-        {run_id, changeset} = new_dispatch_job(project, item, adapter, opts)
+        insert_dispatch_job(project, item, adapter, opts)
+    end
+  end
 
-        case Harness.Oban.insert(changeset) do
-          {:ok, %Oban.Job{conflict?: true} = job} -> return_existing_run(project, item.id, job)
-          {:ok, job} -> {:ok, run_id, job}
-          {:error, _reason} = error -> error
-        end
+  @spec insert_dispatch_job(Project.t(), Item.t(), module(), keyword()) ::
+          {:ok, String.t(), Oban.Job.t()} | {:error, term()}
+  defp insert_dispatch_job(%Project{} = project, %Item{} = item, adapter, opts) do
+    {run_id, changeset} = new_dispatch_job(project, item, adapter, opts)
+
+    case Harness.Oban.insert(changeset) do
+      {:ok, %Oban.Job{conflict?: true} = job} -> return_existing_run(project, item.id, job)
+      {:ok, job} -> {:ok, run_id, job}
+      {:error, _reason} = error -> error
     end
   end
 

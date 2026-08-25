@@ -653,7 +653,7 @@ defmodule Harness.ResultStore do
   defp notify_persist_failed(%LogRecord{} = record, reason, spilled_path, pending_labels) do
     Notification.notify(%NotificationEvent{
       type: :persist_failed,
-      task_id: task_id_string(record.task_id),
+      task_id: record.task_id,
       run_id: record.run_id,
       project: record.project_name,
       outcome: %{
@@ -663,11 +663,6 @@ defmodule Harness.ResultStore do
       }
     })
   end
-
-  @spec task_id_string(term()) :: String.t()
-  defp task_id_string(nil), do: "unknown"
-  defp task_id_string(id) when is_binary(id), do: id
-  defp task_id_string(id), do: to_string(id)
 
   @spec reason_label(term()) :: String.t()
   defp reason_label(%Postgrex.Error{postgres: %{code: code}} = error) when not is_nil(code) do
