@@ -381,12 +381,8 @@ defmodule Harness.ModelAvailabilityTest do
 
       install_catalog_probe(fn agent, _executables ->
         send(parent, {:probe, self(), agent})
-
-        receive do
-          :release -> {:ok, [%{id: "probed", label: "Probed", annotations: []}]}
-        after
-          2_000 -> {:error, :catalog_unavailable}
-        end
+        Process.sleep(300)
+        {:error, :catalog_unavailable}
       end)
 
       {usec, result} = :timer.tc(fn -> ModelAvailability.catalog_universe(:antigravity) end)
@@ -396,7 +392,6 @@ defmodule Harness.ModelAvailabilityTest do
 
       assert_receive {:probe, probe_pid, :antigravity}
       refute probe_pid == self()
-      send(probe_pid, :release)
     end
 
     test "refresh_catalog still probes in the calling process" do

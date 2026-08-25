@@ -16,6 +16,7 @@ defmodule Harness.ModelAvailability do
   alias Harness.Notification
   alias Harness.Notification.Event
   alias Harness.SettingsStore
+  alias Harness.Store.EtsHeir
 
   @blocks_key :model_blocks
   @catalogs_key :model_catalogs
@@ -552,40 +553,11 @@ defmodule Harness.ModelAvailability do
       :named_table,
       :public,
       :set,
-      {:heir, revalidate_heir(), :revalidate},
+      {:heir, EtsHeir.pid(@revalidate_heir_name), :revalidate},
       write_concurrency: true
     ])
   rescue
     ArgumentError -> @revalidate_table
-  end
-
-  @spec revalidate_heir() :: pid()
-  defp revalidate_heir do
-    case Process.whereis(@revalidate_heir_name) do
-      pid when is_pid(pid) -> pid
-      nil -> spawn_revalidate_heir()
-    end
-  end
-
-  @spec spawn_revalidate_heir() :: pid()
-  defp spawn_revalidate_heir do
-    pid = spawn(&revalidate_heir_loop/0)
-
-    try do
-      Process.register(pid, @revalidate_heir_name)
-      pid
-    rescue
-      ArgumentError ->
-        Process.exit(pid, :kill)
-        Process.whereis(@revalidate_heir_name)
-    end
-  end
-
-  @spec revalidate_heir_loop() :: no_return()
-  defp revalidate_heir_loop do
-    receive do
-      _ -> revalidate_heir_loop()
-    end
   end
 
   @spec with_catalog_write((-> :ok)) :: :ok

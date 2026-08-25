@@ -1,3 +1,33 @@
+defmodule Harness.SettingsStoreTest.BlockingStore do
+  @moduledoc false
+  @behaviour Harness.SettingsStore
+
+  alias Harness.Test.SettingsStoreMemory
+
+  @impl Harness.SettingsStore
+  @spec fetch(String.t(), keyword()) :: {:ok, term()} | :not_found
+  def fetch(key, backend_opts) when is_binary(key) and is_list(backend_opts) do
+    snapshot = SettingsStoreMemory.fetch(key, Keyword.delete(backend_opts, :owner))
+
+    case Keyword.get(backend_opts, :owner) do
+      pid when is_pid(pid) -> send(pid, {:fetch_started, self(), key})
+      _ -> :ok
+    end
+
+    receive do
+      :continue -> snapshot
+    after
+      2_000 -> snapshot
+    end
+  end
+
+  @impl Harness.SettingsStore
+  @spec put(String.t(), term(), keyword()) :: :ok
+  def put(key, value, backend_opts) when is_binary(key) and is_list(backend_opts) do
+    SettingsStoreMemory.put(key, value, Keyword.delete(backend_opts, :owner))
+  end
+end
+
 defmodule Harness.SettingsStoreTest.CountingStore do
   @moduledoc false
   @behaviour Harness.SettingsStore
@@ -33,6 +63,7 @@ defmodule Harness.SettingsStoreTest do
 
   alias Harness.SettingsStore
   alias Harness.SettingsStore.Schema.Setting
+  alias Harness.SettingsStoreTest.BlockingStore
   alias Harness.SettingsStoreTest.CountingStore
   alias Harness.Test.SettingsStoreMemory
 
@@ -142,6 +173,41 @@ defmodule Harness.SettingsStoreTest do
       assert :not_found = SettingsStore.fetch(:landing)
       assert :not_found = SettingsStore.fetch("landing")
       assert [{:fetch, "landing"}] = drain_backend()
+    end
+
+    test "put overwrites a previously cached miss" do
+      scope = unique_scope("overwrite-miss")
+      owner = self()
+      Application.put_env(:harness, :settings_store, {CountingStore, scope: scope, owner: owner})
+      on_exit(fn -> SettingsStoreMemory.reset(scope: scope) end)
+
+      assert :not_found = SettingsStore.fetch(:agent)
+      assert [{:fetch, "agent"}] = drain_backend()
+
+      record = %{disabled: [:pi]}
+      assert :ok = SettingsStore.put(:agent, record)
+      assert [{:put, "agent"}] = drain_backend()
+
+      assert {:ok, ^record} = SettingsStore.fetch(:agent)
+      assert [] = drain_backend()
+    end
+
+    test "an in-flight fetch cannot clobber a put that already returned" do
+      scope = unique_scope("inflight-put")
+      owner = self()
+      Application.put_env(:harness, :settings_store, {BlockingStore, scope: scope, owner: owner})
+      on_exit(fn -> SettingsStoreMemory.reset(scope: scope) end)
+
+      task = Task.async(fn -> SettingsStore.fetch(:agent) end)
+      assert_receive {:fetch_started, fetch_pid, "agent"}
+
+      record = %{disabled: [:cursor]}
+      assert :ok = SettingsStore.put(:agent, record)
+      assert {:ok, ^record} = SettingsStore.fetch(:agent)
+
+      send(fetch_pid, :continue)
+      assert {:ok, ^record} = Task.await(task)
+      assert {:ok, ^record} = SettingsStore.fetch(:agent)
     end
   end
 

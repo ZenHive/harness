@@ -19,6 +19,8 @@ defmodule Harness.SettingsStore do
   not consulted on that path.
   """
 
+  alias Harness.Store.EtsHeir
+
   @type key :: atom() | String.t()
   @type store :: {module(), keyword()} | module() | false
 
@@ -108,13 +110,17 @@ defmodule Harness.SettingsStore do
   defp remember(_store, _key, {:error, _} = error), do: error
 
   defp remember(store, key, result) do
-    case cache_lookup(store, key) do
-      {:ok, cached} ->
-        cached
+    if cache_insert_new(store, key, result) do
+      result
+    else
+      case cache_lookup(store, key) do
+        {:ok, cached} ->
+          cached
 
-      :miss ->
-        cache_insert(store, key, result)
-        result
+        :miss ->
+          cache_insert(store, key, result)
+          result
+      end
     end
   end
 
@@ -150,6 +156,11 @@ defmodule Harness.SettingsStore do
     :ok
   end
 
+  @spec cache_insert_new(store(), String.t(), {:ok, term()} | :not_found) :: boolean()
+  defp cache_insert_new(store, key, result) do
+    :ets.insert_new(cache_table(), {{cache_fingerprint(store), key}, result})
+  end
+
   @spec cache_table() :: :ets.tid() | atom()
   defp cache_table do
     case :ets.whereis(@cache_table) do
@@ -164,41 +175,12 @@ defmodule Harness.SettingsStore do
       :named_table,
       :public,
       :set,
-      {:heir, table_heir(), :settings_cache},
+      {:heir, EtsHeir.pid(@heir_name), :settings_cache},
       read_concurrency: true,
       write_concurrency: true
     ])
   rescue
     ArgumentError -> @cache_table
-  end
-
-  @spec table_heir() :: pid()
-  defp table_heir do
-    case Process.whereis(@heir_name) do
-      pid when is_pid(pid) -> pid
-      nil -> spawn_table_heir()
-    end
-  end
-
-  @spec spawn_table_heir() :: pid()
-  defp spawn_table_heir do
-    pid = spawn(&heir_loop/0)
-
-    try do
-      Process.register(pid, @heir_name)
-      pid
-    rescue
-      ArgumentError ->
-        Process.exit(pid, :kill)
-        Process.whereis(@heir_name)
-    end
-  end
-
-  @spec heir_loop() :: no_return()
-  defp heir_loop do
-    receive do
-      _ -> heir_loop()
-    end
   end
 
   @spec cache_fingerprint(store()) :: term()
