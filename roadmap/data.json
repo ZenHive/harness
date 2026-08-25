@@ -17782,7 +17782,7 @@
       "id": "393",
       "phase": 22,
       "bundle": "core-loop",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Fence .harness/review.json to the reviewer that wrote it — a killed reviewer's stale approve can settle the run :done",
       "scores": {
         "d": 3,
@@ -17821,6 +17821,7 @@
       ],
       "body": "Harness.Run.Review.read/1 (lib/harness/run/review.ex:117) is a bare Artifact.read of .harness/review.json plus a JSON decode. Nothing removes the file before a reviewer spawns, and nothing binds it to the reviewer instance that wrote it. Three live paths reuse the same worktree and can therefore hand harness a verdict from a reviewer that is no longer the one being waited on: rotation on reviewer timeout, the capped re-prompt (@reviewer_reprompt_limit 1), and dispatch-rereview against a retained branch.\n\nThe concrete false-green: reviewer A writes {\"verdict\": \"approve\"}, then hangs mid-check and is idle-killed; rotation spawns reviewer B into the same worktree; B crashes or writes nothing; harness reads A's file and settles :done. The run lands on an approve from a reviewer that never finished checking. Both fixes are pure mechanics — deleting a file before a spawn, and comparing two strings — and the mismatch case routes into recovery machinery that already exists.\n\nFolded in from the same surface (reviewing.ex, reviewer-spawn path): the transcript handed to the reviewer is a deliberate 40 KB tail via transcript_tail/1, but it is presented without any marker saying so. The reviewer cannot tell a short complete transcript from the last 40 KB of a long one, and neither can the recovery AI, which is given \"minimal context\" it has no way to know is incomplete. Counting the elided bytes and stating the number is mechanics.\n\nIdea confirmed against DeepSeek Harness packages/feedback: every stored row carries the inspected session's header identity and \"a mismatch is treated as absence\", which fences a reused session id whose identity differs.\n\nSecond threat model for the same fix (2026-08-25 project health audit, security-audit H2): the\nmissing pre-spawn delete is not only a stale-reviewer hazard, it is an unreviewed-code-lands\nhazard. The implementer runs first, in the same worktree, and nothing stops it from writing\n.harness/review.json itself — via prompt injection in the task or in a file it reads, or simply\nby misreading its own role. A pre-written {\"verdict\":\"approve\"} plus a reviewer that writes\nnothing settles the run :done on the implementer's own say-so, which is precisely the property\nthe agent gate exists to deny. AC 1 already covers it (the artifact is removed before EVERY\nreviewer spawn, primary included) — this note exists so the implementer and reviewer both know\nthe delete is load-bearing against two distinct attackers, not just against rotation.\n",
       "created_at": "2026-08-23",
+      "started_at": "2026-08-25",
       "scored_at": "2026-08-23",
       "cross_repo": []
     },

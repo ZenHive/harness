@@ -11824,7 +11824,7 @@ scored_at = "2026-08-23"
 id = "393"
 phase = 22
 bundle = "core-loop"
-status = "pending"
+status = "in_progress"
 title = "Fence .harness/review.json to the reviewer that wrote it — a killed reviewer's stale approve can settle the run :done"
 scores = { d = 3, b = 9, u = 8 }
 markers = ["bug"]
@@ -11854,6 +11854,7 @@ reviewer spawn, primary included) — this note exists so the implementer and re
 the delete is load-bearing against two distinct attackers, not just against rotation.
 """
 created_at = "2026-08-23"
+started_at = "2026-08-25"
 scored_at = "2026-08-23"
 
 [[task]]
