@@ -17068,6 +17068,8 @@
         "bug"
       ],
       "depends_on": [],
+      "assignee": "grok",
+      "model": "grok-4.6",
       "acceptance_criteria": [
         "Registering a project whose concurrency_cap is not a positive integer (string \"4\", 0, -1, a float) is rejected with an error result — the row is never persisted",
         "The same validation holds for every registration entry point, not just the dashboard form: ProjectRegistry.upsert/1 and register/1 with an attrs map, and config-seeded entries",
@@ -17105,6 +17107,8 @@
       "unlocks": 0,
       "markers": [],
       "depends_on": [],
+      "assignee": "grok",
+      "model": "grok-4.6",
       "acceptance_criteria": [
         "Running the full suite twice leaves the same number of entries in the configured test worktree root as before the first run",
         "No new `harness-repo-*` or `harness-suite-health-*` directory remains after the suite exits",
@@ -17142,6 +17146,8 @@
       "unlocks": 0,
       "markers": [],
       "depends_on": [],
+      "assignee": "cursor",
+      "model": "cursor-grok-4.6-high",
       "acceptance_criteria": [
         "A regression test demonstrates the residual path by which the existing post-land prune can refuse cleanup while a run is still live, then proves a later bounded retry removes the landed branch/worktree once the commit is reachable from the target and the run is no longer live",
         "Unlanded, failed, held, or otherwise sole-copy run branches/worktrees survive both automatic and maintenance passes",
@@ -17429,6 +17435,8 @@
         "bug"
       ],
       "depends_on": [],
+      "assignee": "cursor",
+      "model": "cursor-grok-4.6-high",
       "acceptance_criteria": [
         "A run whose worktree contains .harness/agent-rules.md (and any other .harness/ file) produces a delivery commit with zero .harness/ paths — pinned by a test at the staging/commit layer",
         "The root cause is named in the fix (which staging step missed the file and why)"
