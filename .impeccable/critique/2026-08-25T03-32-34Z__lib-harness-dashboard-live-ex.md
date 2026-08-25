@@ -2,7 +2,7 @@
 target: the harness operator dashboard (/harness)
 total_score: 19
 max_score: 40
-na_heuristics: 
+na_heuristics:
 p0_count: 2
 p1_count: 3
 timestamp: 2026-08-25T03-32-34Z
