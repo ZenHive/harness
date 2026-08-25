@@ -18433,7 +18433,7 @@
       "phase": 23,
       "bundle": "roadmap-writeback",
       "milestone": "v0_16",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Audit discovery filing writes into the operator's live checkout and is never committed",
       "scores": {
         "d": 3,
@@ -18475,6 +18475,7 @@
       ],
       "body": "Observed 2026-08-25 while syncing the operator checkout after the 358/403/404/393 wave: a\nbrand-new `[[task]]` sat UNCOMMITTED in `/Users/efries/_DATA/code/harness/roadmap/tasks.toml`,\nauthored by the post-merge audit of `8ab2ff8` (its body cites `capability_score.ex:149, read on\n2026-08-25 in the post-merge audit of 8ab2ff8`). It collided on the operator's `git rebase\norigin/main`, leaving `tasks.toml` in a non-parsing conflicted state — the exact corruption class\n`rmap.md` warns makes harness re-dispatch already-landed work.\n\nCause, read on 2026-08-25 in `lib/harness/audit.ex`: the audit prompt (audit.ex:459) hands the\nagent `rmap new --from-stdin --roadmap-path #{inspect(project.roadmap_path)}` — an ABSOLUTE path\ninto the project's registered source directory, i.e. the operator's live checkout — even though\nthe agent is running in its own detached `origin/<target>` worktree and commits everything else\nthere. So the one roadmap write the audit performs deliberately escapes the worktree, escapes the\n`audit(<sha>)` commit, and is never pushed. The same absolute path is used by the harness-side\ncold-check filing (`rmap_new/2` at audit.ex:650, reached from audit.ex:618) and by\n`rmap_status_blocked/3`, so a red cold check has the same fate.\n\nTask 251 filed the discovery-filing stage and its acceptance criteria explicitly wanted the write\n\"riding the merge-train commit\". Task 378 made the `mark_*` transitions git-durable but listed\n\"the audit worker\" in `out_of_scope`, so this call site was never converted. Both channels exist;\nneither covers this one.\n\nConsequences, in ascending severity: the discovery is invisible to everyone but the operator who\nhappens to `git status`; the operator's checkout is left dirty, so the next dispatch can trip\n`:checkout_polluted`; and a rebase over the same region corrupts `tasks.toml` until someone\nresolves it by hand.\n",
       "created_at": "2026-08-25",
+      "started_at": "2026-08-25",
       "scored_at": "2026-08-25",
       "cross_repo": []
     },
