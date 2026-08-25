@@ -105,6 +105,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Reviewer verdict artifacts are fenced to one invocation (Task 393).** Harness removes `.harness/review.json` before every reviewer spawn and requires each verdict to echo the current run id and review-attempt number; an identity mismatch follows the existing missing-verdict recovery path. Reviewer and recovery prompts also label truncated implementer transcripts with the elided and total byte counts.
+
 - **The full project gate is green again (Task 401).** The duplicated Oban dispatch-insert path in `Harness.Run.Worker` is one helper with regression coverage for single, coalesced, conflict, success, and error outcomes. Four Dialyzer dead-clause warnings were resolved at their stale contracts without ignores, and offline worker coverage rose above the required 80% tier; the zero-clone gate and full `mix ci` pass again.
 
 - **Daily cron schedules honour the operator timezone.** Oban's Cron plugin defaulted to `"Etc/UTC"`, so `SuiteHealthPoller`'s `"0 0 * * *"` fired at 08:00 in UTC+8 — inside the working day for a full-suite sweep meant to run overnight. `config :harness, :cron_timezone` (default `"Asia/Kuala_Lumpur"`) plus `tzdata` as the Elixir time-zone database make midnight mean the operator's midnight.
