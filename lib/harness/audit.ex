@@ -283,7 +283,7 @@ defmodule Harness.Audit do
   @spec finalize_audit(Worktree.t(), String.t(), String.t(), Project.t(), request(), map(), module(), String.t()) ::
           {outcome(), audit_meta()}
   defp finalize_audit(worktree, repo, target, project, request, range, auditor, agent) do
-    case Driver.run(auditor, invocation(worktree, target, project, request, range, auditor_model(auditor)), []) do
+    case Driver.run(auditor, invocation(worktree, repo, target, project, request, range, auditor_model(auditor)), []) do
       {:ok, %Outcome{output: output}} ->
         finalize_after_run(worktree, repo, target, project, request, range, agent, output)
 
@@ -300,7 +300,7 @@ defmodule Harness.Audit do
     log_audit_report(report)
     witness_cold_check(report, project, request_store(request), worktree.base_sha, worktree.path, repo)
 
-    with :ok <- commit_cold_check_discovery(worktree.path),
+    with :ok <- commit_cold_check_discovery(worktree.path, range.short_sha),
          {:ok, final_head} <- head_sha(worktree.path) do
       outcome = push_if_advanced(repo, worktree, target, final_head)
       record_watermark(project, target, final_head, outcome)
@@ -372,11 +372,11 @@ defmodule Harness.Audit do
     end
   end
 
-  @spec invocation(Worktree.t(), String.t(), Project.t(), request(), map(), String.t() | nil) :: Invocation.t()
-  defp invocation(worktree, target, project, request, range, model) do
+  @spec invocation(Worktree.t(), String.t(), String.t(), Project.t(), request(), map(), String.t() | nil) ::
+          Invocation.t()
+  defp invocation(worktree, repo, target, project, request, range, model) do
     %Invocation{
-      prompt:
-        audit_prompt(target, project, range, rejection_history(project, request), worktree.path, project_repo(project)),
+      prompt: audit_prompt(target, project, range, rejection_history(project, request), worktree.path, repo),
       cwd: worktree.path,
       log_tag: "audit-#{project.name}-#{range.short_sha}",
       model: model,
@@ -713,29 +713,45 @@ defmodule Harness.Audit do
 
   @spec tasks_path_in_worktree(Project.t(), String.t(), String.t()) :: String.t()
   defp tasks_path_in_worktree(project, worktree_path, repo) do
-    Path.join(worktree_path, Path.relative_to(tasks_path(project), repo))
+    Path.join(worktree_path, relative_tasks_path(tasks_path(project), repo))
   end
 
-  @spec project_repo(Project.t()) :: String.t()
-  defp project_repo(project) do
-    {:ok, repo} = Project.local_repo_path(project)
-    repo
+  # `Path.relative_to/2` returns the original absolute path when `tasks_path` is
+  # not a descendant of the code repo (split roadmap). `Path.join/2` then keeps
+  # that absolute path — the operator-checkout escape this task exists to close.
+  # Fall back to the in-worktree convention rather than writing outside.
+  @spec relative_tasks_path(String.t(), String.t()) :: String.t()
+  defp relative_tasks_path(tasks_path, repo) do
+    relative = Path.relative_to(Path.expand(tasks_path), Path.expand(repo))
+    if worktree_relative?(relative), do: relative, else: Path.join("roadmap", "tasks.toml")
   end
 
-  @spec commit_cold_check_discovery(String.t()) :: :ok | {:error, term()}
-  defp commit_cold_check_discovery(path) do
-    if File.dir?(Path.join(path, "roadmap")) do
-      case Git.run(["add", "--", "roadmap"], path) do
-        {:ok, _output} -> commit_staged_discovery(path)
+  @spec worktree_relative?(String.t()) :: boolean()
+  defp worktree_relative?(relative) do
+    Path.type(relative) == :relative and not String.starts_with?(relative, "..")
+  end
+
+  @spec commit_cold_check_discovery(String.t(), String.t()) :: :ok | {:error, term()}
+  defp commit_cold_check_discovery(path, short_sha) do
+    paths = discovery_add_paths(path)
+
+    if paths == [] do
+      :ok
+    else
+      case Git.run(["add", "--" | paths], path) do
+        {:ok, _output} -> commit_staged_discovery(path, short_sha)
         {:error, reason} -> {:error, {:cold_check_discovery_stage_failed, reason}}
       end
-    else
-      :ok
     end
   end
 
-  @spec commit_staged_discovery(String.t()) :: :ok | {:error, term()}
-  defp commit_staged_discovery(path) do
+  @spec discovery_add_paths(String.t()) :: [String.t()]
+  defp discovery_add_paths(path) do
+    Enum.filter(["roadmap", "ROADMAP.md"], &File.exists?(Path.join(path, &1)))
+  end
+
+  @spec commit_staged_discovery(String.t(), String.t()) :: :ok | {:error, term()}
+  defp commit_staged_discovery(path, short_sha) do
     case Git.run(["diff", "--cached", "--quiet"], path) do
       {:ok, _output} ->
         :ok
@@ -750,7 +766,7 @@ defmodule Harness.Audit do
                  "commit",
                  "-q",
                  "-m",
-                 "audit: file cold-check discovery"
+                 "audit(#{short_sha}): file cold-check discovery"
                ],
                path
              ) do

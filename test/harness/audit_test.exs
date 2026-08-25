@@ -303,6 +303,7 @@ defmodule Harness.AuditTest do
       GitFixture.git!(ctx.repo, ["fetch", "-q", "origin"])
       tasks = GitFixture.git!(ctx.repo, ["show", "origin/main:roadmap/tasks.toml"])
       assert tasks =~ "Audit discovery"
+      refute File.read!(rmap_log) =~ Path.join(ctx.repo, "roadmap/tasks.toml")
     end
 
     test "the audited tip is the next audit's base — re-running is a :noop", ctx do
@@ -334,7 +335,8 @@ defmodule Harness.AuditTest do
       assert ctx.origin |> GitFixture.git!(["rev-parse", "main"]) |> String.trim() == landed_sha
     end
 
-    test "a red cold-check fact files a blocked rmap task, notifies, and leaves the merge untouched", ctx do
+    test "a red cold-check fact files a blocked rmap task, notifies, and pushes the filing without dirtying the source",
+         ctx do
       landed_sha = land_work!(ctx)
       short = ctx.repo |> GitFixture.git!(["rev-parse", "--short", "HEAD"]) |> String.trim()
       File.mkdir_p!(Path.join(ctx.repo, "_build"))
@@ -381,6 +383,9 @@ defmodule Harness.AuditTest do
       tasks = GitFixture.git!(ctx.repo, ["show", "origin/main:roadmap/tasks.toml"])
       assert tasks =~ "landed SHA #{landed_sha}"
       assert tasks =~ "# status blocked"
+      subject = ctx.repo |> GitFixture.git!(["log", "-1", "--format=%s", "origin/main"]) |> String.trim()
+      assert subject =~ ~r/^audit\(#{short}\): file cold-check discovery$/
+      refute File.read!(rmap_log) =~ Path.join(ctx.repo, "roadmap/tasks.toml")
 
       assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: "run-cold")
 
@@ -411,6 +416,40 @@ defmodule Harness.AuditTest do
       assert rmap_calls =~ "landed SHA #{landed_sha}"
       assert rmap_calls =~ "mix compile failed cold: :nofile"
       assert rmap_calls =~ "ARGS:status 77 blocked --reason"
+    end
+
+    test "a roadmap_path outside the source repo still files inside the audit worktree", ctx do
+      landed_sha = land_work!(ctx)
+      short = ctx.repo |> GitFixture.git!(["rev-parse", "--short", "HEAD"]) |> String.trim()
+      File.mkdir_p!(Path.join(ctx.repo, "_build"))
+
+      outside = Path.join(System.tmp_dir!(), "harness-audit-outside-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(Path.join(outside, "roadmap"))
+      outsider_tasks = Path.join(outside, "roadmap/tasks.toml")
+      File.write!(outsider_tasks, "# outsider\n")
+      on_exit(fn -> File.rm_rf(outside) end)
+
+      rmap_log = Path.join(System.tmp_dir!(), "harness-audit-outside-rmap-#{System.unique_integer([:positive])}.log")
+      rmap_dir = fake_blocking_rmap_dir(rmap_log)
+      with_path("#{rmap_dir}:#{System.get_env("PATH", "")}")
+
+      before_status = GitFixture.git!(ctx.repo, ["status", "--porcelain"])
+      before_outsider = File.read!(outsider_tasks)
+
+      assert {:audited, _sha} =
+               Audit.run(%{
+                 project: %{ctx.project | roadmap_path: outside},
+                 base_sha: ctx.base_sha,
+                 auditor: FakeAdapter,
+                 auditor_opts: [command: {:audit_cold_check_by_warm_marker, short}]
+               })
+
+      assert GitFixture.git!(ctx.repo, ["status", "--porcelain"]) == before_status
+      assert File.read!(outsider_tasks) == before_outsider
+      refute File.read!(rmap_log) =~ outsider_tasks
+      GitFixture.git!(ctx.repo, ["fetch", "-q", "origin"])
+      tasks = GitFixture.git!(ctx.repo, ["show", "origin/main:roadmap/tasks.toml"])
+      assert tasks =~ "landed SHA #{landed_sha}"
     end
 
     test "a green cold-check fact is persisted silently", ctx do
@@ -557,6 +596,7 @@ defmodule Harness.AuditTest do
       assert prompt =~ "Discovery filing"
       assert prompt =~ "rmap new --from-stdin"
       assert prompt =~ "--tasks-path"
+      assert prompt =~ "roadmap/tasks.toml"
       refute prompt =~ ctx.project.roadmap_path
       assert prompt =~ "FILE it as a real rmap task"
       assert prompt =~ "name the filed task id"
