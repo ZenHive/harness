@@ -275,6 +275,9 @@ defmodule Harness.CapabilityScore do
 
     ## Input (#{count} run record(s), #{length(groups)} facet group(s))
 
+    These are the newest #{count} run records, newest-first, capped at
+    #{@scout_record_limit}; the full ledger may hold more than this window shows.
+
     #{facts_json}
     """
   end

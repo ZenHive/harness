@@ -10,8 +10,9 @@ defmodule Harness.CapabilityScoreTest.FilterProbeStore do
 
   @spec list_run_records(ResultStore.filters(), keyword()) :: {:ok, [LogRecord.t()]}
   def list_run_records(filters, opts) do
-    send(Keyword.fetch!(opts, :test_pid), {:list_run_records, filters})
-    Memory.list_run_records(Keyword.delete(filters, :test_pid), opts)
+    {:ok, records} = result = Memory.list_run_records(Keyword.delete(filters, :test_pid), opts)
+    send(Keyword.fetch!(opts, :test_pid), {:list_run_records, filters, Enum.map(records, & &1.run_id)})
+    result
   end
 end
 
@@ -345,7 +346,9 @@ defmodule Harness.CapabilityScoreTest do
        %{store: {MemoryStore, store_opts}, assessment_root: root} do
     store = {FilterProbeStore, Keyword.put(store_opts, :test_pid, self())}
 
-    assert :ok = ResultStore.record_run(record(review_facets: %{"surface" => "otp"}), store)
+    assert :ok = ResultStore.record_run(record(run_id: "run-1", review_facets: %{"surface" => "otp"}), store)
+    assert :ok = ResultStore.record_run(record(run_id: "run-2", review_facets: %{"surface" => "otp"}), store)
+    assert :ok = ResultStore.record_run(record(run_id: "run-3", review_facets: %{"surface" => "otp"}), store)
 
     scout = fn context ->
       {:ok,
@@ -363,9 +366,13 @@ defmodule Harness.CapabilityScoreTest do
     assert {:ok, _assessment} =
              CapabilityScore.refresh(result_store: store, assessment_root: root)
 
-    assert_receive {:list_run_records, filters}
-    assert is_integer(Keyword.fetch!(filters, :limit))
-    assert Keyword.fetch!(filters, :limit) > 0
+    assert_receive {:list_run_records, filters, run_ids}
+    # 1_000 mirrors @scout_record_limit in lib/harness/capability_score.ex — pin the
+    # actual ceiling, not merely "some positive limit".
+    assert Keyword.fetch!(filters, :limit) == 1_000
+    # Memory sorts by seq desc (Postgres: order_by desc: inserted_at) — the most
+    # recently recorded run must come back first.
+    assert run_ids == ["run-3", "run-2", "run-1"]
   end
 
   defp sample_assessment do

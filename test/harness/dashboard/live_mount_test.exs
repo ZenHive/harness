@@ -18,6 +18,7 @@ defmodule Harness.Dashboard.LiveMountTest do
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
+  alias Harness.ResultStore.Memory, as: MemoryStore
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.LogRecord
@@ -88,6 +89,95 @@ defmodule Harness.Dashboard.LiveMountTest do
       |> render_change(%{"project" => ""})
 
       assert_patch(view, "/harness")
+    end
+  end
+
+  describe "history empty-state text keys on the real condition (history_empty_reason/2)" do
+    setup %{conn: conn} do
+      # The LiveView reads ResultStore.configured/0; point it at a per-test tmp
+      # store so the history ledger only sees what this test seeds (mirrors
+      # KPILiveTest's isolation setup).
+      root =
+        Path.join(System.tmp_dir!(), "harness_history_empty_test_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(root)
+      prev = Application.get_env(:harness, :result_store)
+      Application.put_env(:harness, :result_store, {MemoryStore, root: root})
+
+      on_exit(fn ->
+        Application.put_env(:harness, :result_store, prev)
+        File.rm_rf(root)
+      end)
+
+      {:ok, conn: conn}
+    end
+
+    test "no project selected, ledger empty: whole-ledger phrasing", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/harness")
+
+      assert html =~ "No run has settled yet — the result ledger is empty."
+    end
+
+    test "a project selected, no settled runs for it: per-project phrasing", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/harness")
+
+      view
+      |> element("form[phx-change=select_project]")
+      |> render_change(%{"project" => "livemount-demo"})
+
+      assert render(view) =~ "No run has settled yet for livemount-demo — the result ledger holds none."
+    end
+
+    test "settled runs exist but are all landed (hidden by the toggle): landed-only phrasing", %{
+      conn: conn
+    } do
+      seed_history("hist-landed-1", task_id: "1", project_name: nil, landed_sha: "cafefeed")
+
+      {:ok, _view, html} = live(conn, "/harness")
+
+      assert html =~ "Every settled run has landed — none is waiting to merge."
+    end
+  end
+
+  describe "row action aria-label reflects known task/project context (row_action_aria_label/4)" do
+    setup %{conn: conn} do
+      root =
+        Path.join(System.tmp_dir!(), "harness_aria_label_test_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(root)
+      prev = Application.get_env(:harness, :result_store)
+      Application.put_env(:harness, :result_store, {MemoryStore, root: root})
+
+      on_exit(fn ->
+        Application.put_env(:harness, :result_store, prev)
+        File.rm_rf(root)
+      end)
+
+      {:ok, conn: conn}
+    end
+
+    test "run_id only — task_id and project_name unknown", %{conn: conn} do
+      seed_history("aria-1", task_id: nil, project_name: nil)
+
+      {:ok, _view, html} = live(conn, "/harness")
+
+      assert html =~ ~s(aria-label="Delete run aria-1")
+    end
+
+    test "task_id known, project_name unknown", %{conn: conn} do
+      seed_history("aria-2", task_id: "77", project_name: nil)
+
+      {:ok, _view, html} = live(conn, "/harness")
+
+      assert html =~ "aria-label=\"Delete run aria-2 (task 77)\""
+    end
+
+    test "task_id and project_name both known", %{conn: conn} do
+      seed_history("aria-3", task_id: "78", project_name: "livemount-demo")
+
+      {:ok, _view, html} = live(conn, "/harness")
+
+      assert html =~ "aria-label=\"Delete run aria-3 (task 78, project livemount-demo)\""
     end
   end
 
@@ -285,6 +375,26 @@ defmodule Harness.Dashboard.LiveMountTest do
       send(view.pid, :meta_tick)
       assert render(view) =~ "last output"
     end
+  end
+
+  # Persists a settled (terminal-state) history record via the configured
+  # ResultStore. Only the fields the history/aria-label surfaces care about are
+  # overridable; the rest are inert defaults that satisfy @enforce_keys.
+  @spec seed_history(String.t(), keyword()) :: :ok
+  defp seed_history(run_id, fields) do
+    base = %{
+      batch_id: "batch-#{run_id}",
+      run_id: run_id,
+      task_id: Keyword.get(fields, :task_id, "t"),
+      project_name: Keyword.get(fields, :project_name),
+      adapter: FakeAdapter,
+      state: :failed,
+      reason: :cancelled,
+      duration_ms: 100,
+      landed_sha: Keyword.get(fields, :landed_sha)
+    }
+
+    :ok = ResultStore.record_run(struct!(LogRecord, base))
   end
 
   defp start_sleeping_run do

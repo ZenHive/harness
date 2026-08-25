@@ -11,6 +11,9 @@ defmodule Harness.MixProject do
       # operator-only box behind an SSH tunnel, and Tidewave is dev-gated), but
       # it is still supervised by systemd. Without start_permanent a crashed
       # supervision tree leaves a live-but-dead BEAM that `Restart=` never sees.
+      # Same setting also governs the operator's long-lived `iex -S mix` session
+      # (CLAUDE.md tells them to keep one running): a supervision-tree crash now
+      # halts that BEAM instead of leaving a usable-but-degraded shell behind.
       start_permanent: Mix.env() != :test,
       deps: deps(),
       aliases: aliases(),
