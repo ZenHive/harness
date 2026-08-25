@@ -185,9 +185,16 @@ Installed: `git` 2.43, `cargo` 1.98, Postgres 18.6, `claude`
       **not** in the sudo group: `ethereum` holds `NOPASSWD: ALL` and owns the
       node's data dirs and `jwt.hex`, so running harness there would hand every
       dispatched agent passwordless root over the Ethereum node
-- [x] `harness_prod` database + migrations (`MIX_ENV=prod` — `mix.exs` sets
-      `start_permanent` only in prod; under `dev` a crashed supervision tree
-      leaves a live-but-dead BEAM that `Restart=` never notices)
+- [x] `harness_prod` database + migrations. The node runs **`MIX_ENV=dev`**
+      (systemd drop-in `harness.service.d/10-mix-env.conf`): this is an
+      operator-only box behind a forward-only SSH tunnel, and Tidewave is
+      `only: [:dev, :test]`, so a prod build would have no `/tidewave/mcp` —
+      the very surface the operator drives the node from. `runtime.exs` honours
+      `HARNESS_DATABASE_URL` in every env, so the dev build still uses
+      `harness_prod`. `mix.exs` sets `start_permanent: Mix.env() != :test` so
+      the systemd restart net survives the dev switch — under the old
+      `== :prod` a crashed supervision tree left a live-but-dead BEAM that
+      `Restart=` never noticed.
 - [x] Worktree root off ext4 via `HARNESS_WORKTREE_ROOT`
 - [ ] Verify reflink end-to-end (`filefrag -v` → `shared` extents, `df` delta) —
       **blocked on the `cp -cR` fix above**; verify with `filefrag`/`df`, never
