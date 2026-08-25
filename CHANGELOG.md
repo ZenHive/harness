@@ -348,6 +348,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Self-host lands no longer advance the running harness checkout (Task 400).**
+  `Harness.Git.TargetSync` now detects source-tree identity by resolved path and
+  filesystem identity, then returns a witnessed `self-host` skip before changing
+  the local target branch or working tree. The origin fast-forward remains the
+  authoritative land and non-self-host projects retain the existing clean,
+  dirty, detached-target, and non-fast-forward behavior.
+
 - **Reflex watchdog no longer false-halts on benign temp cleanup (Tasks 219, reflex
   follow-up).** Deleted the dead `verification_stack_edit?` grade-gaming blocklist
   (reviewer-owned judgment per agent-gate). The reflex layer now ignores

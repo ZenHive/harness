@@ -81,8 +81,8 @@ config :harness, :dashboard, enabled: true, port: 4018
 # behaviour; a discerning (buddhi) sink consumes the event struct and acts
 # *through* the train, never by hand-merging a tracked branch.
 # The configured command is host-specific (like :cron_timezone above): it fans
-# events into the operator's Herdr session and silently no-ops when the node
-# wasn't started inside Herdr or the script is absent — safe on other hosts.
+# events into the operator's Herdr session. The script silently no-ops outside
+# Herdr; a missing script is failure-isolated by CommandSink and logged.
 config :harness, :notification_sinks, [CommandSink]
 
 # Project source cache — see Harness.Project.Source.Github.
