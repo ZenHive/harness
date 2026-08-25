@@ -12428,7 +12428,7 @@ shipped_in = "ec7451e86a61f54742d92da913f952ccd3603cfe"
 id = "408"
 phase = 24
 bundle = "witness-legibility"
-status = "in_progress"
+status = "done"
 title = "Responsive strategy for the dashboard"
 scores = { d = 3, b = 6, u = 5 }
 markers = ["parallel"]
@@ -12462,9 +12462,16 @@ Consequences: the fleet dashboard is unusable on a phone or a narrow split-pane,
 precisely where an operator checks on an autonomous run they are not sitting in front of. The
 recovery actions are the first thing to disappear.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1787658240434-b9625ebf, ec7451e86a61f54742d92da913f952ccd3603cfe)."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1787658240434-b9625ebf"
 created_at = "2026-08-25"
 started_at = "2026-08-25"
 scored_at = "2026-08-25"
+done_at = "2026-08-25"
+shipped_in = "ec7451e86a61f54742d92da913f952ccd3603cfe"
 
 [[task]]
 id = "409"
