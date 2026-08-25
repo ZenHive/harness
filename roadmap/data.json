@@ -16393,13 +16393,13 @@
       "bundle": "audit-tests",
       "milestone": "v0_16",
       "status": "pending",
-      "title": "Expand direct coverage of merge-critical Harness.Git.TargetSync and Harness.Store.EtsScope behavior",
+      "title": "Add direct coverage for Harness.Store.EtsScope create/lookup and owner-exit table ownership",
       "scores": {
-        "d": 3,
-        "b": 7,
-        "u": 5
+        "d": 2,
+        "b": 5,
+        "u": 4
       },
-      "eff": 2.0,
+      "eff": 2.25,
       "dep_layer": 0,
       "unlocks": 0,
       "markers": [],
@@ -16407,30 +16407,26 @@
       "assignee": "grok",
       "model": "grok-4.6",
       "acceptance_criteria": [
-        "TargetSync coverage includes the clean checked-out ff-merge, unchecked-out ref-only fetch, dirty/diverged skip, and behind_count drift message, using local git fixtures; preserve the existing missing-remote error assertion",
-        "EtsScope has direct coverage for create/lookup and table ownership on owner-process exit",
+        "EtsScope has direct coverage for create/lookup and for what happens to the table when the owner process exits",
         "No Process.sleep-before-assert synchronization and no error-hiding assertions",
-        "mix check.dispatch green + the focused Git/TargetSync and EtsScope tests pass"
+        "mix check.dispatch green + the focused EtsScope tests pass"
       ],
       "out_of_scope": [
-        "Refactoring either module — coverage only, behaviour unchanged"
+        "Refactoring EtsScope — coverage only, behaviour unchanged",
+        "Harness.Git.TargetSync coverage — absorbed by task 400, which changes that module and must pin all four of its branches itself"
       ],
       "files_to_modify": [
-        "test/harness/git_test.exs",
         "test/harness/store/ets_scope_test.exs"
       ],
       "touches": [
-        "test/harness/git_test.exs",
-        "test/harness/git/",
         "test/harness/store/",
-        "lib/harness/git/target_sync.ex",
         "lib/harness/store/ets_scope.ex"
       ],
       "domains": [
         "otp",
         "ecto"
       ],
-      "body": "Surfaced by the 2026-07-12 project health audit (test-audit.md #2/#3). The original\n\"zero coverage\" premise is stale: `test/harness/git_test.exs` already exercises\nTargetSync's missing-remote error path. The merge/ref-selection branches and EtsScope's\nownership behavior remain uncovered directly.\n\n1. `Harness.Git.TargetSync` (lib/harness/git/target_sync.ex) — load-bearing for BOTH the\n   autonomous lander and durable roadmap writes (per its own moduledoc: \"skip it and\n   roadmap/tasks.toml drifts behind origin and a later merge conflicts or silently loses the\n   harness transition\"). It has three real branches (clean checked-out `merge --ff-only`,\n   unchecked-out ref-only fetch, dirty/diverged skip) plus a behind_count drift-message\n   helper. Extend the existing Git test surface or add a focused file, using local git\n   fixtures; assert the ff-merge, ref-only fetch, dirty/diverged skip, and drift message.\n\n2. `Harness.Store.EtsScope` (lib/harness/store/ets_scope.ex) — ETS lifecycle/ownership is\n   easy to get subtly wrong (table ownership on process death, race on create). Add a direct\n   unit test for create/lookup/ownership-on-owner-exit.\n\nFollow the project's test conventions (mix test.json, no error-hiding, synchronize with\nassert_receive / monitor / start_supervised! rather than Process.sleep).\n",
+      "body": "Surfaced by the 2026-07-12 project health audit (test-audit.md #3).\n\n`Harness.Store.EtsScope` (lib/harness/store/ets_scope.ex) has no direct test. ETS\nlifecycle and ownership are easy to get subtly wrong — who owns the table, what happens\nto it when the owner process dies, whether a concurrent create races. Add a focused unit\ntest for create/lookup and for table ownership when the owner exits.\n\nRescoped 2026-08-25: this task originally also covered `Harness.Git.TargetSync`. Task 400\nchanges TargetSync (self-host guard) and its acceptance criteria already require pinning\nall of that module's branches, so the coverage half moved there rather than being written\ntwice against the same file. Nothing was dropped: 400 carries the ff-merge, ref-only\nfetch, dirty/diverged skip and behind_count drift-message cases.\n\nFollow the project's test conventions (mix test.json, no error-hiding, synchronize with\nassert_receive / monitor / start_supervised! rather than Process.sleep).\n",
       "created_at": "2026-07-12",
       "scored_at": "2026-08-07",
       "cross_repo": []
@@ -18158,7 +18154,7 @@
         "A landing (or durable roadmap write) whose target project's local source directory IS the source tree of the currently running harness node does not advance that checkout's working tree. It resolves to a skip carrying a reason that names the self-host case, exactly like the existing dirty-tree and non-ff skips — never a silent no-op and never a --force.",
         "The self-host case is detected from a fact, not a name match on the string \"harness\": the check compares the project's resolved local source path against the running node's own source path (e.g. the application's compiled source root / File.cwd! at boot), so a differently-named clone of harness and a rename of the registered project both still trip the guard.",
         "The skip is witnessed the same way the other skips are, so the operator learns their local target is behind origin and syncs manually; the landing itself still succeeds (the ff-push to origin is unaffected and must not be gated on the local sync).",
-        "Every non-self-host project keeps today's behaviour byte-for-byte: operator off target -> ff the branch ref; operator on target with a clean tree -> merge --ff-only; dirty or non-ff -> the existing skip. Tests pin all three plus the new fourth case.",
+        "Every non-self-host project keeps today's behaviour byte-for-byte: operator off target -> ff the branch ref; operator on target with a clean tree -> merge --ff-only; dirty or non-ff -> the existing skip. Tests pin all three plus the new fourth case, plus the behind_count drift message, using local git fixtures, and preserve the existing missing-remote error assertion (this coverage was rescoped out of task 361 on 2026-08-25 so the same module is not tested twice).",
         "A test proves the guard from the caller side, not only from Git.TargetSync: a lander/durable-write path invoked for a self-host project leaves the checkout's HEAD where it was.",
         "CLAUDE.md's claim that the lander 'deliberately never touches your checkout' is corrected to describe what TargetSync actually does and when it now declines, and AGENTS.md is regenerated from it.",
         "mix check.dispatch green plus focused mix test.json runs for the TargetSync, lander and durable-roadmap paths."
