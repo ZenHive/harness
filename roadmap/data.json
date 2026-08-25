@@ -18696,7 +18696,7 @@
       "id": "410",
       "phase": 22,
       "bundle": "agent-gate",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Worktree CoW clone passes the macOS-only `cp -c` flag, so every Linux warm copy silently degrades to a full byte copy",
       "scores": {
         "d": 3,
@@ -18740,6 +18740,7 @@
       ],
       "body": "`Worktree.clone_copy/2` shells out to `cp -cR`. `-c` is Apple's clonefile flag; GNU coreutils has no `-c` and rejects the invocation outright, so on Linux the call always fails and falls through to `fallback_copy/2` — a full `File.cp_r` byte copy. The comment above the function already says the fallback exists \"where the filesystem or `cp` lacks it (Linux/CI)\", so the behaviour is known; what is not is that the Linux branch can never take the fast path even on a filesystem that fully supports it, because the flag is wrong before the filesystem is ever consulted.\n\nThe cost is not theoretical and is paid on every dispatch: `Run.dispatched` calls `Worktree.warm/2` before the implementer, and again for the reviewer, over `@default_warm_paths = [\"deps\", \"_build\", \"priv/plts\"]`. Measured on one warm path: `File.cp_r` 0.74 s and 250 MiB written, versus `cp --reflink=auto -R` 0.12 s and 4 MiB. Across the warm set that is roughly 331 MB copied per run, multiplied by the agents in the run, multiplied by concurrent runs.\n\nWhy it matters now rather than as a background inefficiency: the deployment target's worktree volume is XFS with `reflink=1`, chosen specifically so this copy becomes a metadata operation. With the flag as it stands, that filesystem property is inert — the reflink is never even attempted. `retain_on_failure: true` compounds it, since a failed run keeps its fully-materialised copy on disk.\n\nThe fix is a branch on `:os.type()`. The reason it is worth a task rather than an inline edit is the test: the current suite passes with the defect present, because it asserts the copied tree's contents and the fallback produces an identical tree. The regression has to assert the chosen flag, not the outcome.\n",
       "created_at": "2026-08-25",
+      "started_at": "2026-08-25",
       "scored_at": "2026-08-25",
       "cross_repo": []
     },

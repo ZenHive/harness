@@ -12500,7 +12500,7 @@ scored_at = "2026-08-25"
 id = "410"
 phase = 22
 bundle = "agent-gate"
-status = "pending"
+status = "in_progress"
 title = "Worktree CoW clone passes the macOS-only `cp -c` flag, so every Linux warm copy silently degrades to a full byte copy"
 scores = { d = 3, b = 7, u = 7 }
 markers = ["bug"]
@@ -12521,6 +12521,7 @@ Why it matters now rather than as a background inefficiency: the deployment targ
 The fix is a branch on `:os.type()`. The reason it is worth a task rather than an inline edit is the test: the current suite passes with the defect present, because it asserts the copied tree's contents and the fallback produces an identical tree. The regression has to assert the chosen flag, not the outcome.
 """
 created_at = "2026-08-25"
+started_at = "2026-08-25"
 scored_at = "2026-08-25"
 
 [[task]]
