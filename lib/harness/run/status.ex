@@ -34,6 +34,8 @@ defmodule Harness.Run.Status do
     * `state` — the current lifecycle state (see `t:state/0`).
     * `started_at` — wall-clock timestamp captured when the run starts, or
       `nil` for legacy settled records created before timing facts existed.
+    * `duration_ms` — the run's total settled duration, persisted on the run
+      record. `nil` for a live run, where `started_at` carries the same fact.
     * `state_entered_at` — latest wall-clock timestamp observed for each
       lifecycle state the run entered. Empty for legacy records.
     * `worktree_path` — the isolated worktree's path, or `nil` before it exists.
@@ -81,6 +83,7 @@ defmodule Harness.Run.Status do
           model: String.t() | nil,
           state: state(),
           started_at: DateTime.t() | nil,
+          duration_ms: non_neg_integer() | nil,
           state_entered_at: %{optional(state() | :recovery_review) => DateTime.t()},
           worktree_path: String.t() | nil,
           agent_diff_size: non_neg_integer() | nil,
@@ -105,6 +108,7 @@ defmodule Harness.Run.Status do
     :model,
     :state,
     :started_at,
+    :duration_ms,
     :worktree_path,
     :agent_diff_size,
     :agent_os_pid,
@@ -146,6 +150,7 @@ defmodule Harness.Run.Status do
       model: Map.get(record, :model),
       state: state_from_log_record(record),
       started_at: Map.get(record, :started_at),
+      duration_ms: Map.get(record, :duration_ms),
       state_entered_at: Map.get(record, :state_entered_at) || %{},
       worktree_path: nil,
       agent_diff_size: Map.get(record, :agent_diff_size),

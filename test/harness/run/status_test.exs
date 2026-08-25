@@ -38,6 +38,12 @@ defmodule Harness.Run.StatusTest do
       assert Status.from_log_record(record).agent_diff_size == 17
     end
 
+    test "copies duration_ms from the persisted record" do
+      record = log_record("run-elapsed", duration_ms: 92_000, state: :done, reason: :approved)
+
+      assert Status.from_log_record(record).duration_ms == 92_000
+    end
+
     test "maps an approved record with no agent outcome kind" do
       record = log_record("run-green", state: :done, reason: :approved, verdict: :approve)
 
@@ -122,7 +128,7 @@ defmodule Harness.Run.StatusTest do
       reason: Keyword.get(opts, :reason, :approved),
       verdict: Keyword.get(opts, :verdict, :approve),
       reviewer_adapter: Keyword.get(opts, :reviewer_adapter),
-      duration_ms: 1_000,
+      duration_ms: Keyword.get(opts, :duration_ms, 1_000),
       agent_outcome_kind: Keyword.get(opts, :agent_outcome_kind),
       agent_output: Keyword.get(opts, :agent_output, ""),
       started_at: Keyword.get(opts, :started_at),

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Historical run-detail `Elapsed` renders its persisted duration.** `Harness.Run.Status` now carries `duration_ms` and `from_log_record/1` copies it off the run record, so a settled run reconstructed from Postgres — where `started_at` is not a column — renders its measured wall-clock instead of an em-dash. Closes the reviewer concern left open by Task 406; a run with neither fact still renders the placeholder.
+
 ### Added
 
 - **Failed run detail now leads with diagnosis and recovery actions (Task 406).** The run page renders the same operator-language failure headline as the history index, states whether the implementer's branch contains retained commits, names the applicable recovery command, and keeps the raw reason behind a disclosure. Resume, escalate, re-land, delete, and kill controls now share one predicate-gated action group between the index and detail views; retained-branch copy is derived from persisted commit/review facts rather than the worktree path.

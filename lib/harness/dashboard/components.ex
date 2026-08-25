@@ -501,7 +501,13 @@ defmodule Harness.Dashboard.Components do
 
   @doc false
   @spec elapsed_label(Status.t(), DateTime.t()) :: String.t()
-  def elapsed_label(%Status{started_at: nil}, _now), do: "—"
+  def elapsed_label(%Status{started_at: nil, duration_ms: nil}, _now), do: "—"
+
+  # A settled record persisted through Postgres carries no `started_at` — its
+  # total wall-clock lives in `duration_ms`. Same fact, already measured.
+  def elapsed_label(%Status{started_at: nil, duration_ms: duration_ms}, _now) when is_integer(duration_ms) do
+    duration_label(duration_ms)
+  end
 
   def elapsed_label(%Status{started_at: %DateTime{} = started_at} = status, %DateTime{} = now) do
     status

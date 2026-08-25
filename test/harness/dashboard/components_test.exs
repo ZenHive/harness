@@ -145,6 +145,31 @@ defmodule Harness.Dashboard.ComponentsTest do
       assert html =~ "Reviewing: 3s"
     end
 
+    test "falls back to the record's duration_ms when a settled run has no started_at" do
+      # Postgres run_records persist duration_ms but no started_at, so a
+      # reconstructed historical snapshot must still render its elapsed.
+      status = %Status{
+        run_id: "run-historical",
+        task_id: "406",
+        state: :failed,
+        started_at: nil,
+        duration_ms: 92_000
+      }
+
+      html = render_component(&Components.run_timing/1, status: status, now: ~U[2026-06-17 08:00:00.000Z])
+
+      assert html =~ ">1m 32s<"
+      refute html =~ ~s(data-run-elapsed>—</dd>)
+    end
+
+    test "renders an em-dash when neither started_at nor duration_ms is known" do
+      status = %Status{run_id: "run-legacy", task_id: "406", state: :failed}
+
+      html = render_component(&Components.run_timing/1, status: status, now: ~U[2026-06-17 08:00:00.000Z])
+
+      assert html =~ ~s(data-run-elapsed>—</dd>)
+    end
+
     test "freezes final elapsed at the terminal state entry" do
       started_at = ~U[2026-06-17 08:00:00.000Z]
       done_at = DateTime.shift(started_at, second: 10)
