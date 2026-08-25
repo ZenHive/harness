@@ -12307,7 +12307,7 @@ scored_at = "2026-08-25"
 id = "406"
 phase = 24
 bundle = "witness-legibility"
-status = "in_progress"
+status = "done"
 title = "Run-detail becomes where a failure is diagnosed and acted on"
 scores = { d = 3, b = 8, u = 6 }
 markers = ["parallel"]
@@ -12350,9 +12350,16 @@ navigate back to the index to act on what they just diagnosed; and, not knowing 
 retained, they reach for reset-to-pending and pay a second implementer run for work already
 committed.
 """
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1787655975533-102fb385, efd35720ccb02065ddbed0c80e504aaac327b12f)."
+delivered_by = "cursor"
+verified = true
+verified_by = "grok"
+verification_ref = "harness-run:run-1787655975533-102fb385"
 created_at = "2026-08-25"
 started_at = "2026-08-25"
 scored_at = "2026-08-25"
+done_at = "2026-08-25"
+shipped_in = "efd35720ccb02065ddbed0c80e504aaac327b12f"
 
 [[task]]
 id = "407"

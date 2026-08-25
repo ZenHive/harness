@@ -18479,7 +18479,7 @@
       "id": "406",
       "phase": 24,
       "bundle": "witness-legibility",
-      "status": "in_progress",
+      "status": "done",
       "title": "Run-detail becomes where a failure is diagnosed and acted on",
       "scores": {
         "d": 3,
@@ -18525,10 +18525,17 @@
         "liveview",
         "phoenix"
       ],
+      "shipped_in": "efd35720ccb02065ddbed0c80e504aaac327b12f",
       "body": "Observed 2026-08-25 in a dual-agent design critique of `/harness` (snapshot:\n`.impeccable/critique/2026-08-25T03-32-34Z__lib-harness-dashboard-live-ex.md`, scored 19/40).\nThe operator framing that decides how to weigh this: the dashboard is the human's WITNESS of\nwhat the agents did. A witness whose central testimony is unreadable fails at its only job.\n\nCause, read on 2026-08-25: `live.ex:848` renders a failed run's reason as\n`<dd>{inspect(@run_status.reason)}</dd>`, inside a `<details>` block titled `Run internals`\n(live.ex:842-852) that is collapsed by default and sits below the fold. So the operator asking\nthe only question that matters — what happened and what do I do now — is shown a raw Erlang\nterm, in a drawer, after everything else. In the same block `Verdict`, `Elapsed`, and\n`Worktree path` render as em-dashes even where the run record carries those facts.\n\nThe sharper finding: the two render sites DISAGREE. The index cell at `live.ex:1035` renders\n`entry.detail`, fed by `StatusView.describe_reason/1` (status_view.ex:170-190) — four clauses of\nreadable prose with an `inspect/1` fallback. The detail page, the surface a human navigates to\nspecifically to understand one run, is strictly WORSE than the list it came from for the exact\nsame fact.\n\nSecond half of the same job: the page names no way forward. Harness has four recovery primitives\nfor exactly this moment (`dispatch-reland`, `dispatch-rereview`, `dispatch-resume_failed`,\ncancel), and `harness-workflow.md` documents that reset-to-pending on a run with a committed\nbranch is a token bonfire. The index rows already render those actions (`.row-actions`,\nlive.ex:1037, gated by `resumable?` / `relandable?` / `landable?` / `deletable?`); the detail\npage renders none of them. The most consequential fact available — that the implementer's\ncommits on `harness/<run-id>` survived and are cheap to recover — appears nowhere in the UI.\n\nConsequences, in ascending severity: the operator reads a tuple instead of a sentence; they\nnavigate back to the index to act on what they just diagnosed; and, not knowing the branch was\nretained, they reach for reset-to-pending and pay a second implementer run for work already\ncommitted.\n",
       "created_at": "2026-08-25",
       "started_at": "2026-08-25",
+      "done_at": "2026-08-25",
       "scored_at": "2026-08-25",
+      "implemented": "Landed by cursor via merge-train; reviewer-approved (run run-1787655975533-102fb385, efd35720ccb02065ddbed0c80e504aaac327b12f).",
+      "delivered_by": "cursor",
+      "verified": true,
+      "verified_by": "grok",
+      "verification_ref": "harness-run:run-1787655975533-102fb385",
       "cross_repo": []
     },
     {
