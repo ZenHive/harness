@@ -370,8 +370,9 @@ defmodule Harness.Chat.SessionTest do
       assert {:ok, _} = Session.user_message(id, "remember me")
       assert Process.alive?(pid)
 
-      Process.sleep(200)
-      refute Supervisor.whereis(id)
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, :process, ^pid, _}, 2_000
+      await_unregistered(id)
 
       {:ok, ^id, new_pid} = Supervisor.ensure_session(opts)
       refute new_pid == pid
@@ -395,14 +396,16 @@ defmodule Harness.Chat.SessionTest do
       {:ok, ^id, pid} = Supervisor.start_session(opts)
       turn = Task.async(fn -> Session.user_message(id, "hold", 10_000) end)
 
-      Process.sleep(150)
-      assert Process.alive?(pid)
+      # The idle_timeout is 50ms: nothing may reap the session while the turn
+      # is parked, so the absence of a :DOWN over a window 3x that is the assertion.
+      ref = Process.monitor(pid)
+      refute_receive {:DOWN, ^ref, :process, ^pid, _}, 150
 
       assert :ok = Session.cancel(id)
       assert {:ok, _} = Task.await(turn, 5_000)
 
-      Process.sleep(150)
-      refute Supervisor.whereis(id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, _}, 2_000
+      await_unregistered(id)
     end
   end
 
@@ -632,5 +635,24 @@ defmodule Harness.Chat.SessionTest do
 
       assert {:ok, ^saved} = Session.snapshot(id)
     end
+  end
+
+  # Registry unregistration is driven by the Registry's own monitor, so it can
+  # lag the session's :DOWN by a scheduler hop. Poll the lookup rather than
+  # dwelling on a fixed sleep.
+  @spec await_unregistered(String.t(), non_neg_integer()) :: :ok
+  defp await_unregistered(session_id, remaining_ms \\ 1_000)
+
+  defp await_unregistered(session_id, remaining_ms) when remaining_ms > 0 do
+    if Supervisor.whereis(session_id) do
+      Process.sleep(10)
+      await_unregistered(session_id, remaining_ms - 10)
+    else
+      :ok
+    end
+  end
+
+  defp await_unregistered(session_id, _remaining_ms) do
+    flunk("session #{session_id} was still registered after termination")
   end
 end

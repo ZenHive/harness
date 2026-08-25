@@ -126,7 +126,6 @@ defmodule Harness.MixProject do
       # `Calendar.UTCOnlyTimeZoneDatabase`, so a `timezone:` cron entry raises
       # and every daily schedule silently means UTC midnight.
       {:tzdata, "~> 1.1"},
-      {:req, "~> 0.5"},
       {:anubis_mcp, "~> 2.0"},
 
       # Dashboard (Task 50) — Phoenix LiveView + embedded Oban Web. Bandit is
