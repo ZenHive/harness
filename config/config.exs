@@ -164,6 +164,13 @@ config :harness_agent_adapter, :run,
   idle_timeout: 300_000,
   progress_timeout: 300_000
 
+# Logger's own default is :debug, and `Harness.Repo` logs every query at that
+# level. On a long-lived node that turns an idle BEAM into a steady journal
+# writer — measured 19 lines in three minutes with nothing dispatched, and far
+# more once the cron poller runs. Dev keeps :debug because that is where the
+# queries are worth reading.
+config :logger, level: if(config_env() == :dev, do: :debug, else: :info)
+
 config :phoenix, :json_library, Jason
 
 # Autoupdate would have tzdata's background process fetch new IANA releases
