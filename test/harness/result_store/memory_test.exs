@@ -1,3 +1,15 @@
+defmodule Harness.ResultStore.MemoryTest.QueryProbeStore do
+  @moduledoc false
+
+  alias Harness.Run.LogRecord
+
+  @spec list_run_records(Harness.ResultStore.filters(), keyword()) :: {:ok, [LogRecord.t()]}
+  def list_run_records(filters, opts) do
+    send(Keyword.fetch!(opts, :test_pid), {:query_probe_filters, filters})
+    {:ok, []}
+  end
+end
+
 defmodule Harness.ResultStore.MemoryTest.FailingStore do
   @moduledoc false
 
@@ -55,12 +67,26 @@ defmodule Harness.ResultStore.MemoryTest do
   alias Harness.ResultStore
   alias Harness.ResultStore.Memory, as: Store
   alias Harness.ResultStore.MemoryTest.FailingStore
+  alias Harness.ResultStore.MemoryTest.QueryProbeStore
   alias Harness.ResultStoreContract
+
+  @recent_aggregate_limit 1_000
 
   setup do
     scope = "memory-#{System.unique_integer([:positive])}"
     on_exit(fn -> Store.reset(scope: scope) end)
     {:ok, store: {Store, scope: scope}}
+  end
+
+  test "record-derived aggregates bound their newest-first list reads" do
+    store = {QueryProbeStore, test_pid: self()}
+
+    assert {:ok, %{}} = ResultStore.aggregate_review_stuck_causes(store)
+    assert_receive {:query_probe_filters, [limit: @recent_aggregate_limit]}
+
+    assert {:ok, facts} = ResultStore.aggregate_recovery_facts(store)
+    assert facts == AgentKPI.aggregate_recovery_facts([])
+    assert_receive {:query_probe_filters, [limit: @recent_aggregate_limit]}
   end
 
   describe "ResultStore contract" do

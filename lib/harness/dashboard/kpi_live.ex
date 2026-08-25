@@ -42,10 +42,10 @@ defmodule Harness.Dashboard.KPILive do
 
   ## Live, not polled
 
-  Records are read from `Harness.ResultStore` once at mount and re-read whenever
-  a run settles (`Harness.Dashboard.RunFeed` `:harness_run_settled`) — the only
-  event that adds a `LogRecord` and so the only one that moves the aggregates.
-  In-flight transitions are ignored.
+  Records are read from `Harness.ResultStore` once at mount. Run settlements
+  (`Harness.Dashboard.RunFeed` `:harness_run_settled`) are coalesced into one
+  deferred refresh per short window; settlements are the only events that add a
+  `LogRecord` and move the aggregates. In-flight transitions are ignored.
 
   ## By task-facet (Task 225)
 
@@ -88,6 +88,8 @@ defmodule Harness.Dashboard.KPILive do
   alias Phoenix.LiveView.Rendered
   alias Phoenix.LiveView.Socket
 
+  @settlement_refresh_delay_ms 100
+
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     if connected?(socket), do: RunFeed.subscribe()
@@ -95,6 +97,7 @@ defmodule Harness.Dashboard.KPILive do
     {:ok,
      socket
      |> assign(:facet_filter, nil)
+     |> assign(:settlement_refresh_timer, nil)
      |> assign_rows()
      |> assign_facets()}
   end
@@ -102,11 +105,22 @@ defmodule Harness.Dashboard.KPILive do
   @impl Phoenix.LiveView
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
-  # Only a settled run mints a new LogRecord, so it is the only event that can
-  # move the aggregates; in-flight updates are ignored to avoid needless re-reads.
+  # One timer per tab coalesces a burst of fleet settlements into one aggregate
+  # refresh while keeping the newly persisted records visible shortly afterward.
   @impl Phoenix.LiveView
-  def handle_info({:harness_run_settled, %Status{}}, socket) do
-    {:noreply, socket |> assign_rows() |> assign_facets()}
+  def handle_info({:harness_run_settled, %Status{}}, %{assigns: %{settlement_refresh_timer: nil}} = socket) do
+    timer = Process.send_after(self(), :refresh_settled_kpis, @settlement_refresh_delay_ms)
+    {:noreply, assign(socket, :settlement_refresh_timer, timer)}
+  end
+
+  def handle_info({:harness_run_settled, %Status{}}, socket), do: {:noreply, socket}
+
+  def handle_info(:refresh_settled_kpis, socket) do
+    {:noreply,
+     socket
+     |> assign(:settlement_refresh_timer, nil)
+     |> assign_rows()
+     |> assign_facets()}
   end
 
   def handle_info(_other, socket), do: {:noreply, socket}

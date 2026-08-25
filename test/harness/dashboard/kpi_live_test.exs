@@ -1,3 +1,45 @@
+defmodule Harness.Dashboard.KPILiveTest.InstrumentedStore do
+  @moduledoc false
+
+  alias Harness.AgentKPI
+  alias Harness.ResultStore
+  alias Harness.ResultStore.Memory
+  alias Harness.Run.LogRecord
+
+  @spec record_run(LogRecord.t(), keyword()) :: :ok
+  def record_run(record, opts), do: Memory.record_run(record, opts)
+
+  @spec aggregate_by_agent(keyword(), keyword()) :: {:ok, AgentKPI.t()}
+  def aggregate_by_agent(query_opts, opts) do
+    notify(opts, :aggregate_by_agent)
+    Memory.aggregate_by_agent(query_opts, opts)
+  end
+
+  @spec aggregate_reviewer_reliability(keyword(), keyword()) :: {:ok, AgentKPI.reviewer_ledger()}
+  def aggregate_reviewer_reliability(query_opts, opts) do
+    notify(opts, :aggregate_reviewer_reliability)
+    Memory.aggregate_reviewer_reliability(query_opts, opts)
+  end
+
+  @spec aggregate_by_facet(keyword(), keyword()) :: {:ok, [ResultStore.facet_group()]}
+  def aggregate_by_facet(query_opts, opts) do
+    notify(opts, :aggregate_by_facet)
+    Memory.aggregate_by_facet(query_opts, opts)
+  end
+
+  @spec list_run_records(ResultStore.filters(), keyword()) :: {:ok, [LogRecord.t()]}
+  def list_run_records(filters, opts) do
+    notify(opts, {:list_run_records, filters})
+    Memory.list_run_records(filters, opts)
+  end
+
+  @spec notify(keyword(), atom() | {:list_run_records, ResultStore.filters()}) :: :ok
+  defp notify(opts, read) do
+    send(Keyword.fetch!(opts, :test_pid), {:kpi_store_read, read})
+    :ok
+  end
+end
+
 defmodule Harness.Dashboard.KPILiveTest do
   @moduledoc """
   `Phoenix.LiveViewTest` coverage for `Harness.Dashboard.KPILive` (Task 115):
@@ -13,13 +55,21 @@ defmodule Harness.Dashboard.KPILiveTest do
   # async: false because tests mutate the global :result_store application env.
   use Harness.Dashboard.ConnCase, async: false
 
+  alias __MODULE__.InstrumentedStore
   alias Harness.AgentAdapter.Testing.FakeAdapter
   alias Harness.CapabilityScore
   alias Harness.CapabilityScore.Assessment
   alias Harness.CapabilityScore.Entry
   alias Harness.ResultStore
+  alias Harness.ResultStore.Memory
   alias Harness.Run.LogRecord
+  alias Harness.Run.Status
   alias Harness.TokenUsage
+
+  @before_refresh_ms 50
+  @refresh_timeout_ms 500
+  @post_refresh_quiet_ms 150
+  @recent_aggregate_limit 1_000
 
   setup %{conn: conn} do
     # The LiveView reads ResultStore.configured/0; point it at a per-test tmp
@@ -27,7 +77,7 @@ defmodule Harness.Dashboard.KPILiveTest do
     root = Path.join(System.tmp_dir!(), "harness_kpi_test_#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
     prev = Application.get_env(:harness, :result_store)
-    Application.put_env(:harness, :result_store, {ResultStore.Memory, root: root})
+    Application.put_env(:harness, :result_store, {Memory, root: root})
 
     on_exit(fn ->
       Application.put_env(:harness, :result_store, prev)
@@ -80,6 +130,35 @@ defmodule Harness.Dashboard.KPILiveTest do
 
       assert html =~ "No run records yet"
       refute html =~ ~s(phx-value-col="agent")
+    end
+  end
+
+  describe "settlement refresh" do
+    test "coalesces a settlement burst and then renders the newly persisted run", %{conn: conn} do
+      scope = "kpi-instrumented-#{System.unique_integer([:positive])}"
+
+      Application.put_env(
+        :harness,
+        :result_store,
+        {InstrumentedStore, scope: scope, test_pid: self()}
+      )
+
+      on_exit(fn -> Memory.reset(scope: scope) end)
+
+      {:ok, view, _html} = live(conn, "/harness/kpi")
+      flush_store_reads()
+
+      seed("newly-settled", agent: :codex, verdict: :approve)
+      status = %Status{run_id: "newly-settled", task_id: "t", agent: :codex, state: :done}
+
+      send(view.pid, {:harness_run_settled, status})
+      send(view.pid, {:harness_run_settled, status})
+
+      refute_receive {:kpi_store_read, _read}, @before_refresh_ms
+      assert_refresh_reads()
+
+      assert render(view) =~ "codex"
+      refute_receive {:kpi_store_read, _read}, @post_refresh_quiet_ms
     end
   end
 
@@ -368,6 +447,25 @@ defmodule Harness.Dashboard.KPILiveTest do
       assert filtered =~ ~s(class="facet-pill active")
       # Exactly one facet card table body remains (the filtered group).
       assert length(String.split(filtered, ~s(class="facet-card"))) == 2
+    end
+  end
+
+  @spec assert_refresh_reads() :: :ok
+  defp assert_refresh_reads do
+    assert_receive {:kpi_store_read, :aggregate_by_agent}, @refresh_timeout_ms
+    assert_receive {:kpi_store_read, :aggregate_reviewer_reliability}, @refresh_timeout_ms
+    assert_receive {:kpi_store_read, {:list_run_records, [limit: @recent_aggregate_limit]}}, @refresh_timeout_ms
+    assert_receive {:kpi_store_read, {:list_run_records, [limit: @recent_aggregate_limit]}}, @refresh_timeout_ms
+    assert_receive {:kpi_store_read, :aggregate_by_facet}, @refresh_timeout_ms
+    :ok
+  end
+
+  @spec flush_store_reads() :: :ok
+  defp flush_store_reads do
+    receive do
+      {:kpi_store_read, _read} -> flush_store_reads()
+    after
+      0 -> :ok
     end
   end
 end

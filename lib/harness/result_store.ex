@@ -56,6 +56,7 @@ defmodule Harness.ResultStore do
   # the function's `\\ configured()` default head — not via this sentinel.
   # The sentinel remains for in-process callers that pass it explicitly.
   @configured_store :configured_result_store
+  @recent_aggregate_limit 1_000
 
   @doc "Persists one structured run record with implementation-specific options."
   @callback record_run(LogRecord.t(), keyword()) :: :ok | {:error, term()}
@@ -429,7 +430,7 @@ defmodule Harness.ResultStore do
 
   api(
     :aggregate_review_stuck_causes,
-    "Orchestration-health review_stuck counts by persisted cause, including selection-time stuck runs with no reviewer_adapter. Derived from list_run_records; no attribution to implementers or reviewers.",
+    "Orchestration-health review_stuck counts by persisted cause over the 1,000 newest runs, including selection-time stuck runs with no reviewer_adapter. Derived from list_run_records; no attribution to implementers or reviewers.",
     params: [
       store: [
         kind: :value,
@@ -449,7 +450,7 @@ defmodule Harness.ResultStore do
   def aggregate_review_stuck_causes(nil), do: {:ok, %{}}
 
   def aggregate_review_stuck_causes(store) do
-    case list_run_records(store, []) do
+    case list_run_records(store, limit: @recent_aggregate_limit) do
       {:ok, records} -> {:ok, AgentKPI.aggregate_review_stuck_causes(records)}
       {:error, _} = err -> err
     end
@@ -457,7 +458,7 @@ defmodule Harness.ResultStore do
 
   api(
     :aggregate_recovery_facts,
-    "Raw bounded AI-recovery facts over persisted run records: attempts, repaired/dead outcomes, repair notes, and recovery token spend. Returns counts and per-run entries only — AI consumers synthesize whether recovery is worth it.",
+    "Raw AI-recovery facts over the 1,000 newest persisted runs: attempts, repaired/dead outcomes, repair notes, and recovery token spend. Returns counts and per-run entries only — AI consumers synthesize whether recovery is worth it.",
     params: [
       store: [
         kind: :value,
@@ -477,7 +478,7 @@ defmodule Harness.ResultStore do
   def aggregate_recovery_facts(nil), do: {:ok, AgentKPI.aggregate_recovery_facts([])}
 
   def aggregate_recovery_facts(store) do
-    case list_run_records(store, []) do
+    case list_run_records(store, limit: @recent_aggregate_limit) do
       {:ok, records} -> {:ok, AgentKPI.aggregate_recovery_facts(records)}
       {:error, _} = err -> err
     end
