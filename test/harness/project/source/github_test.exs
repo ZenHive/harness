@@ -66,7 +66,7 @@ defmodule Harness.Project.Source.GithubTest do
     test "clones an scp-style git URL" do
       upstream = GithubFixture.init_upstream(name: "scp-clone")
       prefix = "git@harness-fixture-#{System.unique_integer([:positive])}.invalid:"
-      project = build_project("scp-clone", allowed_fixture_url(upstream.bare_path, prefix))
+      project = build_project("scp-clone", GithubFixture.allowlisted_url(upstream.bare_path, prefix))
       cache_root = GitFixture.tmp_base(name: "cache")
 
       assert {:ok, path} = Github.ensure_local(project, cache_root: cache_root)
@@ -75,7 +75,7 @@ defmodule Harness.Project.Source.GithubTest do
 
     test "surfaces a clone failure when the URL is unreachable" do
       bogus = Path.join(System.tmp_dir!(), "harness-not-a-repo-#{System.unique_integer([:positive])}")
-      project = build_project("bogus", allowed_fixture_url(bogus))
+      project = build_project("bogus", GithubFixture.allowlisted_url(bogus))
       cache_root = GitFixture.tmp_base(name: "cache")
 
       assert {:error, {:clone_failed, status, output}} =
@@ -252,32 +252,7 @@ defmodule Harness.Project.Source.GithubTest do
     }
   end
 
-  defp fixture_project(name, upstream), do: build_project(name, allowed_fixture_url(upstream.bare_path))
-
-  defp allowed_fixture_url(path) do
-    fixture_prefix = "https://harness-fixture.invalid/#{System.unique_integer([:positive])}/"
-    allowed_fixture_url(path, fixture_prefix)
-  end
-
-  defp allowed_fixture_url(path, fixture_prefix) do
-    local_prefix = "file://#{Path.dirname(path)}/"
-    env_keys = ~w(GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0)
-    previous = Map.new(env_keys, &{&1, System.get_env(&1)})
-
-    System.put_env("GIT_CONFIG_COUNT", "1")
-    System.put_env("GIT_CONFIG_KEY_0", "url.#{local_prefix}.insteadOf")
-    System.put_env("GIT_CONFIG_VALUE_0", fixture_prefix)
-    on_exit(fn -> restore_env(previous) end)
-
-    fixture_prefix <> Path.basename(path)
-  end
-
-  defp restore_env(previous) do
-    Enum.each(previous, fn
-      {key, nil} -> System.delete_env(key)
-      {key, value} -> System.put_env(key, value)
-    end)
-  end
+  defp fixture_project(name, upstream), do: build_project(name, GithubFixture.allowlisted_url(upstream.bare_path))
 
   defp restore_project_config({:ok, value}), do: Application.put_env(:harness, :project, value)
   defp restore_project_config(:error), do: Application.delete_env(:harness, :project)

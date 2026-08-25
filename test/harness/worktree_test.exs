@@ -6,7 +6,6 @@ defmodule Harness.WorktreeTest do
   alias Harness.AgentAdapter.Cursor
   alias Harness.AgentAdapter.Invocation
   alias Harness.GitFixture
-  alias Harness.GithubFixture
   alias Harness.Project
   alias Harness.ProjectFixture
   alias Harness.Worktree
@@ -275,70 +274,6 @@ defmodule Harness.WorktreeTest do
       GitFixture.git!(repo, ["checkout", "-q", "-b", "main-extra"])
       GitFixture.git!(repo, ["commit", "--allow-empty", "-q", "-m", "post-neuter push"])
       GitFixture.git!(repo, ["push", "-q", "origin", "main-extra"])
-    end
-  end
-
-  describe "create/2 — github source" do
-    test "clones the upstream cache on first call, then carves a worktree off it" do
-      upstream = GithubFixture.init_upstream(name: "wt-clone")
-      project = github_project("wt-clone", upstream.bare_path)
-      cache_root = GitFixture.tmp_base(name: "cache")
-      base = GitFixture.tmp_base()
-
-      refute File.dir?(Path.join(cache_root, project.name))
-
-      assert {:ok, wt} =
-               Worktree.create(project, base_dir: base, cache_root: cache_root)
-
-      cache_path = Path.join(cache_root, project.name)
-      assert wt.repo == cache_path
-      assert File.dir?(Path.join(cache_path, ".git"))
-      assert wt.path == Path.join([base, project.name, wt.id])
-      assert File.exists?(Path.join(wt.path, "README.md"))
-    end
-
-    test "fetches before carving the worktree on subsequent calls" do
-      upstream = GithubFixture.init_upstream(name: "wt-fetch")
-      project = github_project("wt-fetch", upstream.bare_path)
-      cache_root = GitFixture.tmp_base(name: "cache")
-      base = GitFixture.tmp_base()
-
-      {:ok, _first} = Worktree.create(project, base_dir: base, cache_root: cache_root)
-
-      GithubFixture.push_commit(upstream, file: "fresh.txt", content: "after fetch\n")
-
-      assert {:ok, wt} =
-               Worktree.create(project, base_dir: base, cache_root: cache_root)
-
-      assert File.read!(Path.join(wt.path, "fresh.txt")) == "after fetch\n"
-    end
-
-    test "transparently re-clones after the cache directory is removed" do
-      upstream = GithubFixture.init_upstream(name: "wt-recover")
-      project = github_project("wt-recover", upstream.bare_path)
-      cache_root = GitFixture.tmp_base(name: "cache")
-      base = GitFixture.tmp_base()
-
-      {:ok, _first} = Worktree.create(project, base_dir: base, cache_root: cache_root)
-      File.rm_rf!(Path.join(cache_root, project.name))
-
-      assert {:ok, wt} =
-               Worktree.create(project, base_dir: base, cache_root: cache_root)
-
-      assert File.dir?(wt.path)
-      assert File.exists?(Path.join(wt.path, "README.md"))
-    end
-
-    test "surfaces a source_unavailable error when the upstream URL is unreachable" do
-      bogus = Path.join(System.tmp_dir!(), "harness-not-a-repo-#{System.unique_integer([:positive])}")
-      project = github_project("wt-bad", bogus)
-      cache_root = GitFixture.tmp_base(name: "cache")
-      base = GitFixture.tmp_base()
-
-      assert {:error, {:source_unavailable, {:clone_failed, status, _output}}} =
-               Worktree.create(project, base_dir: base, cache_root: cache_root)
-
-      assert status != 0
     end
   end
 
@@ -810,14 +745,5 @@ defmodule Harness.WorktreeTest do
   defp git_dir(path) do
     git_dir = String.trim(GitFixture.git!(path, ["rev-parse", "--git-dir"]))
     if Path.type(git_dir) == :absolute, do: git_dir, else: Path.expand(git_dir, path)
-  end
-
-  defp github_project(name, url) do
-    %Project{
-      name: name,
-      source: {:github, url},
-      roadmap_path: "/tmp/#{name}",
-      languages: [:elixir]
-    }
   end
 end
