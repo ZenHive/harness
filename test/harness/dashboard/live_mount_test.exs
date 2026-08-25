@@ -13,7 +13,6 @@ defmodule Harness.Dashboard.LiveMountTest do
   # async: false because tests read singleton ProjectRegistry and run registry state.
   use Harness.Dashboard.ConnCase, async: false
 
-  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.Dashboard.Transcript
   alias Harness.GitFixture
   alias Harness.ProjectFixture
@@ -22,6 +21,7 @@ defmodule Harness.Dashboard.LiveMountTest do
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.LogRecord
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
 
   setup %{conn: conn} do
     prior_repo_enabled = Application.get_env(:harness, :repo_enabled)

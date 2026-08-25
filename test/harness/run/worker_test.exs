@@ -2,10 +2,10 @@ defmodule Harness.Run.WorkerTest do
   use ExUnit.Case, async: true
 
   alias Ecto.Changeset
-  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.ProjectFixture
   alias Harness.Roadmap.Item
   alias Harness.Run.Worker
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
 
   test "new_dispatch_job persists a per-run reviewer check command override" do
     project = ProjectFixture.from_repo("/tmp/worker-check-command")

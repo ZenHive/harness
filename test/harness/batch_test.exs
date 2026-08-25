@@ -6,7 +6,6 @@ defmodule Harness.BatchTest do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.OSProcess
   alias Harness.AgentAdapter.Run, as: AgentRun
-  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.AgentRegistry
   alias Harness.Batch
   alias Harness.Batch.Result, as: BatchResult
@@ -18,6 +17,7 @@ defmodule Harness.BatchTest do
   alias Harness.Run
   alias Harness.Run.Result
   alias Harness.Run.Worker, as: RunWorker
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
 
   @eventually_tries 150
   @eventually_delay_ms 20

@@ -6,7 +6,6 @@ defmodule Harness.RunFeedIntegrationTest do
   # async: false because it drives the shared Run supervisor/registry and PubSub topic.
   use ExUnit.Case, async: false
 
-  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.Dashboard.RunFeed
   alias Harness.GitFixture
   alias Harness.ProjectFixture
@@ -14,6 +13,7 @@ defmodule Harness.RunFeedIntegrationTest do
   alias Harness.Run
   alias Harness.Run.Status
   alias Harness.Run.Supervisor, as: RunSupervisor
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
 
   test "a run broadcasts non-terminal updates then a terminal settled message" do
     :ok = RunFeed.subscribe()

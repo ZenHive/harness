@@ -2,12 +2,12 @@ defmodule Harness.Run.SupervisorTest do
   use ExUnit.Case, async: true
 
   alias Harness.AgentAdapter.Capabilities
-  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.GitFixture
   alias Harness.ProjectFixture
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.Result
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
 
   defmodule NoResumeAdapter do
     @moduledoc false

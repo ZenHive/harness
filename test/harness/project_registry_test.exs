@@ -30,7 +30,6 @@ defmodule Harness.ProjectRegistryTest do
   use ExUnit.Case, async: false
 
   alias Ecto.Adapters.SQL.Sandbox
-  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.Dispatch
   alias Harness.GitFixture
   alias Harness.Landing.Settings, as: LandingSettings
@@ -42,6 +41,7 @@ defmodule Harness.ProjectRegistryTest do
   alias Harness.Roadmap.Item
   alias Harness.Run.Result
   alias Harness.Run.Supervisor, as: RunSupervisor
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.Test.SettingsStoreMemory
 
   @eventually_tries 100

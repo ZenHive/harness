@@ -1,9 +1,9 @@
 defmodule Harness.Run.StatusTest do
   use ExUnit.Case, async: true
 
-  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.Run.LogRecord
   alias Harness.Run.Status
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
 
   describe "from_log_record/1" do
     test "maps a settled rejected record into a status snapshot" do

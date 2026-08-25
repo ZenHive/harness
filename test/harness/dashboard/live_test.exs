@@ -9,7 +9,6 @@ defmodule Harness.Dashboard.LiveTest do
 
   import Phoenix.LiveViewTest, only: [rendered_to_string: 1]
 
-  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.AgentRegistry
   alias Harness.Dashboard.Live
   alias Harness.GitFixture
@@ -23,6 +22,7 @@ defmodule Harness.Dashboard.LiveTest do
   alias Harness.Run.LogRecord
   alias Harness.Run.Result
   alias Harness.Run.Status
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Phoenix.LiveView.Socket
 
   defp run_entry(run_id, opts) do

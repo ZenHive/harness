@@ -23,7 +23,6 @@ defmodule Harness.PipelineE2ETest do
   # async: false because tests mutate ProjectRegistry and app env seams.
   use ExUnit.Case, async: false
 
-  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.GitFixture
   alias Harness.Lander.Worker, as: LanderWorker
   alias Harness.ProjectFixture
@@ -31,6 +30,7 @@ defmodule Harness.PipelineE2ETest do
   alias Harness.ResultStore
   alias Harness.Run.Supervisor, as: RunSupervisor
   alias Harness.Run.Worker, as: RunWorker
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
 
   @moduletag :tmp_dir
 

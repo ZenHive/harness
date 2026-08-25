@@ -7,7 +7,6 @@ defmodule Harness.RunLandingTriggerTest do
   # async: false because tests mutate ProjectRegistry and the :oban_insert app env seam.
   use ExUnit.Case, async: false
 
-  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.GitFixture
   alias Harness.Landing.Settings, as: LandingSettings
   alias Harness.ProjectFixture
@@ -15,6 +14,7 @@ defmodule Harness.RunLandingTriggerTest do
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.Result
+  alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Harness.Test.SettingsStoreMemory
 
   defp item, do: %Item{id: "42", title: "t", prompt: "p", agent: :claude, fingerprint: "fp-42"}
