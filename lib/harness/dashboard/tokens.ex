@@ -609,6 +609,29 @@ defmodule Harness.Dashboard.Tokens do
       .run-internals > summary:hover { color: var(--text); }
       .run-internals .field { margin-block-start: var(--space-2); }
 
+      .run-failure {
+        margin-block: var(--space-3);
+        padding: var(--space-3);
+        border: 1px solid var(--rule);
+        border-radius: 0.4rem;
+        background: var(--surface);
+      }
+      .run-failure h2 {
+        margin: 0 0 var(--space-2);
+        font-size: var(--text-md);
+      }
+      .run-failure p { margin: 0 0 var(--space-2); font-size: var(--text-sm); }
+      .run-failure details { font-size: var(--text-sm); }
+      .run-failure details summary {
+        cursor: pointer;
+        color: var(--text-subtle);
+        font-family: var(--font-mono);
+      }
+      .run-failure details pre {
+        margin-top: var(--space-2);
+        white-space: pre-wrap;
+      }
+
       /* === Task details (the focused run's roadmap task) === */
 
       .task-details { margin-block: var(--space-4); }

@@ -106,7 +106,7 @@ defmodule Harness.StatusViewTest do
     entry = StatusView.run_entry_for(status)
 
     assert entry.bucket == :red
-    assert entry.detail == "cursor model \"composer-2.5-fast\" unavailable (none available)"
+    assert entry.detail == "Configured model is unavailable"
   end
 
   test "run_entry_for/1 lists available ids when the rejected model has alternatives" do
@@ -118,13 +118,13 @@ defmodule Harness.StatusViewTest do
     }
 
     assert StatusView.run_entry_for(status).detail ==
-             "cursor model \"composer-2.5-fast\" unavailable (available: composer-2.5, gemini-3.1-pro)"
+             "Configured model is unavailable"
   end
 
   test "run_entry_for/1 renders a model-required reviewer failure" do
     status = %Status{run_id: "run-x", task_id: "11", state: :failed, reason: {:model_required, :codex}}
 
-    assert StatusView.run_entry_for(status).detail == "model_required :codex"
+    assert StatusView.run_entry_for(status).detail == "Reviewer has no configured model"
   end
 
   test "run_entry_for/1 falls back to inspect for an unrecognized reason shape" do
@@ -216,7 +216,53 @@ defmodule Harness.StatusViewTest do
       failed =
         StatusView.run_entry_for(%Status{run_id: "e-2", task_id: "1", state: :failed, reason: :cancelled})
 
-      assert %{bucket: :red, detail: "cancelled"} = failed
+      assert %{bucket: :red, detail: "Run was cancelled"} = failed
+    end
+  end
+
+  describe "describe_reason/1 and failure_copy/1" do
+    test "maps known reason heads to a fixed operator headline" do
+      assert StatusView.describe_reason({:review_stuck, "no artifact"}) == "Reviewer produced no verdict"
+      assert StatusView.describe_reason({:review_rejected, "nothing to salvage"}) == "Reviewer rejected the work"
+      assert StatusView.describe_reason(:cancelled) == "Run was cancelled"
+      assert StatusView.describe_reason({:model_required, :codex}) == "Reviewer has no configured model"
+    end
+
+    test "falls through to inspect for an unmapped reason shape" do
+      assert StatusView.describe_reason({:weird, 1, 2, 3, 4}) == "{:weird, 1, 2, 3, 4}"
+    end
+
+    test "failure_copy/1 names the recovery primitive and reports a retained branch" do
+      status = %Status{
+        run_id: "run-keep",
+        task_id: "1",
+        state: :failed,
+        reason: {:review_stuck, "Reviewer wrote no .harness/review.json verdict artifact."},
+        state_entered_at: %{committing: ~U[2026-08-25 10:00:00Z], reviewing: ~U[2026-08-25 10:01:00Z]}
+      }
+
+      copy = StatusView.failure_copy(status)
+
+      assert copy.headline == "Reviewer produced no verdict"
+      assert copy.headline == StatusView.describe_reason(status.reason)
+      assert copy.consequence == "The implementer's commits on harness/run-keep are retained."
+      assert copy.recovery == "dispatch-rereview"
+      assert copy.raw == inspect(status.reason)
+    end
+
+    test "failure_copy/1 reports when no implementer commits were retained" do
+      status = %Status{
+        run_id: "run-empty",
+        task_id: "1",
+        state: :failed,
+        reason: {:worktree_failed, :boom}
+      }
+
+      copy = StatusView.failure_copy(status)
+
+      assert copy.headline == "Worktree could not be created"
+      assert copy.consequence == "No implementer commits were retained on harness/run-empty."
+      assert copy.recovery == "cancel"
     end
   end
 

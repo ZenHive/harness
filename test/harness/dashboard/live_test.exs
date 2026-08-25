@@ -22,6 +22,7 @@ defmodule Harness.Dashboard.LiveTest do
   alias Harness.Run.LogRecord
   alias Harness.Run.Result
   alias Harness.Run.Status
+  alias Harness.StatusView
   alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
   alias Phoenix.LiveView.Socket
 
@@ -882,6 +883,127 @@ defmodule Harness.Dashboard.LiveTest do
     end
   end
 
+  describe "render_show failure diagnosis (Task 406)" do
+    test "renders operator-language failure copy above Run internals with raw term disclosed" do
+      started_at = ~U[2026-08-25 10:00:00.000Z]
+      reason = {:review_stuck, "Reviewer wrote no .harness/review.json verdict artifact."}
+
+      status = %Status{
+        run_id: "r",
+        task_id: "1",
+        state: :failed,
+        reason: reason,
+        review_verdict: nil,
+        worktree_path: "/tmp/harness/r",
+        started_at: started_at,
+        state_entered_at: %{
+          dispatched: started_at,
+          running: started_at,
+          committing: DateTime.shift(started_at, second: 4),
+          reviewing: DateTime.shift(started_at, second: 6),
+          failed: DateTime.shift(started_at, second: 10)
+        }
+      }
+
+      html =
+        status
+        |> show_render_assigns("")
+        |> Map.put(:now, DateTime.shift(started_at, second: 10))
+        |> Live.render()
+        |> rendered_to_string()
+
+      assert html =~ ~s(id="run-failure")
+      assert html =~ "Reviewer produced no verdict"
+      assert html =~ "commits on harness/r are retained."
+      assert html =~ "dispatch-rereview"
+      assert html =~ "Raw reason"
+      assert html =~ "review_stuck"
+
+      [before_internals, after_internals] = String.split(html, "Run internals", parts: 2)
+      assert before_internals =~ ~s(id="run-failure")
+      refute after_internals =~ ~s(id="run-failure")
+
+      internals = internals_block(html)
+      assert internals =~ "<dt>Verdict</dt>"
+      assert internals =~ "<dt>Elapsed</dt>"
+      assert internals =~ ~s(data-run-internals-elapsed)
+      refute internals =~ ~s(data-run-internals-elapsed>—</dd>)
+      assert internals =~ "/tmp/harness/r"
+      refute internals =~ "<dt>Reason</dt>"
+    end
+
+    test "Run internals fills verdict, elapsed, and worktree path from the run record" do
+      started_at = ~U[2026-08-25 08:00:00.000Z]
+
+      status = %Status{
+        run_id: "r",
+        task_id: "1",
+        state: :failed,
+        reason: {:review_rejected, "nothing to salvage"},
+        review_verdict: :reject,
+        worktree_path: "/tmp/wt/r",
+        started_at: started_at,
+        state_entered_at: %{failed: DateTime.shift(started_at, second: 12)}
+      }
+
+      html =
+        status
+        |> show_render_assigns("")
+        |> Map.put(:now, DateTime.shift(started_at, second: 12))
+        |> Live.render()
+        |> rendered_to_string()
+
+      internals = internals_block(html)
+      assert internals =~ "rejected"
+      assert internals =~ "/tmp/wt/r"
+      refute internals =~ ~s(data-run-internals-elapsed>—</dd>)
+    end
+
+    test "row-actions on the detail page reuse the index predicates" do
+      status = %Status{
+        run_id: "r",
+        task_id: "1",
+        project_name: "demo",
+        state: :failed,
+        reason: :cancelled
+      }
+
+      html =
+        status
+        |> show_render_assigns("")
+        |> Live.render()
+        |> rendered_to_string()
+
+      assert html =~ ~s(class="row-actions")
+      assert html =~ "Resume"
+      assert html =~ "Escalate"
+      assert html =~ "Delete"
+      refute html =~ "Kill run"
+    end
+
+    test "index detail and run-detail headline are identical for three reason shapes" do
+      reasons = [
+        {:review_stuck, "no artifact"},
+        {:review_rejected, "nothing to salvage"},
+        {:weird, 1, 2, 3, 4}
+      ]
+
+      for reason <- reasons do
+        status = %Status{run_id: "r", task_id: "1", state: :failed, reason: reason}
+        index_text = StatusView.run_entry_for(status).detail
+
+        html =
+          status
+          |> show_render_assigns("")
+          |> Live.render()
+          |> rendered_to_string()
+
+        assert index_text == StatusView.describe_reason(reason)
+        assert html =~ index_text
+      end
+    end
+  end
+
   describe "load_task_item/2 (graceful roadmap resolution)" do
     test "returns nil for a blank or missing task id or project name" do
       assert Live.load_task_item(nil, "demo") == nil
@@ -911,8 +1033,17 @@ defmodule Harness.Dashboard.LiveTest do
       task_item: nil,
       notice: nil,
       raw_view: false,
-      now: DateTime.utc_now(:millisecond)
+      now: DateTime.utc_now(:millisecond),
+      roadmap: %{},
+      projects: []
     }
+  end
+
+  defp internals_block(html) do
+    case String.split(html, "Run internals", parts: 2) do
+      [_before, rest] -> rest
+      _ -> flunk("expected rendered HTML to include Run internals")
+    end
   end
 
   defp socket_with_run(run_id) do

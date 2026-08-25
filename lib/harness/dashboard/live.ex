@@ -36,7 +36,8 @@ defmodule Harness.Dashboard.Live do
 
   Settled runs carry two confirm-gated recovery buttons, each surfaced only when
   the run's state permits it — harness offers, the operator chooses (agent-gate:
-  no auto-classification of which recovery applies):
+  no auto-classification of which recovery applies). The same `.row-actions`
+  group renders on the index row and under Run info on the run-detail page:
 
     * **Resume / Escalate** — on a `:failed` run (`resumable?/1`). Re-dispatches the
       run's roadmap task on a NEW run that branches off the retained
@@ -860,26 +861,29 @@ defmodule Harness.Dashboard.Live do
         <dd>{token_label(stage_token_agent_kind(@run_status, @agent_kind), @transcript)}</dd>
         <Components.run_timing status={@run_status} now={@now} />
       </dl>
+      <.run_failure
+        :if={@run_status.state == :failed and @run_status.reason != nil}
+        status={@run_status}
+      />
+      <.row_actions
+        status={@run_status}
+        summaries={@roadmap}
+        landable_projects={landable_project_names(@projects)}
+      />
       <details class="run-internals">
         <summary>Run internals</summary>
         <dl class="field">
-          <dt>Agent OS pid</dt>
-          <dd>{@run_status.agent_os_pid || "—"}</dd>
-          <dt>Reason</dt>
-          <dd>{inspect(@run_status.reason)}</dd>
+          <dt>Verdict</dt>
+          <dd>{verdict_label(@run_status.review_verdict)}</dd>
+          <dt>Elapsed</dt>
+          <dd data-run-internals-elapsed>{Components.elapsed_label(@run_status, @now)}</dd>
           <dt>Worktree path</dt>
           <dd>{@run_status.worktree_path || "—"}</dd>
+          <dt>Agent OS pid</dt>
+          <dd>{@run_status.agent_os_pid || "—"}</dd>
         </dl>
       </details>
     </div>
-
-    <p :if={killable?(@run_status)}>
-      <.kill_button
-        run_id={@run_id}
-        task_id={@run_status.task_id}
-        project_name={@run_status.project_name}
-      />
-    </p>
 
     <.task_section :if={@task_item != nil} item={@task_item} />
 
@@ -1064,50 +1068,90 @@ defmodule Harness.Dashboard.Live do
           <td>{landed_label(entry.status)}</td>
           <td>{entry.detail || ""}</td>
           <td>
-            <div class="row-actions">
-              <.kill_button
-                :if={killable?(entry.status)}
-                run_id={entry.status.run_id}
-                task_id={entry.status.task_id}
-                project_name={entry.status.project_name}
-              />
-              <.resume_button
-                :if={resumable?(entry.status)}
-                run_id={entry.status.run_id}
-                task_id={entry.status.task_id}
-                project_name={entry.status.project_name}
-              />
-              <.resume_button
-                :if={resumable?(entry.status)}
-                run_id={entry.status.run_id}
-                task_id={entry.status.task_id}
-                project_name={entry.status.project_name}
-                escalate
-              />
-              <.reland_button
-                :if={relandable?(entry.status, @summaries)}
-                run_id={entry.status.run_id}
-                task_id={entry.status.task_id}
-                project_name={entry.status.project_name}
-              />
-              <.reland_button
-                :if={landable?(entry.status, @summaries, @landable_projects)}
-                run_id={entry.status.run_id}
-                task_id={entry.status.task_id}
-                project_name={entry.status.project_name}
-                first_land
-              />
-              <.delete_button
-                :if={deletable?(entry.status)}
-                run_id={entry.status.run_id}
-                task_id={entry.status.task_id}
-                project_name={entry.status.project_name}
-              />
-            </div>
+            <.row_actions
+              status={entry.status}
+              summaries={@summaries}
+              landable_projects={@landable_projects}
+            />
           </td>
         </tr>
       </tbody>
     </table>
+    """
+  end
+
+  attr(:status, :map, required: true)
+
+  # Failed-run diagnosis: operator headline + consequence + named recovery,
+  # with the raw Erlang term behind a disclosure. Headline is
+  # `StatusView.describe_reason/1` so this matches the index Detail cell.
+  @spec run_failure(map()) :: Rendered.t()
+  defp run_failure(assigns) do
+    assigns = assign(assigns, :copy, StatusView.failure_copy(assigns.status))
+
+    ~H"""
+    <section class="run-failure" id="run-failure">
+      <h2>{@copy.headline}</h2>
+      <p>{@copy.consequence}</p>
+      <p>Recommended recovery: <code>{@copy.recovery}</code></p>
+      <details>
+        <summary>Raw reason</summary>
+        <pre>{@copy.raw}</pre>
+      </details>
+    </section>
+    """
+  end
+
+  attr(:status, :map, required: true)
+  attr(:summaries, :map, default: %{})
+  attr(:landable_projects, :any, default: MapSet.new())
+
+  # Shared by index rows and the run-detail page. Each button is gated by the
+  # existing resumable?/relandable?/landable?/deletable?/killable? predicates
+  # — this component does not re-derive those facts.
+  @spec row_actions(map()) :: Rendered.t()
+  defp row_actions(assigns) do
+    ~H"""
+    <div class="row-actions">
+      <.kill_button
+        :if={killable?(@status)}
+        run_id={@status.run_id}
+        task_id={@status.task_id}
+        project_name={@status.project_name}
+      />
+      <.resume_button
+        :if={resumable?(@status)}
+        run_id={@status.run_id}
+        task_id={@status.task_id}
+        project_name={@status.project_name}
+      />
+      <.resume_button
+        :if={resumable?(@status)}
+        run_id={@status.run_id}
+        task_id={@status.task_id}
+        project_name={@status.project_name}
+        escalate
+      />
+      <.reland_button
+        :if={relandable?(@status, @summaries)}
+        run_id={@status.run_id}
+        task_id={@status.task_id}
+        project_name={@status.project_name}
+      />
+      <.reland_button
+        :if={landable?(@status, @summaries, @landable_projects)}
+        run_id={@status.run_id}
+        task_id={@status.task_id}
+        project_name={@status.project_name}
+        first_land
+      />
+      <.delete_button
+        :if={deletable?(@status)}
+        run_id={@status.run_id}
+        task_id={@status.task_id}
+        project_name={@status.project_name}
+      />
+    </div>
     """
   end
 
