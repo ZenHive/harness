@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Compare lanes read the run's own state word.** `/harness/compare` lane badges labelled themselves with the colour bucket's name, so a reviewing lane read `repairing` while the Task 407 index badge read `reviewing` for the same run. The badge now carries the state word (or `approved`/`rejected` once settled) with the four-tone colour vocabulary unchanged — the same tone/label split `live.ex` uses.
+
 - **Historical run-detail `Elapsed` renders its persisted duration.** `Harness.Run.Status` now carries `duration_ms` and `from_log_record/1` copies it off the run record, so a settled run reconstructed from Postgres — where `started_at` is not a column — renders its measured wall-clock instead of an em-dash. Closes the reviewer concern left open by Task 406; a run with neither fact still renders the placeholder.
 
 ### Added

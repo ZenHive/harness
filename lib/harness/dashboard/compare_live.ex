@@ -362,6 +362,7 @@ defmodule Harness.Dashboard.CompareLive do
             active?={@active_adapter == agent}
             comparison_id={@comparison_id}
             bucket={column_bucket(@columns[agent])}
+            label={column_label(@columns[agent])}
           />
           <.verdict_cell column={@columns[agent]} />
           <dl class="compare-metrics">
@@ -389,6 +390,7 @@ defmodule Harness.Dashboard.CompareLive do
   attr(:active?, :boolean, required: true)
   attr(:comparison_id, :string, required: true)
   attr(:bucket, :atom, required: true)
+  attr(:label, :string, required: true)
 
   @doc false
   @spec lane_header(map()) :: Rendered.t()
@@ -401,7 +403,7 @@ defmodule Harness.Dashboard.CompareLive do
       phx-click={JS.patch("/harness/compare/#{@comparison_id}?tab=#{@agent}")}
     >
       <span class="compare-lane-name">{@agent}</span>
-      <Components.bucket_badge bucket={@bucket} />
+      <Components.bucket_badge bucket={@bucket} label={@label} />
     </button>
     """
   end
@@ -561,8 +563,10 @@ defmodule Harness.Dashboard.CompareLive do
     end
   end
 
-  # Lane bucket badge — review in flight reads amber, terminal verdict reads
-  # approved/rejected, anything else is in-flight.
+  # Lane bucket badge — the bucket is the COLOUR tone, the label is the word.
+  # Same split the index uses (live.ex `badge_bucket/1` + `bucket_label/1`):
+  # four tones, but the operator reads the run's own state name, so a lane
+  # reviewing does not read "repairing" here while the index reads "reviewing".
   @spec column_bucket(map() | nil) :: atom()
   defp column_bucket(%{verdict: :approve}), do: :green
   defp column_bucket(%{verdict: :reject}), do: :red
@@ -570,6 +574,12 @@ defmodule Harness.Dashboard.CompareLive do
   defp column_bucket(%{state: :recovering}), do: :repairing
   defp column_bucket(%{state: :reviewing}), do: :repairing
   defp column_bucket(_), do: :in_flight
+
+  @spec column_label(map() | nil) :: String.t()
+  defp column_label(%{verdict: :approve}), do: "approved"
+  defp column_label(%{verdict: :reject}), do: "rejected"
+  defp column_label(%{state: state}) when is_atom(state) and not is_nil(state), do: Atom.to_string(state)
+  defp column_label(_), do: "queued"
 
   @spec verdict_label(map() | nil) :: %{tone: String.t(), glyph: String.t(), text: String.t()}
   defp verdict_label(%{verdict: :approve}), do: verdict_badge("pass", "●", "approved")

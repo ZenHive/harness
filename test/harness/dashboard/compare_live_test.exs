@@ -110,6 +110,28 @@ defmodule Harness.Dashboard.CompareLiveTest do
       assert html =~ "340 ms"
     end
 
+    test "lane badges read the run's own state word, not the colour bucket's name", %{conn: conn} do
+      seed(:claude, Claude, "r-green", verdict: :approve, state: :done, reason: :approved)
+      seed(:codex, Codex, "r-reviewing", verdict: nil, state: :reviewing, reason: nil)
+
+      {:ok, view, _html} = live(conn, "/harness/compare/#{@batch}")
+
+      send(
+        view.pid,
+        {:harness_run_update, %Status{run_id: "r-reviewing", task_id: "t", agent: :codex, state: :reviewing}}
+      )
+
+      html = render(view)
+
+      # Same vocabulary the index badge uses (live.ex bucket_label/1): the tone
+      # stays amber, but the word is the state, never "repairing".
+      assert html =~ ~s(<span class="bucket-label">reviewing</span>)
+      assert html =~ ~s(<span class="bucket-label">approved</span>)
+      refute html =~ ~s(<span class="bucket-label">repairing</span>)
+      # The colour tone is unchanged — reviewing still reads amber.
+      assert html =~ ~s(data-bucket="repairing")
+    end
+
     test "a live RunFeed update patches the correlated lane's reviewer verdict", %{conn: conn} do
       seed(:claude, Claude, "r-1", verdict: :approve, state: :done, reason: :approved)
       seed(:codex, Codex, "r-2", verdict: nil, state: :failed, reason: {:run_crashed, :boom})
