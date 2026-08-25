@@ -239,9 +239,10 @@ defmodule Harness.StatusView do
 
   The headline is `describe_reason/1` so the index cell and the run-detail
   page render the same failure text. The consequence line reports whether
-  the implementer's `harness/<run-id>` commits were retained, read from the
-  run status (`worktree_path` or a `:committing`/`:reviewing` entered-at
-  stamp) — not from reviewer prose.
+  the implementer's `harness/<run-id>` commits were retained, read from
+  record facts (`agent_diff_size`, a `:committing`/`:reviewing` stamp, or a
+  review verdict) — never from `worktree_path` (a worktree can exist before
+  any commit) and never from reviewer prose.
   """
   @spec failure_copy(Status.t()) :: %{
           headline: String.t(),
@@ -287,13 +288,22 @@ defmodule Harness.StatusView do
   end
 
   @spec branch_retained?(Status.t()) :: boolean()
-  defp branch_retained?(%Status{worktree_path: path}) when is_binary(path) and path != "", do: true
+  defp branch_retained?(%Status{agent_diff_size: n}) when is_integer(n), do: true
+
+  defp branch_retained?(%Status{review_verdict: verdict}) when verdict in [:approve, :reject], do: true
 
   defp branch_retained?(%Status{state_entered_at: entered}) when is_map(entered) do
-    Map.has_key?(entered, :committing) or Map.has_key?(entered, :reviewing)
+    commit_or_review_stamp?(entered)
   end
 
   defp branch_retained?(_status), do: false
+
+  @spec commit_or_review_stamp?(map()) :: boolean()
+  defp commit_or_review_stamp?(entered) do
+    Enum.any?([:committing, :reviewing], fn stamp ->
+      Map.has_key?(entered, stamp) or Map.has_key?(entered, Atom.to_string(stamp))
+    end)
+  end
 
   @spec render_bucket(bucket(), [run_entry()]) :: String.t()
   defp render_bucket(bucket, runs) do

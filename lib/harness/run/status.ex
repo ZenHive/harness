@@ -37,6 +37,9 @@ defmodule Harness.Run.Status do
     * `state_entered_at` — latest wall-clock timestamp observed for each
       lifecycle state the run entered. Empty for legacy records.
     * `worktree_path` — the isolated worktree's path, or `nil` before it exists.
+    * `agent_diff_size` — changed-line count of the implementer's committed
+      `harness/<run-id>` diff, or `nil` when no commit was measured. A number
+      (including `0`) means the run branch exists.
     * `agent_os_pid` — the agent's OS pid, captured once at spawn. `nil` before
       the agent has spawned and after a cancellation or failure clears the run
       handle; otherwise it stays the spawn-time pid through `reviewing` and the
@@ -80,6 +83,7 @@ defmodule Harness.Run.Status do
           started_at: DateTime.t() | nil,
           state_entered_at: %{optional(state() | :recovery_review) => DateTime.t()},
           worktree_path: String.t() | nil,
+          agent_diff_size: non_neg_integer() | nil,
           agent_os_pid: non_neg_integer() | nil,
           agent_kind: Outcome.kind() | :recovery_review | nil,
           reviewer_adapter: atom() | nil,
@@ -102,6 +106,7 @@ defmodule Harness.Run.Status do
     :state,
     :started_at,
     :worktree_path,
+    :agent_diff_size,
     :agent_os_pid,
     :agent_kind,
     :reviewer_adapter,
@@ -123,7 +128,9 @@ defmodule Harness.Run.Status do
   longer have a process (e.g. after a BEAM restart). The record's settled
   `state` is always `:done` or `:failed`, so the resulting `Status` classifies
   as a terminal (and thus non-killable) run. `worktree_path` and `agent_os_pid`
-  are not retained on the record, so both are `nil`.
+  are not retained on the record, so both are `nil`. `agent_diff_size` is
+  persisted and is the mechanical "the `harness/<run-id>` branch has commits"
+  fact for a reconstructed snapshot.
   """
   @typep log_record_snapshot :: LogRecord.t() | %{required(:__struct__) => LogRecord}
 
@@ -141,6 +148,7 @@ defmodule Harness.Run.Status do
       started_at: Map.get(record, :started_at),
       state_entered_at: Map.get(record, :state_entered_at) || %{},
       worktree_path: nil,
+      agent_diff_size: Map.get(record, :agent_diff_size),
       agent_os_pid: nil,
       agent_kind: record.agent_outcome_kind,
       # The record stores the reviewer as a *module*; convert to the identity

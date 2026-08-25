@@ -29,6 +29,13 @@ defmodule Harness.Run.StatusTest do
       # Not retained on the record — always nil on a reconstructed snapshot.
       assert status.worktree_path == nil
       assert status.agent_os_pid == nil
+      assert status.agent_diff_size == nil
+    end
+
+    test "copies agent_diff_size from the persisted record" do
+      record = log_record("run-diff", agent_diff_size: 17, state: :failed, reason: {:review_stuck, "no artifact"})
+
+      assert Status.from_log_record(record).agent_diff_size == 17
     end
 
     test "maps an approved record with no agent outcome kind" do
@@ -119,7 +126,8 @@ defmodule Harness.Run.StatusTest do
       agent_outcome_kind: Keyword.get(opts, :agent_outcome_kind),
       agent_output: Keyword.get(opts, :agent_output, ""),
       started_at: Keyword.get(opts, :started_at),
-      state_entered_at: Keyword.get(opts, :state_entered_at, %{})
+      state_entered_at: Keyword.get(opts, :state_entered_at, %{}),
+      agent_diff_size: Keyword.get(opts, :agent_diff_size)
     }
   end
 end

@@ -895,6 +895,7 @@ defmodule Harness.Dashboard.LiveTest do
         reason: reason,
         review_verdict: nil,
         worktree_path: "/tmp/harness/r",
+        agent_diff_size: 12,
         started_at: started_at,
         state_entered_at: %{
           dispatched: started_at,
@@ -979,6 +980,30 @@ defmodule Harness.Dashboard.LiveTest do
       assert html =~ "Escalate"
       assert html =~ "Delete"
       refute html =~ "Kill run"
+    end
+
+    test "historical reconstructed status reports retained commits from agent_diff_size" do
+      record = %LogRecord{
+        batch_id: "batch-hist",
+        run_id: "run-hist",
+        task_id: "1",
+        adapter: FakeAdapter,
+        state: :failed,
+        reason: {:review_stuck, "no artifact"},
+        duration_ms: 1_000,
+        agent_diff_size: 9
+      }
+
+      html =
+        record
+        |> Status.from_log_record()
+        |> show_render_assigns("")
+        |> Live.render()
+        |> rendered_to_string()
+
+      assert html =~ "commits on harness/run-hist are retained."
+      refute html =~ "No implementer commits were retained"
+      assert html =~ "dispatch-rereview"
     end
 
     test "index detail and run-detail headline are identical for three reason shapes" do

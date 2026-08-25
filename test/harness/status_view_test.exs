@@ -264,6 +264,41 @@ defmodule Harness.StatusViewTest do
       assert copy.consequence == "No implementer commits were retained on harness/run-empty."
       assert copy.recovery == "cancel"
     end
+
+    test "failure_copy/1 does not treat a worktree path as retained commits" do
+      status = %Status{
+        run_id: "run-wt",
+        task_id: "1",
+        state: :failed,
+        reason: {:agent_spawn_failed, :enoent},
+        worktree_path: "/tmp/harness/run-wt"
+      }
+
+      copy = StatusView.failure_copy(status)
+
+      assert copy.consequence == "No implementer commits were retained on harness/run-wt."
+    end
+
+    test "failure_copy/1 reads retention from a reconstructed historical record" do
+      record = %LogRecord{
+        batch_id: "batch-hist",
+        run_id: "run-hist",
+        task_id: "1",
+        adapter: FakeAdapter,
+        state: :failed,
+        reason: {:review_stuck, "no artifact"},
+        duration_ms: 1_000,
+        agent_diff_size: 42
+      }
+
+      status = Status.from_log_record(record)
+      copy = StatusView.failure_copy(status)
+
+      assert status.worktree_path == nil
+      assert status.state_entered_at == %{}
+      assert copy.headline == "Reviewer produced no verdict"
+      assert copy.consequence == "The implementer's commits on harness/run-hist are retained."
+    end
   end
 
   describe "live_runs/0" do

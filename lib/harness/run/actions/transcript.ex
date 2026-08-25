@@ -31,6 +31,7 @@ defmodule Harness.Run.Actions.Transcript do
       started_at: data.started_at,
       state_entered_at: data.state_entered_at,
       worktree_path: data.worktree && data.worktree.path,
+      agent_diff_size: Map.get(data, :agent_diff_size),
       agent_os_pid: active_agent_os_pid(state, data),
       agent_kind: status_agent_kind(state, data),
       reviewer_adapter: agent_kind_for(data.reviewer_adapter),
