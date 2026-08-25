@@ -8,9 +8,8 @@
 
 ## Decision
 
-**Migrate harness onto the operator's existing Hetzner EX63 (SSH alias
-`blockwatch-one`, hostname `ex63-eth`). Buy nothing. Use XFS reflinks for
-worktree cloning — not VDO, not dedup, not a new machine.**
+**Migrate harness onto the operator's existing Hetzner EX63. Buy nothing. Use
+XFS reflinks for worktree cloning — not VDO, not dedup, not a new machine.**
 
 Three questions were on the table, all settled:
 
@@ -181,10 +180,10 @@ Installed: `git` 2.43, `cargo` 1.98, Postgres 18.6, `claude`
 - [x] `codex`, `cursor-agent`, `grok` CLIs
 - [x] **Authenticate each agent CLI headlessly** — subscription OAuth on a box
       with no browser is the real migration work, not the hardware
-- [x] Dedicated system user for harness (`harness`, uid 1002), deliberately
-      **not** in the sudo group: `ethereum` holds `NOPASSWD: ALL` and owns the
-      node's data dirs and `jwt.hex`, so running harness there would hand every
-      dispatched agent passwordless root over the Ethereum node
+- [x] harness runs as its own unprivileged system user (`harness`), deliberately
+      **not** in the sudo group. That user owns its checkout, its database and
+      the worktree root, and nothing beyond them — so a dispatched agent's blast
+      radius is exactly those files
 - [x] `harness_prod` database + migrations. The node runs **`MIX_ENV=dev`**
       (systemd drop-in `harness.service.d/10-mix-env.conf`): this is an
       operator-only box behind a forward-only SSH tunnel, and Tidewave is
@@ -199,15 +198,12 @@ Installed: `git` 2.43, `cargo` 1.98, Postgres 18.6, `claude`
 - [x] Project credentials + GitHub access for the registered targets. The
       integration suites of most registered projects flunk without their
       provider keys, so the node must carry them: `ExecStart` is a wrapper that
-      sources the operator's `~/.secrets` before `exec mix run --no-halt`, and
-      every agent Port inherits that env. A systemd `EnvironmentFile=` cannot
-      replace it — the file is shell syntax (`export`, quoting, `${VAR}`), which
-      `EnvironmentFile=` does not parse. Credentials that no repo references
-      (home-network / ISP logins) are deliberately withheld: a box running
-      dispatched agents should not hold access it has no use for. GitHub is a
-      dedicated per-host ed25519 key whose private half never leaves the server,
-      registered on the account and revocable alone; the checkouts use `git@`
-      remotes so the lander can push
+      sources a shell-syntax secrets file before `exec mix run --no-halt`. A
+      systemd `EnvironmentFile=` cannot replace it — that directive parses
+      neither `export`, nor quoting, nor `${VAR}` interpolation, all of which
+      the secrets file uses. GitHub access is a dedicated per-host ed25519 key
+      whose private half never leaves the server, registered on the account and
+      revocable alone; the checkouts use `git@` remotes so the lander can push
 - [ ] Verify reflink end-to-end (`filefrag -v` → `shared` extents, `df` delta) —
       **blocked on the `cp -cR` fix above**; verify with `filefrag`/`df`, never
       with `du`, which counts blocks per inode and so reports a *successful*
@@ -216,23 +212,20 @@ Installed: `git` 2.43, `cargo` 1.98, Postgres 18.6, `claude`
       `/sys/fs/cgroup/...`, not `systemctl show`: a parent slice at
       `memory.low = 0` clamps the child to nothing while `systemctl show`
       cheerfully reports the configured number
-- [x] Reach the dashboard (4018) over the existing forward-only SSH tunnel —
-      a `permitopen` on the same restricted key that already carries the ETH
-      RPC ports, plus a `LocalForward` in the operator's `blockwatch-one-rpc`
-      block, **same port on both sides**. No public port, no new access path,
-      and no Tailscale: the server already runs WireGuard, and the operator's
-      tailnet does not include it
-- [x] Tidewave IDE via `tidewave-cli.service` on the node (port 9840), a sixth
+- [x] Reach the dashboard (4018) over the existing forward-only SSH tunnel — a
+      `permitopen` on a restricted key plus a matching `LocalForward` in the
+      operator's SSH config, **same port on both sides**. No public port, no new
+      access path, no VPN added
+- [x] Tidewave IDE via `tidewave-cli.service` on the node (port 9840), another
       `permitopen` + `LocalForward`. The Tidewave **desktop app cannot drive a
-      remote project** — it resolves the project path on the machine it runs
-      on, so `/data/postgresql/harness/base` is "entity not found" from the
-      laptop. Upstream's answer for remote/containerised apps is to run the CLI
-      on the app's own machine and forward its port; it rejects non-localhost
-      callers by default, which the tunnel satisfies without
-      `--allow-remote-access`. **Never forward a tunnel port that something
-      local already binds** — `ExitOnForwardFailure yes` makes a collision drop
-      the *entire* tunnel, ETH RPC included. 9832 (the desktop app's own port)
-      and 9000 (lighthouse, server-side) are both taken; hence 9840
+      remote project** — it resolves the project path on the machine it runs on,
+      so a server-side checkout reads as "entity not found" from the laptop.
+      Upstream's answer for remote/containerised apps is to run the CLI on the
+      app's own machine and forward its port; it rejects non-localhost callers
+      by default, which the tunnel satisfies without `--allow-remote-access`.
+      **Never forward a tunnel port that something local already binds** —
+      `ExitOnForwardFailure yes` makes one collision drop the *entire* tunnel,
+      every other forward with it, so pick a port that is free on both ends
 
 ## Accepted Risks
 
