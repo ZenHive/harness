@@ -17681,7 +17681,7 @@
       "phase": 23,
       "bundle": "config-surface",
       "milestone": "v0_16",
-      "status": "in_progress",
+      "status": "done",
       "title": "Expose roadmap_target_branch on the operator registration surfaces",
       "scores": {
         "d": 3,
@@ -17714,10 +17714,17 @@
         "priv/repo/seeds.exs.example",
         "skills/harness-driver/SKILL.md"
       ],
+      "shipped_in": "1433aea06feebd2a12511f060181f91ff40f7bd5",
       "body": "Task 378 added `%Harness.Project{roadmap_target_branch}` so durable `mark_*`\nwrites can target a roadmap repository that is not the code `source`. The\nfield is load-bearing for any split-repo registration (the bourse\npublic-client / private-workbench case that motivated 378): without an\nexplicit branch, a split project falls back to a local rmap write and the\nroadmap never advances on origin.\n\nEvidence (read 2026-08-16, this audit of 31cfd94):\n- `Harness.Dispatch.register_project/8` has no `roadmap_target_branch` param\n  (`lib/harness/dispatch.ex`).\n- `/harness/settings` create/edit form has no mention of the field\n  (`lib/harness/dashboard/` grep is empty).\n- `priv/repo/seeds.exs.example` only documents `target_branch`.\n\nSo the only way to set the field today is a keyword/struct\n`ProjectRegistry.upsert/1` from IEx. An operator following the dashboard or\nMCP registration path cannot express the split 378 was built to support.\n\nDo not fold this into Task 375. 375 is a validation sweep of the *pre-378*\noptional set and explicitly leaves dashboard forms out of scope. This task\nis the missing authoring surface for one new field.\n\nThe seeds example in this audit already carries a one-line comment pointing\nat the field; keep or expand that rather than treating the comment as the\ndeliverable.\n",
       "created_at": "2026-08-16",
       "started_at": "2026-08-25",
+      "done_at": "2026-08-25",
       "scored_at": "2026-08-16",
+      "implemented": "Landed by grok via merge-train; reviewer-approved (run run-1787661772628-233ffcc2, 1433aea06feebd2a12511f060181f91ff40f7bd5).",
+      "delivered_by": "grok",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1787661772628-233ffcc2",
       "cross_repo": []
     },
     {

@@ -11762,7 +11762,7 @@ id = "389"
 phase = 23
 bundle = "config-surface"
 milestone = "v0_16"
-status = "in_progress"
+status = "done"
 title = "Expose roadmap_target_branch on the operator registration surfaces"
 scores = { d = 3, b = 6, u = 5 }
 acceptance_criteria = ["dispatch-register_project accepts an optional roadmap_target_branch scalar and persists it on the registered %Harness.Project{}", "The /harness/settings project create/edit form reads and writes roadmap_target_branch (blank stays nil)", "priv/repo/seeds.exs.example documents the field next to target_branch, including that it is required when roadmap_path and source are different repositories", "skills/harness-driver/SKILL.md names the field on dispatch-register_project and on the Project struct", "An invalid branch name is rejected at registration with {:invalid_roadmap_target_branch, _} — same rule ProjectRegistry already applies on the programmatic path", "Existing same-repo registrations that omit the field still derive the durable branch from target_branch"]
@@ -11797,9 +11797,16 @@ The seeds example in this audit already carries a one-line comment pointing
 at the field; keep or expand that rather than treating the comment as the
 deliverable.
 """
+implemented = "Landed by grok via merge-train; reviewer-approved (run run-1787661772628-233ffcc2, 1433aea06feebd2a12511f060181f91ff40f7bd5)."
+delivered_by = "grok"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1787661772628-233ffcc2"
 created_at = "2026-08-16"
 started_at = "2026-08-25"
 scored_at = "2026-08-16"
+done_at = "2026-08-25"
+shipped_in = "1433aea06feebd2a12511f060181f91ff40f7bd5"
 
 [[task]]
 id = "391"
