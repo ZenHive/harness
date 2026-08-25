@@ -18734,6 +18734,65 @@
       "created_at": "2026-08-25",
       "scored_at": "2026-08-25",
       "cross_repo": []
+    },
+    {
+      "id": "411",
+      "phase": 22,
+      "bundle": "agent-gate",
+      "status": "pending",
+      "title": "run_records read path discards a whole row when one persisted atom is absent from the reading node",
+      "scores": {
+        "d": 3,
+        "b": 6,
+        "u": 5
+      },
+      "eff": 1.83,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "cursor",
+      "model": "cursor-grok-4.6-high",
+      "acceptance_criteria": [
+        "A row whose `reason`, `agent_outcome_kind`, `reviewer_outcome_kind` or `domains` carries an atom absent from the reading node's atom table is returned with that FIELD degraded to its raw string; the row is never discarded. Against the current ledger `list_run_records([], [])` returns every row (1740/1740 at time of filing) and the aggregated skip line reports 0",
+        "The degradation is per-decode, not a row-level rescue: each atomizing call site in `decode_term/1` / `decode_map_key/1` / `string_to_atom/1` / `string_to_module/1` falls back on `ArgumentError` instead of letting it escape to `safe_row_to_log_record/1`. `safe_row_to_log_record/1` stays as the last-resort guard but must no longer be the mechanism that hides this class",
+        "`domains` — an open reviewer/roadmap vocabulary, not a curated one — is persisted and read as strings. Only the curated `CapabilityDomain` set is atomized. `CapabilityDomain.t/0`, `known?/1`, `normalize/1`, `buckets/1` and `Harness.Roadmap.domain_atom/1` are updated so an unknown tag survives round-trip instead of being minted-if-lucky and dropped otherwise",
+        "Every consumer that pattern-matches a `reason` atom is enumerated and either adapted to the string fallback or shown to be unreachable for degraded rows. Name them in the implemented note — the recovery primitives key on `run_id`/`state`/`verdict` and are believed unaffected, but that must be checked rather than assumed",
+        "Regression test: a fabricated row carrying `{\"$atom\" => \"<name-compiled-into-no-module>\"}` in each of `reason`, an `*_outcome_kind` and `domains` is returned with those fields as strings, with every countable fact (verdict, state, token usage, landed sha) intact, and the scan logs zero skips",
+        "`Harness.ResultStore.Postgres.load_batch/2` covers the same failure mode: its `:erlang.binary_to_term(payload, [:safe])` raises identically on an atom the reading node lacks. Either degrade the affected value or fail the single batch — never let one unrestorable atom take out a healthy read. A test pins the chosen behaviour",
+        "The app's own modules are loaded at boot so the skip count is a property of the data, not a race against lazy code loading. A test or a documented boot assertion pins it",
+        "mix check.dispatch green plus focused `mix test.json test/harness/result_store/postgres_codec_test.exs` and the capability-domain tests"
+      ],
+      "out_of_scope": [
+        "Rewriting the 4 historical rows whose `domains` atoms exist in no compiled module. Criterion 1 makes them readable as strings; a data migration is a separate call the operator has not made",
+        "Silencing or downgrading the `skipped N undecodable run_records row(s)` log line. It is reporting a real read-path defect; it goes quiet because the defect is fixed, never because it was muted",
+        "The `batch_results.payload` ETF encoding itself. Only `load_batch/2`'s decode robustness is in scope",
+        "Any change to what the reviewer or roadmap is allowed to put in `domains`. The vocabulary stays open; this task changes how an open vocabulary is stored"
+      ],
+      "files_to_modify": [
+        "lib/harness/result_store/postgres.ex",
+        "lib/harness/capability_domain.ex",
+        "lib/harness/roadmap.ex",
+        "test/harness/result_store/postgres_codec_test.exs"
+      ],
+      "touches": [
+        "lib/harness/result_store/postgres.ex",
+        "lib/harness/capability_domain.ex",
+        "lib/harness/roadmap.ex",
+        "lib/harness/agent_kpi.ex",
+        "lib/harness/application.ex",
+        "test/harness/result_store/postgres_codec_test.exs",
+        "test/harness/capability_domain_test.exs"
+      ],
+      "domains": [
+        "ecto"
+      ],
+      "body": "`Harness.ResultStore.Postgres.rows_to_log_records/1` (`lib/harness/result_store/postgres.ex:899-911`) keeps `{:ok, rec}` and silently discards the entire row on `{:error, _}`. `safe_row_to_log_record/1` (`:913-917`) produces that error by rescuing `ArgumentError`, and in this module `ArgumentError` has exactly one source: `String.to_existing_atom/1` at `:940`, `:946`, `:1039` and `:1057`.\n\n`encode_term/1` persists atoms as `{\"$atom\": \"name\"}` and `decode_term/1` restores them with `to_existing_atom`. Whether that succeeds depends on which BEAM modules happen to be loaded at that instant, and under `mix run` modules load lazily — so the same bytes decode or fail depending on what the node has executed. Measured on the deployed node over one morning with the data unchanged: 196 skipped, then 195, then 1691, then 70 once unrelated probes had warmed the atom table. That is not corruption; it is a read path whose result depends on code-loading order.\n\nRuled out with evidence, so the fix does not need to chase them: transfer corruption is refuted — `md5(string_agg(...))` over `reason||domains` for all 1740 rows is identical on the laptop `harness_dev` and the server `harness_prod`, as is the digest over the output columns. Struct-shape or Elixir-version incompatibility is refuted — `run_records` holds no ETF at all; every structured column is `jsonb` and a \"bad\" row's `reason` is well-formed JSON that decodes fine once its atoms exist.\n\nAt warm steady state 70 of 1740 rows (4.0%) are dropped, spread across the whole history (2026-06: 29, 2026-07: 28, 2026-08: 13) rather than clustered at any migration, and 61 of 70 are `state=failed` — precisely the rows a reviewer-reliability or failure-facet rollup most needs. Four are permanently unreadable on the prod build, all from `domains` tags compiled into no module there: `[:ash, :oban]`, `[:ash, :otp, :security]`, `[:zen_quant]`, `[:delta_calc]`. `:ash` is the tell — it exists only in `deps/reach` and `deps/igniter`, dev/test-only deps absent from the prod build, so those rows were written on a laptop where the atom was incidentally alive.\n\nThat is the second, deeper half of the defect: `Harness.Roadmap.task_domains/1` / `domain_atom/1` (`lib/harness/roadmap.ex:169-185`) atomizes with a string fallback, and `CapabilityDomain.normalize/1` then drops non-atoms. So an open-vocabulary tag is persisted as an atom exactly when it happened to be live, and is unreadable everywhere else. Storing an open vocabulary as atoms is the design error; criterion 3 fixes the cause, criterion 1 fixes the blast radius.\n\nThe consequence is not cosmetic. One unrestorable atom in `reason` — a prose field — currently discards that run's verdict, landed SHA, token usage and every KPI fact. AgentKPI rollups, per-facet capability routing and reviewer-reliability all read through this path, so roughly 4% of the ledger is invisible to them, biased toward failures. `dispatch-reland` / `rereview` / `resume_failed` key on `run_id`, `state` and `verdict`, which are plain strings, so recovery is believed safe — criterion 4 exists to verify that rather than trust it.\n\n`load_batch/2`'s `binary_to_term(payload, [:safe])` fails the same way on an atom the reading node lacks. It is 4/4 clean today, which makes it a time bomb rather than a live problem, and it is cheap to harden in the same pass.\n\nNote for whoever picks this up: a diagnostic session on 2026-08-25 minted `:progress_stalled` in the running node, which unblocked ~21 rows. A live count read from that node reads far lower than the true figure and reverts on restart. Measure on a freshly restarted node.\n",
+      "created_at": "2026-08-25",
+      "scored_at": "2026-08-25",
+      "cross_repo": []
     }
   ]
 }
