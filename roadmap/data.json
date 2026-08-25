@@ -17063,7 +17063,7 @@
       },
       "eff": 3.0,
       "dep_layer": 0,
-      "unlocks": 0,
+      "unlocks": 1,
       "markers": [
         "bug"
       ],
@@ -18798,6 +18798,68 @@
         "ecto"
       ],
       "body": "`Harness.ResultStore.Postgres.rows_to_log_records/1` (`lib/harness/result_store/postgres.ex:899-911`) keeps `{:ok, rec}` and silently discards the entire row on `{:error, _}`. `safe_row_to_log_record/1` (`:913-917`) produces that error by rescuing `ArgumentError`, and in this module `ArgumentError` has exactly one source: `String.to_existing_atom/1` at `:940`, `:946`, `:1039` and `:1057`.\n\n`encode_term/1` persists atoms as `{\"$atom\": \"name\"}` and `decode_term/1` restores them with `to_existing_atom`. Whether that succeeds depends on which BEAM modules happen to be loaded at that instant, and under `mix run` modules load lazily — so the same bytes decode or fail depending on what the node has executed. Measured on the deployed node over one morning with the data unchanged: 196 skipped, then 195, then 1691, then 70 once unrelated probes had warmed the atom table. That is not corruption; it is a read path whose result depends on code-loading order.\n\nRuled out with evidence, so the fix does not need to chase them: transfer corruption is refuted — `md5(string_agg(...))` over `reason||domains` for all 1740 rows is identical on the laptop `harness_dev` and the server `harness_prod`, as is the digest over the output columns. Struct-shape or Elixir-version incompatibility is refuted — `run_records` holds no ETF at all; every structured column is `jsonb` and a \"bad\" row's `reason` is well-formed JSON that decodes fine once its atoms exist.\n\nAt warm steady state 70 of 1740 rows (4.0%) are dropped, spread across the whole history (2026-06: 29, 2026-07: 28, 2026-08: 13) rather than clustered at any migration, and 61 of 70 are `state=failed` — precisely the rows a reviewer-reliability or failure-facet rollup most needs. Four are permanently unreadable on the prod build, all from `domains` tags compiled into no module there: `[:ash, :oban]`, `[:ash, :otp, :security]`, `[:zen_quant]`, `[:delta_calc]`. `:ash` is the tell — it exists only in `deps/reach` and `deps/igniter`, dev/test-only deps absent from the prod build, so those rows were written on a laptop where the atom was incidentally alive.\n\nThat is the second, deeper half of the defect: `Harness.Roadmap.task_domains/1` / `domain_atom/1` (`lib/harness/roadmap.ex:169-185`) atomizes with a string fallback, and `CapabilityDomain.normalize/1` then drops non-atoms. So an open-vocabulary tag is persisted as an atom exactly when it happened to be live, and is unreadable everywhere else. Storing an open vocabulary as atoms is the design error; criterion 3 fixes the cause, criterion 1 fixes the blast radius.\n\nThe consequence is not cosmetic. One unrestorable atom in `reason` — a prose field — currently discards that run's verdict, landed SHA, token usage and every KPI fact. AgentKPI rollups, per-facet capability routing and reviewer-reliability all read through this path, so roughly 4% of the ledger is invisible to them, biased toward failures. `dispatch-reland` / `rereview` / `resume_failed` key on `run_id`, `state` and `verdict`, which are plain strings, so recovery is believed safe — criterion 4 exists to verify that rather than trust it.\n\n`load_batch/2`'s `binary_to_term(payload, [:safe])` fails the same way on an atom the reading node lacks. It is 4/4 clean today, which makes it a time bomb rather than a live problem, and it is cheap to harden in the same pass.\n\nNote for whoever picks this up: a diagnostic session on 2026-08-25 minted `:progress_stalled` in the running node, which unblocked ~21 rows. A live count read from that node reads far lower than the true figure and reverts on restart. Measure on a freshly restarted node.\n",
+      "created_at": "2026-08-25",
+      "scored_at": "2026-08-25",
+      "cross_repo": []
+    },
+    {
+      "id": "412",
+      "phase": 20,
+      "bundle": "config-surface",
+      "status": "pending",
+      "title": "Scope inherited credentials per project — every dispatched agent currently sees every registered project's keys",
+      "scores": {
+        "d": 4,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 1.63,
+      "dep_layer": 1,
+      "unlocks": 0,
+      "markers": [
+        "security"
+      ],
+      "depends_on": [
+        375
+      ],
+      "assignee": "codex",
+      "model": "gpt-5.6-sol",
+      "acceptance_criteria": [
+        "%Harness.Project{} carries an optional credential allowlist of environment-variable NAMES. Unset (the default) preserves today's behaviour exactly — the agent inherits the orchestrator's full environment — so no registered project's integration suite breaks on the day this lands",
+        "When a project declares the allowlist, Harness.Run builds the Invocation.env scrub map by diffing the orchestrator's live environment against that list plus the names harness itself must pass, and sets every remaining name to false. The agent Port therefore receives the declared set and nothing else. This uses the existing Invocation.env mechanism; do not add a second env pathway",
+        "The allowlist composes with, and never silently overrides, the existing :cron_polling subscription_env_scrubs. State the precedence in the moduledoc and pin it with a test: a name that is both allowlisted and scrubbed must resolve one way, deterministically",
+        "Harness never reads, stores, logs or persists a credential VALUE. Only names are declared, compared and recorded — Task 25 put credential vaulting out of scope and it stays out of scope",
+        "Each run records the environment-variable NAMES its agent Ports were given, so the allowlist can be authored from evidence instead of guessed. This is the half that makes the feature usable: nobody currently knows which keys a given project actually needs, because everything has always been present",
+        "Registration validates the field to its @type at every entry point (dashboard form, ProjectRegistry.upsert/1 and register/1 with an attrs map, config-seeded entries), consistent with the validation Task 375 establishes",
+        "Tests cover: unset allowlist inherits everything; a declared allowlist scrubs an inherited name absent from it; a declared name present in the orchestrator env survives; the declared-plus-scrubbed precedence case; and that the recorded name list contains no values",
+        "mix check.dispatch green plus focused mix test.json for the project, registration and run env paths"
+      ],
+      "out_of_scope": [
+        "Storing, vaulting, encrypting or injecting credential values. harness passes through what the operator's environment already holds; this task narrows that pass-through and adds nothing that could hold a secret",
+        "Authoring the actual per-project allowlists. That is operator data derived from the evidence this task produces, filed separately once the recorded name lists exist",
+        "The reviewer and audit Ports' own environment, if it differs from the implementer's. Bring them under the same rule only if they already share the code path; a divergent path is a follow-up",
+        "Any change to how ~/.secrets is loaded or to the ExecStart wrapper. The orchestrator's own environment is the operator's business; this task governs only what is handed to a spawned agent"
+      ],
+      "files_to_modify": [
+        "lib/harness/project.ex",
+        "lib/harness/project_registry.ex",
+        "lib/harness/run.ex",
+        "lib/harness/result_store/postgres.ex"
+      ],
+      "touches": [
+        "lib/harness/project.ex",
+        "lib/harness/project_registry.ex",
+        "lib/harness/run.ex",
+        "lib/harness/dispatch.ex",
+        "lib/harness/result_store/postgres.ex",
+        "priv/repo/migrations",
+        "test/harness/project_test.exs",
+        "test/harness/run_test.exs"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "`Harness.AgentAdapter.Invocation` carries `env`, a map of variable name to either a string (set) or `false` (scrub, so the agent does not inherit it). It threads into the Port spawn via `build_command/1`, and `false` is the Erlang Port convention for removing a variable. The mechanism is complete and shipped — Task 25 built it.\n\nIt is used today as a scalpel, in exactly one place: `config/config.exs`'s `subscription_env_scrubs` removes `ANTHROPIC_API_KEY` for claude and `OPENAI_API_KEY` for codex, so those agents fall back to subscription OAuth instead of a metered key. Two names. Everything else the spawned agent inherits wholesale from the orchestrator BEAM.\n\nOn the deployment host that BEAM sources the operator's secrets file before starting, because most registered projects' integration suites flunk without their provider keys. The consequence is that an agent dispatched for project A holds project B's, C's and D's credentials for the duration of its run — and those agents are third-party CLIs running attacker-influenceable content, since a task body, a diff or a dependency's README is input a prompt injection can ride in on. The blast radius of any one compromised or injected agent run is every credential on the host, not the one project it was dispatched for.\n\nThe inversion is small because the primitive already exists: instead of a denylist of two names, a per-project allowlist. Harness reads its own environment, subtracts what the project declared, and sets `false` for the remainder. No new concept, no new pathway — a declaration on `%Harness.Project{}` and the code that derives the scrub map from it.\n\nThe reason this is a task rather than an inline edit is the second half. What a project actually needs is written down nowhere; it works because everything is present. An allowlist assembled by guessing reds that project's integration suite on the next dispatch, and the failure will look like a flaky test rather than a missing key. So the run must first record which names it handed over — names only, never values — and the allowlists get authored from that evidence afterwards. Default-unset preserving today's behaviour is what makes the rollout incremental instead of a flag day.\n\nInteraction to get right rather than discover: `subscription_env_scrubs` already removes two names deliberately. An allowlist that happens to include `ANTHROPIC_API_KEY` must not silently undo that scrub. Pick a precedence, document it, test it.\n",
       "created_at": "2026-08-25",
       "scored_at": "2026-08-25",
       "cross_repo": []
