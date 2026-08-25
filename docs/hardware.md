@@ -204,11 +204,23 @@ Installed: `git` 2.43, `cargo` 1.98, Postgres 18.6, `claude`
       `/sys/fs/cgroup/...`, not `systemctl show`: a parent slice at
       `memory.low = 0` clamps the child to nothing while `systemctl show`
       cheerfully reports the configured number
-- [x] Reach the dashboard (4018) over the existing forward-only SSH tunnel — a
-      fifth `permitopen` on the same restricted key that already carries the ETH
+- [x] Reach the dashboard (4018) over the existing forward-only SSH tunnel —
+      a `permitopen` on the same restricted key that already carries the ETH
       RPC ports, plus a `LocalForward` in the operator's `blockwatch-one-rpc`
-      block. No public port, no new access path, and no Tailscale: the server
-      already runs WireGuard, and the operator's tailnet does not include it
+      block, **same port on both sides**. No public port, no new access path,
+      and no Tailscale: the server already runs WireGuard, and the operator's
+      tailnet does not include it
+- [x] Tidewave IDE via `tidewave-cli.service` on the node (port 9840), a sixth
+      `permitopen` + `LocalForward`. The Tidewave **desktop app cannot drive a
+      remote project** — it resolves the project path on the machine it runs
+      on, so `/data/postgresql/harness/base` is "entity not found" from the
+      laptop. Upstream's answer for remote/containerised apps is to run the CLI
+      on the app's own machine and forward its port; it rejects non-localhost
+      callers by default, which the tunnel satisfies without
+      `--allow-remote-access`. **Never forward a tunnel port that something
+      local already binds** — `ExitOnForwardFailure yes` makes a collision drop
+      the *entire* tunnel, ETH RPC included. 9832 (the desktop app's own port)
+      and 9000 (lighthouse, server-side) are both taken; hence 9840
 
 ## Accepted Risks
 
