@@ -12058,7 +12058,7 @@ shipped_in = "630d83dd15a545220c0fc7b64f46124e721a2f54"
 id = "401"
 phase = 22
 bundle = "audit-hygiene"
-status = "pending"
+status = "done"
 title = "mix ci is red on main: one ex_dna clone and four dialyzer warnings, all pre-dating the 397 extraction"
 scores = { d = 4, b = 7, u = 6 }
 acceptance_criteria = ["mix ci exits 0 on the landed base with no threshold lowered, no check dropped from an alias, no clone budget raised above 0, and no warning added to .dialyzer_ignore.exs unless the entry names why the warning is a dialyzer limitation rather than a defect.", "Harness.Run.Worker offline test coverage (mix test.json --cover --exclude integration) is at or above 80 percent before any of its code is changed. It measured 75.53 percent on 2026-08-24, so the missing coverage is written first, in this task, per the raise-coverage-before-mutating rule. Report the before and after percentages in the implemented note.", "The ex_dna clone at lib/harness/run/worker.ex:108 and :132 is gone. Both call sites keep behaviour identical: an insert that comes back conflict? true still returns the existing run, a plain ok still returns the new run id, an error still propagates. Tests cover the unique-conflict path for both the single-task and the coalesced-member path.", "The four dialyzer findings are resolved at the source, not suppressed: lib/harness/lander/worker.ex:43 (the land/1 call will not succeed), lib/harness/result_store.ex:668 (pattern can never match binary()) and :670 (clause covered by a previous clause), lib/harness/run/worker.ex:246 (guard clause can never succeed). Each fix states in the diff or the implemented note whether the dead code was a stale contract or a genuine bug that was silently unreachable.", "No behaviour change to dispatch idempotency: the Oban unique key, the coalesced member checks, and the settled-run recovery path are untouched.", "mix check.dispatch green, plus the full mix ci run captured to a single mktemp log and its path recorded in the review checks."]
@@ -12084,9 +12084,12 @@ Standing cost of leaving it red: the task 397 reviewer spent real effort establi
 
 Dispatch trigger: repo-wide check infrastructure — mix ci is the mergeable bar for every landed run.
 """
+implemented = "Salvaged the staged implementer diff from the killed run-1787617097343-41d54f77 worktree and landed it inline (6 files, +149/-24). The ex_dna clone is gone: both enqueue_unclaimed/4 and enqueue_coalesced/4 now call one insert_dispatch_job/4; ex_dna reports 'No code duplication detected (227 files)'. The four dialyzer findings were fixed at the source, all stale contracts rather than live bugs — lander/worker.ex:43 now fetch_arg's run_id and task_id so land/1 no longer sees nil-typed args (two new cancel tests pin the missing-arg cases), result_store.ex:668/670 dropped the task_id_string/1 helper whose binary and catch-all clauses were already covered, run/worker.ex:246 widened @type args from a String-keyed map to map() so the guard is reachable. dialyzer.json now reports 0 warnings with .dialyzer_ignore.exs untouched (its one pre-existing status_view entry is unchanged). Harness.Run.Worker offline coverage 75.53 -> 83.33 percent, above the 80 floor, via six new offline enqueue-contract tests in oban_dispatch_test.exs. Full mix ci green, exit 0: 1954 passed / 0 failed / 66 excluded, doctor 100/100/100, sobelow clean, reach --arch clean (22 advisory smells), clone gate clean, dialyzer clean. Log: /var/folders/ht/838bqmdn3c1g6f336kw3vc440000gn/T/harness-ci.XXXXXX.log.jM2A4c1bwQ. No threshold lowered, no alias step dropped, no clone budget raised, no ignore entry added."
 created_at = "2026-08-24"
 started_at = "2026-08-25"
 scored_at = "2026-08-24"
+done_at = "2026-08-25"
+shipped_in = "ff631d0"
 
 [[task]]
 id = "402"

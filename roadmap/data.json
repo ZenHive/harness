@@ -18189,7 +18189,7 @@
       "id": "401",
       "phase": 22,
       "bundle": "audit-hygiene",
-      "status": "pending",
+      "status": "done",
       "title": "mix ci is red on main: one ex_dna clone and four dialyzer warnings, all pre-dating the 397 extraction",
       "scores": {
         "d": 4,
@@ -18223,10 +18223,13 @@
         "lib/harness/result_store.ex",
         "test/harness/run/worker_test.exs"
       ],
+      "shipped_in": "ff631d0",
       "body": "mix ci is the repo's mergeable bar and there is no GitHub CI behind it, so a red ci is the only gate there is. It is currently red on origin/main and has been for a while: both findings reproduce on parent 4fddc2f, before the task 397 extraction landed.\n\nMeasured on the landed base 2026-08-24 (full mix ci run, then the two steps ci aborted before reaching, run separately):\n\n- format, compile --warnings-as-errors, credo --strict, doctor (100/100/100), the offline suite with --cover-threshold 80, and sobelow all pass.\n- ex_dna --max-clones 0 fails on exactly one clone, 49 nodes / ~24 duplicated lines: the `{run_id, changeset} = new_dispatch_job(...)` plus `case Harness.Oban.insert(changeset)` block appears verbatim in enqueue_unclaimed/4 at lib/harness/run/worker.ex:108 and in enqueue_coalesced/4 at :132.\n- reach.check --arch --smells passes (architecture policy OK; 22 advisory smell findings).\n- dialyzer.json reports 4 warnings: lander/worker.ex:43 \"The function call land will not succeed\", result_store.ex:668 \"The pattern can never match the type binary()\", result_store.ex:670 \"The pattern variable _id@1 can never match the type, because it is covered by previous clauses\", run/worker.ex:246 \"The guard clause can never succeed\".\n\nThe dialyzer findings are the interesting half. Three of the four are dialyzer telling us a clause is unreachable, which means either a contract drifted or a branch someone believed was live has been dead. Fix each at the source and say which it was; do not reach for .dialyzer_ignore.exs to make the gate green.\n\nThe coverage constraint is the reason this is not a five-minute inline edit. Harness.Run.Worker sits at 75.53 percent offline coverage because most of it is exercised by :integration tests that need a live Postgres, and 58 lines are uncovered — including lines 94, 96, 106, 122, 130, 136, 138 and 147, which is precisely the enqueue path the clone lives on. Mutating it below tier is not allowed, so the offline coverage comes first.\n\nStanding cost of leaving it red: the task 397 reviewer spent real effort establishing that both reds were pre-existing (empty diff versus parent, last touch on worker.ex was aacf879 from task 368) before it could approve. Every future reviewer that runs the full gate repeats that derivation.\n\nDispatch trigger: repo-wide check infrastructure — mix ci is the mergeable bar for every landed run.\n",
       "created_at": "2026-08-24",
       "started_at": "2026-08-25",
+      "done_at": "2026-08-25",
       "scored_at": "2026-08-24",
+      "implemented": "Salvaged the staged implementer diff from the killed run-1787617097343-41d54f77 worktree and landed it inline (6 files, +149/-24). The ex_dna clone is gone: both enqueue_unclaimed/4 and enqueue_coalesced/4 now call one insert_dispatch_job/4; ex_dna reports 'No code duplication detected (227 files)'. The four dialyzer findings were fixed at the source, all stale contracts rather than live bugs — lander/worker.ex:43 now fetch_arg's run_id and task_id so land/1 no longer sees nil-typed args (two new cancel tests pin the missing-arg cases), result_store.ex:668/670 dropped the task_id_string/1 helper whose binary and catch-all clauses were already covered, run/worker.ex:246 widened @type args from a String-keyed map to map() so the guard is reachable. dialyzer.json now reports 0 warnings with .dialyzer_ignore.exs untouched (its one pre-existing status_view entry is unchanged). Harness.Run.Worker offline coverage 75.53 -> 83.33 percent, above the 80 floor, via six new offline enqueue-contract tests in oban_dispatch_test.exs. Full mix ci green, exit 0: 1954 passed / 0 failed / 66 excluded, doctor 100/100/100, sobelow clean, reach --arch clean (22 advisory smells), clone gate clean, dialyzer clean. Log: /var/folders/ht/838bqmdn3c1g6f336kw3vc440000gn/T/harness-ci.XXXXXX.log.jM2A4c1bwQ. No threshold lowered, no alias step dropped, no clone budget raised, no ignore entry added.",
       "cross_repo": []
     },
     {
