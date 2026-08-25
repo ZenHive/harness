@@ -12666,7 +12666,7 @@ scored_at = "2026-08-25"
 id = "413"
 phase = 23
 bundle = "witness-legibility"
-status = "in_progress"
+status = "done"
 title = "Surface an in-flight audit signal on the fleet count strip, not just the ops panel"
 scores = { d = 4, b = 7, u = 6 }
 acceptance_criteria = ["The /harness index page shows a distinct, live-updating signal (e.g. a tile alongside the existing run-state count strip, or an equivalent at-a-glance indicator near it) for the count of audits currently in flight, sourced from Harness.Audit's existing audit_started/audit_settled OpsFeed broadcasts — no new audit-lifecycle broadcast mechanism is introduced.", "The signal is mechanical only: it counts in-flight audits (started without a matching settled); it never renders or infers a verdict, outcome, or judgment about the audit.", "The signal updates live via the existing harness:ops PubSub topic while the LiveView is connected, with no polling.", "Unit test: broadcasting an audit_started Op increments the in-flight count on a mounted socket; broadcasting the matching audit_settled Op decrements it back.", "LiveView panel verified in-browser: the tile/indicator renders in its idle (zero) state and updates to a nonzero state during a real or simulated in-flight audit, per this repo's UI-work verification rule."]
@@ -12695,9 +12695,16 @@ Task 243 already built. This is a UI addition on the existing dashboard design s
 (kpi-strip / tile pattern already in `render_index/1`), not a new visual identity, so it
 is normal incremental dispatch work per this repo's UI routing rule.
 """
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1787663471283-8920e36e, 83006b23fcd8ce3442404f188468daf7e1ed522c)."
+delivered_by = "cursor"
+verified = true
+verified_by = "grok"
+verification_ref = "harness-run:run-1787663471283-8920e36e"
 created_at = "2026-08-25"
 started_at = "2026-08-25"
 scored_at = "2026-08-25"
+done_at = "2026-08-25"
+shipped_in = "83006b23fcd8ce3442404f188468daf7e1ed522c"
 
 [[task]]
 id = "414"
