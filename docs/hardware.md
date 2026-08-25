@@ -203,9 +203,11 @@ Installed: `git` 2.43, `cargo` 1.98, Postgres 18.6, `claude`
       the secrets file uses. GitHub access is a dedicated per-host ed25519 key
       whose private half never leaves the server, registered on the account and
       revocable alone; the checkouts use `git@` remotes so the lander can push
-- [ ] Verify reflink end-to-end (`filefrag -v` → `shared` extents, `df` delta) —
-      verify with `filefrag`/`df`, never with `du`, which counts blocks per inode
-      and so reports a *successful* reflink at full size
+- [x] Verify reflink end-to-end — confirmed on the worktree volume once the OS
+      flag branch landed: an 84 MB `deps/` tree cloned in 0.05 s for a 3 MB `df`
+      delta, i.e. metadata only. Verify with `filefrag`/`df`, never with `du`,
+      which counts blocks per inode and so reports a *successful* reflink at
+      full size
 - [x] systemd slices above — and read the effective value from
       `/sys/fs/cgroup/...`, not `systemctl show`: a parent slice at
       `memory.low = 0` clamps the child to nothing while `systemctl show`
